@@ -113,7 +113,10 @@ observability/               OTel Operator/Collector + Grafana/Loki/Tempo/Promet
 scripts/                      00-07 numbered steps + up.sh / down.sh / status.sh
 terraform/gke/                throwaway GKE cluster for test/e2e.sh (the one exception
                               to "assumes an existing cluster")
+terraform/bootstrap/          one-time setup for the GitHub Actions automation below
+                              (state bucket + Workload Identity Federation)
 test/                         e2e.sh (provision -> up.sh -> smoke-test.sh -> down.sh -> destroy)
+.github/workflows/            gke-provision.yml / gke-decommission.yml (CI version of test/e2e.sh)
 docs/                         architecture, pipelines-as-code, observability, platforms
 ```
 
@@ -237,6 +240,93 @@ plain root module + local backend instead. The resources in
 [`terraform/gke/main.tf`](terraform/gke/main.tf) can be lifted into a Stack
 component largely as-is if you use HCP Terraform for your own infrastructure.
 
+## GitHub Actions automation
+
+[`.github/workflows/gke-provision.yml`](.github/workflows/gke-provision.yml) and
+[`.github/workflows/gke-decommission.yml`](.github/workflows/gke-decommission.yml)
+are the CI equivalent of `test/e2e.sh`, split into two manually-triggered
+workflows so the cluster can be left running between them (e.g. provision in
+the morning, demo it, decommission in the evening). They run the exact same
+`terraform/gke` + `scripts/0N-*.sh` + `test/smoke-test.sh` as `test/e2e.sh`,
+but since each is a separate workflow run on a fresh runner, Terraform state
+has to be **remote** (a GCS bucket) instead of local so the decommission run
+can find what the provision run created.
+
+### One-time setup
+
+1. **Authenticate locally** as a principal with `roles/owner` (or
+   `roles/editor` + `roles/resourcemanager.projectIamAdmin`) on your GCP
+   project - the same one used for [`test/e2e.sh`](#running-it):
+
+   ```bash
+   gcloud auth login
+   gcloud auth application-default login
+   ```
+
+2. **Run `terraform/bootstrap`** once. This creates the GCS state bucket and
+   a Workload Identity Federation pool/provider + service account that
+   GitHub Actions will use to authenticate to GCP **without a JSON key**:
+
+   ```bash
+   cd terraform/bootstrap
+   cp terraform.tfvars.example terraform.tfvars
+   # edit terraform.tfvars: set project_id (and github_repo if you forked this repo)
+
+   terraform init
+   terraform apply
+   terraform output    # copy these 4 values into GitHub secrets below
+   ```
+
+   Keep `terraform/bootstrap/terraform.tfstate` (gitignored, local-only) -
+   it's the only record of these resources; see the comment in
+   [`terraform/bootstrap/versions.tf`](terraform/bootstrap/versions.tf).
+
+3. **Add repository secrets** (Settings -> Secrets and variables -> Actions ->
+   New repository secret, or `gh secret set <NAME>`), from the
+   `terraform output` above:
+
+   | Secret | From output |
+   |---|---|
+   | `GCP_PROJECT_ID` | `project_id` |
+   | `GCP_WORKLOAD_IDENTITY_PROVIDER` | `workload_identity_provider` |
+   | `GCP_SERVICE_ACCOUNT` | `ci_service_account_email` |
+   | `TF_STATE_BUCKET` | `state_bucket` |
+
+   ```bash
+   for o in project_id workload_identity_provider ci_service_account_email state_bucket; do
+     echo "$o -> $(terraform -chdir=terraform/bootstrap output -raw "$o")"
+   done
+   ```
+
+4. **Optional secrets**, only needed if you use the corresponding feature:
+
+   | Secret | Needed for |
+   |---|---|
+   | `REGISTRY_USERNAME` / `REGISTRY_PASSWORD` | pushing PetClinic images to a private registry (`scripts/01-namespaces.sh`) |
+   | `GIT_USERNAME` / `GIT_TOKEN` | cloning a private PetClinic fork |
+   | `GRAFANA_CLOUD_OTLP_ENDPOINT` / `GRAFANA_CLOUD_OTLP_AUTH` / `GRAFANA_BASE_URL` / `GRAFANA_API_KEY` / `GRAFANA_TRACES_DASHBOARD_UID` / `OTEL_LOGS_BACKEND_URL` | `observability_mode: grafana-cloud` (see `observability/otel-collector/secret.example.yaml` for what each value means) |
+
+### Running it
+
+1. Go to the repo's **Actions** tab -> **GKE provision** -> **Run workflow**.
+   Pick `observability_mode` (`oss` needs no extra secrets and is the
+   recommended default - see [Prerequisites](#prerequisites-1) above).
+2. Wait ~15-20 minutes. The job summary prints the cluster name/zone and a
+   reminder to decommission when done. `kubectl`/`helm` commands won't work
+   from your machine unless you also run
+   `terraform -chdir=terraform/gke output` + `gcloud container clusters
+   get-credentials` locally (the cluster is real, just not connected to by
+   default outside CI).
+3. When finished, go to **Actions** -> **GKE decommission** -> **Run
+   workflow**. It reads the same GCS state, runs `scripts/down.sh`, then
+   `terraform destroy`.
+
+Both workflows share a `concurrency: group: jenkins-2026-gke`, so GitHub
+Actions queues them rather than letting provision and decommission race on
+the same Terraform state. **Always run decommission when you're done** - an
+abandoned cluster keeps billing at the rate in [Cost](#cost) above; nothing
+in GitHub Actions tears it down automatically.
+
 ## Troubleshooting
 
 - **`yq` not found**: install [`mikefarah/yq`](https://github.com/mikefarah/yq)
@@ -262,6 +352,22 @@ component largely as-is if you use HCP Terraform for your own infrastructure.
   no billable resources are left, run
   `terraform -chdir=terraform/gke destroy` manually and confirm with
   `gcloud container clusters list --project "$GCP_PROJECT_ID"`.
+- **`gke-provision`/`gke-decommission` fails on `terraform init` with a
+  permissions or 404 error on the GCS bucket**: re-check the `TF_STATE_BUCKET`
+  secret matches `terraform -chdir=terraform/bootstrap output -raw
+  state_bucket`, and that `terraform/bootstrap` finished applying (the bucket
+  and the `roles/storage.objectAdmin` binding for the CI service account must
+  both exist).
+- **`gke-decommission` run manually without a prior `gke-provision`** (or
+  after the state was already destroyed): `terraform init` will succeed
+  against an empty state, but `terraform output -raw cluster_name` (used to
+  `get-credentials`) will fail with "no outputs found" - there's nothing to
+  decommission in that case.
+- **WIF auth step fails with `permission denied` / `iam.workloadIdentityPools`
+  not found**: re-run `terraform -chdir=terraform/bootstrap apply` (it may
+  not have finished) and confirm `GCP_WORKLOAD_IDENTITY_PROVIDER` /
+  `GCP_SERVICE_ACCOUNT` match its outputs exactly, and that `github_repo` in
+  `terraform/bootstrap/terraform.tfvars` matches this repo's `org/name`.
 
 ## License
 

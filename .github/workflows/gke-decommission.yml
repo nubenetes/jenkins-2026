@@ -1,0 +1,98 @@
+name: GKE decommission
+
+# Manually-triggered: tears down everything created by the "GKE provision"
+# workflow - scripts/down.sh (Helm releases, namespaces) then
+# `terraform destroy` (GKE cluster, node pool, VPC). Uses the same GCS
+# Terraform state as that workflow, so it finds the cluster without any
+# extra inputs. See README.md "GitHub Actions automation".
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: jenkins-2026-gke
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: "1.15.6"
+  J2026_DELETE_NAMESPACES: "true"
+
+jobs:
+  decommission:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Install gke-gcloud-auth-plugin
+        run: gcloud components install gke-gcloud-auth-plugin --quiet
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install yq
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/yq \
+            https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Configure GCS backend (terraform/gke)
+        run: |
+          cat > terraform/gke/backend_override.tf <<EOF
+          terraform {
+            backend "gcs" {
+              bucket = "${{ secrets.TF_STATE_BUCKET }}"
+              prefix = "jenkins-2026/gke"
+            }
+          }
+          EOF
+
+      - name: Terraform init
+        working-directory: terraform/gke
+        env:
+          TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
+        run: terraform init -input=false
+
+      - name: Fetch kubeconfig credentials
+        working-directory: terraform/gke
+        run: |
+          gcloud container clusters get-credentials \
+            "$(terraform output -raw cluster_name)" \
+            --zone "$(terraform output -raw location)" \
+            --project "${{ secrets.GCP_PROJECT_ID }}"
+
+      - name: Tear down the stack (scripts/down.sh)
+        run: ./scripts/down.sh || true
+
+      - name: Terraform destroy (remove GKE cluster, VPC, node pool)
+        working-directory: terraform/gke
+        env:
+          TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
+        run: terraform destroy -auto-approve -input=false
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### jenkins-2026 GKE cluster decommissioned" >> "${GITHUB_STEP_SUMMARY}"
+          echo "Project \`${{ secrets.GCP_PROJECT_ID }}\` should now have no jenkins-2026* GCP resources left." >> "${GITHUB_STEP_SUMMARY}"
