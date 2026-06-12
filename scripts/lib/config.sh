@@ -72,7 +72,20 @@ export J2026_SELF_REPO_BRANCH="$(yq_get '.jenkins.selfRepoBranch' 'main')"
 # --- observability ---------------------------------------------------------
 
 export J2026_OBS_NAMESPACE="$(yq_get '.observability.namespace' 'observability')"
-export J2026_OBS_MODE="$(yq_get '.observability.mode' 'grafana-cloud')"
+# FEATURE FLAG: JENKINS2026_OBS_MODE, if set, overrides observability.mode
+# from config.yaml (grafana-cloud|oss|managed) - same override pattern as
+# JENKINS2026_PLATFORM above.
+J2026_OBS_MODE="${JENKINS2026_OBS_MODE:-$(yq_get '.observability.mode' 'grafana-cloud')}"
+export J2026_OBS_MODE
+
+case "${J2026_OBS_MODE}" in
+  grafana-cloud|oss|managed) ;;
+  *)
+    log_error "Unsupported observability mode '${J2026_OBS_MODE}' (expected grafana-cloud|oss|managed)."
+    log_error "Set observability.mode in ${J2026_CONFIG_FILE} or export JENKINS2026_OBS_MODE."
+    exit 1
+    ;;
+esac
 
 export J2026_OTEL_OPERATOR_REPO_NAME="$(yq_get '.observability.otelOperator.chart.repoName' 'open-telemetry')"
 export J2026_OTEL_OPERATOR_REPO_URL="$(yq_get '.observability.otelOperator.chart.repoUrl' 'https://open-telemetry.github.io/opentelemetry-helm-charts')"

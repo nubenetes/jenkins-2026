@@ -27,3 +27,12 @@ logs/
 # kubeconfig dumps some people drop in repos by accident
 kubeconfig*
 *.kubeconfig
+
+# Terraform (terraform/gke - test/e2e.sh's throwaway GKE cluster)
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+terraform/gke/terraform.tfvars

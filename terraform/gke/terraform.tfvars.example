@@ -1,0 +1,12 @@
+# Copy to terraform.tfvars (gitignored) and fill in your project ID.
+# All other variables have sensible defaults - see variables.tf.
+
+project_id = "my-gcp-project-id"
+
+# region        = "us-central1"
+# zone          = "us-central1-a"
+# cluster_name  = "jenkins-2026"
+# machine_type  = "e2-standard-4"
+# node_count    = 3
+# min_node_count = 2
+# max_node_count = 4
