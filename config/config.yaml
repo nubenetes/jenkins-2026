@@ -1,0 +1,135 @@
+# =============================================================================
+# jenkins-2026 :: central configuration
+# =============================================================================
+# Every script under scripts/ sources scripts/lib/config.sh, which loads this
+# file via `yq` and exports it as environment variables (J2026_*).
+#
+# FEATURE FLAG: the target platform below can be overridden at runtime without
+# editing this file by exporting JENKINS2026_PLATFORM=<gke|eks|aks|openshift>
+# before running scripts/up.sh (or any individual step script). This satisfies
+# the "config file + feature flag" requirement: config.yaml is the durable
+# default, the env var is the ephemeral override (e.g. for CI matrix runs).
+# =============================================================================
+
+platform:
+  # gke (default) | eks | aks | openshift
+  target: gke
+
+  gke:
+    storageClassName: standard-rwo
+    ingressClassName: gce
+    ingressAnnotations:
+      kubernetes.io/ingress.class: "gce"
+    serviceType: ClusterIP
+
+  eks:
+    storageClassName: gp3
+    ingressClassName: alb
+    ingressAnnotations:
+      kubernetes.io/ingress.class: "alb"
+      alb.ingress.kubernetes.io/scheme: "internet-facing"
+      alb.ingress.kubernetes.io/target-type: "ip"
+    serviceType: ClusterIP
+
+  aks:
+    storageClassName: managed-csi
+    ingressClassName: webapprouting.kubernetes.azure.com
+    ingressAnnotations: {}
+    serviceType: ClusterIP
+
+  openshift:
+    # OpenShift 4.20+ : no fixed storageClass override (cluster default CSI is
+    # used), Routes instead of Ingress, and SCC-assigned UID/fsGroup (no
+    # fixed securityContext in the chart values).
+    storageClassName: ""
+    useRoute: true
+    serviceType: ClusterIP
+
+# -----------------------------------------------------------------------------
+# Jenkins (jenkinsci/helm-charts)
+# -----------------------------------------------------------------------------
+jenkins:
+  namespace: jenkins
+  releaseName: jenkins
+  chart:
+    repoName: jenkins
+    repoUrl: https://charts.jenkins.io
+    chartName: jenkins/jenkins
+    # Empty = latest. Pin for reproducibility, e.g. "5.8.16".
+    version: ""
+  adminUser: admin
+  # Name of the k8s Secret (created by scripts/01-namespaces.sh) holding the
+  # admin password and other pipeline credentials (registry, git, Grafana).
+  # See helm/jenkins/values-common.yaml controller.containerEnv and
+  # jenkins/casc/*.yaml for the keys it must contain.
+  credentialsSecretName: jenkins-credentials
+  # This repo's own coordinates, used by JCasC for the global pipeline shared
+  # library and by the seed job to fetch Jenkinsfile.petclinic + seed scripts.
+  selfRepoUrl: https://github.com/nubenetes/jenkins-2026.git
+  selfRepoBranch: main
+
+# -----------------------------------------------------------------------------
+# Observability
+# -----------------------------------------------------------------------------
+observability:
+  namespace: observability
+  # grafana-cloud (default) | oss | managed
+  mode: grafana-cloud
+
+  otelOperator:
+    chart:
+      repoName: open-telemetry
+      repoUrl: https://open-telemetry.github.io/opentelemetry-helm-charts
+      chartName: open-telemetry/opentelemetry-operator
+    releaseName: otel-operator
+
+  otelCollector:
+    chart:
+      chartName: open-telemetry/opentelemetry-collector
+    gatewayReleaseName: otel-collector-gateway
+    logsReleaseName: otel-collector-logs
+    # k8s Secret with Grafana Cloud OTLP endpoint + base64(instanceID:apiKey)
+    # auth header. See observability/otel-collector/secret.example.yaml.
+    grafanaCloudSecretName: grafana-cloud-credentials
+
+  grafana:
+    # Only used when observability.mode == oss
+    chart:
+      repoName: grafana
+      repoUrl: https://grafana.github.io/helm-charts
+    ossNamespace: observability
+
+# -----------------------------------------------------------------------------
+# PetClinic (microservices + Angular UI), GitFlow pipelines-as-code
+# -----------------------------------------------------------------------------
+petclinic:
+  namespaces:
+    stable: petclinic
+    develop: petclinic-develop
+
+  git:
+    org: spring-petclinic
+    backendRepo: spring-petclinic-microservices
+    frontendRepo: spring-petclinic-angular
+    backendUrl: https://github.com/spring-petclinic/spring-petclinic-microservices.git
+    frontendUrl: https://github.com/spring-petclinic/spring-petclinic-angular.git
+
+  branches:
+    stable: master
+    develop: develop
+
+  # Container images built by the pipelines are pushed here. Override with
+  # your own registry; ghcr.io/<org> works out of the box with the GITHUB_TOKEN
+  # credential configured in Jenkins (see jenkins/casc/jcasc-base.yaml).
+  registry: ghcr.io/nubenetes/jenkins-2026-petclinic
+
+  services:
+    - name: config-server
+    - name: discovery-server
+    - name: customers-service
+    - name: visits-service
+    - name: vets-service
+    - name: genai-service
+    - name: api-gateway
+    - name: admin-server
+    - name: petclinic-angular

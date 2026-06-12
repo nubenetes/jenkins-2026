@@ -1,0 +1,89 @@
+# =============================================================================
+# JCasC fragment: core Jenkins configuration (security, libraries, creds).
+# Injected via --set-file controller.JCasC.configScripts.base=<this file>
+# by scripts/04-jenkins.sh. ${VAR:-default} placeholders are resolved by
+# JCasC from environment variables defined in controller.containerEnv
+# (helm/jenkins/values-common.yaml) and the "jenkins-credentials" Secret
+# created by scripts/01-namespaces.sh.
+# =============================================================================
+
+jenkins:
+  systemMessage: |
+    Jenkins 2026 PoC - fully managed via Configuration as Code.
+    Source of truth: https://github.com/nubenetes/jenkins-2026
+  numExecutors: 0
+  mode: EXCLUSIVE
+
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "${JENKINS_ADMIN_ID:-admin}"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+
+  authorizationStrategy:
+    roleBased:
+      roles:
+        global:
+          - name: "admin"
+            description: "Full administrative access"
+            permissions:
+              - "Overall/Administer"
+            assignments:
+              - "${JENKINS_ADMIN_ID:-admin}"
+          - name: "developer"
+            description: "Run and inspect PetClinic pipelines"
+            permissions:
+              - "Overall/Read"
+              - "Job/Read"
+              - "Job/Build"
+              - "Job/Cancel"
+              - "Job/Workspace"
+              - "Job/Discover"
+              - "Run/Replay"
+              - "View/Read"
+            assignments:
+              - "authenticated"
+
+unclassified:
+  location:
+    url: "${JENKINS_URL:-http://localhost:8080/}"
+    adminAddress: "address not configured yet <nobody@nowhere>"
+
+  globalLibraries:
+    libraries:
+      - name: "petclinic-shared-library"
+        defaultVersion: "${JENKINS2026_REPO_BRANCH:-main}"
+        implicit: true
+        allowVersionOverride: true
+        includeInChangesets: false
+        retriever:
+          modernSCM:
+            scm:
+              git:
+                id: "jenkins-2026-shared-lib"
+                remote: "${JENKINS2026_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
+                traits:
+                  - gitBranchDiscovery: {}
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          # Used by the "Build & Push Image" stage (petclinicImage.groovy) to
+          # push to PETCLINIC_REGISTRY (default ghcr.io/nubenetes/...).
+          - usernamePassword:
+              scope: GLOBAL
+              id: "container-registry"
+              username: "${REGISTRY_USERNAME:-nubenetes}"
+              password: "${REGISTRY_PASSWORD:-}"
+              description: "Container registry push credentials"
+          # Read-only checkout creds for the upstream spring-petclinic repos
+          # (only needed if you fork them privately; public repos work
+          # without credentials).
+          - usernamePassword:
+              scope: GLOBAL
+              id: "petclinic-git"
+              username: "${GIT_USERNAME:-}"
+              password: "${GIT_TOKEN:-}"
+              description: "Git credentials for spring-petclinic source repos"

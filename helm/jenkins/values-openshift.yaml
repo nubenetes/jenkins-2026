@@ -1,0 +1,39 @@
+# Overlay for Red Hat OpenShift 4.20+ (Kubernetes 1.31+).
+# Layered on top of values-common.yaml.
+#
+# OpenShift's "restricted-v2" SCC assigns a UID/GID/fsGroup from the
+# namespace's allocated range at admission time, and will REJECT pods that
+# hard-code runAsUser/runAsGroup/fsGroup outside that range. We therefore
+# blank out the fixed security contexts from values-common.yaml and let the
+# SCC do its job. Ingress is disabled here; an OpenShift Route is applied
+# separately by scripts/04-jenkins.sh from helm/jenkins/openshift/route.yaml
+# (Routes don't need a pre-existing DNS record - the router assigns one
+# under the cluster's default *.apps domain).
+
+controller:
+  serviceType: ClusterIP
+
+  ingress:
+    enabled: false
+
+  # Let the restricted-v2 SCC assign UID/GID/fsGroup.
+  containerSecurityContext: {}
+  podSecurityContextOverride: {}
+
+persistence:
+  enabled: true
+  # Empty = use the cluster's default StorageClass (e.g. ODF/Ceph RBD on
+  # self-managed OpenShift, or the cloud-provider CSI default on
+  # ROSA/ARO/managed OpenShift).
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 8Gi
+
+agent:
+  workingDir: "/home/jenkins/agent"
+  # Pod templates defined in jenkins/pipelines/Jenkinsfile.petclinic also omit
+  # runAsUser/fsGroup so they pass the restricted-v2 SCC unchanged.
+
+rbac:
+  create: true
+  readSecrets: true

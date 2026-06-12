@@ -1,0 +1,14 @@
+apiVersion: v2
+name: petclinic
+description: >-
+  Spring PetClinic microservices + Angular UI, deployed and updated by the
+  jenkins-2026 pipelines-as-code (one Helm release per environment: "stable"
+  tracking master, "develop" tracking the develop branch).
+type: application
+version: 0.1.0
+appVersion: "1.0"
+home: https://github.com/nubenetes/jenkins-2026
+sources:
+  - https://github.com/nubenetes/jenkins-2026
+  - https://github.com/spring-petclinic/spring-petclinic-microservices
+  - https://github.com/spring-petclinic/spring-petclinic-angular

@@ -1,0 +1,39 @@
+# Values for grafana/tempo - OSS observability mode (observability.mode: oss).
+#
+# Single-binary deployment with local filesystem storage - sufficient for a
+# PoC. Receives OTLP traces from observability/otel-collector/values-oss.yaml
+# on grpc/4317 (Service: tempo.observability.svc.cluster.local:4317) and
+# serves the Tempo query API on 3100 for the Grafana datasource configured in
+# values-oss.yaml.
+#
+# helm upgrade --install tempo grafana/tempo \
+#   -n observability --create-namespace -f observability/grafana/values-oss-tempo.yaml
+
+tempo:
+  repository: grafana/tempo
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 1Gi
+
+persistence:
+  enabled: true
+  size: 10Gi
+
+traces:
+  otlp:
+    grpc:
+      enabled: true
+    http:
+      enabled: true
+
+# Enables Tempo's metrics-generator so trace-derived RED metrics/service
+# graphs (referenced by the Tempo datasource's serviceMap/tracesToMetrics in
+# values-oss.yaml) are written back into Prometheus via remote-write.
+metricsGenerator:
+  enabled: true
+  remoteWriteUrl: http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090/api/v1/write

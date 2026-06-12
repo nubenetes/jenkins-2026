@@ -1,0 +1,24 @@
+# Overlay for Azure AKS, latest supported Kubernetes version.
+# Layered on top of values-common.yaml.
+
+controller:
+  serviceType: ClusterIP
+
+  # Disabled by default (PoC has no real DNS record). Flip to true and set
+  # hostName to expose Jenkins through the AKS "App Routing" add-on
+  # (managed NGINX ingress class webapprouting.kubernetes.azure.com).
+  ingress:
+    enabled: false
+    ingressClassName: webapprouting.kubernetes.azure.com
+    annotations: {}
+    hostName: ""
+    tls: []
+
+persistence:
+  enabled: true
+  storageClass: managed-csi
+  accessMode: ReadWriteOnce
+  size: 8Gi
+
+agent:
+  workingDir: "/home/jenkins/agent"

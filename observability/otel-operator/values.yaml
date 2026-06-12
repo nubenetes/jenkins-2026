@@ -1,0 +1,27 @@
+# Values for open-telemetry/opentelemetry-operator (provides the
+# OpenTelemetryCollector + Instrumentation CRDs used everywhere else in
+# observability/ and helm/petclinic/templates/instrumentation.yaml).
+#
+# helm upgrade --install otel-operator open-telemetry/opentelemetry-operator \
+#   -n observability --create-namespace -f observability/otel-operator/values.yaml
+
+admissionWebhooks:
+  certManager:
+    enabled: false
+  autoGenerateCert:
+    enabled: true
+    recreate: true
+
+manager:
+  collectorImage:
+    repository: otel/opentelemetry-collector-k8s
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+kubeRBACProxy:
+  enabled: true

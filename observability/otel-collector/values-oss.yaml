@@ -1,0 +1,107 @@
+# Values for open-telemetry/opentelemetry-collector - "gateway" release,
+# OSS variant (observability.mode: oss).
+#
+# Used instead of values-grafana-cloud.yaml when everything runs in-cluster:
+# traces -> Tempo, metrics -> Prometheus (remote-write, kube-prometheus-stack),
+# logs -> Loki (native OTLP ingestion). See observability/grafana/values-oss.yaml
+# for the Tempo/Loki/Prometheus installs and Grafana datasource wiring
+# (derived fields / exemplars) that make this correlate end to end.
+#
+# helm upgrade --install otel-collector-gateway open-telemetry/opentelemetry-collector \
+#   -n observability -f observability/otel-collector/values-oss.yaml
+
+# See values-grafana-cloud.yaml - fixes the Service name so jenkins/casc,
+# helm/petclinic and resources/angular/nginx.conf can reach this collector at
+# otel-collector-gateway.<observability-namespace>.svc.cluster.local
+# regardless of which observability.mode is active.
+fullnameOverride: otel-collector-gateway
+
+mode: deployment
+
+replicaCount: 1
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+  # The contrib image is required for the prometheusremotewrite exporter
+  # used in the metrics pipeline below.
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+ports:
+  otlp:
+    enabled: true
+    containerPort: 4317
+    servicePort: 4317
+    hostPort: 4317
+    protocol: TCP
+  otlp-http:
+    enabled: true
+    containerPort: 4318
+    servicePort: 4318
+    hostPort: 4318
+    protocol: TCP
+
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+          cors:
+            allowed_origins:
+              - "*"
+        http:
+          endpoint: 0.0.0.0:4318
+          cors:
+            allowed_origins:
+              - "*"
+
+  processors:
+    batch: {}
+    memory_limiter:
+      check_interval: 5s
+      limit_percentage: 80
+      spike_limit_percentage: 25
+    resource:
+      attributes:
+        - key: deployment.environment.cluster
+          value: jenkins-2026
+          action: upsert
+
+  exporters:
+    otlp/tempo:
+      endpoint: tempo.observability.svc.cluster.local:4317
+      tls:
+        insecure: true
+    otlphttp/loki:
+      # Loki >= 3.0 native OTLP endpoint.
+      endpoint: http://loki-gateway.observability.svc.cluster.local/otlp
+      tls:
+        insecure: true
+    prometheusremotewrite:
+      # Requires `--web.enable-remote-write-receiver` on the
+      # kube-prometheus-stack Prometheus (set in grafana/values-oss.yaml).
+      endpoint: http://prometheus-kube-prometheus-prometheus.observability.svc.cluster.local:9090/api/v1/write
+      resource_to_telemetry_conversion:
+        enabled: true
+
+  service:
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, resource, batch]
+        exporters: [otlp/tempo]
+      metrics:
+        receivers: [otlp]
+        processors: [memory_limiter, resource, batch]
+        exporters: [prometheusremotewrite]
+      logs:
+        receivers: [otlp]
+        processors: [memory_limiter, resource, batch]
+        exporters: [otlphttp/loki]
