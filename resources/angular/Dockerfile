@@ -1,0 +1,39 @@
+# Container image for spring-petclinic-angular, built by petclinicImage.groovy.
+#
+# Build context = the jenkins-2026 repo root (env.WORKSPACE):
+#   docker build -f resources/angular/Dockerfile <jenkins-2026-checkout-root>
+#
+# - petclinic-src/  = checkout of spring-petclinic-angular (stage 1 input)
+# - resources/angular/{nginx.conf,otel-web.js} = this repo's runtime assets
+
+FROM node:20-bookworm AS build
+WORKDIR /app
+COPY petclinic-src/package*.json ./
+RUN npm ci
+COPY petclinic-src/. .
+RUN npm run build -- --configuration production
+
+FROM nginx:1.27-alpine AS runtime
+
+# Angular CLI >=17 (esbuild) outputs to dist/<project>/browser; the webpack
+# builder outputs to dist/<project>. Copy whichever directory contains
+# index.html so this Dockerfile works with either.
+COPY --from=build /app/dist /tmp/dist
+RUN set -eux; \
+    src_dir="$(dirname "$(find /tmp/dist -name index.html -print -quit)")"; \
+    rm -rf /usr/share/nginx/html/*; \
+    cp -r "${src_dir}/." /usr/share/nginx/html/; \
+    rm -rf /tmp/dist
+
+COPY resources/angular/nginx.conf /etc/nginx/conf.d/default.conf
+COPY resources/angular/otel-web.js /usr/share/nginx/html/otel-web.js
+
+# OpenShift-friendly: allow the arbitrary, non-root UID assigned by the
+# restricted SCC (group 0) to read/write nginx's runtime directories.
+RUN chgrp -R 0 /usr/share/nginx/html /var/cache/nginx /etc/nginx && \
+    chmod -R g=u /usr/share/nginx/html /var/cache/nginx /etc/nginx && \
+    touch /var/run/nginx.pid && chgrp 0 /var/run/nginx.pid && chmod g=u /var/run/nginx.pid
+
+USER 101
+EXPOSE 8080
+CMD ["nginx", "-g", "daemon off;"]

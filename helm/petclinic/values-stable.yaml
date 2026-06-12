@@ -1,0 +1,181 @@
+# =============================================================================
+# "stable" environment - tracks the `master` branch (GitFlow stable line).
+# Installed as: helm upgrade --install petclinic-stable ./helm/petclinic \
+#                 -f values-stable.yaml --namespace petclinic --create-namespace
+#
+# Image tags default to "master" (the floating tag pushed by every successful
+# stable pipeline run). Individual pipeline runs override only their own
+# service's tag with --set services.<name>.image.tag=master-<build>.
+# =============================================================================
+
+global:
+  platform: gke
+
+namespace: petclinic
+env: stable
+registry: ghcr.io/nubenetes/jenkins-2026-petclinic
+imagePullSecret: ""
+
+otel:
+  collectorEndpoint: http://otel-collector-gateway.observability.svc.cluster.local:4317
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: ""
+
+services:
+  config-server:
+    type: java
+    image:
+      repository: config-server
+      tag: master
+    port: 8888
+    healthPath: /actuator/health
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: "1", memory: 1Gi }
+    env:
+      - name: SPRING_PROFILES_ACTIVE
+        value: docker
+
+  discovery-server:
+    type: java
+    image:
+      repository: discovery-server
+      tag: master
+    port: 8761
+    healthPath: /actuator/health
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: "1", memory: 1Gi }
+    env:
+      - name: SPRING_PROFILES_ACTIVE
+        value: docker
+      - name: SPRING_CLOUD_CONFIG_URI
+        value: http://config-server:8888
+
+  customers-service:
+    type: java
+    image:
+      repository: customers-service
+      tag: master
+    port: 8081
+    healthPath: /actuator/health
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: "1", memory: 1Gi }
+    env:
+      - name: SPRING_PROFILES_ACTIVE
+        value: docker
+      - name: SPRING_CLOUD_CONFIG_URI
+        value: http://config-server:8888
+      - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
+        value: http://discovery-server:8761/eureka/
+
+  visits-service:
+    type: java
+    image:
+      repository: visits-service
+      tag: master
+    port: 8082
+    healthPath: /actuator/health
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: "1", memory: 1Gi }
+    env:
+      - name: SPRING_PROFILES_ACTIVE
+        value: docker
+      - name: SPRING_CLOUD_CONFIG_URI
+        value: http://config-server:8888
+      - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
+        value: http://discovery-server:8761/eureka/
+
+  vets-service:
+    type: java
+    image:
+      repository: vets-service
+      tag: master
+    port: 8083
+    healthPath: /actuator/health
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: "1", memory: 1Gi }
+    env:
+      - name: SPRING_PROFILES_ACTIVE
+        value: docker
+      - name: SPRING_CLOUD_CONFIG_URI
+        value: http://config-server:8888
+      - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
+        value: http://discovery-server:8761/eureka/
+
+  genai-service:
+    type: java
+    image:
+      repository: genai-service
+      tag: master
+    port: 8084
+    healthPath: /actuator/health
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: "1", memory: 1Gi }
+    env:
+      - name: SPRING_PROFILES_ACTIVE
+        value: docker
+      - name: SPRING_CLOUD_CONFIG_URI
+        value: http://config-server:8888
+      - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
+        value: http://discovery-server:8761/eureka/
+      # Optional: set via a Secret + envFrom if genai-service needs an LLM
+      # API key. Left empty so the chart installs cleanly without one.
+      - name: OPENAI_API_KEY
+        value: ""
+
+  api-gateway:
+    type: java
+    image:
+      repository: api-gateway
+      tag: master
+    port: 8080
+    healthPath: /actuator/health
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: "1", memory: 1Gi }
+    env:
+      - name: SPRING_PROFILES_ACTIVE
+        value: docker
+      - name: SPRING_CLOUD_CONFIG_URI
+        value: http://config-server:8888
+      - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
+        value: http://discovery-server:8761/eureka/
+
+  admin-server:
+    type: java
+    image:
+      repository: admin-server
+      tag: master
+    port: 9090
+    healthPath: /actuator/health
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: "1", memory: 1Gi }
+    env:
+      - name: SPRING_PROFILES_ACTIVE
+        value: docker
+      - name: SPRING_CLOUD_CONFIG_URI
+        value: http://config-server:8888
+      - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
+        value: http://discovery-server:8761/eureka/
+
+  petclinic-angular:
+    type: angular
+    image:
+      repository: petclinic-angular
+      tag: master
+    port: 8080
+    healthPath: /
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { cpu: 500m, memory: 256Mi }
+    env: []

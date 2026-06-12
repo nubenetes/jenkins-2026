@@ -1,0 +1,61 @@
+# Values for grafana/loki - OSS observability mode (observability.mode: oss).
+#
+# Single-binary deployment with local filesystem storage - sufficient for a
+# PoC. Exposes the native OTLP log-ingestion endpoint
+# (http://loki-gateway.observability.svc.cluster.local/otlp) consumed by
+# observability/otel-collector/values-oss.yaml and values-oss-logs.yaml.
+#
+# helm upgrade --install loki grafana/loki \
+#   -n observability --create-namespace -f observability/grafana/values-oss-loki.yaml
+
+deploymentMode: SingleBinary
+
+loki:
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+  schemaConfig:
+    configs:
+      - from: "2024-01-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+
+singleBinary:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+gateway:
+  enabled: true
+
+# These components are part of the "simple scalable"/microservices
+# deployment modes - disabled here in favor of SingleBinary.
+read:
+  replicas: 0
+write:
+  replicas: 0
+backend:
+  replicas: 0
+
+test:
+  enabled: false
+
+monitoring:
+  selfMonitoring:
+    enabled: false
+  lokiCanary:
+    enabled: false

@@ -1,0 +1,123 @@
+# Values for prometheus-community/kube-prometheus-stack - OSS observability
+# mode (observability.mode: oss).
+#
+# Provides Prometheus (+ remote-write receiver, fed by
+# observability/otel-collector/values-oss.yaml's prometheusremotewrite
+# exporter), Alertmanager, and Grafana - pre-wired with Loki + Tempo
+# datasources (see values-oss-loki.yaml / values-oss-tempo.yaml) so traces,
+# metrics and logs correlate the same way they do in the Grafana Cloud mode:
+#   - Prometheus exemplars -> Tempo traces
+#   - Loki log lines (trace_id from the OTel logging MDC bridge) -> Tempo
+#   - Tempo traces -> Loki logs and -> Prometheus service graph / RED metrics
+#
+# helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+#   -n observability --create-namespace -f observability/grafana/values-oss.yaml
+
+prometheus:
+  prometheusSpec:
+    # Required for the otel-collector "gateway" release's
+    # prometheusremotewrite exporter (values-oss.yaml).
+    enableRemoteWriteReceiver: true
+    retention: 7d
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+
+alertmanager:
+  enabled: false
+
+grafana:
+  adminUser: admin
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  persistence:
+    enabled: true
+    size: 2Gi
+
+  # The chart's sidecar already provisions a default "Prometheus" datasource
+  # pointing at the in-cluster Prometheus. These additional datasources add
+  # Loki + Tempo and wire up exemplar/derived-field correlation. "Prometheus"
+  # is intentionally re-declared here (with the same uid the sidecar uses,
+  # `prometheus`) purely to attach `exemplarTraceIdDestinations` - Grafana
+  # de-duplicates by uid so no duplicate entry appears in the datasource list.
+  additionalDataSources:
+    - name: Prometheus
+      type: prometheus
+      uid: prometheus
+      url: http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090
+      access: proxy
+      isDefault: true
+      jsonData:
+        exemplarTraceIdDestinations:
+          - name: trace_id
+            datasourceUid: tempo
+
+    - name: Loki
+      type: loki
+      uid: loki
+      url: http://loki-gateway.observability.svc.cluster.local
+      access: proxy
+      jsonData:
+        derivedFields:
+          # Matches the trace_id MDC field the OTel Java agent injects into
+          # Spring Boot logs (OTEL_INSTRUMENTATION_LOGBACK_APPENDER_ENABLED,
+          # see helm/petclinic/templates/instrumentation.yaml).
+          - datasourceUid: tempo
+            matcherRegex: 'trace_id=(\w+)'
+            name: TraceID
+            url: '$${__value.raw}'
+            urlDisplayLabel: "View Trace"
+
+    - name: Tempo
+      type: tempo
+      uid: tempo
+      url: http://tempo.observability.svc.cluster.local:3100
+      access: proxy
+      jsonData:
+        tracesToLogsV2:
+          datasourceUid: loki
+          spanStartTimeShift: "-5m"
+          spanEndTimeShift: "5m"
+          filterByTraceID: true
+          tags: ["service.name"]
+        tracesToMetrics:
+          datasourceUid: prometheus
+          tags:
+            - key: service.name
+              value: service
+        serviceMap:
+          datasourceUid: prometheus
+        nodeGraph:
+          enabled: true
+
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+        - name: jenkins-2026
+          orgId: 1
+          folder: "jenkins-2026"
+          type: file
+          disableDeletion: false
+          editable: true
+          options:
+            path: /var/lib/grafana/dashboards/jenkins-2026
+
+  dashboardsConfigMaps:
+    jenkins-2026: "jenkins-2026-grafana-dashboards"

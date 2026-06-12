@@ -1,0 +1,92 @@
+# =============================================================================
+# Service registry consumed by jenkins/pipelines/seed/seed-jobs.groovy.
+#
+# For each entry, the seed job creates TWO pipeline jobs (pipelines-as-code,
+# GitFlow model):
+#   - "<name>"          -> builds branch `stable.branch`  (master),
+#                          deploys to `namespaces.stable`  (petclinic)
+#   - "<name>-develop"  -> builds branch `develop.branch` (develop),
+#                          deploys to `namespaces.develop` (petclinic-develop)
+#
+# Both jobs run the SAME jenkins/pipelines/Jenkinsfile.petclinic; only the
+# parameters below (and the job name suffix) differ.
+#
+# repoUrl/module values mirror config/config.yaml petclinic.git settings -
+# the 8 Java services live as Maven modules inside the
+# spring-petclinic-microservices monorepo; the Angular UI is its own repo.
+# =============================================================================
+
+backendRepoUrl: &backendRepoUrl https://github.com/spring-petclinic/spring-petclinic-microservices.git
+frontendRepoUrl: &frontendRepoUrl https://github.com/spring-petclinic/spring-petclinic-angular.git
+
+namespaces:
+  stable: petclinic
+  develop: petclinic-develop
+
+branches:
+  stable: master
+  develop: develop
+
+services:
+  - name: config-server
+    type: java
+    repoUrl: *backendRepoUrl
+    module: spring-petclinic-config-server
+    port: 8888
+    healthPath: /actuator/health
+
+  - name: discovery-server
+    type: java
+    repoUrl: *backendRepoUrl
+    module: spring-petclinic-discovery-server
+    port: 8761
+    healthPath: /actuator/health
+
+  - name: customers-service
+    type: java
+    repoUrl: *backendRepoUrl
+    module: spring-petclinic-customers-service
+    port: 8081
+    healthPath: /actuator/health
+
+  - name: visits-service
+    type: java
+    repoUrl: *backendRepoUrl
+    module: spring-petclinic-visits-service
+    port: 8082
+    healthPath: /actuator/health
+
+  - name: vets-service
+    type: java
+    repoUrl: *backendRepoUrl
+    module: spring-petclinic-vets-service
+    port: 8083
+    healthPath: /actuator/health
+
+  - name: genai-service
+    type: java
+    repoUrl: *backendRepoUrl
+    module: spring-petclinic-genai-service
+    port: 8084
+    healthPath: /actuator/health
+
+  - name: api-gateway
+    type: java
+    repoUrl: *backendRepoUrl
+    module: spring-petclinic-api-gateway
+    port: 8080
+    healthPath: /actuator/health
+
+  - name: admin-server
+    type: java
+    repoUrl: *backendRepoUrl
+    module: spring-petclinic-admin-server
+    port: 9090
+    healthPath: /actuator/health
+
+  - name: petclinic-angular
+    type: angular
+    repoUrl: *frontendRepoUrl
+    module: ""
+    port: 8080
+    healthPath: /

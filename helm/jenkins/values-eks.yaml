@@ -1,0 +1,27 @@
+# Overlay for Amazon EKS, latest supported Kubernetes version.
+# Layered on top of values-common.yaml.
+
+controller:
+  serviceType: ClusterIP
+
+  # Disabled by default (PoC has no real DNS record / ACM cert). Flip to true
+  # and set hostName to expose Jenkins through the AWS Load Balancer
+  # Controller (ALB ingress class).
+  ingress:
+    enabled: false
+    ingressClassName: alb
+    annotations:
+      alb.ingress.kubernetes.io/scheme: "internet-facing"
+      alb.ingress.kubernetes.io/target-type: "ip"
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    hostName: ""
+    tls: []
+
+persistence:
+  enabled: true
+  storageClass: gp3
+  accessMode: ReadWriteOnce
+  size: 8Gi
+
+agent:
+  workingDir: "/home/jenkins/agent"

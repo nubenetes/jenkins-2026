@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Provisions the entire jenkins-2026 PoC for the configured platform
+# (config/config.yaml platform.target, override with JENKINS2026_PLATFORM).
+#
+# Order:
+#   00 check-prereqs    (sequential - tooling, cluster, helm repos)
+#   01 namespaces       (sequential - namespaces, secrets, rolebindings)
+#   02 otel-operator    (sequential - CRDs needed by 05's Instrumentation CR)
+#   03 observability  \
+#   04 jenkins         > parallel - independent of each other
+#   05 petclinic      /
+#   06 seed-pipelines   (sequential - needs 04 ready)
+#   07 grafana-dashboards (sequential - needs 03's credentials/configmap)
+#
+# Each step is idempotent; re-running up.sh after a partial failure is safe.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/common.sh"
+source "${SCRIPT_DIR}/lib/config.sh"
+
+log_step "jenkins-2026 up - platform=${J2026_PLATFORM} observability=${J2026_OBS_MODE}"
+
+"${SCRIPT_DIR}/00-check-prereqs.sh"
+"${SCRIPT_DIR}/01-namespaces.sh"
+"${SCRIPT_DIR}/02-otel-operator.sh"
+
+log_step "Running 03-observability, 04-jenkins, 05-petclinic in parallel"
+run_bg 03-observability "${SCRIPT_DIR}/03-observability.sh"
+run_bg 04-jenkins        "${SCRIPT_DIR}/04-jenkins.sh"
+run_bg 05-petclinic      "${SCRIPT_DIR}/05-petclinic.sh"
+wait_bg
+
+"${SCRIPT_DIR}/06-seed-pipelines.sh"
+"${SCRIPT_DIR}/07-grafana-dashboards.sh"
+
+log_info "jenkins-2026 is up. Run scripts/status.sh for endpoints and rollout status."
