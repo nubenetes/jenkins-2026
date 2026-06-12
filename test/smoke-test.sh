@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# =============================================================================
+# Post-deploy smoke tests for scripts/up.sh. Runs standalone against any
+# cluster up.sh has been run on, or as the last step of test/e2e.sh. Exits
+# non-zero if any check fails (after running all of them).
+# =============================================================================
+set -uo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=../scripts/lib/common.sh
+source "${ROOT_DIR}/scripts/lib/common.sh"
+# shellcheck source=../scripts/lib/config.sh
+source "${ROOT_DIR}/scripts/lib/config.sh"
+
+FAIL=0
+
+# check <description> <command...> - runs <command...>, logs PASS/FAIL.
+check() {
+  local desc="$1"; shift
+  if "$@" >/dev/null 2>&1; then
+    log_info "PASS - ${desc}"
+  else
+    log_error "FAIL - ${desc}"
+    FAIL=1
+  fi
+}
+
+JENKINS_NS="${J2026_JENKINS_NAMESPACE}"
+JENKINS_RELEASE="${J2026_JENKINS_RELEASE}"
+JENKINS_POD="${JENKINS_RELEASE}-0"
+
+jenkins_exec() {
+  kubectl exec -n "${JENKINS_NS}" "${JENKINS_POD}" -c jenkins -- "$@"
+}
+
+log_step "Jenkins controller"
+check "${JENKINS_POD} pod is Running" \
+  bash -c "kubectl -n '${JENKINS_NS}' get pod '${JENKINS_POD}' -o jsonpath='{.status.phase}' | grep -qx Running"
+
+check "Jenkins login page responds (HTTP 200)" \
+  bash -c "[[ \$(kubectl exec -n '${JENKINS_NS}' '${JENKINS_POD}' -c jenkins -- curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/login) == 200 ]]"
+
+log_step "Seed job / pipelines-as-code"
+ADMIN_PASSWORD="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${JENKINS_NS}" -o jsonpath='{.data.admin-password}' | base64 -d)"
+AUTH="${J2026_JENKINS_ADMIN_USER}:${ADMIN_PASSWORD}"
+
+NUM_SERVICES=$(wc -w <<< "${J2026_PETCLINIC_SERVICES}")
+EXPECTED_JOBS=$(( NUM_SERVICES * 2 + 1 )) # 2 pipelines/service (stable+develop) + seed-jobs
+
+JOB_COUNT="$(jenkins_exec curl -s -u "${AUTH}" 'http://localhost:8080/api/json?tree=jobs[name]' \
+  | python3 -c 'import sys,json; print(len(json.load(sys.stdin)["jobs"]))' 2>/dev/null || echo 0)"
+
+if [[ "${JOB_COUNT}" -ge "${EXPECTED_JOBS}" ]]; then
+  log_info "PASS - ${JOB_COUNT} Jenkins jobs found (expected >= ${EXPECTED_JOBS})"
+else
+  log_error "FAIL - only ${JOB_COUNT} Jenkins jobs found (expected >= ${EXPECTED_JOBS})"
+  FAIL=1
+fi
+
+log_step "OpenTelemetry"
+check "otel-operator pod Running" \
+  bash -c "kubectl -n '${J2026_OBS_NAMESPACE}' get pods -l app.kubernetes.io/instance='${J2026_OTEL_OPERATOR_RELEASE}' -o jsonpath='{.items[0].status.phase}' | grep -qx Running"
+
+check "otel-collector-gateway pod Running" \
+  bash -c "kubectl -n '${J2026_OBS_NAMESPACE}' get pods -l app.kubernetes.io/instance='${J2026_OTEL_GATEWAY_RELEASE}' -o jsonpath='{.items[0].status.phase}' | grep -qx Running"
+
+check "otel-collector-logs daemonset has ready pods" \
+  bash -c "[[ \$(kubectl -n '${J2026_OBS_NAMESPACE}' get daemonset '${J2026_OTEL_LOGS_RELEASE}' -o jsonpath='{.status.numberReady}') -ge 1 ]]"
+
+if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
+  check "OSS Grafana pod Running" \
+    bash -c "kubectl -n '${J2026_GRAFANA_OSS_NAMESPACE}' get pods -l app.kubernetes.io/name=grafana -o jsonpath='{.items[0].status.phase}' | grep -qx Running"
+fi
+
+log_step "PetClinic (stable + develop)"
+for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}"; do
+  check "namespace ${ns} has ${NUM_SERVICES} Deployments" \
+    bash -c "[[ \$(kubectl -n '${ns}' get deploy -o name | wc -l) -eq ${NUM_SERVICES} ]]"
+done
+
+echo
+if [[ "${FAIL}" -eq 1 ]]; then
+  log_error "Smoke tests FAILED."
+  log_info "Note: PetClinic pods may show ImagePullBackOff until each service's"
+  log_info "Jenkins pipeline has run at least once (see README's 'First run note')."
+  log_info "This does not by itself fail the Deployment-count checks above."
+  exit 1
+fi
+
+log_info "All smoke tests passed."

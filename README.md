@@ -111,6 +111,9 @@ jenkins/pipelines/           Jenkinsfile.petclinic + seed job (Job DSL + service
 vars/, resources/            Jenkins global shared library (must be at repo root)
 observability/               OTel Operator/Collector + Grafana/Loki/Tempo/Prometheus values + dashboards
 scripts/                      00-07 numbered steps + up.sh / down.sh / status.sh
+terraform/gke/                throwaway GKE cluster for test/e2e.sh (the one exception
+                              to "assumes an existing cluster")
+test/                         e2e.sh (provision -> up.sh -> smoke-test.sh -> down.sh -> destroy)
 docs/                         architecture, pipelines-as-code, observability, platforms
 ```
 
@@ -142,6 +145,98 @@ service health, with derived-field/exemplar links so you can jump from a log
 line or a latency spike straight to the trace that produced it. Full details
 in [`docs/observability.md`](docs/observability.md).
 
+## Automated end-to-end test (provisioning + decommissioning)
+
+[`test/e2e.sh`](test/e2e.sh) fully automates a real run of this PoC,
+**including the GKE cluster itself** - the one exception to "this repo
+assumes an existing cluster" (scoped entirely to `terraform/gke/` and
+`test/`):
+
+1. **`terraform -chdir=terraform/gke apply`** - provisions a throwaway GKE
+   cluster: its own VPC/subnet and a 2-4 node autoscaling `e2-standard-4`
+   node pool.
+2. **`gcloud container clusters get-credentials`** - points `kubectl`/`helm`
+   at the new cluster.
+3. **`scripts/00-check-prereqs.sh` + `scripts/01-namespaces.sh`**.
+4. **`scripts/up.sh`** - the full stack, exactly as in Quick start.
+5. **`test/smoke-test.sh`** - verifies the Jenkins controller pod is `Running`
+   and serves `/login`, the seed job created all 19 jobs (18 pipelines +
+   `seed-jobs`), the OTel Operator/collectors (and, for `oss` mode, Grafana)
+   are running, and both PetClinic namespaces have all 9 `Deployment`s.
+6. **`scripts/down.sh`** (with `J2026_DELETE_NAMESPACES=true`) then
+   **`terraform -chdir=terraform/gke destroy`** - decommissions everything.
+
+Step 6 runs **unconditionally** via an `EXIT` trap, even if steps 1-5 fail
+partway through, so a failed run still leaves the GCP project clean.
+
+### Running it
+
+```bash
+cp test/.env.example test/.env   # edit: at minimum set GCP_PROJECT_ID
+set -a; source test/.env; set +a
+
+gcloud auth login
+gcloud auth application-default login
+
+./test/e2e.sh
+```
+
+### Prerequisites
+
+- A GCP project with billing enabled, and the authenticated principal having
+  `roles/container.admin`, `roles/compute.networkAdmin`,
+  `roles/iam.serviceAccountAdmin` and `roles/resourcemanager.projectIamAdmin`
+  (or `roles/owner`/`roles/editor`).
+- [`terraform`](https://developer.hashicorp.com/terraform/install) >= 1.9
+  (developed against **1.15.x**) and the
+  [`gcloud` CLI](https://cloud.google.com/sdk/docs/install), in addition to
+  the [Prerequisites](#prerequisites) above (`kubectl`/`helm`/`yq`/etc).
+- `observability.mode: grafana-cloud` (the default) requires
+  `observability/otel-collector/secret.yaml` to already exist (Quick start
+  step 2) - `test/e2e.sh` checks for it up front and fails fast with
+  instructions if it's missing. For a fully self-contained run with **no**
+  external account, `export JENKINS2026_OBS_MODE=oss` instead (see
+  `test/.env.example`).
+
+### What gets created / destroyed
+
+[`terraform/gke/`](terraform/gke/) provisions, all named/prefixed
+`jenkins-2026*` and removed by `terraform destroy`:
+
+| Resource | Notes |
+|---|---|
+| VPC + subnet (`jenkins-2026-vpc` / `-subnet`) | VPC-native, dedicated pod/Service CIDR ranges |
+| GKE cluster `jenkins-2026` (zonal, `us-central1-a`) | `deletion_protection = false` so `destroy` works |
+| Node pool (2-4 x `e2-standard-4`, autoscaling) | sized for Jenkins + 18 PetClinic pods + 1-2 concurrent build agents |
+| Service account `jenkins-2026-nodes` + IAM bindings | logging/monitoring writer, Artifact Registry reader only |
+
+`container.googleapis.com`/`compute.googleapis.com` API enablement on the
+project is intentionally left in place (re-enabling is slow, and disabling
+can break unrelated resources in the same project).
+
+### Cost
+
+At on-demand `us-central1` pricing, the cluster runs at roughly
+**$0.40-0.50/hr** (3x `e2-standard-4`, plus the $0.10/hr GKE cluster
+management fee - waived for your first zonal cluster per billing account).
+A full `test/e2e.sh` pass (provision, deploy, smoke-test, tear down
+everything) typically takes **15-25 minutes**, i.e. **~$0.10-0.20 per run**.
+Grafana Cloud's free tier comfortably covers this PoC's traffic/series volume
+for a run of that length.
+
+### Terraform version & Stacks
+
+`terraform/gke/` targets Terraform **1.15.x** (`required_version >= 1.9`) and
+`hashicorp/google ~> 6.0`. [Terraform
+Stacks](https://developer.hashicorp.com/terraform/cloud-docs/stacks) (the
+newer multi-component/multi-deployment orchestration model) is an **HCP
+Terraform**-only feature aimed at fleets of similar deployments across
+environments - adopting it here would add an HCP Terraform account dependency
+for what is a single throwaway cluster with local state, so this repo uses a
+plain root module + local backend instead. The resources in
+[`terraform/gke/main.tf`](terraform/gke/main.tf) can be lifted into a Stack
+component largely as-is if you use HCP Terraform for your own infrastructure.
+
 ## Troubleshooting
 
 - **`yq` not found**: install [`mikefarah/yq`](https://github.com/mikefarah/yq)
@@ -162,6 +257,11 @@ in [`docs/observability.md`](docs/observability.md).
 - **Rotating the Jenkins admin password**: delete the `jenkins-credentials`
   Secret in the `jenkins` namespace and re-run `scripts/01-namespaces.sh` +
   `scripts/04-jenkins.sh`.
+- **`test/e2e.sh` was interrupted (Ctrl-C) or `terraform destroy` failed**:
+  the `EXIT` trap should still have run `terraform destroy`, but to be sure
+  no billable resources are left, run
+  `terraform -chdir=terraform/gke destroy` manually and confirm with
+  `gcloud container clusters list --project "$GCP_PROJECT_ID"`.
 
 ## License
 
