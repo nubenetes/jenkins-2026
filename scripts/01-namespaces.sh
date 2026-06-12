@@ -19,8 +19,10 @@ if kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_
   log_info "(to rotate the admin password, delete the secret and re-run this script)"
 else
   # ADMIN_PASSWORD can be supplied via env for reproducible demos; otherwise a
-  # random one is generated and printed once below.
-  admin_password="${ADMIN_PASSWORD:-$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c20)}"
+  # random one is generated and printed once below. `openssl rand` writes a
+  # fixed-size, finite stream (unlike `/dev/urandom | head`, which makes `tr`
+  # die with SIGPIPE -> exit 141 under `set -o pipefail`).
+  admin_password="${ADMIN_PASSWORD:-$(openssl rand -base64 24 | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c20)}"
 
   kubectl create secret generic "${J2026_JENKINS_CREDENTIALS_SECRET}" \
     -n "${J2026_JENKINS_NAMESPACE}" \

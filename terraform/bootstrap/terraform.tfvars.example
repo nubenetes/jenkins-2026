@@ -1,0 +1,9 @@
+# Copy to terraform.tfvars (gitignored) and fill in, or pass via -var.
+project_id = "my-gcp-project-id"
+
+# region                         = "us-central1"
+# github_repo                    = "nubenetes/jenkins-2026"
+# state_bucket_name              = ""  # defaults to "<project_id>-jenkins-2026-tfstate"
+# ci_service_account_id          = "jenkins-2026-ci"
+# workload_identity_pool_id      = "jenkins-2026-github"
+# workload_identity_provider_id  = "github-actions"
