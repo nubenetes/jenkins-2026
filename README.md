@@ -132,6 +132,31 @@ Full details in [`docs/architecture.md`](docs/architecture.md).
 
 ## Jenkins UI, plugins & MCP
 
+### Accessing the UI & admin password
+
+```bash
+kubectl -n jenkins port-forward svc/jenkins 8080:8080
+```
+
+Open <http://localhost:8080> and log in as `${JENKINS_ADMIN_ID}` (`jenkins.adminUser`
+in [`config/config.yaml`](config/config.yaml), default `admin`). The password
+is randomly generated on first run by
+[`scripts/01-namespaces.sh`](scripts/01-namespaces.sh) and printed once to its
+output - if you missed it, retrieve it from the `jenkins-credentials` Secret
+(`jenkins.credentialsSecretName`) in the `jenkins` namespace:
+
+```bash
+kubectl -n jenkins get secret jenkins-credentials -o jsonpath='{.data.admin-password}' | base64 -d; echo
+```
+
+The same Secret also holds the `platform-engineer` login (used by the
+`pac-dev/*` pipelines-as-code sandbox, see [Pipelines-as-code dev
+sandbox](#pipelines-as-code-dev-sandbox-pac-dev)) under
+`platform-engineer-password`. To rotate either password, delete the Secret
+and re-run `scripts/01-namespaces.sh` + `scripts/04-jenkins.sh` (see
+[Troubleshooting](#troubleshooting)) - new random passwords are generated and
+printed once.
+
 [`helm/jenkins/values-common.yaml`](helm/jenkins/values-common.yaml) tracks
 the latest Jenkins LTS (`controller.image.tag`) and pins **every** plugin -
 including transitive dependencies - to the exact version resolved against
