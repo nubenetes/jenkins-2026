@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 # Creates the namespaces used by this PoC, the "jenkins-credentials" Secret
-# consumed by helm/jenkins/values-common.yaml, and grants the Jenkins
-# controller's ServiceAccount "edit" access in both PetClinic namespaces so
-# pipelines can `helm upgrade`/`kubectl apply` their deployments. Idempotent.
+# consumed by helm/jenkins/values-common.yaml, the "headlamp-credentials"
+# Secret consumed by helm/headlamp/values.yaml (see scripts/08-headlamp.sh),
+# and grants the Jenkins controller's ServiceAccount "edit" access in both
+# PetClinic namespaces so pipelines can `helm upgrade`/`kubectl apply` their
+# deployments. Idempotent.
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 
 log_step "Creating namespaces"
-for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}" "${J2026_PETCLINIC_NS_PAC_DEV}"; do
+for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}" "${J2026_PETCLINIC_NS_PAC_DEV}"; do
   kubectl_apply_namespace "${ns}"
 done
 
@@ -41,6 +43,53 @@ else
   log_info "Created. Jenkins admin login: ${J2026_JENKINS_ADMIN_USER} / ${admin_password}"
   log_info "Created. Jenkins platform-engineer login (pac-dev/* pipelines-as-code sandbox): ${J2026_PLATFORM_ENGINEER_USER} / ${platform_engineer_password}"
   log_warn "Save these passwords now - they are not printed again on subsequent runs."
+fi
+
+log_step "Ensuring '${J2026_HEADLAMP_CREDENTIALS_SECRET}' Secret in ${J2026_HEADLAMP_NAMESPACE}"
+if kubectl get secret "${J2026_HEADLAMP_CREDENTIALS_SECRET}" -n "${J2026_HEADLAMP_NAMESPACE}" >/dev/null 2>&1; then
+  log_info "Secret already exists - leaving it untouched."
+  log_info "(to rotate the OIDC client secret, delete the secret and re-run this script)"
+else
+  if [[ -z "${HEADLAMP_OIDC_CLIENT_ID:-}" || -z "${HEADLAMP_OIDC_CLIENT_SECRET:-}" ]]; then
+    log_warn "HEADLAMP_OIDC_CLIENT_ID/HEADLAMP_OIDC_CLIENT_SECRET not set - Headlamp will"
+    log_warn "deploy but Google login won't work until configured. See README.md \"Headlamp\"."
+  fi
+  # Keys match the env vars helm/headlamp/values.yaml config.oidc.externalSecret
+  # expects (envFrom on this Secret).
+  kubectl create secret generic "${J2026_HEADLAMP_CREDENTIALS_SECRET}" \
+    -n "${J2026_HEADLAMP_NAMESPACE}" \
+    --from-literal=OIDC_CLIENT_ID="${HEADLAMP_OIDC_CLIENT_ID:-}" \
+    --from-literal=OIDC_CLIENT_SECRET="${HEADLAMP_OIDC_CLIENT_SECRET:-}" \
+    --from-literal=OIDC_ISSUER_URL="${J2026_HEADLAMP_OIDC_ISSUER_URL}" \
+    --from-literal=OIDC_SCOPES="${J2026_HEADLAMP_OIDC_SCOPES}" \
+    --from-literal=OIDC_CALLBACK_URL="${J2026_HEADLAMP_OIDC_CALLBACK_URL}" \
+    --from-literal=OIDC_USE_ACCESS_TOKEN="true"
+
+  log_info "Created."
+fi
+
+log_step "Ensuring '${J2026_GATEWAY_IAP_SECRET}' Secret for Gateway IAP"
+if [[ -z "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
+  log_info "gateway.baseDomain / JENKINS2026_BASE_DOMAIN is empty - gateway disabled, skipping."
+else
+  if [[ -z "${IAP_OAUTH_CLIENT_ID:-}" || -z "${IAP_OAUTH_CLIENT_SECRET:-}" ]]; then
+    log_warn "IAP_OAUTH_CLIENT_ID/IAP_OAUTH_CLIENT_SECRET not set - the Jenkins and"
+    log_warn "Headlamp GCPBackendPolicies will deploy but IAP won't work until"
+    log_warn "configured. See README.md \"Public access (GKE Gateway API + IAP)\"."
+  fi
+  # GCPBackendPolicy's oauth2ClientSecret is a namespaced Secret reference, so
+  # the same client ID/secret must exist in each backend's namespace.
+  for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}"; do
+    if kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" >/dev/null 2>&1; then
+      log_info "Secret already exists in ${ns} - leaving it untouched."
+    else
+      kubectl create secret generic "${J2026_GATEWAY_IAP_SECRET}" \
+        -n "${ns}" \
+        --from-literal=client_id="${IAP_OAUTH_CLIENT_ID:-}" \
+        --from-literal=client_secret="${IAP_OAUTH_CLIENT_SECRET:-}"
+      log_info "Created in ${ns}."
+    fi
+  done
 fi
 
 log_step "Granting Jenkins ServiceAccount 'edit' in PetClinic namespaces"

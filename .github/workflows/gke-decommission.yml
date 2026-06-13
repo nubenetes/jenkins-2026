@@ -85,6 +85,8 @@ jobs:
             --project "${{ secrets.GCP_PROJECT_ID }}"
 
       - name: Tear down the stack (scripts/down.sh)
+        env:
+          JENKINS2026_HEADLAMP_ADMIN_EMAILS: ${{ secrets.HEADLAMP_ADMIN_EMAILS }}
         run: ./scripts/down.sh || true
 
       - name: Terraform destroy (remove GKE cluster, VPC, node pool)

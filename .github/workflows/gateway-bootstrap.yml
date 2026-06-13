@@ -1,0 +1,94 @@
+name: Gateway bootstrap
+
+# Manually-triggered, one-time setup step: applies terraform/gateway-bootstrap
+# to create (or, on re-runs, confirm) the persistent GCP resources that public
+# access to Jenkins/PetClinic/Headlamp depends on - a global static IP and a
+# Google-managed wildcard certificate (Certificate Manager, DNS-authorized).
+# State is remote (GCS, prefix "jenkins-2026/gateway-bootstrap", same bucket
+# as terraform/gke), so this is safe to re-run - it's a no-op once the
+# resources exist.
+#
+# After the first successful run, follow the job summary's instructions to:
+#   1. Create the printed DNS records (wildcard A record + DNS authorization
+#      CNAME) with your DNS provider.
+#   2. Create the IAP OAuth client by hand in the Console and set the
+#      IAP_OAUTH_CLIENT_ID / IAP_OAUTH_CLIENT_SECRET secrets.
+# See README.md "Public access (GKE Gateway API + IAP)" for details.
+#
+# gke-provision.yml / gke-decommission.yml do NOT run this workflow - they
+# only reference these resources by their fixed names (config/config.yaml's
+# gateway.staticIPName / gateway.certMapName).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  TF_VERSION: "1.15.6"
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure GCS backend (terraform/gateway-bootstrap)
+        run: |
+          cat > terraform/gateway-bootstrap/backend_override.tf <<EOF
+          terraform {
+            backend "gcs" {
+              bucket = "${{ secrets.TF_STATE_BUCKET }}"
+              prefix = "jenkins-2026/gateway-bootstrap"
+            }
+          }
+          EOF
+
+      - name: Terraform init
+        working-directory: terraform/gateway-bootstrap
+        run: terraform init -input=false
+
+      - name: Terraform apply (create/confirm persistent gateway resources)
+        working-directory: terraform/gateway-bootstrap
+        env:
+          TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
+        run: terraform apply -auto-approve -input=false
+
+      - name: Summary
+        if: always()
+        working-directory: terraform/gateway-bootstrap
+        run: |
+          {
+            echo "### jenkins-2026 Gateway bootstrap"
+            echo
+            echo "- Static IP: \`$(terraform output -raw static_ip_address 2>/dev/null || echo 'n/a')\`"
+            echo "- DNS authorization record:"
+            echo '```'
+            terraform output -json dns_authorization_record 2>/dev/null || echo 'n/a'
+            echo '```'
+            echo
+            echo "**One-time manual steps (see README.md \"Public access (GKE Gateway API + IAP)\"):**"
+            echo
+            echo "1. With your DNS provider, create:"
+            echo "   - A wildcard A record \`*.<base_domain>\` -> the static IP above."
+            echo "   - The DNS authorization record above (proves domain ownership for the managed certificate; can take up to ~1h to be issued after this verifies)."
+            echo "2. Create the IAP OAuth client by hand in the GCP Console (APIs & Services > Credentials > Create OAuth client ID > Web application), then run:"
+            echo '   \`gh secret set IAP_OAUTH_CLIENT_ID\` and \`gh secret set IAP_OAUTH_CLIENT_SECRET\`'
+          } >> "${GITHUB_STEP_SUMMARY}"
