@@ -9,8 +9,9 @@ an **existing** Kubernetes cluster (GKE, EKS, AKS or OpenShift 4.20+):
   Configuration-as-Code (JCasC) - no manual clicking required.
 - **Pipelines as code**: a Job DSL "seed job" (itself defined in JCasC) reads
   [`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml)
-  and generates 18 Jenkins Pipeline jobs - one **stable** (`master`) and one
-  **`-develop`** job per PetClinic service.
+  and generates 18 Jenkins Pipeline jobs - one **stable** and one
+  **`-develop`** job per PetClinic service, both tracking the upstream
+  `main` branch but deploying to separate namespaces.
 - **Spring PetClinic microservices + Angular UI**, deployed by those
   pipelines into two namespaces (`petclinic` / `petclinic-develop`) via a
   single parametrized [Helm chart](../helm/petclinic).
@@ -33,7 +34,7 @@ an **existing** Kubernetes cluster (GKE, EKS, AKS or OpenShift 4.20+):
   │  Jenkins controller (jenkinsci/helm-charts + JCasC)               │
   │   - security, global shared library, OTel exporter, seed job     │
   │   - seed job (Job DSL) generates 18 pipeline jobs:                │
-  │       9 services x {<name> (master), <name>-develop (develop)}   │
+  │       9 services x {<name> (main), <name>-develop (main)}        │
   │   - each run uses a Kubernetes pod agent                          │
   │     (maven / node / docker:dind / helm+kubectl containers)        │
   └───────────────────────────────┬──────────────────────────────────┘
@@ -42,7 +43,7 @@ an **existing** Kubernetes cluster (GKE, EKS, AKS or OpenShift 4.20+):
               ▼                                             ▼
   ┌───────────────────────────────┐         ┌───────────────────────────────┐
   │ namespace: petclinic           │         │ namespace: petclinic-develop   │
-  │ (stable / master branch)       │         │ (develop / gitflow branch)     │
+  │ (stable, tracks main)          │         │ (testing track, tracks main)   │
   │  config-server, discovery-     │         │ config-server, discovery-      │
   │  server, customers/visits/     │         │ server, customers/visits/      │
   │  vets/genai-service,            │         │ vets/genai-service,             │
