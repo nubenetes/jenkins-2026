@@ -23,7 +23,11 @@ if ! kubectl version >/dev/null 2>&1; then
   log_error "kubectl cannot reach a cluster. Set KUBECONFIG / current-context first."
   exit 1
 fi
-kubectl cluster-info | head -n1
+# Capture output before piping to `head`: `kubectl cluster-info | head -n1`
+# lets `head` close the pipe early, so kubectl gets SIGPIPE -> exit 141 under
+# `set -o pipefail`.
+cluster_info="$(kubectl cluster-info)"
+head -n1 <<< "${cluster_info}"
 log_info "Current context: $(kubectl config current-context)"
 
 log_step "Resolved configuration"
