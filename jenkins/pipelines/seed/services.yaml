@@ -1,5 +1,5 @@
 # =============================================================================
-# Service registry consumed by jenkins/pipelines/seed/seed-jobs.groovy.
+# Service registry consumed by jenkins/pipelines/seed/seed_jobs.groovy.
 #
 # For each entry, the seed job creates TWO pipeline jobs (pipelines-as-code,
 # GitFlow model):

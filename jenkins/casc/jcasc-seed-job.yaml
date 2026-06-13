@@ -5,7 +5,7 @@
 # "seed-jobs" is itself a Pipeline-script-from-SCM job pointing at
 # jenkins/pipelines/seed/Jenkinsfile.seed in this repo. That Jenkinsfile
 # checks out this repo and runs the jobDsl step against
-# jenkins/pipelines/seed/seed-jobs.groovy, which reads services.yaml and
+# jenkins/pipelines/seed/seed_jobs.groovy, which reads services.yaml and
 # creates the 18 PetClinic pipeline jobs (9 services x stable/-develop).
 # ${VAR:-default} placeholders are resolved by JCasC itself before the Job
 # DSL script is handed to the job-dsl plugin.
@@ -14,7 +14,7 @@
 jobs:
   - script: |
       pipelineJob('seed-jobs') {
-        description('Seed job (Job DSL) - regenerates all PetClinic pipeline jobs from jenkins/pipelines/seed/seed-jobs.groovy. Safe to re-run; idempotent.')
+        description('Seed job (Job DSL) - regenerates all PetClinic pipeline jobs from jenkins/pipelines/seed/seed_jobs.groovy. Safe to re-run; idempotent.')
         keepDependencies(false)
         definition {
           cpsScm {

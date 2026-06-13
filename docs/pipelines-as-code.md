@@ -48,11 +48,11 @@ at `jenkins-2026/vars/` and `jenkins-2026/resources/`, not nested under
 `jcasc-seed-job.yaml` creates a pipeline job, **`seed-jobs`**, running
 [`Jenkinsfile.seed`](../jenkins/pipelines/seed/Jenkinsfile.seed). That
 Jenkinsfile checks out this repo and runs the Job DSL plugin against
-[`seed-jobs.groovy`](../jenkins/pipelines/seed/seed-jobs.groovy) with
+[`seed_jobs.groovy`](../jenkins/pipelines/seed/seed_jobs.groovy) with
 `useScriptSecurity: false` (the script lives in this trusted repo, not
 user-submitted).
 
-`seed-jobs.groovy` reads
+`seed_jobs.groovy` reads
 [`services.yaml`](../jenkins/pipelines/seed/services.yaml) - the list of 9
 PetClinic services (name, type `java`|`angular`, Maven module, source repo,
 port, health-check path) plus the `namespaces` (`petclinic`/`petclinic-develop`)
@@ -92,7 +92,7 @@ defaults) on every run. Since both jobs share one Jenkinsfile from SCM, a
 defaults on their next build - destroying the stable/develop distinction.
 **`Jenkinsfile.petclinic` therefore declares no `parameters { }` block at
 all** (see the comment block at the top of the stages section); the Job DSL
-definitions in `seed-jobs.groovy` are the single source of truth for each
+definitions in `seed_jobs.groovy` are the single source of truth for each
 job's parameters, and `params.X` is always populated because the seed job
 creates the jobs (with their parameter definitions) before any build runs.
 

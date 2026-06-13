@@ -125,7 +125,7 @@ Full details in [`docs/architecture.md`](docs/architecture.md).
 ## Pipelines as code
 
 A Jenkins seed job (defined via JCasC, running Job DSL against
-[`jenkins/pipelines/seed/seed-jobs.groovy`](jenkins/pipelines/seed/seed-jobs.groovy)
+[`jenkins/pipelines/seed/seed_jobs.groovy`](jenkins/pipelines/seed/seed_jobs.groovy)
 + [`services.yaml`](jenkins/pipelines/seed/services.yaml)) generates **18
 pipelines**: for each of the 9 PetClinic services, a `<service>` job tracking
 `master` (deploys to namespace `petclinic`) and a `<service>-develop` job
