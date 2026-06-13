@@ -136,6 +136,20 @@ checkout -> build & test -> build & push image -> `helm upgrade` the
 Details, including why the Jenkinsfile deliberately has no `parameters {}`
 block, in [`docs/pipelines-as-code.md`](docs/pipelines-as-code.md).
 
+### Pipelines-as-code dev sandbox (`pac-dev/`)
+
+A second seed job, **`pac-dev/seed-jobs-dev`**, tracks this repo's
+`develop` branch (instead of `main`) and generates a `pac-dev/` folder
+containing one pipeline per PetClinic service, deploying to the
+`petclinic-pac-dev` namespace. This lets devops/platform engineers iterate on
+this repo's own pipelines-as-code (`seed_jobs.groovy`, `Jenkinsfile.petclinic`,
+JCasC, the shared library) on `develop` and see the result run end-to-end,
+**without touching the 18 stable/`-develop` jobs above**, which keep tracking
+`main`. The `pac-dev/` folder is hidden from regular users - only the
+`platform-engineer` Jenkins account (Role-Based Authorization Strategy) can
+see or run it. Details in
+[`docs/pipelines-as-code.md`](docs/pipelines-as-code.md#pipelines-as-code-dev-sandbox-pac-dev).
+
 ## Observability
 
 Jenkins (via the `opentelemetry` plugin), every Java microservice (via OTel
@@ -336,7 +350,68 @@ can find what the provision run created.
    |---|---|
    | `REGISTRY_USERNAME` / `REGISTRY_PASSWORD` | pushing PetClinic images to a private registry (`scripts/01-namespaces.sh`) |
    | `GIT_USERNAME` / `GIT_TOKEN` | cloning a private PetClinic fork |
-   | `GRAFANA_CLOUD_OTLP_ENDPOINT` / `GRAFANA_CLOUD_OTLP_AUTH` / `GRAFANA_BASE_URL` / `GRAFANA_API_KEY` / `GRAFANA_TRACES_DASHBOARD_UID` / `OTEL_LOGS_BACKEND_URL` | `observability_mode: grafana-cloud` (see `observability/otel-collector/secret.example.yaml` for what each value means) |
+   | `GRAFANA_TRACES_DASHBOARD_UID` / `OTEL_LOGS_BACKEND_URL` | `observability_mode: grafana-cloud` extras - a "View trace in Grafana" link UID and the logs Explore URL (see `observability/otel-collector/secret.example.yaml`); both optional even then |
+
+5. **(Optional) Full Grafana Cloud lifecycle automation**, for
+   `observability_mode: grafana-cloud`. Without this, picking that mode in
+   **GKE provision** will fail at `terraform apply` in
+   `terraform/grafana-cloud-token` - skip this step entirely if you only plan
+   to use `oss` or `managed`.
+
+   This provisions one **persistent** Grafana Cloud stack (once, locally,
+   like step 2 above), then lets every `gke-provision`/`gke-decommission`
+   run mint and revoke **ephemeral**, scoped access tokens against it -
+   no manual `observability/otel-collector/secret.yaml` needed.
+
+   a. **Create a Grafana Cloud Access Policy token** - this is the one
+      unavoidable manual credential, since Grafana Cloud has no equivalent
+      of GCP's Workload Identity Federation (used in steps 1-3) for
+      federating GitHub Actions: its API only supports static
+      organization-level tokens. In the [Grafana Cloud
+      portal](https://grafana.com), go to your org -> **Administration** ->
+      **Access Policies** -> **Create access policy** (realm = your
+      organization) with scopes `accesspolicies:read`,
+      `accesspolicies:write`, `accesspolicies:delete`, `stacks:read`,
+      `stacks:write`, `stacks:delete`, `stack-service-accounts:write`, then
+      create a token for that policy.
+
+   b. **Run `terraform/grafana-cloud-stack`** once, locally, to create the
+      persistent stack that this PoC sends telemetry to:
+
+      ```bash
+      cd terraform/grafana-cloud-stack
+      cp terraform.tfvars.example terraform.tfvars
+      # edit terraform.tfvars: set stack_slug (must be globally unique)
+
+      export TF_VAR_grafana_cloud_api_token="<token from step a>"
+      terraform init
+      terraform apply
+      ```
+
+      Keep `terraform/grafana-cloud-stack/terraform.tfstate` (gitignored,
+      local-only) - it's the only record of this stack; see the comment in
+      [`terraform/grafana-cloud-stack/versions.tf`](terraform/grafana-cloud-stack/versions.tf).
+
+   c. **Add two more repository secrets**:
+
+      | Secret | Value |
+      |---|---|
+      | `GRAFANA_CLOUD_API_TOKEN` | the token from step a |
+      | `GRAFANA_CLOUD_STACK_SLUG` | `terraform output -raw stack_slug` from step b |
+
+      ```bash
+      cd terraform/grafana-cloud-stack
+      gh secret set GRAFANA_CLOUD_API_TOKEN  --body "<token from step a>"
+      gh secret set GRAFANA_CLOUD_STACK_SLUG --body "$(terraform output -raw stack_slug)"
+      ```
+
+   From here on, every `gke-provision` run with `observability_mode:
+   grafana-cloud` applies
+   [`terraform/grafana-cloud-token`](terraform/grafana-cloud-token) to mint a
+   scoped OTLP access policy token + dashboard service account token against
+   this stack and writes them into the `grafana-cloud-credentials` Secret;
+   every `gke-decommission` run destroys the same Terraform state, revoking
+   both tokens.
 
 ### Running it
 

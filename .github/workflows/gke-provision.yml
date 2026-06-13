@@ -107,15 +107,57 @@ jobs:
           ./scripts/00-check-prereqs.sh
           ./scripts/01-namespaces.sh
 
+      - name: Configure GCS backend (terraform/grafana-cloud-token)
+        if: ${{ inputs.observability_mode == 'grafana-cloud' }}
+        run: |
+          cat > terraform/grafana-cloud-token/backend_override.tf <<EOF
+          terraform {
+            backend "gcs" {
+              bucket = "${{ secrets.TF_STATE_BUCKET }}"
+              prefix = "jenkins-2026/grafana-cloud-token"
+            }
+          }
+          EOF
+
+      - name: Terraform init (grafana-cloud-token)
+        if: ${{ inputs.observability_mode == 'grafana-cloud' }}
+        working-directory: terraform/grafana-cloud-token
+        run: terraform init -input=false
+
+      - name: Terraform apply (Grafana Cloud access policy + tokens)
+        if: ${{ inputs.observability_mode == 'grafana-cloud' }}
+        id: grafana_cloud_token
+        working-directory: terraform/grafana-cloud-token
+        env:
+          TF_VAR_grafana_cloud_api_token: ${{ secrets.GRAFANA_CLOUD_API_TOKEN }}
+          TF_VAR_stack_slug: ${{ secrets.GRAFANA_CLOUD_STACK_SLUG }}
+        run: |
+          terraform apply -auto-approve -input=false
+
+          otlp_endpoint="$(terraform output -raw otlp_endpoint)"
+          otlp_auth="$(terraform output -raw otlp_auth)"
+          grafana_base_url="$(terraform output -raw grafana_base_url)"
+          grafana_api_key="$(terraform output -raw grafana_api_key)"
+
+          echo "::add-mask::${otlp_auth}"
+          echo "::add-mask::${grafana_api_key}"
+
+          {
+            echo "otlp_endpoint=${otlp_endpoint}"
+            echo "otlp_auth=${otlp_auth}"
+            echo "grafana_base_url=${grafana_base_url}"
+            echo "grafana_api_key=${grafana_api_key}"
+          } >> "${GITHUB_OUTPUT}"
+
       - name: Apply Grafana Cloud credentials secret
         if: ${{ inputs.observability_mode == 'grafana-cloud' }}
         run: |
           kubectl create namespace observability --dry-run=client -o yaml | kubectl apply -f -
           kubectl create secret generic grafana-cloud-credentials -n observability \
-            --from-literal=GRAFANA_CLOUD_OTLP_ENDPOINT="${{ secrets.GRAFANA_CLOUD_OTLP_ENDPOINT }}" \
-            --from-literal=GRAFANA_CLOUD_OTLP_AUTH="${{ secrets.GRAFANA_CLOUD_OTLP_AUTH }}" \
-            --from-literal=GRAFANA_BASE_URL="${{ secrets.GRAFANA_BASE_URL }}" \
-            --from-literal=GRAFANA_API_KEY="${{ secrets.GRAFANA_API_KEY }}" \
+            --from-literal=GRAFANA_CLOUD_OTLP_ENDPOINT="${{ steps.grafana_cloud_token.outputs.otlp_endpoint }}" \
+            --from-literal=GRAFANA_CLOUD_OTLP_AUTH="${{ steps.grafana_cloud_token.outputs.otlp_auth }}" \
+            --from-literal=GRAFANA_BASE_URL="${{ steps.grafana_cloud_token.outputs.grafana_base_url }}" \
+            --from-literal=GRAFANA_API_KEY="${{ steps.grafana_cloud_token.outputs.grafana_api_key }}" \
             --from-literal=GRAFANA_TRACES_DASHBOARD_UID="${{ secrets.GRAFANA_TRACES_DASHBOARD_UID }}" \
             --from-literal=OTEL_LOGS_BACKEND_URL="${{ secrets.OTEL_LOGS_BACKEND_URL }}" \
             --dry-run=client -o yaml | kubectl apply -f -
