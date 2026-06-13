@@ -46,9 +46,13 @@ grafana:
     limits:
       cpu: 500m
       memory: 512Mi
+  # Disabled: a bound PVC's spec.volumeName (set by the dynamic provisioner
+  # after binding) diverges from Helm's stored manifest, which makes every
+  # subsequent `helm upgrade`/`rollback` fail to patch the PVC ("spec is
+  # immutable after creation"). Dashboards are provisioned via the
+  # dashboardsConfigMaps sidecar below, so no state needs to persist.
   persistence:
-    enabled: true
-    size: 2Gi
+    enabled: false
 
   sidecar:
     datasources:
