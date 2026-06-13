@@ -65,9 +65,11 @@ export J2026_JENKINS_CHART_REPO_URL="$(yq_get '.jenkins.chart.repoUrl' 'https://
 export J2026_JENKINS_CHART_NAME="$(yq_get '.jenkins.chart.chartName' 'jenkins/jenkins')"
 export J2026_JENKINS_CHART_VERSION="$(yq_get '.jenkins.chart.version' '')"
 export J2026_JENKINS_ADMIN_USER="$(yq_get '.jenkins.adminUser' 'admin')"
+export J2026_PLATFORM_ENGINEER_USER="$(yq_get '.jenkins.platformEngineerUser' 'platform-engineer')"
 export J2026_JENKINS_CREDENTIALS_SECRET="$(yq_get '.jenkins.credentialsSecretName' 'jenkins-credentials')"
 export J2026_SELF_REPO_URL="$(yq_get '.jenkins.selfRepoUrl' 'https://github.com/nubenetes/jenkins-2026.git')"
 export J2026_SELF_REPO_BRANCH="$(yq_get '.jenkins.selfRepoBranch' 'main')"
+export J2026_SELF_REPO_DEV_BRANCH="$(yq_get '.jenkins.selfRepoDevBranch' 'develop')"
 
 # --- observability ---------------------------------------------------------
 
@@ -105,6 +107,7 @@ export J2026_GRAFANA_OSS_NAMESPACE="$(yq_get '.observability.grafana.ossNamespac
 
 export J2026_PETCLINIC_NS_STABLE="$(yq_get '.petclinic.namespaces.stable' 'petclinic')"
 export J2026_PETCLINIC_NS_DEVELOP="$(yq_get '.petclinic.namespaces.develop' 'petclinic-develop')"
+export J2026_PETCLINIC_NS_PAC_DEV="$(yq_get '.petclinic.namespaces.pacDev' 'petclinic-pac-dev')"
 
 export J2026_PETCLINIC_GIT_ORG="$(yq_get '.petclinic.git.org' 'spring-petclinic')"
 export J2026_PETCLINIC_BACKEND_REPO="$(yq_get '.petclinic.git.backendRepo' 'spring-petclinic-microservices')"
