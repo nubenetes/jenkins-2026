@@ -12,9 +12,10 @@ jenkins:
     Jenkins 2026 PoC - fully managed via Configuration as Code.
     Source of truth: https://github.com/nubenetes/jenkins-2026
 
-  # numExecutors/mode are set via controller.numExecutors /
-  # controller.executorMode in helm/jenkins/values-common.yaml instead of
-  # here - see the comment there for why.
+  # numExecutors (chart default 0) / mode are derived from
+  # controller.numExecutors / controller.executorMode in
+  # helm/jenkins/values-common.yaml instead of being set here - see the
+  # comment there for why.
 
   securityRealm:
     local:

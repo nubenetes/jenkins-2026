@@ -1,6 +1,16 @@
 # Values overlay for kubernetes-sigs/headlamp, applied by
 # scripts/08-headlamp.sh on top of the chart defaults.
 #
+# Chart origin: https://github.com/kubernetes-sigs/headlamp (charts/headlamp),
+# published at https://kubernetes-sigs.github.io/headlamp/ as
+# headlamp/headlamp. config/config.yaml headlamp.chart.version is "" (always
+# installs latest) - chart/appVersion 0.42.0 as of 2026-06-13. Default
+# values.yaml for comparison:
+# https://github.com/kubernetes-sigs/headlamp/blob/main/charts/headlamp/values.yaml
+#
+# Only the values below differ from that chart default - everything else
+# (clusterRoleBinding, serviceAccount, etc., see below) is left unset.
+#
 # OIDC client ID/secret + issuer/scopes/callback are supplied via the
 # "headlamp-credentials" Secret (created by scripts/01-namespaces.sh) and
 # injected as envFrom, since its keys already match the OIDC_* env vars the

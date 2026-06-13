@@ -11,28 +11,49 @@
 #     --set-file controller.JCasC.configScripts.otel=jenkins/casc/jcasc-otel.yaml \
 #     --set-file controller.JCasC.configScripts.seed-job=jenkins/casc/jcasc-seed-job.yaml \
 #     ...
+#
+# Chart origin: https://github.com/jenkinsci/helm-charts (charts/jenkins),
+# published at https://charts.jenkins.io as jenkins/jenkins.
+# config/config.yaml jenkins.chart.version is "" (always installs latest) -
+# chart 5.9.25 / appVersion 2.555.3 as of 2026-06-13. Default values.yaml for
+# comparison:
+# https://github.com/jenkinsci/helm-charts/blob/main/charts/jenkins/values.yaml
+#
+# This file and the platform overlays set ONLY the values that differ from
+# that chart default. Notably already at their chart default and NOT
+# repeated here: controller.image.registry/repository,
+# controller.serviceType/servicePort/targetPort, controller.JCasC
+# (defaultConfig/configScripts - populated at install time via --set-file
+# above instead), controller.csrf.defaultCrumbIssuer,
+# controller.containerSecurityContext, controller.numExecutors,
+# controller.ingress.enabled, controller.additionalPlugins,
+# persistence.enabled/size, agent.enabled, rbac.create,
+# serviceAccount.create/name (fullname defaults to "jenkins" for release
+# name "jenkins"), networkPolicy.enabled.
 # =============================================================================
 
 controller:
   image:
-    registry: docker.io
-    repository: jenkins/jenkins
     # jdk17 controller images stopped being published after the 2.479.x
     # line - current LTS ships as <version>-lts-jdk21. 2.555.3 is the
     # latest LTS as of 2026-06-13 (https://www.jenkins.io/changelog-stable/).
     # installPlugins below is pinned against this exact tag - bump both
     # together (see the regeneration recipe in the installPlugins comment).
     tag: "2.555.3-lts-jdk21"
-  imagePullPolicy: IfNotPresent
+    # Chart default is "Always" (controller.image.pullPolicy, NOT the
+    # similarly-named top-level controller.imagePullPolicy, which this chart
+    # doesn't read) - pin to IfNotPresent since our tag is a fixed version,
+    # not "latest".
+    pullPolicy: IfNotPresent
 
-  # We drive everything through pipeline agents; no executors on controller.
-  numExecutors: 0
-  # Both feed the chart's generated jcasc-default-config.yaml (jenkins.mode /
-  # jenkins.numExecutors). Set here rather than in jenkins/casc/jcasc-base.yaml
-  # so JCasC doesn't see the same key from two YAML sources - the
+  # We drive everything through pipeline agents; no executors on controller
+  # (numExecutors: 0 is also the chart default, so left unset here).
+  # executorMode feeds the chart's generated jcasc-default-config.yaml
+  # (jenkins.mode). Set here rather than in jenkins/casc/jcasc-base.yaml so
+  # JCasC doesn't see the same key from two YAML sources - the
   # configuration-as-code plugin's ErrorOnConflictMergeStrategy fails the
-  # whole controller startup ("Found conflicting configuration ... jenkins.mode")
-  # on any duplicate, even with equal values.
+  # whole controller startup ("Found conflicting configuration ...
+  # jenkins.mode") on any duplicate, even with equal values.
   executorMode: EXCLUSIVE
 
   resources:
@@ -42,17 +63,6 @@ controller:
     limits:
       cpu: "2"
       memory: "4096Mi"
-
-  serviceType: ClusterIP
-  servicePort: 8080
-  targetPort: 8080
-
-  # JEPL pipelines created by the seed job + JCasC base/otel fragments are
-  # supplied at install time via --set-file (see scripts/04-jenkins.sh). Each
-  # key below becomes a section under controller.JCasC.configScripts.
-  JCasC:
-    defaultConfig: true
-    configScripts: {}
 
   # Environment variables consumed by the ${VAR:-default} placeholders in
   # jenkins/casc/*.yaml. scripts/04-jenkins.sh overrides JENKINS2026_*,
@@ -136,19 +146,13 @@ controller:
           key: git-token
           optional: true
 
-  # csrf protection on, but proxy-compatible (we sit behind an Ingress/Route)
-  csrf:
-    defaultCrumbIssuer:
-      enabled: true
-      proxyCompatability: true
-
-  # Default container security context. Overridden to {} on OpenShift so the
-  # SCC can assign UID/fsGroup.
-  containerSecurityContext:
-    runAsUser: 1000
-    runAsGroup: 1000
-    allowPrivilegeEscalation: false
-
+  # Chart default (podSecurityContextOverride: ~) falls back to the
+  # deprecated controller.runAsUser/fsGroup/fsGroupChangePolicy keys, which
+  # also produce fsGroup: 1000 but additionally set runAsUser and
+  # fsGroupChangePolicy on the pod securityContext. Override with just
+  # fsGroup so the pod-level securityContext is minimal (runAsUser/
+  # runAsGroup are set at the container level instead, via the chart's
+  # default controller.containerSecurityContext).
   podSecurityContextOverride:
     fsGroup: 1000
 
@@ -296,36 +300,16 @@ controller:
     - workflow-step-api:724.v538c2362b_dfb_
     - workflow-support:1015.v785e5a_b_b_8b_22
 
-  ingress:
-    enabled: false
-
-  additionalPlugins: []
-
-persistence:
-  enabled: true
-  size: 8Gi
-
 agent:
-  enabled: true
   # Per-pipeline pod templates (maven/node/dind/kubectl/helm containers) are
   # defined inline in jenkins/pipelines/Jenkinsfile.petclinic via the
   # `agent { kubernetes { yaml ... } }` directive, so we keep the chart-level
-  # default agent minimal.
+  # default agent minimal. Only the limits differ from the chart default
+  # (512m/512Mi requests/limits) - requests are left at that default.
   resources:
-    requests:
-      cpu: "512m"
-      memory: "512Mi"
     limits:
       cpu: "1"
       memory: "1024Mi"
 
 rbac:
-  create: true
   readSecrets: true
-
-serviceAccount:
-  create: true
-  name: jenkins
-
-networkPolicy:
-  enabled: false
