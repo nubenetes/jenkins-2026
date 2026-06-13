@@ -52,4 +52,28 @@ for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}" "${J202
     --dry-run=client -o yaml | kubectl apply -f -
 done
 
+# 'ghcr-credentials' imagePullSecret (helm/petclinic values-*.yaml
+# imagePullSecret) - same REGISTRY_USERNAME/REGISTRY_PASSWORD the
+# "container-registry" Jenkins credential (jenkins/casc/jcasc-base.yaml) uses
+# to push images, since pipelines push to PETCLINIC_REGISTRY as private
+# packages by default. Without these env vars, an empty-auths secret is
+# created so the Deployments still reference a valid secret name and fall
+# back to anonymous pulls (fine for public images).
+log_step "Ensuring 'ghcr-credentials' imagePullSecret in PetClinic namespaces"
+registry_host="${J2026_PETCLINIC_REGISTRY%%/*}"
+if [[ -n "${REGISTRY_USERNAME:-}" && -n "${REGISTRY_PASSWORD:-}" ]]; then
+  registry_auth="$(printf '%s:%s' "${REGISTRY_USERNAME}" "${REGISTRY_PASSWORD}" | base64 -w0)"
+  dockerconfigjson="$(printf '{"auths":{"%s":{"username":"%s","password":"%s","auth":"%s"}}}' \
+    "${registry_host}" "${REGISTRY_USERNAME}" "${REGISTRY_PASSWORD}" "${registry_auth}")"
+else
+  dockerconfigjson='{"auths":{}}'
+fi
+for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}" "${J2026_PETCLINIC_NS_PAC_DEV}"; do
+  kubectl create secret generic ghcr-credentials \
+    -n "${ns}" \
+    --type=kubernetes.io/dockerconfigjson \
+    --from-literal=.dockerconfigjson="${dockerconfigjson}" \
+    --dry-run=client -o yaml | kubectl apply -f -
+done
+
 log_info "Namespaces ready."

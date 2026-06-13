@@ -52,7 +52,10 @@ cp observability/otel-collector/secret.example.yaml observability/otel-collector
 kubectl create namespace observability --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f observability/otel-collector/secret.yaml
 
-# 3. (optional) export registry/git credentials consumed by scripts/01-namespaces.sh
+# 3. (optional) export registry/git credentials consumed by scripts/01-namespaces.sh -
+#    REGISTRY_USERNAME/REGISTRY_PASSWORD become both the Jenkins "container-registry"
+#    push credential and the "ghcr-credentials" imagePullSecret in every PetClinic
+#    namespace (needed if PETCLINIC_REGISTRY packages are private, the GHCR default)
 export REGISTRY_USERNAME=<github-username> REGISTRY_PASSWORD=<ghcr-token>
 export GIT_USERNAME=<github-username>      GIT_TOKEN=<github-token>
 
@@ -348,7 +351,7 @@ can find what the provision run created.
 
    | Secret | Needed for |
    |---|---|
-   | `REGISTRY_USERNAME` / `REGISTRY_PASSWORD` | pushing PetClinic images to a private registry (`scripts/01-namespaces.sh`) |
+   | `REGISTRY_USERNAME` / `REGISTRY_PASSWORD` | pushing PetClinic images to, and pulling them back from, a private registry (`scripts/01-namespaces.sh`) |
    | `GIT_USERNAME` / `GIT_TOKEN` | cloning a private PetClinic fork |
    | `GRAFANA_TRACES_DASHBOARD_UID` / `OTEL_LOGS_BACKEND_URL` | `observability_mode: grafana-cloud` extras - a "View trace in Grafana" link UID and the logs Explore URL (see `observability/otel-collector/secret.example.yaml`); both optional even then |
 

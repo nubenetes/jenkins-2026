@@ -25,7 +25,11 @@ env: stable
 # Container registry the pipelines push to (config/config.yaml petclinic.registry).
 registry: ghcr.io/nubenetes/jenkins-2026-petclinic
 
-# Optional: name of an existing imagePullSecret (e.g. for a private GHCR repo).
+# Name of an existing imagePullSecret. values-{stable,develop,pac-dev}.yaml
+# set this to "ghcr-credentials", a kubernetes.io/dockerconfigjson secret
+# scripts/01-namespaces.sh creates in every PetClinic namespace from
+# REGISTRY_USERNAME/REGISTRY_PASSWORD (empty auths if unset, so anonymous
+# pulls of public images still work).
 imagePullSecret: ""
 
 otel:
