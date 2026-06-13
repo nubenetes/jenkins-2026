@@ -75,9 +75,7 @@ registry.services.each { svc ->
           triggers {
             // Poll every 5 minutes for new commits on the tracked branch -
             // works out of the box without configuring a webhook.
-            scm {
-              scmpoll_spec('H/5 * * * *')
-            }
+            scm('H/5 * * * *')
           }
         }
       }
