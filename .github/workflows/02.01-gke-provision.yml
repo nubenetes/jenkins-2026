@@ -15,11 +15,11 @@ on:
       observability_mode:
         description: "observability.mode override"
         required: true
-        default: "oss"
+        default: "grafana-cloud"
         type: choice
         options:
-          - oss
           - grafana-cloud
+          - oss
           - managed
       enable_gateway:
         description: "Create the public Gateway/HTTPRoutes/IAP (requires the one-time 01.02 Gateway bootstrap + DNS + IAP OAuth client setup - see README \"Public access (GKE Gateway API + IAP)\")"
