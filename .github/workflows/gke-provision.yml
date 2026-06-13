@@ -19,6 +19,11 @@ on:
           - oss
           - grafana-cloud
           - managed
+      enable_gateway:
+        description: "Create the public Gateway/HTTPRoutes/IAP (requires the one-time Gateway bootstrap + DNS + IAP OAuth client setup - see README \"Public access (GKE Gateway API + IAP)\")"
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -173,12 +178,16 @@ jobs:
         env:
           JENKINS2026_OBS_MODE: ${{ inputs.observability_mode }}
           JENKINS2026_HEADLAMP_ADMIN_EMAILS: ${{ secrets.HEADLAMP_ADMIN_EMAILS }}
-          # gateway.baseDomain's committed default (jenkins2026.nubenetes.com)
-          # applies here. Set JENKINS2026_BASE_DOMAIN="" to disable public
-          # access for a given run (e.g. before the one-time "Gateway
-          # bootstrap" workflow has been run) - see README.md "Public access
-          # (GKE Gateway API + IAP)".
-        run: ./scripts/up.sh
+        run: |
+          if [[ "${{ inputs.enable_gateway }}" != "true" ]]; then
+            # gateway.baseDomain's committed default (jenkins2026.nubenetes.com)
+            # would otherwise apply. Override to "" to disable public access
+            # for this run (e.g. before the one-time "Gateway bootstrap"
+            # workflow + DNS + IAP OAuth client setup is done) - see
+            # README.md "Public access (GKE Gateway API + IAP)".
+            export JENKINS2026_BASE_DOMAIN=""
+          fi
+          ./scripts/up.sh
 
       - name: Smoke test
         run: ./test/smoke-test.sh
@@ -194,15 +203,21 @@ jobs:
             echo "- Cluster: \`$(terraform output -raw cluster_name)\`"
             echo "- Zone: \`$(terraform output -raw location)\`"
             echo "- Observability mode: \`${{ inputs.observability_mode }}\`"
+            echo "- Gateway/IAP enabled: \`${{ inputs.enable_gateway }}\`"
             echo
-            echo "If gateway.baseDomain is set (default: jenkins2026.nubenetes.com)"
-            echo "and the one-time **Gateway bootstrap** workflow + DNS records have"
-            echo "been completed (see README.md \"Public access (GKE Gateway API +"
-            echo "IAP)\"), the stack is reachable at:"
-            echo
-            echo "- Jenkins:   https://jenkins.jenkins2026.nubenetes.com (IAP-protected)"
-            echo "- PetClinic: https://petclinic.jenkins2026.nubenetes.com"
-            echo "- Headlamp:  https://headlamp.jenkins2026.nubenetes.com (IAP-protected)"
+            if [[ "${{ inputs.enable_gateway }}" == "true" ]]; then
+              echo "If the one-time **Gateway bootstrap** workflow + DNS records +"
+              echo "IAP OAuth client have been completed (see README.md \"Public"
+              echo "access (GKE Gateway API + IAP)\"), the stack is reachable at:"
+              echo
+              echo "- Jenkins:   https://jenkins.jenkins2026.nubenetes.com (IAP-protected)"
+              echo "- PetClinic: https://petclinic.jenkins2026.nubenetes.com"
+              echo "- Headlamp:  https://headlamp.jenkins2026.nubenetes.com (IAP-protected)"
+            else
+              echo "Gateway/IAP was disabled for this run (enable_gateway=false)."
+              echo "Use \`kubectl port-forward\` to reach Jenkins/PetClinic/Headlamp -"
+              echo "see README.md \"Accessing the UI\"."
+            fi
             echo
             echo "Run the **GKE decommission** workflow when you're done to avoid ongoing charges."
           } >> "${GITHUB_STEP_SUMMARY}"

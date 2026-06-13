@@ -645,6 +645,11 @@ can find what the provision run created.
 1. Go to the repo's **Actions** tab -> **GKE provision** -> **Run workflow**.
    Pick `observability_mode` (`oss` needs no extra secrets and is the
    recommended default - see [Prerequisites](#prerequisites-1) above).
+   Leave `enable_gateway` unchecked (the default) unless the one-time
+   **Gateway bootstrap** workflow + DNS records + IAP OAuth client (see
+   [Public access](#public-access-gke-gateway-api--iap)) have already been
+   completed - checking it before then deploys a Gateway that can't get an
+   IP/certificate.
 2. Wait ~15-20 minutes. The job summary prints the cluster name/zone and a
    reminder to decommission when done. `kubectl`/`helm` commands won't work
    from your machine unless you also run
