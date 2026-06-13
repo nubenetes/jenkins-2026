@@ -134,7 +134,7 @@ Jenkins build pages by `jcasc-otel.yaml`. Two ways to provide it:
 - **GitHub Actions (automated)**: follow README.md "GitHub Actions
   automation" step 5 once - it provisions a persistent Grafana Cloud stack
   via [`terraform/grafana-cloud-stack`](../terraform/grafana-cloud-stack).
-  From then on, every `gke-provision`/`gke-decommission` run applies
+  From then on, every `02.01-gke-provision`/`02.99-gke-decommission` run applies
   [`terraform/grafana-cloud-token`](../terraform/grafana-cloud-token) to
   mint/revoke a scoped OTLP access policy token and dashboard service account
   token, and writes them into `grafana-cloud-credentials` automatically - no

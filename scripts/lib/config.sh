@@ -139,7 +139,7 @@ export J2026_GATEWAY_IAP_SECRET="$(yq_get '.gateway.iapCredentialsSecretName' 'g
 # Fixed names of the Gateway/HTTPRoute/GCPBackendPolicy resources created by
 # scripts/09-gateway.sh. Shared with scripts/down.sh so the two stay in sync:
 # down.sh deletes these by name/namespace from a fresh checkout in
-# 02.02-gke-decommission.yml, where .generated/gateway/ (created by
+# 02.99-gke-decommission.yml, where .generated/gateway/ (created by
 # 09-gateway.sh on a different runner) doesn't exist.
 export J2026_GATEWAY_NAME="jenkins-2026-gateway"
 export J2026_GATEWAY_HTTPROUTE_JENKINS="jenkins"

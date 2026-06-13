@@ -1,4 +1,4 @@
-name: "03.01 Redeploy Jenkins"
+name: "02.02 Redeploy Jenkins"
 
 # Manually-triggered: re-applies only scripts/04-jenkins.sh (Helm
 # upgrade --install of helm/jenkins + jenkins/casc JCasC fragments) and
