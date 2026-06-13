@@ -58,6 +58,13 @@ spec:
       port: 443
       tls:
         mode: Terminate
+        # The Gateway API CRD requires tls.certificateRefs or tls.options to
+        # be non-empty when mode is Terminate. The actual certificate comes
+        # from the networking.gke.io/certmap annotation above; this
+        # pre-shared-certs option is GKE's documented placeholder to satisfy
+        # that validation when using a certificate map.
+        options:
+          networking.gke.io/pre-shared-certs: ""
       allowedRoutes:
         namespaces:
           from: All
