@@ -109,21 +109,59 @@ upstream PetClinic git org/repos/branches, target registry, and the list of
 config/config.yaml          single source of truth (feature flags above)
 helm/jenkins/                jenkinsci/helm-charts values + per-platform overlays
 helm/petclinic/              local chart for the 9 PetClinic workloads (2 envs)
+helm/headlamp/                kubernetes-sigs/headlamp values (cluster management UI)
 jenkins/casc/                JCasC: security, OTel exporter, seed job
 jenkins/pipelines/           Jenkinsfile.petclinic + seed job (Job DSL + services.yaml)
 vars/, resources/            Jenkins global shared library (must be at repo root)
 observability/               OTel Operator/Collector + Grafana/Loki/Tempo/Prometheus values + dashboards
-scripts/                      00-07 numbered steps + up.sh / down.sh / status.sh
+scripts/                      00-09 numbered steps + up.sh / down.sh / status.sh
 terraform/gke/                throwaway GKE cluster for test/e2e.sh (the one exception
                               to "assumes an existing cluster")
 terraform/bootstrap/          one-time setup for the GitHub Actions automation below
                               (state bucket + Workload Identity Federation)
+terraform/gateway-bootstrap/  one-time setup for public access (static IP + managed
+                              certificate) - see "Public access (GKE Gateway API + IAP)"
 test/                         e2e.sh (provision -> up.sh -> smoke-test.sh -> down.sh -> destroy)
 .github/workflows/            gke-provision.yml / gke-decommission.yml (CI version of test/e2e.sh)
 docs/                         architecture, pipelines-as-code, observability, platforms
 ```
 
 Full details in [`docs/architecture.md`](docs/architecture.md).
+
+## Jenkins UI, plugins & MCP
+
+[`helm/jenkins/values-common.yaml`](helm/jenkins/values-common.yaml) tracks
+the latest Jenkins LTS (`controller.image.tag`) and pins **every** plugin -
+including transitive dependencies - to the exact version resolved against
+that core by `jenkins-plugin-cli` (recipe in the comment above
+`installPlugins`). This replaced an earlier unversioned plugin list: pinning
+means a routine controller pod restart always installs the identical plugin
+set, instead of silently picking up a newer (possibly breaking) version.
+Bump `controller.image.tag` and re-run the recipe together when updating.
+
+Beyond the existing kubernetes/git/JCasC/OTel plugins, three are aimed at UX:
+
+- **[Pipeline Graph View](https://plugins.jenkins.io/pipeline-graph-view/)** -
+  the maintained successor to the discontinued Blue Ocean. Adds an
+  interactive, pan/zoom stage graph to every build page - no configuration
+  needed.
+- **[Dark Theme](https://plugins.jenkins.io/dark-theme/)** (+ Theme Manager) -
+  native dark mode. `appearance.themeManager` in
+  [`jenkins/casc/jcasc-base.yaml`](jenkins/casc/jcasc-base.yaml) defaults
+  everyone to `darkSystem` (follows the browser/OS preference); each user can
+  still override it from their profile's *Appearance* tab.
+- **[MCP Server](https://plugins.jenkins.io/mcp-server/)** - exposes Jenkins
+  (jobs, builds, logs, SCM, replay) as an MCP server, so an MCP-capable
+  client (Claude Code/Desktop, etc.) can query and drive this Jenkins
+  directly. No JCasC config needed - it auto-registers its endpoints
+  (`/mcp-server/sse`, `/mcp-server/mcp`, `/mcp-server/mcp-stateless`).
+  Authenticate as `${JENKINS_ADMIN_ID}` (or any user) with a personal **API
+  token** (user profile -> *Security* -> *Add new Token*), passed as HTTP
+  Basic Auth - never put this token in the repo. For Claude Code:
+  `claude mcp add --transport http jenkins <jenkins-url>/mcp-server/mcp
+  --header "Authorization: Basic <base64(user:token)>"` (after exposing
+  Jenkins per the access method in [Quick start](#quick-start) /
+  [Headlamp](#headlamp-cluster-management-ui)).
 
 ## Pipelines as code
 
@@ -164,6 +202,189 @@ export OTLP to an in-cluster collector, which forwards to Grafana Cloud
 service health, with derived-field/exemplar links so you can jump from a log
 line or a latency spike straight to the trace that produced it. Full details
 in [`docs/observability.md`](docs/observability.md).
+
+## Headlamp (cluster management UI)
+
+[Headlamp](https://headlamp.dev/) gives a web UI for the GKE cluster itself
+(pods, deployments, logs, exec, RBAC, etc.), deployed by
+[`scripts/08-headlamp.sh`](scripts/08-headlamp.sh) into the `headlamp`
+namespace using [`helm/headlamp/values.yaml`](helm/headlamp/values.yaml).
+
+**Access model**: sign in with your Google account. Headlamp is configured
+with `config.oidc.useAccessToken: true`
+([`helm/headlamp/values.yaml`](helm/headlamp/values.yaml)), so it forwards
+your Google OAuth **access token** (scoped
+`https://www.googleapis.com/auth/cloud-platform`) to the GKE API server -
+the same shape of credential `gcloud`-based kubeconfigs use. GKE natively
+maps a Google identity presenting such a token to K8s RBAC `kind: User`
+(the account's email as subject), so for every email listed in
+`HEADLAMP_ADMIN_EMAILS` (see below), this repo:
+
+- grants `roles/container.clusterViewer` in GCP IAM (`terraform/gke`,
+  `google_project_iam_member.headlamp_admins`) - the minimal IAM permission
+  for the GKE API to accept that identity's token at all, and
+- creates a `cluster-admin` `ClusterRoleBinding` for that email
+  (`scripts/08-headlamp.sh`), so once GKE accepts the token, K8s RBAC
+  authorizes everything.
+
+> **Experimental**: this OIDC access-token passthrough is a relatively new
+> Headlamp feature and its behavior against GKE specifically hasn't been
+> verified end-to-end yet - try it on the next `gke-provision` run. If
+> Google sign-in doesn't authorize correctly, Headlamp's chart-default
+> **ServiceAccount-token login** is left enabled as a fallback: its own
+> `headlamp` ServiceAccount already has `cluster-admin`
+> (`clusterRoleBinding.create: true` / `clusterRoleName: cluster-admin`,
+> chart defaults, not overridden), so you can log in with that
+> ServiceAccount's token instead (`kubectl create token headlamp -n
+> headlamp`, or the long-lived Secret token if your cluster still mints
+> one).
+
+By default, access is via `kubectl port-forward` (below). If
+[gateway.baseDomain](#public-access-gke-gateway-api--iap) is configured,
+Headlamp is also reachable at `https://headlamp.<baseDomain>`, gated by both
+Identity-Aware Proxy and its own Google sign-in - see [Public access (GKE
+Gateway API + IAP)](#public-access-gke-gateway-api--iap).
+
+### One-time setup: Google OAuth client
+
+Create a Google OAuth 2.0 **Web application** client (any GCP project will
+do - it doesn't need to be the same project as the GKE cluster):
+
+1. [Google Cloud Console](https://console.cloud.google.com/) -> **APIs &
+   Services** -> **Credentials** -> **Create credentials** -> **OAuth client
+   ID** -> Application type **Web application**.
+2. **Authorized redirect URIs**: add `http://localhost:8080/oidc-callback`
+   (matches the `kubectl port-forward` instructions below). If
+   [gateway.baseDomain](#public-access-gke-gateway-api--iap) is configured,
+   also add `https://headlamp.<baseDomain>/oidc-callback` (e.g.
+   `https://headlamp.jenkins2026.nubenetes.com/oidc-callback`) -
+   [`scripts/lib/config.sh`](scripts/lib/config.sh) computes which one
+   `OIDC_CALLBACK_URL` is set to.
+3. Note the **Client ID** and **Client secret**. The client ID isn't
+   inherently secret, but - like the client secret, which *is* sensitive -
+   it's kept out of the repo for consistency; both are passed as the
+   `HEADLAMP_OIDC_CLIENT_ID` / `HEADLAMP_OIDC_CLIENT_SECRET` secrets below.
+
+### Adding your (or another) identity
+
+Your Google account email is **never committed to this repo** - it's
+supplied via the `HEADLAMP_ADMIN_EMAILS` secret (comma-separated for
+multiple people) and consumed as a placeholder
+(`J2026_HEADLAMP_ADMIN_EMAILS`/`JENKINS2026_HEADLAMP_ADMIN_EMAILS`) by
+[`scripts/lib/config.sh`](scripts/lib/config.sh),
+[`terraform/gke`](terraform/gke) (`TF_VAR_admin_emails`) and
+[`scripts/08-headlamp.sh`](scripts/08-headlamp.sh). To grant cluster-admin
+access via Headlamp to yourself or anyone else:
+
+```bash
+# comma-separated, no spaces needed (leading/trailing whitespace is trimmed)
+gh secret set HEADLAMP_ADMIN_EMAILS --body "you@gmail.com,colleague@gmail.com"
+gh secret set HEADLAMP_OIDC_CLIENT_ID     --body "<client ID from above>"
+gh secret set HEADLAMP_OIDC_CLIENT_SECRET --body "<client secret from above>"
+```
+
+then (re-)run **GKE provision** (adds the GCP IAM binding via
+`terraform/gke` and the `ClusterRoleBinding`s via `scripts/08-headlamp.sh`).
+Locally (`test/e2e.sh` / `scripts/up.sh`), export the same three as
+`HEADLAMP_OIDC_CLIENT_ID`, `HEADLAMP_OIDC_CLIENT_SECRET` and
+`JENKINS2026_HEADLAMP_ADMIN_EMAILS` instead - never commit them to
+`config/config.yaml`.
+
+### Accessing the UI
+
+```bash
+kubectl -n headlamp port-forward svc/headlamp 8080:80
+```
+
+Open <http://localhost:8080> and click **Sign in with Google**.
+
+## Public access (GKE Gateway API + IAP)
+
+Jenkins, PetClinic and Headlamp can all be exposed on the public internet
+through a single **GKE Gateway** (`gatewayClassName:
+gke-l7-global-external-managed`) - one global external HTTPS load balancer,
+one [Google-managed wildcard
+certificate](https://cloud.google.com/certificate-manager/docs/overview)
+(Certificate Manager, DNS-authorized), and one `HTTPRoute` per app, all
+applied by [`scripts/09-gateway.sh`](scripts/09-gateway.sh):
+
+| App | URL | [Identity-Aware Proxy](https://cloud.google.com/iap) |
+|---|---|---|
+| Jenkins | `https://jenkins.<baseDomain>` | yes |
+| PetClinic | `https://petclinic.<baseDomain>` | no (public demo app) |
+| Headlamp | `https://headlamp.<baseDomain>` | yes |
+
+`<baseDomain>` is [`gateway.baseDomain`](config/config.yaml) -
+`jenkins2026.nubenetes.com` by default. Jenkins and Headlamp get an extra
+Google-login gate (IAP) in front of their own auth; PetClinic, the demo app,
+stays open. **This whole feature is opt-in**: set
+`JENKINS2026_BASE_DOMAIN=""` to disable it (no `Gateway`/`HTTPRoute`/
+`GCPBackendPolicy` resources are created, e.g. before the one-time setup
+below has been done) - `scripts/09-gateway.sh` is also a no-op on
+`platform.target` other than `gke`, since `gke-l7-global-external-managed`
+and `GCPBackendPolicy` are GKE-specific.
+
+> **Needs live-cluster verification**: the exact `Gateway`/`HTTPRoute`/
+> `GCPBackendPolicy` field syntax in
+> [`scripts/09-gateway.sh`](scripts/09-gateway.sh) (the
+> `addresses[].type: NamedAddress` static-IP reference, the
+> `networking.gke.io/certmap` annotation, cross-namespace `HTTPRoute`
+> attachment, and the `GCPBackendPolicy` `oauth2ClientSecret` field/key
+> names) hasn't been confirmed against a live cluster yet - try it on the
+> next `gke-provision` run, same caveat as Headlamp's OIDC passthrough above.
+
+### One-time setup
+
+1. **Run the "Gateway bootstrap" workflow** (Actions tab -> **Gateway
+   bootstrap** -> **Run workflow**). It applies
+   [`terraform/gateway-bootstrap`](terraform/gateway-bootstrap) (state in the
+   same GCS bucket as `terraform/gke`, like [Grafana Cloud
+   bootstrap](#one-time-setup)) to create, once and persistently:
+   - a global static IP (`jenkins-2026-gateway-ip`), and
+   - a Google-managed wildcard certificate for `<baseDomain>` and
+     `*.<baseDomain>`, validated via a Certificate Manager DNS authorization.
+
+   It's safe to re-run - re-applying against existing state is a no-op. The
+   job summary prints the static IP and the DNS authorization record.
+
+2. **Add the two DNS records it prints**, with your DNS provider for
+   `<baseDomain>`'s parent domain. For the default
+   `jenkins2026.nubenetes.com` (a subdomain of `nubenetes.com`, managed at
+   **Squarespace** - Squarespace migrated domains off Google Domains in
+   2023): go to **Domains** -> `nubenetes.com` -> **DNS** -> **Custom
+   records**, and add:
+   - a wildcard **A** record: `*.jenkins2026` -> the static IP from step 1.
+   - the **CNAME** record from the workflow's "DNS authorization record"
+     output (proves ownership of `jenkins2026.nubenetes.com` for the managed
+     certificate).
+
+   Certificate provisioning can take up to ~1h after the DNS authorization
+   record verifies.
+
+3. **Create the IAP OAuth client by hand** (the Terraform resources for this,
+   `google_iap_brand`/`google_iap_client`, are deprecated - the IAP OAuth
+   Admin API they depend on was deprecated after July 2025). In the [GCP
+   Console](https://console.cloud.google.com/): **APIs & Services** ->
+   **Credentials** -> **Create credentials** -> **OAuth client ID** ->
+   Application type **Web application**. Then:
+
+   ```bash
+   gh secret set IAP_OAUTH_CLIENT_ID     --body "<client ID>"
+   gh secret set IAP_OAUTH_CLIENT_SECRET --body "<client secret>"
+   ```
+
+   (Re-)run **GKE provision** - `scripts/01-namespaces.sh` writes these into
+   the `gateway-iap-oauth` Secret in the `jenkins` and `headlamp` namespaces
+   that the `GCPBackendPolicy` resources reference.
+
+4. **IAP access control** reuses `HEADLAMP_ADMIN_EMAILS` (see
+   [Headlamp](#headlamp-cluster-management-ui)): each listed email is granted
+   both `roles/container.clusterViewer` (existing, for Headlamp's OIDC
+   passthrough) and `roles/iap.httpsResourceAccessor` (new, via
+   `terraform/gke`'s `google_project_iam_member.iap_accessors`) - i.e. the
+   same people who can administer the cluster via Headlamp can pass IAP for
+   Jenkins and Headlamp. Anyone without `roles/iap.httpsResourceAccessor` gets
+   a 403 from IAP before reaching either app.
 
 ## Automated end-to-end test (provisioning + decommissioning)
 
@@ -354,6 +575,15 @@ can find what the provision run created.
    | `REGISTRY_USERNAME` / `REGISTRY_PASSWORD` | pushing PetClinic images to, and pulling them back from, a private registry (`scripts/01-namespaces.sh`) |
    | `GIT_USERNAME` / `GIT_TOKEN` | cloning a private PetClinic fork |
    | `GRAFANA_TRACES_DASHBOARD_UID` / `OTEL_LOGS_BACKEND_URL` | `observability_mode: grafana-cloud` extras - a "View trace in Grafana" link UID and the logs Explore URL (see `observability/otel-collector/secret.example.yaml`); both optional even then |
+   | `HEADLAMP_OIDC_CLIENT_ID` / `HEADLAMP_OIDC_CLIENT_SECRET` | Google OAuth client for Headlamp login (see [Headlamp](#headlamp-cluster-management-ui)) |
+   | `HEADLAMP_ADMIN_EMAILS` | comma-separated Google account emails granted cluster-admin via Headlamp **and** IAP access to Jenkins/Headlamp - **your own email, never committed to the repo** (see [Headlamp](#headlamp-cluster-management-ui) and [Public access](#public-access-gke-gateway-api--iap)) |
+   | `IAP_OAUTH_CLIENT_ID` / `IAP_OAUTH_CLIENT_SECRET` | OAuth client gating Jenkins/Headlamp via Identity-Aware Proxy (see [Public access](#public-access-gke-gateway-api--iap)) |
+
+   `gateway.baseDomain` (default `jenkins2026.nubenetes.com`) is **not** a
+   secret - it's committed in `config/config.yaml`. Override it via the
+   `JENKINS2026_BASE_DOMAIN` env var for forks using a different domain, or
+   set it to `""` to disable public access entirely (see [Public
+   access](#public-access-gke-gateway-api--iap)).
 
 5. **(Optional) Full Grafana Cloud lifecycle automation**, for
    `observability_mode: grafana-cloud`. Without this, picking that mode in

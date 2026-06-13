@@ -103,6 +103,70 @@ export J2026_GRAFANA_CHART_REPO_NAME="$(yq_get '.observability.grafana.chart.rep
 export J2026_GRAFANA_CHART_REPO_URL="$(yq_get '.observability.grafana.chart.repoUrl' 'https://grafana.github.io/helm-charts')"
 export J2026_GRAFANA_OSS_NAMESPACE="$(yq_get '.observability.grafana.ossNamespace' "${J2026_OBS_NAMESPACE}")"
 
+# --- headlamp ----------------------------------------------------------------
+
+export J2026_HEADLAMP_NAMESPACE="$(yq_get '.headlamp.namespace' 'headlamp')"
+export J2026_HEADLAMP_RELEASE="$(yq_get '.headlamp.releaseName' 'headlamp')"
+export J2026_HEADLAMP_CHART_REPO_NAME="$(yq_get '.headlamp.chart.repoName' 'headlamp')"
+export J2026_HEADLAMP_CHART_REPO_URL="$(yq_get '.headlamp.chart.repoUrl' 'https://kubernetes-sigs.github.io/headlamp/')"
+export J2026_HEADLAMP_CHART_NAME="$(yq_get '.headlamp.chart.chartName' 'headlamp/headlamp')"
+export J2026_HEADLAMP_CHART_VERSION="$(yq_get '.headlamp.chart.version' '')"
+export J2026_HEADLAMP_CREDENTIALS_SECRET="$(yq_get '.headlamp.credentialsSecretName' 'headlamp-credentials')"
+export J2026_HEADLAMP_OIDC_ISSUER_URL="$(yq_get '.headlamp.oidc.issuerURL' 'https://accounts.google.com')"
+export J2026_HEADLAMP_OIDC_SCOPES="$(yq_get '.headlamp.oidc.scopes' 'openid email profile')"
+
+# FEATURE FLAG: JENKINS2026_HEADLAMP_ADMIN_EMAILS, if set, overrides
+# headlamp.adminEmails from config.yaml - same "config file is the durable
+# default, env var is the ephemeral override" pattern as JENKINS2026_PLATFORM
+# above. Comma-separated Google account emails granted cluster-admin via
+# Headlamp (see README.md "Headlamp"). Never put real emails in config.yaml.
+export J2026_HEADLAMP_ADMIN_EMAILS="${JENKINS2026_HEADLAMP_ADMIN_EMAILS:-$(yq_get '.headlamp.adminEmails' '')}"
+
+# --- gateway (public access via GKE Gateway API + IAP) -----------------------
+
+# FEATURE FLAG: JENKINS2026_BASE_DOMAIN, if set (including to ""), overrides
+# gateway.baseDomain from config.yaml - same "config file is the durable
+# default, env var is the ephemeral override" pattern as JENKINS2026_PLATFORM
+# above. An empty value disables the gateway entirely (scripts/09-gateway.sh
+# becomes a no-op) - e.g. before terraform/gateway-bootstrap has been run.
+# Note: uses "${VAR-default}" (no colon) so that JENKINS2026_BASE_DOMAIN=""
+# (explicitly set to empty) is honored as "disabled", distinct from unset.
+export J2026_GATEWAY_BASE_DOMAIN="${JENKINS2026_BASE_DOMAIN-$(yq_get '.gateway.baseDomain' '')}"
+export J2026_GATEWAY_STATIC_IP_NAME="$(yq_get '.gateway.staticIPName' 'jenkins-2026-gateway-ip')"
+export J2026_GATEWAY_CERTMAP_NAME="$(yq_get '.gateway.certMapName' 'jenkins-2026-cert-map')"
+export J2026_GATEWAY_IAP_SECRET="$(yq_get '.gateway.iapCredentialsSecretName' 'gateway-iap-oauth')"
+
+# Fixed names of the Gateway/HTTPRoute/GCPBackendPolicy resources created by
+# scripts/09-gateway.sh. Shared with scripts/down.sh so the two stay in sync:
+# down.sh deletes these by name/namespace from a fresh checkout in
+# gke-decommission.yml, where .generated/gateway/ (created by 09-gateway.sh on
+# a different runner) doesn't exist.
+export J2026_GATEWAY_NAME="jenkins-2026-gateway"
+export J2026_GATEWAY_HTTPROUTE_JENKINS="jenkins"
+export J2026_GATEWAY_HTTPROUTE_PETCLINIC="petclinic"
+export J2026_GATEWAY_HTTPROUTE_HEADLAMP="headlamp"
+export J2026_GATEWAY_IAP_POLICY_JENKINS="jenkins-iap"
+export J2026_GATEWAY_IAP_POLICY_HEADLAMP="headlamp-iap"
+
+J2026_GATEWAY_HOST_JENKINS="$(yq_get '.gateway.hosts.jenkins' 'jenkins')"
+J2026_GATEWAY_HOST_PETCLINIC="$(yq_get '.gateway.hosts.petclinic' 'petclinic')"
+J2026_GATEWAY_HOST_HEADLAMP="$(yq_get '.gateway.hosts.headlamp' 'headlamp')"
+export J2026_GATEWAY_JENKINS_HOST="${J2026_GATEWAY_HOST_JENKINS}.${J2026_GATEWAY_BASE_DOMAIN}"
+export J2026_GATEWAY_PETCLINIC_HOST="${J2026_GATEWAY_HOST_PETCLINIC}.${J2026_GATEWAY_BASE_DOMAIN}"
+export J2026_GATEWAY_HEADLAMP_HOST="${J2026_GATEWAY_HOST_HEADLAMP}.${J2026_GATEWAY_BASE_DOMAIN}"
+
+# Headlamp's OIDC redirect URI: the public gateway URL if the gateway is
+# enabled, else the kubectl port-forward default. Override with
+# JENKINS2026_HEADLAMP_OIDC_CALLBACK_URL if neither fits. Must be registered
+# as an authorized redirect URI on the Headlamp Google OAuth client - see
+# README.md "Headlamp" and "Public access (GKE Gateway API + IAP)".
+if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
+  J2026_HEADLAMP_OIDC_CALLBACK_URL_DEFAULT="https://${J2026_GATEWAY_HEADLAMP_HOST}/oidc-callback"
+else
+  J2026_HEADLAMP_OIDC_CALLBACK_URL_DEFAULT="http://localhost:8080/oidc-callback"
+fi
+export J2026_HEADLAMP_OIDC_CALLBACK_URL="${JENKINS2026_HEADLAMP_OIDC_CALLBACK_URL:-${J2026_HEADLAMP_OIDC_CALLBACK_URL_DEFAULT}}"
+
 # --- petclinic ---------------------------------------------------------------
 
 export J2026_PETCLINIC_NS_STABLE="$(yq_get '.petclinic.namespaces.stable' 'petclinic')"

@@ -87,7 +87,10 @@ jobs:
         working-directory: terraform/gke
         env:
           TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
-        run: terraform apply -auto-approve -input=false
+          HEADLAMP_ADMIN_EMAILS: ${{ secrets.HEADLAMP_ADMIN_EMAILS }}
+        run: |
+          export TF_VAR_admin_emails="$(printf '%s' "${HEADLAMP_ADMIN_EMAILS}" | jq -R -c 'split(",") | map(gsub("^\\s+|\\s+$";"")) | map(select(length > 0))')"
+          terraform apply -auto-approve -input=false
 
       - name: Fetch kubeconfig credentials
         working-directory: terraform/gke
@@ -103,6 +106,10 @@ jobs:
           REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
           GIT_USERNAME: ${{ secrets.GIT_USERNAME }}
           GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
+          HEADLAMP_OIDC_CLIENT_ID: ${{ secrets.HEADLAMP_OIDC_CLIENT_ID }}
+          HEADLAMP_OIDC_CLIENT_SECRET: ${{ secrets.HEADLAMP_OIDC_CLIENT_SECRET }}
+          IAP_OAUTH_CLIENT_ID: ${{ secrets.IAP_OAUTH_CLIENT_ID }}
+          IAP_OAUTH_CLIENT_SECRET: ${{ secrets.IAP_OAUTH_CLIENT_SECRET }}
         run: |
           ./scripts/00-check-prereqs.sh
           ./scripts/01-namespaces.sh
@@ -165,6 +172,12 @@ jobs:
       - name: Deploy the stack (scripts/up.sh)
         env:
           JENKINS2026_OBS_MODE: ${{ inputs.observability_mode }}
+          JENKINS2026_HEADLAMP_ADMIN_EMAILS: ${{ secrets.HEADLAMP_ADMIN_EMAILS }}
+          # gateway.baseDomain's committed default (jenkins2026.nubenetes.com)
+          # applies here. Set JENKINS2026_BASE_DOMAIN="" to disable public
+          # access for a given run (e.g. before the one-time "Gateway
+          # bootstrap" workflow has been run) - see README.md "Public access
+          # (GKE Gateway API + IAP)".
         run: ./scripts/up.sh
 
       - name: Smoke test
@@ -181,6 +194,15 @@ jobs:
             echo "- Cluster: \`$(terraform output -raw cluster_name)\`"
             echo "- Zone: \`$(terraform output -raw location)\`"
             echo "- Observability mode: \`${{ inputs.observability_mode }}\`"
+            echo
+            echo "If gateway.baseDomain is set (default: jenkins2026.nubenetes.com)"
+            echo "and the one-time **Gateway bootstrap** workflow + DNS records have"
+            echo "been completed (see README.md \"Public access (GKE Gateway API +"
+            echo "IAP)\"), the stack is reachable at:"
+            echo
+            echo "- Jenkins:   https://jenkins.jenkins2026.nubenetes.com (IAP-protected)"
+            echo "- PetClinic: https://petclinic.jenkins2026.nubenetes.com"
+            echo "- Headlamp:  https://headlamp.jenkins2026.nubenetes.com (IAP-protected)"
             echo
             echo "Run the **GKE decommission** workflow when you're done to avoid ongoing charges."
           } >> "${GITHUB_STEP_SUMMARY}"

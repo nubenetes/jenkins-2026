@@ -96,6 +96,15 @@ security:
   globalJobDslSecurityConfiguration:
     useScriptSecurity: false
 
+# Default to the dark-theme plugin's "darkSystem" theme (follows the
+# browser/OS preference). disableUserThemes: false leaves the per-user
+# theme picker (user profile -> Appearance) enabled, so this is just the
+# default for anyone who hasn't chosen one.
+appearance:
+  themeManager:
+    disableUserThemes: false
+    theme: "darkSystem"
+
 unclassified:
   # unclassified.location.url is intentionally NOT set here - the chart's
   # generated jcasc-default-config.yaml always sets it (to the in-cluster
