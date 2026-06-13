@@ -138,9 +138,12 @@ Full details in [`docs/architecture.md`](docs/architecture.md).
 kubectl -n jenkins port-forward svc/jenkins 8080:8080
 ```
 
-Open <http://localhost:8080> and log in as `${JENKINS_ADMIN_ID}` (`jenkins.adminUser`
-in [`config/config.yaml`](config/config.yaml), default `admin`). The password
-is randomly generated on first run by
+Open <http://localhost:8080>. If [Google login](#google-login-openid-connect)
+is configured, use the **Sign in with Google** button. Otherwise (or for
+break-glass/automation access), log in as `${JENKINS_ADMIN_ID}`
+(`jenkins.adminUser` in [`config/config.yaml`](config/config.yaml), default
+`admin`) via the **escape hatch** - this login always works, regardless of
+OIDC. The password is randomly generated on first run by
 [`scripts/01-namespaces.sh`](scripts/01-namespaces.sh) and printed once to its
 output - if you missed it, retrieve it from the `jenkins-credentials` Secret
 (`jenkins.credentialsSecretName`) in the `jenkins` namespace:
@@ -149,13 +152,72 @@ output - if you missed it, retrieve it from the `jenkins-credentials` Secret
 kubectl -n jenkins get secret jenkins-credentials -o jsonpath='{.data.admin-password}' | base64 -d; echo
 ```
 
-The same Secret also holds the `platform-engineer` login (used by the
-`pac-dev/*` pipelines-as-code sandbox, see [Pipelines-as-code dev
-sandbox](#pipelines-as-code-dev-sandbox-pac-dev)) under
-`platform-engineer-password`. To rotate either password, delete the Secret
-and re-run `scripts/01-namespaces.sh` + `scripts/04-jenkins.sh` (see
-[Troubleshooting](#troubleshooting)) - new random passwords are generated and
+This same `${JENKINS_ADMIN_ID}` / password is what
+[`test/smoke-test.sh`](test/smoke-test.sh) and
+[`scripts/06-seed-pipelines.sh`](scripts/06-seed-pipelines.sh) use for
+HTTP Basic Auth against the Jenkins API. To rotate the password, delete the
+Secret and re-run `scripts/01-namespaces.sh` + `scripts/04-jenkins.sh` (see
+[Troubleshooting](#troubleshooting)) - a new random password is generated and
 printed once.
+
+### Google login (OpenID Connect)
+
+Jenkins' security realm is [`oic-auth`](https://plugins.jenkins.io/oic-auth/)
+(`securityRealm.oic` in
+[`jenkins/casc/jcasc-base.yaml`](jenkins/casc/jcasc-base.yaml)), so anyone can
+sign in with a Google account - Role-Based Authorization Strategy then decides
+what they can do. By default, a Google login only gets `authenticated-base`
+(read-only UI access); to grant the `admin` role (`Overall/Administer`) to
+your own account, set `JENKINS_OIDC_ADMIN_EMAIL`.
+
+This **replaces** the old local `admin`/`platform-engineer` password logins -
+the `platform-engineer` account can no longer log in (its
+[pac-dev item role](#pipelines-as-code-dev-sandbox-pac-dev) is left in place
+in case it's remapped to an OIDC user/group later). The `${JENKINS_ADMIN_ID}`
+escape hatch above remains as the break-glass admin login.
+
+1. **Create a third Google OAuth 2.0 Web application client** (can reuse the
+   same GCP project as the [Headlamp](#one-time-setup-google-oauth-client)
+   and [IAP](#one-time-setup) clients, but must be its own client - Jenkins
+   needs its own redirect URI and cannot share a client with them):
+   - [Google Cloud Console](https://console.cloud.google.com/) -> **APIs &
+     Services** -> **Credentials** -> **Create credentials** -> **OAuth
+     client ID** -> Application type **Web application**.
+   - **Authorized redirect URIs**: add
+     `https://jenkins.<baseDomain>/securityRealm/finishLogin` (e.g.
+     `https://jenkins.jenkins2026.nubenetes.com/securityRealm/finishLogin`).
+     If you only access Jenkins via `kubectl port-forward`, also add
+     `http://localhost:8080/securityRealm/finishLogin`.
+   - Note the **Client ID** and **Client secret**.
+   - On the **OAuth consent screen** (Audience tab), while the app is in
+     **Testing**, add your Google account as a **Test user** - otherwise
+     Google returns `Error 403: access_denied` ("has not completed the Google
+     verification process"). Unlike the Headlamp client, Jenkins only needs
+     the non-sensitive `openid email profile` scopes, so no Data Access
+     changes are required.
+
+2. **Add repository secrets** (your own email is **never committed to this
+   repo**):
+
+   ```bash
+   gh secret set JENKINS_OIDC_CLIENT_ID     --body "<client ID from above>"
+   gh secret set JENKINS_OIDC_CLIENT_SECRET --body "<client secret from above>"
+   gh secret set JENKINS_OIDC_ADMIN_EMAIL   --body "you@gmail.com"
+   ```
+
+   then re-run **02.02 Redeploy Jenkins** (or **02.01 GKE provision**).
+   Locally (`test/e2e.sh` / `scripts/up.sh`), export the same three as
+   `JENKINS_OIDC_CLIENT_ID`, `JENKINS_OIDC_CLIENT_SECRET` and
+   `JENKINS_OIDC_ADMIN_EMAIL` instead.
+
+   > Changes to `jenkins-credentials` only take effect for a *new* Secret -
+   > if it already exists from a previous run, delete it first (see
+   > [Troubleshooting](#troubleshooting)) so `scripts/01-namespaces.sh`
+   > recreates it with the `oidc-*` keys.
+
+Until `JENKINS_OIDC_CLIENT_ID`/`JENKINS_OIDC_CLIENT_SECRET` are set, the
+**Sign in with Google** button is shown but errors out - the escape hatch
+above is the only working login in the meantime.
 
 [`helm/jenkins/values-common.yaml`](helm/jenkins/values-common.yaml) tracks
 the latest Jenkins LTS (`controller.image.tag`) and pins **every** plugin -
@@ -683,6 +745,8 @@ for redeploying only Jenkins.
    | `GRAFANA_TRACES_DASHBOARD_UID` / `OTEL_LOGS_BACKEND_URL` | `observability_mode: grafana-cloud` extras - a "View trace in Grafana" link UID and the logs Explore URL (see `observability/otel-collector/secret.example.yaml`); both optional even then |
    | `HEADLAMP_OIDC_CLIENT_ID` / `HEADLAMP_OIDC_CLIENT_SECRET` | Google OAuth client for Headlamp login (see [Headlamp](#headlamp-cluster-management-ui)) |
    | `HEADLAMP_ADMIN_EMAILS` | comma-separated Google account emails granted cluster-admin via Headlamp **and** IAP access to Jenkins/Headlamp - **your own email, never committed to the repo** (see [Headlamp](#headlamp-cluster-management-ui) and [Public access](#public-access-gke-gateway-api--iap)) |
+   | `JENKINS_OIDC_CLIENT_ID` / `JENKINS_OIDC_CLIENT_SECRET` | Google OAuth client for Jenkins "Sign in with Google" (see [Google login](#google-login-openid-connect)) |
+   | `JENKINS_OIDC_ADMIN_EMAIL` | Google account email granted the Jenkins `admin` role via OIDC login - **your own email, never committed to the repo** (see [Google login](#google-login-openid-connect)) |
    | `IAP_OAUTH_CLIENT_ID` / `IAP_OAUTH_CLIENT_SECRET` | OAuth client gating Jenkins/Headlamp via Identity-Aware Proxy (see [Public access](#public-access-gke-gateway-api--iap)) |
 
    `gateway.baseDomain` (default `jenkins2026.nubenetes.com`) is **not** a

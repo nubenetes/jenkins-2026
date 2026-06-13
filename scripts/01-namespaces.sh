@@ -28,6 +28,12 @@ else
   admin_password="${ADMIN_PASSWORD:-$(openssl rand -base64 24 | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c20)}"
   platform_engineer_password="${PLATFORM_ENGINEER_PASSWORD:-$(openssl rand -base64 24 | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c20)}"
 
+  if [[ -z "${JENKINS_OIDC_CLIENT_ID:-}" || -z "${JENKINS_OIDC_CLIENT_SECRET:-}" ]]; then
+    log_warn "JENKINS_OIDC_CLIENT_ID/JENKINS_OIDC_CLIENT_SECRET not set - Jenkins will"
+    log_warn "deploy but \"Sign in with Google\" won't work until configured. The"
+    log_warn "escape-hatch admin login (above) still works. See README.md \"Jenkins\"."
+  fi
+
   kubectl create secret generic "${J2026_JENKINS_CREDENTIALS_SECRET}" \
     -n "${J2026_JENKINS_NAMESPACE}" \
     --from-literal=admin-password="${admin_password}" \
@@ -38,7 +44,10 @@ else
     --from-literal=registry-username="${REGISTRY_USERNAME:-}" \
     --from-literal=registry-password="${REGISTRY_PASSWORD:-}" \
     --from-literal=git-username="${GIT_USERNAME:-}" \
-    --from-literal=git-token="${GIT_TOKEN:-}"
+    --from-literal=git-token="${GIT_TOKEN:-}" \
+    --from-literal=oidc-client-id="${JENKINS_OIDC_CLIENT_ID:-}" \
+    --from-literal=oidc-client-secret="${JENKINS_OIDC_CLIENT_SECRET:-}" \
+    --from-literal=oidc-admin-email="${JENKINS_OIDC_ADMIN_EMAIL:-}"
 
   log_info "Created. Jenkins admin login: ${J2026_JENKINS_ADMIN_USER} / ${admin_password}"
   log_info "Created. Jenkins platform-engineer login (pac-dev/* pipelines-as-code sandbox): ${J2026_PLATFORM_ENGINEER_USER} / ${platform_engineer_password}"

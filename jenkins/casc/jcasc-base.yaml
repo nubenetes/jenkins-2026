@@ -17,18 +17,30 @@ jenkins:
   # helm/jenkins/values-common.yaml instead of being set here - see the
   # comment there for why.
 
+  # Google login via OpenID Connect (oic-auth plugin) - replaces the old
+  # local-realm admin/platform-engineer accounts. clientId/clientSecret come
+  # from JENKINS_OIDC_CLIENT_ID/SECRET (empty until configured - see
+  # README.md "Jenkins" Google login section); an empty clientId means the
+  # "Sign in with Google" button errors out, but the escape hatch below
+  # still provides admin login/API access via JENKINS_ADMIN_ID/PASSWORD
+  # (the same credentials the old local "admin" account used).
   securityRealm:
-    local:
-      allowsSignup: false
-      users:
-        - id: "${JENKINS_ADMIN_ID:-admin}"
-          password: "${JENKINS_ADMIN_PASSWORD}"
-        # Dedicated devops/platform-engineer account - the only identity
-        # (besides admin) with Job/Read on the pac-dev/* pipelines-as-code
-        # dev sandbox. See the "platform-engineer" item role below and
-        # README.md "Pipelines-as-code dev sandbox".
-        - id: "${JENKINS_PLATFORM_ENGINEER_ID:-platform-engineer}"
-          password: "${JENKINS_PLATFORM_ENGINEER_PASSWORD}"
+    oic:
+      clientId: "${JENKINS_OIDC_CLIENT_ID:-}"
+      clientSecret: "${JENKINS_OIDC_CLIENT_SECRET:-}"
+      serverConfiguration:
+        wellKnown:
+          wellKnownOpenIDConfigurationUrl: "https://accounts.google.com/.well-known/openid-configuration"
+          scopesOverride: "openid email profile"
+      userNameField: "email"
+      emailFieldName: "email"
+      fullNameFieldName: "name"
+      logoutFromOpenidProvider: true
+      properties:
+        - escapeHatch:
+            username: "${JENKINS_ADMIN_ID:-admin}"
+            secret: "${JENKINS_ADMIN_PASSWORD}"
+            group: "escape-hatch-admin"
 
   # Role-Strategy roles come in two flavours:
   #   - "global" roles apply to every item unconditionally (no pattern).
@@ -38,6 +50,12 @@ jenkins:
   # To keep pac-dev/* hidden from "authenticated" users, Job/* permissions
   # must therefore live in an ITEM role scoped to everything EXCEPT pac-dev/*
   # ("developer" below), not a global role.
+  #
+  # NOTE: the local "platform-engineer" account (and its item role below) can
+  # no longer log in now that securityRealm is "oic" instead of "local" - the
+  # role definition is left in place (Overall/Administer via "admin" already
+  # covers pac-dev/* anyway) in case it's mapped to another OIDC
+  # user/group later. See README.md "Pipelines-as-code dev sandbox".
   authorizationStrategy:
     roleBased:
       roles:
@@ -48,8 +66,15 @@ jenkins:
               - "Overall/Administer"
             # "assignments" (flat string list) is deprecated in favour of
             # "entries", which disambiguates users vs. groups.
+            # - "escape-hatch-admin" is the group the oic-auth escape hatch
+            #   above assigns to JENKINS_ADMIN_ID logins.
+            # - JENKINS_OIDC_ADMIN_EMAIL (empty until configured) is the
+            #   Google account that should have full admin access - the
+            #   oic-auth userNameField above is "email", so OIDC usernames
+            #   are email addresses.
             entries:
-              - user: "${JENKINS_ADMIN_ID:-admin}"
+              - group: "escape-hatch-admin"
+              - user: "${JENKINS_OIDC_ADMIN_EMAIL:-}"
           - name: "authenticated-base"
             description: "Baseline UI access for any logged-in user (no Job/* - granted per-item below)"
             permissions:
