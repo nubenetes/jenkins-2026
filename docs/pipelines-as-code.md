@@ -137,13 +137,30 @@ The `container-registry` and `petclinic-git` credentials (used by
 all optional - `ghcr.io` works anonymously for pulls but pushing requires a
 token with `write:packages`).
 
+## Jenkinsfile/shared-library source per job flavour
+
+`seed_jobs.groovy` and `services.yaml` (the job *definitions*) are always
+sourced from whichever branch generated the running seed job
+(`JENKINS2026_REPO_BRANCH` for `seed-jobs`, `JENKINS2026_DEV_REPO_BRANCH` for
+`pac-dev/seed-jobs-dev`). But the **`Jenkinsfile.petclinic` + shared library**
+checked out *by each generated job* differ per flavour
+(`flavour.pipelineRepoBranch` in `seed_jobs.groovy`):
+
+| Job | Jenkinsfile.petclinic + shared library from |
+|---|---|
+| `<service>` (stable) | `JENKINS2026_REPO_BRANCH` (`main`) |
+| `<service>-develop` | `JENKINS2026_DEV_REPO_BRANCH` (`develop`) |
+| `pac-dev/<service>` | `JENKINS2026_DEV_REPO_BRANCH` (`develop`) |
+
+So changes to the Jenkinsfile or `vars/`/`resources/` land on `<service>-develop`
+(and `pac-dev/<service>`) as soon as they're pushed to `develop`, without
+affecting the 9 stable `<service>` jobs until merged to `main`.
+
 ## Pipelines-as-code dev sandbox (`pac-dev/`)
 
-The 18 jobs above are the **stable** pipelines: their definitions
-(`seed_jobs.groovy`, `Jenkinsfile.petclinic`, `jcasc-*.yaml`, the shared
-library) are always sourced from this repo's `JENKINS2026_REPO_BRANCH`
-(`main`). Changing any of those files therefore needs a safe way to test the
-*new pipeline-as-code itself* before it reaches `main` - that is what the
+Changing `seed_jobs.groovy`/`services.yaml` themselves (the job
+*definitions*, not just the Jenkinsfile they run) needs a safe way to test
+that *new pipeline-as-code itself* before it reaches `main` - that is what the
 `pac-dev/` folder is for.
 
 ### How it's generated
@@ -163,9 +180,10 @@ checked out from `JENKINS2026_DEV_REPO_BRANCH` (`config/config.yaml`
   service (`pac-dev/<service>`, not a stable/`-develop` pair), each:
   - tracking `branches.develop` (`main`) of the PetClinic source repo,
   - checking out `Jenkinsfile.petclinic` from `JENKINS2026_DEV_REPO_BRANCH`
-    (`develop`) of **this** repo - so edits to the Jenkinsfile, or to
-    `vars/`/`resources/` via a `@Library('petclinic-shared-library@develop')`
-    pin, take effect here first,
+    (`develop`) of **this** repo, same as `<service>-develop` - so edits to
+    the Jenkinsfile, or to `vars/`/`resources/` via a
+    `@Library('petclinic-shared-library@develop')` pin, take effect here
+    first,
   - deploying to `namespaces.pacDev` (`petclinic-pac-dev`,
     `values-pac-dev.yaml`).
 - A `petclinic-pac-dev` `listView` groups the 9 `pac-dev/*` jobs, mirroring
@@ -178,7 +196,7 @@ is idempotent, exactly like `seed-jobs`.
 
 | | Stable (`seed-jobs`) | Dev sandbox (`pac-dev/seed-jobs-dev`) |
 |---|---|---|
-| This repo's branch | `JENKINS2026_REPO_BRANCH` (`main`) | `JENKINS2026_DEV_REPO_BRANCH` (`develop`) |
+| This repo's branch (job *definitions*) | `JENKINS2026_REPO_BRANCH` (`main`) | `JENKINS2026_DEV_REPO_BRANCH` (`develop`) |
 | Jobs generated | `<service>` + `<service>-develop` (18) | `pac-dev/<service>` (9) |
 | PetClinic source branch | `main` / `main` | `main` |
 | K8s namespace | `petclinic` / `petclinic-develop` | `petclinic-pac-dev` |
@@ -187,6 +205,14 @@ is idempotent, exactly like `seed-jobs`.
 Because the dev sandbox uses its own namespace, Helm release and job
 names/folder, re-seeding or running `pac-dev/*` can never overwrite or
 restart anything the 18 stable jobs manage.
+
+Note `<service>-develop` and `pac-dev/<service>` now run the *same*
+Jenkinsfile.petclinic/shared-library source (`develop`, see above) - they
+differ only in namespace/Helm release and visibility (`pac-dev/*` is
+restricted to the `platform-engineer` role, see below). `pac-dev/*` remains
+useful for testing `seed_jobs.groovy`/`services.yaml` *structure* changes
+(new services, new flavours, RBAC) without touching the 18 stable/`-develop`
+job definitions at all.
 
 ### Who can see it
 
