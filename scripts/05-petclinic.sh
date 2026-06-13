@@ -17,7 +17,7 @@ deploy_env() {
     --create-namespace \
     -f "${J2026_ROOT_DIR}/helm/petclinic/${values_file}" \
     --set global.platform="${J2026_PLATFORM}" \
-    --timeout 5m
+    --timeout 5m --debug
 }
 
 run_bg petclinic-stable  deploy_env stable  "${J2026_PETCLINIC_NS_STABLE}"  values-stable.yaml
