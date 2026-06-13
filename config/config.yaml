@@ -196,9 +196,13 @@ petclinic:
     backendUrl: https://github.com/spring-petclinic/spring-petclinic-microservices.git
     frontendUrl: https://github.com/spring-petclinic/spring-petclinic-angular.git
 
+  # Upstream spring-petclinic repos only have a `main` branch (no `master`/
+  # `develop`) - both pipelines build from `main`. The "-develop" suffix
+  # pipelines (separate namespace, see namespaces.develop above) exist purely
+  # as a testing track, not because a different source branch exists.
   branches:
-    stable: master
-    develop: develop
+    stable: main
+    develop: main
 
   # Container images built by the pipelines are pushed here. Override with
   # your own registry; ghcr.io/<org> works out of the box with the GITHUB_TOKEN

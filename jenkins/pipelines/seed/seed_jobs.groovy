@@ -15,14 +15,14 @@
  *   JOB_FOLDER == ''        - the ROOT "seed-jobs" job (tracks this repo's
  *                              JENKINS2026_REPO_BRANCH, normally "main").
  *                              Creates the GitFlow pair per service:
- *                                <name>          - tracks `branches.stable`  (master)  -> namespaces.stable
- *                                <name>-develop  - tracks `branches.develop` (develop) -> namespaces.develop
+ *                                <name>          - tracks `branches.stable`  (main) -> namespaces.stable
+ *                                <name>-develop  - tracks `branches.develop` (main) -> namespaces.develop
  *
  *   JOB_FOLDER == 'pac-dev'  - the "pac-dev/seed-jobs-dev" job (tracks this
  *                              repo's JENKINS2026_DEV_REPO_BRANCH, normally
  *                              "develop"). Creates ONE job per service inside
  *                              the pac-dev/ folder:
- *                                pac-dev/<name>  - tracks `branches.develop` (develop) -> namespaces.pacDev
+ *                                pac-dev/<name>  - tracks `branches.develop` (main) -> namespaces.pacDev
  *
  * The pac-dev/ folder is a sandbox for devops/platform engineers to iterate
  * on this repo's pipelines-as-code (this file, Jenkinsfile.petclinic, the
@@ -57,8 +57,8 @@ def namespaces  = registry.namespaces
 def gitFlowRefs = registry.branches
 
 // pipeline "flavours" generated per service:
-//  - root (JOB_FOLDER==''): stable -> tracks master, *-develop -> tracks develop
-//  - pac-dev (JOB_FOLDER=='pac-dev'): single flavour tracking develop
+//  - root (JOB_FOLDER==''): stable -> tracks branches.stable (main), *-develop -> tracks branches.develop (main)
+//  - pac-dev (JOB_FOLDER=='pac-dev'): single flavour tracking branches.develop (main)
 def flavours = jobFolder
   ? [
       [suffix: '', branch: gitFlowRefs.develop, namespaceKey: 'pacDev', envName: 'pac-dev'],

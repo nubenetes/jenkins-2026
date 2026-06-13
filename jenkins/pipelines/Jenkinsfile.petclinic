@@ -92,7 +92,8 @@ spec:
 
   environment {
     REGISTRY      = "${env.PETCLINIC_REGISTRY ?: 'ghcr.io/nubenetes/jenkins-2026-petclinic'}"
-    // Floating per-branch tag (e.g. "master"/"develop"), matching the
+    // Floating per-branch tag (params.GIT_BRANCH is always "main" -
+    // petclinic.branches.stable/develop in config/config.yaml), matching the
     // defaults baked into helm/petclinic/values-{stable,develop}.yaml. Every
     // successful build overwrites this tag, so a `helm upgrade` for any one
     // service never resets the others to a tag that was never pushed.

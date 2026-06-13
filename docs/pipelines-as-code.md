@@ -56,7 +56,8 @@ user-submitted).
 [`services.yaml`](../jenkins/pipelines/seed/services.yaml) - the list of 9
 PetClinic services (name, type `java`|`angular`, Maven module, source repo,
 port, health-check path) plus the `namespaces` (`petclinic`/`petclinic-develop`)
-and `branches` (`master`/`develop`) from `config/config.yaml`'s `petclinic`
+and `branches` (both `main` - upstream PetClinic has no `master`/`develop`)
+from `config/config.yaml`'s `petclinic`
 section - and the `JENKINS2026_REPO_URL` / `JENKINS2026_REPO_BRANCH` /
 `JENKINS2026_PLATFORM` environment variables (set on the controller by
 `scripts/04-jenkins.sh`).
@@ -65,8 +66,8 @@ For **each** of the 9 services it creates **two** `pipelineJob`s:
 
 | Job name | Tracks branch | Deploys to namespace | `ENV_NAME` |
 |---|---|---|---|
-| `<service>` | `master` (`branches.stable`) | `petclinic` | `stable` |
-| `<service>-develop` | `develop` (`branches.develop`) | `petclinic-develop` | `develop` |
+| `<service>` | `main` (`branches.stable`) | `petclinic` | `stable` |
+| `<service>-develop` | `main` (`branches.develop`) | `petclinic-develop` | `develop` |
 
 = **18 jobs total**, all running the same
 [`Jenkinsfile.petclinic`](../jenkins/pipelines/Jenkinsfile.petclinic) from
@@ -110,8 +111,8 @@ workspace and network namespace: `maven` (Eclipse Temurin 17), `node` (20),
    (`spring-petclinic-microservices` or `spring-petclinic-angular`).
 3. **Build & Test** - `petclinicBuild`.
 4. **Build & Push Image** - `petclinicImage`. Image reference:
-   `${PETCLINIC_REGISTRY}/${SERVICE_NAME}:${GIT_BRANCH}` - a **floating,
-   per-branch tag** (`master` or `develop`). This matches the default tags
+   `${PETCLINIC_REGISTRY}/${SERVICE_NAME}:${GIT_BRANCH}` - a **floating
+   tag** (always `main`). This matches the default tags
    baked into `helm/petclinic/values-stable.yaml` /
    `values-develop.yaml`, so every successful build simply overwrites the
    tag that environment's release already points at.
@@ -160,7 +161,7 @@ checked out from `JENKINS2026_DEV_REPO_BRANCH` (`config/config.yaml`
   for `pac-dev/seed-jobs-dev`.
 - When `JOB_FOLDER == 'pac-dev'`, `seed_jobs.groovy` generates **one** job per
   service (`pac-dev/<service>`, not a stable/`-develop` pair), each:
-  - tracking `branches.develop` (`develop`) of the PetClinic source repo,
+  - tracking `branches.develop` (`main`) of the PetClinic source repo,
   - checking out `Jenkinsfile.petclinic` from `JENKINS2026_DEV_REPO_BRANCH`
     (`develop`) of **this** repo - so edits to the Jenkinsfile, or to
     `vars/`/`resources/` via a `@Library('petclinic-shared-library@develop')`
@@ -179,7 +180,7 @@ is idempotent, exactly like `seed-jobs`.
 |---|---|---|
 | This repo's branch | `JENKINS2026_REPO_BRANCH` (`main`) | `JENKINS2026_DEV_REPO_BRANCH` (`develop`) |
 | Jobs generated | `<service>` + `<service>-develop` (18) | `pac-dev/<service>` (9) |
-| PetClinic source branch | `master` / `develop` | `develop` |
+| PetClinic source branch | `main` / `main` | `main` |
 | K8s namespace | `petclinic` / `petclinic-develop` | `petclinic-pac-dev` |
 | Helm release | `petclinic-stable` / `petclinic-develop` | `petclinic-pac-dev` |
 

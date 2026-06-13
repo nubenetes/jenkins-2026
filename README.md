@@ -6,8 +6,10 @@ A self-contained proof of concept that deploys **Jenkins** (via
 Job DSL ("pipelines as code"), and uses it to build, containerize and deploy
 the [Spring PetClinic microservices](https://github.com/spring-petclinic/spring-petclinic-microservices)
 reference application (+ its [Angular UI](https://github.com/spring-petclinic/spring-petclinic-angular))
-in a **GitFlow** model - one "stable" pipeline per service tracking `master`,
-and one `<service>-develop` pipeline tracking `develop`. Jenkins and every
+in a **GitFlow-inspired** model - one "stable" pipeline per service and one
+`<service>-develop` pipeline, both tracking the upstream `main` branch
+(the only branch the upstream repos have) but deploying to separate
+namespaces, so `-develop` serves as a testing track. Jenkins and every
 PetClinic service are instrumented with **OpenTelemetry**, with traces,
 metrics and logs correlated end-to-end in **Grafana** (Grafana Cloud by
 default, or an in-cluster OSS stack).
@@ -77,8 +79,8 @@ imports Grafana dashboards. Every step is idempotent
 partial failure is safe. Each step also runs standalone:
 `./scripts/0N-*.sh`.
 
-> **First run note**: `helm/petclinic`'s default image tags (`master`/
-> `develop`) won't exist in your registry yet, so PetClinic pods will show
+> **First run note**: `helm/petclinic`'s default image tag (`main`) won't
+> exist in your registry yet, so PetClinic pods will show
 > `ImagePullBackOff` until each service's Jenkins pipeline has run at least
 > once and pushed an image. `scripts/06-seed-pipelines.sh` (part of `up.sh`)
 > triggers the seed job immediately so the 18 pipelines exist right away;
@@ -169,8 +171,9 @@ A Jenkins seed job (defined via JCasC, running Job DSL against
 [`jenkins/pipelines/seed/seed_jobs.groovy`](jenkins/pipelines/seed/seed_jobs.groovy)
 + [`services.yaml`](jenkins/pipelines/seed/services.yaml)) generates **18
 pipelines**: for each of the 9 PetClinic services, a `<service>` job tracking
-`master` (deploys to namespace `petclinic`) and a `<service>-develop` job
-tracking `develop` (deploys to `petclinic-develop`). Both run the same
+`main` (deploys to namespace `petclinic`) and a `<service>-develop` job also
+tracking `main` (deploys to `petclinic-develop`, a separate track for
+testing - upstream PetClinic only has a `main` branch). Both run the same
 [`Jenkinsfile.petclinic`](jenkins/pipelines/Jenkinsfile.petclinic):
 checkout -> build & test -> build & push image -> `helm upgrade` the
 [`helm/petclinic`](helm/petclinic) chart for that environment -> smoke test.
