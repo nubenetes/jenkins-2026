@@ -9,8 +9,8 @@
 #   GCP_PROJECT_ID    GCP project ID (billing enabled). No default - required.
 #
 # Optional env vars:
-#   GCP_REGION        default: us-central1
-#   GCP_ZONE          default: us-central1-a
+#   GCP_REGION        default: europe-southwest1
+#   GCP_ZONE          default: europe-southwest1-a
 #   GCP_CLUSTER_NAME  default: jenkins-2026
 #   JENKINS2026_OBS_MODE      override observability.mode (grafana-cloud|oss|managed)
 #   JENKINS2026_PLATFORM      override platform.target - leave at "gke" for this test
@@ -38,8 +38,8 @@ require_cmd terraform "Install Terraform >= 1.9 (https://developer.hashicorp.com
 require_cmd gcloud "Install the Google Cloud CLI (https://cloud.google.com/sdk/docs/install) and run 'gcloud auth login' + 'gcloud auth application-default login'" || exit 1
 
 export TF_VAR_project_id="${GCP_PROJECT_ID}"
-export TF_VAR_region="${GCP_REGION:-us-central1}"
-export TF_VAR_zone="${GCP_ZONE:-us-central1-a}"
+export TF_VAR_region="${GCP_REGION:-europe-southwest1}"
+export TF_VAR_zone="${GCP_ZONE:-europe-southwest1-a}"
 export TF_VAR_cluster_name="${GCP_CLUSTER_NAME:-jenkins-2026}"
 
 # The cluster is about to be destroyed wholesale, so also clean up

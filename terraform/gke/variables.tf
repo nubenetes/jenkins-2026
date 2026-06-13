@@ -6,13 +6,13 @@ variable "project_id" {
 variable "region" {
   type        = string
   description = "GCP region for the VPC/subnet."
-  default     = "us-central1"
+  default     = "europe-southwest1"
 }
 
 variable "zone" {
   type        = string
   description = "GCP zone for the (zonal) GKE cluster and node pool."
-  default     = "us-central1-a"
+  default     = "europe-southwest1-a"
 }
 
 variable "cluster_name" {
