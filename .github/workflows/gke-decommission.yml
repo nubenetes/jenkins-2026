@@ -23,6 +23,8 @@ env:
 jobs:
   decommission:
     runs-on: ubuntu-latest
+    env:
+      HAS_GRAFANA_CLOUD_TOKEN: ${{ secrets.GRAFANA_CLOUD_API_TOKEN != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -92,7 +94,7 @@ jobs:
         run: terraform destroy -auto-approve -input=false
 
       - name: Configure GCS backend (terraform/grafana-cloud-token)
-        if: ${{ secrets.GRAFANA_CLOUD_API_TOKEN != '' }}
+        if: ${{ env.HAS_GRAFANA_CLOUD_TOKEN == 'true' }}
         run: |
           cat > terraform/grafana-cloud-token/backend_override.tf <<EOF
           terraform {
@@ -104,12 +106,12 @@ jobs:
           EOF
 
       - name: Terraform init (grafana-cloud-token)
-        if: ${{ secrets.GRAFANA_CLOUD_API_TOKEN != '' }}
+        if: ${{ env.HAS_GRAFANA_CLOUD_TOKEN == 'true' }}
         working-directory: terraform/grafana-cloud-token
         run: terraform init -input=false
 
       - name: Terraform destroy (revoke Grafana Cloud access policy + tokens)
-        if: ${{ secrets.GRAFANA_CLOUD_API_TOKEN != '' }}
+        if: ${{ env.HAS_GRAFANA_CLOUD_TOKEN == 'true' }}
         working-directory: terraform/grafana-cloud-token
         env:
           TF_VAR_grafana_cloud_api_token: ${{ secrets.GRAFANA_CLOUD_API_TOKEN }}
