@@ -128,6 +128,29 @@ spec:
           port: 80
 EOF
 
+log_step "Generating HealthCheckPolicy (jenkins)"
+# The GCP load balancer's default health check requests "/", which Jenkins
+# answers with 403 (anonymous read is disabled) instead of 200, so the
+# backend never goes healthy ("no healthy upstream"). Point the health check
+# at /login, which Jenkins always serves as 200.
+cat >"${GENERATED_DIR}/healthcheckpolicy-jenkins.yaml" <<EOF
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: ${J2026_JENKINS_RELEASE}
+  namespace: ${J2026_JENKINS_NAMESPACE}
+spec:
+  default:
+    config:
+      type: HTTP
+      httpHealthCheck:
+        requestPath: /login
+  targetRef:
+    group: ""
+    kind: Service
+    name: ${J2026_JENKINS_RELEASE}
+EOF
+
 log_step "Generating GCPBackendPolicies (IAP for jenkins, headlamp)"
 # GCPBackendPolicy requires the OAuth client ID as a literal
 # spec.default.iap.clientID field, and its oauth2ClientSecret Secret to
