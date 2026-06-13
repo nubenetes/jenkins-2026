@@ -375,35 +375,29 @@ can find what the provision run created.
       `stacks:write`, `stacks:delete`, `stack-service-accounts:write`, then
       create a token for that policy.
 
-   b. **Run `terraform/grafana-cloud-stack`** once, locally, to create the
-      persistent stack that this PoC sends telemetry to:
+   b. **Add two repository secrets** - `GRAFANA_CLOUD_STACK_SLUG` is your
+      choice of subdomain for the new stack
+      (`https://<slug>.grafana.net`, must be globally unique):
 
       ```bash
-      cd terraform/grafana-cloud-stack
-      cp terraform.tfvars.example terraform.tfvars
-      # edit terraform.tfvars: set stack_slug (must be globally unique)
-
-      export TF_VAR_grafana_cloud_api_token="<token from step a>"
-      terraform init
-      terraform apply
-      ```
-
-      Keep `terraform/grafana-cloud-stack/terraform.tfstate` (gitignored,
-      local-only) - it's the only record of this stack; see the comment in
-      [`terraform/grafana-cloud-stack/versions.tf`](terraform/grafana-cloud-stack/versions.tf).
-
-   c. **Add two more repository secrets**:
-
-      | Secret | Value |
-      |---|---|
-      | `GRAFANA_CLOUD_API_TOKEN` | the token from step a |
-      | `GRAFANA_CLOUD_STACK_SLUG` | `terraform output -raw stack_slug` from step b |
-
-      ```bash
-      cd terraform/grafana-cloud-stack
       gh secret set GRAFANA_CLOUD_API_TOKEN  --body "<token from step a>"
-      gh secret set GRAFANA_CLOUD_STACK_SLUG --body "$(terraform output -raw stack_slug)"
+      gh secret set GRAFANA_CLOUD_STACK_SLUG --body "<your-globally-unique-slug>"
       ```
+
+   c. **Run the "Grafana Cloud bootstrap" workflow** (Actions tab ->
+      **Grafana Cloud bootstrap** -> **Run workflow**). It applies
+      [`terraform/grafana-cloud-stack`](terraform/grafana-cloud-stack) with
+      state in the same GCS bucket as `terraform/gke`, creating the
+      persistent stack from the two secrets above. If `GRAFANA_CLOUD_STACK_SLUG`
+      is already taken, Terraform fails with a clear error - pick another
+      value, `gh secret set GRAFANA_CLOUD_STACK_SLUG --body "<new-slug>"`, and
+      re-run the workflow. It's safe to re-run any time - re-applying against
+      existing state is a no-op.
+
+      (Alternatively, run it locally instead: `cd terraform/grafana-cloud-stack
+      && cp terraform.tfvars.example terraform.tfvars` - set `stack_slug` -
+      `export TF_VAR_grafana_cloud_api_token=... && terraform init && terraform
+      apply`. Keep `terraform.tfstate`, gitignored, if you do this.)
 
    From here on, every `gke-provision` run with `observability_mode:
    grafana-cloud` applies
