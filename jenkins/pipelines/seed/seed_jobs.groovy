@@ -1,23 +1,63 @@
 /*
  * Job DSL script: pipelines-as-code for PetClinic.
  *
- * Reads services.yaml (this directory) and, for each service, creates TWO
- * pipeline jobs implementing the GitFlow model requested for this PoC:
+ * Reads services.yaml (this directory) and, for each service, creates one or
+ * more pipeline jobs that all run jenkins/pipelines/Jenkinsfile.petclinic
+ * (script-from-SCM, this repo) with per-job parameter defaults defined here.
+ * Re-running this script (any "seed-jobs*" job, see
+ * jenkins/casc/jcasc-seed-job.yaml) is idempotent: Job DSL reconciles
+ * existing jobs to match this definition.
  *
- *   <name>          - tracks the STABLE branch (master)  -> namespaces.stable
- *   <name>-develop  - tracks the DEVELOP branch (develop) -> namespaces.develop
+ * JOB_FOLDER (passed in via the jobDsl step's additionalParameters, see
+ * Jenkinsfile.seed) is derived from the calling seed job's own location and
+ * selects WHICH set of jobs gets generated:
  *
- * Both jobs run jenkins/pipelines/Jenkinsfile.petclinic (script-from-SCM,
- * this repo) with per-job parameter defaults defined here. Re-running this
- * script (the "seed-jobs" job, see jenkins/casc/jcasc-seed-job.yaml) is
- * idempotent: Job DSL reconciles existing jobs to match this definition.
+ *   JOB_FOLDER == ''        - the ROOT "seed-jobs" job (tracks this repo's
+ *                              JENKINS2026_REPO_BRANCH, normally "main").
+ *                              Creates the GitFlow pair per service:
+ *                                <name>          - builds PetClinic `branches.stable`  (main) -> namespaces.stable.
+ *                                                   Jenkinsfile.petclinic + shared library come from
+ *                                                   JENKINS2026_REPO_BRANCH (main).
+ *                                <name>-develop  - builds PetClinic `branches.develop` (main) -> namespaces.develop.
+ *                                                   Jenkinsfile.petclinic + shared library come from
+ *                                                   JENKINS2026_DEV_REPO_BRANCH (develop) - so pipeline-as-code
+ *                                                   changes land here first, without affecting <name>.
+ *
+ *   JOB_FOLDER == 'pac-dev'  - the "pac-dev/seed-jobs-dev" job (tracks this
+ *                              repo's JENKINS2026_DEV_REPO_BRANCH, normally
+ *                              "develop"). Creates ONE job per service inside
+ *                              the pac-dev/ folder:
+ *                                pac-dev/<name>  - builds PetClinic `branches.develop` (main) -> namespaces.pacDev.
+ *                                                   Jenkinsfile.petclinic + shared library also come from
+ *                                                   JENKINS2026_DEV_REPO_BRANCH (develop).
+ *
+ * The pac-dev/ folder is a sandbox for devops/platform engineers to iterate
+ * on this repo's pipelines-as-code (this file, seed_jobs.groovy itself) on
+ * the `develop` branch without affecting the root seed-jobs definitions
+ * above - see README.md "Pipelines-as-code dev sandbox" and the
+ * "platform-engineer" role in jenkins/casc/jcasc-base.yaml, which is the only
+ * role with Job/Read on pac-dev/*. Note pac-dev/<name> and <name>-develop now
+ * both run Jenkinsfile.petclinic from JENKINS2026_DEV_REPO_BRANCH (develop) -
+ * they differ only in deploy namespace/visibility.
  */
 
 import org.yaml.snakeyaml.Yaml
 
-def repoUrl    = System.getenv('JENKINS2026_REPO_URL')    ?: 'https://github.com/nubenetes/jenkins-2026.git'
-def repoBranch = System.getenv('JENKINS2026_REPO_BRANCH') ?: 'main'
-def platform   = System.getenv('JENKINS2026_PLATFORM')    ?: 'gke'
+def repoUrl       = System.getenv('JENKINS2026_REPO_URL')        ?: 'https://github.com/nubenetes/jenkins-2026.git'
+def stableBranch  = System.getenv('JENKINS2026_REPO_BRANCH')     ?: 'main'
+def devBranch     = System.getenv('JENKINS2026_DEV_REPO_BRANCH') ?: 'develop'
+def platform      = System.getenv('JENKINS2026_PLATFORM')        ?: 'gke'
+
+// JOB_FOLDER is provided via additionalParameters by Jenkinsfile.seed; empty
+// string (the root seed-jobs job) if absent so this script also works when
+// run manually/outside that pipeline.
+def jobFolder = binding.hasVariable('JOB_FOLDER') ? (JOB_FOLDER as String) : ''
+
+// Branch this seed job (and therefore this script's own definition of the
+// jobs below) was checked out from - used only for the folder/listView
+// descriptions. The per-job Jenkinsfile/shared-library source branch is
+// `flavour.pipelineRepoBranch` below, which differs per flavour.
+def repoBranch = jobFolder ? devBranch : stableBranch
 
 def yamlText = readFileFromWorkspace('jenkins/pipelines/seed/services.yaml')
 def registry = new Yaml().load(yamlText)
@@ -25,18 +65,33 @@ def registry = new Yaml().load(yamlText)
 def namespaces  = registry.namespaces
 def gitFlowRefs = registry.branches
 
-// pipeline "flavours": stable -> tracks master, *-develop -> tracks develop
-def flavours = [
-  [suffix: '',         branch: gitFlowRefs.stable,  namespaceKey: 'stable',  envName: 'stable'],
-  [suffix: '-develop', branch: gitFlowRefs.develop, namespaceKey: 'develop', envName: 'develop'],
-]
+// pipeline "flavours" generated per service. `pipelineRepoBranch` is the
+// jenkins-2026 branch that Jenkinsfile.petclinic + the shared library are
+// checked out from for that job (see header comment):
+//  - root (JOB_FOLDER==''): stable -> tracks branches.stable (main) w/ Jenkinsfile from stableBranch,
+//                           *-develop -> tracks branches.develop (main) w/ Jenkinsfile from devBranch
+//  - pac-dev (JOB_FOLDER=='pac-dev'): single flavour tracking branches.develop (main) w/ Jenkinsfile from devBranch
+def flavours = jobFolder
+  ? [
+      [suffix: '', branch: gitFlowRefs.develop, namespaceKey: 'pacDev', envName: 'pac-dev', pipelineRepoBranch: devBranch],
+    ]
+  : [
+      [suffix: '',         branch: gitFlowRefs.stable,  namespaceKey: 'stable',  envName: 'stable',  pipelineRepoBranch: stableBranch],
+      [suffix: '-develop', branch: gitFlowRefs.develop, namespaceKey: 'develop', envName: 'develop', pipelineRepoBranch: devBranch],
+    ]
+
+if (jobFolder) {
+  folder(jobFolder) {
+    description("Pipelines-as-code DEV sandbox - jobs below are (re)generated from this repo's '${repoBranch}' branch by pac-dev/seed-jobs-dev. Visible only to the platform-engineer role (see jenkins/casc/jcasc-base.yaml). Managed by jenkins-2026 seed-jobs - do not edit manually.")
+  }
+}
 
 registry.services.each { svc ->
   flavours.each { flavour ->
-    def jobName = "${svc.name}${flavour.suffix}"
+    def jobName = jobFolder ? "${jobFolder}/${svc.name}${flavour.suffix}" : "${svc.name}${flavour.suffix}"
 
     pipelineJob(jobName) {
-      description("PetClinic '${svc.name}' (${flavour.envName}) - builds '${flavour.branch}' from ${svc.repoUrl} and deploys to namespace '${namespaces[flavour.namespaceKey]}'. Managed by jenkins-2026 seed-jobs - do not edit manually.")
+      description("PetClinic '${svc.name}' (${flavour.envName}) - builds '${flavour.branch}' from ${svc.repoUrl} and deploys to namespace '${namespaces[flavour.namespaceKey]}'. Jenkinsfile.petclinic + shared library from jenkins-2026 '${flavour.pipelineRepoBranch}'. Managed by jenkins-2026 seed-jobs - do not edit manually.")
       keepDependencies(false)
       logRotator {
         numToKeep(20)
@@ -49,7 +104,7 @@ registry.services.each { svc ->
               remote {
                 url(repoUrl)
               }
-              branches("*/${repoBranch}")
+              branches("*/${flavour.pipelineRepoBranch}")
             }
           }
           scriptPath('jenkins/pipelines/Jenkinsfile.petclinic')
@@ -86,22 +141,42 @@ registry.services.each { svc ->
   }
 }
 
-// Convenience view grouping all PetClinic jobs together.
-listView('petclinic') {
-  description('All PetClinic pipelines-as-code jobs (stable + develop), generated from services.yaml')
-  jobs {
-    registry.services.each { svc ->
-      name(svc.name)
-      name("${svc.name}-develop")
+// Convenience view grouping all generated PetClinic jobs together.
+if (jobFolder) {
+  listView("${jobFolder}/petclinic-pac-dev") {
+    description("PetClinic pipelines-as-code DEV sandbox jobs, generated from services.yaml on the '${repoBranch}' branch.")
+    jobs {
+      registry.services.each { svc ->
+        name("${jobFolder}/${svc.name}")
+      }
+    }
+    columns {
+      status()
+      weather()
+      name()
+      lastSuccess()
+      lastFailure()
+      lastDuration()
+      buildButton()
     }
   }
-  columns {
-    status()
-    weather()
-    name()
-    lastSuccess()
-    lastFailure()
-    lastDuration()
-    buildButton()
+} else {
+  listView('petclinic') {
+    description('All PetClinic pipelines-as-code jobs (stable + develop), generated from services.yaml')
+    jobs {
+      registry.services.each { svc ->
+        name(svc.name)
+        name("${svc.name}-develop")
+      }
+    }
+    columns {
+      status()
+      weather()
+      name()
+      lastSuccess()
+      lastFailure()
+      lastDuration()
+      buildButton()
+    }
   }
 }

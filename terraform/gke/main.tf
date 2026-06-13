@@ -72,6 +72,30 @@ resource "google_project_iam_member" "nodes_roles" {
   member  = "serviceAccount:${google_service_account.nodes.email}"
 }
 
+# Minimal IAM for Headlamp's experimental per-user OIDC->GKE-API access-token
+# passthrough (see README.md "Headlamp"). roles/container.clusterViewer is
+# the minimal role for the GKE API to accept a user's Google token; in-cluster
+# RBAC (cluster-admin) for these emails is granted separately by
+# scripts/08-headlamp.sh.
+resource "google_project_iam_member" "headlamp_admins" {
+  for_each = toset(var.admin_emails)
+
+  project = var.project_id
+  role    = "roles/container.clusterViewer"
+  member  = "user:${each.value}"
+}
+
+# Same admin email list also gates access through Identity-Aware Proxy on the
+# Jenkins and Headlamp Gateway backends (see scripts/09-gateway.sh and
+# README.md "Public access (GKE Gateway API + IAP)").
+resource "google_project_iam_member" "iap_accessors" {
+  for_each = toset(var.admin_emails)
+
+  project = var.project_id
+  role    = "roles/iap.httpsResourceAccessor"
+  member  = "user:${each.value}"
+}
+
 resource "google_container_cluster" "this" {
   project  = var.project_id
   name     = var.cluster_name
@@ -84,6 +108,13 @@ resource "google_container_cluster" "this" {
   ip_allocation_policy {
     cluster_secondary_range_name  = "pods"
     services_secondary_range_name = "services"
+  }
+
+  # Required for the Gateway/HTTPRoute/GCPBackendPolicy resources applied by
+  # scripts/09-gateway.sh - see README.md "Public access (GKE Gateway API +
+  # IAP)".
+  gateway_api_config {
+    channel = "CHANNEL_STANDARD"
   }
 
   # Managed separately below so it can be sized/autoscaled independently.

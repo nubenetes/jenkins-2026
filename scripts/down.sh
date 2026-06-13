@@ -23,7 +23,9 @@ helm_uninstall() {
 log_step "Uninstalling Helm releases in parallel"
 run_bg petclinic-stable   helm_uninstall petclinic-stable  "${J2026_PETCLINIC_NS_STABLE}"
 run_bg petclinic-develop  helm_uninstall petclinic-develop "${J2026_PETCLINIC_NS_DEVELOP}"
+run_bg petclinic-pac-dev  helm_uninstall petclinic-pac-dev "${J2026_PETCLINIC_NS_PAC_DEV}"
 run_bg jenkins            helm_uninstall "${J2026_JENKINS_RELEASE}" "${J2026_JENKINS_NAMESPACE}"
+run_bg headlamp           helm_uninstall "${J2026_HEADLAMP_RELEASE}" "${J2026_HEADLAMP_NAMESPACE}"
 run_bg otel-gateway       helm_uninstall "${J2026_OTEL_GATEWAY_RELEASE}" "${J2026_OBS_NAMESPACE}"
 run_bg otel-logs          helm_uninstall "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OBS_NAMESPACE}"
 
@@ -44,13 +46,47 @@ log_step "Uninstalling OpenTelemetry Operator (CRDs)"
 helm_uninstall "${J2026_OTEL_OPERATOR_RELEASE}" "${J2026_OBS_NAMESPACE}"
 
 log_step "Removing RoleBindings granted to the Jenkins ServiceAccount"
-for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}"; do
+for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}" "${J2026_PETCLINIC_NS_PAC_DEV}"; do
   kubectl delete rolebinding jenkins-edit -n "${ns}" --ignore-not-found
 done
 
+log_step "Removing Headlamp admin ClusterRoleBindings"
+if [[ -n "${J2026_HEADLAMP_ADMIN_EMAILS}" ]]; then
+  IFS=',' read -ra admin_emails <<<"${J2026_HEADLAMP_ADMIN_EMAILS}"
+  for email in "${admin_emails[@]}"; do
+    email="$(echo "${email}" | xargs)" # trim whitespace
+    [[ -z "${email}" ]] && continue
+    binding_name="headlamp-admin-$(echo "${email}" | tr '[:upper:]' '[:lower:]' | tr '@.+' '-')"
+    kubectl delete clusterrolebinding "${binding_name}" --ignore-not-found
+  done
+fi
+
+# Deleted by fixed name/namespace (scripts/09-gateway.sh), not by replaying
+# .generated/gateway/ - that dir only exists on the machine that ran
+# scripts/up.sh, but 02.99-gke-decommission.yml runs down.sh from a fresh checkout.
+# Deleting these explicitly (with their finalizers) before the namespaces/
+# cluster are torn down lets the GKE Gateway controller release the external
+# load balancer resources (forwarding rule, backend services, NEGs) it
+# created - leaving them would otherwise orphan GCP resources or block
+# `terraform destroy` on the VPC. Guarded the same way as
+# scripts/09-gateway.sh: these CRDs only exist when platform.target=gke and
+# the gateway was enabled.
+if [[ "${J2026_PLATFORM}" == "gke" && -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
+  log_step "Removing Gateway resources (Gateway, HTTPRoutes, GCPBackendPolicies)"
+  # --timeout bounds the wait on the GKE Gateway controller's finalizers
+  # (which release the external LB's forwarding rule/backend services/NEGs)
+  # so a stuck controller can't hang this step indefinitely.
+  kubectl delete gcpbackendpolicy "${J2026_GATEWAY_IAP_POLICY_JENKINS}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found --timeout=5m
+  kubectl delete gcpbackendpolicy "${J2026_GATEWAY_IAP_POLICY_HEADLAMP}" -n "${J2026_HEADLAMP_NAMESPACE}" --ignore-not-found --timeout=5m
+  kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_JENKINS}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found --timeout=5m
+  kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_PETCLINIC}" -n "${J2026_PETCLINIC_NS_STABLE}" --ignore-not-found --timeout=5m
+  kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_HEADLAMP}" -n "${J2026_HEADLAMP_NAMESPACE}" --ignore-not-found --timeout=5m
+  kubectl delete gateway "${J2026_GATEWAY_NAME}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found --timeout=5m
+fi
+
 if [[ "${J2026_DELETE_NAMESPACES:-false}" == "true" ]]; then
   log_step "Deleting namespaces (J2026_DELETE_NAMESPACES=true)"
-  for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_GRAFANA_OSS_NAMESPACE}" "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}"; do
+  for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_GRAFANA_OSS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}" "${J2026_PETCLINIC_NS_PAC_DEV}"; do
     kubectl delete namespace "${ns}" --ignore-not-found
   done
 else

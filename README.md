@@ -6,8 +6,10 @@ A self-contained proof of concept that deploys **Jenkins** (via
 Job DSL ("pipelines as code"), and uses it to build, containerize and deploy
 the [Spring PetClinic microservices](https://github.com/spring-petclinic/spring-petclinic-microservices)
 reference application (+ its [Angular UI](https://github.com/spring-petclinic/spring-petclinic-angular))
-in a **GitFlow** model - one "stable" pipeline per service tracking `master`,
-and one `<service>-develop` pipeline tracking `develop`. Jenkins and every
+in a **GitFlow-inspired** model - one "stable" pipeline per service and one
+`<service>-develop` pipeline, both tracking the upstream `main` branch
+(the only branch the upstream repos have) but deploying to separate
+namespaces, so `-develop` serves as a testing track. Jenkins and every
 PetClinic service are instrumented with **OpenTelemetry**, with traces,
 metrics and logs correlated end-to-end in **Grafana** (Grafana Cloud by
 default, or an in-cluster OSS stack).
@@ -52,7 +54,10 @@ cp observability/otel-collector/secret.example.yaml observability/otel-collector
 kubectl create namespace observability --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f observability/otel-collector/secret.yaml
 
-# 3. (optional) export registry/git credentials consumed by scripts/01-namespaces.sh
+# 3. (optional) export registry/git credentials consumed by scripts/01-namespaces.sh -
+#    REGISTRY_USERNAME/REGISTRY_PASSWORD become both the Jenkins "container-registry"
+#    push credential and the "ghcr-credentials" imagePullSecret in every PetClinic
+#    namespace (needed if PETCLINIC_REGISTRY packages are private, the GHCR default)
 export REGISTRY_USERNAME=<github-username> REGISTRY_PASSWORD=<ghcr-token>
 export GIT_USERNAME=<github-username>      GIT_TOKEN=<github-token>
 
@@ -74,8 +79,8 @@ imports Grafana dashboards. Every step is idempotent
 partial failure is safe. Each step also runs standalone:
 `./scripts/0N-*.sh`.
 
-> **First run note**: `helm/petclinic`'s default image tags (`master`/
-> `develop`) won't exist in your registry yet, so PetClinic pods will show
+> **First run note**: `helm/petclinic`'s default image tag (`main`) won't
+> exist in your registry yet, so PetClinic pods will show
 > `ImagePullBackOff` until each service's Jenkins pipeline has run at least
 > once and pushed an image. `scripts/06-seed-pipelines.sh` (part of `up.sh`)
 > triggers the seed job immediately so the 18 pipelines exist right away;
@@ -106,21 +111,84 @@ upstream PetClinic git org/repos/branches, target registry, and the list of
 config/config.yaml          single source of truth (feature flags above)
 helm/jenkins/                jenkinsci/helm-charts values + per-platform overlays
 helm/petclinic/              local chart for the 9 PetClinic workloads (2 envs)
+helm/headlamp/                kubernetes-sigs/headlamp values (cluster management UI)
 jenkins/casc/                JCasC: security, OTel exporter, seed job
 jenkins/pipelines/           Jenkinsfile.petclinic + seed job (Job DSL + services.yaml)
 vars/, resources/            Jenkins global shared library (must be at repo root)
 observability/               OTel Operator/Collector + Grafana/Loki/Tempo/Prometheus values + dashboards
-scripts/                      00-07 numbered steps + up.sh / down.sh / status.sh
+scripts/                      00-09 numbered steps + up.sh / down.sh / status.sh
 terraform/gke/                throwaway GKE cluster for test/e2e.sh (the one exception
                               to "assumes an existing cluster")
 terraform/bootstrap/          one-time setup for the GitHub Actions automation below
                               (state bucket + Workload Identity Federation)
+terraform/gateway-bootstrap/  one-time setup for public access (static IP + managed
+                              certificate) - see "Public access (GKE Gateway API + IAP)"
 test/                         e2e.sh (provision -> up.sh -> smoke-test.sh -> down.sh -> destroy)
-.github/workflows/            gke-provision.yml / gke-decommission.yml (CI version of test/e2e.sh)
+.github/workflows/            CC.NN-<name>.yml, see "CI/CD pipelines" for the full inventory
 docs/                         architecture, pipelines-as-code, observability, platforms
 ```
 
 Full details in [`docs/architecture.md`](docs/architecture.md).
+
+## Jenkins UI, plugins & MCP
+
+### Accessing the UI & admin password
+
+```bash
+kubectl -n jenkins port-forward svc/jenkins 8080:8080
+```
+
+Open <http://localhost:8080> and log in as `${JENKINS_ADMIN_ID}` (`jenkins.adminUser`
+in [`config/config.yaml`](config/config.yaml), default `admin`). The password
+is randomly generated on first run by
+[`scripts/01-namespaces.sh`](scripts/01-namespaces.sh) and printed once to its
+output - if you missed it, retrieve it from the `jenkins-credentials` Secret
+(`jenkins.credentialsSecretName`) in the `jenkins` namespace:
+
+```bash
+kubectl -n jenkins get secret jenkins-credentials -o jsonpath='{.data.admin-password}' | base64 -d; echo
+```
+
+The same Secret also holds the `platform-engineer` login (used by the
+`pac-dev/*` pipelines-as-code sandbox, see [Pipelines-as-code dev
+sandbox](#pipelines-as-code-dev-sandbox-pac-dev)) under
+`platform-engineer-password`. To rotate either password, delete the Secret
+and re-run `scripts/01-namespaces.sh` + `scripts/04-jenkins.sh` (see
+[Troubleshooting](#troubleshooting)) - new random passwords are generated and
+printed once.
+
+[`helm/jenkins/values-common.yaml`](helm/jenkins/values-common.yaml) tracks
+the latest Jenkins LTS (`controller.image.tag`) and pins **every** plugin -
+including transitive dependencies - to the exact version resolved against
+that core by `jenkins-plugin-cli` (recipe in the comment above
+`installPlugins`). This replaced an earlier unversioned plugin list: pinning
+means a routine controller pod restart always installs the identical plugin
+set, instead of silently picking up a newer (possibly breaking) version.
+Bump `controller.image.tag` and re-run the recipe together when updating.
+
+Beyond the existing kubernetes/git/JCasC/OTel plugins, three are aimed at UX:
+
+- **[Pipeline Graph View](https://plugins.jenkins.io/pipeline-graph-view/)** -
+  the maintained successor to the discontinued Blue Ocean. Adds an
+  interactive, pan/zoom stage graph to every build page - no configuration
+  needed.
+- **[Dark Theme](https://plugins.jenkins.io/dark-theme/)** (+ Theme Manager) -
+  native dark mode. `appearance.themeManager` in
+  [`jenkins/casc/jcasc-base.yaml`](jenkins/casc/jcasc-base.yaml) defaults
+  everyone to `darkSystem` (follows the browser/OS preference); each user can
+  still override it from their profile's *Appearance* tab.
+- **[MCP Server](https://plugins.jenkins.io/mcp-server/)** - exposes Jenkins
+  (jobs, builds, logs, SCM, replay) as an MCP server, so an MCP-capable
+  client (Claude Code/Desktop, etc.) can query and drive this Jenkins
+  directly. No JCasC config needed - it auto-registers its endpoints
+  (`/mcp-server/sse`, `/mcp-server/mcp`, `/mcp-server/mcp-stateless`).
+  Authenticate as `${JENKINS_ADMIN_ID}` (or any user) with a personal **API
+  token** (user profile -> *Security* -> *Add new Token*), passed as HTTP
+  Basic Auth - never put this token in the repo. For Claude Code:
+  `claude mcp add --transport http jenkins <jenkins-url>/mcp-server/mcp
+  --header "Authorization: Basic <base64(user:token)>"` (after exposing
+  Jenkins per the access method in [Quick start](#quick-start) /
+  [Headlamp](#headlamp-cluster-management-ui)).
 
 ## Pipelines as code
 
@@ -128,13 +196,34 @@ A Jenkins seed job (defined via JCasC, running Job DSL against
 [`jenkins/pipelines/seed/seed_jobs.groovy`](jenkins/pipelines/seed/seed_jobs.groovy)
 + [`services.yaml`](jenkins/pipelines/seed/services.yaml)) generates **18
 pipelines**: for each of the 9 PetClinic services, a `<service>` job tracking
-`master` (deploys to namespace `petclinic`) and a `<service>-develop` job
-tracking `develop` (deploys to `petclinic-develop`). Both run the same
+`main` (deploys to namespace `petclinic`) and a `<service>-develop` job also
+tracking `main` (deploys to `petclinic-develop`, a separate track for
+testing - upstream PetClinic only has a `main` branch). Both run
 [`Jenkinsfile.petclinic`](jenkins/pipelines/Jenkinsfile.petclinic):
 checkout -> build & test -> build & push image -> `helm upgrade` the
-[`helm/petclinic`](helm/petclinic) chart for that environment -> smoke test.
+[`helm/petclinic`](helm/petclinic) chart for that environment -> smoke test -
+but `<service>` checks out the Jenkinsfile + shared library from **this
+repo's `main`**, while `<service>-develop` checks them out from **this
+repo's `develop`**, so pipeline-as-code changes land on the `-develop` jobs
+first, without affecting the stable `<service>` jobs until merged to `main`.
 Details, including why the Jenkinsfile deliberately has no `parameters {}`
 block, in [`docs/pipelines-as-code.md`](docs/pipelines-as-code.md).
+
+### Pipelines-as-code dev sandbox (`pac-dev/`)
+
+A second seed job, **`pac-dev/seed-jobs-dev`**, tracks this repo's
+`develop` branch (instead of `main`) and generates a `pac-dev/` folder
+containing one pipeline per PetClinic service (also running the Jenkinsfile +
+shared library from `develop`, like `<service>-develop`), deploying to the
+`petclinic-pac-dev` namespace. This lets devops/platform engineers iterate on
+this repo's own pipelines-as-code (`seed_jobs.groovy`, `Jenkinsfile.petclinic`,
+JCasC, the shared library) **and** the job-generation logic itself
+(`seed_jobs.groovy`/`services.yaml` structure) on `develop` and see the
+result run end-to-end, **without touching the 18 stable/`-develop` jobs
+above**. The `pac-dev/` folder is hidden from regular users - only the
+`platform-engineer` Jenkins account (Role-Based Authorization Strategy) can
+see or run it. Details in
+[`docs/pipelines-as-code.md`](docs/pipelines-as-code.md#pipelines-as-code-dev-sandbox-pac-dev).
 
 ## Observability
 
@@ -147,6 +236,189 @@ export OTLP to an in-cluster collector, which forwards to Grafana Cloud
 service health, with derived-field/exemplar links so you can jump from a log
 line or a latency spike straight to the trace that produced it. Full details
 in [`docs/observability.md`](docs/observability.md).
+
+## Headlamp (cluster management UI)
+
+[Headlamp](https://headlamp.dev/) gives a web UI for the GKE cluster itself
+(pods, deployments, logs, exec, RBAC, etc.), deployed by
+[`scripts/08-headlamp.sh`](scripts/08-headlamp.sh) into the `headlamp`
+namespace using [`helm/headlamp/values.yaml`](helm/headlamp/values.yaml).
+
+**Access model**: sign in with your Google account. Headlamp is configured
+with `config.oidc.useAccessToken: true`
+([`helm/headlamp/values.yaml`](helm/headlamp/values.yaml)), so it forwards
+your Google OAuth **access token** (scoped
+`https://www.googleapis.com/auth/cloud-platform`) to the GKE API server -
+the same shape of credential `gcloud`-based kubeconfigs use. GKE natively
+maps a Google identity presenting such a token to K8s RBAC `kind: User`
+(the account's email as subject), so for every email listed in
+`HEADLAMP_ADMIN_EMAILS` (see below), this repo:
+
+- grants `roles/container.clusterViewer` in GCP IAM (`terraform/gke`,
+  `google_project_iam_member.headlamp_admins`) - the minimal IAM permission
+  for the GKE API to accept that identity's token at all, and
+- creates a `cluster-admin` `ClusterRoleBinding` for that email
+  (`scripts/08-headlamp.sh`), so once GKE accepts the token, K8s RBAC
+  authorizes everything.
+
+> **Experimental**: this OIDC access-token passthrough is a relatively new
+> Headlamp feature and its behavior against GKE specifically hasn't been
+> verified end-to-end yet - try it on the next `gke-provision` run. If
+> Google sign-in doesn't authorize correctly, Headlamp's chart-default
+> **ServiceAccount-token login** is left enabled as a fallback: its own
+> `headlamp` ServiceAccount already has `cluster-admin`
+> (`clusterRoleBinding.create: true` / `clusterRoleName: cluster-admin`,
+> chart defaults, not overridden), so you can log in with that
+> ServiceAccount's token instead (`kubectl create token headlamp -n
+> headlamp`, or the long-lived Secret token if your cluster still mints
+> one).
+
+By default, access is via `kubectl port-forward` (below). If
+[gateway.baseDomain](#public-access-gke-gateway-api--iap) is configured,
+Headlamp is also reachable at `https://headlamp.<baseDomain>`, gated by both
+Identity-Aware Proxy and its own Google sign-in - see [Public access (GKE
+Gateway API + IAP)](#public-access-gke-gateway-api--iap).
+
+### One-time setup: Google OAuth client
+
+Create a Google OAuth 2.0 **Web application** client (any GCP project will
+do - it doesn't need to be the same project as the GKE cluster):
+
+1. [Google Cloud Console](https://console.cloud.google.com/) -> **APIs &
+   Services** -> **Credentials** -> **Create credentials** -> **OAuth client
+   ID** -> Application type **Web application**.
+2. **Authorized redirect URIs**: add `http://localhost:8080/oidc-callback`
+   (matches the `kubectl port-forward` instructions below). If
+   [gateway.baseDomain](#public-access-gke-gateway-api--iap) is configured,
+   also add `https://headlamp.<baseDomain>/oidc-callback` (e.g.
+   `https://headlamp.jenkins2026.nubenetes.com/oidc-callback`) -
+   [`scripts/lib/config.sh`](scripts/lib/config.sh) computes which one
+   `OIDC_CALLBACK_URL` is set to.
+3. Note the **Client ID** and **Client secret**. The client ID isn't
+   inherently secret, but - like the client secret, which *is* sensitive -
+   it's kept out of the repo for consistency; both are passed as the
+   `HEADLAMP_OIDC_CLIENT_ID` / `HEADLAMP_OIDC_CLIENT_SECRET` secrets below.
+
+### Adding your (or another) identity
+
+Your Google account email is **never committed to this repo** - it's
+supplied via the `HEADLAMP_ADMIN_EMAILS` secret (comma-separated for
+multiple people) and consumed as a placeholder
+(`J2026_HEADLAMP_ADMIN_EMAILS`/`JENKINS2026_HEADLAMP_ADMIN_EMAILS`) by
+[`scripts/lib/config.sh`](scripts/lib/config.sh),
+[`terraform/gke`](terraform/gke) (`TF_VAR_admin_emails`) and
+[`scripts/08-headlamp.sh`](scripts/08-headlamp.sh). To grant cluster-admin
+access via Headlamp to yourself or anyone else:
+
+```bash
+# comma-separated, no spaces needed (leading/trailing whitespace is trimmed)
+gh secret set HEADLAMP_ADMIN_EMAILS --body "you@gmail.com,colleague@gmail.com"
+gh secret set HEADLAMP_OIDC_CLIENT_ID     --body "<client ID from above>"
+gh secret set HEADLAMP_OIDC_CLIENT_SECRET --body "<client secret from above>"
+```
+
+then (re-)run **02.01 GKE provision** (adds the GCP IAM binding via
+`terraform/gke` and the `ClusterRoleBinding`s via `scripts/08-headlamp.sh`).
+Locally (`test/e2e.sh` / `scripts/up.sh`), export the same three as
+`HEADLAMP_OIDC_CLIENT_ID`, `HEADLAMP_OIDC_CLIENT_SECRET` and
+`JENKINS2026_HEADLAMP_ADMIN_EMAILS` instead - never commit them to
+`config/config.yaml`.
+
+### Accessing the UI
+
+```bash
+kubectl -n headlamp port-forward svc/headlamp 8080:80
+```
+
+Open <http://localhost:8080> and click **Sign in with Google**.
+
+## Public access (GKE Gateway API + IAP)
+
+Jenkins, PetClinic and Headlamp can all be exposed on the public internet
+through a single **GKE Gateway** (`gatewayClassName:
+gke-l7-global-external-managed`) - one global external HTTPS load balancer,
+one [Google-managed wildcard
+certificate](https://cloud.google.com/certificate-manager/docs/overview)
+(Certificate Manager, DNS-authorized), and one `HTTPRoute` per app, all
+applied by [`scripts/09-gateway.sh`](scripts/09-gateway.sh):
+
+| App | URL | [Identity-Aware Proxy](https://cloud.google.com/iap) |
+|---|---|---|
+| Jenkins | `https://jenkins.<baseDomain>` | yes |
+| PetClinic | `https://petclinic.<baseDomain>` | no (public demo app) |
+| Headlamp | `https://headlamp.<baseDomain>` | yes |
+
+`<baseDomain>` is [`gateway.baseDomain`](config/config.yaml) -
+`jenkins2026.nubenetes.com` by default. Jenkins and Headlamp get an extra
+Google-login gate (IAP) in front of their own auth; PetClinic, the demo app,
+stays open. **This whole feature is opt-in**: set
+`JENKINS2026_BASE_DOMAIN=""` to disable it (no `Gateway`/`HTTPRoute`/
+`GCPBackendPolicy` resources are created, e.g. before the one-time setup
+below has been done) - `scripts/09-gateway.sh` is also a no-op on
+`platform.target` other than `gke`, since `gke-l7-global-external-managed`
+and `GCPBackendPolicy` are GKE-specific.
+
+> **Needs live-cluster verification**: the exact `Gateway`/`HTTPRoute`/
+> `GCPBackendPolicy` field syntax in
+> [`scripts/09-gateway.sh`](scripts/09-gateway.sh) (the
+> `addresses[].type: NamedAddress` static-IP reference, the
+> `networking.gke.io/certmap` annotation, cross-namespace `HTTPRoute`
+> attachment, and the `GCPBackendPolicy` `oauth2ClientSecret` field/key
+> names) hasn't been confirmed against a live cluster yet - try it on the
+> next `02.01-gke-provision` run, same caveat as Headlamp's OIDC passthrough above.
+
+### One-time setup
+
+1. **Run the "01.02 Gateway bootstrap" workflow** (Actions tab -> **01.02
+   Gateway bootstrap** -> **Run workflow**). It applies
+   [`terraform/gateway-bootstrap`](terraform/gateway-bootstrap) (state in the
+   same GCS bucket as `terraform/gke`, like [Grafana Cloud
+   bootstrap](#one-time-setup)) to create, once and persistently:
+   - a global static IP (`jenkins-2026-gateway-ip`), and
+   - a Google-managed wildcard certificate for `<baseDomain>` and
+     `*.<baseDomain>`, validated via a Certificate Manager DNS authorization.
+
+   It's safe to re-run - re-applying against existing state is a no-op. The
+   job summary prints the static IP and the DNS authorization record.
+
+2. **Add the two DNS records it prints**, with your DNS provider for
+   `<baseDomain>`'s parent domain. For the default
+   `jenkins2026.nubenetes.com` (a subdomain of `nubenetes.com`, managed at
+   **Squarespace** - Squarespace migrated domains off Google Domains in
+   2023): go to **Domains** -> `nubenetes.com` -> **DNS** -> **Custom
+   records**, and add:
+   - a wildcard **A** record: `*.jenkins2026` -> the static IP from step 1.
+   - the **CNAME** record from the workflow's "DNS authorization record"
+     output (proves ownership of `jenkins2026.nubenetes.com` for the managed
+     certificate).
+
+   Certificate provisioning can take up to ~1h after the DNS authorization
+   record verifies.
+
+3. **Create the IAP OAuth client by hand** (the Terraform resources for this,
+   `google_iap_brand`/`google_iap_client`, are deprecated - the IAP OAuth
+   Admin API they depend on was deprecated after July 2025). In the [GCP
+   Console](https://console.cloud.google.com/): **APIs & Services** ->
+   **Credentials** -> **Create credentials** -> **OAuth client ID** ->
+   Application type **Web application**. Then:
+
+   ```bash
+   gh secret set IAP_OAUTH_CLIENT_ID     --body "<client ID>"
+   gh secret set IAP_OAUTH_CLIENT_SECRET --body "<client secret>"
+   ```
+
+   (Re-)run **02.01 GKE provision** - `scripts/01-namespaces.sh` writes these into
+   the `gateway-iap-oauth` Secret in the `jenkins` and `headlamp` namespaces
+   that the `GCPBackendPolicy` resources reference.
+
+4. **IAP access control** reuses `HEADLAMP_ADMIN_EMAILS` (see
+   [Headlamp](#headlamp-cluster-management-ui)): each listed email is granted
+   both `roles/container.clusterViewer` (existing, for Headlamp's OIDC
+   passthrough) and `roles/iap.httpsResourceAccessor` (new, via
+   `terraform/gke`'s `google_project_iam_member.iap_accessors`) - i.e. the
+   same people who can administer the cluster via Headlamp can pass IAP for
+   Jenkins and Headlamp. Anyone without `roles/iap.httpsResourceAccessor` gets
+   a 403 from IAP before reaching either app.
 
 ## Automated end-to-end test (provisioning + decommissioning)
 
@@ -240,22 +512,51 @@ plain root module + local backend instead. The resources in
 [`terraform/gke/main.tf`](terraform/gke/main.tf) can be lifted into a Stack
 component largely as-is if you use HCP Terraform for your own infrastructure.
 
+## CI/CD pipelines
+
+All workflows live in [`.github/workflows/`](.github/workflows/), are
+manually-triggered (`workflow_dispatch`), and follow a `CC.NN-<name>.yml`
+naming convention so their order in the GitHub UI matches their place in the
+lifecycle:
+
+- `CC` - **category**: `01` one-time bootstrap of persistent, account-level
+  resources (run by hand, rarely); `02` the GKE cluster lifecycle (provision,
+  component redeploys, decommission).
+- `NN` - sequence number within that category, in the order you'd typically
+  run them. Within category `02`, `.99` is reserved for the teardown
+  (decommission) step, so new component-redeploy workflows can be inserted at
+  `02.02`, `02.03`, etc. without renumbering it.
+
+| # | Workflow | Category | What it does |
+|---|---|---|---|
+| 01.01 | [Grafana Cloud bootstrap](.github/workflows/01.01-grafana-cloud-bootstrap.yml) | One-time bootstrap | Creates/confirms the persistent Grafana Cloud stack (`terraform/grafana-cloud-stack`) that `observability_mode: grafana-cloud` sends data to. See [Full Grafana Cloud lifecycle automation](#one-time-setup-1). |
+| 01.02 | [Gateway bootstrap](.github/workflows/01.02-gateway-bootstrap.yml) | One-time bootstrap | Creates/confirms the persistent static IP + managed wildcard cert + DNS authorization (`terraform/gateway-bootstrap`) that [public access](#public-access-gke-gateway-api--iap) depends on. |
+| 02.01 | [GKE provision](.github/workflows/02.01-gke-provision.yml) | GKE lifecycle | Provisions the throwaway GKE cluster (`terraform/gke`) and deploys the full stack (`scripts/up.sh`) + smoke test. Pair with 02.99. |
+| 02.02 | [Redeploy Jenkins](.github/workflows/02.02-redeploy-jenkins.yml) | GKE lifecycle | Re-applies only `scripts/04-jenkins.sh` (Helm upgrade of `helm/jenkins/` + `jenkins/casc/` JCasC) and re-seeds the PetClinic pipelines, against the cluster from the last 02.01 run - for a Jenkins-only fix without the full provision/decommission cycle. Run any number of times between 02.01 and 02.99. |
+| 02.99 | [GKE decommission](.github/workflows/02.99-gke-decommission.yml) | GKE lifecycle | Tears down the stack (`scripts/down.sh`) and destroys the GKE cluster (`terraform destroy`). |
+
+See [GitHub Actions automation](#github-actions-automation) below for the
+one-time setup (secrets, Workload Identity Federation) these workflows need.
+
 ## GitHub Actions automation
 
-[`.github/workflows/gke-provision.yml`](.github/workflows/gke-provision.yml) and
-[`.github/workflows/gke-decommission.yml`](.github/workflows/gke-decommission.yml)
+[`.github/workflows/02.01-gke-provision.yml`](.github/workflows/02.01-gke-provision.yml) and
+[`.github/workflows/02.99-gke-decommission.yml`](.github/workflows/02.99-gke-decommission.yml)
 are the CI equivalent of `test/e2e.sh`, split into two manually-triggered
 workflows so the cluster can be left running between them (e.g. provision in
 the morning, demo it, decommission in the evening). They run the exact same
 `terraform/gke` + `scripts/0N-*.sh` + `test/smoke-test.sh` as `test/e2e.sh`,
 but since each is a separate workflow run on a fresh runner, Terraform state
 has to be **remote** (a GCS bucket) instead of local so the decommission run
-can find what the provision run created.
+can find what the provision run created. See [CI/CD
+pipelines](#cicd-pipelines) for the full workflow inventory, including
+[`02.02-redeploy-jenkins.yml`](.github/workflows/02.02-redeploy-jenkins.yml)
+for redeploying only Jenkins.
 
 ### One-time setup
 
-> **Why this step can't itself run in GitHub Actions**: `gke-provision.yml`
-> and `gke-decommission.yml` authenticate to GCP via Workload Identity
+> **Why this step can't itself run in GitHub Actions**: `02.01-gke-provision.yml`
+> and `02.99-gke-decommission.yml` authenticate to GCP via Workload Identity
 > Federation (WIF) - but that WIF trust relationship, the CI service account,
 > and the GCS state bucket don't exist yet. Something has to create them
 > first using *real* GCP credentials, which is exactly what
@@ -334,28 +635,101 @@ can find what the provision run created.
 
    | Secret | Needed for |
    |---|---|
-   | `REGISTRY_USERNAME` / `REGISTRY_PASSWORD` | pushing PetClinic images to a private registry (`scripts/01-namespaces.sh`) |
+   | `REGISTRY_USERNAME` / `REGISTRY_PASSWORD` | pushing PetClinic images to, and pulling them back from, a private registry (`scripts/01-namespaces.sh`) |
    | `GIT_USERNAME` / `GIT_TOKEN` | cloning a private PetClinic fork |
-   | `GRAFANA_CLOUD_OTLP_ENDPOINT` / `GRAFANA_CLOUD_OTLP_AUTH` / `GRAFANA_BASE_URL` / `GRAFANA_API_KEY` / `GRAFANA_TRACES_DASHBOARD_UID` / `OTEL_LOGS_BACKEND_URL` | `observability_mode: grafana-cloud` (see `observability/otel-collector/secret.example.yaml` for what each value means) |
+   | `GRAFANA_TRACES_DASHBOARD_UID` / `OTEL_LOGS_BACKEND_URL` | `observability_mode: grafana-cloud` extras - a "View trace in Grafana" link UID and the logs Explore URL (see `observability/otel-collector/secret.example.yaml`); both optional even then |
+   | `HEADLAMP_OIDC_CLIENT_ID` / `HEADLAMP_OIDC_CLIENT_SECRET` | Google OAuth client for Headlamp login (see [Headlamp](#headlamp-cluster-management-ui)) |
+   | `HEADLAMP_ADMIN_EMAILS` | comma-separated Google account emails granted cluster-admin via Headlamp **and** IAP access to Jenkins/Headlamp - **your own email, never committed to the repo** (see [Headlamp](#headlamp-cluster-management-ui) and [Public access](#public-access-gke-gateway-api--iap)) |
+   | `IAP_OAUTH_CLIENT_ID` / `IAP_OAUTH_CLIENT_SECRET` | OAuth client gating Jenkins/Headlamp via Identity-Aware Proxy (see [Public access](#public-access-gke-gateway-api--iap)) |
+
+   `gateway.baseDomain` (default `jenkins2026.nubenetes.com`) is **not** a
+   secret - it's committed in `config/config.yaml`. Override it via the
+   `JENKINS2026_BASE_DOMAIN` env var for forks using a different domain, or
+   set it to `""` to disable public access entirely (see [Public
+   access](#public-access-gke-gateway-api--iap)).
+
+5. **(Optional) Full Grafana Cloud lifecycle automation**, for
+   `observability_mode: grafana-cloud`. Without this, picking that mode in
+   **02.01 GKE provision** will fail at `terraform apply` in
+   `terraform/grafana-cloud-token` - skip this step entirely if you only plan
+   to use `oss` or `managed`.
+
+   This provisions one **persistent** Grafana Cloud stack (once, locally,
+   like step 2 above), then lets every `02.01-gke-provision`/`02.99-gke-decommission`
+   run mint and revoke **ephemeral**, scoped access tokens against it -
+   no manual `observability/otel-collector/secret.yaml` needed.
+
+   a. **Create a Grafana Cloud Access Policy token** - this is the one
+      unavoidable manual credential, since Grafana Cloud has no equivalent
+      of GCP's Workload Identity Federation (used in steps 1-3) for
+      federating GitHub Actions: its API only supports static
+      organization-level tokens. In the [Grafana Cloud
+      portal](https://grafana.com), go to your org -> **Administration** ->
+      **Access Policies** -> **Create access policy** (realm = your
+      organization) with scopes `accesspolicies:read`,
+      `accesspolicies:write`, `accesspolicies:delete`, `stacks:read`,
+      `stacks:write`, `stacks:delete`, `stack-service-accounts:write`, then
+      create a token for that policy.
+
+   b. **Add two repository secrets** - `GRAFANA_CLOUD_STACK_SLUG` is your
+      choice of subdomain for the new stack
+      (`https://<slug>.grafana.net`, must be globally unique):
+
+      ```bash
+      gh secret set GRAFANA_CLOUD_API_TOKEN  --body "<token from step a>"
+      gh secret set GRAFANA_CLOUD_STACK_SLUG --body "<your-globally-unique-slug>"
+      ```
+
+   c. **Run the "01.01 Grafana Cloud bootstrap" workflow** (Actions tab ->
+      **01.01 Grafana Cloud bootstrap** -> **Run workflow**). It applies
+      [`terraform/grafana-cloud-stack`](terraform/grafana-cloud-stack) with
+      state in the same GCS bucket as `terraform/gke`, creating the
+      persistent stack from the two secrets above. If `GRAFANA_CLOUD_STACK_SLUG`
+      is already taken, Terraform fails with a clear error - pick another
+      value, `gh secret set GRAFANA_CLOUD_STACK_SLUG --body "<new-slug>"`, and
+      re-run the workflow. It's safe to re-run any time - re-applying against
+      existing state is a no-op.
+
+      (Alternatively, run it locally instead: `cd terraform/grafana-cloud-stack
+      && cp terraform.tfvars.example terraform.tfvars` - set `stack_slug` -
+      `export TF_VAR_grafana_cloud_api_token=... && terraform init && terraform
+      apply`. Keep `terraform.tfstate`, gitignored, if you do this.)
+
+   From here on, every `02.01-gke-provision` run with `observability_mode:
+   grafana-cloud` applies
+   [`terraform/grafana-cloud-token`](terraform/grafana-cloud-token) to mint a
+   scoped OTLP access policy token + dashboard service account token against
+   this stack and writes them into the `grafana-cloud-credentials` Secret;
+   every `02.99-gke-decommission` run destroys the same Terraform state, revoking
+   both tokens.
 
 ### Running it
 
-1. Go to the repo's **Actions** tab -> **GKE provision** -> **Run workflow**.
-   Pick `observability_mode` (`oss` needs no extra secrets and is the
-   recommended default - see [Prerequisites](#prerequisites-1) above).
+1. Go to the repo's **Actions** tab -> **02.01 GKE provision** -> **Run
+   workflow**. Pick `observability_mode` (`oss` needs no extra secrets and is
+   the recommended default - see [Prerequisites](#prerequisites-1) above).
+   Leave `enable_gateway` unchecked (the default) unless the one-time
+   **01.02 Gateway bootstrap** workflow + DNS records + IAP OAuth client (see
+   [Public access](#public-access-gke-gateway-api--iap)) have already been
+   completed - checking it before then deploys a Gateway that can't get an
+   IP/certificate.
 2. Wait ~15-20 minutes. The job summary prints the cluster name/zone and a
    reminder to decommission when done. `kubectl`/`helm` commands won't work
    from your machine unless you also run
    `terraform -chdir=terraform/gke output` + `gcloud container clusters
    get-credentials` locally (the cluster is real, just not connected to by
    default outside CI).
-3. When finished, go to **Actions** -> **GKE decommission** -> **Run
+3. To redeploy only Jenkins between provision/decommission cycles (e.g. after
+   editing `helm/jenkins/` or `jenkins/casc/`), go to **Actions** ->
+   **02.02 Redeploy Jenkins** -> **Run workflow** instead - see [CI/CD
+   pipelines](#cicd-pipelines). Repeat as many times as needed.
+4. When finished, go to **Actions** -> **02.99 GKE decommission** -> **Run
    workflow**. It reads the same GCS state, runs `scripts/down.sh`, then
    `terraform destroy`.
 
-Both workflows share a `concurrency: group: jenkins-2026-gke`, so GitHub
-Actions queues them rather than letting provision and decommission race on
-the same Terraform state. **Always run decommission when you're done** - an
+These three workflows share a `concurrency: group: jenkins-2026-gke`, so
+GitHub Actions queues them rather than letting them race on the same
+Terraform state. **Always run decommission when you're done** - an
 abandoned cluster keeps billing at the rate in [Cost](#cost) above; nothing
 in GitHub Actions tears it down automatically.
 
@@ -384,17 +758,17 @@ in GitHub Actions tears it down automatically.
   no billable resources are left, run
   `terraform -chdir=terraform/gke destroy` manually and confirm with
   `gcloud container clusters list --project "$GCP_PROJECT_ID"`.
-- **`gke-provision`/`gke-decommission` fails on `terraform init` with a
+- **`02.01-gke-provision`/`02.99-gke-decommission` fails on `terraform init` with a
   permissions or 404 error on the GCS bucket**: re-check the `TF_STATE_BUCKET`
   secret matches `terraform -chdir=terraform/bootstrap output -raw
   state_bucket`, and that `terraform/bootstrap` finished applying (the bucket
   and the `roles/storage.objectAdmin` binding for the CI service account must
   both exist).
-- **`gke-decommission` run manually without a prior `gke-provision`** (or
-  after the state was already destroyed): `terraform init` will succeed
-  against an empty state, but `terraform output -raw cluster_name` (used to
-  `get-credentials`) will fail with "no outputs found" - there's nothing to
-  decommission in that case.
+- **`02.99-gke-decommission` (or `02.02-redeploy-jenkins`) run manually without a
+  prior `02.01-gke-provision`** (or after the state was already destroyed):
+  `terraform init` will succeed against an empty state, but `terraform output
+  -raw cluster_name` (used to `get-credentials`) will fail with "no outputs
+  found" - there's nothing to decommission/redeploy in that case.
 - **WIF auth step fails with `permission denied` / `iam.workloadIdentityPools`
   not found**: re-run `terraform -chdir=terraform/bootstrap apply` (it may
   not have finished) and confirm `GCP_WORKLOAD_IDENTITY_PROVIDER` /

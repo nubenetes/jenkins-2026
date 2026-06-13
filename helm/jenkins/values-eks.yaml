@@ -1,9 +1,11 @@
 # Overlay for Amazon EKS, latest supported Kubernetes version.
-# Layered on top of values-common.yaml.
+# Layered on top of values-common.yaml - see that file's header for the
+# jenkinsci/helm-charts chart origin/default-values link and the
+# diff-only convention this overlay also follows (e.g.
+# controller.serviceType and persistence.accessMode/size below already
+# match the chart default and are intentionally not repeated).
 
 controller:
-  serviceType: ClusterIP
-
   # Disabled by default (PoC has no real DNS record / ACM cert). Flip to true
   # and set hostName to expose Jenkins through the AWS Load Balancer
   # Controller (ALB ingress class).
@@ -18,10 +20,7 @@ controller:
     tls: []
 
 persistence:
-  enabled: true
   storageClass: gp3
-  accessMode: ReadWriteOnce
-  size: 8Gi
 
 agent:
   workingDir: "/home/jenkins/agent"

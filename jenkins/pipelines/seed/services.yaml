@@ -1,15 +1,30 @@
 # =============================================================================
 # Service registry consumed by jenkins/pipelines/seed/seed_jobs.groovy.
 #
-# For each entry, the seed job creates TWO pipeline jobs (pipelines-as-code,
-# GitFlow model):
-#   - "<name>"          -> builds branch `stable.branch`  (master),
+# For each entry, the ROOT seed job ("seed-jobs", tracks this repo's
+# JENKINS2026_REPO_BRANCH, normally "main") creates TWO pipeline jobs
+# (pipelines-as-code, GitFlow model):
+#   - "<name>"          -> builds branch `stable.branch`  (main),
 #                          deploys to `namespaces.stable`  (petclinic)
-#   - "<name>-develop"  -> builds branch `develop.branch` (develop),
+#   - "<name>-develop"  -> builds branch `develop.branch` (main),
 #                          deploys to `namespaces.develop` (petclinic-develop)
 #
-# Both jobs run the SAME jenkins/pipelines/Jenkinsfile.petclinic; only the
-# parameters below (and the job name suffix) differ.
+# The DEV seed job ("pac-dev/seed-jobs-dev", tracks JENKINS2026_DEV_REPO_BRANCH,
+# normally "develop") creates ONE job per service inside the `pac-dev/` folder:
+#   - "pac-dev/<name>"  -> builds branch `develop.branch` (main),
+#                          deploys to `namespaces.pacDev` (petclinic-pac-dev)
+# This lets devops/platform engineers iterate on this repo's pipelines-as-code
+# (seed_jobs.groovy, Jenkinsfile.petclinic, shared library) on the `develop`
+# branch without touching the stable/develop jobs above. See README.md
+# "Pipelines-as-code dev sandbox".
+#
+# Upstream spring-petclinic repos only have a `main` branch (no `master`/
+# `develop`), so both `stable.branch` and `develop.branch` below point at
+# `main` - the -develop/pac-dev jobs are separate namespaces/tracks for
+# testing, not a different PetClinic source branch.
+#
+# All jobs run the SAME jenkins/pipelines/Jenkinsfile.petclinic; only the
+# parameters below (and the job name/folder) differ.
 #
 # repoUrl/module values mirror config/config.yaml petclinic.git settings -
 # the 8 Java services live as Maven modules inside the
@@ -22,10 +37,11 @@ frontendRepoUrl: &frontendRepoUrl https://github.com/spring-petclinic/spring-pet
 namespaces:
   stable: petclinic
   develop: petclinic-develop
+  pacDev: petclinic-pac-dev
 
 branches:
-  stable: master
-  develop: develop
+  stable: main
+  develop: main
 
 services:
   - name: config-server

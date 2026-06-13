@@ -11,6 +11,8 @@
 #   05 petclinic      /
 #   06 seed-pipelines   (sequential - needs 04 ready)
 #   07 grafana-dashboards (sequential - needs 03's credentials/configmap)
+#   08 headlamp         (sequential - cluster management UI)
+#   09 gateway          (sequential - public access via GKE Gateway API + IAP)
 #
 # Each step is idempotent; re-running up.sh after a partial failure is safe.
 set -euo pipefail
@@ -33,5 +35,7 @@ wait_bg
 
 "${SCRIPT_DIR}/06-seed-pipelines.sh"
 "${SCRIPT_DIR}/07-grafana-dashboards.sh"
+"${SCRIPT_DIR}/08-headlamp.sh"
+"${SCRIPT_DIR}/09-gateway.sh"
 
 log_info "jenkins-2026 is up. Run scripts/status.sh for endpoints and rollout status."

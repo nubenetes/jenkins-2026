@@ -68,3 +68,9 @@ variable "services_cidr" {
   description = "Secondary IPv4 CIDR for Service ClusterIPs (VPC-native cluster)."
   default     = "10.30.0.0/20"
 }
+
+variable "admin_emails" {
+  type        = list(string)
+  description = "Google account emails granted roles/container.clusterViewer - the minimal IAM needed for the GKE API to accept their tokens. In-cluster cluster-admin authorization for these same emails is handled separately by scripts/08-headlamp.sh (ClusterRoleBindings). See README.md \"Headlamp\". Never commit real emails - set via TF_VAR_admin_emails."
+  default     = []
+}

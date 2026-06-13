@@ -38,8 +38,14 @@ crash.log
 crash.*.log
 terraform/gke/terraform.tfvars
 terraform/bootstrap/terraform.tfvars
+terraform/grafana-cloud-stack/terraform.tfvars
+terraform/grafana-cloud-token/terraform.tfvars
+terraform/gateway-bootstrap/terraform.tfvars
 
-# Written by .github/workflows/gke-provision.yml / gke-decommission.yml
-# before `terraform init` to point terraform/gke at the GCS state bucket -
-# never present in local/test/e2e.sh runs.
+# Written by .github/workflows/gke-provision.yml / gke-decommission.yml /
+# grafana-cloud-bootstrap.yml before `terraform init` to point at the GCS
+# state bucket - never present in local/test/e2e.sh runs.
 terraform/gke/backend_override.tf
+terraform/grafana-cloud-token/backend_override.tf
+terraform/grafana-cloud-stack/backend_override.tf
+terraform/gateway-bootstrap/backend_override.tf

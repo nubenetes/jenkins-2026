@@ -1,0 +1,99 @@
+# CLAUDE.md
+
+Guidance for Claude Code when working in this repo.
+
+## What this is
+
+A Jenkins-on-Kubernetes PoC: Jenkins (Helm chart + JCasC) running
+pipelines-as-code for the Spring PetClinic microservices, with full
+OpenTelemetry observability (traces/metrics/logs) into either Grafana Cloud
+or an in-cluster OSS Grafana/Loki/Tempo/Prometheus stack. See
+[`README.md`](README.md) for the full picture, and
+[`docs/architecture.md`](docs/architecture.md),
+[`docs/observability.md`](docs/observability.md),
+[`docs/pipelines-as-code.md`](docs/pipelines-as-code.md),
+[`docs/platforms.md`](docs/platforms.md) for deep dives.
+
+## Repo layout
+
+- `scripts/0N-*.sh` - numbered, idempotent setup steps run in order by
+  `scripts/up.sh` (and torn down in reverse by `scripts/down.sh`). Every
+  script sources `scripts/lib/common.sh` then `scripts/lib/config.sh`.
+- `scripts/lib/config.sh` - loads `config/config.yaml` via `yq`, exports it
+  as `J2026_*` env vars. `JENKINS2026_PLATFORM` / `JENKINS2026_OBS_MODE` env
+  vars override `platform.target` / `observability.mode` from the config
+  file for a single run (CI matrix override pattern).
+- `config/config.yaml` - single source of truth: target platform
+  (gke/eks/aks/openshift), observability mode (grafana-cloud/oss/managed),
+  Jenkins/PetClinic namespaces, branches, registry, service list.
+- `helm/jenkins/`, `helm/petclinic/` - Helm values overlays.
+- `jenkins/casc/` - JCasC YAML (seed jobs, shared library, OTel plugin
+  config, RBAC).
+- `jenkins/pipelines/` - `Jenkinsfile.petclinic`, seed job DSL
+  (`seed_jobs.groovy`), `services.yaml`.
+- `observability/` - otel-operator, otel-collector, and Grafana (OSS +
+  dashboards) Helm values + the `grafana-cloud-credentials` secret template.
+- `terraform/`:
+  - `bootstrap/` - **one-time, local state**, run by hand. Creates the GCS
+    Terraform state bucket + GitHub OIDC/Workload Identity Federation trust
+    for `02.01-gke-provision.yml`/`02.99-gke-decommission.yml`.
+  - `gke/` - the throwaway GKE cluster. Local state for `test/e2e.sh`; GCS
+    remote state (via a `backend_override.tf` written by the workflows) in
+    CI.
+  - `grafana-cloud-stack/` - **one-time, local state**, run by hand. Creates
+    the persistent Grafana Cloud stack.
+  - `grafana-cloud-token/` - ephemeral access-policy + service-account
+    tokens scoped to the stack above, looked up by slug via a data source.
+    Same GCS-remote-state-via-`backend_override.tf` pattern as `terraform/gke`;
+    applied by `02.01-gke-provision.yml`, destroyed by `02.99-gke-decommission.yml`.
+- `test/e2e.sh` - full local lifecycle: provision GKE, deploy everything,
+  smoke test, tear down. `test/smoke-test.sh` is the smoke test alone.
+- `.github/workflows/` - numbered `CC.NN-<name>.yml` workflows (`CC` =
+  category: `01` one-time persistent-resource bootstrap, `02` GKE cluster
+  lifecycle; `NN` = sequence within that category, in the order you'd run
+  them, except `.99` is reserved for the teardown step so new component
+  redeploys can be inserted without renumbering it). `02.01-gke-provision.yml`
+  and `02.99-gke-decommission.yml` are the CI equivalent of `test/e2e.sh`,
+  split so the cluster can be left running between runs; both and
+  `02.02-redeploy-jenkins.yml` share `concurrency: group: jenkins-2026-gke`
+  and GCS state. `02.02-redeploy-jenkins.yml` redeploys only Jenkins against
+  an existing cluster, between a provision and decommission run. See
+  README.md "CI/CD pipelines" for the full inventory.
+
+## Conventions
+
+- **Branches**: `main` (stable PetClinic deploys here), `develop` (PetClinic
+  `develop` branch + the `pac-dev/*` Jenkins dev sandbox track this). Jenkins
+  itself (JCasC, seed jobs, shared library) is fetched from
+  `jenkins.selfRepoUrl` / `selfRepoBranch` in `config/config.yaml` - normally
+  `main`, with `selfRepoDevBranch: develop` used only by `pac-dev/seed-jobs-dev`.
+- **Secrets never committed**: `observability/otel-collector/secret.yaml`,
+  `**/secret.local.yaml`, `*.env`, all `*.tfstate*`, `**/.terraform/`,
+  `terraform/*/terraform.tfvars`, and the CI-written `backend_override.tf`
+  files are gitignored. Always extend `.gitignore` rather than committing
+  examples - use `*.example.yaml` / `terraform.tfvars.example` instead.
+- **Idempotency**: every `scripts/0N-*.sh` step and Terraform module should
+  be safe to re-run. `up.sh`/`down.sh` and the GitHub Actions workflows rely
+  on this.
+- **Feature-flag pattern**: durable default in `config/config.yaml`,
+  ephemeral override via `JENKINS2026_*` env var - follow this pattern for
+  any new config knobs rather than adding new flags ad hoc.
+- Shell scripts: `bash`, `set -euo pipefail` via `lib/common.sh`, `yq` for
+  YAML. Don't introduce other YAML tooling.
+
+## Working on this repo
+
+- Don't run `test/e2e.sh` or trigger `02.01-gke-provision`/`02.99-gke-decommission`
+  (or `02.02-redeploy-jenkins` against a real cluster) workflows without
+  explicit confirmation - they create/modify real, billed GCP (and optionally
+  Grafana Cloud) resources. Always pair a provision with a decommission.
+- `terraform/bootstrap` and `terraform/grafana-cloud-stack` are one-time,
+  human-run steps with local gitignored state - never wire these into CI, and
+  never re-run `terraform apply` there without checking the existing state
+  file first (re-creating either would orphan/duplicate persistent resources).
+- When editing Terraform, run `terraform fmt -recursive` and
+  `terraform validate` (after `terraform init -backend=false` if no backend
+  is configured yet) before considering the change done.
+- Required GitHub repo secrets are documented in README.md "GitHub Actions
+  automation" - keep that table in sync with any new secrets a workflow
+  starts consuming.

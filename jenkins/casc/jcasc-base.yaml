@@ -12,9 +12,10 @@ jenkins:
     Jenkins 2026 PoC - fully managed via Configuration as Code.
     Source of truth: https://github.com/nubenetes/jenkins-2026
 
-  # numExecutors/mode are set via controller.numExecutors /
-  # controller.executorMode in helm/jenkins/values-common.yaml instead of
-  # here - see the comment there for why.
+  # numExecutors (chart default 0) / mode are derived from
+  # controller.numExecutors / controller.executorMode in
+  # helm/jenkins/values-common.yaml instead of being set here - see the
+  # comment there for why.
 
   securityRealm:
     local:
@@ -22,7 +23,21 @@ jenkins:
       users:
         - id: "${JENKINS_ADMIN_ID:-admin}"
           password: "${JENKINS_ADMIN_PASSWORD}"
+        # Dedicated devops/platform-engineer account - the only identity
+        # (besides admin) with Job/Read on the pac-dev/* pipelines-as-code
+        # dev sandbox. See the "platform-engineer" item role below and
+        # README.md "Pipelines-as-code dev sandbox".
+        - id: "${JENKINS_PLATFORM_ENGINEER_ID:-platform-engineer}"
+          password: "${JENKINS_PLATFORM_ENGINEER_PASSWORD}"
 
+  # Role-Strategy roles come in two flavours:
+  #   - "global" roles apply to every item unconditionally (no pattern).
+  #   - "items"  roles apply only to items whose full path matches "pattern",
+  #              ADDING permissions on top of any global role - they cannot
+  #              revoke a permission a global role already grants.
+  # To keep pac-dev/* hidden from "authenticated" users, Job/* permissions
+  # must therefore live in an ITEM role scoped to everything EXCEPT pac-dev/*
+  # ("developer" below), not a global role.
   authorizationStrategy:
     roleBased:
       roles:
@@ -35,19 +50,43 @@ jenkins:
             # "entries", which disambiguates users vs. groups.
             entries:
               - user: "${JENKINS_ADMIN_ID:-admin}"
-          - name: "developer"
-            description: "Run and inspect PetClinic pipelines"
+          - name: "authenticated-base"
+            description: "Baseline UI access for any logged-in user (no Job/* - granted per-item below)"
             permissions:
               - "Overall/Read"
+              - "View/Read"
+            entries:
+              - group: "authenticated"
+        items:
+          - name: "developer"
+            description: "Run and inspect the stable PetClinic pipelines (everything outside pac-dev/)"
+            # Matches every item EXCEPT "pac-dev" and anything under it -
+            # i.e. the 18 root PetClinic jobs + seed-jobs.
+            pattern: "^(?!pac-dev(/.*)?$).*$"
+            permissions:
               - "Job/Read"
               - "Job/Build"
               - "Job/Cancel"
               - "Job/Workspace"
               - "Job/Discover"
               - "Run/Replay"
-              - "View/Read"
             entries:
               - group: "authenticated"
+          - name: "platform-engineer"
+            description: "Run, inspect and re-seed the pac-dev pipelines-as-code dev sandbox"
+            # Matches the "pac-dev" folder itself and everything under it
+            # (pac-dev/seed-jobs-dev, pac-dev/<service>, its view, ...).
+            pattern: "^pac-dev(/.*)?$"
+            permissions:
+              - "Job/Read"
+              - "Job/Build"
+              - "Job/Cancel"
+              - "Job/Workspace"
+              - "Job/Discover"
+              - "Run/Replay"
+              - "Job/Configure"
+            entries:
+              - user: "${JENKINS_PLATFORM_ENGINEER_ID:-platform-engineer}"
 
 # Allows the "seed-jobs" pipeline's jobDsl step (sandbox: false, see
 # jenkins/pipelines/seed/Jenkinsfile.seed) to run unsandboxed without
@@ -57,6 +96,15 @@ jenkins:
 security:
   globalJobDslSecurityConfiguration:
     useScriptSecurity: false
+
+# Default to the dark-theme plugin's "darkSystem" theme (follows the
+# browser/OS preference). disableUserThemes: false leaves the per-user
+# theme picker (user profile -> Appearance) enabled, so this is just the
+# default for anyone who hasn't chosen one.
+appearance:
+  themeManager:
+    disableUserThemes: false
+    theme: "darkSystem"
 
 unclassified:
   # unclassified.location.url is intentionally NOT set here - the chart's

@@ -58,6 +58,11 @@ jenkins:
     # Empty = latest. Pin for reproducibility, e.g. "5.8.16".
     version: ""
   adminUser: admin
+  # Local-realm account that is the only identity (besides adminUser) granted
+  # Job/Read on the pac-dev/* pipelines-as-code dev sandbox - see
+  # jenkins/casc/jcasc-base.yaml "platform-engineer" item role and
+  # README.md "Pipelines-as-code dev sandbox".
+  platformEngineerUser: platform-engineer
   # Name of the k8s Secret (created by scripts/01-namespaces.sh) holding the
   # admin password and other pipeline credentials (registry, git, Grafana).
   # See helm/jenkins/values-common.yaml controller.containerEnv and
@@ -67,6 +72,11 @@ jenkins:
   # library and by the seed job to fetch Jenkinsfile.petclinic + seed scripts.
   selfRepoUrl: https://github.com/nubenetes/jenkins-2026.git
   selfRepoBranch: main
+  # Branch the "pac-dev/seed-jobs-dev" job (and the pac-dev/* jobs it
+  # generates) track instead of selfRepoBranch - lets devops/platform
+  # engineers test pipelines-as-code changes on this branch before merging to
+  # selfRepoBranch. See jenkins/casc/jcasc-seed-job.yaml.
+  selfRepoDevBranch: develop
 
 # -----------------------------------------------------------------------------
 # Observability
@@ -100,12 +110,84 @@ observability:
     ossNamespace: observability
 
 # -----------------------------------------------------------------------------
+# Headlamp (cluster management UI) - see README.md "Headlamp"
+# -----------------------------------------------------------------------------
+headlamp:
+  namespace: headlamp
+  releaseName: headlamp
+  chart:
+    repoName: headlamp
+    repoUrl: https://kubernetes-sigs.github.io/headlamp/
+    chartName: headlamp/headlamp
+    # Empty = latest. Pin for reproducibility, e.g. "0.42.0".
+    version: ""
+  # k8s Secret (created by scripts/01-namespaces.sh) holding the Google OAuth
+  # client ID/secret consumed by helm/headlamp/values.yaml
+  # config.oidc.externalSecret. Never commit real client ID/secret values -
+  # see README.md "Headlamp".
+  credentialsSecretName: headlamp-credentials
+  oidc:
+    issuerURL: https://accounts.google.com
+    # cloud-platform scope is required so Headlamp's OIDC access token (see
+    # config.oidc.useAccessToken in helm/headlamp/values.yaml) is accepted by
+    # the GKE API server the same way `gcloud`-issued tokens are.
+    scopes: "openid email profile https://www.googleapis.com/auth/cloud-platform"
+    # The redirect URI registered on the Google OAuth client is computed by
+    # scripts/lib/config.sh: https://headlamp.<gateway.baseDomain>/oidc-callback
+    # if gateway.baseDomain is set, else the kubectl port-forward default
+    # (http://localhost:8080/oidc-callback). Override with
+    # JENKINS2026_HEADLAMP_OIDC_CALLBACK_URL if neither fits. See README.md
+    # "Headlamp" and "Public access (GKE Gateway API + IAP)".
+  # Comma-separated Google account emails granted cluster-admin (GCP IAM
+  # roles/container.clusterViewer via terraform/gke + in-cluster
+  # ClusterRoleBinding via scripts/08-headlamp.sh). Empty by default - never
+  # commit real emails here. Override with JENKINS2026_HEADLAMP_ADMIN_EMAILS
+  # (sourced from the HEADLAMP_ADMIN_EMAILS GitHub secret in CI). See
+  # README.md "Headlamp".
+  adminEmails: ""
+
+# -----------------------------------------------------------------------------
+# Public access via GKE Gateway API + Identity-Aware Proxy - see README.md
+# "Public access (GKE Gateway API + IAP)"
+# -----------------------------------------------------------------------------
+gateway:
+  # Public base domain. The Gateway's wildcard certificate (provisioned by
+  # terraform/gateway-bootstrap) covers this domain and *.<baseDomain>.
+  # nubenetes.com is the project's domain (DNS at Squarespace) - not
+  # sensitive, so it's a committed default. Override via
+  # JENKINS2026_BASE_DOMAIN for forks/local testing with a different domain.
+  # An empty value disables the gateway entirely (no Gateway/HTTPRoutes are
+  # created) - useful before terraform/gateway-bootstrap has been run once.
+  baseDomain: "jenkins2026.nubenetes.com"
+  # Fixed names of the persistent resources created by
+  # terraform/gateway-bootstrap. Must match the "name" arguments of
+  # google_compute_global_address.gateway_ip / google_certificate_manager_certificate_map.this
+  # in terraform/gateway-bootstrap/main.tf - update both if you ever change
+  # these.
+  staticIPName: "jenkins-2026-gateway-ip"
+  certMapName: "jenkins-2026-cert-map"
+  # Hostname prefixes under baseDomain for each app.
+  hosts:
+    jenkins: "jenkins"
+    petclinic: "petclinic"
+    headlamp: "headlamp"
+  # k8s Secret (per-namespace, created by scripts/01-namespaces.sh) holding
+  # the IAP OAuth client ID/secret consumed by the GCPBackendPolicy resources
+  # that put Identity-Aware Proxy in front of Jenkins and Headlamp. Never
+  # commit real client ID/secret values - see README.md "Public access".
+  iapCredentialsSecretName: gateway-iap-oauth
+
+# -----------------------------------------------------------------------------
 # PetClinic (microservices + Angular UI), GitFlow pipelines-as-code
 # -----------------------------------------------------------------------------
 petclinic:
   namespaces:
     stable: petclinic
     develop: petclinic-develop
+    # Namespace the pac-dev/* pipelines-as-code dev sandbox deploys into -
+    # see jenkins/pipelines/seed/services.yaml namespaces.pacDev and
+    # README.md "Pipelines-as-code dev sandbox".
+    pacDev: petclinic-pac-dev
 
   git:
     org: spring-petclinic
@@ -114,9 +196,13 @@ petclinic:
     backendUrl: https://github.com/spring-petclinic/spring-petclinic-microservices.git
     frontendUrl: https://github.com/spring-petclinic/spring-petclinic-angular.git
 
+  # Upstream spring-petclinic repos only have a `main` branch (no `master`/
+  # `develop`) - both pipelines build from `main`. The "-develop" suffix
+  # pipelines (separate namespace, see namespaces.develop above) exist purely
+  # as a testing track, not because a different source branch exists.
   branches:
-    stable: master
-    develop: develop
+    stable: main
+    develop: main
 
   # Container images built by the pipelines are pushed here. Override with
   # your own registry; ghcr.io/<org> works out of the box with the GITHUB_TOKEN
