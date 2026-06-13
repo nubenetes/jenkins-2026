@@ -358,14 +358,21 @@ below has been done) - `scripts/09-gateway.sh` is also a no-op on
 `platform.target` other than `gke`, since `gke-l7-global-external-managed`
 and `GCPBackendPolicy` are GKE-specific.
 
-> **Needs live-cluster verification**: the exact `Gateway`/`HTTPRoute`/
-> `GCPBackendPolicy` field syntax in
-> [`scripts/09-gateway.sh`](scripts/09-gateway.sh) (the
-> `addresses[].type: NamedAddress` static-IP reference, the
-> `networking.gke.io/certmap` annotation, cross-namespace `HTTPRoute`
-> attachment, and the `GCPBackendPolicy` `oauth2ClientSecret` field/key
-> names) hasn't been confirmed against a live cluster yet - try it on the
-> next `02.01-gke-provision` run, same caveat as Headlamp's OIDC passthrough above.
+> **Two non-obvious GKE Gateway API requirements**, confirmed against a live
+> cluster and handled by [`scripts/09-gateway.sh`](scripts/09-gateway.sh):
+> - The `Gateway` CRD rejects a `https` listener's `tls.mode: Terminate`
+>   unless `tls.certificateRefs` or `tls.options` is non-empty - even though
+>   the actual certificate comes from the `networking.gke.io/certmap`
+>   annotation. The script adds the documented placeholder
+>   `tls.options["networking.gke.io/pre-shared-certs"]: ""` to satisfy this.
+> - `GCPBackendPolicy`'s `spec.default.iap.clientID` must be a literal OAuth
+>   client ID string (not a Secret reference), and the Secret referenced by
+>   `oauth2ClientSecret.name` must contain **exactly one** key
+>   (`client_secret`). The script reads `client_id`/`client_secret` from the
+>   `gateway-iap-oauth` Secret (created by
+>   [`scripts/01-namespaces.sh`](scripts/01-namespaces.sh)) and derives a
+>   single-key `gateway-iap-oauth-client-secret` Secret per namespace for
+>   `oauth2ClientSecret.name`.
 
 ### One-time setup
 
@@ -385,15 +392,38 @@ and `GCPBackendPolicy` are GKE-specific.
    `<baseDomain>`'s parent domain. For the default
    `jenkins2026.nubenetes.com` (a subdomain of `nubenetes.com`, managed at
    **Squarespace** - Squarespace migrated domains off Google Domains in
-   2023): go to **Domains** -> `nubenetes.com` -> **DNS** -> **Custom
-   records**, and add:
-   - a wildcard **A** record: `*.jenkins2026` -> the static IP from step 1.
+   2023, but `nubenetes.com`'s nameservers are Google Cloud DNS
+   (`ns-cloud-a[1-4].googledomains.com`) - Squarespace's "Custom records" UI
+   manages that same Cloud DNS zone): go to **Domains** -> `nubenetes.com` ->
+   **DNS** -> **Custom records**, and add:
+   - a wildcard **A** record: host `*.jenkins2026`, value the static IP from
+     step 1 (e.g. `34.120.231.149`).
    - the **CNAME** record from the workflow's "DNS authorization record"
-     output (proves ownership of `jenkins2026.nubenetes.com` for the managed
-     certificate).
+     output: host `_acme-challenge.jenkins2026`, value something like
+     `<random-id>.<n>.authorize.certificatemanager.goog.` (proves ownership
+     of `jenkins2026.nubenetes.com` for the managed certificate).
+
+   Double-check the CNAME value is copied **in full, including the trailing
+   `.`** - Squarespace's UI truncates long values when displaying them, which
+   is easy to mistake for the saved value also being truncated.
 
    Certificate provisioning can take up to ~1h after the DNS authorization
-   record verifies.
+   record verifies. Check progress with:
+
+   ```bash
+   gcloud certificate-manager certificates describe jenkins-2026-cert \
+     --format="yaml(managed.state,managed.provisioningIssue,managed.authorizationAttemptInfo)"
+   ```
+
+   `managed.state: ACTIVE` means it's done. While `PROVISIONING`, an
+   `authorizationAttemptInfo[].issues: [CNAME_MISMATCH]` entry reflects
+   Certificate Manager's **last** validation attempt - it only re-checks DNS
+   periodically, so this can stay stale for a while even after you've fixed
+   the record; re-verify the record itself with `dig` / `https://dns.google`
+   rather than relying on this field to update immediately. Until the
+   certificate is `ACTIVE`, HTTPS requests to `*.jenkins2026.nubenetes.com`
+   fail with a TLS handshake error (e.g. curl's `SSL_ERROR_SYSCALL`) because
+   the load balancer has no certificate attached yet.
 
 3. **Create the IAP OAuth client by hand** (the Terraform resources for this,
    `google_iap_brand`/`google_iap_client`, are deprecated - the IAP OAuth
