@@ -12,9 +12,9 @@ with three JCasC fragments passed via `--set-file`:
 
 | File | Purpose |
 |---|---|
-| [`jcasc-base.yaml`](../jenkins/casc/jcasc-base.yaml) | Security realm (local `admin` user, password from the `jenkins-credentials` Secret), role-based authorization (admin / developer roles), system message, **global pipeline library** `petclinic-shared-library` pointing at this repo's `vars/`/`resources/` (root-level, required by the `modernSCM` retriever - it does not support subdirectories), and credentials (`container-registry`, `petclinic-git`) sourced from the same Secret. |
+| [`jcasc-base.yaml`](../jenkins/casc/jcasc-base.yaml) | Security realm (local `admin` and `platform-engineer` users, passwords from the `jenkins-credentials` Secret), Role-Based Authorization Strategy (`admin` global role; `developer` and `platform-engineer` item roles - see [below](#pipelines-as-code-dev-sandbox-pac-dev)), system message, **global pipeline library** `petclinic-shared-library` pointing at this repo's `vars/`/`resources/` (root-level, required by the `modernSCM` retriever - it does not support subdirectories), and credentials (`container-registry`, `petclinic-git`) sourced from the same Secret. |
 | [`jcasc-otel.yaml`](../jenkins/casc/jcasc-otel.yaml) | Configures the `opentelemetry` plugin's global exporter - OTLP/gRPC to `otel-collector-gateway.observability.svc.cluster.local:4317`, `service.name=jenkins`, plus optional links back to Grafana Cloud (trace/log explorers) for build pages. |
-| [`jcasc-seed-job.yaml`](../jenkins/casc/jcasc-seed-job.yaml) | Defines a single pipeline job, `seed-jobs`, whose definition is `jenkins/pipelines/seed/Jenkinsfile.seed` from this repo, polled by a cron trigger (`H/30 * * * *`). |
+| [`jcasc-seed-job.yaml`](../jenkins/casc/jcasc-seed-job.yaml) | Defines two pipeline jobs, both running `jenkins/pipelines/seed/Jenkinsfile.seed` from this repo with a cron trigger (`H/30 * * * *`): `seed-jobs` (tracks `JENKINS2026_REPO_BRANCH`, normally `main`) and `pac-dev/seed-jobs-dev` (tracks `JENKINS2026_DEV_REPO_BRANCH`, normally `develop` - see [Pipelines-as-code dev sandbox](#pipelines-as-code-dev-sandbox-pac-dev)). |
 
 All three use JCasC's `${VAR:-default}` substitution syntax, so the same
 fragments work whether values come from `helm/jenkins/values-common.yaml`'s
@@ -135,3 +135,82 @@ The `container-registry` and `petclinic-git` credentials (used by
 (`REGISTRY_USERNAME`/`REGISTRY_PASSWORD`/`GIT_USERNAME`/`GIT_TOKEN` env vars,
 all optional - `ghcr.io` works anonymously for pulls but pushing requires a
 token with `write:packages`).
+
+## Pipelines-as-code dev sandbox (`pac-dev/`)
+
+The 18 jobs above are the **stable** pipelines: their definitions
+(`seed_jobs.groovy`, `Jenkinsfile.petclinic`, `jcasc-*.yaml`, the shared
+library) are always sourced from this repo's `JENKINS2026_REPO_BRANCH`
+(`main`). Changing any of those files therefore needs a safe way to test the
+*new pipeline-as-code itself* before it reaches `main` - that is what the
+`pac-dev/` folder is for.
+
+### How it's generated
+
+[`jcasc-seed-job.yaml`](../jenkins/casc/jcasc-seed-job.yaml) creates a second
+pipeline, **`pac-dev/seed-jobs-dev`**, inside a `pac-dev` folder. It runs the
+same [`Jenkinsfile.seed`](../jenkins/pipelines/seed/Jenkinsfile.seed), but
+checked out from `JENKINS2026_DEV_REPO_BRANCH` (`config/config.yaml`
+`jenkins.selfRepoDevBranch`, default `develop`) instead of
+`JENKINS2026_REPO_BRANCH`. That means:
+
+- `seed_jobs.groovy` and `services.yaml` themselves come from `develop`.
+- The `jobDsl` step's `additionalParameters` passes `JOB_FOLDER`, derived from
+  the seed job's own path (`env.JOB_NAME`): `''` for `seed-jobs`, `'pac-dev'`
+  for `pac-dev/seed-jobs-dev`.
+- When `JOB_FOLDER == 'pac-dev'`, `seed_jobs.groovy` generates **one** job per
+  service (`pac-dev/<service>`, not a stable/`-develop` pair), each:
+  - tracking `branches.develop` (`develop`) of the PetClinic source repo,
+  - checking out `Jenkinsfile.petclinic` from `JENKINS2026_DEV_REPO_BRANCH`
+    (`develop`) of **this** repo - so edits to the Jenkinsfile, or to
+    `vars/`/`resources/` via a `@Library('petclinic-shared-library@develop')`
+    pin, take effect here first,
+  - deploying to `namespaces.pacDev` (`petclinic-pac-dev`,
+    `values-pac-dev.yaml`).
+- A `petclinic-pac-dev` `listView` groups the 9 `pac-dev/*` jobs, mirroring
+  the root `petclinic` view.
+
+Re-running `pac-dev/seed-jobs-dev` (its own `H/30 * * * *` cron, or manually)
+is idempotent, exactly like `seed-jobs`.
+
+### Isolation from the stable pipelines
+
+| | Stable (`seed-jobs`) | Dev sandbox (`pac-dev/seed-jobs-dev`) |
+|---|---|---|
+| This repo's branch | `JENKINS2026_REPO_BRANCH` (`main`) | `JENKINS2026_DEV_REPO_BRANCH` (`develop`) |
+| Jobs generated | `<service>` + `<service>-develop` (18) | `pac-dev/<service>` (9) |
+| PetClinic source branch | `master` / `develop` | `develop` |
+| K8s namespace | `petclinic` / `petclinic-develop` | `petclinic-pac-dev` |
+| Helm release | `petclinic-stable` / `petclinic-develop` | `petclinic-pac-dev` |
+
+Because the dev sandbox uses its own namespace, Helm release and job
+names/folder, re-seeding or running `pac-dev/*` can never overwrite or
+restart anything the 18 stable jobs manage.
+
+### Who can see it
+
+`jenkins/casc/jcasc-base.yaml`'s Role-Based Authorization Strategy grants:
+
+- **`developer`** (item role, pattern excludes `pac-dev` and everything under
+  it) - `Job/Read`, `Job/Build`, etc. on the 18 stable jobs + `seed-jobs`, for
+  any authenticated user.
+- **`platform-engineer`** (item role, pattern `^pac-dev(/.*)?$`) - the same
+  permissions plus `Job/Configure`, on `pac-dev` and everything inside it,
+  granted only to the `platform-engineer` local-realm account
+  (`jenkins.platformEngineerUser` in `config/config.yaml`, password in the
+  `platform-engineer-password` key of the `jenkins-credentials` Secret,
+  printed once by `scripts/01-namespaces.sh` alongside the admin password).
+
+Users who only have `developer` get no `Job/Read` on `pac-dev` or its
+contents, so it does not appear in the job list, dashboard or API for them.
+
+### Iteration workflow
+
+1. On `develop`, edit `seed_jobs.groovy`, `Jenkinsfile.petclinic`, JCasC, or
+   the shared library (`vars/`/`resources/`), and push.
+2. Either wait for `pac-dev/seed-jobs-dev`'s cron (`H/30 * * * *`) or trigger
+   it manually as `platform-engineer`.
+3. Run `pac-dev/<service>` jobs to validate end-to-end against
+   `petclinic-pac-dev`.
+4. Once satisfied, open a PR from `develop` to `main` - the change then takes
+   effect for the 18 stable jobs on their next `seed-jobs` run / pipeline run.

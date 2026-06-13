@@ -67,12 +67,25 @@ controller:
         secretKeyRef:
           name: jenkins-credentials
           key: admin-password
+    - name: JENKINS_PLATFORM_ENGINEER_ID
+      value: "platform-engineer"
+    - name: JENKINS_PLATFORM_ENGINEER_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: jenkins-credentials
+          key: platform-engineer-password
     - name: JENKINS_URL
       value: "http://localhost:8080/"
     - name: JENKINS2026_REPO_URL
       value: "https://github.com/nubenetes/jenkins-2026.git"
     - name: JENKINS2026_REPO_BRANCH
       value: "main"
+    # Branch the "pac-dev/seed-jobs-dev" job (and the pac-dev/* jobs it
+    # generates) track instead of JENKINS2026_REPO_BRANCH - see
+    # jenkins/casc/jcasc-seed-job.yaml and README.md "Pipelines-as-code dev
+    # sandbox".
+    - name: JENKINS2026_DEV_REPO_BRANCH
+      value: "develop"
     - name: JENKINS2026_PLATFORM
       value: "gke"
     - name: PETCLINIC_REGISTRY
@@ -153,6 +166,9 @@ controller:
     - github-branch-source
     - configuration-as-code
     - job-dsl
+    # Provides the folder() Job DSL primitive used to create the pac-dev/
+    # pipelines-as-code dev sandbox (jenkins/pipelines/seed/seed_jobs.groovy).
+    - cloudbees-folder
     - pipeline-utility-steps
     - pipeline-stage-view
     - opentelemetry
