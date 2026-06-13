@@ -36,7 +36,7 @@ or an in-cluster OSS Grafana/Loki/Tempo/Prometheus stack. See
 - `terraform/`:
   - `bootstrap/` - **one-time, local state**, run by hand. Creates the GCS
     Terraform state bucket + GitHub OIDC/Workload Identity Federation trust
-    for `gke-provision.yml`/`gke-decommission.yml`.
+    for `02.01-gke-provision.yml`/`02.02-gke-decommission.yml`.
   - `gke/` - the throwaway GKE cluster. Local state for `test/e2e.sh`; GCS
     remote state (via a `backend_override.tf` written by the workflows) in
     CI.
@@ -45,12 +45,18 @@ or an in-cluster OSS Grafana/Loki/Tempo/Prometheus stack. See
   - `grafana-cloud-token/` - ephemeral access-policy + service-account
     tokens scoped to the stack above, looked up by slug via a data source.
     Same GCS-remote-state-via-`backend_override.tf` pattern as `terraform/gke`;
-    applied by `gke-provision.yml`, destroyed by `gke-decommission.yml`.
+    applied by `02.01-gke-provision.yml`, destroyed by `02.02-gke-decommission.yml`.
 - `test/e2e.sh` - full local lifecycle: provision GKE, deploy everything,
   smoke test, tear down. `test/smoke-test.sh` is the smoke test alone.
-- `.github/workflows/gke-provision.yml` / `gke-decommission.yml` - CI
-  equivalent of `test/e2e.sh`, split so the cluster can be left running
-  between runs. Share `concurrency: group: jenkins-2026-gke` and GCS state.
+- `.github/workflows/` - numbered `CC.NN-<name>.yml` workflows (`CC` =
+  category: `01` one-time persistent-resource bootstrap, `02` full GKE
+  provision/decommission, `03` component-only redeploy; `NN` = sequence
+  number within that category). `02.01-gke-provision.yml` /
+  `02.02-gke-decommission.yml` are the CI equivalent of `test/e2e.sh`, split
+  so the cluster can be left running between runs; share
+  `concurrency: group: jenkins-2026-gke` and GCS state.
+  `03.01-redeploy-jenkins.yml` redeploys only Jenkins against an existing
+  cluster. See README.md "CI/CD pipelines" for the full inventory.
 
 ## Conventions
 
@@ -75,10 +81,10 @@ or an in-cluster OSS Grafana/Loki/Tempo/Prometheus stack. See
 
 ## Working on this repo
 
-- Don't run `test/e2e.sh` or trigger `gke-provision`/`gke-decommission`
-  workflows without explicit confirmation - they create real, billed GCP (and
-  optionally Grafana Cloud) resources. Always pair a provision with a
-  decommission.
+- Don't run `test/e2e.sh` or trigger `02.01-gke-provision`/`02.02-gke-decommission`
+  (or `03.01-redeploy-jenkins` against a real cluster) workflows without
+  explicit confirmation - they create/modify real, billed GCP (and optionally
+  Grafana Cloud) resources. Always pair a provision with a decommission.
 - `terraform/bootstrap` and `terraform/grafana-cloud-stack` are one-time,
   human-run steps with local gitignored state - never wire these into CI, and
   never re-run `terraform apply` there without checking the existing state
