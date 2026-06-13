@@ -22,6 +22,3 @@ manager:
     limits:
       cpu: 500m
       memory: 256Mi
-
-kubeRBACProxy:
-  enabled: true

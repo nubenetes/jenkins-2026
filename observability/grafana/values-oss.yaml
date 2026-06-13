@@ -50,12 +50,20 @@ grafana:
     enabled: true
     size: 2Gi
 
-  # The chart's sidecar already provisions a default "Prometheus" datasource
-  # pointing at the in-cluster Prometheus. These additional datasources add
-  # Loki + Tempo and wire up exemplar/derived-field correlation. "Prometheus"
-  # is intentionally re-declared here (with the same uid the sidecar uses,
-  # `prometheus`) purely to attach `exemplarTraceIdDestinations` - Grafana
-  # de-duplicates by uid so no duplicate entry appears in the datasource list.
+  sidecar:
+    datasources:
+      # The chart's sidecar would otherwise auto-provision its own default
+      # "Prometheus" datasource (isDefault: true). We declare our own
+      # "Prometheus" entry below (also isDefault: true) so we can attach
+      # exemplarTraceIdDestinations for Tempo correlation - having both
+      # marked as default makes Grafana fail to start ("Only one datasource
+      # per organization can be marked as default", see
+      # prometheus-community/helm-charts#482). Disable the chart's copy.
+      defaultDatasourceEnabled: false
+
+  # Loki + Tempo datasources, plus our own "Prometheus" entry (replacing the
+  # chart's auto-provisioned one, see sidecar.datasources above) with
+  # exemplar/derived-field correlation wired up.
   additionalDataSources:
     - name: Prometheus
       type: prometheus

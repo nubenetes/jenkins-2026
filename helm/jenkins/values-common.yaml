@@ -17,11 +17,22 @@ controller:
   image:
     registry: docker.io
     repository: jenkins/jenkins
-    tag: "2.479.3-lts-jdk17"
+    # jdk17 controller images stopped being published after the 2.479.x
+    # line - current LTS ships as <version>-lts-jdk21. Pin to a recent LTS
+    # so installPlugins (unversioned, see below) has a core new enough for
+    # whatever the update center currently considers "latest".
+    tag: "2.555.3-lts-jdk21"
   imagePullPolicy: IfNotPresent
 
   # We drive everything through pipeline agents; no executors on controller.
   numExecutors: 0
+  # Both feed the chart's generated jcasc-default-config.yaml (jenkins.mode /
+  # jenkins.numExecutors). Set here rather than in jenkins/casc/jcasc-base.yaml
+  # so JCasC doesn't see the same key from two YAML sources - the
+  # configuration-as-code plugin's ErrorOnConflictMergeStrategy fails the
+  # whole controller startup ("Found conflicting configuration ... jenkins.mode")
+  # on any duplicate, even with equal values.
+  executorMode: EXCLUSIVE
 
   resources:
     requests:
@@ -129,23 +140,29 @@ controller:
 
   # Curated plugin set for: kubernetes agents, git/github multibranch,
   # JCasC, Job DSL seed jobs, OpenTelemetry tracing, pipeline UX.
+  #
+  # Intentionally unversioned: the plugin-installation-manager-tool resolves
+  # the latest version of each plugin compatible with controller.image.tag's
+  # Jenkins core. Pinning specific plugin versions here previously caused
+  # "requires a greater version of Jenkins" install failures once the pinned
+  # core fell behind those plugins' minimum-core requirements.
   installPlugins:
-    - kubernetes:4302.v2ea_3e7d3ad96
-    - workflow-aggregator:600.vb_57cdd26fdd7
-    - git:5.2.2
-    - github-branch-source:1783.v2932a_eb_29c8e
-    - configuration-as-code:1819.v9b_c30a_249a_4c
-    - job-dsl:1.91
-    - pipeline-utility-steps:2.18.0
-    - pipeline-stage-view:2.34
-    - opentelemetry:2.15.0-371.v616206e2c1ca
-    - credentials-binding:687.v619cb_15e923f
-    - role-strategy:746.v2c4cb_a_5ecc70
-    - matrix-auth:3.2.5
-    - antisamy-markup-formatter:162.v0e6ec0fcfcf6
-    - timestamper:1.27
-    - ws-cleanup:0.45
-    - durable-task:583.v2cc1e8b_3da97
+    - kubernetes
+    - workflow-aggregator
+    - git
+    - github-branch-source
+    - configuration-as-code
+    - job-dsl
+    - pipeline-utility-steps
+    - pipeline-stage-view
+    - opentelemetry
+    - credentials-binding
+    - role-strategy
+    - matrix-auth
+    - antisamy-markup-formatter
+    - timestamper
+    - ws-cleanup
+    - durable-task
 
   ingress:
     enabled: false

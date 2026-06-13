@@ -254,6 +254,17 @@ can find what the provision run created.
 
 ### One-time setup
 
+> **Why this step can't itself run in GitHub Actions**: `gke-provision.yml`
+> and `gke-decommission.yml` authenticate to GCP via Workload Identity
+> Federation (WIF) - but that WIF trust relationship, the CI service account,
+> and the GCS state bucket don't exist yet. Something has to create them
+> first using *real* GCP credentials, which is exactly what
+> `terraform/bootstrap` does. This is a one-time, local "break glass" step;
+> every run after that (provisioning, deploying, smoke-testing, decommission)
+> happens entirely in GitHub Actions. There's no way around this for the
+> *first* setup - any approach to creating WIF trust ultimately needs an
+> already-trusted identity to grant it.
+
 1. **Authenticate locally** as a principal with `roles/owner` (or
    `roles/editor` + `roles/resourcemanager.projectIamAdmin`) on your GCP
    project - the same one used for [`test/e2e.sh`](#running-it):
@@ -281,9 +292,7 @@ can find what the provision run created.
    it's the only record of these resources; see the comment in
    [`terraform/bootstrap/versions.tf`](terraform/bootstrap/versions.tf).
 
-3. **Add repository secrets** (Settings -> Secrets and variables -> Actions ->
-   New repository secret, or `gh secret set <NAME>`), from the
-   `terraform output` above:
+3. **Add repository secrets**, from the `terraform output` above:
 
    | Secret | From output |
    |---|---|
@@ -292,13 +301,36 @@ can find what the provision run created.
    | `GCP_SERVICE_ACCOUNT` | `ci_service_account_email` |
    | `TF_STATE_BUCKET` | `state_bucket` |
 
+   **Option A - GitHub CLI (`gh`, recommended)**, from `terraform/bootstrap`
+   (run right after `terraform apply`, so `terraform output` still has the
+   values):
+
+   ```bash
+   cd terraform/bootstrap
+   gh secret set GCP_PROJECT_ID                --body "$(terraform output -raw project_id)"
+   gh secret set GCP_WORKLOAD_IDENTITY_PROVIDER --body "$(terraform output -raw workload_identity_provider)"
+   gh secret set GCP_SERVICE_ACCOUNT           --body "$(terraform output -raw ci_service_account_email)"
+   gh secret set TF_STATE_BUCKET               --body "$(terraform output -raw state_bucket)"
+   ```
+
+   `gh secret set` defaults to the repo of the current directory's git
+   remote; add `--repo nubenetes/jenkins-2026` (or your fork) to target it
+   explicitly. Verify with `gh secret list`.
+
+   **Option B - GitHub web UI**: go to the repo -> **Settings** -> **Secrets
+   and variables** -> **Actions** -> **New repository secret**, and for each
+   row of the table above, paste the **Secret** name (e.g.
+   `GCP_PROJECT_ID`) and the corresponding `terraform output -raw <name>`
+   value as the **Value**. Print all four at once with:
+
    ```bash
    for o in project_id workload_identity_provider ci_service_account_email state_bucket; do
      echo "$o -> $(terraform -chdir=terraform/bootstrap output -raw "$o")"
    done
    ```
 
-4. **Optional secrets**, only needed if you use the corresponding feature:
+4. **Optional secrets**, only needed if you use the corresponding feature -
+   set the same way, e.g. `gh secret set REGISTRY_PASSWORD --body "<token>"`:
 
    | Secret | Needed for |
    |---|---|
