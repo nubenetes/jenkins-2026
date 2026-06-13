@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Triggers the "seed-jobs" pipeline (defined by jenkins/casc/jcasc-seed-job.yaml,
-# which itself runs jenkins/pipelines/seed/seed-jobs.groovy via the Job DSL
+# which itself runs jenkins/pipelines/seed/seed_jobs.groovy via the Job DSL
 # plugin) so the 18 PetClinic pipelines (9 services x stable/-develop) exist
 # immediately, instead of waiting for its H/30 * * * * cron trigger.
 #

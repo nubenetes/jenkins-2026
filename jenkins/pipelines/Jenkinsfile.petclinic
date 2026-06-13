@@ -2,7 +2,7 @@
 // Generic PetClinic pipeline (pipelines-as-code).
 //
 // ONE Jenkinsfile is shared by all 18 jobs created by
-// jenkins/pipelines/seed/seed-jobs.groovy (9 services x {stable, *-develop}).
+// jenkins/pipelines/seed/seed_jobs.groovy (9 services x {stable, *-develop}).
 // Each job only differs in its default parameter values (GIT_BRANCH,
 // TARGET_NAMESPACE, ENV_NAME) - this is the "two pipelines per service,
 // gitflow" model described in README.md.
@@ -77,7 +77,7 @@ spec:
   // NOTE: parameters are intentionally NOT declared here. Each of the 18
   // jobs gets its own SERVICE_NAME/SERVICE_TYPE/MODULE_PATH/GIT_REPO_URL/
   // GIT_BRANCH/TARGET_NAMESPACE/ENV_NAME/PORT/HEALTH_PATH/PLATFORM
-  // parameter definitions from Job DSL (jenkins/pipelines/seed/seed-jobs.groovy),
+  // parameter definitions from Job DSL (jenkins/pipelines/seed/seed_jobs.groovy),
   // which is the only thing that differs between the "stable" job and its
   // "-develop" sibling. A `parameters {}` block in a declarative Jenkinsfile
   // from SCM overwrites the job's parameter *definitions* (incl. defaults)
