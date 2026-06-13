@@ -173,10 +173,14 @@ A Jenkins seed job (defined via JCasC, running Job DSL against
 pipelines**: for each of the 9 PetClinic services, a `<service>` job tracking
 `main` (deploys to namespace `petclinic`) and a `<service>-develop` job also
 tracking `main` (deploys to `petclinic-develop`, a separate track for
-testing - upstream PetClinic only has a `main` branch). Both run the same
+testing - upstream PetClinic only has a `main` branch). Both run
 [`Jenkinsfile.petclinic`](jenkins/pipelines/Jenkinsfile.petclinic):
 checkout -> build & test -> build & push image -> `helm upgrade` the
-[`helm/petclinic`](helm/petclinic) chart for that environment -> smoke test.
+[`helm/petclinic`](helm/petclinic) chart for that environment -> smoke test -
+but `<service>` checks out the Jenkinsfile + shared library from **this
+repo's `main`**, while `<service>-develop` checks them out from **this
+repo's `develop`**, so pipeline-as-code changes land on the `-develop` jobs
+first, without affecting the stable `<service>` jobs until merged to `main`.
 Details, including why the Jenkinsfile deliberately has no `parameters {}`
 block, in [`docs/pipelines-as-code.md`](docs/pipelines-as-code.md).
 
@@ -184,12 +188,14 @@ block, in [`docs/pipelines-as-code.md`](docs/pipelines-as-code.md).
 
 A second seed job, **`pac-dev/seed-jobs-dev`**, tracks this repo's
 `develop` branch (instead of `main`) and generates a `pac-dev/` folder
-containing one pipeline per PetClinic service, deploying to the
+containing one pipeline per PetClinic service (also running the Jenkinsfile +
+shared library from `develop`, like `<service>-develop`), deploying to the
 `petclinic-pac-dev` namespace. This lets devops/platform engineers iterate on
 this repo's own pipelines-as-code (`seed_jobs.groovy`, `Jenkinsfile.petclinic`,
-JCasC, the shared library) on `develop` and see the result run end-to-end,
-**without touching the 18 stable/`-develop` jobs above**, which keep tracking
-`main`. The `pac-dev/` folder is hidden from regular users - only the
+JCasC, the shared library) **and** the job-generation logic itself
+(`seed_jobs.groovy`/`services.yaml` structure) on `develop` and see the
+result run end-to-end, **without touching the 18 stable/`-develop` jobs
+above**. The `pac-dev/` folder is hidden from regular users - only the
 `platform-engineer` Jenkins account (Role-Based Authorization Strategy) can
 see or run it. Details in
 [`docs/pipelines-as-code.md`](docs/pipelines-as-code.md#pipelines-as-code-dev-sandbox-pac-dev).
