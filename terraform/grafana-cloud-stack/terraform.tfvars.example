@@ -1,0 +1,11 @@
+# Copy to terraform.tfvars (gitignored) and fill in, or pass via -var /
+# TF_VAR_* env vars.
+
+# Create this token once in the Grafana Cloud portal - see variables.tf for
+# the required scopes. Prefer TF_VAR_grafana_cloud_api_token over committing
+# it here, even to a gitignored file.
+# grafana_cloud_api_token = "glc_..."
+
+stack_slug = "jenkins-2026"
+
+# region_slug = "prod-eu-west-3"

@@ -1,0 +1,10 @@
+# Copy to terraform.tfvars (gitignored) and fill in, or pass via -var /
+# TF_VAR_* env vars. Used for local testing only - gke-provision.yml and
+# gke-decommission.yml pass these as TF_VAR_* from GitHub secrets.
+
+# Same token as terraform/grafana-cloud-stack. Prefer TF_VAR_grafana_cloud_api_token
+# over committing it here, even to a gitignored file.
+# grafana_cloud_api_token = "glc_..."
+
+# Output of terraform/grafana-cloud-stack's stack_slug.
+stack_slug = "jenkins-2026"

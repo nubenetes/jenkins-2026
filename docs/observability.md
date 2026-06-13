@@ -121,18 +121,31 @@ template variables (`DS_PROMETHEUS`/`DS_LOKI`/`DS_TEMPO`):
 ### `grafana-cloud` (default)
 
 `scripts/03-observability.sh` installs only the two collector releases,
-exporting via `otlphttp` to Grafana Cloud's OTLP gateway. Requires a
-`grafana-cloud-credentials` Secret - copy
-[`observability/otel-collector/secret.example.yaml`](../observability/otel-collector/secret.example.yaml),
-fill in your stack's OTLP endpoint and `base64(instanceID:apiKey)` Basic-auth
-header (Grafana Cloud Portal -> **OpenTelemetry** -> **Configuration
-Details**), and `kubectl apply -f` it before running `scripts/up.sh` (or
-re-run `03-observability.sh`/`07-grafana-dashboards.sh` afterwards). The same
-secret optionally carries `GRAFANA_BASE_URL`/`GRAFANA_API_KEY` (a Grafana
-Cloud service account token with dashboard-write scope), used by
-`scripts/07-grafana-dashboards.sh` to import the two dashboards via the HTTP
-API, and `GRAFANA_TRACES_DASHBOARD_UID`/`OTEL_LOGS_BACKEND_URL`, surfaced as
-links on Jenkins build pages by `jcasc-otel.yaml`.
+exporting via `otlphttp` to Grafana Cloud's OTLP gateway. Either way, it
+requires a `grafana-cloud-credentials` Secret carrying
+`GRAFANA_CLOUD_OTLP_ENDPOINT`/`GRAFANA_CLOUD_OTLP_AUTH` (the OTLP gateway URL
+and `base64(instanceID:apiKey)` Basic-auth header), plus optionally
+`GRAFANA_BASE_URL`/`GRAFANA_API_KEY` (a Grafana Cloud service account token
+with dashboard-write scope), used by `scripts/07-grafana-dashboards.sh` to
+import the two dashboards via the HTTP API, and
+`GRAFANA_TRACES_DASHBOARD_UID`/`OTEL_LOGS_BACKEND_URL`, surfaced as links on
+Jenkins build pages by `jcasc-otel.yaml`. Two ways to provide it:
+
+- **GitHub Actions (automated)**: follow README.md "GitHub Actions
+  automation" step 5 once - it provisions a persistent Grafana Cloud stack
+  via [`terraform/grafana-cloud-stack`](../terraform/grafana-cloud-stack).
+  From then on, every `gke-provision`/`gke-decommission` run applies
+  [`terraform/grafana-cloud-token`](../terraform/grafana-cloud-token) to
+  mint/revoke a scoped OTLP access policy token and dashboard service account
+  token, and writes them into `grafana-cloud-credentials` automatically - no
+  manual secret needed.
+- **Local / `test/e2e.sh` (manual)**: copy
+  [`observability/otel-collector/secret.example.yaml`](../observability/otel-collector/secret.example.yaml)
+  to `secret.yaml`, fill in your stack's OTLP endpoint and
+  `base64(instanceID:apiKey)` Basic-auth header (Grafana Cloud Portal ->
+  **OpenTelemetry** -> **Configuration Details**), and `kubectl apply -f` it
+  before running `scripts/up.sh` (or re-run
+  `03-observability.sh`/`07-grafana-dashboards.sh` afterwards).
 
 ### `oss`
 

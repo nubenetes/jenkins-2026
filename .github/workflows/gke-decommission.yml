@@ -91,6 +91,31 @@ jobs:
           TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
         run: terraform destroy -auto-approve -input=false
 
+      - name: Configure GCS backend (terraform/grafana-cloud-token)
+        if: ${{ secrets.GRAFANA_CLOUD_API_TOKEN != '' }}
+        run: |
+          cat > terraform/grafana-cloud-token/backend_override.tf <<EOF
+          terraform {
+            backend "gcs" {
+              bucket = "${{ secrets.TF_STATE_BUCKET }}"
+              prefix = "jenkins-2026/grafana-cloud-token"
+            }
+          }
+          EOF
+
+      - name: Terraform init (grafana-cloud-token)
+        if: ${{ secrets.GRAFANA_CLOUD_API_TOKEN != '' }}
+        working-directory: terraform/grafana-cloud-token
+        run: terraform init -input=false
+
+      - name: Terraform destroy (revoke Grafana Cloud access policy + tokens)
+        if: ${{ secrets.GRAFANA_CLOUD_API_TOKEN != '' }}
+        working-directory: terraform/grafana-cloud-token
+        env:
+          TF_VAR_grafana_cloud_api_token: ${{ secrets.GRAFANA_CLOUD_API_TOKEN }}
+          TF_VAR_stack_slug: ${{ secrets.GRAFANA_CLOUD_STACK_SLUG }}
+        run: terraform destroy -auto-approve -input=false
+
       - name: Summary
         if: always()
         run: |
