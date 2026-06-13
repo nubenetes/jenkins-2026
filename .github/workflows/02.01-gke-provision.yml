@@ -115,6 +115,9 @@ jobs:
           GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
           HEADLAMP_OIDC_CLIENT_ID: ${{ secrets.HEADLAMP_OIDC_CLIENT_ID }}
           HEADLAMP_OIDC_CLIENT_SECRET: ${{ secrets.HEADLAMP_OIDC_CLIENT_SECRET }}
+          JENKINS_OIDC_CLIENT_ID: ${{ secrets.JENKINS_OIDC_CLIENT_ID }}
+          JENKINS_OIDC_CLIENT_SECRET: ${{ secrets.JENKINS_OIDC_CLIENT_SECRET }}
+          JENKINS_OIDC_ADMIN_EMAIL: ${{ secrets.JENKINS_OIDC_ADMIN_EMAIL }}
           IAP_OAUTH_CLIENT_ID: ${{ secrets.IAP_OAUTH_CLIENT_ID }}
           IAP_OAUTH_CLIENT_SECRET: ${{ secrets.IAP_OAUTH_CLIENT_SECRET }}
         run: |
