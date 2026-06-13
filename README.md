@@ -495,18 +495,20 @@ naming convention so their order in the GitHub UI matches their place in the
 lifecycle:
 
 - `CC` - **category**: `01` one-time bootstrap of persistent, account-level
-  resources (run by hand, rarely); `02` full per-cycle GKE
-  provision/decommission; `03` redeploy a single component against an
-  already-provisioned cluster.
-- `NN` - sequence number within that category.
+  resources (run by hand, rarely); `02` the GKE cluster lifecycle (provision,
+  component redeploys, decommission).
+- `NN` - sequence number within that category, in the order you'd typically
+  run them. Within category `02`, `.99` is reserved for the teardown
+  (decommission) step, so new component-redeploy workflows can be inserted at
+  `02.02`, `02.03`, etc. without renumbering it.
 
 | # | Workflow | Category | What it does |
 |---|---|---|---|
 | 01.01 | [Grafana Cloud bootstrap](.github/workflows/01.01-grafana-cloud-bootstrap.yml) | One-time bootstrap | Creates/confirms the persistent Grafana Cloud stack (`terraform/grafana-cloud-stack`) that `observability_mode: grafana-cloud` sends data to. See [Full Grafana Cloud lifecycle automation](#one-time-setup-1). |
 | 01.02 | [Gateway bootstrap](.github/workflows/01.02-gateway-bootstrap.yml) | One-time bootstrap | Creates/confirms the persistent static IP + managed wildcard cert + DNS authorization (`terraform/gateway-bootstrap`) that [public access](#public-access-gke-gateway-api--iap) depends on. |
-| 02.01 | [GKE provision](.github/workflows/02.01-gke-provision.yml) | Full lifecycle | Provisions the throwaway GKE cluster (`terraform/gke`) and deploys the full stack (`scripts/up.sh`) + smoke test. Pair with 02.02. |
-| 02.02 | [GKE decommission](.github/workflows/02.02-gke-decommission.yml) | Full lifecycle | Tears down the stack (`scripts/down.sh`) and destroys the GKE cluster (`terraform destroy`). |
-| 03.01 | [Redeploy Jenkins](.github/workflows/03.01-redeploy-jenkins.yml) | Component redeploy | Re-applies only `scripts/04-jenkins.sh` (Helm upgrade of `helm/jenkins/` + `jenkins/casc/` JCasC) and re-seeds the PetClinic pipelines, against the cluster from the last 02.01 run - for a Jenkins-only fix without the full provision/decommission cycle. |
+| 02.01 | [GKE provision](.github/workflows/02.01-gke-provision.yml) | GKE lifecycle | Provisions the throwaway GKE cluster (`terraform/gke`) and deploys the full stack (`scripts/up.sh`) + smoke test. Pair with 02.99. |
+| 02.02 | [Redeploy Jenkins](.github/workflows/02.02-redeploy-jenkins.yml) | GKE lifecycle | Re-applies only `scripts/04-jenkins.sh` (Helm upgrade of `helm/jenkins/` + `jenkins/casc/` JCasC) and re-seeds the PetClinic pipelines, against the cluster from the last 02.01 run - for a Jenkins-only fix without the full provision/decommission cycle. Run any number of times between 02.01 and 02.99. |
+| 02.99 | [GKE decommission](.github/workflows/02.99-gke-decommission.yml) | GKE lifecycle | Tears down the stack (`scripts/down.sh`) and destroys the GKE cluster (`terraform destroy`). |
 
 See [GitHub Actions automation](#github-actions-automation) below for the
 one-time setup (secrets, Workload Identity Federation) these workflows need.
@@ -514,7 +516,7 @@ one-time setup (secrets, Workload Identity Federation) these workflows need.
 ## GitHub Actions automation
 
 [`.github/workflows/02.01-gke-provision.yml`](.github/workflows/02.01-gke-provision.yml) and
-[`.github/workflows/02.02-gke-decommission.yml`](.github/workflows/02.02-gke-decommission.yml)
+[`.github/workflows/02.99-gke-decommission.yml`](.github/workflows/02.99-gke-decommission.yml)
 are the CI equivalent of `test/e2e.sh`, split into two manually-triggered
 workflows so the cluster can be left running between them (e.g. provision in
 the morning, demo it, decommission in the evening). They run the exact same
@@ -523,13 +525,13 @@ but since each is a separate workflow run on a fresh runner, Terraform state
 has to be **remote** (a GCS bucket) instead of local so the decommission run
 can find what the provision run created. See [CI/CD
 pipelines](#cicd-pipelines) for the full workflow inventory, including
-[`03.01-redeploy-jenkins.yml`](.github/workflows/03.01-redeploy-jenkins.yml)
+[`02.02-redeploy-jenkins.yml`](.github/workflows/02.02-redeploy-jenkins.yml)
 for redeploying only Jenkins.
 
 ### One-time setup
 
 > **Why this step can't itself run in GitHub Actions**: `02.01-gke-provision.yml`
-> and `02.02-gke-decommission.yml` authenticate to GCP via Workload Identity
+> and `02.99-gke-decommission.yml` authenticate to GCP via Workload Identity
 > Federation (WIF) - but that WIF trust relationship, the CI service account,
 > and the GCS state bucket don't exist yet. Something has to create them
 > first using *real* GCP credentials, which is exactly what
@@ -628,7 +630,7 @@ for redeploying only Jenkins.
    to use `oss` or `managed`.
 
    This provisions one **persistent** Grafana Cloud stack (once, locally,
-   like step 2 above), then lets every `02.01-gke-provision`/`02.02-gke-decommission`
+   like step 2 above), then lets every `02.01-gke-provision`/`02.99-gke-decommission`
    run mint and revoke **ephemeral**, scoped access tokens against it -
    no manual `observability/otel-collector/secret.yaml` needed.
 
@@ -673,7 +675,7 @@ for redeploying only Jenkins.
    [`terraform/grafana-cloud-token`](terraform/grafana-cloud-token) to mint a
    scoped OTLP access policy token + dashboard service account token against
    this stack and writes them into the `grafana-cloud-credentials` Secret;
-   every `02.02-gke-decommission` run destroys the same Terraform state, revoking
+   every `02.99-gke-decommission` run destroys the same Terraform state, revoking
    both tokens.
 
 ### Running it
@@ -692,17 +694,17 @@ for redeploying only Jenkins.
    `terraform -chdir=terraform/gke output` + `gcloud container clusters
    get-credentials` locally (the cluster is real, just not connected to by
    default outside CI).
-3. When finished, go to **Actions** -> **02.02 GKE decommission** -> **Run
+3. To redeploy only Jenkins between provision/decommission cycles (e.g. after
+   editing `helm/jenkins/` or `jenkins/casc/`), go to **Actions** ->
+   **02.02 Redeploy Jenkins** -> **Run workflow** instead - see [CI/CD
+   pipelines](#cicd-pipelines). Repeat as many times as needed.
+4. When finished, go to **Actions** -> **02.99 GKE decommission** -> **Run
    workflow**. It reads the same GCS state, runs `scripts/down.sh`, then
    `terraform destroy`.
-4. To redeploy only Jenkins between provision/decommission cycles (e.g. after
-   editing `helm/jenkins/` or `jenkins/casc/`), go to **Actions** ->
-   **03.01 Redeploy Jenkins** -> **Run workflow** instead - see [CI/CD
-   pipelines](#cicd-pipelines).
 
-Both workflows share a `concurrency: group: jenkins-2026-gke`, so GitHub
-Actions queues them rather than letting provision and decommission race on
-the same Terraform state. **Always run decommission when you're done** - an
+These three workflows share a `concurrency: group: jenkins-2026-gke`, so
+GitHub Actions queues them rather than letting them race on the same
+Terraform state. **Always run decommission when you're done** - an
 abandoned cluster keeps billing at the rate in [Cost](#cost) above; nothing
 in GitHub Actions tears it down automatically.
 
@@ -731,17 +733,17 @@ in GitHub Actions tears it down automatically.
   no billable resources are left, run
   `terraform -chdir=terraform/gke destroy` manually and confirm with
   `gcloud container clusters list --project "$GCP_PROJECT_ID"`.
-- **`02.01-gke-provision`/`02.02-gke-decommission` fails on `terraform init` with a
+- **`02.01-gke-provision`/`02.99-gke-decommission` fails on `terraform init` with a
   permissions or 404 error on the GCS bucket**: re-check the `TF_STATE_BUCKET`
   secret matches `terraform -chdir=terraform/bootstrap output -raw
   state_bucket`, and that `terraform/bootstrap` finished applying (the bucket
   and the `roles/storage.objectAdmin` binding for the CI service account must
   both exist).
-- **`02.02-gke-decommission` run manually without a prior `02.01-gke-provision`** (or
-  after the state was already destroyed): `terraform init` will succeed
-  against an empty state, but `terraform output -raw cluster_name` (used to
-  `get-credentials`) will fail with "no outputs found" - there's nothing to
-  decommission in that case.
+- **`02.99-gke-decommission` (or `02.02-redeploy-jenkins`) run manually without a
+  prior `02.01-gke-provision`** (or after the state was already destroyed):
+  `terraform init` will succeed against an empty state, but `terraform output
+  -raw cluster_name` (used to `get-credentials`) will fail with "no outputs
+  found" - there's nothing to decommission/redeploy in that case.
 - **WIF auth step fails with `permission denied` / `iam.workloadIdentityPools`
   not found**: re-run `terraform -chdir=terraform/bootstrap apply` (it may
   not have finished) and confirm `GCP_WORKLOAD_IDENTITY_PROVIDER` /

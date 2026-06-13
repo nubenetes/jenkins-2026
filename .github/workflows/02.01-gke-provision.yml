@@ -5,10 +5,10 @@ name: "02.01 GKE provision"
 # jenkins-2026 stack (scripts/up.sh) + smoke tests. See README.md
 # "GitHub Actions automation" for one-time setup.
 #
-# Pair this with the "02.02 GKE decommission" workflow - it shares the same
+# Pair this with the "02.99 GKE decommission" workflow - it shares the same
 # Terraform state, so it can find and tear down what this workflow created.
 # To redeploy only Jenkins (e.g. a Helm values / JCasC fix) without rerunning
-# this whole lifecycle, use "03.01 Redeploy Jenkins" instead.
+# this whole lifecycle, use "02.02 Redeploy Jenkins" instead.
 on:
   workflow_dispatch:
     inputs:
@@ -221,5 +221,5 @@ jobs:
               echo "see README.md \"Accessing the UI\"."
             fi
             echo
-            echo "Run the **02.02 GKE decommission** workflow when you're done to avoid ongoing charges."
+            echo "Run the **02.99 GKE decommission** workflow when you're done to avoid ongoing charges."
           } >> "${GITHUB_STEP_SUMMARY}"

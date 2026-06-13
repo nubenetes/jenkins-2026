@@ -15,7 +15,7 @@ name: "01.02 Gateway bootstrap"
 #      IAP_OAUTH_CLIENT_ID / IAP_OAUTH_CLIENT_SECRET secrets.
 # See README.md "Public access (GKE Gateway API + IAP)" for details.
 #
-# 02.01-gke-provision.yml / 02.02-gke-decommission.yml do NOT run this
+# 02.01-gke-provision.yml / 02.99-gke-decommission.yml do NOT run this
 # workflow - they only reference these resources by their fixed names
 # (config/config.yaml's gateway.staticIPName / gateway.certMapName).
 on:
