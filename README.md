@@ -430,7 +430,20 @@ and `GCPBackendPolicy` are GKE-specific.
    Admin API they depend on was deprecated after July 2025). In the [GCP
    Console](https://console.cloud.google.com/): **APIs & Services** ->
    **Credentials** -> **Create credentials** -> **OAuth client ID** ->
-   Application type **Web application**. Then:
+   Application type **Web application**.
+
+   **Authorized redirect URIs**: add (replacing `<client ID>` with the OAuth
+   client ID you just created):
+
+   ```
+   https://iap.googleapis.com/v1/oauth/clientIds/<client ID>:handleRedirect
+   ```
+
+   Without this, IAP's post-login redirect back from Google fails with
+   **Error 400: redirect_uri_mismatch**. This is the one redirect URI IAP
+   uses regardless of how many apps/domains sit behind it, so a single OAuth
+   client can be shared by both the Jenkins and Headlamp `GCPBackendPolicy`
+   resources.
 
    ```bash
    gh secret set IAP_OAUTH_CLIENT_ID     --body "<client ID>"
