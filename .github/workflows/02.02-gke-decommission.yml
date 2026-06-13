@@ -1,7 +1,7 @@
-name: GKE decommission
+name: "02.02 GKE decommission"
 
-# Manually-triggered: tears down everything created by the "GKE provision"
-# workflow - scripts/down.sh (Helm releases, namespaces) then
+# Manually-triggered: tears down everything created by the "02.01 GKE
+# provision" workflow - scripts/down.sh (Helm releases, namespaces) then
 # `terraform destroy` (GKE cluster, node pool, VPC). Uses the same GCS
 # Terraform state as that workflow, so it finds the cluster without any
 # extra inputs. See README.md "GitHub Actions automation".

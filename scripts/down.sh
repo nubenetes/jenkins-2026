@@ -63,7 +63,7 @@ fi
 
 # Deleted by fixed name/namespace (scripts/09-gateway.sh), not by replaying
 # .generated/gateway/ - that dir only exists on the machine that ran
-# scripts/up.sh, but gke-decommission.yml runs down.sh from a fresh checkout.
+# scripts/up.sh, but 02.02-gke-decommission.yml runs down.sh from a fresh checkout.
 # Deleting these explicitly (with their finalizers) before the namespaces/
 # cluster are torn down lets the GKE Gateway controller release the external
 # load balancer resources (forwarding rule, backend services, NEGs) it

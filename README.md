@@ -124,7 +124,7 @@ terraform/bootstrap/          one-time setup for the GitHub Actions automation b
 terraform/gateway-bootstrap/  one-time setup for public access (static IP + managed
                               certificate) - see "Public access (GKE Gateway API + IAP)"
 test/                         e2e.sh (provision -> up.sh -> smoke-test.sh -> down.sh -> destroy)
-.github/workflows/            gke-provision.yml / gke-decommission.yml (CI version of test/e2e.sh)
+.github/workflows/            CC.NN-<name>.yml, see "CI/CD pipelines" for the full inventory
 docs/                         architecture, pipelines-as-code, observability, platforms
 ```
 
@@ -292,7 +292,7 @@ gh secret set HEADLAMP_OIDC_CLIENT_ID     --body "<client ID from above>"
 gh secret set HEADLAMP_OIDC_CLIENT_SECRET --body "<client secret from above>"
 ```
 
-then (re-)run **GKE provision** (adds the GCP IAM binding via
+then (re-)run **02.01 GKE provision** (adds the GCP IAM binding via
 `terraform/gke` and the `ClusterRoleBinding`s via `scripts/08-headlamp.sh`).
 Locally (`test/e2e.sh` / `scripts/up.sh`), export the same three as
 `HEADLAMP_OIDC_CLIENT_ID`, `HEADLAMP_OIDC_CLIENT_SECRET` and
@@ -340,12 +340,12 @@ and `GCPBackendPolicy` are GKE-specific.
 > `networking.gke.io/certmap` annotation, cross-namespace `HTTPRoute`
 > attachment, and the `GCPBackendPolicy` `oauth2ClientSecret` field/key
 > names) hasn't been confirmed against a live cluster yet - try it on the
-> next `gke-provision` run, same caveat as Headlamp's OIDC passthrough above.
+> next `02.01-gke-provision` run, same caveat as Headlamp's OIDC passthrough above.
 
 ### One-time setup
 
-1. **Run the "Gateway bootstrap" workflow** (Actions tab -> **Gateway
-   bootstrap** -> **Run workflow**). It applies
+1. **Run the "01.02 Gateway bootstrap" workflow** (Actions tab -> **01.02
+   Gateway bootstrap** -> **Run workflow**). It applies
    [`terraform/gateway-bootstrap`](terraform/gateway-bootstrap) (state in the
    same GCS bucket as `terraform/gke`, like [Grafana Cloud
    bootstrap](#one-time-setup)) to create, once and persistently:
@@ -382,7 +382,7 @@ and `GCPBackendPolicy` are GKE-specific.
    gh secret set IAP_OAUTH_CLIENT_SECRET --body "<client secret>"
    ```
 
-   (Re-)run **GKE provision** - `scripts/01-namespaces.sh` writes these into
+   (Re-)run **02.01 GKE provision** - `scripts/01-namespaces.sh` writes these into
    the `gateway-iap-oauth` Secret in the `jenkins` and `headlamp` namespaces
    that the `GCPBackendPolicy` resources reference.
 
@@ -487,22 +487,49 @@ plain root module + local backend instead. The resources in
 [`terraform/gke/main.tf`](terraform/gke/main.tf) can be lifted into a Stack
 component largely as-is if you use HCP Terraform for your own infrastructure.
 
+## CI/CD pipelines
+
+All workflows live in [`.github/workflows/`](.github/workflows/), are
+manually-triggered (`workflow_dispatch`), and follow a `CC.NN-<name>.yml`
+naming convention so their order in the GitHub UI matches their place in the
+lifecycle:
+
+- `CC` - **category**: `01` one-time bootstrap of persistent, account-level
+  resources (run by hand, rarely); `02` full per-cycle GKE
+  provision/decommission; `03` redeploy a single component against an
+  already-provisioned cluster.
+- `NN` - sequence number within that category.
+
+| # | Workflow | Category | What it does |
+|---|---|---|---|
+| 01.01 | [Grafana Cloud bootstrap](.github/workflows/01.01-grafana-cloud-bootstrap.yml) | One-time bootstrap | Creates/confirms the persistent Grafana Cloud stack (`terraform/grafana-cloud-stack`) that `observability_mode: grafana-cloud` sends data to. See [Full Grafana Cloud lifecycle automation](#one-time-setup-1). |
+| 01.02 | [Gateway bootstrap](.github/workflows/01.02-gateway-bootstrap.yml) | One-time bootstrap | Creates/confirms the persistent static IP + managed wildcard cert + DNS authorization (`terraform/gateway-bootstrap`) that [public access](#public-access-gke-gateway-api--iap) depends on. |
+| 02.01 | [GKE provision](.github/workflows/02.01-gke-provision.yml) | Full lifecycle | Provisions the throwaway GKE cluster (`terraform/gke`) and deploys the full stack (`scripts/up.sh`) + smoke test. Pair with 02.02. |
+| 02.02 | [GKE decommission](.github/workflows/02.02-gke-decommission.yml) | Full lifecycle | Tears down the stack (`scripts/down.sh`) and destroys the GKE cluster (`terraform destroy`). |
+| 03.01 | [Redeploy Jenkins](.github/workflows/03.01-redeploy-jenkins.yml) | Component redeploy | Re-applies only `scripts/04-jenkins.sh` (Helm upgrade of `helm/jenkins/` + `jenkins/casc/` JCasC) and re-seeds the PetClinic pipelines, against the cluster from the last 02.01 run - for a Jenkins-only fix without the full provision/decommission cycle. |
+
+See [GitHub Actions automation](#github-actions-automation) below for the
+one-time setup (secrets, Workload Identity Federation) these workflows need.
+
 ## GitHub Actions automation
 
-[`.github/workflows/gke-provision.yml`](.github/workflows/gke-provision.yml) and
-[`.github/workflows/gke-decommission.yml`](.github/workflows/gke-decommission.yml)
+[`.github/workflows/02.01-gke-provision.yml`](.github/workflows/02.01-gke-provision.yml) and
+[`.github/workflows/02.02-gke-decommission.yml`](.github/workflows/02.02-gke-decommission.yml)
 are the CI equivalent of `test/e2e.sh`, split into two manually-triggered
 workflows so the cluster can be left running between them (e.g. provision in
 the morning, demo it, decommission in the evening). They run the exact same
 `terraform/gke` + `scripts/0N-*.sh` + `test/smoke-test.sh` as `test/e2e.sh`,
 but since each is a separate workflow run on a fresh runner, Terraform state
 has to be **remote** (a GCS bucket) instead of local so the decommission run
-can find what the provision run created.
+can find what the provision run created. See [CI/CD
+pipelines](#cicd-pipelines) for the full workflow inventory, including
+[`03.01-redeploy-jenkins.yml`](.github/workflows/03.01-redeploy-jenkins.yml)
+for redeploying only Jenkins.
 
 ### One-time setup
 
-> **Why this step can't itself run in GitHub Actions**: `gke-provision.yml`
-> and `gke-decommission.yml` authenticate to GCP via Workload Identity
+> **Why this step can't itself run in GitHub Actions**: `02.01-gke-provision.yml`
+> and `02.02-gke-decommission.yml` authenticate to GCP via Workload Identity
 > Federation (WIF) - but that WIF trust relationship, the CI service account,
 > and the GCS state bucket don't exist yet. Something has to create them
 > first using *real* GCP credentials, which is exactly what
@@ -596,12 +623,12 @@ can find what the provision run created.
 
 5. **(Optional) Full Grafana Cloud lifecycle automation**, for
    `observability_mode: grafana-cloud`. Without this, picking that mode in
-   **GKE provision** will fail at `terraform apply` in
+   **02.01 GKE provision** will fail at `terraform apply` in
    `terraform/grafana-cloud-token` - skip this step entirely if you only plan
    to use `oss` or `managed`.
 
    This provisions one **persistent** Grafana Cloud stack (once, locally,
-   like step 2 above), then lets every `gke-provision`/`gke-decommission`
+   like step 2 above), then lets every `02.01-gke-provision`/`02.02-gke-decommission`
    run mint and revoke **ephemeral**, scoped access tokens against it -
    no manual `observability/otel-collector/secret.yaml` needed.
 
@@ -626,8 +653,8 @@ can find what the provision run created.
       gh secret set GRAFANA_CLOUD_STACK_SLUG --body "<your-globally-unique-slug>"
       ```
 
-   c. **Run the "Grafana Cloud bootstrap" workflow** (Actions tab ->
-      **Grafana Cloud bootstrap** -> **Run workflow**). It applies
+   c. **Run the "01.01 Grafana Cloud bootstrap" workflow** (Actions tab ->
+      **01.01 Grafana Cloud bootstrap** -> **Run workflow**). It applies
       [`terraform/grafana-cloud-stack`](terraform/grafana-cloud-stack) with
       state in the same GCS bucket as `terraform/gke`, creating the
       persistent stack from the two secrets above. If `GRAFANA_CLOUD_STACK_SLUG`
@@ -641,21 +668,21 @@ can find what the provision run created.
       `export TF_VAR_grafana_cloud_api_token=... && terraform init && terraform
       apply`. Keep `terraform.tfstate`, gitignored, if you do this.)
 
-   From here on, every `gke-provision` run with `observability_mode:
+   From here on, every `02.01-gke-provision` run with `observability_mode:
    grafana-cloud` applies
    [`terraform/grafana-cloud-token`](terraform/grafana-cloud-token) to mint a
    scoped OTLP access policy token + dashboard service account token against
    this stack and writes them into the `grafana-cloud-credentials` Secret;
-   every `gke-decommission` run destroys the same Terraform state, revoking
+   every `02.02-gke-decommission` run destroys the same Terraform state, revoking
    both tokens.
 
 ### Running it
 
-1. Go to the repo's **Actions** tab -> **GKE provision** -> **Run workflow**.
-   Pick `observability_mode` (`oss` needs no extra secrets and is the
-   recommended default - see [Prerequisites](#prerequisites-1) above).
+1. Go to the repo's **Actions** tab -> **02.01 GKE provision** -> **Run
+   workflow**. Pick `observability_mode` (`oss` needs no extra secrets and is
+   the recommended default - see [Prerequisites](#prerequisites-1) above).
    Leave `enable_gateway` unchecked (the default) unless the one-time
-   **Gateway bootstrap** workflow + DNS records + IAP OAuth client (see
+   **01.02 Gateway bootstrap** workflow + DNS records + IAP OAuth client (see
    [Public access](#public-access-gke-gateway-api--iap)) have already been
    completed - checking it before then deploys a Gateway that can't get an
    IP/certificate.
@@ -665,9 +692,13 @@ can find what the provision run created.
    `terraform -chdir=terraform/gke output` + `gcloud container clusters
    get-credentials` locally (the cluster is real, just not connected to by
    default outside CI).
-3. When finished, go to **Actions** -> **GKE decommission** -> **Run
+3. When finished, go to **Actions** -> **02.02 GKE decommission** -> **Run
    workflow**. It reads the same GCS state, runs `scripts/down.sh`, then
    `terraform destroy`.
+4. To redeploy only Jenkins between provision/decommission cycles (e.g. after
+   editing `helm/jenkins/` or `jenkins/casc/`), go to **Actions** ->
+   **03.01 Redeploy Jenkins** -> **Run workflow** instead - see [CI/CD
+   pipelines](#cicd-pipelines).
 
 Both workflows share a `concurrency: group: jenkins-2026-gke`, so GitHub
 Actions queues them rather than letting provision and decommission race on
@@ -700,13 +731,13 @@ in GitHub Actions tears it down automatically.
   no billable resources are left, run
   `terraform -chdir=terraform/gke destroy` manually and confirm with
   `gcloud container clusters list --project "$GCP_PROJECT_ID"`.
-- **`gke-provision`/`gke-decommission` fails on `terraform init` with a
+- **`02.01-gke-provision`/`02.02-gke-decommission` fails on `terraform init` with a
   permissions or 404 error on the GCS bucket**: re-check the `TF_STATE_BUCKET`
   secret matches `terraform -chdir=terraform/bootstrap output -raw
   state_bucket`, and that `terraform/bootstrap` finished applying (the bucket
   and the `roles/storage.objectAdmin` binding for the CI service account must
   both exist).
-- **`gke-decommission` run manually without a prior `gke-provision`** (or
+- **`02.02-gke-decommission` run manually without a prior `02.01-gke-provision`** (or
   after the state was already destroyed): `terraform init` will succeed
   against an empty state, but `terraform output -raw cluster_name` (used to
   `get-credentials`) will fail with "no outputs found" - there's nothing to
