@@ -13,26 +13,40 @@
 
 unclassified:
   openTelemetry:
+    # exporterProtocol was removed in opentelemetry plugin 3.x - the protocol
+    # is now inferred from the endpoint, and grpc (used here) is the default.
     endpoint: "${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector-gateway.observability.svc.cluster.local:4317}"
-    exporterProtocol: "grpc"
     authentication:
-      noAuthentication: true
+      # NoAuthentication has no fields - JCasC requires an empty mapping for
+      # a no-arg Describable, not a boolean (opentelemetry plugin 3.x is
+      # stricter here than 2.x, which accepted `noAuthentication: true`).
+      noAuthentication: {}
     serviceName: "jenkins"
     # Surfaced as resource attribute service.namespace - lets Grafana group
     # Jenkins spans together with the PetClinic services under one
     # "jenkins-2026" application.
     configurationProperties: |
       otel.resource.attributes=service.namespace=jenkins-2026,deployment.environment=jenkins
-    exportOtlpLogsViaHttp: false
+    # exportOtlpLogsViaHttp was also removed in 3.x - logs now always follow
+    # the same protocol/endpoint as traces and metrics (grpc, above).
     observabilityBackends:
-      - customLogsBackend:
-          name: "Grafana Cloud Logs"
-          loggingApiUrl: "${OTEL_LOGS_BACKEND_URL:-}"
-          metadataMaxLines: 1000
-        # If a Grafana base URL is provided (Grafana Cloud or OSS), the
-        # OpenTelemetry plugin adds a "View trace" link on each build that
-        # deep-links into the Tempo trace view.
+      # If a Grafana base URL is provided (Grafana Cloud or OSS), the
+      # OpenTelemetry plugin adds a "View trace" link on each build that
+      # deep-links into the Tempo trace view.
+      #
+      # There used to be an additional "customLogsBackend" entry here
+      # (loggingApiUrl/metadataMaxLines, fed by OTEL_LOGS_BACKEND_URL) for a
+      # "Grafana Cloud Logs" link, but that ObservabilityBackend type was
+      # removed in opentelemetry plugin 3.x (replaced by
+      # CustomObservabilityBackend, which has a different
+      # trace/metrics-URL-template shape and no logs option) - JCasC now
+      # rejects the "customLogsBackend" key outright.
+      #
+      # tracesDashboardUid (a Grafana dashboard UID to deep-link into) was
+      # also removed in 3.x - trace links now go through a Tempo
+      # datasource directly via tempoDataSourceIdentifier/tempoQueryType,
+      # which default to the "tempo" datasource uid used by both the OSS
+      # (observability/grafana/values-oss.yaml) and Grafana Cloud setups.
       - grafana:
           name: "Grafana"
           grafanaBaseUrl: "${GRAFANA_BASE_URL:-}"
-          tracesDashboardUid: "${GRAFANA_TRACES_DASHBOARD_UID:-}"

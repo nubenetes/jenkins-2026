@@ -53,11 +53,12 @@ config:
       protocols:
         grpc:
           endpoint: 0.0.0.0:4317
-          cors:
-            allowed_origins:
-              - "*"
         http:
           endpoint: 0.0.0.0:4318
+          # Allow the Angular RUM beacon (browser, no service mesh mTLS) and
+          # any pod in the cluster to send OTLP/HTTP without per-origin
+          # config. cors is an http-only ServerConfig option - the grpc
+          # protocol has no equivalent and rejects unknown keys.
           cors:
             allowed_origins:
               - "*"
