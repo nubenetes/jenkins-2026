@@ -33,8 +33,9 @@ spec:
 
     stage('Seed PetClinic pipeline jobs') {
       steps {
-        // useScriptSecurity: false - this repo is trusted (it IS the
-        // controller's source of truth), and seed-jobs.groovy needs
+        // sandbox: false (formerly useScriptSecurity: false, renamed by the
+        // job-dsl plugin) - this repo is trusted (it IS the controller's
+        // source of truth), and seed-jobs.groovy needs
         // org.yaml.snakeyaml.Yaml to parse services.yaml, which the Job DSL
         // sandbox would otherwise block.
         jobDsl(
@@ -42,7 +43,7 @@ spec:
           removedJobAction: 'IGNORE',
           removedViewAction: 'IGNORE',
           additionalClasspath: 'jenkins/pipelines/seed',
-          useScriptSecurity: false
+          sandbox: false
         )
       }
     }

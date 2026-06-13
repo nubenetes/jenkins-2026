@@ -47,7 +47,7 @@ AUTH="${J2026_JENKINS_ADMIN_USER}:${ADMIN_PASSWORD}"
 NUM_SERVICES=$(wc -w <<< "${J2026_PETCLINIC_SERVICES}")
 EXPECTED_JOBS=$(( NUM_SERVICES * 2 + 1 )) # 2 pipelines/service (stable+develop) + seed-jobs
 
-JOB_COUNT="$(jenkins_exec curl -s -u "${AUTH}" 'http://localhost:8080/api/json?tree=jobs[name]' \
+JOB_COUNT="$(jenkins_exec curl -sg -u "${AUTH}" 'http://localhost:8080/api/json?tree=jobs[name]' \
   | python3 -c 'import sys,json; print(len(json.load(sys.stdin)["jobs"]))' 2>/dev/null || echo 0)"
 
 if [[ "${JOB_COUNT}" -ge "${EXPECTED_JOBS}" ]]; then
@@ -65,7 +65,7 @@ check "otel-collector-gateway pod Running" \
   bash -c "kubectl -n '${J2026_OBS_NAMESPACE}' get pods -l app.kubernetes.io/instance='${J2026_OTEL_GATEWAY_RELEASE}' -o jsonpath='{.items[0].status.phase}' | grep -qx Running"
 
 check "otel-collector-logs daemonset has ready pods" \
-  bash -c "[[ \$(kubectl -n '${J2026_OBS_NAMESPACE}' get daemonset '${J2026_OTEL_LOGS_RELEASE}' -o jsonpath='{.status.numberReady}') -ge 1 ]]"
+  bash -c "[[ \$(kubectl -n '${J2026_OBS_NAMESPACE}' get daemonset '${J2026_OTEL_LOGS_RELEASE}-agent' -o jsonpath='{.status.numberReady}') -ge 1 ]]"
 
 if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
   check "OSS Grafana pod Running" \
