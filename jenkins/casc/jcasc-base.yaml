@@ -11,8 +11,10 @@ jenkins:
   systemMessage: |
     Jenkins 2026 PoC - fully managed via Configuration as Code.
     Source of truth: https://github.com/nubenetes/jenkins-2026
-  numExecutors: 0
-  mode: EXCLUSIVE
+
+  # numExecutors/mode are set via controller.numExecutors /
+  # controller.executorMode in helm/jenkins/values-common.yaml instead of
+  # here - see the comment there for why.
 
   securityRealm:
     local:
@@ -29,8 +31,10 @@ jenkins:
             description: "Full administrative access"
             permissions:
               - "Overall/Administer"
-            assignments:
-              - "${JENKINS_ADMIN_ID:-admin}"
+            # "assignments" (flat string list) is deprecated in favour of
+            # "entries", which disambiguates users vs. groups.
+            entries:
+              - user: "${JENKINS_ADMIN_ID:-admin}"
           - name: "developer"
             description: "Run and inspect PetClinic pipelines"
             permissions:
@@ -42,12 +46,18 @@ jenkins:
               - "Job/Discover"
               - "Run/Replay"
               - "View/Read"
-            assignments:
-              - "authenticated"
+            entries:
+              - group: "authenticated"
 
 unclassified:
+  # unclassified.location.url is intentionally NOT set here - the chart's
+  # generated jcasc-default-config.yaml always sets it (to the in-cluster
+  # service URL, http://jenkins.<namespace>.svc.cluster.local:8080), and a
+  # second definition here would hit the same JCasC
+  # ErrorOnConflictMergeStrategy failure as jenkins.mode (see
+  # helm/jenkins/values-common.yaml). Override via controller.jenkinsUrl in
+  # the values files if a different URL (e.g. behind an Ingress) is needed.
   location:
-    url: "${JENKINS_URL:-http://localhost:8080/}"
     adminAddress: "address not configured yet <nobody@nowhere>"
 
   globalLibraries:
