@@ -33,13 +33,13 @@ case "${J2026_OBS_MODE}" in
     helm upgrade --install "${J2026_OTEL_GATEWAY_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${J2026_ROOT_DIR}/observability/otel-collector/values-grafana-cloud.yaml" \
-      --wait --timeout 5m
+      --wait --timeout 5m --debug
 
     log_step "Installing ${J2026_OTEL_LOGS_RELEASE} (node log DaemonSet -> Grafana Cloud)"
     helm upgrade --install "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${J2026_ROOT_DIR}/observability/otel-collector/values-grafana-cloud-logs.yaml" \
-      --wait --timeout 5m
+      --wait --timeout 5m --debug
     ;;
 
   oss)
@@ -57,31 +57,31 @@ case "${J2026_OBS_MODE}" in
       --namespace "${J2026_GRAFANA_OSS_NAMESPACE}" \
       --create-namespace \
       -f "${J2026_ROOT_DIR}/observability/grafana/values-oss.yaml" \
-      --wait --timeout 10m
+      --wait --timeout 10m --debug
 
     log_step "Installing Loki"
     helm upgrade --install loki "${J2026_GRAFANA_CHART_REPO_NAME}/loki" \
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${J2026_ROOT_DIR}/observability/grafana/values-oss-loki.yaml" \
-      --wait --timeout 5m
+      --wait --timeout 5m --debug
 
     log_step "Installing Tempo"
     helm upgrade --install tempo "${J2026_GRAFANA_CHART_REPO_NAME}/tempo" \
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${J2026_ROOT_DIR}/observability/grafana/values-oss-tempo.yaml" \
-      --wait --timeout 5m
+      --wait --timeout 5m --debug
 
     log_step "Installing ${J2026_OTEL_GATEWAY_RELEASE} (OTLP gateway -> Tempo/Prometheus/Loki)"
     helm upgrade --install "${J2026_OTEL_GATEWAY_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${J2026_ROOT_DIR}/observability/otel-collector/values-oss.yaml" \
-      --wait --timeout 5m
+      --wait --timeout 5m --debug
 
     log_step "Installing ${J2026_OTEL_LOGS_RELEASE} (node log DaemonSet -> Loki)"
     helm upgrade --install "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${J2026_ROOT_DIR}/observability/otel-collector/values-oss-logs.yaml" \
-      --wait --timeout 5m
+      --wait --timeout 5m --debug
     ;;
 
   managed)
