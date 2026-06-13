@@ -74,8 +74,11 @@ registry.services.each { svc ->
         pipelineTriggers {
           triggers {
             // Poll every 5 minutes for new commits on the tracked branch -
-            // works out of the box without configuring a webhook.
-            scm('H/5 * * * *')
+            // works out of the box without configuring a webhook. pollSCM
+            // is the Describable symbol for hudson.triggers.SCMTrigger.
+            pollSCM {
+              scmpoll_spec('H/5 * * * *')
+            }
           }
         }
       }
