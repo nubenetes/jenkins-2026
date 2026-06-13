@@ -85,6 +85,9 @@ jobs:
             --zone "$(terraform output -raw location)" \
             --project "${{ secrets.GCP_PROJECT_ID }}"
 
+      - name: Check prereqs & add Helm repos (scripts/00-check-prereqs.sh)
+        run: ./scripts/00-check-prereqs.sh
+
       - name: Redeploy Jenkins (scripts/04-jenkins.sh)
         run: ./scripts/04-jenkins.sh
 
