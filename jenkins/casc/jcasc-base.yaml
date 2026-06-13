@@ -49,6 +49,15 @@ jenkins:
             entries:
               - group: "authenticated"
 
+# Allows the "seed-jobs" pipeline's jobDsl step (sandbox: false, see
+# jenkins/pipelines/seed/Jenkinsfile.seed) to run unsandboxed without
+# requiring an administrator to manually approve the script via
+# Manage Jenkins > In-process Script Approval on every change. This repo
+# IS the controller's source of truth, so its Job DSL scripts are trusted.
+security:
+  globalJobDslSecurityConfiguration:
+    useScriptSecurity: false
+
 unclassified:
   # unclassified.location.url is intentionally NOT set here - the chart's
   # generated jcasc-default-config.yaml always sets it (to the in-cluster

@@ -22,13 +22,13 @@ def platform   = System.getenv('JENKINS2026_PLATFORM')    ?: 'gke'
 def yamlText = readFileFromWorkspace('jenkins/pipelines/seed/services.yaml')
 def registry = new Yaml().load(yamlText)
 
-def namespaces = registry.namespaces
-def branches   = registry.branches
+def namespaces  = registry.namespaces
+def gitFlowRefs = registry.branches
 
 // pipeline "flavours": stable -> tracks master, *-develop -> tracks develop
 def flavours = [
-  [suffix: '',         branch: branches.stable,  namespaceKey: 'stable',  envName: 'stable'],
-  [suffix: '-develop', branch: branches.develop, namespaceKey: 'develop', envName: 'develop'],
+  [suffix: '',         branch: gitFlowRefs.stable,  namespaceKey: 'stable',  envName: 'stable'],
+  [suffix: '-develop', branch: gitFlowRefs.develop, namespaceKey: 'develop', envName: 'develop'],
 ]
 
 registry.services.each { svc ->
