@@ -15,7 +15,7 @@ global:
 namespace: petclinic-develop
 env: develop
 registry: ghcr.io/nubenetes/jenkins-2026-petclinic
-imagePullSecret: ""
+imagePullSecret: ghcr-credentials
 
 otel:
   collectorEndpoint: http://otel-collector-gateway.observability.svc.cluster.local:4317
