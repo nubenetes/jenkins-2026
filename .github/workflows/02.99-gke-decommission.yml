@@ -1,7 +1,7 @@
-name: GKE decommission
+name: "02.99 GKE decommission"
 
-# Manually-triggered: tears down everything created by the "GKE provision"
-# workflow - scripts/down.sh (Helm releases, namespaces) then
+# Manually-triggered: tears down everything created by the "02.01 GKE
+# provision" workflow - scripts/down.sh (Helm releases, namespaces) then
 # `terraform destroy` (GKE cluster, node pool, VPC). Uses the same GCS
 # Terraform state as that workflow, so it finds the cluster without any
 # extra inputs. See README.md "GitHub Actions automation".
@@ -23,6 +23,8 @@ env:
 jobs:
   decommission:
     runs-on: ubuntu-latest
+    env:
+      HAS_GRAFANA_CLOUD_TOKEN: ${{ secrets.GRAFANA_CLOUD_API_TOKEN != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -83,12 +85,39 @@ jobs:
             --project "${{ secrets.GCP_PROJECT_ID }}"
 
       - name: Tear down the stack (scripts/down.sh)
+        env:
+          JENKINS2026_HEADLAMP_ADMIN_EMAILS: ${{ secrets.HEADLAMP_ADMIN_EMAILS }}
         run: ./scripts/down.sh || true
 
       - name: Terraform destroy (remove GKE cluster, VPC, node pool)
         working-directory: terraform/gke
         env:
           TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
+        run: terraform destroy -auto-approve -input=false
+
+      - name: Configure GCS backend (terraform/grafana-cloud-token)
+        if: ${{ env.HAS_GRAFANA_CLOUD_TOKEN == 'true' }}
+        run: |
+          cat > terraform/grafana-cloud-token/backend_override.tf <<EOF
+          terraform {
+            backend "gcs" {
+              bucket = "${{ secrets.TF_STATE_BUCKET }}"
+              prefix = "jenkins-2026/grafana-cloud-token"
+            }
+          }
+          EOF
+
+      - name: Terraform init (grafana-cloud-token)
+        if: ${{ env.HAS_GRAFANA_CLOUD_TOKEN == 'true' }}
+        working-directory: terraform/grafana-cloud-token
+        run: terraform init -input=false
+
+      - name: Terraform destroy (revoke Grafana Cloud access policy + tokens)
+        if: ${{ env.HAS_GRAFANA_CLOUD_TOKEN == 'true' }}
+        working-directory: terraform/grafana-cloud-token
+        env:
+          TF_VAR_grafana_cloud_api_token: ${{ secrets.GRAFANA_CLOUD_API_TOKEN }}
+          TF_VAR_stack_slug: ${{ secrets.GRAFANA_CLOUD_STACK_SLUG }}
         run: terraform destroy -auto-approve -input=false
 
       - name: Summary

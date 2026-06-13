@@ -15,6 +15,10 @@ locals {
     "roles/iam.serviceAccountUser",
     "roles/resourcemanager.projectIamAdmin",
     "roles/serviceusage.serviceUsageAdmin",
+    # Lets 01.02-gateway-bootstrap.yml's terraform/gateway-bootstrap apply
+    # create the DNS authorization and certificate map for the public
+    # Gateway's managed certificate.
+    "roles/certificatemanager.editor",
   ]
 }
 

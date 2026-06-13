@@ -1,39 +1,41 @@
 # Overlay for Red Hat OpenShift 4.20+ (Kubernetes 1.31+).
-# Layered on top of values-common.yaml.
+# Layered on top of values-common.yaml - see that file's header for the
+# jenkinsci/helm-charts chart origin/default-values link and the
+# diff-only convention this overlay also follows (e.g.
+# controller.serviceType and persistence.accessMode/size below already
+# match the chart default and are intentionally not repeated).
 #
 # OpenShift's "restricted-v2" SCC assigns a UID/GID/fsGroup from the
 # namespace's allocated range at admission time, and will REJECT pods that
 # hard-code runAsUser/runAsGroup/fsGroup outside that range. We therefore
-# blank out the fixed security contexts from values-common.yaml and let the
-# SCC do its job. Ingress is disabled here; an OpenShift Route is applied
-# separately by scripts/04-jenkins.sh from helm/jenkins/openshift/route.yaml
-# (Routes don't need a pre-existing DNS record - the router assigns one
-# under the cluster's default *.apps domain).
+# blank out the fixed security contexts inherited from the chart default and
+# let the SCC do its job. Ingress is disabled (chart default) here; an
+# OpenShift Route is applied separately by scripts/04-jenkins.sh from
+# helm/jenkins/openshift/route.yaml (Routes don't need a pre-existing DNS
+# record - the router assigns one under the cluster's default *.apps domain).
 
 controller:
-  serviceType: ClusterIP
-
-  ingress:
-    enabled: false
-
-  # Let the restricted-v2 SCC assign UID/GID/fsGroup.
-  containerSecurityContext: {}
-  podSecurityContextOverride: {}
+  # `{}` would be a no-op here under Helm's recursive map-merge - an empty
+  # map merged into the chart's non-empty default
+  # controller.containerSecurityContext ({runAsUser: 1000, runAsGroup: 1000,
+  # readOnlyRootFilesystem: true, allowPrivilegeEscalation: false}) leaves it
+  # unchanged, so the fixed runAsUser/runAsGroup would still be applied.
+  # `null` is required to actually clear it; usePodSecurityContext: false
+  # likewise skips the chart's pod-level securityContext (fsGroup: 1000)
+  # entirely, rather than relying on podSecurityContextOverride: {} (also a
+  # no-op for the same reason). Verified with `helm template`; full
+  # admission-time behavior still needs verification on a real OpenShift
+  # cluster on the next provision run.
+  containerSecurityContext: null
+  usePodSecurityContext: false
 
 persistence:
-  enabled: true
   # Empty = use the cluster's default StorageClass (e.g. ODF/Ceph RBD on
   # self-managed OpenShift, or the cloud-provider CSI default on
   # ROSA/ARO/managed OpenShift).
   storageClass: ""
-  accessMode: ReadWriteOnce
-  size: 8Gi
 
 agent:
   workingDir: "/home/jenkins/agent"
   # Pod templates defined in jenkins/pipelines/Jenkinsfile.petclinic also omit
   # runAsUser/fsGroup so they pass the restricted-v2 SCC unchanged.
-
-rbac:
-  create: true
-  readSecrets: true

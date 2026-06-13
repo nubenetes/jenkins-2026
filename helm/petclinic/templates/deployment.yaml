@@ -85,6 +85,14 @@ spec:
             # Let the restricted-v2 SCC assign runAsUser/runAsGroup.
             {{- else }}
             runAsNonRoot: true
+            # Explicit non-root UID/GID: the OTel Operator copies this
+            # securityContext onto the injected
+            # opentelemetry-auto-instrumentation-java init container, whose
+            # image has no non-root USER - without an explicit runAsUser,
+            # runAsNonRoot alone makes the kubelet reject that container
+            # ("container has runAsNonRoot and image will run as root").
+            runAsUser: 1000
+            runAsGroup: 1000
             seccompProfile:
               type: RuntimeDefault
             {{- end }}

@@ -1,20 +1,24 @@
 # =============================================================================
-# "develop" environment - separate namespace/track for testing pipeline
-# changes (petclinic.branches.develop in config/config.yaml). Builds from the
-# same `main` branch as "stable" (upstream spring-petclinic repos only have
-# `main`) but deploys independently into petclinic-develop.
-# Installed as: helm upgrade --install petclinic-develop ./helm/petclinic \
-#                 -f values-develop.yaml --namespace petclinic-develop --create-namespace
+# "pac-dev" environment - pipelines-as-code DEV sandbox, deployed by the
+# pac-dev/* jobs generated from jenkins-2026's JENKINS2026_DEV_REPO_BRANCH
+# (normally "develop") - see jenkins/pipelines/seed/seed_jobs.groovy and
+# README.md "Pipelines-as-code dev sandbox".
+# Installed as: helm upgrade --install petclinic-pac-dev ./helm/petclinic \
+#                 -f values-pac-dev.yaml --namespace petclinic-pac-dev --create-namespace
 #
-# Mirrors values-stable.yaml exactly except namespace/env. Keep service
-# definitions in sync between the two files when adding/removing services.
+# Mirrors values-develop.yaml exactly except namespace/env. Image tags are
+# also "develop" - the pac-dev/* jobs build the same spring-petclinic
+# "develop" branch as the root "<service>-develop" jobs, just using
+# pipelines-as-code definitions sourced from jenkins-2026's develop branch.
+# Keep service definitions in sync between values-{stable,develop,pac-dev}.yaml
+# when adding/removing services.
 # =============================================================================
 
 global:
   platform: gke
 
-namespace: petclinic-develop
-env: develop
+namespace: petclinic-pac-dev
+env: pac-dev
 registry: ghcr.io/nubenetes/jenkins-2026-petclinic
 imagePullSecret: ghcr-credentials
 
@@ -32,7 +36,7 @@ services:
     type: java
     image:
       repository: config-server
-      tag: main
+      tag: develop
     port: 8888
     healthPath: /actuator/health
     resources:
@@ -46,7 +50,7 @@ services:
     type: java
     image:
       repository: discovery-server
-      tag: main
+      tag: develop
     port: 8761
     healthPath: /actuator/health
     resources:
@@ -62,7 +66,7 @@ services:
     type: java
     image:
       repository: customers-service
-      tag: main
+      tag: develop
     port: 8081
     healthPath: /actuator/health
     resources:
@@ -80,7 +84,7 @@ services:
     type: java
     image:
       repository: visits-service
-      tag: main
+      tag: develop
     port: 8082
     healthPath: /actuator/health
     resources:
@@ -98,7 +102,7 @@ services:
     type: java
     image:
       repository: vets-service
-      tag: main
+      tag: develop
     port: 8083
     healthPath: /actuator/health
     resources:
@@ -116,7 +120,7 @@ services:
     type: java
     image:
       repository: genai-service
-      tag: main
+      tag: develop
     port: 8084
     healthPath: /actuator/health
     resources:
@@ -136,7 +140,7 @@ services:
     type: java
     image:
       repository: api-gateway
-      tag: main
+      tag: develop
     port: 8080
     healthPath: /actuator/health
     resources:
@@ -154,7 +158,7 @@ services:
     type: java
     image:
       repository: admin-server
-      tag: main
+      tag: develop
     port: 9090
     healthPath: /actuator/health
     resources:
@@ -172,7 +176,7 @@ services:
     type: angular
     image:
       repository: petclinic-angular
-      tag: main
+      tag: develop
     port: 8080
     healthPath: /
     resources:

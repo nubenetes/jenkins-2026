@@ -11,27 +11,49 @@
 #     --set-file controller.JCasC.configScripts.otel=jenkins/casc/jcasc-otel.yaml \
 #     --set-file controller.JCasC.configScripts.seed-job=jenkins/casc/jcasc-seed-job.yaml \
 #     ...
+#
+# Chart origin: https://github.com/jenkinsci/helm-charts (charts/jenkins),
+# published at https://charts.jenkins.io as jenkins/jenkins.
+# config/config.yaml jenkins.chart.version is "" (always installs latest) -
+# chart 5.9.25 / appVersion 2.555.3 as of 2026-06-13. Default values.yaml for
+# comparison:
+# https://github.com/jenkinsci/helm-charts/blob/main/charts/jenkins/values.yaml
+#
+# This file and the platform overlays set ONLY the values that differ from
+# that chart default. Notably already at their chart default and NOT
+# repeated here: controller.image.registry/repository,
+# controller.serviceType/servicePort/targetPort, controller.JCasC
+# (defaultConfig/configScripts - populated at install time via --set-file
+# above instead), controller.csrf.defaultCrumbIssuer,
+# controller.containerSecurityContext, controller.numExecutors,
+# controller.ingress.enabled, controller.additionalPlugins,
+# persistence.enabled/size, agent.enabled, rbac.create,
+# serviceAccount.create/name (fullname defaults to "jenkins" for release
+# name "jenkins"), networkPolicy.enabled.
 # =============================================================================
 
 controller:
   image:
-    registry: docker.io
-    repository: jenkins/jenkins
     # jdk17 controller images stopped being published after the 2.479.x
-    # line - current LTS ships as <version>-lts-jdk21. Pin to a recent LTS
-    # so installPlugins (unversioned, see below) has a core new enough for
-    # whatever the update center currently considers "latest".
+    # line - current LTS ships as <version>-lts-jdk21. 2.555.3 is the
+    # latest LTS as of 2026-06-13 (https://www.jenkins.io/changelog-stable/).
+    # installPlugins below is pinned against this exact tag - bump both
+    # together (see the regeneration recipe in the installPlugins comment).
     tag: "2.555.3-lts-jdk21"
-  imagePullPolicy: IfNotPresent
+    # Chart default is "Always" (controller.image.pullPolicy, NOT the
+    # similarly-named top-level controller.imagePullPolicy, which this chart
+    # doesn't read) - pin to IfNotPresent since our tag is a fixed version,
+    # not "latest".
+    pullPolicy: IfNotPresent
 
-  # We drive everything through pipeline agents; no executors on controller.
-  numExecutors: 0
-  # Both feed the chart's generated jcasc-default-config.yaml (jenkins.mode /
-  # jenkins.numExecutors). Set here rather than in jenkins/casc/jcasc-base.yaml
-  # so JCasC doesn't see the same key from two YAML sources - the
+  # We drive everything through pipeline agents; no executors on controller
+  # (numExecutors: 0 is also the chart default, so left unset here).
+  # executorMode feeds the chart's generated jcasc-default-config.yaml
+  # (jenkins.mode). Set here rather than in jenkins/casc/jcasc-base.yaml so
+  # JCasC doesn't see the same key from two YAML sources - the
   # configuration-as-code plugin's ErrorOnConflictMergeStrategy fails the
-  # whole controller startup ("Found conflicting configuration ... jenkins.mode")
-  # on any duplicate, even with equal values.
+  # whole controller startup ("Found conflicting configuration ...
+  # jenkins.mode") on any duplicate, even with equal values.
   executorMode: EXCLUSIVE
 
   resources:
@@ -41,17 +63,6 @@ controller:
     limits:
       cpu: "2"
       memory: "4096Mi"
-
-  serviceType: ClusterIP
-  servicePort: 8080
-  targetPort: 8080
-
-  # JEPL pipelines created by the seed job + JCasC base/otel fragments are
-  # supplied at install time via --set-file (see scripts/04-jenkins.sh). Each
-  # key below becomes a section under controller.JCasC.configScripts.
-  JCasC:
-    defaultConfig: true
-    configScripts: {}
 
   # Environment variables consumed by the ${VAR:-default} placeholders in
   # jenkins/casc/*.yaml. scripts/04-jenkins.sh overrides JENKINS2026_*,
@@ -67,12 +78,25 @@ controller:
         secretKeyRef:
           name: jenkins-credentials
           key: admin-password
+    - name: JENKINS_PLATFORM_ENGINEER_ID
+      value: "platform-engineer"
+    - name: JENKINS_PLATFORM_ENGINEER_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: jenkins-credentials
+          key: platform-engineer-password
     - name: JENKINS_URL
       value: "http://localhost:8080/"
     - name: JENKINS2026_REPO_URL
       value: "https://github.com/nubenetes/jenkins-2026.git"
     - name: JENKINS2026_REPO_BRANCH
       value: "main"
+    # Branch the "pac-dev/seed-jobs-dev" job (and the pac-dev/* jobs it
+    # generates) track instead of JENKINS2026_REPO_BRANCH - see
+    # jenkins/casc/jcasc-seed-job.yaml and README.md "Pipelines-as-code dev
+    # sandbox".
+    - name: JENKINS2026_DEV_REPO_BRANCH
+      value: "develop"
     - name: JENKINS2026_PLATFORM
       value: "gke"
     - name: PETCLINIC_REGISTRY
@@ -122,78 +146,170 @@ controller:
           key: git-token
           optional: true
 
-  # csrf protection on, but proxy-compatible (we sit behind an Ingress/Route)
-  csrf:
-    defaultCrumbIssuer:
-      enabled: true
-      proxyCompatability: true
-
-  # Default container security context. Overridden to {} on OpenShift so the
-  # SCC can assign UID/fsGroup.
-  containerSecurityContext:
-    runAsUser: 1000
-    runAsGroup: 1000
-    allowPrivilegeEscalation: false
-
+  # Chart default (podSecurityContextOverride: ~) falls back to the
+  # deprecated controller.runAsUser/fsGroup/fsGroupChangePolicy keys, which
+  # also produce fsGroup: 1000 but additionally set runAsUser and
+  # fsGroupChangePolicy on the pod securityContext. Override with just
+  # fsGroup so the pod-level securityContext is minimal (runAsUser/
+  # runAsGroup are set at the container level instead, via the chart's
+  # default controller.containerSecurityContext).
   podSecurityContextOverride:
     fsGroup: 1000
 
   # Curated plugin set for: kubernetes agents, git/github multibranch,
-  # JCasC, Job DSL seed jobs, OpenTelemetry tracing, pipeline UX.
+  # JCasC, Job DSL seed jobs, OpenTelemetry tracing, pipeline UX, MCP.
   #
-  # Intentionally unversioned: the plugin-installation-manager-tool resolves
-  # the latest version of each plugin compatible with controller.image.tag's
-  # Jenkins core. Pinning specific plugin versions here previously caused
-  # "requires a greater version of Jenkins" install failures once the pinned
-  # core fell behind those plugins' minimum-core requirements.
+  # Pinned for reproducibility: every plugin below - including transitive
+  # dependencies - is pinned to the exact version the
+  # plugin-installation-manager-tool resolves as compatible with
+  # controller.image.tag's Jenkins core (2.555.3, as of 2026-06-13). This
+  # makes every controller pod start install an identical plugin set, so a
+  # routine pod restart can't silently pick up a newer (possibly breaking)
+  # plugin or dependency version - a previous unversioned list caused
+  # exactly that kind of drift.
+  #
+  # To regenerate after bumping controller.image.tag or the top-level list
+  # below (the first 20 entries), run from the repo root:
+  #
+  #   printf '%s\n' kubernetes workflow-aggregator git github-branch-source \
+  #     configuration-as-code job-dsl cloudbees-folder pipeline-utility-steps \
+  #     pipeline-stage-view pipeline-graph-view opentelemetry \
+  #     credentials-binding role-strategy matrix-auth \
+  #     antisamy-markup-formatter timestamper ws-cleanup durable-task \
+  #     dark-theme mcp-server > /tmp/plugins.txt
+  #   docker run --rm --user root \
+  #     -v /tmp/plugins.txt:/plugins.txt -v /tmp/resolved:/ref \
+  #     jenkins/jenkins:<new-tag> \
+  #     jenkins-plugin-cli --plugin-file /plugins.txt \
+  #       --plugin-download-directory /ref --verbose \
+  #   | grep -oP 'Downloaded \S+ from \S+/plugins/\K[^/]+/[^/]+(?=/[^/]+\.(hpi|jpi))' \
+  #   | sort -u
+  #
+  # ... then replace the full list below (top-level entries keep their
+  # comments; everything else is "transitive dependencies", sorted).
   installPlugins:
-    - kubernetes
-    - workflow-aggregator
-    - git
-    - github-branch-source
-    - configuration-as-code
-    - job-dsl
-    - pipeline-utility-steps
-    - pipeline-stage-view
-    - opentelemetry
-    - credentials-binding
-    - role-strategy
-    - matrix-auth
-    - antisamy-markup-formatter
-    - timestamper
-    - ws-cleanup
-    - durable-task
-
-  ingress:
-    enabled: false
-
-  additionalPlugins: []
-
-persistence:
-  enabled: true
-  size: 8Gi
+    # --- top-level (curated) ---
+    - kubernetes:4423.vb_59f230b_ce53
+    - workflow-aggregator:608.v67378e9d3db_1
+    - git:5.10.1
+    - github-branch-source:1967.1969.v205fd594c821
+    - configuration-as-code:2082.vdb_db_4622e9fa_
+    - job-dsl:3654.vdf58f53e2d15
+    # Provides the folder() Job DSL primitive used to create the pac-dev/
+    # pipelines-as-code dev sandbox (jenkins/pipelines/seed/seed_jobs.groovy).
+    - cloudbees-folder:6.1100.ve9eed61d16c4
+    - pipeline-utility-steps:3.810.va_7672d206740
+    - pipeline-stage-view:2.41
+    # Modern, lightweight pipeline visualization (pan/zoom stage graph) -
+    # the maintained successor to the discontinued Blue Ocean. Adds a
+    # "Pipeline Graph" tab to every build page, no extra config needed.
+    - pipeline-graph-view:932.v7cea_0a_80605f
+    - opentelemetry:3.1589.ve81b_b_fa_927d5
+    - credentials-binding:725.ve52b_2328a_fde
+    - role-strategy:867.vd09254229f9b_
+    - matrix-auth:3.2.10
+    - antisamy-markup-formatter:173.v680e3a_b_69ff3
+    - timestamper:1.30
+    - ws-cleanup:0.49
+    - durable-task:671.v340ff7959010
+    # Native dark mode - see appearance.themeManager in
+    # jenkins/casc/jcasc-base.yaml.
+    - dark-theme:652.vea_da_dfea_e769
+    # Exposes Jenkins (jobs, builds, logs, SCM) as an MCP server for
+    # LLM/agent clients - see README.md "Headlamp" sibling section on MCP
+    # tooling for how to point an MCP client at it.
+    - mcp-server:0.177.v629fdb_2557fe
+    # --- transitive dependencies (pinned for reproducibility) ---
+    - apache-httpcomponents-client-4-api:4.5.14-269.vfa_2321039a_83
+    - apache-httpcomponents-client-5-api:5.6.1-195.v65ffe15189a_d
+    - asm-api:9.10.1-216.va_9256d3b_844b_
+    - authentication-tokens:1.144.v5ff4a_5ec5c33
+    - bootstrap5-api:5.3.8-1038.vee76a_fe825ff
+    - bouncycastle-api:2.30.1.84-291.v9f17b_21896e2
+    - branch-api:2.1280.v0d4e5b_b_460ef
+    - caffeine-api:3.2.3-194.v31a_b_f7a_b_5a_81
+    - checks-api:415.vf022234a_931d
+    - commons-compress-api:1.28.0-82.v4df6c060eb_66
+    - commons-lang3-api:3.20.0-109.ve43756e2d2b_4
+    - commons-text-api:1.15.0-218.va_61573470393
+    - credentials:1502.v5c95e620ddfe
+    - display-url-api:2.217.va_6b_de84cc74b_
+    - echarts-api:6.0.0-1287.vfd24c22a_3d00
+    - font-awesome-api:7.2.0-990.vf220b_2a_496f9
+    - git-client:6.6.0
+    - github:1.47.0
+    - github-api:1.330-492.v3941a_032db_2a_
+    - gson-api:2.14.0-201.v8eefe5515533
+    - instance-identity:203.v15e81a_1b_7a_38
+    - ionicons-api:94.vcc3065403257
+    - jackson2-api:2.21.2-436.v29efdb_7418ff
+    - jackson3-api:3.2.0-83.vfb_04cee1ea_0f
+    - jackson-annotations2-api:2.22-19.v10a_a_582ea_26e
+    - jakarta-activation-api:2.1.4-1
+    - jakarta-mail-api:2.1.5-1
+    - jakarta-xml-bind-api:4.0.9-19.v2b_a_5b_44d9a_1c
+    - javax-activation-api:1.2.0-8
+    - jaxb:2.3.9-143.v5979df3304e6
+    - jjwt-api:0.13.0-141.vd58b_a_9592b_6c
+    - joda-time-api:2.14.2-193.v422b_efce56e0
+    - jquery3-api:3.7.1-687.v68d468e40b_30
+    - json-api:20260522-217.v0b_18b_8cd4672
+    - json-path-api:3.0.0-218.vcd4dd1355de2
+    - junit:1413.v736fa_5b_61d80
+    - kubernetes-client-api:7.3.1-256.v788a_0b_787114
+    - kubernetes-credentials:207.v492f58828b_ed
+    - mailer:534.v1b_36f5864073
+    - matrix-project:870.v9db_fcfc2f45b_
+    - metrics:4.2.37-494.v06f9a_939d33a_
+    - mina-sshd-api-common:2.17.1-187.v0341274c2905
+    - mina-sshd-api-core:2.17.1-187.v0341274c2905
+    - okhttp-api:5.3.2-200.vedb_720a_cf1f8
+    - opentelemetry-api:1.54.1.102.v276c93ee966d
+    - pipeline-build-step:584.vdb_a_2cc3a_d07a_
+    - pipeline-graph-analysis:254.v0f63a_a_447dca_
+    - pipeline-groovy-lib:798.v5cc688825312
+    - pipeline-input-step:551.vdff487c5998c
+    - pipeline-milestone-step:152.v6e22b_8cfc66c
+    - pipeline-model-api:2.2291.v2934911987b_6
+    - pipeline-model-definition:2.2291.v2934911987b_6
+    - pipeline-model-extensions:2.2291.v2934911987b_6
+    - pipeline-rest-api:2.41
+    - pipeline-stage-step:345.va_96187909426
+    - pipeline-stage-tags-metadata:2.2291.v2934911987b_6
+    - plain-credentials:199.v9f8e1f741799
+    - plugin-util-api:7.1341.v039f146993d9
+    - prism-api:1.30.0-741.v034eb_0b_0a_a_fa_
+    - resource-disposer:0.25
+    - scm-api:728.vc30dcf7a_0df5
+    - script-security:1402.v94c9ce464861
+    - snakeyaml-api:2.5-149.v72471e9c6371
+    - snakeyaml-engine-api:3.0.1-5.vd98ea_ff3b_92e
+    - ssh-credentials:372.va_250881b_08cd
+    - structs:362.va_b_695ef4fdf9
+    - theme-manager:346.v06cca_64c6a_37
+    - token-macro:477.vd4f0dc3cb_cf1
+    - variant:70.va_d9f17f859e0
+    - woodstox-core-api:7.2.1-6.v3718a_a_11f5c4
+    - workflow-api:1413.v2ff1a_5e720fa_
+    - workflow-basic-steps:1098.v808b_fd7f8cf4
+    - workflow-cps:4331.v9d06ed4658ff
+    - workflow-durable-task-step:1479.v56e587f413a_7
+    - workflow-job:1571.1580.v18e46842c125
+    - workflow-multibranch:821.vc3b_4ea_780798
+    - workflow-scm-step:466.va_d69e602552b_
+    - workflow-step-api:724.v538c2362b_dfb_
+    - workflow-support:1015.v785e5a_b_b_8b_22
 
 agent:
-  enabled: true
   # Per-pipeline pod templates (maven/node/dind/kubectl/helm containers) are
   # defined inline in jenkins/pipelines/Jenkinsfile.petclinic via the
   # `agent { kubernetes { yaml ... } }` directive, so we keep the chart-level
-  # default agent minimal.
+  # default agent minimal. Only the limits differ from the chart default
+  # (512m/512Mi requests/limits) - requests are left at that default.
   resources:
-    requests:
-      cpu: "512m"
-      memory: "512Mi"
     limits:
       cpu: "1"
       memory: "1024Mi"
 
 rbac:
-  create: true
   readSecrets: true
-
-serviceAccount:
-  create: true
-  name: jenkins
-
-networkPolicy:
-  enabled: false
