@@ -23,52 +23,40 @@ an **existing** Kubernetes cluster (GKE, EKS, AKS or OpenShift 4.20+):
 
 ## Component diagram
 
-```
-  github.com/nubenetes/jenkins-2026
-  (JCasC, Jenkinsfile, shared library, Helm charts, seed/services.yaml)
-              │
-              │ global pipeline library + seed job (checkout scm)
-              ▼
-  ┌─────────────────────────────────────────────────────────────────┐
-  │ namespace: jenkins                                                │
-  │  Jenkins controller (jenkinsci/helm-charts + JCasC)               │
-  │   - security, global shared library, OTel exporter, seed job     │
-  │   - seed job (Job DSL) generates 18 pipeline jobs:                │
-  │       9 services x {<name> (main), <name>-develop (main)}        │
-  │   - each run uses a Kubernetes pod agent                          │
-  │     (maven / node / docker:dind / helm+kubectl containers)        │
-  └───────────────────────────────┬──────────────────────────────────┘
-                                    │ helm upgrade --install (per-service image tag)
-              ┌─────────────────────┴─────────────────────┐
-              ▼                                             ▼
-  ┌───────────────────────────────┐         ┌───────────────────────────────┐
-  │ namespace: petclinic           │         │ namespace: petclinic-develop   │
-  │ (stable, tracks main)          │         │ (testing track, tracks main)   │
-  │  config-server, discovery-     │         │ config-server, discovery-      │
-  │  server, customers/visits/     │         │ server, customers/visits/      │
-  │  vets/genai-service,            │         │ vets/genai-service,             │
-  │  api-gateway, admin-server,     │         │ api-gateway, admin-server,      │
-  │  petclinic-angular (nginx +     │         │ petclinic-angular               │
-  │  OTel Web RUM snippet)          │         │                                 │
-  └───────────────┬─────────────────┘         └───────────────┬─────────────────┘
-                  │ OTLP (traces / metrics / logs)                              │
-                  └─────────────────────┬──────────────────────────────────────┘
-                                          ▼
-  ┌─────────────────────────────────────────────────────────────────┐
-  │ namespace: observability                                          │
-  │  - OpenTelemetry Operator (CRDs: Instrumentation,                 │
-  │    OpenTelemetryCollector) - Java auto-instrumentation            │
-  │  - otel-collector-gateway (Deployment, OTLP receiver)             │
-  │  - otel-collector-logs (DaemonSet, filelog receiver)              │
-  └───────────────────────────────┬──────────────────────────────────┘
-                                    │
-              ┌─────────────────────┴─────────────────────┐
-              ▼ observability.mode: grafana-cloud           ▼ observability.mode: oss
-  ┌───────────────────────────────┐         ┌───────────────────────────────┐
-  │ Grafana Cloud                  │         │ In-cluster: kube-prometheus-   │
-  │ OTLP gateway -> Mimir, Loki,   │         │ stack (Prometheus + Grafana)   │
-  │ Tempo + Grafana                │         │ + Loki + Tempo                 │
-  └───────────────────────────────┘         └───────────────────────────────┘
+```mermaid
+flowchart TD
+    repo["github.com/nubenetes/jenkins-2026<br/>JCasC, Jenkinsfile, shared library,<br/>Helm charts, seed/services.yaml"]
+
+    subgraph jenkins_ns["namespace: jenkins"]
+        jenkins["Jenkins controller (jenkinsci/helm-charts + JCasC)<br/>- security, global shared library, OTel exporter, seed job<br/>- seed job (Job DSL) generates 18 pipeline jobs:<br/>  9 services x { name (main), name-develop (main) }<br/>- each run uses a Kubernetes pod agent<br/>  (maven / node / docker:dind / helm+kubectl containers)"]
+    end
+
+    repo -->|"global pipeline library +<br/>seed job (checkout scm)"| jenkins
+
+    subgraph petclinic_ns["namespace: petclinic (stable, tracks main)"]
+        petclinic["config-server, discovery-server,<br/>customers/visits/vets/genai-service,<br/>api-gateway, admin-server,<br/>petclinic-angular (nginx + OTel Web RUM snippet)"]
+    end
+
+    subgraph petclinic_dev_ns["namespace: petclinic-develop (testing track, tracks main)"]
+        petclinic_dev["config-server, discovery-server,<br/>customers/visits/vets/genai-service,<br/>api-gateway, admin-server,<br/>petclinic-angular"]
+    end
+
+    jenkins -->|"helm upgrade --install<br/>(per-service image tag)"| petclinic
+    jenkins -->|"helm upgrade --install<br/>(per-service image tag)"| petclinic_dev
+
+    subgraph observability_ns["namespace: observability"]
+        otel["OpenTelemetry Operator (CRDs: Instrumentation,<br/>OpenTelemetryCollector) - Java auto-instrumentation<br/>otel-collector-gateway (Deployment, OTLP receiver)<br/>otel-collector-logs (DaemonSet, filelog receiver)"]
+    end
+
+    jenkins -->|OTLP| otel
+    petclinic -->|"OTLP (traces / metrics / logs)"| otel
+    petclinic_dev -->|"OTLP (traces / metrics / logs)"| otel
+
+    grafana_cloud["Grafana Cloud<br/>OTLP gateway -> Mimir, Loki, Tempo + Grafana"]
+    oss["In-cluster: kube-prometheus-stack<br/>(Prometheus + Grafana) + Loki + Tempo"]
+
+    otel -->|"observability.mode:<br/>grafana-cloud"| grafana_cloud
+    otel -->|"observability.mode:<br/>oss"| oss
 ```
 
 The whole stack runs inside **one** Kubernetes cluster (GKE, EKS, AKS or
