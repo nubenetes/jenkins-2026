@@ -209,7 +209,7 @@ gcloud auth application-default login
 | Resource | Notes |
 |---|---|
 | VPC + subnet (`jenkins-2026-vpc` / `-subnet`) | VPC-native, dedicated pod/Service CIDR ranges |
-| GKE cluster `jenkins-2026` (zonal, `us-central1-a`) | `deletion_protection = false` so `destroy` works |
+| GKE cluster `jenkins-2026` (zonal, `europe-southwest1-a`) | `deletion_protection = false` so `destroy` works |
 | Node pool (2-4 x `e2-standard-4`, autoscaling) | sized for Jenkins + 18 PetClinic pods + 1-2 concurrent build agents |
 | Service account `jenkins-2026-nodes` + IAM bindings | logging/monitoring writer, Artifact Registry reader only |
 
@@ -219,7 +219,7 @@ can break unrelated resources in the same project).
 
 ### Cost
 
-At on-demand `us-central1` pricing, the cluster runs at roughly
+At on-demand `europe-southwest1` (Madrid) pricing, the cluster runs at roughly
 **$0.40-0.50/hr** (3x `e2-standard-4`, plus the $0.10/hr GKE cluster
 management fee - waived for your first zonal cluster per billing account).
 A full `test/e2e.sh` pass (provision, deploy, smoke-test, tear down

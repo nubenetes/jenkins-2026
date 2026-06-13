@@ -3,8 +3,8 @@
 
 project_id = "my-gcp-project-id"
 
-# region        = "us-central1"
-# zone          = "us-central1-a"
+# region        = "europe-southwest1"
+# zone          = "europe-southwest1-a"
 # cluster_name  = "jenkins-2026"
 # machine_type  = "e2-standard-4"
 # node_count    = 3
