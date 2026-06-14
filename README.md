@@ -6,15 +6,19 @@ A self-contained proof of concept that deploys **Jenkins** (via
 Job DSL ("pipelines as code"), and uses it to build, containerize and deploy
 the [Spring PetClinic microservices](https://github.com/spring-petclinic/spring-petclinic-microservices)
 reference application (+ its [Angular UI](https://github.com/spring-petclinic/spring-petclinic-angular))
-in a **GitFlow-inspired** model: a stable pipeline per service at the root,
-both tracking the upstream `main` branch (the only branch the upstream repos
-have) and deploying to the `petclinic` namespace. A second, isolated set of
-`pac-dev/<service>-develop` pipelines lives in its own `pac-dev/` folder - a
-sandbox where devops/platform engineers can iterate on this repo's own
-pipelines-as-code (Jenkinsfile, shared library, JCasC, seed jobs) on this
-repo's `develop` branch, deploying to a separate `petclinic-develop`
-namespace, without affecting the tested stable pipelines. Jenkins and every
-PetClinic service are instrumented with **OpenTelemetry**, with traces,
+in a **GitFlow-inspired** model with two distinct tracks:
+- **Stable Track**: 9 pipelines at the root (visible in the **petclinic** view)
+  tracking the upstream `main` branch and deploying to the `petclinic`
+  namespace. Managed from this repo's `main` branch.
+- **Sandbox Track**: 9 `<service>-develop` pipelines (visible in the
+  **petclinic-develop** view) residing in the `pac-dev/` folder. This isolated
+  sandbox lets devops/platform engineers iterate on this repo's own
+  pipelines-as-code (Jenkinsfile, shared library, JCasC, seed jobs) on the
+  `develop` branch, deploying to a separate `petclinic-develop` namespace
+  without affecting the tested stable pipelines.
+
+Jenkins and every PetClinic service are instrumented with **OpenTelemetry**,
+ with traces,
 metrics and logs correlated end-to-end in **Grafana** (Grafana Cloud by
 default, or an in-cluster OSS stack).
 
@@ -262,33 +266,71 @@ Beyond the existing kubernetes/git/JCasC/OTel plugins, three are aimed at UX:
 
 A Jenkins seed job (defined via JCasC, running Job DSL against
 [`jenkins/pipelines/seed/seed_jobs.groovy`](jenkins/pipelines/seed/seed_jobs.groovy)
-+ [`services.yaml`](jenkins/pipelines/seed/services.yaml)) generates **9
-stable pipelines** at the root, one per PetClinic service: a `<service>` job
-tracking `main` and deploying to namespace `petclinic` (upstream PetClinic
-only has a `main` branch). Each runs
++ [`services.yaml`](jenkins/pipelines/seed/services.yaml)) generates two
+distinct tracks of pipelines:
+
+### Pipeline Model Matrix
+
+| Feature | Stable Track (Root) | Sandbox Track (`pac-dev/`) |
+| :--- | :--- | :--- |
+| **Jenkins View** | `petclinic` (root-level) | `petclinic-develop` (root-level) |
+| **Jenkins Folder** | Root `/` | `pac-dev/` |
+| **This Repo Branch** | `main` | `develop` |
+| **PetClinic Branch** | `main` | `main` |
+| **Target Namespace** | `petclinic` | `petclinic-develop` |
+| **RBAC Access** | `developer` (Read/Build) | `platform-engineer` (Admin) |
+| **Tracking Job** | `seed-jobs` | `pac-dev/seed-jobs-dev` |
+
+### Architecture Diagram
+
+```mermaid
+graph TD
+    subgraph "Jenkins Controller"
+        SJ[seed-jobs] --> |tracks main| SP[9x Stable Pipelines]
+        SJD[pac-dev/seed-jobs-dev] --> |tracks develop| DP[9x Develop Pipelines]
+    end
+
+    subgraph "Cluster Namespaces"
+        SP --> |deploys| NS_S[petclinic]
+        DP --> |deploys| NS_D[petclinic-develop]
+    end
+
+    subgraph "Git Repository (jenkins-2026)"
+        R_M[main branch] -.-> SJ
+        R_D[develop branch] -.-> SJD
+    end
+
+    role_dev[Developer Role] --> |visible| SP
+    role_pe[Platform Engineer Role] --> |visible| DP
+    role_pe --> |visible| SP
+    
+    style DP fill:#f9f,stroke:#333,stroke-width:2px
+    style SJD fill:#f9f,stroke:#333,stroke-width:2px
+```
+
+Each pipeline runs
 [`Jenkinsfile.petclinic`](jenkins/pipelines/Jenkinsfile.petclinic):
 checkout -> build & test -> build & push image -> `helm upgrade` the
-[`helm/petclinic`](helm/petclinic) chart for that environment -> smoke test -
-checking out the Jenkinsfile + shared library from **this repo's `main`**.
-Details, including why the Jenkinsfile deliberately has no `parameters {}`
-block, in [`docs/pipelines-as-code.md`](docs/pipelines-as-code.md).
+[`helm/petclinic`](helm/petclinic) chart for that environment -> smoke test.
+Details in [`docs/pipelines-as-code.md`](docs/pipelines-as-code.md).
 
 ### Pipelines-as-code dev sandbox (`pac-dev/`)
 
-A second seed job, **`pac-dev/seed-jobs-dev`**, tracks this repo's
-`develop` branch (instead of `main`) and generates a `pac-dev/` folder
-containing one `<service>-develop` pipeline per PetClinic service - also
-tracking `main` for the PetClinic source, but checking out
-`Jenkinsfile.petclinic` + the shared library from **this repo's `develop`**,
-and deploying to the separate `petclinic-develop` namespace. This gives
-devops/platform engineers an isolated environment to change and improve this
-repo's own pipelines-as-code (`seed_jobs.groovy`, `Jenkinsfile.petclinic`,
-JCasC, the shared library) on `develop` and see the resulting
-`pac-dev/<service>-develop` pipelines run end-to-end, **without touching the
-9 stable `<service>` jobs above**. The `pac-dev/` folder is hidden from
-regular users - only the `platform-engineer` Jenkins account
-(Role-Based Authorization Strategy) can see or run it. Details in
-[`docs/pipelines-as-code.md`](docs/pipelines-as-code.md#pipelines-as-code-dev-sandbox-pac-dev).
+The **`pac-dev/seed-jobs-dev`** job tracks this repo's `develop` branch
+and generates the `pac-dev/` folder. This gives devops/platform engineers
+an isolated environment to iterate on the pipelines themselves.
+
+**RBAC & Visibility**:
+- The **`petclinic`** view and the 9 root jobs are visible to everyone
+  (`developer` role).
+- The **`petclinic-develop`** view and the **`pac-dev/`** folder are
+  **hidden** from regular users. They are only visible to the
+  `platform-engineer` role and `admin` users (see
+  [`jenkins/casc/jcasc-base.yaml`](jenkins/casc/jcasc-base.yaml)).
+- The **"All"** jobs view in Jenkins automatically filters based on these
+  permissions.
+
+Details in [`docs/pipelines-as-code.md`](docs/pipelines-as-code.md#pipelines-as-code-dev-sandbox-pac-dev).
 
 ## Observability
 
