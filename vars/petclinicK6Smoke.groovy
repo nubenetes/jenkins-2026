@@ -14,6 +14,12 @@
  * own spans (jenkins/casc/jcasc-otel.yaml), tagged with the same
  * service.namespace=jenkins-2026 and deployment.environment=<envName> resource
  * attributes so everything groups together in Grafana.
+ *
+ * k6 exits 99 when a threshold (e.g. the p(95) latency budget in
+ * petclinic-smoke.js) is crossed but the run itself completed cleanly - this
+ * is a smoke test feeding Grafana fresh telemetry, not a load-test gate, so
+ * that's reported as UNSTABLE rather than failing the build. Any other
+ * non-zero exit (script/runtime error) still fails the build.
  */
 def call(Map cfg) {
   container('k6') {
@@ -27,10 +33,18 @@ def call(Map cfg) {
       "K6_OTEL_GRPC_EXPORTER_INSECURE=true",
       "OTEL_RESOURCE_ATTRIBUTES=service.namespace=jenkins-2026,deployment.environment=${cfg.envName}",
     ]) {
-      sh """
-        set -eux
-        k6 run -o opentelemetry --summary-export=k6-summary.json jenkins/pipelines/k6/petclinic-smoke.js
-      """
+      def exitCode = sh(
+        script: '''
+          set -eu
+          k6 run -o opentelemetry --summary-export=k6-summary.json jenkins/pipelines/k6/petclinic-smoke.js
+        ''',
+        returnStatus: true
+      )
+      if (exitCode == 99) {
+        unstable('k6 thresholds were not met - see k6-summary.json and Grafana for details')
+      } else if (exitCode != 0) {
+        error("k6 run failed with exit code ${exitCode}")
+      }
     }
   }
 }
