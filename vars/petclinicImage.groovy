@@ -24,6 +24,7 @@ def call(Map cfg) {
     container('maven') {
       sh """
         set -eux
+        unset MAVEN_CONFIG
         ./mvnw -B -pl ${cfg.module} -am -DskipTests spring-boot:build-image \
           -Dspring-boot.build-image.imageName=${cfg.image} \
           -Dspring-boot.build-image.publish=false
