@@ -54,6 +54,24 @@ else
   log_warn "Save these passwords now - they are not printed again on subsequent runs."
 fi
 
+log_step "Refreshing PetClinic URLs in '${J2026_JENKINS_CREDENTIALS_SECRET}' Secret"
+# Non-sensitive, so refreshed on every run (unlike the admin/platform-engineer
+# passwords above) - tracks gateway.baseDomain even if it changes after the
+# secret was first created. Empty if the Gateway feature is disabled. Surfaced
+# in the Jenkins systemMessage banner by jcasc-base.yaml (PETCLINIC_URL,
+# PETCLINIC_DEVELOP_URL).
+petclinic_url=""
+petclinic_develop_url=""
+if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
+  petclinic_url="https://${J2026_GATEWAY_PETCLINIC_HOST}"
+  petclinic_develop_url="https://${J2026_GATEWAY_PETCLINIC_DEVELOP_HOST}"
+fi
+kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \
+  --type=merge -p "$(cat <<EOF
+{"stringData":{"petclinic-url":"${petclinic_url}","petclinic-develop-url":"${petclinic_develop_url}"}}
+EOF
+)"
+
 log_step "Ensuring '${J2026_HEADLAMP_CREDENTIALS_SECRET}' Secret in ${J2026_HEADLAMP_NAMESPACE}"
 if kubectl get secret "${J2026_HEADLAMP_CREDENTIALS_SECRET}" -n "${J2026_HEADLAMP_NAMESPACE}" >/dev/null 2>&1; then
   log_info "Secret already exists - leaving OIDC_CLIENT_ID/OIDC_CLIENT_SECRET untouched."

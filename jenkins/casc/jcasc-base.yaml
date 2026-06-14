@@ -12,6 +12,9 @@ jenkins:
     Jenkins 2026 PoC - fully managed via Configuration as Code.
     Source of truth: https://github.com/nubenetes/jenkins-2026
 
+    PetClinic (stable, namespace petclinic):           ${PETCLINIC_URL:-not publicly exposed - kubectl port-forward -n petclinic svc/petclinic-angular 8080:8080}
+    PetClinic (develop, namespace petclinic-develop):  ${PETCLINIC_DEVELOP_URL:-not publicly exposed - kubectl port-forward -n petclinic-develop svc/petclinic-angular 8081:8080}
+
   # numExecutors (chart default 0) / mode are derived from
   # controller.numExecutors / controller.executorMode in
   # helm/jenkins/values-common.yaml instead of being set here - see the
