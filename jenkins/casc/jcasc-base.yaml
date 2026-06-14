@@ -134,11 +134,14 @@ appearance:
 unclassified:
   # unclassified.location.url is intentionally NOT set here - the chart's
   # generated jcasc-default-config.yaml always sets it (to the in-cluster
-  # service URL, http://jenkins.<namespace>.svc.cluster.local:8080), and a
-  # second definition here would hit the same JCasC
-  # ErrorOnConflictMergeStrategy failure as jenkins.mode (see
-  # helm/jenkins/values-common.yaml). Override via controller.jenkinsUrl in
-  # the values files if a different URL (e.g. behind an Ingress) is needed.
+  # service URL, http://jenkins.<namespace>.svc.cluster.local:8080, unless
+  # controller.jenkinsUrl is set), and a second definition here would hit the
+  # same JCasC ErrorOnConflictMergeStrategy failure as jenkins.mode (see
+  # helm/jenkins/values-common.yaml). scripts/04-jenkins.sh sets
+  # controller.jenkinsUrl from J2026_JENKINS_URL (the public gateway URL when
+  # enabled, else the kubectl port-forward default) - oic-auth's Google OAuth
+  # redirect_uri is derived from this location.url, see README.md "Google
+  # login (OpenID Connect)".
   location:
     adminAddress: "address not configured yet <nobody@nowhere>"
 

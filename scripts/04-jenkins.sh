@@ -20,6 +20,7 @@ cat >"${RUNTIME_VALUES}" <<EOF
 # controller.containerEnv from helm/jenkins/values-common.yaml with values
 # resolved from this repo's config.
 controller:
+  jenkinsUrl: "${J2026_JENKINS_URL}"
   containerEnv:
     - name: JENKINS_ADMIN_ID
       value: "${J2026_JENKINS_ADMIN_USER}"
