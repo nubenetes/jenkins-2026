@@ -28,12 +28,16 @@ RUN set -eux; \
 COPY resources/angular/nginx.conf /etc/nginx/conf.d/default.conf
 COPY resources/angular/otel-web.js /usr/share/nginx/html/otel-web.js
 
-# OpenShift-friendly: allow the arbitrary, non-root UID assigned by the
-# restricted SCC (group 0) to read/write nginx's runtime directories.
-RUN chgrp -R 0 /usr/share/nginx/html /var/cache/nginx /etc/nginx && \
+# Allow nginx's runtime directories to be read/written by either:
+# - OpenShift's restricted SCC (arbitrary UID, group 0), via the group bits
+#   (chgrp 0 + g=u), or
+# - helm/petclinic's fixed runAsUser/runAsGroup 1000:1000 (GKE/EKS/AKS,
+#   matching the Paketo "cnb" UID used by the Java service images), via the
+#   owner bits (chown 1000).
+RUN chown -R 1000:0 /usr/share/nginx/html /var/cache/nginx /etc/nginx && \
     chmod -R g=u /usr/share/nginx/html /var/cache/nginx /etc/nginx && \
-    touch /var/run/nginx.pid && chgrp 0 /var/run/nginx.pid && chmod g=u /var/run/nginx.pid
+    touch /var/run/nginx.pid && chown 1000:0 /var/run/nginx.pid && chmod g=u /var/run/nginx.pid
 
-USER 101
+USER 1000:0
 EXPOSE 8080
 CMD ["nginx", "-g", "daemon off;"]
