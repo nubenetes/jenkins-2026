@@ -7,10 +7,12 @@ Job DSL ("pipelines as code"), and uses it to build, containerize and deploy
 the [Spring PetClinic microservices](https://github.com/spring-petclinic/spring-petclinic-microservices)
 reference application (+ its [Angular UI](https://github.com/spring-petclinic/spring-petclinic-angular))
 in a **GitFlow-inspired** model with two distinct tracks:
-- **Stable Track**: 9 pipelines at the root (visible in the **petclinic** view)
-  tracking the upstream `main` branch and deploying to the `petclinic`
-  namespace. Managed from this repo's `main` branch.
-- **Sandbox Track**: 9 `<service>-develop` pipelines (visible in the
+- **Stable Track**: 9 pipelines at the root, plus the `petclinic-k6-smoke`
+  observability smoke test (all visible in the **petclinic** view), tracking
+  the upstream `main` branch and deploying to the `petclinic` namespace.
+  Managed from this repo's `main` branch.
+- **Sandbox Track**: 9 `<service>-develop` pipelines, plus
+  `pac-dev/petclinic-k6-smoke-develop` (all visible in the
   **petclinic-develop** view) residing in the `pac-dev/` folder. This isolated
   sandbox lets devops/platform engineers iterate on this repo's own
   pipelines-as-code (Jenkinsfile, shared library, JCasC, seed jobs) on the
@@ -285,18 +287,52 @@ distinct tracks of pipelines:
 | **RBAC Access** | `developer` (Read/Build) | `platform-engineer` (Admin) |
 | **Tracking Job** | `seed-jobs` | `pac-dev/seed-jobs-dev` |
 
+### Pipeline inventory
+
+`seed-jobs` (tracks `main`) and `pac-dev/seed-jobs-dev` (tracks `develop`)
+each generate 10 jobs from the same
+[`seed_jobs.groovy`](jenkins/pipelines/seed/seed_jobs.groovy) +
+[`services.yaml`](jenkins/pipelines/seed/services.yaml) - 9 per-service
+build/deploy pipelines plus one k6 observability smoke test job:
+
+| Stable job (root, `petclinic` view) | Dev-sandbox job (`pac-dev/`, `petclinic-develop` view) |
+|---|---|
+| `config-server` | `pac-dev/config-server-develop` |
+| `discovery-server` | `pac-dev/discovery-server-develop` |
+| `customers-service` | `pac-dev/customers-service-develop` |
+| `visits-service` | `pac-dev/visits-service-develop` |
+| `vets-service` | `pac-dev/vets-service-develop` |
+| `genai-service` | `pac-dev/genai-service-develop` |
+| `api-gateway` | `pac-dev/api-gateway-develop` |
+| `admin-server` | `pac-dev/admin-server-develop` |
+| `petclinic-angular` | `pac-dev/petclinic-angular-develop` |
+| `petclinic-k6-smoke` | `pac-dev/petclinic-k6-smoke-develop` |
+
+The first 9 rows run [`Jenkinsfile.petclinic`](jenkins/pipelines/Jenkinsfile.petclinic)
+(build/deploy, one PetClinic service each); the last row runs
+[`Jenkinsfile.petclinic-k6-smoke`](jenkins/pipelines/Jenkinsfile.petclinic-k6-smoke)
+(synthetic traffic + telemetry, see [k6 observability smoke
+test](#k6-observability-smoke-test) below). `genai-service`/
+`pac-dev/genai-service-develop` are seeded `disabled` unless
+`petclinic.genaiServiceEnabled` is `true` (see
+[Configuration](#configuration-configconfigyaml)).
+
 ### Architecture Diagram
 
 ```mermaid
 graph TD
     subgraph "Jenkins Controller"
-        SJ[seed-jobs] --> |tracks main| SP[9x Stable Pipelines + k6 smoke]
-        SJD[pac-dev/seed-jobs-dev] --> |tracks develop| DP[9x Develop Pipelines + k6 smoke]
+        SJ[seed-jobs] --> |tracks main| SP[9x Stable Pipelines]
+        SJ --> K6S[petclinic-k6-smoke]
+        SJD[pac-dev/seed-jobs-dev] --> |tracks develop| DP[9x Develop Pipelines]
+        SJD --> K6D[pac-dev/petclinic-k6-smoke-develop]
     end
 
     subgraph "Cluster Namespaces"
         SP --> |deploys| NS_S[petclinic]
         DP --> |deploys| NS_D[petclinic-develop]
+        K6S -. synthetic traffic .-> NS_S
+        K6D -. synthetic traffic .-> NS_D
     end
 
     subgraph "Git Repository (jenkins-2026)"
@@ -304,15 +340,30 @@ graph TD
         R_D[develop branch] -.-> SJD
     end
 
+    subgraph "observability namespace"
+        OTEL[otel-collector-gateway]
+        GRAFANA[Grafana Cloud / OSS]
+        OTEL --> GRAFANA
+    end
+
+    NS_S -. traces/metrics/logs .-> OTEL
+    NS_D -. traces/metrics/logs .-> OTEL
+    K6S -. k6 OTel metrics .-> OTEL
+    K6D -. k6 OTel metrics .-> OTEL
+
     role_dev[Developer Role] --> |visible| SP
+    role_dev --> |visible| K6S
     role_pe[Platform Engineer Role] --> |visible| DP
+    role_pe --> |visible| K6D
     role_pe --> |visible| SP
-    
+    role_pe --> |visible| K6S
+
     style DP fill:#f9f,stroke:#333,stroke-width:2px
     style SJD fill:#f9f,stroke:#333,stroke-width:2px
+    style K6D fill:#f9f,stroke:#333,stroke-width:2px
 ```
 
-Each pipeline runs
+Each per-service pipeline runs
 [`Jenkinsfile.petclinic`](jenkins/pipelines/Jenkinsfile.petclinic):
 checkout -> build & test -> build & push image -> `helm upgrade` the
 [`helm/petclinic`](helm/petclinic) chart for that environment -> smoke test.
@@ -357,7 +408,70 @@ export OTLP to an in-cluster collector, which forwards to Grafana Cloud
     - **Integration**: Add the endpoint to your Gemini CLI or AI agent configuration. You can then ask questions like *"Audit my Jenkins datasource health"* or *"Summarize recent pipeline failures from traces"* for a better outcome of your changes.
 - **Correlated telemetry**: Traces, metrics and logs are fully correlated. On Grafana Cloud, log-to-trace links and system datasources (like `alert-state-history` and `usage-insights`) are pre-configured by default.
 
-Full details in [`docs/observability.md`](docs/observability.md).
+### k6 observability smoke test
+
+`petclinic-k6-smoke` (root) and `pac-dev/petclinic-k6-smoke-develop`
+(`pac-dev/`) - see [Pipeline inventory](#pipeline-inventory) - run
+[`jenkins/pipelines/k6/petclinic-smoke.js`](jenkins/pipelines/k6/petclinic-smoke.js)
+via [`vars/petclinicK6Smoke.groovy`](vars/petclinicK6Smoke.groovy). This is
+**not a load/stress test** - it's an on-demand way to give Grafana a fresh,
+fully-correlated trace/metric/log example across the *whole* app, without
+waiting for real users:
+
+```mermaid
+sequenceDiagram
+    participant K6 as k6 (Jenkins pod, k6 container)
+    participant Infra as config/discovery/admin-server
+    participant UI as petclinic-angular
+    participant GW as api-gateway
+    participant SVC as customers/vets/visits-service
+    participant OTel as otel-collector-gateway
+    participant Grafana as Grafana (Tempo/Loki/Mimir)
+
+    Note over K6: per iteration: generate a fresh W3C traceparent
+    K6->>Infra: GET /actuator/health (traceparent)
+    K6->>UI: GET / (traceparent)
+    K6->>GW: GET /api/... (traceparent)
+    GW->>SVC: continue same trace (OTel Java agent)
+    Infra-->>OTel: traces + logs (trace_id in MDC) + metrics
+    UI-->>OTel: traces + logs + metrics
+    GW-->>OTel: traces + logs + metrics
+    SVC-->>OTel: traces + logs + metrics
+    K6->>OTel: k6 run -o opentelemetry (k6's own request metrics)
+    OTel->>Grafana: forward (otlp / otlphttp)
+    Note over K6,Grafana: trace_id logged to the Jenkins console, ready to paste into Tempo's trace search
+```
+
+- **One trace per iteration**: every request in an iteration carries the
+  same generated `traceparent`, so the OTel Java agent (already configured
+  with `tracecontext` propagation + `parentbased_traceidratio(1.0)` sampling)
+  continues it across every service the iteration touches - one k6 iteration
+  = one Tempo trace spanning (a subset of) all 9 services.
+- **Job parameters** (set as defaults by `seed_jobs.groovy`, overridable per
+  build): `TARGET_NAMESPACE`/`ENV_NAME` (`petclinic`/`stable` vs.
+  `petclinic-develop`/`develop`), `GENAI_SERVICE_ENABLED` (mirrors
+  `petclinic.genaiServiceEnabled`), `K6_VUS` (default 4) and `K6_ITERATIONS`
+  (default 12, shared across all VUs).
+- **Thresholds, not a hard gate**: `petclinic-smoke.js` sets
+  `http_req_failed: rate<0.05` and `http_req_duration: p(95)<3000`. k6 exits
+  `99` if a threshold is crossed but the run otherwise completed cleanly -
+  `petclinicK6Smoke.groovy` reports that as Jenkins **UNSTABLE** (e.g. a
+  cold-start latency blip right after a deploy), reserving **FAILURE** for
+  real script/runtime errors.
+- **Build output**: whatever the outcome, `petclinicK6Smoke` prints the raw
+  `k6-summary.json` (also archived as a build artifact), a pass/fail
+  breakdown (checks, `http_req_failed` rate, `http_req_duration` p95 vs.
+  their thresholds, iteration count), and a direct link to the
+  **`k6-smoke-overview.json`** Grafana dashboard
+  (`observability/grafana/dashboards/k6-smoke-overview.json`, uid
+  `jenkins2026-k6-smoke-overview`) scoped to this run's
+  `stable`/`develop` environment and time window.
+- **Run it** after the 9 services have deployed at least once (see [First run
+  note](#quick-start)), then follow the Grafana link in the build console -
+  or search Tempo for one of the `[petclinic-smoke] iteration
+  trace_id=...` values also logged there.
+
+Full details in [`docs/observability.md`](docs/observability.md#k6-observability-smoke-test).
 
 ## Headlamp (cluster management UI)
 
@@ -469,8 +583,8 @@ kubectl create token headlamp -n headlamp
 
 ## Public access (GKE Gateway API + IAP)
 
-Jenkins, PetClinic and Headlamp can all be exposed on the public internet
-through a single **GKE Gateway** (`gatewayClassName:
+Jenkins, PetClinic (stable and dev-sandbox) and Headlamp can all be exposed on
+the public internet through a single **GKE Gateway** (`gatewayClassName:
 gke-l7-global-external-managed`) - one global external HTTPS load balancer,
 one [Google-managed wildcard
 certificate](https://cloud.google.com/certificate-manager/docs/overview)
@@ -480,13 +594,16 @@ applied by [`scripts/09-gateway.sh`](scripts/09-gateway.sh):
 | App | URL | [Identity-Aware Proxy](https://cloud.google.com/iap) |
 |---|---|---|
 | Jenkins | `https://jenkins.<baseDomain>` | yes |
-| PetClinic | `https://petclinic.<baseDomain>` | no (public demo app) |
+| PetClinic (stable) | `https://petclinic.<baseDomain>` | no (public demo app) |
+| PetClinic (pac-dev/\*-develop sandbox) | `https://petclinic-develop.<baseDomain>` | no (public demo app) |
 | Headlamp | `https://headlamp.<baseDomain>` | yes |
 
 `<baseDomain>` is [`gateway.baseDomain`](config/config.yaml) -
 `jenkins2026.nubenetes.com` by default. Jenkins and Headlamp get an extra
-Google-login gate (IAP) in front of their own auth; PetClinic, the demo app,
-stays open. **This whole feature is opt-in**: set
+Google-login gate (IAP) in front of their own auth; PetClinic (both stable and
+the dev sandbox), the demo app, stays open. Both PetClinic URLs are also
+surfaced in the Jenkins UI's system message banner (see [`jenkins/casc/jcasc-base.yaml`](jenkins/casc/jcasc-base.yaml)).
+**This whole feature is opt-in**: set
 `JENKINS2026_BASE_DOMAIN=""` to disable it (no `Gateway`/`HTTPRoute`/
 `GCPBackendPolicy` resources are created, e.g. before the one-time setup
 below has been done) - `scripts/09-gateway.sh` is also a no-op on

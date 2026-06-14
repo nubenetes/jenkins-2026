@@ -83,6 +83,7 @@ if [[ "${J2026_PLATFORM}" == "gke" && -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
   kubectl delete gcpbackendpolicy "${J2026_GATEWAY_IAP_POLICY_HEADLAMP}" -n "${J2026_HEADLAMP_NAMESPACE}" --ignore-not-found --timeout=5m
   kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_JENKINS}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found --timeout=5m
   kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_PETCLINIC}" -n "${J2026_PETCLINIC_NS_STABLE}" --ignore-not-found --timeout=5m
+  kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_PETCLINIC_DEVELOP}" -n "${J2026_PETCLINIC_NS_DEVELOP}" --ignore-not-found --timeout=5m
   kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_HEADLAMP}" -n "${J2026_HEADLAMP_NAMESPACE}" --ignore-not-found --timeout=5m
   kubectl delete gateway "${J2026_GATEWAY_NAME}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found --timeout=5m
 fi
