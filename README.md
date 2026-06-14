@@ -17,10 +17,8 @@ in a **GitFlow-inspired** model with two distinct tracks:
   `develop` branch, deploying to a separate `petclinic-develop` namespace
   without affecting the tested stable pipelines.
 
-Jenkins and every PetClinic service are instrumented with **OpenTelemetry**,
- with traces,
-metrics and logs correlated end-to-end in **Grafana** (Grafana Cloud by
-default, or an in-cluster OSS stack).
+- **Observability (Grafana Cloud / OSS)**: Traces, metrics and logs are fully
+  correlated. (Note: Grafana Cloud requires a [one-time manual setup](docs/observability.md#correlation-end-to-end) for log-to-trace links).
 
 It is compliant with **OpenShift 4.20+** and the latest **Kubernetes on
 GKE/EKS/AKS** - the target platform is a config-file + environment-variable

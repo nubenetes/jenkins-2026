@@ -220,20 +220,9 @@
       "targets": [
         {
           "datasource": { "type": "tempo", "uid": "${DS_TEMPO}" },
-          "filters": [
-            {
-              "id": "service-name",
-              "operator": "=",
-              "scope": "resource",
-              "tag": "service.name",
-              "value": ["jenkins"],
-              "valueType": "string"
-            }
-          ],
-          "limit": 20,
-          "queryType": "traceqlSearch",
-          "refId": "A",
-          "tableType": "traces"
+          "query": "{resource.service.name = \"jenkins\"}",
+          "queryType": "traceql",
+          "refId": "A"
         }
       ],
       "title": "Jenkins Traces (pipeline / stage / step spans)",

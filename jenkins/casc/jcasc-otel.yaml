@@ -25,8 +25,8 @@ unclassified:
     # Surfaced as resource attribute service.namespace - lets Grafana group
     # Jenkins spans together with the PetClinic services under one
     # "jenkins-2026" application.
-    configurationProperties: |
-      otel.resource.attributes=service.namespace=jenkins-2026,deployment.environment=jenkins
+    resourceAttributes: "service.namespace=jenkins-2026,deployment.environment=jenkins"
+
     # exportOtlpLogsViaHttp was also removed in 3.x - logs now always follow
     # the same protocol/endpoint as traces and metrics (grpc, above).
     observabilityBackends:
