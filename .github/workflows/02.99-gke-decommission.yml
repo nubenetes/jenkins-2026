@@ -78,11 +78,18 @@ jobs:
 
       - name: Fetch kubeconfig credentials
         working-directory: terraform/gke
+        continue-on-error: true
         run: |
-          gcloud container clusters get-credentials \
-            "$(terraform output -raw cluster_name)" \
-            --zone "$(terraform output -raw location)" \
-            --project "${{ secrets.GCP_PROJECT_ID }}"
+          CLUSTER_NAME="$(terraform output -raw cluster_name || true)"
+          LOCATION="$(terraform output -raw location || true)"
+          if [[ -n "$CLUSTER_NAME" && -n "$LOCATION" ]]; then
+            gcloud container clusters get-credentials \
+              "$CLUSTER_NAME" \
+              --zone "$LOCATION" \
+              --project "${{ secrets.GCP_PROJECT_ID }}"
+          else
+            echo "No cluster name or location found in Terraform outputs. Skipping kubeconfig fetch."
+          fi
 
       - name: Tear down the stack (scripts/down.sh)
         env:
