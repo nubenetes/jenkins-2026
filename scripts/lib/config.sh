@@ -202,3 +202,9 @@ export J2026_PETCLINIC_REGISTRY="$(yq_get '.petclinic.registry' 'ghcr.io/nubenet
 # Space-separated list of service names, e.g. "config-server discovery-server ...".
 J2026_PETCLINIC_SERVICES="$(yq_get_list '.petclinic.services[].name' | tr '\n' ' ')"
 export J2026_PETCLINIC_SERVICES="${J2026_PETCLINIC_SERVICES% }"
+
+# FEATURE FLAG: JENKINS2026_GENAI_SERVICE_ENABLED, if set, overrides
+# petclinic.genaiServiceEnabled from config.yaml - same override pattern as
+# JENKINS2026_PLATFORM above. Gates whether seed-jobs enables the
+# genai-service pipeline jobs (see jenkins/pipelines/seed/seed_jobs.groovy).
+export J2026_PETCLINIC_GENAI_SERVICE_ENABLED="${JENKINS2026_GENAI_SERVICE_ENABLED:-$(yq_get '.petclinic.genaiServiceEnabled' 'false')}"
