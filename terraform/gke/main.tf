@@ -72,9 +72,10 @@ resource "google_project_iam_member" "nodes_roles" {
   member  = "serviceAccount:${google_service_account.nodes.email}"
 }
 
-# Minimal IAM for Headlamp's experimental per-user OIDC->GKE-API access-token
-# passthrough (see README.md "Headlamp"). roles/container.clusterViewer is
-# the minimal role for the GKE API to accept a user's Google token; in-cluster
+# IAM for Headlamp's per-user OIDC->GKE-API access-token passthrough (see
+# README.md "Headlamp") - kept for if/when upstream fixes the backend bug
+# that makes this non-functional today. roles/container.clusterViewer is the
+# minimal role for the GKE API to accept a user's Google token; in-cluster
 # RBAC (cluster-admin) for these emails is granted separately by
 # scripts/08-headlamp.sh.
 resource "google_project_iam_member" "headlamp_admins" {
