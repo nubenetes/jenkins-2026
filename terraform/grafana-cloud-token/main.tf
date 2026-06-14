@@ -37,7 +37,7 @@ resource "grafana_cloud_access_policy_token" "otlp" {
 resource "grafana_cloud_stack_service_account" "dashboards" {
   stack_slug = var.stack_slug
   name       = "jenkins-2026-dashboards"
-  role       = "Editor"
+  role       = "Admin"
 }
 
 resource "grafana_cloud_stack_service_account_token" "dashboards" {
@@ -66,6 +66,8 @@ resource "grafana_cloud_private_data_source_connect_network_token" "this" {
 # Jenkins Datasource
 # -----------------------------------------------------------------------------
 resource "grafana_data_source" "jenkins" {
+  provider = grafana.instance
+
   type = "grafana-jenkins-datasource"
   name = "Jenkins"
   url  = "http://jenkins.jenkins.svc.cluster.local:8080"

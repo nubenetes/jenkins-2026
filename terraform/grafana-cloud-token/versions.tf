@@ -11,8 +11,12 @@ terraform {
 
 provider "grafana" {
   cloud_access_policy_token = var.grafana_cloud_api_token
-  url                       = "https://${var.stack_slug}.grafana.net"
-  auth                      = var.grafana_cloud_api_token
+}
+
+provider "grafana" {
+  alias = "instance"
+  url   = "https://${var.stack_slug}.grafana.net"
+  auth  = grafana_cloud_stack_service_account_token.dashboards.key
 }
 
 # -----------------------------------------------------------------------------
