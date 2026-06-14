@@ -18,10 +18,12 @@
 # branch without touching the stable/develop jobs above. See README.md
 # "Pipelines-as-code dev sandbox".
 #
-# Upstream spring-petclinic repos only have a `main` branch (no `master`/
+# spring-petclinic-microservices only has a `main` branch (no `master`/
 # `develop`), so both `stable.branch` and `develop.branch` below point at
 # `main` - the -develop/pac-dev jobs are separate namespaces/tracks for
-# testing, not a different PetClinic source branch.
+# testing, not a different PetClinic source branch. spring-petclinic-angular
+# is the exception: it only has `master` (no `main`), so its service entry
+# below sets its own `branches` override.
 #
 # All jobs run the SAME jenkins/pipelines/Jenkinsfile.petclinic; only the
 # parameters below (and the job name/folder) differ.
@@ -106,3 +108,8 @@ services:
     module: ""
     port: 8080
     healthPath: /
+    # spring-petclinic-angular has no `main` branch - override the top-level
+    # branches.{stable,develop} (main) with its actual default, `master`.
+    branches:
+      stable: master
+      develop: master

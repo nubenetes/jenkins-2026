@@ -37,8 +37,14 @@ spec:
       env:
         - name: DOCKER_HOST
           value: tcp://localhost:2375
+      # requests trimmed below the chart-default footprint: only one
+      # container is doing real work at a time (sequential pipeline
+      # stages), the rest sit on `sleep infinity`. limits stay generous
+      # for the container that's actually active. This keeps the total
+      # per-agent-pod CPU request down so more builds fit on the
+      # (max 4-node) GKE pool.
       resources:
-        requests: {cpu: 500m, memory: 1Gi}
+        requests: {cpu: 200m, memory: 1Gi}
         limits: {cpu: '2', memory: 3Gi}
     - name: node
       image: node:20-bookworm
@@ -48,7 +54,7 @@ spec:
         - name: DOCKER_HOST
           value: tcp://localhost:2375
       resources:
-        requests: {cpu: 250m, memory: 512Mi}
+        requests: {cpu: 50m, memory: 512Mi}
         limits: {cpu: '2', memory: 2Gi}
     - name: docker
       image: docker:26-dind
@@ -61,14 +67,14 @@ spec:
         - name: DOCKER_TLS_CERTDIR
           value: ""
       resources:
-        requests: {cpu: 250m, memory: 512Mi}
+        requests: {cpu: 100m, memory: 512Mi}
         limits: {cpu: '2', memory: 2Gi}
     - name: helm
       image: alpine/k8s:1.31.3
       command: ['sleep']
       args: ['infinity']
       resources:
-        requests: {cpu: 100m, memory: 256Mi}
+        requests: {cpu: 50m, memory: 256Mi}
         limits: {cpu: 500m, memory: 512Mi}
 """
     }
