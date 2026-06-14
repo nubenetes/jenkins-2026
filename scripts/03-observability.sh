@@ -40,6 +40,22 @@ case "${J2026_OBS_MODE}" in
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${J2026_ROOT_DIR}/observability/otel-collector/values-grafana-cloud-logs.yaml" \
       --wait --timeout 5m --debug
+
+    log_step "Installing pdc-agent (Private Data Source Connect)"
+    GRAFANA_PDC_TOKEN="$(kubectl get secret "${J2026_GRAFANA_CLOUD_SECRET}" -n "${J2026_OBS_NAMESPACE}" -o jsonpath='{.data.GRAFANA_PDC_TOKEN}' | base64 -d)"
+    GRAFANA_PDC_CLUSTER="$(kubectl get secret "${J2026_GRAFANA_CLOUD_SECRET}" -n "${J2026_OBS_NAMESPACE}" -o jsonpath='{.data.GRAFANA_PDC_CLUSTER}' | base64 -d)"
+    GRAFANA_STACK_ID="$(kubectl get secret "${J2026_GRAFANA_CLOUD_SECRET}" -n "${J2026_OBS_NAMESPACE}" -o jsonpath='{.data.GRAFANA_STACK_ID}' | base64 -d)"
+
+    if [[ -n "${GRAFANA_PDC_TOKEN}" ]]; then
+      helm upgrade --install pdc-agent grafana/pdc-agent \
+        --namespace "${J2026_OBS_NAMESPACE}" \
+        --set cluster="${GRAFANA_PDC_CLUSTER}" \
+        --set hostedGrafanaId="${GRAFANA_STACK_ID}" \
+        --set insecureTokenValue="${GRAFANA_PDC_TOKEN}" \
+        --wait --timeout 5m
+    else
+      log_warn "GRAFANA_PDC_TOKEN not set - skipping pdc-agent installation."
+    fi
     ;;
 
   oss)
