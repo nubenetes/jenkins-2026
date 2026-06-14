@@ -30,6 +30,10 @@ case "${J2026_OBS_MODE}" in
     fi
 
     log_step "Installing ${J2026_OTEL_GATEWAY_RELEASE} (OTLP gateway -> Grafana Cloud)"
+    # Resolve field manager conflicts (SSA) by removing the ConfigMap if it was previously
+    # managed by kubectl instead of Helm.
+    kubectl delete configmap otel-collector-gateway -n "${J2026_OBS_NAMESPACE}" --ignore-not-found
+
     helm upgrade --install "${J2026_OTEL_GATEWAY_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${J2026_ROOT_DIR}/observability/otel-collector/values-grafana-cloud.yaml"
@@ -88,6 +92,7 @@ case "${J2026_OBS_MODE}" in
       -f "${J2026_ROOT_DIR}/observability/grafana/values-oss-tempo.yaml"
 
     log_step "Installing ${J2026_OTEL_GATEWAY_RELEASE} (OTLP gateway -> Tempo/Prometheus/Loki)"
+    kubectl delete configmap otel-collector-gateway -n "${J2026_OBS_NAMESPACE}" --ignore-not-found
     helm upgrade --install "${J2026_OTEL_GATEWAY_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${J2026_ROOT_DIR}/observability/otel-collector/values-oss.yaml"
