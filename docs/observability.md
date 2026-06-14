@@ -88,12 +88,13 @@ matching timestamps, the same dashboards).
 3. **Logs -> Traces**: the Loki datasource's `derivedFields` match `trace_id=(\w+)` in log lines and link straight to that trace in Tempo.
    - **OSS**: Pre-configured in [`observability/grafana/values-oss.yaml`](../observability/grafana/values-oss.yaml).
    - **Grafana Cloud**: You must manually configure the **Loki derived field** in the Grafana Cloud UI:
-     1. Go to **Connections** > **Data sources** > **grafanacloud-logs**.
-     2. Scroll to **Derived fields** and add one:
+     1. Go to **Connections** > **Data sources**.
+     2. Find your Loki datasource (typically named **`grafanacloud-<stack-slug>-logs`**).
+     3. Scroll to **Derived fields** and add one:
         - **Name**: `trace_id`
         - **Regex**: `trace_id=(\w+)`
         - **Query**: `${__value.raw}`
-        - **Internal link**: Enabled, pointing to your Tempo datasource (`grafanacloud-traces`).
+        - **Internal link**: Enabled, pointing to your Tempo datasource (typically **`grafanacloud-<stack-slug>-traces`**).
 4. **Metrics -> Traces**: Micrometer/OTel HTTP server metrics
    (`http_server_duration_milliseconds_*`) carry **exemplars** pointing at a
    sampled `trace_id`; the Prometheus/Mimir datasource's
