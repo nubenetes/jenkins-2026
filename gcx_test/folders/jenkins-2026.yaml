@@ -1,4 +1,4 @@
-apiVersion: folder.grafana.app/v1alpha1
+apiVersion: folder.grafana.app/v1
 kind: Folder
 metadata:
   name: jenkins-2026
