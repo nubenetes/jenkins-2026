@@ -340,7 +340,7 @@ export OTLP to an in-cluster collector, which forwards to Grafana Cloud
 
 ### Key Features
 - **Jenkins Data Source**: The [Jenkins Datasource](https://grafana.com/grafana/plugins/grafana-jenkins-datasource/) is automatically provisioned. 
-    - **One-time Manual Step**: You must manually install the "Jenkins" plugin in your Grafana Cloud portal (**Administration > Plugins**) before the first deployment.
+    - **One-time Manual Step**: You must manually install the **`grafana-jenkins-datasource`** plugin in your Grafana Cloud portal (**Administration > Plugins**) before the first deployment.
     - **PDC Tunnel**: In Grafana Cloud mode, it uses **Private Data Source Connect (PDC)** to securely tunnel from the cloud to your in-cluster Jenkins instance.
 - **gcx CLI Integration**: Dashboard deployment in Grafana Cloud is managed via the native **`gcx` CLI**, enabling a robust GitOps workflow for dashboards.
 - **Model Context Protocol (MCP)**: This project supports Grafana Cloud's hosted **MCP server**. Connecting an AI agent (like Gemini) to your stack via MCP allows for real-time querying of Jenkins traces, metrics, and logs during troubleshooting.
