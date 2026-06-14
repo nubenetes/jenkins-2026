@@ -29,23 +29,30 @@ case "${J2026_OBS_MODE}" in
 
     if [[ -z "${GRAFANA_BASE_URL}" || -z "${GRAFANA_API_KEY}" ]]; then
       log_warn "GRAFANA_BASE_URL / GRAFANA_API_KEY not set in '${J2026_GRAFANA_CLOUD_SECRET}' - skipping dashboard import."
-      log_warn "Add them (Grafana Cloud -> Administration -> Service accounts) and re-run this script."
       exit 0
     fi
 
+    # Ensure gcx is installed
+    if ! command -v gcx &> /dev/null; then
+      log_step "Installing gcx CLI"
+      # Install to a local bin to avoid sudo
+      mkdir -p "${HOME}/.local/bin"
+      curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/install.sh | BINDIR="${HOME}/.local/bin" sh
+      export PATH="${HOME}/.local/bin:${PATH}"
+    fi
+
+    log_step "Authenticating gcx with Grafana Cloud"
+    # gcx uses GRAFANA_URL and GRAFANA_TOKEN env vars
+    export GRAFANA_URL="${GRAFANA_BASE_URL}"
+    export GRAFANA_TOKEN="${GRAFANA_API_KEY}"
+
     for dashboard in "${DASHBOARDS_DIR}"/*.json; do
       name="$(basename "${dashboard}")"
-      log_step "Importing ${name} into ${GRAFANA_BASE_URL}"
-      python3 - "${dashboard}" <<'PYEOF' | curl -sf -X POST "${GRAFANA_BASE_URL}/api/dashboards/db" \
-          -H "Authorization: Bearer ${GRAFANA_API_KEY}" \
-          -H "Content-Type: application/json" \
-          --data-binary @- -o /dev/null -w '  -> HTTP %{http_code}\n'
-import json, sys
-with open(sys.argv[1]) as f:
-    dashboard = json.load(f)
-dashboard["id"] = None
-print(json.dumps({"dashboard": dashboard, "overwrite": True, "folderTitle": "jenkins-2026"}))
-PYEOF
+      log_step "Pushing ${name} via gcx"
+      
+      # Use gcx dashboard push. --folder-name ensures they go to the right place.
+      # gcx handles the "overwrite" and "id: null" logic internally.
+      gcx dashboard push "${dashboard}" --folder-name "jenkins-2026"
     done
     ;;
 
