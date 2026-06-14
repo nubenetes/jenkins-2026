@@ -121,6 +121,25 @@ controller:
           name: jenkins-credentials
           key: grafana-traces-dashboard-uid
           optional: true
+    # Public URL of the stable PetClinic (https://petclinic.<gateway.baseDomain>),
+    # empty if the Gateway feature (config/config.yaml gateway.baseDomain) is
+    # disabled - refreshed on every scripts/01-namespaces.sh run. Surfaced in
+    # the systemMessage banner by jcasc-base.yaml.
+    - name: PETCLINIC_URL
+      valueFrom:
+        secretKeyRef:
+          name: jenkins-credentials
+          key: petclinic-url
+          optional: true
+    # Public URL of the pac-dev/*-develop dev sandbox PetClinic
+    # (https://petclinic-develop.<gateway.baseDomain>) - same conditions as
+    # PETCLINIC_URL above.
+    - name: PETCLINIC_DEVELOP_URL
+      valueFrom:
+        secretKeyRef:
+          name: jenkins-credentials
+          key: petclinic-develop-url
+          optional: true
     - name: REGISTRY_USERNAME
       valueFrom:
         secretKeyRef:
