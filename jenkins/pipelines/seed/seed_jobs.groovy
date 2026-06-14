@@ -67,17 +67,19 @@ def gitFlowRefs = registry.branches
 
 // pipeline "flavours" generated per service. `pipelineRepoBranch` is the
 // jenkins-2026 branch that Jenkinsfile.petclinic + the shared library are
-// checked out from for that job (see header comment):
+// checked out from for that job (see header comment); `branchKey` selects
+// which of services.yaml's top-level `branches` (or a per-service `branches`
+// override, e.g. petclinic-angular's `master`) to build:
 //  - root (JOB_FOLDER==''): stable -> tracks branches.stable (main) w/ Jenkinsfile from stableBranch,
 //                           *-develop -> tracks branches.develop (main) w/ Jenkinsfile from devBranch
 //  - pac-dev (JOB_FOLDER=='pac-dev'): single flavour tracking branches.develop (main) w/ Jenkinsfile from devBranch
 def flavours = jobFolder
   ? [
-      [suffix: '', branch: gitFlowRefs.develop, namespaceKey: 'pacDev', envName: 'pac-dev', pipelineRepoBranch: devBranch],
+      [suffix: '', branchKey: 'develop', namespaceKey: 'pacDev', envName: 'pac-dev', pipelineRepoBranch: devBranch],
     ]
   : [
-      [suffix: '',         branch: gitFlowRefs.stable,  namespaceKey: 'stable',  envName: 'stable',  pipelineRepoBranch: stableBranch],
-      [suffix: '-develop', branch: gitFlowRefs.develop, namespaceKey: 'develop', envName: 'develop', pipelineRepoBranch: devBranch],
+      [suffix: '',         branchKey: 'stable',  namespaceKey: 'stable',  envName: 'stable',  pipelineRepoBranch: stableBranch],
+      [suffix: '-develop', branchKey: 'develop', namespaceKey: 'develop', envName: 'develop', pipelineRepoBranch: devBranch],
     ]
 
 if (jobFolder) {
@@ -89,9 +91,10 @@ if (jobFolder) {
 registry.services.each { svc ->
   flavours.each { flavour ->
     def jobName = jobFolder ? "${jobFolder}/${svc.name}${flavour.suffix}" : "${svc.name}${flavour.suffix}"
+    def branch  = svc.branches?.get(flavour.branchKey) ?: gitFlowRefs[flavour.branchKey]
 
     pipelineJob(jobName) {
-      description("PetClinic '${svc.name}' (${flavour.envName}) - builds '${flavour.branch}' from ${svc.repoUrl} and deploys to namespace '${namespaces[flavour.namespaceKey]}'. Jenkinsfile.petclinic + shared library from jenkins-2026 '${flavour.pipelineRepoBranch}'. Managed by jenkins-2026 seed-jobs - do not edit manually.")
+      description("PetClinic '${svc.name}' (${flavour.envName}) - builds '${branch}' from ${svc.repoUrl} and deploys to namespace '${namespaces[flavour.namespaceKey]}'. Jenkinsfile.petclinic + shared library from jenkins-2026 '${flavour.pipelineRepoBranch}'. Managed by jenkins-2026 seed-jobs - do not edit manually.")
       keepDependencies(false)
       logRotator {
         numToKeep(20)
@@ -117,7 +120,7 @@ registry.services.each { svc ->
         stringParam('SERVICE_TYPE', svc.type, 'Build flavour: java|angular')
         stringParam('MODULE_PATH', svc.module ?: '', 'Maven module subdirectory (java services only)')
         stringParam('GIT_REPO_URL', svc.repoUrl, 'Source repository to build')
-        stringParam('GIT_BRANCH', flavour.branch, "GitFlow branch for the '${flavour.envName}' pipeline")
+        stringParam('GIT_BRANCH', branch, "GitFlow branch for the '${flavour.envName}' pipeline")
         stringParam('TARGET_NAMESPACE', namespaces[flavour.namespaceKey], 'Kubernetes namespace to deploy into')
         stringParam('ENV_NAME', flavour.envName, 'helm/petclinic values overlay (values-<ENV_NAME>.yaml)')
         stringParam('PORT', "${svc.port}", 'Container port used for the smoke test')
@@ -125,18 +128,11 @@ registry.services.each { svc ->
         stringParam('PLATFORM', platform, 'Target platform (gke|eks|aks|openshift) - selects the deploy overlay')
       }
 
-      properties {
-        pipelineTriggers {
-          triggers {
-            // Poll every 5 minutes for new commits on the tracked branch -
-            // works out of the box without configuring a webhook. pollSCM
-            // is the Describable symbol for hudson.triggers.SCMTrigger.
-            pollSCM {
-              scmpoll_spec('H/5 * * * *')
-            }
-          }
-        }
-      }
+      // Deliberately no pipelineTriggers/pollSCM: with 18 jobs sharing two
+      // Helm releases, an SCM-triggered "rebuild everything" on every
+      // jenkins-2026/PetClinic commit floods the build queue and burns GKE
+      // node hours. Jobs are manually triggered (buildButton in the
+      // "petclinic"/"petclinic-pac-dev" views).
     }
   }
 }
