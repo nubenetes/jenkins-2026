@@ -124,7 +124,7 @@ helm_args=(
   --set-file "controller.JCasC.configScripts.base=${J2026_ROOT_DIR}/jenkins/casc/jcasc-base.yaml"
   --set-file "controller.JCasC.configScripts.otel=${J2026_ROOT_DIR}/jenkins/casc/jcasc-otel.yaml"
   --set-file "controller.JCasC.configScripts.seed-job=${J2026_ROOT_DIR}/jenkins/casc/jcasc-seed-job.yaml"
-  --timeout 20m --atomic
+  --atomic
 )
 
 if [[ -n "${J2026_JENKINS_CHART_VERSION}" ]]; then
@@ -134,8 +134,7 @@ fi
 log_step "Installing ${J2026_JENKINS_RELEASE} (${J2026_JENKINS_CHART_NAME}) into ${J2026_JENKINS_NAMESPACE} [platform=${J2026_PLATFORM}]"
 helm "${helm_args[@]}"
 
-log_step "Waiting for Jenkins to be ready"
-kubectl rollout status deployment/"${J2026_JENKINS_RELEASE}" -n "${J2026_JENKINS_NAMESPACE}" --timeout=10m
+wait_for_deployment "${J2026_JENKINS_RELEASE}" "${J2026_JENKINS_NAMESPACE}"
 
 if [[ "${J2026_PLATFORM}" == "openshift" ]]; then
   log_step "Applying OpenShift Route for Jenkins"
