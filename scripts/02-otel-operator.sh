@@ -16,7 +16,7 @@ helm upgrade --install "${J2026_OTEL_OPERATOR_RELEASE}" "${J2026_OTEL_OPERATOR_C
   --namespace "${J2026_OBS_NAMESPACE}" \
   --create-namespace \
   -f "${J2026_ROOT_DIR}/observability/otel-operator/values.yaml" \
-  --timeout 5m
+  --timeout 10m
 
 log_step "Waiting for OpenTelemetry Operator to be ready"
 kubectl rollout status deployment/"${J2026_OTEL_OPERATOR_RELEASE}-opentelemetry-operator" \
