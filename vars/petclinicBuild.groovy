@@ -10,6 +10,7 @@ def call(Map cfg) {
     container('maven') {
       sh """
         set -eux
+        unset MAVEN_CONFIG
         ./mvnw -B -pl ${cfg.module} -am -DskipITs clean verify
       """
     }
