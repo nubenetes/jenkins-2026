@@ -9,11 +9,17 @@
 
 jenkins:
   systemMessage: |
-    Jenkins 2026 PoC - fully managed via Configuration as Code.
-    Source of truth: https://github.com/nubenetes/jenkins-2026
+    Welcome to the Jenkins 2026 PoC!
+    This instance is fully automated and managed via Configuration as Code (JCasC).
+    All configurations and pipelines are stored in the source repository:
+    https://github.com/nubenetes/jenkins-2026
 
-    PetClinic (stable, namespace petclinic):           ${PETCLINIC_URL:-not publicly exposed - kubectl port-forward -n petclinic svc/petclinic-angular 8080:8080}
-    PetClinic (develop, namespace petclinic-develop):  ${PETCLINIC_DEVELOP_URL:-not publicly exposed - kubectl port-forward -n petclinic-develop svc/petclinic-angular 8081:8080}
+    Deployed Environments:
+    - PetClinic (Stable):  ${PETCLINIC_URL:-not publicly exposed - kubectl port-forward -n petclinic svc/petclinic-angular 8080:8080}
+    - PetClinic (Develop): ${PETCLINIC_DEVELOP_URL:-not publicly exposed - kubectl port-forward -n petclinic-develop svc/petclinic-angular 8081:8080}
+
+    Observability & Monitoring:
+    - Grafana Dashboards:  ${GRAFANA_BASE_URL:-not configured}
 
   # numExecutors (chart default 0) / mode are derived from
   # controller.numExecutors / controller.executorMode in
