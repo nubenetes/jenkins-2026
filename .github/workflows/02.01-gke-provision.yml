@@ -149,21 +149,32 @@ jobs:
           TF_VAR_grafana_cloud_api_token: ${{ secrets.GRAFANA_CLOUD_API_TOKEN }}
           TF_VAR_stack_slug: ${{ secrets.GRAFANA_CLOUD_STACK_SLUG }}
         run: |
+          # Fetch jenkins admin password from the secret created in the previous step
+          ADMIN_PASS=$(kubectl get secret jenkins-credentials -n jenkins -o jsonpath='{.data.admin-password}' | base64 -d)
+          export TF_VAR_jenkins_admin_password="${ADMIN_PASS}"
+          
           terraform apply -auto-approve -input=false
 
           otlp_endpoint="$(terraform output -raw otlp_endpoint)"
           otlp_auth="$(terraform output -raw otlp_auth)"
           grafana_base_url="$(terraform output -raw grafana_base_url)"
           grafana_api_key="$(terraform output -raw grafana_api_key)"
+          pdc_token="$(terraform output -raw pdc_token)"
+          pdc_cluster="$(terraform output -raw pdc_cluster)"
+          stack_id="$(terraform output -raw stack_id)"
 
           echo "::add-mask::${otlp_auth}"
           echo "::add-mask::${grafana_api_key}"
+          echo "::add-mask::${pdc_token}"
 
           {
             echo "otlp_endpoint=${otlp_endpoint}"
             echo "otlp_auth=${otlp_auth}"
             echo "grafana_base_url=${grafana_base_url}"
             echo "grafana_api_key=${grafana_api_key}"
+            echo "pdc_token=${pdc_token}"
+            echo "pdc_cluster=${pdc_cluster}"
+            echo "stack_id=${stack_id}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Apply Grafana Cloud credentials secret
@@ -175,6 +186,9 @@ jobs:
             --from-literal=GRAFANA_CLOUD_OTLP_AUTH="${{ steps.grafana_cloud_token.outputs.otlp_auth }}" \
             --from-literal=GRAFANA_BASE_URL="${{ steps.grafana_cloud_token.outputs.grafana_base_url }}" \
             --from-literal=GRAFANA_API_KEY="${{ steps.grafana_cloud_token.outputs.grafana_api_key }}" \
+            --from-literal=GRAFANA_PDC_TOKEN="${{ steps.grafana_cloud_token.outputs.pdc_token }}" \
+            --from-literal=GRAFANA_PDC_CLUSTER="${{ steps.grafana_cloud_token.outputs.pdc_cluster }}" \
+            --from-literal=GRAFANA_STACK_ID="${{ steps.grafana_cloud_token.outputs.stack_id }}" \
             --from-literal=GRAFANA_TRACES_DASHBOARD_UID="${{ secrets.GRAFANA_TRACES_DASHBOARD_UID }}" \
             --from-literal=OTEL_LOGS_BACKEND_URL="${{ secrets.OTEL_LOGS_BACKEND_URL }}" \
             --dry-run=client -o yaml | kubectl apply -f -

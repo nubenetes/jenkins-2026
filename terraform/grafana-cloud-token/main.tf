@@ -53,3 +53,41 @@ resource "grafana_cloud_stack_plugin" "jenkins" {
   stack_slug = var.stack_slug
   name       = "grafana-jenkins-datasource"
 }
+
+# -----------------------------------------------------------------------------
+# Private Data Source Connect (PDC)
+# -----------------------------------------------------------------------------
+resource "grafana_cloud_private_data_source_connect_network" "this" {
+  region           = data.grafana_cloud_stack.this.region_slug
+  name             = "jenkins-2026-pdc"
+  display_name     = "jenkins-2026 Private Network"
+  stack_identifier = data.grafana_cloud_stack.this.id
+}
+
+resource "grafana_cloud_private_data_source_connect_network_token" "this" {
+  pdc_network_id = grafana_cloud_private_data_source_connect_network.this.pdc_network_id
+  region         = grafana_cloud_private_data_source_connect_network.this.region
+  name           = "jenkins-2026-pdc-token"
+}
+
+# -----------------------------------------------------------------------------
+# Jenkins Datasource
+# -----------------------------------------------------------------------------
+resource "grafana_data_source" "jenkins" {
+  type = "grafana-jenkins-datasource"
+  name = "Jenkins"
+  url  = "http://jenkins.jenkins.svc.cluster.local:8080"
+
+  # Link to the PDC network
+  private_data_source_connect_network_id = grafana_cloud_private_data_source_connect_network.this.pdc_network_id
+
+  json_data_encoded = jsonencode({
+    username = "admin"
+  })
+
+  secure_json_data_encoded = jsonencode({
+    apiToken = var.jenkins_admin_password
+  })
+
+  depends_on = [grafana_cloud_stack_plugin.jenkins]
+}

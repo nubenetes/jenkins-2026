@@ -25,3 +25,21 @@ output "grafana_api_key" {
   value       = grafana_cloud_stack_service_account_token.dashboards.key
   sensitive   = true
 }
+
+output "pdc_token" {
+  description = "Token for the PDC agent to connect to the private network."
+  value       = grafana_cloud_private_data_source_connect_network_token.this.token
+  sensitive   = true
+}
+
+output "pdc_cluster" {
+  description = "The cluster where the Hosted Grafana stack is running (for PDC)."
+  # The token resource has the region, but we need the cluster URL prefix
+  # which is usually the region name.
+  value = data.grafana_cloud_stack.this.region_slug
+}
+
+output "stack_id" {
+  description = "Numeric Grafana Cloud stack ID."
+  value       = data.grafana_cloud_stack.this.id
+}
