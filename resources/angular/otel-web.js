@@ -21,6 +21,12 @@
   var OTLP_ENDPOINT = '/otel/v1/traces';
   var SERVICE_NAME = 'petclinic-angular-web';
 
+  // Find environment from script tag attribute (injected via nginx sub_filter)
+  // or fallback to URL-based detection.
+  var script = document.querySelector('script[src*="otel-web.js"]');
+  var env = (script && script.getAttribute('data-env')) ||
+            (location.hostname.indexOf('develop') !== -1 ? 'develop' : 'stable');
+
   function randomHex(bytes) {
     var arr = new Uint8Array(bytes);
     (window.crypto || window.msCrypto).getRandomValues(arr);
@@ -38,7 +44,8 @@
         resource: {
           attributes: [
             { key: 'service.name', value: { stringValue: SERVICE_NAME } },
-            { key: 'service.namespace', value: { stringValue: 'jenkins-2026' } }
+            { key: 'service.namespace', value: { stringValue: 'jenkins-2026' } },
+            { key: 'deployment.environment', value: { stringValue: env } }
           ]
         },
         scopeSpans: [{
