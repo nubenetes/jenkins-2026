@@ -344,7 +344,7 @@ export OTLP to an in-cluster collector, which forwards to Grafana Cloud
 - **Model Context Protocol (MCP)**: This project supports Grafana Cloud's hosted **MCP server**. Connecting an AI agent (like Gemini) to your stack via MCP allows for real-time querying of Jenkins traces, metrics, and logs during troubleshooting.
     - **Setup**: In your Grafana Cloud portal, go to **Administration > Assistant > Cloud MCP** to find your connection endpoint.
     - **Integration**: Add the endpoint to your Gemini CLI or AI agent configuration. You can then ask questions like *"Audit my Jenkins datasource health"* or *"Summarize recent pipeline failures from traces"* for a better outcome of your changes.
-- **Correlated telemetry**: Traces, metrics and logs are fully correlated. (Note: Grafana Cloud requires a [one-time manual setup](docs/observability.md#correlation-end-to-end) for log-to-trace links).
+- **Correlated telemetry**: Traces, metrics and logs are fully correlated. On Grafana Cloud, log-to-trace links and system datasources (like `alert-state-history` and `usage-insights`) are pre-configured by default.
 
 Full details in [`docs/observability.md`](docs/observability.md).
 
