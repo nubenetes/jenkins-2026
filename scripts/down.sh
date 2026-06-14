@@ -23,7 +23,6 @@ helm_uninstall() {
 log_step "Uninstalling Helm releases in parallel"
 run_bg petclinic-stable   helm_uninstall petclinic-stable  "${J2026_PETCLINIC_NS_STABLE}"
 run_bg petclinic-develop  helm_uninstall petclinic-develop "${J2026_PETCLINIC_NS_DEVELOP}"
-run_bg petclinic-pac-dev  helm_uninstall petclinic-pac-dev "${J2026_PETCLINIC_NS_PAC_DEV}"
 run_bg jenkins            helm_uninstall "${J2026_JENKINS_RELEASE}" "${J2026_JENKINS_NAMESPACE}"
 run_bg headlamp           helm_uninstall "${J2026_HEADLAMP_RELEASE}" "${J2026_HEADLAMP_NAMESPACE}"
 run_bg otel-gateway       helm_uninstall "${J2026_OTEL_GATEWAY_RELEASE}" "${J2026_OBS_NAMESPACE}"
@@ -46,7 +45,7 @@ log_step "Uninstalling OpenTelemetry Operator (CRDs)"
 helm_uninstall "${J2026_OTEL_OPERATOR_RELEASE}" "${J2026_OBS_NAMESPACE}"
 
 log_step "Removing RoleBindings granted to the Jenkins ServiceAccount"
-for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}" "${J2026_PETCLINIC_NS_PAC_DEV}"; do
+for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}"; do
   kubectl delete rolebinding jenkins-edit -n "${ns}" --ignore-not-found
 done
 
@@ -86,7 +85,7 @@ fi
 
 if [[ "${J2026_DELETE_NAMESPACES:-false}" == "true" ]]; then
   log_step "Deleting namespaces (J2026_DELETE_NAMESPACES=true)"
-  for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_GRAFANA_OSS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}" "${J2026_PETCLINIC_NS_PAC_DEV}"; do
+  for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_GRAFANA_OSS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}"; do
     kubectl delete namespace "${ns}" --ignore-not-found
   done
 else

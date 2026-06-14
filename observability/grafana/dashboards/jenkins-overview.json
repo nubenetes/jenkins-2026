@@ -58,7 +58,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "description": "jenkins_queue_size_value - jobs waiting for a free executor.",
+      "description": "sum(jenkins_queue_count) - jobs waiting for a free executor, across all queue statuses (blocked/buildable/stuck/waiting).",
       "fieldConfig": {
         "defaults": { "color": { "mode": "thresholds" }, "mappings": [], "unit": "short" },
         "overrides": []
@@ -77,7 +77,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "jenkins_queue_size_value",
+          "expr": "sum(jenkins_queue_count)",
           "legendFormat": "Queue size",
           "refId": "A"
         }
@@ -87,7 +87,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "description": "Busy vs total executors (jenkins_executor_in_use_value / jenkins_executor_count_value).",
+      "description": "Busy vs total executors (sum(jenkins_executor_count{status=\"busy\"}) / sum(jenkins_executor_count)).",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 20 }, "unit": "short" },
         "overrides": []
@@ -101,13 +101,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "jenkins_executor_in_use_value",
+          "expr": "sum(jenkins_executor_count{status=\"busy\"})",
           "legendFormat": "Busy executors",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "jenkins_executor_count_value",
+          "expr": "sum(jenkins_executor_count)",
           "legendFormat": "Total executors",
           "refId": "B"
         }
@@ -150,9 +150,9 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "description": "p50/p95 pipeline run duration, histogram_quantile over ci_pipeline_run_duration_milliseconds_bucket.",
+      "description": "p50/p95 pipeline run duration, histogram_quantile over ci_pipeline_run_duration_seconds_bucket.",
       "fieldConfig": {
-        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10 }, "unit": "ms" },
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10 }, "unit": "s" },
         "overrides": []
       },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
@@ -164,13 +164,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "histogram_quantile(0.50, sum by (le, ci_pipeline_id) (rate(ci_pipeline_run_duration_milliseconds_bucket[15m])))",
+          "expr": "histogram_quantile(0.50, sum by (le, ci_pipeline_id) (rate(ci_pipeline_run_duration_seconds_bucket[15m])))",
           "legendFormat": "{{ci_pipeline_id}} p50",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "histogram_quantile(0.95, sum by (le, ci_pipeline_id) (rate(ci_pipeline_run_duration_milliseconds_bucket[15m])))",
+          "expr": "histogram_quantile(0.95, sum by (le, ci_pipeline_id) (rate(ci_pipeline_run_duration_seconds_bucket[15m])))",
           "legendFormat": "{{ci_pipeline_id}} p95",
           "refId": "B"
         }

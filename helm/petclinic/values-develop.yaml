@@ -178,7 +178,10 @@ services:
     type: angular
     image:
       repository: petclinic-angular
-      tag: main
+      # spring-petclinic-angular has no `main` branch, only `master` (see
+      # jenkins/pipelines/seed/services.yaml) - this must match the tag
+      # Jenkins actually builds and pushes.
+      tag: master
     port: 8080
     healthPath: /
     resources:

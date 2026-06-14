@@ -29,7 +29,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "description": "HTTP server request rate per service (Micrometer/OTel metric http_server_duration_milliseconds_count, exported by the Spring Boot Actuator + OTel Java agent auto-instrumentation - see helm/petclinic/templates/instrumentation.yaml), split by service_name and deployment_environment (stable=master branch in namespace petclinic, develop=develop branch in namespace petclinic-develop).",
+      "description": "HTTP server request rate per service (Micrometer/OTel metric http_server_request_duration_seconds_count, exported by the Spring Boot Actuator + OTel Java agent auto-instrumentation - see helm/petclinic/templates/instrumentation.yaml), split by service_name and deployment_environment (stable=master branch in namespace petclinic, develop=develop branch in namespace petclinic-develop).",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 15 }, "unit": "reqps" },
         "overrides": []
@@ -43,8 +43,8 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum by (service_name, http_status_code) (rate(http_server_duration_milliseconds_count{deployment_environment=\"$deployment_environment\"}[5m]))",
-          "legendFormat": "{{service_name}} [{{http_status_code}}]",
+          "expr": "sum by (service_name, http_response_status_code) (rate(http_server_request_duration_seconds_count{deployment_environment=\"$deployment_environment\"}[5m]))",
+          "legendFormat": "{{service_name}} [{{http_response_status_code}}]",
           "refId": "A"
         }
       ],
@@ -53,7 +53,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "description": "5xx response rate per service - rate(http_server_duration_milliseconds_count{http_status_code=~\"5..\"}[5m]).",
+      "description": "5xx response rate per service - rate(http_server_request_duration_seconds_count{http_response_status_code=~\"5..\"}[5m]).",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 15 }, "unit": "reqps" },
         "overrides": [
@@ -72,7 +72,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum by (service_name) (rate(http_server_duration_milliseconds_count{deployment_environment=\"$deployment_environment\", http_status_code=~\"5..\"}[5m]))",
+          "expr": "sum by (service_name) (rate(http_server_request_duration_seconds_count{deployment_environment=\"$deployment_environment\", http_response_status_code=~\"5..\"}[5m]))",
           "legendFormat": "{{service_name}}",
           "refId": "A"
         }
@@ -82,9 +82,9 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "description": "p95 server-side latency per service - histogram_quantile over http_server_duration_milliseconds_bucket.",
+      "description": "p95 server-side latency per service - histogram_quantile over http_server_request_duration_seconds_bucket.",
       "fieldConfig": {
-        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10 }, "unit": "ms" },
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10 }, "unit": "s" },
         "overrides": []
       },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
@@ -96,7 +96,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "histogram_quantile(0.95, sum by (le, service_name) (rate(http_server_duration_milliseconds_bucket{deployment_environment=\"$deployment_environment\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le, service_name) (rate(http_server_request_duration_seconds_bucket{deployment_environment=\"$deployment_environment\"}[5m])))",
           "legendFormat": "{{service_name}} p95",
           "refId": "A"
         }
@@ -106,7 +106,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "description": "JVM heap usage per service - jvm_memory_used_bytes{area=\"heap\"}.",
+      "description": "JVM heap usage per service - jvm_memory_used_bytes{jvm_memory_type=\"heap\"}.",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 15, "stacking": { "mode": "normal" } }, "unit": "bytes" },
         "overrides": []
@@ -120,7 +120,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum by (service_name) (jvm_memory_used_bytes{deployment_environment=\"$deployment_environment\", area=\"heap\"})",
+          "expr": "sum by (service_name) (jvm_memory_used_bytes{deployment_environment=\"$deployment_environment\", jvm_memory_type=\"heap\"})",
           "legendFormat": "{{service_name}}",
           "refId": "A"
         }

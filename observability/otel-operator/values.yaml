@@ -10,7 +10,14 @@ admissionWebhooks:
     enabled: false
   autoGenerateCert:
     enabled: true
-    recreate: true
+    # false: reuse the existing self-signed CA/cert across `helm upgrade`
+    # re-runs instead of rotating it. `recreate: true` patches the
+    # MutatingWebhookConfiguration's caBundle to a freshly-generated CA on
+    # every upgrade, but the already-running operator pod keeps serving its
+    # old cert until restarted - any admission request in that window (e.g.
+    # helm/petclinic's Instrumentation CR) fails with "certificate signed by
+    # unknown authority".
+    recreate: false
 
 manager:
   collectorImage:

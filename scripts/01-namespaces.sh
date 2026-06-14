@@ -11,7 +11,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 
 log_step "Creating namespaces"
-for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}" "${J2026_PETCLINIC_NS_PAC_DEV}"; do
+for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}"; do
   kubectl_apply_namespace "${ns}"
 done
 
@@ -28,6 +28,12 @@ else
   admin_password="${ADMIN_PASSWORD:-$(openssl rand -base64 24 | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c20)}"
   platform_engineer_password="${PLATFORM_ENGINEER_PASSWORD:-$(openssl rand -base64 24 | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c20)}"
 
+  if [[ -z "${JENKINS_OIDC_CLIENT_ID:-}" || -z "${JENKINS_OIDC_CLIENT_SECRET:-}" ]]; then
+    log_warn "JENKINS_OIDC_CLIENT_ID/JENKINS_OIDC_CLIENT_SECRET not set - Jenkins will"
+    log_warn "deploy but \"Sign in with Google\" won't work until configured. The"
+    log_warn "escape-hatch admin login (above) still works. See README.md \"Jenkins\"."
+  fi
+
   kubectl create secret generic "${J2026_JENKINS_CREDENTIALS_SECRET}" \
     -n "${J2026_JENKINS_NAMESPACE}" \
     --from-literal=admin-password="${admin_password}" \
@@ -38,17 +44,31 @@ else
     --from-literal=registry-username="${REGISTRY_USERNAME:-}" \
     --from-literal=registry-password="${REGISTRY_PASSWORD:-}" \
     --from-literal=git-username="${GIT_USERNAME:-}" \
-    --from-literal=git-token="${GIT_TOKEN:-}"
+    --from-literal=git-token="${GIT_TOKEN:-}" \
+    --from-literal=oidc-client-id="${JENKINS_OIDC_CLIENT_ID:-}" \
+    --from-literal=oidc-client-secret="${JENKINS_OIDC_CLIENT_SECRET:-}" \
+    --from-literal=oidc-admin-email="${JENKINS_OIDC_ADMIN_EMAIL:-}"
 
   log_info "Created. Jenkins admin login: ${J2026_JENKINS_ADMIN_USER} / ${admin_password}"
-  log_info "Created. Jenkins platform-engineer login (pac-dev/* pipelines-as-code sandbox): ${J2026_PLATFORM_ENGINEER_USER} / ${platform_engineer_password}"
+  log_info "Created. Jenkins platform-engineer login (pac-dev/*-develop pipelines-as-code sandbox): ${J2026_PLATFORM_ENGINEER_USER} / ${platform_engineer_password}"
   log_warn "Save these passwords now - they are not printed again on subsequent runs."
 fi
 
 log_step "Ensuring '${J2026_HEADLAMP_CREDENTIALS_SECRET}' Secret in ${J2026_HEADLAMP_NAMESPACE}"
 if kubectl get secret "${J2026_HEADLAMP_CREDENTIALS_SECRET}" -n "${J2026_HEADLAMP_NAMESPACE}" >/dev/null 2>&1; then
-  log_info "Secret already exists - leaving it untouched."
+  log_info "Secret already exists - leaving OIDC_CLIENT_ID/OIDC_CLIENT_SECRET untouched."
   log_info "(to rotate the OIDC client secret, delete the secret and re-run this script)"
+  log_info "Refreshing non-sensitive OIDC config keys (issuer/scopes/callback/useAccessToken)."
+  kubectl patch secret "${J2026_HEADLAMP_CREDENTIALS_SECRET}" -n "${J2026_HEADLAMP_NAMESPACE}" \
+    --type=merge -p "$(cat <<EOF
+{"stringData":{
+  "OIDC_ISSUER_URL":"${J2026_HEADLAMP_OIDC_ISSUER_URL}",
+  "OIDC_SCOPES":"${J2026_HEADLAMP_OIDC_SCOPES}",
+  "OIDC_CALLBACK_URL":"${J2026_HEADLAMP_OIDC_CALLBACK_URL}",
+  "OIDC_USE_ACCESS_TOKEN":"true"
+}}
+EOF
+)"
 else
   if [[ -z "${HEADLAMP_OIDC_CLIENT_ID:-}" || -z "${HEADLAMP_OIDC_CLIENT_SECRET:-}" ]]; then
     log_warn "HEADLAMP_OIDC_CLIENT_ID/HEADLAMP_OIDC_CLIENT_SECRET not set - Headlamp will"
@@ -93,9 +113,27 @@ else
 fi
 
 log_step "Granting Jenkins ServiceAccount 'edit' in PetClinic namespaces"
-for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}" "${J2026_PETCLINIC_NS_PAC_DEV}"; do
+for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}"; do
   kubectl create rolebinding jenkins-edit \
     --clusterrole=edit \
+    --serviceaccount="${J2026_JENKINS_NAMESPACE}:jenkins" \
+    -n "${ns}" \
+    --dry-run=client -o yaml | kubectl apply -f -
+done
+
+# The built-in 'edit' ClusterRole doesn't cover the OTel Operator's CRDs
+# (helm/petclinic/templates/instrumentation.yaml manages an Instrumentation
+# resource per namespace) - `helm upgrade` needs get/list/watch on it (plus
+# write verbs to create/update it) to diff against the live cluster, or it
+# fails with "instrumentations.opentelemetry.io ... is forbidden".
+log_step "Granting Jenkins ServiceAccount access to the Instrumentation CRD"
+kubectl create clusterrole jenkins-otel-instrumentation-editor \
+  --verb=get,list,watch,create,update,patch,delete \
+  --resource=instrumentations.opentelemetry.io \
+  --dry-run=client -o yaml | kubectl apply -f -
+for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}"; do
+  kubectl create rolebinding jenkins-otel-instrumentation-editor \
+    --clusterrole=jenkins-otel-instrumentation-editor \
     --serviceaccount="${J2026_JENKINS_NAMESPACE}:jenkins" \
     -n "${ns}" \
     --dry-run=client -o yaml | kubectl apply -f -
@@ -117,7 +155,7 @@ if [[ -n "${REGISTRY_USERNAME:-}" && -n "${REGISTRY_PASSWORD:-}" ]]; then
 else
   dockerconfigjson='{"auths":{}}'
 fi
-for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}" "${J2026_PETCLINIC_NS_PAC_DEV}"; do
+for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}"; do
   kubectl create secret generic ghcr-credentials \
     -n "${ns}" \
     --type=kubernetes.io/dockerconfigjson \

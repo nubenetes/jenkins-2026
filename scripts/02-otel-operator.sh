@@ -16,7 +16,7 @@ helm upgrade --install "${J2026_OTEL_OPERATOR_RELEASE}" "${J2026_OTEL_OPERATOR_C
   --namespace "${J2026_OBS_NAMESPACE}" \
   --create-namespace \
   -f "${J2026_ROOT_DIR}/observability/otel-operator/values.yaml" \
-  --wait --timeout 5m
+  --wait --timeout 5m --debug
 
 log_step "Waiting for OpenTelemetry CRDs to be established"
 for crd in opentelemetrycollectors.opentelemetry.io instrumentations.opentelemetry.io; do

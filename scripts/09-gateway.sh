@@ -58,6 +58,13 @@ spec:
       port: 443
       tls:
         mode: Terminate
+        # The Gateway API CRD requires tls.certificateRefs or tls.options to
+        # be non-empty when mode is Terminate. The actual certificate comes
+        # from the networking.gke.io/certmap annotation above; this
+        # pre-shared-certs option is GKE's documented placeholder to satisfy
+        # that validation when using a certificate map.
+        options:
+          networking.gke.io/pre-shared-certs: ""
       allowedRoutes:
         namespaces:
           from: All
@@ -121,7 +128,60 @@ spec:
           port: 80
 EOF
 
+log_step "Generating HealthCheckPolicy (jenkins)"
+# The GCP load balancer's default health check requests "/", which Jenkins
+# answers with 403 (anonymous read is disabled) instead of 200, so the
+# backend never goes healthy ("no healthy upstream"). Point the health check
+# at /login, which Jenkins always serves as 200.
+cat >"${GENERATED_DIR}/healthcheckpolicy-jenkins.yaml" <<EOF
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: ${J2026_JENKINS_RELEASE}
+  namespace: ${J2026_JENKINS_NAMESPACE}
+spec:
+  default:
+    config:
+      type: HTTP
+      httpHealthCheck:
+        requestPath: /login
+  targetRef:
+    group: ""
+    kind: Service
+    name: ${J2026_JENKINS_RELEASE}
+EOF
+
 log_step "Generating GCPBackendPolicies (IAP for jenkins, headlamp)"
+# GCPBackendPolicy requires the OAuth client ID as a literal
+# spec.default.iap.clientID field, and its oauth2ClientSecret Secret to
+# contain exactly one key ("client_secret") -
+# ${J2026_GATEWAY_IAP_SECRET} (created by scripts/01-namespaces.sh) holds
+# both client_id and client_secret for general use, so derive a
+# single-key secret per namespace here.
+declare -A iap_client_id
+for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}"; do
+  client_id="$(kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" -o jsonpath='{.data.client_id}' 2>/dev/null | base64 -d || true)"
+  client_secret="$(kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" -o jsonpath='{.data.client_secret}' 2>/dev/null | base64 -d || true)"
+  iap_client_id["${ns}"]="${client_id}"
+  kubectl create secret generic "${J2026_GATEWAY_IAP_SECRET}-client-secret" -n "${ns}" \
+    --from-literal=client_secret="${client_secret}" \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+
+  # IAP is enabled (fail-closed) on the Jenkins/Headlamp GCPBackendPolicies
+  # below regardless of whether real OAuth credentials were configured in
+  # scripts/01-namespaces.sh - an empty client_id means the public URLs
+  # printed at the end of this script will error out until
+  # IAP_OAUTH_CLIENT_ID/SECRET are set and up.sh is re-run.
+  if [[ -z "${client_id}" ]]; then
+    log_warn "IAP OAuth credentials are not configured in namespace '${ns}'"
+    log_warn "(Secret/${J2026_GATEWAY_IAP_SECRET} has an empty client_id)."
+    log_warn "IAP is enabled with an empty OAuth client, so this backend's"
+    log_warn "public URL will return errors until IAP_OAUTH_CLIENT_ID/"
+    log_warn "IAP_OAUTH_CLIENT_SECRET are set - see README.md \"Public access"
+    log_warn "(GKE Gateway API + IAP)\"."
+  fi
+done
+
 cat >"${GENERATED_DIR}/gcpbackendpolicy-jenkins.yaml" <<EOF
 apiVersion: networking.gke.io/v1
 kind: GCPBackendPolicy
@@ -136,8 +196,9 @@ spec:
   default:
     iap:
       enabled: true
+      clientID: "${iap_client_id[${J2026_JENKINS_NAMESPACE}]}"
       oauth2ClientSecret:
-        name: ${J2026_GATEWAY_IAP_SECRET}
+        name: ${J2026_GATEWAY_IAP_SECRET}-client-secret
 EOF
 
 cat >"${GENERATED_DIR}/gcpbackendpolicy-headlamp.yaml" <<EOF
@@ -154,30 +215,13 @@ spec:
   default:
     iap:
       enabled: true
+      clientID: "${iap_client_id[${J2026_HEADLAMP_NAMESPACE}]}"
       oauth2ClientSecret:
-        name: ${J2026_GATEWAY_IAP_SECRET}
+        name: ${J2026_GATEWAY_IAP_SECRET}-client-secret
 EOF
 
 log_step "Applying Gateway resources"
 kubectl apply -f "${GENERATED_DIR}/"
-
-# IAP is enabled (fail-closed) on the Jenkins/Headlamp GCPBackendPolicies above
-# regardless of whether real OAuth credentials were configured in
-# scripts/01-namespaces.sh - an empty client_id means the public URL below
-# will error out until IAP_OAUTH_CLIENT_ID/SECRET are set and up.sh is re-run.
-# Repeat that warning here (not just in 01-namespaces.sh) since it's easy to
-# miss earlier in the log and this is where the affected URLs are printed.
-for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}"; do
-  client_id="$(kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" -o jsonpath='{.data.client_id}' 2>/dev/null || true)"
-  if [[ -z "${client_id}" ]]; then
-    log_warn "IAP OAuth credentials are not configured in namespace '${ns}'"
-    log_warn "(Secret/${J2026_GATEWAY_IAP_SECRET} has an empty client_id)."
-    log_warn "IAP is enabled with an empty OAuth client, so this backend's"
-    log_warn "public URL will return errors until IAP_OAUTH_CLIENT_ID/"
-    log_warn "IAP_OAUTH_CLIENT_SECRET are set - see README.md \"Public access"
-    log_warn "(GKE Gateway API + IAP)\"."
-  fi
-done
 
 log_info "Gateway ready (certificate provisioning can take up to ~1h after DNS is set up)."
 log_info "  Jenkins:   https://${J2026_GATEWAY_JENKINS_HOST}"

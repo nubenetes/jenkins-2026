@@ -59,7 +59,7 @@ jenkins:
     version: ""
   adminUser: admin
   # Local-realm account that is the only identity (besides adminUser) granted
-  # Job/Read on the pac-dev/* pipelines-as-code dev sandbox - see
+  # Job/Read on the pac-dev/*-develop pipelines-as-code dev sandbox - see
   # jenkins/casc/jcasc-base.yaml "platform-engineer" item role and
   # README.md "Pipelines-as-code dev sandbox".
   platformEngineerUser: platform-engineer
@@ -72,7 +72,7 @@ jenkins:
   # library and by the seed job to fetch Jenkinsfile.petclinic + seed scripts.
   selfRepoUrl: https://github.com/nubenetes/jenkins-2026.git
   selfRepoBranch: main
-  # Branch the "pac-dev/seed-jobs-dev" job (and the pac-dev/* jobs it
+  # Branch the "pac-dev/seed-jobs-dev" job (and the pac-dev/*-develop jobs it
   # generates) track instead of selfRepoBranch - lets devops/platform
   # engineers test pipelines-as-code changes on this branch before merging to
   # selfRepoBranch. See jenkins/casc/jcasc-seed-job.yaml.
@@ -122,15 +122,17 @@ headlamp:
     # Empty = latest. Pin for reproducibility, e.g. "0.42.0".
     version: ""
   # k8s Secret (created by scripts/01-namespaces.sh) holding the Google OAuth
-  # client ID/secret consumed by helm/headlamp/values.yaml
-  # config.oidc.externalSecret. Never commit real client ID/secret values -
-  # see README.md "Headlamp".
+  # client ID/secret for Headlamp's in-app OIDC. NOT currently consumed by
+  # helm/headlamp/values.yaml (which is intentionally empty) - per-user Google
+  # OIDC -> GKE API auth doesn't work today, see README.md "Headlamp". Kept
+  # for if/when upstream fixes that. Never commit real client ID/secret
+  # values.
   credentialsSecretName: headlamp-credentials
   oidc:
     issuerURL: https://accounts.google.com
-    # cloud-platform scope is required so Headlamp's OIDC access token (see
-    # config.oidc.useAccessToken in helm/headlamp/values.yaml) is accepted by
-    # the GKE API server the same way `gcloud`-issued tokens are.
+    # cloud-platform scope would be required for OIDC_USE_ACCESS_TOKEN=true
+    # if/when helm/headlamp/values.yaml config.oidc is re-enabled - see
+    # README.md "Headlamp".
     scopes: "openid email profile https://www.googleapis.com/auth/cloud-platform"
     # The redirect URI registered on the Google OAuth client is computed by
     # scripts/lib/config.sh: https://headlamp.<gateway.baseDomain>/oidc-callback
@@ -138,12 +140,13 @@ headlamp:
     # (http://localhost:8080/oidc-callback). Override with
     # JENKINS2026_HEADLAMP_OIDC_CALLBACK_URL if neither fits. See README.md
     # "Headlamp" and "Public access (GKE Gateway API + IAP)".
-  # Comma-separated Google account emails granted cluster-admin (GCP IAM
-  # roles/container.clusterViewer via terraform/gke + in-cluster
-  # ClusterRoleBinding via scripts/08-headlamp.sh). Empty by default - never
-  # commit real emails here. Override with JENKINS2026_HEADLAMP_ADMIN_EMAILS
+  # Comma-separated Google account emails granted access through
+  # Identity-Aware Proxy to https://headlamp.<baseDomain> and
+  # https://jenkins.<baseDomain> (GCP IAM roles/iap.httpsResourceAccessor via
+  # terraform/gke google_project_iam_member.iap_accessors). Empty by default -
+  # never commit real emails here. Override with JENKINS2026_HEADLAMP_ADMIN_EMAILS
   # (sourced from the HEADLAMP_ADMIN_EMAILS GitHub secret in CI). See
-  # README.md "Headlamp".
+  # README.md "Headlamp" and "Public access (GKE Gateway API + IAP)".
   adminEmails: ""
 
 # -----------------------------------------------------------------------------
@@ -183,11 +186,10 @@ gateway:
 petclinic:
   namespaces:
     stable: petclinic
-    develop: petclinic-develop
-    # Namespace the pac-dev/* pipelines-as-code dev sandbox deploys into -
-    # see jenkins/pipelines/seed/services.yaml namespaces.pacDev and
+    # Namespace the pac-dev/*-develop pipelines-as-code dev sandbox deploys
+    # into - see jenkins/pipelines/seed/services.yaml namespaces.develop and
     # README.md "Pipelines-as-code dev sandbox".
-    pacDev: petclinic-pac-dev
+    develop: petclinic-develop
 
   git:
     org: spring-petclinic
