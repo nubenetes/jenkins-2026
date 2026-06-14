@@ -149,12 +149,12 @@ registry.services.each { svc ->
 }
 
 // Convenience view grouping all generated PetClinic jobs together.
-if (jobFolder) {
-  listView("${jobFolder}/petclinic-develop") {
-    description("PetClinic '-develop' pipelines-as-code dev sandbox jobs, generated from services.yaml on the '${repoBranch}' branch.")
+if (!jobFolder) {
+  listView('petclinic') {
+    description('All stable PetClinic pipelines-as-code jobs, generated from services.yaml. The GitFlow "-develop" track lives in the pac-dev/ sandbox (see petclinic-develop view).')
     jobs {
       registry.services.each { svc ->
-        name("${jobFolder}/${svc.name}-develop")
+        name(svc.name)
       }
     }
     columns {
@@ -167,13 +167,14 @@ if (jobFolder) {
       buildButton()
     }
   }
-} else {
-  listView('petclinic') {
-    description('All stable PetClinic pipelines-as-code jobs, generated from services.yaml. The GitFlow "-develop" track lives in the pac-dev/ sandbox (see pac-dev/petclinic-develop).')
+
+  listView('petclinic-develop') {
+    description("PetClinic '-develop' pipelines-as-code dev sandbox jobs (from pac-dev/ folder), generated from services.yaml on the '${devBranch}' branch. Restricted to platform-engineers.")
     jobs {
       registry.services.each { svc ->
-        name(svc.name)
+        name("pac-dev/${svc.name}-develop")
       }
+      name("pac-dev/seed-jobs-dev")
     }
     columns {
       status()
