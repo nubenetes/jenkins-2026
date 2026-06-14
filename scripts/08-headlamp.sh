@@ -15,7 +15,7 @@ helm_args=(
   --namespace "${J2026_HEADLAMP_NAMESPACE}"
   --create-namespace
   -f "${J2026_ROOT_DIR}/helm/headlamp/values.yaml"
-  --wait --timeout 5m --debug
+  --wait --timeout 5m
 )
 
 if [[ -n "${J2026_HEADLAMP_CHART_VERSION}" ]]; then
