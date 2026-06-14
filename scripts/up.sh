@@ -27,10 +27,12 @@ log_step "jenkins-2026 up - platform=${J2026_PLATFORM} observability=${J2026_OBS
 "${SCRIPT_DIR}/01-namespaces.sh"
 "${SCRIPT_DIR}/02-otel-operator.sh"
 
-log_step "Running 03-observability, 04-jenkins, 05-petclinic in parallel"
-run_bg 03-observability "${SCRIPT_DIR}/03-observability.sh"
-run_bg 04-jenkins        "${SCRIPT_DIR}/04-jenkins.sh"
-run_bg 05-petclinic      "${SCRIPT_DIR}/05-petclinic.sh"
+log_step "Installing 03-observability (sequential to prevent API pressure)"
+"${SCRIPT_DIR}/03-observability.sh"
+
+log_step "Running 04-jenkins and 05-petclinic in parallel"
+run_bg 04-jenkins   "${SCRIPT_DIR}/04-jenkins.sh"
+run_bg 05-petclinic "${SCRIPT_DIR}/05-petclinic.sh"
 wait_bg
 
 "${SCRIPT_DIR}/06-seed-pipelines.sh"
