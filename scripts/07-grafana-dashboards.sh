@@ -41,12 +41,13 @@ case "${J2026_OBS_MODE}" in
       export PATH="${HOME}/.local/bin:${PATH}"
     fi
 
-    log_step "Authenticating gcx with Grafana Cloud"
-    # gcx uses GRAFANA_URL and GRAFANA_TOKEN env vars
-    export GRAFANA_URL="${GRAFANA_BASE_URL}"
-    export GRAFANA_TOKEN="${GRAFANA_API_KEY}"
+    log_step "Configuring gcx CLI context"
+    gcx config set contexts.default.grafana.server "${GRAFANA_BASE_URL}"
+    gcx config set contexts.default.grafana.token "${GRAFANA_API_KEY}"
+    gcx config use-context default
 
     FOLDER_UID="jenkins-2026"
+
     log_step "Ensuring Grafana folder '${FOLDER_UID}' exists"
     # Attempt to create the folder. If it exists, the API returns an error which we ignore.
     gcx api /api/folders -d "{\"title\":\"${FOLDER_UID}\", \"uid\":\"${FOLDER_UID}\"}" > /dev/null 2>&1 || true
