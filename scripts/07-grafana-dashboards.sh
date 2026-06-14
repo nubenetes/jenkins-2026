@@ -46,13 +46,20 @@ case "${J2026_OBS_MODE}" in
     export GRAFANA_URL="${GRAFANA_BASE_URL}"
     export GRAFANA_TOKEN="${GRAFANA_API_KEY}"
 
+    FOLDER_UID="jenkins-2026"
+    log_step "Ensuring Grafana folder '${FOLDER_UID}' exists"
+    # Attempt to create the folder. If it exists, the API returns an error which we ignore.
+    gcx api /api/folders -d "{\"title\":\"${FOLDER_UID}\", \"uid\":\"${FOLDER_UID}\"}" > /dev/null 2>&1 || true
+
     for dashboard in "${DASHBOARDS_DIR}"/*.json; do
       name="$(basename "${dashboard}")"
-      log_step "Pushing ${name} via gcx"
+      log_step "Pushing ${name} via gcx api"
       
-      # Use gcx dashboards push. --folder ensures they go to the right place.
-      # gcx handles the "overwrite" and "id: null" logic internally.
-      gcx dashboards push "${dashboard}" --folder "jenkins-2026"
+      # Use jq to wrap the raw dashboard JSON into the format expected by /api/dashboards/db
+      # ({"dashboard": ..., "folderUid": "...", "overwrite": true})
+      jq -n --slurpfile db "${dashboard}" \
+        "{dashboard: \$db[0], folderUid: \"${FOLDER_UID}\", overwrite: true}" | \
+        gcx api /api/dashboards/db -d @- > /dev/null
     done
     ;;
 
