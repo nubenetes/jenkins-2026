@@ -15,7 +15,7 @@ helm_args=(
   --namespace "${J2026_HEADLAMP_NAMESPACE}"
   --create-namespace
   -f "${J2026_ROOT_DIR}/helm/headlamp/values.yaml"
-  --wait --timeout 5m
+  --timeout 5m
 )
 
 if [[ -n "${J2026_HEADLAMP_CHART_VERSION}" ]]; then
@@ -24,6 +24,9 @@ fi
 
 log_step "Installing ${J2026_HEADLAMP_RELEASE} (${J2026_HEADLAMP_CHART_NAME}) into ${J2026_HEADLAMP_NAMESPACE}"
 helm "${helm_args[@]}"
+
+log_step "Waiting for Headlamp to be ready"
+kubectl rollout status deployment/"${J2026_HEADLAMP_RELEASE}" -n "${J2026_HEADLAMP_NAMESPACE}" --timeout=5m
 
 log_step "Granting cluster-admin to Headlamp admin emails"
 if [[ -z "${J2026_HEADLAMP_ADMIN_EMAILS}" ]]; then

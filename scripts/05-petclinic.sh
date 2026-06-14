@@ -17,7 +17,12 @@ deploy_env() {
     --create-namespace \
     -f "${J2026_ROOT_DIR}/helm/petclinic/${values_file}" \
     --set global.platform="${J2026_PLATFORM}" \
-    --timeout 5m --debug
+    --timeout 5m
+
+  log_step "Checking rollout status for PetClinic ${env_name} (initial check)"
+  # We don't block heavily here because pipelines may not have run yet,
+  # but we provide the status for visibility.
+  kubectl get deployments -n "${namespace}" -l app.kubernetes.io/managed-by=Helm || true
 }
 
 run_bg petclinic-stable  deploy_env stable  "${J2026_PETCLINIC_NS_STABLE}"  values-stable.yaml
