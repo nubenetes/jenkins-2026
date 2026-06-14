@@ -69,11 +69,13 @@ case "${J2026_OBS_MODE}" in
       --dry-run=client -o yaml | kubectl apply -f -
 
     log_step "Installing kube-prometheus-stack (Prometheus + Grafana)"
+    JENKINS_ADMIN_PASSWORD="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" -o jsonpath='{.data.admin-password}' | base64 -d)"
     helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
       --namespace "${J2026_GRAFANA_OSS_NAMESPACE}" \
       --create-namespace \
       -f "${J2026_ROOT_DIR}/observability/grafana/values-oss.yaml" \
-      --wait --timeout 10m --debug
+      --set "grafana.additionalDataSources[3].secureJsonData.apiToken=${JENKINS_ADMIN_PASSWORD}" \
+      --wait --timeout 15m --debug
 
     log_step "Installing Loki"
     helm upgrade --install loki "${J2026_GRAFANA_CHART_REPO_NAME}/loki" \
