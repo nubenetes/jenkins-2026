@@ -72,7 +72,7 @@ else
     --from-literal=OIDC_ISSUER_URL="${J2026_HEADLAMP_OIDC_ISSUER_URL}" \
     --from-literal=OIDC_SCOPES="${J2026_HEADLAMP_OIDC_SCOPES}" \
     --from-literal=OIDC_CALLBACK_URL="${J2026_HEADLAMP_OIDC_CALLBACK_URL}" \
-    --from-literal=OIDC_USE_ACCESS_TOKEN="true"
+    --from-literal=OIDC_USE_ACCESS_TOKEN="false"
 
   log_info "Created."
 fi
