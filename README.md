@@ -6,10 +6,14 @@ A self-contained proof of concept that deploys **Jenkins** (via
 Job DSL ("pipelines as code"), and uses it to build, containerize and deploy
 the [Spring PetClinic microservices](https://github.com/spring-petclinic/spring-petclinic-microservices)
 reference application (+ its [Angular UI](https://github.com/spring-petclinic/spring-petclinic-angular))
-in a **GitFlow-inspired** model - one "stable" pipeline per service and one
-`<service>-develop` pipeline, both tracking the upstream `main` branch
-(the only branch the upstream repos have) but deploying to separate
-namespaces, so `-develop` serves as a testing track. Jenkins and every
+in a **GitFlow-inspired** model: a stable pipeline per service at the root,
+both tracking the upstream `main` branch (the only branch the upstream repos
+have) and deploying to the `petclinic` namespace. A second, isolated set of
+`pac-dev/<service>-develop` pipelines lives in its own `pac-dev/` folder - a
+sandbox where devops/platform engineers can iterate on this repo's own
+pipelines-as-code (Jenkinsfile, shared library, JCasC, seed jobs) on this
+repo's `develop` branch, deploying to a separate `petclinic-develop`
+namespace, without affecting the tested stable pipelines. Jenkins and every
 PetClinic service are instrumented with **OpenTelemetry**, with traces,
 metrics and logs correlated end-to-end in **Grafana** (Grafana Cloud by
 default, or an in-cluster OSS stack).
@@ -20,7 +24,7 @@ feature flag, only one platform is active per run.
 
 See [`docs/architecture.md`](docs/architecture.md) for the full component
 diagram and repository layout, [`docs/pipelines-as-code.md`](docs/pipelines-as-code.md)
-for how the 18 Jenkins pipelines are generated, [`docs/observability.md`](docs/observability.md)
+for how the Jenkins pipelines are generated, [`docs/observability.md`](docs/observability.md)
 for the OpenTelemetry/Grafana wiring, and [`docs/platforms.md`](docs/platforms.md)
 for per-cloud notes.
 
@@ -83,10 +87,10 @@ partial failure is safe. Each step also runs standalone:
 > exist in your registry yet, so PetClinic pods will show
 > `ImagePullBackOff` until each service's Jenkins pipeline has run at least
 > once and pushed an image. `scripts/06-seed-pipelines.sh` (part of `up.sh`)
-> triggers the seed job immediately so the 18 pipelines exist right away;
-> trigger individual builds from the Jenkins UI (`listView` **petclinic**).
+> triggers the seed job immediately so the 9 stable pipelines exist right
+> away; trigger individual builds from the Jenkins UI (`listView` **petclinic**).
 > Jobs are not auto-triggered (no SCM-poll) - see `petclinic.genaiServiceEnabled`
-> below for why `genai-service`/`genai-service-develop` start out disabled.
+> below for why `genai-service`/`pac-dev/genai-service-develop` start out disabled.
 
 ## Configuration ([`config/config.yaml`](config/config.yaml))
 
@@ -98,7 +102,7 @@ vars). Feature flags:
 |---|---|---|---|
 | `platform.target` | `gke` | `JENKINS2026_PLATFORM` env var | `gke`\|`eks`\|`aks`\|`openshift` - selects the Helm overlay, ingress/Route strategy and storage class (see [`docs/platforms.md`](docs/platforms.md)). |
 | `observability.mode` | `grafana-cloud` | edit `config.yaml` | `grafana-cloud`\|`oss`\|`managed` - where traces/metrics/logs go (see [`docs/observability.md`](docs/observability.md)). |
-| `petclinic.genaiServiceEnabled` | `false` | `JENKINS2026_GENAI_SERVICE_ENABLED` env var | Whether the `genai-service`/`genai-service-develop`/`pac-dev/genai-service` Jenkins jobs are created enabled. `genai-service` (Spring AI) crashes on startup without a real `OPENAI_API_KEY` (`helm/petclinic/values-*.yaml` only set a startup placeholder), so seed-jobs creates these jobs `disabled` until this is `true` and a real key is configured. |
+| `petclinic.genaiServiceEnabled` | `false` | `JENKINS2026_GENAI_SERVICE_ENABLED` env var | Whether the `genai-service`/`pac-dev/genai-service-develop` Jenkins jobs are created enabled. `genai-service` (Spring AI) crashes on startup without a real `OPENAI_API_KEY` (`helm/petclinic/values-*.yaml` only set a startup placeholder), so seed-jobs creates these jobs `disabled` until this is `true` and a real key is configured. |
 
 Other notable sections: `jenkins.*` (chart coordinates, namespace, this
 repo's own URL/branch used by JCasC's global library + seed job),
@@ -258,18 +262,14 @@ Beyond the existing kubernetes/git/JCasC/OTel plugins, three are aimed at UX:
 
 A Jenkins seed job (defined via JCasC, running Job DSL against
 [`jenkins/pipelines/seed/seed_jobs.groovy`](jenkins/pipelines/seed/seed_jobs.groovy)
-+ [`services.yaml`](jenkins/pipelines/seed/services.yaml)) generates **18
-pipelines**: for each of the 9 PetClinic services, a `<service>` job tracking
-`main` (deploys to namespace `petclinic`) and a `<service>-develop` job also
-tracking `main` (deploys to `petclinic-develop`, a separate track for
-testing - upstream PetClinic only has a `main` branch). Both run
++ [`services.yaml`](jenkins/pipelines/seed/services.yaml)) generates **9
+stable pipelines** at the root, one per PetClinic service: a `<service>` job
+tracking `main` and deploying to namespace `petclinic` (upstream PetClinic
+only has a `main` branch). Each runs
 [`Jenkinsfile.petclinic`](jenkins/pipelines/Jenkinsfile.petclinic):
 checkout -> build & test -> build & push image -> `helm upgrade` the
 [`helm/petclinic`](helm/petclinic) chart for that environment -> smoke test -
-but `<service>` checks out the Jenkinsfile + shared library from **this
-repo's `main`**, while `<service>-develop` checks them out from **this
-repo's `develop`**, so pipeline-as-code changes land on the `-develop` jobs
-first, without affecting the stable `<service>` jobs until merged to `main`.
+checking out the Jenkinsfile + shared library from **this repo's `main`**.
 Details, including why the Jenkinsfile deliberately has no `parameters {}`
 block, in [`docs/pipelines-as-code.md`](docs/pipelines-as-code.md).
 
@@ -277,16 +277,17 @@ block, in [`docs/pipelines-as-code.md`](docs/pipelines-as-code.md).
 
 A second seed job, **`pac-dev/seed-jobs-dev`**, tracks this repo's
 `develop` branch (instead of `main`) and generates a `pac-dev/` folder
-containing one pipeline per PetClinic service (also running the Jenkinsfile +
-shared library from `develop`, like `<service>-develop`), deploying to the
-`petclinic-pac-dev` namespace. This lets devops/platform engineers iterate on
-this repo's own pipelines-as-code (`seed_jobs.groovy`, `Jenkinsfile.petclinic`,
-JCasC, the shared library) **and** the job-generation logic itself
-(`seed_jobs.groovy`/`services.yaml` structure) on `develop` and see the
-result run end-to-end, **without touching the 18 stable/`-develop` jobs
-above**. The `pac-dev/` folder is hidden from regular users - only the
-`platform-engineer` Jenkins account (Role-Based Authorization Strategy) can
-see or run it. Details in
+containing one `<service>-develop` pipeline per PetClinic service - also
+tracking `main` for the PetClinic source, but checking out
+`Jenkinsfile.petclinic` + the shared library from **this repo's `develop`**,
+and deploying to the separate `petclinic-develop` namespace. This gives
+devops/platform engineers an isolated environment to change and improve this
+repo's own pipelines-as-code (`seed_jobs.groovy`, `Jenkinsfile.petclinic`,
+JCasC, the shared library) on `develop` and see the resulting
+`pac-dev/<service>-develop` pipelines run end-to-end, **without touching the
+9 stable `<service>` jobs above**. The `pac-dev/` folder is hidden from
+regular users - only the `platform-engineer` Jenkins account
+(Role-Based Authorization Strategy) can see or run it. Details in
 [`docs/pipelines-as-code.md`](docs/pipelines-as-code.md#pipelines-as-code-dev-sandbox-pac-dev).
 
 ## Observability
@@ -555,9 +556,10 @@ assumes an existing cluster" (scoped entirely to `terraform/gke/` and
 3. **`scripts/00-check-prereqs.sh` + `scripts/01-namespaces.sh`**.
 4. **`scripts/up.sh`** - the full stack, exactly as in Quick start.
 5. **`test/smoke-test.sh`** - verifies the Jenkins controller pod is `Running`
-   and serves `/login`, the seed job created all 19 jobs (18 pipelines +
-   `seed-jobs`), the OTel Operator/collectors (and, for `oss` mode, Grafana)
-   are running, and both PetClinic namespaces have all 9 `Deployment`s.
+   and serves `/login`, the seed job created the 9 stable pipelines (plus
+   `seed-jobs` and the `pac-dev` folder), the OTel Operator/collectors (and,
+   for `oss` mode, Grafana) are running, and both PetClinic namespaces have
+   all 9 `Deployment`s.
 6. **`scripts/down.sh`** (with `J2026_DELETE_NAMESPACES=true`) then
    **`terraform -chdir=terraform/gke destroy`** - decommissions everything.
 

@@ -86,7 +86,7 @@ jenkins:
           - name: "developer"
             description: "Run and inspect the stable PetClinic pipelines (everything outside pac-dev/)"
             # Matches every item EXCEPT "pac-dev" and anything under it -
-            # i.e. the 18 root PetClinic jobs + seed-jobs.
+            # i.e. the 9 root PetClinic jobs + seed-jobs.
             pattern: "^(?!pac-dev(/.*)?$).*$"
             permissions:
               - "Job/Read"
@@ -98,9 +98,9 @@ jenkins:
             entries:
               - group: "authenticated"
           - name: "platform-engineer"
-            description: "Run, inspect and re-seed the pac-dev pipelines-as-code dev sandbox"
+            description: "Run, inspect and re-seed the pac-dev/*-develop pipelines-as-code dev sandbox"
             # Matches the "pac-dev" folder itself and everything under it
-            # (pac-dev/seed-jobs-dev, pac-dev/<service>, its view, ...).
+            # (pac-dev/seed-jobs-dev, pac-dev/<service>-develop, its view, ...).
             pattern: "^pac-dev(/.*)?$"
             permissions:
               - "Job/Read"

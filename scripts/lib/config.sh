@@ -186,7 +186,6 @@ export J2026_JENKINS_URL="${JENKINS2026_JENKINS_URL:-${J2026_JENKINS_URL_DEFAULT
 
 export J2026_PETCLINIC_NS_STABLE="$(yq_get '.petclinic.namespaces.stable' 'petclinic')"
 export J2026_PETCLINIC_NS_DEVELOP="$(yq_get '.petclinic.namespaces.develop' 'petclinic-develop')"
-export J2026_PETCLINIC_NS_PAC_DEV="$(yq_get '.petclinic.namespaces.pacDev' 'petclinic-pac-dev')"
 
 export J2026_PETCLINIC_GIT_ORG="$(yq_get '.petclinic.git.org' 'spring-petclinic')"
 export J2026_PETCLINIC_BACKEND_REPO="$(yq_get '.petclinic.git.backendRepo' 'spring-petclinic-microservices')"

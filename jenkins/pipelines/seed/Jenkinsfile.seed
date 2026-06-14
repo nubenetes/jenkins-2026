@@ -2,8 +2,8 @@
 // "seed-jobs" pipeline (created by jenkins/casc/jcasc-seed-job.yaml).
 //
 // Checks out this repo, then runs the Job DSL script seed_jobs.groovy which
-// reads services.yaml and creates/updates the 18 PetClinic pipeline jobs
-// (9 services x {stable, *-develop}). Idempotent - safe to re-run any time
+// reads services.yaml and creates/updates the 9 stable PetClinic pipeline
+// jobs at the root (one per service). Idempotent - safe to re-run any time
 // services.yaml or the Jenkinsfile changes.
 // =============================================================================
 
@@ -40,9 +40,9 @@ spec:
         // sandbox would otherwise block.
         //
         // JOB_FOLDER is derived from this seed job's own location: a seed
-        // job at the root (JOB_NAME == "seed-jobs") generates the stable +
-        // *-develop jobs at the root, while "pac-dev/seed-jobs-dev"
-        // generates the pac-dev/* dev sandbox (see seed_jobs.groovy and
+        // job at the root (JOB_NAME == "seed-jobs") generates the 9 stable
+        // jobs at the root, while "pac-dev/seed-jobs-dev" generates the
+        // pac-dev/*-develop dev sandbox (see seed_jobs.groovy and
         // jenkins/casc/jcasc-seed-job.yaml). additionalParameters exposes
         // map entries as variables to the DSL script.
         jobDsl(

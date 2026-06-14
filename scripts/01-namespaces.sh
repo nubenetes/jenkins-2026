@@ -11,7 +11,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 
 log_step "Creating namespaces"
-for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}" "${J2026_PETCLINIC_NS_PAC_DEV}"; do
+for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}"; do
   kubectl_apply_namespace "${ns}"
 done
 
@@ -50,7 +50,7 @@ else
     --from-literal=oidc-admin-email="${JENKINS_OIDC_ADMIN_EMAIL:-}"
 
   log_info "Created. Jenkins admin login: ${J2026_JENKINS_ADMIN_USER} / ${admin_password}"
-  log_info "Created. Jenkins platform-engineer login (pac-dev/* pipelines-as-code sandbox): ${J2026_PLATFORM_ENGINEER_USER} / ${platform_engineer_password}"
+  log_info "Created. Jenkins platform-engineer login (pac-dev/*-develop pipelines-as-code sandbox): ${J2026_PLATFORM_ENGINEER_USER} / ${platform_engineer_password}"
   log_warn "Save these passwords now - they are not printed again on subsequent runs."
 fi
 
@@ -113,7 +113,7 @@ else
 fi
 
 log_step "Granting Jenkins ServiceAccount 'edit' in PetClinic namespaces"
-for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}" "${J2026_PETCLINIC_NS_PAC_DEV}"; do
+for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}"; do
   kubectl create rolebinding jenkins-edit \
     --clusterrole=edit \
     --serviceaccount="${J2026_JENKINS_NAMESPACE}:jenkins" \
@@ -131,7 +131,7 @@ kubectl create clusterrole jenkins-otel-instrumentation-editor \
   --verb=get,list,watch,create,update,patch,delete \
   --resource=instrumentations.opentelemetry.io \
   --dry-run=client -o yaml | kubectl apply -f -
-for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}" "${J2026_PETCLINIC_NS_PAC_DEV}"; do
+for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}"; do
   kubectl create rolebinding jenkins-otel-instrumentation-editor \
     --clusterrole=jenkins-otel-instrumentation-editor \
     --serviceaccount="${J2026_JENKINS_NAMESPACE}:jenkins" \
@@ -155,7 +155,7 @@ if [[ -n "${REGISTRY_USERNAME:-}" && -n "${REGISTRY_PASSWORD:-}" ]]; then
 else
   dockerconfigjson='{"auths":{}}'
 fi
-for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}" "${J2026_PETCLINIC_NS_PAC_DEV}"; do
+for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}"; do
   kubectl create secret generic ghcr-credentials \
     -n "${ns}" \
     --type=kubernetes.io/dockerconfigjson \

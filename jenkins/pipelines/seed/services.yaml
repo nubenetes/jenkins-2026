@@ -2,28 +2,29 @@
 # Service registry consumed by jenkins/pipelines/seed/seed_jobs.groovy.
 #
 # For each entry, the ROOT seed job ("seed-jobs", tracks this repo's
-# JENKINS2026_REPO_BRANCH, normally "main") creates TWO pipeline jobs
-# (pipelines-as-code, GitFlow model):
-#   - "<name>"          -> builds branch `stable.branch`  (main),
-#                          deploys to `namespaces.stable`  (petclinic)
-#   - "<name>-develop"  -> builds branch `develop.branch` (main),
-#                          deploys to `namespaces.develop` (petclinic-develop)
+# JENKINS2026_REPO_BRANCH, normally "main") creates ONE stable pipeline job
+# (pipelines-as-code):
+#   - "<name>"               -> builds branch `branches.stable`  (main),
+#                                deploys to `namespaces.stable`   (petclinic)
 #
 # The DEV seed job ("pac-dev/seed-jobs-dev", tracks JENKINS2026_DEV_REPO_BRANCH,
-# normally "develop") creates ONE job per service inside the `pac-dev/` folder:
-#   - "pac-dev/<name>"  -> builds branch `develop.branch` (main),
-#                          deploys to `namespaces.pacDev` (petclinic-pac-dev)
-# This lets devops/platform engineers iterate on this repo's pipelines-as-code
-# (seed_jobs.groovy, Jenkinsfile.petclinic, shared library) on the `develop`
-# branch without touching the stable/develop jobs above. See README.md
+# normally "develop") creates ONE "-develop" job per service inside the
+# `pac-dev/` folder - the GitFlow dev sandbox:
+#   - "pac-dev/<name>-develop" -> builds branch `branches.develop` (main),
+#                                  deploys to `namespaces.develop` (petclinic-develop)
+# This is an isolated environment where devops/platform engineers can change
+# and improve this repo's pipelines-as-code (seed_jobs.groovy,
+# Jenkinsfile.petclinic, JCasC, shared library) on the `develop` branch and
+# see the resulting "-develop" pipelines run end-to-end, without any impact on
+# the already-tested stable "<name>" jobs above. See README.md
 # "Pipelines-as-code dev sandbox".
 #
 # spring-petclinic-microservices only has a `main` branch (no `master`/
-# `develop`), so both `stable.branch` and `develop.branch` below point at
-# `main` - the -develop/pac-dev jobs are separate namespaces/tracks for
-# testing, not a different PetClinic source branch. spring-petclinic-angular
-# is the exception: it only has `master` (no `main`), so its service entry
-# below sets its own `branches` override.
+# `develop`), so both `branches.stable` and `branches.develop` below point at
+# `main` - "-develop" is a separate namespace/track for testing, not a
+# different PetClinic source branch. spring-petclinic-angular is the
+# exception: it only has `master` (no `main`), so its service entry below
+# sets its own `branches` override.
 #
 # All jobs run the SAME jenkins/pipelines/Jenkinsfile.petclinic; only the
 # parameters below (and the job name/folder) differ.
@@ -39,7 +40,6 @@ frontendRepoUrl: &frontendRepoUrl https://github.com/spring-petclinic/spring-pet
 namespaces:
   stable: petclinic
   develop: petclinic-develop
-  pacDev: petclinic-pac-dev
 
 branches:
   stable: main

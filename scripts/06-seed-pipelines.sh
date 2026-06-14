@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Triggers the "seed-jobs" pipeline (defined by jenkins/casc/jcasc-seed-job.yaml,
 # which itself runs jenkins/pipelines/seed/seed_jobs.groovy via the Job DSL
-# plugin) so the 18 PetClinic pipelines (9 services x stable/-develop) exist
-# immediately, instead of waiting for its H/30 * * * * cron trigger.
+# plugin) so the 9 stable PetClinic pipelines exist immediately, instead of
+# waiting for its H/30 * * * * cron trigger.
 #
 # Talks to the Jenkins REST API from inside the controller pod via
 # `kubectl exec`, so no Ingress/port-forward is required.
@@ -39,7 +39,7 @@ jenkins_exec curl -s -b /tmp/seed-cookies.txt -u "${AUTH}" -H "Jenkins-Crumb: ${
 log_step "Waiting for seed-jobs to create the PetClinic pipeline jobs"
 expected=0
 for svc in ${J2026_PETCLINIC_SERVICES}; do
-  expected=$((expected + 2))
+  expected=$((expected + 1))
 done
 
 for _ in $(seq 1 30); do
