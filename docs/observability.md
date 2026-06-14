@@ -95,7 +95,10 @@ matching timestamps, the same dashboards).
         - **Regex**: `trace_id=(\w+)`
         - **Query**: `${__value.raw}`
         - **Internal link**: Enabled, pointing to your Tempo datasource (typically **`grafanacloud-<stack-slug>-traces`**).
-4. **Metrics -> Traces**: Micrometer/OTel HTTP server metrics
+4. **Other Cloud Datasources**: Your stack may also include system-managed sources like:
+   - **`grafanacloud-<stack-slug>-alert-state-history`**: Historical alert transitions.
+   - **`grafanacloud-<stack-slug>-usage-insights`**: Billing and series volume details.
+5. **Metrics -> Traces**: Micrometer/OTel HTTP server metrics
    (`http_server_duration_milliseconds_*`) carry **exemplars** pointing at a
    sampled `trace_id`; the Prometheus/Mimir datasource's
    `exemplarTraceIdDestinations` links a latency spike straight to an example
