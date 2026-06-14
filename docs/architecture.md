@@ -9,9 +9,12 @@ an **existing** Kubernetes cluster (GKE, EKS, AKS or OpenShift 4.20+):
   Configuration-as-Code (JCasC) - no manual clicking required.
 - **Pipelines as code**: a Job DSL "seed job" (itself defined in JCasC) reads
   [`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml)
-  and generates 18 Jenkins Pipeline jobs - one **stable** and one
-  **`-develop`** job per PetClinic service, both tracking the upstream
-  `main` branch but deploying to separate namespaces.
+  and generates 9 **stable** Jenkins Pipeline jobs at the root, one per
+  PetClinic service, tracking the upstream `main` branch and deploying to the
+  `petclinic` namespace. A second seed job, `pac-dev/seed-jobs-dev`, generates
+  9 `pac-dev/<service>-develop` jobs in an isolated `pac-dev/` folder - a dev
+  sandbox for iterating on this repo's own pipelines-as-code, deploying to the
+  separate `petclinic-develop` namespace.
 - **Spring PetClinic microservices + Angular UI**, deployed by those
   pipelines into two namespaces (`petclinic` / `petclinic-develop`) via a
   single parametrized [Helm chart](../helm/petclinic).
@@ -28,7 +31,7 @@ flowchart TD
     repo["github.com/nubenetes/jenkins-2026<br/>JCasC, Jenkinsfile, shared library,<br/>Helm charts, seed/services.yaml"]
 
     subgraph jenkins_ns["namespace: jenkins"]
-        jenkins["Jenkins controller (jenkinsci/helm-charts + JCasC)<br/>- security, global shared library, OTel exporter, seed job<br/>- seed job (Job DSL) generates 18 pipeline jobs:<br/>  9 services x { name (main), name-develop (main) }<br/>- each run uses a Kubernetes pod agent<br/>  (maven / node / docker:dind / helm+kubectl containers)"]
+        jenkins["Jenkins controller (jenkinsci/helm-charts + JCasC)<br/>- security, global shared library, OTel exporter, seed jobs<br/>- seed jobs (Job DSL) generate 18 pipeline jobs total:<br/>  9 stable name (main) at root + 9 pac-dev/name-develop (main) in pac-dev/<br/>- each run uses a Kubernetes pod agent<br/>  (maven / node / docker:dind / helm+kubectl containers)"]
     end
 
     repo -->|"global pipeline library +<br/>seed job (checkout scm)"| jenkins
@@ -37,7 +40,7 @@ flowchart TD
         petclinic["config-server, discovery-server,<br/>customers/visits/vets/genai-service,<br/>api-gateway, admin-server,<br/>petclinic-angular (nginx + OTel Web RUM snippet)"]
     end
 
-    subgraph petclinic_dev_ns["namespace: petclinic-develop (testing track, tracks main)"]
+    subgraph petclinic_dev_ns["namespace: petclinic-develop (pac-dev/*-develop sandbox, tracks main)"]
         petclinic_dev["config-server, discovery-server,<br/>customers/visits/vets/genai-service,<br/>api-gateway, admin-server,<br/>petclinic-angular"]
     end
 

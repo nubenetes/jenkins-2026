@@ -91,8 +91,8 @@ controller:
       value: "https://github.com/nubenetes/jenkins-2026.git"
     - name: JENKINS2026_REPO_BRANCH
       value: "main"
-    # Branch the "pac-dev/seed-jobs-dev" job (and the pac-dev/* jobs it
-    # generates) track instead of JENKINS2026_REPO_BRANCH - see
+    # Branch the "pac-dev/seed-jobs-dev" job (and the pac-dev/*-develop jobs
+    # it generates) track instead of JENKINS2026_REPO_BRANCH - see
     # jenkins/casc/jcasc-seed-job.yaml and README.md "Pipelines-as-code dev
     # sandbox".
     - name: JENKINS2026_DEV_REPO_BRANCH

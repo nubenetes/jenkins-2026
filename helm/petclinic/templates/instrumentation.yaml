@@ -24,6 +24,13 @@ spec:
     addK8sUIDAttributes: true
   java:
     env:
+      # The Java agent's default OTLP protocol is http/protobuf (port 4318),
+      # but .Values.otel.collectorEndpoint points at the gateway's gRPC port
+      # (4317, matching jenkins/casc/jcasc-otel.yaml) - without this, every
+      # span/metric/log export fails with "Failed to export ... The request
+      # could not be executed" (wrong protocol for the port).
+      - name: OTEL_EXPORTER_OTLP_PROTOCOL
+        value: "grpc"
       - name: OTEL_METRICS_EXPORTER
         value: "otlp"
       - name: OTEL_LOGS_EXPORTER
