@@ -129,8 +129,14 @@ services:
         value: http://config-server:8888
       - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
         value: http://discovery-server:8761/eureka/
+      # Placeholder: Spring AI's OpenAiEmbeddingAutoConfiguration throws
+      # "OpenAI API key must be set" at startup if this is blank, which
+      # crashes the pod before it ever opens its health port. A non-blank
+      # placeholder lets the app start and become Ready; the chat/embedding
+      # endpoints themselves will 401 against the real OpenAI API until a
+      # real key is supplied via a Secret + envFrom.
       - name: OPENAI_API_KEY
-        value: ""
+        value: "sk-placeholder-not-a-real-key"
 
   api-gateway:
     type: java
