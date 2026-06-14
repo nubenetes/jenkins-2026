@@ -45,3 +45,11 @@ resource "grafana_cloud_stack_service_account_token" "dashboards" {
   service_account_id = grafana_cloud_stack_service_account.dashboards.id
   name               = "jenkins-2026-dashboards"
 }
+
+# -----------------------------------------------------------------------------
+# Jenkins Datasource Plugin
+# -----------------------------------------------------------------------------
+resource "grafana_cloud_stack_plugin" "jenkins" {
+  stack_slug = var.stack_slug
+  name       = "grafana-jenkins-datasource"
+}

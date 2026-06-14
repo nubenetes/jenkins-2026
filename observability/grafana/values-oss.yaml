@@ -118,6 +118,17 @@ grafana:
         nodeGraph:
           enabled: true
 
+    - name: Jenkins
+      type: grafana-jenkins-datasource
+      uid: jenkins
+      url: http://jenkins.jenkins.svc.cluster.local:8080
+      access: proxy
+      secureJsonData:
+        # Default admin password from jenkins-credentials Secret
+        apiToken: "${JENKINS_ADMIN_PASSWORD}"
+      jsonData:
+        username: "admin"
+
   dashboardProviders:
     dashboardproviders.yaml:
       apiVersion: 1
