@@ -47,14 +47,6 @@ resource "grafana_cloud_stack_service_account_token" "dashboards" {
 }
 
 # -----------------------------------------------------------------------------
-# Jenkins Datasource Plugin
-# -----------------------------------------------------------------------------
-resource "grafana_cloud_plugin_installation" "jenkins" {
-  stack_slug = var.stack_slug
-  slug       = "grafana-jenkins-datasource"
-}
-
-# -----------------------------------------------------------------------------
 # Private Data Source Connect (PDC)
 # -----------------------------------------------------------------------------
 resource "grafana_cloud_private_data_source_connect_network" "this" {
@@ -88,6 +80,4 @@ resource "grafana_data_source" "jenkins" {
   secure_json_data_encoded = jsonencode({
     apiToken = var.jenkins_admin_password
   })
-
-  depends_on = [grafana_cloud_plugin_installation.jenkins]
 }
