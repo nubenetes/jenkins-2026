@@ -124,7 +124,7 @@ helm_args=(
   --set-file "controller.JCasC.configScripts.base=${J2026_ROOT_DIR}/jenkins/casc/jcasc-base.yaml"
   --set-file "controller.JCasC.configScripts.otel=${J2026_ROOT_DIR}/jenkins/casc/jcasc-otel.yaml"
   --set-file "controller.JCasC.configScripts.seed-job=${J2026_ROOT_DIR}/jenkins/casc/jcasc-seed-job.yaml"
-  --atomic
+  --rollback-on-failure
 )
 
 if [[ -n "${J2026_JENKINS_CHART_VERSION}" ]]; then
