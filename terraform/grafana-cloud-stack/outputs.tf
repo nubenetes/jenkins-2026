@@ -25,5 +25,8 @@ output "grafana_url" {
 
 output "otlp_endpoint" {
   description = "OTLP gateway endpoint for this stack (GRAFANA_CLOUD_OTLP_ENDPOINT)."
-  value       = grafana_cloud_stack.this.otlp_url
+  # grafana_cloud_stack.this.otlp_url is the bare gateway host - see
+  # terraform/grafana-cloud-token/outputs.tf otlp_endpoint for why /otlp is
+  # appended.
+  value = "${grafana_cloud_stack.this.otlp_url}/otlp"
 }
