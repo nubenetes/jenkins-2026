@@ -42,6 +42,11 @@ spec:
       image: grafana/k6:2.0.0
       command: ['sleep']
       args: ['infinity']
+      # grafana/k6 defaults to uid 12345, which can't write into the shared
+      # workspace volume checked out by the jnlp container as uid 1000.
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
       resources:
         requests: {cpu: 100m, memory: 256Mi}
         limits: {cpu: '1', memory: 512Mi}
