@@ -71,6 +71,6 @@ variable "services_cidr" {
 
 variable "admin_emails" {
   type        = list(string)
-  description = "Google account emails granted roles/container.clusterViewer - the minimal IAM needed for the GKE API to accept their tokens. In-cluster cluster-admin authorization for these same emails is handled separately by scripts/08-headlamp.sh (ClusterRoleBindings). See README.md \"Headlamp\". Never commit real emails - set via TF_VAR_admin_emails."
+  description = "Google account emails granted roles/iap.httpsResourceAccessor, gating access through Identity-Aware Proxy to Jenkins and Headlamp. Also granted roles/container.clusterViewer for Headlamp's in-app per-user OIDC->GKE-API auth, which doesn't work today (see README.md \"Headlamp\") - kept for if/when upstream fixes that. Never commit real emails - set via TF_VAR_admin_emails."
   default     = []
 }

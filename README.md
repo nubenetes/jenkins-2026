@@ -6,10 +6,14 @@ A self-contained proof of concept that deploys **Jenkins** (via
 Job DSL ("pipelines as code"), and uses it to build, containerize and deploy
 the [Spring PetClinic microservices](https://github.com/spring-petclinic/spring-petclinic-microservices)
 reference application (+ its [Angular UI](https://github.com/spring-petclinic/spring-petclinic-angular))
-in a **GitFlow-inspired** model - one "stable" pipeline per service and one
-`<service>-develop` pipeline, both tracking the upstream `main` branch
-(the only branch the upstream repos have) but deploying to separate
-namespaces, so `-develop` serves as a testing track. Jenkins and every
+in a **GitFlow-inspired** model: a stable pipeline per service at the root,
+both tracking the upstream `main` branch (the only branch the upstream repos
+have) and deploying to the `petclinic` namespace. A second, isolated set of
+`pac-dev/<service>-develop` pipelines lives in its own `pac-dev/` folder - a
+sandbox where devops/platform engineers can iterate on this repo's own
+pipelines-as-code (Jenkinsfile, shared library, JCasC, seed jobs) on this
+repo's `develop` branch, deploying to a separate `petclinic-develop`
+namespace, without affecting the tested stable pipelines. Jenkins and every
 PetClinic service are instrumented with **OpenTelemetry**, with traces,
 metrics and logs correlated end-to-end in **Grafana** (Grafana Cloud by
 default, or an in-cluster OSS stack).
@@ -20,7 +24,7 @@ feature flag, only one platform is active per run.
 
 See [`docs/architecture.md`](docs/architecture.md) for the full component
 diagram and repository layout, [`docs/pipelines-as-code.md`](docs/pipelines-as-code.md)
-for how the 18 Jenkins pipelines are generated, [`docs/observability.md`](docs/observability.md)
+for how the Jenkins pipelines are generated, [`docs/observability.md`](docs/observability.md)
 for the OpenTelemetry/Grafana wiring, and [`docs/platforms.md`](docs/platforms.md)
 for per-cloud notes.
 
@@ -83,10 +87,10 @@ partial failure is safe. Each step also runs standalone:
 > exist in your registry yet, so PetClinic pods will show
 > `ImagePullBackOff` until each service's Jenkins pipeline has run at least
 > once and pushed an image. `scripts/06-seed-pipelines.sh` (part of `up.sh`)
-> triggers the seed job immediately so the 18 pipelines exist right away;
-> trigger individual builds from the Jenkins UI (`listView` **petclinic**).
+> triggers the seed job immediately so the 9 stable pipelines exist right
+> away; trigger individual builds from the Jenkins UI (`listView` **petclinic**).
 > Jobs are not auto-triggered (no SCM-poll) - see `petclinic.genaiServiceEnabled`
-> below for why `genai-service`/`genai-service-develop` start out disabled.
+> below for why `genai-service`/`pac-dev/genai-service-develop` start out disabled.
 
 ## Configuration ([`config/config.yaml`](config/config.yaml))
 
@@ -98,7 +102,7 @@ vars). Feature flags:
 |---|---|---|---|
 | `platform.target` | `gke` | `JENKINS2026_PLATFORM` env var | `gke`\|`eks`\|`aks`\|`openshift` - selects the Helm overlay, ingress/Route strategy and storage class (see [`docs/platforms.md`](docs/platforms.md)). |
 | `observability.mode` | `grafana-cloud` | edit `config.yaml` | `grafana-cloud`\|`oss`\|`managed` - where traces/metrics/logs go (see [`docs/observability.md`](docs/observability.md)). |
-| `petclinic.genaiServiceEnabled` | `false` | `JENKINS2026_GENAI_SERVICE_ENABLED` env var | Whether the `genai-service`/`genai-service-develop`/`pac-dev/genai-service` Jenkins jobs are created enabled. `genai-service` (Spring AI) crashes on startup without a real `OPENAI_API_KEY` (`helm/petclinic/values-*.yaml` only set a startup placeholder), so seed-jobs creates these jobs `disabled` until this is `true` and a real key is configured. |
+| `petclinic.genaiServiceEnabled` | `false` | `JENKINS2026_GENAI_SERVICE_ENABLED` env var | Whether the `genai-service`/`pac-dev/genai-service-develop` Jenkins jobs are created enabled. `genai-service` (Spring AI) crashes on startup without a real `OPENAI_API_KEY` (`helm/petclinic/values-*.yaml` only set a startup placeholder), so seed-jobs creates these jobs `disabled` until this is `true` and a real key is configured. |
 
 Other notable sections: `jenkins.*` (chart coordinates, namespace, this
 repo's own URL/branch used by JCasC's global library + seed job),
@@ -140,9 +144,12 @@ Full details in [`docs/architecture.md`](docs/architecture.md).
 kubectl -n jenkins port-forward svc/jenkins 8080:8080
 ```
 
-Open <http://localhost:8080> and log in as `${JENKINS_ADMIN_ID}` (`jenkins.adminUser`
-in [`config/config.yaml`](config/config.yaml), default `admin`). The password
-is randomly generated on first run by
+Open <http://localhost:8080>. If [Google login](#google-login-openid-connect)
+is configured, use the **Sign in with Google** button. Otherwise (or for
+break-glass/automation access), log in as `${JENKINS_ADMIN_ID}`
+(`jenkins.adminUser` in [`config/config.yaml`](config/config.yaml), default
+`admin`) via the **escape hatch** - this login always works, regardless of
+OIDC. The password is randomly generated on first run by
 [`scripts/01-namespaces.sh`](scripts/01-namespaces.sh) and printed once to its
 output - if you missed it, retrieve it from the `jenkins-credentials` Secret
 (`jenkins.credentialsSecretName`) in the `jenkins` namespace:
@@ -151,13 +158,72 @@ output - if you missed it, retrieve it from the `jenkins-credentials` Secret
 kubectl -n jenkins get secret jenkins-credentials -o jsonpath='{.data.admin-password}' | base64 -d; echo
 ```
 
-The same Secret also holds the `platform-engineer` login (used by the
-`pac-dev/*` pipelines-as-code sandbox, see [Pipelines-as-code dev
-sandbox](#pipelines-as-code-dev-sandbox-pac-dev)) under
-`platform-engineer-password`. To rotate either password, delete the Secret
-and re-run `scripts/01-namespaces.sh` + `scripts/04-jenkins.sh` (see
-[Troubleshooting](#troubleshooting)) - new random passwords are generated and
+This same `${JENKINS_ADMIN_ID}` / password is what
+[`test/smoke-test.sh`](test/smoke-test.sh) and
+[`scripts/06-seed-pipelines.sh`](scripts/06-seed-pipelines.sh) use for
+HTTP Basic Auth against the Jenkins API. To rotate the password, delete the
+Secret and re-run `scripts/01-namespaces.sh` + `scripts/04-jenkins.sh` (see
+[Troubleshooting](#troubleshooting)) - a new random password is generated and
 printed once.
+
+### Google login (OpenID Connect)
+
+Jenkins' security realm is [`oic-auth`](https://plugins.jenkins.io/oic-auth/)
+(`securityRealm.oic` in
+[`jenkins/casc/jcasc-base.yaml`](jenkins/casc/jcasc-base.yaml)), so anyone can
+sign in with a Google account - Role-Based Authorization Strategy then decides
+what they can do. By default, a Google login only gets `authenticated-base`
+(read-only UI access); to grant the `admin` role (`Overall/Administer`) to
+your own account, set `JENKINS_OIDC_ADMIN_EMAIL`.
+
+This **replaces** the old local `admin`/`platform-engineer` password logins -
+the `platform-engineer` account can no longer log in (its
+[pac-dev item role](#pipelines-as-code-dev-sandbox-pac-dev) is left in place
+in case it's remapped to an OIDC user/group later). The `${JENKINS_ADMIN_ID}`
+escape hatch above remains as the break-glass admin login.
+
+1. **Create a third Google OAuth 2.0 Web application client** (can reuse the
+   same GCP project as the [Headlamp](#one-time-setup-google-oauth-client)
+   and [IAP](#one-time-setup) clients, but must be its own client - Jenkins
+   needs its own redirect URI and cannot share a client with them):
+   - [Google Cloud Console](https://console.cloud.google.com/) -> **APIs &
+     Services** -> **Credentials** -> **Create credentials** -> **OAuth
+     client ID** -> Application type **Web application**.
+   - **Authorized redirect URIs**: add
+     `https://jenkins.<baseDomain>/securityRealm/finishLogin` (e.g.
+     `https://jenkins.jenkins2026.nubenetes.com/securityRealm/finishLogin`).
+     If you only access Jenkins via `kubectl port-forward`, also add
+     `http://localhost:8080/securityRealm/finishLogin`.
+   - Note the **Client ID** and **Client secret**.
+   - On the **OAuth consent screen** (Audience tab), while the app is in
+     **Testing**, add your Google account as a **Test user** - otherwise
+     Google returns `Error 403: access_denied` ("has not completed the Google
+     verification process"). Unlike the Headlamp client, Jenkins only needs
+     the non-sensitive `openid email profile` scopes, so no Data Access
+     changes are required.
+
+2. **Add repository secrets** (your own email is **never committed to this
+   repo**):
+
+   ```bash
+   gh secret set JENKINS_OIDC_CLIENT_ID     --body "<client ID from above>"
+   gh secret set JENKINS_OIDC_CLIENT_SECRET --body "<client secret from above>"
+   gh secret set JENKINS_OIDC_ADMIN_EMAIL   --body "you@gmail.com"
+   ```
+
+   then re-run **02.02 Redeploy Jenkins** (or **02.01 GKE provision**).
+   Locally (`test/e2e.sh` / `scripts/up.sh`), export the same three as
+   `JENKINS_OIDC_CLIENT_ID`, `JENKINS_OIDC_CLIENT_SECRET` and
+   `JENKINS_OIDC_ADMIN_EMAIL` instead.
+
+   > Changes to `jenkins-credentials` only take effect for a *new* Secret -
+   > if it already exists from a previous run, delete it first (see
+   > [Troubleshooting](#troubleshooting)) so `scripts/01-namespaces.sh`
+   > recreates it with the `oidc-*` keys.
+
+Until `JENKINS_OIDC_CLIENT_ID`/`JENKINS_OIDC_CLIENT_SECRET` are set, the
+**Sign in with Google** button is shown but errors out - the escape hatch
+above is the only working login in the meantime.
 
 [`helm/jenkins/values-common.yaml`](helm/jenkins/values-common.yaml) tracks
 the latest Jenkins LTS (`controller.image.tag`) and pins **every** plugin -
@@ -196,18 +262,14 @@ Beyond the existing kubernetes/git/JCasC/OTel plugins, three are aimed at UX:
 
 A Jenkins seed job (defined via JCasC, running Job DSL against
 [`jenkins/pipelines/seed/seed_jobs.groovy`](jenkins/pipelines/seed/seed_jobs.groovy)
-+ [`services.yaml`](jenkins/pipelines/seed/services.yaml)) generates **18
-pipelines**: for each of the 9 PetClinic services, a `<service>` job tracking
-`main` (deploys to namespace `petclinic`) and a `<service>-develop` job also
-tracking `main` (deploys to `petclinic-develop`, a separate track for
-testing - upstream PetClinic only has a `main` branch). Both run
++ [`services.yaml`](jenkins/pipelines/seed/services.yaml)) generates **9
+stable pipelines** at the root, one per PetClinic service: a `<service>` job
+tracking `main` and deploying to namespace `petclinic` (upstream PetClinic
+only has a `main` branch). Each runs
 [`Jenkinsfile.petclinic`](jenkins/pipelines/Jenkinsfile.petclinic):
 checkout -> build & test -> build & push image -> `helm upgrade` the
 [`helm/petclinic`](helm/petclinic) chart for that environment -> smoke test -
-but `<service>` checks out the Jenkinsfile + shared library from **this
-repo's `main`**, while `<service>-develop` checks them out from **this
-repo's `develop`**, so pipeline-as-code changes land on the `-develop` jobs
-first, without affecting the stable `<service>` jobs until merged to `main`.
+checking out the Jenkinsfile + shared library from **this repo's `main`**.
 Details, including why the Jenkinsfile deliberately has no `parameters {}`
 block, in [`docs/pipelines-as-code.md`](docs/pipelines-as-code.md).
 
@@ -215,16 +277,17 @@ block, in [`docs/pipelines-as-code.md`](docs/pipelines-as-code.md).
 
 A second seed job, **`pac-dev/seed-jobs-dev`**, tracks this repo's
 `develop` branch (instead of `main`) and generates a `pac-dev/` folder
-containing one pipeline per PetClinic service (also running the Jenkinsfile +
-shared library from `develop`, like `<service>-develop`), deploying to the
-`petclinic-pac-dev` namespace. This lets devops/platform engineers iterate on
-this repo's own pipelines-as-code (`seed_jobs.groovy`, `Jenkinsfile.petclinic`,
-JCasC, the shared library) **and** the job-generation logic itself
-(`seed_jobs.groovy`/`services.yaml` structure) on `develop` and see the
-result run end-to-end, **without touching the 18 stable/`-develop` jobs
-above**. The `pac-dev/` folder is hidden from regular users - only the
-`platform-engineer` Jenkins account (Role-Based Authorization Strategy) can
-see or run it. Details in
+containing one `<service>-develop` pipeline per PetClinic service - also
+tracking `main` for the PetClinic source, but checking out
+`Jenkinsfile.petclinic` + the shared library from **this repo's `develop`**,
+and deploying to the separate `petclinic-develop` namespace. This gives
+devops/platform engineers an isolated environment to change and improve this
+repo's own pipelines-as-code (`seed_jobs.groovy`, `Jenkinsfile.petclinic`,
+JCasC, the shared library) on `develop` and see the resulting
+`pac-dev/<service>-develop` pipelines run end-to-end, **without touching the
+9 stable `<service>` jobs above**. The `pac-dev/` folder is hidden from
+regular users - only the `platform-engineer` Jenkins account
+(Role-Based Authorization Strategy) can see or run it. Details in
 [`docs/pipelines-as-code.md`](docs/pipelines-as-code.md#pipelines-as-code-dev-sandbox-pac-dev).
 
 ## Observability
@@ -246,42 +309,50 @@ in [`docs/observability.md`](docs/observability.md).
 [`scripts/08-headlamp.sh`](scripts/08-headlamp.sh) into the `headlamp`
 namespace using [`helm/headlamp/values.yaml`](helm/headlamp/values.yaml).
 
-**Access model**: sign in with your Google account. Headlamp is configured
-with `config.oidc.useAccessToken: true`
-([`helm/headlamp/values.yaml`](helm/headlamp/values.yaml)), so it forwards
-your Google OAuth **access token** (scoped
-`https://www.googleapis.com/auth/cloud-platform`) to the GKE API server -
-the same shape of credential `gcloud`-based kubeconfigs use. GKE natively
-maps a Google identity presenting such a token to K8s RBAC `kind: User`
-(the account's email as subject), so for every email listed in
-`HEADLAMP_ADMIN_EMAILS` (see below), this repo:
-
-- grants `roles/container.clusterViewer` in GCP IAM (`terraform/gke`,
-  `google_project_iam_member.headlamp_admins`) - the minimal IAM permission
-  for the GKE API to accept that identity's token at all, and
-- creates a `cluster-admin` `ClusterRoleBinding` for that email
-  (`scripts/08-headlamp.sh`), so once GKE accepts the token, K8s RBAC
-  authorizes everything.
-
-> **Experimental**: this OIDC access-token passthrough is a relatively new
-> Headlamp feature and its behavior against GKE specifically hasn't been
-> verified end-to-end yet - try it on the next `gke-provision` run. If
-> Google sign-in doesn't authorize correctly, Headlamp's chart-default
-> **ServiceAccount-token login** is left enabled as a fallback: its own
-> `headlamp` ServiceAccount already has `cluster-admin`
-> (`clusterRoleBinding.create: true` / `clusterRoleName: cluster-admin`,
-> chart defaults, not overridden), so you can log in with that
-> ServiceAccount's token instead (`kubectl create token headlamp -n
-> headlamp`, or the long-lived Secret token if your cluster still mints
-> one).
-
-By default, access is via `kubectl port-forward` (below). If
+**Access model**: Headlamp's "main" cluster context uses the chart's default
+**ServiceAccount** (cluster-admin via the chart's default `ClusterRoleBinding`,
+`clusterRoleName: cluster-admin`) - `helm/headlamp/values.yaml` is
+intentionally empty, no in-app OIDC is configured. Google-identity access
+control happens one layer up: if
 [gateway.baseDomain](#public-access-gke-gateway-api--iap) is configured,
-Headlamp is also reachable at `https://headlamp.<baseDomain>`, gated by both
-Identity-Aware Proxy and its own Google sign-in - see [Public access (GKE
-Gateway API + IAP)](#public-access-gke-gateway-api--iap).
+`https://headlamp.<baseDomain>` is gated by
+[Identity-Aware Proxy](https://cloud.google.com/iap) - only the Google
+accounts in `HEADLAMP_ADMIN_EMAILS` (granted `roles/iap.httpsResourceAccessor`
+by `terraform/gke` `google_project_iam_member.iap_accessors`) can reach the UI
+at all, and everyone who gets through has full cluster-admin via Headlamp's
+ServiceAccount. By default (no `gateway.baseDomain`), access is via `kubectl
+port-forward` (below) with no Google sign-in or IAP gate.
 
-### One-time setup: Google OAuth client
+**Why not per-user Google OIDC -> GKE API auth?** This was attempted
+(`config.oidc.externalSecret` + `config.oidc.useAccessToken: true`, each
+signed-in user's Google identity mapped to K8s RBAC via a `cluster-admin`
+`ClusterRoleBinding` per `HEADLAMP_ADMIN_EMAILS` entry +
+`roles/container.clusterViewer` in GCP IAM). Headlamp chart >=0.38.0
+([kubernetes-sigs/headlamp#3954](https://github.com/kubernetes-sigs/headlamp/issues/3954)/PR#4122)
+does fix the Helm templating bug that previously dropped
+`-oidc-use-access-token` when `externalSecret.enabled: true`, but a deeper
+backend bug remains: with `useAccessToken: true`, the `/oidc-callback` handler
+runs Google's OAuth2 **access token** (an opaque `ya29.` bearer token, not a
+JWT) through an OIDC ID-token verifier, which fails immediately with
+`Failed to verify ID Token: oidc: failed to unmarshal claims: invalid
+character 'k' looking for beginning of value` - the sign-in never completes.
+This matches [kubernetes-sigs/headlamp#2643](https://github.com/kubernetes-sigs/headlamp/issues/2643)
+("OIDC with GKE... only ServiceAccount token works") and upstream's own
+recent move toward an `unsafe-use-service-account-token` flag for in-cluster
+deployments - per-user OIDC tokens forwarded to a managed GKE control plane
+isn't a supported path today. If upstream fixes this, `headlamp-credentials`
+(`HEADLAMP_OIDC_CLIENT_ID`/`HEADLAMP_OIDC_CLIENT_SECRET`, still created by
+`scripts/01-namespaces.sh`) and the per-email `ClusterRoleBinding`s
+(`scripts/08-headlamp.sh`) are ready to wire back up via
+`helm/headlamp/values.yaml`.
+
+### One-time setup: Google OAuth client (currently unused)
+
+> Not required for the IAP-gated access model above - IAP uses its own OAuth
+> client (`gateway-iap-oauth`, see [Public access (GKE Gateway API +
+> IAP)](#public-access-gke-gateway-api--iap)). This client is only consumed
+> by Headlamp's in-app OIDC, which doesn't work against GKE today (see
+> above) - kept here in case upstream fixes it.
 
 Create a Google OAuth 2.0 **Web application** client (any GCP project will
 do - it doesn't need to be the same project as the GKE cluster):
@@ -309,22 +380,22 @@ multiple people) and consumed as a placeholder
 (`J2026_HEADLAMP_ADMIN_EMAILS`/`JENKINS2026_HEADLAMP_ADMIN_EMAILS`) by
 [`scripts/lib/config.sh`](scripts/lib/config.sh),
 [`terraform/gke`](terraform/gke) (`TF_VAR_admin_emails`) and
-[`scripts/08-headlamp.sh`](scripts/08-headlamp.sh). To grant cluster-admin
-access via Headlamp to yourself or anyone else:
+[`scripts/08-headlamp.sh`](scripts/08-headlamp.sh). This is the list IAP lets
+through to `https://headlamp.<baseDomain>` (and `https://jenkins.<baseDomain>`
+- see [Public access](#public-access-gke-gateway-api--iap)). To grant access
+to yourself or anyone else:
 
 ```bash
 # comma-separated, no spaces needed (leading/trailing whitespace is trimmed)
 gh secret set HEADLAMP_ADMIN_EMAILS --body "you@gmail.com,colleague@gmail.com"
-gh secret set HEADLAMP_OIDC_CLIENT_ID     --body "<client ID from above>"
-gh secret set HEADLAMP_OIDC_CLIENT_SECRET --body "<client secret from above>"
 ```
 
-then (re-)run **02.01 GKE provision** (adds the GCP IAM binding via
-`terraform/gke` and the `ClusterRoleBinding`s via `scripts/08-headlamp.sh`).
-Locally (`test/e2e.sh` / `scripts/up.sh`), export the same three as
-`HEADLAMP_OIDC_CLIENT_ID`, `HEADLAMP_OIDC_CLIENT_SECRET` and
-`JENKINS2026_HEADLAMP_ADMIN_EMAILS` instead - never commit them to
-`config/config.yaml`.
+then (re-)run **02.01 GKE provision** (adds the `roles/iap.httpsResourceAccessor`
+IAM binding via `terraform/gke`). Locally (`test/e2e.sh` / `scripts/up.sh`),
+export the same as `JENKINS2026_HEADLAMP_ADMIN_EMAILS` instead - never commit
+it to `config/config.yaml`. `HEADLAMP_OIDC_CLIENT_ID`/`HEADLAMP_OIDC_CLIENT_SECRET`
+(from the previous section) are only needed if/when the in-app OIDC above
+becomes usable.
 
 ### Accessing the UI
 
@@ -332,7 +403,12 @@ Locally (`test/e2e.sh` / `scripts/up.sh`), export the same three as
 kubectl -n headlamp port-forward svc/headlamp 8080:80
 ```
 
-Open <http://localhost:8080> and click **Sign in with Google**.
+Open <http://localhost:8080> and sign in with a ServiceAccount token (the
+chart's default `ClusterRoleBinding` grants it cluster-admin):
+
+```bash
+kubectl create token headlamp -n headlamp
+```
 
 ## Public access (GKE Gateway API + IAP)
 
@@ -360,14 +436,21 @@ below has been done) - `scripts/09-gateway.sh` is also a no-op on
 `platform.target` other than `gke`, since `gke-l7-global-external-managed`
 and `GCPBackendPolicy` are GKE-specific.
 
-> **Needs live-cluster verification**: the exact `Gateway`/`HTTPRoute`/
-> `GCPBackendPolicy` field syntax in
-> [`scripts/09-gateway.sh`](scripts/09-gateway.sh) (the
-> `addresses[].type: NamedAddress` static-IP reference, the
-> `networking.gke.io/certmap` annotation, cross-namespace `HTTPRoute`
-> attachment, and the `GCPBackendPolicy` `oauth2ClientSecret` field/key
-> names) hasn't been confirmed against a live cluster yet - try it on the
-> next `02.01-gke-provision` run, same caveat as Headlamp's OIDC passthrough above.
+> **Two non-obvious GKE Gateway API requirements**, confirmed against a live
+> cluster and handled by [`scripts/09-gateway.sh`](scripts/09-gateway.sh):
+> - The `Gateway` CRD rejects a `https` listener's `tls.mode: Terminate`
+>   unless `tls.certificateRefs` or `tls.options` is non-empty - even though
+>   the actual certificate comes from the `networking.gke.io/certmap`
+>   annotation. The script adds the documented placeholder
+>   `tls.options["networking.gke.io/pre-shared-certs"]: ""` to satisfy this.
+> - `GCPBackendPolicy`'s `spec.default.iap.clientID` must be a literal OAuth
+>   client ID string (not a Secret reference), and the Secret referenced by
+>   `oauth2ClientSecret.name` must contain **exactly one** key
+>   (`client_secret`). The script reads `client_id`/`client_secret` from the
+>   `gateway-iap-oauth` Secret (created by
+>   [`scripts/01-namespaces.sh`](scripts/01-namespaces.sh)) and derives a
+>   single-key `gateway-iap-oauth-client-secret` Secret per namespace for
+>   `oauth2ClientSecret.name`.
 
 ### One-time setup
 
@@ -387,22 +470,58 @@ and `GCPBackendPolicy` are GKE-specific.
    `<baseDomain>`'s parent domain. For the default
    `jenkins2026.nubenetes.com` (a subdomain of `nubenetes.com`, managed at
    **Squarespace** - Squarespace migrated domains off Google Domains in
-   2023): go to **Domains** -> `nubenetes.com` -> **DNS** -> **Custom
-   records**, and add:
-   - a wildcard **A** record: `*.jenkins2026` -> the static IP from step 1.
+   2023, but `nubenetes.com`'s nameservers are Google Cloud DNS
+   (`ns-cloud-a[1-4].googledomains.com`) - Squarespace's "Custom records" UI
+   manages that same Cloud DNS zone): go to **Domains** -> `nubenetes.com` ->
+   **DNS** -> **Custom records**, and add:
+   - a wildcard **A** record: host `*.jenkins2026`, value the static IP from
+     step 1 (e.g. `34.120.231.149`).
    - the **CNAME** record from the workflow's "DNS authorization record"
-     output (proves ownership of `jenkins2026.nubenetes.com` for the managed
-     certificate).
+     output: host `_acme-challenge.jenkins2026`, value something like
+     `<random-id>.<n>.authorize.certificatemanager.goog.` (proves ownership
+     of `jenkins2026.nubenetes.com` for the managed certificate).
+
+   Double-check the CNAME value is copied **in full, including the trailing
+   `.`** - Squarespace's UI truncates long values when displaying them, which
+   is easy to mistake for the saved value also being truncated.
 
    Certificate provisioning can take up to ~1h after the DNS authorization
-   record verifies.
+   record verifies. Check progress with:
+
+   ```bash
+   gcloud certificate-manager certificates describe jenkins-2026-cert \
+     --format="yaml(managed.state,managed.provisioningIssue,managed.authorizationAttemptInfo)"
+   ```
+
+   `managed.state: ACTIVE` means it's done. While `PROVISIONING`, an
+   `authorizationAttemptInfo[].issues: [CNAME_MISMATCH]` entry reflects
+   Certificate Manager's **last** validation attempt - it only re-checks DNS
+   periodically, so this can stay stale for a while even after you've fixed
+   the record; re-verify the record itself with `dig` / `https://dns.google`
+   rather than relying on this field to update immediately. Until the
+   certificate is `ACTIVE`, HTTPS requests to `*.jenkins2026.nubenetes.com`
+   fail with a TLS handshake error (e.g. curl's `SSL_ERROR_SYSCALL`) because
+   the load balancer has no certificate attached yet.
 
 3. **Create the IAP OAuth client by hand** (the Terraform resources for this,
    `google_iap_brand`/`google_iap_client`, are deprecated - the IAP OAuth
    Admin API they depend on was deprecated after July 2025). In the [GCP
    Console](https://console.cloud.google.com/): **APIs & Services** ->
    **Credentials** -> **Create credentials** -> **OAuth client ID** ->
-   Application type **Web application**. Then:
+   Application type **Web application**.
+
+   **Authorized redirect URIs**: add (replacing `<client ID>` with the OAuth
+   client ID you just created):
+
+   ```
+   https://iap.googleapis.com/v1/oauth/clientIds/<client ID>:handleRedirect
+   ```
+
+   Without this, IAP's post-login redirect back from Google fails with
+   **Error 400: redirect_uri_mismatch**. This is the one redirect URI IAP
+   uses regardless of how many apps/domains sit behind it, so a single OAuth
+   client can be shared by both the Jenkins and Headlamp `GCPBackendPolicy`
+   resources.
 
    ```bash
    gh secret set IAP_OAUTH_CLIENT_ID     --body "<client ID>"
@@ -437,9 +556,10 @@ assumes an existing cluster" (scoped entirely to `terraform/gke/` and
 3. **`scripts/00-check-prereqs.sh` + `scripts/01-namespaces.sh`**.
 4. **`scripts/up.sh`** - the full stack, exactly as in Quick start.
 5. **`test/smoke-test.sh`** - verifies the Jenkins controller pod is `Running`
-   and serves `/login`, the seed job created all 19 jobs (18 pipelines +
-   `seed-jobs`), the OTel Operator/collectors (and, for `oss` mode, Grafana)
-   are running, and both PetClinic namespaces have all 9 `Deployment`s.
+   and serves `/login`, the seed job created the 9 stable pipelines (plus
+   `seed-jobs` and the `pac-dev` folder), the OTel Operator/collectors (and,
+   for `oss` mode, Grafana) are running, and both PetClinic namespaces have
+   all 9 `Deployment`s.
 6. **`scripts/down.sh`** (with `J2026_DELETE_NAMESPACES=true`) then
    **`terraform -chdir=terraform/gke destroy`** - decommissions everything.
 
@@ -535,6 +655,7 @@ lifecycle:
 | 01.02 | [Gateway bootstrap](.github/workflows/01.02-gateway-bootstrap.yml) | One-time bootstrap | Creates/confirms the persistent static IP + managed wildcard cert + DNS authorization (`terraform/gateway-bootstrap`) that [public access](#public-access-gke-gateway-api--iap) depends on. |
 | 02.01 | [GKE provision](.github/workflows/02.01-gke-provision.yml) | GKE lifecycle | Provisions the throwaway GKE cluster (`terraform/gke`) and deploys the full stack (`scripts/up.sh`) + smoke test. Pair with 02.99. |
 | 02.02 | [Redeploy Jenkins](.github/workflows/02.02-redeploy-jenkins.yml) | GKE lifecycle | Re-applies only `scripts/04-jenkins.sh` (Helm upgrade of `helm/jenkins/` + `jenkins/casc/` JCasC) and re-seeds the PetClinic pipelines, against the cluster from the last 02.01 run - for a Jenkins-only fix without the full provision/decommission cycle. Run any number of times between 02.01 and 02.99. |
+| 02.03 | [Redeploy Headlamp](.github/workflows/02.03-redeploy-headlamp.yml) | GKE lifecycle | Re-applies `scripts/01-namespaces.sh` (refreshes the non-sensitive OIDC config keys on `headlamp-credentials`) and `scripts/08-headlamp.sh` (Helm upgrade of `helm/headlamp/`), against the cluster from the last 02.01 run - for a Headlamp-only fix without the full provision/decommission cycle. Run any number of times between 02.01 and 02.99. |
 | 02.99 | [GKE decommission](.github/workflows/02.99-gke-decommission.yml) | GKE lifecycle | Tears down the stack (`scripts/down.sh`) and destroys the GKE cluster (`terraform destroy`). |
 
 See [GitHub Actions automation](#github-actions-automation) below for the
@@ -642,6 +763,8 @@ for redeploying only Jenkins.
    | `GRAFANA_TRACES_DASHBOARD_UID` / `OTEL_LOGS_BACKEND_URL` | `observability_mode: grafana-cloud` extras - a "View trace in Grafana" link UID and the logs Explore URL (see `observability/otel-collector/secret.example.yaml`); both optional even then |
    | `HEADLAMP_OIDC_CLIENT_ID` / `HEADLAMP_OIDC_CLIENT_SECRET` | Google OAuth client for Headlamp login (see [Headlamp](#headlamp-cluster-management-ui)) |
    | `HEADLAMP_ADMIN_EMAILS` | comma-separated Google account emails granted cluster-admin via Headlamp **and** IAP access to Jenkins/Headlamp - **your own email, never committed to the repo** (see [Headlamp](#headlamp-cluster-management-ui) and [Public access](#public-access-gke-gateway-api--iap)) |
+   | `JENKINS_OIDC_CLIENT_ID` / `JENKINS_OIDC_CLIENT_SECRET` | Google OAuth client for Jenkins "Sign in with Google" (see [Google login](#google-login-openid-connect)) |
+   | `JENKINS_OIDC_ADMIN_EMAIL` | Google account email granted the Jenkins `admin` role via OIDC login - **your own email, never committed to the repo** (see [Google login](#google-login-openid-connect)) |
    | `IAP_OAUTH_CLIENT_ID` / `IAP_OAUTH_CLIENT_SECRET` | OAuth client gating Jenkins/Headlamp via Identity-Aware Proxy (see [Public access](#public-access-gke-gateway-api--iap)) |
 
    `gateway.baseDomain` (default `jenkins2026.nubenetes.com`) is **not** a

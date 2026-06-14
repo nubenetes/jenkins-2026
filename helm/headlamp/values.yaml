@@ -4,29 +4,25 @@
 # Chart origin: https://github.com/kubernetes-sigs/headlamp (charts/headlamp),
 # published at https://kubernetes-sigs.github.io/headlamp/ as
 # headlamp/headlamp. config/config.yaml headlamp.chart.version is "" (always
-# installs latest) - chart/appVersion 0.42.0 as of 2026-06-13. Default
-# values.yaml for comparison:
-# https://github.com/kubernetes-sigs/headlamp/blob/main/charts/headlamp/values.yaml
+# installs latest) - chart/appVersion 0.42.0 as of 2026-06-13.
 #
-# Only the values below differ from that chart default - everything else
-# (clusterRoleBinding, serviceAccount, etc., see below) is left unset.
-#
-# OIDC client ID/secret + issuer/scopes/callback are supplied via the
-# "headlamp-credentials" Secret (created by scripts/01-namespaces.sh) and
-# injected as envFrom, since its keys already match the OIDC_* env vars the
-# chart looks for - see config.oidc.externalSecret below. Never put real
-# client ID/secret values in this file.
-#
-# clusterRoleBinding (chart default: create=true, clusterRoleName=cluster-admin)
-# and serviceAccount (chart default: create=true) are left at their defaults -
-# this is the ServiceAccount-token login fallback documented in README.md
-# "Headlamp" if the experimental OIDC access-token passthrough to the GKE API
-# (config.oidc.useAccessToken, set via OIDC_USE_ACCESS_TOKEN in the secret)
-# doesn't work.
-config:
-  oidc:
-    secret:
-      create: false
-    externalSecret:
-      enabled: true
-      name: headlamp-credentials
+# This overlay is intentionally empty: Headlamp's own in-app "Sign in with
+# Google" (config.oidc, for K8s API auth to the "main" in-cluster context) is
+# NOT used - see README.md "Headlamp" for why and what's used instead
+# (the chart's default ServiceAccount + cluster-admin ClusterRoleBinding for
+# "main", with Google-identity access control enforced one layer up by IAP at
+# the Gateway). config.oidc was tried (chart 0.42.0 does fix
+# kubernetes-sigs/headlamp#3954/PR#4122, the externalSecret + useAccessToken
+# Helm templating bug) but hits a second, deeper backend bug: with
+# useAccessToken: true, the /oidc-callback handler calls
+# oauthConfig.Verifier.Verify() - a JWT/OIDC-ID-token verifier - on Google's
+# OAuth2 access_token, which is an opaque "ya29." bearer token, not a
+# verifiable OIDC ID token. This fails immediately with "Failed to verify ID
+# Token: oidc: failed to unmarshal claims: invalid character 'k' looking for
+# beginning of value", before the access token is ever sent to the K8s API.
+# This matches kubernetes-sigs/headlamp#2643 ("OIDC with GKE... only
+# ServiceAccount token works") and upstream's own recent move toward an
+# `unsafe-use-service-account-token` flag for in-cluster deployments - i.e.
+# per-user OIDC tokens forwarded to a managed GKE control plane is not a
+# supported path today.
+config: {}

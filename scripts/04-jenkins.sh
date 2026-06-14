@@ -20,6 +20,7 @@ cat >"${RUNTIME_VALUES}" <<EOF
 # controller.containerEnv from helm/jenkins/values-common.yaml with values
 # resolved from this repo's config.
 controller:
+  jenkinsUrl: "${J2026_JENKINS_URL}"
   containerEnv:
     - name: JENKINS_ADMIN_ID
       value: "${J2026_JENKINS_ADMIN_USER}"
@@ -93,6 +94,24 @@ controller:
           name: ${J2026_JENKINS_CREDENTIALS_SECRET}
           key: git-token
           optional: true
+    - name: JENKINS_OIDC_CLIENT_ID
+      valueFrom:
+        secretKeyRef:
+          name: ${J2026_JENKINS_CREDENTIALS_SECRET}
+          key: oidc-client-id
+          optional: true
+    - name: JENKINS_OIDC_CLIENT_SECRET
+      valueFrom:
+        secretKeyRef:
+          name: ${J2026_JENKINS_CREDENTIALS_SECRET}
+          key: oidc-client-secret
+          optional: true
+    - name: JENKINS_OIDC_ADMIN_EMAIL
+      valueFrom:
+        secretKeyRef:
+          name: ${J2026_JENKINS_CREDENTIALS_SECRET}
+          key: oidc-admin-email
+          optional: true
 EOF
 
 helm_args=(
@@ -105,7 +124,7 @@ helm_args=(
   --set-file "controller.JCasC.configScripts.base=${J2026_ROOT_DIR}/jenkins/casc/jcasc-base.yaml"
   --set-file "controller.JCasC.configScripts.otel=${J2026_ROOT_DIR}/jenkins/casc/jcasc-otel.yaml"
   --set-file "controller.JCasC.configScripts.seed-job=${J2026_ROOT_DIR}/jenkins/casc/jcasc-seed-job.yaml"
-  --wait --timeout 10m
+  --wait --timeout 10m --debug
 )
 
 if [[ -n "${J2026_JENKINS_CHART_VERSION}" ]]; then
