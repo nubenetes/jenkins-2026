@@ -11,18 +11,51 @@
 # Only the values below differ from that chart default - everything else
 # (clusterRoleBinding, serviceAccount, etc., see below) is left unset.
 #
-# OIDC client ID/secret + issuer/scopes/callback are supplied via the
-# "headlamp-credentials" Secret (created by scripts/01-namespaces.sh) and
-# injected as envFrom, since its keys already match the OIDC_* env vars the
-# chart looks for - see config.oidc.externalSecret below. Never put real
-# client ID/secret values in this file.
+# config.oidc.externalSecret.enabled: true, plus config.oidc.useAccessToken:
+# true below, are what make Headlamp's "Sign in with Google" actually work
+# against the GKE API server - see README.md "Headlamp".
+#
+# Configuring an OIDC client for the chart's "main" in-cluster context makes
+# kubeconfig.Context.AuthType() return "oidc" for "main", so the frontend
+# requires its own "Sign in with Google" for the cluster. By default,
+# headlamp caches the Google ID token (a JWT) from /oidc-callback and sends
+# THAT as the K8s API bearer token - GKE rejects arbitrary OIDC ID tokens, so
+# login loops forever (observed with externalSecret.enabled: true and no
+# useAccessToken setting). The fix is config.oidc.useAccessToken: true, which
+# makes headlamp cache and send the Google OAuth2 *access token* instead -
+# the same kind of credential `gcloud container clusters get-credentials`
+# produces, which GKE's API server natively authenticates via Google IAM and
+# maps to the user's email.
+#
+# Prior to headlamp chart 0.38.0 (PR kubernetes-sigs/headlamp#4122,
+# https://github.com/kubernetes-sigs/headlamp/issues/3954),
+# -oidc-use-access-token=$(OIDC_USE_ACCESS_TOKEN) was only emitted when
+# externalSecret was DISABLED, making useAccessToken impossible to combine
+# with an externalSecret. Chart 0.42.0 (current) includes that fix.
+#
+# For the resulting Google access token to be both ACCEPTED and AUTHORIZED
+# by the GKE API server for each admin email in
+# headlamp.adminEmails/J2026_HEADLAMP_ADMIN_EMAILS:
+#  - GCP IAM roles/container.clusterViewer (terraform/gke/main.tf
+#    google_project_iam_member.headlamp_admins) lets GKE accept the token at
+#    all for that identity.
+#  - K8s RBAC ClusterRoleBinding headlamp-admin-<email> (cluster-admin,
+#    scripts/08-headlamp.sh) then authorizes it.
+#  - The "cloud-platform" OAuth scope (config/config.yaml
+#    headlamp.oidc.scopes) is required on the access token for GKE to
+#    recognize it as a GCP-API-intended credential.
+#
+# The headlamp-credentials Secret (scripts/01-namespaces.sh) supplies
+# OIDC_CLIENT_ID/SECRET/ISSUER_URL/SCOPES/CALLBACK_URL/USE_ACCESS_TOKEN via
+# envFrom - OIDC_USE_ACCESS_TOKEN="true" there is what the
+# $(OIDC_USE_ACCESS_TOKEN) substitution in the emitted arg resolves to;
+# config.oidc.useAccessToken: true below is what makes the chart emit that
+# arg at all.
 #
 # clusterRoleBinding (chart default: create=true, clusterRoleName=cluster-admin)
 # and serviceAccount (chart default: create=true) are left at their defaults -
-# this is the ServiceAccount-token login fallback documented in README.md
-# "Headlamp" if the experimental OIDC access-token passthrough to the GKE API
-# (config.oidc.useAccessToken, set via OIDC_USE_ACCESS_TOKEN in the secret)
-# doesn't work.
+# headlamp's own pod ServiceAccount is unused once per-user OIDC auth is
+# active for "main", but harmless to leave.
 config:
   oidc:
     secret:
@@ -30,3 +63,4 @@ config:
     externalSecret:
       enabled: true
       name: headlamp-credentials
+    useAccessToken: true
