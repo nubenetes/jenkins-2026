@@ -33,13 +33,13 @@ case "${J2026_OBS_MODE}" in
     helm upgrade --install "${J2026_OTEL_GATEWAY_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${J2026_ROOT_DIR}/observability/otel-collector/values-grafana-cloud.yaml" \
-      --wait --timeout 5m --debug
+      --wait --timeout 5m
 
     log_step "Installing ${J2026_OTEL_LOGS_RELEASE} (node log DaemonSet -> Grafana Cloud)"
     helm upgrade --install "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${J2026_ROOT_DIR}/observability/otel-collector/values-grafana-cloud-logs.yaml" \
-      --wait --timeout 5m --debug
+      --wait --timeout 5m
 
     log_step "Installing pdc-agent (Private Data Source Connect)"
     GRAFANA_PDC_TOKEN="$(kubectl get secret "${J2026_GRAFANA_CLOUD_SECRET}" -n "${J2026_OBS_NAMESPACE}" -o jsonpath='{.data.GRAFANA_PDC_TOKEN}' | base64 -d)"
@@ -52,7 +52,7 @@ case "${J2026_OBS_MODE}" in
         --set cluster="${GRAFANA_PDC_CLUSTER}" \
         --set hostedGrafanaId="${GRAFANA_STACK_ID}" \
         --set insecureTokenValue="${GRAFANA_PDC_TOKEN}" \
-        --wait --timeout 5m
+        --timeout 5m
     else
       log_warn "GRAFANA_PDC_TOKEN not set - skipping pdc-agent installation."
     fi
@@ -75,31 +75,31 @@ case "${J2026_OBS_MODE}" in
       --create-namespace \
       -f "${J2026_ROOT_DIR}/observability/grafana/values-oss.yaml" \
       --set "grafana.additionalDataSources[3].secureJsonData.apiToken=${JENKINS_ADMIN_PASSWORD}" \
-      --wait --timeout 15m --debug
+      --wait --timeout 15m
 
     log_step "Installing Loki"
     helm upgrade --install loki "${J2026_GRAFANA_CHART_REPO_NAME}/loki" \
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${J2026_ROOT_DIR}/observability/grafana/values-oss-loki.yaml" \
-      --wait --timeout 5m --debug
+      --timeout 5m
 
     log_step "Installing Tempo"
     helm upgrade --install tempo "${J2026_GRAFANA_CHART_REPO_NAME}/tempo" \
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${J2026_ROOT_DIR}/observability/grafana/values-oss-tempo.yaml" \
-      --wait --timeout 5m --debug
+      --timeout 5m
 
     log_step "Installing ${J2026_OTEL_GATEWAY_RELEASE} (OTLP gateway -> Tempo/Prometheus/Loki)"
     helm upgrade --install "${J2026_OTEL_GATEWAY_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${J2026_ROOT_DIR}/observability/otel-collector/values-oss.yaml" \
-      --wait --timeout 5m --debug
+      --wait --timeout 5m
 
     log_step "Installing ${J2026_OTEL_LOGS_RELEASE} (node log DaemonSet -> Loki)"
     helm upgrade --install "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${J2026_ROOT_DIR}/observability/otel-collector/values-oss-logs.yaml" \
-      --wait --timeout 5m --debug
+      --wait --timeout 5m
     ;;
 
   managed)
