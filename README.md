@@ -306,39 +306,50 @@ in [`docs/observability.md`](docs/observability.md).
 [`scripts/08-headlamp.sh`](scripts/08-headlamp.sh) into the `headlamp`
 namespace using [`helm/headlamp/values.yaml`](helm/headlamp/values.yaml).
 
-**Access model**: sign in with your Google account - Google OIDC gates the
-UI (only emails in `HEADLAMP_ADMIN_EMAILS` can sign in, see below).
-`OIDC_USE_ACCESS_TOKEN=true` (`scripts/01-namespaces.sh`,
-`helm/headlamp/values.yaml` `config.oidc.useAccessToken`) makes Headlamp
-forward your Google OAuth **access token** (scoped
-`https://www.googleapis.com/auth/cloud-platform`) to the GKE API server - the
-same shape of credential `gcloud`-based kubeconfigs use. GKE validates that
-token via Google IAM and maps it to K8s RBAC `kind: User` (the account's
-email as subject), authorized per-email via the `cluster-admin`
-`ClusterRoleBinding` `scripts/08-headlamp.sh` creates for each
-`HEADLAMP_ADMIN_EMAILS` entry (plus `roles/container.clusterViewer` in GCP
-IAM, `terraform/gke` `google_project_iam_member.headlamp_admins`). So each
-signed-in user gets cluster-admin via *their own* Google identity, not a
-shared ServiceAccount.
-
-This relies on a fix in headlamp chart >=0.38.0
-([kubernetes-sigs/headlamp#3954](https://github.com/kubernetes-sigs/headlamp/issues/3954)):
-older chart versions never emit `-oidc-use-access-token` when
-`config.oidc.externalSecret.enabled: true` (our setup), so Headlamp falls
-back to sending the OIDC **ID token** as the bearer token instead - GKE
-rejects that, and the Google sign-in screen loops forever. If you ever hit
-that loop again, check `helm -n headlamp get values headlamp` /
-`helm search repo headlamp/headlamp --versions` for a chart regression, and
-the chart-default **ServiceAccount-token login** remains available as a
-fallback: `kubectl create token headlamp -n headlamp`.
-
-By default, access is via `kubectl port-forward` (below). If
+**Access model**: Headlamp's "main" cluster context uses the chart's default
+**ServiceAccount** (cluster-admin via the chart's default `ClusterRoleBinding`,
+`clusterRoleName: cluster-admin`) - `helm/headlamp/values.yaml` is
+intentionally empty, no in-app OIDC is configured. Google-identity access
+control happens one layer up: if
 [gateway.baseDomain](#public-access-gke-gateway-api--iap) is configured,
-Headlamp is also reachable at `https://headlamp.<baseDomain>`, gated by both
-Identity-Aware Proxy and its own Google sign-in - see [Public access (GKE
-Gateway API + IAP)](#public-access-gke-gateway-api--iap).
+`https://headlamp.<baseDomain>` is gated by
+[Identity-Aware Proxy](https://cloud.google.com/iap) - only the Google
+accounts in `HEADLAMP_ADMIN_EMAILS` (granted `roles/iap.httpsResourceAccessor`
+by `terraform/gke` `google_project_iam_member.iap_accessors`) can reach the UI
+at all, and everyone who gets through has full cluster-admin via Headlamp's
+ServiceAccount. By default (no `gateway.baseDomain`), access is via `kubectl
+port-forward` (below) with no Google sign-in or IAP gate.
 
-### One-time setup: Google OAuth client
+**Why not per-user Google OIDC -> GKE API auth?** This was attempted
+(`config.oidc.externalSecret` + `config.oidc.useAccessToken: true`, each
+signed-in user's Google identity mapped to K8s RBAC via a `cluster-admin`
+`ClusterRoleBinding` per `HEADLAMP_ADMIN_EMAILS` entry +
+`roles/container.clusterViewer` in GCP IAM). Headlamp chart >=0.38.0
+([kubernetes-sigs/headlamp#3954](https://github.com/kubernetes-sigs/headlamp/issues/3954)/PR#4122)
+does fix the Helm templating bug that previously dropped
+`-oidc-use-access-token` when `externalSecret.enabled: true`, but a deeper
+backend bug remains: with `useAccessToken: true`, the `/oidc-callback` handler
+runs Google's OAuth2 **access token** (an opaque `ya29.` bearer token, not a
+JWT) through an OIDC ID-token verifier, which fails immediately with
+`Failed to verify ID Token: oidc: failed to unmarshal claims: invalid
+character 'k' looking for beginning of value` - the sign-in never completes.
+This matches [kubernetes-sigs/headlamp#2643](https://github.com/kubernetes-sigs/headlamp/issues/2643)
+("OIDC with GKE... only ServiceAccount token works") and upstream's own
+recent move toward an `unsafe-use-service-account-token` flag for in-cluster
+deployments - per-user OIDC tokens forwarded to a managed GKE control plane
+isn't a supported path today. If upstream fixes this, `headlamp-credentials`
+(`HEADLAMP_OIDC_CLIENT_ID`/`HEADLAMP_OIDC_CLIENT_SECRET`, still created by
+`scripts/01-namespaces.sh`) and the per-email `ClusterRoleBinding`s
+(`scripts/08-headlamp.sh`) are ready to wire back up via
+`helm/headlamp/values.yaml`.
+
+### One-time setup: Google OAuth client (currently unused)
+
+> Not required for the IAP-gated access model above - IAP uses its own OAuth
+> client (`gateway-iap-oauth`, see [Public access (GKE Gateway API +
+> IAP)](#public-access-gke-gateway-api--iap)). This client is only consumed
+> by Headlamp's in-app OIDC, which doesn't work against GKE today (see
+> above) - kept here in case upstream fixes it.
 
 Create a Google OAuth 2.0 **Web application** client (any GCP project will
 do - it doesn't need to be the same project as the GKE cluster):
@@ -366,22 +377,22 @@ multiple people) and consumed as a placeholder
 (`J2026_HEADLAMP_ADMIN_EMAILS`/`JENKINS2026_HEADLAMP_ADMIN_EMAILS`) by
 [`scripts/lib/config.sh`](scripts/lib/config.sh),
 [`terraform/gke`](terraform/gke) (`TF_VAR_admin_emails`) and
-[`scripts/08-headlamp.sh`](scripts/08-headlamp.sh). To grant cluster-admin
-access via Headlamp to yourself or anyone else:
+[`scripts/08-headlamp.sh`](scripts/08-headlamp.sh). This is the list IAP lets
+through to `https://headlamp.<baseDomain>` (and `https://jenkins.<baseDomain>`
+- see [Public access](#public-access-gke-gateway-api--iap)). To grant access
+to yourself or anyone else:
 
 ```bash
 # comma-separated, no spaces needed (leading/trailing whitespace is trimmed)
 gh secret set HEADLAMP_ADMIN_EMAILS --body "you@gmail.com,colleague@gmail.com"
-gh secret set HEADLAMP_OIDC_CLIENT_ID     --body "<client ID from above>"
-gh secret set HEADLAMP_OIDC_CLIENT_SECRET --body "<client secret from above>"
 ```
 
-then (re-)run **02.01 GKE provision** (adds the GCP IAM binding via
-`terraform/gke` and the `ClusterRoleBinding`s via `scripts/08-headlamp.sh`).
-Locally (`test/e2e.sh` / `scripts/up.sh`), export the same three as
-`HEADLAMP_OIDC_CLIENT_ID`, `HEADLAMP_OIDC_CLIENT_SECRET` and
-`JENKINS2026_HEADLAMP_ADMIN_EMAILS` instead - never commit them to
-`config/config.yaml`.
+then (re-)run **02.01 GKE provision** (adds the `roles/iap.httpsResourceAccessor`
+IAM binding via `terraform/gke`). Locally (`test/e2e.sh` / `scripts/up.sh`),
+export the same as `JENKINS2026_HEADLAMP_ADMIN_EMAILS` instead - never commit
+it to `config/config.yaml`. `HEADLAMP_OIDC_CLIENT_ID`/`HEADLAMP_OIDC_CLIENT_SECRET`
+(from the previous section) are only needed if/when the in-app OIDC above
+becomes usable.
 
 ### Accessing the UI
 
@@ -389,7 +400,12 @@ Locally (`test/e2e.sh` / `scripts/up.sh`), export the same three as
 kubectl -n headlamp port-forward svc/headlamp 8080:80
 ```
 
-Open <http://localhost:8080> and click **Sign in with Google**.
+Open <http://localhost:8080> and sign in with a ServiceAccount token (the
+chart's default `ClusterRoleBinding` grants it cluster-admin):
+
+```bash
+kubectl create token headlamp -n headlamp
+```
 
 ## Public access (GKE Gateway API + IAP)
 
