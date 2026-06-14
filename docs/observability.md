@@ -87,14 +87,7 @@ matching timestamps, the same dashboards).
    every log line via the Logback/Log4j2 MDC bridge.
 3. **Logs -> Traces**: the Loki datasource's `derivedFields` match `trace_id=(\w+)` in log lines and link straight to that trace in Tempo.
    - **OSS**: Pre-configured in [`observability/grafana/values-oss.yaml`](../observability/grafana/values-oss.yaml).
-   - **Grafana Cloud**: You must manually configure the **Loki derived field** in the Grafana Cloud UI:
-     1. Go to **Connections** > **Data sources**.
-     2. Find your Loki datasource (typically named **`grafanacloud-<stack-slug>-logs`**).
-     3. Scroll to **Derived fields** and add one:
-        - **Name**: `trace_id`
-        - **Regex**: `trace_id=(\w+)`
-        - **Query**: `${__value.raw}`
-        - **Internal link**: Enabled, pointing to your Tempo datasource (typically **`grafanacloud-<stack-slug>-traces`**).
+   - **Grafana Cloud**: Log-to-trace links are **pre-configured by default**. Your Loki datasource (**`grafanacloud-<stack-slug>-logs`**) already contains derived fields that match `trace_id=...` and link them to Tempo. Because these datasources are system-managed, they appear as "Read Only" in the UI and do not require manual intervention.
 4. **Other Cloud Datasources**: Your stack may also include system-managed sources like:
    - **`grafanacloud-<stack-slug>-alert-state-history`**: Historical alert transitions.
    - **`grafanacloud-<stack-slug>-usage-insights`**: Billing and series volume details.
