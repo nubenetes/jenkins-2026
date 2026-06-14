@@ -183,6 +183,17 @@ jobs:
         env:
           JENKINS2026_OBS_MODE: ${{ inputs.observability_mode }}
           JENKINS2026_HEADLAMP_ADMIN_EMAILS: ${{ secrets.HEADLAMP_ADMIN_EMAILS }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+          GIT_USERNAME: ${{ secrets.GIT_USERNAME }}
+          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
+          HEADLAMP_OIDC_CLIENT_ID: ${{ secrets.HEADLAMP_OIDC_CLIENT_ID }}
+          HEADLAMP_OIDC_CLIENT_SECRET: ${{ secrets.HEADLAMP_OIDC_CLIENT_SECRET }}
+          JENKINS_OIDC_CLIENT_ID: ${{ secrets.JENKINS_OIDC_CLIENT_ID }}
+          JENKINS_OIDC_CLIENT_SECRET: ${{ secrets.JENKINS_OIDC_CLIENT_SECRET }}
+          JENKINS_OIDC_ADMIN_EMAIL: ${{ secrets.JENKINS_OIDC_ADMIN_EMAIL }}
+          IAP_OAUTH_CLIENT_ID: ${{ secrets.IAP_OAUTH_CLIENT_ID }}
+          IAP_OAUTH_CLIENT_SECRET: ${{ secrets.IAP_OAUTH_CLIENT_SECRET }}
         run: |
           if [[ "${{ inputs.enable_gateway }}" != "true" ]]; then
             # gateway.baseDomain's committed default (jenkins2026.nubenetes.com)
