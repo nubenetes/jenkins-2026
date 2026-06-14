@@ -185,7 +185,6 @@
   "templating": {
     "list": [
       {
-        "current": { "text": "grafanacloud-prom", "value": "grafanacloud-prom" },
         "hide": 0,
         "includeAll": false,
         "label": "Prometheus / Mimir",
@@ -200,7 +199,6 @@
         "type": "datasource"
       },
       {
-        "current": { "text": "grafanacloud-logs", "value": "grafanacloud-logs" },
         "hide": 0,
         "includeAll": false,
         "label": "Loki",
@@ -215,7 +213,6 @@
         "type": "datasource"
       },
       {
-        "current": { "text": "grafanacloud-traces", "value": "grafanacloud-traces" },
         "hide": 0,
         "includeAll": false,
         "label": "Tempo",
@@ -228,7 +225,8 @@
         "regex": "",
         "skipUrlSync": false,
         "type": "datasource"
-      },
+      }
+,
       {
         "current": { "text": "stable", "value": "stable" },
         "hide": 0,
