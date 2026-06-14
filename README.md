@@ -307,29 +307,30 @@ in [`docs/observability.md`](docs/observability.md).
 namespace using [`helm/headlamp/values.yaml`](helm/headlamp/values.yaml).
 
 **Access model**: sign in with your Google account - Google OIDC gates the
-UI (only emails in `HEADLAMP_ADMIN_EMAILS` can sign in, see below). By
-default `OIDC_USE_ACCESS_TOKEN=false` (`scripts/01-namespaces.sh`), so
-Headlamp talks to the GKE API server with its own `headlamp` ServiceAccount,
-which has `cluster-admin` (`clusterRoleBinding.create: true` /
-`clusterRoleName: cluster-admin`, chart defaults, not overridden) - every
-signed-in user gets full cluster access via that ServiceAccount.
+UI (only emails in `HEADLAMP_ADMIN_EMAILS` can sign in, see below).
+`OIDC_USE_ACCESS_TOKEN=true` (`scripts/01-namespaces.sh`,
+`helm/headlamp/values.yaml` `config.oidc.useAccessToken`) makes Headlamp
+forward your Google OAuth **access token** (scoped
+`https://www.googleapis.com/auth/cloud-platform`) to the GKE API server - the
+same shape of credential `gcloud`-based kubeconfigs use. GKE validates that
+token via Google IAM and maps it to K8s RBAC `kind: User` (the account's
+email as subject), authorized per-email via the `cluster-admin`
+`ClusterRoleBinding` `scripts/08-headlamp.sh` creates for each
+`HEADLAMP_ADMIN_EMAILS` entry (plus `roles/container.clusterViewer` in GCP
+IAM, `terraform/gke` `google_project_iam_member.headlamp_admins`). So each
+signed-in user gets cluster-admin via *their own* Google identity, not a
+shared ServiceAccount.
 
-> **Experimental alternative**: setting `OIDC_USE_ACCESS_TOKEN=true` makes
-> Headlamp instead forward your Google OAuth **access token** (scoped
-> `https://www.googleapis.com/auth/cloud-platform`) to the GKE API server -
-> the same shape of credential `gcloud`-based kubeconfigs use - and GKE maps
-> that identity to K8s RBAC `kind: User` (the account's email as subject),
-> authorized per-email via the `cluster-admin` `ClusterRoleBinding`
-> `scripts/08-headlamp.sh` creates for each `HEADLAMP_ADMIN_EMAILS` entry
-> (plus `roles/container.clusterViewer` in GCP IAM, `terraform/gke`
-> `google_project_iam_member.headlamp_admins`). As of 2026-06-14 this fails
-> against GKE - the backend logs `couldn't add custom cert to context` /
-> `failed to refresh token` and the Google sign-in screen loops - so it's
-> left off by default. If you want to retry it, set
-> `OIDC_USE_ACCESS_TOKEN="true"` in `scripts/01-namespaces.sh`'s
-> `headlamp-credentials` Secret creation and redeploy. The chart-default
-> **ServiceAccount-token login** also remains available as a fallback:
-> `kubectl create token headlamp -n headlamp`.
+This relies on a fix in headlamp chart >=0.38.0
+([kubernetes-sigs/headlamp#3954](https://github.com/kubernetes-sigs/headlamp/issues/3954)):
+older chart versions never emit `-oidc-use-access-token` when
+`config.oidc.externalSecret.enabled: true` (our setup), so Headlamp falls
+back to sending the OIDC **ID token** as the bearer token instead - GKE
+rejects that, and the Google sign-in screen loops forever. If you ever hit
+that loop again, check `helm -n headlamp get values headlamp` /
+`helm search repo headlamp/headlamp --versions` for a chart regression, and
+the chart-default **ServiceAccount-token login** remains available as a
+fallback: `kubectl create token headlamp -n headlamp`.
 
 By default, access is via `kubectl port-forward` (below). If
 [gateway.baseDomain](#public-access-gke-gateway-api--iap) is configured,
@@ -634,6 +635,7 @@ lifecycle:
 | 01.02 | [Gateway bootstrap](.github/workflows/01.02-gateway-bootstrap.yml) | One-time bootstrap | Creates/confirms the persistent static IP + managed wildcard cert + DNS authorization (`terraform/gateway-bootstrap`) that [public access](#public-access-gke-gateway-api--iap) depends on. |
 | 02.01 | [GKE provision](.github/workflows/02.01-gke-provision.yml) | GKE lifecycle | Provisions the throwaway GKE cluster (`terraform/gke`) and deploys the full stack (`scripts/up.sh`) + smoke test. Pair with 02.99. |
 | 02.02 | [Redeploy Jenkins](.github/workflows/02.02-redeploy-jenkins.yml) | GKE lifecycle | Re-applies only `scripts/04-jenkins.sh` (Helm upgrade of `helm/jenkins/` + `jenkins/casc/` JCasC) and re-seeds the PetClinic pipelines, against the cluster from the last 02.01 run - for a Jenkins-only fix without the full provision/decommission cycle. Run any number of times between 02.01 and 02.99. |
+| 02.03 | [Redeploy Headlamp](.github/workflows/02.03-redeploy-headlamp.yml) | GKE lifecycle | Re-applies `scripts/01-namespaces.sh` (refreshes the non-sensitive OIDC config keys on `headlamp-credentials`) and `scripts/08-headlamp.sh` (Helm upgrade of `helm/headlamp/`), against the cluster from the last 02.01 run - for a Headlamp-only fix without the full provision/decommission cycle. Run any number of times between 02.01 and 02.99. |
 | 02.99 | [GKE decommission](.github/workflows/02.99-gke-decommission.yml) | GKE lifecycle | Tears down the stack (`scripts/down.sh`) and destroys the GKE cluster (`terraform destroy`). |
 
 See [GitHub Actions automation](#github-actions-automation) below for the

@@ -56,8 +56,19 @@ fi
 
 log_step "Ensuring '${J2026_HEADLAMP_CREDENTIALS_SECRET}' Secret in ${J2026_HEADLAMP_NAMESPACE}"
 if kubectl get secret "${J2026_HEADLAMP_CREDENTIALS_SECRET}" -n "${J2026_HEADLAMP_NAMESPACE}" >/dev/null 2>&1; then
-  log_info "Secret already exists - leaving it untouched."
+  log_info "Secret already exists - leaving OIDC_CLIENT_ID/OIDC_CLIENT_SECRET untouched."
   log_info "(to rotate the OIDC client secret, delete the secret and re-run this script)"
+  log_info "Refreshing non-sensitive OIDC config keys (issuer/scopes/callback/useAccessToken)."
+  kubectl patch secret "${J2026_HEADLAMP_CREDENTIALS_SECRET}" -n "${J2026_HEADLAMP_NAMESPACE}" \
+    --type=merge -p "$(cat <<EOF
+{"stringData":{
+  "OIDC_ISSUER_URL":"${J2026_HEADLAMP_OIDC_ISSUER_URL}",
+  "OIDC_SCOPES":"${J2026_HEADLAMP_OIDC_SCOPES}",
+  "OIDC_CALLBACK_URL":"${J2026_HEADLAMP_OIDC_CALLBACK_URL}",
+  "OIDC_USE_ACCESS_TOKEN":"true"
+}}
+EOF
+)"
 else
   if [[ -z "${HEADLAMP_OIDC_CLIENT_ID:-}" || -z "${HEADLAMP_OIDC_CLIENT_SECRET:-}" ]]; then
     log_warn "HEADLAMP_OIDC_CLIENT_ID/HEADLAMP_OIDC_CLIENT_SECRET not set - Headlamp will"

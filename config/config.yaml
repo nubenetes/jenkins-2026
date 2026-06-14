@@ -128,11 +128,11 @@ headlamp:
   credentialsSecretName: headlamp-credentials
   oidc:
     issuerURL: https://accounts.google.com
-    # cloud-platform scope is only needed for the experimental
-    # OIDC_USE_ACCESS_TOKEN=true mode (scripts/01-namespaces.sh), where
-    # Headlamp's OIDC access token is forwarded to the GKE API server the same
-    # way `gcloud`-issued tokens are. Harmless to request by default even when
-    # that mode is off (the default) - see README.md "Headlamp".
+    # cloud-platform scope is required for OIDC_USE_ACCESS_TOKEN=true
+    # (scripts/01-namespaces.sh, helm/headlamp/values.yaml
+    # config.oidc.useAccessToken), where Headlamp's Google OAuth access token
+    # is forwarded to the GKE API server the same way `gcloud`-issued tokens
+    # are - see README.md "Headlamp".
     scopes: "openid email profile https://www.googleapis.com/auth/cloud-platform"
     # The redirect URI registered on the Google OAuth client is computed by
     # scripts/lib/config.sh: https://headlamp.<gateway.baseDomain>/oidc-callback
