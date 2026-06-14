@@ -94,6 +94,11 @@ partial failure is safe. Each step also runs standalone:
 > away; trigger individual builds from the Jenkins UI (`listView` **petclinic**).
 > Jobs are not auto-triggered (no SCM-poll) - see `petclinic.genaiServiceEnabled`
 > below for why `genai-service`/`pac-dev/genai-service-develop` start out disabled.
+> The same seed run also creates `petclinic-k6-smoke` (and
+> `pac-dev/petclinic-k6-smoke-develop`) - run it after the 9 services have
+> deployed at least once to send a small amount of traffic through the whole
+> app and give Grafana fresh traces/metrics/logs to correlate (see
+> [`docs/observability.md`](docs/observability.md#k6-observability-smoke-test)).
 
 ## Configuration ([`config/config.yaml`](config/config.yaml))
 
@@ -285,8 +290,8 @@ distinct tracks of pipelines:
 ```mermaid
 graph TD
     subgraph "Jenkins Controller"
-        SJ[seed-jobs] --> |tracks main| SP[9x Stable Pipelines]
-        SJD[pac-dev/seed-jobs-dev] --> |tracks develop| DP[9x Develop Pipelines]
+        SJ[seed-jobs] --> |tracks main| SP[9x Stable Pipelines + k6 smoke]
+        SJD[pac-dev/seed-jobs-dev] --> |tracks develop| DP[9x Develop Pipelines + k6 smoke]
     end
 
     subgraph "Cluster Namespaces"

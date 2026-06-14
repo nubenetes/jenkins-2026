@@ -2,9 +2,10 @@
 
 Everything Jenkins-side is defined in this repository - security, the global
 shared library, the OpenTelemetry exporter, and the PetClinic pipelines (9
-stable jobs at the root + 9 `pac-dev/*-develop` dev-sandbox jobs) - and
-applied via **Configuration as Code (JCasC)** + the **Job DSL** plugin.
-Nothing is configured by hand in the Jenkins UI.
+stable jobs + `petclinic-k6-smoke` at the root + 9 `pac-dev/*-develop`
+dev-sandbox jobs + `pac-dev/petclinic-k6-smoke-develop`) - and applied via
+**Configuration as Code (JCasC)** + the **Job DSL** plugin. Nothing is
+configured by hand in the Jenkins UI.
 
 ## JCasC fragments ([`jenkins/casc/`](../jenkins/casc/))
 
@@ -19,7 +20,12 @@ with three JCasC fragments passed via `--set-file`:
 
 ## Global shared library ([`vars/`](../vars/), [`resources/`](../resources/))
 
-Four steps used by every pipeline: `petclinicBuild`, `petclinicImage`, `petclinicDeploy`, and `petclinicSmokeTest`. They handle everything from Maven/NPM builds to Helm deployments and OTel-instrumented smoke tests.
+Four steps used by every per-service pipeline: `petclinicBuild`,
+`petclinicImage`, `petclinicDeploy`, and `petclinicSmokeTest`. They handle
+everything from Maven/NPM builds to Helm deployments and OTel-instrumented
+smoke tests. A fifth step, `petclinicK6Smoke`, is used only by the
+`petclinic-k6-smoke` / `pac-dev/petclinic-k6-smoke-develop` jobs - see
+[k6 observability smoke test](observability.md#k6-observability-smoke-test).
 
 ## The seed job ([`jenkins/pipelines/seed/`](../jenkins/pipelines/seed/))
 
@@ -58,6 +64,16 @@ definitions are therefore kept entirely in `seed_jobs.groovy`.
 4. **Build & Push Image** (`petclinicImage`).
 5. **Deploy to Kubernetes** (`petclinicDeploy`).
 6. **Smoke Test** (`petclinicSmokeTest`).
+
+## k6 observability smoke test (`petclinic-k6-smoke`)
+
+`seed_jobs.groovy` also generates one extra job per flavour - not from
+`services.yaml`, since it isn't a per-service build/deploy pipeline:
+`petclinic-k6-smoke` (root, namespace `petclinic`) and
+`pac-dev/petclinic-k6-smoke-develop` (namespace `petclinic-develop`), both
+running [`Jenkinsfile.petclinic-k6-smoke`](../jenkins/pipelines/Jenkinsfile.petclinic-k6-smoke).
+See [`docs/observability.md`](observability.md#k6-observability-smoke-test)
+for what it does and why.
 
 ## Pipelines-as-code dev sandbox (`pac-dev/`)
 

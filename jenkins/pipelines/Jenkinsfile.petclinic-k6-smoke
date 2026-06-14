@@ -1,0 +1,93 @@
+// =============================================================================
+// PetClinic Grafana observability smoke test (k6).
+//
+// Sends a small amount of synthetic traffic (a few VUs/iterations - NOT a
+// load/stress test, see jenkins/pipelines/k6/petclinic-smoke.js) through every
+// PetClinic Service in TARGET_NAMESPACE, the namespace the stable/-develop
+// PetClinic pipelines deploy to. Each simulated user session carries a W3C
+// traceparent header so the OTel Java auto-instrumentation
+// (helm/petclinic/templates/instrumentation.yaml) continues the same trace
+// across every service it calls, and k6's own request metrics are exported to
+// the same otel-collector-gateway - giving Grafana Cloud a single, fresh
+// trace/metric/log correlation example across the whole app.
+//
+// ONE Jenkinsfile is shared by the 2 jobs created by
+// jenkins/pipelines/seed/seed_jobs.groovy (root "petclinic-k6-smoke" and
+// "pac-dev/petclinic-k6-smoke-develop") - they only differ in their default
+// parameter values (TARGET_NAMESPACE, ENV_NAME), same as the per-service
+// pipelines in jenkins/pipelines/Jenkinsfile.petclinic.
+//
+// Every stage is automatically turned into an OpenTelemetry span by the
+// `opentelemetry` plugin (jenkins/casc/jcasc-otel.yaml) and exported to the
+// otel-collector-gateway -> Grafana, alongside k6's and PetClinic's own
+// telemetry from this run.
+// =============================================================================
+
+@Library('petclinic-shared-library') _
+
+pipeline {
+  agent {
+    kubernetes {
+      yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  serviceAccountName: jenkins
+  containers:
+    - name: k6
+      image: grafana/k6:2.0.0
+      command: ['sleep']
+      args: ['infinity']
+      # grafana/k6 defaults to uid 12345, which can't write into the shared
+      # workspace volume checked out by the jnlp container as uid 1000.
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+      resources:
+        requests: {cpu: 100m, memory: 256Mi}
+        limits: {cpu: '1', memory: 512Mi}
+"""
+    }
+  }
+
+  // NOTE: parameters are intentionally NOT declared here - see
+  // jenkins/pipelines/Jenkinsfile.petclinic for why: the per-job defaults
+  // (TARGET_NAMESPACE, ENV_NAME) come from, and only from, the seed job
+  // (jenkins/pipelines/seed/seed_jobs.groovy).
+
+  options {
+    timestamps()
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+    disableConcurrentBuilds()
+  }
+
+  environment {
+    OTEL_SERVICE_NAME = "jenkins-pipeline-petclinic-k6-smoke"
+  }
+
+  stages {
+    stage('Checkout jenkins-2026') {
+      steps {
+        checkout scm
+      }
+    }
+
+    stage('k6 observability smoke test') {
+      steps {
+        petclinicK6Smoke(
+          namespace: params.TARGET_NAMESPACE,
+          envName: params.ENV_NAME,
+          genaiEnabled: params.GENAI_SERVICE_ENABLED,
+          vus: params.K6_VUS,
+          iterations: params.K6_ITERATIONS
+        )
+      }
+    }
+  }
+
+  post {
+    always {
+      archiveArtifacts artifacts: 'k6-summary.json', allowEmptyArchive: true
+    }
+  }
+}
