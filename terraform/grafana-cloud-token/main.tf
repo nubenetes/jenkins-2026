@@ -49,9 +49,9 @@ resource "grafana_cloud_stack_service_account_token" "dashboards" {
 # -----------------------------------------------------------------------------
 # Jenkins Datasource Plugin
 # -----------------------------------------------------------------------------
-resource "grafana_cloud_stack_plugin" "jenkins" {
+resource "grafana_cloud_plugin_installation" "jenkins" {
   stack_slug = var.stack_slug
-  name       = "grafana-jenkins-datasource"
+  slug       = "grafana-jenkins-datasource"
 }
 
 # -----------------------------------------------------------------------------
@@ -89,5 +89,5 @@ resource "grafana_data_source" "jenkins" {
     apiToken = var.jenkins_admin_password
   })
 
-  depends_on = [grafana_cloud_stack_plugin.jenkins]
+  depends_on = [grafana_cloud_plugin_installation.jenkins]
 }
