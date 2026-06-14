@@ -58,7 +58,7 @@ case "${J2026_OBS_MODE}" in
     fi
 
     log_step "Waiting for OTLP Gateway to be ready"
-    kubectl rollout status deployment/"${J2026_OTEL_GATEWAY_RELEASE}-opentelemetry-collector" \
+    kubectl rollout status deployment/otel-collector-gateway \
       -n "${J2026_OBS_NAMESPACE}" --timeout=5m
     ;;
 
@@ -108,7 +108,7 @@ case "${J2026_OBS_MODE}" in
     log_step "Waiting for Grafana and OTLP Gateway to be ready"
     kubectl rollout status deployment/kube-prometheus-stack-grafana \
       -n "${J2026_GRAFANA_OSS_NAMESPACE}" --timeout=15m
-    kubectl rollout status deployment/"${J2026_OTEL_GATEWAY_RELEASE}-opentelemetry-collector" \
+    kubectl rollout status deployment/otel-collector-gateway \
       -n "${J2026_OBS_NAMESPACE}" --timeout=5m
     ;;
 
