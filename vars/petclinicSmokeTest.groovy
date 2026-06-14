@@ -10,9 +10,13 @@ def call(Map cfg) {
     sh """
       set -eux
       kubectl -n ${cfg.namespace} rollout status deployment/${cfg.serviceName} --timeout=180s
+      # Service endpoints/kube-proxy/CNI can take a few seconds to catch up
+      # with a just-finished rollout, so a fresh pod's first connection can
+      # time out even though the new Pods are Ready - retry on any error.
       kubectl -n ${cfg.namespace} run smoke-${cfg.serviceName}-${env.BUILD_NUMBER} \
         --rm -i --restart=Never --image=curlimages/curl:8.10.1 \
-        --command -- curl -sf --max-time 10 \
+        --command -- curl -sf --connect-timeout 5 --max-time 60 \
+        --retry 5 --retry-delay 3 --retry-all-errors \
         http://${cfg.serviceName}.${cfg.namespace}.svc.cluster.local:${cfg.port}${cfg.healthPath}
     """
   }
