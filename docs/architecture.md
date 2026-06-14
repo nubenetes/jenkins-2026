@@ -11,10 +11,14 @@ an **existing** Kubernetes cluster (GKE, EKS, AKS or OpenShift 4.20+):
   [`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml)
   and generates 9 **stable** Jenkins Pipeline jobs at the root, one per
   PetClinic service, tracking the upstream `main` branch and deploying to the
-  `petclinic` namespace. A second seed job, `pac-dev/seed-jobs-dev`, generates
-  9 `pac-dev/<service>-develop` jobs in an isolated `pac-dev/` folder - a dev
-  sandbox for iterating on this repo's own pipelines-as-code, deploying to the
-  separate `petclinic-develop` namespace.
+  `petclinic` namespace, plus a `petclinic-k6-smoke` job that sends a small
+  amount of synthetic traffic through all 9 services afterwards to exercise
+  Grafana Cloud trace/metric/log correlation (see
+  [`docs/observability.md`](observability.md#k6-observability-smoke-test)). A
+  second seed job, `pac-dev/seed-jobs-dev`, generates the same 10 jobs
+  (`pac-dev/<service>-develop` + `pac-dev/petclinic-k6-smoke-develop`) in an
+  isolated `pac-dev/` folder - a dev sandbox for iterating on this repo's own
+  pipelines-as-code, deploying to the separate `petclinic-develop` namespace.
 - **Spring PetClinic microservices + Angular UI**, deployed by those
   pipelines into two namespaces (`petclinic` / `petclinic-develop`) via a
   single parametrized [Helm chart](../helm/petclinic).
@@ -31,7 +35,7 @@ flowchart TD
     repo["github.com/nubenetes/jenkins-2026<br/>JCasC, Jenkinsfile, shared library,<br/>Helm charts, seed/services.yaml"]
 
     subgraph jenkins_ns["namespace: jenkins"]
-        jenkins["Jenkins controller (jenkinsci/helm-charts + JCasC)<br/>- security, global shared library, OTel exporter, seed jobs<br/>- seed jobs (Job DSL) generate 18 pipeline jobs total:<br/>  9 stable name (main) at root + 9 pac-dev/name-develop (main) in pac-dev/<br/>- each run uses a Kubernetes pod agent<br/>  (maven / node / docker:dind / helm+kubectl containers)"]
+        jenkins["Jenkins controller (jenkinsci/helm-charts + JCasC)<br/>- security, global shared library, OTel exporter, seed jobs<br/>- seed jobs (Job DSL) generate 20 pipeline jobs total:<br/>  (9 stable name (main) + petclinic-k6-smoke) at root<br/>  + (9 pac-dev/name-develop (main) + pac-dev/petclinic-k6-smoke-develop) in pac-dev/<br/>- each run uses a Kubernetes pod agent<br/>  (maven / node / docker:dind / helm+kubectl / k6 containers)"]
     end
 
     repo -->|"global pipeline library +<br/>seed job (checkout scm)"| jenkins
