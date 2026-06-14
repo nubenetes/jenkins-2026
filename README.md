@@ -838,12 +838,35 @@ for redeploying only Jenkins.
       federating GitHub Actions: its API only supports static
       organization-level tokens. In the [Grafana Cloud
       portal](https://grafana.com), go to your org -> **Administration** ->
-      create access policy (realm = your
-      organization) with scopes `accesspolicies:read`,
-      `accesspolicies:write`, `accesspolicies:delete`, `stacks:read`,
-      `stacks:write`, `stacks:delete`, `stack-service-accounts:write`,
-      `stack-plugins:read`, `stack-plugins:write`, `stack-plugins:delete`,
-      then create a token for that policy.
+      create an access policy with the following configuration:
+
+      - **Name**: `jenkins-2026-bootstrap`
+      - **Realm**: Select your **Organization** (this is required to manage
+        multiple stacks or look up stack details by slug).
+      - **Scopes**: Add the following mandatory scopes:
+        - `stacks:read` / `stacks:write` / `stacks:delete`: To manage the
+          Grafana Cloud stack itself.
+        - `accesspolicies:read` / `accesspolicies:write` / `accesspolicies:delete`:
+          To mint the ephemeral OTLP ingest tokens.
+        - `stack-service-accounts:write`: To create the "Editor/Admin" service
+          account used for dashboards and datasources.
+        - `datasources:read` / `datasources:write`: To provision the Jenkins
+          datasource.
+        - `pdc:read` / `pdc:write`: To manage the Private Data Source Connect
+          network.
+        - `stack-plugins:read` / `stack-plugins:write`: To ensure the required
+          Jenkins plugin is available.
+
+      Then, create a **Token** for this policy and save it.
+
+      > **Note on Authentication**: This project uses a **dual-token
+      > architecture**. The org-level token you just created manages
+      > Cloud infrastructure. Once the stack is ready, Terraform uses it to
+      > create an **internal Service Account (Admin role)** and uses *that*
+      > SA's token to manage resources inside the Grafana instance (like
+      > the Jenkins Datasource). This separation resolves 401 Unauthorized
+      > issues that occur when using Cloud-level tokens for Instance-level
+      > APIs.
 
 
    b. **Add two repository secrets** - `GRAFANA_CLOUD_STACK_SLUG` is your
