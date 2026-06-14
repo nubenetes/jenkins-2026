@@ -41,10 +41,9 @@ case "${J2026_OBS_MODE}" in
       export PATH="${HOME}/.local/bin:${PATH}"
     fi
 
-    log_step "Configuring gcx CLI context"
-    gcx config set contexts.default.grafana.server "${GRAFANA_BASE_URL}"
-    gcx config set contexts.default.grafana.token "${GRAFANA_API_KEY}"
-    gcx config use-context default
+    log_step "Authenticating with gcx CLI"
+    # gcx login --yes performs non-interactive login, discovering the stack ID and namespace
+    gcx login --yes default --server "${GRAFANA_BASE_URL}" --token "${GRAFANA_API_KEY}"
 
     RESOURCES_DIR="${J2026_ROOT_DIR}/gcx_test"
     FOLDER_UID="jenkins-2026"
@@ -57,23 +56,29 @@ case "${J2026_OBS_MODE}" in
       uid="$(jq -r '.uid' "${dashboard}")"
       
       # Wrap dashboard JSON into a gcx-compatible resource manifest
-      # We use .uid for metadata.name and ensure folderUid is set in spec
+      # We use .uid for metadata.name and ensure folderUID is set in spec
+      # We also add the grafana.app/folder annotation which gcx uses for display
       jq -n --slurpfile db "${dashboard}" \
-        --arg folderUid "${FOLDER_UID}" \
+        --arg folderUID "${FOLDER_UID}" \
         --arg uid "${uid}" \
         '{
-          apiVersion: "dashboard.grafana.app/v1alpha1",
+          apiVersion: "dashboard.grafana.app/v1",
           kind: "Dashboard",
           metadata: {
-            name: $uid
+            name: $uid,
+            annotations: {
+              "grafana.app/folder": $folderUID
+            }
           },
-          spec: ($db[0] + {folderUid: $folderUid})
+          spec: ($db[0] + {folderUID: $folderUID})
         }' > "${RESOURCES_DIR}/dashboards/${name}.json"
     done
 
     log_step "Pushing resources via gcx resources push"
     # This will push both the folder (from gcx_test/folders) and the dashboards
-    gcx resources push -p "${RESOURCES_DIR}"
+    # We use --include-managed to ensure we can update folders/dashboards even if they were 
+    # previously managed by other tools (or gcx api calls).
+    gcx resources push -p "${RESOURCES_DIR}" --on-error abort --include-managed
     ;;
 
   oss)
