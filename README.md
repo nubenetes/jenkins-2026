@@ -84,19 +84,21 @@ partial failure is safe. Each step also runs standalone:
 > `ImagePullBackOff` until each service's Jenkins pipeline has run at least
 > once and pushed an image. `scripts/06-seed-pipelines.sh` (part of `up.sh`)
 > triggers the seed job immediately so the 18 pipelines exist right away;
-> trigger individual builds from the Jenkins UI (`listView` **petclinic**) or
-> wait for their 5-minute SCM-poll trigger.
+> trigger individual builds from the Jenkins UI (`listView` **petclinic**).
+> Jobs are not auto-triggered (no SCM-poll) - see `petclinic.genaiServiceEnabled`
+> below for why `genai-service`/`genai-service-develop` start out disabled.
 
 ## Configuration ([`config/config.yaml`](config/config.yaml))
 
 Single source of truth, loaded by every script via
 [`scripts/lib/config.sh`](scripts/lib/config.sh) (`yq` -> `J2026_*` env
-vars). Two **feature flags**:
+vars). Feature flags:
 
 | Key | Default | Override | Meaning |
 |---|---|---|---|
 | `platform.target` | `gke` | `JENKINS2026_PLATFORM` env var | `gke`\|`eks`\|`aks`\|`openshift` - selects the Helm overlay, ingress/Route strategy and storage class (see [`docs/platforms.md`](docs/platforms.md)). |
 | `observability.mode` | `grafana-cloud` | edit `config.yaml` | `grafana-cloud`\|`oss`\|`managed` - where traces/metrics/logs go (see [`docs/observability.md`](docs/observability.md)). |
+| `petclinic.genaiServiceEnabled` | `false` | `JENKINS2026_GENAI_SERVICE_ENABLED` env var | Whether the `genai-service`/`genai-service-develop`/`pac-dev/genai-service` Jenkins jobs are created enabled. `genai-service` (Spring AI) crashes on startup without a real `OPENAI_API_KEY` (`helm/petclinic/values-*.yaml` only set a startup placeholder), so seed-jobs creates these jobs `disabled` until this is `true` and a real key is configured. |
 
 Other notable sections: `jenkins.*` (chart coordinates, namespace, this
 repo's own URL/branch used by JCasC's global library + seed job),

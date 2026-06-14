@@ -212,6 +212,15 @@ petclinic:
   # credential configured in Jenkins (see jenkins/casc/jcasc-base.yaml).
   registry: ghcr.io/nubenetes/jenkins-2026-petclinic
 
+  # genai-service (Spring AI) crashes on startup unless OPENAI_API_KEY is a
+  # real key - helm/petclinic/values-*.yaml only set a non-blank placeholder
+  # so the pod can start (see comments there). Until a real key is wired in
+  # via a Secret, seed-jobs disables the genai-service pipeline jobs (all
+  # flavours) so they can't be triggered, manually or otherwise. Flip to
+  # true (and configure a real OPENAI_API_KEY) once that's done. Override
+  # with JENKINS2026_GENAI_SERVICE_ENABLED.
+  genaiServiceEnabled: false
+
   services:
     - name: config-server
     - name: discovery-server

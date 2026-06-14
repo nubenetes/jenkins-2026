@@ -48,6 +48,14 @@ def stableBranch  = System.getenv('JENKINS2026_REPO_BRANCH')     ?: 'main'
 def devBranch     = System.getenv('JENKINS2026_DEV_REPO_BRANCH') ?: 'develop'
 def platform      = System.getenv('JENKINS2026_PLATFORM')        ?: 'gke'
 
+// genai-service (Spring AI) crashes on startup without a real OPENAI_API_KEY
+// (see helm/petclinic/values-*.yaml) - until one is configured, its pipeline
+// jobs are created disabled so they can't be triggered. Set
+// petclinic.genaiServiceEnabled: true in config/config.yaml (or export
+// JENKINS2026_GENAI_SERVICE_ENABLED=true), then re-run seed-jobs, once a real
+// key is wired in.
+def genaiServiceEnabled = (System.getenv('JENKINS2026_GENAI_SERVICE_ENABLED') ?: 'false').toBoolean()
+
 // JOB_FOLDER is provided via additionalParameters by Jenkinsfile.seed; empty
 // string (the root seed-jobs job) if absent so this script also works when
 // run manually/outside that pipeline.
@@ -93,9 +101,14 @@ registry.services.each { svc ->
     def jobName = jobFolder ? "${jobFolder}/${svc.name}${flavour.suffix}" : "${svc.name}${flavour.suffix}"
     def branch  = svc.branches?.get(flavour.branchKey) ?: gitFlowRefs[flavour.branchKey]
 
+    def disabledReason = (svc.name == 'genai-service' && !genaiServiceEnabled)
+      ? " DISABLED: requires a real OPENAI_API_KEY (see config/config.yaml petclinic.genaiServiceEnabled) - currently only a startup placeholder is configured."
+      : ""
+
     pipelineJob(jobName) {
-      description("PetClinic '${svc.name}' (${flavour.envName}) - builds '${branch}' from ${svc.repoUrl} and deploys to namespace '${namespaces[flavour.namespaceKey]}'. Jenkinsfile.petclinic + shared library from jenkins-2026 '${flavour.pipelineRepoBranch}'. Managed by jenkins-2026 seed-jobs - do not edit manually.")
+      description("PetClinic '${svc.name}' (${flavour.envName}) - builds '${branch}' from ${svc.repoUrl} and deploys to namespace '${namespaces[flavour.namespaceKey]}'. Jenkinsfile.petclinic + shared library from jenkins-2026 '${flavour.pipelineRepoBranch}'. Managed by jenkins-2026 seed-jobs - do not edit manually.${disabledReason}")
       keepDependencies(false)
+      disabled(svc.name == 'genai-service' && !genaiServiceEnabled)
       logRotator {
         numToKeep(20)
       }
