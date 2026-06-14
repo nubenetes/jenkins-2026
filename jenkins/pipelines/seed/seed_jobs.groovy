@@ -170,6 +170,7 @@ if (!jobFolder) {
 
   listView('petclinic-develop') {
     description("PetClinic '-develop' pipelines-as-code dev sandbox jobs (from pac-dev/ folder), generated from services.yaml on the '${devBranch}' branch. Restricted to platform-engineers.")
+    recurse(true)
     jobs {
       registry.services.each { svc ->
         name("pac-dev/${svc.name}-develop")
