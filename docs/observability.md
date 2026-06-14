@@ -85,16 +85,21 @@ matching timestamps, the same dashboards).
 2. The OTel Java agent on `api-gateway` (and every downstream service)
    continues that trace, and injects `trace_id=<...> span_id=<...>` into
    every log line via the Logback/Log4j2 MDC bridge.
-3. **Logs -> Traces**: the Loki datasource's `derivedFields` (Grafana Cloud:
-   configured manually in the Grafana Cloud Logs datasource; OSS:
-   [`observability/grafana/values-oss.yaml`](../observability/grafana/values-oss.yaml))
-   match `trace_id=(\w+)` in log lines and link straight to that trace in
-   Tempo.
+3. **Logs -> Traces**: the Loki datasource's `derivedFields` match `trace_id=(\w+)` in log lines and link straight to that trace in Tempo.
+   - **OSS**: Pre-configured in [`observability/grafana/values-oss.yaml`](../observability/grafana/values-oss.yaml).
+   - **Grafana Cloud**: You must manually configure the **Loki derived field** in the Grafana Cloud UI:
+     1. Go to **Connections** > **Data sources** > **grafanacloud-logs**.
+     2. Scroll to **Derived fields** and add one:
+        - **Name**: `trace_id`
+        - **Regex**: `trace_id=(\w+)`
+        - **Query**: `${__value.raw}`
+        - **Internal link**: Enabled, pointing to your Tempo datasource (`grafanacloud-traces`).
 4. **Metrics -> Traces**: Micrometer/OTel HTTP server metrics
    (`http_server_duration_milliseconds_*`) carry **exemplars** pointing at a
    sampled `trace_id`; the Prometheus/Mimir datasource's
    `exemplarTraceIdDestinations` links a latency spike straight to an example
-   trace.
+   trace. (Note: Grafana Cloud usually requires this to be enabled in the
+   Prometheus datasource settings as well).
 5. **Traces -> Logs/Metrics**: the Tempo datasource's `tracesToLogsV2` /
    `tracesToMetrics` / `serviceMap` link a trace back to the logs and RED
    metrics for each `service.name` span in it.
