@@ -1,0 +1,6 @@
+apiVersion: folder.grafana.app/v1
+kind: Folder
+metadata:
+  name: jenkins-2026
+spec:
+  title: "jenkins-2026"

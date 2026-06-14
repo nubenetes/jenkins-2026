@@ -41,27 +41,44 @@ case "${J2026_OBS_MODE}" in
       export PATH="${HOME}/.local/bin:${PATH}"
     fi
 
-    log_step "Configuring gcx CLI context"
-    gcx config set contexts.default.grafana.server "${GRAFANA_BASE_URL}"
-    gcx config set contexts.default.grafana.token "${GRAFANA_API_KEY}"
-    gcx config use-context default
+    log_step "Authenticating with gcx CLI"
+    # gcx login --yes performs non-interactive login, discovering the stack ID and namespace
+    gcx login --yes default --server "${GRAFANA_BASE_URL}" --token "${GRAFANA_API_KEY}"
 
+    RESOURCES_DIR="${J2026_ROOT_DIR}/gcx_test"
     FOLDER_UID="jenkins-2026"
 
-    log_step "Ensuring Grafana folder '${FOLDER_UID}' exists"
-    # Attempt to create the folder. If it exists, the API returns an error which we ignore.
-    gcx api /api/folders -d "{\"title\":\"${FOLDER_UID}\", \"uid\":\"${FOLDER_UID}\"}" > /dev/null 2>&1 || true
+    log_step "Preparing dashboard manifests in ${RESOURCES_DIR}/dashboards"
+    mkdir -p "${RESOURCES_DIR}/dashboards"
 
     for dashboard in "${DASHBOARDS_DIR}"/*.json; do
-      name="$(basename "${dashboard}")"
-      log_step "Pushing ${name} via gcx api"
+      name="$(basename "${dashboard}" .json)"
+      uid="$(jq -r '.uid' "${dashboard}")"
       
-      # Use jq to wrap the raw dashboard JSON into the format expected by /api/dashboards/db
-      # ({"dashboard": ..., "folderUid": "...", "overwrite": true})
+      # Wrap dashboard JSON into a gcx-compatible resource manifest
+      # We use .uid for metadata.name and ensure folderUID is set in spec
+      # We also add the grafana.app/folder annotation which gcx uses for display
       jq -n --slurpfile db "${dashboard}" \
-        "{dashboard: \$db[0], folderUid: \"${FOLDER_UID}\", overwrite: true}" | \
-        gcx api /api/dashboards/db -d @- > /dev/null
+        --arg folderUID "${FOLDER_UID}" \
+        --arg uid "${uid}" \
+        '{
+          apiVersion: "dashboard.grafana.app/v1",
+          kind: "Dashboard",
+          metadata: {
+            name: $uid,
+            annotations: {
+              "grafana.app/folder": $folderUID
+            }
+          },
+          spec: ($db[0] + {folderUID: $folderUID})
+        }' > "${RESOURCES_DIR}/dashboards/${name}.json"
     done
+
+    log_step "Pushing resources via gcx resources push"
+    # This will push both the folder (from gcx_test/folders) and the dashboards
+    # We use --include-managed to ensure we can update folders/dashboards even if they were 
+    # previously managed by other tools (or gcx api calls).
+    gcx resources push -p "${RESOURCES_DIR}" --on-error abort --include-managed
     ;;
 
   oss)

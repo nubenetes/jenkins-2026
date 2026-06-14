@@ -18,7 +18,8 @@ in a **GitFlow-inspired** model with two distinct tracks:
   without affecting the tested stable pipelines.
 
 - **Observability (Grafana Cloud / OSS)**: Traces, metrics and logs are fully
-  correlated. (Note: Grafana Cloud requires a [one-time manual setup](docs/observability.md#correlation-end-to-end) for log-to-trace links).
+  correlated. Dashboard deployment is managed via the native **`gcx` CLI**
+  using a GitOps workflow.
 
 It is compliant with **OpenShift 4.20+** and the latest **Kubernetes on
 GKE/EKS/AKS** - the target platform is a config-file + environment-variable
@@ -339,10 +340,13 @@ export OTLP to an in-cluster collector, which forwards to Grafana Cloud
 (`observability.mode: oss`).
 
 ### Key Features
+- **gcx CLI GitOps**: Dashboard deployment in Grafana Cloud is managed via the native **`gcx` CLI**. The `scripts/07-grafana-dashboards.sh` script automatically:
+    - Installs and authenticates the `gcx` CLI using `gcx login --yes` to discover the stack ID and namespace.
+    - Wraps raw JSON dashboards into Kubernetes-style `apiVersion: dashboard.grafana.app/v1` manifests.
+    - Pushes resources declaratively using `gcx resources push --include-managed`.
 - **Jenkins Data Source**: The [Jenkins Datasource](https://grafana.com/grafana/plugins/grafana-jenkins-datasource/) is automatically provisioned. 
     - **One-time Manual Step**: You must manually install the **`grafana-jenkins-datasource`** plugin in your Grafana Cloud portal (**Administration > Plugins**) before the first deployment.
     - **PDC Tunnel**: In Grafana Cloud mode, it uses **Private Data Source Connect (PDC)** to securely tunnel from the cloud to your in-cluster Jenkins instance.
-- **gcx CLI Integration**: Dashboard deployment in Grafana Cloud is managed via the native **`gcx` CLI**, enabling a robust GitOps workflow for dashboards.
 - **Model Context Protocol (MCP)**: This project supports Grafana Cloud's hosted **MCP server**. Connecting an AI agent (like Gemini) to your stack via MCP allows for real-time querying of Jenkins traces, metrics, and logs during troubleshooting.
     - **Setup**: In your Grafana Cloud portal, go to **Administration > Assistant > Cloud MCP** to find your connection endpoint.
     - **Integration**: Add the endpoint to your Gemini CLI or AI agent configuration. You can then ask questions like *"Audit my Jenkins datasource health"* or *"Summarize recent pipeline failures from traces"* for a better outcome of your changes.
