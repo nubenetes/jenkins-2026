@@ -50,9 +50,9 @@ case "${J2026_OBS_MODE}" in
       name="$(basename "${dashboard}")"
       log_step "Pushing ${name} via gcx"
       
-      # Use gcx dashboards push. --folder-name ensures they go to the right place.
+      # Use gcx dashboards push. --folder ensures they go to the right place.
       # gcx handles the "overwrite" and "id: null" logic internally.
-      gcx dashboards push "${dashboard}" --folder-name "jenkins-2026"
+      gcx dashboards push "${dashboard}" --folder "jenkins-2026"
     done
     ;;
 
