@@ -342,6 +342,8 @@ export OTLP to an in-cluster collector, which forwards to Grafana Cloud
 - **Jenkins Data Source**: The [Jenkins Datasource](https://grafana.com/grafana/plugins/grafana-jenkins-datasource/) is automatically provisioned. In Grafana Cloud mode, it uses **Private Data Source Connect (PDC)** to securely tunnel from the cloud to your in-cluster Jenkins instance.
 - **gcx CLI Integration**: Dashboard deployment in Grafana Cloud is managed via the native **`gcx` CLI**, enabling a robust GitOps workflow for dashboards.
 - **Model Context Protocol (MCP)**: This project supports Grafana Cloud's hosted **MCP server**. Connecting an AI agent (like Gemini) to your stack via MCP allows for real-time querying of Jenkins traces, metrics, and logs during troubleshooting.
+    - **Setup**: In your Grafana Cloud portal, go to **Administration > Assistant > Cloud MCP** to find your connection endpoint.
+    - **Integration**: Add the endpoint to your Gemini CLI or AI agent configuration. You can then ask questions like *"Audit my Jenkins datasource health"* or *"Summarize recent pipeline failures from traces"* for a better outcome of your changes.
 - **Correlated telemetry**: Traces, metrics and logs are fully correlated. (Note: Grafana Cloud requires a [one-time manual setup](docs/observability.md#correlation-end-to-end) for log-to-trace links).
 
 Full details in [`docs/observability.md`](docs/observability.md).
@@ -834,11 +836,13 @@ for redeploying only Jenkins.
       federating GitHub Actions: its API only supports static
       organization-level tokens. In the [Grafana Cloud
       portal](https://grafana.com), go to your org -> **Administration** ->
-      **Access Policies** -> **Create access policy** (realm = your
+      create access policy (realm = your
       organization) with scopes `accesspolicies:read`,
       `accesspolicies:write`, `accesspolicies:delete`, `stacks:read`,
-      `stacks:write`, `stacks:delete`, `stack-service-accounts:write`, then
-      create a token for that policy.
+      `stacks:write`, `stacks:delete`, `stack-service-accounts:write`,
+      `stack-plugins:read`, `stack-plugins:write`, `stack-plugins:delete`,
+      then create a token for that policy.
+
 
    b. **Add two repository secrets** - `GRAFANA_CLOUD_STACK_SLUG` is your
       choice of subdomain for the new stack
