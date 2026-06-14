@@ -37,7 +37,7 @@ case "${J2026_OBS_MODE}" in
       log_step "Installing gcx CLI"
       # Install to a local bin to avoid sudo
       mkdir -p "${HOME}/.local/bin"
-      curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/install.sh | BINDIR="${HOME}/.local/bin" sh
+      curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | BINDIR="${HOME}/.local/bin" sh
       export PATH="${HOME}/.local/bin:${PATH}"
     fi
 
