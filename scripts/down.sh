@@ -27,6 +27,7 @@ run_bg jenkins            helm_uninstall "${J2026_JENKINS_RELEASE}" "${J2026_JEN
 run_bg headlamp           helm_uninstall "${J2026_HEADLAMP_RELEASE}" "${J2026_HEADLAMP_NAMESPACE}"
 run_bg otel-gateway       helm_uninstall "${J2026_OTEL_GATEWAY_RELEASE}" "${J2026_OBS_NAMESPACE}"
 run_bg otel-logs          helm_uninstall "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OBS_NAMESPACE}"
+run_bg pdc-agent          helm_uninstall pdc-agent "${J2026_OBS_NAMESPACE}"
 
 if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
   run_bg kube-prometheus-stack helm_uninstall kube-prometheus-stack "${J2026_GRAFANA_OSS_NAMESPACE}"
@@ -35,6 +36,9 @@ if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
 fi
 
 wait_bg || log_warn "One or more uninstalls failed - see logs/ for details."
+
+log_step "Cleaning up remaining observability artifacts"
+kubectl delete configmap otel-collector-gateway -n "${J2026_OBS_NAMESPACE}" --ignore-not-found
 
 if [[ "${J2026_PLATFORM}" == "openshift" ]]; then
   log_step "Removing OpenShift Route for Jenkins"
