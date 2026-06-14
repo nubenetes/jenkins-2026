@@ -23,11 +23,7 @@
 // telemetry from this run.
 // =============================================================================
 
-// Pinned to @develop (jcasc-base.yaml allowVersionOverride: true): this
-// pac-dev/petclinic-k6-smoke-develop copy needs petclinicK6Smoke.groovy
-// before it exists on main, which is the global library's default version.
-// Drop this override once promoted to main.
-@Library('petclinic-shared-library@develop') _
+@Library('petclinic-shared-library') _
 
 pipeline {
   agent {
