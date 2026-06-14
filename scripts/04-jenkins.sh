@@ -134,7 +134,9 @@ fi
 log_step "Installing ${J2026_JENKINS_RELEASE} (${J2026_JENKINS_CHART_NAME}) into ${J2026_JENKINS_NAMESPACE} [platform=${J2026_PLATFORM}]"
 helm "${helm_args[@]}"
 
-wait_for_deployment "${J2026_JENKINS_RELEASE}" "${J2026_JENKINS_NAMESPACE}"
+# Use wait_for_resource with 'statefulset' as the Jenkins chart on GKE
+# uses a StatefulSet by default.
+wait_for_resource "statefulset" "${J2026_JENKINS_RELEASE}" "${J2026_JENKINS_NAMESPACE}"
 
 if [[ "${J2026_PLATFORM}" == "openshift" ]]; then
   log_step "Applying OpenShift Route for Jenkins"

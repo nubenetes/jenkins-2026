@@ -66,16 +66,21 @@ run_bg() {
   J2026_BG_LOGS["${name}"]="${log_file}"
 }
 
-# wait_for_deployment <name> <namespace> [timeout_per_poll]
-# Smart polling that provides active feedback and continues immediately on success.
-wait_for_deployment() {
-  local name="$1" ns="$2" poll_timeout="${3:-30s}"
-  log_step "Monitoring deployment/${name} in ${ns}..."
-  until kubectl rollout status deployment/"${name}" -n "${ns}" --timeout="${poll_timeout}" >/dev/null 2>&1; do
+# wait_for_resource <type> <name> <namespace> [timeout_per_poll]
+# Smart polling for any resource type (deployment, statefulset, etc.)
+wait_for_resource() {
+  local type="$1" name="$2" ns="$3" poll_timeout="${4:-30s}"
+  log_step "Monitoring ${type}/${name} in ${ns}..."
+  until kubectl rollout status "${type}/${name}" -n "${ns}" --timeout="${poll_timeout}" >/dev/null 2>&1; do
     log_info "  ... ${name} rollout in progress, checking again..."
     sleep 5
   done
-  log_info "OK: deployment/${name} is ready."
+  log_info "OK: ${type}/${name} is ready."
+}
+
+# wait_for_deployment <name> <namespace> [timeout_per_poll]
+wait_for_deployment() {
+  wait_for_resource "deployment" "$1" "$2" "${3:-30s}"
 }
 
 # wait_bg - waits for every PID registered via run_bg, prints a per-step
