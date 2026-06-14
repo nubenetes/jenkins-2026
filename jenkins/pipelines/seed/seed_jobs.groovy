@@ -19,6 +19,10 @@
  *                                <name>  - builds PetClinic `branches.stable` (main) -> namespaces.stable.
  *                                          Jenkinsfile.petclinic + shared library come from
  *                                          JENKINS2026_REPO_BRANCH (main).
+ *                              ...plus ONE extra job, not from services.yaml:
+ *                                petclinic-k6-smoke  - runs a small k6 observability smoke test
+ *                                                      against namespaces.stable. Jenkinsfile.petclinic-k6-smoke
+ *                                                      + shared library come from JENKINS2026_REPO_BRANCH (main).
  *
  *   JOB_FOLDER == 'pac-dev'  - the "pac-dev/seed-jobs-dev" job (tracks this
  *                              repo's JENKINS2026_DEV_REPO_BRANCH, normally
@@ -28,6 +32,10 @@
  *                                pac-dev/<name>-develop  - builds PetClinic `branches.develop` (main) -> namespaces.develop.
  *                                                          Jenkinsfile.petclinic + shared library come from
  *                                                          JENKINS2026_DEV_REPO_BRANCH (develop).
+ *                              ...plus ONE extra job, not from services.yaml:
+ *                                pac-dev/petclinic-k6-smoke-develop  - runs the same k6 smoke test against
+ *                                                                      namespaces.develop. Jenkinsfile.petclinic-k6-smoke
+ *                                                                      + shared library come from JENKINS2026_DEV_REPO_BRANCH (develop).
  *
  * The pac-dev/ folder is an isolated sandbox where devops/platform engineers
  * can change and improve seed_jobs.groovy itself, Jenkinsfile.petclinic, JCasC
@@ -148,14 +156,61 @@ registry.services.each { svc ->
   }
 }
 
+// PetClinic Grafana observability smoke test (k6) - one job per flavour, not
+// driven by services.yaml since it isn't a per-service build/deploy pipeline:
+// it just sends a small amount of synthetic traffic through the PetClinic
+// Services that the jobs above just deployed, so Grafana Cloud has fresh
+// traces/metrics/logs to correlate. See
+// jenkins/pipelines/Jenkinsfile.petclinic-k6-smoke and
+// jenkins/pipelines/k6/petclinic-smoke.js.
+flavours.each { flavour ->
+  def jobName = jobFolder ? "${jobFolder}/petclinic-k6-smoke${flavour.suffix}" : "petclinic-k6-smoke${flavour.suffix}"
+
+  pipelineJob(jobName) {
+    description("PetClinic Grafana observability smoke test (k6, ${flavour.envName}) - sends a small amount of synthetic traffic (a few VUs/iterations, NOT a load test) through every PetClinic Service in namespace '${namespaces[flavour.namespaceKey]}', with W3C trace context propagation, to exercise Grafana Cloud traces/metrics/logs correlation. Jenkinsfile.petclinic-k6-smoke + shared library from jenkins-2026 '${flavour.pipelineRepoBranch}'. Managed by jenkins-2026 seed-jobs - do not edit manually.")
+    keepDependencies(false)
+    logRotator {
+      numToKeep(20)
+    }
+
+    definition {
+      cpsScm {
+        scm {
+          git {
+            remote {
+              url(repoUrl)
+            }
+            branches("*/${flavour.pipelineRepoBranch}")
+          }
+        }
+        scriptPath('jenkins/pipelines/Jenkinsfile.petclinic-k6-smoke')
+        lightweight(true)
+      }
+    }
+
+    parameters {
+      stringParam('TARGET_NAMESPACE', namespaces[flavour.namespaceKey], 'Kubernetes namespace whose PetClinic Services to test')
+      stringParam('ENV_NAME', flavour.envName, 'deployment.environment resource attribute applied to k6 OTel metrics, matching helm/petclinic/templates/instrumentation.yaml')
+      booleanParam('GENAI_SERVICE_ENABLED', genaiServiceEnabled, 'Whether to also probe genai-service (see config/config.yaml petclinic.genaiServiceEnabled)')
+      stringParam('K6_VUS', '4', 'Number of k6 virtual users')
+      stringParam('K6_ITERATIONS', '12', 'Total k6 iterations (shared across K6_VUS)')
+    }
+
+    // Deliberately no pipelineTriggers/pollSCM - run manually (buildButton in
+    // the "petclinic"/"pac-dev/petclinic-develop" views), e.g. after one or
+    // more of the deploy pipelines above, same as those jobs.
+  }
+}
+
 // Convenience view grouping all generated PetClinic jobs together.
 if (!jobFolder) {
   listView('petclinic') {
-    description('All stable PetClinic pipelines-as-code jobs, generated from services.yaml. The GitFlow "-develop" track lives in the pac-dev/ sandbox (see petclinic-develop view).')
+    description('All stable PetClinic pipelines-as-code jobs, generated from services.yaml, plus the k6 observability smoke test. The GitFlow "-develop" track lives in the pac-dev/ sandbox (see petclinic-develop view).')
     jobs {
       registry.services.each { svc ->
         name(svc.name)
       }
+      name('petclinic-k6-smoke')
     }
     columns {
       status()
@@ -175,6 +230,7 @@ if (!jobFolder) {
       registry.services.each { svc ->
         name("pac-dev/${svc.name}-develop")
       }
+      name('pac-dev/petclinic-k6-smoke-develop')
       name("pac-dev/seed-jobs-dev")
     }
     columns {
