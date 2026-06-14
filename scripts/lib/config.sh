@@ -167,6 +167,21 @@ else
 fi
 export J2026_HEADLAMP_OIDC_CALLBACK_URL="${JENKINS2026_HEADLAMP_OIDC_CALLBACK_URL:-${J2026_HEADLAMP_OIDC_CALLBACK_URL_DEFAULT}}"
 
+# Jenkins' own root URL (jenkins.casc.defaults' unclassified.location.url via
+# controller.jenkinsUrl, see scripts/04-jenkins.sh): the public gateway URL if
+# the gateway is enabled, else the kubectl port-forward default. The oic-auth
+# plugin derives its Google OAuth redirect_uri
+# (<location.url>/securityRealm/finishLogin) from this - it must be https and
+# match an authorized redirect URI on the Jenkins OAuth client (see
+# README.md "Google login (OpenID Connect)"), which an unset/cluster-internal
+# location.url cannot satisfy.
+if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
+  J2026_JENKINS_URL_DEFAULT="https://${J2026_GATEWAY_JENKINS_HOST}/"
+else
+  J2026_JENKINS_URL_DEFAULT="http://localhost:8080/"
+fi
+export J2026_JENKINS_URL="${JENKINS2026_JENKINS_URL:-${J2026_JENKINS_URL_DEFAULT}}"
+
 # --- petclinic ---------------------------------------------------------------
 
 export J2026_PETCLINIC_NS_STABLE="$(yq_get '.petclinic.namespaces.stable' 'petclinic')"
