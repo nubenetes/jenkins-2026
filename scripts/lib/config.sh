@@ -144,15 +144,18 @@ export J2026_GATEWAY_IAP_SECRET="$(yq_get '.gateway.iapCredentialsSecretName' 'g
 export J2026_GATEWAY_NAME="jenkins-2026-gateway"
 export J2026_GATEWAY_HTTPROUTE_JENKINS="jenkins"
 export J2026_GATEWAY_HTTPROUTE_PETCLINIC="petclinic"
+export J2026_GATEWAY_HTTPROUTE_PETCLINIC_DEVELOP="petclinic-develop"
 export J2026_GATEWAY_HTTPROUTE_HEADLAMP="headlamp"
 export J2026_GATEWAY_IAP_POLICY_JENKINS="jenkins-iap"
 export J2026_GATEWAY_IAP_POLICY_HEADLAMP="headlamp-iap"
 
 J2026_GATEWAY_HOST_JENKINS="$(yq_get '.gateway.hosts.jenkins' 'jenkins')"
 J2026_GATEWAY_HOST_PETCLINIC="$(yq_get '.gateway.hosts.petclinic' 'petclinic')"
+J2026_GATEWAY_HOST_PETCLINIC_DEVELOP="$(yq_get '.gateway.hosts.petclinicDevelop' 'petclinic-develop')"
 J2026_GATEWAY_HOST_HEADLAMP="$(yq_get '.gateway.hosts.headlamp' 'headlamp')"
 export J2026_GATEWAY_JENKINS_HOST="${J2026_GATEWAY_HOST_JENKINS}.${J2026_GATEWAY_BASE_DOMAIN}"
 export J2026_GATEWAY_PETCLINIC_HOST="${J2026_GATEWAY_HOST_PETCLINIC}.${J2026_GATEWAY_BASE_DOMAIN}"
+export J2026_GATEWAY_PETCLINIC_DEVELOP_HOST="${J2026_GATEWAY_HOST_PETCLINIC_DEVELOP}.${J2026_GATEWAY_BASE_DOMAIN}"
 export J2026_GATEWAY_HEADLAMP_HOST="${J2026_GATEWAY_HOST_HEADLAMP}.${J2026_GATEWAY_BASE_DOMAIN}"
 
 # Headlamp's OIDC redirect URI: the public gateway URL if the gateway is

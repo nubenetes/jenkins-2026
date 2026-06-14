@@ -173,6 +173,9 @@ gateway:
   hosts:
     jenkins: "jenkins"
     petclinic: "petclinic"
+    # pac-dev/*-develop dev sandbox PetClinic (namespace petclinic-develop) -
+    # same wildcard cert, no IAP (public demo app, same as stable).
+    petclinicDevelop: "petclinic-develop"
     headlamp: "headlamp"
   # k8s Secret (per-namespace, created by scripts/01-namespaces.sh) holding
   # the IAP OAuth client ID/secret consumed by the GCPBackendPolicy resources

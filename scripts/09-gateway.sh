@@ -70,7 +70,7 @@ spec:
           from: All
 EOF
 
-log_step "Generating HTTPRoutes (jenkins, petclinic, headlamp)"
+log_step "Generating HTTPRoutes (jenkins, petclinic, petclinic-develop, headlamp)"
 cat >"${GENERATED_DIR}/httproute-jenkins.yaml" <<EOF
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -103,6 +103,27 @@ spec:
       sectionName: https
   hostnames:
     - "${J2026_GATEWAY_PETCLINIC_HOST}"
+  rules:
+    - backendRefs:
+        - name: petclinic-angular
+          port: 8080
+EOF
+
+# pac-dev/*-develop dev sandbox PetClinic - same wildcard cert, no IAP (public
+# demo app, same as stable).
+cat >"${GENERATED_DIR}/httproute-petclinic-develop.yaml" <<EOF
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ${J2026_GATEWAY_HTTPROUTE_PETCLINIC_DEVELOP}
+  namespace: ${J2026_PETCLINIC_NS_DEVELOP}
+spec:
+  parentRefs:
+    - name: ${J2026_GATEWAY_NAME}
+      namespace: ${J2026_JENKINS_NAMESPACE}
+      sectionName: https
+  hostnames:
+    - "${J2026_GATEWAY_PETCLINIC_DEVELOP_HOST}"
   rules:
     - backendRefs:
         - name: petclinic-angular
@@ -224,6 +245,7 @@ log_step "Applying Gateway resources"
 kubectl apply -f "${GENERATED_DIR}/"
 
 log_info "Gateway ready (certificate provisioning can take up to ~1h after DNS is set up)."
-log_info "  Jenkins:   https://${J2026_GATEWAY_JENKINS_HOST}"
-log_info "  PetClinic: https://${J2026_GATEWAY_PETCLINIC_HOST}"
-log_info "  Headlamp:  https://${J2026_GATEWAY_HEADLAMP_HOST}"
+log_info "  Jenkins:           https://${J2026_GATEWAY_JENKINS_HOST}"
+log_info "  PetClinic:         https://${J2026_GATEWAY_PETCLINIC_HOST}"
+log_info "  PetClinic develop: https://${J2026_GATEWAY_PETCLINIC_DEVELOP_HOST}"
+log_info "  Headlamp:          https://${J2026_GATEWAY_HEADLAMP_HOST}"
