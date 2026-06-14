@@ -15,12 +15,9 @@ log_step "Installing ${J2026_OTEL_OPERATOR_RELEASE} (${J2026_OTEL_OPERATOR_CHART
 helm upgrade --install "${J2026_OTEL_OPERATOR_RELEASE}" "${J2026_OTEL_OPERATOR_CHART}" \
   --namespace "${J2026_OBS_NAMESPACE}" \
   --create-namespace \
-  -f "${J2026_ROOT_DIR}/observability/otel-operator/values.yaml" \
-  --timeout 10m
+  -f "${J2026_ROOT_DIR}/observability/otel-operator/values.yaml"
 
-log_step "Waiting for OpenTelemetry Operator to be ready"
-kubectl rollout status deployment/"${J2026_OTEL_OPERATOR_RELEASE}-opentelemetry-operator" \
-  -n "${J2026_OBS_NAMESPACE}" --timeout=5m
+wait_for_deployment "${J2026_OTEL_OPERATOR_RELEASE}-opentelemetry-operator" "${J2026_OBS_NAMESPACE}"
 
 log_step "Waiting for OpenTelemetry CRDs to be established"
 for crd in opentelemetrycollectors.opentelemetry.io instrumentations.opentelemetry.io; do
