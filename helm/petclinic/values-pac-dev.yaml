@@ -133,8 +133,9 @@ services:
         value: http://config-server:8888
       - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
         value: http://discovery-server:8761/eureka/
+      # Placeholder: see values-develop.yaml for why this can't be blank.
       - name: OPENAI_API_KEY
-        value: ""
+        value: "sk-placeholder-not-a-real-key"
 
   api-gateway:
     type: java

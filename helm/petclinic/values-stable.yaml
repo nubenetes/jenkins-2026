@@ -128,10 +128,13 @@ services:
         value: http://config-server:8888
       - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
         value: http://discovery-server:8761/eureka/
-      # Optional: set via a Secret + envFrom if genai-service needs an LLM
-      # API key. Left empty so the chart installs cleanly without one.
+      # Placeholder: see values-develop.yaml for why this can't be blank -
+      # Spring AI's OpenAiEmbeddingAutoConfiguration throws "OpenAI API key
+      # must be set" at startup if blank, crashing the pod before it opens
+      # its health port. Set a real key via a Secret + envFrom for working
+      # chat/embedding endpoints.
       - name: OPENAI_API_KEY
-        value: ""
+        value: "sk-placeholder-not-a-real-key"
 
   api-gateway:
     type: java
