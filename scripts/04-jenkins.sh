@@ -151,7 +151,6 @@ helm_args=(
   --set-file "controller.JCasC.configScripts.base=${J2026_ROOT_DIR}/jenkins/casc/jcasc-base.yaml"
   --set-file "controller.JCasC.configScripts.otel=${J2026_ROOT_DIR}/jenkins/casc/jcasc-otel.yaml"
   --set-file "controller.JCasC.configScripts.seed-job=${J2026_ROOT_DIR}/jenkins/casc/jcasc-seed-job.yaml"
-  --rollback-on-failure
 )
 
 if [[ -n "${J2026_JENKINS_CHART_VERSION}" ]]; then
@@ -161,9 +160,13 @@ fi
 log_step "Installing ${J2026_JENKINS_RELEASE} (${J2026_JENKINS_CHART_NAME}) into ${J2026_JENKINS_NAMESPACE} [platform=${J2026_PLATFORM}]"
 helm "${helm_args[@]}"
 
-# Use wait_for_resource with 'statefulset' as the Jenkins chart on GKE
-# uses a StatefulSet by default.
-wait_for_resource "statefulset" "${J2026_JENKINS_RELEASE}" "${J2026_JENKINS_NAMESPACE}"
+# Use wait_for_resource with a 15m timeout. If it fails, trigger a manual
+# rollback to keep the cluster clean.
+if ! wait_for_resource "statefulset" "${J2026_JENKINS_RELEASE}" "${J2026_JENKINS_NAMESPACE}" "15m"; then
+  log_error "Jenkins rollout failed, rolling back..."
+  helm rollback "${J2026_JENKINS_RELEASE}" -n "${J2026_JENKINS_NAMESPACE}"
+  exit 1
+fi
 
 if [[ "${J2026_PLATFORM}" == "openshift" ]]; then
   log_step "Applying OpenShift Route for Jenkins"
