@@ -890,8 +890,11 @@ and `GCPBackendPolicy` are GKE-specific.
    Without this, IAP's post-login redirect back from Google fails with
    **Error 400: redirect_uri_mismatch**. This is the one redirect URI IAP
    uses regardless of how many apps/domains sit behind it, so a single OAuth
-   client can be shared by both the Jenkins and Headlamp `GCPBackendPolicy`
+   client can be shared by the Jenkins, Headlamp, and pgAdmin `GCPBackendPolicy`
    resources.
+
+   > [!IMPORTANT]
+   > Because GCP IAP intercepts all traffic at the external load balancer level, you **do not** need to register individual application-level callback URLs (such as `https://pgadmin.jenkins2026.nubenetes.com/oauth2/authorize` or `https://headlamp.jenkins2026.nubenetes.com/oidc-callback`) in the Google Cloud Console.
 
    ```bash
    gh secret set IAP_OAUTH_CLIENT_ID     --body "<client ID>"
@@ -899,7 +902,7 @@ and `GCPBackendPolicy` are GKE-specific.
    ```
 
    (Re-)run **02.01 GKE provision** - `scripts/01-namespaces.sh` writes these into
-   the `gateway-iap-oauth` Secret in the `jenkins` and `headlamp` namespaces
+   the `gateway-iap-oauth` Secret in the `jenkins`, `headlamp`, and `pgadmin` namespaces
    that the `GCPBackendPolicy` resources reference.
 
 4. **IAP access control** reuses `HEADLAMP_ADMIN_EMAILS` (see
