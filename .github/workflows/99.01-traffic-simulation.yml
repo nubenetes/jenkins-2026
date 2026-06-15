@@ -23,6 +23,10 @@ jobs:
         uses: grafana/setup-k6-action@v1
 
       - name: Run k6 Simulation
+        env:
+          K6_OTEL_GRPC_EXPORTER_ENDPOINT: ${{ secrets.GRAFANA_CLOUD_OTLP_ENDPOINT }}
+          K6_OTEL_GRPC_EXPORTER_HEADERS: Authorization=Basic ${{ secrets.GRAFANA_CLOUD_OTLP_AUTH }}
+          OTEL_RESOURCE_ATTRIBUTES: service.name=k6-traffic-simulation,service.namespace=jenkins-2026,deployment.environment=stable
         run: |
           # Use the existing smoke test script but with more iterations/duration
           # Pointing to the stable environment
@@ -30,6 +34,7 @@ jobs:
           
           set +e
           k6 run jenkins/pipelines/k6/petclinic-smoke.js \
+            -o opentelemetry \
             --vus 2 \
             --duration ${{ github.event.inputs.duration || '15m' }} \
             --env TARGET_URL=$TARGET_URL \
