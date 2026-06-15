@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Installs the OpenTelemetry Operator (CRDs: OpenTelemetryCollector,
-# Instrumentation). Must run before helm/petclinic (its Instrumentation CR is
+# Instrumentation). Must run before helm/microservices (its Instrumentation CR is
 # guarded by a Capabilities check, but auto-instrumentation only takes effect
 # once the operator's mutating webhook is live) and before
 # 03-observability.sh's collector releases on platforms where the operator
@@ -25,7 +25,7 @@ for crd in opentelemetrycollectors.opentelemetry.io instrumentations.opentelemet
 done
 
 # The built-in 'edit' ClusterRole doesn't cover the OTel Operator's CRDs
-# (helm/petclinic/templates/instrumentation.yaml manages an Instrumentation
+# (helm/microservices/templates/instrumentation.yaml manages an Instrumentation
 # resource per namespace) - `helm upgrade` needs get/list/watch on it (plus
 # write verbs to create/update it) to diff against the live cluster, or it
 # fails with "instrumentations.opentelemetry.io ... is forbidden".
@@ -34,7 +34,7 @@ kubectl create clusterrole jenkins-otel-instrumentation-editor \
   --verb=get,list,watch,create,update,patch,delete \
   --resource=instrumentations.opentelemetry.io \
   --dry-run=client -o yaml | kubectl apply -f -
-for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}"; do
+for ns in "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_MICROSERVICES_NS_DEVELOP}"; do
   kubectl create rolebinding jenkins-otel-instrumentation-editor \
     --clusterrole=jenkins-otel-instrumentation-editor \
     --serviceaccount="${J2026_JENKINS_NAMESPACE}:jenkins" \

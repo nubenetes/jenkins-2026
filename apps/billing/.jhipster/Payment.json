@@ -1,0 +1,39 @@
+{
+  "annotations": {
+    "changelogDate": "20260615162231"
+  },
+  "applications": ["gateway", "billing"],
+  "clientRootFolder": "billing",
+  "databaseType": "sql",
+  "dto": "mapstruct",
+  "fields": [
+    {
+      "fieldName": "amount",
+      "fieldType": "BigDecimal",
+      "fieldValidateRules": ["required"]
+    },
+    {
+      "fieldName": "paymentDate",
+      "fieldType": "Instant",
+      "fieldValidateRules": ["required"]
+    },
+    {
+      "fieldName": "method",
+      "fieldType": "PaymentMethod",
+      "fieldValidateRules": ["required"],
+      "fieldValues": "CREDIT_CARD,CASH,BANK_TRANSFER"
+    }
+  ],
+  "microserviceName": "billing",
+  "name": "Payment",
+  "relationships": [
+    {
+      "otherEntityName": "invoice",
+      "relationshipName": "invoice",
+      "relationshipSide": "left",
+      "relationshipType": "one-to-one"
+    }
+  ],
+  "searchEngine": "no",
+  "service": "serviceClass"
+}

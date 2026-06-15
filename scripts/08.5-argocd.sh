@@ -125,10 +125,13 @@ log_step "Waiting for ArgoCD Server to be ready"
 wait_for_deployment "${J2026_ARGOCD_RELEASE}-server" "${J2026_ARGOCD_NAMESPACE}" "5m"
 
 # 4. Configure GitOps Project and AppSet
-log_step "Configuring ArgoCD PetClinic GitOps Project"
-kubectl apply -f "${J2026_ROOT_DIR}/argocd/petclinic-project.yaml"
+log_step "Configuring ArgoCD Microservices GitOps Project"
+kubectl apply -f "${J2026_ROOT_DIR}/argocd/microservices-project.yaml"
 
-log_step "Generating and applying PetClinic ApplicationSet"
+log_step "Configuring Postgres Operator via ArgoCD"
+kubectl apply -f "${J2026_ROOT_DIR}/argocd/pgo-app.yaml"
+
+log_step "Generating and applying Microservices ApplicationSet"
 # Inject values into the AppSet manifest
 # Using @ as delimiter for sed to avoid issues with URLs
 APPSET_FILE=$(mktemp)
@@ -138,7 +141,7 @@ sed "s@{{repoUrl}}@${REPO_URL}@g;
      s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g; 
      s@{{branchDevelop}}@${J2026_SELF_REPO_DEV_BRANCH}@g; 
      s@{{platform}}@${J2026_PLATFORM}@g" \
-    "${J2026_ROOT_DIR}/argocd/petclinic-appset.yaml" > "${APPSET_FILE}"
+    "${J2026_ROOT_DIR}/argocd/microservices-appset.yaml" > "${APPSET_FILE}"
 
 kubectl apply -f "${APPSET_FILE}"
 rm "${APPSET_FILE}"

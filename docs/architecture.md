@@ -10,18 +10,18 @@ an **existing** Kubernetes cluster (GKE, EKS, AKS or OpenShift 4.20+):
 - **Pipelines as code**: a Job DSL "seed job" (itself defined in JCasC) reads
   [`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml)
   and generates 9 **stable** Jenkins Pipeline jobs at the root, one per
-  PetClinic service, tracking the upstream `main` branch and deploying to the
-  `petclinic` namespace, plus a `petclinic-k6-smoke` job that sends a small
-  amount of synthetic traffic through all 9 services afterwards to exercise
+  Microservices service, tracking the upstream `main` branch and deploying to the
+  `microservices` namespace, plus a `microservices-k6-smoke` job that sends a small
+  amount of synthetic traffic through all 3 services afterwards to exercise
   Grafana Cloud trace/metric/log correlation (see
   [`docs/observability.md`](observability.md#k6-observability-smoke-test)). A
   second seed job, `pac-dev/seed-jobs-dev`, generates the same 10 jobs
-  (`pac-dev/<service>-develop` + `pac-dev/petclinic-k6-smoke-develop`) in an
+  (`pac-dev/<service>-develop` + `pac-dev/microservices-k6-smoke-develop`) in an
   isolated `pac-dev/` folder - a dev sandbox for iterating on this repo's own
-  pipelines-as-code, deploying to the separate `petclinic-develop` namespace.
-- **Spring PetClinic microservices + Angular UI**, deployed by those
-  pipelines into two namespaces (`petclinic` / `petclinic-develop`) via a
-  single parametrized [Helm chart](../helm/petclinic).
+  pipelines-as-code, deploying to the separate `microservices-develop` namespace.
+- **Spring Microservices microservices + Angular UI**, deployed by those
+  pipelines into two namespaces (`microservices` / `microservices-develop`) via a
+  single parametrized [Helm chart](../helm/microservices).
 - **OpenTelemetry** end to end: Jenkins, the Java services (auto-instrumented
   by the OTel Operator) and the Angular UI (a small vanilla-JS RUM snippet)
   all export traces/metrics/logs to an in-cluster OTel Collector, which
@@ -35,29 +35,29 @@ flowchart TD
     repo["github.com/nubenetes/jenkins-2026<br/>JCasC, Jenkinsfile, shared library,<br/>Helm charts, seed/services.yaml"]
 
     subgraph jenkins_ns["namespace: jenkins"]
-        jenkins["Jenkins controller (jenkinsci/helm-charts + JCasC)<br/>- security, global shared library, OTel exporter, seed jobs<br/>- seed jobs (Job DSL) generate 20 pipeline jobs total:<br/>  (9 stable name (main) + petclinic-k6-smoke) at root<br/>  + (9 pac-dev/name-develop (main) + pac-dev/petclinic-k6-smoke-develop) in pac-dev/<br/>- each run uses a Kubernetes pod agent<br/>  (maven / node / docker:dind / helm+kubectl / k6 containers)"]
+        jenkins["Jenkins controller (jenkinsci/helm-charts + JCasC)<br/>- security, global shared library, OTel exporter, seed jobs<br/>- seed jobs (Job DSL) generate 20 pipeline jobs total:<br/>  (9 stable name (main) + microservices-k6-smoke) at root<br/>  + (9 pac-dev/name-develop (main) + pac-dev/microservices-k6-smoke-develop) in pac-dev/<br/>- each run uses a Kubernetes pod agent<br/>  (maven / node / docker:dind / helm+kubectl / k6 containers)"]
     end
 
     repo -->|"global pipeline library +<br/>seed job (checkout scm)"| jenkins
 
-    subgraph petclinic_ns["namespace: petclinic (stable, tracks main)"]
-        petclinic["config-server, discovery-server,<br/>customers/visits/vets/genai-service,<br/>api-gateway, admin-server,<br/>petclinic-angular (nginx + OTel Web RUM snippet)"]
+    subgraph microservices_ns["namespace: microservices (stable, tracks main)"]
+        microservices["config-server, discovery-server,<br/>customers/visits/vets/genai-service,<br/>api-gateway, admin-server,<br/>microservices-angular (nginx + OTel Web RUM snippet)"]
     end
 
-    subgraph petclinic_dev_ns["namespace: petclinic-develop (pac-dev/*-develop sandbox, tracks main)"]
-        petclinic_dev["config-server, discovery-server,<br/>customers/visits/vets/genai-service,<br/>api-gateway, admin-server,<br/>petclinic-angular"]
+    subgraph microservices_dev_ns["namespace: microservices-develop (pac-dev/*-develop sandbox, tracks main)"]
+        microservices_dev["config-server, discovery-server,<br/>customers/visits/vets/genai-service,<br/>api-gateway, admin-server,<br/>microservices-angular"]
     end
 
-    jenkins -->|"helm upgrade --install<br/>(per-service image tag)"| petclinic
-    jenkins -->|"helm upgrade --install<br/>(per-service image tag)"| petclinic_dev
+    jenkins -->|"helm upgrade --install<br/>(per-service image tag)"| microservices
+    jenkins -->|"helm upgrade --install<br/>(per-service image tag)"| microservices_dev
 
     subgraph observability_ns["namespace: observability"]
         otel["OpenTelemetry Operator (CRDs: Instrumentation,<br/>OpenTelemetryCollector) - Java auto-instrumentation<br/>otel-collector-gateway (Deployment, OTLP receiver)<br/>otel-collector-logs (DaemonSet, filelog receiver)"]
     end
 
     jenkins -->|OTLP| otel
-    petclinic -->|"OTLP (traces / metrics / logs)"| otel
-    petclinic_dev -->|"OTLP (traces / metrics / logs)"| otel
+    microservices -->|"OTLP (traces / metrics / logs)"| otel
+    microservices_dev -->|"OTLP (traces / metrics / logs)"| otel
 
     grafana_cloud["Grafana Cloud<br/>OTLP gateway -> Mimir, Loki, Tempo + Grafana"]
     oss["In-cluster: kube-prometheus-stack<br/>(Prometheus + Grafana) + Loki + Tempo"]
@@ -76,10 +76,10 @@ jenkins-2026/
 ├── config/config.yaml          # single source of truth (see below)
 ├── helm/
 │   ├── jenkins/                 # jenkinsci/helm-charts values + overlays
-│   └── petclinic/               # local chart for the PetClinic workloads
+│   └── microservices/               # local chart for the Microservices workloads
 ├── jenkins/
 │   ├── casc/                    # JCasC fragments (security, OTel, seed job)
-│   └── pipelines/               # Jenkinsfile.petclinic + seed job DSL
+│   └── pipelines/               # Jenkinsfile.microservices + seed job DSL
 ├── vars/, resources/            # Jenkins global shared library (repo root -
 │                                 # required by the modernSCM retriever)
 ├── observability/

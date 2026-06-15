@@ -1,7 +1,7 @@
 # Values for open-telemetry/opentelemetry-collector - "gateway" release.
 #
 # Deployed as a Deployment that receives OTLP from Jenkins (jcasc-otel.yaml),
-# the OTel Operator Java auto-instrumentation (helm/petclinic/templates/
+# the OTel Operator Java auto-instrumentation (helm/microservices/templates/
 # instrumentation.yaml) and the Angular RUM snippet (resources/angular/
 # otel-web.js, proxied through nginx at /otel/), and forwards traces +
 # metrics + logs to Grafana Cloud's OTLP gateway.
@@ -14,7 +14,7 @@
 # Fixed Service name so other components can reach this collector at a
 # stable address regardless of the Helm release name:
 #   otel-collector-gateway.<observability-namespace>.svc.cluster.local
-# (referenced by jenkins/casc/jcasc-otel.yaml, helm/petclinic/templates/
+# (referenced by jenkins/casc/jcasc-otel.yaml, helm/microservices/templates/
 # instrumentation.yaml and resources/angular/nginx.conf).
 fullnameOverride: otel-collector-gateway
 
@@ -79,7 +79,7 @@ config:
       spike_limit_percentage: 25
     # Stamps every signal with a common cluster/platform identity so they can
     # be filtered/grouped consistently in Grafana regardless of source
-    # (Jenkins, PetClinic services, or the Angular RUM beacon).
+    # (Jenkins, Microservices services, or the Angular RUM beacon).
     resource:
       attributes:
         - key: deployment.environment.cluster

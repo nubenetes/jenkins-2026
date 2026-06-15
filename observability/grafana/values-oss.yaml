@@ -89,7 +89,7 @@ grafana:
         derivedFields:
           # Matches the trace_id MDC field the OTel Java agent injects into
           # Spring Boot logs (OTEL_INSTRUMENTATION_LOGBACK_APPENDER_ENABLED,
-          # see helm/petclinic/templates/instrumentation.yaml).
+          # see helm/microservices/templates/instrumentation.yaml).
           - datasourceUid: tempo
             matcherRegex: 'trace_id=(\w+)'
             name: TraceID

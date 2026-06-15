@@ -30,13 +30,13 @@ jobs:
         run: |
           # Use the existing smoke test script but with more iterations/duration
           # Pointing to the stable environment
-          export TARGET_URL="https://petclinic.jenkins2026.nubenetes.com"
+          export TARGET_URL="https://microservices.jenkins2026.nubenetes.com"
           
           # k6's gRPC exporter expects the endpoint WITHOUT the https:// prefix
           export K6_OTEL_GRPC_EXPORTER_ENDPOINT=$(echo $K6_OTEL_GRPC_EXPORTER_ENDPOINT | sed 's|^https://||')
           
           set +e
-          k6 run jenkins/pipelines/k6/petclinic-smoke.js \
+          k6 run jenkins/pipelines/k6/microservices-smoke.js \
             -o opentelemetry \
             --vus 2 \
             --duration ${{ github.event.inputs.duration || '15m' }} \
@@ -78,6 +78,6 @@ jobs:
           echo ""
           echo "https://${{ secrets.GRAFANA_CLOUD_STACK_SLUG }}.grafana.net/d/jenkins2026-k6-smoke-overview/jenkins-2026-k6-observability-smoke-test?var-deployment_environment=stable"
           echo ""
-          echo "This dashboard correlates k6 client-side metrics with your PetClinic"
+          echo "This dashboard correlates k6 client-side metrics with your Microservices"
           echo "backend telemetry (traces, logs, and metrics) for full observability."
           echo "=============================================================================="

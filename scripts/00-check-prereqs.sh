@@ -34,8 +34,8 @@ log_step "Resolved configuration"
 log_info "Platform target : ${J2026_PLATFORM} (config/config.yaml, override with JENKINS2026_PLATFORM)"
 log_info "Observability   : ${J2026_OBS_MODE}"
 log_info "Jenkins ns      : ${J2026_JENKINS_NAMESPACE}"
-log_info "PetClinic ns    : ${J2026_PETCLINIC_NS_STABLE} / ${J2026_PETCLINIC_NS_DEVELOP}"
-log_info "PetClinic svcs  : ${J2026_PETCLINIC_SERVICES}"
+log_info "Microservices ns    : ${J2026_MICROSERVICES_NS_STABLE} / ${J2026_MICROSERVICES_NS_DEVELOP}"
+log_info "Microservices svcs  : ${J2026_MICROSERVICES_SERVICES}"
 
 if [[ "${J2026_PLATFORM}" == "openshift" ]]; then
   if ! kubectl api-resources --api-group=route.openshift.io 2>/dev/null | grep -q routes; then

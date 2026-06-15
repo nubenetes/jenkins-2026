@@ -1,115 +1,34 @@
-# =============================================================================
-# Service registry consumed by jenkins/pipelines/seed/seed_jobs.groovy.
-#
-# For each entry, the ROOT seed job ("seed-jobs", tracks this repo's
-# JENKINS2026_REPO_BRANCH, normally "main") creates ONE stable pipeline job
-# (pipelines-as-code):
-#   - "<name>"               -> builds branch `branches.stable`  (main),
-#                                deploys to `namespaces.stable`   (petclinic)
-#
-# The DEV seed job ("pac-dev/seed-jobs-dev", tracks JENKINS2026_DEV_REPO_BRANCH,
-# normally "develop") creates ONE "-develop" job per service inside the
-# `pac-dev/` folder - the GitFlow dev sandbox:
-#   - "pac-dev/<name>-develop" -> builds branch `branches.develop` (main),
-#                                  deploys to `namespaces.develop` (petclinic-develop)
-# This is an isolated environment where devops/platform engineers can change
-# and improve this repo's pipelines-as-code (seed_jobs.groovy,
-# Jenkinsfile.petclinic, JCasC, shared library) on the `develop` branch and
-# see the resulting "-develop" pipelines run end-to-end, without any impact on
-# the already-tested stable "<name>" jobs above. See README.md
-# "Pipelines-as-code dev sandbox".
-#
-# spring-petclinic-microservices only has a `main` branch (no `master`/
-# `develop`), so both `branches.stable` and `branches.develop` below point at
-# `main` - "-develop" is a separate namespace/track for testing, not a
-# different PetClinic source branch. spring-petclinic-angular is the
-# exception: it only has `master` (no `main`), so its service entry below
-# sets its own `branches` override.
-#
-# All jobs run the SAME jenkins/pipelines/Jenkinsfile.petclinic; only the
-# parameters below (and the job name/folder) differ.
-#
-# repoUrl/module values mirror config/config.yaml petclinic.git settings -
-# the 8 Java services live as Maven modules inside the
-# spring-petclinic-microservices monorepo; the Angular UI is its own repo.
-# =============================================================================
+# services.yaml - Modernized Microservices Registry (JHipster 2026)
+# Updated to track the new microservices architecture.
 
-backendRepoUrl: &backendRepoUrl https://github.com/spring-petclinic/spring-petclinic-microservices.git
-frontendRepoUrl: &frontendRepoUrl https://github.com/spring-petclinic/spring-petclinic-angular.git
+backendRepoUrl: &backendRepoUrl https://github.com/nubenetes/jenkins-2026.git
 
 namespaces:
-  stable: petclinic
-  develop: petclinic-develop
+  stable: microservices
+  develop: microservices-develop
 
 branches:
   stable: main
   develop: main
 
 services:
-  - name: config-server
-    type: java
+  - name: gateway
+    type: java # JHipster Gateway (Spring Boot + Angular 18)
     repoUrl: *backendRepoUrl
-    module: spring-petclinic-config-server
-    port: 8888
+    module: apps/gateway
+    port: 8080
     healthPath: /actuator/health
 
-  - name: discovery-server
-    type: java
+  - name: customers
+    type: java # Microservice for Customer/Pet management
     repoUrl: *backendRepoUrl
-    module: spring-petclinic-discovery-server
-    port: 8761
-    healthPath: /actuator/health
-
-  - name: customers-service
-    type: java
-    repoUrl: *backendRepoUrl
-    module: spring-petclinic-customers-service
+    module: apps/customers
     port: 8081
     healthPath: /actuator/health
 
-  - name: visits-service
-    type: java
+  - name: billing
+    type: java # Microservice for Invoices/Payments
     repoUrl: *backendRepoUrl
-    module: spring-petclinic-visits-service
+    module: apps/billing
     port: 8082
     healthPath: /actuator/health
-
-  - name: vets-service
-    type: java
-    repoUrl: *backendRepoUrl
-    module: spring-petclinic-vets-service
-    port: 8083
-    healthPath: /actuator/health
-
-  - name: genai-service
-    type: java
-    repoUrl: *backendRepoUrl
-    module: spring-petclinic-genai-service
-    port: 8084
-    healthPath: /actuator/health
-
-  - name: api-gateway
-    type: java
-    repoUrl: *backendRepoUrl
-    module: spring-petclinic-api-gateway
-    port: 8080
-    healthPath: /actuator/health
-
-  - name: admin-server
-    type: java
-    repoUrl: *backendRepoUrl
-    module: spring-petclinic-admin-server
-    port: 9090
-    healthPath: /actuator/health
-
-  - name: petclinic-angular
-    type: angular
-    repoUrl: *frontendRepoUrl
-    module: ""
-    port: 8080
-    healthPath: /
-    # spring-petclinic-angular has no `main` branch - override the top-level
-    # branches.{stable,develop} (main) with its actual default, `master`.
-    branches:
-      stable: master
-      develop: master
