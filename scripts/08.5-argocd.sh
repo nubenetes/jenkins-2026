@@ -14,9 +14,9 @@ log_info "Checking ArgoCD Helm release status..."
 # Use yq to parse the JSON output from helm list.
 current_status=$(helm list -n "${J2026_ARGOCD_NAMESPACE}" -f "^${J2026_ARGOCD_RELEASE}$" -o json | yq eval '.[0].status' 2>/dev/null || echo "not-found")
 
-if [[ "${current_status}" == "pending-install" || "${current_status}" == "pending-upgrade" ]]; then
+if [[ "${current_status}" == "pending-install" || "${current_status}" == "pending-upgrade" || "${current_status}" == "uninstalling" ]]; then
   log_warn "ArgoCD is stuck in '${current_status}'. Uninstalling to reset state..."
-  helm uninstall "${J2026_ARGOCD_RELEASE}" -n "${J2026_ARGOCD_NAMESPACE}" --wait || true
+  helm uninstall "${J2026_ARGOCD_RELEASE}" -n "${J2026_ARGOCD_NAMESPACE}" --wait --force || true
 fi
 
 helm upgrade --install "${J2026_ARGOCD_RELEASE}" argo/argo-cd \
