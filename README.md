@@ -795,8 +795,14 @@ If you want to log in using the cluster's default administrator ServiceAccount:
 2. Copy the token.
 3. Select the **Token** login option in Headlamp, paste the token, and click **Sign In** (grants cluster-admin access).
 
+#### Why IAP-Gated Access + Token Login over Native App-Level OIDC?
+For managed Kubernetes environments like GKE, this setup (GCP IAP at the load balancer edge + `gcloud` access token login) is significantly more secure and stable than configuring full native OIDC inside Headlamp:
+*   **Edge-Level Firewall (Google IAP):** With native OIDC, Headlamp's login page must be exposed to the public internet, leaving it vulnerable to scans and brute-force. With Google IAP, the entire site is firewalled at the Google Cloud load balancer. Unauthorized users are blocked with a `403 Forbidden` before a single packet ever reaches the container.
+*   **Native GKE IAM Integration:** Standard Kubernetes clusters require custom configuration flags (`--oidc-issuer-url`, `--oidc-client-id`) to verify OIDC tokens. Because GKE is a managed Google Cloud service, its Kube-API server natively validates Google Cloud OAuth2 access tokens. Pasting your `gcloud` token allows GKE to map your actions directly to your GCP IAM roles (e.g. `roles/container.admin`), eliminating the need to manually sync and map OIDC scopes to cluster RoleBindings.
+*   **Format Compatibility:** Google's OAuth2 access tokens are opaque strings (e.g., `ya29....`), not JWTs. Attempting to force native OIDC redirection inside GKE dashboards often fails with token verification or JWT parsing errors (such as the base64 decoding error).
 
 ## Public access (GKE Gateway API + IAP)
+
 
 Jenkins, Microservices (stable and dev-sandbox), Headlamp, and pgAdmin can all be exposed on
 the public internet through a single **GKE Gateway** (`gatewayClassName:
