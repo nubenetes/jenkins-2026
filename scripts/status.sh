@@ -25,11 +25,15 @@ kubectl get deploy,pods -n "${J2026_PETCLINIC_NS_STABLE}" 2>/dev/null || log_war
 log_step "PetClinic - develop (namespace: ${J2026_PETCLINIC_NS_DEVELOP})"
 kubectl get deploy,pods -n "${J2026_PETCLINIC_NS_DEVELOP}" 2>/dev/null || log_warn "Namespace ${J2026_PETCLINIC_NS_DEVELOP} not found"
 
+log_step "ArgoCD (namespace: ${J2026_ARGOCD_NAMESPACE})"
+kubectl get pods -n "${J2026_ARGOCD_NAMESPACE}" 2>/dev/null || log_warn "Namespace ${J2026_ARGOCD_NAMESPACE} not found"
+
 echo
 log_step "Useful endpoints"
 log_info "Jenkins UI:   kubectl -n ${J2026_JENKINS_NAMESPACE} port-forward svc/${J2026_JENKINS_RELEASE} 8080:8080  (login: ${J2026_JENKINS_ADMIN_USER} / see '${J2026_JENKINS_CREDENTIALS_SECRET}' secret)"
-log_info "PetClinic UI (stable):  kubectl -n ${J2026_PETCLINIC_NS_STABLE} port-forward svc/petclinic-angular 8081:8080"
-log_info "PetClinic UI (develop): kubectl -n ${J2026_PETCLINIC_NS_DEVELOP} port-forward svc/petclinic-angular 8082:8080"
+log_info "ArgoCD UI:    kubectl -n ${J2026_ARGOCD_NAMESPACE} port-forward svc/${J2026_ARGOCD_RELEASE}-server 8081:443 (login: admin / see argocd-initial-admin-secret secret)"
+log_info "PetClinic UI (stable):  kubectl -n ${J2026_PETCLINIC_NS_STABLE} port-forward svc/petclinic-angular 8082:8080"
+log_info "PetClinic UI (develop): kubectl -n ${J2026_PETCLINIC_NS_DEVELOP} port-forward svc/petclinic-angular 8083:8080"
 if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
   log_info "Grafana:      kubectl -n ${J2026_GRAFANA_OSS_NAMESPACE} port-forward svc/kube-prometheus-stack-grafana 3000:80  (login: admin / see kube-prometheus-stack-grafana secret)"
 fi

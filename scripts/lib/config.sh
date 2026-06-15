@@ -210,3 +210,8 @@ export J2026_PETCLINIC_SERVICES="${J2026_PETCLINIC_SERVICES% }"
 # JENKINS2026_PLATFORM above. Gates whether seed-jobs enables the
 # genai-service pipeline jobs (see jenkins/pipelines/seed/seed_jobs.groovy).
 export J2026_PETCLINIC_GENAI_SERVICE_ENABLED="${JENKINS2026_GENAI_SERVICE_ENABLED:-$(yq_get '.petclinic.genaiServiceEnabled' 'false')}"
+
+# --- argocd -----------------------------------------------------------------
+
+export J2026_ARGOCD_NAMESPACE="$(yq_get '.argocd.namespace' 'argocd')"
+export J2026_ARGOCD_RELEASE="$(yq_get '.argocd.releaseName' 'argocd')"
