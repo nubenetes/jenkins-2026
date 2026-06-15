@@ -1,0 +1,29 @@
+{{- if and .Values.ingress.enabled (ne .Values.global.platform "openshift") }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: microservices-angular
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: microservices-angular
+    {{- include "microservices.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ include "microservices.ingressClassName" . }}
+  rules:
+    - {{- if .Values.ingress.host }}
+      host: {{ .Values.ingress.host }}
+      {{- end }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: microservices-angular
+                port:
+                  number: {{ (index .Values.services "microservices-angular").port }}
+{{- end }}

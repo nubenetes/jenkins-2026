@@ -66,21 +66,35 @@ run_bg() {
   J2026_BG_LOGS["${name}"]="${log_file}"
 }
 
-# wait_for_resource <type> <name> <namespace> [timeout_per_poll]
-# Smart polling for any resource type (deployment, statefulset, etc.)
+# wait_for_resource <type> <name> <namespace> [timeout]
+# Uses kubectl rollout status with a total timeout (security mechanism)
+# while showing progress updates.
 wait_for_resource() {
-  local type="$1" name="$2" ns="$3" poll_timeout="${4:-30s}"
-  log_step "Monitoring ${type}/${name} in ${ns}..."
-  until kubectl rollout status "${type}/${name}" -n "${ns}" --timeout="${poll_timeout}" >/dev/null 2>&1; do
-    log_info "  ... ${name} rollout in progress, checking again..."
+  local type="$1" name="$2" ns="$3" timeout="${4:-15m}"
+  log_step "Monitoring ${type}/${name} in ${ns} (timeout: ${timeout})..."
+
+  # Wait for the resource to at least exist before monitoring rollout.
+  local count=0
+  while ! kubectl get "${type}/${name}" -n "${ns}" >/dev/null 2>&1; do
+    if [[ $count -ge 60 ]]; then
+      log_error "Timeout: ${type}/${name} was never created."
+      return 1
+    fi
+    log_info "  ... waiting for ${type}/${name} to appear..."
     sleep 5
+    ((count++))
   done
+
+  if ! kubectl rollout status "${type}/${name}" -n "${ns}" --timeout="${timeout}"; then
+    log_error "Rollout failed for ${type}/${name}."
+    return 1
+  fi
   log_info "OK: ${type}/${name} is ready."
 }
 
-# wait_for_deployment <name> <namespace> [timeout_per_poll]
+# wait_for_deployment <name> <namespace> [timeout]
 wait_for_deployment() {
-  wait_for_resource "deployment" "$1" "$2" "${3:-30s}"
+  wait_for_resource "deployment" "$1" "$2" "${3:-5m}"
 }
 
 # wait_bg - waits for every PID registered via run_bg, prints a per-step

@@ -58,7 +58,17 @@ jobs:
 
       - name: Terraform init
         working-directory: terraform/grafana-cloud-stack
-        run: terraform init -input=false
+        run: |
+          for i in {1..3}; do
+            terraform init -input=false && break || {
+              if [ $i -lt 3 ]; then
+                echo "Terraform init failed, retrying in 10s..."
+                sleep 10
+              else
+                exit 1
+              fi
+            }
+          done
 
       - name: Terraform apply (create/confirm persistent Grafana Cloud stack)
         working-directory: terraform/grafana-cloud-stack

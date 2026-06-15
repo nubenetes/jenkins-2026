@@ -1,0 +1,24 @@
+{{- if and .Values.ingress.enabled (eq .Values.global.platform "openshift") }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: microservices-angular
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: microservices-angular
+    {{- include "microservices.labels" . | nindent 4 }}
+spec:
+  {{- if .Values.ingress.host }}
+  host: {{ .Values.ingress.host }}
+  {{- end }}
+  to:
+    kind: Service
+    name: microservices-angular
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+{{- end }}

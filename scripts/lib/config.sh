@@ -143,20 +143,21 @@ export J2026_GATEWAY_IAP_SECRET="$(yq_get '.gateway.iapCredentialsSecretName' 'g
 # 09-gateway.sh on a different runner) doesn't exist.
 export J2026_GATEWAY_NAME="jenkins-2026-gateway"
 export J2026_GATEWAY_HTTPROUTE_JENKINS="jenkins"
-export J2026_GATEWAY_HTTPROUTE_PETCLINIC="petclinic"
-export J2026_GATEWAY_HTTPROUTE_PETCLINIC_DEVELOP="petclinic-develop"
+export J2026_GATEWAY_HTTPROUTE_MICROSERVICES="microservices"
+export J2026_GATEWAY_HTTPROUTE_MICROSERVICES_DEVELOP="microservices-develop"
 export J2026_GATEWAY_HTTPROUTE_HEADLAMP="headlamp"
 export J2026_GATEWAY_IAP_POLICY_JENKINS="jenkins-iap"
 export J2026_GATEWAY_IAP_POLICY_HEADLAMP="headlamp-iap"
 
 J2026_GATEWAY_HOST_JENKINS="$(yq_get '.gateway.hosts.jenkins' 'jenkins')"
-J2026_GATEWAY_HOST_PETCLINIC="$(yq_get '.gateway.hosts.petclinic' 'petclinic')"
-J2026_GATEWAY_HOST_PETCLINIC_DEVELOP="$(yq_get '.gateway.hosts.petclinicDevelop' 'petclinic-develop')"
+J2026_GATEWAY_HOST_MICROSERVICES="$(yq_get '.gateway.hosts.microservices' 'microservices')"
+J2026_GATEWAY_HOST_MICROSERVICES_DEVELOP="$(yq_get '.gateway.hosts.microservicesDevelop' 'microservices-develop')"
 J2026_GATEWAY_HOST_HEADLAMP="$(yq_get '.gateway.hosts.headlamp' 'headlamp')"
 export J2026_GATEWAY_JENKINS_HOST="${J2026_GATEWAY_HOST_JENKINS}.${J2026_GATEWAY_BASE_DOMAIN}"
-export J2026_GATEWAY_PETCLINIC_HOST="${J2026_GATEWAY_HOST_PETCLINIC}.${J2026_GATEWAY_BASE_DOMAIN}"
-export J2026_GATEWAY_PETCLINIC_DEVELOP_HOST="${J2026_GATEWAY_HOST_PETCLINIC_DEVELOP}.${J2026_GATEWAY_BASE_DOMAIN}"
+export J2026_GATEWAY_MICROSERVICES_HOST="${J2026_GATEWAY_HOST_MICROSERVICES}.${J2026_GATEWAY_BASE_DOMAIN}"
+export J2026_GATEWAY_MICROSERVICES_DEVELOP_HOST="${J2026_GATEWAY_HOST_MICROSERVICES_DEVELOP}.${J2026_GATEWAY_BASE_DOMAIN}"
 export J2026_GATEWAY_HEADLAMP_HOST="${J2026_GATEWAY_HOST_HEADLAMP}.${J2026_GATEWAY_BASE_DOMAIN}"
+
 
 # Headlamp's OIDC redirect URI: the public gateway URL if the gateway is
 # enabled, else the kubectl port-forward default. Override with
@@ -185,28 +186,28 @@ else
 fi
 export J2026_JENKINS_URL="${JENKINS2026_JENKINS_URL:-${J2026_JENKINS_URL_DEFAULT}}"
 
-# --- petclinic ---------------------------------------------------------------
+# --- microservices ------------------------------------------------------------
 
-export J2026_PETCLINIC_NS_STABLE="$(yq_get '.petclinic.namespaces.stable' 'petclinic')"
-export J2026_PETCLINIC_NS_DEVELOP="$(yq_get '.petclinic.namespaces.develop' 'petclinic-develop')"
+export J2026_MICROSERVICES_NS_STABLE="$(yq_get '.microservices.namespaces.stable' 'microservices')"
+export J2026_MICROSERVICES_NS_DEVELOP="$(yq_get '.microservices.namespaces.develop' 'microservices-develop')"
 
-export J2026_PETCLINIC_GIT_ORG="$(yq_get '.petclinic.git.org' 'spring-petclinic')"
-export J2026_PETCLINIC_BACKEND_REPO="$(yq_get '.petclinic.git.backendRepo' 'spring-petclinic-microservices')"
-export J2026_PETCLINIC_FRONTEND_REPO="$(yq_get '.petclinic.git.frontendRepo' 'spring-petclinic-angular')"
-export J2026_PETCLINIC_BACKEND_URL="$(yq_get '.petclinic.git.backendUrl' '')"
-export J2026_PETCLINIC_FRONTEND_URL="$(yq_get '.petclinic.git.frontendUrl' '')"
+export J2026_MICROSERVICES_GIT_ORG="$(yq_get '.microservices.git.org' 'nubenetes')"
+export J2026_MICROSERVICES_GIT_REPO="$(yq_get '.microservices.git.repo' 'jenkins-2026')"
+export J2026_MICROSERVICES_GIT_URL="$(yq_get '.microservices.git.url' '')"
 
-export J2026_PETCLINIC_BRANCH_STABLE="$(yq_get '.petclinic.branches.stable' 'master')"
-export J2026_PETCLINIC_BRANCH_DEVELOP="$(yq_get '.petclinic.branches.develop' 'develop')"
+export J2026_MICROSERVICES_BRANCH_STABLE="$(yq_get '.microservices.branches.stable' 'main')"
+export J2026_MICROSERVICES_BRANCH_DEVELOP="$(yq_get '.microservices.branches.develop' 'main')"
 
-export J2026_PETCLINIC_REGISTRY="$(yq_get '.petclinic.registry' 'ghcr.io/nubenetes/jenkins-2026-petclinic')"
+export J2026_MICROSERVICES_REGISTRY="$(yq_get '.microservices.registry' 'ghcr.io/nubenetes/jenkins-2026-microservices')"
 
-# Space-separated list of service names, e.g. "config-server discovery-server ...".
-J2026_PETCLINIC_SERVICES="$(yq_get_list '.petclinic.services[].name' | tr '\n' ' ')"
-export J2026_PETCLINIC_SERVICES="${J2026_PETCLINIC_SERVICES% }"
+# Space-separated list of service names.
+J2026_MICROSERVICES_SERVICES="$(yq_get_list '.microservices.services[].name' | tr '\n' ' ')"
+export J2026_MICROSERVICES_SERVICES="${J2026_MICROSERVICES_SERVICES% }"
 
-# FEATURE FLAG: JENKINS2026_GENAI_SERVICE_ENABLED, if set, overrides
-# petclinic.genaiServiceEnabled from config.yaml - same override pattern as
-# JENKINS2026_PLATFORM above. Gates whether seed-jobs enables the
-# genai-service pipeline jobs (see jenkins/pipelines/seed/seed_jobs.groovy).
-export J2026_PETCLINIC_GENAI_SERVICE_ENABLED="${JENKINS2026_GENAI_SERVICE_ENABLED:-$(yq_get '.petclinic.genaiServiceEnabled' 'false')}"
+# FEATURE FLAG: JENKINS2026_GENAI_SERVICE_ENABLED.
+export J2026_MICROSERVICES_GENAI_SERVICE_ENABLED="${JENKINS2026_GENAI_SERVICE_ENABLED:-$(yq_get '.microservices.genaiServiceEnabled' 'false')}"
+
+# --- argocd -----------------------------------------------------------------
+
+export J2026_ARGOCD_NAMESPACE="$(yq_get '.argocd.namespace' 'argocd')"
+export J2026_ARGOCD_RELEASE="$(yq_get '.argocd.releaseName' 'argocd')"

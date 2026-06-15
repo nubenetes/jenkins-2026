@@ -46,6 +46,14 @@ controller:
     # not "latest".
     pullPolicy: IfNotPresent
 
+  # Enable the Raw HTML Markup Formatter (requires antisamy-markup-formatter plugin)
+  enableRawHtmlMarkupFormatter: true
+
+  # Disable the Helm chart's default JCasC configuration to prevent conflicts
+  # with our custom scripts in jenkins/casc/*.yaml
+  JCasC:
+    defaultConfig: false
+
   # We drive everything through pipeline agents; no executors on controller
   # (numExecutors: 0 is also the chart default, so left unset here).
   # executorMode feeds the chart's generated jcasc-default-config.yaml
@@ -58,15 +66,15 @@ controller:
 
   resources:
     requests:
-      cpu: "200m"
-      memory: "1024Mi"
+      cpu: "1"
+      memory: "2Gi"
     limits:
       cpu: "2"
       memory: "4096Mi"
 
   # Environment variables consumed by the ${VAR:-default} placeholders in
   # jenkins/casc/*.yaml. scripts/04-jenkins.sh overrides JENKINS2026_*,
-  # PETCLINIC_*, OTEL_* and JENKINS_URL via --set from config/config.yaml;
+  # MICROSERVICES_*, OTEL_* and JENKINS_URL via --set from config/config.yaml;
   # the remaining secret-backed values come from the "jenkins-credentials"
   # Secret created by scripts/01-namespaces.sh (all optional except the
   # admin password, which the script generates if absent).
@@ -99,8 +107,8 @@ controller:
       value: "develop"
     - name: JENKINS2026_PLATFORM
       value: "gke"
-    - name: PETCLINIC_REGISTRY
-      value: "ghcr.io/nubenetes/jenkins-2026-petclinic"
+    - name: MICROSERVICES_REGISTRY
+      value: "ghcr.io/nubenetes/jenkins-2026-microservices"
     - name: OTEL_EXPORTER_OTLP_ENDPOINT
       value: "http://otel-collector-gateway.observability.svc.cluster.local:4317"
     - name: OTEL_LOGS_BACKEND_URL
@@ -121,24 +129,24 @@ controller:
           name: jenkins-credentials
           key: grafana-traces-dashboard-uid
           optional: true
-    # Public URL of the stable PetClinic (https://petclinic.<gateway.baseDomain>),
+    # Public URL of the stable Microservices (https://microservices.<gateway.baseDomain>),
     # empty if the Gateway feature (config/config.yaml gateway.baseDomain) is
     # disabled - refreshed on every scripts/01-namespaces.sh run. Surfaced in
     # the systemMessage banner by jcasc-base.yaml.
-    - name: PETCLINIC_URL
+    - name: MICROSERVICES_URL
       valueFrom:
         secretKeyRef:
           name: jenkins-credentials
-          key: petclinic-url
+          key: microservices-url
           optional: true
-    # Public URL of the pac-dev/*-develop dev sandbox PetClinic
-    # (https://petclinic-develop.<gateway.baseDomain>) - same conditions as
-    # PETCLINIC_URL above.
-    - name: PETCLINIC_DEVELOP_URL
+    # Public URL of the pac-dev/*-develop dev sandbox Microservices
+    # (https://microservices-develop.<gateway.baseDomain>) - same conditions as
+    # MICROSERVICES_URL above.
+    - name: MICROSERVICES_DEVELOP_URL
       valueFrom:
         secretKeyRef:
           name: jenkins-credentials
-          key: petclinic-develop-url
+          key: microservices-develop-url
           optional: true
     - name: REGISTRY_USERNAME
       valueFrom:
@@ -347,7 +355,7 @@ controller:
 
 agent:
   # Per-pipeline pod templates (maven/node/dind/kubectl/helm containers) are
-  # defined inline in jenkins/pipelines/Jenkinsfile.petclinic via the
+  # defined inline in jenkins/pipelines/Jenkinsfile.microservices via the
   # `agent { kubernetes { yaml ... } }` directive, so we keep the chart-level
   # default agent minimal. Only the limits differ from the chart default
   # (512m/512Mi requests/limits) - requests are left at that default.

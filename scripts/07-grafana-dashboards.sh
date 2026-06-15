@@ -43,7 +43,7 @@ case "${J2026_OBS_MODE}" in
 
     log_step "Authenticating with gcx CLI"
     # gcx login --yes performs non-interactive login, discovering the stack ID and namespace
-    gcx login --yes default --server "${GRAFANA_BASE_URL}" --token "${GRAFANA_API_KEY}"
+    gcx login --yes default --server "${GRAFANA_BASE_URL}" --token "${GRAFANA_API_KEY}" --allow-server-override
 
     RESOURCES_DIR="${J2026_ROOT_DIR}/gcx_test"
     FOLDER_UID="jenkins-2026"

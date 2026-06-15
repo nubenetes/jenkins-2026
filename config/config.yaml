@@ -69,7 +69,7 @@ jenkins:
   # jenkins/casc/*.yaml for the keys it must contain.
   credentialsSecretName: jenkins-credentials
   # This repo's own coordinates, used by JCasC for the global pipeline shared
-  # library and by the seed job to fetch Jenkinsfile.petclinic + seed scripts.
+  # library and by the seed job to fetch Jenkinsfile.microservices + seed scripts.
   selfRepoUrl: https://github.com/nubenetes/jenkins-2026.git
   selfRepoBranch: main
   # Branch the "pac-dev/seed-jobs-dev" job (and the pac-dev/*-develop jobs it
@@ -172,10 +172,9 @@ gateway:
   # Hostname prefixes under baseDomain for each app.
   hosts:
     jenkins: "jenkins"
-    petclinic: "petclinic"
-    # pac-dev/*-develop dev sandbox PetClinic (namespace petclinic-develop) -
-    # same wildcard cert, no IAP (public demo app, same as stable).
-    petclinicDevelop: "petclinic-develop"
+    microservices: "microservices"
+    # pac-dev/*-develop dev sandbox (namespace microservices-develop)
+    microservicesDevelop: "microservices-develop"
     headlamp: "headlamp"
   # k8s Secret (per-namespace, created by scripts/01-namespaces.sh) holding
   # the IAP OAuth client ID/secret consumed by the GCPBackendPolicy resources
@@ -184,52 +183,29 @@ gateway:
   iapCredentialsSecretName: gateway-iap-oauth
 
 # -----------------------------------------------------------------------------
-# PetClinic (microservices + Angular UI), GitFlow pipelines-as-code
+# Microservices (Modernized stack), GitFlow pipelines-as-code
 # -----------------------------------------------------------------------------
-petclinic:
+microservices:
   namespaces:
-    stable: petclinic
+    stable: microservices
     # Namespace the pac-dev/*-develop pipelines-as-code dev sandbox deploys
-    # into - see jenkins/pipelines/seed/services.yaml namespaces.develop and
-    # README.md "Pipelines-as-code dev sandbox".
-    develop: petclinic-develop
+    # into.
+    develop: microservices-develop
 
+  # JHipster microservices monorepo coordinates
   git:
-    org: spring-petclinic
-    backendRepo: spring-petclinic-microservices
-    frontendRepo: spring-petclinic-angular
-    backendUrl: https://github.com/spring-petclinic/spring-petclinic-microservices.git
-    frontendUrl: https://github.com/spring-petclinic/spring-petclinic-angular.git
+    org: nubenetes
+    repo: jenkins-2026
+    url: https://github.com/nubenetes/jenkins-2026.git
 
-  # Upstream spring-petclinic repos only have a `main` branch (no `master`/
-  # `develop`) - both pipelines build from `main`. The "-develop" suffix
-  # pipelines (separate namespace, see namespaces.develop above) exist purely
-  # as a testing track, not because a different source branch exists.
   branches:
     stable: main
     develop: main
 
-  # Container images built by the pipelines are pushed here. Override with
-  # your own registry; ghcr.io/<org> works out of the box with the GITHUB_TOKEN
-  # credential configured in Jenkins (see jenkins/casc/jcasc-base.yaml).
-  registry: ghcr.io/nubenetes/jenkins-2026-petclinic
-
-  # genai-service (Spring AI) crashes on startup unless OPENAI_API_KEY is a
-  # real key - helm/petclinic/values-*.yaml only set a non-blank placeholder
-  # so the pod can start (see comments there). Until a real key is wired in
-  # via a Secret, seed-jobs disables the genai-service pipeline jobs (all
-  # flavours) so they can't be triggered, manually or otherwise. Flip to
-  # true (and configure a real OPENAI_API_KEY) once that's done. Override
-  # with JENKINS2026_GENAI_SERVICE_ENABLED.
-  genaiServiceEnabled: false
+  # Container images built by the pipelines are pushed here.
+  registry: ghcr.io/nubenetes/jenkins-2026-microservices
 
   services:
-    - name: config-server
-    - name: discovery-server
-    - name: customers-service
-    - name: visits-service
-    - name: vets-service
-    - name: genai-service
-    - name: api-gateway
-    - name: admin-server
-    - name: petclinic-angular
+    - name: gateway
+    - name: customers
+    - name: billing

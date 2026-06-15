@@ -32,6 +32,24 @@ TF_DIR="${ROOT_DIR}/terraform/gke"
 # shellcheck source=../scripts/lib/common.sh
 source "${ROOT_DIR}/scripts/lib/common.sh"
 
+retry() {
+  local n=1
+  local max=3
+  local delay=10
+  while true; do
+    "$@" && break || {
+      if [[ $n -lt $max ]]; then
+        ((n++))
+        log_warn "Command failed. Attempt $n/$max in ${delay}s..."
+        sleep $delay
+      else
+        log_error "The command has failed after $n attempts."
+        return 1
+      fi
+    }
+  done
+}
+
 : "${GCP_PROJECT_ID:?Set GCP_PROJECT_ID to your GCP project ID (billing enabled)}"
 
 require_cmd terraform "Install Terraform >= 1.9 (https://developer.hashicorp.com/terraform/install)" || exit 1
@@ -69,7 +87,7 @@ cleanup() {
 trap cleanup EXIT
 
 log_step "terraform init (terraform/gke)"
-terraform -chdir="${TF_DIR}" init -input=false
+retry terraform -chdir="${TF_DIR}" init -input=false
 
 log_step "terraform apply (provisioning throwaway GKE cluster - this takes ~10 minutes)"
 # Set *before* apply: a failed/partial apply can still have created billable
