@@ -90,7 +90,7 @@ config:
     # namespace/pod/container metadata parsed by the container operator
     # above, so Loki labels line up with the trace/metric resource
     # attributes set by the OTel Java agent and the collector gateway.
-    k8sattributes:
+    k8s_attributes:
       auth_type: serviceAccount
       passthrough: false
       extract:
@@ -114,5 +114,5 @@ config:
     pipelines:
       logs:
         receivers: [filelog]
-        processors: [memory_limiter, k8sattributes, batch]
+        processors: [memory_limiter, k8s_attributes, batch]
         exporters: [otlphttp/grafana_cloud]
