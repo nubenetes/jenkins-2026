@@ -32,6 +32,9 @@ jobs:
           # Pointing to the stable environment
           export TARGET_URL="https://petclinic.jenkins2026.nubenetes.com"
           
+          # k6's gRPC exporter expects the endpoint WITHOUT the https:// prefix
+          export K6_OTEL_GRPC_EXPORTER_ENDPOINT=$(echo $K6_OTEL_GRPC_EXPORTER_ENDPOINT | sed 's|^https://||')
+          
           set +e
           k6 run jenkins/pipelines/k6/petclinic-smoke.js \
             -o opentelemetry \
