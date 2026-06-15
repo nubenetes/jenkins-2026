@@ -51,6 +51,9 @@ spec:
       image: alpine/k8s:1.31.3
       command: ['sleep']
       args: ['infinity']
+      env:
+        - name: ARGOCD_VERSION
+          value: v2.11.0
       resources:
         requests: {cpu: 50m, memory: 256Mi}
         limits: {cpu: 500m, memory: 512Mi}

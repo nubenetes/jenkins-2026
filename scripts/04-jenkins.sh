@@ -139,6 +139,14 @@ controller:
           name: ${J2026_JENKINS_CREDENTIALS_SECRET}
           key: oidc-admin-email
           optional: true
+    - name: ARGOCD_SERVER
+      value: "argocd-server.${J2026_ARGOCD_NAMESPACE}.svc.cluster.local"
+    - name: ARGOCD_AUTH_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: ${J2026_JENKINS_CREDENTIALS_SECRET}
+          key: argocd-token
+          optional: true
 EOF
 
 helm_args=(

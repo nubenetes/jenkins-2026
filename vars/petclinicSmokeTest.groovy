@@ -9,7 +9,6 @@ def call(Map cfg) {
   container('helm') {
     sh """
       set -eux
-      kubectl -n ${cfg.namespace} rollout status deployment/${cfg.serviceName} --timeout=180s
       # Service endpoints/kube-proxy/CNI can take a few seconds to catch up
       # with a just-finished rollout, so a fresh pod's first connection can
       # time out even though the new Pods are Ready - retry on any error.

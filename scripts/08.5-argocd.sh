@@ -68,6 +68,29 @@ EOF
   log_info "Restarting ArgoCD components to pick up OIDC config"
   kubectl rollout restart deployment "${J2026_ARGOCD_RELEASE}-server" -n "${J2026_ARGOCD_NAMESPACE}"
   kubectl rollout restart deployment "${J2026_ARGOCD_RELEASE}-dex-server" -n "${J2026_ARGOCD_NAMESPACE}"
+  
+  # 2.5 Configure Jenkins Account for ArgoCD (CLI/API access)
+  log_step "Configuring Jenkins account in ArgoCD"
+  kubectl patch configmap argocd-cm -n "${J2026_ARGOCD_NAMESPACE}" --type merge -p '{"data": {"accounts.jenkins": "apiKey"}}'
+  kubectl patch configmap argocd-rbac-cm -n "${J2026_ARGOCD_NAMESPACE}" --type merge -p '{"data": {"policy.csv": "g, authenticated, role:admin\ng, jenkins, role:admin"}}'
+  
+  log_info "Generating ArgoCD API token for Jenkins"
+  # Since we don't have the CLI locally yet, we use a throwaway pod to generate the token
+  # and store it in the jenkins-credentials secret
+  ARGOCD_ADMIN_PASSWORD=$(kubectl get secret argocd-initial-admin-secret -n "${J2026_ARGOCD_NAMESPACE}" -o jsonpath="{.data.password}" | base64 -d)
+  
+  TOKEN=$(kubectl run argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --rm -i --restart=Never \
+    --image=quay.io/argoproj/argocd:v2.11.0 -- \
+    bash -c "argocd login localhost:8080 --username admin --password '${ARGOCD_ADMIN_PASSWORD}' --insecure --core && \
+            argocd account generate-token --account jenkins --core")
+            
+  if [[ -n "${TOKEN}" ]]; then
+    log_info "Storing ArgoCD token in ${J2026_JENKINS_CREDENTIALS_SECRET}"
+    kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \
+      --type=merge -p "{\"stringData\":{\"argocd-token\":\"${TOKEN}\"}}"
+  else
+    log_error "Failed to generate ArgoCD token"
+  fi
 else
   log_warn "OIDC credentials not found. ArgoCD will use local admin password."
 fi

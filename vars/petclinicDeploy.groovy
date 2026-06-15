@@ -55,6 +55,31 @@ def call(Map cfg) {
           """
         }
       }
+
+      container('helm') {
+        sh """
+          set -eux
+          # Install argocd CLI if not present
+          if ! command -v argocd >/dev/null 2>&1; then
+            curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/download/\${ARGOCD_VERSION}/argocd-linux-amd64
+            chmod +x /usr/local/bin/argocd
+          fi
+
+          # Trigger and wait for Sync
+          # Using --grpc-web because we are connecting to the internal service which might not have full HTTP/2 support in all environments
+          # Using --insecure because we are connecting to the internal service via .local DNS
+          argocd app sync "petclinic-${cfg.envName}" \
+            --server "\${ARGOCD_SERVER}" \
+            --auth-token "\${ARGOCD_AUTH_TOKEN}" \
+            --grpc-web --insecure
+
+          argocd app wait "petclinic-${cfg.envName}" \
+            --sync --health --timeout 300 \
+            --server "\${ARGOCD_SERVER}" \
+            --auth-token "\${ARGOCD_AUTH_TOKEN}" \
+            --grpc-web --insecure
+        """
+      }
     }
   }
 }
