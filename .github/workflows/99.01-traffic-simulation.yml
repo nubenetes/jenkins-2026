@@ -58,3 +58,26 @@ jobs:
           name: k6-summary-report
           path: k6-summary.json
           retention-days: 7
+
+      - name: Show Results Summary
+        if: always()
+        run: |
+          echo "=============================================================================="
+          echo "📊 K6 TRAFFIC SIMULATION SUMMARY"
+          echo "=============================================================================="
+          if [ -f k6-summary.json ]; then
+            cat k6-summary.json | jq '.metrics'
+          else
+            echo "❌ k6-summary.json not found. Check the simulation logs for errors."
+          fi
+          echo ""
+          echo "🔗 VIEW IN GRAFANA"
+          echo "------------------------------------------------------------------------------"
+          echo "The metrics from this run have been streamed to your Grafana Cloud instance."
+          echo "You can analyze real-time latency, error rates, and traces here:"
+          echo ""
+          echo "https://${{ secrets.GRAFANA_CLOUD_STACK_SLUG }}.grafana.net/d/jenkins2026-k6-smoke-overview/jenkins-2026-k6-observability-smoke-test?var-deployment_environment=stable"
+          echo ""
+          echo "This dashboard correlates k6 client-side metrics with your PetClinic"
+          echo "backend telemetry (traces, logs, and metrics) for full observability."
+          echo "=============================================================================="
