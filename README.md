@@ -595,22 +595,20 @@ waiting for real users:
 ```mermaid
 sequenceDiagram
     participant K6 as k6 (Jenkins pod, k6 container)
-    participant Infra as config/discovery/admin-server
-    participant UI as microservices-angular
-    participant GW as api-gateway
-    participant SVC as customers/vets/visits-service
-    participant OTel as otel-collector-gateway
-    participant Grafana as Grafana (Tempo/Loki/Mimir)
+    participant GW as gateway (Spring Boot / Angular UI)
+    participant SVC as customers/billing services
+    participant DB as Postgres (postgres-customers/billing)
+    participant OTel as otel-collector-gateway / -logs
+    participant Grafana as Grafana Cloud (Tempo/Loki/Mimir)
 
     Note over K6: per iteration: generate a fresh W3C traceparent
-    K6->>Infra: GET /actuator/health (traceparent)
-    K6->>UI: GET / (traceparent)
-    K6->>GW: GET /api/... (traceparent)
+    K6->>GW: GET / (traceparent)
+    K6->>GW: GET /services/... (traceparent)
     GW->>SVC: continue same trace (OTel Java agent)
-    Infra-->>OTel: traces + logs (trace_id in MDC) + metrics
-    UI-->>OTel: traces + logs + metrics
-    GW-->>OTel: traces + logs + metrics
+    SVC->>DB: SQL Query (auto-traced db span)
+    GW-->>OTel: traces + logs (trace_id in MDC) + metrics
     SVC-->>OTel: traces + logs + metrics
+    DB-->>OTel: logs tail-scraped from container stdout
     K6->>OTel: k6 run -o opentelemetry (k6's own request metrics)
     OTel->>Grafana: forward (otlp / otlphttp)
     Note over K6,Grafana: trace_id logged to the Jenkins console, ready to paste into Tempo's trace search
@@ -639,7 +637,7 @@ sequenceDiagram
   (`observability/grafana/dashboards/k6-smoke-overview.json`, uid
   `jenkins2026-k6-smoke-overview`) scoped to this run's
   `stable`/`develop` environment and time window.
-- **Run it** after the 9 services have deployed at least once (see [First run
+- **Run it** after the 3 services have deployed at least once (see [First run
   note](#quick-start)), then follow the Grafana link in the build console -
   or search Tempo for one of the `[microservices-smoke] iteration
   trace_id=...` values also logged there.
