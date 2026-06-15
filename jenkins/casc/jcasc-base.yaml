@@ -6,27 +6,44 @@
 # (helm/jenkins/values-common.yaml) and the "jenkins-credentials" Secret
 # created by scripts/01-namespaces.sh.
 # =============================================================================
-
 jenkins:
   systemMessage: |
-    Jenkins 2026 PoC - fully managed via Configuration as Code.
-    Source of truth: https://github.com/nubenetes/jenkins-2026
+    <div style="font-weight: bold; border: 2px solid #0052cc; padding: 15px; border-radius: 8px; background: #f4f7f9; color: #172b4d; font-family: sans-serif;">
+      <h2 style="margin-top: 0; color: #0052cc;">Welcome to the Jenkins 2026 PoC!</h2>
+      This instance is fully automated and managed via <a href="https://jenkins.io/projects/jcasc/" style="color: #0052cc; text-decoration: underline;">Configuration as Code (JCasC)</a>.<br/>
+      Source Repository: <a href="https://github.com/nubenetes/jenkins-2026" style="color: #0052cc; text-decoration: underline;">nubenetes/jenkins-2026</a><br/><br/>
 
-    PetClinic (stable, namespace petclinic):           ${PETCLINIC_URL:-not publicly exposed - kubectl port-forward -n petclinic svc/petclinic-angular 8080:8080}
-    PetClinic (develop, namespace petclinic-develop):  ${PETCLINIC_DEVELOP_URL:-not publicly exposed - kubectl port-forward -n petclinic-develop svc/petclinic-angular 8081:8080}
+      <b style="color: #0052cc;">Deployed Environments:</b>
+      <ul style="margin-bottom: 10px;">
+        <li>ArgoCD: <a href="https://argocd.${J2026_GATEWAY_BASE_DOMAIN:-jenkins2026.nubenetes.com}" style="color: #0052cc; text-decoration: underline;">https://argocd.${J2026_GATEWAY_BASE_DOMAIN:-jenkins2026.nubenetes.com}</a></li>
+        <li>Microservices (Stable): <a href="${MICROSERVICES_URL:-#}" style="color: #0052cc; text-decoration: underline;">${MICROSERVICES_URL:-not publicly exposed}</a></li>
+        <li>Microservices (Develop): <a href="${MICROSERVICES_DEVELOP_URL:-#}" style="color: #0052cc; text-decoration: underline;">${MICROSERVICES_DEVELOP_URL:-not publicly exposed}</a></li>
+      </ul>
 
-  # numExecutors (chart default 0) / mode are derived from
-  # controller.numExecutors / controller.executorMode in
-  # helm/jenkins/values-common.yaml instead of being set here - see the
-  # comment there for why.
+      <b style="color: #0052cc;">Observability:</b>
+      <ul>
+        <li>Grafana: <a href="${GRAFANA_BASE_URL:-#}" style="color: #0052cc; text-decoration: underline;">${GRAFANA_BASE_URL:-not configured}</a>
+          <ul style="margin-top: 5px;">
+            <li><a href="${GRAFANA_BASE_URL:-#}/d/jenkins2026-jenkins-overview" style="color: #0052cc; text-decoration: underline;">Jenkins Overview</a></li>
+            <li><a href="${GRAFANA_BASE_URL:-#}/d/jenkins2026-microservices-overview" style="color: #0052cc; text-decoration: underline;">Microservices Services</a></li>
+            <li><a href="${GRAFANA_BASE_URL:-#}/d/jenkins2026-k6-smoke-overview" style="color: #0052cc; text-decoration: underline;">K6 Smoke Test</a></li>
+          </ul>
+        </li>
+      </ul>
+    </div>
 
-  # Google login via OpenID Connect (oic-auth plugin) - replaces the old
-  # local-realm admin/platform-engineer accounts. clientId/clientSecret come
-  # from JENKINS_OIDC_CLIENT_ID/SECRET (empty until configured - see
-  # README.md "Jenkins" Google login section); an empty clientId means the
-  # "Sign in with Google" button errors out, but the escape hatch below
-  # still provides admin login/API access via JENKINS_ADMIN_ID/PASSWORD
-  # (the same credentials the old local "admin" account used).
+  markupFormatter:
+    rawHtml:
+      disableSyntaxHighlighting: true
+
+  globalNodeProperties:
+    - envVars:
+        env:
+          - key: "GRAFANA_BASE_URL"
+            value: "${GRAFANA_BASE_URL:-}"
+          - key: "JENKINS2026_REPO_URL"
+            value: "${JENKINS2026_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
+
   securityRealm:
     oic:
       clientId: "${JENKINS_OIDC_CLIENT_ID:-}"
@@ -87,10 +104,10 @@ jenkins:
               - group: "authenticated"
         items:
           - name: "developer"
-            description: "Run and inspect the stable PetClinic pipelines (everything outside pac-dev/)"
-            # Matches every item EXCEPT "pac-dev" and "petclinic-develop" (the sandbox view) -
-            # i.e. the 9 root PetClinic jobs + seed-jobs.
-            pattern: "^(?!pac-dev(/.*)?$|petclinic-develop$).*$"
+            description: "Run and inspect the stable Microservices pipelines (everything outside pac-dev/)"
+            # Matches every item EXCEPT "pac-dev" and "microservices-develop" (the sandbox view) -
+            # i.e. the 9 root Microservices jobs + seed-jobs.
+            pattern: "^(?!pac-dev(/.*)?$|microservices-develop$).*$"
             permissions:
               - "Job/Read"
               - "Job/Build"
@@ -103,8 +120,8 @@ jenkins:
           - name: "platform-engineer"
             description: "Run, inspect and re-seed the pac-dev/*-develop pipelines-as-code dev sandbox"
             # Matches the "pac-dev" folder itself, everything under it, AND the
-            # root-level "petclinic-develop" sandbox view.
-            pattern: "^(pac-dev(/.*)?|petclinic-develop)$"
+            # root-level "microservices-develop" sandbox view.
+            pattern: "^(pac-dev(/.*)?|microservices-develop)$"
             permissions:
               - "Job/Read"
               - "Job/Build"
@@ -150,7 +167,7 @@ unclassified:
 
   globalLibraries:
     libraries:
-      - name: "petclinic-shared-library"
+      - name: "microservices-shared-library"
         defaultVersion: "${JENKINS2026_REPO_BRANCH:-main}"
         implicit: true
         allowVersionOverride: true
@@ -168,20 +185,20 @@ credentials:
   system:
     domainCredentials:
       - credentials:
-          # Used by the "Build & Push Image" stage (petclinicImage.groovy) to
-          # push to PETCLINIC_REGISTRY (default ghcr.io/nubenetes/...).
+          # Used by the "Build & Push Image" stage (microservicesImage.groovy) to
+          # push to MICROSERVICES_REGISTRY (default ghcr.io/nubenetes/...).
           - usernamePassword:
               scope: GLOBAL
               id: "container-registry"
               username: "${REGISTRY_USERNAME:-nubenetes}"
               password: "${REGISTRY_PASSWORD:-}"
               description: "Container registry push credentials"
-          # Read-only checkout creds for the upstream spring-petclinic repos
+          # Read-only checkout creds for the upstream spring-microservices repos
           # (only needed if you fork them privately; public repos work
           # without credentials).
           - usernamePassword:
               scope: GLOBAL
-              id: "petclinic-git"
+              id: "microservices-git"
               username: "${GIT_USERNAME:-}"
               password: "${GIT_TOKEN:-}"
-              description: "Git credentials for spring-petclinic source repos"
+              description: "Git credentials for spring-microservices source repos"

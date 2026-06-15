@@ -1,0 +1,18 @@
+apiVersion: skaffold/v1
+kind: Config
+build:
+  artifacts:
+    - image: ghcr.io/nubenetes/gateway
+      context: ../gateway
+      jib: {}
+    - image: ghcr.io/nubenetes/customers
+      context: ../customers
+      jib: {}
+    - image: ghcr.io/nubenetes/billing
+      context: ../billing
+      jib: {}
+  tagPolicy:
+    envTemplate:
+      template: "{{.IMAGE_NAME}}:latest"
+deploy:
+  kustomize: {}

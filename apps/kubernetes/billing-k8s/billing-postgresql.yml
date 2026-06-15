@@ -1,0 +1,64 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: billing-postgresql
+  namespace: petclinic
+  labels:
+    app: billing-postgresql
+type: Opaque
+data:
+  postgresql-password: ZTRjZDU1MmVmMjBmNTkyNmM2MTIyNzg5ZjRhZGY5NDkwMGM5ZmI2YWMyMGRlODFmYTU0ZTZkYTY4OWVm
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billing-postgresql
+  namespace: petclinic
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: billing-postgresql
+  template:
+    metadata:
+      labels:
+        app: billing-postgresql
+    spec:
+      volumes:
+        - name: data
+          emptyDir: {}
+      containers:
+        - name: postgres
+          image: postgres:17.0
+          env:
+            - name: POSTGRES_USER
+              value: billing
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: billing-postgresql
+                  key: postgresql-password
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+              subPath: postgres
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "1Gi"
+              cpu: "1"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: billing-postgresql
+  namespace: petclinic
+spec:
+  selector:
+    app: billing-postgresql
+  ports:
+    - port: 5432

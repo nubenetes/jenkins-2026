@@ -37,5 +37,5 @@ persistence:
 
 agent:
   workingDir: "/home/jenkins/agent"
-  # Pod templates defined in jenkins/pipelines/Jenkinsfile.petclinic also omit
+  # Pod templates defined in jenkins/pipelines/Jenkinsfile.microservices also omit
   # runAsUser/fsGroup so they pass the restricted-v2 SCC unchanged.

@@ -1,0 +1,41 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: microservices
+  namespace: argocd
+spec:
+  generators:
+    - list:
+        elements:
+          - env: stable
+            namespace: microservices
+            valuesFile: values-stable.yaml
+            branch: '{{branchStable}}'
+          - env: develop
+            namespace: microservices-develop
+            valuesFile: values-develop.yaml
+            branch: '{{branchDevelop}}'
+  template:
+    metadata:
+      name: 'microservices-{{env}}'
+    spec:
+      project: microservices
+      source:
+        repoURL: '{{repoUrl}}'
+        targetRevision: '{{branch}}'
+        path: helm/microservices
+        helm:
+          valueFiles:
+            - '{{valuesFile}}'
+          parameters:
+            - name: global.platform
+              value: '{{platform}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

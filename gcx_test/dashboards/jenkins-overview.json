@@ -1,0 +1,496 @@
+{
+  "apiVersion": "dashboard.grafana.app/v1",
+  "kind": "Dashboard",
+  "metadata": {
+    "name": "jenkins2026-jenkins-overview",
+    "annotations": {
+      "grafana.app/folder": "jenkins-2026"
+    }
+  },
+  "spec": {
+    "annotations": {
+      "list": [
+        {
+          "builtIn": 1,
+          "datasource": {
+            "type": "grafana",
+            "uid": "-- Grafana --"
+          },
+          "enable": true,
+          "hide": true,
+          "iconColor": "rgba(0, 211, 255, 1)",
+          "name": "Annotations & Alerts",
+          "type": "dashboard"
+        }
+      ]
+    },
+    "editable": true,
+    "fiscalYearStartMonth": 0,
+    "graphTooltip": 1,
+    "id": null,
+    "links": [],
+    "liveNow": false,
+    "panels": [
+      {
+        "collapsed": false,
+        "gridPos": {
+          "h": 1,
+          "w": 24,
+          "x": 0,
+          "y": 0
+        },
+        "id": 100,
+        "panels": [],
+        "title": "Jenkins Controller - jenkins-2026 (OpenTelemetry plugin)",
+        "type": "row"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "description": "ci_pipeline_run_active - number of pipeline (build) runs currently executing, emitted by the Jenkins OpenTelemetry plugin (jenkins/casc/jcasc-otel.yaml).",
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "mappings": [],
+            "unit": "short"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 6,
+          "w": 6,
+          "x": 0,
+          "y": 1
+        },
+        "id": 1,
+        "options": {
+          "colorMode": "value",
+          "graphMode": "none",
+          "justifyMode": "auto",
+          "orientation": "horizontal",
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "textMode": "auto"
+        },
+        "pluginVersion": "10.4.0",
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${DS_PROMETHEUS}"
+            },
+            "expr": "sum(ci_pipeline_run_active)",
+            "legendFormat": "Active runs",
+            "refId": "A"
+          }
+        ],
+        "title": "Active Pipeline Runs",
+        "type": "stat"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "description": "sum(jenkins_queue_count) - jobs waiting for a free executor, across all queue statuses (blocked/buildable/stuck/waiting).",
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "thresholds"
+            },
+            "mappings": [],
+            "unit": "short"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 6,
+          "w": 6,
+          "x": 6,
+          "y": 1
+        },
+        "id": 2,
+        "options": {
+          "colorMode": "value",
+          "graphMode": "none",
+          "justifyMode": "auto",
+          "orientation": "horizontal",
+          "reduceOptions": {
+            "calcs": [
+              "lastNotNull"
+            ],
+            "fields": "",
+            "values": false
+          },
+          "textMode": "auto"
+        },
+        "pluginVersion": "10.4.0",
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${DS_PROMETHEUS}"
+            },
+            "expr": "sum(jenkins_queue_count)",
+            "legendFormat": "Queue size",
+            "refId": "A"
+          }
+        ],
+        "title": "Build Queue Size",
+        "type": "stat"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "description": "Busy vs total executors (sum(jenkins_executor_count{status=\"busy\"}) / sum(jenkins_executor_count)).",
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "fillOpacity": 20
+            },
+            "unit": "short"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 6,
+          "w": 12,
+          "x": 12,
+          "y": 1
+        },
+        "id": 3,
+        "options": {
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom"
+          },
+          "tooltip": {
+            "mode": "multi"
+          }
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${DS_PROMETHEUS}"
+            },
+            "expr": "sum(jenkins_executor_count{status=\"busy\"})",
+            "legendFormat": "Busy executors",
+            "refId": "A"
+          },
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${DS_PROMETHEUS}"
+            },
+            "expr": "sum(jenkins_executor_count)",
+            "legendFormat": "Total executors",
+            "refId": "B"
+          }
+        ],
+        "title": "Executor Utilization",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "description": "Pipeline completions per result (SUCCESS/FAILURE/ABORTED), rate(ci_pipeline_run_completed_total[5m]) by ci_pipeline_run_result, broken down by ci_pipeline_id (job name) - includes both <service> (stable/master) and <service>-develop jobs.",
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "fillOpacity": 20,
+              "stacking": {
+                "mode": "normal"
+              }
+            },
+            "unit": "short"
+          },
+          "overrides": [
+            {
+              "matcher": {
+                "id": "byRegexp",
+                "options": ".*FAILURE.*"
+              },
+              "properties": [
+                {
+                  "id": "color",
+                  "value": {
+                    "fixedColor": "red",
+                    "mode": "fixed"
+                  }
+                }
+              ]
+            },
+            {
+              "matcher": {
+                "id": "byRegexp",
+                "options": ".*SUCCESS.*"
+              },
+              "properties": [
+                {
+                  "id": "color",
+                  "value": {
+                    "fixedColor": "green",
+                    "mode": "fixed"
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 7
+        },
+        "id": 4,
+        "options": {
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom"
+          },
+          "tooltip": {
+            "mode": "multi"
+          }
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${DS_PROMETHEUS}"
+            },
+            "expr": "sum by (ci_pipeline_id, ci_pipeline_run_result) (rate(ci_pipeline_run_completed_total[5m]))",
+            "legendFormat": "{{ci_pipeline_id}} - {{ci_pipeline_run_result}}",
+            "refId": "A"
+          }
+        ],
+        "title": "Pipeline Completion Rate by Result",
+        "type": "timeseries"
+      },
+      {
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "description": "p50/p95 pipeline run duration, histogram_quantile over ci_pipeline_run_duration_seconds_bucket.",
+        "fieldConfig": {
+          "defaults": {
+            "color": {
+              "mode": "palette-classic"
+            },
+            "custom": {
+              "fillOpacity": 10
+            },
+            "unit": "s"
+          },
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 7
+        },
+        "id": 5,
+        "options": {
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom"
+          },
+          "tooltip": {
+            "mode": "multi"
+          }
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${DS_PROMETHEUS}"
+            },
+            "expr": "histogram_quantile(0.50, sum by (le, ci_pipeline_id) (rate(ci_pipeline_run_duration_seconds_bucket[15m])))",
+            "legendFormat": "{{ci_pipeline_id}} p50",
+            "refId": "A"
+          },
+          {
+            "datasource": {
+              "type": "prometheus",
+              "uid": "${DS_PROMETHEUS}"
+            },
+            "expr": "histogram_quantile(0.95, sum by (le, ci_pipeline_id) (rate(ci_pipeline_run_duration_seconds_bucket[15m])))",
+            "legendFormat": "{{ci_pipeline_id}} p95",
+            "refId": "B"
+          }
+        ],
+        "title": "Pipeline Duration (p50 / p95)",
+        "type": "timeseries"
+      },
+      {
+        "collapsed": false,
+        "gridPos": {
+          "h": 1,
+          "w": 24,
+          "x": 0,
+          "y": 15
+        },
+        "id": 101,
+        "panels": [],
+        "title": "Jenkins Logs & Traces",
+        "type": "row"
+      },
+      {
+        "datasource": {
+          "type": "loki",
+          "uid": "${DS_LOKI}"
+        },
+        "description": "Controller + agent pod logs. Each line containing a trace_id can be opened directly in Tempo via the Loki datasource's derived field (see observability/grafana/values-oss.yaml or the Grafana Cloud Loki datasource configuration).",
+        "fieldConfig": {
+          "defaults": {},
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 9,
+          "w": 24,
+          "x": 0,
+          "y": 16
+        },
+        "id": 6,
+        "options": {
+          "dedupStrategy": "none",
+          "enableLogDetails": true,
+          "prettifyLogMessage": false,
+          "showLabels": false,
+          "showTime": true,
+          "sortOrder": "Descending",
+          "wrapLogMessage": true
+        },
+        "targets": [
+          {
+            "datasource": {
+              "type": "loki",
+              "uid": "${DS_LOKI}"
+            },
+            "expr": "{k8s_namespace_name=\"jenkins\"} | json | line_format \"{{.message}}\"",
+            "refId": "A"
+          }
+        ],
+        "title": "Jenkins Pod Logs",
+        "type": "logs"
+      },
+      {
+        "datasource": {
+          "type": "tempo",
+          "uid": "${DS_TEMPO}"
+        },
+        "description": "Recent traces for the Jenkins controller (service.name=jenkins, set by jenkins/casc/jcasc-otel.yaml). Each pipeline build, stage and step is exported as a span.",
+        "fieldConfig": {
+          "defaults": {},
+          "overrides": []
+        },
+        "gridPos": {
+          "h": 9,
+          "w": 24,
+          "x": 0,
+          "y": 25
+        },
+        "id": 7,
+        "targets": [
+          {
+            "datasource": {
+              "type": "tempo",
+              "uid": "${DS_TEMPO}"
+            },
+            "query": "{resource.service.name = \"jenkins\"}",
+            "queryType": "traceql",
+            "refId": "A"
+          }
+        ],
+        "title": "Jenkins Traces (pipeline / stage / step spans)",
+        "type": "traces"
+      }
+    ],
+    "refresh": "30s",
+    "schemaVersion": 39,
+    "tags": [
+      "jenkins-2026",
+      "jenkins",
+      "ci"
+    ],
+    "templating": {
+      "list": [
+        {
+          "hide": 0,
+          "includeAll": false,
+          "label": "Prometheus / Mimir",
+          "multi": false,
+          "name": "DS_PROMETHEUS",
+          "options": [],
+          "query": "prometheus",
+          "queryValue": "",
+          "refresh": 1,
+          "regex": "",
+          "skipUrlSync": false,
+          "type": "datasource"
+        },
+        {
+          "hide": 0,
+          "includeAll": false,
+          "label": "Loki",
+          "multi": false,
+          "name": "DS_LOKI",
+          "options": [],
+          "query": "loki",
+          "queryValue": "",
+          "refresh": 1,
+          "regex": "",
+          "skipUrlSync": false,
+          "type": "datasource"
+        },
+        {
+          "hide": 0,
+          "includeAll": false,
+          "label": "Tempo",
+          "multi": false,
+          "name": "DS_TEMPO",
+          "options": [],
+          "query": "tempo",
+          "queryValue": "",
+          "refresh": 1,
+          "regex": "",
+          "skipUrlSync": false,
+          "type": "datasource"
+        }
+      ]
+    },
+    "time": {
+      "from": "now-6h",
+      "to": "now"
+    },
+    "timepicker": {},
+    "timezone": "",
+    "title": "jenkins-2026 / Jenkins CI Overview",
+    "uid": "jenkins2026-jenkins-overview",
+    "version": 1,
+    "weekStart": "",
+    "folderUID": "jenkins-2026"
+  }
+}

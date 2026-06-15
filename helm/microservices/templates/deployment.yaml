@@ -1,0 +1,114 @@
+{{- range $name, $svc := .Values.services }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ $.Values.namespace }}
+  labels:
+    app.kubernetes.io/name: {{ $name }}
+    {{- include "microservices.labels" $ | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ $name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ $name }}
+        {{- include "microservices.labels" $ | nindent 8 }}
+      annotations:
+        {{- if eq $svc.type "java" }}
+        # OTel Operator auto-instrumentation: injects the Java agent via an
+        # init container, wired to the "microservices-java" Instrumentation CR
+        # (templates/instrumentation.yaml) in this namespace.
+        instrumentation.opentelemetry.io/inject-java: "true"
+        {{- end }}
+    spec:
+      {{- if $.Values.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ $.Values.imagePullSecret }}
+      {{- end }}
+      containers:
+        - name: {{ $name }}
+          image: "{{ $.Values.registry }}/{{ $svc.image.repository }}:{{ $svc.image.tag }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: {{ $svc.port }}
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: {{ $name }}
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "deployment.environment={{ $.Values.env }},service.namespace=jenkins-2026"
+            {{- range $svc.env }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+            {{- end }}
+            - name: SPRING_DATASOURCE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-{{ $name }}-pguser-{{ $name }}
+                  key: jdbc-uri
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-{{ $name }}-pguser-{{ $name }}
+                  key: user
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-{{ $name }}-pguser-{{ $name }}
+                  key: password
+          resources:
+            {{- toYaml $svc.resources | nindent 12 }}
+          {{- if eq $svc.type "java" }}
+          readinessProbe:
+            httpGet:
+              path: {{ $svc.healthPath }}
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: {{ $svc.healthPath }}
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            failureThreshold: 6
+          {{- else }}
+          readinessProbe:
+            httpGet:
+              path: {{ $svc.healthPath }}
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: {{ $svc.healthPath }}
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            {{- if eq $.Values.global.platform "openshift" }}
+            # Let the restricted-v2 SCC assign runAsUser/runAsGroup.
+            {{- else }}
+            runAsNonRoot: true
+            # Explicit non-root UID/GID: the OTel Operator copies this
+            # securityContext onto the injected
+            # opentelemetry-auto-instrumentation-java init container, whose
+            # image has no non-root USER - without an explicit runAsUser,
+            # runAsNonRoot alone makes the kubelet reject that container
+            # ("container has runAsNonRoot and image will run as root").
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+            {{- end }}
+{{- end }}

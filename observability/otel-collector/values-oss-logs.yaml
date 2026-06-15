@@ -69,7 +69,7 @@ config:
       check_interval: 5s
       limit_percentage: 80
       spike_limit_percentage: 25
-    k8sattributes:
+    k8s_attributes:
       auth_type: serviceAccount
       passthrough: false
       extract:
@@ -93,5 +93,5 @@ config:
     pipelines:
       logs:
         receivers: [filelog]
-        processors: [memory_limiter, k8sattributes, batch]
+        processors: [memory_limiter, k8s_attributes, batch]
         exporters: [otlphttp/loki]
