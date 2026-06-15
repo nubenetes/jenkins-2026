@@ -75,15 +75,18 @@ EOF
   kubectl patch configmap argocd-rbac-cm -n "${J2026_ARGOCD_NAMESPACE}" --type merge -p '{"data": {"policy.csv": "g, authenticated, role:admin\ng, jenkins, role:admin"}}'
   
   log_info "Generating ArgoCD API token for Jenkins"
-  # Since we don't have the CLI locally yet, we use a throwaway pod to generate the token
-  # and store it in the jenkins-credentials secret
+  # Grant temporary cluster-admin to the default SA to allow the token-gen pod to use --core mode
+  kubectl create clusterrolebinding temp-argocd-admin --clusterrole=cluster-admin --serviceaccount="${J2026_ARGOCD_NAMESPACE}:default" || true
+  
   ARGOCD_ADMIN_PASSWORD=$(kubectl get secret argocd-initial-admin-secret -n "${J2026_ARGOCD_NAMESPACE}" -o jsonpath="{.data.password}" | base64 -d)
   
   TOKEN=$(kubectl run argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --rm -i --restart=Never \
     --image=quay.io/argoproj/argocd:v2.11.0 -- \
-    bash -c "argocd login localhost:8080 --username admin --password '${ARGOCD_ADMIN_PASSWORD}' --insecure --core && \
-            argocd account generate-token --account jenkins --core")
+    bash -c "argocd account generate-token --account jenkins --core")
             
+  # Cleanup temporary RBAC
+  kubectl delete clusterrolebinding temp-argocd-admin || true
+
   if [[ -n "${TOKEN}" ]]; then
     log_info "Storing ArgoCD token in ${J2026_JENKINS_CREDENTIALS_SECRET}"
     kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \
