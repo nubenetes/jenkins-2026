@@ -218,6 +218,27 @@ The database connections are securely managed by the Crunchy Data Postgres Opera
 - `SPRING_DATASOURCE_USERNAME` (username)
 - `SPRING_DATASOURCE_PASSWORD` (password)
 
+#### pgAdmin & Database Administration
+
+A total of **6 Postgres databases** are provisioned in the cluster (3 in `microservices` namespace and 3 in `microservices-develop` namespace). They can be administered via **pgAdmin 4**:
+
+*   **URL:** `https://pgadmin.jenkins2026.nubenetes.com` (gated behind GKE Gateway + Google IAP).
+*   **Auto-Login (Google ID):** pgAdmin is configured with Webserver Authentication (`AUTHENTICATION_SOURCES = ['webserver']`) to trust the `X-Goog-Authenticated-User-Email` header injected by Google IAP. A custom python WSGI middleware automatically strips the `accounts.google.com:` namespace prefix from the header, logging you in directly using your Google email address.
+*   **Pre-populated Connections:** All 6 database connections (Stable and Develop groups for Gateway, Customers, and Billing services) are automatically preconfigured on startup as shared connections.
+*   **Resource & Safety Limits:** To prevent GKE auto-scaling, pgAdmin is strictly resource-constrained (requests: `50m` CPU / `128Mi` RAM, limits: `200m` CPU / `256Mi` RAM) and is capped by a `ResourceQuota` in the `pgadmin` namespace.
+
+##### Retrieving Database Credentials
+To log into a database from pgAdmin, retrieve the generated operator passwords from their respective secrets. For example:
+*   **Stable Gateway DB password:**
+    ```bash
+    kubectl get secret postgres-gateway-pguser-gateway -n microservices -o jsonpath='{.data.password}' | base64 -d
+    ```
+*   **Develop Customers DB password:**
+    ```bash
+    kubectl get secret postgres-customers-pguser-customers -n microservices-develop -o jsonpath='{.data.password}' | base64 -d
+    ```
+
+
 ---
 
 ### CI/CD Flow (GitOps)
@@ -258,6 +279,8 @@ The deployment lifecycle is managed by **ArgoCD** using an **ApplicationSet** pa
 | **`microservices`** | `ApplicationSet` | `argocd` | `helm/microservices/` | Multi-namespace |
 | `microservices-stable` | `Application` | `argocd` | `helm/microservices/` | `microservices` |
 | `microservices-develop` | `Application` | `argocd` | `helm/microservices/` | `microservices-develop` |
+| `pgadmin` | `Application` | `argocd` | `helm/pgadmin/` | `pgadmin` |
+
 
 ### Security & Integration
 - **Jenkins Integration**: A dedicated `jenkins` account is created in ArgoCD with a scoped **API Token**. This token is securely stored in Jenkins' `jenkins-credentials` secret and used by the `argocd` CLI within pipeline agents.
@@ -755,7 +778,7 @@ kubectl create token headlamp -n headlamp
 
 ## Public access (GKE Gateway API + IAP)
 
-Jenkins, Microservices (stable and dev-sandbox) and Headlamp can all be exposed on
+Jenkins, Microservices (stable and dev-sandbox), Headlamp, and pgAdmin can all be exposed on
 the public internet through a single **GKE Gateway** (`gatewayClassName:
 gke-l7-global-external-managed`) - one global external HTTPS load balancer,
 one [Google-managed wildcard
@@ -769,9 +792,10 @@ applied by [`scripts/09-gateway.sh`](scripts/09-gateway.sh):
 | Microservices (stable) | `https://microservices.<baseDomain>` | no (public demo app) |
 | Microservices (pac-dev/\*-develop sandbox) | `https://microservices-develop.<baseDomain>` | no (public demo app) |
 | Headlamp | `https://headlamp.<baseDomain>` | yes |
+| pgAdmin | `https://pgadmin.<baseDomain>` | yes |
 
 `<baseDomain>` is [`gateway.baseDomain`](config/config.yaml) -
-`jenkins2026.nubenetes.com` by default. Jenkins and Headlamp get an extra
+`jenkins2026.nubenetes.com` by default. Jenkins, Headlamp, and pgAdmin get an extra
 Google-login gate (IAP) in front of their own auth; Microservices (both stable and
 the dev sandbox), the demo app, stays open. Both Microservices URLs are also
 surfaced in the Jenkins UI's system message banner (see [`jenkins/casc/jcasc-base.yaml`](jenkins/casc/jcasc-base.yaml)).
@@ -884,7 +908,7 @@ and `GCPBackendPolicy` are GKE-specific.
    passthrough) and `roles/iap.httpsResourceAccessor` (new, via
    `terraform/gke`'s `google_project_iam_member.iap_accessors`) - i.e. the
    same people who can administer the cluster via Headlamp can pass IAP for
-   Jenkins and Headlamp. Anyone without `roles/iap.httpsResourceAccessor` gets
+   Jenkins, Headlamp, and pgAdmin. Anyone without `roles/iap.httpsResourceAccessor` gets
    a 403 from IAP before reaching either app.
 
 ## Automated end-to-end test (provisioning + decommissioning)
