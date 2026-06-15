@@ -22,7 +22,13 @@ jenkins:
 
       <b>Observability:</b>
       <ul>
-        <li>Grafana: <a href="${GRAFANA_BASE_URL:-#}">${GRAFANA_BASE_URL:-not configured}</a></li>
+        <li>Grafana: <a href="${GRAFANA_BASE_URL:-#}">${GRAFANA_BASE_URL:-not configured}</a>
+          <ul>
+            <li><a href="${GRAFANA_BASE_URL:-#}/d/jenkins2026-jenkins-overview">Jenkins Overview</a></li>
+            <li><a href="${GRAFANA_BASE_URL:-#}/d/jenkins2026-petclinic-overview">PetClinic Services</a></li>
+            <li><a href="${GRAFANA_BASE_URL:-#}/d/jenkins2026-k6-smoke-overview">K6 Smoke Test</a></li>
+          </ul>
+        </li>
       </ul>
     </div>
 
