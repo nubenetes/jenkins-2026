@@ -131,6 +131,16 @@ kubectl apply -f "${J2026_ROOT_DIR}/argocd/microservices-project.yaml"
 log_step "Configuring Postgres Operator via ArgoCD"
 kubectl apply -f "${J2026_ROOT_DIR}/argocd/pgo-app.yaml"
 
+log_step "Configuring Headlamp via ArgoCD"
+# Inject values into the Headlamp Application manifest
+HEADLAMP_APP_FILE=$(mktemp)
+REPO_URL="${J2026_SELF_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
+sed "s@{{repoUrl}}@${REPO_URL}@g; 
+     s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g" \
+    "${J2026_ROOT_DIR}/argocd/headlamp-app.yaml" > "${HEADLAMP_APP_FILE}"
+kubectl apply -f "${HEADLAMP_APP_FILE}"
+rm "${HEADLAMP_APP_FILE}"
+
 log_step "Generating and applying Microservices ApplicationSet"
 # Inject values into the AppSet manifest
 # Using @ as delimiter for sed to avoid issues with URLs

@@ -10,23 +10,14 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 
-helm_args=(
-  upgrade --install "${J2026_HEADLAMP_RELEASE}" "${J2026_HEADLAMP_CHART_NAME}"
-  --namespace "${J2026_HEADLAMP_NAMESPACE}"
-  --create-namespace
-  -f "${J2026_ROOT_DIR}/helm/headlamp/values.yaml"
-  --timeout 5m
-)
-
-if [[ -n "${J2026_HEADLAMP_CHART_VERSION}" ]]; then
-  helm_args+=(--version "${J2026_HEADLAMP_CHART_VERSION}")
+# If deployment exists, restart it to pick up any potentially updated secrets.
+if kubectl get deployment/"${J2026_HEADLAMP_RELEASE}" -n "${J2026_HEADLAMP_NAMESPACE}" >/dev/null 2>&1; then
+  log_info "Restarting Headlamp deployment to pick up updated secrets..."
+  kubectl rollout restart deployment/"${J2026_HEADLAMP_RELEASE}" -n "${J2026_HEADLAMP_NAMESPACE}"
 fi
 
-log_step "Installing ${J2026_HEADLAMP_RELEASE} (${J2026_HEADLAMP_CHART_NAME}) into ${J2026_HEADLAMP_NAMESPACE}"
-helm "${helm_args[@]}"
-
-log_step "Waiting for Headlamp to be ready"
-kubectl rollout status deployment/"${J2026_HEADLAMP_RELEASE}" -n "${J2026_HEADLAMP_NAMESPACE}" --timeout=5m
+log_step "Waiting for Headlamp deployment to be ready"
+wait_for_deployment "${J2026_HEADLAMP_RELEASE}" "${J2026_HEADLAMP_NAMESPACE}" "5m"
 
 log_step "Granting cluster-admin to Headlamp admin emails"
 if [[ -z "${J2026_HEADLAMP_ADMIN_EMAILS}" ]]; then

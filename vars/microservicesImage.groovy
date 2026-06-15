@@ -35,10 +35,10 @@ def call(Map cfg) {
         
         # Try Jib first (modern preference), then fallback to spring-boot:build-image
         if ./mvnw -v | grep -q "jib"; then
-           ./mvnw -B jib:build -Djib.to.image=${cfg.image} \
+           ./mvnw -B -Pprod -DskipTests jib:build -Djib.to.image=${cfg.image} \
              -Djib.to.auth.username=\$REG_USER -Djib.to.auth.password=\$REG_PASS
         else
-           ./mvnw -B -pl . -am -DskipTests spring-boot:build-image \
+           ./mvnw -B -pl . -am -Pprod -DskipTests spring-boot:build-image \
              -Dspring-boot.build-image.imageName=${cfg.image} \
              -Dspring-boot.build-image.publish=false
            # Push is handled by the common docker push step below
