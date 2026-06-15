@@ -27,20 +27,26 @@ def call(Map cfg) {
         unset MAVEN_CONFIG
         # Check if we are in a subfolder or monorepo
         BUILD_DIR="."
-        if [ -f "${cfg.module}/mvnw" ]; then
+        if [ -n "${cfg.module}" ] && [ -f "${cfg.module}/mvnw" ]; then
           BUILD_DIR="${cfg.module}"
         fi
         
         cd \$BUILD_DIR
         
         # Try Jib first (modern preference), then fallback to spring-boot:build-image
-        if ./mvnw -v | grep -q "jib"; then
+        if grep -q "jib-maven-plugin" pom.xml; then
            ./mvnw -B -Pprod -DskipTests jib:build -Djib.to.image=${cfg.image} \
              -Djib.to.auth.username=\$REG_USER -Djib.to.auth.password=\$REG_PASS
         else
-           ./mvnw -B -pl . -am -Pprod -DskipTests spring-boot:build-image \
-             -Dspring-boot.build-image.imageName=${cfg.image} \
-             -Dspring-boot.build-image.publish=false
+           if [ -n "${cfg.module}" ]; then
+             ./mvnw -B -pl ${cfg.module} -am -Pprod -DskipTests spring-boot:build-image \
+               -Dspring-boot.build-image.imageName=${cfg.image} \
+               -Dspring-boot.build-image.publish=false
+           else
+             ./mvnw -B -Pprod -DskipTests spring-boot:build-image \
+               -Dspring-boot.build-image.imageName=${cfg.image} \
+               -Dspring-boot.build-image.publish=false
+           fi
            # Push is handled by the common docker push step below
         fi
       """
