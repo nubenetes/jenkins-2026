@@ -156,7 +156,7 @@ EOT
 
 log_step "Generating HealthCheckPolicies (jenkins, argocd)"
 cat >"${GENERATED_DIR}/healthcheckpolicy-jenkins.yaml" <<EOT
-apiVersion: networking.k8s.io/v1
+apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
 metadata:
   name: ${J2026_JENKINS_RELEASE}
@@ -174,7 +174,7 @@ spec:
 EOT
 
 cat >"${GENERATED_DIR}/healthcheckpolicy-argocd.yaml" <<EOT
-apiVersion: networking.k8s.io/v1
+apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
 metadata:
   name: argocd-server
@@ -207,7 +207,7 @@ for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}"; do
 done
 
 cat >"${GENERATED_DIR}/gcpbackendpolicy-jenkins.yaml" <<EOT
-apiVersion: networking.k8s.io/v1
+apiVersion: networking.gke.io/v1
 kind: GCPBackendPolicy
 metadata:
   name: ${J2026_GATEWAY_IAP_POLICY_JENKINS}
@@ -226,7 +226,7 @@ spec:
 EOT
 
 cat >"${GENERATED_DIR}/gcpbackendpolicy-headlamp.yaml" <<EOT
-apiVersion: networking.k8s.io/v1
+apiVersion: networking.gke.io/v1
 kind: GCPBackendPolicy
 metadata:
   name: ${J2026_GATEWAY_IAP_POLICY_HEADLAMP}
