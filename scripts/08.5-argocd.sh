@@ -18,9 +18,15 @@ if [[ "${current_status}" == "pending-install" || "${current_status}" == "pendin
   sleep 2
 fi
 
-# 1. Pre-create the ConfigMaps so ArgoCD starts with the right config
-# This is faster than patching a running system.
-log_step "Pre-configuring ArgoCD OIDC/RBAC"
+# 2. Install ArgoCD WITHOUT --wait to unblock the script
+log_step "Running Helm upgrade"
+helm upgrade --install "${J2026_ARGOCD_RELEASE}" argo/argo-cd \
+  --namespace "${J2026_ARGOCD_NAMESPACE}" \
+  --set server.extraArgs="{--insecure}" \
+  --timeout 10m
+
+# 3. Configure OIDC/RBAC AFTER helm to ensure it persists
+log_step "Configuring ArgoCD OIDC/RBAC"
 ARGOCD_HOST="argocd.${J2026_GATEWAY_BASE_DOMAIN}"
 ARGOCD_URL="https://${ARGOCD_HOST}"
 
@@ -31,14 +37,9 @@ CLIENT_SECRET="$(kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${J2026_JE
 if [[ -n "${CLIENT_ID}" && -n "${CLIENT_SECRET}" ]]; then
   log_info "Wiring Google OIDC for ArgoCD at ${ARGOCD_URL}"
   
-  # Create/Update argocd-cm
+  # Update argocd-cm using patch to not overwrite everything
   PATCH_FILE=$(mktemp)
   cat <<EOF > "${PATCH_FILE}"
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-cm
-  namespace: ${J2026_ARGOCD_NAMESPACE}
 data:
   url: ${ARGOCD_URL}
   dex.config: |
@@ -50,36 +51,24 @@ data:
           clientID: ${CLIENT_ID}
           clientSecret: ${CLIENT_SECRET}
 EOF
-  kubectl apply -f "${PATCH_FILE}"
+  kubectl patch configmap argocd-cm -n ${J2026_ARGOCD_NAMESPACE} --patch-file "${PATCH_FILE}"
   rm "${PATCH_FILE}"
 
-  # Create/Update argocd-rbac-cm
+  # Update argocd-rbac-cm
   PATCH_FILE_RBAC=$(mktemp)
   cat <<EOF > "${PATCH_FILE_RBAC}"
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: argocd-rbac-cm
-  namespace: ${J2026_ARGOCD_NAMESPACE}
 data:
   policy.default: role:readonly
   policy.csv: |
     g, authenticated, role:admin
 EOF
-  kubectl apply -f "${PATCH_FILE_RBAC}"
+  kubectl patch configmap argocd-rbac-cm -n ${J2026_ARGOCD_NAMESPACE} --patch-file "${PATCH_FILE_RBAC}"
   rm "${PATCH_FILE_RBAC}"
 else
-  log_warn "OIDC credentials not found. ArgoCD will start with default local admin."
+  log_warn "OIDC credentials not found. ArgoCD will use local admin password."
 fi
 
-# 2. Install ArgoCD WITHOUT --wait to unblock the script
-log_step "Running Helm upgrade (background-ish)"
-helm upgrade --install "${J2026_ARGOCD_RELEASE}" argo/argo-cd \
-  --namespace "${J2026_ARGOCD_NAMESPACE}" \
-  --set server.extraArgs="{--insecure}" \
-  --timeout 10m
-
-# 3. Use our own faster monitoring for the critical components
+# 4. Use our own faster monitoring for the critical components
 log_step "Waiting for ArgoCD Server to be ready"
 wait_for_deployment "${J2026_ARGOCD_RELEASE}-server" "${J2026_ARGOCD_NAMESPACE}" "5m"
 
