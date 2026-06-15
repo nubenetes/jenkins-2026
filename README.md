@@ -19,9 +19,9 @@ in a **GitFlow-inspired** model with two distinct tracks:
   `develop` branch, deploying to a separate `petclinic-develop` namespace
   without affecting the tested stable pipelines.
 
-- **Observability (Grafana Cloud / OSS)**: Traces, metrics and logs are fully
-  correlated. Dashboard deployment is managed via the native **`gcx` CLI**
-  using a GitOps workflow.
+- **Observability (Grafana Cloud / OSS)**: Traces, metrics and logs are fully correlated. Dashboard deployment is managed via the native **`gcx` CLI** using a GitOps workflow.
+- **ArgoCD (GitOps)**: The entire PetClinic stack is managed via **ArgoCD**, providing a declarative GitOps engine for continuous delivery. It is integrated with Google OIDC for secure, single sign-on access.
+
 
 It is compliant with **OpenShift 4.20+** and the latest **Kubernetes on
 GKE/EKS/AKS** - the target platform is a config-file + environment-variable
@@ -47,6 +47,9 @@ for per-cloud notes.
   `ghcr.io/nubenetes/jenkins-2026-petclinic` - works anonymously for pulls;
   pushing needs a token with `write:packages` in the `jenkins-credentials`
   Secret, see below).
+- **ArgoCD OIDC Redirect URI**: To use Google OIDC with ArgoCD, you MUST add
+  `https://argocd.<baseDomain>/api/dex/callback` to your Google OAuth client's
+  **Authorized redirect URIs** (see [ArgoCD OIDC](#argocd-google-oidc) below).
 - (default observability mode) A [Grafana Cloud](https://grafana.com/products/cloud/)
   stack (free tier is enough) for its OTLP gateway endpoint + API key.
 
@@ -83,10 +86,93 @@ export GIT_USERNAME=<github-username>      GIT_TOKEN=<github-token>
 `scripts/up.sh` runs, in order: prereq/repo checks -> namespaces & secrets ->
 the OpenTelemetry Operator -> (in parallel) the observability stack, Jenkins,
 and the initial PetClinic Helm releases -> triggers the Jenkins seed job ->
-imports Grafana dashboards. Every step is idempotent
+imports Grafana dashboards -> **installs ArgoCD**. Every step is idempotent
 (`helm upgrade --install` / `kubectl apply`), so re-running `up.sh` after a
 partial failure is safe. Each step also runs standalone:
 `./scripts/0N-*.sh`.
+
+## Architecture & Flow
+
+### System Architecture
+The following diagram illustrates the high-level architecture of the `jenkins-2026` stack, showing how Jenkins, ArgoCD, and the PetClinic microservices interact within the cluster and with external services.
+
+```mermaid
+graph TB
+    subgraph "External Services"
+        GH[GitHub]
+        GC[Grafana Cloud]
+        GCP[GCP IAP / DNS / OAuth]
+    end
+
+    subgraph "GKE Cluster"
+        subgraph "ingress-nginx / Gateway API"
+            GW[GKE Gateway]
+        end
+
+        subgraph "jenkins namespace"
+            J[Jenkins Controller]
+            JC[JCasC / Jobs]
+        end
+
+        subgraph "argocd namespace"
+            ACD[ArgoCD Server]
+            DEX[ArgoCD Dex / OIDC]
+        end
+
+        subgraph "observability namespace"
+            OTEL[OTel Operator/Collector]
+        end
+
+        subgraph "petclinic namespace (stable)"
+            PCS[PetClinic Services]
+        end
+
+        subgraph "petclinic-develop namespace"
+            PCD[PetClinic Services]
+        end
+    end
+
+    GH -->|SCM| J
+    GH -->|SCM| ACD
+    GCP -->|IAP / OAuth| GW
+    GW --> J
+    GW --> ACD
+    GW --> PCS
+    J -->|CI / Build| GH
+    ACD -->|CD / GitOps| PCS
+    ACD -->|CD / GitOps| PCD
+    PCS -->|OTLP| OTEL
+    PCD -->|OTLP| OTEL
+    J -->|OTLP| OTEL
+    OTEL -->|Forward| GC
+```
+
+### CI/CD Flow
+This diagram shows the end-to-end GitFlow-inspired pipeline, from a code push to the final deployment and observability monitoring.
+
+```mermaid
+sequenceDiagram
+    participant Dev as Developer
+    participant GH as GitHub (PetClinic Repos)
+    participant J as Jenkins (CI)
+    participant AR as Artifact Registry (GHCR)
+    participant ACD as ArgoCD (CD)
+    participant K8s as Kubernetes (GKE)
+    participant Obs as Observability (Grafana)
+
+    Dev->>GH: Git Push (main/develop)
+    GH->>J: Webhook Trigger
+    J->>GH: Checkout Code
+    J->>J: Build, Test & Scan
+    J->>AR: Push Container Image
+    J->>GH: Update Helm Chart / Image Tag
+    GH->>ACD: Git Change Detected
+    ACD->>K8s: Sync (Helm Upgrade / Apply)
+    K8s->>Obs: Telemetry (OTLP Traces/Logs/Metrics)
+    J->>K8s: Run k6 Smoke Test
+    K8s->>Obs: correlated Telemetry
+    Obs->>Dev: Dashboards / Alerts / Insights
+```
 
 > **First run note**: `helm/petclinic`'s default image tag (`main`) won't
 > exist in your registry yet, so PetClinic pods will show
@@ -139,6 +225,7 @@ terraform/bootstrap/          one-time setup for the GitHub Actions automation b
                               (state bucket + Workload Identity Federation)
 terraform/gateway-bootstrap/  one-time setup for public access (static IP + managed
                               certificate) - see "Public access (GKE Gateway API + IAP)"
+scripts/08.5-argocd.sh        ArgoCD installation and OIDC configuration
 test/                         e2e.sh (provision -> up.sh -> smoke-test.sh -> down.sh -> destroy)
 .github/workflows/            CC.NN-<name>.yml, see "CI/CD pipelines" for the full inventory
 docs/                         architecture, pipelines-as-code, observability, platforms
@@ -1077,6 +1164,9 @@ in GitHub Actions tears it down automatically.
 - **Rotating the Jenkins admin password**: delete the `jenkins-credentials`
   Secret in the `jenkins` namespace and re-run `scripts/01-namespaces.sh` +
   `scripts/04-jenkins.sh`.
+- **ArgoCD OIDC Login fails with `redirect_uri_mismatch`**: Verify that `https://argocd.<baseDomain>/api/dex/callback` is added to your Google OAuth client in the GCP Console.
+- **ArgoCD installation stuck in `pending-install`**: The `scripts/08.5-argocd.sh` script includes recovery logic to detect and clear stuck Helm releases. If it hangs, the script will automatically attempt to `helm uninstall` and retry.
+- **Gateway resource mapping errors (`GCPBackendPolicy` / `HealthCheckPolicy`)**: Ensure you are using `networking.gke.io/v1` as the API version in `scripts/09-gateway.sh` (already fixed in `main`/`develop`).
 - **`test/e2e.sh` was interrupted (Ctrl-C) or `terraform destroy` failed**:
   the `EXIT` trap should still have run `terraform destroy`, but to be sure
   no billable resources are left, run
