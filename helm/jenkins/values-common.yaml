@@ -49,6 +49,11 @@ controller:
   # Enable the Raw HTML Markup Formatter (requires antisamy-markup-formatter plugin)
   enableRawHtmlMarkupFormatter: true
 
+  # Disable the Helm chart's default JCasC configuration to prevent conflicts
+  # with our custom scripts in jenkins/casc/*.yaml
+  JCasC:
+    defaultConfig: false
+
   # We drive everything through pipeline agents; no executors on controller
   # (numExecutors: 0 is also the chart default, so left unset here).
   # executorMode feeds the chart's generated jcasc-default-config.yaml

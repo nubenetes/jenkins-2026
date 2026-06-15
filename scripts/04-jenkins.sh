@@ -9,6 +9,12 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 
+log_step "Pre-installation cleanup of JCasC ConfigMaps"
+# Delete any old JCasC ConfigMaps to prevent merge conflicts with new files.
+# Using '|| true' to ignore errors if they don't exist.
+kubectl delete configmap -n "${J2026_JENKINS_NAMESPACE}" \
+  -l "app.kubernetes.io/instance=${J2026_JENKINS_RELEASE},jenkins-jenkins-config=true" --ignore-not-found=true || true
+
 GENERATED_DIR="${J2026_ROOT_DIR}/.generated"
 mkdir -p "${GENERATED_DIR}"
 RUNTIME_VALUES="${GENERATED_DIR}/jenkins-runtime-values.yaml"
