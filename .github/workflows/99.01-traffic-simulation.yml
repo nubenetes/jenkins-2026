@@ -1,0 +1,35 @@
+name: "99.01 Continuous Traffic Simulation"
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: "Duration of the simulation (e.g. 10m, 1h)"
+        default: "15m"
+        required: true
+  # Optional: Run on a schedule to keep the dashboards alive
+  # schedule:
+  #   - cron: '0 * * * *' # Every hour
+
+jobs:
+  simulate-traffic:
+    name: k6 Traffic Simulation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: Run k6 Simulation
+        run: |
+          # Use the existing smoke test script but with more iterations/duration
+          # Pointing to the stable environment
+          export TARGET_URL="https://petclinic.jenkins2026.nubenetes.com"
+          
+          k6 run jenkins/pipelines/k6/petclinic-smoke.js \
+            --vus 2 \
+            --duration ${{ github.event.inputs.duration || '15m' }} \
+            --env TARGET_URL=$TARGET_URL \
+            --env ENV_NAME=stable
