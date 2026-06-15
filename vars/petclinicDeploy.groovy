@@ -25,12 +25,11 @@ def call(Map cfg) {
             git config --global user.name "Jenkins CI"
             
             # Construct the remote URL with credentials
-            # Using the repo URL from environment if available, else hardcoded PoC default
-            REPO_URL = "${infraRepoUrl}"
-            REPO_CLEAN = REPO_URL.replace("https://", "")
-            AUTH_REPO_URL = "https://\${GIT_USER}:\${GIT_TOKEN}@\${REPO_CLEAN}"
+            REPO_URL="${infraRepoUrl}"
+            REPO_CLEAN=\$(echo "\${REPO_URL}" | sed 's|https://||')
+            AUTH_REPO_URL="https://\${GIT_USER}:\${GIT_TOKEN}@\${REPO_CLEAN}"
             
-            git clone --depth 1 --branch ${infraBranch} \${AUTH_REPO_URL} .
+            git clone --depth 1 --branch ${infraBranch} "\${AUTH_REPO_URL}" .
           """
         }
       }
