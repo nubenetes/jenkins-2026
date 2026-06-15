@@ -122,7 +122,13 @@ export J2026_HEADLAMP_OIDC_SCOPES="$(yq_get '.headlamp.oidc.scopes' 'openid emai
 # Headlamp (see README.md "Headlamp"). Never put real emails in config.yaml.
 export J2026_HEADLAMP_ADMIN_EMAILS="${JENKINS2026_HEADLAMP_ADMIN_EMAILS:-$(yq_get '.headlamp.adminEmails' '')}"
 
+# --- pgadmin -----------------------------------------------------------------
+
+export J2026_PGADMIN_NAMESPACE="$(yq_get '.pgadmin.namespace' 'pgadmin')"
+export J2026_PGADMIN_RELEASE="$(yq_get '.pgadmin.releaseName' 'pgadmin')"
+
 # --- gateway (public access via GKE Gateway API + IAP) -----------------------
+
 
 # FEATURE FLAG: JENKINS2026_BASE_DOMAIN, if set (including to ""), overrides
 # gateway.baseDomain from config.yaml - same "config file is the durable
@@ -146,17 +152,21 @@ export J2026_GATEWAY_HTTPROUTE_JENKINS="jenkins"
 export J2026_GATEWAY_HTTPROUTE_MICROSERVICES="microservices"
 export J2026_GATEWAY_HTTPROUTE_MICROSERVICES_DEVELOP="microservices-develop"
 export J2026_GATEWAY_HTTPROUTE_HEADLAMP="headlamp"
+export J2026_GATEWAY_HTTPROUTE_PGADMIN="pgadmin"
 export J2026_GATEWAY_IAP_POLICY_JENKINS="jenkins-iap"
 export J2026_GATEWAY_IAP_POLICY_HEADLAMP="headlamp-iap"
+export J2026_GATEWAY_IAP_POLICY_PGADMIN="pgadmin-iap"
 
 J2026_GATEWAY_HOST_JENKINS="$(yq_get '.gateway.hosts.jenkins' 'jenkins')"
 J2026_GATEWAY_HOST_MICROSERVICES="$(yq_get '.gateway.hosts.microservices' 'microservices')"
 J2026_GATEWAY_HOST_MICROSERVICES_DEVELOP="$(yq_get '.gateway.hosts.microservicesDevelop' 'microservices-develop')"
 J2026_GATEWAY_HOST_HEADLAMP="$(yq_get '.gateway.hosts.headlamp' 'headlamp')"
+J2026_GATEWAY_HOST_PGADMIN="$(yq_get '.gateway.hosts.pgadmin' 'pgadmin')"
 export J2026_GATEWAY_JENKINS_HOST="${J2026_GATEWAY_HOST_JENKINS}.${J2026_GATEWAY_BASE_DOMAIN}"
 export J2026_GATEWAY_MICROSERVICES_HOST="${J2026_GATEWAY_HOST_MICROSERVICES}.${J2026_GATEWAY_BASE_DOMAIN}"
 export J2026_GATEWAY_MICROSERVICES_DEVELOP_HOST="${J2026_GATEWAY_HOST_MICROSERVICES_DEVELOP}.${J2026_GATEWAY_BASE_DOMAIN}"
 export J2026_GATEWAY_HEADLAMP_HOST="${J2026_GATEWAY_HOST_HEADLAMP}.${J2026_GATEWAY_BASE_DOMAIN}"
+export J2026_GATEWAY_PGADMIN_HOST="${J2026_GATEWAY_HOST_PGADMIN}.${J2026_GATEWAY_BASE_DOMAIN}"
 
 
 # Headlamp's OIDC redirect URI: the public gateway URL if the gateway is

@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pgadmin-config-local
+  namespace: {{ .Release.Namespace }}
+data:
+  config_local.py: |
+    # Enable Webserver Authentication
+    AUTHENTICATION_SOURCES = ['webserver', 'internal']
+    WEBSERVER_REMOTE_USER = 'HTTP_X_GOOG_AUTHENTICATED_USER_EMAIL'
+    WEBSERVER_AUTO_CREATE_USER = True
+    
+    # Monkeypatch to strip Google IAP account prefix (e.g., 'accounts.google.com:email@example.com')
+    try:
+        import flask
+        original_wsgi_app = flask.Flask.wsgi_app
+        def patched_wsgi_app(self, environ, start_response):
+            if 'HTTP_X_GOOG_AUTHENTICATED_USER_EMAIL' in environ:
+                email = environ['HTTP_X_GOOG_AUTHENTICATED_USER_EMAIL']
+                if email.startswith('accounts.google.com:'):
+                    environ['HTTP_X_GOOG_AUTHENTICATED_USER_EMAIL'] = email.split(':', 1)[1]
+            return original_wsgi_app(self, environ, start_response)
+        flask.Flask.wsgi_app = patched_wsgi_app
+    except Exception as e:
+        print(f"Error applying Google IAP monkeypatch: {e}")
