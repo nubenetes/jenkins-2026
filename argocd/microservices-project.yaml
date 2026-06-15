@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: microservices
+  namespace: argocd
+spec:
+  description: "Modernized Microservices GitOps Project"
+  sourceRepos:
+    - "*"
+  destinations:
+    - namespace: microservices
+      server: https://kubernetes.default.svc
+    - namespace: microservices-develop
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  # Allow all namespaced resources
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

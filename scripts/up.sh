@@ -33,6 +33,9 @@ log_step "Installing 03-observability (sequential to prevent API pressure)"
 log_step "Installing 04-jenkins (sequential to prevent API pressure)"
 "${SCRIPT_DIR}/04-jenkins.sh"
 
+log_step "Installing 05-microservices (Initial Helm releases)"
+"${SCRIPT_DIR}/05-microservices.sh"
+
 log_step "Installing 08.5-argocd (CD Engine)"
 "${SCRIPT_DIR}/08.5-argocd.sh"
 

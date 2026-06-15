@@ -21,8 +21,8 @@ helm_uninstall() {
 }
 
 log_step "Uninstalling Helm releases in parallel"
-run_bg petclinic-stable   helm_uninstall petclinic-stable  "${J2026_PETCLINIC_NS_STABLE}"
-run_bg petclinic-develop  helm_uninstall petclinic-develop "${J2026_PETCLINIC_NS_DEVELOP}"
+run_bg microservices-stable   helm_uninstall microservices-stable  "${J2026_MICROSERVICES_NS_STABLE}"
+run_bg microservices-develop  helm_uninstall microservices-develop "${J2026_MICROSERVICES_NS_DEVELOP}"
 run_bg jenkins            helm_uninstall "${J2026_JENKINS_RELEASE}" "${J2026_JENKINS_NAMESPACE}"
 run_bg headlamp           helm_uninstall "${J2026_HEADLAMP_RELEASE}" "${J2026_HEADLAMP_NAMESPACE}"
 run_bg argocd             helm_uninstall "${J2026_ARGOCD_RELEASE}" "${J2026_ARGOCD_NAMESPACE}"
@@ -50,7 +50,7 @@ log_step "Uninstalling OpenTelemetry Operator (CRDs)"
 helm_uninstall "${J2026_OTEL_OPERATOR_RELEASE}" "${J2026_OBS_NAMESPACE}"
 
 log_step "Removing RoleBindings granted to the Jenkins ServiceAccount"
-for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}"; do
+for ns in "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_MICROSERVICES_NS_DEVELOP}"; do
   kubectl delete rolebinding jenkins-edit -n "${ns}" --ignore-not-found
 done
 
@@ -83,15 +83,15 @@ if [[ "${J2026_PLATFORM}" == "gke" && -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
   kubectl delete gcpbackendpolicy "${J2026_GATEWAY_IAP_POLICY_JENKINS}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found --timeout=5m
   kubectl delete gcpbackendpolicy "${J2026_GATEWAY_IAP_POLICY_HEADLAMP}" -n "${J2026_HEADLAMP_NAMESPACE}" --ignore-not-found --timeout=5m
   kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_JENKINS}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found --timeout=5m
-  kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_PETCLINIC}" -n "${J2026_PETCLINIC_NS_STABLE}" --ignore-not-found --timeout=5m
-  kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_PETCLINIC_DEVELOP}" -n "${J2026_PETCLINIC_NS_DEVELOP}" --ignore-not-found --timeout=5m
+  kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_MICROSERVICES}" -n "${J2026_MICROSERVICES_NS_STABLE}" --ignore-not-found --timeout=5m
+  kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_MICROSERVICES_DEVELOP}" -n "${J2026_MICROSERVICES_NS_DEVELOP}" --ignore-not-found --timeout=5m
   kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_HEADLAMP}" -n "${J2026_HEADLAMP_NAMESPACE}" --ignore-not-found --timeout=5m
   kubectl delete gateway "${J2026_GATEWAY_NAME}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found --timeout=5m
 fi
 
 if [[ "${J2026_DELETE_NAMESPACES:-false}" == "true" ]]; then
   log_step "Deleting namespaces (J2026_DELETE_NAMESPACES=true)"
-  for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_GRAFANA_OSS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}" "${J2026_ARGOCD_NAMESPACE}"; do
+  for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_GRAFANA_OSS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_MICROSERVICES_NS_DEVELOP}" "${J2026_ARGOCD_NAMESPACE}"; do
     kubectl delete namespace "${ns}" --ignore-not-found
   done
 else

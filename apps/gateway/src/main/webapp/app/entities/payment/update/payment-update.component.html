@@ -1,0 +1,119 @@
+<div class="d-flex justify-content-center">
+  <div class="col-8">
+    <form name="editForm" novalidate (ngSubmit)="save()" [formGroup]="editForm">
+      <h2 id="jhi-payment-heading" data-cy="PaymentCreateUpdateHeading" jhiTranslate="gatewayApp.payment.home.createOrEditLabel">
+        Create or edit a Payment
+      </h2>
+
+      <div>
+        <jhi-alert-error></jhi-alert-error>
+
+        @if (editForm.controls.id.value !== null) {
+          <div class="mb-3">
+            <label class="form-label" for="field_id" jhiTranslate="gatewayApp.payment.id">ID</label>
+            <input type="number" class="form-control" name="id" id="field_id" data-cy="id" formControlName="id" [readonly]="true" />
+          </div>
+        }
+
+        @let amountRef = editForm.get('amount')!;
+        <div class="mb-3">
+          <label class="form-label" for="field_amount" jhiTranslate="gatewayApp.payment.amount">Amount</label>
+          <input type="number" class="form-control" name="amount" id="field_amount" data-cy="amount" formControlName="amount" />
+          @if (amountRef.invalid && (amountRef.dirty || amountRef.touched)) {
+            <div>
+              @if (editForm.get('amount')?.errors?.required) {
+                <small class="form-text text-danger" jhiTranslate="entity.validation.required">This field is required.</small>
+              }
+              <small
+                class="form-text text-danger"
+                [hidden]="!editForm.get('amount')?.errors?.number"
+                jhiTranslate="entity.validation.number"
+                >This field should be a number.</small
+              >
+            </div>
+          }
+        </div>
+
+        @let paymentDateRef = editForm.get('paymentDate')!;
+        <div class="mb-3">
+          <label class="form-label" for="field_paymentDate" jhiTranslate="gatewayApp.payment.paymentDate">Payment Date</label>
+          <div class="d-flex">
+            <input
+              id="field_paymentDate"
+              data-cy="paymentDate"
+              type="datetime-local"
+              class="form-control"
+              name="paymentDate"
+              formControlName="paymentDate"
+              placeholder="YYYY-MM-DD HH:mm"
+            />
+          </div>
+          @if (paymentDateRef.invalid && (paymentDateRef.dirty || paymentDateRef.touched)) {
+            <div>
+              @if (editForm.get('paymentDate')?.errors?.required) {
+                <small class="form-text text-danger" jhiTranslate="entity.validation.required">This field is required.</small>
+              }
+              <small
+                class="form-text text-danger"
+                [hidden]="!editForm.get('paymentDate')?.errors?.datetimelocal"
+                jhiTranslate="entity.validation.datetimelocal"
+                >This field should be a date and time.</small
+              >
+            </div>
+          }
+        </div>
+
+        @let methodRef = editForm.get('method')!;
+        <div class="mb-3">
+          <label class="form-label" for="field_method" jhiTranslate="gatewayApp.payment.method">Method</label>
+          <select class="form-control" name="method" formControlName="method" id="field_method" data-cy="method">
+            <option [ngValue]="null">{{ 'gatewayApp.PaymentMethod.null' | translate }}</option>
+            @for (paymentMethod of paymentMethodValues; track $index) {
+              <option [value]="paymentMethod">{{ 'gatewayApp.PaymentMethod.' + paymentMethod | translate }}</option>
+            }
+          </select>
+          @if (methodRef.invalid && (methodRef.dirty || methodRef.touched)) {
+            <div>
+              @if (editForm.get('method')?.errors?.required) {
+                <small class="form-text text-danger" jhiTranslate="entity.validation.required">This field is required.</small>
+              }
+            </div>
+          }
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label" for="field_invoice" jhiTranslate="gatewayApp.payment.invoice">Invoice</label>
+          <select
+            class="form-control"
+            id="field_invoice"
+            data-cy="invoice"
+            name="invoice"
+            formControlName="invoice"
+            [compareWith]="compareInvoice"
+          >
+            <option [ngValue]="null"></option>
+            @for (invoiceOption of invoicesCollection; track $index) {
+              <option [ngValue]="invoiceOption">{{ invoiceOption.id }}</option>
+            }
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <button type="button" id="cancel-save" data-cy="entityCreateCancelButton" class="btn btn-secondary" (click)="previousState()">
+          <fa-icon icon="ban"></fa-icon>&nbsp;<span jhiTranslate="entity.action.cancel">Cancel</span>
+        </button>
+
+        <button
+          type="submit"
+          id="save-entity"
+          data-cy="entityCreateSaveButton"
+          [disabled]="editForm.invalid || isSaving"
+          class="btn btn-primary"
+        >
+          <fa-icon icon="save"></fa-icon>&nbsp;<span jhiTranslate="entity.action.save">Save</span>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

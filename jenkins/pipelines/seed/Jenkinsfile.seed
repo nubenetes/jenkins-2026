@@ -2,7 +2,7 @@
 // "seed-jobs" pipeline (created by jenkins/casc/jcasc-seed-job.yaml).
 //
 // Checks out this repo, then runs the Job DSL script seed_jobs.groovy which
-// reads services.yaml and creates/updates the 9 stable PetClinic pipeline
+// reads services.yaml and creates/updates the 9 stable Microservices pipeline
 // jobs at the root (one per service). Idempotent - safe to re-run any time
 // services.yaml or the Jenkinsfile changes.
 // =============================================================================
@@ -31,7 +31,7 @@ spec:
       }
     }
 
-    stage('Seed PetClinic pipeline jobs') {
+    stage('Seed Microservices pipeline jobs') {
       steps {
         // sandbox: false (formerly useScriptSecurity: false, renamed by the
         // job-dsl plugin) - this repo is trusted (it IS the controller's
@@ -47,8 +47,8 @@ spec:
         // map entries as variables to the DSL script.
         jobDsl(
           targets: 'jenkins/pipelines/seed/seed_jobs.groovy',
-          removedJobAction: 'IGNORE',
-          removedViewAction: 'IGNORE',
+          removedJobAction: 'DELETE',
+          removedViewAction: 'DELETE',
           additionalClasspath: 'jenkins/pipelines/seed',
           additionalParameters: [
             JOB_FOLDER: env.JOB_NAME.contains('/') ? env.JOB_NAME.substring(0, env.JOB_NAME.lastIndexOf('/')) : ''

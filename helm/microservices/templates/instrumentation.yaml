@@ -1,0 +1,46 @@
+{{- /*
+Only render if the OpenTelemetry Operator (and its CRDs) are installed -
+scripts/02-otel-operator.sh runs before this chart, but this guard keeps
+`helm template`/`helm lint` and out-of-order installs safe.
+*/}}
+{{- if .Capabilities.APIVersions.Has "opentelemetry.io/v1alpha1/Instrumentation" }}
+apiVersion: opentelemetry.io/v1alpha1
+kind: Instrumentation
+metadata:
+  name: microservices-java
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "microservices.labels" . | nindent 4 }}
+spec:
+  exporter:
+    endpoint: {{ .Values.otel.collectorEndpoint }}
+  propagators:
+    - tracecontext
+    - baggage
+  sampler:
+    type: parentbased_traceidratio
+    argument: "1.0"
+  resource:
+    addK8sUIDAttributes: true
+  java:
+    env:
+      # The Java agent's default OTLP protocol is http/protobuf (port 4318),
+      # but .Values.otel.collectorEndpoint points at the gateway's gRPC port
+      # (4317, matching jenkins/casc/jcasc-otel.yaml) - without this, every
+      # span/metric/log export fails with "Failed to export ... The request
+      # could not be executed" (wrong protocol for the port).
+      - name: OTEL_EXPORTER_OTLP_PROTOCOL
+        value: "grpc"
+      - name: OTEL_METRICS_EXPORTER
+        value: "otlp"
+      - name: OTEL_LOGS_EXPORTER
+        value: "otlp"
+      # Injects trace_id/span_id into logback/log4j2 MDC so Loki log lines
+      # can be correlated with Tempo traces in Grafana.
+      - name: OTEL_INSTRUMENTATION_LOGBACK_APPENDER_ENABLED
+        value: "true"
+      - name: OTEL_INSTRUMENTATION_LOG4J_APPENDER_ENABLED
+        value: "true"
+      - name: OTEL_RESOURCE_ATTRIBUTES
+        value: "deployment.environment={{ .Values.env }},service.namespace=jenkins-2026"
+{{- end }}

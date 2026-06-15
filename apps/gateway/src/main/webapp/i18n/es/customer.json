@@ -1,0 +1,27 @@
+{
+  "gatewayApp": {
+    "customer": {
+      "home": {
+        "title": "Customers",
+        "refreshListLabel": "Refrescar lista",
+        "createLabel": "Crear nuevo Customer",
+        "createOrEditLabel": "Crear o editar Customer",
+        "notFound": "Ningún Customers encontrado"
+      },
+      "created": "Un nuevo Customer ha sido creado con el identificador {{ param }}",
+      "updated": "Un Customer ha sido actualizado con el identificador {{ param }}",
+      "deleted": "Un Customer ha sido eliminado con el identificador {{ param }}",
+      "delete": {
+        "question": "¿Seguro que quiere eliminar Customer {{ id }}?"
+      },
+      "detail": {
+        "title": "Customer"
+      },
+      "id": "ID",
+      "firstName": "First Name",
+      "lastName": "Last Name",
+      "email": "Email",
+      "owner": "Owner"
+    }
+  }
+}

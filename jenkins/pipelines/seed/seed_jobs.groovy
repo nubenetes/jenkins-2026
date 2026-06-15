@@ -1,9 +1,9 @@
 /*
- * Job DSL script: pipelines-as-code for PetClinic.
+ * Job DSL script: pipelines-as-code for Microservices.
  *
  * Reads services.yaml (this directory) and, for each service, creates one or
- * more pipeline jobs that call the declarative shared library PetClinicPipeline
- * or PetClinicK6SmokePipeline.
+ * more pipeline jobs that call the declarative shared library MicroservicesPipeline
+ * or MicroservicesK6SmokePipeline.
  */
 
 import org.yaml.snakeyaml.Yaml
@@ -43,7 +43,7 @@ registry.services.each { svc ->
     def branch  = svc.branches?.get(flavour.branchKey) ?: gitFlowRefs[flavour.branchKey]
 
     pipelineJob(jobName) {
-      description("PetClinic '${svc.name}' (${flavour.envName}) - builds '${branch}' and deploys to namespace '${namespaces[flavour.namespaceKey]}'.")
+      description("Microservices '${svc.name}' (${flavour.envName}) - builds '${branch}' and deploys to namespace '${namespaces[flavour.namespaceKey]}'.")
       keepDependencies(false)
       disabled(svc.name == 'genai-service' && !genaiServiceEnabled)
       logRotator { numToKeep(20) }
@@ -51,8 +51,8 @@ registry.services.each { svc ->
       definition {
         cps {
           script("""
-@Library('petclinic-shared-library') _
-PetClinicPipeline(
+@Library('microservices-shared-library') _
+MicroservicesPipeline(
     serviceName: '${svc.name}',
     serviceType: '${svc.type}',
     modulePath: '${svc.module ?: ""}',
@@ -73,18 +73,18 @@ PetClinicPipeline(
 }
 
 flavours.each { flavour ->
-  def jobName = jobFolder ? "${jobFolder}/petclinic-k6-smoke${flavour.suffix}" : "petclinic-k6-smoke${flavour.suffix}"
+  def jobName = jobFolder ? "${jobFolder}/microservices-k6-smoke${flavour.suffix}" : "microservices-k6-smoke${flavour.suffix}"
 
   pipelineJob(jobName) {
-    description("PetClinic Grafana observability smoke test (k6, ${flavour.envName}).")
+    description("Microservices Grafana observability smoke test (k6, ${flavour.envName}).")
     keepDependencies(false)
     logRotator { numToKeep(20) }
 
     definition {
       cps {
         script("""
-@Library('petclinic-shared-library') _
-PetClinicK6SmokePipeline(
+@Library('microservices-shared-library') _
+MicroservicesK6SmokePipeline(
     targetNamespace: '${namespaces[flavour.namespaceKey]}',
     envName: '${flavour.envName}',
     genaiEnabled: ${genaiServiceEnabled},
@@ -99,19 +99,19 @@ PetClinicK6SmokePipeline(
 }
 
 if (!jobFolder) {
-  listView('petclinic') {
+  listView('microservices') {
     jobs {
       registry.services.each { name(it.name) }
-      name('petclinic-k6-smoke')
+      name('microservices-k6-smoke')
     }
     columns { status(); weather(); name(); lastSuccess(); lastFailure(); lastDuration(); buildButton() }
   }
 } else {
-  listView('petclinic-develop') {
+  listView('microservices-develop') {
     recurse(true)
     jobs {
       registry.services.each { name("pac-dev/${it.name}-develop") }
-      name('pac-dev/petclinic-k6-smoke-develop')
+      name('pac-dev/microservices-k6-smoke-develop')
       name("pac-dev/seed-jobs-dev")
     }
     columns { status(); weather(); name(); lastSuccess(); lastFailure(); lastDuration(); buildButton() }

@@ -11,7 +11,7 @@
 #   -n observability -f observability/otel-collector/values-oss.yaml
 
 # See values-grafana-cloud.yaml - fixes the Service name so jenkins/casc,
-# helm/petclinic and resources/angular/nginx.conf can reach this collector at
+# helm/microservices and resources/angular/nginx.conf can reach this collector at
 # otel-collector-gateway.<observability-namespace>.svc.cluster.local
 # regardless of which observability.mode is active.
 fullnameOverride: otel-collector-gateway
