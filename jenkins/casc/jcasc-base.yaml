@@ -15,6 +15,7 @@ jenkins:
 
       <b>Deployed Environments:</b>
       <ul>
+        <li>ArgoCD: <a href="https://argocd.${J2026_GATEWAY_BASE_DOMAIN:-jenkins2026.nubenetes.com}">https://argocd.${J2026_GATEWAY_BASE_DOMAIN:-jenkins2026.nubenetes.com}</a></li>
         <li>PetClinic (Stable): <a href="${PETCLINIC_URL:-#}">${PETCLINIC_URL:-not publicly exposed}</a></li>
         <li>PetClinic (Develop): <a href="${PETCLINIC_DEVELOP_URL:-#}">${PETCLINIC_DEVELOP_URL:-not publicly exposed}</a></li>
       </ul>
