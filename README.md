@@ -147,32 +147,49 @@ graph TB
     OTEL -->|Forward| GC
 ```
 
-### CI/CD Flow
-This diagram shows the end-to-end GitFlow-inspired pipeline, from a code push to the final deployment and observability monitoring.
+### CI/CD Flow (GitOps)
+This diagram shows the robust Jenkins-to-ArgoCD synchronization we've implemented. Jenkins (CI) builds the artifact and updates the configuration repo, then uses the **ArgoCD CLI** to explicitly trigger and wait for a healthy deployment before finishing the pipeline.
 
 ```mermaid
 sequenceDiagram
     participant Dev as Developer
-    participant GH as GitHub (PetClinic Repos)
+    participant GH as GitHub (Infra Repo)
     participant J as Jenkins (CI)
-    participant AR as Artifact Registry (GHCR)
     participant ACD as ArgoCD (CD)
     participant K8s as Kubernetes (GKE)
     participant Obs as Observability (Grafana)
 
-    Dev->>GH: Git Push (main/develop)
-    GH->>J: Webhook Trigger
-    J->>GH: Checkout Code
-    J->>J: Build, Test & Scan
-    J->>AR: Push Container Image
-    J->>GH: Update Helm Chart / Image Tag
-    GH->>ACD: Git Change Detected
-    ACD->>K8s: Sync (Helm Upgrade / Apply)
-    K8s->>Obs: Telemetry (OTLP Traces/Logs/Metrics)
-    J->>K8s: Run k6 Smoke Test
-    K8s->>Obs: correlated Telemetry
-    Obs->>Dev: Dashboards / Alerts / Insights
+    Dev->>GH: Push Code / Change
+    J->>J: Build & Test
+    J->>J: Push Image to GHCR
+    J->>GH: Update values-<env>.yaml (yq)
+    J->>ACD: argocd app sync --wait (CLI)
+    Note over ACD,K8s: Reconcile Git -> Cluster
+    ACD->>K8s: Apply Manifests
+    K8s-->>ACD: Health Check (Ready)
+    ACD-->>J: Sync OK / Healthy
+    J->>K8s: Run Smoke Tests (curl)
+    K8s->>Obs: OTLP Telemetry
+    Obs-->>Dev: Dashboard Update
 ```
+
+## ArgoCD Inventory (GitOps)
+
+The deployment lifecycle is managed by **ArgoCD** using an **ApplicationSet** pattern, which automatically generates and maintains the environments based on the infrastructure repository.
+
+### Projects & Applications
+
+| Resource Name | Type | Namespace | Source Path | Target Namespace |
+| :--- | :--- | :--- | :--- | :--- |
+| **`petclinic`** | `AppProject` | `argocd` | N/A (Logical Group) | `petclinic-*` |
+| **`petclinic`** | `ApplicationSet` | `argocd` | `helm/petclinic/` | Multi-namespace |
+| `petclinic-stable` | `Application` | `argocd` | `helm/petclinic/` | `petclinic` |
+| `petclinic-develop` | `Application` | `argocd` | `helm/petclinic/` | `petclinic-develop` |
+
+### Security & Integration
+- **Jenkins Integration**: A dedicated `jenkins` account is created in ArgoCD with a scoped **API Token**. This token is securely stored in Jenkins' `jenkins-credentials` secret and used by the `argocd` CLI within pipeline agents.
+- **Auto-Sync**: Applications are configured with `selfHeal: true` and `prune: true`, ensuring the cluster state always matches the Git repository.
+- **Rollout Waiting**: The Jenkins pipeline stage `Deploy to Kubernetes` is non-blocking for ArgoCD but **blocking for the pipeline**, using `argocd app wait --health` to ensure zero-downtime deployments are verified before smoke testing.
 
 > **First run note**: `helm/petclinic`'s default image tag (`main`) won't
 > exist in your registry yet, so PetClinic pods will show
