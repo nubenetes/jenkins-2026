@@ -85,6 +85,18 @@ controller:
           name: ${J2026_JENKINS_CREDENTIALS_SECRET}
           key: grafana-traces-dashboard-uid
           optional: true
+    - name: PETCLINIC_URL
+      valueFrom:
+        secretKeyRef:
+          name: ${J2026_JENKINS_CREDENTIALS_SECRET}
+          key: petclinic-url
+          optional: true
+    - name: PETCLINIC_DEVELOP_URL
+      valueFrom:
+        secretKeyRef:
+          name: ${J2026_JENKINS_CREDENTIALS_SECRET}
+          key: petclinic-develop-url
+          optional: true
     - name: REGISTRY_USERNAME
       valueFrom:
         secretKeyRef:

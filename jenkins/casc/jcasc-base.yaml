@@ -141,6 +141,12 @@ appearance:
     theme: "darkSystem"
 
 unclassified:
+  globalNodeProperties:
+    envVars:
+      env:
+        - key: "GRAFANA_BASE_URL"
+          value: "${GRAFANA_BASE_URL:-}"
+
   # unclassified.location.url is intentionally NOT set here - the chart's
   # generated jcasc-default-config.yaml always sets it (to the in-cluster
   # service URL, http://jenkins.<namespace>.svc.cluster.local:8080, unless
