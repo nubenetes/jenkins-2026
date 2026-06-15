@@ -150,6 +150,14 @@ headlamp:
   adminEmails: ""
 
 # -----------------------------------------------------------------------------
+# pgAdmin (Postgres database administration UI)
+# -----------------------------------------------------------------------------
+pgadmin:
+  namespace: pgadmin
+  releaseName: pgadmin
+
+
+# -----------------------------------------------------------------------------
 # Public access via GKE Gateway API + Identity-Aware Proxy - see README.md
 # "Public access (GKE Gateway API + IAP)"
 # -----------------------------------------------------------------------------
@@ -176,6 +184,7 @@ gateway:
     # pac-dev/*-develop dev sandbox (namespace microservices-develop)
     microservicesDevelop: "microservices-develop"
     headlamp: "headlamp"
+    pgadmin: "pgadmin"
   # k8s Secret (per-namespace, created by scripts/01-namespaces.sh) holding
   # the IAP OAuth client ID/secret consumed by the GCPBackendPolicy resources
   # that put Identity-Aware Proxy in front of Jenkins and Headlamp. Never

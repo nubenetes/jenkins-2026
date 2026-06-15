@@ -11,7 +11,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 
 log_step "Creating namespaces"
-for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_MICROSERVICES_NS_DEVELOP}" "${J2026_ARGOCD_NAMESPACE}"; do
+for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_MICROSERVICES_NS_DEVELOP}" "${J2026_ARGOCD_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}"; do
   kubectl_apply_namespace "${ns}"
 done
 
@@ -117,7 +117,7 @@ else
   fi
   # GCPBackendPolicy's oauth2ClientSecret is a namespaced Secret reference, so
   # the same client ID/secret must exist in each backend's namespace.
-  for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}"; do
+  for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}"; do
     if kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" >/dev/null 2>&1; then
       log_info "Secret already exists in ${ns} - leaving it untouched."
     else
@@ -221,9 +221,24 @@ spec:
     limits.memory: 8.0Gi
 EOF
 
+# 5. pgAdmin Namespace Quota
+kubectl apply -f - -n "${J2026_PGADMIN_NAMESPACE}" <<EOF
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: pgadmin-quota
+spec:
+  hard:
+    requests.cpu: "200m"
+    requests.memory: 256Mi
+    limits.cpu: "500m"
+    limits.memory: 512Mi
+EOF
+
+
 log_step "Applying LimitRanges to supply default requests/limits"
 
-for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_ARGOCD_NAMESPACE}"; do
+for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_ARGOCD_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}"; do
   kubectl apply -f - -n "${ns}" <<EOF
 apiVersion: v1
 kind: LimitRange

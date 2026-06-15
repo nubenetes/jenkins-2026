@@ -162,6 +162,26 @@ spec:
           port: 80
 EOT
 
+cat >"${GENERATED_DIR}/httproute-pgadmin.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ${J2026_GATEWAY_HTTPROUTE_PGADMIN}
+  namespace: ${J2026_PGADMIN_NAMESPACE}
+spec:
+  parentRefs:
+    - name: ${J2026_GATEWAY_NAME}
+      namespace: ${J2026_JENKINS_NAMESPACE}
+      sectionName: https
+  hostnames:
+    - "${J2026_GATEWAY_PGADMIN_HOST}"
+  rules:
+    - backendRefs:
+        - name: ${J2026_PGADMIN_RELEASE}-pgadmin4
+          port: 80
+EOT
+
+
 log_step "Generating HealthCheckPolicies (jenkins, argocd, microservices)"
 cat >"${GENERATED_DIR}/healthcheckpolicy-jenkins.yaml" <<EOT
 apiVersion: networking.gke.io/v1
@@ -224,9 +244,9 @@ spec:
 EOT
 done
 
-log_step "Generating GCPBackendPolicies (IAP for jenkins, headlamp)"
+log_step "Generating GCPBackendPolicies (IAP for jenkins, headlamp, pgadmin)"
 declare -A iap_client_id
-for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}"; do
+for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}"; do
   client_id="$(kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" -o jsonpath='{.data.client_id}' 2>/dev/null | base64 -d || true)"
   client_secret="$(kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" -o jsonpath='{.data.client_secret}' 2>/dev/null | base64 -d || true)"
   iap_client_id["${ns}"]="${client_id}"
@@ -277,6 +297,26 @@ spec:
         name: ${J2026_GATEWAY_IAP_SECRET}-client-secret
 EOT
 
+cat >"${GENERATED_DIR}/gcpbackendpolicy-pgadmin.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: ${J2026_GATEWAY_IAP_POLICY_PGADMIN}
+  namespace: ${J2026_PGADMIN_NAMESPACE}
+spec:
+  targetRef:
+    group: ""
+    kind: Service
+    name: ${J2026_PGADMIN_RELEASE}-pgadmin4
+  default:
+    iap:
+      enabled: true
+      clientID: "${iap_client_id[${J2026_PGADMIN_NAMESPACE}]}"
+      oauth2ClientSecret:
+        name: ${J2026_GATEWAY_IAP_SECRET}-client-secret
+EOT
+
+
 log_step "Applying Gateway resources"
 kubectl apply -f "${GENERATED_DIR}/"
 
@@ -286,3 +326,4 @@ log_info "  ArgoCD:            https://${J2026_GATEWAY_ARGOCD_HOST}"
 log_info "  Microservices:         https://${J2026_GATEWAY_MICROSERVICES_HOST}"
 log_info "  Microservices develop: https://${J2026_GATEWAY_MICROSERVICES_DEVELOP_HOST}"
 log_info "  Headlamp:          https://${J2026_GATEWAY_HEADLAMP_HOST}"
+log_info "  pgAdmin:           https://${J2026_GATEWAY_PGADMIN_HOST}"
