@@ -27,7 +27,7 @@ def call(Map cfg) {
             # Construct the remote URL with credentials
             REPO_URL="${infraRepoUrl}"
             REPO_CLEAN=\$(echo "\${REPO_URL}" | sed 's|https://||')
-            AUTH_REPO_URL="https://\${GIT_USER}:\${GIT_TOKEN}@\${REPO_CLEAN}"
+            AUTH_REPO_URL="https://\${GIT_USER:-git}:\${GIT_TOKEN}@\${REPO_CLEAN}"
             
             git clone --depth 1 --branch ${infraBranch} "\${AUTH_REPO_URL}" .
           """

@@ -25,4 +25,11 @@
 # `unsafe-use-service-account-token` flag for in-cluster deployments - i.e.
 # per-user OIDC tokens forwarded to a managed GKE control plane is not a
 # supported path today.
-config: {}
+config:
+  oidc:
+    externalSecret:
+      enabled: true
+      name: headlamp-credentials
+    callbackURL: "https://headlamp.jenkins2026.nubenetes.com/oidc-callback"
+    useAccessToken: true
+
