@@ -32,11 +32,6 @@ jenkins:
       </ul>
     </div>
 
-  markupFormatter:
-    rawHtml:
-      disableSyntaxHighlighting: true
-
-  securityRealm:
   globalNodeProperties:
     - envVars:
         env:
@@ -45,18 +40,6 @@ jenkins:
           - key: "JENKINS2026_REPO_URL"
             value: "${JENKINS2026_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
 
-  # numExecutors (chart default 0) / mode are derived from
-  # controller.numExecutors / controller.executorMode in
-  # helm/jenkins/values-common.yaml instead of being set here - see the
-  # comment there for why.
-
-  # Google login via OpenID Connect (oic-auth plugin) - replaces the old
-  # local-realm admin/platform-engineer accounts. clientId/clientSecret come
-  # from JENKINS_OIDC_CLIENT_ID/SECRET (empty until configured - see
-  # README.md "Jenkins" Google login section); an empty clientId means the
-  # "Sign in with Google" button errors out, but the escape hatch below
-  # still provides admin login/API access via JENKINS_ADMIN_ID/PASSWORD
-  # (the same credentials the old local "admin" account used).
   securityRealm:
     oic:
       clientId: "${JENKINS_OIDC_CLIENT_ID:-}"
