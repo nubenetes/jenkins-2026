@@ -7,8 +7,8 @@ spec:
   project: default
   source:
     repoURL: https://github.com/CrunchyData/postgres-operator.git
-    targetRevision: v5.6.0
-    path: install/default
+    targetRevision: v5.7.9
+    path: config/default
   destination:
     server: https://kubernetes.default.svc
     namespace: postgres-operator
