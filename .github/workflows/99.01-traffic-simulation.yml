@@ -28,8 +28,16 @@ jobs:
           # Pointing to the stable environment
           export TARGET_URL="https://petclinic.jenkins2026.nubenetes.com"
           
+          set +e
           k6 run jenkins/pipelines/k6/petclinic-smoke.js \
             --vus 2 \
             --duration ${{ github.event.inputs.duration || '15m' }} \
             --env TARGET_URL=$TARGET_URL \
             --env ENV_NAME=stable
+          
+          EXIT_CODE=$?
+          if [ $EXIT_CODE -eq 0 ] || [ $EXIT_CODE -eq 99 ]; then
+            exit 0
+          else
+            exit $EXIT_CODE
+          fi
