@@ -27,6 +27,9 @@ kubectl get deploy,pods -n "${J2026_PETCLINIC_NS_DEVELOP}" 2>/dev/null || log_wa
 
 log_step "ArgoCD (namespace: ${J2026_ARGOCD_NAMESPACE})"
 kubectl get pods -n "${J2026_ARGOCD_NAMESPACE}" 2>/dev/null || log_warn "Namespace ${J2026_ARGOCD_NAMESPACE} not found"
+if kubectl get applications -n "${J2026_ARGOCD_NAMESPACE}" >/dev/null 2>&1; then
+  kubectl get applications -n "${J2026_ARGOCD_NAMESPACE}"
+fi
 
 echo
 log_step "Useful endpoints"

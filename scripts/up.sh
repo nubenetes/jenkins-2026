@@ -8,10 +8,10 @@
 #   02 otel-operator    (sequential - CRDs needed by 05's Instrumentation CR)
 #   03 observability  \
 #   04 jenkins         > parallel - independent of each other
-#   05 petclinic      /
 #   06 seed-pipelines   (sequential - needs 04 ready)
 #   07 grafana-dashboards (sequential - needs 03's credentials/configmap)
 #   08 headlamp         (sequential - cluster management UI)
+#   08.5-argocd.sh      (sequential - CD engine for GitOps)
 #   09 gateway          (sequential - public access via GKE Gateway API + IAP)
 #
 # Each step is idempotent; re-running up.sh after a partial failure is safe.
@@ -33,13 +33,12 @@ log_step "Installing 03-observability (sequential to prevent API pressure)"
 log_step "Installing 04-jenkins (sequential to prevent API pressure)"
 "${SCRIPT_DIR}/04-jenkins.sh"
 
-log_step "Installing 05-petclinic"
-"${SCRIPT_DIR}/05-petclinic.sh"
+log_step "Installing 08.5-argocd (CD Engine)"
+"${SCRIPT_DIR}/08.5-argocd.sh"
 
 "${SCRIPT_DIR}/06-seed-pipelines.sh"
 "${SCRIPT_DIR}/07-grafana-dashboards.sh"
 "${SCRIPT_DIR}/08-headlamp.sh"
-"${SCRIPT_DIR}/08.5-argocd.sh"
 "${SCRIPT_DIR}/09-gateway.sh"
 
 log_info "jenkins-2026 is up. Run scripts/status.sh for endpoints and rollout status."

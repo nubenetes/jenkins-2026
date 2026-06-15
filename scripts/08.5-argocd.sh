@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs ArgoCD and configures it with Google OIDC.
+# Installs ArgoCD and configures it with Google OIDC and GitOps projects.
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
@@ -18,14 +18,7 @@ if [[ "${current_status}" == "pending-install" || "${current_status}" == "pendin
   sleep 2
 fi
 
-# 2. Install ArgoCD WITHOUT --wait to unblock the script
-log_step "Running Helm upgrade"
-helm upgrade --install "${J2026_ARGOCD_RELEASE}" argo/argo-cd \
-  --namespace "${J2026_ARGOCD_NAMESPACE}" \
-  --set server.extraArgs="{--insecure}" \
-  --timeout 10m
-
-# 3. Configure OIDC/RBAC AFTER helm to ensure it persists
+# 1. Pre-configure OIDC/RBAC
 log_step "Configuring ArgoCD OIDC/RBAC"
 ARGOCD_HOST="argocd.${J2026_GATEWAY_BASE_DOMAIN}"
 ARGOCD_URL="https://${ARGOCD_HOST}"
@@ -37,7 +30,6 @@ CLIENT_SECRET="$(kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${J2026_JE
 if [[ -n "${CLIENT_ID}" && -n "${CLIENT_SECRET}" ]]; then
   log_info "Wiring Google OIDC for ArgoCD at ${ARGOCD_URL}"
   
-  # Update argocd-cm using patch to not overwrite everything
   PATCH_FILE=$(mktemp)
   cat <<EOF > "${PATCH_FILE}"
 data:
@@ -51,10 +43,10 @@ data:
           clientID: ${CLIENT_ID}
           clientSecret: ${CLIENT_SECRET}
 EOF
-  kubectl patch configmap argocd-cm -n ${J2026_ARGOCD_NAMESPACE} --patch-file "${PATCH_FILE}"
+  kubectl patch configmap argocd-cm -n ${J2026_ARGOCD_NAMESPACE} --patch-file "${PATCH_FILE}" || \
+  kubectl create configmap argocd-cm -n ${J2026_ARGOCD_NAMESPACE} --from-file="${PATCH_FILE}" --dry-run=client -o yaml | kubectl apply -f -
   rm "${PATCH_FILE}"
 
-  # Update argocd-rbac-cm
   PATCH_FILE_RBAC=$(mktemp)
   cat <<EOF > "${PATCH_FILE_RBAC}"
 data:
@@ -62,16 +54,39 @@ data:
   policy.csv: |
     g, authenticated, role:admin
 EOF
-  kubectl patch configmap argocd-rbac-cm -n ${J2026_ARGOCD_NAMESPACE} --patch-file "${PATCH_FILE_RBAC}"
+  kubectl patch configmap argocd-rbac-cm -n ${J2026_ARGOCD_NAMESPACE} --patch-file "${PATCH_FILE_RBAC}" || \
+  kubectl create configmap argocd-rbac-cm -n ${J2026_ARGOCD_NAMESPACE} --from-file="${PATCH_FILE_RBAC}" --dry-run=client -o yaml | kubectl apply -f -
   rm "${PATCH_FILE_RBAC}"
 else
   log_warn "OIDC credentials not found. ArgoCD will use local admin password."
 fi
 
-# 4. Use our own faster monitoring for the critical components
+# 2. Install ArgoCD
+log_step "Running Helm upgrade"
+helm upgrade --install "${J2026_ARGOCD_RELEASE}" argo/argo-cd \
+  --namespace "${J2026_ARGOCD_NAMESPACE}" \
+  --set server.extraArgs="{--insecure}" \
+  --timeout 10m
+
+# 3. Wait for Server
 log_step "Waiting for ArgoCD Server to be ready"
 wait_for_deployment "${J2026_ARGOCD_RELEASE}-server" "${J2026_ARGOCD_NAMESPACE}" "5m"
 
-log_info "ArgoCD installed and configured."
+# 4. Configure GitOps Project and AppSet
+log_step "Configuring ArgoCD PetClinic GitOps Project"
+kubectl apply -f "${J2026_ROOT_DIR}/argocd/petclinic-project.yaml"
 
-log_info "ArgoCD installed and configured."
+log_step "Generating and applying PetClinic ApplicationSet"
+# Inject values into the AppSet manifest
+# Using @ as delimiter for sed to avoid issues with URLs
+APPSET_FILE=$(mktemp)
+sed "s@{{repoUrl}}@${J2026_SELF_REPO_URL}@g; 
+     s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g; 
+     s@{{branchDevelop}}@${J2026_SELF_REPO_DEV_BRANCH}@g; 
+     s@{{platform}}@${J2026_PLATFORM}@g" \
+    "${J2026_ROOT_DIR}/argocd/petclinic-appset.yaml" > "${APPSET_FILE}"
+
+kubectl apply -f "${APPSET_FILE}"
+rm "${APPSET_FILE}"
+
+log_info "ArgoCD installed and GitOps configured."

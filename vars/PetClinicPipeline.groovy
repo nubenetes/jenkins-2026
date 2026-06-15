@@ -54,6 +54,13 @@ spec:
       resources:
         requests: {cpu: 50m, memory: 256Mi}
         limits: {cpu: 500m, memory: 512Mi}
+    - name: git
+      image: alpine/git:latest
+      command: ['sleep']
+      args: ['infinity']
+      resources:
+        requests: {cpu: 50m, memory: 128Mi}
+        limits: {cpu: 200m, memory: 256Mi}
 """
             }
         }
