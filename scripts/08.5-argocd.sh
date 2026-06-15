@@ -78,21 +78,26 @@ EOF
   # Grant temporary cluster-admin to the default SA to allow the token-gen pod to use --core mode
   kubectl create clusterrolebinding temp-argocd-admin --clusterrole=cluster-admin --serviceaccount="${J2026_ARGOCD_NAMESPACE}:default" || true
   
-  ARGOCD_ADMIN_PASSWORD=$(kubectl get secret argocd-initial-admin-secret -n "${J2026_ARGOCD_NAMESPACE}" -o jsonpath="{.data.password}" | base64 -d)
+  # Ensure no old token-gen pod exists
+  kubectl delete pod argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found=true --wait=true || true
   
+  # Use a subshell to capture token and ensure RBAC cleanup happens regardless of success/failure
+  set +e
   TOKEN=$(kubectl run argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --rm -i --restart=Never \
     --image=quay.io/argoproj/argocd:v2.11.0 -- \
     bash -c "argocd account generate-token --account jenkins --core")
+  EXIT_CODE=$?
+  set -e
             
   # Cleanup temporary RBAC
   kubectl delete clusterrolebinding temp-argocd-admin || true
 
-  if [[ -n "${TOKEN}" ]]; then
+  if [[ ${EXIT_CODE} -eq 0 && -n "${TOKEN}" ]]; then
     log_info "Storing ArgoCD token in ${J2026_JENKINS_CREDENTIALS_SECRET}"
     kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \
       --type=merge -p "{\"stringData\":{\"argocd-token\":\"${TOKEN}\"}}"
   else
-    log_error "Failed to generate ArgoCD token"
+    log_error "Failed to generate ArgoCD token (exit code: ${EXIT_CODE})"
   fi
 else
   log_warn "OIDC credentials not found. ArgoCD will use local admin password."
