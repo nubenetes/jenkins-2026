@@ -115,12 +115,6 @@ spec:
         - path:
             type: PathPrefix
             value: /api/
-      filters:
-        - type: URLRewrite
-          urlRewrite:
-            path:
-              type: ReplacePrefixMatch
-              replacePrefixMatch: /
       backendRefs:
         - name: api-gateway
           port: 8080
@@ -151,12 +145,6 @@ spec:
         - path:
             type: PathPrefix
             value: /api/
-      filters:
-        - type: URLRewrite
-          urlRewrite:
-            path:
-              type: ReplacePrefixMatch
-              replacePrefixMatch: /
       backendRefs:
         - name: api-gateway
           port: 8080

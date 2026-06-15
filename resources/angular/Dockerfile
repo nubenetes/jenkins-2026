@@ -11,7 +11,7 @@ WORKDIR /app
 COPY petclinic-src/package*.json ./
 RUN npm ci
 COPY petclinic-src/. .
-RUN npm run build -- --configuration production
+RUN npm run build -- --configuration production --base-href /
 
 FROM nginx:1.27-alpine AS runtime
 
