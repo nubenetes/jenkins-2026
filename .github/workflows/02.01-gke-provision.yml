@@ -139,7 +139,7 @@ jobs:
             # this is the standard https://<slug>.grafana.net Grafana Cloud
             # URL pattern for the persistent stack from
             # terraform/grafana-cloud-stack, stored here for
-            # petclinicK6Smoke's Grafana dashboard link.
+            # microservicesK6Smoke's Grafana dashboard link.
             export GRAFANA_BASE_URL="https://${{ secrets.GRAFANA_CLOUD_STACK_SLUG }}.grafana.net"
           fi
           ./scripts/01-namespaces.sh
@@ -271,12 +271,12 @@ jobs:
               echo "access (GKE Gateway API + IAP)\"), the stack is reachable at:"
               echo
               echo "- Jenkins:           https://jenkins.jenkins2026.nubenetes.com (IAP-protected)"
-              echo "- PetClinic:         https://petclinic.jenkins2026.nubenetes.com"
-              echo "- PetClinic develop: https://petclinic-develop.jenkins2026.nubenetes.com"
+              echo "- Microservices:         https://microservices.jenkins2026.nubenetes.com"
+              echo "- Microservices develop: https://microservices-develop.jenkins2026.nubenetes.com"
               echo "- Headlamp:          https://headlamp.jenkins2026.nubenetes.com (IAP-protected)"
             else
               echo "Gateway/IAP was disabled for this run (enable_gateway=false)."
-              echo "Use \`kubectl port-forward\` to reach Jenkins/PetClinic/Headlamp -"
+              echo "Use \`kubectl port-forward\` to reach Jenkins/Microservices/Headlamp -"
               echo "see README.md \"Accessing the UI\"."
             fi
             echo

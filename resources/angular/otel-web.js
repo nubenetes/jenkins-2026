@@ -1,5 +1,5 @@
 /**
- * Minimal browser-side OpenTelemetry RUM for the PetClinic Angular UI.
+ * Minimal browser-side OpenTelemetry RUM for the Microservices Angular UI.
  *
  * Injected into every HTML page via nginx `sub_filter` (see nginx.conf).
  * This is a small, dependency-free implementation suitable for a PoC; for
@@ -19,7 +19,7 @@
  */
 (function () {
   var OTLP_ENDPOINT = '/otel/v1/traces';
-  var SERVICE_NAME = 'petclinic-angular-web';
+  var SERVICE_NAME = 'microservices-angular-web';
 
   // Find environment from script tag attribute (injected via nginx sub_filter)
   // or fallback to URL-based detection.
