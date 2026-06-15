@@ -28,7 +28,7 @@
 config:
   oidc:
     externalSecret:
-      enabled: true
+      enabled: false
       name: headlamp-credentials
     callbackURL: "https://headlamp.jenkins2026.nubenetes.com/oidc-callback"
     useAccessToken: true
