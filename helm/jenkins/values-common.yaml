@@ -58,8 +58,8 @@ controller:
 
   resources:
     requests:
-      cpu: "200m"
-      memory: "1024Mi"
+      cpu: "1"
+      memory: "2Gi"
     limits:
       cpu: "2"
       memory: "4096Mi"
