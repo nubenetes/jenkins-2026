@@ -21,6 +21,7 @@ def call(Map cfg) {
                                          usernameVariable: 'GIT_USER')]) {
           sh """
             set -eux
+            git config --global --add safe.directory '*'
             git config --global user.email "jenkins@nubenetes.com"
             git config --global user.name "Jenkins CI"
             
@@ -47,6 +48,7 @@ def call(Map cfg) {
                                          usernameVariable: 'GIT_USER')]) {
           sh """
             set -eux
+            git config --global --add safe.directory '*'
             git add ${valuesFile}
             git commit -m "chore(ops): update ${cfg.serviceName} image tag to ${cfg.tag} [${cfg.envName}]" || echo "No changes to commit"
             
