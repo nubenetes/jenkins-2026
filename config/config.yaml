@@ -200,7 +200,7 @@ microservices:
 
   branches:
     stable: main
-    develop: main
+    develop: develop
 
   # Container images built by the pipelines are pushed here.
   registry: ghcr.io/nubenetes/jenkins-2026-microservices

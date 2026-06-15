@@ -10,6 +10,13 @@ spec:
   postgresVersion: 15
   instances:
     - name: instance1
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
       dataVolumeClaimSpec:
         accessModes:
           - "ReadWriteOnce"
@@ -19,6 +26,22 @@ spec:
   backups:
     pgbackrest:
       image: registry.developers.crunchydata.com/crunchydata/crunchy-pgbackrest:ubi8-2.47-0
+      jobs:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+      repoHost:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
       repos:
       - name: repo1
         volume:

@@ -22,7 +22,7 @@ fi
 log_step "Running Helm upgrade"
 helm upgrade --install "${J2026_ARGOCD_RELEASE}" argo/argo-cd \
   --namespace "${J2026_ARGOCD_NAMESPACE}" \
-  --set server.extraArgs="{--insecure}" \
+  -f "${J2026_ROOT_DIR}/helm/argocd-values.yaml" \
   --timeout 10m
 
 # 2. Configure OIDC/RBAC

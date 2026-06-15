@@ -11,7 +11,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 
 log_step "Creating namespaces"
-for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_MICROSERVICES_NS_DEVELOP}"; do
+for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_MICROSERVICES_NS_DEVELOP}" "${J2026_ARGOCD_NAMESPACE}"; do
   kubectl_apply_namespace "${ns}"
 done
 
@@ -161,6 +161,84 @@ for ns in "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_MICROSERVICES_NS_DEVELOP}"
     --type=kubernetes.io/dockerconfigjson \
     --from-literal=.dockerconfigjson="${dockerconfigjson}" \
     --dry-run=client -o yaml | kubectl apply -f -
+done
+
+log_step "Applying ResourceQuotas to limit scaling and costs"
+
+# 1. Jenkins Namespace Quota
+kubectl apply -f - -n "${J2026_JENKINS_NAMESPACE}" <<EOF
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: jenkins-quota
+spec:
+  hard:
+    requests.cpu: "1.0"
+    requests.memory: 3.5Gi
+    limits.cpu: "6"
+    limits.memory: 8.0Gi
+EOF
+
+# 2. Observability Namespace Quota
+kubectl apply -f - -n "${J2026_OBS_NAMESPACE}" <<EOF
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: observability-quota
+spec:
+  hard:
+    requests.cpu: "1.5"
+    requests.memory: 3.0Gi
+    limits.cpu: "3.5"
+    limits.memory: 5.0Gi
+EOF
+
+# 3. Headlamp Namespace Quota
+kubectl apply -f - -n "${J2026_HEADLAMP_NAMESPACE}" <<EOF
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: headlamp-quota
+spec:
+  hard:
+    requests.cpu: "200m"
+    requests.memory: 256Mi
+    limits.cpu: "500m"
+    limits.memory: 512Mi
+EOF
+
+# 4. ArgoCD Namespace Quota
+kubectl apply -f - -n "${J2026_ARGOCD_NAMESPACE}" <<EOF
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: argocd-quota
+spec:
+  hard:
+    requests.cpu: "1.5"
+    requests.memory: 3.0Gi
+    limits.cpu: "5"
+    limits.memory: 8.0Gi
+EOF
+
+log_step "Applying LimitRanges to supply default requests/limits"
+
+for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_ARGOCD_NAMESPACE}"; do
+  kubectl apply -f - -n "${ns}" <<EOF
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: namespace-limit-range
+spec:
+  limits:
+  - default:
+      cpu: 200m
+      memory: 256Mi
+    defaultRequest:
+      cpu: 50m
+      memory: 128Mi
+    type: Container
+EOF
 done
 
 log_info "Namespaces ready."
