@@ -101,7 +101,7 @@ jobs:
       - name: Redeploy Jenkins (scripts/04-jenkins.sh)
         run: ./scripts/04-jenkins.sh
 
-      - name: Re-seed PetClinic pipelines (scripts/06-seed-pipelines.sh)
+      - name: Re-seed Microservices pipelines (scripts/06-seed-pipelines.sh)
         run: ./scripts/06-seed-pipelines.sh
 
       - name: Publish Grafana dashboards (scripts/07-grafana-dashboards.sh)

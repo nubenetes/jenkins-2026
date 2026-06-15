@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Exposes Jenkins, ArgoCD, PetClinic and Headlamp on the public internet via the GKE
+# Exposes Jenkins, ArgoCD, Microservices and Headlamp on the public internet via the GKE
 # Gateway API: one global external HTTPS Gateway (gke-l7-global-external-managed,
 # using the static IP + managed certificate from terraform/gateway-bootstrap),
 # one HTTPRoute per app, and a GCPBackendPolicy enabling Identity-Aware Proxy
-# (IAP) in front of the Jenkins and Headlamp Services only - PetClinic stays
+# (IAP) in front of the Jenkins and Headlamp Services only - Microservices stays
 # public. See README.md "Public access (GKE Gateway API + IAP)".
 set -euo pipefail
 
@@ -58,7 +58,7 @@ spec:
           from: All
 EOT
 
-log_step "Generating HTTPRoutes (jenkins, argocd, petclinic, petclinic-develop, headlamp)"
+log_step "Generating HTTPRoutes (jenkins, argocd, microservices, microservices-develop, headlamp)"
 cat >"${GENERATED_DIR}/httproute-jenkins.yaml" <<EOT
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -97,63 +97,49 @@ spec:
           port: 80
 EOT
 
-cat >"${GENERATED_DIR}/httproute-petclinic.yaml" <<EOT
+cat >"${GENERATED_DIR}/httproute-microservices.yaml" <<EOT
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: ${J2026_GATEWAY_HTTPROUTE_PETCLINIC}
-  namespace: ${J2026_PETCLINIC_NS_STABLE}
+  name: ${J2026_GATEWAY_HTTPROUTE_MICROSERVICES}
+  namespace: ${J2026_MICROSERVICES_NS_STABLE}
 spec:
   parentRefs:
     - name: ${J2026_GATEWAY_NAME}
       namespace: ${J2026_JENKINS_NAMESPACE}
       sectionName: https
   hostnames:
-    - "${J2026_GATEWAY_PETCLINIC_HOST}"
+    - "${J2026_GATEWAY_MICROSERVICES_HOST}"
   rules:
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /api/
-      backendRefs:
-        - name: api-gateway
-          port: 8080
     - matches:
         - path:
             type: PathPrefix
             value: /
       backendRefs:
-        - name: petclinic-angular
+        - name: gateway
           port: 8080
 EOT
 
-cat >"${GENERATED_DIR}/httproute-petclinic-develop.yaml" <<EOT
+cat >"${GENERATED_DIR}/httproute-microservices-develop.yaml" <<EOT
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: ${J2026_GATEWAY_HTTPROUTE_PETCLINIC_DEVELOP}
-  namespace: ${J2026_PETCLINIC_NS_DEVELOP}
+  name: ${J2026_GATEWAY_HTTPROUTE_MICROSERVICES_DEVELOP}
+  namespace: ${J2026_MICROSERVICES_NS_DEVELOP}
 spec:
   parentRefs:
     - name: ${J2026_GATEWAY_NAME}
       namespace: ${J2026_JENKINS_NAMESPACE}
       sectionName: https
   hostnames:
-    - "${J2026_GATEWAY_PETCLINIC_DEVELOP_HOST}"
+    - "${J2026_GATEWAY_MICROSERVICES_DEVELOP_HOST}"
   rules:
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /api/
-      backendRefs:
-        - name: api-gateway
-          port: 8080
     - matches:
         - path:
             type: PathPrefix
             value: /
       backendRefs:
-        - name: petclinic-angular
+        - name: gateway
           port: 8080
 EOT
 
@@ -176,7 +162,7 @@ spec:
           port: 80
 EOT
 
-log_step "Generating HealthCheckPolicies (jenkins, argocd, petclinic)"
+log_step "Generating HealthCheckPolicies (jenkins, argocd, microservices)"
 cat >"${GENERATED_DIR}/healthcheckpolicy-jenkins.yaml" <<EOT
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
@@ -213,17 +199,17 @@ spec:
     name: argocd-server
 EOT
 
-for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}"; do
+for ns in "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_MICROSERVICES_NS_DEVELOP}"; do
   env_suffix=""
-  if [[ "${ns}" == "${J2026_PETCLINIC_NS_DEVELOP}" ]]; then
+  if [[ "${ns}" == "${J2026_MICROSERVICES_NS_DEVELOP}" ]]; then
     env_suffix="-develop"
   fi
 
-  cat >"${GENERATED_DIR}/healthcheckpolicy-petclinic${env_suffix}.yaml" <<EOT
+  cat >"${GENERATED_DIR}/healthcheckpolicy-microservices${env_suffix}.yaml" <<EOT
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
 metadata:
-  name: api-gateway
+  name: gateway
   namespace: ${ns}
 spec:
   default:
@@ -234,23 +220,7 @@ spec:
   targetRef:
     group: ""
     kind: Service
-    name: api-gateway
----
-apiVersion: networking.gke.io/v1
-kind: HealthCheckPolicy
-metadata:
-  name: petclinic-angular
-  namespace: ${ns}
-spec:
-  default:
-    config:
-      type: HTTP
-      httpHealthCheck:
-        requestPath: /
-  targetRef:
-    group: ""
-    kind: Service
-    name: petclinic-angular
+    name: gateway
 EOT
 done
 
@@ -313,6 +283,6 @@ kubectl apply -f "${GENERATED_DIR}/"
 log_info "Gateway ready."
 log_info "  Jenkins:           https://${J2026_GATEWAY_JENKINS_HOST}"
 log_info "  ArgoCD:            https://${J2026_GATEWAY_ARGOCD_HOST}"
-log_info "  PetClinic:         https://${J2026_GATEWAY_PETCLINIC_HOST}"
-log_info "  PetClinic develop: https://${J2026_GATEWAY_PETCLINIC_DEVELOP_HOST}"
+log_info "  Microservices:         https://${J2026_GATEWAY_MICROSERVICES_HOST}"
+log_info "  Microservices develop: https://${J2026_GATEWAY_MICROSERVICES_DEVELOP_HOST}"
 log_info "  Headlamp:          https://${J2026_GATEWAY_HEADLAMP_HOST}"

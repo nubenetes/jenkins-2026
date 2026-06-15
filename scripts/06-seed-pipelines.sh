@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Triggers the "seed-jobs" pipeline (defined by jenkins/casc/jcasc-seed-job.yaml,
 # which itself runs jenkins/pipelines/seed/seed_jobs.groovy via the Job DSL
-# plugin) so the 9 stable PetClinic pipelines exist immediately, instead of
+# plugin) so the 9 stable Microservices pipelines exist immediately, instead of
 # waiting for its H/30 * * * * cron trigger.
 #
 # Talks to the Jenkins REST API from inside the controller pod via
@@ -36,9 +36,9 @@ CRUMB="$(printf '%s' "${CRUMB_JSON}" | python3 -c 'import sys,json; print(json.l
 log_step "Triggering the 'seed-jobs' pipeline"
 jenkins_exec curl -s -b /tmp/seed-cookies.txt -u "${AUTH}" -H "Jenkins-Crumb: ${CRUMB}" -X POST 'http://localhost:8080/job/seed-jobs/build' -o /dev/null -w '%{http_code}\n'
 
-log_step "Waiting for seed-jobs to create the PetClinic pipeline jobs"
+log_step "Waiting for seed-jobs to create the Microservices pipeline jobs"
 expected=0
-for svc in ${J2026_PETCLINIC_SERVICES}; do
+for svc in ${J2026_MICROSERVICES_SERVICES}; do
   expected=$((expected + 1))
 done
 
@@ -46,11 +46,11 @@ for _ in $(seq 1 30); do
   count="$(jenkins_exec curl -sg -u "${AUTH}" 'http://localhost:8080/api/json?tree=jobs[name]' \
     | python3 -c 'import sys,json; print(len(json.load(sys.stdin)["jobs"]))')"
   if [[ "${count}" -ge "$((expected + 1))" ]]; then
-    log_info "Found ${count} jobs (>= ${expected} PetClinic pipelines + seed-jobs)."
+    log_info "Found ${count} jobs (>= ${expected} Microservices pipelines + seed-jobs)."
     break
   fi
   sleep 2
 done
 
-log_info "Seed pipeline triggered. Browse http://localhost:8080/view/petclinic/ (after port-forwarding)"
+log_info "Seed pipeline triggered. Browse http://localhost:8080/view/microservices/ (after port-forwarding)"
 log_info "  kubectl -n ${NS} port-forward svc/${RELEASE} 8080:8080"

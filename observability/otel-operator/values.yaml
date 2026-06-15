@@ -1,6 +1,6 @@
 # Values for open-telemetry/opentelemetry-operator (provides the
 # OpenTelemetryCollector + Instrumentation CRDs used everywhere else in
-# observability/ and helm/petclinic/templates/instrumentation.yaml).
+# observability/ and helm/microservices/templates/instrumentation.yaml).
 #
 # helm upgrade --install otel-operator open-telemetry/opentelemetry-operator \
 #   -n observability --create-namespace -f observability/otel-operator/values.yaml
@@ -15,7 +15,7 @@ admissionWebhooks:
     # MutatingWebhookConfiguration's caBundle to a freshly-generated CA on
     # every upgrade, but the already-running operator pod keeps serving its
     # old cert until restarted - any admission request in that window (e.g.
-    # helm/petclinic's Instrumentation CR) fails with "certificate signed by
+    # helm/microservices's Instrumentation CR) fails with "certificate signed by
     # unknown authority".
     recreate: false
 

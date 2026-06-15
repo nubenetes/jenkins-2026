@@ -1,5 +1,5 @@
 /**
- * PetClinicK6SmokePipeline(targetNamespace: '<ns>', envName: 'stable'|'develop',
+ * MicroservicesK6SmokePipeline(targetNamespace: '<ns>', envName: 'stable'|'develop',
  *                           genaiEnabled: true|false, vus: '<vus>', iterations: '<iters>')
  *
  * Declarative shared library wrapper for the k6 smoke test pipeline.
@@ -45,7 +45,7 @@ spec:
         stages {
             stage('Run k6 Smoke Test') {
                 steps {
-                    petclinicK6Smoke(
+                    microservicesK6Smoke(
                         namespace: params.targetNamespace,
                         envName: params.envName,
                         genaiEnabled: params.genaiEnabled,

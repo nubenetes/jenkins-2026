@@ -24,11 +24,11 @@ pools, IAM, etc).
   Ingress disabled by default (no DNS record assumed); flip
   `controller.ingress.enabled` and set `hostName` to expose Jenkins via the
   GCE ingress controller (`ingressClassName: gce`).
-- `helm/petclinic/values-stable.yaml`/`values-develop.yaml`:
-  `global.platform: gke` -> `petclinic.ingressClassName` helper resolves to
+- `helm/microservices/values-stable.yaml`/`values-develop.yaml`:
+  `global.platform: gke` -> `microservices.ingressClassName` helper resolves to
   `gce` if `ingress.enabled: true`.
 - Standard, unprivileged pod security context
-  (`runAsNonRoot: true` + `seccompProfile: RuntimeDefault` on PetClinic pods;
+  (`runAsNonRoot: true` + `seccompProfile: RuntimeDefault` on Microservices pods;
   Jenkins controller `runAsUser/Group: 1000`, `fsGroup: 1000`).
 
 ## EKS
@@ -61,18 +61,18 @@ pools, IAM, etc).
 - **Routes instead of Ingress**: `scripts/04-jenkins.sh` applies
   [`helm/jenkins/openshift/route.yaml`](../helm/jenkins/openshift/route.yaml)
   (edge TLS, `Redirect` policy) for the Jenkins UI;
-  [`helm/petclinic/templates/route.yaml`](../helm/petclinic/templates/route.yaml)
+  [`helm/microservices/templates/route.yaml`](../helm/microservices/templates/route.yaml)
   (gated by `global.platform == "openshift"`) does the same for
-  `petclinic-angular` when `ingress.enabled: true`. Both let the cluster's
+  `microservices-angular` when `ingress.enabled: true`. Both let the cluster's
   default router assign a hostname under `*.apps.<cluster-domain>` - no DNS
   record needed.
-- `helm/petclinic/templates/deployment.yaml` omits `runAsNonRoot`/
+- `helm/microservices/templates/deployment.yaml` omits `runAsNonRoot`/
   `seccompProfile` on OpenShift (the SCC sets these) and the
   [Angular Dockerfile](../resources/angular/Dockerfile) runs nginx on
   unprivileged port **8080** as UID 101 with `chgrp -R 0`/`chmod -R g=u`
   (arbitrary-UID compatible).
 - **Known manual step - `docker:dind` build agent**: the `docker` container
-  in [`Jenkinsfile.petclinic`](../jenkins/pipelines/Jenkinsfile.petclinic)
+  in [`Jenkinsfile.microservices`](../jenkins/pipelines/Jenkinsfile.microservices)
   runs `docker:26-dind` with `securityContext.privileged: true`, which the
   default `restricted-v2` SCC does not allow. On OpenShift, either:
   - grant the `jenkins` ServiceAccount the `privileged` SCC:

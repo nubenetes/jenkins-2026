@@ -1,0 +1,73 @@
+# =============================================================================
+# "develop" environment - tracks the `develop` branch.
+# =============================================================================
+
+global:
+  platform: gke
+
+namespace: microservices-develop
+env: develop
+registry: ghcr.io/nubenetes/jenkins-2026-microservices
+imagePullSecret: ghcr-credentials
+
+otel:
+  collectorEndpoint: http://otel-collector-gateway.observability.svc.cluster.local:4317
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: ""
+
+services:
+  gateway:
+    type: java
+    image:
+      repository: gateway
+      tag: main
+    port: 8080
+    healthPath: /management/health
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: "1", memory: 1Gi }
+    env:
+      - name: SPRING_PROFILES_ACTIVE
+        value: prod,api-docs
+      - name: MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED
+        value: "true"
+      - name: SPRING_DATASOURCE_URL
+        value: jdbc:postgresql://postgres-gateway:5432/gateway
+
+  customers:
+    type: java
+    image:
+      repository: customers
+      tag: main
+    port: 8081
+    healthPath: /management/health
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: "1", memory: 1Gi }
+    env:
+      - name: SPRING_PROFILES_ACTIVE
+        value: prod,api-docs
+      - name: MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED
+        value: "true"
+      - name: SPRING_DATASOURCE_URL
+        value: jdbc:postgresql://postgres-customers:5432/customers
+
+  billing:
+    type: java
+    image:
+      repository: billing
+      tag: main
+    port: 8082
+    healthPath: /management/health
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits: { cpu: "1", memory: 1Gi }
+    env:
+      - name: SPRING_PROFILES_ACTIVE
+        value: prod,api-docs
+      - name: MANAGEMENT_METRICS_EXPORT_PROMETHEUS_ENABLED
+        value: "true"

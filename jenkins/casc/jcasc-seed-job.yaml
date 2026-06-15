@@ -9,11 +9,11 @@
 # jenkins/pipelines/seed/seed_jobs.groovy (reads services.yaml):
 #
 #   - "seed-jobs" tracks JENKINS2026_REPO_BRANCH (normally "main") and
-#     creates the 9 stable PetClinic pipeline jobs at the root.
+#     creates the 9 stable Microservices pipeline jobs at the root.
 #   - "pac-dev/seed-jobs-dev" tracks JENKINS2026_DEV_REPO_BRANCH (normally
 #     "develop") and creates the 9 pac-dev/*-develop pipeline jobs - a sandbox
 #     for devops/platform engineers to iterate on this repo's pipelines-as-code
-#     (seed_jobs.groovy, Jenkinsfile.petclinic, shared library) before
+#     (seed_jobs.groovy, Jenkinsfile.microservices, shared library) before
 #     merging to "main", without affecting the stable jobs above. The pac-dev
 #     folder + everything inside it is hidden from the "developer" role and
 #     only readable/runnable by the "platform-engineer" role - see
@@ -27,7 +27,7 @@
 jobs:
   - script: |
       pipelineJob('seed-jobs') {
-        description('Seed job (Job DSL) - regenerates all PetClinic pipeline jobs from jenkins/pipelines/seed/seed_jobs.groovy. Safe to re-run; idempotent.')
+        description('Seed job (Job DSL) - regenerates all Microservices pipeline jobs from jenkins/pipelines/seed/seed_jobs.groovy. Safe to re-run; idempotent.')
         keepDependencies(false)
         definition {
           cpsScm {

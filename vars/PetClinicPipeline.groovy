@@ -1,11 +1,11 @@
 /**
- * PetClinicPipeline(serviceName: '<svc>', serviceType: 'java'|'angular',
+ * MicroservicesPipeline(serviceName: '<svc>', serviceType: 'java'|'angular',
  *                    modulePath: '<maven-module>', gitRepoUrl: '<repo>',
  *                    gitBranch: '<branch>', targetNamespace: '<ns>',
  *                    envName: 'stable'|'develop', port: '<port>',
  *                    healthPath: '<path>', platform: '<platform>')
  *
- * Declarative shared library wrapper for the standard PetClinic build/deploy pipeline.
+ * Declarative shared library wrapper for the standard Microservices build/deploy pipeline.
  */
 def call(Map params) {
     pipeline {
@@ -75,16 +75,16 @@ spec:
         }
 
         environment {
-            REGISTRY      = "${env.PETCLINIC_REGISTRY ?: 'ghcr.io/nubenetes/jenkins-2026-petclinic'}"
+            REGISTRY      = "${env.MICROSERVICES_REGISTRY ?: 'ghcr.io/nubenetes/jenkins-2026-microservices'}"
             IMAGE_TAG     = "${params.gitBranch}"
             IMAGE         = "${env.REGISTRY}/${params.serviceName}:${env.IMAGE_TAG}"
             OTEL_SERVICE_NAME = "jenkins-pipeline-${params.serviceName}"
         }
 
         stages {
-            stage('Checkout PetClinic source') {
+            stage('Checkout Microservices source') {
                 steps {
-                    dir('petclinic-src') {
+                    dir('microservices-src') {
                         git url: params.gitRepoUrl, branch: params.gitBranch
                     }
                 }
@@ -92,16 +92,16 @@ spec:
 
             stage('Build & Test') {
                 steps {
-                    dir('petclinic-src') {
-                        petclinicBuild(type: params.serviceType, module: params.modulePath)
+                    dir('microservices-src') {
+                        microservicesBuild(type: params.serviceType, module: params.modulePath)
                     }
                 }
             }
 
             stage('Build & Push Image') {
                 steps {
-                    dir('petclinic-src') {
-                        petclinicImage(
+                    dir('microservices-src') {
+                        microservicesImage(
                             type: params.serviceType,
                             module: params.modulePath,
                             image: env.IMAGE,
@@ -113,7 +113,7 @@ spec:
 
             stage('Deploy to Kubernetes') {
                 steps {
-                    petclinicDeploy(
+                    microservicesDeploy(
                         serviceName: params.serviceName,
                         envName: params.envName,
                         namespace: params.targetNamespace,
@@ -125,7 +125,7 @@ spec:
 
             stage('Smoke Test') {
                 steps {
-                    petclinicSmokeTest(
+                    microservicesSmokeTest(
                         serviceName: params.serviceName,
                         namespace: params.targetNamespace,
                         port: params.port,
@@ -137,7 +137,7 @@ spec:
 
         post {
             always {
-                junit testResults: 'petclinic-src/**/target/surefire-reports/*.xml', allowEmptyResults: true
+                junit testResults: 'microservices-src/**/target/surefire-reports/*.xml', allowEmptyResults: true
             }
         }
     }

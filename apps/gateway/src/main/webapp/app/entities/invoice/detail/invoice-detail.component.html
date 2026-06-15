@@ -1,0 +1,48 @@
+<div class="d-flex justify-content-center">
+  <div class="col-8">
+    @if (invoice(); as invoiceRef) {
+      <div>
+        <h2 data-cy="invoiceDetailsHeading"><span jhiTranslate="gatewayApp.invoice.detail.title">Invoice</span></h2>
+
+        <hr />
+
+        <jhi-alert-error></jhi-alert-error>
+
+        <jhi-alert></jhi-alert>
+
+        <dl class="row-md jh-entity-details">
+          <dt><span jhiTranslate="global.field.id">ID</span></dt>
+          <dd>
+            <span>{{ invoiceRef.id }}</span>
+          </dd>
+          <dt><span jhiTranslate="gatewayApp.invoice.code">Code</span></dt>
+          <dd>
+            <span>{{ invoiceRef.code }}</span>
+          </dd>
+          <dt><span jhiTranslate="gatewayApp.invoice.date">Date</span></dt>
+          <dd>
+            <span>{{ invoiceRef.date | formatMediumDatetime }}</span>
+          </dd>
+          <dt><span jhiTranslate="gatewayApp.invoice.amount">Amount</span></dt>
+          <dd>
+            <span>{{ invoiceRef.amount }}</span>
+          </dd>
+          <dt><span jhiTranslate="gatewayApp.invoice.status">Status</span></dt>
+          <dd>
+            <span [jhiTranslate]="'gatewayApp.InvoiceStatus.' + (invoiceRef.status ?? 'null')">{{
+              { null: '', PAID: 'PAID', ISSUED: 'ISSUED', CANCELLED: 'CANCELLED' }[invoiceRef.status ?? 'null']
+            }}</span>
+          </dd>
+        </dl>
+
+        <button type="submit" (click)="previousState()" class="btn btn-info" data-cy="entityDetailsBackButton">
+          <fa-icon icon="arrow-left"></fa-icon>&nbsp;<span jhiTranslate="entity.action.back">Back</span>
+        </button>
+
+        <button type="button" [routerLink]="['/invoice', invoiceRef.id, 'edit']" class="btn btn-primary">
+          <fa-icon icon="pencil-alt"></fa-icon>&nbsp;<span jhiTranslate="entity.action.edit">Edit</span>
+        </button>
+      </div>
+    }
+  </div>
+</div>

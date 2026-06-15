@@ -44,7 +44,7 @@ log_step "Seed job / pipelines-as-code"
 ADMIN_PASSWORD="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${JENKINS_NS}" -o jsonpath='{.data.admin-password}' | base64 -d)"
 AUTH="${J2026_JENKINS_ADMIN_USER}:${ADMIN_PASSWORD}"
 
-NUM_SERVICES=$(wc -w <<< "${J2026_PETCLINIC_SERVICES}")
+NUM_SERVICES=$(wc -w <<< "${J2026_MICROSERVICES_SERVICES}")
 EXPECTED_JOBS=$(( NUM_SERVICES + 2 )) # 1 stable pipeline/service + seed-jobs + pac-dev folder
 
 JOB_COUNT="$(jenkins_exec curl -sg -u "${AUTH}" 'http://localhost:8080/api/json?tree=jobs[name]' \
@@ -72,8 +72,8 @@ if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
     bash -c "kubectl -n '${J2026_GRAFANA_OSS_NAMESPACE}' get pods -l app.kubernetes.io/name=grafana -o jsonpath='{.items[0].status.phase}' | grep -qx Running"
 fi
 
-log_step "PetClinic (stable + develop)"
-for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}"; do
+log_step "Microservices (stable + develop)"
+for ns in "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_MICROSERVICES_NS_DEVELOP}"; do
   check "namespace ${ns} has ${NUM_SERVICES} Deployments" \
     bash -c "[[ \$(kubectl -n '${ns}' get deploy -o name | wc -l) -eq ${NUM_SERVICES} ]]"
 done
@@ -81,7 +81,7 @@ done
 echo
 if [[ "${FAIL}" -eq 1 ]]; then
   log_error "Smoke tests FAILED."
-  log_info "Note: PetClinic pods may show ImagePullBackOff until each service's"
+  log_info "Note: Microservices pods may show ImagePullBackOff until each service's"
   log_info "Jenkins pipeline has run at least once (see README's 'First run note')."
   log_info "This does not by itself fail the Deployment-count checks above."
   exit 1

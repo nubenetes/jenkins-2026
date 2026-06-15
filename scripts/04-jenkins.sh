@@ -68,9 +68,9 @@ controller:
     - name: JENKINS2026_PLATFORM
       value: "${J2026_PLATFORM}"
     - name: JENKINS2026_GENAI_SERVICE_ENABLED
-      value: "${J2026_PETCLINIC_GENAI_SERVICE_ENABLED}"
-    - name: PETCLINIC_REGISTRY
-      value: "${J2026_PETCLINIC_REGISTRY}"
+      value: "${J2026_MICROSERVICES_GENAI_SERVICE_ENABLED}"
+    - name: MICROSERVICES_REGISTRY
+      value: "${J2026_MICROSERVICES_REGISTRY}"
     - name: OTEL_EXPORTER_OTLP_ENDPOINT
       value: "http://otel-collector-gateway.${J2026_OBS_NAMESPACE}.svc.cluster.local:4317"
     - name: OTEL_LOGS_BACKEND_URL
@@ -91,17 +91,17 @@ controller:
           name: ${J2026_JENKINS_CREDENTIALS_SECRET}
           key: grafana-traces-dashboard-uid
           optional: true
-    - name: PETCLINIC_URL
+    - name: MICROSERVICES_URL
       valueFrom:
         secretKeyRef:
           name: ${J2026_JENKINS_CREDENTIALS_SECRET}
-          key: petclinic-url
+          key: microservices-url
           optional: true
-    - name: PETCLINIC_DEVELOP_URL
+    - name: MICROSERVICES_DEVELOP_URL
       valueFrom:
         secretKeyRef:
           name: ${J2026_JENKINS_CREDENTIALS_SECRET}
-          key: petclinic-develop-url
+          key: microservices-develop-url
           optional: true
     - name: REGISTRY_USERNAME
       valueFrom:

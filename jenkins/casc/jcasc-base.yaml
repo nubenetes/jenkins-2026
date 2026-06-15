@@ -16,8 +16,8 @@ jenkins:
       <b style="color: #0052cc;">Deployed Environments:</b>
       <ul style="margin-bottom: 10px;">
         <li>ArgoCD: <a href="https://argocd.${J2026_GATEWAY_BASE_DOMAIN:-jenkins2026.nubenetes.com}" style="color: #0052cc; text-decoration: underline;">https://argocd.${J2026_GATEWAY_BASE_DOMAIN:-jenkins2026.nubenetes.com}</a></li>
-        <li>PetClinic (Stable): <a href="${PETCLINIC_URL:-#}" style="color: #0052cc; text-decoration: underline;">${PETCLINIC_URL:-not publicly exposed}</a></li>
-        <li>PetClinic (Develop): <a href="${PETCLINIC_DEVELOP_URL:-#}" style="color: #0052cc; text-decoration: underline;">${PETCLINIC_DEVELOP_URL:-not publicly exposed}</a></li>
+        <li>Microservices (Stable): <a href="${MICROSERVICES_URL:-#}" style="color: #0052cc; text-decoration: underline;">${MICROSERVICES_URL:-not publicly exposed}</a></li>
+        <li>Microservices (Develop): <a href="${MICROSERVICES_DEVELOP_URL:-#}" style="color: #0052cc; text-decoration: underline;">${MICROSERVICES_DEVELOP_URL:-not publicly exposed}</a></li>
       </ul>
 
       <b style="color: #0052cc;">Observability:</b>
@@ -25,7 +25,7 @@ jenkins:
         <li>Grafana: <a href="${GRAFANA_BASE_URL:-#}" style="color: #0052cc; text-decoration: underline;">${GRAFANA_BASE_URL:-not configured}</a>
           <ul style="margin-top: 5px;">
             <li><a href="${GRAFANA_BASE_URL:-#}/d/jenkins2026-jenkins-overview" style="color: #0052cc; text-decoration: underline;">Jenkins Overview</a></li>
-            <li><a href="${GRAFANA_BASE_URL:-#}/d/jenkins2026-petclinic-overview" style="color: #0052cc; text-decoration: underline;">PetClinic Services</a></li>
+            <li><a href="${GRAFANA_BASE_URL:-#}/d/jenkins2026-microservices-overview" style="color: #0052cc; text-decoration: underline;">Microservices Services</a></li>
             <li><a href="${GRAFANA_BASE_URL:-#}/d/jenkins2026-k6-smoke-overview" style="color: #0052cc; text-decoration: underline;">K6 Smoke Test</a></li>
           </ul>
         </li>
@@ -104,10 +104,10 @@ jenkins:
               - group: "authenticated"
         items:
           - name: "developer"
-            description: "Run and inspect the stable PetClinic pipelines (everything outside pac-dev/)"
-            # Matches every item EXCEPT "pac-dev" and "petclinic-develop" (the sandbox view) -
-            # i.e. the 9 root PetClinic jobs + seed-jobs.
-            pattern: "^(?!pac-dev(/.*)?$|petclinic-develop$).*$"
+            description: "Run and inspect the stable Microservices pipelines (everything outside pac-dev/)"
+            # Matches every item EXCEPT "pac-dev" and "microservices-develop" (the sandbox view) -
+            # i.e. the 9 root Microservices jobs + seed-jobs.
+            pattern: "^(?!pac-dev(/.*)?$|microservices-develop$).*$"
             permissions:
               - "Job/Read"
               - "Job/Build"
@@ -120,8 +120,8 @@ jenkins:
           - name: "platform-engineer"
             description: "Run, inspect and re-seed the pac-dev/*-develop pipelines-as-code dev sandbox"
             # Matches the "pac-dev" folder itself, everything under it, AND the
-            # root-level "petclinic-develop" sandbox view.
-            pattern: "^(pac-dev(/.*)?|petclinic-develop)$"
+            # root-level "microservices-develop" sandbox view.
+            pattern: "^(pac-dev(/.*)?|microservices-develop)$"
             permissions:
               - "Job/Read"
               - "Job/Build"
@@ -167,7 +167,7 @@ unclassified:
 
   globalLibraries:
     libraries:
-      - name: "petclinic-shared-library"
+      - name: "microservices-shared-library"
         defaultVersion: "${JENKINS2026_REPO_BRANCH:-main}"
         implicit: true
         allowVersionOverride: true
@@ -185,20 +185,20 @@ credentials:
   system:
     domainCredentials:
       - credentials:
-          # Used by the "Build & Push Image" stage (petclinicImage.groovy) to
-          # push to PETCLINIC_REGISTRY (default ghcr.io/nubenetes/...).
+          # Used by the "Build & Push Image" stage (microservicesImage.groovy) to
+          # push to MICROSERVICES_REGISTRY (default ghcr.io/nubenetes/...).
           - usernamePassword:
               scope: GLOBAL
               id: "container-registry"
               username: "${REGISTRY_USERNAME:-nubenetes}"
               password: "${REGISTRY_PASSWORD:-}"
               description: "Container registry push credentials"
-          # Read-only checkout creds for the upstream spring-petclinic repos
+          # Read-only checkout creds for the upstream spring-microservices repos
           # (only needed if you fork them privately; public repos work
           # without credentials).
           - usernamePassword:
               scope: GLOBAL
-              id: "petclinic-git"
+              id: "microservices-git"
               username: "${GIT_USERNAME:-}"
               password: "${GIT_TOKEN:-}"
-              description: "Git credentials for spring-petclinic source repos"
+              description: "Git credentials for spring-microservices source repos"

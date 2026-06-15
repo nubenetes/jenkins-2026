@@ -1,0 +1,33 @@
+{
+  "annotations": {
+    "changelogDate": "20260615162331"
+  },
+  "applications": ["gateway", "customers"],
+  "clientRootFolder": "customers",
+  "databaseType": "sql",
+  "dto": "mapstruct",
+  "fields": [
+    {
+      "fieldName": "name",
+      "fieldType": "String",
+      "fieldValidateRules": ["required"]
+    },
+    {
+      "fieldName": "birthDate",
+      "fieldType": "LocalDate"
+    }
+  ],
+  "microserviceName": "customers",
+  "name": "Pet",
+  "relationships": [
+    {
+      "otherEntityName": "owner",
+      "otherEntityRelationshipName": "pet",
+      "relationshipName": "owner",
+      "relationshipSide": "right",
+      "relationshipType": "many-to-one"
+    }
+  ],
+  "searchEngine": "no",
+  "service": "serviceClass"
+}
