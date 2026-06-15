@@ -39,6 +39,7 @@ log_step "Installing 05-petclinic"
 "${SCRIPT_DIR}/06-seed-pipelines.sh"
 "${SCRIPT_DIR}/07-grafana-dashboards.sh"
 "${SCRIPT_DIR}/08-headlamp.sh"
+"${SCRIPT_DIR}/08.5-argocd.sh"
 "${SCRIPT_DIR}/09-gateway.sh"
 
 log_info "jenkins-2026 is up. Run scripts/status.sh for endpoints and rollout status."
