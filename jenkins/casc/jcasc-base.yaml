@@ -6,21 +6,30 @@
 # (helm/jenkins/values-common.yaml) and the "jenkins-credentials" Secret
 # created by scripts/01-namespaces.sh.
 # =============================================================================
-
 jenkins:
   systemMessage: |
-    Welcome to the Jenkins 2026 PoC!
-    This instance is fully automated and managed via Configuration as Code (JCasC).
-    All configurations and pipelines are stored in the source repository:
-    https://github.com/nubenetes/jenkins-2026
+    <div style="font-weight: bold; border: 1px solid #45475a; padding: 10px; border-radius: 5px; background: #1e1e2e;">
+      Welcome to the Jenkins 2026 PoC!<br/>
+      This instance is fully automated and managed via Configuration as Code (JCasC).<br/>
+      Source: <a href="https://github.com/nubenetes/jenkins-2026">nubenetes/jenkins-2026</a><br/><br/>
 
-    Deployed Environments:
-    - PetClinic (Stable):  ${PETCLINIC_URL:-not publicly exposed - kubectl port-forward -n petclinic svc/petclinic-angular 8080:8080}
-    - PetClinic (Develop): ${PETCLINIC_DEVELOP_URL:-not publicly exposed - kubectl port-forward -n petclinic-develop svc/petclinic-angular 8081:8080}
+      <b>Deployed Environments:</b>
+      <ul>
+        <li>PetClinic (Stable): <a href="${PETCLINIC_URL:-#}">${PETCLINIC_URL:-not publicly exposed}</a></li>
+        <li>PetClinic (Develop): <a href="${PETCLINIC_DEVELOP_URL:-#}">${PETCLINIC_DEVELOP_URL:-not publicly exposed}</a></li>
+      </ul>
 
-    Observability & Monitoring:
-    - Grafana Dashboards:  ${GRAFANA_BASE_URL:-not configured}
+      <b>Observability:</b>
+      <ul>
+        <li>Grafana: <a href="${GRAFANA_BASE_URL:-#}">${GRAFANA_BASE_URL:-not configured}</a></li>
+      </ul>
+    </div>
 
+  markupFormatter:
+    rawHtml:
+      disableSyntaxHighlighting: true
+
+  securityRealm:
   globalNodeProperties:
     - envVars:
         env:
