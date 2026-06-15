@@ -66,11 +66,11 @@ controller:
 
   resources:
     requests:
-      cpu: "1"
-      memory: "2Gi"
+      cpu: "500m"
+      memory: "1536Mi"
     limits:
-      cpu: "2"
-      memory: "4096Mi"
+      cpu: "1.5"
+      memory: "3072Mi"
 
   # Environment variables consumed by the ${VAR:-default} placeholders in
   # jenkins/casc/*.yaml. scripts/04-jenkins.sh overrides JENKINS2026_*,
@@ -360,9 +360,12 @@ agent:
   # default agent minimal. Only the limits differ from the chart default
   # (512m/512Mi requests/limits) - requests are left at that default.
   resources:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
     limits:
-      cpu: "1"
-      memory: "1024Mi"
+      cpu: "500m"
+      memory: "512Mi"
 
 rbac:
   readSecrets: true

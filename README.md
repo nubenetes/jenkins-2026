@@ -499,7 +499,7 @@ distinct tracks of pipelines:
 | **Jenkins View** | `microservices` (root-level) | `microservices-develop` (root-level) |
 | **Jenkins Folder** | Root `/` | `pac-dev/` |
 | **This Repo Branch** | `main` | `develop` |
-| **Microservices Branch** | `main` | `main` |
+| **Microservices Branch** | `main` | `develop` |
 | **Target Namespace** | `microservices` | `microservices-develop` |
 | **RBAC Access** | `developer` (Read/Build) | `platform-engineer` (Admin) |
 | **Tracking Job** | `seed-jobs` | `pac-dev/seed-jobs-dev` |
@@ -966,6 +966,29 @@ A full `test/e2e.sh` pass (provision, deploy, smoke-test, tear down
 everything) typically takes **15-25 minutes**, i.e. **~$0.10-0.20 per run**.
 Grafana Cloud's free tier comfortably covers this PoC's traffic/series volume
 for a run of that length.
+
+### Resource Quotas & QoS (Cost Control)
+
+To prevent GKE cluster auto-scaling (saving costs for this PoC) and ensure optimal QoS (Quality of Service) and stability, resource requests, limits, and namespace-level `ResourceQuota` objects are strictly configured across all components:
+
+1. **Tight Pod Resource Allocations**:
+   - **Microservices** (`gateway`, `customers`, `billing` in both stable and develop environments): Lowered CPU requests to `100m` (limits to `500m`) and memory requests to `256Mi` (limits to `512Mi`).
+   - **Postgres Database Instances**: Explicitly configured Crunchy PostgresCluster containers (`postgres`, `pgbackrest` jobs, and `repoHost` sidecars) with low CPU and memory limits (instances requests: `100m`/`256Mi`, limits: `500m`/`512Mi`).
+   - **Jenkins Controller**: Configured with a tighter footprint of `500m` CPU and `1.5Gi` memory requests (limits: `1.5` CPU and `3Gi` memory).
+   - **Jenkins Build Agents & K6 Smoke Agents**: Minimized all build agent containers (`maven`, `node`, `docker`, `helm`, `git`, `jnlp`) to request `370m` CPU and `1.4Gi` memory in total, and limits capped to `4.2` CPU and `4.25Gi` memory.
+
+2. **Namespace ResourceQuotas**:
+   To enforce a hard ceiling and prevent the GKE auto-scaler from launching a third node, namespace-level `ResourceQuota` objects are deployed for all active namespaces:
+   - `jenkins`: Requests max `1.0` CPU / `3.5Gi` memory (restricting builds to 1 concurrent build agent at a time).
+   - `microservices` (stable): Requests max `1.5` CPU / `3.0Gi` memory.
+   - `microservices-develop`: Requests max `1.5` CPU / `3.0Gi` memory.
+   - `observability`: Requests max `1.5` CPU / `3.0Gi` memory.
+   - `argocd`: Requests max `1.5` CPU / `3.0Gi` memory.
+   - `headlamp`: Requests max `200m` CPU / `256Mi` memory.
+
+The sum of all namespace CPU and memory request quotas is strictly below the allocatable node pool capacity (total `7.8 vCPU` and `26 GiB` memory across the 2 active nodes). This guarantees that:
+- Pods exceeding namespace quotas are rejected at admission, preventing them from sitting in a `Pending` state that would trigger GKE auto-scaling.
+- Node usage is fully bounded, ensuring the cluster remains small and cost-effective.
 
 ### Terraform version & Stacks
 
