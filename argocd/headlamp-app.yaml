@@ -1,0 +1,28 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: headlamp
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    # Source 1: The official Helm chart from kubernetes-sigs repo
+    - repoURL: https://kubernetes-sigs.github.io/headlamp
+      chart: headlamp
+      targetRevision: 0.42.0
+      helm:
+        valueFiles:
+          - $values/helm/headlamp/values.yaml
+    # Source 2: This Git repository containing the values file
+    - repoURL: '{{repoUrl}}'
+      targetRevision: '{{branchStable}}'
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: headlamp
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
