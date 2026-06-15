@@ -7,7 +7,7 @@
  * in the INFRA repo (this one) and pushes to Git. ArgoCD handles the deploy.
  */
 def call(Map cfg) {
-  def infraRepoUrl = env.JENKINS2026_REPO_URL ?: "https://github.com/nubenetes/jenkins-2026.git"
+  def infraRepoUrl = env.JENKINS2026_GITOPS_REPO_URL ?: "https://github.com/nubenetes/jenkins-2026-gitops-config.git"
   def valuesFile = "helm/microservices/values-${cfg.envName}.yaml"
   
   // Use the branch that corresponds to the environment

@@ -1,7 +1,5 @@
 # services.yaml - Modernized Microservices Registry (JHipster 2026)
-# Updated to track the new microservices architecture.
-
-backendRepoUrl: &backendRepoUrl https://github.com/nubenetes/jenkins-2026.git
+# Updated to track the official JHipster sample applications.
 
 namespaces:
   stable: microservices
@@ -13,22 +11,15 @@ branches:
 
 services:
   - name: gateway
-    type: java # JHipster Gateway (Spring Boot + Angular 18)
-    repoUrl: *backendRepoUrl
-    module: apps/gateway
+    type: java # JHipster Gateway (Spring Boot + Angular UI)
+    repoUrl: https://github.com/jhipster/jhipster-sample-app-gateway.git
+    module: ""
     port: 8080
-    healthPath: /actuator/health
+    healthPath: /management/health
 
-  - name: customers
-    type: java # Microservice for Customer/Pet management
-    repoUrl: *backendRepoUrl
-    module: apps/customers
+  - name: jhipstersamplemicroservice
+    type: java # JHipster Microservice backend
+    repoUrl: https://github.com/jhipster/jhipster-sample-app-microservice.git
+    module: ""
     port: 8081
-    healthPath: /actuator/health
-
-  - name: billing
-    type: java # Microservice for Invoices/Payments
-    repoUrl: *backendRepoUrl
-    module: apps/billing
-    port: 8082
-    healthPath: /actuator/health
+    healthPath: /management/health
