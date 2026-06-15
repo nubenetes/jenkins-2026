@@ -202,6 +202,23 @@ For a constant stream of telemetry, use the **`99.01 Continuous Traffic Simulati
 - **Duration**: Default 15 minutes (configurable).
 - **Purpose**: Simulates real-world user traffic from outside the cluster, hitting the GKE Gateway and triggering end-to-end traces (Frontend -> Gateway -> Backend Services).
 
+#### Grafana Cloud Integration (GitHub Actions)
+To see real-time metrics from the GitHub simulation in your Grafana dashboards, you must configure the following repository secrets:
+
+1.  **`GRAFANA_CLOUD_OTLP_ENDPOINT`**: The OTLP gateway URL.
+    *   Get it from Terraform: `terraform -chdir=terraform/grafana-cloud-stack output -raw otlp_endpoint`
+2.  **`GRAFANA_CLOUD_OTLP_AUTH`**: The Base64 encoded `stack_id:token`.
+    *   Get the values from Terraform:
+        ```bash
+        STACK_ID=$(terraform -chdir=terraform/grafana-cloud-stack output -raw stack_id)
+        # Note: Use a persistent API token from your Grafana Cloud Access Policy
+        TOKEN="<your-grafana-cloud-token>"
+        echo -n "$STACK_ID:$TOKEN" | base64
+        ```
+    *   Set this value as the `GRAFANA_CLOUD_OTLP_AUTH` secret.
+
+Once configured, k6 will stream metrics via OpenTelemetry directly to your Grafana Cloud instance during the simulation.
+
 ### 2. On-Demand Smoke Test (Jenkins)
 Trigger the **`petclinic-k6-smoke`** job from the Jenkins UI:
 - **Feature**: Generates traces that include Jenkins build metadata (e.g., build number, job name).
