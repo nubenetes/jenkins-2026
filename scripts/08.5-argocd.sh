@@ -156,9 +156,8 @@ log_step "Generating and applying Microservices ApplicationSet"
 # Inject values into the AppSet manifest
 # Using @ as delimiter for sed to avoid issues with URLs
 APPSET_FILE=$(mktemp)
-# Ensure J2026_SELF_REPO_URL is set (fallback to default if empty)
-REPO_URL="${J2026_SELF_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
-sed "s@{{repoUrl}}@${REPO_URL}@g; 
+GITOPS_REPO_URL="https://github.com/nubenetes/jenkins-2026-gitops-config.git"
+sed "s@{{repoUrl}}@${GITOPS_REPO_URL}@g; 
      s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g; 
      s@{{branchDevelop}}@${J2026_SELF_REPO_DEV_BRANCH}@g; 
      s@{{platform}}@${J2026_PLATFORM}@g" \

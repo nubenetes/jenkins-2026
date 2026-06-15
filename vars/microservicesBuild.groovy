@@ -11,11 +11,13 @@ def call(Map cfg) {
       sh """
         set -eux
         unset MAVEN_CONFIG
-        if [ -f "${cfg.module}/mvnw" ]; then
+        if [ -n "${cfg.module}" ] && [ -f "${cfg.module}/mvnw" ]; then
           cd ${cfg.module}
           ./mvnw -B -DskipITs clean verify
-        else
+        elif [ -n "${cfg.module}" ]; then
           ./mvnw -B -pl ${cfg.module} -am -DskipITs clean verify
+        else
+          ./mvnw -B -DskipITs clean verify
         fi
       """
     }

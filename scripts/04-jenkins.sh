@@ -61,6 +61,8 @@ controller:
       value: "http://localhost:8080/"
     - name: JENKINS2026_REPO_URL
       value: "${J2026_SELF_REPO_URL}"
+    - name: JENKINS2026_GITOPS_REPO_URL
+      value: "https://github.com/nubenetes/jenkins-2026-gitops-config.git"
     - name: JENKINS2026_REPO_BRANCH
       value: "${J2026_SELF_REPO_BRANCH}"
     - name: JENKINS2026_DEV_REPO_BRANCH
