@@ -33,7 +33,8 @@ jobs:
             --vus 2 \
             --duration ${{ github.event.inputs.duration || '15m' }} \
             --env TARGET_URL=$TARGET_URL \
-            --env ENV_NAME=stable
+            --env ENV_NAME=stable \
+            --summary-export=k6-summary.json
           
           EXIT_CODE=$?
           if [ $EXIT_CODE -eq 0 ] || [ $EXIT_CODE -eq 99 ]; then
@@ -41,3 +42,11 @@ jobs:
           else
             exit $EXIT_CODE
           fi
+
+      - name: Upload k6 Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: k6-summary-report
+          path: k6-summary.json
+          retention-days: 7
