@@ -115,10 +115,20 @@ spec:
         - path:
             type: PathPrefix
             value: /api/
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
       backendRefs:
         - name: api-gateway
           port: 8080
-    - backendRefs:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
         - name: petclinic-angular
           port: 8080
 EOT
@@ -141,10 +151,20 @@ spec:
         - path:
             type: PathPrefix
             value: /api/
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
       backendRefs:
         - name: api-gateway
           port: 8080
-    - backendRefs:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
         - name: petclinic-angular
           port: 8080
 EOT
