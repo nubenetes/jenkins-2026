@@ -637,6 +637,7 @@ sequenceDiagram
   (`observability/grafana/dashboards/k6-smoke-overview.json`, uid
   `jenkins2026-k6-smoke-overview`) scoped to this run's
   `stable`/`develop` environment and time window.
+- **Automated Pipeline Integration**: The k6 smoke test is automatically triggered at the end of every microservice build and deploy pipeline ([MicroservicesPipeline.groovy](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy)). After a microservice (`billing`, `customers`, or `gateway`) is deployed to GKE and passes its basic startup health checks, the pipeline automatically triggers the corresponding k6 integration test job (`microservices-k6-smoke-develop` for the develop track in `pac-dev/` and `microservices-k6-smoke` for the stable track). This automatically validates that the newly deployed service version integrates successfully with the gateway, other microservices, and databases, and sends correlated telemetry (metrics, traces, logs) to Grafana Cloud.
 - **Run it** after the 3 services have deployed at least once (see [First run
   note](#quick-start)), then follow the Grafana link in the build console -
   or search Tempo for one of the `[microservices-smoke] iteration
