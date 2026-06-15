@@ -3,29 +3,59 @@
  *                  namespace: '<ns>', platform: 'gke'|'eks'|'aks'|'openshift',
  *                  tag: '<image-tag>')
  *
- * Upgrades (or installs) the shared helm/petclinic release for this
- * environment, overriding only the image tag of the service this pipeline
- * just built. The 'jenkins' ServiceAccount is bound to 'edit' in the
- * petclinic/petclinic-develop namespaces (see helm/jenkins/rbac/).
- *
- * Deliberately NOT --wait: this release is shared by all 9 services, so
- * `--wait` would block on (and time out because of) every other service's
- * pods too - including ones that are perpetually unhealthy for unrelated
- * reasons (e.g. genai-service without an OpenAI API key, or an unbuilt
- * petclinic-angular image). petclinicSmokeTest already runs `kubectl rollout
- * status` scoped to just this service's Deployment, which is the readiness
- * check that actually matters here.
+ * GitOps Version: Updates the image tag in helm/petclinic/values-<env>.yaml
+ * in the INFRA repo (this one) and pushes to Git. ArgoCD handles the deploy.
  */
 def call(Map cfg) {
-  container('helm') {
-    sh """
-      set -eux
-      helm upgrade --install petclinic-${cfg.envName} ${env.WORKSPACE}/helm/petclinic \
-        -f ${env.WORKSPACE}/helm/petclinic/values-${cfg.envName}.yaml \
-        --set global.platform=${cfg.platform} \
-        --set services.${cfg.serviceName}.image.tag=${cfg.tag} \
-        --namespace ${cfg.namespace} --create-namespace \
-        --timeout 5m
-    """
+  def infraRepoUrl = env.JENKINS2026_REPO_URL ?: "https://github.com/nubenetes/jenkins-2026.git"
+  def valuesFile = "helm/petclinic/values-${cfg.envName}.yaml"
+  
+  // Use the branch that corresponds to the environment
+  def infraBranch = cfg.envName == 'stable' ? 'main' : 'develop'
+
+  dir('jenkins-2026-infra') {
+    stage('GitOps Update') {
+      container('git') {
+        withCredentials([usernamePassword(credentialsId: 'petclinic-git', 
+                                         passwordVariable: 'GIT_TOKEN', 
+                                         usernameVariable: 'GIT_USER')]) {
+          sh """
+            set -eux
+            git config --global user.email "jenkins@nubenetes.com"
+            git config --global user.name "Jenkins CI"
+            
+            # Construct the remote URL with credentials
+            # Using the repo URL from environment if available, else hardcoded PoC default
+            REPO_URL = "${infraRepoUrl}"
+            REPO_CLEAN = REPO_URL.replace("https://", "")
+            AUTH_REPO_URL = "https://\${GIT_USER}:\${GIT_TOKEN}@\${REPO_CLEAN}"
+            
+            git clone --depth 1 --branch ${infraBranch} \${AUTH_REPO_URL} .
+          """
+        }
+      }
+      
+      container('helm') {
+        sh """
+          # Update the tag using yq (available in alpine/k8s)
+          yq eval -i '.services.${cfg.serviceName}.image.tag = "${cfg.tag}"' ${valuesFile}
+        """
+      }
+
+      container('git') {
+        withCredentials([usernamePassword(credentialsId: 'petclinic-git', 
+                                         passwordVariable: 'GIT_TOKEN', 
+                                         usernameVariable: 'GIT_USER')]) {
+          sh """
+            set -eux
+            git add ${valuesFile}
+            git commit -m "chore(ops): update ${cfg.serviceName} image tag to ${cfg.tag} [${cfg.envName}]" || echo "No changes to commit"
+            
+            # Push back to the infra branch
+            git push origin ${infraBranch}
+          """
+        }
+      }
+    }
   }
 }

@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: petclinic
+  namespace: argocd
+spec:
+  description: "Spring PetClinic GitOps Project"
+  sourceRepos:
+    - "*"
+  destinations:
+    - namespace: petclinic
+      server: https://kubernetes.default.svc
+    - namespace: petclinic-develop
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: ""
+      kind: Namespace
+  # Allow all namespaced resources
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"

@@ -42,6 +42,8 @@ jenkins:
         env:
           - key: "GRAFANA_BASE_URL"
             value: "${GRAFANA_BASE_URL:-}"
+          - key: "JENKINS2026_REPO_URL"
+            value: "${JENKINS2026_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
 
   # numExecutors (chart default 0) / mode are derived from
   # controller.numExecutors / controller.executorMode in
