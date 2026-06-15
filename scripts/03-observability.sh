@@ -53,7 +53,11 @@ case "${J2026_OBS_MODE}" in
         --namespace "${J2026_OBS_NAMESPACE}" \
         --set cluster="${GRAFANA_PDC_CLUSTER}" \
         --set hostedGrafanaId="${GRAFANA_STACK_ID}" \
-        --set insecureTokenValue="${GRAFANA_PDC_TOKEN}"
+        --set insecureTokenValue="${GRAFANA_PDC_TOKEN}" \
+        --set resources.requests.cpu=50m \
+        --set resources.requests.memory=64Mi \
+        --set resources.limits.cpu=200m \
+        --set resources.limits.memory=128Mi
     else
       log_warn "GRAFANA_PDC_TOKEN not set - skipping pdc-agent installation."
     fi

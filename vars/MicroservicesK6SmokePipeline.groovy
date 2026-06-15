@@ -19,15 +19,15 @@ spec:
       command: ['sleep']
       args: ['infinity']
       resources:
-        requests: {cpu: 200m, memory: 512Mi}
-        limits: {cpu: '1', memory: 1Gi}
+        requests: {cpu: 50m, memory: 128Mi}
+        limits: {cpu: 500m, memory: 256Mi}
     - name: helm
       image: alpine/k8s:1.31.3
       command: ['sleep']
       args: ['infinity']
       resources:
-        requests: {cpu: 50m, memory: 128Mi}
-        limits: {cpu: 200m, memory: 256Mi}
+        requests: {cpu: 10m, memory: 64Mi}
+        limits: {cpu: 100m, memory: 128Mi}
 """
             }
         }
