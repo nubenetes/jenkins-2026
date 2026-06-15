@@ -763,18 +763,38 @@ it to `config/config.yaml`. `HEADLAMP_OIDC_CLIENT_ID`/`HEADLAMP_OIDC_CLIENT_SECR
 (from the previous section) are only needed if/when the in-app OIDC above
 becomes usable.
 
-### Accessing the UI
+### Accessing and Logging in to the UI
 
-```bash
-kubectl -n headlamp port-forward svc/headlamp 8080:80
-```
+Depending on your access model, you can open Headlamp using either:
+*   **Public URL (IAP-secured):** `https://headlamp.jenkins2026.nubenetes.com` (requires Google login to pass the initial Google IAP gate).
+*   **Local Port-Forward:** If accessing locally without the public gateway, run:
+    ```bash
+    kubectl -n headlamp port-forward svc/headlamp 8080:80
+    ```
+    Then open <http://localhost:8080> in your browser.
 
-Open <http://localhost:8080> and sign in with a ServiceAccount token (the
-chart's default `ClusterRoleBinding` grants it cluster-admin):
+Once the Headlamp UI loads, you must authenticate against the Kubernetes API by pasting a token. There are two supported methods:
 
-```bash
-kubectl create token headlamp -n headlamp
-```
+#### Option A: Log in with your Google ID (Recommended for GKE)
+Because GKE natively integrates with GCP IAM, you can authenticate using your personal Google account credentials:
+1. Open your local terminal (where you are authenticated to Google Cloud with your Google ID).
+2. Generate your OAuth2 access token:
+   ```bash
+   gcloud auth print-access-token
+   ```
+3. Copy the output token (starts with `ya29.`).
+4. Select the **Token** login option in Headlamp, paste this token, and click **Sign In**.
+5. GKE will authenticate you as your Google account, and your permissions inside Headlamp will dynamically match your GCP IAM roles (e.g., if you are Project Owner or have `roles/container.admin`).
+
+#### Option B: Log in with a ServiceAccount Token
+If you want to log in using the cluster's default administrator ServiceAccount:
+1. Generate the token:
+   ```bash
+   kubectl create token headlamp -n headlamp
+   ```
+2. Copy the token.
+3. Select the **Token** login option in Headlamp, paste the token, and click **Sign In** (grants cluster-admin access).
+
 
 ## Public access (GKE Gateway API + IAP)
 
