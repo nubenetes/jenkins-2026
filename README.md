@@ -153,6 +153,73 @@ graph TB
     OTEL -->|Forward| GC
 ```
 
+### Microservices & Database Architecture
+
+The modernized PetClinic system is built on a containerized, cloud-native microservices architecture using **Spring Boot 3.x**, **Angular 18**, and **Java 21**. It consists of three primary services, each with its own dedicated datastore managed by the **Crunchy Data Postgres Operator**:
+
+1. **`gateway`**:
+   - **Role**: Serves as the single entry point for all client requests. It hosts the Angular 18 frontend web application (using standalone components and signals) and handles routing, JWT-based security verification, and rate-limiting.
+   - **Database**: Connects to `postgres-gateway` for storing session metadata or gateway-specific configurations.
+2. **`customers`**:
+   - **Role**: Manages customer domain entities (`Customer`, `Owner`, `Pet`).
+   - **Database**: Connects to `postgres-customers` for storing client and pet records.
+3. **`billing`**:
+   - **Role**: Handles finance and payment operations (`Invoice`, `Payment`).
+   - **Database**: Connects to `postgres-billing` for storing invoicing records.
+
+#### Architecture & Data Flow Diagram
+
+```mermaid
+graph TD
+    subgraph "Client Tier"
+        Browser["Browser (Angular 18 UI)"]
+    end
+
+    subgraph "API Gateway (Namespace: microservices / -develop)"
+        GW["gateway (Spring Boot 3.x, Port 8080)"]
+        DB_GW[(postgres-gateway)]
+    end
+
+    subgraph "Microservices Tier"
+        S_Cust["customers (Spring Boot 3.x, Port 8081)"]
+        S_Bill["billing (Spring Boot 3.x, Port 8082)"]
+    end
+
+    subgraph "Database Tier (Crunchy Data Postgres clusters)"
+        DB_Cust[(postgres-customers)]
+        DB_Bill[(postgres-billing)]
+    end
+
+    subgraph "Telemetry (Observability Namespace)"
+        OTEL_Collector["OpenTelemetry Collector Gateway"]
+    end
+
+    %% Client traffic
+    Browser -->|HTTPS (Port 443)| GW
+    
+    %% API Routing
+    GW -->|REST / JWT (Port 8081)| S_Cust
+    GW -->|REST / JWT (Port 8082)| S_Bill
+    
+    %% Database connections
+    GW -->|JDBC (Port 5432)| DB_GW
+    S_Cust -->|JDBC (Port 5432)| DB_Cust
+    S_Bill -->|JDBC (Port 5432)| DB_Bill
+    
+    %% Auto-Instrumentation Telemetry
+    GW -.->|OTLP/gRPC (Port 4317)| OTEL_Collector
+    S_Cust -.->|OTLP/gRPC (Port 4317)| OTEL_Collector
+    S_Bill -.->|OTLP/gRPC (Port 4317)| OTEL_Collector
+```
+
+#### Database Injection & Secrets
+The database connections are securely managed by the Crunchy Data Postgres Operator. The operator automatically provisions a `PostgresCluster` for each service and exports credentials into a Kubernetes Secret (e.g., `postgres-customers-pguser-customers`). The Helm chart maps these secret values to Spring database environment variables:
+- `SPRING_DATASOURCE_URL` (JDBC URL)
+- `SPRING_DATASOURCE_USERNAME` (username)
+- `SPRING_DATASOURCE_PASSWORD` (password)
+
+---
+
 ### CI/CD Flow (GitOps)
 This diagram shows the robust Jenkins-to-ArgoCD synchronization we've implemented. Jenkins (CI) builds the artifact and updates the configuration repo, then uses the **ArgoCD CLI** to explicitly trigger and wait for a healthy deployment before finishing the pipeline.
 
