@@ -21,6 +21,12 @@ in a **GitFlow-inspired** model with two distinct tracks:
 
 - **Observability (Grafana Cloud / OSS)**: Traces, metrics and logs are fully correlated. Dashboard deployment is managed via the native **`gcx` CLI** using a GitOps workflow.
 - **ArgoCD (GitOps)**: The entire Microservices stack is managed via **ArgoCD**, providing a declarative GitOps engine for continuous delivery. It is integrated with Google OIDC for secure, single sign-on access.
+- **CrunchyData Postgres Operator (PGO)**: Managed natively by ArgoCD
+  via the [`pgo-app.yaml`](argocd/pgo-app.yaml) application. For each microservice,
+  the Helm chart dynamically provisions a `PostgresCluster` CRD. The Operator
+  automatically spins up a highly available PostgreSQL 15 database, manages
+  pgBackRest backups, and securely injects connection credentials into the
+  application pods without human intervention.
 
 
 It is compliant with **OpenShift 4.20+** and the latest **Kubernetes on
