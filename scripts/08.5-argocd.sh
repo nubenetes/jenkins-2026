@@ -75,19 +75,35 @@ EOF
   kubectl patch configmap argocd-rbac-cm -n "${J2026_ARGOCD_NAMESPACE}" --type merge -p '{"data": {"policy.csv": "g, authenticated, role:admin\ng, jenkins, role:admin"}}'
   
   log_info "Generating ArgoCD API token for Jenkins"
-  # Grant temporary cluster-admin to the default SA to allow the token-gen pod to use --core mode
-  kubectl create clusterrolebinding temp-argocd-admin --clusterrole=cluster-admin --serviceaccount="${J2026_ARGOCD_NAMESPACE}:default" || true
+  # Use a temporary ClusterRoleBinding. Use apply or delete/create to avoid "already exists" errors.
+  cat <<EOF | kubectl apply -f -
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: temp-argocd-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: ${J2026_ARGOCD_NAMESPACE}
+EOF
   
   # Ensure no old token-gen pod exists
   kubectl delete pod argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found=true --wait=true || true
   
   # Use a subshell to capture token and ensure RBAC cleanup happens regardless of success/failure
   set +e
-  TOKEN=$(kubectl run argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --rm -i --restart=Never \
+  RAW_TOKEN=$(kubectl run argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --rm -i --restart=Never \
     --image=quay.io/argoproj/argocd:v2.11.0 -- \
     bash -c "argocd account generate-token --account jenkins --core")
   EXIT_CODE=$?
   set -e
+
+  # Strip any newlines or trailing whitespace from the token to prevent JSON patch errors
+  TOKEN=$(echo "${RAW_TOKEN}" | tr -d '\n\r' | xargs)
             
   # Cleanup temporary RBAC
   kubectl delete clusterrolebinding temp-argocd-admin || true
@@ -98,6 +114,7 @@ EOF
       --type=merge -p "{\"stringData\":{\"argocd-token\":\"${TOKEN}\"}}"
   else
     log_error "Failed to generate ArgoCD token (exit code: ${EXIT_CODE})"
+    log_debug "Raw output: ${RAW_TOKEN}"
   fi
 else
   log_warn "OIDC credentials not found. ArgoCD will use local admin password."
