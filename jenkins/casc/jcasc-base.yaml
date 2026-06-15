@@ -21,6 +21,12 @@ jenkins:
     Observability & Monitoring:
     - Grafana Dashboards:  ${GRAFANA_BASE_URL:-not configured}
 
+  globalNodeProperties:
+    - envVars:
+        env:
+          - key: "GRAFANA_BASE_URL"
+            value: "${GRAFANA_BASE_URL:-}"
+
   # numExecutors (chart default 0) / mode are derived from
   # controller.numExecutors / controller.executorMode in
   # helm/jenkins/values-common.yaml instead of being set here - see the
@@ -141,12 +147,6 @@ appearance:
     theme: "darkSystem"
 
 unclassified:
-  globalNodeProperties:
-    envVars:
-      env:
-        - key: "GRAFANA_BASE_URL"
-          value: "${GRAFANA_BASE_URL:-}"
-
   # unclassified.location.url is intentionally NOT set here - the chart's
   # generated jcasc-default-config.yaml always sets it (to the in-cluster
   # service URL, http://jenkins.<namespace>.svc.cluster.local:8080, unless
