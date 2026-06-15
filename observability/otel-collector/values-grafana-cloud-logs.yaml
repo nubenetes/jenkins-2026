@@ -4,7 +4,7 @@
 # stderr via the filelog receiver and forwards log records straight to
 # Grafana Cloud Loki (via the OTLP gateway's /v1/logs endpoint). This covers
 # any process that does NOT go through the OTel Java agent's log-appender
-# bridge (e.g. nginx access logs for petclinic-angular, Jenkins agent pods,
+# bridge (e.g. nginx access logs for microservices-angular, Jenkins agent pods,
 # kube-system noise is excluded below).
 #
 # helm upgrade --install otel-collector-logs open-telemetry/opentelemetry-collector \
@@ -70,7 +70,7 @@ config:
         - /var/log/pods/*/*/*.log
       exclude:
         # Skip the collector's own logs and kube-system noise to keep the
-        # Grafana Cloud log volume focused on jenkins-2026 and petclinic.
+        # Grafana Cloud log volume focused on jenkins-2026 and microservices.
         - /var/log/pods/observability_*otel-collector*/*/*.log
         - /var/log/pods/kube-system_*/*/*.log
       start_at: beginning
@@ -86,11 +86,11 @@ config:
       check_interval: 5s
       limit_percentage: 80
       spike_limit_percentage: 25
-    # Derive jenkins-2026/petclinic resource attributes from the k8s
+    # Derive jenkins-2026/microservices resource attributes from the k8s
     # namespace/pod/container metadata parsed by the container operator
     # above, so Loki labels line up with the trace/metric resource
     # attributes set by the OTel Java agent and the collector gateway.
-    k8sattributes:
+    k8s_attributes:
       auth_type: serviceAccount
       passthrough: false
       extract:
@@ -114,5 +114,5 @@ config:
     pipelines:
       logs:
         receivers: [filelog]
-        processors: [memory_limiter, k8sattributes, batch]
+        processors: [memory_limiter, k8s_attributes, batch]
         exporters: [otlphttp/grafana_cloud]

@@ -1,0 +1,50 @@
+<div class="d-flex justify-content-center">
+  <div class="col-8">
+    @if (owner(); as ownerRef) {
+      <div>
+        <h2 data-cy="ownerDetailsHeading"><span jhiTranslate="gatewayApp.owner.detail.title">Owner</span></h2>
+
+        <hr />
+
+        <jhi-alert-error></jhi-alert-error>
+
+        <jhi-alert></jhi-alert>
+
+        <dl class="row-md jh-entity-details">
+          <dt><span jhiTranslate="global.field.id">ID</span></dt>
+          <dd>
+            <span>{{ ownerRef.id }}</span>
+          </dd>
+          <dt><span jhiTranslate="gatewayApp.owner.address">Address</span></dt>
+          <dd>
+            <span>{{ ownerRef.address }}</span>
+          </dd>
+          <dt><span jhiTranslate="gatewayApp.owner.city">City</span></dt>
+          <dd>
+            <span>{{ ownerRef.city }}</span>
+          </dd>
+          <dt><span jhiTranslate="gatewayApp.owner.telephone">Telephone</span></dt>
+          <dd>
+            <span>{{ ownerRef.telephone }}</span>
+          </dd>
+          <dt><span jhiTranslate="gatewayApp.owner.customer">Customer</span></dt>
+          <dd>
+            @if (owner()!.customer) {
+              <div>
+                <a [routerLink]="['/customer', owner()!.customer?.id, 'view']">{{ ownerRef.customer?.id }}</a>
+              </div>
+            }
+          </dd>
+        </dl>
+
+        <button type="submit" (click)="previousState()" class="btn btn-info" data-cy="entityDetailsBackButton">
+          <fa-icon icon="arrow-left"></fa-icon>&nbsp;<span jhiTranslate="entity.action.back">Back</span>
+        </button>
+
+        <button type="button" [routerLink]="['/owner', ownerRef.id, 'edit']" class="btn btn-primary">
+          <fa-icon icon="pencil-alt"></fa-icon>&nbsp;<span jhiTranslate="entity.action.edit">Edit</span>
+        </button>
+      </div>
+    }
+  </div>
+</div>

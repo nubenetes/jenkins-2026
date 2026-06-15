@@ -1,0 +1,25 @@
+{
+  "generator-jhipster": {
+    "applicationIndex": 2,
+    "applicationType": "microservice",
+    "authenticationType": "jwt",
+    "baseName": "billing",
+    "buildTool": "maven",
+    "databaseType": "sql",
+    "devDatabaseType": "h2Disk",
+    "entities": ["Invoice", "Payment"],
+    "jhipsterVersion": "8.7.3",
+    "jwtSecretKey": "YmNiNmIzNmM2MWI4NjE5M2QzMTFiNWYxNjk1OWFjMjU4ZGYwYzg2NzgzNTdiYWNjYjZlYzk1YWFmYmY1MDk4MTMxYWM1MDExNmQzMmJlM2Q2YWIwODQ2MGEyMzgyNzkwMTE5Y2RhNDFlZjNhZDA2ODBkOGU2ZmU2NTJhOTg0Njc=",
+    "languages": ["en"],
+    "lastLiquibaseTimestamp": 1781540551000,
+    "monorepository": true,
+    "nativeLanguage": "en",
+    "packageName": "com.nubenetes.petclinic.billing",
+    "prodDatabaseType": "postgresql",
+    "serverPort": "8082",
+    "serviceDiscoveryType": "no",
+    "skipClient": true,
+    "skipCommitHook": true,
+    "skipUserManagement": true
+  }
+}

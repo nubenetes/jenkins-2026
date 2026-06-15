@@ -1,0 +1,15 @@
+apiVersion: v2
+name: microservices
+description: >-
+  Spring Microservices microservices + Angular UI, deployed and updated by the
+  jenkins-2026 pipelines-as-code (one Helm release per environment: "stable"
+  and "develop", both tracking the upstream main branch but deployed
+  separately for testing).
+type: application
+version: 0.1.0
+appVersion: "1.0"
+home: https://github.com/nubenetes/jenkins-2026
+sources:
+  - https://github.com/nubenetes/jenkins-2026
+  - https://github.com/spring-microservices/spring-microservices-microservices
+  - https://github.com/spring-microservices/spring-microservices-angular

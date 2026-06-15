@@ -3,7 +3,7 @@
 # consumed by helm/jenkins/values-common.yaml, the "headlamp-credentials"
 # Secret consumed by helm/headlamp/values.yaml (see scripts/08-headlamp.sh),
 # and grants the Jenkins controller's ServiceAccount "edit" access in both
-# PetClinic namespaces so pipelines can `helm upgrade`/`kubectl apply` their
+# microservices namespaces so pipelines can `helm upgrade`/`kubectl apply` their
 # deployments. Idempotent.
 set -euo pipefail
 
@@ -11,7 +11,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 
 log_step "Creating namespaces"
-for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}"; do
+for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_MICROSERVICES_NS_DEVELOP}"; do
   kubectl_apply_namespace "${ns}"
 done
 
@@ -54,21 +54,21 @@ else
   log_warn "Save these passwords now - they are not printed again on subsequent runs."
 fi
 
-log_step "Refreshing PetClinic URLs in '${J2026_JENKINS_CREDENTIALS_SECRET}' Secret"
+log_step "Refreshing Microservices URLs in '${J2026_JENKINS_CREDENTIALS_SECRET}' Secret"
 # Non-sensitive, so refreshed on every run (unlike the admin/platform-engineer
 # passwords above) - tracks gateway.baseDomain even if it changes after the
 # secret was first created. Empty if the Gateway feature is disabled. Surfaced
-# in the Jenkins systemMessage banner by jcasc-base.yaml (PETCLINIC_URL,
-# PETCLINIC_DEVELOP_URL).
-petclinic_url=""
-petclinic_develop_url=""
+# in the Jenkins systemMessage banner by jcasc-base.yaml (MICROSERVICES_URL,
+# MICROSERVICES_DEVELOP_URL).
+microservices_url=""
+microservices_develop_url=""
 if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
-  petclinic_url="https://${J2026_GATEWAY_PETCLINIC_HOST}"
-  petclinic_develop_url="https://${J2026_GATEWAY_PETCLINIC_DEVELOP_HOST}"
+  microservices_url="https://${J2026_GATEWAY_MICROSERVICES_HOST}"
+  microservices_develop_url="https://${J2026_GATEWAY_MICROSERVICES_DEVELOP_HOST}"
 fi
 kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \
   --type=merge -p "$(cat <<EOF
-{"stringData":{"petclinic-url":"${petclinic_url}","petclinic-develop-url":"${petclinic_develop_url}"}}
+{"stringData":{"microservices-url":"${microservices_url}","microservices-develop-url":"${microservices_develop_url}"}}
 EOF
 )"
 
@@ -130,8 +130,8 @@ else
   done
 fi
 
-log_step "Granting Jenkins ServiceAccount 'edit' in PetClinic namespaces"
-for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}"; do
+log_step "Granting Jenkins ServiceAccount 'edit' in microservices namespaces"
+for ns in "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_MICROSERVICES_NS_DEVELOP}"; do
   kubectl create rolebinding jenkins-edit \
     --clusterrole=edit \
     --serviceaccount="${J2026_JENKINS_NAMESPACE}:jenkins" \
@@ -139,33 +139,15 @@ for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}"; do
     --dry-run=client -o yaml | kubectl apply -f -
 done
 
-# The built-in 'edit' ClusterRole doesn't cover the OTel Operator's CRDs
-# (helm/petclinic/templates/instrumentation.yaml manages an Instrumentation
-# resource per namespace) - `helm upgrade` needs get/list/watch on it (plus
-# write verbs to create/update it) to diff against the live cluster, or it
-# fails with "instrumentations.opentelemetry.io ... is forbidden".
-log_step "Granting Jenkins ServiceAccount access to the Instrumentation CRD"
-kubectl create clusterrole jenkins-otel-instrumentation-editor \
-  --verb=get,list,watch,create,update,patch,delete \
-  --resource=instrumentations.opentelemetry.io \
-  --dry-run=client -o yaml | kubectl apply -f -
-for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}"; do
-  kubectl create rolebinding jenkins-otel-instrumentation-editor \
-    --clusterrole=jenkins-otel-instrumentation-editor \
-    --serviceaccount="${J2026_JENKINS_NAMESPACE}:jenkins" \
-    -n "${ns}" \
-    --dry-run=client -o yaml | kubectl apply -f -
-done
-
-# 'ghcr-credentials' imagePullSecret (helm/petclinic values-*.yaml
+# 'ghcr-credentials' imagePullSecret (helm/microservices values-*.yaml
 # imagePullSecret) - same REGISTRY_USERNAME/REGISTRY_PASSWORD the
 # "container-registry" Jenkins credential (jenkins/casc/jcasc-base.yaml) uses
-# to push images, since pipelines push to PETCLINIC_REGISTRY as private
+# to push images, since pipelines push to MICROSERVICES_REGISTRY as private
 # packages by default. Without these env vars, an empty-auths secret is
 # created so the Deployments still reference a valid secret name and fall
 # back to anonymous pulls (fine for public images).
-log_step "Ensuring 'ghcr-credentials' imagePullSecret in PetClinic namespaces"
-registry_host="${J2026_PETCLINIC_REGISTRY%%/*}"
+log_step "Ensuring 'ghcr-credentials' imagePullSecret in microservices namespaces"
+registry_host="${J2026_MICROSERVICES_REGISTRY%%/*}"
 if [[ -n "${REGISTRY_USERNAME:-}" && -n "${REGISTRY_PASSWORD:-}" ]]; then
   registry_auth="$(printf '%s:%s' "${REGISTRY_USERNAME}" "${REGISTRY_PASSWORD}" | base64 -w0)"
   dockerconfigjson="$(printf '{"auths":{"%s":{"username":"%s","password":"%s","auth":"%s"}}}' \
@@ -173,7 +155,7 @@ if [[ -n "${REGISTRY_USERNAME:-}" && -n "${REGISTRY_PASSWORD:-}" ]]; then
 else
   dockerconfigjson='{"auths":{}}'
 fi
-for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}"; do
+for ns in "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_MICROSERVICES_NS_DEVELOP}"; do
   kubectl create secret generic ghcr-credentials \
     -n "${ns}" \
     --type=kubernetes.io/dockerconfigjson \

@@ -74,15 +74,32 @@ jobs:
         working-directory: terraform/gke
         env:
           TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
-        run: terraform init -input=false
+        run: |
+          for i in {1..3}; do
+            terraform init -input=false && break || {
+              if [ $i -lt 3 ]; then
+                echo "Terraform init failed, retrying in 10s..."
+                sleep 10
+              else
+                exit 1
+              fi
+            }
+          done
 
       - name: Fetch kubeconfig credentials
         working-directory: terraform/gke
+        continue-on-error: true
         run: |
-          gcloud container clusters get-credentials \
-            "$(terraform output -raw cluster_name)" \
-            --zone "$(terraform output -raw location)" \
-            --project "${{ secrets.GCP_PROJECT_ID }}"
+          CLUSTER_NAME="$(terraform output -raw cluster_name || true)"
+          LOCATION="$(terraform output -raw location || true)"
+          if [[ -n "$CLUSTER_NAME" && -n "$LOCATION" ]]; then
+            gcloud container clusters get-credentials \
+              "$CLUSTER_NAME" \
+              --zone "$LOCATION" \
+              --project "${{ secrets.GCP_PROJECT_ID }}"
+          else
+            echo "No cluster name or location found in Terraform outputs. Skipping kubeconfig fetch."
+          fi
 
       - name: Tear down the stack (scripts/down.sh)
         env:
@@ -110,7 +127,17 @@ jobs:
       - name: Terraform init (grafana-cloud-token)
         if: ${{ env.HAS_GRAFANA_CLOUD_TOKEN == 'true' }}
         working-directory: terraform/grafana-cloud-token
-        run: terraform init -input=false
+        run: |
+          for i in {1..3}; do
+            terraform init -input=false && break || {
+              if [ $i -lt 3 ]; then
+                echo "Terraform init failed, retrying in 10s..."
+                sleep 10
+              else
+                exit 1
+              fi
+            }
+          done
 
       - name: Terraform destroy (revoke Grafana Cloud access policy + tokens)
         if: ${{ env.HAS_GRAFANA_CLOUD_TOKEN == 'true' }}
@@ -118,6 +145,7 @@ jobs:
         env:
           TF_VAR_grafana_cloud_api_token: ${{ secrets.GRAFANA_CLOUD_API_TOKEN }}
           TF_VAR_stack_slug: ${{ secrets.GRAFANA_CLOUD_STACK_SLUG }}
+          TF_VAR_jenkins_admin_password: "destroy-placeholder"
         run: terraform destroy -auto-approve -input=false
 
       - name: Summary

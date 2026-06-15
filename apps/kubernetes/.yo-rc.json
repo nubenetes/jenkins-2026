@@ -1,0 +1,21 @@
+{
+  "generator-jhipster": {
+    "appsFolders": ["gateway", "customers", "billing"],
+    "clusteredDbApps": [],
+    "dbRandomPassword": "e4cd552ef20f5926c6122789f4adf94900c9fb6ac20de81fa54e6da689ef",
+    "deploymentType": "kubernetes",
+    "directoryPath": "../",
+    "dockerPushCommand": "docker push",
+    "dockerRepositoryName": "ghcr.io/nubenetes",
+    "ingressDomain": "",
+    "istio": false,
+    "jhipsterVersion": "8.7.3",
+    "jwtSecretKey": "MjlmMGY0NzdmNmE2ODRlZjA4NTBkNDhiOWZjNTEzYjljYTYxNGJkYjMzOTk3NTgzYjNmNDU1NDBhM2I0NTNmYTk2MDViNmUxZGQ4MDg2NDljOGUyZDg3NjI0MTVhNmRhYmZhOQ==",
+    "kubernetesNamespace": "petclinic",
+    "kubernetesServiceType": "LoadBalancer",
+    "kubernetesStorageClassName": "",
+    "kubernetesUseDynamicStorage": false,
+    "monitoring": "no",
+    "serviceDiscoveryType": "no"
+  }
+}

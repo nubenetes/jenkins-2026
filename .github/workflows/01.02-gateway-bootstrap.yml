@@ -2,7 +2,7 @@ name: "01.02 Gateway bootstrap"
 
 # Manually-triggered, one-time setup step: applies terraform/gateway-bootstrap
 # to create (or, on re-runs, confirm) the persistent GCP resources that public
-# access to Jenkins/PetClinic/Headlamp depends on - a global static IP and a
+# access to Jenkins/Microservices/Headlamp depends on - a global static IP and a
 # Google-managed wildcard certificate (Certificate Manager, DNS-authorized).
 # State is remote (GCS, prefix "jenkins-2026/gateway-bootstrap", same bucket
 # as terraform/gke), so this is safe to re-run - it's a no-op once the
@@ -63,7 +63,17 @@ jobs:
 
       - name: Terraform init
         working-directory: terraform/gateway-bootstrap
-        run: terraform init -input=false
+        run: |
+          for i in {1..3}; do
+            terraform init -input=false && break || {
+              if [ $i -lt 3 ]; then
+                echo "Terraform init failed, retrying in 10s..."
+                sleep 10
+              else
+                exit 1
+              fi
+            }
+          done
 
       - name: Terraform apply (create/confirm persistent gateway resources)
         working-directory: terraform/gateway-bootstrap

@@ -1,17 +1,17 @@
-# Container image for spring-petclinic-angular, built by petclinicImage.groovy.
+# Container image for spring-microservices-angular, built by microservicesImage.groovy.
 #
 # Build context = the jenkins-2026 repo root (env.WORKSPACE):
 #   docker build -f resources/angular/Dockerfile <jenkins-2026-checkout-root>
 #
-# - petclinic-src/  = checkout of spring-petclinic-angular (stage 1 input)
+# - microservices-src/  = checkout of spring-microservices-angular (stage 1 input)
 # - resources/angular/{nginx.conf,otel-web.js} = this repo's runtime assets
 
 FROM node:20-bookworm AS build
 WORKDIR /app
-COPY petclinic-src/package*.json ./
+COPY microservices-src/package*.json ./
 RUN npm ci
-COPY petclinic-src/. .
-RUN npm run build -- --configuration production
+COPY microservices-src/. .
+RUN npm run build -- --configuration production --base-href /
 
 FROM nginx:1.27-alpine AS runtime
 
@@ -31,7 +31,7 @@ COPY resources/angular/otel-web.js /usr/share/nginx/html/otel-web.js
 # Allow nginx's runtime directories to be read/written by either:
 # - OpenShift's restricted SCC (arbitrary UID, group 0), via the group bits
 #   (chgrp 0 + g=u), or
-# - helm/petclinic's fixed runAsUser/runAsGroup 1000:1000 (GKE/EKS/AKS,
+# - helm/microservices's fixed runAsUser/runAsGroup 1000:1000 (GKE/EKS/AKS,
 #   matching the Paketo "cnb" UID used by the Java service images), via the
 #   owner bits (chown 1000).
 RUN chown -R 1000:0 /usr/share/nginx/html /var/cache/nginx /etc/nginx && \

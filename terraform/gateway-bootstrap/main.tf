@@ -1,5 +1,5 @@
 # =============================================================================
-# Persistent resources for exposing Jenkins, PetClinic and Headlamp on the
+# Persistent resources for exposing Jenkins, Microservices and Headlamp on the
 # public internet via the GKE Gateway API (see README.md "Public access
 # (GKE Gateway API + IAP)"):
 #
