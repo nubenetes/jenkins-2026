@@ -32,6 +32,10 @@ jenkins:
       </ul>
     </div>
 
+  markupFormatter:
+    rawHtml:
+      disableSyntaxHighlighting: true
+
   globalNodeProperties:
     - envVars:
         env:
