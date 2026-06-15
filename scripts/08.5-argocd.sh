@@ -16,7 +16,9 @@ current_status=$(helm list -n "${J2026_ARGOCD_NAMESPACE}" -f "^${J2026_ARGOCD_RE
 
 if [[ "${current_status}" == "pending-install" || "${current_status}" == "pending-upgrade" || "${current_status}" == "uninstalling" ]]; then
   log_warn "ArgoCD is stuck in '${current_status}'. Uninstalling to reset state..."
-  helm uninstall "${J2026_ARGOCD_RELEASE}" -n "${J2026_ARGOCD_NAMESPACE}" --wait --force || true
+  helm uninstall "${J2026_ARGOCD_RELEASE}" -n "${J2026_ARGOCD_NAMESPACE}" --wait || true
+  # Small sleep to let the API server settle
+  sleep 5
 fi
 
 helm upgrade --install "${J2026_ARGOCD_RELEASE}" argo/argo-cd \
