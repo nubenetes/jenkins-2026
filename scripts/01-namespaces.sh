@@ -229,11 +229,12 @@ metadata:
   name: pgadmin-quota
 spec:
   hard:
-    requests.cpu: "200m"
-    requests.memory: 256Mi
-    limits.cpu: "500m"
-    limits.memory: 512Mi
+    requests.cpu: "300m"
+    requests.memory: 512Mi
+    limits.cpu: "1.0"
+    limits.memory: 1.0Gi
 EOF
+
 
 
 log_step "Applying LimitRanges to supply default requests/limits"
