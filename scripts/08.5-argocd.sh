@@ -18,7 +18,14 @@ if [[ "${current_status}" == "pending-install" || "${current_status}" == "pendin
   sleep 2
 fi
 
-# 1. Pre-configure OIDC/RBAC
+# 1. Install ArgoCD
+log_step "Running Helm upgrade"
+helm upgrade --install "${J2026_ARGOCD_RELEASE}" argo/argo-cd \
+  --namespace "${J2026_ARGOCD_NAMESPACE}" \
+  --set server.extraArgs="{--insecure}" \
+  --timeout 10m
+
+# 2. Configure OIDC/RBAC
 log_step "Configuring ArgoCD OIDC/RBAC"
 ARGOCD_HOST="argocd.${J2026_GATEWAY_BASE_DOMAIN}"
 ARGOCD_URL="https://${ARGOCD_HOST}"
@@ -42,9 +49,9 @@ data:
         config:
           clientID: ${CLIENT_ID}
           clientSecret: ${CLIENT_SECRET}
+          redirectURI: ${ARGOCD_URL}/api/dex/callback
 EOF
-  kubectl patch configmap argocd-cm -n ${J2026_ARGOCD_NAMESPACE} --patch-file "${PATCH_FILE}" || \
-  kubectl create configmap argocd-cm -n ${J2026_ARGOCD_NAMESPACE} --from-file="${PATCH_FILE}" --dry-run=client -o yaml | kubectl apply -f -
+  kubectl patch configmap argocd-cm -n ${J2026_ARGOCD_NAMESPACE} --patch-file "${PATCH_FILE}"
   rm "${PATCH_FILE}"
 
   PATCH_FILE_RBAC=$(mktemp)
@@ -54,19 +61,16 @@ data:
   policy.csv: |
     g, authenticated, role:admin
 EOF
-  kubectl patch configmap argocd-rbac-cm -n ${J2026_ARGOCD_NAMESPACE} --patch-file "${PATCH_FILE_RBAC}" || \
-  kubectl create configmap argocd-rbac-cm -n ${J2026_ARGOCD_NAMESPACE} --from-file="${PATCH_FILE_RBAC}" --dry-run=client -o yaml | kubectl apply -f -
+  kubectl patch configmap argocd-rbac-cm -n ${J2026_ARGOCD_NAMESPACE} --patch-file "${PATCH_FILE_RBAC}"
   rm "${PATCH_FILE_RBAC}"
+  
+  # Restart argocd-server and dex to pick up CM changes
+  log_info "Restarting ArgoCD components to pick up OIDC config"
+  kubectl rollout restart deployment "${J2026_ARGOCD_RELEASE}-server" -n "${J2026_ARGOCD_NAMESPACE}"
+  kubectl rollout restart deployment "${J2026_ARGOCD_RELEASE}-dex-server" -n "${J2026_ARGOCD_NAMESPACE}"
 else
   log_warn "OIDC credentials not found. ArgoCD will use local admin password."
 fi
-
-# 2. Install ArgoCD
-log_step "Running Helm upgrade"
-helm upgrade --install "${J2026_ARGOCD_RELEASE}" argo/argo-cd \
-  --namespace "${J2026_ARGOCD_NAMESPACE}" \
-  --set server.extraArgs="{--insecure}" \
-  --timeout 10m
 
 # 3. Wait for Server
 log_step "Waiting for ArgoCD Server to be ready"
@@ -80,7 +84,9 @@ log_step "Generating and applying PetClinic ApplicationSet"
 # Inject values into the AppSet manifest
 # Using @ as delimiter for sed to avoid issues with URLs
 APPSET_FILE=$(mktemp)
-sed "s@{{repoUrl}}@${J2026_SELF_REPO_URL}@g; 
+# Ensure J2026_SELF_REPO_URL is set (fallback to default if empty)
+REPO_URL="${J2026_SELF_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
+sed "s@{{repoUrl}}@${REPO_URL}@g; 
      s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g; 
      s@{{branchDevelop}}@${J2026_SELF_REPO_DEV_BRANCH}@g; 
      s@{{platform}}@${J2026_PLATFORM}@g" \
