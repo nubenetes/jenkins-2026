@@ -111,6 +111,13 @@ spec:
   hostnames:
     - "${J2026_GATEWAY_PETCLINIC_HOST}"
   rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api/
+      backendRefs:
+        - name: api-gateway
+          port: 8080
     - backendRefs:
         - name: petclinic-angular
           port: 8080
@@ -130,6 +137,13 @@ spec:
   hostnames:
     - "${J2026_GATEWAY_PETCLINIC_DEVELOP_HOST}"
   rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api/
+      backendRefs:
+        - name: api-gateway
+          port: 8080
     - backendRefs:
         - name: petclinic-angular
           port: 8080
@@ -154,7 +168,7 @@ spec:
           port: 80
 EOT
 
-log_step "Generating HealthCheckPolicies (jenkins, argocd)"
+log_step "Generating HealthCheckPolicies (jenkins, argocd, petclinic)"
 cat >"${GENERATED_DIR}/healthcheckpolicy-jenkins.yaml" <<EOT
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
@@ -190,6 +204,47 @@ spec:
     kind: Service
     name: argocd-server
 EOT
+
+for ns in "${J2026_PETCLINIC_NS_STABLE}" "${J2026_PETCLINIC_NS_DEVELOP}"; do
+  env_suffix=""
+  if [[ "${ns}" == "${J2026_PETCLINIC_NS_DEVELOP}" ]]; then
+    env_suffix="-develop"
+  fi
+
+  cat >"${GENERATED_DIR}/healthcheckpolicy-petclinic${env_suffix}.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: api-gateway
+  namespace: ${ns}
+spec:
+  default:
+    config:
+      type: HTTP
+      httpHealthCheck:
+        requestPath: /actuator/health
+  targetRef:
+    group: ""
+    kind: Service
+    name: api-gateway
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: petclinic-angular
+  namespace: ${ns}
+spec:
+  default:
+    config:
+      type: HTTP
+      httpHealthCheck:
+        requestPath: /
+  targetRef:
+    group: ""
+    kind: Service
+    name: petclinic-angular
+EOT
+done
 
 log_step "Generating GCPBackendPolicies (IAP for jenkins, headlamp)"
 declare -A iap_client_id
