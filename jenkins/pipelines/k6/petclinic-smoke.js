@@ -26,6 +26,7 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 
 const NAMESPACE = __ENV.TARGET_NAMESPACE || 'petclinic';
+const TARGET_URL = __ENV.TARGET_URL; // e.g. https://petclinic.jenkins2026.nubenetes.com
 
 // genai-service's pipeline (and therefore its deployed image) is disabled
 // without a real OPENAI_API_KEY (see config/config.yaml
@@ -33,8 +34,15 @@ const NAMESPACE = __ENV.TARGET_NAMESPACE || 'petclinic';
 // to avoid failing on a service that may not even be running.
 const GENAI_ENABLED = (__ENV.GENAI_SERVICE_ENABLED || 'false').toLowerCase() === 'true';
 
-function svcUrl(name, port) {
-  return `http://${name}.${NAMESPACE}.svc.cluster.local:${port}`;
+function svcUrl(name, port, path = '') {
+  if (TARGET_URL) {
+    // When running from outside (e.g. GitHub Actions), all traffic goes through
+    // the Gateway/LoadBalancer at the TARGET_URL.
+    // Infrastructure services like config-server are NOT exposed externally,
+    // so we skip them or map them to the same public URL if we were to expose them.
+    return `${TARGET_URL}${path}`;
+  }
+  return `http://${name}.${NAMESPACE}.svc.cluster.local:${port}${path}`;
 }
 
 const API_GATEWAY = svcUrl('api-gateway', 8080);
@@ -86,43 +94,46 @@ export default function () {
 
   // Platform/infrastructure services - not reachable via api-gateway, hit
   // their actuator health endpoints directly.
-  get(`${CONFIG_SERVER}/actuator/health`, traceparent, 'config-server-health');
-  sleep(0.2);
-  get(`${DISCOVERY_SERVER}/actuator/health`, traceparent, 'discovery-server-health');
-  sleep(0.2);
-  get(`${ADMIN_SERVER}/actuator/health`, traceparent, 'admin-server-health');
-  sleep(0.2);
-
-  if (GENAI_ENABLED) {
-    get(`${GENAI_SERVICE}/actuator/health`, traceparent, 'genai-service-health');
+  // SKIPPED when running externally (TARGET_URL) as they are not exposed.
+  if (!TARGET_URL) {
+    get(`${CONFIG_SERVER}/actuator/health`, traceparent, 'config-server-health');
     sleep(0.2);
+    get(`${DISCOVERY_SERVER}/actuator/health`, traceparent, 'discovery-server-health');
+    sleep(0.2);
+    get(`${ADMIN_SERVER}/actuator/health`, traceparent, 'admin-server-health');
+    sleep(0.2);
+
+    if (GENAI_ENABLED) {
+      get(`${GENAI_SERVICE}/actuator/health`, traceparent, 'genai-service-health');
+      sleep(0.2);
+    }
   }
 
   // Angular UI - serves the SPA shell.
-  get(`${ANGULAR}/`, traceparent, 'petclinic-angular-root');
+  get(svcUrl('petclinic-angular', 8080, '/'), traceparent, 'petclinic-angular-root');
   sleep(0.3);
 
   // "Owner browses PetClinic" journey through api-gateway, exercising
   // customers-service, vets-service and visits-service (and the gateway's
   // own owner+visits aggregation).
-  get(`${API_GATEWAY}/api/vet/vets`, traceparent, 'gateway-vets');
+  get(svcUrl('api-gateway', 8080, '/api/vet/vets'), traceparent, 'gateway-vets');
   sleep(0.3);
 
-  get(`${API_GATEWAY}/api/customer/petTypes`, traceparent, 'gateway-pet-types');
+  get(svcUrl('api-gateway', 8080, '/api/customer/petTypes'), traceparent, 'gateway-pet-types');
   sleep(0.3);
 
-  get(`${API_GATEWAY}/api/customer/owners`, traceparent, 'gateway-owners-list');
+  get(svcUrl('api-gateway', 8080, '/api/customer/owners'), traceparent, 'gateway-owners-list');
   sleep(0.3);
 
   const ownerId = OWNER_IDS[Math.floor(Math.random() * OWNER_IDS.length)];
-  get(`${API_GATEWAY}/api/customer/owners/${ownerId}`, traceparent, 'gateway-owner-details');
+  get(svcUrl('api-gateway', 8080, `/api/customer/owners/${ownerId}`), traceparent, 'gateway-owner-details');
   sleep(0.3);
 
   // api-gateway's own /api/gateway/owners/{id} aggregates customers-service +
   // visits-service in a single call.
-  get(`${API_GATEWAY}/api/gateway/owners/${ownerId}`, traceparent, 'gateway-owner-visits-aggregate');
+  get(svcUrl('api-gateway', 8080, `/api/gateway/owners/${ownerId}`), traceparent, 'gateway-owner-visits-aggregate');
   sleep(0.3);
 
-  get(`${API_GATEWAY}/api/visit/pets/visits?petId=1&petId=2`, traceparent, 'gateway-visits');
+  get(svcUrl('api-gateway', 8080, '/api/visit/pets/visits?petId=1&petId=2'), traceparent, 'gateway-visits');
   sleep(0.3);
 }
