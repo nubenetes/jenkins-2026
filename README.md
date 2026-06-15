@@ -191,6 +191,29 @@ The deployment lifecycle is managed by **ArgoCD** using an **ApplicationSet** pa
 - **Auto-Sync**: Applications are configured with `selfHeal: true` and `prune: true`, ensuring the cluster state always matches the Git repository.
 - **Rollout Waiting**: The Jenkins pipeline stage `Deploy to Kubernetes` is non-blocking for ArgoCD but **blocking for the pipeline**, using `argocd app wait --health` to ensure zero-downtime deployments are verified before smoke testing.
 
+## Telemetry Verification & Simulation
+
+To validate that the OpenTelemetry instrumentation is working correctly and that signals are properly correlated in Grafana Cloud, you can generate synthetic traffic.
+
+### 1. Continuous Traffic Simulation (GitHub Actions)
+For a constant stream of telemetry, use the **`99.01 Continuous Traffic Simulation`** workflow:
+- **Location**: GitHub Actions tab.
+- **Action**: Run `workflow_dispatch`.
+- **Duration**: Default 15 minutes (configurable).
+- **Purpose**: Simulates real-world user traffic from outside the cluster, hitting the GKE Gateway and triggering end-to-end traces (Frontend -> Gateway -> Backend Services).
+
+### 2. On-Demand Smoke Test (Jenkins)
+Trigger the **`petclinic-k6-smoke`** job from the Jenkins UI:
+- **Feature**: Generates traces that include Jenkins build metadata (e.g., build number, job name).
+- **Correlation**: Connects CI metadata with CD runtime telemetry.
+
+### 3. How to Verify Correlation in Grafana
+Once traffic is running, go to your Grafana Cloud instance:
+
+- **Metrics to Logs**: Open the **PetClinic Overview** dashboard. Click on any metric spike for a service (e.g., `customers-service`) and use the **"Show Logs"** split-view to see the logs for that exact time window.
+- **Logs to Traces**: In the **Explore (Loki)** view, look for logs containing `trace_id`. The OTel Java agent automatically injects these. Grafana will show a "Tempo" link next to the `trace_id` to jump to the full distributed trace.
+- **End-to-End Traces**: In **Explore (Tempo)**, search for `service.name="api-gateway"`. Select a trace to see the full request path, starting from the k6 client or Angular UI, through the gateway, into the microservices, and down to the database calls.
+
 > **First run note**: `helm/petclinic`'s default image tag (`main`) won't
 > exist in your registry yet, so PetClinic pods will show
 > `ImagePullBackOff` until each service's Jenkins pipeline has run at least
