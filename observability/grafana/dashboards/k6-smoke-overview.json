@@ -29,7 +29,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "description": "Total k6 iterations completed in the selected time range (metric iterations_total, exported by k6's -o opentelemetry output - see jenkins/pipelines/k6/petclinic-smoke.js and vars/petclinicK6Smoke.groovy).",
+      "description": "Total k6 iterations completed in the selected time range (metric iterations_total, exported by k6's -o opentelemetry output - see jenkins/pipelines/k6/microservices-smoke.js and vars/microservicesK6Smoke.groovy).",
       "fieldConfig": {
         "defaults": { "color": { "mode": "thresholds" }, "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }, "unit": "short" },
         "overrides": []
@@ -47,7 +47,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum(increase(iterations_total{service_name=\"k6-petclinic-smoke\", deployment_environment=\"$deployment_environment\"}[$__range]))",
+          "expr": "sum(increase(iterations_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range]))",
           "instant": true,
           "legendFormat": "Iterations",
           "refId": "A"
@@ -58,7 +58,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "description": "Share of k6 checks (the check{} blocks in petclinic-smoke.js, e.g. 'gateway-owners-list is healthy') that passed - checks_total{condition=\"nonzero\"} / checks_total. Anything below 100% means at least one check failed during the run.",
+      "description": "Share of k6 checks (the check{} blocks in microservices-smoke.js, e.g. 'gateway-owners-list is healthy') that passed - checks_total{condition=\"nonzero\"} / checks_total. Anything below 100% means at least one check failed during the run.",
       "fieldConfig": {
         "defaults": { "color": { "mode": "thresholds" }, "decimals": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] }, "unit": "percentunit" },
         "overrides": []
@@ -76,7 +76,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum(increase(checks_total{service_name=\"k6-petclinic-smoke\", deployment_environment=\"$deployment_environment\", condition=\"nonzero\"}[$__range])) / sum(increase(checks_total{service_name=\"k6-petclinic-smoke\", deployment_environment=\"$deployment_environment\"}[$__range]))",
+          "expr": "sum(increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", condition=\"nonzero\"}[$__range])) / sum(increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range]))",
           "instant": true,
           "legendFormat": "Checks pass rate",
           "refId": "A"
@@ -87,7 +87,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "description": "Share of HTTP requests k6 considered failed (http_req_failed_total{condition=\"nonzero\"} / http_req_failed_total) - red at 5%, matching the http_req_failed: ['rate<0.05'] threshold in petclinic-smoke.js.",
+      "description": "Share of HTTP requests k6 considered failed (http_req_failed_total{condition=\"nonzero\"} / http_req_failed_total) - red at 5%, matching the http_req_failed: ['rate<0.05'] threshold in microservices-smoke.js.",
       "fieldConfig": {
         "defaults": { "color": { "mode": "thresholds" }, "decimals": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 0.05 }] }, "unit": "percentunit" },
         "overrides": []
@@ -105,7 +105,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum(increase(http_req_failed_total{service_name=\"k6-petclinic-smoke\", deployment_environment=\"$deployment_environment\", condition=\"nonzero\"}[$__range])) / sum(increase(http_req_failed_total{service_name=\"k6-petclinic-smoke\", deployment_environment=\"$deployment_environment\"}[$__range]))",
+          "expr": "sum(increase(http_req_failed_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", condition=\"nonzero\"}[$__range])) / sum(increase(http_req_failed_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range]))",
           "instant": true,
           "legendFormat": "http_req_failed rate",
           "refId": "A"
@@ -116,7 +116,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "description": "p95 of http_req_duration across all requests in the run - red above 3000ms, matching the http_req_duration: ['p(95)<3000'] threshold in petclinic-smoke.js. k6 exits 99 (Jenkins UNSTABLE) when this or the failed-rate threshold is crossed.",
+      "description": "p95 of http_req_duration across all requests in the run - red above 3000ms, matching the http_req_duration: ['p(95)<3000'] threshold in microservices-smoke.js. k6 exits 99 (Jenkins UNSTABLE) when this or the failed-rate threshold is crossed.",
       "fieldConfig": {
         "defaults": { "color": { "mode": "thresholds" }, "decimals": 0, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 3000 }] }, "unit": "ms" },
         "overrides": []
@@ -134,7 +134,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_req_duration_milliseconds_bucket{service_name=\"k6-petclinic-smoke\", deployment_environment=\"$deployment_environment\"}[$__range])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_req_duration_milliseconds_bucket{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range])))",
           "instant": true,
           "legendFormat": "http_req_duration p95",
           "refId": "A"
@@ -145,7 +145,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "description": "p95 http_req_duration per request (the tags.name set on each k6 http call in petclinic-smoke.js, e.g. gateway-owners-list, config-server-health) - histogram_quantile over http_req_duration_milliseconds_bucket.",
+      "description": "p95 http_req_duration per request (the tags.name set on each k6 http call in microservices-smoke.js, e.g. gateway-owners-list, config-server-health) - histogram_quantile over http_req_duration_milliseconds_bucket.",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10 }, "unit": "ms" },
         "overrides": []
@@ -159,7 +159,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "histogram_quantile(0.95, sum by (le, name) (rate(http_req_duration_milliseconds_bucket{service_name=\"k6-petclinic-smoke\", deployment_environment=\"$deployment_environment\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le, name) (rate(http_req_duration_milliseconds_bucket{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[5m])))",
           "legendFormat": "{{name}}",
           "refId": "A"
         }
@@ -183,7 +183,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum by (name, status) (rate(http_reqs_total{service_name=\"k6-petclinic-smoke\", deployment_environment=\"$deployment_environment\"}[5m]))",
+          "expr": "sum by (name, status) (rate(http_reqs_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[5m]))",
           "legendFormat": "{{name}} [{{status}}]",
           "refId": "A"
         }
@@ -193,7 +193,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "description": "k6 checks broken down by check name and outcome - checks_total{condition=\"nonzero\"} is the pass count, checks_total{condition=\"zero\"} is the fail count, for each check{} block in petclinic-smoke.js.",
+      "description": "k6 checks broken down by check name and outcome - checks_total{condition=\"nonzero\"} is the pass count, checks_total{condition=\"zero\"} is the fail count, for each check{} block in microservices-smoke.js.",
       "fieldConfig": {
         "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" } }, "unit": "short" },
         "overrides": [
@@ -220,7 +220,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum by (check, condition) (increase(checks_total{service_name=\"k6-petclinic-smoke\", deployment_environment=\"$deployment_environment\"}[$__range]))",
+          "expr": "sum by (check, condition) (increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range]))",
           "format": "table",
           "instant": true,
           "refId": "A"
@@ -245,13 +245,13 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "vus{service_name=\"k6-petclinic-smoke\", deployment_environment=\"$deployment_environment\"}",
+          "expr": "vus{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}",
           "legendFormat": "VUs",
           "refId": "A"
         },
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "vus_max{service_name=\"k6-petclinic-smoke\", deployment_environment=\"$deployment_environment\"}",
+          "expr": "vus_max{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}",
           "legendFormat": "VUs max",
           "refId": "B"
         }
@@ -269,7 +269,7 @@
     },
     {
       "datasource": { "type": "tempo", "uid": "${DS_TEMPO}" },
-      "description": "Traces generated by this smoke test run. Each k6 iteration sends a W3C traceparent header through petclinic-angular/api-gateway and the downstream PetClinic services (helm/petclinic/templates/instrumentation.yaml), so every iteration produces one end-to-end trace tagged with deployment.environment=$deployment_environment.",
+      "description": "Traces generated by this smoke test run. Each k6 iteration sends a W3C traceparent header through microservices-angular/api-gateway and the downstream Microservices services (helm/microservices/templates/instrumentation.yaml), so every iteration produces one end-to-end trace tagged with deployment.environment=$deployment_environment.",
       "fieldConfig": { "defaults": {}, "overrides": [] },
       "gridPos": { "h": 9, "w": 24, "x": 0, "y": 22 },
       "id": 9,
@@ -286,7 +286,7 @@
     },
     {
       "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
-      "description": "PetClinic application logs for the namespace this smoke test targeted (petclinic / petclinic-develop). Lines containing trace_id=<hex> can be opened directly in Tempo via the Loki datasource's derived field, correlating with the trace IDs k6 logs to the Jenkins console.",
+      "description": "Microservices application logs for the namespace this smoke test targeted (microservices / microservices-develop). Lines containing trace_id=<hex> can be opened directly in Tempo via the Loki datasource's derived field, correlating with the trace IDs k6 logs to the Jenkins console.",
       "fieldConfig": { "defaults": {}, "overrides": [] },
       "gridPos": { "h": 9, "w": 24, "x": 0, "y": 31 },
       "id": 10,
@@ -302,17 +302,17 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
-          "expr": "{k8s_namespace_name=~\"petclinic.*\"} | json | line_format \"{{.message}}\"",
+          "expr": "{k8s_namespace_name=~\"microservices.*\"} | json | line_format \"{{.message}}\"",
           "refId": "A"
         }
       ],
-      "title": "PetClinic Pod Logs",
+      "title": "Microservices Pod Logs",
       "type": "logs"
     }
   ],
   "refresh": "",
   "schemaVersion": 39,
-  "tags": ["jenkins-2026", "k6", "petclinic"],
+  "tags": ["jenkins-2026", "k6", "microservices"],
   "templating": {
     "list": [
       {

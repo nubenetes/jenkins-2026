@@ -17,7 +17,7 @@ provider "google" {
 # terraform/gateway-bootstrap is a one-time setup step, exactly like
 # terraform/grafana-cloud-stack: it provisions the persistent GCP resources
 # (static IP, Certificate Manager DNS authorization/certificate/map) that
-# public access to Jenkins/PetClinic/Headlamp depends on.
+# public access to Jenkins/Microservices/Headlamp depends on.
 #
 # Run it once via the "Gateway bootstrap" GitHub Actions workflow
 # (.github/workflows/gateway-bootstrap.yml, state in the same GCS bucket as

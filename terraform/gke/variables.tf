@@ -23,7 +23,7 @@ variable "cluster_name" {
 
 variable "machine_type" {
   type        = string
-  description = "Machine type for cluster nodes. e2-standard-4 (4 vCPU/16GB) comfortably runs Jenkins + 18 PetClinic pods + the OTel collectors plus 1-2 concurrent build agent pods."
+  description = "Machine type for cluster nodes. e2-standard-4 (4 vCPU/16GB) comfortably runs Jenkins + 18 Microservices pods + the OTel collectors plus 1-2 concurrent build agent pods."
   default     = "e2-standard-4"
 }
 

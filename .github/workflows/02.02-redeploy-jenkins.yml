@@ -75,7 +75,17 @@ jobs:
 
       - name: Terraform init
         working-directory: terraform/gke
-        run: terraform init -input=false
+        run: |
+          for i in {1..3}; do
+            terraform init -input=false && break || {
+              if [ $i -lt 3 ]; then
+                echo "Terraform init failed, retrying in 10s..."
+                sleep 10
+              else
+                exit 1
+              fi
+            }
+          done
 
       - name: Fetch kubeconfig credentials
         working-directory: terraform/gke
@@ -91,7 +101,7 @@ jobs:
       - name: Redeploy Jenkins (scripts/04-jenkins.sh)
         run: ./scripts/04-jenkins.sh
 
-      - name: Re-seed PetClinic pipelines (scripts/06-seed-pipelines.sh)
+      - name: Re-seed Microservices pipelines (scripts/06-seed-pipelines.sh)
         run: ./scripts/06-seed-pipelines.sh
 
       - name: Publish Grafana dashboards (scripts/07-grafana-dashboards.sh)

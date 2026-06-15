@@ -1,0 +1,26 @@
+{
+  "gatewayApp": {
+    "pet": {
+      "home": {
+        "title": "Pets",
+        "refreshListLabel": "Refresh list",
+        "createLabel": "Create a new Pet",
+        "createOrEditLabel": "Create or edit a Pet",
+        "notFound": "No Pets found"
+      },
+      "created": "A new Pet is created with identifier {{ param }}",
+      "updated": "A Pet is updated with identifier {{ param }}",
+      "deleted": "A Pet is deleted with identifier {{ param }}",
+      "delete": {
+        "question": "Are you sure you want to delete Pet {{ id }}?"
+      },
+      "detail": {
+        "title": "Pet"
+      },
+      "id": "ID",
+      "name": "Name",
+      "birthDate": "Birth Date",
+      "owner": "Owner"
+    }
+  }
+}

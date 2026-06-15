@@ -34,8 +34,8 @@ log_step "Resolved configuration"
 log_info "Platform target : ${J2026_PLATFORM} (config/config.yaml, override with JENKINS2026_PLATFORM)"
 log_info "Observability   : ${J2026_OBS_MODE}"
 log_info "Jenkins ns      : ${J2026_JENKINS_NAMESPACE}"
-log_info "PetClinic ns    : ${J2026_PETCLINIC_NS_STABLE} / ${J2026_PETCLINIC_NS_DEVELOP}"
-log_info "PetClinic svcs  : ${J2026_PETCLINIC_SERVICES}"
+log_info "Microservices ns    : ${J2026_MICROSERVICES_NS_STABLE} / ${J2026_MICROSERVICES_NS_DEVELOP}"
+log_info "Microservices svcs  : ${J2026_MICROSERVICES_SERVICES}"
 
 if [[ "${J2026_PLATFORM}" == "openshift" ]]; then
   if ! kubectl api-resources --api-group=route.openshift.io 2>/dev/null | grep -q routes; then
@@ -44,12 +44,13 @@ if [[ "${J2026_PLATFORM}" == "openshift" ]]; then
 fi
 
 log_step "Adding/updating Helm repositories"
-helm repo add "${J2026_JENKINS_CHART_REPO_NAME}" "${J2026_JENKINS_CHART_REPO_URL}" >/dev/null
-helm repo add "${J2026_OTEL_OPERATOR_REPO_NAME}" "${J2026_OTEL_OPERATOR_REPO_URL}" >/dev/null
-helm repo add "${J2026_GRAFANA_CHART_REPO_NAME}" "${J2026_GRAFANA_CHART_REPO_URL}" >/dev/null
-helm repo add "${J2026_HEADLAMP_CHART_REPO_NAME}" "${J2026_HEADLAMP_CHART_REPO_URL}" >/dev/null
+helm repo add "${J2026_JENKINS_CHART_REPO_NAME}" "${J2026_JENKINS_CHART_REPO_URL}"
+helm repo add "${J2026_OTEL_OPERATOR_REPO_NAME}" "${J2026_OTEL_OPERATOR_REPO_URL}"
+helm repo add "${J2026_GRAFANA_CHART_REPO_NAME}" "${J2026_GRAFANA_CHART_REPO_URL}"
+helm repo add "${J2026_HEADLAMP_CHART_REPO_NAME}" "${J2026_HEADLAMP_CHART_REPO_URL}"
+helm repo add argo https://argoproj.github.io/argo-helm
 # kube-prometheus-stack, used only when observability.mode == oss.
-helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null
-helm repo update >/dev/null
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
 
 log_info "Prereqs OK."

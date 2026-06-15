@@ -1,0 +1,47 @@
+# =============================================================================
+# Default/documentation values for the microservices chart.
+#
+# In practice this chart is always installed with -f values-stable.yaml or
+# -f values-develop.yaml (one Helm release per environment). Those files
+# define the full `services` map; this file just documents the schema and
+# provides safe fallbacks so `helm lint`/`helm template` work without -f.
+# =============================================================================
+
+global:
+  # gke | eks | aks | openshift - selects Ingress vs Route and any
+  # platform-specific annotations in templates/ingress.yaml / route.yaml.
+  # Overridden at deploy time with --set global.platform=... from
+  # config/config.yaml (see vars/microservicesDeploy.groovy).
+  platform: gke
+
+# Kubernetes namespace this release is installed into (also passed to
+# `helm upgrade --install --namespace`).
+namespace: microservices
+
+# "stable" or "develop" - becomes the deployment.environment resource
+# attribute on every OTel span/metric/log emitted by these services.
+env: stable
+
+# Container registry the pipelines push to (config/config.yaml microservices.registry).
+registry: ghcr.io/nubenetes/jenkins-2026-microservices
+
+# Name of an existing imagePullSecret. values-{stable,develop}.yaml
+# set this to "ghcr-credentials", a kubernetes.io/dockerconfigjson secret
+# scripts/01-namespaces.sh creates in every Microservices namespace from
+# REGISTRY_USERNAME/REGISTRY_PASSWORD (empty auths if unset, so anonymous
+# pulls of public images still work).
+imagePullSecret: ""
+
+otel:
+  # In-cluster OTel collector gateway (scripts/03-observability.sh).
+  collectorEndpoint: http://otel-collector-gateway.observability.svc.cluster.local:4317
+
+# Per-service config. Each pipeline run only overrides its own
+# services.<name>.image.tag via --set; everything else comes from this map.
+services: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: ""
