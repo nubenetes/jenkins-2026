@@ -1,0 +1,84 @@
+pgadmin4:
+  env:
+    email: "admin@jenkins2026.nubenetes.com"
+    password: "SuperSecretPassword"
+    
+  # Mount our custom config_local.py
+  extraVolumes:
+    - name: config-local-volume
+      configMap:
+        name: pgadmin-config-local
+        
+  extraVolumeMounts:
+    - name: config-local-volume
+      mountPath: /pgadmin4/config_local.py
+      subPath: config_local.py
+      readOnly: true
+      
+  # Server definitions to pre-populate the 6 databases
+  serverDefinitions:
+    enabled: true
+    servers:
+      stable-gateway:
+        Name: "Stable - Gateway DB"
+        Group: "Stable"
+        Host: "postgres-gateway-primary.microservices.svc"
+        Port: 5432
+        Username: "gateway"
+        MaintenanceDB: "gateway"
+        SSLMode: "prefer"
+        Shared: true
+      stable-customers:
+        Name: "Stable - Customers DB"
+        Group: "Stable"
+        Host: "postgres-customers-primary.microservices.svc"
+        Port: 5432
+        Username: "customers"
+        MaintenanceDB: "customers"
+        SSLMode: "prefer"
+        Shared: true
+      stable-billing:
+        Name: "Stable - Billing DB"
+        Group: "Stable"
+        Host: "postgres-billing-primary.microservices.svc"
+        Port: 5432
+        Username: "billing"
+        MaintenanceDB: "billing"
+        SSLMode: "prefer"
+        Shared: true
+      develop-gateway:
+        Name: "Develop - Gateway DB"
+        Group: "Develop"
+        Host: "postgres-gateway-primary.microservices-develop.svc"
+        Port: 5432
+        Username: "gateway"
+        MaintenanceDB: "gateway"
+        SSLMode: "prefer"
+        Shared: true
+      develop-customers:
+        Name: "Develop - Customers DB"
+        Group: "Develop"
+        Host: "postgres-customers-primary.microservices-develop.svc"
+        Port: 5432
+        Username: "customers"
+        MaintenanceDB: "customers"
+        SSLMode: "prefer"
+        Shared: true
+      develop-billing:
+        Name: "Develop - Billing DB"
+        Group: "Develop"
+        Host: "postgres-billing-primary.microservices-develop.svc"
+        Port: 5432
+        Username: "billing"
+        MaintenanceDB: "billing"
+        SSLMode: "prefer"
+        Shared: true
+
+  # Resource requests/limits for safety (preventing auto-scaling)
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi

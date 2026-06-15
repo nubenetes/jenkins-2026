@@ -141,6 +141,17 @@ sed "s@{{repoUrl}}@${REPO_URL}@g;
 kubectl apply -f "${HEADLAMP_APP_FILE}"
 rm "${HEADLAMP_APP_FILE}"
 
+log_step "Configuring pgAdmin via ArgoCD"
+# Inject values into the pgAdmin Application manifest
+PGADMIN_APP_FILE=$(mktemp)
+REPO_URL="${J2026_SELF_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
+sed "s@{{repoUrl}}@${REPO_URL}@g; 
+     s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g" \
+    "${J2026_ROOT_DIR}/argocd/pgadmin-app.yaml" > "${PGADMIN_APP_FILE}"
+kubectl apply -f "${PGADMIN_APP_FILE}"
+rm "${PGADMIN_APP_FILE}"
+
+
 log_step "Generating and applying Microservices ApplicationSet"
 # Inject values into the AppSet manifest
 # Using @ as delimiter for sed to avoid issues with URLs
