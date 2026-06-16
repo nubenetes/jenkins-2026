@@ -216,5 +216,4 @@ microservices:
 
   services:
     - name: gateway
-    - name: customers
-    - name: billing
+    - name: jhipstersamplemicroservice
