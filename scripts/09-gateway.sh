@@ -236,7 +236,7 @@ spec:
     config:
       type: HTTP
       httpHealthCheck:
-        requestPath: /actuator/health
+        requestPath: /management/health
   targetRef:
     group: ""
     kind: Service

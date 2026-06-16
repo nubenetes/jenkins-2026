@@ -3,57 +3,24 @@
 //
 // NOT a load/stress test: a handful of virtual users (K6_VUS, default 4) each
 // run a few iterations (K6_ITERATIONS, default 12, shared across all VUs) of a
-// simulated "owner browses Microservices" session against the in-cluster Services
-// in TARGET_NAMESPACE (the namespace one of the stable/-develop Microservices
-// pipelines just deployed to - microservices or microservices-develop).
-//
-// Every request in an iteration carries the same W3C `traceparent` header
-// (generated per-iteration below). The OTel Java agent injected by
-// helm/microservices/templates/instrumentation.yaml has the `tracecontext`
-// propagator enabled and a parentbased_traceidratio(1.0) sampler, so it picks
-// up this header and continues the trace - meaning every service touched by
-// one iteration shows up as one trace in Tempo, with its logs (trace_id
-// injected into the MDC) and metrics correlatable in Grafana. The generated
-// trace_id is logged so it can be pasted straight into Tempo's trace search.
-//
-// Run via jenkins/pipelines/Jenkinsfile.microservices-k6-smoke /
-// vars/microservicesK6Smoke.groovy, which also point k6's own `-o opentelemetry`
-// metrics output at the same otel-collector-gateway, so the test's client-side
-// request metrics land in Grafana Cloud alongside the application telemetry.
+// simulated session against the in-cluster Services in TARGET_NAMESPACE.
 // =============================================================================
 
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
 const NAMESPACE = __ENV.TARGET_NAMESPACE || 'microservices';
-const TARGET_URL = __ENV.TARGET_URL; // e.g. https://microservices.jenkins2026.nubenetes.com
-
-// genai-service's pipeline (and therefore its deployed image) is disabled
-// without a real OPENAI_API_KEY (see config/config.yaml
-// microservices.genaiServiceEnabled) - skip it entirely unless explicitly enabled,
-// to avoid failing on a service that may not even be running.
-const GENAI_ENABLED = (__ENV.GENAI_SERVICE_ENABLED || 'false').toLowerCase() === 'true';
+const TARGET_URL = __ENV.TARGET_URL;
 
 function svcUrl(name, port, path = '') {
   if (TARGET_URL) {
-    // When running from outside (e.g. GitHub Actions), all traffic goes through
-    // the Gateway/LoadBalancer at the TARGET_URL.
-    // Infrastructure services like config-server are NOT exposed externally,
-    // so we skip them or map them to the same public URL if we were to expose them.
     return `${TARGET_URL}${path}`;
   }
   return `http://${name}.${NAMESPACE}.svc.cluster.local:${port}${path}`;
 }
 
-const API_GATEWAY = svcUrl('api-gateway', 8080);
-const CONFIG_SERVER = svcUrl('config-server', 8888);
-const DISCOVERY_SERVER = svcUrl('discovery-server', 8761);
-const ADMIN_SERVER = svcUrl('admin-server', 9090);
-const GENAI_SERVICE = svcUrl('genai-service', 8084);
-const ANGULAR = svcUrl('microservices-angular', 8080);
-
-// Default owners 1-3 exist in spring-microservices-microservices' seed data.
-const OWNER_IDS = [1, 2, 3];
+const API_GATEWAY = svcUrl('gateway', 8080);
+const MICROSERVICE = svcUrl('jhipstersamplemicroservice', 8081);
 
 export const options = {
   vus: Number(__ENV.K6_VUS || 4),
@@ -72,9 +39,6 @@ function hex(len) {
   return s;
 }
 
-// Builds a sampled W3C traceparent header (https://www.w3.org/TR/trace-context/)
-// with a fresh random trace-id/parent-id, so the receiving OTel Java agent
-// starts a new trace rooted at this "request".
 function newTraceparent() {
   return `00-${hex(32)}-${hex(16)}-01`;
 }
@@ -92,48 +56,21 @@ export default function () {
   const traceparent = newTraceparent();
   console.log(`[microservices-smoke] iteration trace_id=${traceparent.split('-')[1]}`);
 
-  // Platform/infrastructure services - not reachable via api-gateway, hit
-  // their actuator health endpoints directly.
-  // SKIPPED when running externally (TARGET_URL) as they are not exposed.
-  if (!TARGET_URL) {
-    get(`${CONFIG_SERVER}/actuator/health`, traceparent, 'config-server-health');
-    sleep(0.2);
-    get(`${DISCOVERY_SERVER}/actuator/health`, traceparent, 'discovery-server-health');
-    sleep(0.2);
-    get(`${ADMIN_SERVER}/actuator/health`, traceparent, 'admin-server-health');
-    sleep(0.2);
+  // 1. Gateway UI landing page
+  get(`${API_GATEWAY}/`, traceparent, 'gateway-ui-root');
+  sleep(0.3);
 
-    if (GENAI_ENABLED) {
-      get(`${GENAI_SERVICE}/actuator/health`, traceparent, 'genai-service-health');
-      sleep(0.2);
-    }
+  // 2. Gateway health check
+  get(`${API_GATEWAY}/management/health`, traceparent, 'gateway-health');
+  sleep(0.3);
+
+  // 3. Microservice health check directly (if in-cluster)
+  if (!TARGET_URL) {
+    get(`${MICROSERVICE}/management/health`, traceparent, 'microservice-health');
+    sleep(0.3);
   }
 
-  // Angular UI - serves the SPA shell.
-  get(svcUrl('microservices-angular', 8080, '/'), traceparent, 'microservices-angular-root');
-  sleep(0.3);
-
-  // "Owner browses Microservices" journey through api-gateway, exercising
-  // customers-service, vets-service and visits-service (and the gateway's
-  // own owner+visits aggregation).
-  get(svcUrl('api-gateway', 8080, '/api/vet/vets'), traceparent, 'gateway-vets');
-  sleep(0.3);
-
-  get(svcUrl('api-gateway', 8080, '/api/customer/petTypes'), traceparent, 'gateway-pet-types');
-  sleep(0.3);
-
-  get(svcUrl('api-gateway', 8080, '/api/customer/owners'), traceparent, 'gateway-owners-list');
-  sleep(0.3);
-
-  const ownerId = OWNER_IDS[Math.floor(Math.random() * OWNER_IDS.length)];
-  get(svcUrl('api-gateway', 8080, `/api/customer/owners/${ownerId}`), traceparent, 'gateway-owner-details');
-  sleep(0.3);
-
-  // api-gateway's own /api/gateway/owners/{id} aggregates customers-service +
-  // visits-service in a single call.
-  get(svcUrl('api-gateway', 8080, `/api/gateway/owners/${ownerId}`), traceparent, 'gateway-owner-visits-aggregate');
-  sleep(0.3);
-
-  get(svcUrl('api-gateway', 8080, '/api/visit/pets/visits?petId=1&petId=2'), traceparent, 'gateway-visits');
+  // 4. Microservice health check via Gateway proxy routing (Option A verification)
+  get(`${API_GATEWAY}/services/jhipstersamplemicroservice/management/health`, traceparent, 'gateway-proxy-microservice-health');
   sleep(0.3);
 }
