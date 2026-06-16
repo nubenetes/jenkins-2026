@@ -1,0 +1,71 @@
+name: "01.99 Gateway decommission"
+
+# Manually-triggered setup teardown: destroys terraform/gateway-bootstrap
+# to completely remove the persistent gateway resources (static IP, cert mapping).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  TF_VERSION: "1.15.6"
+
+jobs:
+  decommission:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure GCS backend (terraform/gateway-bootstrap)
+        run: |
+          cat > terraform/gateway-bootstrap/backend_override.tf <<EOF
+          terraform {
+            backend "gcs" {
+              bucket = "${{ secrets.TF_STATE_BUCKET }}"
+              prefix = "jenkins-2026/gateway-bootstrap"
+            }
+          }
+          EOF
+
+      - name: Terraform init
+        working-directory: terraform/gateway-bootstrap
+        run: |
+          for i in {1..3}; do
+            terraform init -input=false && break || {
+              if [ $i -lt 3 ]; then
+                echo "Terraform init failed, retrying in 10s..."
+                sleep 10
+              else
+                exit 1
+              fi
+            }
+          done
+
+      - name: Terraform destroy (destroy persistent gateway resources)
+        working-directory: terraform/gateway-bootstrap
+        env:
+          TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
+        run: terraform destroy -auto-approve -input=false
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Gateway bootstrap resources decommissioned" >> "${GITHUB_STEP_SUMMARY}"
