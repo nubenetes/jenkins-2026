@@ -126,6 +126,27 @@ spec:
                                         sed -i 's|jdbc:mysql://localhost:3306/jhipsterSampleGateway.*|jdbc:postgresql://localhost:5432/jhipsterSampleGateway|g' src/main/resources/config/application-prod.yml
                                         sed -i 's|r2dbc:mysql://localhost:3306/jhipsterSampleGateway.*|r2dbc:postgresql://localhost:5432/jhipsterSampleGateway|g' src/main/resources/config/application-prod.yml
                                     fi
+                                    echo 'Creating gateway CacheConfiguration.java to define NoOpCacheManager bean...'
+                                    mkdir -p src/main/java/io/github/jhipster/sample/config
+                                    cat << 'EOF' > src/main/java/io/github/jhipster/sample/config/CacheConfiguration.java
+package io.github.jhipster.sample.config;
+
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.cache.support.NoOpCacheManager;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+@EnableCaching
+public class CacheConfiguration {
+
+    @Bean
+    public CacheManager cacheManager() {
+        return new NoOpCacheManager();
+    }
+}
+EOF
                                 """
                             }
                         }
