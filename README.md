@@ -260,10 +260,14 @@ A total of **2 Postgres databases** are provisioned in the cluster (both in the 
 *   **URL:** `https://pgadmin.jenkins2026.nubenetes.com` (gated behind GKE Gateway + Google IAP).
 *   **Auto-Login (Google ID):** pgAdmin is configured with Webserver Authentication (`AUTHENTICATION_SOURCES = ['webserver']`) to trust the `X-Goog-Authenticated-User-Email` header injected by Google IAP. A custom python WSGI middleware automatically strips the `accounts.google.com:` namespace prefix from the header, logging you in directly using your Google email address.
 *   **Pre-populated Connections:** Both database connections (Gateway and JHipster Microservice backend) are automatically preconfigured on startup as shared connections.
+*   **Automated Database Authentication (Zero-Password Login):** To eliminate manual password prompts, database connection passwords are automatically resolved and injected:
+    - **Cross-Namespace RBAC**: A dedicated ServiceAccount `pgadmin` and K8s `RoleBinding` grant pgAdmin permission to read the credentials secrets in the `microservices` namespace.
+    - **Dynamic `.pgpass` Generation**: An init container (`setup-pgpass`) mounts the pgAdmin data volume, dynamically retrieves the passwords from the secrets, escapes colons (`:`) and backslashes (`\`) for the `.pgpass` format, and writes them with secure `0600` permissions.
+    - **Auto-Connection**: The pre-populated servers are configured to read from `/var/lib/pgadmin/pgpass`, allowing instant connectivity just by double-clicking the server in the Object Explorer.
 *   **Resource & Safety Limits:** To prevent GKE auto-scaling, pgAdmin is strictly resource-constrained (requests: `50m` CPU / `128Mi` RAM, limits: `200m` CPU / `256Mi` RAM) and is capped by a `ResourceQuota` in the `pgadmin` namespace.
 
-##### Retrieving Database Credentials
-To log into a database from pgAdmin, retrieve the generated operator passwords from their respective secrets. For example:
+##### Retrieving Database Credentials (Optional / CLI Tools)
+If you need to connect to the databases manually using `psql` or external CLI tools, retrieve the generated passwords from their respective Kubernetes secrets:
 *   **Gateway DB password:**
     ```bash
     kubectl get secret postgres-gateway-pguser-gateway -n microservices -o jsonpath='{.data.password}' | base64 -d
@@ -860,7 +864,7 @@ The table below outlines the authentication and authorization mechanisms for eac
 | **Jenkins** | Public URL (`https://jenkins.<baseDomain>`) or `kubectl port-forward` | **Yes** (via Google IAP OAuth) | Google OIDC (`oic-auth` plugin) **or** local `admin` user basic auth | **Role-Based Authorization Strategy**:<br>- Default Google login: `authenticated-base` (Read-Only)<br>- Admin email (`JENKINS_OIDC_ADMIN_EMAIL`): `admin` (Overall/Administer)<br>- Escaped admin user: Full Admin |
 | **ArgoCD** | Public URL (`https://argocd.<baseDomain>`) or `kubectl port-forward` | **Yes** (via Google IAP OAuth) | Google OIDC (via Dex connector) **or** local `admin` secret password | **ArgoCD RBAC Policies** (`argocd-rbac-cm`):<br>- Default OIDC login: `role:readonly`<br>- Admin email (`J2026_JENKINS_OIDC_ADMIN_EMAIL`): `role:admin`<br>- Jenkins API Account: `role:admin` via API token |
 | **Headlamp** | Public URL (`https://headlamp.<baseDomain>`) or `kubectl port-forward` | **Yes** (via Google IAP OAuth) | Token Login (using GKE OAuth access token `ya29....` or ServiceAccount token) | **Kubernetes RBAC**:<br>- GKE maps your GCP Identity to Kubernetes permissions (Project Owner gets cluster-admin)<br>- ServiceAccount token maps to default headlamp-admin bindings |
-| **pgAdmin** | Public URL (`https://pgadmin.<baseDomain>`) or `kubectl port-forward` | **Yes** (via Google IAP OAuth) | Webserver Auth (pgAdmin trusts `X-Goog-Authenticated-User-Email` header) | **Webserver User Mapping & Database Secrets**:<br>- Authenticated email is logged in directly to pgAdmin<br>- Database access requires fetching passwords from operator secrets |
+| **pgAdmin** | Public URL (`https://pgadmin.<baseDomain>`) or `kubectl port-forward` | **Yes** (via Google IAP OAuth) | Webserver Auth (pgAdmin trusts `X-Goog-Authenticated-User-Email` header) | **Webserver User Mapping & Automated Password Injection**:<br>- Authenticated email is logged in directly to pgAdmin<br>- Database connections are automatically authenticated via a dynamically generated `.pgpass` file (secured via GKE RBAC secrets reader) |
 | **Microservices** (Gateway & Backend) | Public URL (`https://microservices.<baseDomain>`) | **No** (Public Demo App) | JWT Token verification (Gateway issues JWT; microservices validate it) | **Spring Security Roles**:<br>- Enforces API authorization (e.g., `ROLE_USER`, `ROLE_ADMIN`) |
 
 ### One-time setup
