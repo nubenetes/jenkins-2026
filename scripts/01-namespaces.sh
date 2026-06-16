@@ -18,15 +18,14 @@ done
 log_step "Ensuring '${J2026_JENKINS_CREDENTIALS_SECRET}' Secret in ${J2026_JENKINS_NAMESPACE}"
 if kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
   log_info "Secret already exists - leaving it untouched."
-  log_info "(to rotate the admin/platform-engineer passwords, delete the secret and re-run this script)"
+  log_info "(to rotate the admin password, delete the secret and re-run this script)"
 else
-  # ADMIN_PASSWORD/PLATFORM_ENGINEER_PASSWORD can be supplied via env for
-  # reproducible demos; otherwise random ones are generated and printed once
+  # ADMIN_PASSWORD can be supplied via env for
+  # reproducible demos; otherwise a random one is generated and printed once
   # below. `openssl rand` writes a fixed-size, finite stream (unlike
   # `/dev/urandom | head`, which makes `tr` die with SIGPIPE -> exit 141
   # under `set -o pipefail`).
   admin_password="${ADMIN_PASSWORD:-$(openssl rand -base64 24 | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c20)}"
-  platform_engineer_password="${PLATFORM_ENGINEER_PASSWORD:-$(openssl rand -base64 24 | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c20)}"
 
   if [[ -z "${JENKINS_OIDC_CLIENT_ID:-}" || -z "${JENKINS_OIDC_CLIENT_SECRET:-}" ]]; then
     log_warn "JENKINS_OIDC_CLIENT_ID/JENKINS_OIDC_CLIENT_SECRET not set - Jenkins will"
@@ -37,7 +36,6 @@ else
   kubectl create secret generic "${J2026_JENKINS_CREDENTIALS_SECRET}" \
     -n "${J2026_JENKINS_NAMESPACE}" \
     --from-literal=admin-password="${admin_password}" \
-    --from-literal=platform-engineer-password="${platform_engineer_password}" \
     --from-literal=otel-logs-backend-url="${OTEL_LOGS_BACKEND_URL:-}" \
     --from-literal=grafana-base-url="${GRAFANA_BASE_URL:-}" \
     --from-literal=grafana-traces-dashboard-uid="${GRAFANA_TRACES_DASHBOARD_UID:-}" \
@@ -50,13 +48,12 @@ else
     --from-literal=oidc-admin-email="${JENKINS_OIDC_ADMIN_EMAIL:-}"
 
   log_info "Created. Jenkins admin login: ${J2026_JENKINS_ADMIN_USER} / ${admin_password}"
-  log_info "Created. Jenkins platform-engineer login (pac-dev/*-develop pipelines-as-code sandbox): ${J2026_PLATFORM_ENGINEER_USER} / ${platform_engineer_password}"
-  log_warn "Save these passwords now - they are not printed again on subsequent runs."
+  log_warn "Save this password now - it is not printed again on subsequent runs."
 fi
 
 log_step "Refreshing Microservices URLs in '${J2026_JENKINS_CREDENTIALS_SECRET}' Secret"
-# Non-sensitive, so refreshed on every run (unlike the admin/platform-engineer
-# passwords above) - tracks gateway.baseDomain even if it changes after the
+# Non-sensitive, so refreshed on every run (unlike the admin
+# password above) - tracks gateway.baseDomain even if it changes after the
 # secret was first created. Empty if the Gateway feature is disabled. Surfaced
 # in the Jenkins systemMessage banner by jcasc-base.yaml (MICROSERVICES_URL,
 # MICROSERVICES_DEVELOP_URL).

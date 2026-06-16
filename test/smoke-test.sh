@@ -45,7 +45,7 @@ ADMIN_PASSWORD="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "$
 AUTH="${J2026_JENKINS_ADMIN_USER}:${ADMIN_PASSWORD}"
 
 NUM_SERVICES=$(wc -w <<< "${J2026_MICROSERVICES_SERVICES}")
-EXPECTED_JOBS=$(( NUM_SERVICES + 2 )) # 1 stable pipeline/service + seed-jobs + pac-dev folder
+EXPECTED_JOBS=$(( NUM_SERVICES + 2 )) # 1 stable pipeline/service + seed-jobs + microservices-k6-smoke
 
 JOB_COUNT="$(jenkins_exec curl -sg -u "${AUTH}" 'http://localhost:8080/api/json?tree=jobs[name]' \
   | python3 -c 'import sys,json; print(len(json.load(sys.stdin)["jobs"]))' 2>/dev/null || echo 0)"

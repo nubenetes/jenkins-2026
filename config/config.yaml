@@ -58,11 +58,6 @@ jenkins:
     # Empty = latest. Pin for reproducibility, e.g. "5.8.16".
     version: ""
   adminUser: admin
-  # Local-realm account that is the only identity (besides adminUser) granted
-  # Job/Read on the pac-dev/*-develop pipelines-as-code dev sandbox - see
-  # jenkins/casc/jcasc-base.yaml "platform-engineer" item role and
-  # README.md "Pipelines-as-code dev sandbox".
-  platformEngineerUser: platform-engineer
   # Name of the k8s Secret (created by scripts/01-namespaces.sh) holding the
   # admin password and other pipeline credentials (registry, git, Grafana).
   # See helm/jenkins/values-common.yaml controller.containerEnv and
@@ -72,11 +67,6 @@ jenkins:
   # library and by the seed job to fetch Jenkinsfile.microservices + seed scripts.
   selfRepoUrl: https://github.com/nubenetes/jenkins-2026.git
   selfRepoBranch: main
-  # Branch the "pac-dev/seed-jobs-dev" job (and the pac-dev/*-develop jobs it
-  # generates) track instead of selfRepoBranch - lets devops/platform
-  # engineers test pipelines-as-code changes on this branch before merging to
-  # selfRepoBranch. See jenkins/casc/jcasc-seed-job.yaml.
-  selfRepoDevBranch: develop
 
 # -----------------------------------------------------------------------------
 # Observability
@@ -181,7 +171,7 @@ gateway:
   hosts:
     jenkins: "jenkins"
     microservices: "microservices"
-    # pac-dev/*-develop dev sandbox (namespace microservices-develop)
+    # develop sandbox (namespace microservices-develop)
     microservicesDevelop: "microservices-develop"
     headlamp: "headlamp"
     pgadmin: "pgadmin"
@@ -197,8 +187,7 @@ gateway:
 microservices:
   namespaces:
     stable: microservices
-    # Namespace the pac-dev/*-develop pipelines-as-code dev sandbox deploys
-    # into.
+    # Namespace the develop sandbox deploys into.
     develop: microservices-develop
 
   # JHipster microservices monorepo coordinates

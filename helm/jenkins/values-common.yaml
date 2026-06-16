@@ -86,25 +86,12 @@ controller:
         secretKeyRef:
           name: jenkins-credentials
           key: admin-password
-    - name: JENKINS_PLATFORM_ENGINEER_ID
-      value: "platform-engineer"
-    - name: JENKINS_PLATFORM_ENGINEER_PASSWORD
-      valueFrom:
-        secretKeyRef:
-          name: jenkins-credentials
-          key: platform-engineer-password
     - name: JENKINS_URL
       value: "http://localhost:8080/"
     - name: JENKINS2026_REPO_URL
       value: "https://github.com/nubenetes/jenkins-2026.git"
     - name: JENKINS2026_REPO_BRANCH
       value: "main"
-    # Branch the "pac-dev/seed-jobs-dev" job (and the pac-dev/*-develop jobs
-    # it generates) track instead of JENKINS2026_REPO_BRANCH - see
-    # jenkins/casc/jcasc-seed-job.yaml and README.md "Pipelines-as-code dev
-    # sandbox".
-    - name: JENKINS2026_DEV_REPO_BRANCH
-      value: "develop"
     - name: JENKINS2026_PLATFORM
       value: "gke"
     - name: MICROSERVICES_REGISTRY
@@ -139,7 +126,7 @@ controller:
           name: jenkins-credentials
           key: microservices-url
           optional: true
-    # Public URL of the pac-dev/*-develop dev sandbox Microservices
+    # Public URL of the develop sandbox Microservices
     # (https://microservices-develop.<gateway.baseDomain>) - same conditions as
     # MICROSERVICES_URL above.
     - name: MICROSERVICES_DEVELOP_URL
@@ -245,8 +232,7 @@ controller:
     - github-branch-source:1967.1969.v205fd594c821
     - configuration-as-code:2082.vdb_db_4622e9fa_
     - job-dsl:3654.vdf58f53e2d15
-    # Provides the folder() Job DSL primitive used to create the pac-dev/
-    # pipelines-as-code dev sandbox (jenkins/pipelines/seed/seed_jobs.groovy).
+    # Provides folder support.
     - cloudbees-folder:6.1100.ve9eed61d16c4
     - pipeline-utility-steps:3.810.va_7672d206740
     - pipeline-stage-view:2.41

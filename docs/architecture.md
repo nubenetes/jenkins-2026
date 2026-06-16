@@ -9,19 +9,17 @@ an **existing** Kubernetes cluster (GKE, EKS, AKS or OpenShift 4.20+):
   Configuration-as-Code (JCasC) - no manual clicking required.
 - **Pipelines as code**: a Job DSL "seed job" (itself defined in JCasC) reads
   [`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml)
-  and generates 9 **stable** Jenkins Pipeline jobs at the root, one per
-  Microservices service, tracking the upstream `main` branch and deploying to the
-  `microservices` namespace, plus a `microservices-k6-smoke` job that sends a small
+  and generates stable Jenkins Pipeline jobs at the root, one per
+  Microservices service, plus a `microservices-k6-smoke` job that sends a small
   amount of synthetic traffic through all 3 services afterwards to exercise
   Grafana Cloud trace/metric/log correlation (see
-  [`docs/observability.md`](observability.md#k6-observability-smoke-test)). A
-  second seed job, `pac-dev/seed-jobs-dev`, generates the same 10 jobs
-  (`pac-dev/<service>-develop` + `pac-dev/microservices-k6-smoke-develop`) in an
-  isolated `pac-dev/` folder - a dev sandbox for iterating on this repo's own
-  pipelines-as-code, deploying to the separate `microservices-develop` namespace.
+  [`docs/observability.md`](observability.md#k6-observability-smoke-test)).
+  The pipelines dynamically configure themselves (target namespace, environment, and
+  GitOps branch) based on the branch (`JENKINS2026_REPO_BRANCH`) of this repo that is
+  currently deployed.
 - **Spring Microservices microservices + Angular UI**, deployed by those
-  pipelines into two namespaces (`microservices` / `microservices-develop`) via a
-  single parametrized [Helm chart](../helm/microservices).
+  pipelines into either the `microservices` or `microservices-develop` namespaces via a
+  single parameterized [Helm chart](../helm/microservices).
 - **OpenTelemetry** end to end: Jenkins, the Java services (auto-instrumented
   by the OTel Operator) and the Angular UI (a small vanilla-JS RUM snippet)
   all export traces/metrics/logs to an in-cluster OTel Collector, which
@@ -35,7 +33,7 @@ flowchart TD
     repo["github.com/nubenetes/jenkins-2026<br/>JCasC, Jenkinsfile, shared library,<br/>Helm charts, seed/services.yaml"]
 
     subgraph jenkins_ns["namespace: jenkins"]
-        jenkins["Jenkins controller (jenkinsci/helm-charts + JCasC)<br/>- security, global shared library, OTel exporter, seed jobs<br/>- seed jobs (Job DSL) generate 6 pipeline jobs total:<br/>  (2 stable name (main) + microservices-k6-smoke) at root<br/>  + (2 pac-dev/name-develop (develop) + pac-dev/microservices-k6-smoke-develop) in pac-dev/<br/>- each run uses a Kubernetes pod agent<br/>  (maven / node / docker:dind / helm+kubectl / k6 containers)"]
+        jenkins["Jenkins controller (jenkinsci/helm-charts + JCasC)<br/>- security, global shared library, OTel exporter, seed jobs<br/>- seed jobs (Job DSL) generate stable pipeline jobs at the root:<br/>  (gateway, jhipstersamplemicroservice, microservices-k6-smoke)<br/>- each run uses a Kubernetes pod agent<br/>  (maven / node / docker:dind / helm+kubectl / k6 containers)"]
     end
 
     repo -->|"global pipeline library +<br/>seed job (checkout scm)"| jenkins
@@ -44,7 +42,7 @@ flowchart TD
         microservices["gateway (Spring Boot + Angular UI),<br/>jhipstersamplemicroservice (Spring Boot backend)"]
     end
 
-    subgraph microservices_dev_ns["namespace: microservices-develop (pac-dev/*-develop sandbox, tracks main)"]
+    subgraph microservices_dev_ns["namespace: microservices-develop (sandbox, tracks main)"]
         microservices_dev["gateway (Spring Boot + Angular UI),<br/>jhipstersamplemicroservice (Spring Boot backend)"]
     end
 

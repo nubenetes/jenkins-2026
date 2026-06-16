@@ -137,7 +137,7 @@ spec:
             stage('Integration k6 Smoke Test') {
                 steps {
                     script {
-                        def k6JobName = params.envName == 'develop' ? 'microservices-k6-smoke-develop' : 'microservices-k6-smoke'
+                        def k6JobName = 'microservices-k6-smoke'
                         echo "Triggering integration k6 smoke test: ${k6JobName}..."
                         build job: k6JobName, wait: true
                     }

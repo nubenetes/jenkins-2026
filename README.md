@@ -7,17 +7,9 @@ Job DSL ("pipelines as code"), and uses it to build, containerize and deploy
 the [Spring Microservices microservices](https://github.com/spring-microservices/spring-microservices-microservices)
 reference application (+ its [Angular UI](https://github.com/spring-microservices/spring-microservices-angular))
 in a **GitFlow-inspired** model with two distinct tracks:
-- **Stable Track**: 9 pipelines at the root, plus the `microservices-k6-smoke`
-  observability smoke test (all visible in the **microservices** view), tracking
-  the upstream `main` branch and deploying to the `microservices` namespace.
-  Managed from this repo's `main` branch.
-- **Sandbox Track**: 9 `<service>-develop` pipelines, plus
-  `pac-dev/microservices-k6-smoke-develop` (all visible in the
-  **microservices-develop** view) residing in the `pac-dev/` folder. This isolated
-  sandbox lets devops/platform engineers iterate on this repo's own
-  pipelines-as-code (Jenkinsfile, shared library, JCasC, seed jobs) on the
-  `develop` branch, deploying to a separate `microservices-develop` namespace
-  without affecting the tested stable pipelines.
+- **Unified Pipeline Model**: A single set of stable pipelines (`gateway`, `jhipstersamplemicroservice`, and `microservices-k6-smoke` at the root, all visible in the **microservices** view) tracks and builds the microservices. They dynamically adapt their configuration (target namespace, deployment environment, and tracking branch) based on the branch (`JENKINS2026_REPO_BRANCH`) of this infra repository that is currently active/deployed.
+  - **Main Branch**: Deploys to the `microservices` namespace and updates the `main` branch of the GitOps config repository.
+  - **Develop/Feature Branches**: Deploys to the `microservices-develop` namespace and updates the `develop` branch of the GitOps config repository.
 
 - **Observability (Grafana Cloud / OSS)**: Traces, metrics and logs are fully correlated. Dashboard deployment is managed via the native **`gcx` CLI** using a GitOps workflow.
 - **ArgoCD (GitOps)**: The entire Microservices stack is managed via **ArgoCD**, providing a declarative GitOps engine for continuous delivery. It is integrated with Google OIDC for secure, single sign-on access.
@@ -326,8 +318,7 @@ Once traffic is running, go to your Grafana Cloud instance:
 > triggers the seed job immediately so the 2 stable pipelines exist right
 > away; trigger individual builds from the Jenkins UI (`listView` **microservices**).
 > Jobs are not auto-triggered (no SCM-poll).
-> The same seed run also creates `microservices-k6-smoke` (and
-> `pac-dev/microservices-k6-smoke-develop`) - run it after the 2 services have
+> The same seed run also creates `microservices-k6-smoke` - run it after the 2 services have
 > deployed at least once to send a small amount of traffic through the whole
 > app and give Grafana fresh traces/metrics/logs to correlate (see
 > [`docs/observability.md`](docs/observability.md#k6-observability-smoke-test)).
@@ -416,10 +407,7 @@ what they can do. By default, a Google login only gets `authenticated-base`
 (read-only UI access); to grant the `admin` role (`Overall/Administer`) to
 your own account, set `JENKINS_OIDC_ADMIN_EMAIL`.
 
-This **replaces** the old local `admin`/`platform-engineer` password logins -
-the `platform-engineer` account can no longer log in (its
-[pac-dev item role](#pipelines-as-code-dev-sandbox-pac-dev) is left in place
-in case it's remapped to an OIDC user/group later). The `${JENKINS_ADMIN_ID}`
+This **replaces** the old local `admin` password login. The `${JENKINS_ADMIN_ID}`
 escape hatch above remains as the break-glass admin login.
 
 1. **Create a third Google OAuth 2.0 Web application client** (can reuse the
@@ -502,79 +490,42 @@ Beyond the existing kubernetes/git/JCasC/OTel plugins, three are aimed at UX:
 
 A Jenkins seed job (defined via JCasC, running Job DSL against
 [`jenkins/pipelines/seed/seed_jobs.groovy`](jenkins/pipelines/seed/seed_jobs.groovy)
-+ [`services.yaml`](jenkins/pipelines/seed/services.yaml)) generates two
-distinct tracks of pipelines:
++ [`services.yaml`](jenkins/pipelines/seed/services.yaml)) generates the stable pipeline jobs at the root level under the `microservices` view:
+- `gateway`
+- `jhipstersamplemicroservice`
+- `microservices-k6-smoke`
 
-### Pipeline Model Matrix
+The first 2 pipelines run [`Jenkinsfile.microservices`](jenkins/pipelines/Jenkinsfile.microservices) (build/deploy, one Microservices service each); the last job runs [`Jenkinsfile.microservices-k6-smoke`](jenkins/pipelines/Jenkinsfile.microservices-k6-smoke) (synthetic traffic + telemetry, see [k6 observability smoke test](#k6-observability-smoke-test) below).
 
-| Feature | Stable Track (Root) | Sandbox Track (`pac-dev/`) |
-| :--- | :--- | :--- |
-| **Jenkins View** | `microservices` (root-level) | `microservices-develop` (root-level) |
-| **Jenkins Folder** | Root `/` | `pac-dev/` |
-| **This Repo Branch** | `main` | `develop` |
-| **Microservices Branch** | `main` | `main` (upstream default) |
-| **Target Namespace** | `microservices` | `microservices-develop` |
-| **RBAC Access** | `developer` (Read/Build) | `platform-engineer` (Admin) |
-| **Tracking Job** | `seed-jobs` | `pac-dev/seed-jobs-dev` |
+### Pipeline Branch & Environment Mapping
 
-### Pipeline inventory
+Instead of separating stable and development pipelines into separate jobs and folders, a single set of root stable pipelines is generated. These pipelines dynamically determine their target namespace, environment, and tracked branch based on the active branch of this infra repository (`JENKINS2026_REPO_BRANCH`) that is currently deployed on the Jenkins controller:
 
-`seed-jobs` (tracks `main`) and `pac-dev/seed-jobs-dev` (tracks `develop`)
-each generate 3 jobs from the same
-[`seed_jobs.groovy`](jenkins/pipelines/seed/seed_jobs.groovy) +
-[`services.yaml`](jenkins/pipelines/seed/services.yaml) - 2 per-service
-build/deploy pipelines plus one k6 observability smoke test job:
-
-| Stable job (root, `microservices` view) | Dev-sandbox job (`pac-dev/`, `microservices-develop` view) |
-|---|---|
-| `gateway` | `pac-dev/gateway-develop` |
-| `jhipstersamplemicroservice` | `pac-dev/jhipstersamplemicroservice-develop` |
-| `microservices-k6-smoke` | `pac-dev/microservices-k6-smoke-develop` |
-
-The first 2 rows run [`Jenkinsfile.microservices`](jenkins/pipelines/Jenkinsfile.microservices)
-(build/deploy, one Microservices service each); the last row runs
-[`Jenkinsfile.microservices-k6-smoke`](jenkins/pipelines/Jenkinsfile.microservices-k6-smoke)
-(synthetic traffic + telemetry, see [k6 observability smoke
-test](#k6-observability-smoke-test) below).
+*   **When deployed on the `main` branch:**
+    *   **Shared Library branch:** `main`
+    *   **Target Namespace:** `microservices`
+    *   **Environment Name:** `stable` (modifies `values-stable.yaml` in the GitOps config repo on the `main` branch)
+*   **When deployed on the `develop` branch (or feature branches):**
+    *   **Shared Library branch:** `develop` (or feature branch name)
+    *   **Target Namespace:** `microservices-develop`
+    *   **Environment Name:** `develop` (modifies `values-develop.yaml` in the GitOps config repo on the `develop` branch)
 
 ### Architecture Diagram
 
 ```mermaid
 graph TD
     subgraph "Jenkins Controller"
-        SJ[seed-jobs] --> |tracks main| SP[2x Stable Pipelines]
+        SJ[seed-jobs] --> |tracks JENKINS2026_REPO_BRANCH| SP[Stable Pipelines]
         SJ --> K6S[microservices-k6-smoke]
-        SJD[pac-dev/seed-jobs-dev] --> |tracks develop| DP[2x Develop Pipelines]
-        SJD --> K6D[pac-dev/microservices-k6-smoke-develop]
     end
 ```
 
-Each per-service pipeline runs
-[`Jenkinsfile.microservices`](jenkins/pipelines/Jenkinsfile.microservices):
-checkout -> build & test -> build & push image -> `helm upgrade` the
-[`helm/microservices`](helm/microservices) chart for that environment -> smoke test.
+Each per-service pipeline runs [`Jenkinsfile.microservices`](jenkins/pipelines/Jenkinsfile.microservices):
+checkout -> build & test -> build & push image -> `helm upgrade` the [`helm/microservices`](helm/microservices) chart for that environment -> smoke test.
 Details in [`docs/pipelines-as-code.md`](docs/pipelines-as-code.md).
 
 > [!NOTE]
 > For Java microservices containing a `jib-maven-plugin` configuration, the image build and push stages are handled directly in a single step by Jib, and the subsequent redundant local `docker push` is automatically skipped.
-
-### Pipelines-as-code dev sandbox (`pac-dev/`)
-
-The **`pac-dev/seed-jobs-dev`** job tracks this repo's `develop` branch
-and generates the `pac-dev/` folder. This gives devops/platform engineers
-an isolated environment to iterate on the pipelines themselves.
-
-**RBAC & Visibility**:
-- The **`microservices`** view and the 3 root jobs are visible to everyone
-  (`developer` role).
-- The **`microservices-develop`** view and the **`pac-dev/`** folder are
-  **hidden** from regular users. They are only visible to the
-  `platform-engineer` role and `admin` users (see
-  [`jenkins/casc/jcasc-base.yaml`](jenkins/casc/jcasc-base.yaml)).
-- The **"All"** jobs view in Jenkins automatically filters based on these
-  permissions.
-
-Details in [`docs/pipelines-as-code.md`](docs/pipelines-as-code.md#pipelines-as-code-dev-sandbox-pac-dev).
 
 ## Observability
 
@@ -599,8 +550,7 @@ export OTLP to an in-cluster collector, which forwards to Grafana Cloud
 
 ### k6 observability smoke test
 
-`microservices-k6-smoke` (root) and `pac-dev/microservices-k6-smoke-develop`
-(`pac-dev/`) - see [Pipeline inventory](#pipeline-inventory) - run
+`microservices-k6-smoke` (at the root) runs
 [`jenkins/pipelines/k6/microservices-smoke.js`](jenkins/pipelines/k6/microservices-smoke.js)
 via [`vars/microservicesK6Smoke.groovy`](vars/microservicesK6Smoke.groovy). This is
 **not a load/stress test** - it's an on-demand way to give Grafana a fresh,
@@ -653,7 +603,7 @@ sequenceDiagram
   (`observability/grafana/dashboards/k6-smoke-overview.json`, uid
   `jenkins2026-k6-smoke-overview`) scoped to this run's
   `stable`/`develop` environment and time window.
-- **Automated Pipeline Integration**: The k6 smoke test is automatically triggered at the end of every microservice build and deploy pipeline ([MicroservicesPipeline.groovy](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy)). After a microservice (`jhipstersamplemicroservice` or `gateway`) is deployed to GKE and passes its basic startup health checks, the pipeline automatically triggers the corresponding k6 integration test job (`microservices-k6-smoke-develop` for the develop track in `pac-dev/` and `microservices-k6-smoke` for the stable track). This automatically validates that the newly deployed service version integrates successfully with the gateway, other microservices, and databases, and sends correlated telemetry (metrics, traces, logs) to Grafana Cloud.
+- **Automated Pipeline Integration**: The k6 smoke test is automatically triggered at the end of every microservice build and deploy pipeline ([MicroservicesPipeline.groovy](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy)). After a microservice (`jhipstersamplemicroservice` or `gateway`) is deployed to GKE and passes its basic startup health checks, the pipeline automatically triggers the root `microservices-k6-smoke` integration test job. This automatically validates that the newly deployed service version integrates successfully with the gateway, other microservices, and databases, and sends correlated telemetry (metrics, traces, logs) to Grafana Cloud.
 - **Run it** after the 2 services have deployed at least once (see [First run
   note](#quick-start)), then follow the Grafana link in the build console -
   or search Tempo for one of the `[microservices-smoke] iteration
@@ -809,14 +759,14 @@ applied by [`scripts/09-gateway.sh`](scripts/09-gateway.sh):
 |---|---|---|
 | Jenkins | `https://jenkins.<baseDomain>` | yes |
 | Microservices (stable) | `https://microservices.<baseDomain>` | no (public demo app) |
-| Microservices (pac-dev/\*-develop sandbox) | `https://microservices-develop.<baseDomain>` | no (public demo app) |
+| Microservices (develop sandbox) | `https://microservices-develop.<baseDomain>` | no (public demo app) |
 | Headlamp | `https://headlamp.<baseDomain>` | yes |
 | pgAdmin | `https://pgadmin.<baseDomain>` | yes |
 
 `<baseDomain>` is [`gateway.baseDomain`](config/config.yaml) -
 `jenkins2026.nubenetes.com` by default. Jenkins, Headlamp, and pgAdmin get an extra
 Google-login gate (IAP) in front of their own auth; Microservices (both stable and
-the dev sandbox), the demo app, stays open. Both Microservices URLs are also
+develop environments), the demo app, stays open. Both Microservices URLs are also
 surfaced in the Jenkins UI's system message banner (see [`jenkins/casc/jcasc-base.yaml`](jenkins/casc/jcasc-base.yaml)).
 **This whole feature is opt-in**: set
 `JENKINS2026_BASE_DOMAIN=""` to disable it (no `Gateway`/`HTTPRoute`/
@@ -948,10 +898,10 @@ assumes an existing cluster" (scoped entirely to `terraform/gke/` and
 3. **`scripts/00-check-prereqs.sh` + `scripts/01-namespaces.sh`**.
 4. **`scripts/up.sh`** - the full stack, exactly as in Quick start.
 5. **`test/smoke-test.sh`** - verifies the Jenkins controller pod is `Running`
-   and serves `/login`, the seed job created the 9 stable pipelines (plus
-   `seed-jobs` and the `pac-dev` folder), the OTel Operator/collectors (and,
-   for `oss` mode, Grafana) are running, and both Microservices namespaces have
-   all 9 `Deployment`s.
+    and serves `/login`, the seed job created the stable pipelines (plus
+    `seed-jobs`), the OTel Operator/collectors (and,
+    for `oss` mode, Grafana) are running, and both Microservices namespaces have
+    all `Deployment`s.
 6. **`scripts/down.sh`** (with `J2026_DELETE_NAMESPACES=true`) then
    **`terraform -chdir=terraform/gke destroy`** - decommissions everything.
 

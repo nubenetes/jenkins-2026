@@ -65,20 +65,9 @@ jenkins:
             secret: "${JENKINS_ADMIN_PASSWORD}"
             group: "escape-hatch-admin"
 
-  # Role-Strategy roles come in two flavours:
-  #   - "global" roles apply to every item unconditionally (no pattern).
-  #   - "items"  roles apply only to items whose full path matches "pattern",
-  #              ADDING permissions on top of any global role - they cannot
-  #              revoke a permission a global role already grants.
-  # To keep pac-dev/* hidden from "authenticated" users, Job/* permissions
-  # must therefore live in an ITEM role scoped to everything EXCEPT pac-dev/*
-  # ("developer" below), not a global role.
-  #
-  # NOTE: the local "platform-engineer" account (and its item role below) can
-  # no longer log in now that securityRealm is "oic" instead of "local" - the
-  # role definition is left in place (Overall/Administer via "admin" already
-  # covers pac-dev/* anyway) in case it's mapped to another OIDC
-  # user/group later. See README.md "Pipelines-as-code dev sandbox".
+  # Role-Strategy global roles:
+  #   - "admin": Full administrative access.
+  #   - "developer": Run and inspect the Microservices pipelines.
   authorizationStrategy:
     roleBased:
       roles:
@@ -98,20 +87,11 @@ jenkins:
             entries:
               - group: "escape-hatch-admin"
               - user: "${JENKINS_OIDC_ADMIN_EMAIL:-}"
-          - name: "authenticated-base"
-            description: "Baseline UI access for any logged-in user (no Job/* - granted per-item below)"
+          - name: "developer"
+            description: "Run and inspect the Microservices pipelines"
             permissions:
               - "Overall/Read"
               - "View/Read"
-            entries:
-              - group: "authenticated"
-        items:
-          - name: "developer"
-            description: "Run and inspect the stable Microservices pipelines (everything outside pac-dev/)"
-            # Matches every item EXCEPT "pac-dev" and "microservices-develop" (the sandbox view) -
-            # i.e. the 9 root Microservices jobs + seed-jobs.
-            pattern: "^(?!pac-dev(/.*)?$|microservices-develop$).*$"
-            permissions:
               - "Job/Read"
               - "Job/Build"
               - "Job/Cancel"
@@ -120,21 +100,6 @@ jenkins:
               - "Run/Replay"
             entries:
               - group: "authenticated"
-          - name: "platform-engineer"
-            description: "Run, inspect and re-seed the pac-dev/*-develop pipelines-as-code dev sandbox"
-            # Matches the "pac-dev" folder itself, everything under it, AND the
-            # root-level "microservices-develop" sandbox view.
-            pattern: "^(pac-dev(/.*)?|microservices-develop)$"
-            permissions:
-              - "Job/Read"
-              - "Job/Build"
-              - "Job/Cancel"
-              - "Job/Workspace"
-              - "Job/Discover"
-              - "Run/Replay"
-              - "Job/Configure"
-            entries:
-              - user: "${JENKINS_PLATFORM_ENGINEER_ID:-platform-engineer}"
 
 # Allows the "seed-jobs" pipeline's jobDsl step (sandbox: false, see
 # jenkins/pipelines/seed/Jenkinsfile.seed) to run unsandboxed without

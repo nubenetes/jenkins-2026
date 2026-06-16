@@ -50,13 +50,6 @@ controller:
         secretKeyRef:
           name: ${J2026_JENKINS_CREDENTIALS_SECRET}
           key: admin-password
-    - name: JENKINS_PLATFORM_ENGINEER_ID
-      value: "${J2026_PLATFORM_ENGINEER_USER}"
-    - name: JENKINS_PLATFORM_ENGINEER_PASSWORD
-      valueFrom:
-        secretKeyRef:
-          name: ${J2026_JENKINS_CREDENTIALS_SECRET}
-          key: platform-engineer-password
     - name: JENKINS_URL
       value: "http://localhost:8080/"
     - name: JENKINS2026_REPO_URL
@@ -65,8 +58,6 @@ controller:
       value: "https://github.com/nubenetes/jenkins-2026-gitops-config.git"
     - name: JENKINS2026_REPO_BRANCH
       value: "${J2026_SELF_REPO_BRANCH}"
-    - name: JENKINS2026_DEV_REPO_BRANCH
-      value: "${J2026_SELF_REPO_DEV_BRANCH}"
     - name: JENKINS2026_PLATFORM
       value: "${J2026_PLATFORM}"
     - name: JENKINS2026_GENAI_SERVICE_ENABLED

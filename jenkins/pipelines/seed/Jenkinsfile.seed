@@ -39,20 +39,13 @@ spec:
         // org.yaml.snakeyaml.Yaml to parse services.yaml, which the Job DSL
         // sandbox would otherwise block.
         //
-        // JOB_FOLDER is derived from this seed job's own location: a seed
-        // job at the root (JOB_NAME == "seed-jobs") generates the 9 stable
-        // jobs at the root, while "pac-dev/seed-jobs-dev" generates the
-        // pac-dev/*-develop dev sandbox (see seed_jobs.groovy and
-        // jenkins/casc/jcasc-seed-job.yaml). additionalParameters exposes
-        // map entries as variables to the DSL script.
+        // jobDsl runs the seed_jobs.groovy script to generate/update the
+        // stable pipelines. sandbox is false since this repo is trusted.
         jobDsl(
           targets: 'jenkins/pipelines/seed/seed_jobs.groovy',
           removedJobAction: 'DELETE',
           removedViewAction: 'DELETE',
           additionalClasspath: 'jenkins/pipelines/seed',
-          additionalParameters: [
-            JOB_FOLDER: env.JOB_NAME.contains('/') ? env.JOB_NAME.substring(0, env.JOB_NAME.lastIndexOf('/')) : ''
-          ],
           sandbox: false
         )
       }
