@@ -15,13 +15,14 @@ pgadmin4:
   # Custom init container to fetch PostgreSQL user secrets and write the .pgpass file
   extraInitContainers: |
     - name: setup-pgpass
-      image: bitnami/kubectl:1.29
+      image: alpine:3.20
       securityContext:
         runAsUser: 0
       command:
         - sh
         - -c
         - |
+          apk add --no-cache kubectl
           # Wait up to 60s for Postgres secrets to exist
           for i in {1..30}; do
             if kubectl get secret postgres-gateway-pguser-gateway -n microservices >/dev/null 2>&1 && \
