@@ -37,7 +37,8 @@ def call(Map cfg) {
           # Try Jib first (modern preference), then fallback to spring-boot:build-image
           if grep -q "jib-maven-plugin" pom.xml; then
              ./mvnw -B -Pprod -DskipTests jib:build -Djib.to.image=${cfg.image} \
-               -Djib.to.auth.username=\$REG_USER -Djib.to.auth.password=\$REG_PASS
+               -Djib.to.auth.username=\$REG_USER -Djib.to.auth.password=\$REG_PASS \
+               -Djib.serialize=true
              # Jib pushes directly, so we flag it to skip local docker push
              echo "JIB_PUSHED" > ${env.WORKSPACE}/jib_pushed.txt
           else
