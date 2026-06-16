@@ -501,6 +501,20 @@ Instead of separating stable and development pipelines into separate jobs and fo
 *   **Target Namespace:** `microservices`
 *   **Environment Name:** `stable` (modifies `values-stable.yaml` in the GitOps config repository on the `main` branch)
 
+#### Why the GitOps Repo Uses Only the `main` Branch
+
+The companion repository `jenkins-2026-gitops-config` is configured to track only a single `main` branch:
+
+1. **Single Environment Target**: In this unified model, the legacy development sandbox has been pruned, leaving only a single stable target namespace (`microservices`).
+2. **Simplified Promotion**: The Jenkins CI pipeline writes image tags directly inside [values-stable.yaml](file:///home/inafev/github/jenkins-2026-gitops-config/helm/microservices/values-stable.yaml) on the `main` branch of the GitOps repository.
+
+#### Would a `develop` branch make sense?
+
+Yes, but **only if you restore a multi-environment deployment model** (e.g., dev/staging vs. stable namespaces):
+
+* **Testing Infrastructure Changes**: If developers need to test Helm chart updates (e.g., resource limits, new environment variables, or sidecar additions) in a sandbox (`develop`) namespace before promoting them to stable (`main`), they would push changes to the `develop` branch of the GitOps repo first for verification.
+* **Tracking Parallel Code Tracks**: If upstream repositories build from both a `develop` branch (dev builds) and a `main` branch (stable releases), Jenkins would commit dev tags to a `values-develop.yaml` on the GitOps `develop` branch (synced to a dev namespace), and stable tags to [values-stable.yaml](file:///home/inafev/github/jenkins-2026-gitops-config/helm/microservices/values-stable.yaml) on the GitOps `main` branch (synced to the stable namespace).
+
 ### Architecture Diagram
 
 ```mermaid
