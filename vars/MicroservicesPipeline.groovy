@@ -25,8 +25,8 @@ spec:
         - name: DOCKER_HOST
           value: tcp://localhost:2375
       resources:
-        requests: {cpu: 100m, memory: 512Mi}
-        limits: {cpu: '1.5', memory: 1.5Gi}
+        requests: {cpu: 200m, memory: 1024Mi}
+        limits: {cpu: '2', memory: 2.5Gi}
     - name: node
       image: node:20-bookworm
       command: ['sleep']
@@ -35,8 +35,8 @@ spec:
         - name: DOCKER_HOST
           value: tcp://localhost:2375
       resources:
-        requests: {cpu: 50m, memory: 256Mi}
-        limits: {cpu: '1', memory: 1Gi}
+        requests: {cpu: 10m, memory: 64Mi}
+        limits: {cpu: '100m', memory: 128Mi}
     - name: docker
       image: docker:26-dind
       securityContext:
@@ -45,8 +45,8 @@ spec:
         - name: DOCKER_TLS_CERTDIR
           value: ""
       resources:
-        requests: {cpu: 100m, memory: 256Mi}
-        limits: {cpu: '1', memory: 1Gi}
+        requests: {cpu: 50m, memory: 128Mi}
+        limits: {cpu: '500m', memory: 512Mi}
     - name: helm
       image: alpine/k8s:1.31.3
       command: ['sleep']

@@ -35,17 +35,17 @@ flowchart TD
     repo["github.com/nubenetes/jenkins-2026<br/>JCasC, Jenkinsfile, shared library,<br/>Helm charts, seed/services.yaml"]
 
     subgraph jenkins_ns["namespace: jenkins"]
-        jenkins["Jenkins controller (jenkinsci/helm-charts + JCasC)<br/>- security, global shared library, OTel exporter, seed jobs<br/>- seed jobs (Job DSL) generate 20 pipeline jobs total:<br/>  (9 stable name (main) + microservices-k6-smoke) at root<br/>  + (9 pac-dev/name-develop (main) + pac-dev/microservices-k6-smoke-develop) in pac-dev/<br/>- each run uses a Kubernetes pod agent<br/>  (maven / node / docker:dind / helm+kubectl / k6 containers)"]
+        jenkins["Jenkins controller (jenkinsci/helm-charts + JCasC)<br/>- security, global shared library, OTel exporter, seed jobs<br/>- seed jobs (Job DSL) generate 6 pipeline jobs total:<br/>  (2 stable name (main) + microservices-k6-smoke) at root<br/>  + (2 pac-dev/name-develop (develop) + pac-dev/microservices-k6-smoke-develop) in pac-dev/<br/>- each run uses a Kubernetes pod agent<br/>  (maven / node / docker:dind / helm+kubectl / k6 containers)"]
     end
 
     repo -->|"global pipeline library +<br/>seed job (checkout scm)"| jenkins
 
     subgraph microservices_ns["namespace: microservices (stable, tracks main)"]
-        microservices["config-server, discovery-server,<br/>customers/visits/vets/genai-service,<br/>api-gateway, admin-server,<br/>microservices-angular (nginx + OTel Web RUM snippet)"]
+        microservices["gateway (Spring Boot + Angular UI),<br/>jhipstersamplemicroservice (Spring Boot backend)"]
     end
 
     subgraph microservices_dev_ns["namespace: microservices-develop (pac-dev/*-develop sandbox, tracks main)"]
-        microservices_dev["config-server, discovery-server,<br/>customers/visits/vets/genai-service,<br/>api-gateway, admin-server,<br/>microservices-angular"]
+        microservices_dev["gateway (Spring Boot + Angular UI),<br/>jhipstersamplemicroservice (Spring Boot backend)"]
     end
 
     jenkins -->|"helm upgrade --install<br/>(per-service image tag)"| microservices

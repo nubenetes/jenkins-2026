@@ -140,30 +140,21 @@ goal is purely to give Grafana something fresh to correlate end to end,
 on demand, without waiting for real users.
 
 [`jenkins/pipelines/k6/microservices-smoke.js`](../jenkins/pipelines/k6/microservices-smoke.js)
-runs one simulated "owner browses Microservices" session per iteration:
+runs a simulated user flow per iteration:
 
-- Direct `/actuator/health` checks against `config-server`,
-  `discovery-server` and `admin-server` (not reachable via `api-gateway`),
-  plus `genai-service` if `GENAI_SERVICE_ENABLED=true` (see
-  `microservices.genaiServiceEnabled` in `config/config.yaml` - skipped by
-  default since its image/pod may not be present without a real
-  `OPENAI_API_KEY`).
-- `microservices-angular`'s `/` (SPA shell).
-- Through `api-gateway`: `/api/vet/vets`, `/api/customer/petTypes`,
-  `/api/customer/owners`, `/api/customer/owners/{id}`,
-  `/api/gateway/owners/{id}` (the gateway's own customers+visits
-  aggregation) and `/api/visit/pets/visits?petId=...` - exercising
-  `customers-service`, `vets-service` and `visits-service`.
+- Gateway UI landing page: `GET /`
+- Gateway health check: `GET /management/health`
+- Direct Microservice health check (if in-cluster): `GET /management/health` on `jhipstersamplemicroservice` port 8081.
+- Microservice health check via Gateway proxy routing (Option A verification): `GET /services/jhipstersamplemicroservice/management/health`.
 
 Every request in an iteration carries the **same generated W3C
 `traceparent` header**. Because the `Instrumentation` CR enables the
 `tracecontext` propagator with `parentbased_traceidratio` @ `1.0` (see
-above), every Microservices service the iteration touches continues that
-trace - so one k6 iteration produces one Tempo trace spanning (a subset
-of) all 3 services, with each service's logs/metrics correlated to it the
-same way as for real traffic. The k6 script logs each iteration's
-`trace_id` to the Jenkins build console, ready to paste into Tempo's trace
-search.
+above), every service the iteration touches continues that
+trace - so one k6 iteration produces one Tempo trace spanning the gateway,
+the backend microservice, and their databases, with each service's logs/metrics
+correlated to it. The k6 script logs each iteration's `trace_id` to the Jenkins build console,
+ready to paste into Tempo's trace search.
 
 [`vars/microservicesK6Smoke.groovy`](../vars/microservicesK6Smoke.groovy) also runs
 `k6 run -o opentelemetry`, pointing k6's own client-side request metrics at
