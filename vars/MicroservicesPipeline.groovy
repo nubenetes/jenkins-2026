@@ -25,7 +25,7 @@ spec:
         - name: DOCKER_HOST
           value: tcp://localhost:2375
       resources:
-        requests: {cpu: 200m, memory: 1024Mi}
+        requests: {cpu: 100m, memory: 1024Mi}
         limits: {cpu: '2', memory: 2.5Gi}
     - name: node
       image: node:20-bookworm
@@ -35,7 +35,7 @@ spec:
         - name: DOCKER_HOST
           value: tcp://localhost:2375
       resources:
-        requests: {cpu: 10m, memory: 64Mi}
+        requests: {cpu: 5m, memory: 64Mi}
         limits: {cpu: '100m', memory: 128Mi}
     - name: docker
       image: docker:26-dind
@@ -45,7 +45,7 @@ spec:
         - name: DOCKER_TLS_CERTDIR
           value: ""
       resources:
-        requests: {cpu: 50m, memory: 128Mi}
+        requests: {cpu: 20m, memory: 128Mi}
         limits: {cpu: '500m', memory: 512Mi}
     - name: helm
       image: alpine/k8s:1.31.3
@@ -55,15 +55,19 @@ spec:
         - name: ARGOCD_VERSION
           value: v2.11.0
       resources:
-        requests: {cpu: 10m, memory: 64Mi}
+        requests: {cpu: 5m, memory: 64Mi}
         limits: {cpu: 100m, memory: 128Mi}
     - name: git
       image: alpine/git:latest
       command: ['sleep']
       args: ['infinity']
       resources:
-        requests: {cpu: 10m, memory: 64Mi}
+        requests: {cpu: 5m, memory: 64Mi}
         limits: {cpu: 100m, memory: 128Mi}
+    - name: jnlp
+      resources:
+        requests: {cpu: 10m, memory: 128Mi}
+        limits: {cpu: 200m, memory: 256Mi}
 """
             }
         }

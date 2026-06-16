@@ -21,15 +21,19 @@ spec:
       securityContext:
         runAsUser: 0
       resources:
-        requests: {cpu: 50m, memory: 128Mi}
+        requests: {cpu: 20m, memory: 128Mi}
         limits: {cpu: 500m, memory: 256Mi}
     - name: helm
       image: alpine/k8s:1.31.3
       command: ['sleep']
       args: ['infinity']
       resources:
-        requests: {cpu: 10m, memory: 64Mi}
+        requests: {cpu: 5m, memory: 64Mi}
         limits: {cpu: 100m, memory: 128Mi}
+    - name: jnlp
+      resources:
+        requests: {cpu: 10m, memory: 128Mi}
+        limits: {cpu: 200m, memory: 256Mi}
 """
             }
         }
