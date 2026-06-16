@@ -174,7 +174,6 @@ graph TD
 
     subgraph "API Gateway (Namespace: microservices / -develop)"
         GW["gateway (Spring Boot / Angular UI, Port 8080)"]
-        DB_GW[(postgres-gateway)]
     end
 
     subgraph "Microservices Tier"
@@ -182,6 +181,7 @@ graph TD
     end
 
     subgraph "Database Tier (Crunchy Data Postgres clusters)"
+        DB_GW[(postgres-gateway)]
         DB_Ms[(postgres-jhipstersamplemicroservice)]
     end
 
