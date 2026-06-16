@@ -3,7 +3,10 @@
     "list": [
       {
         "builtIn": 1,
-        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
         "enable": true,
         "hide": true,
         "iconColor": "rgba(0, 211, 255, 1)",
@@ -21,45 +24,70 @@
   "panels": [
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
       "id": 100,
       "panels": [],
       "title": "Microservices Services - $deployment_environment",
       "type": "row"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "description": "HTTP server request rate per service (Micrometer/OTel metric http_server_request_duration_seconds_count, exported by the Spring Boot Actuator + OTel Java agent auto-instrumentation - see the Helm chart values in the GitOps config repository), split by service_name and deployment_environment (stable=main branch in namespace microservices, develop=develop branch in namespace microservices-develop).",
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "fillOpacity": 15 },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 15
+          },
           "unit": "reqps",
           "links": [
             {
-              "title": "View traces for ${series.labels.service_name}",
-              "url": "/explore?left=%7B%22datasource%22%3A%22${DS_TEMPO}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22query%22%3A%22%7Bresource.service.name%3D%5C%22${__series.labels.service_name}%5C%22%20%26%26%20resource.deployment.environment%3D%5C%22$deployment_environment%5C%22%7D%22%2C%22queryType%22%3A%22traceql%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D",
-              "targetBlank": true
+              "targetBlank": true,
+              "title": "Traces for ${series.labels.service_name}",
+              "url": "/explore?left=%7B%22datasource%22%3A%20%22%24%7BDS_TEMPO%7D%22%2C%20%22queries%22%3A%20%5B%7B%22refId%22%3A%20%22A%22%2C%20%22query%22%3A%20%22%7Bresource.service.name%20%3D%20%5C%22%24%7B__series.labels.service_name%7D%5C%22%20%26%26%20resource.deployment.environment%20%3D%20%5C%22%24deployment_environment%5C%22%7D%22%2C%20%22queryType%22%3A%20%22traceql%22%7D%5D%2C%20%22range%22%3A%20%7B%22from%22%3A%20%22%24%7B__from%7D%22%2C%20%22to%22%3A%20%22%24%7B__to%7D%22%7D%7D"
             },
             {
-              "title": "View logs for ${series.labels.service_name}",
-              "url": "/explore?left=%7B%22datasource%22%3A%22grafanacloud-logs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22expr%22%3A%22%7Bk8s_namespace_name%3D~%5C%22microservices.*%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B.message%7D%7D%5C%22%20%7C%20service_name%20%3D%20%5C%22${__series.labels.service_name}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D",
-              "targetBlank": true
+              "targetBlank": true,
+              "title": "Logs for ${series.labels.service_name}",
+              "url": "/explore?left=%7B%22datasource%22%3A%20%22grafanacloud-logs%22%2C%20%22queries%22%3A%20%5B%7B%22refId%22%3A%20%22A%22%2C%20%22expr%22%3A%20%22%7Bk8s_namespace_name%3D~%5C%22microservices.%2A%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B.message%7D%7D%5C%22%20%7C%20service_name%20%3D%20%5C%22%24%7B__series.labels.service_name%7D%5C%22%22%7D%5D%2C%20%22range%22%3A%20%7B%22from%22%3A%20%22%24%7B__from%7D%22%2C%20%22to%22%3A%20%22%24%7B__to%7D%22%7D%7D"
             }
           ]
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 1
+      },
       "id": 1,
       "options": {
-        "legend": { "displayMode": "list", "placement": "bottom" },
-        "tooltip": { "mode": "multi" }
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum by (service_name, http_response_status_code) (rate(http_server_request_duration_seconds_count{deployment_environment=\"$deployment_environment\"}[5m]))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (service_name, http_response_status_code) (rate(http_server_request_duration_seconds_count{deployment_environment=\"$deployment_environment\", service_name=~\"$service_name\"}[$__rate_interval]))",
           "legendFormat": "{{service_name}} [{{http_response_status_code}}]",
           "refId": "A"
         }
@@ -68,43 +96,74 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "description": "5xx response rate per service - rate(http_server_request_duration_seconds_count{http_response_status_code=~\"5..\"}[5m]).",
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "fillOpacity": 15 },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 15
+          },
           "unit": "reqps",
           "links": [
             {
-              "title": "View traces for ${series.labels.service_name}",
-              "url": "/explore?left=%7B%22datasource%22%3A%22${DS_TEMPO}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22query%22%3A%22%7Bresource.service.name%3D%5C%22${__series.labels.service_name}%5C%22%20%26%26%20resource.deployment.environment%3D%5C%22$deployment_environment%5C%22%7D%22%2C%22queryType%22%3A%22traceql%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D",
-              "targetBlank": true
+              "targetBlank": true,
+              "title": "Traces for ${series.labels.service_name}",
+              "url": "/explore?left=%7B%22datasource%22%3A%20%22%24%7BDS_TEMPO%7D%22%2C%20%22queries%22%3A%20%5B%7B%22refId%22%3A%20%22A%22%2C%20%22query%22%3A%20%22%7Bresource.service.name%20%3D%20%5C%22%24%7B__series.labels.service_name%7D%5C%22%20%26%26%20resource.deployment.environment%20%3D%20%5C%22%24deployment_environment%5C%22%7D%22%2C%20%22queryType%22%3A%20%22traceql%22%7D%5D%2C%20%22range%22%3A%20%7B%22from%22%3A%20%22%24%7B__from%7D%22%2C%20%22to%22%3A%20%22%24%7B__to%7D%22%7D%7D"
             },
             {
-              "title": "View logs for ${series.labels.service_name}",
-              "url": "/explore?left=%7B%22datasource%22%3A%22grafanacloud-logs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22expr%22%3A%22%7Bk8s_namespace_name%3D~%5C%22microservices.*%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B.message%7D%7D%5C%22%20%7C%20service_name%20%3D%20%5C%22${__series.labels.service_name}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D",
-              "targetBlank": true
+              "targetBlank": true,
+              "title": "Logs for ${series.labels.service_name}",
+              "url": "/explore?left=%7B%22datasource%22%3A%20%22grafanacloud-logs%22%2C%20%22queries%22%3A%20%5B%7B%22refId%22%3A%20%22A%22%2C%20%22expr%22%3A%20%22%7Bk8s_namespace_name%3D~%5C%22microservices.%2A%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B.message%7D%7D%5C%22%20%7C%20service_name%20%3D%20%5C%22%24%7B__series.labels.service_name%7D%5C%22%22%7D%5D%2C%20%22range%22%3A%20%7B%22from%22%3A%20%22%24%7B__from%7D%22%2C%20%22to%22%3A%20%22%24%7B__to%7D%22%7D%7D"
             }
           ]
         },
         "overrides": [
           {
-            "matcher": { "id": "byType", "options": "number" },
-            "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
+            "matcher": {
+              "id": "byType",
+              "options": "number"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
           }
         ]
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 1
+      },
       "id": 2,
       "options": {
-        "legend": { "displayMode": "list", "placement": "bottom" },
-        "tooltip": { "mode": "multi" }
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum by (service_name) (rate(http_server_request_duration_seconds_count{deployment_environment=\"$deployment_environment\", http_response_status_code=~\"5..\"}[5m]))",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (service_name) (rate(http_server_request_duration_seconds_count{deployment_environment=\"$deployment_environment\", service_name=~\"$service_name\", http_response_status_code=~\"5..\"}[$__rate_interval]))",
           "legendFormat": "{{service_name}}",
           "refId": "A"
         }
@@ -113,39 +172,59 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "description": "p95 server-side latency per service - histogram_quantile over http_server_request_duration_seconds_bucket.",
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "fillOpacity": 10 },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10
+          },
           "unit": "s",
           "links": [
             {
-              "title": "View traces for ${series.labels.service_name}",
-              "url": "/explore?left=%7B%22datasource%22%3A%22${DS_TEMPO}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22query%22%3A%22%7Bresource.service.name%3D%5C%22${__series.labels.service_name}%5C%22%20%26%26%20resource.deployment.environment%3D%5C%22$deployment_environment%5C%22%7D%22%2C%22queryType%22%3A%22traceql%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D",
-              "targetBlank": true
+              "targetBlank": true,
+              "title": "Traces for ${series.labels.service_name}",
+              "url": "/explore?left=%7B%22datasource%22%3A%20%22%24%7BDS_TEMPO%7D%22%2C%20%22queries%22%3A%20%5B%7B%22refId%22%3A%20%22A%22%2C%20%22query%22%3A%20%22%7Bresource.service.name%20%3D%20%5C%22%24%7B__series.labels.service_name%7D%5C%22%20%26%26%20resource.deployment.environment%20%3D%20%5C%22%24deployment_environment%5C%22%7D%22%2C%20%22queryType%22%3A%20%22traceql%22%7D%5D%2C%20%22range%22%3A%20%7B%22from%22%3A%20%22%24%7B__from%7D%22%2C%20%22to%22%3A%20%22%24%7B__to%7D%22%7D%7D"
             },
             {
-              "title": "View logs for ${series.labels.service_name}",
-              "url": "/explore?left=%7B%22datasource%22%3A%22grafanacloud-logs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22expr%22%3A%22%7Bk8s_namespace_name%3D~%5C%22microservices.*%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B.message%7D%7D%5C%22%20%7C%20service_name%20%3D%20%5C%22${__series.labels.service_name}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D",
-              "targetBlank": true
+              "targetBlank": true,
+              "title": "Logs for ${series.labels.service_name}",
+              "url": "/explore?left=%7B%22datasource%22%3A%20%22grafanacloud-logs%22%2C%20%22queries%22%3A%20%5B%7B%22refId%22%3A%20%22A%22%2C%20%22expr%22%3A%20%22%7Bk8s_namespace_name%3D~%5C%22microservices.%2A%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B.message%7D%7D%5C%22%20%7C%20service_name%20%3D%20%5C%22%24%7B__series.labels.service_name%7D%5C%22%22%7D%5D%2C%20%22range%22%3A%20%7B%22from%22%3A%20%22%24%7B__from%7D%22%2C%20%22to%22%3A%20%22%24%7B__to%7D%22%7D%7D"
             }
           ]
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 9
+      },
       "id": 3,
       "options": {
-        "legend": { "displayMode": "list", "placement": "bottom" },
-        "tooltip": { "mode": "multi" }
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
           "exemplar": true,
-          "expr": "histogram_quantile(0.95, sum by (le, service_name) (rate(http_server_request_duration_seconds_bucket{deployment_environment=\"$deployment_environment\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le, service_name) (rate(http_server_request_duration_seconds_bucket{deployment_environment=\"$deployment_environment\", service_name=~\"$service_name\"}[$__rate_interval])))",
           "legendFormat": "{{service_name}} p95",
           "refId": "A"
         }
@@ -154,38 +233,61 @@
       "type": "timeseries"
     },
     {
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
       "description": "JVM heap usage per service - jvm_memory_used_bytes{jvm_memory_type=\"heap\"}.",
       "fieldConfig": {
         "defaults": {
-          "color": { "mode": "palette-classic" },
-          "custom": { "fillOpacity": 15, "stacking": { "mode": "normal" } },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 15,
+            "stacking": {
+              "mode": "normal"
+            }
+          },
           "unit": "bytes",
           "links": [
             {
-              "title": "View traces for ${series.labels.service_name}",
-              "url": "/explore?left=%7B%22datasource%22%3A%22${DS_TEMPO}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22query%22%3A%22%7Bresource.service.name%3D%5C%22${__series.labels.service_name}%5C%22%20%26%26%20resource.deployment.environment%3D%5C%22$deployment_environment%5C%22%7D%22%2C%22queryType%22%3A%22traceql%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D",
-              "targetBlank": true
+              "targetBlank": true,
+              "title": "Traces for ${series.labels.service_name}",
+              "url": "/explore?left=%7B%22datasource%22%3A%20%22%24%7BDS_TEMPO%7D%22%2C%20%22queries%22%3A%20%5B%7B%22refId%22%3A%20%22A%22%2C%20%22query%22%3A%20%22%7Bresource.service.name%20%3D%20%5C%22%24%7B__series.labels.service_name%7D%5C%22%20%26%26%20resource.deployment.environment%20%3D%20%5C%22%24deployment_environment%5C%22%7D%22%2C%20%22queryType%22%3A%20%22traceql%22%7D%5D%2C%20%22range%22%3A%20%7B%22from%22%3A%20%22%24%7B__from%7D%22%2C%20%22to%22%3A%20%22%24%7B__to%7D%22%7D%7D"
             },
             {
-              "title": "View logs for ${series.labels.service_name}",
-              "url": "/explore?left=%7B%22datasource%22%3A%22grafanacloud-logs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22expr%22%3A%22%7Bk8s_namespace_name%3D~%5C%22microservices.*%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B.message%7D%7D%5C%22%20%7C%20service_name%20%3D%20%5C%22${__series.labels.service_name}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D",
-              "targetBlank": true
+              "targetBlank": true,
+              "title": "Logs for ${series.labels.service_name}",
+              "url": "/explore?left=%7B%22datasource%22%3A%20%22grafanacloud-logs%22%2C%20%22queries%22%3A%20%5B%7B%22refId%22%3A%20%22A%22%2C%20%22expr%22%3A%20%22%7Bk8s_namespace_name%3D~%5C%22microservices.%2A%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B.message%7D%7D%5C%22%20%7C%20service_name%20%3D%20%5C%22%24%7B__series.labels.service_name%7D%5C%22%22%7D%5D%2C%20%22range%22%3A%20%7B%22from%22%3A%20%22%24%7B__from%7D%22%2C%20%22to%22%3A%20%22%24%7B__to%7D%22%7D%7D"
             }
           ]
         },
         "overrides": []
       },
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      },
       "id": 4,
       "options": {
-        "legend": { "displayMode": "list", "placement": "bottom" },
-        "tooltip": { "mode": "multi" }
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
       },
       "targets": [
         {
-          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-          "expr": "sum by (service_name) (jvm_memory_used_bytes{deployment_environment=\"$deployment_environment\", jvm_memory_type=\"heap\"})",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (service_name) (jvm_memory_used_bytes{deployment_environment=\"$deployment_environment\", service_name=~\"$service_name\", jvm_memory_type=\"heap\"})",
           "legendFormat": "{{service_name}}",
           "refId": "A"
         }
@@ -195,28 +297,39 @@
     },
     {
       "collapsed": false,
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
       "id": 101,
       "panels": [],
       "title": "Traces & Logs",
       "type": "row"
     },
     {
-      "datasource": { "type": "tempo", "uid": "${DS_TEMPO}" },
+      "datasource": {
+        "type": "tempo",
+        "uid": "${DS_TEMPO}"
+      },
       "description": "Recent traces across all microservices for the selected environment. Each request through gateway -> downstream microservice is a single trace (W3C traceparent propagated end-to-end via OpenTelemetry).",
       "fieldConfig": {
         "defaults": {},
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "traceID" },
+            "matcher": {
+              "id": "byName",
+              "options": "traceID"
+            },
             "properties": [
               {
                 "id": "links",
                 "value": [
                   {
-                    "title": "View logs for trace",
-                    "url": "/explore?left=%7B%22datasource%22%3A%22grafanacloud-logs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22expr%22%3A%22%7Bk8s_namespace_name%3D~%5C%22microservices.*%5C%22%7D%20%7C%20json%20%7C%20trace_id%20%3D%20%5C%22${__value.raw}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D",
-                    "targetBlank": true
+                    "targetBlank": true,
+                    "title": "Logs for this trace",
+                    "url": "/explore?left=%7B%22datasource%22%3A%22grafanacloud-logs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22expr%22%3A%22%7Bk8s_namespace_name%3D~%5C%22microservices.*%5C%22%7D%20%7C%20json%20%7C%3D%20%5C%22${__value.raw}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D"
                   }
                 ]
               }
@@ -224,11 +337,19 @@
           }
         ]
       },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 18 },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
       "id": 5,
       "targets": [
         {
-          "datasource": { "type": "tempo", "uid": "${DS_TEMPO}" },
+          "datasource": {
+            "type": "tempo",
+            "uid": "${DS_TEMPO}"
+          },
           "query": "{resource.deployment.environment = \"$deployment_environment\"}",
           "queryType": "traceql",
           "refId": "A"
@@ -238,10 +359,21 @@
       "type": "traces"
     },
     {
-      "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+      "datasource": {
+        "type": "loki",
+        "uid": "${DS_LOKI}"
+      },
       "description": "Application logs for the selected environment's namespace (microservices / microservices-develop). Lines containing trace_id=<hex> can be opened directly in Tempo via the Loki datasource's derived field.",
-      "fieldConfig": { "defaults": {}, "overrides": [] },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 27 },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 27
+      },
       "id": 6,
       "options": {
         "dedupStrategy": "none",
@@ -254,18 +386,178 @@
       },
       "targets": [
         {
-          "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
+          "datasource": {
+            "type": "loki",
+            "uid": "${DS_LOKI}"
+          },
           "expr": "{k8s_namespace_name=~\"microservices.*\"} | json | line_format \"{{.message}}\"",
           "refId": "A"
         }
       ],
       "title": "Microservices Pod Logs",
       "type": "logs"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "percent"
+        }
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 0,
+        "y": 36
+      },
+      "id": 7,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "100 * sum(rate(http_server_request_duration_seconds_count{deployment_environment=\"$deployment_environment\", service_name=~\"$service_name\", http_response_status_code=~\"5..\"}[$__rate_interval])) / sum(rate(http_server_request_duration_seconds_count{deployment_environment=\"$deployment_environment\", service_name=~\"$service_name\"}[$__rate_interval]))",
+          "legendFormat": "HTTP Error Rate",
+          "refId": "A"
+        }
+      ],
+      "title": "HTTP Error Rate %",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 15
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 18,
+        "x": 6,
+        "y": 36
+      },
+      "id": 8,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (service_name) (increase(kube_pod_container_status_restarts_total{namespace=~\"microservices.*\"}[$__rate_interval]))",
+          "legendFormat": "{{service_name}} restarts",
+          "refId": "A"
+        }
+      ],
+      "title": "Pod Restarts",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 15
+          },
+          "unit": "s"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 42
+      },
+      "id": 9,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "histogram_quantile(0.99, sum by (le, service_name) (rate(jvm_gc_duration_seconds_bucket{deployment_environment=\"$deployment_environment\", service_name=~\"$service_name\"}[$__rate_interval])))",
+          "legendFormat": "{{service_name}} GC p99",
+          "refId": "A"
+        }
+      ],
+      "title": "JVM GC Pause Time p99",
+      "type": "timeseries"
     }
   ],
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": ["jenkins-2026", "microservices"],
+  "tags": [
+    "jenkins-2026",
+    "microservices"
+  ],
   "templating": {
     "list": [
       {
@@ -297,7 +589,7 @@
         "query": "loki",
         "queryValue": "",
         "refresh": 1,
-        "regex": "",
+        "regex": "/^(?!.*alert-state-history|.*usage-insights).*$/",
         "skipUrlSync": false,
         "type": "datasource"
       },
@@ -316,24 +608,66 @@
         "type": "datasource"
       },
       {
-        "current": { "text": "stable", "value": "stable" },
+        "current": {
+          "text": "stable",
+          "value": "stable"
+        },
         "hide": 0,
         "includeAll": false,
         "label": "Environment",
         "multi": false,
         "name": "deployment_environment",
         "options": [
-          { "selected": true, "text": "stable", "value": "stable" },
-          { "selected": false, "text": "develop", "value": "develop" }
+          {
+            "selected": true,
+            "text": "stable",
+            "value": "stable"
+          },
+          {
+            "selected": false,
+            "text": "develop",
+            "value": "develop"
+          }
         ],
         "query": "stable,develop",
         "queryValue": "",
         "skipUrlSync": false,
         "type": "custom"
+      },
+      {
+        "current": {
+          "selected": true,
+          "value": [
+            "$__all"
+          ],
+          "text": "All"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(http_server_request_duration_seconds_count{deployment_environment=\"$deployment_environment\"}, service_name)",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "service_name",
+        "options": [],
+        "query": {
+          "query": "label_values(http_server_request_duration_seconds_count{deployment_environment=\"$deployment_environment\"}, service_name)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
       }
     ]
   },
-  "time": { "from": "now-6h", "to": "now" },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
   "timepicker": {},
   "timezone": "",
   "title": "jenkins-2026 / Microservices Overview",

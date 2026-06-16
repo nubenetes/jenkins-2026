@@ -51,8 +51,8 @@
           "links": [
             {
               "targetBlank": true,
-              "title": "View Jenkins logs",
-              "url": "/explore?left=%7B%22datasource%22%3A%22grafanacloud-logs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22expr%22%3A%22%7Bk8s_namespace_name%3D%5C%22jenkins%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B.message%7D%7D%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D"
+              "title": "Jenkins logs",
+              "url": "/explore?left=%7B%22datasource%22%3A%20%22grafanacloud-logs%22%2C%20%22queries%22%3A%20%5B%7B%22refId%22%3A%20%22A%22%2C%20%22expr%22%3A%20%22%7Bk8s_namespace_name%3D%5C%22jenkins%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B.message%7D%7D%5C%22%22%7D%5D%2C%20%22range%22%3A%20%7B%22from%22%3A%20%22%24%7B__from%7D%22%2C%20%22to%22%3A%20%22%24%7B__to%7D%22%7D%7D"
             }
           ]
         },
@@ -110,8 +110,8 @@
           "links": [
             {
               "targetBlank": true,
-              "title": "View Jenkins logs",
-              "url": "/explore?left=%7B%22datasource%22%3A%22grafanacloud-logs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22expr%22%3A%22%7Bk8s_namespace_name%3D%5C%22jenkins%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B.message%7D%7D%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D"
+              "title": "Jenkins logs",
+              "url": "/explore?left=%7B%22datasource%22%3A%20%22grafanacloud-logs%22%2C%20%22queries%22%3A%20%5B%7B%22refId%22%3A%20%22A%22%2C%20%22expr%22%3A%20%22%7Bk8s_namespace_name%3D%5C%22jenkins%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B.message%7D%7D%5C%22%22%7D%5D%2C%20%22range%22%3A%20%7B%22from%22%3A%20%22%24%7B__from%7D%22%2C%20%22to%22%3A%20%22%24%7B__to%7D%22%7D%7D"
             }
           ]
         },
@@ -171,8 +171,8 @@
           "links": [
             {
               "targetBlank": true,
-              "title": "View Jenkins logs",
-              "url": "/explore?left=%7B%22datasource%22%3A%22grafanacloud-logs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22expr%22%3A%22%7Bk8s_namespace_name%3D%5C%22jenkins%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B.message%7D%7D%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D"
+              "title": "Jenkins logs",
+              "url": "/explore?left=%7B%22datasource%22%3A%20%22grafanacloud-logs%22%2C%20%22queries%22%3A%20%5B%7B%22refId%22%3A%20%22A%22%2C%20%22expr%22%3A%20%22%7Bk8s_namespace_name%3D%5C%22jenkins%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B.message%7D%7D%5C%22%22%7D%5D%2C%20%22range%22%3A%20%7B%22from%22%3A%20%22%24%7B__from%7D%22%2C%20%22to%22%3A%20%22%24%7B__to%7D%22%7D%7D"
             }
           ]
         },
@@ -238,13 +238,13 @@
           "links": [
             {
               "targetBlank": true,
-              "title": "View traces for ${__series.labels.ci_pipeline_id}",
-              "url": "/explore?left=%7B%22datasource%22%3A%22${DS_TEMPO}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22query%22%3A%22%7Bresource.service.name%3D%5C%22jenkins%5C%22%20%26%26%20span.ci.pipeline.id%3D%5C%22${__series.labels.ci_pipeline_id}%5C%22%7D%22%2C%22queryType%22%3A%22traceql%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D"
+              "title": "Traces for ${series.labels.ci_pipeline_id}",
+              "url": "/explore?left=%7B%22datasource%22%3A%20%22%24%7BDS_TEMPO%7D%22%2C%20%22queries%22%3A%20%5B%7B%22refId%22%3A%20%22A%22%2C%20%22query%22%3A%20%22%7Bresource.service.name%20%3D%20%5C%22jenkins%5C%22%20%26%26%20span.ci.pipeline.id%20%3D%20%5C%22%24%7B__series.labels.ci_pipeline_id%7D%5C%22%7D%22%2C%20%22queryType%22%3A%20%22traceql%22%7D%5D%2C%20%22range%22%3A%20%7B%22from%22%3A%20%22%24%7B__from%7D%22%2C%20%22to%22%3A%20%22%24%7B__to%7D%22%7D%7D"
             },
             {
               "targetBlank": true,
-              "title": "View Jenkins logs for ${__series.labels.ci_pipeline_id}",
-              "url": "/explore?left=%7B%22datasource%22%3A%22grafanacloud-logs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22expr%22%3A%22%7Bk8s_namespace_name%3D%5C%22jenkins%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B.message%7D%7D%5C%22%20%7C%3D%20%5C%22${__series.labels.ci_pipeline_id}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D"
+              "title": "Jenkins logs",
+              "url": "/explore?left=%7B%22datasource%22%3A%20%22grafanacloud-logs%22%2C%20%22queries%22%3A%20%5B%7B%22refId%22%3A%20%22A%22%2C%20%22expr%22%3A%20%22%7Bk8s_namespace_name%3D%5C%22jenkins%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B.message%7D%7D%5C%22%20%7C%3D%20%5C%22%24%7B__series.labels.ci_pipeline_id%7D%5C%22%22%7D%5D%2C%20%22range%22%3A%20%7B%22from%22%3A%20%22%24%7B__from%7D%22%2C%20%22to%22%3A%20%22%24%7B__to%7D%22%7D%7D"
             }
           ]
         },
@@ -329,46 +329,34 @@
           "links": [
             {
               "targetBlank": true,
-              "title": "View traces for ${__series.labels.ci_pipeline_id}",
-              "url": "/explore?left=%7B%22datasource%22%3A%22${DS_TEMPO}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22query%22%3A%22%7Bresource.service.name%3D%5C%22jenkins%5C%22%20%26%26%20span.ci.pipeline.id%3D%5C%22${__series.labels.ci_pipeline_id}%5C%22%7D%22%2C%22queryType%22%3A%22traceql%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D"
+              "title": "Traces for ${series.labels.ci_pipeline_id}",
+              "url": "/explore?left=%7B%22datasource%22%3A%20%22%24%7BDS_TEMPO%7D%22%2C%20%22queries%22%3A%20%5B%7B%22refId%22%3A%20%22A%22%2C%20%22query%22%3A%20%22%7Bresource.service.name%20%3D%20%5C%22jenkins%5C%22%20%26%26%20span.ci.pipeline.id%20%3D%20%5C%22%24%7B__series.labels.ci_pipeline_id%7D%5C%22%7D%22%2C%20%22queryType%22%3A%20%22traceql%22%7D%5D%2C%20%22range%22%3A%20%7B%22from%22%3A%20%22%24%7B__from%7D%22%2C%20%22to%22%3A%20%22%24%7B__to%7D%22%7D%7D"
             },
             {
               "targetBlank": true,
-              "title": "View Jenkins logs for ${__series.labels.ci_pipeline_id}",
-              "url": "/explore?left=%7B%22datasource%22%3A%22grafanacloud-logs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22expr%22%3A%22%7Bk8s_namespace_name%3D%5C%22jenkins%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B.message%7D%7D%5C%22%20%7C%3D%20%5C%22${__series.labels.ci_pipeline_id}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D"
+              "title": "Jenkins logs",
+              "url": "/explore?left=%7B%22datasource%22%3A%20%22grafanacloud-logs%22%2C%20%22queries%22%3A%20%5B%7B%22refId%22%3A%20%22A%22%2C%20%22expr%22%3A%20%22%7Bk8s_namespace_name%3D%5C%22jenkins%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B.message%7D%7D%5C%22%20%7C%3D%20%5C%22%24%7B__series.labels.ci_pipeline_id%7D%5C%22%22%7D%5D%2C%20%22range%22%3A%20%7B%22from%22%3A%20%22%24%7B__from%7D%22%2C%20%22to%22%3A%20%22%24%7B__to%7D%22%7D%7D"
             }
-          ]
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": ".*p95.*"
-            },
-            "properties": [
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
               {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "green",
-                      "value": null
-                    },
-                    {
-                      "color": "yellow",
-                      "value": 300
-                    },
-                    {
-                      "color": "red",
-                      "value": 600
-                    }
-                  ]
-                }
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 300
+              },
+              {
+                "color": "red",
+                "value": 600
               }
             ]
           }
-        ]
+        },
+        "overrides": []
       },
       "gridPos": {
         "h": 8,
@@ -481,7 +469,7 @@
                 "value": [
                   {
                     "targetBlank": true,
-                    "title": "View logs for this trace",
+                    "title": "Logs for this trace",
                     "url": "/explore?left=%7B%22datasource%22%3A%22grafanacloud-logs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22expr%22%3A%22%7Bk8s_namespace_name%3D%5C%22jenkins%5C%22%7D%20%7C%20json%20%7C%3D%20%5C%22${__value.raw}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D"
                   }
                 ]
@@ -561,7 +549,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * sum(rate(ci_pipeline_run_completed_total{ci_pipeline_run_result=\"SUCCESS\"}[5m])) / sum(rate(ci_pipeline_run_completed_total[5m]))",
+          "expr": "100 * sum(rate(ci_pipeline_run_completed_total{ci_pipeline_run_result=\"SUCCESS\"}[$__rate_interval])) / sum(rate(ci_pipeline_run_completed_total[$__rate_interval]))",
           "legendFormat": "Success Rate",
           "refId": "A"
         }
@@ -670,7 +658,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (ci_pipeline_id) (increase(ci_pipeline_run_completed_total{ci_pipeline_run_result=\"FAILURE\"}[5m]))",
+          "expr": "sum by (ci_pipeline_id) (increase(ci_pipeline_run_completed_total{ci_pipeline_run_result=\"FAILURE\"}[$__rate_interval]))",
           "legendFormat": "{{ci_pipeline_id}} Failures",
           "refId": "A"
         }
@@ -758,7 +746,7 @@
         "query": "loki",
         "queryValue": "",
         "refresh": 1,
-        "regex": "",
+        "regex": "/^(?!.*alert-state-history|.*usage-insights).*$/",
         "skipUrlSync": false,
         "type": "datasource",
         "current": {
