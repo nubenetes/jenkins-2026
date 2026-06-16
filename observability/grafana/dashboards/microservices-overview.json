@@ -31,7 +31,23 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "description": "HTTP server request rate per service (Micrometer/OTel metric http_server_request_duration_seconds_count, exported by the Spring Boot Actuator + OTel Java agent auto-instrumentation - see the Helm chart values in the GitOps config repository), split by service_name and deployment_environment (stable=main branch in namespace microservices, develop=develop branch in namespace microservices-develop).",
       "fieldConfig": {
-        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 15 }, "unit": "reqps" },
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 15 },
+          "unit": "reqps",
+          "links": [
+            {
+              "title": "View traces for ${series.labels.service_name}",
+              "url": "/explore?left=%7B%22datasource%22%3A%22${DS_TEMPO}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22query%22%3A%22%7Bresource.service.name%3D%5C%22${__series.labels.service_name}%5C%22%20%26%26%20resource.deployment.environment%3D%5C%22$deployment_environment%5C%22%7D%22%2C%22queryType%22%3A%22traceql%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D",
+              "targetBlank": true
+            },
+            {
+              "title": "View logs for ${series.labels.service_name}",
+              "url": "/explore?left=%7B%22datasource%22%3A%22grafanacloud-logs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22expr%22%3A%22%7Bk8s_namespace_name%3D~%5C%22microservices.*%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B.message%7D%7D%5C%22%20%7C%20service_name%20%3D%20%5C%22${__series.labels.service_name}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D",
+              "targetBlank": true
+            }
+          ]
+        },
         "overrides": []
       },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
@@ -55,7 +71,23 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "description": "5xx response rate per service - rate(http_server_request_duration_seconds_count{http_response_status_code=~\"5..\"}[5m]).",
       "fieldConfig": {
-        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 15 }, "unit": "reqps" },
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 15 },
+          "unit": "reqps",
+          "links": [
+            {
+              "title": "View traces for ${series.labels.service_name}",
+              "url": "/explore?left=%7B%22datasource%22%3A%22${DS_TEMPO}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22query%22%3A%22%7Bresource.service.name%3D%5C%22${__series.labels.service_name}%5C%22%20%26%26%20resource.deployment.environment%3D%5C%22$deployment_environment%5C%22%7D%22%2C%22queryType%22%3A%22traceql%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D",
+              "targetBlank": true
+            },
+            {
+              "title": "View logs for ${series.labels.service_name}",
+              "url": "/explore?left=%7B%22datasource%22%3A%22grafanacloud-logs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22expr%22%3A%22%7Bk8s_namespace_name%3D~%5C%22microservices.*%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B.message%7D%7D%5C%22%20%7C%20service_name%20%3D%20%5C%22${__series.labels.service_name}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D",
+              "targetBlank": true
+            }
+          ]
+        },
         "overrides": [
           {
             "matcher": { "id": "byType", "options": "number" },
@@ -84,7 +116,23 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "description": "p95 server-side latency per service - histogram_quantile over http_server_request_duration_seconds_bucket.",
       "fieldConfig": {
-        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 10 }, "unit": "s" },
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 10 },
+          "unit": "s",
+          "links": [
+            {
+              "title": "View traces for ${series.labels.service_name}",
+              "url": "/explore?left=%7B%22datasource%22%3A%22${DS_TEMPO}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22query%22%3A%22%7Bresource.service.name%3D%5C%22${__series.labels.service_name}%5C%22%20%26%26%20resource.deployment.environment%3D%5C%22$deployment_environment%5C%22%7D%22%2C%22queryType%22%3A%22traceql%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D",
+              "targetBlank": true
+            },
+            {
+              "title": "View logs for ${series.labels.service_name}",
+              "url": "/explore?left=%7B%22datasource%22%3A%22grafanacloud-logs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22expr%22%3A%22%7Bk8s_namespace_name%3D~%5C%22microservices.*%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B.message%7D%7D%5C%22%20%7C%20service_name%20%3D%20%5C%22${__series.labels.service_name}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D",
+              "targetBlank": true
+            }
+          ]
+        },
         "overrides": []
       },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 9 },
@@ -96,6 +144,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "exemplar": true,
           "expr": "histogram_quantile(0.95, sum by (le, service_name) (rate(http_server_request_duration_seconds_bucket{deployment_environment=\"$deployment_environment\"}[5m])))",
           "legendFormat": "{{service_name}} p95",
           "refId": "A"
@@ -108,7 +157,23 @@
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
       "description": "JVM heap usage per service - jvm_memory_used_bytes{jvm_memory_type=\"heap\"}.",
       "fieldConfig": {
-        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 15, "stacking": { "mode": "normal" } }, "unit": "bytes" },
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "fillOpacity": 15, "stacking": { "mode": "normal" } },
+          "unit": "bytes",
+          "links": [
+            {
+              "title": "View traces for ${series.labels.service_name}",
+              "url": "/explore?left=%7B%22datasource%22%3A%22${DS_TEMPO}%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22query%22%3A%22%7Bresource.service.name%3D%5C%22${__series.labels.service_name}%5C%22%20%26%26%20resource.deployment.environment%3D%5C%22$deployment_environment%5C%22%7D%22%2C%22queryType%22%3A%22traceql%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D",
+              "targetBlank": true
+            },
+            {
+              "title": "View logs for ${series.labels.service_name}",
+              "url": "/explore?left=%7B%22datasource%22%3A%22grafanacloud-logs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22expr%22%3A%22%7Bk8s_namespace_name%3D~%5C%22microservices.*%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B.message%7D%7D%5C%22%20%7C%20service_name%20%3D%20%5C%22${__series.labels.service_name}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D",
+              "targetBlank": true
+            }
+          ]
+        },
         "overrides": []
       },
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 9 },
@@ -139,7 +204,26 @@
     {
       "datasource": { "type": "tempo", "uid": "${DS_TEMPO}" },
       "description": "Recent traces across all microservices for the selected environment. Each request through gateway -> downstream microservice is a single trace (W3C traceparent propagated end-to-end via OpenTelemetry).",
-      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "traceID" },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "View logs for trace",
+                    "url": "/explore?left=%7B%22datasource%22%3A%22grafanacloud-logs%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22expr%22%3A%22%7Bk8s_namespace_name%3D~%5C%22microservices.*%5C%22%7D%20%7C%20json%20%7C%20trace_id%20%3D%20%5C%22${__value.raw}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
       "gridPos": { "h": 9, "w": 24, "x": 0, "y": 18 },
       "id": 5,
       "targets": [
@@ -199,6 +283,11 @@
         "type": "datasource"
       },
       {
+        "current": {
+          "selected": true,
+          "value": "grafanacloud-logs",
+          "text": "grafanacloud-logs"
+        },
         "hide": 0,
         "includeAll": false,
         "label": "Loki",
@@ -225,8 +314,7 @@
         "regex": "",
         "skipUrlSync": false,
         "type": "datasource"
-      }
-,
+      },
       {
         "current": { "text": "stable", "value": "stable" },
         "hide": 0,
