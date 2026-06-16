@@ -18,6 +18,8 @@ spec:
       image: grafana/k6:0.54.0
       command: ['sleep']
       args: ['infinity']
+      securityContext:
+        runAsUser: 0
       resources:
         requests: {cpu: 50m, memory: 128Mi}
         limits: {cpu: 500m, memory: 256Mi}
