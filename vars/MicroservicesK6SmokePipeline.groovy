@@ -49,6 +49,12 @@ spec:
         }
 
         stages {
+            stage('Checkout Infra') {
+                steps {
+                    git url: "${env.JENKINS2026_REPO_URL ?: 'https://github.com/nubenetes/jenkins-2026.git'}",
+                        branch: "${env.JENKINS2026_REPO_BRANCH ?: 'main'}"
+                }
+            }
             stage('Run k6 Smoke Test') {
                 steps {
                     microservicesK6Smoke(
