@@ -1065,31 +1065,67 @@ gcloud auth application-default login
   external account, `export JENKINS2026_OBS_MODE=oss` instead (see
   `test/.env.example`).
 
-### What gets created / destroyed
+### GKE Cluster Topology & Sizing Rationale
 
-[`terraform/gke/`](terraform/gke/) provisions, all named/prefixed
-`jenkins-2026*` and removed by `terraform destroy`:
+The throwaway cluster for testing is provisioned with a custom VPC-native configuration optimized for stability and cost:
 
-| Resource | Notes |
-|---|---|
-| VPC + subnet (`jenkins-2026-vpc` / `-subnet`) | VPC-native, dedicated pod/Service CIDR ranges |
-| GKE cluster `jenkins-2026` (zonal, `europe-southwest1-a`) | `deletion_protection = false` so `destroy` works |
-| Node pool (2-4 x `e2-standard-4`, autoscaling) | sized for Jenkins + 18 Microservices pods + 1-2 concurrent build agents |
-| Service account `jenkins-2026-nodes` + IAM bindings | logging/monitoring writer, Artifact Registry reader only |
+```mermaid
+graph TD
+    subgraph VPC ["VPC Network (jenkins-2026-vpc)"]
+        subgraph Subnet ["Subnet (jenkins-2026-subnet / europe-southwest1)"]
+            NodeIPs["Primary range: Nodes (10.10.0.0/20)"]
+            PodIPs["Secondary range: Pods (10.20.0.0/16)"]
+            SvcIPs["Secondary range: Services (10.30.0.0/20)"]
+        end
+    end
 
-`container.googleapis.com`/`compute.googleapis.com` API enablement on the
-project is intentionally left in place (re-enabling is slow, and disabling
-can break unrelated resources in the same project).
+    subgraph NodePool ["Node Pool (jenkins-2026-pool)"]
+        direction LR
+        Node1["Node 1<br>(e2-standard-4 / 50GB Boot disk)"]
+        Node2["Node 2<br>(e2-standard-4 / 50GB Boot disk)"]
+        Node3["Node 3<br>(e2-standard-4 / 50GB Boot disk)"]
+        Node4["Node 4 (Autoscaled)<br>(e2-standard-4 / 50GB Boot disk)"]
+    end
 
-### Cost
+    NodeIPs -->|"Assigns internal IPs to"| NodePool
+    PodIPs -->|"Assigns IPs to running pods inside"| NodePool
+    
+    subgraph GKEFeatures ["Features Enabled"]
+        GW["Gateway API standard channel"]
+        WI["Workload Identity (project.svc.id.goog)"]
+    end
+```
 
-At on-demand `europe-southwest1` (Madrid) pricing, the cluster runs at roughly
-**$0.40-0.50/hr** (3x `e2-standard-4`, plus the $0.10/hr GKE cluster
-management fee - waived for your first zonal cluster per billing account).
-A full `test/e2e.sh` pass (provision, deploy, smoke-test, tear down
-everything) typically takes **15-25 minutes**, i.e. **~$0.10-0.20 per run**.
-Grafana Cloud's free tier comfortably covers this PoC's traffic/series volume
-for a run of that length.
+#### Detailed Infrastructure Specifications:
+- **Zonal GKE Cluster**: `jenkins-2026` hosted in `europe-southwest1-a` (Madrid, Spain).
+- **VPC-Native Networking**: Uses IP aliasing with a custom VPC (`jenkins-2026-vpc`) and subnet (`jenkins-2026-subnet`) containing secondary ranges for pods (`10.20.0.0/16`) and services (`10.30.0.0/20`).
+- **Autoscaling Node Pool (`jenkins-2026-pool`)**:
+  - **Machine Type**: `e2-standard-4` (4 vCPUs, 16 GB RAM per node).
+  - **Sizing Boundaries**: Initial count is **3 nodes** (12 vCPUs, 48 GB RAM), with cluster autoscaling boundaries between **min 2 and max 4 nodes** to dynamically handle Jenkins build agent pods.
+  - **Storage**: `50 GB` of `pd-balanced` (Balanced Persistent Disk) boot storage per node.
+  - **Metadata Mode**: Configured with `GKE_METADATA` to enforce Workload Identity.
+- **Node Service Account**: A minimal-privilege IAM service account `jenkins-2026-nodes` with logging writer, monitoring writer/viewer, and Artifact Registry reader permissions.
+- **API Enablement**: Project-level APIs (`container.googleapis.com` and `compute.googleapis.com`) are automatically enabled and remain enabled on GKE decommission to prevent breaking unrelated GCS resources and avoid slow re-enabling times.
+
+#### Sizing Rationale (Stability vs. Resource Limits)
+Running Jenkins, ArgoCD, pgAdmin, two Postgres database clusters (via Crunchy Postgres Operator), OpenTelemetry operators (Gateway and DaemonSets), and the JHipster microservices stack requires significant memory and CPU.
+If we scaled down the nodes to smaller types (e.g. `e2-standard-2` or `e2-medium`):
+1. **OOM Kills**: Postgres clusters, Java microservice JVMs, and Jenkins build tools would run out of memory and get killed by the kernel.
+2. **CPU Starvation**: Builds and application start times would become extremely slow, leading to flaky test failures and timeout errors.
+3. **Pending Pods**: Pods would remain unscheduled due to resource limits, causing the GKE Cluster Autoscaler to spin up additional nodes anyway.
+Using `e2-standard-4` with 3 nodes ensures a stable environment where all services run smoothly with enough headroom to spawn dynamic Jenkins builder executor pods.
+
+### FinOps & Cost Analysis
+
+This project integrates standard FinOps best practices to prevent unnecessary cloud spending:
+
+- **Cluster Management Fee**: GKE charges a management fee of `$0.10/hour` (waived for your first zonal cluster per billing account).
+- **Compute Instance Costs**: At Madrid (`europe-southwest1`) pricing, an `e2-standard-4` instance costs roughly `~$0.11/hour`.
+- **Total Operational Run Rate**: The active 3-node cluster runs at approximately **`$0.40 - $0.50/hour`** (including disk storage and management fee).
+- **Ephemeral Lifecycles**: A full provisioning, deployment, smoke-testing, and teardown run (`02.01` to `02.99`) takes only **15-25 minutes**, costing **`~$0.10 - $0.20` per execution**. You should *never* leave the cluster running overnight; always invoke **`02.99 GKE decommission`** when finished.
+- **Dynamic Cluster Autoscaling**: If the cluster remains idle, the node count naturally scales down to **2 nodes**, saving compute costs. When a pipeline triggers concurrent Java/Maven builds, GKE temporarily scales up to **4 nodes** to handle the surge, then immediately deletes the nodes when the job finishes.
+- **Workload Limits & Quotas**: To enforce cost limits, pod resources are capped, and the `jenkins` namespace enforces a `ResourceQuota` preventing builders from scaling beyond node pool limits.
+- **No In-Cluster Observability Cost**: By utilizing the free tier of Grafana Cloud for logs, metrics, and trace storage, there is zero storage cost in GCP for observability datasets.
 
 ### Resource Quotas & QoS (Cost Control)
 
