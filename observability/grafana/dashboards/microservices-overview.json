@@ -29,7 +29,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "description": "HTTP server request rate per service (Micrometer/OTel metric http_server_request_duration_seconds_count, exported by the Spring Boot Actuator + OTel Java agent auto-instrumentation - see helm/microservices/templates/instrumentation.yaml), split by service_name and deployment_environment (stable=master branch in namespace microservices, develop=develop branch in namespace microservices-develop).",
+      "description": "HTTP server request rate per service (Micrometer/OTel metric http_server_request_duration_seconds_count, exported by the Spring Boot Actuator + OTel Java agent auto-instrumentation - see the Helm chart values in the GitOps config repository), split by service_name and deployment_environment (stable=main branch in namespace microservices, develop=develop branch in namespace microservices-develop).",
       "fieldConfig": {
         "defaults": { "color": { "mode": "palette-classic" }, "custom": { "fillOpacity": 15 }, "unit": "reqps" },
         "overrides": []
@@ -138,7 +138,7 @@
     },
     {
       "datasource": { "type": "tempo", "uid": "${DS_TEMPO}" },
-      "description": "Recent traces across all Microservices services for the selected environment. Each request through microservices-angular -> api-gateway -> downstream microservices is a single trace (W3C traceparent propagated end-to-end, see resources/angular/otel-web.js and helm/microservices/templates/instrumentation.yaml).",
+      "description": "Recent traces across all microservices for the selected environment. Each request through gateway -> downstream microservice is a single trace (W3C traceparent propagated end-to-end via OpenTelemetry).",
       "fieldConfig": { "defaults": {}, "overrides": [] },
       "gridPos": { "h": 9, "w": 24, "x": 0, "y": 18 },
       "id": 5,
