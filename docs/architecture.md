@@ -14,11 +14,9 @@ an **existing** Kubernetes cluster (GKE, EKS, AKS or OpenShift 4.20+):
   amount of synthetic traffic through all 3 services afterwards to exercise
   Grafana Cloud trace/metric/log correlation (see
   [`docs/observability.md`](observability.md#k6-observability-smoke-test)).
-  The pipelines dynamically configure themselves (target namespace, environment, and
-  GitOps branch) based on the branch (`JENKINS2026_REPO_BRANCH`) of this repo that is
-  currently deployed.
+  The pipelines target the stable environment (`microservices` namespace) and main branch.
 - **Spring Microservices microservices + Angular UI**, deployed by those
-  pipelines into either the `microservices` or `microservices-develop` namespaces via a
+  pipelines into the `microservices` namespace via a
   single parameterized [Helm chart](../helm/microservices).
 - **OpenTelemetry** end to end: Jenkins, the Java services (auto-instrumented
   by the OTel Operator) and the Angular UI (a small vanilla-JS RUM snippet)
@@ -42,12 +40,7 @@ flowchart TD
         microservices["gateway (Spring Boot + Angular UI),<br/>jhipstersamplemicroservice (Spring Boot backend)"]
     end
 
-    subgraph microservices_dev_ns["namespace: microservices-develop (sandbox, tracks main)"]
-        microservices_dev["gateway (Spring Boot + Angular UI),<br/>jhipstersamplemicroservice (Spring Boot backend)"]
-    end
-
     jenkins -->|"helm upgrade --install<br/>(per-service image tag)"| microservices
-    jenkins -->|"helm upgrade --install<br/>(per-service image tag)"| microservices_dev
 
     subgraph observability_ns["namespace: observability"]
         otel["OpenTelemetry Operator (CRDs: Instrumentation,<br/>OpenTelemetryCollector) - Java auto-instrumentation<br/>otel-collector-gateway (Deployment, OTLP receiver)<br/>otel-collector-logs (DaemonSet, filelog receiver)"]
@@ -55,7 +48,6 @@ flowchart TD
 
     jenkins -->|OTLP| otel
     microservices -->|"OTLP (traces / metrics / logs)"| otel
-    microservices_dev -->|"OTLP (traces / metrics / logs)"| otel
 
     grafana_cloud["Grafana Cloud<br/>OTLP gateway -> Mimir, Loki, Tempo + Grafana"]
     oss["In-cluster: kube-prometheus-stack<br/>(Prometheus + Grafana) + Loki + Tempo"]

@@ -98,23 +98,11 @@ controller:
       value: "ghcr.io/nubenetes/jenkins-2026-microservices"
     - name: OTEL_EXPORTER_OTLP_ENDPOINT
       value: "http://otel-collector-gateway.observability.svc.cluster.local:4317"
-    - name: OTEL_LOGS_BACKEND_URL
-      valueFrom:
-        secretKeyRef:
-          name: jenkins-credentials
-          key: otel-logs-backend-url
-          optional: true
     - name: GRAFANA_BASE_URL
       valueFrom:
         secretKeyRef:
           name: jenkins-credentials
           key: grafana-base-url
-          optional: true
-    - name: GRAFANA_TRACES_DASHBOARD_UID
-      valueFrom:
-        secretKeyRef:
-          name: jenkins-credentials
-          key: grafana-traces-dashboard-uid
           optional: true
     # Public URL of the stable Microservices (https://microservices.<gateway.baseDomain>),
     # empty if the Gateway feature (config/config.yaml gateway.baseDomain) is
@@ -126,15 +114,7 @@ controller:
           name: jenkins-credentials
           key: microservices-url
           optional: true
-    # Public URL of the develop sandbox Microservices
-    # (https://microservices-develop.<gateway.baseDomain>) - same conditions as
-    # MICROSERVICES_URL above.
-    - name: MICROSERVICES_DEVELOP_URL
-      valueFrom:
-        secretKeyRef:
-          name: jenkins-credentials
-          key: microservices-develop-url
-          optional: true
+
     - name: REGISTRY_USERNAME
       valueFrom:
         secretKeyRef:

@@ -58,7 +58,7 @@ spec:
           from: All
 EOT
 
-log_step "Generating HTTPRoutes (jenkins, argocd, microservices, microservices-develop, headlamp)"
+log_step "Generating HTTPRoutes (jenkins, argocd, microservices, headlamp)"
 cat >"${GENERATED_DIR}/httproute-jenkins.yaml" <<EOT
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -110,29 +110,6 @@ spec:
       sectionName: https
   hostnames:
     - "${J2026_GATEWAY_MICROSERVICES_HOST}"
-  rules:
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /
-      backendRefs:
-        - name: gateway
-          port: 8080
-EOT
-
-cat >"${GENERATED_DIR}/httproute-microservices-develop.yaml" <<EOT
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: ${J2026_GATEWAY_HTTPROUTE_MICROSERVICES_DEVELOP}
-  namespace: ${J2026_MICROSERVICES_NS_DEVELOP}
-spec:
-  parentRefs:
-    - name: ${J2026_GATEWAY_NAME}
-      namespace: ${J2026_JENKINS_NAMESPACE}
-      sectionName: https
-  hostnames:
-    - "${J2026_GATEWAY_MICROSERVICES_DEVELOP_HOST}"
   rules:
     - matches:
         - path:
@@ -219,18 +196,12 @@ spec:
     name: argocd-server
 EOT
 
-for ns in "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_MICROSERVICES_NS_DEVELOP}"; do
-  env_suffix=""
-  if [[ "${ns}" == "${J2026_MICROSERVICES_NS_DEVELOP}" ]]; then
-    env_suffix="-develop"
-  fi
-
-  cat >"${GENERATED_DIR}/healthcheckpolicy-microservices${env_suffix}.yaml" <<EOT
+cat >"${GENERATED_DIR}/healthcheckpolicy-microservices.yaml" <<EOT
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
 metadata:
   name: gateway
-  namespace: ${ns}
+  namespace: ${J2026_MICROSERVICES_NS_STABLE}
 spec:
   default:
     config:
@@ -242,7 +213,6 @@ spec:
     kind: Service
     name: gateway
 EOT
-done
 
 log_step "Generating GCPBackendPolicies (IAP for jenkins, headlamp, pgadmin)"
 declare -A iap_client_id
@@ -324,6 +294,5 @@ log_info "Gateway ready."
 log_info "  Jenkins:           https://${J2026_GATEWAY_JENKINS_HOST}"
 log_info "  ArgoCD:            https://${J2026_GATEWAY_ARGOCD_HOST}"
 log_info "  Microservices:         https://${J2026_GATEWAY_MICROSERVICES_HOST}"
-log_info "  Microservices develop: https://${J2026_GATEWAY_MICROSERVICES_DEVELOP_HOST}"
 log_info "  Headlamp:          https://${J2026_GATEWAY_HEADLAMP_HOST}"
 log_info "  pgAdmin:           https://${J2026_GATEWAY_PGADMIN_HOST}"

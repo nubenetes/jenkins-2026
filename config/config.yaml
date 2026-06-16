@@ -140,6 +140,13 @@ headlamp:
   adminEmails: ""
 
 # -----------------------------------------------------------------------------
+# ArgoCD (GitOps continuous delivery)
+# -----------------------------------------------------------------------------
+argocd:
+  namespace: argocd
+  releaseName: argocd
+
+# -----------------------------------------------------------------------------
 # pgAdmin (Postgres database administration UI)
 # -----------------------------------------------------------------------------
 pgadmin:
@@ -171,8 +178,6 @@ gateway:
   hosts:
     jenkins: "jenkins"
     microservices: "microservices"
-    # develop sandbox (namespace microservices-develop)
-    microservicesDevelop: "microservices-develop"
     headlamp: "headlamp"
     pgadmin: "pgadmin"
   # k8s Secret (per-namespace, created by scripts/01-namespaces.sh) holding
@@ -187,8 +192,6 @@ gateway:
 microservices:
   namespaces:
     stable: microservices
-    # Namespace the develop sandbox deploys into.
-    develop: microservices-develop
 
   # JHipster microservices monorepo coordinates
   git:
@@ -198,7 +201,6 @@ microservices:
 
   branches:
     stable: main
-    develop: develop
 
   # Container images built by the pipelines are pushed here.
   registry: ghcr.io/nubenetes/jenkins-2026-microservices

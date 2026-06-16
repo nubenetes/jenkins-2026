@@ -72,8 +72,8 @@ if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
     bash -c "kubectl -n '${J2026_GRAFANA_OSS_NAMESPACE}' get pods -l app.kubernetes.io/name=grafana -o jsonpath='{.items[0].status.phase}' | grep -qx Running"
 fi
 
-log_step "Microservices (stable + develop)"
-for ns in "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_MICROSERVICES_NS_DEVELOP}"; do
+log_step "Microservices (stable)"
+for ns in "${J2026_MICROSERVICES_NS_STABLE}"; do
   check "namespace ${ns} has ${NUM_SERVICES} Deployments" \
     bash -c "[[ \$(kubectl -n '${ns}' get deploy -o name | wc -l) -eq ${NUM_SERVICES} ]]"
 done

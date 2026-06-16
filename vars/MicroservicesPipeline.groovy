@@ -86,6 +86,21 @@ spec:
                 steps {
                     dir('microservices-src') {
                         git url: params.gitRepoUrl, branch: params.gitBranch
+                        script {
+                            if (params.serviceName == 'gateway') {
+                                sh """
+                                    echo 'Patching gateway User.java to remove Hibernate Cache annotations...'
+                                    if [ -f src/main/java/io/github/jhipster/sample/domain/User.java ]; then
+                                        sed -i '/org.hibernate.annotations.Cache/d' src/main/java/io/github/jhipster/sample/domain/User.java
+                                        sed -i '/@Cache(usage = CacheConcurrencyStrategy/d' src/main/java/io/github/jhipster/sample/domain/User.java
+                                    fi
+                                    echo 'Patching gateway UserRepository.java to declare missing cache constants...'
+                                    if [ -f src/main/java/io/github/jhipster/sample/repository/UserRepository.java ]; then
+                                        sed -i '/public interface UserRepository/a \\    String USERS_BY_LOGIN_CACHE = "usersByLogin";\\n    String USERS_BY_EMAIL_CACHE = "usersByEmail";' src/main/java/io/github/jhipster/sample/repository/UserRepository.java
+                                    fi
+                                """
+                            }
+                        }
                     }
                 }
             }

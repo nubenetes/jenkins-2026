@@ -3,11 +3,9 @@
 
 namespaces:
   stable: microservices
-  develop: microservices-develop
 
 branches:
   stable: main
-  develop: main
 
 services:
   - name: gateway

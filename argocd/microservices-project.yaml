@@ -10,8 +10,6 @@ spec:
   destinations:
     - namespace: microservices
       server: https://kubernetes.default.svc
-    - namespace: microservices-develop
-      server: https://kubernetes.default.svc
   clusterResourceWhitelist:
     - group: ""
       kind: Namespace

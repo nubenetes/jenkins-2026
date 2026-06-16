@@ -11,10 +11,6 @@ spec:
             namespace: microservices
             valuesFile: values-stable.yaml
             branch: '{{branchStable}}'
-          - env: develop
-            namespace: microservices-develop
-            valuesFile: values-develop.yaml
-            branch: '{{branchDevelop}}'
   template:
     metadata:
       name: 'microservices-{{env}}'

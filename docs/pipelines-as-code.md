@@ -32,16 +32,10 @@ smoke tests. A fifth step, `microservicesK6Smoke`, is used only by the
 
 ### Pipeline Branch & Environment Mapping
 
-Instead of separating stable and development pipelines into separate jobs and folders, a single set of root stable pipelines is generated. These pipelines dynamically determine their target namespace, environment, and tracked branch based on the active branch of this infra repository (`JENKINS2026_REPO_BRANCH`) that is currently deployed on the Jenkins controller:
+Instead of separating stable and development pipelines into separate jobs and folders, a single set of root stable pipelines is generated. These pipelines are dynamically seeded and configured to target the stable environment:
 
-*   **When deployed on the `main` branch:**
-    *   **Shared Library branch:** `main`
-    *   **Target Namespace:** `microservices`
-    *   **Environment Name:** `stable` (modifies `values-stable.yaml` in the GitOps config repo on the `main` branch)
-*   **When deployed on the `develop` branch (or feature branches):**
-    *   **Shared Library branch:** `develop` (or feature branch name)
-    *   **Target Namespace:** `microservices-develop`
-    *   **Environment Name:** `develop` (modifies `values-develop.yaml` in the GitOps config repo on the `develop` branch)
+*   **Target Namespace:** `microservices`
+*   **Environment Name:** `stable` (modifies `values-stable.yaml` in the GitOps config repository on the `main` branch)
 
 ## Pipeline stages ([`Jenkinsfile.microservices`](../jenkins/pipelines/Jenkinsfile.microservices))
 

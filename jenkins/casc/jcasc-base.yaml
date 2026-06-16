@@ -19,8 +19,7 @@ jenkins:
         <li>pgAdmin: <a href="https://pgadmin.${J2026_GATEWAY_BASE_DOMAIN:-jenkins2026.nubenetes.com}" style="color: #0052cc; text-decoration: underline;">https://pgadmin.${J2026_GATEWAY_BASE_DOMAIN:-jenkins2026.nubenetes.com}</a></li>
         <li>Headlamp: <a href="https://headlamp.${J2026_GATEWAY_BASE_DOMAIN:-jenkins2026.nubenetes.com}" style="color: #0052cc; text-decoration: underline;">https://headlamp.${J2026_GATEWAY_BASE_DOMAIN:-jenkins2026.nubenetes.com}</a></li>
 
-        <li>Microservices (Stable): <a href="${MICROSERVICES_URL:-#}" style="color: #0052cc; text-decoration: underline;">${MICROSERVICES_URL:-not publicly exposed}</a></li>
-        <li>Microservices (Develop): <a href="${MICROSERVICES_DEVELOP_URL:-#}" style="color: #0052cc; text-decoration: underline;">${MICROSERVICES_DEVELOP_URL:-not publicly exposed}</a></li>
+        <li>Microservices: <a href="${MICROSERVICES_URL:-#}" style="color: #0052cc; text-decoration: underline;">${MICROSERVICES_URL:-not publicly exposed}</a></li>
       </ul>
 
       <b style="color: #0052cc;">Observability:</b>

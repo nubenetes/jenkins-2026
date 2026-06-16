@@ -7,6 +7,10 @@
  *
  * It dynamically configures the pipelines (namespaces, environment, branch tracking)
  * based on the active branch of the infra repo (jenkins-2026) currently deployed.
+ *
+ * Single-view model (since v0.5): all jobs live at the root in the 'microservices'
+ * ListView. The old 'pac-dev' folder and 'microservices-develop' view are pruned
+ * automatically on every seed run (see "Prune legacy resources" block below).
  */
 
 import org.yaml.snakeyaml.Yaml
@@ -22,12 +26,31 @@ def registry = new Yaml().load(yamlText)
 def namespaces  = registry.namespaces
 def gitFlowRefs = registry.branches
 
-// Determine configuration dynamically based on the active branch of the infra repo (jenkins-2026)
-def isStable = (infraBranch == 'main')
-def envName = isStable ? 'stable' : 'develop'
-def targetNamespace = isStable ? namespaces.stable : namespaces.develop
-def branchKey = isStable ? 'stable' : 'develop'
+// Determine configuration dynamically. The legacy 'develop' track is pruned.
+def envName = 'stable'
+def targetNamespace = namespaces.stable
+def branchKey = 'stable'
 def pipelineRepoBranch = infraBranch
+
+// ---------------------------------------------------------------------------
+// Prune legacy resources from the old dual-branch pipeline model (pre-v0.5).
+// The previous model placed develop variants inside a 'pac-dev' Folder and
+// exposed them via a 'microservices-develop' ListView.  Both are now obsolete.
+// Deleting them here is idempotent - no-ops if they are already absent.
+// ---------------------------------------------------------------------------
+def jenkinsInst = jenkins.model.Jenkins.get()
+
+def legacyFolder = jenkinsInst.getItem('pac-dev')
+if (legacyFolder) {
+    legacyFolder.delete()
+    println "[seed] Pruned legacy folder: pac-dev"
+}
+
+def legacyView = jenkinsInst.getView('microservices-develop')
+if (legacyView) {
+    jenkinsInst.deleteView(legacyView)
+    println "[seed] Pruned legacy view: microservices-develop"
+}
 
 registry.services.each { svc ->
   def jobName = svc.name
@@ -85,7 +108,7 @@ MicroservicesK6SmokePipeline(
   }
 }
 
-// ListView is always 'microservices' at the root
+// Single 'microservices' ListView at the root - all service jobs + k6 smoke.
 listView('microservices') {
   jobs {
     registry.services.each { name(it.name) }

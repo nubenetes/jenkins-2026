@@ -1,15 +1,14 @@
 # jenkins-2026
 
+> **Two-repo GitOps setup.** This is the **infra repo** (cluster bootstrap, Jenkins, ArgoCD, observability). Image tags and ArgoCD manifests live in the companion **[`nubenetes/jenkins-2026-gitops-config`](https://github.com/nubenetes/jenkins-2026-gitops-config)** repo — see its [README](https://github.com/nubenetes/jenkins-2026-gitops-config#readme) for the Helm chart layout, values schema, branch strategy, and Postgres details.
+
 A self-contained proof of concept that deploys **Jenkins** (via
 [jenkinsci/helm-charts](https://github.com/jenkinsci/helm-charts)) on
 **Kubernetes**, configures it entirely through Configuration-as-Code +
-Job DSL ("pipelines as code"), and uses it to build, containerize and deploy
-the [Spring Microservices microservices](https://github.com/spring-microservices/spring-microservices-microservices)
-reference application (+ its [Angular UI](https://github.com/spring-microservices/spring-microservices-angular))
-in a **GitFlow-inspired** model with two distinct tracks:
-- **Unified Pipeline Model**: A single set of stable pipelines (`gateway`, `jhipstersamplemicroservice`, and `microservices-k6-smoke` at the root, all visible in the **microservices** view) tracks and builds the microservices. They dynamically adapt their configuration (target namespace, deployment environment, and tracking branch) based on the branch (`JENKINS2026_REPO_BRANCH`) of this infra repository that is currently active/deployed.
-  - **Main Branch**: Deploys to the `microservices` namespace and updates the `main` branch of the GitOps config repository.
-  - **Develop/Feature Branches**: Deploys to the `microservices-develop` namespace and updates the `develop` branch of the GitOps config repository.
+Job DSL ("pipelines as code"), and uses it to build, containerize and deploy the
+JHipster microservices reference application.
+
+- **Unified Pipeline Model**: A single set of stable pipelines (`gateway`, `jhipstersamplemicroservice`, and `microservices-k6-smoke` at the root, all visible in the **microservices** view) tracks and builds the microservices. They deploy directly to the `microservices` namespace and update the `main` branch of the companion GitOps config repository. The legacy develop environment and sandbox components have been pruned.
 
 - **Observability (Grafana Cloud / OSS)**: Traces, metrics and logs are fully correlated. Dashboard deployment is managed via the native **`gcx` CLI** using a GitOps workflow.
 - **ArgoCD (GitOps)**: The entire Microservices stack is managed via **ArgoCD**, providing a declarative GitOps engine for continuous delivery. It is integrated with Google OIDC for secure, single sign-on access.
@@ -121,12 +120,8 @@ graph TB
             OTEL["OTel Operator/<br/>Collector"]
         end
 
-        subgraph "microservices namespace (stable)"
+        subgraph "microservices namespace"
             PCS["Microservices<br/>Services"]
-        end
-
-        subgraph "microservices-develop namespace"
-            PCD["Microservices<br/>Services"]
         end
     end
 
@@ -204,22 +199,22 @@ The database connections are securely managed by the Crunchy Data Postgres Opera
 
 #### pgAdmin & Database Administration
 
-A total of **4 Postgres databases** are provisioned in the cluster (2 in `microservices` namespace and 2 in `microservices-develop` namespace). They can be administered via **pgAdmin 4**:
+A total of **2 Postgres databases** are provisioned in the cluster (both in the `microservices` namespace). They can be administered via **pgAdmin 4**:
 
 *   **URL:** `https://pgadmin.jenkins2026.nubenetes.com` (gated behind GKE Gateway + Google IAP).
 *   **Auto-Login (Google ID):** pgAdmin is configured with Webserver Authentication (`AUTHENTICATION_SOURCES = ['webserver']`) to trust the `X-Goog-Authenticated-User-Email` header injected by Google IAP. A custom python WSGI middleware automatically strips the `accounts.google.com:` namespace prefix from the header, logging you in directly using your Google email address.
-*   **Pre-populated Connections:** All 4 database connections (Stable and Develop groups for Gateway and JHipster Microservice services) are automatically preconfigured on startup as shared connections.
+*   **Pre-populated Connections:** Both database connections (Gateway and JHipster Microservice backend) are automatically preconfigured on startup as shared connections.
 *   **Resource & Safety Limits:** To prevent GKE auto-scaling, pgAdmin is strictly resource-constrained (requests: `50m` CPU / `128Mi` RAM, limits: `200m` CPU / `256Mi` RAM) and is capped by a `ResourceQuota` in the `pgadmin` namespace.
 
 ##### Retrieving Database Credentials
 To log into a database from pgAdmin, retrieve the generated operator passwords from their respective secrets. For example:
-*   **Stable Gateway DB password:**
+*   **Gateway DB password:**
     ```bash
     kubectl get secret postgres-gateway-pguser-gateway -n microservices -o jsonpath='{.data.password}' | base64 -d
     ```
-*   **Develop JHipster Microservice DB password:**
+*   **JHipster Microservice DB password:**
     ```bash
-    kubectl get secret postgres-jhipstersamplemicroservice-pguser-jhipstersamplemicroservice -n microservices-develop -o jsonpath='{.data.password}' | base64 -d
+    kubectl get secret postgres-jhipstersamplemicroservice-pguser-jhipstersamplemicroservice -n microservices -o jsonpath='{.data.password}' | base64 -d
     ```
 
 
@@ -253,23 +248,25 @@ sequenceDiagram
 
 ## ArgoCD Inventory (GitOps)
 
-The deployment lifecycle is managed by **ArgoCD** using an **ApplicationSet** pattern, which automatically generates and maintains the environments based on the infrastructure repository.
+The deployment lifecycle is managed by **ArgoCD**. Application manifests are stored in [`nubenetes/jenkins-2026-gitops-config/argocd/`](https://github.com/nubenetes/jenkins-2026-gitops-config/tree/main/argocd) and applied to the cluster by `scripts/08.5-argocd.sh`. Jenkins CI writes image tags into that repo; ArgoCD detects the change and reconciles the cluster.
+
+> See [`nubenetes/jenkins-2026-gitops-config`](https://github.com/nubenetes/jenkins-2026-gitops-config) for the full Helm chart schema, values files, branch strategy, and Postgres details.
 
 ### Projects & Applications
 
-| Resource Name | Type | Namespace | Source Path | Target Namespace |
-| :--- | :--- | :--- | :--- | :--- |
-| **`microservices`** | `AppProject` | `argocd` | N/A (Logical Group) | `microservices-*` |
-| **`microservices`** | `ApplicationSet` | `argocd` | `helm/microservices/` | Multi-namespace |
-| `microservices-stable` | `Application` | `argocd` | `helm/microservices/` | `microservices` |
-| `microservices-develop` | `Application` | `argocd` | `helm/microservices/` | `microservices-develop` |
-| `pgadmin` | `Application` | `argocd` | `helm/pgadmin/` | `pgadmin` |
-
+| Resource | Type | Source repo | Source path | Target namespace | Health |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `microservices` | `AppProject` | — | — | `microservices` | — |
+| `microservices` | `ApplicationSet` | `jenkins-2026-gitops-config` | `helm/microservices/` | (generates one App) | — |
+| `microservices-stable` | `Application` | `jenkins-2026-gitops-config` | `helm/microservices/` + `values-stable.yaml` | `microservices` | Synced |
+| `headlamp` | `Application` | `jenkins-2026-gitops-config` | `helm/headlamp/values.yaml` | `headlamp` | Healthy |
+| `pgadmin` | `Application` | `jenkins-2026-gitops-config` | `helm/pgadmin/` | `pgadmin` | Healthy |
+| `postgres-operator` | `Application` | `CrunchyData/postgres-operator@v5.7.9` | `config/default` | `postgres-operator` | Healthy |
 
 ### Security & Integration
-- **Jenkins Integration**: A dedicated `jenkins` account is created in ArgoCD with a scoped **API Token**. This token is securely stored in Jenkins' `jenkins-credentials` secret and used by the `argocd` CLI within pipeline agents.
-- **Auto-Sync**: Applications are configured with `selfHeal: true` and `prune: true`, ensuring the cluster state always matches the Git repository.
-- **Rollout Waiting**: The Jenkins pipeline stage `Deploy to Kubernetes` is non-blocking for ArgoCD but **blocking for the pipeline**, using `argocd app wait --health` to ensure zero-downtime deployments are verified before smoke testing.
+- **Jenkins Integration**: A dedicated `jenkins` account is created in ArgoCD with a scoped **API Token**. This token is stored in the `jenkins-credentials` Secret and used by the `argocd` CLI inside pipeline agents to trigger `argocd app sync --wait`.
+- **Auto-Sync**: All Applications are configured with `selfHeal: true` and `prune: true` — the cluster state always converges to the Git state within seconds of a push.
+- **Rollout Waiting**: After pushing a new tag to the gitops-config repo, the Jenkins pipeline calls `argocd app wait --health --timeout 300` before running smoke tests, ensuring zero-downtime deployments are verified end-to-end.
 
 ## Telemetry Verification & Simulation
 
@@ -499,16 +496,10 @@ The first 2 pipelines run [`Jenkinsfile.microservices`](jenkins/pipelines/Jenkin
 
 ### Pipeline Branch & Environment Mapping
 
-Instead of separating stable and development pipelines into separate jobs and folders, a single set of root stable pipelines is generated. These pipelines dynamically determine their target namespace, environment, and tracked branch based on the active branch of this infra repository (`JENKINS2026_REPO_BRANCH`) that is currently deployed on the Jenkins controller:
+Instead of separating stable and development pipelines into separate jobs and folders, a single set of root stable pipelines is generated. These pipelines are dynamically seeded and configured to target the stable environment:
 
-*   **When deployed on the `main` branch:**
-    *   **Shared Library branch:** `main`
-    *   **Target Namespace:** `microservices`
-    *   **Environment Name:** `stable` (modifies `values-stable.yaml` in the GitOps config repo on the `main` branch)
-*   **When deployed on the `develop` branch (or feature branches):**
-    *   **Shared Library branch:** `develop` (or feature branch name)
-    *   **Target Namespace:** `microservices-develop`
-    *   **Environment Name:** `develop` (modifies `values-develop.yaml` in the GitOps config repo on the `develop` branch)
+*   **Target Namespace:** `microservices`
+*   **Environment Name:** `stable` (modifies `values-stable.yaml` in the GitOps config repository on the `main` branch)
 
 ### Architecture Diagram
 
@@ -586,8 +577,7 @@ sequenceDiagram
   continues it across every service the iteration touches - one k6 iteration
   = one Tempo trace spanning the gateway and downstream microservices.
 - **Job parameters** (set as defaults by `seed_jobs.groovy`, overridable per
-  build): `TARGET_NAMESPACE`/`ENV_NAME` (`microservices`/`stable` vs.
-  `microservices-develop`/`develop`), `K6_VUS` (default 4) and `K6_ITERATIONS`
+  build): `TARGET_NAMESPACE`/`ENV_NAME` (`microservices`/`stable`), `K6_VUS` (default 4) and `K6_ITERATIONS`
   (default 12, shared across all VUs).
 - **Thresholds, not a hard gate**: `microservices-smoke.js` sets
   `http_req_failed: rate<0.05` and `http_req_duration: p(95)<3000`. k6 exits
@@ -602,7 +592,7 @@ sequenceDiagram
   **`k6-smoke-overview.json`** Grafana dashboard
   (`observability/grafana/dashboards/k6-smoke-overview.json`, uid
   `jenkins2026-k6-smoke-overview`) scoped to this run's
-  `stable`/`develop` environment and time window.
+  `stable` environment and time window.
 - **Automated Pipeline Integration**: The k6 smoke test is automatically triggered at the end of every microservice build and deploy pipeline ([MicroservicesPipeline.groovy](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy)). After a microservice (`jhipstersamplemicroservice` or `gateway`) is deployed to GKE and passes its basic startup health checks, the pipeline automatically triggers the root `microservices-k6-smoke` integration test job. This automatically validates that the newly deployed service version integrates successfully with the gateway, other microservices, and databases, and sends correlated telemetry (metrics, traces, logs) to Grafana Cloud.
 - **Run it** after the 2 services have deployed at least once (see [First run
   note](#quick-start)), then follow the Grafana link in the build console -
@@ -747,7 +737,7 @@ For managed Kubernetes environments like GKE, this setup (GCP IAP at the load ba
 ## Public access (GKE Gateway API + IAP)
 
 
-Jenkins, Microservices (stable and dev-sandbox), Headlamp, and pgAdmin can all be exposed on
+Jenkins, Microservices, Headlamp, and pgAdmin can all be exposed on
 the public internet through a single **GKE Gateway** (`gatewayClassName:
 gke-l7-global-external-managed`) - one global external HTTPS load balancer,
 one [Google-managed wildcard
@@ -758,15 +748,13 @@ applied by [`scripts/09-gateway.sh`](scripts/09-gateway.sh):
 | App | URL | [Identity-Aware Proxy](https://cloud.google.com/iap) |
 |---|---|---|
 | Jenkins | `https://jenkins.<baseDomain>` | yes |
-| Microservices (stable) | `https://microservices.<baseDomain>` | no (public demo app) |
-| Microservices (develop sandbox) | `https://microservices-develop.<baseDomain>` | no (public demo app) |
+| Microservices | `https://microservices.<baseDomain>` | no (public demo app) |
 | Headlamp | `https://headlamp.<baseDomain>` | yes |
 | pgAdmin | `https://pgadmin.<baseDomain>` | yes |
 
 `<baseDomain>` is [`gateway.baseDomain`](config/config.yaml) -
 `jenkins2026.nubenetes.com` by default. Jenkins, Headlamp, and pgAdmin get an extra
-Google-login gate (IAP) in front of their own auth; Microservices (both stable and
-develop environments), the demo app, stays open. Both Microservices URLs are also
+Google-login gate (IAP) in front of their own auth; Microservices, the demo app, stays open. The Microservices URL is also
 surfaced in the Jenkins UI's system message banner (see [`jenkins/casc/jcasc-base.yaml`](jenkins/casc/jcasc-base.yaml)).
 **This whole feature is opt-in**: set
 `JENKINS2026_BASE_DOMAIN=""` to disable it (no `Gateway`/`HTTPRoute`/
@@ -968,7 +956,7 @@ for a run of that length.
 To prevent GKE cluster auto-scaling (saving costs for this PoC) and ensure optimal QoS (Quality of Service) and stability, resource requests, limits, and namespace-level `ResourceQuota` objects are strictly configured across all components:
 
 1. **Tight Pod Resource Allocations**:
-   - **Microservices** (`gateway`, `jhipstersamplemicroservice` in both stable and develop environments): Lowered CPU requests to `100m` (limits to `500m`) and memory requests to `256Mi` (limits to `512Mi`).
+   - **Microservices** (`gateway`, `jhipstersamplemicroservice`): Lowered CPU requests to `100m` (limits to `500m`) and memory requests to `256Mi` (limits to `512Mi`).
    - **Postgres Database Instances**: Explicitly configured Crunchy PostgresCluster containers (`postgres`, `pgbackrest` jobs, and `repoHost` sidecars) with low CPU and memory limits (instances requests: `100m`/`256Mi`, limits: `500m`/`512Mi`).
    - **Jenkins Controller**: Configured with a tighter footprint of `500m` CPU and `1.5Gi` memory requests (limits: `1.5` CPU and `3Gi` memory).
    - **Jenkins Build Agents & K6 Smoke Agents**: Minimized all build agent containers (`maven`, `node`, `docker`, `helm`, `git`, `jnlp`) to request `380m` CPU and `1600Mi` (approx. `1.56Gi`) memory in total, with limits capped at `3.3` CPU and `3968Mi` (approx. `3.875Gi`) memory.
@@ -978,8 +966,7 @@ To prevent GKE cluster auto-scaling (saving costs for this PoC) and ensure optim
    - `jenkins`: Requests max `1.0` CPU / `3.5Gi` memory (restricting builds to 1 concurrent build agent at a time).
      > [!NOTE]
      > To prevent resource contention and API errors, the Jenkins cloud is configured with `containerCap: 1` in `helm/jenkins/values-common.yaml`. This enforces sequential build execution at the infrastructure level, queuing subsequent builds cleanly instead of triggering namespace ResourceQuota violations.
-   - `microservices` (stable): Requests max `1.5` CPU / `3.0Gi` memory.
-   - `microservices-develop`: Requests max `1.5` CPU / `3.0Gi` memory.
+   - `microservices`: Requests max `1.5` CPU / `3.0Gi` memory.
    - `observability`: Requests max `1.5` CPU / `3.0Gi` memory.
    - `argocd`: Requests max `1.5` CPU / `3.0Gi` memory.
    - `headlamp`: Requests max `200m` CPU / `256Mi` memory.

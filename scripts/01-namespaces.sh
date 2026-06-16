@@ -11,7 +11,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 
 log_step "Creating namespaces"
-for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_MICROSERVICES_NS_DEVELOP}" "${J2026_ARGOCD_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}"; do
+for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_ARGOCD_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}"; do
   kubectl_apply_namespace "${ns}"
 done
 
@@ -36,9 +36,7 @@ else
   kubectl create secret generic "${J2026_JENKINS_CREDENTIALS_SECRET}" \
     -n "${J2026_JENKINS_NAMESPACE}" \
     --from-literal=admin-password="${admin_password}" \
-    --from-literal=otel-logs-backend-url="${OTEL_LOGS_BACKEND_URL:-}" \
     --from-literal=grafana-base-url="${GRAFANA_BASE_URL:-}" \
-    --from-literal=grafana-traces-dashboard-uid="${GRAFANA_TRACES_DASHBOARD_UID:-}" \
     --from-literal=registry-username="${REGISTRY_USERNAME:-}" \
     --from-literal=registry-password="${REGISTRY_PASSWORD:-}" \
     --from-literal=git-username="${GIT_USERNAME:-}" \
@@ -55,17 +53,14 @@ log_step "Refreshing Microservices URLs in '${J2026_JENKINS_CREDENTIALS_SECRET}'
 # Non-sensitive, so refreshed on every run (unlike the admin
 # password above) - tracks gateway.baseDomain even if it changes after the
 # secret was first created. Empty if the Gateway feature is disabled. Surfaced
-# in the Jenkins systemMessage banner by jcasc-base.yaml (MICROSERVICES_URL,
-# MICROSERVICES_DEVELOP_URL).
+# in the Jenkins systemMessage banner by jcasc-base.yaml (MICROSERVICES_URL).
 microservices_url=""
-microservices_develop_url=""
 if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
   microservices_url="https://${J2026_GATEWAY_MICROSERVICES_HOST}"
-  microservices_develop_url="https://${J2026_GATEWAY_MICROSERVICES_DEVELOP_HOST}"
 fi
 kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \
   --type=merge -p "$(cat <<EOF
-{"stringData":{"microservices-url":"${microservices_url}","microservices-develop-url":"${microservices_develop_url}"}}
+{"stringData":{"microservices-url":"${microservices_url}"}}
 EOF
 )"
 
@@ -128,7 +123,7 @@ else
 fi
 
 log_step "Granting Jenkins ServiceAccount 'edit' in microservices namespaces"
-for ns in "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_MICROSERVICES_NS_DEVELOP}"; do
+for ns in "${J2026_MICROSERVICES_NS_STABLE}"; do
   kubectl create rolebinding jenkins-edit \
     --clusterrole=edit \
     --serviceaccount="${J2026_JENKINS_NAMESPACE}:jenkins" \
@@ -152,7 +147,7 @@ if [[ -n "${REGISTRY_USERNAME:-}" && -n "${REGISTRY_PASSWORD:-}" ]]; then
 else
   dockerconfigjson='{"auths":{}}'
 fi
-for ns in "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_MICROSERVICES_NS_DEVELOP}"; do
+for ns in "${J2026_MICROSERVICES_NS_STABLE}"; do
   kubectl create secret generic ghcr-credentials \
     -n "${ns}" \
     --type=kubernetes.io/dockerconfigjson \

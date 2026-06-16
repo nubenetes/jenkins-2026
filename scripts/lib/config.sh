@@ -159,12 +159,10 @@ export J2026_GATEWAY_IAP_POLICY_PGADMIN="pgadmin-iap"
 
 J2026_GATEWAY_HOST_JENKINS="$(yq_get '.gateway.hosts.jenkins' 'jenkins')"
 J2026_GATEWAY_HOST_MICROSERVICES="$(yq_get '.gateway.hosts.microservices' 'microservices')"
-J2026_GATEWAY_HOST_MICROSERVICES_DEVELOP="$(yq_get '.gateway.hosts.microservicesDevelop' 'microservices-develop')"
 J2026_GATEWAY_HOST_HEADLAMP="$(yq_get '.gateway.hosts.headlamp' 'headlamp')"
 J2026_GATEWAY_HOST_PGADMIN="$(yq_get '.gateway.hosts.pgadmin' 'pgadmin')"
 export J2026_GATEWAY_JENKINS_HOST="${J2026_GATEWAY_HOST_JENKINS}.${J2026_GATEWAY_BASE_DOMAIN}"
 export J2026_GATEWAY_MICROSERVICES_HOST="${J2026_GATEWAY_HOST_MICROSERVICES}.${J2026_GATEWAY_BASE_DOMAIN}"
-export J2026_GATEWAY_MICROSERVICES_DEVELOP_HOST="${J2026_GATEWAY_HOST_MICROSERVICES_DEVELOP}.${J2026_GATEWAY_BASE_DOMAIN}"
 export J2026_GATEWAY_HEADLAMP_HOST="${J2026_GATEWAY_HOST_HEADLAMP}.${J2026_GATEWAY_BASE_DOMAIN}"
 export J2026_GATEWAY_PGADMIN_HOST="${J2026_GATEWAY_HOST_PGADMIN}.${J2026_GATEWAY_BASE_DOMAIN}"
 
@@ -199,14 +197,12 @@ export J2026_JENKINS_URL="${JENKINS2026_JENKINS_URL:-${J2026_JENKINS_URL_DEFAULT
 # --- microservices ------------------------------------------------------------
 
 export J2026_MICROSERVICES_NS_STABLE="$(yq_get '.microservices.namespaces.stable' 'microservices')"
-export J2026_MICROSERVICES_NS_DEVELOP="$(yq_get '.microservices.namespaces.develop' 'microservices-develop')"
 
 export J2026_MICROSERVICES_GIT_ORG="$(yq_get '.microservices.git.org' 'nubenetes')"
 export J2026_MICROSERVICES_GIT_REPO="$(yq_get '.microservices.git.repo' 'jenkins-2026')"
 export J2026_MICROSERVICES_GIT_URL="$(yq_get '.microservices.git.url' '')"
 
 export J2026_MICROSERVICES_BRANCH_STABLE="$(yq_get '.microservices.branches.stable' 'main')"
-export J2026_MICROSERVICES_BRANCH_DEVELOP="$(yq_get '.microservices.branches.develop' 'main')"
 
 export J2026_MICROSERVICES_REGISTRY="$(yq_get '.microservices.registry' 'ghcr.io/nubenetes/jenkins-2026-microservices')"
 
@@ -221,3 +217,7 @@ export J2026_MICROSERVICES_GENAI_SERVICE_ENABLED="${JENKINS2026_GENAI_SERVICE_EN
 
 export J2026_ARGOCD_NAMESPACE="$(yq_get '.argocd.namespace' 'argocd')"
 export J2026_ARGOCD_RELEASE="$(yq_get '.argocd.releaseName' 'argocd')"
+
+# Develop branch of this infra repo, used by 08.5-argocd.sh to populate the
+# {{branchDevelop}} placeholder in argocd/microservices-appset.yaml.
+export J2026_SELF_REPO_DEV_BRANCH="$(yq_get '.microservices.branches.develop' 'main')"

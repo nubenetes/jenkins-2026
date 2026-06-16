@@ -66,23 +66,11 @@ controller:
       value: "${J2026_MICROSERVICES_REGISTRY}"
     - name: OTEL_EXPORTER_OTLP_ENDPOINT
       value: "http://otel-collector-gateway.${J2026_OBS_NAMESPACE}.svc.cluster.local:4317"
-    - name: OTEL_LOGS_BACKEND_URL
-      valueFrom:
-        secretKeyRef:
-          name: ${J2026_JENKINS_CREDENTIALS_SECRET}
-          key: otel-logs-backend-url
-          optional: true
     - name: GRAFANA_BASE_URL
       valueFrom:
         secretKeyRef:
           name: ${J2026_JENKINS_CREDENTIALS_SECRET}
           key: grafana-base-url
-          optional: true
-    - name: GRAFANA_TRACES_DASHBOARD_UID
-      valueFrom:
-        secretKeyRef:
-          name: ${J2026_JENKINS_CREDENTIALS_SECRET}
-          key: grafana-traces-dashboard-uid
           optional: true
     - name: MICROSERVICES_URL
       valueFrom:
@@ -90,12 +78,7 @@ controller:
           name: ${J2026_JENKINS_CREDENTIALS_SECRET}
           key: microservices-url
           optional: true
-    - name: MICROSERVICES_DEVELOP_URL
-      valueFrom:
-        secretKeyRef:
-          name: ${J2026_JENKINS_CREDENTIALS_SECRET}
-          key: microservices-develop-url
-          optional: true
+
     - name: REGISTRY_USERNAME
       valueFrom:
         secretKeyRef:

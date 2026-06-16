@@ -34,7 +34,7 @@ kubectl create clusterrole jenkins-otel-instrumentation-editor \
   --verb=get,list,watch,create,update,patch,delete \
   --resource=instrumentations.opentelemetry.io \
   --dry-run=client -o yaml | kubectl apply -f -
-for ns in "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_MICROSERVICES_NS_DEVELOP}"; do
+for ns in "${J2026_MICROSERVICES_NS_STABLE}"; do
   kubectl create rolebinding jenkins-otel-instrumentation-editor \
     --clusterrole=jenkins-otel-instrumentation-editor \
     --serviceaccount="${J2026_JENKINS_NAMESPACE}:jenkins" \

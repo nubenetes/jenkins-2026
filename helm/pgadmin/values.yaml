@@ -37,24 +37,6 @@ pgadmin4:
         MaintenanceDB: "jhipstersamplemicroservice"
         SSLMode: "prefer"
         Shared: true
-      develop-gateway:
-        Name: "Develop - Gateway DB"
-        Group: "Develop"
-        Host: "postgres-gateway-primary.microservices-develop.svc"
-        Port: 5432
-        Username: "gateway"
-        MaintenanceDB: "gateway"
-        SSLMode: "prefer"
-        Shared: true
-      develop-jhipstersamplemicroservice:
-        Name: "Develop - JHipster Microservice DB"
-        Group: "Develop"
-        Host: "postgres-jhipstersamplemicroservice-primary.microservices-develop.svc"
-        Port: 5432
-        Username: "jhipstersamplemicroservice"
-        MaintenanceDB: "jhipstersamplemicroservice"
-        SSLMode: "prefer"
-        Shared: true
 
   # Resource requests/limits for safety (preventing auto-scaling)
   resources:
