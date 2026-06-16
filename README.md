@@ -88,6 +88,62 @@ imports Grafana dashboards -> **installs ArgoCD**. Every step is idempotent
 partial failure is safe. Each step also runs standalone:
 `./scripts/0N-*.sh`.
 
+## Step-by-Step Deployment Guide (For Other People)
+
+This guide walks through deploying the entire POC (Infrastructure, Jenkins pipelines-as-code, ArgoCD GitOps, and Observability stack) from scratch on your own Kubernetes cluster (GKE, EKS, AKS, or OpenShift).
+
+### Step 1: Fork and Clone the Repositories
+Since this is a two-repo GitOps setup, you must fork both repositories to your own GitHub organization or account:
+1. Fork and clone **[`jenkins-2026`](https://github.com/nubenetes/jenkins-2026)** (this infrastructure repository).
+2. Fork and clone **[`jenkins-2026-gitops-config`](https://github.com/nubenetes/jenkins-2026-gitops-config)** (the GitOps config repository).
+
+### Step 2: Configure Repository Targets
+Update the repository reference URLs in `config/config.yaml` to point to your forks:
+*   Open [`config/config.yaml`](config/config.yaml) in your local clone of the infra repo.
+*   Edit `jenkins.selfRepoUrl` to point to your fork of `jenkins-2026` (e.g., `https://github.com/YOUR_ORG/jenkins-2026.git`).
+*   Edit `microservices.git.org` to match your GitHub organization or username.
+*   Commit and push this change to your infra repo fork.
+
+### Step 3: Configure GKE / OAuth Credentials (Optional)
+If you want to enable public access (Identity-Aware Proxy load balancer) or "Sign in with Google" OIDC login:
+1. **Google OAuth Client for Jenkins**: Follow the [Google login (OpenID Connect)](#google-login-openid-connect) section to create an OAuth client. Register `<your-jenkins-url>/securityRealm/finishLogin` as the redirect URI.
+2. **Google Identity-Aware Proxy (IAP) (GKE only)**: Follow the [Public access](#public-access-gke-gateway-api--iap) section to set up the OAuth client gating the endpoints.
+
+### Step 4: Add GitHub Repository Secrets
+In your fork of the infra repository (`jenkins-2026`), go to **Settings > Secrets and variables > Actions** and add the following repository secrets:
+*   `REGISTRY_USERNAME` / `REGISTRY_PASSWORD`: Credentials for your container registry (e.g. GitHub Packages GHCR) to push/pull private microservice images.
+*   `GIT_USERNAME` / `GIT_TOKEN`: GitHub account credentials used by the Jenkins pipeline to commit updated image tags to your GitOps repository fork.
+*   `JENKINS_OIDC_CLIENT_ID` / `JENKINS_OIDC_CLIENT_SECRET`: Google OAuth client credentials for Jenkins Google login.
+*   `JENKINS_OIDC_ADMIN_EMAIL`: Your Google email address (e.g., `you@gmail.com`) to be granted Admin roles in both Jenkins and ArgoCD (applied dynamically via secret/environment mappings).
+*   `HEADLAMP_ADMIN_EMAILS`: Comma-separated list of Google emails granted GCP IAP access and cluster-admin bindings in Headlamp.
+
+### Step 5: (Optional) Set up Grafana Cloud Stack
+If using the default `observability.mode: grafana-cloud`:
+1. Log into your [Grafana Cloud Portal](https://grafana.com/) and copy your OTLP endpoint and Access Policy token.
+2. Manually install the **`grafana-jenkins-datasource`** plugin inside your Grafana Cloud stack.
+3. Locally create `observability/otel-collector/secret.yaml` by copying `observability/otel-collector/secret.example.yaml` and updating it with your credentials. Apply it:
+   ```bash
+   kubectl create namespace observability --dry-run=client -o yaml | kubectl apply -f -
+   kubectl apply -f observability/otel-collector/secret.yaml
+   ```
+
+### Step 6: Deploy the Stack
+From your local terminal, run the following setup scripts:
+```bash
+# Ensure you have set your kubectl context to your target cluster
+# Run the full bootstrap script
+./scripts/up.sh
+```
+This script will create the namespaces, configure the OTel Operator, deploy Grafana dashboards, install Jenkins, and install ArgoCD.
+
+### Step 7: Run Jenkins Pipelines & Verify
+Once deployed:
+1. Run `./scripts/status.sh` to obtain the port-forwarding commands and passwords.
+2. Port-forward to Jenkins: `kubectl -n jenkins port-forward svc/jenkins 8080:8080` and open `http://localhost:8080`.
+3. Log in with the administrative basic password (retrieved from `jenkins-credentials` secret) or click **Sign in with Google**.
+4. In the Jenkins dashboard, run the seeded pipelines (`gateway` and `jhipstersamplemicroservice`) to build and push their first Docker images to your registry. This triggers ArgoCD to deploy the workloads in the cluster.
+5. Trigger the `microservices-k6-smoke` pipeline in Jenkins to generate synthetic traffic and verify telemetry in Grafana Cloud!
+
 ## Architecture & Flow
 
 ### System Architecture
@@ -402,7 +458,9 @@ Jenkins' security realm is [`oic-auth`](https://plugins.jenkins.io/oic-auth/)
 sign in with a Google account - Role-Based Authorization Strategy then decides
 what they can do. By default, a Google login only gets `authenticated-base`
 (read-only UI access); to grant the `admin` role (`Overall/Administer`) to
-your own account, set `JENKINS_OIDC_ADMIN_EMAIL`.
+your own account, set `JENKINS_OIDC_ADMIN_EMAIL`. 
+
+Setting `JENKINS_OIDC_ADMIN_EMAIL` also dynamically configures administrator permissions for the corresponding user in ArgoCD's RBAC policy configmap (`argocd-rbac-cm`), ensuring unified admin privileges across both Jenkins and ArgoCD when logging in via Google OIDC.
 
 This **replaces** the old local `admin` password login. The `${JENKINS_ADMIN_ID}`
 escape hatch above remains as the break-glass admin login.
