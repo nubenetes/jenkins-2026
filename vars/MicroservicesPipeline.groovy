@@ -17,36 +17,6 @@ kind: Pod
 spec:
   serviceAccountName: jenkins
   containers:
-    - name: maven
-      image: maven:3.9.9-eclipse-temurin-21
-      command: ['sleep']
-      args: ['infinity']
-      env:
-        - name: DOCKER_HOST
-          value: tcp://localhost:2375
-      resources:
-        requests: {cpu: 100m, memory: 1024Mi}
-        limits: {cpu: '2', memory: 2.5Gi}
-    - name: node
-      image: node:20-bookworm
-      command: ['sleep']
-      args: ['infinity']
-      env:
-        - name: DOCKER_HOST
-          value: tcp://localhost:2375
-      resources:
-        requests: {cpu: 5m, memory: 64Mi}
-        limits: {cpu: '100m', memory: 128Mi}
-    - name: docker
-      image: docker:26-dind
-      securityContext:
-        privileged: true
-      env:
-        - name: DOCKER_TLS_CERTDIR
-          value: ""
-      resources:
-        requests: {cpu: 20m, memory: 128Mi}
-        limits: {cpu: '500m', memory: 512Mi}
     - name: helm
       image: alpine/k8s:1.31.3
       command: ['sleep']
