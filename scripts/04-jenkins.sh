@@ -52,6 +52,10 @@ controller:
           key: admin-password
     - name: JENKINS_URL
       value: "http://localhost:8080/"
+    - name: JENKINS_NAMESPACE
+      value: "${J2026_JENKINS_NAMESPACE}"
+    - name: JENKINS_PUBLIC_URL
+      value: "${J2026_JENKINS_URL}"
     - name: JENKINS2026_REPO_URL
       value: "${J2026_SELF_REPO_URL}"
     - name: JENKINS2026_GITOPS_REPO_URL
