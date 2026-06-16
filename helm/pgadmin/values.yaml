@@ -13,7 +13,7 @@ pgadmin4:
     automountServiceAccountToken: true
 
   # Custom init container to fetch PostgreSQL user secrets and write the .pgpass file
-  extraInitContainers:
+  extraInitContainers: |
     - name: setup-pgpass
       image: bitnami/kubectl:1.29
       securityContext:
