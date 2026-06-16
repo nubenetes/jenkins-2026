@@ -34,17 +34,21 @@ pgadmin4:
           done
 
           # Fetch passwords dynamically
-          GATEWAY_PASSWORD=$(kubectl get secret postgres-gateway-pguser-gateway -n microservices -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || echo "")
-          MICROSERVICE_PASSWORD=$(kubectl get secret postgres-jhipstersamplemicroservice-pguser-jhipstersamplemicroservice -n microservices -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || echo "")
+          RAW_GATEWAY_PASSWORD=$(kubectl get secret postgres-gateway-pguser-gateway -n microservices -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || echo "")
+          RAW_MICROSERVICE_PASSWORD=$(kubectl get secret postgres-jhipstersamplemicroservice-pguser-jhipstersamplemicroservice -n microservices -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || echo "")
 
-          if [ -n "$GATEWAY_PASSWORD" ] && [ -n "$MICROSERVICE_PASSWORD" ]; then
+          if [ -n "$RAW_GATEWAY_PASSWORD" ] && [ -n "$RAW_MICROSERVICE_PASSWORD" ]; then
+            # Escape backslashes first, then colons for the .pgpass file format
+            GATEWAY_PASSWORD=$(echo -n "$RAW_GATEWAY_PASSWORD" | sed -e 's/\\/\\\\/g' -e 's/:/\\:/g')
+            MICROSERVICE_PASSWORD=$(echo -n "$RAW_MICROSERVICE_PASSWORD" | sed -e 's/\\/\\\\/g' -e 's/:/\\:/g')
+
             cat <<EOF > /var/lib/pgadmin/pgpass
           postgres-gateway-primary.microservices.svc:5432:gateway:gateway:${GATEWAY_PASSWORD}
           postgres-jhipstersamplemicroservice-primary.microservices.svc:5432:jhipstersamplemicroservice:jhipstersamplemicroservice:${MICROSERVICE_PASSWORD}
           EOF
             chmod 600 /var/lib/pgadmin/pgpass
             chown 5050:5050 /var/lib/pgadmin/pgpass
-            echo "pgpass file successfully generated."
+            echo "pgpass file successfully generated with proper escaping."
           else
             echo "PostgreSQL user secrets not ready. Starting pgAdmin without pre-populated pgpass."
           fi
