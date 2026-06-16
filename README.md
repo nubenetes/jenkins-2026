@@ -181,8 +181,8 @@ graph TD
     end
 
     subgraph "Database Tier (Crunchy Data Postgres clusters)"
-        DB_GW[(postgres-gateway)]
-        DB_Ms[(postgres-jhipstersamplemicroservice)]
+        DB_GW[("postgres-gateway")]
+        DB_Ms[("postgres-jhipstersamplemicroservice")]
     end
 
     subgraph "Telemetry (Observability Namespace)"
@@ -190,18 +190,18 @@ graph TD
     end
 
     %% Client traffic
-    Browser -->|HTTPS (Port 443)| GW
+    Browser -->|"HTTPS (Port 443)"| GW
     
     %% API Routing
-    GW -->|REST / JWT (Port 8081)| S_Ms
+    GW -->|"REST / JWT (Port 8081)"| S_Ms
     
     %% Database connections
-    GW -->|JDBC (Port 5432)| DB_GW
-    S_Ms -->|JDBC (Port 5432)| DB_Ms
+    GW -->|"JDBC (Port 5432)"| DB_GW
+    S_Ms -->|"JDBC (Port 5432)"| DB_Ms
     
     %% Auto-Instrumentation Telemetry
-    GW -.->|OTLP/gRPC (Port 4317)| OTEL_Collector
-    S_Ms -.->|OTLP/gRPC (Port 4317)| OTEL_Collector
+    GW -.->|"OTLP/gRPC (Port 4317)"| OTEL_Collector
+    S_Ms -.->|"OTLP/gRPC (Port 4317)"| OTEL_Collector
 ```
 
 #### Database Injection & Secrets
