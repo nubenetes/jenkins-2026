@@ -25,14 +25,16 @@ pgadmin4:
         - -c
         - |
           apk add --no-cache kubectl
-          # Wait up to 60s for Postgres secrets to exist
-          for i in {1..30}; do
+          # Wait up to 150s for Postgres secrets to exist
+          i=1
+          while [ $i -le 75 ]; do
             if kubectl get secret postgres-gateway-pguser-gateway -n microservices >/dev/null 2>&1 && \
                kubectl get secret postgres-jhipstersamplemicroservice-pguser-jhipstersamplemicroservice -n microservices >/dev/null 2>&1; then
               break
             fi
-            echo "Waiting for PostgreSQL user secrets to be ready... (attempt $i/30)"
+            echo "Waiting for PostgreSQL user secrets to be ready... (attempt $i/75)"
             sleep 2
+            i=$((i + 1))
           done
 
           # Fetch passwords dynamically
