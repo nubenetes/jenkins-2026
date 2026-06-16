@@ -175,10 +175,10 @@ metadata:
   name: jenkins-quota
 spec:
   hard:
-    requests.cpu: "1.0"
-    requests.memory: 3.5Gi
-    limits.cpu: "6"
-    limits.memory: 8.0Gi
+    requests.cpu: "2.0"
+    requests.memory: 6.0Gi
+    limits.cpu: "10"
+    limits.memory: 12.0Gi
 EOF
 
 # 2. Observability Namespace Quota
