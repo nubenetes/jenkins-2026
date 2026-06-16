@@ -11,7 +11,10 @@ data:
     WEBSERVER_AUTO_CREATE_USER = True
     
     # Monkeypatch to strip Google IAP account prefix (e.g., 'accounts.google.com:email@example.com')
+    # and dynamically copy the shared pgpass file to all user storage directories.
     try:
+        import os
+        import shutil
         import flask
         original_wsgi_app = flask.Flask.wsgi_app
         def patched_wsgi_app(self, environ, start_response):
@@ -19,7 +22,25 @@ data:
                 email = environ['HTTP_X_GOOG_AUTHENTICATED_USER_EMAIL']
                 if email.startswith('accounts.google.com:'):
                     environ['HTTP_X_GOOG_AUTHENTICATED_USER_EMAIL'] = email.split(':', 1)[1]
+            
+            # Ensure pgpass is present in all user storage folders
+            try:
+                storage_root = '/var/lib/pgadmin/storage'
+                source_pgpass = '/var/lib/pgadmin/pgpass'
+                if os.path.exists(source_pgpass) and os.path.exists(storage_root):
+                    for item in os.listdir(storage_root):
+                        item_path = os.path.join(storage_root, item)
+                        if os.path.isdir(item_path):
+                            target_pgpass = os.path.join(item_path, 'pgpass')
+                            if not os.path.exists(target_pgpass):
+                                shutil.copy2(source_pgpass, target_pgpass)
+                                os.chmod(target_pgpass, 0o600)
+                                os.chown(target_pgpass, 5050, 5050)
+            except Exception as ex:
+                pass
+                
             return original_wsgi_app(self, environ, start_response)
         flask.Flask.wsgi_app = patched_wsgi_app
     except Exception as e:
         print(f"Error applying Google IAP monkeypatch: {e}")
+

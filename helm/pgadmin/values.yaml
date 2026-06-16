@@ -84,10 +84,10 @@ pgadmin4:
         MaintenanceDB: "gateway"
         SSLMode: "require"
         Shared: true
-        PassFile: "../../pgpass"
+        PassFile: "pgpass"
         SavePassword: true
         ConnectionParameters:
-          passfile: "../../pgpass"
+          passfile: "pgpass"
       "2":
         Name: "Stable - JHipster Microservice DB"
         Group: "Stable"
@@ -98,10 +98,10 @@ pgadmin4:
         MaintenanceDB: "jhipstersamplemicroservice"
         SSLMode: "require"
         Shared: true
-        PassFile: "../../pgpass"
+        PassFile: "pgpass"
         SavePassword: true
         ConnectionParameters:
-          passfile: "../../pgpass"
+          passfile: "pgpass"
 
   # Resource requests/limits for safety (preventing auto-scaling)
   resources:
