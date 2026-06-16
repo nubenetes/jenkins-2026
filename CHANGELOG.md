@@ -2,7 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.6.1] - 2026-06-16
+
+### Documentation
+- **Bootstrapping Architecture**: Added a comprehensive section to the `README.md` explaining the lifecycle design separating persistent, account-level bootstrap resources (WIF, remote GCS state, persistent Grafana Cloud instances, and global static IP/SSL gateway configurations) from short-lived workload resources (GKE cluster, Helm releases).
+
 ## [v0.6.0] - 2026-06-16
+
 
 ### JHipster Microservices & GitOps Migration
 - **JHipster Migration**: Migrated the microservices to official JHipster sample applications (Gateway and backend microservice).
