@@ -512,7 +512,7 @@ distinct tracks of pipelines:
 | **Jenkins View** | `microservices` (root-level) | `microservices-develop` (root-level) |
 | **Jenkins Folder** | Root `/` | `pac-dev/` |
 | **This Repo Branch** | `main` | `develop` |
-| **Microservices Branch** | `main` | `develop` |
+| **Microservices Branch** | `main` | `main` (upstream default) |
 | **Target Namespace** | `microservices` | `microservices-develop` |
 | **RBAC Access** | `developer` (Read/Build) | `platform-engineer` (Admin) |
 | **Tracking Job** | `seed-jobs` | `pac-dev/seed-jobs-dev` |
@@ -1021,7 +1021,7 @@ To prevent GKE cluster auto-scaling (saving costs for this PoC) and ensure optim
    - **Microservices** (`gateway`, `jhipstersamplemicroservice` in both stable and develop environments): Lowered CPU requests to `100m` (limits to `500m`) and memory requests to `256Mi` (limits to `512Mi`).
    - **Postgres Database Instances**: Explicitly configured Crunchy PostgresCluster containers (`postgres`, `pgbackrest` jobs, and `repoHost` sidecars) with low CPU and memory limits (instances requests: `100m`/`256Mi`, limits: `500m`/`512Mi`).
    - **Jenkins Controller**: Configured with a tighter footprint of `500m` CPU and `1.5Gi` memory requests (limits: `1.5` CPU and `3Gi` memory).
-   - **Jenkins Build Agents & K6 Smoke Agents**: Minimized all build agent containers (`maven`, `node`, `docker`, `helm`, `git`, `jnlp`) to request `370m` CPU and `1.4Gi` memory in total, and limits capped to `4.2` CPU and `4.25Gi` memory.
+   - **Jenkins Build Agents & K6 Smoke Agents**: Minimized all build agent containers (`maven`, `node`, `docker`, `helm`, `git`, `jnlp`) to request `380m` CPU and `1600Mi` (approx. `1.56Gi`) memory in total, with limits capped at `3.3` CPU and `3968Mi` (approx. `3.875Gi`) memory.
 
 2. **Namespace ResourceQuotas**:
    To enforce a hard ceiling and prevent the GKE auto-scaler from launching a third node, namespace-level `ResourceQuota` objects are deployed for all active namespaces:
