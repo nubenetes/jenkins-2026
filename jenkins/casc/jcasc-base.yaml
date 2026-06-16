@@ -38,6 +38,33 @@ jenkins:
     rawHtml:
       disableSyntaxHighlighting: true
 
+  clouds:
+    - kubernetes:
+        name: "kubernetes"
+        serverUrl: "https://kubernetes.default.svc.cluster.local"
+        namespace: "${JENKINS_NAMESPACE:-jenkins}"
+        jenkinsUrl: "http://jenkins.${JENKINS_NAMESPACE:-jenkins}.svc.cluster.local:8080"
+        jenkinsTunnel: "jenkins-agent.${JENKINS_NAMESPACE:-jenkins}.svc.cluster.local:50000"
+        containerCapStr: "10"
+        connectTimeout: 5
+        readTimeout: 15
+        retentionTimeout: 5
+        waitForPodSec: 600
+        maxRequestsPerHostStr: "32"
+        templates:
+          - name: "default"
+            namespace: "${JENKINS_NAMESPACE:-jenkins}"
+            containers:
+              - name: "jnlp"
+                alwaysPullImage: false
+                args: "^${computer.jnlpmac} ^${computer.name}"
+                image: "jenkins/inbound-agent:3355.v388858a_47b_33-22"
+                privileged: "false"
+                resourceLimitCpu: "500m"
+                resourceLimitMemory: "512Mi"
+                resourceRequestCpu: "100m"
+                resourceRequestMemory: "256Mi"
+
   globalNodeProperties:
     - envVars:
         env:
@@ -131,6 +158,7 @@ unclassified:
   # login (OpenID Connect)".
   location:
     adminAddress: "address not configured yet <nobody@nowhere>"
+    url: "${JENKINS_PUBLIC_URL:-http://localhost:8080/}"
 
   globalLibraries:
     libraries:
