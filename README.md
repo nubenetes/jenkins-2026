@@ -1040,10 +1040,35 @@ for a run of that length.
 To prevent GKE cluster auto-scaling (saving costs for this PoC) and ensure optimal QoS (Quality of Service) and stability, resource requests, limits, and namespace-level `ResourceQuota` objects are strictly configured across all components:
 
 1. **Tight Pod Resource Allocations**:
-   - **Microservices** (`gateway`, `jhipstersamplemicroservice`): Lowered CPU requests to `100m` (limits to `500m`) and memory requests to `256Mi` (limits to `512Mi`).
-   - **Postgres Database Instances**: Explicitly configured Crunchy PostgresCluster containers (`postgres`, `pgbackrest` jobs, and `repoHost` sidecars) with low CPU and memory limits (instances requests: `100m`/`256Mi`, limits: `500m`/`512Mi`).
-   - **Jenkins Controller**: Configured with a tighter footprint of `500m` CPU and `1.5Gi` memory requests (limits: `1.5` CPU and `3Gi` memory).
-   - **Jenkins Build Agents & K6 Smoke Agents**: Minimized all build agent containers (`maven`, `node`, `docker`, `helm`, `git`, `jnlp`) to request `380m` CPU and `1600Mi` (approx. `1.56Gi`) memory in total, with limits capped at `3.3` CPU and `3968Mi` (approx. `3.875Gi`) memory.
+   - **Microservices** (`gateway`, `jhipstersamplemicroservice`): CPU requests set to `100m` (limits to `1.0` CPU) and memory requests to `512Mi` (limits to `1Gi`).
+   - **Postgres Database Instances**: Crunchy PostgresCluster containers (`postgres`, `pgbackrest` jobs, and `repoHost` sidecars) instances requests: `100m`/`256Mi`, limits: `500m`/`512Mi`.
+   - **Jenkins Controller**: Tighter footprint of `500m` CPU and `1.5Gi` memory requests (limits: `1.5` CPU and `3Gi` memory).
+   - **Jenkins Build Agents & K6 Smoke Agents**: Minimized build agent containers (`maven`, `node`, `docker`, `helm`, `git`, `jnlp`) requesting `380m` CPU and `1.56Gi` (`1600Mi`) memory in total, with limits capped at `3.3` CPU and `3.875Gi` (`3968Mi`) memory.
+
+   Below is the complete breakdown of configured CPU and memory requests and limits for all active workloads in the cluster:
+
+   | Namespace | Workload Name | Workload Type | CPU Requests | CPU Limits | Memory Requests | Memory Limits |
+   |---|---|---|---|---|---|---|
+   | **jenkins** | `jenkins` | StatefulSet | `500m` | `1.5` | `1.5Gi` (`1536Mi`) | `3Gi` (`3072Mi`) |
+   | **microservices** | `gateway` | Deployment | `100m` | `1.0` | `512Mi` | `1Gi` |
+   | | `jhipstersamplemicroservice` | Deployment | `100m` | `1.0` | `512Mi` | `1Gi` |
+   | | `postgres-gateway-instance1` | StatefulSet | `100m` | `500m` | `256Mi` | `512Mi` |
+   | | `postgres-gateway-repo-host` | StatefulSet | `100m` | `200m` | `128Mi` | `256Mi` |
+   | | `postgres-jhipstersamplemicroservice-instance1` | StatefulSet | `100m` | `500m` | `256Mi` | `512Mi` |
+   | | `postgres-jhipstersamplemicroservice-repo-host` | StatefulSet | `100m` | `200m` | `128Mi` | `256Mi` |
+   | **observability** | `otel-collector-gateway` | Deployment | `100m` | `500m` | `256Mi` | `512Mi` |
+   | | `otel-collector-logs-agent` | DaemonSet | `100m` | `300m` | `128Mi` | `256Mi` |
+   | | `otel-operator-opentelemetry-operator` | Deployment | `100m` | `500m` | `128Mi` | `256Mi` |
+   | | `pdc-agent` | Deployment | `50m` | `200m` | `64Mi` | `128Mi` |
+   | **argocd** | `argocd-application-controller` | StatefulSet | `100m` | `1.0` | `256Mi` | `1Gi` |
+   | | `argocd-server` | Deployment | `100m` | `500m` | `128Mi` | `256Mi` |
+   | | `argocd-repo-server` | Deployment | `100m` | `500m` | `256Mi` | `512Mi` |
+   | | `argocd-redis` | Deployment | `100m` | `500m` | `128Mi` | `256Mi` |
+   | | `argocd-dex-server` | Deployment | `50m` | `200m` | `128Mi` | `256Mi` |
+   | | `argocd-applicationset-controller` | Deployment | `50m` | `200m` | `128Mi` | `256Mi` |
+   | | `argocd-notifications-controller` | Deployment | `50m` | `200m` | `128Mi` | `256Mi` |
+   | **headlamp** | `headlamp` | Deployment | `50m` | `200m` | `64Mi` | `128Mi` |
+   | **pgadmin** | `pgadmin-pgadmin4` | Deployment | `100m` | `500m` | `256Mi` | `512Mi` |
 
 2. **Namespace ResourceQuotas**:
    To enforce a hard ceiling and prevent the GKE auto-scaler from launching a third node, namespace-level `ResourceQuota` objects are deployed for all active namespaces:
