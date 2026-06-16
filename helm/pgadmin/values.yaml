@@ -2,7 +2,9 @@ pgadmin4:
   env:
     email: "admin@jenkins2026.nubenetes.com"
     password: "SuperSecretPassword"
-    PGADMIN_REPLACE_SERVERS_ON_STARTUP: "True"
+  envVarsExtra:
+    - name: PGADMIN_REPLACE_SERVERS_ON_STARTUP
+      value: "True"
     
   # Mount our custom config_local.py
   extraVolumes:
