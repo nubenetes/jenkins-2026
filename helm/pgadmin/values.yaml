@@ -2,6 +2,7 @@ pgadmin4:
   env:
     email: "admin@jenkins2026.nubenetes.com"
     password: "SuperSecretPassword"
+    PGADMIN_REPLACE_SERVERS_ON_STARTUP: "True"
     
   # Mount our custom config_local.py
   extraVolumes:
@@ -19,7 +20,7 @@ pgadmin4:
   serverDefinitions:
     enabled: true
     servers:
-      stable-gateway:
+      "1":
         Name: "Stable - Gateway DB"
         Group: "Stable"
         Host: "postgres-gateway-primary.microservices.svc"
@@ -28,7 +29,7 @@ pgadmin4:
         MaintenanceDB: "gateway"
         SSLMode: "prefer"
         Shared: true
-      stable-jhipstersamplemicroservice:
+      "2":
         Name: "Stable - JHipster Microservice DB"
         Group: "Stable"
         Host: "postgres-jhipstersamplemicroservice-primary.microservices.svc"
