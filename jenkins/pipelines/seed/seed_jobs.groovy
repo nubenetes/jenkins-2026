@@ -51,7 +51,7 @@ registry.services.each { svc ->
       definition {
         cps {
           script("""
-@Library('microservices-shared-library') _
+@Library("microservices-shared-library@${flavour.pipelineRepoBranch}") _
 MicroservicesPipeline(
     serviceName: '${svc.name}',
     serviceType: '${svc.type}',
@@ -83,7 +83,7 @@ flavours.each { flavour ->
     definition {
       cps {
         script("""
-@Library('microservices-shared-library') _
+@Library("microservices-shared-library@${flavour.pipelineRepoBranch}") _
 MicroservicesK6SmokePipeline(
     targetNamespace: '${namespaces[flavour.namespaceKey]}',
     envName: '${flavour.envName}',
