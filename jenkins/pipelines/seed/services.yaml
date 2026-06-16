@@ -7,7 +7,7 @@ namespaces:
 
 branches:
   stable: main
-  develop: develop
+  develop: main
 
 services:
   - name: gateway
