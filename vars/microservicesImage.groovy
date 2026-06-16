@@ -11,6 +11,8 @@
  *            repo) against the `dist/` produced by microservicesBuild.
  */
 def call(Map cfg) {
+  def needsDockerPush = true
+
   withCredentials([usernamePassword(credentialsId: 'container-registry', usernameVariable: 'REG_USER', passwordVariable: 'REG_PASS')]) {
     container('docker') {
       sh """
@@ -36,6 +38,8 @@ def call(Map cfg) {
           if grep -q "jib-maven-plugin" pom.xml; then
              ./mvnw -B -Pprod -DskipTests jib:build -Djib.to.image=${cfg.image} \
                -Djib.to.auth.username=\$REG_USER -Djib.to.auth.password=\$REG_PASS
+             # Jib pushes directly, so we flag it to skip local docker push
+             echo "JIB_PUSHED" > ${env.WORKSPACE}/jib_pushed.txt
           else
              if [ -n "${cfg.module}" ]; then
                ./mvnw -B -pl ${cfg.module} -am -Pprod -DskipTests spring-boot:build-image \
@@ -46,9 +50,13 @@ def call(Map cfg) {
                  -Dspring-boot.build-image.imageName=${cfg.image} \
                  -Dspring-boot.build-image.publish=false
              fi
-             # Push is handled by the common docker push step below
           fi
         """
+      }
+      // Check if Jib pushed the image
+      if (fileExists("${env.WORKSPACE}/jib_pushed.txt")) {
+        needsDockerPush = false
+        sh "rm -f ${env.WORKSPACE}/jib_pushed.txt"
       }
     } else if (cfg.type == 'angular') {
       container('docker') {
@@ -65,8 +73,12 @@ def call(Map cfg) {
       error("microservicesImage: unknown SERVICE_TYPE '${cfg.type}' (expected 'java' or 'angular')")
     }
 
-    container('docker') {
-      sh "docker push ${cfg.image}"
+    if (needsDockerPush) {
+      container('docker') {
+        sh "docker push ${cfg.image}"
+      }
+    } else {
+      echo "Image was already pushed directly by Jib, skipping docker push."
     }
   }
 }
