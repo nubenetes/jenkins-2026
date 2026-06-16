@@ -84,10 +84,49 @@ if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
   kubectl delete gateway "${J2026_GATEWAY_NAME}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found --timeout=5m
 fi
 
+# drain_namespace <ns>
+# Deletes a namespace and ensures it fully terminates. Strategy:
+#  1. Delete all PVCs first (the jenkins-home PVC carries a volume-detach
+#     finalizer that is the most common cause of the namespace hanging).
+#  2. Issue the namespace delete with a generous timeout.
+#  3. If the namespace is still Terminating, patch its finalizer list to []
+#     so the API server releases it immediately (safe — all workloads are gone).
+drain_namespace() {
+  local ns="$1"
+  kubectl get namespace "${ns}" > /dev/null 2>&1 || { log_info "Namespace ${ns} does not exist - skipping"; return 0; }
+
+  log_info "Draining PVCs from ${ns} before namespace delete..."
+  # Remove PVC finalizer kubernetes.io/pvc-protection to unblock volume detach
+  for pvc in $(kubectl get pvc -n "${ns}" -o name 2>/dev/null); do
+    kubectl patch "${pvc}" -n "${ns}" \
+      --type='json' -p='[{"op":"replace","path":"/metadata/finalizers","value":[]}]' \
+      --ignore-not-found 2>/dev/null || true
+    kubectl delete "${pvc}" -n "${ns}" --ignore-not-found --timeout=30s 2>/dev/null || true
+  done
+
+  log_info "Deleting namespace ${ns}..."
+  kubectl delete namespace "${ns}" --ignore-not-found --timeout=2m && return 0
+
+  # Namespace still terminating — patch out the finalizers so API server releases it
+  log_warn "Namespace ${ns} still Terminating — patching finalizers to unblock..."
+  kubectl get namespace "${ns}" -o json 2>/dev/null \
+    | python3 -c "import sys,json; ns=json.load(sys.stdin); ns['spec']['finalizers']=[]; print(json.dumps(ns))" \
+    | kubectl replace --raw "/api/v1/namespaces/${ns}/finalize" -f - 2>/dev/null || true
+
+  # Give GKE up to 30 s to acknowledge the patch
+  local i=0
+  while kubectl get namespace "${ns}" > /dev/null 2>&1 && [[ $i -lt 6 ]]; do
+    sleep 5; ((i++))
+  done
+  kubectl get namespace "${ns}" > /dev/null 2>&1 \
+    && log_warn "Namespace ${ns} still present after finalize patch — GKE may finish cleanup in the background" \
+    || log_info "Namespace ${ns} deleted."
+}
+
 if [[ "${J2026_DELETE_NAMESPACES:-false}" == "true" ]]; then
   log_step "Deleting namespaces (J2026_DELETE_NAMESPACES=true)"
   for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_GRAFANA_OSS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_ARGOCD_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}"; do
-    kubectl delete namespace "${ns}" --ignore-not-found --timeout=1m || log_warn "Namespace ${ns} deletion timed out - proceeding"
+    drain_namespace "${ns}"
   done
 else
   log_info "Namespaces left in place. Set J2026_DELETE_NAMESPACES=true to remove them too."
