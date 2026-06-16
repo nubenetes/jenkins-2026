@@ -266,6 +266,58 @@ A total of **2 Postgres databases** are provisioned in the cluster (both in the 
     - **Auto-Connection**: The pre-populated servers are configured to read from `/var/lib/pgadmin/pgpass`, allowing instant connectivity just by double-clicking the server in the Object Explorer.
 *   **Resource & Safety Limits:** To prevent GKE auto-scaling, pgAdmin is strictly resource-constrained (requests: `50m` CPU / `128Mi` RAM, limits: `200m` CPU / `256Mi` RAM) and is capped by a `ResourceQuota` in the `pgadmin` namespace.
 
+##### Automated pgAdmin Authentication Flow
+
+```mermaid
+graph TD
+    subgraph "Client Tier"
+        User["User / Admin"]
+    end
+
+    subgraph "GCP Infrastructure"
+        IAP["Google Cloud IAP<br/>(OAuth / Access Check)"]
+    end
+
+    subgraph "pgadmin Namespace"
+        sa_pg["ServiceAccount: pgadmin"]
+        subgraph "pgAdmin Pod"
+            wsgi["WSGI Middleware<br/>(Python Script)"]
+            main_c["pgAdmin4 Container"]
+            init_c["setup-pgpass<br/>(Init Container)"]
+            vol_data[("Shared Volume<br/>(pgadmin-data)")]
+        end
+    end
+
+    subgraph "microservices Namespace"
+        sec_gw["Secret:<br/>postgres-gateway-pguser-gateway"]
+        sec_ms["Secret:<br/>postgres-jhipstersamplemicroservice-pguser-jhipstersamplemicroservice"]
+        rb_pg["RoleBinding:<br/>pgadmin-secret-reader-binding"]
+        role_pg["Role:<br/>pgadmin-secret-reader"]
+        db_gw[("Postgres: postgres-gateway")]
+        db_ms[("Postgres: postgres-jhipstersamplemicroservice")]
+    end
+
+    %% Authentication Flow
+    User -->|1. HTTPS Request| IAP
+    IAP -->|2. Injects Identity Header| wsgi
+    wsgi -->|3. Strip prefix & Auto-login| main_c
+
+    %% RBAC Binding & Secrets Reading
+    rb_pg -.->|Binds ServiceAccount| sa_pg
+    role_pg -.->|Allows Secrets Read| sec_gw
+    role_pg -.->|Allows Secrets Read| sec_ms
+    
+    init_c -.->|4. Fetch secrets via kubectl| sec_gw
+    init_c -.->|4. Fetch secrets via kubectl| sec_ms
+    init_c -->|5. Escape credentials & write .pgpass 0600| vol_data
+
+    %% Server Connectivity
+    main_c -->|6. Load .pgpass & servers.json| vol_data
+    main_c -->|7. Secure SSL Connection| db_gw
+    main_c -->|7. Secure SSL Connection| db_ms
+```
+
+
 ##### Retrieving Database Credentials (Optional / CLI Tools)
 If you need to connect to the databases manually using `psql` or external CLI tools, retrieve the generated passwords from their respective Kubernetes secrets:
 *   **Gateway DB password:**
