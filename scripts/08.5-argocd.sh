@@ -108,7 +108,7 @@ EOF
     bash -c "argocd account generate-token --account jenkins --core"
   
   # Wait for the pod to succeed (complete its execution)
-  kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --timeout=30s
+  kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --timeout=3m
   EXIT_CODE=$?
   
   if [[ ${EXIT_CODE} -eq 0 ]]; then
@@ -118,20 +118,20 @@ EOF
   fi
   set -e
   kubectl delete pod argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found=true || true
-
+ 
   # Strip any newlines or trailing whitespace from the token to prevent JSON patch errors
   TOKEN=$(echo "${RAW_TOKEN}" | tr -d '\n\r' | xargs)
             
   # Cleanup temporary RBAC
   kubectl delete clusterrolebinding temp-argocd-admin || true
-
+ 
   if [[ ${EXIT_CODE} -eq 0 && -n "${TOKEN}" ]]; then
     log_info "Storing ArgoCD token in ${J2026_JENKINS_CREDENTIALS_SECRET}"
     kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \
       --type=merge -p "{\"stringData\":{\"argocd-token\":\"${TOKEN}\"}}"
   else
     log_error "Failed to generate ArgoCD token (exit code: ${EXIT_CODE})"
-    log_debug "Raw output: ${RAW_TOKEN}"
+    log_info "Raw output: ${RAW_TOKEN}"
   fi
 else
   log_warn "OIDC credentials not found. ArgoCD will use local admin password."
