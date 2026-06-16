@@ -555,6 +555,9 @@ checkout -> build & test -> build & push image -> `helm upgrade` the
 [`helm/microservices`](helm/microservices) chart for that environment -> smoke test.
 Details in [`docs/pipelines-as-code.md`](docs/pipelines-as-code.md).
 
+> [!NOTE]
+> For Java microservices containing a `jib-maven-plugin` configuration, the image build and push stages are handled directly in a single step by Jib, and the subsequent redundant local `docker push` is automatically skipped.
+
 ### Pipelines-as-code dev sandbox (`pac-dev/`)
 
 The **`pac-dev/seed-jobs-dev`** job tracks this repo's `develop` branch
@@ -1023,6 +1026,8 @@ To prevent GKE cluster auto-scaling (saving costs for this PoC) and ensure optim
 2. **Namespace ResourceQuotas**:
    To enforce a hard ceiling and prevent the GKE auto-scaler from launching a third node, namespace-level `ResourceQuota` objects are deployed for all active namespaces:
    - `jenkins`: Requests max `1.0` CPU / `3.5Gi` memory (restricting builds to 1 concurrent build agent at a time).
+     > [!NOTE]
+     > To prevent resource contention and API errors, the Jenkins cloud is configured with `containerCap: 1` in `helm/jenkins/values-common.yaml`. This enforces sequential build execution at the infrastructure level, queuing subsequent builds cleanly instead of triggering namespace ResourceQuota violations.
    - `microservices` (stable): Requests max `1.5` CPU / `3.0Gi` memory.
    - `microservices-develop`: Requests max `1.5` CPU / `3.0Gi` memory.
    - `observability`: Requests max `1.5` CPU / `3.0Gi` memory.
