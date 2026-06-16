@@ -155,39 +155,34 @@ graph TB
 
 ### Microservices & Database Architecture
 
-The modernized PetClinic system is built on a containerized, cloud-native microservices architecture using **Spring Boot 3.x**, **Angular 18**, and **Java 21**. It consists of three primary services, each with its own dedicated datastore managed by the **Crunchy Data Postgres Operator**:
+The modernized JHipster system is built on a containerized, cloud-native microservices architecture using **Spring Boot 3.x**, **Angular**, and **Java 21**. It consists of two primary services, each with its own dedicated datastore managed by the **Crunchy Data Postgres Operator**:
 
 1. **`gateway`**:
-   - **Role**: Serves as the single entry point for all client requests. It hosts the Angular 18 frontend web application (using standalone components and signals) and handles routing, JWT-based security verification, and rate-limiting.
+   - **Role**: Serves as the single entry point for all client requests. It hosts the Angular frontend web application and handles routing, JWT-based security verification, and rate-limiting.
    - **Database**: Connects to `postgres-gateway` for storing session metadata or gateway-specific configurations.
-2. **`customers`**:
-   - **Role**: Manages customer domain entities (`Customer`, `Owner`, `Pet`).
-   - **Database**: Connects to `postgres-customers` for storing client and pet records.
-3. **`billing`**:
-   - **Role**: Handles finance and payment operations (`Invoice`, `Payment`).
-   - **Database**: Connects to `postgres-billing` for storing invoicing records.
+2. **`jhipstersamplemicroservice`**:
+   - **Role**: Serves as the backend microservice that contains business logic and REST endpoints.
+   - **Database**: Connects to `postgres-jhipstersamplemicroservice` for storing application data.
 
 #### Architecture & Data Flow Diagram
 
 ```mermaid
 graph TD
     subgraph "Client Tier"
-        Browser["Browser (Angular 18 UI)"]
+        Browser["Browser (Angular UI)"]
     end
 
     subgraph "API Gateway (Namespace: microservices / -develop)"
-        GW["gateway (Spring Boot 3.x, Port 8080)"]
+        GW["gateway (Spring Boot / Angular UI, Port 8080)"]
         DB_GW[(postgres-gateway)]
     end
 
     subgraph "Microservices Tier"
-        S_Cust["customers (Spring Boot 3.x, Port 8081)"]
-        S_Bill["billing (Spring Boot 3.x, Port 8082)"]
+        S_Ms["jhipstersamplemicroservice (Spring Boot, Port 8081)"]
     end
 
     subgraph "Database Tier (Crunchy Data Postgres clusters)"
-        DB_Cust[(postgres-customers)]
-        DB_Bill[(postgres-billing)]
+        DB_Ms[(postgres-jhipstersamplemicroservice)]
     end
 
     subgraph "Telemetry (Observability Namespace)"
@@ -198,33 +193,30 @@ graph TD
     Browser -->|HTTPS (Port 443)| GW
     
     %% API Routing
-    GW -->|REST / JWT (Port 8081)| S_Cust
-    GW -->|REST / JWT (Port 8082)| S_Bill
+    GW -->|REST / JWT (Port 8081)| S_Ms
     
     %% Database connections
     GW -->|JDBC (Port 5432)| DB_GW
-    S_Cust -->|JDBC (Port 5432)| DB_Cust
-    S_Bill -->|JDBC (Port 5432)| DB_Bill
+    S_Ms -->|JDBC (Port 5432)| DB_Ms
     
     %% Auto-Instrumentation Telemetry
     GW -.->|OTLP/gRPC (Port 4317)| OTEL_Collector
-    S_Cust -.->|OTLP/gRPC (Port 4317)| OTEL_Collector
-    S_Bill -.->|OTLP/gRPC (Port 4317)| OTEL_Collector
+    S_Ms -.->|OTLP/gRPC (Port 4317)| OTEL_Collector
 ```
 
 #### Database Injection & Secrets
-The database connections are securely managed by the Crunchy Data Postgres Operator. The operator automatically provisions a `PostgresCluster` for each service and exports credentials into a Kubernetes Secret (e.g., `postgres-customers-pguser-customers`). The Helm chart maps these secret values to Spring database environment variables:
+The database connections are securely managed by the Crunchy Data Postgres Operator. The operator automatically provisions a `PostgresCluster` for each service and exports credentials into a Kubernetes Secret (e.g., `postgres-jhipstersamplemicroservice-pguser-jhipstersamplemicroservice`). The Helm chart maps these secret values to Spring database environment variables:
 - `SPRING_DATASOURCE_URL` (JDBC URL)
 - `SPRING_DATASOURCE_USERNAME` (username)
 - `SPRING_DATASOURCE_PASSWORD` (password)
 
 #### pgAdmin & Database Administration
 
-A total of **6 Postgres databases** are provisioned in the cluster (3 in `microservices` namespace and 3 in `microservices-develop` namespace). They can be administered via **pgAdmin 4**:
+A total of **4 Postgres databases** are provisioned in the cluster (2 in `microservices` namespace and 2 in `microservices-develop` namespace). They can be administered via **pgAdmin 4**:
 
 *   **URL:** `https://pgadmin.jenkins2026.nubenetes.com` (gated behind GKE Gateway + Google IAP).
 *   **Auto-Login (Google ID):** pgAdmin is configured with Webserver Authentication (`AUTHENTICATION_SOURCES = ['webserver']`) to trust the `X-Goog-Authenticated-User-Email` header injected by Google IAP. A custom python WSGI middleware automatically strips the `accounts.google.com:` namespace prefix from the header, logging you in directly using your Google email address.
-*   **Pre-populated Connections:** All 6 database connections (Stable and Develop groups for Gateway, Customers, and Billing services) are automatically preconfigured on startup as shared connections.
+*   **Pre-populated Connections:** All 4 database connections (Stable and Develop groups for Gateway and JHipster Microservice services) are automatically preconfigured on startup as shared connections.
 *   **Resource & Safety Limits:** To prevent GKE auto-scaling, pgAdmin is strictly resource-constrained (requests: `50m` CPU / `128Mi` RAM, limits: `200m` CPU / `256Mi` RAM) and is capped by a `ResourceQuota` in the `pgadmin` namespace.
 
 ##### Retrieving Database Credentials
@@ -233,9 +225,9 @@ To log into a database from pgAdmin, retrieve the generated operator passwords f
     ```bash
     kubectl get secret postgres-gateway-pguser-gateway -n microservices -o jsonpath='{.data.password}' | base64 -d
     ```
-*   **Develop Customers DB password:**
+*   **Develop JHipster Microservice DB password:**
     ```bash
-    kubectl get secret postgres-customers-pguser-customers -n microservices-develop -o jsonpath='{.data.password}' | base64 -d
+    kubectl get secret postgres-jhipstersamplemicroservice-pguser-jhipstersamplemicroservice -n microservices-develop -o jsonpath='{.data.password}' | base64 -d
     ```
 
 
@@ -323,20 +315,19 @@ Trigger the **`microservices-k6-smoke`** job from the Jenkins UI:
 ### 3. How to Verify Correlation in Grafana
 Once traffic is running, go to your Grafana Cloud instance:
 
-- **Metrics to Logs**: Open the **Microservices Overview** dashboard. Click on any metric spike for a service (e.g., `customers-service`) and use the **"Show Logs"** split-view to see the logs for that exact time window.
+- **Metrics to Logs**: Open the **Microservices Overview** dashboard. Click on any metric spike for a service (e.g., `jhipstersamplemicroservice`) and use the **"Show Logs"** split-view to see the logs for that exact time window.
 - **Logs to Traces**: In the **Explore (Loki)** view, look for logs containing `trace_id`. The OTel Java agent automatically injects these. Grafana will show a "Tempo" link next to the `trace_id` to jump to the full distributed trace.
-- **End-to-End Traces**: In **Explore (Tempo)**, search for `service.name="api-gateway"`. Select a trace to see the full request path, starting from the k6 client or Angular UI, through the gateway, into the microservices, and down to the database calls.
+- **End-to-End Traces**: In **Explore (Tempo)**, search for `service.name="gateway"`. Select a trace to see the full request path, starting from the k6 client or Angular UI, through the gateway, into the microservices, and down to the database calls.
 
 > **First run note**: `helm/microservices`'s default image tag (`main`) won't
 > exist in your registry yet, so Microservices pods will show
 > `ImagePullBackOff` until each service's Jenkins pipeline has run at least
 > once and pushed an image. `scripts/06-seed-pipelines.sh` (part of `up.sh`)
-> triggers the seed job immediately so the 9 stable pipelines exist right
+> triggers the seed job immediately so the 2 stable pipelines exist right
 > away; trigger individual builds from the Jenkins UI (`listView` **microservices**).
-> Jobs are not auto-triggered (no SCM-poll) - see `microservices.genaiServiceEnabled`
-> below for why `genai-service`/`pac-dev/genai-service-develop` start out disabled.
+> Jobs are not auto-triggered (no SCM-poll).
 > The same seed run also creates `microservices-k6-smoke` (and
-> `pac-dev/microservices-k6-smoke-develop`) - run it after the 9 services have
+> `pac-dev/microservices-k6-smoke-develop`) - run it after the 2 services have
 > deployed at least once to send a small amount of traffic through the whole
 > app and give Grafana fresh traces/metrics/logs to correlate (see
 > [`docs/observability.md`](docs/observability.md#k6-observability-smoke-test)).
@@ -351,14 +342,13 @@ vars). Feature flags:
 |---|---|---|---|
 | `platform.target` | `gke` | `JENKINS2026_PLATFORM` env var | `gke`\|`eks`\|`aks`\|`openshift` - selects the Helm overlay, ingress/Route strategy and storage class (see [`docs/platforms.md`](docs/platforms.md)). |
 | `observability.mode` | `grafana-cloud` | edit `config.yaml` | `grafana-cloud`\|`oss`\|`managed` - where traces/metrics/logs go (see [`docs/observability.md`](docs/observability.md)). |
-| `microservices.genaiServiceEnabled` | `false` | `JENKINS2026_GENAI_SERVICE_ENABLED` env var | Whether the `genai-service`/`pac-dev/genai-service-develop` Jenkins jobs are created enabled. `genai-service` (Spring AI) crashes on startup without a real `OPENAI_API_KEY` (`helm/microservices/values-*.yaml` only set a startup placeholder), so seed-jobs creates these jobs `disabled` until this is `true` and a real key is configured. |
 
 Other notable sections: `jenkins.*` (chart coordinates, namespace, this
 repo's own URL/branch used by JCasC's global library + seed job),
 `observability.*` (operator/collector chart coordinates, release names,
 Secret name), `microservices.*` (namespaces for the stable/develop environments,
 upstream Microservices git org/repos/branches, target registry, and the list of
-9 services seeded into Jenkins).
+2 services seeded into Jenkins).
 
 ## Repository layout
 
@@ -530,19 +520,18 @@ distinct tracks of pipelines:
 ### Pipeline inventory
 
 `seed-jobs` (tracks `main`) and `pac-dev/seed-jobs-dev` (tracks `develop`)
-each generate 4 jobs from the same
+each generate 3 jobs from the same
 [`seed_jobs.groovy`](jenkins/pipelines/seed/seed_jobs.groovy) +
-[`services.yaml`](jenkins/pipelines/seed/services.yaml) - 3 per-service
+[`services.yaml`](jenkins/pipelines/seed/services.yaml) - 2 per-service
 build/deploy pipelines plus one k6 observability smoke test job:
 
 | Stable job (root, `microservices` view) | Dev-sandbox job (`pac-dev/`, `microservices-develop` view) |
 |---|---|
 | `gateway` | `pac-dev/gateway-develop` |
-| `customers` | `pac-dev/customers-develop` |
-| `billing` | `pac-dev/billing-develop` |
+| `jhipstersamplemicroservice` | `pac-dev/jhipstersamplemicroservice-develop` |
 | `microservices-k6-smoke` | `pac-dev/microservices-k6-smoke-develop` |
 
-The first 3 rows run [`Jenkinsfile.microservices`](jenkins/pipelines/Jenkinsfile.microservices)
+The first 2 rows run [`Jenkinsfile.microservices`](jenkins/pipelines/Jenkinsfile.microservices)
 (build/deploy, one Microservices service each); the last row runs
 [`Jenkinsfile.microservices-k6-smoke`](jenkins/pipelines/Jenkinsfile.microservices-k6-smoke)
 (synthetic traffic + telemetry, see [k6 observability smoke
@@ -553,9 +542,9 @@ test](#k6-observability-smoke-test) below).
 ```mermaid
 graph TD
     subgraph "Jenkins Controller"
-        SJ[seed-jobs] --> |tracks main| SP[3x Stable Pipelines]
+        SJ[seed-jobs] --> |tracks main| SP[2x Stable Pipelines]
         SJ --> K6S[microservices-k6-smoke]
-        SJD[pac-dev/seed-jobs-dev] --> |tracks develop| DP[3x Develop Pipelines]
+        SJD[pac-dev/seed-jobs-dev] --> |tracks develop| DP[2x Develop Pipelines]
         SJD --> K6D[pac-dev/microservices-k6-smoke-develop]
     end
 ```
@@ -573,7 +562,7 @@ and generates the `pac-dev/` folder. This gives devops/platform engineers
 an isolated environment to iterate on the pipelines themselves.
 
 **RBAC & Visibility**:
-- The **`microservices`** view and the 9 root jobs are visible to everyone
+- The **`microservices`** view and the 3 root jobs are visible to everyone
   (`developer` role).
 - The **`microservices-develop`** view and the **`pac-dev/`** folder are
   **hidden** from regular users. They are only visible to the
@@ -619,14 +608,15 @@ waiting for real users:
 sequenceDiagram
     participant K6 as k6 (Jenkins pod, k6 container)
     participant GW as gateway (Spring Boot / Angular UI)
-    participant SVC as customers/billing services
-    participant DB as Postgres (postgres-customers/billing)
+    participant SVC as jhipstersamplemicroservice
+    participant DB as Postgres (postgres-jhipstersamplemicroservice)
     participant OTel as otel-collector-gateway / -logs
     participant Grafana as Grafana Cloud (Tempo/Loki/Mimir)
 
     Note over K6: per iteration: generate a fresh W3C traceparent
     K6->>GW: GET / (traceparent)
-    K6->>GW: GET /services/... (traceparent)
+    K6->>GW: GET /management/health (traceparent)
+    K6->>GW: GET /services/jhipstersamplemicroservice/management/health (traceparent)
     GW->>SVC: continue same trace (OTel Java agent)
     SVC->>DB: SQL Query (auto-traced db span)
     GW-->>OTel: traces + logs (trace_id in MDC) + metrics
@@ -660,8 +650,8 @@ sequenceDiagram
   (`observability/grafana/dashboards/k6-smoke-overview.json`, uid
   `jenkins2026-k6-smoke-overview`) scoped to this run's
   `stable`/`develop` environment and time window.
-- **Automated Pipeline Integration**: The k6 smoke test is automatically triggered at the end of every microservice build and deploy pipeline ([MicroservicesPipeline.groovy](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy)). After a microservice (`billing`, `customers`, or `gateway`) is deployed to GKE and passes its basic startup health checks, the pipeline automatically triggers the corresponding k6 integration test job (`microservices-k6-smoke-develop` for the develop track in `pac-dev/` and `microservices-k6-smoke` for the stable track). This automatically validates that the newly deployed service version integrates successfully with the gateway, other microservices, and databases, and sends correlated telemetry (metrics, traces, logs) to Grafana Cloud.
-- **Run it** after the 3 services have deployed at least once (see [First run
+- **Automated Pipeline Integration**: The k6 smoke test is automatically triggered at the end of every microservice build and deploy pipeline ([MicroservicesPipeline.groovy](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy)). After a microservice (`jhipstersamplemicroservice` or `gateway`) is deployed to GKE and passes its basic startup health checks, the pipeline automatically triggers the corresponding k6 integration test job (`microservices-k6-smoke-develop` for the develop track in `pac-dev/` and `microservices-k6-smoke` for the stable track). This automatically validates that the newly deployed service version integrates successfully with the gateway, other microservices, and databases, and sends correlated telemetry (metrics, traces, logs) to Grafana Cloud.
+- **Run it** after the 2 services have deployed at least once (see [First run
   note](#quick-start)), then follow the Grafana link in the build console -
   or search Tempo for one of the `[microservices-smoke] iteration
   trace_id=...` values also logged there.
@@ -1025,7 +1015,7 @@ for a run of that length.
 To prevent GKE cluster auto-scaling (saving costs for this PoC) and ensure optimal QoS (Quality of Service) and stability, resource requests, limits, and namespace-level `ResourceQuota` objects are strictly configured across all components:
 
 1. **Tight Pod Resource Allocations**:
-   - **Microservices** (`gateway`, `customers`, `billing` in both stable and develop environments): Lowered CPU requests to `100m` (limits to `500m`) and memory requests to `256Mi` (limits to `512Mi`).
+   - **Microservices** (`gateway`, `jhipstersamplemicroservice` in both stable and develop environments): Lowered CPU requests to `100m` (limits to `500m`) and memory requests to `256Mi` (limits to `512Mi`).
    - **Postgres Database Instances**: Explicitly configured Crunchy PostgresCluster containers (`postgres`, `pgbackrest` jobs, and `repoHost` sidecars) with low CPU and memory limits (instances requests: `100m`/`256Mi`, limits: `500m`/`512Mi`).
    - **Jenkins Controller**: Configured with a tighter footprint of `500m` CPU and `1.5Gi` memory requests (limits: `1.5` CPU and `3Gi` memory).
    - **Jenkins Build Agents & K6 Smoke Agents**: Minimized all build agent containers (`maven`, `node`, `docker`, `helm`, `git`, `jnlp`) to request `370m` CPU and `1.4Gi` memory in total, and limits capped to `4.2` CPU and `4.25Gi` memory.

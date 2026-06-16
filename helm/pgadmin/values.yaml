@@ -28,22 +28,13 @@ pgadmin4:
         MaintenanceDB: "gateway"
         SSLMode: "prefer"
         Shared: true
-      stable-customers:
-        Name: "Stable - Customers DB"
+      stable-jhipstersamplemicroservice:
+        Name: "Stable - JHipster Microservice DB"
         Group: "Stable"
-        Host: "postgres-customers-primary.microservices.svc"
+        Host: "postgres-jhipstersamplemicroservice-primary.microservices.svc"
         Port: 5432
-        Username: "customers"
-        MaintenanceDB: "customers"
-        SSLMode: "prefer"
-        Shared: true
-      stable-billing:
-        Name: "Stable - Billing DB"
-        Group: "Stable"
-        Host: "postgres-billing-primary.microservices.svc"
-        Port: 5432
-        Username: "billing"
-        MaintenanceDB: "billing"
+        Username: "jhipstersamplemicroservice"
+        MaintenanceDB: "jhipstersamplemicroservice"
         SSLMode: "prefer"
         Shared: true
       develop-gateway:
@@ -55,22 +46,13 @@ pgadmin4:
         MaintenanceDB: "gateway"
         SSLMode: "prefer"
         Shared: true
-      develop-customers:
-        Name: "Develop - Customers DB"
+      develop-jhipstersamplemicroservice:
+        Name: "Develop - JHipster Microservice DB"
         Group: "Develop"
-        Host: "postgres-customers-primary.microservices-develop.svc"
+        Host: "postgres-jhipstersamplemicroservice-primary.microservices-develop.svc"
         Port: 5432
-        Username: "customers"
-        MaintenanceDB: "customers"
-        SSLMode: "prefer"
-        Shared: true
-      develop-billing:
-        Name: "Develop - Billing DB"
-        Group: "Develop"
-        Host: "postgres-billing-primary.microservices-develop.svc"
-        Port: 5432
-        Username: "billing"
-        MaintenanceDB: "billing"
+        Username: "jhipstersamplemicroservice"
+        MaintenanceDB: "jhipstersamplemicroservice"
         SSLMode: "prefer"
         Shared: true
 
