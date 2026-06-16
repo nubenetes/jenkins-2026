@@ -71,6 +71,6 @@ export default function () {
   }
 
   // 4. Microservice health check via Gateway proxy routing (Option A verification)
-  get(`${API_GATEWAY}/services/jhipstersamplemicroservice/management/health`, traceparent, 'gateway-proxy-microservice-health');
+  get(`${API_GATEWAY}/services/jhipstersamplemicroservice/management/health/readiness`, traceparent, 'gateway-proxy-microservice-health');
   sleep(0.3);
 }

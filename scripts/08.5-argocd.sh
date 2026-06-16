@@ -61,6 +61,7 @@ data:
   policy.csv: |
     g, authenticated, role:admin
     g, J2026_JENKINS_OIDC_ADMIN_EMAIL, role:admin
+    g, J2026_JENKINS_OIDC_ADMIN_SUB, role:admin
 EOF
   kubectl patch configmap argocd-rbac-cm -n ${J2026_ARGOCD_NAMESPACE} --patch-file "${PATCH_FILE_RBAC}"
   rm "${PATCH_FILE_RBAC}"
@@ -73,7 +74,7 @@ EOF
   # 2.5 Configure Jenkins Account for ArgoCD (CLI/API access)
   log_step "Configuring Jenkins account in ArgoCD"
   kubectl patch configmap argocd-cm -n "${J2026_ARGOCD_NAMESPACE}" --type merge -p '{"data": {"accounts.jenkins": "apiKey"}}'
-  kubectl patch configmap argocd-rbac-cm -n "${J2026_ARGOCD_NAMESPACE}" --type merge -p '{"data": {"policy.csv": "g, authenticated, role:admin\ng, jenkins, role:admin\ng, J2026_JENKINS_OIDC_ADMIN_EMAIL, role:admin"}}'
+  kubectl patch configmap argocd-rbac-cm -n "${J2026_ARGOCD_NAMESPACE}" --type merge -p '{"data": {"policy.csv": "g, authenticated, role:admin\ng, jenkins, role:admin\ng, J2026_JENKINS_OIDC_ADMIN_EMAIL, role:admin\ng, J2026_JENKINS_OIDC_ADMIN_SUB, role:admin"}}'
   
   log_info "Generating ArgoCD API token for Jenkins"
   # Use a temporary ClusterRoleBinding. Use apply or delete/create to avoid "already exists" errors.
