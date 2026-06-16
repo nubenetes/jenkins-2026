@@ -1072,9 +1072,9 @@ To prevent GKE cluster auto-scaling (saving costs for this PoC) and ensure optim
 
 2. **Namespace ResourceQuotas**:
    To enforce a hard ceiling and prevent the GKE auto-scaler from launching a third node, namespace-level `ResourceQuota` objects are deployed for all active namespaces:
-   - `jenkins`: Requests max `2.0` CPU / `6.0Gi` memory (allowing up to 2 concurrent build agents at a time).
+   - `jenkins`: Requests max `3.0` CPU / `8.0Gi` memory (allowing concurrent build agents at a time).
      > [!NOTE]
-     > To allow concurrent pipeline execution and optimize deployment throughput, the Jenkins cloud is configured with `containerCap: 2` in `helm/jenkins/values-common.yaml`. The namespace resource quota has been adjusted accordingly (`requests.cpu: "2.0"`, `requests.memory: "6.0Gi"`, `limits.cpu: "10"`, `limits.memory: "12.0Gi"`) to accommodate this parallelism safely.
+     > To allow concurrent pipeline execution and optimize deployment throughput, the Jenkins cloud is configured with `containerCap: 2` in `helm/jenkins/values-common.yaml`. The namespace resource quota has been adjusted accordingly (`requests.cpu: "3.0"`, `requests.memory: "8.0Gi"`, `limits.cpu: "14"`, `limits.memory: "16.0Gi"`) to accommodate this parallelism safely and prevent pipeline agent quota exhaustion.
    - `microservices`: Requests max `1.5` CPU / `3.0Gi` memory.
    - `observability`: Requests max `1.5` CPU / `3.0Gi` memory.
    - `argocd`: Requests max `1.5` CPU / `3.0Gi` memory.

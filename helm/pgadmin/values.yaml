@@ -5,19 +5,64 @@ pgadmin4:
   envVarsExtra:
     - name: PGADMIN_REPLACE_SERVERS_ON_STARTUP
       value: "True"
-    
+     
+  # Enable dedicated ServiceAccount for pgAdmin pod to query K8s API for database secrets
+  serviceAccount:
+    create: true
+    name: "pgadmin"
+    automountServiceAccountToken: true
+
+  # Custom init container to fetch PostgreSQL user secrets and write the .pgpass file
+  extraInitContainers:
+    - name: setup-pgpass
+      image: bitnami/kubectl:1.29
+      securityContext:
+        runAsUser: 0
+      command:
+        - sh
+        - -c
+        - |
+          # Wait up to 60s for Postgres secrets to exist
+          for i in {1..30}; do
+            if kubectl get secret postgres-gateway-pguser-gateway -n microservices >/dev/null 2>&1 && \
+               kubectl get secret postgres-jhipstersamplemicroservice-pguser-jhipstersamplemicroservice -n microservices >/dev/null 2>&1; then
+              break
+            fi
+            echo "Waiting for PostgreSQL user secrets to be ready... (attempt $i/30)"
+            sleep 2
+          done
+
+          # Fetch passwords dynamically
+          GATEWAY_PASSWORD=$(kubectl get secret postgres-gateway-pguser-gateway -n microservices -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || echo "")
+          MICROSERVICE_PASSWORD=$(kubectl get secret postgres-jhipstersamplemicroservice-pguser-jhipstersamplemicroservice -n microservices -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || echo "")
+
+          if [ -n "$GATEWAY_PASSWORD" ] && [ -n "$MICROSERVICE_PASSWORD" ]; then
+            cat <<EOF > /var/lib/pgadmin/pgpass
+          postgres-gateway-primary.microservices.svc:5432:gateway:gateway:${GATEWAY_PASSWORD}
+          postgres-jhipstersamplemicroservice-primary.microservices.svc:5432:jhipstersamplemicroservice:jhipstersamplemicroservice:${MICROSERVICE_PASSWORD}
+          EOF
+            chmod 600 /var/lib/pgadmin/pgpass
+            chown 5050:5050 /var/lib/pgadmin/pgpass
+            echo "pgpass file successfully generated."
+          else
+            echo "PostgreSQL user secrets not ready. Starting pgAdmin without pre-populated pgpass."
+          fi
+      volumeMounts:
+        - name: pgadmin-data
+          mountPath: /var/lib/pgadmin
+
   # Mount our custom config_local.py
   extraVolumes:
     - name: config-local-volume
       configMap:
         name: pgadmin-config-local
-        
+         
   extraVolumeMounts:
     - name: config-local-volume
       mountPath: /pgadmin4/config_local.py
       subPath: config_local.py
       readOnly: true
-      
+       
   # Server definitions to pre-populate the 2 databases
   serverDefinitions:
     enabled: true
@@ -32,6 +77,10 @@ pgadmin4:
         MaintenanceDB: "gateway"
         SSLMode: "prefer"
         Shared: true
+        PassFile: "/var/lib/pgadmin/pgpass"
+        SavePassword: true
+        ConnectionParameters:
+          passfile: "/var/lib/pgadmin/pgpass"
       "2":
         Name: "Stable - JHipster Microservice DB"
         Group: "Stable"
@@ -42,6 +91,10 @@ pgadmin4:
         MaintenanceDB: "jhipstersamplemicroservice"
         SSLMode: "prefer"
         Shared: true
+        PassFile: "/var/lib/pgadmin/pgpass"
+        SavePassword: true
+        ConnectionParameters:
+          passfile: "/var/lib/pgadmin/pgpass"
 
   # Resource requests/limits for safety (preventing auto-scaling)
   resources:

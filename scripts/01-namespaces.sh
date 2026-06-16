@@ -131,6 +131,29 @@ for ns in "${J2026_MICROSERVICES_NS_STABLE}"; do
     --dry-run=client -o yaml | kubectl apply -f -
 done
 
+log_step "Granting pgAdmin ServiceAccount read access to Postgres user secrets in microservices namespace"
+# Create a Role that only allows reading the specific database user secrets
+kubectl apply -f - -n "${J2026_MICROSERVICES_NS_STABLE}" <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pgadmin-secret-reader
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames:
+  - postgres-gateway-pguser-gateway
+  - postgres-jhipstersamplemicroservice-pguser-jhipstersamplemicroservice
+  verbs: ["get", "list"]
+EOF
+
+# Bind this Role to pgAdmin's ServiceAccount (pgadmin) in the pgadmin namespace
+kubectl create rolebinding pgadmin-secret-reader-binding \
+  --role=pgadmin-secret-reader \
+  --serviceaccount="${J2026_PGADMIN_NAMESPACE}:pgadmin" \
+  -n "${J2026_MICROSERVICES_NS_STABLE}" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
 # 'ghcr-credentials' imagePullSecret (helm/microservices values-*.yaml
 # imagePullSecret) - same REGISTRY_USERNAME/REGISTRY_PASSWORD the
 # "container-registry" Jenkins credential (jenkins/casc/jcasc-base.yaml) uses
@@ -175,10 +198,10 @@ metadata:
   name: jenkins-quota
 spec:
   hard:
-    requests.cpu: "2.0"
-    requests.memory: 6.0Gi
-    limits.cpu: "10"
-    limits.memory: 12.0Gi
+    requests.cpu: "3.0"
+    requests.memory: 8.0Gi
+    limits.cpu: "14"
+    limits.memory: 16.0Gi
 EOF
 
 # 2. Observability Namespace Quota
