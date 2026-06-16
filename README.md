@@ -107,7 +107,7 @@ graph TB
     subgraph "External Services"
         GH["GitHub"]
         GC["Grafana Cloud"]
-        GCP["GCP IAP / DNS / OAuth"]
+        GCP["GCP IAP /<br/>DNS / OAuth"]
     end
 
     subgraph "GKE Cluster"
@@ -122,19 +122,19 @@ graph TB
 
         subgraph "argocd namespace"
             ACD["ArgoCD Server"]
-            DEX["ArgoCD Dex / OIDC"]
+            DEX["ArgoCD Dex /<br/>OIDC"]
         end
 
         subgraph "observability namespace"
-            OTEL["OTel Operator/Collector"]
+            OTEL["OTel Operator/<br/>Collector"]
         end
 
         subgraph "microservices namespace (stable)"
-            PCS["Microservices Services"]
+            PCS["Microservices<br/>Services"]
         end
 
         subgraph "microservices-develop namespace"
-            PCD["Microservices Services"]
+            PCD["Microservices<br/>Services"]
         end
     end
 
@@ -169,24 +169,24 @@ The modernized JHipster system is built on a containerized, cloud-native microse
 ```mermaid
 graph TD
     subgraph "Client Tier"
-        Browser["Browser (Angular UI)"]
+        Browser["Browser<br/>(Angular UI)"]
     end
 
     subgraph "API Gateway (Namespace: microservices / -develop)"
-        GW["gateway (Spring Boot / Angular UI, Port 8080)"]
+        GW["gateway<br/>(Spring Boot / Angular UI)<br/>Port 8080"]
     end
 
     subgraph "Microservices Tier"
-        S_Ms["jhipstersamplemicroservice (Spring Boot, Port 8081)"]
+        S_Ms["jhipstersamplemicroservice<br/>(Spring Boot)<br/>Port 8081"]
     end
 
     subgraph "Database Tier (Crunchy Data Postgres clusters)"
         DB_GW[("postgres-gateway")]
-        DB_Ms[("postgres-jhipstersamplemicroservice")]
+        DB_Ms[("postgres-<br/>jhipstersamplemicroservice")]
     end
 
     subgraph "Telemetry (Observability Namespace)"
-        OTEL_Collector["OpenTelemetry Collector Gateway"]
+        OTEL_Collector["OpenTelemetry Collector<br/>Gateway"]
     end
 
     %% Client traffic
