@@ -105,48 +105,48 @@ The following diagram illustrates the high-level architecture of the `jenkins-20
 ```mermaid
 graph TB
     subgraph "External Services"
-        GH[GitHub]
-        GC[Grafana Cloud]
-        GCP[GCP IAP / DNS / OAuth]
+        GH["GitHub"]
+        GC["Grafana Cloud"]
+        GCP["GCP IAP / DNS / OAuth"]
     end
 
     subgraph "GKE Cluster"
         subgraph "ingress-nginx / Gateway API"
-            GW[GKE Gateway]
+            GW["GKE Gateway"]
         end
 
         subgraph "jenkins namespace"
-            J[Jenkins Controller]
-            JC[JCasC / Jobs]
+            J["Jenkins Controller"]
+            JC["JCasC / Jobs"]
         end
 
         subgraph "argocd namespace"
-            ACD[ArgoCD Server]
-            DEX[ArgoCD Dex / OIDC]
+            ACD["ArgoCD Server"]
+            DEX["ArgoCD Dex / OIDC"]
         end
 
         subgraph "observability namespace"
-            OTEL[OTel Operator/Collector]
+            OTEL["OTel Operator/Collector"]
         end
 
         subgraph "microservices namespace (stable)"
-            PCS[Microservices Services]
+            PCS["Microservices Services"]
         end
 
         subgraph "microservices-develop namespace"
-            PCD[Microservices Services]
+            PCD["Microservices Services"]
         end
     end
 
     GH -->|SCM| J
     GH -->|SCM| ACD
-    GCP -->|IAP / OAuth| GW
+    GCP -->|"IAP / OAuth"| GW
     GW --> J
     GW --> ACD
     GW --> PCS
-    J -->|CI / Build| GH
-    ACD -->|CD / GitOps| PCS
-    ACD -->|CD / GitOps| PCD
+    J -->|"CI / Build"| GH
+    ACD -->|"CD / GitOps"| PCS
+    ACD -->|"CD / GitOps"| PCD
     PCS -->|OTLP| OTEL
     PCD -->|OTLP| OTEL
     J -->|OTLP| OTEL
