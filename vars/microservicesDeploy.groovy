@@ -1,6 +1,6 @@
 /**
  * microservicesDeploy(serviceName: '<svc>', envName: 'stable'|'develop',
- *                  namespace: '<ns>', platform: 'gke'|'eks'|'aks'|'openshift',
+ *                  namespace: '<ns>', platform: 'gke',
  *                  tag: '<image-tag>')
  *
  * GitOps Version: Updates the image tag in helm/microservices/values-<env>.yaml

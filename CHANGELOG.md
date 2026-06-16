@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.6.3] - 2026-06-17
+
+### Removed
+- **GKE-Only Platform Scope**: Removed all non-GKE platform support to focus exclusively on Google Kubernetes Engine.
+  - Deleted Helm values overrides for AKS (`values-aks.yaml`), EKS (`values-eks.yaml`), and OpenShift (`values-openshift.yaml`).
+  - Deleted OpenShift Route template (`helm/jenkins/openshift/route.yaml`).
+  - Deleted multi-platform documentation (`docs/platforms.md`).
+  - Removed EKS, AKS, and OpenShift configuration blocks from `config/config.yaml`.
+  - Removed platform-switching logic from `scripts/lib/config.sh`; `J2026_PLATFORM` is now hardcoded to `gke`.
+  - Removed OpenShift-specific API server prerequisite checks from `scripts/00-check-prereqs.sh`.
+  - Removed OpenShift Route deployment from `scripts/04-jenkins.sh`.
+  - Removed OpenShift route cleanup from `scripts/down.sh`.
+
+### Updated
+- **README**: Overhauled prerequisites and introduction to reflect GKE-only deployment model.
+- **Architecture Docs**: Updated `docs/architecture.md` to remove cross-platform references.
+- **Shared Library**: Updated `vars/MicroservicesPipeline.groovy` and `vars/microservicesDeploy.groovy` to document `gke` as the only supported platform value.
+- **CLAUDE.md**: Updated project scope description.
+
 ## [v0.6.2] - 2026-06-17
 
 ### Fixes

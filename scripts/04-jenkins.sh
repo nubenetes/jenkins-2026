@@ -162,11 +162,5 @@ if ! wait_for_resource "statefulset" "${J2026_JENKINS_RELEASE}" "${J2026_JENKINS
   exit 1
 fi
 
-if [[ "${J2026_PLATFORM}" == "openshift" ]]; then
-  log_step "Applying OpenShift Route for Jenkins"
-  yq eval ".metadata.namespace = \"${J2026_JENKINS_NAMESPACE}\"" \
-    "${J2026_ROOT_DIR}/helm/jenkins/openshift/route.yaml" | kubectl apply -f -
-fi
-
 log_info "Jenkins ready. Forward the UI with:"
 log_info "  kubectl -n ${J2026_JENKINS_NAMESPACE} port-forward svc/${J2026_JENKINS_RELEASE} 8080:8080"

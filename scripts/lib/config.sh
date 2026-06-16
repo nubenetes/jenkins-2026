@@ -42,19 +42,15 @@ yq_get_list() {
 J2026_PLATFORM="${JENKINS2026_PLATFORM:-$(yq_get '.platform.target' 'gke')}"
 export J2026_PLATFORM
 
-case "${J2026_PLATFORM}" in
-  gke|eks|aks|openshift) ;;
-  *)
-    log_error "Unsupported platform '${J2026_PLATFORM}' (expected gke|eks|aks|openshift)."
-    log_error "Set platform.target in ${J2026_CONFIG_FILE} or export JENKINS2026_PLATFORM."
-    exit 1
-    ;;
-esac
+if [[ "${J2026_PLATFORM}" != "gke" ]]; then
+  log_error "Unsupported platform '${J2026_PLATFORM}' (expected gke)."
+  exit 1
+fi
 
-export J2026_STORAGE_CLASS="$(yq_get ".platform.${J2026_PLATFORM}.storageClassName" '')"
-export J2026_INGRESS_CLASS="$(yq_get ".platform.${J2026_PLATFORM}.ingressClassName" '')"
-export J2026_SERVICE_TYPE="$(yq_get ".platform.${J2026_PLATFORM}.serviceType" 'ClusterIP')"
-export J2026_USE_ROUTE="$(yq_get ".platform.${J2026_PLATFORM}.useRoute" 'false')"
+export J2026_STORAGE_CLASS="$(yq_get ".platform.gke.storageClassName" '')"
+export J2026_INGRESS_CLASS="$(yq_get ".platform.gke.ingressClassName" '')"
+export J2026_SERVICE_TYPE="$(yq_get ".platform.gke.serviceType" 'ClusterIP')"
+export J2026_USE_ROUTE="false"
 
 # --- jenkins -------------------------------------------------------------
 
