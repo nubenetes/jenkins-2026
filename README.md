@@ -1160,18 +1160,15 @@ manually-triggered (`workflow_dispatch`), and follow a `CC.NN-<name>.yml`
 naming convention so their order in the GitHub UI matches their place in the
 lifecycle:
 
-- `CC` - **category**: `01` one-time bootstrap of persistent, account-level
-  resources (run by hand, rarely); `02` the GKE cluster lifecycle (provision,
-  component redeploys, decommission).
-- `NN` - sequence number within that category, in the order you'd typically
-  run them. Within category `02`, `.99` is reserved for the teardown
-  (decommission) step, so new component-redeploy workflows can be inserted at
-  `02.02`, `02.03`, etc. without renumbering it.
+- `CC` - **category**: `01` persistent, account-level resources (bootstrap and decommission, run by hand, rarely); `02` the GKE cluster lifecycle (provision, component redeploys, decommission).
+- `NN` - sequence number within that category, in the order you'd typically run them. Within categories `01` and `02`, `.98` and `.99` are reserved for teardown (decommission) steps.
 
 | # | Workflow | Category | What it does |
 |---|---|---|---|
 | 01.01 | [Grafana Cloud bootstrap](.github/workflows/01.01-grafana-cloud-bootstrap.yml) | One-time bootstrap | Creates/confirms the persistent Grafana Cloud stack (`terraform/grafana-cloud-stack`) that `observability_mode: grafana-cloud` sends data to. See [Full Grafana Cloud lifecycle automation](#one-time-setup-1). |
 | 01.02 | [Gateway bootstrap](.github/workflows/01.02-gateway-bootstrap.yml) | One-time bootstrap | Creates/confirms the persistent static IP + managed wildcard cert + DNS authorization (`terraform/gateway-bootstrap`) that [public access](#public-access-gke-gateway-api--iap) depends on. |
+| 01.98 | [Grafana Cloud decommission](.github/workflows/01.98-grafana-cloud-decommission.yml) | One-time decommission | Destroys the persistent Grafana Cloud stack (`terraform/grafana-cloud-stack`). Run only when tearing down the environment permanently. |
+| 01.99 | [Gateway decommission](.github/workflows/01.99-gateway-decommission.yml) | One-time decommission | Destroys the persistent static IP, cert mapping, and DNS authorization (`terraform/gateway-bootstrap`). Run only when tearing down the environment permanently. |
 | 02.01 | [GKE provision](.github/workflows/02.01-gke-provision.yml) | GKE lifecycle | Provisions the throwaway GKE cluster (`terraform/gke`) and deploys the full stack (`scripts/up.sh`) + smoke test. Pair with 02.99. |
 | 02.02 | [Redeploy Jenkins](.github/workflows/02.02-redeploy-jenkins.yml) | GKE lifecycle | Re-applies only `scripts/04-jenkins.sh` (Helm upgrade of `helm/jenkins/` + `jenkins/casc/` JCasC) and re-seeds the Microservices pipelines, against the cluster from the last 02.01 run - for a Jenkins-only fix without the full provision/decommission cycle. Run any number of times between 02.01 and 02.99. |
 | 02.03 | [Redeploy Headlamp](.github/workflows/02.03-redeploy-headlamp.yml) | GKE lifecycle | Re-applies `scripts/01-namespaces.sh` (refreshes the non-sensitive OIDC config keys on `headlamp-credentials`) and `scripts/08-headlamp.sh` (Helm upgrade of `helm/headlamp/`), against the cluster from the last 02.01 run - for a Headlamp-only fix without the full provision/decommission cycle. Run any number of times between 02.01 and 02.99. |
@@ -1191,16 +1188,14 @@ the morning, demo it, decommission in the evening). They run the exact same
 but since each is a separate workflow run on a fresh runner, Terraform state
 has to be **remote** (a GCS bucket) instead of local so the decommission run
 can find what the provision run created. See [CI/CD
-pipelines](#cicd-pipelines) for the full workflow inventory, including
-[`02.02-redeploy-jenkins.yml`](.github/workflows/02.02-redeploy-jenkins.yml)
-for redeploying only Jenkins.
+pipelines](#cicd-pipelines) for the full workflow inventory.
 
 ### Bootstrapping Architecture: Persistent vs. Short-Lived Resources
 
 To keep operating costs low and deployment speed high, this project separates the environment lifecycle into **short-lived workload resources** (GKE cluster, database pods, Helm releases) and **persistent, account-level resources (bootstrap)**. We use specialized bootstrap stages for the following reasons:
 
 1. **GCP Auth and Terraform State (`terraform/bootstrap`)**:
-   - **Workload Identity Federation (WIF)**: Establishes a secure, keyless trust relationship between GitHub Actions and your GCP project. GitHub can authenticate dynamically using OpenID Connect (OIDC) tokens instead of saving high-privilege, permanent GCP service account JSON keys inside repository secrets.
+   - **Workload Identity Federation (WIF)**: Establishes a secure, keyless trust relationship between GitHub Actions and your GCP project. GitHub can authenticate dynamically using OpenID Connect (OIDC) tokens instead of saving permanent GCP service account JSON keys inside repository secrets.
    - **GCS Remote Backend**: Sets up the persistent bucket where all GHA workflow runs store and retrieve Terraform state.
 
 2. **Persistent Observability Backend (`01.01 Grafana Cloud bootstrap`)**:
@@ -1209,6 +1204,63 @@ To keep operating costs low and deployment speed high, this project separates th
 3. **Persistent External DNS & Networking (`01.02 Gateway bootstrap`)**:
    - Provisions GCP global networking resources: a persistent static IP (`jenkins-2026-gateway-ip`), DNS authorizations, and the wildcard SSL certificate map (`jenkins-2026-cert-map`).
    - If these networking assets were tied to the short-lived GKE cluster, deleting the cluster would release the IP address and destroy the SSL certificate. This would force you to manually update DNS records at your domain registrar (e.g. Squarespace) and wait for DNS propagation every single time you provisioned a new cluster. Keeping the gateway bootstrapped persistently ensures your external endpoints are immediately reachable upon cluster creation.
+
+### Workflow Architecture & Lifecycle Diagram
+
+The following diagram illustrates how the persistent infrastructure bootstrap workflows, the GKE cluster provisioning/decommissioning pipelines, and the application-specific redeployments interact:
+
+```mermaid
+graph TD
+    subgraph Bootstrapping ["1. Persistent Account & Bootstrap Setup"]
+        A["Local terraform/bootstrap<br>(Owner/Admin Roles)"] -->|"Creates WIF & GCS state bucket"| B["GCP Workload Identity & Remote State"]
+        B --> C["01.01 Grafana Cloud bootstrap<br>(Runs terraform/grafana-cloud-stack)"]
+        B --> D["01.02 Gateway bootstrap<br>(Runs terraform/gateway-bootstrap)"]
+        
+        C -->|"Outputs: Stack details & Admin metrics token"| E[("Persistent Grafana Cloud Instance")]
+        D -->|"Outputs: Static Public IP & SSL Wildcard Cert Map"| F[("Persistent Gateway & Cert Map")]
+    end
+
+    subgraph GKE_Lifecycle ["2. Short-Lived GKE Cluster Lifecycle"]
+        F & E & B --> G["02.01 GKE provision<br>(Runs terraform/gke + scripts/up.sh)"]
+        G --> H["GKE Cluster & Apps Active<br>(Jenkins, ArgoCD, pgAdmin, microservices)"]
+        
+        H --> I["02.02 Redeploy Jenkins<br>(Updates Jenkins & pipelines)"]
+        H --> J["02.03 Redeploy Headlamp<br>(Updates Headlamp credentials & Helm release)"]
+        
+        I & J --> H
+        
+        H --> K["02.99 GKE decommission<br>(Runs scripts/down.sh + terraform/gke destroy)"]
+        K -->|"Destroys Cluster, retains persistent assets"| B
+    end
+
+    subgraph Persistent_Teardown ["3. Persistent Resources Teardown"]
+        E --> L["01.98 Grafana Cloud decommission<br>(Runs terraform/grafana-cloud-stack destroy)"]
+        F --> M["01.99 Gateway decommission<br>(Runs terraform/gateway-bootstrap destroy)"]
+        L & M -->|"Completely removes persistent resources"| N["GCP Project Clean Slate"]
+    end
+
+    classDef persistent fill:#f9f,stroke:#333,stroke-width:2px;
+    classDef cluster fill:#bbf,stroke:#333,stroke-width:2px;
+    classDef process fill:#fff,stroke:#333,stroke-width:1px;
+    class E,F,L,M persistent;
+    class G,H,I,J,K cluster;
+```
+
+#### Detailed Workflow Reference and Lifecycle Management
+
+##### 1. Persistent Bootstrap Workflows
+- **`01.01 Grafana Cloud bootstrap`**: Provisions a dedicated Grafana Cloud stack (hosted metrics/traces/logs backend) using `terraform/grafana-cloud-stack`. By separating the observability backend from the short-lived GKE cluster, application performance metrics and history are preserved permanently, remaining readable even after GKE is decommissioned and rebuilt from scratch.
+- **`01.02 Gateway bootstrap`**: Provisions account-level GCP networking assets using `terraform/gateway-bootstrap`. This includes a reserved external IP (`jenkins-2026-gateway-ip`), DNS authorizations, and a Google-managed wildcard SSL certificate map. Keeping this IP and SSL certificate persistent avoids losing the reserved IP during a GKE rebuild, eliminating the need to update wildcard DNS records at your domain registrar and wait for DNS propagation.
+
+##### 2. Persistent Decommission Workflows (Clean Slate)
+When you want to tear down the entire project permanently, you must run the decommission workflows in the reverse order of setup to avoid dangling resources:
+1. Run **`02.99 GKE decommission`** first to destroy the active GKE cluster and all internal Kubernetes workloads (releasing short-lived target bindings).
+2. Run **`01.98 Grafana Cloud decommission`** to run `terraform destroy` on the Grafana Cloud stack, which removes the Grafana instances, access policies, and dashboards.
+3. Run **`01.99 Gateway decommission`** to run `terraform destroy` on the gateway resources, freeing the reserved external IP, removing the wildcard SSL certificate map, and deleting GCP DNS authorizations.
+
+> [!WARNING]
+> Decommissioning the gateway (`01.99`) releases the external IP address. If you recreate the gateway later, a *new* IP will be allocated, forcing you to update your DNS provider's A records and wait for DNS propagation. Only decommission the gateway if you plan to shut down the environment permanently.
+
 
 ### One-time setup
 
