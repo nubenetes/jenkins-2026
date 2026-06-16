@@ -1160,7 +1160,7 @@ manually-triggered (`workflow_dispatch`), and follow a `CC.NN-<name>.yml`
 naming convention so their order in the GitHub UI matches their place in the
 lifecycle:
 
-- `CC` - **category**: `01` persistent, account-level resources (bootstrap and decommission, run by hand, rarely); `02` the GKE cluster lifecycle (provision, component redeploys, decommission).
+- `CC` - **category**: `01` persistent, account-level resources (bootstrap and decommission, run by hand, rarely); `02` the GKE cluster lifecycle (provision, component redeploys, decommission); `99` ad-hoc utilities and simulations.
 - `NN` - sequence number within that category, in the order you'd typically run them. Within categories `01` and `02`, `.98` and `.99` are reserved for teardown (decommission) steps.
 
 | # | Workflow | Category | What it does |
@@ -1173,6 +1173,7 @@ lifecycle:
 | 02.02 | [Redeploy Jenkins](.github/workflows/02.02-redeploy-jenkins.yml) | GKE lifecycle | Re-applies only `scripts/04-jenkins.sh` (Helm upgrade of `helm/jenkins/` + `jenkins/casc/` JCasC) and re-seeds the Microservices pipelines, against the cluster from the last 02.01 run - for a Jenkins-only fix without the full provision/decommission cycle. Run any number of times between 02.01 and 02.99. |
 | 02.03 | [Redeploy Headlamp](.github/workflows/02.03-redeploy-headlamp.yml) | GKE lifecycle | Re-applies `scripts/01-namespaces.sh` (refreshes the non-sensitive OIDC config keys on `headlamp-credentials`) and `scripts/08-headlamp.sh` (Helm upgrade of `helm/headlamp/`), against the cluster from the last 02.01 run - for a Headlamp-only fix without the full provision/decommission cycle. Run any number of times between 02.01 and 02.99. |
 | 02.99 | [GKE decommission](.github/workflows/02.99-gke-decommission.yml) | GKE lifecycle | Tears down the stack (`scripts/down.sh`) and destroys the GKE cluster (`terraform destroy`). |
+| 99.01 | [Continuous Traffic Simulation](.github/workflows/99.01-traffic-simulation.yml) | Simulation | Runs a continuous stream of synthetic traffic (k6) against the stable endpoints to keep metrics and logs active in Grafana. |
 
 See [GitHub Actions automation](#github-actions-automation) below for the
 one-time setup (secrets, Workload Identity Federation) these workflows need.
@@ -1207,7 +1208,7 @@ To keep operating costs low and deployment speed high, this project separates th
 
 ### Workflow Architecture & Lifecycle Diagram
 
-The following diagram illustrates how the persistent infrastructure bootstrap workflows, the GKE cluster provisioning/decommissioning pipelines, and the application-specific redeployments interact:
+The following diagram illustrates how the persistent infrastructure bootstrap workflows, the GKE cluster provisioning/decommissioning pipelines, the application-specific redeployments, and the traffic simulation workflow interact:
 
 ```mermaid
 graph TD
@@ -1233,7 +1234,13 @@ graph TD
         K -->|"Destroys Cluster, retains persistent assets"| B
     end
 
-    subgraph Persistent_Teardown ["3. Persistent Resources Teardown"]
+    subgraph Simulation ["3. Continuous Observability Simulation"]
+        H & E --> O["99.01 Traffic Simulation<br>(Runs k6 traffic script externally)"]
+        O -->|"Generates live traffic and metrics"| H
+        O -->|"Streams telemetry"| E
+    end
+
+    subgraph Persistent_Teardown ["4. Persistent Resources Teardown"]
         E --> L["01.98 Grafana Cloud decommission<br>(Runs terraform/grafana-cloud-stack destroy)"]
         F --> M["01.99 Gateway decommission<br>(Runs terraform/gateway-bootstrap destroy)"]
         L & M -->|"Completely removes persistent resources"| N["GCP Project Clean Slate"]
@@ -1243,7 +1250,7 @@ graph TD
     classDef cluster fill:#bbf,stroke:#333,stroke-width:2px;
     classDef process fill:#fff,stroke:#333,stroke-width:1px;
     class E,F,L,M persistent;
-    class G,H,I,J,K cluster;
+    class G,H,I,J,K,O cluster;
 ```
 
 #### Detailed Workflow Reference and Lifecycle Management
