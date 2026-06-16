@@ -849,7 +849,19 @@ and `GCPBackendPolicy` are GKE-specific.
 >   `gateway-iap-oauth` Secret (created by
 >   [`scripts/01-namespaces.sh`](scripts/01-namespaces.sh)) and derives a
 >   single-key `gateway-iap-oauth-client-secret` Secret per namespace for
->   `oauth2ClientSecret.name`.
+  `oauth2ClientSecret.name`.
+
+### Authentication & Authorization Matrix
+
+The table below outlines the authentication and authorization mechanisms for each of the deployed applications in the cluster:
+
+| Application | Access Method | Edge-Level Authentication (GCP IAP) | App-Level Authentication | Authorization & Permissions |
+|---|---|---|---|---|
+| **Jenkins** | Public URL (`https://jenkins.<baseDomain>`) or `kubectl port-forward` | **Yes** (via Google IAP OAuth) | Google OIDC (`oic-auth` plugin) **or** local `admin` user basic auth | **Role-Based Authorization Strategy**:<br>- Default Google login: `authenticated-base` (Read-Only)<br>- Admin email (`JENKINS_OIDC_ADMIN_EMAIL`): `admin` (Overall/Administer)<br>- Escaped admin user: Full Admin |
+| **ArgoCD** | Public URL (`https://argocd.<baseDomain>`) or `kubectl port-forward` | **Yes** (via Google IAP OAuth) | Google OIDC (via Dex connector) **or** local `admin` secret password | **ArgoCD RBAC Policies** (`argocd-rbac-cm`):<br>- Default OIDC login: `role:readonly`<br>- Admin email (`J2026_JENKINS_OIDC_ADMIN_EMAIL`): `role:admin`<br>- Jenkins API Account: `role:admin` via API token |
+| **Headlamp** | Public URL (`https://headlamp.<baseDomain>`) or `kubectl port-forward` | **Yes** (via Google IAP OAuth) | Token Login (using GKE OAuth access token `ya29....` or ServiceAccount token) | **Kubernetes RBAC**:<br>- GKE maps your GCP Identity to Kubernetes permissions (Project Owner gets cluster-admin)<br>- ServiceAccount token maps to default headlamp-admin bindings |
+| **pgAdmin** | Public URL (`https://pgadmin.<baseDomain>`) or `kubectl port-forward` | **Yes** (via Google IAP OAuth) | Webserver Auth (pgAdmin trusts `X-Goog-Authenticated-User-Email` header) | **Webserver User Mapping & Database Secrets**:<br>- Authenticated email is logged in directly to pgAdmin<br>- Database access requires fetching passwords from operator secrets |
+| **Microservices** (Gateway & Backend) | Public URL (`https://microservices.<baseDomain>`) | **No** (Public Demo App) | JWT Token verification (Gateway issues JWT; microservices validate it) | **Spring Security Roles**:<br>- Enforces API authorization (e.g., `ROLE_USER`, `ROLE_ADMIN`) |
 
 ### One-time setup
 
