@@ -1195,7 +1195,23 @@ pipelines](#cicd-pipelines) for the full workflow inventory, including
 [`02.02-redeploy-jenkins.yml`](.github/workflows/02.02-redeploy-jenkins.yml)
 for redeploying only Jenkins.
 
+### Bootstrapping Architecture: Persistent vs. Short-Lived Resources
+
+To keep operating costs low and deployment speed high, this project separates the environment lifecycle into **short-lived workload resources** (GKE cluster, database pods, Helm releases) and **persistent, account-level resources (bootstrap)**. We use specialized bootstrap stages for the following reasons:
+
+1. **GCP Auth and Terraform State (`terraform/bootstrap`)**:
+   - **Workload Identity Federation (WIF)**: Establishes a secure, keyless trust relationship between GitHub Actions and your GCP project. GitHub can authenticate dynamically using OpenID Connect (OIDC) tokens instead of saving high-privilege, permanent GCP service account JSON keys inside repository secrets.
+   - **GCS Remote Backend**: Sets up the persistent bucket where all GHA workflow runs store and retrieve Terraform state.
+
+2. **Persistent Observability Backend (`01.01 Grafana Cloud bootstrap`)**:
+   - Applies the persistent Grafana Cloud stack (`terraform/grafana-cloud-stack`). By decoupling the metrics/tracing backend from the GKE cluster, your logs, metrics, and trace history are preserved across multiple cluster spin-ups and tear-downs.
+
+3. **Persistent External DNS & Networking (`01.02 Gateway bootstrap`)**:
+   - Provisions GCP global networking resources: a persistent static IP (`jenkins-2026-gateway-ip`), DNS authorizations, and the wildcard SSL certificate map (`jenkins-2026-cert-map`).
+   - If these networking assets were tied to the short-lived GKE cluster, deleting the cluster would release the IP address and destroy the SSL certificate. This would force you to manually update DNS records at your domain registrar (e.g. Squarespace) and wait for DNS propagation every single time you provisioned a new cluster. Keeping the gateway bootstrapped persistently ensures your external endpoints are immediately reachable upon cluster creation.
+
 ### One-time setup
+
 
 > **Why this step can't itself run in GitHub Actions**: `02.01-gke-provision.yml`
 > and `02.99-gke-decommission.yml` authenticate to GCP via Workload Identity
