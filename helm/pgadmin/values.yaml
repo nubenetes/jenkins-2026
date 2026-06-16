@@ -18,7 +18,7 @@ pgadmin4:
       subPath: config_local.py
       readOnly: true
       
-  # Server definitions to pre-populate the 6 databases
+  # Server definitions to pre-populate the 2 databases
   serverDefinitions:
     enabled: true
     servers:
@@ -28,6 +28,7 @@ pgadmin4:
         Host: "postgres-gateway-primary.microservices.svc"
         Port: 5432
         Username: "gateway"
+        SharedUsername: "gateway"
         MaintenanceDB: "gateway"
         SSLMode: "prefer"
         Shared: true
@@ -37,6 +38,7 @@ pgadmin4:
         Host: "postgres-jhipstersamplemicroservice-primary.microservices.svc"
         Port: 5432
         Username: "jhipstersamplemicroservice"
+        SharedUsername: "jhipstersamplemicroservice"
         MaintenanceDB: "jhipstersamplemicroservice"
         SSLMode: "prefer"
         Shared: true
