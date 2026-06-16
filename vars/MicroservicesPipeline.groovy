@@ -54,6 +54,14 @@ spec:
       env:
         - name: ARGOCD_VERSION
           value: v2.11.0
+        - name: ARGOCD_SERVER
+          value: "${env.ARGOCD_SERVER ?: 'argocd-server.argocd.svc.cluster.local'}"
+        - name: ARGOCD_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: jenkins-credentials
+              key: argocd-token
+              optional: true
       resources:
         requests: {cpu: 5m, memory: 64Mi}
         limits: {cpu: 100m, memory: 128Mi}
