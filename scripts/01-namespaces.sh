@@ -140,6 +140,16 @@ done
 # back to anonymous pulls (fine for public images).
 log_step "Ensuring 'ghcr-credentials' imagePullSecret in microservices namespaces"
 registry_host="${J2026_MICROSERVICES_REGISTRY%%/*}"
+
+# Fallback: try to read from jenkins-credentials secret in jenkins namespace
+if [[ -z "${REGISTRY_USERNAME:-}" || -z "${REGISTRY_PASSWORD:-}" ]]; then
+  if kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
+    log_info "Reading registry credentials from secret ${J2026_JENKINS_CREDENTIALS_SECRET}..."
+    REGISTRY_USERNAME="${REGISTRY_USERNAME:-$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" -o jsonpath='{.data.registry-username}' | base64 -d)}"
+    REGISTRY_PASSWORD="${REGISTRY_PASSWORD:-$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" -o jsonpath='{.data.registry-password}' | base64 -d)}"
+  fi
+fi
+
 if [[ -n "${REGISTRY_USERNAME:-}" && -n "${REGISTRY_PASSWORD:-}" ]]; then
   registry_auth="$(printf '%s:%s' "${REGISTRY_USERNAME}" "${REGISTRY_PASSWORD}" | base64 -w0)"
   dockerconfigjson="$(printf '{"auths":{"%s":{"username":"%s","password":"%s","auth":"%s"}}}' \
