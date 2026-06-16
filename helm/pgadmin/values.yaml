@@ -5,6 +5,8 @@ pgadmin4:
   envVarsExtra:
     - name: PGADMIN_REPLACE_SERVERS_ON_STARTUP
       value: "True"
+    - name: PGPASSFILE
+      value: "/var/lib/pgadmin/pgpass"
      
   # Enable dedicated ServiceAccount for pgAdmin pod to query K8s API for database secrets
   serviceAccount:
@@ -80,12 +82,12 @@ pgadmin4:
         Username: "gateway"
         SharedUsername: "gateway"
         MaintenanceDB: "gateway"
-        SSLMode: "prefer"
+        SSLMode: "require"
         Shared: true
-        PassFile: "/var/lib/pgadmin/pgpass"
+        PassFile: "../../pgpass"
         SavePassword: true
         ConnectionParameters:
-          passfile: "/var/lib/pgadmin/pgpass"
+          passfile: "../../pgpass"
       "2":
         Name: "Stable - JHipster Microservice DB"
         Group: "Stable"
@@ -94,12 +96,12 @@ pgadmin4:
         Username: "jhipstersamplemicroservice"
         SharedUsername: "jhipstersamplemicroservice"
         MaintenanceDB: "jhipstersamplemicroservice"
-        SSLMode: "prefer"
+        SSLMode: "require"
         Shared: true
-        PassFile: "/var/lib/pgadmin/pgpass"
+        PassFile: "../../pgpass"
         SavePassword: true
         ConnectionParameters:
-          passfile: "/var/lib/pgadmin/pgpass"
+          passfile: "../../pgpass"
 
   # Resource requests/limits for safety (preventing auto-scaling)
   resources:
