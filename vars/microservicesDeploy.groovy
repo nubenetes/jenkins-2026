@@ -70,16 +70,25 @@ def call(Map cfg) {
           # Trigger and wait for Sync
           # Using --grpc-web because we are connecting to the internal service which might not have full HTTP/2 support in all environments
           # Using --insecure because we are connecting to the internal service via .local DNS
+          local_server="\${ARGOCD_SERVER:-argocd-server.argocd.svc.cluster.local}"
+          local_flags="--grpc-web --insecure"
+          if [[ "\${local_server}" != *":"* || "\${local_server}" == *":80" ]]; then
+            if [[ "\${local_server}" != *":"* ]]; then
+              local_server="\${local_server}:80"
+            fi
+            local_flags="\${local_flags} --plaintext"
+          fi
+
           argocd app sync "microservices-${cfg.envName}" \
-            --server "\${ARGOCD_SERVER}" \
+            --server "\${local_server}" \
             --auth-token "\${ARGOCD_AUTH_TOKEN}" \
-            --grpc-web --insecure
+            \${local_flags}
 
           argocd app wait "microservices-${cfg.envName}" \
             --sync --health --timeout 300 \
-            --server "\${ARGOCD_SERVER}" \
+            --server "\${local_server}" \
             --auth-token "\${ARGOCD_AUTH_TOKEN}" \
-            --grpc-web --insecure
+            \${local_flags}
         """
       }
     }
