@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.6.2] - 2026-06-17
+
+### Fixes
+- **Jenkins Kubernetes Cloud**: Restored the `kubernetes` cloud configuration in custom JCasC base configuration (`jenkins/casc/jcasc-base.yaml`). This resolves the pipeline execution failure (`ERROR: No Kubernetes cloud was found`) introduced by disabling `controller.JCasC.defaultConfig`.
+- **Jenkins URL Configuration**: Defined `unclassified.location.url` dynamically in JCasC based on the new `JENKINS_PUBLIC_URL` environment variable, ensuring the correct URL is sent for Google OIDC login requests and resolving `redirect_uri_mismatch` errors.
+- **pgAdmin Alpine Compatibility**: Fixed the pgAdmin `setup-pgpass` init container's wait loops to use a POSIX-compliant `while` loop, resolving Alpine `/bin/sh` compatibility errors (unsupported brace expansion `{1..30}`).
+- **ArgoCD CLI Timeout & Script Fix**: Increased the `kubectl wait` pull timeout to `3m` in `scripts/08.5-argocd.sh` and resolved an undefined `log_debug` runtime error.
+- **k6 Shared Library OpenTelemetry**: Updated the k6 runner in `vars/microservicesK6Smoke.groovy` to use the stable `-o opentelemetry` output flag instead of the deprecated `-o experimental-opentelemetry` flag.
+- **Teardown Namespace Timeout**: Added a timeout to namespace deletion in `down.sh` to prevent hanging during stack destruction.
+
+### Documentation
+- **Workflow Architecture Diagrams**: Added detailed Mermaid flowchart diagrams in `README.md` illustrating the naming conventions and execution lifecycles of persistent bootstrap/decommission workflows (`01.01`, `01.02`, `01.98`, `01.99`) and GKE cluster provision/teardown lifecycles.
+- **GKE Cluster Topology & FinOps**: Documented the GKE node pool configuration, network subnet topology, and cost optimization guidelines (FinOps) in `README.md`, including a Mermaid network layout diagram.
+
 ## [v0.6.1] - 2026-06-16
 
 ### Documentation
