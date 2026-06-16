@@ -37,12 +37,6 @@ log_info "Jenkins ns      : ${J2026_JENKINS_NAMESPACE}"
 log_info "Microservices ns    : ${J2026_MICROSERVICES_NS_STABLE}"
 log_info "Microservices svcs  : ${J2026_MICROSERVICES_SERVICES}"
 
-if [[ "${J2026_PLATFORM}" == "openshift" ]]; then
-  if ! kubectl api-resources --api-group=route.openshift.io 2>/dev/null | grep -q routes; then
-    log_warn "platform=openshift but the route.openshift.io API group was not found on this cluster."
-  fi
-fi
-
 log_step "Adding/updating Helm repositories"
 helm repo add "${J2026_JENKINS_CHART_REPO_NAME}" "${J2026_JENKINS_CHART_REPO_URL}"
 helm repo add "${J2026_OTEL_OPERATOR_REPO_NAME}" "${J2026_OTEL_OPERATOR_REPO_URL}"

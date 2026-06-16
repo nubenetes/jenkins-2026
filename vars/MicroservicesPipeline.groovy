@@ -3,7 +3,7 @@
  *                    modulePath: '<maven-module>', gitRepoUrl: '<repo>',
  *                    gitBranch: '<branch>', targetNamespace: '<ns>',
  *                    envName: 'stable'|'develop', port: '<port>',
- *                    healthPath: '<path>', platform: '<platform>')
+ *                    healthPath: '<path>', platform: 'gke')
  *
  * Declarative shared library wrapper for the standard Microservices build/deploy pipeline.
  */

@@ -40,11 +40,6 @@ wait_bg || log_warn "One or more uninstalls failed - see logs/ for details."
 log_step "Cleaning up remaining observability artifacts"
 kubectl delete configmap otel-collector-gateway -n "${J2026_OBS_NAMESPACE}" --ignore-not-found
 
-if [[ "${J2026_PLATFORM}" == "openshift" ]]; then
-  log_step "Removing OpenShift Route for Jenkins"
-  kubectl delete route jenkins -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found
-fi
-
 log_step "Uninstalling OpenTelemetry Operator (CRDs)"
 helm_uninstall "${J2026_OTEL_OPERATOR_RELEASE}" "${J2026_OBS_NAMESPACE}"
 
@@ -74,7 +69,7 @@ fi
 # `terraform destroy` on the VPC. Guarded the same way as
 # scripts/09-gateway.sh: these CRDs only exist when platform.target=gke and
 # the gateway was enabled.
-if [[ "${J2026_PLATFORM}" == "gke" && -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
+if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
   log_step "Removing Gateway resources (Gateway, HTTPRoutes, GCPBackendPolicies)"
   # --timeout bounds the wait on the GKE Gateway controller's finalizers
   # (which release the external LB's forwarding rule/backend services/NEGs)

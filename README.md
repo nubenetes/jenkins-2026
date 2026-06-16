@@ -20,20 +20,17 @@ JHipster microservices reference application.
   application pods without human intervention.
 
 
-It is compliant with **OpenShift 4.20+** and the latest **Kubernetes on
-GKE/EKS/AKS** - the target platform is a config-file + environment-variable
-feature flag, only one platform is active per run.
+It is configured specifically for **Google Kubernetes Engine (GKE)**.
+
 
 See [`docs/architecture.md`](docs/architecture.md) for the full component
 diagram and repository layout, [`docs/pipelines-as-code.md`](docs/pipelines-as-code.md)
-for how the Jenkins pipelines are generated, [`docs/observability.md`](docs/observability.md)
-for the OpenTelemetry/Grafana wiring, and [`docs/platforms.md`](docs/platforms.md)
-for per-cloud notes.
+for how the Jenkins pipelines are generated, and [`docs/observability.md`](docs/observability.md)
+for the OpenTelemetry/Grafana wiring.
 
 ## Prerequisites
 
-- An existing Kubernetes cluster (GKE/EKS/AKS, latest stable, or OpenShift
-  4.20+) and a `kubectl` context pointing at it. **This repo provisions no
+- An existing GKE Kubernetes cluster and a `kubectl` context pointing at it. **This repo provisions no
   cluster infrastructure.**
 - `kubectl`, `helm` (v3), [`yq`](https://github.com/mikefarah/yq) (Go
   version, `mikefarah/yq`), `git`, `bash`. `gh` (GitHub CLI) only if you plan
@@ -53,8 +50,8 @@ for per-cloud notes.
 ## Quick start
 
 ```bash
-# 1. Review/edit config/config.yaml - platform.target (gke|eks|aks|openshift)
-#    and observability.mode (grafana-cloud|oss|managed). Defaults: gke + grafana-cloud.
+# 1. Review/edit config/config.yaml - observability.mode (grafana-cloud|oss|managed).
+#    Default: grafana-cloud.
 
 # 2. (grafana-cloud mode only) create the OTLP credentials secret:
 cp observability/otel-collector/secret.example.yaml observability/otel-collector/secret.yaml
@@ -90,7 +87,7 @@ partial failure is safe. Each step also runs standalone:
 
 ## Step-by-Step Deployment Guide (For Other People)
 
-This guide walks through deploying the entire POC (Infrastructure, Jenkins pipelines-as-code, ArgoCD GitOps, and Observability stack) from scratch on your own Kubernetes cluster (GKE, EKS, AKS, or OpenShift).
+This guide walks through deploying the entire POC (Infrastructure, Jenkins pipelines-as-code, ArgoCD GitOps, and Observability stack) from scratch on your own GKE cluster.
 
 ### Step 1: Fork and Clone the Repositories
 Since this is a two-repo GitOps setup, you must fork both repositories to your own GitHub organization or account:
@@ -440,7 +437,6 @@ vars). Feature flags:
 
 | Key | Default | Override | Meaning |
 |---|---|---|---|
-| `platform.target` | `gke` | `JENKINS2026_PLATFORM` env var | `gke`\|`eks`\|`aks`\|`openshift` - selects the Helm overlay, ingress/Route strategy and storage class (see [`docs/platforms.md`](docs/platforms.md)). |
 | `observability.mode` | `grafana-cloud` | edit `config.yaml` | `grafana-cloud`\|`oss`\|`managed` - where traces/metrics/logs go (see [`docs/observability.md`](docs/observability.md)). |
 
 Other notable sections: `jenkins.*` (chart coordinates, namespace, this
@@ -454,7 +450,7 @@ upstream Microservices git org/repos/branches, target registry, and the list of
 
 ```
 config/config.yaml          single source of truth (feature flags above)
-helm/jenkins/                jenkinsci/helm-charts values + per-platform overlays
+helm/jenkins/                jenkinsci/helm-charts values + values-gke.yaml overlay
 helm/microservices/              local chart for the 9 Microservices workloads (2 envs)
 helm/headlamp/                kubernetes-sigs/headlamp values (cluster management UI)
 jenkins/casc/                JCasC: security, OTel exporter, seed job

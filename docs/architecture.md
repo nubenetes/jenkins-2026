@@ -3,7 +3,7 @@
 ## Overview
 
 `jenkins-2026` deploys a self-contained CI/CD + observability PoC on top of
-an **existing** Kubernetes cluster (GKE, EKS, AKS or OpenShift 4.20+):
+an **existing** GKE cluster:
 
 - **Jenkins** (jenkinsci/helm-charts), configured entirely via
   Configuration-as-Code (JCasC) - no manual clicking required.
@@ -56,8 +56,7 @@ flowchart TD
     otel -->|"observability.mode:<br/>oss"| oss
 ```
 
-The whole stack runs inside **one** Kubernetes cluster (GKE, EKS, AKS or
-OpenShift 4.20+ - selected by `platform.target` / `JENKINS2026_PLATFORM`).
+The whole stack runs inside a GKE cluster.
 
 ## Repository layout
 
@@ -85,19 +84,12 @@ jenkins-2026/
 
 Every script sources [`scripts/lib/config.sh`](../scripts/lib/config.sh),
 which loads `config/config.yaml` via `yq` and exports it as `J2026_*`
-environment variables. Two settings act as **feature flags**:
+environment variables.
 
 | Setting                     | Values                          | Override                  |
 |------------------------------|----------------------------------|----------------------------|
-| `platform.target`            | `gke` (default) \| `eks` \| `aks` \| `openshift` | `JENKINS2026_PLATFORM` env var |
 | `observability.mode`         | `grafana-cloud` (default) \| `oss` \| `managed`  | edit `config.yaml` |
 
-`config.yaml` is the durable default checked into git; the env var is an
-ephemeral override (e.g. for a CI matrix that deploys the same PoC to all
-three clouds). Only **one** platform is ever active per cluster/run - this is
-not a multi-cluster deployment.
-
-See [`docs/platforms.md`](platforms.md) and
-[`docs/observability.md`](observability.md) for the per-mode details, and
+See [`docs/observability.md`](observability.md) for the per-mode details, and
 [`docs/pipelines-as-code.md`](pipelines-as-code.md) for how the Jenkins side
 is wired up.

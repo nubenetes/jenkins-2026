@@ -24,7 +24,7 @@ or an in-cluster OSS Grafana/Loki/Tempo/Prometheus stack. See
   vars override `platform.target` / `observability.mode` from the config
   file for a single run (CI matrix override pattern).
 - `config/config.yaml` - single source of truth: target platform
-  (gke/eks/aks/openshift), observability mode (grafana-cloud/oss/managed),
+  (gke), observability mode (grafana-cloud/oss/managed),
   Jenkins/Microservices namespaces, branches, registry, service list.
 - `helm/jenkins/`, `helm/microservices/` - Helm values overlays.
 - `jenkins/casc/` - JCasC YAML (seed jobs, shared library, OTel plugin

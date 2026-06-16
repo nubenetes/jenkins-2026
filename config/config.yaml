@@ -5,14 +5,14 @@
 # file via `yq` and exports it as environment variables (J2026_*).
 #
 # FEATURE FLAG: the target platform below can be overridden at runtime without
-# editing this file by exporting JENKINS2026_PLATFORM=<gke|eks|aks|openshift>
+# FEATURE FLAG: the target platform below can be overridden at runtime without
+# editing this file by exporting JENKINS2026_PLATFORM=gke
 # before running scripts/up.sh (or any individual step script). This satisfies
-# the "config file + feature flag" requirement: config.yaml is the durable
-# default, the env var is the ephemeral override (e.g. for CI matrix runs).
+# the "config file + feature flag" requirement.
 # =============================================================================
 
 platform:
-  # gke (default) | eks | aks | openshift
+  # Only GKE is supported
   target: gke
 
   gke:
@@ -20,29 +20,6 @@ platform:
     ingressClassName: gce
     ingressAnnotations:
       kubernetes.io/ingress.class: "gce"
-    serviceType: ClusterIP
-
-  eks:
-    storageClassName: gp3
-    ingressClassName: alb
-    ingressAnnotations:
-      kubernetes.io/ingress.class: "alb"
-      alb.ingress.kubernetes.io/scheme: "internet-facing"
-      alb.ingress.kubernetes.io/target-type: "ip"
-    serviceType: ClusterIP
-
-  aks:
-    storageClassName: managed-csi
-    ingressClassName: webapprouting.kubernetes.azure.com
-    ingressAnnotations: {}
-    serviceType: ClusterIP
-
-  openshift:
-    # OpenShift 4.20+ : no fixed storageClass override (cluster default CSI is
-    # used), Routes instead of Ingress, and SCC-assigned UID/fsGroup (no
-    # fixed securityContext in the chart values).
-    storageClassName: ""
-    useRoute: true
     serviceType: ClusterIP
 
 # -----------------------------------------------------------------------------
