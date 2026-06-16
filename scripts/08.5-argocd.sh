@@ -43,13 +43,20 @@ data:
   url: ${ARGOCD_URL}
   dex.config: |
     connectors:
-      - type: google
+      - type: oidc
         id: google
         name: Google
         config:
+          issuer: https://accounts.google.com
           clientID: ${CLIENT_ID}
           clientSecret: ${CLIENT_SECRET}
           redirectURI: ${ARGOCD_URL}/api/dex/callback
+          scopes:
+            - openid
+            - profile
+            - email
+          userIDKey: email
+          userNameKey: email
 EOF
   kubectl patch configmap argocd-cm -n ${J2026_ARGOCD_NAMESPACE} --patch-file "${PATCH_FILE}"
   rm "${PATCH_FILE}"
