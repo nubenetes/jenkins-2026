@@ -96,10 +96,19 @@ EOF
   
   # Use a subshell to capture token and ensure RBAC cleanup happens regardless of success/failure
   set +e
-  RAW_TOKEN=$(kubectl run argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" -i --restart=Never \
+  kubectl run argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --restart=Never \
     --image=quay.io/argoproj/argocd:v2.11.0 -- \
-    bash -c "argocd account generate-token --account jenkins --core")
+    bash -c "argocd account generate-token --account jenkins --core"
+  
+  # Wait for the pod to succeed (complete its execution)
+  kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --timeout=30s
   EXIT_CODE=$?
+  
+  if [[ ${EXIT_CODE} -eq 0 ]]; then
+    RAW_TOKEN=$(kubectl logs argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}")
+  else
+    RAW_TOKEN=""
+  fi
   set -e
   kubectl delete pod argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found=true || true
 
