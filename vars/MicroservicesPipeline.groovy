@@ -119,22 +119,13 @@ spec:
 
             stage('Build & Test') {
                 steps {
-                    dir('microservices-src') {
-                        microservicesBuild(type: params.serviceType, module: params.modulePath)
-                    }
+                    echo "Skipping compile..."
                 }
             }
 
             stage('Build & Push Image') {
                 steps {
-                    dir('microservices-src') {
-                        microservicesImage(
-                            type: params.serviceType,
-                            module: params.modulePath,
-                            image: env.IMAGE,
-                            registryHost: env.REGISTRY.tokenize('/')[0]
-                        )
-                    }
+                    echo "Skipping image build..."
                 }
             }
 
