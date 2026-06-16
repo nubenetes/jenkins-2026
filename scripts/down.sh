@@ -92,7 +92,7 @@ fi
 if [[ "${J2026_DELETE_NAMESPACES:-false}" == "true" ]]; then
   log_step "Deleting namespaces (J2026_DELETE_NAMESPACES=true)"
   for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_GRAFANA_OSS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_ARGOCD_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}"; do
-    kubectl delete namespace "${ns}" --ignore-not-found
+    kubectl delete namespace "${ns}" --ignore-not-found --timeout=1m || log_warn "Namespace ${ns} deletion timed out - proceeding"
   done
 else
   log_info "Namespaces left in place. Set J2026_DELETE_NAMESPACES=true to remove them too."
