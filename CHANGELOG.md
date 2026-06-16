@@ -21,6 +21,9 @@ All notable changes to this project will be documented in this file.
 - **Shared Library**: Updated `vars/MicroservicesPipeline.groovy` and `vars/microservicesDeploy.groovy` to document `gke` as the only supported platform value.
 - **CLAUDE.md**: Updated project scope description.
 
+### Fixes
+- **Stuck Namespace Termination** (`scripts/down.sh`): Replaced the naive `kubectl delete namespace --timeout=1m` with a `drain_namespace` helper that first strips `kubernetes.io/pvc-protection` finalizers from all PVCs in the namespace (the most common cause of `jenkins` and `headlamp` namespaces hanging in `Terminating`), then issues the delete with a 2-minute timeout, and — if the namespace is still stuck — patches the namespace `spec.finalizers` to `[]` via the `/finalize` sub-resource API to force the API server to release it.
+
 ## [v0.6.2] - 2026-06-17
 
 ### Fixes
