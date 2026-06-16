@@ -354,6 +354,7 @@ controller:
     - workflow-support:1015.v785e5a_b_b_8b_22
 
 agent:
+  containerCap: 1
   # Per-pipeline pod templates (maven/node/dind/kubectl/helm containers) are
   # defined inline in jenkins/pipelines/Jenkinsfile.microservices via the
   # `agent { kubernetes { yaml ... } }` directive, so we keep the chart-level
