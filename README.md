@@ -1067,24 +1067,24 @@ The throwaway cluster for testing is provisioned with a custom VPC-native config
 
 ```mermaid
 graph TD
-    subgraph VPC ["VPC Network — jenkins-2026-vpc"]
-        subgraph Subnet ["Subnet: jenkins-2026-subnet<br>Region: europe-southwest1"]
-            NodeIPs["Nodes<br>10.10.0.0/20"]
-            PodIPs["Pods<br>10.20.0.0/16"]
-            SvcIPs["Services<br>10.30.0.0/20"]
+    subgraph VPC ["VPC: jenkins-2026-vpc"]
+        subgraph Subnet ["Subnet: jenkins-2026-subnet"]
+            NodeIPs["Nodes — 10.10.0.0/20"]
+            PodIPs["Pods — 10.20.0.0/16"]
+            SvcIPs["Services — 10.30.0.0/20"]
         end
     end
 
-    subgraph NodePool ["Node Pool — jenkins-2026-pool"]
+    subgraph NodePool ["Node Pool: jenkins-2026-pool"]
         direction LR
         Node1["Node 1<br>e2-standard-4<br>50 GB pd-balanced"]
         Node2["Node 2<br>e2-standard-4<br>50 GB pd-balanced"]
         Node3["Node 3<br>e2-standard-4<br>50 GB pd-balanced"]
-        Node4["Node 4 ⟨autoscaled⟩<br>e2-standard-4<br>50 GB pd-balanced"]
+        Node4["Node 4 — autoscaled<br>e2-standard-4<br>50 GB pd-balanced"]
     end
 
-    NodeIPs -->|"assigns node IPs"| NodePool
-    PodIPs -->|"assigns pod IPs"| NodePool
+    NodeIPs -->|"node IPs"| NodePool
+    PodIPs -->|"pod IPs"| NodePool
 
     subgraph GKEFeatures ["Features Enabled"]
         GW["Gateway API<br>standard channel"]
@@ -1244,34 +1244,34 @@ The following diagram illustrates how the persistent infrastructure bootstrap wo
 
 ```mermaid
 graph TD
-    subgraph Bootstrapping ["1 · Persistent Bootstrap Setup"]
-        A["terraform/bootstrap<br>Owner/Admin roles"] -->|"WIF + GCS state bucket"| B["GCP Workload Identity<br>& Remote State"]
-        B --> C["01.01 Grafana Cloud bootstrap<br>terraform/grafana-cloud-stack"]
-        B --> D["01.02 Gateway bootstrap<br>terraform/gateway-bootstrap"]
-        C -->|"Stack ID + admin token"| E[("Grafana Cloud<br>Instance")]
-        D -->|"Static IP + SSL cert map"| F[("Gateway<br>& Cert Map")]
+    subgraph Bootstrapping ["1 - Persistent Bootstrap"]
+        A["terraform/bootstrap<br>Owner/Admin roles"] -->|"WIF + GCS bucket"| B["Workload Identity<br>+ Remote State"]
+        B --> C["01.01 Grafana Cloud<br>bootstrap"]
+        B --> D["01.02 Gateway<br>bootstrap"]
+        C -->|"stack ID + token"| E[("Grafana Cloud")]
+        D -->|"static IP + cert"| F[("Gateway<br>+ Cert Map")]
     end
 
-    subgraph GKE_Lifecycle ["2 · Short-Lived GKE Cluster Lifecycle"]
-        F & E & B --> G["02.01 GKE provision<br>terraform/gke + scripts/up.sh"]
-        G --> H["GKE Cluster Active<br>Jenkins · ArgoCD · pgAdmin<br>microservices"]
-        H --> I["02.02 Redeploy Jenkins<br>Jenkins + pipelines"]
-        H --> J["02.03 Redeploy Headlamp<br>Headlamp credentials"]
+    subgraph GKE_Lifecycle ["2 - GKE Cluster Lifecycle"]
+        F & E & B --> G["02.01 GKE provision<br>tf/gke + scripts/up.sh"]
+        G --> H["GKE Cluster Active<br>Jenkins / ArgoCD<br>pgAdmin / services"]
+        H --> I["02.02 Redeploy Jenkins"]
+        H --> J["02.03 Redeploy Headlamp"]
         I & J --> H
-        H --> K["02.99 GKE decommission<br>scripts/down.sh + terraform destroy"]
-        K -->|"cluster destroyed<br>persistent assets retained"| B
+        H --> K["02.99 GKE decommission<br>down.sh + tf destroy"]
+        K -->|"cluster gone<br>assets kept"| B
     end
 
-    subgraph Simulation ["3 · Observability Simulation"]
-        H & E --> O["99.01 Traffic Simulation<br>k6 external load script"]
-        O -->|"live traffic + metrics"| H
-        O -->|"telemetry stream"| E
+    subgraph Simulation ["3 - Observability Simulation"]
+        H & E --> O["99.01 Traffic Simulation<br>k6 load script"]
+        O -->|"live traffic"| H
+        O -->|"telemetry"| E
     end
 
-    subgraph Persistent_Teardown ["4 · Full Teardown"]
-        E --> L["01.98 Grafana Cloud decommission<br>terraform destroy grafana-cloud-stack"]
-        F --> M["01.99 Gateway decommission<br>terraform destroy gateway-bootstrap"]
-        L & M -->|"all persistent resources removed"| N["GCP Project<br>Clean Slate"]
+    subgraph Persistent_Teardown ["4 - Full Teardown"]
+        E --> L["01.98 Grafana Cloud<br>decommission"]
+        F --> M["01.99 Gateway<br>decommission"]
+        L & M -->|"all resources removed"| N["Clean Slate"]
     end
 
     classDef persistent fill:#f9f,stroke:#333,stroke-width:2px;
