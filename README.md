@@ -530,17 +530,23 @@ The repository has been refactored and modernized to serve as a **Golden Path In
 
 ### 2. Elastic Karpenter Autoscaling (v1.0+)
 Traditional GKE Cluster Autoscaler configurations have been replaced with **Karpenter v1.0+** using GCP provider classes:
-* **GCPNodeClass**: Configures GKE machine parameters, 100 GB `pd-balanced` boot disks, and links Workload Identity node service accounts.
-* **NodePool**: Manages Spot capacity-types, targeting compute families (`c2`, `n2`, `e2`, `c3`) and injecting taints (`jenkins-agent=true:NoSchedule`) so only build agents land on highly elastic spot pools.
+* **GCPNodeClass**: Configures GKE machine parameters, 100 GB `pd-balanced` boot disks, and links Workload Identity node service accounts. Now maps local NVMe SSD devices (`local-ssd-0` of type `local-ssd`) to provide high-speed, local scratch disks for heavy builds.
+* **NodePool**: Manages Spot capacity-types, targeting compute families (`c2`, `n2`, `e2`, `c3`) and injecting taints (`jenkins-agent=true:NoSchedule`) so only build agents land on highly elastic spot pools. Now enforces local SSD count requirements (`karpenter.k8s.gcp/local-ssd-count > 0`).
 * **Disruption Budgets**: Configured to restrict consolidations during core business hours (Mon-Fri) to safeguard long-running master build pipelines while allowing aggressive cost cutting at night and empty/underutilized consolidation.
 * **Autoscaler Isolation**: Standard GKE nodes and Karpenter node pools are strictly isolated: GKE Cluster Autoscaler does not manage the tainted Karpenter Spot VM node groups, preventing scheduling/autoscaling race conditions.
 
 ### 3. Zero-Trust Security & Workload Identity
 * **Workload Identity Federation**: All static JSON Service Account keys are removed. Both external CI engines (GitHub Actions) and in-cluster workloads assume GCP IAM Roles dynamically via OIDC.
 * **GKE Gateway API + BackendTLSPolicy**: Legacies like NGINX ingress are replaced by native L7 Gateways (`gke-l7-gxlb`). Zero-trust is enforced at the network layer: traffic between the Gateway load balancer and backend pods (Jenkins/Headlamp) is encrypted and validated using `BackendTLSPolicy` targets.
+* **Zero-Trust Network Policies**: Hardens namespace security using custom Kubernetes `NetworkPolicy` resources. Applies default deny constraints (excluding CoreDNS UDP/TCP port 53 egress), allowing traffic only on specific required ports (8080 for Jenkins controller, 80 for pgAdmin, 8081 for microservices, and 5432 for PostgreSQL databases from authorized namespaces).
+* **Secret Management via External Secrets Operator (ESO)**: Connects GKE Workload Identity with Google Secret Manager. ESO automatically pulls and syncs secret structures (`jenkins-credentials`, `grafana-cloud-credentials`, `gateway-iap-oauth`) to namespaced secrets dynamically, ensuring zero secrets are stored in Git or configured manually.
 
 ### 4. GitOps Separation of Concerns
 All infrastructural manifests (`karpenter/`, `gateway/`, `headlamp/`, `scheduling/`) are decoupled from CI pipeline definitions and placed inside the [`infrastructure/`](infrastructure/) directory, structuring the platform to be fully reconciled via Argo CD.
+
+### 5. Build Performance & High Availability Caching
+* **Jenkins Agent Caching**: Java (Maven `/root/.m2`) and Node (npm `/root/.npm`) containers in pipeline agent templates mount hostPath volumes (`/tmp/jenkins-maven-cache` and `/tmp/jenkins-npm-cache` with `DirectoryOrCreate` rules). Sharing a fast local node directory avoids ReadWriteOnce volume mounting locks while reducing typical compilation times from 5-10 minutes to under 1 minute.
+* **Database HA & Storage Lifecycles**: Distributes CloudNative-PG replicas across distinct physical zones using zonal anti-affinity constraints (`topologyKey: topology.kubernetes.io/zone`). Optimizes cloud storage footprints via GCS lifecycle rules, automatically transitioning GCS backups to `NEARLINE` storage class after 3 days and deleting them after 7 days.
 
 ---
 
@@ -560,6 +566,7 @@ The deployment lifecycle is managed by **ArgoCD**. Application manifests are sto
 | `headlamp` | `Application` | `jenkins-2026-gitops-config` | `helm/headlamp/values.yaml` | `headlamp` | Healthy |
 | `pgadmin` | `Application` | `jenkins-2026-gitops-config` | `helm/pgadmin/` | `pgadmin` | Healthy |
 | `cnpg-operator` | `Application` | `cloudnative-pg` chart | `https://cloudnative-pg.github.io/charts` | `cnpg-system` | Healthy |
+| `external-secrets` | `Application` | `external-secrets` chart | `https://charts.external-secrets.io` | `external-secrets` | Healthy |
 
 ### Security & Integration
 - **Jenkins Integration**: A dedicated `jenkins` account is created in ArgoCD with a scoped **API Token**. This token is stored in the `jenkins-credentials` Secret and used by the `argocd` CLI inside pipeline agents to trigger `argocd app sync --wait`.
