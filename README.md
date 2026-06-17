@@ -1810,22 +1810,24 @@ When you want to tear down the entire project permanently, you must run the deco
       > APIs.
 
 
-   b. **Add two repository secrets** - `GRAFANA_CLOUD_STACK_SLUG` is your
+   b. **Add a repository secret and a variable** - `GRAFANA_CLOUD_STACK_SLUG` is your
       choice of subdomain for the new stack
-      (`https://<slug>.grafana.net`, must be globally unique):
+      (`https://<slug>.grafana.net`, must be globally unique). Note that `GRAFANA_CLOUD_STACK_SLUG`
+      should be configured as a repository **Variable** (not a Secret) so that GitHub Actions does
+      not mask it with `***` in the logs, which keeps printed Grafana dashboard URLs clickable:
 
       ```bash
-      gh secret set GRAFANA_CLOUD_API_TOKEN  --body "<token from step a>"
-      gh secret set GRAFANA_CLOUD_STACK_SLUG --body "<your-globally-unique-slug>"
+      gh secret set   GRAFANA_CLOUD_API_TOKEN   --body "<token from step a>"
+      gh variable set GRAFANA_CLOUD_STACK_SLUG  --body "<your-globally-unique-slug>"
       ```
 
    c. **Run the "01.01 Grafana Cloud bootstrap" workflow** (Actions tab ->
       **01.01 Grafana Cloud bootstrap** -> **Run workflow**). It applies
       [`terraform/grafana-cloud-stack`](terraform/grafana-cloud-stack) with
       state in the same GCS bucket as `terraform/gke`, creating the
-      persistent stack from the two secrets above. If `GRAFANA_CLOUD_STACK_SLUG`
+      persistent stack from the configuration above. If `GRAFANA_CLOUD_STACK_SLUG`
       is already taken, Terraform fails with a clear error - pick another
-      value, `gh secret set GRAFANA_CLOUD_STACK_SLUG --body "<new-slug>"`, and
+      value, `gh variable set GRAFANA_CLOUD_STACK_SLUG --body "<new-slug>"`, and
       re-run the workflow. It's safe to re-run any time - re-applying against
       existing state is a no-op.
 
