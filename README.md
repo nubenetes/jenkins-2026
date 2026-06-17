@@ -409,16 +409,17 @@ This diagram shows the robust Jenkins-to-ArgoCD synchronization we've implemente
 ```mermaid
 sequenceDiagram
     participant Dev as Developer
-    participant GH as GitHub (Infra Repo)
+    participant GH_Infra as GitHub (Infra Repo)
     participant J as Jenkins (CI)
+    participant GH_GitOps as GitHub (GitOps Config Repo)
     participant ACD as ArgoCD (CD)
     participant K8s as Kubernetes (GKE)
     participant Obs as Observability (Grafana)
 
-    Dev->>GH: Push Code / Change
+    Dev->>GH_Infra: Push Code / Change
     J->>J: Build & Test
     J->>J: Push Image to GHCR
-    J->>GH: Update values-<env>.yaml (yq)
+    J->>GH_GitOps: Update values-stable.yaml (yq)
     J->>ACD: argocd app sync --wait (CLI)
     Note over ACD,K8s: Reconcile Git -> Cluster
     ACD->>K8s: Apply Manifests
@@ -1184,42 +1185,44 @@ graph TD
         end
     end
 
-    subgraph Cluster ["GKE Cluster: jenkins-2026"]
+    subgraph Cluster ["GKE Cluster (v1.35/v1.36)"]
         ClusterInfo["europe-southwest1-a"]
+        direction TB
+        GatewayAPI["GKE Gateway API<br/>gke-l7-gxlb"]
+        BackendTLS["BackendTLSPolicy<br/>Secure TLS to pods"]
+        WI["Workload Identity Federation"]
+    end
+
+    subgraph KarpenterPool ["Karpenter NodePool: ephemeral-runners"]
+        PoolInfo["Spot Instances<br/>e2/n2/c2/c3 dynamic scaling"]
         direction LR
-        GatewayAPI["Gateway API<br>CHANNEL_STANDARD"]
-        WI["Workload Identity"]
-        Channel["Release: REGULAR"]
+        S1["Spot Node 1<br/>e2-standard-4"]
+        S2["Spot Node 2<br/>c2-standard-4"]
+        S3["Spot Node 3<br/>drifted/terminated"]
     end
 
-    subgraph Pool ["Node Pool: jenkins-2026-pool"]
-        PoolInfo["autoscale 2-4, initial 3"]
-        direction LR
-        N1["Node 1<br>e2-standard-4<br>50 GB pd-balanced"]
-        N2["Node 2<br>e2-standard-4<br>50 GB pd-balanced"]
-        N3["Node 3<br>e2-standard-4<br>50 GB pd-balanced"]
-        N4["Node 4<br>autoscaled"]
+    subgraph IAM ["IAM Service Accounts (WIF)"]
+        NodeSA["jenkins-2026-nodes<br/>GCP Nodes SA"]
+        CISA["jenkins-2026-ci-agent<br/>GitHub Actions OIDC WIF"]
     end
 
-    subgraph IAM ["IAM Service Accounts"]
-        NodeSA["jenkins-2026-nodes<br>logWriter, metricWriter<br>monitoring.viewer<br>artifactregistry.reader"]
-        CISA["jenkins-2026-ci<br>GitHub Actions WIF<br>container.admin<br>compute.networkAdmin"]
-    end
-
-    subgraph State ["Remote State"]
-        GCS["GCS Bucket<br>...-jenkins-2026-tfstate<br>versioned, uniform IAM"]
+    subgraph State ["Remote State & GitOps"]
+        GCS["GCS Bucket<br>...-jenkins-2026-tfstate"]
+        ArgoCD["Argo CD Sync<br>reconciles infrastructure/"]
     end
 
     User -->|"HTTPS"| StaticIP
     StaticIP --> CertMap
     CertMap --> WildcardTLS
     WildcardTLS -->|"terminates TLS"| GatewayAPI
-    GatewayAPI -->|"routes to pods"| Pool
-    NodeRange -->|"node IPs"| Pool
-    PodRange -->|"pod IPs"| Pool
-    NodeSA -->|"identity"| Pool
-    CISA -->|"provisions"| Cluster
+    GatewayAPI -->|"routes via BackendTLSPolicy"| BackendTLS
+    BackendTLS -->|"zero-trust HTTPS"| KarpenterPool
+    NodeRange -->|"node IPs"| KarpenterPool
+    PodRange -->|"pod IPs"| KarpenterPool
+    NodeSA -->|"identity"| KarpenterPool
+    CISA -->|"auth / provision"| Cluster
     CISA -->|"read/write"| GCS
+    ArgoCD -->|"applies configuration"| Cluster
 ```
 
 #### Detailed Infrastructure Specifications
@@ -1232,10 +1235,11 @@ graph TD
 | **VPC** | `jenkins-2026-vpc` | Custom-mode VPC (`auto_create_subnetworks = false`). No firewall rules or Cloud NAT defined — GKE manages egress natively. |
 | **Subnet** | `jenkins-2026-subnet` | Region `europe-southwest1`. Primary range `10.10.0.0/20` (nodes), secondary `pods` `10.20.0.0/16`, secondary `services` `10.30.0.0/20`. |
 | **GKE Cluster** | `jenkins-2026` | Zonal cluster in `europe-southwest1-a` (Madrid). VPC-native networking with IP aliasing. Release channel `REGULAR`. Gateway API `CHANNEL_STANDARD`. Workload Identity enabled (`project.svc.id.goog`). Deletion protection `false` (throwaway). |
-| **Node Pool** | `jenkins-2026-pool` | `e2-standard-4` (4 vCPUs, 16 GB RAM). Boot disk `50 GB pd-balanced`. Initial count **3** nodes (12 vCPUs, 48 GB total). Autoscaling **min 2 — max 4**. `auto_repair` + `auto_upgrade` enabled. Labels: `app=jenkins-2026`. Tags: `jenkins-2026`. GKE metadata mode `GKE_METADATA` (Workload Identity). |
+| **Karpenter NodePool** | `ephemeral-runners` | Auto-provisions elastic worker nodes based on Spot instances (`c2`, `n2`, `e2`, `c3` families). Restricts node consolidation during business hours using aggressive `DisruptionBudgets` while scaling nodes down dynamically to zero under empty cycles. |
+| **GCPNodeClass** | `ci-node-class` | Links Karpenter dynamic nodes to GKE subnet selectors, COS image families, and `100 GB pd-balanced` boot disks. |
 | **Node SA** | `jenkins-2026-nodes` | Minimal-privilege service account: `roles/logging.logWriter`, `roles/monitoring.metricWriter`, `roles/monitoring.viewer`, `roles/artifactregistry.reader`. |
-| **CI SA** | `jenkins-2026-ci` | GitHub Actions service account with `container.admin`, `compute.networkAdmin`, `iam.serviceAccountAdmin`, `iam.serviceAccountUser`, `resourcemanager.projectIamAdmin`, `serviceusage.serviceUsageAdmin`, `certificatemanager.editor` + `storage.objectAdmin` on the state bucket. |
-| **WIF** | Pool `jenkins-2026-github` / Provider `github-actions` | OIDC federation from `token.actions.githubusercontent.com`. Attribute condition restricts to `nubenetes/jenkins-2026`. No JSON key — keyless authentication. |
+| **CI Agent SA** | `jenkins-2026-ci-agent` | GitHub Actions service account assuming identities via WIF (impersonating `roles/container.admin`, `roles/compute.networkAdmin`, etc.). |
+| **WIF** | Pool `github-actions-pool-2026` / Provider `github-actions-provider` | OIDC federation from `token.actions.githubusercontent.com`. Attribute condition restricts access to your GitHub repository without static keys. |
 | **State Bucket** | `${project}-jenkins-2026-tfstate` | GCS bucket in `us-central1`. Versioning enabled. Uniform bucket-level access. `force_destroy = false`. |
 | **GCP APIs** | `container` + `compute` | Enabled with `disable_on_destroy = false` — remain active after cluster teardown to avoid breaking unrelated resources and slow re-enable times. |
 
@@ -1255,7 +1259,7 @@ This project integrates standard FinOps best practices to prevent unnecessary cl
 - **Compute Instance Costs**: At Madrid (`europe-southwest1`) pricing, an `e2-standard-4` instance costs roughly `~$0.11/hour`.
 - **Total Operational Run Rate**: The active 3-node cluster runs at approximately **`$0.40 - $0.50/hour`** (including disk storage and management fee).
 - **Ephemeral Lifecycles**: A full provisioning, deployment, smoke-testing, and teardown run (`02.01` to `02.99`) takes only **15-25 minutes**, costing **`~$0.10 - $0.20` per execution**. You should *never* leave the cluster running overnight; always invoke **`02.99 GKE decommission`** when finished.
-- **Dynamic Cluster Autoscaling**: If the cluster remains idle, the node count naturally scales down to **2 nodes**, saving compute costs. When a pipeline triggers concurrent Java/Maven builds, GKE temporarily scales up to **4 nodes** to handle the surge, then immediately deletes the nodes when the job finishes.
+- **Elastic Karpenter Autoscaling**: Ephemeral build runners are dynamically provisioned on GKE Spot instance nodes. Under idle conditions, Karpenter scales the agent pool down to **0 nodes** to eliminate unnecessary compute costs. When a pipeline execution starts, Karpenter instantly spins up Spot nodes of the most cost-efficient type to handle the build load, and consolidates them (or scales back to 0) as soon as the build finishes. Strict disruption budgets prevent consolidation during core business hours to protect running pipelines.
 - **Workload Limits & Quotas**: To enforce cost limits, pod resources are capped, and the `jenkins` namespace enforces a `ResourceQuota` preventing builders from scaling beyond node pool limits.
 - **No In-Cluster Observability Cost**: By utilizing the free tier of Grafana Cloud for logs, metrics, and trace storage, there is zero storage cost in GCP for observability datasets.
 
