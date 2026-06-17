@@ -29,6 +29,7 @@ env:
 jobs:
   decommission:
     runs-on: ubuntu-latest
+    environment: gke-production
     env:
       HAS_GRAFANA_CLOUD_TOKEN: ${{ secrets.GRAFANA_CLOUD_API_TOKEN != '' }}
     steps:
