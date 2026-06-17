@@ -58,6 +58,7 @@ for the OpenTelemetry/Grafana wiring.
     - [Grafana Cloud Integration (GitHub Actions)](#grafana-cloud-integration-github-actions)
   - [2. On-Demand Smoke Test (Jenkins)](#2-on-demand-smoke-test-jenkins)
   - [3. How to Verify Correlation in Grafana](#3-how-to-verify-correlation-in-grafana)
+- [Platform QA, Chaos & Compliance Validation](#platform-qa-chaos--compliance-validation)
 - [Configuration (`config/config.yaml`)](#configuration-configconfigyaml)
 - [Repository layout](#repository-layout)
 - [Jenkins UI, plugins & MCP](#jenkins-ui-plugins--mcp)
@@ -435,7 +436,8 @@ sequenceDiagram
 The repository has been refactored and modernized to serve as a **Golden Path Internal Developer Platform (IDP)** utilizing Kubernetes v1.35/v1.36 features, Karpenter autoscaling, zero-trust security, and decoupled GitOps patterns.
 
 ### 1. Kubernetes v1.35/v1.36 Compliance
-* **In-Place Pod Vertical Scaling (GA in v1.35)**: Jenkins ephemeral agent pod templates are defined with explicit `resizePolicy` parameters (configured with `InPlaceOrRecreate` for CPU and Memory). This allows active Maven or Node build containers to scale resource requests/limits dynamically under compilation stress without restarting the pod.
+* **In-Place Pod Vertical Scaling (GA in v1.35)**: Jenkins ephemeral agent pod templates are defined with explicit `resizePolicy` parameters (configured with `NotRequired` for CPU and Memory). This allows active Maven or Node build containers to scale resource requests/limits dynamically under compilation stress without restarting the pod.
+* **Safe JVM Resource Resizing Floors**: Configured [`VerticalPodAutoscaler` (VPA) rules](file:///home/inafev/github/jenkins-2026/infrastructure/scheduling/VPA.yaml) for JVM microservices (`gateway` and `jhipstersamplemicroservice`) to enforce `minAllowed` memory thresholds (`512Mi`). This safeguards the JVM against resource-starvation OOMs caused by dynamic resource downscaling.
 * **Workload-Aware / Gang Scheduling (v1.36)**: Integrated `PodGroup` scheduling resources (`parallel-smoke-tests`) to prevent resource starvation deadlocks when running heavy concurrent microservice testing workflows.
 * **UI/UX Constrained Impersonation**: Implemented K8s v1.36 `ConstrainedImpersonation` policies in Headlamp UI roles. This allows the Headlamp UI ServiceAccount to impersonate specific target user groups without requiring global cluster-admin role escalation permissions.
 
@@ -444,6 +446,7 @@ Traditional GKE Cluster Autoscaler configurations have been replaced with **Karp
 * **GCPNodeClass**: Configures GKE machine parameters, 100 GB `pd-balanced` boot disks, and links Workload Identity node service accounts.
 * **NodePool**: Manages Spot capacity-types, targeting compute families (`c2`, `n2`, `e2`, `c3`) and injecting taints (`jenkins-agent=true:NoSchedule`) so only build agents land on highly elastic spot pools.
 * **Disruption Budgets**: Configured to restrict consolidations during core business hours (Mon-Fri) to safeguard long-running master build pipelines while allowing aggressive cost cutting at night and empty/underutilized consolidation.
+* **Autoscaler Isolation**: Standard GKE nodes and Karpenter node pools are strictly isolated: GKE Cluster Autoscaler does not manage the tainted Karpenter Spot VM node groups, preventing scheduling/autoscaling race conditions.
 
 ### 3. Zero-Trust Security & Workload Identity
 * **Workload Identity Federation**: All static JSON Service Account keys are removed. Both external CI engines (GitHub Actions) and in-cluster workloads assume GCP IAM Roles dynamically via OIDC.
@@ -527,6 +530,94 @@ Once traffic is running, go to your Grafana Cloud instance:
 > deployed at least once to send a small amount of traffic through the whole
 > app and give Grafana fresh traces/metrics/logs to correlate (see
 > [`docs/observability.md`](docs/observability.md#k6-observability-smoke-test)).
+## Platform QA, Chaos & Compliance Validation
+
+To guarantee production readiness, the repository includes an automated validation gate script and detailed stress-test playbooks for all advanced 2026 Kubernetes features.
+
+### 1. Automated Compliance Validation Gate
+The automated validation script lints and dry-runs all platform resources (WIF, Karpenter, Gateway API, RBAC policies, VPA limits) against the target API schema.
+
+* **Script Location**: [`test/validation_gate.sh`](test/validation_gate.sh)
+* **Execution**:
+  ```bash
+  ./test/validation_gate.sh
+  ```
+* **CI/CD Integration**: Incorporate this script as a blocking validation step in your GitHub Actions deployment workflows before triggering Helm or Argo CD syncs.
+
+### 2. Platform Verification & Stress-Test Playbooks
+
+#### Scenario A: In-Place Resize Verification
+Prove that dynamic build agents scale up their container resources dynamically without terminating or changing the Pod UID.
+
+1. **Trigger Workload**: Run a dynamic microservice build job in Jenkins (which spawns a multi-container build agent).
+2. **Retrieve the Pod ID**: Find the active agent pod in the `jenkins` namespace:
+   ```bash
+   kubectl get pods -n jenkins -l role=jenkins-agent
+   ```
+3. **Trigger Resource Upscale**: Patch the running pod resources in-place (updating CPU limit from `2` to `3` and memory from `2.5Gi` to `4Gi`):
+   ```bash
+   kubectl patch pod <agent-pod-name> -n jenkins --type=json -p='[
+     {"op": "replace", "path": "/spec/containers/0/resources/limits/cpu", "value": "3"},
+     {"op": "replace", "path": "/spec/containers/0/resources/limits/memory", "value": "4Gi"}
+   ]'
+   ```
+4. **Monitor the Resize Lifecycle**: Watch the resize state changes:
+   ```bash
+   kubectl get pod <agent-pod-name> -n jenkins -w -o jsonpath='{.status.resize}{"\t"}{.status.containerStatuses[0].resources}{"\n"}'
+   ```
+   *Verification*: Status transitions from `Resize: Proposed` -> `Resize: InProgress` -> `Resize: Succeeded` without the pod restarting.
+5. **Confirm Zero-Restart Compliance**:
+   ```bash
+   # Confirm the Pod UID remains identical (it was not recreated)
+   kubectl get pod <agent-pod-name> -n jenkins -o jsonpath='{.metadata.uid}'
+   
+   # Confirm container restartCount remains 0
+   kubectl get pod <agent-pod-name> -n jenkins -o jsonpath='{.status.containerStatuses[*].restartCount}'
+   ```
+
+#### Scenario B: Karpenter Elasticity & Spot Provisioning
+Prove that Karpenter dynamically scales up Spot instances under scheduling pressure and consolidates them when load drops.
+
+1. **Deploy a Burst Load**: Schedule 50 parallel sleep pods targeted to the agent node group:
+   ```bash
+   kubectl create deployment k6-burst-test --image=alpine/k8s:1.31.3 --replicas=50 -n jenkins
+   kubectl patch deployment k6-burst-test -n jenkins --type=json -p='[
+     {"op": "add", "path": "/spec/template/spec/tolerations", "value": [{"key": "jenkins-agent", "operator": "Equal", "value": "true", "effect": "NoSchedule"}]},
+     {"op": "add", "path": "/spec/template/spec/nodeSelector", "value": {"role": "jenkins-agent"}}
+   ]'
+   ```
+2. **Watch Node Allocation**: Verify Karpenter schedules nodes of Capacity type `spot`:
+   ```bash
+   kubectl get nodes -l role=jenkins-agent -o custom-columns=NAME:.metadata.name,CAPACITY:.metadata.labels.karpenter\.sh/capacity-type -w
+   ```
+3. **Trigger Scale Down**: Terminate the burst workloads:
+   ```bash
+   kubectl scale deployment k6-burst-test -n jenkins --replicas=0
+   ```
+4. **Verify Consolidation**: Karpenter will cordon, drain, and terminate the underutilized Spot nodes after a 30s cooling window. Verify via ScaleDown events:
+   ```bash
+   kubectl get events --field-selector reason=ScaleDown -n kube-system
+   ```
+
+#### Scenario C: Constrained Impersonation (Zero-Trust RBAC)
+Verify that Headlamp's constrained impersonation ClusterRoles restrict access to developer scopes, preventing administrative escalation.
+
+1. **Test Developer Impersonation (Allowed)**:
+   ```bash
+   kubectl auth can-i create deployments -n microservices \
+     --as=system:serviceaccount:headlamp:headlamp-service-account \
+     --as-group=developer-group
+   # Output: yes
+   ```
+2. **Test Cluster-wide Escalation (Denied)**:
+   ```bash
+   kubectl auth can-i get secrets --all-namespaces \
+     --as=system:serviceaccount:headlamp:headlamp-service-account \
+     --as-group=developer-group
+   # Output: no
+   ```
+
+---
 
 ## Configuration ([`config/config.yaml`](config/config.yaml))
 
