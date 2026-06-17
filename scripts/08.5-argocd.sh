@@ -20,6 +20,9 @@ fi
 
 # 1. Install ArgoCD
 log_step "Running Helm upgrade"
+# Delete existing patched configmaps to prevent Helm Server-Side Apply / ownership conflict failures on subsequent runs
+kubectl delete configmap argocd-cm argocd-rbac-cm -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found=true || true
+
 helm upgrade --install "${J2026_ARGOCD_RELEASE}" argo/argo-cd \
   --namespace "${J2026_ARGOCD_NAMESPACE}" \
   -f "${J2026_ROOT_DIR}/helm/argocd-values.yaml" \
