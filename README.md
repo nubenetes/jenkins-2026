@@ -1782,12 +1782,38 @@ To enforce cost control (FinOps), auditability, and guard against accidental des
 * **Environment Name**: `gke-production`
 
 #### 🛡️ Setting up Environment Rules in GitHub
-Before triggering these workflows, repository administrators should configure environment protection rules in the GitHub Repository Settings:
+Before triggering these workflows, repository administrators must configure environment protection rules to enforce approvals. This can be done either manually via the web interface or automated via the GitHub CLI (`gh`).
+
+##### Option A: Manual Setup (GitHub Web UI)
 1. Navigate to **Settings** -> **Environments** on your GitHub repository.
 2. Click **New environment** and name it exactly: `gke-production`.
 3. Under **Environment protection rules**, check the **Required reviewers** box.
 4. Add the designated reviewers (developers or administrators) who must authorize deployments.
 5. Save the configuration.
+
+##### Option B: Automated Setup (GitHub CLI)
+If you have the GitHub CLI installed and authenticated, you can configure the environment and set required reviewers programmatically:
+
+1. Retrieve the numeric GitHub ID of the user you want to set as a reviewer:
+   ```bash
+   gh api user -q '.id'
+   ```
+2. Create or update the `gke-production` environment with the reviewer:
+   ```bash
+   gh api --method PUT repos/nubenetes/jenkins-2026/environments/gke-production \
+     --header "Accept: application/vnd.github+json" \
+     --input - <<EOF
+   {
+     "prevent_self_review": false,
+     "reviewers": [
+       {
+         "type": "User",
+         "id": <USER_ID>
+       }
+     ]
+   }
+   EOF
+   ```
 
 With this configuration active, triggering any of the protected workflows will pause execution at the start of the job. GitHub will notify the reviewers, and execution will only resume once an authorized reviewer clicks **Approve**.
 
