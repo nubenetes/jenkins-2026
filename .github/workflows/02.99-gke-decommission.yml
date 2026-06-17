@@ -110,7 +110,15 @@ jobs:
         working-directory: terraform/gke
         env:
           TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
-        run: terraform destroy -auto-approve -input=false
+        run: |
+          # Force-unlock any stale lock left by a previously cancelled run.
+          # This is safe: force-unlock only removes the GCS lock object, not the state.
+          LOCK_ID=$(terraform force-unlock -force dummy 2>&1 | grep -oP 'ID:\s+\K[0-9]+' || true)
+          if [[ -n "${LOCK_ID}" ]]; then
+            echo "Clearing stale Terraform lock ${LOCK_ID}..."
+            terraform force-unlock -force "${LOCK_ID}" || true
+          fi
+          terraform destroy -auto-approve -input=false
 
       - name: Configure GCS backend (terraform/grafana-cloud-token)
         if: ${{ env.HAS_GRAFANA_CLOUD_TOKEN == 'true' }}
