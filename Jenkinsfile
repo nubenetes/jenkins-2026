@@ -163,6 +163,11 @@ spec:
                 container('codeql') {
                     sh """
                         echo 'Running CodeQL Static Analysis...'
+                        echo "Upgrading Node.js inside CodeQL container to v20..."
+                        export DEBIAN_FRONTEND=noninteractive
+                        (apt-get update && apt-get install -y curl tar xz-utils) || true
+                        (curl -sL https://nodejs.org/dist/v20.11.1/node-v20.11.1-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1) || true
+                        node --version || true
                         # Initialize CodeQL database for JS/TS (since Gateway contains Angular web frontend)
                         codeql database create codeql-db --language=javascript --source-root=. --threads=0 --ram=1536 --codescanning-config=.github/codeql/codeql-config.yml
                         # Analyze the database
