@@ -18,8 +18,8 @@ spec:
         - name: DOCKER_HOST
           value: tcp://localhost:2375
       resources:
-        requests: {cpu: 100m, memory: 1024Mi}
-        limits: {cpu: '2', memory: 2.5Gi}
+        requests: {cpu: 100m, memory: 512Mi}
+        limits: {cpu: '2', memory: 2.0Gi}
       volumeMounts:
         - name: maven-cache
           mountPath: /root/.m2
@@ -70,8 +70,8 @@ spec:
       command: ['sleep']
       args: ['infinity']
       resources:
-        requests: {cpu: 50m, memory: 256Mi}
-        limits: {cpu: '500m', memory: 512Mi}
+        requests: {cpu: 50m, memory: 64Mi}
+        limits: {cpu: '500m', memory: 256Mi}
     - name: codeql
       image: mcr.microsoft.com/cstsectools/codeql-container:latest
       command: ['sleep']
@@ -79,8 +79,8 @@ spec:
       securityContext:
         runAsUser: 0
       resources:
-        requests: {cpu: 200m, memory: 1024Mi}
-        limits: {cpu: '2', memory: 3Gi}
+        requests: {cpu: 100m, memory: 128Mi}
+        limits: {cpu: '2', memory: 2.5Gi}
       volumeMounts:
         - name: codeql-cache
           mountPath: /usr/local/codeql-home/.codeql
@@ -91,9 +91,11 @@ spec:
       env:
         - name: TRIVY_CACHE_DIR
           value: /tmp/trivy-cache
+        - name: GOGC
+          value: "20"
       resources:
-        requests: {cpu: 50m, memory: 256Mi}
-        limits: {cpu: '500m', memory: 1Gi}
+        requests: {cpu: 50m, memory: 128Mi}
+        limits: {cpu: '500m', memory: 2.0Gi}
       volumeMounts:
         - name: trivy-cache
           mountPath: /tmp/trivy-cache
@@ -162,9 +164,9 @@ spec:
                     sh """
                         echo 'Running CodeQL Static Analysis...'
                         # Initialize CodeQL database for JS/TS (since Gateway contains Angular web frontend)
-                        codeql database create codeql-db --language=javascript --source-root=. --threads=0 --ram=2048 --codescanning-config=.github/codeql/codeql-config.yml
+                        codeql database create codeql-db --language=javascript --source-root=. --threads=0 --ram=1536 --codescanning-config=.github/codeql/codeql-config.yml
                         # Analyze the database
-                        codeql database analyze codeql-db --format=sarif-latest --output=codeql-results.sarif --threads=0 --ram=2048 || true
+                        codeql database analyze codeql-db --format=sarif-latest --output=codeql-results.sarif --threads=0 --ram=1536 || true
                     """
                     archiveArtifacts artifacts: 'codeql-results.sarif', allowEmptyArchive: true
                 }
