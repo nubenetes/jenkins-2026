@@ -226,7 +226,7 @@ EOF
                         dir('microservices-src') {
                             sh """
                                 git config --global --add safe.directory '*' || true
-                                semgrep scan --config=p/security-audit --config=p/owasp-top-ten --config=${env.WORKSPACE}/jenkins-2026-infra/.semgrep/semgrep.yml --sarif --sarif-output=semgrep-results.sarif || true
+                                semgrep scan --config=p/security-audit --config=p/owasp-top-ten --config=${env.WORKSPACE}/jenkins-2026-infra/.semgrep/semgrep.yml --sarif --sarif-output=semgrep-results.sarif . || true
                             """
                             archiveArtifacts artifacts: 'semgrep-results.sarif', allowEmptyArchive: true
                         }
