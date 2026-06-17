@@ -221,6 +221,8 @@ export J2026_MICROSERVICES_GENAI_SERVICE_ENABLED="${JENKINS2026_GENAI_SERVICE_EN
 
 export J2026_ARGOCD_NAMESPACE="$(yq_get '.argocd.namespace' 'argocd')"
 export J2026_ARGOCD_RELEASE="$(yq_get '.argocd.releaseName' 'argocd')"
+export J2026_ARGOCD_VERSION="$(yq_get '.argocd.version' 'v3.5.0-rc1')"
+export J2026_ARGOCD_VERSION_CONSTRAINT="$(yq_get '.argocd.version_constraint' '3.5.x')"
 
 # Develop branch of this infra repo, used by 08.5-argocd.sh to populate the
 # {{branchDevelop}} placeholder in argocd/microservices-appset.yaml.
