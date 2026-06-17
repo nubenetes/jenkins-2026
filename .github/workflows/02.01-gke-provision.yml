@@ -27,9 +27,9 @@ on:
         default: false
         type: boolean
       git_ref:
-        description: "Git branch, tag, or SHA to check out (must match between provision and decommission)"
-        required: true
-        default: "develop"
+        description: "Git branch, tag, or SHA to check out (leave empty to use the branch/tag selected in 'Use workflow from' above)"
+        required: false
+        default: ""
         type: string
 
 permissions:
@@ -50,7 +50,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.git_ref }}
+          ref: ${{ inputs.git_ref || github.ref }}
 
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
