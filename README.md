@@ -376,6 +376,46 @@ A total of **2 Postgres databases** are provisioned in the cluster (both in the 
     - **Auto-Connection**: The pre-populated servers are configured to read from `/var/lib/pgadmin/pgpass`, allowing instant connectivity just by double-clicking the server in the Object Explorer.
 *   **Resource & Safety Limits:** To prevent GKE auto-scaling, pgAdmin is strictly resource-constrained (requests: `50m` CPU / `128Mi` RAM, limits: `200m` CPU / `256Mi` RAM) and is capped by a `ResourceQuota` in the `pgadmin` namespace.
 
+##### Multi-User Identity vs. Database User & Zero-Trust Hardening
+In a production-ready GKE environment, the distinction between your **pgAdmin login identity** (your Google email address) and the **PostgreSQL database user** is a key security boundary:
+
+- **pgAdmin Login**: Your Google email address is your authentication identity to access the pgAdmin *web interface* (validated via Google IAP).
+- **Postgres Database User**: pgAdmin is just a database client. When it queries the databases, it must authenticate using a native PostgreSQL database user (e.g., `gateway` or `jhipstersamplemicroservice`).
+
+> [!IMPORTANT]
+> By design, we do not configure pgAdmin to connect using the PostgreSQL superuser (`postgres`). This follows industry-standard database hardening practices:
+> - **Principle of Least Privilege**: The pre-populated connections are configured to use the application database owners (`gateway` and `jhipstersamplemicroservice`). These users have full permissions (`CREATE`, `ALTER`, `SELECT`, `INSERT`, etc.) over their respective application schemas. This is exactly what is needed for administration without exposing global system administration rights.
+> - **Minimizing Attack Surfaces**: pgAdmin is a web application accessible via HTTPS. If pgAdmin were pre-configured with superuser credentials, a compromise of the pgAdmin container or session hijacking could expose full control of the database operating system files and cluster configurations.
+> - **Superuser Network Block**: In our HBA configuration, the `postgres` superuser is **prevented from logging in over the network** (using password authentication). Superuser access is restricted strictly to local unix sockets (peer authentication) on the database pods themselves.
+
+##### SRE Break-Glass CLI (Connecting as Superuser)
+If you are performing platform maintenance and require absolute superuser permissions (e.g. modifying system parameters, loading custom extensions, or manual vacuuming), you should bypass the pgAdmin web UI and connect directly from the cluster control plane:
+
+###### Option A: Execute directly inside the database primary pod (No password required)
+Exec into the primary database container, which uses local `peer` authentication to log in instantly as `postgres`:
+```bash
+# For Gateway Database
+kubectl exec -it postgres-gateway-1 -n microservices -c postgres -- psql -U postgres -d gateway
+
+# For JHipster Microservice Database
+kubectl exec -it postgres-jhipstersamplemicroservice-1 -n microservices -c postgres -- psql -U postgres -d jhipstersamplemicroservice
+```
+
+###### Option B: Retrieve the Superuser password from GKE Secrets
+If you need to connect using a client tool from your local terminal:
+1. **Get the password**:
+   ```bash
+   kubectl get secret postgres-gateway-superuser -n microservices -o jsonpath='{.data.password}' | base64 -d; echo
+   ```
+2. **Port-forward the service**:
+   ```bash
+   kubectl port-forward svc/postgres-gateway-rw -n microservices 5432:5432
+   ```
+3. **Connect via psql**:
+   ```bash
+   psql -h localhost -U postgres -d gateway
+   ```
+
 ##### Automated pgAdmin Authentication Flow
 
 ```mermaid
