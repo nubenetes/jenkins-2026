@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.9.3] - 2026-06-17
+
+### Added
+- **Manual Approvals via GitHub Environments**:
+  - Bound GKE provision (`02.01`), GKE decommission (`02.99`), Gateway decommission (`01.99`), and Grafana Cloud decommission (`01.98`) workflows to the `gke-production` environment.
+  - Implemented environment protection rules requiring authorized reviewers' approval before executing sensitive GHA terraform applies and destroys.
+- **Environment Protections Documentation**:
+  - Documented environment config guidelines, required setup steps, and the cost control (FinOps) benefits in `README.md`.
+
 ## [v0.9.2] - 2026-06-17
 
 ### Changed

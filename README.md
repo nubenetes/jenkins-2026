@@ -1770,6 +1770,27 @@ Mixing different tags, branches, or SHAs during the lifecycle of a single GKE cl
 > 1. Always ensure that the `git_ref` used for provisioning (`02.01`) matches the `git_ref` used for decommissioning (`02.99`) and redeployments (`02.02` / `02.03`).
 > 2. For stable releases, tag both repositories in lockstep (e.g. `v0.9.0` tag in `jenkins-2026` and `jenkins-2026-gitops-config`) and input that tag name in the `git_ref` parameter when triggering the workflows.
 
+### Environment Protection and Manual Approvals
+
+To enforce cost control (FinOps), auditability, and guard against accidental destruction of active resources, all critical provisioning and decommissioning workflows are protected by a GitHub Actions environment:
+
+* **Protected Workflows**:
+  - `02.01 GKE provision` (provisions nodes, networking, and platform services)
+  - `02.99 GKE decommission` (wipes cluster resources and destroys VMs)
+  - `01.98 Grafana Cloud decommission` (revokes metrics stacks and API keys)
+  - `01.99 Gateway decommission` (releases global external static IP and certificate maps)
+* **Environment Name**: `gke-production`
+
+#### 🛡️ Setting up Environment Rules in GitHub
+Before triggering these workflows, repository administrators should configure environment protection rules in the GitHub Repository Settings:
+1. Navigate to **Settings** -> **Environments** on your GitHub repository.
+2. Click **New environment** and name it exactly: `gke-production`.
+3. Under **Environment protection rules**, check the **Required reviewers** box.
+4. Add the designated reviewers (developers or administrators) who must authorize deployments.
+5. Save the configuration.
+
+With this configuration active, triggering any of the protected workflows will pause execution at the start of the job. GitHub will notify the reviewers, and execution will only resume once an authorized reviewer clicks **Approve**.
+
 ### One-time setup
 
 
