@@ -2,6 +2,56 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.8.0] - 2026-06-17
+
+### Added
+- **GKE Cluster Observability**: Integrated the official `grafana/k8s-monitoring` Helm chart (v4.0+) to collect GKE cluster metrics, host/node metrics, and cluster events in `scripts/03-observability.sh`.
+- **Automated Data Source Configuration**: Implemented automatic settings provisioning for the Grafana Kubernetes Monitoring app using `gcx api` inside `scripts/07-grafana-dashboards.sh` to pre-link Prometheus, Loki, and Tempo data sources.
+- **Zero-Trust Hardening & Identity**: Documented Multi-User Identity vs DB User configurations in `README.md` and added OIDC write permission in GitHub Actions for secure dynamic secret resolution.
+- **Compliance Validation Gate**: Added an automated compliance validation gate script (`test/validation_gate.sh`).
+
+### Changed
+- **Database Operator Migration**: Migrated database orchestration operator from Crunchy PGO to CloudNative-PG (CNPG) and updated corresponding playbooks, architecture diagrams, and runbooks.
+- **pgAdmin Enhancements**: Restricted visible databases in pgAdmin via `DBRestriction` in `servers.json`, disabled the master password prompt, and corrected absolute passfile paths.
+- **k6 Telemetry Overhaul**: Switched the k6 simulation exporter to OTLP/HTTP, formatted endpoints to exclude scheme/path prefixes, and updated the service name to `k6-microservices-smoke`.
+- **Resource Quotas**: Increased `observability-quota` ResourceQuota limits (CPU limit: 6.0, memory limit: 10.0Gi) to accommodate the newly introduced telemetry collector and exporter daemons.
+- **Dashboard Optimization**: Updated Grafana trace panels in Jenkins Overview, Microservices Overview, and k6 smoke test dashboards to use high-performance table views and filter out `/management/health` probe traces.
+
+## [v0.7.2] - 2026-06-17
+
+### Documentation
+- **Table of Contents**: Added a comprehensive nested Table of Contents to the main `README.md`.
+
+## [v0.7.1] - 2026-06-17
+
+### Documentation
+- **Mermaid Layout**: Corrected GKE node pool topology subgraph title overlap in README.
+
+## [v0.7.0] - 2026-06-17
+
+### Documentation
+- **Cluster Topology**: Rewrote GKE Cluster Topology reference section in `README.md` for clearer documentation on Karpenter, subnets, and node types.
+
+## [v0.6.9] - 2026-06-17
+
+### Documentation
+- **Mermaid Layout**: Shortened Workload Identity mapping node labels to prevent rendering cutoffs.
+
+## [v0.6.8] - 2026-06-17
+
+### Documentation
+- **Mermaid Layout**: Aggressively shortened node labels across all architectural flowcharts.
+
+## [v0.6.7] - 2026-06-17
+
+### Documentation
+- **Mermaid Layout**: Fixed text cutoff in all three main Mermaid diagrams.
+
+## [v0.6.6] - 2026-06-17
+
+### Fixes
+- **Workflow Cleanup**: Added `gsutil rm` command to clear orphaned GCS state lock file before executing `terraform destroy` in GKE decommissioning.
+
 ## [v0.6.5] - 2026-06-17
 
 ### Fixes

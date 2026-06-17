@@ -248,10 +248,16 @@ graph TB
 
         subgraph "observability namespace"
             OTEL["OTel Operator/<br/>Collector"]
+            K8S["k8s-monitoring<br/>(Grafana Alloy)"]
         end
 
         subgraph "microservices namespace"
             PCS["Microservices<br/>Services"]
+        end
+
+        subgraph "GKE Cluster Infrastructure"
+            NODES["Nodes & Kubelet"]
+            EVENTS["Kubernetes Events"]
         end
     end
 
@@ -263,11 +269,13 @@ graph TB
     GW --> PCS
     J -->|"CI / Build"| GH
     ACD -->|"CD / GitOps"| PCS
-    ACD -->|"CD / GitOps"| PCD
     PCS -->|OTLP| OTEL
-    PCD -->|OTLP| OTEL
     J -->|OTLP| OTEL
-    OTEL -->|Forward| GC
+    OTEL -->|OTLP/HTTP| GC
+    
+    NODES -->|Scraped by| K8S
+    EVENTS -->|Collected by| K8S
+    K8S -->|OTLP/HTTP| GC
 ```
 
 ### Microservices & Database Architecture
@@ -987,6 +995,11 @@ export OTLP to an in-cluster collector, which forwards to Grafana Cloud
 - **Model Context Protocol (MCP)**: This project supports Grafana Cloud's hosted **MCP server**. Connecting an AI agent (like Gemini) to your stack via MCP allows for real-time querying of Jenkins traces, metrics, and logs during troubleshooting.
     - **Setup**: In your Grafana Cloud portal, go to **Administration > Assistant > Cloud MCP** to find your connection endpoint.
     - **Integration**: Add the endpoint to your Gemini CLI or AI agent configuration. You can then ask questions like *"Audit my Jenkins datasource health"* or *"Summarize recent pipeline failures from traces"* for a better outcome of your changes.
+- **GKE Kubernetes Cluster Observability**: Automatic telemetry collection for GKE hosts, nodes, namespaces, and cluster events is integrated using the official `grafana/k8s-monitoring` Helm chart (v4.0+) pointing directly to Grafana Cloud OTLP.
+    - **Zero Log Duplication**: Disables log collection inside the chart (`podLogsViaLoki.enabled=false`, `podLogsViaOpenTelemetry.enabled=false`) to prevent dual ingestion charges, leaving pod log capture to the dedicated `otel-collector-logs` DaemonSet.
+    - **Resource Quota Compatibility**: The `observability-quota` is scaled up to allow the Alloy operator, stateful Alloy scrapers, kube-state-metrics, and node-exporter daemons to run safely alongside OpenTelemetry operators.
+    - **Automated Lifecycle**: Deployed via [`scripts/03-observability.sh`](file:///home/inafev/github/jenkins-2026/scripts/03-observability.sh) (which dynamically extracts credentials and parses the basic auth secret from GKE) and cleanly uninstalled in parallel via [`scripts/down.sh`](file:///home/inafev/github/jenkins-2026/scripts/down.sh).
+    - **Zero-Touch Config**: Automatically maps the default Prometheus (`grafanacloud-prom`), Loki (`grafanacloud-logs`), and Tempo (`grafanacloud-traces`) data sources in the plugin's `jsonData` via `gcx api` inside [`scripts/07-grafana-dashboards.sh`](file:///home/inafev/github/jenkins-2026/scripts/07-grafana-dashboards.sh) upon bootstrap, rendering the Kubernetes App Home (`/a/grafana-k8s-app/home`) immediately active.
 - **Correlated telemetry**: Traces, metrics and logs are fully correlated. On Grafana Cloud, log-to-trace links and system datasources (like `alert-state-history` and `usage-insights`) are pre-configured by default.
 
 ### k6 observability smoke test
@@ -1515,6 +1528,10 @@ To prevent GKE cluster auto-scaling (saving costs for this PoC) and ensure optim
    | | `otel-collector-logs-agent` | DaemonSet | `100m` | `300m` | `128Mi` | `256Mi` |
    | | `otel-operator-opentelemetry-operator` | Deployment | `100m` | `500m` | `128Mi` | `256Mi` |
    | | `pdc-agent` | Deployment | `50m` | `200m` | `64Mi` | `128Mi` |
+   | | `k8s-monitoring-alloy` | StatefulSet | `60m` | `400m` | `178Mi` | `512Mi` |
+   | | `k8s-monitoring-alloy-operator` | Deployment | `50m` | `200m` | `128Mi` | `256Mi` |
+   | | `k8s-monitoring-kube-state-metrics` | Deployment | `50m` | `200m` | `128Mi` | `256Mi` |
+   | | `k8s-monitoring-node-exporter` | DaemonSet | `50m` | `200m` | `128Mi` | `256Mi` |
    | **argocd** | `argocd-application-controller` | StatefulSet | `100m` | `1.0` | `256Mi` | `1Gi` |
    | | `argocd-server` | Deployment | `100m` | `500m` | `128Mi` | `256Mi` |
    | | `argocd-repo-server` | Deployment | `100m` | `500m` | `256Mi` | `512Mi` |
@@ -1531,7 +1548,7 @@ To prevent GKE cluster auto-scaling (saving costs for this PoC) and ensure optim
      > [!NOTE]
      > To allow concurrent pipeline execution and optimize deployment throughput, the Jenkins cloud is configured with `containerCap: 2` in `helm/jenkins/values-common.yaml`. The namespace resource quota has been adjusted accordingly (`requests.cpu: "3.0"`, `requests.memory: "8.0Gi"`, `limits.cpu: "14"`, `limits.memory: "16.0Gi"`) to accommodate this parallelism safely and prevent pipeline agent quota exhaustion.
    - `microservices`: Requests max `1.5` CPU / `3.0Gi` memory.
-   - `observability`: Requests max `1.5` CPU / `3.0Gi` memory.
+   - `observability`: Requests max `3.0` CPU / `6.0Gi` memory (limits: `6.0` CPU / `10.0Gi` memory).
    - `argocd`: Requests max `1.5` CPU / `3.0Gi` memory.
    - `headlamp`: Requests max `200m` CPU / `256Mi` memory.
 
