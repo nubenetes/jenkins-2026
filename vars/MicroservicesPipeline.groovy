@@ -200,12 +200,23 @@ EOF
                 }
             }
 
+            stage('Checkout Infra configs') {
+                steps {
+                    container('git') {
+                        dir('jenkins-2026-infra') {
+                            git url: "${env.JENKINS2026_REPO_URL ?: 'https://github.com/nubenetes/jenkins-2026.git'}",
+                                branch: "${env.JENKINS2026_REPO_BRANCH ?: 'develop'}"
+                        }
+                    }
+                }
+            }
+
             stage('Semgrep SAST') {
                 steps {
                     container('semgrep') {
                         dir('microservices-src') {
                             sh """
-                                semgrep scan --config=p/security-audit --config=p/owasp-top-10 --config=${env.WORKSPACE}/.semgrep/semgrep.yml --sarif --output=semgrep-results.sarif || true
+                                semgrep scan --config=p/security-audit --config=p/owasp-top-10 --config=${env.WORKSPACE}/jenkins-2026-infra/.semgrep/semgrep.yml --sarif --output=semgrep-results.sarif || true
                             """
                             archiveArtifacts artifacts: 'semgrep-results.sarif', allowEmptyArchive: true
                         }
@@ -218,7 +229,7 @@ EOF
                     container('codeql') {
                         dir('microservices-src') {
                             sh """
-                                codeql database create codeql-db --language=javascript --source-root=. --codescanning-config=${env.WORKSPACE}/.github/codeql/codeql-config.yml
+                                codeql database create codeql-db --language=javascript --source-root=. --codescanning-config=${env.WORKSPACE}/jenkins-2026-infra/.github/codeql/codeql-config.yml
                                 codeql database analyze codeql-db --format=sarif-latest --output=codeql-results.sarif || true
                             """
                             archiveArtifacts artifacts: 'codeql-results.sarif', allowEmptyArchive: true
@@ -232,11 +243,11 @@ EOF
                     container('trivy') {
                         dir('microservices-src') {
                             sh """
-                                trivy config --config ${env.WORKSPACE}/trivy.yaml --exit-code 0 .
+                                trivy config --config ${env.WORKSPACE}/jenkins-2026-infra/trivy.yaml --exit-code 0 .
                             """
                         }
                         sh """
-                            trivy config --config ${env.WORKSPACE}/trivy.yaml --exit-code 0 ${env.WORKSPACE}/helm/microservices
+                            trivy config --config ${env.WORKSPACE}/jenkins-2026-infra/trivy.yaml --exit-code 0 ${env.WORKSPACE}/jenkins-2026-infra/helm/microservices
                         """
                     }
                 }
@@ -268,7 +279,7 @@ EOF
                     withCredentials([usernamePassword(credentialsId: 'container-registry', usernameVariable: 'TRIVY_USERNAME', passwordVariable: 'TRIVY_PASSWORD')]) {
                         container('trivy') {
                             sh """
-                                trivy image --config ${env.WORKSPACE}/trivy.yaml --exit-code 1 --severity CRITICAL,HIGH ${env.IMAGE}
+                                trivy image --config ${env.WORKSPACE}/jenkins-2026-infra/trivy.yaml --exit-code 1 --severity CRITICAL,HIGH ${env.IMAGE}
                             """
                         }
                     }
