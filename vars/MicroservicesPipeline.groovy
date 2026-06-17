@@ -244,9 +244,9 @@ EOF
                                     if [ -f semgrep-results.sarif ]; then
                                         echo "Preparing Semgrep SARIF report payload..."
                                         gzip -c semgrep-results.sarif | base64 -w0 > semgrep-sarif.b64
-                                        COMMIT_SHA=\$(git rev-parse HEAD | tr -d '\\n')
-                                        REF="refs/heads/${params.gitBranch}"
-                                        REPO_PATH=\$(echo "${params.gitRepoUrl}" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\\.git\$||')
+                                        COMMIT_SHA=\$(git -C ${env.WORKSPACE}/jenkins-2026-infra rev-parse HEAD | tr -d '\\n')
+                                        REF="refs/heads/${env.JENKINS2026_REPO_BRANCH ?: 'develop'}"
+                                        REPO_PATH=\$(echo "${env.JENKINS2026_REPO_URL ?: 'https://github.com/nubenetes/jenkins-2026.git'}" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\\.git\$||')
                                         
                                         echo -n '{"commit_sha":"' > semgrep-payload.json
                                         echo -n "\$COMMIT_SHA" >> semgrep-payload.json
@@ -295,9 +295,9 @@ EOF
                                     if [ -f codeql-results.sarif ]; then
                                         echo "Preparing CodeQL SARIF report payload..."
                                         gzip -c codeql-results.sarif | base64 -w0 > codeql-sarif.b64
-                                        COMMIT_SHA=\$(git rev-parse HEAD | tr -d '\\n')
-                                        REF="refs/heads/${params.gitBranch}"
-                                        REPO_PATH=\$(echo "${params.gitRepoUrl}" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\\.git\$||')
+                                        COMMIT_SHA=\$(git -C ${env.WORKSPACE}/jenkins-2026-infra rev-parse HEAD | tr -d '\\n')
+                                        REF="refs/heads/${env.JENKINS2026_REPO_BRANCH ?: 'develop'}"
+                                        REPO_PATH=\$(echo "${env.JENKINS2026_REPO_URL ?: 'https://github.com/nubenetes/jenkins-2026.git'}" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\\.git\$||')
                                         
                                         echo -n '{"commit_sha":"' > codeql-payload.json
                                         echo -n "\$COMMIT_SHA" >> codeql-payload.json
