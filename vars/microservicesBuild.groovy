@@ -15,11 +15,11 @@ def call(Map cfg) {
         export NODE_OPTIONS="--max-old-space-size=3072"
         if [ -n "${cfg.module}" ] && [ -f "${cfg.module}/mvnw" ]; then
           cd ${cfg.module}
-          ./mvnw -B -DskipITs -Dmaven.compiler.maxmem=1024m -DargLine="-Xmx1536m" clean verify
+          ./mvnw -B -ntp -T 4 -s ${env.WORKSPACE}/jenkins-2026-infra/jenkins/maven-settings.xml -DskipITs -Dmaven.compiler.maxmem=1024m -DargLine="-Xmx1536m" clean verify
         elif [ -n "${cfg.module}" ]; then
-          ./mvnw -B -pl ${cfg.module} -am -DskipITs -Dmaven.compiler.maxmem=1024m -DargLine="-Xmx1536m" clean verify
+          ./mvnw -B -ntp -T 4 -s ${env.WORKSPACE}/jenkins-2026-infra/jenkins/maven-settings.xml -pl ${cfg.module} -am -DskipITs -Dmaven.compiler.maxmem=1024m -DargLine="-Xmx1536m" clean verify
         else
-          ./mvnw -B -DskipITs -Dmaven.compiler.maxmem=1024m -DargLine="-Xmx1536m" clean verify
+          ./mvnw -B -ntp -T 4 -s ${env.WORKSPACE}/jenkins-2026-infra/jenkins/maven-settings.xml -DskipITs -Dmaven.compiler.maxmem=1024m -DargLine="-Xmx1536m" clean verify
         fi
       """
     }
