@@ -22,19 +22,51 @@ jobs:
       - name: Setup k6
         uses: grafana/setup-k6-action@v1
 
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        continue-on-error: true
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        continue-on-error: true
+
+      - name: Install gke-gcloud-auth-plugin
+        run: gcloud components install gke-gcloud-auth-plugin --quiet
+        continue-on-error: true
+
+      - name: Fetch GKE credentials
+        run: |
+          gcloud container clusters get-credentials jenkins-2026 \
+            --zone europe-southwest1-a \
+            --project ${{ secrets.GCP_PROJECT_ID }}
+        continue-on-error: true
+
       - name: Run k6 Simulation
         env:
           K6_OTEL_EXPORTER_PROTOCOL: http/protobuf
-          K6_OTEL_HTTP_EXPORTER_ENDPOINT: ${{ secrets.GRAFANA_CLOUD_OTLP_ENDPOINT }}
-          K6_OTEL_HTTP_EXPORTER_URL_PATH: /otlp/v1/metrics
-          K6_OTEL_HEADERS: Authorization=Basic ${{ secrets.GRAFANA_CLOUD_OTLP_AUTH }}
           OTEL_RESOURCE_ATTRIBUTES: service.name=k6-traffic-simulation,service.namespace=jenkins-2026,deployment.environment=stable
         run: |
           # Record start time in milliseconds
           START_TIME_MS=$(date +%s%3N)
           
+          # Fetch OTLP endpoint and auth from GKE if authenticated, otherwise fallback to secrets
+          if kubectl get secret grafana-cloud-credentials -n observability >/dev/null 2>&1; then
+            echo "Successfully authenticated to GKE. Fetching live credentials..."
+            export K6_OTEL_HTTP_EXPORTER_ENDPOINT=$(kubectl get secret grafana-cloud-credentials -n observability -o jsonpath='{.data.GRAFANA_CLOUD_OTLP_ENDPOINT}' | base64 -d)
+            export K6_OTEL_HEADERS="Authorization=Basic $(kubectl get secret grafana-cloud-credentials -n observability -o jsonpath='{.data.GRAFANA_CLOUD_OTLP_AUTH}' | base64 -d)"
+          else
+            echo "GKE cluster not reachable. Falling back to GitHub Actions secrets..."
+            export K6_OTEL_HTTP_EXPORTER_ENDPOINT="${{ secrets.GRAFANA_CLOUD_OTLP_ENDPOINT }}"
+            export K6_OTEL_HEADERS="Authorization=Basic ${{ secrets.GRAFANA_CLOUD_OTLP_AUTH }}"
+          fi
+          
           # k6's HTTP exporter expects the endpoint as host:port without scheme and path
           export K6_OTEL_HTTP_EXPORTER_ENDPOINT=$(echo $K6_OTEL_HTTP_EXPORTER_ENDPOINT | sed -E 's|^https://||; s|/otlp$||')":443"
+          export K6_OTEL_HTTP_EXPORTER_URL_PATH="/otlp/v1/metrics"
           
           # Use the existing smoke test script but with more iterations/duration
           # Pointing to the stable environment
