@@ -13,6 +13,12 @@ name: "02.03 Redeploy Headlamp"
 # GKE provision" run to still exist on the cluster.
 on:
   workflow_dispatch:
+    inputs:
+      git_ref:
+        description: "Git branch, tag, or SHA to check out (must match the ref used for provisioning)"
+        required: true
+        default: "develop"
+        type: string
 
 permissions:
   contents: read
@@ -31,6 +37,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref }}
 
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
