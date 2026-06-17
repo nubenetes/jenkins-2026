@@ -238,6 +238,8 @@ controller:
     # Google login (OpenID Connect) - see securityRealm.oic in
     # jenkins/casc/jcasc-base.yaml and README.md "Jenkins" Google login section.
     - oic-auth:4.690.v5821cf665e43
+    # Static analysis reporting plugin
+    - warnings-ng:13.10097.v277a_958a_b_c09
     # --- transitive dependencies (pinned for reproducibility) ---
     - apache-httpcomponents-client-4-api:4.5.14-269.vfa_2321039a_83
     - apache-httpcomponents-client-5-api:5.6.1-195.v65ffe15189a_d

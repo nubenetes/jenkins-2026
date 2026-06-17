@@ -458,6 +458,14 @@ EOF
         post {
             always {
                 junit testResults: 'microservices-src/**/target/surefire-reports/*.xml', allowEmptyResults: true
+                recordIssues(
+                    enabledForFailure: true,
+                    aggregatingResults: true,
+                    tools: [
+                        sarif(pattern: 'microservices-src/semgrep-results.sarif', id: 'semgrep', name: 'Semgrep'),
+                        sarif(pattern: 'microservices-src/codeql-results.sarif', id: 'codeql', name: 'CodeQL')
+                    ]
+                )
             }
         }
     }
