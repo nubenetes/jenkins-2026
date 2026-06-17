@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.6.5] - 2026-06-17
+
+### Fixes
+- **ArgoCD namespace finalizer hang** (`scripts/down.sh`): Expanded `drain_namespace()` to strip object-level finalizers from **all** Terminating resources in a namespace before deletion — not just PVCs. This covers ArgoCD `Application` resources (which carry `resources-finalizer.argocd.argoproj.io`) that would hang forever once the ArgoCD controller is already uninstalled.
+- **Terraform stale state lock** (`.github/workflows/02.99-gke-decommission.yml`): Added a `terraform force-unlock` step before `terraform destroy` to automatically clear any orphaned GCS state lock left by a previously cancelled run. Prevents `Error acquiring the state lock / conditionNotMet` failures on re-runs.
+
 ## [v0.6.3] - 2026-06-17
 
 ### Removed
