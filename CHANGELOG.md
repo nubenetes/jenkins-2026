@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.9.6] - 2026-06-17
+
+### Added
+- **GitOps Design Decision (Helm vs. Kustomize)**:
+  - Documented the architectural decision comparing the current parameterized Helm loop-based microservices packaging versus a Kustomize-based overlay structure in `README.md`.
+
 ## [v0.9.5] - 2026-06-17
 
 ### Added
