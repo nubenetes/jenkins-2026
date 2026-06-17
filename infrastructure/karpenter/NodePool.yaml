@@ -1,0 +1,59 @@
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: ephemeral-runners
+spec:
+  template:
+    metadata:
+      labels:
+        role: jenkins-agent
+        environment: devops
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.gcp
+        kind: GCPNodeClass
+        name: ci-node-class
+      
+      # Taints to ensure only workloads with explicit tolerations (like Jenkins build agents) run here
+      taints:
+        - key: jenkins-agent
+          value: "true"
+          effect: NoSchedule
+      
+      requirements:
+        # Rely heavily on Spot instances for elasticity and deep cost savings
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot"]
+        
+        # Select efficient machine families
+        - key: karpenter.k8s.gcp/instance-family
+          operator: In
+          values: ["c2", "n2", "e2", "c3"]
+        
+        # Restrict size to keep compute cost controlled but sufficient for heavy compilations
+        - key: node.kubernetes.io/instance-type
+          operator: NotIn
+          values: ["e2-micro", "e2-small", "e2-medium"]
+          
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+
+  # Disruption strategy to allow aggressive cost optimization while protecting pipelines
+  disruption:
+    consolidationPolicy: WhenUnderutilized
+    consolidateAfter: 30s
+    expireAfter: 720h # 30 days maximum node lifespan to prevent configuration drift
+    
+    # Budgets for scaling disruptions safely
+    budgets:
+      # Block disruption entirely during business hours if active master pipelines are sensitive,
+      # or enforce a low concurrent disruption rate.
+      - nodes: "20%"
+        reasons: ["Underutilized"]
+        schedule: "0 9 * * 1-5" # Mon-Fri 9 AM to 5 PM
+        duration: 8h
+      # Outside of business hours, allow up to 50% concurrent node consolidation for cost cutting
+      - nodes: "50%"
+        reasons: ["Underutilized", "Empty"]

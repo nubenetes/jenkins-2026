@@ -1,0 +1,37 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: headlamp-constrained-impersonator
+rules:
+  # Enforce Impersonation constraints (introduced in v1.36 to avoid global ClusterRole Escalation)
+  # Allows the Headlamp UI ServiceAccount to impersonate specific target identities only
+  - apiGroups: [""]
+    resources: ["users"]
+    verbs: ["impersonate"]
+    resourceNames: 
+      - "headlamp-developer"
+      - "headlamp-read-only"
+  - apiGroups: [""]
+    resources: ["groups"]
+    verbs: ["impersonate"]
+    resourceNames:
+      - "developer-group"
+      - "read-only-group"
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["impersonate"]
+    resourceNames:
+      - "headlamp-limited-viewer"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: headlamp-constrained-impersonation-binding
+subjects:
+  - kind: ServiceAccount
+    name: headlamp-service-account
+    namespace: headlamp
+roleRef:
+  kind: ClusterRole
+  name: headlamp-constrained-impersonator
+  apiGroup: rbac.authorization.k8s.io
