@@ -49,6 +49,7 @@ for the OpenTelemetry/Grafana wiring.
       - [Automated pgAdmin Authentication Flow](#automated-pgadmin-authentication-flow)
       - [Retrieving Database Credentials (Optional / CLI Tools)](#retrieving-database-credentials-optional--cli-tools)
   - [CI/CD Flow (GitOps)](#cicd-flow-gitops)
+- [Golden Path IDP Modernizations (K8s v1.35/v1.36 & Karpenter)](#golden-path-idp-modernizations-k8s-v135v136--karpenter)
 - [ArgoCD Inventory (GitOps)](#argocd-inventory-gitops)
   - [Projects & Applications](#projects--applications)
   - [Security & Integration](#security--integration)
@@ -427,6 +428,30 @@ sequenceDiagram
     K8s->>Obs: OTLP Telemetry
     Obs-->>Dev: Dashboard Update
 ```
+
+## Golden Path IDP Modernizations (K8s v1.35/v1.36 & Karpenter)
+
+The repository has been refactored and modernized to serve as a **Golden Path Internal Developer Platform (IDP)** utilizing Kubernetes v1.35/v1.36 features, Karpenter autoscaling, zero-trust security, and decoupled GitOps patterns.
+
+### 1. Kubernetes v1.35/v1.36 Compliance
+* **In-Place Pod Vertical Scaling (GA in v1.35)**: Jenkins ephemeral agent pod templates are defined with explicit `resizePolicy` parameters (configured with `InPlaceOrRecreate` for CPU and Memory). This allows active Maven or Node build containers to scale resource requests/limits dynamically under compilation stress without restarting the pod.
+* **Workload-Aware / Gang Scheduling (v1.36)**: Integrated `PodGroup` scheduling resources (`parallel-smoke-tests`) to prevent resource starvation deadlocks when running heavy concurrent microservice testing workflows.
+* **UI/UX Constrained Impersonation**: Implemented K8s v1.36 `ConstrainedImpersonation` policies in Headlamp UI roles. This allows the Headlamp UI ServiceAccount to impersonate specific target user groups without requiring global cluster-admin role escalation permissions.
+
+### 2. Elastic Karpenter Autoscaling (v1.0+)
+Traditional GKE Cluster Autoscaler configurations have been replaced with **Karpenter v1.0+** using GCP provider classes:
+* **GCPNodeClass**: Configures GKE machine parameters, 100 GB `pd-balanced` boot disks, and links Workload Identity node service accounts.
+* **NodePool**: Manages Spot capacity-types, targeting compute families (`c2`, `n2`, `e2`, `c3`) and injecting taints (`jenkins-agent=true:NoSchedule`) so only build agents land on highly elastic spot pools.
+* **Disruption Budgets**: Configured to restrict consolidations during core business hours (Mon-Fri) to safeguard long-running master build pipelines while allowing aggressive cost cutting at night and empty/underutilized consolidation.
+
+### 3. Zero-Trust Security & Workload Identity
+* **Workload Identity Federation**: All static JSON Service Account keys are removed. Both external CI engines (GitHub Actions) and in-cluster workloads assume GCP IAM Roles dynamically via OIDC.
+* **GKE Gateway API + BackendTLSPolicy**: Legacies like NGINX ingress are replaced by native L7 Gateways (`gke-l7-gxlb`). Zero-trust is enforced at the network layer: traffic between the Gateway load balancer and backend pods (Jenkins/Headlamp) is encrypted and validated using `BackendTLSPolicy` targets.
+
+### 4. GitOps Separation of Concerns
+All infrastructural manifests (`karpenter/`, `gateway/`, `headlamp/`, `scheduling/`) are decoupled from CI pipeline definitions and placed inside the [`infrastructure/`](infrastructure/) directory, structuring the platform to be fully reconciled via Argo CD.
+
+---
 
 ## ArgoCD Inventory (GitOps)
 
