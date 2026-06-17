@@ -1117,13 +1117,13 @@ Full details in [`docs/observability.md`](docs/observability.md#k6-observability
 [`scripts/08-headlamp.sh`](scripts/08-headlamp.sh) into the `headlamp`
 namespace using [`helm/headlamp/values.yaml`](helm/headlamp/values.yaml).
 
-**Access model**: Headlamp is upgraded to **0.43.0** and supports two secure authentication modes:
+**Access model**: Headlamp is upgraded to **0.43.0** and is configured to support Google OIDC authentication for user sessions while leveraging the pod's service account to communicate with GKE:
 
-1.  **Per-User Google OIDC (Recommended)**: Headlamp's in-app OIDC is configured to authenticate users using Google Identity provider.
-    *   **How it works**: Users access the dashboard at `https://headlamp.<baseDomain>` (gated by IAP), click "Sign in with Google", and log in. Headlamp exchanges the authorization code for Google OAuth tokens, and forwards the Google **Access Token** (`ya29.`) to GKE.
-    *   **Authorization**: The GKE API server authorizes requests based on the user's Google Gmail account. Users must have a corresponding `ClusterRoleBinding` mapped to their Google email (created dynamically by [`scripts/08-headlamp.sh`](scripts/08-headlamp.sh) using `HEADLAMP_ADMIN_EMAILS`).
-    *   **Configuration**: Under [`helm/headlamp/values.yaml`](helm/headlamp/values.yaml), `config.oidc.externalSecret.enabled` is `true`, referencing the `headlamp-credentials` Secret containing the OAuth client ID/secret. `useAccessToken` is set to `true` (working natively on GKE since version `0.43.0` due to consolidated token validation).
-2.  **Shared Service Account Auto-Login**: Alternatively, Headlamp can automatically authenticate every user as the pod's service account (`headlamp-service-account`), which is bound to `cluster-admin`.
+1.  **Google OIDC Session Authentication + Service Account Auth (Working GKE Integration)**:
+    *   **How it works**: Users access the dashboard at `https://headlamp.<baseDomain>` (gated by IAP), click "Sign in with Google", and log in. Headlamp backend verifies the user's Google `id_token` (JWT) to authenticate their browser session, but interacts with the GKE API server using the pod's mounted `headlamp` ServiceAccount token.
+    *   **Authorization**: API server access is managed via the `headlamp-admin` ClusterRoleBinding, which binds the `headlamp` ServiceAccount to the `cluster-admin` role.
+    *   **Configuration**: Under [`helm/headlamp/values.yaml`](helm/headlamp/values.yaml), `config.unsafeUseServiceAccountToken` is set to `true`, `config.oidc.externalSecret.enabled` is `true` (referencing the `headlamp-credentials` Secret containing the OAuth client ID/secret), and `useAccessToken` is set to `false` (Google's access tokens are opaque `ya29.` strings and cannot be parsed as JWTs by Headlamp's token verifier).
+2.  **Shared Service Account Auto-Login (Token-less Bypass)**: Alternatively, Headlamp can automatically authenticate every user as the pod's service account without an OIDC login screen.
     *   **How it works**: Bypasses the login screen entirely. Since GCP Identity-Aware Proxy (IAP) already gates the domain, access control is enforced at the network layer.
     *   **Configuration**: Set `config.unsafeUseServiceAccountToken: true` under [`helm/headlamp/values.yaml`](helm/headlamp/values.yaml) and disable `config.oidc.externalSecret.enabled`.
 
