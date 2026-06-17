@@ -46,6 +46,7 @@ env:
 jobs:
   provision:
     runs-on: ubuntu-latest
+    environment: gke-production
     steps:
       - name: Checkout
         uses: actions/checkout@v4
