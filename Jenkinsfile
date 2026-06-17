@@ -152,9 +152,9 @@ spec:
                     sh """
                         echo 'Running CodeQL Static Analysis...'
                         # Initialize CodeQL database for JS/TS (since Gateway contains Angular web frontend)
-                        codeql database create codeql-db --language=javascript --source-root=. --config-file=.github/codeql/codeql-config.yml
+                        codeql database create codeql-db --language=javascript --source-root=. --codescanning-config=.github/codeql/codeql-config.yml
                         # Analyze the database
-                        codeql database analyze codeql-db --format=sarif-latest --output=codeql-results.sarif --config-file=.github/codeql/codeql-config.yml || true
+                        codeql database analyze codeql-db --format=sarif-latest --output=codeql-results.sarif || true
                     """
                     archiveArtifacts artifacts: 'codeql-results.sarif', allowEmptyArchive: true
                 }
