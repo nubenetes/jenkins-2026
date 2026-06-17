@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.9.1] - 2026-06-17
+
+### Added
+- **Manual SCM Reference Inputs in GitHub Actions**:
+  - Parameterized GKE lifecycle workflows (`02.01`, `02.02`, `02.03`, and `02.99`) with a custom `git_ref` trigger input (defaults to `develop`) to support provisioning and decommissioning GKE using specific git branches, tags, or commit SHAs.
+  - Configured repository SCM checkout tasks inside GHA workflows to dynamically bind to the selected input reference.
+- **Vulnerability Visualization Documentation**:
+  - Documented the Jenkins `warnings-ng` plugin configurations and user dashboards inside `README.md`.
+- **Operational Version Pinning Guide**:
+  - Added warnings and alignment instructions in `README.md` to prevent Terraform state conflicts and database operator secret mismatches during lifecycle runs.
+
 ## [v0.9.0] - 2026-06-17
 
 ### Added
