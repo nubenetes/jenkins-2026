@@ -9,7 +9,7 @@ spec:
     # Source 1: The official Helm chart from kubernetes-sigs repo
     - repoURL: https://kubernetes-sigs.github.io/headlamp
       chart: headlamp
-      targetRevision: 0.42.0
+      targetRevision: 0.43.0
       helm:
         valueFiles:
           - $values/helm/headlamp/values.yaml

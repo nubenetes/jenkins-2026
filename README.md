@@ -976,12 +976,51 @@ graph TD
     end
 ```
 
-Each per-service pipeline runs [`Jenkinsfile.microservices`](jenkins/pipelines/Jenkinsfile.microservices):
-checkout -> build & test -> build & push image -> `helm upgrade` the [`helm/microservices`](helm/microservices) chart for that environment -> smoke test.
-Details in [`docs/pipelines-as-code.md`](docs/pipelines-as-code.md).
+Each per-service pipeline dynamically executes the declarative shared library pipeline defined in [MicroservicesPipeline.groovy](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy), while the integration testing runs the pipeline defined in [MicroservicesK6SmokePipeline.groovy](file:///home/inafev/github/jenkins-2026/vars/MicroservicesK6SmokePipeline.groovy).
 
-> [!NOTE]
-> For Java microservices containing a `jib-maven-plugin` configuration, the image build and push stages are handled directly in a single step by Jib, and the subsequent redundant local `docker push` is automatically skipped.
+### Detailed Pipeline Execution Stages
+
+#### 1. Microservices Build & Deploy Pipeline
+Defined in [MicroservicesPipeline.groovy](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy), this pipeline manages the complete CI/CD lifecycle for each individual microservice (e.g. `gateway` or `jhipstersamplemicroservice`):
+
+*   **Checkout Microservices source** ([MicroservicesPipeline.groovy:L154-L212](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy#L154-L212))
+    *   Clones the microservice repository coordinates parsed from [services.yaml](file:///home/inafev/github/jenkins-2026/jenkins/pipelines/seed/services.yaml).
+    *   If the target is the `gateway`, runs automated hot-patching scripts to delete modern-Java compiling Hibernate `@Cache` annotations from [User.java](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy#L159-L165), adds cache constants in [UserRepository.java](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy#L166-L169), switches MySQL dependencies and URLs for Liquibase/R2DBC to PostgreSQL in [pom.xml](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy#L170-L180) and [application-prod.yml](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy#L181-L185), and writes a dummy [CacheConfiguration.java](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy#L186-L206) supplying a `NoOpCacheManager` bean.
+*   **Checkout Infra configs** ([MicroservicesPipeline.groovy:L214-L223](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy#L214-L223))
+    *   Clones the deployed active branch of this infrastructure repository (`jenkins-2026`) into the build environment to load shared static tools and rules configuration.
+*   **Semgrep SAST** ([MicroservicesPipeline.groovy:L225-L292](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy#L225-L292))
+    *   Runs static security scan using `semgrep` with `p/security-audit`, `p/owasp-top-ten`, and custom rules defined in [.semgrep/semgrep.yml](file:///home/inafev/github/jenkins-2026/.semgrep/semgrep.yml).
+    *   Generates and archives `semgrep-results.sarif`.
+    *   Compresses and uploads results to the GitHub Code Scanning Alerts API, printing actionable links to the GitHub Security UI and Jenkins local workspace.
+*   **CodeQL Analysis** ([MicroservicesPipeline.groovy:L294-L367](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy#L294-L367))
+    *   Builds a local CodeQL database using the custom ruleset config [.github/codeql/codeql-config.yml](file:///home/inafev/github/jenkins-2026/.github/codeql/codeql-config.yml) and scans JavaScript/TypeScript files with optimized CPU/RAM threads.
+    *   Compresses and uploads `codeql-results.sarif` to the GitHub Code Scanning API, printing direct links to the security alerts dashboard.
+*   **Trivy IaC Scan** ([MicroservicesPipeline.groovy:L369-L389](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy#L369-L389))
+    *   Clones the GitOps config repository and runs a `trivy config` check on the source codebase and the GitOps Helm manifests to ensure there are no configuration anti-patterns.
+*   **Build & Test** ([MicroservicesPipeline.groovy:L391-L397](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy#L391-L397))
+    *   Delegates build execution to the shared library helper [microservicesBuild.groovy](file:///home/inafev/github/jenkins-2026/vars/microservicesBuild.groovy), using fast host-path Maven caches and parallel compile parameters.
+*   **Build & Push Image** ([MicroservicesPipeline.groovy:L399-L410](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy#L399-L410))
+    *   Delegates Docker packaging to [microservicesImage.groovy](file:///home/inafev/github/jenkins-2026/vars/microservicesImage.groovy), leveraging the Jib plugin (or DinD) to build and push container images to GHCR using workspace-injected credentials.
+*   **Trivy Image Scan** ([MicroservicesPipeline.groovy:L412-L422](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy#L412-L422))
+    *   Runs `trivy image` against the published container image to audit it for operating system CVEs or vulnerability dependencies before deploy.
+*   **Deploy to Kubernetes** ([MicroservicesPipeline.groovy:L424-L434](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy#L424-L434))
+    *   Delegates deployment tasks to the shared helper [microservicesDeploy.groovy](file:///home/inafev/github/jenkins-2026/vars/microservicesDeploy.groovy), executing the inner **`GitOps Update`** stage. This stage checks out the GitOps repository, modifies the service's image tag using `yq`, pushes the update to the `main` branch, and runs the `argocd` CLI to trigger and wait for a synchronized healthy cluster rollout.
+*   **Smoke Test** ([MicroservicesPipeline.groovy:L436-L445](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy#L436-L445))
+    *   Delegates validation to [microservicesSmokeTest.groovy](file:///home/inafev/github/jenkins-2026/vars/microservicesSmokeTest.groovy) by executing an HTTP query check against the deployed pod's management health endpoints.
+*   **Integration k6 Smoke Test** ([MicroservicesPipeline.groovy:L447-L456](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy#L447-L456))
+    *   Triggers the downstream integration test pipeline `microservices-k6-smoke` to validate request flows and capture end-to-end metrics/traces in Grafana Cloud.
+*   **Post Action Handler** ([MicroservicesPipeline.groovy:L458-L470](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy#L458-L470))
+    *   Saves unit test results via the `junit` plugin and records static analysis warnings using the `warnings-ng` plugin (`recordIssues`) to render Semgrep and CodeQL dashboards natively within Jenkins build logs.
+
+#### 2. k6 Integration Smoke Test Pipeline
+Defined in [MicroservicesK6SmokePipeline.groovy](file:///home/inafev/github/jenkins-2026/vars/MicroservicesK6SmokePipeline.groovy), this pipeline is executed downstream of deployments to simulate load traffic and populate observability metrics:
+
+*   **Checkout Infra** ([MicroservicesK6SmokePipeline.groovy:L52-L56](file:///home/inafev/github/jenkins-2026/vars/MicroservicesK6SmokePipeline.groovy#L52-L56))
+    *   Clones the active infrastructure repository containing the k6 scripts.
+*   **Run k6 Smoke Test** ([MicroservicesK6SmokePipeline.groovy:L58-L67](file:///home/inafev/github/jenkins-2026/vars/MicroservicesK6SmokePipeline.groovy#L58-L67))
+    *   Delegates script execution to [microservicesK6Smoke.groovy](file:///home/inafev/github/jenkins-2026/vars/microservicesK6Smoke.groovy) to run k6 with multi-threaded virtual users, validating request rates and API latency thresholds.
+
+Details on the underlying pipeline generation architecture can be found in [`docs/pipelines-as-code.md`](docs/pipelines-as-code.md).
 
 ## Observability
 
@@ -1078,53 +1117,19 @@ Full details in [`docs/observability.md`](docs/observability.md#k6-observability
 [`scripts/08-headlamp.sh`](scripts/08-headlamp.sh) into the `headlamp`
 namespace using [`helm/headlamp/values.yaml`](helm/headlamp/values.yaml).
 
-**Access model**: Headlamp's "main" cluster context uses the chart's default
-**ServiceAccount** (cluster-admin via the chart's default `ClusterRoleBinding`,
-`clusterRoleName: cluster-admin`) - `helm/headlamp/values.yaml` is
-intentionally empty, no in-app OIDC is configured. Google-identity access
-control happens one layer up: if
-[gateway.baseDomain](#public-access-gke-gateway-api--iap) is configured,
-`https://headlamp.<baseDomain>` is gated by
-[Identity-Aware Proxy](https://cloud.google.com/iap) - only the Google
-accounts in `HEADLAMP_ADMIN_EMAILS` (granted `roles/iap.httpsResourceAccessor`
-by `terraform/gke` `google_project_iam_member.iap_accessors`) can reach the UI
-at all, and everyone who gets through has full cluster-admin via Headlamp's
-ServiceAccount. By default (no `gateway.baseDomain`), access is via `kubectl
-port-forward` (below) with no Google sign-in or IAP gate.
+**Access model**: Headlamp is upgraded to **0.43.0** and is configured to support Google OIDC authentication for user sessions while leveraging the pod's service account to communicate with GKE:
 
-**Why not per-user Google OIDC -> GKE API auth?** This was attempted
-(`config.oidc.externalSecret` + `config.oidc.useAccessToken: true`, each
-signed-in user's Google identity mapped to K8s RBAC via a `cluster-admin`
-`ClusterRoleBinding` per `HEADLAMP_ADMIN_EMAILS` entry +
-`roles/container.clusterViewer` in GCP IAM). Headlamp chart >=0.38.0
-([kubernetes-sigs/headlamp#3954](https://github.com/kubernetes-sigs/headlamp/issues/3954)/PR#4122)
-does fix the Helm templating bug that previously dropped
-`-oidc-use-access-token` when `externalSecret.enabled: true`, but a deeper
-backend bug remains: with `useAccessToken: true`, the `/oidc-callback` handler
-runs Google's OAuth2 **access token** (an opaque `ya29.` bearer token, not a
-JWT) through an OIDC ID-token verifier, which fails immediately with
-`Failed to verify ID Token: oidc: failed to unmarshal claims: invalid
-character 'k' looking for beginning of value` - the sign-in never completes.
-This matches [kubernetes-sigs/headlamp#2643](https://github.com/kubernetes-sigs/headlamp/issues/2643)
-("OIDC with GKE... only ServiceAccount token works") and upstream's own
-recent move toward an `unsafe-use-service-account-token` flag for in-cluster
-deployments - per-user OIDC tokens forwarded to a managed GKE control plane
-isn't a supported path today. If upstream fixes this, `headlamp-credentials`
-(`HEADLAMP_OIDC_CLIENT_ID`/`HEADLAMP_OIDC_CLIENT_SECRET`, still created by
-`scripts/01-namespaces.sh`) and the per-email `ClusterRoleBinding`s
-(`scripts/08-headlamp.sh`) are ready to wire back up via
-`helm/headlamp/values.yaml`.
+1.  **Google OIDC Session Authentication + Service Account Auth (Working GKE Integration)**:
+    *   **How it works**: Users access the dashboard at `https://headlamp.<baseDomain>` (gated by IAP), click "Sign in with Google", and log in. Headlamp backend verifies the user's Google `id_token` (JWT) to authenticate their browser session, but interacts with the GKE API server using the pod's mounted `headlamp` ServiceAccount token.
+    *   **Authorization**: API server access is managed via the `headlamp-admin` ClusterRoleBinding, which binds the `headlamp` ServiceAccount to the `cluster-admin` role.
+    *   **Configuration**: Under [`helm/headlamp/values.yaml`](helm/headlamp/values.yaml), `config.unsafeUseServiceAccountToken` is set to `true`, `config.oidc.externalSecret.enabled` is `true` (referencing the `headlamp-credentials` Secret containing the OAuth client ID/secret), and `useAccessToken` is set to `false` (Google's access tokens are opaque `ya29.` strings and cannot be parsed as JWTs by Headlamp's token verifier).
+2.  **Shared Service Account Auto-Login (Token-less Bypass)**: Alternatively, Headlamp can automatically authenticate every user as the pod's service account without an OIDC login screen.
+    *   **How it works**: Bypasses the login screen entirely. Since GCP Identity-Aware Proxy (IAP) already gates the domain, access control is enforced at the network layer.
+    *   **Configuration**: Set `config.unsafeUseServiceAccountToken: true` under [`helm/headlamp/values.yaml`](helm/headlamp/values.yaml) and disable `config.oidc.externalSecret.enabled`.
 
-### One-time setup: Google OAuth client (currently unused)
+### One-time setup: Google OAuth client
 
-> Not required for the IAP-gated access model above - IAP uses its own OAuth
-> client (`gateway-iap-oauth`, see [Public access (GKE Gateway API +
-> IAP)](#public-access-gke-gateway-api--iap)). This client is only consumed
-> by Headlamp's in-app OIDC, which doesn't work against GKE today (see
-> above) - kept here in case upstream fixes it.
-
-Create a Google OAuth 2.0 **Web application** client (any GCP project will
-do - it doesn't need to be the same project as the GKE cluster):
+Create a Google OAuth 2.0 **Web application** client (any GCP project will do - it doesn't need to be the same project as the GKE cluster):
 
 1. [Google Cloud Console](https://console.cloud.google.com/) -> **APIs &
    Services** -> **Credentials** -> **Create credentials** -> **OAuth client
@@ -1376,7 +1381,7 @@ assumes an existing cluster" (scoped entirely to `terraform/gke/` and
 `test/`):
 
 1. **`terraform -chdir=terraform/gke apply`** - provisions a throwaway GKE
-   cluster: its own VPC/subnet and a 2-4 node autoscaling `e2-standard-4`
+   cluster: its own VPC/subnet and a 2-4 node autoscaling `e2-standard-8`
    node pool.
 2. **`gcloud container clusters get-credentials`** - points `kubectl`/`helm`
    at the new cluster.
@@ -1458,7 +1463,7 @@ graph TD
     subgraph KarpenterPool ["Karpenter NodePool: ephemeral-runners"]
         PoolInfo["Spot Instances<br/>e2/n2/c2/c3 dynamic scaling"]
         direction LR
-        S1["Spot Node 1<br/>e2-standard-4"]
+        S1["Spot Node 1<br/>e2-standard-8"]
         S2["Spot Node 2<br/>c2-standard-4"]
         S3["Spot Node 3<br/>drifted/terminated"]
     end
@@ -1506,20 +1511,20 @@ graph TD
 | **GCP APIs** | `container` + `compute` | Enabled with `disable_on_destroy = false` — remain active after cluster teardown to avoid breaking unrelated resources and slow re-enable times. |
 
 #### Sizing Rationale (Stability vs. Resource Limits)
-Running Jenkins, ArgoCD, pgAdmin, two Postgres database clusters (via Crunchy Postgres Operator), OpenTelemetry operators (Gateway and DaemonSets), and the JHipster microservices stack requires significant memory and CPU.
+Running Jenkins, ArgoCD, pgAdmin, two Postgres database clusters (via CloudNative-PG Operator), OpenTelemetry operators (Gateway and DaemonSets), and the JHipster microservices stack requires significant memory and CPU.
 If we scaled down the nodes to smaller types (e.g. `e2-standard-2` or `e2-medium`):
 1. **OOM Kills**: Postgres clusters, Java microservice JVMs, and Jenkins build tools would run out of memory and get killed by the kernel.
 2. **CPU Starvation**: Builds and application start times would become extremely slow, leading to flaky test failures and timeout errors.
 3. **Pending Pods**: Pods would remain unscheduled due to resource limits, causing the GKE Cluster Autoscaler to spin up additional nodes anyway.
-Using `e2-standard-4` with 3 nodes ensures a stable environment where all services run smoothly with enough headroom to spawn dynamic Jenkins builder executor pods.
+Using `e2-standard-8` with 3 nodes ensures a stable environment where all services run smoothly with enough headroom to spawn dynamic Jenkins builder executor pods.
 
 ### FinOps & Cost Analysis
 
 This project integrates standard FinOps best practices to prevent unnecessary cloud spending:
 
 - **Cluster Management Fee**: GKE charges a management fee of `$0.10/hour` (waived for your first zonal cluster per billing account).
-- **Compute Instance Costs**: At Madrid (`europe-southwest1`) pricing, an `e2-standard-4` instance costs roughly `~$0.11/hour`.
-- **Total Operational Run Rate**: The active 3-node cluster runs at approximately **`$0.40 - $0.50/hour`** (including disk storage and management fee).
+- **Compute Instance Costs**: At Madrid (`europe-southwest1`) pricing, an `e2-standard-8` instance costs roughly `~$0.22/hour`.
+- **Total Operational Run Rate**: The active 3-node cluster runs at approximately **`$0.70 - $0.80/hour`** (including disk storage and management fee).
 - **Ephemeral Lifecycles**: A full provisioning, deployment, smoke-testing, and teardown run (`02.01` to `02.99`) takes only **15-25 minutes**, costing **`~$0.10 - $0.20` per execution**. You should *never* leave the cluster running overnight; always invoke **`02.99 GKE decommission`** when finished.
 - **Elastic Karpenter Autoscaling**: Ephemeral build runners are dynamically provisioned on GKE Spot instance nodes. Under idle conditions, Karpenter scales the agent pool down to **0 nodes** to eliminate unnecessary compute costs. When a pipeline execution starts, Karpenter instantly spins up Spot nodes of the most cost-efficient type to handle the build load, and consolidates them (or scales back to 0) as soon as the build finishes. Strict disruption budgets prevent consolidation during core business hours to protect running pipelines.
 - **Workload Limits & Quotas**: To enforce cost limits, pod resources are capped, and the `jenkins` namespace enforces a `ResourceQuota` preventing builders from scaling beyond node pool limits.
@@ -1928,9 +1933,6 @@ in GitHub Actions tears it down automatically.
   pipeline has run for that service - see the "First run note" above. Check
   `kubectl -n microservices describe pod <pod>` to confirm it's an image-pull
   issue, then trigger that service's job in Jenkins.
-- **OpenShift: `docker` container fails to start (privileged)**: see the
-  "Known manual step" in [`docs/platforms.md`](docs/platforms.md) -
-  `oc adm policy add-scc-to-user privileged -z jenkins -n jenkins`.
 - **Re-running after a partial failure**: every step is idempotent; just
   re-run `./scripts/up.sh` (or the individual `scripts/0N-*.sh`). Logs from
   the last `up.sh`/`down.sh` run are under `logs/`.

@@ -1,7 +1,6 @@
 # =============================================================================
 # Base values for the jenkinsci/helm-charts "jenkins" chart, shared by every
-# platform. A platform-specific overlay (values-gke.yaml, values-eks.yaml,
-# values-aks.yaml or values-openshift.yaml) is layered on top by
+# platform. The GKE overlay (values-gke.yaml) is layered on top by
 # scripts/04-jenkins.sh:
 #
 #   helm upgrade --install jenkins jenkins/jenkins \
@@ -210,7 +209,7 @@ controller:
     - workflow-aggregator:608.v67378e9d3db_1
     - git:5.10.1
     - github-branch-source:1967.1969.v205fd594c821
-    - configuration-as-code:2082.vdb_db_4622e9fa_
+    - configuration-as-code:2088.ve3b_42c663c80
     - job-dsl:3654.vdf58f53e2d15
     # Provides folder support.
     - cloudbees-folder:6.1100.ve9eed61d16c4
@@ -219,7 +218,7 @@ controller:
     # Modern, lightweight pipeline visualization (pan/zoom stage graph) -
     # the maintained successor to the discontinued Blue Ocean. Adds a
     # "Pipeline Graph" tab to every build page, no extra config needed.
-    - pipeline-graph-view:932.v7cea_0a_80605f
+    - pipeline-graph-view:940.v790e7a_c51722
     - opentelemetry:3.1589.ve81b_b_fa_927d5
     - credentials-binding:725.ve52b_2328a_fde
     - role-strategy:867.vd09254229f9b_
@@ -238,6 +237,8 @@ controller:
     # Google login (OpenID Connect) - see securityRealm.oic in
     # jenkins/casc/jcasc-base.yaml and README.md "Jenkins" Google login section.
     - oic-auth:4.690.v5821cf665e43
+    # Static analysis reporting plugin
+    - warnings-ng:13.10097.v277a_958a_b_c09
     # --- transitive dependencies (pinned for reproducibility) ---
     - apache-httpcomponents-client-4-api:4.5.14-269.vfa_2321039a_83
     - apache-httpcomponents-client-5-api:5.6.1-195.v65ffe15189a_d
