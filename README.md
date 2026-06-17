@@ -1088,7 +1088,7 @@ graph TD
 
     subgraph GKEFeatures ["Features Enabled"]
         GW["Gateway API<br>standard channel"]
-        WI["Workload Identity<br>project.svc.id.goog"]
+        WI["Workload Identity<br>WIF pool enabled"]
     end
 ```
 
