@@ -263,6 +263,16 @@ EOF
                                           https://api.github.com/repos/\${REPO_PATH}/code-scanning/sarifs \\
                                           -d @semgrep-payload.json)
                                         echo "GitHub API response for Semgrep upload: \$RESPONSE"
+                                        if [ "\$RESPONSE" = "202" ]; then
+                                            echo "--------------------------------------------------------------------------------"
+                                            echo "SUCCESS: Semgrep SARIF report uploaded to GitHub Code Scanning API!"
+                                            echo "Review the static application security testing (SAST) findings here:"
+                                            echo "https://github.com/\${REPO_PATH}/security/code-scanning"
+                                            echo "--------------------------------------------------------------------------------"
+                                        else
+                                            echo "WARNING: Semgrep SARIF upload received unexpected status \$RESPONSE"
+                                            echo "If this is a fork, ensure GitHub Advanced Security / Code Scanning is enabled."
+                                        fi
                                         rm -f semgrep-sarif.b64 semgrep-payload.json
                                     fi
                                 """
@@ -314,6 +324,16 @@ EOF
                                           https://api.github.com/repos/\${REPO_PATH}/code-scanning/sarifs \\
                                           -d @codeql-payload.json)
                                         echo "GitHub API response for CodeQL upload: \$RESPONSE"
+                                        if [ "\$RESPONSE" = "202" ]; then
+                                            echo "--------------------------------------------------------------------------------"
+                                            echo "SUCCESS: CodeQL SARIF report uploaded to GitHub Code Scanning API!"
+                                            echo "Review the static application security testing (SAST) findings here:"
+                                            echo "https://github.com/\${REPO_PATH}/security/code-scanning"
+                                            echo "--------------------------------------------------------------------------------"
+                                        else
+                                            echo "WARNING: CodeQL SARIF upload received unexpected status \$RESPONSE"
+                                            echo "If this is a fork, ensure GitHub Advanced Security / Code Scanning is enabled."
+                                        fi
                                         rm -f codeql-sarif.b64 codeql-payload.json
                                     fi
                                 """
