@@ -173,3 +173,39 @@ resource "google_container_node_pool" "primary" {
     tags = ["jenkins-2026"]
   }
 }
+
+# 8. Google Cloud Storage bucket for PostgreSQL (CNPG) backups with lifecycle rules (FinOps)
+resource "google_storage_bucket" "postgres_backups" {
+  project       = var.project_id
+  name          = "${var.cluster_name}-postgres-backups"
+  location      = var.region
+  force_destroy = true # Safe deletion for short-lived PoC environments
+
+  uniform_bucket_level_access = true
+
+  lifecycle_rule {
+    action {
+      type = "Delete"
+    }
+    condition {
+      age = 7 # Prune backups older than 7 days
+    }
+  }
+
+  lifecycle_rule {
+    action {
+      type          = "SetStorageClass"
+      storage_class = "NEARLINE"
+    }
+    condition {
+      age = 3 # Move backups to Nearline after 3 days to cut costs
+    }
+  }
+}
+
+# Grant objectAdmin privileges on the backups bucket to the GKE node service account
+resource "google_storage_bucket_iam_member" "nodes_postgres_backups" {
+  bucket = google_storage_bucket.postgres_backups.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.nodes.email}"
+}

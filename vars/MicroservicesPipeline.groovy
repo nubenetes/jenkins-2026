@@ -27,6 +27,9 @@ spec:
       resources:
         requests: {cpu: 100m, memory: 1024Mi}
         limits: {cpu: '2', memory: 2.5Gi}
+      volumeMounts:
+        - name: maven-cache
+          mountPath: /root/.m2
     - name: node
       image: node:20-bookworm
       command: ['sleep']
@@ -37,6 +40,9 @@ spec:
       resources:
         requests: {cpu: 5m, memory: 64Mi}
         limits: {cpu: '100m', memory: 128Mi}
+      volumeMounts:
+        - name: npm-cache
+          mountPath: /root/.npm
     - name: docker
       image: docker:26-dind
       securityContext:
@@ -76,6 +82,15 @@ spec:
       resources:
         requests: {cpu: 10m, memory: 128Mi}
         limits: {cpu: 200m, memory: 256Mi}
+  volumes:
+    - name: maven-cache
+      hostPath:
+        path: /tmp/jenkins-maven-cache
+        type: DirectoryOrCreate
+    - name: npm-cache
+      hostPath:
+        path: /tmp/jenkins-npm-cache
+        type: DirectoryOrCreate
 """
             }
         }
