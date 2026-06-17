@@ -39,6 +39,11 @@ spec:
         - key: kubernetes.io/arch
           operator: In
           values: ["amd64"]
+        
+        # Require local NVMe SSDs for high-speed scratch space
+        - key: karpenter.k8s.gcp/local-ssd-count
+          operator: Gt
+          values: ["0"]
 
   # Disruption strategy to allow aggressive cost optimization while protecting pipelines
   disruption:

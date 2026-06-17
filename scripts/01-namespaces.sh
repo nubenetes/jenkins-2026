@@ -282,4 +282,8 @@ spec:
 EOF
 done
 
+log_step "Applying NetworkPolicies for platform namespaces"
+kubectl apply -f "${J2026_ROOT_DIR}/infrastructure/networkpolicies.yaml"
+
 log_info "Namespaces ready."
+
