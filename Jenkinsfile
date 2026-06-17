@@ -70,8 +70,8 @@ spec:
       command: ['sleep']
       args: ['infinity']
       resources:
-        requests: {cpu: 50m, memory: 64Mi}
-        limits: {cpu: '500m', memory: 256Mi}
+        requests: {cpu: 50m, memory: 128Mi}
+        limits: {cpu: '500m', memory: 512Mi}
     - name: codeql
       image: mcr.microsoft.com/cstsectools/codeql-container:latest
       command: ['sleep']
