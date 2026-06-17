@@ -1,7 +1,6 @@
 # =============================================================================
 # Base values for the jenkinsci/helm-charts "jenkins" chart, shared by every
-# platform. A platform-specific overlay (values-gke.yaml, values-eks.yaml,
-# values-aks.yaml or values-openshift.yaml) is layered on top by
+# platform. The GKE overlay (values-gke.yaml) is layered on top by
 # scripts/04-jenkins.sh:
 #
 #   helm upgrade --install jenkins jenkins/jenkins \

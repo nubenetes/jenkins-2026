@@ -10,7 +10,7 @@
 #   oss - installs kube-prometheus-stack + Loki + Tempo in-cluster, then two
 #     opentelemetry-collector releases pointed at them.
 #
-#   managed - documented stub (docs/platforms.md); no resources created.
+#   managed - documented stub; no resources created.
 #
 # Requires scripts/02-otel-operator.sh to have run first (CRDs).
 set -euo pipefail
@@ -172,7 +172,7 @@ EOT
 
   managed)
     log_step "Observability mode: managed (stub)"
-    log_warn "observability.mode=managed is documented in docs/platforms.md but does not"
+    log_warn "observability.mode=managed is a stub and does not"
     log_warn "install anything - point OTEL_EXPORTER_OTLP_ENDPOINT at your managed Grafana"
     log_warn "stack's OTLP gateway and create '${J2026_GRAFANA_CLOUD_SECRET}' accordingly."
     exit 0

@@ -1511,7 +1511,7 @@ graph TD
 | **GCP APIs** | `container` + `compute` | Enabled with `disable_on_destroy = false` — remain active after cluster teardown to avoid breaking unrelated resources and slow re-enable times. |
 
 #### Sizing Rationale (Stability vs. Resource Limits)
-Running Jenkins, ArgoCD, pgAdmin, two Postgres database clusters (via Crunchy Postgres Operator), OpenTelemetry operators (Gateway and DaemonSets), and the JHipster microservices stack requires significant memory and CPU.
+Running Jenkins, ArgoCD, pgAdmin, two Postgres database clusters (via CloudNative-PG Operator), OpenTelemetry operators (Gateway and DaemonSets), and the JHipster microservices stack requires significant memory and CPU.
 If we scaled down the nodes to smaller types (e.g. `e2-standard-2` or `e2-medium`):
 1. **OOM Kills**: Postgres clusters, Java microservice JVMs, and Jenkins build tools would run out of memory and get killed by the kernel.
 2. **CPU Starvation**: Builds and application start times would become extremely slow, leading to flaky test failures and timeout errors.
@@ -1933,9 +1933,6 @@ in GitHub Actions tears it down automatically.
   pipeline has run for that service - see the "First run note" above. Check
   `kubectl -n microservices describe pod <pod>` to confirm it's an image-pull
   issue, then trigger that service's job in Jenkins.
-- **OpenShift: `docker` container fails to start (privileged)**: see the
-  "Known manual step" in [`docs/platforms.md`](docs/platforms.md) -
-  `oc adm policy add-scc-to-user privileged -z jenkins -n jenkins`.
 - **Re-running after a partial failure**: every step is idempotent; just
   re-run `./scripts/up.sh` (or the individual `scripts/0N-*.sh`). Logs from
   the last `up.sh`/`down.sh` run are under `logs/`.

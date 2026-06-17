@@ -7,7 +7,7 @@
 #   source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 #
 # FEATURE FLAG: JENKINS2026_PLATFORM, if set, overrides platform.target from
-# config.yaml (gke|eks|aks|openshift). config/config.yaml is the durable
+# config.yaml (gke). config/config.yaml is the durable
 # default; the env var is the ephemeral override.
 
 require_cmd yq "Install yq (https://github.com/mikefarah/yq) - e.g. 'sudo snap install yq' or download the static binary from the GitHub releases page." || exit 1

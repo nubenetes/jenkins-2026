@@ -110,7 +110,7 @@ case "${J2026_OBS_MODE}" in
     ;;
 
   managed)
-    log_warn "observability.mode=managed is a documented stub (docs/platforms.md) - skipping dashboard import."
+    log_warn "observability.mode=managed is a stub - skipping dashboard import."
     ;;
 
   *)

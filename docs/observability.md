@@ -235,7 +235,7 @@ dashboard link in `microservicesK6Smoke`'s build output. Two ways to provide it:
 
 ### `managed`
 
-A documented stub (see [`platforms.md`](platforms.md)) for "bring your own"
+A documented stub for "bring your own"
 managed Grafana (e.g. Amazon Managed Grafana, Azure Managed Grafana). Point
 `OTEL_EXPORTER_OTLP_ENDPOINT` / the `grafana-cloud-credentials` Secret at that
 stack's OTLP gateway; `03-observability.sh`/`07-grafana-dashboards.sh` exit
