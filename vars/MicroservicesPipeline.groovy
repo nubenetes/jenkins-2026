@@ -207,7 +207,7 @@ EOF
                             sh """
                                 semgrep scan --config=p/security-audit --config=p/owasp-top-10 --config=${env.WORKSPACE}/.semgrep/semgrep.yml --sarif --output=semgrep-results.sarif || true
                             """
-                            archiveArtifacts artifacts: 'microservices-src/semgrep-results.sarif', allowEmptyResults: true
+                            archiveArtifacts artifacts: 'microservices-src/semgrep-results.sarif', allowEmptyArchive: true
                         }
                     }
                 }
@@ -221,7 +221,7 @@ EOF
                                 codeql database create codeql-db --language=javascript --source-root=. --config-file=${env.WORKSPACE}/.github/codeql/codeql-config.yml
                                 codeql database analyze codeql-db --format=sarif-latest --output=codeql-results.sarif --config-file=${env.WORKSPACE}/.github/codeql/codeql-config.yml || true
                             """
-                            archiveArtifacts artifacts: 'microservices-src/codeql-results.sarif', allowEmptyResults: true
+                            archiveArtifacts artifacts: 'microservices-src/codeql-results.sarif', allowEmptyArchive: true
                         }
                     }
                 }
