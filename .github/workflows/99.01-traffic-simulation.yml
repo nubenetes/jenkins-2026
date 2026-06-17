@@ -51,7 +51,8 @@ jobs:
       - name: Run k6 Simulation
         env:
           K6_OTEL_EXPORTER_PROTOCOL: http/protobuf
-          OTEL_RESOURCE_ATTRIBUTES: service.name=k6-traffic-simulation,service.namespace=jenkins-2026,deployment.environment=stable
+          K6_OTEL_SERVICE_NAME: k6-microservices-smoke
+          OTEL_RESOURCE_ATTRIBUTES: service.name=k6-microservices-smoke,service.namespace=jenkins-2026,deployment.environment=stable
         run: |
           # Record start time in milliseconds
           START_TIME_MS=$(date +%s%3N)
