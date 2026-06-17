@@ -141,7 +141,7 @@ spec:
                         echo 'Running Semgrep SAST scan...'
                         semgrep scan --config=p/security-audit --config=p/owasp-top-10 --config=.semgrep/semgrep.yml --sarif --output=semgrep-results.sarif || true
                     """
-                    archiveArtifacts artifacts: 'semgrep-results.sarif', allowEmptyResults: true
+                    archiveArtifacts artifacts: 'semgrep-results.sarif', allowEmptyArchive: true
                 }
             }
         }
@@ -156,7 +156,7 @@ spec:
                         # Analyze the database
                         codeql database analyze codeql-db --format=sarif-latest --output=codeql-results.sarif --config-file=.github/codeql/codeql-config.yml || true
                     """
-                    archiveArtifacts artifacts: 'codeql-results.sarif', allowEmptyResults: true
+                    archiveArtifacts artifacts: 'codeql-results.sarif', allowEmptyArchive: true
                 }
             }
         }
