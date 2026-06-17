@@ -302,8 +302,8 @@ EOF
                                 (apt-get update && apt-get install -y curl tar xz-utils) || true
                                 (curl -sL https://nodejs.org/dist/v20.11.1/node-v20.11.1-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1) || true
                                 node --version || true
-                                codeql database create codeql-db --language=javascript --source-root=. --threads=0 --ram=1536 --codescanning-config=${env.WORKSPACE}/jenkins-2026-infra/.github/codeql/codeql-config.yml
-                                codeql database analyze codeql-db --format=sarif-latest --output=codeql-results.sarif --threads=0 --ram=1536 || true
+                                codeql database create codeql-db --language=javascript --source-root=. --threads=0 --ram=3500 --codescanning-config=${env.WORKSPACE}/jenkins-2026-infra/.github/codeql/codeql-config.yml
+                                codeql database analyze codeql-db --format=sarif-latest --output=codeql-results.sarif --threads=0 --ram=3500 || true
                             """
                             archiveArtifacts artifacts: 'codeql-results.sarif', allowEmptyArchive: true
                         }
