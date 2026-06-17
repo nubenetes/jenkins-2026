@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.9.4] - 2026-06-17
+
+### Changed
+- **Default Branch Transition to `main`**:
+  - Configured `main` as the repository's default branch on GitHub, ensuring the GitHub Actions UI dropdown ("Use workflow from") defaults to the stable branch.
+  - Updated the central config (`config/config.yaml`) to set `jenkins.selfRepoBranch` to `main` so that Jenkins JCasC resolves shared libraries and seed jobs from the stable branch.
+
 ## [v0.9.3] - 2026-06-17
 
 ### Added
