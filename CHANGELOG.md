@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.9.2] - 2026-06-17
+
+### Changed
+- **GHA Parameterized Fallback Mechanics**:
+  - Refactored `git_ref` workflow inputs in all GKE pipelines to be optional (`required: false`) and default to empty (`""`).
+  - Added logical fallback in checkout tasks (`inputs.git_ref || github.ref`) to use the native branch dropdown ("Use workflow from") if the text box is left blank, resolving interface conflicts.
+- **Form Fields Documentation**:
+  - Added a detailed user reference guide in `README.md` explaining every input field, type, default, and purpose on the GKE provision workflow form.
+
 ## [v0.9.1] - 2026-06-17
 
 ### Added
