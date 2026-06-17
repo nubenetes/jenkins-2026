@@ -2028,6 +2028,37 @@ graph TD
    - **Configuration**: Defined in [trivy.yaml](trivy.yaml).
    - **Failure Policy**: If risk thresholds are exceeded during the final image scan (severity: `CRITICAL,HIGH`), Trivy exits with code `1`, halting the deploy stage.
 
+4. **Jenkins warnings-ng Plugin Integration (SARIF Visualizer)**:
+   - **Responsibility**: Provides interactive static analysis dashboards natively within the Jenkins build UI.
+   - **How it Works (for Users & Developers)**:
+     - On every build of a microservice, the pipeline runs Semgrep and CodeQL and outputs `.sarif` files (`semgrep-results.sarif` and `codeql-results.sarif`).
+     - The pipeline invokes the `recordIssues` post-action step of the `warnings-ng` plugin to parse these SARIF reports.
+     - Developers do not need to inspect raw JSON/SARIF logs. Instead, the build page displays **"Semgrep Warnings"** and **"CodeQL Warnings"** side menu items.
+     - Clicking these menu items provides detailed dashboards containing:
+       - **Issue Trends**: Graphical representation of new, fixed, and outstanding warnings over time.
+       - **Tabular Details**: A searchable table of all issues grouped by category, file name, age, and severity.
+       - **Inline Code Highlights**: Direct integration with the Jenkins workspace viewer. Clicking an issue lets developers see the exact line of code causing the warning.
+   - **How it is Configured (for Jenkins Administrators)**:
+     - **Plugin Pinning**: Pinned in [values-common.yaml](file:///home/inafev/github/jenkins-2026/helm/jenkins/values-common.yaml#L241) to ensure reproducibility:
+       ```yaml
+       - warnings-ng:13.10097.v277a_958a_b_c09
+       ```
+     - **Pipeline Integration**: Invoked inside the `post` block of [MicroservicesPipeline.groovy](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy#L461-L468):
+       ```groovy
+       post {
+           always {
+               recordIssues(
+                   enabledForFailure: true,
+                   aggregatingResults: true,
+                   tools: [
+                       sarif(pattern: 'microservices-src/semgrep-results.sarif', id: 'semgrep', name: 'Semgrep'),
+                       sarif(pattern: 'microservices-src/codeql-results.sarif', id: 'codeql', name: 'CodeQL')
+                   ]
+               )
+           }
+       }
+       ```
+
 ## License
 
 [MIT](LICENSE) © 2026 Nubenetes
