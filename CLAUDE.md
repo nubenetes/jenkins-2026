@@ -10,9 +10,8 @@ OpenTelemetry observability (traces/metrics/logs) into either Grafana Cloud
 or an in-cluster OSS Grafana/Loki/Tempo/Prometheus stack. See
 [`README.md`](README.md) for the full picture, and
 [`docs/architecture.md`](docs/architecture.md),
-[`docs/observability.md`](docs/observability.md),
-[`docs/pipelines-as-code.md`](docs/pipelines-as-code.md),
-[`docs/platforms.md`](docs/platforms.md) for deep dives.
+[`docs/observability.md`](docs/observability.md), and
+[`docs/pipelines-as-code.md`](docs/pipelines-as-code.md) for deep dives.
 
 ## Repo layout
 
