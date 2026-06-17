@@ -155,8 +155,8 @@ wait_for_deployment "${J2026_ARGOCD_RELEASE}-server" "${J2026_ARGOCD_NAMESPACE}"
 log_step "Configuring ArgoCD Microservices GitOps Project"
 kubectl apply -f "${J2026_ROOT_DIR}/argocd/microservices-project.yaml"
 
-log_step "Configuring Postgres Operator via ArgoCD"
-kubectl apply -f "${J2026_ROOT_DIR}/argocd/pgo-app.yaml"
+log_step "Configuring CloudNative-PG Operator via ArgoCD"
+kubectl apply -f "${J2026_ROOT_DIR}/argocd/cnpg-app.yaml"
 
 log_step "Configuring Headlamp via ArgoCD"
 # Inject values into the Headlamp Application manifest
