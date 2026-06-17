@@ -1,0 +1,17 @@
+apiVersion: scheduling.x-k8s.io/v1alpha1
+kind: PodGroup
+metadata:
+  name: parallel-smoke-tests
+  namespace: microservices
+spec:
+  # Gang scheduling parameter: minimum members of the group that must be scheduled concurrently.
+  # This prevents resource starvation deadlocks during peak parallel compilation/testing.
+  minMember: 3
+  
+  # Optional: Minimum aggregate resources required to launch the group
+  minResources:
+    cpu: "6"
+    memory: "12Gi"
+  
+  # Scheduling deadline before timing out the group
+  scheduleTimeoutSeconds: 300
