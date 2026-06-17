@@ -2164,6 +2164,59 @@ graph TD
        }
        ```
 
+## GitOps Design Decision: Helm vs. Kustomize
+
+### Overview
+This repository uses a parameterized Helm Chart (`helm/microservices`) driven by environment-specific values files (`values-stable.yaml`, `values-develop.yaml`) in the GitOps repository to deploy microservices under ArgoCD. Below is the technical comparison and design rationale for utilizing Helm instead of Kustomize for this platform.
+
+### Side-by-Side Comparison
+
+| Feature/Metric | Helm + ArgoCD (Current Solution) | Kustomize + ArgoCD (Alternative) |
+| :--- | :--- | :--- |
+| **DRY Compliance (Don't Repeat Yourself)** | **High.** All common patterns (probes, security contexts, Postgres configurations, Workload Identity annotations) are written once in a template and reused. | **Low.** Shared boilerplate is copied across bases, or managed through complex overlay configurations. |
+| **Adding a Microservice** | **Trivial.** Simply add a new key under `services` in `values-stable.yaml`. Jenkins CI automatically handles this tag update. | **High effort.** Requires creating a new directory structure, copying/configuring base YAMLs, and editing environment overlays. |
+| **Platform Portability (GKE, OpenShift)** | **Excellent.** A single boolean or string switch (`global.platform`) handles conditional resource definitions (e.g., Ingress vs. Route, OpenShift SCC adjustments). | **Harder.** Requires maintaining separate platform-specific overlays (`overlays/gke`, `overlays/openshift`) containing distinct patches. |
+| **ArgoCD Integration** | **Native.** ArgoCD parses Helm charts seamlessly, supports parameter overrides, and integrates with `ApplicationSets` using value files. | **Native.** ArgoCD natively applies Kustomize overlays. |
+| **Upgrade Maintenance** | **Easy.** Modifying the global configuration (e.g., changing security context `runAsUser` or patching pg_hba rules) is done in a single Helm template and propagates to all services. | **Labor-intensive.** Requires updating multiple resource files or base directory components across all services. |
+
+### Technical Rationale & Mechanics
+
+#### 1. Dynamic Resource Generation via Looping
+Helm's template looping is key to maintaining a multi-service architecture without duplicate manifest templates. In our Helm chart templates, we iterate over the service registry:
+```yaml
+{{- range $name, $svc := .Values.services }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+...
+```
+This single loop dynamically generates the `Deployment`, `Service`, `Postgres` CNPG Cluster, `PgBouncer` pooler, and scheduled backups for *every* registered microservice. Kustomize lacks template logic and variables, meaning developers would have to maintain duplicate manifests for each new microservice.
+
+#### 2. Platform Adaptability
+We leverage Helm's conditional formatting to support deploying to various Kubernetes distributions (e.g. GKE or OpenShift) with a single variable flag (`global.platform`), enabling conditional security contexts or routing configs:
+```yaml
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+  {{- if eq $.Values.global.platform "openshift" }}
+  # Let the restricted-v2 SCC assign UIDs
+  {{- else }}
+  runAsNonRoot: true
+  runAsUser: 1000
+  {{- end }}
+```
+
+#### 3. Continuous Integration Automation
+In the Jenkins pipeline, updating a microservice deployment target is simplified to a single YAML key-value update using `yq` in `values-stable.yaml` or `values-develop.yaml`:
+```bash
+yq -i '.services.jhipstersamplemicroservice.image.tag = "new-tag"' values-stable.yaml
+```
+Using Kustomize would require running `kustomize edit set image` on specific overlay files, adding tool dependencies to pipeline runner images.
+
+---
+
 ## License
 
 [MIT](LICENSE) © 2026 Nubenetes
