@@ -78,6 +78,33 @@ spec:
       resources:
         requests: {cpu: 5m, memory: 64Mi}
         limits: {cpu: 100m, memory: 128Mi}
+    - name: semgrep
+      image: semgrep/semgrep:1.79.0
+      command: ['sleep']
+      args: ['infinity']
+      resources:
+        requests: {cpu: 50m, memory: 256Mi}
+        limits: {cpu: '500m', memory: 512Mi}
+    - name: codeql
+      image: mcr.microsoft.com/cstsectools/codeql-container:latest
+      command: ['sleep']
+      args: ['infinity']
+      resources:
+        requests: {cpu: 200m, memory: 1024Mi}
+        limits: {cpu: '2', memory: 3Gi}
+    - name: trivy
+      image: aquasec/trivy:0.52.2
+      command: ['sleep']
+      args: ['infinity']
+      env:
+        - name: TRIVY_CACHE_DIR
+          value: /tmp/trivy-cache
+      resources:
+        requests: {cpu: 50m, memory: 256Mi}
+        limits: {cpu: '500m', memory: 1Gi}
+      volumeMounts:
+        - name: trivy-cache
+          mountPath: /tmp/trivy-cache
     - name: jnlp
       resources:
         requests: {cpu: 10m, memory: 128Mi}
@@ -90,6 +117,10 @@ spec:
     - name: npm-cache
       hostPath:
         path: /tmp/jenkins-npm-cache
+        type: DirectoryOrCreate
+    - name: trivy-cache
+      hostPath:
+        path: /tmp/jenkins-trivy-cache
         type: DirectoryOrCreate
 """
             }
@@ -169,6 +200,48 @@ EOF
                 }
             }
 
+            stage('Semgrep SAST') {
+                steps {
+                    container('semgrep') {
+                        dir('microservices-src') {
+                            sh """
+                                semgrep scan --config=p/security-audit --config=p/owasp-top-10 --config=${env.WORKSPACE}/.semgrep/semgrep.yml --sarif --output=semgrep-results.sarif || true
+                            """
+                            archiveArtifacts artifacts: 'microservices-src/semgrep-results.sarif', allowEmptyResults: true
+                        }
+                    }
+                }
+            }
+
+            stage('CodeQL Analysis') {
+                steps {
+                    container('codeql') {
+                        dir('microservices-src') {
+                            sh """
+                                codeql database create codeql-db --language=javascript --source-root=. --config-file=${env.WORKSPACE}/.github/codeql/codeql-config.yml
+                                codeql database analyze codeql-db --format=sarif-latest --output=codeql-results.sarif --config-file=${env.WORKSPACE}/.github/codeql/codeql-config.yml || true
+                            """
+                            archiveArtifacts artifacts: 'microservices-src/codeql-results.sarif', allowEmptyResults: true
+                        }
+                    }
+                }
+            }
+
+            stage('Trivy IaC Scan') {
+                steps {
+                    container('trivy') {
+                        dir('microservices-src') {
+                            sh """
+                                trivy config --config ${env.WORKSPACE}/trivy.yaml --exit-code 0 .
+                            """
+                        }
+                        sh """
+                            trivy config --config ${env.WORKSPACE}/trivy.yaml --exit-code 0 ${env.WORKSPACE}/helm/microservices
+                        """
+                    }
+                }
+            }
+
             stage('Build & Test') {
                 steps {
                     dir('microservices-src') {
@@ -186,6 +259,18 @@ EOF
                             image: env.IMAGE,
                             registryHost: env.REGISTRY.tokenize('/')[0]
                         )
+                    }
+                }
+            }
+
+            stage('Trivy Image Scan') {
+                steps {
+                    withCredentials([usernamePassword(credentialsId: 'container-registry', usernameVariable: 'TRIVY_USERNAME', passwordVariable: 'TRIVY_PASSWORD')]) {
+                        container('trivy') {
+                            sh """
+                                trivy image --config ${env.WORKSPACE}/trivy.yaml --exit-code 1 --severity CRITICAL,HIGH ${env.IMAGE}
+                            """
+                        }
                     }
                 }
             }

@@ -1,0 +1,9 @@
+# trivy.yaml
+# Global configuration for Trivy scans in the DevSecOps pipeline
+
+severity: 'HIGH,CRITICAL'
+vuln-type: 'os,library'
+cache:
+  dir: '/tmp/trivy-cache'
+report:
+  format: 'table'

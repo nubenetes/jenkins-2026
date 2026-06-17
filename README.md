@@ -1947,6 +1947,63 @@ in GitHub Actions tears it down automatically.
   `GCP_SERVICE_ACCOUNT` match its outputs exactly, and that `github_repo` in
   `terraform/bootstrap/terraform.tfvars` matches this repo's `org/name`.
 
+## DevSecOps Security Pipeline
+
+The jenkins-2026 platform implements a multi-layered security pipeline (DevSecOps) following modern Cloud Native Security and Zero-Trust principles. This setup natively integrates three security layers: static code analysis, semantic SAST, infrastructure misconfiguration audits, and container image vulnerability scans.
+
+### Pipeline Lifecycle
+
+```mermaid
+graph TD
+    subgraph Code_Phase ["Code Phase"]
+        A["Developer commits code"] --> B["Git Push to GitHub"]
+    end
+
+    subgraph CI_Phase ["CI Phase (Jenkins Scans)"]
+        B --> C["Jenkins Pipeline Triggered"]
+        C --> D["Checkout Source"]
+        D --> E["Semgrep SAST (OWASP Top 10)"]
+        D --> F["CodeQL Analysis (Deep SAST)"]
+        D --> G["Trivy IaC Scan (Helm & Manifests)"]
+        E --> H["Compile & Build Image"]
+        F --> H
+        G --> H
+        H --> I["Trivy Image Scan (High/Critical CVEs)"]
+        I -->|Pass| J["Update GitOps Manifest Tag"]
+        I -->|Fail| K["Fail Build & Alert"]
+    end
+
+    subgraph Artifact_Registry ["Artifact Registry"]
+        H -->|Push Image| L["Google Artifact Registry"]
+        I -->|Scan Target| L
+    end
+
+    subgraph ArgoCD_GKE ["ArgoCD / GKE"]
+        J -->|Push tag update| M["GitOps Repository"]
+        M -->|Webhook/Sync| N["ArgoCD Controller"]
+        N -->|Deploy| O["GKE Cluster (Stable Namespace)"]
+    end
+```
+
+### Integrated Security Tools
+
+1. **Semgrep (Lightweight SAST / Custom Rules)**:
+   - **Responsibility**: Fast commit-stage check for security anti-patterns (disabled CSRF, insecure HTTP, hardcoded secrets) and ruleset compliance.
+   - **Configuration**: Managed globally in [.semgrep/semgrep.yml](.semgrep/semgrep.yml). It audits source code against the `p/security-audit` and `p/owasp-top-10` rulesets.
+   - **Output**: Generates a SARIF report archived in the Jenkins build run.
+
+2. **CodeQL (Deep SAST / Semantic Analysis)**:
+   - **Responsibility**: Semantic code analysis to detect complex multi-file data flow vulnerabilities (SQL Injection, XSS, SSRF).
+   - **Configuration**: Managed globally via [.github/codeql/codeql-config.yml](.github/codeql/codeql-config.yml). Runs inside a dedicated CodeQL CLI container in the dynamic pod agent.
+   - **Output**: Generates a detailed SARIF report archived in the Jenkins build run.
+
+3. **Trivy (Vulnerability and Misconfiguration Scanning)**:
+   - **Dual Responsibility**:
+     - **IaC Scan**: Evaluates Helm charts and GKE resources before building (warning-only/non-blocking).
+     - **Image Scan**: Scans final container images against the GCE base image and dependencies before pushing or updating the GitOps repo.
+   - **Configuration**: Defined in [trivy.yaml](trivy.yaml).
+   - **Failure Policy**: If risk thresholds are exceeded during the final image scan (severity: `CRITICAL,HIGH`), Trivy exits with code `1`, halting the deploy stage.
+
 ## License
 
 [MIT](LICENSE) © 2026 Nubenetes
