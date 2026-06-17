@@ -88,6 +88,7 @@ pgadmin4:
         Shared: true
         PassFile: "/var/lib/pgadmin/pgpass"
         SavePassword: true
+        DBRestriction: "gateway"
         ConnectionParameters:
           passfile: "/var/lib/pgadmin/pgpass"
       "2":
@@ -102,6 +103,7 @@ pgadmin4:
         Shared: true
         PassFile: "/var/lib/pgadmin/pgpass"
         SavePassword: true
+        DBRestriction: "jhipstersamplemicroservice"
         ConnectionParameters:
           passfile: "/var/lib/pgadmin/pgpass"
 
