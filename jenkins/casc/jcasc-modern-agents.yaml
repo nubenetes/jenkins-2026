@@ -44,9 +44,9 @@ jenkins:
                     # GA in Kubernetes v1.35: In-Place pod vertical scaling policies
                     resizePolicy:
                       - resourceName: cpu
-                        restartPolicy: InPlaceOrRecreate
+                        restartPolicy: NotRequired
                       - resourceName: memory
-                        restartPolicy: InPlaceOrRecreate
+                        restartPolicy: NotRequired
                   - name: builder
                     image: maven:3.9.6-eclipse-temurin-17
                     command:
@@ -61,6 +61,6 @@ jenkins:
                         memory: "8192Mi"
                     resizePolicy:
                       - resourceName: cpu
-                        restartPolicy: InPlaceOrRecreate
+                        restartPolicy: NotRequired
                       - resourceName: memory
-                        restartPolicy: InPlaceOrRecreate
+                        restartPolicy: NotRequired
