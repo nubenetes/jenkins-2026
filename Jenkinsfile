@@ -149,7 +149,7 @@ spec:
                     sh """
                         echo 'Running Semgrep SAST scan...'
                         git config --global --add safe.directory '*' || true
-                        semgrep scan --config=p/security-audit --config=p/owasp-top-ten --config=.semgrep/semgrep.yml --sarif --sarif-output=semgrep-results.sarif || true
+                        semgrep scan --config=p/security-audit --config=p/owasp-top-ten --config=.semgrep/semgrep.yml --sarif --sarif-output=semgrep-results.sarif . || true
                     """
                     archiveArtifacts artifacts: 'semgrep-results.sarif', allowEmptyArchive: true
                 }
