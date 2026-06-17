@@ -1078,21 +1078,24 @@ graph TD
     end
 
     subgraph VPC ["VPC: jenkins-2026-vpc"]
-        subgraph Subnet ["jenkins-2026-subnet<br>europe-southwest1"]
+        subgraph Subnet ["Subnet: jenkins-2026-subnet"]
+            SubnetInfo["europe-southwest1"]
             NodeRange["Nodes: 10.10.0.0/20"]
             PodRange["Pods: 10.20.0.0/16"]
             SvcRange["Services: 10.30.0.0/20"]
         end
     end
 
-    subgraph Cluster ["GKE: jenkins-2026<br>europe-southwest1-a"]
+    subgraph Cluster ["GKE Cluster: jenkins-2026"]
+        ClusterInfo["europe-southwest1-a"]
         direction LR
         GatewayAPI["Gateway API<br>CHANNEL_STANDARD"]
         WI["Workload Identity"]
         Channel["Release: REGULAR"]
     end
 
-    subgraph Pool ["Node Pool: jenkins-2026-pool<br>autoscale 2-4, initial 3"]
+    subgraph Pool ["Node Pool: jenkins-2026-pool"]
+        PoolInfo["autoscale 2-4, initial 3"]
         direction LR
         N1["Node 1<br>e2-standard-4<br>50 GB pd-balanced"]
         N2["Node 2<br>e2-standard-4<br>50 GB pd-balanced"]
