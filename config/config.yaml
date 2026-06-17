@@ -43,7 +43,7 @@ jenkins:
   # This repo's own coordinates, used by JCasC for the global pipeline shared
   # library and by the seed job to fetch Jenkinsfile.microservices + seed scripts.
   selfRepoUrl: https://github.com/nubenetes/jenkins-2026.git
-  selfRepoBranch: develop
+  selfRepoBranch: main
 
 # -----------------------------------------------------------------------------
 # Observability
