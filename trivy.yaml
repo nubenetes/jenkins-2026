@@ -5,5 +5,4 @@ severity: 'HIGH,CRITICAL'
 vuln-type: 'os,library'
 cache:
   dir: '/tmp/trivy-cache'
-report:
-  format: 'table'
+format: 'table'

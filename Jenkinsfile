@@ -76,6 +76,8 @@ spec:
       image: mcr.microsoft.com/cstsectools/codeql-container:latest
       command: ['sleep']
       args: ['infinity']
+      securityContext:
+        runAsUser: 0
       resources:
         requests: {cpu: 200m, memory: 1024Mi}
         limits: {cpu: '2', memory: 3Gi}
