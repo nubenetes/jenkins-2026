@@ -1063,45 +1063,80 @@ gcloud auth application-default login
 
 ### GKE Cluster Topology & Sizing Rationale
 
-The throwaway cluster for testing is provisioned with a custom VPC-native configuration optimized for stability and cost:
+The throwaway cluster is provisioned entirely via Terraform ([`terraform/gke/`](terraform/gke/)) with a custom VPC-native configuration optimized for stability and cost. A **persistent** global static IP and Google-managed wildcard TLS certificate ([`terraform/gateway-bootstrap/`](terraform/gateway-bootstrap/)) survive cluster rebuilds so DNS records never need updating:
 
 ```mermaid
 graph TD
+    subgraph Internet ["Internet"]
+        User["User / Browser"]
+    end
+
+    subgraph GlobalLB ["Global L7 Load Balancer"]
+        StaticIP["Static IP<br>jenkins-2026-gateway-ip<br>e.g. 34.x.x.x"]
+        CertMap["Cert Map<br>jenkins-2026-cert-map"]
+        WildcardTLS["Wildcard TLS<br>*.jenkins2026...com"]
+    end
+
     subgraph VPC ["VPC: jenkins-2026-vpc"]
-        subgraph Subnet ["Subnet: jenkins-2026-subnet"]
-            NodeIPs["Nodes — 10.10.0.0/20"]
-            PodIPs["Pods — 10.20.0.0/16"]
-            SvcIPs["Services — 10.30.0.0/20"]
+        subgraph Subnet ["jenkins-2026-subnet<br>europe-southwest1"]
+            NodeRange["Nodes: 10.10.0.0/20"]
+            PodRange["Pods: 10.20.0.0/16"]
+            SvcRange["Services: 10.30.0.0/20"]
         end
     end
 
-    subgraph NodePool ["Node Pool: jenkins-2026-pool"]
+    subgraph Cluster ["GKE: jenkins-2026<br>europe-southwest1-a"]
         direction LR
-        Node1["Node 1<br>e2-standard-4<br>50 GB pd-balanced"]
-        Node2["Node 2<br>e2-standard-4<br>50 GB pd-balanced"]
-        Node3["Node 3<br>e2-standard-4<br>50 GB pd-balanced"]
-        Node4["Node 4 — autoscaled<br>e2-standard-4<br>50 GB pd-balanced"]
+        GatewayAPI["Gateway API<br>CHANNEL_STANDARD"]
+        WI["Workload Identity"]
+        Channel["Release: REGULAR"]
     end
 
-    NodeIPs -->|"node IPs"| NodePool
-    PodIPs -->|"pod IPs"| NodePool
-
-    subgraph GKEFeatures ["Features Enabled"]
-        GW["Gateway API<br>standard channel"]
-        WI["Workload Identity<br>WIF pool enabled"]
+    subgraph Pool ["Node Pool: jenkins-2026-pool<br>autoscale 2-4, initial 3"]
+        direction LR
+        N1["Node 1<br>e2-standard-4<br>50 GB pd-balanced"]
+        N2["Node 2<br>e2-standard-4<br>50 GB pd-balanced"]
+        N3["Node 3<br>e2-standard-4<br>50 GB pd-balanced"]
+        N4["Node 4<br>autoscaled"]
     end
+
+    subgraph IAM ["IAM Service Accounts"]
+        NodeSA["jenkins-2026-nodes<br>logWriter, metricWriter<br>monitoring.viewer<br>artifactregistry.reader"]
+        CISA["jenkins-2026-ci<br>GitHub Actions WIF<br>container.admin<br>compute.networkAdmin"]
+    end
+
+    subgraph State ["Remote State"]
+        GCS["GCS Bucket<br>...-jenkins-2026-tfstate<br>versioned, uniform IAM"]
+    end
+
+    User -->|"HTTPS"| StaticIP
+    StaticIP --> CertMap
+    CertMap --> WildcardTLS
+    WildcardTLS -->|"terminates TLS"| GatewayAPI
+    GatewayAPI -->|"routes to pods"| Pool
+    NodeRange -->|"node IPs"| Pool
+    PodRange -->|"pod IPs"| Pool
+    NodeSA -->|"identity"| Pool
+    CISA -->|"provisions"| Cluster
+    CISA -->|"read/write"| GCS
 ```
 
-#### Detailed Infrastructure Specifications:
-- **Zonal GKE Cluster**: `jenkins-2026` hosted in `europe-southwest1-a` (Madrid, Spain).
-- **VPC-Native Networking**: Uses IP aliasing with a custom VPC (`jenkins-2026-vpc`) and subnet (`jenkins-2026-subnet`) containing secondary ranges for pods (`10.20.0.0/16`) and services (`10.30.0.0/20`).
-- **Autoscaling Node Pool (`jenkins-2026-pool`)**:
-  - **Machine Type**: `e2-standard-4` (4 vCPUs, 16 GB RAM per node).
-  - **Sizing Boundaries**: Initial count is **3 nodes** (12 vCPUs, 48 GB RAM), with cluster autoscaling boundaries between **min 2 and max 4 nodes** to dynamically handle Jenkins build agent pods.
-  - **Storage**: `50 GB` of `pd-balanced` (Balanced Persistent Disk) boot storage per node.
-  - **Metadata Mode**: Configured with `GKE_METADATA` to enforce Workload Identity.
-- **Node Service Account**: A minimal-privilege IAM service account `jenkins-2026-nodes` with logging writer, monitoring writer/viewer, and Artifact Registry reader permissions.
-- **API Enablement**: Project-level APIs (`container.googleapis.com` and `compute.googleapis.com`) are automatically enabled and remain enabled on GKE decommission to prevent breaking unrelated GCS resources and avoid slow re-enabling times.
+#### Detailed Infrastructure Specifications
+
+| Layer | Resource | Details |
+|---|---|---|
+| **Static IP** | `jenkins-2026-gateway-ip` | Global `google_compute_global_address`. Persistent — survives cluster rebuilds. DNS `A` record `*.jenkins2026.nubenetes.com` points here (example: `34.x.x.x`). |
+| **TLS Certificate** | `jenkins-2026-cert` | Google-managed wildcard certificate covering `jenkins2026.nubenetes.com` + `*.jenkins2026.nubenetes.com`. Validated via DNS authorization (`jenkins-2026-dns-auth`). |
+| **Certificate Map** | `jenkins-2026-cert-map` | Maps `*.jenkins2026.nubenetes.com` to the managed certificate. Referenced by the GKE Gateway API L7 load balancer. |
+| **VPC** | `jenkins-2026-vpc` | Custom-mode VPC (`auto_create_subnetworks = false`). No firewall rules or Cloud NAT defined — GKE manages egress natively. |
+| **Subnet** | `jenkins-2026-subnet` | Region `europe-southwest1`. Primary range `10.10.0.0/20` (nodes), secondary `pods` `10.20.0.0/16`, secondary `services` `10.30.0.0/20`. |
+| **GKE Cluster** | `jenkins-2026` | Zonal cluster in `europe-southwest1-a` (Madrid). VPC-native networking with IP aliasing. Release channel `REGULAR`. Gateway API `CHANNEL_STANDARD`. Workload Identity enabled (`project.svc.id.goog`). Deletion protection `false` (throwaway). |
+| **Node Pool** | `jenkins-2026-pool` | `e2-standard-4` (4 vCPUs, 16 GB RAM). Boot disk `50 GB pd-balanced`. Initial count **3** nodes (12 vCPUs, 48 GB total). Autoscaling **min 2 — max 4**. `auto_repair` + `auto_upgrade` enabled. Labels: `app=jenkins-2026`. Tags: `jenkins-2026`. GKE metadata mode `GKE_METADATA` (Workload Identity). |
+| **Node SA** | `jenkins-2026-nodes` | Minimal-privilege service account: `roles/logging.logWriter`, `roles/monitoring.metricWriter`, `roles/monitoring.viewer`, `roles/artifactregistry.reader`. |
+| **CI SA** | `jenkins-2026-ci` | GitHub Actions service account with `container.admin`, `compute.networkAdmin`, `iam.serviceAccountAdmin`, `iam.serviceAccountUser`, `resourcemanager.projectIamAdmin`, `serviceusage.serviceUsageAdmin`, `certificatemanager.editor` + `storage.objectAdmin` on the state bucket. |
+| **WIF** | Pool `jenkins-2026-github` / Provider `github-actions` | OIDC federation from `token.actions.githubusercontent.com`. Attribute condition restricts to `nubenetes/jenkins-2026`. No JSON key — keyless authentication. |
+| **State Bucket** | `${project}-jenkins-2026-tfstate` | GCS bucket in `us-central1`. Versioning enabled. Uniform bucket-level access. `force_destroy = false`. |
+| **GCP APIs** | `container` + `compute` | Enabled with `disable_on_destroy = false` — remain active after cluster teardown to avoid breaking unrelated resources and slow re-enable times. |
 
 #### Sizing Rationale (Stability vs. Resource Limits)
 Running Jenkins, ArgoCD, pgAdmin, two Postgres database clusters (via Crunchy Postgres Operator), OpenTelemetry operators (Gateway and DaemonSets), and the JHipster microservices stack requires significant memory and CPU.
