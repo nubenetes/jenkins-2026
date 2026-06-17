@@ -24,8 +24,7 @@ roleRef:
   kind: Role
   name: argocd-version-patch-watcher-role
 subjects:
-- map: []
-  kind: ServiceAccount
+- kind: ServiceAccount
   name: argocd-version-patch-watcher
   namespace: argocd
 ---
