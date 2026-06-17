@@ -1722,7 +1722,41 @@ To support deterministic deployments and clean, error-free environment destructi
   * [02.99 GKE decommission](file:///home/inafev/github/jenkins-2026/.github/workflows/02.99-gke-decommission.yml)
 
 #### The `git_ref` Parameter
-Each of these workflows includes a manual trigger input `git_ref` (which defaults to `develop`). When executing a workflow, you can specify any valid branch name, tag (e.g. `v0.9.0`), or commit SHA. The runner will check out that specific commit before running Terraform or shell scripts.
+Each of these workflows includes a manual trigger input `git_ref` (which defaults to `""` / empty). 
+
+* **Leave Empty (Recommended)**: The checkout action automatically defaults to the branch or tag selected in the native **"Use workflow from"** dropdown menu.
+* **Provide Value**: You can type in any valid branch name, tag (e.g. `v0.9.1`), or commit SHA. If specified, this custom reference will override the dropdown selection.
+
+#### Form Fields Detailed Reference (02.01 GKE Provision Form)
+
+When executing the **02.01 GKE provision** workflow manually, you are presented with a form containing the following fields:
+
+1. **Use workflow from (Dropdown - Native)**:
+   - **Type**: Dynamic Git Reference Selector.
+   - **Purpose**: Selects the branch or tag from which GitHub Actions loads the workflow YAML file.
+   - **How to Use**: Select the target branch (e.g. `develop`) or tag (e.g. `v0.9.1`) you want to run. If the `git_ref` field below is left empty, the runner will check out this exact reference.
+
+2. **observability_mode (Dropdown - Choice)**:
+   - **Type**: Choice (`grafana-cloud` | `oss` | `managed`).
+   - **Default**: `grafana-cloud`.
+   - **Purpose**: Overrides the `observability.mode` setting defined in `config/config.yaml` for this execution lifecycle:
+     - `grafana-cloud`: Forwards cluster telemetry (logs, metrics, traces) to Grafana Cloud via OTLP.
+     - `oss`: Installs in-cluster Grafana, Prometheus, Loki, and Tempo in the `observability` namespace.
+     - `managed`: A placeholder for external cloud provider managed telemetry.
+
+3. **enable_gateway (Checkbox - Boolean)**:
+   - **Type**: Boolean (`true` | `false`).
+   - **Default**: `false`.
+   - **Purpose**: Determines whether the public GKE Gateway L7 load balancer should be provisioned.
+   - **Prerequisites**: Setting this to `true` requires you to have already executed the persistent `01.02 Gateway bootstrap` workflow, set up wildcard DNS A records pointing to the external static IP, and configured Google OAuth client credentials for Identity-Aware Proxy (IAP). If set to `false`, endpoints are only reachable internally (via port-forwarding).
+
+4. **git_ref (Text Box - String)**:
+   - **Type**: String.
+   - **Default**: `""` (empty).
+   - **Purpose**: A manual override field to specify any git commit SHA, branch name, or tag.
+   - **How to Use**:
+     - **Leave Empty**: (Recommended) The workflow automatically checks out the branch/tag chosen in the **Use workflow from** dropdown above.
+     - **Provide Value**: If you need to target a specific, non-selectable Git commit SHA (e.g., `d464dae8...`) or test a different branch than the workflow config source, type it here. It will override the dropdown selection.
 
 #### ⚠️ The Danger of Divergent References
 Mixing different tags, branches, or SHAs during the lifecycle of a single GKE cluster will cause immediate deployment and state management failures:
