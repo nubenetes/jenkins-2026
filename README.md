@@ -1711,6 +1711,30 @@ When you want to tear down the entire project permanently, you must run the deco
 > [!WARNING]
 > Decommissioning the gateway (`01.99`) releases the external IP address. If you recreate the gateway later, a *new* IP will be allocated, forcing you to update your DNS provider's A records and wait for DNS propagation. Only decommission the gateway if you plan to shut down the environment permanently.
 
+### Version Pinning and Lifecycle Alignment
+
+To support deterministic deployments and clean, error-free environment destruction, all GKE lifecycle workflows support custom Git reference checking:
+
+* **Workflows Supported**:
+  * [02.01 GKE provision](file:///home/inafev/github/jenkins-2026/.github/workflows/02.01-gke-provision.yml)
+  * [02.02 Redeploy Jenkins](file:///home/inafev/github/jenkins-2026/.github/workflows/02.02-redeploy-jenkins.yml)
+  * [02.03 Redeploy Headlamp](file:///home/inafev/github/jenkins-2026/.github/workflows/02.03-redeploy-headlamp.yml)
+  * [02.99 GKE decommission](file:///home/inafev/github/jenkins-2026/.github/workflows/02.99-gke-decommission.yml)
+
+#### The `git_ref` Parameter
+Each of these workflows includes a manual trigger input `git_ref` (which defaults to `develop`). When executing a workflow, you can specify any valid branch name, tag (e.g. `v0.9.0`), or commit SHA. The runner will check out that specific commit before running Terraform or shell scripts.
+
+#### ⚠️ The Danger of Divergent References
+Mixing different tags, branches, or SHAs during the lifecycle of a single GKE cluster will cause immediate deployment and state management failures:
+
+1. **Terraform State Conflicts**: If you provision GKE using tag `v0.8.0` and later run the decommission workflow targeting `v0.9.0`, Terraform will compare the stored GCS backend state against updated node pool, VPC, or IAM definitions. This causes plan mismatches, resource lockups, or deletion failures because resources in the cluster no longer map to the configurations in the checked-out code.
+2. **Helper Script & Template Divergence**: Platform components rely on configuration schemas in `config/config.yaml`. If you run scripts from a ref where namespace naming conventions, credential keys, or database operator formats differ from the active GKE state, updates will fail.
+3. **Application and Database Incompatibility**: Deployed microservices connect to resources whose details are maintained in the GitOps config repository (`jenkins-2026-gitops-config`). If you use mismatched versions between the main infra repo and the GitOps repo, the application pods will crash due to missing secrets, incorrect network policies, or deprecated database schemas.
+
+> [!IMPORTANT]
+> **Rule of lockstep alignment**:
+> 1. Always ensure that the `git_ref` used for provisioning (`02.01`) matches the `git_ref` used for decommissioning (`02.99`) and redeployments (`02.02` / `02.03`).
+> 2. For stable releases, tag both repositories in lockstep (e.g. `v0.9.0` tag in `jenkins-2026` and `jenkins-2026-gitops-config`) and input that tag name in the `git_ref` parameter when triggering the workflows.
 
 ### One-time setup
 
