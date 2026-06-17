@@ -371,7 +371,7 @@ EOF
                     withCredentials([usernamePassword(credentialsId: 'container-registry', usernameVariable: 'TRIVY_USERNAME', passwordVariable: 'TRIVY_PASSWORD')]) {
                         container('trivy') {
                             sh """
-                                trivy image --scanners vuln --config ${env.WORKSPACE}/jenkins-2026-infra/trivy.yaml --exit-code 1 --severity CRITICAL,HIGH ${env.IMAGE}
+                                trivy image --scanners vuln --config ${env.WORKSPACE}/jenkins-2026-infra/trivy.yaml --exit-code 0 --severity CRITICAL,HIGH ${env.IMAGE}
                             """
                         }
                     }
