@@ -92,6 +92,9 @@ spec:
       resources:
         requests: {cpu: 200m, memory: 1024Mi}
         limits: {cpu: '2', memory: 3Gi}
+      volumeMounts:
+        - name: codeql-cache
+          mountPath: /usr/local/codeql-home/.codeql
     - name: trivy
       image: aquasec/trivy:0.52.2
       command: ['sleep']
@@ -121,6 +124,10 @@ spec:
     - name: trivy-cache
       hostPath:
         path: /tmp/jenkins-trivy-cache
+        type: DirectoryOrCreate
+    - name: codeql-cache
+      hostPath:
+        path: /tmp/jenkins-codeql-cache
         type: DirectoryOrCreate
 """
             }
@@ -229,8 +236,8 @@ EOF
                     container('codeql') {
                         dir('microservices-src') {
                             sh """
-                                codeql database create codeql-db --language=javascript --source-root=. --codescanning-config=${env.WORKSPACE}/jenkins-2026-infra/.github/codeql/codeql-config.yml
-                                codeql database analyze codeql-db --format=sarif-latest --output=codeql-results.sarif || true
+                                codeql database create codeql-db --language=javascript --source-root=. --threads=0 --ram=2048 --codescanning-config=${env.WORKSPACE}/jenkins-2026-infra/.github/codeql/codeql-config.yml
+                                codeql database analyze codeql-db --format=sarif-latest --output=codeql-results.sarif --threads=0 --ram=2048 || true
                             """
                             archiveArtifacts artifacts: 'codeql-results.sarif', allowEmptyArchive: true
                         }
