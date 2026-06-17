@@ -148,7 +148,8 @@ spec:
                 container('semgrep') {
                     sh """
                         echo 'Running Semgrep SAST scan...'
-                        semgrep scan --config=p/security-audit --config=p/owasp-top-10 --config=.semgrep/semgrep.yml --sarif --output=semgrep-results.sarif || true
+                        git config --global --add safe.directory '*' || true
+                        semgrep scan --config=p/security-audit --config=p/owasp-top-ten --config=.semgrep/semgrep.yml --sarif --sarif-output=semgrep-results.sarif || true
                     """
                     archiveArtifacts artifacts: 'semgrep-results.sarif', allowEmptyArchive: true
                 }

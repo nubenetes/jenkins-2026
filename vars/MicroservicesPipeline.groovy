@@ -226,7 +226,7 @@ EOF
                         dir('microservices-src') {
                             sh """
                                 git config --global --add safe.directory '*' || true
-                                semgrep scan --config=p/security-audit --config=p/owasp-top-10 --config=${env.WORKSPACE}/jenkins-2026-infra/.semgrep/semgrep.yml --sarif --output=semgrep-results.sarif || true
+                                semgrep scan --config=p/security-audit --config=p/owasp-top-ten --config=${env.WORKSPACE}/jenkins-2026-infra/.semgrep/semgrep.yml --sarif --sarif-output=semgrep-results.sarif || true
                             """
                             archiveArtifacts artifacts: 'semgrep-results.sarif', allowEmptyArchive: true
                         }
@@ -238,6 +238,7 @@ EOF
                                                              usernameVariable: 'GIT_USER')]) {
                                 sh """
                                     git config --global --add safe.directory '*' || true
+                                    apk add --no-cache curl || true
                                     if [ -f semgrep-results.sarif ]; then
                                         echo "Uploading Semgrep SARIF report to GitHub..."
                                         COMMIT_SHA=\$(git rev-parse HEAD)
@@ -277,6 +278,7 @@ EOF
                                                              usernameVariable: 'GIT_USER')]) {
                                 sh """
                                     git config --global --add safe.directory '*' || true
+                                    apk add --no-cache curl || true
                                     if [ -f codeql-results.sarif ]; then
                                         echo "Uploading CodeQL SARIF report to GitHub..."
                                         COMMIT_SHA=\$(git rev-parse HEAD)
