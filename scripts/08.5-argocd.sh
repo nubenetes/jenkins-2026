@@ -8,15 +8,15 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 resolve_argocd_version() {
   local constraint="$1"
   local baseline="$2"
-  log_info "Resolving ArgoCD version matching constraint: ${constraint} (baseline: ${baseline})"
+  log_info "Resolving ArgoCD version matching constraint: ${constraint} (baseline: ${baseline})" >&2
   
   # Fetch releases from GitHub API
   local api_url="https://api.github.com/repos/argoproj/argo-cd/releases"
   local releases_json
   releases_json=$(curl -s --connect-timeout 10 --retry 3 "${api_url}")
   
-  if [[ -z "${releases_json}" || "${releases_json}" == *"message"* ]]; then
-    log_warn "Failed to query GitHub Releases API or hit rate limit. Falling back to baseline: ${baseline}"
+  if [[ -z "${releases_json}" || "$(echo "${releases_json}" | jq 'type' 2>/dev/null)" != '"array"' ]]; then
+    log_warn "Failed to query GitHub Releases API or hit rate limit. Falling back to baseline: ${baseline}" >&2
     echo "${baseline}"
     return 0
   fi
@@ -34,13 +34,13 @@ resolve_argocd_version() {
   ' 2>/dev/null || echo "")
 
   if [[ -n "${latest_stable}" && "${latest_stable}" != "null" ]]; then
-    log_info "Resolved latest stable version: ${latest_stable}"
+    log_info "Resolved latest stable version: ${latest_stable}" >&2
     echo "${latest_stable}"
     return 0
   fi
 
   # Second try: fallback to pre-releases (rc)
-  log_info "No stable release found matching ${constraint}. Searching for pre-releases..."
+  log_info "No stable release found matching ${constraint}. Searching for pre-releases..." >&2
   local latest_rc
   latest_rc=$(echo "${releases_json}" | jq -r --arg prefix "${any_regex}" '
     map(select(.draft == false and (.tag_name | test($prefix))))
@@ -48,12 +48,12 @@ resolve_argocd_version() {
   ' 2>/dev/null || echo "")
 
   if [[ -n "${latest_rc}" && "${latest_rc}" != "null" ]]; then
-    log_info "Resolved latest pre-release: ${latest_rc}"
+    log_info "Resolved latest pre-release: ${latest_rc}" >&2
     echo "${latest_rc}"
     return 0
   fi
 
-  log_warn "No versions matching constraint found in releases API. Falling back to baseline: ${baseline}"
+  log_warn "No versions matching constraint found in releases API. Falling back to baseline: ${baseline}" >&2
   echo "${baseline}"
 }
 
@@ -137,6 +137,10 @@ EOF
   kubectl rollout restart deployment "${J2026_ARGOCD_RELEASE}-server" -n "${J2026_ARGOCD_NAMESPACE}"
   kubectl rollout restart deployment "${J2026_ARGOCD_RELEASE}-dex-server" -n "${J2026_ARGOCD_NAMESPACE}"
   
+  log_info "Waiting for ArgoCD server and dex rollouts to complete to release resource quota..."
+  kubectl rollout status deployment "${J2026_ARGOCD_RELEASE}-server" -n "${J2026_ARGOCD_NAMESPACE}" --timeout=5m
+  kubectl rollout status deployment "${J2026_ARGOCD_RELEASE}-dex-server" -n "${J2026_ARGOCD_NAMESPACE}" --timeout=5m
+  
   # 2.5 Configure Jenkins Account for ArgoCD (CLI/API access)
   log_step "Configuring Jenkins account in ArgoCD"
   kubectl patch configmap argocd-cm -n "${J2026_ARGOCD_NAMESPACE}" --type merge -p '{"data": {"accounts.jenkins": "apiKey"}}'
@@ -169,8 +173,26 @@ EOF
   # Use a subshell to capture token and ensure RBAC cleanup happens regardless of success/failure
   set +e
   kubectl run argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --restart=Never \
-    --image="quay.io/argoproj/argocd:${RESOLVED_3_5_PATCH}" -- \
-    bash -c "argocd account generate-token --account jenkins --core"
+    --image="quay.io/argoproj/argocd:${RESOLVED_3_5_PATCH}" \
+    --overrides='{
+      "spec": {
+        "containers": [{
+          "name": "argocd-token-gen",
+          "image": "quay.io/argoproj/argocd:'"${RESOLVED_3_5_PATCH}"'",
+          "command": ["bash", "-c", "argocd account generate-token --account jenkins --core"],
+          "resources": {
+            "requests": {
+              "cpu": "50m",
+              "memory": "128Mi"
+            },
+            "limits": {
+              "cpu": "100m",
+              "memory": "256Mi"
+            }
+          }
+        }]
+      }
+    }'
   
   # Wait for the pod to succeed (complete its execution)
   kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --timeout=3m
