@@ -70,3 +70,17 @@ resource "google_service_account_iam_member" "gke_workload_identity" {
   role               = "roles/iam.workloadIdentityUser"
   member             = "serviceAccount:${var.project_id}.svc.id.goog[jenkins/jenkins-agent]"
 }
+
+# 6. GCP IAM Secrets Access: Grant secretAccessor to CI service account
+resource "google_project_iam_member" "ci_agent_secrets" {
+  project = var.project_id
+  role    = "roles/secretmanager.secretAccessor"
+  member  = "serviceAccount:${google_service_account.ci_agent_sa.email}"
+}
+
+# 7. GKE External-Secrets Workload Identity: Allow external-secrets SA to impersonate the GCP Service Account
+resource "google_service_account_iam_member" "eso_workload_identity" {
+  service_account_id = google_service_account.ci_agent_sa.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[external-secrets/external-secrets]"
+}

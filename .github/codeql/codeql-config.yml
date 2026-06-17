@@ -1,0 +1,17 @@
+# .github/codeql/codeql-config.yml
+# CodeQL configuration file to define path exclusions and query suites
+
+name: "CodeQL DevSecOps Configuration"
+
+paths-ignore:
+  - '**/node_modules/**'
+  - '**/target/**'
+  - '**/dist/**'
+  - '**/build/**'
+  - '**/scripts/**'
+  - '**/terraform/**'
+  - '**/infrastructure/**'
+  - '**/test/**'
+
+queries:
+  - uses: security-extended

@@ -530,17 +530,23 @@ The repository has been refactored and modernized to serve as a **Golden Path In
 
 ### 2. Elastic Karpenter Autoscaling (v1.0+)
 Traditional GKE Cluster Autoscaler configurations have been replaced with **Karpenter v1.0+** using GCP provider classes:
-* **GCPNodeClass**: Configures GKE machine parameters, 100 GB `pd-balanced` boot disks, and links Workload Identity node service accounts.
-* **NodePool**: Manages Spot capacity-types, targeting compute families (`c2`, `n2`, `e2`, `c3`) and injecting taints (`jenkins-agent=true:NoSchedule`) so only build agents land on highly elastic spot pools.
+* **GCPNodeClass**: Configures GKE machine parameters, 100 GB `pd-balanced` boot disks, and links Workload Identity node service accounts. Now maps local NVMe SSD devices (`local-ssd-0` of type `local-ssd`) to provide high-speed, local scratch disks for heavy builds.
+* **NodePool**: Manages Spot capacity-types, targeting compute families (`c2`, `n2`, `e2`, `c3`) and injecting taints (`jenkins-agent=true:NoSchedule`) so only build agents land on highly elastic spot pools. Now enforces local SSD count requirements (`karpenter.k8s.gcp/local-ssd-count > 0`).
 * **Disruption Budgets**: Configured to restrict consolidations during core business hours (Mon-Fri) to safeguard long-running master build pipelines while allowing aggressive cost cutting at night and empty/underutilized consolidation.
 * **Autoscaler Isolation**: Standard GKE nodes and Karpenter node pools are strictly isolated: GKE Cluster Autoscaler does not manage the tainted Karpenter Spot VM node groups, preventing scheduling/autoscaling race conditions.
 
 ### 3. Zero-Trust Security & Workload Identity
 * **Workload Identity Federation**: All static JSON Service Account keys are removed. Both external CI engines (GitHub Actions) and in-cluster workloads assume GCP IAM Roles dynamically via OIDC.
 * **GKE Gateway API + BackendTLSPolicy**: Legacies like NGINX ingress are replaced by native L7 Gateways (`gke-l7-gxlb`). Zero-trust is enforced at the network layer: traffic between the Gateway load balancer and backend pods (Jenkins/Headlamp) is encrypted and validated using `BackendTLSPolicy` targets.
+* **Zero-Trust Network Policies**: Hardens namespace security using custom Kubernetes `NetworkPolicy` resources. Applies default deny constraints (excluding CoreDNS UDP/TCP port 53 egress), allowing traffic only on specific required ports (8080 for Jenkins controller, 80 for pgAdmin, 8081 for microservices, and 5432 for PostgreSQL databases from authorized namespaces).
+* **Secret Management via External Secrets Operator (ESO)**: Connects GKE Workload Identity with Google Secret Manager. ESO automatically pulls and syncs secret structures (`jenkins-credentials`, `grafana-cloud-credentials`, `gateway-iap-oauth`) to namespaced secrets dynamically, ensuring zero secrets are stored in Git or configured manually.
 
 ### 4. GitOps Separation of Concerns
 All infrastructural manifests (`karpenter/`, `gateway/`, `headlamp/`, `scheduling/`) are decoupled from CI pipeline definitions and placed inside the [`infrastructure/`](infrastructure/) directory, structuring the platform to be fully reconciled via Argo CD.
+
+### 5. Build Performance & High Availability Caching
+* **Jenkins Agent Caching**: Java (Maven `/root/.m2`) and Node (npm `/root/.npm`) containers in pipeline agent templates mount hostPath volumes (`/tmp/jenkins-maven-cache` and `/tmp/jenkins-npm-cache` with `DirectoryOrCreate` rules). Sharing a fast local node directory avoids ReadWriteOnce volume mounting locks while reducing typical compilation times from 5-10 minutes to under 1 minute.
+* **Database HA & Storage Lifecycles**: Distributes CloudNative-PG replicas across distinct physical zones using zonal anti-affinity constraints (`topologyKey: topology.kubernetes.io/zone`). Optimizes cloud storage footprints via GCS lifecycle rules, automatically transitioning GCS backups to `NEARLINE` storage class after 3 days and deleting them after 7 days.
 
 ---
 
@@ -560,6 +566,7 @@ The deployment lifecycle is managed by **ArgoCD**. Application manifests are sto
 | `headlamp` | `Application` | `jenkins-2026-gitops-config` | `helm/headlamp/values.yaml` | `headlamp` | Healthy |
 | `pgadmin` | `Application` | `jenkins-2026-gitops-config` | `helm/pgadmin/` | `pgadmin` | Healthy |
 | `cnpg-operator` | `Application` | `cloudnative-pg` chart | `https://cloudnative-pg.github.io/charts` | `cnpg-system` | Healthy |
+| `external-secrets` | `Application` | `external-secrets` chart | `https://charts.external-secrets.io` | `external-secrets` | Healthy |
 
 ### Security & Integration
 - **Jenkins Integration**: A dedicated `jenkins` account is created in ArgoCD with a scoped **API Token**. This token is stored in the `jenkins-credentials` Secret and used by the `argocd` CLI inside pipeline agents to trigger `argocd app sync --wait`.
@@ -1226,6 +1233,15 @@ below has been done) - `scripts/09-gateway.sh` is also a no-op on
 `platform.target` other than `gke`, since `gke-l7-global-external-managed`
 and `GCPBackendPolicy` are GKE-specific.
 
+> [!IMPORTANT]
+> **Why `enable_gateway` can be disabled vs. why it must be enabled in production/integration:**
+> - **Why it can be disabled**:
+>   1. **Bootstrapping Dependency**: During the initial cluster bootstrap, the global static IP and certificate maps are not yet provisioned. The Gateway resource will fail to program if created before those resources exist.
+>   2. **Local/Developer flow**: Running in sandboxed or local clusters (like Minikube/Kind) where Gateway API or public DNS is unavailable. Disabling it allows fallback to `kubectl port-forward` on `localhost:8080` without certificate mapping.
+> - **Why it must be enabled for production/integration**:
+>   1. **OIDC/Dex Authentication**: When the gateway is disabled, the system configures redirection URLs (like `argocd-cm`'s `url`) to fall back to localhost or empty values. Trying to log in to ArgoCD or Jenkins via OIDC will fail with a `redirect_uri_mismatch` or `Invalid redirect URL` error because the browser's redirect URL does not match the configured OIDC client allowed redirect URIs.
+>   2. **Pipeline Actions**: Pipeline integration stages and UI link banners rely on the public Gateway URLs.
+
 > **Two non-obvious GKE Gateway API requirements**, confirmed against a live
 > cluster and handled by [`scripts/09-gateway.sh`](scripts/09-gateway.sh):
 > - The `Gateway` CRD rejects a `https` listener's `tls.mode: Terminate`
@@ -1253,6 +1269,12 @@ The table below outlines the authentication and authorization mechanisms for eac
 | **Headlamp** | Public URL (`https://headlamp.<baseDomain>`) or `kubectl port-forward` | **Yes** (via Google IAP OAuth) | Token Login (using GKE OAuth access token `ya29....` or ServiceAccount token) | **Kubernetes RBAC**:<br>- GKE maps your GCP Identity to Kubernetes permissions (Project Owner gets cluster-admin)<br>- ServiceAccount token maps to default headlamp-admin bindings |
 | **pgAdmin** | Public URL (`https://pgadmin.<baseDomain>`) or `kubectl port-forward` | **Yes** (via Google IAP OAuth) | Webserver Auth (pgAdmin trusts `X-Goog-Authenticated-User-Email` header) | **Webserver User Mapping & Automated Password Injection**:<br>- Authenticated email is logged in directly to pgAdmin<br>- Database connections are automatically authenticated via a dynamically generated `.pgpass` file (secured via GKE RBAC secrets reader) |
 | **Microservices** (Gateway & Backend) | Public URL (`https://microservices.<baseDomain>`) | **No** (Public Demo App) | JWT Token verification (Gateway issues JWT; microservices validate it) | **Spring Security Roles**:<br>- Enforces API authorization (e.g., `ROLE_USER`, `ROLE_ADMIN`) |
+
+### Troubleshooting ArgoCD OIDC
+If OIDC login to ArgoCD fails with `redirect_uri_mismatch`:
+1. Ensure `gateway.baseDomain` matches the URL you are accessing.
+2. Verify `argocd-cm` has the correct `dex.config` and the `url` field matches `https://argocd.<baseDomain>`.
+3. Check that the OIDC Client's redirect URI in the Google Cloud Console matches the expected path: `https://argocd.<baseDomain>/api/dex/callback`.
 
 ### One-time setup
 
@@ -1622,6 +1644,10 @@ To keep operating costs low and deployment speed high, this project separates th
    - Provisions GCP global networking resources: a persistent static IP (`jenkins-2026-gateway-ip`), DNS authorizations, and the wildcard SSL certificate map (`jenkins-2026-cert-map`).
    - If these networking assets were tied to the short-lived GKE cluster, deleting the cluster would release the IP address and destroy the SSL certificate. This would force you to manually update DNS records at your domain registrar (e.g. Squarespace) and wait for DNS propagation every single time you provisioned a new cluster. Keeping the gateway bootstrapped persistently ensures your external endpoints are immediately reachable upon cluster creation.
 
+4. **Persistent Database Backups Storage (`terraform/bootstrap`)**:
+   - **Postgres Backups Bucket**: Configures the persistent GCS bucket `jenkins-2026-postgres-backups` with automated storage lifecycles (transition to `NEARLINE` after 3 days, delete after 7 days) to preserve backup histories across throwaway GKE lifecycle runs.
+   - **Access Security**: Grants the GHA CI service accounts `storage.admin` permissions to manage bucket-level IAM policy bindings, enabling dynamic node service account access configuration during GKE provision runs.
+
 ### Workflow Architecture & Lifecycle Diagram
 
 The following diagram illustrates how the persistent infrastructure bootstrap workflows, the GKE cluster provisioning/decommissioning pipelines, the application-specific redeployments, and the traffic simulation workflow interact:
@@ -1911,7 +1937,10 @@ in GitHub Actions tears it down automatically.
 - **Rotating the Jenkins admin password**: delete the `jenkins-credentials`
   Secret in the `jenkins` namespace and re-run `scripts/01-namespaces.sh` +
   `scripts/04-jenkins.sh`.
-- **ArgoCD OIDC Login fails with `redirect_uri_mismatch`**: Verify that `https://argocd.<baseDomain>/api/dex/callback` is added to your Google OAuth client in the GCP Console.
+- **ArgoCD OIDC Login fails with `redirect_uri_mismatch` or `Invalid redirect URL`**: 
+  - Ensure the GKE cluster was provisioned with `enable_gateway: true` in GitHub Actions. If the gateway is disabled, redirect URLs in `argocd-cm` will fallback to localhost or empty domains, breaking OIDC.
+  - Verify that `https://argocd.<baseDomain>/api/dex/callback` is added to your Google OAuth client in the GCP Console.
+  - If you terminate TLS at the gateway and route traffic over HTTP to the backend `argocd-server`, ensure that the `url` field in `argocd-cm` is set to `https://...` (without trailing slash) and the server runs in `--insecure` mode so it trusts the `X-Forwarded-Proto: https` header sent by Google Cloud Load Balancer.
 - **ArgoCD installation stuck in `pending-install`**: The `scripts/08.5-argocd.sh` script includes recovery logic to detect and clear stuck Helm releases. If it hangs, the script will automatically attempt to `helm uninstall` and retry.
 - **Gateway resource mapping errors (`GCPBackendPolicy` / `HealthCheckPolicy`)**: Ensure you are using `networking.gke.io/v1` as the API version in `scripts/09-gateway.sh` (already fixed in `main`/`develop`).
 - **`test/e2e.sh` was interrupted (Ctrl-C) or `terraform destroy` failed**:
@@ -1935,6 +1964,67 @@ in GitHub Actions tears it down automatically.
   not have finished) and confirm `GCP_WORKLOAD_IDENTITY_PROVIDER` /
   `GCP_SERVICE_ACCOUNT` match its outputs exactly, and that `github_repo` in
   `terraform/bootstrap/terraform.tfvars` matches this repo's `org/name`.
+
+## DevSecOps Security Pipeline
+
+The jenkins-2026 platform implements a multi-layered security pipeline (DevSecOps) following modern Cloud Native Security and Zero-Trust principles. This setup natively integrates three security layers: static code analysis, semantic SAST, infrastructure misconfiguration audits, and container image vulnerability scans.
+
+### Pipeline Lifecycle
+
+```mermaid
+graph TD
+    subgraph Code_Phase ["Code Phase"]
+        A["Developer commits code"] --> B["Git Push to GitHub"]
+    end
+
+    subgraph CI_Phase ["CI Phase (Jenkins Scans)"]
+        B --> C["Jenkins Pipeline Triggered"]
+        C --> D["Checkout Source"]
+        D --> E["Semgrep SAST (OWASP Top 10)"]
+        D --> F["CodeQL Analysis (Deep SAST)"]
+        D --> G["Trivy IaC Scan (Helm & Manifests)"]
+        E --> H["Compile & Build Image"]
+        F --> H
+        G --> H
+        H --> I["Trivy Image Scan (High/Critical CVEs)"]
+        I -->|Pass| J["Update GitOps Manifest Tag"]
+        I -->|Fail| K["Fail Build & Alert"]
+    end
+
+    subgraph Artifact_Registry ["Artifact Registry"]
+        H -->|Push Image| L["Google Artifact Registry"]
+        I -->|Scan Target| L
+    end
+
+    subgraph ArgoCD_GKE ["ArgoCD / GKE"]
+        J -->|Push tag update| M["GitOps Repository"]
+        M -->|Webhook/Sync| N["ArgoCD Controller"]
+        N -->|Deploy| O["GKE Cluster (Stable Namespace)"]
+    end
+```
+
+### Integrated Security Tools
+
+1. **Semgrep (Lightweight SAST / Custom Rules)**:
+   - **Responsibility**: Fast commit-stage check for security anti-patterns (disabled CSRF, insecure HTTP, hardcoded secrets) and ruleset compliance.
+   - **What the Report is About**: It performs fast static analysis on the source code looking for syntactic patterns that match known security anti-patterns (such as disabled spring security protection, raw SQL queries, or weak cryptographic algorithms).
+   - **Where to View the Report**:
+     - **GitHub Code Scanning UI (Interactive)**: Automatically uploaded directly to the GitHub Security repository tab at [GitHub Code Scanning Alerts (Semgrep)](https://github.com/nubenetes/jenkins-2026/security/code-scanning). It maps findings directly to code lines.
+     - **Jenkins Build Artifacts (Raw)**: Saved as `semgrep-results.sarif` in the build run's local artifact archive.
+
+2. **CodeQL (Deep SAST / Semantic Analysis)**:
+   - **Responsibility**: Semantic code analysis to detect complex multi-file data flow vulnerabilities (SQL Injection, XSS, SSRF).
+   - **What the Report is About**: CodeQL compiles and builds a database of the source code structure, allowing semantic queries to trace variables and untrusted user input (sources) all the way to dangerous execution sinks (such as raw database queries, file writes, or command executions).
+   - **Where to View the Report**:
+     - **GitHub Code Scanning UI (Interactive)**: Automatically uploaded directly to the GitHub Advanced Security tab. The dashboard parses the SARIF file and lets you interactively trace the data flow path of the vulnerability at [GitHub Code Scanning Alerts (CodeQL)](https://github.com/nubenetes/jenkins-2026/security/code-scanning).
+     - **Jenkins Build Artifacts (Raw)**: Saved as `codeql-results.sarif` in the build run's local artifact archive.
+
+3. **Trivy (Vulnerability and Misconfiguration Scanning)**:
+   - **Dual Responsibility**:
+     - **IaC Scan**: Evaluates Helm charts and GKE resources before building (warning-only/non-blocking).
+     - **Image Scan**: Scans final container images against the GCE base image and dependencies before pushing or updating the GitOps repo.
+   - **Configuration**: Defined in [trivy.yaml](trivy.yaml).
+   - **Failure Policy**: If risk thresholds are exceeded during the final image scan (severity: `CRITICAL,HIGH`), Trivy exits with code `1`, halting the deploy stage.
 
 ## License
 

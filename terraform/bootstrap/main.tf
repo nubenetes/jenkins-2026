@@ -121,3 +121,32 @@ resource "google_service_account_iam_member" "github_wif" {
   role               = "roles/iam.workloadIdentityUser"
   member             = "principalSet://iam.googleapis.com/${google_iam_workload_identity_pool.github.name}/attribute.repository/${var.github_repo}"
 }
+
+# 6. Google Cloud Storage bucket for PostgreSQL (CNPG) backups (persistent bootstrap tier)
+resource "google_storage_bucket" "postgres_backups" {
+  project       = var.project_id
+  name          = "jenkins-2026-postgres-backups"
+  location      = var.region
+  force_destroy = false # Protect backup data
+
+  uniform_bucket_level_access = true
+
+  lifecycle_rule {
+    action {
+      type = "Delete"
+    }
+    condition {
+      age = 7 # Prune backups older than 7 days
+    }
+  }
+
+  lifecycle_rule {
+    action {
+      type          = "SetStorageClass"
+      storage_class = "NEARLINE"
+    }
+    condition {
+      age = 3 # Move backups to Nearline after 3 days to cut costs
+    }
+  }
+}
