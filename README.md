@@ -1381,7 +1381,7 @@ assumes an existing cluster" (scoped entirely to `terraform/gke/` and
 `test/`):
 
 1. **`terraform -chdir=terraform/gke apply`** - provisions a throwaway GKE
-   cluster: its own VPC/subnet and a 2-4 node autoscaling `e2-standard-4`
+   cluster: its own VPC/subnet and a 2-4 node autoscaling `e2-standard-8`
    node pool.
 2. **`gcloud container clusters get-credentials`** - points `kubectl`/`helm`
    at the new cluster.
@@ -1463,7 +1463,7 @@ graph TD
     subgraph KarpenterPool ["Karpenter NodePool: ephemeral-runners"]
         PoolInfo["Spot Instances<br/>e2/n2/c2/c3 dynamic scaling"]
         direction LR
-        S1["Spot Node 1<br/>e2-standard-4"]
+        S1["Spot Node 1<br/>e2-standard-8"]
         S2["Spot Node 2<br/>c2-standard-4"]
         S3["Spot Node 3<br/>drifted/terminated"]
     end
@@ -1516,15 +1516,15 @@ If we scaled down the nodes to smaller types (e.g. `e2-standard-2` or `e2-medium
 1. **OOM Kills**: Postgres clusters, Java microservice JVMs, and Jenkins build tools would run out of memory and get killed by the kernel.
 2. **CPU Starvation**: Builds and application start times would become extremely slow, leading to flaky test failures and timeout errors.
 3. **Pending Pods**: Pods would remain unscheduled due to resource limits, causing the GKE Cluster Autoscaler to spin up additional nodes anyway.
-Using `e2-standard-4` with 3 nodes ensures a stable environment where all services run smoothly with enough headroom to spawn dynamic Jenkins builder executor pods.
+Using `e2-standard-8` with 3 nodes ensures a stable environment where all services run smoothly with enough headroom to spawn dynamic Jenkins builder executor pods.
 
 ### FinOps & Cost Analysis
 
 This project integrates standard FinOps best practices to prevent unnecessary cloud spending:
 
 - **Cluster Management Fee**: GKE charges a management fee of `$0.10/hour` (waived for your first zonal cluster per billing account).
-- **Compute Instance Costs**: At Madrid (`europe-southwest1`) pricing, an `e2-standard-4` instance costs roughly `~$0.11/hour`.
-- **Total Operational Run Rate**: The active 3-node cluster runs at approximately **`$0.40 - $0.50/hour`** (including disk storage and management fee).
+- **Compute Instance Costs**: At Madrid (`europe-southwest1`) pricing, an `e2-standard-8` instance costs roughly `~$0.22/hour`.
+- **Total Operational Run Rate**: The active 3-node cluster runs at approximately **`$0.70 - $0.80/hour`** (including disk storage and management fee).
 - **Ephemeral Lifecycles**: A full provisioning, deployment, smoke-testing, and teardown run (`02.01` to `02.99`) takes only **15-25 minutes**, costing **`~$0.10 - $0.20` per execution**. You should *never* leave the cluster running overnight; always invoke **`02.99 GKE decommission`** when finished.
 - **Elastic Karpenter Autoscaling**: Ephemeral build runners are dynamically provisioned on GKE Spot instance nodes. Under idle conditions, Karpenter scales the agent pool down to **0 nodes** to eliminate unnecessary compute costs. When a pipeline execution starts, Karpenter instantly spins up Spot nodes of the most cost-efficient type to handle the build load, and consolidates them (or scales back to 0) as soon as the build finishes. Strict disruption budgets prevent consolidation during core business hours to protect running pipelines.
 - **Workload Limits & Quotas**: To enforce cost limits, pod resources are capped, and the `jenkins` namespace enforces a `ResourceQuota` preventing builders from scaling beyond node pool limits.
