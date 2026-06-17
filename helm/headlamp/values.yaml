@@ -26,12 +26,14 @@
 # per-user OIDC tokens forwarded to a managed GKE control plane is not a
 # supported path today.
 config:
+  unsafeUseServiceAccountToken: true
   oidc:
     externalSecret:
-      enabled: false
+      enabled: true
       name: headlamp-credentials
+      hasScopes: true
     callbackURL: "https://headlamp.jenkins2026.nubenetes.com/oidc-callback"
-    useAccessToken: true
+    useAccessToken: false
 
 resources:
   requests:

@@ -75,7 +75,7 @@ if kubectl get secret "${J2026_HEADLAMP_CREDENTIALS_SECRET}" -n "${J2026_HEADLAM
   "OIDC_ISSUER_URL":"${J2026_HEADLAMP_OIDC_ISSUER_URL}",
   "OIDC_SCOPES":"${J2026_HEADLAMP_OIDC_SCOPES}",
   "OIDC_CALLBACK_URL":"${J2026_HEADLAMP_OIDC_CALLBACK_URL}",
-  "OIDC_USE_ACCESS_TOKEN":"true"
+  "OIDC_USE_ACCESS_TOKEN":"false"
 }}
 EOF
 )"
@@ -93,7 +93,7 @@ else
     --from-literal=OIDC_ISSUER_URL="${J2026_HEADLAMP_OIDC_ISSUER_URL}" \
     --from-literal=OIDC_SCOPES="${J2026_HEADLAMP_OIDC_SCOPES}" \
     --from-literal=OIDC_CALLBACK_URL="${J2026_HEADLAMP_OIDC_CALLBACK_URL}" \
-    --from-literal=OIDC_USE_ACCESS_TOKEN="true"
+    --from-literal=OIDC_USE_ACCESS_TOKEN="false"
 
   log_info "Created."
 fi
@@ -198,10 +198,10 @@ metadata:
   name: jenkins-quota
 spec:
   hard:
-    requests.cpu: "3.0"
-    requests.memory: 8.0Gi
-    limits.cpu: "14"
-    limits.memory: 16.0Gi
+    requests.cpu: "16.0"
+    requests.memory: 32.0Gi
+    limits.cpu: "60.0"
+    limits.memory: 64.0Gi
 EOF
 
 # 2. Observability Namespace Quota

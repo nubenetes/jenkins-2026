@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.9.0] - 2026-06-17
+
+### Added
+- **Argo CD v3.5.0-rc1 baseline & Dynamic Upgrade Mechanism**:
+  - Upgraded Argo CD installation baseline to `v3.5.0-rc1` (configured in `config/config.yaml`).
+  - Added a dynamic patch version resolver (`resolve_argocd_version`) in `scripts/08.5-argocd.sh` to automatically check, resolve, and deploy the latest stable patch version within the `v3.5.x` lifecycle at deploy-time.
+  - Implemented an in-cluster daily cronjob (`argocd-version-patch-watcher` in `argocd` namespace) that polls the GitHub releases API, compares versions, and automatically upgrades Argo CD if a newer `v3.5.x` patch version becomes available.
+  - Standardized resource requests/limits on the `argocd-token-gen` pod (`128Mi` request, `256Mi` limit) and introduced robust wait conditions to prevent resource quota exhaustion during rollouts.
+- **DevSecOps Multi-Layer Scanning in Pipelines**:
+  - Integrated three scanning layers into the microservices build execution helper (`vars/microservicesBuild.groovy`): Semgrep, CodeQL, and Trivy.
+  - Enabled checkout of the infrastructure repository on the agent's workspace to provision custom configuration files (`.semgrep.yaml`, etc.).
+  - Configured git `safe.directory` rules in all agent containers to prevent dubious ownership issues during scanning.
+  - Implemented dynamic curl installations in minimal git agent containers.
+  - Added clickable GitHub Code Scanning URLs directly to pipeline log consoles for easy alert triaging.
+  - Integrated the Jenkins `warnings-ng` plugin in `vars/microservicesBuild.groovy` to parse and visualize Semgrep and CodeQL SARIF scan results on the Jenkins build UI.
+- **Headlamp Google OIDC SSO & GKE Hardening**:
+  - Upgraded Headlamp to version `0.43.0` and enabled native Google OIDC SSO configuration.
+  - Fixed an ID token verification failure (`Failed to verify ID Token: oidc: malformed jwt: oidc: malformed jwt payload: illegal base64 data`) by configuring verification via the Google OIDC `id_token` payload rather than the raw access token (`OIDC_USE_ACCESS_TOKEN=false` in secrets and Helm values).
+  - Configured Headlamp to safely utilize the pod's service account token (`unsafeUseServiceAccountToken: true`) to authenticate API traffic with Google OIDC GKE compatibility.
+  - Fixed a default Secret setting in `scripts/01-namespaces.sh` to set `OIDC_USE_ACCESS_TOKEN` to `"false"` by default, preventing future deployment OIDC breakages on fresh cluster provisioning.
+
+### Changed
+- **Pipeline Resource Optimization**:
+  - Optimized agent JVM parameters by limiting the heap to `1.5G` (`-Xms512m -Xmx1524m`) and configuring the Serial Garbage Collector (`-XX:+UseSerialGC`) to prevent sudden agent OOM kills.
+  - Set limits on Maven fork and surefire test processes (`-Dmaven.compiler.fork=true -DforkCount=1 -DreuseForks=true`) to avoid node memory starvation.
+  - Set the `GOGC=20` garbage collection tuning parameter and raised memory limits to `3.5Gi` for Trivy container image scanning to prevent OOM kills.
+  - Raised default Jenkins namespace `ResourceQuota` limits and optimized node pool capabilities to support high concurrent builds without bottlenecking.
+- **Jenkins Maintenance & Stability**:
+  - Pinned `configuration-as-code` (JCasC) and `pipeline-graph-view` plugins to latest stable versions.
+  - Resolved 5 "Manage Jenkins" administrative and security alerts via updated JCasC global configurations.
+- **GKE Node Pool Scaling**:
+  - Upgraded GKE default worker node pool to `e2-standard-8` (and scaled up ResourceQuota in the `jenkins` namespace) to support concurrent build pipelines and OTel collector gateway resource requests.
+- **Documentation cleanup**:
+  - Pruned obsolete Crunchy Postgres, cross-platform EKS/AKS/OpenShift references, and deleted files (such as `docs/platforms.md`) from `README.md`, `CLAUDE.md`, and script logs.
+
 ## [v0.8.0] - 2026-06-17
 
 ### Added

@@ -25,8 +25,8 @@ spec:
         - name: DOCKER_HOST
           value: tcp://localhost:2375
       resources:
-        requests: {cpu: 100m, memory: 512Mi}
-        limits: {cpu: '2', memory: 2.0Gi}
+        requests: {cpu: '1.0', memory: 2.0Gi}
+        limits: {cpu: '4', memory: 4.0Gi}
       volumeMounts:
         - name: maven-cache
           mountPath: /root/.m2
@@ -83,8 +83,8 @@ spec:
       command: ['sleep']
       args: ['infinity']
       resources:
-        requests: {cpu: 50m, memory: 128Mi}
-        limits: {cpu: '500m', memory: 512Mi}
+        requests: {cpu: 200m, memory: 512Mi}
+        limits: {cpu: '2', memory: 2.0Gi}
     - name: codeql
       image: mcr.microsoft.com/cstsectools/codeql-container:latest
       command: ['sleep']
@@ -92,8 +92,8 @@ spec:
       securityContext:
         runAsUser: 0
       resources:
-        requests: {cpu: 100m, memory: 128Mi}
-        limits: {cpu: '2', memory: 2.5Gi}
+        requests: {cpu: 500m, memory: 512Mi}
+        limits: {cpu: '4', memory: 4.0Gi}
       volumeMounts:
         - name: codeql-cache
           mountPath: /usr/local/codeql-home/.codeql
@@ -107,8 +107,8 @@ spec:
         - name: GOGC
           value: "20"
       resources:
-        requests: {cpu: 50m, memory: 256Mi}
-        limits: {cpu: '500m', memory: 3.5Gi}
+        requests: {cpu: 200m, memory: 512Mi}
+        limits: {cpu: '2', memory: 4.0Gi}
       volumeMounts:
         - name: trivy-cache
           mountPath: /tmp/trivy-cache
@@ -302,8 +302,8 @@ EOF
                                 (apt-get update && apt-get install -y curl tar xz-utils) || true
                                 (curl -sL https://nodejs.org/dist/v20.11.1/node-v20.11.1-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1) || true
                                 node --version || true
-                                codeql database create codeql-db --language=javascript --source-root=. --threads=0 --ram=1536 --codescanning-config=${env.WORKSPACE}/jenkins-2026-infra/.github/codeql/codeql-config.yml
-                                codeql database analyze codeql-db --format=sarif-latest --output=codeql-results.sarif --threads=0 --ram=1536 || true
+                                codeql database create codeql-db --language=javascript --source-root=. --threads=0 --ram=3500 --codescanning-config=${env.WORKSPACE}/jenkins-2026-infra/.github/codeql/codeql-config.yml
+                                codeql database analyze codeql-db --format=sarif-latest --output=codeql-results.sarif --threads=0 --ram=3500 || true
                             """
                             archiveArtifacts artifacts: 'codeql-results.sarif', allowEmptyArchive: true
                         }
@@ -458,6 +458,14 @@ EOF
         post {
             always {
                 junit testResults: 'microservices-src/**/target/surefire-reports/*.xml', allowEmptyResults: true
+                recordIssues(
+                    enabledForFailure: true,
+                    aggregatingResults: true,
+                    tools: [
+                        sarif(pattern: 'microservices-src/semgrep-results.sarif', id: 'semgrep', name: 'Semgrep'),
+                        sarif(pattern: 'microservices-src/codeql-results.sarif', id: 'codeql', name: 'CodeQL')
+                    ]
+                )
             }
         }
     }

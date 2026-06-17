@@ -7,6 +7,9 @@
 # created by scripts/01-namespaces.sh.
 # =============================================================================
 jenkins:
+  numExecutors: 0
+  projectNamingStrategy:
+    roleBased: {}
   systemMessage: |
     <div style="font-weight: bold; border: 2px solid #0052cc; padding: 15px; border-radius: 8px; background: #f4f7f9; color: #172b4d; font-family: sans-serif;">
       <h2 style="margin-top: 0; color: #0052cc;">Welcome to the Jenkins 2026 PoC!</h2>
@@ -85,6 +88,10 @@ jenkins:
       emailFieldName: "email"
       fullNameFieldName: "name"
       logoutFromOpenidProvider: true
+      userIdStrategy:
+        caseSensitive: {}
+      groupIdStrategy:
+        caseSensitive: {}
       properties:
         - escapeHatch:
             username: "${JENKINS_ADMIN_ID:-admin}"
@@ -135,6 +142,8 @@ jenkins:
 security:
   globalJobDslSecurityConfiguration:
     useScriptSecurity: false
+  contentSecurityPolicy:
+    enforce: true
 
 # Default to the dark-theme plugin's "darkSystem" theme (follows the
 # browser/OS preference). disableUserThemes: false leaves the per-user
@@ -170,7 +179,7 @@ unclassified:
         retriever:
           modernSCM:
             scm:
-              git:
+              gitSource:
                 id: "jenkins-2026-shared-lib"
                 remote: "${JENKINS2026_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
                 traits:

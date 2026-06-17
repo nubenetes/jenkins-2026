@@ -122,6 +122,8 @@ headlamp:
 argocd:
   namespace: argocd
   releaseName: argocd
+  version: "v3.5.0-rc1"
+  version_constraint: "3.5.x"
 
 # -----------------------------------------------------------------------------
 # pgAdmin (Postgres database administration UI)
