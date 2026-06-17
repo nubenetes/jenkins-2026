@@ -24,16 +24,17 @@ jobs:
 
       - name: Run k6 Simulation
         env:
-          K6_OTEL_GRPC_EXPORTER_ENDPOINT: ${{ secrets.GRAFANA_CLOUD_OTLP_ENDPOINT }}
-          K6_OTEL_GRPC_EXPORTER_HEADERS: Authorization=Basic ${{ secrets.GRAFANA_CLOUD_OTLP_AUTH }}
+          K6_OTEL_EXPORTER_PROTOCOL: http/protobuf
+          K6_OTEL_HTTP_EXPORTER_ENDPOINT: ${{ secrets.GRAFANA_CLOUD_OTLP_ENDPOINT }}
+          K6_OTEL_HEADERS: Authorization=Basic ${{ secrets.GRAFANA_CLOUD_OTLP_AUTH }}
           OTEL_RESOURCE_ATTRIBUTES: service.name=k6-traffic-simulation,service.namespace=jenkins-2026,deployment.environment=stable
         run: |
+          # Record start time in milliseconds
+          START_TIME_MS=$(date +%s%3N)
+          
           # Use the existing smoke test script but with more iterations/duration
           # Pointing to the stable environment
           export TARGET_URL="https://microservices.jenkins2026.nubenetes.com"
-          
-          # k6's gRPC exporter expects the endpoint WITHOUT the https:// prefix, WITHOUT the /otlp path, and WITH port 443
-          export K6_OTEL_GRPC_EXPORTER_ENDPOINT=$(echo $K6_OTEL_GRPC_EXPORTER_ENDPOINT | sed -E 's|^https://||; s|/otlp$||')":443"
           
           set +e
           k6 run jenkins/pipelines/k6/microservices-smoke.js \
@@ -45,6 +46,16 @@ jobs:
             --summary-export=k6-summary.json
           
           EXIT_CODE=$?
+          
+          # Record end time in milliseconds
+          END_TIME_MS=$(date +%s%3N)
+          
+          # Pad +/- 5m (300000 ms)
+          FROM_TIME=$((START_TIME_MS - 300000))
+          TO_TIME=$((END_TIME_MS + 300000))
+          echo "GRAFANA_FROM=$FROM_TIME" >> $GITHUB_ENV
+          echo "GRAFANA_TO=$TO_TIME" >> $GITHUB_ENV
+          
           if [ $EXIT_CODE -eq 0 ] || [ $EXIT_CODE -eq 99 ]; then
             exit 0
           else
@@ -76,7 +87,11 @@ jobs:
           echo "The metrics from this run have been streamed to your Grafana Cloud instance."
           echo "You can analyze real-time latency, error rates, and traces here:"
           echo ""
-          echo "https://${{ secrets.GRAFANA_CLOUD_STACK_SLUG }}.grafana.net/d/jenkins2026-k6-smoke-overview/jenkins-2026-k6-observability-smoke-test?var-deployment_environment=stable"
+          if [ ! -z "$GRAFANA_FROM" ] && [ ! -z "$GRAFANA_TO" ]; then
+            echo "https://${{ secrets.GRAFANA_CLOUD_STACK_SLUG }}.grafana.net/d/jenkins2026-k6-smoke-overview/jenkins-2026-k6-observability-smoke-test?orgId=1&from=${GRAFANA_FROM}&to=${GRAFANA_TO}&var-DS_PROMETHEUS=grafanacloud-prom&var-DS_LOKI=grafanacloud-logs&var-DS_TEMPO=grafanacloud-traces&var-deployment_environment=stable"
+          else
+            echo "https://${{ secrets.GRAFANA_CLOUD_STACK_SLUG }}.grafana.net/d/jenkins2026-k6-smoke-overview/jenkins-2026-k6-observability-smoke-test?var-DS_PROMETHEUS=grafanacloud-prom&var-DS_LOKI=grafanacloud-logs&var-DS_TEMPO=grafanacloud-traces&var-deployment_environment=stable"
+          fi
           echo ""
           echo "This dashboard correlates k6 client-side metrics with your Microservices"
           echo "backend telemetry (traces, logs, and metrics) for full observability."
