@@ -629,9 +629,9 @@ Yes, but **only if you restore a multi-environment deployment model** (e.g., dev
 
 ```mermaid
 graph TD
-    subgraph "Jenkins Controller"
-        SJ[seed-jobs] --> |tracks JENKINS2026_REPO_BRANCH| SP[Stable Pipelines]
-        SJ --> K6S[microservices-k6-smoke]
+    subgraph JC ["Jenkins Controller"]
+        SJ["seed-jobs"] -->|"tracks repo branch"| SP["Stable Pipelines<br>(per-service)"]
+        SJ --> K6S["microservices-k6-smoke"]
     end
 ```
 
@@ -1067,28 +1067,28 @@ The throwaway cluster for testing is provisioned with a custom VPC-native config
 
 ```mermaid
 graph TD
-    subgraph VPC ["VPC Network (jenkins-2026-vpc)"]
-        subgraph Subnet ["Subnet (jenkins-2026-subnet / europe-southwest1)"]
-            NodeIPs["Primary range: Nodes (10.10.0.0/20)"]
-            PodIPs["Secondary range: Pods (10.20.0.0/16)"]
-            SvcIPs["Secondary range: Services (10.30.0.0/20)"]
+    subgraph VPC ["VPC Network — jenkins-2026-vpc"]
+        subgraph Subnet ["Subnet: jenkins-2026-subnet<br>Region: europe-southwest1"]
+            NodeIPs["Nodes<br>10.10.0.0/20"]
+            PodIPs["Pods<br>10.20.0.0/16"]
+            SvcIPs["Services<br>10.30.0.0/20"]
         end
     end
 
-    subgraph NodePool ["Node Pool (jenkins-2026-pool)"]
+    subgraph NodePool ["Node Pool — jenkins-2026-pool"]
         direction LR
-        Node1["Node 1<br>(e2-standard-4 / 50GB Boot disk)"]
-        Node2["Node 2<br>(e2-standard-4 / 50GB Boot disk)"]
-        Node3["Node 3<br>(e2-standard-4 / 50GB Boot disk)"]
-        Node4["Node 4 (Autoscaled)<br>(e2-standard-4 / 50GB Boot disk)"]
+        Node1["Node 1<br>e2-standard-4<br>50 GB pd-balanced"]
+        Node2["Node 2<br>e2-standard-4<br>50 GB pd-balanced"]
+        Node3["Node 3<br>e2-standard-4<br>50 GB pd-balanced"]
+        Node4["Node 4 ⟨autoscaled⟩<br>e2-standard-4<br>50 GB pd-balanced"]
     end
 
-    NodeIPs -->|"Assigns internal IPs to"| NodePool
-    PodIPs -->|"Assigns IPs to running pods inside"| NodePool
-    
+    NodeIPs -->|"assigns node IPs"| NodePool
+    PodIPs -->|"assigns pod IPs"| NodePool
+
     subgraph GKEFeatures ["Features Enabled"]
-        GW["Gateway API standard channel"]
-        WI["Workload Identity (project.svc.id.goog)"]
+        GW["Gateway API<br>standard channel"]
+        WI["Workload Identity<br>project.svc.id.goog"]
     end
 ```
 
@@ -1244,38 +1244,34 @@ The following diagram illustrates how the persistent infrastructure bootstrap wo
 
 ```mermaid
 graph TD
-    subgraph Bootstrapping ["1. Persistent Account & Bootstrap Setup"]
-        A["Local terraform/bootstrap<br>(Owner/Admin Roles)"] -->|"Creates WIF & GCS state bucket"| B["GCP Workload Identity & Remote State"]
-        B --> C["01.01 Grafana Cloud bootstrap<br>(Runs terraform/grafana-cloud-stack)"]
-        B --> D["01.02 Gateway bootstrap<br>(Runs terraform/gateway-bootstrap)"]
-        
-        C -->|"Outputs: Stack details & Admin metrics token"| E[("Persistent Grafana Cloud Instance")]
-        D -->|"Outputs: Static Public IP & SSL Wildcard Cert Map"| F[("Persistent Gateway & Cert Map")]
+    subgraph Bootstrapping ["1 · Persistent Bootstrap Setup"]
+        A["terraform/bootstrap<br>Owner/Admin roles"] -->|"WIF + GCS state bucket"| B["GCP Workload Identity<br>& Remote State"]
+        B --> C["01.01 Grafana Cloud bootstrap<br>terraform/grafana-cloud-stack"]
+        B --> D["01.02 Gateway bootstrap<br>terraform/gateway-bootstrap"]
+        C -->|"Stack ID + admin token"| E[("Grafana Cloud<br>Instance")]
+        D -->|"Static IP + SSL cert map"| F[("Gateway<br>& Cert Map")]
     end
 
-    subgraph GKE_Lifecycle ["2. Short-Lived GKE Cluster Lifecycle"]
-        F & E & B --> G["02.01 GKE provision<br>(Runs terraform/gke + scripts/up.sh)"]
-        G --> H["GKE Cluster & Apps Active<br>(Jenkins, ArgoCD, pgAdmin, microservices)"]
-        
-        H --> I["02.02 Redeploy Jenkins<br>(Updates Jenkins & pipelines)"]
-        H --> J["02.03 Redeploy Headlamp<br>(Updates Headlamp credentials & Helm release)"]
-        
+    subgraph GKE_Lifecycle ["2 · Short-Lived GKE Cluster Lifecycle"]
+        F & E & B --> G["02.01 GKE provision<br>terraform/gke + scripts/up.sh"]
+        G --> H["GKE Cluster Active<br>Jenkins · ArgoCD · pgAdmin<br>microservices"]
+        H --> I["02.02 Redeploy Jenkins<br>Jenkins + pipelines"]
+        H --> J["02.03 Redeploy Headlamp<br>Headlamp credentials"]
         I & J --> H
-        
-        H --> K["02.99 GKE decommission<br>(Runs scripts/down.sh + terraform/gke destroy)"]
-        K -->|"Destroys Cluster, retains persistent assets"| B
+        H --> K["02.99 GKE decommission<br>scripts/down.sh + terraform destroy"]
+        K -->|"cluster destroyed<br>persistent assets retained"| B
     end
 
-    subgraph Simulation ["3. Continuous Observability Simulation"]
-        H & E --> O["99.01 Traffic Simulation<br>(Runs k6 traffic script externally)"]
-        O -->|"Generates live traffic and metrics"| H
-        O -->|"Streams telemetry"| E
+    subgraph Simulation ["3 · Observability Simulation"]
+        H & E --> O["99.01 Traffic Simulation<br>k6 external load script"]
+        O -->|"live traffic + metrics"| H
+        O -->|"telemetry stream"| E
     end
 
-    subgraph Persistent_Teardown ["4. Persistent Resources Teardown"]
-        E --> L["01.98 Grafana Cloud decommission<br>(Runs terraform/grafana-cloud-stack destroy)"]
-        F --> M["01.99 Gateway decommission<br>(Runs terraform/gateway-bootstrap destroy)"]
-        L & M -->|"Completely removes persistent resources"| N["GCP Project Clean Slate"]
+    subgraph Persistent_Teardown ["4 · Full Teardown"]
+        E --> L["01.98 Grafana Cloud decommission<br>terraform destroy grafana-cloud-stack"]
+        F --> M["01.99 Gateway decommission<br>terraform destroy gateway-bootstrap"]
+        L & M -->|"all persistent resources removed"| N["GCP Project<br>Clean Slate"]
     end
 
     classDef persistent fill:#f9f,stroke:#333,stroke-width:2px;
