@@ -32,8 +32,8 @@ jobs:
           # Pointing to the stable environment
           export TARGET_URL="https://microservices.jenkins2026.nubenetes.com"
           
-          # k6's gRPC exporter expects the endpoint WITHOUT the https:// prefix
-          export K6_OTEL_GRPC_EXPORTER_ENDPOINT=$(echo $K6_OTEL_GRPC_EXPORTER_ENDPOINT | sed 's|^https://||')
+          # k6's gRPC exporter expects the endpoint WITHOUT the https:// prefix, WITHOUT the /otlp path, and WITH port 443
+          export K6_OTEL_GRPC_EXPORTER_ENDPOINT=$(echo $K6_OTEL_GRPC_EXPORTER_ENDPOINT | sed -E 's|^https://||; s|/otlp$||')":443"
           
           set +e
           k6 run jenkins/pipelines/k6/microservices-smoke.js \
