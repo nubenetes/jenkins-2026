@@ -28,8 +28,8 @@ pgadmin4:
           # Wait up to 150s for Postgres secrets to exist
           i=1
           while [ $i -le 75 ]; do
-            if kubectl get secret postgres-gateway-pguser-gateway -n microservices >/dev/null 2>&1 && \
-               kubectl get secret postgres-jhipstersamplemicroservice-pguser-jhipstersamplemicroservice -n microservices >/dev/null 2>&1; then
+            if kubectl get secret postgres-gateway-app -n microservices >/dev/null 2>&1 && \
+               kubectl get secret postgres-jhipstersamplemicroservice-app -n microservices >/dev/null 2>&1; then
               break
             fi
             echo "Waiting for PostgreSQL user secrets to be ready... (attempt $i/75)"
@@ -38,8 +38,8 @@ pgadmin4:
           done
 
           # Fetch passwords dynamically
-          RAW_GATEWAY_PASSWORD=$(kubectl get secret postgres-gateway-pguser-gateway -n microservices -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || echo "")
-          RAW_MICROSERVICE_PASSWORD=$(kubectl get secret postgres-jhipstersamplemicroservice-pguser-jhipstersamplemicroservice -n microservices -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || echo "")
+          RAW_GATEWAY_PASSWORD=$(kubectl get secret postgres-gateway-app -n microservices -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || echo "")
+          RAW_MICROSERVICE_PASSWORD=$(kubectl get secret postgres-jhipstersamplemicroservice-app -n microservices -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || echo "")
 
           if [ -n "$RAW_GATEWAY_PASSWORD" ] && [ -n "$RAW_MICROSERVICE_PASSWORD" ]; then
             # Escape backslashes first, then colons for the .pgpass file format
@@ -47,8 +47,8 @@ pgadmin4:
             MICROSERVICE_PASSWORD=$(echo -n "$RAW_MICROSERVICE_PASSWORD" | sed -e 's/\\/\\\\/g' -e 's/:/\\:/g')
 
             cat <<EOF > /var/lib/pgadmin/pgpass
-          postgres-gateway-primary.microservices.svc:5432:gateway:gateway:${GATEWAY_PASSWORD}
-          postgres-jhipstersamplemicroservice-primary.microservices.svc:5432:jhipstersamplemicroservice:jhipstersamplemicroservice:${MICROSERVICE_PASSWORD}
+          postgres-gateway-rw.microservices.svc:5432:*:gateway:${GATEWAY_PASSWORD}
+          postgres-jhipstersamplemicroservice-rw.microservices.svc:5432:*:jhipstersamplemicroservice:${MICROSERVICE_PASSWORD}
           EOF
             chmod 600 /var/lib/pgadmin/pgpass
             chown 5050:5050 /var/lib/pgadmin/pgpass
@@ -79,31 +79,33 @@ pgadmin4:
       "1":
         Name: "Stable - Gateway DB"
         Group: "Stable"
-        Host: "postgres-gateway-primary.microservices.svc"
+        Host: "postgres-gateway-rw.microservices.svc"
         Port: 5432
         Username: "gateway"
         SharedUsername: "gateway"
         MaintenanceDB: "gateway"
         SSLMode: "require"
         Shared: true
-        PassFile: "pgpass"
+        PassFile: "/var/lib/pgadmin/pgpass"
         SavePassword: true
+        DBRestriction: "gateway"
         ConnectionParameters:
-          passfile: "pgpass"
+          passfile: "/var/lib/pgadmin/pgpass"
       "2":
         Name: "Stable - JHipster Microservice DB"
         Group: "Stable"
-        Host: "postgres-jhipstersamplemicroservice-primary.microservices.svc"
+        Host: "postgres-jhipstersamplemicroservice-rw.microservices.svc"
         Port: 5432
         Username: "jhipstersamplemicroservice"
         SharedUsername: "jhipstersamplemicroservice"
         MaintenanceDB: "jhipstersamplemicroservice"
         SSLMode: "require"
         Shared: true
-        PassFile: "pgpass"
+        PassFile: "/var/lib/pgadmin/pgpass"
         SavePassword: true
+        DBRestriction: "jhipstersamplemicroservice"
         ConnectionParameters:
-          passfile: "pgpass"
+          passfile: "/var/lib/pgadmin/pgpass"
 
   # Resource requests/limits for safety (preventing auto-scaling)
   resources:

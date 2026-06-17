@@ -12,12 +12,14 @@ JHipster microservices reference application.
 
 - **Observability (Grafana Cloud / OSS)**: Traces, metrics and logs are fully correlated. Dashboard deployment is managed via the native **`gcx` CLI** using a GitOps workflow.
 - **ArgoCD (GitOps)**: The entire Microservices stack is managed via **ArgoCD**, providing a declarative GitOps engine for continuous delivery. It is integrated with Google OIDC for secure, single sign-on access.
-- **CrunchyData Postgres Operator (PGO)**: Managed natively by ArgoCD
-  via the [`pgo-app.yaml`](argocd/pgo-app.yaml) application. For each microservice,
-  the Helm chart dynamically provisions a `PostgresCluster` CRD. The Operator
-  automatically spins up a highly available PostgreSQL 15 database, manages
-  pgBackRest backups, and securely injects connection credentials into the
-  application pods without human intervention.
+- **CloudNative-PG Operator (CNPG)**: Managed natively by ArgoCD
+  via the [`cnpg-app.yaml`](argocd/cnpg-app.yaml) application. For each microservice,
+  the Helm chart dynamically provisions a dedicated `Cluster` CRD. The Operator
+  automatically spins up a highly available (HA) PostgreSQL 18 database with a 3-instance topology
+  (1 Primary, 2 Replicas), separates database storage from write-ahead logs (`walStorage`),
+  and utilizes native Barman-based Cloud backups. Connection credentials are auto-generated
+  and securely injected into the application pods, while traffic is routed through a declarative PgBouncer `Pooler`.
+
 
 
 It is configured specifically for **Google Kubernetes Engine (GKE)**.
@@ -49,6 +51,7 @@ for the OpenTelemetry/Grafana wiring.
       - [Automated pgAdmin Authentication Flow](#automated-pgadmin-authentication-flow)
       - [Retrieving Database Credentials (Optional / CLI Tools)](#retrieving-database-credentials-optional--cli-tools)
   - [CI/CD Flow (GitOps)](#cicd-flow-gitops)
+- [Golden Path IDP Modernizations (K8s v1.35/v1.36 & Karpenter)](#golden-path-idp-modernizations-k8s-v135v136--karpenter)
 - [ArgoCD Inventory (GitOps)](#argocd-inventory-gitops)
   - [Projects & Applications](#projects--applications)
   - [Security & Integration](#security--integration)
@@ -57,6 +60,7 @@ for the OpenTelemetry/Grafana wiring.
     - [Grafana Cloud Integration (GitHub Actions)](#grafana-cloud-integration-github-actions)
   - [2. On-Demand Smoke Test (Jenkins)](#2-on-demand-smoke-test-jenkins)
   - [3. How to Verify Correlation in Grafana](#3-how-to-verify-correlation-in-grafana)
+- [Platform QA, Chaos & Compliance Validation](#platform-qa-chaos--compliance-validation)
 - [Configuration (`config/config.yaml`)](#configuration-configconfigyaml)
 - [Repository layout](#repository-layout)
 - [Jenkins UI, plugins & MCP](#jenkins-ui-plugins--mcp)
@@ -244,10 +248,16 @@ graph TB
 
         subgraph "observability namespace"
             OTEL["OTel Operator/<br/>Collector"]
+            K8S["k8s-monitoring<br/>(Grafana Alloy)"]
         end
 
         subgraph "microservices namespace"
             PCS["Microservices<br/>Services"]
+        end
+
+        subgraph "GKE Cluster Infrastructure"
+            NODES["Nodes & Kubelet"]
+            EVENTS["Kubernetes Events"]
         end
     end
 
@@ -259,23 +269,25 @@ graph TB
     GW --> PCS
     J -->|"CI / Build"| GH
     ACD -->|"CD / GitOps"| PCS
-    ACD -->|"CD / GitOps"| PCD
     PCS -->|OTLP| OTEL
-    PCD -->|OTLP| OTEL
     J -->|OTLP| OTEL
-    OTEL -->|Forward| GC
+    OTEL -->|OTLP/HTTP| GC
+    
+    NODES -->|Scraped by| K8S
+    EVENTS -->|Collected by| K8S
+    K8S -->|OTLP/HTTP| GC
 ```
 
 ### Microservices & Database Architecture
 
-The modernized JHipster system is built on a containerized, cloud-native microservices architecture using **Spring Boot 3.x**, **Angular**, and **Java 21**. It consists of two primary services, each with its own dedicated datastore managed by the **Crunchy Data Postgres Operator**:
+The modernized JHipster system is built on a containerized, cloud-native microservices architecture using **Spring Boot 3.x**, **Angular**, and **Java 21**. It consists of two primary services, each with its own dedicated database tier managed by the **CloudNative-PG (CNPG) Operator** with built-in high-availability (HA) and connection pooling:
 
 1. **`gateway`**:
    - **Role**: Serves as the single entry point for all client requests. It hosts the Angular frontend web application and handles routing, JWT-based security verification, and rate-limiting.
-   - **Database**: Connects to `postgres-gateway` for storing session metadata or gateway-specific configurations.
+   - **Database**: Connects to the primary PostgreSQL instance in the `postgres-gateway` cluster via a dedicated PgBouncer pooler (`postgres-gateway-pooler`).
 2. **`jhipstersamplemicroservice`**:
    - **Role**: Serves as the backend microservice that contains business logic and REST endpoints.
-   - **Database**: Connects to `postgres-jhipstersamplemicroservice` for storing application data.
+   - **Database**: Connects to the primary PostgreSQL instance in the `postgres-jhipstersamplemicroservice` cluster via a dedicated PgBouncer pooler (`postgres-jhipstersamplemicroservice-pooler`).
 
 #### Architecture & Data Flow Diagram
 
@@ -285,7 +297,7 @@ graph TD
         Browser["Browser<br/>(Angular UI)"]
     end
 
-    subgraph "API Gateway (Namespace: microservices / -develop)"
+    subgraph "API Gateway (Namespace: microservices)"
         GW["gateway<br/>(Spring Boot / Angular UI)<br/>Port 8080"]
     end
 
@@ -293,9 +305,22 @@ graph TD
         S_Ms["jhipstersamplemicroservice<br/>(Spring Boot)<br/>Port 8081"]
     end
 
-    subgraph "Database Tier (Crunchy Data Postgres clusters)"
-        DB_GW[("postgres-gateway")]
-        DB_Ms[("postgres-<br/>jhipstersamplemicroservice")]
+    subgraph "Connection Pooling (PgBouncer Poolers)"
+        Pool_GW["postgres-gateway-pooler<br/>(Service: Port 5432)"]
+        Pool_Ms["postgres-jhipstersamplemicroservice-pooler<br/>(Service: Port 5432)"]
+    end
+
+    subgraph "Database Tier (CloudNative-PG 3-Instance Clusters)"
+        subgraph "postgres-gateway Cluster"
+            DB_GW_P[("Primary (gateway-1)")]
+            DB_GW_R1[("Standby (gateway-2)")]
+            DB_GW_R2[("Standby (gateway-3)")]
+        end
+        subgraph "postgres-jhipstersamplemicroservice Cluster"
+            DB_Ms_P[("Primary (ms-1)")]
+            DB_Ms_R1[("Standby (ms-2)")]
+            DB_Ms_R2[("Standby (ms-3)")]
+        end
     end
 
     subgraph "Telemetry (Observability Namespace)"
@@ -308,9 +333,19 @@ graph TD
     %% API Routing
     GW -->|"REST / JWT (Port 8081)"| S_Ms
     
-    %% Database connections
-    GW -->|"JDBC (Port 5432)"| DB_GW
-    S_Ms -->|"JDBC (Port 5432)"| DB_Ms
+    %% Connection Pooling Routing
+    GW -->|"JDBC (Port 5432)"| Pool_GW
+    S_Ms -->|"JDBC (Port 5432)"| Pool_Ms
+    
+    %% Database Routing (Session-based)
+    Pool_GW -->|Primary Read/Write| DB_GW_P
+    Pool_Ms -->|Primary Read/Write| DB_Ms_P
+    
+    %% Replication
+    DB_GW_P -->|Replication| DB_GW_R1
+    DB_GW_P -->|Replication| DB_GW_R2
+    DB_Ms_P -->|Replication| DB_Ms_R1
+    DB_Ms_P -->|Replication| DB_Ms_R2
     
     %% Auto-Instrumentation Telemetry
     GW -.->|"OTLP/gRPC (Port 4317)"| OTEL_Collector
@@ -318,12 +353,25 @@ graph TD
 ```
 
 #### Database Injection & Secrets
-The database connections are securely managed by the Crunchy Data Postgres Operator. The operator automatically provisions a `PostgresCluster` for each service and exports credentials into a Kubernetes Secret (e.g., `postgres-jhipstersamplemicroservice-pguser-jhipstersamplemicroservice`). The Helm chart maps these secret values to Spring database environment variables:
-- `SPRING_DATASOURCE_URL` (JDBC URL)
+The database connections are securely managed by the CloudNative-PG Operator. The operator automatically provisions a basic-auth secret `postgres-{{ $name }}-app` for each cluster containing:
+- `username` (the owner username, e.g. `gateway`)
+- `password` (auto-generated high-entropy password string)
+
+The Helm chart maps these secret values to Spring database environment variables:
+- `SPRING_DATASOURCE_URL` (JDBC URL targeting PgBouncer: `jdbc:postgresql://postgres-{{ $name }}-pooler.microservices.svc:5432/{{ $name }}?ssl=true&sslmode=require`)
 - `SPRING_DATASOURCE_USERNAME` (username)
 - `SPRING_DATASOURCE_PASSWORD` (password)
+- `SPRING_R2DBC_URL` (R2DBC URL: `r2dbc:postgresql://postgres-{{ $name }}-pooler.microservices.svc:5432/{{ $name }}?sslMode=require`)
+
+#### Host-Based Authentication (pg_hba.conf) Security
+Dynamic host-based authentication is enforced natively by CNPG:
+* **`podSelectorRefs` Mapping**: Restricts application-level access strictly to pods in the same namespace matching the label `app.kubernetes.io/name: <service>`. Traditional static CIDR blocks are avoided, preventing unauthorized cross-contamination.
+* **PgBouncer Client Certs**: Restricts connection pooler managers to client certificate authentication (`cert` auth method).
+* **pgAdmin CIDR Access**: Grants secure pgAdmin read-only querying access using cluster pod network blocks (`10.20.0.0/16`).
+* **Catch-All Reject**: Enforces a final `- host all all all reject` rule to deny any unauthorized ingress from pods or external clusters.
 
 #### pgAdmin & Database Administration
+
 
 A total of **2 Postgres databases** are provisioned in the cluster (both in the `microservices` namespace). They can be administered via **pgAdmin 4**:
 
@@ -335,6 +383,46 @@ A total of **2 Postgres databases** are provisioned in the cluster (both in the 
     - **Dynamic `.pgpass` Generation**: An init container (`setup-pgpass`) mounts the pgAdmin data volume, dynamically retrieves the passwords from the secrets, escapes colons (`:`) and backslashes (`\`) for the `.pgpass` format, and writes them with secure `0600` permissions.
     - **Auto-Connection**: The pre-populated servers are configured to read from `/var/lib/pgadmin/pgpass`, allowing instant connectivity just by double-clicking the server in the Object Explorer.
 *   **Resource & Safety Limits:** To prevent GKE auto-scaling, pgAdmin is strictly resource-constrained (requests: `50m` CPU / `128Mi` RAM, limits: `200m` CPU / `256Mi` RAM) and is capped by a `ResourceQuota` in the `pgadmin` namespace.
+
+##### Multi-User Identity vs. Database User & Zero-Trust Hardening
+In a production-ready GKE environment, the distinction between your **pgAdmin login identity** (your Google email address) and the **PostgreSQL database user** is a key security boundary:
+
+- **pgAdmin Login**: Your Google email address is your authentication identity to access the pgAdmin *web interface* (validated via Google IAP).
+- **Postgres Database User**: pgAdmin is just a database client. When it queries the databases, it must authenticate using a native PostgreSQL database user (e.g., `gateway` or `jhipstersamplemicroservice`).
+
+> [!IMPORTANT]
+> By design, we do not configure pgAdmin to connect using the PostgreSQL superuser (`postgres`). This follows industry-standard database hardening practices:
+> - **Principle of Least Privilege**: The pre-populated connections are configured to use the application database owners (`gateway` and `jhipstersamplemicroservice`). These users have full permissions (`CREATE`, `ALTER`, `SELECT`, `INSERT`, etc.) over their respective application schemas. This is exactly what is needed for administration without exposing global system administration rights.
+> - **Minimizing Attack Surfaces**: pgAdmin is a web application accessible via HTTPS. If pgAdmin were pre-configured with superuser credentials, a compromise of the pgAdmin container or session hijacking could expose full control of the database operating system files and cluster configurations.
+> - **Superuser Network Block**: In our HBA configuration, the `postgres` superuser is **prevented from logging in over the network** (using password authentication). Superuser access is restricted strictly to local unix sockets (peer authentication) on the database pods themselves.
+
+##### SRE Break-Glass CLI (Connecting as Superuser)
+If you are performing platform maintenance and require absolute superuser permissions (e.g. modifying system parameters, loading custom extensions, or manual vacuuming), you should bypass the pgAdmin web UI and connect directly from the cluster control plane:
+
+###### Option A: Execute directly inside the database primary pod (No password required)
+Exec into the primary database container, which uses local `peer` authentication to log in instantly as `postgres`:
+```bash
+# For Gateway Database
+kubectl exec -it postgres-gateway-1 -n microservices -c postgres -- psql -U postgres -d gateway
+
+# For JHipster Microservice Database
+kubectl exec -it postgres-jhipstersamplemicroservice-1 -n microservices -c postgres -- psql -U postgres -d jhipstersamplemicroservice
+```
+
+###### Option B: Retrieve the Superuser password from GKE Secrets
+If you need to connect using a client tool from your local terminal:
+1. **Get the password**:
+   ```bash
+   kubectl get secret postgres-gateway-superuser -n microservices -o jsonpath='{.data.password}' | base64 -d; echo
+   ```
+2. **Port-forward the service**:
+   ```bash
+   kubectl port-forward svc/postgres-gateway-rw -n microservices 5432:5432
+   ```
+3. **Connect via psql**:
+   ```bash
+   psql -h localhost -U postgres -d gateway
+   ```
 
 ##### Automated pgAdmin Authentication Flow
 
@@ -359,8 +447,8 @@ graph TD
     end
 
     subgraph "microservices Namespace"
-        sec_gw["Secret:<br/>postgres-gateway-pguser-gateway"]
-        sec_ms["Secret:<br/>postgres-jhipstersamplemicroservice-pguser-jhipstersamplemicroservice"]
+        sec_gw["Secret:<br/>postgres-gateway-app"]
+        sec_ms["Secret:<br/>postgres-jhipstersamplemicroservice-app"]
         rb_pg["RoleBinding:<br/>pgadmin-secret-reader-binding"]
         role_pg["Role:<br/>pgadmin-secret-reader"]
         db_gw[("Postgres: postgres-gateway")]
@@ -392,12 +480,13 @@ graph TD
 If you need to connect to the databases manually using `psql` or external CLI tools, retrieve the generated passwords from their respective Kubernetes secrets:
 *   **Gateway DB password:**
     ```bash
-    kubectl get secret postgres-gateway-pguser-gateway -n microservices -o jsonpath='{.data.password}' | base64 -d
+    kubectl get secret postgres-gateway-app -n microservices -o jsonpath='{.data.password}' | base64 -d
     ```
 *   **JHipster Microservice DB password:**
     ```bash
-    kubectl get secret postgres-jhipstersamplemicroservice-pguser-jhipstersamplemicroservice -n microservices -o jsonpath='{.data.password}' | base64 -d
+    kubectl get secret postgres-jhipstersamplemicroservice-app -n microservices -o jsonpath='{.data.password}' | base64 -d
     ```
+
 
 
 ---
@@ -408,16 +497,17 @@ This diagram shows the robust Jenkins-to-ArgoCD synchronization we've implemente
 ```mermaid
 sequenceDiagram
     participant Dev as Developer
-    participant GH as GitHub (Infra Repo)
+    participant GH_Infra as GitHub (Infra Repo)
     participant J as Jenkins (CI)
+    participant GH_GitOps as GitHub (GitOps Config Repo)
     participant ACD as ArgoCD (CD)
     participant K8s as Kubernetes (GKE)
     participant Obs as Observability (Grafana)
 
-    Dev->>GH: Push Code / Change
+    Dev->>GH_Infra: Push Code / Change
     J->>J: Build & Test
     J->>J: Push Image to GHCR
-    J->>GH: Update values-<env>.yaml (yq)
+    J->>GH_GitOps: Update values-stable.yaml (yq)
     J->>ACD: argocd app sync --wait (CLI)
     Note over ACD,K8s: Reconcile Git -> Cluster
     ACD->>K8s: Apply Manifests
@@ -427,6 +517,32 @@ sequenceDiagram
     K8s->>Obs: OTLP Telemetry
     Obs-->>Dev: Dashboard Update
 ```
+
+## Golden Path IDP Modernizations (K8s v1.35/v1.36 & Karpenter)
+
+The repository has been refactored and modernized to serve as a **Golden Path Internal Developer Platform (IDP)** utilizing Kubernetes v1.35/v1.36 features, Karpenter autoscaling, zero-trust security, and decoupled GitOps patterns.
+
+### 1. Kubernetes v1.35/v1.36 Compliance
+* **In-Place Pod Vertical Scaling (GA in v1.35)**: Jenkins ephemeral agent pod templates are defined with explicit `resizePolicy` parameters (configured with `NotRequired` for CPU and Memory). This allows active Maven or Node build containers to scale resource requests/limits dynamically under compilation stress without restarting the pod.
+* **Safe JVM Resource Resizing Floors**: Configured [`VerticalPodAutoscaler` (VPA) rules](file:///home/inafev/github/jenkins-2026/infrastructure/scheduling/VPA.yaml) for JVM microservices (`gateway` and `jhipstersamplemicroservice`) to enforce `minAllowed` memory thresholds (`512Mi`). This safeguards the JVM against resource-starvation OOMs caused by dynamic resource downscaling.
+* **Workload-Aware / Gang Scheduling (v1.36)**: Integrated `PodGroup` scheduling resources (`parallel-smoke-tests`) to prevent resource starvation deadlocks when running heavy concurrent microservice testing workflows.
+* **UI/UX Constrained Impersonation**: Implemented K8s v1.36 `ConstrainedImpersonation` policies in Headlamp UI roles. This allows the Headlamp UI ServiceAccount to impersonate specific target user groups without requiring global cluster-admin role escalation permissions.
+
+### 2. Elastic Karpenter Autoscaling (v1.0+)
+Traditional GKE Cluster Autoscaler configurations have been replaced with **Karpenter v1.0+** using GCP provider classes:
+* **GCPNodeClass**: Configures GKE machine parameters, 100 GB `pd-balanced` boot disks, and links Workload Identity node service accounts.
+* **NodePool**: Manages Spot capacity-types, targeting compute families (`c2`, `n2`, `e2`, `c3`) and injecting taints (`jenkins-agent=true:NoSchedule`) so only build agents land on highly elastic spot pools.
+* **Disruption Budgets**: Configured to restrict consolidations during core business hours (Mon-Fri) to safeguard long-running master build pipelines while allowing aggressive cost cutting at night and empty/underutilized consolidation.
+* **Autoscaler Isolation**: Standard GKE nodes and Karpenter node pools are strictly isolated: GKE Cluster Autoscaler does not manage the tainted Karpenter Spot VM node groups, preventing scheduling/autoscaling race conditions.
+
+### 3. Zero-Trust Security & Workload Identity
+* **Workload Identity Federation**: All static JSON Service Account keys are removed. Both external CI engines (GitHub Actions) and in-cluster workloads assume GCP IAM Roles dynamically via OIDC.
+* **GKE Gateway API + BackendTLSPolicy**: Legacies like NGINX ingress are replaced by native L7 Gateways (`gke-l7-gxlb`). Zero-trust is enforced at the network layer: traffic between the Gateway load balancer and backend pods (Jenkins/Headlamp) is encrypted and validated using `BackendTLSPolicy` targets.
+
+### 4. GitOps Separation of Concerns
+All infrastructural manifests (`karpenter/`, `gateway/`, `headlamp/`, `scheduling/`) are decoupled from CI pipeline definitions and placed inside the [`infrastructure/`](infrastructure/) directory, structuring the platform to be fully reconciled via Argo CD.
+
+---
 
 ## ArgoCD Inventory (GitOps)
 
@@ -443,7 +559,7 @@ The deployment lifecycle is managed by **ArgoCD**. Application manifests are sto
 | `microservices-stable` | `Application` | `jenkins-2026-gitops-config` | `helm/microservices/` + `values-stable.yaml` | `microservices` | Synced |
 | `headlamp` | `Application` | `jenkins-2026-gitops-config` | `helm/headlamp/values.yaml` | `headlamp` | Healthy |
 | `pgadmin` | `Application` | `jenkins-2026-gitops-config` | `helm/pgadmin/` | `pgadmin` | Healthy |
-| `postgres-operator` | `Application` | `CrunchyData/postgres-operator@v5.7.9` | `config/default` | `postgres-operator` | Healthy |
+| `cnpg-operator` | `Application` | `cloudnative-pg` chart | `https://cloudnative-pg.github.io/charts` | `cnpg-system` | Healthy |
 
 ### Security & Integration
 - **Jenkins Integration**: A dedicated `jenkins` account is created in ArgoCD with a scoped **API Token**. This token is stored in the `jenkins-credentials` Secret and used by the `argocd` CLI inside pipeline agents to trigger `argocd app sync --wait`.
@@ -501,6 +617,151 @@ Once traffic is running, go to your Grafana Cloud instance:
 > deployed at least once to send a small amount of traffic through the whole
 > app and give Grafana fresh traces/metrics/logs to correlate (see
 > [`docs/observability.md`](docs/observability.md#k6-observability-smoke-test)).
+## Platform QA, Chaos & Compliance Validation
+
+To guarantee production readiness, the repository includes an automated validation gate script and detailed stress-test playbooks for all advanced 2026 Kubernetes features.
+
+### 1. Automated Compliance Validation Gate
+The automated validation script lints and dry-runs all platform resources (WIF, Karpenter, Gateway API, RBAC policies, VPA limits) against the target API schema.
+
+* **Script Location**: [`test/validation_gate.sh`](test/validation_gate.sh)
+* **Execution**:
+  ```bash
+  ./test/validation_gate.sh
+  ```
+* **CI/CD Integration**: Incorporate this script as a blocking validation step in your GitHub Actions deployment workflows before triggering Helm or Argo CD syncs.
+
+### 2. Platform Verification & Stress-Test Playbooks
+
+#### Scenario A: In-Place Resize Verification
+Prove that dynamic build agents scale up their container resources dynamically without terminating or changing the Pod UID.
+
+1. **Trigger Workload**: Run a dynamic microservice build job in Jenkins (which spawns a multi-container build agent).
+2. **Retrieve the Pod ID**: Find the active agent pod in the `jenkins` namespace:
+   ```bash
+   kubectl get pods -n jenkins -l role=jenkins-agent
+   ```
+3. **Trigger Resource Upscale**: Patch the running pod resources in-place (updating CPU limit from `2` to `3` and memory from `2.5Gi` to `4Gi`):
+   ```bash
+   kubectl patch pod <agent-pod-name> -n jenkins --type=json -p='[
+     {"op": "replace", "path": "/spec/containers/0/resources/limits/cpu", "value": "3"},
+     {"op": "replace", "path": "/spec/containers/0/resources/limits/memory", "value": "4Gi"}
+   ]'
+   ```
+4. **Monitor the Resize Lifecycle**: Watch the resize state changes:
+   ```bash
+   kubectl get pod <agent-pod-name> -n jenkins -w -o jsonpath='{.status.resize}{"\t"}{.status.containerStatuses[0].resources}{"\n"}'
+   ```
+   *Verification*: Status transitions from `Resize: Proposed` -> `Resize: InProgress` -> `Resize: Succeeded` without the pod restarting.
+5. **Confirm Zero-Restart Compliance**:
+   ```bash
+   # Confirm the Pod UID remains identical (it was not recreated)
+   kubectl get pod <agent-pod-name> -n jenkins -o jsonpath='{.metadata.uid}'
+   
+   # Confirm container restartCount remains 0
+   kubectl get pod <agent-pod-name> -n jenkins -o jsonpath='{.status.containerStatuses[*].restartCount}'
+   ```
+
+#### Scenario B: Karpenter Elasticity & Spot Provisioning
+Prove that Karpenter dynamically scales up Spot instances under scheduling pressure and consolidates them when load drops.
+
+1. **Deploy a Burst Load**: Schedule 50 parallel sleep pods targeted to the agent node group:
+   ```bash
+   kubectl create deployment k6-burst-test --image=alpine/k8s:1.31.3 --replicas=50 -n jenkins
+   kubectl patch deployment k6-burst-test -n jenkins --type=json -p='[
+     {"op": "add", "path": "/spec/template/spec/tolerations", "value": [{"key": "jenkins-agent", "operator": "Equal", "value": "true", "effect": "NoSchedule"}]},
+     {"op": "add", "path": "/spec/template/spec/nodeSelector", "value": {"role": "jenkins-agent"}}
+   ]'
+   ```
+2. **Watch Node Allocation**: Verify Karpenter schedules nodes of Capacity type `spot`:
+   ```bash
+   kubectl get nodes -l role=jenkins-agent -o custom-columns=NAME:.metadata.name,CAPACITY:.metadata.labels.karpenter\.sh/capacity-type -w
+   ```
+3. **Trigger Scale Down**: Terminate the burst workloads:
+   ```bash
+   kubectl scale deployment k6-burst-test -n jenkins --replicas=0
+   ```
+4. **Verify Consolidation**: Karpenter will cordon, drain, and terminate the underutilized Spot nodes after a 30s cooling window. Verify via ScaleDown events:
+   ```bash
+   kubectl get events --field-selector reason=ScaleDown -n kube-system
+   ```
+
+#### Scenario C: Constrained Impersonation (Zero-Trust RBAC)
+Verify that Headlamp's constrained impersonation ClusterRoles restrict access to developer scopes, preventing administrative escalation.
+
+1. **Test Developer Impersonation (Allowed)**:
+   ```bash
+   kubectl auth can-i create deployments -n microservices \
+     --as=system:serviceaccount:headlamp:headlamp-service-account \
+     --as-group=developer-group
+   # Output: yes
+   ```
+2. **Test Cluster-wide Escalation (Denied)**:
+   ```bash
+   kubectl auth can-i get secrets --all-namespaces \
+     --as=system:serviceaccount:headlamp:headlamp-service-account \
+     --as-group=developer-group
+   # Output: no
+   ```
+
+#### Scenario D: CloudNative-PG Operator HA Failover, Storage Separation, & pg_hba Validation
+Verify that the PostgreSQL database tier managed by the CloudNative-PG (CNPG) operator maintains quorum, recovers immediately from primary node failure, routes through PgBouncer, and enforces zero-trust host-based security rules.
+
+1. **Verify HA Replication & Health**:
+   Retrieve the status of the PostgreSQL gateway cluster:
+   ```bash
+   kubectl get cluster postgres-gateway -n microservices -o yaml
+   ```
+   *Verification*: Under `.status`, ensure `instancesStatus.healthy` lists all three instances (`postgres-gateway-1`, `postgres-gateway-2`, `postgres-gateway-3`), and `readyInstances` is `3`.
+
+2. **Verify WAL & Data Storage Separation**:
+   Verify that WAL logs are written to a separate high-throughput persistent volume compared to PGDATA:
+   ```bash
+   kubectl get pvc -n microservices -l cnpg.io/cluster=postgres-gateway
+   ```
+   *Expected Output*: You should see six PVCs: three standard data storage volumes (`postgres-gateway-1`, `postgres-gateway-2`, `postgres-gateway-3`) and three dedicated WAL volumes (`postgres-gateway-1-wal`, `postgres-gateway-2-wal`, `postgres-gateway-3-wal`), each bound to the GKE `premium-rwo` storage class.
+
+3. **Simulate Primary Node Failover (Chaos Test)**:
+   Find the current primary pod:
+   ```bash
+   kubectl get cluster postgres-gateway -n microservices -o jsonpath='{.status.currentPrimary}'
+   # E.g. Output: postgres-gateway-1
+   ```
+   Delete the primary pod to simulate a hard crash:
+   ```bash
+   kubectl delete pod <current-primary-pod> -n microservices --grace-period=0 --force
+   ```
+   In a separate shell, watch the cluster recovery:
+   ```bash
+   kubectl get pod -n microservices -l cnpg.io/cluster=postgres-gateway -w
+   ```
+   *Verification*:
+   * Within seconds, the CNPG controller detects the failure and promotes one of the standbys (e.g. `postgres-gateway-2`) to Primary.
+   * Check the cluster resource status to verify the new primary:
+     ```bash
+     kubectl get cluster postgres-gateway -n microservices -o jsonpath='{.status.currentPrimary}'
+     ```
+   * The deleted pod is automatically rescheduled as a standby replica, resyncing via WAL replication.
+   * Verify that the gateway application remains online and reconnects automatically without throwing fatal database errors, thanks to PgBouncer routing database connections.
+
+4. **Verify Dynamic pg_hba Security and Catch-All Reject**:
+   * **Authorized Application access**: Exec into the `gateway` pod and verify that it can query the database through PgBouncer:
+     ```bash
+     kubectl exec -it $(kubectl get pods -n microservices -l app.kubernetes.io/name=gateway -o jsonpath='{.items[0].metadata.name}') -n microservices -- curl -s http://localhost:8080/management/health
+     # Output: Should return HTTP 200 with database health UP.
+     ```
+   * **Unauthorized access rejection**: Deploy a temporary test pod without the authorized application labels and try to connect directly to the Postgres read-write service:
+     ```bash
+     kubectl run pg-security-test --image=alpine:3.20 -n microservices --restart=Never -- sh -c "apk add --no-cache postgresql-client && psql -h postgres-gateway-rw -U gateway -d gateway"
+     ```
+     Check the security test logs:
+     ```bash
+     kubectl logs pg-security-test -n microservices
+     ```
+     *Expected Output*: The connection fails with `psql: error: connection to server at "postgres-gateway-rw" failed: FATAL: no pg_hba.conf entry for host...` or `reject` error. This proves that unauthorized hosts inside the cluster are blocked by the catch-all reject rule.
+
+---
+
 
 ## Configuration ([`config/config.yaml`](config/config.yaml))
 
@@ -734,6 +995,11 @@ export OTLP to an in-cluster collector, which forwards to Grafana Cloud
 - **Model Context Protocol (MCP)**: This project supports Grafana Cloud's hosted **MCP server**. Connecting an AI agent (like Gemini) to your stack via MCP allows for real-time querying of Jenkins traces, metrics, and logs during troubleshooting.
     - **Setup**: In your Grafana Cloud portal, go to **Administration > Assistant > Cloud MCP** to find your connection endpoint.
     - **Integration**: Add the endpoint to your Gemini CLI or AI agent configuration. You can then ask questions like *"Audit my Jenkins datasource health"* or *"Summarize recent pipeline failures from traces"* for a better outcome of your changes.
+- **GKE Kubernetes Cluster Observability**: Automatic telemetry collection for GKE hosts, nodes, namespaces, and cluster events is integrated using the official `grafana/k8s-monitoring` Helm chart (v4.0+) pointing directly to Grafana Cloud OTLP.
+    - **Zero Log Duplication**: Disables log collection inside the chart (`podLogsViaLoki.enabled=false`, `podLogsViaOpenTelemetry.enabled=false`) to prevent dual ingestion charges, leaving pod log capture to the dedicated `otel-collector-logs` DaemonSet.
+    - **Resource Quota Compatibility**: The `observability-quota` is scaled up to allow the Alloy operator, stateful Alloy scrapers, kube-state-metrics, and node-exporter daemons to run safely alongside OpenTelemetry operators.
+    - **Automated Lifecycle**: Deployed via [`scripts/03-observability.sh`](file:///home/inafev/github/jenkins-2026/scripts/03-observability.sh) (which dynamically extracts credentials and parses the basic auth secret from GKE) and cleanly uninstalled in parallel via [`scripts/down.sh`](file:///home/inafev/github/jenkins-2026/scripts/down.sh).
+    - **Zero-Touch Config**: Automatically maps the default Prometheus (`grafanacloud-prom`), Loki (`grafanacloud-logs`), and Tempo (`grafanacloud-traces`) data sources in the plugin's `jsonData` via `gcx api` inside [`scripts/07-grafana-dashboards.sh`](file:///home/inafev/github/jenkins-2026/scripts/07-grafana-dashboards.sh) upon bootstrap, rendering the Kubernetes App Home (`/a/grafana-k8s-app/home`) immediately active.
 - **Correlated telemetry**: Traces, metrics and logs are fully correlated. On Grafana Cloud, log-to-trace links and system datasources (like `alert-state-history` and `usage-insights`) are pre-configured by default.
 
 ### k6 observability smoke test
@@ -1159,42 +1425,44 @@ graph TD
         end
     end
 
-    subgraph Cluster ["GKE Cluster: jenkins-2026"]
+    subgraph Cluster ["GKE Cluster (v1.35/v1.36)"]
         ClusterInfo["europe-southwest1-a"]
+        direction TB
+        GatewayAPI["GKE Gateway API<br/>gke-l7-gxlb"]
+        BackendTLS["BackendTLSPolicy<br/>Secure TLS to pods"]
+        WI["Workload Identity Federation"]
+    end
+
+    subgraph KarpenterPool ["Karpenter NodePool: ephemeral-runners"]
+        PoolInfo["Spot Instances<br/>e2/n2/c2/c3 dynamic scaling"]
         direction LR
-        GatewayAPI["Gateway API<br>CHANNEL_STANDARD"]
-        WI["Workload Identity"]
-        Channel["Release: REGULAR"]
+        S1["Spot Node 1<br/>e2-standard-4"]
+        S2["Spot Node 2<br/>c2-standard-4"]
+        S3["Spot Node 3<br/>drifted/terminated"]
     end
 
-    subgraph Pool ["Node Pool: jenkins-2026-pool"]
-        PoolInfo["autoscale 2-4, initial 3"]
-        direction LR
-        N1["Node 1<br>e2-standard-4<br>50 GB pd-balanced"]
-        N2["Node 2<br>e2-standard-4<br>50 GB pd-balanced"]
-        N3["Node 3<br>e2-standard-4<br>50 GB pd-balanced"]
-        N4["Node 4<br>autoscaled"]
+    subgraph IAM ["IAM Service Accounts (WIF)"]
+        NodeSA["jenkins-2026-nodes<br/>GCP Nodes SA"]
+        CISA["jenkins-2026-ci-agent<br/>GitHub Actions OIDC WIF"]
     end
 
-    subgraph IAM ["IAM Service Accounts"]
-        NodeSA["jenkins-2026-nodes<br>logWriter, metricWriter<br>monitoring.viewer<br>artifactregistry.reader"]
-        CISA["jenkins-2026-ci<br>GitHub Actions WIF<br>container.admin<br>compute.networkAdmin"]
-    end
-
-    subgraph State ["Remote State"]
-        GCS["GCS Bucket<br>...-jenkins-2026-tfstate<br>versioned, uniform IAM"]
+    subgraph State ["Remote State & GitOps"]
+        GCS["GCS Bucket<br>...-jenkins-2026-tfstate"]
+        ArgoCD["Argo CD Sync<br>reconciles infrastructure/"]
     end
 
     User -->|"HTTPS"| StaticIP
     StaticIP --> CertMap
     CertMap --> WildcardTLS
     WildcardTLS -->|"terminates TLS"| GatewayAPI
-    GatewayAPI -->|"routes to pods"| Pool
-    NodeRange -->|"node IPs"| Pool
-    PodRange -->|"pod IPs"| Pool
-    NodeSA -->|"identity"| Pool
-    CISA -->|"provisions"| Cluster
+    GatewayAPI -->|"routes via BackendTLSPolicy"| BackendTLS
+    BackendTLS -->|"zero-trust HTTPS"| KarpenterPool
+    NodeRange -->|"node IPs"| KarpenterPool
+    PodRange -->|"pod IPs"| KarpenterPool
+    NodeSA -->|"identity"| KarpenterPool
+    CISA -->|"auth / provision"| Cluster
     CISA -->|"read/write"| GCS
+    ArgoCD -->|"applies configuration"| Cluster
 ```
 
 #### Detailed Infrastructure Specifications
@@ -1207,10 +1475,11 @@ graph TD
 | **VPC** | `jenkins-2026-vpc` | Custom-mode VPC (`auto_create_subnetworks = false`). No firewall rules or Cloud NAT defined — GKE manages egress natively. |
 | **Subnet** | `jenkins-2026-subnet` | Region `europe-southwest1`. Primary range `10.10.0.0/20` (nodes), secondary `pods` `10.20.0.0/16`, secondary `services` `10.30.0.0/20`. |
 | **GKE Cluster** | `jenkins-2026` | Zonal cluster in `europe-southwest1-a` (Madrid). VPC-native networking with IP aliasing. Release channel `REGULAR`. Gateway API `CHANNEL_STANDARD`. Workload Identity enabled (`project.svc.id.goog`). Deletion protection `false` (throwaway). |
-| **Node Pool** | `jenkins-2026-pool` | `e2-standard-4` (4 vCPUs, 16 GB RAM). Boot disk `50 GB pd-balanced`. Initial count **3** nodes (12 vCPUs, 48 GB total). Autoscaling **min 2 — max 4**. `auto_repair` + `auto_upgrade` enabled. Labels: `app=jenkins-2026`. Tags: `jenkins-2026`. GKE metadata mode `GKE_METADATA` (Workload Identity). |
+| **Karpenter NodePool** | `ephemeral-runners` | Auto-provisions elastic worker nodes based on Spot instances (`c2`, `n2`, `e2`, `c3` families). Restricts node consolidation during business hours using aggressive `DisruptionBudgets` while scaling nodes down dynamically to zero under empty cycles. |
+| **GCPNodeClass** | `ci-node-class` | Links Karpenter dynamic nodes to GKE subnet selectors, COS image families, and `100 GB pd-balanced` boot disks. |
 | **Node SA** | `jenkins-2026-nodes` | Minimal-privilege service account: `roles/logging.logWriter`, `roles/monitoring.metricWriter`, `roles/monitoring.viewer`, `roles/artifactregistry.reader`. |
-| **CI SA** | `jenkins-2026-ci` | GitHub Actions service account with `container.admin`, `compute.networkAdmin`, `iam.serviceAccountAdmin`, `iam.serviceAccountUser`, `resourcemanager.projectIamAdmin`, `serviceusage.serviceUsageAdmin`, `certificatemanager.editor` + `storage.objectAdmin` on the state bucket. |
-| **WIF** | Pool `jenkins-2026-github` / Provider `github-actions` | OIDC federation from `token.actions.githubusercontent.com`. Attribute condition restricts to `nubenetes/jenkins-2026`. No JSON key — keyless authentication. |
+| **CI Agent SA** | `jenkins-2026-ci-agent` | GitHub Actions service account assuming identities via WIF (impersonating `roles/container.admin`, `roles/compute.networkAdmin`, etc.). |
+| **WIF** | Pool `github-actions-pool-2026` / Provider `github-actions-provider` | OIDC federation from `token.actions.githubusercontent.com`. Attribute condition restricts access to your GitHub repository without static keys. |
 | **State Bucket** | `${project}-jenkins-2026-tfstate` | GCS bucket in `us-central1`. Versioning enabled. Uniform bucket-level access. `force_destroy = false`. |
 | **GCP APIs** | `container` + `compute` | Enabled with `disable_on_destroy = false` — remain active after cluster teardown to avoid breaking unrelated resources and slow re-enable times. |
 
@@ -1230,7 +1499,7 @@ This project integrates standard FinOps best practices to prevent unnecessary cl
 - **Compute Instance Costs**: At Madrid (`europe-southwest1`) pricing, an `e2-standard-4` instance costs roughly `~$0.11/hour`.
 - **Total Operational Run Rate**: The active 3-node cluster runs at approximately **`$0.40 - $0.50/hour`** (including disk storage and management fee).
 - **Ephemeral Lifecycles**: A full provisioning, deployment, smoke-testing, and teardown run (`02.01` to `02.99`) takes only **15-25 minutes**, costing **`~$0.10 - $0.20` per execution**. You should *never* leave the cluster running overnight; always invoke **`02.99 GKE decommission`** when finished.
-- **Dynamic Cluster Autoscaling**: If the cluster remains idle, the node count naturally scales down to **2 nodes**, saving compute costs. When a pipeline triggers concurrent Java/Maven builds, GKE temporarily scales up to **4 nodes** to handle the surge, then immediately deletes the nodes when the job finishes.
+- **Elastic Karpenter Autoscaling**: Ephemeral build runners are dynamically provisioned on GKE Spot instance nodes. Under idle conditions, Karpenter scales the agent pool down to **0 nodes** to eliminate unnecessary compute costs. When a pipeline execution starts, Karpenter instantly spins up Spot nodes of the most cost-efficient type to handle the build load, and consolidates them (or scales back to 0) as soon as the build finishes. Strict disruption budgets prevent consolidation during core business hours to protect running pipelines.
 - **Workload Limits & Quotas**: To enforce cost limits, pod resources are capped, and the `jenkins` namespace enforces a `ResourceQuota` preventing builders from scaling beyond node pool limits.
 - **No In-Cluster Observability Cost**: By utilizing the free tier of Grafana Cloud for logs, metrics, and trace storage, there is zero storage cost in GCP for observability datasets.
 
@@ -1240,7 +1509,7 @@ To prevent GKE cluster auto-scaling (saving costs for this PoC) and ensure optim
 
 1. **Tight Pod Resource Allocations**:
    - **Microservices** (`gateway`, `jhipstersamplemicroservice`): CPU requests set to `100m` (limits to `1.0` CPU) and memory requests to `512Mi` (limits to `1Gi`).
-   - **Postgres Database Instances**: Crunchy PostgresCluster containers (`postgres`, `pgbackrest` jobs, and `repoHost` sidecars) instances requests: `100m`/`256Mi`, limits: `500m`/`512Mi`.
+   - **Postgres Database Instances**: CloudNative-PG database instances and PgBouncer pooler replicas, with resources constrained to requests: `50m` CPU / `128Mi` memory, limits: `200m` CPU / `256Mi` memory.
    - **Jenkins Controller**: Tighter footprint of `500m` CPU and `1.5Gi` memory requests (limits: `1.5` CPU and `3Gi` memory).
    - **Jenkins Build Agents & K6 Smoke Agents**: Minimized build agent containers (`maven`, `node`, `docker`, `helm`, `git`, `jnlp`) requesting `380m` CPU and `1.56Gi` (`1600Mi`) memory in total, with limits capped at `3.3` CPU and `3.875Gi` (`3968Mi`) memory.
 
@@ -1251,14 +1520,18 @@ To prevent GKE cluster auto-scaling (saving costs for this PoC) and ensure optim
    | **jenkins** | `jenkins` | StatefulSet | `500m` | `1.5` | `1.5Gi` (`1536Mi`) | `3Gi` (`3072Mi`) |
    | **microservices** | `gateway` | Deployment | `100m` | `1.0` | `512Mi` | `1Gi` |
    | | `jhipstersamplemicroservice` | Deployment | `100m` | `1.0` | `512Mi` | `1Gi` |
-   | | `postgres-gateway-instance1` | StatefulSet | `100m` | `500m` | `256Mi` | `512Mi` |
-   | | `postgres-gateway-repo-host` | StatefulSet | `100m` | `200m` | `128Mi` | `256Mi` |
-   | | `postgres-jhipstersamplemicroservice-instance1` | StatefulSet | `100m` | `500m` | `256Mi` | `512Mi` |
-   | | `postgres-jhipstersamplemicroservice-repo-host` | StatefulSet | `100m` | `200m` | `128Mi` | `256Mi` |
+   | | `postgres-gateway-1/2/3` | Pod (CNPG) | `50m` | `200m` | `128Mi` | `256Mi` |
+   | | `postgres-gateway-pooler-...` | Pod (CNPG Pooler) | `50m` | `200m` | `128Mi` | `256Mi` |
+   | | `postgres-jhipstersamplemicroservice-1/2/3` | Pod (CNPG) | `50m` | `200m` | `128Mi` | `256Mi` |
+   | | `postgres-jhipstersamplemicroservice-pooler-...` | Pod (CNPG Pooler) | `50m` | `200m` | `128Mi` | `256Mi` |
    | **observability** | `otel-collector-gateway` | Deployment | `100m` | `500m` | `256Mi` | `512Mi` |
    | | `otel-collector-logs-agent` | DaemonSet | `100m` | `300m` | `128Mi` | `256Mi` |
    | | `otel-operator-opentelemetry-operator` | Deployment | `100m` | `500m` | `128Mi` | `256Mi` |
    | | `pdc-agent` | Deployment | `50m` | `200m` | `64Mi` | `128Mi` |
+   | | `k8s-monitoring-alloy` | StatefulSet | `60m` | `400m` | `178Mi` | `512Mi` |
+   | | `k8s-monitoring-alloy-operator` | Deployment | `50m` | `200m` | `128Mi` | `256Mi` |
+   | | `k8s-monitoring-kube-state-metrics` | Deployment | `50m` | `200m` | `128Mi` | `256Mi` |
+   | | `k8s-monitoring-node-exporter` | DaemonSet | `50m` | `200m` | `128Mi` | `256Mi` |
    | **argocd** | `argocd-application-controller` | StatefulSet | `100m` | `1.0` | `256Mi` | `1Gi` |
    | | `argocd-server` | Deployment | `100m` | `500m` | `128Mi` | `256Mi` |
    | | `argocd-repo-server` | Deployment | `100m` | `500m` | `256Mi` | `512Mi` |
@@ -1275,7 +1548,7 @@ To prevent GKE cluster auto-scaling (saving costs for this PoC) and ensure optim
      > [!NOTE]
      > To allow concurrent pipeline execution and optimize deployment throughput, the Jenkins cloud is configured with `containerCap: 2` in `helm/jenkins/values-common.yaml`. The namespace resource quota has been adjusted accordingly (`requests.cpu: "3.0"`, `requests.memory: "8.0Gi"`, `limits.cpu: "14"`, `limits.memory: "16.0Gi"`) to accommodate this parallelism safely and prevent pipeline agent quota exhaustion.
    - `microservices`: Requests max `1.5` CPU / `3.0Gi` memory.
-   - `observability`: Requests max `1.5` CPU / `3.0Gi` memory.
+   - `observability`: Requests max `3.0` CPU / `6.0Gi` memory (limits: `6.0` CPU / `10.0Gi` memory).
    - `argocd`: Requests max `1.5` CPU / `3.0Gi` memory.
    - `headlamp`: Requests max `200m` CPU / `256Mi` memory.
 
@@ -1554,22 +1827,24 @@ When you want to tear down the entire project permanently, you must run the deco
       > APIs.
 
 
-   b. **Add two repository secrets** - `GRAFANA_CLOUD_STACK_SLUG` is your
+   b. **Add a repository secret and a variable** - `GRAFANA_CLOUD_STACK_SLUG` is your
       choice of subdomain for the new stack
-      (`https://<slug>.grafana.net`, must be globally unique):
+      (`https://<slug>.grafana.net`, must be globally unique). Note that `GRAFANA_CLOUD_STACK_SLUG`
+      should be configured as a repository **Variable** (not a Secret) so that GitHub Actions does
+      not mask it with `***` in the logs, which keeps printed Grafana dashboard URLs clickable:
 
       ```bash
-      gh secret set GRAFANA_CLOUD_API_TOKEN  --body "<token from step a>"
-      gh secret set GRAFANA_CLOUD_STACK_SLUG --body "<your-globally-unique-slug>"
+      gh secret set   GRAFANA_CLOUD_API_TOKEN   --body "<token from step a>"
+      gh variable set GRAFANA_CLOUD_STACK_SLUG  --body "<your-globally-unique-slug>"
       ```
 
    c. **Run the "01.01 Grafana Cloud bootstrap" workflow** (Actions tab ->
       **01.01 Grafana Cloud bootstrap** -> **Run workflow**). It applies
       [`terraform/grafana-cloud-stack`](terraform/grafana-cloud-stack) with
       state in the same GCS bucket as `terraform/gke`, creating the
-      persistent stack from the two secrets above. If `GRAFANA_CLOUD_STACK_SLUG`
+      persistent stack from the configuration above. If `GRAFANA_CLOUD_STACK_SLUG`
       is already taken, Terraform fails with a clear error - pick another
-      value, `gh secret set GRAFANA_CLOUD_STACK_SLUG --body "<new-slug>"`, and
+      value, `gh variable set GRAFANA_CLOUD_STACK_SLUG --body "<new-slug>"`, and
       re-run the workflow. It's safe to re-run any time - re-applying against
       existing state is a no-op.
 

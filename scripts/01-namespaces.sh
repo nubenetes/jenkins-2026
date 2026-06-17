@@ -142,8 +142,8 @@ rules:
 - apiGroups: [""]
   resources: ["secrets"]
   resourceNames:
-  - postgres-gateway-pguser-gateway
-  - postgres-jhipstersamplemicroservice-pguser-jhipstersamplemicroservice
+  - postgres-gateway-app
+  - postgres-jhipstersamplemicroservice-app
   verbs: ["get", "list"]
 EOF
 
@@ -212,10 +212,10 @@ metadata:
   name: observability-quota
 spec:
   hard:
-    requests.cpu: "1.5"
-    requests.memory: 3.0Gi
-    limits.cpu: "3.5"
-    limits.memory: 5.0Gi
+    requests.cpu: "3.0"
+    requests.memory: 6.0Gi
+    limits.cpu: "6.0"
+    limits.memory: 10.0Gi
 EOF
 
 # 3. Headlamp Namespace Quota

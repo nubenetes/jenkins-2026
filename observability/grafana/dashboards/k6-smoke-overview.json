@@ -641,13 +641,13 @@
             "type": "tempo",
             "uid": "${DS_TEMPO}"
           },
-          "query": "{resource.deployment.environment = \"$deployment_environment\"}",
+          "query": "{resource.deployment.environment = \"$deployment_environment\" && span.\"url.path\" !~ \"/management/health.*\"}",
           "queryType": "traceql",
           "refId": "A"
         }
       ],
       "title": "Smoke Test Traces",
-      "type": "traces"
+      "type": "table"
     },
     {
       "datasource": {
