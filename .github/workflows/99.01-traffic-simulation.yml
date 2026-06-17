@@ -26,11 +26,15 @@ jobs:
         env:
           K6_OTEL_EXPORTER_PROTOCOL: http/protobuf
           K6_OTEL_HTTP_EXPORTER_ENDPOINT: ${{ secrets.GRAFANA_CLOUD_OTLP_ENDPOINT }}
+          K6_OTEL_HTTP_EXPORTER_URL_PATH: /otlp/v1/metrics
           K6_OTEL_HEADERS: Authorization=Basic ${{ secrets.GRAFANA_CLOUD_OTLP_AUTH }}
           OTEL_RESOURCE_ATTRIBUTES: service.name=k6-traffic-simulation,service.namespace=jenkins-2026,deployment.environment=stable
         run: |
           # Record start time in milliseconds
           START_TIME_MS=$(date +%s%3N)
+          
+          # k6's HTTP exporter expects the endpoint as host:port without scheme and path
+          export K6_OTEL_HTTP_EXPORTER_ENDPOINT=$(echo $K6_OTEL_HTTP_EXPORTER_ENDPOINT | sed -E 's|^https://||; s|/otlp$||')":443"
           
           # Use the existing smoke test script but with more iterations/duration
           # Pointing to the stable environment
