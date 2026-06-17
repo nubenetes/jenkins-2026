@@ -127,9 +127,9 @@ jobs:
           echo "You can analyze real-time latency, error rates, and traces here:"
           echo ""
           if [ ! -z "$GRAFANA_FROM" ] && [ ! -z "$GRAFANA_TO" ]; then
-            echo "https://${{ secrets.GRAFANA_CLOUD_STACK_SLUG }}.grafana.net/d/jenkins2026-k6-smoke-overview/jenkins-2026-k6-observability-smoke-test?orgId=1&from=${GRAFANA_FROM}&to=${GRAFANA_TO}&var-DS_PROMETHEUS=grafanacloud-prom&var-DS_LOKI=grafanacloud-logs&var-DS_TEMPO=grafanacloud-traces&var-deployment_environment=stable"
+            echo "https://${{ vars.GRAFANA_CLOUD_STACK_SLUG || secrets.GRAFANA_CLOUD_STACK_SLUG }}.grafana.net/d/jenkins2026-k6-smoke-overview/jenkins-2026-k6-observability-smoke-test?orgId=1&from=${GRAFANA_FROM}&to=${GRAFANA_TO}&var-DS_PROMETHEUS=grafanacloud-prom&var-DS_LOKI=grafanacloud-logs&var-DS_TEMPO=grafanacloud-traces&var-deployment_environment=stable"
           else
-            echo "https://${{ secrets.GRAFANA_CLOUD_STACK_SLUG }}.grafana.net/d/jenkins2026-k6-smoke-overview/jenkins-2026-k6-observability-smoke-test?var-DS_PROMETHEUS=grafanacloud-prom&var-DS_LOKI=grafanacloud-logs&var-DS_TEMPO=grafanacloud-traces&var-deployment_environment=stable"
+            echo "https://${{ vars.GRAFANA_CLOUD_STACK_SLUG || secrets.GRAFANA_CLOUD_STACK_SLUG }}.grafana.net/d/jenkins2026-k6-smoke-overview/jenkins-2026-k6-observability-smoke-test?var-DS_PROMETHEUS=grafanacloud-prom&var-DS_LOKI=grafanacloud-logs&var-DS_TEMPO=grafanacloud-traces&var-deployment_environment=stable"
           fi
           echo ""
           echo "This dashboard correlates k6 client-side metrics with your Microservices"

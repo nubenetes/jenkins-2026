@@ -74,7 +74,7 @@ jobs:
         working-directory: terraform/grafana-cloud-stack
         env:
           TF_VAR_grafana_cloud_api_token: ${{ secrets.GRAFANA_CLOUD_API_TOKEN }}
-          TF_VAR_stack_slug: ${{ secrets.GRAFANA_CLOUD_STACK_SLUG }}
+          TF_VAR_stack_slug: ${{ vars.GRAFANA_CLOUD_STACK_SLUG || secrets.GRAFANA_CLOUD_STACK_SLUG }}
         run: terraform apply -auto-approve -input=false
 
       - name: Summary
@@ -84,7 +84,7 @@ jobs:
           {
             echo "### Grafana Cloud stack"
             echo
-            echo "- Slug: \`${{ secrets.GRAFANA_CLOUD_STACK_SLUG }}\`"
+            echo "- Slug: \`${{ vars.GRAFANA_CLOUD_STACK_SLUG || secrets.GRAFANA_CLOUD_STACK_SLUG }}\`"
             echo "- Grafana URL: \`$(terraform output -raw grafana_url 2>/dev/null || echo 'n/a')\`"
             echo
             echo "02.01 GKE provision (observability_mode: grafana-cloud) can now mint scoped tokens against this stack via terraform/grafana-cloud-token."

@@ -163,7 +163,7 @@ jobs:
         working-directory: terraform/grafana-cloud-token
         env:
           TF_VAR_grafana_cloud_api_token: ${{ secrets.GRAFANA_CLOUD_API_TOKEN }}
-          TF_VAR_stack_slug: ${{ secrets.GRAFANA_CLOUD_STACK_SLUG }}
+          TF_VAR_stack_slug: ${{ vars.GRAFANA_CLOUD_STACK_SLUG || secrets.GRAFANA_CLOUD_STACK_SLUG }}
           TF_VAR_jenkins_admin_password: "destroy-placeholder"
         run: terraform destroy -auto-approve -input=false
 
