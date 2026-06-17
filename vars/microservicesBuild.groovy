@@ -11,6 +11,7 @@ def call(Map cfg) {
       sh """
         set -eux
         unset MAVEN_CONFIG
+        export MAVEN_OPTS="-Xmx1536m -XX:+UseSerialGC"
         if [ -n "${cfg.module}" ] && [ -f "${cfg.module}/mvnw" ]; then
           cd ${cfg.module}
           ./mvnw -B -DskipITs clean verify

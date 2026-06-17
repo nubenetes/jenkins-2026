@@ -26,6 +26,7 @@ def call(Map cfg) {
         sh """
           set -eux
           unset MAVEN_CONFIG
+          export MAVEN_OPTS="-Xmx1536m -XX:+UseSerialGC"
           # Check if we are in a subfolder or monorepo
           BUILD_DIR="."
           if [ -n "${cfg.module}" ] && [ -f "${cfg.module}/mvnw" ]; then
