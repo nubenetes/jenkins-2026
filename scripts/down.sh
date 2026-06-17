@@ -85,30 +85,46 @@ if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
 fi
 
 # drain_namespace <ns>
-# Deletes a namespace and ensures it fully terminates. Strategy:
-#  1. Delete all PVCs first (the jenkins-home PVC carries a volume-detach
-#     finalizer that is the most common cause of the namespace hanging).
-#  2. Issue the namespace delete with a generous timeout.
-#  3. If the namespace is still Terminating, patch its finalizer list to []
-#     so the API server releases it immediately (safe — all workloads are gone).
+# Deletes a namespace and ensures it fully terminates. Three-stage strategy:
+#  1. Strip object-level finalizers from all Terminating resources in the
+#     namespace. This covers:
+#       - PVCs (kubernetes.io/pvc-protection) — jenkins-home volume detach
+#       - ArgoCD Applications (resources-finalizer.argocd.argoproj.io) — the
+#         ArgoCD controller is already gone so finalizers would never be
+#         processed and the namespace would hang indefinitely
+#       - Any other resource type stuck in Terminating
+#  2. Issue kubectl delete namespace with a 2-minute timeout.
+#  3. If still Terminating, patch spec.finalizers=[] via the /finalize
+#     sub-resource API so the API server releases the namespace immediately.
 drain_namespace() {
   local ns="$1"
   kubectl get namespace "${ns}" > /dev/null 2>&1 || { log_info "Namespace ${ns} does not exist - skipping"; return 0; }
 
-  log_info "Draining PVCs from ${ns} before namespace delete..."
-  # Remove PVC finalizer kubernetes.io/pvc-protection to unblock volume detach
+  log_info "Stripping finalizers from all Terminating resources in ${ns}..."
+  # Get every resource type that supports list (ignore errors for types with no instances)
+  for resource in $(kubectl api-resources --verbs=list --namespaced -o name 2>/dev/null); do
+    for obj in $(kubectl get "${resource}" -n "${ns}" \
+        --field-selector='metadata.deletionTimestamp!=null' \
+        -o name 2>/dev/null); do
+      kubectl patch "${obj}" -n "${ns}" \
+        --type='json' -p='[{"op":"replace","path":"/metadata/finalizers","value":[]}]' \
+        2>/dev/null || true
+    done
+  done
+
+  # PVCs may not yet be Terminating but still block the namespace — delete them explicitly
   for pvc in $(kubectl get pvc -n "${ns}" -o name 2>/dev/null); do
     kubectl patch "${pvc}" -n "${ns}" \
       --type='json' -p='[{"op":"replace","path":"/metadata/finalizers","value":[]}]' \
-      --ignore-not-found 2>/dev/null || true
+      2>/dev/null || true
     kubectl delete "${pvc}" -n "${ns}" --ignore-not-found --timeout=30s 2>/dev/null || true
   done
 
   log_info "Deleting namespace ${ns}..."
   kubectl delete namespace "${ns}" --ignore-not-found --timeout=2m && return 0
 
-  # Namespace still terminating — patch out the finalizers so API server releases it
-  log_warn "Namespace ${ns} still Terminating — patching finalizers to unblock..."
+  # Namespace still terminating — patch spec.finalizers=[] via /finalize API
+  log_warn "Namespace ${ns} still Terminating — patching namespace finalizers to unblock..."
   kubectl get namespace "${ns}" -o json 2>/dev/null \
     | python3 -c "import sys,json; ns=json.load(sys.stdin); ns['spec']['finalizers']=[]; print(json.dumps(ns))" \
     | kubectl replace --raw "/api/v1/namespaces/${ns}/finalize" -f - 2>/dev/null || true
