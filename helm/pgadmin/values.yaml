@@ -47,8 +47,8 @@ pgadmin4:
             MICROSERVICE_PASSWORD=$(echo -n "$RAW_MICROSERVICE_PASSWORD" | sed -e 's/\\/\\\\/g' -e 's/:/\\:/g')
 
             cat <<EOF > /var/lib/pgadmin/pgpass
-          postgres-gateway-rw.microservices.svc:5432:gateway:gateway:${GATEWAY_PASSWORD}
-          postgres-jhipstersamplemicroservice-rw.microservices.svc:5432:jhipstersamplemicroservice:jhipstersamplemicroservice:${MICROSERVICE_PASSWORD}
+          postgres-gateway-rw.microservices.svc:5432:*:gateway:${GATEWAY_PASSWORD}
+          postgres-jhipstersamplemicroservice-rw.microservices.svc:5432:*:jhipstersamplemicroservice:${MICROSERVICE_PASSWORD}
           EOF
             chmod 600 /var/lib/pgadmin/pgpass
             chown 5050:5050 /var/lib/pgadmin/pgpass
@@ -86,10 +86,10 @@ pgadmin4:
         MaintenanceDB: "gateway"
         SSLMode: "require"
         Shared: true
-        PassFile: "pgpass"
+        PassFile: "/var/lib/pgadmin/pgpass"
         SavePassword: true
         ConnectionParameters:
-          passfile: "pgpass"
+          passfile: "/var/lib/pgadmin/pgpass"
       "2":
         Name: "Stable - JHipster Microservice DB"
         Group: "Stable"
@@ -100,10 +100,10 @@ pgadmin4:
         MaintenanceDB: "jhipstersamplemicroservice"
         SSLMode: "require"
         Shared: true
-        PassFile: "pgpass"
+        PassFile: "/var/lib/pgadmin/pgpass"
         SavePassword: true
         ConnectionParameters:
-          passfile: "pgpass"
+          passfile: "/var/lib/pgadmin/pgpass"
 
   # Resource requests/limits for safety (preventing auto-scaling)
   resources:
