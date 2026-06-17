@@ -225,6 +225,7 @@ EOF
                     container('semgrep') {
                         dir('microservices-src') {
                             sh """
+                                git config --global --add safe.directory '*' || true
                                 semgrep scan --config=p/security-audit --config=p/owasp-top-10 --config=${env.WORKSPACE}/jenkins-2026-infra/.semgrep/semgrep.yml --sarif --output=semgrep-results.sarif || true
                             """
                             archiveArtifacts artifacts: 'semgrep-results.sarif', allowEmptyArchive: true
@@ -236,6 +237,7 @@ EOF
                                                              passwordVariable: 'GIT_TOKEN', 
                                                              usernameVariable: 'GIT_USER')]) {
                                 sh """
+                                    git config --global --add safe.directory '*' || true
                                     if [ -f semgrep-results.sarif ]; then
                                         echo "Uploading Semgrep SARIF report to GitHub..."
                                         COMMIT_SHA=\$(git rev-parse HEAD)
@@ -261,6 +263,7 @@ EOF
                     container('codeql') {
                         dir('microservices-src') {
                             sh """
+                                git config --global --add safe.directory '*' || true
                                 codeql database create codeql-db --language=javascript --source-root=. --threads=0 --ram=2048 --codescanning-config=${env.WORKSPACE}/jenkins-2026-infra/.github/codeql/codeql-config.yml
                                 codeql database analyze codeql-db --format=sarif-latest --output=codeql-results.sarif --threads=0 --ram=2048 || true
                             """
@@ -273,6 +276,7 @@ EOF
                                                              passwordVariable: 'GIT_TOKEN', 
                                                              usernameVariable: 'GIT_USER')]) {
                                 sh """
+                                    git config --global --add safe.directory '*' || true
                                     if [ -f codeql-results.sarif ]; then
                                         echo "Uploading CodeQL SARIF report to GitHub..."
                                         COMMIT_SHA=\$(git rev-parse HEAD)
