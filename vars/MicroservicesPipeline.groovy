@@ -240,17 +240,28 @@ EOF
                                     git config --global --add safe.directory '*' || true
                                     apk add --no-cache curl || true
                                     if [ -f semgrep-results.sarif ]; then
-                                        echo "Uploading Semgrep SARIF report to GitHub..."
-                                        COMMIT_SHA=\$(git rev-parse HEAD)
+                                        echo "Preparing Semgrep SARIF report payload..."
+                                        gzip -c semgrep-results.sarif | base64 -w0 > semgrep-sarif.b64
+                                        COMMIT_SHA=\$(git rev-parse HEAD | tr -d '\\n')
                                         REF="refs/heads/${params.gitBranch}"
                                         REPO_PATH=\$(echo "${params.gitRepoUrl}" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\\.git\$||')
-                                        SARIF_GZ_B64=\$(gzip -c semgrep-results.sarif | base64 -w0)
+                                        
+                                        echo -n '{"commit_sha":"' > semgrep-payload.json
+                                        echo -n "\$COMMIT_SHA" >> semgrep-payload.json
+                                        echo -n '","ref":"' >> semgrep-payload.json
+                                        echo -n "\$REF" >> semgrep-payload.json
+                                        echo -n '","sarif":"' >> semgrep-payload.json
+                                        cat semgrep-sarif.b64 >> semgrep-payload.json
+                                        echo -n '"}' >> semgrep-payload.json
+                                        
+                                        echo "Uploading Semgrep SARIF report to GitHub..."
                                         RESPONSE=\$(curl -s -o /dev/null -w "%{http_code}" -X POST \\
                                           -H "Authorization: token \$GIT_TOKEN" \\
                                           -H "Accept: application/vnd.github+json" \\
                                           https://api.github.com/repos/\${REPO_PATH}/code-scanning/sarifs \\
-                                          -d "{\\"commit_sha\\":\\"\${COMMIT_SHA}\\",\\"ref\\":\\"\${REF}\\",\\"sarif\\":\\"\${SARIF_GZ_B64}\\"}")
+                                          -d @semgrep-payload.json)
                                         echo "GitHub API response for Semgrep upload: \$RESPONSE"
+                                        rm -f semgrep-sarif.b64 semgrep-payload.json
                                     fi
                                 """
                             }
@@ -280,17 +291,28 @@ EOF
                                     git config --global --add safe.directory '*' || true
                                     apk add --no-cache curl || true
                                     if [ -f codeql-results.sarif ]; then
-                                        echo "Uploading CodeQL SARIF report to GitHub..."
-                                        COMMIT_SHA=\$(git rev-parse HEAD)
+                                        echo "Preparing CodeQL SARIF report payload..."
+                                        gzip -c codeql-results.sarif | base64 -w0 > codeql-sarif.b64
+                                        COMMIT_SHA=\$(git rev-parse HEAD | tr -d '\\n')
                                         REF="refs/heads/${params.gitBranch}"
                                         REPO_PATH=\$(echo "${params.gitRepoUrl}" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\\.git\$||')
-                                        SARIF_GZ_B64=\$(gzip -c codeql-results.sarif | base64 -w0)
+                                        
+                                        echo -n '{"commit_sha":"' > codeql-payload.json
+                                        echo -n "\$COMMIT_SHA" >> codeql-payload.json
+                                        echo -n '","ref":"' >> codeql-payload.json
+                                        echo -n "\$REF" >> codeql-payload.json
+                                        echo -n '","sarif":"' >> codeql-payload.json
+                                        cat codeql-sarif.b64 >> codeql-payload.json
+                                        echo -n '"}' >> codeql-payload.json
+                                        
+                                        echo "Uploading CodeQL SARIF report to GitHub..."
                                         RESPONSE=\$(curl -s -o /dev/null -w "%{http_code}" -X POST \\
                                           -H "Authorization: token \$GIT_TOKEN" \\
                                           -H "Accept: application/vnd.github+json" \\
                                           https://api.github.com/repos/\${REPO_PATH}/code-scanning/sarifs \\
-                                          -d "{\\"commit_sha\\":\\"\${COMMIT_SHA}\\",\\"ref\\":\\"\${REF}\\",\\"sarif\\":\\"\${SARIF_GZ_B64}\\"}")
+                                          -d @codeql-payload.json)
                                         echo "GitHub API response for CodeQL upload: \$RESPONSE"
+                                        rm -f codeql-sarif.b64 codeql-payload.json
                                     fi
                                 """
                             }
