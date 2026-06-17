@@ -230,6 +230,29 @@ EOF
                             archiveArtifacts artifacts: 'semgrep-results.sarif', allowEmptyArchive: true
                         }
                     }
+                    container('git') {
+                        dir('microservices-src') {
+                            withCredentials([usernamePassword(credentialsId: 'microservices-git', 
+                                                             passwordVariable: 'GIT_TOKEN', 
+                                                             usernameVariable: 'GIT_USER')]) {
+                                sh """
+                                    if [ -f semgrep-results.sarif ]; then
+                                        echo "Uploading Semgrep SARIF report to GitHub..."
+                                        COMMIT_SHA=\$(git rev-parse HEAD)
+                                        REF="refs/heads/${params.gitBranch}"
+                                        REPO_PATH=\$(echo "${params.gitRepoUrl}" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\\.git\$||')
+                                        SARIF_GZ_B64=\$(gzip -c semgrep-results.sarif | base64 -w0)
+                                        RESPONSE=\$(curl -s -o /dev/null -w "%{http_code}" -X POST \\
+                                          -H "Authorization: token \$GIT_TOKEN" \\
+                                          -H "Accept: application/vnd.github+json" \\
+                                          https://api.github.com/repos/\${REPO_PATH}/code-scanning/sarifs \\
+                                          -d "{\\"commit_sha\\":\\"\${COMMIT_SHA}\\",\\"ref\\":\\"\${REF}\\",\\"sarif\\":\\"\${SARIF_GZ_B64}\\"}")
+                                        echo "GitHub API response for Semgrep upload: \$RESPONSE"
+                                    fi
+                                """
+                            }
+                        }
+                    }
                 }
             }
 
@@ -244,11 +267,41 @@ EOF
                             archiveArtifacts artifacts: 'codeql-results.sarif', allowEmptyArchive: true
                         }
                     }
+                    container('git') {
+                        dir('microservices-src') {
+                            withCredentials([usernamePassword(credentialsId: 'microservices-git', 
+                                                             passwordVariable: 'GIT_TOKEN', 
+                                                             usernameVariable: 'GIT_USER')]) {
+                                sh """
+                                    if [ -f codeql-results.sarif ]; then
+                                        echo "Uploading CodeQL SARIF report to GitHub..."
+                                        COMMIT_SHA=\$(git rev-parse HEAD)
+                                        REF="refs/heads/${params.gitBranch}"
+                                        REPO_PATH=\$(echo "${params.gitRepoUrl}" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\\.git\$||')
+                                        SARIF_GZ_B64=\$(gzip -c codeql-results.sarif | base64 -w0)
+                                        RESPONSE=\$(curl -s -o /dev/null -w "%{http_code}" -X POST \\
+                                          -H "Authorization: token \$GIT_TOKEN" \\
+                                          -H "Accept: application/vnd.github+json" \\
+                                          https://api.github.com/repos/\${REPO_PATH}/code-scanning/sarifs \\
+                                          -d "{\\"commit_sha\\":\\"\${COMMIT_SHA}\\",\\"ref\\":\\"\${REF}\\",\\"sarif\\":\\"\${SARIF_GZ_B64}\\"}")
+                                        echo "GitHub API response for CodeQL upload: \$RESPONSE"
+                                    fi
+                                """
+                            }
+                        }
+                    }
                 }
             }
 
             stage('Trivy IaC Scan') {
                 steps {
+                    container('git') {
+                        dir('gitops-config-src') {
+                            git url: "${env.JENKINS2026_GITOPS_REPO_URL ?: 'https://github.com/nubenetes/jenkins-2026-gitops-config.git'}",
+                                branch: (params.envName == 'stable' ? 'main' : 'develop'),
+                                credentialsId: 'microservices-git'
+                        }
+                    }
                     container('trivy') {
                         dir('microservices-src') {
                             sh """
@@ -256,7 +309,7 @@ EOF
                             """
                         }
                         sh """
-                            trivy config --config ${env.WORKSPACE}/jenkins-2026-infra/trivy.yaml --exit-code 0 ${env.WORKSPACE}/jenkins-2026-infra/helm/microservices
+                            trivy config --config ${env.WORKSPACE}/jenkins-2026-infra/trivy.yaml --exit-code 0 ${env.WORKSPACE}/gitops-config-src/helm/microservices
                         """
                     }
                 }
