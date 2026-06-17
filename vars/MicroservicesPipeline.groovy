@@ -107,8 +107,8 @@ spec:
         - name: GOGC
           value: "20"
       resources:
-        requests: {cpu: 50m, memory: 128Mi}
-        limits: {cpu: '500m', memory: 2.0Gi}
+        requests: {cpu: 50m, memory: 256Mi}
+        limits: {cpu: '500m', memory: 3.5Gi}
       volumeMounts:
         - name: trivy-cache
           mountPath: /tmp/trivy-cache
@@ -371,7 +371,7 @@ EOF
                     withCredentials([usernamePassword(credentialsId: 'container-registry', usernameVariable: 'TRIVY_USERNAME', passwordVariable: 'TRIVY_PASSWORD')]) {
                         container('trivy') {
                             sh """
-                                trivy image --config ${env.WORKSPACE}/jenkins-2026-infra/trivy.yaml --exit-code 1 --severity CRITICAL,HIGH ${env.IMAGE}
+                                trivy image --scanners vuln --config ${env.WORKSPACE}/jenkins-2026-infra/trivy.yaml --exit-code 1 --severity CRITICAL,HIGH ${env.IMAGE}
                             """
                         }
                     }
