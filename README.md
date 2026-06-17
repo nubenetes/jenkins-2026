@@ -1233,6 +1233,15 @@ below has been done) - `scripts/09-gateway.sh` is also a no-op on
 `platform.target` other than `gke`, since `gke-l7-global-external-managed`
 and `GCPBackendPolicy` are GKE-specific.
 
+> [!IMPORTANT]
+> **Why `enable_gateway` can be disabled vs. why it must be enabled in production/integration:**
+> - **Why it can be disabled**:
+>   1. **Bootstrapping Dependency**: During the initial cluster bootstrap, the global static IP and certificate maps are not yet provisioned. The Gateway resource will fail to program if created before those resources exist.
+>   2. **Local/Developer flow**: Running in sandboxed or local clusters (like Minikube/Kind) where Gateway API or public DNS is unavailable. Disabling it allows fallback to `kubectl port-forward` on `localhost:8080` without certificate mapping.
+> - **Why it must be enabled for production/integration**:
+>   1. **OIDC/Dex Authentication**: When the gateway is disabled, the system configures redirection URLs (like `argocd-cm`'s `url`) to fall back to localhost or empty values. Trying to log in to ArgoCD or Jenkins via OIDC will fail with a `redirect_uri_mismatch` or `Invalid redirect URL` error because the browser's redirect URL does not match the configured OIDC client allowed redirect URIs.
+>   2. **Pipeline Actions**: Pipeline integration stages and UI link banners rely on the public Gateway URLs.
+
 > **Two non-obvious GKE Gateway API requirements**, confirmed against a live
 > cluster and handled by [`scripts/09-gateway.sh`](scripts/09-gateway.sh):
 > - The `Gateway` CRD rejects a `https` listener's `tls.mode: Terminate`
@@ -1260,6 +1269,12 @@ The table below outlines the authentication and authorization mechanisms for eac
 | **Headlamp** | Public URL (`https://headlamp.<baseDomain>`) or `kubectl port-forward` | **Yes** (via Google IAP OAuth) | Token Login (using GKE OAuth access token `ya29....` or ServiceAccount token) | **Kubernetes RBAC**:<br>- GKE maps your GCP Identity to Kubernetes permissions (Project Owner gets cluster-admin)<br>- ServiceAccount token maps to default headlamp-admin bindings |
 | **pgAdmin** | Public URL (`https://pgadmin.<baseDomain>`) or `kubectl port-forward` | **Yes** (via Google IAP OAuth) | Webserver Auth (pgAdmin trusts `X-Goog-Authenticated-User-Email` header) | **Webserver User Mapping & Automated Password Injection**:<br>- Authenticated email is logged in directly to pgAdmin<br>- Database connections are automatically authenticated via a dynamically generated `.pgpass` file (secured via GKE RBAC secrets reader) |
 | **Microservices** (Gateway & Backend) | Public URL (`https://microservices.<baseDomain>`) | **No** (Public Demo App) | JWT Token verification (Gateway issues JWT; microservices validate it) | **Spring Security Roles**:<br>- Enforces API authorization (e.g., `ROLE_USER`, `ROLE_ADMIN`) |
+
+### Troubleshooting ArgoCD OIDC
+If OIDC login to ArgoCD fails with `redirect_uri_mismatch`:
+1. Ensure `gateway.baseDomain` matches the URL you are accessing.
+2. Verify `argocd-cm` has the correct `dex.config` and the `url` field matches `https://argocd.<baseDomain>`.
+3. Check that the OIDC Client's redirect URI in the Google Cloud Console matches the expected path: `https://argocd.<baseDomain>/api/dex/callback`.
 
 ### One-time setup
 
@@ -1922,7 +1937,10 @@ in GitHub Actions tears it down automatically.
 - **Rotating the Jenkins admin password**: delete the `jenkins-credentials`
   Secret in the `jenkins` namespace and re-run `scripts/01-namespaces.sh` +
   `scripts/04-jenkins.sh`.
-- **ArgoCD OIDC Login fails with `redirect_uri_mismatch`**: Verify that `https://argocd.<baseDomain>/api/dex/callback` is added to your Google OAuth client in the GCP Console.
+- **ArgoCD OIDC Login fails with `redirect_uri_mismatch` or `Invalid redirect URL`**: 
+  - Ensure the GKE cluster was provisioned with `enable_gateway: true` in GitHub Actions. If the gateway is disabled, redirect URLs in `argocd-cm` will fallback to localhost or empty domains, breaking OIDC.
+  - Verify that `https://argocd.<baseDomain>/api/dex/callback` is added to your Google OAuth client in the GCP Console.
+  - If you terminate TLS at the gateway and route traffic over HTTP to the backend `argocd-server`, ensure that the `url` field in `argocd-cm` is set to `https://...` (without trailing slash) and the server runs in `--insecure` mode so it trusts the `X-Forwarded-Proto: https` header sent by Google Cloud Load Balancer.
 - **ArgoCD installation stuck in `pending-install`**: The `scripts/08.5-argocd.sh` script includes recovery logic to detect and clear stuck Helm releases. If it hangs, the script will automatically attempt to `helm uninstall` and retry.
 - **Gateway resource mapping errors (`GCPBackendPolicy` / `HealthCheckPolicy`)**: Ensure you are using `networking.gke.io/v1` as the API version in `scripts/09-gateway.sh` (already fixed in `main`/`develop`).
 - **`test/e2e.sh` was interrupted (Ctrl-C) or `terraform destroy` failed**:
