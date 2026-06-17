@@ -44,16 +44,20 @@ flowchart TD
 
     subgraph observability_ns["namespace: observability"]
         otel["OpenTelemetry Operator (CRDs: Instrumentation,<br/>OpenTelemetryCollector) - Java auto-instrumentation<br/>otel-collector-gateway (Deployment, OTLP receiver)<br/>otel-collector-logs (DaemonSet, filelog receiver)"]
+        k8s_mon["k8s-monitoring (Grafana Alloy Operator & StatefulSet)<br/>- Scrapes cluster metrics (kube-state-metrics)<br/>- Scrapes host metrics (node-exporter)<br/>- Collects cluster events"]
     end
 
     jenkins -->|OTLP| otel
     microservices -->|"OTLP (traces / metrics / logs)"| otel
+    
+    gke["GKE Cluster Infrastructure<br/>(Nodes, Kubelet, Events)"] --> k8s_mon
 
     grafana_cloud["Grafana Cloud<br/>OTLP gateway -> Mimir, Loki, Tempo + Grafana"]
     oss["In-cluster: kube-prometheus-stack<br/>(Prometheus + Grafana) + Loki + Tempo"]
 
     otel -->|"observability.mode:<br/>grafana-cloud"| grafana_cloud
     otel -->|"observability.mode:<br/>oss"| oss
+    k8s_mon -->|"OTLP/HTTP"| grafana_cloud
 ```
 
 The whole stack runs inside a GKE cluster.

@@ -497,7 +497,7 @@
         }
       ],
       "title": "Jenkins Traces (pipeline / stage / step spans)",
-      "type": "traces"
+      "type": "table"
     },
     {
       "datasource": {
