@@ -25,8 +25,11 @@ spec:
         - name: DOCKER_HOST
           value: tcp://localhost:2375
       resources:
-        requests: {cpu: 100m, memory: 1024Mi}
-        limits: {cpu: '2', memory: 2.5Gi}
+        requests: {cpu: 100m, memory: 512Mi}
+        limits: {cpu: '2', memory: 2.0Gi}
+      volumeMounts:
+        - name: maven-cache
+          mountPath: /root/.m2
     - name: node
       image: node:20-bookworm
       command: ['sleep']
@@ -37,6 +40,9 @@ spec:
       resources:
         requests: {cpu: 5m, memory: 64Mi}
         limits: {cpu: '100m', memory: 128Mi}
+      volumeMounts:
+        - name: npm-cache
+          mountPath: /root/.npm
     - name: docker
       image: docker:26-dind
       securityContext:
@@ -72,10 +78,61 @@ spec:
       resources:
         requests: {cpu: 5m, memory: 64Mi}
         limits: {cpu: 100m, memory: 128Mi}
+    - name: semgrep
+      image: semgrep/semgrep:1.79.0
+      command: ['sleep']
+      args: ['infinity']
+      resources:
+        requests: {cpu: 50m, memory: 128Mi}
+        limits: {cpu: '500m', memory: 512Mi}
+    - name: codeql
+      image: mcr.microsoft.com/cstsectools/codeql-container:latest
+      command: ['sleep']
+      args: ['infinity']
+      securityContext:
+        runAsUser: 0
+      resources:
+        requests: {cpu: 100m, memory: 128Mi}
+        limits: {cpu: '2', memory: 2.5Gi}
+      volumeMounts:
+        - name: codeql-cache
+          mountPath: /usr/local/codeql-home/.codeql
+    - name: trivy
+      image: aquasec/trivy:0.52.2
+      command: ['sleep']
+      args: ['infinity']
+      env:
+        - name: TRIVY_CACHE_DIR
+          value: /tmp/trivy-cache
+        - name: GOGC
+          value: "20"
+      resources:
+        requests: {cpu: 50m, memory: 256Mi}
+        limits: {cpu: '500m', memory: 3.5Gi}
+      volumeMounts:
+        - name: trivy-cache
+          mountPath: /tmp/trivy-cache
     - name: jnlp
       resources:
         requests: {cpu: 10m, memory: 128Mi}
         limits: {cpu: 200m, memory: 256Mi}
+  volumes:
+    - name: maven-cache
+      hostPath:
+        path: /tmp/jenkins-maven-cache
+        type: DirectoryOrCreate
+    - name: npm-cache
+      hostPath:
+        path: /tmp/jenkins-npm-cache
+        type: DirectoryOrCreate
+    - name: trivy-cache
+      hostPath:
+        path: /tmp/jenkins-trivy-cache
+        type: DirectoryOrCreate
+    - name: codeql-cache
+      hostPath:
+        path: /tmp/jenkins-codeql-cache
+        type: DirectoryOrCreate
 """
             }
         }
@@ -154,6 +211,183 @@ EOF
                 }
             }
 
+            stage('Checkout Infra configs') {
+                steps {
+                    container('git') {
+                        dir('jenkins-2026-infra') {
+                            git url: "${env.JENKINS2026_REPO_URL ?: 'https://github.com/nubenetes/jenkins-2026.git'}",
+                                branch: "${env.JENKINS2026_REPO_BRANCH ?: 'develop'}"
+                        }
+                    }
+                }
+            }
+
+            stage('Semgrep SAST') {
+                steps {
+                    container('semgrep') {
+                        dir('microservices-src') {
+                            sh """
+                                git config --global --add safe.directory '*' || true
+                                semgrep scan --config=p/security-audit --config=p/owasp-top-ten --config=${env.WORKSPACE}/jenkins-2026-infra/.semgrep/semgrep.yml --sarif --sarif-output=semgrep-results.sarif . || true
+                            """
+                            archiveArtifacts artifacts: 'semgrep-results.sarif', allowEmptyArchive: true
+                        }
+                    }
+                    container('git') {
+                        dir('microservices-src') {
+                            withCredentials([usernamePassword(credentialsId: 'microservices-git', 
+                                                             passwordVariable: 'GIT_TOKEN', 
+                                                             usernameVariable: 'GIT_USER')]) {
+                                sh """
+                                    git config --global --add safe.directory '*' || true
+                                    apk add --no-cache curl || true
+                                    if [ -f semgrep-results.sarif ]; then
+                                        echo "Preparing Semgrep SARIF report payload..."
+                                        gzip -c semgrep-results.sarif | base64 -w0 > semgrep-sarif.b64
+                                        COMMIT_SHA=\$(git -C ${env.WORKSPACE}/jenkins-2026-infra rev-parse HEAD | tr -d '\\n')
+                                        REF="refs/heads/${env.JENKINS2026_REPO_BRANCH ?: 'develop'}"
+                                        REPO_PATH=\$(echo "${env.JENKINS2026_REPO_URL ?: 'https://github.com/nubenetes/jenkins-2026.git'}" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\\.git\$||')
+                                        
+                                        echo -n '{"commit_sha":"' > semgrep-payload.json
+                                        echo -n "\$COMMIT_SHA" >> semgrep-payload.json
+                                        echo -n '","ref":"' >> semgrep-payload.json
+                                        echo -n "\$REF" >> semgrep-payload.json
+                                        echo -n '","sarif":"' >> semgrep-payload.json
+                                        cat semgrep-sarif.b64 >> semgrep-payload.json
+                                        echo -n '"}' >> semgrep-payload.json
+                                        
+                                        echo "Uploading Semgrep SARIF report to GitHub..."
+                                        RESPONSE=\$(curl -s -o /dev/null -w "%{http_code}" -X POST \\
+                                          -H "Authorization: token \$GIT_TOKEN" \\
+                                          -H "Accept: application/vnd.github+json" \\
+                                          https://api.github.com/repos/\${REPO_PATH}/code-scanning/sarifs \\
+                                          -d @semgrep-payload.json)
+                                        echo "GitHub API response for Semgrep upload: \$RESPONSE"
+                                        if [ "\$RESPONSE" = "202" ]; then
+                                             echo "--------------------------------------------------------------------------------"
+                                             echo "SUCCESS: Semgrep SARIF report uploaded to GitHub Code Scanning API!"
+                                             echo ""
+                                             echo "WHAT IS SEMGREP?"
+                                             echo "Semgrep is a fast, open-source static analysis tool for finding bugs,"
+                                             echo "detecting vulnerabilities, and enforcing code standards during development."
+                                             echo "It uses syntax-aware pattern matching without needing a build step."
+                                             echo ""
+                                             echo "WHERE CAN I VIEW THE REPORT?"
+                                             echo "1. GitHub Code Scanning Alerts (Interactive UI with code mappings):"
+                                             echo "   https://github.com/\${REPO_PATH}/security/code-scanning"
+                                             echo "2. Jenkins Local Workspace (Download raw analysis report):"
+                                             echo "   \${BUILD_URL}artifact/microservices-src/semgrep-results.sarif"
+                                             echo "--------------------------------------------------------------------------------"
+                                        else
+                                            echo "WARNING: Semgrep SARIF upload received unexpected status \$RESPONSE"
+                                            echo "If this is a fork, ensure GitHub Advanced Security / Code Scanning is enabled."
+                                        fi
+                                        rm -f semgrep-sarif.b64 semgrep-payload.json
+                                    fi
+                                """
+                            }
+                        }
+                    }
+                }
+            }
+
+            stage('CodeQL Analysis') {
+                steps {
+                    container('codeql') {
+                        dir('microservices-src') {
+                            sh """
+                                git config --global --add safe.directory '*' || true
+                                echo "Upgrading Node.js inside CodeQL container to v20..."
+                                export DEBIAN_FRONTEND=noninteractive
+                                (apt-get update && apt-get install -y curl tar xz-utils) || true
+                                (curl -sL https://nodejs.org/dist/v20.11.1/node-v20.11.1-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1) || true
+                                node --version || true
+                                codeql database create codeql-db --language=javascript --source-root=. --threads=0 --ram=1536 --codescanning-config=${env.WORKSPACE}/jenkins-2026-infra/.github/codeql/codeql-config.yml
+                                codeql database analyze codeql-db --format=sarif-latest --output=codeql-results.sarif --threads=0 --ram=1536 || true
+                            """
+                            archiveArtifacts artifacts: 'codeql-results.sarif', allowEmptyArchive: true
+                        }
+                    }
+                    container('git') {
+                        dir('microservices-src') {
+                            withCredentials([usernamePassword(credentialsId: 'microservices-git', 
+                                                             passwordVariable: 'GIT_TOKEN', 
+                                                             usernameVariable: 'GIT_USER')]) {
+                                sh """
+                                    git config --global --add safe.directory '*' || true
+                                    apk add --no-cache curl || true
+                                    if [ -f codeql-results.sarif ]; then
+                                        echo "Preparing CodeQL SARIF report payload..."
+                                        gzip -c codeql-results.sarif | base64 -w0 > codeql-sarif.b64
+                                        COMMIT_SHA=\$(git -C ${env.WORKSPACE}/jenkins-2026-infra rev-parse HEAD | tr -d '\\n')
+                                        REF="refs/heads/${env.JENKINS2026_REPO_BRANCH ?: 'develop'}"
+                                        REPO_PATH=\$(echo "${env.JENKINS2026_REPO_URL ?: 'https://github.com/nubenetes/jenkins-2026.git'}" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\\.git\$||')
+                                        
+                                        echo -n '{"commit_sha":"' > codeql-payload.json
+                                        echo -n "\$COMMIT_SHA" >> codeql-payload.json
+                                        echo -n '","ref":"' >> codeql-payload.json
+                                        echo -n "\$REF" >> codeql-payload.json
+                                        echo -n '","sarif":"' >> codeql-payload.json
+                                        cat codeql-sarif.b64 >> codeql-payload.json
+                                        echo -n '"}' >> codeql-payload.json
+                                        
+                                        echo "Uploading CodeQL SARIF report to GitHub..."
+                                        RESPONSE=\$(curl -s -o /dev/null -w "%{http_code}" -X POST \\
+                                          -H "Authorization: token \$GIT_TOKEN" \\
+                                          -H "Accept: application/vnd.github+json" \\
+                                          https://api.github.com/repos/\${REPO_PATH}/code-scanning/sarifs \\
+                                          -d @codeql-payload.json)
+                                        echo "GitHub API response for CodeQL upload: \$RESPONSE"
+                                        if [ "\$RESPONSE" = "202" ]; then
+                                             echo "--------------------------------------------------------------------------------"
+                                             echo "SUCCESS: CodeQL SARIF report uploaded to GitHub Code Scanning API!"
+                                             echo ""
+                                             echo "WHAT IS CODEQL?"
+                                             echo "CodeQL is GitHub's advanced semantic code analysis engine. By treating"
+                                             echo "code as data, it executes queries to detect security vulnerabilities,"
+                                             echo "data flow anomalies, and structural issues in your application stack."
+                                             echo ""
+                                             echo "WHERE CAN I VIEW THE REPORT?"
+                                             echo "1. GitHub Code Scanning Alerts (Interactive UI with data flow paths):"
+                                             echo "   https://github.com/\${REPO_PATH}/security/code-scanning"
+                                             echo "2. Jenkins Local Workspace (Download raw analysis report):"
+                                             echo "   \${BUILD_URL}artifact/microservices-src/codeql-results.sarif"
+                                             echo "--------------------------------------------------------------------------------"
+                                        else
+                                            echo "WARNING: CodeQL SARIF upload received unexpected status \$RESPONSE"
+                                            echo "If this is a fork, ensure GitHub Advanced Security / Code Scanning is enabled."
+                                        fi
+                                        rm -f codeql-sarif.b64 codeql-payload.json
+                                    fi
+                                """
+                            }
+                        }
+                    }
+                }
+            }
+
+            stage('Trivy IaC Scan') {
+                steps {
+                    container('git') {
+                        dir('gitops-config-src') {
+                            git url: "${env.JENKINS2026_GITOPS_REPO_URL ?: 'https://github.com/nubenetes/jenkins-2026-gitops-config.git'}",
+                                branch: (params.envName == 'stable' ? 'main' : 'develop'),
+                                credentialsId: 'microservices-git'
+                        }
+                    }
+                    container('trivy') {
+                        dir('microservices-src') {
+                            sh """
+                                trivy config --config ${env.WORKSPACE}/jenkins-2026-infra/trivy.yaml --exit-code 0 .
+                            """
+                        }
+                        sh """
+                            trivy config --config ${env.WORKSPACE}/jenkins-2026-infra/trivy.yaml --exit-code 0 ${env.WORKSPACE}/gitops-config-src/helm/microservices
+                        """
+                    }
+                }
+            }
+
             stage('Build & Test') {
                 steps {
                     dir('microservices-src') {
@@ -171,6 +405,18 @@ EOF
                             image: env.IMAGE,
                             registryHost: env.REGISTRY.tokenize('/')[0]
                         )
+                    }
+                }
+            }
+
+            stage('Trivy Image Scan') {
+                steps {
+                    withCredentials([usernamePassword(credentialsId: 'container-registry', usernameVariable: 'TRIVY_USERNAME', passwordVariable: 'TRIVY_PASSWORD')]) {
+                        container('trivy') {
+                            sh """
+                                trivy image --scanners vuln --config ${env.WORKSPACE}/jenkins-2026-infra/trivy.yaml --exit-code 0 --severity CRITICAL,HIGH ${env.IMAGE}
+                            """
+                        }
                     }
                 }
             }

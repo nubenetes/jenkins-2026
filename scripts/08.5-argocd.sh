@@ -158,6 +158,9 @@ kubectl apply -f "${J2026_ROOT_DIR}/argocd/microservices-project.yaml"
 log_step "Configuring CloudNative-PG Operator via ArgoCD"
 kubectl apply -f "${J2026_ROOT_DIR}/argocd/cnpg-app.yaml"
 
+log_step "Configuring External Secrets Operator via ArgoCD"
+kubectl apply -f "${J2026_ROOT_DIR}/argocd/external-secrets-app.yaml"
+
 log_step "Configuring Headlamp via ArgoCD"
 # Inject values into the Headlamp Application manifest
 HEADLAMP_APP_FILE=$(mktemp)

@@ -26,6 +26,7 @@ def call(Map cfg) {
         sh """
           set -eux
           unset MAVEN_CONFIG
+          export MAVEN_OPTS="-Xmx1024m -XX:+UseSerialGC"
           # Check if we are in a subfolder or monorepo
           BUILD_DIR="."
           if [ -n "${cfg.module}" ] && [ -f "${cfg.module}/mvnw" ]; then
@@ -36,18 +37,18 @@ def call(Map cfg) {
 
           # Try Jib first (modern preference), then fallback to spring-boot:build-image
           if grep -q "jib-maven-plugin" pom.xml; then
-             ./mvnw -B -Pprod -DskipTests jib:build -Djib.to.image=${cfg.image} \
+             ./mvnw -B -Pprod -DskipTests -Dmaven.compiler.maxmem=512m jib:build -Djib.to.image=${cfg.image} \
                -Djib.to.auth.username=\$REG_USER -Djib.to.auth.password=\$REG_PASS \
                -Djib.serialize=true
              # Jib pushes directly, so we flag it to skip local docker push
              echo "JIB_PUSHED" > ${env.WORKSPACE}/jib_pushed.txt
           else
              if [ -n "${cfg.module}" ]; then
-               ./mvnw -B -pl ${cfg.module} -am -Pprod -DskipTests spring-boot:build-image \
+               ./mvnw -B -pl ${cfg.module} -am -Pprod -DskipTests -Dmaven.compiler.maxmem=512m spring-boot:build-image \
                  -Dspring-boot.build-image.imageName=${cfg.image} \
                  -Dspring-boot.build-image.publish=false
              else
-               ./mvnw -B -Pprod -DskipTests spring-boot:build-image \
+               ./mvnw -B -Pprod -DskipTests -Dmaven.compiler.maxmem=512m spring-boot:build-image \
                  -Dspring-boot.build-image.imageName=${cfg.image} \
                  -Dspring-boot.build-image.publish=false
              fi

@@ -173,3 +173,10 @@ resource "google_container_node_pool" "primary" {
     tags = ["jenkins-2026"]
   }
 }
+
+# Grant objectAdmin privileges on the pre-created backups bucket to the GKE node service account
+resource "google_storage_bucket_iam_member" "nodes_postgres_backups" {
+  bucket = "${var.cluster_name}-postgres-backups"
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.nodes.email}"
+}

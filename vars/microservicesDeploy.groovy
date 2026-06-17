@@ -14,6 +14,7 @@ def call(Map cfg) {
   def infraBranch = cfg.envName == 'stable' ? 'main' : 'develop'
 
   dir('jenkins-2026-infra') {
+    deleteDir()
     stage('GitOps Update') {
       container('git') {
         withCredentials([usernamePassword(credentialsId: 'microservices-git', 

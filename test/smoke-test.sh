@@ -75,7 +75,7 @@ fi
 log_step "Microservices (stable)"
 for ns in "${J2026_MICROSERVICES_NS_STABLE}"; do
   check "namespace ${ns} has ${NUM_SERVICES} Deployments" \
-    bash -c "[[ \$(kubectl -n '${ns}' get deploy -o name | wc -l) -eq ${NUM_SERVICES} ]]"
+    bash -c "[[ \$(kubectl -n '${ns}' get deploy -o jsonpath='{range .items[*]}{.metadata.name}{\"\\n\"}{end}' | grep -v 'pooler' | wc -l) -eq ${NUM_SERVICES} ]]"
 done
 
 echo

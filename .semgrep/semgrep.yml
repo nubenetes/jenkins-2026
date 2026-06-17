@@ -1,0 +1,23 @@
+# .semgrep/semgrep.yml
+# Central static analysis configuration file for jenkins-2026 PoC
+
+rules:
+  - id: detect-hardcoded-secrets
+    languages: [generic]
+    severity: WARNING
+    message: "Potential hardcoded credential or secret detected. Move this value to Google Secret Manager and load it via External Secrets Operator."
+    pattern-regex: '(?i)(db_password|password|client_secret|api_key|token|auth_key)\s*[:=]\s*["''][a-zA-Z0-9_\-\.]{8,}["'']'
+
+  - id: spring-csrf-disabled
+    languages: [java]
+    severity: WARNING
+    message: "Spring Security CSRF protection has been explicitly disabled. Verify if this is required and ensure alternative protections exist."
+    pattern: |
+      $HTTP.csrf().disable()
+
+  - id: insecure-http-connection
+    languages: [java, javascript, typescript]
+    severity: WARNING
+    message: "Insecure HTTP protocol used instead of HTTPS. Upgrade to secure transport layer."
+    pattern: |
+      "http://$DOMAIN"
