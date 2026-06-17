@@ -11,14 +11,14 @@ def call(Map cfg) {
       sh """
         set -eux
         unset MAVEN_CONFIG
-        export MAVEN_OPTS="-Xmx1536m -XX:+UseSerialGC"
+        export MAVEN_OPTS="-Xmx1024m -XX:+UseSerialGC"
         if [ -n "${cfg.module}" ] && [ -f "${cfg.module}/mvnw" ]; then
           cd ${cfg.module}
-          ./mvnw -B -DskipITs clean verify
+          ./mvnw -B -DskipITs -Dmaven.compiler.maxmem=512m -DargLine="-Xmx512m -XX:+UseSerialGC" clean verify
         elif [ -n "${cfg.module}" ]; then
-          ./mvnw -B -pl ${cfg.module} -am -DskipITs clean verify
+          ./mvnw -B -pl ${cfg.module} -am -DskipITs -Dmaven.compiler.maxmem=512m -DargLine="-Xmx512m -XX:+UseSerialGC" clean verify
         else
-          ./mvnw -B -DskipITs clean verify
+          ./mvnw -B -DskipITs -Dmaven.compiler.maxmem=512m -DargLine="-Xmx512m -XX:+UseSerialGC" clean verify
         fi
       """
     }
