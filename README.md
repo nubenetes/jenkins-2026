@@ -12,12 +12,14 @@ JHipster microservices reference application.
 
 - **Observability (Grafana Cloud / OSS)**: Traces, metrics and logs are fully correlated. Dashboard deployment is managed via the native **`gcx` CLI** using a GitOps workflow.
 - **ArgoCD (GitOps)**: The entire Microservices stack is managed via **ArgoCD**, providing a declarative GitOps engine for continuous delivery. It is integrated with Google OIDC for secure, single sign-on access.
-- **CrunchyData Postgres Operator (PGO)**: Managed natively by ArgoCD
-  via the [`pgo-app.yaml`](argocd/pgo-app.yaml) application. For each microservice,
-  the Helm chart dynamically provisions a `PostgresCluster` CRD. The Operator
-  automatically spins up a highly available PostgreSQL 15 database, manages
-  pgBackRest backups, and securely injects connection credentials into the
-  application pods without human intervention.
+- **CloudNative-PG Operator (CNPG)**: Managed natively by ArgoCD
+  via the [`cnpg-app.yaml`](argocd/cnpg-app.yaml) application. For each microservice,
+  the Helm chart dynamically provisions a dedicated `Cluster` CRD. The Operator
+  automatically spins up a highly available (HA) PostgreSQL 18 database with a 3-instance topology
+  (1 Primary, 2 Replicas), separates database storage from write-ahead logs (`walStorage`),
+  and utilizes native Barman-based Cloud backups. Connection credentials are auto-generated
+  and securely injected into the application pods, while traffic is routed through a declarative PgBouncer `Pooler`.
+
 
 
 It is configured specifically for **Google Kubernetes Engine (GKE)**.
@@ -270,14 +272,14 @@ graph TB
 
 ### Microservices & Database Architecture
 
-The modernized JHipster system is built on a containerized, cloud-native microservices architecture using **Spring Boot 3.x**, **Angular**, and **Java 21**. It consists of two primary services, each with its own dedicated datastore managed by the **Crunchy Data Postgres Operator**:
+The modernized JHipster system is built on a containerized, cloud-native microservices architecture using **Spring Boot 3.x**, **Angular**, and **Java 21**. It consists of two primary services, each with its own dedicated database tier managed by the **CloudNative-PG (CNPG) Operator** with built-in high-availability (HA) and connection pooling:
 
 1. **`gateway`**:
    - **Role**: Serves as the single entry point for all client requests. It hosts the Angular frontend web application and handles routing, JWT-based security verification, and rate-limiting.
-   - **Database**: Connects to `postgres-gateway` for storing session metadata or gateway-specific configurations.
+   - **Database**: Connects to the primary PostgreSQL instance in the `postgres-gateway` cluster via a dedicated PgBouncer pooler (`postgres-gateway-pooler`).
 2. **`jhipstersamplemicroservice`**:
    - **Role**: Serves as the backend microservice that contains business logic and REST endpoints.
-   - **Database**: Connects to `postgres-jhipstersamplemicroservice` for storing application data.
+   - **Database**: Connects to the primary PostgreSQL instance in the `postgres-jhipstersamplemicroservice` cluster via a dedicated PgBouncer pooler (`postgres-jhipstersamplemicroservice-pooler`).
 
 #### Architecture & Data Flow Diagram
 
@@ -287,7 +289,7 @@ graph TD
         Browser["Browser<br/>(Angular UI)"]
     end
 
-    subgraph "API Gateway (Namespace: microservices / -develop)"
+    subgraph "API Gateway (Namespace: microservices)"
         GW["gateway<br/>(Spring Boot / Angular UI)<br/>Port 8080"]
     end
 
@@ -295,9 +297,22 @@ graph TD
         S_Ms["jhipstersamplemicroservice<br/>(Spring Boot)<br/>Port 8081"]
     end
 
-    subgraph "Database Tier (Crunchy Data Postgres clusters)"
-        DB_GW[("postgres-gateway")]
-        DB_Ms[("postgres-<br/>jhipstersamplemicroservice")]
+    subgraph "Connection Pooling (PgBouncer Poolers)"
+        Pool_GW["postgres-gateway-pooler<br/>(Service: Port 5432)"]
+        Pool_Ms["postgres-jhipstersamplemicroservice-pooler<br/>(Service: Port 5432)"]
+    end
+
+    subgraph "Database Tier (CloudNative-PG 3-Instance Clusters)"
+        subgraph "postgres-gateway Cluster"
+            DB_GW_P[("Primary (gateway-1)")]
+            DB_GW_R1[("Standby (gateway-2)")]
+            DB_GW_R2[("Standby (gateway-3)")]
+        end
+        subgraph "postgres-jhipstersamplemicroservice Cluster"
+            DB_Ms_P[("Primary (ms-1)")]
+            DB_Ms_R1[("Standby (ms-2)")]
+            DB_Ms_R2[("Standby (ms-3)")]
+        end
     end
 
     subgraph "Telemetry (Observability Namespace)"
@@ -310,9 +325,19 @@ graph TD
     %% API Routing
     GW -->|"REST / JWT (Port 8081)"| S_Ms
     
-    %% Database connections
-    GW -->|"JDBC (Port 5432)"| DB_GW
-    S_Ms -->|"JDBC (Port 5432)"| DB_Ms
+    %% Connection Pooling Routing
+    GW -->|"JDBC (Port 5432)"| Pool_GW
+    S_Ms -->|"JDBC (Port 5432)"| Pool_Ms
+    
+    %% Database Routing (Session-based)
+    Pool_GW -->|Primary Read/Write| DB_GW_P
+    Pool_Ms -->|Primary Read/Write| DB_Ms_P
+    
+    %% Replication
+    DB_GW_P -->|Replication| DB_GW_R1
+    DB_GW_P -->|Replication| DB_GW_R2
+    DB_Ms_P -->|Replication| DB_Ms_R1
+    DB_Ms_P -->|Replication| DB_Ms_R2
     
     %% Auto-Instrumentation Telemetry
     GW -.->|"OTLP/gRPC (Port 4317)"| OTEL_Collector
@@ -320,12 +345,25 @@ graph TD
 ```
 
 #### Database Injection & Secrets
-The database connections are securely managed by the Crunchy Data Postgres Operator. The operator automatically provisions a `PostgresCluster` for each service and exports credentials into a Kubernetes Secret (e.g., `postgres-jhipstersamplemicroservice-pguser-jhipstersamplemicroservice`). The Helm chart maps these secret values to Spring database environment variables:
-- `SPRING_DATASOURCE_URL` (JDBC URL)
+The database connections are securely managed by the CloudNative-PG Operator. The operator automatically provisions a basic-auth secret `postgres-{{ $name }}-app` for each cluster containing:
+- `username` (the owner username, e.g. `gateway`)
+- `password` (auto-generated high-entropy password string)
+
+The Helm chart maps these secret values to Spring database environment variables:
+- `SPRING_DATASOURCE_URL` (JDBC URL targeting PgBouncer: `jdbc:postgresql://postgres-{{ $name }}-pooler.microservices.svc:5432/{{ $name }}?ssl=true&sslmode=require`)
 - `SPRING_DATASOURCE_USERNAME` (username)
 - `SPRING_DATASOURCE_PASSWORD` (password)
+- `SPRING_R2DBC_URL` (R2DBC URL: `r2dbc:postgresql://postgres-{{ $name }}-pooler.microservices.svc:5432/{{ $name }}?sslMode=require`)
+
+#### Host-Based Authentication (pg_hba.conf) Security
+Dynamic host-based authentication is enforced natively by CNPG:
+* **`podSelectorRefs` Mapping**: Restricts application-level access strictly to pods in the same namespace matching the label `app.kubernetes.io/name: <service>`. Traditional static CIDR blocks are avoided, preventing unauthorized cross-contamination.
+* **PgBouncer Client Certs**: Restricts connection pooler managers to client certificate authentication (`cert` auth method).
+* **pgAdmin CIDR Access**: Grants secure pgAdmin read-only querying access using cluster pod network blocks (`10.20.0.0/16`).
+* **Catch-All Reject**: Enforces a final `- host all all all reject` rule to deny any unauthorized ingress from pods or external clusters.
 
 #### pgAdmin & Database Administration
+
 
 A total of **2 Postgres databases** are provisioned in the cluster (both in the `microservices` namespace). They can be administered via **pgAdmin 4**:
 
@@ -361,8 +399,8 @@ graph TD
     end
 
     subgraph "microservices Namespace"
-        sec_gw["Secret:<br/>postgres-gateway-pguser-gateway"]
-        sec_ms["Secret:<br/>postgres-jhipstersamplemicroservice-pguser-jhipstersamplemicroservice"]
+        sec_gw["Secret:<br/>postgres-gateway-app"]
+        sec_ms["Secret:<br/>postgres-jhipstersamplemicroservice-app"]
         rb_pg["RoleBinding:<br/>pgadmin-secret-reader-binding"]
         role_pg["Role:<br/>pgadmin-secret-reader"]
         db_gw[("Postgres: postgres-gateway")]
@@ -394,12 +432,13 @@ graph TD
 If you need to connect to the databases manually using `psql` or external CLI tools, retrieve the generated passwords from their respective Kubernetes secrets:
 *   **Gateway DB password:**
     ```bash
-    kubectl get secret postgres-gateway-pguser-gateway -n microservices -o jsonpath='{.data.password}' | base64 -d
+    kubectl get secret postgres-gateway-app -n microservices -o jsonpath='{.data.password}' | base64 -d
     ```
 *   **JHipster Microservice DB password:**
     ```bash
-    kubectl get secret postgres-jhipstersamplemicroservice-pguser-jhipstersamplemicroservice -n microservices -o jsonpath='{.data.password}' | base64 -d
+    kubectl get secret postgres-jhipstersamplemicroservice-app -n microservices -o jsonpath='{.data.password}' | base64 -d
     ```
+
 
 
 ---
@@ -472,7 +511,7 @@ The deployment lifecycle is managed by **ArgoCD**. Application manifests are sto
 | `microservices-stable` | `Application` | `jenkins-2026-gitops-config` | `helm/microservices/` + `values-stable.yaml` | `microservices` | Synced |
 | `headlamp` | `Application` | `jenkins-2026-gitops-config` | `helm/headlamp/values.yaml` | `headlamp` | Healthy |
 | `pgadmin` | `Application` | `jenkins-2026-gitops-config` | `helm/pgadmin/` | `pgadmin` | Healthy |
-| `postgres-operator` | `Application` | `CrunchyData/postgres-operator@v5.7.9` | `config/default` | `postgres-operator` | Healthy |
+| `cnpg-operator` | `Application` | `cloudnative-pg` chart | `https://cloudnative-pg.github.io/charts` | `cnpg-system` | Healthy |
 
 ### Security & Integration
 - **Jenkins Integration**: A dedicated `jenkins` account is created in ArgoCD with a scoped **API Token**. This token is stored in the `jenkins-credentials` Secret and used by the `argocd` CLI inside pipeline agents to trigger `argocd app sync --wait`.
@@ -617,7 +656,64 @@ Verify that Headlamp's constrained impersonation ClusterRoles restrict access to
    # Output: no
    ```
 
+#### Scenario D: CloudNative-PG Operator HA Failover, Storage Separation, & pg_hba Validation
+Verify that the PostgreSQL database tier managed by the CloudNative-PG (CNPG) operator maintains quorum, recovers immediately from primary node failure, routes through PgBouncer, and enforces zero-trust host-based security rules.
+
+1. **Verify HA Replication & Health**:
+   Retrieve the status of the PostgreSQL gateway cluster:
+   ```bash
+   kubectl get cluster postgres-gateway -n microservices -o yaml
+   ```
+   *Verification*: Under `.status`, ensure `instancesStatus.healthy` lists all three instances (`postgres-gateway-1`, `postgres-gateway-2`, `postgres-gateway-3`), and `readyInstances` is `3`.
+
+2. **Verify WAL & Data Storage Separation**:
+   Verify that WAL logs are written to a separate high-throughput persistent volume compared to PGDATA:
+   ```bash
+   kubectl get pvc -n microservices -l cnpg.io/cluster=postgres-gateway
+   ```
+   *Expected Output*: You should see six PVCs: three standard data storage volumes (`postgres-gateway-1`, `postgres-gateway-2`, `postgres-gateway-3`) and three dedicated WAL volumes (`postgres-gateway-1-wal`, `postgres-gateway-2-wal`, `postgres-gateway-3-wal`), each bound to the GKE `premium-rwo` storage class.
+
+3. **Simulate Primary Node Failover (Chaos Test)**:
+   Find the current primary pod:
+   ```bash
+   kubectl get cluster postgres-gateway -n microservices -o jsonpath='{.status.currentPrimary}'
+   # E.g. Output: postgres-gateway-1
+   ```
+   Delete the primary pod to simulate a hard crash:
+   ```bash
+   kubectl delete pod <current-primary-pod> -n microservices --grace-period=0 --force
+   ```
+   In a separate shell, watch the cluster recovery:
+   ```bash
+   kubectl get pod -n microservices -l cnpg.io/cluster=postgres-gateway -w
+   ```
+   *Verification*:
+   * Within seconds, the CNPG controller detects the failure and promotes one of the standbys (e.g. `postgres-gateway-2`) to Primary.
+   * Check the cluster resource status to verify the new primary:
+     ```bash
+     kubectl get cluster postgres-gateway -n microservices -o jsonpath='{.status.currentPrimary}'
+     ```
+   * The deleted pod is automatically rescheduled as a standby replica, resyncing via WAL replication.
+   * Verify that the gateway application remains online and reconnects automatically without throwing fatal database errors, thanks to PgBouncer routing database connections.
+
+4. **Verify Dynamic pg_hba Security and Catch-All Reject**:
+   * **Authorized Application access**: Exec into the `gateway` pod and verify that it can query the database through PgBouncer:
+     ```bash
+     kubectl exec -it $(kubectl get pods -n microservices -l app.kubernetes.io/name=gateway -o jsonpath='{.items[0].metadata.name}') -n microservices -- curl -s http://localhost:8080/management/health
+     # Output: Should return HTTP 200 with database health UP.
+     ```
+   * **Unauthorized access rejection**: Deploy a temporary test pod without the authorized application labels and try to connect directly to the Postgres read-write service:
+     ```bash
+     kubectl run pg-security-test --image=alpine:3.20 -n microservices --restart=Never -- sh -c "apk add --no-cache postgresql-client && psql -h postgres-gateway-rw -U gateway -d gateway"
+     ```
+     Check the security test logs:
+     ```bash
+     kubectl logs pg-security-test -n microservices
+     ```
+     *Expected Output*: The connection fails with `psql: error: connection to server at "postgres-gateway-rw" failed: FATAL: no pg_hba.conf entry for host...` or `reject` error. This proves that unauthorized hosts inside the cluster are blocked by the catch-all reject rule.
+
 ---
+
 
 ## Configuration ([`config/config.yaml`](config/config.yaml))
 
@@ -1360,7 +1456,7 @@ To prevent GKE cluster auto-scaling (saving costs for this PoC) and ensure optim
 
 1. **Tight Pod Resource Allocations**:
    - **Microservices** (`gateway`, `jhipstersamplemicroservice`): CPU requests set to `100m` (limits to `1.0` CPU) and memory requests to `512Mi` (limits to `1Gi`).
-   - **Postgres Database Instances**: Crunchy PostgresCluster containers (`postgres`, `pgbackrest` jobs, and `repoHost` sidecars) instances requests: `100m`/`256Mi`, limits: `500m`/`512Mi`.
+   - **Postgres Database Instances**: CloudNative-PG database instances and PgBouncer pooler replicas, with resources constrained to requests: `50m` CPU / `128Mi` memory, limits: `200m` CPU / `256Mi` memory.
    - **Jenkins Controller**: Tighter footprint of `500m` CPU and `1.5Gi` memory requests (limits: `1.5` CPU and `3Gi` memory).
    - **Jenkins Build Agents & K6 Smoke Agents**: Minimized build agent containers (`maven`, `node`, `docker`, `helm`, `git`, `jnlp`) requesting `380m` CPU and `1.56Gi` (`1600Mi`) memory in total, with limits capped at `3.3` CPU and `3.875Gi` (`3968Mi`) memory.
 
@@ -1371,10 +1467,10 @@ To prevent GKE cluster auto-scaling (saving costs for this PoC) and ensure optim
    | **jenkins** | `jenkins` | StatefulSet | `500m` | `1.5` | `1.5Gi` (`1536Mi`) | `3Gi` (`3072Mi`) |
    | **microservices** | `gateway` | Deployment | `100m` | `1.0` | `512Mi` | `1Gi` |
    | | `jhipstersamplemicroservice` | Deployment | `100m` | `1.0` | `512Mi` | `1Gi` |
-   | | `postgres-gateway-instance1` | StatefulSet | `100m` | `500m` | `256Mi` | `512Mi` |
-   | | `postgres-gateway-repo-host` | StatefulSet | `100m` | `200m` | `128Mi` | `256Mi` |
-   | | `postgres-jhipstersamplemicroservice-instance1` | StatefulSet | `100m` | `500m` | `256Mi` | `512Mi` |
-   | | `postgres-jhipstersamplemicroservice-repo-host` | StatefulSet | `100m` | `200m` | `128Mi` | `256Mi` |
+   | | `postgres-gateway-1/2/3` | Pod (CNPG) | `50m` | `200m` | `128Mi` | `256Mi` |
+   | | `postgres-gateway-pooler-...` | Pod (CNPG Pooler) | `50m` | `200m` | `128Mi` | `256Mi` |
+   | | `postgres-jhipstersamplemicroservice-1/2/3` | Pod (CNPG) | `50m` | `200m` | `128Mi` | `256Mi` |
+   | | `postgres-jhipstersamplemicroservice-pooler-...` | Pod (CNPG Pooler) | `50m` | `200m` | `128Mi` | `256Mi` |
    | **observability** | `otel-collector-gateway` | Deployment | `100m` | `500m` | `256Mi` | `512Mi` |
    | | `otel-collector-logs-agent` | DaemonSet | `100m` | `300m` | `128Mi` | `256Mi` |
    | | `otel-operator-opentelemetry-operator` | Deployment | `100m` | `500m` | `128Mi` | `256Mi` |
