@@ -1,0 +1,66 @@
+# Jenkins Configuration as Code (JCasC) Snippet for In-Place Pod Vertical Scaling (Kubernetes v1.35+)
+# Ephemeral build agents dynamically scale up their limits under peak build stress without restarts.
+jenkins:
+  clouds:
+    - kubernetes:
+        name: "kubernetes"
+        serverUrl: "https://kubernetes.default.svc.cluster.local"
+        namespace: "${JENKINS_NAMESPACE:-jenkins}"
+        jenkinsUrl: "http://jenkins.${JENKINS_NAMESPACE:-jenkins}.svc.cluster.local:8080"
+        jenkinsTunnel: "jenkins-agent.${JENKINS_NAMESPACE:-jenkins}.svc.cluster.local:50000"
+        containerCapStr: "20"
+        templates:
+          - name: "dynamic-agent"
+            label: "maven-node-builder"
+            nodeUsageMode: "EXCLUSIVE"
+            workspaceVolume:
+              emptyDirWorkspaceVolume:
+                memory: true
+            # Toleration to match the Karpenter Spot node pool taints
+            tolerations:
+              - key: "jenkins-agent"
+                operator: "Equal"
+                value: "true"
+                effect: "NoSchedule"
+            # Declare the raw Pod Spec template to access K8s v1.35+ In-Place Pod Scaling fields directly
+            yaml: |
+              apiVersion: v1
+              kind: Pod
+              metadata:
+                labels:
+                  role: jenkins-agent
+                  scheduling.x-k8s.io/pod-group: parallel-smoke-tests # Enforces v1.36 PodGroup Gang Scheduling
+              spec:
+                containers:
+                  - name: jnlp
+                    image: jenkins/inbound-agent:3355.v388858a_47b_33-22
+                    resources:
+                      requests:
+                        cpu: "500m"
+                        memory: "512Mi"
+                      limits:
+                        cpu: "2000m"
+                        memory: "2048Mi"
+                    # GA in Kubernetes v1.35: In-Place pod vertical scaling policies
+                    resizePolicy:
+                      - resourceName: cpu
+                        restartPolicy: NotRequired
+                      - resourceName: memory
+                        restartPolicy: NotRequired
+                  - name: builder
+                    image: maven:3.9.6-eclipse-temurin-17
+                    command:
+                      - cat
+                    tty: true
+                    resources:
+                      requests:
+                        cpu: "1000m"
+                        memory: "2048Mi"
+                      limits:
+                        cpu: "4000m"
+                        memory: "8192Mi"
+                    resizePolicy:
+                      - resourceName: cpu
+                        restartPolicy: NotRequired
+                      - resourceName: memory
+                        restartPolicy: NotRequired

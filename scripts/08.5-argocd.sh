@@ -20,6 +20,9 @@ fi
 
 # 1. Install ArgoCD
 log_step "Running Helm upgrade"
+# Delete existing patched configmaps to prevent Helm Server-Side Apply / ownership conflict failures on subsequent runs
+kubectl delete configmap argocd-cm argocd-rbac-cm -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found=true || true
+
 helm upgrade --install "${J2026_ARGOCD_RELEASE}" argo/argo-cd \
   --namespace "${J2026_ARGOCD_NAMESPACE}" \
   -f "${J2026_ROOT_DIR}/helm/argocd-values.yaml" \
@@ -152,8 +155,8 @@ wait_for_deployment "${J2026_ARGOCD_RELEASE}-server" "${J2026_ARGOCD_NAMESPACE}"
 log_step "Configuring ArgoCD Microservices GitOps Project"
 kubectl apply -f "${J2026_ROOT_DIR}/argocd/microservices-project.yaml"
 
-log_step "Configuring Postgres Operator via ArgoCD"
-kubectl apply -f "${J2026_ROOT_DIR}/argocd/pgo-app.yaml"
+log_step "Configuring CloudNative-PG Operator via ArgoCD"
+kubectl apply -f "${J2026_ROOT_DIR}/argocd/cnpg-app.yaml"
 
 log_step "Configuring Headlamp via ArgoCD"
 # Inject values into the Headlamp Application manifest

@@ -1,17 +1,17 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: postgres-operator
+  name: cnpg-operator
   namespace: argocd
 spec:
   project: default
   source:
-    repoURL: https://github.com/CrunchyData/postgres-operator.git
-    targetRevision: v5.7.9
-    path: config/default
+    chart: cloudnative-pg
+    repoURL: https://cloudnative-pg.github.io/charts
+    targetRevision: 0.28.3
   destination:
     server: https://kubernetes.default.svc
-    namespace: postgres-operator
+    namespace: cnpg-system
   syncPolicy:
     automated:
       prune: true

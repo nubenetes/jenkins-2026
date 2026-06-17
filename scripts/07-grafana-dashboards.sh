@@ -79,6 +79,30 @@ case "${J2026_OBS_MODE}" in
     # We use --include-managed to ensure we can update folders/dashboards even if they were 
     # previously managed by other tools (or gcx api calls).
     gcx resources push -p "${RESOURCES_DIR}" --on-error abort --include-managed
+
+    log_step "Configuring Grafana Kubernetes Monitoring app data sources"
+    GRAFANA_STACK_ID="$(kubectl get secret "${J2026_GRAFANA_CLOUD_SECRET}" -n "${J2026_OBS_NAMESPACE}" -o jsonpath='{.data.GRAFANA_STACK_ID}' | base64 -d)"
+    if [[ -n "${GRAFANA_STACK_ID}" ]]; then
+      gcx api /api/plugins/grafana-k8s-app/settings -X POST -d "{
+        \"enabled\": true,
+        \"jsonData\": {
+          \"grafana_instance_id\": ${GRAFANA_STACK_ID},
+          \"grafanacom_endpoint\": \"https://grafana.com/api\",
+          \"integrations_endpoint\": \"https://integrations-api-eu-west-2.grafana.net\",
+          \"prometheus\": {
+            \"uid\": \"grafanacloud-prom\"
+          },
+          \"loki\": {
+            \"uid\": \"grafanacloud-logs\"
+          },
+          \"tempo\": {
+            \"uid\": \"grafanacloud-traces\"
+          }
+        }
+      }" >/dev/null || log_warn "Failed to configure Kubernetes Monitoring app settings automatically."
+    else
+      log_warn "GRAFANA_STACK_ID not found - skipping auto-configuration of Kubernetes app settings."
+    fi
     ;;
 
   oss)
