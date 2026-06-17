@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.9.5] - 2026-06-17
+
+### Added
+- **Environment Protection CLI Automation Documentation**:
+  - Documented programmatic setup instructions in `README.md` to automate creating and configuring the `gke-production` environment and registering required reviewers via the GitHub CLI (`gh api`).
+
 ## [v0.9.4] - 2026-06-17
 
 ### Changed
