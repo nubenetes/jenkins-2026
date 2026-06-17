@@ -176,7 +176,7 @@ spec:
                     sh """
                         echo 'Running Trivy IaC configuration misconfiguration checks...'
                         # Scan the Helm charts inside this repository (non-blocking)
-                        trivy config --config trivy.yaml --exit-code 0 helm/microservices
+                        trivy config --config trivy.yaml --exit-code 0 helm
                     """
                 }
             }
