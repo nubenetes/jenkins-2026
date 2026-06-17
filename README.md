@@ -1990,12 +1990,12 @@ graph TD
 1. **Semgrep (Lightweight SAST / Custom Rules)**:
    - **Responsibility**: Fast commit-stage check for security anti-patterns (disabled CSRF, insecure HTTP, hardcoded secrets) and ruleset compliance.
    - **Configuration**: Managed globally in [.semgrep/semgrep.yml](.semgrep/semgrep.yml). It audits source code against the `p/security-audit` and `p/owasp-top-10` rulesets.
-   - **Output**: Generates a SARIF report archived in the Jenkins build run.
+   - **Output**: Generates a SARIF report archived in the Jenkins build run and automatically uploaded directly to the GitHub Advanced Security tab. Integrated findings can be reviewed at [GitHub Code Scanning Alerts (Semgrep)](https://github.com/nubenetes/jenkins-2026/security/code-scanning).
 
 2. **CodeQL (Deep SAST / Semantic Analysis)**:
    - **Responsibility**: Semantic code analysis to detect complex multi-file data flow vulnerabilities (SQL Injection, XSS, SSRF).
    - **Configuration**: Managed globally via [.github/codeql/codeql-config.yml](.github/codeql/codeql-config.yml). Runs inside a dedicated CodeQL CLI container in the dynamic pod agent.
-   - **Output**: Generates a detailed SARIF report archived in the Jenkins build run.
+   - **Output**: Generates a detailed SARIF report archived in the Jenkins build run and automatically uploaded directly to the GitHub Advanced Security tab. Integrated findings can be reviewed at [GitHub Code Scanning Alerts (CodeQL)](https://github.com/nubenetes/jenkins-2026/security/code-scanning).
 
 3. **Trivy (Vulnerability and Misconfiguration Scanning)**:
    - **Dual Responsibility**:
