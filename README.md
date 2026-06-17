@@ -2007,13 +2007,17 @@ graph TD
 
 1. **Semgrep (Lightweight SAST / Custom Rules)**:
    - **Responsibility**: Fast commit-stage check for security anti-patterns (disabled CSRF, insecure HTTP, hardcoded secrets) and ruleset compliance.
-   - **Configuration**: Managed globally in [.semgrep/semgrep.yml](.semgrep/semgrep.yml). It audits source code against the `p/security-audit` and `p/owasp-top-10` rulesets.
-   - **Output**: Generates a SARIF report archived in the Jenkins build run and automatically uploaded directly to the GitHub Advanced Security tab. Integrated findings can be reviewed at [GitHub Code Scanning Alerts (Semgrep)](https://github.com/nubenetes/jenkins-2026/security/code-scanning).
+   - **What the Report is About**: It performs fast static analysis on the source code looking for syntactic patterns that match known security anti-patterns (such as disabled spring security protection, raw SQL queries, or weak cryptographic algorithms).
+   - **Where to View the Report**:
+     - **GitHub Code Scanning UI (Interactive)**: Automatically uploaded directly to the GitHub Security repository tab at [GitHub Code Scanning Alerts (Semgrep)](https://github.com/nubenetes/jenkins-2026/security/code-scanning). It maps findings directly to code lines.
+     - **Jenkins Build Artifacts (Raw)**: Saved as `semgrep-results.sarif` in the build run's local artifact archive.
 
 2. **CodeQL (Deep SAST / Semantic Analysis)**:
    - **Responsibility**: Semantic code analysis to detect complex multi-file data flow vulnerabilities (SQL Injection, XSS, SSRF).
-   - **Configuration**: Managed globally via [.github/codeql/codeql-config.yml](.github/codeql/codeql-config.yml). Runs inside a dedicated CodeQL CLI container in the dynamic pod agent.
-   - **Output**: Generates a detailed SARIF report archived in the Jenkins build run and automatically uploaded directly to the GitHub Advanced Security tab. Integrated findings can be reviewed at [GitHub Code Scanning Alerts (CodeQL)](https://github.com/nubenetes/jenkins-2026/security/code-scanning).
+   - **What the Report is About**: CodeQL compiles and builds a database of the source code structure, allowing semantic queries to trace variables and untrusted user input (sources) all the way to dangerous execution sinks (such as raw database queries, file writes, or command executions).
+   - **Where to View the Report**:
+     - **GitHub Code Scanning UI (Interactive)**: Automatically uploaded directly to the GitHub Advanced Security tab. The dashboard parses the SARIF file and lets you interactively trace the data flow path of the vulnerability at [GitHub Code Scanning Alerts (CodeQL)](https://github.com/nubenetes/jenkins-2026/security/code-scanning).
+     - **Jenkins Build Artifacts (Raw)**: Saved as `codeql-results.sarif` in the build run's local artifact archive.
 
 3. **Trivy (Vulnerability and Misconfiguration Scanning)**:
    - **Dual Responsibility**:
