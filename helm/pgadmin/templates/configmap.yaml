@@ -9,6 +9,7 @@ data:
     AUTHENTICATION_SOURCES = ['webserver', 'internal']
     WEBSERVER_REMOTE_USER = 'HTTP_X_GOOG_AUTHENTICATED_USER_EMAIL'
     WEBSERVER_AUTO_CREATE_USER = True
+    MASTER_PASSWORD_REQUIRED = False
     
     # Monkeypatch to strip Google IAP account prefix (e.g., 'accounts.google.com:email@example.com')
     # and dynamically copy the shared pgpass file to all user storage directories.
