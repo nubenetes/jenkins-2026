@@ -140,7 +140,7 @@ jobs:
             # URL pattern for the persistent stack from
             # terraform/grafana-cloud-stack, stored here for
             # microservicesK6Smoke's Grafana dashboard link.
-            export GRAFANA_BASE_URL="https://${{ secrets.GRAFANA_CLOUD_STACK_SLUG }}.grafana.net"
+            export GRAFANA_BASE_URL="https://${{ vars.GRAFANA_CLOUD_STACK_SLUG || secrets.GRAFANA_CLOUD_STACK_SLUG }}.grafana.net"
           fi
           ./scripts/01-namespaces.sh
 
@@ -177,7 +177,7 @@ jobs:
         working-directory: terraform/grafana-cloud-token
         env:
           TF_VAR_grafana_cloud_api_token: ${{ secrets.GRAFANA_CLOUD_API_TOKEN }}
-          TF_VAR_stack_slug: ${{ secrets.GRAFANA_CLOUD_STACK_SLUG }}
+          TF_VAR_stack_slug: ${{ vars.GRAFANA_CLOUD_STACK_SLUG || secrets.GRAFANA_CLOUD_STACK_SLUG }}
         run: |
           # Fetch jenkins admin password from the secret created in the previous step
           ADMIN_PASS=$(kubectl get secret jenkins-credentials -n jenkins -o jsonpath='{.data.admin-password}' | base64 -d)
