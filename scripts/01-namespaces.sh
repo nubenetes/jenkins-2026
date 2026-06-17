@@ -142,8 +142,8 @@ rules:
 - apiGroups: [""]
   resources: ["secrets"]
   resourceNames:
-  - postgres-gateway-pguser-gateway
-  - postgres-jhipstersamplemicroservice-pguser-jhipstersamplemicroservice
+  - postgres-gateway-app
+  - postgres-jhipstersamplemicroservice-app
   verbs: ["get", "list"]
 EOF
 
