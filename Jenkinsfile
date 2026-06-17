@@ -231,4 +231,17 @@ spec:
             }
         }
     }
+
+    post {
+        always {
+            recordIssues(
+                enabledForFailure: true,
+                aggregatingResults: true,
+                tools: [
+                    sarif(pattern: 'semgrep-results.sarif', id: 'semgrep', name: 'Semgrep'),
+                    sarif(pattern: 'codeql-results.sarif', id: 'codeql', name: 'CodeQL')
+                ]
+            )
+        }
+    }
 }
