@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.10.1] - 2026-06-18
+
+### Added
+- **Spanish Multimedia Guide (via NotebookLM)**:
+  - Added Spanish video walkthrough: `Fabrica_DevOps_jenkins-2026_Spanish.mp4`.
+  - Added Spanish audio explanation: `Infraestructura_completa_por_veinte_céntimos_Spanish.m4a`.
+  - Updated `README.md` with explicit English/Spanish labels for all multimedia resources.
+
 ## [v0.10.0] - 2026-06-18
 
 ### Added
