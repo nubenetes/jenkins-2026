@@ -2283,6 +2283,62 @@ Using Kustomize would require running `kustomize edit set image` on specific ove
 
 ---
 
+## Design Decision: Resource Lifecycle & Decommission Orchestration
+
+### Overview
+In a hybrid cloud platform utilizing both Terraform (for static infrastructure provisioning) and Kubernetes controllers (for dynamic GKE Gateway and Ingress-driven GCP resources), orchestrating resource dependencies during teardown (`scripts/down.sh` followed by `terraform destroy`) is a common source of race conditions. Below is the technical breakdown, comparison, and design rationale for the implemented synchronization barrier.
+
+### The Problem: Asynchronous Background Deletion
+When Kubernetes resources like `Services` or `Gateways` are deleted:
+1. Kubernetes instantly deletes the configuration objects from the cluster's API database and returns success.
+2. Under the hood, GKE's background controllers asynchronously call the Google Cloud API to delete the associated Network Endpoint Groups (NEGs), Load Balancers, and Forwarding Rules.
+3. If `terraform destroy` runs immediately after `scripts/down.sh` completes, the GKE cluster starts teardown. This terminates the GKE masters and the background controllers **before** GCP has finished deleting the NEGs.
+4. The GCP zonal NEGs are orphaned in the cloud. They continue to reference the GKE VPC network and subnet, causing `terraform destroy` to fail on VPC deletion with:
+   `Error waiting for Deleting Network: The network resource '...-vpc' is already being used by '.../networkEndpointGroups/...'`
+
+```mermaid
+graph TD
+    subgraph TF [1. Declared State (Terraform)]
+        VPC["VPC Network"] --> Subnet
+        Subnet --> GKE["GKE Cluster"]
+    end
+
+    subgraph K8S [2. GitOps State (Kubernetes)]
+        GKE --> Helm["Helm Releases (Gateway, Microservices)"]
+        Helm --> Serv["k8s Service (ClusterIP + NEG Annotation)"]
+    end
+
+    subgraph GCP [3. Dynamic Cloud State (GCP)]
+        Serv -- GKE NEG Controller --> NEG["GCP Network Endpoint Group (Zonal)"]
+        NEG -- Bind/References --> VPC
+    end
+
+    style NEG fill:#f9f,stroke:#333,stroke-width:2px
+```
+
+### Side-by-Side Comparison of Solutions
+
+| Strategy | Implementation | Pros | Cons |
+| :--- | :--- | :--- | :--- |
+| **1. Pure Terraform** (Helm/K8s Providers) | Declare Helm charts and Gateway manifests inside Terraform HCL. | Single tool orchestrates all resources. | Terraform's Helm provider only waits for Helm uninstall to finish; it **cannot** detect or wait for GKE's background GCP API deletions. **The race condition remains.** |
+| **2. Declare LB in Terraform** | Write GCP Load Balancer HCL instead of using GKE Gateway API. | Terraform tracks and destroys the load balancer synchronously. | Defeats the purpose of the GKE Gateway API/Ingress. App developers lose the ability to declare routing in k8s manifests; they must now request Terraform changes. |
+| **3. Synchronization Barrier (Current Solution)** | Implement a polling and force-clean check in the teardown script (`scripts/down.sh`) using the `gcloud` CLI. | • **Bulletproof**: Blocks until the cloud provider reports all NEGs are gone.<br>• **Self-healing**: Force-deletes NEGs if GKE controllers hang.<br>• Non-intrusive to developer workflows. | Requires `gcloud` to be authenticated during teardown (already true in our CI/CD runner and local dev environments). |
+
+### Technical Rationale & Mechanics
+
+To prevent VPC deletion blockages, we introduced an **explicit synchronization barrier** in `scripts/down.sh` right after the namespace deletion/cleanup phase. This barrier:
+1. **Detects the Active GCP Context**: Uses the local authenticated `gcloud` client.
+2. **Polls GCP directly**: Queries `gcloud compute network-endpoint-groups list` with a filter on the target VPC (`network:${vpc_name}`).
+3. **Waits for clean deletion**: Blocks up to 5 minutes to let GKE controllers finish natural deletions.
+4. **Force Cleanup Fallback**: If NEGs are orphaned or stuck (due to a partially failed or prematurely killed teardown), it parses the remaining NEGs and explicitly deletes them using:
+   ```bash
+   gcloud compute network-endpoint-groups delete "${name}" --zone="${zone}" --project="${gcp_project}" --quiet
+   ```
+
+This architecture bridges the asynchronous nature of Kubernetes controllers with the synchronous demands of Terraform state lifecycle management.
+
+---
+
 ## License
 
 [MIT](LICENSE) © 2026 Nubenetes
