@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.10.0] - 2026-06-18
+
+### Changed
+- **Operational Stability & Auth Lifecycle**:
+  - Promoted recent GitOps authentication and lifecycle fixes to a milestone release.
+  - Finalized ArgoCD token generation refactoring to resolve Jenkins startup race conditions.
+  - Standardized Mermaid diagram optimizations across all documentation.
+
 ## [v0.9.16] - 2026-06-18
 
 ### Fixed
