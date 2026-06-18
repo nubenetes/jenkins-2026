@@ -4,9 +4,14 @@ All notable changes to this project will be documented in this file.
 
 ## [v0.10.0] - 2026-06-18
 
-### Changed
+### Added
+- **Visual & Multimedia Repo Guide (via NotebookLM)**:
+  - Integrated a new multimedia section in `README.md` powered by Google's NotebookLM.
+  - Added a high-level infographic (`Modern_Automation_and_Observability_Architecture.jpg`).
+  - Added a video proof of concept (`Jenkins-2026_PoC.mp4`).
+  - Added a detailed technical PDF (`Jenkins_GitOps_Reimagined.pdf`).
+  - Added an audio walkthrough of ephemeral GitOps concepts (`Twenty_cent_ephemeral_GitOps_in_2026.m4a`).
 - **Operational Stability & Auth Lifecycle**:
-  - Promoted recent GitOps authentication and lifecycle fixes to a milestone release.
   - Finalized ArgoCD token generation refactoring to resolve Jenkins startup race conditions.
   - Standardized Mermaid diagram optimizations across all documentation.
 
