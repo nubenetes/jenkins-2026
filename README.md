@@ -1,3 +1,35 @@
+# Visual & Multimedia Repo Guide (via NotebookLM)
+
+This repository's architecture and workflows have been analyzed by Google's NotebookLM to generate the following multimedia assets. They offer a comprehensive visual and auditory guide to the system's design and operation.
+
+## Infographic: Modern Automation & Observability Architecture
+
+This infographic provides a high-level overview of the entire system, from the GitOps workflow to the observability stack. It's the best place to start for a quick understanding of how all the pieces fit together.
+
+![Modern Automation and Observability Architecture](./docs/notebooklm/Modern_Automation_and_Observability_Architecture.jpg)
+
+## Multimedia Explanations
+
+For a deeper dive, explore these resources. They are categorized by media type for your convenience.
+
+### 🎬 Video
+
+*   **[Jenkins 2026 Proof of Concept](./docs/notebooklm/Jenkins-2026_PoC.mp4)**: A video demonstration of the proof of concept, walking through the key features and functionalities of the Jenkins setup.
+
+### 📄 Document
+
+*   **[Jenkins GitOps Reimagined (PDF)](./docs/notebooklm/Jenkins_GitOps_Reimagined.pdf)**: A detailed PDF document that explores the reimagined GitOps workflow, covering the core concepts and implementation details.
+
+### 🖼️ Image
+
+*   **[Modern Automation and Observability Architecture (JPG)](./docs/notebooklm/Modern_Automation_and_Observability_Architecture.jpg)**: The full-size infographic image, ideal for presentations or closer inspection.
+
+### 🎧 Audio
+
+*   **[Twenty Cent Ephemeral GitOps in 2026 (M4A)](./docs/notebooklm/Twenty_cent_ephemeral_GitOps_in_2026.m4a)**: An audio recording discussing the concept of "twenty-cent ephemeral GitOps," likely covering the cost-effective and transient nature of the infrastructure setup.
+
+---
+
 # jenkins-2026
 
 > **Two-repo GitOps setup.** This is the **infra repo** (cluster bootstrap, Jenkins, ArgoCD, observability). Image tags and ArgoCD manifests live in the companion **[`nubenetes/jenkins-2026-gitops-config`](https://github.com/nubenetes/jenkins-2026-gitops-config)** repo — see its [README](https://github.com/nubenetes/jenkins-2026-gitops-config#readme) for the Helm chart layout, values schema, branch strategy, and Postgres details.
