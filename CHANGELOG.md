@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.9.12] - 2026-06-18
+
+### Changed
+- **Documentation**:
+  - Wrapped all 10 Mermaid diagrams in the `README.md` file in collapsible `<details>` blocks to optimize page rendering performance, eliminate loading latency, and improve document readability.
+
 ## [v0.9.11] - 2026-06-18
 
 ### Added
