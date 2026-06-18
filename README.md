@@ -1373,6 +1373,54 @@ If OIDC login to ArgoCD fails with `redirect_uri_mismatch`:
    Jenkins, Headlamp, and pgAdmin. Anyone without `roles/iap.httpsResourceAccessor` gets
    a 403 from IAP before reaching either app.
 
+### Troubleshooting & Load Balancer Propagation Delay
+
+When first provisioning the stack or rebuilding the GKE cluster, you may find that the public URLs (e.g., `https://jenkins.jenkins2026.nubenetes.com`) are not immediately reachable, even though the GitHub Actions deployment workflow has completed successfully.
+
+#### Symptom: `SSL_ERROR_SYSCALL` or `unexpected eof`
+If you attempt to access the URLs or run a curl command immediately after deployment:
+```bash
+curl -vk https://jenkins.jenkins2026.nubenetes.com/
+# returns: OpenSSL SSL_connect: SSL_ERROR_SYSCALL in connection to ...
+```
+This indicates the connection is being closed abruptly during the TLS handshake.
+
+#### Symptom: Intermittent `502 Bad Gateway`
+A few minutes later, you might see `HTTP/2 502 Bad Gateway` from the load balancer:
+```bash
+curl -vkI https://jenkins.jenkins2026.nubenetes.com/
+# returns: HTTP/2 502
+```
+
+#### Why does this happen?
+1. **GFE Sync Delay:** The GKE Gateway API manages a global external HTTP(S) load balancer (`gke-l7-global-external-managed`). When created, Google Front End (GFE) edge proxies globally must receive and propagate the routing tables, SSL policies, and URL mappings. This process typically takes **5 to 10 minutes**.
+2. **Certificate Manager Loading:** The Google-managed SSL Certificate is loaded via Certificate Manager Maps (`networking.gke.io/certmap`). The edge proxies take a few minutes to bind and activate the certificate maps on the forwarding rules.
+3. **Backend NEG Sync:** Even after the Kubernetes pods are `Running` and backend service health checks are reporting `HEALTHY`, the load balancer's internal distribution of Network Endpoint Groups (NEGs) takes additional time to sync.
+
+#### How to Verify & Troubleshoot
+To confirm if the issue is just propagation delay or a real misconfiguration, verify the following:
+
+1. **Verify DNS Resolution:** Ensure your wildcard domain resolves to the Gateway's external IP:
+   ```bash
+   ping -c 1 jenkins.jenkins2026.nubenetes.com
+   # Should resolve to the gateway IP (e.g. 34.120.231.149)
+   ```
+2. **Verify Certificate State:** Check that the certificate is `ACTIVE` and domains are `AUTHORIZED`:
+   ```bash
+   gcloud certificate-manager certificates describe jenkins-2026-cert \
+     --format="yaml(managed.state,managed.authorizationAttemptInfo)"
+   ```
+3. **Verify Certificate Map:** Confirm the wildcard entry is active:
+   ```bash
+   gcloud certificate-manager maps entries list --map=jenkins-2026-cert-map
+   ```
+4. **Verify Backend Health:** Check if the backend services are reporting `HEALTHY` endpoints:
+   ```bash
+   gcloud compute backend-services get-health gkegw1-y6i2-jenkins-jenkins-8080-p2ivomotuf95 --global
+   ```
+
+If all of the above are healthy/active, simply wait 5-10 minutes for the global load balancer to finish provisioning and routing traffic.
+
 ## Automated end-to-end test (provisioning + decommissioning)
 
 [`test/e2e.sh`](test/e2e.sh) fully automates a real run of this PoC,
