@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.9.15] - 2026-06-18
+
+### Fixed
+- **Documentation**:
+  - Further refined text wrapping on GKE/GCP labels in the decommission lifecycle Mermaid diagram to prevent horizontal cutoff of long phrases (e.g. "GCP Network Endpoint Group").
+
 ## [v0.9.14] - 2026-06-18
 
 ### Fixed

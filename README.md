@@ -2352,12 +2352,12 @@ graph TD
     end
 
     subgraph K8S ["2. GitOps State (Kubernetes)"]
-        GKE --> Helm["Helm Releases<br/>(Gateway, Microservices)"]
-        Helm --> Serv["k8s Service<br/>(ClusterIP + NEG Annotation)"]
+        GKE --> Helm["Helm Releases<br/>(Gateway &<br/>Microservices)"]
+        Helm --> Serv["k8s Service<br/>(ClusterIP &<br/>NEG Annotation)"]
     end
 
     subgraph GCP ["3. Dynamic Cloud State (GCP)"]
-        Serv -->|GKE NEG Controller| NEG["GCP Network Endpoint Group<br/>(Zonal)"]
+        Serv -->|GKE NEG Controller| NEG["GCP Network<br/>Endpoint Group<br/>(Zonal)"]
         NEG -->|"Bind/References"| VPC
     end
 
