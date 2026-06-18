@@ -2119,6 +2119,24 @@ in GitHub Actions tears it down automatically.
   not have finished) and confirm `GCP_WORKLOAD_IDENTITY_PROVIDER` /
   `GCP_SERVICE_ACCOUNT` match its outputs exactly, and that `github_repo` in
   `terraform/bootstrap/terraform.tfvars` matches this repo's `org/name`.
+- **GitOps Push Authentication Failure (`exit code 128`) during Jenkins build**:
+  - **Symptom**: A microservice build fails at the gitops promotion stage when executing `git push origin main` on the `jenkins-2026-gitops-config` repository.
+  - **Cause**: The `jenkins-credentials` Kubernetes Secret in the `jenkins` namespace was created with empty strings for `git-username` and `git-token`. This typically happens if the GitHub Action provision workflow ran without the `GIT_USERNAME` and `GIT_TOKEN` repository secrets configured on the GitHub repository.
+  - **Prevention**: Configure `GIT_USERNAME` and `GIT_TOKEN` as Secrets on your GitHub repository. Future GKE runs will pick them up automatically and provision Jenkins correctly.
+  - **Hotfix (Manual Resolution)**:
+    1. Patch the credentials in the Kubernetes cluster:
+       ```bash
+       kubectl create secret generic jenkins-credentials \
+         --namespace=jenkins \
+         --from-literal=git-username="<your-github-username>" \
+         --from-literal=git-token="<your-github-token>" \
+         --dry-run=client -o yaml | kubectl apply -f -
+       ```
+    2. Restart the Jenkins pod to reload the JCasC credentials:
+       ```bash
+       kubectl delete pod jenkins-0 -n jenkins
+       ```
+
 
 ## DevSecOps Security Pipeline
 
