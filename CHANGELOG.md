@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.9.14] - 2026-06-18
+
+### Fixed
+- **Documentation**:
+  - Refined the lifecycle decommission Mermaid diagram to use newline `<br/>` tags and standard `-->|label|` links to prevent horizontal text overflow and rendering cutoff.
+
 ## [v0.9.13] - 2026-06-18
 
 ### Fixed

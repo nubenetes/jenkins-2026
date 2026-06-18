@@ -2347,18 +2347,18 @@ When Kubernetes resources like `Services` or `Gateways` are deleted:
 ```mermaid
 graph TD
     subgraph TF ["1. Declared State (Terraform)"]
-        VPC["VPC Network"] --> Subnet
+        VPC["VPC Network"] --> Subnet["VPC Subnetwork"]
         Subnet --> GKE["GKE Cluster"]
     end
 
     subgraph K8S ["2. GitOps State (Kubernetes)"]
-        GKE --> Helm["Helm Releases (Gateway, Microservices)"]
-        Helm --> Serv["k8s Service (ClusterIP + NEG Annotation)"]
+        GKE --> Helm["Helm Releases<br/>(Gateway, Microservices)"]
+        Helm --> Serv["k8s Service<br/>(ClusterIP + NEG Annotation)"]
     end
 
     subgraph GCP ["3. Dynamic Cloud State (GCP)"]
-        Serv -- GKE NEG Controller --> NEG["GCP Network Endpoint Group (Zonal)"]
-        NEG -- "Bind/References" --> VPC
+        Serv -->|GKE NEG Controller| NEG["GCP Network Endpoint Group<br/>(Zonal)"]
+        NEG -->|"Bind/References"| VPC
     end
 
     style NEG fill:#f9f,stroke:#333,stroke-width:2px
