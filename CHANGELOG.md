@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.9.9] - 2026-06-18
+
+### Added
+- **Observability**:
+  - Added the Grafana Cloud Kubernetes Infrastructure monitoring application link (`/a/grafana-k8s-app`) to the Jenkins systemMessage banner.
+
 ## [v0.9.8] - 2026-06-18
 
 ### Fixed
