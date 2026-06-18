@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.9.11] - 2026-06-18
+
+### Added
+- **Documentation**:
+  - Added the detailed lifecycle and decommission orchestration design decision to `README.md`, including a side-by-side comparison matrix and architecture diagram.
+
 ## [v0.9.10] - 2026-06-18
 
 ### Fixed
