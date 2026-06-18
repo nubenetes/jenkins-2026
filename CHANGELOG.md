@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.9.13] - 2026-06-18
+
+### Fixed
+- **Documentation**:
+  - Quoted the subgraph labels containing parentheses in the lifecycle decommission Mermaid diagram to resolve parser error and ensure correct rendering on GitHub.
+
 ## [v0.9.12] - 2026-06-18
 
 ### Changed
