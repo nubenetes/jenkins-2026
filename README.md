@@ -223,6 +223,9 @@ Once deployed:
 ### System Architecture
 The following diagram illustrates the high-level architecture of the `jenkins-2026` stack, showing how Jenkins, ArgoCD, and the Microservices microservices interact within the cluster and with external services.
 
+<details>
+<summary>🔍 Click to expand System Architecture Diagram</summary>
+
 ```mermaid
 graph TB
     subgraph "External Services"
@@ -278,6 +281,8 @@ graph TB
     K8S -->|OTLP/HTTP| GC
 ```
 
+</details>
+
 ### Microservices & Database Architecture
 
 The modernized JHipster system is built on a containerized, cloud-native microservices architecture using **Spring Boot 3.x**, **Angular**, and **Java 21**. It consists of two primary services, each with its own dedicated database tier managed by the **CloudNative-PG (CNPG) Operator** with built-in high-availability (HA) and connection pooling:
@@ -290,6 +295,9 @@ The modernized JHipster system is built on a containerized, cloud-native microse
    - **Database**: Connects to the primary PostgreSQL instance in the `postgres-jhipstersamplemicroservice` cluster via a dedicated PgBouncer pooler (`postgres-jhipstersamplemicroservice-pooler`).
 
 #### Architecture & Data Flow Diagram
+
+<details>
+<summary>🔍 Click to expand Architecture & Data Flow Diagram</summary>
 
 ```mermaid
 graph TD
@@ -351,6 +359,8 @@ graph TD
     GW -.->|"OTLP/gRPC (Port 4317)"| OTEL_Collector
     S_Ms -.->|"OTLP/gRPC (Port 4317)"| OTEL_Collector
 ```
+
+</details>
 
 #### Database Injection & Secrets
 The database connections are securely managed by the CloudNative-PG Operator. The operator automatically provisions a basic-auth secret `postgres-{{ $name }}-app` for each cluster containing:
@@ -426,6 +436,9 @@ If you need to connect using a client tool from your local terminal:
 
 ##### Automated pgAdmin Authentication Flow
 
+<details>
+<summary>🔍 Click to expand pgAdmin & Database Administration Diagram</summary>
+
 ```mermaid
 graph TD
     subgraph "Client Tier"
@@ -475,6 +488,8 @@ graph TD
     main_c -->|7. Secure SSL Connection| db_ms
 ```
 
+</details>
+
 
 ##### Retrieving Database Credentials (Optional / CLI Tools)
 If you need to connect to the databases manually using `psql` or external CLI tools, retrieve the generated passwords from their respective Kubernetes secrets:
@@ -493,6 +508,9 @@ If you need to connect to the databases manually using `psql` or external CLI to
 
 ### CI/CD Flow (GitOps)
 This diagram shows the robust Jenkins-to-ArgoCD synchronization we've implemented. Jenkins (CI) builds the artifact and updates the configuration repo, then uses the **ArgoCD CLI** to explicitly trigger and wait for a healthy deployment before finishing the pipeline.
+
+<details>
+<summary>🔍 Click to expand CI/CD Flow (GitOps) Diagram</summary>
 
 ```mermaid
 sequenceDiagram
@@ -517,6 +535,8 @@ sequenceDiagram
     K8s->>Obs: OTLP Telemetry
     Obs-->>Dev: Dashboard Update
 ```
+
+</details>
 
 ## Golden Path IDP Modernizations (K8s v1.35/v1.36 & Karpenter)
 
@@ -968,6 +988,9 @@ Yes, but **only if you restore a multi-environment deployment model** (e.g., dev
 
 ### Architecture Diagram
 
+<details>
+<summary>🔍 Click to expand Architecture Diagram</summary>
+
 ```mermaid
 graph TD
     subgraph JC ["Jenkins Controller"]
@@ -975,6 +998,8 @@ graph TD
         SJ --> K6S["microservices-k6-smoke"]
     end
 ```
+
+</details>
 
 Each per-service pipeline dynamically executes the declarative shared library pipeline defined in [MicroservicesPipeline.groovy](file:///home/inafev/github/jenkins-2026/vars/MicroservicesPipeline.groovy), while the integration testing runs the pipeline defined in [MicroservicesK6SmokePipeline.groovy](file:///home/inafev/github/jenkins-2026/vars/MicroservicesK6SmokePipeline.groovy).
 
@@ -1057,6 +1082,9 @@ via [`vars/microservicesK6Smoke.groovy`](vars/microservicesK6Smoke.groovy). This
 fully-correlated trace/metric/log example across the *whole* app, without
 waiting for real users:
 
+<details>
+<summary>🔍 Click to expand k6 observability smoke test Diagram</summary>
+
 ```mermaid
 sequenceDiagram
     participant K6 as k6 (Jenkins pod, k6 container)
@@ -1079,6 +1107,8 @@ sequenceDiagram
     OTel->>Grafana: forward (otlp / otlphttp)
     Note over K6,Grafana: trace_id logged to the Jenkins console, ready to paste into Tempo's trace search
 ```
+
+</details>
 
 - **One trace per iteration**: every request in an iteration carries the
   same generated `traceparent`, so the OTel Java agent (already configured
@@ -1479,6 +1509,9 @@ gcloud auth application-default login
 
 The throwaway cluster is provisioned entirely via Terraform ([`terraform/gke/`](terraform/gke/)) with a custom VPC-native configuration optimized for stability and cost. A **persistent** global static IP and Google-managed wildcard TLS certificate ([`terraform/gateway-bootstrap/`](terraform/gateway-bootstrap/)) survive cluster rebuilds so DNS records never need updating:
 
+<details>
+<summary>🔍 Click to expand GKE Cluster Topology & Sizing Rationale Diagram</summary>
+
 ```mermaid
 graph TD
     subgraph Internet ["Internet"]
@@ -1539,6 +1572,8 @@ graph TD
     CISA -->|"read/write"| GCS
     ArgoCD -->|"applies configuration"| Cluster
 ```
+
+</details>
 
 #### Detailed Infrastructure Specifications
 
@@ -1705,6 +1740,9 @@ To keep operating costs low and deployment speed high, this project separates th
 
 The following diagram illustrates how the persistent infrastructure bootstrap workflows, the GKE cluster provisioning/decommissioning pipelines, the application-specific redeployments, and the traffic simulation workflow interact:
 
+<details>
+<summary>🔍 Click to expand Workflow Architecture & Lifecycle Diagram</summary>
+
 ```mermaid
 graph TD
     subgraph Bootstrapping ["1 - Persistent Bootstrap"]
@@ -1743,6 +1781,8 @@ graph TD
     class E,F,L,M persistent;
     class G,H,I,J,K,O cluster;
 ```
+
+</details>
 
 #### Detailed Workflow Reference and Lifecycle Management
 
@@ -2144,6 +2184,9 @@ The jenkins-2026 platform implements a multi-layered security pipeline (DevSecOp
 
 ### Pipeline Lifecycle
 
+<details>
+<summary>🔍 Click to expand Pipeline Lifecycle Diagram</summary>
+
 ```mermaid
 graph TD
     subgraph Code_Phase ["Code Phase"]
@@ -2175,6 +2218,8 @@ graph TD
         N -->|Deploy| O["GKE Cluster (Stable Namespace)"]
     end
 ```
+
+</details>
 
 ### Integrated Security Tools
 
@@ -2296,6 +2341,9 @@ When Kubernetes resources like `Services` or `Gateways` are deleted:
 4. The GCP zonal NEGs are orphaned in the cloud. They continue to reference the GKE VPC network and subnet, causing `terraform destroy` to fail on VPC deletion with:
    `Error waiting for Deleting Network: The network resource '...-vpc' is already being used by '.../networkEndpointGroups/...'`
 
+<details>
+<summary>🔍 Click to expand The Problem: Asynchronous Background Deletion Diagram</summary>
+
 ```mermaid
 graph TD
     subgraph TF [1. Declared State (Terraform)]
@@ -2310,11 +2358,13 @@ graph TD
 
     subgraph GCP [3. Dynamic Cloud State (GCP)]
         Serv -- GKE NEG Controller --> NEG["GCP Network Endpoint Group (Zonal)"]
-        NEG -- Bind/References --> VPC
+        NEG -- "Bind/References" --> VPC
     end
 
     style NEG fill:#f9f,stroke:#333,stroke-width:2px
 ```
+
+</details>
 
 ### Side-by-Side Comparison of Solutions
 
