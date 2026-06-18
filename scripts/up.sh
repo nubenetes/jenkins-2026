@@ -30,11 +30,11 @@ log_step "jenkins-2026 up - platform=${J2026_PLATFORM} observability=${J2026_OBS
 log_step "Installing 03-observability (sequential to prevent API pressure)"
 "${SCRIPT_DIR}/03-observability.sh"
 
-log_step "Installing 04-jenkins (sequential to prevent API pressure)"
-"${SCRIPT_DIR}/04-jenkins.sh"
-
 log_step "Installing 08.5-argocd (CD Engine)"
 "${SCRIPT_DIR}/08.5-argocd.sh"
+
+log_step "Installing 04-jenkins (sequential to prevent API pressure)"
+"${SCRIPT_DIR}/04-jenkins.sh"
 
 "${SCRIPT_DIR}/06-seed-pipelines.sh"
 "${SCRIPT_DIR}/07-grafana-dashboards.sh"

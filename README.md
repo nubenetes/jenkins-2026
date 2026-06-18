@@ -2177,6 +2177,14 @@ in GitHub Actions tears it down automatically.
        kubectl delete pod jenkins-0 -n jenkins
        ```
 
+- **GitOps Sync Token Failure (`ARGOCD_AUTH_TOKEN: parameter not set` / exit code 2)**:
+  - **Symptom**: The Jenkins build fails at the GitOps Update stage with the error `ARGOCD_AUTH_TOKEN: parameter not set`.
+  - **Cause**: The `argocd-token` was not generated or was generated after Jenkins already booted, leaving the running Jenkins pod without the `ARGOCD_AUTH_TOKEN` environment variable.
+  - **Prevention**: The provisioning order is now set so that `scripts/08.5-argocd.sh` runs before `scripts/04-jenkins.sh`. If you need to re-run the scripts manually out-of-order, the ArgoCD script will automatically detect the missing environment variable and restart the Jenkins pod for you.
+  - **Manual Fix**: If you ever hit this, force a restart of the Jenkins controller:
+    ```bash
+    kubectl delete pod jenkins-0 -n jenkins
+    ```
 
 ## DevSecOps Security Pipeline
 

@@ -70,8 +70,8 @@ Check the rollout status of all services:
 ./scripts/01-namespaces.sh
 ./scripts/02-otel-operator.sh
 ./scripts/03-observability.sh
-./scripts/04-jenkins.sh
 ./scripts/08.5-argocd.sh
+./scripts/04-jenkins.sh
 ./scripts/09-gateway.sh
 ```
 

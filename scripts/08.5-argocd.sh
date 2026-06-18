@@ -140,19 +140,33 @@ EOF
   log_info "Waiting for ArgoCD server and dex rollouts to complete to release resource quota..."
   kubectl rollout status deployment "${J2026_ARGOCD_RELEASE}-server" -n "${J2026_ARGOCD_NAMESPACE}" --timeout=5m
   kubectl rollout status deployment "${J2026_ARGOCD_RELEASE}-dex-server" -n "${J2026_ARGOCD_NAMESPACE}" --timeout=5m
-  
-  # 2.5 Configure Jenkins Account for ArgoCD (CLI/API access)
-  log_step "Configuring Jenkins account in ArgoCD"
-  kubectl patch configmap argocd-cm -n "${J2026_ARGOCD_NAMESPACE}" --type merge -p '{"data": {"accounts.jenkins": "apiKey"}}'
-  policy_csv="g, authenticated, role:admin\ng, jenkins, role:admin"
+else
+  log_warn "OIDC credentials not found. ArgoCD will use local admin password."
+fi
+
+# 2.5 Configure Jenkins Account for ArgoCD (CLI/API access) - Unconditional
+log_step "Configuring Jenkins account in ArgoCD"
+kubectl patch configmap argocd-cm -n "${J2026_ARGOCD_NAMESPACE}" --type merge -p '{"data": {"accounts.jenkins": "apiKey"}}'
+
+policy_csv="g, jenkins, role:admin"
+if [[ -n "${CLIENT_ID}" && -n "${CLIENT_SECRET}" ]]; then
+  policy_csv="g, authenticated, role:admin\n${policy_csv}"
   if [[ -n "${J2026_JENKINS_OIDC_ADMIN_EMAIL}" ]]; then
     policy_csv="${policy_csv}\ng, ${J2026_JENKINS_OIDC_ADMIN_EMAIL}, role:admin"
   fi
-  kubectl patch configmap argocd-rbac-cm -n "${J2026_ARGOCD_NAMESPACE}" --type merge -p "{\"data\": {\"policy.csv\": \"${policy_csv}\"}}"
-  
-  log_info "Generating ArgoCD API token for Jenkins"
-  # Use a temporary ClusterRoleBinding. Use apply or delete/create to avoid "already exists" errors.
-  cat <<EOF | kubectl apply -f -
+fi
+kubectl patch configmap argocd-rbac-cm -n "${J2026_ARGOCD_NAMESPACE}" --type merge -p "{\"data\": {\"policy.csv\": \"${policy_csv}\"}}"
+
+# Restart argocd-server to pick up local account and rbac config changes (only if OIDC was disabled, since we restarted above otherwise)
+if [[ -z "${CLIENT_ID}" || -z "${CLIENT_SECRET}" ]]; then
+  log_info "Restarting ArgoCD server to pick up local account config"
+  kubectl rollout restart deployment "${J2026_ARGOCD_RELEASE}-server" -n "${J2026_ARGOCD_NAMESPACE}"
+  kubectl rollout status deployment "${J2026_ARGOCD_RELEASE}-server" -n "${J2026_ARGOCD_NAMESPACE}" --timeout=5m
+fi
+
+log_info "Generating ArgoCD API token for Jenkins"
+# Use a temporary ClusterRoleBinding. Use apply or delete/create to avoid "already exists" errors.
+cat <<EOF | kubectl apply -f -
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -166,62 +180,71 @@ subjects:
   name: default
   namespace: ${J2026_ARGOCD_NAMESPACE}
 EOF
-  
-  # Ensure no old token-gen pod exists
-  kubectl delete pod argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found=true --wait=true || true
-  
-  # Use a subshell to capture token and ensure RBAC cleanup happens regardless of success/failure
-  set +e
-  kubectl run argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --restart=Never \
-    --image="quay.io/argoproj/argocd:${RESOLVED_3_5_PATCH}" \
-    --overrides='{
-      "spec": {
-        "containers": [{
-          "name": "argocd-token-gen",
-          "image": "quay.io/argoproj/argocd:'"${RESOLVED_3_5_PATCH}"'",
-          "command": ["bash", "-c", "argocd account generate-token --account jenkins --core"],
-          "resources": {
-            "requests": {
-              "cpu": "50m",
-              "memory": "128Mi"
-            },
-            "limits": {
-              "cpu": "100m",
-              "memory": "256Mi"
-            }
+
+# Ensure no old token-gen pod exists
+kubectl delete pod argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found=true --wait=true || true
+
+# Use a subshell to capture token and ensure RBAC cleanup happens regardless of success/failure
+set +e
+kubectl run argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --restart=Never \
+  --image="quay.io/argoproj/argocd:${RESOLVED_3_5_PATCH}" \
+  --overrides='{
+    "spec": {
+      "containers": [{
+        "name": "argocd-token-gen",
+        "image": "quay.io/argoproj/argocd:'"${RESOLVED_3_5_PATCH}"'",
+        "command": ["bash", "-c", "argocd account generate-token --account jenkins --core"],
+        "resources": {
+          "requests": {
+            "cpu": "50m",
+            "memory": "128Mi"
+          },
+          "limits": {
+            "cpu": "100m",
+            "memory": "256Mi"
           }
-        }]
-      }
-    }'
+        }
+      }]
+    }
+  }'
+
+# Wait for the pod to succeed (complete its execution)
+kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --timeout=3m
+EXIT_CODE=$?
+
+if [[ ${EXIT_CODE} -eq 0 ]]; then
+  RAW_TOKEN=$(kubectl logs argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}")
+else
+  RAW_TOKEN=""
+fi
+set -e
+kubectl delete pod argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found=true || true
+          
+# Strip any newlines or trailing whitespace from the token to prevent JSON patch errors
+TOKEN=$(echo "${RAW_TOKEN}" | tr -d '\n\r' | xargs)
+          
+# Cleanup temporary RBAC
+kubectl delete clusterrolebinding temp-argocd-admin || true
+
+if [[ ${EXIT_CODE} -eq 0 && -n "${TOKEN}" ]]; then
+  log_info "Storing ArgoCD token in ${J2026_JENKINS_CREDENTIALS_SECRET}"
+  kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \
+    --type=merge -p "{\"stringData\":{\"argocd-token\":\"${TOKEN}\"}}"
   
-  # Wait for the pod to succeed (complete its execution)
-  kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --timeout=3m
-  EXIT_CODE=$?
-  
-  if [[ ${EXIT_CODE} -eq 0 ]]; then
-    RAW_TOKEN=$(kubectl logs argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}")
-  else
-    RAW_TOKEN=""
-  fi
-  set -e
-  kubectl delete pod argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found=true || true
- 
-  # Strip any newlines or trailing whitespace from the token to prevent JSON patch errors
-  TOKEN=$(echo "${RAW_TOKEN}" | tr -d '\n\r' | xargs)
-            
-  # Cleanup temporary RBAC
-  kubectl delete clusterrolebinding temp-argocd-admin || true
- 
-  if [[ ${EXIT_CODE} -eq 0 && -n "${TOKEN}" ]]; then
-    log_info "Storing ArgoCD token in ${J2026_JENKINS_CREDENTIALS_SECRET}"
-    kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \
-      --type=merge -p "{\"stringData\":{\"argocd-token\":\"${TOKEN}\"}}"
-  else
-    log_error "Failed to generate ArgoCD token (exit code: ${EXIT_CODE})"
-    log_info "Raw output: ${RAW_TOKEN}"
+  # Safety fallback check: restart Jenkins pod if it exists and lacks the env variable
+  if kubectl get statefulset "${J2026_JENKINS_RELEASE}" -n "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
+    if kubectl get pod "${J2026_JENKINS_RELEASE}-0" -n "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
+      RUNNING_TOKEN=$(kubectl exec "${J2026_JENKINS_RELEASE}-0" -n "${J2026_JENKINS_NAMESPACE}" -c jenkins -- env | grep ARGOCD_AUTH_TOKEN || true)
+      if [[ -z "${RUNNING_TOKEN}" ]]; then
+        log_warn "Jenkins is running but does not have ARGOCD_AUTH_TOKEN set. Restarting Jenkins pod..."
+        kubectl delete pod "${J2026_JENKINS_RELEASE}-0" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found=true
+        wait_for_resource "statefulset" "${J2026_JENKINS_RELEASE}" "${J2026_JENKINS_NAMESPACE}" "15m"
+      fi
+    fi
   fi
 else
-  log_warn "OIDC credentials not found. ArgoCD will use local admin password."
+  log_error "Failed to generate ArgoCD token (exit code: ${EXIT_CODE})"
+  log_info "Raw output: ${RAW_TOKEN}"
 fi
 
 # 3. Wait for Server
