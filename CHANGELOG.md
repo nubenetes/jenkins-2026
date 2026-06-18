@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.9.8] - 2026-06-18
+
+### Fixed
+- **GitOps Push Authentication**:
+  - Resolved `exit code 128` (authentication failed) in `microservicesDeploy.groovy` during the `git push origin main` stage.
+  - Configured GKE cluster `jenkins-credentials` Secret dynamic mappings for `git-username` and `git-token` to properly authenticate Jenkins pipelines.
+  - Documented requirements for configuring `GIT_USERNAME` and `GIT_TOKEN` as GitHub repository secrets in `README.md`.
+
 ## [v0.9.6] - 2026-06-17
 
 ### Added
