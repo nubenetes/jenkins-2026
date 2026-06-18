@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.10.2] - 2026-06-18
+
+### Fixed
+- **Jenkins Pipelines - Git LFS skip on infra checkout**:
+  - Added `GIT_LFS_SKIP_SMUDGE=1` env var to the `Checkout Infra configs` stage in `MicroservicesPipeline.groovy` and the `Checkout Infra` stage in `MicroservicesK6SmokePipeline.groovy`.
+  - Prevents Jenkins agents from downloading ~234 MB of Git LFS media assets (MP4/M4A/PDF/JPG stored under `docs/notebooklm/`) on every pipeline run, regardless of whether `git-lfs` is installed in the agent pod.
+
 ## [v0.10.1] - 2026-06-18
 
 ### Added
