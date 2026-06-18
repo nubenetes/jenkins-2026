@@ -82,13 +82,13 @@ def call(Map cfg) {
 
           argocd app sync "microservices-${cfg.envName}" \
             --server "\${local_server}" \
-            --auth-token "\${ARGOCD_AUTH_TOKEN}" \
+            --auth-token "\${ARGOCD_AUTH_TOKEN:-}" \
             \${local_flags}
 
           argocd app wait "microservices-${cfg.envName}" \
             --sync --timeout 60 \
             --server "\${local_server}" \
-            --auth-token "\${ARGOCD_AUTH_TOKEN}" \
+            --auth-token "\${ARGOCD_AUTH_TOKEN:-}" \
             \${local_flags}
         """
       }

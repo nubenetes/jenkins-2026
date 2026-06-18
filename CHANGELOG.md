@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.9.16] - 2026-06-18
+
+### Fixed
+- **GitOps Jenkins Auth & Lifecycle**:
+  - Refactored `scripts/08.5-argocd.sh` to unconditionally configure the local `jenkins` account in ArgoCD and generate its API token even when Google OIDC/Gateway is disabled.
+  - Swapped execution order in `scripts/up.sh` so that `08.5-argocd.sh` runs before `04-jenkins.sh`. This ensures the Jenkins pod mounts the `ARGOCD_AUTH_TOKEN` correctly on initial startup.
+  - Added an automatic recovery check to restart the Jenkins pod if it is running but lacks the `ARGOCD_AUTH_TOKEN` environment variable.
+  - Made the `microservicesDeploy.groovy` pipeline step robust against unset parameters under bash `set -u` by using `ARGOCD_AUTH_TOKEN:-`.
+
 ## [v0.9.15] - 2026-06-18
 
 ### Fixed
