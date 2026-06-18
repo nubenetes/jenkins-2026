@@ -14,7 +14,8 @@ For a deeper dive, explore these resources. They are categorized by media type f
 
 ### 🎬 Video
 
-*   **[Jenkins 2026 Proof of Concept](./docs/notebooklm/Jenkins-2026_PoC.mp4)**: A video demonstration of the proof of concept, walking through the key features and functionalities of the Jenkins setup.
+*   **[Jenkins 2026 Proof of Concept (English)](./docs/notebooklm/Jenkins-2026_PoC.mp4)**: A video demonstration of the proof of concept, walking through the key features and functionalities of the Jenkins setup.
+*   **[Fábrica DevOps jenkins-2026 (Español)](./docs/notebooklm/es/Fabrica_DevOps_jenkins-2026_Spanish.mp4)**: Una demostración en video de la prueba de concepto, recorriendo las características y funcionalidades clave de la configuración de Jenkins.
 
 ### 📄 Document
 
@@ -26,7 +27,8 @@ For a deeper dive, explore these resources. They are categorized by media type f
 
 ### 🎧 Audio
 
-*   **[Twenty Cent Ephemeral GitOps in 2026 (M4A)](./docs/notebooklm/Twenty_cent_ephemeral_GitOps_in_2026.m4a)**: An audio recording discussing the concept of "twenty-cent ephemeral GitOps," likely covering the cost-effective and transient nature of the infrastructure setup.
+*   **[Twenty Cent Ephemeral GitOps in 2026 (English)](./docs/notebooklm/Twenty_cent_ephemeral_GitOps_in_2026.m4a)**: An audio recording discussing the concept of "twenty-cent ephemeral GitOps," likely covering the cost-effective and transient nature of the infrastructure setup.
+*   **[Infraestructura completa por veinte céntimos (Español)](./docs/notebooklm/es/Infraestructura_completa_por_veinte_céntimos_Spanish.m4a)**: Una grabación de audio que analiza el concepto de "GitOps efímero de veinte céntimos", cubriendo la naturaleza rentable y transitoria de la configuración de la infraestructura.
 
 ---
 
