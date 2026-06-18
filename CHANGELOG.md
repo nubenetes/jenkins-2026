@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.9.10] - 2026-06-18
+
+### Fixed
+- **Teardown Automation**:
+  - Added GCP Network Endpoint Groups (NEGs) wait and force-cleanup logic to `scripts/down.sh`. This prevents `terraform destroy` failures caused by orphaned NEGs blocking the deletion of the VPC network when GKE services are uninstalled.
+
 ## [v0.9.9] - 2026-06-18
 
 ### Added

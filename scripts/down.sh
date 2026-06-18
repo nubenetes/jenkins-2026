@@ -149,6 +149,58 @@ else
   log_info "Namespaces left in place. Set J2026_DELETE_NAMESPACES=true to remove them too."
 fi
 
+if command -v gcloud &>/dev/null; then
+  # Try to get active GCP project from gcloud config or environment
+  gcp_project="$(gcloud config get-value project 2>/dev/null || true)"
+  if [[ -n "${gcp_project}" ]]; then
+    # Try to read cluster name from output or tfstate
+    cluster_name=""
+    if command -v terraform &>/dev/null && [[ -d "${J2026_ROOT_DIR}/terraform/gke" ]]; then
+      cluster_name=$(terraform -chdir="${J2026_ROOT_DIR}/terraform/gke" output -raw cluster_name 2>/dev/null || true)
+    fi
+    if [[ -z "${cluster_name}" ]]; then
+      cluster_name="jenkins-2026"
+    fi
+    vpc_name="${cluster_name}-vpc"
+
+    log_step "Waiting for GCP Network Endpoint Groups (NEGs) referencing VPC '${vpc_name}' to be deleted..."
+    # Wait up to 5 minutes for NEGs to be deleted asynchronously by GKE controllers
+    for i in {1..30}; do
+      negs=$(gcloud compute network-endpoint-groups list \
+        --filter="network:${vpc_name}" \
+        --project="${gcp_project}" \
+        --format="value(name)" 2>/dev/null || true)
+      if [[ -z "${negs}" ]]; then
+        log_info "All NEGs deleted successfully."
+        break
+      fi
+      log_info "Still waiting for NEGs to be deleted (attempt $i/30): $(echo ${negs} | tr '\n' ' ')"
+      sleep 10
+    done
+
+    # If NEGs still exist after timeout, force delete them to prevent blocking VPC deletion
+    negs=$(gcloud compute network-endpoint-groups list \
+      --filter="network:${vpc_name}" \
+      --project="${gcp_project}" \
+      --format="value(name)" 2>/dev/null || true)
+    if [[ -n "${negs}" ]]; then
+      log_warn "Timeout waiting for NEGs. Force-deleting remaining NEGs..."
+      gcloud compute network-endpoint-groups list \
+        --filter="network:${vpc_name}" \
+        --project="${gcp_project}" \
+        --format="csv[no-header](name,zone)" 2>/dev/null | while IFS=, read -r name zone; do
+          if [[ -n "${name}" && -n "${zone}" ]]; then
+            log_info "Force-deleting NEG '${name}' in zone '${zone}'..."
+            gcloud compute network-endpoint-groups delete "${name}" \
+              --zone="${zone}" \
+              --project="${gcp_project}" \
+              --quiet || true
+          fi
+        done
+    fi
+  fi
+fi
+
 rm -rf "${J2026_ROOT_DIR}/.generated"
 
 log_info "jenkins-2026 down."
