@@ -1,4 +1,6 @@
 pgadmin4:
+  image:
+    tag: "9.16"
   env:
     email: "admin@jenkins2026.nubenetes.com"
     password: "SuperSecretPassword"
