@@ -29,7 +29,7 @@ def call(Map cfg) {
             git config --global user.email "jenkins@nubenetes.com"
             git config --global user.name "Jenkins CI"
 
-            # Clean any previous clone (runs as root; EPERM-safe)
+            # Clean any previous clone inside the container that created it (EPERM-safe)
             find . -mindepth 1 -delete 2>/dev/null || true
 
             # Construct the remote URL with credentials
@@ -68,10 +68,12 @@ def call(Map cfg) {
       container('helm') {
         sh """
           set -eux
-          # Install argocd CLI if not present
-          if ! command -v argocd >/dev/null 2>&1; then
-            curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/download/\${ARGOCD_VERSION}/argocd-linux-amd64
-            chmod +x /usr/local/bin/argocd
+          # Download argocd CLI to /tmp — helm container runs as UID 1001
+          # (non-root) so /usr/local/bin is not writable.
+          ARGOCD=/tmp/argocd-cli
+          if [ ! -x "\${ARGOCD}" ]; then
+            curl -sSL -o "\${ARGOCD}" https://github.com/argoproj/argo-cd/releases/download/\${ARGOCD_VERSION}/argocd-linux-amd64
+            chmod +x "\${ARGOCD}"
           fi
 
           # Trigger and wait for Sync
@@ -86,12 +88,12 @@ def call(Map cfg) {
             local_flags="\${local_flags} --plaintext"
           fi
 
-          argocd app sync "microservices-${cfg.envName}" \
+          \${ARGOCD} app sync "microservices-${cfg.envName}" \
             --server "\${local_server}" \
             --auth-token "\${ARGOCD_AUTH_TOKEN:-}" \
             \${local_flags}
 
-          argocd app wait "microservices-${cfg.envName}" \
+          \${ARGOCD} app wait "microservices-${cfg.envName}" \
             --sync --timeout 300 \
             --server "\${local_server}" \
             --auth-token "\${ARGOCD_AUTH_TOKEN:-}" \
