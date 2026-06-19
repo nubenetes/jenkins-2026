@@ -13,24 +13,30 @@ def call(Map cfg) {
   // Use the branch that corresponds to the environment
   def infraBranch = cfg.envName == 'stable' ? 'main' : 'develop'
 
-  dir('jenkins-2026-infra') {
-    deleteDir()
+  // Use 'jenkins-2026-gitops' (not 'jenkins-2026-infra') to avoid colliding
+  // with the infra checkout dir that Checkout Infra configs clones into.
+  // Cleanup runs inside container('git') so root can delete root-owned files
+  // from previous builds; deleteDir() outside containers fails with EPERM.
+  dir('jenkins-2026-gitops') {
     stage('GitOps Update') {
       container('git') {
-        withCredentials([usernamePassword(credentialsId: 'microservices-git', 
-                                         passwordVariable: 'GIT_TOKEN', 
+        withCredentials([usernamePassword(credentialsId: 'microservices-git',
+                                         passwordVariable: 'GIT_TOKEN',
                                          usernameVariable: 'GIT_USER')]) {
           sh """
             set -eux
-            git config --global --add safe.directory '*'
+            git config --global --add safe.directory '*' || true
             git config --global user.email "jenkins@nubenetes.com"
             git config --global user.name "Jenkins CI"
-            
+
+            # Clean any previous clone (runs as root; EPERM-safe)
+            find . -mindepth 1 -delete 2>/dev/null || true
+
             # Construct the remote URL with credentials
             REPO_URL="${infraRepoUrl}"
             REPO_CLEAN=\$(echo "\${REPO_URL}" | sed 's|https://||')
             AUTH_REPO_URL="https://\${GIT_USER:-git}:\${GIT_TOKEN:-}@\${REPO_CLEAN}"
-            
+
             git clone --depth 1 --branch ${infraBranch} "\${AUTH_REPO_URL}" .
           """
         }

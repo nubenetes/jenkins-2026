@@ -75,6 +75,10 @@ spec:
       image: alpine/git:latest
       command: ['sleep']
       args: ['infinity']
+      # runAsUser: 1000 matches the jenkins user in the jnlp container so
+      # files cloned here can be deleted by jnlp/maven without EPERM.
+      securityContext:
+        runAsUser: 1000
       resources:
         requests: {cpu: 5m, memory: 128Mi}
         limits: {cpu: 100m, memory: 512Mi}
