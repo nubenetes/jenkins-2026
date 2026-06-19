@@ -89,9 +89,11 @@ spec:
         limits: {cpu: 100m, memory: 128Mi}
     - name: git
       # bitnami/git runs as UID 1001 (non-root) by default with a proper home
-      # directory (/home/git) — no HOME override needed. curl, gzip, and
-      # base64 are pre-installed. Drop-in replacement for alpine/git.
-      image: bitnami/git:2-debian-12
+      # directory — no HOME override needed. curl, gzip, and base64 are
+      # pre-installed. Drop-in replacement for alpine/git.
+      # Note: bitnami only publishes the 'latest' rolling tag on Docker Hub;
+      # pin to a digest (bitnami/git@sha256:...) for fully reproducible builds.
+      image: bitnami/git:latest
       command: ['sleep']
       args: ['infinity']
       securityContext:
