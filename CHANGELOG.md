@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.10.6] - 2026-06-19
+
+### Fixed
+- **Jenkins Seed Job - Agent Pod Memory Limit**:
+  - Increased JNLP agent pod memory limit from 256Mi to 512Mi in `Jenkinsfile.seed`.
+  - The undersized memory limit was causing the agent pod to be OOM-killed during git checkout operations, resulting in `java.nio.channels.ClosedChannelException` and seed-jobs build failures on GKE cluster provision.
+  - Also increased CPU request from 10m to 50m and limit from 200m to 500m to improve checkout performance during cluster bootstrap.
+  - **Root Cause**: When Git LFS files were not yet skipped (before v0.10.4), the pod exhausted memory attempting to download 152MB of media assets. Now, even with LFS skip in place, the pod had insufficient headroom for reliable git operations. Increasing to 512Mi provides a reliable buffer.
+- **Jenkins Seed-Pipelines - Build Timeout & Queue Tracking** (continuation of v0.10.5 work):
+  - Extended seed-jobs build timeout from 6 minutes to 7.5 minutes to allow Jenkins plugins to fully initialize on fresh cluster provisions.
+  - Refactored build tracking to use Jenkins queue API instead of blind polling, providing immediate failure detection and clearer error messages.
+  - Fixed job-count verification threshold to match smoke-test expectations (NUM_SERVICES + 2 instead of + 1).
+
+## [v0.10.5] - 2026-06-19
+
+### Fixed
+- **Jenkins Seed-Pipelines - Build Timeout & Job Count Verification**:
+  - Extended timeout for seed-jobs build completion from 60 seconds to 360 seconds (6 minutes).
+  - Refactored build status polling to use Jenkins queue API for direct build tracking instead of blind polling.
+  - Fixed job-count threshold from (NUM_SERVICES + 1) to (NUM_SERVICES + 2) to align with smoke test expectations.
 ## [v0.10.4] - 2026-06-19
 
 ### Fixed
