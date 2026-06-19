@@ -51,9 +51,22 @@ spec:
         stages {
             stage('Checkout Infra') {
                 steps {
-                    withEnv(['GIT_LFS_SKIP_SMUDGE=1']) {
-                        git url: "${env.JENKINS2026_REPO_URL ?: 'https://github.com/nubenetes/jenkins-2026.git'}",
-                            branch: "${env.JENKINS2026_REPO_BRANCH ?: 'main'}"
+                    // Use sh git clone inside container('helm') to avoid two issues:
+                    // 1. JENKINS-30600: DSL git url: ignores container() wrappers
+                    // 2. Full clone in JNLP (256Mi) OOMs; shallow clone in helm (128Mi) does not
+                    container('helm') {
+                        sh """
+                            git config --global --add safe.directory '*' || true
+                            find . -mindepth 1 -delete 2>/dev/null || true
+                            GIT_LFS_SKIP_SMUDGE=1 git \
+                                -c filter.lfs.smudge= \
+                                -c filter.lfs.process= \
+                                -c filter.lfs.required=false \
+                                clone --depth 1 \
+                                --branch "${env.JENKINS2026_REPO_BRANCH ?: 'main'}" \
+                                "${env.JENKINS2026_REPO_URL ?: 'https://github.com/nubenetes/jenkins-2026.git'}" \
+                                .
+                        """
                     }
                 }
             }
