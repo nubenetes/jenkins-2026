@@ -61,6 +61,8 @@ JHipster microservices reference application.
 
 - **Unified Pipeline Model**: A single set of stable pipelines (`gateway`, `jhipstersamplemicroservice`, and `microservices-k6-smoke` at the root, all visible in the **microservices** view) tracks and builds the microservices. They deploy directly to the `microservices` namespace and update the `main` branch of the companion GitOps config repository. The legacy develop environment and sandbox components have been pruned.
 
+- **Hardened Pipeline Agent Security**: All Jenkins pipeline agent containers run with `allowPrivilegeEscalation: false`. The `git` (`alpine/git`) and `helm` (`alpine/k8s`) containers run as `runAsUser: 1000` (non-root) with `HOME=/tmp`. Containers that legitimately require root are explicitly documented: `docker` (DinD daemon) and `codeql` (requires `apt-get`). See [Pipeline Container Security](#pipeline-container-security) for the full matrix.
+
 - **Observability (Grafana Cloud / OSS)**: Traces, metrics and logs are fully correlated. Dashboard deployment is managed via the native **`gcx` CLI** using a GitOps workflow.
 - **ArgoCD (GitOps)**: The entire Microservices stack is managed via **ArgoCD**, providing a declarative GitOps engine for continuous delivery. It is integrated with Google OIDC for secure, single sign-on access.
 - **CloudNative-PG Operator (CNPG)**: Managed natively by ArgoCD
@@ -122,6 +124,8 @@ for the OpenTelemetry/Grafana wiring.
     - [Why the GitOps Repo Uses Only the `main` Branch](#why-the-gitops-repo-uses-only-the-main-branch)
     - [Would a `develop` branch make sense?](#would-a-develop-branch-make-sense)
   - [Architecture Diagram](#architecture-diagram)
+  - [Pipeline Container Security](#pipeline-container-security)
+  - [Pipeline Reliability Fixes (v0.10.7–v0.10.16)](#pipeline-reliability-fixes-v0107v01016)
 - [Observability](#observability)
   - [Key Features](#key-features)
   - [k6 observability smoke test](#k6-observability-smoke-test)
@@ -1097,6 +1101,40 @@ Defined in [MicroservicesK6SmokePipeline.groovy](file:///home/inafev/github/jenk
     *   Delegates script execution to [microservicesK6Smoke.groovy](file:///home/inafev/github/jenkins-2026/vars/microservicesK6Smoke.groovy) to run k6 with multi-threaded virtual users, validating request rates and API latency thresholds.
 
 Details on the underlying pipeline generation architecture can be found in [`docs/pipelines-as-code.md`](docs/pipelines-as-code.md).
+
+### Pipeline Container Security
+
+All agent pod containers follow a least-privilege model. The table below documents each container's effective UID and the rationale for any root exception.
+
+| Container | Image | Effective UID | `allowPrivilegeEscalation` | Notes |
+|-----------|-------|:---:|:---:|-------|
+| `jnlp` | `jenkins/inbound-agent` | 1000 | false | Jenkins default non-root agent |
+| `maven` | `maven:3.9.9-eclipse-temurin-21` | 0 (image default) | false | Cache mountPath `/root/.m2`; migrate when cache path moves |
+| `node` | `node:20-bookworm` | 0 (image default) | false | Cache mountPath `/root/.npm`; migrate when cache path moves |
+| `git` | `alpine/git:latest` | **1000** (k8s override) | false | `HOME=/tmp` required for `git config --global` under non-root |
+| `helm` | `alpine/k8s:1.31.3` | **1000** (k8s override) | false | `HOME=/tmp`; ArgoCD CLI downloaded to `/tmp/argocd-cli` |
+| `semgrep` | `semgrep/semgrep:1.79.0` | 0 (image default) | false | No filesystem writes requiring root; upgrade path: add `runAsUser` |
+| `trivy` | `aquasec/trivy:0.52.2` | 0 (image default) | false | No filesystem writes requiring root |
+| `docker` | `docker:26-dind` | **0 (required)** | true (privileged) | Docker-in-Docker daemon requires root and a privileged context |
+| `codeql` | `mcr.microsoft.com/cstsectools/codeql-container` | **0 (required)** | — | Runs `apt-get` + Node.js installer at pipeline time |
+
+**Key implementation notes:**
+- `runAsUser: 1000` on `alpine/git` and `alpine/k8s` is applied via Kubernetes `securityContext` — it overrides the image's default UID at runtime without modifying the image itself.
+- SARIF upload (Semgrep and CodeQL results → GitHub Code Scanning API) runs in `container('helm')` because `alpine/git` (UID 1000) cannot run `apk add curl`, while `alpine/k8s` ships curl, git, gzip, and base64 pre-installed.
+- The JENKINS-30600 Jenkins Kubernetes plugin bug means the built-in DSL `git url:` step always runs in the JNLP sidecar regardless of `container()` wrapping. All git clones use `sh "git clone --depth 1 -c filter.lfs.*=..."` inside the intended container instead.
+
+### Pipeline Reliability Fixes (v0.10.7–v0.10.16)
+
+The following issues were diagnosed and resolved in this release cycle. They are documented here as a reference for operators running similar Jenkins-on-Kubernetes setups:
+
+| Issue | Symptom | Root Cause | Fix |
+|-------|---------|------------|-----|
+| **JENKINS-30600** | OOM / `ClosedChannelException` on git checkout | DSL `git url:` ignores `container()` wrapper, always runs in 256 Mi JNLP | Replaced with `sh "git clone --depth 1"` inside target container |
+| **EPERM on deploy cleanup** | `Operation not permitted` on `deleteDir()` | JNLP (UID 1000) cannot delete files written by root (`alpine/git` UID 0) | Moved `find . -mindepth 1 -delete` inside `container('git')` |
+| **k6 smoke OOM** | `ClosedChannelException` in `Checkout Infra` | Same JENKINS-30600 in `MicroservicesK6SmokePipeline` | Same `sh git clone` fix in `container('helm')` |
+| **curl not found (exit 127)** | Semgrep/CodeQL stage FAILURE | `alpine/git` UID 1000 cannot `apk add curl`; Jenkins `sh -xe` propagates exit 127 | Moved SARIF upload to `container('helm')` which has curl pre-installed |
+| **Missing env vars in agents** | Pipeline references `env.JENKINS2026_REPO_BRANCH` as empty | `globalNodeProperties` not configured in JCasC | Added `globalNodeProperties` with all `JENKINS2026_*` vars in `jcasc-base.yaml` |
+| **Agent pods not schedulable** | Builds queue indefinitely | Karpenter node taint `jenkins-agent=true:NoSchedule` without matching toleration | Added toleration to agent pod spec in `MicroservicesPipeline.groovy` |
 
 ## Observability
 
