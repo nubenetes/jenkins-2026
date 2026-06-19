@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.10.3] - 2026-06-19
+
+### Added
+- **README - CNPG Clarification Banner**:
+  - Added a prominent banner in the NotebookLM multimedia section clarifying that the project uses **CloudNative-PG (CNPG)**, not CrunchyData PGO.
+  - The NotebookLM-generated multimedia assets (video, audio, PDF, infographic) incorrectly reference CrunchyData PGO despite being generated after the migration to CNPG.
+  - The banner directs readers to the authoritative `cnpg-app.yaml` and the companion GitOps config repo for the current PostgreSQL operator configuration.
+
 ## [v0.10.2] - 2026-06-18
 
 ### Fixed
