@@ -76,6 +76,10 @@ jenkins:
             value: "${GRAFANA_BASE_URL:-}"
           - key: "JENKINS2026_REPO_URL"
             value: "${JENKINS2026_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
+          - key: "JENKINS2026_REPO_BRANCH"
+            value: "${JENKINS2026_REPO_BRANCH:-main}"
+          - key: "JENKINS2026_GITOPS_REPO_URL"
+            value: "${JENKINS2026_GITOPS_REPO_URL:-https://github.com/nubenetes/jenkins-2026-gitops-config.git}"
 
   securityRealm:
     oic:

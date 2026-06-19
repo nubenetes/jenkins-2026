@@ -116,6 +116,11 @@ spec:
       resources:
         requests: {cpu: 10m, memory: 128Mi}
         limits: {cpu: 200m, memory: 256Mi}
+  tolerations:
+    - key: "jenkins-agent"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
   volumes:
     - name: maven-cache
       hostPath:
