@@ -30,6 +30,23 @@ For a deeper dive, explore these resources. They are categorized by media type f
 *   **[Twenty Cent Ephemeral GitOps in 2026 (English)](./docs/notebooklm/Twenty_cent_ephemeral_GitOps_in_2026.m4a)**: An audio recording discussing the concept of "twenty-cent ephemeral GitOps," likely covering the cost-effective and transient nature of the infrastructure setup.
 *   **[Infraestructura completa por veinte céntimos (Español)](./docs/notebooklm/es/Infraestructura_completa_por_veinte_céntimos_Spanish.m4a)**: Una grabación de audio que analiza el concepto de "GitOps efímero de veinte céntimos", cubriendo la naturaleza rentable y transitoria de la configuración de la infraestructura.
 
+> [!IMPORTANT]
+> ### PostgreSQL Operator: CloudNative-PG (CNPG), not CrunchyData PGO
+>
+> The multimedia assets above (video, audio, PDF, and infographic) were generated
+> by **Google NotebookLM** after the project had already migrated to
+> **[CloudNative-PG (CNPG)](https://cloudnative-pg.io/)**. However, NotebookLM
+> did not pick up this change and **incorrectly references CrunchyData PGO** in
+> the generated media.
+>
+> **The current codebase uses CloudNative-PG (CNPG) — not CrunchyData PGO.**
+> PostgreSQL 18 HA clusters (1 Primary + 2 Replicas) are provisioned via the
+> CNPG `Cluster` CRD, with PgBouncer connection pooling and Barman-based cloud
+> backups — all managed through ArgoCD. See the
+> [`cnpg-app.yaml`](argocd/cnpg-app.yaml) application and the
+> [companion GitOps repo](https://github.com/nubenetes/jenkins-2026-gitops-config)
+> for the authoritative configuration.
+
 ---
 
 # jenkins-2026
