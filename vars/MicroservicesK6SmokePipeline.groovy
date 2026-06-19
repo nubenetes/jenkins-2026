@@ -18,6 +18,8 @@ spec:
       image: grafana/k6:0.54.0
       command: ['sleep']
       args: ['infinity']
+      # grafana/k6 is a scratch-based binary image; runAsUser: 0 kept until
+      # validated that the k6 binary works under a non-root UID in this env.
       securityContext:
         runAsUser: 0
       resources:
@@ -27,10 +29,17 @@ spec:
       image: alpine/k8s:1.31.3
       command: ['sleep']
       args: ['infinity']
+      securityContext:
+        allowPrivilegeEscalation: false
+      env:
+        - name: HOME
+          value: /tmp
       resources:
         requests: {cpu: 5m, memory: 64Mi}
         limits: {cpu: 100m, memory: 128Mi}
     - name: jnlp
+      securityContext:
+        allowPrivilegeEscalation: false
       resources:
         requests: {cpu: 10m, memory: 128Mi}
         limits: {cpu: 200m, memory: 256Mi}
