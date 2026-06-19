@@ -290,22 +290,24 @@ EOF
                             archiveArtifacts artifacts: 'semgrep-results.sarif', allowEmptyArchive: true
                         }
                     }
-                    container('git') {
+                    // Upload SARIF in container('helm') — alpine/k8s has curl, git,
+                    // gzip, and base64 pre-installed so no package install needed.
+                    // container('git') (alpine/git + runAsUser:1000) cannot install
+                    // packages (apk requires root) and lacks curl.
+                    container('helm') {
                         dir('microservices-src') {
-                            withCredentials([usernamePassword(credentialsId: 'microservices-git', 
-                                                             passwordVariable: 'GIT_TOKEN', 
+                            withCredentials([usernamePassword(credentialsId: 'microservices-git',
+                                                             passwordVariable: 'GIT_TOKEN',
                                                              usernameVariable: 'GIT_USER')]) {
                                 sh """
                                     git config --global --add safe.directory '*' || true
-                                    # curl is pre-installed in bitnami/git (Debian-based)
-                                    curl --version >/dev/null 2>&1 || apt-get install -y --no-install-recommends curl 2>/dev/null || true
                                     if [ -f semgrep-results.sarif ]; then
                                         echo "Preparing Semgrep SARIF report payload..."
                                         gzip -c semgrep-results.sarif | base64 -w0 > semgrep-sarif.b64
                                         COMMIT_SHA=\$(git -C ${env.WORKSPACE}/jenkins-2026-infra rev-parse HEAD | tr -d '\\n')
                                         REF="refs/heads/${env.JENKINS2026_REPO_BRANCH ?: 'develop'}"
                                         REPO_PATH=\$(echo "${env.JENKINS2026_REPO_URL ?: 'https://github.com/nubenetes/jenkins-2026.git'}" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\\.git\$||')
-                                        
+
                                         echo -n '{"commit_sha":"' > semgrep-payload.json
                                         echo -n "\$COMMIT_SHA" >> semgrep-payload.json
                                         echo -n '","ref":"' >> semgrep-payload.json
@@ -313,7 +315,7 @@ EOF
                                         echo -n '","sarif":"' >> semgrep-payload.json
                                         cat semgrep-sarif.b64 >> semgrep-payload.json
                                         echo -n '"}' >> semgrep-payload.json
-                                        
+
                                         echo "Uploading Semgrep SARIF report to GitHub..."
                                         RESPONSE=\$(curl -s -o /dev/null -w "%{http_code}" -X POST \\
                                           -H "Authorization: token \$GIT_TOKEN" \\
@@ -366,21 +368,24 @@ EOF
                             archiveArtifacts artifacts: 'codeql-results.sarif', allowEmptyArchive: true
                         }
                     }
-                    container('git') {
+                    // Upload SARIF in container('helm') — alpine/k8s has curl, git,
+                    // gzip, and base64 pre-installed so no package install needed.
+                    // container('git') (alpine/git + runAsUser:1000) cannot run
+                    // apk add as non-root, so curl is unavailable there.
+                    container('helm') {
                         dir('microservices-src') {
-                            withCredentials([usernamePassword(credentialsId: 'microservices-git', 
-                                                             passwordVariable: 'GIT_TOKEN', 
+                            withCredentials([usernamePassword(credentialsId: 'microservices-git',
+                                                             passwordVariable: 'GIT_TOKEN',
                                                              usernameVariable: 'GIT_USER')]) {
                                 sh """
                                     git config --global --add safe.directory '*' || true
-                                    apk add --no-cache curl || true
                                     if [ -f codeql-results.sarif ]; then
                                         echo "Preparing CodeQL SARIF report payload..."
                                         gzip -c codeql-results.sarif | base64 -w0 > codeql-sarif.b64
                                         COMMIT_SHA=\$(git -C ${env.WORKSPACE}/jenkins-2026-infra rev-parse HEAD | tr -d '\\n')
                                         REF="refs/heads/${env.JENKINS2026_REPO_BRANCH ?: 'develop'}"
                                         REPO_PATH=\$(echo "${env.JENKINS2026_REPO_URL ?: 'https://github.com/nubenetes/jenkins-2026.git'}" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\\.git\$||')
-                                        
+
                                         echo -n '{"commit_sha":"' > codeql-payload.json
                                         echo -n "\$COMMIT_SHA" >> codeql-payload.json
                                         echo -n '","ref":"' >> codeql-payload.json
@@ -388,7 +393,7 @@ EOF
                                         echo -n '","sarif":"' >> codeql-payload.json
                                         cat codeql-sarif.b64 >> codeql-payload.json
                                         echo -n '"}' >> codeql-payload.json
-                                        
+
                                         echo "Uploading CodeQL SARIF report to GitHub..."
                                         RESPONSE=\$(curl -s -o /dev/null -w "%{http_code}" -X POST \\
                                           -H "Authorization: token \$GIT_TOKEN" \\
