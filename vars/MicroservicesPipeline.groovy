@@ -76,8 +76,8 @@ spec:
       command: ['sleep']
       args: ['infinity']
       resources:
-        requests: {cpu: 5m, memory: 64Mi}
-        limits: {cpu: 100m, memory: 128Mi}
+        requests: {cpu: 5m, memory: 128Mi}
+        limits: {cpu: 100m, memory: 512Mi}
     - name: semgrep
       image: semgrep/semgrep:1.79.0
       command: ['sleep']
@@ -219,12 +219,23 @@ EOF
             stage('Checkout Infra configs') {
                 steps {
                     container('git') {
-                        dir('jenkins-2026-infra') {
-                            withEnv(['GIT_LFS_SKIP_SMUDGE=1']) {
-                                git url: "${env.JENKINS2026_REPO_URL ?: 'https://github.com/nubenetes/jenkins-2026.git'}",
-                                    branch: "${env.JENKINS2026_REPO_BRANCH ?: 'develop'}"
-                            }
-                        }
+                        // Use sh (not the git DSL step) so container() is honoured.
+                        // The DSL git step triggers JENKINS-30600 and runs in jnlp
+                        // instead, where 256Mi is insufficient for this repo's objects.
+                        // -c filter.lfs.* bypasses the LFS filter entirely without
+                        // requiring git-lfs to be installed in the alpine/git image.
+                        sh """
+                            git config --global --add safe.directory '*' || true
+                            rm -rf jenkins-2026-infra
+                            GIT_LFS_SKIP_SMUDGE=1 git \
+                                -c filter.lfs.smudge= \
+                                -c filter.lfs.process= \
+                                -c filter.lfs.required=false \
+                                clone --depth 1 \
+                                --branch ${env.JENKINS2026_REPO_BRANCH ?: 'main'} \
+                                ${env.JENKINS2026_REPO_URL ?: 'https://github.com/nubenetes/jenkins-2026.git'} \
+                                jenkins-2026-infra
+                        """
                     }
                 }
             }
@@ -376,10 +387,21 @@ EOF
             stage('Trivy IaC Scan') {
                 steps {
                     container('git') {
-                        dir('gitops-config-src') {
-                            git url: "${env.JENKINS2026_GITOPS_REPO_URL ?: 'https://github.com/nubenetes/jenkins-2026-gitops-config.git'}",
-                                branch: (params.envName == 'stable' ? 'main' : 'develop'),
-                                credentialsId: 'microservices-git'
+                        // Same JENKINS-30600 fix as Checkout Infra configs: use sh
+                        // so container() is honoured. Credentials embedded in the URL.
+                        withCredentials([usernamePassword(credentialsId: 'microservices-git',
+                                                         passwordVariable: 'GIT_TOKEN',
+                                                         usernameVariable: 'GIT_USER')]) {
+                            sh """
+                                git config --global --add safe.directory '*' || true
+                                rm -rf gitops-config-src
+                                REPO_URL="${env.JENKINS2026_GITOPS_REPO_URL ?: 'https://github.com/nubenetes/jenkins-2026-gitops-config.git'}"
+                                REPO_CLEAN=\$(echo "\${REPO_URL}" | sed 's|https://||')
+                                git clone --depth 1 \
+                                    --branch ${params.envName == 'stable' ? 'main' : 'develop'} \
+                                    "https://\${GIT_USER:-git}:\${GIT_TOKEN:-}@\${REPO_CLEAN}" \
+                                    gitops-config-src
+                            """
                         }
                     }
                     container('trivy') {
