@@ -22,7 +22,6 @@ All notable changes to this project will be documented in this file.
   - Extended timeout for seed-jobs build completion from 60 seconds to 360 seconds (6 minutes).
   - Refactored build status polling to use Jenkins queue API for direct build tracking instead of blind polling.
   - Fixed job-count threshold from (NUM_SERVICES + 1) to (NUM_SERVICES + 2) to align with smoke test expectations.
-
 ## [v0.10.4] - 2026-06-19
 
 ### Fixed
