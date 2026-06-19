@@ -36,7 +36,9 @@ spec:
   stages {
     stage('Checkout jenkins-2026') {
       steps {
-        checkout scm
+        withEnv(['GIT_LFS_SKIP_SMUDGE=1']) {
+          checkout scm
+        }
       }
     }
 
