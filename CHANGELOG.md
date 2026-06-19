@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.10.4] - 2026-06-19
+
+### Fixed
+- **Jenkins Seed Job - Git LFS skip on checkout**:
+  - Added `GIT_LFS_SKIP_SMUDGE=1` env var to the `Checkout jenkins-2026` stage in `Jenkinsfile.seed`.
+  - The seed job's lightweight JNLP agent (256Mi) was attempting to download ~234 MB of Git LFS media assets on every checkout, causing the build to fail/hang and preventing pipeline job creation (broke the `02.01 GKE provision` smoke test).
+
 ## [v0.10.3] - 2026-06-19
 
 ### Added
