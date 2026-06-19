@@ -215,8 +215,10 @@ EOF
                 steps {
                     container('git') {
                         dir('jenkins-2026-infra') {
-                            git url: "${env.JENKINS2026_REPO_URL ?: 'https://github.com/nubenetes/jenkins-2026.git'}",
-                                branch: "${env.JENKINS2026_REPO_BRANCH ?: 'develop'}"
+                            withEnv(['GIT_LFS_SKIP_SMUDGE=1']) {
+                                git url: "${env.JENKINS2026_REPO_URL ?: 'https://github.com/nubenetes/jenkins-2026.git'}",
+                                    branch: "${env.JENKINS2026_REPO_BRANCH ?: 'develop'}"
+                            }
                         }
                     }
                 }
