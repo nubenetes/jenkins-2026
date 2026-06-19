@@ -65,10 +65,11 @@ spec:
       image: alpine/k8s:1.31.3
       command: ['sleep']
       args: ['infinity']
-      # runAsUser: 1001 matches bitnami/git (UID 1001) so yq can write
-      # git-cloned files. HOME=/tmp lets argocd CLI write its config cache.
+      # runAsUser: 1000 matches the git container so yq can write git-cloned
+      # files (same UID = write permission). HOME=/tmp lets argocd CLI write
+      # its config cache without needing root.
       securityContext:
-        runAsUser: 1001
+        runAsUser: 1000
         runAsNonRoot: true
         allowPrivilegeEscalation: false
       env:
@@ -88,17 +89,23 @@ spec:
         requests: {cpu: 5m, memory: 64Mi}
         limits: {cpu: 100m, memory: 128Mi}
     - name: git
-      # bitnami/git runs as UID 1001 (non-root) by default with a proper home
-      # directory — no HOME override needed. curl, gzip, and base64 are
-      # pre-installed. Drop-in replacement for alpine/git.
-      # Note: bitnami only publishes the 'latest' rolling tag on Docker Hub;
-      # pin to a digest (bitnami/git@sha256:...) for fully reproducible builds.
-      image: bitnami/git:latest
+      image: alpine/git:latest
       command: ['sleep']
       args: ['infinity']
+      # runAsUser: 1000 overrides the image default (root). Kubernetes enforces
+      # the UID at runtime so the process genuinely runs as non-root even though
+      # alpine/git has no passwd entry for 1000. HOME=/tmp is required because
+      # alpine has no /home/1000 — git config --global writes to /tmp/.gitconfig
+      # (container-local, not shared with other containers).
+      # runAsUser 1000 also matches the jnlp/jenkins UID so files created here
+      # are accessible to the jnlp container without permission errors.
       securityContext:
+        runAsUser: 1000
         runAsNonRoot: true
         allowPrivilegeEscalation: false
+      env:
+        - name: HOME
+          value: /tmp
       resources:
         requests: {cpu: 5m, memory: 128Mi}
         limits: {cpu: 100m, memory: 512Mi}
