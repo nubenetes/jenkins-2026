@@ -2,6 +2,118 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.10.16] - 2026-06-19
+
+### Changed
+- **pgAdmin upgraded from 9.15 → 9.16**:
+  - Pinned `image.tag: "9.16"` in `helm/pgadmin/values.yaml`.
+  - The upstream runix Helm chart `1.65.0` (which will ship 9.16) is not yet published; the image override allows the upgrade without waiting for the chart release.
+  - ArgoCD auto-sync picks up the change from `main` with no manual intervention required.
+
+---
+
+## [v0.10.15] - 2026-06-19
+
+### Fixed
+- **Semgrep SAST / CodeQL Analysis — `curl: not found` (exit 127) fails stage**:
+  - Moved both SARIF-upload blocks from `container('git')` to `container('helm')`.
+  - **Root cause**: `alpine/git` runs as `runAsUser: 1000` (non-root, hardened in v0.10.12). `apk add curl` requires root, so it fails silently — curl is never installed. Jenkins runs `sh` with `-xe` by default, so `RESPONSE=$(curl ...)` exits 127 and kills the stage, causing all downstream stages (CodeQL, Trivy, Build, Deploy, Smoke Test) to be skipped.
+  - **Fix**: `alpine/k8s` (the `helm` container) ships curl, git, gzip, and base64 pre-installed and already runs as UID 1000. Moving both SARIF upload blocks there eliminates the runtime package-install dependency entirely.
+  - **Files**: `vars/MicroservicesPipeline.groovy`
+
+---
+
+## [v0.10.14] - 2026-06-19
+
+### Fixed
+- **`container('git')` — `bitnami/git:latest` runs as root, rejected by `runAsNonRoot`**:
+  - Reverted to `alpine/git:latest` with an explicit `securityContext.runAsUser: 1000` and `env HOME=/tmp`.
+  - **Root cause**: `bitnami/git:latest` on Docker Hub has no `USER` instruction — the effective UID is 0. Kubernetes `runAsNonRoot: true` rejects the container at startup with `CreateContainerConfigError`.
+  - **Why `alpine/git` works**: Kubernetes `runAsUser: 1000` overrides the image default at runtime (the process is non-root even though the image has no `USER` instruction). `HOME=/tmp` is required so `git config --global` writes to `/tmp/.gitconfig` instead of `//` (which would be EPERM under UID 1000 with an unset HOME).
+  - **Files**: `vars/MicroservicesPipeline.groovy`
+
+---
+
+## [v0.10.13] - 2026-06-19
+
+### Fixed
+- **`container('git')` — `ErrImagePull: bitnami/git:2-debian-12` tag does not exist**:
+  - Changed image reference from `bitnami/git:2-debian-12` to `bitnami/git:latest`.
+  - Docker Hub's bitnami/git repository only publishes a `latest` tag; versioned tags (`2-debian-12`, etc.) are only available on `registry.hub.docker.com` via Bitnami's own registry, not the standard Docker Hub pull path.
+  - **Files**: `vars/MicroservicesPipeline.groovy`
+
+---
+
+## [v0.10.12] - 2026-06-19
+
+### Security
+- **Non-root container hardening across all Jenkins pipeline agent containers**:
+  - Added `securityContext.allowPrivilegeEscalation: false` to all containers: `maven`, `node`, `helm`, `git`, `semgrep`, `trivy`, `jnlp`.
+  - Set `securityContext.runAsUser: 1000` + `env HOME=/tmp` on `helm` (alpine/k8s) and `git` containers so processes run as a non-root UID.
+  - Switched `git` container from `alpine/git:latest` to `bitnami/git:latest` (Debian-based, no root default) — subsequently reverted in v0.10.13/v0.10.14 due to image availability and root-image issues.
+  - Added `securityContext.runAsNonRoot: true` on `helm` and `git` containers to enforce the constraint at the Kubernetes API level.
+  - Containers that legitimately require root are explicitly documented and kept as `runAsUser: 0`: `docker` (DinD requires root for the daemon), `codeql` (requires `apt-get` for Node.js installation).
+  - **Files**: `vars/MicroservicesPipeline.groovy`, `vars/MicroservicesK6SmokePipeline.groovy`
+
+---
+
+## [v0.10.11] - 2026-06-19
+
+### Fixed
+- **`MicroservicesK6SmokePipeline` — `Checkout Infra` OOM / `ClosedChannelException`**:
+  - Applied the same JENKINS-30600 fix from v0.10.8 to the k6 smoke pipeline's `Checkout Infra` stage.
+  - The DSL `git url:` step was running inside the 256 Mi JNLP container (ignoring the `container('helm')` wrapper), causing OOM-kill on the k6 agent pod.
+  - **Fix**: Replaced DSL `git url:` with `sh "git clone --depth 1 --branch ..."` inside `container('helm')`, which has 128 Mi headroom and `GIT_LFS_SKIP_SMUDGE=1` to avoid downloading LFS assets.
+  - **Files**: `vars/MicroservicesK6SmokePipeline.groovy`
+
+---
+
+## [v0.10.10] - 2026-06-19
+
+### Reverted
+- **Reverted premature `runAsUser: 1000` on `container('git')`** (introduced experimentally, not released):
+  - Setting `runAsUser: 1000` on `alpine/git` without also setting `HOME=/tmp` caused `git config --global` to write to `//.gitconfig` (`HOME=/` is the image default), which failed with EPERM under UID 1000 and disconnected the agent — all subsequent `sh` steps returned exit 127.
+  - The correct approach (setting both `runAsUser` and `HOME=/tmp`) was implemented in v0.10.14.
+
+---
+
+## [v0.10.9] - 2026-06-19
+
+### Fixed
+- **`Deploy to Kubernetes` stage — EPERM on `deleteDir()` / `find -delete`**:
+  - Renamed the GitOps working directory from `jenkins-2026-infra` to `jenkins-2026-gitops` to avoid naming collisions with the `Checkout Infra configs` stage.
+  - Moved the `find . -mindepth 1 -delete` cleanup inside `container('git')` so the same UID that created the files (root, via `alpine/git` at the time) can delete them.
+  - **Root cause**: `deleteDir()` called from the JNLP context (UID 1000) could not remove files owned by root (UID 0, from `alpine/git`), causing `Operation not permitted (EPERM)` and breaking the deploy stage on subsequent runs.
+  - **Files**: `vars/microservicesDeploy.groovy`
+
+---
+
+## [v0.10.8] - 2026-06-19
+
+### Fixed
+- **JENKINS-30600 — DSL `git url:` step ignores `container()` wrapper, runs in JNLP (OOM)**:
+  - Replaced all DSL `git url: ..., branch: ...` calls in `MicroservicesPipeline.groovy` with explicit `sh "git clone --depth 1 -c filter.lfs.smudge= ..."` inside the target container block.
+  - **Root cause**: A long-standing Jenkins Kubernetes plugin bug (JENKINS-30600) causes the built-in `git` pipeline step to always execute in the JNLP sidecar container, regardless of any surrounding `container('...')` block. The JNLP container has only 256 Mi of memory and performs a full (non-shallow) clone including LFS pointer resolution, causing OOM-kill.
+  - **Fix**: Using `sh "git clone"` inside a `container()` block correctly honours the container override. `--depth 1` reduces the clone to a single commit; `GIT_LFS_SKIP_SMUDGE=1` skips LFS asset downloads entirely.
+  - **Files**: `vars/MicroservicesPipeline.groovy`
+
+---
+
+## [v0.10.7] - 2026-06-19
+
+### Fixed
+- **Jenkins agent pods — missing `JENKINS2026_REPO_BRANCH` and other env vars**:
+  - Added `globalNodeProperties` to `jenkins/casc/jcasc-base.yaml` to propagate `JENKINS2026_REPO_BRANCH`, `JENKINS2026_REPO_URL`, and `JENKINS2026_GITOPS_REPO_URL` as global environment variables available to all agent pods.
+  - Without this, pipeline stages that reference `env.JENKINS2026_REPO_BRANCH` (e.g. shared library version selection, GitOps branch targeting) received empty strings.
+- **Jenkins agent pods — missing Karpenter toleration**:
+  - Added `tolerations: [{key: jenkins-agent, operator: Equal, value: "true", effect: NoSchedule}]` to the agent pod spec in `MicroservicesPipeline.groovy`.
+  - Without this toleration, agent pods could not be scheduled onto Karpenter-managed nodes tainted with `jenkins-agent=true:NoSchedule`, causing pipeline builds to queue indefinitely.
+- **`microservicesDeploy.groovy` — ArgoCD sync/wait timeout too short**:
+  - Extended the ArgoCD `app wait --timeout` from 120 seconds to 300 seconds to accommodate slower rollouts (image pull, CNPG cluster readiness).
+- **Files**: `jenkins/casc/jcasc-base.yaml`, `vars/MicroservicesPipeline.groovy`, `vars/microservicesDeploy.groovy`
+
+---
+
 ## [v0.10.6] - 2026-06-19
 
 ### Fixed
