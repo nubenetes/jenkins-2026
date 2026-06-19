@@ -41,16 +41,25 @@ expected=0
 for svc in ${J2026_MICROSERVICES_SERVICES}; do
   expected=$((expected + 1))
 done
+# +2: seed-jobs itself + microservices-k6-smoke (matches smoke-test.sh EXPECTED_JOBS)
+min_jobs=$((expected + 2))
 
-for _ in $(seq 1 30); do
+job_wait_ok=0
+for _ in $(seq 1 90); do
   count="$(jenkins_exec curl -sg -u "${AUTH}" 'http://localhost:8080/api/json?tree=jobs[name]' \
     | python3 -c 'import sys,json; print(len(json.load(sys.stdin)["jobs"]))')"
-  if [[ "${count}" -ge "$((expected + 1))" ]]; then
-    log_info "Found ${count} jobs (>= ${expected} Microservices pipelines + seed-jobs)."
+  if [[ "${count}" -ge "${min_jobs}" ]]; then
+    log_info "Found ${count} jobs (>= ${min_jobs} expected: ${expected} Microservices pipelines + seed-jobs + k6-smoke)."
+    job_wait_ok=1
     break
   fi
-  sleep 2
+  sleep 5
 done
+
+if [[ "${job_wait_ok}" -eq 0 ]]; then
+  log_error "Timed out waiting for seed-jobs to create ${min_jobs} jobs (last count: ${count})."
+  exit 1
+fi
 
 log_info "Seed pipeline triggered. Browse http://localhost:8080/view/microservices/ (after port-forwarding)"
 log_info "  kubectl -n ${NS} port-forward svc/${RELEASE} 8080:8080"
