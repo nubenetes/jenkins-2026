@@ -21,6 +21,9 @@ spec:
       image: maven:3.9.9-eclipse-temurin-21
       command: ['sleep']
       args: ['infinity']
+      # TODO: migrate to bitnami/maven (UID 1001) once /root/.m2 cache path is moved
+      securityContext:
+        allowPrivilegeEscalation: false
       env:
         - name: DOCKER_HOST
           value: tcp://localhost:2375
@@ -34,6 +37,9 @@ spec:
       image: node:20-bookworm
       command: ['sleep']
       args: ['infinity']
+      # TODO: migrate to runAsUser: 1000 (built-in 'node' user) once /root/.npm cache path is moved
+      securityContext:
+        allowPrivilegeEscalation: false
       env:
         - name: DOCKER_HOST
           value: tcp://localhost:2375
@@ -45,8 +51,10 @@ spec:
           mountPath: /root/.npm
     - name: docker
       image: docker:26-dind
+      # DinD requires privileged + root — cannot be reduced without rootless Docker
       securityContext:
         privileged: true
+        runAsUser: 0
       env:
         - name: DOCKER_TLS_CERTDIR
           value: ""
@@ -57,7 +65,15 @@ spec:
       image: alpine/k8s:1.31.3
       command: ['sleep']
       args: ['infinity']
+      # runAsUser: 1001 matches bitnami/git (UID 1001) so yq can write
+      # git-cloned files. HOME=/tmp lets argocd CLI write its config cache.
+      securityContext:
+        runAsUser: 1001
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
       env:
+        - name: HOME
+          value: /tmp
         - name: ARGOCD_VERSION
           value: v2.11.0
         - name: ARGOCD_SERVER
@@ -72,9 +88,15 @@ spec:
         requests: {cpu: 5m, memory: 64Mi}
         limits: {cpu: 100m, memory: 128Mi}
     - name: git
-      image: alpine/git:latest
+      # bitnami/git runs as UID 1001 (non-root) by default with a proper home
+      # directory (/home/git) — no HOME override needed. curl, gzip, and
+      # base64 are pre-installed. Drop-in replacement for alpine/git.
+      image: bitnami/git:2-debian-12
       command: ['sleep']
       args: ['infinity']
+      securityContext:
+        runAsNonRoot: true
+        allowPrivilegeEscalation: false
       resources:
         requests: {cpu: 5m, memory: 128Mi}
         limits: {cpu: 100m, memory: 512Mi}
@@ -82,6 +104,8 @@ spec:
       image: semgrep/semgrep:1.79.0
       command: ['sleep']
       args: ['infinity']
+      securityContext:
+        allowPrivilegeEscalation: false
       resources:
         requests: {cpu: 200m, memory: 512Mi}
         limits: {cpu: '2', memory: 2.0Gi}
@@ -89,6 +113,7 @@ spec:
       image: mcr.microsoft.com/cstsectools/codeql-container:latest
       command: ['sleep']
       args: ['infinity']
+      # Requires root: installs Node.js via apt-get and runs CodeQL analysis
       securityContext:
         runAsUser: 0
       resources:
@@ -101,6 +126,9 @@ spec:
       image: aquasec/trivy:0.52.2
       command: ['sleep']
       args: ['infinity']
+      # TODO: add runAsUser once hostPath trivy-cache dir ownership is initialised
+      securityContext:
+        allowPrivilegeEscalation: false
       env:
         - name: TRIVY_CACHE_DIR
           value: /tmp/trivy-cache
@@ -113,6 +141,8 @@ spec:
         - name: trivy-cache
           mountPath: /tmp/trivy-cache
     - name: jnlp
+      securityContext:
+        allowPrivilegeEscalation: false
       resources:
         requests: {cpu: 10m, memory: 128Mi}
         limits: {cpu: 200m, memory: 256Mi}
@@ -258,7 +288,8 @@ EOF
                                                              usernameVariable: 'GIT_USER')]) {
                                 sh """
                                     git config --global --add safe.directory '*' || true
-                                    apk add --no-cache curl || true
+                                    # curl is pre-installed in bitnami/git (Debian-based)
+                                    curl --version >/dev/null 2>&1 || apt-get install -y --no-install-recommends curl 2>/dev/null || true
                                     if [ -f semgrep-results.sarif ]; then
                                         echo "Preparing Semgrep SARIF report payload..."
                                         gzip -c semgrep-results.sarif | base64 -w0 > semgrep-sarif.b64
