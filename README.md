@@ -129,6 +129,11 @@ for the OpenTelemetry/Grafana wiring.
 - [Observability](#observability)
   - [Key Features](#key-features)
   - [k6 observability smoke test](#k6-observability-smoke-test)
+  - [Telemetry Architecture and Signal Flow](#telemetry-architecture-and-signal-flow)
+  - [Signal Correlation: Metrics, Traces and Logs](#signal-correlation-metrics-traces-and-logs)
+  - [Structured Logging Deep Dive](#structured-logging-deep-dive)
+  - [Observability Dashboards](#observability-dashboards)
+  - [Grafana OSS In-Cluster Mode](#grafana-oss-in-cluster-mode)
 - [Headlamp (cluster management UI)](#headlamp-cluster-management-ui)
   - [One-time setup: Google OAuth client (currently unused)](#one-time-setup-google-oauth-client-currently-unused)
   - [Adding your (or another) identity](#adding-your-or-another-identity)
@@ -1228,6 +1233,260 @@ sequenceDiagram
   trace_id=...` values also logged there.
 
 Full details in [`docs/observability.md`](docs/observability.md#k6-observability-smoke-test).
+
+### Telemetry Architecture and Signal Flow
+
+Every signal source speaks **OTLP** to a single in-cluster **gateway collector**
+(`otel-collector-gateway`, a Deployment), plus a **logs DaemonSet**
+(`otel-collector-logs`) that tails each pod's `stdout`. The gateway's
+exporters are the *only* thing that differs between modes, so the same
+instrumentation works whether telemetry lands in **Grafana Cloud** (default)
+or an **in-cluster OSS stack** (`observability.mode: oss`).
+
+<details>
+<summary>🔍 Click to expand End-to-End Telemetry Architecture Diagram</summary>
+
+```mermaid
+flowchart LR
+  subgraph SRC["Signal sources (OTLP)"]
+    J["Jenkins<br/>opentelemetry plugin"]
+    M["Microservices<br/>OTel Java agent"]
+    R["Angular UI<br/>RUM beacon (/otel/)"]
+    K["k6 smoke<br/>-o opentelemetry"]
+  end
+
+  subgraph GW["otel-collector-gateway (Deployment)"]
+    RCV["otlp receiver<br/>:4317 / :4318"]
+    TR["traces pipeline"]
+    SM[["span_metrics<br/>connector"]]
+    SG[["service_graph<br/>connector"]]
+    MSP["metrics/spanmetrics<br/>pipeline"]
+    ME["metrics pipeline"]
+    LO["logs pipeline"]
+  end
+
+  subgraph DS["otel-collector-logs (DaemonSet)"]
+    FL["filelog receiver<br/>tails pod stdout"]
+  end
+
+  J & M & R & K --> RCV
+  RCV --> TR & ME & LO
+  TR -->|fan-out spans| SM & SG
+  SM & SG --> MSP
+
+  TR & ME & MSP & LO --> EXP{{"exporters<br/>(mode-dependent)"}}
+  FL --> EXP
+
+  EXP -->|grafana-cloud| GC["Grafana Cloud<br/>Mimir · Tempo · Loki"]
+  EXP -->|oss| OSS["in-cluster<br/>Prometheus · Tempo · Loki"]
+
+  GC & OSS --> GRA["Grafana<br/>dashboards + Explore"]
+```
+
+</details>
+
+**Low-level detail** ([`observability/otel-collector/values-grafana-cloud.yaml`](observability/otel-collector/values-grafana-cloud.yaml)):
+
+- **Receivers**: one `otlp` receiver (gRPC `:4317` + HTTP `:4318`, CORS `*` so the
+  browser RUM beacon can post directly).
+- **Connectors** `span_metrics` + `service_graph`: the traces pipeline fans every
+  span out to these connectors, and a dedicated `metrics/spanmetrics` pipeline
+  exports their output. **Why**: without them *no span-derived metrics exist*, so
+  Tempo's **Service Map / node graph stays empty** and there are no RED
+  (Rate/Errors/Duration) metrics to jump to from a trace. They produce
+  `traces_spanmetrics_*` (with `trace_id` **exemplars**) and
+  `traces_service_graph_request_*`. Both ship in the `otelcol-k8s` image, so no
+  image change was needed.
+- **Exporters**: `grafana-cloud` mode uses one `otlp_http/grafana_cloud`
+  (canonical alias, no deprecation warning) reading the endpoint/auth from the
+  `grafana-cloud-credentials` Secret; `oss` mode
+  ([`values-oss.yaml`](observability/otel-collector/values-oss.yaml)) fans out to
+  `otlp/tempo`, `prometheusremotewrite` (kube-prometheus-stack) and
+  `otlphttp/loki`.
+- **Logs DaemonSet**: pod `stdout` is tail-scraped by the `otel-collector-logs`
+  filelog receiver — this is the path the apps' JSON console logs travel to Loki
+  (see [Structured Logging Deep Dive](#structured-logging-deep-dive)). The
+  `grafana/k8s-monitoring` chart deliberately **disables its own log collection**
+  to avoid double ingestion.
+
+### Signal Correlation: Metrics, Traces and Logs
+
+The three signals are wired so you can pivot between them in any direction. The
+links live on the **datasources** (Grafana Cloud provisions them by default;
+the OSS stack configures the equivalents in
+[`observability/grafana/values-oss.yaml`](observability/grafana/values-oss.yaml)).
+
+<details>
+<summary>🔍 Click to expand Signal Correlation Diagram</summary>
+
+```mermaid
+flowchart TD
+  PROM["Prometheus / Mimir<br/>(metrics)"]
+  TEMPO["Tempo<br/>(traces)"]
+  LOKI["Loki<br/>(logs)"]
+
+  PROM -->|"exemplarTraceIdDestinations<br/>(trace_id on histograms)"| TEMPO
+  TEMPO -->|"tracesToLogs<br/>(±time, by service)"| LOKI
+  TEMPO -->|"tracesToMetrics<br/>+ serviceMap (Service Map)"| PROM
+  LOKI -->|"derivedFields<br/>(trace_id regex)"| TEMPO
+
+  classDef m fill:#e3f2fd,stroke:#1565c0;
+  classDef t fill:#f3e5f5,stroke:#6a1b9a;
+  classDef l fill:#e8f5e9,stroke:#2e7d32;
+  class PROM m; class TEMPO t; class LOKI l;
+```
+
+</details>
+
+| Direction | How it's wired | What had to be added |
+|---|---|---|
+| **Metrics → Traces** | `exemplarTraceIdDestinations` on the Prometheus DS; OTel histograms (`http_server_*`, `traces_spanmetrics_*`) carry `trace_id` exemplars | exemplars on `span_metrics` connector |
+| **Traces → Logs** | Tempo `tracesToLogs(V2)` → Loki, scoped by `service.name` + a time window | — (worked once logs existed) |
+| **Traces → Metrics + Service Map** | Tempo `tracesToMetrics` + `serviceMap` → Prometheus | the `span_metrics` / `service_graph` connectors that *produce* those metrics |
+| **Logs → Traces** | Loki `derivedFields` regex extracts `trace_id` from the log line → Tempo | ECS-JSON logs **and** reactive context propagation so the id is actually present (below) |
+
+**Scope caveat**: traces only exist for the OTel-instrumented components — the
+two Java microservices **and Jenkins** (its pipeline spans even show up in the
+Service Map). Everything else in the cluster (kube-system, argocd, cnpg,
+observability, …) emits **metrics + logs but no traces**, so full three-way
+correlation is inherent to the instrumented apps; the rest correlate
+metrics↔logs via shared `k8s_namespace_name` / `service_name` labels.
+
+### Structured Logging Deep Dive
+
+`Logs → Traces` is the hardest link because it needs the `trace_id` *inside the
+log line*. Two app-side problems had to be solved — both fixed declaratively in
+the **GitOps repo** (`nubenetes/jenkins-2026-gitops-config`,
+`helm/microservices/`), applied by ArgoCD, so nothing is hand-patched:
+
+1. **JHipster logs plain text.** The apps ship their own `logback-spring.xml`
+   with a custom `CONSOLE_LOG_PATTERN`, so Spring Boot 3.5's native
+   `logging.structured.format.console=ecs` is a **no-op**. Fix: mount a tiny
+   logback config (`microservices-logback` ConfigMap) that uses spring-boot's
+   `StructuredLogEncoder` (`format: ecs`, no `janino` dependency) and point the
+   app at it with `LOGGING_CONFIG=/etc/logback/logback.xml`. Result: ECS JSON
+   with `message`, `log.level`, `service`, and MDC fields.
+2. **The gateway is reactive (WebFlux).** The OTel agent injects `trace_id` into
+   the logging **MDC via thread-locals**, which don't survive across Reactor
+   operators — so logs came out *without* trace context. Fix:
+   `SPRING_REACTOR_CONTEXT_PROPAGATION=auto`, which turns on Reactor automatic
+   context propagation so the agent's `trace_id`/`span_id` reach the MDC.
+
+<details>
+<summary>🔍 Click to expand Structured Logging & Logs→Traces Chain Diagram</summary>
+
+```mermaid
+flowchart LR
+  subgraph APP["Microservice pod (gateway / jhipster)"]
+    AGENT["OTel Java agent<br/>puts trace_id/span_id in MDC"]
+    RP["SPRING_REACTOR_CONTEXT_PROPAGATION=auto<br/>(MDC survives reactive operators)"]
+    LB["logback: StructuredLogEncoder ecs<br/>(microservices-logback ConfigMap<br/>via LOGGING_CONFIG)"]
+    OUT["stdout: ECS JSON<br/>{message, log.level, trace_id, span_id}"]
+    AGENT --> RP --> LB --> OUT
+  end
+
+  OUT --> DSCOL["otel-collector-logs<br/>(filelog DaemonSet)"]
+  DSCOL --> LOKI["Loki"]
+  LOKI -->|"derivedField regex<br/>[tT]race_?[iI][dD]...(\w+)"| TEMPO["Tempo (trace by id)"]
+```
+
+</details>
+
+Verified live: gateway ECS logs now carry `trace_id`/`span_id`, and those ids
+resolve to real traces in Tempo. Logs stay low-volume (apps run at `WARN`), so
+trace context appears on the lines actually emitted inside a span — but the link
+resolves whenever there is one.
+
+### Observability Dashboards
+
+Three dashboards live as plain JSON in
+[`observability/grafana/dashboards/`](observability/grafana/dashboards/) and are
+the **single source of truth**, re-applied on every deploy (no UI edits):
+
+| Dashboard (uid) | Shows |
+|---|---|
+| `jenkins-overview` | Jenkins CI: active runs, queue, executors, pipeline results, build traces, pod logs |
+| `microservices-overview` | Per-service HTTP RED, JVM/GC, restarts, traces table, pod logs |
+| `k6-smoke-overview` | k6 iterations, checks/req-failed/p95 thresholds, run traces + logs |
+
+Engineering decisions baked into the JSON:
+
+- **Portable datasources**: panels reference `${DS_PROMETHEUS}` / `${DS_LOKI}` /
+  `${DS_TEMPO}` template variables (defaulting to `grafanacloud-*`, degrading to
+  the matching-type default in OSS) instead of hardcoded UIDs — the same JSON
+  works in both modes.
+- **Environment-scoped logs**: a hidden `namespace` variable resolves the real
+  namespace per environment via
+  `label_values(jvm_memory_used_bytes{deployment_environment="$deployment_environment"}, k8s_namespace_name)`,
+  so log panels/links scope to `stable`→`microservices` vs
+  `develop`→`microservices-develop` (service names are shared across envs).
+- **Robust log rendering**: a fallback `line_format`
+  `{{ if .message }}…{{ else if .msg }}…{{ else }}{{ __line__ }}{{ end }}`
+  renders ECS-JSON app logs (`.message`), CloudNativePG/sidecar JSON (`.msg`) and
+  plain-text lines (`__line__`) without ever showing blank lines.
+
+<details>
+<summary>🔍 Click to expand Dashboard Provisioning Diagram</summary>
+
+```mermaid
+flowchart LR
+  SRC["observability/grafana/dashboards/*.json<br/>(source of truth)"]
+  SRC -->|"grafana-cloud<br/>scripts/07 → gcx resources push"| FOLDER["Grafana Cloud<br/>folder: jenkins-2026"]
+  SRC -->|"oss<br/>scripts/03 → ConfigMap"| CM["jenkins-2026-grafana-dashboards<br/>+ Grafana sidecar"]
+  FOLDER --> VIEW["Dashboards live"]
+  CM --> VIEW
+```
+
+</details>
+
+### Grafana OSS In-Cluster Mode
+
+`observability.mode: oss` runs the **entire** stack in-cluster instead of
+Grafana Cloud — useful for air-gapped demos or avoiding SaaS cost/quota. It is
+**documented for completeness and kept at parity, but it is not the automated
+target of this IaC** (the default and the path exercised by CI is
+`grafana-cloud`). The OSS values exist and are `helm template`-validated, but
+have not been run live.
+
+<details>
+<summary>🔍 Click to expand Grafana OSS In-Cluster Topology Diagram</summary>
+
+```mermaid
+flowchart LR
+  subgraph CL["Kubernetes cluster (observability namespace)"]
+    GWC["otel-collector-gateway<br/>(values-oss.yaml)"]
+    DSC["otel-collector-logs<br/>(DaemonSet)"]
+    PROM["Prometheus<br/>(kube-prometheus-stack)"]
+    TEMPO["Tempo"]
+    LOKI["Loki"]
+    GRAF["Grafana OSS"]
+  end
+
+  GWC -->|otlp/tempo| TEMPO
+  GWC -->|prometheusremotewrite| PROM
+  GWC -->|otlphttp/loki| LOKI
+  DSC -->|otlphttp/loki| LOKI
+
+  PROM & TEMPO & LOKI --> GRAF
+  GRAF -.->|"derivedFields / exemplars /<br/>tracesToLogsV2 / serviceMap"| GRAF
+```
+
+</details>
+
+What parity required (so all four correlation directions work in OSS too):
+
+- The same `span_metrics` + `service_graph` connectors in
+  [`values-oss.yaml`](observability/otel-collector/values-oss.yaml), exporting via
+  `prometheusremotewrite` to the in-cluster Prometheus (the `contrib` image is
+  already used there).
+- Datasource correlation in
+  [`grafana/values-oss.yaml`](observability/grafana/values-oss.yaml): Tempo
+  `tracesToLogsV2` + `tracesToMetrics` + `serviceMap` + `nodeGraph`, Prometheus
+  `exemplarTraceIdDestinations`, and a Loki `derivedField` whose regex was
+  broadened to match the ECS-JSON `"trace_id":"…"` (not just logfmt
+  `trace_id=…`).
+- The same logback ConfigMap + `SPRING_REACTOR_CONTEXT_PROPAGATION=auto` from the
+  GitOps repo apply unchanged (they are mode-independent).
 
 ## Headlamp (cluster management UI)
 
