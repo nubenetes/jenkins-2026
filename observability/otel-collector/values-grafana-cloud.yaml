@@ -86,23 +86,53 @@ config:
           value: jenkins-2026
           action: upsert
 
+  # Connectors derive metrics from the trace stream so the
+  # metrics<->traces correlation is complete (otherwise no span-derived
+  # metrics exist and Grafana's Service Map / node graph stays empty).
+  # Both ship in the otelcol-k8s image used above.
+  connectors:
+    # RED metrics per service/operation (traces_spanmetrics_calls_total,
+    # traces_spanmetrics_duration_*). exemplars carry the trace_id so the
+    # generated metrics link back to the originating trace.
+    span_metrics:
+      namespace: traces.spanmetrics
+      histogram:
+        explicit:
+          buckets: [2ms, 8ms, 25ms, 50ms, 100ms, 200ms, 500ms, 1s, 2s, 5s, 10s]
+      exemplars:
+        enabled: true
+      metrics_flush_interval: 15s
+    # Service graph metrics (traces_service_graph_request_*) that power the
+    # Tempo datasource Service Map / node graph.
+    service_graph:
+      store:
+        ttl: 5s
+        max_items: 1000
+
   exporters:
-    otlphttp/grafana_cloud:
+    otlp_http/grafana_cloud:
       endpoint: ${env:GRAFANA_CLOUD_OTLP_ENDPOINT}
       headers:
         Authorization: "Basic ${env:GRAFANA_CLOUD_OTLP_AUTH}"
 
   service:
     pipelines:
+      # Spans are forwarded to Grafana Cloud AND fanned out to the
+      # spanmetrics/servicegraph connectors.
       traces:
         receivers: [otlp]
         processors: [memory_limiter, resource, batch]
-        exporters: [otlphttp/grafana_cloud]
+        exporters: [otlp_http/grafana_cloud, span_metrics, service_graph]
+      # Span-derived metrics produced by the connectors -> Grafana Cloud.
+      metrics/spanmetrics:
+        receivers: [span_metrics, service_graph]
+        processors: [memory_limiter, resource, batch]
+        exporters: [otlp_http/grafana_cloud]
       metrics:
         receivers: [otlp]
         processors: [memory_limiter, resource, batch]
-        exporters: [otlphttp/grafana_cloud]
+        exporters: [otlp_http/grafana_cloud]
       logs:
         receivers: [otlp]
         processors: [memory_limiter, resource, batch]
-        exporters: [otlphttp/grafana_cloud]
+        exporters: [otlp_http/grafana_cloud]

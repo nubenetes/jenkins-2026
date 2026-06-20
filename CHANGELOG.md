@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.11.0] - 2026-06-20
+
+### Added
+- **Span metrics + service graph generated in the OTel gateway collector**:
+  - The traces pipeline now fans every span out to the `span_metrics` and `service_graph` connectors, with a dedicated `metrics/spanmetrics` pipeline exporting their output.
+  - **Why**: without them no span-derived metrics exist, so Tempo's **Service Map / node graph stays empty** and there are no RED (Rate/Errors/Duration) metrics to pivot to from a trace. They produce `traces_spanmetrics_*` (with `trace_id` exemplars) and `traces_service_graph_request_*`. Both connectors ship in the `otelcol-k8s` image, so no image change was needed.
+  - **Files**: `observability/otel-collector/values-grafana-cloud.yaml`
+- **OSS collector parity**: the same `span_metrics` + `service_graph` connectors in the in-cluster path, exporting via `prometheusremotewrite` to the bundled Prometheus, so all four correlation directions work in `observability.mode: oss` too.
+  - **Files**: `observability/otel-collector/values-oss.yaml`, `observability/grafana/values-oss.yaml`
+- **Observability deep-dive documentation** in `README.md`: end-to-end telemetry architecture, signal correlation (metrics↔traces↔logs), structured-logging chain, dashboard provisioning, and OSS in-cluster topology — each with a collapsible Mermaid diagram (rendered and verified for text fit).
+  - **Files**: `README.md`
+
+### Changed
+- **Portable dashboards**: panels reference `${DS_PROMETHEUS}` / `${DS_LOKI}` / `${DS_TEMPO}` template variables (defaulting to `grafanacloud-*`, degrading to the matching-type default in OSS) instead of hardcoded datasource UIDs — the same JSON works in both modes. A hidden `namespace` variable scopes log panels/links per environment (`stable`→`microservices` vs `develop`→`microservices-develop`).
+  - **Files**: `observability/grafana/dashboards/*.json`
+
+### Fixed
+- **Robust log `line_format` across all dashboards**: a fallback template renders ECS-JSON app logs (`.message`), CloudNativePG/sidecar JSON (`.msg`) and plain-text lines (`__line__`) without ever showing blank lines.
+  - **Files**: `observability/grafana/dashboards/*.json`
+
+---
+
 ## [v0.10.16] - 2026-06-19
 
 ### Changed
