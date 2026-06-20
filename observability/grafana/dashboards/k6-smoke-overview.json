@@ -315,7 +315,7 @@
             {
               "targetBlank": true,
               "title": "Microservices logs",
-              "url": "/explore?left=%7B%22datasource%22%3A%20%22%24%7BDS_LOKI%7D%22%2C%20%22queries%22%3A%20%5B%7B%22refId%22%3A%20%22A%22%2C%20%22expr%22%3A%20%22%7Bk8s_namespace_name%3D%5C%22%24namespace%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B.message%7D%7D%5C%22%22%7D%5D%2C%20%22range%22%3A%20%7B%22from%22%3A%20%22%24%7B__from%7D%22%2C%20%22to%22%3A%20%22%24%7B__to%7D%22%7D%7D"
+              "url": "/explore?left=%7B%22datasource%22%3A%20%22%24%7BDS_LOKI%7D%22%2C%20%22queries%22%3A%20%5B%7B%22refId%22%3A%20%22A%22%2C%20%22expr%22%3A%20%22%7Bk8s_namespace_name%3D%5C%22%24namespace%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B%20if%20.message%20%7D%7D%7B%7B%20.message%20%7D%7D%7B%7B%20else%20if%20.msg%20%7D%7D%7B%7B%20.msg%20%7D%7D%7B%7B%20else%20%7D%7D%7B%7B%20__line__%20%7D%7D%7B%7B%20end%20%7D%7D%5C%22%22%7D%5D%2C%20%22range%22%3A%20%7B%22from%22%3A%20%22%24%7B__from%7D%22%2C%20%22to%22%3A%20%22%24%7B__to%7D%22%7D%7D"
             }
           ],
           "thresholds": {
@@ -397,7 +397,7 @@
             {
               "targetBlank": true,
               "title": "Microservices logs",
-              "url": "/explore?left=%7B%22datasource%22%3A%20%22%24%7BDS_LOKI%7D%22%2C%20%22queries%22%3A%20%5B%7B%22refId%22%3A%20%22A%22%2C%20%22expr%22%3A%20%22%7Bk8s_namespace_name%3D%5C%22%24namespace%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B.message%7D%7D%5C%22%22%7D%5D%2C%20%22range%22%3A%20%7B%22from%22%3A%20%22%24%7B__from%7D%22%2C%20%22to%22%3A%20%22%24%7B__to%7D%22%7D%7D"
+              "url": "/explore?left=%7B%22datasource%22%3A%20%22%24%7BDS_LOKI%7D%22%2C%20%22queries%22%3A%20%5B%7B%22refId%22%3A%20%22A%22%2C%20%22expr%22%3A%20%22%7Bk8s_namespace_name%3D%5C%22%24namespace%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B%20if%20.message%20%7D%7D%7B%7B%20.message%20%7D%7D%7B%7B%20else%20if%20.msg%20%7D%7D%7B%7B%20.msg%20%7D%7D%7B%7B%20else%20%7D%7D%7B%7B%20__line__%20%7D%7D%7B%7B%20end%20%7D%7D%5C%22%22%7D%5D%2C%20%22range%22%3A%20%7B%22from%22%3A%20%22%24%7B__from%7D%22%2C%20%22to%22%3A%20%22%24%7B__to%7D%22%7D%7D"
             }
           ]
         },
@@ -681,7 +681,7 @@
             "type": "loki",
             "uid": "${DS_LOKI}"
           },
-          "expr": "{k8s_namespace_name=\"$namespace\"} | json | line_format \"{{.message}}\"",
+          "expr": "{k8s_namespace_name=\"$namespace\"} | json | line_format \"{{ if .message }}{{ .message }}{{ else if .msg }}{{ .msg }}{{ else }}{{ __line__ }}{{ end }}\"",
           "refId": "A"
         }
       ],
