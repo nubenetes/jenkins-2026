@@ -75,6 +75,24 @@ config:
           value: jenkins-2026
           action: upsert
 
+  # Mirror of values-grafana-cloud.yaml: derive RED + service-graph metrics
+  # from the trace stream so the metrics<->traces correlation (Tempo Service
+  # Map / node graph) works in OSS mode too. Both connectors ship in the
+  # contrib image used above.
+  connectors:
+    span_metrics:
+      namespace: traces.spanmetrics
+      histogram:
+        explicit:
+          buckets: [2ms, 8ms, 25ms, 50ms, 100ms, 200ms, 500ms, 1s, 2s, 5s, 10s]
+      exemplars:
+        enabled: true
+      metrics_flush_interval: 15s
+    service_graph:
+      store:
+        ttl: 5s
+        max_items: 1000
+
   exporters:
     otlp/tempo:
       endpoint: tempo.observability.svc.cluster.local:4317
@@ -94,10 +112,16 @@ config:
 
   service:
     pipelines:
+      # Spans -> Tempo AND fanned out to the spanmetrics/servicegraph connectors.
       traces:
         receivers: [otlp]
         processors: [memory_limiter, resource, batch]
-        exporters: [otlp/tempo]
+        exporters: [otlp/tempo, span_metrics, service_graph]
+      # Span-derived metrics produced by the connectors -> Prometheus.
+      metrics/spanmetrics:
+        receivers: [span_metrics, service_graph]
+        processors: [memory_limiter, resource, batch]
+        exporters: [prometheusremotewrite]
       metrics:
         receivers: [otlp]
         processors: [memory_limiter, resource, batch]

@@ -87,11 +87,12 @@ grafana:
       access: proxy
       jsonData:
         derivedFields:
-          # Matches the trace_id MDC field the OTel Java agent injects into
-          # Spring Boot logs (OTEL_INSTRUMENTATION_LOGBACK_APPENDER_ENABLED,
-          # see helm/microservices/templates/instrumentation.yaml).
+          # Matches the trace_id the OTel Java agent injects into the MDC,
+          # whether the line is logfmt (trace_id=abc) or ECS JSON
+          # ("trace_id":"abc") - the apps emit ECS JSON (see the
+          # microservices-logback ConfigMap in the gitops repo).
           - datasourceUid: tempo
-            matcherRegex: 'trace_id=(\w+)'
+            matcherRegex: '[tT]race_?[iI][dD]"?[:=]"?(\w+)'
             name: TraceID
             url: '$${__value.raw}'
             urlDisplayLabel: "View Trace"
