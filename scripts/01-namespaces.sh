@@ -211,6 +211,18 @@ spec:
 EOF
 
 # 2. Observability Namespace Quota
+# The in-cluster footprint is far larger in observability.mode=oss (the whole
+# stack runs locally: Prometheus, Loki, Tempo, Grafana, plus the OTel
+# collectors) than in the cloud/managed modes (collectors only), so size the
+# quota per mode - the small cap would otherwise reject the oss stack's pods
+# (exceeded quota: limits.cpu).
+if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
+  obs_requests_cpu="6.0";  obs_requests_mem="12.0Gi"
+  obs_limits_cpu="12.0";   obs_limits_mem="20.0Gi"
+else
+  obs_requests_cpu="3.0";  obs_requests_mem="6.0Gi"
+  obs_limits_cpu="6.0";    obs_limits_mem="10.0Gi"
+fi
 kubectl apply -f - -n "${J2026_OBS_NAMESPACE}" <<EOF
 apiVersion: v1
 kind: ResourceQuota
@@ -218,10 +230,10 @@ metadata:
   name: observability-quota
 spec:
   hard:
-    requests.cpu: "3.0"
-    requests.memory: 6.0Gi
-    limits.cpu: "6.0"
-    limits.memory: 10.0Gi
+    requests.cpu: "${obs_requests_cpu}"
+    requests.memory: ${obs_requests_mem}
+    limits.cpu: "${obs_limits_cpu}"
+    limits.memory: ${obs_limits_mem}
 EOF
 
 # 3. Headlamp Namespace Quota
