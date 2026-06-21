@@ -1,0 +1,16 @@
+# Copy to terraform.tfvars (gitignored) and fill in. Then, from this directory:
+#   terraform init
+#   terraform apply
+# This creates real, billed Azure resources - run it deliberately, once. See
+# the module header in main.tf and docs/observability.md "managed-azure".
+
+subscription_id = "00000000-0000-0000-0000-000000000000"
+tenant_id       = "00000000-0000-0000-0000-000000000000"
+
+# Optional overrides (defaults shown):
+# resource_group_name = "jenkins-2026-observability"
+# location            = "westeurope"
+# name_prefix         = "jenkins-2026"
+
+# Entra object IDs (users/groups) to grant Grafana Admin on the instance:
+# grafana_admin_object_ids = ["<your-entra-user-object-id>"]
