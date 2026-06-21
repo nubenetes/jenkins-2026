@@ -1458,8 +1458,11 @@ flowchart LR
 Grafana Cloud — useful for air-gapped demos or avoiding SaaS cost/quota. It is
 **documented for completeness and kept at parity, but it is not the automated
 target of this IaC** (the default and the path exercised by CI is
-`grafana-cloud`). The OSS values exist and are `helm template`-validated, but
-have not been run live.
+`grafana-cloud`). The OSS values are `helm template`-validated and have been run
+live end to end (`02.01-gke-provision` with `observability_mode=oss`): the
+in-cluster Grafana is exposed publicly with Google SSO and the Jenkins system
+banner links to it, exactly like the other modes (see [Logging in to in-cluster
+Grafana](#logging-in-to-in-cluster-grafana-oss) below).
 
 <details>
 <summary>🔍 Click to expand Grafana OSS In-Cluster Topology Diagram</summary>
@@ -1500,6 +1503,37 @@ What parity required (so all four correlation directions work in OSS too):
   `trace_id=…`).
 - The same logback ConfigMap + `SPRING_REACTOR_CONTEXT_PROPAGATION=auto` from the
   GitOps repo apply unchanged (they are mode-independent).
+
+#### Logging in to in-cluster Grafana (oss)
+
+Unlike the managed Grafanas, the OSS Grafana lives **in the cluster**, so it
+reuses the exact same edge as Jenkins/Headlamp: the GKE Gateway publishes it at
+`https://grafana.<gateway.baseDomain>` (default
+`https://grafana.jenkins2026.nubenetes.com`) behind **Google Identity-Aware
+Proxy**. Wiring (all gated to `observability.mode=oss`):
+
+- **Route + health + IAP** ([`scripts/09-gateway.sh`](scripts/09-gateway.sh)): an
+  `HTTPRoute` to the `kube-prometheus-stack-grafana` Service, a `HealthCheckPolicy`
+  (`/api/health`), and a `GCPBackendPolicy` enabling IAP with the **same** OAuth
+  client (`IAP_OAUTH_CLIENT_ID/SECRET`) used by the other apps — no extra client.
+- **One Google sign-in (no second prompt)**: IAP authenticates the user and
+  forwards their identity in `X-Goog-Authenticated-User-Email`; Grafana's
+  `auth.proxy` ([`grafana/values-oss.yaml`](observability/grafana/values-oss.yaml))
+  trusts that header, auto-creates the user and grants Admin
+  (`users.auto_assign_org_role`). IAP already restricts access to allowlisted
+  Google accounts. The Grafana login form stays enabled as a `kubectl
+  port-forward` escape hatch (admin/password from the `kube-prometheus-stack-grafana`
+  Secret) for when there is no IAP header.
+- **Banner parity**: the Jenkins system banner's Grafana link resolves to
+  `https://grafana.<baseDomain>` in oss mode (per-mode logic in
+  [`scripts/04-jenkins.sh`](scripts/04-jenkins.sh)); that script also rolls the
+  controller via a pod-annotation checksum when the banner links change, so a
+  mode switch never leaves a stale URL.
+
+**One-time DNS** (like the other hosts): point `grafana.<baseDomain>` at the
+Gateway's static IP (`kubectl get gateway -n <jenkins-ns> -o
+jsonpath='{.status.addresses[0].value}'`). The wildcard certificate map already
+covers it, so no cert change is needed.
 
 ### Logging in to Amazon Managed Grafana (managed-aws)
 
