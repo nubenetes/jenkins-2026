@@ -16,8 +16,14 @@ variable "resource_group_name" {
 
 variable "location" {
   type        = string
-  default     = "westeurope"
-  description = "Azure region for all resources (Azure Managed Grafana, Azure Monitor workspace, Application Insights, Log Analytics)."
+  default     = "spaincentral"
+  description = "Azure region for the telemetry backends (Azure Monitor workspace + DCE/DCR, Application Insights, Log Analytics) - the latency-critical ingestion path. Defaults to spaincentral (Madrid) to sit next to the GKE cluster in europe-southwest1."
+}
+
+variable "grafana_location" {
+  type        = string
+  default     = "francecentral"
+  description = "Azure region for Azure Managed Grafana. AMG is NOT available in spaincentral, so it goes to the nearest region that has it (francecentral); it queries the spaincentral Azure Monitor workspace cross-region (UI latency is not critical). Both are EU regions (GDPR)."
 }
 
 variable "name_prefix" {

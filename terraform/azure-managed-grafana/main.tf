@@ -109,7 +109,10 @@ resource "azurerm_role_assignment" "collector_metrics_publisher" {
 resource "azurerm_dashboard_grafana" "this" {
   name                = "${var.name_prefix}-grafana"
   resource_group_name = azurerm_resource_group.this.name
-  location            = azurerm_resource_group.this.location
+  # AMG isn't available in spaincentral - place it in grafana_location
+  # (francecentral) within the spaincentral RG; it queries the Monitor
+  # workspace cross-region via azure_monitor_workspace_integrations below.
+  location = var.grafana_location
   # Azure Managed Grafana exposes its own managed major versions, which lag the
   # OSS releases - the Standard SKU currently only accepts "12" (not "13", and
   # "11" is retired). Unrelated to the oss mode's pinned OSS image (13.0.2).

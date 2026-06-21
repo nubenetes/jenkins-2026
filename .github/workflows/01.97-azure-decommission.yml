@@ -30,6 +30,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Azure login (OIDC, for the pre-destroy cleanup)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
       - name: Authenticate to GCP (Terraform state backend)
         uses: google-github-actions/auth@v2
         with:
@@ -77,6 +84,21 @@ jobs:
               fi
             }
           done
+
+      - name: Delete App Insights auto-created resources (unblock RG deletion)
+        run: |
+          # Application Insights auto-creates a "Failure Anomalies" smart
+          # detector alert rule + a "Smart Detection" action group that Terraform
+          # doesn't manage; they linger in the resource group and make
+          # azurerm_resource_group deletion fail ("still contains Resources").
+          # Delete them first. Idempotent - no-op if the RG/resources are gone.
+          rg="jenkins-2026-observability"
+          if az group exists -n "${rg}" | grep -q true; then
+            for t in microsoft.alertsmanagement/smartDetectorAlertRules microsoft.insights/actiongroups; do
+              az resource list -g "${rg}" --resource-type "${t}" --query "[].id" -o tsv \
+                | while read -r id; do [ -n "$id" ] && az resource delete --ids "$id" --only-show-errors || true; done
+            done
+          fi
 
       - name: Terraform destroy (destroy persistent Azure backend)
         working-directory: terraform/azure-managed-grafana
