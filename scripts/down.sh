@@ -29,6 +29,8 @@ run_bg otel-gateway       helm_uninstall "${J2026_OTEL_GATEWAY_RELEASE}" "${J202
 run_bg otel-logs          helm_uninstall "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OBS_NAMESPACE}"
 run_bg pdc-agent          helm_uninstall pdc-agent "${J2026_OBS_NAMESPACE}"
 run_bg k8s-monitoring     helm_uninstall k8s-monitoring "${J2026_OBS_NAMESPACE}"
+run_bg kube-state-metrics helm_uninstall kube-state-metrics "${J2026_OBS_NAMESPACE}"
+run_bg node-exporter      helm_uninstall prometheus-node-exporter "${J2026_OBS_NAMESPACE}"
 
 if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
   run_bg kube-prometheus-stack helm_uninstall kube-prometheus-stack "${J2026_GRAFANA_OSS_NAMESPACE}"
