@@ -10,7 +10,14 @@
 #   oss - installs kube-prometheus-stack + Loki + Tempo in-cluster, then two
 #     opentelemetry-collector releases pointed at them.
 #
-#   managed - documented stub; no resources created.
+#   managed-azure - two opentelemetry-collector releases exporting to Azure
+#     Monitor (traces/logs -> Application Insights via the azuremonitor
+#     exporter; metrics -> Azure Monitor managed Prometheus via remote-write +
+#     Entra auth). Visualized in Azure Managed Grafana. Requires the
+#     "${J2026_AZURE_MONITOR_SECRET}" Secret - see
+#     observability/otel-collector/secret-managed-azure.example.yaml.
+#
+#   managed-aws - documented stub; no resources created (planned).
 #
 # Requires scripts/02-otel-operator.sh to have run first (CRDs).
 set -euo pipefail
@@ -170,16 +177,55 @@ EOT
     wait_for_deployment "otel-collector-gateway" "${J2026_OBS_NAMESPACE}"
     ;;
 
-  managed)
-    log_step "Observability mode: managed (stub)"
-    log_warn "observability.mode=managed is a stub and does not"
-    log_warn "install anything - point OTEL_EXPORTER_OTLP_ENDPOINT at your managed Grafana"
-    log_warn "stack's OTLP gateway and create '${J2026_GRAFANA_CLOUD_SECRET}' accordingly."
+  managed-azure)
+    log_step "Observability mode: managed-azure"
+
+    # Clean in-place switch: Azure Managed Grafana + Azure Monitor live outside
+    # the cluster, so retire any in-cluster backends / cloud agents left over
+    # from a previous oss or grafana-cloud deploy. The shared
+    # otel-collector-{gateway,logs} releases are reconfigured by helm upgrade.
+    for r in pdc-agent k8s-monitoring; do
+      helm status "$r" -n "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1 && helm uninstall "$r" -n "${J2026_OBS_NAMESPACE}"
+    done
+    helm status kube-prometheus-stack -n "${J2026_GRAFANA_OSS_NAMESPACE}" >/dev/null 2>&1 && \
+      helm uninstall kube-prometheus-stack -n "${J2026_GRAFANA_OSS_NAMESPACE}"
+    for r in loki tempo; do
+      helm status "$r" -n "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1 && helm uninstall "$r" -n "${J2026_OBS_NAMESPACE}"
+    done
+
+    if ! kubectl get secret "${J2026_AZURE_MONITOR_SECRET}" -n "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1; then
+      log_error "Secret '${J2026_AZURE_MONITOR_SECRET}' not found in namespace '${J2026_OBS_NAMESPACE}'."
+      log_error "Copy observability/otel-collector/secret-managed-azure.example.yaml, fill in your"
+      log_error "Azure Monitor connection string / managed-Prometheus endpoint / Entra service"
+      log_error "principal, and 'kubectl apply -f' it before re-running. See docs/observability.md."
+      exit 1
+    fi
+
+    log_step "Installing ${J2026_OTEL_GATEWAY_RELEASE} (OTLP gateway -> Azure Monitor)"
+    kubectl delete configmap otel-collector-gateway -n "${J2026_OBS_NAMESPACE}" --ignore-not-found
+    helm upgrade --install "${J2026_OTEL_GATEWAY_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
+      --namespace "${J2026_OBS_NAMESPACE}" \
+      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-managed-azure.yaml"
+
+    log_step "Installing ${J2026_OTEL_LOGS_RELEASE} (node log DaemonSet -> Azure Monitor)"
+    helm upgrade --install "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
+      --namespace "${J2026_OBS_NAMESPACE}" \
+      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-managed-azure-logs.yaml"
+
+    wait_for_deployment "otel-collector-gateway" "${J2026_OBS_NAMESPACE}"
+    ;;
+
+  managed-aws)
+    log_step "Observability mode: managed-aws (stub)"
+    log_warn "observability.mode=managed-aws is not implemented yet - planned: export to"
+    log_warn "Amazon Managed Service for Prometheus (remote-write) + X-Ray/CloudWatch, with"
+    log_warn "Amazon Managed Grafana as the frontend. Use grafana-cloud, oss, or managed-azure"
+    log_warn "for now. See docs/observability.md \"managed-aws\"."
     exit 0
     ;;
 
   *)
-    log_error "Unknown observability.mode '${J2026_OBS_MODE}' (expected grafana-cloud|oss|managed)."
+    log_error "Unknown observability.mode '${J2026_OBS_MODE}' (expected grafana-cloud|oss|managed-azure|managed-aws)."
     exit 1
     ;;
 esac

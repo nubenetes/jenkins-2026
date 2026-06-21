@@ -50,7 +50,15 @@ jenkins:
 # -----------------------------------------------------------------------------
 observability:
   namespace: observability
-  # grafana-cloud (default) | oss | managed
+  # grafana-cloud (default) | oss | managed-azure | managed-aws
+  #   grafana-cloud - export OTLP to Grafana Cloud's gateway.
+  #   oss           - in-cluster Prometheus/Loki/Tempo + Grafana.
+  #   managed-azure - export to Azure Monitor (managed Prometheus + App
+  #                   Insights/Log Analytics); visualize in Azure Managed
+  #                   Grafana. See observability/otel-collector/
+  #                   secret-managed-azure.example.yaml + docs/observability.md.
+  #   managed-aws   - planned (Amazon Managed Prometheus + X-Ray/CloudWatch +
+  #                   Amazon Managed Grafana); currently a documented stub.
   mode: grafana-cloud
 
   otelOperator:
@@ -75,6 +83,22 @@ observability:
       repoName: grafana
       repoUrl: https://grafana.github.io/helm-charts
     ossNamespace: observability
+
+  # Only used when observability.mode == managed-azure / managed-aws. The
+  # provider's managed Grafana + telemetry backends live outside the cluster;
+  # the collectors here just export to them. The actual cloud resources are
+  # provisioned separately (Terraform follow-up) and the credentials are
+  # supplied via the per-provider Secret below.
+  managed:
+    azure:
+      # k8s Secret with the Azure Monitor / Application Insights connection
+      # string, the managed-Prometheus remote-write endpoint, and the Entra
+      # (Azure AD) service-principal used by the collector to authenticate.
+      # See observability/otel-collector/secret-managed-azure.example.yaml.
+      credentialsSecretName: azure-monitor-credentials
+    aws:
+      # Planned - Amazon Managed Service for Prometheus + X-Ray/CloudWatch.
+      credentialsSecretName: aws-managed-credentials
 
 # -----------------------------------------------------------------------------
 # Headlamp (cluster management UI) - see README.md "Headlamp"
