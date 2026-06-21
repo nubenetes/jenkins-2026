@@ -70,7 +70,47 @@ AZURE_TEMPLATING = [
         "current": {},
         "options": [],
     },
+    {
+        # Click-through correlation key. Empty = show everything; a data link on
+        # the operation_Id column (see below) sets it, filtering BOTH the log
+        # and trace panels to that one trace (App Insights end-to-end id == OTel
+        # trace_id). This is the managed-azure equivalent of grafana-cloud's
+        # derived-fields / traces-to-logs correlation.
+        "name": "operation_id",
+        "label": "operation_Id (trace correlation)",
+        "type": "textbox",
+        "query": "",
+        "current": {"text": "", "value": ""},
+        "hide": 0,
+    },
 ]
+
+# KQL fragment: pass everything through when the operation_id var is empty,
+# else filter to that single trace.
+_OPID_FILTER = "| where '${operation_id}' == '' or operation_Id == '${operation_id}'"
+
+# Data link on the operation_Id column: clicking it reloads the dashboard with
+# var-operation_id set to the clicked value, so both panels filter to that trace.
+_OPID_FIELD_CONFIG = {
+    "defaults": {},
+    "overrides": [
+        {
+            "matcher": {"id": "byName", "options": "operation_Id"},
+            "properties": [
+                {
+                    "id": "links",
+                    "value": [
+                        {
+                            "title": "Correlate: filter this trace (operation_Id)",
+                            "url": "?var-operation_id=${__value.raw}",
+                            "targetBlank": False,
+                        }
+                    ],
+                }
+            ],
+        }
+    ],
+}
 
 
 def _panel_ds_type(panel: dict) -> str | None:
@@ -87,6 +127,7 @@ def _panel_ds_type(panel: dict) -> str | None:
 def _to_azure_logs(panel: dict) -> None:
     panel["datasource"] = dict(AZURE_DS)
     panel["type"] = "table"
+    panel["fieldConfig"] = _OPID_FIELD_CONFIG
     panel["targets"] = [
         {
             "datasource": dict(AZURE_DS),
@@ -100,6 +141,7 @@ def _to_azure_logs(panel: dict) -> None:
                 # dashboardTime scopes it to the dashboard time range.
                 "query": (
                     "traces\n"
+                    f"{_OPID_FILTER}\n"
                     "| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n"
                     "| order by timestamp desc"
                 ),
@@ -114,6 +156,7 @@ def _to_azure_logs(panel: dict) -> None:
 def _to_azure_traces(panel: dict) -> None:
     panel["datasource"] = dict(AZURE_DS)
     panel["type"] = "table"
+    panel["fieldConfig"] = _OPID_FIELD_CONFIG
     panel["targets"] = [
         {
             "datasource": dict(AZURE_DS),
@@ -125,6 +168,7 @@ def _to_azure_traces(panel: dict) -> None:
                 "resources": ["${appinsights}"],
                 "query": (
                     "union requests, dependencies\n"
+                    f"{_OPID_FILTER}\n"
                     "| project timestamp, operation_Id, cloud_RoleName, name, "
                     "duration, success, itemType\n"
                     "| order by timestamp desc"
