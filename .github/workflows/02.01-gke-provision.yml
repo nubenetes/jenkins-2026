@@ -300,6 +300,8 @@ jobs:
             --from-literal=AWS_ROLE_ARN="$(tf collector_role_arn)" \
             --from-literal=AWS_CLOUDWATCH_LOG_GROUP="$(tf cloudwatch_log_group)" \
             --from-literal=GRAFANA_BASE_URL="$(tf grafana_endpoint)" \
+            --from-literal=GRAFANA_WORKSPACE_ID="$(tf grafana_workspace_id)" \
+            --from-literal=AMP_QUERY_URL="$(tf amp_query_url)" \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy the stack (scripts/up.sh)

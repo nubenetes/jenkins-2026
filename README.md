@@ -134,6 +134,7 @@ for the OpenTelemetry/Grafana wiring.
   - [Structured Logging Deep Dive](#structured-logging-deep-dive)
   - [Observability Dashboards](#observability-dashboards)
   - [Grafana OSS In-Cluster Mode](#grafana-oss-in-cluster-mode)
+  - [Logging in to Amazon Managed Grafana (managed-aws)](#logging-in-to-amazon-managed-grafana-managed-aws)
 - [Headlamp (cluster management UI)](#headlamp-cluster-management-ui)
   - [One-time setup: Google OAuth client (currently unused)](#one-time-setup-google-oauth-client-currently-unused)
   - [Adding your (or another) identity](#adding-your-or-another-identity)
@@ -1487,6 +1488,65 @@ What parity required (so all four correlation directions work in OSS too):
   `trace_id=…`).
 - The same logback ConfigMap + `SPRING_REACTOR_CONTEXT_PROPAGATION=auto` from the
   GitOps repo apply unchanged (they are mode-independent).
+
+### Logging in to Amazon Managed Grafana (managed-aws)
+
+Unlike the in-cluster apps (Jenkins/Argo/Headlamp), **Amazon Managed Grafana
+(AMG) is not behind the GKE Gateway + Google IAP** — it is a managed AWS service,
+so it cannot reuse that "Sign in with Google" path. AMG authenticates **only** via
+**AWS IAM Identity Center** (the workspace's `AWS_SSO` mode) or **SAML 2.0**. Your
+IAM *user* (the one your CLI uses) **cannot** sign in to the Grafana UI.
+
+The cheapest, account-agnostic way in is a **native IAM Identity Center user**
+(Identity Center and its users are free — no Google Workspace needed). This is the
+AWS analogue of the `managed-azure` flow, where AMG-Azure is wired to Entra ID and
+you just grant your Entra account admin. Do it **once** per person:
+
+1. **Create the Identity Center user** — AWS console → *IAM Identity Center* (in
+   the same region as the workspace) → **Users** → **Add user**: pick a username,
+   your email, name, and choose **"Send an email … with password setup
+   instructions"**. Follow that email to set your password.
+2. **Grant Admin on the workspace** — AWS console → *Amazon Managed Grafana* →
+   your `jenkins-2026-*` workspace → **Authentication** → **AWS IAM Identity
+   Center** → **Assign new user or group** → select your user → then on its row
+   **Action → Make admin**.
+3. **Sign in** — open the workspace URL (`terraform -chdir=terraform/aws-managed-grafana
+   output -raw grafana_endpoint`) and click **"Sign in with AWS IAM Identity
+   Center"**. The custom dashboards are under *Dashboards → jenkins-2026/*.
+
+<details>
+<summary>CLI equivalent (steps 1–2)</summary>
+
+```bash
+export AWS_REGION=<workspace-region>
+IDS=$(aws sso-admin list-instances --query 'Instances[0].IdentityStoreId' --output text)
+
+# 1. native Identity Center user (edit name/email)
+USER_ID=$(aws identitystore create-user --identity-store-id "$IDS" \
+  --user-name "<you>" --display-name "<You>" \
+  --name 'GivenName=<First>,FamilyName=<Last>' \
+  --emails 'Value=<you@example.com>,Type=work,Primary=true' \
+  --query UserId --output text)
+
+# 2. grant ADMIN on the workspace
+WS=$(terraform -chdir=terraform/aws-managed-grafana output -raw grafana_workspace_id)
+aws grafana update-permissions --workspace-id "$WS" \
+  --update-instruction-batch \
+  "[{\"action\":\"ADD\",\"role\":\"ADMIN\",\"users\":[{\"id\":\"$USER_ID\",\"type\":\"SSO_USER\"}]}]"
+```
+
+> `create-user` does **not** send the password-setup email — trigger it from the
+> console (*Users → select → Reset password → Send email*) or use **Forgot
+> password** at the access portal for the first sign-in.
+
+</details>
+
+**Want true "Sign in with Google" like Jenkins?** That needs AMG in **SAML** mode
+with Google as the IdP, which requires **Google Workspace** (paid) or **Google
+Cloud Identity Free** (free, but you must stand up a managed directory for the
+domain). The only way to get the *identical* IAP-gated Google SSO as the other
+apps is the in-cluster [`oss` mode](#grafana-oss-in-cluster-mode) (Grafana behind
+the Gateway), which replaces AMG.
 
 ## Headlamp (cluster management UI)
 
