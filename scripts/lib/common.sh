@@ -128,3 +128,20 @@ wait_bg() {
   J2026_BG_LOGS=()
   return "${failed}"
 }
+
+# --- OTel auto-instrumentation injection ------------------------------------
+#
+# otel_agent_injected <namespace> <deployment> - returns 0 if the deployment's
+# running pods have the OTel Java agent injected by the operator's mutating
+# webhook (JAVA_TOOL_OPTIONS carries -javaagent), else 1. Detects the "pod
+# admitted before the Instrumentation CR / webhook was ready" race, where the
+# app starts uninstrumented and emits no metrics/traces. See
+# scripts/ensure-otel-injection.sh and docs/observability.md.
+otel_agent_injected() {
+  local ns="$1" deploy="$2" pod jto found=1
+  for pod in $(kubectl -n "${ns}" get pods -o name 2>/dev/null | grep "^pod/${deploy}-" || true); do
+    jto="$(kubectl -n "${ns}" get "${pod}" -o jsonpath='{range .spec.containers[*]}{.env[?(@.name=="JAVA_TOOL_OPTIONS")].value}{"\n"}{end}' 2>/dev/null)"
+    if grep -q -- '-javaagent' <<<"${jto}"; then found=0; fi
+  done
+  return "${found}"
+}

@@ -41,4 +41,10 @@ log_step "Installing 04-jenkins (sequential to prevent API pressure)"
 "${SCRIPT_DIR}/08-headlamp.sh"
 "${SCRIPT_DIR}/09-gateway.sh"
 
+# Self-heal the OTel auto-instrumentation injection race. No-op when the
+# microservices aren't deployed yet (a fresh provision deploys them
+# asynchronously via ArgoCD/pipelines, so this mainly catches re-runs and
+# already-running clusters) or when they're already injected. Non-fatal.
+"${SCRIPT_DIR}/ensure-otel-injection.sh" || log_warn "OTel injection guard reported an issue (see above)."
+
 log_info "jenkins-2026 is up. Run scripts/status.sh for endpoints and rollout status."
