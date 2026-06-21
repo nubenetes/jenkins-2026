@@ -183,6 +183,9 @@ gateway:
     microservices: "microservices"
     headlamp: "headlamp"
     pgadmin: "pgadmin"
+    # Only used when observability.mode=oss (in-cluster Grafana). Ignored in
+    # grafana-cloud mode, where Grafana is reached at its *.grafana.net URL.
+    grafana: "grafana"
   # k8s Secret (per-namespace, created by scripts/01-namespaces.sh) holding
   # the IAP OAuth client ID/secret consumed by the GCPBackendPolicy resources
   # that put Identity-Aware Proxy in front of Jenkins and Headlamp. Never

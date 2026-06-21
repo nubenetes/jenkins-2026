@@ -158,6 +158,49 @@ spec:
           port: 80
 EOT
 
+# Grafana is only deployed in-cluster (and thus exposable) in
+# observability.mode=oss. In grafana-cloud mode it lives at *.grafana.net, so
+# there's no in-cluster Service to route to.
+if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
+  log_step "Generating HTTPRoute (grafana, observability.mode=oss)"
+  cat >"${GENERATED_DIR}/httproute-grafana.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ${J2026_GATEWAY_HTTPROUTE_GRAFANA}
+  namespace: ${J2026_GRAFANA_OSS_NAMESPACE}
+spec:
+  parentRefs:
+    - name: ${J2026_GATEWAY_NAME}
+      namespace: ${J2026_JENKINS_NAMESPACE}
+      sectionName: https
+  hostnames:
+    - "${J2026_GATEWAY_GRAFANA_HOST}"
+  rules:
+    - backendRefs:
+        - name: kube-prometheus-stack-grafana
+          port: 80
+EOT
+
+  cat >"${GENERATED_DIR}/healthcheckpolicy-grafana.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: kube-prometheus-stack-grafana
+  namespace: ${J2026_GRAFANA_OSS_NAMESPACE}
+spec:
+  default:
+    config:
+      type: HTTP
+      httpHealthCheck:
+        requestPath: /api/health
+  targetRef:
+    group: ""
+    kind: Service
+    name: kube-prometheus-stack-grafana
+EOT
+fi
+
 
 log_step "Generating HealthCheckPolicies (jenkins, argocd, microservices)"
 cat >"${GENERATED_DIR}/healthcheckpolicy-jenkins.yaml" <<EOT
@@ -216,7 +259,14 @@ EOT
 
 log_step "Generating GCPBackendPolicies (IAP for jenkins, headlamp, pgadmin)"
 declare -A iap_client_id
-for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}"; do
+# The OSS Grafana (observability.mode=oss) is IAP-protected too - same edge
+# pattern as Jenkins/Headlamp. Its namespace only needs the per-namespace
+# client secret in that mode.
+iap_backend_namespaces=("${J2026_JENKINS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}")
+if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
+  iap_backend_namespaces+=("${J2026_GRAFANA_OSS_NAMESPACE}")
+fi
+for ns in "${iap_backend_namespaces[@]}"; do
   client_id="$(kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" -o jsonpath='{.data.client_id}' 2>/dev/null | base64 -d || true)"
   client_secret="$(kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" -o jsonpath='{.data.client_secret}' 2>/dev/null | base64 -d || true)"
   iap_client_id["${ns}"]="${client_id}"
@@ -286,6 +336,27 @@ spec:
         name: ${J2026_GATEWAY_IAP_SECRET}-client-secret
 EOT
 
+if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
+  cat >"${GENERATED_DIR}/gcpbackendpolicy-grafana.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: ${J2026_GATEWAY_IAP_POLICY_GRAFANA}
+  namespace: ${J2026_GRAFANA_OSS_NAMESPACE}
+spec:
+  targetRef:
+    group: ""
+    kind: Service
+    name: kube-prometheus-stack-grafana
+  default:
+    iap:
+      enabled: true
+      clientID: "${iap_client_id[${J2026_GRAFANA_OSS_NAMESPACE}]}"
+      oauth2ClientSecret:
+        name: ${J2026_GATEWAY_IAP_SECRET}-client-secret
+EOT
+fi
+
 
 log_step "Applying Gateway resources"
 kubectl apply -f "${GENERATED_DIR}/"
@@ -296,3 +367,6 @@ log_info "  ArgoCD:            https://${J2026_GATEWAY_ARGOCD_HOST}"
 log_info "  Microservices:         https://${J2026_GATEWAY_MICROSERVICES_HOST}"
 log_info "  Headlamp:          https://${J2026_GATEWAY_HEADLAMP_HOST}"
 log_info "  pgAdmin:           https://${J2026_GATEWAY_PGADMIN_HOST}"
+if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
+  log_info "  Grafana:           https://${J2026_GATEWAY_GRAFANA_HOST} (IAP-protected)"
+fi

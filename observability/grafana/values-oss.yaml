@@ -39,6 +39,23 @@ alertmanager:
 
 grafana:
   adminUser: admin
+
+  image:
+    # Pinned for reproducibility (see CLAUDE.md "pin for reproducibility").
+    # Overrides the Grafana version the kube-prometheus-stack subchart would
+    # otherwise default to, so OSS mode tracks a known Grafana OSS release.
+    tag: "13.0.2"
+
+  # Absolute URL Grafana uses for redirects and generated links. The
+  # in-cluster default below is correct for kubectl port-forward access; when
+  # the public gateway is enabled (observability.mode=oss + gateway.baseDomain
+  # set), scripts/03-observability.sh (which installs this release) overrides
+  # server.root_url with https://grafana.<baseDomain> via `helm upgrade --set`
+  # so redirects resolve to the public host.
+  grafana.ini:
+    server:
+      root_url: "%(protocol)s://%(domain)s:%(http_port)s/"
+
   resources:
     requests:
       cpu: 100m

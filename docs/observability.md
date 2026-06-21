@@ -216,10 +216,14 @@ dashboard link in `microservicesK6Smoke`'s build output. Two ways to provide it:
 - `prometheus-community/kube-prometheus-stack` -
   [`values-oss.yaml`](../observability/grafana/values-oss.yaml) - Prometheus
   (with `--web.enable-remote-write-receiver` for the collector's
-  `prometheusremotewrite` exporter) + Grafana, pre-provisioned with Loki and
-  Tempo datasources (derived fields / exemplars / service graph as described
-  above) and the `jenkins-2026` dashboards via a ConfigMap + the Grafana
-  sidecar.
+  `prometheusremotewrite` exporter) + Grafana (image pinned to `13.0.2`),
+  pre-provisioned with Loki and Tempo datasources (derived fields / exemplars
+  / service graph as described above) and the `jenkins-2026` dashboards via a
+  ConfigMap + the Grafana sidecar. When the public gateway is enabled, this
+  Grafana is exposed at `https://grafana.<baseDomain>` behind IAP (same edge
+  pattern as Jenkins/Headlamp - see
+  [Public access](../README.md#public-access-gke-gateway-api--iap)); its
+  `server.root_url` is set accordingly by `scripts/03-observability.sh`.
 - `grafana/loki` -
   [`values-oss-loki.yaml`](../observability/grafana/values-oss-loki.yaml) -
   single-binary, filesystem storage, native OTLP log ingestion.
@@ -231,7 +235,17 @@ dashboard link in `microservicesK6Smoke`'s build output. Two ways to provide it:
   [`values-oss.yaml`](../observability/otel-collector/values-oss.yaml) /
   [`values-oss-logs.yaml`](../observability/otel-collector/values-oss-logs.yaml)
   (exporters: `otlp/tempo`, `otlphttp/loki`, `prometheusremotewrite`) instead
-  of the Grafana Cloud variants.
+  of the Grafana Cloud variants. The gateway collector also runs a
+  `k8sobjects` receiver that ships Kubernetes **Events** to Loki, for parity
+  with grafana-cloud mode's k8s-monitoring `clusterEvents` preset.
+
+> **Switching modes in place:** re-running the deploy after changing
+> `observability.mode` is clean - `scripts/03-observability.sh` uninstalls the
+> releases belonging to the mode you're leaving (cloud-only `pdc-agent` /
+> `k8s-monitoring` when switching to `oss`; the in-cluster
+> `kube-prometheus-stack` / `loki` / `tempo` when switching back to
+> `grafana-cloud`) before installing the new stack. The shared
+> `otel-collector-{gateway,logs}` releases are reconfigured via `helm upgrade`.
 
 ### `managed-azure`
 
