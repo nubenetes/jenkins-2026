@@ -15,9 +15,13 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 az extension add -n amg --only-show-errors >/dev/null 2>&1 || true
 
-read -r grafana rg < <(az grafana list \
-  --query "[?starts_with(name,'jenkins-2026')].[name,resourceGroup] | [0]" -o tsv)
-if [[ -z "${grafana:-}" ]]; then
+read -r grafana rg endpoint < <(az grafana list -o json 2>/dev/null | python3 -c '
+import sys, json
+g = [x for x in json.load(sys.stdin) if x["name"].startswith("jenkins-2026")]
+if g:
+    print(g[0]["name"], g[0]["resourceGroup"], g[0]["properties"]["endpoint"])
+')
+if [[ -z "${grafana:-}" || -z "${endpoint:-}" ]]; then
   echo "No Azure Managed Grafana found - skipping community dashboard import."
   exit 0
 fi
@@ -29,6 +33,13 @@ if [[ -z "${prom:-}" ]]; then
   exit 0
 fi
 
+# Grafana's import API resolves a dashboard's __inputs (datasource +
+# VAR_DATASOURCE constant) properly - far more robust than string-replacing
+# datasource placeholders, since community dashboards mix ${DS_PROMETHEUS},
+# ${datasource} and $datasource. Auth: an Azure AD token (audience
+# ce34e7e5-... is the Azure Managed Grafana first-party app).
+token="$(az account get-access-token --resource ce34e7e5-485f-4d76-964f-b3d2b16d1e4f --query accessToken -o tsv)"
+
 echo "Importing community infra dashboards into ${grafana} (prometheus uid=${prom})"
 while read -r gid uid name; do
   [[ -z "${gid}" || "${gid}" == \#* ]] && continue
@@ -36,22 +47,26 @@ while read -r gid uid name; do
     echo "::warning::failed to fetch gnetId ${gid} (${name})"
     continue
   fi
-  # Strip the import-only __inputs/__requires and bind the datasource template
-  # to the concrete Prometheus datasource, then pin our own uid.
+  # Build the import payload: pin our uid, and give every __input the
+  # Prometheus datasource uid (datasource inputs + the VAR_DATASOURCE constant).
   python3 - "${prom}" "${uid}" <<'PY'
 import json, sys
 prom, uid = sys.argv[1], sys.argv[2]
 d = json.load(open("/tmp/gnet.json"))
-d.pop("__inputs", None)
-d.pop("__requires", None)
-d = json.loads(json.dumps(d).replace("${DS_PROMETHEUS}", prom).replace("${datasource}", prom))
 d["uid"] = uid
-json.dump(d, open("/tmp/gnet-bound.json", "w"))
+inputs = []
+for i in d.get("__inputs", []):
+    e = {"name": i["name"], "type": i["type"], "value": prom}
+    if i.get("pluginId"):
+        e["pluginId"] = i["pluginId"]
+    inputs.append(e)
+json.dump({"dashboard": d, "overwrite": True, "inputs": inputs}, open("/tmp/gnet-import.json", "w"))
 PY
-  if az grafana dashboard create -n "${grafana}" -g "${rg}" \
-       --definition @/tmp/gnet-bound.json --overwrite --only-show-errors >/dev/null; then
+  if curl -fsS -X POST "${endpoint%/}/api/dashboards/import" \
+       -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" \
+       -d @/tmp/gnet-import.json >/dev/null; then
     echo "imported ${name} (gnetId ${gid})"
   else
-    echo "::warning::failed to publish ${name} (gnetId ${gid})"
+    echo "::warning::failed to import ${name} (gnetId ${gid})"
   fi
 done < "${HERE}/community-dashboards.txt"
