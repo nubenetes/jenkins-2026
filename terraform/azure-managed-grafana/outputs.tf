@@ -31,8 +31,18 @@ output "azure_client_secret" {
 }
 
 output "grafana_endpoint" {
-  description = "Azure Managed Grafana URL -> GRAFANA_BASE_URL (dashboard publishing in 07-grafana-dashboards.sh)."
+  description = "Azure Managed Grafana URL -> GRAFANA_BASE_URL (banner link / dashboard publishing)."
   value       = azurerm_dashboard_grafana.this.endpoint
+}
+
+output "grafana_name" {
+  description = "Azure Managed Grafana resource name (used by `az grafana dashboard create` in 02.01)."
+  value       = azurerm_dashboard_grafana.this.name
+}
+
+output "resource_group_name" {
+  description = "Resource group holding the managed-azure backend (used by `az grafana` in 02.01)."
+  value       = azurerm_resource_group.this.name
 }
 
 output "grafana_identity_principal_id" {

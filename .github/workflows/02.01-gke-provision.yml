@@ -303,6 +303,41 @@ jobs:
       - name: Smoke test
         run: ./test/smoke-test.sh
 
+      # Auto-publish the managed-azure dashboard variants to Azure Managed
+      # Grafana, for parity with the grafana-cloud/oss modes (which publish via
+      # 07-grafana-dashboards.sh). Uses GitHub OIDC -> Azure (the OIDC SP holds
+      # Grafana Admin on the instance via terraform/azure-managed-grafana), so
+      # no Grafana API token is stored anywhere.
+      - name: Azure login (managed-azure dashboards)
+        if: ${{ inputs.observability_mode == 'managed-azure' }}
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Publish dashboards to Azure Managed Grafana
+        if: ${{ inputs.observability_mode == 'managed-azure' }}
+        run: |
+          az extension add -n amg --only-show-errors || true
+          # Discover the Azure Managed Grafana instance (the one the OIDC SP has
+          # Grafana Admin on) without depending on terraform state outputs.
+          read -r grafana rg < <(az grafana list \
+            --query "[?starts_with(name,'jenkins-2026')].[name,resourceGroup] | [0]" -o tsv)
+          if [[ -z "${grafana}" ]]; then
+            echo "::warning::no Azure Managed Grafana found - skipping dashboard publish"
+            exit 0
+          fi
+          echo "Publishing to ${grafana} (${rg})"
+          for f in observability/grafana/dashboards-azure/*-azure.json; do
+            if az grafana dashboard create -n "${grafana}" -g "${rg}" \
+                 --definition "@${f}" --overwrite --only-show-errors >/dev/null; then
+              echo "published $(basename "${f}")"
+            else
+              echo "::warning::failed to publish $(basename "${f}") - check the Azure Monitor datasource binding"
+            fi
+          done
+
       - name: Summary
         if: always()
         working-directory: terraform/gke
