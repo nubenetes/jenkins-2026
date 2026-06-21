@@ -357,8 +357,32 @@ limitation).
 
 ### `managed-aws`
 
-Planned, currently a documented stub: export to **Amazon Managed Service for
-Prometheus** (remote-write) + **X-Ray/CloudWatch** for traces/logs, visualized
-in **Amazon Managed Grafana** - the AWS analogue of `managed-azure`.
-`03-observability.sh` / `07-grafana-dashboards.sh` exit without creating
-resources. Use `grafana-cloud`, `oss`, or `managed-azure` for now.
+The AWS analogue of `managed-azure` - Amazon Managed Grafana is a frontend, so
+telemetry goes to AWS backends and AMG reads them:
+
+- **metrics** → **Amazon Managed Service for Prometheus** (remote-write, **SigV4**).
+- **traces** → **AWS X-Ray** (`awsxray` exporter).
+- **logs** → **CloudWatch Logs** (`awscloudwatchlogs`).
+
+`03-observability.sh` installs the two collector releases with
+[`values-managed-aws.yaml`](../observability/otel-collector/values-managed-aws.yaml)
+/ [`-logs.yaml`](../observability/otel-collector/values-managed-aws-logs.yaml)
+(plus `kube-state-metrics` + `node-exporter`, scraped alongside cadvisor/kubelet
+into AMP for the AMG built-in Kubernetes dashboards). It requires the
+`aws-managed-credentials` Secret - in CI `02.01` builds it from the
+[`terraform/aws-managed-grafana`](../terraform/aws-managed-grafana) GCS-state
+outputs (the module is applied once by **01.04 AWS bootstrap**).
+
+**Key-less auth (no access keys anywhere):** the collector's ServiceAccount is
+federated to an IAM role via the **GKE cluster's OIDC issuer** +
+`AssumeRoleWithWebIdentity` (a projected SA token, audience `sts.amazonaws.com`).
+The bootstrap workflow likewise uses **GitHub OIDC → AWS**. Only identifiers
+(`AWS_BOOTSTRAP_ROLE_ARN`/`AWS_REGION`/`GKE_OIDC_ISSUER_URL`) are GitHub secrets.
+
+> **What this PoC ships vs. follow-ups.** Collector wiring, mode plumbing,
+> credentials template/Secret wiring, the Terraform module and the bootstrap/
+> decommission workflows are in place and **validated** (`terraform validate`,
+> `helm template`) but **not applied** - bring an AWS account (with IAM Identity
+> Center for AMG's AWS_SSO auth), run **01.04**, and grant your SSO users Admin
+> on the Grafana workspace. Compute stays on GKE; only the observability backend
+> changes.

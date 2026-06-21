@@ -1,0 +1,120 @@
+# Values for open-telemetry/opentelemetry-collector - "logs" release,
+# managed-aws variant (observability.mode: managed-aws). DaemonSet counterpart
+# of values-managed-aws.yaml - tails container logs on every node and ships them
+# to CloudWatch Logs via the awscloudwatchlogs exporter.
+#
+# helm upgrade --install otel-collector-logs open-telemetry/opentelemetry-collector \
+#   -n observability -f observability/otel-collector/values-managed-aws-logs.yaml
+
+fullnameOverride: otel-collector-logs
+
+mode: daemonset
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 300m
+    memory: 256Mi
+
+extraEnvsFrom:
+  - secretRef:
+      name: aws-managed-credentials
+
+extraEnvs:
+  - name: AWS_WEB_IDENTITY_TOKEN_FILE
+    value: /var/run/secrets/aws-token/token
+
+extraVolumes:
+  - name: varlogpods
+    hostPath:
+      path: /var/log/pods
+  - name: varlibdockercontainers
+    hostPath:
+      path: /var/lib/docker/containers
+  - name: aws-token
+    projected:
+      sources:
+        - serviceAccountToken:
+            path: token
+            audience: sts.amazonaws.com
+            expirationSeconds: 3600
+
+extraVolumeMounts:
+  - name: varlogpods
+    mountPath: /var/log/pods
+    readOnly: true
+  - name: varlibdockercontainers
+    mountPath: /var/lib/docker/containers
+    readOnly: true
+  - name: aws-token
+    mountPath: /var/run/secrets/aws-token
+    readOnly: true
+
+securityContext:
+  runAsUser: 0
+  readOnlyRootFilesystem: false
+
+# The logs DaemonSet's ServiceAccount must also be otel-collector-logs in the
+# IAM role trust policy if you want a dedicated identity; here it reuses the
+# same web identity token + AWS_ROLE_ARN as the gateway (the role trusts the
+# gateway SA - add otel-collector-logs to the trust policy's sub list, or point
+# the node logs at the gateway via OTLP, depending on your setup).
+clusterRole:
+  create: true
+  rules:
+    - apiGroups: [""]
+      resources: ["pods", "namespaces"]
+      verbs: ["get", "watch", "list"]
+
+config:
+  receivers:
+    filelog:
+      include:
+        - /var/log/pods/*/*/*.log
+      exclude:
+        - /var/log/pods/observability_*otel-collector*/*/*.log
+        - /var/log/pods/kube-system_*/*/*.log
+      start_at: beginning
+      include_file_path: true
+      include_file_name: false
+      operators:
+        - type: container
+          id: container-parser
+
+  processors:
+    batch: {}
+    memory_limiter:
+      check_interval: 5s
+      limit_percentage: 80
+      spike_limit_percentage: 25
+    k8s_attributes:
+      auth_type: serviceAccount
+      passthrough: false
+      extract:
+        metadata:
+          - k8s.namespace.name
+          - k8s.pod.name
+          - k8s.container.name
+          - k8s.deployment.name
+      pod_association:
+        - sources:
+            - from: resource_attribute
+              name: k8s.pod.uid
+
+  exporters:
+    awscloudwatchlogs:
+      region: ${env:AWS_REGION}
+      log_group_name: ${env:AWS_CLOUDWATCH_LOG_GROUP}
+      log_stream_name: otel-collector-logs
+
+  service:
+    pipelines:
+      logs:
+        receivers: [filelog]
+        processors: [memory_limiter, k8s_attributes, batch]
+        exporters: [awscloudwatchlogs]
