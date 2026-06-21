@@ -31,6 +31,10 @@ env:
 jobs:
   bootstrap:
     runs-on: ubuntu-latest
+    # Approval gate (creates persistent, billed networking resources - static
+    # IP + managed cert) - same required-reviewer protection as the other
+    # infra workflows.
+    environment: gke-production
     steps:
       - name: Checkout
         uses: actions/checkout@v4
