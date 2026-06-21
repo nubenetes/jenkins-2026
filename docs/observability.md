@@ -327,10 +327,16 @@ to the repo or duplicated as a GitHub secret. See README.md "GitHub Actions
 automation" step 6.
 
 **Kubernetes infrastructure metrics** (parity with grafana-cloud's
-k8s-monitoring/Alloy): `03-observability.sh` also deploys `kube-state-metrics`
-+ `prometheus-node-exporter`, and the gateway collector's `prometheus` receiver
-scrapes them and remote-writes to Azure Monitor managed Prometheus - surfaced
-by the `kubernetes-infrastructure-azure` dashboard.
+k8s-monitoring/Alloy): `03-observability.sh` deploys `kube-state-metrics` +
+`prometheus-node-exporter`, and the gateway collector's `prometheus` receiver
+scrapes the standard job set - **cadvisor + kubelet** (via the API server proxy
+with the collector's ServiceAccount token), **node**, **kube-state-metrics** -
+all stamped with a `cluster` label and remote-written to Azure Monitor managed
+Prometheus. These feed **Azure Managed Grafana's built-in Kubernetes dashboards**
+(Compute Resources / Kubelet / Node Exporter / USE Method), which AMG
+auto-provisions from the Azure Monitor workspace integration - so there are no
+infra dashboards to maintain in this repo (the Azure-native equivalent of the
+kube-prometheus-stack dashboards `oss` ships).
 
 **Correlation** is App-Insights-native, not Loki/Tempo: the OTel `trace_id`
 becomes the App Insights **`operation_Id`**, shared by `traces` (logs),

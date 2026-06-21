@@ -106,18 +106,69 @@ config:
     # k8s-monitoring/Alloy that grafana-cloud mode uses.
     prometheus:
       config:
+        # The standard job set Azure Managed Grafana's built-in Kubernetes
+        # dashboards (Compute Resources, Kubelet, Node Exporter, USE Method)
+        # expect: cadvisor + kubelet (container/kubelet metrics, via the API
+        # server proxy with the collector's ServiceAccount token), node-exporter
+        # and kube-state-metrics. Every job carries cluster=jenkins-2026 so the
+        # dashboards' cluster variable (label_values(up{job="cadvisor"},cluster))
+        # populates. ($$1 escapes the collector's $-expansion -> $1 for the
+        # prometheus relabel.)
         scrape_configs:
+          - job_name: cadvisor
+            scrape_interval: 30s
+            scheme: https
+            metrics_path: /metrics/cadvisor
+            authorization:
+              type: Bearer
+              credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+            tls_config:
+              ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+              insecure_skip_verify: true
+            kubernetes_sd_configs:
+              - role: node
+            relabel_configs:
+              - action: labelmap
+                regex: __meta_kubernetes_node_label_(.+)
+              - target_label: __address__
+                replacement: kubernetes.default.svc:443
+              - source_labels: [__meta_kubernetes_node_name]
+                regex: (.+)
+                target_label: __metrics_path__
+                replacement: /api/v1/nodes/$$1/proxy/metrics/cadvisor
+              - target_label: cluster
+                replacement: jenkins-2026
+          - job_name: kubelet
+            scrape_interval: 30s
+            scheme: https
+            metrics_path: /metrics
+            authorization:
+              type: Bearer
+              credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+            tls_config:
+              ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+              insecure_skip_verify: true
+            kubernetes_sd_configs:
+              - role: node
+            relabel_configs:
+              - action: labelmap
+                regex: __meta_kubernetes_node_label_(.+)
+              - target_label: __address__
+                replacement: kubernetes.default.svc:443
+              - source_labels: [__meta_kubernetes_node_name]
+                regex: (.+)
+                target_label: __metrics_path__
+                replacement: /api/v1/nodes/$$1/proxy/metrics
+              - target_label: cluster
+                replacement: jenkins-2026
           - job_name: kube-state-metrics
             scrape_interval: 30s
             static_configs:
               - targets: ["kube-state-metrics.observability.svc.cluster.local:8080"]
             relabel_configs:
-              # The community Kubernetes dashboards (kube-state-metrics, etc.)
-              # filter by a `cluster` label; add it so their cluster variable
-              # populates. Matches deployment.environment.cluster on the OTLP path.
               - target_label: cluster
                 replacement: jenkins-2026
-          - job_name: node-exporter
+          - job_name: node
             scrape_interval: 30s
             kubernetes_sd_configs:
               - role: endpoints
