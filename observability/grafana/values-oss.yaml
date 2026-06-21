@@ -18,6 +18,12 @@ prometheus:
     # Required for the otel-collector "gateway" release's
     # prometheusremotewrite exporter (values-oss.yaml).
     enableRemoteWriteReceiver: true
+    # Without this, exemplars arriving via remote-write are silently dropped,
+    # so the Prometheus datasource's exemplarTraceIdDestinations (metrics ->
+    # Tempo traces correlation) has nothing to render. Enables the in-memory
+    # exemplar store (--enable-feature=exemplar-storage).
+    enableFeatures:
+      - exemplar-storage
     retention: 7d
     resources:
       requests:
