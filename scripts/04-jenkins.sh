@@ -45,6 +45,18 @@ if [[ -n "${grafana_base_url}" ]]; then
     --type=merge -p "{\"stringData\":{\"grafana-base-url\":\"${grafana_base_url}\"}}"
 fi
 
+# The Grafana Cloud "Kubernetes Monitoring" app (grafana-k8s-app) is a
+# Grafana-Cloud-only plugin - linking to /a/grafana-k8s-app in oss/managed-*
+# shows "plugin not found". Build the banner <li> only for grafana-cloud;
+# empty otherwise so the ${GRAFANA_K8S_APP_LINK} placeholder in jcasc-base.yaml
+# renders nothing. jq builds the JSON to escape the embedded HTML quotes.
+grafana_k8s_app_link=""
+if [[ "${J2026_OBS_MODE}" == "grafana-cloud" && -n "${grafana_base_url}" ]]; then
+  grafana_k8s_app_link="<li><a href=\"${grafana_base_url}/a/grafana-k8s-app\" style=\"color: #0052cc; text-decoration: underline;\">Kubernetes Infrastructure</a></li>"
+fi
+kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \
+  --type=merge -p "$(jq -nc --arg v "${grafana_k8s_app_link}" '{stringData:{"grafana-k8s-app-link":$v}}')"
+
 microservices_url=""
 if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
   microservices_url="https://${J2026_GATEWAY_MICROSERVICES_HOST}"
@@ -93,6 +105,12 @@ controller:
         secretKeyRef:
           name: ${J2026_JENKINS_CREDENTIALS_SECRET}
           key: grafana-base-url
+          optional: true
+    - name: GRAFANA_K8S_APP_LINK
+      valueFrom:
+        secretKeyRef:
+          name: ${J2026_JENKINS_CREDENTIALS_SECRET}
+          key: grafana-k8s-app-link
           optional: true
     - name: MICROSERVICES_URL
       valueFrom:
