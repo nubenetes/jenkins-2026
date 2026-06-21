@@ -418,7 +418,26 @@
       "description": "Controller + agent pod logs. Each line containing a trace_id can be opened directly in Tempo via the Loki datasource's derived field (see observability/grafana/values-oss.yaml or the Grafana Cloud Loki datasource configuration).",
       "fieldConfig": {
         "defaults": {},
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "operation_Id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Correlate: filter this trace (operation_Id)",
+                    "url": "?var-operation_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 9,
@@ -447,7 +466,7 @@
             "resources": [
               "${appinsights}"
             ],
-            "query": "traces\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
+            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
             "dashboardTime": true,
             "resultFormat": "table"
           },
@@ -469,16 +488,16 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "traceID"
+              "options": "operation_Id"
             },
             "properties": [
               {
                 "id": "links",
                 "value": [
                   {
-                    "targetBlank": true,
-                    "title": "Logs for this trace",
-                    "url": "/explore?left=%7B%22datasource%22%3A%22%24%7BDS_LOKI%7D%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22expr%22%3A%22%7Bk8s_namespace_name%3D%5C%22jenkins%5C%22%7D%20%7C%20json%20%7C%3D%20%5C%22${__value.raw}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D"
+                    "title": "Correlate: filter this trace (operation_Id)",
+                    "url": "?var-operation_id=${__value.raw}",
+                    "targetBlank": false
                   }
                 ]
               }
@@ -504,7 +523,7 @@
             "resources": [
               "${appinsights}"
             ],
-            "query": "union requests, dependencies\n| project timestamp, operation_Id, cloud_RoleName, name, duration, success, itemType\n| order by timestamp desc",
+            "query": "union requests, dependencies\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, operation_Id, cloud_RoleName, name, duration, success, itemType\n| order by timestamp desc",
             "dashboardTime": true,
             "resultFormat": "table"
           },
@@ -757,6 +776,17 @@
         "multi": false,
         "current": {},
         "options": []
+      },
+      {
+        "name": "operation_id",
+        "label": "operation_Id (trace correlation)",
+        "type": "textbox",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "hide": 0
       },
       {
         "hide": 0,
