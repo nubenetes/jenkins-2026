@@ -2,6 +2,98 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.12.0] - 2026-06-22
+
+Managed cloud observability backends (**Azure** & **AWS**), the in-cluster
+**OSS** stack made live & publicly exposed, plus an optional `develop` deploy
+tier — taking `observability.mode` to four fully working backends
+(`grafana-cloud` | `oss` | `managed-azure` | `managed-aws`).
+
+### Added
+
+- **`observability.mode=managed-azure`** — full Azure-native backend: Azure
+  Monitor workspace (managed Prometheus via DCE/DCR), Application Insights + Log
+  Analytics, and Azure Managed Grafana. Authenticated by a GitHub-OIDC-bootstrapped
+  Entra service principal — **no client secret stored in the repo**; only
+  identifiers are GitHub secrets.
+  - Terraform `terraform/azure-managed-grafana/` (one-time `01.03-azure-bootstrap.yml`),
+    `02.01-gke-provision.yml` reads its outputs straight from GCS state to build
+    the `azure-monitor-credentials` Secret.
+  - managed-azure dashboard variants (Azure Monitor Logs/Traces), click-through
+    trace correlation via the `operation_Id` data link, k8s infra metrics, and
+    AMG's **built-in** Kubernetes dashboards fed from native scrape.
+  - `02.03`-style auto-publish of AMG dashboards + manual approval gates on the
+    infra workflows.
+  - **Files**: `terraform/azure-managed-grafana/`, `observability/**`,
+    `.github/workflows/01.03-azure-bootstrap.yml`, `02.01-gke-provision.yml`.
+- **`observability.mode=managed-aws`** — AWS analogue: Amazon Managed Service for
+  Prometheus (AMP), AWS X-Ray, CloudWatch Logs, and Amazon Managed Grafana (AMG).
+  Collector authenticates at runtime via a projected SA web-identity token
+  (AssumeRoleWithWebIdentity — **no access keys**).
+  - Dedicated `02.04` workflow to publish dashboards to AMG **without a cluster**
+    (reads Terraform GCS state + AWS OIDC), plus in-CI least-privilege auto-publish.
+  - Community Kubernetes dashboards (dotdc + node-exporter) bound to AMP with
+    Prometheus-native metric names; X-Ray datasource plugin for trace panels.
+  - **Files**: `terraform/aws-managed-grafana/`, `observability/**`,
+    `.github/workflows/01.04-aws-bootstrap.yml`, `02.04-*.yml`.
+- **`observability.mode=oss` made live** — the in-cluster
+  Grafana/Loki/Tempo/Prometheus stack (Grafana OSS 13.0.2) is now publicly
+  exposed via the GKE Gateway API + IAP with Google SSO (auth-proxy), emits k8s
+  events, and supports full metrics↔traces↔logs correlation. Clean switching
+  between modes.
+  - **Files**: `observability/grafana/values-oss.yaml`,
+    `observability/otel-collector/values-oss.yaml`, `scripts/03-*`, `scripts/09-gateway.sh`.
+- **Optional `develop` deploy tier** (feature flag, **off by default**) — an
+  opt-in second microservices tier (`microservices-develop` namespace +
+  `<svc>-develop` Jenkins jobs + its own ListView, tracking the gitops-config
+  `develop` branch). Same app image as stable (upstream has no develop branch);
+  shared observability stack. Durable default `microservices.developTrackEnabled`,
+  ephemeral override `JENKINS2026_DEVELOP_TRACK_ENABLED`.
+  - **Files**: `config/config.yaml`, `scripts/lib/config.sh`, `scripts/08.5-argocd.sh`,
+    `scripts/04-jenkins.sh`, `argocd/microservices-appset.yaml`,
+    `jenkins/pipelines/seed/{services.yaml,seed_jobs.groovy}`,
+    `vars/microservicesDeploy.groovy`, `README.md`.
+- **OTel auto-instrumentation injection-race guard** — protects against
+  microservices starting without the Java agent when the `Instrumentation` CR and
+  Deployment race on a fresh deploy.
+- **Jenkins system banner — managed Grafana links per mode** — direct links to the
+  active backend's Grafana and to key built-in Kubernetes dashboards (AMG/Azure),
+  surfaced according to `observability.mode`.
+
+### Changed
+
+- **CI provision defaults to `enable_gateway=true`** in `02.01-gke-provision.yml`
+  — the project's intended public-access path.
+- **Banner links are mode-aware** — the "Kubernetes Infrastructure" / Grafana
+  k8s-app links now point to (or hide for) the correct backend per
+  `observability.mode` instead of assuming grafana-cloud.
+
+### Fixed
+
+- **Azure**: Managed Grafana major version `11 → 12` (Standard SKU only supports
+  12); App Insights **classic schema** in dashboard log/trace queries; log/trace
+  panels bound to a concrete resource + stable datasource UID; robust community
+  dashboard import via the import API (+ cluster label); region split
+  (spaincentral backends + francecentral AMG) that also unblocks decommission.
+- **AWS**: Grafana workspace requires `CUSTOMER_MANAGED` role with
+  `CURRENT_ACCOUNT`; collector memory bumped to 1Gi (cadvisor/kubelet
+  cardinality); reuse AMG's built-in datasources **by type, not by name**; install
+  the X-Ray datasource plugin so trace panels render; skip CI dashboard publish
+  until the publisher-role secret is set.
+- **ArgoCD / CloudNative-PG**: `ServerSideDiff` then `Replace=true` for the
+  cnpg-operator app (CRD annotation limit / SSA not honored on ArgoCD v3.5).
+- **OSS**: point the Grafana Tempo datasource at `3200` (chart has no `3100`);
+  unbreak Tempo OOM, exemplar correlation, and the k8s banner link.
+
+### Docs
+
+- managed-aws GitHub secrets, full workflow inventory, and `CLAUDE.md` terraform
+  layout; AMG first-login runbook (graceful skip when unauthenticated); Grafana
+  Cloud p99 fixed `[15m]` rate-window rationale + AWS publish secret consumers;
+  microservices log-levels + signal-correlation testing runbook.
+
+---
+
 ## [v0.11.0] - 2026-06-20
 
 ### Added
