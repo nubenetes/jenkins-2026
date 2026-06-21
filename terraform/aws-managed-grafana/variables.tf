@@ -41,3 +41,15 @@ variable "collector_service_account" {
   default     = "otel-collector-gateway"
   description = "Name of the otel-collector-gateway ServiceAccount (matches the opentelemetry-collector chart's fullnameOverride)."
 }
+
+variable "github_repo" {
+  type        = string
+  default     = ""
+  description = "owner/repo whose GitHub Actions OIDC may assume the dashboard-publisher role (e.g. nubenetes/jenkins-2026). 01.04-aws-bootstrap passes TF_VAR_github_repo=$GITHUB_REPOSITORY; left empty the role is created but unassumable."
+}
+
+variable "github_environment" {
+  type        = string
+  default     = "gke-production"
+  description = "GitHub Actions environment 02.01-gke-provision runs in; the dashboard-publisher role trusts repo:<github_repo>:environment:<github_environment>."
+}
