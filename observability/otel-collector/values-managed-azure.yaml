@@ -44,6 +44,17 @@ extraEnvsFrom:
   - secretRef:
       name: azure-monitor-credentials
 
+# RBAC for the prometheus receiver's Kubernetes service discovery (node-exporter
+# endpoints) - so the cluster infra metrics (kube-state-metrics + node-exporter)
+# can be scraped and remote-written to Azure Monitor managed Prometheus. This is
+# the managed-azure analogue of grafana-cloud's k8s-monitoring/Alloy.
+clusterRole:
+  create: true
+  rules:
+    - apiGroups: [""]
+      resources: ["nodes", "nodes/proxy", "services", "endpoints", "pods"]
+      verbs: ["get", "list", "watch"]
+
 ports:
   otlp:
     enabled: true
@@ -88,6 +99,30 @@ config:
           cors:
             allowed_origins:
               - "*"
+
+    # Scrape Kubernetes infrastructure metrics (kube-state-metrics + node
+    # exporter, both deployed by 03-observability.sh in managed-azure mode) and
+    # remote-write them to Azure Monitor managed Prometheus - parity with the
+    # k8s-monitoring/Alloy that grafana-cloud mode uses.
+    prometheus:
+      config:
+        scrape_configs:
+          - job_name: kube-state-metrics
+            scrape_interval: 30s
+            static_configs:
+              - targets: ["kube-state-metrics.observability.svc.cluster.local:8080"]
+          - job_name: node-exporter
+            scrape_interval: 30s
+            kubernetes_sd_configs:
+              - role: endpoints
+                namespaces:
+                  names: [observability]
+            relabel_configs:
+              - source_labels: [__meta_kubernetes_service_name]
+                regex: prometheus-node-exporter
+                action: keep
+              - source_labels: [__meta_kubernetes_endpoint_node_name]
+                target_label: instance
 
   processors:
     batch: {}
@@ -145,6 +180,11 @@ config:
         exporters: [prometheusremotewrite]
       metrics:
         receivers: [otlp]
+        processors: [memory_limiter, resource, batch]
+        exporters: [prometheusremotewrite]
+      # Kubernetes infra metrics scraped from kube-state-metrics + node-exporter.
+      metrics/infra:
+        receivers: [prometheus]
         processors: [memory_limiter, resource, batch]
         exporters: [prometheusremotewrite]
       logs:

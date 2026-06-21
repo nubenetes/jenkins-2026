@@ -37,6 +37,9 @@ case "${J2026_OBS_MODE}" in
     helm_uninstall_if_present kube-prometheus-stack "${J2026_GRAFANA_OSS_NAMESPACE}"
     helm_uninstall_if_present loki "${J2026_OBS_NAMESPACE}"
     helm_uninstall_if_present tempo "${J2026_OBS_NAMESPACE}"
+    # managed-azure's in-cluster infra-metrics agents.
+    helm_uninstall_if_present kube-state-metrics "${J2026_OBS_NAMESPACE}"
+    helm_uninstall_if_present prometheus-node-exporter "${J2026_OBS_NAMESPACE}"
 
     if ! kubectl get secret "${J2026_GRAFANA_CLOUD_SECRET}" -n "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1; then
       log_error "Secret '${J2026_GRAFANA_CLOUD_SECRET}' not found in namespace '${J2026_OBS_NAMESPACE}'."
@@ -153,6 +156,10 @@ EOT
     # Cloud otherwise. Must run before the kube-prometheus-stack install below.
     helm_uninstall_if_present pdc-agent "${J2026_OBS_NAMESPACE}"
     helm_uninstall_if_present k8s-monitoring "${J2026_OBS_NAMESPACE}"
+    # managed-azure's node-exporter binds hostPort 9100 - the same as the one
+    # kube-prometheus-stack installs below, so it must go first.
+    helm_uninstall_if_present kube-state-metrics "${J2026_OBS_NAMESPACE}"
+    helm_uninstall_if_present prometheus-node-exporter "${J2026_OBS_NAMESPACE}"
 
     log_step "Creating jenkins-2026-grafana-dashboards ConfigMap in ${J2026_GRAFANA_OSS_NAMESPACE}"
     kubectl_apply_namespace "${J2026_GRAFANA_OSS_NAMESPACE}"
@@ -228,6 +235,20 @@ EOT
       log_error "principal, and 'kubectl apply -f' it before re-running. See docs/observability.md."
       exit 1
     fi
+
+    # Kubernetes infra metrics source (scraped by the gateway collector's
+    # prometheus receiver -> Azure Monitor managed Prometheus). Parity with
+    # grafana-cloud's k8s-monitoring/Alloy. fullnameOverride pins predictable
+    # Service names that values-managed-azure.yaml's scrape_configs target.
+    log_step "Installing kube-state-metrics + node-exporter (Kubernetes infra metrics)"
+    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null 2>&1 || true
+    helm repo update prometheus-community >/dev/null 2>&1 || true
+    helm upgrade --install kube-state-metrics prometheus-community/kube-state-metrics \
+      --namespace "${J2026_OBS_NAMESPACE}" \
+      --set fullnameOverride=kube-state-metrics
+    helm upgrade --install prometheus-node-exporter prometheus-community/prometheus-node-exporter \
+      --namespace "${J2026_OBS_NAMESPACE}" \
+      --set fullnameOverride=prometheus-node-exporter
 
     log_step "Installing ${J2026_OTEL_GATEWAY_RELEASE} (OTLP gateway -> Azure Monitor)"
     kubectl delete configmap otel-collector-gateway -n "${J2026_OBS_NAMESPACE}" --ignore-not-found

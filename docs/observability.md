@@ -326,14 +326,23 @@ to build the `azure-monitor-credentials` Secret. Nothing sensitive is written
 to the repo or duplicated as a GitHub secret. See README.md "GitHub Actions
 automation" step 6.
 
-> **What this PoC ships.** Collector wiring, mode plumbing, credentials
-> template/Secret wiring, the Azure resource Terraform, dashboard push, and the
-> Azure dashboard variants (metrics + Azure Monitor Logs/Traces) are all in
-> place. The only deliberate caveat: the Azure Monitor datasource query JSON in
-> those variants is best-effort and should be **validated against a real Azure
-> account** on first integration (table/field names may need minor tweaks) -
-> see [`dashboards-azure/README.md`](../observability/grafana/dashboards-azure/README.md).
-> Compute stays on GKE; only the observability backend changes.
+**Kubernetes infrastructure metrics** (parity with grafana-cloud's
+k8s-monitoring/Alloy): `03-observability.sh` also deploys `kube-state-metrics`
++ `prometheus-node-exporter`, and the gateway collector's `prometheus` receiver
+scrapes them and remote-writes to Azure Monitor managed Prometheus - surfaced
+by the `kubernetes-infrastructure-azure` dashboard.
+
+**Correlation** is App-Insights-native, not Loki/Tempo: the OTel `trace_id`
+becomes the App Insights **`OperationId`**, shared by `AppTraces` (logs),
+`AppRequests`/`AppDependencies` (spans). The log and trace dashboard panels both
+surface `OperationId` so they correlate; the Azure Monitor datasource's
+end-to-end transaction view drills into a full trace. Metric→trace exemplars
+are not wired (Azure-managed-Prometheus limitation).
+
+> **Note.** The managed-azure pipeline is integration-verified end to end
+> (metrics/logs/traces confirmed in Azure Monitor; dashboard queries validated
+> against live `AppTraces`/`AppDependencies`). Compute stays on GKE; only the
+> observability backend changes.
 
 ### `managed-aws`
 
