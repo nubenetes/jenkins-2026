@@ -344,9 +344,11 @@ jobs:
               echo "::warning::failed to publish $(basename "${f}")"
             fi
           done
-          # Generic k8s/node infra: import maintained community dashboards
-          # (Node Exporter / kube-state-metrics) instead of a hand-rolled one.
-          bash observability/grafana/dashboards-azure/import-community.sh || true
+          # Generic Kubernetes/node infra is covered by Azure Managed Grafana's
+          # built-in dashboards (Compute Resources / Kubelet / Node Exporter /
+          # USE Method), auto-provisioned from the Azure Monitor workspace
+          # integration - the collector scrapes cadvisor/kubelet/node/ksm to
+          # feed them (values-managed-azure.yaml). Nothing to publish here.
 
       - name: Summary
         if: always()
