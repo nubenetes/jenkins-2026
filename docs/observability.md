@@ -395,5 +395,6 @@ idempotent across decommission + re-provision - see
 > and the bootstrap/decommission workflows are in place and **validated**
 > (`terraform validate`, `helm template`) but **not applied** - bring an AWS
 > account (with IAM Identity Center for AMG's AWS_SSO auth), run **01.04**, and
-> grant your SSO users Admin on the Grafana workspace. Compute stays on GKE; only
-> the observability backend changes.
+> grant your SSO users Admin on the Grafana workspace (see
+> [README "Logging in to Amazon Managed Grafana"](../README.md#logging-in-to-amazon-managed-grafana-managed-aws)).
+> Compute stays on GKE; only the observability backend changes.

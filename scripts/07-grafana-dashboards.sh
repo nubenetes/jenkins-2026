@@ -179,6 +179,15 @@ case "${J2026_OBS_MODE}" in
         exit 0
       fi
     done
+    # AMG has no static API key, so this path mints a workspace token with the
+    # AWS API and therefore needs AWS credentials. up.sh has none in CI (the
+    # keyless design only feeds the collector via web identity), so publishing
+    # runs as a dedicated, AWS-authenticated workflow step that re-invokes this
+    # script. Skip gracefully when unauthenticated rather than failing up.sh.
+    if ! aws sts get-caller-identity >/dev/null 2>&1; then
+      log_warn "No AWS credentials available - skipping managed-aws dashboard import (published by the dedicated workflow step)."
+      exit 0
+    fi
 
     sread() { kubectl get secret "${J2026_AWS_MANAGED_SECRET}" -n "${J2026_OBS_NAMESPACE}" -o jsonpath="{.data.$1}" | base64 -d; }
     GRAFANA_BASE_URL="$(sread GRAFANA_BASE_URL)"
