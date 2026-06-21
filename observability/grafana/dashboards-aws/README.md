@@ -13,10 +13,13 @@ Two kinds, by design:
   [`values-managed-aws.yaml`](../../otel-collector/values-managed-aws.yaml).
   **Unlike Azure Managed Grafana** (which auto-provisions infra dashboards from
   its Azure Monitor integration), **AMG ships no K8s dashboards** - the metrics
-  are in AMP but nothing renders them out of the box. Importing the
-  `kube-prometheus-stack`/`kubernetes-mixin` set (bound to AMP) is a tracked
-  follow-up; for now use the **Custom** dashboards below + the Grafana Explore
-  view against the AMP datasource.
+  are in AMP but nothing renders them out of the box. These are now provided by
+  the vendored **dotdc "Kubernetes / Views" + Node Exporter Full** set in
+  [`community/`](community) (chosen over `kube-prometheus-stack`/`kubernetes-mixin`
+  because that set depends on Prometheus recording rules a managed AMP workspace
+  doesn't evaluate). See [`community/README.md`](community/README.md) for the full
+  rationale - including why the full kube-prometheus-stack and the OTel-native
+  `k8s_cluster`/`kubeletstats` receivers are *not* the right fit here.
 
 The custom `*-aws.json` variants are the `observability.mode=managed-aws`
 counterparts of [`../dashboards/`](../dashboards). Amazon Managed Grafana reads
