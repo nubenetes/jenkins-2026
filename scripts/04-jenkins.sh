@@ -64,7 +64,10 @@ fi
 #                   filtered browse list + direct links to a few key ones. Those
 #                   uids are Azure-assigned and stable across AMG instances
 #                   (the shared ...6738 suffix).
-#   oss / managed-aws - none (oss ships kube-prometheus-stack's own dashboards).
+#   oss - kube-prometheus-stack's bundled kubernetes-mixin + node-exporter
+#         dashboards (loaded via the Grafana sidecar); their uids are pinned
+#         upstream and stable across chart versions, so we deep-link them.
+#   managed-aws - none (no auto-provisioned k8s dashboards on AMG).
 # Empty -> the placeholder renders nothing. jq escapes the embedded HTML quotes.
 grafana_li() {
   printf '<li><a href="%s%s" style="color: #0052cc; text-decoration: underline;">%s</a></li>' "$1" "$2" "$3"
@@ -80,6 +83,16 @@ if [[ -n "${grafana_base_url}" ]]; then
       grafana_k8s_app_link+="$(grafana_li "${grafana_base_url}" "/d/D3pVs6738" "Node Exporter / Nodes")"
       grafana_k8s_app_link+="$(grafana_li "${grafana_base_url}" "/d/fd0cac08a3f34e2994cf904627836738" "K8s Compute Resources / Cluster")"
       grafana_k8s_app_link+="$(grafana_li "${grafana_base_url}" "/d/184244a28b3d478e9c0de82def316738" "Kubelet")"
+      ;;
+    oss)
+      # kube-prometheus-stack ships the full kubernetes-mixin + node-exporter
+      # dashboards via the Grafana sidecar. uids are pinned upstream and stable
+      # across chart versions (verified live against the in-cluster Grafana):
+      # browse-all + direct links to a few key ones, mirroring managed-azure.
+      grafana_k8s_app_link="$(grafana_li "${grafana_base_url}" "/dashboards?query=Kubernetes" "Kubernetes Infrastructure (all)")"
+      grafana_k8s_app_link+="$(grafana_li "${grafana_base_url}" "/d/efa86fd1d0c121a26444b636a3f509a8" "K8s Compute Resources / Cluster")"
+      grafana_k8s_app_link+="$(grafana_li "${grafana_base_url}" "/d/7d57716318ee0dddbac5a7f451fb7753" "Node Exporter / Nodes")"
+      grafana_k8s_app_link+="$(grafana_li "${grafana_base_url}" "/d/3138fa155d5915769fbded898ac09fd9" "Kubelet")"
       ;;
     managed-aws)
       # Amazon Managed Grafana doesn't auto-provision the k8s mixin like AMG
