@@ -89,6 +89,7 @@ def _panel_ds_type(panel: dict) -> str | None:
 
 def _to_azure_logs(panel: dict) -> None:
     panel["datasource"] = dict(AZURE_DS)
+    panel["type"] = "table"
     panel["targets"] = [
         {
             "datasource": dict(AZURE_DS),
@@ -96,13 +97,16 @@ def _to_azure_logs(panel: dict) -> None:
             "azureLogAnalytics": {
                 "resources": ["${appinsights}"],
                 # AppTraces holds the OTel log records the azuremonitor exporter
-                # ships. dashboardTime scopes it to the dashboard time range.
+                # ships. OperationId is the App Insights trace id (== OTel
+                # trace_id) - the correlation key to the trace panel below.
+                # dashboardTime scopes it to the dashboard time range.
                 "query": (
                     "AppTraces\n"
-                    "| project TimeGenerated, SeverityLevel, AppRoleName, Message\n"
+                    "| project TimeGenerated, SeverityLevel, AppRoleName, OperationId, Message\n"
                     "| order by TimeGenerated desc"
                 ),
                 "dashboardTime": True,
+                "resultFormat": "table",
             },
             "refId": "A",
         }
@@ -115,10 +119,21 @@ def _to_azure_traces(panel: dict) -> None:
     panel["targets"] = [
         {
             "datasource": dict(AZURE_DS),
-            "queryType": "Azure Traces",
-            "azureTraces": {
+            "queryType": "Azure Log Analytics",
+            # Spans live in AppRequests (server) + AppDependencies (client/
+            # internal). Using a verified Log Analytics KQL query (rather than
+            # the Azure "Traces" query type) so the panel reliably renders a
+            # span table. OperationId correlates 1:1 with the log panel above
+            # and is App Insights' end-to-end trace id.
+            "azureLogAnalytics": {
                 "resources": ["${appinsights}"],
-                "traceTypes": ["requests", "dependencies"],
+                "query": (
+                    "union AppRequests, AppDependencies\n"
+                    "| project TimeGenerated, OperationId, AppRoleName, Name, "
+                    "DurationMs, Success, Type\n"
+                    "| order by TimeGenerated desc"
+                ),
+                "dashboardTime": True,
                 "resultFormat": "table",
             },
             "refId": "A",
