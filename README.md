@@ -2345,6 +2345,7 @@ With this configuration active, triggering any of the protected workflows will p
    | `JENKINS_OIDC_CLIENT_ID` / `JENKINS_OIDC_CLIENT_SECRET` | Google OAuth client for Jenkins "Sign in with Google" (see [Google login](#google-login-openid-connect)) |
    | `JENKINS_OIDC_ADMIN_EMAIL` | Google account email granted the Jenkins `admin` role via OIDC login - **your own email, never committed to the repo** (see [Google login](#google-login-openid-connect)) |
    | `IAP_OAUTH_CLIENT_ID` / `IAP_OAUTH_CLIENT_SECRET` | OAuth client gating Jenkins/Headlamp via Identity-Aware Proxy (see [Public access](#public-access-gke-gateway-api--iap)) |
+   | `AZURE_MONITOR_CONNECTION_STRING` / `AZURE_MONITOR_PROMETHEUS_ENDPOINT` / `AZURE_TENANT_ID` / `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` / `AZURE_GRAFANA_BASE_URL` / `AZURE_GRAFANA_API_KEY` | `observability_mode: managed-azure` - the `azure-monitor-credentials` Secret values, taken from the `terraform/azure-managed-grafana` outputs (see [`docs/observability.md`](docs/observability.md#managed-azure)) |
 
    `gateway.baseDomain` (default `jenkins2026.nubenetes.com`) is **not** a
    secret - it's committed in `config/config.yaml`. Override it via the
@@ -2433,6 +2434,42 @@ With this configuration active, triggering any of the protected workflows will p
    this stack and writes them into the `grafana-cloud-credentials` Secret;
    every `02.99-gke-decommission` run destroys the same Terraform state, revoking
    both tokens.
+
+6. **(Optional) Azure backend for `observability_mode: managed-azure`.** Like
+   step 5, the Azure resources are provisioned once, by hand, with local state
+   (this module is **not** wired into CI):
+
+   a. **Provision the Azure stack** -
+      [`terraform/azure-managed-grafana`](terraform/azure-managed-grafana)
+      creates Azure Managed Grafana, the Azure Monitor workspace (+ Data
+      Collection Endpoint/Rule for managed Prometheus), Application Insights +
+      Log Analytics, the Entra service principal the collector authenticates
+      with, and the role assignments:
+
+      ```bash
+      cd terraform/azure-managed-grafana
+      cp terraform.tfvars.example terraform.tfvars   # set subscription_id, tenant_id
+      terraform init && terraform apply
+      ```
+
+   b. **Copy its outputs into GitHub secrets** (the workflow turns these into
+      the `azure-monitor-credentials` Secret):
+
+      ```bash
+      gh secret set AZURE_MONITOR_CONNECTION_STRING   --body "$(terraform output -raw azure_monitor_connection_string)"
+      gh secret set AZURE_MONITOR_PROMETHEUS_ENDPOINT --body "$(terraform output -raw azure_monitor_prometheus_endpoint)"
+      gh secret set AZURE_TENANT_ID                   --body "$(terraform output -raw azure_tenant_id)"
+      gh secret set AZURE_CLIENT_ID                   --body "$(terraform output -raw azure_client_id)"
+      gh secret set AZURE_CLIENT_SECRET               --body "$(terraform output -raw azure_client_secret)"
+      gh secret set AZURE_GRAFANA_BASE_URL            --body "$(terraform output -raw grafana_endpoint)"
+      # AZURE_GRAFANA_API_KEY: create a service-account token in the Azure
+      # Managed Grafana UI (or via `az grafana service-account token create`)
+      # and set it as a secret for the dashboard publishing step.
+      ```
+
+   Then pick `managed-azure` in **02.01 GKE provision**. Trace/log dashboard
+   panels need Azure-datasource rework (only metric panels are portable) - see
+   [`docs/observability.md`](docs/observability.md#managed-azure).
 
 ### Running it
 
