@@ -336,10 +336,12 @@ by the `kubernetes-infrastructure-azure` dashboard.
 becomes the App Insights **`operation_Id`**, shared by `traces` (logs),
 `requests`/`dependencies` (spans). The dashboards query the App Insights
 **resource** (so the classic `traces`/`requests`/`dependencies` schema, NOT the
-workspace `App*` schema), and the log and trace panels both surface
-`operation_Id` so they correlate; the Azure Monitor datasource's end-to-end
-transaction view drills into a full trace. Metric→trace exemplars are not wired
-(Azure-managed-Prometheus limitation).
+workspace `App*` schema). Both the log and trace panels carry a data link on
+the `operation_Id` column that sets the `operation_id` dashboard variable, so
+clicking it filters BOTH panels to that one trace's logs + spans - the
+managed-azure equivalent of grafana-cloud's derived-fields / traces-to-logs
+click-through. Metric→trace exemplars are not wired (Azure-managed-Prometheus
+limitation).
 
 > **Note.** The managed-azure pipeline is integration-verified end to end
 > (metrics/logs/traces confirmed in Azure Monitor; dashboard queries validated
