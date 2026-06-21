@@ -55,6 +55,25 @@ grafana:
   grafana.ini:
     server:
       root_url: "%(protocol)s://%(domain)s:%(http_port)s/"
+    # Single sign-on with Google, same edge pattern as Jenkins/Headlamp: the GKE
+    # Gateway puts Grafana behind Identity-Aware Proxy (the GCPBackendPolicy in
+    # scripts/09-gateway.sh), which authenticates the user with their Google
+    # account and forwards their identity in the X-Goog-Authenticated-User-Email
+    # header. Grafana's auth.proxy trusts that header and auto-creates the user,
+    # so there is no second Grafana login prompt - one Google sign-in (IAP) and
+    # you land in Grafana. IAP already restricts access to allowlisted Google
+    # accounts, so the proxied user is granted Admin (users.auto_assign_org_role).
+    # The header carries an "accounts.google.com:" prefix (cosmetic in the
+    # username). The login form stays enabled as a port-forward escape hatch:
+    # when no IAP header is present (kubectl port-forward), admin/password works.
+    "auth.proxy":
+      enabled: true
+      header_name: X-Goog-Authenticated-User-Email
+      header_property: username
+      auto_sign_up: true
+      sync_ttl: 60
+    users:
+      auto_assign_org_role: Admin
 
   resources:
     requests:

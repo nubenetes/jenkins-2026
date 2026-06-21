@@ -35,7 +35,17 @@ read_grafana_url_from_secret() {
 }
 case "${J2026_OBS_MODE}" in
   grafana-cloud)  grafana_base_url="$(read_grafana_url_from_secret "${J2026_GRAFANA_CLOUD_SECRET}")" ;;
-  oss)            grafana_base_url="http://localhost:3000" ;;
+  oss)
+    # In-cluster Grafana: exposed publicly at https://grafana.<baseDomain> when
+    # the gateway is enabled (HTTPRoute + IAP in scripts/09-gateway.sh), so the
+    # banner link matches the other modes. Falls back to the kubectl
+    # port-forward address when the gateway is disabled.
+    if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
+      grafana_base_url="https://${J2026_GATEWAY_GRAFANA_HOST}"
+    else
+      grafana_base_url="http://localhost:3000"
+    fi
+    ;;
   managed-azure)  grafana_base_url="$(read_grafana_url_from_secret "${J2026_AZURE_MONITOR_SECRET}")" ;;
   managed-aws)    grafana_base_url="$(read_grafana_url_from_secret "${J2026_AWS_MANAGED_SECRET}")" ;;
 esac
