@@ -96,14 +96,15 @@ def _to_azure_logs(panel: dict) -> None:
             "queryType": "Azure Log Analytics",
             "azureLogAnalytics": {
                 "resources": ["${appinsights}"],
-                # AppTraces holds the OTel log records the azuremonitor exporter
-                # ships. OperationId is the App Insights trace id (== OTel
-                # trace_id) - the correlation key to the trace panel below.
+                # Querying the App Insights RESOURCE uses the classic schema
+                # (traces/requests/dependencies), NOT the workspace schema
+                # (AppTraces/...). operation_Id is the App Insights trace id
+                # (== OTel trace_id) - the correlation key to the trace panel.
                 # dashboardTime scopes it to the dashboard time range.
                 "query": (
-                    "AppTraces\n"
-                    "| project TimeGenerated, SeverityLevel, AppRoleName, OperationId, Message\n"
-                    "| order by TimeGenerated desc"
+                    "traces\n"
+                    "| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n"
+                    "| order by timestamp desc"
                 ),
                 "dashboardTime": True,
                 "resultFormat": "table",
@@ -120,18 +121,16 @@ def _to_azure_traces(panel: dict) -> None:
         {
             "datasource": dict(AZURE_DS),
             "queryType": "Azure Log Analytics",
-            # Spans live in AppRequests (server) + AppDependencies (client/
-            # internal). Using a verified Log Analytics KQL query (rather than
-            # the Azure "Traces" query type) so the panel reliably renders a
-            # span table. OperationId correlates 1:1 with the log panel above
-            # and is App Insights' end-to-end trace id.
+            # Spans live in requests (server) + dependencies (client/internal)
+            # in the App Insights classic schema. operation_Id correlates 1:1
+            # with the log panel above - App Insights' end-to-end trace id.
             "azureLogAnalytics": {
                 "resources": ["${appinsights}"],
                 "query": (
-                    "union AppRequests, AppDependencies\n"
-                    "| project TimeGenerated, OperationId, AppRoleName, Name, "
-                    "DurationMs, Success, Type\n"
-                    "| order by TimeGenerated desc"
+                    "union requests, dependencies\n"
+                    "| project timestamp, operation_Id, cloud_RoleName, name, "
+                    "duration, success, itemType\n"
+                    "| order by timestamp desc"
                 ),
                 "dashboardTime": True,
                 "resultFormat": "table",

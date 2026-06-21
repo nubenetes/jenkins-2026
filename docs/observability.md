@@ -333,15 +333,18 @@ scrapes them and remote-writes to Azure Monitor managed Prometheus - surfaced
 by the `kubernetes-infrastructure-azure` dashboard.
 
 **Correlation** is App-Insights-native, not Loki/Tempo: the OTel `trace_id`
-becomes the App Insights **`OperationId`**, shared by `AppTraces` (logs),
-`AppRequests`/`AppDependencies` (spans). The log and trace dashboard panels both
-surface `OperationId` so they correlate; the Azure Monitor datasource's
-end-to-end transaction view drills into a full trace. Metric→trace exemplars
-are not wired (Azure-managed-Prometheus limitation).
+becomes the App Insights **`operation_Id`**, shared by `traces` (logs),
+`requests`/`dependencies` (spans). The dashboards query the App Insights
+**resource** (so the classic `traces`/`requests`/`dependencies` schema, NOT the
+workspace `App*` schema), and the log and trace panels both surface
+`operation_Id` so they correlate; the Azure Monitor datasource's end-to-end
+transaction view drills into a full trace. Metric→trace exemplars are not wired
+(Azure-managed-Prometheus limitation).
 
 > **Note.** The managed-azure pipeline is integration-verified end to end
 > (metrics/logs/traces confirmed in Azure Monitor; dashboard queries validated
-> against live `AppTraces`/`AppDependencies`). Compute stays on GKE; only the
+> through Grafana's query engine against the live App Insights classic schema).
+> Compute stays on GKE; only the
 > observability backend changes.
 
 ### `managed-aws`
