@@ -57,8 +57,8 @@ observability:
   #                   Insights/Log Analytics); visualize in Azure Managed
   #                   Grafana. See observability/otel-collector/
   #                   secret-managed-azure.example.yaml + docs/observability.md.
-  #   managed-aws   - planned (Amazon Managed Prometheus + X-Ray/CloudWatch +
-  #                   Amazon Managed Grafana); currently a documented stub.
+  #   managed-aws   - export to Amazon Managed Service for Prometheus +
+  #                   X-Ray/CloudWatch; visualize in Amazon Managed Grafana.
   mode: grafana-cloud
 
   otelOperator:

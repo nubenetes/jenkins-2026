@@ -274,6 +274,34 @@ jobs:
             --from-literal=GRAFANA_API_KEY="" \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Apply AWS managed credentials secret (from terraform outputs)
+        if: ${{ inputs.observability_mode == 'managed-aws' }}
+        run: |
+          # The terraform/aws-managed-grafana module (provisioned once by the
+          # "01.04 AWS bootstrap" workflow) holds the AMP endpoint, collector IAM
+          # role ARN, region and log group in its GCS state. No AWS auth needed
+          # here (terraform output just reads state, GCS already authed above);
+          # the collector authenticates to AWS at runtime via web identity (no
+          # access keys anywhere).
+          cat > terraform/aws-managed-grafana/backend_override.tf <<EOF
+          terraform {
+            backend "gcs" {
+              bucket = "${{ secrets.TF_STATE_BUCKET }}"
+              prefix = "jenkins-2026/aws-managed-grafana"
+            }
+          }
+          EOF
+          terraform -chdir=terraform/aws-managed-grafana init -input=false
+          tf() { terraform -chdir=terraform/aws-managed-grafana output -raw "$1"; }
+          kubectl create namespace observability --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret generic aws-managed-credentials -n observability \
+            --from-literal=AWS_REGION="$(tf aws_region)" \
+            --from-literal=AMP_REMOTE_WRITE_ENDPOINT="$(tf amp_remote_write_endpoint)" \
+            --from-literal=AWS_ROLE_ARN="$(tf collector_role_arn)" \
+            --from-literal=AWS_CLOUDWATCH_LOG_GROUP="$(tf cloudwatch_log_group)" \
+            --from-literal=GRAFANA_BASE_URL="$(tf grafana_endpoint)" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Deploy the stack (scripts/up.sh)
         env:
           JENKINS2026_OBS_MODE: ${{ inputs.observability_mode }}

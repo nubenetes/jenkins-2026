@@ -1,0 +1,14 @@
+# Copy to terraform.tfvars (gitignored) and fill in. Then, from this directory:
+#   terraform init && terraform apply
+# Creates real, billed AWS resources (Amazon Managed Grafana + AMP). AWS_SSO
+# requires IAM Identity Center enabled in the account. See the module header in
+# main.tf and docs/observability.md "managed-aws".
+
+# The GKE cluster's OIDC issuer URL (federates the collector SA to the IAM role):
+#   kubectl get --raw /.well-known/openid-configuration | jq -r .issuer
+gke_oidc_issuer_url = "https://container.googleapis.com/v1/projects/<project>/locations/<location>/clusters/<cluster>"
+
+# Optional overrides (defaults shown):
+# region          = "eu-west-1"
+# name_prefix     = "jenkins-2026"
+# grafana_version = "12.4"
