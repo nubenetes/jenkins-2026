@@ -320,6 +320,7 @@ jobs:
         if: ${{ inputs.observability_mode == 'managed-azure' }}
         run: |
           az extension add -n amg --only-show-errors || true
+          az extension add -n resource-graph --only-show-errors || true
           # Discover the Azure Managed Grafana instance (the one the OIDC SP has
           # Grafana Admin on) without depending on terraform state outputs.
           read -r grafana rg < <(az grafana list \
@@ -328,13 +329,19 @@ jobs:
             echo "::warning::no Azure Managed Grafana found - skipping dashboard publish"
             exit 0
           fi
-          echo "Publishing to ${grafana} (${rg})"
+          # Resolve the App Insights resource and substitute it for the
+          # ${appinsights} placeholder so the log/trace panels bind to a
+          # concrete resource (a dashboard template variable wouldn't reliably
+          # auto-select at view time). Kept out of the repo - resolved here.
+          appinsights="$(az graph query -q "resources | where type =~ 'microsoft.insights/components' | project id" --query 'data[0].id' -o tsv)"
+          echo "Publishing to ${grafana} (${rg}); App Insights: ${appinsights##*/}"
           for f in observability/grafana/dashboards-azure/*-azure.json; do
+            sed "s|\${appinsights}|${appinsights}|g" "${f}" > /tmp/dash.json
             if az grafana dashboard create -n "${grafana}" -g "${rg}" \
-                 --definition "@${f}" --overwrite --only-show-errors >/dev/null; then
+                 --definition @/tmp/dash.json --overwrite --only-show-errors >/dev/null; then
               echo "published $(basename "${f}")"
             else
-              echo "::warning::failed to publish $(basename "${f}") - check the Azure Monitor datasource binding"
+              echo "::warning::failed to publish $(basename "${f}")"
             fi
           done
 
