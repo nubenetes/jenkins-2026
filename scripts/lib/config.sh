@@ -79,19 +79,27 @@ export J2026_JENKINS_OIDC_ADMIN_EMAIL
 
 export J2026_OBS_NAMESPACE="$(yq_get '.observability.namespace' 'observability')"
 # FEATURE FLAG: JENKINS2026_OBS_MODE, if set, overrides observability.mode
-# from config.yaml (grafana-cloud|oss|managed) - same override pattern as
-# JENKINS2026_PLATFORM above.
+# from config.yaml (grafana-cloud|oss|managed-azure|managed-aws) - same
+# override pattern as JENKINS2026_PLATFORM above.
 J2026_OBS_MODE="${JENKINS2026_OBS_MODE:-$(yq_get '.observability.mode' 'grafana-cloud')}"
 export J2026_OBS_MODE
 
 case "${J2026_OBS_MODE}" in
-  grafana-cloud|oss|managed) ;;
+  grafana-cloud|oss|managed-azure|managed-aws) ;;
   *)
-    log_error "Unsupported observability mode '${J2026_OBS_MODE}' (expected grafana-cloud|oss|managed)."
+    log_error "Unsupported observability mode '${J2026_OBS_MODE}' (expected grafana-cloud|oss|managed-azure|managed-aws)."
     log_error "Set observability.mode in ${J2026_CONFIG_FILE} or export JENKINS2026_OBS_MODE."
     exit 1
     ;;
 esac
+
+# For the managed-* modes, the cloud provider is the suffix (azure|aws). Empty
+# for grafana-cloud/oss. Lets scripts branch on provider without re-parsing.
+case "${J2026_OBS_MODE}" in
+  managed-*) J2026_OBS_MANAGED_PROVIDER="${J2026_OBS_MODE#managed-}" ;;
+  *)         J2026_OBS_MANAGED_PROVIDER="" ;;
+esac
+export J2026_OBS_MANAGED_PROVIDER
 
 export J2026_OTEL_OPERATOR_REPO_NAME="$(yq_get '.observability.otelOperator.chart.repoName' 'open-telemetry')"
 export J2026_OTEL_OPERATOR_REPO_URL="$(yq_get '.observability.otelOperator.chart.repoUrl' 'https://open-telemetry.github.io/opentelemetry-helm-charts')"
@@ -106,6 +114,11 @@ export J2026_GRAFANA_CLOUD_SECRET="$(yq_get '.observability.otelCollector.grafan
 export J2026_GRAFANA_CHART_REPO_NAME="$(yq_get '.observability.grafana.chart.repoName' 'grafana')"
 export J2026_GRAFANA_CHART_REPO_URL="$(yq_get '.observability.grafana.chart.repoUrl' 'https://grafana.github.io/helm-charts')"
 export J2026_GRAFANA_OSS_NAMESPACE="$(yq_get '.observability.grafana.ossNamespace' "${J2026_OBS_NAMESPACE}")"
+
+# Managed (Azure/AWS) provider credential Secret names. Only consumed by the
+# matching observability.mode=managed-* branch in 03-observability.sh.
+export J2026_AZURE_MONITOR_SECRET="$(yq_get '.observability.managed.azure.credentialsSecretName' 'azure-monitor-credentials')"
+export J2026_AWS_MANAGED_SECRET="$(yq_get '.observability.managed.aws.credentialsSecretName' 'aws-managed-credentials')"
 
 # --- headlamp ----------------------------------------------------------------
 
