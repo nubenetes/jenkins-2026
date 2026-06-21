@@ -265,15 +265,24 @@ Application Insights resource selected at runtime via an account-agnostic
 `${appinsights}` Azure Resource Graph template variable (no hardcoded IDs).
 
 The Azure resources themselves are provisioned by
-[`terraform/azure-managed-grafana/`](../terraform/azure-managed-grafana) - a
-one-time, human-run module (local state, never wired into CI, like
-`terraform/grafana-cloud-stack`) that creates the Azure Managed Grafana
-instance, the Azure Monitor workspace + Data Collection Endpoint/Rule for
-managed Prometheus, Application Insights + Log Analytics, the Entra service
-principal the collector authenticates with, and the role assignments. Its
-outputs map to the `AZURE_*` / `AZURE_GRAFANA_*` GitHub Actions secrets that
-`02.01-gke-provision.yml` turns into the `azure-monitor-credentials` Secret -
-see README.md "GitHub Actions automation".
+[`terraform/azure-managed-grafana/`](../terraform/azure-managed-grafana),
+applied **once** by the `01.03 Azure managed-grafana bootstrap` workflow (GCS
+remote state, same bucket as `terraform/gke`). It creates the Azure Managed
+Grafana instance, the Azure Monitor workspace + Data Collection Endpoint/Rule
+for managed Prometheus, Application Insights + Log Analytics, the Entra service
+principal the collector authenticates with, and the role assignments.
+
+Secrets handling is **key-less and repo-clean**: the bootstrap workflow logs in
+to Azure with **GitHub OIDC** (a federated credential on an Entra app - no
+stored client secret), and only *identifiers*
+(`AZURE_CLIENT_ID`/`AZURE_TENANT_ID`/`AZURE_SUBSCRIPTION_ID`/
+`AZURE_GRAFANA_ADMIN_OBJECT_IDS`) are GitHub secrets. The actual backend
+credentials (connection string, managed-Prometheus endpoint, the collector's
+service-principal secret) live only in the GCS Terraform state;
+`02.01-gke-provision.yml` (managed-azure) reads them straight from those outputs
+to build the `azure-monitor-credentials` Secret. Nothing sensitive is written
+to the repo or duplicated as a GitHub secret. See README.md "GitHub Actions
+automation" step 6.
 
 > **What this PoC ships.** Collector wiring, mode plumbing, credentials
 > template/Secret wiring, the Azure resource Terraform, dashboard push, and the
