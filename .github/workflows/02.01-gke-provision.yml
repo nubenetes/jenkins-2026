@@ -23,9 +23,9 @@ on:
           - managed-azure
           - managed-aws
       enable_gateway:
-        description: "Create the public Gateway/HTTPRoutes/IAP (requires the one-time 01.02 Gateway bootstrap + DNS + IAP OAuth client setup - see README \"Public access (GKE Gateway API + IAP)\")"
+        description: "Create the public Gateway/HTTPRoutes/IAP (needs the one-time 01.02 Gateway bootstrap + DNS + IAP OAuth client - see README \"Public access\"). Default true: this project's intended access path. Uncheck ONLY for a fresh env before 01.02 is done - leaving it on without the bootstrap deploys a Gateway that can't get an IP/cert, and deploying it OFF while the gateway is already up makes Jenkins' root URL (and OIDC redirect_uri) revert to localhost -> redirect_uri_mismatch."
         required: true
-        default: false
+        default: true
         type: boolean
       git_ref:
         description: "Git branch, tag, or SHA to check out (leave empty to use the branch/tag selected in 'Use workflow from' above)"
