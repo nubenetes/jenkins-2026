@@ -287,11 +287,27 @@ log_step "Generating and applying Microservices ApplicationSet"
 # Using @ as delimiter for sed to avoid issues with URLs
 APPSET_FILE=$(mktemp)
 GITOPS_REPO_URL="https://github.com/nubenetes/jenkins-2026-gitops-config.git"
-sed "s@{{repoUrl}}@${GITOPS_REPO_URL}@g; 
-     s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g; 
-     s@{{branchDevelop}}@${J2026_SELF_REPO_DEV_BRANCH}@g; 
+sed "s@{{repoUrl}}@${GITOPS_REPO_URL}@g;
+     s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g;
      s@{{platform}}@${J2026_PLATFORM}@g" \
     "${J2026_ROOT_DIR}/argocd/microservices-appset.yaml" > "${APPSET_FILE}"
+
+# Optional 'develop' tier (off by default - see microservices.developTrackEnabled
+# in config/config.yaml). When enabled, append a second list-generator element so
+# ArgoCD creates a 'microservices-develop' Application deploying to its own
+# namespace from values-develop.yaml on the gitops 'develop' branch. Idempotent:
+# the appset file is regenerated from the template on every run.
+if [[ "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" == "true" ]]; then
+  log_info "Develop track enabled - adding 'develop' generator element to the Microservices ApplicationSet"
+  DEV_NS="${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" \
+  DEV_BRANCH="${J2026_SELF_REPO_DEV_BRANCH}" \
+  yq eval -i '.spec.generators[0].list.elements += [{
+    "env": "develop",
+    "namespace": strenv(DEV_NS),
+    "valuesFile": "values-develop.yaml",
+    "branch": strenv(DEV_BRANCH)
+  }]' "${APPSET_FILE}"
+fi
 
 kubectl apply -f "${APPSET_FILE}"
 rm "${APPSET_FILE}"

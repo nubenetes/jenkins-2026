@@ -196,8 +196,20 @@ gateway:
 # Microservices (Modernized stack), GitFlow pipelines-as-code
 # -----------------------------------------------------------------------------
 microservices:
+  # Optional second deployment tier. OFF by default: enabling it roughly doubles
+  # the microservices footprint (a full gateway + services stack in a separate
+  # 'develop' namespace). The upstream JHipster app repos have no develop branch
+  # (main only), so 'develop' deploys the SAME app image as 'stable'; it only
+  # differs in target namespace + its own gitops values-develop.yaml, and it
+  # tracks the gitops-config repo's 'develop' branch for infra/config changes.
+  # Observability (Grafana/Loki/Tempo/Prometheus) is a single shared stack - the
+  # develop tier reports into it, distinguished by namespace/labels, not a
+  # separate Grafana. Ephemeral override: JENKINS2026_DEVELOP_TRACK_ENABLED.
+  developTrackEnabled: false
+
   namespaces:
     stable: microservices
+    develop: microservices-develop
 
   # JHipster microservices monorepo coordinates
   git:
@@ -207,6 +219,9 @@ microservices:
 
   branches:
     stable: main
+    # Branch of the gitops-config repo that the develop tier's ArgoCD app tracks
+    # (the app SOURCE branch stays 'main' - see jenkins/pipelines/seed/services.yaml).
+    develop: develop
 
   # Container images built by the pipelines are pushed here.
   registry: ghcr.io/nubenetes/jenkins-2026-microservices
