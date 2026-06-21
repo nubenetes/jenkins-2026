@@ -45,6 +45,13 @@ or an in-cluster OSS Grafana/Loki/Tempo/Prometheus stack. See
     tokens scoped to the stack above, looked up by slug via a data source.
     Same GCS-remote-state-via-`backend_override.tf` pattern as `terraform/gke`;
     applied by `02.01-gke-provision.yml`, destroyed by `02.99-gke-decommission.yml`.
+  - `azure-managed-grafana/` - **one-time, local state**, run by hand (like
+    `grafana-cloud-stack`, never wired into CI). Creates the
+    `observability.mode=managed-azure` backend: Azure Managed Grafana, Azure
+    Monitor workspace + DCE/DCR (managed Prometheus), Application Insights +
+    Log Analytics, and the Entra service principal the collector uses. Its
+    outputs feed the `AZURE_*`/`AZURE_GRAFANA_*` GitHub secrets that
+    `02.01-gke-provision.yml` turns into the `azure-monitor-credentials` Secret.
 - `test/e2e.sh` - full local lifecycle: provision GKE, deploy everything,
   smoke test, tear down. `test/smoke-test.sh` is the smoke test alone.
 - `.github/workflows/` - numbered `CC.NN-<name>.yml` workflows (`CC` =

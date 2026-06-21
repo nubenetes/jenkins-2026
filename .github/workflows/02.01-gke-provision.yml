@@ -232,6 +232,24 @@ jobs:
             --from-literal=OTEL_LOGS_BACKEND_URL="${{ secrets.OTEL_LOGS_BACKEND_URL }}" \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Apply Azure Monitor credentials secret
+        if: ${{ inputs.observability_mode == 'managed-azure' }}
+        run: |
+          # Values come from the terraform/azure-managed-grafana outputs, stored
+          # as GitHub secrets (that module is one-time/human-run, not in CI - see
+          # README.md "GitHub Actions automation"). Consumed by
+          # observability/otel-collector/values-managed-azure*.yaml.
+          kubectl create namespace observability --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret generic azure-monitor-credentials -n observability \
+            --from-literal=AZURE_MONITOR_CONNECTION_STRING="${{ secrets.AZURE_MONITOR_CONNECTION_STRING }}" \
+            --from-literal=AZURE_MONITOR_PROMETHEUS_ENDPOINT="${{ secrets.AZURE_MONITOR_PROMETHEUS_ENDPOINT }}" \
+            --from-literal=AZURE_TENANT_ID="${{ secrets.AZURE_TENANT_ID }}" \
+            --from-literal=AZURE_CLIENT_ID="${{ secrets.AZURE_CLIENT_ID }}" \
+            --from-literal=AZURE_CLIENT_SECRET="${{ secrets.AZURE_CLIENT_SECRET }}" \
+            --from-literal=GRAFANA_BASE_URL="${{ secrets.AZURE_GRAFANA_BASE_URL }}" \
+            --from-literal=GRAFANA_API_KEY="${{ secrets.AZURE_GRAFANA_API_KEY }}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Deploy the stack (scripts/up.sh)
         env:
           JENKINS2026_OBS_MODE: ${{ inputs.observability_mode }}
