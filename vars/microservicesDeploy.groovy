@@ -7,10 +7,20 @@
  * in the INFRA repo (this one) and pushes to Git. ArgoCD handles the deploy.
  */
 def call(Map cfg) {
+  // Only 'stable' and the optional 'develop' tier are deployable. Reject anything
+  // else fast (clear error) instead of pushing an image-tag bump to a
+  // non-existent gitops branch / ArgoCD app and failing later with a confusing
+  // "application not found". The 'develop' tier is gated upstream by the seed job,
+  // which only generates develop jobs when it is enabled (config
+  // microservices.developTrackEnabled / JENKINS2026_DEVELOP_TRACK_ENABLED).
+  if (!(cfg.envName in ['stable', 'develop'])) {
+    error("microservicesDeploy: unsupported envName '${cfg.envName}' (expected 'stable' or 'develop').")
+  }
+
   def infraRepoUrl = env.JENKINS2026_GITOPS_REPO_URL ?: "https://github.com/nubenetes/jenkins-2026-gitops-config.git"
   def valuesFile = "helm/microservices/values-${cfg.envName}.yaml"
-  
-  // Use the branch that corresponds to the environment
+
+  // Use the gitops branch that corresponds to the environment.
   def infraBranch = cfg.envName == 'stable' ? 'main' : 'develop'
 
   // Use 'jenkins-2026-gitops' (not 'jenkins-2026-infra') to avoid colliding
