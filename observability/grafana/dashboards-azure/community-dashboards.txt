@@ -1,0 +1,7 @@
+# Community infra dashboards imported into Azure Managed Grafana (managed-azure)
+# by import-community.sh, bound to the Prometheus datasource. More comprehensive
+# than a hand-rolled dashboard for generic Kubernetes/node infra - and the same
+# kind kube-prometheus-stack (oss) / the k8s-monitoring app (grafana-cloud)
+# ship out of the box. Format: <gnetId> <target-uid> <name...>
+1860   node-exporter-full   Node Exporter Full
+13332  kube-state-metrics   Kube State Metrics v2
