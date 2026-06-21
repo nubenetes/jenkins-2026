@@ -389,6 +389,10 @@ AMP/CloudWatch/X-Ray datasources exist (authenticated by the workspace IAM role)
 substitutes their uids and imports. All get-or-create / overwrite, so it is
 idempotent across decommission + re-provision - see
 [`dashboards-aws/README.md`](../observability/grafana/dashboards-aws/README.md).
+In CI `up.sh` has no AWS credentials (the keyless design only federates the
+collector), so the script skips there and `02.01` publishes in a dedicated step
+that assumes the least-privilege **`dashboard_publisher_role_arn`** role via
+**GitHub OIDC** (no access keys), mirroring the managed-azure publish.
 
 > **What this PoC ships vs. follow-ups.** Collector wiring, mode plumbing,
 > credentials template/Secret wiring, dashboards + publish, the Terraform module
