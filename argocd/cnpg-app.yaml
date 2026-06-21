@@ -18,4 +18,10 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      # CNPG's CRDs (clusters/poolers) have huge OpenAPI schemas. Client-side
+      # apply blows the 256KB metadata.annotations limit
+      # (last-applied-configuration), and ServerSideApply alone still failed the
+      # sync dry-run here, so Replace=true (kubectl replace, no annotation) is
+      # what actually lets these CRDs reconcile.
       - ServerSideApply=true
+      - Replace=true
