@@ -43,6 +43,9 @@ concurrency:
 
 env:
   TF_VERSION: "1.15.6"
+  # Surfaced as env so the managed-aws dashboard-publish steps can skip cleanly
+  # (secrets can't be used in `if:`) when the role hasn't been set up yet.
+  AWS_DASHBOARD_PUBLISH_ROLE_ARN: ${{ secrets.AWS_DASHBOARD_PUBLISH_ROLE_ARN }}
 
 jobs:
   provision:
@@ -387,14 +390,14 @@ jobs:
       # publisher role from terraform/aws-managed-grafana, no access keys - and
       # run the publisher (it mints a short-lived AMG service-account token).
       - name: AWS login (managed-aws dashboards)
-        if: ${{ inputs.observability_mode == 'managed-aws' }}
+        if: ${{ inputs.observability_mode == 'managed-aws' && env.AWS_DASHBOARD_PUBLISH_ROLE_ARN != '' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_DASHBOARD_PUBLISH_ROLE_ARN }}
+          role-to-assume: ${{ env.AWS_DASHBOARD_PUBLISH_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Publish dashboards to Amazon Managed Grafana
-        if: ${{ inputs.observability_mode == 'managed-aws' }}
+        if: ${{ inputs.observability_mode == 'managed-aws' && env.AWS_DASHBOARD_PUBLISH_ROLE_ARN != '' }}
         env:
           JENKINS2026_OBS_MODE: managed-aws
         run: ./scripts/07-grafana-dashboards.sh
