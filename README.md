@@ -1394,9 +1394,55 @@ flowchart LR
 </details>
 
 Verified live: gateway ECS logs now carry `trace_id`/`span_id`, and those ids
-resolve to real traces in Tempo. Logs stay low-volume (apps run at `WARN`), so
-trace context appears on the lines actually emitted inside a span — but the link
-resolves whenever there is one.
+resolve to real traces in Tempo. Trace context appears on the lines actually
+emitted inside a span, and the link resolves whenever there is one.
+
+#### Log levels — where business logs come from
+
+Because `LOGGING_CONFIG=/etc/logback/logback.xml` points the apps **entirely** at
+the mounted `microservices-logback` ConfigMap (it *replaces* JHipster's own
+`logback-spring.xml`, it doesn't merge with it), that ConfigMap is the single
+authority on log levels. It sets the application root to **`INFO`** and pins only
+the noisy *framework* loggers down to `WARN`:
+
+```xml
+<logger name="org.springframework" level="WARN"/>   <!-- request/MVC/WebFlux chatter -->
+<logger name="org.apache"          level="WARN"/>
+<logger name="org.hibernate"       level="WARN"/>   <!-- SQL/binding noise            -->
+<logger name="com.netflix"         level="WARN"/>
+<logger name="io.netty"            level="WARN"/>
+<logger name="reactor"             level="WARN"/>
+<logger name="liquibase"           level="WARN"/>   <!-- migration banner on boot      -->
+<root level="INFO"/>                                <!-- everything else, incl. the app -->
+```
+
+Rationale: this is **parity with JHipster's stock prod profile** — keep the
+framework firehose at `WARN` so logs stay cheap and readable, while the app's own
+business loggers (anything not listed above) inherit `root=INFO`. The root is
+**already `INFO`**, so "raising the level to INFO" is a no-op — that is not why
+the log panels look empty.
+
+Two real reasons business logs are sparse, and how to exercise the full
+`logs ↔ metrics ↔ traces` correlation:
+
+1. **The services are idle.** Trace↔log correlation only shows up on lines
+   emitted *inside a request span*, so with no traffic there is nothing to
+   correlate. Run the `microservices-k6-smoke` job (or hit the gateway) to
+   generate spans **and** the logs that ride inside them.
+2. **JHipster logs per-request detail at `DEBUG`, not `INFO`.** At `INFO` the apps
+   mostly emit startup/lifecycle lines; the interesting in-span business logs sit
+   at `DEBUG`, and `org.springframework` is held at `WARN`. To make request-time
+   lines appear (each carrying the agent-injected `trace_id`/`span_id`), lower the
+   relevant logger in the **same ConfigMap** — e.g. add the app's base package at
+   `DEBUG`, or raise `org.springframework.web` to `INFO` — then restart the pods.
+
+Because `LOGGING_CONFIG` + this ConfigMap live in the GitOps repo and are
+**mode-independent** (they apply unchanged regardless of `observability.mode`), a
+single edit there changes the log levels for **all four** observability scenarios
+at once — `grafana-cloud`, `oss`, `managed-azure`, and `managed-aws` — with no
+per-mode duplication. Only the downstream *log backend* (Loki / Grafana Cloud
+Loki / Azure Log Analytics / AWS CloudWatch) differs by mode; the log **content
+and level** are set once, upstream of all of them.
 
 ### Observability Dashboards
 
