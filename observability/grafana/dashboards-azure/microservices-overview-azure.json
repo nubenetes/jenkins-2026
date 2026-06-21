@@ -577,7 +577,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.99, sum by (le, service_name) (rate(jvm_gc_duration_seconds_bucket{deployment_environment=\"$deployment_environment\", service_name=~\"$service_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le, service_name) (rate(jvm_gc_duration_seconds_bucket{deployment_environment=\"$deployment_environment\", service_name=~\"$service_name\"}[15m])))",
           "legendFormat": "{{service_name}} GC p99",
           "refId": "A"
         }
