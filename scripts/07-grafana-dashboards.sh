@@ -164,10 +164,11 @@ case "${J2026_OBS_MODE}" in
     #
     # AMG reads from AWS datasources, so generate.py rewrote the log/trace panels
     # (Loki -> CloudWatch Logs, Tempo -> X-Ray) with placeholder datasource uids
-    # (DS_CW_UID / DS_XRAY_UID). We ensure the three AWS datasources exist
-    # (Amazon Managed Prometheus, CloudWatch, X-Ray - all authenticated by the
-    # workspace IAM role, no secrets), then substitute their real uids and bind
-    # ${DS_PROMETHEUS} to AMP before importing.
+    # (DS_CW_UID / DS_XRAY_UID). AMG auto-provisions one datasource per type
+    # enabled on the workspace (Amazon Managed Prometheus, CloudWatch, X-Ray -
+    # fully configured with the workspace IAM role, no secrets), so we match
+    # those by TYPE and reuse them (creating one only as a fallback), then
+    # substitute their real uids and bind ${DS_PROMETHEUS} to AMP before importing.
     if ! kubectl get secret "${J2026_AWS_MANAGED_SECRET}" -n "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1; then
       log_warn "Secret '${J2026_AWS_MANAGED_SECRET}' not found - skipping dashboard import."
       exit 0
@@ -211,10 +212,12 @@ case "${J2026_OBS_MODE}" in
     api() { local m="$1" p="$2"; shift 2; curl -fsS -X "${m}" "${GRAFANA_BASE_URL%/}${p}" \
       -H "Authorization: Bearer ${GRAFANA_API_KEY}" -H "Content-Type: application/json" "$@"; }
 
-    # Idempotent get-or-create of an AWS datasource; echoes its uid.
+    # Match an existing datasource by TYPE (reusing AMG's auto-provisioned one);
+    # create it only if the workspace has none of that type. Echoes its uid.
+    DS_JSON="$(api GET "/api/datasources" 2>/dev/null || echo '[]')"
     ensure_ds() {
-      local name="$1" type="$2" url="$3" jsondata="$4" uid
-      uid="$(api GET "/api/datasources/name/${name}" 2>/dev/null | jq -r '.uid // empty' || true)"
+      local type="$1" name="$2" url="$3" jsondata="$4" uid
+      uid="$(jq -r --arg t "${type}" 'map(select(.type==$t)) | .[0].uid // empty' <<<"${DS_JSON}")"
       if [[ -z "${uid}" ]]; then
         local body
         body="$(jq -n --arg n "${name}" --arg t "${type}" --arg u "${url}" --argjson j "${jsondata}" \
@@ -224,12 +227,15 @@ case "${J2026_OBS_MODE}" in
       printf '%s' "${uid}"
     }
 
-    PROM_UID="$(ensure_ds "amazon-managed-prometheus" "prometheus" "${AMP_QUERY_URL}" \
+    PROM_UID="$(ensure_ds "prometheus" "amazon-managed-prometheus" "${AMP_QUERY_URL}" \
       "$(jq -nc --arg r "${AWS_REGION}" '{httpMethod:"POST",sigV4Auth:true,sigV4AuthType:"default",sigV4Region:$r}')")"
     CW_UID="$(ensure_ds "cloudwatch" "cloudwatch" "" \
       "$(jq -nc --arg r "${AWS_REGION}" '{authType:"default",defaultRegion:$r}')")"
-    XRAY_UID="$(ensure_ds "x-ray" "grafana-x-ray-datasource" "" \
+    XRAY_UID="$(ensure_ds "grafana-x-ray-datasource" "x-ray" "" \
       "$(jq -nc --arg r "${AWS_REGION}" '{authType:"default",defaultRegion:$r}')")"
+    # Display name for the ${DS_PROMETHEUS} template var - the reused datasource's
+    # real name (falls back to the name we'd create above).
+    PROM_NAME="$(jq -r 'map(select(.type=="prometheus")) | .[0].name // "amazon-managed-prometheus"' <<<"${DS_JSON}")"
     [[ -n "${PROM_UID}" ]] || log_warn "Amazon Managed Prometheus datasource not resolved - metric panels may be empty."
     [[ -n "${CW_UID}" ]]   || log_warn "CloudWatch datasource not resolved - log panels may be empty."
     [[ -n "${XRAY_UID}" ]] || log_warn "X-Ray datasource not resolved - trace panels may be empty."
@@ -238,13 +244,13 @@ case "${J2026_OBS_MODE}" in
     log_step "Publishing dashboards to Amazon Managed Grafana (${GRAFANA_BASE_URL})"
     for dashboard in "${AWS_DASHBOARDS_DIR}"/*-aws.json; do
       name="$(basename "${dashboard}" .json)"
-      payload="$(jq --arg cw "${CW_UID}" --arg xray "${XRAY_UID}" --arg prom "${PROM_UID}" '
+      payload="$(jq --arg cw "${CW_UID}" --arg xray "${XRAY_UID}" --arg prom "${PROM_UID}" --arg promname "${PROM_NAME}" '
         def fixuid: walk(if type=="object" and .uid=="DS_CW_UID" then .uid=$cw
                          elif type=="object" and .uid=="DS_XRAY_UID" then .uid=$xray
                          else . end);
         (fixuid
          | .templating.list |= map(if .name=="DS_PROMETHEUS"
-             then .current={selected:true,text:"amazon-managed-prometheus",value:$prom}
+             then .current={selected:true,text:$promname,value:$prom}
              else . end)
          | .id=null)
         | {dashboard:., folderUid:"", overwrite:true}' "${dashboard}")"
