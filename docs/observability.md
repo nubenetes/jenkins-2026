@@ -379,10 +379,21 @@ federated to an IAM role via the **GKE cluster's OIDC issuer** +
 The bootstrap workflow likewise uses **GitHub OIDC → AWS**. Only identifiers
 (`AWS_BOOTSTRAP_ROLE_ARN`/`AWS_REGION`/`GKE_OIDC_ISSUER_URL`) are GitHub secrets.
 
+**Dashboards.** AMG reads from AWS datasources, so `07-grafana-dashboards.sh`
+publishes the [`dashboards-aws/`](../observability/grafana/dashboards-aws)
+variants (metric panels unchanged; Loki -> CloudWatch Logs, Tempo -> X-Ray).
+AMG has no static API key, so the script stays keyless: it mints a short-lived
+workspace **service-account token** (`aws grafana
+create-workspace-service-account-token`, 15 min, deleted on exit), ensures the
+AMP/CloudWatch/X-Ray datasources exist (authenticated by the workspace IAM role),
+substitutes their uids and imports. All get-or-create / overwrite, so it is
+idempotent across decommission + re-provision - see
+[`dashboards-aws/README.md`](../observability/grafana/dashboards-aws/README.md).
+
 > **What this PoC ships vs. follow-ups.** Collector wiring, mode plumbing,
-> credentials template/Secret wiring, the Terraform module and the bootstrap/
-> decommission workflows are in place and **validated** (`terraform validate`,
-> `helm template`) but **not applied** - bring an AWS account (with IAM Identity
-> Center for AMG's AWS_SSO auth), run **01.04**, and grant your SSO users Admin
-> on the Grafana workspace. Compute stays on GKE; only the observability backend
-> changes.
+> credentials template/Secret wiring, dashboards + publish, the Terraform module
+> and the bootstrap/decommission workflows are in place and **validated**
+> (`terraform validate`, `helm template`) but **not applied** - bring an AWS
+> account (with IAM Identity Center for AMG's AWS_SSO auth), run **01.04**, and
+> grant your SSO users Admin on the Grafana workspace. Compute stays on GKE; only
+> the observability backend changes.
