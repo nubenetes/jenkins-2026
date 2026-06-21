@@ -31,11 +31,15 @@ image:
 
 resources:
   requests:
-    cpu: 100m
-    memory: 256Mi
-  limits:
-    cpu: 500m
+    cpu: 200m
     memory: 512Mi
+  limits:
+    cpu: "1"
+    # cadvisor + kubelet scraping is high-cardinality; 512Mi kept the collector
+    # constantly above the memory_limiter soft limit, so it refused/dropped
+    # metrics before they reached the AMP exporter (nothing arrived at AMP, with
+    # no export errors). 1Gi gives the memory_limiter real headroom.
+    memory: 1Gi
 
 # AWS_REGION / AMP_REMOTE_WRITE_ENDPOINT / AWS_ROLE_ARN / AWS_CLOUDWATCH_LOG_GROUP.
 extraEnvsFrom:
