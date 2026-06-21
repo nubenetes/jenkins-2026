@@ -71,6 +71,12 @@ if [[ -n "${grafana_base_url}" ]]; then
       grafana_k8s_app_link+="$(grafana_li "${grafana_base_url}" "/d/fd0cac08a3f34e2994cf904627836738" "K8s Compute Resources / Cluster")"
       grafana_k8s_app_link+="$(grafana_li "${grafana_base_url}" "/d/184244a28b3d478e9c0de82def316738" "Kubelet")"
       ;;
+    managed-aws)
+      # Amazon Managed Grafana doesn't auto-provision the k8s mixin like AMG
+      # Azure does; link to the dashboards browse (import the community k8s
+      # dashboards there, or they land via the Prometheus data source).
+      grafana_k8s_app_link="$(grafana_li "${grafana_base_url}" "/dashboards?query=Kubernetes" "Kubernetes Infrastructure")"
+      ;;
   esac
 fi
 kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \

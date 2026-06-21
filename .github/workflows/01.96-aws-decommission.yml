@@ -1,0 +1,86 @@
+name: "01.96 AWS managed-grafana decommission"
+
+# Manually-triggered setup teardown: destroys terraform/aws-managed-grafana,
+# removing the persistent AWS backend (Amazon Managed Grafana, Amazon Managed
+# Service for Prometheus, the CloudWatch log group, the GKE->AWS OIDC provider
+# and the collector IAM role) that observability_mode: managed-aws uses. Run
+# only when tearing down the AWS integration permanently.
+#
+# Same auth as 01.04-aws-bootstrap.yml: GitHub OIDC -> AWS + GitHub WIF -> GCP
+# for the GCS state backend. Gated behind the aws-bootstrap Environment.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  TF_VERSION: "1.15.6"
+
+jobs:
+  decommission:
+    runs-on: ubuntu-latest
+    environment: aws-bootstrap
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (GitHub OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_BOOTSTRAP_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          role-session-name: jenkins-2026-aws-decommission
+
+      - name: Authenticate to GCP (Terraform state backend)
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure GCS backend (terraform/aws-managed-grafana)
+        run: |
+          cat > terraform/aws-managed-grafana/backend_override.tf <<EOF
+          terraform {
+            backend "gcs" {
+              bucket = "${{ secrets.TF_STATE_BUCKET }}"
+              prefix = "jenkins-2026/aws-managed-grafana"
+            }
+          }
+          EOF
+
+      - name: Terraform init
+        working-directory: terraform/aws-managed-grafana
+        run: |
+          for i in {1..3}; do
+            terraform init -input=false && break || {
+              if [ $i -lt 3 ]; then
+                echo "Terraform init failed, retrying in 10s..."
+                sleep 10
+              else
+                exit 1
+              fi
+            }
+          done
+
+      - name: Terraform destroy (destroy persistent AWS backend)
+        working-directory: terraform/aws-managed-grafana
+        env:
+          TF_VAR_region: ${{ secrets.AWS_REGION }}
+          TF_VAR_gke_oidc_issuer_url: ${{ secrets.GKE_OIDC_ISSUER_URL }}
+        run: terraform destroy -auto-approve -input=false
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### AWS managed-grafana backend decommissioned" >> "${GITHUB_STEP_SUMMARY}"

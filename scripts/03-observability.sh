@@ -265,12 +265,52 @@ EOT
     ;;
 
   managed-aws)
-    log_step "Observability mode: managed-aws (stub)"
-    log_warn "observability.mode=managed-aws is not implemented yet - planned: export to"
-    log_warn "Amazon Managed Service for Prometheus (remote-write) + X-Ray/CloudWatch, with"
-    log_warn "Amazon Managed Grafana as the frontend. Use grafana-cloud, oss, or managed-azure"
-    log_warn "for now. See docs/observability.md \"managed-aws\"."
-    exit 0
+    log_step "Observability mode: managed-aws"
+
+    # Clean in-place switch: AWS backends live outside the cluster, so retire any
+    # in-cluster oss backends / cloud agents from a previous mode. The shared
+    # otel-collector-{gateway,logs} releases are reconfigured by helm upgrade.
+    for r in pdc-agent k8s-monitoring; do
+      helm status "$r" -n "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1 && helm uninstall "$r" -n "${J2026_OBS_NAMESPACE}"
+    done
+    helm status kube-prometheus-stack -n "${J2026_GRAFANA_OSS_NAMESPACE}" >/dev/null 2>&1 && \
+      helm uninstall kube-prometheus-stack -n "${J2026_GRAFANA_OSS_NAMESPACE}"
+    for r in loki tempo; do
+      helm status "$r" -n "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1 && helm uninstall "$r" -n "${J2026_OBS_NAMESPACE}"
+    done
+
+    if ! kubectl get secret "${J2026_AWS_MANAGED_SECRET}" -n "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1; then
+      log_error "Secret '${J2026_AWS_MANAGED_SECRET}' not found in namespace '${J2026_OBS_NAMESPACE}'."
+      log_error "Copy observability/otel-collector/secret-managed-aws.example.yaml, fill in your"
+      log_error "AMP remote-write endpoint / collector IAM role ARN / region / log group, and"
+      log_error "'kubectl apply -f' it before re-running. See docs/observability.md."
+      exit 1
+    fi
+
+    # Kubernetes infra metrics source (scraped by the gateway collector's
+    # prometheus receiver -> Amazon Managed Prometheus -> AMG built-in dashboards).
+    log_step "Installing kube-state-metrics + node-exporter (Kubernetes infra metrics)"
+    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null 2>&1 || true
+    helm repo update prometheus-community >/dev/null 2>&1 || true
+    helm upgrade --install kube-state-metrics prometheus-community/kube-state-metrics \
+      --namespace "${J2026_OBS_NAMESPACE}" \
+      --set fullnameOverride=kube-state-metrics
+    helm upgrade --install prometheus-node-exporter prometheus-community/prometheus-node-exporter \
+      --namespace "${J2026_OBS_NAMESPACE}" \
+      --set fullnameOverride=prometheus-node-exporter
+
+    log_step "Installing ${J2026_OTEL_GATEWAY_RELEASE} (OTLP gateway -> AMP / X-Ray / CloudWatch)"
+    kubectl delete configmap otel-collector-gateway -n "${J2026_OBS_NAMESPACE}" --ignore-not-found
+    helm upgrade --install "${J2026_OTEL_GATEWAY_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
+      --namespace "${J2026_OBS_NAMESPACE}" \
+      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-managed-aws.yaml"
+
+    log_step "Installing ${J2026_OTEL_LOGS_RELEASE} (node log DaemonSet -> CloudWatch Logs)"
+    helm upgrade --install "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
+      --namespace "${J2026_OBS_NAMESPACE}" \
+      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-managed-aws-logs.yaml"
+
+    wait_for_deployment "otel-collector-gateway" "${J2026_OBS_NAMESPACE}"
     ;;
 
   *)

@@ -2184,7 +2184,7 @@ When executing the **02.01 GKE provision** workflow manually, you are presented 
      - `grafana-cloud`: Forwards cluster telemetry (logs, metrics, traces) to Grafana Cloud via OTLP.
      - `oss`: Installs in-cluster Grafana, Prometheus, Loki, and Tempo in the `observability` namespace.
      - `managed-azure`: Exports to Azure Monitor (managed Prometheus + Application Insights/Log Analytics); visualized in Azure Managed Grafana. Requires the `azure-monitor-credentials` Secret (see [`docs/observability.md`](docs/observability.md#managed-azure)).
-     - `managed-aws`: Planned (Amazon Managed Prometheus + X-Ray/CloudWatch + Amazon Managed Grafana); currently a documented stub.
+     - `managed-aws`: Exports to Amazon Managed Service for Prometheus + X-Ray/CloudWatch; visualized in Amazon Managed Grafana. Requires the `aws-managed-credentials` Secret (see [`docs/observability.md`](docs/observability.md#managed-aws)).
 
 3. **enable_gateway (Checkbox - Boolean)**:
    - **Type**: Boolean (`true` | `false`).
