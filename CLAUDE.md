@@ -56,6 +56,16 @@ or an in-cluster OSS Grafana/Loki/Tempo/Prometheus stack. See
     Secret - those backend credentials never become GitHub secrets. Only
     identifiers (`AZURE_CLIENT_ID`/`AZURE_TENANT_ID`/`AZURE_SUBSCRIPTION_ID`/
     `AZURE_GRAFANA_ADMIN_OBJECT_IDS`) are GitHub secrets.
+  - `aws-managed-grafana/` - the `observability.mode=managed-aws` backend (AWS
+    analogue of `azure-managed-grafana`): Amazon Managed Grafana, Amazon Managed
+    Service for Prometheus, a CloudWatch log group, the GKE→AWS OIDC provider
+    and the collector IAM role (AssumeRoleWithWebIdentity - no access keys).
+    Applied **one-time** by `01.04-aws-bootstrap.yml` (GCS remote state, GitHub
+    OIDC → AWS auth). `02.01-gke-provision.yml` (managed-aws) reads its outputs
+    from the GCS state to build the `aws-managed-credentials` Secret; the
+    collector authenticates at runtime via a projected SA web-identity token.
+    Only identifiers (`AWS_BOOTSTRAP_ROLE_ARN`/`AWS_REGION`/`GKE_OIDC_ISSUER_URL`)
+    are GitHub secrets.
 - `test/e2e.sh` - full local lifecycle: provision GKE, deploy everything,
   smoke test, tear down. `test/smoke-test.sh` is the smoke test alone.
 - `.github/workflows/` - numbered `CC.NN-<name>.yml` workflows (`CC` =
