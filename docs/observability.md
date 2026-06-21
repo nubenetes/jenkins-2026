@@ -216,10 +216,14 @@ dashboard link in `microservicesK6Smoke`'s build output. Two ways to provide it:
 - `prometheus-community/kube-prometheus-stack` -
   [`values-oss.yaml`](../observability/grafana/values-oss.yaml) - Prometheus
   (with `--web.enable-remote-write-receiver` for the collector's
-  `prometheusremotewrite` exporter) + Grafana, pre-provisioned with Loki and
-  Tempo datasources (derived fields / exemplars / service graph as described
-  above) and the `jenkins-2026` dashboards via a ConfigMap + the Grafana
-  sidecar.
+  `prometheusremotewrite` exporter) + Grafana (image pinned to `13.0.2`),
+  pre-provisioned with Loki and Tempo datasources (derived fields / exemplars
+  / service graph as described above) and the `jenkins-2026` dashboards via a
+  ConfigMap + the Grafana sidecar. When the public gateway is enabled, this
+  Grafana is exposed at `https://grafana.<baseDomain>` behind IAP (same edge
+  pattern as Jenkins/Headlamp - see
+  [Public access](../README.md#public-access-gke-gateway-api--iap)); its
+  `server.root_url` is set accordingly by `scripts/03-observability.sh`.
 - `grafana/loki` -
   [`values-oss-loki.yaml`](../observability/grafana/values-oss-loki.yaml) -
   single-binary, filesystem storage, native OTLP log ingestion.
@@ -231,12 +235,82 @@ dashboard link in `microservicesK6Smoke`'s build output. Two ways to provide it:
   [`values-oss.yaml`](../observability/otel-collector/values-oss.yaml) /
   [`values-oss-logs.yaml`](../observability/otel-collector/values-oss-logs.yaml)
   (exporters: `otlp/tempo`, `otlphttp/loki`, `prometheusremotewrite`) instead
-  of the Grafana Cloud variants.
+  of the Grafana Cloud variants. The gateway collector also runs a
+  `k8sobjects` receiver that ships Kubernetes **Events** to Loki, for parity
+  with grafana-cloud mode's k8s-monitoring `clusterEvents` preset.
 
-### `managed`
+> **Switching modes in place:** re-running the deploy after changing
+> `observability.mode` is clean - `scripts/03-observability.sh` uninstalls the
+> releases belonging to the mode you're leaving (cloud-only `pdc-agent` /
+> `k8s-monitoring` when switching to `oss`; the in-cluster
+> `kube-prometheus-stack` / `loki` / `tempo` when switching back to
+> `grafana-cloud`) before installing the new stack. The shared
+> `otel-collector-{gateway,logs}` releases are reconfigured via `helm upgrade`.
 
-A documented stub for "bring your own"
-managed Grafana (e.g. Amazon Managed Grafana, Azure Managed Grafana). Point
-`OTEL_EXPORTER_OTLP_ENDPOINT` / the `grafana-cloud-credentials` Secret at that
-stack's OTLP gateway; `03-observability.sh`/`07-grafana-dashboards.sh` exit
-without creating resources.
+### `managed-azure`
+
+Unlike Grafana Cloud, **Azure Managed Grafana is only a visualization
+frontend** - it reads from Azure Monitor datasources, it does not ingest OTLP.
+So in this mode the collectors export to Azure Monitor's backends and Azure
+Managed Grafana renders from them:
+
+- **traces + logs** → Azure Monitor / Application Insights, via the
+  collector-contrib `azuremonitor` exporter (connection string from the
+  `azure-monitor-credentials` Secret).
+- **metrics** → Azure Monitor managed Prometheus, via the
+  `prometheusremotewrite` exporter authenticated to Microsoft Entra with the
+  `oauth2client` extension (service-principal client-credentials, scope
+  `https://monitor.azure.com/.default`).
+
+`scripts/03-observability.sh` installs the two collector releases with
+[`values-managed-azure.yaml`](../observability/otel-collector/values-managed-azure.yaml)
+/ [`values-managed-azure-logs.yaml`](../observability/otel-collector/values-managed-azure-logs.yaml),
+after retiring any in-cluster `oss` backends / `grafana-cloud` agents left from
+a previous mode. It requires the `azure-monitor-credentials` Secret - copy
+[`secret-managed-azure.example.yaml`](../observability/otel-collector/secret-managed-azure.example.yaml),
+fill it in, and apply it first.
+
+`scripts/07-grafana-dashboards.sh` publishes the
+[managed-azure dashboard variants](../observability/grafana/dashboards-azure)
+to Azure Managed Grafana via its Grafana HTTP API. Those variants keep the
+metric panels (Azure Monitor managed Prometheus is PromQL-compatible) and
+rewrite the log/trace panels to Azure Monitor Logs/Traces, with the
+Application Insights resource selected at runtime via an account-agnostic
+`${appinsights}` Azure Resource Graph template variable (no hardcoded IDs).
+
+The Azure resources themselves are provisioned by
+[`terraform/azure-managed-grafana/`](../terraform/azure-managed-grafana),
+applied **once** by the `01.03 Azure managed-grafana bootstrap` workflow (GCS
+remote state, same bucket as `terraform/gke`). It creates the Azure Managed
+Grafana instance, the Azure Monitor workspace + Data Collection Endpoint/Rule
+for managed Prometheus, Application Insights + Log Analytics, the Entra service
+principal the collector authenticates with, and the role assignments.
+
+Secrets handling is **key-less and repo-clean**: the bootstrap workflow logs in
+to Azure with **GitHub OIDC** (a federated credential on an Entra app - no
+stored client secret), and only *identifiers*
+(`AZURE_CLIENT_ID`/`AZURE_TENANT_ID`/`AZURE_SUBSCRIPTION_ID`/
+`AZURE_GRAFANA_ADMIN_OBJECT_IDS`) are GitHub secrets. The actual backend
+credentials (connection string, managed-Prometheus endpoint, the collector's
+service-principal secret) live only in the GCS Terraform state;
+`02.01-gke-provision.yml` (managed-azure) reads them straight from those outputs
+to build the `azure-monitor-credentials` Secret. Nothing sensitive is written
+to the repo or duplicated as a GitHub secret. See README.md "GitHub Actions
+automation" step 6.
+
+> **What this PoC ships.** Collector wiring, mode plumbing, credentials
+> template/Secret wiring, the Azure resource Terraform, dashboard push, and the
+> Azure dashboard variants (metrics + Azure Monitor Logs/Traces) are all in
+> place. The only deliberate caveat: the Azure Monitor datasource query JSON in
+> those variants is best-effort and should be **validated against a real Azure
+> account** on first integration (table/field names may need minor tweaks) -
+> see [`dashboards-azure/README.md`](../observability/grafana/dashboards-azure/README.md).
+> Compute stays on GKE; only the observability backend changes.
+
+### `managed-aws`
+
+Planned, currently a documented stub: export to **Amazon Managed Service for
+Prometheus** (remote-write) + **X-Ray/CloudWatch** for traces/logs, visualized
+in **Amazon Managed Grafana** - the AWS analogue of `managed-azure`.
+`03-observability.sh` / `07-grafana-dashboards.sh` exit without creating
+resources. Use `grafana-cloud`, `oss`, or `managed-azure` for now.

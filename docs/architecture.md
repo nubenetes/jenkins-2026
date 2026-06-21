@@ -92,7 +92,7 @@ environment variables.
 
 | Setting                     | Values                          | Override                  |
 |------------------------------|----------------------------------|----------------------------|
-| `observability.mode`         | `grafana-cloud` (default) \| `oss` \| `managed`  | edit `config.yaml` |
+| `observability.mode`         | `grafana-cloud` (default) \| `oss` \| `managed-azure` \| `managed-aws`  | edit `config.yaml` |
 
 See [`docs/observability.md`](observability.md) for the per-mode details, and
 [`docs/pipelines-as-code.md`](pipelines-as-code.md) for how the Jenkins side

@@ -21,14 +21,24 @@ RUNTIME_VALUES="${GENERATED_DIR}/jenkins-runtime-values.yaml"
 
 log_step "Generating runtime values overlay (${RUNTIME_VALUES#${J2026_ROOT_DIR}/})"
 
+# Grafana base URL surfaced in the systemMessage banner (jcasc-base.yaml) and
+# used by the OTel plugin's "View in Grafana" build links (jcasc-otel.yaml).
+# Resolved per observability.mode so the managed-grafana modes get the same
+# banner link the grafana-cloud mode does - read from each mode's credentials
+# Secret, so it only appears once the backend has actually been provisioned.
 grafana_base_url=""
-if [[ "${J2026_OBS_MODE}" == "grafana-cloud" ]]; then
-  if kubectl get secret "${J2026_GRAFANA_CLOUD_SECRET}" -n "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1; then
-    grafana_base_url="$(kubectl get secret "${J2026_GRAFANA_CLOUD_SECRET}" -n "${J2026_OBS_NAMESPACE}" -o jsonpath='{.data.GRAFANA_BASE_URL}' | base64 -d || true)"
+read_grafana_url_from_secret() {
+  local secret="$1"
+  if kubectl get secret "${secret}" -n "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1; then
+    kubectl get secret "${secret}" -n "${J2026_OBS_NAMESPACE}" -o jsonpath='{.data.GRAFANA_BASE_URL}' | base64 -d || true
   fi
-elif [[ "${J2026_OBS_MODE}" == "oss" ]]; then
-  grafana_base_url="http://localhost:3000"
-fi
+}
+case "${J2026_OBS_MODE}" in
+  grafana-cloud)  grafana_base_url="$(read_grafana_url_from_secret "${J2026_GRAFANA_CLOUD_SECRET}")" ;;
+  oss)            grafana_base_url="http://localhost:3000" ;;
+  managed-azure)  grafana_base_url="$(read_grafana_url_from_secret "${J2026_AZURE_MONITOR_SECRET}")" ;;
+  managed-aws)    grafana_base_url="$(read_grafana_url_from_secret "${J2026_AWS_MANAGED_SECRET}")" ;;
+esac
 
 if [[ -n "${grafana_base_url}" ]]; then
   kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \

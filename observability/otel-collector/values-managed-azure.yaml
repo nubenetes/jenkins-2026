@@ -1,0 +1,153 @@
+# Values for open-telemetry/opentelemetry-collector - "gateway" release,
+# managed-azure variant (observability.mode: managed-azure).
+#
+# Azure Managed Grafana is a *frontend only* - it visualizes data from Azure
+# Monitor datasources, it does NOT ingest OTLP. So this collector exports to
+# Azure Monitor's backends, and Azure Managed Grafana reads from them:
+#   - traces + logs -> Azure Monitor / Application Insights  (azuremonitor exporter)
+#   - metrics ------> Azure Monitor managed Prometheus       (prometheusremotewrite,
+#                     authenticated to Microsoft Entra via the oauth2client extension)
+#
+# All credentials/endpoints come from the "${azure-monitor-credentials}" Secret
+# (see secret-managed-azure.example.yaml) via ${env:...}, so nothing sensitive
+# is baked into this file.
+#
+# helm upgrade --install otel-collector-gateway open-telemetry/opentelemetry-collector \
+#   -n observability -f observability/otel-collector/values-managed-azure.yaml
+
+# Fixed Service name - same rationale as values-grafana-cloud.yaml /
+# values-oss.yaml: jenkins/casc, helm/microservices and the Angular nginx
+# proxy reach this collector at a stable address regardless of release name.
+fullnameOverride: otel-collector-gateway
+
+mode: deployment
+
+replicaCount: 1
+
+image:
+  # contrib distro: required for the azuremonitor exporter and the
+  # oauth2client extension (neither ships in the otelcol-k8s image).
+  repository: otel/opentelemetry-collector-contrib
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Exposes the Azure Monitor connection string, the managed-Prometheus
+# remote-write endpoint, and the Entra service-principal credentials as env
+# vars for ${env:...} references below.
+extraEnvsFrom:
+  - secretRef:
+      name: azure-monitor-credentials
+
+ports:
+  otlp:
+    enabled: true
+    containerPort: 4317
+    servicePort: 4317
+    hostPort: 4317
+    protocol: TCP
+  otlp-http:
+    enabled: true
+    containerPort: 4318
+    servicePort: 4318
+    hostPort: 4318
+    protocol: TCP
+
+config:
+  extensions:
+    # The chart requires health_check (or healthcheckv2) in the extension list;
+    # re-declare it since we override service.extensions below to add
+    # oauth2client. Endpoint matches the chart default.
+    health_check:
+      endpoint: ${env:MY_POD_IP}:13133
+    # Client-credentials token for Microsoft Entra, used by the
+    # prometheusremotewrite exporter to authenticate to the Azure Monitor
+    # workspace's metrics ingestion endpoint. monitor.azure.com/.default is the
+    # scope Azure Monitor managed Prometheus expects.
+    oauth2client:
+      client_id: ${env:AZURE_CLIENT_ID}
+      client_secret: ${env:AZURE_CLIENT_SECRET}
+      token_url: https://login.microsoftonline.com/${env:AZURE_TENANT_ID}/oauth2/v2.0/token
+      scopes:
+        - https://monitor.azure.com/.default
+
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+          # Allow the Angular RUM beacon (browser, no service mesh mTLS) and
+          # any pod in the cluster to send OTLP/HTTP without per-origin config.
+          cors:
+            allowed_origins:
+              - "*"
+
+  processors:
+    batch: {}
+    memory_limiter:
+      check_interval: 5s
+      limit_percentage: 80
+      spike_limit_percentage: 25
+    resource:
+      attributes:
+        - key: deployment.environment.cluster
+          value: jenkins-2026
+          action: upsert
+
+  # Same span-derived RED + service-graph metrics as the other modes, so the
+  # metrics<->traces correlation works once the data is in Azure Monitor.
+  connectors:
+    span_metrics:
+      namespace: traces.spanmetrics
+      histogram:
+        explicit:
+          buckets: [2ms, 8ms, 25ms, 50ms, 100ms, 200ms, 500ms, 1s, 2s, 5s, 10s]
+      exemplars:
+        enabled: true
+      metrics_flush_interval: 15s
+    service_graph:
+      store:
+        ttl: 5s
+        max_items: 1000
+
+  exporters:
+    # Traces + logs -> Azure Monitor / Application Insights.
+    azuremonitor:
+      connection_string: ${env:AZURE_MONITOR_CONNECTION_STRING}
+
+    # Metrics -> Azure Monitor managed Prometheus (remote-write). The endpoint
+    # is the workspace's metrics ingestion URL; auth is the Entra token from
+    # the oauth2client extension above.
+    prometheusremotewrite:
+      endpoint: ${env:AZURE_MONITOR_PROMETHEUS_ENDPOINT}
+      auth:
+        authenticator: oauth2client
+      resource_to_telemetry_conversion:
+        enabled: true
+
+  service:
+    extensions: [health_check, oauth2client]
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, resource, batch]
+        exporters: [azuremonitor, span_metrics, service_graph]
+      metrics/spanmetrics:
+        receivers: [span_metrics, service_graph]
+        processors: [memory_limiter, resource, batch]
+        exporters: [prometheusremotewrite]
+      metrics:
+        receivers: [otlp]
+        processors: [memory_limiter, resource, batch]
+        exporters: [prometheusremotewrite]
+      logs:
+        receivers: [otlp]
+        processors: [memory_limiter, resource, batch]
+        exporters: [azuremonitor]

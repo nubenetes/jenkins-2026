@@ -1,6 +1,8 @@
 # Secrets / generated credentials - never commit real values
 observability/otel-collector/secret.yaml
+observability/otel-collector/secret-managed-azure.yaml
 **/secret.local.yaml
+**/secret-*.local.yaml
 *.env
 .env*
 !.env.example
@@ -47,6 +49,7 @@ terraform/bootstrap/terraform.tfvars
 terraform/grafana-cloud-stack/terraform.tfvars
 terraform/grafana-cloud-token/terraform.tfvars
 terraform/gateway-bootstrap/terraform.tfvars
+terraform/azure-managed-grafana/terraform.tfvars
 
 # Written by .github/workflows/gke-provision.yml / gke-decommission.yml /
 # grafana-cloud-bootstrap.yml before `terraform init` to point at the GCS
@@ -55,3 +58,4 @@ terraform/gke/backend_override.tf
 terraform/grafana-cloud-token/backend_override.tf
 terraform/grafana-cloud-stack/backend_override.tf
 terraform/gateway-bootstrap/backend_override.tf
+terraform/azure-managed-grafana/backend_override.tf

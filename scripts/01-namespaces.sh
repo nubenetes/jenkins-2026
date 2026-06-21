@@ -108,8 +108,14 @@ else
     log_warn "configured. See README.md \"Public access (GKE Gateway API + IAP)\"."
   fi
   # GCPBackendPolicy's oauth2ClientSecret is a namespaced Secret reference, so
-  # the same client ID/secret must exist in each backend's namespace.
-  for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}"; do
+  # the same client ID/secret must exist in each backend's namespace. The OSS
+  # Grafana (observability.mode=oss) is IAP-protected too, so its namespace
+  # needs the secret as well - only in oss mode, where Grafana runs in-cluster.
+  iap_namespaces=("${J2026_JENKINS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}")
+  if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
+    iap_namespaces+=("${J2026_GRAFANA_OSS_NAMESPACE}")
+  fi
+  for ns in "${iap_namespaces[@]}"; do
     if kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" >/dev/null 2>&1; then
       log_info "Secret already exists in ${ns} - leaving it untouched."
     else
