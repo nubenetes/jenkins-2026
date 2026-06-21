@@ -45,14 +45,23 @@ if [[ -n "${grafana_base_url}" ]]; then
     --type=merge -p "{\"stringData\":{\"grafana-base-url\":\"${grafana_base_url}\"}}"
 fi
 
-# The Grafana Cloud "Kubernetes Monitoring" app (grafana-k8s-app) is a
-# Grafana-Cloud-only plugin - linking to /a/grafana-k8s-app in oss/managed-*
-# shows "plugin not found". Build the banner <li> only for grafana-cloud;
-# empty otherwise so the ${GRAFANA_K8S_APP_LINK} placeholder in jcasc-base.yaml
-# renders nothing. jq builds the JSON to escape the embedded HTML quotes.
+# "Kubernetes Infrastructure" banner link, per observability.mode (the target
+# differs by backend, so it's not a static link in jcasc-base.yaml):
+#   grafana-cloud - the Grafana Cloud Kubernetes Monitoring app (/a/grafana-k8s-app)
+#   managed-azure - the community Node Exporter dashboard imported into AMG
+#                   (import-community.sh -> uid node-exporter-full)
+#   oss / managed-aws - none (oss ships kube-prometheus-stack's own dashboards
+#                   under their own folder; no single canonical link)
+# Empty -> the ${GRAFANA_K8S_APP_LINK} placeholder in jcasc-base.yaml renders
+# nothing. jq builds the JSON to escape the embedded HTML quotes.
+k8s_infra_path=""
+case "${J2026_OBS_MODE}" in
+  grafana-cloud) k8s_infra_path="/a/grafana-k8s-app" ;;
+  managed-azure) k8s_infra_path="/d/node-exporter-full" ;;
+esac
 grafana_k8s_app_link=""
-if [[ "${J2026_OBS_MODE}" == "grafana-cloud" && -n "${grafana_base_url}" ]]; then
-  grafana_k8s_app_link="<li><a href=\"${grafana_base_url}/a/grafana-k8s-app\" style=\"color: #0052cc; text-decoration: underline;\">Kubernetes Infrastructure</a></li>"
+if [[ -n "${k8s_infra_path}" && -n "${grafana_base_url}" ]]; then
+  grafana_k8s_app_link="<li><a href=\"${grafana_base_url}${k8s_infra_path}\" style=\"color: #0052cc; text-decoration: underline;\">Kubernetes Infrastructure</a></li>"
 fi
 kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \
   --type=merge -p "$(jq -nc --arg v "${grafana_k8s_app_link}" '{stringData:{"grafana-k8s-app-link":$v}}')"
