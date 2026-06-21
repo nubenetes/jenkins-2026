@@ -24,6 +24,28 @@ for crd in opentelemetrycollectors.opentelemetry.io instrumentations.opentelemet
   kubectl wait --for=condition=Established "crd/${crd}" --timeout=120s
 done
 
+# Wait for the operator's pod-mutation webhook (mpod.kb.io) to actually be
+# serving before anything that depends on auto-instrumentation is deployed. Its
+# failurePolicy is Ignore, so a pod admitted while the webhook's cert/caBundle
+# isn't ready starts WITHOUT the Java agent and silently emits no telemetry
+# (the "injection race"). The caBundle is populated by the operator once it has
+# provisioned its serving cert - treat its presence as the readiness signal.
+log_step "Waiting for the operator's pod-mutation webhook to be serving"
+WEBHOOK_CFG="${J2026_OTEL_OPERATOR_RELEASE}-opentelemetry-operator-mutation"
+for i in $(seq 1 60); do
+  cab="$(kubectl get mutatingwebhookconfiguration "${WEBHOOK_CFG}" \
+    -o jsonpath='{.webhooks[?(@.name=="mpod.kb.io")].clientConfig.caBundle}' 2>/dev/null || true)"
+  if [[ -n "${cab}" ]]; then
+    log_info "Pod-mutation webhook caBundle present - webhook is serving."
+    break
+  fi
+  if [[ "${i}" -eq 60 ]]; then
+    log_warn "Pod-mutation webhook caBundle still empty after 120s - continuing."
+    log_warn "Microservices deployed now may miss agent injection; scripts/ensure-otel-injection.sh self-heals."
+  fi
+  sleep 2
+done
+
 # The built-in 'edit' ClusterRole doesn't cover the OTel Operator's CRDs
 # (helm/microservices/templates/instrumentation.yaml manages an Instrumentation
 # resource per namespace) - `helm upgrade` needs get/list/watch on it (plus
