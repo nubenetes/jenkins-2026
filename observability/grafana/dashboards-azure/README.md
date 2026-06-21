@@ -8,8 +8,8 @@ trace panels are rewritten:
 | Panel kind | Canonical (oss / grafana-cloud) | managed-azure variant |
 |---|---|---|
 | Metrics | Prometheus / PromQL | **unchanged** - Azure Monitor managed Prometheus is Prometheus-compatible, so `${DS_PROMETHEUS}` binds to it and the PromQL works as-is |
-| Logs | Loki / LogQL | Azure Monitor **Logs** (KQL over Application Insights `AppTraces`) |
-| Traces | Tempo / TraceQL | Azure Monitor **Traces** (App Insights requests + dependencies) |
+| Logs | Loki / LogQL | Azure Monitor **Logs** (KQL `traces` - App Insights classic schema) |
+| Traces | Tempo / TraceQL | Azure Monitor **Logs** (KQL `union requests, dependencies`) |
 
 **Generated, not hand-edited.** Regenerate after changing the canonical
 dashboards:
@@ -32,10 +32,12 @@ publishes these to Azure Managed Grafana via its HTTP API when
 - **No secrets** in the dashboards: the Azure Monitor datasource authenticates
   with Azure Managed Grafana's managed identity.
 
-## Validate on first integration
+## Schema note
 
-The Azure Monitor datasource query JSON (query types, table names like
-`AppTraces`, the `azureTraces` trace types) is best-effort and **should be
-validated against a real Azure account** - field names may need minor tweaks
-depending on your Application Insights ingestion mode (workspace-based vs
-classic). See [`docs/observability.md`](../../../docs/observability.md#managed-azure).
+The log/trace panels query the **App Insights resource** via the Azure Monitor
+datasource, so they use the **classic** App Insights schema (`traces`,
+`requests`, `dependencies`, with `operation_Id` / `cloud_RoleName` / `timestamp`)
+- **not** the workspace `App*` schema (`AppTraces`/...), which only resolves when
+you query the Log Analytics workspace resource. These queries were verified
+through Grafana's own query engine against the live data. See
+[`docs/observability.md`](../../../docs/observability.md#managed-azure).
