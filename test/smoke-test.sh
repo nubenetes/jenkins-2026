@@ -67,6 +67,19 @@ check "otel-collector-gateway pod Running" \
 check "otel-collector-logs daemonset has ready pods" \
   bash -c "[[ \$(kubectl -n '${J2026_OBS_NAMESPACE}' get daemonset '${J2026_OTEL_LOGS_RELEASE}-agent' -o jsonpath='{.status.numberReady}') -ge 1 ]]"
 
+# Catch the injection race: any running microservices Deployment must have the
+# OTel Java agent injected, else it emits no metrics/traces and the dashboards
+# look empty. Deferred for Deployments not running yet (images not built, or
+# scaled to 0). scripts/ensure-otel-injection.sh remediates; this asserts.
+for deploy in ${J2026_MICROSERVICES_SERVICES}; do
+  if kubectl -n "${J2026_MICROSERVICES_NS_STABLE}" get deploy "${deploy}" >/dev/null 2>&1 \
+     && [[ "$(kubectl -n "${J2026_MICROSERVICES_NS_STABLE}" get deploy "${deploy}" -o jsonpath='{.status.availableReplicas}' 2>/dev/null || echo 0)" -ge 1 ]]; then
+    check "${deploy}: OTel Java agent injected" otel_agent_injected "${J2026_MICROSERVICES_NS_STABLE}" "${deploy}"
+  else
+    log_info "SKIP - ${deploy}: not running yet (agent injection check deferred)"
+  fi
+done
+
 if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
   check "OSS Grafana pod Running" \
     bash -c "kubectl -n '${J2026_GRAFANA_OSS_NAMESPACE}' get pods -l app.kubernetes.io/name=grafana -o jsonpath='{.items[0].status.phase}' | grep -qx Running"
