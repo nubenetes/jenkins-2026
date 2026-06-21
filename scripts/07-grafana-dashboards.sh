@@ -267,7 +267,14 @@ case "${J2026_OBS_MODE}" in
 
     AWS_DASHBOARDS_DIR="${J2026_ROOT_DIR}/observability/grafana/dashboards-aws"
     log_step "Publishing dashboards to Amazon Managed Grafana (${GRAFANA_BASE_URL})"
-    for dashboard in "${AWS_DASHBOARDS_DIR}"/*-aws.json; do
+    # Two sets, both bound to AMP via the same ${DS_PROMETHEUS} substitution:
+    #   *-aws.json          - the custom project dashboards (generate.py)
+    #   community/*.json     - vendored upstream Kubernetes/node dashboards
+    #                          (community/vendor.py); these carry no CloudWatch/
+    #                          X-Ray panels, so the DS_CW_UID/DS_XRAY_UID fixups
+    #                          below are simply no-ops for them.
+    for dashboard in "${AWS_DASHBOARDS_DIR}"/*-aws.json "${AWS_DASHBOARDS_DIR}"/community/*.json; do
+      [[ -f "${dashboard}" ]] || continue
       name="$(basename "${dashboard}" .json)"
       payload="$(jq --arg cw "${CW_UID}" --arg xray "${XRAY_UID}" --arg prom "${PROM_UID}" --arg promname "${PROM_NAME}" '
         def fixuid: walk(if type=="object" and .uid=="DS_CW_UID" then .uid=$cw
@@ -279,7 +286,10 @@ case "${J2026_OBS_MODE}" in
              else . end)
          | .id=null)
         | {dashboard:., folderUid:"", overwrite:true}' "${dashboard}")"
-      if api POST "/api/dashboards/db" -d "${payload}" >/dev/null 2>&1; then
+      # Stream the body via stdin (--data-binary @-) rather than passing it as a
+      # curl argument: some vendored dashboards (e.g. node-exporter-full, ~500KB)
+      # exceed ARG_MAX as a command-line arg and would silently fail to publish.
+      if printf '%s' "${payload}" | api POST "/api/dashboards/db" --data-binary @- >/dev/null 2>&1; then
         log_info "Published ${name}."
       else
         log_warn "Failed to publish ${name}."
