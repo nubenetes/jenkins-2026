@@ -10,7 +10,14 @@
 #   oss - installs kube-prometheus-stack + Loki + Tempo in-cluster, then two
 #     opentelemetry-collector releases pointed at them.
 #
-#   managed - documented stub; no resources created.
+#   managed-azure - two opentelemetry-collector releases exporting to Azure
+#     Monitor (traces/logs -> Application Insights via the azuremonitor
+#     exporter; metrics -> Azure Monitor managed Prometheus via remote-write +
+#     Entra auth). Visualized in Azure Managed Grafana. Requires the
+#     "${J2026_AZURE_MONITOR_SECRET}" Secret - see
+#     observability/otel-collector/secret-managed-azure.example.yaml.
+#
+#   managed-aws - documented stub; no resources created (planned).
 #
 # Requires scripts/02-otel-operator.sh to have run first (CRDs).
 set -euo pipefail
@@ -21,6 +28,15 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 case "${J2026_OBS_MODE}" in
   grafana-cloud)
     log_step "Observability mode: grafana-cloud"
+
+    # Clean in-place switch from oss: retire the in-cluster backends so they
+    # don't keep running (and holding PVCs / node-exporter hostPorts) once
+    # telemetry is exporting to Grafana Cloud again. The shared
+    # otel-collector-{gateway,logs} releases are reconfigured by helm upgrade
+    # below, so they must NOT be uninstalled here.
+    helm_uninstall_if_present kube-prometheus-stack "${J2026_GRAFANA_OSS_NAMESPACE}"
+    helm_uninstall_if_present loki "${J2026_OBS_NAMESPACE}"
+    helm_uninstall_if_present tempo "${J2026_OBS_NAMESPACE}"
 
     if ! kubectl get secret "${J2026_GRAFANA_CLOUD_SECRET}" -n "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1; then
       log_error "Secret '${J2026_GRAFANA_CLOUD_SECRET}' not found in namespace '${J2026_OBS_NAMESPACE}'."
@@ -130,6 +146,14 @@ EOT
   oss)
     log_step "Observability mode: oss"
 
+    # Clean in-place switch from grafana-cloud: retire the cloud-only agents
+    # before installing kube-prometheus-stack. k8s-monitoring/Alloy ships its
+    # own node-exporter DaemonSet on hostPort 9100, which would clash with the
+    # one kube-prometheus-stack deploys - and both keep exporting to Grafana
+    # Cloud otherwise. Must run before the kube-prometheus-stack install below.
+    helm_uninstall_if_present pdc-agent "${J2026_OBS_NAMESPACE}"
+    helm_uninstall_if_present k8s-monitoring "${J2026_OBS_NAMESPACE}"
+
     log_step "Creating jenkins-2026-grafana-dashboards ConfigMap in ${J2026_GRAFANA_OSS_NAMESPACE}"
     kubectl_apply_namespace "${J2026_GRAFANA_OSS_NAMESPACE}"
     kubectl create configmap jenkins-2026-grafana-dashboards \
@@ -139,11 +163,22 @@ EOT
 
     log_step "Installing kube-prometheus-stack (Prometheus + Grafana)"
     JENKINS_ADMIN_PASSWORD="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" -o jsonpath='{.data.admin-password}' | base64 -d)"
+
+    # When the public gateway is enabled, Grafana must know its public URL so
+    # redirects/links resolve to https://grafana.<baseDomain> instead of the
+    # in-cluster default (see observability/grafana/values-oss.yaml grafana.ini
+    # and scripts/09-gateway.sh, which creates the HTTPRoute + IAP policy).
+    GRAFANA_SET_ARGS=()
+    if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
+      GRAFANA_SET_ARGS+=(--set "grafana.grafana\.ini.server.root_url=https://${J2026_GATEWAY_GRAFANA_HOST}")
+    fi
+
     helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
       --namespace "${J2026_GRAFANA_OSS_NAMESPACE}" \
       --create-namespace \
       -f "${J2026_ROOT_DIR}/observability/grafana/values-oss.yaml" \
-      --set "grafana.additionalDataSources[3].secureJsonData.apiToken=${JENKINS_ADMIN_PASSWORD}"
+      --set "grafana.additionalDataSources[3].secureJsonData.apiToken=${JENKINS_ADMIN_PASSWORD}" \
+      "${GRAFANA_SET_ARGS[@]}"
 
     log_step "Installing Loki"
     helm upgrade --install loki "${J2026_GRAFANA_CHART_REPO_NAME}/loki" \
@@ -170,16 +205,55 @@ EOT
     wait_for_deployment "otel-collector-gateway" "${J2026_OBS_NAMESPACE}"
     ;;
 
-  managed)
-    log_step "Observability mode: managed (stub)"
-    log_warn "observability.mode=managed is a stub and does not"
-    log_warn "install anything - point OTEL_EXPORTER_OTLP_ENDPOINT at your managed Grafana"
-    log_warn "stack's OTLP gateway and create '${J2026_GRAFANA_CLOUD_SECRET}' accordingly."
+  managed-azure)
+    log_step "Observability mode: managed-azure"
+
+    # Clean in-place switch: Azure Managed Grafana + Azure Monitor live outside
+    # the cluster, so retire any in-cluster backends / cloud agents left over
+    # from a previous oss or grafana-cloud deploy. The shared
+    # otel-collector-{gateway,logs} releases are reconfigured by helm upgrade.
+    for r in pdc-agent k8s-monitoring; do
+      helm status "$r" -n "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1 && helm uninstall "$r" -n "${J2026_OBS_NAMESPACE}"
+    done
+    helm status kube-prometheus-stack -n "${J2026_GRAFANA_OSS_NAMESPACE}" >/dev/null 2>&1 && \
+      helm uninstall kube-prometheus-stack -n "${J2026_GRAFANA_OSS_NAMESPACE}"
+    for r in loki tempo; do
+      helm status "$r" -n "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1 && helm uninstall "$r" -n "${J2026_OBS_NAMESPACE}"
+    done
+
+    if ! kubectl get secret "${J2026_AZURE_MONITOR_SECRET}" -n "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1; then
+      log_error "Secret '${J2026_AZURE_MONITOR_SECRET}' not found in namespace '${J2026_OBS_NAMESPACE}'."
+      log_error "Copy observability/otel-collector/secret-managed-azure.example.yaml, fill in your"
+      log_error "Azure Monitor connection string / managed-Prometheus endpoint / Entra service"
+      log_error "principal, and 'kubectl apply -f' it before re-running. See docs/observability.md."
+      exit 1
+    fi
+
+    log_step "Installing ${J2026_OTEL_GATEWAY_RELEASE} (OTLP gateway -> Azure Monitor)"
+    kubectl delete configmap otel-collector-gateway -n "${J2026_OBS_NAMESPACE}" --ignore-not-found
+    helm upgrade --install "${J2026_OTEL_GATEWAY_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
+      --namespace "${J2026_OBS_NAMESPACE}" \
+      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-managed-azure.yaml"
+
+    log_step "Installing ${J2026_OTEL_LOGS_RELEASE} (node log DaemonSet -> Azure Monitor)"
+    helm upgrade --install "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
+      --namespace "${J2026_OBS_NAMESPACE}" \
+      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-managed-azure-logs.yaml"
+
+    wait_for_deployment "otel-collector-gateway" "${J2026_OBS_NAMESPACE}"
+    ;;
+
+  managed-aws)
+    log_step "Observability mode: managed-aws (stub)"
+    log_warn "observability.mode=managed-aws is not implemented yet - planned: export to"
+    log_warn "Amazon Managed Service for Prometheus (remote-write) + X-Ray/CloudWatch, with"
+    log_warn "Amazon Managed Grafana as the frontend. Use grafana-cloud, oss, or managed-azure"
+    log_warn "for now. See docs/observability.md \"managed-aws\"."
     exit 0
     ;;
 
   *)
-    log_error "Unknown observability.mode '${J2026_OBS_MODE}' (expected grafana-cloud|oss|managed)."
+    log_error "Unknown observability.mode '${J2026_OBS_MODE}' (expected grafana-cloud|oss|managed-azure|managed-aws)."
     exit 1
     ;;
 esac

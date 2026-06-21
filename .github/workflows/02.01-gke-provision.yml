@@ -20,7 +20,8 @@ on:
         options:
           - grafana-cloud
           - oss
-          - managed
+          - managed-azure
+          - managed-aws
       enable_gateway:
         description: "Create the public Gateway/HTTPRoutes/IAP (requires the one-time 01.02 Gateway bootstrap + DNS + IAP OAuth client setup - see README \"Public access (GKE Gateway API + IAP)\")"
         required: true
@@ -231,6 +232,48 @@ jobs:
             --from-literal=OTEL_LOGS_BACKEND_URL="${{ secrets.OTEL_LOGS_BACKEND_URL }}" \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Apply Azure Monitor credentials secret (from terraform outputs)
+        if: ${{ inputs.observability_mode == 'managed-azure' }}
+        run: |
+          # The terraform/azure-managed-grafana module (provisioned once by the
+          # "01.03 Azure managed-grafana bootstrap" workflow) holds the Azure
+          # backend coordinates + the collector's Entra service-principal
+          # credentials in its GCS state. Read its outputs here to build the
+          # in-cluster Secret consumed by values-managed-azure*.yaml - reading
+          # state needs no Azure auth (just the GCS backend, already authed
+          # above), and no sensitive value lives in the repo or in a GitHub
+          # secret. GRAFANA_API_KEY is intentionally left empty: dashboard
+          # publishing to Azure Managed Grafana is a manual step (you hold
+          # Grafana Admin) - see docs/observability.md "managed-azure".
+          cat > terraform/azure-managed-grafana/backend_override.tf <<EOF
+          terraform {
+            backend "gcs" {
+              bucket = "${{ secrets.TF_STATE_BUCKET }}"
+              prefix = "jenkins-2026/azure-managed-grafana"
+            }
+          }
+          EOF
+          terraform -chdir=terraform/azure-managed-grafana init -input=false
+          tf() { terraform -chdir=terraform/azure-managed-grafana output -raw "$1"; }
+          conn="$(tf azure_monitor_connection_string)"
+          prom="$(tf azure_monitor_prometheus_endpoint)"
+          tenant="$(tf azure_tenant_id)"
+          client="$(tf azure_client_id)"
+          secret="$(tf azure_client_secret)"
+          grafana="$(tf grafana_endpoint)"
+          echo "::add-mask::${conn}"
+          echo "::add-mask::${secret}"
+          kubectl create namespace observability --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create secret generic azure-monitor-credentials -n observability \
+            --from-literal=AZURE_MONITOR_CONNECTION_STRING="${conn}" \
+            --from-literal=AZURE_MONITOR_PROMETHEUS_ENDPOINT="${prom}" \
+            --from-literal=AZURE_TENANT_ID="${tenant}" \
+            --from-literal=AZURE_CLIENT_ID="${client}" \
+            --from-literal=AZURE_CLIENT_SECRET="${secret}" \
+            --from-literal=GRAFANA_BASE_URL="${grafana}" \
+            --from-literal=GRAFANA_API_KEY="" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Deploy the stack (scripts/up.sh)
         env:
           JENKINS2026_OBS_MODE: ${{ inputs.observability_mode }}
@@ -282,6 +325,9 @@ jobs:
               echo "- Microservices:         https://microservices.jenkins2026.nubenetes.com"
               echo "- Microservices develop: https://microservices-develop.jenkins2026.nubenetes.com"
               echo "- Headlamp:          https://headlamp.jenkins2026.nubenetes.com (IAP-protected)"
+              if [[ "${{ inputs.observability_mode }}" == "oss" ]]; then
+                echo "- Grafana:           https://grafana.jenkins2026.nubenetes.com (IAP-protected)"
+              fi
             else
               echo "Gateway/IAP was disabled for this run (enable_gateway=false)."
               echo "Use \`kubectl port-forward\` to reach Jenkins/Microservices/Headlamp -"
