@@ -3,9 +3,16 @@
 
 namespaces:
   stable: microservices
+  develop: microservices-develop
 
+# App SOURCE branch the pipeline checks out and builds. The upstream JHipster
+# repos have no develop branch, so 'develop' also builds from 'main' (same image)
+# - the develop tier differs only in deploy namespace + gitops values-develop.yaml.
+# (The gitops-config branch the develop ArgoCD app tracks is set separately via
+# config.yaml microservices.branches.develop.)
 branches:
   stable: main
+  develop: main
 
 services:
   - name: gateway
