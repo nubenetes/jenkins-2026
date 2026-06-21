@@ -235,6 +235,15 @@ export J2026_MICROSERVICES_SERVICES="${J2026_MICROSERVICES_SERVICES% }"
 # FEATURE FLAG: JENKINS2026_GENAI_SERVICE_ENABLED.
 export J2026_MICROSERVICES_GENAI_SERVICE_ENABLED="${JENKINS2026_GENAI_SERVICE_ENABLED:-$(yq_get '.microservices.genaiServiceEnabled' 'false')}"
 
+# FEATURE FLAG: JENKINS2026_DEVELOP_TRACK_ENABLED. Optional second deploy tier
+# (microservices-develop namespace + values-develop.yaml, tracking the gitops
+# 'develop' branch). OFF by default - it roughly doubles the microservices
+# footprint. Consumed by 08.5-argocd.sh (adds the develop ApplicationSet
+# generator element) and surfaced to the seed job as the env var of the same
+# name (04-jenkins.sh) so it generates the parallel '<svc>-develop' jobs.
+export J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED="${JENKINS2026_DEVELOP_TRACK_ENABLED:-$(yq_get '.microservices.developTrackEnabled' 'false')}"
+export J2026_MICROSERVICES_DEVELOP_NAMESPACE="$(yq_get '.microservices.namespaces.develop' 'microservices-develop')"
+
 # --- argocd -----------------------------------------------------------------
 
 export J2026_ARGOCD_NAMESPACE="$(yq_get '.argocd.namespace' 'argocd')"
@@ -242,6 +251,7 @@ export J2026_ARGOCD_RELEASE="$(yq_get '.argocd.releaseName' 'argocd')"
 export J2026_ARGOCD_VERSION="$(yq_get '.argocd.version' 'v3.5.0-rc1')"
 export J2026_ARGOCD_VERSION_CONSTRAINT="$(yq_get '.argocd.version_constraint' '3.5.x')"
 
-# Develop branch of this infra repo, used by 08.5-argocd.sh to populate the
-# {{branchDevelop}} placeholder in argocd/microservices-appset.yaml.
-export J2026_SELF_REPO_DEV_BRANCH="$(yq_get '.microservices.branches.develop' 'main')"
+# Branch of the gitops-config repo that the develop tier's ArgoCD app tracks.
+# Used by 08.5-argocd.sh as the 'branch' of the develop ApplicationSet generator
+# element (only added when J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED=true).
+export J2026_SELF_REPO_DEV_BRANCH="$(yq_get '.microservices.branches.develop' 'develop')"
