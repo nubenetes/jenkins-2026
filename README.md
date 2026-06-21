@@ -1604,10 +1604,14 @@ applied by [`scripts/09-gateway.sh`](scripts/09-gateway.sh):
 | Microservices | `https://microservices.<baseDomain>` | no (public demo app) |
 | Headlamp | `https://headlamp.<baseDomain>` | yes |
 | pgAdmin | `https://pgadmin.<baseDomain>` | yes |
+| Grafana | `https://grafana.<baseDomain>` | yes (only when `observability.mode=oss`) |
 
 `<baseDomain>` is [`gateway.baseDomain`](config/config.yaml) -
-`jenkins2026.nubenetes.com` by default. Jenkins, Headlamp, and pgAdmin get an extra
-Google-login gate (IAP) in front of their own auth; Microservices, the demo app, stays open. The Microservices URL is also
+`jenkins2026.nubenetes.com` by default. Jenkins, Headlamp, pgAdmin, and (in
+`oss` mode) Grafana get an extra Google-login gate (IAP) in front of their own
+auth; Microservices, the demo app, stays open. The Grafana route is only
+created in `observability.mode=oss` (in-cluster Grafana) - in `grafana-cloud`
+mode Grafana lives at its `*.grafana.net` URL and isn't routed here. The Microservices URL is also
 surfaced in the Jenkins UI's system message banner (see [`jenkins/casc/jcasc-base.yaml`](jenkins/casc/jcasc-base.yaml)).
 **This whole feature is opt-in**: set
 `JENKINS2026_BASE_DOMAIN=""` to disable it (no `Gateway`/`HTTPRoute`/

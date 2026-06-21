@@ -33,6 +33,18 @@ resources:
     cpu: 500m
     memory: 512Mi
 
+# RBAC for the k8sobjects receiver (Kubernetes Events -> Loki, see the
+# logs/events pipeline below). This brings OSS mode to parity with
+# grafana-cloud mode, where the k8s-monitoring/Alloy release's clusterEvents
+# preset collects events. Single-instance deployment collector, so events
+# aren't duplicated the way a DaemonSet would.
+clusterRole:
+  create: true
+  rules:
+    - apiGroups: ["events.k8s.io", ""]
+      resources: ["events"]
+      verbs: ["get", "list", "watch"]
+
 ports:
   otlp:
     enabled: true
@@ -62,6 +74,14 @@ config:
           cors:
             allowed_origins:
               - "*"
+
+    # Kubernetes Events (warnings, scheduling, OOMKills, etc.) -> Loki, for
+    # parity with grafana-cloud mode's k8s-monitoring clusterEvents preset.
+    k8sobjects:
+      objects:
+        - name: events
+          mode: watch
+          group: events.k8s.io
 
   processors:
     batch: {}
@@ -128,5 +148,10 @@ config:
         exporters: [prometheusremotewrite]
       logs:
         receivers: [otlp]
+        processors: [memory_limiter, resource, batch]
+        exporters: [otlphttp/loki]
+      # Kubernetes Events watched by the k8sobjects receiver -> Loki.
+      logs/events:
+        receivers: [k8sobjects]
         processors: [memory_limiter, resource, batch]
         exporters: [otlphttp/loki]
