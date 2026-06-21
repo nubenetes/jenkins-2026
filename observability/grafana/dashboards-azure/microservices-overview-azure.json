@@ -311,7 +311,7 @@
     {
       "datasource": {
         "type": "grafana-azure-monitor-datasource",
-        "uid": "${DS_AZURE_MONITOR}"
+        "uid": "azure-monitor-oob"
       },
       "description": "Recent traces across all microservices for the selected environment. Each request through gateway -> downstream microservice is a single trace (W3C traceparent propagated end-to-end via OpenTelemetry).",
       "fieldConfig": {
@@ -348,7 +348,7 @@
         {
           "datasource": {
             "type": "grafana-azure-monitor-datasource",
-            "uid": "${DS_AZURE_MONITOR}"
+            "uid": "azure-monitor-oob"
           },
           "queryType": "Azure Log Analytics",
           "azureLogAnalytics": {
@@ -368,7 +368,7 @@
     {
       "datasource": {
         "type": "grafana-azure-monitor-datasource",
-        "uid": "${DS_AZURE_MONITOR}"
+        "uid": "azure-monitor-oob"
       },
       "description": "Application logs for the selected environment's namespace (microservices / microservices-develop). Lines containing trace_id=<hex> can be opened directly in Tempo via the Loki datasource's derived field.",
       "fieldConfig": {
@@ -395,7 +395,7 @@
         {
           "datasource": {
             "type": "grafana-azure-monitor-datasource",
-            "uid": "${DS_AZURE_MONITOR}"
+            "uid": "azure-monitor-oob"
           },
           "queryType": "Azure Log Analytics",
           "azureLogAnalytics": {
@@ -576,23 +576,12 @@
   "templating": {
     "list": [
       {
-        "name": "DS_AZURE_MONITOR",
-        "label": "Azure Monitor",
-        "type": "datasource",
-        "query": "grafana-azure-monitor-datasource",
-        "refresh": 1,
-        "hide": 0,
-        "regex": "",
-        "current": {},
-        "options": []
-      },
-      {
         "name": "appinsights",
         "label": "Application Insights",
         "type": "query",
         "datasource": {
           "type": "grafana-azure-monitor-datasource",
-          "uid": "${DS_AZURE_MONITOR}"
+          "uid": "azure-monitor-oob"
         },
         "query": {
           "queryType": "Azure Resource Graph",
