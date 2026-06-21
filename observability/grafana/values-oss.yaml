@@ -136,7 +136,12 @@ grafana:
     - name: Tempo
       type: tempo
       uid: tempo
-      url: http://tempo.observability.svc.cluster.local:3100
+      # Tempo's HTTP query API (search/TraceQL/ready) is on the chart's
+      # server.http_listen_port, exposed by the Service as port 3200 (there is
+      # no 3200->3100 remap and no 3100 port at all). Pointing the datasource at
+      # 3100 silently breaks every Tempo query - the panels look empty even
+      # though spans are ingested fine.
+      url: http://tempo.observability.svc.cluster.local:3200
       access: proxy
       jsonData:
         tracesToLogsV2:
