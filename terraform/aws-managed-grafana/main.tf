@@ -145,4 +145,64 @@ resource "aws_grafana_workspace" "this" {
 
 # Workspace Admin users/groups are AWS_SSO identities granted in IAM Identity
 # Center (Grafana workspace -> Configure users), not IAM roles - so they're
-# managed outside Terraform. See README.md "GitHub Actions automation".
+# managed outside Terraform. See README.md "Logging in to Amazon Managed Grafana".
+
+# --- GitHub OIDC: dashboard-publisher role -----------------------------------
+# 07-grafana-dashboards.sh (managed-aws) mints a short-lived AMG service-account
+# token to publish the dashboards. up.sh has no AWS credentials in CI (the
+# keyless design only federates the collector), so 02.01 runs the publish in a
+# dedicated step that assumes THIS role via GitHub OIDC - no access keys, mirroring
+# the managed-azure publish (whose OIDC SP holds Grafana Admin). Least-privilege:
+# only the workspace service-account-token APIs, scoped to this one workspace.
+# The GitHub OIDC provider already exists in the account (it backs the bootstrap
+# role), so reference it rather than recreating it.
+data "aws_iam_openid_connect_provider" "github" {
+  url = "https://token.actions.githubusercontent.com"
+}
+
+data "aws_iam_policy_document" "dashboard_publisher_assume" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    principals {
+      type        = "Federated"
+      identifiers = [data.aws_iam_openid_connect_provider.github.arn]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+    # Only 02.01-gke-provision (environment gke-production) in this repo.
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:${var.github_repo}:environment:${var.github_environment}"]
+    }
+  }
+}
+
+resource "aws_iam_role" "dashboard_publisher" {
+  name               = "${var.name_prefix}-dashboard-publisher"
+  assume_role_policy = data.aws_iam_policy_document.dashboard_publisher_assume.json
+}
+
+data "aws_iam_policy_document" "dashboard_publisher" {
+  statement {
+    sid    = "AMGWorkspaceServiceAccountToken"
+    effect = "Allow"
+    actions = [
+      "grafana:ListWorkspaceServiceAccounts",
+      "grafana:CreateWorkspaceServiceAccount",
+      "grafana:CreateWorkspaceServiceAccountToken",
+      "grafana:DeleteWorkspaceServiceAccountToken",
+    ]
+    resources = [aws_grafana_workspace.this.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "dashboard_publisher" {
+  name   = "${var.name_prefix}-dashboard-publisher"
+  role   = aws_iam_role.dashboard_publisher.id
+  policy = data.aws_iam_policy_document.dashboard_publisher.json
+}

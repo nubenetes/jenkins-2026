@@ -125,8 +125,14 @@ config:
         insecure: true
     prometheusremotewrite:
       # Requires `--web.enable-remote-write-receiver` on the
-      # kube-prometheus-stack Prometheus (set in grafana/values-oss.yaml).
-      endpoint: http://prometheus-kube-prometheus-prometheus.observability.svc.cluster.local:9090/api/v1/write
+      # kube-prometheus-stack Prometheus (enableRemoteWriteReceiver in
+      # grafana/values-oss.yaml). The Service name must match the one the chart
+      # actually creates - "kube-prometheus-stack-prometheus" (release name
+      # "kube-prometheus-stack") - which is also the Prometheus datasource URL
+      # in grafana/values-oss.yaml. Pointing it at a non-existent Service
+      # silently drops the span-metrics/service-graph remote-write, leaving the
+      # traces->metrics correlation and service map empty.
+      endpoint: http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090/api/v1/write
       resource_to_telemetry_conversion:
         enabled: true
 

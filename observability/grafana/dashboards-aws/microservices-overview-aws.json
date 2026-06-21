@@ -310,8 +310,8 @@
     },
     {
       "datasource": {
-        "type": "tempo",
-        "uid": "${DS_TEMPO}"
+        "type": "grafana-x-ray-datasource",
+        "uid": "DS_XRAY_UID"
       },
       "description": "Recent traces across all microservices for the selected environment. Each request through gateway -> downstream microservice is a single trace (W3C traceparent propagated end-to-end via OpenTelemetry).",
       "fieldConfig": {
@@ -347,11 +347,12 @@
       "targets": [
         {
           "datasource": {
-            "type": "tempo",
-            "uid": "${DS_TEMPO}"
+            "type": "grafana-x-ray-datasource",
+            "uid": "DS_XRAY_UID"
           },
-          "query": "{resource.deployment.environment = \"$deployment_environment\" && resource.service.name =~ \"${service_name:pipe}\" && span.\"url.path\" !~ \"/management/health.*\"}",
-          "queryType": "traceql",
+          "queryType": "getTraceSummaries",
+          "query": "",
+          "region": "default",
           "refId": "A"
         }
       ],
@@ -360,8 +361,8 @@
     },
     {
       "datasource": {
-        "type": "loki",
-        "uid": "${DS_LOKI}"
+        "type": "cloudwatch",
+        "uid": "DS_CW_UID"
       },
       "description": "Application logs for the selected environment's namespace (microservices / microservices-develop). Lines containing trace_id=<hex> can be opened directly in Tempo via the Loki datasource's derived field.",
       "fieldConfig": {
@@ -387,10 +388,17 @@
       "targets": [
         {
           "datasource": {
-            "type": "loki",
-            "uid": "${DS_LOKI}"
+            "type": "cloudwatch",
+            "uid": "DS_CW_UID"
           },
-          "expr": "{k8s_namespace_name=\"$namespace\"} | json | line_format \"{{ if .message }}{{ .message }}{{ else if .msg }}{{ .msg }}{{ else }}{{ __line__ }}{{ end }}\"",
+          "queryMode": "Logs",
+          "region": "default",
+          "logGroups": [
+            {
+              "name": "/jenkins-2026/jenkins-2026/otel"
+            }
+          ],
+          "expression": "fields @timestamp, @message, @logStream | sort @timestamp desc | limit 100",
           "refId": "A"
         }
       ],
@@ -577,44 +585,6 @@
           "selected": true,
           "text": "grafanacloud-prom",
           "value": "grafanacloud-prom"
-        }
-      },
-      {
-        "current": {
-          "selected": true,
-          "value": "grafanacloud-logs",
-          "text": "grafanacloud-logs"
-        },
-        "hide": 0,
-        "includeAll": false,
-        "label": "Loki",
-        "multi": false,
-        "name": "DS_LOKI",
-        "options": [],
-        "query": "loki",
-        "queryValue": "",
-        "refresh": 1,
-        "regex": "/^(?!.*alert-state-history|.*usage-insights).*$/",
-        "skipUrlSync": false,
-        "type": "datasource"
-      },
-      {
-        "hide": 0,
-        "includeAll": false,
-        "label": "Tempo",
-        "multi": false,
-        "name": "DS_TEMPO",
-        "options": [],
-        "query": "tempo",
-        "queryValue": "",
-        "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
-        "type": "datasource",
-        "current": {
-          "selected": true,
-          "text": "grafanacloud-traces",
-          "value": "grafanacloud-traces"
         }
       },
       {

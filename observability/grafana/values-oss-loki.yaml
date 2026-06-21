@@ -51,7 +51,24 @@ write:
 backend:
   replicas: 0
 
+# The chart's memcached results/chunks caches are optional performance helpers
+# not needed for a single-binary PoC. They also break under the observability
+# namespace LimitRange (scripts/01-namespaces.sh): their default
+# requests.cpu=500m exceeds the LimitRange default limit (200m), so the pods are
+# rejected as invalid (requests > limits). Disable them.
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
+
 test:
+  enabled: false
+
+# lokiCanary is a top-level key in current chart versions; the monitoring.*
+# block below is retained for older charts but no longer turns it off on its
+# own, so disable it here too (otherwise the canary DaemonSet deploys and adds
+# load for no PoC value).
+lokiCanary:
   enabled: false
 
 monitoring:
