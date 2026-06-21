@@ -157,18 +157,23 @@ export J2026_GATEWAY_HTTPROUTE_MICROSERVICES="microservices"
 export J2026_GATEWAY_HTTPROUTE_MICROSERVICES_DEVELOP="microservices-develop"
 export J2026_GATEWAY_HTTPROUTE_HEADLAMP="headlamp"
 export J2026_GATEWAY_HTTPROUTE_PGADMIN="pgadmin"
+# Grafana is only exposed in observability.mode=oss (in-cluster Grafana).
+export J2026_GATEWAY_HTTPROUTE_GRAFANA="grafana"
 export J2026_GATEWAY_IAP_POLICY_JENKINS="jenkins-iap"
 export J2026_GATEWAY_IAP_POLICY_HEADLAMP="headlamp-iap"
 export J2026_GATEWAY_IAP_POLICY_PGADMIN="pgadmin-iap"
+export J2026_GATEWAY_IAP_POLICY_GRAFANA="grafana-iap"
 
 J2026_GATEWAY_HOST_JENKINS="$(yq_get '.gateway.hosts.jenkins' 'jenkins')"
 J2026_GATEWAY_HOST_MICROSERVICES="$(yq_get '.gateway.hosts.microservices' 'microservices')"
 J2026_GATEWAY_HOST_HEADLAMP="$(yq_get '.gateway.hosts.headlamp' 'headlamp')"
 J2026_GATEWAY_HOST_PGADMIN="$(yq_get '.gateway.hosts.pgadmin' 'pgadmin')"
+J2026_GATEWAY_HOST_GRAFANA="$(yq_get '.gateway.hosts.grafana' 'grafana')"
 export J2026_GATEWAY_JENKINS_HOST="${J2026_GATEWAY_HOST_JENKINS}.${J2026_GATEWAY_BASE_DOMAIN}"
 export J2026_GATEWAY_MICROSERVICES_HOST="${J2026_GATEWAY_HOST_MICROSERVICES}.${J2026_GATEWAY_BASE_DOMAIN}"
 export J2026_GATEWAY_HEADLAMP_HOST="${J2026_GATEWAY_HOST_HEADLAMP}.${J2026_GATEWAY_BASE_DOMAIN}"
 export J2026_GATEWAY_PGADMIN_HOST="${J2026_GATEWAY_HOST_PGADMIN}.${J2026_GATEWAY_BASE_DOMAIN}"
+export J2026_GATEWAY_GRAFANA_HOST="${J2026_GATEWAY_HOST_GRAFANA}.${J2026_GATEWAY_BASE_DOMAIN}"
 
 
 # Headlamp's OIDC redirect URI: the public gateway URL if the gateway is

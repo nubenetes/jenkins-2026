@@ -22,6 +22,15 @@ case "${J2026_OBS_MODE}" in
   grafana-cloud)
     log_step "Observability mode: grafana-cloud"
 
+    # Clean in-place switch from oss: retire the in-cluster backends so they
+    # don't keep running (and holding PVCs / node-exporter hostPorts) once
+    # telemetry is exporting to Grafana Cloud again. The shared
+    # otel-collector-{gateway,logs} releases are reconfigured by helm upgrade
+    # below, so they must NOT be uninstalled here.
+    helm_uninstall_if_present kube-prometheus-stack "${J2026_GRAFANA_OSS_NAMESPACE}"
+    helm_uninstall_if_present loki "${J2026_OBS_NAMESPACE}"
+    helm_uninstall_if_present tempo "${J2026_OBS_NAMESPACE}"
+
     if ! kubectl get secret "${J2026_GRAFANA_CLOUD_SECRET}" -n "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1; then
       log_error "Secret '${J2026_GRAFANA_CLOUD_SECRET}' not found in namespace '${J2026_OBS_NAMESPACE}'."
       log_error "Copy observability/otel-collector/secret.example.yaml, fill in your Grafana Cloud"
@@ -130,6 +139,14 @@ EOT
   oss)
     log_step "Observability mode: oss"
 
+    # Clean in-place switch from grafana-cloud: retire the cloud-only agents
+    # before installing kube-prometheus-stack. k8s-monitoring/Alloy ships its
+    # own node-exporter DaemonSet on hostPort 9100, which would clash with the
+    # one kube-prometheus-stack deploys - and both keep exporting to Grafana
+    # Cloud otherwise. Must run before the kube-prometheus-stack install below.
+    helm_uninstall_if_present pdc-agent "${J2026_OBS_NAMESPACE}"
+    helm_uninstall_if_present k8s-monitoring "${J2026_OBS_NAMESPACE}"
+
     log_step "Creating jenkins-2026-grafana-dashboards ConfigMap in ${J2026_GRAFANA_OSS_NAMESPACE}"
     kubectl_apply_namespace "${J2026_GRAFANA_OSS_NAMESPACE}"
     kubectl create configmap jenkins-2026-grafana-dashboards \
@@ -139,11 +156,22 @@ EOT
 
     log_step "Installing kube-prometheus-stack (Prometheus + Grafana)"
     JENKINS_ADMIN_PASSWORD="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" -o jsonpath='{.data.admin-password}' | base64 -d)"
+
+    # When the public gateway is enabled, Grafana must know its public URL so
+    # redirects/links resolve to https://grafana.<baseDomain> instead of the
+    # in-cluster default (see observability/grafana/values-oss.yaml grafana.ini
+    # and scripts/09-gateway.sh, which creates the HTTPRoute + IAP policy).
+    GRAFANA_SET_ARGS=()
+    if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
+      GRAFANA_SET_ARGS+=(--set "grafana.grafana\.ini.server.root_url=https://${J2026_GATEWAY_GRAFANA_HOST}")
+    fi
+
     helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
       --namespace "${J2026_GRAFANA_OSS_NAMESPACE}" \
       --create-namespace \
       -f "${J2026_ROOT_DIR}/observability/grafana/values-oss.yaml" \
-      --set "grafana.additionalDataSources[3].secureJsonData.apiToken=${JENKINS_ADMIN_PASSWORD}"
+      --set "grafana.additionalDataSources[3].secureJsonData.apiToken=${JENKINS_ADMIN_PASSWORD}" \
+      "${GRAFANA_SET_ARGS[@]}"
 
     log_step "Installing Loki"
     helm upgrade --install loki "${J2026_GRAFANA_CHART_REPO_NAME}/loki" \

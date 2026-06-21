@@ -47,6 +47,19 @@ kubectl_apply_namespace() {
   kubectl create namespace "${ns}" --dry-run=client -o yaml | kubectl apply -f -
 }
 
+# helm_uninstall_if_present <release> <namespace> - uninstall a Helm release
+# only if it exists. Used by 03-observability.sh to make in-place switches
+# between observability.mode=grafana-cloud and =oss clean (retire the releases
+# that belong to the mode we're switching away from). Safe to call when the
+# release isn't installed.
+helm_uninstall_if_present() {
+  local release="$1" ns="$2"
+  if helm status "${release}" -n "${ns}" >/dev/null 2>&1; then
+    log_info "Uninstalling stale release '${release}' from '${ns}' (mode switch)."
+    helm uninstall "${release}" -n "${ns}"
+  fi
+}
+
 # --- parallel step execution -------------------------------------------------
 #
 # run_bg <name> <cmd...> - runs <cmd...> in the background, streaming stdout

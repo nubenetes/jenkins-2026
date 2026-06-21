@@ -282,6 +282,9 @@ jobs:
               echo "- Microservices:         https://microservices.jenkins2026.nubenetes.com"
               echo "- Microservices develop: https://microservices-develop.jenkins2026.nubenetes.com"
               echo "- Headlamp:          https://headlamp.jenkins2026.nubenetes.com (IAP-protected)"
+              if [[ "${{ inputs.observability_mode }}" == "oss" ]]; then
+                echo "- Grafana:           https://grafana.jenkins2026.nubenetes.com (IAP-protected)"
+              fi
             else
               echo "Gateway/IAP was disabled for this run (enable_gateway=false)."
               echo "Use \`kubectl port-forward\` to reach Jenkins/Microservices/Headlamp -"
