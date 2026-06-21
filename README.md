@@ -134,6 +134,7 @@ for the OpenTelemetry/Grafana wiring.
   - [Structured Logging Deep Dive](#structured-logging-deep-dive)
   - [Observability Dashboards](#observability-dashboards)
   - [Grafana OSS In-Cluster Mode](#grafana-oss-in-cluster-mode)
+  - [Logging in to Amazon Managed Grafana (managed-aws)](#logging-in-to-amazon-managed-grafana-managed-aws)
 - [Headlamp (cluster management UI)](#headlamp-cluster-management-ui)
   - [One-time setup: Google OAuth client (currently unused)](#one-time-setup-google-oauth-client-currently-unused)
   - [Adding your (or another) identity](#adding-your-or-another-identity)
@@ -1424,6 +1425,18 @@ Engineering decisions baked into the JSON:
   `{{ if .message }}…{{ else if .msg }}…{{ else }}{{ __line__ }}{{ end }}`
   renders ECS-JSON app logs (`.message`), CloudNativePG/sidecar JSON (`.msg`) and
   plain-text lines (`__line__`) without ever showing blank lines.
+- **Fixed rate window for sparse metrics**: panels over rarely-incremented
+  histograms — notably *JVM GC Pause Time p99*
+  (`histogram_quantile(0.99, …rate(jvm_gc_duration_seconds_bucket[15m]))`) — use a
+  **fixed `[15m]` rate window**, not Grafana's auto-scaling `$__rate_interval`.
+  With `$__rate_interval` the window shrinks with the selected range (~15–30s at a
+  1-hour view), so on an idle JVM that garbage-collects only occasionally each
+  point's window catches **zero** GC events → `rate()` is 0 → `histogram_quantile`
+  returns `NaN` → the panel looks empty at short ranges yet populated at 24h (where
+  the auto window is minutes wide). A fixed `[15m]` window keeps short-range views
+  populated. *Caveat*: if the JVM had genuinely no GC in the trailing ~15 min the
+  panel is still empty — that is correct (no events, no percentile), not a bug; run
+  the `microservices-k6-smoke` job to generate load and the data appears.
 
 <details>
 <summary>🔍 Click to expand Dashboard Provisioning Diagram</summary>
@@ -1445,8 +1458,11 @@ flowchart LR
 Grafana Cloud — useful for air-gapped demos or avoiding SaaS cost/quota. It is
 **documented for completeness and kept at parity, but it is not the automated
 target of this IaC** (the default and the path exercised by CI is
-`grafana-cloud`). The OSS values exist and are `helm template`-validated, but
-have not been run live.
+`grafana-cloud`). The OSS values are `helm template`-validated and have been run
+live end to end (`02.01-gke-provision` with `observability_mode=oss`): the
+in-cluster Grafana is exposed publicly with Google SSO and the Jenkins system
+banner links to it, exactly like the other modes (see [Logging in to in-cluster
+Grafana](#logging-in-to-in-cluster-grafana-oss) below).
 
 <details>
 <summary>🔍 Click to expand Grafana OSS In-Cluster Topology Diagram</summary>
@@ -1487,6 +1503,96 @@ What parity required (so all four correlation directions work in OSS too):
   `trace_id=…`).
 - The same logback ConfigMap + `SPRING_REACTOR_CONTEXT_PROPAGATION=auto` from the
   GitOps repo apply unchanged (they are mode-independent).
+
+#### Logging in to in-cluster Grafana (oss)
+
+Unlike the managed Grafanas, the OSS Grafana lives **in the cluster**, so it
+reuses the exact same edge as Jenkins/Headlamp: the GKE Gateway publishes it at
+`https://grafana.<gateway.baseDomain>` (default
+`https://grafana.jenkins2026.nubenetes.com`) behind **Google Identity-Aware
+Proxy**. Wiring (all gated to `observability.mode=oss`):
+
+- **Route + health + IAP** ([`scripts/09-gateway.sh`](scripts/09-gateway.sh)): an
+  `HTTPRoute` to the `kube-prometheus-stack-grafana` Service, a `HealthCheckPolicy`
+  (`/api/health`), and a `GCPBackendPolicy` enabling IAP with the **same** OAuth
+  client (`IAP_OAUTH_CLIENT_ID/SECRET`) used by the other apps — no extra client.
+- **One Google sign-in (no second prompt)**: IAP authenticates the user and
+  forwards their identity in `X-Goog-Authenticated-User-Email`; Grafana's
+  `auth.proxy` ([`grafana/values-oss.yaml`](observability/grafana/values-oss.yaml))
+  trusts that header, auto-creates the user and grants Admin
+  (`users.auto_assign_org_role`). IAP already restricts access to allowlisted
+  Google accounts. The Grafana login form stays enabled as a `kubectl
+  port-forward` escape hatch (admin/password from the `kube-prometheus-stack-grafana`
+  Secret) for when there is no IAP header.
+- **Banner parity**: the Jenkins system banner's Grafana link resolves to
+  `https://grafana.<baseDomain>` in oss mode (per-mode logic in
+  [`scripts/04-jenkins.sh`](scripts/04-jenkins.sh)); that script also rolls the
+  controller via a pod-annotation checksum when the banner links change, so a
+  mode switch never leaves a stale URL.
+
+**One-time DNS** (like the other hosts): point `grafana.<baseDomain>` at the
+Gateway's static IP (`kubectl get gateway -n <jenkins-ns> -o
+jsonpath='{.status.addresses[0].value}'`). The wildcard certificate map already
+covers it, so no cert change is needed.
+
+### Logging in to Amazon Managed Grafana (managed-aws)
+
+Unlike the in-cluster apps (Jenkins/Argo/Headlamp), **Amazon Managed Grafana
+(AMG) is not behind the GKE Gateway + Google IAP** — it is a managed AWS service,
+so it cannot reuse that "Sign in with Google" path. AMG authenticates **only** via
+**AWS IAM Identity Center** (the workspace's `AWS_SSO` mode) or **SAML 2.0**. Your
+IAM *user* (the one your CLI uses) **cannot** sign in to the Grafana UI.
+
+The cheapest, account-agnostic way in is a **native IAM Identity Center user**
+(Identity Center and its users are free — no Google Workspace needed). This is the
+AWS analogue of the `managed-azure` flow, where AMG-Azure is wired to Entra ID and
+you just grant your Entra account admin. Do it **once** per person:
+
+1. **Create the Identity Center user** — AWS console → *IAM Identity Center* (in
+   the same region as the workspace) → **Users** → **Add user**: pick a username,
+   your email, name, and choose **"Send an email … with password setup
+   instructions"**. Follow that email to set your password.
+2. **Grant Admin on the workspace** — AWS console → *Amazon Managed Grafana* →
+   your `jenkins-2026-*` workspace → **Authentication** → **AWS IAM Identity
+   Center** → **Assign new user or group** → select your user → then on its row
+   **Action → Make admin**.
+3. **Sign in** — open the workspace URL (`terraform -chdir=terraform/aws-managed-grafana
+   output -raw grafana_endpoint`) and click **"Sign in with AWS IAM Identity
+   Center"**. The custom dashboards are under *Dashboards → jenkins-2026/*.
+
+<details>
+<summary>CLI equivalent (steps 1–2)</summary>
+
+```bash
+export AWS_REGION=<workspace-region>
+IDS=$(aws sso-admin list-instances --query 'Instances[0].IdentityStoreId' --output text)
+
+# 1. native Identity Center user (edit name/email)
+USER_ID=$(aws identitystore create-user --identity-store-id "$IDS" \
+  --user-name "<you>" --display-name "<You>" \
+  --name 'GivenName=<First>,FamilyName=<Last>' \
+  --emails 'Value=<you@example.com>,Type=work,Primary=true' \
+  --query UserId --output text)
+
+# 2. grant ADMIN on the workspace
+WS=$(terraform -chdir=terraform/aws-managed-grafana output -raw grafana_workspace_id)
+aws grafana update-permissions --workspace-id "$WS" \
+  --update-instruction-batch \
+  "[{\"action\":\"ADD\",\"role\":\"ADMIN\",\"users\":[{\"id\":\"$USER_ID\",\"type\":\"SSO_USER\"}]}]"
+```
+
+> `create-user` does **not** send the password-setup email — trigger it from the
+> console (*Users → select → Reset password → Send email*) or use **Forgot
+> password** at the access portal for the first sign-in.
+
+</details>
+
+**Want true "Sign in with Google" like Jenkins?** That needs AMG in **SAML** mode
+with Google as the IdP, which requires **Google Workspace** (paid) or **Google
+Cloud Identity Free** (free, but you must stand up a managed directory for the
+domain). The only way to get the *identical* IAP-gated Google SSO as the other
+apps is the in-cluster [`oss` mode](#grafana-oss-in-cluster-mode) (Grafana behind
+the Gateway), which replaces AMG.
 
 ## Headlamp (cluster management UI)
 
@@ -2054,6 +2160,7 @@ lifecycle:
 | 02.01 | [GKE provision](.github/workflows/02.01-gke-provision.yml) | GKE lifecycle | Provisions the throwaway GKE cluster (`terraform/gke`) and deploys the full stack (`scripts/up.sh`) + smoke test. Pair with 02.99. |
 | 02.02 | [Redeploy Jenkins](.github/workflows/02.02-redeploy-jenkins.yml) | GKE lifecycle | Re-applies only `scripts/04-jenkins.sh` (Helm upgrade of `helm/jenkins/` + `jenkins/casc/` JCasC) and re-seeds the Microservices pipelines, against the cluster from the last 02.01 run - for a Jenkins-only fix without the full provision/decommission cycle. Run any number of times between 02.01 and 02.99. |
 | 02.03 | [Redeploy Headlamp](.github/workflows/02.03-redeploy-headlamp.yml) | GKE lifecycle | Re-applies `scripts/01-namespaces.sh` (refreshes the non-sensitive OIDC config keys on `headlamp-credentials`) and `scripts/08-headlamp.sh` (Helm upgrade of `helm/headlamp/`), against the cluster from the last 02.01 run - for a Headlamp-only fix without the full provision/decommission cycle. Run any number of times between 02.01 and 02.99. |
+| 02.04 | [Publish AWS dashboards](.github/workflows/02.04-publish-aws-dashboards.yml) | GKE lifecycle | (Re)publishes the `managed-aws` Grafana dashboards (`observability/grafana/dashboards-aws/`) to Amazon Managed Grafana **without a running cluster** - reads the AMG connection params from the persistent `terraform/aws-managed-grafana` GCS state and authenticates via GitHub OIDC (the dashboard-publisher role). Needs the `AWS_DASHBOARD_PUBLISH_ROLE_ARN` secret. |
 | 02.99 | [GKE decommission](.github/workflows/02.99-gke-decommission.yml) | GKE lifecycle | Tears down the stack (`scripts/down.sh`) and destroys the GKE cluster (`terraform destroy`). |
 | 99.01 | [Continuous Traffic Simulation](.github/workflows/99.01-traffic-simulation.yml) | Simulation | Runs a continuous stream of synthetic traffic (k6) against the stable endpoints to keep metrics and logs active in Grafana. |
 
@@ -2114,6 +2221,7 @@ graph TD
         G --> H["GKE Cluster Active<br>Jenkins / ArgoCD<br>pgAdmin / services"]
         H --> I["02.02 Redeploy Jenkins"]
         H --> J["02.03 Redeploy Headlamp"]
+        B --> L["02.04 Publish AWS dashboards<br>(no cluster needed)"]
         I & J --> H
         H --> K["02.99 GKE decommission<br>down.sh + tf destroy"]
         K -->|"cluster gone<br>assets kept"| B
@@ -2163,6 +2271,7 @@ To support deterministic deployments and clean, error-free environment destructi
   * [02.01 GKE provision](file:///home/inafev/github/jenkins-2026/.github/workflows/02.01-gke-provision.yml)
   * [02.02 Redeploy Jenkins](file:///home/inafev/github/jenkins-2026/.github/workflows/02.02-redeploy-jenkins.yml)
   * [02.03 Redeploy Headlamp](file:///home/inafev/github/jenkins-2026/.github/workflows/02.03-redeploy-headlamp.yml)
+  * [02.04 Publish AWS dashboards](file:///home/inafev/github/jenkins-2026/.github/workflows/02.04-publish-aws-dashboards.yml)
   * [02.99 GKE decommission](file:///home/inafev/github/jenkins-2026/.github/workflows/02.99-gke-decommission.yml)
 
 #### The `git_ref` Parameter
@@ -2355,6 +2464,7 @@ With this configuration active, triggering any of the protected workflows will p
    | `IAP_OAUTH_CLIENT_ID` / `IAP_OAUTH_CLIENT_SECRET` | OAuth client gating Jenkins/Headlamp via Identity-Aware Proxy (see [Public access](#public-access-gke-gateway-api--iap)) |
    | `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` / `AZURE_GRAFANA_ADMIN_OBJECT_IDS` | `observability_mode: managed-azure` - **identifiers only, no secret**: the GitHub-OIDC Entra app the `01.03 Azure bootstrap` workflow logs in as, plus the comma-separated Entra object IDs granted Grafana Admin. The actual Azure backend credentials never become GitHub secrets - `02.01` reads them from the `terraform/azure-managed-grafana` GCS state outputs (see [`docs/observability.md`](docs/observability.md#managed-azure)) |
    | `AWS_BOOTSTRAP_ROLE_ARN` / `AWS_REGION` / `GKE_OIDC_ISSUER_URL` | `observability_mode: managed-aws` - **identifiers only, no secret**: the IAM role the `01.04 AWS bootstrap` workflow assumes via GitHub OIDC, the region, and the GKE cluster's OIDC issuer URL (federates the collector SA to its IAM role). The AWS backend coordinates never become GitHub secrets - `02.01` reads them from the `terraform/aws-managed-grafana` GCS state outputs, and the collector authenticates with a web-identity token, not access keys (see [`docs/observability.md`](docs/observability.md#managed-aws)) |
+   | `AWS_DASHBOARD_PUBLISH_ROLE_ARN` | `observability_mode: managed-aws` - **identifier only, no secret**: the least-privilege IAM role `02.01 GKE provision` and `02.04 Publish AWS dashboards` assume via GitHub OIDC to publish dashboards to Amazon Managed Grafana (only the workspace service-account-token APIs). Created by `01.04 AWS bootstrap` - set this to its `dashboard_publisher_role_arn` output. When unset, both workflows skip the publish step gracefully (see [`docs/observability.md`](docs/observability.md#managed-aws)) |
 
    `gateway.baseDomain` (default `jenkins2026.nubenetes.com`) is **not** a
    secret - it's committed in `config/config.yaml`. Override it via the

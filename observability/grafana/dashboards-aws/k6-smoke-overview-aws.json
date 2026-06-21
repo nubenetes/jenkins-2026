@@ -1,0 +1,848 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 100,
+      "panels": [],
+      "title": "k6 Observability Smoke Test - $deployment_environment",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Total k6 iterations completed in the selected time range (metric iterations_total, exported by k6's -o opentelemetry output - see jenkins/pipelines/k6/microservices-smoke.js and vars/microservicesK6Smoke.groovy).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 1
+      },
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(increase(iterations_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range]))",
+          "instant": true,
+          "legendFormat": "Iterations",
+          "refId": "A"
+        }
+      ],
+      "title": "Iterations",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Share of k6 checks (the check{} blocks in microservices-smoke.js, e.g. 'gateway-owners-list is healthy') that passed - checks_total{condition=\"nonzero\"} / checks_total. Anything below 100% means at least one check failed during the run.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 6,
+        "y": 1
+      },
+      "id": 2,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", condition=\"nonzero\"}[$__range])) / sum(increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range]))",
+          "instant": true,
+          "legendFormat": "Checks pass rate",
+          "refId": "A"
+        }
+      ],
+      "title": "Checks Pass Rate",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Share of HTTP requests k6 considered failed (http_req_failed_total{condition=\"nonzero\"} / http_req_failed_total) - red at 5%, matching the http_req_failed: ['rate<0.05'] threshold in microservices-smoke.js.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0.05
+              }
+            ]
+          },
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 1
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum(increase(http_req_failed_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", condition=\"nonzero\"}[$__range])) / sum(increase(http_req_failed_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range]))",
+          "instant": true,
+          "legendFormat": "http_req_failed rate",
+          "refId": "A"
+        }
+      ],
+      "title": "HTTP Req Failed Rate",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "p95 of http_req_duration across all requests in the run - red above 3000ms, matching the http_req_duration: ['p(95)<3000'] threshold in microservices-smoke.js. k6 exits 99 (Jenkins UNSTABLE) when this or the failed-rate threshold is crossed.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 3000
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_req_duration_milliseconds_bucket{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range])))",
+          "instant": true,
+          "legendFormat": "http_req_duration p95",
+          "refId": "A"
+        }
+      ],
+      "title": "HTTP Req Duration (p95)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "p95 http_req_duration per request (the tags.name set on each k6 http call in microservices-smoke.js, e.g. gateway-owners-list, config-server-health) - histogram_quantile over http_req_duration_milliseconds_bucket.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10
+          },
+          "unit": "ms",
+          "links": [
+            {
+              "targetBlank": true,
+              "title": "Traces for ${series.labels.name}",
+              "url": "/explore?left=%7B%22datasource%22%3A%20%22%24%7BDS_TEMPO%7D%22%2C%20%22queries%22%3A%20%5B%7B%22refId%22%3A%20%22A%22%2C%20%22query%22%3A%20%22%7Bresource.deployment.environment%20%3D%20%5C%22%24deployment_environment%5C%22%20%26%26%20name%20%3D%20%5C%22%24%7B__series.labels.name%7D%5C%22%7D%22%2C%20%22queryType%22%3A%20%22traceql%22%7D%5D%2C%20%22range%22%3A%20%7B%22from%22%3A%20%22%24%7B__from%7D%22%2C%20%22to%22%3A%20%22%24%7B__to%7D%22%7D%7D"
+            },
+            {
+              "targetBlank": true,
+              "title": "Microservices logs",
+              "url": "/explore?left=%7B%22datasource%22%3A%20%22%24%7BDS_LOKI%7D%22%2C%20%22queries%22%3A%20%5B%7B%22refId%22%3A%20%22A%22%2C%20%22expr%22%3A%20%22%7Bk8s_namespace_name%3D%5C%22%24namespace%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B%20if%20.message%20%7D%7D%7B%7B%20.message%20%7D%7D%7B%7B%20else%20if%20.msg%20%7D%7D%7B%7B%20.msg%20%7D%7D%7B%7B%20else%20%7D%7D%7B%7B%20__line__%20%7D%7D%7B%7B%20end%20%7D%7D%5C%22%22%7D%5D%2C%20%22range%22%3A%20%7B%22from%22%3A%20%22%24%7B__from%7D%22%2C%20%22to%22%3A%20%22%24%7B__to%7D%22%7D%7D"
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 3000
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "id": 5,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "histogram_quantile(0.95, sum by (le, name) (rate(http_req_duration_milliseconds_bucket{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__rate_interval])))",
+          "legendFormat": "{{name}} p95",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "histogram_quantile(0.50, sum by (le, name) (rate(http_req_duration_milliseconds_bucket{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__rate_interval])))",
+          "legendFormat": "{{name}} p50",
+          "refId": "B"
+        }
+      ],
+      "title": "HTTP Request Duration (p95) by Request",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "k6 request throughput per request name and HTTP response status - rate(http_reqs_total[5m]).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 15
+          },
+          "unit": "reqps",
+          "links": [
+            {
+              "targetBlank": true,
+              "title": "Traces for ${series.labels.name}",
+              "url": "/explore?left=%7B%22datasource%22%3A%20%22%24%7BDS_TEMPO%7D%22%2C%20%22queries%22%3A%20%5B%7B%22refId%22%3A%20%22A%22%2C%20%22query%22%3A%20%22%7Bresource.deployment.environment%20%3D%20%5C%22%24deployment_environment%5C%22%20%26%26%20name%20%3D%20%5C%22%24%7B__series.labels.name%7D%5C%22%7D%22%2C%20%22queryType%22%3A%20%22traceql%22%7D%5D%2C%20%22range%22%3A%20%7B%22from%22%3A%20%22%24%7B__from%7D%22%2C%20%22to%22%3A%20%22%24%7B__to%7D%22%7D%7D"
+            },
+            {
+              "targetBlank": true,
+              "title": "Microservices logs",
+              "url": "/explore?left=%7B%22datasource%22%3A%20%22%24%7BDS_LOKI%7D%22%2C%20%22queries%22%3A%20%5B%7B%22refId%22%3A%20%22A%22%2C%20%22expr%22%3A%20%22%7Bk8s_namespace_name%3D%5C%22%24namespace%5C%22%7D%20%7C%20json%20%7C%20line_format%20%5C%22%7B%7B%20if%20.message%20%7D%7D%7B%7B%20.message%20%7D%7D%7B%7B%20else%20if%20.msg%20%7D%7D%7B%7B%20.msg%20%7D%7D%7B%7B%20else%20%7D%7D%7B%7B%20__line__%20%7D%7D%7B%7B%20end%20%7D%7D%5C%22%22%7D%5D%2C%20%22range%22%3A%20%7B%22from%22%3A%20%22%24%7B__from%7D%22%2C%20%22to%22%3A%20%22%24%7B__to%7D%22%7D%7D"
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "id": 6,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (name, status) (rate(http_reqs_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__rate_interval]))",
+          "legendFormat": "{{name}} [{{status}}]",
+          "refId": "A"
+        }
+      ],
+      "title": "HTTP Request Rate by Request",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "k6 checks broken down by check name and outcome - checks_total{condition=\"nonzero\"} is the pass count, checks_total{condition=\"zero\"} is the fail count, for each check{} block in microservices-smoke.js.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "condition"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "nonzero": {
+                        "text": "pass",
+                        "color": "green",
+                        "index": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "value",
+                    "options": {
+                      "zero": {
+                        "text": "fail",
+                        "color": "red",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Value"
+            },
+            "properties": [
+              {
+                "id": "displayName",
+                "value": "Count"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 13
+      },
+      "id": 7,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "check"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "sum by (check, condition) (increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range]))",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Checks: Pass vs Fail",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Virtual users over time - vus (current) and vus_max (configured ceiling, K6_VUS job parameter).",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "fillOpacity": 10
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 13
+      },
+      "id": 8,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "vus{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}",
+          "legendFormat": "VUs",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "vus_max{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}",
+          "legendFormat": "VUs max",
+          "refId": "B"
+        }
+      ],
+      "title": "Virtual Users",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 21
+      },
+      "id": 101,
+      "panels": [],
+      "title": "Traces & Logs",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "grafana-x-ray-datasource",
+        "uid": "DS_XRAY_UID"
+      },
+      "description": "Traces generated by this smoke test run. Each k6 iteration sends a W3C traceparent header through the gateway and the downstream microservices, so every iteration produces one end-to-end trace tagged with deployment.environment=$deployment_environment.",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "traceID"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "targetBlank": true,
+                    "title": "Logs for this trace",
+                    "url": "/explore?left=%7B%22datasource%22%3A%22%24%7BDS_LOKI%7D%22%2C%22queries%22%3A%5B%7B%22refId%22%3A%22A%22%2C%22expr%22%3A%22%7Bk8s_namespace_name%3D%5C%22%24namespace%5C%22%7D%20%7C%20json%20%7C%3D%20%5C%22${__value.raw}%5C%22%22%7D%5D%2C%22range%22%3A%7B%22from%22%3A%22${__from}%22%2C%22to%22%3A%22${__to}%22%7D%7D"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 22
+      },
+      "id": 9,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-x-ray-datasource",
+            "uid": "DS_XRAY_UID"
+          },
+          "queryType": "getTraceSummaries",
+          "query": "",
+          "region": "default",
+          "refId": "A"
+        }
+      ],
+      "title": "Smoke Test Traces",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "cloudwatch",
+        "uid": "DS_CW_UID"
+      },
+      "description": "Microservices application logs for the namespace this smoke test targeted (microservices / microservices-develop). Lines containing trace_id=<hex> can be opened directly in Tempo via the Loki datasource's derived field, correlating with the trace IDs k6 logs to the Jenkins console.",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 31
+      },
+      "id": 10,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "cloudwatch",
+            "uid": "DS_CW_UID"
+          },
+          "queryMode": "Logs",
+          "region": "default",
+          "logGroups": [
+            {
+              "name": "/jenkins-2026/jenkins-2026/otel"
+            }
+          ],
+          "expression": "fields @timestamp, @message, @logStream | sort @timestamp desc | limit 100",
+          "refId": "A"
+        }
+      ],
+      "title": "Microservices Pod Logs",
+      "type": "logs"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0.05
+              }
+            ]
+          },
+          "unit": "percentunit"
+        }
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 34
+      },
+      "id": 11,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "expr": "1 - (sum(increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", condition=\"nonzero\"}[$__range])) / sum(increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range])))",
+          "legendFormat": "HTTP Error Rate",
+          "refId": "A"
+        }
+      ],
+      "title": "HTTP Error Rate %",
+      "type": "stat"
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 39,
+  "tags": [
+    "jenkins-2026",
+    "k6",
+    "microservices"
+  ],
+  "templating": {
+    "list": [
+      {
+        "hide": 0,
+        "includeAll": false,
+        "label": "Prometheus / Mimir",
+        "multi": false,
+        "name": "DS_PROMETHEUS",
+        "options": [],
+        "query": "prometheus",
+        "queryValue": "",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource",
+        "current": {
+          "selected": true,
+          "text": "grafanacloud-prom",
+          "value": "grafanacloud-prom"
+        }
+      },
+      {
+        "current": {
+          "text": "stable",
+          "value": "stable"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Environment",
+        "multi": false,
+        "name": "deployment_environment",
+        "options": [
+          {
+            "selected": true,
+            "text": "stable",
+            "value": "stable"
+          },
+          {
+            "selected": false,
+            "text": "develop",
+            "value": "develop"
+          }
+        ],
+        "query": "stable,develop",
+        "queryValue": "",
+        "skipUrlSync": false,
+        "type": "custom"
+      },
+      {
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(jvm_memory_used_bytes{deployment_environment=\"$deployment_environment\"}, k8s_namespace_name)",
+        "description": "Hidden: resolves the k8s namespace for the selected environment (stable->microservices, develop->microservices-develop) so log panels/links scope correctly. Shared service names across envs make namespace the only discriminator.",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "namespace",
+        "options": [],
+        "query": {
+          "query": "label_values(jvm_memory_used_bytes{deployment_environment=\"$deployment_environment\"}, k8s_namespace_name)",
+          "refId": "StandardVariableQuery"
+        },
+        "refresh": 2,
+        "regex": "",
+        "skipUrlSync": false,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "jenkins-2026 / k6 Observability Smoke Test",
+  "uid": "jenkins2026-k6-smoke-overview",
+  "version": 2,
+  "weekStart": ""
+}

@@ -3,6 +3,15 @@ kind: Application
 metadata:
   name: cnpg-operator
   namespace: argocd
+  annotations:
+    # CNPG's clusters/poolers CRDs have huge OpenAPI schemas, which makes them
+    # awkward for ArgoCD in two distinct places:
+    #
+    #  - DIFF: a client-side diff 3-way-merges against the (oversized) live
+    #    object and can report false OutOfSync. ServerSideDiff computes the diff
+    #    via server-side apply on the API server, giving a reliable Synced status
+    #    so automated sync doesn't fire a (doomed) sync on phantom drift.
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
 spec:
   project: default
   source:
@@ -18,4 +27,16 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      #  - APPLY: ServerSideApply avoids the last-applied-configuration
+      #    annotation, but on ArgoCD v3.5 it is NOT honored for these CRDs - the
+      #    sync still does a client-side patch and blows the 256KB
+      #    metadata.annotations limit. Replace=true (kubectl replace, no
+      #    annotation) is what actually reconciles them. NOTE: a *manual/forced*
+      #    full sync still reports "failed to apply (dry run)" because ArgoCD's
+      #    pre-sync dry-run is client-side here regardless - that status is
+      #    cosmetic; the App stays Synced + Healthy and automated sync skips while
+      #    Synced (verified live), so this only surfaces on a deliberate re-sync.
+      #    Replace on these CRDs is a PUT (no cascade-delete); never force-sync
+      #    them - that would recreate the CRD and cascade-delete the PG clusters.
       - ServerSideApply=true
+      - Replace=true

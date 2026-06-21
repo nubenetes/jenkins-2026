@@ -41,3 +41,8 @@ output "grafana_workspace_id" {
   description = "Amazon Managed Grafana workspace id."
   value       = aws_grafana_workspace.this.id
 }
+
+output "dashboard_publisher_role_arn" {
+  description = "IAM role 02.01-gke-provision assumes via GitHub OIDC to publish dashboards to AMG -> GitHub secret AWS_DASHBOARD_PUBLISH_ROLE_ARN."
+  value       = aws_iam_role.dashboard_publisher.arn
+}
