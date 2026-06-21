@@ -3,6 +3,15 @@ kind: Application
 metadata:
   name: cnpg-operator
   namespace: argocd
+  annotations:
+    # CNPG's clusters/poolers CRDs have huge OpenAPI schemas. ServerSideApply
+    # governs only the *apply*, not the diff/dry-run - so without this Argo still
+    # computes a client-side 3-way-merge that writes the last-applied-configuration
+    # annotation and blows the 256KB metadata.annotations limit ("failed to apply
+    # (dry run)"). ServerSideDiff runs the dry-run via server-side apply on the API
+    # server (no annotation), so the diff passes and Replace=true is unnecessary -
+    # avoiding kubectl replace's recreate semantics on these CRDs entirely.
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
 spec:
   project: default
   source:
@@ -18,10 +27,8 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-      # CNPG's CRDs (clusters/poolers) have huge OpenAPI schemas. Client-side
-      # apply blows the 256KB metadata.annotations limit
-      # (last-applied-configuration), and ServerSideApply alone still failed the
-      # sync dry-run here, so Replace=true (kubectl replace, no annotation) is
-      # what actually lets these CRDs reconcile.
+      # ServerSideApply (apply via SSA, no last-applied-configuration annotation)
+      # paired with the ServerSideDiff compare-option above (SSA dry-run). Both
+      # are needed for these oversized CRDs: SSA alone still hit the 256KB
+      # annotation limit on the *dry-run*, which is what ServerSideDiff fixes.
       - ServerSideApply=true
-      - Replace=true
