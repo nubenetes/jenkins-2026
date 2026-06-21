@@ -355,7 +355,7 @@
             "resources": [
               "${appinsights}"
             ],
-            "query": "union AppRequests, AppDependencies\n| project TimeGenerated, OperationId, AppRoleName, Name, DurationMs, Success, Type\n| order by TimeGenerated desc",
+            "query": "union requests, dependencies\n| project timestamp, operation_Id, cloud_RoleName, name, duration, success, itemType\n| order by timestamp desc",
             "dashboardTime": true,
             "resultFormat": "table"
           },
@@ -402,7 +402,7 @@
             "resources": [
               "${appinsights}"
             ],
-            "query": "AppTraces\n| project TimeGenerated, SeverityLevel, AppRoleName, OperationId, Message\n| order by TimeGenerated desc",
+            "query": "traces\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
             "dashboardTime": true,
             "resultFormat": "table"
           },
