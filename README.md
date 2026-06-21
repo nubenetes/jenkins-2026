@@ -2495,11 +2495,14 @@ With this configuration active, triggering any of the protected workflows will p
 1. Go to the repo's **Actions** tab -> **02.01 GKE provision** -> **Run
    workflow**. Pick `observability_mode` (`oss` needs no extra secrets and is
    the recommended default - see [Prerequisites](#prerequisites-1) above).
-   Leave `enable_gateway` unchecked (the default) unless the one-time
+   `enable_gateway` defaults to **checked** - this project's intended public
+   access path. **Uncheck it only** for a fresh environment where the one-time
    **01.02 Gateway bootstrap** workflow + DNS records + IAP OAuth client (see
-   [Public access](#public-access-gke-gateway-api--iap)) have already been
-   completed - checking it before then deploys a Gateway that can't get an
-   IP/certificate.
+   [Public access](#public-access-gke-gateway-api--iap)) haven't been done yet
+   (leaving it on without the bootstrap deploys a Gateway that can't get an
+   IP/certificate). Note: once the gateway is up, deploying with it **off**
+   reverts Jenkins' root URL to `localhost`, which breaks the Google OIDC
+   login (`redirect_uri_mismatch`) - keep it on.
 2. Wait ~15-20 minutes. The job summary prints the cluster name/zone and a
    reminder to decommission when done. `kubectl`/`helm` commands won't work
    from your machine unless you also run
