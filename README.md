@@ -2041,6 +2041,7 @@ lifecycle:
 |---|---|---|---|
 | 01.01 | [Grafana Cloud bootstrap](.github/workflows/01.01-grafana-cloud-bootstrap.yml) | One-time bootstrap | Creates/confirms the persistent Grafana Cloud stack (`terraform/grafana-cloud-stack`) that `observability_mode: grafana-cloud` sends data to. See [Full Grafana Cloud lifecycle automation](#one-time-setup-1). |
 | 01.02 | [Gateway bootstrap](.github/workflows/01.02-gateway-bootstrap.yml) | One-time bootstrap | Creates/confirms the persistent static IP + managed wildcard cert + DNS authorization (`terraform/gateway-bootstrap`) that [public access](#public-access-gke-gateway-api--iap) depends on. |
+| 01.03 | [Azure managed-grafana bootstrap](.github/workflows/01.03-azure-bootstrap.yml) | One-time bootstrap | Creates/confirms the persistent Azure backend (`terraform/azure-managed-grafana`: Azure Managed Grafana + Azure Monitor workspace + App Insights + Entra SP) that `observability_mode: managed-azure` sends data to. GitHub-OIDC → Azure auth. See [GitHub Actions automation](#github-actions-automation) step 6. |
 | 01.98 | [Grafana Cloud decommission](.github/workflows/01.98-grafana-cloud-decommission.yml) | One-time decommission | Destroys the persistent Grafana Cloud stack (`terraform/grafana-cloud-stack`). Run only when tearing down the environment permanently. |
 | 01.99 | [Gateway decommission](.github/workflows/01.99-gateway-decommission.yml) | One-time decommission | Destroys the persistent static IP, cert mapping, and DNS authorization (`terraform/gateway-bootstrap`). Run only when tearing down the environment permanently. |
 | 02.01 | [GKE provision](.github/workflows/02.01-gke-provision.yml) | GKE lifecycle | Provisions the throwaway GKE cluster (`terraform/gke`) and deploys the full stack (`scripts/up.sh`) + smoke test. Pair with 02.99. |
@@ -2345,7 +2346,7 @@ With this configuration active, triggering any of the protected workflows will p
    | `JENKINS_OIDC_CLIENT_ID` / `JENKINS_OIDC_CLIENT_SECRET` | Google OAuth client for Jenkins "Sign in with Google" (see [Google login](#google-login-openid-connect)) |
    | `JENKINS_OIDC_ADMIN_EMAIL` | Google account email granted the Jenkins `admin` role via OIDC login - **your own email, never committed to the repo** (see [Google login](#google-login-openid-connect)) |
    | `IAP_OAUTH_CLIENT_ID` / `IAP_OAUTH_CLIENT_SECRET` | OAuth client gating Jenkins/Headlamp via Identity-Aware Proxy (see [Public access](#public-access-gke-gateway-api--iap)) |
-   | `AZURE_MONITOR_CONNECTION_STRING` / `AZURE_MONITOR_PROMETHEUS_ENDPOINT` / `AZURE_TENANT_ID` / `AZURE_CLIENT_ID` / `AZURE_CLIENT_SECRET` / `AZURE_GRAFANA_BASE_URL` / `AZURE_GRAFANA_API_KEY` | `observability_mode: managed-azure` - the `azure-monitor-credentials` Secret values, taken from the `terraform/azure-managed-grafana` outputs (see [`docs/observability.md`](docs/observability.md#managed-azure)) |
+   | `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` / `AZURE_GRAFANA_ADMIN_OBJECT_IDS` | `observability_mode: managed-azure` - **identifiers only, no secret**: the GitHub-OIDC Entra app the `01.03 Azure bootstrap` workflow logs in as, plus the comma-separated Entra object IDs granted Grafana Admin. The actual Azure backend credentials never become GitHub secrets - `02.01` reads them from the `terraform/azure-managed-grafana` GCS state outputs (see [`docs/observability.md`](docs/observability.md#managed-azure)) |
 
    `gateway.baseDomain` (default `jenkins2026.nubenetes.com`) is **not** a
    secret - it's committed in `config/config.yaml`. Override it via the
@@ -2435,40 +2436,54 @@ With this configuration active, triggering any of the protected workflows will p
    every `02.99-gke-decommission` run destroys the same Terraform state, revoking
    both tokens.
 
-6. **(Optional) Azure backend for `observability_mode: managed-azure`.** Like
-   step 5, the Azure resources are provisioned once, by hand, with local state
-   (this module is **not** wired into CI):
+6. **(Optional) Azure backend for `observability_mode: managed-azure`.**
+   Provisioned once via the **01.03 Azure bootstrap** workflow (state in the
+   same GCS bucket as `terraform/gke`), authenticating to Azure with **GitHub
+   OIDC - no long-lived secret stored**, the same key-less philosophy as the
+   GCP Workload Identity Federation in steps 1-3. All sensitive inputs are
+   GitHub secrets injected as `TF_VAR_*` / `ARM_*` by the workflow; nothing
+   sensitive is written to the repo.
 
-   a. **Provision the Azure stack** -
-      [`terraform/azure-managed-grafana`](terraform/azure-managed-grafana)
-      creates Azure Managed Grafana, the Azure Monitor workspace (+ Data
-      Collection Endpoint/Rule for managed Prometheus), Application Insights +
-      Log Analytics, the Entra service principal the collector authenticates
-      with, and the role assignments:
-
-      ```bash
-      cd terraform/azure-managed-grafana
-      cp terraform.tfvars.example terraform.tfvars   # set subscription_id, tenant_id
-      terraform init && terraform apply
-      ```
-
-   b. **Copy its outputs into GitHub secrets** (the workflow turns these into
-      the `azure-monitor-credentials` Secret):
+   a. **Create the GitHub-OIDC Entra app** (one-time, the only manual Azure
+      step - analogous to creating the GCP WIF pool). With the Azure CLI
+      (`az login` first):
 
       ```bash
-      gh secret set AZURE_MONITOR_CONNECTION_STRING   --body "$(terraform output -raw azure_monitor_connection_string)"
-      gh secret set AZURE_MONITOR_PROMETHEUS_ENDPOINT --body "$(terraform output -raw azure_monitor_prometheus_endpoint)"
-      gh secret set AZURE_TENANT_ID                   --body "$(terraform output -raw azure_tenant_id)"
-      gh secret set AZURE_CLIENT_ID                   --body "$(terraform output -raw azure_client_id)"
-      gh secret set AZURE_CLIENT_SECRET               --body "$(terraform output -raw azure_client_secret)"
-      gh secret set AZURE_GRAFANA_BASE_URL            --body "$(terraform output -raw grafana_endpoint)"
-      # AZURE_GRAFANA_API_KEY: create a service-account token in the Azure
-      # Managed Grafana UI (or via `az grafana service-account token create`)
-      # and set it as a secret for the dashboard publishing step.
+      SUB="<your-subscription-id>"; REPO="<owner>/<repo>"
+      APP_ID=$(az ad app create --display-name "jenkins-2026-github-oidc" --query appId -o tsv)
+      az ad sp create --id "$APP_ID"
+      az ad app federated-credential create --id "$APP_ID" --parameters \
+        "{\"name\":\"github-azure-bootstrap\",\"issuer\":\"https://token.actions.githubusercontent.com\",\"subject\":\"repo:${REPO}:environment:azure-bootstrap\",\"audiences\":[\"api://AzureADTokenExchange\"]}"
+      az role assignment create --assignee "$APP_ID" --role "Contributor"               --scope "/subscriptions/${SUB}"
+      az role assignment create --assignee "$APP_ID" --role "User Access Administrator" --scope "/subscriptions/${SUB}"
       ```
 
-   Then pick `managed-azure` in **02.01 GKE provision**. Trace/log dashboard
-   panels need Azure-datasource rework (only metric panels are portable) - see
+   b. **Set the identifier secrets** (no secret values - just IDs):
+
+      ```bash
+      gh secret set AZURE_CLIENT_ID                --body "$APP_ID"
+      gh secret set AZURE_TENANT_ID               --body "$(az account show --query tenantId -o tsv)"
+      gh secret set AZURE_SUBSCRIPTION_ID         --body "$SUB"
+      gh secret set AZURE_GRAFANA_ADMIN_OBJECT_IDS --body "$(az ad signed-in-user show --query id -o tsv)"  # comma-separated
+      ```
+
+   c. **Run the "01.03 Azure managed-grafana bootstrap" workflow** (Actions tab
+      → **01.03 Azure managed-grafana bootstrap** → **Run workflow**). It applies
+      [`terraform/azure-managed-grafana`](terraform/azure-managed-grafana) -
+      Azure Managed Grafana, the Azure Monitor workspace (+ Data Collection
+      Endpoint/Rule for managed Prometheus), Application Insights + Log
+      Analytics, the collector's Entra service principal, and the role
+      assignments. Safe to re-run (no-op once the resources exist). It runs in
+      the `azure-bootstrap` GitHub Environment, matching the federated
+      credential's subject.
+
+   From here, every **02.01 GKE provision** run with `observability_mode:
+   managed-azure` reads this module's outputs straight from the GCS state to
+   build the `azure-monitor-credentials` Secret - the connection string,
+   managed-Prometheus endpoint and service-principal secret never become GitHub
+   secrets. Trace/log dashboard panels use Azure Monitor datasources (only
+   metric panels are portable as-is) and are published to Azure Managed Grafana
+   manually (you hold Grafana Admin) - see
    [`docs/observability.md`](docs/observability.md#managed-azure).
 
 ### Running it
