@@ -344,6 +344,9 @@ jobs:
               echo "::warning::failed to publish $(basename "${f}")"
             fi
           done
+          # Generic k8s/node infra: import maintained community dashboards
+          # (Node Exporter / kube-state-metrics) instead of a hand-rolled one.
+          bash observability/grafana/dashboards-azure/import-community.sh || true
 
       - name: Summary
         if: always()
