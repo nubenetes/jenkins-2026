@@ -26,6 +26,9 @@ env:
 jobs:
   bootstrap:
     runs-on: ubuntu-latest
+    # Approval gate (creates a persistent, billed Grafana Cloud resource) -
+    # same required-reviewer protection as the GKE/decommission workflows.
+    environment: gke-production
     steps:
       - name: Checkout
         uses: actions/checkout@v4
