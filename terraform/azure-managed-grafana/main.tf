@@ -107,10 +107,13 @@ resource "azurerm_role_assignment" "collector_metrics_publisher" {
 # --- Azure Managed Grafana (frontend) -----------------------------------------
 
 resource "azurerm_dashboard_grafana" "this" {
-  name                  = "${var.name_prefix}-grafana"
-  resource_group_name   = azurerm_resource_group.this.name
-  location              = azurerm_resource_group.this.location
-  grafana_major_version = "11"
+  name                = "${var.name_prefix}-grafana"
+  resource_group_name = azurerm_resource_group.this.name
+  location            = azurerm_resource_group.this.location
+  # Azure Managed Grafana exposes its own managed major versions, which lag the
+  # OSS releases - the Standard SKU currently only accepts "12" (not "13", and
+  # "11" is retired). Unrelated to the oss mode's pinned OSS image (13.0.2).
+  grafana_major_version = "12"
 
   identity {
     type = "SystemAssigned"
