@@ -233,10 +233,45 @@ dashboard link in `microservicesK6Smoke`'s build output. Two ways to provide it:
   (exporters: `otlp/tempo`, `otlphttp/loki`, `prometheusremotewrite`) instead
   of the Grafana Cloud variants.
 
-### `managed`
+### `managed-azure`
 
-A documented stub for "bring your own"
-managed Grafana (e.g. Amazon Managed Grafana, Azure Managed Grafana). Point
-`OTEL_EXPORTER_OTLP_ENDPOINT` / the `grafana-cloud-credentials` Secret at that
-stack's OTLP gateway; `03-observability.sh`/`07-grafana-dashboards.sh` exit
-without creating resources.
+Unlike Grafana Cloud, **Azure Managed Grafana is only a visualization
+frontend** - it reads from Azure Monitor datasources, it does not ingest OTLP.
+So in this mode the collectors export to Azure Monitor's backends and Azure
+Managed Grafana renders from them:
+
+- **traces + logs** → Azure Monitor / Application Insights, via the
+  collector-contrib `azuremonitor` exporter (connection string from the
+  `azure-monitor-credentials` Secret).
+- **metrics** → Azure Monitor managed Prometheus, via the
+  `prometheusremotewrite` exporter authenticated to Microsoft Entra with the
+  `oauth2client` extension (service-principal client-credentials, scope
+  `https://monitor.azure.com/.default`).
+
+`scripts/03-observability.sh` installs the two collector releases with
+[`values-managed-azure.yaml`](../observability/otel-collector/values-managed-azure.yaml)
+/ [`values-managed-azure-logs.yaml`](../observability/otel-collector/values-managed-azure-logs.yaml),
+after retiring any in-cluster `oss` backends / `grafana-cloud` agents left from
+a previous mode. It requires the `azure-monitor-credentials` Secret - copy
+[`secret-managed-azure.example.yaml`](../observability/otel-collector/secret-managed-azure.example.yaml),
+fill it in, and apply it first.
+
+`scripts/07-grafana-dashboards.sh` publishes the dashboards to Azure Managed
+Grafana via its Grafana HTTP API.
+
+> **What this PoC ships vs. follow-ups.** The collector wiring, mode plumbing,
+> credentials template and dashboard push are in place. Still **out of scope**
+> (planned): Terraform to provision the Azure resources themselves (Azure
+> Managed Grafana + Azure Monitor workspace + Application Insights + the Entra
+> app/role assignments), and reworking the **trace/log panels** to Azure
+> datasources - App Insights and Log Analytics use their own query models, not
+> Tempo/Loki, so only the **metric** panels are portable as-is. Compute stays
+> on GKE; only the observability backend changes.
+
+### `managed-aws`
+
+Planned, currently a documented stub: export to **Amazon Managed Service for
+Prometheus** (remote-write) + **X-Ray/CloudWatch** for traces/logs, visualized
+in **Amazon Managed Grafana** - the AWS analogue of `managed-azure`.
+`03-observability.sh` / `07-grafana-dashboards.sh` exit without creating
+resources. Use `grafana-cloud`, `oss`, or `managed-azure` for now.

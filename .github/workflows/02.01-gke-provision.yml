@@ -20,7 +20,8 @@ on:
         options:
           - grafana-cloud
           - oss
-          - managed
+          - managed-azure
+          - managed-aws
       enable_gateway:
         description: "Create the public Gateway/HTTPRoutes/IAP (requires the one-time 01.02 Gateway bootstrap + DNS + IAP OAuth client setup - see README \"Public access (GKE Gateway API + IAP)\")"
         required: true
