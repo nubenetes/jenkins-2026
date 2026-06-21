@@ -286,7 +286,10 @@ case "${J2026_OBS_MODE}" in
              else . end)
          | .id=null)
         | {dashboard:., folderUid:"", overwrite:true}' "${dashboard}")"
-      if api POST "/api/dashboards/db" -d "${payload}" >/dev/null 2>&1; then
+      # Stream the body via stdin (--data-binary @-) rather than passing it as a
+      # curl argument: some vendored dashboards (e.g. node-exporter-full, ~500KB)
+      # exceed ARG_MAX as a command-line arg and would silently fail to publish.
+      if printf '%s' "${payload}" | api POST "/api/dashboards/db" --data-binary @- >/dev/null 2>&1; then
         log_info "Published ${name}."
       else
         log_warn "Failed to publish ${name}."
