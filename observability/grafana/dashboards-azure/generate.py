@@ -38,21 +38,18 @@ import pathlib
 HERE = pathlib.Path(__file__).resolve().parent
 SRC_DIR = HERE.parent / "dashboards"
 
-AZURE_DS = {"type": "grafana-azure-monitor-datasource", "uid": "${DS_AZURE_MONITOR}"}
+# azure-monitor-oob is the stable uid of the built-in ("out of box") Azure
+# Monitor datasource that every Azure Managed Grafana instance provisions - a
+# product constant, not an account-specific id, so it's safe to hardcode and
+# avoids a chained ${DS_AZURE_MONITOR} variable that wouldn't auto-resolve.
+AZURE_DS = {"type": "grafana-azure-monitor-datasource", "uid": "azure-monitor-oob"}
 
-# Template variables that replace DS_LOKI / DS_TEMPO in the variants.
+# Template variable that replaces DS_LOKI / DS_TEMPO in the variants. The
+# ${appinsights} resource is resolved at publish time (07-grafana-dashboards.sh
+# / 02.01) by substituting the actual App Insights resource id, so the panels
+# never depend on the variable auto-selecting in the UI; the variable + its ARG
+# query stay as an account-agnostic fallback / resource picker.
 AZURE_TEMPLATING = [
-    {
-        "name": "DS_AZURE_MONITOR",
-        "label": "Azure Monitor",
-        "type": "datasource",
-        "query": "grafana-azure-monitor-datasource",
-        "refresh": 1,
-        "hide": 0,
-        "regex": "",
-        "current": {},
-        "options": [],
-    },
     {
         "name": "appinsights",
         "label": "Application Insights",
