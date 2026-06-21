@@ -9,7 +9,12 @@
 #     "jenkins-2026-grafana-dashboards" ConfigMap + kube-prometheus-stack's
 #     Grafana sidecar.
 #
-#   managed - documented stub, same as 03-observability.sh.
+#   managed-azure - publishes them to Azure Managed Grafana via its Grafana
+#     HTTP API (GRAFANA_BASE_URL + GRAFANA_API_KEY from the
+#     "${J2026_AZURE_MONITOR_SECRET}" Secret). Metric panels are portable;
+#     trace/log panels need Azure-specific rework (follow-up).
+#
+#   managed-aws - documented stub.
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
@@ -109,8 +114,44 @@ case "${J2026_OBS_MODE}" in
     log_info "observability.mode=oss: dashboards already provisioned via ConfigMap + Grafana sidecar."
     ;;
 
-  managed)
-    log_warn "observability.mode=managed is a stub - skipping dashboard import."
+  managed-azure)
+    # Publish dashboards to Azure Managed Grafana via its Grafana HTTP API
+    # (GRAFANA_BASE_URL + GRAFANA_API_KEY in the azure-monitor-credentials
+    # Secret). NOTE: the metric panels are portable (Azure Monitor managed
+    # Prometheus is PromQL-compatible - just pick that datasource), but the
+    # trace (App Insights) and log (Log Analytics) panels need Azure-specific
+    # rework and won't render against Tempo/Loki queries. Tracked as a
+    # follow-up - see docs/observability.md "managed-azure".
+    if ! kubectl get secret "${J2026_AZURE_MONITOR_SECRET}" -n "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1; then
+      log_warn "Secret '${J2026_AZURE_MONITOR_SECRET}' not found - skipping dashboard import."
+      exit 0
+    fi
+    GRAFANA_BASE_URL="$(kubectl get secret "${J2026_AZURE_MONITOR_SECRET}" -n "${J2026_OBS_NAMESPACE}" -o jsonpath='{.data.GRAFANA_BASE_URL}' | base64 -d)"
+    GRAFANA_API_KEY="$(kubectl get secret "${J2026_AZURE_MONITOR_SECRET}" -n "${J2026_OBS_NAMESPACE}" -o jsonpath='{.data.GRAFANA_API_KEY}' | base64 -d)"
+    if [[ -z "${GRAFANA_BASE_URL}" || -z "${GRAFANA_API_KEY}" ]]; then
+      log_warn "GRAFANA_BASE_URL / GRAFANA_API_KEY not set in '${J2026_AZURE_MONITOR_SECRET}' - skipping dashboard import."
+      exit 0
+    fi
+
+    log_step "Publishing dashboards to Azure Managed Grafana (${GRAFANA_BASE_URL})"
+    for dashboard in "${DASHBOARDS_DIR}"/*.json; do
+      name="$(basename "${dashboard}" .json)"
+      # Wrap into the /api/dashboards/db request body and overwrite by uid.
+      payload="$(jq -n --slurpfile db "${dashboard}" \
+        '{dashboard: ($db[0] + {id: null}), folderUid: "", overwrite: true}')"
+      if curl -fsS -X POST "${GRAFANA_BASE_URL%/}/api/dashboards/db" \
+          -H "Authorization: Bearer ${GRAFANA_API_KEY}" \
+          -H "Content-Type: application/json" \
+          -d "${payload}" >/dev/null; then
+        log_info "Published ${name}."
+      else
+        log_warn "Failed to publish ${name} (metric panels may still need an Azure Monitor datasource)."
+      fi
+    done
+    ;;
+
+  managed-aws)
+    log_warn "observability.mode=managed-aws is a stub - skipping dashboard import."
     ;;
 
   *)

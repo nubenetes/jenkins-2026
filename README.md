@@ -187,7 +187,7 @@ for the OpenTelemetry/Grafana wiring.
 ## Quick start
 
 ```bash
-# 1. Review/edit config/config.yaml - observability.mode (grafana-cloud|oss|managed).
+# 1. Review/edit config/config.yaml - observability.mode (grafana-cloud|oss|managed-azure|managed-aws).
 #    Default: grafana-cloud.
 
 # 2. (grafana-cloud mode only) create the OTLP credentials secret:
@@ -858,7 +858,7 @@ vars). Feature flags:
 
 | Key | Default | Override | Meaning |
 |---|---|---|---|
-| `observability.mode` | `grafana-cloud` | edit `config.yaml` | `grafana-cloud`\|`oss`\|`managed` - where traces/metrics/logs go (see [`docs/observability.md`](docs/observability.md)). |
+| `observability.mode` | `grafana-cloud` | edit `config.yaml` | `grafana-cloud`\|`oss`\|`managed-azure`\|`managed-aws` - where traces/metrics/logs go (see [`docs/observability.md`](docs/observability.md)). |
 
 Other notable sections: `jenkins.*` (chart coordinates, namespace, this
 repo's own URL/branch used by JCasC's global library + seed job),
@@ -2173,12 +2173,13 @@ When executing the **02.01 GKE provision** workflow manually, you are presented 
    - **How to Use**: Select the target branch (e.g. `develop`) or tag (e.g. `v0.9.1`) you want to run. If the `git_ref` field below is left empty, the runner will check out this exact reference.
 
 2. **observability_mode (Dropdown - Choice)**:
-   - **Type**: Choice (`grafana-cloud` | `oss` | `managed`).
+   - **Type**: Choice (`grafana-cloud` | `oss` | `managed-azure` | `managed-aws`).
    - **Default**: `grafana-cloud`.
    - **Purpose**: Overrides the `observability.mode` setting defined in `config/config.yaml` for this execution lifecycle:
      - `grafana-cloud`: Forwards cluster telemetry (logs, metrics, traces) to Grafana Cloud via OTLP.
      - `oss`: Installs in-cluster Grafana, Prometheus, Loki, and Tempo in the `observability` namespace.
-     - `managed`: A placeholder for external cloud provider managed telemetry.
+     - `managed-azure`: Exports to Azure Monitor (managed Prometheus + Application Insights/Log Analytics); visualized in Azure Managed Grafana. Requires the `azure-monitor-credentials` Secret (see [`docs/observability.md`](docs/observability.md#managed-azure)).
+     - `managed-aws`: Planned (Amazon Managed Prometheus + X-Ray/CloudWatch + Amazon Managed Grafana); currently a documented stub.
 
 3. **enable_gateway (Checkbox - Boolean)**:
    - **Type**: Boolean (`true` | `false`).
@@ -2355,7 +2356,7 @@ With this configuration active, triggering any of the protected workflows will p
    `observability_mode: grafana-cloud`. Without this, picking that mode in
    **02.01 GKE provision** will fail at `terraform apply` in
    `terraform/grafana-cloud-token` - skip this step entirely if you only plan
-   to use `oss` or `managed`.
+   to use `oss`, `managed-azure`, or `managed-aws`.
 
    This provisions one **persistent** Grafana Cloud stack (once, locally,
    like step 2 above), then lets every `02.01-gke-provision`/`02.99-gke-decommission`

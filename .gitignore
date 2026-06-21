@@ -1,6 +1,8 @@
 # Secrets / generated credentials - never commit real values
 observability/otel-collector/secret.yaml
+observability/otel-collector/secret-managed-azure.yaml
 **/secret.local.yaml
+**/secret-*.local.yaml
 *.env
 .env*
 !.env.example
