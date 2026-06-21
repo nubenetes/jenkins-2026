@@ -256,8 +256,13 @@ a previous mode. It requires the `azure-monitor-credentials` Secret - copy
 [`secret-managed-azure.example.yaml`](../observability/otel-collector/secret-managed-azure.example.yaml),
 fill it in, and apply it first.
 
-`scripts/07-grafana-dashboards.sh` publishes the dashboards to Azure Managed
-Grafana via its Grafana HTTP API.
+`scripts/07-grafana-dashboards.sh` publishes the
+[managed-azure dashboard variants](../observability/grafana/dashboards-azure)
+to Azure Managed Grafana via its Grafana HTTP API. Those variants keep the
+metric panels (Azure Monitor managed Prometheus is PromQL-compatible) and
+rewrite the log/trace panels to Azure Monitor Logs/Traces, with the
+Application Insights resource selected at runtime via an account-agnostic
+`${appinsights}` Azure Resource Graph template variable (no hardcoded IDs).
 
 The Azure resources themselves are provisioned by
 [`terraform/azure-managed-grafana/`](../terraform/azure-managed-grafana) - a
@@ -270,12 +275,14 @@ outputs map to the `AZURE_*` / `AZURE_GRAFANA_*` GitHub Actions secrets that
 `02.01-gke-provision.yml` turns into the `azure-monitor-credentials` Secret -
 see README.md "GitHub Actions automation".
 
-> **What this PoC ships vs. follow-ups.** Collector wiring, mode plumbing,
-> credentials template/Secret wiring, dashboard push, and the Azure resource
-> Terraform are in place. Still **out of scope**: reworking the **trace/log
-> panels** to Azure datasources - App Insights and Log Analytics use their own
-> query models, not Tempo/Loki, so only the **metric** panels are portable
-> as-is. Compute stays on GKE; only the observability backend changes.
+> **What this PoC ships.** Collector wiring, mode plumbing, credentials
+> template/Secret wiring, the Azure resource Terraform, dashboard push, and the
+> Azure dashboard variants (metrics + Azure Monitor Logs/Traces) are all in
+> place. The only deliberate caveat: the Azure Monitor datasource query JSON in
+> those variants is best-effort and should be **validated against a real Azure
+> account** on first integration (table/field names may need minor tweaks) -
+> see [`dashboards-azure/README.md`](../observability/grafana/dashboards-azure/README.md).
+> Compute stays on GKE; only the observability backend changes.
 
 ### `managed-aws`
 
