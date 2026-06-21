@@ -410,6 +410,15 @@ collector), so the script skips there and `02.01` publishes in a dedicated step
 that assumes the least-privilege **`dashboard_publisher_role_arn`** role via
 **GitHub OIDC** (no access keys), mirroring the managed-azure publish.
 
+To propagate a dashboard JSON change to AMG on its own - without re-provisioning -
+run the dedicated **`02.04 Publish AWS dashboards`** workflow. AMG and AMP are
+persistent (one-time `01.04` bootstrap), so it needs **no running cluster**: it
+reads the AMG connection params (endpoint/workspace id/AMP query URL/region)
+straight from the `terraform/aws-managed-grafana` GCS state and assumes the same
+`dashboard_publisher_role_arn` role via GitHub OIDC. The script's managed-aws
+branch sources those params from the environment, falling back to the in-cluster
+`aws-managed-credentials` Secret when run by `up.sh`.
+
 > **What this PoC ships vs. follow-ups.** Collector wiring, mode plumbing,
 > credentials template/Secret wiring, dashboards + publish, the Terraform module
 > and the bootstrap/decommission workflows are in place and **validated**

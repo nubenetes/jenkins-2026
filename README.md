@@ -2114,6 +2114,7 @@ lifecycle:
 | 02.01 | [GKE provision](.github/workflows/02.01-gke-provision.yml) | GKE lifecycle | Provisions the throwaway GKE cluster (`terraform/gke`) and deploys the full stack (`scripts/up.sh`) + smoke test. Pair with 02.99. |
 | 02.02 | [Redeploy Jenkins](.github/workflows/02.02-redeploy-jenkins.yml) | GKE lifecycle | Re-applies only `scripts/04-jenkins.sh` (Helm upgrade of `helm/jenkins/` + `jenkins/casc/` JCasC) and re-seeds the Microservices pipelines, against the cluster from the last 02.01 run - for a Jenkins-only fix without the full provision/decommission cycle. Run any number of times between 02.01 and 02.99. |
 | 02.03 | [Redeploy Headlamp](.github/workflows/02.03-redeploy-headlamp.yml) | GKE lifecycle | Re-applies `scripts/01-namespaces.sh` (refreshes the non-sensitive OIDC config keys on `headlamp-credentials`) and `scripts/08-headlamp.sh` (Helm upgrade of `helm/headlamp/`), against the cluster from the last 02.01 run - for a Headlamp-only fix without the full provision/decommission cycle. Run any number of times between 02.01 and 02.99. |
+| 02.04 | [Publish AWS dashboards](.github/workflows/02.04-publish-aws-dashboards.yml) | GKE lifecycle | (Re)publishes the `managed-aws` Grafana dashboards (`observability/grafana/dashboards-aws/`) to Amazon Managed Grafana **without a running cluster** - reads the AMG connection params from the persistent `terraform/aws-managed-grafana` GCS state and authenticates via GitHub OIDC (the dashboard-publisher role). Needs the `AWS_DASHBOARD_PUBLISH_ROLE_ARN` secret. |
 | 02.99 | [GKE decommission](.github/workflows/02.99-gke-decommission.yml) | GKE lifecycle | Tears down the stack (`scripts/down.sh`) and destroys the GKE cluster (`terraform destroy`). |
 | 99.01 | [Continuous Traffic Simulation](.github/workflows/99.01-traffic-simulation.yml) | Simulation | Runs a continuous stream of synthetic traffic (k6) against the stable endpoints to keep metrics and logs active in Grafana. |
 
@@ -2174,6 +2175,7 @@ graph TD
         G --> H["GKE Cluster Active<br>Jenkins / ArgoCD<br>pgAdmin / services"]
         H --> I["02.02 Redeploy Jenkins"]
         H --> J["02.03 Redeploy Headlamp"]
+        B --> L["02.04 Publish AWS dashboards<br>(no cluster needed)"]
         I & J --> H
         H --> K["02.99 GKE decommission<br>down.sh + tf destroy"]
         K -->|"cluster gone<br>assets kept"| B
@@ -2223,6 +2225,7 @@ To support deterministic deployments and clean, error-free environment destructi
   * [02.01 GKE provision](file:///home/inafev/github/jenkins-2026/.github/workflows/02.01-gke-provision.yml)
   * [02.02 Redeploy Jenkins](file:///home/inafev/github/jenkins-2026/.github/workflows/02.02-redeploy-jenkins.yml)
   * [02.03 Redeploy Headlamp](file:///home/inafev/github/jenkins-2026/.github/workflows/02.03-redeploy-headlamp.yml)
+  * [02.04 Publish AWS dashboards](file:///home/inafev/github/jenkins-2026/.github/workflows/02.04-publish-aws-dashboards.yml)
   * [02.99 GKE decommission](file:///home/inafev/github/jenkins-2026/.github/workflows/02.99-gke-decommission.yml)
 
 #### The `git_ref` Parameter

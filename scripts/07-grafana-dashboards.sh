@@ -14,7 +14,13 @@
 #     "${J2026_AZURE_MONITOR_SECRET}" Secret). Metric panels are portable;
 #     trace/log panels need Azure-specific rework (follow-up).
 #
-#   managed-aws - documented stub.
+#   managed-aws - publishes the managed-aws dashboard variants to Amazon Managed
+#     Grafana (AMG). AMG has no static API key, so a SHORT-LIVED workspace
+#     service-account token is minted via the AWS API at publish time (needs AWS
+#     credentials). AMG connection params come from env vars, falling back to the
+#     in-cluster "${J2026_AWS_MANAGED_SECRET}" Secret - so the dedicated
+#     02.04-publish-aws-dashboards.yml workflow can publish with no cluster
+#     access (reading them from the persistent terraform state instead).
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
@@ -169,10 +175,6 @@ case "${J2026_OBS_MODE}" in
     # fully configured with the workspace IAM role, no secrets), so we match
     # those by TYPE and reuse them (creating one only as a fallback), then
     # substitute their real uids and bind ${DS_PROMETHEUS} to AMP before importing.
-    if ! kubectl get secret "${J2026_AWS_MANAGED_SECRET}" -n "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1; then
-      log_warn "Secret '${J2026_AWS_MANAGED_SECRET}' not found - skipping dashboard import."
-      exit 0
-    fi
     for tool in aws jq curl; do
       if ! command -v "${tool}" >/dev/null 2>&1; then
         log_warn "'${tool}' not found - skipping managed-aws dashboard import."
@@ -182,20 +184,35 @@ case "${J2026_OBS_MODE}" in
     # AMG has no static API key, so this path mints a workspace token with the
     # AWS API and therefore needs AWS credentials. up.sh has none in CI (the
     # keyless design only feeds the collector via web identity), so publishing
-    # runs as a dedicated, AWS-authenticated workflow step that re-invokes this
-    # script. Skip gracefully when unauthenticated rather than failing up.sh.
+    # runs as a dedicated, AWS-authenticated workflow that invokes this script
+    # (02.04-publish-aws-dashboards.yml). Skip gracefully when unauthenticated
+    # rather than failing up.sh.
     if ! aws sts get-caller-identity >/dev/null 2>&1; then
-      log_warn "No AWS credentials available - skipping managed-aws dashboard import (published by the dedicated workflow step)."
+      log_warn "No AWS credentials available - skipping managed-aws dashboard import (published by the 02.04 dashboards workflow)."
       exit 0
     fi
 
-    sread() { kubectl get secret "${J2026_AWS_MANAGED_SECRET}" -n "${J2026_OBS_NAMESPACE}" -o jsonpath="{.data.$1}" | base64 -d; }
-    GRAFANA_BASE_URL="$(sread GRAFANA_BASE_URL)"
-    AWS_REGION="$(sread AWS_REGION)"
-    WORKSPACE_ID="$(sread GRAFANA_WORKSPACE_ID)"
-    AMP_QUERY_URL="$(sread AMP_QUERY_URL)"
+    # Source the AMG connection params. Two callers:
+    #   up.sh (in-cluster) - read them from the in-cluster J2026_AWS_MANAGED_SECRET
+    #     Secret that 02.01 built from the persistent terraform state.
+    #   02.04-publish-aws-dashboards.yml (no cluster) - it exports them straight
+    #     from that same terraform state, so they're already in the environment.
+    # Environment wins (the ':=' only reads the Secret when an env var is unset),
+    # so dashboards can be published with no cluster access at all (AMG/AMP are
+    # persistent; the GKE cluster is throwaway). Env var names match secret keys.
+    if kubectl get secret "${J2026_AWS_MANAGED_SECRET}" -n "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1; then
+      sread() { kubectl get secret "${J2026_AWS_MANAGED_SECRET}" -n "${J2026_OBS_NAMESPACE}" -o jsonpath="{.data.$1}" | base64 -d; }
+      : "${GRAFANA_BASE_URL:=$(sread GRAFANA_BASE_URL)}"
+      : "${AWS_REGION:=$(sread AWS_REGION)}"
+      : "${GRAFANA_WORKSPACE_ID:=$(sread GRAFANA_WORKSPACE_ID)}"
+      : "${AMP_QUERY_URL:=$(sread AMP_QUERY_URL)}"
+    fi
+    GRAFANA_BASE_URL="${GRAFANA_BASE_URL:-}"
+    AWS_REGION="${AWS_REGION:-}"
+    WORKSPACE_ID="${GRAFANA_WORKSPACE_ID:-}"
+    AMP_QUERY_URL="${AMP_QUERY_URL:-}"
     if [[ -z "${GRAFANA_BASE_URL}" || -z "${WORKSPACE_ID}" ]]; then
-      log_warn "GRAFANA_BASE_URL / GRAFANA_WORKSPACE_ID not set in '${J2026_AWS_MANAGED_SECRET}' - skipping dashboard import."
+      log_warn "AMG connection params not available (no '${J2026_AWS_MANAGED_SECRET}' Secret and no GRAFANA_BASE_URL/GRAFANA_WORKSPACE_ID in env) - skipping dashboard import."
       exit 0
     fi
     export AWS_REGION AWS_DEFAULT_REGION="${AWS_REGION}"
