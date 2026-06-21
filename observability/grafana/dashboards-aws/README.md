@@ -7,13 +7,16 @@ Two kinds, by design:
   public dashboard knows about these (the OTel `service_name`/
   `deployment_environment` labels, `ci_pipeline_run_*` metrics, the X-Ray /
   CloudWatch Logs schema), so they're generated and maintained here.
-- **Built-in infra** (nothing in this repo): generic Kubernetes/node infra is
-  served by **Amazon Managed Grafana's own built-in dashboards**, fed from
-  **Amazon Managed Service for Prometheus** - the AWS-native equivalent of what
-  `oss` (kube-prometheus-stack) and `grafana-cloud` (k8s-monitoring app) ship.
-  The collector just feeds them: it scrapes cadvisor + kubelet + node-exporter +
-  kube-state-metrics (with a `cluster` label) and remote-writes to AMP via SigV4
-  - see [`values-managed-aws.yaml`](../../otel-collector/values-managed-aws.yaml).
+- **Kubernetes/node infra**: the collector scrapes cadvisor + kubelet +
+  node-exporter + kube-state-metrics (with a `cluster` label) and remote-writes
+  to AMP via SigV4 - see
+  [`values-managed-aws.yaml`](../../otel-collector/values-managed-aws.yaml).
+  **Unlike Azure Managed Grafana** (which auto-provisions infra dashboards from
+  its Azure Monitor integration), **AMG ships no K8s dashboards** - the metrics
+  are in AMP but nothing renders them out of the box. Importing the
+  `kube-prometheus-stack`/`kubernetes-mixin` set (bound to AMP) is a tracked
+  follow-up; for now use the **Custom** dashboards below + the Grafana Explore
+  view against the AMP datasource.
 
 The custom `*-aws.json` variants are the `observability.mode=managed-aws`
 counterparts of [`../dashboards/`](../dashboards). Amazon Managed Grafana reads
@@ -25,6 +28,12 @@ panels are rewritten:
 | Metrics | Prometheus / PromQL | **unchanged** - Amazon Managed Service for Prometheus is Prometheus-compatible, so `${DS_PROMETHEUS}` binds to it and the PromQL works as-is |
 | Logs | Loki / LogQL | **CloudWatch Logs** Insights over the collector's log group |
 | Traces | Tempo / TraceQL | **AWS X-Ray** `getTraceSummaries` |
+
+> **X-Ray plugin.** AMG creates the X-Ray datasource *entry* but does not
+> register the datasource *plugin*, so trace panels return "Plugin not
+> registered" until it's installed. `scripts/07` installs
+> `grafana-x-ray-datasource` from the catalog (idempotent, `pluginAdminEnabled`
+> is on) before publishing - no action needed.
 
 **Generated, not hand-edited.** Regenerate after changing the canonical
 dashboards:
