@@ -641,15 +641,13 @@
             "type": "grafana-azure-monitor-datasource",
             "uid": "${DS_AZURE_MONITOR}"
           },
-          "queryType": "Azure Traces",
-          "azureTraces": {
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
             "resources": [
               "${appinsights}"
             ],
-            "traceTypes": [
-              "requests",
-              "dependencies"
-            ],
+            "query": "union AppRequests, AppDependencies\n| project TimeGenerated, OperationId, AppRoleName, Name, DurationMs, Success, Type\n| order by TimeGenerated desc",
+            "dashboardTime": true,
             "resultFormat": "table"
           },
           "refId": "A"
@@ -695,14 +693,15 @@
             "resources": [
               "${appinsights}"
             ],
-            "query": "AppTraces\n| project TimeGenerated, SeverityLevel, AppRoleName, Message\n| order by TimeGenerated desc",
-            "dashboardTime": true
+            "query": "AppTraces\n| project TimeGenerated, SeverityLevel, AppRoleName, OperationId, Message\n| order by TimeGenerated desc",
+            "dashboardTime": true,
+            "resultFormat": "table"
           },
           "refId": "A"
         }
       ],
       "title": "Microservices Pod Logs",
-      "type": "logs"
+      "type": "table"
     },
     {
       "datasource": {

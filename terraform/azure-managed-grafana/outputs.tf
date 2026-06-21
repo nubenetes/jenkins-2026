@@ -11,7 +11,9 @@ output "azure_monitor_connection_string" {
 
 output "azure_monitor_prometheus_endpoint" {
   description = "Managed-Prometheus remote-write URL -> AZURE_MONITOR_PROMETHEUS_ENDPOINT (prometheusremotewrite exporter)."
-  value       = "${azurerm_monitor_data_collection_endpoint.this.metrics_ingestion_endpoint}/dataCollectionRules/${azurerm_monitor_data_collection_rule.prom.immutable_id}/streams/Microsoft-PrometheusMetrics/api/v1/write"
+  # The ?api-version is REQUIRED by Azure Monitor's metrics ingestion endpoint -
+  # without it remote-write fails with 400 InvalidApiVersion.
+  value = "${azurerm_monitor_data_collection_endpoint.this.metrics_ingestion_endpoint}/dataCollectionRules/${azurerm_monitor_data_collection_rule.prom.immutable_id}/streams/Microsoft-PrometheusMetrics/api/v1/write?api-version=2023-04-24"
 }
 
 output "azure_tenant_id" {
