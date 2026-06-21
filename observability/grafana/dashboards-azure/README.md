@@ -1,6 +1,20 @@
-# managed-azure dashboard variants
+# managed-azure dashboards
 
-These `*-azure.json` dashboards are the `observability.mode=managed-azure`
+Two kinds, by design:
+
+- **Custom** (`*-azure.json`, this dir): the project-specific views - Jenkins
+  CI, per-microservice RED, the k6 smoke test, and the Azure logs/traces panels.
+  No public dashboard knows about these (the OTel `service_name`/
+  `deployment_environment` labels, `ci_pipeline_run_*` metrics, App Insights
+  classic schema), so they're hand-maintained here.
+- **Community infra** (`community-dashboards.txt` + `import-community.sh`):
+  generic Kubernetes/node infra is delegated to maintained community dashboards
+  (Node Exporter Full, kube-state-metrics) imported by gnetId and bound to the
+  Prometheus datasource - the same ones `oss` (kube-prometheus-stack) and
+  `grafana-cloud` (k8s-monitoring app) ship out of the box. Far more complete
+  than a hand-rolled infra dashboard.
+
+The custom `*-azure.json` variants are the `observability.mode=managed-azure`
 counterparts of [`../dashboards/`](../dashboards). Azure Managed Grafana reads
 from **Azure Monitor** datasources (not Prometheus/Loki/Tempo), so the log and
 trace panels are rewritten:
