@@ -104,15 +104,43 @@ resource "aws_iam_role_policy" "collector" {
 
 # --- Amazon Managed Grafana --------------------------------------------------
 
+# Workspace role AMG assumes to read the data sources. With CURRENT_ACCOUNT
+# access, the API requires CUSTOMER_MANAGED + an explicit role (SERVICE_MANAGED
+# only auto-creates one via the console / an Organization with trusted access).
+data "aws_iam_policy_document" "grafana_assume" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["grafana.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "grafana" {
+  name               = "${var.name_prefix}-grafana-workspace"
+  assume_role_policy = data.aws_iam_policy_document.grafana_assume.json
+}
+
+resource "aws_iam_role_policy_attachment" "grafana" {
+  for_each = toset([
+    "arn:aws:iam::aws:policy/AmazonPrometheusQueryAccess",
+    "arn:aws:iam::aws:policy/service-role/AmazonGrafanaCloudWatchAccess",
+    "arn:aws:iam::aws:policy/AWSXrayReadOnlyAccess",
+  ])
+  role       = aws_iam_role.grafana.name
+  policy_arn = each.value
+}
+
 resource "aws_grafana_workspace" "this" {
   name                     = "${var.name_prefix}-grafana"
   account_access_type      = "CURRENT_ACCOUNT"
   authentication_providers = ["AWS_SSO"]
-  permission_type          = "SERVICE_MANAGED"
+  permission_type          = "CUSTOMER_MANAGED"
+  role_arn                 = aws_iam_role.grafana.arn
   grafana_version          = var.grafana_version
-  # SERVICE_MANAGED lets AWS create + manage the workspace role granting read
-  # access to these data sources in this account.
-  data_sources = ["PROMETHEUS", "XRAY", "CLOUDWATCH"]
+  data_sources             = ["PROMETHEUS", "XRAY", "CLOUDWATCH"]
 }
 
 # Workspace Admin users/groups are AWS_SSO identities granted in IAM Identity
