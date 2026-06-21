@@ -1425,6 +1425,18 @@ Engineering decisions baked into the JSON:
   `{{ if .message }}…{{ else if .msg }}…{{ else }}{{ __line__ }}{{ end }}`
   renders ECS-JSON app logs (`.message`), CloudNativePG/sidecar JSON (`.msg`) and
   plain-text lines (`__line__`) without ever showing blank lines.
+- **Fixed rate window for sparse metrics**: panels over rarely-incremented
+  histograms — notably *JVM GC Pause Time p99*
+  (`histogram_quantile(0.99, …rate(jvm_gc_duration_seconds_bucket[15m]))`) — use a
+  **fixed `[15m]` rate window**, not Grafana's auto-scaling `$__rate_interval`.
+  With `$__rate_interval` the window shrinks with the selected range (~15–30s at a
+  1-hour view), so on an idle JVM that garbage-collects only occasionally each
+  point's window catches **zero** GC events → `rate()` is 0 → `histogram_quantile`
+  returns `NaN` → the panel looks empty at short ranges yet populated at 24h (where
+  the auto window is minutes wide). A fixed `[15m]` window keeps short-range views
+  populated. *Caveat*: if the JVM had genuinely no GC in the trailing ~15 min the
+  panel is still empty — that is correct (no events, no percentile), not a bug; run
+  the `microservices-k6-smoke` job to generate load and the data appears.
 
 <details>
 <summary>🔍 Click to expand Dashboard Provisioning Diagram</summary>
@@ -2418,7 +2430,7 @@ With this configuration active, triggering any of the protected workflows will p
    | `IAP_OAUTH_CLIENT_ID` / `IAP_OAUTH_CLIENT_SECRET` | OAuth client gating Jenkins/Headlamp via Identity-Aware Proxy (see [Public access](#public-access-gke-gateway-api--iap)) |
    | `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` / `AZURE_GRAFANA_ADMIN_OBJECT_IDS` | `observability_mode: managed-azure` - **identifiers only, no secret**: the GitHub-OIDC Entra app the `01.03 Azure bootstrap` workflow logs in as, plus the comma-separated Entra object IDs granted Grafana Admin. The actual Azure backend credentials never become GitHub secrets - `02.01` reads them from the `terraform/azure-managed-grafana` GCS state outputs (see [`docs/observability.md`](docs/observability.md#managed-azure)) |
    | `AWS_BOOTSTRAP_ROLE_ARN` / `AWS_REGION` / `GKE_OIDC_ISSUER_URL` | `observability_mode: managed-aws` - **identifiers only, no secret**: the IAM role the `01.04 AWS bootstrap` workflow assumes via GitHub OIDC, the region, and the GKE cluster's OIDC issuer URL (federates the collector SA to its IAM role). The AWS backend coordinates never become GitHub secrets - `02.01` reads them from the `terraform/aws-managed-grafana` GCS state outputs, and the collector authenticates with a web-identity token, not access keys (see [`docs/observability.md`](docs/observability.md#managed-aws)) |
-   | `AWS_DASHBOARD_PUBLISH_ROLE_ARN` | `observability_mode: managed-aws` - **identifier only, no secret**: the least-privilege IAM role `02.01` assumes via GitHub OIDC to publish dashboards to Amazon Managed Grafana (only the workspace service-account-token APIs). Created by `01.04 AWS bootstrap` - set this to its `dashboard_publisher_role_arn` output (see [`docs/observability.md`](docs/observability.md#managed-aws)) |
+   | `AWS_DASHBOARD_PUBLISH_ROLE_ARN` | `observability_mode: managed-aws` - **identifier only, no secret**: the least-privilege IAM role `02.01 GKE provision` and `02.04 Publish AWS dashboards` assume via GitHub OIDC to publish dashboards to Amazon Managed Grafana (only the workspace service-account-token APIs). Created by `01.04 AWS bootstrap` - set this to its `dashboard_publisher_role_arn` output. When unset, both workflows skip the publish step gracefully (see [`docs/observability.md`](docs/observability.md#managed-aws)) |
 
    `gateway.baseDomain` (default `jenkins2026.nubenetes.com`) is **not** a
    secret - it's committed in `config/config.yaml`. Override it via the
