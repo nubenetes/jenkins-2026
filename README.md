@@ -59,7 +59,7 @@ A self-contained proof of concept that deploys **Jenkins** (via
 Job DSL ("pipelines as code"), and uses it to build, containerize and deploy the
 JHipster microservices reference application.
 
-- **Unified Pipeline Model**: A single set of stable pipelines (`gateway`, `jhipstersamplemicroservice`, and `microservices-k6-smoke` at the root, all visible in the **microservices** view) tracks and builds the microservices. They deploy directly to the `microservices` namespace and update the `main` branch of the companion GitOps config repository. The legacy develop environment and sandbox components have been pruned.
+- **Unified Pipeline Model**: A single set of stable pipelines (`gateway`, `jhipstersamplemicroservice`, and `microservices-k6-smoke` at the root, all visible in the **microservices** view) tracks and builds the microservices. They deploy directly to the `microservices` namespace and update the `main` branch of the companion GitOps config repository. An optional `develop` tier (off by default) can add a parallel `microservices-develop` deployment — see [Optional `develop` tier](#optional-develop-tier-feature-flag-off-by-default).
 
 - **Hardened Pipeline Agent Security**: All Jenkins pipeline agent containers run with `allowPrivilegeEscalation: false`. The `git` (`alpine/git`) and `helm` (`alpine/k8s`) containers run as `runAsUser: 1000` (non-root) with `HOME=/tmp`. Containers that legitimately require root are explicitly documented: `docker` (DinD daemon) and `codeql` (requires `apt-get`). See [Pipeline Container Security](#pipeline-container-security) for the full matrix.
 
@@ -122,7 +122,7 @@ for the OpenTelemetry/Grafana wiring.
 - [Pipelines as code](#pipelines-as-code)
   - [Pipeline Branch & Environment Mapping](#pipeline-branch--environment-mapping)
     - [Why the GitOps Repo Uses Only the `main` Branch](#why-the-gitops-repo-uses-only-the-main-branch)
-    - [Would a `develop` branch make sense?](#would-a-develop-branch-make-sense)
+    - [Optional `develop` tier (feature flag, off by default)](#optional-develop-tier-feature-flag-off-by-default)
   - [Architecture Diagram](#architecture-diagram)
   - [Pipeline Container Security](#pipeline-container-security)
   - [Pipeline Reliability Fixes (v0.10.7–v0.10.16)](#pipeline-reliability-fixes-v0107v01016)
@@ -860,6 +860,7 @@ vars). Feature flags:
 | Key | Default | Override | Meaning |
 |---|---|---|---|
 | `observability.mode` | `grafana-cloud` | edit `config.yaml` | `grafana-cloud`\|`oss`\|`managed-azure`\|`managed-aws` - where traces/metrics/logs go (see [`docs/observability.md`](docs/observability.md)). |
+| `microservices.developTrackEnabled` | `false` | `JENKINS2026_DEVELOP_TRACK_ENABLED` | Optional second microservices tier (`microservices-develop` namespace + `<svc>-develop` Jenkins jobs, GitOps `develop` branch). ~Doubles the microservices footprint; shared observability stack. See [Optional `develop` tier](#optional-develop-tier-feature-flag-off-by-default). |
 
 Other notable sections: `jenkins.*` (chart coordinates, namespace, this
 repo's own URL/branch used by JCasC's global library + seed job),
@@ -1037,15 +1038,66 @@ Instead of separating stable and development pipelines into separate jobs and fo
 
 The companion repository `jenkins-2026-gitops-config` is configured to track only a single `main` branch:
 
-1. **Single Environment Target**: In this unified model, the legacy development sandbox has been pruned, leaving only a single stable target namespace (`microservices`).
+1. **Single Environment Target (default)**: By default only the stable target namespace (`microservices`) is deployed. The optional `develop` tier — when enabled — adds a `microservices-develop` namespace tracking the GitOps `develop` branch (see below).
 2. **Simplified Promotion**: The Jenkins CI pipeline writes image tags directly inside [values-stable.yaml](file:///home/inafev/github/jenkins-2026-gitops-config/helm/microservices/values-stable.yaml) on the `main` branch of the GitOps repository.
 
-#### Would a `develop` branch make sense?
+#### Optional `develop` tier (feature flag, **off by default**)
 
-Yes, but **only if you restore a multi-environment deployment model** (e.g., dev/staging vs. stable namespaces):
+A second `develop` deployment tier is available behind a feature flag. It is
+**disabled by default** because enabling it roughly **doubles the microservices
+footprint** (a full gateway + services stack running in a second namespace).
 
-* **Testing Infrastructure Changes**: If developers need to test Helm chart updates (e.g., resource limits, new environment variables, or sidecar additions) in a sandbox (`develop`) namespace before promoting them to stable (`main`), they would push changes to the `develop` branch of the GitOps repo first for verification.
-* **Tracking Parallel Code Tracks**: If upstream repositories build from both a `develop` branch (dev builds) and a `main` branch (stable releases), Jenkins would commit dev tags to a `values-develop.yaml` on the GitOps `develop` branch (synced to a dev namespace), and stable tags to [values-stable.yaml](file:///home/inafev/github/jenkins-2026-gitops-config/helm/microservices/values-stable.yaml) on the GitOps `main` branch (synced to the stable namespace).
+**What it is (and is not).** `develop` is *only a second deployment tier of the
+microservices*, not a second platform:
+
+* The upstream JHipster app repos have **no `develop` branch** (only `main`), so
+  the develop tier **builds the same app image** as stable — it is checked out
+  from `main` (see `branches.develop: main` in
+  [`jenkins/pipelines/seed/services.yaml`](jenkins/pipelines/seed/services.yaml)).
+  It differs from stable only in **target namespace** (`microservices-develop`)
+  and its **own `values-develop.yaml`**.
+* It tracks the **`develop` branch of the GitOps config repo**
+  (`jenkins-2026-gitops-config`) for infra/config changes — so you can test Helm
+  changes (resource limits, env vars, sidecars) in the develop namespace before
+  promoting them to `main`/stable. The Jenkins pipeline commits dev image tags to
+  `values-develop.yaml` on that `develop` branch; ArgoCD syncs a separate
+  `microservices-develop` Application from it.
+* **Observability is a single shared stack.** The develop tier reports
+  traces/metrics/logs into the *same* Grafana/Loki/Tempo/Prometheus, distinguished
+  by namespace/labels — there is **no separate Grafana, dashboards, or
+  observability config**. None of the other ArgoCD apps (cnpg, external-secrets,
+  headlamp, pgadmin) are forked either; they stay pinned to `main`/stable.
+
+**How to enable.** Durable default in [`config/config.yaml`](config/config.yaml),
+ephemeral override via env var (same pattern as `JENKINS2026_PLATFORM`):
+
+```yaml
+# config/config.yaml
+microservices:
+  developTrackEnabled: true   # default: false
+```
+
+```bash
+# or, for a single run, override without editing the file:
+export JENKINS2026_DEVELOP_TRACK_ENABLED=true
+```
+
+When enabled, the next deploy:
+
+1. **ArgoCD** — `scripts/08.5-argocd.sh` appends a `develop` generator element to
+   the [`microservices` ApplicationSet](argocd/microservices-appset.yaml),
+   creating a `microservices-develop` Application (namespace `microservices-develop`,
+   `values-develop.yaml`, GitOps `develop` branch).
+2. **Jenkins** — the seed job generates parallel `<svc>-develop` and
+   `microservices-k6-smoke-develop` jobs, grouped in a separate
+   **`microservices-develop`** ListView (the `stable` jobs keep their bare names in
+   the `microservices` view). Turning the flag back off prunes that view.
+
+> **Prerequisite (follow-up):** the GitOps repo `jenkins-2026-gitops-config` must
+> have a `develop` branch containing `helm/microservices/values-develop.yaml`,
+> otherwise the `microservices-develop` ArgoCD app will fail to sync. This repo
+> ships only the **this-side** wiring; create that branch/values file before
+> flipping the flag on a live cluster.
 
 ### Architecture Diagram
 
