@@ -58,3 +58,4 @@ terraform/gke/backend_override.tf
 terraform/grafana-cloud-token/backend_override.tf
 terraform/grafana-cloud-stack/backend_override.tf
 terraform/gateway-bootstrap/backend_override.tf
+terraform/azure-managed-grafana/backend_override.tf
