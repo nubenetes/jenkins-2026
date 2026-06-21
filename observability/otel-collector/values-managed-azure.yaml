@@ -111,6 +111,12 @@ config:
             scrape_interval: 30s
             static_configs:
               - targets: ["kube-state-metrics.observability.svc.cluster.local:8080"]
+            relabel_configs:
+              # The community Kubernetes dashboards (kube-state-metrics, etc.)
+              # filter by a `cluster` label; add it so their cluster variable
+              # populates. Matches deployment.environment.cluster on the OTLP path.
+              - target_label: cluster
+                replacement: jenkins-2026
           - job_name: node-exporter
             scrape_interval: 30s
             kubernetes_sd_configs:
@@ -123,6 +129,8 @@ config:
                 action: keep
               - source_labels: [__meta_kubernetes_endpoint_node_name]
                 target_label: instance
+              - target_label: cluster
+                replacement: jenkins-2026
 
   processors:
     batch: {}
