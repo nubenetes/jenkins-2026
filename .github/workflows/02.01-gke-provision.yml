@@ -380,6 +380,25 @@ jobs:
           # integration - the collector scrapes cadvisor/kubelet/node/ksm to
           # feed them (values-managed-azure.yaml). Nothing to publish here.
 
+      # Auto-publish the managed-aws dashboard variants to Amazon Managed
+      # Grafana. up.sh's 07-grafana-dashboards.sh skips when the runner has no
+      # AWS credentials (the keyless design only federates the collector), so
+      # authenticate here via GitHub OIDC - the least-privilege dashboard-
+      # publisher role from terraform/aws-managed-grafana, no access keys - and
+      # run the publisher (it mints a short-lived AMG service-account token).
+      - name: AWS login (managed-aws dashboards)
+        if: ${{ inputs.observability_mode == 'managed-aws' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DASHBOARD_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Publish dashboards to Amazon Managed Grafana
+        if: ${{ inputs.observability_mode == 'managed-aws' }}
+        env:
+          JENKINS2026_OBS_MODE: managed-aws
+        run: ./scripts/07-grafana-dashboards.sh
+
       - name: Summary
         if: always()
         working-directory: terraform/gke
