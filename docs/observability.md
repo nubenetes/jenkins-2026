@@ -368,7 +368,9 @@ telemetry goes to AWS backends and AMG reads them:
 [`values-managed-aws.yaml`](../observability/otel-collector/values-managed-aws.yaml)
 / [`-logs.yaml`](../observability/otel-collector/values-managed-aws-logs.yaml)
 (plus `kube-state-metrics` + `node-exporter`, scraped alongside cadvisor/kubelet
-into AMP for the AMG built-in Kubernetes dashboards). It requires the
+into AMP for the vendored Kubernetes dashboards - see **Dashboards** below;
+unlike Azure Managed Grafana, AMG ships **no** built-in Kubernetes dashboards).
+It requires the
 `aws-managed-credentials` Secret - in CI `02.01` builds it from the
 [`terraform/aws-managed-grafana`](../terraform/aws-managed-grafana) GCS-state
 outputs (the module is applied once by **01.04 AWS bootstrap**).
@@ -389,6 +391,20 @@ AMP/CloudWatch/X-Ray datasources exist (authenticated by the workspace IAM role)
 substitutes their uids and imports. All get-or-create / overwrite, so it is
 idempotent across decommission + re-provision - see
 [`dashboards-aws/README.md`](../observability/grafana/dashboards-aws/README.md).
+
+**Kubernetes/node infra dashboards.** AMG ships none of its own, so the cluster
+metrics already in AMP (cadvisor/kubelet/node-exporter/kube-state-metrics) are
+rendered by the **vendored community set** in
+[`dashboards-aws/community/`](../observability/grafana/dashboards-aws/community) -
+the dotdc *Kubernetes / Views* dashboards + *Node Exporter Full* (`vendor.py`,
+pinned upstreams, normalized to bind `${DS_PROMETHEUS}` to AMP). The OTel
+Collector's `prometheus` receiver → `prometheusremotewrite` keeps the metric
+names Prometheus-native (verified live), so these work as-is. dotdc is chosen
+over `kube-prometheus-stack`/`kubernetes-mixin`, which depend on recording rules
+a managed AMP workspace doesn't evaluate (no in-cluster Prometheus); see
+[`community/README.md`](../observability/grafana/dashboards-aws/community/README.md)
+for the full rationale (incl. why the full kube-prometheus-stack and the
+OTel-native `k8s_cluster`/`kubeletstats` receivers are not the right fit).
 In CI `up.sh` has no AWS credentials (the keyless design only federates the
 collector), so the script skips there and `02.01` publishes in a dedicated step
 that assumes the least-privilege **`dashboard_publisher_role_arn`** role via
