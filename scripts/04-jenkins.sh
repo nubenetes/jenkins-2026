@@ -45,24 +45,33 @@ if [[ -n "${grafana_base_url}" ]]; then
     --type=merge -p "{\"stringData\":{\"grafana-base-url\":\"${grafana_base_url}\"}}"
 fi
 
-# "Kubernetes Infrastructure" banner link, per observability.mode (the target
-# differs by backend, so it's not a static link in jcasc-base.yaml):
+# "Kubernetes Infrastructure" banner links, per observability.mode (the targets
+# differ by backend, so they're not static in jcasc-base.yaml). The
+# ${GRAFANA_K8S_APP_LINK} placeholder there can hold several <li> items:
 #   grafana-cloud - the Grafana Cloud Kubernetes Monitoring app (/a/grafana-k8s-app)
 #   managed-azure - Azure Managed Grafana's built-in Kubernetes dashboards
-#                   (auto-provisioned from the Azure Monitor workspace
-#                   integration); link to the filtered dashboard list.
-#   oss / managed-aws - none (oss ships kube-prometheus-stack's own dashboards
-#                   under their own folder; no single canonical link)
-# Empty -> the ${GRAFANA_K8S_APP_LINK} placeholder in jcasc-base.yaml renders
-# nothing. jq builds the JSON to escape the embedded HTML quotes.
-k8s_infra_path=""
-case "${J2026_OBS_MODE}" in
-  grafana-cloud) k8s_infra_path="/a/grafana-k8s-app" ;;
-  managed-azure) k8s_infra_path="/dashboards?query=Kubernetes" ;;
-esac
+#                   (auto-provisioned from the Azure Monitor workspace): the
+#                   filtered browse list + direct links to a few key ones. Those
+#                   uids are Azure-assigned and stable across AMG instances
+#                   (the shared ...6738 suffix).
+#   oss / managed-aws - none (oss ships kube-prometheus-stack's own dashboards).
+# Empty -> the placeholder renders nothing. jq escapes the embedded HTML quotes.
+grafana_li() {
+  printf '<li><a href="%s%s" style="color: #0052cc; text-decoration: underline;">%s</a></li>' "$1" "$2" "$3"
+}
 grafana_k8s_app_link=""
-if [[ -n "${k8s_infra_path}" && -n "${grafana_base_url}" ]]; then
-  grafana_k8s_app_link="<li><a href=\"${grafana_base_url}${k8s_infra_path}\" style=\"color: #0052cc; text-decoration: underline;\">Kubernetes Infrastructure</a></li>"
+if [[ -n "${grafana_base_url}" ]]; then
+  case "${J2026_OBS_MODE}" in
+    grafana-cloud)
+      grafana_k8s_app_link="$(grafana_li "${grafana_base_url}" "/a/grafana-k8s-app" "Kubernetes Infrastructure")"
+      ;;
+    managed-azure)
+      grafana_k8s_app_link="$(grafana_li "${grafana_base_url}" "/dashboards?query=Kubernetes" "Kubernetes Infrastructure (all)")"
+      grafana_k8s_app_link+="$(grafana_li "${grafana_base_url}" "/d/D3pVs6738" "Node Exporter / Nodes")"
+      grafana_k8s_app_link+="$(grafana_li "${grafana_base_url}" "/d/fd0cac08a3f34e2994cf904627836738" "K8s Compute Resources / Cluster")"
+      grafana_k8s_app_link+="$(grafana_li "${grafana_base_url}" "/d/184244a28b3d478e9c0de82def316738" "Kubelet")"
+      ;;
+  esac
 fi
 kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \
   --type=merge -p "$(jq -nc --arg v "${grafana_k8s_app_link}" '{stringData:{"grafana-k8s-app-link":$v}}')"
