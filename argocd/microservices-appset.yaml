@@ -6,6 +6,10 @@ metadata:
 spec:
   generators:
     - list:
+        # The 'stable' element is always present. A second 'develop' element is
+        # appended at apply time by scripts/08.5-argocd.sh (via yq) only when the
+        # optional develop tier is enabled (config microservices.developTrackEnabled
+        # / JENKINS2026_DEVELOP_TRACK_ENABLED). Keep this list to 'stable' only.
         elements:
           - env: stable
             namespace: microservices
