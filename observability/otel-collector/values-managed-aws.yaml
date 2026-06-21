@@ -1,0 +1,247 @@
+# Values for open-telemetry/opentelemetry-collector - "gateway" release,
+# managed-aws variant (observability.mode: managed-aws).
+#
+# Amazon Managed Grafana is a frontend only - it reads from AWS data sources, it
+# doesn't ingest OTLP. So this collector exports to the AWS backends and AMG
+# reads from them:
+#   - metrics -> Amazon Managed Service for Prometheus (remote-write, SigV4)
+#   - traces  -> AWS X-Ray
+#   - logs    -> CloudWatch Logs
+#
+# Auth (no long-lived keys): the collector's ServiceAccount is federated to an
+# IAM role via the GKE cluster's OIDC issuer. A projected SA token (audience
+# sts.amazonaws.com) + AWS_ROLE_ARN/AWS_WEB_IDENTITY_TOKEN_FILE let the AWS SDK
+# (used by sigv4auth/awsxray/awscloudwatchlogs) do AssumeRoleWithWebIdentity.
+# AWS_REGION / AMP_REMOTE_WRITE_ENDPOINT / AWS_ROLE_ARN / AWS_CLOUDWATCH_LOG_GROUP
+# come from the aws-managed-credentials Secret (see secret-managed-aws.example.yaml).
+#
+# helm upgrade --install otel-collector-gateway open-telemetry/opentelemetry-collector \
+#   -n observability -f observability/otel-collector/values-managed-aws.yaml
+
+# Fixed Service name + SA name (the IAM role's trust policy pins
+# system:serviceaccount:observability:otel-collector-gateway).
+fullnameOverride: otel-collector-gateway
+
+mode: deployment
+replicaCount: 1
+
+image:
+  # contrib distro: required for sigv4auth, awsxray, awscloudwatchlogs.
+  repository: otel/opentelemetry-collector-contrib
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# AWS_REGION / AMP_REMOTE_WRITE_ENDPOINT / AWS_ROLE_ARN / AWS_CLOUDWATCH_LOG_GROUP.
+extraEnvsFrom:
+  - secretRef:
+      name: aws-managed-credentials
+
+# Web identity token for AssumeRoleWithWebIdentity (GKE OIDC -> AWS IAM role).
+extraEnvs:
+  - name: AWS_WEB_IDENTITY_TOKEN_FILE
+    value: /var/run/secrets/aws-token/token
+extraVolumes:
+  - name: aws-token
+    projected:
+      sources:
+        - serviceAccountToken:
+            path: token
+            audience: sts.amazonaws.com
+            expirationSeconds: 3600
+extraVolumeMounts:
+  - name: aws-token
+    mountPath: /var/run/secrets/aws-token
+    readOnly: true
+
+# RBAC for the prometheus receiver's Kubernetes service discovery (cadvisor /
+# kubelet / node-exporter) - feeds the Amazon Managed Grafana built-in
+# Kubernetes dashboards via Amazon Managed Prometheus.
+clusterRole:
+  create: true
+  rules:
+    - apiGroups: [""]
+      resources: ["nodes", "nodes/proxy", "services", "endpoints", "pods"]
+      verbs: ["get", "list", "watch"]
+
+ports:
+  otlp:
+    enabled: true
+    containerPort: 4317
+    servicePort: 4317
+    hostPort: 4317
+    protocol: TCP
+  otlp-http:
+    enabled: true
+    containerPort: 4318
+    servicePort: 4318
+    hostPort: 4318
+    protocol: TCP
+
+config:
+  extensions:
+    health_check:
+      endpoint: ${env:MY_POD_IP}:13133
+    # SigV4 signing for the Amazon Managed Prometheus remote-write endpoint.
+    sigv4auth:
+      region: ${env:AWS_REGION}
+      service: aps
+
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+          cors:
+            allowed_origins:
+              - "*"
+
+    # Same standard job set the AMG built-in Kubernetes dashboards expect
+    # (cadvisor + kubelet via the API server proxy, node-exporter, ksm), all
+    # stamped with a cluster label. $$1 escapes the collector's $-expansion.
+    prometheus:
+      config:
+        scrape_configs:
+          - job_name: cadvisor
+            scrape_interval: 30s
+            scheme: https
+            metrics_path: /metrics/cadvisor
+            authorization:
+              type: Bearer
+              credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+            tls_config:
+              ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+              insecure_skip_verify: true
+            kubernetes_sd_configs:
+              - role: node
+            relabel_configs:
+              - action: labelmap
+                regex: __meta_kubernetes_node_label_(.+)
+              - target_label: __address__
+                replacement: kubernetes.default.svc:443
+              - source_labels: [__meta_kubernetes_node_name]
+                regex: (.+)
+                target_label: __metrics_path__
+                replacement: /api/v1/nodes/$$1/proxy/metrics/cadvisor
+              - target_label: cluster
+                replacement: jenkins-2026
+          - job_name: kubelet
+            scrape_interval: 30s
+            scheme: https
+            metrics_path: /metrics
+            authorization:
+              type: Bearer
+              credentials_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+            tls_config:
+              ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+              insecure_skip_verify: true
+            kubernetes_sd_configs:
+              - role: node
+            relabel_configs:
+              - action: labelmap
+                regex: __meta_kubernetes_node_label_(.+)
+              - target_label: __address__
+                replacement: kubernetes.default.svc:443
+              - source_labels: [__meta_kubernetes_node_name]
+                regex: (.+)
+                target_label: __metrics_path__
+                replacement: /api/v1/nodes/$$1/proxy/metrics
+              - target_label: cluster
+                replacement: jenkins-2026
+          - job_name: kube-state-metrics
+            scrape_interval: 30s
+            static_configs:
+              - targets: ["kube-state-metrics.observability.svc.cluster.local:8080"]
+            relabel_configs:
+              - target_label: cluster
+                replacement: jenkins-2026
+          - job_name: node
+            scrape_interval: 30s
+            kubernetes_sd_configs:
+              - role: endpoints
+                namespaces:
+                  names: [observability]
+            relabel_configs:
+              - source_labels: [__meta_kubernetes_service_name]
+                regex: prometheus-node-exporter
+                action: keep
+              - source_labels: [__meta_kubernetes_endpoint_node_name]
+                target_label: instance
+              - target_label: cluster
+                replacement: jenkins-2026
+
+  processors:
+    batch: {}
+    memory_limiter:
+      check_interval: 5s
+      limit_percentage: 80
+      spike_limit_percentage: 25
+    resource:
+      attributes:
+        - key: deployment.environment.cluster
+          value: jenkins-2026
+          action: upsert
+
+  connectors:
+    span_metrics:
+      namespace: traces.spanmetrics
+      histogram:
+        explicit:
+          buckets: [2ms, 8ms, 25ms, 50ms, 100ms, 200ms, 500ms, 1s, 2s, 5s, 10s]
+      exemplars:
+        enabled: true
+      metrics_flush_interval: 15s
+    service_graph:
+      store:
+        ttl: 5s
+        max_items: 1000
+
+  exporters:
+    # Traces -> AWS X-Ray.
+    awsxray:
+      region: ${env:AWS_REGION}
+
+    # Logs -> CloudWatch Logs.
+    awscloudwatchlogs:
+      region: ${env:AWS_REGION}
+      log_group_name: ${env:AWS_CLOUDWATCH_LOG_GROUP}
+      log_stream_name: otel-collector-gateway
+
+    # Metrics -> Amazon Managed Service for Prometheus (remote-write, SigV4).
+    prometheusremotewrite:
+      endpoint: ${env:AMP_REMOTE_WRITE_ENDPOINT}
+      auth:
+        authenticator: sigv4auth
+      resource_to_telemetry_conversion:
+        enabled: true
+
+  service:
+    extensions: [health_check, sigv4auth]
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, resource, batch]
+        exporters: [awsxray, span_metrics, service_graph]
+      metrics/spanmetrics:
+        receivers: [span_metrics, service_graph]
+        processors: [memory_limiter, resource, batch]
+        exporters: [prometheusremotewrite]
+      metrics:
+        receivers: [otlp]
+        processors: [memory_limiter, resource, batch]
+        exporters: [prometheusremotewrite]
+      metrics/infra:
+        receivers: [prometheus]
+        processors: [memory_limiter, resource, batch]
+        exporters: [prometheusremotewrite]
+      logs:
+        receivers: [otlp]
+        processors: [memory_limiter, resource, batch]
+        exporters: [awscloudwatchlogs]
