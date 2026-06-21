@@ -49,6 +49,7 @@ terraform/bootstrap/terraform.tfvars
 terraform/grafana-cloud-stack/terraform.tfvars
 terraform/grafana-cloud-token/terraform.tfvars
 terraform/gateway-bootstrap/terraform.tfvars
+terraform/azure-managed-grafana/terraform.tfvars
 
 # Written by .github/workflows/gke-provision.yml / gke-decommission.yml /
 # grafana-cloud-bootstrap.yml before `terraform init` to point at the GCS

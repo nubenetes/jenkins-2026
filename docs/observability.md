@@ -259,14 +259,23 @@ fill it in, and apply it first.
 `scripts/07-grafana-dashboards.sh` publishes the dashboards to Azure Managed
 Grafana via its Grafana HTTP API.
 
-> **What this PoC ships vs. follow-ups.** The collector wiring, mode plumbing,
-> credentials template and dashboard push are in place. Still **out of scope**
-> (planned): Terraform to provision the Azure resources themselves (Azure
-> Managed Grafana + Azure Monitor workspace + Application Insights + the Entra
-> app/role assignments), and reworking the **trace/log panels** to Azure
-> datasources - App Insights and Log Analytics use their own query models, not
-> Tempo/Loki, so only the **metric** panels are portable as-is. Compute stays
-> on GKE; only the observability backend changes.
+The Azure resources themselves are provisioned by
+[`terraform/azure-managed-grafana/`](../terraform/azure-managed-grafana) - a
+one-time, human-run module (local state, never wired into CI, like
+`terraform/grafana-cloud-stack`) that creates the Azure Managed Grafana
+instance, the Azure Monitor workspace + Data Collection Endpoint/Rule for
+managed Prometheus, Application Insights + Log Analytics, the Entra service
+principal the collector authenticates with, and the role assignments. Its
+outputs map to the `AZURE_*` / `AZURE_GRAFANA_*` GitHub Actions secrets that
+`02.01-gke-provision.yml` turns into the `azure-monitor-credentials` Secret -
+see README.md "GitHub Actions automation".
+
+> **What this PoC ships vs. follow-ups.** Collector wiring, mode plumbing,
+> credentials template/Secret wiring, dashboard push, and the Azure resource
+> Terraform are in place. Still **out of scope**: reworking the **trace/log
+> panels** to Azure datasources - App Insights and Log Analytics use their own
+> query models, not Tempo/Loki, so only the **metric** panels are portable
+> as-is. Compute stays on GKE; only the observability backend changes.
 
 ### `managed-aws`
 
