@@ -13,13 +13,18 @@
 tempo:
   repository: grafana/tempo
 
-resources:
-  requests:
-    cpu: 100m
-    memory: 256Mi
-  limits:
-    cpu: 500m
-    memory: 1Gi
+  # NOTE: in the grafana/tempo single-binary chart the container resources
+  # live under `tempo.resources` - a top-level `resources:` key is silently
+  # ignored, which let the namespace LimitRange default (limit memory 256Mi)
+  # win and OOMKilled Tempo on startup (WAL replay + metricsGenerator), so no
+  # traces were ever stored. Keep this nested.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
 
 persistence:
   enabled: true
