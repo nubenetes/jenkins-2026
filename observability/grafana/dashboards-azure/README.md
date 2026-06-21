@@ -7,12 +7,15 @@ Two kinds, by design:
   No public dashboard knows about these (the OTel `service_name`/
   `deployment_environment` labels, `ci_pipeline_run_*` metrics, App Insights
   classic schema), so they're hand-maintained here.
-- **Community infra** (`community-dashboards.txt` + `import-community.sh`):
-  generic Kubernetes/node infra is delegated to maintained community dashboards
-  (Node Exporter Full, kube-state-metrics) imported by gnetId and bound to the
-  Prometheus datasource - the same ones `oss` (kube-prometheus-stack) and
-  `grafana-cloud` (k8s-monitoring app) ship out of the box. Far more complete
-  than a hand-rolled infra dashboard.
+- **Built-in infra** (nothing in this repo): generic Kubernetes/node infra is
+  served by **Azure Managed Grafana's own built-in dashboards** (Compute
+  Resources / Kubelet / Node Exporter / USE Method), auto-provisioned from the
+  Azure Monitor workspace integration - the Azure-native, maintained equivalent
+  of what `oss` (kube-prometheus-stack) and `grafana-cloud` (k8s-monitoring app)
+  ship. The collector just feeds them: it scrapes cadvisor + kubelet +
+  node-exporter + kube-state-metrics (with a `cluster` label) and remote-writes
+  to Azure Monitor managed Prometheus - see
+  [`values-managed-azure.yaml`](../../otel-collector/values-managed-azure.yaml).
 
 The custom `*-azure.json` variants are the `observability.mode=managed-azure`
 counterparts of [`../dashboards/`](../dashboards). Azure Managed Grafana reads
