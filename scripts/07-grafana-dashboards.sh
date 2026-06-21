@@ -221,6 +221,22 @@ case "${J2026_OBS_MODE}" in
     api() { local m="$1" p="$2"; shift 2; curl -fsS -X "${m}" "${GRAFANA_BASE_URL%/}${p}" \
       -H "Authorization: Bearer ${GRAFANA_API_KEY}" -H "Content-Type: application/json" "$@"; }
 
+    # AMG creates the XRAY/CLOUDWATCH datasource *entries* (data_sources on the
+    # workspace) but does NOT register the X-Ray datasource *plugin* binary, so
+    # every trace panel fails with "Plugin not registered" until it's installed.
+    # pluginAdminEnabled is on for AMG workspaces, so install it from the catalog
+    # (idempotent: skip if already present). CloudWatch/Prometheus are built in.
+    ensure_plugin() {
+      local id="$1"
+      if api GET "/api/plugins/${id}/settings" >/dev/null 2>&1; then return 0; fi
+      if api POST "/api/plugins/${id}/install" -d '{}' >/dev/null 2>&1; then
+        log_info "Installed Grafana plugin ${id}."
+      else
+        log_warn "Could not install plugin ${id} - trace panels may stay empty."
+      fi
+    }
+    ensure_plugin "grafana-x-ray-datasource"
+
     # Match an existing datasource by TYPE (reusing AMG's auto-provisioned one);
     # create it only if the workspace has none of that type. Echoes its uid.
     DS_JSON="$(api GET "/api/datasources" 2>/dev/null || echo '[]')"
