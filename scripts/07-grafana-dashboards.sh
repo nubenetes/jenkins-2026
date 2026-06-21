@@ -133,8 +133,13 @@ case "${J2026_OBS_MODE}" in
       exit 0
     fi
 
+    # Azure Managed Grafana reads from Azure Monitor datasources, so publish the
+    # managed-azure dashboard variants (metric panels unchanged; log/trace
+    # panels rewritten to Azure Monitor Logs/Traces). Generated from the
+    # canonical dashboards by observability/grafana/dashboards-azure/generate.py.
+    AZURE_DASHBOARDS_DIR="${J2026_ROOT_DIR}/observability/grafana/dashboards-azure"
     log_step "Publishing dashboards to Azure Managed Grafana (${GRAFANA_BASE_URL})"
-    for dashboard in "${DASHBOARDS_DIR}"/*.json; do
+    for dashboard in "${AZURE_DASHBOARDS_DIR}"/*-azure.json; do
       name="$(basename "${dashboard}" .json)"
       # Wrap into the /api/dashboards/db request body and overwrite by uid.
       payload="$(jq -n --slurpfile db "${dashboard}" \
