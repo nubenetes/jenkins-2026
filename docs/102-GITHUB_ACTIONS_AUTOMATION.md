@@ -22,12 +22,12 @@ To keep operating costs low and deployment speed high, this project separates th
    - **Workload Identity Federation (WIF)**: Establishes a secure, keyless trust relationship between GitHub Actions and your GCP project. GitHub can authenticate dynamically using OpenID Connect (OIDC) tokens instead of saving permanent GCP service account JSON keys inside repository secrets.
    - **GCS Remote Backend**: Sets up the persistent bucket where all GHA workflow runs store and retrieve Terraform state.
 
-2. **Persistent Observability Backend (`0.1.01 Grafana Cloud bootstrap`)**:
-   - Applies the Grafana Cloud stack (`terraform/grafana-cloud-stack`, generated slug). By decoupling the metrics/tracing backend from the GKE cluster, your logs, metrics, and trace history survive multiple cluster spin-ups and tear-downs (the GKE decommission `9.1.01` leaves the stack intact; only `9.2.01` destroys it).
-
-3. **Persistent External DNS & Networking (`0.1.02 Gateway bootstrap`)**:
+2. **Persistent External DNS & Networking (`0.1.01 Gateway bootstrap`)**:
    - Provisions GCP global networking resources: a persistent static IP (`jenkins-2026-gateway-ip`), DNS authorizations, and the wildcard SSL certificate map (`jenkins-2026-cert-map`).
    - If these networking assets were tied to the short-lived GKE cluster, deleting the cluster would release the IP address and destroy the SSL certificate. This would force you to manually update DNS records at your domain registrar (e.g. Squarespace) and wait for DNS propagation every single time you provisioned a new cluster. Keeping the gateway bootstrapped persistently ensures your external endpoints are immediately reachable upon cluster creation.
+
+3. **Persistent Observability Backend (`0.1.02 Grafana Cloud bootstrap`)**:
+   - Applies the Grafana Cloud stack (`terraform/grafana-cloud-stack`, generated slug). By decoupling the metrics/tracing backend from the GKE cluster, your logs, metrics, and trace history survive multiple cluster spin-ups and tear-downs (the GKE decommission `9.1.01` leaves the stack intact; only `9.2.02` destroys it).
 
 4. **Persistent Database Backups Storage (`terraform/bootstrap`)**:
    - **Postgres Backups Bucket**: Configures the persistent GCS bucket `jenkins-2026-postgres-backups` with automated storage lifecycles (transition to `NEARLINE` after 3 days, delete after 7 days) to preserve backup histories across throwaway GKE lifecycle runs.
@@ -44,8 +44,8 @@ The following diagram illustrates how the persistent infrastructure bootstrap wo
 graph TD
     subgraph Bootstrapping ["Phase 0 — Create (persistent, one-time)"]
         A["terraform/bootstrap<br>Owner/Admin roles"] -->|"WIF + GCS bucket"| B["Workload Identity<br>+ Remote State"]
-        B --> C["0.1.01 Grafana Cloud<br>bootstrap"]
-        B --> D["0.1.02 Gateway<br>bootstrap"]
+        B --> C["0.1.01 Gateway<br>bootstrap"]
+        B --> D["0.1.02 Grafana Cloud<br>bootstrap"]
         B --> C2["0.1.03 Azure<br>bootstrap"]
         B --> C3["0.1.04 AWS<br>bootstrap"]
         C -->|"stack ID + token"| E[("Grafana Cloud")]
@@ -71,8 +71,8 @@ graph TD
     end
 
     subgraph Persistent_Teardown ["Phase 9 — Destroy (persistent, one-time)"]
-        K --> P1["9.2.01 Grafana Cloud<br>decommission"]
-        K --> P2["9.2.02 Gateway<br>decommission"]
+        K --> P1["9.2.01 Gateway<br>decommission"]
+        K --> P2["9.2.02 Grafana Cloud<br>decommission"]
         K --> P3["9.2.03 Azure<br>decommission"]
         K --> P4["9.2.04 AWS<br>decommission"]
         P1 & P2 & P3 & P4 -->|"all resources removed"| N["Clean Slate"]
@@ -91,17 +91,17 @@ graph TD
 ### Detailed Workflow Reference and Lifecycle Management
 
 #### 1. Persistent Bootstrap Workflows
-- **`0.1.01 Grafana Cloud bootstrap`**: Provisions a dedicated Grafana Cloud stack (hosted metrics/traces/logs backend) using `terraform/grafana-cloud-stack`, with a Terraform-generated slug. By separating the observability backend from the short-lived GKE cluster, application performance metrics and history remain readable even after GKE is decommissioned and rebuilt — the stack lives until you run `9.2.01 Grafana Cloud decommission`, which tears it down (the org/free tier is untouched).
-- **`0.1.02 Gateway bootstrap`**: Provisions account-level GCP networking assets using `terraform/gateway-bootstrap`. This includes a reserved external IP (`jenkins-2026-gateway-ip`), DNS authorizations, and a Google-managed wildcard SSL certificate map. Keeping this IP and SSL certificate persistent avoids losing the reserved IP during a GKE rebuild, eliminating the need to update wildcard DNS records at your domain registrar and wait for DNS propagation.
+- **`0.1.01 Gateway bootstrap`**: Provisions account-level GCP networking assets using `terraform/gateway-bootstrap`. This includes a reserved external IP (`jenkins-2026-gateway-ip`), DNS authorizations, and a Google-managed wildcard SSL certificate map. Keeping this IP and SSL certificate persistent avoids losing the reserved IP during a GKE rebuild, eliminating the need to update wildcard DNS records at your domain registrar and wait for DNS propagation.
+- **`0.1.02 Grafana Cloud bootstrap`**: Provisions a dedicated Grafana Cloud stack (hosted metrics/traces/logs backend) using `terraform/grafana-cloud-stack`, with a Terraform-generated slug. By separating the observability backend from the short-lived GKE cluster, application performance metrics and history remain readable even after GKE is decommissioned and rebuilt — the stack lives until you run `9.2.02 Grafana Cloud decommission`, which tears it down (the org/free tier is untouched).
 
 #### 2. Persistent Decommission Workflows (Clean Slate)
 When you want to tear down the entire project permanently, you must run the decommission workflows in the reverse order of setup to avoid dangling resources:
 1. Run **`9.1.01 GKE decommission`** first to destroy the active GKE cluster and all internal Kubernetes workloads (releasing short-lived target bindings).
-2. Run **`9.2.01 Grafana Cloud decommission`** to run `terraform destroy` on the Grafana Cloud stack, which removes the Grafana instances, access policies, and dashboards.
-3. Run **`9.2.02 Gateway decommission`** to run `terraform destroy` on the gateway resources, freeing the reserved external IP, removing the wildcard SSL certificate map, and deleting GCP DNS authorizations.
+2. Run **`9.2.01 Gateway decommission`** to run `terraform destroy` on the gateway resources, freeing the reserved external IP, removing the wildcard SSL certificate map, and deleting GCP DNS authorizations.
+3. Run **`9.2.02 Grafana Cloud decommission`** to run `terraform destroy` on the Grafana Cloud stack, which removes the Grafana instances, access policies, and dashboards.
 
 > [!WARNING]
-> Decommissioning the gateway (`9.2.02`) releases the external IP address. If you recreate the gateway later, a *new* IP will be allocated, forcing you to update your DNS provider's A records and wait for DNS propagation. Only decommission the gateway if you plan to shut down the environment permanently.
+> Decommissioning the gateway (`9.2.01`) releases the external IP address. If you recreate the gateway later, a *new* IP will be allocated, forcing you to update your DNS provider's A records and wait for DNS propagation. Only decommission the gateway if you plan to shut down the environment permanently.
 
 ## Version Pinning and the `git_ref` Parameter
 
@@ -138,7 +138,7 @@ When executing the **0.2.01 GKE provision** workflow manually, you are presented
 3. **enable_gateway (Checkbox - Boolean)**:
    - **Default**: `false`.
    - Determines whether the public GKE Gateway L7 load balancer should be provisioned.
-   - **Prerequisites**: Requires `0.1.02 Gateway bootstrap` applied, wildcard DNS records, and IAP OAuth client credentials.
+   - **Prerequisites**: Requires `0.1.01 Gateway bootstrap` applied, wildcard DNS records, and IAP OAuth client credentials.
 
 4. **git_ref (Text Box - String)**:
    - **Default**: `""` (empty).
@@ -165,8 +165,8 @@ To enforce cost control (FinOps), auditability, and guard against accidental des
 * **Protected Workflows**:
   - `0.2.01 GKE provision`
   - `9.1.01 GKE decommission`
-  - `9.2.01 Grafana Cloud decommission`
-  - `9.2.02 Gateway decommission`
+  - `9.2.01 Gateway decommission`
+  - `9.2.02 Grafana Cloud decommission`
 * **Environment Name**: `gke-production`
 
 ### Setting up Environment Rules
@@ -285,8 +285,8 @@ EOF
       gh secret set GRAFANA_CLOUD_API_TOKEN --body "<token from step a>"
       ```
 
-   c. **Run the "0.1.01 Grafana Cloud bootstrap" workflow** (Actions tab →
-      **0.1.01 Grafana Cloud bootstrap** → **Run workflow**).
+   c. **Run the "0.1.02 Grafana Cloud bootstrap" workflow** (Actions tab →
+      **0.1.02 Grafana Cloud bootstrap** → **Run workflow**).
 
 6. **(Optional) Azure backend** for `observability_mode: managed-azure`:
 
@@ -316,7 +316,7 @@ EOF
 1. Go to the repo's **Actions** tab → **0.2.01 GKE provision** → **Run
    workflow**. Pick `observability_mode`. `enable_gateway` defaults to **checked**
    — this project's intended public access path. **Uncheck it only** for a fresh
-   environment where the one-time **0.1.02 Gateway bootstrap** + DNS records +
+   environment where the one-time **0.1.01 Gateway bootstrap** + DNS records +
    IAP OAuth client haven't been done yet.
 2. Wait ~15-20 minutes. The job summary prints the cluster name/zone and a
    reminder to decommission when done.

@@ -35,8 +35,8 @@ The ZZ digit is the stable identity of a resource. Given ZZ=03 (Azure), you can 
 
 | ZZ | Resource | create `0.1.ZZ` | update `5.1.ZZ` | destroy `9.2.ZZ` |
 |---|---|---|---|---|
-| `01` | Grafana Cloud stack | `0.1.01` | — | `9.2.01` |
-| `02` | Gateway (static IP + cert) | `0.1.02` | — | `9.2.02` |
+| `01` | Gateway (static IP + cert) | `0.1.01` | — | `9.2.01` |
+| `02` | Grafana Cloud stack | `0.1.02` | — | `9.2.02` |
 | `03` | Azure Managed Grafana | `0.1.03` | `5.1.03` | `9.2.03` |
 | `04` | AWS AMG | `0.1.04` | `5.1.04` | `9.2.04` |
 | `01` | GKE cluster | `0.2.01` | — | `9.1.01` |
@@ -54,8 +54,8 @@ Rows = resources · Columns = lifecycle phases · Cell = filename (link) or — 
 
 | Resource | `0.` Create | `5.` Update | `9.` Destroy |
 |---|---|---|---|
-| **Grafana Cloud stack** | [0.1.01-grafana-cloud-bootstrap](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.01-grafana-cloud-bootstrap.yml) | — | [9.2.01-grafana-cloud-decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.01-grafana-cloud-decommission.yml) |
-| **Gateway** (static IP + cert) | [0.1.02-gateway-bootstrap](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.02-gateway-bootstrap.yml) | — | [9.2.02-gateway-decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.02-gateway-decommission.yml) |
+| **Gateway** (static IP + cert) | [0.1.01-gateway-bootstrap](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.01-gateway-bootstrap.yml) | — | [9.2.01-gateway-decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.01-gateway-decommission.yml) |
+| **Grafana Cloud stack** | [0.1.02-grafana-cloud-bootstrap](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.02-grafana-cloud-bootstrap.yml) | — | [9.2.02-grafana-cloud-decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.02-grafana-cloud-decommission.yml) |
 | **Azure Managed Grafana** | [0.1.03-azure-bootstrap](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.03-azure-bootstrap.yml) | [5.1.03-publish-azure-dashboards](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.1.03-publish-azure-dashboards.yml) | [9.2.03-azure-decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.03-azure-decommission.yml) |
 | **AWS AMG** | [0.1.04-aws-bootstrap](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.04-aws-bootstrap.yml) | [5.1.04-publish-aws-dashboards](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.1.04-publish-aws-dashboards.yml) | [9.2.04-aws-decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.04-aws-decommission.yml) |
 | **GKE cluster** | [0.2.01-gke-provision](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.2.01-gke-provision.yml) | — | [9.1.01-gke-decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.1.01-gke-decommission.yml) |
@@ -74,7 +74,7 @@ Rows = resources · Columns = lifecycle phases · Cell = filename (link) or — 
 flowchart TD
     subgraph PHASE0 ["Phase 0 — Create (run in filename order)"]
         direction TB
-        P0_1["0.1.01 Grafana Cloud bootstrap\n0.1.02 Gateway bootstrap\n0.1.03 Azure bootstrap\n0.1.04 AWS bootstrap\n━━ one-time, persistent ━━"]
+        P0_1["0.1.01 Gateway bootstrap\n0.1.02 Grafana Cloud bootstrap\n0.1.03 Azure bootstrap\n0.1.04 AWS bootstrap\n━━ one-time, persistent ━━"]
         P0_2["0.2.01 GKE provision\n━━ throwaway cluster ━━"]
         P0_1 -->|"persistent resources ready\n(GCS state, credentials)"| P0_2
     end
@@ -91,7 +91,7 @@ flowchart TD
     subgraph PHASE9 ["Phase 9 — Destroy (run in filename order)"]
         direction TB
         P9_1["9.1.01 GKE decommission\n━━ throwaway cluster first ━━"]
-        P9_2["9.2.01 Grafana Cloud decommission\n9.2.02 Gateway decommission\n9.2.03 Azure decommission\n9.2.04 AWS decommission\n━━ persistent resources last ━━"]
+        P9_2["9.2.01 Gateway decommission\n9.2.02 Grafana Cloud decommission\n9.2.03 Azure decommission\n9.2.04 AWS decommission\n━━ persistent resources last ━━"]
         P9_1 -->|"cluster gone\nno dangling references"| P9_2
     end
 
@@ -131,8 +131,8 @@ The first digit of the filename (`Y`) maps directly to these concepts:
 
 | # | Workflow | Day | Requires cluster? | Idempotent? | Typical frequency |
 |:---:|---|:---:|:---:|:---:|---|
-| 1 | [0.1.01 Grafana Cloud bootstrap](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.01-grafana-cloud-bootstrap.yml) | **Day-0** | no | yes | Once (re-run = no-op) |
-| 2 | [0.1.02 Gateway bootstrap](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.02-gateway-bootstrap.yml) | **Day-0** | no | yes | Once (re-run = no-op) |
+| 1 | [0.1.01 Gateway bootstrap](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.01-gateway-bootstrap.yml) | **Day-0** | no | yes | Once (re-run = no-op) |
+| 2 | [0.1.02 Grafana Cloud bootstrap](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.02-grafana-cloud-bootstrap.yml) | **Day-0** | no | yes | Once (re-run = no-op) |
 | 3 | [0.1.03 Azure managed-grafana bootstrap](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.03-azure-bootstrap.yml) | **Day-0** | no | yes | Once (re-run = no-op) |
 | 4 | [0.1.04 AWS managed-grafana bootstrap](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.04-aws-bootstrap.yml) | **Day-0** | no | yes | Once (re-run = no-op) |
 | 5 | [0.2.01 GKE provision](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.2.01-gke-provision.yml) | **Day-1** | creates it | yes | Once per session |
@@ -143,8 +143,8 @@ The first digit of the filename (`Y`) maps directly to these concepts:
 | 10 | [5.2.03 Redeploy Headlamp](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.2.03-redeploy-headlamp.yml) | **Day-2** | yes | yes | When Headlamp config changes |
 | 11 | [5.9.01 Continuous Traffic Simulation](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.9.01-traffic-simulation.yml) | **Day-2** | yes | n/a | On demand / regular cadence |
 | 12 | [9.1.01 GKE decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.1.01-gke-decommission.yml) | **Decommission** | destroys it | yes | Once per session |
-| 13 | [9.2.01 Grafana Cloud decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.01-grafana-cloud-decommission.yml) | **Decommission** | no | yes | Once (permanent — ⚠ irreversible) |
-| 14 | [9.2.02 Gateway decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.02-gateway-decommission.yml) | **Decommission** | no | yes | Once (permanent — ⚠ loses static IP) |
+| 13 | [9.2.01 Gateway decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.01-gateway-decommission.yml) | **Decommission** | no | yes | Once (permanent — ⚠ loses static IP) |
+| 14 | [9.2.02 Grafana Cloud decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.02-grafana-cloud-decommission.yml) | **Decommission** | no | yes | Once (permanent — ⚠ irreversible) |
 | 15 | [9.2.03 Azure managed-grafana decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.03-azure-decommission.yml) | **Decommission** | no | yes | Once (permanent — ⚠ irreversible) |
 | 16 | [9.2.04 AWS managed-grafana decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.04-aws-decommission.yml) | **Decommission** | no | yes | Once (permanent — ⚠ irreversible) |
 
@@ -158,8 +158,8 @@ The first digit of the filename (`Y`) maps directly to these concepts:
 flowchart TD
     subgraph D0["Day-0 — one-time persistent bootstrap"]
         direction LR
-        w0101["0.1.01\nGrafana Cloud bootstrap"]
-        w0102["0.1.02\nGateway bootstrap"]
+        w0101["0.1.01\nGateway bootstrap"]
+        w0102["0.1.02\nGrafana Cloud bootstrap"]
         w0103["0.1.03\nAzure bootstrap"]
         w0104["0.1.04\nAWS bootstrap"]
     end
@@ -214,8 +214,8 @@ All 15 workflows in a single numbered table. Each column of the code (`Y`, `X`, 
 
 | # | `Y` — Phase | `X` — Step within phase | `ZZ` — Resource | Code → GitHub Actions | Description | Prerequisites | Frequency |
 |:---:|---|---|---|---|---|---|---|
-| **1** | **0** Create | **1** Persistent — first | **01** Grafana Cloud stack | [**`0.1.01`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.01-grafana-cloud-bootstrap.yml) `Grafana Cloud bootstrap` | Provisions the persistent Grafana Cloud stack (`terraform/grafana-cloud-stack`): Grafana instance, access-policy tokens, PDC agent. Preserves metrics/traces/logs history across GKE rebuilds. | `terraform/bootstrap` applied (WIF + GCS bucket) | **One-time** |
-| **2** | **0** Create | **1** Persistent — first | **02** Gateway IP/cert | [**`0.1.02`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.02-gateway-bootstrap.yml) `Gateway bootstrap` | Provisions static external IP + wildcard cert map + DNS authorization (`terraform/gateway-bootstrap`). Keeping these persistent avoids losing the IP and re-propagating DNS on every cluster rebuild. | `terraform/bootstrap`; DNS A record at registrar pointing to the static IP | **One-time** |
+| **1** | **0** Create | **1** Persistent — first | **01** Gateway IP/cert | [**`0.1.01`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.01-gateway-bootstrap.yml) `Gateway bootstrap` | Provisions static external IP + wildcard cert map + DNS authorization (`terraform/gateway-bootstrap`). Keeping these persistent avoids losing the IP and re-propagating DNS on every cluster rebuild. | `terraform/bootstrap`; DNS A record at registrar pointing to the static IP | **One-time** |
+| **2** | **0** Create | **1** Persistent — first | **02** Grafana Cloud stack | [**`0.1.02`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.02-grafana-cloud-bootstrap.yml) `Grafana Cloud bootstrap` | Provisions the Grafana Cloud stack (`terraform/grafana-cloud-stack`, generated slug): Grafana instance, access-policy tokens, PDC agent. Preserves metrics/traces/logs history across GKE rebuilds. | `terraform/bootstrap` applied (WIF + GCS bucket) | **One-time** |
 | **3** | **0** Create | **1** Persistent — first | **03** Azure Mgd Grafana | [**`0.1.03`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.03-azure-bootstrap.yml) `Azure managed-grafana bootstrap` | Provisions Azure Managed Grafana + Azure Monitor workspace + App Insights + Log Analytics + Entra SP (`terraform/azure-managed-grafana`). Auth: GitHub OIDC → Azure (no stored client secret). | `terraform/bootstrap`; `AZURE_*` GitHub secrets | **One-time** |
 | **4** | **0** Create | **1** Persistent — first | **04** AWS AMG / AMP | [**`0.1.04`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.04-aws-bootstrap.yml) `AWS managed-grafana bootstrap` | Provisions Amazon Managed Grafana + AMP + CloudWatch + GKE→AWS OIDC provider + collector IAM role (`terraform/aws-managed-grafana`). Auth: GitHub OIDC → AWS (no access keys). | `terraform/bootstrap`; `AWS_*` GitHub secrets | **One-time** |
 | **5** | **0** Create | **2** GKE — second (depends on persistent) | **01** GKE cluster | [**`0.2.01`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.2.01-gke-provision.yml) `GKE provision` | Provisions the throwaway GKE cluster (`terraform/gke`) then runs `scripts/up.sh` in full: namespaces → OTel → observability → Jenkins → ArgoCD → seed pipelines → Headlamp + smoke test. Reads persistent-resource outputs (rows 1–4) from GCS state. Always pair with row 11. | Rows 1–4 as needed for the chosen `observability_mode`; `terraform/bootstrap` | **Per session** |
@@ -225,8 +225,8 @@ All 15 workflows in a single numbered table. Each column of the code (`Y`, `X`, 
 | **9** | **5** Update | **2** GKE | **03** Headlamp | [**`5.2.03`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.2.03-redeploy-headlamp.yml) `Redeploy Headlamp` | Re-applies `scripts/01-namespaces.sh` (refreshes OIDC config keys on `headlamp-credentials`) and `scripts/08-headlamp.sh` (Helm upgrade of `helm/headlamp/`). | Cluster active (row 5 run) | **Anytime** |
 | **10** | **5** Update | **9** Utilities | **01** Traffic simulation | [**`5.9.01`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.9.01-traffic-simulation.yml) `Continuous Traffic Simulation` | Runs a continuous stream of synthetic k6 traffic against the stable endpoints to keep metrics and logs active in Grafana dashboards. Does not modify infrastructure. | Cluster active; public endpoints reachable | **Anytime** |
 | **11** | **9** Destroy | **1** GKE — first (most dependent) | **01** GKE cluster | [**`9.1.01`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.1.01-gke-decommission.yml) `GKE decommission` | Tears down the stack (`scripts/down.sh`) and destroys the GKE cluster (`terraform destroy` on `terraform/gke`). The ephemeral Grafana Cloud token is also destroyed. Persistent resources are untouched. Must run **before** rows 12–15. | Session complete | **Per session** |
-| **12** | **9** Destroy | **2** Persistent — last (foundational) | **01** Grafana Cloud stack | [**`9.2.01`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.01-grafana-cloud-decommission.yml) `Grafana Cloud decommission` | `terraform destroy` on `terraform/grafana-cloud-stack`. Permanently removes the Grafana Cloud instance, dashboards, access-policy tokens. Irreversible. | **Row 11** complete | **One-time** |
-| **13** | **9** Destroy | **2** Persistent — last (foundational) | **02** Gateway IP/cert | [**`9.2.02`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.02-gateway-decommission.yml) `Gateway decommission` | `terraform destroy` on `terraform/gateway-bootstrap`. Releases the static IP and cert map. **⚠ The IP is gone**: a future bootstrap will get a new IP, requiring DNS A-record updates and propagation delay. | **Row 11** complete | **One-time** |
+| **12** | **9** Destroy | **2** Persistent — last (foundational) | **01** Gateway IP/cert | [**`9.2.01`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.01-gateway-decommission.yml) `Gateway decommission` | `terraform destroy` on `terraform/gateway-bootstrap`. Releases the static IP and cert map. **⚠ The IP is gone**: a future bootstrap will get a new IP, requiring DNS A-record updates and propagation delay. | **Row 11** complete | **One-time** |
+| **13** | **9** Destroy | **2** Persistent — last (foundational) | **02** Grafana Cloud stack | [**`9.2.02`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.02-grafana-cloud-decommission.yml) `Grafana Cloud decommission` | `terraform destroy` on `terraform/grafana-cloud-stack`. Permanently removes the Grafana Cloud instance, dashboards, access-policy tokens. Irreversible. | **Row 11** complete | **One-time** |
 | **14** | **9** Destroy | **2** Persistent — last (foundational) | **03** Azure Mgd Grafana | [**`9.2.03`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.03-azure-decommission.yml) `Azure managed-grafana decommission` | `terraform destroy` on `terraform/azure-managed-grafana`. Removes Azure Managed Grafana, Monitor workspace, App Insights, Log Analytics and the Entra SP. | **Row 11** complete | **One-time** |
 | **15** | **9** Destroy | **2** Persistent — last (foundational) | **04** AWS AMG / AMP | [**`9.2.04`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.04-aws-decommission.yml) `AWS managed-grafana decommission` | `terraform destroy` on `terraform/aws-managed-grafana`. Removes Amazon Managed Grafana, AMP, CloudWatch log group, OIDC provider and IAM role. | **Row 11** complete | **One-time** |
 

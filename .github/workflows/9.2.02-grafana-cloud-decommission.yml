@@ -1,9 +1,9 @@
-name: "9.2.01 Grafana Cloud decommission"
+name: "9.2.02 Grafana Cloud decommission"
 
 # Manually-triggered teardown: destroys terraform/grafana-cloud-stack to remove
 # the Grafana Cloud stack (the org/free tier is untouched). The slug is read from
 # state, and there is no delete_protection, so the destroy succeeds; the next
-# 0.1.01 run creates a fresh stack with a new generated slug.
+# 0.1.02 run creates a fresh stack with a new generated slug.
 on:
   workflow_dispatch:
 

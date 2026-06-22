@@ -1,4 +1,4 @@
-name: "0.1.02 Gateway bootstrap"
+name: "0.1.01 Gateway bootstrap"
 
 # Manually-triggered, one-time setup step: applies terraform/gateway-bootstrap
 # to create (or, on re-runs, confirm) the persistent GCP resources that public
