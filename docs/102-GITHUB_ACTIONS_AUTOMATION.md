@@ -42,17 +42,17 @@ The following diagram illustrates how the persistent infrastructure bootstrap wo
 
 ```mermaid
 graph TD
-    subgraph Bootstrapping ["Phase 0 — Create (persistent, one-time)"]
+    subgraph Bootstrapping ["Day-0 · Phase 0 Create (persistent, one-time)"]
         A["terraform/bootstrap<br>Owner/Admin roles"] -->|"WIF + GCS bucket"| B["Workload Identity<br>+ Remote State"]
         B --> C["0.1.01 Gateway<br>bootstrap"]
         B --> D["0.1.02 Grafana Cloud<br>bootstrap"]
         B --> C2["0.1.03 Azure<br>bootstrap"]
         B --> C3["0.1.04 AWS<br>bootstrap"]
-        C -->|"stack ID + token"| E[("Grafana Cloud")]
-        D -->|"static IP + cert"| F[("Gateway<br>+ Cert Map")]
+        C -->|"static IP + cert"| F[("Gateway<br>+ Cert Map")]
+        D -->|"stack ID + token"| E[("Grafana Cloud")]
     end
 
-    subgraph GKE_Lifecycle ["Phase 0→5→9 — GKE Cluster Lifecycle"]
+    subgraph GKE_Lifecycle ["Day-1 → Day-2 → Decommission · GKE Cluster Lifecycle"]
         F & E & B --> G["0.2.01 GKE provision<br>tf/gke + scripts/up.sh"]
         G --> H["GKE Cluster Active<br>Jenkins / ArgoCD / services"]
         H --> I["5.2.02 Redeploy Jenkins"]
@@ -64,13 +64,13 @@ graph TD
         K -->|"cluster gone<br>assets kept"| B
     end
 
-    subgraph Simulation ["Phase 5 — Update (simulation)"]
+    subgraph Simulation ["Day-2 · Phase 5 Update (simulation)"]
         H & E --> O["5.9.01 Traffic Simulation<br>k6 load script"]
         O -->|"live traffic"| H
         O -->|"telemetry"| E
     end
 
-    subgraph Persistent_Teardown ["Phase 9 — Destroy (persistent, one-time)"]
+    subgraph Persistent_Teardown ["Decommission · Phase 9 Destroy (persistent, one-time)"]
         K --> P1["9.2.01 Gateway<br>decommission"]
         K --> P2["9.2.02 Grafana Cloud<br>decommission"]
         K --> P3["9.2.03 Azure<br>decommission"]
@@ -90,11 +90,17 @@ graph TD
 
 ### Detailed Workflow Reference and Lifecycle Management
 
-#### 1. Persistent Bootstrap Workflows
+> Each workflow is tagged with its **Day-0 / Day-1 / Day-2 / Decommission** lifecycle
+> position (SRE taxonomy). See [101. Workflows → Day-0 / Day-1 / Day-2 operations](./101-GITHUB_ACTIONS_WORKFLOWS.md#day-0--day-1--day-2-operations)
+> for the full definition and the per-workflow table. In short: **Day-0** = persistent
+> bootstrap (`0.1.xx`), **Day-1** = GKE provision (`0.2.01`), **Day-2** = operations on
+> the running cluster (`5.x`), **Decommission** = teardown (`9.x`).
+
+#### 1. Persistent Bootstrap Workflows (Day-0)
 - **`0.1.01 Gateway bootstrap`**: Provisions account-level GCP networking assets using `terraform/gateway-bootstrap`. This includes a reserved external IP (`jenkins-2026-gateway-ip`), DNS authorizations, and a Google-managed wildcard SSL certificate map. Keeping this IP and SSL certificate persistent avoids losing the reserved IP during a GKE rebuild, eliminating the need to update wildcard DNS records at your domain registrar and wait for DNS propagation.
 - **`0.1.02 Grafana Cloud bootstrap`**: Provisions a dedicated Grafana Cloud stack (hosted metrics/traces/logs backend) using `terraform/grafana-cloud-stack`, with a Terraform-generated slug. By separating the observability backend from the short-lived GKE cluster, application performance metrics and history remain readable even after GKE is decommissioned and rebuilt — the stack lives until you run `9.2.02 Grafana Cloud decommission`, which tears it down (the org/free tier is untouched).
 
-#### 2. Persistent Decommission Workflows (Clean Slate)
+#### 2. Persistent Decommission Workflows (Decommission · Clean Slate)
 When you want to tear down the entire project permanently, you must run the decommission workflows in the reverse order of setup to avoid dangling resources:
 1. Run **`9.1.01 GKE decommission`** first to destroy the active GKE cluster and all internal Kubernetes workloads (releasing short-lived target bindings).
 2. Run **`9.2.01 Gateway decommission`** to run `terraform destroy` on the gateway resources, freeing the reserved external IP, removing the wildcard SSL certificate map, and deleting GCP DNS authorizations.
