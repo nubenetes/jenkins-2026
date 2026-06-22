@@ -53,10 +53,20 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
   - `gke/` - the throwaway GKE cluster. Local state for `test/e2e.sh`; GCS
     remote state (via a `backend_override.tf` written by the workflows) in
     CI.
-  - `grafana-cloud-stack/` - **one-time, local state**, run by hand. Creates
-    the persistent Grafana Cloud stack.
+  - `grafana-cloud-stack/` - the `observability.mode=grafana-cloud` backend:
+    creates the Grafana Cloud stack with a **Terraform-generated slug**
+    (`<prefix><random>`, so destroy+recreate never hits Grafana Cloud's
+    reserved-slug cooldown). GCS remote state via `backend_override.tf` (prefix
+    `grafana-cloud-stack`); applied by `0.1.01-grafana-cloud-bootstrap.yml`,
+    destroyed by `9.2.01-grafana-cloud-decommission.yml` - the
+    bootstrap/decommission tier, exactly like the Azure/AWS backends. Ephemeral
+    (no `delete_protection`); the Grafana Cloud **org/account/free tier** is
+    created once by hand and never Terraform-managed. The slug is an **output**
+    (no `GRAFANA_CLOUD_STACK_SLUG` secret/var) that `0.2.01` reads from the GCS
+    state.
   - `grafana-cloud-token/` - ephemeral access-policy + service-account
-    tokens scoped to the stack above, looked up by slug via a data source.
+    tokens scoped to the stack above, looked up by slug via a data source (slug
+    read from `grafana-cloud-stack`'s state output and passed in by the workflow).
     Same GCS-remote-state-via-`backend_override.tf` pattern as `terraform/gke`;
     applied by `0.2.01-gke-provision.yml`, destroyed by `9.1.01-gke-decommission.yml`.
   - `azure-managed-grafana/` - the `observability.mode=managed-azure` backend:
@@ -119,10 +129,12 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
   (or `5.2.02-redeploy-jenkins` against a real cluster) workflows without
   explicit confirmation - they create/modify real, billed GCP (and optionally
   Grafana Cloud) resources. Always pair a provision with a decommission.
-- `terraform/bootstrap` and `terraform/grafana-cloud-stack` are one-time,
-  human-run steps with local gitignored state - never wire these into CI, and
-  never re-run `terraform apply` there without checking the existing state
-  file first (re-creating either would orphan/duplicate persistent resources).
+- `terraform/bootstrap` is a one-time, human-run step with local gitignored
+  state - never wire it into CI, and never re-run `terraform apply` there without
+  checking the existing state file first (re-creating it would orphan/duplicate
+  persistent resources). (`terraform/grafana-cloud-stack` used to be in this
+  category but is now CI-managed with GCS remote state and a generated slug -
+  see the `terraform/` layout above.)
 - When editing Terraform, run `terraform fmt -recursive` and
   `terraform validate` (after `terraform init -backend=false` if no backend
   is configured yet) before considering the change done.

@@ -1,14 +1,16 @@
 name: "0.1.01 Grafana Cloud bootstrap"
 
-# Manually-triggered, one-time setup step: applies terraform/grafana-cloud-stack
-# to create (or, on re-runs, confirm) the persistent Grafana Cloud stack that
-# observability_mode: grafana-cloud sends OpenTelemetry data to. State is
-# remote (GCS, prefix "jenkins-2026/grafana-cloud-stack", same bucket as
-# terraform/gke), so this is safe to re-run - it's a no-op once the stack
-# exists.
+# Applies terraform/grafana-cloud-stack to create the Grafana Cloud stack that
+# observability_mode: grafana-cloud sends OpenTelemetry data to. The stack slug
+# is GENERATED (random suffix, persisted in state), so re-applying is a no-op and
+# a destroy+recreate (9.2.01 -> 0.1.01) never collides with Grafana Cloud's
+# reserved-slug cooldown. State is remote (GCS, prefix
+# "jenkins-2026/grafana-cloud-stack", same bucket as terraform/gke). The stack is
+# ephemeral (torn down by 9.2.01); only the Grafana Cloud org/free tier persists.
 #
-# Requires the GRAFANA_CLOUD_API_TOKEN and GRAFANA_CLOUD_STACK_SLUG secrets -
-# see README.md "GitHub Actions automation" for how to create them.
+# Requires only the GRAFANA_CLOUD_API_TOKEN secret (the slug is no longer an
+# input - it is an output read by 0.2.01). See README.md "GitHub Actions
+# automation".
 #
 # 0.2.01-gke-provision.yml calls this via workflow_call when
 # observability_mode=grafana-cloud so the persistent stack is always confirmed
@@ -74,11 +76,10 @@ jobs:
             }
           done
 
-      - name: Terraform apply (create/confirm persistent Grafana Cloud stack)
+      - name: Terraform apply (create/confirm Grafana Cloud stack)
         working-directory: terraform/grafana-cloud-stack
         env:
           TF_VAR_grafana_cloud_api_token: ${{ secrets.GRAFANA_CLOUD_API_TOKEN }}
-          TF_VAR_stack_slug: ${{ vars.GRAFANA_CLOUD_STACK_SLUG || secrets.GRAFANA_CLOUD_STACK_SLUG }}
         run: terraform apply -auto-approve -input=false
 
       - name: Summary
@@ -88,8 +89,8 @@ jobs:
           {
             echo "### Grafana Cloud stack"
             echo
-            echo "- Slug: \`${{ vars.GRAFANA_CLOUD_STACK_SLUG || secrets.GRAFANA_CLOUD_STACK_SLUG }}\`"
+            echo "- Slug: \`$(terraform output -raw stack_slug 2>/dev/null || echo 'n/a')\` (generated)"
             echo "- Grafana URL: \`$(terraform output -raw grafana_url 2>/dev/null || echo 'n/a')\`"
             echo
-            echo "0.2.01 GKE provision (observability_mode: grafana-cloud) can now mint scoped tokens against this stack via terraform/grafana-cloud-token."
+            echo "0.2.01 GKE provision (observability_mode: grafana-cloud) reads this slug from the module's state and mints scoped tokens against the stack via terraform/grafana-cloud-token."
           } >> "${GITHUB_STEP_SUMMARY}"
