@@ -4,8 +4,13 @@
 #
 #   grafana-cloud  - uses GRAFANA_BASE_URL + GRAFANA_API_KEY from the
 #                    "${J2026_GRAFANA_CLOUD_SECRET}" Secret (same as 07-grafana-dashboards.sh).
-#                    Admin email from GRAFANA_ALERT_EMAIL env var, falling back
-#                    to the jenkins-credentials oidc-admin-email Secret key.
+#                    Grafana Cloud requires the contact-point email to be an org
+#                    member — use GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD for this.
+#
+# Alert email resolution (highest → lowest priority, all modes):
+#   1. GRAFANA_ALERT_EMAIL_<MODE>  e.g. GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD
+#   2. GRAFANA_ALERT_EMAIL         generic fallback
+#   3. jenkins-credentials.oidc-admin-email  cluster default
 #
 #   oss            - reads admin password from kube-prometheus-stack-grafana Secret,
 #                    port-forwards the in-cluster Grafana Service, and mints a
@@ -81,21 +86,31 @@ provision_alerts() {
     | python3 -c "import json,sys; cps=json.load(sys.stdin); \
         print(next((c['uid'] for c in cps if c['uid']=='jenkins2026-email-cp'),''))" \
     2>/dev/null || true)"
+  _cp_ok=1
   if [[ -n "${EXISTING_CP}" ]]; then
     gcapi PUT /api/v1/provisioning/contact-points/jenkins2026-email-cp \
-      -d @/tmp/j2026-cp.json > /dev/null
-    log_info "Updated contact point jenkins2026-email-cp."
+      -d @/tmp/j2026-cp.json > /dev/null || _cp_ok=0
+    [[ "${_cp_ok}" -eq 1 ]] && log_info "Updated contact point jenkins2026-email-cp."
   else
     gcapi POST /api/v1/provisioning/contact-points \
-      -d @/tmp/j2026-cp.json > /dev/null
-    log_info "Created contact point jenkins2026-email-cp."
+      -d @/tmp/j2026-cp.json > /dev/null || _cp_ok=0
+    [[ "${_cp_ok}" -eq 1 ]] && log_info "Created contact point jenkins2026-email-cp."
+  fi
+  if [[ "${_cp_ok}" -eq 0 ]]; then
+    log_warn "Contact point upsert failed (see error above)."
+    log_warn "Grafana Cloud requires the alert email to be a member of the org."
+    log_warn "Fix: add '${alert_email}' to the Grafana Cloud org, or set"
+    log_warn "GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD (or GRAFANA_ALERT_EMAIL) to an org-member address."
+    log_warn "Skipping notification policy — alert rules will still be provisioned."
   fi
 
   # --- notification policy ---------------------------------------------------
-  log_step "Applying notification policy (route all → email)"
-  gcapi PUT /api/v1/provisioning/policies \
-    -d @"${ALERTS_DIR}/notification-policy.json" > /dev/null
-  log_info "Notification policy applied."
+  if [[ "${_cp_ok}" -eq 1 ]]; then
+    log_step "Applying notification policy (route all → email)"
+    gcapi PUT /api/v1/provisioning/policies \
+      -d @"${ALERTS_DIR}/notification-policy.json" > /dev/null
+    log_info "Notification policy applied."
+  fi
 
   # --- alert rules -----------------------------------------------------------
   log_step "Upserting alert rules"
@@ -116,13 +131,16 @@ provision_alerts() {
 }
 
 # ---------------------------------------------------------------------------
-# resolve_email  — reads GRAFANA_ALERT_EMAIL env var or falls back to
-# jenkins-credentials oidc-admin-email Secret. Prints the email to stdout.
+# resolve_email  — precedence (highest → lowest):
+#   1. GRAFANA_ALERT_EMAIL_<MODE>  e.g. GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD
+#   2. GRAFANA_ALERT_EMAIL         generic override
+#   3. jenkins-credentials.oidc-admin-email  cluster default
 # ---------------------------------------------------------------------------
 resolve_email() {
-  local email="${GRAFANA_ALERT_EMAIL:-$(kubectl get secret jenkins-credentials \
+  local mode_var="GRAFANA_ALERT_EMAIL_$(echo "${J2026_OBS_MODE}" | tr '[:lower:]-' '[:upper:]_')"
+  local email="${!mode_var:-${GRAFANA_ALERT_EMAIL:-$(kubectl get secret jenkins-credentials \
     -n "${J2026_JENKINS_NAMESPACE}" \
-    -o jsonpath='{.data.oidc-admin-email}' 2>/dev/null | base64 -d 2>/dev/null || true)}"
+    -o jsonpath='{.data.oidc-admin-email}' 2>/dev/null | base64 -d 2>/dev/null || true)}}"
   echo "${email}"
 }
 
@@ -145,7 +163,7 @@ case "${J2026_OBS_MODE}" in
 
     GF_EMAIL="$(resolve_email)"
     if [[ -z "${GF_EMAIL}" ]]; then
-      log_warn "No alert email found (set GRAFANA_ALERT_EMAIL or populate jenkins-credentials oidc-admin-email) — skipping alert provisioning."
+      log_warn "No alert email found (set GRAFANA_ALERT_EMAIL_$(echo "${J2026_OBS_MODE}" | tr '[:lower:]-' '[:upper:]_'), GRAFANA_ALERT_EMAIL, or populate jenkins-credentials oidc-admin-email) — skipping alert provisioning."
       exit 0
     fi
     log_info "Alert notifications will go to: ${GF_EMAIL}"
@@ -191,7 +209,7 @@ case "${J2026_OBS_MODE}" in
 
     GF_EMAIL="$(resolve_email)"
     if [[ -z "${GF_EMAIL}" ]]; then
-      log_warn "No alert email found (set GRAFANA_ALERT_EMAIL or populate jenkins-credentials oidc-admin-email) — skipping alert provisioning."
+      log_warn "No alert email found (set GRAFANA_ALERT_EMAIL_$(echo "${J2026_OBS_MODE}" | tr '[:lower:]-' '[:upper:]_'), GRAFANA_ALERT_EMAIL, or populate jenkins-credentials oidc-admin-email) — skipping alert provisioning."
       exit 0
     fi
     log_info "Alert notifications will go to: ${GF_EMAIL}"
@@ -220,7 +238,7 @@ case "${J2026_OBS_MODE}" in
 
     GF_EMAIL="$(resolve_email)"
     if [[ -z "${GF_EMAIL}" ]]; then
-      log_warn "No alert email found (set GRAFANA_ALERT_EMAIL or populate jenkins-credentials oidc-admin-email) — skipping alert provisioning."
+      log_warn "No alert email found (set GRAFANA_ALERT_EMAIL_$(echo "${J2026_OBS_MODE}" | tr '[:lower:]-' '[:upper:]_'), GRAFANA_ALERT_EMAIL, or populate jenkins-credentials oidc-admin-email) — skipping alert provisioning."
       exit 0
     fi
     log_info "Alert notifications will go to: ${GF_EMAIL}"
@@ -256,7 +274,7 @@ case "${J2026_OBS_MODE}" in
 
     GF_EMAIL="$(resolve_email)"
     if [[ -z "${GF_EMAIL}" ]]; then
-      log_warn "No alert email found (set GRAFANA_ALERT_EMAIL or populate jenkins-credentials oidc-admin-email) — skipping alert provisioning."
+      log_warn "No alert email found (set GRAFANA_ALERT_EMAIL_$(echo "${J2026_OBS_MODE}" | tr '[:lower:]-' '[:upper:]_'), GRAFANA_ALERT_EMAIL, or populate jenkins-credentials oidc-admin-email) — skipping alert provisioning."
       exit 0
     fi
     log_info "Alert notifications will go to: ${GF_EMAIL}"
