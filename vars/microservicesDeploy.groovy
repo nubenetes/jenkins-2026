@@ -125,8 +125,10 @@ def call(Map cfg) {
           # Wait for at least one Ready pod before checking injection
           kubectl -n "\${NAMESPACE}" rollout status deploy/"\${DEPLOY}" --timeout=120s || true
 
-          # Get JAVA_TOOL_OPTIONS from a running pod
-          POD=\$(kubectl -n "\${NAMESPACE}" get pods -l app="\${DEPLOY}" \
+          # Get JAVA_TOOL_OPTIONS from a running pod.
+          # Pods carry app.kubernetes.io/name, not plain app — use that label.
+          POD=\$(kubectl -n "\${NAMESPACE}" get pods \
+                -l "app.kubernetes.io/name=\${DEPLOY}" \
                 --field-selector=status.phase=Running -o name 2>/dev/null | head -1)
           if [[ -z "\${POD}" ]]; then
             echo "No running pod for \${DEPLOY} — skipping OTel injection check"
@@ -140,8 +142,8 @@ def call(Map cfg) {
               echo "OTel agent NOT injected in \${DEPLOY} (race condition) — rolling restart to trigger injection"
               kubectl -n "\${NAMESPACE}" rollout restart deploy/"\${DEPLOY}"
               kubectl -n "\${NAMESPACE}" rollout status deploy/"\${DEPLOY}" --timeout=120s
-              # Verify after restart
-              POD2=\$(kubectl -n "\${NAMESPACE}" get pods -l app="\${DEPLOY}" \
+              POD2=\$(kubectl -n "\${NAMESPACE}" get pods \
+                     -l "app.kubernetes.io/name=\${DEPLOY}" \
                      --field-selector=status.phase=Running -o name 2>/dev/null | head -1)
               JTO2=\$(kubectl -n "\${NAMESPACE}" get "\${POD2}" \
                      -o jsonpath='{range .spec.containers[*]}{.env[?(@.name=="JAVA_TOOL_OPTIONS")].value}{end}' \

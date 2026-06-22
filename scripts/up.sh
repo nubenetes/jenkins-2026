@@ -43,10 +43,23 @@ log_step "Installing 04-jenkins (sequential to prevent API pressure)"
 "${SCRIPT_DIR}/08-headlamp.sh"
 "${SCRIPT_DIR}/09-gateway.sh"
 
-# Self-heal the OTel auto-instrumentation injection race. No-op when the
-# microservices aren't deployed yet (a fresh provision deploys them
-# asynchronously via ArgoCD/pipelines, so this mainly catches re-runs and
-# already-running clusters) or when they're already injected. Non-fatal.
+# On a re-run the microservices are already up — check OTel injection immediately.
+# On a fresh provision ArgoCD deploys them asynchronously after this point, so
+# we first wait for microservices-stable to become Healthy (up to 10 min), then
+# run the guard. The wait is skipped when the app does not exist yet (first ever
+# run before ArgoCD has created the Application).
+if kubectl -n argocd get application microservices-stable >/dev/null 2>&1; then
+  log_step "Waiting for ArgoCD microservices-stable to be Healthy before OTel injection check"
+  timeout 600 bash -c '
+    until [[ "$(kubectl -n argocd get application microservices-stable \
+                -o jsonpath="{.status.health.status}" 2>/dev/null)" == "Healthy" ]]; do
+      sleep 10
+    done
+  ' || log_warn "microservices-stable not Healthy within 10m — running OTel guard anyway"
+fi
+
+# Self-heal the OTel auto-instrumentation injection race. Idempotent: no-op
+# when microservices are not deployed or already injected. Non-fatal.
 "${SCRIPT_DIR}/ensure-otel-injection.sh" || log_warn "OTel injection guard reported an issue (see above)."
 
 log_info "jenkins-2026 is up. Run scripts/status.sh for endpoints and rollout status."
