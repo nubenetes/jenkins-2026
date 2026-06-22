@@ -81,21 +81,31 @@ provision_alerts() {
     | python3 -c "import json,sys; cps=json.load(sys.stdin); \
         print(next((c['uid'] for c in cps if c['uid']=='jenkins2026-email-cp'),''))" \
     2>/dev/null || true)"
+  _cp_ok=1
   if [[ -n "${EXISTING_CP}" ]]; then
     gcapi PUT /api/v1/provisioning/contact-points/jenkins2026-email-cp \
-      -d @/tmp/j2026-cp.json > /dev/null
-    log_info "Updated contact point jenkins2026-email-cp."
+      -d @/tmp/j2026-cp.json > /dev/null || _cp_ok=0
+    [[ "${_cp_ok}" -eq 1 ]] && log_info "Updated contact point jenkins2026-email-cp."
   else
     gcapi POST /api/v1/provisioning/contact-points \
-      -d @/tmp/j2026-cp.json > /dev/null
-    log_info "Created contact point jenkins2026-email-cp."
+      -d @/tmp/j2026-cp.json > /dev/null || _cp_ok=0
+    [[ "${_cp_ok}" -eq 1 ]] && log_info "Created contact point jenkins2026-email-cp."
+  fi
+  if [[ "${_cp_ok}" -eq 0 ]]; then
+    log_warn "Contact point upsert failed (see error above)."
+    log_warn "Grafana Cloud requires the alert email to be a member of the org."
+    log_warn "Fix: add '${alert_email}' to the Grafana Cloud org, or set"
+    log_warn "GRAFANA_ALERT_EMAIL to an address that IS an org member."
+    log_warn "Skipping notification policy — alert rules will still be provisioned."
   fi
 
   # --- notification policy ---------------------------------------------------
-  log_step "Applying notification policy (route all → email)"
-  gcapi PUT /api/v1/provisioning/policies \
-    -d @"${ALERTS_DIR}/notification-policy.json" > /dev/null
-  log_info "Notification policy applied."
+  if [[ "${_cp_ok}" -eq 1 ]]; then
+    log_step "Applying notification policy (route all → email)"
+    gcapi PUT /api/v1/provisioning/policies \
+      -d @"${ALERTS_DIR}/notification-policy.json" > /dev/null
+    log_info "Notification policy applied."
+  fi
 
   # --- alert rules -----------------------------------------------------------
   log_step "Upserting alert rules"
