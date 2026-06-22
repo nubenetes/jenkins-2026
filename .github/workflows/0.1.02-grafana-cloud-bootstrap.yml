@@ -1,12 +1,12 @@
-name: "0.1.01 Grafana Cloud bootstrap"
+name: "0.1.02 Grafana Cloud bootstrap"
 
 # Applies terraform/grafana-cloud-stack to create the Grafana Cloud stack that
 # observability_mode: grafana-cloud sends OpenTelemetry data to. The stack slug
 # is GENERATED (random suffix, persisted in state), so re-applying is a no-op and
-# a destroy+recreate (9.2.01 -> 0.1.01) never collides with Grafana Cloud's
+# a destroy+recreate (9.2.02 -> 0.1.02) never collides with Grafana Cloud's
 # reserved-slug cooldown. State is remote (GCS, prefix
 # "jenkins-2026/grafana-cloud-stack", same bucket as terraform/gke). The stack is
-# ephemeral (torn down by 9.2.01); only the Grafana Cloud org/free tier persists.
+# ephemeral (torn down by 9.2.02); only the Grafana Cloud org/free tier persists.
 #
 # Requires only the GRAFANA_CLOUD_API_TOKEN secret (the slug is no longer an
 # input - it is an output read by 0.2.01). See README.md "GitHub Actions

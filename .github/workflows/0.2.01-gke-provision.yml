@@ -23,7 +23,7 @@ on:
           - managed-azure
           - managed-aws
       enable_gateway:
-        description: "Create the public Gateway/HTTPRoutes/IAP (needs the one-time 0.1.02 Gateway bootstrap + DNS + IAP OAuth client - see README \"Public access\"). Default true: this project's intended access path. Uncheck ONLY for a fresh env before 0.1.02 is done - leaving it on without the bootstrap deploys a Gateway that can't get an IP/cert, and deploying it OFF while the gateway is already up makes Jenkins' root URL (and OIDC redirect_uri) revert to localhost -> redirect_uri_mismatch."
+        description: "Create the public Gateway/HTTPRoutes/IAP (needs the one-time 0.1.01 Gateway bootstrap + DNS + IAP OAuth client - see README \"Public access\"). Default true: this project's intended access path. Uncheck ONLY for a fresh env before 0.1.01 is done - leaving it on without the bootstrap deploys a Gateway that can't get an IP/cert, and deploying it OFF while the gateway is already up makes Jenkins' root URL (and OIDC redirect_uri) revert to localhost -> redirect_uri_mismatch."
         required: true
         default: true
         type: boolean
@@ -58,7 +58,7 @@ jobs:
 
   grafana-cloud-bootstrap:
     if: ${{ inputs.observability_mode == 'grafana-cloud' }}
-    uses: ./.github/workflows/0.1.01-grafana-cloud-bootstrap.yml
+    uses: ./.github/workflows/0.1.02-grafana-cloud-bootstrap.yml
     secrets: inherit
 
   azure-bootstrap:
@@ -397,7 +397,7 @@ jobs:
           if [[ "${{ inputs.enable_gateway }}" != "true" ]]; then
             # gateway.baseDomain's committed default (jenkins2026.nubenetes.com)
             # would otherwise apply. Override to "" to disable public access
-            # for this run (e.g. before the one-time "0.1.02 Gateway bootstrap"
+            # for this run (e.g. before the one-time "0.1.01 Gateway bootstrap"
             # workflow + DNS + IAP OAuth client setup is done) - see
             # README.md "Public access (GKE Gateway API + IAP)".
             export JENKINS2026_BASE_DOMAIN=""
@@ -487,7 +487,7 @@ jobs:
             echo "- Gateway/IAP enabled: \`${{ inputs.enable_gateway }}\`"
             echo
             if [[ "${{ inputs.enable_gateway }}" == "true" ]]; then
-              echo "If the one-time **0.1.02 Gateway bootstrap** workflow + DNS records +"
+              echo "If the one-time **0.1.01 Gateway bootstrap** workflow + DNS records +"
               echo "IAP OAuth client have been completed (see README.md \"Public"
               echo "access (GKE Gateway API + IAP)\"), the stack is reachable at:"
               echo
