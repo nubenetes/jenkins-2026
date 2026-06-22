@@ -7,25 +7,101 @@
 #                    Admin email from GRAFANA_ALERT_EMAIL env var, falling back
 #                    to the jenkins-credentials oidc-admin-email Secret key.
 #
-#   oss            - TODO(obs-mode): OSS Grafana needs SMTP configured in the
-#                    kube-prometheus-stack values (grafana.smtp.*) before email
-#                    contact points work. Wire this after enabling an SMTP relay.
+#   oss            - reads admin password from kube-prometheus-stack-grafana Secret,
+#                    port-forwards the in-cluster Grafana Service, and mints a
+#                    short-lived Admin API key. Rules/contact point appear in Grafana
+#                    regardless; email delivery also requires SMTP in values-oss.yaml.
 #
-#   managed-azure  - TODO(obs-mode): Azure Managed Grafana supports email via
-#                    Action Groups / Azure Monitor alert rules. Provision via
-#                    Terraform in terraform/azure-managed-grafana/ or via the
-#                    Azure Portal, then adapt this script to use the AMG REST API.
+#   managed-azure  - obtains an Azure AD bearer token via the Azure CLI (requires
+#                    prior 'az login' or GitHub OIDC → Azure credentials), then
+#                    uses the Azure Managed Grafana REST API.
 #
-#   managed-aws    - TODO(obs-mode): Amazon Managed Grafana supports email via
-#                    Amazon SNS. Provision an SNS topic + subscription in
-#                    terraform/aws-managed-grafana/ and configure the AMG
-#                    contact point to point at the SNS HTTP endpoint.
+#   managed-aws    - mints a short-lived AMG workspace service-account token via
+#                    the AWS CLI (requires AWS credentials / OIDC auth), then uses
+#                    the Amazon Managed Grafana REST API.
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 
 ALERTS_DIR="${J2026_ROOT_DIR}/observability/grafana/alerting"
+
+# ---------------------------------------------------------------------------
+# provision_alerts GRAFANA_BASE_URL GRAFANA_API_KEY ALERT_EMAIL
+#
+# Idempotent: upserts folder, contact point, notification policy, and all
+# alert rules from ${ALERTS_DIR}/rules/*.json via the Grafana provisioning API.
+# ---------------------------------------------------------------------------
+provision_alerts() {
+  local base_url="$1"
+  local api_key="$2"
+  local alert_email="$3"
+
+  gcapi() {
+    local method="$1" path="$2"; shift 2
+    curl -fsS -X "${method}" "${base_url%/}${path}" \
+      -H "Authorization: Bearer ${api_key}" \
+      -H "Content-Type: application/json" "$@"
+  }
+
+  # --- folder ----------------------------------------------------------------
+  log_step "Ensuring alert folder 'jenkins-2026 Alerts'"
+  gcapi POST /api/folders \
+    -d '{"uid":"jenkins-2026-alerts","title":"jenkins-2026 Alerts"}' \
+    -o /dev/null 2>/dev/null || true  # 412 Conflict = already exists, OK
+
+  # --- contact point ---------------------------------------------------------
+  log_step "Upserting email contact point"
+  sed "s/EMAIL_ADDRESS/${alert_email}/g" "${ALERTS_DIR}/contact-points.json" > /tmp/j2026-cp.json
+  EXISTING_CP="$(gcapi GET /api/v1/provisioning/contact-points 2>/dev/null \
+    | python3 -c "import json,sys; cps=json.load(sys.stdin); \
+        print(next((c['uid'] for c in cps if c['uid']=='jenkins2026-email-cp'),''))" \
+    2>/dev/null || true)"
+  if [[ -n "${EXISTING_CP}" ]]; then
+    gcapi PUT /api/v1/provisioning/contact-points/jenkins2026-email-cp \
+      -d @/tmp/j2026-cp.json -o /dev/null
+    log_info "Updated contact point jenkins2026-email-cp."
+  else
+    gcapi POST /api/v1/provisioning/contact-points \
+      -d @/tmp/j2026-cp.json -o /dev/null
+    log_info "Created contact point jenkins2026-email-cp."
+  fi
+
+  # --- notification policy ---------------------------------------------------
+  log_step "Applying notification policy (route all → email)"
+  gcapi PUT /api/v1/provisioning/policies \
+    -d @"${ALERTS_DIR}/notification-policy.json" -o /dev/null
+  log_info "Notification policy applied."
+
+  # --- alert rules -----------------------------------------------------------
+  log_step "Upserting alert rules"
+  for rule_file in "${ALERTS_DIR}/rules"/*.json; do
+    RULE_UID="$(python3 -c "import json; print(json.load(open('${rule_file}'))['uid'])")"
+    RULE_TITLE="$(python3 -c "import json; print(json.load(open('${rule_file}'))['title'])")"
+    HTTP_CODE="$(gcapi GET "/api/v1/provisioning/alert-rules/${RULE_UID}" \
+      -o /dev/null -w "%{http_code}" 2>/dev/null || echo "000")"
+    if [[ "${HTTP_CODE}" == "200" ]]; then
+      gcapi PUT "/api/v1/provisioning/alert-rules/${RULE_UID}" \
+        -d @"${rule_file}" -o /dev/null
+      log_info "Updated alert rule: ${RULE_TITLE}"
+    else
+      gcapi POST /api/v1/provisioning/alert-rules \
+        -d @"${rule_file}" -o /dev/null
+      log_info "Created alert rule: ${RULE_TITLE}"
+    fi
+  done
+}
+
+# ---------------------------------------------------------------------------
+# resolve_email  — reads GRAFANA_ALERT_EMAIL env var or falls back to
+# jenkins-credentials oidc-admin-email Secret. Prints the email to stdout.
+# ---------------------------------------------------------------------------
+resolve_email() {
+  local email="${GRAFANA_ALERT_EMAIL:-$(kubectl get secret jenkins-credentials \
+    -n "${J2026_JENKINS_NAMESPACE}" \
+    -o jsonpath='{.data.oidc-admin-email}' 2>/dev/null | base64 -d 2>/dev/null || true)}"
+  echo "${email}"
+}
 
 case "${J2026_OBS_MODE}" in
   grafana-cloud)
@@ -34,102 +110,134 @@ case "${J2026_OBS_MODE}" in
       exit 1
     fi
 
-    GRAFANA_BASE_URL="$(kubectl get secret "${J2026_GRAFANA_CLOUD_SECRET}" -n "${J2026_OBS_NAMESPACE}" \
+    GF_BASE_URL="$(kubectl get secret "${J2026_GRAFANA_CLOUD_SECRET}" -n "${J2026_OBS_NAMESPACE}" \
       -o jsonpath='{.data.GRAFANA_BASE_URL}' | base64 -d)"
-    GRAFANA_API_KEY="$(kubectl get secret "${J2026_GRAFANA_CLOUD_SECRET}" -n "${J2026_OBS_NAMESPACE}" \
+    GF_API_KEY="$(kubectl get secret "${J2026_GRAFANA_CLOUD_SECRET}" -n "${J2026_OBS_NAMESPACE}" \
       -o jsonpath='{.data.GRAFANA_API_KEY}' | base64 -d)"
 
-    if [[ -z "${GRAFANA_BASE_URL}" || -z "${GRAFANA_API_KEY}" ]]; then
+    if [[ -z "${GF_BASE_URL}" || -z "${GF_API_KEY}" ]]; then
       log_warn "GRAFANA_BASE_URL / GRAFANA_API_KEY not set in '${J2026_GRAFANA_CLOUD_SECRET}' - skipping alert provisioning."
       exit 0
     fi
 
-    # Resolve alert email: env var wins, then fall back to the oidc-admin-email
-    # key in jenkins-credentials (same secret used for Jenkins OIDC SSO login).
-    ALERT_EMAIL="${GRAFANA_ALERT_EMAIL:-$(kubectl get secret jenkins-credentials \
-      -n "${J2026_JENKINS_NAMESPACE}" \
-      -o jsonpath='{.data.oidc-admin-email}' 2>/dev/null | base64 -d 2>/dev/null || true)}"
-    if [[ -z "${ALERT_EMAIL}" ]]; then
+    GF_EMAIL="$(resolve_email)"
+    if [[ -z "${GF_EMAIL}" ]]; then
       log_warn "No alert email found (set GRAFANA_ALERT_EMAIL or populate jenkins-credentials oidc-admin-email) — skipping alert provisioning."
       exit 0
     fi
-    log_info "Alert notifications will go to: ${ALERT_EMAIL}"
-
-    gcapi() {
-      local method="$1" path="$2"; shift 2
-      curl -fsS -X "${method}" "${GRAFANA_BASE_URL%/}${path}" \
-        -H "Authorization: Bearer ${GRAFANA_API_KEY}" \
-        -H "Content-Type: application/json" "$@"
-    }
-
-    # --- folder ----------------------------------------------------------------
-    log_step "Ensuring alert folder 'jenkins-2026 Alerts'"
-    gcapi POST /api/folders \
-      -d '{"uid":"jenkins-2026-alerts","title":"jenkins-2026 Alerts"}' \
-      -o /dev/null 2>/dev/null || true  # 412 Conflict = already exists, OK
-
-    # --- contact point ---------------------------------------------------------
-    log_step "Upserting email contact point"
-    sed "s/EMAIL_ADDRESS/${ALERT_EMAIL}/g" "${ALERTS_DIR}/contact-points.json" > /tmp/j2026-cp.json
-    EXISTING_CP="$(gcapi GET /api/v1/provisioning/contact-points 2>/dev/null \
-      | python3 -c "import json,sys; cps=json.load(sys.stdin); \
-          print(next((c['uid'] for c in cps if c['uid']=='jenkins2026-email-cp'),''))" \
-      2>/dev/null || true)"
-    if [[ -n "${EXISTING_CP}" ]]; then
-      gcapi PUT /api/v1/provisioning/contact-points/jenkins2026-email-cp \
-        -d @/tmp/j2026-cp.json -o /dev/null
-      log_info "Updated contact point jenkins2026-email-cp."
-    else
-      gcapi POST /api/v1/provisioning/contact-points \
-        -d @/tmp/j2026-cp.json -o /dev/null
-      log_info "Created contact point jenkins2026-email-cp."
-    fi
-
-    # --- notification policy ---------------------------------------------------
-    log_step "Applying notification policy (route all → email)"
-    gcapi PUT /api/v1/provisioning/policies \
-      -d @"${ALERTS_DIR}/notification-policy.json" -o /dev/null
-    log_info "Notification policy applied."
-
-    # --- alert rules -----------------------------------------------------------
-    log_step "Upserting alert rules"
-    for rule_file in "${ALERTS_DIR}/rules"/*.json; do
-      RULE_UID="$(python3 -c "import json; print(json.load(open('${rule_file}'))['uid'])")"
-      RULE_TITLE="$(python3 -c "import json; print(json.load(open('${rule_file}'))['title'])")"
-      HTTP_CODE="$(gcapi GET "/api/v1/provisioning/alert-rules/${RULE_UID}" \
-        -o /dev/null -w "%{http_code}" 2>/dev/null || echo "000")"
-      if [[ "${HTTP_CODE}" == "200" ]]; then
-        gcapi PUT "/api/v1/provisioning/alert-rules/${RULE_UID}" \
-          -d @"${rule_file}" -o /dev/null
-        log_info "Updated alert rule: ${RULE_TITLE}"
-      else
-        gcapi POST /api/v1/provisioning/alert-rules \
-          -d @"${rule_file}" -o /dev/null
-        log_info "Created alert rule: ${RULE_TITLE}"
-      fi
-    done
+    log_info "Alert notifications will go to: ${GF_EMAIL}"
+    provision_alerts "${GF_BASE_URL}" "${GF_API_KEY}" "${GF_EMAIL}"
     ;;
 
   oss)
-    # TODO(obs-mode): OSS Grafana email alerts require SMTP in the
-    # kube-prometheus-stack values (grafana.smtp.*). Wire this after
-    # configuring an SMTP relay in helm/observability/values-oss.yaml.
-    log_warn "observability.mode=oss: Grafana email alerts not yet wired (SMTP relay needed). Skipping."
+    # Reads admin password from the kube-prometheus-stack-grafana Secret,
+    # port-forwards the in-cluster Grafana Service, mints a short-lived API key,
+    # then provisions the alerting resources.
+    #
+    # NOTE: Email delivery also requires SMTP to be configured in the Grafana
+    # Helm chart (grafana.ini.smtp.*). The alert rules and contact point are
+    # provisioned regardless — without SMTP the rules appear in Grafana but
+    # emails won't be sent. Refer to helm/observability/values-oss.yaml for
+    # the SMTP configuration hook (to be added in a follow-up).
+    GF_ADMIN_PWD="$(kubectl get secret kube-prometheus-stack-grafana \
+      -n "${J2026_OBS_NAMESPACE}" \
+      -o jsonpath='{.data.admin-password}' 2>/dev/null | base64 -d || true)"
+    if [[ -z "${GF_ADMIN_PWD:-}" ]]; then
+      log_error "oss: admin-password not found in kube-prometheus-stack-grafana secret."
+      exit 1
+    fi
+
+    log_step "Port-forwarding kube-prometheus-stack-grafana → localhost:13000"
+    kubectl port-forward -n "${J2026_OBS_NAMESPACE}" \
+      svc/kube-prometheus-stack-grafana 13000:80 &
+    PF_PID=$!
+    trap "kill ${PF_PID} 2>/dev/null || true" EXIT
+    sleep 4
+
+    GF_BASE_URL="http://localhost:13000"
+
+    GF_API_KEY="$(curl -sf -u "admin:${GF_ADMIN_PWD}" \
+      -X POST "${GF_BASE_URL}/api/auth/keys" \
+      -H "Content-Type: application/json" \
+      -d "{\"name\":\"alerts-prov-$(date +%s)\",\"role\":\"Admin\",\"secondsToLive\":300}" \
+      | python3 -c "import json,sys; print(json.load(sys.stdin)['key'])" 2>/dev/null || true)"
+    if [[ -z "${GF_API_KEY:-}" ]]; then
+      log_error "oss: failed to mint Grafana API key from admin credentials."
+      exit 1
+    fi
+
+    GF_EMAIL="$(resolve_email)"
+    if [[ -z "${GF_EMAIL}" ]]; then
+      log_warn "No alert email found (set GRAFANA_ALERT_EMAIL or populate jenkins-credentials oidc-admin-email) — skipping alert provisioning."
+      exit 0
+    fi
+    log_info "Alert notifications will go to: ${GF_EMAIL}"
+    provision_alerts "${GF_BASE_URL}" "${GF_API_KEY}" "${GF_EMAIL}"
     ;;
 
   managed-azure)
-    # TODO(obs-mode): Azure Managed Grafana supports email via Action Groups
-    # / Azure Monitor alert rules. Provision via Terraform in
-    # terraform/azure-managed-grafana/ then adapt this script to use the AMG
-    # REST API for contact-point / rule provisioning.
-    log_warn "observability.mode=managed-azure: Grafana email alerts not yet wired (Action Groups needed). Skipping."
+    # Azure Managed Grafana accepts Azure AD bearer tokens scoped to the AMG
+    # resource (https://grafana.azure.com/). Requires prior 'az login' or an
+    # active GitHub OIDC → Azure federated credential.
+    GF_BASE_URL="${GRAFANA_BASE_URL:-$(kubectl get secret azure-monitor-credentials \
+      -n "${J2026_OBS_NAMESPACE}" \
+      -o jsonpath='{.data.AZURE_GRAFANA_ENDPOINT}' 2>/dev/null | base64 -d || true)}"
+    if [[ -z "${GF_BASE_URL:-}" ]]; then
+      log_error "managed-azure: GRAFANA_BASE_URL not found (set env var or check azure-monitor-credentials secret)."
+      exit 1
+    fi
+
+    GF_API_KEY="$(az account get-access-token \
+      --resource "https://grafana.azure.com/" \
+      --query "accessToken" -o tsv 2>/dev/null || true)"
+    if [[ -z "${GF_API_KEY:-}" ]]; then
+      log_error "managed-azure: failed to get Azure AD token (is 'az login' done / are Azure OIDC credentials valid?)"
+      exit 1
+    fi
+
+    GF_EMAIL="$(resolve_email)"
+    if [[ -z "${GF_EMAIL}" ]]; then
+      log_warn "No alert email found (set GRAFANA_ALERT_EMAIL or populate jenkins-credentials oidc-admin-email) — skipping alert provisioning."
+      exit 0
+    fi
+    log_info "Alert notifications will go to: ${GF_EMAIL}"
+    provision_alerts "${GF_BASE_URL}" "${GF_API_KEY}" "${GF_EMAIL}"
     ;;
 
   managed-aws)
-    # TODO(obs-mode): Amazon Managed Grafana supports email via Amazon SNS.
-    # Provision an SNS topic + subscription in terraform/aws-managed-grafana/
-    # and configure the AMG contact point to the SNS HTTP endpoint.
-    log_warn "observability.mode=managed-aws: Grafana email alerts not yet wired (SNS topic needed). Skipping."
+    # Amazon Managed Grafana: mint a short-lived workspace service-account token
+    # via the AWS CLI (requires AWS credentials, typically via GitHub OIDC).
+    GF_BASE_URL="${GRAFANA_BASE_URL:-$(kubectl get secret aws-managed-credentials \
+      -n "${J2026_OBS_NAMESPACE}" \
+      -o jsonpath='{.data.AWS_AMG_ENDPOINT}' 2>/dev/null | base64 -d || true)}"
+    GRAFANA_WORKSPACE_ID="${GRAFANA_WORKSPACE_ID:-$(kubectl get secret aws-managed-credentials \
+      -n "${J2026_OBS_NAMESPACE}" \
+      -o jsonpath='{.data.AWS_AMG_WORKSPACE_ID}' 2>/dev/null | base64 -d || true)}"
+
+    if [[ -z "${GF_BASE_URL:-}" || -z "${GRAFANA_WORKSPACE_ID:-}" ]]; then
+      log_error "managed-aws: GRAFANA_BASE_URL / GRAFANA_WORKSPACE_ID not found (set env vars or check aws-managed-credentials secret)."
+      exit 1
+    fi
+
+    GF_API_KEY="$(aws grafana create-workspace-api-key \
+      --key-role ADMIN \
+      --key-name "jenkins-2026-alerts-$(date +%s)" \
+      --seconds-to-live 300 \
+      --workspace-id "${GRAFANA_WORKSPACE_ID}" \
+      --output json 2>/dev/null \
+      | python3 -c "import json,sys; print(json.load(sys.stdin)['key'])" || true)"
+    if [[ -z "${GF_API_KEY:-}" ]]; then
+      log_error "managed-aws: failed to mint AMG service-account token (check AWS credentials and workspace ID)."
+      exit 1
+    fi
+
+    GF_EMAIL="$(resolve_email)"
+    if [[ -z "${GF_EMAIL}" ]]; then
+      log_warn "No alert email found (set GRAFANA_ALERT_EMAIL or populate jenkins-credentials oidc-admin-email) — skipping alert provisioning."
+      exit 0
+    fi
+    log_info "Alert notifications will go to: ${GF_EMAIL}"
+    provision_alerts "${GF_BASE_URL}" "${GF_API_KEY}" "${GF_EMAIL}"
     ;;
 
   *)
