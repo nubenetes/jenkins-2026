@@ -222,7 +222,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Pipeline completions per result (SUCCESS/FAILURE/ABORTED), rate(ci_pipeline_run_completed_total[5m]) by ci_pipeline_run_result, broken down by ci_pipeline_id (job name) - includes both <service> (stable/master) and <service>-develop jobs.",
+      "description": "Pipeline completions per result (SUCCESS/FAILURE), rate(ci_pipeline_run_duration_seconds_count) by ci_pipeline_run_result, broken down by ci_pipeline_id (job name) - the aggregate ci_pipeline_run_completed_total counter carries no ci_pipeline_id/result labels, so the duration histogram's _count (which does) is used. Includes both <service> (stable/master) and <service>-develop jobs.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -303,7 +303,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (ci_pipeline_id, ci_pipeline_run_result) (rate(ci_pipeline_run_completed_total{ci_pipeline_id=~\"$ci_pipeline_id\"}[$__rate_interval]))",
+          "expr": "sum by (ci_pipeline_id, ci_pipeline_run_result) (rate(ci_pipeline_run_duration_seconds_count{ci_pipeline_id=~\"$ci_pipeline_id\"}[$__rate_interval]))",
           "legendFormat": "{{ci_pipeline_id}} - {{ci_pipeline_run_result}}",
           "refId": "A"
         }
@@ -583,7 +583,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * sum(rate(ci_pipeline_run_completed_total{ci_pipeline_run_result=\"SUCCESS\"}[$__rate_interval])) / sum(rate(ci_pipeline_run_completed_total[$__rate_interval]))",
+          "expr": "100 * sum(increase(ci_pipeline_run_success_total[$__range])) / sum(increase(ci_pipeline_run_completed_total[$__range]))",
           "legendFormat": "Success Rate",
           "refId": "A"
         }
@@ -692,7 +692,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (ci_pipeline_id) (increase(ci_pipeline_run_completed_total{ci_pipeline_run_result=\"FAILURE\"}[$__rate_interval]))",
+          "expr": "sum(increase(ci_pipeline_run_failed_total[$__rate_interval]))",
           "legendFormat": "{{ci_pipeline_id}} Failures",
           "refId": "A"
         }
@@ -738,12 +738,12 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(jenkins_queue_waiting_duration_seconds_bucket[5m])))",
-          "legendFormat": "Queue Wait Time p95",
+          "expr": "sum(rate(jenkins_queue_time_spent_millis_milliseconds_total[$__rate_interval])) / sum(rate(jenkins_queue_left_total[$__rate_interval])) / 1000",
+          "legendFormat": "Queue Wait Time (avg)",
           "refId": "A"
         }
       ],
-      "title": "Queue Wait Time p95",
+      "title": "Queue Wait Time (avg)",
       "type": "timeseries"
     }
   ],
@@ -819,14 +819,14 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "definition": "label_values(ci_pipeline_run_completed_total, ci_pipeline_id)",
+        "definition": "label_values(ci_pipeline_run_duration_seconds_bucket, ci_pipeline_id)",
         "hide": 0,
         "includeAll": true,
         "multi": true,
         "name": "ci_pipeline_id",
         "options": [],
         "query": {
-          "query": "label_values(ci_pipeline_run_completed_total, ci_pipeline_id)",
+          "query": "label_values(ci_pipeline_run_duration_seconds_bucket, ci_pipeline_id)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 1,

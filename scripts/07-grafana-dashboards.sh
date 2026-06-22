@@ -139,6 +139,23 @@ case "${J2026_OBS_MODE}" in
       exit 0
     fi
 
+    # Pin a 60s scrape-interval hint on the Prometheus-typed datasource (Azure
+    # Monitor managed Prometheus). The microservices' OTel metrics are pushed every
+    # 60s, so without this Grafana assumes 15s, $__rate_interval collapses to ~60s,
+    # and rate() over that window sees a single sample - leaving every rate-based
+    # panel empty. Idempotent: merges timeInterval into whatever jsonData exists.
+    az_api() { local m="$1" p="$2"; shift 2; curl -fsS -X "${m}" "${GRAFANA_BASE_URL%/}${p}" \
+      -H "Authorization: Bearer ${GRAFANA_API_KEY}" -H "Content-Type: application/json" "$@"; }
+    az_prom="$(az_api GET "/api/datasources" 2>/dev/null \
+      | jq -c 'map(select(.type=="prometheus")) | .[0] // empty' || true)"
+    if [[ -n "${az_prom}" ]]; then
+      az_uid="$(jq -r '.uid' <<<"${az_prom}")"
+      printf '%s' "$(jq '.jsonData = ((.jsonData // {}) + {timeInterval:"60s"})' <<<"${az_prom}")" \
+        | az_api PUT "/api/datasources/uid/${az_uid}" --data-binary @- >/dev/null 2>&1 \
+        && log_info "Set Prometheus datasource timeInterval=60s (fixes \$__rate_interval on rate panels)." \
+        || log_warn "Could not set Prometheus datasource timeInterval - rate panels may be empty."
+    fi
+
     # Azure Managed Grafana reads from Azure Monitor datasources, so publish the
     # managed-azure dashboard variants (metric panels unchanged; log/trace
     # panels rewritten to Azure Monitor Logs/Traces). Generated from the
@@ -258,19 +275,29 @@ case "${J2026_OBS_MODE}" in
     # create it only if the workspace has none of that type. Echoes its uid.
     DS_JSON="$(api GET "/api/datasources" 2>/dev/null || echo '[]')"
     ensure_ds() {
-      local type="$1" name="$2" url="$3" jsondata="$4" uid
-      uid="$(jq -r --arg t "${type}" 'map(select(.type==$t)) | .[0].uid // empty' <<<"${DS_JSON}")"
+      local type="$1" name="$2" url="$3" jsondata="$4" uid existing
+      existing="$(jq -c --arg t "${type}" 'map(select(.type==$t)) | .[0] // empty' <<<"${DS_JSON}")"
+      uid="$(jq -r '.uid // empty' <<<"${existing}")"
       if [[ -z "${uid}" ]]; then
         local body
         body="$(jq -n --arg n "${name}" --arg t "${type}" --arg u "${url}" --argjson j "${jsondata}" \
           '{name:$n,type:$t,access:"proxy",isDefault:false,jsonData:$j} + (if $u=="" then {} else {url:$u} end)')"
         uid="$(api POST "/api/datasources" -d "${body}" 2>/dev/null | jq -r '.datasource.uid // empty' || true)"
+      else
+        # AMG auto-provisions datasource ENTRIES with minimal jsonData - notably the
+        # Prometheus one ships without timeInterval, so Grafana assumes a 15s scrape
+        # and $__rate_interval collapses to ~60s. The microservices' OTel metrics are
+        # pushed every 60s, so rate() over that window sees a single sample and every
+        # rate-based panel renders empty. Merge our desired jsonData into the existing
+        # entry (PUT is idempotent) so the scrape hint sticks across re-provisions.
+        printf '%s' "$(jq --argjson j "${jsondata}" '.jsonData = ((.jsonData // {}) + $j)' <<<"${existing}")" \
+          | api PUT "/api/datasources/uid/${uid}" --data-binary @- >/dev/null 2>&1 || true
       fi
       printf '%s' "${uid}"
     }
 
     PROM_UID="$(ensure_ds "prometheus" "amazon-managed-prometheus" "${AMP_QUERY_URL}" \
-      "$(jq -nc --arg r "${AWS_REGION}" '{httpMethod:"POST",sigV4Auth:true,sigV4AuthType:"default",sigV4Region:$r}')")"
+      "$(jq -nc --arg r "${AWS_REGION}" '{httpMethod:"POST",sigV4Auth:true,sigV4AuthType:"default",sigV4Region:$r,timeInterval:"60s"}')")"
     CW_UID="$(ensure_ds "cloudwatch" "cloudwatch" "" \
       "$(jq -nc --arg r "${AWS_REGION}" '{authType:"default",defaultRegion:$r}')")"
     XRAY_UID="$(ensure_ds "grafana-x-ray-datasource" "x-ray" "" \
