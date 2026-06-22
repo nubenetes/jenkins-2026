@@ -10,11 +10,12 @@ name: "0.1.01 Grafana Cloud bootstrap"
 # Requires the GRAFANA_CLOUD_API_TOKEN and GRAFANA_CLOUD_STACK_SLUG secrets -
 # see README.md "GitHub Actions automation" for how to create them.
 #
-# 0.2.01-gke-provision.yml / 9.1.01-gke-decommission.yml do NOT run this
-# workflow - they only manage terraform/grafana-cloud-token, which looks this
-# stack up by slug via a data source.
+# 0.2.01-gke-provision.yml calls this via workflow_call when
+# observability_mode=grafana-cloud so the persistent stack is always confirmed
+# before 0.2.01 mints scoped tokens against it.
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
