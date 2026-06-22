@@ -1,4 +1,4 @@
-[← Previous: 101. GitHub Actions Workflows](./101-GITHUB_ACTIONS_WORKFLOWS.md) | [🏠 Home](../README.md) | [→ Next: 201. Architecture](./201-ARCHITECTURE.md)
+[← Previous: 101. GitHub Actions Workflows](./101-GITHUB_ACTIONS_WORKFLOWS.md) | [🏠 Home](../README.md) | [→ Next: 103. Secrets Inventory](./103-GITHUB_SECRETS_INVENTORY.md)
 
 ---
 
@@ -331,7 +331,7 @@ abandoned cluster keeps billing.
 
 ---
 
-[← Previous: 101. GitHub Actions Workflows](./101-GITHUB_ACTIONS_WORKFLOWS.md) | [🏠 Home](../README.md) | [→ Next: 201. Architecture](./201-ARCHITECTURE.md)
+[← Previous: 101. GitHub Actions Workflows](./101-GITHUB_ACTIONS_WORKFLOWS.md) | [🏠 Home](../README.md) | [→ Next: 103. Secrets Inventory](./103-GITHUB_SECRETS_INVENTORY.md)
 
 ---
 
