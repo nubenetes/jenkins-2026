@@ -57,16 +57,17 @@ jobs:
           # Record start time in milliseconds
           START_TIME_MS=$(date +%s%3N)
           
-          # Fetch OTLP endpoint and auth from GKE if authenticated, otherwise fallback to secrets
-          if kubectl get secret grafana-cloud-credentials -n observability >/dev/null 2>&1; then
-            echo "Successfully authenticated to GKE. Fetching live credentials..."
-            export K6_OTEL_HTTP_EXPORTER_ENDPOINT=$(kubectl get secret grafana-cloud-credentials -n observability -o jsonpath='{.data.GRAFANA_CLOUD_OTLP_ENDPOINT}' | base64 -d)
-            export K6_OTEL_HEADERS="Authorization=Basic $(kubectl get secret grafana-cloud-credentials -n observability -o jsonpath='{.data.GRAFANA_CLOUD_OTLP_AUTH}' | base64 -d)"
-          else
-            echo "GKE cluster not reachable. Falling back to GitHub Actions secrets..."
-            export K6_OTEL_HTTP_EXPORTER_ENDPOINT="${{ secrets.GRAFANA_CLOUD_OTLP_ENDPOINT }}"
-            export K6_OTEL_HEADERS="Authorization=Basic ${{ secrets.GRAFANA_CLOUD_OTLP_AUTH }}"
+          # OTLP credentials + Grafana URL come from the in-cluster
+          # grafana-cloud-credentials Secret (provisioned by 0.2.01). The stack
+          # slug/endpoint are generated per deploy, so there is no static fallback -
+          # the cluster must be reachable.
+          if ! kubectl get secret grafana-cloud-credentials -n observability >/dev/null 2>&1; then
+            echo "::error::grafana-cloud-credentials Secret not found - deploy the cluster (0.2.01, observability_mode=grafana-cloud) first."
+            exit 1
           fi
+          export K6_OTEL_HTTP_EXPORTER_ENDPOINT=$(kubectl get secret grafana-cloud-credentials -n observability -o jsonpath='{.data.GRAFANA_CLOUD_OTLP_ENDPOINT}' | base64 -d)
+          export K6_OTEL_HEADERS="Authorization=Basic $(kubectl get secret grafana-cloud-credentials -n observability -o jsonpath='{.data.GRAFANA_CLOUD_OTLP_AUTH}' | base64 -d)"
+          echo "GRAFANA_BASE_URL=$(kubectl get secret grafana-cloud-credentials -n observability -o jsonpath='{.data.GRAFANA_BASE_URL}' | base64 -d)" >> "$GITHUB_ENV"
           
           # k6's HTTP exporter expects the endpoint as host:port without scheme and path
           export K6_OTEL_HTTP_EXPORTER_ENDPOINT=$(echo $K6_OTEL_HTTP_EXPORTER_ENDPOINT | sed -E 's|^https://||; s|/otlp$||')":443"
@@ -128,9 +129,9 @@ jobs:
           echo "You can analyze real-time latency, error rates, and traces here:"
           echo ""
           if [ ! -z "$GRAFANA_FROM" ] && [ ! -z "$GRAFANA_TO" ]; then
-            echo "https://${{ vars.GRAFANA_CLOUD_STACK_SLUG || secrets.GRAFANA_CLOUD_STACK_SLUG }}.grafana.net/d/jenkins2026-k6-smoke-overview/jenkins-2026-k6-observability-smoke-test?orgId=1&from=${GRAFANA_FROM}&to=${GRAFANA_TO}&var-DS_PROMETHEUS=grafanacloud-prom&var-DS_LOKI=grafanacloud-logs&var-DS_TEMPO=grafanacloud-traces&var-deployment_environment=stable"
+            echo "${GRAFANA_BASE_URL}/d/jenkins2026-k6-smoke-overview/jenkins-2026-k6-observability-smoke-test?orgId=1&from=${GRAFANA_FROM}&to=${GRAFANA_TO}&var-DS_PROMETHEUS=grafanacloud-prom&var-DS_LOKI=grafanacloud-logs&var-DS_TEMPO=grafanacloud-traces&var-deployment_environment=stable"
           else
-            echo "https://${{ vars.GRAFANA_CLOUD_STACK_SLUG || secrets.GRAFANA_CLOUD_STACK_SLUG }}.grafana.net/d/jenkins2026-k6-smoke-overview/jenkins-2026-k6-observability-smoke-test?var-DS_PROMETHEUS=grafanacloud-prom&var-DS_LOKI=grafanacloud-logs&var-DS_TEMPO=grafanacloud-traces&var-deployment_environment=stable"
+            echo "${GRAFANA_BASE_URL}/d/jenkins2026-k6-smoke-overview/jenkins-2026-k6-observability-smoke-test?var-DS_PROMETHEUS=grafanacloud-prom&var-DS_LOKI=grafanacloud-logs&var-DS_TEMPO=grafanacloud-traces&var-deployment_environment=stable"
           fi
           echo ""
           echo "This dashboard correlates k6 client-side metrics with your Microservices"

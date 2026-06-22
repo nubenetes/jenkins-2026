@@ -12,9 +12,16 @@ variable "grafana_cloud_api_token" {
   EOT
 }
 
-variable "stack_slug" {
+variable "stack_slug_prefix" {
   type        = string
-  description = "Subdomain for the jenkins-2026 Grafana Cloud stack: https://<stack_slug>.grafana.net. Must be globally unique across all of Grafana Cloud."
+  default     = "jenkins2026obs"
+  description = <<-EOT
+    Lowercase-alphanumeric prefix for the generated stack slug. The full slug is
+    "<prefix><random-suffix>" and forms the subdomain https://<slug>.grafana.net.
+    A fresh random suffix is generated per stack so re-creates never collide with
+    Grafana Cloud's reserved-slug cooldown. No longer a GitHub secret/variable -
+    the slug is an OUTPUT read from this module's state by 0.2.01-gke-provision.
+  EOT
 }
 
 variable "region_slug" {
