@@ -21,7 +21,10 @@ resource "grafana_cloud_stack" "this" {
   region_slug = var.region_slug
 
   # Ephemeral by design: created by 0.1.02-grafana-cloud-bootstrap, torn down by
-  # 9.2.02-grafana-cloud-decommission. No delete_protection so the decommission
-  # `terraform destroy` succeeds; the Grafana Cloud org (free tier) is unaffected
+  # 9.2.02-grafana-cloud-decommission. The provider defaults delete_protection
+  # to `true`, which makes the decommission `terraform destroy` fail with a
+  # "409 Conflict ... has deletion protection enabled". Force it off so the
+  # stack is freely destroyable; the Grafana Cloud org (free tier) is unaffected
   # - only this stack is created/destroyed.
+  delete_protection = false
 }
