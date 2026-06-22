@@ -104,6 +104,69 @@ flowchart TD
 
 ---
 
+## Day-0 / Day-1 / Day-2 operations
+
+These terms come from the SRE / platform-engineering world and describe **when in a system's life a task is performed**, not how difficult it is:
+
+| Term | What it means | When it runs |
+|---|---|---|
+| **Day-0** | Foundation bootstrapping — one-time setup of persistent infrastructure that survives across cluster sessions | Before the first deployment; rarely again unless rebuilding from scratch |
+| **Day-1** | Initial provisioning — creating the cluster and deploying the full application stack on top of the Day-0 foundation | Once per cluster session (provision → use → decommission cycle) |
+| **Day-2** | Operations — changes to a **running** system without reprovisioning: config updates, artifact publishing, simulations | Anytime while the cluster is alive |
+| **Decommission** | Teardown — the inverse of Day-1 (cluster) and Day-0 (persistent backends) | End of session / permanent shutdown |
+
+### Mapping to this repo's Y digit
+
+The first digit of the filename (`Y`) maps directly to these concepts:
+
+| `Y` | Day classification | What it touches |
+|---|---|---|
+| `0`, `X=1` | **Day-0** | Persistent backends (Grafana Cloud, Gateway, Azure AMG, AWS AMG) |
+| `0`, `X=2` | **Day-1** | GKE cluster + full stack via `scripts/up.sh` |
+| `5` | **Day-2** | Running cluster — component redeploys, dashboard/alert publishing, traffic |
+| `9`, `X=1` | **Decommission (Day-1 inverse)** | GKE cluster + ephemeral resources |
+| `9`, `X=2` | **Decommission (Day-0 inverse)** | Persistent backends |
+
+### Day × workflow matrix
+
+| # | Workflow | Day | Requires cluster? | Idempotent? | Typical frequency |
+|:---:|---|:---:|:---:|:---:|---|
+| 1 | [0.1.01 Grafana Cloud bootstrap](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.01-grafana-cloud-bootstrap.yml) | **Day-0** | no | yes | Once (re-run = no-op) |
+| 2 | [0.1.02 Gateway bootstrap](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.02-gateway-bootstrap.yml) | **Day-0** | no | yes | Once (re-run = no-op) |
+| 3 | [0.1.03 Azure managed-grafana bootstrap](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.03-azure-bootstrap.yml) | **Day-0** | no | yes | Once (re-run = no-op) |
+| 4 | [0.1.04 AWS managed-grafana bootstrap](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.04-aws-bootstrap.yml) | **Day-0** | no | yes | Once (re-run = no-op) |
+| 5 | [0.2.01 GKE provision](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.2.01-gke-provision.yml) | **Day-1** | creates it | yes | Once per session |
+| 6 | [5.1.03 Publish Azure dashboards](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.1.03-publish-azure-dashboards.yml) | **Day-2** | **no** ¹ | yes | When dashboard JSON changes |
+| 7 | [5.1.04 Publish AWS dashboards](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.1.04-publish-aws-dashboards.yml) | **Day-2** | **no** ¹ | yes | When dashboard JSON changes |
+| 8 | [5.1.05 Publish Grafana alerts](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.1.05-publish-grafana-alerts.yml) | **Day-2** | yes ² | yes | When alert rules change |
+| 9 | [5.2.02 Redeploy Jenkins](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.2.02-redeploy-jenkins.yml) | **Day-2** | yes | yes | When Jenkins config/JCasC changes |
+| 10 | [5.2.03 Redeploy Headlamp](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.2.03-redeploy-headlamp.yml) | **Day-2** | yes | yes | When Headlamp config changes |
+| 11 | [5.9.01 Continuous Traffic Simulation](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.9.01-traffic-simulation.yml) | **Day-2** | yes | n/a | On demand / regular cadence |
+| 12 | [9.1.01 GKE decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.1.01-gke-decommission.yml) | **Decommission** | destroys it | yes | Once per session |
+| 13 | [9.2.01 Grafana Cloud decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.01-grafana-cloud-decommission.yml) | **Decommission** | no | yes | Once (permanent — ⚠ irreversible) |
+| 14 | [9.2.02 Gateway decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.02-gateway-decommission.yml) | **Decommission** | no | yes | Once (permanent — ⚠ loses static IP) |
+| 15 | [9.2.03 Azure managed-grafana decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.03-azure-decommission.yml) | **Decommission** | no | yes | Once (permanent — ⚠ irreversible) |
+| 16 | [9.2.04 AWS managed-grafana decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.04-aws-decommission.yml) | **Decommission** | no | yes | Once (permanent — ⚠ irreversible) |
+
+> ¹ **5.1.03 and 5.1.04** connect directly to the persistent managed-grafana backends (Azure AMG / Amazon AMG) — no running GKE cluster needed. They read Terraform state from GCS and authenticate via GitHub OIDC → Azure/AWS.
+>
+> ² **5.1.05** reads Grafana credentials from k8s Secrets (grafana-cloud-credentials, azure-monitor-credentials, aws-managed-credentials) so it requires an active cluster. The alert rules themselves are also provisioned automatically by `0.2.01` via `scripts/up.sh` — `5.1.05` is only needed to push changes without a full reprovision.
+
+### Typical session lifecycle
+
+```
+Day-0  (once)   0.1.01 → 0.1.02 → 0.1.03 / 0.1.04   persistent backends
+Day-1           0.2.01                                  cluster + full stack
+Day-2  (many)   5.1.03 / 5.1.04 / 5.1.05              content updates
+                5.2.02 / 5.2.03                        component redeploys
+                5.9.01                                  traffic simulation
+Decommission    9.1.01 → 9.2.xx (if permanent)         teardown
+```
+
+A new session (reprovision after full teardown) only needs **Day-1** — Day-0 outputs are still in GCS state and are reused automatically by `0.2.01`.
+
+---
+
 ## Complete workflow inventory — matrix table
 
 All 15 workflows in a single numbered table. Each column of the code (`Y`, `X`, `ZZ`) is broken out separately so the meaning of every digit is visible at a glance. Click the code to open the workflow's **Run workflow** page directly in GitHub Actions.
