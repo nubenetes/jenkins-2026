@@ -220,8 +220,23 @@ Alert rules, a contact point, and a notification policy live as plain JSON in [`
 ### Contact Point and Notification Policy
 
 Email is the notification channel. The address is resolved in priority order:
-1. `GRAFANA_ALERT_EMAIL` environment variable (override for CI)
-2. `oidc-admin-email` key of the `jenkins-credentials` Secret (auto-populated from `JENKINS_OIDC_ADMIN_EMAIL` GitHub secret by `01-namespaces.sh`)
+
+1. **`GRAFANA_ALERT_EMAIL_<MODE>`** — per-mode GitHub secret (highest priority). The mode suffix is the uppercased, hyphen-to-underscore form of `observability.mode`:
+
+   | Mode | Secret name |
+   |---|---|
+   | `grafana-cloud` | `GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD` |
+   | `oss` | `GRAFANA_ALERT_EMAIL_OSS` |
+   | `managed-azure` | `GRAFANA_ALERT_EMAIL_MANAGED_AZURE` |
+   | `managed-aws` | `GRAFANA_ALERT_EMAIL_MANAGED_AWS` |
+
+   > **Grafana Cloud note**: the provisioning API rejects contact points addressed to emails that are not members of the Grafana Cloud org. If your Grafana Cloud login email differs from `JENKINS_OIDC_ADMIN_EMAIL`, set `GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD` to the Grafana Cloud org-member address.
+
+2. **`GRAFANA_ALERT_EMAIL`** — generic fallback for all modes; used when no mode-specific secret is set.
+
+3. **`oidc-admin-email`** key of the `jenkins-credentials` Secret — cluster default, auto-populated from `JENKINS_OIDC_ADMIN_EMAIL` by `01-namespaces.sh`.
+
+Only set the secrets that differ from your OIDC admin email. For most setups only `GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD` is needed.
 
 `observability/grafana/alerting/notification-policy.json` routes all alerts to the `jenkins-2026-email` contact point, grouped by `alertname` + `namespace`, with a 30 s group-wait, 5 min group-interval, and 4 h repeat-interval.
 
@@ -250,7 +265,7 @@ Drop a `.json` file into `observability/grafana/alerting/rules/` following the s
 | `managed-azure` | ✅ Azure Managed Grafana HTTP API — Azure AD token via `az account get-access-token` (GitHub OIDC → Azure in CI) |
 | `managed-aws` | ✅ Amazon Managed Grafana HTTP API — AMG service-account token minted via `aws grafana create-workspace-api-key` (GitHub OIDC → `AWS_DASHBOARD_PUBLISH_ROLE_ARN` in CI) |
 
-**Optional GitHub secret**: `GRAFANA_ALERT_EMAIL` — when set, overrides the email address read from `jenkins-credentials.oidc-admin-email`. Useful for CI runs or when a different notification address is desired.
+See [docs/102 § Optional secrets](102-GITHUB_ACTIONS_AUTOMATION.md#step-4-add-github-repository-secrets) for the full secret reference and `gh secret set` commands.
 
 ## k6 Observability Smoke Test
 
