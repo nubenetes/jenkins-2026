@@ -35,7 +35,7 @@ or an in-cluster OSS Grafana/Loki/Tempo/Prometheus stack. See
 - `terraform/`:
   - `bootstrap/` - **one-time, local state**, run by hand. Creates the GCS
     Terraform state bucket + GitHub OIDC/Workload Identity Federation trust
-    for `02.01-gke-provision.yml`/`02.99-gke-decommission.yml`.
+    for `0.2.01-gke-provision.yml`/`9.1.01-gke-decommission.yml`.
   - `gke/` - the throwaway GKE cluster. Local state for `test/e2e.sh`; GCS
     remote state (via a `backend_override.tf` written by the workflows) in
     CI.
@@ -44,14 +44,14 @@ or an in-cluster OSS Grafana/Loki/Tempo/Prometheus stack. See
   - `grafana-cloud-token/` - ephemeral access-policy + service-account
     tokens scoped to the stack above, looked up by slug via a data source.
     Same GCS-remote-state-via-`backend_override.tf` pattern as `terraform/gke`;
-    applied by `02.01-gke-provision.yml`, destroyed by `02.99-gke-decommission.yml`.
+    applied by `0.2.01-gke-provision.yml`, destroyed by `9.1.01-gke-decommission.yml`.
   - `azure-managed-grafana/` - the `observability.mode=managed-azure` backend:
     Azure Managed Grafana, Azure Monitor workspace + DCE/DCR (managed
     Prometheus), Application Insights + Log Analytics, and the Entra service
-    principal the collector uses. Applied **one-time** by `01.03-azure-bootstrap.yml`
+    principal the collector uses. Applied **one-time** by `0.1.03-azure-bootstrap.yml`
     (GCS remote state via `backend_override.tf`, GitHub-OIDC -> Azure auth, no
     stored client secret; same persistent-bootstrap role as
-    `grafana-cloud-stack`). `02.01-gke-provision.yml` (managed-azure) reads its
+    `grafana-cloud-stack`). `0.2.01-gke-provision.yml` (managed-azure) reads its
     outputs straight from the GCS state to build the `azure-monitor-credentials`
     Secret - those backend credentials never become GitHub secrets. Only
     identifiers (`AZURE_CLIENT_ID`/`AZURE_TENANT_ID`/`AZURE_SUBSCRIPTION_ID`/
@@ -60,25 +60,26 @@ or an in-cluster OSS Grafana/Loki/Tempo/Prometheus stack. See
     analogue of `azure-managed-grafana`): Amazon Managed Grafana, Amazon Managed
     Service for Prometheus, a CloudWatch log group, the GKE→AWS OIDC provider
     and the collector IAM role (AssumeRoleWithWebIdentity - no access keys).
-    Applied **one-time** by `01.04-aws-bootstrap.yml` (GCS remote state, GitHub
-    OIDC → AWS auth). `02.01-gke-provision.yml` (managed-aws) reads its outputs
+    Applied **one-time** by `0.1.04-aws-bootstrap.yml` (GCS remote state, GitHub
+    OIDC → AWS auth). `0.2.01-gke-provision.yml` (managed-aws) reads its outputs
     from the GCS state to build the `aws-managed-credentials` Secret; the
     collector authenticates at runtime via a projected SA web-identity token.
     Only identifiers (`AWS_BOOTSTRAP_ROLE_ARN`/`AWS_REGION`/`GKE_OIDC_ISSUER_URL`)
     are GitHub secrets.
 - `test/e2e.sh` - full local lifecycle: provision GKE, deploy everything,
   smoke test, tear down. `test/smoke-test.sh` is the smoke test alone.
-- `.github/workflows/` - numbered `CC.NN-<name>.yml` workflows (`CC` =
-  category: `01` one-time persistent-resource bootstrap, `02` GKE cluster
-  lifecycle; `NN` = sequence within that category, in the order you'd run
-  them, except `.99` is reserved for the teardown step so new component
-  redeploys can be inserted without renumbering it). `02.01-gke-provision.yml`
-  and `02.99-gke-decommission.yml` are the CI equivalent of `test/e2e.sh`,
-  split so the cluster can be left running between runs; both and
-  `02.02-redeploy-jenkins.yml` share `concurrency: group: jenkins-2026-gke`
-  and GCS state. `02.02-redeploy-jenkins.yml` redeploys only Jenkins against
-  an existing cluster, between a provision and decommission run. See
-  README.md "CI/CD pipelines" for the full inventory.
+- `.github/workflows/` - numbered `Y.X.ZZ-<name>.yml` workflows. **Y** = lifecycle
+  phase (`0`=create, `5`=update, `9`=destroy). **X** = execution step within the
+  phase (lower = runs first; always reflects dependency order: for creates X=1 is
+  persistent resources first, X=2 is GKE second; for destroys the order inverts —
+  X=1 is GKE first, X=2 is persistent last). **ZZ** = resource identifier,
+  constant for the same resource across all phases (e.g. ZZ=03 is always Azure).
+  Alphabetical sort order in the GitHub Actions UI **is** the correct execution
+  order within each phase. `0.2.01-gke-provision.yml` and
+  `9.1.01-gke-decommission.yml` are the CI equivalent of `test/e2e.sh`, split
+  so the cluster can be left running between runs; all GKE-touching workflows
+  share `concurrency: group: jenkins-2026-gke`. See README.md "CI/CD pipelines"
+  for the full inventory, per-phase tables, and rationale.
 
 ## Conventions
 
@@ -99,8 +100,8 @@ or an in-cluster OSS Grafana/Loki/Tempo/Prometheus stack. See
 
 ## Working on this repo
 
-- Don't run `test/e2e.sh` or trigger `02.01-gke-provision`/`02.99-gke-decommission`
-  (or `02.02-redeploy-jenkins` against a real cluster) workflows without
+- Don't run `test/e2e.sh` or trigger `0.2.01-gke-provision`/`9.1.01-gke-decommission`
+  (or `5.2.02-redeploy-jenkins` against a real cluster) workflows without
   explicit confirmation - they create/modify real, billed GCP (and optionally
   Grafana Cloud) resources. Always pair a provision with a decommission.
 - `terraform/bootstrap` and `terraform/grafana-cloud-stack` are one-time,

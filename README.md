@@ -659,7 +659,7 @@ The deployment lifecycle is managed by **ArgoCD**. Application manifests are sto
 To validate that the OpenTelemetry instrumentation is working correctly and that signals are properly correlated in Grafana Cloud, you can generate synthetic traffic.
 
 ### 1. Continuous Traffic Simulation (GitHub Actions)
-For a constant stream of telemetry, use the **`99.01 Continuous Traffic Simulation`** workflow:
+For a constant stream of telemetry, use the **`5.9.01 Continuous Traffic Simulation`** workflow:
 - **Location**: GitHub Actions tab.
 - **Action**: Run `workflow_dispatch`.
 - **Duration**: Default 15 minutes (configurable).
@@ -969,7 +969,7 @@ escape hatch above remains as the break-glass admin login.
    gh secret set JENKINS_OIDC_ADMIN_EMAIL   --body "you@gmail.com"
    ```
 
-   then re-run **02.02 Redeploy Jenkins** (or **02.01 GKE provision**).
+   then re-run **5.2.02 Redeploy Jenkins** (or **0.2.01 GKE provision**).
    Locally (`test/e2e.sh` / `scripts/up.sh`), export the same three as
    `JENKINS_OIDC_CLIENT_ID`, `JENKINS_OIDC_CLIENT_SECRET` and
    `JENKINS_OIDC_ADMIN_EMAIL` instead.
@@ -1557,7 +1557,7 @@ Grafana Cloud — useful for air-gapped demos or avoiding SaaS cost/quota. It is
 **documented for completeness and kept at parity, but it is not the automated
 target of this IaC** (the default and the path exercised by CI is
 `grafana-cloud`). The OSS values are `helm template`-validated and have been run
-live end to end (`02.01-gke-provision` with `observability_mode=oss`): the
+live end to end (`0.2.01-gke-provision` with `observability_mode=oss`): the
 in-cluster Grafana is exposed publicly with Google SSO and the Jenkins system
 banner links to it, exactly like the other modes (see [Logging in to in-cluster
 Grafana](#logging-in-to-in-cluster-grafana-oss) below).
@@ -1746,7 +1746,7 @@ to yourself or anyone else:
 gh secret set HEADLAMP_ADMIN_EMAILS --body "you@gmail.com,colleague@gmail.com"
 ```
 
-then (re-)run **02.01 GKE provision** (adds the `roles/iap.httpsResourceAccessor`
+then (re-)run **0.2.01 GKE provision** (adds the `roles/iap.httpsResourceAccessor`
 IAM binding via `terraform/gke`). Locally (`test/e2e.sh` / `scripts/up.sh`),
 export the same as `JENKINS2026_HEADLAMP_ADMIN_EMAILS` instead - never commit
 it to `config/config.yaml`. `HEADLAMP_OIDC_CLIENT_ID`/`HEADLAMP_OIDC_CLIENT_SECRET`
@@ -1869,7 +1869,7 @@ If OIDC login to ArgoCD fails with `redirect_uri_mismatch`:
 
 ### One-time setup
 
-1. **Run the "01.02 Gateway bootstrap" workflow** (Actions tab -> **01.02
+1. **Run the "0.1.02 Gateway bootstrap" workflow** (Actions tab -> **0.1.02
    Gateway bootstrap** -> **Run workflow**). It applies
    [`terraform/gateway-bootstrap`](terraform/gateway-bootstrap) (state in the
    same GCS bucket as `terraform/gke`, like [Grafana Cloud
@@ -1946,7 +1946,7 @@ If OIDC login to ArgoCD fails with `redirect_uri_mismatch`:
    gh secret set IAP_OAUTH_CLIENT_SECRET --body "<client secret>"
    ```
 
-   (Re-)run **02.01 GKE provision** - `scripts/01-namespaces.sh` writes these into
+   (Re-)run **0.2.01 GKE provision** - `scripts/01-namespaces.sh` writes these into
    the `gateway-iap-oauth` Secret in the `jenkins`, `headlamp`, and `pgadmin` namespaces
    that the `GCPBackendPolicy` resources reference.
 
@@ -2164,7 +2164,7 @@ This project integrates standard FinOps best practices to prevent unnecessary cl
 - **Cluster Management Fee**: GKE charges a management fee of `$0.10/hour` (waived for your first zonal cluster per billing account).
 - **Compute Instance Costs**: At Madrid (`europe-southwest1`) pricing, an `e2-standard-8` instance costs roughly `~$0.22/hour`.
 - **Total Operational Run Rate**: The active 3-node cluster runs at approximately **`$0.70 - $0.80/hour`** (including disk storage and management fee).
-- **Ephemeral Lifecycles**: A full provisioning, deployment, smoke-testing, and teardown run (`02.01` to `02.99`) takes only **15-25 minutes**, costing **`~$0.10 - $0.20` per execution**. You should *never* leave the cluster running overnight; always invoke **`02.99 GKE decommission`** when finished.
+- **Ephemeral Lifecycles**: A full provisioning, deployment, smoke-testing, and teardown run (phases `0.` → `9.`) takes only **15-25 minutes**, costing **`~$0.10 - $0.20` per execution**. You should *never* leave the cluster running overnight; always invoke **`9.1.01 GKE decommission`** when finished.
 - **Elastic Karpenter Autoscaling**: Ephemeral build runners are dynamically provisioned on GKE Spot instance nodes. Under idle conditions, Karpenter scales the agent pool down to **0 nodes** to eliminate unnecessary compute costs. When a pipeline execution starts, Karpenter instantly spins up Spot nodes of the most cost-efficient type to handle the build load, and consolidates them (or scales back to 0) as soon as the build finishes. Strict disruption budgets prevent consolidation during core business hours to protect running pipelines.
 - **Workload Limits & Quotas**: To enforce cost limits, pod resources are capped, and the `jenkins` namespace enforces a `ResourceQuota` preventing builders from scaling beyond node pool limits.
 - **No In-Cluster Observability Cost**: By utilizing the free tier of Grafana Cloud for logs, metrics, and trace storage, there is zero storage cost in GCP for observability datasets.
@@ -2237,38 +2237,150 @@ component largely as-is if you use HCP Terraform for your own infrastructure.
 
 ## CI/CD pipelines
 
-All workflows live in [`.github/workflows/`](.github/workflows/), are
-manually-triggered (`workflow_dispatch`), and follow a `CC.NN-<name>.yml`
-naming convention so their order in the GitHub UI matches their place in the
-lifecycle:
+All workflows live in [`.github/workflows/`](.github/workflows/), are manually-triggered (`workflow_dispatch`), and follow a `Y.X.ZZ-<name>.yml` naming convention whose sort order in the GitHub Actions UI **is** the correct execution order for every phase of the lifecycle.
 
-- `CC` - **category**: `01` persistent, account-level resources (bootstrap and decommission, run by hand, rarely); `02` the GKE cluster lifecycle (provision, component redeploys, decommission); `99` ad-hoc utilities and simulations.
-- `NN` - sequence number within that category, in the order you'd typically run them. Within categories `01` and `02`, `.98` and `.99` are reserved for teardown (decommission) steps.
+### Naming convention: `Y.X.ZZ`
 
-| # | Workflow | Category | What it does |
+Each component of the filename encodes a different dimension of the workflow's role:
+
+| Component | Position | Values | Meaning |
 |---|---|---|---|
-| 01.01 | [Grafana Cloud bootstrap](.github/workflows/01.01-grafana-cloud-bootstrap.yml) | One-time bootstrap | Creates/confirms the persistent Grafana Cloud stack (`terraform/grafana-cloud-stack`) that `observability_mode: grafana-cloud` sends data to. See [Full Grafana Cloud lifecycle automation](#one-time-setup-1). |
-| 01.02 | [Gateway bootstrap](.github/workflows/01.02-gateway-bootstrap.yml) | One-time bootstrap | Creates/confirms the persistent static IP + managed wildcard cert + DNS authorization (`terraform/gateway-bootstrap`) that [public access](#public-access-gke-gateway-api--iap) depends on. |
-| 01.03 | [Azure managed-grafana bootstrap](.github/workflows/01.03-azure-bootstrap.yml) | One-time bootstrap | Creates/confirms the persistent Azure backend (`terraform/azure-managed-grafana`: Azure Managed Grafana + Azure Monitor workspace + App Insights + Entra SP) that `observability_mode: managed-azure` sends data to. GitHub-OIDC → Azure auth. See [GitHub Actions automation](#github-actions-automation) step 6. |
-| 01.04 | [AWS managed-grafana bootstrap](.github/workflows/01.04-aws-bootstrap.yml) | One-time bootstrap | Creates/confirms the persistent AWS backend (`terraform/aws-managed-grafana`: Amazon Managed Grafana + Amazon Managed Prometheus + CloudWatch + GKE→AWS OIDC provider + collector IAM role) that `observability_mode: managed-aws` sends data to. GitHub-OIDC → AWS auth. |
-| 01.96 | [AWS managed-grafana decommission](.github/workflows/01.96-aws-decommission.yml) | One-time decommission | Destroys the persistent AWS backend (`terraform/aws-managed-grafana`). Run only when tearing down the AWS integration permanently. |
-| 01.97 | [Azure managed-grafana decommission](.github/workflows/01.97-azure-decommission.yml) | One-time decommission | Destroys the persistent Azure backend (`terraform/azure-managed-grafana`). Run only when tearing down the Azure integration permanently. |
-| 01.98 | [Grafana Cloud decommission](.github/workflows/01.98-grafana-cloud-decommission.yml) | One-time decommission | Destroys the persistent Grafana Cloud stack (`terraform/grafana-cloud-stack`). Run only when tearing down the environment permanently. |
-| 01.99 | [Gateway decommission](.github/workflows/01.99-gateway-decommission.yml) | One-time decommission | Destroys the persistent static IP, cert mapping, and DNS authorization (`terraform/gateway-bootstrap`). Run only when tearing down the environment permanently. |
-| 02.01 | [GKE provision](.github/workflows/02.01-gke-provision.yml) | GKE lifecycle | Provisions the throwaway GKE cluster (`terraform/gke`) and deploys the full stack (`scripts/up.sh`) + smoke test. Pair with 02.99. |
-| 02.02 | [Redeploy Jenkins](.github/workflows/02.02-redeploy-jenkins.yml) | GKE lifecycle | Re-applies only `scripts/04-jenkins.sh` (Helm upgrade of `helm/jenkins/` + `jenkins/casc/` JCasC) and re-seeds the Microservices pipelines, against the cluster from the last 02.01 run - for a Jenkins-only fix without the full provision/decommission cycle. Run any number of times between 02.01 and 02.99. |
-| 02.03 | [Redeploy Headlamp](.github/workflows/02.03-redeploy-headlamp.yml) | GKE lifecycle | Re-applies `scripts/01-namespaces.sh` (refreshes the non-sensitive OIDC config keys on `headlamp-credentials`) and `scripts/08-headlamp.sh` (Helm upgrade of `helm/headlamp/`), against the cluster from the last 02.01 run - for a Headlamp-only fix without the full provision/decommission cycle. Run any number of times between 02.01 and 02.99. |
-| 02.04 | [Publish AWS dashboards](.github/workflows/02.04-publish-aws-dashboards.yml) | GKE lifecycle | (Re)publishes the `managed-aws` Grafana dashboards (`observability/grafana/dashboards-aws/`) to Amazon Managed Grafana **without a running cluster** - reads the AMG connection params from the persistent `terraform/aws-managed-grafana` GCS state and authenticates via GitHub OIDC (the dashboard-publisher role). Needs the `AWS_DASHBOARD_PUBLISH_ROLE_ARN` secret. |
-| 02.99 | [GKE decommission](.github/workflows/02.99-gke-decommission.yml) | GKE lifecycle | Tears down the stack (`scripts/down.sh`) and destroys the GKE cluster (`terraform destroy`). |
-| 99.01 | [Continuous Traffic Simulation](.github/workflows/99.01-traffic-simulation.yml) | Simulation | Runs a continuous stream of synthetic traffic (k6) against the stable endpoints to keep metrics and logs active in Grafana. |
+| **Y** | 1st digit | `0` `5` `9` | **Lifecycle phase** — `0` = create/bootstrap, `5` = update/redeploy, `9` = destroy/decommission |
+| **X** | 2nd digit | `1` `2` `9` | **Execution step within the phase** — lower = runs first; `9` = utilities |
+| **ZZ** | 3rd & 4th | `01`–`04` | **Resource identifier** — same ZZ always refers to the same resource, across all phases |
 
-See [GitHub Actions automation](#github-actions-automation) below for the
-one-time setup (secrets, Workload Identity Federation) these workflows need.
+#### Phase × Step matrix
+
+The meaning of **X** (execution step) depends on the phase **Y**. X is *positional* — it always means "first step" or "second step" — but what resource occupies that position changes with the phase because the **teardown order is the inverse of the creation order** (dependencies must be destroyed in reverse):
+
+| Phase `Y` | Step `X=1` (first) | Step `X=2` (second) | Step `X=9` |
+|---|---|---|---|
+| `0` — create | Persistent resources (cimientos) | GKE cluster (depends on persistent) | — |
+| `5` — update | Persistent resources (dashboard publish) | GKE components (redeploys) | Utilities / simulation |
+| `9` — destroy | GKE cluster (most dependent, destroy first) | Persistent resources (cimientos, destroy last) | — |
+
+> **Why does X=1 mean "persistent" when creating but "GKE" when destroying?**
+> Because GKE depends on the persistent resources (Grafana Cloud, Gateway, Azure/AWS backends), so it must be created *after* them and destroyed *before* them. X always means "the step that runs first" — the resource in that slot changes with the direction of the operation.
+
+#### Resource identifier (ZZ): constant across all phases
+
+The ZZ digit is the stable identity of a resource. Given ZZ=03 (Azure), you can immediately find all its workflows across the lifecycle:
+
+| ZZ | Resource | create `0.1.ZZ` | update `5.1.ZZ` | destroy `9.2.ZZ` |
+|---|---|---|---|---|
+| `01` | Grafana Cloud stack | `0.1.01` | — | `9.2.01` |
+| `02` | Gateway (static IP + cert) | `0.1.02` | — | `9.2.02` |
+| `03` | Azure Managed Grafana | `0.1.03` | `5.1.03` | `9.2.03` |
+| `04` | AWS AMG | `0.1.04` | `5.1.04` | `9.2.04` |
+| `01` | GKE cluster | `0.2.01` | — | `9.1.01` |
+| `02` | Jenkins | — | `5.2.02` | — |
+| `03` | Headlamp | — | `5.2.03` | — |
+| `01` | Traffic simulation | — | `5.9.01` | — |
+
+*ZZ is unique within a given (Y, X) pair. Persistent resources share the ZZ namespace under X=1 (create/update) and X=2 (destroy); GKE components share it under X=2 (create) and X=1 (destroy).*
+
+---
+
+### Full workflow matrix
+
+Rows = resources · Columns = lifecycle phases · Cell = filename (link) or — if no workflow exists for that combination.
+
+| Resource | `0.` Create | `5.` Update | `9.` Destroy |
+|---|---|---|---|
+| **Grafana Cloud stack** | [0.1.01-grafana-cloud-bootstrap](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.01-grafana-cloud-bootstrap.yml) | — | [9.2.01-grafana-cloud-decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.01-grafana-cloud-decommission.yml) |
+| **Gateway** (static IP + cert) | [0.1.02-gateway-bootstrap](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.02-gateway-bootstrap.yml) | — | [9.2.02-gateway-decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.02-gateway-decommission.yml) |
+| **Azure Managed Grafana** | [0.1.03-azure-bootstrap](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.03-azure-bootstrap.yml) | [5.1.03-publish-azure-dashboards](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.1.03-publish-azure-dashboards.yml) | [9.2.03-azure-decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.03-azure-decommission.yml) |
+| **AWS AMG** | [0.1.04-aws-bootstrap](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.04-aws-bootstrap.yml) | [5.1.04-publish-aws-dashboards](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.1.04-publish-aws-dashboards.yml) | [9.2.04-aws-decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.04-aws-decommission.yml) |
+| **GKE cluster** | [0.2.01-gke-provision](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.2.01-gke-provision.yml) | — | [9.1.01-gke-decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.1.01-gke-decommission.yml) |
+| **Jenkins** | *(provisioned by 0.2.01)* | [5.2.02-redeploy-jenkins](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.2.02-redeploy-jenkins.yml) | *(destroyed by 9.1.01)* |
+| **Headlamp** | *(provisioned by 0.2.01)* | [5.2.03-redeploy-headlamp](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.2.03-redeploy-headlamp.yml) | *(destroyed by 9.1.01)* |
+| **Traffic simulation** | — | [5.9.01-traffic-simulation](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.9.01-traffic-simulation.yml) | — |
+
+---
+
+### Lifecycle diagram
+
+<details>
+<summary>Expand: full lifecycle flow (Mermaid)</summary>
+
+```mermaid
+flowchart TD
+    subgraph PHASE0 ["Phase 0 — Create (run in filename order)"]
+        direction TB
+        P0_1["0.1.01 Grafana Cloud bootstrap\n0.1.02 Gateway bootstrap\n0.1.03 Azure bootstrap\n0.1.04 AWS bootstrap\n━━ one-time, persistent ━━"]
+        P0_2["0.2.01 GKE provision\n━━ throwaway cluster ━━"]
+        P0_1 -->|"persistent resources ready\n(GCS state, credentials)"| P0_2
+    end
+
+    subgraph PHASE5 ["Phase 5 — Update (independent, any order)"]
+        direction TB
+        P5_1a["5.1.03 Publish Azure dashboards"]
+        P5_1b["5.1.04 Publish AWS dashboards"]
+        P5_2a["5.2.02 Redeploy Jenkins"]
+        P5_2b["5.2.03 Redeploy Headlamp"]
+        P5_9["5.9.01 Traffic simulation"]
+    end
+
+    subgraph PHASE9 ["Phase 9 — Destroy (run in filename order)"]
+        direction TB
+        P9_1["9.1.01 GKE decommission\n━━ throwaway cluster first ━━"]
+        P9_2["9.2.01 Grafana Cloud decommission\n9.2.02 Gateway decommission\n9.2.03 Azure decommission\n9.2.04 AWS decommission\n━━ persistent resources last ━━"]
+        P9_1 -->|"cluster gone\nno dangling references"| P9_2
+    end
+
+    PHASE0 -->|"cluster active"| PHASE5
+    PHASE5 -->|"ready to tear down"| PHASE9
+    PHASE9 -->|"clean slate"| PHASE0
+```
+
+</details>
+
+---
+
+### Complete workflow inventory — matrix table
+
+All 15 workflows in a single numbered table. Each column of the code (`Y`, `X`, `ZZ`) is broken out separately so the meaning of every digit is visible at a glance. Click the code to open the workflow's **Run workflow** page directly in GitHub Actions.
+
+> **Reading the sequence**: rows are ordered by filename (= correct execution order within each phase). Phase `0` rows run before phase `5`, which run before phase `9`. Within phase `0`, rows 1–4 before row 5. Within phase `9`, row 11 before rows 12–15. This ordering is **enforced by the filenames themselves** — opening the GitHub Actions sidebar and reading top-to-bottom gives you the correct runbook.
+
+| # | `Y` — Fase | `X` — Paso en la fase | `ZZ` — Recurso | Código → GitHub Actions | Descripción detallada | Prerrequisitos | Frecuencia |
+|:---:|---|---|---|---|---|---|---|
+| **1** | **0** Crear | **1** Persistente — primero | **01** Grafana Cloud stack | [**`0.1.01`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.01-grafana-cloud-bootstrap.yml) `Grafana Cloud bootstrap` | Provisiona el stack Grafana Cloud persistente (`terraform/grafana-cloud-stack`): instancia Grafana, tokens de acceso y agente PDC. Preserva el historial de métricas/trazas/logs entre reinicios del clúster GKE. | `terraform/bootstrap` aplicado (WIF + bucket GCS) | **One-time** |
+| **2** | **0** Crear | **1** Persistente — primero | **02** Gateway IP/cert | [**`0.1.02`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.02-gateway-bootstrap.yml) `Gateway bootstrap` | Provisiona IP externa estática + mapa de certificados wildcard + autorización DNS (`terraform/gateway-bootstrap`). Mantenerlos persistentes evita perder la IP y re-propagar DNS en cada rebuild del clúster. | `terraform/bootstrap`; registro A DNS en el registrar apuntando a la IP | **One-time** |
+| **3** | **0** Crear | **1** Persistente — primero | **03** Azure Mgd Grafana | [**`0.1.03`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.03-azure-bootstrap.yml) `Azure managed-grafana bootstrap` | Provisiona Azure Managed Grafana + Azure Monitor workspace + App Insights + Log Analytics + Entra SP (`terraform/azure-managed-grafana`). Auth: GitHub OIDC → Azure, sin client secret almacenado. | `terraform/bootstrap`; secretos GitHub `AZURE_*` | **One-time** |
+| **4** | **0** Crear | **1** Persistente — primero | **04** AWS AMG / AMP | [**`0.1.04`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.04-aws-bootstrap.yml) `AWS managed-grafana bootstrap` | Provisiona Amazon Managed Grafana + AMP + CloudWatch + proveedor OIDC GKE→AWS + rol IAM del colector (`terraform/aws-managed-grafana`). Auth: GitHub OIDC → AWS, sin access keys. | `terraform/bootstrap`; secretos GitHub `AWS_*` | **One-time** |
+| **5** | **0** Crear | **2** GKE — segundo (depende de persistentes) | **01** Clúster GKE | [**`0.2.01`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.2.01-gke-provision.yml) `GKE provision` | Provisiona el clúster GKE efímero (`terraform/gke`) y ejecuta `scripts/up.sh` completo: namespaces → OTel → observabilidad → Jenkins → ArgoCD → seed pipelines → Headlamp + smoke test. Lee los outputs de los recursos persistentes (filas 1–4) desde el estado GCS. Siempre parear con fila 11. | Filas 1–4 según `observability_mode`; `terraform/bootstrap` | **Por sesión** |
+| **6** | **5** Actualizar | **1** Persistente | **03** Azure Mgd Grafana | [**`5.1.03`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.1.03-publish-azure-dashboards.yml) `Publish Azure dashboards` | (Re)publica `observability/grafana/dashboards-azure/` en Azure Managed Grafana sin re-provisionar el clúster. Descubre la instancia vía `az grafana list`; auth GitHub OIDC. Usar cuando se modifica un JSON de dashboard. | Fila 3 aplicada; secretos `AZURE_*` | **Cualquier momento** |
+| **7** | **5** Actualizar | **1** Persistente | **04** AWS AMG | [**`5.1.04`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.1.04-publish-aws-dashboards.yml) `Publish AWS dashboards` | (Re)publica `observability/grafana/dashboards-aws/` en Amazon Managed Grafana sin re-provisionar. Lee params AMG del estado GCS de `terraform/aws-managed-grafana`; auth GitHub OIDC. | Fila 4 aplicada; secreto `AWS_DASHBOARD_PUBLISH_ROLE_ARN` | **Cualquier momento** |
+| **8** | **5** Actualizar | **2** GKE | **02** Jenkins | [**`5.2.02`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.2.02-redeploy-jenkins.yml) `Redeploy Jenkins` | Re-aplica `scripts/04-jenkins.sh`: Helm upgrade de `helm/jenkins/` + JCasC, y re-siembra los pipelines de Microservices en el clúster existente. Para cambios solo de Jenkins sin ciclo completo de provision. | Clúster activo (fila 5 ejecutada) | **Cualquier momento** |
+| **9** | **5** Actualizar | **2** GKE | **03** Headlamp | [**`5.2.03`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.2.03-redeploy-headlamp.yml) `Redeploy Headlamp` | Re-aplica `scripts/01-namespaces.sh` (refresca claves OIDC en `headlamp-credentials`) y `scripts/08-headlamp.sh` (Helm upgrade de `helm/headlamp/`). | Clúster activo (fila 5 ejecutada) | **Cualquier momento** |
+| **10** | **5** Actualizar | **9** Utilidades | **01** Simulación tráfico | [**`5.9.01`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.9.01-traffic-simulation.yml) `Continuous Traffic Simulation` | Lanza tráfico sintético k6 continuo contra los endpoints estables para mantener métricas y logs activos en los dashboards de Grafana. No modifica infraestructura. | Clúster activo; endpoints públicos accesibles | **Cualquier momento** |
+| **11** | **9** Destruir | **1** GKE — primero (más dependiente) | **01** Clúster GKE | [**`9.1.01`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.1.01-gke-decommission.yml) `GKE decommission` | Desmonta el stack (`scripts/down.sh`) y destruye el clúster GKE (`terraform destroy` en `terraform/gke`). El token efímero de Grafana Cloud también se destruye. Los recursos persistentes no se tocan. Debe ejecutarse **antes** de las filas 12–15. | Sesión completa | **Por sesión** |
+| **12** | **9** Destruir | **2** Persistente — último (cimientos) | **01** Grafana Cloud stack | [**`9.2.01`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.01-grafana-cloud-decommission.yml) `Grafana Cloud decommission` | `terraform destroy` en `terraform/grafana-cloud-stack`. Elimina permanentemente la instancia Grafana Cloud, dashboards, tokens y políticas de acceso. Irreversible. | **Fila 11** completada | **One-time** |
+| **13** | **9** Destruir | **2** Persistente — último (cimientos) | **02** Gateway IP/cert | [**`9.2.02`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.02-gateway-decommission.yml) `Gateway decommission` | `terraform destroy` en `terraform/gateway-bootstrap`. Libera la IP estática y el mapa de certificados. **⚠ La IP desaparece**: un futuro bootstrap obtendrá una IP nueva, requiriendo actualizar el registro DNS A y esperar propagación. | **Fila 11** completada | **One-time** |
+| **14** | **9** Destruir | **2** Persistente — último (cimientos) | **03** Azure Mgd Grafana | [**`9.2.03`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.03-azure-decommission.yml) `Azure managed-grafana decommission` | `terraform destroy` en `terraform/azure-managed-grafana`. Elimina Azure Managed Grafana, Monitor workspace, App Insights, Log Analytics y el Entra SP. | **Fila 11** completada | **One-time** |
+| **15** | **9** Destruir | **2** Persistente — último (cimientos) | **04** AWS AMG / AMP | [**`9.2.04`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.04-aws-decommission.yml) `AWS managed-grafana decommission` | `terraform destroy` en `terraform/aws-managed-grafana`. Elimina Amazon Managed Grafana, AMP, grupo de logs CloudWatch, proveedor OIDC y rol IAM. | **Fila 11** completada | **One-time** |
+
+---
+
+### Are workflows auto-chained? Why not?
+
+**No workflow triggers another automatically** (there are no `workflow_run:` triggers). Each is dispatched manually by the operator. This is intentional:
+
+| Phase | Reason for manual dispatch |
+|---|---|
+| **0 — Create** | The `0.1.xx` bootstraps are one-time, human-supervised operations run months apart. `0.2.01` (GKE) runs frequently but independently — chaining it to `0.1.xx` would trigger a full reprovision every time a bootstrap is touched. |
+| **5 — Update** | All updates are independent and optional. There is no canonical ordering between publishing a dashboard, redeploying Jenkins, and running a traffic simulation. |
+| **9 — Destroy** | `9.1.01` (GKE) **must** complete before any `9.2.xx`. A `workflow_run:` trigger could enforce this, but it would be dangerous: a transient GKE decommission failure would silently block — or, with `on: failure`, trigger — permanent destruction of Grafana Cloud or the Gateway. Manual dispatch means a human reviews the `9.1.01` result before running `9.2.xx`. |
+
+**The filename order IS the runbook.** Open the GitHub Actions workflow list, read it top to bottom within each phase, and run in that order. No separate documentation needed to know what comes next.
+
+See [GitHub Actions automation](#github-actions-automation) below for the one-time setup (secrets, Workload Identity Federation) these workflows need.
 
 ## GitHub Actions automation
 
-[`.github/workflows/02.01-gke-provision.yml`](.github/workflows/02.01-gke-provision.yml) and
-[`.github/workflows/02.99-gke-decommission.yml`](.github/workflows/02.99-gke-decommission.yml)
+[`.github/workflows/0.2.01-gke-provision.yml`](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.2.01-gke-provision.yml) and
+[`.github/workflows/9.1.01-gke-decommission.yml`](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.1.01-gke-decommission.yml)
 are the CI equivalent of `test/e2e.sh`, split into two manually-triggered
 workflows so the cluster can be left running between them (e.g. provision in
 the morning, demo it, decommission in the evening). They run the exact same
@@ -2286,10 +2398,10 @@ To keep operating costs low and deployment speed high, this project separates th
    - **Workload Identity Federation (WIF)**: Establishes a secure, keyless trust relationship between GitHub Actions and your GCP project. GitHub can authenticate dynamically using OpenID Connect (OIDC) tokens instead of saving permanent GCP service account JSON keys inside repository secrets.
    - **GCS Remote Backend**: Sets up the persistent bucket where all GHA workflow runs store and retrieve Terraform state.
 
-2. **Persistent Observability Backend (`01.01 Grafana Cloud bootstrap`)**:
+2. **Persistent Observability Backend (`0.1.01 Grafana Cloud bootstrap`)**:
    - Applies the persistent Grafana Cloud stack (`terraform/grafana-cloud-stack`). By decoupling the metrics/tracing backend from the GKE cluster, your logs, metrics, and trace history are preserved across multiple cluster spin-ups and tear-downs.
 
-3. **Persistent External DNS & Networking (`01.02 Gateway bootstrap`)**:
+3. **Persistent External DNS & Networking (`0.1.02 Gateway bootstrap`)**:
    - Provisions GCP global networking resources: a persistent static IP (`jenkins-2026-gateway-ip`), DNS authorizations, and the wildcard SSL certificate map (`jenkins-2026-cert-map`).
    - If these networking assets were tied to the short-lived GKE cluster, deleting the cluster would release the IP address and destroy the SSL certificate. This would force you to manually update DNS records at your domain registrar (e.g. Squarespace) and wait for DNS propagation every single time you provisioned a new cluster. Keeping the gateway bootstrapped persistently ensures your external endpoints are immediately reachable upon cluster creation.
 
@@ -2306,42 +2418,48 @@ The following diagram illustrates how the persistent infrastructure bootstrap wo
 
 ```mermaid
 graph TD
-    subgraph Bootstrapping ["1 - Persistent Bootstrap"]
+    subgraph Bootstrapping ["Phase 0 — Create (persistent, one-time)"]
         A["terraform/bootstrap<br>Owner/Admin roles"] -->|"WIF + GCS bucket"| B["Workload Identity<br>+ Remote State"]
-        B --> C["01.01 Grafana Cloud<br>bootstrap"]
-        B --> D["01.02 Gateway<br>bootstrap"]
+        B --> C["0.1.01 Grafana Cloud<br>bootstrap"]
+        B --> D["0.1.02 Gateway<br>bootstrap"]
+        B --> C2["0.1.03 Azure<br>bootstrap"]
+        B --> C3["0.1.04 AWS<br>bootstrap"]
         C -->|"stack ID + token"| E[("Grafana Cloud")]
         D -->|"static IP + cert"| F[("Gateway<br>+ Cert Map")]
     end
 
-    subgraph GKE_Lifecycle ["2 - GKE Cluster Lifecycle"]
-        F & E & B --> G["02.01 GKE provision<br>tf/gke + scripts/up.sh"]
-        G --> H["GKE Cluster Active<br>Jenkins / ArgoCD<br>pgAdmin / services"]
-        H --> I["02.02 Redeploy Jenkins"]
-        H --> J["02.03 Redeploy Headlamp"]
-        B --> L["02.04 Publish AWS dashboards<br>(no cluster needed)"]
+    subgraph GKE_Lifecycle ["Phase 0→5→9 — GKE Cluster Lifecycle"]
+        F & E & B --> G["0.2.01 GKE provision<br>tf/gke + scripts/up.sh"]
+        G --> H["GKE Cluster Active<br>Jenkins / ArgoCD / services"]
+        H --> I["5.2.02 Redeploy Jenkins"]
+        H --> J["5.2.03 Redeploy Headlamp"]
+        B --> L2["5.1.04 Publish AWS dashboards<br>(no cluster needed)"]
+        B --> M2["5.1.03 Publish Azure dashboards<br>(no cluster needed)"]
         I & J --> H
-        H --> K["02.99 GKE decommission<br>down.sh + tf destroy"]
+        H --> K["9.1.01 GKE decommission<br>down.sh + tf destroy"]
         K -->|"cluster gone<br>assets kept"| B
     end
 
-    subgraph Simulation ["3 - Observability Simulation"]
-        H & E --> O["99.01 Traffic Simulation<br>k6 load script"]
+    subgraph Simulation ["Phase 5 — Update (simulation)"]
+        H & E --> O["5.9.01 Traffic Simulation<br>k6 load script"]
         O -->|"live traffic"| H
         O -->|"telemetry"| E
     end
 
-    subgraph Persistent_Teardown ["4 - Full Teardown"]
-        E --> L["01.98 Grafana Cloud<br>decommission"]
-        F --> M["01.99 Gateway<br>decommission"]
-        L & M -->|"all resources removed"| N["Clean Slate"]
+    subgraph Persistent_Teardown ["Phase 9 — Destroy (persistent, one-time)"]
+        K --> P1["9.2.01 Grafana Cloud<br>decommission"]
+        K --> P2["9.2.02 Gateway<br>decommission"]
+        K --> P3["9.2.03 Azure<br>decommission"]
+        K --> P4["9.2.04 AWS<br>decommission"]
+        P1 & P2 & P3 & P4 -->|"all resources removed"| N["Clean Slate"]
     end
 
     classDef persistent fill:#f9f,stroke:#333,stroke-width:2px;
     classDef cluster fill:#bbf,stroke:#333,stroke-width:2px;
-    classDef process fill:#fff,stroke:#333,stroke-width:1px;
-    class E,F,L,M persistent;
+    classDef update fill:#bfb,stroke:#333,stroke-width:1px;
+    class E,F,P1,P2,P3,P4 persistent;
     class G,H,I,J,K,O cluster;
+    class L2,M2 update;
 ```
 
 </details>
@@ -2349,28 +2467,29 @@ graph TD
 #### Detailed Workflow Reference and Lifecycle Management
 
 ##### 1. Persistent Bootstrap Workflows
-- **`01.01 Grafana Cloud bootstrap`**: Provisions a dedicated Grafana Cloud stack (hosted metrics/traces/logs backend) using `terraform/grafana-cloud-stack`. By separating the observability backend from the short-lived GKE cluster, application performance metrics and history are preserved permanently, remaining readable even after GKE is decommissioned and rebuilt from scratch.
-- **`01.02 Gateway bootstrap`**: Provisions account-level GCP networking assets using `terraform/gateway-bootstrap`. This includes a reserved external IP (`jenkins-2026-gateway-ip`), DNS authorizations, and a Google-managed wildcard SSL certificate map. Keeping this IP and SSL certificate persistent avoids losing the reserved IP during a GKE rebuild, eliminating the need to update wildcard DNS records at your domain registrar and wait for DNS propagation.
+- **`0.1.01 Grafana Cloud bootstrap`**: Provisions a dedicated Grafana Cloud stack (hosted metrics/traces/logs backend) using `terraform/grafana-cloud-stack`. By separating the observability backend from the short-lived GKE cluster, application performance metrics and history are preserved permanently, remaining readable even after GKE is decommissioned and rebuilt from scratch.
+- **`0.1.02 Gateway bootstrap`**: Provisions account-level GCP networking assets using `terraform/gateway-bootstrap`. This includes a reserved external IP (`jenkins-2026-gateway-ip`), DNS authorizations, and a Google-managed wildcard SSL certificate map. Keeping this IP and SSL certificate persistent avoids losing the reserved IP during a GKE rebuild, eliminating the need to update wildcard DNS records at your domain registrar and wait for DNS propagation.
 
 ##### 2. Persistent Decommission Workflows (Clean Slate)
 When you want to tear down the entire project permanently, you must run the decommission workflows in the reverse order of setup to avoid dangling resources:
-1. Run **`02.99 GKE decommission`** first to destroy the active GKE cluster and all internal Kubernetes workloads (releasing short-lived target bindings).
-2. Run **`01.98 Grafana Cloud decommission`** to run `terraform destroy` on the Grafana Cloud stack, which removes the Grafana instances, access policies, and dashboards.
-3. Run **`01.99 Gateway decommission`** to run `terraform destroy` on the gateway resources, freeing the reserved external IP, removing the wildcard SSL certificate map, and deleting GCP DNS authorizations.
+1. Run **`9.1.01 GKE decommission`** first to destroy the active GKE cluster and all internal Kubernetes workloads (releasing short-lived target bindings).
+2. Run **`9.2.01 Grafana Cloud decommission`** to run `terraform destroy` on the Grafana Cloud stack, which removes the Grafana instances, access policies, and dashboards.
+3. Run **`9.2.02 Gateway decommission`** to run `terraform destroy` on the gateway resources, freeing the reserved external IP, removing the wildcard SSL certificate map, and deleting GCP DNS authorizations.
 
 > [!WARNING]
-> Decommissioning the gateway (`01.99`) releases the external IP address. If you recreate the gateway later, a *new* IP will be allocated, forcing you to update your DNS provider's A records and wait for DNS propagation. Only decommission the gateway if you plan to shut down the environment permanently.
+> Decommissioning the gateway (`9.2.02`) releases the external IP address. If you recreate the gateway later, a *new* IP will be allocated, forcing you to update your DNS provider's A records and wait for DNS propagation. Only decommission the gateway if you plan to shut down the environment permanently.
 
 ### Version Pinning and Lifecycle Alignment
 
 To support deterministic deployments and clean, error-free environment destruction, all GKE lifecycle workflows support custom Git reference checking:
 
 * **Workflows Supported**:
-  * [02.01 GKE provision](file:///home/inafev/github/jenkins-2026/.github/workflows/02.01-gke-provision.yml)
-  * [02.02 Redeploy Jenkins](file:///home/inafev/github/jenkins-2026/.github/workflows/02.02-redeploy-jenkins.yml)
-  * [02.03 Redeploy Headlamp](file:///home/inafev/github/jenkins-2026/.github/workflows/02.03-redeploy-headlamp.yml)
-  * [02.04 Publish AWS dashboards](file:///home/inafev/github/jenkins-2026/.github/workflows/02.04-publish-aws-dashboards.yml)
-  * [02.99 GKE decommission](file:///home/inafev/github/jenkins-2026/.github/workflows/02.99-gke-decommission.yml)
+  * [0.2.01 GKE provision](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.2.01-gke-provision.yml)
+  * [5.2.02 Redeploy Jenkins](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.2.02-redeploy-jenkins.yml)
+  * [5.2.03 Redeploy Headlamp](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.2.03-redeploy-headlamp.yml)
+  * [5.1.04 Publish AWS dashboards](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.1.04-publish-aws-dashboards.yml)
+  * [5.1.03 Publish Azure dashboards](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.1.03-publish-azure-dashboards.yml)
+  * [9.1.01 GKE decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.1.01-gke-decommission.yml)
 
 #### The `git_ref` Parameter
 Each of these workflows includes a manual trigger input `git_ref` (which defaults to `""` / empty). 
@@ -2378,9 +2497,9 @@ Each of these workflows includes a manual trigger input `git_ref` (which default
 * **Leave Empty (Recommended)**: The checkout action automatically defaults to the branch or tag selected in the native **"Use workflow from"** dropdown menu.
 * **Provide Value**: You can type in any valid branch name, tag (e.g. `v0.9.1`), or commit SHA. If specified, this custom reference will override the dropdown selection.
 
-#### Form Fields Detailed Reference (02.01 GKE Provision Form)
+#### Form Fields Detailed Reference (0.2.01 GKE Provision Form)
 
-When executing the **02.01 GKE provision** workflow manually, you are presented with a form containing the following fields:
+When executing the **0.2.01 GKE provision** workflow manually, you are presented with a form containing the following fields:
 
 1. **Use workflow from (Dropdown - Native)**:
    - **Type**: Dynamic Git Reference Selector.
@@ -2400,7 +2519,7 @@ When executing the **02.01 GKE provision** workflow manually, you are presented 
    - **Type**: Boolean (`true` | `false`).
    - **Default**: `false`.
    - **Purpose**: Determines whether the public GKE Gateway L7 load balancer should be provisioned.
-   - **Prerequisites**: Setting this to `true` requires you to have already executed the persistent `01.02 Gateway bootstrap` workflow, set up wildcard DNS A records pointing to the external static IP, and configured Google OAuth client credentials for Identity-Aware Proxy (IAP). If set to `false`, endpoints are only reachable internally (via port-forwarding).
+   - **Prerequisites**: Setting this to `true` requires you to have already executed the persistent `0.1.02 Gateway bootstrap` workflow, set up wildcard DNS A records pointing to the external static IP, and configured Google OAuth client credentials for Identity-Aware Proxy (IAP). If set to `false`, endpoints are only reachable internally (via port-forwarding).
 
 4. **git_ref (Text Box - String)**:
    - **Type**: String.
@@ -2419,7 +2538,7 @@ Mixing different tags, branches, or SHAs during the lifecycle of a single GKE cl
 
 > [!IMPORTANT]
 > **Rule of lockstep alignment**:
-> 1. Always ensure that the `git_ref` used for provisioning (`02.01`) matches the `git_ref` used for decommissioning (`02.99`) and redeployments (`02.02` / `02.03`).
+> 1. Always ensure that the `git_ref` used for provisioning (`0.2.01`) matches the `git_ref` used for decommissioning (`9.1.01`) and redeployments (`5.2.02` / `5.2.03`).
 > 2. For stable releases, tag both repositories in lockstep (e.g. `v0.9.0` tag in `jenkins-2026` and `jenkins-2026-gitops-config`) and input that tag name in the `git_ref` parameter when triggering the workflows.
 
 ### Environment Protection and Manual Approvals
@@ -2427,10 +2546,10 @@ Mixing different tags, branches, or SHAs during the lifecycle of a single GKE cl
 To enforce cost control (FinOps), auditability, and guard against accidental destruction of active resources, all critical provisioning and decommissioning workflows are protected by a GitHub Actions environment:
 
 * **Protected Workflows**:
-  - `02.01 GKE provision` (provisions nodes, networking, and platform services)
-  - `02.99 GKE decommission` (wipes cluster resources and destroys VMs)
-  - `01.98 Grafana Cloud decommission` (revokes metrics stacks and API keys)
-  - `01.99 Gateway decommission` (releases global external static IP and certificate maps)
+  - `0.2.01 GKE provision` (provisions nodes, networking, and platform services)
+  - `9.1.01 GKE decommission` (wipes cluster resources and destroys VMs)
+  - `9.2.01 Grafana Cloud decommission` (revokes metrics stacks and API keys)
+  - `9.2.02 Gateway decommission` (releases global external static IP and certificate maps)
 * **Environment Name**: `gke-production`
 
 #### 🛡️ Setting up Environment Rules in GitHub
@@ -2472,8 +2591,8 @@ With this configuration active, triggering any of the protected workflows will p
 ### One-time setup
 
 
-> **Why this step can't itself run in GitHub Actions**: `02.01-gke-provision.yml`
-> and `02.99-gke-decommission.yml` authenticate to GCP via Workload Identity
+> **Why this step can't itself run in GitHub Actions**: `0.2.01-gke-provision.yml`
+> and `9.1.01-gke-decommission.yml` authenticate to GCP via Workload Identity
 > Federation (WIF) - but that WIF trust relationship, the CI service account,
 > and the GCS state bucket don't exist yet. Something has to create them
 > first using *real* GCP credentials, which is exactly what
@@ -2560,9 +2679,9 @@ With this configuration active, triggering any of the protected workflows will p
    | `JENKINS_OIDC_CLIENT_ID` / `JENKINS_OIDC_CLIENT_SECRET` | Google OAuth client for Jenkins "Sign in with Google" (see [Google login](#google-login-openid-connect)) |
    | `JENKINS_OIDC_ADMIN_EMAIL` | Google account email granted the Jenkins `admin` role via OIDC login - **your own email, never committed to the repo** (see [Google login](#google-login-openid-connect)) |
    | `IAP_OAUTH_CLIENT_ID` / `IAP_OAUTH_CLIENT_SECRET` | OAuth client gating Jenkins/Headlamp via Identity-Aware Proxy (see [Public access](#public-access-gke-gateway-api--iap)) |
-   | `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` / `AZURE_GRAFANA_ADMIN_OBJECT_IDS` | `observability_mode: managed-azure` - **identifiers only, no secret**: the GitHub-OIDC Entra app the `01.03 Azure bootstrap` workflow logs in as, plus the comma-separated Entra object IDs granted Grafana Admin. The actual Azure backend credentials never become GitHub secrets - `02.01` reads them from the `terraform/azure-managed-grafana` GCS state outputs (see [`docs/observability.md`](docs/observability.md#managed-azure)) |
-   | `AWS_BOOTSTRAP_ROLE_ARN` / `AWS_REGION` / `GKE_OIDC_ISSUER_URL` | `observability_mode: managed-aws` - **identifiers only, no secret**: the IAM role the `01.04 AWS bootstrap` workflow assumes via GitHub OIDC, the region, and the GKE cluster's OIDC issuer URL (federates the collector SA to its IAM role). The AWS backend coordinates never become GitHub secrets - `02.01` reads them from the `terraform/aws-managed-grafana` GCS state outputs, and the collector authenticates with a web-identity token, not access keys (see [`docs/observability.md`](docs/observability.md#managed-aws)) |
-   | `AWS_DASHBOARD_PUBLISH_ROLE_ARN` | `observability_mode: managed-aws` - **identifier only, no secret**: the least-privilege IAM role `02.01 GKE provision` and `02.04 Publish AWS dashboards` assume via GitHub OIDC to publish dashboards to Amazon Managed Grafana (only the workspace service-account-token APIs). Created by `01.04 AWS bootstrap` - set this to its `dashboard_publisher_role_arn` output. When unset, both workflows skip the publish step gracefully (see [`docs/observability.md`](docs/observability.md#managed-aws)) |
+   | `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` / `AZURE_GRAFANA_ADMIN_OBJECT_IDS` | `observability_mode: managed-azure` - **identifiers only, no secret**: the GitHub-OIDC Entra app the `0.1.03 Azure managed-grafana bootstrap` workflow logs in as, plus the comma-separated Entra object IDs granted Grafana Admin. The actual Azure backend credentials never become GitHub secrets - `0.2.01` reads them from the `terraform/azure-managed-grafana` GCS state outputs (see [`docs/observability.md`](docs/observability.md#managed-azure)) |
+   | `AWS_BOOTSTRAP_ROLE_ARN` / `AWS_REGION` / `GKE_OIDC_ISSUER_URL` | `observability_mode: managed-aws` - **identifiers only, no secret**: the IAM role the `0.1.04 AWS managed-grafana bootstrap` workflow assumes via GitHub OIDC, the region, and the GKE cluster's OIDC issuer URL (federates the collector SA to its IAM role). The AWS backend coordinates never become GitHub secrets - `0.2.01` reads them from the `terraform/aws-managed-grafana` GCS state outputs, and the collector authenticates with a web-identity token, not access keys (see [`docs/observability.md`](docs/observability.md#managed-aws)) |
+   | `AWS_DASHBOARD_PUBLISH_ROLE_ARN` | `observability_mode: managed-aws` - **identifier only, no secret**: the least-privilege IAM role `0.2.01 GKE provision` and `5.1.04 Publish AWS dashboards` assume via GitHub OIDC to publish dashboards to Amazon Managed Grafana (only the workspace service-account-token APIs). Created by `0.1.04 AWS managed-grafana bootstrap` - set this to its `dashboard_publisher_role_arn` output. When unset, both workflows skip the publish step gracefully (see [`docs/observability.md`](docs/observability.md#managed-aws)) |
 
    `gateway.baseDomain` (default `jenkins2026.nubenetes.com`) is **not** a
    secret - it's committed in `config/config.yaml`. Override it via the
@@ -2572,12 +2691,12 @@ With this configuration active, triggering any of the protected workflows will p
 
 5. **(Optional) Full Grafana Cloud lifecycle automation**, for
    `observability_mode: grafana-cloud`. Without this, picking that mode in
-   **02.01 GKE provision** will fail at `terraform apply` in
+   **0.2.01 GKE provision** will fail at `terraform apply` in
    `terraform/grafana-cloud-token` - skip this step entirely if you only plan
    to use `oss`, `managed-azure`, or `managed-aws`.
 
    This provisions one **persistent** Grafana Cloud stack (once, locally,
-   like step 2 above), then lets every `02.01-gke-provision`/`02.99-gke-decommission`
+   like step 2 above), then lets every `0.2.01-gke-provision`/`9.1.01-gke-decommission`
    run mint and revoke **ephemeral**, scoped access tokens against it -
    no manual `observability/otel-collector/secret.yaml` needed.
 
@@ -2629,8 +2748,8 @@ With this configuration active, triggering any of the protected workflows will p
       gh variable set GRAFANA_CLOUD_STACK_SLUG  --body "<your-globally-unique-slug>"
       ```
 
-   c. **Run the "01.01 Grafana Cloud bootstrap" workflow** (Actions tab ->
-      **01.01 Grafana Cloud bootstrap** -> **Run workflow**). It applies
+   c. **Run the "0.1.01 Grafana Cloud bootstrap" workflow** (Actions tab ->
+      **0.1.01 Grafana Cloud bootstrap** -> **Run workflow**). It applies
       [`terraform/grafana-cloud-stack`](terraform/grafana-cloud-stack) with
       state in the same GCS bucket as `terraform/gke`, creating the
       persistent stack from the configuration above. If `GRAFANA_CLOUD_STACK_SLUG`
@@ -2644,16 +2763,16 @@ With this configuration active, triggering any of the protected workflows will p
       `export TF_VAR_grafana_cloud_api_token=... && terraform init && terraform
       apply`. Keep `terraform.tfstate`, gitignored, if you do this.)
 
-   From here on, every `02.01-gke-provision` run with `observability_mode:
+   From here on, every `0.2.01-gke-provision` run with `observability_mode:
    grafana-cloud` applies
    [`terraform/grafana-cloud-token`](terraform/grafana-cloud-token) to mint a
    scoped OTLP access policy token + dashboard service account token against
    this stack and writes them into the `grafana-cloud-credentials` Secret;
-   every `02.99-gke-decommission` run destroys the same Terraform state, revoking
+   every `9.1.01-gke-decommission` run destroys the same Terraform state, revoking
    both tokens.
 
 6. **(Optional) Azure backend for `observability_mode: managed-azure`.**
-   Provisioned once via the **01.03 Azure bootstrap** workflow (state in the
+   Provisioned once via the **0.1.03 Azure managed-grafana bootstrap** workflow (state in the
    same GCS bucket as `terraform/gke`), authenticating to Azure with **GitHub
    OIDC - no long-lived secret stored**, the same key-less philosophy as the
    GCP Workload Identity Federation in steps 1-3. All sensitive inputs are
@@ -2683,8 +2802,8 @@ With this configuration active, triggering any of the protected workflows will p
       gh secret set AZURE_GRAFANA_ADMIN_OBJECT_IDS --body "$(az ad signed-in-user show --query id -o tsv)"  # comma-separated
       ```
 
-   c. **Run the "01.03 Azure managed-grafana bootstrap" workflow** (Actions tab
-      → **01.03 Azure managed-grafana bootstrap** → **Run workflow**). It applies
+   c. **Run the "0.1.03 Azure managed-grafana bootstrap" workflow** (Actions tab
+      → **0.1.03 Azure managed-grafana bootstrap** → **Run workflow**). It applies
       [`terraform/azure-managed-grafana`](terraform/azure-managed-grafana) -
       Azure Managed Grafana, the Azure Monitor workspace (+ Data Collection
       Endpoint/Rule for managed Prometheus), Application Insights + Log
@@ -2693,7 +2812,7 @@ With this configuration active, triggering any of the protected workflows will p
       the `azure-bootstrap` GitHub Environment, matching the federated
       credential's subject.
 
-   From here, every **02.01 GKE provision** run with `observability_mode:
+   From here, every **0.2.01 GKE provision** run with `observability_mode:
    managed-azure` reads this module's outputs straight from the GCS state to
    build the `azure-monitor-credentials` Secret - the connection string,
    managed-Prometheus endpoint and service-principal secret never become GitHub
@@ -2704,12 +2823,12 @@ With this configuration active, triggering any of the protected workflows will p
 
 ### Running it
 
-1. Go to the repo's **Actions** tab -> **02.01 GKE provision** -> **Run
+1. Go to the repo's **Actions** tab -> **0.2.01 GKE provision** -> **Run
    workflow**. Pick `observability_mode` (`oss` needs no extra secrets and is
    the recommended default - see [Prerequisites](#prerequisites-1) above).
    `enable_gateway` defaults to **checked** - this project's intended public
    access path. **Uncheck it only** for a fresh environment where the one-time
-   **01.02 Gateway bootstrap** workflow + DNS records + IAP OAuth client (see
+   **0.1.02 Gateway bootstrap** workflow + DNS records + IAP OAuth client (see
    [Public access](#public-access-gke-gateway-api--iap)) haven't been done yet
    (leaving it on without the bootstrap deploys a Gateway that can't get an
    IP/certificate). Note: once the gateway is up, deploying with it **off**
@@ -2723,9 +2842,9 @@ With this configuration active, triggering any of the protected workflows will p
    default outside CI).
 3. To redeploy only Jenkins between provision/decommission cycles (e.g. after
    editing `helm/jenkins/` or `jenkins/casc/`), go to **Actions** ->
-   **02.02 Redeploy Jenkins** -> **Run workflow** instead - see [CI/CD
+   **5.2.02 Redeploy Jenkins** -> **Run workflow** instead - see [CI/CD
    pipelines](#cicd-pipelines). Repeat as many times as needed.
-4. When finished, go to **Actions** -> **02.99 GKE decommission** -> **Run
+4. When finished, go to **Actions** -> **9.1.01 GKE decommission** -> **Run
    workflow**. It reads the same GCS state, runs `scripts/down.sh`, then
    `terraform destroy`.
 
@@ -2763,14 +2882,14 @@ in GitHub Actions tears it down automatically.
   no billable resources are left, run
   `terraform -chdir=terraform/gke destroy` manually and confirm with
   `gcloud container clusters list --project "$GCP_PROJECT_ID"`.
-- **`02.01-gke-provision`/`02.99-gke-decommission` fails on `terraform init` with a
+- **`0.2.01-gke-provision`/`9.1.01-gke-decommission` fails on `terraform init` with a
   permissions or 404 error on the GCS bucket**: re-check the `TF_STATE_BUCKET`
   secret matches `terraform -chdir=terraform/bootstrap output -raw
   state_bucket`, and that `terraform/bootstrap` finished applying (the bucket
   and the `roles/storage.objectAdmin` binding for the CI service account must
   both exist).
-- **`02.99-gke-decommission` (or `02.02-redeploy-jenkins`) run manually without a
-  prior `02.01-gke-provision`** (or after the state was already destroyed):
+- **`9.1.01-gke-decommission` (or `5.2.02-redeploy-jenkins`) run manually without a
+  prior `0.2.01-gke-provision`** (or after the state was already destroyed):
   `terraform init` will succeed against an empty state, but `terraform output
   -raw cluster_name` (used to `get-credentials`) will fail with "no outputs
   found" - there's nothing to decommission/redeploy in that case.

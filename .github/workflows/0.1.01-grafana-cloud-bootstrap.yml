@@ -1,4 +1,4 @@
-name: "01.01 Grafana Cloud bootstrap"
+name: "0.1.01 Grafana Cloud bootstrap"
 
 # Manually-triggered, one-time setup step: applies terraform/grafana-cloud-stack
 # to create (or, on re-runs, confirm) the persistent Grafana Cloud stack that
@@ -10,7 +10,7 @@ name: "01.01 Grafana Cloud bootstrap"
 # Requires the GRAFANA_CLOUD_API_TOKEN and GRAFANA_CLOUD_STACK_SLUG secrets -
 # see README.md "GitHub Actions automation" for how to create them.
 #
-# 02.01-gke-provision.yml / 02.99-gke-decommission.yml do NOT run this
+# 0.2.01-gke-provision.yml / 9.1.01-gke-decommission.yml do NOT run this
 # workflow - they only manage terraform/grafana-cloud-token, which looks this
 # stack up by slug via a data source.
 on:
@@ -90,5 +90,5 @@ jobs:
             echo "- Slug: \`${{ vars.GRAFANA_CLOUD_STACK_SLUG || secrets.GRAFANA_CLOUD_STACK_SLUG }}\`"
             echo "- Grafana URL: \`$(terraform output -raw grafana_url 2>/dev/null || echo 'n/a')\`"
             echo
-            echo "02.01 GKE provision (observability_mode: grafana-cloud) can now mint scoped tokens against this stack via terraform/grafana-cloud-token."
+            echo "0.2.01 GKE provision (observability_mode: grafana-cloud) can now mint scoped tokens against this stack via terraform/grafana-cloud-token."
           } >> "${GITHUB_STEP_SUMMARY}"
