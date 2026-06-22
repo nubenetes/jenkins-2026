@@ -74,6 +74,9 @@ jobs:
   # ── Main provision job ──────────────────────────────────────────────────────
   provision:
     needs: [grafana-cloud-bootstrap, azure-bootstrap, aws-bootstrap]
+    # always() prevents skipped bootstrap jobs from silently skipping provision.
+    # !failure() still blocks provision if a bootstrap actually failed.
+    if: ${{ always() && !failure() && !cancelled() }}
     runs-on: ubuntu-latest
     environment: gke-production
     steps:
