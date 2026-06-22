@@ -2,6 +2,47 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.14.0] - 2026-06-22
+
+Grafana alerting provisioned as code: 5 alert rules covering the most
+critical failure modes, email contact point using the existing admin
+email secret, automatic provisioning on every `scripts/up.sh` run.
+
+### Added
+
+- **`observability/grafana/alerting/`** — alerting resources as code:
+  - `contact-points.json` — email contact point (`jenkins-2026-email`),
+    address read from `GRAFANA_ALERT_EMAIL` env var or the existing
+    `jenkins-credentials` Secret key `oidc-admin-email` (no new secret needed)
+  - `notification-policy.json` — routes all alerts to the email contact
+    point; group_wait=30s, group_interval=5m, repeat_interval=4h
+  - `rules/01-pods-not-ready.json` — Critical / 2 min: any microservice
+    pod NotReady (`kube_pod_status_ready == 0` in `microservices` ns)
+  - `rules/02-argocd-degraded.json` — Warning / 5 min: any ArgoCD
+    Application health=Degraded (`argocd_app_info`)
+  - `rules/03-cnpg-degraded.json` — Critical / 2 min: any PostgreSQL pod
+    NotReady (`postgres-.*` pods in `microservices` ns)
+  - `rules/04-http-5xx-rate.json` — Warning / 3 min: HTTP 5xx rate > 5%
+    for any microservice (OTel metric `http_server_request_duration_seconds_count`)
+  - `rules/05-jvm-heap-high.json` — Warning / 5 min: JVM heap > 85% for
+    any microservice (OTel metric `jvm_memory_used_bytes`)
+
+- **`scripts/07.5-grafana-alerts.sh`** — new idempotent script that
+  provisions the contact point, notification policy, and all alert rules
+  via the Grafana HTTP provisioning API (`/api/v1/provisioning/...`).
+  Fully implemented for `grafana-cloud` (upserts by UID — safe to re-run).
+  `oss` / `managed-azure` / `managed-aws` modes have `TODO(obs-mode)` stubs
+  with descriptive `log_warn` messages.
+
+- **`scripts/up.sh`** — calls `07.5-grafana-alerts.sh` automatically
+  after `07-grafana-dashboards.sh` on every deploy (non-fatal: failure
+  logs a warning but does not abort the deploy).
+
+- **`docs/301-OBSERVABILITY.md`** — new "Grafana Alerting" section
+  documenting the 5 rules, the email secret resolution order, the mode
+  support matrix, and how to add custom rules (drop a JSON in
+  `observability/grafana/alerting/rules/`).
+
 ## [v0.13.5] - 2026-06-22
 
 Fix: Grafana dashboards empty after first Jenkins pipeline run because the
