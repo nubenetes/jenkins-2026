@@ -42,7 +42,7 @@ def call(Map cfg) {
       def exitCode = sh(
         script: '''
           set -eu
-          k6 run -o experimental-opentelemetry --summary-export=k6-summary.json jenkins/pipelines/k6/microservices-smoke.js
+          k6 run -o opentelemetry --summary-export=k6-summary.json jenkins/pipelines/k6/microservices-smoke.js
         ''',
         returnStatus: true
       )
