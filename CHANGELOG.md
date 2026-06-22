@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.13.1] - 2026-06-22
+
+README restructured into a numbered document library under `docs/` and translated fully to English.
+
+### Changed
+
+- **README**: 3 141 lines → 146-line index. Now contains only a brief intro,
+  Quick Start one-liner, Architecture Overview (compact Mermaid), GitHub
+  Actions summary table, Prerequisites, and the **Document Inventory** — which
+  is now section 1 (immediately visible) rather than buried at line 2 238.
+- **`docs/` restructure** — all content moved to 11 numbered docs following
+  the `NNN-TITLE_IN_CAPS.md` convention, each with `← Previous | 🏠 Home | → Next →`
+  header and footer navigation:
+  - `101-GITHUB_ACTIONS_WORKFLOWS.md` — CI/CD workflow naming (`Y.X.ZZ`),
+    lifecycle phases, Phase×Step matrix, ZZ resource identity, Mermaid diagram,
+    full 15-row numbered inventory with clickable GitHub Actions links
+  - `102-GITHUB_ACTIONS_AUTOMATION.md` — WIF setup, GitHub secrets, bootstrapping
+    architecture, `git_ref` parameter
+  - `201-ARCHITECTURE.md` — component diagram, microservices database
+    architecture (CNPG), configuration, repository layout, GKE topology
+  - `301-OBSERVABILITY.md` — OTel Operator/agent/RUM/Collector, signal
+    correlation, dashboards, k6 smoke test, all four observability modes
+  - `401-JENKINS.md` — Jenkins UI, Google OIDC, plugins, JCasC, MCP server
+  - `402-PIPELINES_AS_CODE.md` — seed job, pipeline stages, optional `develop`
+    tier, container security
+  - `501-PLATFORM_OPERATIONS.md` — ArgoCD inventory, telemetry simulation,
+    chaos/QA, Golden Path modernizations, Headlamp, GKE Gateway + IAP
+  - `502-MICROSERVICES_GITOPS.md` — Helm vs. Kustomize, resource lifecycle &
+    decommission orchestration, NEG synchronization barrier
+  - `601-DEVSECOPS.md` — Semgrep SAST, CodeQL, Trivy, warnings-ng SARIF
+  - `901-LOCAL_DEVELOPMENT.md` — prerequisites, Quick Start, step-by-step
+    deployment guide, `test/e2e.sh`
+  - `902-TROUBLESHOOTING.md` — common issues, ArgoCD OIDC, Terraform, Jenkins
+    authentication failures
+- **Legacy stubs** (`docs/architecture.md`, `docs/observability.md`,
+  `docs/pipelines-as-code.md`) now redirect to the numbered equivalents so
+  existing links remain valid.
+- **English-only**: all Spanish text in the workflow inventory matrix table
+  translated to English (column headers, row descriptions, prerequisites,
+  frequency cells).
+- **`CLAUDE.md`**: updated docs/ reference list to new numbered filenames.
+
 ## [v0.13.0] - 2026-06-22
 
 Complete redesign of GitHub Actions workflow naming from `CC.NN` to `Y.X.ZZ`,
