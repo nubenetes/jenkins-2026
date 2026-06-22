@@ -10,6 +10,7 @@
 #   04 jenkins         > parallel - independent of each other
 #   06 seed-pipelines   (sequential - needs 04 ready)
 #   07 grafana-dashboards (sequential - needs 03's credentials/configmap)
+#   07.5 grafana-alerts  (sequential - provisions contact point + alert rules)
 #   08 headlamp         (sequential - cluster management UI)
 #   08.5-argocd.sh      (sequential - CD engine for GitOps)
 #   09 gateway          (sequential - public access via GKE Gateway API + IAP)
@@ -38,6 +39,7 @@ log_step "Installing 04-jenkins (sequential to prevent API pressure)"
 
 "${SCRIPT_DIR}/06-seed-pipelines.sh"
 "${SCRIPT_DIR}/07-grafana-dashboards.sh"
+"${SCRIPT_DIR}/07.5-grafana-alerts.sh" || log_warn "Grafana alert provisioning reported an issue (see above) — non-fatal"
 "${SCRIPT_DIR}/08-headlamp.sh"
 "${SCRIPT_DIR}/09-gateway.sh"
 

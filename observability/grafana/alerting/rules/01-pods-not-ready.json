@@ -1,0 +1,48 @@
+{
+  "uid": "j2026-pods-not-ready",
+  "title": "Microservice Pod NotReady",
+  "ruleGroup": "jenkins-2026",
+  "folderUID": "jenkins-2026-alerts",
+  "condition": "threshold",
+  "for": "2m",
+  "noDataState": "NoData",
+  "execErrState": "Error",
+  "labels": {
+    "severity": "critical",
+    "project": "jenkins-2026"
+  },
+  "annotations": {
+    "summary": "Microservice pod not ready in namespace microservices",
+    "description": "Pod {{ $labels.pod }} has been NotReady for more than 2 minutes"
+  },
+  "data": [
+    {
+      "refId": "query",
+      "relativeTimeRange": { "from": 300, "to": 0 },
+      "datasourceUid": "grafanacloud-prom",
+      "model": {
+        "expr": "kube_pod_status_ready{namespace=\"microservices\",condition=\"true\"} == 0",
+        "refId": "query",
+        "instant": true
+      }
+    },
+    {
+      "refId": "threshold",
+      "relativeTimeRange": { "from": 0, "to": 0 },
+      "datasourceUid": "-100",
+      "model": {
+        "conditions": [
+          {
+            "evaluator": { "params": [0], "type": "gt" },
+            "operator": { "type": "and" },
+            "query": { "params": ["query"] },
+            "reducer": { "params": [], "type": "last" },
+            "type": "query"
+          }
+        ],
+        "refId": "threshold",
+        "type": "classic_conditions"
+      }
+    }
+  ]
+}
