@@ -251,6 +251,8 @@ sequenceDiagram
 - **Build output**: raw `k6-summary.json` (archived as build artifact), pass/fail breakdown, and a direct link to the `k6-smoke-overview.json` Grafana dashboard scoped to this run's time window.
 - **Automated Pipeline Integration**: Automatically triggered at the end of every microservice build and deploy pipeline.
 
+> **Runbook**: For a step-by-step procedure to enable DEBUG-level logging, restart the relevant pods, generate traffic, and prove logs ↔ traces ↔ metrics correlation in Grafana end-to-end, see the [Log Correlation Validation runbook](../docs/runbooks/log-correlation-validation.md).
+
 ## Grafana OSS In-Cluster Mode
 
 `observability.mode: oss` runs the **entire** stack in-cluster — useful for air-gapped demos or avoiding SaaS cost/quota.
