@@ -1,4 +1,4 @@
-[← Previous: 102. GitHub Actions Automation](./102-GITHUB_ACTIONS_AUTOMATION.md) | [🏠 Home](../README.md) | [→ Next: 301. Observability](./301-OBSERVABILITY.md)
+[← Previous: 103. Secrets Inventory](./103-GITHUB_SECRETS_INVENTORY.md) | [🏠 Home](../README.md) | [→ Next: 301. Observability](./301-OBSERVABILITY.md)
 
 ---
 
@@ -319,7 +319,7 @@ Running Jenkins, ArgoCD, pgAdmin, two Postgres HA clusters (CNPG), OpenTelemetry
 
 ---
 
-[← Previous: 102. GitHub Actions Automation](./102-GITHUB_ACTIONS_AUTOMATION.md) | [🏠 Home](../README.md) | [→ Next: 301. Observability](./301-OBSERVABILITY.md)
+[← Previous: 103. Secrets Inventory](./103-GITHUB_SECRETS_INVENTORY.md) | [🏠 Home](../README.md) | [→ Next: 301. Observability](./301-OBSERVABILITY.md)
 
 ---
 

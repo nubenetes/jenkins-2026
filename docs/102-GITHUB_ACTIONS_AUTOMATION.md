@@ -1,4 +1,4 @@
-[← Previous: 101. GitHub Actions Workflows](./101-GITHUB_ACTIONS_WORKFLOWS.md) | [🏠 Home](../README.md) | [→ Next: 201. Architecture](./201-ARCHITECTURE.md)
+[← Previous: 101. GitHub Actions Workflows](./101-GITHUB_ACTIONS_WORKFLOWS.md) | [🏠 Home](../README.md) | [→ Next: 103. Secrets Inventory](./103-GITHUB_SECRETS_INVENTORY.md)
 
 ---
 
@@ -258,6 +258,11 @@ EOF
    | `REGISTRY_USERNAME` / `REGISTRY_PASSWORD` | pushing/pulling private microservice images from a private registry |
    | `GIT_USERNAME` / `GIT_TOKEN` | cloning a private Microservices fork |
    | `GRAFANA_TRACES_DASHBOARD_UID` / `OTEL_LOGS_BACKEND_URL` | `observability_mode: grafana-cloud` extras — "View trace in Grafana" link UID and logs Explore URL |
+   | `GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD` | Alert notification email for `grafana-cloud` mode — **must be a member of the Grafana Cloud org** (Grafana Cloud rejects contact points addressed to non-members; set this when it differs from `JENKINS_OIDC_ADMIN_EMAIL`) |
+   | `GRAFANA_ALERT_EMAIL_OSS` | Alert notification email for `oss` mode — overrides the cluster default; omit to use `JENKINS_OIDC_ADMIN_EMAIL` |
+   | `GRAFANA_ALERT_EMAIL_MANAGED_AZURE` | Alert notification email for `managed-azure` mode — overrides the cluster default; omit to use `JENKINS_OIDC_ADMIN_EMAIL` |
+   | `GRAFANA_ALERT_EMAIL_MANAGED_AWS` | Alert notification email for `managed-aws` mode — overrides the cluster default; omit to use `JENKINS_OIDC_ADMIN_EMAIL` |
+   | `GRAFANA_ALERT_EMAIL` | Generic alert email fallback for all modes — used only when the mode-specific secret above is not set; omit if `JENKINS_OIDC_ADMIN_EMAIL` is correct for all modes |
    | `HEADLAMP_OIDC_CLIENT_ID` / `HEADLAMP_OIDC_CLIENT_SECRET` | Google OAuth client for Headlamp login |
    | `HEADLAMP_ADMIN_EMAILS` | comma-separated Google account emails granted cluster-admin via Headlamp **and** IAP access — **your own email, never committed to the repo** |
    | `JENKINS_OIDC_CLIENT_ID` / `JENKINS_OIDC_CLIENT_SECRET` | Google OAuth client for Jenkins "Sign in with Google" |
@@ -326,7 +331,7 @@ abandoned cluster keeps billing.
 
 ---
 
-[← Previous: 101. GitHub Actions Workflows](./101-GITHUB_ACTIONS_WORKFLOWS.md) | [🏠 Home](../README.md) | [→ Next: 201. Architecture](./201-ARCHITECTURE.md)
+[← Previous: 101. GitHub Actions Workflows](./101-GITHUB_ACTIONS_WORKFLOWS.md) | [🏠 Home](../README.md) | [→ Next: 103. Secrets Inventory](./103-GITHUB_SECRETS_INVENTORY.md)
 
 ---
 

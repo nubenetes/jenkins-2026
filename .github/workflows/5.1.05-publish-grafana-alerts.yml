@@ -12,9 +12,12 @@ name: "5.1.05 Publish Grafana alerts"
 #   managed-aws    — AMG service-account token minted via 'aws grafana create-workspace-api-key'
 #                    (GitHub OIDC → AWS_DASHBOARD_PUBLISH_ROLE_ARN)
 #
-# Optional repo secret: GRAFANA_ALERT_EMAIL — overrides the email read from
-# jenkins-credentials.oidc-admin-email (useful when the cluster secret is
-# unavailable or when a different address is desired for CI alert runs).
+# Alert email resolution (highest → lowest priority):
+#   1. GRAFANA_ALERT_EMAIL_<MODE>  per-mode secret (e.g. GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD)
+#   2. GRAFANA_ALERT_EMAIL         generic fallback for all modes
+#   3. jenkins-credentials.oidc-admin-email  cluster default
+# Grafana Cloud rejects contact points addressed to non-org-members, so set
+# GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD when that email differs from your OIDC admin email.
 #
 # See docs/301-OBSERVABILITY.md § "Grafana Alerting" for rule details.
 on:
@@ -146,6 +149,10 @@ jobs:
       - name: Provision Grafana alerts (scripts/07.5-grafana-alerts.sh)
         env:
           GRAFANA_ALERT_EMAIL: ${{ secrets.GRAFANA_ALERT_EMAIL }}
+          GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD: ${{ secrets.GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD }}
+          GRAFANA_ALERT_EMAIL_OSS: ${{ secrets.GRAFANA_ALERT_EMAIL_OSS }}
+          GRAFANA_ALERT_EMAIL_MANAGED_AZURE: ${{ secrets.GRAFANA_ALERT_EMAIL_MANAGED_AZURE }}
+          GRAFANA_ALERT_EMAIL_MANAGED_AWS: ${{ secrets.GRAFANA_ALERT_EMAIL_MANAGED_AWS }}
         run: ./scripts/07.5-grafana-alerts.sh
 
       - name: Summary
@@ -163,6 +170,11 @@ jobs:
             echo "To add rules: drop a JSON file into \`observability/grafana/alerting/rules/\`"
             echo "following the existing format, then re-run this workflow."
             echo
-            echo "**Optional secret**: set \`GRAFANA_ALERT_EMAIL\` in repo secrets to"
-            echo "override the default (read from \`jenkins-credentials.oidc-admin-email\`)."
+            echo "**Alert email resolution** (highest → lowest priority):"
+            echo "1. \`GRAFANA_ALERT_EMAIL_<MODE>\` — per-mode secret, e.g. \`GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD\`"
+            echo "2. \`GRAFANA_ALERT_EMAIL\` — generic override for all modes"
+            echo "3. \`jenkins-credentials.oidc-admin-email\` — cluster default (JENKINS_OIDC_ADMIN_EMAIL)"
+            echo
+            echo "Grafana Cloud requires the address to be an org member — set"
+            echo "\`GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD\` when that differs from your OIDC admin email."
           } >> "${GITHUB_STEP_SUMMARY}"

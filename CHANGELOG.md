@@ -2,6 +2,111 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.17.0] - 2026-06-22
+
+Fix CNPG webhook caBundle race on fresh deploy — GitOps Update now succeeds
+first time with any observability mode (including managed-azure).
+
+### Fixed
+
+- **CNPG webhook caBundle silent skip** (`scripts/08.5-argocd.sh`): on a fresh
+  cluster, `cnpg-ca-secret` may not exist yet when Phase 4 ran. The kubectl
+  command failed silently, leaving `CA_SECRET_SUBJECT=""`. Because
+  `CABUNDLE_SUBJECT` was also `""` (caBundle empty), the comparison `"" == ""`
+  skipped the patch entirely — the webhook remained broken for every subsequent
+  ArgoCD sync, causing the Jenkins pipeline's GitOps Update stage to fail with
+  `x509: certificate signed by unknown authority` on the CNPG webhook.
+- Phase 3 timeout extended from 2 m → 3 m; self-injection outcome now tracked.
+- Phase 4 now waits explicitly for `cnpg-ca-secret` (exit 1 if absent after
+  2 m) before any comparison, preventing the silent-skip.
+- Patch condition extended: fires when caBundle is **empty** OR has the wrong
+  cert (not only on cert-subject mismatch).
+- `op:replace` → `op:add` — safe whether the caBundle field is absent, empty,
+  or populated with the wrong value.
+- Webhook count from `| wc -c` (off-by-one if newline present) → `jq '.webhooks
+  | length'` (exact).
+
+## [v0.16.0] - 2026-06-22
+
+Replace and reorganise all NotebookLM media assets.
+
+- **New files** (22 total): 7 EN infographics, 5 ES infographics, 2 EN videos,
+  1 ES video, 1 EN audio, 1 ES audio, 3 EN PDFs — all reflecting the current
+  stack (GKE + JHipster microservices + full OTel observability). No CrunchyData
+  references.
+- **Numbering scheme**: `01–09` infographics · `10–19` video · `20–29` audio ·
+  `30–39` PDF — consistent within each language folder (`en/`, `es/`).
+- **Old files removed** from the repo, from git history (via `git filter-repo`),
+  and from git LFS (via `git lfs prune`). Remote LFS objects are unreferenced
+  and will be garbage-collected by GitHub.
+- **README** rewritten: two collapsible `<details>` blocks (EN × 7, ES × 5
+  infographics) plus plain lists for video/audio/PDF. CrunchyData warning
+  callout removed.
+- `.gitattributes`: added `docs/notebooklm/en/*` LFS rule.
+
+## [v0.15.0] - 2026-06-22
+
+Per-mode Grafana alert email secrets, Alert Rules banner link, and a full
+GitHub secrets/variables inventory with Day-0/Day-1/Day-2 operational
+classification for all workflows.
+
+### Added
+
+- **`GRAFANA_ALERT_EMAIL_<MODE>` per-mode secret pattern** — replaces the
+  single `GRAFANA_ALERT_EMAIL` secret with a per-mode hierarchy:
+  `GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD` / `_OSS` / `_MANAGED_AZURE` /
+  `_MANAGED_AWS` take priority over the generic `GRAFANA_ALERT_EMAIL`
+  fallback, which in turn falls back to `jenkins-credentials.oidc-admin-email`.
+  Necessary because Grafana Cloud requires the contact-point email to be a
+  registered org member, which may differ from the OIDC admin email used by
+  other backends. `resolve_email()` derives the mode var name at runtime via
+  `tr` — no case statement needed.
+
+- **Alert Rules link in Jenkins system banner** — `jcasc-base.yaml` now
+  includes a `${GRAFANA_BASE_URL}/alerting/list` link in the Observability
+  section. The path is identical on all four Grafana backends; `GRAFANA_BASE_URL`
+  is already injected via `jenkins-credentials`, so no script changes were needed.
+
+- **`docs/103-GITHUB_SECRETS_INVENTORY.md`** — new reference document covering
+  all 34 GitHub secrets and 1 repository variable. Grouped into 8 subsections
+  (GCP core, Grafana Cloud, alert emails, Azure, AWS, Jenkins OIDC,
+  Headlamp/IAP, registry/git). Each entry documents sensitivity, source,
+  setup command, and which workflows consume it. Wired into the doc nav chain
+  (102 → 103 → 201), README index, and CLAUDE.md.
+
+- **Day-0 / Day-1 / Day-2 section in `docs/101-GITHUB_ACTIONS_WORKFLOWS.md`**
+  — defines the three-tier operations model (Day-0 = persistent bootstrap,
+  Day-1 = cluster provisioning, Day-2 = running-system operations) and maps
+  all 16 workflows into a matrix table (day, cluster required, idempotent,
+  typical frequency). Replaces the ASCII session lifecycle block with a
+  colour-coded Mermaid `flowchart TD` diagram showing workflow nodes,
+  sub-groups, GCS-state reuse arrow, and the re-provision loop back from
+  Decommission to Day-1.
+
+### Fixed
+
+- **`scripts/07.5-grafana-alerts.sh`** — contact-point upsert is now
+  non-fatal on HTTP 400: warns with Grafana Cloud org-member guidance and
+  skips the notification policy, but continues to provision alert rules.
+  Script header comment and all `log_warn` fallback messages updated to
+  reference `GRAFANA_ALERT_EMAIL_<MODE>` as the primary override.
+
+- **`5.1.05-publish-grafana-alerts.yml`** — workflow passes all five alert
+  email env vars (`GRAFANA_ALERT_EMAIL` + four mode-specific variants);
+  unset secrets expand to empty and fall through the priority chain silently.
+  Header comment and step summary updated to document the full resolution
+  chain.
+
+### Documentation
+
+- `docs/102-GITHUB_ACTIONS_AUTOMATION.md` — optional secrets table expanded
+  with per-mode `GRAFANA_ALERT_EMAIL_*` rows (five entries replacing one).
+- `docs/301-OBSERVABILITY.md` — Contact Point section replaced with a full
+  3-level priority table, per-mode secret mapping, and Grafana Cloud
+  org-member callout.
+- README index and CLAUDE.md updated with `103` entry and `101` Day-0/1/2
+  anchor.
+
 ## [v0.14.1] - 2026-06-22
 
 Extends Grafana alerting (v0.14.0) to all four observability modes and adds

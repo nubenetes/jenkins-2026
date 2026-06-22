@@ -32,6 +32,7 @@ jenkins:
             <li><a href="${GRAFANA_BASE_URL:-#}/d/jenkins2026-jenkins-overview" style="color: #0052cc; text-decoration: underline;">Jenkins Overview</a></li>
             <li><a href="${GRAFANA_BASE_URL:-#}/d/jenkins2026-microservices-overview" style="color: #0052cc; text-decoration: underline;">Microservices Services</a></li>
             <li><a href="${GRAFANA_BASE_URL:-#}/d/jenkins2026-k6-smoke-overview" style="color: #0052cc; text-decoration: underline;">K6 Smoke Test</a></li>
+            <li><a href="${GRAFANA_BASE_URL:-#}/alerting/list" style="color: #0052cc; text-decoration: underline;">Alert Rules</a></li>
             ${GRAFANA_K8S_APP_LINK:-}
           </ul>
         </li>
