@@ -2,8 +2,10 @@ name: "9.2.02 Grafana Cloud decommission"
 
 # Manually-triggered teardown: destroys terraform/grafana-cloud-stack to remove
 # the Grafana Cloud stack (the org/free tier is untouched). The slug is read from
-# state, and there is no delete_protection, so the destroy succeeds; the next
-# 0.1.02 run creates a fresh stack with a new generated slug.
+# state. The provider defaults delete_protection to true, so a stack must have
+# protection disabled before it can be destroyed: this job applies first (to
+# reconcile delete_protection=false onto the live stack) and then destroys. The
+# next 0.1.02 run creates a fresh stack with a new generated slug.
 on:
   workflow_dispatch:
 
@@ -62,11 +64,21 @@ jobs:
             }
           done
 
-      - name: Terraform destroy (destroy Grafana Cloud stack)
+      - name: Terraform destroy (disable delete protection, then destroy)
         working-directory: terraform/grafana-cloud-stack
         env:
           TF_VAR_grafana_cloud_api_token: ${{ secrets.GRAFANA_CLOUD_API_TOKEN }}
-        run: terraform destroy -auto-approve -input=false
+        run: |
+          # The provider defaults delete_protection=true; a stack created before
+          # this module forced it off keeps protection enabled in the cloud, and
+          # `terraform destroy` does not push config updates before deleting, so
+          # it fails with "409 Conflict ... has deletion protection enabled".
+          # Apply first to reconcile delete_protection=false onto the live stack,
+          # then destroy. Guarded so an already-empty state is not re-created.
+          if terraform state list | grep -q '^grafana_cloud_stack\.this$'; then
+            terraform apply -auto-approve -input=false
+          fi
+          terraform destroy -auto-approve -input=false
 
       - name: Summary
         if: always()

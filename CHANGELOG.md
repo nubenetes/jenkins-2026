@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.18.1] - 2026-06-23
+
+Fix Grafana Cloud decommission failing with "409 Conflict ... has deletion
+protection enabled" — the ephemeral stack can now be torn down by
+`9.2.02-grafana-cloud-decommission` as designed.
+
+### Fixed
+
+- **Grafana Cloud stack created with delete protection on**
+  (`terraform/grafana-cloud-stack/main.tf`): the `grafana_cloud_stack`
+  resource never set `delete_protection`, and the provider defaults it to
+  `true`. The stack was therefore created protected and `terraform destroy`
+  failed with `409 Conflict ... has deletion protection enabled` (the code
+  comment claimed "no delete_protection" but never implemented it). Now sets
+  `delete_protection = false` so future stacks are freely destroyable.
+- **Decommission workflow could not unstick an already-protected stack**
+  (`.github/workflows/9.2.02-grafana-cloud-decommission.yml`): `terraform
+  destroy` does not push config changes before deleting, so flipping the flag
+  in code alone would still 409 on the existing stack. The job now runs
+  `terraform apply` first (reconciling `delete_protection=false` onto the live
+  stack) and then `terraform destroy`, guarded so an empty state is not
+  re-created.
+
 ## [v0.18.0] - 2026-06-22
 
 Fix OTel Java agent injection on fresh deploy — dashboards populate without
