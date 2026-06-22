@@ -15,7 +15,7 @@ spec:
   serviceAccountName: jenkins
   containers:
     - name: k6
-      image: grafana/k6:0.54.0
+      image: grafana/k6:2.0.0
       command: ['sleep']
       args: ['infinity']
       # grafana/k6 is a scratch-based binary image; runAsUser: 0 kept until
