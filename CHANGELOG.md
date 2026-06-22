@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.13.3] - 2026-06-22
+
+Fix race condition: first Jenkins pipeline run failing at "GitOps Update"
+stage with `x509: certificate signed by unknown authority` on the CNPG
+webhook, because ArgoCD deploys CNPG asynchronously and the controller was
+not yet ready when the seed job triggered the first build.
+
+### Fixed
+
+- **`scripts/08.5-argocd.sh`**: after `kubectl apply -f cnpg-app.yaml`, the
+  script now blocks in three sequential phases before continuing:
+  1. **Chart sync** — `timeout 300` loop until `cnpg-controller-manager`
+     Deployment exists in `cnpg-system` (ArgoCD has pulled and applied the
+     Helm chart).
+  2. **Pod ready** — `wait_for_deployment cnpg-controller-manager cnpg-system 5m`
+     (same helper used for Jenkins/ArgoCD elsewhere).
+  3. **Webhook caBundle** — `timeout 120` loop until
+     `cnpg-mutating-webhook-configuration` has a non-empty `caBundle` (the
+     controller has self-injected its CA cert into the webhook config, ~10-20 s
+     after the pod becomes Ready).
+  Without this wait, the first pipeline run races against CNPG init and
+  ArgoCD sync fails with the x509 error on every fresh cluster deployment.
+
 ## [v0.13.2] - 2026-06-22
 
 Comprehensive Table of Contents added to README covering every section and

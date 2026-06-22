@@ -258,6 +258,33 @@ kubectl apply -f "${J2026_ROOT_DIR}/argocd/microservices-project.yaml"
 log_step "Configuring CloudNative-PG Operator via ArgoCD"
 kubectl apply -f "${J2026_ROOT_DIR}/argocd/cnpg-app.yaml"
 
+# ArgoCD installs CNPG asynchronously. Wait for the controller to be fully Ready
+# AND its webhook caBundle to be injected before continuing — otherwise the first
+# Jenkins pipeline run fails with:
+#   "x509: certificate signed by unknown authority" on cnpg-webhook-service
+# Phase 1: wait for ArgoCD to create the CNPG namespace + deployment (chart sync).
+log_step "Waiting for CNPG controller deployment to appear (ArgoCD chart sync)"
+timeout 300 bash -c '
+  until kubectl get deployment cnpg-controller-manager -n cnpg-system >/dev/null 2>&1; do
+    sleep 5
+  done
+' || { log_error "CNPG deployment did not appear within 5m — check ArgoCD cnpg-operator app"; exit 1; }
+
+# Phase 2: wait for the deployment to be fully ready.
+wait_for_deployment "cnpg-controller-manager" "cnpg-system" "5m"
+
+# Phase 3: wait for the controller to self-inject its CA into the webhook configs.
+# The cert injection happens ~10-20s after the pod becomes Ready.
+log_step "Waiting for CNPG webhook caBundle to be populated"
+timeout 120 bash -c '
+  until kubectl get mutatingwebhookconfiguration cnpg-mutating-webhook-configuration \
+        -o jsonpath="{.webhooks[0].clientConfig.caBundle}" 2>/dev/null \
+        | grep -q .; do
+    sleep 5
+  done
+' || log_warn "CNPG webhook caBundle not yet populated after 2m — first pipeline run may need a retry"
+log_info "CNPG webhook ready."
+
 log_step "Configuring External Secrets Operator via ArgoCD"
 kubectl apply -f "${J2026_ROOT_DIR}/argocd/external-secrets-app.yaml"
 
