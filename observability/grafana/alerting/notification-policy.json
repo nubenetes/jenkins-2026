@@ -1,0 +1,8 @@
+{
+  "receiver": "jenkins-2026-email",
+  "group_by": ["alertname", "namespace"],
+  "group_wait": "30s",
+  "group_interval": "5m",
+  "repeat_interval": "4h",
+  "routes": []
+}
