@@ -243,12 +243,14 @@ Drop a `.json` file into `observability/grafana/alerting/rules/` following the s
 
 ### Observability Mode Support
 
-| Mode | Status |
+| Mode | Alert provisioning |
 |---|---|
-| `grafana-cloud` | Implemented — email via Grafana Cloud built-in SMTP |
-| `oss` | TODO — requires SMTP config in `helm/observability/values-oss.yaml` |
-| `managed-azure` | TODO — requires Action Groups in `terraform/azure-managed-grafana/` |
-| `managed-aws` | TODO — requires SNS topic in `terraform/aws-managed-grafana/` |
+| `grafana-cloud` | ✅ Grafana HTTP provisioning API — Bearer token from `grafana-cloud-credentials` Secret |
+| `oss` | ✅ Grafana HTTP provisioning API — admin password from `kube-prometheus-stack-grafana` Secret (port-forwarded). Rules appear in Grafana immediately; **email delivery also requires `grafana.ini.smtp.*` in `helm/observability/values-oss.yaml`** |
+| `managed-azure` | ✅ Azure Managed Grafana HTTP API — Azure AD token via `az account get-access-token` (GitHub OIDC → Azure in CI) |
+| `managed-aws` | ✅ Amazon Managed Grafana HTTP API — AMG service-account token minted via `aws grafana create-workspace-api-key` (GitHub OIDC → `AWS_DASHBOARD_PUBLISH_ROLE_ARN` in CI) |
+
+**Optional GitHub secret**: `GRAFANA_ALERT_EMAIL` — when set, overrides the email address read from `jenkins-credentials.oidc-admin-email`. Useful for CI runs or when a different notification address is desired.
 
 ## k6 Observability Smoke Test
 
