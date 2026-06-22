@@ -2,6 +2,50 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.14.1] - 2026-06-22
+
+Extends Grafana alerting (v0.14.0) to all four observability modes and adds
+a dedicated GitHub Actions workflow to provision alerts independently of the
+full cluster lifecycle.
+
+### Added
+
+- **`5.1.05-publish-grafana-alerts.yml`** — new manually-triggered workflow
+  (`workflow_dispatch`) that provisions alert rules, contact point, and
+  notification policy without re-running the full `0.2.01` lifecycle.
+  Accepts an optional `observability_mode` input (defaults to
+  `config/config.yaml`). Authenticates via GCP WIF + kubeconfig (same
+  pattern as `5.2.02`); conditionally adds AWS OIDC (`managed-aws`) and
+  Azure OIDC (`managed-azure`) steps. Respects the `jenkins-2026-gke`
+  concurrency group. Optional `GRAFANA_ALERT_EMAIL` repo secret overrides
+  the default email source.
+
+### Changed
+
+- **`scripts/07.5-grafana-alerts.sh`** — all four observability modes now
+  fully implemented (previously `oss`/`managed-azure`/`managed-aws` were
+  `TODO` stubs):
+  - `grafana-cloud`: unchanged (same behaviour as v0.14.0)
+  - `oss`: port-forwards `kube-prometheus-stack-grafana`, reads admin
+    password from the `kube-prometheus-stack-grafana` Secret, mints a
+    300-second Admin API key, then calls the same Grafana HTTP provisioning
+    API. Email alerts require SMTP configured in `values-oss.yaml`
+    (`grafana.grafana.ini.smtp.*`); rules appear in Grafana regardless.
+  - `managed-azure`: obtains an Azure AD bearer token via
+    `az account get-access-token --resource https://grafana.azure.com/`,
+    reads the AMG endpoint from `GRAFANA_BASE_URL` env var or
+    `azure-monitor-credentials` Secret key `AZURE_GRAFANA_ENDPOINT`.
+  - `managed-aws`: mints a short-lived AMG service-account key via
+    `aws grafana create-workspace-api-key`, reads endpoint + workspace ID
+    from env vars or `aws-managed-credentials` Secret.
+  - Script refactored to share `provision_alerts()` and `resolve_email()`
+    helpers — all four modes use identical provisioning logic, only auth
+    and URL acquisition differ.
+
+- **`docs/301-OBSERVABILITY.md`** — "Grafana Alerting" mode support table
+  updated: all four modes now show ✅ with auth mechanism details. Optional
+  `GRAFANA_ALERT_EMAIL` GitHub secret documented.
+
 ## [v0.14.0] - 2026-06-22
 
 Grafana alerting provisioned as code: 5 alert rules covering the most
