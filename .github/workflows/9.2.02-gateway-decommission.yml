@@ -1,4 +1,4 @@
-name: "01.99 Gateway decommission"
+name: "9.2.02 Gateway decommission"
 
 # Manually-triggered setup teardown: destroys terraform/gateway-bootstrap
 # to completely remove the persistent gateway resources (static IP, cert mapping).
