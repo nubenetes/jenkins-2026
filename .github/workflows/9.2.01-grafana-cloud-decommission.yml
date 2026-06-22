@@ -1,7 +1,9 @@
 name: "9.2.01 Grafana Cloud decommission"
 
-# Manually-triggered setup teardown: destroys terraform/grafana-cloud-stack
-# to completely remove the persistent Grafana Cloud stack.
+# Manually-triggered teardown: destroys terraform/grafana-cloud-stack to remove
+# the Grafana Cloud stack (the org/free tier is untouched). The slug is read from
+# state, and there is no delete_protection, so the destroy succeeds; the next
+# 0.1.01 run creates a fresh stack with a new generated slug.
 on:
   workflow_dispatch:
 
@@ -60,11 +62,10 @@ jobs:
             }
           done
 
-      - name: Terraform destroy (destroy persistent Grafana Cloud stack)
+      - name: Terraform destroy (destroy Grafana Cloud stack)
         working-directory: terraform/grafana-cloud-stack
         env:
           TF_VAR_grafana_cloud_api_token: ${{ secrets.GRAFANA_CLOUD_API_TOKEN }}
-          TF_VAR_stack_slug: ${{ vars.GRAFANA_CLOUD_STACK_SLUG || secrets.GRAFANA_CLOUD_STACK_SLUG }}
         run: terraform destroy -auto-approve -input=false
 
       - name: Summary

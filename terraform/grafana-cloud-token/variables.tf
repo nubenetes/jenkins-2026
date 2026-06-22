@@ -6,7 +6,7 @@ variable "grafana_cloud_api_token" {
 
 variable "stack_slug" {
   type        = string
-  description = "Slug of the persistent stack created by terraform/grafana-cloud-stack (GRAFANA_CLOUD_STACK_SLUG GitHub secret) - looked up via the grafana_cloud_stack data source."
+  description = "Slug of the stack created by terraform/grafana-cloud-stack - looked up via the grafana_cloud_stack data source. The slug is generated (random) by that module; CI reads it from its state output (terraform output -raw stack_slug) and passes it here, so it is no longer a GitHub secret/variable."
 }
 
 variable "jenkins_admin_password" {

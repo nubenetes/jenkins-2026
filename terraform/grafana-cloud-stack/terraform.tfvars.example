@@ -6,6 +6,8 @@
 # it here, even to a gitignored file.
 # grafana_cloud_api_token = "glc_..."
 
-stack_slug = "jenkins-2026"
+# The slug is generated automatically ("<prefix><random>"); override the prefix
+# only if you want a different subdomain stem.
+# stack_slug_prefix = "jenkins2026obs"
 
 # region_slug = "prod-eu-west-3"

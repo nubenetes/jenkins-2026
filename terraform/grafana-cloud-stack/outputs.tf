@@ -1,5 +1,5 @@
 output "stack_slug" {
-  description = "Subdomain of the stack (https://<stack_slug>.grafana.net). Set as the GRAFANA_CLOUD_STACK_SLUG GitHub Actions secret - terraform/grafana-cloud-token looks the stack up by this value."
+  description = "Generated subdomain of the stack (https://<stack_slug>.grafana.net). Read from this module's state by 0.2.01-gke-provision and passed to terraform/grafana-cloud-token, which looks the stack up by this value."
   value       = grafana_cloud_stack.this.slug
 }
 
