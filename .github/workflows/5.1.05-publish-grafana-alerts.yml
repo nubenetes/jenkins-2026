@@ -1,0 +1,169 @@
+name: "5.1.05 Publish Grafana alerts"
+
+# Manually-triggered: (re)provisions Grafana alert rules, contact point, and
+# notification policy from observability/grafana/alerting/ via the Grafana
+# HTTP provisioning API — WITHOUT re-running the full 0.2.01 lifecycle.
+#
+# Requires a running GKE cluster (credentials are read from k8s Secrets).
+# Mode-specific auth:
+#   grafana-cloud  — GRAFANA_BASE_URL + GRAFANA_API_KEY from grafana-cloud-credentials Secret
+#   oss            — admin password from kube-prometheus-stack-grafana Secret (port-forwarded)
+#   managed-azure  — Azure AD token via GitHub OIDC → 'az account get-access-token'
+#   managed-aws    — AMG service-account token minted via 'aws grafana create-workspace-api-key'
+#                    (GitHub OIDC → AWS_DASHBOARD_PUBLISH_ROLE_ARN)
+#
+# Optional repo secret: GRAFANA_ALERT_EMAIL — overrides the email read from
+# jenkins-credentials.oidc-admin-email (useful when the cluster secret is
+# unavailable or when a different address is desired for CI alert runs).
+#
+# See docs/301-OBSERVABILITY.md § "Grafana Alerting" for rule details.
+on:
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: "Git branch, tag, or SHA to check out (leave empty to use the branch/tag selected in 'Use workflow from' above)"
+        required: false
+        default: ""
+        type: string
+      observability_mode:
+        description: "Observability mode (leave empty to use config/config.yaml default)"
+        required: false
+        default: ""
+        type: choice
+        options:
+          - ""
+          - grafana-cloud
+          - oss
+          - managed-azure
+          - managed-aws
+
+permissions:
+  contents: read
+  id-token: write
+
+# Shares the GKE lifecycle group so it can't race a provision/decommission.
+concurrency:
+  group: jenkins-2026-gke
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: "1.15.6"
+  # Surfaced as env so conditional steps can test presence without secrets context.
+  AWS_DASHBOARD_PUBLISH_ROLE_ARN: ${{ secrets.AWS_DASHBOARD_PUBLISH_ROLE_ARN }}
+  AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+jobs:
+  publish-alerts:
+    runs-on: ubuntu-latest
+    environment: gke-production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref || github.ref }}
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Install gke-gcloud-auth-plugin
+        run: gcloud components install gke-gcloud-auth-plugin --quiet
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Install yq
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/yq \
+            https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Configure GCS backend (terraform/gke)
+        run: |
+          cat > terraform/gke/backend_override.tf <<EOF
+          terraform {
+            backend "gcs" {
+              bucket = "${{ secrets.TF_STATE_BUCKET }}"
+              prefix = "jenkins-2026/gke"
+            }
+          }
+          EOF
+
+      - name: Terraform init
+        working-directory: terraform/gke
+        run: |
+          for i in {1..3}; do
+            terraform init -input=false && break || {
+              if [ $i -lt 3 ]; then
+                echo "Terraform init failed, retrying in 10s..."
+                sleep 10
+              else
+                exit 1
+              fi
+            }
+          done
+
+      - name: Fetch kubeconfig credentials
+        working-directory: terraform/gke
+        run: |
+          gcloud container clusters get-credentials \
+            "$(terraform output -raw cluster_name)" \
+            --zone "$(terraform output -raw location)" \
+            --project "${{ secrets.GCP_PROJECT_ID }}"
+
+      # managed-aws: authenticate via GitHub OIDC before calling
+      # 'aws grafana create-workspace-api-key' inside the script.
+      - name: AWS login (managed-aws)
+        if: ${{ (inputs.observability_mode == 'managed-aws' || inputs.observability_mode == '') && env.AWS_DASHBOARD_PUBLISH_ROLE_ARN != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_DASHBOARD_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # managed-azure: authenticate via GitHub OIDC before calling
+      # 'az account get-access-token' inside the script.
+      - name: Azure login (managed-azure)
+        if: ${{ (inputs.observability_mode == 'managed-azure' || inputs.observability_mode == '') && env.AZURE_CLIENT_ID != '' }}
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Provision Grafana alerts (scripts/07.5-grafana-alerts.sh)
+        env:
+          JENKINS2026_OBS_MODE: ${{ inputs.observability_mode }}
+          GRAFANA_ALERT_EMAIL: ${{ secrets.GRAFANA_ALERT_EMAIL }}
+        run: ./scripts/07.5-grafana-alerts.sh
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Grafana alerts published"
+            echo
+            echo "Provisioned contact point, notification policy, and alert rules"
+            echo "from \`observability/grafana/alerting/\` via the Grafana provisioning API."
+            echo
+            echo "- Observability mode: \`${{ inputs.observability_mode || '(from config.yaml)' }}\`"
+            echo "- Cluster: \`${{ secrets.GCP_PROJECT_ID }}\`"
+            echo
+            echo "To add rules: drop a JSON file into \`observability/grafana/alerting/rules/\`"
+            echo "following the existing format, then re-run this workflow."
+            echo
+            echo "**Optional secret**: set \`GRAFANA_ALERT_EMAIL\` in repo secrets to"
+            echo "override the default (read from \`jenkins-credentials.oidc-admin-email\`)."
+          } >> "${GITHUB_STEP_SUMMARY}"
