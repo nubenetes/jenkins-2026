@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.13.2] - 2026-06-22
+
+Comprehensive Table of Contents added to README covering every section and
+sub-section across all 11 numbered docs and runbooks. The `log-correlation-validation`
+runbook is now surfaced in the observability doc and in the TOC.
+
+### Added
+
+- **README `## Table of Contents`** — inserted immediately before the Document
+  Inventory, covering:
+  - All 5 README sections (local anchor links)
+  - Every `##` and `###` heading from all 11 numbered docs (`101`–`902`) with
+    deep links directly into the relevant file and section
+  - **Runbooks** block at the end with the full sub-section outline of
+    `docs/runbooks/log-correlation-validation.md`
+  - Total coverage: 132 section headings + 75 sub-section headings across 11 docs
+- **`docs/301-OBSERVABILITY.md`** — runbook callout block added after the k6
+  smoke-test section so `log-correlation-validation.md` is surfaced in context
+  (not just as an orphaned directory entry)
+
 ## [v0.13.1] - 2026-06-22
 
 README restructured into a numbered document library under `docs/` and translated fully to English.
