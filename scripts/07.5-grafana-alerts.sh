@@ -37,18 +37,42 @@ provision_alerts() {
   local api_key="$2"
   local alert_email="$3"
 
+  # gcapi METHOD PATH [extra curl args...]
+  # On HTTP 4xx/5xx: prints the response body to stderr and returns 1.
+  # On success: prints the response body to stdout (callers can pipe or ignore).
   gcapi() {
     local method="$1" path="$2"; shift 2
-    curl -fsS -X "${method}" "${base_url%/}${path}" \
+    local tmp_body http_code
+    tmp_body="$(mktemp)"
+    http_code="$(curl -sS -X "${method}" "${base_url%/}${path}" \
       -H "Authorization: Bearer ${api_key}" \
-      -H "Content-Type: application/json" "$@"
+      -H "Content-Type: application/json" \
+      -o "${tmp_body}" -w "%{http_code}" "$@")"
+    if [[ "${http_code}" -ge 400 ]]; then
+      log_error "Grafana API ${method} ${path} → HTTP ${http_code}"
+      cat "${tmp_body}" >&2
+      rm -f "${tmp_body}"
+      return 1
+    fi
+    cat "${tmp_body}"
+    rm -f "${tmp_body}"
+  }
+
+  # gcapi_code METHOD PATH [extra curl args...] — returns only the HTTP status code.
+  gcapi_code() {
+    local method="$1" path="$2"; shift 2
+    curl -sS -X "${method}" "${base_url%/}${path}" \
+      -H "Authorization: Bearer ${api_key}" \
+      -H "Content-Type: application/json" \
+      -o /dev/null -w "%{http_code}" "$@" 2>/dev/null || echo "000"
   }
 
   # --- folder ----------------------------------------------------------------
   log_step "Ensuring alert folder 'jenkins-2026 Alerts'"
+  # 409 Conflict = already exists → OK; suppress output, keep going.
   gcapi POST /api/folders \
     -d '{"uid":"jenkins-2026-alerts","title":"jenkins-2026 Alerts"}' \
-    -o /dev/null 2>/dev/null || true  # 412 Conflict = already exists, OK
+    > /dev/null 2>/dev/null || true
 
   # --- contact point ---------------------------------------------------------
   log_step "Upserting email contact point"
@@ -59,18 +83,18 @@ provision_alerts() {
     2>/dev/null || true)"
   if [[ -n "${EXISTING_CP}" ]]; then
     gcapi PUT /api/v1/provisioning/contact-points/jenkins2026-email-cp \
-      -d @/tmp/j2026-cp.json -o /dev/null
+      -d @/tmp/j2026-cp.json > /dev/null
     log_info "Updated contact point jenkins2026-email-cp."
   else
     gcapi POST /api/v1/provisioning/contact-points \
-      -d @/tmp/j2026-cp.json -o /dev/null
+      -d @/tmp/j2026-cp.json > /dev/null
     log_info "Created contact point jenkins2026-email-cp."
   fi
 
   # --- notification policy ---------------------------------------------------
   log_step "Applying notification policy (route all → email)"
   gcapi PUT /api/v1/provisioning/policies \
-    -d @"${ALERTS_DIR}/notification-policy.json" -o /dev/null
+    -d @"${ALERTS_DIR}/notification-policy.json" > /dev/null
   log_info "Notification policy applied."
 
   # --- alert rules -----------------------------------------------------------
@@ -78,15 +102,14 @@ provision_alerts() {
   for rule_file in "${ALERTS_DIR}/rules"/*.json; do
     RULE_UID="$(python3 -c "import json; print(json.load(open('${rule_file}'))['uid'])")"
     RULE_TITLE="$(python3 -c "import json; print(json.load(open('${rule_file}'))['title'])")"
-    HTTP_CODE="$(gcapi GET "/api/v1/provisioning/alert-rules/${RULE_UID}" \
-      -o /dev/null -w "%{http_code}" 2>/dev/null || echo "000")"
+    HTTP_CODE="$(gcapi_code GET "/api/v1/provisioning/alert-rules/${RULE_UID}")"
     if [[ "${HTTP_CODE}" == "200" ]]; then
       gcapi PUT "/api/v1/provisioning/alert-rules/${RULE_UID}" \
-        -d @"${rule_file}" -o /dev/null
+        -d @"${rule_file}" > /dev/null
       log_info "Updated alert rule: ${RULE_TITLE}"
     else
       gcapi POST /api/v1/provisioning/alert-rules \
-        -d @"${rule_file}" -o /dev/null
+        -d @"${rule_file}" > /dev/null
       log_info "Created alert rule: ${RULE_TITLE}"
     fi
   done
