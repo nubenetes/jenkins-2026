@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.16.0] - 2026-06-22
+
+Replace and reorganise all NotebookLM media assets.
+
+- **New files** (22 total): 7 EN infographics, 5 ES infographics, 2 EN videos,
+  1 ES video, 1 EN audio, 1 ES audio, 3 EN PDFs — all reflecting the current
+  stack (GKE + JHipster microservices + full OTel observability). No CrunchyData
+  references.
+- **Numbering scheme**: `01–09` infographics · `10–19` video · `20–29` audio ·
+  `30–39` PDF — consistent within each language folder (`en/`, `es/`).
+- **Old files removed** from the repo, from git history (via `git filter-repo`),
+  and from git LFS (via `git lfs prune`). Remote LFS objects are unreferenced
+  and will be garbage-collected by GitHub.
+- **README** rewritten: two collapsible `<details>` blocks (EN × 7, ES × 5
+  infographics) plus plain lists for video/audio/PDF. CrunchyData warning
+  callout removed.
+- `.gitattributes`: added `docs/notebooklm/en/*` LFS rule.
+
 ## [v0.15.0] - 2026-06-22
 
 Per-mode Grafana alert email secrets, Alert Rules banner link, and a full
