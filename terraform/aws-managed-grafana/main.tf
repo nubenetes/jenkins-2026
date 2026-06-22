@@ -141,6 +141,15 @@ resource "aws_grafana_workspace" "this" {
   role_arn                 = aws_iam_role.grafana.arn
   grafana_version          = var.grafana_version
   data_sources             = ["PROMETHEUS", "XRAY", "CLOUDWATCH"]
+
+  # AMG creates the XRAY datasource *entry* but not the X-Ray datasource *plugin*
+  # binary, so 07-grafana-dashboards.sh installs it from the catalog at deploy time.
+  # That install is rejected ("plugins:install" denied) unless plugin administration
+  # is enabled on the workspace - without this the trace panels stay empty forever.
+  configuration = jsonencode({
+    plugins         = { pluginAdminEnabled = true }
+    unifiedAlerting = { enabled = false }
+  })
 }
 
 # --- IAM Identity Center: Grafana Admin user assignment ----------------------
