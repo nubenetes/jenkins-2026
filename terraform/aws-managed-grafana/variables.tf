@@ -53,3 +53,16 @@ variable "github_environment" {
   default     = "gke-production"
   description = "GitHub Actions environment 02.01-gke-provision runs in; the dashboard-publisher role trusts repo:<github_repo>:environment:<github_environment>."
 }
+
+variable "grafana_admin_sso_emails" {
+  type        = string
+  default     = ""
+  description = <<-EOT
+    Comma-separated email addresses of IAM Identity Center users to grant
+    Grafana Admin on the workspace (e.g. "alice@example.com,bob@example.com").
+    Each user must already exist in IAM Identity Center; the module looks them
+    up by email and creates an aws_grafana_role_association. Managed via the
+    AWS_GRAFANA_ADMIN_SSO_EMAILS GitHub secret passed as TF_VAR_grafana_admin_sso_emails
+    by 0.1.04-aws-bootstrap.yml — never commit real addresses here.
+  EOT
+}

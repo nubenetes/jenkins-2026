@@ -143,9 +143,41 @@ resource "aws_grafana_workspace" "this" {
   data_sources             = ["PROMETHEUS", "XRAY", "CLOUDWATCH"]
 }
 
-# Workspace Admin users/groups are AWS_SSO identities granted in IAM Identity
-# Center (Grafana workspace -> Configure users), not IAM roles - so they're
-# managed outside Terraform. See README.md "Logging in to Amazon Managed Grafana".
+# --- IAM Identity Center: Grafana Admin user assignment ----------------------
+# Looks up each email in var.grafana_admin_sso_emails and grants them Grafana
+# Admin via aws_grafana_role_association. Users must exist in Identity Center
+# first; create them via the console or SSO API before re-running the bootstrap.
+# Skipped when var.grafana_admin_sso_emails is empty.
+
+locals {
+  admin_emails = [
+    for e in split(",", var.grafana_admin_sso_emails) : trimspace(e)
+    if trimspace(e) != ""
+  ]
+}
+
+data "aws_ssoadmin_instances" "current" {
+  count = length(local.admin_emails) > 0 ? 1 : 0
+}
+
+data "aws_identitystore_user" "admins" {
+  for_each          = toset(local.admin_emails)
+  identity_store_id = tolist(data.aws_ssoadmin_instances.current[0].identity_store_ids)[0]
+
+  alternate_identifier {
+    unique_attribute {
+      attribute_path  = "Emails.Value"
+      attribute_value = each.value
+    }
+  }
+}
+
+resource "aws_grafana_role_association" "admins" {
+  count        = length(local.admin_emails) > 0 ? 1 : 0
+  role         = "ADMIN"
+  user_ids     = [for u in data.aws_identitystore_user.admins : u.user_id]
+  workspace_id = aws_grafana_workspace.this.id
+}
 
 # --- GitHub OIDC: dashboard-publisher role -----------------------------------
 # 07-grafana-dashboards.sh (managed-aws) mints a short-lived AMG service-account

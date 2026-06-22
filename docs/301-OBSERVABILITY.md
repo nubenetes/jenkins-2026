@@ -349,11 +349,31 @@ In `oss` mode, Grafana is exposed at `https://grafana.<baseDomain>` behind Googl
 
 ### Logging in to Amazon Managed Grafana (managed-aws)
 
-Amazon Managed Grafana (AMG) authenticates **only** via **AWS IAM Identity Center** (the workspace's `AWS_SSO` mode) or **SAML 2.0**. The cheapest way in is a **native IAM Identity Center user** (free). Do it **once** per person:
+Amazon Managed Grafana (AMG) authenticates **only** via **AWS IAM Identity Center** (the workspace's `AWS_SSO` mode) or **SAML 2.0**. User assignment is managed via Terraform — add emails once to the `AWS_GRAFANA_ADMIN_SSO_EMAILS` GitHub secret and `0.1.04-aws-bootstrap` handles the rest.
 
-1. **Create the Identity Center user** — AWS console → *IAM Identity Center* → **Users** → **Add user**.
-2. **Grant Admin on the workspace** — AWS console → *Amazon Managed Grafana* → your workspace → **Authentication** → **AWS IAM Identity Center** → **Assign new user** → **Make admin**.
-3. **Sign in** — open the workspace URL and click **"Sign in with AWS IAM Identity Center"**.
+#### One-time setup per person
+
+1. **Create the Identity Center user** (if they don't exist yet):
+   AWS console → *IAM Identity Center* → **Users** → **Add user** → fill in email + name → user receives an invitation email.
+   > ⚠️ The user **must accept the invitation email** and set their password before they can sign in.
+
+2. **Add their email to `AWS_GRAFANA_ADMIN_SSO_EMAILS`** (GitHub secret, comma-separated):
+   ```
+   alice@example.com,bob@example.com
+   ```
+   Then re-run **[0.1.04 AWS managed-grafana bootstrap](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.04-aws-bootstrap.yml)** — Terraform looks up the Identity Center users by email and calls `aws_grafana_role_association` to grant them Admin on the workspace.
+
+3. **Sign in** — open the workspace URL (from `terraform output grafana_endpoint` or the AMG console) and click **"Sign in with AWS IAM Identity Center"**.
+
+#### Troubleshooting access
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| "Sign in" page never appears | Wrong region in the console | Make sure you're in **eu-west-1** (or your `AWS_REGION`) |
+| "You are not authorized" after sign-in | User not yet assigned in Terraform | Re-run `0.1.04` with `AWS_GRAFANA_ADMIN_SSO_EMAILS` set |
+| "User does not exist" in Terraform apply | Email not yet created in Identity Center | Create the user in the console first, then re-run |
+| Invitation email expired | Identity Center invitation links expire in 7 days | Delete and re-create the user in Identity Center |
+| Sign-in page asks for Organization/Account ID | You're using the access portal URL, not the workspace URL | Use the direct `*.grafana-workspace.amazonaws.com` URL from the Terraform output |
 
 ---
 

@@ -94,6 +94,9 @@ jobs:
           TF_VAR_gke_oidc_issuer_url: ${{ secrets.GKE_OIDC_ISSUER_URL }}
           # Scopes the dashboard-publisher role's GitHub-OIDC trust to this repo.
           TF_VAR_github_repo: ${{ github.repository }}
+          # Comma-separated emails of IAM Identity Center users to grant Grafana
+          # Admin on the workspace. Empty = no user assignment (access via console).
+          TF_VAR_grafana_admin_sso_emails: ${{ secrets.AWS_GRAFANA_ADMIN_SSO_EMAILS }}
         run: terraform apply -auto-approve -input=false
 
       - name: Summary
