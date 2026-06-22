@@ -154,13 +154,52 @@ The first digit of the filename (`Y`) maps directly to these concepts:
 
 ### Typical session lifecycle
 
-```
-Day-0  (once)   0.1.01 → 0.1.02 → 0.1.03 / 0.1.04   persistent backends
-Day-1           0.2.01                                  cluster + full stack
-Day-2  (many)   5.1.03 / 5.1.04 / 5.1.05              content updates
-                5.2.02 / 5.2.03                        component redeploys
-                5.9.01                                  traffic simulation
-Decommission    9.1.01 → 9.2.xx (if permanent)         teardown
+```mermaid
+flowchart TD
+    subgraph D0["Day-0 — one-time persistent bootstrap"]
+        direction LR
+        w0101["0.1.01\nGrafana Cloud bootstrap"]
+        w0102["0.1.02\nGateway bootstrap"]
+        w0103["0.1.03\nAzure bootstrap"]
+        w0104["0.1.04\nAWS bootstrap"]
+    end
+
+    subgraph D1["Day-1 — cluster provision (once per session)"]
+        w0201["0.2.01\nGKE provision\n(runs scripts/up.sh in full)"]
+    end
+
+    subgraph D2["Day-2 — operations on running cluster"]
+        direction LR
+        subgraph content["Content updates (no cluster needed for *.03/04)"]
+            w5103["5.1.03\nPublish Azure dashboards"]
+            w5104["5.1.04\nPublish AWS dashboards"]
+            w5105["5.1.05\nPublish Grafana alerts"]
+        end
+        subgraph redeploy["Component redeploys"]
+            w5202["5.2.02\nRedeploy Jenkins"]
+            w5203["5.2.03\nRedeploy Headlamp"]
+        end
+        subgraph sim["Utilities"]
+            w5901["5.9.01\nTraffic simulation"]
+        end
+    end
+
+    subgraph DECOM["Decommission (reverse order)"]
+        direction LR
+        w9101["9.1.01\nGKE decommission"]
+        w92xx["9.2.01–04\nPersistent backends\n(only if permanent)"]
+        w9101 -->|"cluster gone"| w92xx
+    end
+
+    D0 -->|"GCS state reused by 0.2.01"| D1
+    D1 -->|"cluster running"| D2
+    D2 -->|"session complete"| DECOM
+    DECOM -->|"re-provision: skip Day-0\n(GCS state still exists)"| D1
+
+    style D0 fill:#e8f4e8,stroke:#4caf50
+    style D1 fill:#e3f2fd,stroke:#2196f3
+    style D2 fill:#fff8e1,stroke:#ff9800
+    style DECOM fill:#fce4ec,stroke:#e91e63
 ```
 
 A new session (reprovision after full teardown) only needs **Day-1** — Day-0 outputs are still in GCS state and are reused automatically by `0.2.01`.
