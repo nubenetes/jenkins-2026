@@ -220,7 +220,7 @@ Jenkins, Microservices, Headlamp, and pgAdmin can all be exposed on the public i
 
 ### One-time Setup
 
-1. **Run the "0.1.02 Gateway bootstrap" workflow** to create a global static IP and a Google-managed wildcard certificate for `<baseDomain>` and `*.<baseDomain>`.
+1. **Run the "0.1.01 Gateway bootstrap" workflow** to create a global static IP and a Google-managed wildcard certificate for `<baseDomain>` and `*.<baseDomain>`.
 
 2. **Add the two DNS records** it prints:
    - A wildcard **A** record: host `*.jenkins2026`, value the static IP.

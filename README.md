@@ -337,13 +337,13 @@ All 15 workflows live in [`.github/workflows/`](.github/workflows/) following th
 
 | Phase | Step | Resource | Workflow |
 |---|---|---|---|
-| `0` Create | `0.1.xx` Persistent | Grafana Cloud, Gateway, Azure, AWS | [0.1.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.01-grafana-cloud-bootstrap.yml) · [0.1.02](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.02-gateway-bootstrap.yml) · [0.1.03](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.03-azure-bootstrap.yml) · [0.1.04](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.04-aws-bootstrap.yml) |
+| `0` Create | `0.1.xx` Persistent | Gateway, Grafana Cloud, Azure, AWS | [0.1.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.01-gateway-bootstrap.yml) · [0.1.02](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.02-grafana-cloud-bootstrap.yml) · [0.1.03](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.03-azure-bootstrap.yml) · [0.1.04](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.04-aws-bootstrap.yml) |
 | `0` Create | `0.2.xx` GKE | GKE cluster + full stack | [0.2.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.2.01-gke-provision.yml) |
 | `5` Update | `5.1.xx` Persistent | Azure/AWS dashboards | [5.1.03](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.1.03-publish-azure-dashboards.yml) · [5.1.04](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.1.04-publish-aws-dashboards.yml) |
 | `5` Update | `5.2.xx` GKE | Jenkins, Headlamp | [5.2.02](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.2.02-redeploy-jenkins.yml) · [5.2.03](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.2.03-redeploy-headlamp.yml) |
 | `5` Update | `5.9.xx` Utils | Traffic simulation | [5.9.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.9.01-traffic-simulation.yml) |
 | `9` Destroy | `9.1.xx` GKE | GKE cluster (destroy first) | [9.1.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.1.01-gke-decommission.yml) |
-| `9` Destroy | `9.2.xx` Persistent | Grafana Cloud, Gateway, Azure, AWS (destroy last) | [9.2.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.01-grafana-cloud-decommission.yml) · [9.2.02](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.02-gateway-decommission.yml) · [9.2.03](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.03-azure-decommission.yml) · [9.2.04](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.04-aws-decommission.yml) |
+| `9` Destroy | `9.2.xx` Persistent | Gateway, Grafana Cloud, Azure, AWS (destroy last) | [9.2.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.01-gateway-decommission.yml) · [9.2.02](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.02-grafana-cloud-decommission.yml) · [9.2.03](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.03-azure-decommission.yml) · [9.2.04](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.04-aws-decommission.yml) |
 
 ---
 

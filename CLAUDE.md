@@ -57,8 +57,8 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
     creates the Grafana Cloud stack with a **Terraform-generated slug**
     (`<prefix><random>`, so destroy+recreate never hits Grafana Cloud's
     reserved-slug cooldown). GCS remote state via `backend_override.tf` (prefix
-    `grafana-cloud-stack`); applied by `0.1.01-grafana-cloud-bootstrap.yml`,
-    destroyed by `9.2.01-grafana-cloud-decommission.yml` - the
+    `grafana-cloud-stack`); applied by `0.1.02-grafana-cloud-bootstrap.yml`,
+    destroyed by `9.2.02-grafana-cloud-decommission.yml` - the
     bootstrap/decommission tier, exactly like the Azure/AWS backends. Ephemeral
     (no `delete_protection`); the Grafana Cloud **org/account/free tier** is
     created once by hand and never Terraform-managed. The slug is an **output**

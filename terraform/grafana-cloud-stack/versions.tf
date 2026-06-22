@@ -22,7 +22,7 @@ provider "grafana" {
 # jenkins-2026 sends OpenTelemetry data to and imports dashboards into when
 # observability.mode == "grafana-cloud". It is the grafana-cloud analogue of the
 # azure-managed-grafana / aws-managed-grafana backends: created by
-# 0.1.01-grafana-cloud-bootstrap.yml, destroyed by 9.2.01-grafana-cloud-
+# 0.1.02-grafana-cloud-bootstrap.yml, destroyed by 9.2.02-grafana-cloud-
 # decommission.yml (state in the same GCS bucket as terraform/gke, prefix
 # "jenkins-2026/grafana-cloud-stack").
 #
