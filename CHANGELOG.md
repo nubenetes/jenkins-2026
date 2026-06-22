@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.17.0] - 2026-06-22
+
+Fix CNPG webhook caBundle race on fresh deploy — GitOps Update now succeeds
+first time with any observability mode (including managed-azure).
+
+### Fixed
+
+- **CNPG webhook caBundle silent skip** (`scripts/08.5-argocd.sh`): on a fresh
+  cluster, `cnpg-ca-secret` may not exist yet when Phase 4 ran. The kubectl
+  command failed silently, leaving `CA_SECRET_SUBJECT=""`. Because
+  `CABUNDLE_SUBJECT` was also `""` (caBundle empty), the comparison `"" == ""`
+  skipped the patch entirely — the webhook remained broken for every subsequent
+  ArgoCD sync, causing the Jenkins pipeline's GitOps Update stage to fail with
+  `x509: certificate signed by unknown authority` on the CNPG webhook.
+- Phase 3 timeout extended from 2 m → 3 m; self-injection outcome now tracked.
+- Phase 4 now waits explicitly for `cnpg-ca-secret` (exit 1 if absent after
+  2 m) before any comparison, preventing the silent-skip.
+- Patch condition extended: fires when caBundle is **empty** OR has the wrong
+  cert (not only on cert-subject mismatch).
+- `op:replace` → `op:add` — safe whether the caBundle field is absent, empty,
+  or populated with the wrong value.
+- Webhook count from `| wc -c` (off-by-one if newline present) → `jq '.webhooks
+  | length'` (exact).
+
 ## [v0.16.0] - 2026-06-22
 
 Replace and reorganise all NotebookLM media assets.
