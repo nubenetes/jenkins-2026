@@ -248,12 +248,17 @@ case "${J2026_OBS_MODE}" in
   managed-aws)
     # Amazon Managed Grafana: mint a short-lived workspace service-account token
     # via the AWS CLI (requires AWS credentials, typically via GitHub OIDC).
+    if ! aws sts get-caller-identity >/dev/null 2>&1; then
+      log_warn "No AWS credentials available - skipping managed-aws alert provisioning."
+      exit 0
+    fi
+
     GF_BASE_URL="${GRAFANA_BASE_URL:-$(kubectl get secret aws-managed-credentials \
       -n "${J2026_OBS_NAMESPACE}" \
-      -o jsonpath='{.data.AWS_AMG_ENDPOINT}' 2>/dev/null | base64 -d || true)}"
+      -o jsonpath='{.data.GRAFANA_BASE_URL}' 2>/dev/null | base64 -d || true)}"
     GRAFANA_WORKSPACE_ID="${GRAFANA_WORKSPACE_ID:-$(kubectl get secret aws-managed-credentials \
       -n "${J2026_OBS_NAMESPACE}" \
-      -o jsonpath='{.data.AWS_AMG_WORKSPACE_ID}' 2>/dev/null | base64 -d || true)}"
+      -o jsonpath='{.data.GRAFANA_WORKSPACE_ID}' 2>/dev/null | base64 -d || true)}"
 
     if [[ -z "${GF_BASE_URL:-}" || -z "${GRAFANA_WORKSPACE_ID:-}" ]]; then
       log_error "managed-aws: GRAFANA_BASE_URL / GRAFANA_WORKSPACE_ID not found (set env vars or check aws-managed-credentials secret)."
