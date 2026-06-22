@@ -2,6 +2,69 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.15.0] - 2026-06-22
+
+Per-mode Grafana alert email secrets, Alert Rules banner link, and a full
+GitHub secrets/variables inventory with Day-0/Day-1/Day-2 operational
+classification for all workflows.
+
+### Added
+
+- **`GRAFANA_ALERT_EMAIL_<MODE>` per-mode secret pattern** — replaces the
+  single `GRAFANA_ALERT_EMAIL` secret with a per-mode hierarchy:
+  `GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD` / `_OSS` / `_MANAGED_AZURE` /
+  `_MANAGED_AWS` take priority over the generic `GRAFANA_ALERT_EMAIL`
+  fallback, which in turn falls back to `jenkins-credentials.oidc-admin-email`.
+  Necessary because Grafana Cloud requires the contact-point email to be a
+  registered org member, which may differ from the OIDC admin email used by
+  other backends. `resolve_email()` derives the mode var name at runtime via
+  `tr` — no case statement needed.
+
+- **Alert Rules link in Jenkins system banner** — `jcasc-base.yaml` now
+  includes a `${GRAFANA_BASE_URL}/alerting/list` link in the Observability
+  section. The path is identical on all four Grafana backends; `GRAFANA_BASE_URL`
+  is already injected via `jenkins-credentials`, so no script changes were needed.
+
+- **`docs/103-GITHUB_SECRETS_INVENTORY.md`** — new reference document covering
+  all 34 GitHub secrets and 1 repository variable. Grouped into 8 subsections
+  (GCP core, Grafana Cloud, alert emails, Azure, AWS, Jenkins OIDC,
+  Headlamp/IAP, registry/git). Each entry documents sensitivity, source,
+  setup command, and which workflows consume it. Wired into the doc nav chain
+  (102 → 103 → 201), README index, and CLAUDE.md.
+
+- **Day-0 / Day-1 / Day-2 section in `docs/101-GITHUB_ACTIONS_WORKFLOWS.md`**
+  — defines the three-tier operations model (Day-0 = persistent bootstrap,
+  Day-1 = cluster provisioning, Day-2 = running-system operations) and maps
+  all 16 workflows into a matrix table (day, cluster required, idempotent,
+  typical frequency). Replaces the ASCII session lifecycle block with a
+  colour-coded Mermaid `flowchart TD` diagram showing workflow nodes,
+  sub-groups, GCS-state reuse arrow, and the re-provision loop back from
+  Decommission to Day-1.
+
+### Fixed
+
+- **`scripts/07.5-grafana-alerts.sh`** — contact-point upsert is now
+  non-fatal on HTTP 400: warns with Grafana Cloud org-member guidance and
+  skips the notification policy, but continues to provision alert rules.
+  Script header comment and all `log_warn` fallback messages updated to
+  reference `GRAFANA_ALERT_EMAIL_<MODE>` as the primary override.
+
+- **`5.1.05-publish-grafana-alerts.yml`** — workflow passes all five alert
+  email env vars (`GRAFANA_ALERT_EMAIL` + four mode-specific variants);
+  unset secrets expand to empty and fall through the priority chain silently.
+  Header comment and step summary updated to document the full resolution
+  chain.
+
+### Documentation
+
+- `docs/102-GITHUB_ACTIONS_AUTOMATION.md` — optional secrets table expanded
+  with per-mode `GRAFANA_ALERT_EMAIL_*` rows (five entries replacing one).
+- `docs/301-OBSERVABILITY.md` — Contact Point section replaced with a full
+  3-level priority table, per-mode secret mapping, and Grafana Cloud
+  org-member callout.
+- README index and CLAUDE.md updated with `103` entry and `101` Day-0/1/2
+  anchor.
+
 ## [v0.14.1] - 2026-06-22
 
 Extends Grafana alerting (v0.14.0) to all four observability modes and adds
