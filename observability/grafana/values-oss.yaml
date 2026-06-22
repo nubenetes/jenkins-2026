@@ -118,6 +118,12 @@ grafana:
       access: proxy
       isDefault: true
       jsonData:
+        # The microservices' OTel metrics (http_server_*, jvm_*) are pushed every
+        # 60s by the Java agent, so without a scrape-interval hint Grafana assumes
+        # 15s, $__rate_interval collapses to ~60s, and rate() over that window sees
+        # a single sample - every rate-based panel renders empty. Pin it to the 60s
+        # ingestion cadence so $__rate_interval widens enough for rate() to resolve.
+        timeInterval: 60s
         exemplarTraceIdDestinations:
           - name: trace_id
             datasourceUid: tempo
