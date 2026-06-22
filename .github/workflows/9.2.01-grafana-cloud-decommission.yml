@@ -1,4 +1,4 @@
-name: "01.98 Grafana Cloud decommission"
+name: "9.2.01 Grafana Cloud decommission"
 
 # Manually-triggered setup teardown: destroys terraform/grafana-cloud-stack
 # to completely remove the persistent Grafana Cloud stack.

@@ -1,4 +1,4 @@
-name: "01.96 AWS managed-grafana decommission"
+name: "9.2.04 AWS managed-grafana decommission"
 
 # Manually-triggered setup teardown: destroys terraform/aws-managed-grafana,
 # removing the persistent AWS backend (Amazon Managed Grafana, Amazon Managed
@@ -6,7 +6,7 @@ name: "01.96 AWS managed-grafana decommission"
 # and the collector IAM role) that observability_mode: managed-aws uses. Run
 # only when tearing down the AWS integration permanently.
 #
-# Same auth as 01.04-aws-bootstrap.yml: GitHub OIDC -> AWS + GitHub WIF -> GCP
+# Same auth as 0.1.04-aws-bootstrap.yml: GitHub OIDC -> AWS + GitHub WIF -> GCP
 # for the GCS state backend. Gated behind the aws-bootstrap Environment.
 on:
   workflow_dispatch:

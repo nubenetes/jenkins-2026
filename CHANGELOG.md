@@ -2,6 +2,56 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.13.0] - 2026-06-22
+
+Complete redesign of GitHub Actions workflow naming from `CC.NN` to `Y.X.ZZ`,
+making the filesystem sort order in the GitHub Actions UI **identical to the
+correct execution order** across all lifecycle phases. Plus a new standalone
+workflow to publish Azure Managed Grafana dashboards without a running cluster
+(parity with the existing AWS equivalent).
+
+### Changed
+
+- **Workflow naming scheme**: All 15 GitHub Actions workflows renamed from
+  `CC.NN-<name>.yml` to `Y.X.ZZ-<name>.yml`:
+  - `Y` = lifecycle phase — `0` create/bootstrap, `5` update/redeploy, `9` destroy
+  - `X` = execution step within the phase (positional; **inverts between create and
+    destroy** to match dependency order: in phase `0`, X=1=persistent resources
+    first, X=2=GKE second; in phase `9`, X=1=GKE first, X=2=persistent last)
+  - `ZZ` = resource identifier, constant for the same resource across all phases
+    (ZZ=03 is always Azure Managed Grafana, ZZ=04 is always AWS AMG, etc.)
+  - Alphabetical sort in GitHub Actions UI = correct runbook order; no separate
+    documentation needed to know what to run next
+  - Dashboard-publish workflows (`5.1.03`, `5.1.04`) correctly reclassified to
+    category `1` (persistent resources) from the old `02.xx` (GKE lifecycle)
+  - Mirror relationship between bootstrap and decommission is now explicit via
+    matching ZZ: `0.1.03` ↔ `9.2.03` (Azure), `0.1.04` ↔ `9.2.04` (AWS), etc.
+
+- **`name:` fields** inside all 15 workflow YAMLs updated to match new codes.
+- **README "CI/CD pipelines"** section fully rewritten:
+  - `Y.X.ZZ` naming convention explained with component table and Phase×Step
+    matrix showing why X inverts between create and destroy
+  - Resource identity table (ZZ by resource, across all lifecycle phases)
+  - Full workflow matrix (resource × lifecycle phase, clickable links)
+  - Collapsible Mermaid lifecycle diagram (phase 0 → phase 5 → phase 9 with
+    intra-phase dependency arrows)
+  - **Unified numbered inventory matrix** (15 workflows, one numbered row each,
+    with Y / X / ZZ as separate columns, detailed description, prerequisites,
+    and frequency — all links go directly to the GitHub Actions dispatch page)
+  - Rationale for no automatic workflow chaining (`workflow_run:` design decision)
+- **CLAUDE.md**: Workflow naming convention updated from `CC.NN` to `Y.X.ZZ`
+  with full explanation of Y/X/ZZ semantics and inversion rule.
+
+### Added
+
+- **`5.1.03-publish-azure-dashboards.yml`** (new) — standalone workflow to
+  (re)publish `observability/grafana/dashboards-azure/` to Azure Managed Grafana
+  **without a running GKE cluster**: authenticates via GitHub OIDC (the OIDC SP
+  holds Grafana Admin), discovers the instance via `az grafana list`, substitutes
+  the `${appinsights}` placeholder at publish time. Parity with the existing
+  `5.1.04-publish-aws-dashboards.yml`. Requires `AZURE_CLIENT_ID` /
+  `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` secrets (provisioned by `0.1.03`).
+
 ## [v0.12.0] - 2026-06-22
 
 Managed cloud observability backends (**Azure** & **AWS**), the in-cluster
