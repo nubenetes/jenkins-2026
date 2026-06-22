@@ -24,6 +24,11 @@ mode: deployment
 
 replicaCount: 1
 
+# Recreate avoids rolling-update deadlocks when switching observability modes
+# (old pod with different backend credentials blocks new pod scheduling).
+updateStrategy:
+  type: Recreate
+
 image:
   # contrib distro: required for the azuremonitor exporter and the
   # oauth2client extension (neither ships in the otelcol-k8s image).
