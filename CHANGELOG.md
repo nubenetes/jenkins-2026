@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.18.0] - 2026-06-22
+
+Fix OTel Java agent injection on fresh deploy — dashboards populate without
+manual intervention after the first full provision.
+
+### Fixed
+
+- **Wrong pod label selector in pipeline OTel self-heal** (`vars/microservicesDeploy.groovy`):
+  the check used `-l app=<svc>` but pods carry `app.kubernetes.io/name=<svc>`.
+  The selector never matched, so the self-heal always printed
+  "No running pod — skipping" and silently left the agent uninjected.
+  Fixed to `-l app.kubernetes.io/name=<svc>`.
+- **`ensure-otel-injection.sh` ran before pods existed** (`scripts/up.sh`):
+  on a fresh provision ArgoCD deploys microservices asynchronously after
+  `up.sh` finishes, so the guard was always a no-op at that point.
+  `up.sh` now waits for ArgoCD `microservices-stable` to reach `Healthy`
+  (up to 10 min) before running the injection guard — ensuring the race is
+  caught and healed on every fresh deploy regardless of observability mode.
+
 ## [v0.17.0] - 2026-06-22
 
 Fix CNPG webhook caBundle race on fresh deploy — GitOps Update now succeeds
