@@ -1,15 +1,15 @@
-name: "02.03 Redeploy Headlamp"
+name: "5.2.03 Redeploy Headlamp"
 
 # Manually-triggered: re-applies scripts/01-namespaces.sh (refreshes the
 # non-sensitive OIDC config keys on the headlamp-credentials Secret) and
 # scripts/08-headlamp.sh (Helm upgrade --install of headlamp + its
-# ClusterRoleBindings) against the cluster from the last "02.01 GKE
+# ClusterRoleBindings) against the cluster from the last "0.2.01 GKE
 # provision" run, without touching terraform/gke or any other component of
 # the stack.
 #
 # Use this to apply a Headlamp-only change (Helm values, OIDC config) without
 # rerunning the whole provision/decommission lifecycle. Requires the
-# namespaces/secrets created by scripts/01-namespaces.sh during that "02.01
+# namespaces/secrets created by scripts/01-namespaces.sh during that "0.2.01
 # GKE provision" run to still exist on the cluster.
 on:
   workflow_dispatch:
@@ -139,5 +139,5 @@ jobs:
             echo
             echo "Refreshed headlamp-credentials OIDC config and re-applied"
             echo "helm/headlamp/values.yaml against the cluster from the last"
-            echo "**02.01 GKE provision** run."
+            echo "**0.2.01 GKE provision** run."
           } >> "${GITHUB_STEP_SUMMARY}"
