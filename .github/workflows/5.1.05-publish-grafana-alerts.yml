@@ -25,17 +25,6 @@ on:
         required: false
         default: ""
         type: string
-      observability_mode:
-        description: "Observability mode (leave empty to use config/config.yaml default)"
-        required: false
-        default: ""
-        type: choice
-        options:
-          - ""
-          - grafana-cloud
-          - oss
-          - managed-azure
-          - managed-aws
 
 permissions:
   contents: read
@@ -91,18 +80,15 @@ jobs:
             https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
 
-      # Resolve the effective observability mode: explicit input wins; blank
-      # input falls back to config/config.yaml so the auth steps below can
-      # make the right decision without running the shell script first.
-      - name: Detect effective observability mode
+      # Always read the mode from config/config.yaml — single source of truth.
+      # JENKINS2026_OBS_MODE env var (set in the job env block) can still
+      # override for one-off runs without changing the file.
+      - name: Detect observability mode from config/config.yaml
         id: detect-mode
         run: |
-          MODE="${{ inputs.observability_mode }}"
-          if [[ -z "${MODE}" ]]; then
-            MODE="$(yq '.observability.mode' config/config.yaml)"
-          fi
+          MODE="$(yq '.observability.mode' config/config.yaml)"
           echo "mode=${MODE}" >> "${GITHUB_OUTPUT}"
-          echo "Effective observability mode: ${MODE}"
+          echo "Observability mode: ${MODE}"
 
       - name: Configure GCS backend (terraform/gke)
         run: |
@@ -159,7 +145,6 @@ jobs:
 
       - name: Provision Grafana alerts (scripts/07.5-grafana-alerts.sh)
         env:
-          JENKINS2026_OBS_MODE: ${{ inputs.observability_mode }}
           GRAFANA_ALERT_EMAIL: ${{ secrets.GRAFANA_ALERT_EMAIL }}
         run: ./scripts/07.5-grafana-alerts.sh
 
@@ -172,7 +157,7 @@ jobs:
             echo "Provisioned contact point, notification policy, and alert rules"
             echo "from \`observability/grafana/alerting/\` via the Grafana provisioning API."
             echo
-            echo "- Observability mode: \`${{ inputs.observability_mode || '(from config.yaml)' }}\`"
+            echo "- Observability mode: \`$(yq '.observability.mode' config/config.yaml)\` (from config/config.yaml)"
             echo "- Cluster: \`${{ secrets.GCP_PROJECT_ID }}\`"
             echo
             echo "To add rules: drop a JSON file into \`observability/grafana/alerting/rules/\`"
