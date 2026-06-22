@@ -24,8 +24,8 @@ replicaCount: 1
 
 # Recreate avoids rolling-update deadlocks when switching observability modes
 # (old pod with different backend credentials blocks new pod scheduling).
-deploymentUpdateStrategy:
-  type: Recreate
+rollout:
+  strategy: Recreate
 
 image:
   repository: otel/opentelemetry-collector-k8s
