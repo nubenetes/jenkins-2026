@@ -48,7 +48,32 @@ env:
   AWS_DASHBOARD_PUBLISH_ROLE_ARN: ${{ secrets.AWS_DASHBOARD_PUBLISH_ROLE_ARN }}
 
 jobs:
+  # ── Bootstrap pre-flight jobs ───────────────────────────────────────────────
+  # Each runs only for its matching observability mode (skipped = success for
+  # the purposes of the `needs` below). This ensures the persistent cloud
+  # backend is always applied (idempotent tf apply) before `provision` reads
+  # its terraform outputs to build in-cluster credentials Secrets.
+  # oss mode has no external backend - all three jobs are skipped and
+  # provision starts immediately.
+
+  grafana-cloud-bootstrap:
+    if: ${{ inputs.observability_mode == 'grafana-cloud' }}
+    uses: ./.github/workflows/0.1.01-grafana-cloud-bootstrap.yml
+    secrets: inherit
+
+  azure-bootstrap:
+    if: ${{ inputs.observability_mode == 'managed-azure' }}
+    uses: ./.github/workflows/0.1.03-azure-bootstrap.yml
+    secrets: inherit
+
+  aws-bootstrap:
+    if: ${{ inputs.observability_mode == 'managed-aws' }}
+    uses: ./.github/workflows/0.1.04-aws-bootstrap.yml
+    secrets: inherit
+
+  # ── Main provision job ──────────────────────────────────────────────────────
   provision:
+    needs: [grafana-cloud-bootstrap, azure-bootstrap, aws-bootstrap]
     runs-on: ubuntu-latest
     environment: gke-production
     steps:
@@ -296,9 +321,16 @@ jobs:
           EOF
           terraform -chdir=terraform/aws-managed-grafana init -input=false
           tf() { terraform -chdir=terraform/aws-managed-grafana output -raw "$1"; }
+          # Fail fast if the bootstrap outputs are empty (aws-bootstrap job
+          # above should have applied them; empty means something went wrong).
+          aws_region="$(tf aws_region)"
+          if [[ -z "${aws_region}" ]]; then
+            echo "::error::terraform/aws-managed-grafana outputs are empty — the aws-bootstrap job above must have failed. Check its logs."
+            exit 1
+          fi
           kubectl create namespace observability --dry-run=client -o yaml | kubectl apply -f -
           kubectl create secret generic aws-managed-credentials -n observability \
-            --from-literal=AWS_REGION="$(tf aws_region)" \
+            --from-literal=AWS_REGION="${aws_region}" \
             --from-literal=AMP_REMOTE_WRITE_ENDPOINT="$(tf amp_remote_write_endpoint)" \
             --from-literal=AWS_ROLE_ARN="$(tf collector_role_arn)" \
             --from-literal=AWS_CLOUDWATCH_LOG_GROUP="$(tf cloudwatch_log_group)" \
