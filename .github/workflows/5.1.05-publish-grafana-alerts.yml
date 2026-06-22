@@ -91,6 +91,19 @@ jobs:
             https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
 
+      # Resolve the effective observability mode: explicit input wins; blank
+      # input falls back to config/config.yaml so the auth steps below can
+      # make the right decision without running the shell script first.
+      - name: Detect effective observability mode
+        id: detect-mode
+        run: |
+          MODE="${{ inputs.observability_mode }}"
+          if [[ -z "${MODE}" ]]; then
+            MODE="$(yq '.observability.mode' config/config.yaml)"
+          fi
+          echo "mode=${MODE}" >> "${GITHUB_OUTPUT}"
+          echo "Effective observability mode: ${MODE}"
+
       - name: Configure GCS backend (terraform/gke)
         run: |
           cat > terraform/gke/backend_override.tf <<EOF
@@ -130,15 +143,14 @@ jobs:
       # AWS auth when mode is blank (config.yaml default) and the role secret
       # happens to be set from a previous managed-aws bootstrap.
       - name: AWS login (managed-aws)
-        if: ${{ inputs.observability_mode == 'managed-aws' && env.AWS_DASHBOARD_PUBLISH_ROLE_ARN != '' }}
+        if: ${{ steps.detect-mode.outputs.mode == 'managed-aws' && env.AWS_DASHBOARD_PUBLISH_ROLE_ARN != '' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.AWS_DASHBOARD_PUBLISH_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      # managed-azure: same — only when explicitly selected.
       - name: Azure login (managed-azure)
-        if: ${{ inputs.observability_mode == 'managed-azure' && env.AZURE_CLIENT_ID != '' }}
+        if: ${{ steps.detect-mode.outputs.mode == 'managed-azure' && env.AZURE_CLIENT_ID != '' }}
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
