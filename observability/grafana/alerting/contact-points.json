@@ -1,0 +1,10 @@
+{
+  "name": "jenkins-2026-email",
+  "type": "email",
+  "uid": "jenkins2026-email-cp",
+  "settings": {
+    "addresses": "EMAIL_ADDRESS",
+    "singleEmail": false
+  },
+  "disableResolveMessage": false
+}

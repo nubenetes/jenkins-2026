@@ -213,6 +213,43 @@ flowchart LR
 
 </details>
 
+## Grafana Alerting
+
+Alert rules, a contact point, and a notification policy live as plain JSON in [`observability/grafana/alerting/`](../observability/grafana/alerting/) and are applied on every deploy by `scripts/07.5-grafana-alerts.sh`.
+
+### Contact Point and Notification Policy
+
+Email is the notification channel. The address is resolved in priority order:
+1. `GRAFANA_ALERT_EMAIL` environment variable (override for CI)
+2. `oidc-admin-email` key of the `jenkins-credentials` Secret (auto-populated from `JENKINS_OIDC_ADMIN_EMAIL` GitHub secret by `01-namespaces.sh`)
+
+`observability/grafana/alerting/notification-policy.json` routes all alerts to the `jenkins-2026-email` contact point, grouped by `alertname` + `namespace`, with a 30 s group-wait, 5 min group-interval, and 4 h repeat-interval.
+
+### Alert Rules
+
+Five rules live in `observability/grafana/alerting/rules/`, all filed under the `jenkins-2026` rule group in the `jenkins-2026 Alerts` Grafana folder:
+
+| File | Severity | `for` | What fires |
+|---|---|---|---|
+| `01-pods-not-ready.json` | critical | 2m | Any pod in `microservices` namespace stays NotReady |
+| `02-argocd-degraded.json` | warning | 5m | Any ArgoCD app has `health_status=Degraded` |
+| `03-cnpg-degraded.json` | critical | 2m | Any `postgres-*` pod in `microservices` stays NotReady |
+| `04-http-5xx-rate.json` | warning | 3m | HTTP 5xx rate > 0.05 req/s for any service |
+| `05-jvm-heap-high.json` | warning | 5m | JVM heap ratio > 85% for any service |
+
+### Adding More Rules
+
+Drop a `.json` file into `observability/grafana/alerting/rules/` following the same structure (Grafana provisioning API format), then re-run `scripts/07.5-grafana-alerts.sh` or let the next `up.sh` pick it up. The script upserts by `uid` so existing rules are updated, not duplicated.
+
+### Observability Mode Support
+
+| Mode | Status |
+|---|---|
+| `grafana-cloud` | Implemented — email via Grafana Cloud built-in SMTP |
+| `oss` | TODO — requires SMTP config in `helm/observability/values-oss.yaml` |
+| `managed-azure` | TODO — requires Action Groups in `terraform/azure-managed-grafana/` |
+| `managed-aws` | TODO — requires SNS topic in `terraform/aws-managed-grafana/` |
+
 ## k6 Observability Smoke Test
 
 `microservices-k6-smoke` runs [`jenkins/pipelines/k6/microservices-smoke.js`](../jenkins/pipelines/k6/microservices-smoke.js) via [`vars/microservicesK6Smoke.groovy`](../vars/microservicesK6Smoke.groovy). This is **not a load/stress test** — it's an on-demand way to give Grafana a fresh, fully-correlated trace/metric/log example across the whole app:

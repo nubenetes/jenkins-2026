@@ -1,0 +1,48 @@
+{
+  "uid": "j2026-http-5xx-rate",
+  "title": "High HTTP 5xx Error Rate",
+  "ruleGroup": "jenkins-2026",
+  "folderUID": "jenkins-2026-alerts",
+  "condition": "threshold",
+  "for": "3m",
+  "noDataState": "NoData",
+  "execErrState": "Error",
+  "labels": {
+    "severity": "warning",
+    "project": "jenkins-2026"
+  },
+  "annotations": {
+    "summary": "High HTTP 5xx error rate for {{ $labels.service_name }}",
+    "description": "Service {{ $labels.service_name }} is returning more than 5% HTTP 5xx responses over the last 5 minutes."
+  },
+  "data": [
+    {
+      "refId": "query",
+      "relativeTimeRange": { "from": 300, "to": 0 },
+      "datasourceUid": "grafanacloud-prom",
+      "model": {
+        "expr": "sum by (service_name) (rate(http_server_request_duration_seconds_count{http_response_status_code=~\"5..\",service_namespace=\"microservices\"}[5m])) > 0.05",
+        "refId": "query",
+        "instant": true
+      }
+    },
+    {
+      "refId": "threshold",
+      "relativeTimeRange": { "from": 0, "to": 0 },
+      "datasourceUid": "-100",
+      "model": {
+        "conditions": [
+          {
+            "evaluator": { "params": [0], "type": "gt" },
+            "operator": { "type": "and" },
+            "query": { "params": ["query"] },
+            "reducer": { "params": [], "type": "last" },
+            "type": "query"
+          }
+        ],
+        "refId": "threshold",
+        "type": "classic_conditions"
+      }
+    }
+  ]
+}
