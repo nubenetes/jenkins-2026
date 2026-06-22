@@ -157,6 +157,35 @@ jobs:
             --zone "$(terraform output -raw location)" \
             --project "${{ secrets.GCP_PROJECT_ID }}"
 
+      # The Grafana Cloud stack slug is generated (random) by terraform/grafana-
+      # cloud-stack and is no longer a GitHub variable. Read it from that module's
+      # GCS state (written by the grafana-cloud-bootstrap pre-flight job) and reuse
+      # it for the token apply and the dashboard link, the same way managed-azure /
+      # managed-aws read their backend outputs from state.
+      - name: Read Grafana Cloud stack slug (from terraform/grafana-cloud-stack state)
+        if: ${{ inputs.observability_mode == 'grafana-cloud' }}
+        id: gc_stack
+        run: |
+          cat > terraform/grafana-cloud-stack/backend_override.tf <<EOF
+          terraform {
+            backend "gcs" {
+              bucket = "${{ secrets.TF_STATE_BUCKET }}"
+              prefix = "jenkins-2026/grafana-cloud-stack"
+            }
+          }
+          EOF
+          for i in {1..3}; do
+            terraform -chdir=terraform/grafana-cloud-stack init -input=false && break || {
+              [ $i -lt 3 ] && { echo "init failed, retrying in 10s..."; sleep 10; } || exit 1
+            }
+          done
+          slug="$(terraform -chdir=terraform/grafana-cloud-stack output -raw stack_slug)"
+          if [[ -z "${slug}" ]]; then
+            echo "::error::grafana-cloud-stack state has no stack_slug - the grafana-cloud-bootstrap job must have failed."
+            exit 1
+          fi
+          echo "slug=${slug}" >> "${GITHUB_OUTPUT}"
+
       - name: Namespaces & prereqs
         env:
           REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
@@ -173,14 +202,12 @@ jobs:
         run: |
           ./scripts/00-check-prereqs.sh
           if [[ "${{ inputs.observability_mode }}" == "grafana-cloud" ]]; then
-            # Derived rather than taken from the grafana-cloud-token terraform
-            # output (data.grafana_cloud_stack.this.url) because that step
-            # needs jenkins-credentials (admin-password) to already exist -
-            # this is the standard https://<slug>.grafana.net Grafana Cloud
-            # URL pattern for the persistent stack from
-            # terraform/grafana-cloud-stack, stored here for
+            # Derived from the generated slug (read in the previous step) rather
+            # than the grafana-cloud-token output, because that token step runs
+            # later and needs jenkins-credentials to exist first. Standard
+            # https://<slug>.grafana.net pattern, stored here for
             # microservicesK6Smoke's Grafana dashboard link.
-            export GRAFANA_BASE_URL="https://${{ vars.GRAFANA_CLOUD_STACK_SLUG || secrets.GRAFANA_CLOUD_STACK_SLUG }}.grafana.net"
+            export GRAFANA_BASE_URL="https://${{ steps.gc_stack.outputs.slug }}.grafana.net"
           fi
           ./scripts/01-namespaces.sh
 
@@ -217,7 +244,7 @@ jobs:
         working-directory: terraform/grafana-cloud-token
         env:
           TF_VAR_grafana_cloud_api_token: ${{ secrets.GRAFANA_CLOUD_API_TOKEN }}
-          TF_VAR_stack_slug: ${{ vars.GRAFANA_CLOUD_STACK_SLUG || secrets.GRAFANA_CLOUD_STACK_SLUG }}
+          TF_VAR_stack_slug: ${{ steps.gc_stack.outputs.slug }}
         run: |
           # Fetch jenkins admin password from the secret created in the previous step
           ADMIN_PASS=$(kubectl get secret jenkins-credentials -n jenkins -o jsonpath='{.data.admin-password}' | base64 -d)
