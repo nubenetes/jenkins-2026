@@ -18,11 +18,12 @@ name: "0.1.03 Azure managed-grafana bootstrap"
 # AZURE_GRAFANA_ADMIN_OBJECT_IDS (comma-separated Entra object IDs granted
 # Grafana Admin), plus the GCP_*/TF_STATE_BUCKET state-backend secrets.
 #
-# 0.2.01-gke-provision.yml (observability_mode: managed-azure) does NOT run this
-# workflow - it only reads this module's outputs from the GCS state to build the
-# in-cluster azure-monitor-credentials Secret.
+# 0.2.01-gke-provision.yml calls this via workflow_call when
+# observability_mode=managed-azure so the persistent Azure backend is always
+# confirmed before 0.2.01 reads its outputs to build the in-cluster Secret.
 on:
   workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
