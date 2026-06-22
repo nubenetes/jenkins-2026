@@ -59,7 +59,7 @@ observability:
   #                   secret-managed-azure.example.yaml + docs/observability.md.
   #   managed-aws   - export to Amazon Managed Service for Prometheus +
   #                   X-Ray/CloudWatch; visualize in Amazon Managed Grafana.
-  mode: managed-azure
+  mode: grafana-cloud
 
   otelOperator:
     chart:
