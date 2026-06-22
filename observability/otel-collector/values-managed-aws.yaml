@@ -25,6 +25,11 @@ fullnameOverride: otel-collector-gateway
 mode: deployment
 replicaCount: 1
 
+# Recreate avoids rolling-update deadlocks when switching observability modes
+# (old pod with different backend credentials blocks new pod scheduling).
+updateStrategy:
+  type: Recreate
+
 image:
   # contrib distro: required for sigv4auth, awsxray, awscloudwatchlogs.
   repository: otel/opentelemetry-collector-contrib
