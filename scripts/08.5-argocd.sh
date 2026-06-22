@@ -281,47 +281,78 @@ log_info "CNPG deployment name: ${CNPG_DEPLOY}"
 wait_for_deployment "${CNPG_DEPLOY}" "cnpg-system" "5m"
 
 # Phase 3: wait for the controller to self-inject its CA into the webhook configs.
-# The cert injection happens ~10-20s after the pod becomes Ready.
+# The cert injection typically happens within 10-30s after the pod becomes Ready,
+# but can take longer on slow nodes or after a cold start.
 log_step "Waiting for CNPG webhook caBundle to be populated"
-timeout 120 bash -c '
+_cnpg_self_injected=false
+if timeout 180 bash -c '
   until kubectl get mutatingwebhookconfiguration cnpg-mutating-webhook-configuration \
         -o jsonpath="{.webhooks[0].clientConfig.caBundle}" 2>/dev/null \
         | grep -q .; do
     sleep 5
   done
-' || log_warn "CNPG webhook caBundle not yet populated after 2m — first pipeline run may need a retry"
+'; then
+  _cnpg_self_injected=true
+  log_info "CNPG webhook caBundle self-injected by operator."
+else
+  log_warn "CNPG operator did not self-inject caBundle within 3m — will force-patch from cnpg-ca-secret."
+fi
 
-# Phase 4: verify the caBundle contains the CA cert (self-signed), not the leaf
-# serving cert. A known issue with CNPG 0.28.x on GKE: the operator sometimes
-# injects the leaf cert instead of the CA cert, causing:
-#   "x509: certificate signed by unknown authority" on every ArgoCD sync.
-# Fix: replace the caBundle in all webhook configs with the CA from cnpg-ca-secret.
-log_step "Verifying CNPG webhook caBundle contains the CA cert (not the leaf cert)"
-CABUNDLE_SUBJECT=$(kubectl get mutatingwebhookconfiguration cnpg-mutating-webhook-configuration \
-  -o jsonpath='{.webhooks[0].clientConfig.caBundle}' | base64 -d \
-  | openssl x509 -noout -subject 2>/dev/null | sed 's/subject=//')
-CA_SECRET_SUBJECT=$(kubectl get secret cnpg-ca-secret -n cnpg-system \
-  -o jsonpath='{.data.ca\.crt}' | base64 -d \
-  | openssl x509 -noout -subject 2>/dev/null | sed 's/subject=//')
+# Phase 4: verify caBundle is correct and patch if needed.
+#
+# Bug guard: if cnpg-ca-secret does not exist yet when we read it, CA_SECRET_SUBJECT
+# would be empty. With an also-empty CABUNDLE_SUBJECT (fresh install) they compare
+# equal and the patch is silently skipped — leaving the webhook broken for the first
+# pipeline run. Fix: wait explicitly for the secret before any comparison.
+log_step "Verifying CNPG webhook caBundle"
 
-if [[ "${CABUNDLE_SUBJECT}" != "${CA_SECRET_SUBJECT}" ]]; then
-  log_warn "caBundle has leaf cert (${CABUNDLE_SUBJECT}) instead of CA cert — patching all webhook configs"
-  CA_BUNDLE=$(kubectl get secret cnpg-ca-secret -n cnpg-system -o jsonpath='{.data.ca\.crt}')
-  MUTATING_COUNT=$(kubectl get mutatingwebhookconfiguration cnpg-mutating-webhook-configuration \
-    -o jsonpath='{range .webhooks[*]}x{end}' | wc -c)
-  VALIDATING_COUNT=$(kubectl get validatingwebhookconfiguration cnpg-validating-webhook-configuration \
-    -o jsonpath='{range .webhooks[*]}x{end}' | wc -c)
+timeout 120 bash -c '
+  until kubectl get secret cnpg-ca-secret -n cnpg-system >/dev/null 2>&1; do
+    sleep 3; echo "Waiting for cnpg-ca-secret..."
+  done
+' || { log_error "cnpg-ca-secret not created within 2m of operator Ready — check CNPG RBAC"; exit 1; }
+
+CA_BUNDLE=$(kubectl get secret cnpg-ca-secret -n cnpg-system -o jsonpath='{.data.ca\.crt}')
+if [[ -z "${CA_BUNDLE}" ]]; then
+  log_error "cnpg-ca-secret.ca.crt is empty — CNPG operator init failed"
+  exit 1
+fi
+
+CA_SUBJECT=$(echo "${CA_BUNDLE}" | base64 -d | openssl x509 -noout -subject 2>/dev/null \
+  | sed 's/subject=//' || echo "")
+
+CURRENT_BUNDLE=$(kubectl get mutatingwebhookconfiguration cnpg-mutating-webhook-configuration \
+  -o jsonpath='{.webhooks[0].clientConfig.caBundle}' 2>/dev/null || echo "")
+CURRENT_SUBJECT=""
+if [[ -n "${CURRENT_BUNDLE}" ]]; then
+  CURRENT_SUBJECT=$(echo "${CURRENT_BUNDLE}" | base64 -d | openssl x509 -noout -subject 2>/dev/null \
+    | sed 's/subject=//' || echo "")
+fi
+
+if [[ -z "${CURRENT_BUNDLE}" || "${CURRENT_SUBJECT}" != "${CA_SUBJECT}" ]]; then
+  if [[ -z "${CURRENT_BUNDLE}" ]]; then
+    log_warn "caBundle is empty — force-injecting CA cert from cnpg-ca-secret"
+  else
+    log_warn "caBundle has wrong cert ('${CURRENT_SUBJECT}' vs '${CA_SUBJECT}') — patching"
+  fi
+  # Use op:add — works whether the field is absent, empty, or has the wrong value.
+  MUTATING_N=$(kubectl get mutatingwebhookconfiguration cnpg-mutating-webhook-configuration \
+    -o json | jq '.webhooks | length')
+  VALIDATING_N=$(kubectl get validatingwebhookconfiguration cnpg-validating-webhook-configuration \
+    -o json | jq '.webhooks | length')
   MUTATING_PATCH=$(python3 -c "
-import json; n=${MUTATING_COUNT}
-print(json.dumps([{'op':'replace','path':f'/webhooks/{i}/clientConfig/caBundle','value':'${CA_BUNDLE}'} for i in range(n)]))")
+import json
+n, ca = int('${MUTATING_N}'), '${CA_BUNDLE}'
+print(json.dumps([{'op':'add','path':f'/webhooks/{i}/clientConfig/caBundle','value':ca} for i in range(n)]))")
   VALIDATING_PATCH=$(python3 -c "
-import json; n=${VALIDATING_COUNT}
-print(json.dumps([{'op':'replace','path':f'/webhooks/{i}/clientConfig/caBundle','value':'${CA_BUNDLE}'} for i in range(n)]))")
+import json
+n, ca = int('${VALIDATING_N}'), '${CA_BUNDLE}'
+print(json.dumps([{'op':'add','path':f'/webhooks/{i}/clientConfig/caBundle','value':ca} for i in range(n)]))")
   kubectl patch mutatingwebhookconfiguration cnpg-mutating-webhook-configuration \
     --type=json -p="${MUTATING_PATCH}"
   kubectl patch validatingwebhookconfiguration cnpg-validating-webhook-configuration \
     --type=json -p="${VALIDATING_PATCH}"
-  log_info "caBundle patched with CA cert on all CNPG webhook configs."
+  log_info "CNPG webhook caBundle patched on all webhook configs."
 else
   log_info "caBundle already contains the correct CA cert."
 fi
