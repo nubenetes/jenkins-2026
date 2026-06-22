@@ -140,6 +140,28 @@ jobs:
             fi
           fi
 
+      # The stack slug (generated, no longer a GitHub variable) is needed for the
+      # grafana_cloud_stack data-source lookup during the token destroy. Read it
+      # from terraform/grafana-cloud-stack's GCS state.
+      - name: Read Grafana Cloud stack slug (from terraform/grafana-cloud-stack state)
+        if: ${{ env.HAS_GRAFANA_CLOUD_TOKEN == 'true' }}
+        id: gc_stack
+        run: |
+          cat > terraform/grafana-cloud-stack/backend_override.tf <<EOF
+          terraform {
+            backend "gcs" {
+              bucket = "${{ secrets.TF_STATE_BUCKET }}"
+              prefix = "jenkins-2026/grafana-cloud-stack"
+            }
+          }
+          EOF
+          for i in {1..3}; do
+            terraform -chdir=terraform/grafana-cloud-stack init -input=false && break || {
+              [ $i -lt 3 ] && { echo "init failed, retrying in 10s..."; sleep 10; } || exit 1
+            }
+          done
+          echo "slug=$(terraform -chdir=terraform/grafana-cloud-stack output -raw stack_slug 2>/dev/null || true)" >> "${GITHUB_OUTPUT}"
+
       - name: Configure GCS backend (terraform/grafana-cloud-token)
         if: ${{ env.HAS_GRAFANA_CLOUD_TOKEN == 'true' }}
         run: |
@@ -172,7 +194,7 @@ jobs:
         working-directory: terraform/grafana-cloud-token
         env:
           TF_VAR_grafana_cloud_api_token: ${{ secrets.GRAFANA_CLOUD_API_TOKEN }}
-          TF_VAR_stack_slug: ${{ vars.GRAFANA_CLOUD_STACK_SLUG || secrets.GRAFANA_CLOUD_STACK_SLUG }}
+          TF_VAR_stack_slug: ${{ steps.gc_stack.outputs.slug }}
           TF_VAR_jenkins_admin_password: "destroy-placeholder"
         run: terraform destroy -auto-approve -input=false
 

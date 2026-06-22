@@ -34,9 +34,10 @@ Use the **[`5.9.01 Continuous Traffic Simulation`](https://github.com/nubenetes/
 - **Duration**: Default 15 minutes (configurable).
 - **Purpose**: Simulates real-world user traffic from outside the cluster, hitting the GKE Gateway and triggering end-to-end traces.
 
-To see real-time metrics from the GitHub simulation in your Grafana dashboards, configure:
-- `GRAFANA_CLOUD_OTLP_ENDPOINT`: Get from `terraform -chdir=terraform/grafana-cloud-stack output -raw otlp_endpoint`
-- `GRAFANA_CLOUD_OTLP_AUTH`: `echo -n "$STACK_ID:$TOKEN" | base64`
+The simulation reads the OTLP endpoint, auth and Grafana URL straight from the
+in-cluster `grafana-cloud-credentials` Secret (provisioned by `0.2.01`), so no
+extra GitHub secrets are needed — just run it against a live grafana-cloud
+deployment.
 
 ### 2. On-Demand Smoke Test (Jenkins)
 
