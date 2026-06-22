@@ -258,6 +258,7 @@ EOF
    | `REGISTRY_USERNAME` / `REGISTRY_PASSWORD` | pushing/pulling private microservice images from a private registry |
    | `GIT_USERNAME` / `GIT_TOKEN` | cloning a private Microservices fork |
    | `GRAFANA_TRACES_DASHBOARD_UID` / `OTEL_LOGS_BACKEND_URL` | `observability_mode: grafana-cloud` extras — "View trace in Grafana" link UID and logs Explore URL |
+   | `GRAFANA_ALERT_EMAIL` | Email address to receive Grafana alert notifications — must be a member of the Grafana Cloud org (required when this differs from `JENKINS_OIDC_ADMIN_EMAIL`; used by `5.1.05-publish-grafana-alerts`) |
    | `HEADLAMP_OIDC_CLIENT_ID` / `HEADLAMP_OIDC_CLIENT_SECRET` | Google OAuth client for Headlamp login |
    | `HEADLAMP_ADMIN_EMAILS` | comma-separated Google account emails granted cluster-admin via Headlamp **and** IAP access — **your own email, never committed to the repo** |
    | `JENKINS_OIDC_CLIENT_ID` / `JENKINS_OIDC_CLIENT_SECRET` | Google OAuth client for Jenkins "Sign in with Google" |

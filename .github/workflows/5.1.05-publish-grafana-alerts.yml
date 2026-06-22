@@ -12,9 +12,11 @@ name: "5.1.05 Publish Grafana alerts"
 #   managed-aws    — AMG service-account token minted via 'aws grafana create-workspace-api-key'
 #                    (GitHub OIDC → AWS_DASHBOARD_PUBLISH_ROLE_ARN)
 #
-# Optional repo secret: GRAFANA_ALERT_EMAIL — overrides the email read from
-# jenkins-credentials.oidc-admin-email (useful when the cluster secret is
-# unavailable or when a different address is desired for CI alert runs).
+# Repo secret: GRAFANA_ALERT_EMAIL — the email address that receives alert
+# notifications. Must be a member of the Grafana Cloud org (Grafana Cloud
+# rejects contact points addressed to non-members). Required when this
+# differs from JENKINS_OIDC_ADMIN_EMAIL; falls back to
+# jenkins-credentials.oidc-admin-email if unset.
 #
 # See docs/301-OBSERVABILITY.md § "Grafana Alerting" for rule details.
 on:
@@ -163,6 +165,7 @@ jobs:
             echo "To add rules: drop a JSON file into \`observability/grafana/alerting/rules/\`"
             echo "following the existing format, then re-run this workflow."
             echo
-            echo "**Optional secret**: set \`GRAFANA_ALERT_EMAIL\` in repo secrets to"
-            echo "override the default (read from \`jenkins-credentials.oidc-admin-email\`)."
+            echo "**Secret \`GRAFANA_ALERT_EMAIL\`**: set this repo secret to the email"
+            echo "address that is a member of the Grafana Cloud org (required when it"
+            echo "differs from \`JENKINS_OIDC_ADMIN_EMAIL\`)."
           } >> "${GITHUB_STEP_SUMMARY}"
