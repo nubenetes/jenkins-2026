@@ -8,10 +8,23 @@ A Jenkins-on-Kubernetes PoC: Jenkins (Helm chart + JCasC) running
 pipelines-as-code for the Spring Microservices microservices, with full
 OpenTelemetry observability (traces/metrics/logs) into either Grafana Cloud
 or an in-cluster OSS Grafana/Loki/Tempo/Prometheus stack. See
-[`README.md`](README.md) for the full picture, and
-[`docs/architecture.md`](docs/architecture.md),
-[`docs/observability.md`](docs/observability.md), and
-[`docs/pipelines-as-code.md`](docs/pipelines-as-code.md) for deep dives.
+[`README.md`](README.md) for the index and quick start. Deep-dive docs live
+in [`docs/`](docs/) — all numbered `NNN-TITLE.md` with header/footer
+navigation:
+
+- [`101-GITHUB_ACTIONS_WORKFLOWS.md`](docs/101-GITHUB_ACTIONS_WORKFLOWS.md) — CI/CD workflow naming (`Y.X.ZZ`), lifecycle matrix, clickable workflow inventory
+- [`102-GITHUB_ACTIONS_AUTOMATION.md`](docs/102-GITHUB_ACTIONS_AUTOMATION.md) — WIF setup, GitHub secrets, bootstrapping architecture
+- [`201-ARCHITECTURE.md`](docs/201-ARCHITECTURE.md) — system architecture, config, repository layout
+- [`301-OBSERVABILITY.md`](docs/301-OBSERVABILITY.md) — OTel components, signal correlation, dashboards, all four obs modes
+- [`401-JENKINS.md`](docs/401-JENKINS.md) — Jenkins UI, plugins, JCasC, MCP
+- [`402-PIPELINES_AS_CODE.md`](docs/402-PIPELINES_AS_CODE.md) — seed job, pipeline stages, develop tier
+- [`501-PLATFORM_OPERATIONS.md`](docs/501-PLATFORM_OPERATIONS.md) — ArgoCD, Headlamp, Gateway API + IAP, chaos/QA
+- [`502-MICROSERVICES_GITOPS.md`](docs/502-MICROSERVICES_GITOPS.md) — Helm vs Kustomize, resource lifecycle design decisions
+- [`601-DEVSECOPS.md`](docs/601-DEVSECOPS.md) — Semgrep, CodeQL, Trivy, warnings-ng
+- [`901-LOCAL_DEVELOPMENT.md`](docs/901-LOCAL_DEVELOPMENT.md) — prerequisites, quick start, e2e test
+- [`902-TROUBLESHOOTING.md`](docs/902-TROUBLESHOOTING.md) — common issues
+
+Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-as-code.md`) redirect to the numbered equivalents.
 
 ## Repo layout
 
@@ -78,7 +91,8 @@ or an in-cluster OSS Grafana/Loki/Tempo/Prometheus stack. See
   order within each phase. `0.2.01-gke-provision.yml` and
   `9.1.01-gke-decommission.yml` are the CI equivalent of `test/e2e.sh`, split
   so the cluster can be left running between runs; all GKE-touching workflows
-  share `concurrency: group: jenkins-2026-gke`. See README.md "CI/CD pipelines"
+  share `concurrency: group: jenkins-2026-gke`. See
+  [`docs/101-GITHUB_ACTIONS_WORKFLOWS.md`](docs/101-GITHUB_ACTIONS_WORKFLOWS.md)
   for the full inventory, per-phase tables, and rationale.
 
 ## Conventions
