@@ -18,6 +18,10 @@ name: "0.1.04 AWS managed-grafana bootstrap"
 # module's outputs from the GCS state to build the aws-managed-credentials Secret.
 on:
   workflow_dispatch:
+  # Called by 0.2.01-gke-provision when observability_mode=managed-aws so the
+  # persistent AWS backend is always applied (idempotent) before the provision
+  # job reads its terraform outputs to build the aws-managed-credentials Secret.
+  workflow_call:
 
 permissions:
   contents: read
