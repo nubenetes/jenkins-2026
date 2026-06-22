@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.13.4] - 2026-06-22
+
+Fix the root cause of the CNPG webhook x509 error: the operator (v0.28.x on GKE)
+injects the leaf TLS serving cert into the `caBundle` instead of the CA cert,
+causing the kube-apiserver to reject every call to the CNPG admission webhook with
+`x509: certificate signed by unknown authority`.
+
+### Fixed
+
+- **`scripts/08.5-argocd.sh`** — Phase 4 added to the CNPG readiness block:
+  after the webhook caBundle is populated (Phase 3), the script now compares
+  its `subject` against the subject of `cnpg-ca-secret`. If they differ (leaf
+  cert instead of CA cert), it automatically patches all mutating and validating
+  webhook configurations to replace the caBundle with the correct CA cert from
+  `cnpg-ca-secret`. This makes the fix fully automatic on fresh cluster deploys.
+- **Phase 1** of the same block now discovers the CNPG deployment by label
+  (`app.kubernetes.io/name=cloudnative-pg`) instead of hardcoding the name
+  `cnpg-controller-manager` — the Helm chart names the deployment after the
+  release (`cnpg-operator-cloudnative-pg`), not after the container binary.
+
+### Root cause
+
+CloudNative-PG Helm chart `0.28.x` on GKE initialises the webhook secret in
+two separate steps: it first creates `cnpg-webhook-cert` (the serving cert),
+then separately injects the CA into the webhook configuration. On GKE the
+injection lands the serving cert (`CN=cnpg-webhook-service.cnpg-system.svc`)
+in `caBundle` instead of the CA cert (`CN=cnpg-ca-secret`). The kube-apiserver
+uses `caBundle` as the trust anchor when calling the webhook — if it contains
+the leaf cert, the CA of that cert is unknown, and every admission call is
+rejected. All CNPG resources (`Cluster`, `Pooler`, `ScheduledBackup`) stay
+`OutOfSync/Missing` in ArgoCD, and microservice Deployments fail to roll out
+(no database).
+
 ## [v0.13.3] - 2026-06-22
 
 Fix race condition: first Jenkins pipeline run failing at "GitOps Update"

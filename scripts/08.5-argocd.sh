@@ -263,15 +263,22 @@ kubectl apply -f "${J2026_ROOT_DIR}/argocd/cnpg-app.yaml"
 # Jenkins pipeline run fails with:
 #   "x509: certificate signed by unknown authority" on cnpg-webhook-service
 # Phase 1: wait for ArgoCD to create the CNPG namespace + deployment (chart sync).
+# The Helm chart names the deployment after the chart release — discover it
+# rather than hardcoding, since the name can vary by chart version.
 log_step "Waiting for CNPG controller deployment to appear (ArgoCD chart sync)"
 timeout 300 bash -c '
-  until kubectl get deployment cnpg-controller-manager -n cnpg-system >/dev/null 2>&1; do
+  until kubectl get deployment -n cnpg-system -l app.kubernetes.io/name=cloudnative-pg \
+        --no-headers 2>/dev/null | grep -q .; do
     sleep 5
   done
 ' || { log_error "CNPG deployment did not appear within 5m — check ArgoCD cnpg-operator app"; exit 1; }
 
+CNPG_DEPLOY=$(kubectl get deployment -n cnpg-system \
+  -l app.kubernetes.io/name=cloudnative-pg --no-headers -o custom-columns=NAME:.metadata.name | head -1)
+log_info "CNPG deployment name: ${CNPG_DEPLOY}"
+
 # Phase 2: wait for the deployment to be fully ready.
-wait_for_deployment "cnpg-controller-manager" "cnpg-system" "5m"
+wait_for_deployment "${CNPG_DEPLOY}" "cnpg-system" "5m"
 
 # Phase 3: wait for the controller to self-inject its CA into the webhook configs.
 # The cert injection happens ~10-20s after the pod becomes Ready.
@@ -283,6 +290,41 @@ timeout 120 bash -c '
     sleep 5
   done
 ' || log_warn "CNPG webhook caBundle not yet populated after 2m — first pipeline run may need a retry"
+
+# Phase 4: verify the caBundle contains the CA cert (self-signed), not the leaf
+# serving cert. A known issue with CNPG 0.28.x on GKE: the operator sometimes
+# injects the leaf cert instead of the CA cert, causing:
+#   "x509: certificate signed by unknown authority" on every ArgoCD sync.
+# Fix: replace the caBundle in all webhook configs with the CA from cnpg-ca-secret.
+log_step "Verifying CNPG webhook caBundle contains the CA cert (not the leaf cert)"
+CABUNDLE_SUBJECT=$(kubectl get mutatingwebhookconfiguration cnpg-mutating-webhook-configuration \
+  -o jsonpath='{.webhooks[0].clientConfig.caBundle}' | base64 -d \
+  | openssl x509 -noout -subject 2>/dev/null | sed 's/subject=//')
+CA_SECRET_SUBJECT=$(kubectl get secret cnpg-ca-secret -n cnpg-system \
+  -o jsonpath='{.data.ca\.crt}' | base64 -d \
+  | openssl x509 -noout -subject 2>/dev/null | sed 's/subject=//')
+
+if [[ "${CABUNDLE_SUBJECT}" != "${CA_SECRET_SUBJECT}" ]]; then
+  log_warn "caBundle has leaf cert (${CABUNDLE_SUBJECT}) instead of CA cert — patching all webhook configs"
+  CA_BUNDLE=$(kubectl get secret cnpg-ca-secret -n cnpg-system -o jsonpath='{.data.ca\.crt}')
+  MUTATING_COUNT=$(kubectl get mutatingwebhookconfiguration cnpg-mutating-webhook-configuration \
+    -o jsonpath='{range .webhooks[*]}x{end}' | wc -c)
+  VALIDATING_COUNT=$(kubectl get validatingwebhookconfiguration cnpg-validating-webhook-configuration \
+    -o jsonpath='{range .webhooks[*]}x{end}' | wc -c)
+  MUTATING_PATCH=$(python3 -c "
+import json; n=${MUTATING_COUNT}
+print(json.dumps([{'op':'replace','path':f'/webhooks/{i}/clientConfig/caBundle','value':'${CA_BUNDLE}'} for i in range(n)]))")
+  VALIDATING_PATCH=$(python3 -c "
+import json; n=${VALIDATING_COUNT}
+print(json.dumps([{'op':'replace','path':f'/webhooks/{i}/clientConfig/caBundle','value':'${CA_BUNDLE}'} for i in range(n)]))")
+  kubectl patch mutatingwebhookconfiguration cnpg-mutating-webhook-configuration \
+    --type=json -p="${MUTATING_PATCH}"
+  kubectl patch validatingwebhookconfiguration cnpg-validating-webhook-configuration \
+    --type=json -p="${VALIDATING_PATCH}"
+  log_info "caBundle patched with CA cert on all CNPG webhook configs."
+else
+  log_info "caBundle already contains the correct CA cert."
+fi
 log_info "CNPG webhook ready."
 
 log_step "Configuring External Secrets Operator via ArgoCD"
