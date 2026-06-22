@@ -126,13 +126,16 @@ provision_alerts() {
 }
 
 # ---------------------------------------------------------------------------
-# resolve_email  — reads GRAFANA_ALERT_EMAIL env var or falls back to
-# jenkins-credentials oidc-admin-email Secret. Prints the email to stdout.
+# resolve_email  — precedence (highest → lowest):
+#   1. GRAFANA_ALERT_EMAIL_<MODE>  e.g. GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD
+#   2. GRAFANA_ALERT_EMAIL         generic override
+#   3. jenkins-credentials.oidc-admin-email  cluster default
 # ---------------------------------------------------------------------------
 resolve_email() {
-  local email="${GRAFANA_ALERT_EMAIL:-$(kubectl get secret jenkins-credentials \
+  local mode_var="GRAFANA_ALERT_EMAIL_$(echo "${J2026_OBS_MODE}" | tr '[:lower:]-' '[:upper:]_')"
+  local email="${!mode_var:-${GRAFANA_ALERT_EMAIL:-$(kubectl get secret jenkins-credentials \
     -n "${J2026_JENKINS_NAMESPACE}" \
-    -o jsonpath='{.data.oidc-admin-email}' 2>/dev/null | base64 -d 2>/dev/null || true)}"
+    -o jsonpath='{.data.oidc-admin-email}' 2>/dev/null | base64 -d 2>/dev/null || true)}}"
   echo "${email}"
 }
 
