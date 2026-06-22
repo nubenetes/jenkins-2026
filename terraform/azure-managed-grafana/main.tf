@@ -21,6 +21,8 @@
 # docs/observability.md "managed-azure".
 # -----------------------------------------------------------------------------
 
+data "azurerm_client_config" "current" {}
+
 resource "azurerm_resource_group" "this" {
   name     = var.resource_group_name
   location = var.location
@@ -139,6 +141,15 @@ resource "azurerm_role_assignment" "grafana_rg_reader" {
   scope                = azurerm_resource_group.this.id
   role_definition_name = "Monitoring Reader"
   principal_id         = azurerm_dashboard_grafana.this.identity[0].principal_id
+}
+
+# Grant the CI/bootstrap principal (whoever runs this apply — the GitHub Actions
+# OIDC SP that also runs 0.2.01-gke-provision) Grafana Admin so it can publish
+# dashboards via `az grafana dashboard create` without storing any token.
+resource "azurerm_role_assignment" "grafana_ci_deployer" {
+  scope                = azurerm_dashboard_grafana.this.id
+  role_definition_name = "Grafana Admin"
+  principal_id         = data.azurerm_client_config.current.object_id
 }
 
 # Grant the named users/groups Grafana Admin on the instance.
