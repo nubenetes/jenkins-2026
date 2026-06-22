@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.13.5] - 2026-06-22
+
+Fix: Grafana dashboards empty after first Jenkins pipeline run because the
+OTel Java agent was not injected into the microservice pods (race condition
+between ArgoCD sync and the OTel Operator admission webhook).
+
+### Fixed
+
+- **`vars/microservicesDeploy.groovy`** — after the ArgoCD sync+wait succeeds,
+  a new step checks whether the freshly-deployed pod has `-javaagent` in
+  `JAVA_TOOL_OPTIONS`. If it doesn't (race condition: pod was admitted before
+  the `Instrumentation` CR or the webhook were ready), the step does a
+  `kubectl rollout restart` automatically and verifies the agent is injected
+  after the new pod comes up. Idempotent: skips the restart when the agent is
+  already present. Runs on every pipeline build so any future regression is
+  self-corrected.
+
+### Root cause
+
+The OTel Operator's pod-mutation webhook (`mpod.kb.io`) uses
+`failurePolicy: Ignore` by design. A pod admitted to the cluster before the
+`Instrumentation` CR existed or before the webhook was serving starts without
+the Java agent — `JAVA_TOOL_OPTIONS` is empty — and silently emits no
+metrics, traces or logs. The existing `scripts/ensure-otel-injection.sh`
+runs at the end of `scripts/up.sh` (cluster bootstrap), but microservice
+pods are only created for the first time by the Jenkins pipeline build, which
+runs after `up.sh` completes — so the guard ran too early and found no
+deployments to check.
+
 ## [v0.13.4] - 2026-06-22
 
 Fix the root cause of the CNPG webhook x509 error: the operator (v0.28.x on GKE)
