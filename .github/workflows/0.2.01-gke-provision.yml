@@ -249,7 +249,16 @@ jobs:
           # Fetch jenkins admin password from the secret created in the previous step
           ADMIN_PASS=$(kubectl get secret jenkins-credentials -n jenkins -o jsonpath='{.data.admin-password}' | base64 -d)
           export TF_VAR_jenkins_admin_password="${ADMIN_PASS}"
-          
+
+          # The grafana.instance provider's auth is the dashboards SA token created
+          # in THIS module, so on a fresh state (e.g. the first apply against a newly
+          # created stack) Terraform can't configure that provider for
+          # grafana_data_source.jenkins yet ("the Grafana client is required - set the
+          # auth and url provider attributes"). Create the SA token first in a targeted
+          # apply so its key is known, then apply the rest. Idempotent: a no-op once
+          # the token already exists in state.
+          terraform apply -auto-approve -input=false \
+            -target=grafana_cloud_stack_service_account_token.dashboards
           terraform apply -auto-approve -input=false
 
           otlp_endpoint="$(terraform output -raw otlp_endpoint)"
