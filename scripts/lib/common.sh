@@ -81,7 +81,8 @@ run_bg() {
 
 # wait_for_resource <type> <name> <namespace> [timeout]
 # Uses kubectl rollout status with a total timeout (security mechanism)
-# while showing progress updates.
+# while showing progress updates. On first timeout, dumps pod diagnostics
+# and attempts a rollout restart (self-heal) before giving up.
 wait_for_resource() {
   local type="$1" name="$2" ns="$3" timeout="${4:-15m}"
   log_step "Monitoring ${type}/${name} in ${ns} (timeout: ${timeout})..."
@@ -98,11 +99,38 @@ wait_for_resource() {
     ((count++))
   done
 
-  if ! kubectl rollout status "${type}/${name}" -n "${ns}" --timeout="${timeout}"; then
-    log_error "Rollout failed for ${type}/${name}."
-    return 1
+  if kubectl rollout status "${type}/${name}" -n "${ns}" --timeout="${timeout}"; then
+    log_info "OK: ${type}/${name} is ready."
+    return 0
   fi
-  log_info "OK: ${type}/${name} is ready."
+
+  # First rollout attempt timed out - dump diagnostics then self-heal.
+  log_error "Rollout timed out for ${type}/${name} - collecting diagnostics..."
+  log_info "--- pod list ---"
+  kubectl get pods -n "${ns}" -o wide 2>/dev/null | grep -F "${name}" || true
+  log_info "--- pod events (last 20) ---"
+  kubectl get events -n "${ns}" --sort-by='.lastTimestamp' 2>/dev/null \
+    | grep -F "${name}" | tail -20 || true
+  log_info "--- pod logs (tail 40, incl. previous containers) ---"
+  local pod
+  while IFS= read -r pod; do
+    [[ -z "${pod}" ]] && continue
+    log_info "  >> ${pod}"
+    kubectl logs --previous "${pod}" -n "${ns}" --tail=40 2>/dev/null \
+      || kubectl logs "${pod}" -n "${ns}" --tail=40 2>/dev/null \
+      || true
+  done < <(kubectl get pods -n "${ns}" --no-headers \
+    -o custom-columns=':metadata.name' 2>/dev/null | grep -F "${name}")
+
+  log_step "Self-heal: rolling restart of ${type}/${name}..."
+  kubectl rollout restart "${type}/${name}" -n "${ns}"
+  if kubectl rollout status "${type}/${name}" -n "${ns}" --timeout="${timeout}"; then
+    log_info "OK: ${type}/${name} is ready (after self-heal restart)."
+    return 0
+  fi
+
+  log_error "Rollout failed for ${type}/${name} after self-heal attempt."
+  return 1
 }
 
 # wait_for_deployment <name> <namespace> [timeout]
