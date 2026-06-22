@@ -133,10 +133,14 @@ Used by `0.1.04-aws-bootstrap`, `0.2.01-gke-provision`, `5.1.04-publish-aws-dash
 | `AWS_BOOTSTRAP_ROLE_ARN` | **yes** (managed-aws) | IAM role assumed during one-time bootstrap (`0.1.04`) |
 | `AWS_REGION` | **yes** (managed-aws) | AWS region for AMP, AMG, and CloudWatch, e.g. `eu-west-1` |
 | `GKE_OIDC_ISSUER_URL` | **yes** (managed-aws bootstrap) | GKE cluster OIDC issuer URL — used to configure the GKE→AWS OIDC trust |
+| `AWS_GRAFANA_ADMIN_SSO_EMAILS` | no (managed-aws) | Comma-separated emails of IAM Identity Center users granted Grafana Admin (`alice@example.com,bob@example.com`) |
 | `AWS_DASHBOARD_PUBLISH_ROLE_ARN` | **yes** (managed-aws publishing) | Least-privilege IAM role for dashboard publishing and alert provisioning |
 
 **`AWS_BOOTSTRAP_ROLE_ARN`**
 The IAM role with `AdministratorAccess` (or equivalent) created manually before running `0.1.04`. GitHub Actions assumes it via OIDC to run the one-time Terraform that creates AMP, AMG, and the collector's IAM role. Only used by `0.1.04` and `9.2.04`.
+
+**`AWS_GRAFANA_ADMIN_SSO_EMAILS`**
+Comma-separated list of email addresses of IAM Identity Center users to grant Grafana Admin on the AMG workspace (e.g. `alice@example.com,bob@example.com`). Passed as `TF_VAR_grafana_admin_sso_emails` in `0.1.04`; Terraform looks up each user in the Identity Store and calls `aws_grafana_role_association`. Optional — leave empty to manage access manually via the console. Users must already exist in IAM Identity Center before the bootstrap runs.
 
 **`GKE_OIDC_ISSUER_URL`**
 The OIDC issuer URL of the GKE cluster, e.g. `https://container.googleapis.com/v1/projects/…`. Used by `terraform/aws-managed-grafana` to create the OIDC provider that lets the in-cluster OTel collector assume its IAM role via web-identity token projection.
