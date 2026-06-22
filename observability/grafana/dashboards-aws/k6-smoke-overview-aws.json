@@ -101,7 +101,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Share of k6 checks (the check{} blocks in microservices-smoke.js, e.g. 'gateway-owners-list is healthy') that passed - checks_occurred_total / checks_total (k6's OTel output exports a Rate as the _occurred_total \"true\" count over the _total count). Anything below 100% means at least one check failed during the run.",
+      "description": "Share of k6 checks (the check{} blocks in microservices-smoke.js, e.g. 'gateway-owners-list is healthy') that passed - checks_total{condition=\"nonzero\"} / checks_total (k6 2.x's OTel output splits Rate metrics by a condition label: nonzero=pass, zero=fail). Anything below 100% means at least one check failed during the run.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -152,7 +152,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "(sum(increase(checks_occurred_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range])) or vector(0)) / sum(increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range]))",
+          "expr": "(sum(increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", condition=\"nonzero\"}[$__range])) or vector(0)) / sum(increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range]))",
           "instant": true,
           "legendFormat": "Checks pass rate",
           "refId": "A"
@@ -166,7 +166,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Share of HTTP requests k6 considered failed (http_req_failed_occurred_total / http_req_failed_total) - red at 5%, matching the http_req_failed: ['rate<0.05'] threshold in microservices-smoke.js.",
+      "description": "Share of HTTP requests k6 considered failed (http_req_failed_total{condition=\"nonzero\"} / http_req_failed_total) - red at 5%, matching the http_req_failed: ['rate<0.05'] threshold in microservices-smoke.js.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -217,7 +217,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "(sum(increase(http_req_failed_occurred_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range])) or vector(0)) / sum(increase(http_req_failed_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range]))",
+          "expr": "(sum(increase(http_req_failed_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", condition=\"nonzero\"}[$__range])) or vector(0)) / sum(increase(http_req_failed_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range]))",
           "instant": true,
           "legendFormat": "http_req_failed rate",
           "refId": "A"
@@ -438,7 +438,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "k6 checks broken down by check name and outcome - checks_occurred_total is the pass count, checks_total - checks_occurred_total is the fail count, for each check{} block in microservices-smoke.js.",
+      "description": "k6 checks broken down by check name and outcome - checks_total{condition=\"nonzero\"} is the pass count, checks_total{condition=\"zero\"} is the fail count, for each check{} block in microservices-smoke.js.",
       "fieldConfig": {
         "defaults": {
           "custom": {
@@ -520,20 +520,10 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "label_replace(sum by (check) (increase(checks_occurred_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range])), \"condition\", \"nonzero\", \"\", \"\")",
+          "expr": "sum by (check, condition) (increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range]))",
           "format": "table",
           "instant": true,
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "label_replace(clamp_min(sum by (check) (increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range])) - sum by (check) (increase(checks_occurred_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range])), 0), \"condition\", \"zero\", \"\", \"\")",
-          "format": "table",
-          "instant": true,
-          "refId": "B"
         }
       ],
       "title": "Checks: Pass vs Fail",
@@ -756,7 +746,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "1 - ((sum(increase(checks_occurred_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range])) or vector(0)) / sum(increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range])))",
+          "expr": "1 - ((sum(increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", condition=\"nonzero\"}[$__range])) or vector(0)) / sum(increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range])))",
           "legendFormat": "HTTP Error Rate",
           "refId": "A"
         }

@@ -26,13 +26,13 @@ jobs:
         uses: grafana/setup-k6-action@v1
         with:
           # Pin to the same k6 as the Jenkins microservices-k6-smoke job
-          # (grafana/k6:0.54.0). k6's OpenTelemetry output changed the schema of
-          # Rate metrics between versions: 0.54 emits checks_occurred_total /
-          # http_req_failed_occurred_total (what the k6 dashboard queries use),
-          # while newer k6 emits checks_total{condition="nonzero"}. Leaving this
-          # unpinned installs the latest k6, whose different schema leaves the
-          # dashboard's Checks Pass Rate / HTTP Error Rate panels reading 0 / 100%.
-          k6-version: '0.54.0'
+          # (grafana/k6:2.0.0) so both emit the same OpenTelemetry metric schema.
+          # k6's OTel output changed the Rate-metric schema between versions: 2.x
+          # emits checks_total{condition="nonzero"} / http_req_failed_total{condition=...}
+          # (what the k6 dashboards query); 0.54 emitted *_occurred_total. Keep this
+          # pinned and in lockstep with the Jenkins image - leaving it unpinned
+          # installs whatever is latest and can silently change the schema again.
+          k6-version: '2.0.0'
 
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
