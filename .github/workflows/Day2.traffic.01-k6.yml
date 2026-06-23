@@ -62,6 +62,9 @@ jobs:
           K6_OTEL_EXPORTER_PROTOCOL: http/protobuf
           K6_OTEL_SERVICE_NAME: k6-microservices-smoke
           OTEL_RESOURCE_ATTRIBUTES: service.name=k6-microservices-smoke,service.namespace=jenkins-2026,deployment.environment=stable
+          # Optional Grafana Cloud k6 (the k6-app) streaming; empty -> skipped.
+          K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
+          K6_CLOUD_PROJECT_ID: ${{ secrets.K6_CLOUD_PROJECT_ID }}
         run: |
           # Record start time in milliseconds
           START_TIME_MS=$(date +%s%3N)
@@ -86,9 +89,15 @@ jobs:
           # Pointing to the stable environment
           export TARGET_URL="https://microservices.jenkins2026.nubenetes.com"
           
+          # Also stream to Grafana Cloud k6 (the k6-app) when a token + project are set.
+          CLOUD_OUT=""
+          if [ -n "${K6_CLOUD_TOKEN:-}" ] && [ -n "${K6_CLOUD_PROJECT_ID:-}" ]; then
+            CLOUD_OUT="--out cloud"
+          fi
+
           set +e
           k6 run jenkins/pipelines/k6/microservices-smoke.js \
-            -o opentelemetry \
+            -o opentelemetry ${CLOUD_OUT} \
             --vus 2 \
             --duration ${{ github.event.inputs.duration || '15m' }} \
             --env TARGET_URL=$TARGET_URL \
@@ -122,6 +131,8 @@ jobs:
 
       - name: Show Results Summary
         if: always()
+        env:
+          K6_CLOUD_PROJECT_ID: ${{ secrets.K6_CLOUD_PROJECT_ID }}
         run: |
           echo "=============================================================================="
           echo "📊 K6 TRAFFIC SIMULATION SUMMARY"
@@ -145,4 +156,10 @@ jobs:
           echo ""
           echo "This dashboard correlates k6 client-side metrics with your Microservices"
           echo "backend telemetry (traces, logs, and metrics) for full observability."
+          if [ -n "${K6_CLOUD_PROJECT_ID:-}" ] && [ -n "${GRAFANA_BASE_URL:-}" ]; then
+            echo ""
+            echo "🏎️  VIEW IN GRAFANA CLOUD k6 (the k6-app)"
+            echo "------------------------------------------------------------------------------"
+            echo "${GRAFANA_BASE_URL}/a/k6-app/projects/${K6_CLOUD_PROJECT_ID}"
+          fi
           echo "=============================================================================="

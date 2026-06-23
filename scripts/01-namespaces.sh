@@ -214,6 +214,7 @@ if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
     -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
     --from-literal=token="${K6_CLOUD_TOKEN:-}" \
     --from-literal=project-id="${K6_CLOUD_PROJECT_ID:-}" \
+    --from-literal=grafana-base-url="${GRAFANA_BASE_URL:-}" \
     --dry-run=client -o yaml | kubectl apply -f -
 fi
 
