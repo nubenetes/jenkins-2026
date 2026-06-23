@@ -158,6 +158,7 @@ A self-contained proof of concept that deploys **Jenkins** on **Kubernetes**, co
 - [Google Login (OpenID Connect)](./docs/401-JENKINS.md#google-login-openid-connect)
 - [Plugins & JCasC Fragments](./docs/401-JENKINS.md#plugins--jcasc-fragments)
 - [Global Shared Library](./docs/401-JENKINS.md#global-shared-library)
+- [GitOps: why Jenkins is Helm-installed, and how it could move to ArgoCD](./docs/401-JENKINS.md#gitops-why-jenkins-is-helm-installed-and-how-it-could-move-to-argocd)
 
 **[402 · Pipelines as Code](./docs/402-PIPELINES_AS_CODE.md)**
 - [The Seed Job](./docs/402-PIPELINES_AS_CODE.md#the-seed-job)
@@ -173,7 +174,8 @@ A self-contained proof of concept that deploys **Jenkins** on **Kubernetes**, co
 
 **[403 · Tekton (alternative CI engine)](./docs/403-TEKTON.md)**
 - [Selecting the engine (`ci.engine`)](./docs/403-TEKTON.md#selecting-the-engine)
-- [What gets installed](./docs/403-TEKTON.md#what-gets-installed)
+- [What gets installed (GitOps via ArgoCD app-of-apps)](./docs/403-TEKTON.md#what-gets-installed-gitops-via-argocd-app-of-apps)
+- [Tooling: kustomize vs Helm (and why both)](./docs/403-TEKTON.md#tooling-kustomize-vs-helm-and-why-both)
 - [Dashboard on the internet, behind Google IAP](./docs/403-TEKTON.md#dashboard-on-the-internet-behind-google-iap)
 - [The pipeline, ported](./docs/403-TEKTON.md#the-pipeline-ported)
 
