@@ -11,14 +11,13 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 
 log_step "Creating namespaces"
-# Always-on namespaces. NOTE: the 'jenkins' namespace is ALWAYS created because it
-# hosts the shared GKE Gateway (scripts/09-gateway.sh) - the single public-ingress
-# entrypoint for EVERY app (tekton/headlamp/argocd/pgadmin/microservices), not just
-# Jenkins. (The Jenkins controller + jenkins-credentials Secret are created further
-# below only when ci.engine=jenkins.) The tekton-* namespaces are created only when
-# ci.engine=tekton. Do NOT delete the jenkins namespace on a tekton cluster: it
-# would cascade-delete the Gateway and take down all public access.
-for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_ARGOCD_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}"; do
+# Always-on, engine-neutral namespaces. The shared GKE Gateway (the single
+# public-ingress entrypoint for EVERY app) lives in its OWN namespace
+# (${J2026_GATEWAY_NAMESPACE}, default 'platform-ingress'), decoupled from any CI
+# engine - so switching jenkins<->tekton never touches the ingress, and deleting an
+# engine's namespace can't take the Gateway down. The 'jenkins' namespace is created
+# below only when ci.engine=jenkins; the tekton-* namespaces only when ci.engine=tekton.
+for ns in "${J2026_GATEWAY_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_ARGOCD_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}"; do
   kubectl_apply_namespace "${ns}"
 done
 
@@ -34,12 +33,12 @@ if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
   done
 fi
 
-# jenkins-credentials Secret (+ the Jenkins controller it feeds) ONLY when
-# ci.engine=jenkins - in tekton mode the registry/git/k6 creds live in the
-# tekton-ci Secrets instead. The jenkins NAMESPACE itself is always created above
-# (it hosts the shared Gateway), so a tekton cluster has an (otherwise empty)
-# jenkins namespace by design - that's intentional, not a stray.
+# Jenkins namespace + jenkins-credentials Secret ONLY when ci.engine=jenkins (the
+# Jenkins controller is the sole consumer; the shared Gateway now lives in its own
+# ${J2026_GATEWAY_NAMESPACE} namespace, so a tekton cluster gets NO jenkins namespace
+# at all - and deleting it on a jenkins cluster no longer affects the Gateway).
 if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
+kubectl_apply_namespace "${J2026_JENKINS_NAMESPACE}"
 log_step "Ensuring '${J2026_JENKINS_CREDENTIALS_SECRET}' Secret in ${J2026_JENKINS_NAMESPACE}"
 if kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
   log_info "Secret already exists - leaving it untouched."
@@ -137,14 +136,18 @@ else
   # the same client ID/secret must exist in each backend's namespace. The OSS
   # Grafana (observability.mode=oss) is IAP-protected too, so its namespace
   # needs the secret as well - only in oss mode, where Grafana runs in-cluster.
-  iap_namespaces=("${J2026_JENKINS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}")
+  iap_namespaces=("${J2026_HEADLAMP_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}")
   if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
     iap_namespaces+=("${J2026_GRAFANA_OSS_NAMESPACE}")
   fi
-  # The Tekton Dashboard (ci.engine=tekton) is IAP-protected too - its
-  # GCPBackendPolicy lives in the Tekton control-plane namespace.
+  # The IAP-protected CI backend is engine-specific: the Tekton Dashboard
+  # (ci.engine=tekton) or Jenkins (ci.engine=jenkins) - its GCPBackendPolicy lives
+  # in that engine's namespace, so only that one gets the IAP secret (the jenkins
+  # namespace doesn't exist in tekton mode).
   if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
     iap_namespaces+=("${J2026_TEKTON_NAMESPACE}")
+  else
+    iap_namespaces+=("${J2026_JENKINS_NAMESPACE}")
   fi
   for ns in "${iap_namespaces[@]}"; do
     if kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" >/dev/null 2>&1; then
@@ -232,6 +235,9 @@ if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
     --dry-run=client -o yaml | kubectl apply -f -
 fi
 
+# Jenkins SA 'edit' binding only when ci.engine=jenkins (no jenkins SA/namespace in
+# tekton mode; the tekton-ci SA gets its own edit binding via tekton/rbac).
+if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
 log_step "Granting Jenkins ServiceAccount 'edit' in microservices namespaces"
 for ns in "${J2026_MICROSERVICES_NS_STABLE}"; do
   kubectl create rolebinding jenkins-edit \
@@ -240,6 +246,7 @@ for ns in "${J2026_MICROSERVICES_NS_STABLE}"; do
     -n "${ns}" \
     --dry-run=client -o yaml | kubectl apply -f -
 done
+fi
 
 log_step "Granting pgAdmin ServiceAccount read access to Postgres user secrets in microservices namespace"
 # Create a Role that only allows reading the specific database user secrets
@@ -300,7 +307,8 @@ done
 
 log_step "Applying ResourceQuotas to limit scaling and costs"
 
-# 1. Jenkins Namespace Quota
+# 1. Jenkins Namespace Quota (only when ci.engine=jenkins - no jenkins ns otherwise)
+if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
 kubectl apply -f - -n "${J2026_JENKINS_NAMESPACE}" <<EOF
 apiVersion: v1
 kind: ResourceQuota
@@ -313,6 +321,7 @@ spec:
     limits.cpu: "60.0"
     limits.memory: 64.0Gi
 EOF
+fi
 
 # 2. Observability Namespace Quota
 # The in-cluster footprint is far larger in observability.mode=oss (the whole
@@ -386,7 +395,9 @@ EOF
 
 log_step "Applying LimitRanges to supply default requests/limits"
 
-for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_ARGOCD_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}"; do
+limitrange_ns=("${J2026_OBS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_ARGOCD_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}")
+[[ "${J2026_CI_ENGINE}" == "jenkins" ]] && limitrange_ns+=("${J2026_JENKINS_NAMESPACE}")
+for ns in "${limitrange_ns[@]}"; do
   kubectl apply -f - -n "${ns}" <<EOF
 apiVersion: v1
 kind: LimitRange
