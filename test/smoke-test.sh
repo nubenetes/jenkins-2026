@@ -37,8 +37,42 @@ if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
       bash -c "kubectl -n '${TEKTON_NS}' wait --for=condition=Available deploy/'${deploy}' --timeout=10s"
   done
 
-  check "Tekton Dashboard responds (HTTP 200)" \
-    bash -c "[[ \$(kubectl -n '${TEKTON_NS}' run smoke-tkn-dash --rm -i --restart=Never --image=curlimages/curl:8.10.1 --command -- curl -s -o /dev/null -w '%{http_code}' --max-time 30 http://${J2026_TEKTON_DASHBOARD_SERVICE}.${TEKTON_NS}.svc.cluster.local:${J2026_TEKTON_DASHBOARD_PORT}/) == 200 ]]"
+  # Dashboard HTTP reachability via its Service. The tekton-pipelines namespace
+  # enforces the 'restricted' PodSecurity standard, so the ephemeral curl pod MUST
+  # carry a compliant securityContext or admission rejects it (no securityContext ->
+  # Forbidden -> no HTTP code -> false FAIL). Hit /readiness (the dashboard's own
+  # readiness endpoint, guaranteed 200 when the pod is Ready). Use run->wait->logs
+  # rather than 'run -i' (the interactive attach raced a fast-completing pod).
+  dash_url="http://${J2026_TEKTON_DASHBOARD_SERVICE}.${TEKTON_NS}.svc.cluster.local:${J2026_TEKTON_DASHBOARD_PORT}/readiness"
+  kubectl -n "${TEKTON_NS}" delete pod smoke-tkn-dash --ignore-not-found >/dev/null 2>&1 || true
+  kubectl -n "${TEKTON_NS}" run smoke-tkn-dash --restart=Never --image=curlimages/curl:8.10.1 \
+    --overrides='{
+      "spec": {
+        "securityContext": {"runAsNonRoot": true, "seccompProfile": {"type": "RuntimeDefault"}},
+        "containers": [{
+          "name": "smoke-tkn-dash",
+          "image": "curlimages/curl:8.10.1",
+          "command": ["curl","-s","-o","/dev/null","-w","%{http_code}","--max-time","20","'"${dash_url}"'"],
+          "securityContext": {
+            "allowPrivilegeEscalation": false, "runAsNonRoot": true, "runAsUser": 100,
+            "capabilities": {"drop": ["ALL"]}, "seccompProfile": {"type": "RuntimeDefault"}
+          }
+        }]
+      }
+    }' >/dev/null 2>&1
+  if kubectl -n "${TEKTON_NS}" wait --for=jsonpath='{.status.phase}'=Succeeded \
+       pod/smoke-tkn-dash --timeout=90s >/dev/null 2>&1; then
+    DASH_CODE="$(kubectl -n "${TEKTON_NS}" logs smoke-tkn-dash 2>/dev/null | tr -dc '0-9')"
+  else
+    DASH_CODE=""
+  fi
+  kubectl -n "${TEKTON_NS}" delete pod smoke-tkn-dash --ignore-not-found >/dev/null 2>&1 || true
+  if [[ "${DASH_CODE}" == "200" ]]; then
+    log_info "PASS - Tekton Dashboard responds (HTTP 200 on /readiness)"
+  else
+    log_error "FAIL - Tekton Dashboard HTTP check (got '${DASH_CODE:-no-response}')"
+    FAIL=1
+  fi
 
   log_step "Tekton pipelines-as-code"
   check "microservices-pipeline Pipeline exists" \
