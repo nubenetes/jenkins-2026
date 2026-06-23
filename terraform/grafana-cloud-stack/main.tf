@@ -20,8 +20,8 @@ resource "grafana_cloud_stack" "this" {
   description = "jenkins-2026 PoC - Jenkins + Microservices OpenTelemetry traces/metrics/logs"
   region_slug = var.region_slug
 
-  # Ephemeral by design: created by Day0.infra.02-grafana-cloud-bootstrap, torn down by
-  # Decom.infra.02-grafana-cloud-decommission. The provider defaults delete_protection
+  # Ephemeral by design: created by Day0.infra.02-grafana-cloud, torn down by
+  # Decom.infra.02-grafana-cloud. The provider defaults delete_protection
   # to `true`, which makes the decommission `terraform destroy` fail with a
   # "409 Conflict ... has deletion protection enabled". Force it off so the
   # stack is freely destroyable; the Grafana Cloud org (free tier) is unaffected

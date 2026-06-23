@@ -144,7 +144,7 @@ resource "azurerm_role_assignment" "grafana_rg_reader" {
 }
 
 # Grant the CI/bootstrap principal (whoever runs this apply — the GitHub Actions
-# OIDC SP that also runs Day1.cluster.01-gke-provision) Grafana Admin so it can publish
+# OIDC SP that also runs Day1.cluster.01-gke) Grafana Admin so it can publish
 # dashboards via `az grafana dashboard create` without storing any token.
 resource "azurerm_role_assignment" "grafana_ci_deployer" {
   scope                = azurerm_dashboard_grafana.this.id

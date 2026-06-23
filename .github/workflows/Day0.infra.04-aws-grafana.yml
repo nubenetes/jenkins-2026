@@ -1,4 +1,4 @@
-name: "Day0.infra.04 AWS managed-grafana bootstrap"
+name: "Day0.infra.04 AWS managed-grafana"
 
 # Manually-triggered, one-time setup step: applies terraform/aws-managed-grafana
 # to create (or, on re-runs, confirm) the persistent AWS backend that
@@ -18,7 +18,7 @@ name: "Day0.infra.04 AWS managed-grafana bootstrap"
 # module's outputs from the GCS state to build the aws-managed-credentials Secret.
 on:
   workflow_dispatch:
-  # Called by Day1.cluster.01-gke-provision when observability_mode=managed-aws so the
+  # Called by Day1.cluster.01-gke when observability_mode=managed-aws so the
   # persistent AWS backend is always applied (idempotent) before the provision
   # job reads its terraform outputs to build the aws-managed-credentials Secret.
   workflow_call:
@@ -108,7 +108,7 @@ jobs:
             echo
             echo "- Grafana endpoint: \`$(terraform output -raw grafana_endpoint 2>/dev/null || echo 'n/a')\`"
             echo
-            echo "Day1.cluster.01 GKE provision (observability_mode: managed-aws) reads this module's"
+            echo "Day1.cluster.01 GKE (observability_mode: managed-aws) reads this module's"
             echo "outputs from the GCS state to build the aws-managed-credentials Secret."
             echo "Grant your AWS_SSO users Admin on the Grafana workspace in IAM Identity Center."
           } >> "${GITHUB_STEP_SUMMARY}"
