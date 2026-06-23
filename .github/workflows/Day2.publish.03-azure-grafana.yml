@@ -1,16 +1,16 @@
-name: "5.1.03 Publish Azure dashboards"
+name: "Day2.publish.03 Publish Azure dashboards"
 
 # Manually-triggered: (re)publishes the managed-azure Grafana dashboard variants
 # (observability/grafana/dashboards-azure/) to Azure Managed Grafana WITHOUT
 # re-provisioning the GKE cluster or touching the rest of the stack.
 #
 # Use this to propagate a dashboard JSON change to Azure Managed Grafana on its
-# own - far lighter than "0.2.01 GKE provision". Azure Managed Grafana is
-# PERSISTENT (one-time bootstrap by "0.1.03 Azure managed-grafana bootstrap"), so this workflow
+# own - far lighter than "Day1.cluster.01 GKE provision". Azure Managed Grafana is
+# PERSISTENT (one-time bootstrap by "Day0.infra.03 Azure managed-grafana bootstrap"), so this workflow
 # needs NO running cluster: it authenticates to Azure via GitHub OIDC (the OIDC
 # SP holds Grafana Admin on the instance via terraform/azure-managed-grafana)
 # and discovers the Grafana instance via az grafana list - no terraform state
-# read required, unlike the managed-aws equivalent (5.1.04).
+# read required, unlike the managed-aws equivalent (Day2.publish.04).
 on:
   workflow_dispatch:
     inputs:
@@ -31,7 +31,7 @@ concurrency:
 
 env:
   # Surfaced as env so steps can skip cleanly (secrets can't be used in `if:`)
-  # when the OIDC SP hasn't been set up yet (re-run 0.1.03 + set the secrets).
+  # when the OIDC SP hasn't been set up yet (re-run Day0.infra.03 + set the secrets).
   AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
 
 jobs:
@@ -45,7 +45,7 @@ jobs:
           ref: ${{ inputs.git_ref || github.ref }}
 
       # GitHub OIDC -> Azure: the OIDC SP was granted Grafana Admin on the
-      # Azure Managed Grafana instance by terraform/azure-managed-grafana (0.1.03).
+      # Azure Managed Grafana instance by terraform/azure-managed-grafana (Day0.infra.03).
       # No access keys stored anywhere.
       - name: Azure login
         if: ${{ env.AZURE_CLIENT_ID != '' }}
@@ -87,7 +87,7 @@ jobs:
       - name: Skipped (no AZURE_CLIENT_ID)
         if: ${{ env.AZURE_CLIENT_ID == '' }}
         run: |
-          echo "::warning::AZURE_CLIENT_ID not set - skipping. Re-run '0.1.03 Azure managed-grafana bootstrap' and set the AZURE_CLIENT_ID/AZURE_TENANT_ID/AZURE_SUBSCRIPTION_ID secrets first (see README \"GitHub Actions automation\")."
+          echo "::warning::AZURE_CLIENT_ID not set - skipping. Re-run 'Day0.infra.03 Azure managed-grafana bootstrap' and set the AZURE_CLIENT_ID/AZURE_TENANT_ID/AZURE_SUBSCRIPTION_ID secrets first (see README \"GitHub Actions automation\")."
 
       - name: Summary
         if: always()

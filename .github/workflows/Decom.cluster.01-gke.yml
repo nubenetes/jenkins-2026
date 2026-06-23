@@ -1,6 +1,6 @@
-name: "9.1.01 GKE decommission"
+name: "Decom.cluster.01 GKE decommission"
 
-# Manually-triggered: tears down everything created by the "0.2.01 GKE
+# Manually-triggered: tears down everything created by the "Day1.cluster.01 GKE
 # provision" workflow - scripts/down.sh (Helm releases, namespaces) then
 # `terraform destroy` (GKE cluster, node pool, VPC). Uses the same GCS
 # Terraform state as that workflow, so it finds the cluster without any

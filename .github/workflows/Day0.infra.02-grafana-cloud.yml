@@ -1,20 +1,20 @@
-name: "0.1.02 Grafana Cloud bootstrap"
+name: "Day0.infra.02 Grafana Cloud bootstrap"
 
 # Applies terraform/grafana-cloud-stack to create the Grafana Cloud stack that
 # observability_mode: grafana-cloud sends OpenTelemetry data to. The stack slug
 # is GENERATED (random suffix, persisted in state), so re-applying is a no-op and
-# a destroy+recreate (9.2.02 -> 0.1.02) never collides with Grafana Cloud's
+# a destroy+recreate (Decom.infra.02 -> Day0.infra.02) never collides with Grafana Cloud's
 # reserved-slug cooldown. State is remote (GCS, prefix
 # "jenkins-2026/grafana-cloud-stack", same bucket as terraform/gke). The stack is
-# ephemeral (torn down by 9.2.02); only the Grafana Cloud org/free tier persists.
+# ephemeral (torn down by Decom.infra.02); only the Grafana Cloud org/free tier persists.
 #
 # Requires only the GRAFANA_CLOUD_API_TOKEN secret (the slug is no longer an
-# input - it is an output read by 0.2.01). See README.md "GitHub Actions
+# input - it is an output read by Day1.cluster.01). See README.md "GitHub Actions
 # automation".
 #
-# 0.2.01-gke-provision.yml calls this via workflow_call when
+# Day1.cluster.01-gke.yml calls this via workflow_call when
 # observability_mode=grafana-cloud so the persistent stack is always confirmed
-# before 0.2.01 mints scoped tokens against it.
+# before Day1.cluster.01 mints scoped tokens against it.
 on:
   workflow_dispatch:
   workflow_call:
@@ -92,5 +92,5 @@ jobs:
             echo "- Slug: \`$(terraform output -raw stack_slug 2>/dev/null || echo 'n/a')\` (generated)"
             echo "- Grafana URL: \`$(terraform output -raw grafana_url 2>/dev/null || echo 'n/a')\`"
             echo
-            echo "0.2.01 GKE provision (observability_mode: grafana-cloud) reads this slug from the module's state and mints scoped tokens against the stack via terraform/grafana-cloud-token."
+            echo "Day1.cluster.01 GKE provision (observability_mode: grafana-cloud) reads this slug from the module's state and mints scoped tokens against the stack via terraform/grafana-cloud-token."
           } >> "${GITHUB_STEP_SUMMARY}"

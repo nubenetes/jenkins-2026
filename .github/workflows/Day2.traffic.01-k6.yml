@@ -1,4 +1,4 @@
-name: "5.9.01 Continuous Traffic Simulation"
+name: "Day2.traffic.01 Continuous Traffic Simulation"
 
 on:
   workflow_dispatch:
@@ -67,11 +67,11 @@ jobs:
           START_TIME_MS=$(date +%s%3N)
           
           # OTLP credentials + Grafana URL come from the in-cluster
-          # grafana-cloud-credentials Secret (provisioned by 0.2.01). The stack
+          # grafana-cloud-credentials Secret (provisioned by Day1.cluster.01). The stack
           # slug/endpoint are generated per deploy, so there is no static fallback -
           # the cluster must be reachable.
           if ! kubectl get secret grafana-cloud-credentials -n observability >/dev/null 2>&1; then
-            echo "::error::grafana-cloud-credentials Secret not found - deploy the cluster (0.2.01, observability_mode=grafana-cloud) first."
+            echo "::error::grafana-cloud-credentials Secret not found - deploy the cluster (Day1.cluster.01, observability_mode=grafana-cloud) first."
             exit 1
           fi
           export K6_OTEL_HTTP_EXPORTER_ENDPOINT=$(kubectl get secret grafana-cloud-credentials -n observability -o jsonpath='{.data.GRAFANA_CLOUD_OTLP_ENDPOINT}' | base64 -d)

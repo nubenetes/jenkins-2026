@@ -1,29 +1,17 @@
-name: "0.1.03 Azure managed-grafana bootstrap"
+name: "Decom.infra.03 Azure managed-grafana decommission"
 
-# Manually-triggered, one-time setup step: applies terraform/azure-managed-grafana
-# to create (or, on re-runs, confirm) the persistent Azure backend that
-# observability_mode: managed-azure sends OpenTelemetry data to - Azure Managed
-# Grafana, the Azure Monitor workspace (+ DCE/DCR for managed Prometheus),
-# Application Insights + Log Analytics, and the Entra service principal the
-# collector authenticates with. State is remote (GCS, prefix
-# "jenkins-2026/azure-managed-grafana", same bucket as terraform/gke), so this
-# is safe to re-run - it's a no-op once the resources exist.
+# Manually-triggered setup teardown: destroys terraform/azure-managed-grafana,
+# removing the persistent Azure backend (Azure Managed Grafana, Azure Monitor
+# workspace + DCE/DCR, Application Insights + Log Analytics, the collector's
+# Entra service principal, and the role assignments) that
+# observability_mode: managed-azure uses. Run only when tearing down the Azure
+# integration permanently.
 #
-# Auth: GitHub OIDC -> Azure (no stored client secret; the federated credential
-# trusts environment:azure-bootstrap), and GitHub WIF -> GCP for the GCS state
-# backend. All sensitive inputs are GitHub secrets injected as TF_VAR_* / ARM_*
-# here - nothing sensitive lives in the repo.
-#
-# Required secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID,
-# AZURE_GRAFANA_ADMIN_OBJECT_IDS (comma-separated Entra object IDs granted
-# Grafana Admin), plus the GCP_*/TF_STATE_BUCKET state-backend secrets.
-#
-# 0.2.01-gke-provision.yml calls this via workflow_call when
-# observability_mode=managed-azure so the persistent Azure backend is always
-# confirmed before 0.2.01 reads its outputs to build the in-cluster Secret.
+# Same auth as Day0.infra.03-azure-grafana.yml: GitHub OIDC -> Azure (no stored
+# client secret) + GitHub WIF -> GCP for the GCS state backend. Gated behind
+# the azure-bootstrap Environment's required reviewer.
 on:
   workflow_dispatch:
-  workflow_call:
 
 permissions:
   contents: read
@@ -33,14 +21,21 @@ env:
   TF_VERSION: "1.15.6"
 
 jobs:
-  bootstrap:
+  decommission:
     runs-on: ubuntu-latest
-    # Must match the federated credential subject
-    # repo:<owner>/<repo>:environment:azure-bootstrap on the Entra app.
+    # Required-reviewer gate + matches the Entra federated credential subject
+    # repo:<owner>/<repo>:environment:azure-bootstrap.
     environment: azure-bootstrap
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Azure login (OIDC, for the pre-destroy cleanup)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Authenticate to GCP (Terraform state backend)
         uses: google-github-actions/auth@v2
@@ -90,10 +85,24 @@ jobs:
             }
           done
 
-      - name: Terraform apply (create/confirm persistent Azure backend)
+      - name: Delete App Insights auto-created resources (unblock RG deletion)
+        run: |
+          # Application Insights auto-creates a "Failure Anomalies" smart
+          # detector alert rule + a "Smart Detection" action group that Terraform
+          # doesn't manage; they linger in the resource group and make
+          # azurerm_resource_group deletion fail ("still contains Resources").
+          # Delete them first. Idempotent - no-op if the RG/resources are gone.
+          rg="jenkins-2026-observability"
+          if az group exists -n "${rg}" | grep -q true; then
+            for t in microsoft.alertsmanagement/smartDetectorAlertRules microsoft.insights/actiongroups; do
+              az resource list -g "${rg}" --resource-type "${t}" --query "[].id" -o tsv \
+                | while read -r id; do [ -n "$id" ] && az resource delete --ids "$id" --only-show-errors || true; done
+            done
+          fi
+
+      - name: Terraform destroy (destroy persistent Azure backend)
         working-directory: terraform/azure-managed-grafana
         env:
-          # GitHub OIDC -> Azure (no client secret stored).
           ARM_USE_OIDC: "true"
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
@@ -101,17 +110,9 @@ jobs:
           TF_VAR_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           TF_VAR_tenant_id: ${{ secrets.AZURE_TENANT_ID }}
           TF_VAR_grafana_admin_object_ids: ${{ steps.admins.outputs.json }}
-        run: terraform apply -auto-approve -input=false
+        run: terraform destroy -auto-approve -input=false
 
       - name: Summary
         if: always()
-        working-directory: terraform/azure-managed-grafana
         run: |
-          {
-            echo "### Azure managed-grafana backend"
-            echo
-            echo "- Grafana endpoint: \`$(terraform output -raw grafana_endpoint 2>/dev/null || echo 'n/a')\`"
-            echo
-            echo "0.2.01 GKE provision (observability_mode: managed-azure) reads this module's"
-            echo "outputs from the GCS state to build the azure-monitor-credentials Secret."
-          } >> "${GITHUB_STEP_SUMMARY}"
+          echo "### Azure managed-grafana backend decommissioned" >> "${GITHUB_STEP_SUMMARY}"
