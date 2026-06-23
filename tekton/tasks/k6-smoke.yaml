@@ -51,10 +51,31 @@ spec:
           value: tekton-pipeline-k6-smoke
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           value: $(params.otlp-endpoint)
+        # Optional Grafana Cloud k6 (the k6-app) streaming. Both come from the
+        # optional 'k6-cloud' Secret (created by 01-namespaces.sh only when
+        # K6_CLOUD_TOKEN is set); empty -> the cloud output is skipped.
+        - name: K6_CLOUD_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: k6-cloud
+              key: token
+              optional: true
+        - name: K6_CLOUD_PROJECT_ID
+          valueFrom:
+            secretKeyRef:
+              name: k6-cloud
+              key: project-id
+              optional: true
       script: |
         #!/bin/sh
         set -eux
         cd "$(workspaces.source.path)/k6-infra"
-        k6 run --vus "${K6_VUS}" --iterations "${K6_ITERATIONS}" \
+        # Stream results to Grafana Cloud k6 (visible under /a/k6-app) when a token
+        # + project id are present; otherwise just run locally with the summary.
+        CLOUD_OUT=""
+        if [ -n "${K6_CLOUD_TOKEN:-}" ] && [ -n "${K6_CLOUD_PROJECT_ID:-}" ]; then
+          CLOUD_OUT="--out cloud"
+        fi
+        k6 run ${CLOUD_OUT} --vus "${K6_VUS}" --iterations "${K6_ITERATIONS}" \
           --summary-export="$(workspaces.source.path)/k6-summary.json" \
           jenkins/pipelines/k6/microservices-smoke.js
