@@ -289,10 +289,56 @@ kubectl create -f k6-run.yaml                 # start it
 kubectl get pipelinerun -n tekton-ci -w       # watch status
 ```
 
-(For `microservices-pipeline` the canonical, complete param set is what
-`06-tekton-pipelines.sh` generates / what a fork's `.tekton/<svc>.yaml` carries —
-copy one of those and tweak. It also needs the `dockerconfig` workspace from the
-`tekton-registry` Secret.)
+**`microservices-pipeline` (the full CI) requires ALL of these params** — they
+have **no defaults**, so a run that omits any fails with `pipelineRun missing
+parameters: [service-name git-repo-url target-namespace port health-path image
+registry-host]`. It also needs the **`dockerconfig`** workspace (the
+`tekton-registry` Secret). Complete example for `gateway`:
+
+```yaml
+# gateway-run.yaml
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: gateway-manual-
+  namespace: tekton-ci
+spec:
+  taskRunTemplate:
+    serviceAccountName: tekton-ci
+  pipelineRef:
+    name: microservices-pipeline
+  params:
+    - {name: service-name,  value: gateway}
+    - {name: service-type,  value: java}
+    - {name: git-repo-url,  value: https://github.com/nubenetes/jhipster-sample-app-gateway.git}
+    - {name: git-branch,    value: main}
+    - {name: target-namespace, value: microservices}
+    - {name: env-name,      value: stable}
+    - {name: port,          value: "8080"}
+    - {name: health-path,   value: /management/health}
+    - {name: image,         value: ghcr.io/nubenetes/jenkins-2026-microservices/gateway:main}
+    - {name: registry-host, value: ghcr.io}
+    - {name: otlp-endpoint, value: "http://otel-collector-gateway.observability.svc.cluster.local:4317"}
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources: {requests: {storage: 4Gi}}
+    - name: dockerconfig
+      secret:
+        secretName: tekton-registry
+        items:
+          - {key: .dockerconfigjson, path: config.json}
+```
+
+Param values come from [`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml)
+(per-service `name`/`type`/`repoUrl`/`port`/`healthPath`) and `microservices.registry`
+in [`config/config.yaml`](../config/config.yaml) (`image` = `<registry>/<name>:<branch>`,
+`registry-host` = the registry host). For `jhipstersamplemicroservice` change
+`service-name`, `git-repo-url` (…`-microservice.git`), `port: "8081"`, and `image`
+accordingly. The easiest hands-off alternative is just to **push to the fork** —
+PaC then fills every param from the `.tekton/<svc>.yaml` template automatically.
 
 ### Option C — `tkn` CLI
 
