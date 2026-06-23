@@ -80,7 +80,7 @@ tekton:
   # live in argocd/tekton/components/*/kustomization.yaml (the kustomize remote
   # resource URLs ArgoCD syncs) - keep these in sync when bumping.
   versions:
-    pipelines: v1.13.1
+    pipelines: v1.9.4   # vendored as argocd/tekton/components/pipelines/release.yaml (GitHub release; not on GCS)
     triggers: v0.31.0
     dashboard: v0.52.0
   # Dashboard Service (created by the dashboard release-full.yaml).

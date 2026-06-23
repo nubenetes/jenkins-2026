@@ -1,14 +1,19 @@
-# Tekton Pipelines, installed via ArgoCD by pulling the pinned upstream release
-# as a kustomize remote resource (Tekton has no official Helm chart).
+# Tekton Pipelines, installed via ArgoCD.
 #
-# NOTE: no config-tracing patch here. The v1.13.1 release.yaml ships no
-# `config-tracing` ConfigMap, so a strategic-merge patch on it failed the
-# kustomize build (-> the pipelines Application never deployed the controller/
-# webhook). Enabling Tekton controller OpenTelemetry tracing is a follow-up
-# (it would add config-tracing as a NEW resource, not a patch).
+# The release manifest is VENDORED (release.yaml in this dir) rather than pulled
+# as a kustomize remote resource, because Tekton stopped publishing v1.7+ to the
+# GCS bucket (storage.googleapis.com/tekton-releases/pipeline/previous/ tops out
+# at v1.6.0); v1.9.x ships only as a GitHub release asset, and a github.com URL
+# is misclassified by kustomize as a git repo. Vendoring the file is reliable
+# (local file, no remote fetch) and fully auditable.
 #
-# Pinned version - keep in sync with config/config.yaml ci.tekton.versions.pipelines.
+# Source: https://github.com/tektoncd/pipeline/releases/download/v1.9.4/release.yaml
+# (v1.9.4 = latest patch of the v1.9 LTS line). To bump: re-download release.yaml
+# from the matching tag and update config/config.yaml ci.tekton.versions.pipelines.
+#
+# (Tekton controller OpenTelemetry tracing is a follow-up: release.yaml ships a
+# config-tracing ConfigMap that could be patched here to point at the collector.)
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - https://storage.googleapis.com/tekton-releases/pipeline/previous/v1.13.1/release.yaml
+  - release.yaml

@@ -98,7 +98,7 @@ export J2026_JENKINS_OIDC_ADMIN_EMAIL
 
 export J2026_TEKTON_NAMESPACE="$(yq_get '.tekton.namespace' 'tekton-pipelines')"
 export J2026_TEKTON_PIPELINE_NAMESPACE="$(yq_get '.tekton.pipelineNamespace' 'tekton-ci')"
-export J2026_TEKTON_VERSION_PIPELINES="$(yq_get '.tekton.versions.pipelines' 'v1.13.1')"
+export J2026_TEKTON_VERSION_PIPELINES="$(yq_get '.tekton.versions.pipelines' 'v1.9.4')"
 export J2026_TEKTON_VERSION_TRIGGERS="$(yq_get '.tekton.versions.triggers' 'v0.31.0')"
 export J2026_TEKTON_VERSION_DASHBOARD="$(yq_get '.tekton.versions.dashboard' 'v0.52.0')"
 export J2026_TEKTON_DASHBOARD_MODE="$(yq_get '.tekton.dashboard.mode' 'full')"
