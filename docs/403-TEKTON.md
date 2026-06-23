@@ -108,32 +108,39 @@ directions a clean install of the *selected* engine never deploys the other
 
 ### Namespace layout
 
-Most namespaces are created **only for the active engine** (`scripts/01-namespaces.sh`
-gates on `ci.engine`). The **important exception is `jenkins`**, created **always** —
-not for Jenkins, but because it **hosts the shared GKE Gateway** (`09-gateway.sh`),
-the single public-ingress entrypoint for *every* app.
+The shared GKE **Gateway** (the single public-ingress entrypoint for *every* app)
+lives in its **own engine-neutral namespace `platform-ingress`** (`gateway.namespace`
+/ `J2026_GATEWAY_NAMESPACE`), **always created**, decoupled from any CI engine. The
+**`jenkins` namespace is engine-gated** — created only when `ci.engine=jenkins` (it
+holds just the Jenkins controller + `jenkins-credentials`). Switching engines, or
+deleting an engine's namespace, therefore **never touches the ingress**.
 
-> ⚠️ **Never delete the `jenkins` namespace** (even on a tekton cluster): it
-> cascade-deletes the Gateway and takes down **all** public access (tekton dashboard,
-> headlamp, argocd, pgadmin, microservices, pac). Only the Jenkins *controller* +
-> `jenkins-credentials` are engine-gated; the namespace + Gateway are not.
+> Each app's `HTTPRoute` lives in its own namespace and attaches to the Gateway
+> **cross-namespace** (the Gateway sets `allowedRoutes.namespaces.from: All`); the
+> per-service `GCPBackendPolicy` (IAP) lives beside each Service.
 
 | Namespace | Created when | Holds |
 |---|---|---|
-| `jenkins` | **always** | the shared **Gateway** (public ingress for all apps); **+** the Jenkins controller & `jenkins-credentials` only when `ci.engine=jenkins` |
+| `platform-ingress` | **always** | the shared **Gateway** (public ingress for every app) |
+| `jenkins` | `ci.engine=jenkins` | Jenkins controller + `jenkins-credentials` Secret |
 | `tekton-pipelines` | `ci.engine=tekton` | Tekton control plane (Pipelines / Triggers / Dashboard / Pruner) |
 | `tekton-ci` | `ci.engine=tekton` | PipelineRuns, Tasks, the `tekton-ci` SA + its Secrets |
 | `pipelines-as-code` | `ci.engine=tekton` | PaC controller |
 | `tekton-chains` | `ci.engine=tekton` | Chains controller (cosign signing) |
 | `observability`, `headlamp`, `microservices`, `argocd`, `platform-postgres`/pgAdmin | always | engine-neutral platform |
 
-**On the `jenkins` name (tekton mode):** apart from the Gateway, the `jenkins`
-namespace is empty in tekton mode — the name is historical (it doubles as the
-platform-ingress namespace). A cleaner future refactor would move the Gateway to a
-dedicated engine-neutral namespace so `jenkins` could be gated to jenkins-only;
-until then it is **intentionally always present**. The Tekton control-plane
-namespace can't be renamed regardless — the upstream release YAMLs hardcode
-`tekton-pipelines`.
+**Why this layout:** the engines are mutually exclusive, so each owns self-named
+namespaces created only when selected (`jenkins` truly jenkins-only; `tekton-*`
+only in tekton mode). Shared platform infra — above all the **Gateway** — lives in
+neutral always-on namespaces (`platform-ingress`, `observability`, `argocd`…) so it
+survives engine switches and can't be taken down by deleting an engine's namespace.
+The Tekton control-plane namespace can't be renamed — the upstream release YAMLs
+hardcode `tekton-pipelines`.
+
+> **History:** the Gateway originally lived in the `jenkins` namespace, which coupled
+> all public access to a CI engine — deleting that namespace on a tekton cluster
+> cascade-deleted the Gateway and took everything down. It was moved to
+> `platform-ingress` to decouple it.
 
 ## What gets installed (GitOps via ArgoCD app-of-apps)
 
