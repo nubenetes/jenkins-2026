@@ -59,6 +59,12 @@ spec:
         if [ "$(params.service-type)" != "angular" ]; then
           echo "service-type != angular - skipping Kaniko (handled by Jib)."; exit 0
         fi
+        # PLACEHOLDER: no 'angular' service is registered yet (both services in
+        # jenkins/pipelines/seed/services.yaml are type=java -> Jib), so this branch
+        # never runs. Before adding the first angular service, set --dockerfile to a
+        # Dockerfile that the app (or infra) repo actually ships and scope --context
+        # to that app's source dir (not the shared workspace root, which holds
+        # several clones). Kept here for engine parity with the Jenkins path.
         /kaniko/executor \
           --context="$(workspaces.source.path)" \
           --dockerfile="$(workspaces.source.path)/jenkins-2026-infra/resources/angular/Dockerfile" \

@@ -1,17 +1,21 @@
 # RBAC for the Tekton Triggers EventListener. Binds the namespaced and
 # cluster-scoped roles shipped by the Triggers install to a dedicated
 # ServiceAccount so the EventListener can read Trigger resources and create
-# PipelineRuns. Applied into the pipeline namespace by 06-tekton-pipelines.sh
-# (the ClusterRoleBinding is cluster-scoped; -n is ignored for it).
+# PipelineRuns. GitOps-synced by the tekton-pipeline-as-code ArgoCD app (it
+# recurses over tekton/). The namespaced objects pin namespace: tekton-ci
+# explicitly rather than relying on the Application's default destination
+# namespace (the ClusterRoleBinding is cluster-scoped; its subject carries the ns).
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: tekton-triggers-sa
+  namespace: tekton-ci
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: tekton-triggers-eventlistener-binding
+  namespace: tekton-ci
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -19,6 +23,7 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: tekton-triggers-sa
+    namespace: tekton-ci
 ---
 # Cluster-scoped role needed by the EventListener to access ClusterInterceptors
 # and ClusterTriggerBindings. The subject namespace must match the pipeline
