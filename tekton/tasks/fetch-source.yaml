@@ -27,7 +27,12 @@ spec:
         git config --global --add safe.directory '*' || true
         cd "$(workspaces.source.path)"
         rm -rf microservices-src
-        git clone --depth 1 --branch "$(params.git-branch)" \
+        # Skip Git LFS smudge (avoid pulling large media); matches the Jenkins
+        # checkout. -c filter.lfs.* bypasses the LFS filter without needing git-lfs
+        # installed in the alpine/git image.
+        GIT_LFS_SKIP_SMUDGE=1 git \
+          -c filter.lfs.smudge= -c filter.lfs.process= -c filter.lfs.required=false \
+          clone --depth 1 --branch "$(params.git-branch)" \
           "$(params.git-repo-url)" microservices-src
     - name: clone-infra
       image: alpine/git:latest
