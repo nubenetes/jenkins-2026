@@ -123,8 +123,13 @@ jobs:
       - name: Redeploy Tekton control plane + Dashboard (scripts/04-tekton.sh)
         run: ./scripts/04-tekton.sh
 
-      - name: Re-apply Tekton pipelines + kick runs (scripts/06-tekton-pipelines.sh)
+      - name: Re-apply Tekton pipelines + activate PaC (scripts/06-tekton-pipelines.sh)
         run: ./scripts/06-tekton-pipelines.sh
+        env:
+          # PaC activation pushes .tekton/ to the forks + creates their webhooks.
+          GIT_USERNAME: ${{ secrets.GIT_USERNAME }}
+          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
+          PAC_WEBHOOK_SECRET: ${{ secrets.PAC_WEBHOOK_SECRET }}
 
       - name: Summary
         if: always()
