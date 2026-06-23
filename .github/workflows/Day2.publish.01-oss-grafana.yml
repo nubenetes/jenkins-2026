@@ -1,16 +1,17 @@
-name: "5.2.03 Redeploy Headlamp"
+name: "Day2.publish.01 Publish OSS Grafana dashboards/alerts"
 
-# Manually-triggered: re-applies scripts/01-namespaces.sh (refreshes the
-# non-sensitive OIDC config keys on the headlamp-credentials Secret) and
-# scripts/08-headlamp.sh (Helm upgrade --install of headlamp + its
-# ClusterRoleBindings) against the cluster from the last "0.2.01 GKE
-# provision" run, without touching terraform/gke or any other component of
-# the stack.
+# Manually-triggered: refreshes the in-cluster OSS Grafana (kube-prometheus-stack)
+# WITHOUT a full reprovision. The stack itself is GitOps-managed by the
+# observability-oss ArgoCD app-of-apps (argocd/observability-oss), so chart/value
+# changes land via ArgoCD auto-sync on commit. This workflow handles the two
+# inputs that live OUTSIDE that app:
+#   - the dashboards ConfigMap (jenkins-2026-grafana-dashboards), rebuilt from
+#     observability/grafana/dashboards/ and reloaded by the Grafana sidecar;
+#   - the Grafana alert rules (scripts/07.5-grafana-alerts.sh).
+# It also nudges ArgoCD to re-sync the app so committed value changes apply now.
 #
-# Use this to apply a Headlamp-only change (Helm values, OIDC config) without
-# rerunning the whole provision/decommission lifecycle. Requires the
-# namespaces/secrets created by scripts/01-namespaces.sh during that "0.2.01
-# GKE provision" run to still exist on the cluster.
+# Only meaningful when the live cluster runs observability.mode=oss. Requires the
+# cluster from the last "Day1.cluster.01 GKE provision" run to still exist.
 on:
   workflow_dispatch:
     inputs:
@@ -30,9 +31,12 @@ concurrency:
 
 env:
   TF_VERSION: "1.15.6"
+  # Force the oss code path in scripts/lib/config.sh + scripts/07.5 regardless of
+  # config.yaml's default observability.mode (env-override pattern).
+  JENKINS2026_OBS_MODE: oss
 
 jobs:
-  redeploy-headlamp:
+  publish-oss-grafana:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -103,41 +107,34 @@ jobs:
             --zone "$(terraform output -raw location)" \
             --project "${{ secrets.GCP_PROJECT_ID }}"
 
-      - name: Check prereqs & add Helm repos (scripts/00-check-prereqs.sh)
-        run: ./scripts/00-check-prereqs.sh
+      - name: Refresh dashboards ConfigMap (Grafana sidecar reloads it)
+        run: |
+          source scripts/lib/common.sh
+          source scripts/lib/config.sh
+          kubectl create configmap jenkins-2026-grafana-dashboards \
+            -n "${J2026_GRAFANA_OSS_NAMESPACE}" \
+            --from-file=observability/grafana/dashboards \
+            --dry-run=client -o yaml | kubectl apply -f -
 
-      - name: Refresh namespaces/secrets (scripts/01-namespaces.sh)
-        run: ./scripts/01-namespaces.sh
-        env:
-          # REGISTRY_USERNAME/PASSWORD and GIT_USERNAME/TOKEN are required
-          # here even though jenkins-credentials already exists, because the
-          # ghcr-credentials imagePullSecret further down is unconditionally
-          # `kubectl apply`'d on every run - omitting them would overwrite it
-          # with an empty-auths secret.
-          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
-          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
-          GIT_USERNAME: ${{ secrets.GIT_USERNAME }}
-          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
-          HEADLAMP_OIDC_CLIENT_ID: ${{ secrets.HEADLAMP_OIDC_CLIENT_ID }}
-          HEADLAMP_OIDC_CLIENT_SECRET: ${{ secrets.HEADLAMP_OIDC_CLIENT_SECRET }}
-          JENKINS_OIDC_CLIENT_ID: ${{ secrets.JENKINS_OIDC_CLIENT_ID }}
-          JENKINS_OIDC_CLIENT_SECRET: ${{ secrets.JENKINS_OIDC_CLIENT_SECRET }}
-          JENKINS_OIDC_ADMIN_EMAIL: ${{ secrets.JENKINS_OIDC_ADMIN_EMAIL }}
-          IAP_OAUTH_CLIENT_ID: ${{ secrets.IAP_OAUTH_CLIENT_ID }}
-          IAP_OAUTH_CLIENT_SECRET: ${{ secrets.IAP_OAUTH_CLIENT_SECRET }}
+      - name: Nudge ArgoCD to re-sync observability-oss (best-effort)
+        run: |
+          kubectl -n argocd annotate application observability-oss \
+            argocd.argoproj.io/refresh=hard --overwrite || \
+            echo "::warning::observability-oss Application not found — is the live cluster running observability.mode=oss?"
 
-      - name: Redeploy Headlamp (scripts/08-headlamp.sh)
-        run: ./scripts/08-headlamp.sh
-        env:
-          JENKINS2026_HEADLAMP_ADMIN_EMAILS: ${{ secrets.HEADLAMP_ADMIN_EMAILS }}
+      - name: Republish Grafana alerts (scripts/07.5-grafana-alerts.sh)
+        run: ./scripts/07.5-grafana-alerts.sh || echo "::warning::alert provisioning reported an issue (non-fatal)"
 
       - name: Summary
         if: always()
         run: |
           {
-            echo "### Headlamp redeployed"
+            echo "### OSS Grafana refreshed"
             echo
-            echo "Refreshed headlamp-credentials OIDC config and re-applied"
-            echo "helm/headlamp/values.yaml against the cluster from the last"
-            echo "**0.2.01 GKE provision** run."
+            echo "- Rebuilt \`jenkins-2026-grafana-dashboards\` ConfigMap from \`observability/grafana/dashboards/\`"
+            echo "- Nudged ArgoCD \`observability-oss\` to re-sync (chart/value changes)"
+            echo "- Republished Grafana alert rules"
+            echo
+            echo "The in-cluster OSS stack itself is GitOps-managed by ArgoCD"
+            echo "(\`argocd/observability-oss\`); commits auto-sync."
           } >> "${GITHUB_STEP_SUMMARY}"

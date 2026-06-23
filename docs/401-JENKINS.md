@@ -38,7 +38,7 @@ Setting `JENKINS_OIDC_ADMIN_EMAIL` also dynamically configures administrator per
    gh secret set JENKINS_OIDC_ADMIN_EMAIL   --body "you@gmail.com"
    ```
 
-   Then re-run **5.2.02 Redeploy Jenkins** (or **0.2.01 GKE provision**).
+   Then re-run **Day2.deploy.01 Redeploy Jenkins** (or **Day1.cluster.01 GKE provision**).
 
 ## Plugins & JCasC Fragments
 

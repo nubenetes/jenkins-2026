@@ -1,18 +1,18 @@
-name: "5.2.02 Redeploy Jenkins"
+name: "Day2.deploy.01 Redeploy Jenkins"
 
 # Manually-triggered: re-applies only scripts/04-jenkins.sh (Helm
 # upgrade --install of helm/jenkins + jenkins/casc JCasC fragments) and
-# scripts/06-seed-pipelines.sh against the cluster from the last "0.2.01 GKE
+# scripts/06-seed-pipelines.sh against the cluster from the last "Day1.cluster.01 GKE
 # provision" run, without touching terraform/gke or any other component of the
 # stack.
 #
 # Use this to apply a Jenkins-only change (Helm values, JCasC, plugin list,
 # shared library) without rerunning the whole provision/decommission lifecycle.
 # Requires the namespaces/secrets created by scripts/01-namespaces.sh during
-# that "0.2.01 GKE provision" run to still exist on the cluster.
+# that "Day1.cluster.01 GKE provision" run to still exist on the cluster.
 #
 # NOTE: Grafana dashboards are deliberately NOT republished here - that's the
-# job of the per-backend dashboard workflows (e.g. "5.1.04 Publish AWS
+# job of the per-backend dashboard workflows (e.g. "Day2.publish.04 Publish AWS
 # dashboards"). Running scripts/07 here would assume config.yaml's default
 # observability.mode (grafana-cloud) regardless of the live cluster's mode, and
 # the grafana-cloud branch hard-fails when its credentials secret is absent.
@@ -124,7 +124,7 @@ jobs:
             echo "### Jenkins redeployed"
             echo
             echo "Re-applied helm/jenkins + jenkins/casc and re-triggered seed-jobs"
-            echo "against the cluster from the last **0.2.01 GKE provision** run."
+            echo "against the cluster from the last **Day1.cluster.01 GKE provision** run."
             echo "(Grafana dashboards are published by the per-backend dashboard"
-            echo "workflows, e.g. **5.1.04 Publish AWS dashboards**.)"
+            echo "workflows, e.g. **Day2.publish.04 Publish AWS dashboards**.)"
           } >> "${GITHUB_STEP_SUMMARY}"

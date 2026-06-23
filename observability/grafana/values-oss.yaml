@@ -46,6 +46,31 @@ alertmanager:
 grafana:
   adminUser: admin
 
+  # Per-cluster runtime inputs that must NOT be baked into this file are surfaced
+  # as env vars from companion objects created by scripts/03-observability.sh in
+  # the Grafana namespace (both optional — a missing object just falls back):
+  #   - Secret  grafana-jenkins-ds (key: apiToken) -> $JENKINS_API_TOKEN, consumed
+  #     by the Jenkins datasource's secureJsonData.apiToken below (Grafana expands
+  #     $ENV references inside provisioning files at startup). Mirrors the
+  #     jenkins-credentials admin-password.
+  #   - ConfigMap grafana-runtime-config (key: root_url) -> GF_SERVER_ROOT_URL,
+  #     which overrides [server] root_url with https://grafana.<baseDomain> when
+  #     the public gateway is enabled. When absent, the grafana.ini default below
+  #     (in-cluster, for kubectl port-forward) applies.
+  # This replaces the previous `helm upgrade --set ...` injections so the OSS
+  # stack can be deployed declaratively by ArgoCD (argocd/observability-oss).
+  envValueFrom:
+    JENKINS_API_TOKEN:
+      secretKeyRef:
+        name: grafana-jenkins-ds
+        key: apiToken
+        optional: true
+    GF_SERVER_ROOT_URL:
+      configMapKeyRef:
+        name: grafana-runtime-config
+        key: root_url
+        optional: true
+
   image:
     # Pinned for reproducibility (see CLAUDE.md "pin for reproducibility").
     # Overrides the Grafana version the kube-prometheus-stack subchart would
@@ -178,8 +203,11 @@ grafana:
       url: http://jenkins.jenkins.svc.cluster.local:8080
       access: proxy
       secureJsonData:
-        # Default admin password from jenkins-credentials Secret
-        apiToken: "${JENKINS_ADMIN_PASSWORD}"
+        # Expanded by Grafana at startup from the JENKINS_API_TOKEN env var
+        # (grafana.envValueFrom above -> grafana-jenkins-ds Secret, which
+        # scripts/03-observability.sh mirrors from the jenkins-credentials
+        # admin-password). Empty when the Secret is absent.
+        apiToken: "$JENKINS_API_TOKEN"
       jsonData:
         username: "admin"
 
