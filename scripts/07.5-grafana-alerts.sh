@@ -86,23 +86,35 @@ provision_alerts() {
     | python3 -c "import json,sys; cps=json.load(sys.stdin); \
         print(next((c['uid'] for c in cps if c['uid']=='jenkins2026-email-cp'),''))" \
     2>/dev/null || true)"
+  # Upsert the contact point QUIETLY (own curl, not gcapi): a 400 here is an
+  # expected, non-fatal config issue on Grafana Cloud (the email must be an org
+  # member), so we handle it with a clean message instead of gcapi's raw
+  # 'Error: ... HTTP 400' that looks alarming in CI logs.
   _cp_ok=1
   if [[ -n "${EXISTING_CP}" ]]; then
-    gcapi PUT /api/v1/provisioning/contact-points/jenkins2026-email-cp \
-      -d @/tmp/j2026-cp.json > /dev/null || _cp_ok=0
-    [[ "${_cp_ok}" -eq 1 ]] && log_info "Updated contact point jenkins2026-email-cp."
+    _cp_method=PUT; _cp_path="/api/v1/provisioning/contact-points/jenkins2026-email-cp"
   else
-    gcapi POST /api/v1/provisioning/contact-points \
-      -d @/tmp/j2026-cp.json > /dev/null || _cp_ok=0
-    [[ "${_cp_ok}" -eq 1 ]] && log_info "Created contact point jenkins2026-email-cp."
+    _cp_method=POST; _cp_path="/api/v1/provisioning/contact-points"
   fi
-  if [[ "${_cp_ok}" -eq 0 ]]; then
-    log_warn "Contact point upsert failed (see error above)."
-    log_warn "Grafana Cloud requires the alert email to be a member of the org."
-    log_warn "Fix: add '${alert_email}' to the Grafana Cloud org, or set"
-    log_warn "GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD (or GRAFANA_ALERT_EMAIL) to an org-member address."
-    log_warn "Skipping notification policy — alert rules will still be provisioned."
+  _cp_body="$(mktemp)"
+  _cp_code="$(curl -sS -X "${_cp_method}" "${base_url%/}${_cp_path}" \
+    -H "Authorization: Bearer ${api_key}" -H "Content-Type: application/json" \
+    -d @/tmp/j2026-cp.json -o "${_cp_body}" -w "%{http_code}" 2>/dev/null || echo 000)"
+  if [[ "${_cp_code}" -ge 200 && "${_cp_code}" -lt 300 ]]; then
+    log_info "Contact point jenkins2026-email-cp upserted (HTTP ${_cp_code})."
+  elif [[ "${_cp_code}" == "400" ]] && grep -q "not members of this organization" "${_cp_body}" 2>/dev/null; then
+    _cp_ok=0
+    log_warn "Alert email '${alert_email}' is not a member of the Grafana Cloud org —"
+    log_warn "skipping the email contact point + notification policy (expected, non-fatal;"
+    log_warn "alert rules are still provisioned). Fix: add '${alert_email}' to the org, or set"
+    log_warn "GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD to an org-member address (see docs/103 §3)."
+  else
+    _cp_ok=0
+    log_warn "Contact point upsert returned HTTP ${_cp_code} — skipping email contact point +"
+    log_warn "notification policy (non-fatal; alert rules still provisioned). Response:"
+    sed 's/^/    /' "${_cp_body}" >&2 2>/dev/null || true
   fi
+  rm -f "${_cp_body}"
 
   # --- notification policy ---------------------------------------------------
   if [[ "${_cp_ok}" -eq 1 ]]; then
