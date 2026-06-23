@@ -106,6 +106,30 @@ routing but keeps the namespace and credentials for a fast switch-back. In **bot
 directions a clean install of the *selected* engine never deploys the other
 (`up.sh` branches on `ci.engine`), and the shared microservices are untouched.
 
+### Namespace layout (created per active engine)
+
+Namespaces are created **only for the engine that's running** (`scripts/01-namespaces.sh`
+gates on `ci.engine`), so a cluster never carries a namespace for the engine it
+isn't using — the name always reflects what's inside:
+
+| Namespace | Created when | Holds |
+|---|---|---|
+| `jenkins` | `ci.engine=jenkins` | Jenkins controller + `jenkins-credentials` Secret |
+| `tekton-pipelines` | `ci.engine=tekton` | Tekton control plane (Pipelines / Triggers / Dashboard / Pruner) |
+| `tekton-ci` | `ci.engine=tekton` | PipelineRuns, Tasks, the `tekton-ci` SA + its Secrets |
+| `pipelines-as-code` | `ci.engine=tekton` | PaC controller |
+| `tekton-chains` | `ci.engine=tekton` | Chains controller (cosign signing) |
+| `observability`, `headlamp`, `microservices`, `argocd`, `platform-postgres`/pgAdmin | always | engine-neutral platform |
+
+**Why engine-named, not a single generic `ci` namespace:** the engines are mutually
+exclusive, so only one set of CI namespaces ever exists — naming them after the
+engine keeps the name truthful. A neutral namespace isn't even viable for Tekton:
+the upstream release YAMLs **hardcode `tekton-pipelines`** for the control plane
+(the controllers watch that exact namespace), so it can't be renamed; and renaming
+`jenkins` to something generic would only hide that it genuinely runs Jenkins. So
+each engine owns self-named namespaces, created only when it's the selected engine
+(and removed when you switch away — see the table above).
+
 ## What gets installed (GitOps via ArgoCD app-of-apps)
 
 Tekton is **GitOps-managed by ArgoCD**, the same app-of-apps pattern as
