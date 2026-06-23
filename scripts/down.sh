@@ -187,16 +187,20 @@ if command -v gcloud &>/dev/null; then
       --format="value(name)" 2>/dev/null || true)
     if [[ -n "${negs}" ]]; then
       log_warn "Timeout waiting for NEGs. Force-deleting remaining NEGs..."
+      # value() output is tab-separated and never emits a header row (unlike
+      # csv[no-header], which leaked a literal "name,zone" line here); zone is
+      # returned as a full self-link URL, so .basename() trims it to the bare
+      # zone name that `delete --zone` expects.
       gcloud compute network-endpoint-groups list \
         --filter="network:${vpc_name}" \
         --project="${gcp_project}" \
-        --format="csv[no-header](name,zone)" 2>/dev/null | while IFS=, read -r name zone; do
+        --format="value(name,zone.basename())" 2>/dev/null | while read -r name zone; do
           if [[ -n "${name}" && -n "${zone}" ]]; then
             log_info "Force-deleting NEG '${name}' in zone '${zone}'..."
             gcloud compute network-endpoint-groups delete "${name}" \
               --zone="${zone}" \
               --project="${gcp_project}" \
-              --quiet || true
+              --quiet || log_warn "Failed to delete NEG '${name}' - terraform destroy of the VPC may fail."
           fi
         done
     fi

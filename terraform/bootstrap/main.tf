@@ -11,6 +11,15 @@ locals {
   ci_roles = [
     "roles/container.admin",
     "roles/compute.networkAdmin",
+    # roles/compute.networkAdmin can list but NOT delete Network Endpoint
+    # Groups. The GKE Gateway/Ingress controller creates standalone zonal
+    # NEGs for HTTPRoute/Service backends; on teardown scripts/down.sh must
+    # force-delete any that linger, otherwise they pin the VPC and
+    # terraform/gke's destroy fails ("network ... is already being used by
+    # ... networkEndpointGroups/..."). loadBalancerAdmin adds
+    # compute.networkEndpointGroups.delete (plus the rest of the LB resource
+    # graph) without the breadth of roles/compute.admin.
+    "roles/compute.loadBalancerAdmin",
     "roles/iam.serviceAccountAdmin",
     "roles/iam.serviceAccountUser",
     "roles/resourcemanager.projectIamAdmin",
