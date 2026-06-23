@@ -239,6 +239,11 @@ gateway:
   # these.
   staticIPName: "jenkins-2026-gateway-ip"
   certMapName: "jenkins-2026-cert-map"
+  # Engine-neutral namespace that hosts the shared Gateway object. Always created
+  # (01-namespaces.sh), decoupled from any CI engine - so switching jenkins<->tekton,
+  # or deleting an engine's namespace, never touches the public ingress. (The Gateway
+  # used to live in the 'jenkins' namespace, which coupled all access to a CI engine.)
+  namespace: "platform-ingress"
   # Hostname prefixes under baseDomain for each app.
   hosts:
     jenkins: "jenkins"

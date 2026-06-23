@@ -198,6 +198,12 @@ export J2026_GATEWAY_IAP_SECRET="$(yq_get '.gateway.iapCredentialsSecretName' 'g
 # Decom.cluster.01-gke.yml, where .generated/gateway/ (created by
 # 09-gateway.sh on a different runner) doesn't exist.
 export J2026_GATEWAY_NAME="jenkins-2026-gateway"
+# Engine-neutral namespace that hosts the shared Gateway object (the public-ingress
+# entrypoint for every app). Always created by 01-namespaces.sh, independent of
+# ci.engine - so switching jenkins<->tekton never touches the ingress. HTTPRoutes
+# live in each app's own namespace and attach cross-namespace (Gateway
+# allowedRoutes.namespaces.from: All).
+export J2026_GATEWAY_NAMESPACE="$(yq_get '.gateway.namespace' 'platform-ingress')"
 export J2026_GATEWAY_HTTPROUTE_JENKINS="jenkins"
 export J2026_GATEWAY_HTTPROUTE_MICROSERVICES="microservices"
 export J2026_GATEWAY_HTTPROUTE_MICROSERVICES_DEVELOP="microservices-develop"
