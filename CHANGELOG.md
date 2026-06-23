@@ -2,43 +2,131 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [v0.19.0] - 2026-06-23
+
+Two structural changes: (1) the GitHub Actions workflows are renamed to a
+self-documenting `DayN.tier.ZZ-resource` scheme, and (2) the in-cluster OSS
+observability stack and the correlated Postgres platform are moved under ArgoCD
+GitOps as **app-of-apps** Helm charts. No behavioural change to the
+grafana-cloud / managed-azure / managed-aws observability modes.
+
+> ⚠️ **Not yet validated on a live cluster.** Both changes are static-validated
+> only (helm template, `bash -n`, YAML/yq parse). Confirm on a fresh
+> `Day1.cluster.01-gke` provision before relying on it — in particular the
+> pinned `loki` chart `7.0.0` (a major bump from the previously unpinned
+> install) against `observability/grafana/values-oss-loki.yaml`.
 
 ### Changed
 
-- **Workflow naming → `DayN.tier.ZZ-resource`** (`.github/workflows/`): the 16
-  workflows were renamed from the `Y.X.ZZ` numeric scheme to a self-documenting
-  `DayN.tier.ZZ-resource` scheme (`Day0`/`Day1`/`Day2`/`Decom` + a semantic
-  `tier` — `infra`/`cluster`/`deploy`/`publish`/`traffic` — and a stable
-  per-resource `ZZ`). Every workflow `name:` now begins with its
-  `DayN.tier.ZZ` prefix, so the GitHub Actions UI sort order still **is** the
-  execution order (`Decom` sorts after `Day2`). All docs/README links, the
-  `uses:` `workflow_call` references in `Day1.cluster.01-gke`, and in-repo
-  comments were updated. See [`docs/101`](docs/101-GITHUB_ACTIONS_WORKFLOWS.md).
-- **In-cluster OSS observability stack now GitOps-managed by ArgoCD**: the
-  `observability.mode=oss` stack (kube-prometheus-stack/Loki/Tempo/Grafana) is
-  deployed by the new `observability-oss` ArgoCD **app-of-apps**
-  (`argocd/observability-oss/`, a Helm chart emitting three multi-source child
-  `Application`s) instead of raw `helm install` in
-  `scripts/03-observability.sh`. `scripts/up.sh` now installs ArgoCD (`08.5`)
-  **before** observability (`03`). The Jenkins-datasource token and public
-  `root_url` move from `helm --set` to `grafana.envValueFrom` backed by
-  script-managed companion objects (`grafana-jenkins-ds` Secret,
-  `grafana-runtime-config` ConfigMap); the dashboards ConfigMap stays
-  script-managed. The OTel collectors remain `helm`-managed (cross-mode).
+- **Workflow naming → `DayN.tier.ZZ-resource`** (`.github/workflows/`). The 16
+  workflows were renamed from the `Y.X.ZZ` numeric scheme (`0.1.01`, `5.2.02`,
+  `9.2.04`, …) to a self-documenting `DayN.tier.ZZ-resource` scheme:
+  - **`DayN`** = lifecycle phase: `Day0` (persistent bootstrap) · `Day1`
+    (cluster) · `Day2` (running-cluster ops) · `Decom` (teardown). `Decom`
+    sorts after `Day2`, keeping teardown last.
+  - **`tier`** = a brief semantic word from a controlled vocabulary
+    (`infra`, `cluster`, `deploy`, `publish`, `traffic`) replacing the old
+    middle digit.
+  - **`ZZ`** = a per-resource id, stable for the same resource across all
+    phases (e.g. `ZZ=03` is always Azure: `Day0.infra.03-azure-grafana` →
+    `Day2.publish.03-azure-grafana` → `Decom.infra.03-azure-grafana`).
+  - **`-resource`** identifies the resource only — no action verb, since the
+    `DayN` prefix already implies bootstrap/publish/teardown.
 
-- **`platform-postgres` ArgoCD app-of-apps**: the previously standalone
-  `cnpg-app.yaml` and `pgadmin-app.yaml` are grouped under one parent
-  `Application` (`argocd/platform-postgres/`) since pgAdmin administers the
-  CNPG-provisioned databases — one correlated lifecycle. `scripts/08.5-argocd.sh`
-  applies the parent instead of the two separate manifests; `scripts/down.sh`
-  cascade-prunes it.
+  The full mapping:
+
+  | Old | New |
+  |---|---|
+  | `0.1.01-gateway-bootstrap` | `Day0.infra.01-gateway` |
+  | `0.1.02-grafana-cloud-bootstrap` | `Day0.infra.02-grafana-cloud` |
+  | `0.1.03-azure-bootstrap` | `Day0.infra.03-azure-grafana` |
+  | `0.1.04-aws-bootstrap` | `Day0.infra.04-aws-grafana` |
+  | `0.2.01-gke-provision` | `Day1.cluster.01-gke` |
+  | `5.2.02-redeploy-jenkins` | `Day2.deploy.01-jenkins` |
+  | `5.2.03-redeploy-headlamp` | `Day2.deploy.04-headlamp` |
+  | `5.1.03-publish-azure-dashboards` | `Day2.publish.03-azure-grafana` |
+  | `5.1.04-publish-aws-dashboards` | `Day2.publish.04-aws-grafana` |
+  | `5.1.05-publish-grafana-alerts` | `Day2.publish.05-alerts` |
+  | `5.9.01-traffic-simulation` | `Day2.traffic.01-k6` |
+  | `9.1.01-gke-decommission` | `Decom.cluster.01-gke` |
+  | `9.2.01-gateway-decommission` | `Decom.infra.01-gateway` |
+  | `9.2.02-grafana-cloud-decommission` | `Decom.infra.02-grafana-cloud` |
+  | `9.2.03-azure-decommission` | `Decom.infra.03-azure-grafana` |
+  | `9.2.04-aws-decommission` | `Decom.infra.04-aws-grafana` |
+
+  Every workflow's `name:` field was reprefixed to its `DayN.tier.ZZ` value, so
+  the **GitHub Actions UI sort order still is the execution order** (the UI
+  sorts by `name:`, not filename). The `uses:` `workflow_call` references inside
+  `Day1.cluster.01-gke` were repointed at the renamed `Day0.infra.0{2,3,4}`
+  files. All references were updated across `README.md`, `docs/101` (full
+  rewrite of the naming section + matrices), `docs/102`/`103`/`201`/`301`/`401`/
+  `501`/`902`, `CLAUDE.md`, `scripts/` (including two stale `02.99`/`02.04`
+  references) and `terraform/*` comments. `CHANGELOG.md` history is left at the
+  original filenames (historical record). **Note:** any branch-protection
+  *required status checks* or external `gh workflow run <file>` calls that
+  referenced the old filenames must be re-pointed at the new names.
+
+- **In-cluster OSS observability stack now GitOps-managed by ArgoCD.** The
+  `observability.mode=oss` stack (kube-prometheus-stack = Prometheus + Grafana,
+  Loki, Tempo) is deployed by the new `observability-oss` ArgoCD **app-of-apps**
+  instead of raw `helm install` in `scripts/03-observability.sh`:
+  - `argocd/observability-oss/` is a small Helm chart whose templates emit three
+    **multi-source** child `Application`s (`oss-kube-prometheus-stack` /
+    `oss-loki` / `oss-tempo`) — each combining the upstream chart with this
+    repo's `observability/grafana/values-oss*.yaml` via the `$values` ref. The
+    parent `argocd/observability-oss-app.yaml` is templated by the script for
+    `repoURL`/`targetRevision` and passes them down as `helm.parameters`.
+  - **`scripts/up.sh` now installs ArgoCD (`08.5`) before observability (`03`)**
+    so the `Application` CRD exists when `03` applies the app-of-apps. (`08.5`
+    only depends on the `jenkins-credentials` Secret from `01-namespaces`.)
+  - `03-observability.sh` (oss) now creates the namespace + the companion
+    objects the chart consumes and applies the app-of-apps, rather than
+    `helm upgrade`-ing the charts. The OTel collectors stay `helm`-managed
+    (shared across all four modes).
+  - The Jenkins-datasource token and the public Grafana `root_url` move from
+    `helm upgrade --set` to **`grafana.envValueFrom`** in `values-oss.yaml`,
+    backed by script-managed companion objects: the `grafana-jenkins-ds` Secret
+    (`$JENKINS_API_TOKEN`, mirrored from the `jenkins-credentials`
+    admin-password) and the `grafana-runtime-config` ConfigMap
+    (`GF_SERVER_ROOT_URL`, only when the gateway is enabled). The
+    `jenkins-2026-grafana-dashboards` ConfigMap stays script-managed. All three
+    are referenced `optional: true`, so a missing object just falls back.
+  - Switching `observability.mode` away from `oss` (or `scripts/down.sh`)
+    deletes the parent `Application`, and ArgoCD cascade-prunes the charts via
+    the `resources-finalizer.argocd.argoproj.io` on each child. `down.sh` does
+    this while ArgoCD is still running, before uninstalling ArgoCD.
+  - `oss-kube-prometheus-stack` uses `ServerSideApply=true` to avoid the 256KB
+    `last-applied-configuration` annotation limit on the Prometheus operator
+    CRDs (same rationale as the CNPG app).
 
 ### Added
 
-- **`Day2.publish.01-oss-grafana` workflow**: refreshes the in-cluster OSS
-  Grafana (dashboards ConfigMap + ArgoCD re-sync + alert rules) on a running
-  cluster without a reprovision.
+- **`platform-postgres` ArgoCD app-of-apps** (`argocd/platform-postgres/`). The
+  previously standalone `cnpg-app.yaml` and `pgadmin-app.yaml` are grouped under
+  one parent `Application` — pgAdmin administers the CNPG-provisioned databases,
+  so they share a lifecycle and failure domain. The parent renders a Helm chart
+  into two children: `cnpg-operator` (chart, preserving the
+  `ServerSideDiff`/`ServerSideApply`/`Replace` oversized-CRD handling) and
+  `pgadmin` (this repo's `helm/pgadmin`, branch from the parent's
+  `helm.parameters`). `scripts/08.5-argocd.sh` applies the parent instead of the
+  two separate manifests; `scripts/down.sh` cascade-prunes it. External Secrets
+  and Headlamp stay standalone (not correlated).
+- **`Day2.publish.01-oss-grafana` workflow** — refreshes the in-cluster OSS
+  Grafana on a running cluster without a reprovision: rebuilds the
+  `jenkins-2026-grafana-dashboards` ConfigMap, nudges the `observability-oss`
+  ArgoCD app to re-sync (for committed chart/value changes) and republishes the
+  Grafana alert rules. Forces `JENKINS2026_OBS_MODE=oss` (env-override pattern).
+- **Pinned upstream chart versions** for the GitOps-managed stacks
+  (CLAUDE.md "pin for reproducibility"): kube-prometheus-stack `87.0.1`, Loki
+  `7.0.0`, Tempo `1.24.4` (in `argocd/observability-oss/values.yaml`) and
+  CloudNative-PG `0.28.3` (in `argocd/platform-postgres/values.yaml`). These
+  match the latest the previously unpinned `helm install` would have pulled.
+
+### Removed
+
+- `argocd/cnpg-app.yaml` and `argocd/pgadmin-app.yaml` — folded into the
+  `platform-postgres` app-of-apps chart as `templates/cnpg-operator.yaml` and
+  `templates/pgadmin.yaml`.
 
 ## [v0.18.1] - 2026-06-23
 
