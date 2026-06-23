@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: observability-oss
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  # App-of-apps: this Application renders the local Helm chart at
+  # argocd/observability-oss/, which emits the child Applications for
+  # kube-prometheus-stack / Loki / Tempo. The {{repoUrl}}/{{branchStable}}
+  # placeholders are substituted by scripts/03-observability.sh (oss mode) at
+  # apply time, and passed down as helm parameters so the children's $values
+  # source points back at this repo/branch.
+  source:
+    repoURL: '{{repoUrl}}'
+    targetRevision: '{{branchStable}}'
+    path: argocd/observability-oss
+    helm:
+      parameters:
+        - name: repoURL
+          value: '{{repoUrl}}'
+        - name: targetRevision
+          value: '{{branchStable}}'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

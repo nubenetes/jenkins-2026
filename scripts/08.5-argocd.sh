@@ -255,8 +255,18 @@ wait_for_deployment "${J2026_ARGOCD_RELEASE}-server" "${J2026_ARGOCD_NAMESPACE}"
 log_step "Configuring ArgoCD Microservices GitOps Project"
 kubectl apply -f "${J2026_ROOT_DIR}/argocd/microservices-project.yaml"
 
-log_step "Configuring CloudNative-PG Operator via ArgoCD"
-kubectl apply -f "${J2026_ROOT_DIR}/argocd/cnpg-app.yaml"
+log_step "Configuring platform-postgres app-of-apps (CNPG operator + pgAdmin) via ArgoCD"
+# Correlated Postgres platform: the CNPG operator and the pgAdmin UI that
+# administers its databases are grouped under one parent Application
+# (argocd/platform-postgres). repoUrl/branch are passed down so the pgAdmin
+# child's git source tracks the active branch.
+PG_APP_FILE=$(mktemp)
+REPO_URL="${J2026_SELF_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
+sed "s@{{repoUrl}}@${REPO_URL}@g;
+     s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g" \
+    "${J2026_ROOT_DIR}/argocd/platform-postgres-app.yaml" > "${PG_APP_FILE}"
+kubectl apply -f "${PG_APP_FILE}"
+rm "${PG_APP_FILE}"
 
 # ArgoCD installs CNPG asynchronously. Wait for the controller to be fully Ready
 # AND its webhook caBundle to be injected before continuing — otherwise the first
@@ -371,16 +381,8 @@ sed "s@{{repoUrl}}@${REPO_URL}@g;
 kubectl apply -f "${HEADLAMP_APP_FILE}"
 rm "${HEADLAMP_APP_FILE}"
 
-log_step "Configuring pgAdmin via ArgoCD"
-# Inject values into the pgAdmin Application manifest
-PGADMIN_APP_FILE=$(mktemp)
-REPO_URL="${J2026_SELF_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
-sed "s@{{repoUrl}}@${REPO_URL}@g; 
-     s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g" \
-    "${J2026_ROOT_DIR}/argocd/pgadmin-app.yaml" > "${PGADMIN_APP_FILE}"
-kubectl apply -f "${PGADMIN_APP_FILE}"
-rm "${PGADMIN_APP_FILE}"
-
+# pgAdmin is deployed by the platform-postgres app-of-apps above (grouped with
+# the CNPG operator it administers).
 
 log_step "Generating and applying Microservices ApplicationSet"
 # Inject values into the AppSet manifest

@@ -3,15 +3,17 @@ kind: Application
 metadata:
   name: pgadmin
   namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
-    repoURL: '{{repoUrl}}'
-    targetRevision: '{{branchStable}}'
+    repoURL: {{ .Values.repoURL | quote }}
+    targetRevision: {{ .Values.targetRevision | quote }}
     path: helm/pgadmin
   destination:
     server: https://kubernetes.default.svc
-    namespace: pgadmin
+    namespace: {{ .Values.namespace.pgadmin | quote }}
   syncPolicy:
     automated:
       prune: true

@@ -2,6 +2,44 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- **Workflow naming → `DayN.tier.ZZ-resource`** (`.github/workflows/`): the 16
+  workflows were renamed from the `Y.X.ZZ` numeric scheme to a self-documenting
+  `DayN.tier.ZZ-resource` scheme (`Day0`/`Day1`/`Day2`/`Decom` + a semantic
+  `tier` — `infra`/`cluster`/`deploy`/`publish`/`traffic` — and a stable
+  per-resource `ZZ`). Every workflow `name:` now begins with its
+  `DayN.tier.ZZ` prefix, so the GitHub Actions UI sort order still **is** the
+  execution order (`Decom` sorts after `Day2`). All docs/README links, the
+  `uses:` `workflow_call` references in `Day1.cluster.01-gke`, and in-repo
+  comments were updated. See [`docs/101`](docs/101-GITHUB_ACTIONS_WORKFLOWS.md).
+- **In-cluster OSS observability stack now GitOps-managed by ArgoCD**: the
+  `observability.mode=oss` stack (kube-prometheus-stack/Loki/Tempo/Grafana) is
+  deployed by the new `observability-oss` ArgoCD **app-of-apps**
+  (`argocd/observability-oss/`, a Helm chart emitting three multi-source child
+  `Application`s) instead of raw `helm install` in
+  `scripts/03-observability.sh`. `scripts/up.sh` now installs ArgoCD (`08.5`)
+  **before** observability (`03`). The Jenkins-datasource token and public
+  `root_url` move from `helm --set` to `grafana.envValueFrom` backed by
+  script-managed companion objects (`grafana-jenkins-ds` Secret,
+  `grafana-runtime-config` ConfigMap); the dashboards ConfigMap stays
+  script-managed. The OTel collectors remain `helm`-managed (cross-mode).
+
+- **`platform-postgres` ArgoCD app-of-apps**: the previously standalone
+  `cnpg-app.yaml` and `pgadmin-app.yaml` are grouped under one parent
+  `Application` (`argocd/platform-postgres/`) since pgAdmin administers the
+  CNPG-provisioned databases — one correlated lifecycle. `scripts/08.5-argocd.sh`
+  applies the parent instead of the two separate manifests; `scripts/down.sh`
+  cascade-prunes it.
+
+### Added
+
+- **`Day2.publish.01-oss-grafana` workflow**: refreshes the in-cluster OSS
+  Grafana (dashboards ConfigMap + ArgoCD re-sync + alert rules) on a running
+  cluster without a reprovision.
+
 ## [v0.18.1] - 2026-06-23
 
 Fix Grafana Cloud decommission failing with "409 Conflict ... has deletion

@@ -1,0 +1,38 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: oss-kube-prometheus-stack
+  namespace: argocd
+  # Cascade-prune the chart's resources when the parent app-of-apps is deleted
+  # (observability.mode switch away from oss, or full teardown).
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    # Upstream chart (Prometheus operator + Prometheus + Grafana).
+    - repoURL: {{ .Values.charts.kubePrometheusStack.repoURL | quote }}
+      chart: kube-prometheus-stack
+      targetRevision: {{ .Values.charts.kubePrometheusStack.version | quote }}
+      helm:
+        valueFiles:
+          - $values/observability/grafana/values-oss.yaml
+    # This repo, for the values file above (referenced via $values).
+    - repoURL: {{ .Values.repoURL | quote }}
+      targetRevision: {{ .Values.targetRevision | quote }}
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.namespace.grafana | quote }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # kube-prometheus-stack ships large operator CRDs; client-side apply
+      # 3-way-merges them into the last-applied-configuration annotation and can
+      # blow the 256KB metadata.annotations limit. Server-side apply avoids the
+      # annotation entirely (same reason as the cnpg-operator child in
+      # argocd/platform-postgres).
+      - ServerSideApply=true

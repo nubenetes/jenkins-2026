@@ -6,13 +6,14 @@
 #   00 check-prereqs    (sequential - tooling, cluster, helm repos)
 #   01 namespaces       (sequential - namespaces, secrets, rolebindings)
 #   02 otel-operator    (sequential - CRDs needed by 05's Instrumentation CR)
-#   03 observability  \
-#   04 jenkins         > parallel - independent of each other
+#   08.5-argocd.sh      (sequential - CD engine for GitOps; before 03 so oss
+#                        mode can apply the observability-oss app-of-apps)
+#   03 observability    (sequential - oss mode deploys via ArgoCD)
+#   04 jenkins          (sequential to prevent API pressure)
 #   06 seed-pipelines   (sequential - needs 04 ready)
 #   07 grafana-dashboards (sequential - needs 03's credentials/configmap)
 #   07.5 grafana-alerts  (sequential - provisions contact point + alert rules)
 #   08 headlamp         (sequential - cluster management UI)
-#   08.5-argocd.sh      (sequential - CD engine for GitOps)
 #   09 gateway          (sequential - public access via GKE Gateway API + IAP)
 #
 # Each step is idempotent; re-running up.sh after a partial failure is safe.
@@ -28,11 +29,15 @@ log_step "jenkins-2026 up - platform=${J2026_PLATFORM} observability=${J2026_OBS
 "${SCRIPT_DIR}/01-namespaces.sh"
 "${SCRIPT_DIR}/02-otel-operator.sh"
 
-log_step "Installing 03-observability (sequential to prevent API pressure)"
-"${SCRIPT_DIR}/03-observability.sh"
-
+# ArgoCD (the CD engine) is installed BEFORE observability so 03-observability.sh
+# (oss mode) can apply the observability-oss app-of-apps — the Application CRD
+# must already exist. 08.5-argocd only depends on the jenkins-credentials Secret
+# from 01-namespaces, not on observability/jenkins.
 log_step "Installing 08.5-argocd (CD Engine)"
 "${SCRIPT_DIR}/08.5-argocd.sh"
+
+log_step "Installing 03-observability (sequential to prevent API pressure)"
+"${SCRIPT_DIR}/03-observability.sh"
 
 log_step "Installing 04-jenkins (sequential to prevent API pressure)"
 "${SCRIPT_DIR}/04-jenkins.sh"
