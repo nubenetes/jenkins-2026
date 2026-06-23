@@ -160,8 +160,17 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
 - Don't run `test/e2e.sh` or trigger `Day1.cluster.01-gke`/`Decom.cluster.01-gke`
   (or `Day2.redeploy.02-jenkins` / `Day2.redeploy.03-tekton` against a real
   cluster) workflows without explicit confirmation - they create/modify real,
-  billed GCP (and optionally Grafana Cloud) resources. Always pair a provision
-  with a decommission.
+  billed GCP (and optionally Grafana Cloud) resources.
+- **Applying changes = re-run, not Decom+Day1.** `Day1.cluster.01-gke` is
+  idempotent and converges in place on an existing cluster (`terraform apply`
+  no-ops when the cluster is already in state; `up.sh` re-applies every step;
+  ArgoCD re-syncs from git). To pick up a change, **re-run `Day1`** (or, for a
+  CI-engine-only change, `Day2.redeploy.02-jenkins` / `Day2.redeploy.03-tekton`,
+  which also run `09-gateway`); ArgoCD-only manifest changes can be pulled with
+  `kubectl annotate application <app> -n argocd argocd.argoproj.io/refresh=hard
+  --overwrite`. `Decom.cluster.01-gke` is for **tearing the cluster down when
+  done** (to stop charges), not a prerequisite for changes - but do remember to
+  Decom an idle cluster.
 - `terraform/bootstrap` is a one-time, human-run step with local gitignored
   state - never wire it into CI, and never re-run `terraform apply` there without
   checking the existing state file first (re-creating it would orphan/duplicate
