@@ -141,7 +141,7 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
 ## Working on this repo
 
 - Don't run `test/e2e.sh` or trigger `Day1.cluster.01-gke-provision`/`Decom.cluster.01-gke-decommission`
-  (or `Day2.deploy.01-redeploy-jenkins` against a real cluster) workflows without
+  (or `Day2.deploy.02-redeploy-jenkins` against a real cluster) workflows without
   explicit confirmation - they create/modify real, billed GCP (and optionally
   Grafana Cloud) resources. Always pair a provision with a decommission.
 - `terraform/bootstrap` is a one-time, human-run step with local gitignored
