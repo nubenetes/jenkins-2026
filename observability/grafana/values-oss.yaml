@@ -25,6 +25,22 @@ prometheus:
     enableFeatures:
       - exemplar-storage
     retention: 7d
+    # Scrape Tekton controller metrics (tekton_pipelines_controller_*) so the
+    # Tekton CI dashboard works in oss mode. The prometheus-operator's own RBAC
+    # covers the endpoints discovery.
+    additionalScrapeConfigs:
+      - job_name: tekton-pipelines-controller
+        kubernetes_sd_configs:
+          - role: endpoints
+            namespaces:
+              names: [tekton-pipelines]
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_service_name]
+            regex: tekton-pipelines-controller
+            action: keep
+          - source_labels: [__meta_kubernetes_endpoint_port_name]
+            regex: http-metrics
+            action: keep
     resources:
       requests:
         cpu: 200m

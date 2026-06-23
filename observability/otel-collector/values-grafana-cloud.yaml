@@ -55,6 +55,14 @@ ports:
     hostPort: 4318
     protocol: TCP
 
+# RBAC for the prometheus receiver's kubernetes_sd (Tekton controller scrape).
+clusterRole:
+  create: true
+  rules:
+    - apiGroups: [""]
+      resources: ["services", "endpoints", "pods"]
+      verbs: ["get", "list", "watch"]
+
 config:
   receivers:
     otlp:
@@ -70,6 +78,24 @@ config:
           cors:
             allowed_origins:
               - "*"
+    # Scrape Tekton controller metrics (tekton_pipelines_controller_*) so the
+    # Tekton CI dashboard works in grafana-cloud (remote-written via otlp_http).
+    prometheus:
+      config:
+        scrape_configs:
+          - job_name: tekton-pipelines-controller
+            scrape_interval: 30s
+            kubernetes_sd_configs:
+              - role: endpoints
+                namespaces:
+                  names: [tekton-pipelines]
+            relabel_configs:
+              - source_labels: [__meta_kubernetes_service_name]
+                regex: tekton-pipelines-controller
+                action: keep
+              - source_labels: [__meta_kubernetes_endpoint_port_name]
+                regex: http-metrics
+                action: keep
 
   processors:
     batch: {}
@@ -130,7 +156,7 @@ config:
         processors: [memory_limiter, resource, batch]
         exporters: [otlp_http/grafana_cloud]
       metrics:
-        receivers: [otlp]
+        receivers: [otlp, prometheus]
         processors: [memory_limiter, resource, batch]
         exporters: [otlp_http/grafana_cloud]
       logs:
