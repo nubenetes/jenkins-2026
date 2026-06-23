@@ -11,7 +11,10 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 
 log_step "Creating namespaces"
-for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_ARGOCD_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}"; do
+# Engine-neutral namespaces (always). The jenkins namespace is created below only
+# when ci.engine=jenkins (and the tekton-* namespaces only when ci.engine=tekton),
+# so a cluster never carries a stray namespace for the engine it isn't running.
+for ns in "${J2026_OBS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_ARGOCD_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}"; do
   kubectl_apply_namespace "${ns}"
 done
 
@@ -26,6 +29,12 @@ if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
     kubectl_apply_namespace "${ns}"
   done
 fi
+
+# Jenkins namespace + credentials ONLY when ci.engine=jenkins - the Jenkins
+# controller is the sole consumer (in tekton mode k6/registry/git creds live in
+# the tekton-ci Secrets), so a tekton cluster gets no stray 'jenkins' namespace.
+if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
+kubectl_apply_namespace "${J2026_JENKINS_NAMESPACE}"
 
 log_step "Ensuring '${J2026_JENKINS_CREDENTIALS_SECRET}' Secret in ${J2026_JENKINS_NAMESPACE}"
 if kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
@@ -75,6 +84,7 @@ kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_N
 {"stringData":{"microservices-url":"${microservices_url}","k6-cloud-token":"${K6_CLOUD_TOKEN:-}","k6-cloud-project-id":"${K6_CLOUD_PROJECT_ID:-}"}}
 EOF
 )"
+fi  # end ci.engine=jenkins (jenkins namespace + credentials)
 
 log_step "Ensuring '${J2026_HEADLAMP_CREDENTIALS_SECRET}' Secret in ${J2026_HEADLAMP_NAMESPACE}"
 if kubectl get secret "${J2026_HEADLAMP_CREDENTIALS_SECRET}" -n "${J2026_HEADLAMP_NAMESPACE}" >/dev/null 2>&1; then
