@@ -6,6 +6,10 @@ metadata:
   annotations:
     # Wave 1: needs the Tekton install (wave 0) but is independent of Triggers.
     argocd.argoproj.io/sync-wave: "1"
+    # The dashboard ships an oversized extensions.dashboard.tekton.dev CRD; a
+    # client-side diff reports it perpetually OutOfSync. ServerSideDiff computes
+    # the diff on the API server (same fix as cnpg-operator) -> reliable Synced.
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
