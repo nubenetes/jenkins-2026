@@ -72,7 +72,7 @@ if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
 fi
 kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \
   --type=merge -p "$(cat <<EOF
-{"stringData":{"microservices-url":"${microservices_url}"}}
+{"stringData":{"microservices-url":"${microservices_url}","k6-cloud-token":"${K6_CLOUD_TOKEN:-}","k6-cloud-project-id":"${K6_CLOUD_PROJECT_ID:-}"}}
 EOF
 )"
 
@@ -205,6 +205,16 @@ if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
   kubectl create secret generic pac-webhook \
     -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
     --from-literal=webhook.secret="${PAC_WEBHOOK_SECRET:-}" \
+    --dry-run=client -o yaml | kubectl apply -f -
+
+  # Optional Grafana Cloud k6 (the k6-app) streaming for the k6-smoke Task. Created
+  # empty unless K6_CLOUD_TOKEN is set, so the Task's optional secretKeyRef resolves
+  # either way; the cloud output (--out cloud) only activates when both are present.
+  kubectl create secret generic k6-cloud \
+    -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
+    --from-literal=token="${K6_CLOUD_TOKEN:-}" \
+    --from-literal=project-id="${K6_CLOUD_PROJECT_ID:-}" \
+    --from-literal=grafana-base-url="${GRAFANA_BASE_URL:-}" \
     --dry-run=client -o yaml | kubectl apply -f -
 fi
 

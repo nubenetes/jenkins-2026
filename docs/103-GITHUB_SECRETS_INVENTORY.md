@@ -203,6 +203,35 @@ A shared-secret HMAC token GitHub signs webhook deliveries with, validated by th
 
 ---
 
+## 10. Grafana Cloud k6 (the k6-app) — optional
+
+The k6 smoke pipeline always exports request metrics via **OTLP** to your Grafana
+Prometheus (the `k6-smoke-overview` dashboard). **Optionally**, it can *also* stream
+each run to **Grafana Cloud k6** (the native k6 app at `/a/k6-app`) for k6's own UI
+(per-run trends, run comparison, thresholds, URL breakdown). This is **off by
+default** and only activates when **both** secrets below are set; the pipeline then
+adds `--out cloud` alongside the OTLP output.
+
+| Secret | Required | Description |
+|--------|----------|-------------|
+| `K6_CLOUD_TOKEN` | optional | Grafana Cloud k6 API token (the k6-app → settings, or a stack access policy token with k6 write). Sensitive. |
+| `K6_CLOUD_PROJECT_ID` | optional | The numeric project id from `/a/k6-app/projects` runs are uploaded to. Not sensitive. |
+
+**`K6_CLOUD_TOKEN`**
+Authenticates `k6 run --out cloud` to Grafana Cloud k6. Get it from the k6 app's
+token/settings page (or a stack access policy token scoped to k6). Empty by default.
+
+**`K6_CLOUD_PROJECT_ID`**
+The project under which runs appear in the k6 app. Both flow into the cluster via
+`scripts/01-namespaces.sh` — the `k6-cloud` Secret in the Tekton pipeline namespace
+(read by `tekton/tasks/k6-smoke.yaml`) and the `jenkins-credentials` Secret keys
+`k6-cloud-token`/`k6-cloud-project-id` (surfaced to `microservicesK6Smoke.groovy`
+via `helm/jenkins/values-common.yaml` `containerEnv`). Consumed by
+`Day1.cluster.01-gke` and `Day2.redeploy.03-tekton`. The runner/agent needs HTTPS
+egress to Grafana Cloud k6's ingest. Works for **either** CI engine.
+
+---
+
 ## Summary table
 
 | Secret / Variable | Sensitive | Required for | Set by |
@@ -219,6 +248,8 @@ A shared-secret HMAC token GitHub signs webhook deliveries with, validated by th
 | `GRAFANA_ALERT_EMAIL_MANAGED_AZURE` | no | azure alerts override | manual |
 | `GRAFANA_ALERT_EMAIL_MANAGED_AWS` | no | aws alerts override | manual |
 | `GRAFANA_ALERT_EMAIL` | no | all-mode alert fallback | manual |
+| `K6_CLOUD_TOKEN` | **yes** | optional Grafana Cloud k6 (k6-app) streaming | Grafana Cloud k6 app |
+| `K6_CLOUD_PROJECT_ID` | no | optional Grafana Cloud k6 (k6-app) streaming | Grafana Cloud k6 app |
 | `AZURE_CLIENT_ID` | no | managed-azure | `az ad app create` |
 | `AZURE_TENANT_ID` | no | managed-azure | `az account show` |
 | `AZURE_SUBSCRIPTION_ID` | no | managed-azure | `az account show` |
