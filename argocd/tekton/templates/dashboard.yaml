@@ -24,3 +24,6 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
+      # The dashboard ships an extensions.dashboard.tekton.dev CRD that otherwise
+      # shows perpetually OutOfSync (oversized last-applied) - Replace reconciles it.
+      - Replace=true
