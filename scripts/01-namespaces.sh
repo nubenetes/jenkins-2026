@@ -11,10 +11,14 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 
 log_step "Creating namespaces"
-# Engine-neutral namespaces (always). The jenkins namespace is created below only
-# when ci.engine=jenkins (and the tekton-* namespaces only when ci.engine=tekton),
-# so a cluster never carries a stray namespace for the engine it isn't running.
-for ns in "${J2026_OBS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_ARGOCD_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}"; do
+# Always-on namespaces. NOTE: the 'jenkins' namespace is ALWAYS created because it
+# hosts the shared GKE Gateway (scripts/09-gateway.sh) - the single public-ingress
+# entrypoint for EVERY app (tekton/headlamp/argocd/pgadmin/microservices), not just
+# Jenkins. (The Jenkins controller + jenkins-credentials Secret are created further
+# below only when ci.engine=jenkins.) The tekton-* namespaces are created only when
+# ci.engine=tekton. Do NOT delete the jenkins namespace on a tekton cluster: it
+# would cascade-delete the Gateway and take down all public access.
+for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_ARGOCD_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}"; do
   kubectl_apply_namespace "${ns}"
 done
 
@@ -30,12 +34,12 @@ if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
   done
 fi
 
-# Jenkins namespace + credentials ONLY when ci.engine=jenkins - the Jenkins
-# controller is the sole consumer (in tekton mode k6/registry/git creds live in
-# the tekton-ci Secrets), so a tekton cluster gets no stray 'jenkins' namespace.
+# jenkins-credentials Secret (+ the Jenkins controller it feeds) ONLY when
+# ci.engine=jenkins - in tekton mode the registry/git/k6 creds live in the
+# tekton-ci Secrets instead. The jenkins NAMESPACE itself is always created above
+# (it hosts the shared Gateway), so a tekton cluster has an (otherwise empty)
+# jenkins namespace by design - that's intentional, not a stray.
 if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
-kubectl_apply_namespace "${J2026_JENKINS_NAMESPACE}"
-
 log_step "Ensuring '${J2026_JENKINS_CREDENTIALS_SECRET}' Secret in ${J2026_JENKINS_NAMESPACE}"
 if kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
   log_info "Secret already exists - leaving it untouched."
