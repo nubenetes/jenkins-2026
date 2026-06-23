@@ -123,8 +123,14 @@ EOF
   rm "${PATCH_FILE}"
 
   PATCH_FILE_RBAC=$(mktemp)
+  # scopes MUST include 'email': Google OIDC returns no 'groups' claim, so RBAC
+  # subjects are matched against the email claim (the human admin is bound by email
+  # below / in the CI-account section). With the default '[groups]' nothing matches
+  # and OIDC users fall to policy.default. (policy.csv here is overwritten by the
+  # CI-account patch further down; the binding that matters is set there.)
   cat <<EOF > "${PATCH_FILE_RBAC}"
 data:
+  scopes: '[groups, email]'
   policy.default: role:readonly
   policy.csv: |
     g, authenticated, role:admin
@@ -160,9 +166,13 @@ kubectl patch configmap argocd-cm -n "${J2026_ARGOCD_NAMESPACE}" --type merge -p
 
 policy_csv="g, ${CI_ARGOCD_ACCOUNT}, role:admin"
 if [[ -n "${CLIENT_ID}" && -n "${CLIENT_SECRET}" ]]; then
-  policy_csv="g, authenticated, role:admin\n${policy_csv}"
+  # Grant the human admin via their Google email claim (scopes include 'email'
+  # above). ArgoCD has NO built-in "authenticated" group - that subject is a
+  # no-op - so bind the specific admin email instead.
   if [[ -n "${J2026_JENKINS_OIDC_ADMIN_EMAIL}" ]]; then
-    policy_csv="${policy_csv}\ng, ${J2026_JENKINS_OIDC_ADMIN_EMAIL}, role:admin"
+    policy_csv="g, ${J2026_JENKINS_OIDC_ADMIN_EMAIL}, role:admin\n${policy_csv}"
+  else
+    log_warn "JENKINS_OIDC_ADMIN_EMAIL unset - no human will get ArgoCD admin via OIDC (only the '${CI_ARGOCD_ACCOUNT}' API account). Set the GitHub secret to your Google login email, else ArgoCD shows an empty app list to SSO users."
   fi
 fi
 kubectl patch configmap argocd-rbac-cm -n "${J2026_ARGOCD_NAMESPACE}" --type merge -p "{\"data\": {\"policy.csv\": \"${policy_csv}\"}}"
