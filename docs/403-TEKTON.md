@@ -64,15 +64,16 @@ exactly like the other app-of-apps), which renders four child Applications:
 
 | Child Application | Source | Sync wave | Notes |
 |---|---|---|---|
-| `tekton-pipelines` | `argocd/tekton/components/pipelines` (vendored `v1.9.4` `release.yaml`) | 0 | the engine + CRDs |
-| `tekton-triggers` | `argocd/tekton/components/triggers` (pinned `v0.31.0` release + interceptors) | 1 | API/webhook-driven runs |
-| `tekton-dashboard` | `argocd/tekton/components/dashboard` (pinned `v0.52.0` `release-full.yaml`) | 1 | **read-write** GUI; no native auth |
+| `tekton-pipelines` | `argocd/tekton/components/pipelines` (vendored `v1.13.1` `release.yaml`) | 0 | the engine + CRDs |
+| `tekton-triggers` | `argocd/tekton/components/triggers` (vendored `v0.36.0` release + interceptors) | 1 | API/webhook-driven runs |
+| `tekton-dashboard` | `argocd/tekton/components/dashboard` (vendored `v0.69.0` `release-full.yaml`) | 1 | **read-write** GUI; no native auth |
 | `tekton-pipeline-as-code` | `tekton/` (Tasks/Pipelines/Triggers/RBAC + the `tekton-ci` SA) | 2 | the ported pipeline; lands in the `tekton-ci` namespace |
 
-The pinned component versions live in
-`argocd/tekton/components/*/kustomization.yaml` (kustomize **remote resources**,
-since Tekton has no official Helm chart) — kept in sync with `ci.tekton.versions`
-in [`config/config.yaml`](../config/config.yaml). The large Tekton CRDs are
+The component manifests are **vendored** under `argocd/tekton/components/*/`
+(`release*.yaml`) — Tekton now ships these only as GitHub release assets (not on
+the GCS bucket), and a `github.com` URL would be misclassified by kustomize as a
+git repo, so vendoring is the reliable, auditable choice. Versions are kept in
+sync with `ci.tekton.versions` in [`config/config.yaml`](../config/config.yaml). The large Tekton CRDs are
 handled the same way as the CNPG operator (`ServerSideApply=true` + `Replace=true`
 + `ServerSideDiff=true`). The credential Secrets are **not** GitOps-managed (they
 hold env-sourced secrets) — `01-namespaces.sh` / `08.5-argocd.sh` create them
@@ -95,8 +96,8 @@ everywhere. The choice per layer:
 
 There is **no official Tekton Helm chart** — upstream ships release YAMLs. Using
 a community chart would (a) rarely carry the exact pinned version (e.g.
-`v1.9.4`), and (b) insert a third party into the supply chain of the CI engine.
-Pinning the official release via a kustomize remote resource is the stronger
+`v1.13.1`), and (b) insert a third party into the supply chain of the CI engine.
+Pinning the official, vendored release manifest is the stronger
 posture. (Contrast: `observability-oss` *does* use Helm for its children —
 because kube-prometheus-stack/Loki/Tempo *have* well-maintained official charts.)
 
@@ -109,10 +110,10 @@ environment. Helm values do this in one line; kustomize would need clunky
 
 ### The one trade-off
 
-Because a kustomize remote-resource URL can't read Helm values, the component
-**versions are pinned in `argocd/tekton/components/*/kustomization.yaml`**, not
-flowed from `config.yaml`. `ci.tekton.versions` documents the intended versions;
-keep the two in sync when bumping. (An optional future refinement is to turn the
+Because the component manifests are vendored files (not Helm-templated), the
+**versions are pinned by the vendored `argocd/tekton/components/*/release*.yaml`**,
+not flowed from `config.yaml`. `ci.tekton.versions` documents the intended
+versions; keep the two in sync when bumping (re-download the release file). (An optional future refinement is to turn the
 `tekton/` pipelines-as-code into a small Helm chart to inject the observability
 namespace and tool-image versions — but the *component* versions would still
 live in the kustomizations regardless.)

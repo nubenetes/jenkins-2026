@@ -76,13 +76,14 @@ tekton:
   namespace: tekton-pipelines
   # Namespace PipelineRuns execute in (service account, registry/git creds, RBAC).
   pipelineNamespace: tekton-ci
-  # Reference of the intended component versions. The EFFECTIVE pinned versions
-  # live in argocd/tekton/components/*/kustomization.yaml (the kustomize remote
-  # resource URLs ArgoCD syncs) - keep these in sync when bumping.
+  # Reference of the pinned component versions. The EFFECTIVE manifests are
+  # VENDORED at argocd/tekton/components/*/ (release*.yaml) because Tekton now
+  # publishes these only as GitHub release assets, not on the GCS bucket - keep
+  # these in sync with those files when bumping.
   versions:
-    pipelines: v1.9.4   # vendored as argocd/tekton/components/pipelines/release.yaml (GitHub release; not on GCS)
-    triggers: v0.31.0
-    dashboard: v0.52.0
+    pipelines: v1.13.1   # latest
+    triggers: v0.36.0    # latest
+    dashboard: v0.69.0   # latest
   # Dashboard Service (created by the dashboard release-full.yaml).
   dashboard:
     # release-full.yaml = read-write mode (lets you start/cancel runs from the UI).
