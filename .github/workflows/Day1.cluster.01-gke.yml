@@ -8,7 +8,7 @@ name: "Day1.cluster.01 GKE provision"
 # Pair this with the "Decom.cluster.01 GKE decommission" workflow - it shares the same
 # Terraform state, so it can find and tear down what this workflow created.
 # To redeploy only Jenkins (e.g. a Helm values / JCasC fix) without rerunning
-# this whole lifecycle, use "Day2.deploy.01 Redeploy Jenkins" instead.
+# this whole lifecycle, use "Day2.deploy.02 Redeploy Jenkins" instead.
 on:
   workflow_dispatch:
     inputs:
