@@ -67,6 +67,8 @@ exactly like the other app-of-apps), which renders four child Applications:
 | `tekton-pipelines` | `argocd/tekton/components/pipelines` (vendored `v1.13.1` `release.yaml`) | 0 | the engine + CRDs |
 | `tekton-triggers` | `argocd/tekton/components/triggers` (vendored `v0.36.0` release + interceptors) | 1 | API/webhook-driven runs |
 | `tekton-dashboard` | `argocd/tekton/components/dashboard` (vendored `v0.69.0` `release-full.yaml`) | 1 | **read-write** GUI; no native auth |
+| `tekton-pruner` | `argocd/tekton/components/pruner` (vendored `v0.4.0`) | 1 | GC of completed runs — `historyLimit: 20` (parity with Jenkins `buildDiscarder`) |
+| `tekton-chains` | `argocd/tekton/components/chains` (vendored `v0.27.1`) | 1 | supply-chain: x509/cosign image signing + in-toto SLSA provenance + Rekor; own `tekton-chains` ns |
 | `tekton-pipeline-as-code` | `tekton/` (Tasks/Pipelines/Triggers/RBAC + the `tekton-ci` SA) | 2 | the ported pipeline; lands in the `tekton-ci` namespace |
 
 The component manifests are **vendored** under `argocd/tekton/components/*/`
@@ -252,6 +254,32 @@ the browser, and there is no `gh app create` (nor a REST endpoint) to create an
 App from nothing. The **webhook method achieves the same on org-owned forks
 entirely via `gh`/API**, which fits this project's "automate everything" goal —
 hence it is preferred.
+
+## Pruner & Chains (housekeeping + supply chain)
+
+Two more child Applications round out the Tekton stack:
+
+- **Pruner** (`v0.4.0`) — garbage-collects completed PipelineRuns/TaskRuns. Its
+  `tekton-pruner-default-spec` is patched to `historyLimit: 20`, mirroring the
+  Jenkins pipelines' `buildDiscarder(numToKeepStr: '20')`. No extra setup.
+- **Chains** (`v0.27.1`) — supply-chain security: signs the built container
+  images and emits **in-toto SLSA provenance** attestations, storing OCI
+  signatures alongside the image in ghcr.io and recording them in the public
+  **Rekor** transparency log (`chains-config` patched in the kustomization). This
+  complements the pipeline's existing Semgrep/CodeQL/Trivy scanning
+  ([601. DevSecOps](./601-DEVSECOPS.md)).
+
+  **One-time signing key:** Chains' `x509` signer needs a cosign keypair in the
+  `signing-secrets` Secret (the release ships only an empty placeholder; ArgoCD
+  is told to ignore its `data` so it never overwrites the real key). Generate it
+  once with cosign — it writes the key straight into the cluster Secret:
+
+  ```bash
+  cosign generate-key-pair k8s://tekton-chains/signing-secrets
+  ```
+
+  Until that runs, Chains deploys and watches runs but can't sign (it logs a
+  missing-key error). The public key it prints can be shared for verification.
 
 ## Observability
 
