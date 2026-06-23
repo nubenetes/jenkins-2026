@@ -131,6 +131,13 @@ jobs:
           GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
           PAC_WEBHOOK_SECRET: ${{ secrets.PAC_WEBHOOK_SECRET }}
 
+      # Idempotent: (re)creates the public Gateway routes incl. the Tekton
+      # Dashboard (IAP) and the PaC controller (pac.<domain>), so a Tekton-only
+      # redeploy exposes them without a full Day1. Reads IAP creds from the
+      # cluster Secrets refreshed by 01-namespaces above.
+      - name: Re-apply Gateway routes (scripts/09-gateway.sh)
+        run: ./scripts/09-gateway.sh
+
       - name: Summary
         if: always()
         run: |
