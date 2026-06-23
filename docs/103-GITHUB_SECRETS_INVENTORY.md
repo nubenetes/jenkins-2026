@@ -6,6 +6,11 @@ Complete reference for every GitHub Actions secret and repository variable used 
 
 > **Quick setup**: see [102 § Setup walkthrough](102-GITHUB_ACTIONS_AUTOMATION.md) for the step-by-step `gh secret set` commands that create these in order.
 
+> **In-cluster Secrets**: these GitHub secrets are the *source* values. For how they
+> are materialised into Kubernetes `Secret`s, which namespace each lands in, and why
+> (the per-app layout + the IAP replication constraint), see
+> [201 § Namespaces & in-cluster Secrets](201-ARCHITECTURE.md#namespaces--in-cluster-secrets).
+
 ---
 
 ## 1. GCP / Core Infrastructure
