@@ -150,4 +150,10 @@ def printGrafanaLink(String envName) {
     "?orgId=1&var-deployment_environment=${envName}&from=${from}&to=${to}"
 
   echo "View this run in Grafana: ${url}"
+
+  // When Grafana Cloud k6 streaming is enabled, also surface the native k6-app URL.
+  def projectId = env.K6_CLOUD_PROJECT_ID
+  if (projectId?.trim()) {
+    echo "View this run in Grafana Cloud k6: ${baseUrl}/a/k6-app/projects/${projectId}"
+  }
 }

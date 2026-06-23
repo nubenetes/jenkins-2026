@@ -47,13 +47,18 @@ spec:
           value: $(params.iterations)
         - name: TARGET_NAMESPACE
           value: $(params.target-namespace)
-        - name: OTEL_SERVICE_NAME
-          value: tekton-pipeline-k6-smoke
-        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+        # OTLP output (k6 2.x schema, same as the Jenkins job + the GitHub k6
+        # workflow): gRPC to the in-cluster collector, which forwards to the backend.
+        - name: K6_OTEL_SERVICE_NAME
+          value: k6-microservices-smoke
+        - name: K6_OTEL_GRPC_EXPORTER_INSECURE
+          value: "true"
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: service.name=k6-microservices-smoke,service.namespace=jenkins-2026,deployment.environment=$(params.env-name)
+        - name: OTLP_ENDPOINT_RAW
           value: $(params.otlp-endpoint)
-        # Optional Grafana Cloud k6 (the k6-app) streaming. Both come from the
-        # optional 'k6-cloud' Secret (created by 01-namespaces.sh only when
-        # K6_CLOUD_TOKEN is set); empty -> the cloud output is skipped.
+        # Optional Grafana Cloud k6 (the k6-app) streaming. All from the optional
+        # 'k6-cloud' Secret (created by 01-namespaces.sh); empty -> cloud out skipped.
         - name: K6_CLOUD_TOKEN
           valueFrom:
             secretKeyRef:
@@ -66,16 +71,30 @@ spec:
               name: k6-cloud
               key: project-id
               optional: true
+        - name: K6_GRAFANA_BASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: k6-cloud
+              key: grafana-base-url
+              optional: true
       script: |
         #!/bin/sh
         set -eux
         cd "$(workspaces.source.path)/k6-infra"
-        # Stream results to Grafana Cloud k6 (visible under /a/k6-app) when a token
-        # + project id are present; otherwise just run locally with the summary.
+        # Build outputs: OTLP (when an endpoint is configured) AND Grafana Cloud k6
+        # (when a token + project id are set) - both can run at once.
+        OTEL_OUT=""
+        if [ -n "${OTLP_ENDPOINT_RAW:-}" ]; then
+          export K6_OTEL_GRPC_EXPORTER_ENDPOINT="$(printf '%s' "${OTLP_ENDPOINT_RAW}" | sed -E 's#^[a-z]+://##')"
+          OTEL_OUT="-o opentelemetry"
+        fi
         CLOUD_OUT=""
         if [ -n "${K6_CLOUD_TOKEN:-}" ] && [ -n "${K6_CLOUD_PROJECT_ID:-}" ]; then
           CLOUD_OUT="--out cloud"
         fi
-        k6 run ${CLOUD_OUT} --vus "${K6_VUS}" --iterations "${K6_ITERATIONS}" \
+        k6 run ${OTEL_OUT} ${CLOUD_OUT} --vus "${K6_VUS}" --iterations "${K6_ITERATIONS}" \
           --summary-export="$(workspaces.source.path)/k6-summary.json" \
           jenkins/pipelines/k6/microservices-smoke.js
+        if [ -n "${CLOUD_OUT}" ] && [ -n "${K6_GRAFANA_BASE_URL:-}" ]; then
+          echo "k6 results streamed to Grafana Cloud k6: ${K6_GRAFANA_BASE_URL}/a/k6-app/projects/${K6_CLOUD_PROJECT_ID}"
+        fi
