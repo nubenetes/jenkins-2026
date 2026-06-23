@@ -1,0 +1,130 @@
+name: "Day2.deploy.02 Redeploy Jenkins"
+
+# Manually-triggered: re-applies only scripts/04-jenkins.sh (Helm
+# upgrade --install of helm/jenkins + jenkins/casc JCasC fragments) and
+# scripts/06-seed-pipelines.sh against the cluster from the last "Day1.cluster.01 GKE
+# provision" run, without touching terraform/gke or any other component of the
+# stack.
+#
+# Use this to apply a Jenkins-only change (Helm values, JCasC, plugin list,
+# shared library) without rerunning the whole provision/decommission lifecycle.
+# Requires the namespaces/secrets created by scripts/01-namespaces.sh during
+# that "Day1.cluster.01 GKE provision" run to still exist on the cluster.
+#
+# NOTE: Grafana dashboards are deliberately NOT republished here - that's the
+# job of the per-backend dashboard workflows (e.g. "Day2.publish.04 Publish AWS
+# dashboards"). Running scripts/07 here would assume config.yaml's default
+# observability.mode (grafana-cloud) regardless of the live cluster's mode, and
+# the grafana-cloud branch hard-fails when its credentials secret is absent.
+on:
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: "Git branch, tag, or SHA to check out (leave empty to use the branch/tag selected in 'Use workflow from' above)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: jenkins-2026-gke
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: "1.15.6"
+
+jobs:
+  redeploy-jenkins:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref || github.ref }}
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Install gke-gcloud-auth-plugin
+        run: gcloud components install gke-gcloud-auth-plugin --quiet
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install yq
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/yq \
+            https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Configure GCS backend (terraform/gke)
+        run: |
+          cat > terraform/gke/backend_override.tf <<EOF
+          terraform {
+            backend "gcs" {
+              bucket = "${{ secrets.TF_STATE_BUCKET }}"
+              prefix = "jenkins-2026/gke"
+            }
+          }
+          EOF
+
+      - name: Terraform init
+        working-directory: terraform/gke
+        run: |
+          for i in {1..3}; do
+            terraform init -input=false && break || {
+              if [ $i -lt 3 ]; then
+                echo "Terraform init failed, retrying in 10s..."
+                sleep 10
+              else
+                exit 1
+              fi
+            }
+          done
+
+      - name: Fetch kubeconfig credentials
+        working-directory: terraform/gke
+        run: |
+          gcloud container clusters get-credentials \
+            "$(terraform output -raw cluster_name)" \
+            --zone "$(terraform output -raw location)" \
+            --project "${{ secrets.GCP_PROJECT_ID }}"
+
+      - name: Check prereqs & add Helm repos (scripts/00-check-prereqs.sh)
+        run: ./scripts/00-check-prereqs.sh
+
+      - name: Redeploy Jenkins (scripts/04-jenkins.sh)
+        run: ./scripts/04-jenkins.sh
+
+      - name: Re-seed Microservices pipelines (scripts/06-seed-pipelines.sh)
+        run: ./scripts/06-seed-pipelines.sh
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Jenkins redeployed"
+            echo
+            echo "Re-applied helm/jenkins + jenkins/casc and re-triggered seed-jobs"
+            echo "against the cluster from the last **Day1.cluster.01 GKE provision** run."
+            echo "(Grafana dashboards are published by the per-backend dashboard"
+            echo "workflows, e.g. **Day2.publish.04 Publish AWS dashboards**.)"
+          } >> "${GITHUB_STEP_SUMMARY}"
