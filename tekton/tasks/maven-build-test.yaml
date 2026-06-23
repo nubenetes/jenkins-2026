@@ -1,0 +1,40 @@
+# Stage "Build & Test" of the Jenkins pipeline (vars/microservicesBuild.groovy):
+# compiles and unit-tests the service. java -> mvnw clean verify; angular -> npm.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: maven-build-test
+spec:
+  params:
+    - name: service-type
+    - name: module-path
+      default: ""
+  workspaces:
+    - name: source
+  steps:
+    - name: build-test
+      image: maven:3.9.9-eclipse-temurin-21
+      computeResources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "4"
+          memory: 4Gi
+      script: |
+        #!/bin/bash
+        set -eux
+        SETTINGS="$(workspaces.source.path)/jenkins-2026-infra/jenkins/maven-settings.xml"
+        cd "$(workspaces.source.path)/microservices-src"
+        unset MAVEN_CONFIG
+        export MAVEN_OPTS="-Xmx2048m -XX:+UseG1GC"
+        export NODE_OPTIONS="--max-old-space-size=3072"
+        MOD="$(params.module-path)"
+        if [ -n "${MOD}" ] && [ -f "${MOD}/mvnw" ]; then
+          cd "${MOD}"
+          ./mvnw -B -ntp -T 4 -s "${SETTINGS}" -DskipITs -Dmaven.compiler.maxmem=1024m -DargLine="-Xmx1536m" clean verify
+        elif [ -n "${MOD}" ]; then
+          ./mvnw -B -ntp -T 4 -s "${SETTINGS}" -pl "${MOD}" -am -DskipITs -Dmaven.compiler.maxmem=1024m -DargLine="-Xmx1536m" clean verify
+        else
+          ./mvnw -B -ntp -T 4 -s "${SETTINGS}" -DskipITs -Dmaven.compiler.maxmem=1024m -DargLine="-Xmx1536m" clean verify
+        fi

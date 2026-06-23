@@ -1,0 +1,11 @@
+apiVersion: v2
+name: tekton
+description: >-
+  App-of-apps for the Tekton CI engine (ci.engine=tekton). Renders child
+  Applications for Tekton Pipelines, Triggers, the Dashboard, and the
+  pipelines-as-code under tekton/. repoURL/targetRevision flow down from the
+  parent Application's helm.parameters (set by scripts/04-tekton.sh) so the
+  kustomize/manifest children's git source tracks the active branch. Mirrors
+  argocd/observability-oss and argocd/platform-postgres.
+type: application
+version: 0.1.0

@@ -1,0 +1,33 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tekton
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  # App-of-apps: renders the local Helm chart argocd/tekton/, which emits the
+  # child Applications for Tekton Pipelines / Triggers / Dashboard and the
+  # pipelines-as-code under tekton/. The {{repoUrl}}/{{branchStable}}
+  # placeholders are substituted by scripts/04-tekton.sh at apply time and
+  # passed down as helm parameters so the children's git source tracks the
+  # active branch. Only applied when ci.engine=tekton. Mirrors
+  # argocd/observability-oss-app.yaml and argocd/platform-postgres-app.yaml.
+  source:
+    repoURL: '{{repoUrl}}'
+    targetRevision: '{{branchStable}}'
+    path: argocd/tekton
+    helm:
+      parameters:
+        - name: repoURL
+          value: '{{repoUrl}}'
+        - name: targetRevision
+          value: '{{branchStable}}'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

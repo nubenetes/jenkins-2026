@@ -1,0 +1,123 @@
+# Tekton port of vars/MicroservicesPipeline.groovy. Tasks run sequentially
+# (runAfter), sharing one 'source' workspace (RWO PVC) - matching the Jenkins
+# stage order: checkout -> Semgrep -> CodeQL -> Trivy IaC -> build/test ->
+# build & push image -> Trivy image -> GitOps deploy -> smoke -> k6.
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: microservices-pipeline
+spec:
+  params:
+    - name: service-name
+    - name: service-type
+      default: java
+    - name: git-repo-url
+    - name: git-branch
+      default: main
+    - name: module-path
+      default: ""
+    - name: target-namespace
+    - name: env-name
+      default: stable
+    - name: port
+    - name: health-path
+    - name: image
+    - name: registry-host
+    - name: self-repo-url
+      default: https://github.com/nubenetes/jenkins-2026.git
+    - name: self-repo-branch
+      default: main
+    - name: otlp-endpoint
+      default: ""
+  workspaces:
+    - name: source
+    - name: dockerconfig
+  tasks:
+    - name: fetch-source
+      taskRef: { name: fetch-source }
+      workspaces:
+        - { name: source, workspace: source }
+      params:
+        - { name: git-repo-url, value: $(params.git-repo-url) }
+        - { name: git-branch, value: $(params.git-branch) }
+        - { name: service-name, value: $(params.service-name) }
+        - { name: self-repo-url, value: $(params.self-repo-url) }
+        - { name: self-repo-branch, value: $(params.self-repo-branch) }
+    - name: semgrep-scan
+      runAfter: [fetch-source]
+      taskRef: { name: semgrep-scan }
+      workspaces:
+        - { name: source, workspace: source }
+      params:
+        - { name: self-repo-url, value: $(params.self-repo-url) }
+        - { name: self-repo-branch, value: $(params.self-repo-branch) }
+    - name: codeql-analyze
+      runAfter: [semgrep-scan]
+      taskRef: { name: codeql-analyze }
+      workspaces:
+        - { name: source, workspace: source }
+      params:
+        - { name: self-repo-url, value: $(params.self-repo-url) }
+        - { name: self-repo-branch, value: $(params.self-repo-branch) }
+    - name: trivy-iac
+      runAfter: [codeql-analyze]
+      taskRef: { name: trivy-iac }
+      workspaces:
+        - { name: source, workspace: source }
+      params:
+        - { name: env-name, value: $(params.env-name) }
+    - name: build-test
+      runAfter: [trivy-iac]
+      taskRef: { name: maven-build-test }
+      workspaces:
+        - { name: source, workspace: source }
+      params:
+        - { name: service-type, value: $(params.service-type) }
+        - { name: module-path, value: $(params.module-path) }
+    - name: build-push-image
+      runAfter: [build-test]
+      taskRef: { name: build-push-image }
+      workspaces:
+        - { name: source, workspace: source }
+        - { name: dockerconfig, workspace: dockerconfig }
+      params:
+        - { name: service-type, value: $(params.service-type) }
+        - { name: module-path, value: $(params.module-path) }
+        - { name: image, value: $(params.image) }
+    - name: trivy-image
+      runAfter: [build-push-image]
+      taskRef: { name: trivy-image }
+      workspaces:
+        - { name: source, workspace: source }
+        - { name: dockerconfig, workspace: dockerconfig }
+      params:
+        - { name: image, value: $(params.image) }
+    - name: gitops-deploy
+      runAfter: [trivy-image]
+      taskRef: { name: gitops-deploy }
+      workspaces:
+        - { name: source, workspace: source }
+      params:
+        - { name: service-name, value: $(params.service-name) }
+        - { name: env-name, value: $(params.env-name) }
+        - { name: target-namespace, value: $(params.target-namespace) }
+        - { name: image-tag, value: $(params.git-branch) }
+    - name: smoke-test
+      runAfter: [gitops-deploy]
+      taskRef: { name: smoke-test }
+      params:
+        - { name: service-name, value: $(params.service-name) }
+        - { name: target-namespace, value: $(params.target-namespace) }
+        - { name: port, value: $(params.port) }
+        - { name: health-path, value: $(params.health-path) }
+    - name: k6-smoke
+      runAfter: [smoke-test]
+      taskRef: { name: k6-smoke }
+      workspaces:
+        - { name: source, workspace: source }
+      params:
+        - { name: target-namespace, value: $(params.target-namespace) }
+        - { name: env-name, value: $(params.env-name) }
+        - { name: self-repo-url, value: $(params.self-repo-url) }
+        - { name: self-repo-branch, value: $(params.self-repo-branch) }
+        - { name: otlp-endpoint, value: $(params.otlp-endpoint) }

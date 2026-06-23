@@ -1,0 +1,125 @@
+# Tekton Triggers: API/webhook-driven runs of microservices-pipeline. POST a JSON
+# body with the service fields to the EventListener Service (el-microservices) to
+# kick a run. The GitHub HMAC interceptor validates requests when the optional
+# 'tekton-github-webhook-secret' Secret (key: secretToken) is present.
+#
+# NOTE: the upstream JHipster app repos are not owned by this project, so GitHub
+# push webhooks can't be wired to them - the primary trigger is the seed script
+# (06-tekton-pipelines.sh). This EventListener exists for parity / manual / CI
+# (e.g. an internal CronJob or `curl`) re-runs.
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerBinding
+metadata:
+  name: microservices-binding
+spec:
+  params:
+    - name: service-name
+      value: $(body.service-name)
+    - name: service-type
+      value: $(body.service-type)
+    - name: git-repo-url
+      value: $(body.git-repo-url)
+    - name: git-branch
+      value: $(body.git-branch)
+    - name: module-path
+      value: $(body.module-path)
+    - name: target-namespace
+      value: $(body.target-namespace)
+    - name: env-name
+      value: $(body.env-name)
+    - name: port
+      value: $(body.port)
+    - name: health-path
+      value: $(body.health-path)
+    - name: image
+      value: $(body.image)
+    - name: registry-host
+      value: $(body.registry-host)
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerTemplate
+metadata:
+  name: microservices-template
+spec:
+  params:
+    - name: service-name
+    - name: service-type
+      default: java
+    - name: git-repo-url
+    - name: git-branch
+      default: main
+    - name: module-path
+      default: ""
+    - name: target-namespace
+      default: microservices
+    - name: env-name
+      default: stable
+    - name: port
+      default: "8080"
+    - name: health-path
+      default: /management/health
+    - name: image
+    - name: registry-host
+      default: ghcr.io
+  resourcetemplates:
+    - apiVersion: tekton.dev/v1
+      kind: PipelineRun
+      metadata:
+        generateName: $(tt.params.service-name)-$(tt.params.env-name)-
+        labels:
+          jenkins2026.io/service: $(tt.params.service-name)
+          jenkins2026.io/env: $(tt.params.env-name)
+      spec:
+        taskRunTemplate:
+          serviceAccountName: tekton-ci
+        pipelineRef:
+          name: microservices-pipeline
+        params:
+          - { name: service-name, value: $(tt.params.service-name) }
+          - { name: service-type, value: $(tt.params.service-type) }
+          - { name: git-repo-url, value: $(tt.params.git-repo-url) }
+          - { name: git-branch, value: $(tt.params.git-branch) }
+          - { name: module-path, value: $(tt.params.module-path) }
+          - { name: target-namespace, value: $(tt.params.target-namespace) }
+          - { name: env-name, value: $(tt.params.env-name) }
+          - { name: port, value: $(tt.params.port) }
+          - { name: health-path, value: $(tt.params.health-path) }
+          - { name: image, value: $(tt.params.image) }
+          - { name: registry-host, value: $(tt.params.registry-host) }
+        workspaces:
+          - name: source
+            volumeClaimTemplate:
+              spec:
+                accessModes: ["ReadWriteOnce"]
+                resources:
+                  requests:
+                    storage: 4Gi
+          - name: dockerconfig
+            secret:
+              secretName: tekton-registry
+              items:
+                - key: .dockerconfigjson
+                  path: config.json
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: EventListener
+metadata:
+  name: microservices
+spec:
+  serviceAccountName: tekton-triggers-sa
+  triggers:
+    - name: microservices-trigger
+      interceptors:
+        - ref:
+            name: github
+          params:
+            - name: secretRef
+              value:
+                secretName: tekton-github-webhook-secret
+                secretKey: secretToken
+            - name: eventTypes
+              value: ["push"]
+      bindings:
+        - ref: microservices-binding
+      template:
+        ref: microservices-template
