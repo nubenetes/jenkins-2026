@@ -13,7 +13,7 @@ Each component of the filename encodes a different dimension of the workflow's r
 | Component | Values | Meaning |
 |---|---|---|
 | **DayN** | `Day0` `Day1` `Day2` `Decom` | **Lifecycle phase** (SRE Day-0/1/2 terminology) — self-documenting; see [Day-0/1/2 operations](#day-0--day-1--day-2-operations) below. `Decom` sorts after `Day2`, so teardown always lands last. |
-| **tier** | `infra` `cluster` `deploy` `publish` `traffic` | **Execution group within the phase** — a brief semantic word (controlled vocabulary) replacing the old middle digit. |
+| **tier** | `infra` `cluster` `redeploy` `publish` `traffic` | **Execution group within the phase** — a brief semantic word (controlled vocabulary) replacing the old middle digit. |
 | **ZZ** | `01`–`05` | **Resource identifier** — stable for the same resource across all phases. |
 | **resource** | `gateway`, `gke`, `jenkins`, … | **Identifies the resource only** — no action verb (the `DayN` prefix already says bootstrap/publish/teardown). |
 
@@ -35,14 +35,14 @@ The GitHub Actions sidebar sorts by each workflow's `name:` field, and every `na
 | `03` | Azure Managed Grafana | `Day0.infra.03-azure-grafana` | `Day2.publish.03-azure-grafana` | `Decom.infra.03-azure-grafana` |
 | `04` | AWS AMG | `Day0.infra.04-aws-grafana` | `Day2.publish.04-aws-grafana` | `Decom.infra.04-aws-grafana` |
 | `01` | GKE cluster | `Day1.cluster.01-gke` | — | `Decom.cluster.01-gke` |
-| `01` | ArgoCD (CD engine) | *(by `Day1.cluster.01`)* | `Day2.deploy.01-argocd` | *(by `Decom.cluster.01`)* |
-| `02` | Jenkins | *(by `Day1.cluster.01`)* | `Day2.deploy.02-jenkins` | *(by `Decom.cluster.01`)* |
-| `04` | Headlamp | *(by `Day1.cluster.01`)* | `Day2.deploy.04-headlamp` | *(by `Decom.cluster.01`)* |
+| `01` | ArgoCD (CD engine) | *(by `Day1.cluster.01`)* | `Day2.redeploy.01-argocd` | *(by `Decom.cluster.01`)* |
+| `02` | Jenkins | *(by `Day1.cluster.01`)* | `Day2.redeploy.02-jenkins` | *(by `Decom.cluster.01`)* |
+| `04` | Headlamp | *(by `Day1.cluster.01`)* | `Day2.redeploy.04-headlamp` | *(by `Decom.cluster.01`)* |
 | `01` | OSS Grafana stack | *(by `Day1.cluster.01` via ArgoCD)* | `Day2.publish.01-oss-grafana` | *(by `Decom.cluster.01`)* |
 | `05` | Grafana alerts | *(by `Day1.cluster.01`)* | `Day2.publish.05-alerts` | — |
 | `01` | k6 traffic | — | `Day2.traffic.01-k6` | — |
 
-*The same `ZZ` is reused across different `tier`s (e.g. `infra.01` is the Gateway, `cluster.01` is GKE, `deploy.01` is ArgoCD); read `tier`+`ZZ` together. Within the `deploy` tier `ZZ` follows install order: ArgoCD (`01`) is the CD engine that deploys the rest, so it sorts first.*
+*The same `ZZ` is reused across different `tier`s (e.g. `infra.01` is the Gateway, `cluster.01` is GKE, `redeploy.01` is ArgoCD); read `tier`+`ZZ` together. Within the `redeploy` tier `ZZ` follows install order: ArgoCD (`01`) is the CD engine that deploys the rest, so it sorts first.*
 
 ---
 
@@ -57,9 +57,9 @@ Rows = resources · Columns = lifecycle phases · Cell = filename (link) or — 
 | **Azure Managed Grafana** | [Day0.infra.03-azure-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.03-azure-grafana.yml) | [Day2.publish.03-azure-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.03-azure-grafana.yml) | [Decom.infra.03-azure-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.03-azure-grafana.yml) |
 | **AWS AMG** | [Day0.infra.04-aws-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.04-aws-grafana.yml) | [Day2.publish.04-aws-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.04-aws-grafana.yml) | [Decom.infra.04-aws-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.04-aws-grafana.yml) |
 | **GKE cluster** | [Day1.cluster.01-gke](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) | — | [Decom.cluster.01-gke](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml) |
-| **ArgoCD** (CD engine) | *(provisioned by Day1.cluster.01)* | [Day2.deploy.01-argocd](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.deploy.01-argocd.yml) | *(destroyed by Decom.cluster.01)* |
-| **Jenkins** | *(provisioned by Day1.cluster.01)* | [Day2.deploy.02-jenkins](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.deploy.02-jenkins.yml) | *(destroyed by Decom.cluster.01)* |
-| **Headlamp** | *(provisioned by Day1.cluster.01)* | [Day2.deploy.04-headlamp](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.deploy.04-headlamp.yml) | *(destroyed by Decom.cluster.01)* |
+| **ArgoCD** (CD engine) | *(provisioned by Day1.cluster.01)* | [Day2.redeploy.01-argocd](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.01-argocd.yml) | *(destroyed by Decom.cluster.01)* |
+| **Jenkins** | *(provisioned by Day1.cluster.01)* | [Day2.redeploy.02-jenkins](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.02-jenkins.yml) | *(destroyed by Decom.cluster.01)* |
+| **Headlamp** | *(provisioned by Day1.cluster.01)* | [Day2.redeploy.04-headlamp](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.04-headlamp.yml) | *(destroyed by Decom.cluster.01)* |
 | **OSS Grafana stack** (ArgoCD) | *(provisioned by Day1.cluster.01)* | [Day2.publish.01-oss-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.01-oss-grafana.yml) | *(destroyed by Decom.cluster.01)* |
 | **Grafana alerts** | *(provisioned by Day1.cluster.01)* | [Day2.publish.05-alerts](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.05-alerts.yml) | — |
 | **k6 traffic** | — | [Day2.traffic.01-k6](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml) | — |
@@ -75,8 +75,8 @@ Rows = resources · Columns = lifecycle phases · Cell = filename (link) or — 
 flowchart TD
     subgraph PHASE0 ["Day0 + Day1 — Create (run in sorted order)"]
         direction TB
-        P0_1["Day0.infra.01 Gateway bootstrap\nDay0.infra.02 Grafana Cloud bootstrap\nDay0.infra.03 Azure bootstrap\nDay0.infra.04 AWS bootstrap\n━━ one-time, persistent ━━"]
-        P0_2["Day1.cluster.01 GKE provision\n━━ throwaway cluster ━━"]
+        P0_1["Day0.infra.01 Gateway\nDay0.infra.02 Grafana Cloud\nDay0.infra.03 Azure bootstrap\nDay0.infra.04 AWS bootstrap\n━━ one-time, persistent ━━"]
+        P0_2["Day1.cluster.01 GKE\n━━ throwaway cluster ━━"]
         P0_1 -->|"persistent resources ready\n(GCS state, credentials)"| P0_2
     end
 
@@ -85,16 +85,16 @@ flowchart TD
         P5_1a["Day2.publish.03 Azure dashboards"]
         P5_1b["Day2.publish.04 AWS dashboards"]
         P5_1c["Day2.publish.05 Grafana alerts"]
-        P5_2z["Day2.deploy.01 ArgoCD"]
-        P5_2a["Day2.deploy.02 Jenkins"]
-        P5_2b["Day2.deploy.04 Headlamp"]
+        P5_2z["Day2.redeploy.01 ArgoCD"]
+        P5_2a["Day2.redeploy.02 Jenkins"]
+        P5_2b["Day2.redeploy.04 Headlamp"]
         P5_9["Day2.traffic.01 k6"]
     end
 
     subgraph PHASE9 ["Decom — Destroy (run in sorted order)"]
         direction TB
-        P9_1["Decom.cluster.01 GKE decommission\n━━ throwaway cluster first ━━"]
-        P9_2["Decom.infra.01 Gateway decommission\nDecom.infra.02 Grafana Cloud decommission\nDecom.infra.03 Azure decommission\nDecom.infra.04 AWS decommission\n━━ persistent resources last ━━"]
+        P9_1["Decom.cluster.01 GKE\n━━ throwaway cluster first ━━"]
+        P9_2["Decom.infra.01 Gateway\nDecom.infra.02 Grafana Cloud\nDecom.infra.03 Azure decommission\nDecom.infra.04 AWS decommission\n━━ persistent resources last ━━"]
         P9_1 -->|"cluster gone\nno dangling references"| P9_2
     end
 
@@ -115,7 +115,7 @@ These terms come from the SRE / platform-engineering world and describe **when i
 |---|---|---|---|
 | **Day0** | Foundation bootstrapping — one-time setup of persistent infrastructure that survives across cluster sessions | Before the first deployment; rarely again unless rebuilding from scratch | `infra` |
 | **Day1** | Initial provisioning — creating the cluster and deploying the full application stack on top of the Day0 foundation | Once per cluster session (provision → use → decommission cycle) | `cluster` |
-| **Day2** | Operations — changes to a **running** system without reprovisioning: config updates, artifact publishing, simulations | Anytime while the cluster is alive | `deploy`, `publish`, `traffic` |
+| **Day2** | Operations — changes to a **running** system without reprovisioning: config updates, artifact publishing, simulations | Anytime while the cluster is alive | `redeploy`, `publish`, `traffic` |
 | **Decom** | Teardown — the inverse of Day1 (cluster) and Day0 (persistent backends) | End of session / permanent shutdown | `cluster` then `infra` |
 
 ### Day × workflow matrix
@@ -127,9 +127,9 @@ These terms come from the SRE / platform-engineering world and describe **when i
 | 3 | [Day0.infra.03-azure-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.03-azure-grafana.yml) | **Day0** | no | yes | Once (re-run = no-op) |
 | 4 | [Day0.infra.04-aws-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.04-aws-grafana.yml) | **Day0** | no | yes | Once (re-run = no-op) |
 | 5 | [Day1.cluster.01-gke](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) | **Day1** | creates it | yes | Once per session |
-| 6 | [Day2.deploy.01-argocd](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.deploy.01-argocd.yml) | **Day2** | yes | yes | When ArgoCD config / an Application changes |
-| 7 | [Day2.deploy.02-jenkins](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.deploy.02-jenkins.yml) | **Day2** | yes | yes | When Jenkins config/JCasC changes |
-| 8 | [Day2.deploy.04-headlamp](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.deploy.04-headlamp.yml) | **Day2** | yes | yes | When Headlamp config changes |
+| 6 | [Day2.redeploy.01-argocd](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.01-argocd.yml) | **Day2** | yes | yes | When ArgoCD config / an Application changes |
+| 7 | [Day2.redeploy.02-jenkins](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.02-jenkins.yml) | **Day2** | yes | yes | When Jenkins config/JCasC changes |
+| 8 | [Day2.redeploy.04-headlamp](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.04-headlamp.yml) | **Day2** | yes | yes | When Headlamp config changes |
 | 9 | [Day2.publish.01-oss-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.01-oss-grafana.yml) | **Day2** | yes ³ | yes | When OSS dashboards/alerts change |
 | 10 | [Day2.publish.03-azure-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.03-azure-grafana.yml) | **Day2** | **no** ¹ | yes | When dashboard JSON changes |
 | 11 | [Day2.publish.04-aws-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.04-aws-grafana.yml) | **Day2** | **no** ¹ | yes | When dashboard JSON changes |
@@ -171,9 +171,9 @@ flowchart TD
             w5105["Day2.publish.05\nGrafana alerts"]
         end
         subgraph redeploy["Component redeploys"]
-            w52ar["Day2.deploy.01\nArgoCD"]
-            w5202["Day2.deploy.02\nJenkins"]
-            w5203["Day2.deploy.04\nHeadlamp"]
+            w52ar["Day2.redeploy.01\nArgoCD"]
+            w5202["Day2.redeploy.02\nJenkins"]
+            w5203["Day2.redeploy.04\nHeadlamp"]
         end
         subgraph sim["Traffic"]
             w5901["Day2.traffic.01\nk6"]
@@ -215,9 +215,9 @@ All 18 workflows in a single numbered table. The filename's three components (`D
 | **3** | **Day0** Create | **infra** — persistent first | **03** Azure Mgd Grafana | [**`Day0.infra.03-azure-grafana`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.03-azure-grafana.yml) | Provisions Azure Managed Grafana + Azure Monitor workspace + App Insights + Log Analytics + Entra SP (`terraform/azure-managed-grafana`). Auth: GitHub OIDC → Azure (no stored client secret). | `terraform/bootstrap`; `AZURE_*` GitHub secrets | **One-time** |
 | **4** | **Day0** Create | **infra** — persistent first | **04** AWS AMG / AMP | [**`Day0.infra.04-aws-grafana`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.04-aws-grafana.yml) | Provisions Amazon Managed Grafana + AMP + CloudWatch + GKE→AWS OIDC provider + collector IAM role (`terraform/aws-managed-grafana`). Auth: GitHub OIDC → AWS (no access keys). | `terraform/bootstrap`; `AWS_*` GitHub secrets | **One-time** |
 | **5** | **Day1** Create | **cluster** — depends on infra | **01** GKE cluster | [**`Day1.cluster.01-gke`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) | Provisions the throwaway GKE cluster (`terraform/gke`) then runs `scripts/up.sh` in full: namespaces → OTel → ArgoCD → observability → Jenkins → seed pipelines → Headlamp + smoke test. (ArgoCD precedes observability so oss mode can deploy the in-cluster stack via the `observability-oss` app-of-apps.) Reads persistent-resource outputs (rows 1–4) from GCS state. Always pair with row 14. | Rows 1–4 as needed for the chosen `observability_mode`; `terraform/bootstrap` | **Per session** |
-| **6** | **Day2** Update | **deploy** | **01** ArgoCD | [**`Day2.deploy.01-argocd`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.deploy.01-argocd.yml) | Re-applies `scripts/08.5-argocd.sh`: ArgoCD Helm upgrade + OIDC/RBAC + Jenkins API token, and re-applies the GitOps Applications it owns (platform-postgres, External Secrets, Headlamp, microservices AppSet). ArgoCD is the CD engine the rest deploy through, hence `ZZ=01`. | Cluster active (row 5 run) | **Anytime** |
-| **7** | **Day2** Update | **deploy** | **02** Jenkins | [**`Day2.deploy.02-jenkins`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.deploy.02-jenkins.yml) | Re-applies `scripts/04-jenkins.sh`: Helm upgrade of `helm/jenkins/` + JCasC, and re-seeds the Microservices pipelines against the existing cluster. For Jenkins-only changes without a full provision cycle. | Cluster active (row 5 run) | **Anytime** |
-| **8** | **Day2** Update | **deploy** | **04** Headlamp | [**`Day2.deploy.04-headlamp`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.deploy.04-headlamp.yml) | Re-applies `scripts/01-namespaces.sh` (refreshes OIDC config keys on `headlamp-credentials`) and `scripts/08-headlamp.sh` (Helm upgrade of `helm/headlamp/`). | Cluster active (row 5 run) | **Anytime** |
+| **6** | **Day2** Update | **redeploy** | **01** ArgoCD | [**`Day2.redeploy.01-argocd`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.01-argocd.yml) | Re-applies `scripts/08.5-argocd.sh`: ArgoCD Helm upgrade + OIDC/RBAC + Jenkins API token, and re-applies the GitOps Applications it owns (platform-postgres, External Secrets, Headlamp, microservices AppSet). ArgoCD is the CD engine the rest deploy through, hence `ZZ=01`. | Cluster active (row 5 run) | **Anytime** |
+| **7** | **Day2** Update | **redeploy** | **02** Jenkins | [**`Day2.redeploy.02-jenkins`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.02-jenkins.yml) | Re-applies `scripts/04-jenkins.sh`: Helm upgrade of `helm/jenkins/` + JCasC, and re-seeds the Microservices pipelines against the existing cluster. For Jenkins-only changes without a full provision cycle. | Cluster active (row 5 run) | **Anytime** |
+| **8** | **Day2** Update | **redeploy** | **04** Headlamp | [**`Day2.redeploy.04-headlamp`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.04-headlamp.yml) | Re-applies `scripts/01-namespaces.sh` (refreshes OIDC config keys on `headlamp-credentials`) and `scripts/08-headlamp.sh` (Helm upgrade of `helm/headlamp/`). | Cluster active (row 5 run) | **Anytime** |
 | **9** | **Day2** Update | **publish** | **01** OSS Grafana | [**`Day2.publish.01-oss-grafana`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.01-oss-grafana.yml) | Refreshes the in-cluster OSS Grafana without a reprovision: rebuilds the `jenkins-2026-grafana-dashboards` ConfigMap, nudges the `observability-oss` ArgoCD app to re-sync, republishes alert rules. The stack itself is GitOps-managed (`argocd/observability-oss`). | Cluster active (row 5 run), `observability.mode=oss` | **Anytime** |
 | **10** | **Day2** Update | **publish** | **03** Azure Mgd Grafana | [**`Day2.publish.03-azure-grafana`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.03-azure-grafana.yml) | (Re)publishes `observability/grafana/dashboards-azure/` to Azure Managed Grafana without re-provisioning the cluster. Discovers the instance via `az grafana list`; auth via GitHub OIDC. Use when a dashboard JSON changes. | Row 3 applied; `AZURE_*` secrets | **Anytime** |
 | **11** | **Day2** Update | **publish** | **04** AWS AMG | [**`Day2.publish.04-aws-grafana`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.04-aws-grafana.yml) | (Re)publishes `observability/grafana/dashboards-aws/` to Amazon Managed Grafana without re-provisioning. Reads AMG params from `terraform/aws-managed-grafana` GCS state; auth via GitHub OIDC. | Row 4 applied; `AWS_DASHBOARD_PUBLISH_ROLE_ARN` secret | **Anytime** |

@@ -1,4 +1,4 @@
-name: "Day2.publish.01 Publish OSS Grafana dashboards/alerts"
+name: "Day2.publish.01 OSS Grafana dashboards/alerts"
 
 # Manually-triggered: refreshes the in-cluster OSS Grafana (kube-prometheus-stack)
 # WITHOUT a full reprovision. The stack itself is GitOps-managed by the
@@ -11,7 +11,7 @@ name: "Day2.publish.01 Publish OSS Grafana dashboards/alerts"
 # It also nudges ArgoCD to re-sync the app so committed value changes apply now.
 #
 # Only meaningful when the live cluster runs observability.mode=oss. Requires the
-# cluster from the last "Day1.cluster.01 GKE provision" run to still exist.
+# cluster from the last "Day1.cluster.01 GKE" run to still exist.
 on:
   workflow_dispatch:
     inputs:

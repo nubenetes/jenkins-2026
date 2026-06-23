@@ -1,4 +1,4 @@
-name: "Decom.infra.04 AWS managed-grafana decommission"
+name: "Decom.infra.04 AWS managed-grafana"
 
 # Manually-triggered setup teardown: destroys terraform/aws-managed-grafana,
 # removing the persistent AWS backend (Amazon Managed Grafana, Amazon Managed
