@@ -175,8 +175,83 @@ namespace, from the same `REGISTRY_*` / `GIT_*` env the Jenkins path consumes:
 `tekton/triggers/` installs an `EventListener` + `TriggerTemplate` +
 `TriggerBinding` (GitHub HMAC interceptor) so runs can be kicked via API/webhook.
 The upstream JHipster app repos aren't owned by this project, so push webhooks
-can't be wired to them — the **primary trigger is the seed script**; the
-EventListener is for parity and manual/CI re-runs.
+can't be wired to them — for the seed-script CI model the EventListener is for
+parity and manual/CI re-runs. For full Git-driven CI see **Pipelines-as-Code**
+below, which supersedes hand-rolled Triggers.
+
+## Pipelines-as-Code (PaC): Git-driven CI
+
+> **Naming:** `tektoncd/pipelines-as-code` (PaC) is a **distinct upstream
+> product** — not to be confused with the `tekton-pipeline-as-code` ArgoCD
+> Application (which is just the name for syncing the `tekton/` Tasks/Pipelines
+> dir). PaC is the modern, Git-driven Tekton CI model (also what OpenShift
+> Pipelines uses): `.tekton/*.yaml` PipelineRuns live **in each app repo** and
+> run automatically on **PR/push**, reporting status back to GitHub.
+
+### Prerequisite: owning the repos (fork to `nubenetes/*`)
+
+PaC must integrate with the Git provider of the repos it builds — impossible on
+the upstream `jhipster/*` repos (not ours). So the JHipster sample apps are
+**forked into the `nubenetes` org** (`nubenetes/jhipster-sample-app-gateway`,
+`nubenetes/jhipster-sample-app-microservice`) and
+[`services.yaml`](../jenkins/pipelines/seed/services.yaml) points at the forks;
+PaC then drives CI on those owned forks (with `.tekton/` PipelineRuns committed in each).
+
+### Two ways to connect PaC to GitHub — and which we use
+
+| Method | Setup | Automatable? | Status reporting |
+|---|---|---|---|
+| **GitHub App** | one App on the org, installed on the repos | ❌ needs a **manual browser step** (manifest "Create"/UI; there is no `gh app create` / API to create an App headlessly) | Checks API (rich) + native `/retest` |
+| **Webhook + token** ✅ **(chosen)** | per-repo webhook + a PAT | ✅ **fully scriptable** via `gh`/API on repos we own | commit statuses |
+
+**Decision: the webhook method**, because it is **end-to-end automatable** for
+repos we own — no human-in-the-browser. The trade-off (status surfaced as commit
+statuses rather than the richer Checks API, and no App-native `/retest`) is
+acceptable for this PoC.
+
+### How the webhook method is wired (all automated)
+
+- **PaC controller exposed publicly** via an `HTTPRoute` (`pac.<baseDomain>` →
+  `pipelines-as-code-controller:8080`) — **without IAP** (GitHub must reach it;
+  it is protected by the webhook **HMAC secret** instead).
+- A PaC **`Repository` CR** per fork (in the pipeline namespace) referencing a
+  Secret with the **PAT** (`github.token`, reusing `GIT_TOKEN`, `repo` scope —
+  used to clone and to post commit statuses) and the **webhook secret**.
+- A **webhook on each fork**, created via `gh api repos/nubenetes/<repo>/hooks`
+  (URL = the PaC controller route, `secret` = the webhook secret, events =
+  `pull_request`, `push`, `issue_comment`). The `gh`/`GIT_TOKEN` `repo` scope
+  already covers webhook management on org-owned repos — so this needs **no
+  manual GitHub UI**.
+- **`.tekton/*.yaml`** committed in each fork: PipelineRuns annotated
+  `pipelinesascode.tekton.dev/on-event` / `on-target-branch`, resolving the
+  shared Tasks.
+- New GitHub Actions secret **`PAC_WEBHOOK_SECRET`** (plus the existing
+  `GIT_TOKEN`) is wired into the cluster Secret by the install scripts.
+
+### GitHub App — how it *would* be configured (documented, not used)
+
+Kept for reference in case the App's richer Checks integration is ever wanted
+(it replaces the per-repo webhooks with a single org-level App):
+
+1. **Org `nubenetes` → Settings → Developer settings → GitHub Apps → New GitHub
+   App** (or the guided `tkn pac bootstrap github-app`, which runs the same
+   manifest flow).
+2. **Webhook URL** = `https://pac.<baseDomain>`; set a **webhook secret**.
+3. **Repository permissions**: Checks R/W, Contents R, Issues R/W, Metadata R,
+   Pull requests R/W, Commit statuses R/W. **Subscribe to events**: Check run,
+   Check suite, Commit comment, Issue comment, Pull request, Push.
+4. **Generate a private key** (`.pem`), note the **App ID**, and **Install** the
+   App on the `nubenetes` org (selected repos or all).
+5. Provide `PAC_GITHUB_APPLICATION_ID`, `PAC_GITHUB_PRIVATE_KEY`,
+   `PAC_WEBHOOK_SECRET` (e.g. `gh secret set …`) → wired into the cluster Secret
+   `pipelines-as-code-secret`.
+
+**Why it is not used:** creating the GitHub App is **not headless** — the
+manifest flow still requires a human to click "Create GitHub App" / "Install" in
+the browser, and there is no `gh app create` (nor a REST endpoint) to create an
+App from nothing. The **webhook method achieves the same on org-owned forks
+entirely via `gh`/API**, which fits this project's "automate everything" goal —
+hence it is preferred.
 
 ## Observability
 
