@@ -225,11 +225,17 @@ acceptable for this PoC.
   `pull_request`, `push`, `issue_comment`). The `gh`/`GIT_TOKEN` `repo` scope
   already covers webhook management on org-owned repos — so this needs **no
   manual GitHub UI**.
-- **`.tekton/*.yaml`** committed in each fork: PipelineRuns annotated
-  `pipelinesascode.tekton.dev/on-event` / `on-target-branch`, resolving the
-  shared Tasks.
-- New GitHub Actions secret **`PAC_WEBHOOK_SECRET`** (plus the existing
-  `GIT_TOKEN`) is wired into the cluster Secret by the install scripts.
+- **`.tekton/<svc>.yaml`** in each fork: a `PipelineRun` annotated
+  `pipelinesascode.tekton.dev/on-event` / `on-target-branch` that references the
+  in-cluster `microservices-pipeline` (params per service). These are **generated
+  and pushed to the forks by `scripts/06-tekton-pipelines.sh`** (from
+  `services.yaml`) — the same script that creates the webhooks — so the forks need
+  no manual setup; that first push is what triggers the initial run.
+- The HMAC secret comes from **`PAC_WEBHOOK_SECRET`** (GitHub Actions secret) if
+  set, else `06-tekton-pipelines.sh` generates a random one and stores it in the
+  `pac-webhook` Secret + uses it for the webhooks (so HMAC always matches).
+- If the gateway is disabled (no public PaC endpoint, e.g. local), the script
+  falls back to kicking one `PipelineRun` per service directly (the seed model).
 
 ### GitHub App — how it *would* be configured (documented, not used)
 
