@@ -37,7 +37,7 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: ${J2026_GATEWAY_NAME}
-  namespace: ${J2026_JENKINS_NAMESPACE}
+  namespace: ${J2026_GATEWAY_NAMESPACE}
   annotations:
     networking.gke.io/certmap: ${J2026_GATEWAY_CERTMAP_NAME}
 spec:
@@ -71,7 +71,7 @@ metadata:
 spec:
   parentRefs:
     - name: ${J2026_GATEWAY_NAME}
-      namespace: ${J2026_JENKINS_NAMESPACE}
+      namespace: ${J2026_GATEWAY_NAMESPACE}
       sectionName: https
   hostnames:
     - "${J2026_GATEWAY_JENKINS_HOST}"
@@ -91,7 +91,7 @@ metadata:
 spec:
   parentRefs:
     - name: ${J2026_GATEWAY_NAME}
-      namespace: ${J2026_JENKINS_NAMESPACE}
+      namespace: ${J2026_GATEWAY_NAMESPACE}
       sectionName: https
   hostnames:
     - "${J2026_GATEWAY_ARGOCD_HOST}"
@@ -110,7 +110,7 @@ metadata:
 spec:
   parentRefs:
     - name: ${J2026_GATEWAY_NAME}
-      namespace: ${J2026_JENKINS_NAMESPACE}
+      namespace: ${J2026_GATEWAY_NAMESPACE}
       sectionName: https
   hostnames:
     - "${J2026_GATEWAY_MICROSERVICES_HOST}"
@@ -133,7 +133,7 @@ metadata:
 spec:
   parentRefs:
     - name: ${J2026_GATEWAY_NAME}
-      namespace: ${J2026_JENKINS_NAMESPACE}
+      namespace: ${J2026_GATEWAY_NAMESPACE}
       sectionName: https
   hostnames:
     - "${J2026_GATEWAY_HEADLAMP_HOST}"
@@ -152,7 +152,7 @@ metadata:
 spec:
   parentRefs:
     - name: ${J2026_GATEWAY_NAME}
-      namespace: ${J2026_JENKINS_NAMESPACE}
+      namespace: ${J2026_GATEWAY_NAMESPACE}
       sectionName: https
   hostnames:
     - "${J2026_GATEWAY_PGADMIN_HOST}"
@@ -174,7 +174,7 @@ metadata:
 spec:
   parentRefs:
     - name: ${J2026_GATEWAY_NAME}
-      namespace: ${J2026_JENKINS_NAMESPACE}
+      namespace: ${J2026_GATEWAY_NAMESPACE}
       sectionName: https
   hostnames:
     - "${J2026_GATEWAY_TEKTON_HOST}"
@@ -213,7 +213,7 @@ metadata:
 spec:
   parentRefs:
     - name: ${J2026_GATEWAY_NAME}
-      namespace: ${J2026_JENKINS_NAMESPACE}
+      namespace: ${J2026_GATEWAY_NAMESPACE}
       sectionName: https
   hostnames:
     - "${J2026_GATEWAY_PAC_HOST}"
@@ -238,7 +238,7 @@ metadata:
 spec:
   parentRefs:
     - name: ${J2026_GATEWAY_NAME}
-      namespace: ${J2026_JENKINS_NAMESPACE}
+      namespace: ${J2026_GATEWAY_NAMESPACE}
       sectionName: https
   hostnames:
     - "${J2026_GATEWAY_GRAFANA_HOST}"
