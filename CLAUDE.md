@@ -106,7 +106,7 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
 - `.github/workflows/` - workflows named `DayN.tier.ZZ-resource.yml`. **DayN** =
   lifecycle phase, self-documenting: `Day0` (persistent bootstrap) · `Day1`
   (cluster) · `Day2` (running-cluster ops) · `Decom` (teardown). **tier** = a
-  brief semantic word from a controlled vocabulary (`infra`, `cluster`, `deploy`,
+  brief semantic word from a controlled vocabulary (`infra`, `cluster`, `redeploy`,
   `publish`, `traffic`). **ZZ** = a per-resource id, stable for the same resource
   across all phases (e.g. ZZ=03 is always Azure: `Day0.infra.03-azure-grafana` →
   `Day2.publish.03-azure-grafana` → `Decom.infra.03-azure-grafana`). **-resource**
@@ -140,8 +140,8 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
 
 ## Working on this repo
 
-- Don't run `test/e2e.sh` or trigger `Day1.cluster.01-gke-provision`/`Decom.cluster.01-gke-decommission`
-  (or `Day2.deploy.02-redeploy-jenkins` against a real cluster) workflows without
+- Don't run `test/e2e.sh` or trigger `Day1.cluster.01-gke`/`Decom.cluster.01-gke`
+  (or `Day2.redeploy.02-jenkins` against a real cluster) workflows without
   explicit confirmation - they create/modify real, billed GCP (and optionally
   Grafana Cloud) resources. Always pair a provision with a decommission.
 - `terraform/bootstrap` is a one-time, human-run step with local gitignored

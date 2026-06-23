@@ -1,21 +1,16 @@
-name: "Day2.deploy.01 Redeploy ArgoCD"
+name: "Day2.redeploy.04 Headlamp"
 
-# Manually-triggered: re-applies only scripts/08.5-argocd.sh against the cluster
-# from the last "Day1.cluster.01 GKE provision" run — reinstalls/upgrades ArgoCD
-# (Helm), re-applies its OIDC/RBAC + the Jenkins API account/token, and re-applies
-# the GitOps Applications it owns (platform-postgres = CNPG + pgAdmin,
-# External Secrets, Headlamp, the microservices ApplicationSet). Use this to apply
-# an ArgoCD-only change (helm/argocd-values.yaml, an Application manifest) without
-# rerunning the whole provision lifecycle.
+# Manually-triggered: re-applies scripts/01-namespaces.sh (refreshes the
+# non-sensitive OIDC config keys on the headlamp-credentials Secret) and
+# scripts/08-headlamp.sh (Helm upgrade --install of headlamp + its
+# ClusterRoleBindings) against the cluster from the last "Day1.cluster.01 GKE
+# provision" run, without touching terraform/gke or any other component of
+# the stack.
 #
-# ArgoCD is the CD engine the rest of the platform deploys through and is installed
-# BEFORE observability/Jenkins in scripts/up.sh — hence ZZ=01 in the deploy tier
-# (lowest = first / depended-upon). Requires the namespaces/secrets created by
-# scripts/01-namespaces.sh during that provision run to still exist.
-#
-# NOTE: in observability.mode=oss the in-cluster OSS stack is owned by the
-# observability-oss app-of-apps applied by scripts/03-observability.sh, not here;
-# use "Day2.publish.01 Publish OSS Grafana dashboards/alerts" for that.
+# Use this to apply a Headlamp-only change (Helm values, OIDC config) without
+# rerunning the whole provision/decommission lifecycle. Requires the
+# namespaces/secrets created by scripts/01-namespaces.sh during that "Day1.cluster.01
+# GKE provision" run to still exist on the cluster.
 on:
   workflow_dispatch:
     inputs:
@@ -37,7 +32,7 @@ env:
   TF_VERSION: "1.15.6"
 
 jobs:
-  redeploy-argocd:
+  redeploy-headlamp:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -111,17 +106,38 @@ jobs:
       - name: Check prereqs & add Helm repos (scripts/00-check-prereqs.sh)
         run: ./scripts/00-check-prereqs.sh
 
-      - name: Redeploy ArgoCD + GitOps apps (scripts/08.5-argocd.sh)
-        run: ./scripts/08.5-argocd.sh
+      - name: Refresh namespaces/secrets (scripts/01-namespaces.sh)
+        run: ./scripts/01-namespaces.sh
+        env:
+          # REGISTRY_USERNAME/PASSWORD and GIT_USERNAME/TOKEN are required
+          # here even though jenkins-credentials already exists, because the
+          # ghcr-credentials imagePullSecret further down is unconditionally
+          # `kubectl apply`'d on every run - omitting them would overwrite it
+          # with an empty-auths secret.
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+          GIT_USERNAME: ${{ secrets.GIT_USERNAME }}
+          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
+          HEADLAMP_OIDC_CLIENT_ID: ${{ secrets.HEADLAMP_OIDC_CLIENT_ID }}
+          HEADLAMP_OIDC_CLIENT_SECRET: ${{ secrets.HEADLAMP_OIDC_CLIENT_SECRET }}
+          JENKINS_OIDC_CLIENT_ID: ${{ secrets.JENKINS_OIDC_CLIENT_ID }}
+          JENKINS_OIDC_CLIENT_SECRET: ${{ secrets.JENKINS_OIDC_CLIENT_SECRET }}
+          JENKINS_OIDC_ADMIN_EMAIL: ${{ secrets.JENKINS_OIDC_ADMIN_EMAIL }}
+          IAP_OAUTH_CLIENT_ID: ${{ secrets.IAP_OAUTH_CLIENT_ID }}
+          IAP_OAUTH_CLIENT_SECRET: ${{ secrets.IAP_OAUTH_CLIENT_SECRET }}
+
+      - name: Redeploy Headlamp (scripts/08-headlamp.sh)
+        run: ./scripts/08-headlamp.sh
+        env:
+          JENKINS2026_HEADLAMP_ADMIN_EMAILS: ${{ secrets.HEADLAMP_ADMIN_EMAILS }}
 
       - name: Summary
         if: always()
         run: |
           {
-            echo "### ArgoCD redeployed"
+            echo "### Headlamp redeployed"
             echo
-            echo "Re-applied \`scripts/08.5-argocd.sh\`: ArgoCD Helm upgrade, OIDC/RBAC,"
-            echo "the Jenkins API token, and the GitOps Applications it owns"
-            echo "(platform-postgres, External Secrets, Headlamp, microservices AppSet)"
-            echo "against the cluster from the last **Day1.cluster.01 GKE provision** run."
+            echo "Refreshed headlamp-credentials OIDC config and re-applied"
+            echo "helm/headlamp/values.yaml against the cluster from the last"
+            echo "**Day1.cluster.01 GKE** run."
           } >> "${GITHUB_STEP_SUMMARY}"

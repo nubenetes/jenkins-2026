@@ -1,4 +1,4 @@
-name: "Decom.infra.02 Grafana Cloud decommission"
+name: "Decom.infra.02 Grafana Cloud"
 
 # Manually-triggered teardown: destroys terraform/grafana-cloud-stack to remove
 # the Grafana Cloud stack (the org/free tier is untouched). The slug is read from

@@ -1,4 +1,4 @@
-name: "Day2.traffic.01 Continuous Traffic Simulation"
+name: "Day2.traffic.01 Continuous k6 simulation"
 
 on:
   workflow_dispatch:

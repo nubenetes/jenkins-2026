@@ -1,4 +1,4 @@
-name: "Day2.publish.05 Publish Grafana alerts"
+name: "Day2.publish.05 Grafana alerts"
 
 # Manually-triggered: (re)provisions Grafana alert rules, contact point, and
 # notification policy from observability/grafana/alerting/ via the Grafana

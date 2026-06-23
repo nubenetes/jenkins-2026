@@ -1,4 +1,4 @@
-name: "Day0.infra.02 Grafana Cloud bootstrap"
+name: "Day0.infra.02 Grafana Cloud"
 
 # Applies terraform/grafana-cloud-stack to create the Grafana Cloud stack that
 # observability_mode: grafana-cloud sends OpenTelemetry data to. The stack slug
@@ -92,5 +92,5 @@ jobs:
             echo "- Slug: \`$(terraform output -raw stack_slug 2>/dev/null || echo 'n/a')\` (generated)"
             echo "- Grafana URL: \`$(terraform output -raw grafana_url 2>/dev/null || echo 'n/a')\`"
             echo
-            echo "Day1.cluster.01 GKE provision (observability_mode: grafana-cloud) reads this slug from the module's state and mints scoped tokens against the stack via terraform/grafana-cloud-token."
+            echo "Day1.cluster.01 GKE (observability_mode: grafana-cloud) reads this slug from the module's state and mints scoped tokens against the stack via terraform/grafana-cloud-token."
           } >> "${GITHUB_STEP_SUMMARY}"

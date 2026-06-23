@@ -1,4 +1,4 @@
-name: "Day0.infra.03 Azure managed-grafana bootstrap"
+name: "Day0.infra.03 Azure managed-grafana"
 
 # Manually-triggered, one-time setup step: applies terraform/azure-managed-grafana
 # to create (or, on re-runs, confirm) the persistent Azure backend that
@@ -112,6 +112,6 @@ jobs:
             echo
             echo "- Grafana endpoint: \`$(terraform output -raw grafana_endpoint 2>/dev/null || echo 'n/a')\`"
             echo
-            echo "Day1.cluster.01 GKE provision (observability_mode: managed-azure) reads this module's"
+            echo "Day1.cluster.01 GKE (observability_mode: managed-azure) reads this module's"
             echo "outputs from the GCS state to build the azure-monitor-credentials Secret."
           } >> "${GITHUB_STEP_SUMMARY}"
