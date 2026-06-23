@@ -413,6 +413,14 @@ jobs:
           # for Pipelines-as-Code (ci_engine=tekton); empty unless the secrets are set.
           TEKTON_GITHUB_WEBHOOK_SECRET: ${{ secrets.TEKTON_GITHUB_WEBHOOK_SECRET }}
           PAC_WEBHOOK_SECRET: ${{ secrets.PAC_WEBHOOK_SECRET }}
+          # Alert contact-point email for 07.5-grafana-alerts.sh. Per-mode secret
+          # (grafana-cloud requires an org-member address) with a generic fallback;
+          # empty falls back to jenkins-credentials oidc-admin-email. See docs/103 §3.
+          GRAFANA_ALERT_EMAIL: ${{ secrets.GRAFANA_ALERT_EMAIL }}
+          GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD: ${{ secrets.GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD }}
+          GRAFANA_ALERT_EMAIL_OSS: ${{ secrets.GRAFANA_ALERT_EMAIL_OSS }}
+          GRAFANA_ALERT_EMAIL_MANAGED_AZURE: ${{ secrets.GRAFANA_ALERT_EMAIL_MANAGED_AZURE }}
+          GRAFANA_ALERT_EMAIL_MANAGED_AWS: ${{ secrets.GRAFANA_ALERT_EMAIL_MANAGED_AWS }}
         run: |
           if [[ "${{ inputs.enable_gateway }}" != "true" ]]; then
             # gateway.baseDomain's committed default (jenkins2026.nubenetes.com)
