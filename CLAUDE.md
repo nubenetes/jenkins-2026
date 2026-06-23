@@ -12,7 +12,7 @@ or an in-cluster OSS Grafana/Loki/Tempo/Prometheus stack. See
 in [`docs/`](docs/) — all numbered `NNN-TITLE.md` with header/footer
 navigation:
 
-- [`101-GITHUB_ACTIONS_WORKFLOWS.md`](docs/101-GITHUB_ACTIONS_WORKFLOWS.md) — CI/CD workflow naming (`Y.X.ZZ`), lifecycle matrix, clickable workflow inventory
+- [`101-GITHUB_ACTIONS_WORKFLOWS.md`](docs/101-GITHUB_ACTIONS_WORKFLOWS.md) — CI/CD workflow naming (`DayN.tier.ZZ-resource`), lifecycle matrix, clickable workflow inventory
 - [`102-GITHUB_ACTIONS_AUTOMATION.md`](docs/102-GITHUB_ACTIONS_AUTOMATION.md) — WIF setup, GitHub secrets, bootstrapping architecture
 - [`103-GITHUB_SECRETS_INVENTORY.md`](docs/103-GITHUB_SECRETS_INVENTORY.md) — complete inventory of every GitHub secret and variable: purpose, sensitivity, source, which workflows use each
 - [`201-ARCHITECTURE.md`](docs/201-ARCHITECTURE.md) — system architecture, config, repository layout
@@ -46,10 +46,21 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
   (`seed_jobs.groovy`), `services.yaml`.
 - `observability/` - otel-operator, otel-collector, and Grafana (OSS +
   dashboards) Helm values + the `grafana-cloud-credentials` secret template.
+- `argocd/` - ArgoCD `Application`/`ApplicationSet` manifests (the GitOps
+  layer): External Secrets, Headlamp, the microservices AppSet, plus two
+  **app-of-apps** (each a small Helm chart so repo/branch/version flow down to
+  its children): `platform-postgres/` (the CNPG operator + pgAdmin that
+  administers it) and `observability-oss/`, which deploys the in-cluster OSS
+  stack (kube-prometheus-stack/Loki/Tempo) when `observability.mode=oss`. Because of
+  this, `scripts/up.sh` installs ArgoCD (`08.5`) **before** observability
+  (`03`), and `03-observability.sh` (oss) applies the app-of-apps + its
+  script-managed companion objects (dashboards ConfigMap, `grafana-jenkins-ds`
+  Secret, `grafana-runtime-config` ConfigMap) rather than `helm install`-ing the
+  charts directly. See [`argocd/README.md`](argocd/README.md).
 - `terraform/`:
   - `bootstrap/` - **one-time, local state**, run by hand. Creates the GCS
     Terraform state bucket + GitHub OIDC/Workload Identity Federation trust
-    for `0.2.01-gke-provision.yml`/`9.1.01-gke-decommission.yml`.
+    for `Day1.cluster.01-gke.yml`/`Decom.cluster.01-gke.yml`.
   - `gke/` - the throwaway GKE cluster. Local state for `test/e2e.sh`; GCS
     remote state (via a `backend_override.tf` written by the workflows) in
     CI.
@@ -57,25 +68,25 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
     creates the Grafana Cloud stack with a **Terraform-generated slug**
     (`<prefix><random>`, so destroy+recreate never hits Grafana Cloud's
     reserved-slug cooldown). GCS remote state via `backend_override.tf` (prefix
-    `grafana-cloud-stack`); applied by `0.1.02-grafana-cloud-bootstrap.yml`,
-    destroyed by `9.2.02-grafana-cloud-decommission.yml` - the
+    `grafana-cloud-stack`); applied by `Day0.infra.02-grafana-cloud.yml`,
+    destroyed by `Decom.infra.02-grafana-cloud.yml` - the
     bootstrap/decommission tier, exactly like the Azure/AWS backends. Ephemeral
     (no `delete_protection`); the Grafana Cloud **org/account/free tier** is
     created once by hand and never Terraform-managed. The slug is an **output**
-    (no `GRAFANA_CLOUD_STACK_SLUG` secret/var) that `0.2.01` reads from the GCS
+    (no `GRAFANA_CLOUD_STACK_SLUG` secret/var) that `Day1.cluster.01` reads from the GCS
     state.
   - `grafana-cloud-token/` - ephemeral access-policy + service-account
     tokens scoped to the stack above, looked up by slug via a data source (slug
     read from `grafana-cloud-stack`'s state output and passed in by the workflow).
     Same GCS-remote-state-via-`backend_override.tf` pattern as `terraform/gke`;
-    applied by `0.2.01-gke-provision.yml`, destroyed by `9.1.01-gke-decommission.yml`.
+    applied by `Day1.cluster.01-gke.yml`, destroyed by `Decom.cluster.01-gke.yml`.
   - `azure-managed-grafana/` - the `observability.mode=managed-azure` backend:
     Azure Managed Grafana, Azure Monitor workspace + DCE/DCR (managed
     Prometheus), Application Insights + Log Analytics, and the Entra service
-    principal the collector uses. Applied **one-time** by `0.1.03-azure-bootstrap.yml`
+    principal the collector uses. Applied **one-time** by `Day0.infra.03-azure-grafana.yml`
     (GCS remote state via `backend_override.tf`, GitHub-OIDC -> Azure auth, no
     stored client secret; same persistent-bootstrap role as
-    `grafana-cloud-stack`). `0.2.01-gke-provision.yml` (managed-azure) reads its
+    `grafana-cloud-stack`). `Day1.cluster.01-gke.yml` (managed-azure) reads its
     outputs straight from the GCS state to build the `azure-monitor-credentials`
     Secret - those backend credentials never become GitHub secrets. Only
     identifiers (`AZURE_CLIENT_ID`/`AZURE_TENANT_ID`/`AZURE_SUBSCRIPTION_ID`/
@@ -84,23 +95,27 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
     analogue of `azure-managed-grafana`): Amazon Managed Grafana, Amazon Managed
     Service for Prometheus, a CloudWatch log group, the GKE→AWS OIDC provider
     and the collector IAM role (AssumeRoleWithWebIdentity - no access keys).
-    Applied **one-time** by `0.1.04-aws-bootstrap.yml` (GCS remote state, GitHub
-    OIDC → AWS auth). `0.2.01-gke-provision.yml` (managed-aws) reads its outputs
+    Applied **one-time** by `Day0.infra.04-aws-grafana.yml` (GCS remote state, GitHub
+    OIDC → AWS auth). `Day1.cluster.01-gke.yml` (managed-aws) reads its outputs
     from the GCS state to build the `aws-managed-credentials` Secret; the
     collector authenticates at runtime via a projected SA web-identity token.
     Only identifiers (`AWS_BOOTSTRAP_ROLE_ARN`/`AWS_REGION`/`GKE_OIDC_ISSUER_URL`)
     are GitHub secrets.
 - `test/e2e.sh` - full local lifecycle: provision GKE, deploy everything,
   smoke test, tear down. `test/smoke-test.sh` is the smoke test alone.
-- `.github/workflows/` - numbered `Y.X.ZZ-<name>.yml` workflows. **Y** = lifecycle
-  phase (`0`=create, `5`=update, `9`=destroy). **X** = execution step within the
-  phase (lower = runs first; always reflects dependency order: for creates X=1 is
-  persistent resources first, X=2 is GKE second; for destroys the order inverts —
-  X=1 is GKE first, X=2 is persistent last). **ZZ** = resource identifier,
-  constant for the same resource across all phases (e.g. ZZ=03 is always Azure).
-  Alphabetical sort order in the GitHub Actions UI **is** the correct execution
-  order within each phase. `0.2.01-gke-provision.yml` and
-  `9.1.01-gke-decommission.yml` are the CI equivalent of `test/e2e.sh`, split
+- `.github/workflows/` - workflows named `DayN.tier.ZZ-resource.yml`. **DayN** =
+  lifecycle phase, self-documenting: `Day0` (persistent bootstrap) · `Day1`
+  (cluster) · `Day2` (running-cluster ops) · `Decom` (teardown). **tier** = a
+  brief semantic word from a controlled vocabulary (`infra`, `cluster`, `deploy`,
+  `publish`, `traffic`). **ZZ** = a per-resource id, stable for the same resource
+  across all phases (e.g. ZZ=03 is always Azure: `Day0.infra.03-azure-grafana` →
+  `Day2.publish.03-azure-grafana` → `Decom.infra.03-azure-grafana`). **-resource**
+  identifies the resource only — no action verb, since the `DayN` prefix already
+  says bootstrap/publish/teardown. Alphabetical sort of the workflow `name:`
+  fields in the GitHub Actions UI **is** the correct execution order (`Decom`
+  sorts after `Day2`, keeping teardown last); each `name:` therefore begins with
+  its `DayN.tier.ZZ` prefix. `Day1.cluster.01-gke.yml` and
+  `Decom.cluster.01-gke.yml` are the CI equivalent of `test/e2e.sh`, split
   so the cluster can be left running between runs; all GKE-touching workflows
   share `concurrency: group: jenkins-2026-gke`. See
   [`docs/101-GITHUB_ACTIONS_WORKFLOWS.md`](docs/101-GITHUB_ACTIONS_WORKFLOWS.md)
@@ -125,8 +140,8 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
 
 ## Working on this repo
 
-- Don't run `test/e2e.sh` or trigger `0.2.01-gke-provision`/`9.1.01-gke-decommission`
-  (or `5.2.02-redeploy-jenkins` against a real cluster) workflows without
+- Don't run `test/e2e.sh` or trigger `Day1.cluster.01-gke-provision`/`Decom.cluster.01-gke-decommission`
+  (or `Day2.deploy.01-redeploy-jenkins` against a real cluster) workflows without
   explicit confirmation - they create/modify real, billed GCP (and optionally
   Grafana Cloud) resources. Always pair a provision with a decommission.
 - `terraform/bootstrap` is a one-time, human-run step with local gitignored

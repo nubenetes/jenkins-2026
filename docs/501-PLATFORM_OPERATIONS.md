@@ -30,12 +30,12 @@ The deployment lifecycle is managed by **ArgoCD**. Application manifests are sto
 
 ### 1. Continuous Traffic Simulation (GitHub Actions)
 
-Use the **[`5.9.01 Continuous Traffic Simulation`](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.9.01-traffic-simulation.yml)** workflow:
+Use the **[`Day2.traffic.01 Continuous Traffic Simulation`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml)** workflow:
 - **Duration**: Default 15 minutes (configurable).
 - **Purpose**: Simulates real-world user traffic from outside the cluster, hitting the GKE Gateway and triggering end-to-end traces.
 
 The simulation reads the OTLP endpoint, auth and Grafana URL straight from the
-in-cluster `grafana-cloud-credentials` Secret (provisioned by `0.2.01`), so no
+in-cluster `grafana-cloud-credentials` Secret (provisioned by `Day1.cluster.01`), so no
 extra GitHub secrets are needed — just run it against a live grafana-cloud
 deployment.
 
@@ -169,7 +169,7 @@ Your Google account email is **never committed to this repo** — it's supplied 
 gh secret set HEADLAMP_ADMIN_EMAILS --body "you@gmail.com,colleague@gmail.com"
 ```
 
-Then (re-)run **0.2.01 GKE provision** to add the `roles/iap.httpsResourceAccessor` IAM binding via `terraform/gke`.
+Then (re-)run **Day1.cluster.01 GKE provision** to add the `roles/iap.httpsResourceAccessor` IAM binding via `terraform/gke`.
 
 ### Accessing the UI
 
@@ -220,7 +220,7 @@ Jenkins, Microservices, Headlamp, and pgAdmin can all be exposed on the public i
 
 ### One-time Setup
 
-1. **Run the "0.1.01 Gateway bootstrap" workflow** to create a global static IP and a Google-managed wildcard certificate for `<baseDomain>` and `*.<baseDomain>`.
+1. **Run the "Day0.infra.01 Gateway bootstrap" workflow** to create a global static IP and a Google-managed wildcard certificate for `<baseDomain>` and `*.<baseDomain>`.
 
 2. **Add the two DNS records** it prints:
    - A wildcard **A** record: host `*.jenkins2026`, value the static IP.

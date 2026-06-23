@@ -12,7 +12,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 
 if [[ -z "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
   log_info "gateway.baseDomain / JENKINS2026_BASE_DOMAIN is empty - gateway disabled, skipping."
-  log_info "(set it, after running the gateway-bootstrap workflow once, to enable public access)"
+  log_info "(set it, after running the Day0.infra.01-gateway bootstrap workflow once, to enable public access)"
   exit 0
 fi
 

@@ -19,7 +19,7 @@
 #     service-account token is minted via the AWS API at publish time (needs AWS
 #     credentials). AMG connection params come from env vars, falling back to the
 #     in-cluster "${J2026_AWS_MANAGED_SECRET}" Secret - so the dedicated
-#     02.04-publish-aws-dashboards.yml workflow can publish with no cluster
+#     Day2.publish.04-aws-grafana.yml workflow can publish with no cluster
 #     access (reading them from the persistent terraform state instead).
 set -euo pipefail
 
@@ -202,7 +202,7 @@ case "${J2026_OBS_MODE}" in
     # AWS API and therefore needs AWS credentials. up.sh has none in CI (the
     # keyless design only feeds the collector via web identity), so publishing
     # runs as a dedicated, AWS-authenticated workflow that invokes this script
-    # (02.04-publish-aws-dashboards.yml). Skip gracefully when unauthenticated
+    # (Day2.publish.04-aws-grafana.yml). Skip gracefully when unauthenticated
     # rather than failing up.sh.
     if ! aws sts get-caller-identity >/dev/null 2>&1; then
       log_warn "No AWS credentials available - skipping managed-aws dashboard import (published by the 02.04 dashboards workflow)."
@@ -212,7 +212,7 @@ case "${J2026_OBS_MODE}" in
     # Source the AMG connection params. Two callers:
     #   up.sh (in-cluster) - read them from the in-cluster J2026_AWS_MANAGED_SECRET
     #     Secret that 02.01 built from the persistent terraform state.
-    #   02.04-publish-aws-dashboards.yml (no cluster) - it exports them straight
+    #   Day2.publish.04-aws-grafana.yml (no cluster) - it exports them straight
     #     from that same terraform state, so they're already in the environment.
     # Environment wins (the ':=' only reads the Secret when an env var is unset),
     # so dashboards can be published with no cluster access at all (AMG/AMP are

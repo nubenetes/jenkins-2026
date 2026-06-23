@@ -1,14 +1,14 @@
-name: "0.2.01 GKE provision"
+name: "Day1.cluster.01 GKE provision"
 
 # Manually-triggered: provisions the throwaway GKE cluster (terraform/gke,
 # with state in the GCS bucket from terraform/bootstrap) and deploys the full
 # jenkins-2026 stack (scripts/up.sh) + smoke tests. See README.md
 # "GitHub Actions automation" for one-time setup.
 #
-# Pair this with the "9.1.01 GKE decommission" workflow - it shares the same
+# Pair this with the "Decom.cluster.01 GKE decommission" workflow - it shares the same
 # Terraform state, so it can find and tear down what this workflow created.
 # To redeploy only Jenkins (e.g. a Helm values / JCasC fix) without rerunning
-# this whole lifecycle, use "5.2.02 Redeploy Jenkins" instead.
+# this whole lifecycle, use "Day2.deploy.01 Redeploy Jenkins" instead.
 on:
   workflow_dispatch:
     inputs:
@@ -23,7 +23,7 @@ on:
           - managed-azure
           - managed-aws
       enable_gateway:
-        description: "Create the public Gateway/HTTPRoutes/IAP (needs the one-time 0.1.01 Gateway bootstrap + DNS + IAP OAuth client - see README \"Public access\"). Default true: this project's intended access path. Uncheck ONLY for a fresh env before 0.1.01 is done - leaving it on without the bootstrap deploys a Gateway that can't get an IP/cert, and deploying it OFF while the gateway is already up makes Jenkins' root URL (and OIDC redirect_uri) revert to localhost -> redirect_uri_mismatch."
+        description: "Create the public Gateway/HTTPRoutes/IAP (needs the one-time Day0.infra.01 Gateway bootstrap + DNS + IAP OAuth client - see README \"Public access\"). Default true: this project's intended access path. Uncheck ONLY for a fresh env before Day0.infra.01 is done - leaving it on without the bootstrap deploys a Gateway that can't get an IP/cert, and deploying it OFF while the gateway is already up makes Jenkins' root URL (and OIDC redirect_uri) revert to localhost -> redirect_uri_mismatch."
         required: true
         default: true
         type: boolean
@@ -58,17 +58,17 @@ jobs:
 
   grafana-cloud-bootstrap:
     if: ${{ inputs.observability_mode == 'grafana-cloud' }}
-    uses: ./.github/workflows/0.1.02-grafana-cloud-bootstrap.yml
+    uses: ./.github/workflows/Day0.infra.02-grafana-cloud.yml
     secrets: inherit
 
   azure-bootstrap:
     if: ${{ inputs.observability_mode == 'managed-azure' }}
-    uses: ./.github/workflows/0.1.03-azure-bootstrap.yml
+    uses: ./.github/workflows/Day0.infra.03-azure-grafana.yml
     secrets: inherit
 
   aws-bootstrap:
     if: ${{ inputs.observability_mode == 'managed-aws' }}
-    uses: ./.github/workflows/0.1.04-aws-bootstrap.yml
+    uses: ./.github/workflows/Day0.infra.04-aws-grafana.yml
     secrets: inherit
 
   # ── Main provision job ──────────────────────────────────────────────────────
@@ -303,7 +303,7 @@ jobs:
         if: ${{ inputs.observability_mode == 'managed-azure' }}
         run: |
           # The terraform/azure-managed-grafana module (provisioned once by the
-          # "0.1.03 0.1.03 Azure managed-grafana bootstrap" workflow) holds the Azure
+          # "Day0.infra.03 Day0.infra.03 Azure managed-grafana bootstrap" workflow) holds the Azure
           # backend coordinates + the collector's Entra service-principal
           # credentials in its GCS state. Read its outputs here to build the
           # in-cluster Secret consumed by values-managed-azure*.yaml - reading
@@ -345,7 +345,7 @@ jobs:
         if: ${{ inputs.observability_mode == 'managed-aws' }}
         run: |
           # The terraform/aws-managed-grafana module (provisioned once by the
-          # "0.1.04 AWS managed-grafana bootstrap" workflow) holds the AMP endpoint, collector IAM
+          # "Day0.infra.04 AWS managed-grafana bootstrap" workflow) holds the AMP endpoint, collector IAM
           # role ARN, region and log group in its GCS state. No AWS auth needed
           # here (terraform output just reads state, GCS already authed above);
           # the collector authenticates to AWS at runtime via web identity (no
@@ -397,7 +397,7 @@ jobs:
           if [[ "${{ inputs.enable_gateway }}" != "true" ]]; then
             # gateway.baseDomain's committed default (jenkins2026.nubenetes.com)
             # would otherwise apply. Override to "" to disable public access
-            # for this run (e.g. before the one-time "0.1.01 Gateway bootstrap"
+            # for this run (e.g. before the one-time "Day0.infra.01 Gateway bootstrap"
             # workflow + DNS + IAP OAuth client setup is done) - see
             # README.md "Public access (GKE Gateway API + IAP)".
             export JENKINS2026_BASE_DOMAIN=""
@@ -487,7 +487,7 @@ jobs:
             echo "- Gateway/IAP enabled: \`${{ inputs.enable_gateway }}\`"
             echo
             if [[ "${{ inputs.enable_gateway }}" == "true" ]]; then
-              echo "If the one-time **0.1.01 Gateway bootstrap** workflow + DNS records +"
+              echo "If the one-time **Day0.infra.01 Gateway bootstrap** workflow + DNS records +"
               echo "IAP OAuth client have been completed (see README.md \"Public"
               echo "access (GKE Gateway API + IAP)\"), the stack is reachable at:"
               echo
@@ -504,5 +504,5 @@ jobs:
               echo "see README.md \"Accessing the UI\"."
             fi
             echo
-            echo "Run the **9.1.01 GKE decommission** workflow when you're done to avoid ongoing charges."
+            echo "Run the **Decom.cluster.01 GKE decommission** workflow when you're done to avoid ongoing charges."
           } >> "${GITHUB_STEP_SUMMARY}"

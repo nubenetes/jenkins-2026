@@ -4,8 +4,8 @@
 
 # 102. GitHub Actions Automation
 
-[`0.2.01-gke-provision.yml`](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.2.01-gke-provision.yml) and
-[`9.1.01-gke-decommission.yml`](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.1.01-gke-decommission.yml)
+[`Day1.cluster.01-gke.yml`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) and
+[`Decom.cluster.01-gke.yml`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml)
 are the CI equivalent of `test/e2e.sh`, split into two manually-triggered
 workflows so the cluster can be left running between them (e.g. provision in
 the morning, demo it, decommission in the evening). They run the exact same
@@ -22,12 +22,12 @@ To keep operating costs low and deployment speed high, this project separates th
    - **Workload Identity Federation (WIF)**: Establishes a secure, keyless trust relationship between GitHub Actions and your GCP project. GitHub can authenticate dynamically using OpenID Connect (OIDC) tokens instead of saving permanent GCP service account JSON keys inside repository secrets.
    - **GCS Remote Backend**: Sets up the persistent bucket where all GHA workflow runs store and retrieve Terraform state.
 
-2. **Persistent External DNS & Networking (`0.1.01 Gateway bootstrap`)**:
+2. **Persistent External DNS & Networking (`Day0.infra.01 Gateway bootstrap`)**:
    - Provisions GCP global networking resources: a persistent static IP (`jenkins-2026-gateway-ip`), DNS authorizations, and the wildcard SSL certificate map (`jenkins-2026-cert-map`).
    - If these networking assets were tied to the short-lived GKE cluster, deleting the cluster would release the IP address and destroy the SSL certificate. This would force you to manually update DNS records at your domain registrar (e.g. Squarespace) and wait for DNS propagation every single time you provisioned a new cluster. Keeping the gateway bootstrapped persistently ensures your external endpoints are immediately reachable upon cluster creation.
 
-3. **Persistent Observability Backend (`0.1.02 Grafana Cloud bootstrap`)**:
-   - Applies the Grafana Cloud stack (`terraform/grafana-cloud-stack`, generated slug). By decoupling the metrics/tracing backend from the GKE cluster, your logs, metrics, and trace history survive multiple cluster spin-ups and tear-downs (the GKE decommission `9.1.01` leaves the stack intact; only `9.2.02` destroys it).
+3. **Persistent Observability Backend (`Day0.infra.02 Grafana Cloud bootstrap`)**:
+   - Applies the Grafana Cloud stack (`terraform/grafana-cloud-stack`, generated slug). By decoupling the metrics/tracing backend from the GKE cluster, your logs, metrics, and trace history survive multiple cluster spin-ups and tear-downs (the GKE decommission `Decom.cluster.01` leaves the stack intact; only `Decom.infra.02` destroys it).
 
 4. **Persistent Database Backups Storage (`terraform/bootstrap`)**:
    - **Postgres Backups Bucket**: Configures the persistent GCS bucket `jenkins-2026-postgres-backups` with automated storage lifecycles (transition to `NEARLINE` after 3 days, delete after 7 days) to preserve backup histories across throwaway GKE lifecycle runs.
@@ -44,37 +44,37 @@ The following diagram illustrates how the persistent infrastructure bootstrap wo
 graph TD
     subgraph Bootstrapping ["Day-0 · Phase 0 Create (persistent, one-time)"]
         A["terraform/bootstrap<br>Owner/Admin roles"] -->|"WIF + GCS bucket"| B["Workload Identity<br>+ Remote State"]
-        B --> C["0.1.01 Gateway<br>bootstrap"]
-        B --> D["0.1.02 Grafana Cloud<br>bootstrap"]
-        B --> C2["0.1.03 Azure<br>bootstrap"]
-        B --> C3["0.1.04 AWS<br>bootstrap"]
+        B --> C["Day0.infra.01 Gateway<br>bootstrap"]
+        B --> D["Day0.infra.02 Grafana Cloud<br>bootstrap"]
+        B --> C2["Day0.infra.03 Azure<br>bootstrap"]
+        B --> C3["Day0.infra.04 AWS<br>bootstrap"]
         C -->|"static IP + cert"| F[("Gateway<br>+ Cert Map")]
         D -->|"stack ID + token"| E[("Grafana Cloud")]
     end
 
     subgraph GKE_Lifecycle ["Day-1 → Day-2 → Decommission · GKE Cluster Lifecycle"]
-        F & E & B --> G["0.2.01 GKE provision<br>tf/gke + scripts/up.sh"]
+        F & E & B --> G["Day1.cluster.01 GKE provision<br>tf/gke + scripts/up.sh"]
         G --> H["GKE Cluster Active<br>Jenkins / ArgoCD / services"]
-        H --> I["5.2.02 Redeploy Jenkins"]
-        H --> J["5.2.03 Redeploy Headlamp"]
-        B --> L2["5.1.04 Publish AWS dashboards<br>(no cluster needed)"]
-        B --> M2["5.1.03 Publish Azure dashboards<br>(no cluster needed)"]
+        H --> I["Day2.deploy.01 Redeploy Jenkins"]
+        H --> J["Day2.deploy.04 Redeploy Headlamp"]
+        B --> L2["Day2.publish.04 Publish AWS dashboards<br>(no cluster needed)"]
+        B --> M2["Day2.publish.03 Publish Azure dashboards<br>(no cluster needed)"]
         I & J --> H
-        H --> K["9.1.01 GKE decommission<br>down.sh + tf destroy"]
+        H --> K["Decom.cluster.01 GKE decommission<br>down.sh + tf destroy"]
         K -->|"cluster gone<br>assets kept"| B
     end
 
     subgraph Simulation ["Day-2 · Phase 5 Update (simulation)"]
-        H & E --> O["5.9.01 Traffic Simulation<br>k6 load script"]
+        H & E --> O["Day2.traffic.01 Traffic Simulation<br>k6 load script"]
         O -->|"live traffic"| H
         O -->|"telemetry"| E
     end
 
     subgraph Persistent_Teardown ["Decommission · Phase 9 Destroy (persistent, one-time)"]
-        K --> P1["9.2.01 Gateway<br>decommission"]
-        K --> P2["9.2.02 Grafana Cloud<br>decommission"]
-        K --> P3["9.2.03 Azure<br>decommission"]
-        K --> P4["9.2.04 AWS<br>decommission"]
+        K --> P1["Decom.infra.01 Gateway<br>decommission"]
+        K --> P2["Decom.infra.02 Grafana Cloud<br>decommission"]
+        K --> P3["Decom.infra.03 Azure<br>decommission"]
+        K --> P4["Decom.infra.04 AWS<br>decommission"]
         P1 & P2 & P3 & P4 -->|"all resources removed"| N["Clean Slate"]
     end
 
@@ -93,33 +93,33 @@ graph TD
 > Each workflow is tagged with its **Day-0 / Day-1 / Day-2 / Decommission** lifecycle
 > position (SRE taxonomy). See [101. Workflows → Day-0 / Day-1 / Day-2 operations](./101-GITHUB_ACTIONS_WORKFLOWS.md#day-0--day-1--day-2-operations)
 > for the full definition and the per-workflow table. In short: **Day-0** = persistent
-> bootstrap (`0.1.xx`), **Day-1** = GKE provision (`0.2.01`), **Day-2** = operations on
+> bootstrap (`0.1.xx`), **Day-1** = GKE provision (`Day1.cluster.01`), **Day-2** = operations on
 > the running cluster (`5.x`), **Decommission** = teardown (`9.x`).
 
 #### 1. Persistent Bootstrap Workflows (Day-0)
-- **`0.1.01 Gateway bootstrap`**: Provisions account-level GCP networking assets using `terraform/gateway-bootstrap`. This includes a reserved external IP (`jenkins-2026-gateway-ip`), DNS authorizations, and a Google-managed wildcard SSL certificate map. Keeping this IP and SSL certificate persistent avoids losing the reserved IP during a GKE rebuild, eliminating the need to update wildcard DNS records at your domain registrar and wait for DNS propagation.
-- **`0.1.02 Grafana Cloud bootstrap`**: Provisions a dedicated Grafana Cloud stack (hosted metrics/traces/logs backend) using `terraform/grafana-cloud-stack`, with a Terraform-generated slug. By separating the observability backend from the short-lived GKE cluster, application performance metrics and history remain readable even after GKE is decommissioned and rebuilt — the stack lives until you run `9.2.02 Grafana Cloud decommission`, which tears it down (the org/free tier is untouched).
+- **`Day0.infra.01 Gateway bootstrap`**: Provisions account-level GCP networking assets using `terraform/gateway-bootstrap`. This includes a reserved external IP (`jenkins-2026-gateway-ip`), DNS authorizations, and a Google-managed wildcard SSL certificate map. Keeping this IP and SSL certificate persistent avoids losing the reserved IP during a GKE rebuild, eliminating the need to update wildcard DNS records at your domain registrar and wait for DNS propagation.
+- **`Day0.infra.02 Grafana Cloud bootstrap`**: Provisions a dedicated Grafana Cloud stack (hosted metrics/traces/logs backend) using `terraform/grafana-cloud-stack`, with a Terraform-generated slug. By separating the observability backend from the short-lived GKE cluster, application performance metrics and history remain readable even after GKE is decommissioned and rebuilt — the stack lives until you run `Decom.infra.02 Grafana Cloud decommission`, which tears it down (the org/free tier is untouched).
 
 #### 2. Persistent Decommission Workflows (Decommission · Clean Slate)
 When you want to tear down the entire project permanently, you must run the decommission workflows in the reverse order of setup to avoid dangling resources:
-1. Run **`9.1.01 GKE decommission`** first to destroy the active GKE cluster and all internal Kubernetes workloads (releasing short-lived target bindings).
-2. Run **`9.2.01 Gateway decommission`** to run `terraform destroy` on the gateway resources, freeing the reserved external IP, removing the wildcard SSL certificate map, and deleting GCP DNS authorizations.
-3. Run **`9.2.02 Grafana Cloud decommission`** to run `terraform destroy` on the Grafana Cloud stack, which removes the Grafana instances, access policies, and dashboards.
+1. Run **`Decom.cluster.01 GKE decommission`** first to destroy the active GKE cluster and all internal Kubernetes workloads (releasing short-lived target bindings).
+2. Run **`Decom.infra.01 Gateway decommission`** to run `terraform destroy` on the gateway resources, freeing the reserved external IP, removing the wildcard SSL certificate map, and deleting GCP DNS authorizations.
+3. Run **`Decom.infra.02 Grafana Cloud decommission`** to run `terraform destroy` on the Grafana Cloud stack, which removes the Grafana instances, access policies, and dashboards.
 
 > [!WARNING]
-> Decommissioning the gateway (`9.2.01`) releases the external IP address. If you recreate the gateway later, a *new* IP will be allocated, forcing you to update your DNS provider's A records and wait for DNS propagation. Only decommission the gateway if you plan to shut down the environment permanently.
+> Decommissioning the gateway (`Decom.infra.01`) releases the external IP address. If you recreate the gateway later, a *new* IP will be allocated, forcing you to update your DNS provider's A records and wait for DNS propagation. Only decommission the gateway if you plan to shut down the environment permanently.
 
 ## Version Pinning and the `git_ref` Parameter
 
 To support deterministic deployments and clean, error-free environment destruction, all GKE lifecycle workflows support custom Git reference checking:
 
 * **Workflows Supported**:
-  * [0.2.01 GKE provision](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.2.01-gke-provision.yml)
-  * [5.2.02 Redeploy Jenkins](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.2.02-redeploy-jenkins.yml)
-  * [5.2.03 Redeploy Headlamp](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.2.03-redeploy-headlamp.yml)
-  * [5.1.04 Publish AWS dashboards](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.1.04-publish-aws-dashboards.yml)
-  * [5.1.03 Publish Azure dashboards](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.1.03-publish-azure-dashboards.yml)
-  * [9.1.01 GKE decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.1.01-gke-decommission.yml)
+  * [Day1.cluster.01 GKE provision](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml)
+  * [Day2.deploy.01 Redeploy Jenkins](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.deploy.01-jenkins.yml)
+  * [Day2.deploy.04 Redeploy Headlamp](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.deploy.04-headlamp.yml)
+  * [Day2.publish.04 Publish AWS dashboards](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.04-aws-grafana.yml)
+  * [Day2.publish.03 Publish Azure dashboards](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.03-azure-grafana.yml)
+  * [Decom.cluster.01 GKE decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml)
 
 ### The `git_ref` Parameter
 
@@ -128,9 +128,9 @@ Each of these workflows includes a manual trigger input `git_ref` (which default
 * **Leave Empty (Recommended)**: The checkout action automatically defaults to the branch or tag selected in the native **"Use workflow from"** dropdown menu.
 * **Provide Value**: You can type in any valid branch name, tag (e.g. `v0.9.1`), or commit SHA. If specified, this custom reference will override the dropdown selection.
 
-### Form Fields Reference (0.2.01 GKE Provision)
+### Form Fields Reference (Day1.cluster.01 GKE Provision)
 
-When executing the **0.2.01 GKE provision** workflow manually, you are presented with a form containing the following fields:
+When executing the **Day1.cluster.01 GKE provision** workflow manually, you are presented with a form containing the following fields:
 
 1. **Use workflow from (Dropdown - Native)**:
    - Selects the branch or tag from which GitHub Actions loads the workflow YAML file.
@@ -144,7 +144,7 @@ When executing the **0.2.01 GKE provision** workflow manually, you are presented
 3. **enable_gateway (Checkbox - Boolean)**:
    - **Default**: `false`.
    - Determines whether the public GKE Gateway L7 load balancer should be provisioned.
-   - **Prerequisites**: Requires `0.1.01 Gateway bootstrap` applied, wildcard DNS records, and IAP OAuth client credentials.
+   - **Prerequisites**: Requires `Day0.infra.01 Gateway bootstrap` applied, wildcard DNS records, and IAP OAuth client credentials.
 
 4. **git_ref (Text Box - String)**:
    - **Default**: `""` (empty).
@@ -161,7 +161,7 @@ Mixing different tags, branches, or SHAs during the lifecycle of a single GKE cl
 
 > [!IMPORTANT]
 > **Rule of lockstep alignment**:
-> 1. Always ensure that the `git_ref` used for provisioning (`0.2.01`) matches the `git_ref` used for decommissioning (`9.1.01`) and redeployments (`5.2.02` / `5.2.03`).
+> 1. Always ensure that the `git_ref` used for provisioning (`Day1.cluster.01`) matches the `git_ref` used for decommissioning (`Decom.cluster.01`) and redeployments (`Day2.deploy.01` / `Day2.deploy.04`).
 > 2. For stable releases, tag both repositories in lockstep (e.g. `v0.9.0` tag in both `jenkins-2026` and `jenkins-2026-gitops-config`) and use that tag name in the `git_ref` parameter.
 
 ## Environment Protection and Manual Approvals
@@ -169,10 +169,10 @@ Mixing different tags, branches, or SHAs during the lifecycle of a single GKE cl
 To enforce cost control (FinOps), auditability, and guard against accidental destruction of active resources, critical workflows are protected by a GitHub Actions environment:
 
 * **Protected Workflows**:
-  - `0.2.01 GKE provision`
-  - `9.1.01 GKE decommission`
-  - `9.2.01 Gateway decommission`
-  - `9.2.02 Grafana Cloud decommission`
+  - `Day1.cluster.01 GKE provision`
+  - `Decom.cluster.01 GKE decommission`
+  - `Decom.infra.01 Gateway decommission`
+  - `Decom.infra.02 Grafana Cloud decommission`
 * **Environment Name**: `gke-production`
 
 ### Setting up Environment Rules
@@ -207,8 +207,8 @@ EOF
 
 ## One-time Setup (Bootstrapping)
 
-> **Why this step can't itself run in GitHub Actions**: `0.2.01-gke-provision.yml`
-> and `9.1.01-gke-decommission.yml` authenticate to GCP via Workload Identity
+> **Why this step can't itself run in GitHub Actions**: `Day1.cluster.01-gke.yml`
+> and `Decom.cluster.01-gke.yml` authenticate to GCP via Workload Identity
 > Federation (WIF) — but that WIF trust relationship, the CI service account,
 > and the GCS state bucket don't exist yet. Something has to create them
 > first using *real* GCP credentials, which is exactly what
@@ -291,8 +291,8 @@ EOF
       gh secret set GRAFANA_CLOUD_API_TOKEN --body "<token from step a>"
       ```
 
-   c. **Run the "0.1.02 Grafana Cloud bootstrap" workflow** (Actions tab →
-      **0.1.02 Grafana Cloud bootstrap** → **Run workflow**).
+   c. **Run the "Day0.infra.02 Grafana Cloud bootstrap" workflow** (Actions tab →
+      **Day0.infra.02 Grafana Cloud bootstrap** → **Run workflow**).
 
 6. **(Optional) Azure backend** for `observability_mode: managed-azure`:
 
@@ -315,20 +315,20 @@ EOF
       gh secret set AZURE_GRAFANA_ADMIN_OBJECT_IDS --body "$(az ad signed-in-user show --query id -o tsv)"
       ```
 
-   c. **Run the "0.1.03 Azure managed-grafana bootstrap" workflow**.
+   c. **Run the "Day0.infra.03 Azure managed-grafana bootstrap" workflow**.
 
 ## Running the GKE Workflows
 
-1. Go to the repo's **Actions** tab → **0.2.01 GKE provision** → **Run
+1. Go to the repo's **Actions** tab → **Day1.cluster.01 GKE provision** → **Run
    workflow**. Pick `observability_mode`. `enable_gateway` defaults to **checked**
    — this project's intended public access path. **Uncheck it only** for a fresh
-   environment where the one-time **0.1.01 Gateway bootstrap** + DNS records +
+   environment where the one-time **Day0.infra.01 Gateway bootstrap** + DNS records +
    IAP OAuth client haven't been done yet.
 2. Wait ~15-20 minutes. The job summary prints the cluster name/zone and a
    reminder to decommission when done.
 3. To redeploy only Jenkins between provision/decommission cycles, use
-   **Actions** → **5.2.02 Redeploy Jenkins** → **Run workflow**.
-4. When finished, use **Actions** → **9.1.01 GKE decommission** → **Run workflow**.
+   **Actions** → **Day2.deploy.01 Redeploy Jenkins** → **Run workflow**.
+4. When finished, use **Actions** → **Decom.cluster.01 GKE decommission** → **Run workflow**.
 
 These three workflows share a `concurrency: group: jenkins-2026-gke`, so
 GitHub Actions queues them rather than letting them race on the same

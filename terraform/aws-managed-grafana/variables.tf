@@ -63,6 +63,6 @@ variable "grafana_admin_sso_emails" {
     Each user must already exist in IAM Identity Center; the module looks them
     up by email and creates an aws_grafana_role_association. Managed via the
     AWS_GRAFANA_ADMIN_SSO_EMAILS GitHub secret passed as TF_VAR_grafana_admin_sso_emails
-    by 0.1.04-aws-bootstrap.yml — never commit real addresses here.
+    by Day0.infra.04-aws-grafana.yml — never commit real addresses here.
   EOT
 }

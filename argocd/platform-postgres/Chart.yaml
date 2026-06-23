@@ -1,0 +1,11 @@
+apiVersion: v2
+name: platform-postgres
+description: >-
+  App-of-apps for the correlated Postgres platform: the CloudNative-PG operator
+  and the pgAdmin UI that administers the CNPG-provisioned databases. They share
+  a lifecycle and failure domain, so they are grouped under one parent
+  Application. repoURL/targetRevision flow down from the parent's helm.parameters
+  (set by scripts/08.5-argocd.sh) so the pgAdmin child's git source tracks the
+  active branch.
+type: application
+version: 0.1.0
