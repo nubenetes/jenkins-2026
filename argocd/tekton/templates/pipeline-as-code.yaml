@@ -1,0 +1,34 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tekton-pipeline-as-code
+  namespace: argocd
+  annotations:
+    # Wave 2: the Tasks/Pipeline (Pipelines CRDs, wave 0) and the EventListener
+    # (Triggers CRDs, wave 1) must exist before these custom resources apply.
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL | quote }}
+    targetRevision: {{ .Values.targetRevision | quote }}
+    # The Tekton pipelines-as-code (Tasks/Pipelines/Triggers/RBAC + pipeline
+    # ServiceAccount) live at the repo-root tekton/ dir, the port of the Jenkins
+    # shared library in vars/. README.md is ignored (ArgoCD reads only manifests).
+    path: tekton
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    # Namespace-less resources (Tasks, Pipelines, EventListener, ServiceAccounts)
+    # land here; the cross-namespace RoleBinding into the microservices namespace
+    # and the cluster-scoped bindings carry their own metadata.namespace/scope.
+    namespace: {{ .Values.namespace.pipeline | quote }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

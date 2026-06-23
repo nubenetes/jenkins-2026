@@ -144,11 +144,18 @@ else
   log_warn "OIDC credentials not found. ArgoCD will use local admin password."
 fi
 
-# 2.5 Configure Jenkins Account for ArgoCD (CLI/API access) - Unconditional
-log_step "Configuring Jenkins account in ArgoCD"
-kubectl patch configmap argocd-cm -n "${J2026_ARGOCD_NAMESPACE}" --type merge -p '{"data": {"accounts.jenkins": "apiKey"}}'
+# 2.5 Configure the CI engine's ArgoCD account (CLI/API access) - the pipeline
+# 'Deploy' stage uses this token to `argocd app sync`. Account name follows the
+# active CI engine (ci.engine): 'jenkins' or 'tekton'.
+if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
+  CI_ARGOCD_ACCOUNT="tekton"
+else
+  CI_ARGOCD_ACCOUNT="jenkins"
+fi
+log_step "Configuring '${CI_ARGOCD_ACCOUNT}' account in ArgoCD"
+kubectl patch configmap argocd-cm -n "${J2026_ARGOCD_NAMESPACE}" --type merge -p "{\"data\": {\"accounts.${CI_ARGOCD_ACCOUNT}\": \"apiKey\"}}"
 
-policy_csv="g, jenkins, role:admin"
+policy_csv="g, ${CI_ARGOCD_ACCOUNT}, role:admin"
 if [[ -n "${CLIENT_ID}" && -n "${CLIENT_SECRET}" ]]; then
   policy_csv="g, authenticated, role:admin\n${policy_csv}"
   if [[ -n "${J2026_JENKINS_OIDC_ADMIN_EMAIL}" ]]; then
@@ -164,7 +171,7 @@ if [[ -z "${CLIENT_ID}" || -z "${CLIENT_SECRET}" ]]; then
   kubectl rollout status deployment "${J2026_ARGOCD_RELEASE}-server" -n "${J2026_ARGOCD_NAMESPACE}" --timeout=5m
 fi
 
-log_info "Generating ArgoCD API token for Jenkins"
+log_info "Generating ArgoCD API token for the '${CI_ARGOCD_ACCOUNT}' account"
 # Use a temporary ClusterRoleBinding. Use apply or delete/create to avoid "already exists" errors.
 cat <<EOF | kubectl apply -f -
 apiVersion: rbac.authorization.k8s.io/v1
@@ -193,7 +200,7 @@ kubectl run argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --restart=Never \
       "containers": [{
         "name": "argocd-token-gen",
         "image": "quay.io/argoproj/argocd:'"${RESOLVED_3_5_PATCH}"'",
-        "command": ["bash", "-c", "argocd account generate-token --account jenkins --core"],
+        "command": ["bash", "-c", "argocd account generate-token --account '"${CI_ARGOCD_ACCOUNT}"' --core"],
         "resources": {
           "requests": {
             "cpu": "50m",
@@ -227,18 +234,28 @@ TOKEN=$(echo "${RAW_TOKEN}" | tr -d '\n\r' | xargs)
 kubectl delete clusterrolebinding temp-argocd-admin || true
 
 if [[ ${EXIT_CODE} -eq 0 && -n "${TOKEN}" ]]; then
-  log_info "Storing ArgoCD token in ${J2026_JENKINS_CREDENTIALS_SECRET}"
-  kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \
-    --type=merge -p "{\"stringData\":{\"argocd-token\":\"${TOKEN}\"}}"
-  
-  # Safety fallback check: restart Jenkins pod if it exists and lacks the env variable
-  if kubectl get statefulset "${J2026_JENKINS_RELEASE}" -n "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
-    if kubectl get pod "${J2026_JENKINS_RELEASE}-0" -n "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
-      RUNNING_TOKEN=$(kubectl exec "${J2026_JENKINS_RELEASE}-0" -n "${J2026_JENKINS_NAMESPACE}" -c jenkins -- env | grep ARGOCD_AUTH_TOKEN || true)
-      if [[ -z "${RUNNING_TOKEN}" ]]; then
-        log_warn "Jenkins is running but does not have ARGOCD_AUTH_TOKEN set. Restarting Jenkins pod..."
-        kubectl delete pod "${J2026_JENKINS_RELEASE}-0" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found=true
-        wait_for_resource "statefulset" "${J2026_JENKINS_RELEASE}" "${J2026_JENKINS_NAMESPACE}" "15m"
+  if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
+    # Tekton: store the token where the gitops-deploy Task reads it
+    # (ARGOCD_AUTH_TOKEN), in the pipeline-execution namespace.
+    log_info "Storing ArgoCD token in 'tekton-argocd' Secret (${J2026_TEKTON_PIPELINE_NAMESPACE})"
+    kubectl create secret generic tekton-argocd \
+      -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
+      --from-literal=token="${TOKEN}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+  else
+    log_info "Storing ArgoCD token in ${J2026_JENKINS_CREDENTIALS_SECRET}"
+    kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \
+      --type=merge -p "{\"stringData\":{\"argocd-token\":\"${TOKEN}\"}}"
+
+    # Safety fallback check: restart Jenkins pod if it exists and lacks the env variable
+    if kubectl get statefulset "${J2026_JENKINS_RELEASE}" -n "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
+      if kubectl get pod "${J2026_JENKINS_RELEASE}-0" -n "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
+        RUNNING_TOKEN=$(kubectl exec "${J2026_JENKINS_RELEASE}-0" -n "${J2026_JENKINS_NAMESPACE}" -c jenkins -- env | grep ARGOCD_AUTH_TOKEN || true)
+        if [[ -z "${RUNNING_TOKEN}" ]]; then
+          log_warn "Jenkins is running but does not have ARGOCD_AUTH_TOKEN set. Restarting Jenkins pod..."
+          kubectl delete pod "${J2026_JENKINS_RELEASE}-0" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found=true
+          wait_for_resource "statefulset" "${J2026_JENKINS_RELEASE}" "${J2026_JENKINS_NAMESPACE}" "15m"
+        fi
       fi
     fi
   fi

@@ -1,0 +1,34 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tekton-pipelines
+  namespace: argocd
+  annotations:
+    # Tekton's CRDs (pipelineruns/taskruns) have large OpenAPI schemas - compute
+    # the diff server-side so automated sync doesn't fire on phantom drift.
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+    # Wave 0: the CRDs + controller must exist before Triggers/Dashboard and the
+    # pipelines-as-code that reference them.
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL | quote }}
+    targetRevision: {{ .Values.targetRevision | quote }}
+    path: argocd/tekton/components/pipelines
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.namespace.controlPlane | quote }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # Same handling as the CNPG operator: the large Tekton CRDs blow the
+      # client-side last-applied annotation limit; ServerSideApply+Replace is
+      # what reliably reconciles them.
+      - ServerSideApply=true
+      - Replace=true

@@ -15,6 +15,16 @@ for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_HEADLAM
   kubectl_apply_namespace "${ns}"
 done
 
+# Tekton control-plane + pipeline-execution namespaces are created up-front (when
+# ci.engine=tekton) so the IAP and registry/git Secrets below can land in them
+# before 04-tekton.sh installs the components. kubectl_apply_namespace is a no-op
+# if the ns already exists (the Tekton release YAML also declares tekton-pipelines).
+if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
+  for ns in "${J2026_TEKTON_NAMESPACE}" "${J2026_TEKTON_PIPELINE_NAMESPACE}"; do
+    kubectl_apply_namespace "${ns}"
+  done
+fi
+
 log_step "Ensuring '${J2026_JENKINS_CREDENTIALS_SECRET}' Secret in ${J2026_JENKINS_NAMESPACE}"
 if kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
   log_info "Secret already exists - leaving it untouched."
@@ -115,6 +125,11 @@ else
   if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
     iap_namespaces+=("${J2026_GRAFANA_OSS_NAMESPACE}")
   fi
+  # The Tekton Dashboard (ci.engine=tekton) is IAP-protected too - its
+  # GCPBackendPolicy lives in the Tekton control-plane namespace.
+  if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
+    iap_namespaces+=("${J2026_TEKTON_NAMESPACE}")
+  fi
   for ns in "${iap_namespaces[@]}"; do
     if kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" >/dev/null 2>&1; then
       log_info "Secret already exists in ${ns} - leaving it untouched."
@@ -126,6 +141,61 @@ else
       log_info "Created in ${ns}."
     fi
   done
+fi
+
+# Tekton pipeline credentials (ci.engine=tekton). The pipeline ServiceAccount
+# (created by 04-tekton.sh in the pipeline namespace) references these for
+# ghcr.io push/pull (Jib/Kaniko) and git push to the gitops repo. Same
+# REGISTRY_*/GIT_* env the Jenkins path consumes; falls back to reading them
+# from the jenkins-credentials Secret. The git Secret is annotated for
+# tekton.dev/git-0 so Tekton's credential initializer wires it into PipelineRuns.
+if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
+  log_step "Ensuring Tekton pipeline credentials in ${J2026_TEKTON_PIPELINE_NAMESPACE}"
+  tk_reg_user="${REGISTRY_USERNAME:-}"
+  tk_reg_pass="${REGISTRY_PASSWORD:-}"
+  tk_git_user="${GIT_USERNAME:-}"
+  tk_git_token="${GIT_TOKEN:-}"
+  if kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
+    [[ -z "${tk_reg_user}" ]]  && tk_reg_user="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" -o jsonpath='{.data.registry-username}' 2>/dev/null | base64 -d || true)"
+    [[ -z "${tk_reg_pass}" ]]  && tk_reg_pass="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" -o jsonpath='{.data.registry-password}' 2>/dev/null | base64 -d || true)"
+    [[ -z "${tk_git_user}" ]]  && tk_git_user="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" -o jsonpath='{.data.git-username}' 2>/dev/null | base64 -d || true)"
+    [[ -z "${tk_git_token}" ]] && tk_git_token="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" -o jsonpath='{.data.git-token}' 2>/dev/null | base64 -d || true)"
+  fi
+  tk_reg_host="${J2026_MICROSERVICES_REGISTRY%%/*}"
+  if [[ -n "${tk_reg_user}" && -n "${tk_reg_pass}" ]]; then
+    tk_reg_auth="$(printf '%s:%s' "${tk_reg_user}" "${tk_reg_pass}" | base64 -w0)"
+    tk_dockercfg="$(printf '{"auths":{"%s":{"username":"%s","password":"%s","auth":"%s"}}}' \
+      "${tk_reg_host}" "${tk_reg_user}" "${tk_reg_pass}" "${tk_reg_auth}")"
+  else
+    log_warn "REGISTRY_USERNAME/REGISTRY_PASSWORD not set - Tekton image push will fail until configured."
+    tk_dockercfg='{"auths":{}}'
+  fi
+  kubectl create secret generic "${J2026_TEKTON_REGISTRY_SECRET}" \
+    -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
+    --type=kubernetes.io/dockerconfigjson \
+    --from-literal=.dockerconfigjson="${tk_dockercfg}" \
+    --dry-run=client -o yaml | kubectl apply -f -
+
+  if [[ -z "${tk_git_token}" ]]; then
+    log_warn "GIT_TOKEN not set - Tekton git push (GitOps deploy) and SARIF upload will fail until configured."
+  fi
+  kubectl create secret generic "${J2026_TEKTON_GIT_SECRET}" \
+    -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
+    --type=kubernetes.io/basic-auth \
+    --from-literal=username="${tk_git_user:-git}" \
+    --from-literal=password="${tk_git_token}" \
+    --dry-run=client -o yaml \
+    | kubectl annotate --local -f - tekton.dev/git-0=https://github.com -o yaml \
+    | kubectl apply -f -
+
+  # GitHub HMAC secret for the Triggers EventListener (tekton/triggers/). Optional
+  # (the upstream JHipster repos aren't owned, so push webhooks can't target them);
+  # created empty unless TEKTON_GITHUB_WEBHOOK_SECRET is provided, so the
+  # EventListener's github interceptor reference resolves either way.
+  kubectl create secret generic tekton-github-webhook-secret \
+    -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
+    --from-literal=secretToken="${TEKTON_GITHUB_WEBHOOK_SECRET:-}" \
+    --dry-run=client -o yaml | kubectl apply -f -
 fi
 
 log_step "Granting Jenkins ServiceAccount 'edit' in microservices namespaces"

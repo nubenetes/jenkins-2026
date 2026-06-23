@@ -1,0 +1,27 @@
+# Stage "Trivy Image Scan" of the Jenkins pipeline: scans the pushed image for
+# CRITICAL/HIGH OS+library vulnerabilities (exit-code 0 = report only).
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: trivy-image
+spec:
+  params:
+    - name: image
+  workspaces:
+    - name: source
+    - name: dockerconfig
+  steps:
+    - name: scan
+      image: aquasec/trivy:0.52.2
+      env:
+        - name: TRIVY_CACHE_DIR
+          value: /tmp/trivy-cache
+        # Trivy reads registry creds from the docker config to pull private images.
+        - name: DOCKER_CONFIG
+          value: $(workspaces.dockerconfig.path)
+      script: |
+        #!/bin/sh
+        set -eu
+        trivy image --scanners vuln \
+          --config "$(workspaces.source.path)/jenkins-2026-infra/trivy.yaml" \
+          --exit-code 0 --severity CRITICAL,HIGH "$(params.image)"

@@ -40,6 +40,23 @@ if kubectl get application platform-postgres -n "${J2026_ARGOCD_NAMESPACE}" >/de
   kubectl delete application platform-postgres -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false || true
 fi
 
+# Tekton (ci.engine=tekton) is the GitOps-managed CI engine app-of-apps. Delete
+# the parent while ArgoCD is alive so it cascade-prunes Pipelines/Triggers/
+# Dashboard + the pipelines-as-code. Engine-agnostic teardown: no-op when absent.
+if kubectl get application tekton -n "${J2026_ARGOCD_NAMESPACE}" >/dev/null 2>&1; then
+  log_step "Removing tekton ArgoCD app-of-apps (Pipelines/Triggers/Dashboard)"
+  kubectl delete application tekton -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false || true
+fi
+
+# Jenkins (ci.engine=jenkins) is a GitOps-managed single Application. Delete it
+# while ArgoCD is alive so it cascade-prunes the chart. Engine-agnostic: no-op
+# when absent. (The helm_uninstall below is a legacy fallback for pre-ArgoCD
+# Jenkins installs.)
+if kubectl get application jenkins -n "${J2026_ARGOCD_NAMESPACE}" >/dev/null 2>&1; then
+  log_step "Removing jenkins ArgoCD Application (Jenkins chart)"
+  kubectl delete application jenkins -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false || true
+fi
+
 log_step "Uninstalling Helm releases in parallel"
 run_bg microservices-stable   helm_uninstall microservices-stable  "${J2026_MICROSERVICES_NS_STABLE}"
 run_bg jenkins            helm_uninstall "${J2026_JENKINS_RELEASE}" "${J2026_JENKINS_NAMESPACE}"
@@ -102,11 +119,23 @@ if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
   kubectl delete gcpbackendpolicy "${J2026_GATEWAY_IAP_POLICY_JENKINS}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found --timeout=5m
   kubectl delete gcpbackendpolicy "${J2026_GATEWAY_IAP_POLICY_HEADLAMP}" -n "${J2026_HEADLAMP_NAMESPACE}" --ignore-not-found --timeout=5m
   kubectl delete gcpbackendpolicy "${J2026_GATEWAY_IAP_POLICY_PGADMIN}" -n "${J2026_PGADMIN_NAMESPACE}" --ignore-not-found --timeout=5m
+  # Tekton Dashboard route/policy (only present when ci.engine=tekton; ignored otherwise).
+  kubectl delete gcpbackendpolicy "${J2026_GATEWAY_IAP_POLICY_TEKTON}" -n "${J2026_TEKTON_NAMESPACE}" --ignore-not-found --timeout=5m
   kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_JENKINS}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found --timeout=5m
   kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_MICROSERVICES}" -n "${J2026_MICROSERVICES_NS_STABLE}" --ignore-not-found --timeout=5m
   kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_HEADLAMP}" -n "${J2026_HEADLAMP_NAMESPACE}" --ignore-not-found --timeout=5m
   kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_PGADMIN}" -n "${J2026_PGADMIN_NAMESPACE}" --ignore-not-found --timeout=5m
+  kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_TEKTON}" -n "${J2026_TEKTON_NAMESPACE}" --ignore-not-found --timeout=5m
   kubectl delete gateway "${J2026_GATEWAY_NAME}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found --timeout=5m
+fi
+
+# CI-engine teardown is engine-agnostic: Decom.cluster.01-gke.yml runs down.sh
+# with no ci_engine input, and a cluster may hold either engine. Jenkins is a
+# Helm release (uninstalled above); Tekton is installed via kubectl apply, so
+# remove it here. Best-effort + idempotent (no-op when tekton isn't installed).
+if kubectl get namespace "${J2026_TEKTON_NAMESPACE}" >/dev/null 2>&1; then
+  log_step "Removing Tekton (PipelineRuns, control plane, CI namespace)"
+  kubectl delete pipelinerun --all -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" --ignore-not-found --wait=false 2>/dev/null || true
 fi
 
 # drain_namespace <ns>
@@ -166,7 +195,7 @@ drain_namespace() {
 
 if [[ "${J2026_DELETE_NAMESPACES:-false}" == "true" ]]; then
   log_step "Deleting namespaces (J2026_DELETE_NAMESPACES=true)"
-  for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_GRAFANA_OSS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_ARGOCD_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}"; do
+  for ns in "${J2026_JENKINS_NAMESPACE}" "${J2026_TEKTON_NAMESPACE}" "${J2026_TEKTON_PIPELINE_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_GRAFANA_OSS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_ARGOCD_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}"; do
     drain_namespace "${ns}"
   done
 else
