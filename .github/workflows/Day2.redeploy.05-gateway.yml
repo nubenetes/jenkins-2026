@@ -1,0 +1,147 @@
+name: "Day2.redeploy.05 Gateway"
+
+# Manually-triggered: re-applies the public-ingress layer ONLY - the shared GKE
+# Gateway (in the platform-ingress namespace) + every app HTTPRoute + the IAP
+# GCPBackendPolicies (scripts/01-namespaces.sh for the namespaces/IAP Secrets +
+# scripts/09-gateway.sh for the Gateway/routes/policies). Use it to apply a
+# gateway/route/IAP change (e.g. a new host, an IAP tweak, or recovering a deleted
+# Gateway) WITHOUT rerunning the whole Day1.cluster.01 provision. Idempotent;
+# requires the cluster from a previous Day1.cluster.01 run to still exist.
+#
+# Pick ci_engine + observability_mode to match how the cluster was provisioned, so
+# the engine-specific routes (jenkins XOR tekton dashboard/pac) and the oss Grafana
+# route are generated correctly.
+on:
+  workflow_dispatch:
+    inputs:
+      ci_engine:
+        description: "CI engine the cluster runs (must match the live cluster): jenkins | tekton"
+        required: true
+        default: "jenkins"
+        type: choice
+        options:
+          - jenkins
+          - tekton
+      observability_mode:
+        description: "observability.mode of the cluster (only affects the oss Grafana route/IAP)"
+        required: true
+        default: "grafana-cloud"
+        type: choice
+        options:
+          - grafana-cloud
+          - oss
+          - managed-azure
+          - managed-aws
+      git_ref:
+        description: "Git branch, tag, or SHA to check out (leave empty for the selected branch)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: jenkins-2026-gke
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: "1.15.6"
+  JENKINS2026_CI_ENGINE: ${{ inputs.ci_engine }}
+  JENKINS2026_OBS_MODE: ${{ inputs.observability_mode }}
+
+jobs:
+  redeploy-gateway:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref || github.ref }}
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Install gke-gcloud-auth-plugin
+        run: gcloud components install gke-gcloud-auth-plugin --quiet
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Install yq
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/yq \
+            https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Configure GCS backend (terraform/gke)
+        run: |
+          cat > terraform/gke/backend_override.tf <<EOF
+          terraform {
+            backend "gcs" {
+              bucket = "${{ secrets.TF_STATE_BUCKET }}"
+              prefix = "jenkins-2026/gke"
+            }
+          }
+          EOF
+
+      - name: Terraform init
+        working-directory: terraform/gke
+        run: terraform init -input=false
+
+      - name: Fetch kubeconfig credentials
+        working-directory: terraform/gke
+        run: |
+          gcloud container clusters get-credentials \
+            "$(terraform output -raw cluster_name)" \
+            --zone "$(terraform output -raw location)" \
+            --project "${{ secrets.GCP_PROJECT_ID }}"
+
+      - name: Check prereqs (scripts/00-check-prereqs.sh)
+        run: ./scripts/00-check-prereqs.sh
+
+      - name: Namespaces & IAP Secrets (scripts/01-namespaces.sh)
+        # Idempotent: ensures platform-ingress + per-app namespaces and replicates
+        # the gateway-iap-oauth Secret into each IAP backend namespace.
+        env:
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+          GIT_USERNAME: ${{ secrets.GIT_USERNAME }}
+          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
+          HEADLAMP_OIDC_CLIENT_ID: ${{ secrets.HEADLAMP_OIDC_CLIENT_ID }}
+          HEADLAMP_OIDC_CLIENT_SECRET: ${{ secrets.HEADLAMP_OIDC_CLIENT_SECRET }}
+          JENKINS_OIDC_CLIENT_ID: ${{ secrets.JENKINS_OIDC_CLIENT_ID }}
+          JENKINS_OIDC_CLIENT_SECRET: ${{ secrets.JENKINS_OIDC_CLIENT_SECRET }}
+          JENKINS_OIDC_ADMIN_EMAIL: ${{ secrets.JENKINS_OIDC_ADMIN_EMAIL }}
+          IAP_OAUTH_CLIENT_ID: ${{ secrets.IAP_OAUTH_CLIENT_ID }}
+          IAP_OAUTH_CLIENT_SECRET: ${{ secrets.IAP_OAUTH_CLIENT_SECRET }}
+        run: ./scripts/01-namespaces.sh
+
+      - name: Re-apply Gateway + HTTPRoutes + IAP (scripts/09-gateway.sh)
+        run: ./scripts/09-gateway.sh
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Gateway / public ingress re-applied"
+            echo
+            echo "- Gateway namespace: \`platform-ingress\`"
+            echo "- CI engine: \`${{ inputs.ci_engine }}\` · observability: \`${{ inputs.observability_mode }}\`"
+            echo
+            echo "The external LB may take a few minutes to re-program. See the"
+            echo "step log above for the per-app URLs."
+          } >> "${GITHUB_STEP_SUMMARY}"
