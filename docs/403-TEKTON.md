@@ -79,6 +79,44 @@ hold env-sourced secrets) — `01-namespaces.sh` / `08.5-argocd.sh` create them
 imperatively; an SA may reference Secrets that don't exist yet, so ordering is
 fine. ArgoCD requires `08.5-argocd.sh` to run first (it already does in `up.sh`).
 
+## Tooling: kustomize vs Helm (and why both)
+
+Deploying Tekton through ArgoCD deliberately mixes **Helm** and **kustomize** —
+each layer uses the tool that fits it best, rather than forcing one tool
+everywhere. The choice per layer:
+
+| Layer | Tool used | Why this tool (and not the other) |
+|---|---|---|
+| **App-of-apps parent** (`argocd/tekton/`) | **Helm** | The wrapper must *template* `repoURL`/`targetRevision` (and could template versions) down into the child Applications. That per-environment templating is exactly what Helm does cleanly and what the repo already does for `observability-oss`/`platform-postgres`. Kustomize templates this only awkwardly (vars/replacements). |
+| **Upstream components** (Pipelines / Triggers / Dashboard) | **kustomize** (remote resource → pinned release YAML) + a `config-tracing` patch | **Tekton has no official Helm chart.** A kustomize *remote resource* pulls the exact, immutable, **official** release (`…/previous/<ver>/release.yaml`) and lets us patch it (OTel `config-tracing`) without forking. Helm here would mean adopting an unofficial community chart — version lag + a third-party trust dependency for a security-sensitive CI engine. |
+| **Pipelines-as-code** (`tekton/` Tasks/Pipelines/Triggers/RBAC) | **plain manifests** (ArgoCD directory source) | Static custom resources with no per-environment templating need; neither Helm nor kustomize adds value. Per-run values are supplied as Tekton **params** at `PipelineRun` time, not at apply time. |
+
+### Why not "all Helm"
+
+There is **no official Tekton Helm chart** — upstream ships release YAMLs. Using
+a community chart would (a) rarely carry the exact pinned version (e.g.
+`v1.13.1`), and (b) insert a third party into the supply chain of the CI engine.
+Pinning the official release via a kustomize remote resource is the stronger
+posture. (Contrast: `observability-oss` *does* use Helm for its children —
+because kube-prometheus-stack/Loki/Tempo *have* well-maintained official charts.)
+
+### Why not "all kustomize"
+
+The app-of-apps parent has to flow `repoURL`/branch into N child Applications per
+environment. Helm values do this in one line; kustomize would need clunky
+`replacements`/`vars` and diverge from the established `observability-oss` /
+`platform-postgres` pattern. So the wrapper stays Helm.
+
+### The one trade-off
+
+Because a kustomize remote-resource URL can't read Helm values, the component
+**versions are pinned in `argocd/tekton/components/*/kustomization.yaml`**, not
+flowed from `config.yaml`. `ci.tekton.versions` documents the intended versions;
+keep the two in sync when bumping. (An optional future refinement is to turn the
+`tekton/` pipelines-as-code into a small Helm chart to inject the observability
+namespace and tool-image versions — but the *component* versions would still
+live in the kustomizations regardless.)
+
 ## Dashboard on the internet, behind Google IAP
 
 The Tekton Dashboard has **no built-in authentication** — it relies on an
