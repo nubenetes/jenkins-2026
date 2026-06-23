@@ -137,7 +137,10 @@ banner_links_checksum="$(printf '%s|%s|%s|%s|%s|%s' \
 # OSS Grafana dashboards ConfigMap.
 log_step "Applying JCasC ConfigMaps (jenkins/casc/*) for the config sidecar"
 apply_jcasc_cm() {
-  local key="$1" file="$2" name="jenkins-2026-casc-${key}"
+  # Separate declarations: a single `local a=$1 b=...$a` expands all RHS before
+  # binding any, so ${key} would be unbound under `set -u`.
+  local key="$1" file="$2"
+  local name="jenkins-2026-casc-${key}"
   kubectl create configmap "${name}" -n "${J2026_JENKINS_NAMESPACE}" \
     --from-file="${key}.yaml=${file}" --dry-run=client -o yaml \
     | kubectl label --local -f - \
