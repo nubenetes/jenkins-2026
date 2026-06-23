@@ -88,9 +88,12 @@ log_step "Configuring ArgoCD OIDC/RBAC"
 ARGOCD_HOST="argocd.${J2026_GATEWAY_BASE_DOMAIN}"
 ARGOCD_URL="https://${ARGOCD_HOST}"
 
-# Fetch IAP secrets
-CLIENT_ID="$(kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" -o jsonpath='{.data.client_id}' 2>/dev/null | base64 -d || true)"
-CLIENT_SECRET="$(kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" -o jsonpath='{.data.client_secret}' 2>/dev/null | base64 -d || true)"
+# Fetch the IAP OAuth client (reused for ArgoCD's Google OIDC login). Read it from
+# the headlamp namespace - it is always created and always carries the
+# gateway-iap-oauth Secret (01-namespaces replicates it into every IAP backend ns),
+# unlike the jenkins namespace which only exists when ci.engine=jenkins.
+CLIENT_ID="$(kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${J2026_HEADLAMP_NAMESPACE}" -o jsonpath='{.data.client_id}' 2>/dev/null | base64 -d || true)"
+CLIENT_SECRET="$(kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${J2026_HEADLAMP_NAMESPACE}" -o jsonpath='{.data.client_secret}' 2>/dev/null | base64 -d || true)"
 
 if [[ -n "${CLIENT_ID}" && -n "${CLIENT_SECRET}" ]]; then
   log_info "Wiring Google OIDC for ArgoCD at ${ARGOCD_URL}"
