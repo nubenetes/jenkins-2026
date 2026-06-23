@@ -425,6 +425,11 @@ jobs:
           ./scripts/up.sh
 
       - name: Smoke test
+        env:
+          # Without this the smoke test sources config.yaml's default ci.engine
+          # (jenkins) and runs Jenkins checks even on a tekton cluster - mirror the
+          # engine the cluster was provisioned with (same override as the up.sh step).
+          JENKINS2026_CI_ENGINE: ${{ inputs.ci_engine }}
         run: ./test/smoke-test.sh
 
       # Auto-publish the managed-azure dashboard variants to Azure Managed
@@ -529,3 +534,30 @@ jobs:
             echo "needed. Run **Decom.cluster.01 GKE** only when you're done, to"
             echo "avoid ongoing charges."
           } >> "${GITHUB_STEP_SUMMARY}"
+
+      # Print the provisioned Grafana URL at the very end of the log, for any
+      # observability_mode and either CI engine. if: always() so it shows even if
+      # the smoke test failed.
+      - name: Grafana URL
+        if: always()
+        run: |
+          mode="${{ inputs.observability_mode }}"
+          if [[ "${mode}" == "grafana-cloud" ]]; then
+            url="https://${{ steps.gc_stack.outputs.slug }}.grafana.net"
+          elif [[ "${mode}" == "oss" ]]; then
+            if [[ "${{ inputs.enable_gateway }}" == "true" ]]; then
+              url="https://grafana.jenkins2026.nubenetes.com (IAP-protected)"
+            else
+              url="(gateway disabled) kubectl -n observability port-forward svc/grafana 3000:80"
+            fi
+          else
+            secret="azure-monitor-credentials"
+            [[ "${mode}" == "managed-aws" ]] && secret="aws-managed-credentials"
+            url="$(kubectl get secret "${secret}" -n observability -o jsonpath='{.data.GRAFANA_BASE_URL}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+            [[ -z "${url}" ]] && url="(see the ${mode} backend / terraform outputs)"
+          fi
+          echo "════════════════════════════════════════════════════════════"
+          echo "  Grafana URL  (observability_mode=${mode}, ci_engine=${{ inputs.ci_engine }})"
+          echo "  ${url}"
+          echo "════════════════════════════════════════════════════════════"
+          { echo; echo "### Grafana (${mode})"; echo; echo "- ${url}"; } >> "${GITHUB_STEP_SUMMARY}"
