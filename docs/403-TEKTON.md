@@ -173,6 +173,98 @@ namespace, from the same `REGISTRY_*` / `GIT_*` env the Jenkins path consumes:
 - `tekton-argocd` — ArgoCD API token (account `tekton`, provisioned by `08.5-argocd.sh`)
 - `tekton-github-webhook-secret` — optional GitHub HMAC token for the EventListener
 
+## Running a pipeline by hand (Dashboard / kubectl / tkn)
+
+The Pipelines/Tasks live in the **`tekton-ci`** namespace and run under the
+**`tekton-ci`** ServiceAccount (it carries the registry/git/argocd creds above).
+The two Pipelines you can start manually are:
+
+| Pipeline | What it does | Key params |
+|---|---|---|
+| `microservices-k6-smoke` | the standalone k6 smoke test (analogue of the Jenkins `microservices-k6-smoke` job) | `target-namespace`, `env-name`, `vus`, `iterations`, `otlp-endpoint` |
+| `microservices-pipeline` | the full per-service CI (SAST → build → image → scan → GitOps deploy → smoke) | `service-name`, `service-type`, `git-repo-url`, `git-branch`, `target-namespace`, `image`, `otlp-endpoint`, … |
+
+In normal operation you don't start these by hand — **PaC** runs `microservices-pipeline`
+on every push/PR (see below), and `06-tekton-pipelines.sh` seeds the per-service runs.
+Start them manually for ad-hoc runs, debugging, or to fire the k6 smoke on demand.
+
+> `otlp-endpoint` for in-cluster runs is
+> `http://otel-collector-gateway.observability.svc.cluster.local:4317` (k6/pipeline
+> metrics → the collector → your backend). Leave it empty to skip OTLP.
+
+### Option A — Tekton Dashboard (GUI, behind IAP)
+
+Open `https://tekton.<baseDomain>` (Google IAP login, [§ Dashboard](#dashboard-on-the-internet-behind-google-iap)). The Dashboard is **read-write**, so:
+
+1. **PipelineRuns → Create**, or **Pipelines → `microservices-k6-smoke` → Create PipelineRun**.
+2. Namespace **`tekton-ci`**; fill the params; set the **ServiceAccount** to `tekton-ci`.
+3. For the **`source`** workspace choose **VolumeClaimTemplate** (a few Gi, RWO).
+4. **Create** — then watch it stream in the run's view.
+
+### Option B — `kubectl create` (a PipelineRun manifest)
+
+`generateName` → use `kubectl create` (not `apply`):
+
+```yaml
+# k6-run.yaml
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: k6-smoke-manual-
+  namespace: tekton-ci
+spec:
+  taskRunTemplate:
+    serviceAccountName: tekton-ci
+  pipelineRef:
+    name: microservices-k6-smoke
+  params:
+    - {name: target-namespace, value: microservices}
+    - {name: env-name, value: stable}
+    - {name: vus, value: "5"}
+    - {name: iterations, value: "50"}
+    - {name: otlp-endpoint, value: "http://otel-collector-gateway.observability.svc.cluster.local:4317"}
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources: {requests: {storage: 2Gi}}
+```
+
+```bash
+kubectl create -f k6-run.yaml                 # start it
+kubectl get pipelinerun -n tekton-ci -w       # watch status
+```
+
+(For `microservices-pipeline` the canonical, complete param set is what
+`06-tekton-pipelines.sh` generates / what a fork's `.tekton/<svc>.yaml` carries —
+copy one of those and tweak. It also needs the `dockerconfig` workspace from the
+`tekton-registry` Secret.)
+
+### Option C — `tkn` CLI
+
+```bash
+# install: https://tekton.dev/docs/cli/
+tkn pipeline start microservices-k6-smoke -n tekton-ci \
+  --serviceaccount tekton-ci \
+  --param target-namespace=microservices \
+  --param env-name=stable --param vus=5 --param iterations=50 \
+  --param otlp-endpoint=http://otel-collector-gateway.observability.svc.cluster.local:4317 \
+  --workspace name=source,volumeClaimTemplateFile=/dev/stdin <<'EOF' \
+  --showlog
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources: {requests: {storage: 2Gi}}
+EOF
+```
+
+`tkn pipeline start --use-param-defaults` accepts the defaults for everything you
+omit. Watch any run with `tkn pipelinerun logs -f -n tekton-ci` (or `tkn pr list -n tekton-ci`).
+
+If k6 cloud streaming is enabled (`K6_CLOUD_TOKEN`/`K6_CLOUD_PROJECT_ID`), the
+run also uploads to Grafana Cloud k6 and prints the `…/a/k6-app/projects/<id>` URL
+(see [`docs/103` §10](./103-GITHUB_SECRETS_INVENTORY.md)).
+
 ## Triggers
 
 `tekton/triggers/` installs an `EventListener` + `TriggerTemplate` +
