@@ -1,24 +1,14 @@
 # Tekton Pipelines, installed via ArgoCD by pulling the pinned upstream release
-# as a kustomize remote resource (Tekton has no official Helm chart). The
-# config-tracing patch points Tekton's tracing at the in-cluster OTel collector,
-# kept inside the kustomization so ArgoCD owns it (no out-of-band drift).
+# as a kustomize remote resource (Tekton has no official Helm chart).
+#
+# NOTE: no config-tracing patch here. The v1.13.1 release.yaml ships no
+# `config-tracing` ConfigMap, so a strategic-merge patch on it failed the
+# kustomize build (-> the pipelines Application never deployed the controller/
+# webhook). Enabling Tekton controller OpenTelemetry tracing is a follow-up
+# (it would add config-tracing as a NEW resource, not a patch).
 #
 # Pinned version - keep in sync with config/config.yaml ci.tekton.versions.pipelines.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - https://storage.googleapis.com/tekton-releases/pipeline/previous/v1.13.1/release.yaml
-patches:
-  # OTel parity: emit PipelineRun/TaskRun traces to the in-cluster collector.
-  # The endpoint uses the default observability namespace ("observability");
-  # change it here if observability.namespace differs.
-  - patch: |
-      apiVersion: v1
-      kind: ConfigMap
-      metadata:
-        name: config-tracing
-        namespace: tekton-pipelines
-      data:
-        enabled: "true"
-        provider: "otel"
-        endpoint: "http://otel-collector-gateway.observability.svc.cluster.local:4317"
