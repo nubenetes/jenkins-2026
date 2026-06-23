@@ -39,6 +39,9 @@ env:
 jobs:
   redeploy-jenkins:
     runs-on: ubuntu-latest
+    # Manual approval gate (GitHub Environment required reviewers) - modifies a real
+    # billed cluster, same posture as Day1/Decom and the other Day2.* workflows.
+    environment: gke-production
     steps:
       - name: Checkout
         uses: actions/checkout@v4
