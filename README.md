@@ -87,6 +87,7 @@ A self-contained proof of concept that deploys **Jenkins** on **Kubernetes**, co
 - [Complete workflow inventory — matrix table](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#complete-workflow-inventory--matrix-table)
 - [Day2 ordering: tiers are categories, not stages](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#day2-ordering-tiers-are-categories-not-stages)
 - [Are workflows auto-chained? Why not?](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#are-workflows-auto-chained-why-not)
+- [Idempotency: every workflow is safe to re-run](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#idempotency-every-workflow-is-safe-to-re-run)
 
 **[102 · GitHub Actions Automation](./docs/102-GITHUB_ACTIONS_AUTOMATION.md)**
 - [Bootstrapping Architecture: Persistent vs. Short-Lived Resources](./docs/102-GITHUB_ACTIONS_AUTOMATION.md#bootstrapping-architecture-persistent-vs-short-lived-resources)
@@ -356,6 +357,15 @@ All 19 workflows live in [`.github/workflows/`](.github/workflows/) following th
 | `Day2` Update | `traffic` | k6 traffic | [Day2.traffic.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml) |
 | `Decom` Destroy | `cluster` (first) | GKE cluster (destroy first) | [Decom.cluster.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml) |
 | `Decom` Destroy | `infra` (last) | Gateway, Grafana Cloud, Azure, AWS (destroy last) | [Decom.infra.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.01-gateway.yml) · [Decom.infra.02](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.02-grafana-cloud.yml) · [Decom.infra.03](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.03-azure-grafana.yml) · [Decom.infra.04](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.04-aws-grafana.yml) |
+
+> **Applying changes = re-run, not Decom.** `Day1.cluster.01` is **idempotent**:
+> re-run it on an already-provisioned cluster and it converges in place
+> (`terraform apply` no-ops when the cluster is already in state; `up.sh`
+> re-applies every step; ArgoCD re-syncs from git). You do **not** need to
+> decommission to pick up a change. For a CI-engine-only change, the lighter
+> `Day2.redeploy.02-jenkins` / `Day2.redeploy.03-tekton` redeploys also converge
+> in place (they re-run `09-gateway` too). `Decom.cluster.01` is only for tearing
+> the cluster down when you're done, to stop charges.
 
 ---
 
