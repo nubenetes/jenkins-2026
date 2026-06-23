@@ -1,0 +1,98 @@
+# Stage "Deploy to Kubernetes" of the Jenkins pipeline (vars/microservicesDeploy.groovy):
+# GitOps deploy - bump the image tag in the gitops-config repo, push, trigger an
+# ArgoCD sync/wait, then self-heal the OTel auto-instrumentation injection race.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: gitops-deploy
+spec:
+  params:
+    - name: service-name
+    - name: env-name
+    - name: target-namespace
+    - name: image-tag
+    - name: gitops-repo-url
+      default: https://github.com/nubenetes/jenkins-2026-gitops-config.git
+    - name: argocd-server
+      default: argocd-server.argocd.svc.cluster.local
+    - name: argocd-version
+      default: v2.11.0
+  workspaces:
+    - name: source
+  steps:
+    - name: bump-and-push
+      image: alpine/k8s:1.31.3
+      env:
+        - name: HOME
+          value: /tmp
+        - name: GIT_USER
+          valueFrom:
+            secretKeyRef: { name: tekton-git, key: username, optional: true }
+        - name: GIT_TOKEN
+          valueFrom:
+            secretKeyRef: { name: tekton-git, key: password, optional: true }
+      script: |
+        #!/bin/bash
+        set -eux
+        case "$(params.env-name)" in
+          stable|develop) ;;
+          *) echo "unsupported env-name '$(params.env-name)'"; exit 1 ;;
+        esac
+        BRANCH=main; [ "$(params.env-name)" = "develop" ] && BRANCH=develop
+        VALUES="helm/microservices/values-$(params.env-name).yaml"
+        cd "$(workspaces.source.path)"
+        rm -rf gitops-deploy-src
+        git config --global --add safe.directory '*' || true
+        git config --global user.email "tekton@nubenetes.com"
+        git config --global user.name "Tekton CI"
+        REPO_CLEAN=$(echo "$(params.gitops-repo-url)" | sed 's|https://||')
+        git clone --depth 1 --branch "${BRANCH}" \
+          "https://${GIT_USER:-git}:${GIT_TOKEN:-}@${REPO_CLEAN}" gitops-deploy-src
+        cd gitops-deploy-src
+        yq eval -i ".services.$(params.service-name).image.tag = \"$(params.image-tag)\"" "${VALUES}"
+        git add "${VALUES}"
+        git commit -m "chore(ops): update $(params.service-name) image tag to $(params.image-tag) [$(params.env-name)]" || echo "No changes to commit"
+        git push origin "${BRANCH}"
+    - name: argocd-sync
+      image: alpine/k8s:1.31.3
+      env:
+        - name: HOME
+          value: /tmp
+        - name: ARGOCD_SERVER
+          value: $(params.argocd-server)
+        - name: ARGOCD_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef: { name: tekton-argocd, key: token, optional: true }
+      script: |
+        #!/bin/bash
+        set -eux
+        ARGOCD=/tmp/argocd-cli
+        if [ ! -x "${ARGOCD}" ]; then
+          curl -sSL -o "${ARGOCD}" "https://github.com/argoproj/argo-cd/releases/download/$(params.argocd-version)/argocd-linux-amd64"
+          chmod +x "${ARGOCD}"
+        fi
+        server="${ARGOCD_SERVER}"; flags="--grpc-web --insecure"
+        case "${server}" in
+          *:*) ;;
+          *) server="${server}:80"; flags="${flags} --plaintext" ;;
+        esac
+        "${ARGOCD}" app sync "microservices-$(params.env-name)" --server "${server}" --auth-token "${ARGOCD_AUTH_TOKEN:-}" ${flags}
+        "${ARGOCD}" app wait "microservices-$(params.env-name)" --sync --timeout 300 --server "${server}" --auth-token "${ARGOCD_AUTH_TOKEN:-}" ${flags}
+    - name: otel-injection-selfheal
+      image: alpine/k8s:1.31.3
+      script: |
+        #!/bin/bash
+        set -eu
+        NS="$(params.target-namespace)"; DEPLOY="$(params.service-name)"
+        kubectl -n "${NS}" rollout status deploy/"${DEPLOY}" --timeout=120s || true
+        POD=$(kubectl -n "${NS}" get pods -l "app.kubernetes.io/name=${DEPLOY}" \
+              --field-selector=status.phase=Running -o name 2>/dev/null | head -1)
+        if [ -z "${POD}" ]; then echo "No running pod for ${DEPLOY} - skipping OTel check"; exit 0; fi
+        JTO=$(kubectl -n "${NS}" get "${POD}" -o jsonpath='{range .spec.containers[*]}{.env[?(@.name=="JAVA_TOOL_OPTIONS")].value}{end}' 2>/dev/null || true)
+        if echo "${JTO}" | grep -q -- '-javaagent'; then
+          echo "OTel agent already injected in ${DEPLOY}"
+        else
+          echo "OTel agent NOT injected (race) - rolling restart ${DEPLOY}"
+          kubectl -n "${NS}" rollout restart deploy/"${DEPLOY}"
+          kubectl -n "${NS}" rollout status deploy/"${DEPLOY}" --timeout=120s || true
+        fi

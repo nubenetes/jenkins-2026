@@ -9,6 +9,28 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 
+# Engines are mutually exclusive (config ci.engine). Selecting Jenkins retires
+# Tekton if it is present (switching back on a running cluster, or a stale
+# leftover). The symmetric counterpart of 04-tekton.sh retiring Jenkins. The
+# shared microservices are GitOps-managed (ArgoCD), so they survive; only the
+# Tekton control plane / Dashboard / pipeline namespace + its gateway routing
+# are removed. Idempotent / best-effort - the cluster-scoped Tekton CRDs are
+# left dormant (a later switch back to tekton re-applies the controllers).
+if [[ "${J2026_CI_ENGINE}" != "tekton" ]] && \
+   { kubectl get application tekton -n "${J2026_ARGOCD_NAMESPACE}" >/dev/null 2>&1 \
+     || kubectl get namespace "${J2026_TEKTON_NAMESPACE}" >/dev/null 2>&1; }; then
+  log_step "Retiring Tekton if present (ci.engine=jenkins)"
+  # Delete the ArgoCD app-of-apps FIRST so ArgoCD cascade-prunes the Tekton
+  # components and does not re-sync them back. --wait=false keeps teardown moving.
+  kubectl delete application tekton -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false || true
+  if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
+    kubectl delete gcpbackendpolicy "${J2026_GATEWAY_IAP_POLICY_TEKTON}" -n "${J2026_TEKTON_NAMESPACE}" --ignore-not-found
+    kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_TEKTON}" -n "${J2026_TEKTON_NAMESPACE}" --ignore-not-found
+  fi
+  kubectl delete namespace "${J2026_TEKTON_PIPELINE_NAMESPACE}" --ignore-not-found --timeout=3m || true
+  kubectl delete namespace "${J2026_TEKTON_NAMESPACE}" --ignore-not-found --timeout=3m || true
+fi
+
 log_step "Pre-installation cleanup of JCasC ConfigMaps"
 # Delete any old JCasC ConfigMaps to prevent merge conflicts with new files.
 # Using '|| true' to ignore errors if they don't exist.

@@ -189,6 +189,19 @@ If left unset, the image pull and git clone steps proceed unauthenticated (works
 
 ---
 
+## 9. Tekton CI Engine (`ci.engine: tekton`)
+
+Used by `Day1.cluster.01-gke` and `Day2.redeploy.03-tekton` when the Tekton CI engine is selected (`ci.engine: tekton`). Tekton reuses the **existing** registry, git, and IAP secrets — `REGISTRY_USERNAME` / `REGISTRY_PASSWORD` (image push/pull), `GIT_USERNAME` / `GIT_TOKEN` (private Microservices fork), and `IAP_OAUTH_CLIENT_ID` / `IAP_OAUTH_CLIENT_SECRET` (the Tekton Dashboard is gated by the same Google IAP as Headlamp). The only **new** secret is the optional webhook HMAC token below.
+
+| Secret | Required | Description |
+|--------|----------|-------------|
+| `TEKTON_GITHUB_WEBHOOK_SECRET` | optional | GitHub HMAC token validating requests to the Tekton Triggers EventListener |
+
+**`TEKTON_GITHUB_WEBHOOK_SECRET`**
+A shared-secret HMAC token GitHub signs webhook deliveries with, validated by the Tekton Triggers `EventListener`. Optional — empty by default; only needed if you expose the EventListener webhook so GitHub can trigger PipelineRuns. You generate it yourself (e.g. `openssl rand -hex 20`) and set it as a GitHub Actions secret **and** in the GitHub repo's webhook config. Consumed by `Day1.cluster.01-gke` and `Day2.redeploy.03-tekton`.
+
+---
+
 ## Summary table
 
 | Secret / Variable | Sensitive | Required for | Set by |
@@ -225,6 +238,7 @@ If left unset, the image pull and git clone steps proceed unauthenticated (works
 | `REGISTRY_PASSWORD` | **yes** | private image pull | manual |
 | `GIT_USERNAME` | no | private microservices fork | manual |
 | `GIT_TOKEN` | **yes** | private microservices fork | manual |
+| `TEKTON_GITHUB_WEBHOOK_SECRET` | **yes** | Tekton EventListener webhook (`ci.engine=tekton`, optional) | manual — `openssl rand` |
 
 ---
 

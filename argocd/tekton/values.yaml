@@ -1,0 +1,13 @@
+# Defaults for the tekton app-of-apps. repoURL/targetRevision are overridden by
+# the parent Application's helm.parameters (set by scripts/04-tekton.sh from
+# J2026_SELF_REPO_URL / J2026_SELF_REPO_BRANCH) and used by every child's git
+# source. The pinned Tekton component versions live in
+# argocd/tekton/components/*/kustomization.yaml (kustomize remote resources).
+repoURL: https://github.com/nubenetes/jenkins-2026.git
+targetRevision: main
+
+namespace:
+  # Tekton control plane (Pipelines/Triggers/Dashboard) - upstream default.
+  controlPlane: tekton-pipelines
+  # Where PipelineRuns execute (ServiceAccount, RBAC, the tekton/ pipelines-as-code).
+  pipeline: tekton-ci

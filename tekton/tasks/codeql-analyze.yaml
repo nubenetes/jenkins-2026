@@ -1,0 +1,63 @@
+# Stage "CodeQL Analysis" of the Jenkins pipeline: builds a CodeQL database for
+# the app source and uploads the SARIF to GitHub Code Scanning (best-effort).
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: codeql-analyze
+spec:
+  params:
+    - name: self-repo-url
+    - name: self-repo-branch
+  workspaces:
+    - name: source
+  steps:
+    - name: analyze
+      image: mcr.microsoft.com/cstsectools/codeql-container:latest
+      computeResources:
+        requests:
+          cpu: 500m
+          memory: 512Mi
+        limits:
+          cpu: "4"
+          memory: 4Gi
+      script: |
+        #!/bin/bash
+        set -eu
+        git config --global --add safe.directory '*' || true
+        cd "$(workspaces.source.path)/microservices-src"
+        export DEBIAN_FRONTEND=noninteractive
+        (apt-get update && apt-get install -y curl tar xz-utils) || true
+        (curl -sL https://nodejs.org/dist/v20.11.1/node-v20.11.1-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1) || true
+        node --version || true
+        codeql database create codeql-db --language=javascript --source-root=. --threads=0 --ram=3500 \
+          --codescanning-config="$(workspaces.source.path)/jenkins-2026-infra/.github/codeql/codeql-config.yml"
+        codeql database analyze codeql-db --format=sarif-latest --output=codeql-results.sarif --threads=0 --ram=3500 || true
+    - name: upload-sarif
+      image: alpine/k8s:1.31.3
+      env:
+        - name: GIT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: tekton-git
+              key: password
+              optional: true
+      script: |
+        #!/bin/bash
+        set -eu
+        cd "$(workspaces.source.path)/microservices-src"
+        [ -f codeql-results.sarif ] || { echo "No SARIF produced - skipping upload."; exit 0; }
+        if [ -z "${GIT_TOKEN:-}" ]; then echo "GIT_TOKEN unset - skipping SARIF upload."; exit 0; fi
+        git config --global --add safe.directory '*' || true
+        COMMIT_SHA=$(git -C "$(workspaces.source.path)/jenkins-2026-infra" rev-parse HEAD | tr -d '\n')
+        REF="refs/heads/$(params.self-repo-branch)"
+        REPO_PATH=$(echo "$(params.self-repo-url)" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\.git$||')
+        SARIF_B64=$(gzip -c codeql-results.sarif | base64 -w0)
+        jq -n --arg c "$COMMIT_SHA" --arg r "$REF" --arg s "$SARIF_B64" \
+          '{commit_sha:$c, ref:$r, sarif:$s}' > codeql-payload.json
+        CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+          -H "Authorization: token ${GIT_TOKEN}" \
+          -H "Accept: application/vnd.github+json" \
+          "https://api.github.com/repos/${REPO_PATH}/code-scanning/sarifs" \
+          -d @codeql-payload.json)
+        echo "GitHub Code Scanning upload (CodeQL): HTTP ${CODE}"
+        rm -f codeql-payload.json

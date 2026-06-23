@@ -171,6 +171,12 @@ A self-contained proof of concept that deploys **Jenkins** on **Kubernetes**, co
 - [Pipeline Container Security](./docs/402-PIPELINES_AS_CODE.md#pipeline-container-security)
 - [Pipeline Reliability Fixes](./docs/402-PIPELINES_AS_CODE.md#pipeline-reliability-fixes-v0107v01016)
 
+**[403 · Tekton (alternative CI engine)](./docs/403-TEKTON.md)**
+- [Selecting the engine (`ci.engine`)](./docs/403-TEKTON.md#selecting-the-engine)
+- [What gets installed](./docs/403-TEKTON.md#what-gets-installed)
+- [Dashboard on the internet, behind Google IAP](./docs/403-TEKTON.md#dashboard-on-the-internet-behind-google-iap)
+- [The pipeline, ported](./docs/403-TEKTON.md#the-pipeline-ported)
+
 ---
 
 **[501 · Platform Operations](./docs/501-PLATFORM_OPERATIONS.md)**
@@ -271,6 +277,7 @@ A self-contained proof of concept that deploys **Jenkins** on **Kubernetes**, co
 | **301** | Observability | [Observability](./docs/301-OBSERVABILITY.md) | OTel components (Operator, Java agent, Angular RUM, Collector), telemetry architecture, signal correlation (metrics↔traces↔logs), structured logging, dashboards, k6 smoke test, OSS in-cluster mode, all four observability modes |
 | **401** | Jenkins | [Jenkins](./docs/401-JENKINS.md) | Accessing the UI & admin password, Google OIDC login, plugins & JCasC fragments, global shared library, MCP server |
 | **402** | Pipelines | [Pipelines as Code](./docs/402-PIPELINES_AS_CODE.md) | Seed job, pipeline branch & environment mapping, optional `develop` tier, pipeline execution stages (Semgrep/CodeQL/Trivy/Build/Deploy/Smoke), pipeline container security, reliability fixes |
+| **403** | Tekton | [Tekton](./docs/403-TEKTON.md) | Alternative CI engine (`ci.engine` flag), Tekton Pipelines/Triggers/Dashboard, IAP-protected Dashboard, the microservices pipeline ported to `tekton/`, credentials & observability parity |
 | **501** | Platform | [Platform Operations](./docs/501-PLATFORM_OPERATIONS.md) | ArgoCD inventory, telemetry simulation, platform QA & chaos scenarios, Golden Path IDP modernizations (K8s v1.35/v1.36, Karpenter), Headlamp cluster UI, GKE Gateway API + IAP public access |
 | **502** | Microservices | [Microservices GitOps](./docs/502-MICROSERVICES_GITOPS.md) | Helm vs. Kustomize design decision, resource lifecycle & decommission orchestration (NEG synchronization barrier), pgAdmin & database administration |
 | **601** | Security | [DevSecOps](./docs/601-DEVSECOPS.md) | Semgrep SAST, CodeQL deep SAST, Trivy IaC + image scanning, `warnings-ng` plugin SARIF dashboards in Jenkins |
@@ -283,6 +290,7 @@ A self-contained proof of concept that deploys **Jenkins** on **Kubernetes**, co
 
 ```bash
 # 1. Review/edit config/config.yaml — observability.mode (grafana-cloud|oss|managed-azure|managed-aws)
+#    and ci.engine (jenkins default | tekton; override JENKINS2026_CI_ENGINE — see docs/403-TEKTON.md)
 # 2. (grafana-cloud mode only) Create the OTLP credentials secret:
 cp observability/otel-collector/secret.example.yaml observability/otel-collector/secret.yaml
 kubectl create namespace observability --dry-run=client -o yaml | kubectl apply -f -
@@ -334,13 +342,13 @@ For the full component diagram, microservices database architecture (CloudNative
 
 ## 4. GitHub Actions Workflows
 
-All 18 workflows live in [`.github/workflows/`](.github/workflows/) following the `DayN.tier.ZZ-resource` naming convention — **alphabetical sort order = correct execution order** for the **Create** (`Day0`→`Day1`) and **Decom** phases. Within **Day2** the tiers (`redeploy`/`publish`/`traffic`) are independent **categories**, not an ordered sequence — each workflow is idempotent and dispatched on its own ([why](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#day2-ordering-tiers-are-categories-not-stages)). See [101. GitHub Actions Workflows](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md) for the full inventory with clickable GitHub Actions links.
+All 19 workflows live in [`.github/workflows/`](.github/workflows/) following the `DayN.tier.ZZ-resource` naming convention — **alphabetical sort order = correct execution order** for the **Create** (`Day0`→`Day1`) and **Decom** phases. Within **Day2** the tiers (`redeploy`/`publish`/`traffic`) are independent **categories**, not an ordered sequence — each workflow is idempotent and dispatched on its own ([why](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#day2-ordering-tiers-are-categories-not-stages)). See [101. GitHub Actions Workflows](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md) for the full inventory with clickable GitHub Actions links.
 
 | Phase | tier | Resource | Workflow |
 |---|---|---|---|
 | `Day0` Create | `infra` (persistent) | Gateway, Grafana Cloud, Azure, AWS | [Day0.infra.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.01-gateway.yml) · [Day0.infra.02](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.02-grafana-cloud.yml) · [Day0.infra.03](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.03-azure-grafana.yml) · [Day0.infra.04](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.04-aws-grafana.yml) |
 | `Day1` Create | `cluster` | GKE cluster + full stack | [Day1.cluster.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) |
-| `Day2` Update | `redeploy` | ArgoCD, Jenkins, Headlamp | [Day2.redeploy.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.01-argocd.yml) · [Day2.redeploy.02](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.02-jenkins.yml) · [Day2.redeploy.04](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.04-headlamp.yml) |
+| `Day2` Update | `redeploy` | ArgoCD, Jenkins, Tekton, Headlamp | [Day2.redeploy.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.01-argocd.yml) · [Day2.redeploy.02](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.02-jenkins.yml) · [Day2.redeploy.03](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.03-tekton.yml) · [Day2.redeploy.04](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.04-headlamp.yml) |
 | `Day2` Update | `publish` | OSS Grafana, Azure/AWS dashboards, Grafana alerts | [Day2.publish.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.01-oss-grafana.yml) · [Day2.publish.03](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.03-azure-grafana.yml) · [Day2.publish.04](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.04-aws-grafana.yml) · [Day2.publish.05](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.05-alerts.yml) |
 | `Day2` Update | `traffic` | k6 traffic | [Day2.traffic.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml) |
 | `Decom` Destroy | `cluster` (first) | GKE cluster (destroy first) | [Decom.cluster.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml) |

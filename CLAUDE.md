@@ -19,6 +19,7 @@ navigation:
 - [`301-OBSERVABILITY.md`](docs/301-OBSERVABILITY.md) — OTel components, signal correlation, dashboards, all four obs modes
 - [`401-JENKINS.md`](docs/401-JENKINS.md) — Jenkins UI, plugins, JCasC, MCP
 - [`402-PIPELINES_AS_CODE.md`](docs/402-PIPELINES_AS_CODE.md) — seed job, pipeline stages, develop tier
+- [`403-TEKTON.md`](docs/403-TEKTON.md) — Tekton as the alternative CI engine (`ci.engine` flag), Pipelines/Triggers/Dashboard, IAP-protected Dashboard, the pipeline ported to `tekton/`
 - [`501-PLATFORM_OPERATIONS.md`](docs/501-PLATFORM_OPERATIONS.md) — ArgoCD, Headlamp, Gateway API + IAP, chaos/QA
 - [`502-MICROSERVICES_GITOPS.md`](docs/502-MICROSERVICES_GITOPS.md) — Helm vs Kustomize, resource lifecycle design decisions
 - [`601-DEVSECOPS.md`](docs/601-DEVSECOPS.md) — Semgrep, CodeQL, Trivy, warnings-ng
@@ -33,25 +34,39 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
   `scripts/up.sh` (and torn down in reverse by `scripts/down.sh`). Every
   script sources `scripts/lib/common.sh` then `scripts/lib/config.sh`.
 - `scripts/lib/config.sh` - loads `config/config.yaml` via `yq`, exports it
-  as `J2026_*` env vars. `JENKINS2026_PLATFORM` / `JENKINS2026_OBS_MODE` env
-  vars override `platform.target` / `observability.mode` from the config
-  file for a single run (CI matrix override pattern).
+  as `J2026_*` env vars. `JENKINS2026_PLATFORM` / `JENKINS2026_OBS_MODE` /
+  `JENKINS2026_CI_ENGINE` env vars override `platform.target` /
+  `observability.mode` / `ci.engine` from the config file for a single run
+  (CI matrix override pattern).
 - `config/config.yaml` - single source of truth: target platform
   (gke), observability mode (grafana-cloud/oss/managed-azure/managed-aws),
+  CI engine (`ci.engine`: jenkins default | tekton),
   Jenkins/Microservices namespaces, branches, registry, service list.
 - `helm/jenkins/`, `helm/microservices/` - Helm values overlays.
 - `jenkins/casc/` - JCasC YAML (seed jobs, shared library, OTel plugin
   config, RBAC).
 - `jenkins/pipelines/` - `Jenkinsfile.microservices`, seed job DSL
-  (`seed_jobs.groovy`), `services.yaml`.
+  (`seed_jobs.groovy`), `services.yaml` (the shared service registry both CI
+  engines read).
+- `tekton/` - Tekton pipelines-as-code, used when `ci.engine=tekton` (the
+  alternative to Jenkins; Jenkins is the default). Tasks/Pipelines/Triggers/RBAC
+  porting the Jenkins shared library in `vars/`. Installed by
+  `scripts/04-tekton.sh` + `scripts/06-tekton-pipelines.sh` (the Tekton
+  equivalents of `04-jenkins.sh` / `06-seed-pipelines.sh`). Tekton is
+  GitOps-managed by ArgoCD via the `argocd/tekton` app-of-apps (see below); the
+  Tekton Dashboard is exposed behind Google IAP like Headlamp. See
+  [`docs/403-TEKTON.md`](docs/403-TEKTON.md).
 - `observability/` - otel-operator, otel-collector, and Grafana (OSS +
   dashboards) Helm values + the `grafana-cloud-credentials` secret template.
 - `argocd/` - ArgoCD `Application`/`ApplicationSet` manifests (the GitOps
-  layer): External Secrets, Headlamp, the microservices AppSet, plus two
+  layer): External Secrets, Headlamp, the microservices AppSet, plus three
   **app-of-apps** (each a small Helm chart so repo/branch/version flow down to
   its children): `platform-postgres/` (the CNPG operator + pgAdmin that
-  administers it) and `observability-oss/`, which deploys the in-cluster OSS
-  stack (kube-prometheus-stack/Loki/Tempo) when `observability.mode=oss`. Because of
+  administers it), `observability-oss/`, which deploys the in-cluster OSS
+  stack (kube-prometheus-stack/Loki/Tempo) when `observability.mode=oss`, and
+  `tekton/` (with `components/*/kustomization.yaml` pulling the pinned upstream
+  Tekton release YAMLs as kustomize remote resources + the `tekton/`
+  pipelines-as-code), applied by `04-tekton.sh` when `ci.engine=tekton`. Because of
   this, `scripts/up.sh` installs ArgoCD (`08.5`) **before** observability
   (`03`), and `03-observability.sh` (oss) applies the app-of-apps + its
   script-managed companion objects (dashboards ConfigMap, `grafana-jenkins-ds`
@@ -141,9 +156,10 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
 ## Working on this repo
 
 - Don't run `test/e2e.sh` or trigger `Day1.cluster.01-gke`/`Decom.cluster.01-gke`
-  (or `Day2.redeploy.02-jenkins` against a real cluster) workflows without
-  explicit confirmation - they create/modify real, billed GCP (and optionally
-  Grafana Cloud) resources. Always pair a provision with a decommission.
+  (or `Day2.redeploy.02-jenkins` / `Day2.redeploy.03-tekton` against a real
+  cluster) workflows without explicit confirmation - they create/modify real,
+  billed GCP (and optionally Grafana Cloud) resources. Always pair a provision
+  with a decommission.
 - `terraform/bootstrap` is a one-time, human-run step with local gitignored
   state - never wire it into CI, and never re-run `terraform apply` there without
   checking the existing state file first (re-creating it would orphan/duplicate

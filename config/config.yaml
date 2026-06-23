@@ -23,7 +23,24 @@ platform:
     serviceType: ClusterIP
 
 # -----------------------------------------------------------------------------
-# Jenkins (jenkinsci/helm-charts)
+# CI engine selector
+# -----------------------------------------------------------------------------
+# Which continuous-integration engine the platform deploys and runs the
+# microservices pipelines-as-code on. Mutually exclusive.
+#   jenkins (default) - Helm chart + JCasC + Job-DSL seed + the shared Groovy
+#                       library in vars/ (scripts/04-jenkins.sh, 06-seed-pipelines.sh).
+#   tekton            - Tekton Pipelines + Triggers + the official Tekton
+#                       Dashboard, with the pipeline ported to Tekton
+#                       Tasks/Pipelines under tekton/ (scripts/04-tekton.sh,
+#                       06-tekton-pipelines.sh).
+# FEATURE FLAG: override for a single run with JENKINS2026_CI_ENGINE=tekton
+# (config.yaml is the durable default; the env var is the ephemeral override -
+# same pattern as observability.mode / JENKINS2026_OBS_MODE).
+ci:
+  engine: jenkins
+
+# -----------------------------------------------------------------------------
+# Jenkins (jenkinsci/helm-charts) - used when ci.engine == jenkins
 # -----------------------------------------------------------------------------
 jenkins:
   namespace: jenkins
@@ -44,6 +61,40 @@ jenkins:
   # library and by the seed job to fetch Jenkinsfile.microservices + seed scripts.
   selfRepoUrl: https://github.com/nubenetes/jenkins-2026.git
   selfRepoBranch: main
+
+# -----------------------------------------------------------------------------
+# Tekton (tektoncd) - used when ci.engine == tekton
+# -----------------------------------------------------------------------------
+# GitOps-managed by ArgoCD (app-of-apps), the same pattern as observability-oss /
+# platform-postgres: scripts/04-tekton.sh applies argocd/tekton-app.yaml, whose
+# children install Tekton Pipelines/Triggers/Dashboard (pinned upstream release
+# YAMLs pulled as kustomize remote resources) + the pipelines-as-code under
+# tekton/. The Dashboard has no native authentication, so it is exposed on the
+# internet behind Google IAP at the Gateway, exactly like Headlamp (09-gateway.sh).
+tekton:
+  # Control-plane namespace for Pipelines/Triggers/Dashboard (upstream default).
+  namespace: tekton-pipelines
+  # Namespace PipelineRuns execute in (service account, registry/git creds, RBAC).
+  pipelineNamespace: tekton-ci
+  # Reference of the intended component versions. The EFFECTIVE pinned versions
+  # live in argocd/tekton/components/*/kustomization.yaml (the kustomize remote
+  # resource URLs ArgoCD syncs) - keep these in sync when bumping.
+  versions:
+    pipelines: v1.13.1
+    triggers: v0.31.0
+    dashboard: v0.52.0
+  # Dashboard Service (created by the dashboard release-full.yaml).
+  dashboard:
+    # release-full.yaml = read-write mode (lets you start/cancel runs from the UI).
+    mode: full
+    serviceName: tekton-dashboard
+    servicePort: 9097
+  # k8s Secrets (created by scripts/01-namespaces.sh in pipelineNamespace) the
+  # pipeline ServiceAccount uses for ghcr.io push/pull and git push to the
+  # gitops repo. Populated from the same REGISTRY_*/GIT_* env the Jenkins path
+  # consumes. Never commit real values.
+  registryCredentialsSecretName: tekton-registry
+  gitCredentialsSecretName: tekton-git
 
 # -----------------------------------------------------------------------------
 # Observability
@@ -183,6 +234,8 @@ gateway:
     microservices: "microservices"
     headlamp: "headlamp"
     pgadmin: "pgadmin"
+    # Only used when ci.engine=tekton (Tekton Dashboard, IAP-protected).
+    tekton: "tekton"
     # Only used when observability.mode=oss (in-cluster Grafana). Ignored in
     # grafana-cloud mode, where Grafana is reached at its *.grafana.net URL.
     grafana: "grafana"

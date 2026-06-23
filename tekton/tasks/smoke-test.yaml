@@ -1,0 +1,21 @@
+# Stage "Smoke Test" of the Jenkins pipeline (vars/microservicesSmokeTest.groovy):
+# curls the in-cluster Service health endpoint, retrying while endpoints settle.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: smoke-test
+spec:
+  params:
+    - name: service-name
+    - name: target-namespace
+    - name: port
+    - name: health-path
+  steps:
+    - name: curl-health
+      image: curlimages/curl:8.10.1
+      script: |
+        #!/bin/sh
+        set -eux
+        curl -sf --connect-timeout 5 --max-time 60 \
+          --retry 5 --retry-delay 3 --retry-all-errors \
+          "http://$(params.service-name).$(params.target-namespace).svc.cluster.local:$(params.port)$(params.health-path)"

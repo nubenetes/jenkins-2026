@@ -1,0 +1,54 @@
+# Stage "Semgrep SAST" of the Jenkins pipeline: runs Semgrep over the app source
+# and uploads the SARIF report to GitHub Code Scanning (best-effort, non-fatal).
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: semgrep-scan
+spec:
+  params:
+    - name: self-repo-url
+    - name: self-repo-branch
+  workspaces:
+    - name: source
+  steps:
+    - name: scan
+      image: semgrep/semgrep:1.79.0
+      script: |
+        #!/bin/sh
+        set -eu
+        git config --global --add safe.directory '*' || true
+        cd "$(workspaces.source.path)/microservices-src"
+        semgrep scan \
+          --config=p/security-audit \
+          --config=p/owasp-top-ten \
+          --config="$(workspaces.source.path)/jenkins-2026-infra/.semgrep/semgrep.yml" \
+          --sarif --sarif-output=semgrep-results.sarif . || true
+    - name: upload-sarif
+      image: alpine/k8s:1.31.3
+      env:
+        - name: GIT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: tekton-git
+              key: password
+              optional: true
+      script: |
+        #!/bin/bash
+        set -eu
+        cd "$(workspaces.source.path)/microservices-src"
+        [ -f semgrep-results.sarif ] || { echo "No SARIF produced - skipping upload."; exit 0; }
+        if [ -z "${GIT_TOKEN:-}" ]; then echo "GIT_TOKEN unset - skipping SARIF upload."; exit 0; fi
+        git config --global --add safe.directory '*' || true
+        COMMIT_SHA=$(git -C "$(workspaces.source.path)/jenkins-2026-infra" rev-parse HEAD | tr -d '\n')
+        REF="refs/heads/$(params.self-repo-branch)"
+        REPO_PATH=$(echo "$(params.self-repo-url)" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\.git$||')
+        SARIF_B64=$(gzip -c semgrep-results.sarif | base64 -w0)
+        jq -n --arg c "$COMMIT_SHA" --arg r "$REF" --arg s "$SARIF_B64" \
+          '{commit_sha:$c, ref:$r, sarif:$s}' > semgrep-payload.json
+        CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+          -H "Authorization: token ${GIT_TOKEN}" \
+          -H "Accept: application/vnd.github+json" \
+          "https://api.github.com/repos/${REPO_PATH}/code-scanning/sarifs" \
+          -d @semgrep-payload.json)
+        echo "GitHub Code Scanning upload (Semgrep): HTTP ${CODE}"
+        rm -f semgrep-payload.json
