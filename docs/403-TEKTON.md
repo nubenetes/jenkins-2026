@@ -64,7 +64,7 @@ exactly like the other app-of-apps), which renders four child Applications:
 
 | Child Application | Source | Sync wave | Notes |
 |---|---|---|---|
-| `tekton-pipelines` | `argocd/tekton/components/pipelines` (kustomize → pinned `v1.13.1` release) | 0 | the engine + CRDs |
+| `tekton-pipelines` | `argocd/tekton/components/pipelines` (vendored `v1.9.4` `release.yaml`) | 0 | the engine + CRDs |
 | `tekton-triggers` | `argocd/tekton/components/triggers` (pinned `v0.31.0` release + interceptors) | 1 | API/webhook-driven runs |
 | `tekton-dashboard` | `argocd/tekton/components/dashboard` (pinned `v0.52.0` `release-full.yaml`) | 1 | **read-write** GUI; no native auth |
 | `tekton-pipeline-as-code` | `tekton/` (Tasks/Pipelines/Triggers/RBAC + the `tekton-ci` SA) | 2 | the ported pipeline; lands in the `tekton-ci` namespace |
@@ -88,14 +88,14 @@ everywhere. The choice per layer:
 | Layer | Tool used | Why this tool (and not the other) |
 |---|---|---|
 | **App-of-apps parent** (`argocd/tekton/`) | **Helm** | The wrapper must *template* `repoURL`/`targetRevision` (and could template versions) down into the child Applications. That per-environment templating is exactly what Helm does cleanly and what the repo already does for `observability-oss`/`platform-postgres`. Kustomize templates this only awkwardly (vars/replacements). |
-| **Upstream components** (Pipelines / Triggers / Dashboard) | **kustomize** (remote resource → pinned release YAML) + a `config-tracing` patch | **Tekton has no official Helm chart.** A kustomize *remote resource* pulls the exact, immutable, **official** release (`…/previous/<ver>/release.yaml`) and lets us patch it (OTel `config-tracing`) without forking. Helm here would mean adopting an unofficial community chart — version lag + a third-party trust dependency for a security-sensitive CI engine. |
+| **Upstream components** (Pipelines / Triggers / Dashboard) | **kustomize** over the pinned official release YAML | **Tekton has no official Helm chart.** Triggers/Dashboard are pulled as kustomize *remote resources* from the GCS release bucket; **Pipelines is vendored** (`release.yaml` committed in-tree) because v1.7+ is published only as a GitHub release asset (not on the GCS bucket), and a `github.com` URL is misclassified by kustomize as a git repo. Helm here would mean adopting an unofficial community chart — version lag + a third-party trust dependency for a security-sensitive CI engine. |
 | **Pipelines-as-code** (`tekton/` Tasks/Pipelines/Triggers/RBAC) | **plain manifests** (ArgoCD directory source) | Static custom resources with no per-environment templating need; neither Helm nor kustomize adds value. Per-run values are supplied as Tekton **params** at `PipelineRun` time, not at apply time. |
 
 ### Why not "all Helm"
 
 There is **no official Tekton Helm chart** — upstream ships release YAMLs. Using
 a community chart would (a) rarely carry the exact pinned version (e.g.
-`v1.13.1`), and (b) insert a third party into the supply chain of the CI engine.
+`v1.9.4`), and (b) insert a third party into the supply chain of the CI engine.
 Pinning the official release via a kustomize remote resource is the stronger
 posture. (Contrast: `observability-oss` *does* use Helm for its children —
 because kube-prometheus-stack/Loki/Tempo *have* well-maintained official charts.)
@@ -185,9 +185,9 @@ lands in Tempo/Loki/Prometheus alongside everything else. See
 [301. Observability](./301-OBSERVABILITY.md).
 
 > **Follow-up:** Tekton *controller* OpenTelemetry tracing (PipelineRun/TaskRun
-> spans) is not wired yet — the v1.13.1 release ships no `config-tracing`
-> ConfigMap to patch, so enabling it means adding that ConfigMap as a new
-> resource in `argocd/tekton/components/pipelines`.
+> spans) is not wired yet — the vendored `release.yaml` ships a `config-tracing`
+> ConfigMap that could be patched (in the pipelines kustomization) to point at
+> the in-cluster collector.
 
 ---
 
