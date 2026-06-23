@@ -1,0 +1,12 @@
+# Tekton Pipelines-as-Code (PaC) - Git-driven CI: runs the .tekton/ PipelineRuns
+# committed in each app repo on PR/push. VENDORED (release.yaml) - GitHub-only
+# release, k8s (non-OpenShift) variant.
+# Source: https://github.com/tektoncd/pipelines-as-code/releases/download/v0.48.0/release.k8s.yaml
+#
+# Used in webhook mode (no GitHub App): per-repo Repository CRs (tekton/pac/)
+# reference a PAT + webhook secret, and a webhook on each fork points at the
+# controller exposed by scripts/09-gateway.sh. See docs/403-TEKTON.md.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - release.yaml

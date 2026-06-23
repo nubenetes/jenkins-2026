@@ -15,16 +15,18 @@ branches:
   develop: main
 
 services:
+  # Forked into the nubenetes org so we own them (PaC needs webhook/App access).
+  # Single source of truth for BOTH CI engines (Jenkins clones these too).
   - name: gateway
     type: java # JHipster Gateway (Spring Boot + Angular UI)
-    repoUrl: https://github.com/jhipster/jhipster-sample-app-gateway.git
+    repoUrl: https://github.com/nubenetes/jhipster-sample-app-gateway.git
     module: ""
     port: 8080
     healthPath: /management/health
 
   - name: jhipstersamplemicroservice
     type: java # JHipster Microservice backend
-    repoUrl: https://github.com/jhipster/jhipster-sample-app-microservice.git
+    repoUrl: https://github.com/nubenetes/jhipster-sample-app-microservice.git
     module: ""
     port: 8081
     healthPath: /management/health
