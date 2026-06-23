@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.20.0] - 2026-06-23
+
+Adds an ArgoCD redeploy workflow and corrects the `deploy`-tier `ZZ` ordering so
+it reflects install/dependency order: ArgoCD is the CD engine installed before
+everything it deploys (`scripts/up.sh` runs `08.5-argocd` before `03`/`04`), so
+it now sorts first in the tier.
+
+### Added
+
+- **`Day2.deploy.01-argocd` workflow** — redeploys ArgoCD on a running cluster
+  without a full reprovision: re-runs `scripts/08.5-argocd.sh` (ArgoCD Helm
+  upgrade + OIDC/RBAC + the Jenkins API token, and re-applies the GitOps
+  Applications ArgoCD owns: `platform-postgres`, External Secrets, Headlamp, the
+  microservices ApplicationSet). Use for an ArgoCD-only change
+  (`helm/argocd-values.yaml` or an Application manifest).
+
+### Changed
+
+- **`deploy`-tier `ZZ` reordered to install order.** ArgoCD takes `ZZ=01` (the
+  CD engine the rest of the platform deploys through), so the previously-shipped
+  `Day2.deploy.01-jenkins` is renamed **`Day2.deploy.02-jenkins`**; Headlamp
+  keeps `04`. Final `deploy` tier: `01-argocd`, `02-jenkins`, `04-headlamp`
+  (`03-tekton` / `05-pgadmin` reserved for future use). The Jenkins workflow's
+  `name:` and all docs/README references were updated; the v0.19.0 CHANGELOG
+  entry is left at its historical `Day2.deploy.01-jenkins` name. **Note:**
+  re-point any branch-protection required status checks or `gh workflow run`
+  calls that referenced `Day2.deploy.01-jenkins`.
+
 ## [v0.19.0] - 2026-06-23
 
 Two structural changes: (1) the GitHub Actions workflows are renamed to a

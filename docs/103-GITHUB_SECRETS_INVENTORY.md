@@ -139,7 +139,7 @@ IAM role with scoped permissions for `aws grafana create-workspace-api-key` and 
 
 ## 6. Jenkins OIDC / Google Sign-In
 
-Used by `Day1.cluster.01-gke-provision` and `Day2.deploy.01-redeploy-jenkins`. Optional — without them Jenkins falls back to the local `admin` account (escape hatch).
+Used by `Day1.cluster.01-gke-provision` and `Day2.deploy.02-redeploy-jenkins`. Optional — without them Jenkins falls back to the local `admin` account (escape hatch).
 
 | Secret | Required | Description |
 |--------|----------|-------------|
