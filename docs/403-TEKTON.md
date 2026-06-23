@@ -106,6 +106,30 @@ routing but keeps the namespace and credentials for a fast switch-back. In **bot
 directions a clean install of the *selected* engine never deploys the other
 (`up.sh` branches on `ci.engine`), and the shared microservices are untouched.
 
+### Namespace layout (created per active engine)
+
+Namespaces are created **only for the engine that's running** (`scripts/01-namespaces.sh`
+gates on `ci.engine`), so a cluster never carries a namespace for the engine it
+isn't using — the name always reflects what's inside:
+
+| Namespace | Created when | Holds |
+|---|---|---|
+| `jenkins` | `ci.engine=jenkins` | Jenkins controller + `jenkins-credentials` Secret |
+| `tekton-pipelines` | `ci.engine=tekton` | Tekton control plane (Pipelines / Triggers / Dashboard / Pruner) |
+| `tekton-ci` | `ci.engine=tekton` | PipelineRuns, Tasks, the `tekton-ci` SA + its Secrets |
+| `pipelines-as-code` | `ci.engine=tekton` | PaC controller |
+| `tekton-chains` | `ci.engine=tekton` | Chains controller (cosign signing) |
+| `observability`, `headlamp`, `microservices`, `argocd`, `platform-postgres`/pgAdmin | always | engine-neutral platform |
+
+**Why engine-named, not a single generic `ci` namespace:** the engines are mutually
+exclusive, so only one set of CI namespaces ever exists — naming them after the
+engine keeps the name truthful. A neutral namespace isn't even viable for Tekton:
+the upstream release YAMLs **hardcode `tekton-pipelines`** for the control plane
+(the controllers watch that exact namespace), so it can't be renamed; and renaming
+`jenkins` to something generic would only hide that it genuinely runs Jenkins. So
+each engine owns self-named namespaces, created only when it's the selected engine
+(and removed when you switch away — see the table above).
+
 ## What gets installed (GitOps via ArgoCD app-of-apps)
 
 Tekton is **GitOps-managed by ArgoCD**, the same app-of-apps pattern as
@@ -289,10 +313,82 @@ kubectl create -f k6-run.yaml                 # start it
 kubectl get pipelinerun -n tekton-ci -w       # watch status
 ```
 
-(For `microservices-pipeline` the canonical, complete param set is what
-`06-tekton-pipelines.sh` generates / what a fork's `.tekton/<svc>.yaml` carries —
-copy one of those and tweak. It also needs the `dockerconfig` workspace from the
-`tekton-registry` Secret.)
+**`microservices-pipeline` has a valid default for every param** (the `gateway`
+service happy-path), so it runs **with zero params** — you only bind the two
+workspaces (`source` VCT + `dockerconfig` from the `tekton-registry` Secret). The
+minimal 1-click PipelineRun:
+
+```yaml
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: gateway-manual-
+  namespace: tekton-ci
+spec:
+  taskRunTemplate: {serviceAccountName: tekton-ci}
+  pipelineRef: {name: microservices-pipeline}     # all params default to 'gateway'
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec: {accessModes: ["ReadWriteOnce"], resources: {requests: {storage: 4Gi}}}
+    - name: dockerconfig
+      secret:
+        secretName: tekton-registry
+        items: [{key: .dockerconfigjson, path: config.json}]
+```
+
+> From the **Tekton Dashboard**: *Pipelines → microservices-pipeline → Create
+> PipelineRun*, leave the params as-is (defaults), set SA `tekton-ci`, bind `source`
+> as a VolumeClaimTemplate and `dockerconfig` to the `tekton-registry` Secret → Create.
+
+To build a **different service**, override `service-name` *and* its related params
+together. Full example for `gateway` (every param spelled out — copy + tweak for
+`jhipstersamplemicroservice`):
+
+```yaml
+# gateway-run.yaml
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: gateway-manual-
+  namespace: tekton-ci
+spec:
+  taskRunTemplate:
+    serviceAccountName: tekton-ci
+  pipelineRef:
+    name: microservices-pipeline
+  params:
+    - {name: service-name,  value: gateway}
+    - {name: service-type,  value: java}
+    - {name: git-repo-url,  value: https://github.com/nubenetes/jhipster-sample-app-gateway.git}
+    - {name: git-branch,    value: main}
+    - {name: target-namespace, value: microservices}
+    - {name: env-name,      value: stable}
+    - {name: port,          value: "8080"}
+    - {name: health-path,   value: /management/health}
+    - {name: image,         value: ghcr.io/nubenetes/jenkins-2026-microservices/gateway:main}
+    - {name: registry-host, value: ghcr.io}
+    - {name: otlp-endpoint, value: "http://otel-collector-gateway.observability.svc.cluster.local:4317"}
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources: {requests: {storage: 4Gi}}
+    - name: dockerconfig
+      secret:
+        secretName: tekton-registry
+        items:
+          - {key: .dockerconfigjson, path: config.json}
+```
+
+Param values come from [`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml)
+(per-service `name`/`type`/`repoUrl`/`port`/`healthPath`) and `microservices.registry`
+in [`config/config.yaml`](../config/config.yaml) (`image` = `<registry>/<name>:<branch>`,
+`registry-host` = the registry host). For `jhipstersamplemicroservice` change
+`service-name`, `git-repo-url` (…`-microservice.git`), `port: "8081"`, and `image`
+accordingly. The easiest hands-off alternative is just to **push to the fork** —
+PaC then fills every param from the `.tekton/<svc>.yaml` template automatically.
 
 ### Option C — `tkn` CLI
 
