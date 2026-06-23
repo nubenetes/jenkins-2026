@@ -511,23 +511,9 @@ jobs:
             echo "- Observability mode: \`${{ inputs.observability_mode }}\`"
             echo "- Gateway/IAP enabled: \`${{ inputs.enable_gateway }}\`"
             echo
-            if [[ "${{ inputs.enable_gateway }}" == "true" ]]; then
-              echo "If the one-time **Day0.infra.01 Gateway** workflow + DNS records +"
-              echo "IAP OAuth client have been completed (see README.md \"Public"
-              echo "access (GKE Gateway API + IAP)\"), the stack is reachable at:"
-              echo
-              echo "- Jenkins:           https://jenkins.jenkins2026.nubenetes.com (IAP-protected)"
-              echo "- Microservices:         https://microservices.jenkins2026.nubenetes.com"
-              echo "- Microservices develop: https://microservices-develop.jenkins2026.nubenetes.com"
-              echo "- Headlamp:          https://headlamp.jenkins2026.nubenetes.com (IAP-protected)"
-              if [[ "${{ inputs.observability_mode }}" == "oss" ]]; then
-                echo "- Grafana:           https://grafana.jenkins2026.nubenetes.com (IAP-protected)"
-              fi
-            else
-              echo "Gateway/IAP was disabled for this run (enable_gateway=false)."
-              echo "Use \`kubectl port-forward\` to reach Jenkins/Microservices/Headlamp -"
-              echo "see README.md \"Accessing the UI\"."
-            fi
+            echo "See the **Access URLs** step (end of the job log, and below) for"
+            echo "every service URL — IAP-protected and open — for this run's CI"
+            echo "engine and observability mode."
             echo
             echo "To apply a change later, just **re-run this workflow** — it is"
             echo "idempotent and converges on the existing cluster, no decommission"
@@ -535,29 +521,63 @@ jobs:
             echo "avoid ongoing charges."
           } >> "${GITHUB_STEP_SUMMARY}"
 
-      # Print the provisioned Grafana URL at the very end of the log, for any
-      # observability_mode and either CI engine. if: always() so it shows even if
-      # the smoke test failed.
-      - name: Grafana URL
+      # Centralised access summary at the very end of the log: every URL for this
+      # run's CI engine + observability mode, grouped by IAP-protected / open /
+      # observability. if: always() so it prints even if an earlier step (e.g. the
+      # smoke test) failed. Also mirrored into the GitHub step summary panel.
+      - name: Access URLs
         if: always()
         run: |
+          dom="jenkins2026.nubenetes.com"
+          engine="${{ inputs.ci_engine }}"
           mode="${{ inputs.observability_mode }}"
+
+          # Grafana URL depends on the observability mode (not the gateway/engine).
           if [[ "${mode}" == "grafana-cloud" ]]; then
-            url="https://${{ steps.gc_stack.outputs.slug }}.grafana.net"
+            grafana="https://${{ steps.gc_stack.outputs.slug }}.grafana.net  (Grafana Cloud sign-in)"
           elif [[ "${mode}" == "oss" ]]; then
-            if [[ "${{ inputs.enable_gateway }}" == "true" ]]; then
-              url="https://grafana.jenkins2026.nubenetes.com (IAP-protected)"
-            else
-              url="(gateway disabled) kubectl -n observability port-forward svc/grafana 3000:80"
-            fi
+            grafana="https://grafana.${dom}  (IAP)"
           else
-            secret="azure-monitor-credentials"
-            [[ "${mode}" == "managed-aws" ]] && secret="aws-managed-credentials"
-            url="$(kubectl get secret "${secret}" -n observability -o jsonpath='{.data.GRAFANA_BASE_URL}' 2>/dev/null | base64 -d 2>/dev/null || true)"
-            [[ -z "${url}" ]] && url="(see the ${mode} backend / terraform outputs)"
+            sec="azure-monitor-credentials"; [[ "${mode}" == "managed-aws" ]] && sec="aws-managed-credentials"
+            g="$(kubectl get secret "${sec}" -n observability -o jsonpath='{.data.GRAFANA_BASE_URL}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+            grafana="${g:-(see the ${mode} backend / terraform outputs)}  (managed)"
           fi
-          echo "════════════════════════════════════════════════════════════"
-          echo "  Grafana URL  (observability_mode=${mode}, ci_engine=${{ inputs.ci_engine }})"
-          echo "  ${url}"
-          echo "════════════════════════════════════════════════════════════"
-          { echo; echo "### Grafana (${mode})"; echo; echo "- ${url}"; } >> "${GITHUB_STEP_SUMMARY}"
+
+          # CI-engine-specific UI: Jenkins XOR Tekton Dashboard (mutually exclusive).
+          if [[ "${engine}" == "tekton" ]]; then
+            ci_iap="    Tekton Dashboard:      https://tekton.${dom}"
+            ci_open=$'\n''    Tekton PaC webhook:    https://pac.'"${dom}"'  (GitHub -> Pipelines-as-Code, HMAC, no IAP)'
+          else
+            ci_iap="    Jenkins:               https://jenkins.${dom}"
+            ci_open=""
+          fi
+
+          gen() {
+            echo "════════════════════════════════════════════════════════════════════════"
+            echo "  ACCESS URLs   (ci_engine=${engine}, observability_mode=${mode})"
+            echo "════════════════════════════════════════════════════════════════════════"
+            if [[ "${{ inputs.enable_gateway }}" == "true" ]]; then
+              echo "  Behind Google IAP — sign in with an authorized Google account:"
+              echo "    ArgoCD:                https://argocd.${dom}"
+              echo "${ci_iap}"
+              echo "    Headlamp:              https://headlamp.${dom}"
+              echo "    pgAdmin:               https://pgadmin.${dom}"
+              [[ "${mode}" == "oss" ]] && echo "    Grafana (OSS):         https://grafana.${dom}"
+              echo
+              echo "  Open (no IAP):"
+              echo "    Microservices:         https://microservices.${dom}"
+              echo "    Microservices develop: https://microservices-develop.${dom}${ci_open}"
+              echo
+              echo "  Observability:"
+              echo "    Grafana:               ${grafana}"
+              echo
+              echo "  (IAP URLs need the one-time Day0.infra.01 Gateway + DNS + IAP OAuth client.)"
+            else
+              echo "  Gateway/IAP disabled for this run (enable_gateway=false) — no public URLs."
+              echo "  Reach services via 'kubectl port-forward' (see README 'Accessing the UI')."
+              echo "    Grafana:               ${grafana}"
+            fi
+            echo "════════════════════════════════════════════════════════════════════════"
+          }
+          gen                                   # -> normal job log (end of log)
+          { echo '```'; gen; echo '```'; } >> "${GITHUB_STEP_SUMMARY}"   # -> summary panel
