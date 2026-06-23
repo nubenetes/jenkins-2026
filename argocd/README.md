@@ -27,6 +27,93 @@ Upgrading to Argo CD v3.5 introduces several structural modifications. Custom in
 
 The `argocd-version-patch-watcher` CronJob is deployed to run daily at midnight. It queries GitHub Releases for new `v3.5.x` releases, compares them to the running in-cluster tags, and live-patches the deployments/statefulsets when a newer stable patch version is published.
 
+## Topology: `ApplicationSet` vs app-of-apps vs single `Application`
+
+ArgoCD offers three ways to manage workloads, and this repo deliberately uses **all three** — each for the shape of problem it fits. A common point of confusion is "why is there only **one** `ApplicationSet`?" — because `ApplicationSet` and *app-of-apps* are **not** the same thing:
+
+- **`ApplicationSet`** is a *CRD* that **generates** many `Application`s from a **generator** (a list, a Git directory, a cluster list…). Every generated app shares **one template**; only parameters vary.
+- **app-of-apps** is a *pattern*: a normal parent `Application` whose source is a **Helm chart that renders child `Application` manifests**. The children are **hand-authored and heterogeneous** — each can have its own chart, namespace, sync-wave and sync options.
+- **single `Application`** is just one app — one chart, no multiplicity.
+
+### Decision rule
+
+```
+        ┌─ Is it MANY apps that share one template, differing only by data (a list)?
+        │        → ApplicationSet  (generator templates the fleet)
+need ───┤
+ to     ├─ Is it a FIXED set of DIFFERENT components sharing a lifecycle,
+deploy  │   each needing its own chart / namespace / ordering / sync options?
+        │        → app-of-apps    (Helm-chart parent renders the children)
+        │
+        └─ Is it just ONE component?
+                 → single Application
+```
+
+- **`ApplicationSet`** shines for a **homogeneous fleet** — *N* near-identical apps you'd otherwise copy-paste (per-service, per-cluster, per-tenant). The generator is the single source of truth; add a row, get an app.
+- **app-of-apps** shines for a **curated platform bundle** — a handful of *distinct* components that must deploy **together and in order**, where each child needs **bespoke** config the parent can't express as one template:
+  - per-child **`sync-wave`** ordering (CRDs before controllers before CRs),
+  - per-child **`syncOptions`** (`ServerSideApply`, `Replace`, `ServerSideDiff`, `ignoreDifferences`) for oversized CRDs,
+  - per-child **namespace** and **multi-source** (`$values`) wiring.
+  - The parent is a **Helm chart** (not a plain directory) so `repoURL`/`targetRevision`/versions **flow down** to every child from one place.
+- **single `Application`** is the right (minimal) choice when there is nothing to multiply or order.
+
+### What this repo actually deploys
+
+| ArgoCD object | Pattern | Children / generates | Why this pattern (and not the others) |
+|---|---|---|---|
+| **`microservices`** | **`ApplicationSet`** | `microservices-stable` (+ `microservices-develop` if the develop track is on) | **Homogeneous fleet**: one Helm chart (`helm/microservices`), one app per service from the service registry. Textbook `ApplicationSet` — vary the parameter, reuse the template. |
+| **`platform-postgres`** | **app-of-apps** | `cnpg-operator`, `pgadmin` | **Heterogeneous + ordered**: an operator chart *then* a UI chart, different charts, operator must come first. A uniform `ApplicationSet` template can't express that. |
+| **`observability-oss`** *(only `observability.mode=oss`)* | **app-of-apps** | `oss-kube-prometheus-stack`, `oss-loki`, `oss-tempo` | **Heterogeneous**: three different upstream charts, each multi-source with its own `$values`; kube-prometheus-stack needs `ServerSideApply` for its oversized CRDs. |
+| **`tekton`** *(only `ci.engine=tekton`)* | **app-of-apps** | `tekton-pipelines` (wave 0) · `-triggers`/`-dashboard`/`-pruner`/`-chains`/`-pac` (wave 1) · `-pipeline-as-code` (wave 2) | **Heterogeneous + strict ordering + per-child sync options**: vendored release YAMLs, distinct namespaces, and `Replace`/`ServerSideDiff` per CRD-heavy child. This is exactly what `ApplicationSet` *can't* do cleanly. |
+| **`jenkins`** *(only `ci.engine=jenkins`)* | **single `Application`** | — | One chart (the official Jenkins chart). Nothing to multiply or order. |
+| **`external-secrets`** | **single `Application`** | — | One chart. Singleton. |
+| **`headlamp`** | **single `Application`** | — | One chart. Singleton. |
+
+> **Feature-flag conditionality.** `jenkins` **xor** `tekton` (selected by `ci.engine`); `observability-oss` exists **only** for `observability.mode=oss` (the `grafana-cloud`/`managed-azure`/`managed-aws` modes ship telemetry to an external backend via a Secret + collector, with no in-cluster app-of-apps). So a `tekton` + `grafana-cloud` cluster shows **1 `ApplicationSet`** (`microservices`) **+ 2 app-of-apps** (`tekton`, `platform-postgres`) **+ singletons** (`external-secrets`, `headlamp`) — *not* a missing `ApplicationSet`.
+
+### Topology diagram
+
+```mermaid
+flowchart TD
+    subgraph AS["ApplicationSet — N homogeneous apps from a generator"]
+        direction TB
+        MAS["ApplicationSet: microservices"]
+        MAS -->|list generator| MS["Application: microservices-stable"]
+        MAS -. "if develop track on" .-> MSD["Application: microservices-develop"]
+    end
+
+    subgraph AOA["app-of-apps — curated heterogeneous groups (Helm-chart parent)"]
+        direction TB
+        PP["Application: platform-postgres"] --> CNPG["cnpg-operator"]
+        PP --> PGA["pgadmin"]
+        OBS["Application: observability-oss<br/>(observability.mode=oss only)"] --> KPS["oss-kube-prometheus-stack"]
+        OBS --> LOKI["oss-loki"]
+        OBS --> TEMPO["oss-tempo"]
+        TEK["Application: tekton<br/>(ci.engine=tekton only)"] --> TP["tekton-pipelines · wave 0"]
+        TEK --> TW1["triggers / dashboard / pruner / chains / pac · wave 1"]
+        TEK --> TPAC["tekton-pipeline-as-code · wave 2"]
+    end
+
+    subgraph SINGLE["Single Application — one chart, no multiplicity"]
+        direction TB
+        ES["external-secrets"]
+        HL["headlamp"]
+        JEN["jenkins<br/>(ci.engine=jenkins only)"]
+    end
+```
+
+### Considered alternative: "could `tekton` be an `ApplicationSet`?"
+
+Technically yes — a **Git-directory generator** could emit one `Application` per `argocd/tekton/components/*`. It is **rejected on purpose**:
+
+- The children need **different `sync-wave`s** (pipelines `0` → triggers/dashboard/pruner/chains/pac `1` → pipeline-as-code `2`); an `ApplicationSet` template is uniform, so per-directory waves require fragile generator merge/matrix tricks or post-render patches.
+- They need **different `syncOptions`** (`Replace`+`ServerSideDiff` for the CRD-heavy ones, plain apply for others) — again per-child, not per-template.
+- The app-of-apps Helm chart expresses all of this **explicitly and readably**, and still flows repo/branch/versions down from the parent.
+
+So the split is the **idiomatic** ArgoCD choice: `ApplicationSet` for the one homogeneous fleet (microservices), app-of-apps for the heterogeneous platform bundles, single `Application` for singletons. **No additional `ApplicationSet`s are warranted.**
+
+---
+
 ## Applications
 
 ### `jenkins` — Jenkins CI engine ([`jenkins-app.yaml`](jenkins-app.yaml))
