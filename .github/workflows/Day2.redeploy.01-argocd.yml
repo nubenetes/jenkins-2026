@@ -1,21 +1,21 @@
-name: "Day2.deploy.02 Redeploy Jenkins"
+name: "Day2.redeploy.01 ArgoCD"
 
-# Manually-triggered: re-applies only scripts/04-jenkins.sh (Helm
-# upgrade --install of helm/jenkins + jenkins/casc JCasC fragments) and
-# scripts/06-seed-pipelines.sh against the cluster from the last "Day1.cluster.01 GKE
-# provision" run, without touching terraform/gke or any other component of the
-# stack.
+# Manually-triggered: re-applies only scripts/08.5-argocd.sh against the cluster
+# from the last "Day1.cluster.01 GKE" run — reinstalls/upgrades ArgoCD
+# (Helm), re-applies its OIDC/RBAC + the Jenkins API account/token, and re-applies
+# the GitOps Applications it owns (platform-postgres = CNPG + pgAdmin,
+# External Secrets, Headlamp, the microservices ApplicationSet). Use this to apply
+# an ArgoCD-only change (helm/argocd-values.yaml, an Application manifest) without
+# rerunning the whole provision lifecycle.
 #
-# Use this to apply a Jenkins-only change (Helm values, JCasC, plugin list,
-# shared library) without rerunning the whole provision/decommission lifecycle.
-# Requires the namespaces/secrets created by scripts/01-namespaces.sh during
-# that "Day1.cluster.01 GKE provision" run to still exist on the cluster.
+# ArgoCD is the CD engine the rest of the platform deploys through and is installed
+# BEFORE observability/Jenkins in scripts/up.sh — hence ZZ=01 in the deploy tier
+# (lowest = first / depended-upon). Requires the namespaces/secrets created by
+# scripts/01-namespaces.sh during that provision run to still exist.
 #
-# NOTE: Grafana dashboards are deliberately NOT republished here - that's the
-# job of the per-backend dashboard workflows (e.g. "Day2.publish.04 Publish AWS
-# dashboards"). Running scripts/07 here would assume config.yaml's default
-# observability.mode (grafana-cloud) regardless of the live cluster's mode, and
-# the grafana-cloud branch hard-fails when its credentials secret is absent.
+# NOTE: in observability.mode=oss the in-cluster OSS stack is owned by the
+# observability-oss app-of-apps applied by scripts/03-observability.sh, not here;
+# use "Day2.publish.01 OSS Grafana dashboards/alerts" for that.
 on:
   workflow_dispatch:
     inputs:
@@ -37,7 +37,7 @@ env:
   TF_VERSION: "1.15.6"
 
 jobs:
-  redeploy-jenkins:
+  redeploy-argocd:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -111,20 +111,17 @@ jobs:
       - name: Check prereqs & add Helm repos (scripts/00-check-prereqs.sh)
         run: ./scripts/00-check-prereqs.sh
 
-      - name: Redeploy Jenkins (scripts/04-jenkins.sh)
-        run: ./scripts/04-jenkins.sh
-
-      - name: Re-seed Microservices pipelines (scripts/06-seed-pipelines.sh)
-        run: ./scripts/06-seed-pipelines.sh
+      - name: Redeploy ArgoCD + GitOps apps (scripts/08.5-argocd.sh)
+        run: ./scripts/08.5-argocd.sh
 
       - name: Summary
         if: always()
         run: |
           {
-            echo "### Jenkins redeployed"
+            echo "### ArgoCD redeployed"
             echo
-            echo "Re-applied helm/jenkins + jenkins/casc and re-triggered seed-jobs"
-            echo "against the cluster from the last **Day1.cluster.01 GKE provision** run."
-            echo "(Grafana dashboards are published by the per-backend dashboard"
-            echo "workflows, e.g. **Day2.publish.04 Publish AWS dashboards**.)"
+            echo "Re-applied \`scripts/08.5-argocd.sh\`: ArgoCD Helm upgrade, OIDC/RBAC,"
+            echo "the Jenkins API token, and the GitOps Applications it owns"
+            echo "(platform-postgres, External Secrets, Headlamp, microservices AppSet)"
+            echo "against the cluster from the last **Day1.cluster.01 GKE** run."
           } >> "${GITHUB_STEP_SUMMARY}"
