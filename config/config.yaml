@@ -93,10 +93,17 @@ tekton:
     mode: full
     serviceName: tekton-dashboard
     servicePort: 9097
-  # k8s Secrets (created by scripts/01-namespaces.sh in pipelineNamespace) the
-  # pipeline ServiceAccount uses for ghcr.io push/pull and git push to the
-  # gitops repo. Populated from the same REGISTRY_*/GIT_* env the Jenkins path
-  # consumes. Never commit real values.
+  # k8s Secrets (created by scripts/01-namespaces.sh / 08.5-argocd.sh in
+  # pipelineNamespace) the pipeline ServiceAccount / Tasks consume. Populated from
+  # the same REGISTRY_*/GIT_* env the Jenkins path uses. Never commit real values.
+  # Full runtime set (only the first two are named knobs here; the rest are fixed
+  # names referenced directly by the Tasks/scripts):
+  #   - tekton-registry            ghcr.io push/pull (Jib/Kaniko/Trivy)         [below]
+  #   - tekton-git                 git clone/push to the gitops repo            [below]
+  #   - tekton-argocd              ArgoCD API token (gitops-deploy app sync)    (08.5-argocd.sh)
+  #   - tekton-github-webhook-secret  GitHub HMAC for the Triggers EventListener (01-namespaces.sh, optional)
+  #   - pac-webhook                Pipelines-as-Code webhook HMAC               (01-namespaces.sh, optional)
+  #   - k6-cloud                   optional Grafana Cloud k6 token/project/url  (01-namespaces.sh, optional)
   registryCredentialsSecretName: tekton-registry
   gitCredentialsSecretName: tekton-git
 

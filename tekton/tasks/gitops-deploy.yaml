@@ -46,7 +46,9 @@ spec:
         git config --global user.email "tekton@nubenetes.com"
         git config --global user.name "Tekton CI"
         REPO_CLEAN=$(echo "$(params.gitops-repo-url)" | sed 's|https://||')
-        git clone --depth 1 --branch "${BRANCH}" \
+        GIT_LFS_SKIP_SMUDGE=1 git \
+          -c filter.lfs.smudge= -c filter.lfs.process= -c filter.lfs.required=false \
+          clone --depth 1 --branch "${BRANCH}" \
           "https://${GIT_USER:-git}:${GIT_TOKEN:-}@${REPO_CLEAN}" gitops-deploy-src
         cd gitops-deploy-src
         yq eval -i ".services.$(params.service-name).image.tag = \"$(params.image-tag)\"" "${VALUES}"

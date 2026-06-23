@@ -7,28 +7,40 @@ kind: Pipeline
 metadata:
   name: microservices-pipeline
 spec:
+  # Every param has a valid default (the 'gateway' service happy-path) so the
+  # Pipeline runs end-to-end with ZERO params from the Tekton Dashboard / a minimal
+  # PipelineRun (you only bind the workspaces). Override service-name + its related
+  # params together to build a different service (see jenkins/pipelines/seed/
+  # services.yaml). 06-tekton-pipelines.sh / PaC pass the full per-service set.
   params:
     - name: service-name
+      default: gateway
     - name: service-type
       default: java
     - name: git-repo-url
+      default: https://github.com/nubenetes/jhipster-sample-app-gateway.git
     - name: git-branch
       default: main
     - name: module-path
       default: ""
     - name: target-namespace
+      default: microservices
     - name: env-name
       default: stable
     - name: port
+      default: "8080"
     - name: health-path
+      default: /management/health
     - name: image
+      default: ghcr.io/nubenetes/jenkins-2026-microservices/gateway:main
     - name: registry-host
+      default: ghcr.io
     - name: self-repo-url
       default: https://github.com/nubenetes/jenkins-2026.git
     - name: self-repo-branch
       default: main
     - name: otlp-endpoint
-      default: ""
+      default: "http://otel-collector-gateway.observability.svc.cluster.local:4317"
   workspaces:
     - name: source
     - name: dockerconfig
