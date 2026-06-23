@@ -64,7 +64,7 @@ exactly like the other app-of-apps), which renders four child Applications:
 
 | Child Application | Source | Sync wave | Notes |
 |---|---|---|---|
-| `tekton-pipelines` | `argocd/tekton/components/pipelines` (kustomize → pinned `v1.13.1` release) | 0 | the engine + CRDs; `config-tracing` patched to the OTel collector via kustomize |
+| `tekton-pipelines` | `argocd/tekton/components/pipelines` (kustomize → pinned `v1.13.1` release) | 0 | the engine + CRDs |
 | `tekton-triggers` | `argocd/tekton/components/triggers` (pinned `v0.31.0` release + interceptors) | 1 | API/webhook-driven runs |
 | `tekton-dashboard` | `argocd/tekton/components/dashboard` (pinned `v0.52.0` `release-full.yaml`) | 1 | **read-write** GUI; no native auth |
 | `tekton-pipeline-as-code` | `tekton/` (Tasks/Pipelines/Triggers/RBAC + the `tekton-ci` SA) | 2 | the ported pipeline; lands in the `tekton-ci` namespace |
@@ -179,11 +179,15 @@ EventListener is for parity and manual/CI re-runs.
 
 ## Observability
 
-Tekton emits PipelineRun/TaskRun traces to the in-cluster OTel collector
-(`config-tracing`, patched by `04-tekton.sh`), and the `k6-smoke` Task carries
-`OTEL_SERVICE_NAME=tekton-pipeline-k6-smoke` — mirroring the Jenkins
-`jenkins-pipeline-*` convention so pipeline telemetry lands in Tempo/Loki/Prometheus
-alongside everything else. See [301. Observability](./301-OBSERVABILITY.md).
+The `k6-smoke` Task carries `OTEL_SERVICE_NAME=tekton-pipeline-k6-smoke` —
+mirroring the Jenkins `jenkins-pipeline-*` convention so that pipeline telemetry
+lands in Tempo/Loki/Prometheus alongside everything else. See
+[301. Observability](./301-OBSERVABILITY.md).
+
+> **Follow-up:** Tekton *controller* OpenTelemetry tracing (PipelineRun/TaskRun
+> spans) is not wired yet — the v1.13.1 release ships no `config-tracing`
+> ConfigMap to patch, so enabling it means adding that ConfigMap as a new
+> resource in `argocd/tekton/components/pipelines`.
 
 ---
 
