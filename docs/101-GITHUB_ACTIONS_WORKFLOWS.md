@@ -288,6 +288,65 @@ See [102. GitHub Actions Automation](./102-GITHUB_ACTIONS_AUTOMATION.md) for the
 
 ---
 
+## Idempotency: every workflow is safe to re-run
+
+**All workflows are idempotent (or one-shot-but-safe). Re-running is the normal way to apply a change — you never need to decommission and re-provision to pick one up.**
+
+### `Day1.cluster.01-gke` is idempotent — re-run it to apply changes
+
+`Day1.cluster.01-gke` is the headline case because it does the most. Re-running it on an **already-provisioned** cluster **converges in place**; it does not require (and is not improved by) a prior `Decom`. Three layers make this true:
+
+1. **Terraform converges, it doesn't recreate.** `terraform apply` against the GCS remote state is a **no-op when the cluster already exists** in state — it reconciles to the desired state, creating nothing twice. The one `-target` apply (the Grafana Cloud dashboards SA token, applied before the full apply so the `grafana` provider can authenticate) is explicitly a no-op once that token is in state.
+2. **`up.sh` re-applies every step idempotently.** Each `scripts/0N-*.sh` step uses converging primitives — `kubectl create … --dry-run=client -o yaml | kubectl apply -f -` for every Secret/ConfigMap/RoleBinding/ClusterRole, `helm upgrade --install` for every chart, and `kubectl apply` for manifests. Re-running re-asserts the desired state without "already exists" errors.
+3. **ArgoCD re-syncs from git.** The GitOps-managed components (microservices, observability-oss, Tekton app-of-apps, Jenkins app, External Secrets, Headlamp) are reconciled by ArgoCD against the repo, so a `Day1` re-run (or even just a `kubectl annotate application <app> -n argocd argocd.argoproj.io/refresh=hard --overwrite`) pulls the latest committed manifests.
+
+> **Consequence.** To apply a change: **re-run `Day1.cluster.01-gke`** on the existing cluster. For a CI-engine-only change, the lighter `Day2.redeploy.02-jenkins` / `Day2.redeploy.03-tekton` converge the same way (they also re-run `09-gateway`, so public routes/IAP are re-asserted). `Decom.cluster.01-gke` is **only** for tearing the cluster down when you are finished, to stop charges — it is not a prerequisite for changes. (Do still Decom an idle cluster: it is billed.)
+
+### Per-workflow idempotency
+
+Verdicts: **Idempotent** = converges to desired state, safe to re-run · **One-shot but safe** = an action (load test / dashboard publish) that simply repeats harmlessly, with no accumulation or error on re-run.
+
+| Workflow | Verdict | Why |
+|---|---|---|
+| `Day0.infra.01-gateway` | **Idempotent** | `terraform apply` on the gateway/IP/cert module (GCS state) converges. |
+| `Day0.infra.02-grafana-cloud` | **Idempotent** | `terraform apply`; the random stack slug is generated once and persisted in state, so re-applies reuse it. |
+| `Day0.infra.03-azure-grafana` | **Idempotent** | `terraform apply` on the Azure backend (GCS state) converges. |
+| `Day0.infra.04-aws-grafana` | **Idempotent** | `terraform apply` on the AWS backend (GCS state) converges. |
+| `Day1.cluster.01-gke` | **Idempotent** | `terraform apply` no-ops on an existing cluster; `up.sh` re-applies every step (`--dry-run\|apply`, `helm upgrade --install`); ArgoCD re-syncs. See above. |
+| `Day2.redeploy.01-argocd` | **Idempotent** | `08.5-argocd.sh` = `helm upgrade --install` + idempotent `kubectl apply` of the ArgoCD `Application`s. |
+| `Day2.redeploy.02-jenkins` | **Idempotent** | `04-jenkins.sh` (`helm upgrade --install`, JCasC ConfigMaps via `--dry-run\|apply`) + `06-seed-pipelines.sh`. |
+| `Day2.redeploy.03-tekton` | **Idempotent** | `01`/`04-tekton`/`06-tekton-pipelines`/`09-gateway` — all `kubectl apply` / `--dry-run\|apply`; PaC webhook creation skips if one already targets the controller. |
+| `Day2.redeploy.04-headlamp` | **Idempotent** | `01-namespaces.sh` + `08-headlamp.sh` (`helm upgrade --install`). |
+| `Day2.publish.01-oss-grafana` | **Idempotent** | Refreshes the dashboards ConfigMap (`--dry-run\|apply`) and nudges the `observability-oss` app re-sync (`kubectl annotate --overwrite`). |
+| `Day2.publish.03-azure-grafana` | **One-shot but safe** | `az grafana dashboard create --overwrite` re-publishes; no error/dup on re-run. |
+| `Day2.publish.04-aws-grafana` | **One-shot but safe** | `07-grafana-dashboards.sh` re-publishes to AMG; no accumulation. |
+| `Day2.publish.05-alerts` | **Idempotent** | `07.5-grafana-alerts.sh` uses Grafana's provisioning API (contact points / rules / policies are upserts). |
+| `Day2.traffic.01-k6` | **One-shot but safe** | Runs a k6 load test; re-running just runs another test (each uploads its own artifact). |
+| `Decom.cluster.01-gke` | **Idempotent** | `terraform destroy` no-ops when already gone; `down.sh` uses `--ignore-not-found` / `\|\| true` throughout. |
+| `Decom.infra.01-gateway` | **Idempotent** | `terraform destroy` on the gateway module is a no-op once destroyed. |
+| `Decom.infra.02-grafana-cloud` | **Idempotent** | Applies first to drop delete-protection, then `terraform destroy`; both converge. |
+| `Decom.infra.03-azure-grafana` | **Idempotent** | Pre-destroy cleanup guarded with `\|\| true`; `terraform destroy` tolerates absent resources. |
+| `Decom.infra.04-aws-grafana` | **Idempotent** | `terraform destroy` on the AWS backend converges. |
+
+### Should every workflow be *converging*-idempotent?
+
+No — and the split above is by design, not an oversight:
+
+- **State-managing workflows must converge, and all do.** `Day0`/`Day1` (provision), the `Day2.redeploy.*` (re-deploy a component), and the `Decom.*` (teardown) all describe a *desired state*; re-running them must reconcile to it without erroring or duplicating — which they do (Terraform `apply`/`destroy` on remote state, `kubectl --dry-run|apply` / `--ignore-not-found`, `helm upgrade --install`).
+- **Action workflows are correctly one-shot, not converging.** `Day2.traffic.01-k6` (run a load test) and `Day2.publish.03/04` (publish dashboards) are *actions*, not state. "Converging" a load test is meaningless — the right property for an action is that **repeating it is harmless** (no error, no accumulation, no orphaning), which holds: k6 just runs again (each run uploads its own artifact), and the dashboard publishes use `--overwrite`. Forcing them into a "converge" model would add complexity for no benefit.
+
+So the correct bar is **"safe to re-run"**, which every workflow meets; full state-convergence is required only of the state-managing ones, and there it is met universally.
+
+**No non-idempotent workflow exists in the repo.** The invariants that guarantee this — and that any new workflow/script must preserve — are:
+
+- **Terraform**: `apply`/`destroy` against remote GCS state converge; any randomness (e.g. the Grafana Cloud slug) is persisted in state, never regenerated. Avoid create-before-destroy patterns and un-stored random values.
+- **Kubernetes**: never a bare `kubectl create` or `helm install`. Use `kubectl create … --dry-run=client -o yaml | kubectl apply -f -`, `kubectl apply`, `helm upgrade --install`, and `kubectl delete --ignore-not-found` (or `|| true`) for teardown.
+- **External APIs**: prefer upsert/overwrite (`az … --overwrite`, Grafana provisioning API, "skip if the webhook already exists") over blind create.
+
+This is the workflow-level expression of the repo-wide **idempotency** convention in [`CLAUDE.md`](../CLAUDE.md) ("every `scripts/0N-*.sh` step and Terraform module should be safe to re-run").
+
+---
+
 [🏠 Home](../README.md) | [→ Next: 102. GitHub Actions Automation](./102-GITHUB_ACTIONS_AUTOMATION.md)
 
 ---

@@ -5,10 +5,17 @@ name: "Day1.cluster.01 GKE"
 # jenkins-2026 stack (scripts/up.sh) + smoke tests. See README.md
 # "GitHub Actions automation" for one-time setup.
 #
-# Pair this with the "Decom.cluster.01 GKE" workflow - it shares the same
-# Terraform state, so it can find and tear down what this workflow created.
-# To redeploy only Jenkins (e.g. a Helm values / JCasC fix) without rerunning
-# this whole lifecycle, use "Day2.redeploy.02 Jenkins" instead.
+# IDEMPOTENT / RE-RUNNABLE: this is the way to apply changes. Re-run it on an
+# already-provisioned cluster and it converges in place - `terraform apply` is a
+# no-op when the cluster already exists in state, and up.sh re-applies every step
+# (ArgoCD re-syncs from git; every kubectl/helm step is idempotent). You do NOT
+# need to decommission to pick up a change. For a CI-engine-only change the
+# lighter "Day2.redeploy.02 Jenkins" / "Day2.redeploy.03 Tekton" redeploys also
+# converge in place.
+#
+# "Decom.cluster.01 GKE" is for TEARING THE CLUSTER DOWN when you're done (to
+# stop charges) - not a prerequisite for applying changes. It shares the same
+# Terraform state, so it finds and destroys what this workflow created.
 on:
   workflow_dispatch:
     inputs:
@@ -517,5 +524,8 @@ jobs:
               echo "see README.md \"Accessing the UI\"."
             fi
             echo
-            echo "Run the **Decom.cluster.01 GKE** workflow when you're done to avoid ongoing charges."
+            echo "To apply a change later, just **re-run this workflow** — it is"
+            echo "idempotent and converges on the existing cluster, no decommission"
+            echo "needed. Run **Decom.cluster.01 GKE** only when you're done, to"
+            echo "avoid ongoing charges."
           } >> "${GITHUB_STEP_SUMMARY}"
