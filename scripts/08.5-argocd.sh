@@ -188,42 +188,48 @@ subjects:
   namespace: ${J2026_ARGOCD_NAMESPACE}
 EOF
 
-# Ensure no old token-gen pod exists
-kubectl delete pod argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found=true --wait=true || true
-
-# Use a subshell to capture token and ensure RBAC cleanup happens regardless of success/failure
+# Generate the token via a short-lived pod running the argocd CLI in --core mode
+# (it talks to the k8s API directly; the temp cluster-admin binding above grants
+# the default SA the access it needs). Retried + diagnosed: on a fresh cluster the
+# argocd image pull (cold node) or argocd settling can push the pod past the
+# per-attempt timeout, and a single silent failure here leaves the CI engine
+# without an ArgoCD token (the pipeline 'Deploy' stage then can't `argocd app
+# sync`). So retry, and on failure dump the pod's events/logs before deleting it.
 set +e
-kubectl run argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --restart=Never \
-  --image="quay.io/argoproj/argocd:${RESOLVED_3_5_PATCH}" \
-  --overrides='{
-    "spec": {
-      "containers": [{
-        "name": "argocd-token-gen",
-        "image": "quay.io/argoproj/argocd:'"${RESOLVED_3_5_PATCH}"'",
-        "command": ["bash", "-c", "argocd account generate-token --account '"${CI_ARGOCD_ACCOUNT}"' --core"],
-        "resources": {
-          "requests": {
-            "cpu": "50m",
-            "memory": "128Mi"
-          },
-          "limits": {
-            "cpu": "100m",
-            "memory": "256Mi"
+RAW_TOKEN=""
+EXIT_CODE=1
+for attempt in 1 2 3; do
+  kubectl delete pod argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
+  kubectl run argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --restart=Never \
+    --image="quay.io/argoproj/argocd:${RESOLVED_3_5_PATCH}" \
+    --overrides='{
+      "spec": {
+        "containers": [{
+          "name": "argocd-token-gen",
+          "image": "quay.io/argoproj/argocd:'"${RESOLVED_3_5_PATCH}"'",
+          "command": ["bash", "-c", "argocd account generate-token --account '"${CI_ARGOCD_ACCOUNT}"' --core"],
+          "resources": {
+            "requests": { "cpu": "50m", "memory": "128Mi" },
+            "limits": { "cpu": "100m", "memory": "256Mi" }
           }
-        }
-      }]
-    }
-  }'
+        }]
+      }
+    }' >/dev/null 2>&1
 
-# Wait for the pod to succeed (complete its execution)
-kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --timeout=3m
-EXIT_CODE=$?
+  if kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/argocd-token-gen \
+       -n "${J2026_ARGOCD_NAMESPACE}" --timeout=5m; then
+    RAW_TOKEN=$(kubectl logs argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}")
+    EXIT_CODE=0
+    break
+  fi
 
-if [[ ${EXIT_CODE} -eq 0 ]]; then
-  RAW_TOKEN=$(kubectl logs argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}")
-else
-  RAW_TOKEN=""
-fi
+  # Did not reach Succeeded within the timeout — surface WHY before retrying.
+  log_warn "ArgoCD token-gen attempt ${attempt}/3 did not Succeed — diagnostics:"
+  kubectl get pod argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" -o wide 2>&1 | sed 's/^/    /' || true
+  kubectl describe pod argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" 2>&1 \
+    | grep -A15 -iE '^events:' | sed 's/^/    /' || true
+  kubectl logs argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" 2>&1 | tail -n 20 | sed 's/^/    /' || true
+done
 set -e
 kubectl delete pod argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found=true || true
           
