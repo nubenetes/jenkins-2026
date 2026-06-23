@@ -1,4 +1,4 @@
-name: "Decom.infra.03 Azure managed-grafana decommission"
+name: "Decom.infra.03 Azure managed-grafana"
 
 # Manually-triggered setup teardown: destroys terraform/azure-managed-grafana,
 # removing the persistent Azure backend (Azure Managed Grafana, Azure Monitor

@@ -55,8 +55,8 @@ graph TD
     subgraph GKE_Lifecycle ["Day-1 → Day-2 → Decommission · GKE Cluster Lifecycle"]
         F & E & B --> G["Day1.cluster.01 GKE provision<br>tf/gke + scripts/up.sh"]
         G --> H["GKE Cluster Active<br>Jenkins / ArgoCD / services"]
-        H --> I["Day2.deploy.02 Redeploy Jenkins"]
-        H --> J["Day2.deploy.04 Redeploy Headlamp"]
+        H --> I["Day2.redeploy.02 Redeploy Jenkins"]
+        H --> J["Day2.redeploy.04 Redeploy Headlamp"]
         B --> L2["Day2.publish.04 Publish AWS dashboards<br>(no cluster needed)"]
         B --> M2["Day2.publish.03 Publish Azure dashboards<br>(no cluster needed)"]
         I & J --> H
@@ -115,8 +115,8 @@ To support deterministic deployments and clean, error-free environment destructi
 
 * **Workflows Supported**:
   * [Day1.cluster.01 GKE provision](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml)
-  * [Day2.deploy.02 Redeploy Jenkins](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.deploy.02-jenkins.yml)
-  * [Day2.deploy.04 Redeploy Headlamp](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.deploy.04-headlamp.yml)
+  * [Day2.redeploy.02 Redeploy Jenkins](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.02-jenkins.yml)
+  * [Day2.redeploy.04 Redeploy Headlamp](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.04-headlamp.yml)
   * [Day2.publish.04 Publish AWS dashboards](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.04-aws-grafana.yml)
   * [Day2.publish.03 Publish Azure dashboards](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.03-azure-grafana.yml)
   * [Decom.cluster.01 GKE decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml)
@@ -161,7 +161,7 @@ Mixing different tags, branches, or SHAs during the lifecycle of a single GKE cl
 
 > [!IMPORTANT]
 > **Rule of lockstep alignment**:
-> 1. Always ensure that the `git_ref` used for provisioning (`Day1.cluster.01`) matches the `git_ref` used for decommissioning (`Decom.cluster.01`) and redeployments (`Day2.deploy.02` / `Day2.deploy.04`).
+> 1. Always ensure that the `git_ref` used for provisioning (`Day1.cluster.01`) matches the `git_ref` used for decommissioning (`Decom.cluster.01`) and redeployments (`Day2.redeploy.02` / `Day2.redeploy.04`).
 > 2. For stable releases, tag both repositories in lockstep (e.g. `v0.9.0` tag in both `jenkins-2026` and `jenkins-2026-gitops-config`) and use that tag name in the `git_ref` parameter.
 
 ## Environment Protection and Manual Approvals
@@ -327,7 +327,7 @@ EOF
 2. Wait ~15-20 minutes. The job summary prints the cluster name/zone and a
    reminder to decommission when done.
 3. To redeploy only Jenkins between provision/decommission cycles, use
-   **Actions** → **Day2.deploy.02 Redeploy Jenkins** → **Run workflow**.
+   **Actions** → **Day2.redeploy.02 Redeploy Jenkins** → **Run workflow**.
 4. When finished, use **Actions** → **Decom.cluster.01 GKE decommission** → **Run workflow**.
 
 These three workflows share a `concurrency: group: jenkins-2026-gke`, so

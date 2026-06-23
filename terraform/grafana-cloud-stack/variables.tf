@@ -20,7 +20,7 @@ variable "stack_slug_prefix" {
     "<prefix><random-suffix>" and forms the subdomain https://<slug>.grafana.net.
     A fresh random suffix is generated per stack so re-creates never collide with
     Grafana Cloud's reserved-slug cooldown. No longer a GitHub secret/variable -
-    the slug is an OUTPUT read from this module's state by Day1.cluster.01-gke-provision.
+    the slug is an OUTPUT read from this module's state by Day1.cluster.01-gke.
   EOT
 }
 

@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.21.0] - 2026-06-23
+
+Workflow-naming cleanup: makes the `name:` fields obey the scheme's own
+"no action verb — the `DayN.tier` prefix already says the action" rule, renames
+the Day2 component tier `deploy` → `redeploy`, and fixes malformed workflow
+references left in prose by the v0.19.0 rename.
+
+### Changed
+
+- **Day2 component tier `deploy` → `redeploy`.** These workflows redeploy
+  already-deployed components (the initial deploy happens in `Day1`/`scripts/up.sh`),
+  so the tier is now `redeploy`. Files renamed: `Day2.deploy.01-argocd` →
+  **`Day2.redeploy.01-argocd`**, `Day2.deploy.02-jenkins` →
+  **`Day2.redeploy.02-jenkins`**, `Day2.deploy.04-headlamp` →
+  **`Day2.redeploy.04-headlamp`**. Controlled vocabulary updated to
+  `infra`/`cluster`/`redeploy`/`publish`/`traffic`.
+- **Redundant action verbs dropped from every workflow `name:`** so the display
+  name is `DayN.tier.ZZ <resource>` (the prefix already conveys the action) —
+  e.g. `Day2.publish.03 Publish Azure dashboards` → **`Day2.publish.03 Azure
+  dashboards`**, `Day2.deploy.01 Redeploy ArgoCD` → **`Day2.redeploy.01
+  ArgoCD`**, `Day0.infra.01 Gateway bootstrap` → **`Day0.infra.01 Gateway`**,
+  `Decom.cluster.01 GKE decommission` → **`Decom.cluster.01 GKE`**,
+  `Day1.cluster.01 GKE provision` → **`Day1.cluster.01 GKE`**,
+  `Day2.traffic.01 Continuous Traffic Simulation` → **`Day2.traffic.01
+  Continuous k6 simulation`**. The GitHub Actions UI sort order is unchanged
+  (the `DayN.tier.ZZ` prefix still leads every name).
+
+### Fixed
+
+- **Malformed workflow references in prose/comments.** The v0.19.0 rename mapped
+  bare old IDs (e.g. `5.2.02`) to the new prefix but left the old verb suffix,
+  producing dead references like `Day1.cluster.01-gke-provision`,
+  `Decom.cluster.01-gke-decommission`, `Day2.redeploy.02-redeploy-jenkins`,
+  `Day0.infra.02-grafana-cloud-bootstrap`, `Day2.publish.03-publish-azure-dashboards`,
+  `Day2.traffic.01-traffic-simulation`, etc. across `docs/`, `terraform/*`
+  comments and a workflow comment. All now point at the real filenames
+  (`Day1.cluster.01-gke`, …). `terraform/gateway-bootstrap` module paths were
+  left untouched.
+
+> ⚠️ Re-point any branch-protection required status checks / `gh workflow run`
+> calls that referenced `Day2.deploy.0{1,2,4}-*` → `Day2.redeploy.0{1,2,4}-*`.
+
 ## [v0.20.0] - 2026-06-23
 
 Adds an ArgoCD redeploy workflow and corrects the `deploy`-tier `ZZ` ordering so
