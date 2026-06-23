@@ -118,6 +118,7 @@ jobs:
           IAP_OAUTH_CLIENT_ID: ${{ secrets.IAP_OAUTH_CLIENT_ID }}
           IAP_OAUTH_CLIENT_SECRET: ${{ secrets.IAP_OAUTH_CLIENT_SECRET }}
           TEKTON_GITHUB_WEBHOOK_SECRET: ${{ secrets.TEKTON_GITHUB_WEBHOOK_SECRET }}
+          PAC_WEBHOOK_SECRET: ${{ secrets.PAC_WEBHOOK_SECRET }}
 
       - name: Redeploy Tekton control plane + Dashboard (scripts/04-tekton.sh)
         run: ./scripts/04-tekton.sh
