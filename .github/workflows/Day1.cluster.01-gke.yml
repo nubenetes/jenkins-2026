@@ -402,9 +402,10 @@ jobs:
           JENKINS_OIDC_ADMIN_EMAIL: ${{ secrets.JENKINS_OIDC_ADMIN_EMAIL }}
           IAP_OAUTH_CLIENT_ID: ${{ secrets.IAP_OAUTH_CLIENT_ID }}
           IAP_OAUTH_CLIENT_SECRET: ${{ secrets.IAP_OAUTH_CLIENT_SECRET }}
-          # Optional GitHub HMAC token for the Tekton Triggers EventListener
-          # (ci_engine=tekton); empty unless the secret is set.
+          # Optional GitHub HMAC tokens for the Tekton Triggers EventListener and
+          # for Pipelines-as-Code (ci_engine=tekton); empty unless the secrets are set.
           TEKTON_GITHUB_WEBHOOK_SECRET: ${{ secrets.TEKTON_GITHUB_WEBHOOK_SECRET }}
+          PAC_WEBHOOK_SECRET: ${{ secrets.PAC_WEBHOOK_SECRET }}
         run: |
           if [[ "${{ inputs.enable_gateway }}" != "true" ]]; then
             # gateway.baseDomain's committed default (jenkins2026.nubenetes.com)

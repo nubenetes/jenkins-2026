@@ -20,7 +20,9 @@ done
 # before 04-tekton.sh installs the components. kubectl_apply_namespace is a no-op
 # if the ns already exists (the Tekton release YAML also declares tekton-pipelines).
 if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
-  for ns in "${J2026_TEKTON_NAMESPACE}" "${J2026_TEKTON_PIPELINE_NAMESPACE}"; do
+  # pipelines-as-code: hosts the PaC controller (its HTTPRoute is created here-ish
+  # by 09-gateway.sh, which needs the ns to exist before ArgoCD syncs PaC).
+  for ns in "${J2026_TEKTON_NAMESPACE}" "${J2026_TEKTON_PIPELINE_NAMESPACE}" pipelines-as-code; do
     kubectl_apply_namespace "${ns}"
   done
 fi
@@ -195,6 +197,14 @@ if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
   kubectl create secret generic tekton-github-webhook-secret \
     -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
     --from-literal=secretToken="${TEKTON_GITHUB_WEBHOOK_SECRET:-}" \
+    --dry-run=client -o yaml | kubectl apply -f -
+
+  # PaC (Pipelines-as-Code) webhook HMAC secret, referenced by the Repository
+  # CRs (tekton/pac/) and shared with the GitHub repo webhooks created by
+  # 06-tekton-pipelines.sh. Optional - empty unless PAC_WEBHOOK_SECRET is set.
+  kubectl create secret generic pac-webhook \
+    -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
+    --from-literal=webhook.secret="${PAC_WEBHOOK_SECRET:-}" \
     --dry-run=client -o yaml | kubectl apply -f -
 fi
 

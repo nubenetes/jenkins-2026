@@ -1,0 +1,27 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tekton-pruner
+  namespace: argocd
+  annotations:
+    # Wave 1: needs the Tekton Pipelines install (wave 0) - it prunes
+    # PipelineRuns/TaskRuns.
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL | quote }}
+    targetRevision: {{ .Values.targetRevision | quote }}
+    path: argocd/tekton/components/pruner
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.namespace.controlPlane | quote }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

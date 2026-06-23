@@ -1,0 +1,22 @@
+# Tekton Pruner - garbage-collects completed PipelineRuns/TaskRuns, the Tekton
+# equivalent of the Jenkins pipelines' buildDiscarder(numToKeepStr: '20').
+# VENDORED (release.yaml) - GitHub-only release, vendored like the other
+# components. Source: https://github.com/tektoncd/pruner/releases/download/v0.4.0/release.yaml
+#
+# The patch lowers the default global historyLimit 100 -> 20 to mirror the
+# Jenkins "keep 20 builds" retention.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - release.yaml
+patches:
+  - patch: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: tekton-pruner-default-spec
+        namespace: tekton-pipelines
+      data:
+        global-config: |-
+          enforcedConfigLevel: global
+          historyLimit: 20

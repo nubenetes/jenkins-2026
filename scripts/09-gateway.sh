@@ -201,6 +201,27 @@ spec:
     kind: Service
     name: ${J2026_TEKTON_DASHBOARD_SERVICE}
 EOT
+
+  # Pipelines-as-Code controller (webhook receiver) - public, NO IAP (GitHub must
+  # reach it; the webhook HMAC secret authenticates requests).
+  cat >"${GENERATED_DIR}/httproute-pac.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ${J2026_GATEWAY_HTTPROUTE_PAC}
+  namespace: pipelines-as-code
+spec:
+  parentRefs:
+    - name: ${J2026_GATEWAY_NAME}
+      namespace: ${J2026_JENKINS_NAMESPACE}
+      sectionName: https
+  hostnames:
+    - "${J2026_GATEWAY_PAC_HOST}"
+  rules:
+    - backendRefs:
+        - name: pipelines-as-code-controller
+          port: 8080
+EOT
 fi
 
 # Grafana is only deployed in-cluster (and thus exposable) in
