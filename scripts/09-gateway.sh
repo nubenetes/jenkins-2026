@@ -58,8 +58,11 @@ spec:
           from: All
 EOT
 
-log_step "Generating HTTPRoutes (jenkins, argocd, microservices, headlamp)"
-cat >"${GENERATED_DIR}/httproute-jenkins.yaml" <<EOT
+log_step "Generating HTTPRoutes (argocd, microservices, headlamp; jenkins only when ci.engine=jenkins)"
+# Jenkins HTTPRoute only when Jenkins is the CI engine - in tekton mode there is
+# no Jenkins Service to route to (04-tekton.sh retires it).
+if [[ "${J2026_CI_ENGINE}" != "tekton" ]]; then
+  cat >"${GENERATED_DIR}/httproute-jenkins.yaml" <<EOT
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -77,6 +80,7 @@ spec:
         - name: ${J2026_JENKINS_RELEASE}
           port: 8080
 EOT
+fi
 
 cat >"${GENERATED_DIR}/httproute-argocd.yaml" <<EOT
 apiVersion: gateway.networking.k8s.io/v1
@@ -158,6 +162,47 @@ spec:
           port: 80
 EOT
 
+# Tekton Dashboard is only deployed when ci.engine=tekton.
+if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
+  log_step "Generating HTTPRoute + HealthCheckPolicy (tekton dashboard, ci.engine=tekton)"
+  cat >"${GENERATED_DIR}/httproute-tekton.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ${J2026_GATEWAY_HTTPROUTE_TEKTON}
+  namespace: ${J2026_TEKTON_NAMESPACE}
+spec:
+  parentRefs:
+    - name: ${J2026_GATEWAY_NAME}
+      namespace: ${J2026_JENKINS_NAMESPACE}
+      sectionName: https
+  hostnames:
+    - "${J2026_GATEWAY_TEKTON_HOST}"
+  rules:
+    - backendRefs:
+        - name: ${J2026_TEKTON_DASHBOARD_SERVICE}
+          port: ${J2026_TEKTON_DASHBOARD_PORT}
+EOT
+
+  cat >"${GENERATED_DIR}/healthcheckpolicy-tekton.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: ${J2026_TEKTON_DASHBOARD_SERVICE}
+  namespace: ${J2026_TEKTON_NAMESPACE}
+spec:
+  default:
+    config:
+      type: HTTP
+      httpHealthCheck:
+        requestPath: /health
+  targetRef:
+    group: ""
+    kind: Service
+    name: ${J2026_TEKTON_DASHBOARD_SERVICE}
+EOT
+fi
+
 # Grafana is only deployed in-cluster (and thus exposable) in
 # observability.mode=oss. In grafana-cloud mode it lives at *.grafana.net, so
 # there's no in-cluster Service to route to.
@@ -202,8 +247,9 @@ EOT
 fi
 
 
-log_step "Generating HealthCheckPolicies (jenkins, argocd, microservices)"
-cat >"${GENERATED_DIR}/healthcheckpolicy-jenkins.yaml" <<EOT
+log_step "Generating HealthCheckPolicies (argocd, microservices; jenkins only when ci.engine=jenkins)"
+if [[ "${J2026_CI_ENGINE}" != "tekton" ]]; then
+  cat >"${GENERATED_DIR}/healthcheckpolicy-jenkins.yaml" <<EOT
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
 metadata:
@@ -220,6 +266,7 @@ spec:
     kind: Service
     name: ${J2026_JENKINS_RELEASE}
 EOT
+fi
 
 cat >"${GENERATED_DIR}/healthcheckpolicy-argocd.yaml" <<EOT
 apiVersion: networking.gke.io/v1
@@ -262,7 +309,14 @@ declare -A iap_client_id
 # The OSS Grafana (observability.mode=oss) is IAP-protected too - same edge
 # pattern as Jenkins/Headlamp. Its namespace only needs the per-namespace
 # client secret in that mode.
-iap_backend_namespaces=("${J2026_JENKINS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}")
+iap_backend_namespaces=("${J2026_HEADLAMP_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}")
+# Jenkins is an IAP backend only when it is the CI engine (no Jenkins Service in
+# tekton mode); the Tekton Dashboard is the IAP backend instead when ci.engine=tekton.
+if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
+  iap_backend_namespaces+=("${J2026_TEKTON_NAMESPACE}")
+else
+  iap_backend_namespaces+=("${J2026_JENKINS_NAMESPACE}")
+fi
 if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
   iap_backend_namespaces+=("${J2026_GRAFANA_OSS_NAMESPACE}")
 fi
@@ -279,7 +333,8 @@ for ns in "${iap_backend_namespaces[@]}"; do
   fi
 done
 
-cat >"${GENERATED_DIR}/gcpbackendpolicy-jenkins.yaml" <<EOT
+if [[ "${J2026_CI_ENGINE}" != "tekton" ]]; then
+  cat >"${GENERATED_DIR}/gcpbackendpolicy-jenkins.yaml" <<EOT
 apiVersion: networking.gke.io/v1
 kind: GCPBackendPolicy
 metadata:
@@ -297,6 +352,7 @@ spec:
       oauth2ClientSecret:
         name: ${J2026_GATEWAY_IAP_SECRET}-client-secret
 EOT
+fi
 
 cat >"${GENERATED_DIR}/gcpbackendpolicy-headlamp.yaml" <<EOT
 apiVersion: networking.gke.io/v1
@@ -336,6 +392,27 @@ spec:
         name: ${J2026_GATEWAY_IAP_SECRET}-client-secret
 EOT
 
+if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
+  cat >"${GENERATED_DIR}/gcpbackendpolicy-tekton.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: ${J2026_GATEWAY_IAP_POLICY_TEKTON}
+  namespace: ${J2026_TEKTON_NAMESPACE}
+spec:
+  targetRef:
+    group: ""
+    kind: Service
+    name: ${J2026_TEKTON_DASHBOARD_SERVICE}
+  default:
+    iap:
+      enabled: true
+      clientID: "${iap_client_id[${J2026_TEKTON_NAMESPACE}]}"
+      oauth2ClientSecret:
+        name: ${J2026_GATEWAY_IAP_SECRET}-client-secret
+EOT
+fi
+
 if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
   cat >"${GENERATED_DIR}/gcpbackendpolicy-grafana.yaml" <<EOT
 apiVersion: networking.gke.io/v1
@@ -362,11 +439,16 @@ log_step "Applying Gateway resources"
 kubectl apply -f "${GENERATED_DIR}/"
 
 log_info "Gateway ready."
-log_info "  Jenkins:           https://${J2026_GATEWAY_JENKINS_HOST}"
+if [[ "${J2026_CI_ENGINE}" != "tekton" ]]; then
+  log_info "  Jenkins:           https://${J2026_GATEWAY_JENKINS_HOST}"
+fi
 log_info "  ArgoCD:            https://${J2026_GATEWAY_ARGOCD_HOST}"
 log_info "  Microservices:         https://${J2026_GATEWAY_MICROSERVICES_HOST}"
 log_info "  Headlamp:          https://${J2026_GATEWAY_HEADLAMP_HOST}"
 log_info "  pgAdmin:           https://${J2026_GATEWAY_PGADMIN_HOST}"
+if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
+  log_info "  Tekton Dashboard:  https://${J2026_GATEWAY_TEKTON_HOST} (IAP-protected)"
+fi
 if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
   log_info "  Grafana:           https://${J2026_GATEWAY_GRAFANA_HOST} (IAP-protected)"
 fi

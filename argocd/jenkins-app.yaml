@@ -1,0 +1,50 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: jenkins
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  # Single Application (NOT an app-of-apps - Jenkins is one chart, not a family
+  # of correlated components, unlike platform-postgres/observability-oss/tekton).
+  # Same shape as argocd/headlamp-app.yaml / external-secrets-app.yaml. Installs
+  # the OFFICIAL jenkinsci/jenkins chart; the static values come from this repo
+  # via a $values source, and the per-deployment dynamics (jenkinsUrl, the
+  # banner-links checksum) are passed as helm parameters substituted by
+  # scripts/04-jenkins.sh at apply time (the same {{...}} placeholder pattern as
+  # the other ArgoCD app manifests). Only applied when ci.engine=jenkins.
+  #
+  # JCasC is delivered out-of-band as labeled ConfigMaps the chart's config
+  # sidecar auto-reloads (created by scripts/04-jenkins.sh from jenkins/casc/*,
+  # the single source of truth) - so ArgoCD does not own them, the same
+  # script-managed-companion pattern as the OSS Grafana dashboards ConfigMap.
+  sources:
+    - repoURL: https://charts.jenkins.io
+      chart: jenkins
+      targetRevision: '{{chartVersion}}'
+      helm:
+        valueFiles:
+          - $values/helm/jenkins/values-common.yaml
+          - $values/helm/jenkins/values-gke.yaml
+        parameters:
+          - name: controller.jenkinsUrl
+            value: '{{jenkinsUrl}}'
+          # Rolls the controller when the Secret-backed banner values change
+          # (ArgoCD won't roll on an out-of-band Secret edit otherwise).
+          - name: controller.podAnnotations.bannerLinksChecksum
+            value: '{{bannerChecksum}}'
+    - repoURL: '{{repoUrl}}'
+      targetRevision: '{{branchStable}}'
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: jenkins
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

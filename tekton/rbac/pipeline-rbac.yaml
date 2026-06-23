@@ -1,0 +1,33 @@
+# Pipeline-execution ServiceAccount + RBAC, GitOps-managed by the
+# tekton-pipeline-as-code ArgoCD Application (destination namespace = the
+# pipeline namespace, tekton-ci). The credential Secrets it references
+# (tekton-git basic-auth, tekton-registry dockerconfigjson) hold values sourced
+# from env and are created imperatively by scripts/01-namespaces.sh - an SA may
+# reference Secrets that don't exist yet, so ordering is not a concern.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tekton-ci
+secrets:
+  - name: tekton-git
+imagePullSecrets:
+  - name: tekton-registry
+---
+# Deploy permissions in the microservices namespace (kubectl rollout/restart for
+# the OTel-injection self-heal in gitops-deploy, and the smoke-test pod) - same
+# scope as the Jenkins controller's jenkins-edit binding. Explicit namespace so
+# the binding lands in the microservices namespace regardless of the
+# Application's destination namespace.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tekton-ci-edit
+  namespace: microservices
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: edit
+subjects:
+  - kind: ServiceAccount
+    name: tekton-ci
+    namespace: tekton-ci

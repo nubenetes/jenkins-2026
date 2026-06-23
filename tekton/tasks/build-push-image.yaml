@@ -1,0 +1,65 @@
+# Stage "Build & Push Image" of the Jenkins pipeline (vars/microservicesImage.groovy),
+# made daemonless for Tekton (no privileged docker-in-docker):
+#   - java   : Jib (mvnw jib:build) pushes straight to the registry
+#   - angular: Kaniko builds resources/angular/Dockerfile and pushes
+# Registry auth comes from the 'dockerconfig' workspace (the tekton-registry
+# dockerconfigjson Secret) exposed via DOCKER_CONFIG, which both Jib and Kaniko read.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: build-push-image
+spec:
+  params:
+    - name: service-type
+    - name: module-path
+      default: ""
+    - name: image
+  workspaces:
+    - name: source
+    - name: dockerconfig
+  steps:
+    - name: build-jib
+      image: maven:3.9.9-eclipse-temurin-21
+      env:
+        - name: DOCKER_CONFIG
+          value: $(workspaces.dockerconfig.path)
+      computeResources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "4"
+          memory: 4Gi
+      script: |
+        #!/bin/bash
+        set -eux
+        if [ "$(params.service-type)" != "java" ]; then
+          echo "service-type != java - skipping Jib (handled by Kaniko)."; exit 0
+        fi
+        cd "$(workspaces.source.path)/microservices-src"
+        MOD="$(params.module-path)"
+        if [ -n "${MOD}" ] && [ -f "${MOD}/mvnw" ]; then cd "${MOD}"; fi
+        unset MAVEN_CONFIG
+        export MAVEN_OPTS="-Xmx1024m -XX:+UseSerialGC"
+        if grep -q "jib-maven-plugin" pom.xml; then
+          ./mvnw -B -Pprod -DskipTests -Dmaven.compiler.maxmem=512m jib:build \
+            -Djib.to.image="$(params.image)" -Djib.serialize=true
+        else
+          echo "ERROR: $(params.service-type) service has no jib-maven-plugin; the Tekton path requires Jib for daemonless java image builds."
+          exit 1
+        fi
+    - name: build-kaniko
+      image: gcr.io/kaniko-project/executor:v1.23.2-debug
+      env:
+        - name: DOCKER_CONFIG
+          value: $(workspaces.dockerconfig.path)
+      script: |
+        #!/busybox/sh
+        set -eu
+        if [ "$(params.service-type)" != "angular" ]; then
+          echo "service-type != angular - skipping Kaniko (handled by Jib)."; exit 0
+        fi
+        /kaniko/executor \
+          --context="$(workspaces.source.path)" \
+          --dockerfile="$(workspaces.source.path)/jenkins-2026-infra/resources/angular/Dockerfile" \
+          --destination="$(params.image)"

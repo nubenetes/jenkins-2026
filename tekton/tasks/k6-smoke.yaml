@@ -1,0 +1,60 @@
+# Stage "Integration k6 Smoke Test" of the Jenkins pipeline
+# (vars/MicroservicesK6SmokePipeline.groovy / microservicesK6Smoke.groovy):
+# runs the k6 script from the infra repo against the deployed microservices.
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: k6-smoke
+spec:
+  params:
+    - name: target-namespace
+    - name: env-name
+      default: stable
+    - name: self-repo-url
+      default: https://github.com/nubenetes/jenkins-2026.git
+    - name: self-repo-branch
+      default: main
+    - name: vus
+      default: "5"
+    - name: iterations
+      default: "50"
+    - name: otlp-endpoint
+      default: ""
+  workspaces:
+    - name: source
+  steps:
+    - name: checkout-infra
+      image: alpine/git:latest
+      env:
+        - name: HOME
+          value: /tmp
+      script: |
+        #!/bin/sh
+        set -eu
+        git config --global --add safe.directory '*' || true
+        cd "$(workspaces.source.path)"
+        rm -rf k6-infra
+        GIT_LFS_SKIP_SMUDGE=1 git \
+          -c filter.lfs.smudge= -c filter.lfs.process= -c filter.lfs.required=false \
+          clone --depth 1 --branch "$(params.self-repo-branch)" \
+          "$(params.self-repo-url)" k6-infra
+    - name: run-k6
+      image: grafana/k6:2.0.0
+      env:
+        - name: K6_VUS
+          value: $(params.vus)
+        - name: K6_ITERATIONS
+          value: $(params.iterations)
+        - name: TARGET_NAMESPACE
+          value: $(params.target-namespace)
+        - name: OTEL_SERVICE_NAME
+          value: tekton-pipeline-k6-smoke
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: $(params.otlp-endpoint)
+      script: |
+        #!/bin/sh
+        set -eux
+        cd "$(workspaces.source.path)/k6-infra"
+        k6 run --vus "${K6_VUS}" --iterations "${K6_ITERATIONS}" \
+          --summary-export="$(workspaces.source.path)/k6-summary.json" \
+          jenkins/pipelines/k6/microservices-smoke.js

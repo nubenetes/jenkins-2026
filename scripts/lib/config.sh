@@ -52,6 +52,25 @@ export J2026_INGRESS_CLASS="$(yq_get ".platform.gke.ingressClassName" '')"
 export J2026_SERVICE_TYPE="$(yq_get ".platform.gke.serviceType" 'ClusterIP')"
 export J2026_USE_ROUTE="false"
 
+# --- ci engine (feature flag) ------------------------------------------------
+
+# FEATURE FLAG: JENKINS2026_CI_ENGINE, if set, overrides ci.engine from
+# config.yaml (jenkins|tekton) - same "config file is the durable default, env
+# var is the ephemeral override" pattern as JENKINS2026_OBS_MODE above. Selects
+# which CI engine up.sh/down.sh deploy and which numbered steps run (jenkins ->
+# 04-jenkins.sh/06-seed-pipelines.sh; tekton -> 04-tekton.sh/06-tekton-pipelines.sh).
+J2026_CI_ENGINE="${JENKINS2026_CI_ENGINE:-$(yq_get '.ci.engine' 'jenkins')}"
+export J2026_CI_ENGINE
+
+case "${J2026_CI_ENGINE}" in
+  jenkins|tekton) ;;
+  *)
+    log_error "Unsupported CI engine '${J2026_CI_ENGINE}' (expected jenkins|tekton)."
+    log_error "Set ci.engine in ${J2026_CONFIG_FILE} or export JENKINS2026_CI_ENGINE."
+    exit 1
+    ;;
+esac
+
 # --- jenkins -------------------------------------------------------------
 
 export J2026_JENKINS_NAMESPACE="$(yq_get '.jenkins.namespace' 'jenkins')"
@@ -73,6 +92,20 @@ if [[ -z "${J2026_JENKINS_OIDC_ADMIN_EMAIL}" ]]; then
   fi
 fi
 export J2026_JENKINS_OIDC_ADMIN_EMAIL
+
+
+# --- tekton (used when ci.engine == tekton) ----------------------------------
+
+export J2026_TEKTON_NAMESPACE="$(yq_get '.tekton.namespace' 'tekton-pipelines')"
+export J2026_TEKTON_PIPELINE_NAMESPACE="$(yq_get '.tekton.pipelineNamespace' 'tekton-ci')"
+export J2026_TEKTON_VERSION_PIPELINES="$(yq_get '.tekton.versions.pipelines' 'v1.13.1')"
+export J2026_TEKTON_VERSION_TRIGGERS="$(yq_get '.tekton.versions.triggers' 'v0.31.0')"
+export J2026_TEKTON_VERSION_DASHBOARD="$(yq_get '.tekton.versions.dashboard' 'v0.52.0')"
+export J2026_TEKTON_DASHBOARD_MODE="$(yq_get '.tekton.dashboard.mode' 'full')"
+export J2026_TEKTON_DASHBOARD_SERVICE="$(yq_get '.tekton.dashboard.serviceName' 'tekton-dashboard')"
+export J2026_TEKTON_DASHBOARD_PORT="$(yq_get '.tekton.dashboard.servicePort' '9097')"
+export J2026_TEKTON_REGISTRY_SECRET="$(yq_get '.tekton.registryCredentialsSecretName' 'tekton-registry')"
+export J2026_TEKTON_GIT_SECRET="$(yq_get '.tekton.gitCredentialsSecretName' 'tekton-git')"
 
 
 # --- observability ---------------------------------------------------------
@@ -172,21 +205,26 @@ export J2026_GATEWAY_HTTPROUTE_HEADLAMP="headlamp"
 export J2026_GATEWAY_HTTPROUTE_PGADMIN="pgadmin"
 # Grafana is only exposed in observability.mode=oss (in-cluster Grafana).
 export J2026_GATEWAY_HTTPROUTE_GRAFANA="grafana"
+# Tekton Dashboard is only exposed when ci.engine=tekton.
+export J2026_GATEWAY_HTTPROUTE_TEKTON="tekton"
 export J2026_GATEWAY_IAP_POLICY_JENKINS="jenkins-iap"
 export J2026_GATEWAY_IAP_POLICY_HEADLAMP="headlamp-iap"
 export J2026_GATEWAY_IAP_POLICY_PGADMIN="pgadmin-iap"
 export J2026_GATEWAY_IAP_POLICY_GRAFANA="grafana-iap"
+export J2026_GATEWAY_IAP_POLICY_TEKTON="tekton-iap"
 
 J2026_GATEWAY_HOST_JENKINS="$(yq_get '.gateway.hosts.jenkins' 'jenkins')"
 J2026_GATEWAY_HOST_MICROSERVICES="$(yq_get '.gateway.hosts.microservices' 'microservices')"
 J2026_GATEWAY_HOST_HEADLAMP="$(yq_get '.gateway.hosts.headlamp' 'headlamp')"
 J2026_GATEWAY_HOST_PGADMIN="$(yq_get '.gateway.hosts.pgadmin' 'pgadmin')"
 J2026_GATEWAY_HOST_GRAFANA="$(yq_get '.gateway.hosts.grafana' 'grafana')"
+J2026_GATEWAY_HOST_TEKTON="$(yq_get '.gateway.hosts.tekton' 'tekton')"
 export J2026_GATEWAY_JENKINS_HOST="${J2026_GATEWAY_HOST_JENKINS}.${J2026_GATEWAY_BASE_DOMAIN}"
 export J2026_GATEWAY_MICROSERVICES_HOST="${J2026_GATEWAY_HOST_MICROSERVICES}.${J2026_GATEWAY_BASE_DOMAIN}"
 export J2026_GATEWAY_HEADLAMP_HOST="${J2026_GATEWAY_HOST_HEADLAMP}.${J2026_GATEWAY_BASE_DOMAIN}"
 export J2026_GATEWAY_PGADMIN_HOST="${J2026_GATEWAY_HOST_PGADMIN}.${J2026_GATEWAY_BASE_DOMAIN}"
 export J2026_GATEWAY_GRAFANA_HOST="${J2026_GATEWAY_HOST_GRAFANA}.${J2026_GATEWAY_BASE_DOMAIN}"
+export J2026_GATEWAY_TEKTON_HOST="${J2026_GATEWAY_HOST_TEKTON}.${J2026_GATEWAY_BASE_DOMAIN}"
 
 
 # Headlamp's OIDC redirect URI: the public gateway URL if the gateway is

@@ -49,9 +49,20 @@ controller:
   enableRawHtmlMarkupFormatter: true
 
   # Disable the Helm chart's default JCasC configuration to prevent conflicts
-  # with our custom scripts in jenkins/casc/*.yaml
+  # with our custom scripts in jenkins/casc/*.yaml. The real JCasC is delivered
+  # as labeled ConfigMaps the config sidecar auto-reloads, created by
+  # scripts/04-jenkins.sh from jenkins/casc/* (the single source of truth) -
+  # ArgoCD installs the chart from git and can't `--set-file` those in. The no-op
+  # configScripts entry below guarantees the chart wires up JCasC
+  # (CASC_JENKINS_CONFIG) + the config-reload sidecar so those external
+  # ConfigMaps are discovered and merged.
   JCasC:
     defaultConfig: false
+    configScripts:
+      zzz-external-configmaps: |
+        # Intentionally empty. Real JCasC lives in jenkins/casc/* and is applied
+        # as labeled ConfigMaps (jenkins-jenkins-config=true) by 04-jenkins.sh;
+        # the sidecar auto-reloads them. See docs/401-JENKINS.md "GitOps".
 
   # We drive everything through pipeline agents; no executors on controller
   # (numExecutors: 0 is also the chart default, so left unset here).
@@ -72,11 +83,22 @@ controller:
       memory: "3072Mi"
 
   # Environment variables consumed by the ${VAR:-default} placeholders in
-  # jenkins/casc/*.yaml. scripts/04-jenkins.sh overrides JENKINS2026_*,
-  # MICROSERVICES_*, OTEL_* and JENKINS_URL via --set from config/config.yaml;
-  # the remaining secret-backed values come from the "jenkins-credentials"
-  # Secret created by scripts/01-namespaces.sh (all optional except the
-  # admin password, which the script generates if absent).
+  # jenkins/casc/*.yaml. This list is COMPLETE and committed (ArgoCD installs the
+  # chart from git, so there is no runtime --set/--set-file overlay anymore — see
+  # docs/401-JENKINS.md "GitOps"). Two kinds of value:
+  #   - static `value:` — project constants (platform=gke, the self/gitops repo
+  #     URLs, the registry, the in-cluster OTel/ArgoCD service DNS).
+  #   - `valueFrom secretKeyRef` on "jenkins-credentials" — the values that vary
+  #     per deployment or are secret. scripts/04-jenkins.sh patches the dynamic,
+  #     non-secret ones (public URL, repo branch, Grafana links, feature flags)
+  #     into that Secret before applying the ArgoCD Application; 01-namespaces.sh
+  #     creates the secret ones. All secret-backed entries are optional except
+  #     the admin password.
+  # controller.jenkinsUrl (location) is passed as a helm parameter by
+  # scripts/04-jenkins.sh (it varies with gateway.baseDomain), as is the
+  # banner-links checksum pod annotation that rolls the controller when the
+  # Secret-backed banner values change (ArgoCD won't roll on out-of-band Secret
+  # edits otherwise).
   containerEnv:
     - name: JENKINS_ADMIN_ID
       value: "admin"
@@ -87,21 +109,64 @@ controller:
           key: admin-password
     - name: JENKINS_URL
       value: "http://localhost:8080/"
+    # The controller's own namespace (downward API) - was injected by the script.
+    - name: JENKINS_NAMESPACE
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.namespace
+    # Public root URL (https://jenkins.<gateway.baseDomain>); patched into the
+    # Secret by scripts/04-jenkins.sh. Empty when the gateway is disabled.
+    - name: JENKINS_PUBLIC_URL
+      valueFrom:
+        secretKeyRef:
+          name: jenkins-credentials
+          key: jenkins-public-url
+          optional: true
+    # Project constants (single supported platform / fixed repos+registry+DNS).
     - name: JENKINS2026_REPO_URL
       value: "https://github.com/nubenetes/jenkins-2026.git"
-    - name: JENKINS2026_REPO_BRANCH
-      value: "main"
+    - name: JENKINS2026_GITOPS_REPO_URL
+      value: "https://github.com/nubenetes/jenkins-2026-gitops-config.git"
     - name: JENKINS2026_PLATFORM
       value: "gke"
     - name: MICROSERVICES_REGISTRY
       value: "ghcr.io/nubenetes/jenkins-2026-microservices"
     - name: OTEL_EXPORTER_OTLP_ENDPOINT
       value: "http://otel-collector-gateway.observability.svc.cluster.local:4317"
+    - name: ARGOCD_SERVER
+      value: "argocd-server.argocd.svc.cluster.local"
+    # Active branch (main|develop) - patched into the Secret by scripts/04-jenkins.sh.
+    - name: JENKINS2026_REPO_BRANCH
+      valueFrom:
+        secretKeyRef:
+          name: jenkins-credentials
+          key: repo-branch
+          optional: true
+    - name: JENKINS2026_GENAI_SERVICE_ENABLED
+      valueFrom:
+        secretKeyRef:
+          name: jenkins-credentials
+          key: genai-enabled
+          optional: true
+    - name: JENKINS2026_DEVELOP_TRACK_ENABLED
+      valueFrom:
+        secretKeyRef:
+          name: jenkins-credentials
+          key: develop-enabled
+          optional: true
     - name: GRAFANA_BASE_URL
       valueFrom:
         secretKeyRef:
           name: jenkins-credentials
           key: grafana-base-url
+          optional: true
+    # Per-observability-mode "Kubernetes Infrastructure" banner links, computed
+    # and patched into the Secret by scripts/04-jenkins.sh.
+    - name: GRAFANA_K8S_APP_LINK
+      valueFrom:
+        secretKeyRef:
+          name: jenkins-credentials
+          key: grafana-k8s-app-link
           optional: true
     # Public URL of the stable Microservices (https://microservices.<gateway.baseDomain>),
     # empty if the Gateway feature (config/config.yaml gateway.baseDomain) is
@@ -160,6 +225,14 @@ controller:
         secretKeyRef:
           name: jenkins-credentials
           key: oidc-admin-email
+          optional: true
+    # ArgoCD API token (account "jenkins"), minted by scripts/08.5-argocd.sh into
+    # the Secret. The pipeline's Deploy stage uses it to `argocd app sync`.
+    - name: ARGOCD_AUTH_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: jenkins-credentials
+          key: argocd-token
           optional: true
 
   # Chart default (podSecurityContextOverride: ~) falls back to the

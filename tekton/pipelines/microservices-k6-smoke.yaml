@@ -1,0 +1,38 @@
+# Standalone k6 smoke Pipeline - the Tekton analogue of the separate Jenkins
+# 'microservices-k6-smoke' job (vars/MicroservicesK6SmokePipeline.groovy). It can
+# be run on its own (Tekton Dashboard / kubectl create) or wired into a trigger.
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: microservices-k6-smoke
+spec:
+  params:
+    - name: target-namespace
+      default: microservices
+    - name: env-name
+      default: stable
+    - name: vus
+      default: "5"
+    - name: iterations
+      default: "50"
+    - name: self-repo-url
+      default: https://github.com/nubenetes/jenkins-2026.git
+    - name: self-repo-branch
+      default: main
+    - name: otlp-endpoint
+      default: ""
+  workspaces:
+    - name: source
+  tasks:
+    - name: k6-smoke
+      taskRef: { name: k6-smoke }
+      workspaces:
+        - { name: source, workspace: source }
+      params:
+        - { name: target-namespace, value: $(params.target-namespace) }
+        - { name: env-name, value: $(params.env-name) }
+        - { name: vus, value: $(params.vus) }
+        - { name: iterations, value: $(params.iterations) }
+        - { name: self-repo-url, value: $(params.self-repo-url) }
+        - { name: self-repo-branch, value: $(params.self-repo-branch) }
+        - { name: otlp-endpoint, value: $(params.otlp-endpoint) }
