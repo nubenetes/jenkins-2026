@@ -254,6 +254,184 @@ test/                        e2e.sh (provision → up.sh → smoke-test.sh → d
 docs/                        numbered docs (this file and siblings)
 ```
 
+## Namespaces & in-cluster Secrets
+
+> In-cluster Kubernetes `Secret`s, **not** the GitHub Actions secrets — those are
+> the *source* values and are inventoried separately in
+> [103. GitHub Secrets Inventory](./103-GITHUB_SECRETS_INVENTORY.md). This section
+> is about how, once inside the cluster, secrets are laid out across namespaces and
+> why.
+
+### Design principles
+
+1. **A Secret lives in the namespace of the component that consumes it.** There is
+   no central "secrets" namespace — `ghcr-credentials` lives where the pods that
+   pull images run (`microservices`), the Headlamp OIDC secret lives in `headlamp`,
+   the Tekton pipeline credentials live in `tekton-ci`, and so on. Locality keeps
+   RBAC tight (a component can only read its own namespace) and makes teardown clean.
+2. **The CI engine is mutually exclusive and engine-gated.** Either Jenkins **or**
+   Tekton is deployed, never both (`ci.engine`). The `jenkins` namespace and its
+   `jenkins-credentials` bundle are created **only** when `ci.engine=jenkins`; the
+   `tekton-*` namespaces and their credentials **only** when `ci.engine=tekton`.
+3. **The public ingress is engine-neutral.** The GKE Gateway and the per-app
+   HTTPRoutes live in the always-present **`platform-ingress`** namespace, so the
+   single public entry point never depends on which CI engine is running. (This was
+   not always so — see [The `platform-ingress` decoupling](#the-platform-ingress-decoupling) below.)
+4. **One exception is replicated by necessity:** the IAP OAuth client
+   (`gateway-iap-oauth`) is copied into *every* IAP-protected backend namespace,
+   because GKE requires it co-located with the backend Service — see
+   [Why the IAP secret is replicated](#why-the-gateway-iap-oauth-secret-is-replicated).
+
+### Namespace inventory
+
+| Namespace | When created | Runs / holds |
+|---|---|---|
+| `platform-ingress` | always | the GKE **Gateway** object (engine-neutral public ingress) |
+| `observability` | always | OTel Operator + Collector; OSS Grafana/Loki/Tempo/Prometheus (oss mode) |
+| `headlamp` | always | Headlamp UI + its OIDC secret + an IAP secret copy |
+| `pgadmin` / `platform-postgres` | always | pgAdmin + CNPG operator + an IAP secret copy |
+| `argocd` | always | ArgoCD (GitOps control plane) |
+| `microservices` (+ `microservices-develop`) | always | the JHipster workloads + `ghcr-credentials` |
+| `jenkins` | **only `ci.engine=jenkins`** | Jenkins controller + agents + `jenkins-credentials` + an IAP secret copy |
+| `tekton-pipelines` | **only `ci.engine=tekton`** | Tekton Pipelines/Triggers/Dashboard control plane + an IAP secret copy |
+| `tekton-ci` | **only `ci.engine=tekton`** | PipelineRuns + their credentials (`tekton-registry`/`tekton-git`/`k6-cloud`) |
+| `pipelines-as-code` | **only `ci.engine=tekton`** | PaC controller + `pac-webhook` |
+
+### In-cluster Secret inventory (the matrix)
+
+| Secret | Namespace(s) | Contents | Shared / replicated? | Created by | Consumed by |
+|---|---|---|---|---|---|
+| **`jenkins-credentials`** | `jenkins` *(jenkins-mode)* | admin-password · registry user/pass · git user/token · oidc-client-id/secret · **oidc-admin-email** · microservices URLs · k6-cloud token/project | No — Jenkins config bundle | `01-namespaces.sh` | Jenkins controller (JCasC) |
+| **`gateway-iap-oauth`** | `headlamp`, `pgadmin` (+ `grafana-oss` / `tekton-pipelines` / `jenkins` per mode) | IAP OAuth `client_id` / `client_secret` | **YES — replicated** (GKE constraint) | `01-namespaces.sh` | each ns's `GCPBackendPolicy` (IAP); `08.5` reads it (**from `headlamp`**) for ArgoCD's Google OIDC |
+| `headlamp-credentials` | `headlamp` | OIDC client id/secret (+ issuer/scopes/callback) | No | `01-namespaces.sh` | Headlamp deployment |
+| `tekton-registry` | `tekton-ci` *(tekton-mode)* | `dockerconfigjson` (ghcr.io push/pull, Jib auth) | No | `01-namespaces.sh` | PipelineRuns (build-push-image) |
+| `tekton-git` | `tekton-ci` *(tekton-mode)* | git basic-auth, annotated for `github.com` | No | `01-namespaces.sh` | clone / gitops-deploy tasks |
+| `tekton-github-webhook-secret` · `pac-webhook` | `tekton-ci` · `pipelines-as-code` *(tekton-mode)* | webhook HMAC token | No | `01-namespaces.sh` | Triggers EventListener / PaC |
+| `k6-cloud` | `tekton-ci` *(tekton-mode; same keys also in `jenkins-credentials`)* | `K6_CLOUD_TOKEN` / `K6_CLOUD_PROJECT_ID` | No | `01-namespaces.sh` | k6 tasks (`--out cloud`, the k6-app) |
+| `ghcr-credentials` | `microservices` (+ `-develop`) | `dockerconfigjson` imagePullSecret | No | `01-namespaces.sh` | microservices pods (image pull) |
+| `grafana-jenkins-ds` | `grafana-oss` *(oss + jenkins-mode)* | `apiToken` (mirror of Jenkins admin password) | No | `03-observability.sh` *(gated to jenkins-mode)* | Grafana → Jenkins datasource |
+| `grafana-cloud-credentials` / `azure-monitor-credentials` / `aws-managed-credentials` | `observability` | backend endpoint + token/SP/role per `observability.mode` | No | Day1 workflow / scripts | otel-collector exporter |
+
+### Diagram 1 — Namespace & Secret topology
+
+Each app's Secret sits in that app's namespace; the only cross-namespace **reads**
+are the two that the IAP design forces (ArgoCD pulling the OAuth client) and that
+the IAP backend policies need (the replicated client). `jenkins` is dashed — it
+exists only in jenkins-mode (replace it mentally with the `tekton-*` namespaces in
+tekton-mode).
+
+```mermaid
+graph TD
+    subgraph PI["platform-ingress (always)"]
+        GW["GKE Gateway<br/>(+ HTTPRoutes attach cross-ns)"]
+    end
+    subgraph HL["headlamp (always)"]
+        HLC["headlamp-credentials"]
+        IAP_HL["gateway-iap-oauth (copy)"]
+    end
+    subgraph PG["pgadmin (always)"]
+        IAP_PG["gateway-iap-oauth (copy)"]
+    end
+    subgraph ACD["argocd (always)"]
+        ACDsvc["ArgoCD server<br/>Google OIDC login"]
+    end
+    subgraph MS["microservices (always)"]
+        GHCR["ghcr-credentials"]
+    end
+    subgraph JN["jenkins (jenkins-mode only)"]
+        JC["jenkins-credentials"]
+        IAP_JN["gateway-iap-oauth (copy)"]
+    end
+
+    ACDsvc -. "reads IAP client<br/>for OIDC (from headlamp)" .-> IAP_HL
+    IAP_HL --> GPHL["GCPBackendPolicy<br/>headlamp IAP"]
+    IAP_PG --> GPPG["GCPBackendPolicy<br/>pgadmin IAP"]
+    IAP_JN --> GPJN["GCPBackendPolicy<br/>jenkins IAP"]
+    JC -. "JCasC (same ns only)" .-> JKS["Jenkins controller"]
+    GHCR -. "imagePullSecret" .-> POD["microservices pods"]
+
+    classDef gated stroke-dasharray: 5 5;
+    class JN,JC,IAP_JN,GPJN gated;
+```
+
+### Diagram 2 — Secret provenance flow
+
+Every in-cluster Secret originates from a GitHub Actions secret (or a Terraform
+backend output), is materialised by `01-namespaces.sh` (or `08.5`/`03`) into the
+**consumer's** namespace, and is read only from there.
+
+```mermaid
+flowchart LR
+    subgraph GH["GitHub Actions secrets"]
+        S1["IAP_OAUTH_CLIENT_ID/SECRET"]
+        S2["REGISTRY_* / GIT_*"]
+        S3["HEADLAMP_OIDC_*"]
+        S4["K6_CLOUD_* (optional)"]
+    end
+    subgraph SC["01-namespaces.sh"]
+        L["materialise per consumer ns<br/>(idempotent create-or-patch)"]
+    end
+    S1 --> L
+    S2 --> L
+    S3 --> L
+    S4 --> L
+    L --> A["gateway-iap-oauth<br/>→ headlamp / pgadmin / engine ns"]
+    L --> B["tekton-registry / tekton-git<br/>→ tekton-ci"]
+    L --> C["headlamp-credentials<br/>→ headlamp"]
+    L --> D["jenkins-credentials<br/>→ jenkins (jenkins-mode)"]
+    A --> E["GCPBackendPolicy IAP + ArgoCD OIDC"]
+    B --> F["PipelineRuns"]
+    C --> G["Headlamp"]
+    D --> H["Jenkins controller"]
+```
+
+### Why the `gateway-iap-oauth` Secret is replicated
+
+This is the one secret that legitimately lives in several namespaces — and it is a
+**hard GKE constraint, not a design smell**. A GKE `GCPBackendPolicy` that enables
+Identity-Aware Proxy references an OAuth-client `Secret` by name, and that Secret
+**must live in the same namespace as the backend `Service`** it protects. There is
+no way to point a backend policy at a Secret in another namespace, so the single
+OAuth client has to be copied into every IAP-protected backend namespace.
+
+```mermaid
+graph TD
+    GHS["GitHub secret<br/>IAP_OAUTH_CLIENT_ID/SECRET"] --> NS["01-namespaces.sh<br/>replicate to each IAP backend ns"]
+    NS --> H["headlamp/<br/>gateway-iap-oauth"]
+    NS --> P["pgadmin/<br/>gateway-iap-oauth"]
+    NS --> T["tekton-pipelines/<br/>gateway-iap-oauth<br/>(tekton-mode)"]
+    NS --> J["jenkins/<br/>gateway-iap-oauth<br/>(jenkins-mode)"]
+    H --> HP["GCPBackendPolicy → Headlamp Service"]
+    P --> PP["GCPBackendPolicy → pgAdmin Service"]
+    T --> TP["GCPBackendPolicy → Tekton Dashboard Service"]
+    J --> JP["GCPBackendPolicy → Jenkins Service"]
+    H -. "ArgoCD (no IAP, uses OIDC) reads<br/>the client from headlamp" .-> ACD["argocd/ ArgoCD server"]
+```
+
+> ArgoCD is **not** IAP-gated (it has its own Google OIDC login), but it reuses the
+> *same* OAuth client. It therefore reads `gateway-iap-oauth` from the always-present
+> `headlamp` namespace rather than minting a second client.
+
+### The `platform-ingress` decoupling
+
+Historically the repo was **Jenkins-only**, so the `jenkins` namespace doubled as
+the de-facto "platform" namespace: it was always present, so the shared GKE Gateway
+was created there and other scripts reached into it for shared-ish values. When
+Tekton became a selectable engine and the `jenkins` namespace was gated to
+jenkins-mode, that coupling surfaced as bugs. The fixes:
+
+| Coupling (when `jenkins` ns was the "platform" ns) | Fix |
+|---|---|
+| The **GKE Gateway** lived in `jenkins` → deleting the ns (or running tekton) killed all public access | Gateway moved to the engine-neutral **`platform-ingress`** namespace |
+| `08.5-argocd.sh` read the **IAP client** from `jenkins` for ArgoCD's OIDC → empty in tekton-mode | now reads `gateway-iap-oauth` from **`headlamp`** (always present) |
+| `03-observability.sh` read `jenkins-credentials` for a **Grafana→Jenkins datasource** | gated to `ci.engine=jenkins` (pointless without Jenkins) |
+| `07.5-grafana-alerts.sh` read `jenkins-credentials.oidc-admin-email` as an alert-email fallback | already guarded (`|| true`); yields empty harmlessly in tekton-mode |
+| NetworkPolicies / ResourceQuota / LimitRange / RBAC **targeting the `jenkins` ns** applied unconditionally | all gated to `ci.engine=jenkins` (the jenkins-ns NetworkPolicies live in `infrastructure/networkpolicies-jenkins.yaml`) |
+
+The end state matches the design principles above: **secrets per-app**, the IAP
+client replicated only because GKE requires it, the public ingress engine-neutral,
+and nothing reaching into `jenkins-credentials` except Jenkins itself.
+
 ## GKE Cluster Topology & Sizing
 
 The throwaway cluster is provisioned via `terraform/gke/` with a custom VPC-native configuration optimized for stability and cost. A **persistent** global static IP and Google-managed wildcard TLS certificate (`terraform/gateway-bootstrap/`) survive cluster rebuilds so DNS records never need updating.
