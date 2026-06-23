@@ -181,10 +181,18 @@ EOT
     # chart references them via the sidecar / envValueFrom (optional=true, so a
     # missing object just falls back).
     log_step "Creating jenkins-2026-grafana-dashboards ConfigMap in ${J2026_GRAFANA_OSS_NAMESPACE}"
+    # Ship only the active CI engine's overview (jenkins XOR tekton); the other would
+    # render empty. Stage to a temp dir and drop the off-engine dashboard before the
+    # Grafana sidecar imports the ConfigMap.
+    if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then _skip_ci="jenkins-overview"; else _skip_ci="tekton-overview"; fi
+    _dash_stage="$(mktemp -d)"
+    cp "${J2026_ROOT_DIR}/observability/grafana/dashboards"/*.json "${_dash_stage}/"
+    rm -f "${_dash_stage}/${_skip_ci}.json"
     kubectl create configmap jenkins-2026-grafana-dashboards \
       -n "${J2026_GRAFANA_OSS_NAMESPACE}" \
-      --from-file="${J2026_ROOT_DIR}/observability/grafana/dashboards" \
+      --from-file="${_dash_stage}" \
       --dry-run=client -o yaml | kubectl apply -f -
+    rm -rf "${_dash_stage}"
 
     # The Grafana->Jenkins datasource only makes sense when Jenkins is the CI engine
     # (and the jenkins-credentials Secret exists). Skip it in tekton mode.

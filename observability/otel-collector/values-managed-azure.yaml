@@ -183,6 +183,24 @@ config:
                 target_label: instance
               - target_label: cluster
                 replacement: jenkins-2026
+          # Tekton controller metrics (tekton_pipelines_controller_*) feed the
+          # Tekton CI dashboard when ci.engine=tekton. The controller Service
+          # exposes them on the http-metrics (9090) port.
+          - job_name: tekton-pipelines-controller
+            scrape_interval: 30s
+            kubernetes_sd_configs:
+              - role: endpoints
+                namespaces:
+                  names: [tekton-pipelines]
+            relabel_configs:
+              - source_labels: [__meta_kubernetes_service_name]
+                regex: tekton-pipelines-controller
+                action: keep
+              - source_labels: [__meta_kubernetes_endpoint_port_name]
+                regex: http-metrics
+                action: keep
+              - target_label: cluster
+                replacement: jenkins-2026
 
   processors:
     batch: {}
