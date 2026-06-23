@@ -1,55 +1,6 @@
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: default-deny
-  namespace: jenkins
-spec:
-  podSelector: {}
-  policyTypes:
-  - Ingress
-  - Egress
-  egress:
-  - to:
-    - namespaceSelector:
-        matchLabels:
-          kubernetes.io/metadata.name: kube-system
-    ports:
-    - protocol: UDP
-      port: 53
-    - protocol: TCP
-      port: 53
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: jenkins-policy
-  namespace: jenkins
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: jenkins
-  policyTypes:
-  - Ingress
-  - Egress
-  ingress:
-  - ports:
-    - protocol: TCP
-      port: 8080
-  - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 50000
-  - from:
-    - namespaceSelector:
-        matchLabels:
-          kubernetes.io/metadata.name: observability
-    ports:
-    - protocol: TCP
-      port: 8080
-  egress:
-  - {}
----
+# Engine-neutral platform NetworkPolicies (applied always by 01-namespaces.sh).
+# The Jenkins namespace policies live in networkpolicies-jenkins.yaml and are
+# applied only when ci.engine=jenkins (no jenkins namespace exists otherwise).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -131,6 +82,10 @@ spec:
   - Ingress
   - Egress
   ingress:
+  # OTLP (4317/4318) from whichever CI engine is active (jenkins OR the tekton
+  # pipeline namespaces) plus the microservices auto-instrumentation. A
+  # namespaceSelector for an absent namespace just matches nothing, so listing
+  # both engines here is safe regardless of ci.engine.
   - from:
     - namespaceSelector:
         matchLabels:
@@ -138,6 +93,12 @@ spec:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: microservices
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: tekton-ci
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: tekton-pipelines
     ports:
     - protocol: TCP
       port: 4317

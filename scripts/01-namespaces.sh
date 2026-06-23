@@ -417,6 +417,11 @@ done
 
 log_step "Applying NetworkPolicies for platform namespaces"
 kubectl apply -f "${J2026_ROOT_DIR}/infrastructure/networkpolicies.yaml"
+# Jenkins-namespace NetworkPolicies only when ci.engine=jenkins (no jenkins ns in
+# tekton mode - applying them there fails with 'namespaces "jenkins" not found').
+if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
+  kubectl apply -f "${J2026_ROOT_DIR}/infrastructure/networkpolicies-jenkins.yaml"
+fi
 
 log_info "Namespaces ready."
 

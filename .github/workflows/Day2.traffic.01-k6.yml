@@ -15,6 +15,9 @@ jobs:
   simulate-traffic:
     name: k6 Traffic Simulation
     runs-on: ubuntu-latest
+    # Manual approval gate (GitHub Environment required reviewers) - runs against a
+    # real billed cluster, same posture as Day1/Decom and the other Day2.* workflows.
+    environment: gke-production
     permissions:
       contents: read
       id-token: write

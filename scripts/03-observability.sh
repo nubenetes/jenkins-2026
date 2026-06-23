@@ -186,12 +186,16 @@ EOT
       --from-file="${J2026_ROOT_DIR}/observability/grafana/dashboards" \
       --dry-run=client -o yaml | kubectl apply -f -
 
-    log_step "Mirroring Jenkins admin password into grafana-jenkins-ds Secret (Jenkins datasource token)"
-    JENKINS_ADMIN_PASSWORD="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" -o jsonpath='{.data.admin-password}' | base64 -d)"
-    kubectl create secret generic grafana-jenkins-ds \
-      -n "${J2026_GRAFANA_OSS_NAMESPACE}" \
-      --from-literal=apiToken="${JENKINS_ADMIN_PASSWORD}" \
-      --dry-run=client -o yaml | kubectl apply -f -
+    # The Grafana->Jenkins datasource only makes sense when Jenkins is the CI engine
+    # (and the jenkins-credentials Secret exists). Skip it in tekton mode.
+    if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
+      log_step "Mirroring Jenkins admin password into grafana-jenkins-ds Secret (Jenkins datasource token)"
+      JENKINS_ADMIN_PASSWORD="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" -o jsonpath='{.data.admin-password}' | base64 -d)"
+      kubectl create secret generic grafana-jenkins-ds \
+        -n "${J2026_GRAFANA_OSS_NAMESPACE}" \
+        --from-literal=apiToken="${JENKINS_ADMIN_PASSWORD}" \
+        --dry-run=client -o yaml | kubectl apply -f -
+    fi
 
     # Public root_url only when the gateway is enabled; otherwise leave the
     # ConfigMap absent so Grafana falls back to the in-cluster default
