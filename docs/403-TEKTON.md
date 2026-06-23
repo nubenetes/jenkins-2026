@@ -289,11 +289,37 @@ kubectl create -f k6-run.yaml                 # start it
 kubectl get pipelinerun -n tekton-ci -w       # watch status
 ```
 
-**`microservices-pipeline` (the full CI) requires ALL of these params** — they
-have **no defaults**, so a run that omits any fails with `pipelineRun missing
-parameters: [service-name git-repo-url target-namespace port health-path image
-registry-host]`. It also needs the **`dockerconfig`** workspace (the
-`tekton-registry` Secret). Complete example for `gateway`:
+**`microservices-pipeline` has a valid default for every param** (the `gateway`
+service happy-path), so it runs **with zero params** — you only bind the two
+workspaces (`source` VCT + `dockerconfig` from the `tekton-registry` Secret). The
+minimal 1-click PipelineRun:
+
+```yaml
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: gateway-manual-
+  namespace: tekton-ci
+spec:
+  taskRunTemplate: {serviceAccountName: tekton-ci}
+  pipelineRef: {name: microservices-pipeline}     # all params default to 'gateway'
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec: {accessModes: ["ReadWriteOnce"], resources: {requests: {storage: 4Gi}}}
+    - name: dockerconfig
+      secret:
+        secretName: tekton-registry
+        items: [{key: .dockerconfigjson, path: config.json}]
+```
+
+> From the **Tekton Dashboard**: *Pipelines → microservices-pipeline → Create
+> PipelineRun*, leave the params as-is (defaults), set SA `tekton-ci`, bind `source`
+> as a VolumeClaimTemplate and `dockerconfig` to the `tekton-registry` Secret → Create.
+
+To build a **different service**, override `service-name` *and* its related params
+together. Full example for `gateway` (every param spelled out — copy + tweak for
+`jhipstersamplemicroservice`):
 
 ```yaml
 # gateway-run.yaml
