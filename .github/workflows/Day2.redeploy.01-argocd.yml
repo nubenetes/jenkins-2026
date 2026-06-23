@@ -128,6 +128,11 @@ jobs:
         run: ./scripts/00-check-prereqs.sh
 
       - name: Redeploy ArgoCD + GitOps apps (scripts/08.5-argocd.sh)
+        # JENKINS_OIDC_ADMIN_EMAIL grants that Google account ArgoCD admin via the
+        # email claim (scopes include 'email'); without it SSO users see an empty
+        # app list. Same secret Day1 passes.
+        env:
+          JENKINS_OIDC_ADMIN_EMAIL: ${{ secrets.JENKINS_OIDC_ADMIN_EMAIL }}
         run: ./scripts/08.5-argocd.sh
 
       - name: Summary
