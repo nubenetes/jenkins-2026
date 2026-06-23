@@ -119,6 +119,9 @@ jobs:
           IAP_OAUTH_CLIENT_SECRET: ${{ secrets.IAP_OAUTH_CLIENT_SECRET }}
           TEKTON_GITHUB_WEBHOOK_SECRET: ${{ secrets.TEKTON_GITHUB_WEBHOOK_SECRET }}
           PAC_WEBHOOK_SECRET: ${{ secrets.PAC_WEBHOOK_SECRET }}
+          # Optional Grafana Cloud k6 (k6-app) streaming for the k6 smoke pipeline.
+          K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
+          K6_CLOUD_PROJECT_ID: ${{ secrets.K6_CLOUD_PROJECT_ID }}
 
       - name: Redeploy Tekton control plane + Dashboard (scripts/04-tekton.sh)
         run: ./scripts/04-tekton.sh
