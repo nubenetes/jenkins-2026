@@ -65,8 +65,9 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
   its children): `platform-postgres/` (the CNPG operator + pgAdmin that
   administers it), `observability-oss/`, which deploys the in-cluster OSS
   stack (kube-prometheus-stack/Loki/Tempo) when `observability.mode=oss`, and
-  `tekton/` (with `components/*/kustomization.yaml` pulling the pinned upstream
-  Tekton release YAMLs as kustomize remote resources + the `tekton/`
+  `tekton/` (with `components/*/` holding the **vendored** pinned upstream Tekton
+  release YAMLs — Tekton ships recent releases only as GitHub assets, not GCS, and
+  a github.com URL is git-misclassified by kustomize — plus the `tekton/`
   pipelines-as-code), applied by `04-tekton.sh` when `ci.engine=tekton`. Because of
   this, `scripts/up.sh` installs ArgoCD (`08.5`) **before** observability
   (`03`), and `03-observability.sh` (oss) applies the app-of-apps + its

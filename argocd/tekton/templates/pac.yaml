@@ -1,0 +1,31 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tekton-pac
+  namespace: argocd
+  annotations:
+    # PaC ships its own Repository CRD - compute the diff server-side.
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+    # Wave 1: needs the Tekton Pipelines install (wave 0). Installs into its own
+    # 'pipelines-as-code' namespace. The Repository CRs (wave 2, in tekton/) need
+    # this CRD to exist first.
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL | quote }}
+    targetRevision: {{ .Values.targetRevision | quote }}
+    path: argocd/tekton/components/pac
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: pipelines-as-code
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - Replace=true

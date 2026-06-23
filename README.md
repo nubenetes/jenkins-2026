@@ -178,6 +178,7 @@ A self-contained proof of concept that deploys **Jenkins** on **Kubernetes**, co
 - [Tooling: kustomize vs Helm (and why both)](./docs/403-TEKTON.md#tooling-kustomize-vs-helm-and-why-both)
 - [Dashboard on the internet, behind Google IAP](./docs/403-TEKTON.md#dashboard-on-the-internet-behind-google-iap)
 - [The pipeline, ported](./docs/403-TEKTON.md#the-pipeline-ported)
+- [Pipelines-as-Code (PaC): Git-driven CI](./docs/403-TEKTON.md#pipelines-as-code-pac-git-driven-ci)
 
 ---
 

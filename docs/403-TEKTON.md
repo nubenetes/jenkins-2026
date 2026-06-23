@@ -64,15 +64,19 @@ exactly like the other app-of-apps), which renders four child Applications:
 
 | Child Application | Source | Sync wave | Notes |
 |---|---|---|---|
-| `tekton-pipelines` | `argocd/tekton/components/pipelines` (kustomize → pinned `v1.13.1` release) | 0 | the engine + CRDs |
-| `tekton-triggers` | `argocd/tekton/components/triggers` (pinned `v0.31.0` release + interceptors) | 1 | API/webhook-driven runs |
-| `tekton-dashboard` | `argocd/tekton/components/dashboard` (pinned `v0.52.0` `release-full.yaml`) | 1 | **read-write** GUI; no native auth |
+| `tekton-pipelines` | `argocd/tekton/components/pipelines` (vendored `v1.13.1` `release.yaml`) | 0 | the engine + CRDs |
+| `tekton-triggers` | `argocd/tekton/components/triggers` (vendored `v0.36.0` release + interceptors) | 1 | API/webhook-driven runs |
+| `tekton-dashboard` | `argocd/tekton/components/dashboard` (vendored `v0.69.0` `release-full.yaml`) | 1 | **read-write** GUI; no native auth |
+| `tekton-pruner` | `argocd/tekton/components/pruner` (vendored `v0.4.0`) | 1 | GC of completed runs — `historyLimit: 20` (parity with Jenkins `buildDiscarder`) |
+| `tekton-chains` | `argocd/tekton/components/chains` (vendored `v0.27.1`) | 1 | supply-chain: x509/cosign image signing + in-toto SLSA provenance + Rekor; own `tekton-chains` ns |
+| `tekton-pac` | `argocd/tekton/components/pac` (vendored `v0.48.0`) | 1 | Pipelines-as-Code controller; own `pipelines-as-code` ns; webhook receiver exposed at `pac.<baseDomain>` |
 | `tekton-pipeline-as-code` | `tekton/` (Tasks/Pipelines/Triggers/RBAC + the `tekton-ci` SA) | 2 | the ported pipeline; lands in the `tekton-ci` namespace |
 
-The pinned component versions live in
-`argocd/tekton/components/*/kustomization.yaml` (kustomize **remote resources**,
-since Tekton has no official Helm chart) — kept in sync with `ci.tekton.versions`
-in [`config/config.yaml`](../config/config.yaml). The large Tekton CRDs are
+The component manifests are **vendored** under `argocd/tekton/components/*/`
+(`release*.yaml`) — Tekton now ships these only as GitHub release assets (not on
+the GCS bucket), and a `github.com` URL would be misclassified by kustomize as a
+git repo, so vendoring is the reliable, auditable choice. Versions are kept in
+sync with `ci.tekton.versions` in [`config/config.yaml`](../config/config.yaml). The large Tekton CRDs are
 handled the same way as the CNPG operator (`ServerSideApply=true` + `Replace=true`
 + `ServerSideDiff=true`). The credential Secrets are **not** GitOps-managed (they
 hold env-sourced secrets) — `01-namespaces.sh` / `08.5-argocd.sh` create them
@@ -88,7 +92,7 @@ everywhere. The choice per layer:
 | Layer | Tool used | Why this tool (and not the other) |
 |---|---|---|
 | **App-of-apps parent** (`argocd/tekton/`) | **Helm** | The wrapper must *template* `repoURL`/`targetRevision` (and could template versions) down into the child Applications. That per-environment templating is exactly what Helm does cleanly and what the repo already does for `observability-oss`/`platform-postgres`. Kustomize templates this only awkwardly (vars/replacements). |
-| **Upstream components** (Pipelines / Triggers / Dashboard) | **kustomize** (remote resource → pinned release YAML) + a `config-tracing` patch | **Tekton has no official Helm chart.** A kustomize *remote resource* pulls the exact, immutable, **official** release (`…/previous/<ver>/release.yaml`) and lets us patch it (OTel `config-tracing`) without forking. Helm here would mean adopting an unofficial community chart — version lag + a third-party trust dependency for a security-sensitive CI engine. |
+| **Upstream components** (Pipelines / Triggers / Dashboard) | **kustomize** over the pinned official release YAML | **Tekton has no official Helm chart.** Triggers/Dashboard are pulled as kustomize *remote resources* from the GCS release bucket; **Pipelines is vendored** (`release.yaml` committed in-tree) because v1.7+ is published only as a GitHub release asset (not on the GCS bucket), and a `github.com` URL is misclassified by kustomize as a git repo. Helm here would mean adopting an unofficial community chart — version lag + a third-party trust dependency for a security-sensitive CI engine. |
 | **Pipelines-as-code** (`tekton/` Tasks/Pipelines/Triggers/RBAC) | **plain manifests** (ArgoCD directory source) | Static custom resources with no per-environment templating need; neither Helm nor kustomize adds value. Per-run values are supplied as Tekton **params** at `PipelineRun` time, not at apply time. |
 
 ### Why not "all Helm"
@@ -96,7 +100,7 @@ everywhere. The choice per layer:
 There is **no official Tekton Helm chart** — upstream ships release YAMLs. Using
 a community chart would (a) rarely carry the exact pinned version (e.g.
 `v1.13.1`), and (b) insert a third party into the supply chain of the CI engine.
-Pinning the official release via a kustomize remote resource is the stronger
+Pinning the official, vendored release manifest is the stronger
 posture. (Contrast: `observability-oss` *does* use Helm for its children —
 because kube-prometheus-stack/Loki/Tempo *have* well-maintained official charts.)
 
@@ -109,10 +113,10 @@ environment. Helm values do this in one line; kustomize would need clunky
 
 ### The one trade-off
 
-Because a kustomize remote-resource URL can't read Helm values, the component
-**versions are pinned in `argocd/tekton/components/*/kustomization.yaml`**, not
-flowed from `config.yaml`. `ci.tekton.versions` documents the intended versions;
-keep the two in sync when bumping. (An optional future refinement is to turn the
+Because the component manifests are vendored files (not Helm-templated), the
+**versions are pinned by the vendored `argocd/tekton/components/*/release*.yaml`**,
+not flowed from `config.yaml`. `ci.tekton.versions` documents the intended
+versions; keep the two in sync when bumping (re-download the release file). (An optional future refinement is to turn the
 `tekton/` pipelines-as-code into a small Helm chart to inject the observability
 namespace and tool-image versions — but the *component* versions would still
 live in the kustomizations regardless.)
@@ -174,8 +178,109 @@ namespace, from the same `REGISTRY_*` / `GIT_*` env the Jenkins path consumes:
 `tekton/triggers/` installs an `EventListener` + `TriggerTemplate` +
 `TriggerBinding` (GitHub HMAC interceptor) so runs can be kicked via API/webhook.
 The upstream JHipster app repos aren't owned by this project, so push webhooks
-can't be wired to them — the **primary trigger is the seed script**; the
-EventListener is for parity and manual/CI re-runs.
+can't be wired to them — for the seed-script CI model the EventListener is for
+parity and manual/CI re-runs. For full Git-driven CI see **Pipelines-as-Code**
+below, which supersedes hand-rolled Triggers.
+
+## Pipelines-as-Code (PaC): Git-driven CI
+
+> **Naming:** `tektoncd/pipelines-as-code` (PaC) is a **distinct upstream
+> product** — not to be confused with the `tekton-pipeline-as-code` ArgoCD
+> Application (which is just the name for syncing the `tekton/` Tasks/Pipelines
+> dir). PaC is the modern, Git-driven Tekton CI model (also what OpenShift
+> Pipelines uses): `.tekton/*.yaml` PipelineRuns live **in each app repo** and
+> run automatically on **PR/push**, reporting status back to GitHub.
+
+### Prerequisite: owning the repos (fork to `nubenetes/*`)
+
+PaC must integrate with the Git provider of the repos it builds — impossible on
+the upstream `jhipster/*` repos (not ours). So the JHipster sample apps are
+**forked into the `nubenetes` org** (`nubenetes/jhipster-sample-app-gateway`,
+`nubenetes/jhipster-sample-app-microservice`) and
+[`services.yaml`](../jenkins/pipelines/seed/services.yaml) points at the forks;
+PaC then drives CI on those owned forks (with `.tekton/` PipelineRuns committed in each).
+
+### Two ways to connect PaC to GitHub — and which we use
+
+| Method | Setup | Automatable? | Status reporting |
+|---|---|---|---|
+| **GitHub App** | one App on the org, installed on the repos | ❌ needs a **manual browser step** (manifest "Create"/UI; there is no `gh app create` / API to create an App headlessly) | Checks API (rich) + native `/retest` |
+| **Webhook + token** ✅ **(chosen)** | per-repo webhook + a PAT | ✅ **fully scriptable** via `gh`/API on repos we own | commit statuses |
+
+**Decision: the webhook method**, because it is **end-to-end automatable** for
+repos we own — no human-in-the-browser. The trade-off (status surfaced as commit
+statuses rather than the richer Checks API, and no App-native `/retest`) is
+acceptable for this PoC.
+
+### How the webhook method is wired (all automated)
+
+- **PaC controller exposed publicly** via an `HTTPRoute` (`pac.<baseDomain>` →
+  `pipelines-as-code-controller:8080`) — **without IAP** (GitHub must reach it;
+  it is protected by the webhook **HMAC secret** instead).
+- A PaC **`Repository` CR** per fork (in the pipeline namespace) referencing a
+  Secret with the **PAT** (`github.token`, reusing `GIT_TOKEN`, `repo` scope —
+  used to clone and to post commit statuses) and the **webhook secret**.
+- A **webhook on each fork**, created via `gh api repos/nubenetes/<repo>/hooks`
+  (URL = the PaC controller route, `secret` = the webhook secret, events =
+  `pull_request`, `push`, `issue_comment`). The `gh`/`GIT_TOKEN` `repo` scope
+  already covers webhook management on org-owned repos — so this needs **no
+  manual GitHub UI**.
+- **`.tekton/*.yaml`** committed in each fork: PipelineRuns annotated
+  `pipelinesascode.tekton.dev/on-event` / `on-target-branch`, resolving the
+  shared Tasks.
+- New GitHub Actions secret **`PAC_WEBHOOK_SECRET`** (plus the existing
+  `GIT_TOKEN`) is wired into the cluster Secret by the install scripts.
+
+### GitHub App — how it *would* be configured (documented, not used)
+
+Kept for reference in case the App's richer Checks integration is ever wanted
+(it replaces the per-repo webhooks with a single org-level App):
+
+1. **Org `nubenetes` → Settings → Developer settings → GitHub Apps → New GitHub
+   App** (or the guided `tkn pac bootstrap github-app`, which runs the same
+   manifest flow).
+2. **Webhook URL** = `https://pac.<baseDomain>`; set a **webhook secret**.
+3. **Repository permissions**: Checks R/W, Contents R, Issues R/W, Metadata R,
+   Pull requests R/W, Commit statuses R/W. **Subscribe to events**: Check run,
+   Check suite, Commit comment, Issue comment, Pull request, Push.
+4. **Generate a private key** (`.pem`), note the **App ID**, and **Install** the
+   App on the `nubenetes` org (selected repos or all).
+5. Provide `PAC_GITHUB_APPLICATION_ID`, `PAC_GITHUB_PRIVATE_KEY`,
+   `PAC_WEBHOOK_SECRET` (e.g. `gh secret set …`) → wired into the cluster Secret
+   `pipelines-as-code-secret`.
+
+**Why it is not used:** creating the GitHub App is **not headless** — the
+manifest flow still requires a human to click "Create GitHub App" / "Install" in
+the browser, and there is no `gh app create` (nor a REST endpoint) to create an
+App from nothing. The **webhook method achieves the same on org-owned forks
+entirely via `gh`/API**, which fits this project's "automate everything" goal —
+hence it is preferred.
+
+## Pruner & Chains (housekeeping + supply chain)
+
+Two more child Applications round out the Tekton stack:
+
+- **Pruner** (`v0.4.0`) — garbage-collects completed PipelineRuns/TaskRuns. Its
+  `tekton-pruner-default-spec` is patched to `historyLimit: 20`, mirroring the
+  Jenkins pipelines' `buildDiscarder(numToKeepStr: '20')`. No extra setup.
+- **Chains** (`v0.27.1`) — supply-chain security: signs the built container
+  images and emits **in-toto SLSA provenance** attestations, storing OCI
+  signatures alongside the image in ghcr.io and recording them in the public
+  **Rekor** transparency log (`chains-config` patched in the kustomization). This
+  complements the pipeline's existing Semgrep/CodeQL/Trivy scanning
+  ([601. DevSecOps](./601-DEVSECOPS.md)).
+
+  **One-time signing key:** Chains' `x509` signer needs a cosign keypair in the
+  `signing-secrets` Secret (the release ships only an empty placeholder; ArgoCD
+  is told to ignore its `data` so it never overwrites the real key). Generate it
+  once with cosign — it writes the key straight into the cluster Secret:
+
+  ```bash
+  cosign generate-key-pair k8s://tekton-chains/signing-secrets
+  ```
+
+  Until that runs, Chains deploys and watches runs but can't sign (it logs a
+  missing-key error). The public key it prints can be shared for verification.
 
 ## Observability
 
@@ -185,9 +290,9 @@ lands in Tempo/Loki/Prometheus alongside everything else. See
 [301. Observability](./301-OBSERVABILITY.md).
 
 > **Follow-up:** Tekton *controller* OpenTelemetry tracing (PipelineRun/TaskRun
-> spans) is not wired yet — the v1.13.1 release ships no `config-tracing`
-> ConfigMap to patch, so enabling it means adding that ConfigMap as a new
-> resource in `argocd/tekton/components/pipelines`.
+> spans) is not wired yet — the vendored `release.yaml` ships a `config-tracing`
+> ConfigMap that could be patched (in the pipelines kustomization) to point at
+> the in-cluster collector.
 
 ---
 

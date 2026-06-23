@@ -1,0 +1,35 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tekton-chains
+  namespace: argocd
+  annotations:
+    # Wave 1: needs the Tekton Pipelines install (wave 0) - it observes
+    # TaskRuns/PipelineRuns to sign + attest. Installs into its own namespace.
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL | quote }}
+    targetRevision: {{ .Values.targetRevision | quote }}
+    path: argocd/tekton/components/chains
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: tekton-chains
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    # The signing-secrets Secret is generated out-of-band (cosign) and must NOT
+    # be pruned/overwritten by ArgoCD - the release ships only an empty placeholder.
+    ignoreDifferences:
+      - group: ""
+        kind: Secret
+        name: signing-secrets
+        jsonPointers:
+          - /data

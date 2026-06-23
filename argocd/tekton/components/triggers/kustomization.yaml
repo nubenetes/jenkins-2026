@@ -1,9 +1,14 @@
-# Tekton Triggers (controller + webhook) and the core interceptors, pulled as
-# pinned upstream release kustomize remote resources.
+# Tekton Triggers (controller + webhook) and the core interceptors, VENDORED
+# (release.yaml + interceptors.yaml in this dir). Tekton publishes recent
+# releases only as GitHub release assets (not on the GCS bucket), and a
+# github.com URL is misclassified by kustomize as a git repo - so vendoring the
+# files is the reliable, auditable approach.
 #
-# Pinned version - keep in sync with config/config.yaml ci.tekton.versions.triggers.
+# Source: https://github.com/tektoncd/triggers/releases/download/v0.36.0/{release,interceptors}.yaml
+# (v0.36.0 = latest). To bump: re-download both from the matching tag and update
+# config/config.yaml ci.tekton.versions.triggers.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
-  - https://storage.googleapis.com/tekton-releases/triggers/previous/v0.31.0/release.yaml
-  - https://storage.googleapis.com/tekton-releases/triggers/previous/v0.31.0/interceptors.yaml
+  - release.yaml
+  - interceptors.yaml
