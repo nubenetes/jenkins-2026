@@ -77,10 +77,11 @@ The mode suffix is the uppercased, hyphen-to-underscore form of `observability.m
 | `GRAFANA_ALERT_EMAIL` | all modes (fallback) | optional |
 
 **`GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD`**
-The email address that receives Grafana Cloud alert notifications. **Must be a member of the Grafana Cloud org** — Grafana Cloud's provisioning API rejects contact points addressed to emails that are not registered org members, even if the email belongs to the account owner. Set this whenever your Grafana Cloud org email differs from `JENKINS_OIDC_ADMIN_EMAIL`.
+The email address that receives Grafana Cloud alert notifications. **Must be a member of the Grafana Cloud org** — Grafana Cloud's provisioning API rejects contact points addressed to emails that are not registered org members, even if the email belongs to the account owner. Set this whenever your Grafana Cloud org email differs from `JENKINS_OIDC_ADMIN_EMAIL` (use the same identity you sign in to Grafana Cloud with).
 ```bash
 gh secret set GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD --body "you@example.com"
 ```
+> **Symptom this fixes.** If `scripts/07.5-grafana-alerts.sh` logs `Grafana API POST /api/v1/provisioning/contact-points → HTTP 400 {"message":"invalid object specification: one or many email addresses specified in the integration are not members of this organization"}`, the resolved alert email is not an org member — set this secret to an org-member address. The run is **not** failed by this: alert *rules* are still provisioned; only the email contact point and notification policy are skipped until the address is valid.
 
 **`GRAFANA_ALERT_EMAIL_OSS` / `GRAFANA_ALERT_EMAIL_MANAGED_AZURE` / `GRAFANA_ALERT_EMAIL_MANAGED_AWS`**
 Per-mode overrides for OSS and managed backends. Omit if the correct address is already in `JENKINS_OIDC_ADMIN_EMAIL` (the cluster default).
