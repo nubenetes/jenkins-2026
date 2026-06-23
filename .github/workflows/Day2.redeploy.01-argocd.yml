@@ -19,6 +19,14 @@ name: "Day2.redeploy.01 ArgoCD"
 on:
   workflow_dispatch:
     inputs:
+      ci_engine:
+        description: "CI engine the cluster runs (must match the live cluster): jenkins | tekton"
+        required: true
+        default: "jenkins"
+        type: choice
+        options:
+          - jenkins
+          - tekton
       git_ref:
         description: "Git branch, tag, or SHA to check out (leave empty to use the branch/tag selected in 'Use workflow from' above)"
         required: false
@@ -35,6 +43,11 @@ concurrency:
 
 env:
   TF_VERSION: "1.15.6"
+  # Selects the jenkins vs tekton path in scripts/lib/config.sh + 08.5-argocd.sh -
+  # notably WHERE the ArgoCD API token is stored: jenkins-credentials (jenkins ns)
+  # vs the tekton-argocd Secret (tekton-ci ns). Must match the live cluster, else
+  # 08.5 fails on the absent jenkins namespace in tekton mode.
+  JENKINS2026_CI_ENGINE: ${{ inputs.ci_engine }}
 
 jobs:
   redeploy-argocd:
@@ -124,7 +137,8 @@ jobs:
             echo "### ArgoCD redeployed"
             echo
             echo "Re-applied \`scripts/08.5-argocd.sh\`: ArgoCD Helm upgrade, OIDC/RBAC,"
-            echo "the Jenkins API token, and the GitOps Applications it owns"
+            echo "the CI engine's ArgoCD API token (jenkins-credentials or tekton-argocd"
+            echo "per ci_engine=\`${{ inputs.ci_engine }}\`), and the GitOps Applications it owns"
             echo "(platform-postgres, External Secrets, Headlamp, microservices AppSet)"
             echo "against the cluster from the last **Day1.cluster.01 GKE** run."
           } >> "${GITHUB_STEP_SUMMARY}"
