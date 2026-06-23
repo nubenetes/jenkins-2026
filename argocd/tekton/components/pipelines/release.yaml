@@ -173,6 +173,9 @@ rules:
   - apiGroups: ["tekton.dev"]
     resources: ["tasks", "taskruns", "pipelines", "pipelineruns", "customruns"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
 
 ---
 # Copyright 2020 The Tekton Authors
@@ -583,8 +586,8 @@ metadata:
   labels:
     app.kubernetes.io/instance: default
     app.kubernetes.io/part-of: tekton-pipelines
-    pipeline.tekton.dev/release: "v1.9.4"
-    version: "v1.9.4"
+    pipeline.tekton.dev/release: "v1.13.1"
+    version: "v1.13.1"
 spec:
   group: tekton.dev
   preserveUnknownFields: false
@@ -1419,8 +1422,8 @@ metadata:
   labels:
     app.kubernetes.io/instance: default
     app.kubernetes.io/part-of: tekton-pipelines
-    pipeline.tekton.dev/release: "v1.9.4"
-    version: "v1.9.4"
+    pipeline.tekton.dev/release: "v1.13.1"
+    version: "v1.13.1"
 spec:
   group: tekton.dev
   preserveUnknownFields: false
@@ -2807,8 +2810,8 @@ metadata:
   labels:
     app.kubernetes.io/instance: default
     app.kubernetes.io/part-of: tekton-pipelines
-    pipeline.tekton.dev/release: "v1.9.4"
-    version: "v1.9.4"
+    pipeline.tekton.dev/release: "v1.13.1"
+    version: "v1.13.1"
 spec:
   group: tekton.dev
   preserveUnknownFields: false
@@ -2981,7 +2984,9 @@ spec:
                           - name
                         properties:
                           name:
-                            description: Name of the environment variable. Must be a C_IDENTIFIER.
+                            description: |-
+                              Name of the environment variable.
+                              May consist of any printable ASCII characters except '='.
                             type: string
                           value:
                             description: |-
@@ -3034,6 +3039,42 @@ spec:
                                     type: string
                                   fieldPath:
                                     description: Path of the field to select in the specified API version.
+                                    type: string
+                                x-kubernetes-map-type: atomic
+                              fileKeyRef:
+                                description: |-
+                                  FileKeyRef selects a key of the env file.
+                                  Requires the EnvFiles feature gate to be enabled.
+                                type: object
+                                required:
+                                  - key
+                                  - path
+                                  - volumeName
+                                properties:
+                                  key:
+                                    description: |-
+                                      The key within the env file. An invalid key will prevent the pod from starting.
+                                      The keys defined within a source may consist of any printable ASCII characters except '='.
+                                      During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                    type: string
+                                  optional:
+                                    description: |-
+                                      Specify whether the file or its key must be defined. If the file or key
+                                      does not exist, then the env var is not published.
+                                      If optional is set to true and the specified key does not exist,
+                                      the environment variable will not be set in the Pod's containers.
+
+                                      If optional is set to false and the specified key does not exist,
+                                      an error will be returned during Pod creation.
+                                    type: boolean
+                                    default: false
+                                  path:
+                                    description: |-
+                                      The path within the volume from which to select the file.
+                                      Must be relative and may not contain the '..' path or start with '..'.
+                                    type: string
+                                  volumeName:
+                                    description: The name of the volume mount containing the env file.
                                     type: string
                                 x-kubernetes-map-type: atomic
                               resourceFieldRef:
@@ -3197,9 +3238,10 @@ spec:
                           operator:
                             description: |-
                               Operator represents a key's relationship to the value.
-                              Valid operators are Exists and Equal. Defaults to Equal.
+                              Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
                               Exists is equivalent to wildcard for value, so that a pod can
                               tolerate all taints of a particular category.
+                              Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
                             type: string
                           tolerationSeconds:
                             description: |-
@@ -3343,7 +3385,6 @@ spec:
                               - Ignore: nodeAffinity/nodeSelector are ignored. All nodes are included in the calculations.
 
                               If this value is nil, the behavior is equivalent to the Honor policy.
-                              This is a beta-level feature default enabled by the NodeInclusionPolicyInPodTopologySpread feature flag.
                             type: string
                           nodeTaintsPolicy:
                             description: |-
@@ -3354,7 +3395,6 @@ spec:
                               - Ignore: node taints are ignored. All nodes are included.
 
                               If this value is nil, the behavior is equivalent to the Ignore policy.
-                              This is a beta-level feature default enabled by the NodeInclusionPolicyInPodTopologySpread feature flag.
                             type: string
                           topologyKey:
                             description: |-
@@ -3503,7 +3543,7 @@ spec:
                               Claims lists the names of resources, defined in spec.resourceClaims,
                               that are used by this container.
 
-                              This is an alpha field and requires enabling the
+                              This field depends on the
                               DynamicResourceAllocation feature gate.
 
                               This field is immutable. It can only be set for containers.
@@ -3591,7 +3631,7 @@ spec:
                                     Claims lists the names of resources, defined in spec.resourceClaims,
                                     that are used by this container.
 
-                                    This is an alpha field and requires enabling the
+                                    This field depends on the
                                     DynamicResourceAllocation feature gate.
 
                                     This field is immutable. It can only be set for containers.
@@ -3664,7 +3704,7 @@ spec:
                                     Claims lists the names of resources, defined in spec.resourceClaims,
                                     that are used by this container.
 
-                                    This is an alpha field and requires enabling the
+                                    This field depends on the
                                     DynamicResourceAllocation feature gate.
 
                                     This field is immutable. It can only be set for containers.
@@ -3796,7 +3836,9 @@ spec:
                                 - name
                               properties:
                                 name:
-                                  description: Name of the environment variable. Must be a C_IDENTIFIER.
+                                  description: |-
+                                    Name of the environment variable.
+                                    May consist of any printable ASCII characters except '='.
                                   type: string
                                 value:
                                   description: |-
@@ -3849,6 +3891,42 @@ spec:
                                           type: string
                                         fieldPath:
                                           description: Path of the field to select in the specified API version.
+                                          type: string
+                                      x-kubernetes-map-type: atomic
+                                    fileKeyRef:
+                                      description: |-
+                                        FileKeyRef selects a key of the env file.
+                                        Requires the EnvFiles feature gate to be enabled.
+                                      type: object
+                                      required:
+                                        - key
+                                        - path
+                                        - volumeName
+                                      properties:
+                                        key:
+                                          description: |-
+                                            The key within the env file. An invalid key will prevent the pod from starting.
+                                            The keys defined within a source may consist of any printable ASCII characters except '='.
+                                            During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                          type: string
+                                        optional:
+                                          description: |-
+                                            Specify whether the file or its key must be defined. If the file or key
+                                            does not exist, then the env var is not published.
+                                            If optional is set to true and the specified key does not exist,
+                                            the environment variable will not be set in the Pod's containers.
+
+                                            If optional is set to false and the specified key does not exist,
+                                            an error will be returned during Pod creation.
+                                          type: boolean
+                                          default: false
+                                        path:
+                                          description: |-
+                                            The path within the volume from which to select the file.
+                                            Must be relative and may not contain the '..' path or start with '..'.
+                                          type: string
+                                        volumeName:
+                                          description: The name of the volume mount containing the env file.
                                           type: string
                                       x-kubernetes-map-type: atomic
                                     resourceFieldRef:
@@ -4012,9 +4090,10 @@ spec:
                                 operator:
                                   description: |-
                                     Operator represents a key's relationship to the value.
-                                    Valid operators are Exists and Equal. Defaults to Equal.
+                                    Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
                                     Exists is equivalent to wildcard for value, so that a pod can
                                     tolerate all taints of a particular category.
+                                    Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
                                   type: string
                                 tolerationSeconds:
                                   description: |-
@@ -4158,7 +4237,6 @@ spec:
                                     - Ignore: nodeAffinity/nodeSelector are ignored. All nodes are included in the calculations.
 
                                     If this value is nil, the behavior is equivalent to the Honor policy.
-                                    This is a beta-level feature default enabled by the NodeInclusionPolicyInPodTopologySpread feature flag.
                                   type: string
                                 nodeTaintsPolicy:
                                   description: |-
@@ -4169,7 +4247,6 @@ spec:
                                     - Ignore: node taints are ignored. All nodes are included.
 
                                     If this value is nil, the behavior is equivalent to the Ignore policy.
-                                    This is a beta-level feature default enabled by the NodeInclusionPolicyInPodTopologySpread feature flag.
                                   type: string
                                 topologyKey:
                                   description: |-
@@ -4633,6 +4710,128 @@ spec:
                                                 type: string
                                             x-kubernetes-map-type: atomic
                                       x-kubernetes-list-type: atomic
+                                podCertificate:
+                                  description: |-
+                                    Projects an auto-rotating credential bundle (private key and certificate
+                                    chain) that the pod can use either as a TLS client or server.
+
+                                    Kubelet generates a private key and uses it to send a
+                                    PodCertificateRequest to the named signer.  Once the signer approves the
+                                    request and issues a certificate chain, Kubelet writes the key and
+                                    certificate chain to the pod filesystem.  The pod does not start until
+                                    certificates have been issued for each podCertificate projected volume
+                                    source in its spec.
+
+                                    Kubelet will begin trying to rotate the certificate at the time indicated
+                                    by the signer using the PodCertificateRequest.Status.BeginRefreshAt
+                                    timestamp.
+
+                                    Kubelet can write a single file, indicated by the credentialBundlePath
+                                    field, or separate files, indicated by the keyPath and
+                                    certificateChainPath fields.
+
+                                    The credential bundle is a single file in PEM format.  The first PEM
+                                    entry is the private key (in PKCS#8 format), and the remaining PEM
+                                    entries are the certificate chain issued by the signer (typically,
+                                    signers will return their certificate chain in leaf-to-root order).
+
+                                    Prefer using the credential bundle format, since your application code
+                                    can read it atomically.  If you use keyPath and certificateChainPath,
+                                    your application must make two separate file reads. If these coincide
+                                    with a certificate rotation, it is possible that the private key and leaf
+                                    certificate you read may not correspond to each other.  Your application
+                                    will need to check for this condition, and re-read until they are
+                                    consistent.
+
+                                    The named signer controls chooses the format of the certificate it
+                                    issues; consult the signer implementation's documentation to learn how to
+                                    use the certificates it issues.
+                                  type: object
+                                  required:
+                                    - keyType
+                                    - signerName
+                                  properties:
+                                    certificateChainPath:
+                                      description: |-
+                                        Write the certificate chain at this path in the projected volume.
+
+                                        Most applications should use credentialBundlePath.  When using keyPath
+                                        and certificateChainPath, your application needs to check that the key
+                                        and leaf certificate are consistent, because it is possible to read the
+                                        files mid-rotation.
+                                      type: string
+                                    credentialBundlePath:
+                                      description: |-
+                                        Write the credential bundle at this path in the projected volume.
+
+                                        The credential bundle is a single file that contains multiple PEM blocks.
+                                        The first PEM block is a PRIVATE KEY block, containing a PKCS#8 private
+                                        key.
+
+                                        The remaining blocks are CERTIFICATE blocks, containing the issued
+                                        certificate chain from the signer (leaf and any intermediates).
+
+                                        Using credentialBundlePath lets your Pod's application code make a single
+                                        atomic read that retrieves a consistent key and certificate chain.  If you
+                                        project them to separate files, your application code will need to
+                                        additionally check that the leaf certificate was issued to the key.
+                                      type: string
+                                    keyPath:
+                                      description: |-
+                                        Write the key at this path in the projected volume.
+
+                                        Most applications should use credentialBundlePath.  When using keyPath
+                                        and certificateChainPath, your application needs to check that the key
+                                        and leaf certificate are consistent, because it is possible to read the
+                                        files mid-rotation.
+                                      type: string
+                                    keyType:
+                                      description: |-
+                                        The type of keypair Kubelet will generate for the pod.
+
+                                        Valid values are "RSA3072", "RSA4096", "ECDSAP256", "ECDSAP384",
+                                        "ECDSAP521", and "ED25519".
+                                      type: string
+                                    maxExpirationSeconds:
+                                      description: |-
+                                        maxExpirationSeconds is the maximum lifetime permitted for the
+                                        certificate.
+
+                                        Kubelet copies this value verbatim into the PodCertificateRequests it
+                                        generates for this projection.
+
+                                        If omitted, kube-apiserver will set it to 86400(24 hours). kube-apiserver
+                                        will reject values shorter than 3600 (1 hour).  The maximum allowable
+                                        value is 7862400 (91 days).
+
+                                        The signer implementation is then free to issue a certificate with any
+                                        lifetime *shorter* than MaxExpirationSeconds, but no shorter than 3600
+                                        seconds (1 hour).  This constraint is enforced by kube-apiserver.
+                                        `kubernetes.io` signers will never issue certificates with a lifetime
+                                        longer than 24 hours.
+                                      type: integer
+                                      format: int32
+                                    signerName:
+                                      description: Kubelet's generated CSRs will be addressed to this signer.
+                                      type: string
+                                    userAnnotations:
+                                      description: |-
+                                        userAnnotations allow pod authors to pass additional information to
+                                        the signer implementation.  Kubernetes does not restrict or validate this
+                                        metadata in any way.
+
+                                        These values are copied verbatim into the `spec.unverifiedUserAnnotations` field of
+                                        the PodCertificateRequest objects that Kubelet creates.
+
+                                        Entries are subject to the same validation as object metadata annotations,
+                                        with the addition that all keys must be domain-prefixed. No restrictions
+                                        are placed on values, except an overall size limitation on the entire field.
+
+                                        Signers should document the keys and values they support. Signers should
+                                        deny requests that contain keys they do not recognize.
+                                      type: object
+                                      additionalProperties:
+                                        type: string
                                 secret:
                                   description: secret information about the secret data to project
                                   type: object
@@ -4963,6 +5162,16 @@ spec:
                         enableStepActions:
                           description: EnableStepActions is a no-op flag since StepActions are stable
                           type: boolean
+                        enableTektonOCIBundles:
+                          description: |-
+                            DeprecatedEnableTektonOCIBundles is maintained for backward compatibility
+                            to allow deletion of PipelineRuns created before v0.62.x.
+                            This field is not used and can be removed in a future release
+                            once we're confident old PipelineRuns have been cleaned up.
+                            See issue #8359 for context.
+                          type: boolean
+                        enableTerminationMessageCompression:
+                          type: boolean
                         enableWaitExponentialBackoff:
                           type: boolean
                         enforceNonfalsifiability:
@@ -5202,9 +5411,7 @@ spec:
                             additionalProperties:
                               type: string
                           cloudEvents:
-                            description: |-
-                              Deprecated: Removed in v0.44.0.
-                              CloudEvents
+                            description: CloudEvents
                             type: array
                             items:
                               description: CloudEventDelivery
@@ -5334,6 +5541,16 @@ spec:
                                     type: boolean
                                   enableStepActions:
                                     description: EnableStepActions is a no-op flag since StepActions are stable
+                                    type: boolean
+                                  enableTektonOCIBundles:
+                                    description: |-
+                                      DeprecatedEnableTektonOCIBundles is maintained for backward compatibility
+                                      to allow deletion of PipelineRuns created before v0.62.x.
+                                      This field is not used and can be removed in a future release
+                                      once we're confident old PipelineRuns have been cleaned up.
+                                      See issue #8359 for context.
+                                    type: boolean
+                                  enableTerminationMessageCompression:
                                     type: boolean
                                   enableWaitExponentialBackoff:
                                     type: boolean
@@ -5597,6 +5814,16 @@ spec:
                                           type: boolean
                                         enableStepActions:
                                           description: EnableStepActions is a no-op flag since StepActions are stable
+                                          type: boolean
+                                        enableTektonOCIBundles:
+                                          description: |-
+                                            DeprecatedEnableTektonOCIBundles is maintained for backward compatibility
+                                            to allow deletion of PipelineRuns created before v0.62.x.
+                                            This field is not used and can be removed in a future release
+                                            once we're confident old PipelineRuns have been cleaned up.
+                                            See issue #8359 for context.
+                                          type: boolean
+                                        enableTerminationMessageCompression:
                                           type: boolean
                                         enableWaitExponentialBackoff:
                                           type: boolean
@@ -5887,7 +6114,7 @@ spec:
                               Claims lists the names of resources, defined in spec.resourceClaims,
                               that are used by this container.
 
-                              This is an alpha field and requires enabling the
+                              This field depends on the
                               DynamicResourceAllocation feature gate.
 
                               This field is immutable. It can only be set for containers.
@@ -6032,7 +6259,9 @@ spec:
                                 - name
                               properties:
                                 name:
-                                  description: Name of the environment variable. Must be a C_IDENTIFIER.
+                                  description: |-
+                                    Name of the environment variable.
+                                    May consist of any printable ASCII characters except '='.
                                   type: string
                                 value:
                                   description: |-
@@ -6085,6 +6314,42 @@ spec:
                                           type: string
                                         fieldPath:
                                           description: Path of the field to select in the specified API version.
+                                          type: string
+                                      x-kubernetes-map-type: atomic
+                                    fileKeyRef:
+                                      description: |-
+                                        FileKeyRef selects a key of the env file.
+                                        Requires the EnvFiles feature gate to be enabled.
+                                      type: object
+                                      required:
+                                        - key
+                                        - path
+                                        - volumeName
+                                      properties:
+                                        key:
+                                          description: |-
+                                            The key within the env file. An invalid key will prevent the pod from starting.
+                                            The keys defined within a source may consist of any printable ASCII characters except '='.
+                                            During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                          type: string
+                                        optional:
+                                          description: |-
+                                            Specify whether the file or its key must be defined. If the file or key
+                                            does not exist, then the env var is not published.
+                                            If optional is set to true and the specified key does not exist,
+                                            the environment variable will not be set in the Pod's containers.
+
+                                            If optional is set to false and the specified key does not exist,
+                                            an error will be returned during Pod creation.
+                                          type: boolean
+                                          default: false
+                                        path:
+                                          description: |-
+                                            The path within the volume from which to select the file.
+                                            Must be relative and may not contain the '..' path or start with '..'.
+                                          type: string
+                                        volumeName:
+                                          description: The name of the volume mount containing the env file.
                                           type: string
                                       x-kubernetes-map-type: atomic
                                     resourceFieldRef:
@@ -6248,9 +6513,10 @@ spec:
                                 operator:
                                   description: |-
                                     Operator represents a key's relationship to the value.
-                                    Valid operators are Exists and Equal. Defaults to Equal.
+                                    Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
                                     Exists is equivalent to wildcard for value, so that a pod can
                                     tolerate all taints of a particular category.
+                                    Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
                                   type: string
                                 tolerationSeconds:
                                   description: |-
@@ -6394,7 +6660,6 @@ spec:
                                     - Ignore: nodeAffinity/nodeSelector are ignored. All nodes are included in the calculations.
 
                                     If this value is nil, the behavior is equivalent to the Honor policy.
-                                    This is a beta-level feature default enabled by the NodeInclusionPolicyInPodTopologySpread feature flag.
                                   type: string
                                 nodeTaintsPolicy:
                                   description: |-
@@ -6405,7 +6670,6 @@ spec:
                                     - Ignore: node taints are ignored. All nodes are included.
 
                                     If this value is nil, the behavior is equivalent to the Ignore policy.
-                                    This is a beta-level feature default enabled by the NodeInclusionPolicyInPodTopologySpread feature flag.
                                   type: string
                                 topologyKey:
                                   description: |-
@@ -6468,7 +6732,7 @@ spec:
                                     Claims lists the names of resources, defined in spec.resourceClaims,
                                     that are used by this container.
 
-                                    This is an alpha field and requires enabling the
+                                    This field depends on the
                                     DynamicResourceAllocation feature gate.
 
                                     This field is immutable. It can only be set for containers.
@@ -6540,7 +6804,7 @@ spec:
                                     Claims lists the names of resources, defined in spec.resourceClaims,
                                     that are used by this container.
 
-                                    This is an alpha field and requires enabling the
+                                    This field depends on the
                                     DynamicResourceAllocation feature gate.
 
                                     This field is immutable. It can only be set for containers.
@@ -6687,7 +6951,9 @@ spec:
                               - name
                             properties:
                               name:
-                                description: Name of the environment variable. Must be a C_IDENTIFIER.
+                                description: |-
+                                  Name of the environment variable.
+                                  May consist of any printable ASCII characters except '='.
                                 type: string
                               value:
                                 description: |-
@@ -6740,6 +7006,42 @@ spec:
                                         type: string
                                       fieldPath:
                                         description: Path of the field to select in the specified API version.
+                                        type: string
+                                    x-kubernetes-map-type: atomic
+                                  fileKeyRef:
+                                    description: |-
+                                      FileKeyRef selects a key of the env file.
+                                      Requires the EnvFiles feature gate to be enabled.
+                                    type: object
+                                    required:
+                                      - key
+                                      - path
+                                      - volumeName
+                                    properties:
+                                      key:
+                                        description: |-
+                                          The key within the env file. An invalid key will prevent the pod from starting.
+                                          The keys defined within a source may consist of any printable ASCII characters except '='.
+                                          During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                        type: string
+                                      optional:
+                                        description: |-
+                                          Specify whether the file or its key must be defined. If the file or key
+                                          does not exist, then the env var is not published.
+                                          If optional is set to true and the specified key does not exist,
+                                          the environment variable will not be set in the Pod's containers.
+
+                                          If optional is set to false and the specified key does not exist,
+                                          an error will be returned during Pod creation.
+                                        type: boolean
+                                        default: false
+                                      path:
+                                        description: |-
+                                          The path within the volume from which to select the file.
+                                          Must be relative and may not contain the '..' path or start with '..'.
+                                        type: string
+                                      volumeName:
+                                        description: The name of the volume mount containing the env file.
                                         type: string
                                     x-kubernetes-map-type: atomic
                                   resourceFieldRef:
@@ -6903,9 +7205,10 @@ spec:
                               operator:
                                 description: |-
                                   Operator represents a key's relationship to the value.
-                                  Valid operators are Exists and Equal. Defaults to Equal.
+                                  Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
                                   Exists is equivalent to wildcard for value, so that a pod can
                                   tolerate all taints of a particular category.
+                                  Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
                                 type: string
                               tolerationSeconds:
                                 description: |-
@@ -7049,7 +7352,6 @@ spec:
                                   - Ignore: nodeAffinity/nodeSelector are ignored. All nodes are included in the calculations.
 
                                   If this value is nil, the behavior is equivalent to the Honor policy.
-                                  This is a beta-level feature default enabled by the NodeInclusionPolicyInPodTopologySpread feature flag.
                                 type: string
                               nodeTaintsPolicy:
                                 description: |-
@@ -7060,7 +7362,6 @@ spec:
                                   - Ignore: node taints are ignored. All nodes are included.
 
                                   If this value is nil, the behavior is equivalent to the Ignore policy.
-                                  This is a beta-level feature default enabled by the NodeInclusionPolicyInPodTopologySpread feature flag.
                                 type: string
                               topologyKey:
                                 description: |-
@@ -7526,6 +7827,128 @@ spec:
                                                 type: string
                                             x-kubernetes-map-type: atomic
                                       x-kubernetes-list-type: atomic
+                                podCertificate:
+                                  description: |-
+                                    Projects an auto-rotating credential bundle (private key and certificate
+                                    chain) that the pod can use either as a TLS client or server.
+
+                                    Kubelet generates a private key and uses it to send a
+                                    PodCertificateRequest to the named signer.  Once the signer approves the
+                                    request and issues a certificate chain, Kubelet writes the key and
+                                    certificate chain to the pod filesystem.  The pod does not start until
+                                    certificates have been issued for each podCertificate projected volume
+                                    source in its spec.
+
+                                    Kubelet will begin trying to rotate the certificate at the time indicated
+                                    by the signer using the PodCertificateRequest.Status.BeginRefreshAt
+                                    timestamp.
+
+                                    Kubelet can write a single file, indicated by the credentialBundlePath
+                                    field, or separate files, indicated by the keyPath and
+                                    certificateChainPath fields.
+
+                                    The credential bundle is a single file in PEM format.  The first PEM
+                                    entry is the private key (in PKCS#8 format), and the remaining PEM
+                                    entries are the certificate chain issued by the signer (typically,
+                                    signers will return their certificate chain in leaf-to-root order).
+
+                                    Prefer using the credential bundle format, since your application code
+                                    can read it atomically.  If you use keyPath and certificateChainPath,
+                                    your application must make two separate file reads. If these coincide
+                                    with a certificate rotation, it is possible that the private key and leaf
+                                    certificate you read may not correspond to each other.  Your application
+                                    will need to check for this condition, and re-read until they are
+                                    consistent.
+
+                                    The named signer controls chooses the format of the certificate it
+                                    issues; consult the signer implementation's documentation to learn how to
+                                    use the certificates it issues.
+                                  type: object
+                                  required:
+                                    - keyType
+                                    - signerName
+                                  properties:
+                                    certificateChainPath:
+                                      description: |-
+                                        Write the certificate chain at this path in the projected volume.
+
+                                        Most applications should use credentialBundlePath.  When using keyPath
+                                        and certificateChainPath, your application needs to check that the key
+                                        and leaf certificate are consistent, because it is possible to read the
+                                        files mid-rotation.
+                                      type: string
+                                    credentialBundlePath:
+                                      description: |-
+                                        Write the credential bundle at this path in the projected volume.
+
+                                        The credential bundle is a single file that contains multiple PEM blocks.
+                                        The first PEM block is a PRIVATE KEY block, containing a PKCS#8 private
+                                        key.
+
+                                        The remaining blocks are CERTIFICATE blocks, containing the issued
+                                        certificate chain from the signer (leaf and any intermediates).
+
+                                        Using credentialBundlePath lets your Pod's application code make a single
+                                        atomic read that retrieves a consistent key and certificate chain.  If you
+                                        project them to separate files, your application code will need to
+                                        additionally check that the leaf certificate was issued to the key.
+                                      type: string
+                                    keyPath:
+                                      description: |-
+                                        Write the key at this path in the projected volume.
+
+                                        Most applications should use credentialBundlePath.  When using keyPath
+                                        and certificateChainPath, your application needs to check that the key
+                                        and leaf certificate are consistent, because it is possible to read the
+                                        files mid-rotation.
+                                      type: string
+                                    keyType:
+                                      description: |-
+                                        The type of keypair Kubelet will generate for the pod.
+
+                                        Valid values are "RSA3072", "RSA4096", "ECDSAP256", "ECDSAP384",
+                                        "ECDSAP521", and "ED25519".
+                                      type: string
+                                    maxExpirationSeconds:
+                                      description: |-
+                                        maxExpirationSeconds is the maximum lifetime permitted for the
+                                        certificate.
+
+                                        Kubelet copies this value verbatim into the PodCertificateRequests it
+                                        generates for this projection.
+
+                                        If omitted, kube-apiserver will set it to 86400(24 hours). kube-apiserver
+                                        will reject values shorter than 3600 (1 hour).  The maximum allowable
+                                        value is 7862400 (91 days).
+
+                                        The signer implementation is then free to issue a certificate with any
+                                        lifetime *shorter* than MaxExpirationSeconds, but no shorter than 3600
+                                        seconds (1 hour).  This constraint is enforced by kube-apiserver.
+                                        `kubernetes.io` signers will never issue certificates with a lifetime
+                                        longer than 24 hours.
+                                      type: integer
+                                      format: int32
+                                    signerName:
+                                      description: Kubelet's generated CSRs will be addressed to this signer.
+                                      type: string
+                                    userAnnotations:
+                                      description: |-
+                                        userAnnotations allow pod authors to pass additional information to
+                                        the signer implementation.  Kubernetes does not restrict or validate this
+                                        metadata in any way.
+
+                                        These values are copied verbatim into the `spec.unverifiedUserAnnotations` field of
+                                        the PodCertificateRequest objects that Kubelet creates.
+
+                                        Entries are subject to the same validation as object metadata annotations,
+                                        with the addition that all keys must be domain-prefixed. No restrictions
+                                        are placed on values, except an overall size limitation on the entire field.
+
+                                        Signers should document the keys and values they support. Signers should
+                                        deny requests that contain keys they do not recognize.
+                                      type: object
+                                      additionalProperties:
+                                        type: string
                                 secret:
                                   description: secret information about the secret data to project
                                   type: object
@@ -7838,6 +8261,16 @@ spec:
                         enableStepActions:
                           description: EnableStepActions is a no-op flag since StepActions are stable
                           type: boolean
+                        enableTektonOCIBundles:
+                          description: |-
+                            DeprecatedEnableTektonOCIBundles is maintained for backward compatibility
+                            to allow deletion of PipelineRuns created before v0.62.x.
+                            This field is not used and can be removed in a future release
+                            once we're confident old PipelineRuns have been cleaned up.
+                            See issue #8359 for context.
+                          type: boolean
+                        enableTerminationMessageCompression:
+                          type: boolean
                         enableWaitExponentialBackoff:
                           type: boolean
                         enforceNonfalsifiability:
@@ -8030,9 +8463,6 @@ spec:
     categories:
       - tekton
       - tekton-pipelines
-    shortNames:
-      - resolutionrequest
-      - resolutionrequests
   versions:
     - name: v1alpha1
       served: true
@@ -8338,8 +8768,8 @@ metadata:
   labels:
     app.kubernetes.io/instance: default
     app.kubernetes.io/part-of: tekton-pipelines
-    pipeline.tekton.dev/release: "v1.9.4"
-    version: "v1.9.4"
+    pipeline.tekton.dev/release: "v1.13.1"
+    version: "v1.13.1"
 spec:
   group: tekton.dev
   preserveUnknownFields: false
@@ -8420,7 +8850,9 @@ spec:
                       - name
                     properties:
                       name:
-                        description: Name of the environment variable. Must be a C_IDENTIFIER.
+                        description: |-
+                          Name of the environment variable.
+                          May consist of any printable ASCII characters except '='.
                         type: string
                       value:
                         description: |-
@@ -8473,6 +8905,42 @@ spec:
                                 type: string
                               fieldPath:
                                 description: Path of the field to select in the specified API version.
+                                type: string
+                            x-kubernetes-map-type: atomic
+                          fileKeyRef:
+                            description: |-
+                              FileKeyRef selects a key of the env file.
+                              Requires the EnvFiles feature gate to be enabled.
+                            type: object
+                            required:
+                              - key
+                              - path
+                              - volumeName
+                            properties:
+                              key:
+                                description: |-
+                                  The key within the env file. An invalid key will prevent the pod from starting.
+                                  The keys defined within a source may consist of any printable ASCII characters except '='.
+                                  During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                type: string
+                              optional:
+                                description: |-
+                                  Specify whether the file or its key must be defined. If the file or key
+                                  does not exist, then the env var is not published.
+                                  If optional is set to true and the specified key does not exist,
+                                  the environment variable will not be set in the Pod's containers.
+
+                                  If optional is set to false and the specified key does not exist,
+                                  an error will be returned during Pod creation.
+                                type: boolean
+                                default: false
+                              path:
+                                description: |-
+                                  The path within the volume from which to select the file.
+                                  Must be relative and may not contain the '..' path or start with '..'.
+                                type: string
+                              volumeName:
+                                description: The name of the volume mount containing the env file.
                                 type: string
                             x-kubernetes-map-type: atomic
                           resourceFieldRef:
@@ -8935,7 +9403,9 @@ spec:
                       - name
                     properties:
                       name:
-                        description: Name of the environment variable. Must be a C_IDENTIFIER.
+                        description: |-
+                          Name of the environment variable.
+                          May consist of any printable ASCII characters except '='.
                         type: string
                       value:
                         description: |-
@@ -8988,6 +9458,42 @@ spec:
                                 type: string
                               fieldPath:
                                 description: Path of the field to select in the specified API version.
+                                type: string
+                            x-kubernetes-map-type: atomic
+                          fileKeyRef:
+                            description: |-
+                              FileKeyRef selects a key of the env file.
+                              Requires the EnvFiles feature gate to be enabled.
+                            type: object
+                            required:
+                              - key
+                              - path
+                              - volumeName
+                            properties:
+                              key:
+                                description: |-
+                                  The key within the env file. An invalid key will prevent the pod from starting.
+                                  The keys defined within a source may consist of any printable ASCII characters except '='.
+                                  During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                type: string
+                              optional:
+                                description: |-
+                                  Specify whether the file or its key must be defined. If the file or key
+                                  does not exist, then the env var is not published.
+                                  If optional is set to true and the specified key does not exist,
+                                  the environment variable will not be set in the Pod's containers.
+
+                                  If optional is set to false and the specified key does not exist,
+                                  an error will be returned during Pod creation.
+                                type: boolean
+                                default: false
+                              path:
+                                description: |-
+                                  The path within the volume from which to select the file.
+                                  Must be relative and may not contain the '..' path or start with '..'.
+                                type: string
+                              volumeName:
+                                description: The name of the volume mount containing the env file.
                                 type: string
                             x-kubernetes-map-type: atomic
                           resourceFieldRef:
@@ -9418,8 +9924,8 @@ metadata:
   labels:
     app.kubernetes.io/instance: default
     app.kubernetes.io/part-of: tekton-pipelines
-    pipeline.tekton.dev/release: "v1.9.4"
-    version: "v1.9.4"
+    pipeline.tekton.dev/release: "v1.13.1"
+    version: "v1.13.1"
 spec:
   group: tekton.dev
   preserveUnknownFields: false
@@ -9645,7 +10151,9 @@ spec:
                             - name
                           properties:
                             name:
-                              description: Name of the environment variable. Must be a C_IDENTIFIER.
+                              description: |-
+                                Name of the environment variable.
+                                May consist of any printable ASCII characters except '='.
                               type: string
                             value:
                               description: |-
@@ -9700,6 +10208,42 @@ spec:
                                       description: Path of the field to select in the specified API version.
                                       type: string
                                   x-kubernetes-map-type: atomic
+                                fileKeyRef:
+                                  description: |-
+                                    FileKeyRef selects a key of the env file.
+                                    Requires the EnvFiles feature gate to be enabled.
+                                  type: object
+                                  required:
+                                    - key
+                                    - path
+                                    - volumeName
+                                  properties:
+                                    key:
+                                      description: |-
+                                        The key within the env file. An invalid key will prevent the pod from starting.
+                                        The keys defined within a source may consist of any printable ASCII characters except '='.
+                                        During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                      type: string
+                                    optional:
+                                      description: |-
+                                        Specify whether the file or its key must be defined. If the file or key
+                                        does not exist, then the env var is not published.
+                                        If optional is set to true and the specified key does not exist,
+                                        the environment variable will not be set in the Pod's containers.
+
+                                        If optional is set to false and the specified key does not exist,
+                                        an error will be returned during Pod creation.
+                                      type: boolean
+                                      default: false
+                                    path:
+                                      description: |-
+                                        The path within the volume from which to select the file.
+                                        Must be relative and may not contain the '..' path or start with '..'.
+                                      type: string
+                                    volumeName:
+                                      description: The name of the volume mount containing the env file.
+                                      type: string
+                                  x-kubernetes-map-type: atomic
                                 resourceFieldRef:
                                   description: |-
                                     Selects a resource of the container: only resources limits and requests
@@ -9749,7 +10293,7 @@ spec:
                         description: EnvFrom
                         type: array
                         items:
-                          description: EnvFromSource represents the source of a set of ConfigMaps
+                          description: EnvFromSource represents the source of a set of ConfigMaps or Secrets
                           type: object
                           properties:
                             configMapRef:
@@ -9770,7 +10314,9 @@ spec:
                                   type: boolean
                               x-kubernetes-map-type: atomic
                             prefix:
-                              description: An optional identifier to prepend to each key in the ConfigMap. Must be a C_IDENTIFIER.
+                              description: |-
+                                Optional text to prepend to the name of each environment variable.
+                                May consist of any printable ASCII characters except '='.
                               type: string
                             secretRef:
                               description: The Secret to select from
@@ -10007,6 +10553,12 @@ spec:
                                       - type: integer
                                       - type: string
                                     x-kubernetes-int-or-string: true
+                          stopSignal:
+                            description: |-
+                              StopSignal defines which signal will be sent to a container when it is being stopped.
+                              If not specified, the default is defined by the container runtime in use.
+                              StopSignal can only be set for Pods with a non-empty .spec.os.name
+                            type: string
                       livenessProbe:
                         description: LivenessProbe
                         type: object
@@ -10355,7 +10907,7 @@ spec:
                               Claims lists the names of resources, defined in spec.resourceClaims,
                               that are used by this container.
 
-                              This is an alpha field and requires enabling the
+                              This field depends on the
                               DynamicResourceAllocation feature gate.
 
                               This field is immutable. It can only be set for containers.
@@ -10888,7 +11440,9 @@ spec:
                           - name
                         properties:
                           name:
-                            description: Name of the environment variable. Must be a C_IDENTIFIER.
+                            description: |-
+                              Name of the environment variable.
+                              May consist of any printable ASCII characters except '='.
                             type: string
                           value:
                             description: |-
@@ -10943,6 +11497,42 @@ spec:
                                     description: Path of the field to select in the specified API version.
                                     type: string
                                 x-kubernetes-map-type: atomic
+                              fileKeyRef:
+                                description: |-
+                                  FileKeyRef selects a key of the env file.
+                                  Requires the EnvFiles feature gate to be enabled.
+                                type: object
+                                required:
+                                  - key
+                                  - path
+                                  - volumeName
+                                properties:
+                                  key:
+                                    description: |-
+                                      The key within the env file. An invalid key will prevent the pod from starting.
+                                      The keys defined within a source may consist of any printable ASCII characters except '='.
+                                      During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                    type: string
+                                  optional:
+                                    description: |-
+                                      Specify whether the file or its key must be defined. If the file or key
+                                      does not exist, then the env var is not published.
+                                      If optional is set to true and the specified key does not exist,
+                                      the environment variable will not be set in the Pod's containers.
+
+                                      If optional is set to false and the specified key does not exist,
+                                      an error will be returned during Pod creation.
+                                    type: boolean
+                                    default: false
+                                  path:
+                                    description: |-
+                                      The path within the volume from which to select the file.
+                                      Must be relative and may not contain the '..' path or start with '..'.
+                                    type: string
+                                  volumeName:
+                                    description: The name of the volume mount containing the env file.
+                                    type: string
+                                x-kubernetes-map-type: atomic
                               resourceFieldRef:
                                 description: |-
                                   Selects a resource of the container: only resources limits and requests
@@ -10992,7 +11582,7 @@ spec:
                       description: EnvFrom
                       type: array
                       items:
-                        description: EnvFromSource represents the source of a set of ConfigMaps
+                        description: EnvFromSource represents the source of a set of ConfigMaps or Secrets
                         type: object
                         properties:
                           configMapRef:
@@ -11013,7 +11603,9 @@ spec:
                                 type: boolean
                             x-kubernetes-map-type: atomic
                           prefix:
-                            description: An optional identifier to prepend to each key in the ConfigMap. Must be a C_IDENTIFIER.
+                            description: |-
+                              Optional text to prepend to the name of each environment variable.
+                              May consist of any printable ASCII characters except '='.
                             type: string
                           secretRef:
                             description: The Secret to select from
@@ -11252,6 +11844,12 @@ spec:
                                     - type: integer
                                     - type: string
                                   x-kubernetes-int-or-string: true
+                        stopSignal:
+                          description: |-
+                            StopSignal defines which signal will be sent to a container when it is being stopped.
+                            If not specified, the default is defined by the container runtime in use.
+                            StopSignal can only be set for Pods with a non-empty .spec.os.name
+                          type: string
                     livenessProbe:
                       description: |-
                         Deprecated: This field will be removed in a future release.
@@ -11608,7 +12206,7 @@ spec:
                             Claims lists the names of resources, defined in spec.resourceClaims,
                             that are used by this container.
 
-                            This is an alpha field and requires enabling the
+                            This field depends on the
                             DynamicResourceAllocation feature gate.
 
                             This field is immutable. It can only be set for containers.
@@ -12135,7 +12733,9 @@ spec:
                             - name
                           properties:
                             name:
-                              description: Name of the environment variable. Must be a C_IDENTIFIER.
+                              description: |-
+                                Name of the environment variable.
+                                May consist of any printable ASCII characters except '='.
                               type: string
                             value:
                               description: |-
@@ -12190,6 +12790,42 @@ spec:
                                       description: Path of the field to select in the specified API version.
                                       type: string
                                   x-kubernetes-map-type: atomic
+                                fileKeyRef:
+                                  description: |-
+                                    FileKeyRef selects a key of the env file.
+                                    Requires the EnvFiles feature gate to be enabled.
+                                  type: object
+                                  required:
+                                    - key
+                                    - path
+                                    - volumeName
+                                  properties:
+                                    key:
+                                      description: |-
+                                        The key within the env file. An invalid key will prevent the pod from starting.
+                                        The keys defined within a source may consist of any printable ASCII characters except '='.
+                                        During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                      type: string
+                                    optional:
+                                      description: |-
+                                        Specify whether the file or its key must be defined. If the file or key
+                                        does not exist, then the env var is not published.
+                                        If optional is set to true and the specified key does not exist,
+                                        the environment variable will not be set in the Pod's containers.
+
+                                        If optional is set to false and the specified key does not exist,
+                                        an error will be returned during Pod creation.
+                                      type: boolean
+                                      default: false
+                                    path:
+                                      description: |-
+                                        The path within the volume from which to select the file.
+                                        Must be relative and may not contain the '..' path or start with '..'.
+                                      type: string
+                                    volumeName:
+                                      description: The name of the volume mount containing the env file.
+                                      type: string
+                                  x-kubernetes-map-type: atomic
                                 resourceFieldRef:
                                   description: |-
                                     Selects a resource of the container: only resources limits and requests
@@ -12239,7 +12875,7 @@ spec:
                         description: EnvFrom
                         type: array
                         items:
-                          description: EnvFromSource represents the source of a set of ConfigMaps
+                          description: EnvFromSource represents the source of a set of ConfigMaps or Secrets
                           type: object
                           properties:
                             configMapRef:
@@ -12260,7 +12896,9 @@ spec:
                                   type: boolean
                               x-kubernetes-map-type: atomic
                             prefix:
-                              description: An optional identifier to prepend to each key in the ConfigMap. Must be a C_IDENTIFIER.
+                              description: |-
+                                Optional text to prepend to the name of each environment variable.
+                                May consist of any printable ASCII characters except '='.
                               type: string
                             secretRef:
                               description: The Secret to select from
@@ -12499,6 +13137,12 @@ spec:
                                       - type: integer
                                       - type: string
                                     x-kubernetes-int-or-string: true
+                          stopSignal:
+                            description: |-
+                              StopSignal defines which signal will be sent to a container when it is being stopped.
+                              If not specified, the default is defined by the container runtime in use.
+                              StopSignal can only be set for Pods with a non-empty .spec.os.name
+                            type: string
                       livenessProbe:
                         description: |-
                           Deprecated: This field will be removed in a future release.
@@ -12898,7 +13542,7 @@ spec:
                               Claims lists the names of resources, defined in spec.resourceClaims,
                               that are used by this container.
 
-                              This is an alpha field and requires enabling the
+                              This field depends on the
                               DynamicResourceAllocation feature gate.
 
                               This field is immutable. It can only be set for containers.
@@ -13698,7 +14342,7 @@ spec:
                               Claims lists the names of resources, defined in spec.resourceClaims,
                               that are used by this container.
 
-                              This is an alpha field and requires enabling the
+                              This field depends on the
                               DynamicResourceAllocation feature gate.
 
                               This field is immutable. It can only be set for containers.
@@ -13760,7 +14404,9 @@ spec:
                             - name
                           properties:
                             name:
-                              description: Name of the environment variable. Must be a C_IDENTIFIER.
+                              description: |-
+                                Name of the environment variable.
+                                May consist of any printable ASCII characters except '='.
                               type: string
                             value:
                               description: |-
@@ -13813,6 +14459,42 @@ spec:
                                       type: string
                                     fieldPath:
                                       description: Path of the field to select in the specified API version.
+                                      type: string
+                                  x-kubernetes-map-type: atomic
+                                fileKeyRef:
+                                  description: |-
+                                    FileKeyRef selects a key of the env file.
+                                    Requires the EnvFiles feature gate to be enabled.
+                                  type: object
+                                  required:
+                                    - key
+                                    - path
+                                    - volumeName
+                                  properties:
+                                    key:
+                                      description: |-
+                                        The key within the env file. An invalid key will prevent the pod from starting.
+                                        The keys defined within a source may consist of any printable ASCII characters except '='.
+                                        During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                      type: string
+                                    optional:
+                                      description: |-
+                                        Specify whether the file or its key must be defined. If the file or key
+                                        does not exist, then the env var is not published.
+                                        If optional is set to true and the specified key does not exist,
+                                        the environment variable will not be set in the Pod's containers.
+
+                                        If optional is set to false and the specified key does not exist,
+                                        an error will be returned during Pod creation.
+                                      type: boolean
+                                      default: false
+                                    path:
+                                      description: |-
+                                        The path within the volume from which to select the file.
+                                        Must be relative and may not contain the '..' path or start with '..'.
+                                      type: string
+                                    volumeName:
+                                      description: The name of the volume mount containing the env file.
                                       type: string
                                   x-kubernetes-map-type: atomic
                                 resourceFieldRef:
@@ -13870,7 +14552,7 @@ spec:
                           Cannot be updated.
                         type: array
                         items:
-                          description: EnvFromSource represents the source of a set of ConfigMaps
+                          description: EnvFromSource represents the source of a set of ConfigMaps or Secrets
                           type: object
                           properties:
                             configMapRef:
@@ -13891,7 +14573,9 @@ spec:
                                   type: boolean
                               x-kubernetes-map-type: atomic
                             prefix:
-                              description: An optional identifier to prepend to each key in the ConfigMap. Must be a C_IDENTIFIER.
+                              description: |-
+                                Optional text to prepend to the name of each environment variable.
+                                May consist of any printable ASCII characters except '='.
                               type: string
                             secretRef:
                               description: The Secret to select from
@@ -14137,6 +14821,12 @@ spec:
                                       - type: integer
                                       - type: string
                                     x-kubernetes-int-or-string: true
+                          stopSignal:
+                            description: |-
+                              StopSignal defines which signal will be sent to a container when it is being stopped.
+                              If not specified, the default is defined by the container runtime in use.
+                              StopSignal can only be set for Pods with a non-empty .spec.os.name
+                            type: string
                       livenessProbe:
                         description: |-
                           Periodic probe of Sidecar liveness.
@@ -15055,7 +15745,7 @@ spec:
                             Claims lists the names of resources, defined in spec.resourceClaims,
                             that are used by this container.
 
-                            This is an alpha field and requires enabling the
+                            This field depends on the
                             DynamicResourceAllocation feature gate.
 
                             This field is immutable. It can only be set for containers.
@@ -15117,7 +15807,9 @@ spec:
                           - name
                         properties:
                           name:
-                            description: Name of the environment variable. Must be a C_IDENTIFIER.
+                            description: |-
+                              Name of the environment variable.
+                              May consist of any printable ASCII characters except '='.
                             type: string
                           value:
                             description: |-
@@ -15170,6 +15862,42 @@ spec:
                                     type: string
                                   fieldPath:
                                     description: Path of the field to select in the specified API version.
+                                    type: string
+                                x-kubernetes-map-type: atomic
+                              fileKeyRef:
+                                description: |-
+                                  FileKeyRef selects a key of the env file.
+                                  Requires the EnvFiles feature gate to be enabled.
+                                type: object
+                                required:
+                                  - key
+                                  - path
+                                  - volumeName
+                                properties:
+                                  key:
+                                    description: |-
+                                      The key within the env file. An invalid key will prevent the pod from starting.
+                                      The keys defined within a source may consist of any printable ASCII characters except '='.
+                                      During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                    type: string
+                                  optional:
+                                    description: |-
+                                      Specify whether the file or its key must be defined. If the file or key
+                                      does not exist, then the env var is not published.
+                                      If optional is set to true and the specified key does not exist,
+                                      the environment variable will not be set in the Pod's containers.
+
+                                      If optional is set to false and the specified key does not exist,
+                                      an error will be returned during Pod creation.
+                                    type: boolean
+                                    default: false
+                                  path:
+                                    description: |-
+                                      The path within the volume from which to select the file.
+                                      Must be relative and may not contain the '..' path or start with '..'.
+                                    type: string
+                                  volumeName:
+                                    description: The name of the volume mount containing the env file.
                                     type: string
                                 x-kubernetes-map-type: atomic
                               resourceFieldRef:
@@ -15227,7 +15955,7 @@ spec:
                         Cannot be updated.
                       type: array
                       items:
-                        description: EnvFromSource represents the source of a set of ConfigMaps
+                        description: EnvFromSource represents the source of a set of ConfigMaps or Secrets
                         type: object
                         properties:
                           configMapRef:
@@ -15248,7 +15976,9 @@ spec:
                                 type: boolean
                             x-kubernetes-map-type: atomic
                           prefix:
-                            description: An optional identifier to prepend to each key in the ConfigMap. Must be a C_IDENTIFIER.
+                            description: |-
+                              Optional text to prepend to the name of each environment variable.
+                              May consist of any printable ASCII characters except '='.
                             type: string
                           secretRef:
                             description: The Secret to select from
@@ -15610,7 +16340,7 @@ spec:
                               Claims lists the names of resources, defined in spec.resourceClaims,
                               that are used by this container.
 
-                              This is an alpha field and requires enabling the
+                              This field depends on the
                               DynamicResourceAllocation feature gate.
 
                               This field is immutable. It can only be set for containers.
@@ -15677,7 +16407,9 @@ spec:
                             - name
                           properties:
                             name:
-                              description: Name of the environment variable. Must be a C_IDENTIFIER.
+                              description: |-
+                                Name of the environment variable.
+                                May consist of any printable ASCII characters except '='.
                               type: string
                             value:
                               description: |-
@@ -15730,6 +16462,42 @@ spec:
                                       type: string
                                     fieldPath:
                                       description: Path of the field to select in the specified API version.
+                                      type: string
+                                  x-kubernetes-map-type: atomic
+                                fileKeyRef:
+                                  description: |-
+                                    FileKeyRef selects a key of the env file.
+                                    Requires the EnvFiles feature gate to be enabled.
+                                  type: object
+                                  required:
+                                    - key
+                                    - path
+                                    - volumeName
+                                  properties:
+                                    key:
+                                      description: |-
+                                        The key within the env file. An invalid key will prevent the pod from starting.
+                                        The keys defined within a source may consist of any printable ASCII characters except '='.
+                                        During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                      type: string
+                                    optional:
+                                      description: |-
+                                        Specify whether the file or its key must be defined. If the file or key
+                                        does not exist, then the env var is not published.
+                                        If optional is set to true and the specified key does not exist,
+                                        the environment variable will not be set in the Pod's containers.
+
+                                        If optional is set to false and the specified key does not exist,
+                                        an error will be returned during Pod creation.
+                                      type: boolean
+                                      default: false
+                                    path:
+                                      description: |-
+                                        The path within the volume from which to select the file.
+                                        Must be relative and may not contain the '..' path or start with '..'.
+                                      type: string
+                                    volumeName:
+                                      description: The name of the volume mount containing the env file.
                                       type: string
                                   x-kubernetes-map-type: atomic
                                 resourceFieldRef:
@@ -15787,7 +16555,7 @@ spec:
                           Cannot be updated.
                         type: array
                         items:
-                          description: EnvFromSource represents the source of a set of ConfigMaps
+                          description: EnvFromSource represents the source of a set of ConfigMaps or Secrets
                           type: object
                           properties:
                             configMapRef:
@@ -15808,7 +16576,9 @@ spec:
                                   type: boolean
                               x-kubernetes-map-type: atomic
                             prefix:
-                              description: An optional identifier to prepend to each key in the ConfigMap. Must be a C_IDENTIFIER.
+                              description: |-
+                                Optional text to prepend to the name of each environment variable.
+                                May consist of any printable ASCII characters except '='.
                               type: string
                             secretRef:
                               description: The Secret to select from
@@ -16372,8 +17142,8 @@ metadata:
   labels:
     app.kubernetes.io/instance: default
     app.kubernetes.io/part-of: tekton-pipelines
-    pipeline.tekton.dev/release: "v1.9.4"
-    version: "v1.9.4"
+    pipeline.tekton.dev/release: "v1.13.1"
+    version: "v1.13.1"
 spec:
   group: tekton.dev
   preserveUnknownFields: false
@@ -16418,7 +17188,7 @@ spec:
                         Claims lists the names of resources, defined in spec.resourceClaims,
                         that are used by this container.
 
-                        This is an alpha field and requires enabling the
+                        This field depends on the
                         DynamicResourceAllocation feature gate.
 
                         This field is immutable. It can only be set for containers.
@@ -16585,7 +17355,9 @@ spec:
                           - name
                         properties:
                           name:
-                            description: Name of the environment variable. Must be a C_IDENTIFIER.
+                            description: |-
+                              Name of the environment variable.
+                              May consist of any printable ASCII characters except '='.
                             type: string
                           value:
                             description: |-
@@ -16638,6 +17410,42 @@ spec:
                                     type: string
                                   fieldPath:
                                     description: Path of the field to select in the specified API version.
+                                    type: string
+                                x-kubernetes-map-type: atomic
+                              fileKeyRef:
+                                description: |-
+                                  FileKeyRef selects a key of the env file.
+                                  Requires the EnvFiles feature gate to be enabled.
+                                type: object
+                                required:
+                                  - key
+                                  - path
+                                  - volumeName
+                                properties:
+                                  key:
+                                    description: |-
+                                      The key within the env file. An invalid key will prevent the pod from starting.
+                                      The keys defined within a source may consist of any printable ASCII characters except '='.
+                                      During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                    type: string
+                                  optional:
+                                    description: |-
+                                      Specify whether the file or its key must be defined. If the file or key
+                                      does not exist, then the env var is not published.
+                                      If optional is set to true and the specified key does not exist,
+                                      the environment variable will not be set in the Pod's containers.
+
+                                      If optional is set to false and the specified key does not exist,
+                                      an error will be returned during Pod creation.
+                                    type: boolean
+                                    default: false
+                                  path:
+                                    description: |-
+                                      The path within the volume from which to select the file.
+                                      Must be relative and may not contain the '..' path or start with '..'.
+                                    type: string
+                                  volumeName:
+                                    description: The name of the volume mount containing the env file.
                                     type: string
                                 x-kubernetes-map-type: atomic
                               resourceFieldRef:
@@ -16801,9 +17609,10 @@ spec:
                           operator:
                             description: |-
                               Operator represents a key's relationship to the value.
-                              Valid operators are Exists and Equal. Defaults to Equal.
+                              Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
                               Exists is equivalent to wildcard for value, so that a pod can
                               tolerate all taints of a particular category.
+                              Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
                             type: string
                           tolerationSeconds:
                             description: |-
@@ -16947,7 +17756,6 @@ spec:
                               - Ignore: nodeAffinity/nodeSelector are ignored. All nodes are included in the calculations.
 
                               If this value is nil, the behavior is equivalent to the Honor policy.
-                              This is a beta-level feature default enabled by the NodeInclusionPolicyInPodTopologySpread feature flag.
                             type: string
                           nodeTaintsPolicy:
                             description: |-
@@ -16958,7 +17766,6 @@ spec:
                               - Ignore: node taints are ignored. All nodes are included.
 
                               If this value is nil, the behavior is equivalent to the Ignore policy.
-                              This is a beta-level feature default enabled by the NodeInclusionPolicyInPodTopologySpread feature flag.
                             type: string
                           topologyKey:
                             description: |-
@@ -17211,7 +18018,7 @@ spec:
                               Claims lists the names of resources, defined in spec.resourceClaims,
                               that are used by this container.
 
-                              This is an alpha field and requires enabling the
+                              This field depends on the
                               DynamicResourceAllocation feature gate.
 
                               This field is immutable. It can only be set for containers.
@@ -17290,7 +18097,7 @@ spec:
                               Claims lists the names of resources, defined in spec.resourceClaims,
                               that are used by this container.
 
-                              This is an alpha field and requires enabling the
+                              This field depends on the
                               DynamicResourceAllocation feature gate.
 
                               This field is immutable. It can only be set for containers.
@@ -17781,6 +18588,128 @@ spec:
                                                 type: string
                                             x-kubernetes-map-type: atomic
                                       x-kubernetes-list-type: atomic
+                                podCertificate:
+                                  description: |-
+                                    Projects an auto-rotating credential bundle (private key and certificate
+                                    chain) that the pod can use either as a TLS client or server.
+
+                                    Kubelet generates a private key and uses it to send a
+                                    PodCertificateRequest to the named signer.  Once the signer approves the
+                                    request and issues a certificate chain, Kubelet writes the key and
+                                    certificate chain to the pod filesystem.  The pod does not start until
+                                    certificates have been issued for each podCertificate projected volume
+                                    source in its spec.
+
+                                    Kubelet will begin trying to rotate the certificate at the time indicated
+                                    by the signer using the PodCertificateRequest.Status.BeginRefreshAt
+                                    timestamp.
+
+                                    Kubelet can write a single file, indicated by the credentialBundlePath
+                                    field, or separate files, indicated by the keyPath and
+                                    certificateChainPath fields.
+
+                                    The credential bundle is a single file in PEM format.  The first PEM
+                                    entry is the private key (in PKCS#8 format), and the remaining PEM
+                                    entries are the certificate chain issued by the signer (typically,
+                                    signers will return their certificate chain in leaf-to-root order).
+
+                                    Prefer using the credential bundle format, since your application code
+                                    can read it atomically.  If you use keyPath and certificateChainPath,
+                                    your application must make two separate file reads. If these coincide
+                                    with a certificate rotation, it is possible that the private key and leaf
+                                    certificate you read may not correspond to each other.  Your application
+                                    will need to check for this condition, and re-read until they are
+                                    consistent.
+
+                                    The named signer controls chooses the format of the certificate it
+                                    issues; consult the signer implementation's documentation to learn how to
+                                    use the certificates it issues.
+                                  type: object
+                                  required:
+                                    - keyType
+                                    - signerName
+                                  properties:
+                                    certificateChainPath:
+                                      description: |-
+                                        Write the certificate chain at this path in the projected volume.
+
+                                        Most applications should use credentialBundlePath.  When using keyPath
+                                        and certificateChainPath, your application needs to check that the key
+                                        and leaf certificate are consistent, because it is possible to read the
+                                        files mid-rotation.
+                                      type: string
+                                    credentialBundlePath:
+                                      description: |-
+                                        Write the credential bundle at this path in the projected volume.
+
+                                        The credential bundle is a single file that contains multiple PEM blocks.
+                                        The first PEM block is a PRIVATE KEY block, containing a PKCS#8 private
+                                        key.
+
+                                        The remaining blocks are CERTIFICATE blocks, containing the issued
+                                        certificate chain from the signer (leaf and any intermediates).
+
+                                        Using credentialBundlePath lets your Pod's application code make a single
+                                        atomic read that retrieves a consistent key and certificate chain.  If you
+                                        project them to separate files, your application code will need to
+                                        additionally check that the leaf certificate was issued to the key.
+                                      type: string
+                                    keyPath:
+                                      description: |-
+                                        Write the key at this path in the projected volume.
+
+                                        Most applications should use credentialBundlePath.  When using keyPath
+                                        and certificateChainPath, your application needs to check that the key
+                                        and leaf certificate are consistent, because it is possible to read the
+                                        files mid-rotation.
+                                      type: string
+                                    keyType:
+                                      description: |-
+                                        The type of keypair Kubelet will generate for the pod.
+
+                                        Valid values are "RSA3072", "RSA4096", "ECDSAP256", "ECDSAP384",
+                                        "ECDSAP521", and "ED25519".
+                                      type: string
+                                    maxExpirationSeconds:
+                                      description: |-
+                                        maxExpirationSeconds is the maximum lifetime permitted for the
+                                        certificate.
+
+                                        Kubelet copies this value verbatim into the PodCertificateRequests it
+                                        generates for this projection.
+
+                                        If omitted, kube-apiserver will set it to 86400(24 hours). kube-apiserver
+                                        will reject values shorter than 3600 (1 hour).  The maximum allowable
+                                        value is 7862400 (91 days).
+
+                                        The signer implementation is then free to issue a certificate with any
+                                        lifetime *shorter* than MaxExpirationSeconds, but no shorter than 3600
+                                        seconds (1 hour).  This constraint is enforced by kube-apiserver.
+                                        `kubernetes.io` signers will never issue certificates with a lifetime
+                                        longer than 24 hours.
+                                      type: integer
+                                      format: int32
+                                    signerName:
+                                      description: Kubelet's generated CSRs will be addressed to this signer.
+                                      type: string
+                                    userAnnotations:
+                                      description: |-
+                                        userAnnotations allow pod authors to pass additional information to
+                                        the signer implementation.  Kubernetes does not restrict or validate this
+                                        metadata in any way.
+
+                                        These values are copied verbatim into the `spec.unverifiedUserAnnotations` field of
+                                        the PodCertificateRequest objects that Kubelet creates.
+
+                                        Entries are subject to the same validation as object metadata annotations,
+                                        with the addition that all keys must be domain-prefixed. No restrictions
+                                        are placed on values, except an overall size limitation on the entire field.
+
+                                        Signers should document the keys and values they support. Signers should
+                                        deny requests that contain keys they do not recognize.
+                                      type: object
+                                      additionalProperties:
+                                        type: string
                                 secret:
                                   description: secret information about the secret data to project
                                   type: object
@@ -17949,9 +18878,7 @@ spec:
                   additionalProperties:
                     type: string
                 cloudEvents:
-                  description: |-
-                    Deprecated: Removed in v0.44.0.
-                    CloudEvents
+                  description: CloudEvents
                   type: array
                   items:
                     description: CloudEventDelivery
@@ -18081,6 +19008,16 @@ spec:
                           type: boolean
                         enableStepActions:
                           description: EnableStepActions is a no-op flag since StepActions are stable
+                          type: boolean
+                        enableTektonOCIBundles:
+                          description: |-
+                            DeprecatedEnableTektonOCIBundles is maintained for backward compatibility
+                            to allow deletion of PipelineRuns created before v0.62.x.
+                            This field is not used and can be removed in a future release
+                            once we're confident old PipelineRuns have been cleaned up.
+                            See issue #8359 for context.
+                          type: boolean
+                        enableTerminationMessageCompression:
                           type: boolean
                         enableWaitExponentialBackoff:
                           type: boolean
@@ -18345,6 +19282,16 @@ spec:
                               enableStepActions:
                                 description: EnableStepActions is a no-op flag since StepActions are stable
                                 type: boolean
+                              enableTektonOCIBundles:
+                                description: |-
+                                  DeprecatedEnableTektonOCIBundles is maintained for backward compatibility
+                                  to allow deletion of PipelineRuns created before v0.62.x.
+                                  This field is not used and can be removed in a future release
+                                  once we're confident old PipelineRuns have been cleaned up.
+                                  See issue #8359 for context.
+                                type: boolean
+                              enableTerminationMessageCompression:
+                                type: boolean
                               enableWaitExponentialBackoff:
                                 type: boolean
                               enforceNonfalsifiability:
@@ -18535,7 +19482,7 @@ spec:
                         Claims lists the names of resources, defined in spec.resourceClaims,
                         that are used by this container.
 
-                        This is an alpha field and requires enabling the
+                        This field depends on the
                         DynamicResourceAllocation feature gate.
 
                         This field is immutable. It can only be set for containers.
@@ -18706,7 +19653,9 @@ spec:
                           - name
                         properties:
                           name:
-                            description: Name of the environment variable. Must be a C_IDENTIFIER.
+                            description: |-
+                              Name of the environment variable.
+                              May consist of any printable ASCII characters except '='.
                             type: string
                           value:
                             description: |-
@@ -18759,6 +19708,42 @@ spec:
                                     type: string
                                   fieldPath:
                                     description: Path of the field to select in the specified API version.
+                                    type: string
+                                x-kubernetes-map-type: atomic
+                              fileKeyRef:
+                                description: |-
+                                  FileKeyRef selects a key of the env file.
+                                  Requires the EnvFiles feature gate to be enabled.
+                                type: object
+                                required:
+                                  - key
+                                  - path
+                                  - volumeName
+                                properties:
+                                  key:
+                                    description: |-
+                                      The key within the env file. An invalid key will prevent the pod from starting.
+                                      The keys defined within a source may consist of any printable ASCII characters except '='.
+                                      During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                    type: string
+                                  optional:
+                                    description: |-
+                                      Specify whether the file or its key must be defined. If the file or key
+                                      does not exist, then the env var is not published.
+                                      If optional is set to true and the specified key does not exist,
+                                      the environment variable will not be set in the Pod's containers.
+
+                                      If optional is set to false and the specified key does not exist,
+                                      an error will be returned during Pod creation.
+                                    type: boolean
+                                    default: false
+                                  path:
+                                    description: |-
+                                      The path within the volume from which to select the file.
+                                      Must be relative and may not contain the '..' path or start with '..'.
+                                    type: string
+                                  volumeName:
+                                    description: The name of the volume mount containing the env file.
                                     type: string
                                 x-kubernetes-map-type: atomic
                               resourceFieldRef:
@@ -18922,9 +19907,10 @@ spec:
                           operator:
                             description: |-
                               Operator represents a key's relationship to the value.
-                              Valid operators are Exists and Equal. Defaults to Equal.
+                              Valid operators are Exists, Equal, Lt, and Gt. Defaults to Equal.
                               Exists is equivalent to wildcard for value, so that a pod can
                               tolerate all taints of a particular category.
+                              Lt and Gt perform numeric comparisons (requires feature gate TaintTolerationComparisonOperators).
                             type: string
                           tolerationSeconds:
                             description: |-
@@ -19068,7 +20054,6 @@ spec:
                               - Ignore: nodeAffinity/nodeSelector are ignored. All nodes are included in the calculations.
 
                               If this value is nil, the behavior is equivalent to the Honor policy.
-                              This is a beta-level feature default enabled by the NodeInclusionPolicyInPodTopologySpread feature flag.
                             type: string
                           nodeTaintsPolicy:
                             description: |-
@@ -19079,7 +20064,6 @@ spec:
                               - Ignore: node taints are ignored. All nodes are included.
 
                               If this value is nil, the behavior is equivalent to the Ignore policy.
-                              This is a beta-level feature default enabled by the NodeInclusionPolicyInPodTopologySpread feature flag.
                             type: string
                           topologyKey:
                             description: |-
@@ -19150,7 +20134,7 @@ spec:
                               Claims lists the names of resources, defined in spec.resourceClaims,
                               that are used by this container.
 
-                              This is an alpha field and requires enabling the
+                              This field depends on the
                               DynamicResourceAllocation feature gate.
 
                               This field is immutable. It can only be set for containers.
@@ -19233,7 +20217,7 @@ spec:
                               Claims lists the names of resources, defined in spec.resourceClaims,
                               that are used by this container.
 
-                              This is an alpha field and requires enabling the
+                              This field depends on the
                               DynamicResourceAllocation feature gate.
 
                               This field is immutable. It can only be set for containers.
@@ -19742,6 +20726,128 @@ spec:
                                                 type: string
                                             x-kubernetes-map-type: atomic
                                       x-kubernetes-list-type: atomic
+                                podCertificate:
+                                  description: |-
+                                    Projects an auto-rotating credential bundle (private key and certificate
+                                    chain) that the pod can use either as a TLS client or server.
+
+                                    Kubelet generates a private key and uses it to send a
+                                    PodCertificateRequest to the named signer.  Once the signer approves the
+                                    request and issues a certificate chain, Kubelet writes the key and
+                                    certificate chain to the pod filesystem.  The pod does not start until
+                                    certificates have been issued for each podCertificate projected volume
+                                    source in its spec.
+
+                                    Kubelet will begin trying to rotate the certificate at the time indicated
+                                    by the signer using the PodCertificateRequest.Status.BeginRefreshAt
+                                    timestamp.
+
+                                    Kubelet can write a single file, indicated by the credentialBundlePath
+                                    field, or separate files, indicated by the keyPath and
+                                    certificateChainPath fields.
+
+                                    The credential bundle is a single file in PEM format.  The first PEM
+                                    entry is the private key (in PKCS#8 format), and the remaining PEM
+                                    entries are the certificate chain issued by the signer (typically,
+                                    signers will return their certificate chain in leaf-to-root order).
+
+                                    Prefer using the credential bundle format, since your application code
+                                    can read it atomically.  If you use keyPath and certificateChainPath,
+                                    your application must make two separate file reads. If these coincide
+                                    with a certificate rotation, it is possible that the private key and leaf
+                                    certificate you read may not correspond to each other.  Your application
+                                    will need to check for this condition, and re-read until they are
+                                    consistent.
+
+                                    The named signer controls chooses the format of the certificate it
+                                    issues; consult the signer implementation's documentation to learn how to
+                                    use the certificates it issues.
+                                  type: object
+                                  required:
+                                    - keyType
+                                    - signerName
+                                  properties:
+                                    certificateChainPath:
+                                      description: |-
+                                        Write the certificate chain at this path in the projected volume.
+
+                                        Most applications should use credentialBundlePath.  When using keyPath
+                                        and certificateChainPath, your application needs to check that the key
+                                        and leaf certificate are consistent, because it is possible to read the
+                                        files mid-rotation.
+                                      type: string
+                                    credentialBundlePath:
+                                      description: |-
+                                        Write the credential bundle at this path in the projected volume.
+
+                                        The credential bundle is a single file that contains multiple PEM blocks.
+                                        The first PEM block is a PRIVATE KEY block, containing a PKCS#8 private
+                                        key.
+
+                                        The remaining blocks are CERTIFICATE blocks, containing the issued
+                                        certificate chain from the signer (leaf and any intermediates).
+
+                                        Using credentialBundlePath lets your Pod's application code make a single
+                                        atomic read that retrieves a consistent key and certificate chain.  If you
+                                        project them to separate files, your application code will need to
+                                        additionally check that the leaf certificate was issued to the key.
+                                      type: string
+                                    keyPath:
+                                      description: |-
+                                        Write the key at this path in the projected volume.
+
+                                        Most applications should use credentialBundlePath.  When using keyPath
+                                        and certificateChainPath, your application needs to check that the key
+                                        and leaf certificate are consistent, because it is possible to read the
+                                        files mid-rotation.
+                                      type: string
+                                    keyType:
+                                      description: |-
+                                        The type of keypair Kubelet will generate for the pod.
+
+                                        Valid values are "RSA3072", "RSA4096", "ECDSAP256", "ECDSAP384",
+                                        "ECDSAP521", and "ED25519".
+                                      type: string
+                                    maxExpirationSeconds:
+                                      description: |-
+                                        maxExpirationSeconds is the maximum lifetime permitted for the
+                                        certificate.
+
+                                        Kubelet copies this value verbatim into the PodCertificateRequests it
+                                        generates for this projection.
+
+                                        If omitted, kube-apiserver will set it to 86400(24 hours). kube-apiserver
+                                        will reject values shorter than 3600 (1 hour).  The maximum allowable
+                                        value is 7862400 (91 days).
+
+                                        The signer implementation is then free to issue a certificate with any
+                                        lifetime *shorter* than MaxExpirationSeconds, but no shorter than 3600
+                                        seconds (1 hour).  This constraint is enforced by kube-apiserver.
+                                        `kubernetes.io` signers will never issue certificates with a lifetime
+                                        longer than 24 hours.
+                                      type: integer
+                                      format: int32
+                                    signerName:
+                                      description: Kubelet's generated CSRs will be addressed to this signer.
+                                      type: string
+                                    userAnnotations:
+                                      description: |-
+                                        userAnnotations allow pod authors to pass additional information to
+                                        the signer implementation.  Kubernetes does not restrict or validate this
+                                        metadata in any way.
+
+                                        These values are copied verbatim into the `spec.unverifiedUserAnnotations` field of
+                                        the PodCertificateRequest objects that Kubelet creates.
+
+                                        Entries are subject to the same validation as object metadata annotations,
+                                        with the addition that all keys must be domain-prefixed. No restrictions
+                                        are placed on values, except an overall size limitation on the entire field.
+
+                                        Signers should document the keys and values they support. Signers should
+                                        deny requests that contain keys they do not recognize.
+                                      type: object
+                                      additionalProperties:
+                                        type: string
                                 secret:
                                   description: secret information about the secret data to project
                                   type: object
@@ -20057,6 +21163,16 @@ spec:
                         enableStepActions:
                           description: EnableStepActions is a no-op flag since StepActions are stable
                           type: boolean
+                        enableTektonOCIBundles:
+                          description: |-
+                            DeprecatedEnableTektonOCIBundles is maintained for backward compatibility
+                            to allow deletion of PipelineRuns created before v0.62.x.
+                            This field is not used and can be removed in a future release
+                            once we're confident old PipelineRuns have been cleaned up.
+                            See issue #8359 for context.
+                          type: boolean
+                        enableTerminationMessageCompression:
+                          type: boolean
                         enableWaitExponentialBackoff:
                           type: boolean
                         enforceNonfalsifiability:
@@ -20311,6 +21427,16 @@ spec:
                                 type: boolean
                               enableStepActions:
                                 description: EnableStepActions is a no-op flag since StepActions are stable
+                                type: boolean
+                              enableTektonOCIBundles:
+                                description: |-
+                                  DeprecatedEnableTektonOCIBundles is maintained for backward compatibility
+                                  to allow deletion of PipelineRuns created before v0.62.x.
+                                  This field is not used and can be removed in a future release
+                                  once we're confident old PipelineRuns have been cleaned up.
+                                  See issue #8359 for context.
+                                type: boolean
+                              enableTerminationMessageCompression:
                                 type: boolean
                               enableWaitExponentialBackoff:
                                 type: boolean
@@ -20587,7 +21713,7 @@ spec:
                                   Claims lists the names of resources, defined in spec.resourceClaims,
                                   that are used by this container.
 
-                                  This is an alpha field and requires enabling the
+                                  This field depends on the
                                   DynamicResourceAllocation feature gate.
 
                                   This field is immutable. It can only be set for containers.
@@ -20649,7 +21775,9 @@ spec:
                                 - name
                               properties:
                                 name:
-                                  description: Name of the environment variable. Must be a C_IDENTIFIER.
+                                  description: |-
+                                    Name of the environment variable.
+                                    May consist of any printable ASCII characters except '='.
                                   type: string
                                 value:
                                   description: |-
@@ -20702,6 +21830,42 @@ spec:
                                           type: string
                                         fieldPath:
                                           description: Path of the field to select in the specified API version.
+                                          type: string
+                                      x-kubernetes-map-type: atomic
+                                    fileKeyRef:
+                                      description: |-
+                                        FileKeyRef selects a key of the env file.
+                                        Requires the EnvFiles feature gate to be enabled.
+                                      type: object
+                                      required:
+                                        - key
+                                        - path
+                                        - volumeName
+                                      properties:
+                                        key:
+                                          description: |-
+                                            The key within the env file. An invalid key will prevent the pod from starting.
+                                            The keys defined within a source may consist of any printable ASCII characters except '='.
+                                            During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                          type: string
+                                        optional:
+                                          description: |-
+                                            Specify whether the file or its key must be defined. If the file or key
+                                            does not exist, then the env var is not published.
+                                            If optional is set to true and the specified key does not exist,
+                                            the environment variable will not be set in the Pod's containers.
+
+                                            If optional is set to false and the specified key does not exist,
+                                            an error will be returned during Pod creation.
+                                          type: boolean
+                                          default: false
+                                        path:
+                                          description: |-
+                                            The path within the volume from which to select the file.
+                                            Must be relative and may not contain the '..' path or start with '..'.
+                                          type: string
+                                        volumeName:
+                                          description: The name of the volume mount containing the env file.
                                           type: string
                                       x-kubernetes-map-type: atomic
                                     resourceFieldRef:
@@ -20759,7 +21923,7 @@ spec:
                               Cannot be updated.
                             type: array
                             items:
-                              description: EnvFromSource represents the source of a set of ConfigMaps
+                              description: EnvFromSource represents the source of a set of ConfigMaps or Secrets
                               type: object
                               properties:
                                 configMapRef:
@@ -20780,7 +21944,9 @@ spec:
                                       type: boolean
                                   x-kubernetes-map-type: atomic
                                 prefix:
-                                  description: An optional identifier to prepend to each key in the ConfigMap. Must be a C_IDENTIFIER.
+                                  description: |-
+                                    Optional text to prepend to the name of each environment variable.
+                                    May consist of any printable ASCII characters except '='.
                                   type: string
                                 secretRef:
                                   description: The Secret to select from
@@ -21026,6 +22192,12 @@ spec:
                                           - type: integer
                                           - type: string
                                         x-kubernetes-int-or-string: true
+                              stopSignal:
+                                description: |-
+                                  StopSignal defines which signal will be sent to a container when it is being stopped.
+                                  If not specified, the default is defined by the container runtime in use.
+                                  StopSignal can only be set for Pods with a non-empty .spec.os.name
+                                type: string
                           livenessProbe:
                             description: |-
                               Periodic probe of Sidecar liveness.
@@ -21944,7 +23116,7 @@ spec:
                                 Claims lists the names of resources, defined in spec.resourceClaims,
                                 that are used by this container.
 
-                                This is an alpha field and requires enabling the
+                                This field depends on the
                                 DynamicResourceAllocation feature gate.
 
                                 This field is immutable. It can only be set for containers.
@@ -22006,7 +23178,9 @@ spec:
                               - name
                             properties:
                               name:
-                                description: Name of the environment variable. Must be a C_IDENTIFIER.
+                                description: |-
+                                  Name of the environment variable.
+                                  May consist of any printable ASCII characters except '='.
                                 type: string
                               value:
                                 description: |-
@@ -22059,6 +23233,42 @@ spec:
                                         type: string
                                       fieldPath:
                                         description: Path of the field to select in the specified API version.
+                                        type: string
+                                    x-kubernetes-map-type: atomic
+                                  fileKeyRef:
+                                    description: |-
+                                      FileKeyRef selects a key of the env file.
+                                      Requires the EnvFiles feature gate to be enabled.
+                                    type: object
+                                    required:
+                                      - key
+                                      - path
+                                      - volumeName
+                                    properties:
+                                      key:
+                                        description: |-
+                                          The key within the env file. An invalid key will prevent the pod from starting.
+                                          The keys defined within a source may consist of any printable ASCII characters except '='.
+                                          During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                        type: string
+                                      optional:
+                                        description: |-
+                                          Specify whether the file or its key must be defined. If the file or key
+                                          does not exist, then the env var is not published.
+                                          If optional is set to true and the specified key does not exist,
+                                          the environment variable will not be set in the Pod's containers.
+
+                                          If optional is set to false and the specified key does not exist,
+                                          an error will be returned during Pod creation.
+                                        type: boolean
+                                        default: false
+                                      path:
+                                        description: |-
+                                          The path within the volume from which to select the file.
+                                          Must be relative and may not contain the '..' path or start with '..'.
+                                        type: string
+                                      volumeName:
+                                        description: The name of the volume mount containing the env file.
                                         type: string
                                     x-kubernetes-map-type: atomic
                                   resourceFieldRef:
@@ -22116,7 +23326,7 @@ spec:
                             Cannot be updated.
                           type: array
                           items:
-                            description: EnvFromSource represents the source of a set of ConfigMaps
+                            description: EnvFromSource represents the source of a set of ConfigMaps or Secrets
                             type: object
                             properties:
                               configMapRef:
@@ -22137,7 +23347,9 @@ spec:
                                     type: boolean
                                 x-kubernetes-map-type: atomic
                               prefix:
-                                description: An optional identifier to prepend to each key in the ConfigMap. Must be a C_IDENTIFIER.
+                                description: |-
+                                  Optional text to prepend to the name of each environment variable.
+                                  May consist of any printable ASCII characters except '='.
                                 type: string
                               secretRef:
                                 description: The Secret to select from
@@ -22499,7 +23711,7 @@ spec:
                                   Claims lists the names of resources, defined in spec.resourceClaims,
                                   that are used by this container.
 
-                                  This is an alpha field and requires enabling the
+                                  This field depends on the
                                   DynamicResourceAllocation feature gate.
 
                                   This field is immutable. It can only be set for containers.
@@ -22566,7 +23778,9 @@ spec:
                                 - name
                               properties:
                                 name:
-                                  description: Name of the environment variable. Must be a C_IDENTIFIER.
+                                  description: |-
+                                    Name of the environment variable.
+                                    May consist of any printable ASCII characters except '='.
                                   type: string
                                 value:
                                   description: |-
@@ -22619,6 +23833,42 @@ spec:
                                           type: string
                                         fieldPath:
                                           description: Path of the field to select in the specified API version.
+                                          type: string
+                                      x-kubernetes-map-type: atomic
+                                    fileKeyRef:
+                                      description: |-
+                                        FileKeyRef selects a key of the env file.
+                                        Requires the EnvFiles feature gate to be enabled.
+                                      type: object
+                                      required:
+                                        - key
+                                        - path
+                                        - volumeName
+                                      properties:
+                                        key:
+                                          description: |-
+                                            The key within the env file. An invalid key will prevent the pod from starting.
+                                            The keys defined within a source may consist of any printable ASCII characters except '='.
+                                            During Alpha stage of the EnvFiles feature gate, the key size is limited to 128 characters.
+                                          type: string
+                                        optional:
+                                          description: |-
+                                            Specify whether the file or its key must be defined. If the file or key
+                                            does not exist, then the env var is not published.
+                                            If optional is set to true and the specified key does not exist,
+                                            the environment variable will not be set in the Pod's containers.
+
+                                            If optional is set to false and the specified key does not exist,
+                                            an error will be returned during Pod creation.
+                                          type: boolean
+                                          default: false
+                                        path:
+                                          description: |-
+                                            The path within the volume from which to select the file.
+                                            Must be relative and may not contain the '..' path or start with '..'.
+                                          type: string
+                                        volumeName:
+                                          description: The name of the volume mount containing the env file.
                                           type: string
                                       x-kubernetes-map-type: atomic
                                     resourceFieldRef:
@@ -22676,7 +23926,7 @@ spec:
                               Cannot be updated.
                             type: array
                             items:
-                              description: EnvFromSource represents the source of a set of ConfigMaps
+                              description: EnvFromSource represents the source of a set of ConfigMaps or Secrets
                               type: object
                               properties:
                                 configMapRef:
@@ -22697,7 +23947,9 @@ spec:
                                       type: boolean
                                   x-kubernetes-map-type: atomic
                                 prefix:
-                                  description: An optional identifier to prepend to each key in the ConfigMap. Must be a C_IDENTIFIER.
+                                  description: |-
+                                    Optional text to prepend to the name of each environment variable.
+                                    May consist of any printable ASCII characters except '='.
                                   type: string
                                 secretRef:
                                   description: The Secret to select from
@@ -23277,8 +24529,8 @@ metadata:
   labels:
     app.kubernetes.io/instance: default
     app.kubernetes.io/part-of: tekton-pipelines
-    pipeline.tekton.dev/release: "v1.9.4"
-    version: "v1.9.4"
+    pipeline.tekton.dev/release: "v1.13.1"
+    version: "v1.13.1"
 spec:
   group: tekton.dev
   versions:
@@ -23421,7 +24673,7 @@ metadata:
     app.kubernetes.io/component: webhook
     app.kubernetes.io/instance: default
     app.kubernetes.io/part-of: tekton-pipelines
-    pipeline.tekton.dev/release: "v1.9.4"
+    pipeline.tekton.dev/release: "v1.13.1"
 # The data is populated at install time.
 ---
 apiVersion: admissionregistration.k8s.io/v1
@@ -23432,7 +24684,7 @@ metadata:
     app.kubernetes.io/component: webhook
     app.kubernetes.io/instance: default
     app.kubernetes.io/part-of: tekton-pipelines
-    pipeline.tekton.dev/release: "v1.9.4"
+    pipeline.tekton.dev/release: "v1.13.1"
 webhooks:
   - admissionReviewVersions: ["v1"]
     clientConfig:
@@ -23451,7 +24703,7 @@ metadata:
     app.kubernetes.io/component: webhook
     app.kubernetes.io/instance: default
     app.kubernetes.io/part-of: tekton-pipelines
-    pipeline.tekton.dev/release: "v1.9.4"
+    pipeline.tekton.dev/release: "v1.13.1"
 webhooks:
   - admissionReviewVersions: ["v1"]
     clientConfig:
@@ -23470,7 +24722,7 @@ metadata:
     app.kubernetes.io/component: webhook
     app.kubernetes.io/instance: default
     app.kubernetes.io/part-of: tekton-pipelines
-    pipeline.tekton.dev/release: "v1.9.4"
+    pipeline.tekton.dev/release: "v1.13.1"
 webhooks:
   - admissionReviewVersions: ["v1"]
     clientConfig:
@@ -23668,10 +24920,12 @@ data:
     # Possible values include "1m", "5m", "10s", "1h", etc.
     # Example: default-maximum-resolution-timeout: "1m"
 
-    # default-container-resource-requirements allow users to update default resource requirements
-    # to a init-containers and containers of a pods create by the controller
-    # Onet: All the resource requirements are applied to init-containers and containers
-    # only if the existing resource requirements are empty.
+    # default-container-resource-requirements allow users to configure default resource
+    # requirements for init containers and containers in pods created by the controller.
+    # No resource requirements are applied by default when this key is unset.
+    # Note: All the resource requirements are applied to init-containers and containers
+    # only if the existing resource requirements are empty, except Tekton internal
+    # containers can be overridden by named entries such as prepare or place-scripts.
     # default-container-resource-requirements: |
     #   place-scripts: # updates resource requirements of a 'place-scripts' container
     #     requests:
@@ -23713,7 +24967,7 @@ data:
     #       memory: "128Mi"
     #       cpu: "500m"
     #
-    #   default: # updates resource requirements of init-containers and containers which has empty resource resource requirements
+    #   default: # updates resource requirements of init-containers and containers which has empty resource requirements
     #     requests:
     #       memory: "64Mi"
     #       cpu: "250m"
@@ -23777,7 +25031,7 @@ data:
     # this example block and unindented to be in the data block
     # to actually change the configuration.
 
-    # formats contains a comma seperated list of event formats to be used
+    # formats contains a comma separated list of event formats to be used
     # the only format supported today is "tektonv1". An empty string is not
     # a valid configuration. To disable events, do not specify the sink.
     formats: "tektonv1"
@@ -23867,9 +25121,11 @@ data:
   # Setting this flag will determine which gated features are enabled.
   # Acceptable values are "stable", "beta", or "alpha".
   enable-api-fields: "beta"
-  # Setting this flag to "true" enables CloudEvents for CustomRuns and Runs, as long as a
-  # CloudEvents sink is configured in the config-defaults config map
-  send-cloudevents-for-runs: "false"
+  # DEPRECATED: send-cloudevents-for-runs is deprecated and will be removed in a future
+  # release. CloudEvents are now enabled by default when a sink is configured in the
+  # config-events ConfigMap. This flag only affects CustomRuns; it has no effect on
+  # TaskRuns or PipelineRuns.
+  send-cloudevents-for-runs: "true"
   # This flag affects the behavior of taskruns and pipelineruns in cases where no VerificationPolicies match them.
   # If it is set to "fail", TaskRuns and PipelineRuns will fail verification if no matching policies are found.
   # If it is set to "warn", TaskRuns and PipelineRuns will run to completion if no matching policies are found, and an error will be logged.
@@ -23927,6 +25183,13 @@ data:
   # If set to "false", exponential backoff will be disabled.
   # For advanced tuning of backoff parameters, update the 'wait-exponential-backoff' ConfigMap.
   enable-wait-exponential-backoff: "false"
+  # Setting this flag to "true" will compress termination messages with flate
+  # to fit more results in the 4KB Kubernetes termination message limit.
+  # Only applies when results-from is set to "termination-message" (the default);
+  # ignored when results-from is "sidecar-logs".
+  # Alpha feature — this is a short-term measure. External result storage
+  # (TEP-0164) will address the underlying 4KB limitation.
+  enable-termination-message-compression: "false"
 
 ---
 # Copyright 2021 The Tekton Authors
@@ -23957,7 +25220,7 @@ data:
   # this ConfigMap such that even if we don't have access to
   # other resources in the namespace we still can have access to
   # this ConfigMap.
-  version: "v1.9.4"
+  version: "v1.13.1"
 
 ---
 # Copyright 2020 Tekton Authors LLC
@@ -24198,6 +25461,7 @@ metadata:
     app.kubernetes.io/instance: default
     app.kubernetes.io/part-of: tekton-pipelines
 data:
+  metrics-protocol: prometheus
   _example: |
     ################################
     #                              #
@@ -24214,23 +25478,46 @@ data:
     # this example block and unindented to be in the data block
     # to actually change the configuration.
 
-    # metrics.backend-destination field specifies the system metrics destination.
-    # It supports either prometheus (the default) or stackdriver.
-    # Note: Using Stackdriver will incur additional charges.
-    metrics.backend-destination: prometheus
+    # OpenTelemetry Metrics Configuration
+    # Protocol for metrics export (prometheus, grpc, http/protobuf, none)
+    # Default if not specified: "none"
+    metrics-protocol: prometheus
 
-    # metrics.stackdriver-project-id field specifies the Stackdriver project ID. This
-    # field is optional. When running on GCE, application default credentials will be
-    # used and metrics will be sent to the cluster's project if this field is
-    # not provided.
-    metrics.stackdriver-project-id: "<your stackdriver project id>"
+    # Metrics endpoint (for grpc/http protocols)
+    # Default: empty (uses default OTLP endpoint)
+    metrics-endpoint: ""
 
-    # metrics.allow-stackdriver-custom-metrics indicates whether it is allowed
-    # to send metrics to Stackdriver using "global" resource type and custom
-    # metric type. Setting this flag to "true" could cause extra Stackdriver
-    # charge.  If metrics.backend-destination is not Stackdriver, this is
-    # ignored.
-    metrics.allow-stackdriver-custom-metrics: "false"
+    # Metrics export interval (e.g., "30s", "1m")
+    # Default: empty (uses default interval)
+    metrics-export-interval: ""
+
+    # OpenTelemetry Tracing Configuration
+    # Protocol for tracing export (grpc, http/protobuf, none, stdout)
+    # Default: none
+    tracing-protocol: none
+
+    # Tracing endpoint (for grpc/http protocols)
+    # Default: empty
+    tracing-endpoint: ""
+
+    # Tracing sampling rate (0.0 to 1.0)
+    # Default: 1.0 (100% sampling)
+    tracing-sampling-rate: "1.0"
+
+    # Runtime Configuration
+    # Enable profiling (enabled, disabled)
+    # Default: disabled
+    runtime-profiling: disabled
+
+    # Runtime export interval (e.g., "15s")
+    # Default: 15s
+    runtime-export-interval: "15s"
+
+    # Note: Legacy OpenCensus configuration (metrics.backend-destination, etc.) has been
+    # removed as OpenCensus support is no longer provided by the underlying infrastructure.
+    # Please use the OpenTelemetry configuration options above.
+
+    # Tekton-specific metrics configuration
     metrics.taskrun.level: "task"
     metrics.taskrun.duration-type: "histogram"
     metrics.pipelinerun.level: "pipeline"
@@ -24331,6 +25618,9 @@ data:
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# NOTE: Exported traces may include Kubernetes resource identifiers (e.g. TaskRun/PipelineRun
+# names and namespaces) as span attributes. Treat the trace backend as a trusted observability
+# system. See docs/developers/tracing.md for details.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -24360,7 +25650,7 @@ data:
     #
     # API endpoint to send the traces to
     # (optional): The default value is given below
-    endpoint: "http://jaeger-collector.jaeger.svc.cluster.local:14268/api/traces"
+    endpoint: "http://jaeger-collector.jaeger.svc.cluster.local:4318/v1/traces"
     # (optional) Name of the k8s secret which contains basic auth credentials
     credentialsSecret: "jaeger-creds"
 
@@ -24422,12 +25712,12 @@ metadata:
     app.kubernetes.io/name: controller
     app.kubernetes.io/component: controller
     app.kubernetes.io/instance: default
-    app.kubernetes.io/version: "v1.9.4"
+    app.kubernetes.io/version: "v1.13.1"
     app.kubernetes.io/part-of: tekton-pipelines
     # tekton.dev/release value replaced with inputs.params.versionTag in pipeline/tekton/publish.yaml
-    pipeline.tekton.dev/release: "v1.9.4"
+    pipeline.tekton.dev/release: "v1.13.1"
     # labels below are related to istio and should not be used for resource lookup
-    version: "v1.9.4"
+    version: "v1.13.1"
 spec:
   replicas: 1
   selector:
@@ -24442,13 +25732,13 @@ spec:
         app.kubernetes.io/name: controller
         app.kubernetes.io/component: controller
         app.kubernetes.io/instance: default
-        app.kubernetes.io/version: "v1.9.4"
+        app.kubernetes.io/version: "v1.13.1"
         app.kubernetes.io/part-of: tekton-pipelines
         # tekton.dev/release value replaced with inputs.params.versionTag in pipeline/tekton/publish.yaml
-        pipeline.tekton.dev/release: "v1.9.4"
+        pipeline.tekton.dev/release: "v1.13.1"
         # labels below are related to istio and should not be used for resource lookup
         app: tekton-pipelines-controller
-        version: "v1.9.4"
+        version: "v1.13.1"
     spec:
       affinity:
         nodeAffinity:
@@ -24473,11 +25763,11 @@ spec:
       serviceAccountName: tekton-pipelines-controller
       containers:
         - name: tekton-pipelines-controller
-          image: ghcr.io/tektoncd/pipeline/controller-10a3e32792f33651396d02b6855a6e36:v1.9.4@sha256:1bec8d1d69b6b3fcdc5f456ba2a31f1c15880a14e80b2e32e866bfe351183fc0
+          image: ghcr.io/tektoncd/pipeline/controller-10a3e32792f33651396d02b6855a6e36:v1.13.1@sha256:aa27ec12df9b6a3e0aa6866b5f9ca8e87e6dadae6d69204c08a56c3c9ec7ce99
           args: [
             # These images are built on-demand by `ko resolve` and are replaced
             # by image references by digest.
-            "-entrypoint-image", "ghcr.io/tektoncd/pipeline/entrypoint-bff0a22da108bc2f16c818c97641a296:v1.9.4@sha256:52260c96274b237428275680d76b918bd07cc6c6ffa41f166ecc1f42bcc50fbe", "-nop-image", "ghcr.io/tektoncd/pipeline/nop-8eac7c133edad5df719dc37b36b62482:v1.9.4@sha256:9737375e9abcdd1aae452c75ded4c620e1dfac60f08eb791ae6882f3ffe00153", "-sidecarlogresults-image", "ghcr.io/tektoncd/pipeline/sidecarlogresults-7501c6a20d741631510a448b48ab098f:v1.9.4@sha256:6b42a24914ebccdf61c8e0d0032fc6ec5ab229bdcf231de0c460b705cd7f519d", "-workingdirinit-image", "ghcr.io/tektoncd/pipeline/workingdirinit-0c558922ec6a1b739e550e349f2d5fc1:v1.9.4@sha256:245bd3d352031d9d5ce79f0ac44a7255bd92f9786a89d31259e8d9ee1d9887a1",
+            "-entrypoint-image", "ghcr.io/tektoncd/pipeline/entrypoint-bff0a22da108bc2f16c818c97641a296:v1.13.1@sha256:414fc8f68294434f603c74212dbdebc1f3a0d7dfda998ca736947b29b720db9d", "-nop-image", "ghcr.io/tektoncd/pipeline/nop-8eac7c133edad5df719dc37b36b62482:v1.13.1@sha256:d4f30a6c7fd71cf93025590a55be2bc920e92f51e5cbdb6bc4dc34af7d7f7483", "-sidecarlogresults-image", "ghcr.io/tektoncd/pipeline/sidecarlogresults-7501c6a20d741631510a448b48ab098f:v1.13.1@sha256:628ad5d0374bf4f5bf8a392f6e62ae90aa4ead64f8c6ffbe5cd805c116462445", "-workingdirinit-image", "ghcr.io/tektoncd/pipeline/workingdirinit-0c558922ec6a1b739e550e349f2d5fc1:v1.13.1@sha256:e44274172deda2010fd06ba8434771a136e751d74d77f3b831b7fca01ba01fe1",
             # The shell image must allow root in order to create directories and copy files to PVCs.
             # cgr.dev/chainguard/busybox as of April 14 2022
             # image shall not contains tag, so it will be supported on a runtime like cri-o
@@ -24568,13 +25858,13 @@ metadata:
     app.kubernetes.io/name: controller
     app.kubernetes.io/component: controller
     app.kubernetes.io/instance: default
-    app.kubernetes.io/version: "v1.9.4"
+    app.kubernetes.io/version: "v1.13.1"
     app.kubernetes.io/part-of: tekton-pipelines
     # tekton.dev/release value replaced with inputs.params.versionTag in pipeline/tekton/publish.yaml
-    pipeline.tekton.dev/release: "v1.9.4"
+    pipeline.tekton.dev/release: "v1.13.1"
     # labels below are related to istio and should not be used for resource lookup
     app: tekton-pipelines-controller
-    version: "v1.9.4"
+    version: "v1.13.1"
   name: tekton-pipelines-controller
   namespace: tekton-pipelines
 spec:
@@ -24618,12 +25908,12 @@ metadata:
     app.kubernetes.io/name: events
     app.kubernetes.io/component: events
     app.kubernetes.io/instance: default
-    app.kubernetes.io/version: "v1.9.4"
+    app.kubernetes.io/version: "v1.13.1"
     app.kubernetes.io/part-of: tekton-pipelines
     # tekton.dev/release value replaced with inputs.params.versionTag in pipeline/tekton/publish.yaml
-    pipeline.tekton.dev/release: "v1.9.4"
+    pipeline.tekton.dev/release: "v1.13.1"
     # labels below are related to istio and should not be used for resource lookup
-    version: "v1.9.4"
+    version: "v1.13.1"
 spec:
   replicas: 1
   selector:
@@ -24638,13 +25928,13 @@ spec:
         app.kubernetes.io/name: events
         app.kubernetes.io/component: events
         app.kubernetes.io/instance: default
-        app.kubernetes.io/version: "v1.9.4"
+        app.kubernetes.io/version: "v1.13.1"
         app.kubernetes.io/part-of: tekton-pipelines
         # tekton.dev/release value replaced with inputs.params.versionTag in pipeline/tekton/publish.yaml
-        pipeline.tekton.dev/release: "v1.9.4"
+        pipeline.tekton.dev/release: "v1.13.1"
         # labels below are related to istio and should not be used for resource lookup
         app: tekton-events-controller
-        version: "v1.9.4"
+        version: "v1.13.1"
     spec:
       affinity:
         nodeAffinity:
@@ -24658,7 +25948,7 @@ spec:
       serviceAccountName: tekton-events-controller
       containers:
         - name: tekton-events-controller
-          image: ghcr.io/tektoncd/pipeline/events-a9042f7efb0cbade2a868a1ee5ddd52c:v1.9.4@sha256:bb53a89567aed7e82463685c0a381b528c933e10c32c83d85a7de2a085a8fef7
+          image: ghcr.io/tektoncd/pipeline/events-a9042f7efb0cbade2a868a1ee5ddd52c:v1.13.1@sha256:f0cea64a8602bdcc7c0d5621b8c4eb432a2532733aab579b7e8ffed644056382
           args: []
           volumeMounts:
             - name: config-logging
@@ -24737,13 +26027,13 @@ metadata:
     app.kubernetes.io/name: events
     app.kubernetes.io/component: events
     app.kubernetes.io/instance: default
-    app.kubernetes.io/version: "v1.9.4"
+    app.kubernetes.io/version: "v1.13.1"
     app.kubernetes.io/part-of: tekton-pipelines
     # tekton.dev/release value replaced with inputs.params.versionTag in pipeline/tekton/publish.yaml
-    pipeline.tekton.dev/release: "v1.9.4"
+    pipeline.tekton.dev/release: "v1.13.1"
     # labels below are related to istio and should not be used for resource lookup
     app: tekton-events-controller
-    version: "v1.9.4"
+    version: "v1.13.1"
   name: tekton-events-controller
   namespace: tekton-pipelines
 spec:
@@ -25192,6 +26482,7 @@ metadata:
     app.kubernetes.io/instance: default
     app.kubernetes.io/part-of: tekton-pipelines
 data:
+  metrics-protocol: prometheus
   _example: |
     ################################
     #                              #
@@ -25208,27 +26499,44 @@ data:
     # this example block and unindented to be in the data block
     # to actually change the configuration.
 
-    # metrics.backend-destination field specifies the system metrics destination.
-    # It supports either prometheus (the default) or stackdriver.
-    # Note: Using stackdriver will incur additional charges
-    metrics.backend-destination: prometheus
+    # OpenTelemetry Metrics Configuration
+    # Protocol for metrics export (prometheus, grpc, http/protobuf, none)
+    # Default if not specified: "none"
+    metrics-protocol: prometheus
 
-    # metrics.request-metrics-backend-destination specifies the request metrics
-    # destination. If non-empty, it enables queue proxy to send request metrics.
-    # Currently supported values: prometheus, stackdriver.
-    metrics.request-metrics-backend-destination: prometheus
+    # Metrics endpoint (for grpc/http protocols)
+    # Default: empty (uses default OTLP endpoint)
+    metrics-endpoint: ""
 
-    # metrics.stackdriver-project-id field specifies the stackdriver project ID. This
-    # field is optional. When running on GCE, application default credentials will be
-    # used if this field is not provided.
-    metrics.stackdriver-project-id: "<your stackdriver project id>"
+    # Metrics export interval (e.g., "30s", "1m")
+    # Default: empty (uses default interval)
+    metrics-export-interval: ""
 
-    # metrics.allow-stackdriver-custom-metrics indicates whether it is allowed to send metrics to
-    # Stackdriver using "global" resource type and custom metric type if the
-    # metrics are not supported by "knative_revision" resource type. Setting this
-    # flag to "true" could cause extra Stackdriver charge.
-    # If metrics.backend-destination is not Stackdriver, this is ignored.
-    metrics.allow-stackdriver-custom-metrics: "false"
+    # OpenTelemetry Tracing Configuration
+    # Protocol for tracing export (grpc, http/protobuf, none, stdout)
+    # Default: none
+    tracing-protocol: none
+
+    # Tracing endpoint (for grpc/http protocols)
+    # Default: empty
+    tracing-endpoint: ""
+
+    # Tracing sampling rate (0.0 to 1.0)
+    # Default: 1.0 (100% sampling)
+    tracing-sampling-rate: "1.0"
+
+    # Runtime Configuration
+    # Enable profiling (enabled, disabled)
+    # Default: disabled
+    runtime-profiling: disabled
+
+    # Runtime export interval (e.g., "15s")
+    # Default: 15s
+    runtime-export-interval: "15s"
+
+    # Note: Legacy OpenCensus configuration (metrics.backend-destination, etc.) has been
+    # removed as OpenCensus support is no longer provided by the underlying infrastructure.
+    # Please use the OpenTelemetry configuration options above.
 
 ---
 # Copyright 2022 The Tekton Authors
@@ -25343,6 +26651,17 @@ data:
   default-kind: "task"
   # the default hub source to pull the resource from.
   default-type: "artifact"
+  # Ordered list of Artifact Hub API URLs to try. First successful response wins.
+  # If not set, the ARTIFACT_HUB_API env var or default (https://artifacthub.io) is used.
+  # URLs must use http or https scheme.
+  # artifact-hub-urls: |
+  #   - https://internal-hub.example.com/
+  #   - https://artifacthub.io/
+  # Ordered list of Tekton Hub API URLs to try. First successful response wins.
+  # If not set, the TEKTON_HUB_API env var is used.
+  # URLs must use http or https scheme.
+  # tekton-hub-urls: |
+  #   - https://api.hub.tekton.dev/
 
 ---
 # Copyright 2025 The Tekton Authors
@@ -25397,12 +26716,12 @@ metadata:
     app.kubernetes.io/name: resolvers
     app.kubernetes.io/component: resolvers
     app.kubernetes.io/instance: default
-    app.kubernetes.io/version: "v1.9.4"
+    app.kubernetes.io/version: "v1.13.1"
     app.kubernetes.io/part-of: tekton-pipelines
     # tekton.dev/release value replaced with inputs.params.versionTag in pipeline/tekton/publish.yaml
-    pipeline.tekton.dev/release: "v1.9.4"
+    pipeline.tekton.dev/release: "v1.13.1"
     # labels below are related to istio and should not be used for resource lookup
-    version: "v1.9.4"
+    version: "v1.13.1"
 spec:
   replicas: 1
   selector:
@@ -25417,13 +26736,13 @@ spec:
         app.kubernetes.io/name: resolvers
         app.kubernetes.io/component: resolvers
         app.kubernetes.io/instance: default
-        app.kubernetes.io/version: "v1.9.4"
+        app.kubernetes.io/version: "v1.13.1"
         app.kubernetes.io/part-of: tekton-pipelines
         # tekton.dev/release value replaced with inputs.params.versionTag in pipeline/tekton/publish.yaml
-        pipeline.tekton.dev/release: "v1.9.4"
+        pipeline.tekton.dev/release: "v1.13.1"
         # labels below are related to istio and should not be used for resource lookup
         app: tekton-pipelines-resolvers
-        version: "v1.9.4"
+        version: "v1.13.1"
     spec:
       affinity:
         nodeAffinity:
@@ -25448,7 +26767,7 @@ spec:
       serviceAccountName: tekton-pipelines-resolvers
       containers:
         - name: controller
-          image: ghcr.io/tektoncd/pipeline/resolvers-ff86b24f130c42b88983d3c13993056d:v1.9.4@sha256:ea3a921baa162fc732652eb326623734deec0228e1aad7d7691788f2b98bfeee
+          image: ghcr.io/tektoncd/pipeline/resolvers-ff86b24f130c42b88983d3c13993056d:v1.13.1@sha256:69f2994badb5e8713d4d0f19698aff2d70529dc96410da33439755a3d1efdd46
           command:
             - /sbin/tini
             - --
@@ -25534,13 +26853,13 @@ metadata:
     app.kubernetes.io/name: resolvers
     app.kubernetes.io/component: resolvers
     app.kubernetes.io/instance: default
-    app.kubernetes.io/version: "v1.9.4"
+    app.kubernetes.io/version: "v1.13.1"
     app.kubernetes.io/part-of: tekton-pipelines
     # tekton.dev/release value replaced with inputs.params.versionTag in pipeline/tekton/publish.yaml
-    pipeline.tekton.dev/release: "v1.9.4"
+    pipeline.tekton.dev/release: "v1.13.1"
     # labels below are related to istio and should not be used for resource lookup
     app: tekton-pipelines-remote-resolvers
-    version: "v1.9.4"
+    version: "v1.13.1"
   name: tekton-pipelines-remote-resolvers
   namespace: tekton-pipelines-resolvers
 spec:
@@ -25584,12 +26903,12 @@ metadata:
     app.kubernetes.io/name: webhook
     app.kubernetes.io/component: webhook
     app.kubernetes.io/instance: default
-    app.kubernetes.io/version: "v1.9.4"
+    app.kubernetes.io/version: "v1.13.1"
     app.kubernetes.io/part-of: tekton-pipelines
     # tekton.dev/release value replaced with inputs.params.versionTag in pipeline/tekton/publish.yaml
-    pipeline.tekton.dev/release: "v1.9.4"
+    pipeline.tekton.dev/release: "v1.13.1"
     # labels below are related to istio and should not be used for resource lookup
-    version: "v1.9.4"
+    version: "v1.13.1"
 spec:
   minReplicas: 1
   maxReplicas: 5
@@ -25632,12 +26951,12 @@ metadata:
     app.kubernetes.io/name: webhook
     app.kubernetes.io/component: webhook
     app.kubernetes.io/instance: default
-    app.kubernetes.io/version: "v1.9.4"
+    app.kubernetes.io/version: "v1.13.1"
     app.kubernetes.io/part-of: tekton-pipelines
     # tekton.dev/release value replaced with inputs.params.versionTag in pipeline/tekton/publish.yaml
-    pipeline.tekton.dev/release: "v1.9.4"
+    pipeline.tekton.dev/release: "v1.13.1"
     # labels below are related to istio and should not be used for resource lookup
-    version: "v1.9.4"
+    version: "v1.13.1"
 spec:
   selector:
     matchLabels:
@@ -25651,13 +26970,13 @@ spec:
         app.kubernetes.io/name: webhook
         app.kubernetes.io/component: webhook
         app.kubernetes.io/instance: default
-        app.kubernetes.io/version: "v1.9.4"
+        app.kubernetes.io/version: "v1.13.1"
         app.kubernetes.io/part-of: tekton-pipelines
         # tekton.dev/release value replaced with inputs.params.versionTag in pipeline/tekton/publish.yaml
-        pipeline.tekton.dev/release: "v1.9.4"
+        pipeline.tekton.dev/release: "v1.13.1"
         # labels below are related to istio and should not be used for resource lookup
         app: tekton-pipelines-webhook
-        version: "v1.9.4"
+        version: "v1.13.1"
     spec:
       affinity:
         nodeAffinity:
@@ -25684,7 +27003,7 @@ spec:
         - name: webhook
           # This is the Go import path for the binary that is containerized
           # and substituted here.
-          image: ghcr.io/tektoncd/pipeline/webhook-d4749e605405422fd87700164e31b2d1:v1.9.4@sha256:971bfa5cece9206b0ea0dac49ce8e6aae81112ef4108933d5afec600cf547ca7
+          image: ghcr.io/tektoncd/pipeline/webhook-d4749e605405422fd87700164e31b2d1:v1.13.1@sha256:ca0e3c0b7699906e4950f7be19af26d12f8ea26a2d6b30788328b4876509812f
           # Resource request required for autoscaler to take any action for a metric
           resources:
             requests:
@@ -25781,13 +27100,13 @@ metadata:
     app.kubernetes.io/name: webhook
     app.kubernetes.io/component: webhook
     app.kubernetes.io/instance: default
-    app.kubernetes.io/version: "v1.9.4"
+    app.kubernetes.io/version: "v1.13.1"
     app.kubernetes.io/part-of: tekton-pipelines
     # tekton.dev/release value replaced with inputs.params.versionTag in pipeline/tekton/publish.yaml
-    pipeline.tekton.dev/release: "v1.9.4"
+    pipeline.tekton.dev/release: "v1.13.1"
     # labels below are related to istio and should not be used for resource lookup
     app: tekton-pipelines-webhook
-    version: "v1.9.4"
+    version: "v1.13.1"
   name: tekton-pipelines-webhook
   namespace: tekton-pipelines
 spec:
