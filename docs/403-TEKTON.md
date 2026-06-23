@@ -53,6 +53,59 @@ route/IAP). This runs on both `up.sh` and the `Day2.redeploy.*` paths. The
 shared microservices are GitOps-managed by ArgoCD, so they survive the switch —
 only the CI engine itself (and its public routing) changes.
 
+### Switching engines on a running cluster — what's removed vs kept
+
+Re-running `Day1.cluster.01-gke` (or the matching `Day2.redeploy.*`) with the
+*other* engine **decommissions the current one in the same run** — you never need
+a separate Decom. The retirement is **best-effort + idempotent**, and the two
+directions are **not symmetric** (Tekton has dedicated namespaces that are reaped;
+Jenkins shares the `jenkins` namespace, which is left intact).
+
+```mermaid
+flowchart TD
+    subgraph TT["Select tekton → 04-tekton.sh retires Jenkins"]
+      direction TB
+      A1["DELETE ArgoCD Application 'jenkins'<br/>(cascade-prune the official chart)"]
+      A2["helm uninstall (legacy) +<br/>DELETE Jenkins gateway route / IAP / healthcheck"]
+      A3["KEEP namespace 'jenkins'<br/>+ jenkins-credentials Secret + JCasC ConfigMaps"]
+      A1 --> A2 --> A3
+    end
+    subgraph TJ["Select jenkins → 04-jenkins.sh retires Tekton"]
+      direction TB
+      B1["DELETE ArgoCD Application 'tekton'<br/>(cascade-prune all 7 children)"]
+      B2["DELETE Tekton gateway routes<br/>(Dashboard IAP + PaC)"]
+      B3["DELETE namespaces tekton-ci + tekton-pipelines<br/>(PipelineRun history + Secrets gone)"]
+      B4["KEEP cluster-scoped Tekton CRDs (dormant)"]
+      B1 --> B2 --> B3 --> B4
+    end
+    SURV["Shared microservices (ArgoCD AppSet) SURVIVE both directions"]
+    TT --- SURV
+    TJ --- SURV
+```
+
+**Side-by-side (the asymmetry):**
+
+| Action | tekton → **jenkins** (`04-jenkins.sh`) | jenkins → **tekton** (`04-tekton.sh`) |
+|---|---|---|
+| Delete the outgoing engine's ArgoCD app | ✅ `tekton` (app-of-apps, 7 children) | ✅ `jenkins` (single Application) |
+| Delete its public Gateway routing | ✅ Dashboard IAP **+ PaC** route | ✅ Jenkins IAP route **+ HealthCheckPolicy** |
+| Legacy Helm uninstall | — (Tekton is kustomize/vendored) | ✅ `helm uninstall` fallback |
+| **Delete the outgoing namespace(s)** | ✅ **`tekton-ci` + `tekton-pipelines`** (history + Secrets removed) | ❌ **keeps `jenkins`** ns + `jenkins-credentials` + JCasC CMs |
+| Cluster-scoped CRDs | Tekton CRDs left **dormant** (fast re-enable) | n/a (Jenkins ships none) |
+| Shared microservices (GitOps) | **survive** | **survive** |
+| Reversible | ✅ switch back re-applies | ✅ switch back re-applies |
+| External residue | — | PaC **webhooks + `.tekton/`** on the `nubenetes/*` forks remain (point at a now-gone `pac.<domain>`; harmless, re-activate on switch-back) |
+
+**Why asymmetric:** Tekton owns dedicated namespaces (`tekton-ci`, `tekton-pipelines`)
+that can be fully reaped without collateral, so they are deleted (you lose the
+PipelineRun history and the `tekton-*`/`k6-cloud`/`pac-webhook` Secrets — all
+recreated on switch-back). Jenkins lives in the shared `jenkins` namespace that
+`01-namespaces.sh` manages and **reuses** (the admin password persists there), so
+the retirement is deliberately *less* destructive — it removes the controller +
+routing but keeps the namespace and credentials for a fast switch-back. In **both**
+directions a clean install of the *selected* engine never deploys the other
+(`up.sh` branches on `ci.engine`), and the shared microservices are untouched.
+
 ## What gets installed (GitOps via ArgoCD app-of-apps)
 
 Tekton is **GitOps-managed by ArgoCD**, the same app-of-apps pattern as
