@@ -28,6 +28,23 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 
 DASHBOARDS_DIR="${J2026_ROOT_DIR}/observability/grafana/dashboards"
 
+# Publish only the ACTIVE CI engine's overview dashboard (jenkins XOR tekton) so a
+# tekton cluster doesn't show an empty "Jenkins CI" dashboard (and vice-versa). The
+# k6 / microservices dashboards are engine-neutral and always shipped.
+if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
+  SKIP_CI_DASHBOARD="jenkins-overview"
+else
+  SKIP_CI_DASHBOARD="tekton-overview"
+fi
+# return 0 (skip) when the basename is the inactive engine's overview - matches the
+# canonical name and the -azure / -aws variant suffixes.
+is_offengine_dashboard() {
+  case "$1" in
+    "${SKIP_CI_DASHBOARD}" | "${SKIP_CI_DASHBOARD}"-azure | "${SKIP_CI_DASHBOARD}"-aws) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 case "${J2026_OBS_MODE}" in
   grafana-cloud)
     if ! kubectl get secret "${J2026_GRAFANA_CLOUD_SECRET}" -n "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1; then
@@ -64,6 +81,7 @@ case "${J2026_OBS_MODE}" in
 
     for dashboard in "${DASHBOARDS_DIR}"/*.json; do
       name="$(basename "${dashboard}" .json)"
+      if is_offengine_dashboard "${name}"; then log_info "Skipping ${name} (ci.engine=${J2026_CI_ENGINE})"; continue; fi
       uid="$(jq -r '.uid' "${dashboard}")"
       
       # Wrap dashboard JSON into a gcx-compatible resource manifest
@@ -164,6 +182,7 @@ case "${J2026_OBS_MODE}" in
     log_step "Publishing dashboards to Azure Managed Grafana (${GRAFANA_BASE_URL})"
     for dashboard in "${AZURE_DASHBOARDS_DIR}"/*-azure.json; do
       name="$(basename "${dashboard}" .json)"
+      if is_offengine_dashboard "${name}"; then log_info "Skipping ${name} (ci.engine=${J2026_CI_ENGINE})"; continue; fi
       # Wrap into the /api/dashboards/db request body and overwrite by uid.
       payload="$(jq -n --slurpfile db "${dashboard}" \
         '{dashboard: ($db[0] + {id: null}), folderUid: "", overwrite: true}')"
@@ -320,6 +339,7 @@ case "${J2026_OBS_MODE}" in
     for dashboard in "${AWS_DASHBOARDS_DIR}"/*-aws.json "${AWS_DASHBOARDS_DIR}"/community/*.json; do
       [[ -f "${dashboard}" ]] || continue
       name="$(basename "${dashboard}" .json)"
+      if is_offengine_dashboard "${name}"; then log_info "Skipping ${name} (ci.engine=${J2026_CI_ENGINE})"; continue; fi
       payload="$(jq --arg cw "${CW_UID}" --arg xray "${XRAY_UID}" --arg prom "${PROM_UID}" --arg promname "${PROM_NAME}" '
         def fixuid: walk(if type=="object" and .uid=="DS_CW_UID" then .uid=$cw
                          elif type=="object" and .uid=="DS_XRAY_UID" then .uid=$xray
