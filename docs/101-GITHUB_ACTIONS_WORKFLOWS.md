@@ -24,6 +24,8 @@ The GitHub Actions sidebar sorts by each workflow's `name:` field, and every `na
 - `Day0` (persistent bootstrap) → `Day1` (cluster) → `Day2` (running-cluster ops) → `Decom` (teardown).
 - Within a phase, `tier` then `ZZ` order the steps. Creation order is foundational-first (`Day0.infra` before `Day1.cluster`); teardown inverts it (`Decom.cluster` before `Decom.infra`) because the cluster depends on the persistent backends and must be destroyed first.
 
+> **Scope of the "tier orders the steps" rule.** This sequencing holds for the **Create** (`Day0`→`Day1`) and **Decom** (`cluster`→`infra`) phases, where the tier order *is* a real dependency chain. It does **not** apply within **Day2**: there the tiers (`redeploy`, `publish`, `traffic`) are independent **categories**, not ordered stages — see [Day2 ordering: tiers are categories, not stages](#day2-ordering-tiers-are-categories-not-stages).
+
 ### Resource identifier (ZZ): stable across all phases
 
 `ZZ` is the stable identity of a resource. Given `ZZ=03` (Azure) you can find all its workflows across the lifecycle by the suffix alone:
@@ -228,6 +230,34 @@ All 18 workflows in a single numbered table. The filename's three components (`D
 | **16** | **Decom** Destroy | **infra** — foundational, last | **02** Grafana Cloud stack | [**`Decom.infra.02-grafana-cloud`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.02-grafana-cloud.yml) | `terraform destroy` on `terraform/grafana-cloud-stack`. Permanently removes the Grafana Cloud instance, dashboards, access-policy tokens. Irreversible. | **Row 14** complete | **One-time** |
 | **17** | **Decom** Destroy | **infra** — foundational, last | **03** Azure Mgd Grafana | [**`Decom.infra.03-azure-grafana`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.03-azure-grafana.yml) | `terraform destroy` on `terraform/azure-managed-grafana`. Removes Azure Managed Grafana, Monitor workspace, App Insights, Log Analytics and the Entra SP. | **Row 14** complete | **One-time** |
 | **18** | **Decom** Destroy | **infra** — foundational, last | **04** AWS AMG / AMP | [**`Decom.infra.04-aws-grafana`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.04-aws-grafana.yml) | `terraform destroy` on `terraform/aws-managed-grafana`. Removes Amazon Managed Grafana, AMP, CloudWatch log group, OIDC provider and IAM role. | **Row 14** complete | **One-time** |
+
+---
+
+## Day2 ordering: tiers are categories, not stages
+
+A natural follow-up to the sort rule above: **is there a dependency or required sequence between the Day2 tiers** — must `redeploy.*` run before `publish.*` before `traffic.*`, or is there ordering between two workflows of the *same* tier?
+
+**No.** The eight `Day2.*` workflows are independent and idempotent. There is no `redeploy → publish → traffic` pipeline, and no required order between two workflows that share a tier. Two facts make this concrete:
+
+1. **Nothing chains them.** Every `Day2.*` workflow is `workflow_dispatch`-only — there are no `workflow_run:`, no `workflow_call`/`uses: ./` references between Day2 workflows. The operator dispatches each one by hand.
+2. **Every Day2 prerequisite points *backwards*, never *sideways*.** Each Day2 workflow depends on base state established by `Day1.cluster.01` (a running cluster) or by a `Day0.infra.0{3,4}` backend (managed Grafana) — **never on a sibling Day2 workflow**. Read down the *Prerequisites* column of the [inventory table](#complete-workflow-inventory--matrix-table) (rows 6–13): every entry says "Cluster active (row 5 run)" or "Row 3/4 applied". None lists another Day2 workflow.
+
+So in Day2 the `tier` is a **classification of what kind of operation a workflow is** (publish content / redeploy a component / generate traffic), **not a stage that has to run at a particular point**. You pick the single workflow that matches what you changed; the order relative to other Day2 workflows is irrelevant.
+
+### Case-by-case: the relationships one might *assume* are dependencies
+
+| Apparent relationship | Real dependency? | Why |
+|---|---|---|
+| `redeploy.01-argocd` → `publish.01-oss-grafana` | **No** | `publish.01` nudges the `observability-oss` ArgoCD app to re-sync, but ArgoCD already exists from `Day1`. `redeploy.01` is only run if you **changed** ArgoCD config; `publish.01` works fine having never run it. |
+| `redeploy.02-jenkins` → `traffic.01-k6` | **No** | k6 hits the gateway/microservices endpoints (deployed by `Day1` + the ArgoCD AppSet). Jenkins is CI — it doesn't serve the runtime traffic k6 targets. |
+| `publish.05-alerts` ↔ `publish.01-oss-grafana` | **No (they overlap, they don't order)** | Both publish alert rules; they are idempotent and last-writer-wins. Running either one alone leaves the correct state. |
+| any `publish.*` → needs a live Grafana | **Yes, but backwards to `Day1`/`Day0`** | The Grafana instance is provided by `Day1.cluster.01` (oss mode) or by a `Day0.infra.0{3,4}` backend (Azure/AWS) — never by a sibling Day2 workflow. |
+
+Note the pattern in the last column: ArgoCD genuinely *is* "the engine the rest deploy through" (hence `ZZ=01` within `redeploy`), but that engine↔applications relationship is established in **Day1** (initial provision) and maintained by GitOps auto-sync — **not** re-litigated in Day2. By the time you run any Day2 workflow the cluster is already complete and running; each Day2 workflow is a targeted, idempotent patch on top of it.
+
+### Consequence for the naming scheme
+
+Because Day2 has no intra-phase ordering, **no extra sequence digit is needed** — not between tiers and not between same-tier workflows. The `ZZ` within a tier (e.g. `redeploy.01-argocd` before `redeploy.02-jenkins`) reflects *install order should you ever run them together after a fresh provision*, not a hard Day2 dependency. If a genuine hard dependency between two Day2 workflows ever appears (e.g. "publish dashboards only after redeploying Grafana"), the scheme-consistent fix is **not** a new number but either a `workflow_call` (as `Day1.cluster.01` already does with the `Day0.infra` bootstraps) or an explicit entry in the *Prerequisites* column — keeping the filename convention untouched.
 
 ---
 
