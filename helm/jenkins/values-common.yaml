@@ -179,6 +179,23 @@ controller:
           key: microservices-url
           optional: true
 
+    # Optional Grafana Cloud k6 (the k6-app) streaming for microservicesK6Smoke.groovy.
+    # Empty unless K6_CLOUD_TOKEN/K6_CLOUD_PROJECT_ID are provided (patched into the
+    # Secret by scripts/01-namespaces.sh); the pipeline only adds `--out cloud` when
+    # both are set.
+    - name: K6_CLOUD_TOKEN
+      valueFrom:
+        secretKeyRef:
+          name: jenkins-credentials
+          key: k6-cloud-token
+          optional: true
+    - name: K6_CLOUD_PROJECT_ID
+      valueFrom:
+        secretKeyRef:
+          name: jenkins-credentials
+          key: k6-cloud-project-id
+          optional: true
+
     - name: REGISTRY_USERNAME
       valueFrom:
         secretKeyRef:

@@ -38,11 +38,22 @@ def call(Map cfg) {
       "K6_OTEL_GRPC_EXPORTER_ENDPOINT=otel-collector-gateway.observability.svc.cluster.local:4317",
       "K6_OTEL_GRPC_EXPORTER_INSECURE=true",
       "OTEL_RESOURCE_ATTRIBUTES=service.namespace=jenkins-2026,deployment.environment=${cfg.envName}",
+      // Optional Grafana Cloud k6 (the k6-app) streaming; empty -> skipped.
+      // Injected into the controller env from the jenkins-credentials Secret
+      // (helm/jenkins/values-common.yaml containerEnv, populated by 04-jenkins.sh).
+      "K6_CLOUD_TOKEN=${env.K6_CLOUD_TOKEN ?: ''}",
+      "K6_CLOUD_PROJECT_ID=${env.K6_CLOUD_PROJECT_ID ?: ''}",
     ]) {
       def exitCode = sh(
         script: '''
           set -eu
-          k6 run -o opentelemetry --summary-export=k6-summary.json jenkins/pipelines/k6/microservices-smoke.js
+          # Stream results to Grafana Cloud k6 (/a/k6-app) when a token + project
+          # id are present; otherwise just OTLP + summary, as before.
+          CLOUD_OUT=""
+          if [ -n "${K6_CLOUD_TOKEN:-}" ] && [ -n "${K6_CLOUD_PROJECT_ID:-}" ]; then
+            CLOUD_OUT="--out cloud"
+          fi
+          k6 run -o opentelemetry ${CLOUD_OUT} --summary-export=k6-summary.json jenkins/pipelines/k6/microservices-smoke.js
         ''',
         returnStatus: true
       )
