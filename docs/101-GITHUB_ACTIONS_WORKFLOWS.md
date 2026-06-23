@@ -288,6 +288,96 @@ See [102. GitHub Actions Automation](./102-GITHUB_ACTIONS_AUTOMATION.md) for the
 
 ---
 
+## Reading the `Day1.cluster.01` run graph: jobs vs in-job branches
+
+A common question when dispatching `Day1.cluster.01-gke`: the run graph shows **three bootstrap boxes** (one per observability backend) feeding a single **`provision`** box — but **no boxes for `jenkins` vs `tekton`**, nor for the different observability modes beyond the bootstrap. Why isn't every combination drawn?
+
+**Because GitHub Actions only renders the _job graph_ — the `jobs:` and their `needs:` edges. It cannot show logic that happens _inside_ a job** (a step's `if:`, a script's branching). So the rule is simple:
+
+- A choice modelled as **separate jobs** → **appears as boxes**.
+- A choice modelled as a **runtime branch inside one job** → **invisible** in the graph.
+
+### Why the bootstraps are boxes but the CI engine isn't
+
+The observability bootstrap is **three separate jobs**, each a reusable workflow gated by `if:`, so each is a node with a `needs:` edge into `provision`:
+
+```yaml
+grafana-cloud-bootstrap:
+  if: ${{ inputs.observability_mode == 'grafana-cloud' }}
+  uses: ./.github/workflows/Day0.infra.02-grafana-cloud.yml
+azure-bootstrap:
+  if: ${{ inputs.observability_mode == 'managed-azure' }}
+  uses: ./.github/workflows/Day0.infra.03-azure-grafana.yml
+aws-bootstrap:
+  if: ${{ inputs.observability_mode == 'managed-aws' }}
+  uses: ./.github/workflows/Day0.infra.04-aws-grafana.yml
+provision:
+  needs: [grafana-cloud-bootstrap, azure-bootstrap, aws-bootstrap]
+```
+
+(You see all three even though only the one matching your `observability_mode` runs — the others are *skipped*, and `provision` runs `if: always() && !failure()`.)
+
+The **CI engine** (`jenkins` | `tekton`) and the rest of the observability wiring are **not** separate jobs — they are a **runtime branch inside the single `provision` job**, decided by the `ci.engine` feature flag inside `scripts/up.sh`:
+
+```bash
+# scripts/up.sh — runs as a step inside the provision job
+if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
+  04-tekton.sh ; 06-tekton-pipelines.sh     # Tekton path
+else
+  04-jenkins.sh ; 06-seed-pipelines.sh      # Jenkins path (default)
+fi
+```
+
+GitHub has no way to draw that — it's a `bash if`, not a job — so `provision` is one box.
+
+### What actually runs
+
+```mermaid
+flowchart TD
+    subgraph JOBS["GitHub Actions job graph (what the workflow_dispatch UI shows)"]
+        direction TB
+        B1["grafana-cloud-bootstrap\nif mode=grafana-cloud\nuses Day0.infra.02"]
+        B2["azure-bootstrap\nif mode=managed-azure\nuses Day0.infra.03"]
+        B3["aws-bootstrap\nif mode=managed-aws\nuses Day0.infra.04"]
+        P["provision\nneeds: the 3 bootstraps"]
+        B1 --> P
+        B2 --> P
+        B3 --> P
+    end
+
+    subgraph INSIDE["Inside the single 'provision' job — steps, NOT shown as boxes in the UI"]
+        direction TB
+        TF["terraform apply (GKE cluster)"]
+        NS["01 namespaces + secrets\n(+ per-mode credentials Secret)"]
+        CD["08.5 ArgoCD -> 03 observability"]
+        UP{"up.sh branches on\nJENKINS2026_CI_ENGINE"}
+        JEN["04-jenkins + 06-seed-pipelines"]
+        TEK["04-tekton + 06-tekton-pipelines (PaC)"]
+        REST["07/07.5 dashboards+alerts\n08 headlamp · 09 gateway/IAP"]
+        SMOKE["smoke-test"]
+        TF --> NS --> CD --> UP
+        UP -->|jenkins default| JEN
+        UP -->|tekton| TEK
+        JEN --> REST
+        TEK --> REST
+        REST --> SMOKE
+    end
+
+    P -.->|"one job runs all of the below as steps"| INSIDE
+```
+
+### Why it's modelled this way (not as per-engine jobs)
+
+| Choice | Modelled as | Why |
+|---|---|---|
+| Observability **backend** (grafana-cloud / azure / aws) | **Separate jobs** (`workflow_call`) | They are **persistent Day0 resources**, independently runnable on their own (`Day0.infra.0{2,3,4}`), and must run as a **preflight** so `provision` can read their Terraform outputs to build the in-cluster credentials Secret. Reusing them via `workflow_call` yields the graph nodes for free. |
+| **CI engine** (jenkins / tekton) | **In-job branch** (`ci.engine` flag in `up.sh`) | Splitting `provision` into `provision-jenkins` / `provision-tekton` jobs would **duplicate the entire heavy preamble** (GCP auth, Terraform, kubeconfig, namespaces, ArgoCD, observability) for a one-line divergence. The feature-flag branch is the repo-wide pattern (same as `observability.mode`): one path, parameterised by config. |
+| Observability **mode** wiring (beyond bootstrap) | **In-job** (`JENKINS2026_OBS_MODE` in `up.sh` + per-mode `values-*.yaml`) | Same reason — a config branch, not a structural one. |
+
+So the run graph deliberately shows only the **structural** fan-in (the preflight backends) and folds every **configuration** choice into the single `provision` job. If you ever *wanted* the engine choice as boxes, you'd split `provision` into a shared-preamble job plus `if: ci_engine == …` deploy jobs (passing kubeconfig as an artifact) — possible, but a lot of duplication for a PoC, and it would break the "one idempotent provision" model described below.
+
+---
+
 ## Idempotency: every workflow is safe to re-run
 
 **All workflows are idempotent (or one-shot-but-safe). Re-running is the normal way to apply a change — you never need to decommission and re-provision to pick one up.**
