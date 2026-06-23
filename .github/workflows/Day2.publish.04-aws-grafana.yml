@@ -1,16 +1,16 @@
-name: "5.1.04 Publish AWS dashboards"
+name: "Day2.publish.04 Publish AWS dashboards"
 
 # Manually-triggered: (re)publishes the managed-aws Grafana dashboard variants
 # (observability/grafana/dashboards-aws/) to Amazon Managed Grafana (AMG)
 # WITHOUT re-provisioning the GKE cluster or touching the rest of the stack.
 #
 # Use this to propagate a dashboard JSON change to AMG on its own - far lighter
-# than "0.2.01 GKE provision". AMG and Amazon Managed Service for Prometheus are
-# PERSISTENT (one-time bootstrap by "0.1.04 AWS managed-grafana bootstrap"), so this workflow
+# than "Day1.cluster.01 GKE provision". AMG and Amazon Managed Service for Prometheus are
+# PERSISTENT (one-time bootstrap by "Day0.infra.04 AWS managed-grafana bootstrap"), so this workflow
 # needs NO running cluster: it reads the AMG connection params straight from the
 # terraform/aws-managed-grafana GCS state (read-only) and authenticates to AWS
 # via GitHub OIDC (the least-privilege dashboard-publisher role), exactly like
-# the managed-aws publish step inside 0.2.01. scripts/07-grafana-dashboards.sh
+# the managed-aws publish step inside Day1.cluster.01. scripts/07-grafana-dashboards.sh
 # then mints a short-lived AMG service-account token to import the dashboards.
 on:
   workflow_dispatch:
@@ -33,7 +33,7 @@ concurrency:
 env:
   TF_VERSION: "1.15.6"
   # Surfaced as env so the AWS steps can skip cleanly (secrets can't be used in
-  # `if:`) when the publisher role hasn't been set up yet (re-run 0.1.04 + set the
+  # `if:`) when the publisher role hasn't been set up yet (re-run Day0.infra.04 + set the
   # AWS_DASHBOARD_PUBLISH_ROLE_ARN secret).
   AWS_DASHBOARD_PUBLISH_ROLE_ARN: ${{ secrets.AWS_DASHBOARD_PUBLISH_ROLE_ARN }}
 
@@ -71,7 +71,7 @@ jobs:
         if: ${{ env.AWS_DASHBOARD_PUBLISH_ROLE_ARN != '' }}
         run: |
           # The persistent terraform/aws-managed-grafana module (provisioned once
-          # by "0.1.04 AWS managed-grafana bootstrap") holds the AMG endpoint/workspace id, AMP
+          # by "Day0.infra.04 AWS managed-grafana bootstrap") holds the AMG endpoint/workspace id, AMP
           # query URL and region in its GCS state. No AWS auth needed here -
           # terraform output just reads state (GCS already authed above). Export
           # them so scripts/07-grafana-dashboards.sh picks them up from the env
@@ -112,7 +112,7 @@ jobs:
       - name: Skipped (no publisher role)
         if: ${{ env.AWS_DASHBOARD_PUBLISH_ROLE_ARN == '' }}
         run: |
-          echo "::warning::AWS_DASHBOARD_PUBLISH_ROLE_ARN not set - skipping. Re-run '0.1.04 AWS managed-grafana bootstrap' and set the secret first (see README \"GitHub Actions automation\")."
+          echo "::warning::AWS_DASHBOARD_PUBLISH_ROLE_ARN not set - skipping. Re-run 'Day0.infra.04 AWS managed-grafana bootstrap' and set the secret first (see README \"GitHub Actions automation\")."
 
       - name: Summary
         if: always()

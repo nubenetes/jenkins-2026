@@ -311,6 +311,8 @@ sequenceDiagram
 
 `observability.mode: oss` runs the **entire** stack in-cluster — useful for air-gapped demos or avoiding SaaS cost/quota.
 
+> **GitOps-managed.** The in-cluster stack (kube-prometheus-stack = Prometheus + Grafana, Loki, Tempo) is deployed by the **`observability-oss` ArgoCD app-of-apps** ([`argocd/observability-oss/`](../argocd/observability-oss)), not by raw `helm` — which is why `scripts/up.sh` installs ArgoCD (`08.5`) *before* observability (`03`). `scripts/03-observability.sh` (oss) creates the namespace, the companion inputs the chart consumes — the `jenkins-2026-grafana-dashboards` ConfigMap (sidecar), the `grafana-jenkins-ds` Secret (`$JENKINS_API_TOKEN` for the Jenkins datasource) and, when the gateway is enabled, the `grafana-runtime-config` ConfigMap (`GF_SERVER_ROOT_URL`) — then applies the app-of-apps; the OTel collectors stay `helm`-managed (shared across all four modes). Dashboard/alert/value changes can be re-applied to a running cluster with the [`Day2.publish.01-oss-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.01-oss-grafana.yml) workflow (no reprovision). Switching to a non-oss mode deletes the app-of-apps (ArgoCD cascade-prunes the charts).
+
 <details>
 <summary>🔍 Click to expand Grafana OSS In-Cluster Topology Diagram</summary>
 
@@ -349,7 +351,7 @@ In `oss` mode, Grafana is exposed at `https://grafana.<baseDomain>` behind Googl
 
 ### Logging in to Amazon Managed Grafana (managed-aws)
 
-Amazon Managed Grafana (AMG) authenticates **only** via **AWS IAM Identity Center** (the workspace's `AWS_SSO` mode) or **SAML 2.0**. User assignment is managed via Terraform — add emails once to the `AWS_GRAFANA_ADMIN_SSO_EMAILS` GitHub secret and `0.1.04-aws-bootstrap` handles the rest.
+Amazon Managed Grafana (AMG) authenticates **only** via **AWS IAM Identity Center** (the workspace's `AWS_SSO` mode) or **SAML 2.0**. User assignment is managed via Terraform — add emails once to the `AWS_GRAFANA_ADMIN_SSO_EMAILS` GitHub secret and `Day0.infra.04-aws-bootstrap` handles the rest.
 
 #### One-time setup per person
 
@@ -361,7 +363,7 @@ Amazon Managed Grafana (AMG) authenticates **only** via **AWS IAM Identity Cente
    ```
    alice@example.com,bob@example.com
    ```
-   Then re-run **[0.1.04 AWS managed-grafana bootstrap](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.04-aws-bootstrap.yml)** — Terraform looks up the Identity Center users by email and calls `aws_grafana_role_association` to grant them Admin on the workspace.
+   Then re-run **[Day0.infra.04 AWS managed-grafana bootstrap](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.04-aws-grafana.yml)** — Terraform looks up the Identity Center users by email and calls `aws_grafana_role_association` to grant them Admin on the workspace.
 
 3. **Sign in** — open the workspace URL (from `terraform output grafana_endpoint` or the AMG console) and click **"Sign in with AWS IAM Identity Center"**.
 
@@ -370,7 +372,7 @@ Amazon Managed Grafana (AMG) authenticates **only** via **AWS IAM Identity Cente
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | "Sign in" page never appears | Wrong region in the console | Make sure you're in **eu-west-1** (or your `AWS_REGION`) |
-| "You are not authorized" after sign-in | User not yet assigned in Terraform | Re-run `0.1.04` with `AWS_GRAFANA_ADMIN_SSO_EMAILS` set |
+| "You are not authorized" after sign-in | User not yet assigned in Terraform | Re-run `Day0.infra.04` with `AWS_GRAFANA_ADMIN_SSO_EMAILS` set |
 | "User does not exist" in Terraform apply | Email not yet created in Identity Center | Create the user in the console first, then re-run |
 | Invitation email expired | Identity Center invitation links expire in 7 days | Delete and re-create the user in Identity Center |
 | Sign-in page asks for Organization/Account ID | You're using the access portal URL, not the workspace URL | Use the direct `*.grafana-workspace.amazonaws.com` URL from the Terraform output |
