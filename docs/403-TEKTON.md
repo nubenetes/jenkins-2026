@@ -250,6 +250,26 @@ namespace, from the same `REGISTRY_*` / `GIT_*` env the Jenkins path consumes:
 - `tekton-argocd` — ArgoCD API token (account `tekton`, provisioned by `08.5-argocd.sh`)
 - `tekton-github-webhook-secret` — optional GitHub HMAC token for the EventListener
 
+## How CI runs in normal operation (you rarely start runs by hand)
+
+Day-to-day you **don't create PipelineRuns manually** — runs are produced
+automatically by one of two models (the manual options in the next section are
+for ad-hoc/debug only):
+
+| Model | Active when | How a run starts |
+|---|---|---|
+| **Pipelines-as-Code (PaC)** — *primary* | gateway enabled + PaC controller up (the default GKE deploy) | A **push or PR** to a `nubenetes/*` app fork → the fork's `.tekton/<svc>.yaml` + its GitHub **webhook** → the PaC controller creates a `PipelineRun` of `microservices-pipeline` in `tekton-ci`, with every param filled from the template. **Git is the trigger.** |
+| **Seed** — *fallback* | no gateway/PaC (e.g. local `up.sh`) | `06-tekton-pipelines.sh` kicks **one PipelineRun per service per env** directly — the Tekton analogue of the Jenkins seed job. |
+
+So the normal loop is **commit to the app fork → CI runs itself** (the same model as Jenkins multibranch). `06-tekton-pipelines.sh` runs **once per deploy** only to wire it up: in PaC mode it creates the per-fork webhooks and pushes `.tekton/<svc>.yaml`; in fallback mode it seeds the runs. After that, you don't touch it.
+
+**Housekeeping is automatic too:**
+- **Tekton Pruner** garbage-collects completed PipelineRuns/TaskRuns (`historyLimit`, parity with the Jenkins `buildDiscarder`) — old runs don't pile up.
+- **Tekton Chains** signs the pushed image + records SLSA provenance on every successful run (cosign key in `tekton-chains`).
+- Watch runs in the **Dashboard** (`tekton.<baseDomain>`, behind IAP) or with `tkn pr list -n tekton-ci`.
+
+**The k6 smoke** has two forms: `microservices-pipeline` runs a quick `k6-smoke` task at the end of every per-push run; the **standalone `microservices-k6-smoke` Pipeline** (analogue of the separate Jenkins k6 job) is *not* auto-triggered — run it on demand (below) or via [`Day2.traffic.01-k6`](../.github/workflows/Day2.traffic.01-k6.yml) for a longer load simulation.
+
 ## Running a pipeline by hand (Dashboard / kubectl / tkn)
 
 The Pipelines/Tasks live in the **`tekton-ci`** namespace and run under the
