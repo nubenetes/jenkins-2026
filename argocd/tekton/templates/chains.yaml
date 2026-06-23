@@ -25,11 +25,14 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
-    # The signing-secrets Secret is generated out-of-band (cosign) and must NOT
-    # be pruned/overwritten by ArgoCD - the release ships only an empty placeholder.
-    ignoreDifferences:
-      - group: ""
-        kind: Secret
-        name: signing-secrets
-        jsonPointers:
-          - /data
+  # The signing-secrets Secret is generated out-of-band (cosign) and must NOT
+  # be pruned/overwritten by ArgoCD - the release ships only an empty placeholder.
+  # NOTE: ignoreDifferences is a spec-level field, NOT under syncPolicy - nesting
+  # it under syncPolicy makes the API server drop it (so the cosign key was not
+  # actually protected) and leaves the parent app-of-apps perpetually OutOfSync.
+  ignoreDifferences:
+    - group: ""
+      kind: Secret
+      name: signing-secrets
+      jsonPointers:
+        - /data
