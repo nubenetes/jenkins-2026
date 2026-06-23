@@ -48,6 +48,15 @@ if kubectl get application tekton -n "${J2026_ARGOCD_NAMESPACE}" >/dev/null 2>&1
   kubectl delete application tekton -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false || true
 fi
 
+# Jenkins (ci.engine=jenkins) is a GitOps-managed single Application. Delete it
+# while ArgoCD is alive so it cascade-prunes the chart. Engine-agnostic: no-op
+# when absent. (The helm_uninstall below is a legacy fallback for pre-ArgoCD
+# Jenkins installs.)
+if kubectl get application jenkins -n "${J2026_ARGOCD_NAMESPACE}" >/dev/null 2>&1; then
+  log_step "Removing jenkins ArgoCD Application (Jenkins chart)"
+  kubectl delete application jenkins -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false || true
+fi
+
 log_step "Uninstalling Helm releases in parallel"
 run_bg microservices-stable   helm_uninstall microservices-stable  "${J2026_MICROSERVICES_NS_STABLE}"
 run_bg jenkins            helm_uninstall "${J2026_JENKINS_RELEASE}" "${J2026_JENKINS_NAMESPACE}"

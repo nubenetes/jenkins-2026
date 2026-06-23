@@ -158,7 +158,7 @@ A self-contained proof of concept that deploys **Jenkins** on **Kubernetes**, co
 - [Google Login (OpenID Connect)](./docs/401-JENKINS.md#google-login-openid-connect)
 - [Plugins & JCasC Fragments](./docs/401-JENKINS.md#plugins--jcasc-fragments)
 - [Global Shared Library](./docs/401-JENKINS.md#global-shared-library)
-- [GitOps: why Jenkins is Helm-installed, and how it could move to ArgoCD](./docs/401-JENKINS.md#gitops-why-jenkins-is-helm-installed-and-how-it-could-move-to-argocd)
+- [GitOps: Jenkins as an ArgoCD Application](./docs/401-JENKINS.md#gitops-jenkins-as-an-argocd-application)
 
 **[402 · Pipelines as Code](./docs/402-PIPELINES_AS_CODE.md)**
 - [The Seed Job](./docs/402-PIPELINES_AS_CODE.md#the-seed-job)

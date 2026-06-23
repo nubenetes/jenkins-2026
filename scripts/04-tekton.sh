@@ -35,6 +35,10 @@ TEKTON_NS="${J2026_TEKTON_NAMESPACE}"
 # GitOps-managed (ArgoCD), so they survive the switch - only the Jenkins
 # controller and its gateway routing are removed. Idempotent / best-effort.
 log_step "Retiring Jenkins if present (ci.engine=tekton)"
+# Jenkins is a GitOps-managed Application - delete it first so ArgoCD
+# cascade-prunes the chart and doesn't re-sync it back. helm_uninstall is a
+# legacy fallback for pre-ArgoCD Jenkins installs.
+kubectl delete application jenkins -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false || true
 helm_uninstall_if_present "${J2026_JENKINS_RELEASE}" "${J2026_JENKINS_NAMESPACE}"
 if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
   kubectl delete gcpbackendpolicy "${J2026_GATEWAY_IAP_POLICY_JENKINS}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found
