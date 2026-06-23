@@ -93,7 +93,7 @@ A self-contained proof of concept that deploys **Jenkins** on **Kubernetes**, co
   - [Detailed Workflow Reference and Lifecycle Management](./docs/102-GITHUB_ACTIONS_AUTOMATION.md#detailed-workflow-reference-and-lifecycle-management)
 - [Version Pinning and the `git_ref` Parameter](./docs/102-GITHUB_ACTIONS_AUTOMATION.md#version-pinning-and-the-git_ref-parameter)
   - [The `git_ref` Parameter](./docs/102-GITHUB_ACTIONS_AUTOMATION.md#the-git_ref-parameter)
-  - [Form Fields Reference (0.2.01 GKE Provision)](./docs/102-GITHUB_ACTIONS_AUTOMATION.md#form-fields-reference-0201-gke-provision)
+  - [Form Fields Reference (Day1.cluster.01 GKE Provision)](./docs/102-GITHUB_ACTIONS_AUTOMATION.md#form-fields-reference-0201-gke-provision)
   - [The Danger of Divergent References](./docs/102-GITHUB_ACTIONS_AUTOMATION.md#the-danger-of-divergent-references)
 - [Environment Protection and Manual Approvals](./docs/102-GITHUB_ACTIONS_AUTOMATION.md#environment-protection-and-manual-approvals)
   - [Setting up Environment Rules](./docs/102-GITHUB_ACTIONS_AUTOMATION.md#setting-up-environment-rules)
@@ -333,17 +333,17 @@ For the full component diagram, microservices database architecture (CloudNative
 
 ## 4. GitHub Actions Workflows
 
-All 15 workflows live in [`.github/workflows/`](.github/workflows/) following the `Y.X.ZZ` naming convention — **alphabetical sort order = correct execution order**. See [101. GitHub Actions Workflows](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md) for the full inventory with clickable GitHub Actions links.
+All 17 workflows live in [`.github/workflows/`](.github/workflows/) following the `DayN.tier.ZZ-resource` naming convention — **alphabetical sort order = correct execution order**. See [101. GitHub Actions Workflows](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md) for the full inventory with clickable GitHub Actions links.
 
-| Phase | Step | Resource | Workflow |
+| Phase | tier | Resource | Workflow |
 |---|---|---|---|
-| `0` Create | `0.1.xx` Persistent | Gateway, Grafana Cloud, Azure, AWS | [0.1.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.01-gateway-bootstrap.yml) · [0.1.02](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.02-grafana-cloud-bootstrap.yml) · [0.1.03](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.03-azure-bootstrap.yml) · [0.1.04](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.1.04-aws-bootstrap.yml) |
-| `0` Create | `0.2.xx` GKE | GKE cluster + full stack | [0.2.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/0.2.01-gke-provision.yml) |
-| `5` Update | `5.1.xx` Persistent | Azure/AWS dashboards | [5.1.03](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.1.03-publish-azure-dashboards.yml) · [5.1.04](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.1.04-publish-aws-dashboards.yml) |
-| `5` Update | `5.2.xx` GKE | Jenkins, Headlamp | [5.2.02](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.2.02-redeploy-jenkins.yml) · [5.2.03](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.2.03-redeploy-headlamp.yml) |
-| `5` Update | `5.9.xx` Utils | Traffic simulation | [5.9.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/5.9.01-traffic-simulation.yml) |
-| `9` Destroy | `9.1.xx` GKE | GKE cluster (destroy first) | [9.1.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.1.01-gke-decommission.yml) |
-| `9` Destroy | `9.2.xx` Persistent | Gateway, Grafana Cloud, Azure, AWS (destroy last) | [9.2.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.01-gateway-decommission.yml) · [9.2.02](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.02-grafana-cloud-decommission.yml) · [9.2.03](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.03-azure-decommission.yml) · [9.2.04](https://github.com/nubenetes/jenkins-2026/actions/workflows/9.2.04-aws-decommission.yml) |
+| `Day0` Create | `infra` (persistent) | Gateway, Grafana Cloud, Azure, AWS | [Day0.infra.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.01-gateway.yml) · [Day0.infra.02](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.02-grafana-cloud.yml) · [Day0.infra.03](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.03-azure-grafana.yml) · [Day0.infra.04](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.04-aws-grafana.yml) |
+| `Day1` Create | `cluster` | GKE cluster + full stack | [Day1.cluster.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) |
+| `Day2` Update | `deploy` | Jenkins, Headlamp | [Day2.deploy.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.deploy.01-jenkins.yml) · [Day2.deploy.04](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.deploy.04-headlamp.yml) |
+| `Day2` Update | `publish` | OSS Grafana, Azure/AWS dashboards, Grafana alerts | [Day2.publish.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.01-oss-grafana.yml) · [Day2.publish.03](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.03-azure-grafana.yml) · [Day2.publish.04](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.04-aws-grafana.yml) · [Day2.publish.05](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.05-alerts.yml) |
+| `Day2` Update | `traffic` | k6 traffic | [Day2.traffic.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml) |
+| `Decom` Destroy | `cluster` (first) | GKE cluster (destroy first) | [Decom.cluster.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml) |
+| `Decom` Destroy | `infra` (last) | Gateway, Grafana Cloud, Azure, AWS (destroy last) | [Decom.infra.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.01-gateway.yml) · [Decom.infra.02](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.02-grafana-cloud.yml) · [Decom.infra.03](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.03-azure-grafana.yml) · [Decom.infra.04](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.04-aws-grafana.yml) |
 
 ---
 

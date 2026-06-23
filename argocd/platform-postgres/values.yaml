@@ -1,0 +1,14 @@
+# Defaults for the platform-postgres app-of-apps. repoURL/targetRevision are
+# overridden by the parent Application's helm.parameters (set by
+# scripts/08.5-argocd.sh from J2026_SELF_REPO_URL / J2026_SELF_REPO_BRANCH) and
+# used by the pgAdmin child's git source (path: helm/pgadmin).
+repoURL: https://github.com/nubenetes/jenkins-2026.git
+targetRevision: main
+
+namespace:
+  cnpg: cnpg-system
+  pgadmin: pgadmin
+
+cnpg:
+  repoURL: https://cloudnative-pg.github.io/charts
+  version: "0.28.3"

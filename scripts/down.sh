@@ -20,6 +20,26 @@ helm_uninstall() {
   fi
 }
 
+# In oss mode the in-cluster stack (kube-prometheus-stack/Loki/Tempo) is managed
+# by the observability-oss ArgoCD app-of-apps. Delete it FIRST, while ArgoCD is
+# still running, so the controller cascade-prunes those charts via the resources
+# finalizer. --wait=false keeps teardown moving; any leftover Application
+# finalizers are stripped later by drain_namespace. The helm_uninstall fallbacks
+# below cover legacy (pre-ArgoCD) oss clusters.
+if [[ "${J2026_OBS_MODE}" == "oss" ]] && \
+   kubectl get application observability-oss -n "${J2026_ARGOCD_NAMESPACE}" >/dev/null 2>&1; then
+  log_step "Removing observability-oss ArgoCD app-of-apps (cascade-prune in-cluster OSS stack)"
+  kubectl delete application observability-oss -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false || true
+fi
+
+# Same for the platform-postgres app-of-apps (CNPG operator + pgAdmin) — delete
+# while ArgoCD is alive so it cascade-prunes. --wait=false; drain_namespace
+# strips any leftover finalizers.
+if kubectl get application platform-postgres -n "${J2026_ARGOCD_NAMESPACE}" >/dev/null 2>&1; then
+  log_step "Removing platform-postgres ArgoCD app-of-apps (CNPG operator + pgAdmin)"
+  kubectl delete application platform-postgres -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false || true
+fi
+
 log_step "Uninstalling Helm releases in parallel"
 run_bg microservices-stable   helm_uninstall microservices-stable  "${J2026_MICROSERVICES_NS_STABLE}"
 run_bg jenkins            helm_uninstall "${J2026_JENKINS_RELEASE}" "${J2026_JENKINS_NAMESPACE}"
@@ -33,6 +53,8 @@ run_bg kube-state-metrics helm_uninstall kube-state-metrics "${J2026_OBS_NAMESPA
 run_bg node-exporter      helm_uninstall prometheus-node-exporter "${J2026_OBS_NAMESPACE}"
 
 if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
+  # Legacy fallback: only hits for pre-ArgoCD oss clusters (no-op otherwise, the
+  # charts are now ArgoCD-managed and pruned above).
   run_bg kube-prometheus-stack helm_uninstall kube-prometheus-stack "${J2026_GRAFANA_OSS_NAMESPACE}"
   run_bg loki                  helm_uninstall loki "${J2026_OBS_NAMESPACE}"
   run_bg tempo                 helm_uninstall tempo "${J2026_OBS_NAMESPACE}"
@@ -64,7 +86,7 @@ fi
 
 # Deleted by fixed name/namespace (scripts/09-gateway.sh), not by replaying
 # .generated/gateway/ - that dir only exists on the machine that ran
-# scripts/up.sh, but 02.99-gke-decommission.yml runs down.sh from a fresh checkout.
+# scripts/up.sh, but Decom.cluster.01-gke.yml runs down.sh from a fresh checkout.
 # Deleting these explicitly (with their finalizers) before the namespaces/
 # cluster are torn down lets the GKE Gateway controller release the external
 # load balancer resources (forwarding rule, backend services, NEGs) it

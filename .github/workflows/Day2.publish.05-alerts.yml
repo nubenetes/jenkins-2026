@@ -1,8 +1,8 @@
-name: "5.1.05 Publish Grafana alerts"
+name: "Day2.publish.05 Publish Grafana alerts"
 
 # Manually-triggered: (re)provisions Grafana alert rules, contact point, and
 # notification policy from observability/grafana/alerting/ via the Grafana
-# HTTP provisioning API — WITHOUT re-running the full 0.2.01 lifecycle.
+# HTTP provisioning API — WITHOUT re-running the full Day1.cluster.01 lifecycle.
 #
 # Requires a running GKE cluster (credentials are read from k8s Secrets).
 # Mode-specific auth:

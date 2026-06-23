@@ -1,0 +1,12 @@
+apiVersion: v2
+name: observability-oss
+description: >-
+  App-of-apps for the in-cluster OSS observability stack (kube-prometheus-stack
+  = Prometheus + Grafana, Loki, Tempo) managed by ArgoCD. Only deployed when
+  observability.mode=oss. Each child Application is multi-source: the upstream
+  Helm chart plus this repo's values-oss*.yaml (via the $values ref). The
+  Grafana dashboards ConfigMap, Jenkins-datasource token Secret and root_url
+  ConfigMap are companion inputs created by scripts/03-observability.sh and
+  consumed by the chart (sidecar / envValueFrom), exactly like before.
+type: application
+version: 0.1.0

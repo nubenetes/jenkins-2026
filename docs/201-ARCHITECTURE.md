@@ -315,7 +315,7 @@ Running Jenkins, ArgoCD, pgAdmin, two Postgres HA clusters (CNPG), OpenTelemetry
 - **Compute**: ~`$0.22/hour` per `e2-standard-8` in Madrid (`europe-southwest1`).
 - **Total run rate**: ~`$0.70–$0.80/hour` for the active 3-node cluster.
 - **Per-session cost**: ~`$0.10–$0.20` for a full 15–25 minute provision + smoke test + teardown cycle.
-- **Always decommission**: Run `9.1.01 GKE decommission` when finished — never leave the cluster running overnight.
+- **Always decommission**: Run `Decom.cluster.01 GKE decommission` when finished — never leave the cluster running overnight.
 
 ---
 
