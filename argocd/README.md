@@ -29,6 +29,10 @@ The `argocd-version-patch-watcher` CronJob is deployed to run daily at midnight.
 
 ## Applications
 
+### `jenkins` — Jenkins CI engine ([`jenkins-app.yaml`](jenkins-app.yaml))
+
+A **single** `Application` (not an app-of-apps — Jenkins is one chart), applied by `scripts/04-jenkins.sh` when `ci.engine=jenkins` (the default CI engine). It installs the **official `jenkinsci/jenkins` chart** as a **multi-source** app: the chart from `charts.jenkins.io` + this repo's [`helm/jenkins/values-common.yaml`](../helm/jenkins/values-common.yaml)/`values-gke.yaml` via a `$values` source. `controller.jenkinsUrl` and a banner-links checksum (rolls the controller when Secret-backed banner values change) are passed as `helm.parameters` substituted at apply time; the per-deployment dynamic values live in the `jenkins-credentials` Secret (`containerEnv` reads them via `secretKeyRef`). JCasC is delivered as labeled ConfigMaps the chart's config sidecar auto-reloads (created by `04-jenkins.sh` from `jenkins/casc/*`, **not** ArgoCD-owned — the same script-managed-companion pattern as the OSS Grafana dashboards). Same shape as the Headlamp/External-Secrets Applications. **Teardown**: `down.sh` deletes the Application (cascade-prune); switching to `ci.engine=tekton` removes it via `04-tekton.sh`. See [`docs/401-JENKINS.md`](../docs/401-JENKINS.md#gitops-jenkins-as-an-argocd-application).
+
 ### `platform-postgres` — Postgres app-of-apps ([`platform-postgres-app.yaml`](platform-postgres-app.yaml) → [`platform-postgres/`](platform-postgres))
 
 The CloudNative-PG operator and the **pgAdmin** UI that administers its databases share a lifecycle, so they are grouped under one parent `Application` (applied by `scripts/08.5-argocd.sh`). The parent renders the Helm chart [`platform-postgres/`](platform-postgres) into two children — `cnpg-operator` (chart) and `pgadmin` (this repo's `helm/pgadmin`, branch from the parent's `helm.parameters`). Teardown deletes the parent (cascade-prune via the resources finalizer). The `cnpg-operator` child needs the oversized-CRD handling below.

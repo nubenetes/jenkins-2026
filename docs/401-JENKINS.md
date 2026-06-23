@@ -70,44 +70,40 @@ The library is stored at the repo root (`vars/`, `resources/`) — required by t
 
 See [402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) for the pipeline stages and execution details.
 
-## GitOps: why Jenkins is Helm-installed, and how it could move to ArgoCD
+## GitOps: Jenkins as an ArgoCD Application
 
-A common question, given the alternative [Tekton engine](./403-TEKTON.md) **is**
-GitOps-managed by ArgoCD (an app-of-apps): why isn't Jenkins?
+Like the alternative [Tekton engine](./403-TEKTON.md), Jenkins is **GitOps-managed
+by ArgoCD**. It is a **single `Application`** ([`argocd/jenkins-app.yaml`](../argocd/jenkins-app.yaml)),
+**not an app-of-apps** — Jenkins is one Helm chart, not a family of correlated
+components (unlike `platform-postgres`/`observability-oss`/`tekton`), so wrapping
+it in a parent that renders a single child would be over-engineering. Same shape
+as [`argocd/headlamp-app.yaml`](../argocd/headlamp-app.yaml) and
+[`argocd/external-secrets-app.yaml`](../argocd/external-secrets-app.yaml).
 
-**It's a design choice, not a technical limitation.** The `jenkinsci/jenkins`
-chart is an ordinary Helm chart and an ArgoCD `Application` (`source.chart: jenkins`,
-`repoURL: https://charts.jenkins.io`) would deploy it. Today
-[`scripts/04-jenkins.sh`](../scripts/04-jenkins.sh) installs it imperatively with
-`helm upgrade --install` because the Jenkins install has several **apply-time,
-runtime-computed inputs** that don't map cleanly onto "ArgoCD syncs what's in git":
+The Application installs the **official `jenkinsci/jenkins` chart** (multi-source:
+the chart from `charts.jenkins.io` + this repo's `helm/jenkins/values-*.yaml` via a
+`$values` source). [`scripts/04-jenkins.sh`](../scripts/04-jenkins.sh) is a thin
+applier: it substitutes `repoURL`/branch/chart-version + `jenkinsUrl` + a banner
+checksum into the manifest (the same `{{…}}` placeholder pattern as the other
+ArgoCD app manifests) and `kubectl apply`s it — no `helm install`.
 
-- **Computed values overlay** — `04-jenkins.sh` generates a values file at run time (the Grafana base URL for the active `observability.mode`, `JENKINS_PUBLIC_URL`, a banner-links checksum used as a pod annotation to force a roll, …) and patches the `jenkins-credentials` Secret with computed links. ArgoCD syncs static git content, not values computed from cluster/env state.
-- **Credential / token coupling** — [`scripts/08.5-argocd.sh`](../scripts/08.5-argocd.sh) mints an ArgoCD API token and stores it in `jenkins-credentials`; the pipeline reads it to run `argocd app sync`. That Jenkins↔ArgoCD chicken-and-egg is awkward to express in pure GitOps.
-- **JCasC + secrets** — Jenkins config references secrets and computed URLs; GitOps-managing it means those must not live in git (so an external-secrets operator + sidecar wiring) rather than the current Secret patch.
-- **Imperative rollback** — the script rolls the StatefulSet back on a failed upgrade.
+How the few apply-time/runtime inputs are made GitOps-friendly:
 
-Tekton, by contrast, is **stateless declarative manifests** with no
-runtime-computed install inputs, so it drops straight into an ArgoCD app-of-apps
-(see [403. Tekton → What gets installed](./403-TEKTON.md#what-gets-installed-gitops-via-argocd-app-of-apps)).
+- **Dynamic values → the `jenkins-credentials` Secret.** The values that vary per deployment (Grafana base URL + per-mode "Kubernetes Infrastructure" links, public URL, active branch, feature flags) are computed by `04-jenkins.sh` and patched into the Secret; the chart's `controller.containerEnv` reads them via `secretKeyRef` (see [`helm/jenkins/values-common.yaml`](../helm/jenkins/values-common.yaml)). Project constants (platform, repo/registry/OTel/ArgoCD DNS) stay static `value:` entries.
+- **`jenkinsUrl` + roll-on-change → helm parameters.** `controller.jenkinsUrl` (location) and `controller.podAnnotations.bannerLinksChecksum` are passed as `helm.parameters`; when the checksum changes ArgoCD rolls the controller (it wouldn't roll on an out-of-band Secret edit otherwise).
+- **JCasC → labeled ConfigMaps the chart's config sidecar auto-reloads.** `04-jenkins.sh` (re)creates them from `jenkins/casc/*` (the single source of truth) with the `jenkins-jenkins-config=true` label; ArgoCD doesn't own them — the same script-managed-companion pattern as the OSS Grafana dashboards ConfigMap. The sidecar reloads JCasC live, no pod restart needed.
+- **ArgoCD token.** `08.5-argocd.sh` still mints the `jenkins` ArgoCD account token into `jenkins-credentials` (read as `ARGOCD_AUTH_TOKEN`); it runs before `04-jenkins.sh` in `up.sh`, so the token is present when the controller starts.
+- **Rollout/health → ArgoCD** (`automated` + `selfHeal`), replacing the old imperative `helm rollback`.
 
-### How to move Jenkins to ArgoCD (if desired)
+The credential **secrets themselves stay script-created** (`01-namespaces.sh`) —
+env-sourced values shouldn't live in git; ArgoCD owns the chart, not the Secret.
+Teardown deletes the Application (cascade-prune) in `down.sh`; switching to
+`ci.engine=tekton` removes it via `04-tekton.sh`.
 
-It's feasible; the migration would mirror the `platform-postgres` app-of-apps and
-replace the four bullets above with GitOps-friendly equivalents:
-
-1. **Parent `Application` → Helm chart** `argocd/jenkins/` (like `argocd/platform-postgres/`), with `{{repoUrl}}`/`{{branchStable}}` substituted at apply time, rendering a child `Application` that installs the upstream `jenkinsci/jenkins` chart (multi-source: chart + this repo's `helm/jenkins/values-*.yaml` via `$values`), pinned by `targetRevision`.
-2. **Replace computed values with declarative inputs** — move the run-time-computed values (Grafana URL, public URL, banner links) into committed per-mode values files or a small ConfigMap the chart reads via `controller.containerEnvFrom`, so nothing is computed at apply time. Use an `argocd.argoproj.io/sync-wave` so it lands after ArgoCD itself.
-3. **Secrets via External Secrets** — the platform already runs the External Secrets Operator ([`argocd/external-secrets-app.yaml`](../argocd/external-secrets-app.yaml)); model `jenkins-credentials` (admin password, registry/git creds, OIDC) as an `ExternalSecret` instead of an imperative `kubectl create secret`, so ArgoCD never owns raw secrets.
-4. **Break the ArgoCD-token cycle** — provision the Jenkins ArgoCD account/token as part of `08.5-argocd.sh` (as it already does) and surface it to Jenkins via that same `ExternalSecret`, so the controller picks it up declaratively rather than via a Secret patch + pod restart.
-5. **Let ArgoCD own rollout/health** — drop the imperative rollback; ArgoCD's sync + health checks (plus `selfHeal`) replace it.
-
-The trade-off is **more moving parts for a stateful controller** (External Secrets
-wiring, careful sync-waves, JCasC-as-external-secret) versus the current single
-idempotent script. For a stable default engine that rarely changes, the script is
-simpler; the GitOps version mainly pays off if you want Jenkins config drift to
-auto-reconcile like the rest of the platform. This is **not implemented** — it's
-the documented path if the project decides to make Jenkins fully GitOps-native.
+> **Optional further step:** model `jenkins-credentials` as an `ExternalSecret`
+> (the operator is already deployed) so even the credential Secret is declarative.
+> Not done today — the imperative Secret keeps the secret material out of git
+> while still letting ArgoCD own the workload.
 
 ---
 

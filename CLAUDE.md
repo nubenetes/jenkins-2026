@@ -59,8 +59,9 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
 - `observability/` - otel-operator, otel-collector, and Grafana (OSS +
   dashboards) Helm values + the `grafana-cloud-credentials` secret template.
 - `argocd/` - ArgoCD `Application`/`ApplicationSet` manifests (the GitOps
-  layer): External Secrets, Headlamp, the microservices AppSet, plus three
-  **app-of-apps** (each a small Helm chart so repo/branch/version flow down to
+  layer): single `Application`s for External Secrets, Headlamp, and **Jenkins**
+  (`jenkins-app.yaml`, the official chart, when `ci.engine=jenkins`), the
+  microservices AppSet, plus three **app-of-apps** (each a small Helm chart so repo/branch/version flow down to
   its children): `platform-postgres/` (the CNPG operator + pgAdmin that
   administers it), `observability-oss/`, which deploys the in-cluster OSS
   stack (kube-prometheus-stack/Loki/Tempo) when `observability.mode=oss`, and
