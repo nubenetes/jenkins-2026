@@ -1,4 +1,4 @@
-name: "Day0.infra.01 Gateway bootstrap"
+name: "Day0.infra.01 Gateway"
 
 # Manually-triggered, one-time setup step: applies terraform/gateway-bootstrap
 # to create (or, on re-runs, confirm) the persistent GCP resources that public

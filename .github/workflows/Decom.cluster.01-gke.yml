@@ -1,4 +1,4 @@
-name: "Decom.cluster.01 GKE decommission"
+name: "Decom.cluster.01 GKE"
 
 # Manually-triggered: tears down everything created by the "Day1.cluster.01 GKE
 # provision" workflow - scripts/down.sh (Helm releases, namespaces) then
