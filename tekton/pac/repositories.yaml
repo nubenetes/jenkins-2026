@@ -1,0 +1,36 @@
+# Tekton Pipelines-as-Code Repository CRs (webhook mode, no GitHub App) - one per
+# forked app repo. Synced into the pipeline namespace (tekton-ci) by the
+# tekton-pipeline-as-code ArgoCD app. PaC runs each repo's .tekton/ PipelineRuns
+# in THIS namespace, where microservices-pipeline + the Tasks live.
+#
+# git_provider.secret = the PAT (tekton-git, created by 01-namespaces.sh) used to
+# clone + post commit statuses. webhook_secret = the HMAC secret (pac-webhook,
+# created by 01-namespaces.sh from PAC_WEBHOOK_SECRET) shared with the GitHub
+# repo webhook (created by scripts/06-tekton-pipelines.sh). See docs/403-TEKTON.md.
+apiVersion: pipelinesascode.tekton.dev/v1alpha1
+kind: Repository
+metadata:
+  name: gateway
+spec:
+  url: "https://github.com/nubenetes/jhipster-sample-app-gateway"
+  git_provider:
+    secret:
+      name: tekton-git
+      key: password
+    webhook_secret:
+      name: pac-webhook
+      key: webhook.secret
+---
+apiVersion: pipelinesascode.tekton.dev/v1alpha1
+kind: Repository
+metadata:
+  name: jhipstersamplemicroservice
+spec:
+  url: "https://github.com/nubenetes/jhipster-sample-app-microservice"
+  git_provider:
+    secret:
+      name: tekton-git
+      key: password
+    webhook_secret:
+      name: pac-webhook
+      key: webhook.secret

@@ -86,6 +86,7 @@ tekton:
     dashboard: v0.69.0   # latest
     pruner: v0.4.0       # GC of completed runs (parity with Jenkins buildDiscarder)
     chains: v0.27.1      # supply-chain signing + SLSA provenance (DevSecOps)
+    pac: v0.48.0         # Pipelines-as-Code: Git-driven CI on the nubenetes forks (webhook mode)
   # Dashboard Service (created by the dashboard release-full.yaml).
   dashboard:
     # release-full.yaml = read-write mode (lets you start/cancel runs from the UI).
@@ -239,6 +240,9 @@ gateway:
     pgadmin: "pgadmin"
     # Only used when ci.engine=tekton (Tekton Dashboard, IAP-protected).
     tekton: "tekton"
+    # PaC controller webhook receiver (ci.engine=tekton). Public, NO IAP - GitHub
+    # must reach it; protected by the webhook HMAC secret instead.
+    pac: "pac"
     # Only used when observability.mode=oss (in-cluster Grafana). Ignored in
     # grafana-cloud mode, where Grafana is reached at its *.grafana.net URL.
     grafana: "grafana"

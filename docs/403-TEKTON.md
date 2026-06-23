@@ -69,6 +69,7 @@ exactly like the other app-of-apps), which renders four child Applications:
 | `tekton-dashboard` | `argocd/tekton/components/dashboard` (vendored `v0.69.0` `release-full.yaml`) | 1 | **read-write** GUI; no native auth |
 | `tekton-pruner` | `argocd/tekton/components/pruner` (vendored `v0.4.0`) | 1 | GC of completed runs — `historyLimit: 20` (parity with Jenkins `buildDiscarder`) |
 | `tekton-chains` | `argocd/tekton/components/chains` (vendored `v0.27.1`) | 1 | supply-chain: x509/cosign image signing + in-toto SLSA provenance + Rekor; own `tekton-chains` ns |
+| `tekton-pac` | `argocd/tekton/components/pac` (vendored `v0.48.0`) | 1 | Pipelines-as-Code controller; own `pipelines-as-code` ns; webhook receiver exposed at `pac.<baseDomain>` |
 | `tekton-pipeline-as-code` | `tekton/` (Tasks/Pipelines/Triggers/RBAC + the `tekton-ci` SA) | 2 | the ported pipeline; lands in the `tekton-ci` namespace |
 
 The component manifests are **vendored** under `argocd/tekton/components/*/`
