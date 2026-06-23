@@ -25,6 +25,18 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 
+# In oss mode the in-cluster stack (kube-prometheus-stack/Loki/Tempo) is managed
+# by the ArgoCD app-of-apps argocd/observability-oss; deleting the parent
+# Application cascade-prunes those charts via their resources finalizer. Called
+# from every NON-oss branch so a mode switch away from oss retires the stack.
+# Safe no-op when ArgoCD/the app is absent.
+remove_oss_observability_app() {
+  if kubectl get application observability-oss -n argocd >/dev/null 2>&1; then
+    log_info "Removing observability-oss ArgoCD app (cascade-prunes the in-cluster OSS stack)"
+    kubectl delete application observability-oss -n argocd --ignore-not-found --wait=false
+  fi
+}
+
 case "${J2026_OBS_MODE}" in
   grafana-cloud)
     log_step "Observability mode: grafana-cloud"
@@ -34,6 +46,8 @@ case "${J2026_OBS_MODE}" in
     # telemetry is exporting to Grafana Cloud again. The shared
     # otel-collector-{gateway,logs} releases are reconfigured by helm upgrade
     # below, so they must NOT be uninstalled here.
+    remove_oss_observability_app
+    # Also clean up any legacy helm-managed releases (pre-ArgoCD oss deploys).
     helm_uninstall_if_present kube-prometheus-stack "${J2026_GRAFANA_OSS_NAMESPACE}"
     helm_uninstall_if_present loki "${J2026_OBS_NAMESPACE}"
     helm_uninstall_if_present tempo "${J2026_OBS_NAMESPACE}"
@@ -148,56 +162,65 @@ EOT
     ;;
 
   oss)
-    log_step "Observability mode: oss"
+    log_step "Observability mode: oss (in-cluster stack via ArgoCD)"
 
-    # Clean in-place switch from grafana-cloud: retire the cloud-only agents
-    # before installing kube-prometheus-stack. k8s-monitoring/Alloy ships its
-    # own node-exporter DaemonSet on hostPort 9100, which would clash with the
-    # one kube-prometheus-stack deploys - and both keep exporting to Grafana
-    # Cloud otherwise. Must run before the kube-prometheus-stack install below.
+    # Clean in-place switch from grafana-cloud/managed-*: retire the cloud-only
+    # agents before the kube-prometheus-stack node-exporter (hostPort 9100) comes
+    # up via ArgoCD. k8s-monitoring/Alloy and managed-* node-exporter also bind
+    # hostPort 9100, so they must go first.
     helm_uninstall_if_present pdc-agent "${J2026_OBS_NAMESPACE}"
     helm_uninstall_if_present k8s-monitoring "${J2026_OBS_NAMESPACE}"
-    # managed-azure's node-exporter binds hostPort 9100 - the same as the one
-    # kube-prometheus-stack installs below, so it must go first.
     helm_uninstall_if_present kube-state-metrics "${J2026_OBS_NAMESPACE}"
     helm_uninstall_if_present prometheus-node-exporter "${J2026_OBS_NAMESPACE}"
 
-    log_step "Creating jenkins-2026-grafana-dashboards ConfigMap in ${J2026_GRAFANA_OSS_NAMESPACE}"
     kubectl_apply_namespace "${J2026_GRAFANA_OSS_NAMESPACE}"
+
+    # Companion inputs consumed by the ArgoCD-managed Grafana (see
+    # observability/grafana/values-oss.yaml). Kept script-managed (NOT in the
+    # ArgoCD app) so ArgoCD never owns/prunes these per-cluster values; the
+    # chart references them via the sidecar / envValueFrom (optional=true, so a
+    # missing object just falls back).
+    log_step "Creating jenkins-2026-grafana-dashboards ConfigMap in ${J2026_GRAFANA_OSS_NAMESPACE}"
     kubectl create configmap jenkins-2026-grafana-dashboards \
       -n "${J2026_GRAFANA_OSS_NAMESPACE}" \
       --from-file="${J2026_ROOT_DIR}/observability/grafana/dashboards" \
       --dry-run=client -o yaml | kubectl apply -f -
 
-    log_step "Installing kube-prometheus-stack (Prometheus + Grafana)"
+    log_step "Mirroring Jenkins admin password into grafana-jenkins-ds Secret (Jenkins datasource token)"
     JENKINS_ADMIN_PASSWORD="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" -o jsonpath='{.data.admin-password}' | base64 -d)"
+    kubectl create secret generic grafana-jenkins-ds \
+      -n "${J2026_GRAFANA_OSS_NAMESPACE}" \
+      --from-literal=apiToken="${JENKINS_ADMIN_PASSWORD}" \
+      --dry-run=client -o yaml | kubectl apply -f -
 
-    # When the public gateway is enabled, Grafana must know its public URL so
-    # redirects/links resolve to https://grafana.<baseDomain> instead of the
-    # in-cluster default (see observability/grafana/values-oss.yaml grafana.ini
-    # and scripts/09-gateway.sh, which creates the HTTPRoute + IAP policy).
-    GRAFANA_SET_ARGS=()
+    # Public root_url only when the gateway is enabled; otherwise leave the
+    # ConfigMap absent so Grafana falls back to the in-cluster default
+    # (values-oss.yaml grafana.ini), matching the previous --set behaviour.
     if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
-      GRAFANA_SET_ARGS+=(--set "grafana.grafana\.ini.server.root_url=https://${J2026_GATEWAY_GRAFANA_HOST}")
+      log_step "Setting Grafana public root_url -> https://${J2026_GATEWAY_GRAFANA_HOST}"
+      kubectl create configmap grafana-runtime-config \
+        -n "${J2026_GRAFANA_OSS_NAMESPACE}" \
+        --from-literal=root_url="https://${J2026_GATEWAY_GRAFANA_HOST}" \
+        --dry-run=client -o yaml | kubectl apply -f -
+    else
+      kubectl delete configmap grafana-runtime-config -n "${J2026_GRAFANA_OSS_NAMESPACE}" --ignore-not-found
     fi
 
-    helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
-      --namespace "${J2026_GRAFANA_OSS_NAMESPACE}" \
-      --create-namespace \
-      -f "${J2026_ROOT_DIR}/observability/grafana/values-oss.yaml" \
-      --set "grafana.additionalDataSources[3].secureJsonData.apiToken=${JENKINS_ADMIN_PASSWORD}" \
-      "${GRAFANA_SET_ARGS[@]}"
+    # Deploy the in-cluster stack (kube-prometheus-stack/Loki/Tempo) via the
+    # ArgoCD app-of-apps. ArgoCD is already installed: scripts/08.5-argocd.sh
+    # runs before this script in scripts/up.sh. The parent Application renders
+    # argocd/observability-oss/ into the three child Applications, each a
+    # multi-source app (upstream chart + this repo's values-oss*.yaml).
+    log_step "Applying observability-oss ArgoCD app-of-apps"
+    OSS_APP_FILE="$(mktemp)"
+    REPO_URL="${J2026_SELF_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
+    sed "s@{{repoUrl}}@${REPO_URL}@g;
+         s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g" \
+        "${J2026_ROOT_DIR}/argocd/observability-oss-app.yaml" > "${OSS_APP_FILE}"
+    kubectl apply -f "${OSS_APP_FILE}"
+    rm "${OSS_APP_FILE}"
 
-    log_step "Installing Loki"
-    helm upgrade --install loki "${J2026_GRAFANA_CHART_REPO_NAME}/loki" \
-      --namespace "${J2026_OBS_NAMESPACE}" \
-      -f "${J2026_ROOT_DIR}/observability/grafana/values-oss-loki.yaml"
-
-    log_step "Installing Tempo"
-    helm upgrade --install tempo "${J2026_GRAFANA_CHART_REPO_NAME}/tempo" \
-      --namespace "${J2026_OBS_NAMESPACE}" \
-      -f "${J2026_ROOT_DIR}/observability/grafana/values-oss-tempo.yaml"
-
+    # The OTel collectors stay script-managed (shared across all four obs modes).
     log_step "Installing ${J2026_OTEL_GATEWAY_RELEASE} (OTLP gateway -> Tempo/Prometheus/Loki)"
     kubectl delete configmap otel-collector-gateway -n "${J2026_OBS_NAMESPACE}" --ignore-not-found
     kubectl delete deployment "${J2026_OTEL_GATEWAY_RELEASE}" -n "${J2026_OBS_NAMESPACE}" --ignore-not-found
@@ -210,7 +233,19 @@ EOT
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${J2026_ROOT_DIR}/observability/otel-collector/values-oss-logs.yaml"
 
-    wait_for_deployment "kube-prometheus-stack-grafana" "${J2026_GRAFANA_OSS_NAMESPACE}"
+    # ArgoCD provisions Grafana asynchronously — wait for the Deployment to be
+    # created by the sync, then for it to be Ready, before downstream steps
+    # (07-grafana-dashboards no-op, 07.5-grafana-alerts) talk to Grafana.
+    log_step "Waiting for ArgoCD to provision the OSS observability stack (Grafana)"
+    if timeout 300 bash -c "
+      until kubectl get deployment kube-prometheus-stack-grafana -n '${J2026_GRAFANA_OSS_NAMESPACE}' >/dev/null 2>&1; do
+        sleep 5
+      done
+    "; then
+      wait_for_deployment "kube-prometheus-stack-grafana" "${J2026_GRAFANA_OSS_NAMESPACE}"
+    else
+      log_warn "kube-prometheus-stack-grafana did not appear within 5m — check 'kubectl -n argocd get applications' (observability-oss / oss-kube-prometheus-stack)."
+    fi
     wait_for_deployment "otel-collector-gateway" "${J2026_OBS_NAMESPACE}"
     ;;
 
@@ -224,6 +259,8 @@ EOT
     for r in pdc-agent k8s-monitoring; do
       helm status "$r" -n "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1 && helm uninstall "$r" -n "${J2026_OBS_NAMESPACE}"
     done
+    remove_oss_observability_app
+    # Also clean up any legacy helm-managed releases (pre-ArgoCD oss deploys).
     helm status kube-prometheus-stack -n "${J2026_GRAFANA_OSS_NAMESPACE}" >/dev/null 2>&1 && \
       helm uninstall kube-prometheus-stack -n "${J2026_GRAFANA_OSS_NAMESPACE}"
     for r in loki tempo; do
@@ -276,6 +313,8 @@ EOT
     for r in pdc-agent k8s-monitoring; do
       helm status "$r" -n "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1 && helm uninstall "$r" -n "${J2026_OBS_NAMESPACE}"
     done
+    remove_oss_observability_app
+    # Also clean up any legacy helm-managed releases (pre-ArgoCD oss deploys).
     helm status kube-prometheus-stack -n "${J2026_GRAFANA_OSS_NAMESPACE}" >/dev/null 2>&1 && \
       helm uninstall kube-prometheus-stack -n "${J2026_GRAFANA_OSS_NAMESPACE}"
     for r in loki tempo; do

@@ -1,0 +1,38 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cnpg-operator
+  namespace: argocd
+  annotations:
+    # CNPG's clusters/poolers CRDs have huge OpenAPI schemas. ServerSideDiff
+    # computes the diff via server-side apply on the API server, giving a
+    # reliable Synced status so automated sync doesn't fire on phantom drift.
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    chart: cloudnative-pg
+    repoURL: {{ .Values.cnpg.repoURL | quote }}
+    targetRevision: {{ .Values.cnpg.version | quote }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.namespace.cnpg | quote }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # ServerSideApply *should* avoid the last-applied-configuration annotation,
+      # but on ArgoCD v3.5 it is NOT honored for these CRDs — the sync still does
+      # a client-side patch and blows the 256KB annotations limit. Replace=true
+      # (kubectl replace, no annotation) is what actually reconciles them. NOTE:
+      # a manual/forced full sync still reports "failed to apply (dry run)"
+      # because the pre-sync dry-run is client-side here regardless — cosmetic;
+      # the App stays Synced + Healthy and automated sync skips while Synced.
+      # Replace on these CRDs is a PUT (no cascade-delete); never force-sync them
+      # — that would recreate the CRD and cascade-delete the PG clusters.
+      - ServerSideApply=true
+      - Replace=true

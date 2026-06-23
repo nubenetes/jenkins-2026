@@ -1,0 +1,28 @@
+# Defaults for the observability-oss app-of-apps. repoURL/targetRevision are
+# overridden by the parent Application's helm.parameters (set by
+# scripts/03-observability.sh from J2026_SELF_REPO_URL / J2026_SELF_REPO_BRANCH);
+# they point at THIS repo for the $values source of each child chart.
+repoURL: https://github.com/nubenetes/jenkins-2026.git
+targetRevision: main
+
+namespace:
+  # Loki + Tempo (and the OTel collectors, which stay script-managed).
+  observability: observability
+  # kube-prometheus-stack (Prometheus + Grafana). Defaults to the same ns; kept
+  # separate so it can diverge if observability.grafana.ossNamespace is changed.
+  grafana: observability
+
+# Upstream chart versions, pinned for reproducibility (CLAUDE.md). These track
+# the latest as of 2026-06-23 — i.e. what the previous unpinned
+# `helm upgrade --install` in scripts/03-observability.sh would have pulled.
+# Confirm/refresh against a fresh `Day1.cluster.01-gke` provision before merge.
+charts:
+  kubePrometheusStack:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    version: "87.0.1"
+  loki:
+    repoURL: https://grafana.github.io/helm-charts
+    version: "7.0.0"
+  tempo:
+    repoURL: https://grafana.github.io/helm-charts
+    version: "1.24.4"

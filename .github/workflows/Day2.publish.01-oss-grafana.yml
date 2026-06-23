@@ -1,0 +1,140 @@
+name: "Day2.publish.01 Publish OSS Grafana dashboards/alerts"
+
+# Manually-triggered: refreshes the in-cluster OSS Grafana (kube-prometheus-stack)
+# WITHOUT a full reprovision. The stack itself is GitOps-managed by the
+# observability-oss ArgoCD app-of-apps (argocd/observability-oss), so chart/value
+# changes land via ArgoCD auto-sync on commit. This workflow handles the two
+# inputs that live OUTSIDE that app:
+#   - the dashboards ConfigMap (jenkins-2026-grafana-dashboards), rebuilt from
+#     observability/grafana/dashboards/ and reloaded by the Grafana sidecar;
+#   - the Grafana alert rules (scripts/07.5-grafana-alerts.sh).
+# It also nudges ArgoCD to re-sync the app so committed value changes apply now.
+#
+# Only meaningful when the live cluster runs observability.mode=oss. Requires the
+# cluster from the last "Day1.cluster.01 GKE provision" run to still exist.
+on:
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: "Git branch, tag, or SHA to check out (leave empty to use the branch/tag selected in 'Use workflow from' above)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: jenkins-2026-gke
+  cancel-in-progress: false
+
+env:
+  TF_VERSION: "1.15.6"
+  # Force the oss code path in scripts/lib/config.sh + scripts/07.5 regardless of
+  # config.yaml's default observability.mode (env-override pattern).
+  JENKINS2026_OBS_MODE: oss
+
+jobs:
+  publish-oss-grafana:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.git_ref || github.ref }}
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Install gke-gcloud-auth-plugin
+        run: gcloud components install gke-gcloud-auth-plugin --quiet
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Install yq
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/yq \
+            https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Configure GCS backend (terraform/gke)
+        run: |
+          cat > terraform/gke/backend_override.tf <<EOF
+          terraform {
+            backend "gcs" {
+              bucket = "${{ secrets.TF_STATE_BUCKET }}"
+              prefix = "jenkins-2026/gke"
+            }
+          }
+          EOF
+
+      - name: Terraform init
+        working-directory: terraform/gke
+        run: |
+          for i in {1..3}; do
+            terraform init -input=false && break || {
+              if [ $i -lt 3 ]; then
+                echo "Terraform init failed, retrying in 10s..."
+                sleep 10
+              else
+                exit 1
+              fi
+            }
+          done
+
+      - name: Fetch kubeconfig credentials
+        working-directory: terraform/gke
+        run: |
+          gcloud container clusters get-credentials \
+            "$(terraform output -raw cluster_name)" \
+            --zone "$(terraform output -raw location)" \
+            --project "${{ secrets.GCP_PROJECT_ID }}"
+
+      - name: Refresh dashboards ConfigMap (Grafana sidecar reloads it)
+        run: |
+          source scripts/lib/common.sh
+          source scripts/lib/config.sh
+          kubectl create configmap jenkins-2026-grafana-dashboards \
+            -n "${J2026_GRAFANA_OSS_NAMESPACE}" \
+            --from-file=observability/grafana/dashboards \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Nudge ArgoCD to re-sync observability-oss (best-effort)
+        run: |
+          kubectl -n argocd annotate application observability-oss \
+            argocd.argoproj.io/refresh=hard --overwrite || \
+            echo "::warning::observability-oss Application not found — is the live cluster running observability.mode=oss?"
+
+      - name: Republish Grafana alerts (scripts/07.5-grafana-alerts.sh)
+        run: ./scripts/07.5-grafana-alerts.sh || echo "::warning::alert provisioning reported an issue (non-fatal)"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### OSS Grafana refreshed"
+            echo
+            echo "- Rebuilt \`jenkins-2026-grafana-dashboards\` ConfigMap from \`observability/grafana/dashboards/\`"
+            echo "- Nudged ArgoCD \`observability-oss\` to re-sync (chart/value changes)"
+            echo "- Republished Grafana alert rules"
+            echo
+            echo "The in-cluster OSS stack itself is GitOps-managed by ArgoCD"
+            echo "(\`argocd/observability-oss\`); commits auto-sync."
+          } >> "${GITHUB_STEP_SUMMARY}"

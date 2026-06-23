@@ -1,0 +1,31 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-postgres
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  # App-of-apps: renders the local Helm chart argocd/platform-postgres/, which
+  # emits the cnpg-operator + pgadmin child Applications. The
+  # {{repoUrl}}/{{branchStable}} placeholders are substituted by
+  # scripts/08.5-argocd.sh at apply time and passed down as helm parameters so
+  # the pgAdmin child's git source tracks the active branch.
+  source:
+    repoURL: '{{repoUrl}}'
+    targetRevision: '{{branchStable}}'
+    path: argocd/platform-postgres
+    helm:
+      parameters:
+        - name: repoURL
+          value: '{{repoUrl}}'
+        - name: targetRevision
+          value: '{{branchStable}}'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
