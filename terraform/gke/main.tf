@@ -111,6 +111,20 @@ resource "google_container_cluster" "this" {
     services_secondary_range_name = "services"
   }
 
+  # GKE Dataplane V2 (Cilium/eBPF, replaces kube-proxy/iptables). Two reasons:
+  #   1. It ENFORCES NetworkPolicy natively. Without it (and without the legacy
+  #      Calico `network_policy` addon, which is mutually exclusive with this and
+  #      must therefore stay absent), the cluster accepts the NetworkPolicy
+  #      objects in infrastructure/networkpolicies*.yaml but silently does NOT
+  #      enforce them — a false sense of microsegmentation. Dataplane V2 makes the
+  #      default-deny + allow rules actually take effect.
+  #   2. It is the prerequisite for Cilium-based, sidecar-free mTLS if we later
+  #      close the pod-to-pod encryption gap that way (cheaper than Istio here).
+  # NOTE: this field is immutable — changing it forces the cluster to be
+  # RECREATED. Pick it up with a fresh provision (Decom.cluster.01 then
+  # Day1.cluster.01), not an in-place Day1 re-run.
+  datapath_provider = "ADVANCED_DATAPATH"
+
   # Required for the Gateway/HTTPRoute/GCPBackendPolicy resources applied by
   # scripts/09-gateway.sh - see README.md "Public access (GKE Gateway API +
   # IAP)".
