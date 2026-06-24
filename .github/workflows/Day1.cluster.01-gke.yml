@@ -444,72 +444,11 @@ jobs:
           JENKINS2026_CI_ENGINE: ${{ inputs.ci_engine }}
         run: ./test/smoke-test.sh
 
-      # Auto-publish the managed-azure dashboard variants to Azure Managed
-      # Grafana, for parity with the grafana-cloud/oss modes (which publish via
-      # 07-grafana-dashboards.sh). Uses GitHub OIDC -> Azure (the OIDC SP holds
-      # Grafana Admin on the instance via terraform/azure-managed-grafana), so
-      # no Grafana API token is stored anywhere.
-      - name: Azure login (managed-azure dashboards)
-        if: ${{ inputs.observability_mode == 'managed-azure' }}
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Publish dashboards to Azure Managed Grafana
-        if: ${{ inputs.observability_mode == 'managed-azure' }}
-        run: |
-          az extension add -n amg --only-show-errors || true
-          az extension add -n resource-graph --only-show-errors || true
-          # Discover the Azure Managed Grafana instance (the one the OIDC SP has
-          # Grafana Admin on) without depending on terraform state outputs.
-          read -r grafana rg < <(az grafana list \
-            --query "[?starts_with(name,'jenkins-2026')].[name,resourceGroup] | [0]" -o tsv)
-          if [[ -z "${grafana}" ]]; then
-            echo "::warning::no Azure Managed Grafana found - skipping dashboard publish"
-            exit 0
-          fi
-          # Resolve the App Insights resource and substitute it for the
-          # ${appinsights} placeholder so the log/trace panels bind to a
-          # concrete resource (a dashboard template variable wouldn't reliably
-          # auto-select at view time). Kept out of the repo - resolved here.
-          appinsights="$(az graph query -q "resources | where type =~ 'microsoft.insights/components' | project id" --query 'data[0].id' -o tsv)"
-          echo "Publishing to ${grafana} (${rg}); App Insights: ${appinsights##*/}"
-          for f in observability/grafana/dashboards-azure/*-azure.json; do
-            sed "s|\${appinsights}|${appinsights}|g" "${f}" > /tmp/dash.json
-            if az grafana dashboard create -n "${grafana}" -g "${rg}" \
-                 --definition @/tmp/dash.json --overwrite --only-show-errors >/dev/null; then
-              echo "published $(basename "${f}")"
-            else
-              echo "::warning::failed to publish $(basename "${f}")"
-            fi
-          done
-          # Generic Kubernetes/node infra is covered by Azure Managed Grafana's
-          # built-in dashboards (Compute Resources / Kubelet / Node Exporter /
-          # USE Method), auto-provisioned from the Azure Monitor workspace
-          # integration - the collector scrapes cadvisor/kubelet/node/ksm to
-          # feed them (values-managed-azure.yaml). Nothing to publish here.
-
-      # Auto-publish the managed-aws dashboard variants to Amazon Managed
-      # Grafana. up.sh's 07-grafana-dashboards.sh skips when the runner has no
-      # AWS credentials (the keyless design only federates the collector), so
-      # authenticate here via GitHub OIDC - the least-privilege dashboard-
-      # publisher role from terraform/aws-managed-grafana, no access keys - and
-      # run the publisher (it mints a short-lived AMG service-account token).
-      - name: AWS login (managed-aws dashboards)
-        if: ${{ inputs.observability_mode == 'managed-aws' && env.AWS_DASHBOARD_PUBLISH_ROLE_ARN != '' }}
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ env.AWS_DASHBOARD_PUBLISH_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
-
-      - name: Publish dashboards to Amazon Managed Grafana
-        if: ${{ inputs.observability_mode == 'managed-aws' && env.AWS_DASHBOARD_PUBLISH_ROLE_ARN != '' }}
-        env:
-          JENKINS2026_OBS_MODE: managed-aws
-        run: ./scripts/07-grafana-dashboards.sh
-
+      # Summary and Access URLs run BEFORE the AWS/Azure login steps so that
+      # configure-aws-credentials / azure/login have not yet registered
+      # cloud-specific values (e.g. the AWS region) as masked secrets -
+      # otherwise those strings are replaced with *** in all subsequent log output,
+      # including the Grafana workspace URL.
       - name: Summary
         if: always()
         working-directory: terraform/gke
@@ -533,10 +472,11 @@ jobs:
             echo "avoid ongoing charges."
           } >> "${GITHUB_STEP_SUMMARY}"
 
-      # Centralised access summary at the very end of the log: every URL for this
+      # Centralised access summary before any cloud login steps: every URL for this
       # run's CI engine + observability mode, grouped by IAP-protected / open /
       # observability. if: always() so it prints even if an earlier step (e.g. the
       # smoke test) failed. Also mirrored into the GitHub step summary panel.
+      # Must stay before AWS/Azure login steps to avoid region masking in the log.
       - name: Access URLs
         if: always()
         run: |
@@ -591,5 +531,83 @@ jobs:
             fi
             echo "════════════════════════════════════════════════════════════════════════"
           }
-          gen                                   # -> normal job log (end of log)
+          gen                                   # -> normal job log
           { echo '```'; gen; echo '```'; } >> "${GITHUB_STEP_SUMMARY}"   # -> summary panel
+
+      # Auto-publish the managed-azure dashboard variants to Azure Managed
+      # Grafana, for parity with the grafana-cloud/oss modes (which publish via
+      # 07-grafana-dashboards.sh). Uses GitHub OIDC -> Azure (the OIDC SP holds
+      # Grafana Admin on the instance via terraform/azure-managed-grafana), so
+      # no Grafana API token is stored anywhere.
+      - name: Azure login (managed-azure dashboards)
+        if: ${{ inputs.observability_mode == 'managed-azure' }}
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Publish dashboards to Azure Managed Grafana
+        if: ${{ inputs.observability_mode == 'managed-azure' }}
+        env:
+          JENKINS2026_CI_ENGINE: ${{ inputs.ci_engine }}
+        run: |
+          az extension add -n amg --only-show-errors || true
+          az extension add -n resource-graph --only-show-errors || true
+          # Discover the Azure Managed Grafana instance (the one the OIDC SP has
+          # Grafana Admin on) without depending on terraform state outputs.
+          read -r grafana rg < <(az grafana list \
+            --query "[?starts_with(name,'jenkins-2026')].[name,resourceGroup] | [0]" -o tsv)
+          if [[ -z "${grafana}" ]]; then
+            echo "::warning::no Azure Managed Grafana found - skipping dashboard publish"
+            exit 0
+          fi
+          # Resolve the App Insights resource and substitute it for the
+          # ${appinsights} placeholder so the log/trace panels bind to a
+          # concrete resource (a dashboard template variable wouldn't reliably
+          # auto-select at view time). Kept out of the repo - resolved here.
+          appinsights="$(az graph query -q "resources | where type =~ 'microsoft.insights/components' | project id" --query 'data[0].id' -o tsv)"
+          echo "Publishing to ${grafana} (${rg}); App Insights: ${appinsights##*/}"
+          # Skip the off-engine CI overview (jenkins XOR tekton) matching
+          # the same logic as 07-grafana-dashboards.sh::is_offengine_dashboard.
+          [[ "${JENKINS2026_CI_ENGINE}" == "tekton" ]] && skip_dash="jenkins-overview" || skip_dash="tekton-overview"
+          for f in observability/grafana/dashboards-azure/*-azure.json; do
+            name="$(basename "${f}" -azure.json)"
+            if [[ "${name}" == "${skip_dash}" ]]; then
+              echo "skipping ${name}-azure (ci.engine=${JENKINS2026_CI_ENGINE})"
+              continue
+            fi
+            sed "s|\${appinsights}|${appinsights}|g" "${f}" > /tmp/dash.json
+            if az grafana dashboard create -n "${grafana}" -g "${rg}" \
+                 --definition @/tmp/dash.json --overwrite --only-show-errors >/dev/null; then
+              echo "published $(basename "${f}")"
+            else
+              echo "::warning::failed to publish $(basename "${f}")"
+            fi
+          done
+          # Generic Kubernetes/node infra is covered by Azure Managed Grafana's
+          # built-in dashboards (Compute Resources / Kubelet / Node Exporter /
+          # USE Method), auto-provisioned from the Azure Monitor workspace
+          # integration - the collector scrapes cadvisor/kubelet/node/ksm to
+          # feed them (values-managed-azure.yaml). Nothing to publish here.
+
+      # Auto-publish the managed-aws dashboard variants to Amazon Managed
+      # Grafana. up.sh's 07-grafana-dashboards.sh skips when the runner has no
+      # AWS credentials (the keyless design only federates the collector), so
+      # authenticate here via GitHub OIDC - the least-privilege dashboard-
+      # publisher role from terraform/aws-managed-grafana, no access keys - and
+      # run the publisher (it mints a short-lived AMG service-account token).
+      - name: AWS login (managed-aws dashboards)
+        if: ${{ inputs.observability_mode == 'managed-aws' && env.AWS_DASHBOARD_PUBLISH_ROLE_ARN != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_DASHBOARD_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Publish dashboards to Amazon Managed Grafana
+        if: ${{ inputs.observability_mode == 'managed-aws' && env.AWS_DASHBOARD_PUBLISH_ROLE_ARN != '' }}
+        env:
+          JENKINS2026_OBS_MODE: managed-aws
+          JENKINS2026_CI_ENGINE: ${{ inputs.ci_engine }}
+        run: ./scripts/07-grafana-dashboards.sh
+
