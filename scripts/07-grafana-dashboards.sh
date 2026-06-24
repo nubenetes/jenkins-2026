@@ -50,6 +50,28 @@ is_offengine_dashboard() {
   esac
 }
 
+# Delete the INACTIVE engine's overview dashboard by UID via the legacy HTTP API
+# (Bearer auth). Skipping the off-engine dashboard at publish time is not enough on
+# a PERSISTENT stack (Grafana Cloud / Azure Managed Grafana): gcx push and
+# POST /api/dashboards/db only upsert, so a stale jenkins-overview survives a switch
+# to tekton (and vice-versa). Idempotent: no-op when it isn't there. $1=base URL,
+# $2=API key. (managed-aws does the equivalent with its short-lived SA token.)
+delete_offengine_dashboard() {
+  local base="${1%/}" key="$2" off_uid
+  if [[ "${ACTIVE_CI_ENGINE}" == "tekton" ]]; then
+    off_uid="jenkins2026-jenkins-overview"
+  else
+    off_uid="jenkins2026-tekton-overview"
+  fi
+  if curl -fsS "${base}/api/dashboards/uid/${off_uid}" -H "Authorization: Bearer ${key}" >/dev/null 2>&1; then
+    if curl -fsS -X DELETE "${base}/api/dashboards/uid/${off_uid}" -H "Authorization: Bearer ${key}" >/dev/null 2>&1; then
+      log_info "Deleted off-engine dashboard ${off_uid} (ci.engine=${ACTIVE_CI_ENGINE})."
+    else
+      log_warn "Could not delete off-engine dashboard ${off_uid}."
+    fi
+  fi
+}
+
 case "${J2026_OBS_MODE}" in
   grafana-cloud)
     if ! kubectl get secret "${J2026_GRAFANA_CLOUD_SECRET}" -n "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1; then
@@ -137,6 +159,7 @@ case "${J2026_OBS_MODE}" in
     else
       log_warn "GRAFANA_STACK_ID not found - skipping auto-configuration of Kubernetes app settings."
     fi
+    delete_offengine_dashboard "${GRAFANA_BASE_URL}" "${GRAFANA_API_KEY}"
     ;;
 
   oss)
@@ -200,6 +223,7 @@ case "${J2026_OBS_MODE}" in
         log_warn "Failed to publish ${name} (metric panels may still need an Azure Monitor datasource)."
       fi
     done
+    delete_offengine_dashboard "${GRAFANA_BASE_URL}" "${GRAFANA_API_KEY}"
     ;;
 
   managed-aws)
