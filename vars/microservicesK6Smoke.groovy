@@ -37,6 +37,7 @@ def call(Map cfg) {
       "K6_OTEL_SERVICE_NAME=k6-microservices-smoke",
       "K6_OTEL_GRPC_EXPORTER_ENDPOINT=otel-collector-gateway.observability.svc.cluster.local:4317",
       "K6_OTEL_GRPC_EXPORTER_INSECURE=true",
+      "K6_OTEL_EXPORT_INTERVAL=2s",
       "OTEL_RESOURCE_ATTRIBUTES=service.namespace=jenkins-2026,deployment.environment=${cfg.envName}",
       // Optional Grafana Cloud k6 (the k6-app) streaming; empty -> skipped.
       // Injected into the controller env from the jenkins-credentials Secret

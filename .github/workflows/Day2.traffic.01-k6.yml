@@ -37,6 +37,12 @@ jobs:
           # installs whatever is latest and can silently change the schema again.
           k6-version: '2.0.0'
 
+      - name: Install yq
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/yq \
+            https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         continue-on-error: true
@@ -62,39 +68,82 @@ jobs:
 
       - name: Run k6 Simulation
         env:
-          K6_OTEL_EXPORTER_PROTOCOL: http/protobuf
           K6_OTEL_SERVICE_NAME: k6-microservices-smoke
+          K6_OTEL_EXPORT_INTERVAL: 2s
           OTEL_RESOURCE_ATTRIBUTES: service.name=k6-microservices-smoke,service.namespace=jenkins-2026,deployment.environment=stable
           # Optional Grafana Cloud k6 (the k6-app) streaming; empty -> skipped.
           K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
           K6_CLOUD_PROJECT_ID: ${{ secrets.K6_CLOUD_PROJECT_ID }}
         run: |
-          # Record start time in milliseconds
+          set -euo pipefail
           START_TIME_MS=$(date +%s%3N)
-          
-          # OTLP credentials + Grafana URL come from the in-cluster
-          # grafana-cloud-credentials Secret (provisioned by Day1.cluster.01). The stack
-          # slug/endpoint are generated per deploy, so there is no static fallback -
-          # the cluster must be reachable.
-          if ! kubectl get secret grafana-cloud-credentials -n observability >/dev/null 2>&1; then
-            echo "::error::grafana-cloud-credentials Secret not found - deploy the cluster (Day1.cluster.01, observability_mode=grafana-cloud) first."
-            exit 1
+
+          MODE="$(yq '.observability.mode' config/config.yaml)"
+          echo "Observability mode: ${MODE}"
+          NS="observability"
+
+          # ---------------------------------------------------------------------------
+          # Resolve OTLP destination and Grafana URL based on the active obs mode.
+          #
+          # grafana-cloud: HTTP/protobuf directly to the Grafana Cloud OTLP gateway.
+          # All other modes (oss, managed-aws, managed-azure): port-forward the
+          # in-cluster otel-collector-gateway and use gRPC — the collector then
+          # remote-writes to the mode-specific backend (AMP, Azure Monitor, Prometheus).
+          # ---------------------------------------------------------------------------
+          GRAFANA_URL=""
+          PF_PID=""
+
+          if [[ "${MODE}" == "grafana-cloud" ]]; then
+            if ! kubectl get secret grafana-cloud-credentials -n "${NS}" >/dev/null 2>&1; then
+              echo "::error::grafana-cloud-credentials Secret not found — deploy the cluster (Day1.cluster.01, observability_mode=grafana-cloud) first."
+              exit 1
+            fi
+            OTLP_ENDPOINT="$(kubectl get secret grafana-cloud-credentials -n "${NS}" \
+              -o jsonpath='{.data.GRAFANA_CLOUD_OTLP_ENDPOINT}' | base64 -d)"
+            OTLP_AUTH="$(kubectl get secret grafana-cloud-credentials -n "${NS}" \
+              -o jsonpath='{.data.GRAFANA_CLOUD_OTLP_AUTH}' | base64 -d)"
+            GRAFANA_URL="$(kubectl get secret grafana-cloud-credentials -n "${NS}" \
+              -o jsonpath='{.data.GRAFANA_BASE_URL}' | base64 -d || true)"
+            # k6 HTTP exporter expects host:port without scheme or path
+            export K6_OTEL_EXPORTER_PROTOCOL=http/protobuf
+            export K6_OTEL_HTTP_EXPORTER_ENDPOINT="$(echo "${OTLP_ENDPOINT}" \
+              | sed -E 's|^https://||; s|/otlp$||'):443"
+            export K6_OTEL_HTTP_EXPORTER_URL_PATH="/otlp/v1/metrics"
+            export K6_OTEL_HEADERS="Authorization=Basic ${OTLP_AUTH}"
+            echo "OTLP → Grafana Cloud (HTTP/protobuf): ${K6_OTEL_HTTP_EXPORTER_ENDPOINT}"
+          else
+            # Port-forward the in-cluster gateway to localhost:4317 (gRPC).
+            # This works for oss, managed-aws, managed-azure — the collector
+            # then remote-writes to whichever backend is active.
+            kubectl port-forward svc/otel-collector-gateway -n "${NS}" 4317:4317 &
+            PF_PID=$!
+            sleep 4  # wait for the tunnel to establish
+            echo "Port-forward PID: ${PF_PID} — k6 will send gRPC to localhost:4317"
+            export K6_OTEL_EXPORTER_PROTOCOL=grpc
+            export K6_OTEL_GRPC_EXPORTER_ENDPOINT=localhost:4317
+            export K6_OTEL_GRPC_EXPORTER_INSECURE=true
+            echo "OTLP → in-cluster otel-collector-gateway (gRPC insecure)"
+
+            # Resolve Grafana URL per mode (best-effort, used only for the summary link).
+            case "${MODE}" in
+              managed-aws)
+                GRAFANA_URL="$(kubectl get secret aws-managed-credentials -n "${NS}" \
+                  -o jsonpath='{.data.GRAFANA_BASE_URL}' 2>/dev/null | base64 -d || true)" ;;
+              managed-azure)
+                GRAFANA_URL="$(kubectl get secret azure-monitor-credentials -n "${NS}" \
+                  -o jsonpath='{.data.GRAFANA_BASE_URL}' 2>/dev/null | base64 -d || true)" ;;
+              oss)
+                DOMAIN="$(yq '.platform.baseDomain' config/config.yaml 2>/dev/null || true)"
+                [[ -n "${DOMAIN}" ]] && GRAFANA_URL="https://grafana.${DOMAIN}" ;;
+            esac
           fi
-          export K6_OTEL_HTTP_EXPORTER_ENDPOINT=$(kubectl get secret grafana-cloud-credentials -n observability -o jsonpath='{.data.GRAFANA_CLOUD_OTLP_ENDPOINT}' | base64 -d)
-          export K6_OTEL_HEADERS="Authorization=Basic $(kubectl get secret grafana-cloud-credentials -n observability -o jsonpath='{.data.GRAFANA_CLOUD_OTLP_AUTH}' | base64 -d)"
-          echo "GRAFANA_BASE_URL=$(kubectl get secret grafana-cloud-credentials -n observability -o jsonpath='{.data.GRAFANA_BASE_URL}' | base64 -d)" >> "$GITHUB_ENV"
-          
-          # k6's HTTP exporter expects the endpoint as host:port without scheme and path
-          export K6_OTEL_HTTP_EXPORTER_ENDPOINT=$(echo $K6_OTEL_HTTP_EXPORTER_ENDPOINT | sed -E 's|^https://||; s|/otlp$||')":443"
-          export K6_OTEL_HTTP_EXPORTER_URL_PATH="/otlp/v1/metrics"
-          
-          # Use the existing smoke test script but with more iterations/duration
-          # Pointing to the stable environment
+
+          echo "GRAFANA_BASE_URL=${GRAFANA_URL}" >> "${GITHUB_ENV}"
+
           export TARGET_URL="https://microservices.jenkins2026.nubenetes.com"
-          
-          # Also stream to Grafana Cloud k6 (the k6-app) when a token + project are set.
+
           CLOUD_OUT=""
-          if [ -n "${K6_CLOUD_TOKEN:-}" ] && [ -n "${K6_CLOUD_PROJECT_ID:-}" ]; then
+          if [[ -n "${K6_CLOUD_TOKEN:-}" && -n "${K6_CLOUD_PROJECT_ID:-}" ]]; then
             CLOUD_OUT="--out cloud"
           fi
 
@@ -103,25 +152,26 @@ jobs:
             -o opentelemetry ${CLOUD_OUT} \
             --vus 2 \
             --duration ${{ github.event.inputs.duration || '15m' }} \
-            --env TARGET_URL=$TARGET_URL \
+            --env TARGET_URL="${TARGET_URL}" \
             --env ENV_NAME=stable \
             --summary-export=k6-summary.json
-          
           EXIT_CODE=$?
-          
-          # Record end time in milliseconds
+          set -e
+
+          # Stop port-forward if we started one
+          [[ -n "${PF_PID}" ]] && kill "${PF_PID}" 2>/dev/null || true
+
           END_TIME_MS=$(date +%s%3N)
-          
-          # Pad +/- 5m (300000 ms)
           FROM_TIME=$((START_TIME_MS - 300000))
-          TO_TIME=$((END_TIME_MS + 300000))
-          echo "GRAFANA_FROM=$FROM_TIME" >> $GITHUB_ENV
-          echo "GRAFANA_TO=$TO_TIME" >> $GITHUB_ENV
-          
-          if [ $EXIT_CODE -eq 0 ] || [ $EXIT_CODE -eq 99 ]; then
+          TO_TIME=$((END_TIME_MS   + 300000))
+          echo "GRAFANA_FROM=${FROM_TIME}" >> "${GITHUB_ENV}"
+          echo "GRAFANA_TO=${TO_TIME}"     >> "${GITHUB_ENV}"
+          echo "OBS_MODE=${MODE}"          >> "${GITHUB_ENV}"
+
+          if [[ ${EXIT_CODE} -eq 0 || ${EXIT_CODE} -eq 99 ]]; then
             exit 0
           else
-            exit $EXIT_CODE
+            exit ${EXIT_CODE}
           fi
 
       - name: Upload k6 Report
@@ -138,31 +188,46 @@ jobs:
           K6_CLOUD_PROJECT_ID: ${{ secrets.K6_CLOUD_PROJECT_ID }}
         run: |
           echo "=============================================================================="
-          echo "📊 K6 TRAFFIC SIMULATION SUMMARY"
+          echo "K6 TRAFFIC SIMULATION SUMMARY  (mode: ${OBS_MODE:-unknown})"
           echo "=============================================================================="
           if [ -f k6-summary.json ]; then
             cat k6-summary.json | jq '.metrics'
           else
-            echo "❌ k6-summary.json not found. Check the simulation logs for errors."
+            echo "k6-summary.json not found. Check the simulation logs for errors."
           fi
           echo ""
-          echo "🔗 VIEW IN GRAFANA"
+          echo "VIEW IN GRAFANA"
           echo "------------------------------------------------------------------------------"
-          echo "The metrics from this run have been streamed to your Grafana Cloud instance."
-          echo "You can analyze real-time latency, error rates, and traces here:"
-          echo ""
-          if [ ! -z "$GRAFANA_FROM" ] && [ ! -z "$GRAFANA_TO" ]; then
-            echo "${GRAFANA_BASE_URL}/d/jenkins2026-k6-smoke-overview/jenkins-2026-k6-observability-smoke-test?orgId=1&from=${GRAFANA_FROM}&to=${GRAFANA_TO}&var-DS_PROMETHEUS=grafanacloud-prom&var-DS_LOKI=grafanacloud-logs&var-DS_TEMPO=grafanacloud-traces&var-deployment_environment=stable"
+
+          if [[ "${OBS_MODE:-}" == "grafana-cloud" ]]; then
+            DS_PROM="grafanacloud-prom"
+            DS_LOKI="grafanacloud-logs"
+            DS_TEMPO="grafanacloud-traces"
           else
-            echo "${GRAFANA_BASE_URL}/d/jenkins2026-k6-smoke-overview/jenkins-2026-k6-observability-smoke-test?var-DS_PROMETHEUS=grafanacloud-prom&var-DS_LOKI=grafanacloud-logs&var-DS_TEMPO=grafanacloud-traces&var-deployment_environment=stable"
+            # managed-aws / managed-azure / oss use mode-specific datasource UIDs.
+            # The dashboard var-DS_PROMETHEUS default (set in the JSON) picks the right
+            # one automatically when opened in the correct Grafana instance.
+            DS_PROM=""
+            DS_LOKI=""
+            DS_TEMPO=""
           fi
-          echo ""
-          echo "This dashboard correlates k6 client-side metrics with your Microservices"
-          echo "backend telemetry (traces, logs, and metrics) for full observability."
-          if [ -n "${K6_CLOUD_PROJECT_ID:-}" ] && [ -n "${GRAFANA_BASE_URL:-}" ]; then
+
+          BASE="${GRAFANA_BASE_URL:-}"
+          DASH="jenkins2026-k6-smoke-overview/jenkins-2026-k6-observability-smoke-test"
+          PARAMS="orgId=1&var-deployment_environment=stable"
+          [[ -n "${DS_PROM}" ]]     && PARAMS="${PARAMS}&var-DS_PROMETHEUS=${DS_PROM}"
+          [[ -n "${DS_LOKI}" ]]     && PARAMS="${PARAMS}&var-DS_LOKI=${DS_LOKI}"
+          [[ -n "${DS_TEMPO}" ]]    && PARAMS="${PARAMS}&var-DS_TEMPO=${DS_TEMPO}"
+          [[ -n "${GRAFANA_FROM}" ]] && PARAMS="${PARAMS}&from=${GRAFANA_FROM}&to=${GRAFANA_TO}"
+
+          if [[ -n "${BASE}" ]]; then
+            echo "${BASE}/d/${DASH}?${PARAMS}"
+          else
+            echo "(Grafana URL not resolved — open the dashboard manually)"
+          fi
+
+          if [[ -n "${K6_CLOUD_PROJECT_ID:-}" && -n "${BASE}" ]]; then
             echo ""
-            echo "🏎️  VIEW IN GRAFANA CLOUD k6 (the k6-app)"
-            echo "------------------------------------------------------------------------------"
-            echo "${GRAFANA_BASE_URL}/a/k6-app/projects/${K6_CLOUD_PROJECT_ID}"
+            echo "Grafana Cloud k6 app: ${BASE}/a/k6-app/projects/${K6_CLOUD_PROJECT_ID}"
           fi
           echo "=============================================================================="
