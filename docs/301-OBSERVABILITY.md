@@ -188,32 +188,95 @@ Guards against it:
 
 ## Observability Dashboards
 
-Three dashboards live as plain JSON in [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) and are the **single source of truth**, re-applied on every deploy:
+### Dashboard architecture
 
-| Dashboard (uid) | Shows |
+Each observability mode has its **own independent set of dashboards** published to its own Grafana instance. They are not shared — switching from `grafana-cloud` to `managed-aws` means a completely different Grafana URL and a completely different dashboard set.
+
+#### Source of truth: canonical dashboards
+
+Four canonical JSON files live in [`observability/grafana/dashboards/`](../observability/grafana/dashboards/). They use portable datasource template variables (`${DS_PROMETHEUS}` / `${DS_LOKI}` / `${DS_TEMPO}`) and are the **single source of truth** for content:
+
+| Dashboard (uid) | What it shows |
 |---|---|
 | `jenkins-overview` | Jenkins CI: active runs, queue, executors, pipeline results, build traces, pod logs |
 | `microservices-overview` | Per-service HTTP RED, JVM/GC, restarts, traces table, pod logs |
 | `k6-smoke-overview` | k6 iterations, checks/req-failed/p95 thresholds, run traces + logs |
+| `tekton-overview` | Tekton pipeline runs, task durations, build traces (only published when `ci.engine=tekton`) |
 
-Engineering decisions baked into the JSON:
-- **Portable datasources**: panels reference `${DS_PROMETHEUS}` / `${DS_LOKI}` / `${DS_TEMPO}` template variables — the same JSON works in both Grafana Cloud and OSS modes.
-- **Environment-scoped logs**: a hidden `namespace` variable resolves the real namespace per environment via `label_values(...)`.
-- **Fixed rate window for sparse metrics**: `[15m]` rate window on JVM GC Pause Time p99 to prevent `NaN` on idle JVMs at short zoom levels.
+#### Per-backend variants
+
+Each managed backend requires adapted datasources (AMP instead of Prometheus, CloudWatch instead of Loki, X-Ray instead of Tempo). Variants are generated from the canonical files and live in separate directories:
+
+| Directory | Published to | Datasources used | How generated |
+|---|---|---|---|
+| `observability/grafana/dashboards/` | OSS Grafana (in-cluster) | Prometheus · Loki · Tempo | Used directly as-is |
+| *(same as above)* | Grafana Cloud | grafanacloud-prom · grafanacloud-logs · grafanacloud-traces | Used directly; `gcx` binds datasource UIDs at push time |
+| `observability/grafana/dashboards-azure/` | Azure Managed Grafana | Azure Monitor (metrics + logs + traces) | `generate.py` replaces Loki/Tempo panels with Azure Monitor equivalents |
+| `observability/grafana/dashboards-aws/` | Amazon Managed Grafana | AMP (PromQL) · CloudWatch Logs · X-Ray | `generate.py` replaces Loki panels with CW Logs Insights, Tempo panels with X-Ray |
+
+Key implication: **if a panel shows "No data" in one Grafana, that does not mean the others are broken** — each instance is independent. Common causes of "No data" per panel type:
+
+| Panel type | Backend | Typical cause of "No data" |
+|---|---|---|
+| Metrics (PromQL) | Any | The pipeline/service has not run in the selected time range; or the OTel collector hasn't forwarded metrics to the Prometheus-compatible backend yet |
+| Logs | OSS / Grafana Cloud | The logs DaemonSet OOMed (see memory limits in `values-*-logs.yaml`) or Loki isn't receiving |
+| Logs | managed-aws | CloudWatch log group empty — collector `AccessDenied` (IAM trust) or memory_limiter dropping logs |
+| Logs | managed-azure | Azure Monitor ingestion lag (up to 5 min) or missing `APPLICATIONINSIGHTS_CONNECTION_STRING` |
+| Traces | OSS / Grafana Cloud | Tempo empty — OTel Java agent not injected, or no traffic in range |
+| Traces | managed-aws | X-Ray plugin not installed in AMG workspace; `ensure_plugin` in `07-grafana-dashboards.sh` handles this at publish time |
+| k6 panels (any) | Any | `microservices-k6-smoke` pipeline hasn't run in the selected time range |
+
+#### CI-engine-aware publishing
+
+Only the dashboard for the **active CI engine** is published; the off-engine one is deleted if it exists:
+
+| `ci.engine` | Published | Deleted if present |
+|---|---|---|
+| `jenkins` (default) | `jenkins-overview` (all variants) | `tekton-overview` |
+| `tekton` | `tekton-overview` (all variants) | `jenkins-overview` |
+
+This applies to all backends. The publish script (`scripts/07-grafana-dashboards.sh`) and the `Day2.publish.*` workflows both respect the `JENKINS2026_CI_ENGINE` / `inputs.ci_engine` value.
+
+#### Regenerating the AWS and Azure variants
+
+After editing a canonical dashboard in `observability/grafana/dashboards/`, regenerate the variants:
+
+```bash
+python3 observability/grafana/dashboards-aws/generate.py    # updates dashboards-aws/*.json
+python3 observability/grafana/dashboards-azure/generate.py  # updates dashboards-azure/*.json
+```
+
+Then re-publish with the appropriate `Day2.publish.*` workflow (or re-run `Day1.cluster.01-gke` to pick up all changes).
+
+#### Provisioning flow
 
 <details>
 <summary>🔍 Click to expand Dashboard Provisioning Diagram</summary>
 
 ```mermaid
-flowchart LR
-  SRC["observability/grafana/dashboards/*.json<br/>(source of truth)"]
-  SRC -->|"grafana-cloud<br/>scripts/07 → gcx resources push"| FOLDER["Grafana Cloud<br/>folder: jenkins-2026"]
-  SRC -->|"oss<br/>scripts/03 → ConfigMap"| CM["jenkins-2026-grafana-dashboards<br/>+ Grafana sidecar"]
-  FOLDER --> VIEW["Dashboards live"]
-  CM --> VIEW
+flowchart TD
+  SRC["observability/grafana/dashboards/*.json\n(canonical source of truth)"]
+
+  SRC -->|"grafana-cloud\n07 → gcx resources push"| GC["Grafana Cloud\nfolder: jenkins-2026"]
+  SRC -->|"oss\n03 → ConfigMap + sidecar"| OSS["In-cluster Grafana\njenkis-2026-grafana-dashboards CM"]
+
+  GEN_AZ["generate.py\nLoki→AzureMonitor\nTempo→AzureMonitor"]
+  GEN_AWS["generate.py\nLoki→CloudWatch Logs\nTempo→X-Ray"]
+
+  SRC --> GEN_AZ --> AZ["dashboards-azure/*.json"]
+  SRC --> GEN_AWS --> AWS["dashboards-aws/*.json"]
+
+  AZ -->|"managed-azure\n07 → az grafana dashboard create"| AMG_AZ["Azure Managed Grafana"]
+  AWS -->|"managed-aws\n07 → AMG HTTP API\n(DS_CW_UID / DS_XRAY_UID substituted)"| AMG_AWS["Amazon Managed Grafana"]
 ```
 
 </details>
+
+### Engineering decisions baked into the canonical JSON
+
+- **Portable datasources**: panels reference `${DS_PROMETHEUS}` / `${DS_LOKI}` / `${DS_TEMPO}` template variables — the same JSON works unchanged in OSS and Grafana Cloud modes.
+- **Environment-scoped logs**: a hidden `namespace` variable resolves the real namespace per environment via `label_values(jvm_memory_used_bytes{deployment_environment="$deployment_environment"}, k8s_namespace_name)`. If no microservices metrics are in the backend yet, this variable is empty and log/trace panels that depend on it will show "No data".
+- **Fixed rate window for sparse metrics**: `[15m]` rate window on JVM GC Pause Time p99 to prevent `NaN` on idle JVMs at short zoom levels.
 
 ## Grafana Alerting
 
