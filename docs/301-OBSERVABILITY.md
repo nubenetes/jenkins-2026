@@ -209,21 +209,21 @@ Each managed backend requires adapted datasources (AMP instead of Prometheus, Cl
 
 | Directory | Published to | Datasources used | How generated |
 |---|---|---|---|
-| `observability/grafana/dashboards/` | OSS Grafana (in-cluster) | Prometheus · Loki · Tempo | Used directly as-is |
+| [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) | OSS Grafana (in-cluster) | Prometheus · Loki · Tempo | Used directly as-is |
 | *(same as above)* | Grafana Cloud | grafanacloud-prom · grafanacloud-logs · grafanacloud-traces | Used directly; `gcx` binds datasource UIDs at push time |
-| `observability/grafana/dashboards-azure/` | Azure Managed Grafana | Azure Monitor (metrics + logs + traces) | `generate.py` replaces Loki/Tempo panels with Azure Monitor equivalents |
-| `observability/grafana/dashboards-aws/` | Amazon Managed Grafana | AMP (PromQL) · CloudWatch Logs · X-Ray | `generate.py` replaces Loki panels with CW Logs Insights, Tempo panels with X-Ray |
+| [`observability/grafana/dashboards-azure/`](../observability/grafana/dashboards-azure/) | Azure Managed Grafana | Azure Monitor (metrics + logs + traces) | [`generate.py`](../observability/grafana/dashboards-azure/generate.py) replaces Loki/Tempo panels with Azure Monitor equivalents |
+| [`observability/grafana/dashboards-aws/`](../observability/grafana/dashboards-aws/) | Amazon Managed Grafana | AMP (PromQL) · CloudWatch Logs · X-Ray | [`generate.py`](../observability/grafana/dashboards-aws/generate.py) replaces Loki panels with CW Logs Insights, Tempo panels with X-Ray |
 
 Key implication: **if a panel shows "No data" in one Grafana, that does not mean the others are broken** — each instance is independent. Common causes of "No data" per panel type:
 
 | Panel type | Backend | Typical cause of "No data" |
 |---|---|---|
 | Metrics (PromQL) | Any | The pipeline/service has not run in the selected time range; or the OTel collector hasn't forwarded metrics to the Prometheus-compatible backend yet |
-| Logs | OSS / Grafana Cloud | The logs DaemonSet OOMed (see memory limits in `values-*-logs.yaml`) or Loki isn't receiving |
-| Logs | managed-aws | CloudWatch log group empty — collector `AccessDenied` (IAM trust) or memory_limiter dropping logs |
-| Logs | managed-azure | Azure Monitor ingestion lag (up to 5 min) or missing `APPLICATIONINSIGHTS_CONNECTION_STRING` |
+| Logs | OSS / Grafana Cloud | The logs DaemonSet OOMed (see memory limits in [`values-oss-logs.yaml`](../observability/otel-collector/values-oss-logs.yaml) / [`values-grafana-cloud-logs.yaml`](../observability/otel-collector/values-grafana-cloud-logs.yaml)) or Loki isn't receiving |
+| Logs | managed-aws | CloudWatch log group empty — collector `AccessDenied` (IAM trust) or memory_limiter dropping logs (see [`values-managed-aws-logs.yaml`](../observability/otel-collector/values-managed-aws-logs.yaml)) |
+| Logs | managed-azure | Azure Monitor ingestion lag (up to 5 min) or missing `APPLICATIONINSIGHTS_CONNECTION_STRING` (see [`values-managed-azure-logs.yaml`](../observability/otel-collector/values-managed-azure-logs.yaml)) |
 | Traces | OSS / Grafana Cloud | Tempo empty — OTel Java agent not injected, or no traffic in range |
-| Traces | managed-aws | X-Ray plugin not installed in AMG workspace; `ensure_plugin` in `07-grafana-dashboards.sh` handles this at publish time |
+| Traces | managed-aws | X-Ray plugin not installed in AMG workspace; `ensure_plugin` in [`scripts/07-grafana-dashboards.sh`](../scripts/07-grafana-dashboards.sh) handles this at publish time |
 | k6 panels (any) | Any | `microservices-k6-smoke` pipeline hasn't run in the selected time range |
 
 #### CI-engine-aware publishing
@@ -235,18 +235,18 @@ Only the dashboard for the **active CI engine** is published; the off-engine one
 | `jenkins` (default) | `jenkins-overview` (all variants) | `tekton-overview` |
 | `tekton` | `tekton-overview` (all variants) | `jenkins-overview` |
 
-This applies to all backends. The publish script (`scripts/07-grafana-dashboards.sh`) and the `Day2.publish.*` workflows both respect the `JENKINS2026_CI_ENGINE` / `inputs.ci_engine` value.
+This applies to all backends. The publish script ([`scripts/07-grafana-dashboards.sh`](../scripts/07-grafana-dashboards.sh)) and the [`Day2.publish.*` workflows](../.github/workflows/) both respect the `JENKINS2026_CI_ENGINE` / `inputs.ci_engine` value.
 
 #### Regenerating the AWS and Azure variants
 
-After editing a canonical dashboard in `observability/grafana/dashboards/`, regenerate the variants:
+After editing a canonical dashboard in [`observability/grafana/dashboards/`](../observability/grafana/dashboards/), regenerate the variants:
 
 ```bash
 python3 observability/grafana/dashboards-aws/generate.py    # updates dashboards-aws/*.json
 python3 observability/grafana/dashboards-azure/generate.py  # updates dashboards-azure/*.json
 ```
 
-Then re-publish with the appropriate `Day2.publish.*` workflow (or re-run `Day1.cluster.01-gke` to pick up all changes).
+Then re-publish with the appropriate [`Day2.publish.*` workflow](../.github/workflows/) (or re-run `Day1.cluster.01-gke` to pick up all changes).
 
 #### Provisioning flow
 
