@@ -95,7 +95,7 @@ flowchart LR
   ws -.cloned once, reused.- tr1
   ws -.- tr2
   ws -.- tr3
-  tr2 -->|results $(tasks.X.results.Y)| tr3
+  tr2 -->|"results $(tasks.X.results.Y)"| tr3
 
   classDef ext fill:#fde,stroke:#c39;
   classDef vol fill:#ffd,stroke:#cc3;
