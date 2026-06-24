@@ -157,6 +157,72 @@ The first recreate with enforcement surfaced several latent rules that had silen
 - **Additive vs owned.** A separate NetworkPolicy that no ArgoCD app owns (e.g. `microservices-cnpg-platform`) is **not reverted on sync** and survives recreates (it's in git, applied by `01-namespaces.sh`) — the clean way to add platform allows on top of app-chart policies you don't control.
 </details>
 
+#### NetworkPolicy matrix
+
+Every policy is in [`infrastructure/networkpolicies*.yaml`](../infrastructure/) (engine-neutral always-on, plus `-jenkins`/`-tekton` files applied per `ci.engine`). `*` = "from/to any source" (the rule lists ports but no peer). Every `default-deny` namespace also egresses to CoreDNS (`kube-system:53`), omitted from the table.
+
+| Namespace | Mode | Policy / pods | Ingress allowed | Egress allowed |
+|---|---|---|---|---|
+| `observability` | always | `observability-policy` (all) | intra-ns mesh; `jenkins`+`microservices`+`tekton-ci`+`tekton-pipelines` → **4317/4318** (OTLP); GKE LB `130.211.0.0/22`+`35.191.0.0/16` (Grafana health/traffic); **9443*** (API-server → OTel operator webhooks) | all |
+| `microservices` | always | `microservices-cnpg-platform` (all) | `observability` → **9187** (CNPG metrics) | pods `cnpg.io/cluster` → **5432**; **443*** (K8s API — Hazelcast discovery) |
+| `microservices` | always (GitOps repo) | `gateway`/`microservice`/`postgres-policy` | Gateway → app port; intra-app | app chart's own allows (Postgres, OTLP) — *durable CNPG/9187/API fixes belong here* |
+| `pgadmin` | always | `pgadmin-policy` (pgadmin) | **80*** (Gateway UI) | **443***; `microservices` → **5432** |
+| `argocd` | always | `argocd-baseline` (all) | intra-ns mesh; **8080*** (argocd-server pod port: Gateway, CI sync, CLI, port-forward) | all |
+| `headlamp` | always | `headlamp-baseline` (all) | intra-ns mesh; **4466*** (headlamp pod port: Gateway) | all |
+| `tekton-ci` | `tekton` | `tekton-ci-baseline` (all) | intra-ns; EventListener **8080/9000*** (event/metrics). Pipeline pods get **no ingress** (outbound-only) | all |
+| `jenkins` | `jenkins` | `jenkins-policy` (jenkins) | **8080*** (UI/Gateway); agents **50000** (intra-ns); `observability` → **8080** | all |
+| `tekton-pipelines`, `cnpg-system`, `external-secrets`, `pipelines-as-code` | per mode | *(none — open by design)* | all (hosts admission webhooks the API server calls) | all |
+
+#### NetworkPolicy flow diagram
+
+```mermaid
+flowchart LR
+  net([Internet]):::ext
+  lb([GKE Gateway / L7 LB<br/>130.211.0.0/22 · 35.191.0.0/16]):::ext
+  api([Kube API server<br/>control plane]):::ext
+  dns([CoreDNS<br/>kube-system :53]):::infra
+
+  net --> lb
+
+  subgraph obs[observability]
+    graf[Grafana / Prometheus<br/>Loki · Tempo · OTel collector]
+  end
+  subgraph ms[microservices]
+    gw[gateway / jhipster]
+    pg[(CNPG Postgres<br/>cnpg.io/cluster)]
+  end
+  subgraph ci[CI engine]
+    cieng[jenkins :8080/:50000<br/>· tekton-ci EL :8080/:9000]
+  end
+  argocd[argocd-server :8080]:::ui
+  headlamp[headlamp :4466]:::ui
+  pgadmin[pgAdmin :80]:::ui
+  tkdash[tekton-dashboard]:::ui
+
+  lb -->|:8080| gw
+  lb -->|health+traffic| graf
+  lb -->|:8080| argocd
+  lb -->|:4466| headlamp
+  lb -->|:80| pgadmin
+  lb --> tkdash
+
+  api -.->|:9443 webhooks| obs
+  cieng -->|OTLP :4317/4318| obs
+  gw -->|OTLP :4317/4318| obs
+  graf -->|scrape :9187| pg
+  gw -->|:5432| pg
+  gw -->|:443 Hazelcast| api
+  pgadmin -->|:5432| pg
+
+  obs --> dns
+  ms --> dns
+  ci --> dns
+
+  classDef ext fill:#fde,stroke:#c39;
+  classDef infra fill:#eef,stroke:#66c;
+  classDef ui fill:#efe,stroke:#393;
+```
+
 ### 4. GitOps Separation of Concerns
 All infrastructural manifests (`karpenter/`, `gateway/`, `headlamp/`, `scheduling/`) are decoupled from CI pipeline definitions and placed inside the [`infrastructure/`](../infrastructure/) directory for full reconciliation via Argo CD.
 
