@@ -1,0 +1,42 @@
+# Tekton-namespace NetworkPolicies - applied by 01-namespaces.sh ONLY when
+# ci.engine=tekton (the tekton-ci namespace doesn't exist otherwise).
+#
+# Baseline ingress-hardening for the pipeline-execution namespace (zero-trust):
+# the ephemeral PipelineRun/TaskRun pods are OUTBOUND-ONLY (clone, build, push,
+# scan, sync) and need no inbound at all, so denying ingress to them closes their
+# surface with zero functional impact. The EventListener (el-microservices) is a
+# webhook receiver and stays reachable on its ports. Egress is left open (the
+# pipeline pods legitimately reach git, registries, scanner DBs, the K8s API,
+# ArgoCD, the microservices for smoke tests, and the OTel collector).
+#
+# NOTE: the Tekton CONTROL-PLANE namespace (tekton-pipelines) is intentionally
+# NOT hardened here — it hosts admission webhooks the API server calls, which a
+# deny-ingress policy would block unless the GKE control-plane CIDR is allowed
+# (cluster-specific and fragile). Left open by design.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: tekton-ci-baseline
+  namespace: tekton-ci
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Intra-namespace (triggers/eventlistener interactions).
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: tekton-ci
+  # EventListener webhook receiver (el-microservices: 8080 event port, 9000
+  # metrics) reachable from any source — covers the trigger path regardless of
+  # whether it arrives via the Gateway, Pipelines-as-Code, or a direct webhook.
+  # The ephemeral pipeline pods listen on none of these, so they stay closed.
+  - ports:
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 9000
+  egress:
+  - {}
