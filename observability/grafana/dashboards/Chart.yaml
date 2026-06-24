@@ -1,0 +1,13 @@
+apiVersion: v2
+name: jenkins-2026-grafana-dashboards
+description: >-
+  CI-engine-aware Grafana dashboards ConfigMap for observability.mode=oss.
+  Renders the canonical *.json dashboards in this directory into the
+  jenkins-2026-grafana-dashboards ConfigMap (referenced by values-oss.yaml
+  dashboardsConfigMaps), dropping the off-engine CI overview (jenkins-overview
+  when ci.engine=tekton, tekton-overview when jenkins). Deployed as an ArgoCD
+  child app of observability-oss so dashboards are GitOps/auto-synced instead of
+  script-managed. The *.json files double as the source for generate.py (AWS/
+  Azure variants) and scripts/07-grafana-dashboards.sh (cloud/azure/aws API
+  publish); Chart.yaml + templates/ are ignored by those *.json consumers.
+version: 0.1.0

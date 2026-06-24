@@ -1,0 +1,8 @@
+# Active CI engine (jenkins|tekton). Drives which CI overview dashboard ships:
+# the off-engine one (which would render empty) is dropped. Set by the
+# observability-oss app-of-apps from its ciEngine value (which scripts/03-
+# observability.sh passes from J2026_CI_ENGINE).
+ciEngine: jenkins
+
+# Namespace the ConfigMap is created in (the OSS Grafana namespace).
+namespace: observability
