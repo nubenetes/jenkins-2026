@@ -59,8 +59,11 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
 - `observability/` - otel-operator, otel-collector, and Grafana (OSS +
   dashboards) Helm values + the `grafana-cloud-credentials` secret template.
 - `argocd/` - ArgoCD `Application`/`ApplicationSet` manifests (the GitOps
-  layer): single `Application`s for External Secrets, Headlamp, and **Jenkins**
-  (`jenkins-app.yaml`, the official chart, when `ci.engine=jenkins`), the
+  layer): single `Application`s for External Secrets, Headlamp, **Jenkins**
+  (`jenkins-app.yaml`, the official chart, when `ci.engine=jenkins`), and
+  **Argo Rollouts** (`argo-rollouts-app.yaml`, controller + Gateway API
+  traffic-router plugin for sidecar-free canary/blue-green — see
+  [`docs/501`](docs/501-PLATFORM_OPERATIONS.md) § Progressive Delivery), the
   microservices AppSet, plus three **app-of-apps** (each a small Helm chart so repo/branch/version flow down to
   its children): `platform-postgres/` (the CNPG operator + pgAdmin that
   administers it), `observability-oss/`, which deploys the in-cluster OSS
@@ -83,7 +86,10 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
     for `Day1.cluster.01-gke.yml`/`Decom.cluster.01-gke.yml`.
   - `gke/` - the throwaway GKE cluster. Local state for `test/e2e.sh`; GCS
     remote state (via a `backend_override.tf` written by the workflows) in
-    CI.
+    CI. Runs **Dataplane V2** (`datapath_provider = ADVANCED_DATAPATH`) so
+    NetworkPolicies actually enforce, plus **WireGuard** inter-node pod
+    encryption (`in_transit_encryption_config`). Both are immutable cluster
+    fields — changing them recreates the cluster (Decom + Day1).
   - `grafana-cloud-stack/` - the `observability.mode=grafana-cloud` backend:
     creates the Grafana Cloud stack with a **Terraform-generated slug**
     (`<prefix><random>`, so destroy+recreate never hits Grafana Cloud's

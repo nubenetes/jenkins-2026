@@ -82,6 +82,16 @@ spec:
   - Ingress
   - Egress
   ingress:
+  # Intra-namespace mesh. The OSS stack components query each other heavily:
+  # Grafana -> Prometheus/Loki/Tempo, Prometheus scraping kube-state-metrics /
+  # node-exporter, the OTel collector -> Loki/Tempo, remote-write -> Prometheus.
+  # Without this, Dataplane V2 enforcement (NetworkPolicies are no-ops until then)
+  # would break every internal query and scrape — and the OTLP ingress below only
+  # covers traffic FROM the CI namespaces, not within observability itself.
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: observability
   # OTLP (4317/4318) from whichever CI engine is active (jenkins OR the tekton
   # pipeline namespaces) plus the microservices auto-instrumentation. A
   # namespaceSelector for an absent namespace just matches nothing, so listing
@@ -104,5 +114,74 @@ spec:
       port: 4317
     - protocol: TCP
       port: 4318
+  # GKE global external L7 Gateway: health checks + proxied user traffic to the
+  # in-cluster Grafana (exposed via the Gateway in observability.mode=oss). The
+  # managed load balancer sends from Google's ranges, NOT from a pod, so they
+  # must be allowed by CIDR or the Grafana backend goes UNHEALTHY under
+  # enforcement. https://cloud.google.com/load-balancing/docs/health-check-concepts
+  - from:
+    - ipBlock:
+        cidr: 130.211.0.0/22
+    - ipBlock:
+        cidr: 35.191.0.0/16
+  egress:
+  - {}
+---
+# Baseline ingress-hardening for the ArgoCD UI namespace (zero-trust): deny
+# inbound to the internal components (repo-server, redis, dex, controllers) from
+# OTHER namespaces, while keeping argocd-server's API/UI ports reachable. Egress
+# stays open (ArgoCD reaches the API server of every namespace, git, and OCI
+# registries). No admission webhooks here, so this is safe under Dataplane V2.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: argocd-baseline
+  namespace: argocd
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Intra-namespace mesh (server <-> repo-server <-> redis <-> dex <-> the
+  # application/applicationset controllers).
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: argocd
+  # argocd-server API/UI (80/443) reachable from ANY source — covers the GKE
+  # Gateway + health checks, the Tekton/Jenkins gitops-deploy syncs, the CI token
+  # bootstrap (kubectl port-forward), and the argocd CLI. Only argocd-server
+  # listens on these ports, so this does not expose the internal components.
+  - ports:
+    - protocol: TCP
+      port: 80
+    - protocol: TCP
+      port: 443
+  egress:
+  - {}
+---
+# Baseline ingress-hardening for Headlamp (zero-trust): the only inbound is the
+# GKE Gateway to the UI (port 80); Headlamp reaches the Kubernetes API via
+# egress. No admission webhooks, so safe under Dataplane V2.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: headlamp-baseline
+  namespace: headlamp
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: headlamp
+  # Headlamp UI (80) from any source — GKE Gateway + health checks.
+  - ports:
+    - protocol: TCP
+      port: 80
   egress:
   - {}

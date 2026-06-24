@@ -216,7 +216,7 @@ sequenceDiagram
 
 </details>
 
-## Configuration (`config/config.yaml`)
+**Progressive delivery**: the platform installs **Argo Rollouts** + the Gateway API traffic-router plugin (GitOps via `argocd/argo-rollouts-app.yaml`), so the microservices can roll out as weighted **canaries** by shifting the GKE Gateway HTTPRoute backend weights — sidecar-free, no service mesh. See [`docs/501` § Progressive Delivery](501-PLATFORM_OPERATIONS.md).
 
 Single source of truth, loaded by every script via [`scripts/lib/config.sh`](../scripts/lib/config.sh) (`yq` → `J2026_*` env vars). Feature flags:
 
@@ -435,6 +435,8 @@ and nothing reaching into `jenkins-credentials` except Jenkins itself.
 ## GKE Cluster Topology & Sizing
 
 The throwaway cluster is provisioned via `terraform/gke/` with a custom VPC-native configuration optimized for stability and cost. A **persistent** global static IP and Google-managed wildcard TLS certificate (`terraform/gateway-bootstrap/`) survive cluster rebuilds so DNS records never need updating.
+
+**Network dataplane**: the cluster runs **GKE Dataplane V2** (Cilium/eBPF, `datapath_provider = ADVANCED_DATAPATH`) so Kubernetes `NetworkPolicy` is actually enforced, with **WireGuard inter-node pod encryption** (`in_transit_encryption_config`) on top — sidecar-free, no service mesh. Both are immutable fields (changing them recreates the cluster). See [`docs/501` § Zero-Trust Security](501-PLATFORM_OPERATIONS.md) for the NetworkPolicy model and the encryption scope/caveats.
 
 <details>
 <summary>🔍 Click to expand GKE Cluster Topology Diagram</summary>

@@ -407,6 +407,14 @@ log_info "CNPG webhook ready."
 log_step "Configuring External Secrets Operator via ArgoCD"
 kubectl apply -f "${J2026_ROOT_DIR}/argocd/external-secrets-app.yaml"
 
+# Argo Rollouts (progressive delivery) + the Gateway API plugin RBAC. The
+# controller/CRDs/plugin are GitOps-managed by the argo-rollouts Application
+# (public Helm chart, no repo placeholders); the extra ClusterRole lets the
+# Gateway API plugin patch HTTPRoute weights for canary traffic shifting.
+log_step "Configuring Argo Rollouts via ArgoCD"
+kubectl apply -f "${J2026_ROOT_DIR}/argocd/argo-rollouts-app.yaml"
+kubectl apply -f "${J2026_ROOT_DIR}/infrastructure/argo-rollouts-gatewayapi-rbac.yaml"
+
 log_step "Configuring Headlamp via ArgoCD"
 # Inject values into the Headlamp Application manifest
 HEADLAMP_APP_FILE=$(mktemp)
