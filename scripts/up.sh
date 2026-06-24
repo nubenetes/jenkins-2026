@@ -63,13 +63,18 @@ fi
 # run the guard. The wait is skipped when the app does not exist yet (first ever
 # run before ArgoCD has created the Application).
 if kubectl -n argocd get application microservices-stable >/dev/null 2>&1; then
-  log_step "Waiting for ArgoCD microservices-stable to be Healthy before OTel injection check"
+  log_step "Waiting for the microservices Deployments to be Available before OTel injection check"
+  # Gate on the actual workloads, NOT the ArgoCD app health: microservices-stable
+  # reports health=Unknown even when everything is fine, because ArgoCD has no
+  # health assessment for the CNPG (Cluster/Pooler) and OTel (Instrumentation) CRs
+  # the app owns. Waiting for app="Healthy" therefore always burned the full 10m
+  # timeout. `wait --all` errors (and the loop retries) until the Deployments exist.
   timeout 600 bash -c '
-    until [[ "$(kubectl -n argocd get application microservices-stable \
-                -o jsonpath="{.status.health.status}" 2>/dev/null)" == "Healthy" ]]; do
+    until kubectl -n "'"${J2026_MICROSERVICES_NS_STABLE}"'" wait --for=condition=Available \
+            deployment --all --timeout=15s >/dev/null 2>&1; do
       sleep 10
     done
-  ' || log_warn "microservices-stable not Healthy within 10m — running OTel guard anyway"
+  ' || log_warn "microservices Deployments not Available within 10m — running OTel guard anyway"
 fi
 
 # Self-heal the OTel auto-instrumentation injection race. Idempotent: no-op
