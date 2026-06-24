@@ -135,7 +135,7 @@
       "gridPos": { "h": 9, "w": 12, "x": 0, "y": 23 },
       "id": 9,
       "options": { "dedupStrategy": "none", "enableLogDetails": true, "prettifyLogMessage": false, "showCommonLabels": false, "showLabels": false, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": false },
-      "targets": [ { "datasource": { "type": "loki", "uid": "${DS_LOKI}" }, "editorMode": "code", "expr": "{namespace=~\"tekton-ci|tekton-pipelines\"}", "queryType": "range", "refId": "A" } ],
+      "targets": [ { "datasource": { "type": "loki", "uid": "${DS_LOKI}" }, "editorMode": "code", "expr": "{k8s_namespace_name=~\"tekton-ci|tekton-pipelines\"}", "queryType": "range", "refId": "A" } ],
       "title": "Tekton Pipeline Pod Logs",
       "type": "logs"
     },
