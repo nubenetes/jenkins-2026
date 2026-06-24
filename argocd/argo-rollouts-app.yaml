@@ -1,0 +1,45 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argo-rollouts
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  # Argo Rollouts controller (progressive delivery: canary / blue-green). Installed
+  # GitOps-style like the other platform components. The Gateway API traffic-router
+  # plugin lets Rollouts shift traffic by editing the microservices HTTPRoute
+  # weights (reusing the existing GKE Gateway API ingress — no service mesh / sidecars).
+  source:
+    repoURL: https://argoproj.github.io/argo-helm
+    chart: argo-rollouts
+    targetRevision: "2.37.7"
+    helm:
+      values: |
+        # Pin the controller image for reproducibility (CLAUDE.md).
+        controller:
+          # Register the Gateway API trafficrouter plugin. The controller fetches
+          # the plugin binary on startup and writes it to the argo-rollouts-config
+          # ConfigMap. Used by Rollouts with trafficRouting.plugins."argoproj-labs/gatewayAPI".
+          trafficRouterPlugins:
+            trafficrouterPlugins: |-
+              - name: "argoproj-labs/gatewayAPI"
+                location: "https://github.com/argoproj-labs/rollouts-plugin-trafficrouter-gatewayapi/releases/download/v0.6.0/gatewayapi-plugin-linux-amd64"
+        # The Rollouts dashboard (read-only UI). Exposed behind IAP later if wanted,
+        # same pattern as the Tekton dashboard; for now cluster-internal only.
+        dashboard:
+          enabled: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argo-rollouts
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # The chart ships the large Rollout/AnalysisRun/Experiment CRDs; server-side
+      # apply avoids the 256KB last-applied-configuration annotation limit (same
+      # reason as the kube-prometheus-stack / Tekton apps).
+      - ServerSideApply=true
