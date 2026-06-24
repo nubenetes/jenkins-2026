@@ -11,6 +11,51 @@ Dashboard, exposes the Dashboard on the internet behind **Google IAP** (exactly
 like Headlamp), and runs the **same microservices pipeline** ported to Tekton
 Tasks/Pipelines under [`tekton/`](../tekton/).
 
+## Understanding Tekton (newcomers → specialists)
+
+Tekton is **Kubernetes-native CI/CD**: there is no Jenkins-style controller running pipelines for you — every CI concept is a **Custom Resource** (CRD) the API server stores and the Tekton controllers reconcile. Read this section once and the rest of the doc is just "where each file lives".
+
+<details>
+<summary>🟢 For newcomers — the mental model in 7 objects</summary>
+
+| Object | What it is | Jenkins analogy |
+|---|---|---|
+| **Task** | An ordered list of **steps**, each step a container that runs a command. The unit of reuse. | A reusable stage / shared-library step |
+| **Pipeline** | A **DAG of Tasks** (ordered with `runAfter`), passing data via params/results and sharing files via workspaces. | The `Jenkinsfile` (the pipeline definition) |
+| **PipelineRun** | One **execution** of a Pipeline (with concrete param values + workspaces bound). Creating it *is* "start a build". | A build (`#123`) |
+| **TaskRun** | One execution of one Task inside a PipelineRun. **Each TaskRun becomes one Pod** (its steps are that pod's containers). | A stage's agent pod |
+| **Workspace** | A volume shared between Tasks in a run (here: one RWO PVC named `source`, cloned once and reused). | The agent workspace dir |
+| **Params / Results** | Inputs to a Task/Pipeline / typed outputs a Task emits for later Tasks to consume. | Pipeline parameters / `env` passed between stages |
+| **EventListener + Trigger** | A pod that receives webhooks and **creates a PipelineRun** from them. | The Jenkins webhook → job trigger |
+
+So a CI run is literally: *something creates a `PipelineRun` CR → the Tekton controller creates a `TaskRun` per Task → each `TaskRun` is a Pod → results/workspaces flow between them → the run object records success/failure*. You watch it all in the **Tekton Dashboard** (behind IAP). You **rarely create runs by hand** — a `git push` does it (see *Pipelines-as-Code* below).
+
+In this repo the pipeline is the JHipster microservices build ported 1:1 from the Jenkins shared library: `fetch-source → semgrep → codeql → trivy-iac → maven-build-test → build-push-image → trivy-image → gitops-deploy → smoke-test`, all sharing the one `source` workspace ([`tekton/pipelines/microservices-pipeline.yaml`](../tekton/pipelines/microservices-pipeline.yaml), tasks in [`tekton/tasks/`](../tekton/tasks/)).
+</details>
+
+<details>
+<summary>🔴 For specialists — the moving parts and how they're wired here</summary>
+
+**Control plane (namespace `tekton-pipelines`, GitOps-installed via the `argocd/tekton` app-of-apps, components vendored + pinned):**
+- **`tekton-pipelines-controller`** reconciles PipelineRun/TaskRun → Pods, schedules the DAG, passes results.
+- **`tekton-pipelines-webhook`** — admission (validation/defaulting) **and** conversion webhooks (`config.webhook.pipeline.tekton.dev` etc.). It self-generates its serving cert and injects the `caBundle` into its webhook configs; ArgoCD must **not** blank that caBundle (we set `ignoreDifferences` on `.clientConfig.caBundle` + `RespectIgnoreDifferences=true`), and an x509/`tls: unrecognized name` sync error is fixed by restarting the webhook so it re-issues the cert.
+- **Remote resolvers**: `pipelineRef`/`taskRef` can be resolved from git, hub, bundles, or the **cluster** resolver. PaC `.tekton/` files here use the **cluster resolver** to reference the in-cluster `microservices-pipeline` (a github.com URL would be git-misclassified by kustomize, and a git resolver would re-fetch).
+
+**Triggers (event → run):** [`tekton/triggers/eventlistener.yaml`](../tekton/triggers/eventlistener.yaml) runs an **EventListener** pod (`el-microservices`, ports 8080 event / 9000 metrics). A webhook POST flows: **interceptors** (GitHub signature check + CEL filtering) → **TriggerBinding** (extracts fields from the payload: repo, branch, sha…) → **TriggerTemplate** (renders a `PipelineRun` from those fields) → the controller runs it. RBAC: the `tekton-triggers-sa` may create PipelineRuns ([`tekton/rbac/triggers-rbac.yaml`](../tekton/rbac/triggers-rbac.yaml)).
+
+**Pipelines-as-Code (PaC, the normal path):** the **PaC controller** (namespace `pipelines-as-code`, exposed at `pac.<domain>`) receives GitHub events directly and runs the `PipelineRun` declared in the repo's **`.tekton/`** directory, gated by annotations (`on-event`, `on-target-branch`). A **`Repository` CR** ([`tekton/pac/repositories.yaml`](../tekton/pac/repositories.yaml)) links each forked GitHub repo to this cluster. PaC supersedes the raw EventListener for the app repos; the EventListener remains for the webhook-method path. See [§ Pipelines-as-Code](#pipelines-as-code-pac-git-driven-ci).
+
+**Execution namespace `tekton-ci`:** PipelineRuns + their ephemeral TaskRun pods run here (outbound-only; hardened with a deny-ingress baseline). The `tekton-ci` SA gets the RBAC the pipeline needs ([`tekton/rbac/pipeline-rbac.yaml`](../tekton/rbac/pipeline-rbac.yaml)): pull/push images, the OTel-injection self-heal in `gitops-deploy`, the smoke-test pod, and an ArgoCD token (`tekton-argocd` Secret) to `argocd app sync`.
+
+**Workspaces & data flow:** the pipeline binds one **RWO PVC** `source` (cloned once by `fetch-source`, reused by every later Task — mirrors the single Jenkins agent workspace; an `affinity-assistant` co-schedules the TaskRuns onto one node so the RWO PVC mounts) plus a `dockerconfig` workspace for registry auth. Tasks pass small values via **results** (`$(tasks.X.results.Y)`) and params.
+
+**Supply chain & housekeeping:**
+- **Chains** signs build provenance (SLSA-style attestations) for pushed images.
+- **Pruner** garbage-collects old PipelineRuns/TaskRuns (`historyLimit`, the Tekton equivalent of Jenkins `buildDiscarder`) — keeping pod/image accumulation off the nodes.
+
+**Observability:** controller metrics (`tekton_pipelines_controller_*`) are scraped into Prometheus and drive the *Tekton CI* Grafana dashboard; TaskRun pod logs land in Loki (`k8s_namespace_name=tekton-ci`). See [§ Observability](#observability).
+</details>
+
 ## Selecting the engine
 
 `ci.engine` in [`config/config.yaml`](../config/config.yaml) is the durable

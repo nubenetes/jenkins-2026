@@ -144,6 +144,19 @@ The repository has been refactored to serve as a **Golden Path Internal Develope
 
 > ⚠️ Dataplane V2 + the WireGuard config are **immutable** cluster fields — applied by recreating the cluster (`Decom.cluster.01` → `Day1.cluster.01`), not an in-place re-run. Enabling enforcement activates the NetworkPolicies for the first time, so validate connectivity (OSS stack, CNPG metrics, microservices, gateway, ArgoCD sync, Tekton triggers) on the fresh cluster.
 
+<details>
+<summary>NetworkPolicy under enforcement — the gotchas that bite on the first Dataplane V2 cluster</summary>
+
+The first recreate with enforcement surfaced several latent rules that had silently been no-ops. Lessons baked into [`infrastructure/networkpolicies.yaml`](../infrastructure/networkpolicies.yaml):
+
+- **Target the POD port, not the Service port.** GKE's container-native LB (NEG) sends to the pod's `targetPort`, not the Service port. The argocd/headlamp baselines first allowed `80`/`443` (Service ports) → the health checks hit `argocd-server:8080` / `headlamp:4466` and were dropped → **GKE backend UNHEALTHY**. Allow the real container ports.
+- **The API server (control plane) is not a pod or an LB range.** Admission webhooks the API server calls — the **OTel operator** mutating webhooks (`9443`, in `observability`) and the Tekton control-plane webhooks — are blocked by a namespace default-deny. With `failurePolicy=Fail` this breaks applying the CRs (e.g. the `Instrumentation` CR → `microservices-stable` stuck OutOfSync); with `failurePolicy=Ignore` it silently skips work (no OTel agent injected). Allow the webhook port from any source, or leave the operator namespace open (we leave `tekton-pipelines`/`cnpg-system`/`external-secrets`/`pac` open by design).
+- **GKE L7 health-check/proxy ranges** `130.211.0.0/22` + `35.191.0.0/16` must be allowed (by `ipBlock`) for any Gateway-exposed backend whose policy restricts ingress (e.g. Grafana).
+- **Match CNPG pods by `cnpg.io/cluster`, not `app.kubernetes.io/name`.** CNPG labels its pods `app.kubernetes.io/name=postgresql`; an egress allow targeting `app.kubernetes.io/name: postgres-*[-pooler]` matches nothing → apps time out on Liquibase. (Carried by the additive `microservices-cnpg-platform` policy, plus `9187` ingress for metrics scraping.)
+- **K8s-API egress for app discovery.** The JHipster microservice uses Hazelcast Kubernetes member discovery (queries the API server on `443`); without egress to `443` it never goes Ready. Apps that talk to the API need explicit egress.
+- **Additive vs owned.** A separate NetworkPolicy that no ArgoCD app owns (e.g. `microservices-cnpg-platform`) is **not reverted on sync** and survives recreates (it's in git, applied by `01-namespaces.sh`) — the clean way to add platform allows on top of app-chart policies you don't control.
+</details>
+
 ### 4. GitOps Separation of Concerns
 All infrastructural manifests (`karpenter/`, `gateway/`, `headlamp/`, `scheduling/`) are decoupled from CI pipeline definitions and placed inside the [`infrastructure/`](../infrastructure/) directory for full reconciliation via Argo CD.
 
@@ -167,6 +180,48 @@ Canary / blue-green delivery, **sidecar-free**, reusing the existing GKE Gateway
 | **B4** | this repo — [`tekton/tasks/gitops-deploy.yaml`](../tekton/tasks/gitops-deploy.yaml) | after the ArgoCD sync, wait on the Rollout (`kubectl argo rollouts status gateway -n microservices`) instead of `kubectl rollout status`. |
 
 Activation order: merge the controller → `Day1` → apply B3 in the GitOps repo → land B2 + B4 here (coordinated with B3). A push to `gateway` then rolls out as a weighted canary visible in the Rollouts dashboard.
+
+#### Argo Rollouts in depth
+
+<details>
+<summary>🟢 For newcomers — what problem this solves</summary>
+
+A plain Kubernetes `Deployment` rolls out a new version by **replacing pods**: once you bump the image, every user is on the new version within a minute. If it is broken, **everyone** is broken until you roll back.
+
+**Progressive delivery** ships the new version to a *small slice* of traffic first, watches it, and only widens the slice if it looks healthy:
+
+- **Canary**: run old (`stable`) and new (`canary`) side by side and move traffic gradually — e.g. 20% → (pause) → 50% → (pause) → 100%. A bad release only hits 20% of users and auto-halts.
+- **Blue-green**: bring the new version up fully alongside the old, then flip 100% at once (with an instant flip-back).
+
+**Argo Rollouts** is the controller that runs this. You swap your `Deployment` for a `Rollout` (almost the same spec, plus a `strategy:` block) and it manages two ReplicaSets (stable + canary) and the traffic split. The split is done by editing the weights on the GKE Gateway's `HTTPRoute` — the ingress that already serves the app — so there are **no sidecars and no service mesh**. You watch/promote/abort from the **Rollouts dashboard** or the `kubectl argo rollouts` CLI.
+</details>
+
+<details>
+<summary>🔴 For specialists — architecture & mechanics</summary>
+
+- **Controller**: the `argo-rollouts` controller watches `Rollout`/`AnalysisRun`/`Experiment` CRDs, owns the canary/stable **ReplicaSets** (selector-hash managed like a Deployment), and reconciles the traffic weight at each step.
+- **Traffic routing — Gateway API plugin**: we register `argoproj-labs/gatewayAPI` via `controller.trafficRouterPlugins` (the controller fetches the binary on boot and records it in the `argo-rollouts-config` ConfigMap). At each `setWeight`, the plugin **patches `backendRefs[].weight`** on the named `HTTPRoute` (stable vs `*-canary` Service). That needs RBAC the chart omits — granted by [`infrastructure/argo-rollouts-gatewayapi-rbac.yaml`](../infrastructure/argo-rollouts-gatewayapi-rbac.yaml) (`update/patch` on `httproutes.gateway.networking.k8s.io`).
+- **The `Rollout` spec** (replaces the `gateway` Deployment, B3):
+  ```yaml
+  strategy:
+    canary:
+      stableService: gateway
+      canaryService: gateway-canary
+      trafficRouting:
+        plugins:
+          argoproj-labs/gatewayAPI:
+            httpRoute: { name: microservices, namespace: microservices }
+      steps:
+        - setWeight: 20
+        - pause: { duration: 60 }     # or `pause: {}` to wait for a manual promote
+        - setWeight: 50
+        - pause: { duration: 60 }
+        - setWeight: 100
+  ```
+- **Analysis-driven promotion (advanced)**: a step can run an `AnalysisTemplate` querying the in-cluster Prometheus (the span-metrics / HTTP RED already deployed) — e.g. abort if the canary's 5xx rate or p95 latency exceeds a threshold. The `AnalysisRun` gates the next `setWeight`; failure triggers automatic rollback (weight → 0, canary RS scaled down). No image re-pull.
+- **ArgoCD interaction**: while a canary is mid-flight the `Rollout` is `Progressing`, so the owning app shows `Progressing` until promotion completes (expected). The large Rollouts CRDs use `ServerSideApply` + `compare-options: ServerSideDiff=true` (same pattern as kube-prometheus-stack / Tekton).
+- **Day-2**: `kubectl argo rollouts get rollout gateway -n microservices -w`, `... promote`/`... abort`, or the dashboard. CI's `gitops-deploy` waits on Rollout health (B4) so it doesn't report success mid-canary.
+</details>
 
 ## Headlamp (Cluster Management UI)
 
