@@ -30,7 +30,7 @@ Tekton is **Kubernetes-native CI/CD**: there is no Jenkins-style controller runn
 
 So a CI run is literally: *something creates a `PipelineRun` CR → the Tekton controller creates a `TaskRun` per Task → each `TaskRun` is a Pod → results/workspaces flow between them → the run object records success/failure*. You watch it all in the **Tekton Dashboard** (behind IAP). You **rarely create runs by hand** — a `git push` does it (see *Pipelines-as-Code* below).
 
-In this repo the pipeline is the JHipster microservices build ported 1:1 from the Jenkins shared library: `fetch-source → semgrep → codeql → trivy-iac → maven-build-test → build-push-image → trivy-image → gitops-deploy → smoke-test`, all sharing the one `source` workspace ([`tekton/pipelines/microservices-pipeline.yaml`](../tekton/pipelines/microservices-pipeline.yaml), tasks in [`tekton/tasks/`](../tekton/tasks/)).
+In this repo the pipeline is the JHipster microservices build ported 1:1 from the Jenkins shared library — pipeline tasks `fetch-source → semgrep-scan → codeql-analyze → trivy-iac → build-test → build-push-image → trivy-image → gitops-deploy → smoke-test → k6-smoke`, all sharing the one `source` workspace ([`tekton/pipelines/microservices-pipeline.yaml`](../tekton/pipelines/microservices-pipeline.yaml), tasks in [`tekton/tasks/`](../tekton/tasks/)).
 </details>
 
 <details>
@@ -38,7 +38,7 @@ In this repo the pipeline is the JHipster microservices build ported 1:1 from th
 
 **Control plane (namespace `tekton-pipelines`, GitOps-installed via the `argocd/tekton` app-of-apps, components vendored + pinned):**
 - **`tekton-pipelines-controller`** reconciles PipelineRun/TaskRun → Pods, schedules the DAG, passes results.
-- **`tekton-pipelines-webhook`** — admission (validation/defaulting) **and** conversion webhooks (`config.webhook.pipeline.tekton.dev` etc.). It self-generates its serving cert and injects the `caBundle` into its webhook configs; ArgoCD must **not** blank that caBundle (we set `ignoreDifferences` on `.clientConfig.caBundle` + `RespectIgnoreDifferences=true`), and an x509/`tls: unrecognized name` sync error is fixed by restarting the webhook so it re-issues the cert.
+- **`tekton-pipelines-webhook`** — admission (validation/defaulting) **and** conversion webhooks (`config.webhook.pipeline.tekton.dev` etc.). It self-generates its serving cert and injects the `caBundle` into its webhook configs; ArgoCD must **not** blank that caBundle (we set `ignoreDifferences` on `.clientConfig.caBundle` + `RespectIgnoreDifferences=true`). On a fresh cluster ArgoCD's first sync of the Tekton config ConfigMaps can still race the cert (`x509` / `tls: unrecognized name` → `tekton-pipelines` SyncFailed); `scripts/04-tekton.sh` self-heals this by restarting the webhook (re-issuing a matching cert) + hard-refreshing the app once the control plane is up. See [902 § Dataplane V2 enforcement](./902-TROUBLESHOOTING.md).
 - **Remote resolvers**: `pipelineRef`/`taskRef` can be resolved from git, hub, bundles, or the **cluster** resolver. PaC `.tekton/` files here use the **cluster resolver** to reference the in-cluster `microservices-pipeline` (a github.com URL would be git-misclassified by kustomize, and a git resolver would re-fetch).
 
 **Triggers (event → run):** [`tekton/triggers/eventlistener.yaml`](../tekton/triggers/eventlistener.yaml) runs an **EventListener** pod (`el-microservices`, ports 8080 event / 9000 metrics). A webhook POST flows: **interceptors** (GitHub signature check + CEL filtering) → **TriggerBinding** (extracts fields from the payload: repo, branch, sha…) → **TriggerTemplate** (renders a `PipelineRun` from those fields) → the controller runs it. RBAC: the `tekton-triggers-sa` may create PipelineRuns ([`tekton/rbac/triggers-rbac.yaml`](../tekton/rbac/triggers-rbac.yaml)).
@@ -68,7 +68,7 @@ flowchart TB
   subgraph defs[Definitions — CRDs, GitOps-installed]
     direction LR
     repo[Repository CR<br/>.tekton/ on-event] --> pipe[Pipeline: microservices-pipeline<br/>DAG + params + workspaces]
-    tasks[Tasks: fetch-source · semgrep · codeql · trivy<br/>maven · build-push · gitops-deploy · smoke]
+    tasks[Tasks: fetch-source · semgrep-scan · codeql-analyze · trivy-iac<br/>build-test · build-push-image · trivy-image · gitops-deploy · smoke-test · k6-smoke]
   end
 
   pac --> repo
@@ -79,7 +79,7 @@ flowchart TB
 
   subgraph run[One execution — one TaskRun per Task, each TaskRun = one Pod]
     direction TB
-    tr1[TaskRun: fetch-source] --> tr2[TaskRun: maven-build-test] -->|"results $(tasks.X.results.Y)"| tr3[TaskRun: gitops-deploy]
+    tr1[TaskRun: fetch-source] --> tr2[TaskRun: build-test] -->|"results $(tasks.X.results.Y)"| tr3[TaskRun: gitops-deploy]
     pod[(Pod: step<br/>containers)]:::vol
     ws[(Workspace<br/>RWO PVC source)]:::vol
   end
