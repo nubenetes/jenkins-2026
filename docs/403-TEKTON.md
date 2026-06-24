@@ -56,6 +56,53 @@ In this repo the pipeline is the JHipster microservices build ported 1:1 from th
 **Observability:** controller metrics (`tekton_pipelines_controller_*`) are scraped into Prometheus and drive the *Tekton CI* Grafana dashboard; TaskRun pod logs land in Loki (`k8s_namespace_name=tekton-ci`). See [§ Observability](#observability).
 </details>
 
+#### Tekton object model & run flow
+
+How a `git push` becomes running pods — the CRDs (definitions) on the left, one execution (the runtime objects) on the right:
+
+```mermaid
+flowchart LR
+  push([git push to nubenetes/*]):::ext
+
+  subgraph defs[Definitions - CRDs, GitOps-installed]
+    repo[Repository CR<br/>.tekton/ on-event]
+    pipe[Pipeline: microservices-pipeline<br/>DAG + params + workspaces]
+    tasks[Tasks: fetch-source · semgrep · codeql<br/>trivy · maven · build-push · gitops-deploy · smoke]
+  end
+
+  subgraph trig[Event → run]
+    pac[PaC controller]
+    el[EventListener el-microservices<br/>interceptors → Binding → Template]
+  end
+
+  subgraph run[One execution - runtime]
+    plr[PipelineRun]
+    tr1[TaskRun: fetch-source] --> pod1[(Pod: step containers)]
+    tr2[TaskRun: maven-build-test] --> pod2[(Pod)]
+    tr3[TaskRun: gitops-deploy] --> pod3[(Pod)]
+    ws[(Workspace<br/>RWO PVC 'source')]:::vol
+  end
+
+  push --> pac
+  push -.webhook method.-> el
+  pac --> repo
+  repo --> pipe
+  el --> plr
+  pac --> plr
+  pipe -->|pipelineRef cluster resolver| plr
+  tasks -->|taskRef| plr
+  plr --> tr1 --> tr2 --> tr3
+  ws -.cloned once, reused.- tr1
+  ws -.- tr2
+  ws -.- tr3
+  tr2 -->|results $(tasks.X.results.Y)| tr3
+
+  classDef ext fill:#fde,stroke:#c39;
+  classDef vol fill:#ffd,stroke:#cc3;
+```
+
+`runAfter` makes the DAG linear here (mirrors the single-agent Jenkins job); the shared RWO PVC is why an `affinity-assistant` co-schedules the TaskRun pods on one node. Chains signs the pushed image's provenance; Pruner GCs old PipelineRuns/TaskRuns.
+
 ## Selecting the engine
 
 `ci.engine` in [`config/config.yaml`](../config/config.yaml) is the durable

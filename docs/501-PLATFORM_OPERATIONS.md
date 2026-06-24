@@ -289,6 +289,37 @@ A plain Kubernetes `Deployment` rolls out a new version by **replacing pods**: o
 - **Day-2**: `kubectl argo rollouts get rollout gateway -n microservices -w`, `... promote`/`... abort`, or the dashboard. CI's `gitops-deploy` waits on Rollout health (B4) so it doesn't report success mid-canary.
 </details>
 
+```mermaid
+flowchart TB
+  user([User traffic]):::ext --> route
+
+  subgraph ctl[Argo Rollouts controller]
+    rollout[Rollout: gateway<br/>steps: 20% → 50% → 100%]
+    plugin[gatewayAPI trafficrouter plugin]
+    analysis{{AnalysisRun<br/>query Prometheus<br/>5xx / p95}}
+  end
+
+  route["HTTPRoute: microservices<br/>backendRefs[].weight"]:::route
+
+  subgraph ms[microservices namespace]
+    svcS[Service: gateway<br/>stable] --> rsS[(ReplicaSet vN<br/>stable pods)]
+    svcC[Service: gateway-canary] --> rsC[(ReplicaSet vN+1<br/>canary pods)]
+  end
+
+  route -->|weight 80| svcS
+  route -.->|weight 20| svcC
+
+  rollout -->|manages| rsS
+  rollout -->|manages| rsC
+  rollout -->|setWeight step| plugin
+  plugin -->|patch weights| route
+  analysis -->|fail → abort<br/>weight→0, scale down| rollout
+  analysis -.->|pass → next step| rollout
+
+  classDef ext fill:#fde,stroke:#c39;
+  classDef route fill:#eef,stroke:#66c;
+```
+
 ## Headlamp (Cluster Management UI)
 
 [Headlamp](https://headlamp.dev/) gives a web UI for the GKE cluster itself (pods, deployments, logs, exec, RBAC, etc.), deployed into the `headlamp` namespace via [`helm/headlamp/values.yaml`](../helm/headlamp/values.yaml).
