@@ -16,10 +16,13 @@ image:
 resources:
   requests:
     cpu: 100m
-    memory: 128Mi
+    memory: 256Mi
   limits:
     cpu: 300m
-    memory: 256Mi
+    # 256Mi caused constant memory_limiter refusals: filelog tails all node pod
+    # logs (high burst on startup with start_at:beginning) and the limiter dropped
+    # logs before they reached the exporter. 512Mi gives real headroom.
+    memory: 512Mi
 
 extraVolumes:
   - name: varlogpods
@@ -59,6 +62,11 @@ config:
       start_at: beginning
       include_file_path: true
       include_file_name: false
+      retry_on_failure:
+        enabled: true
+        initial_interval: 1s
+        max_interval: 30s
+        max_elapsed_time: 5m
       operators:
         - type: container
           id: container-parser
