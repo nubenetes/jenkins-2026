@@ -77,10 +77,21 @@ jobs:
         run: |
           set -euo pipefail
           START_TIME_MS=$(date +%s%3N)
-
-          MODE="$(yq '.observability.mode' config/config.yaml)"
-          echo "Observability mode: ${MODE}"
           NS="observability"
+
+          # Detect the ACTIVE mode from in-cluster secrets (the cluster may have been
+          # deployed with JENKINS2026_OBS_MODE overriding config.yaml's default, so
+          # reading config.yaml would give the wrong mode).
+          if kubectl get secret aws-managed-credentials -n "${NS}" >/dev/null 2>&1; then
+            MODE="managed-aws"
+          elif kubectl get secret azure-monitor-credentials -n "${NS}" >/dev/null 2>&1; then
+            MODE="managed-azure"
+          elif kubectl get secret grafana-cloud-credentials -n "${NS}" >/dev/null 2>&1; then
+            MODE="grafana-cloud"
+          else
+            MODE="oss"
+          fi
+          echo "Observability mode (detected from cluster): ${MODE}"
 
           # ---------------------------------------------------------------------------
           # Resolve OTLP destination and Grafana URL based on the active obs mode.
