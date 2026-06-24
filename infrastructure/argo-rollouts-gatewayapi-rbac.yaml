@@ -1,0 +1,33 @@
+# Extra RBAC for the Argo Rollouts Gateway API traffic-router plugin. The chart's
+# default argo-rollouts ClusterRole does NOT grant access to Gateway API objects,
+# so without this the plugin cannot read/patch the HTTPRoute weights it uses to
+# shift canary traffic. Bound to the controller's ServiceAccount
+# (argo-rollouts/argo-rollouts, created by the chart). Applied by 08.5-argocd.sh.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: argo-rollouts-gatewayapi
+rules:
+  - apiGroups:
+      - gateway.networking.k8s.io
+    resources:
+      - httproutes
+    verbs:
+      - get
+      - list
+      - watch
+      - update
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argo-rollouts-gatewayapi
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: argo-rollouts-gatewayapi
+subjects:
+  - kind: ServiceAccount
+    name: argo-rollouts
+    namespace: argo-rollouts

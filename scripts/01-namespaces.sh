@@ -422,6 +422,10 @@ kubectl apply -f "${J2026_ROOT_DIR}/infrastructure/networkpolicies.yaml"
 if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
   kubectl apply -f "${J2026_ROOT_DIR}/infrastructure/networkpolicies-jenkins.yaml"
 fi
+# Tekton-namespace baseline only when ci.engine=tekton (no tekton-ci ns otherwise).
+if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
+  kubectl apply -f "${J2026_ROOT_DIR}/infrastructure/networkpolicies-tekton.yaml"
+fi
 
 log_info "Namespaces ready."
 
