@@ -209,7 +209,7 @@ Each managed backend requires adapted datasources (AMP instead of Prometheus, Cl
 
 | Directory | Published to | Datasources used | How generated |
 |---|---|---|---|
-| [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) | OSS Grafana (in-cluster) | Prometheus · Loki · Tempo | Used directly as-is |
+| [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) | OSS Grafana (in-cluster) | Prometheus · Loki · Tempo | Rendered into the dashboards ConfigMap by a Helm chart, **GitOps-managed by ArgoCD** (auto-sync) — see [OSS dashboards: GitOps-managed by ArgoCD](#oss-dashboards-gitops-managed-by-argocd) |
 | *(same as above)* | Grafana Cloud | grafanacloud-prom · grafanacloud-logs · grafanacloud-traces | Used directly; `gcx` binds datasource UIDs at push time |
 | [`observability/grafana/dashboards-azure/`](../observability/grafana/dashboards-azure/) | Azure Managed Grafana | Azure Monitor (metrics + logs + traces) | [`generate.py`](../observability/grafana/dashboards-azure/generate.py) replaces Loki/Tempo panels with Azure Monitor equivalents |
 | [`observability/grafana/dashboards-aws/`](../observability/grafana/dashboards-aws/) | Amazon Managed Grafana | AMP (PromQL) · CloudWatch Logs · X-Ray | [`generate.py`](../observability/grafana/dashboards-aws/generate.py) replaces Loki panels with CW Logs Insights, Tempo panels with X-Ray |
@@ -235,7 +235,21 @@ Only the dashboard for the **active CI engine** is published; the off-engine one
 | `jenkins` (default) | `jenkins-overview` (all variants) | `tekton-overview` |
 | `tekton` | `tekton-overview` (all variants) | `jenkins-overview` |
 
-This applies to all backends. The publish script ([`scripts/07-grafana-dashboards.sh`](../scripts/07-grafana-dashboards.sh)) and the [`Day2.publish.*` workflows](../.github/workflows/) both respect the `JENKINS2026_CI_ENGINE` / `inputs.ci_engine` value.
+This applies to all backends, but the gating lives in two places depending on the path:
+
+- **grafana-cloud / managed-azure / managed-aws** (external Grafana, published via API): the publish script ([`scripts/07-grafana-dashboards.sh`](../scripts/07-grafana-dashboards.sh)) and the [`Day2.publish.*` workflows](../.github/workflows/) skip the off-engine dashboard and delete it if present, driven by `JENKINS2026_CI_ENGINE` / `inputs.ci_engine`.
+- **oss** (in-cluster Grafana): the gating is baked into the dashboards Helm chart (`ciEngine` value) and applied declaratively by ArgoCD — see below. No script or manual publish step decides it.
+
+#### OSS dashboards: GitOps-managed by ArgoCD
+
+For `observability.mode=oss` the dashboards are **not** script-managed. [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) doubles as a small Helm chart ([`Chart.yaml`](../observability/grafana/dashboards/Chart.yaml) + [`templates/configmap.yaml`](../observability/grafana/dashboards/templates/configmap.yaml)): the canonical `*.json` files are read via `.Files.Glob` and rendered into the `jenkins-2026-grafana-dashboards` ConfigMap (mounted by Grafana via `dashboardsConfigMaps` in [`values-oss.yaml`](../observability/grafana/values-oss.yaml)), **dropping the off-engine CI overview** based on the `ciEngine` value.
+
+The [`observability-oss`](../argocd/observability-oss/) app-of-apps emits an `oss-grafana-dashboards` child Application ([`templates/grafana-dashboards.yaml`](../argocd/observability-oss/templates/grafana-dashboards.yaml)) pointing at that chart, with `ciEngine` flowing app-of-apps → parent Application parameter → [`scripts/03-observability.sh`](../scripts/03-observability.sh) (`{{ciEngine}}` substituted from `J2026_CI_ENGINE`). It carries `sync-wave: -1` so the ConfigMap exists before Grafana mounts it.
+
+Consequences:
+- **Editing a canonical dashboard and committing is enough** — ArgoCD auto-syncs it; no `Day2.publish.01-oss-grafana` run is required (that workflow now only nudges a re-sync).
+- The off-engine gating is correct by construction: a tekton cluster never shows an empty Jenkins CI dashboard (and vice-versa), because the chart drops it at render time using the deploy-time engine — not `config/config.yaml`'s default.
+- The `*.json` files are still the source for `generate.py` (AWS/Azure variants) and the cloud/azure/aws API publish; those glob `*.json` and ignore the chart's `Chart.yaml` / `values.yaml` / `templates/`.
 
 #### Regenerating the AWS and Azure variants
 
@@ -258,7 +272,7 @@ flowchart TD
   SRC["observability/grafana/dashboards/*.json\n(canonical source of truth)"]
 
   SRC -->|"grafana-cloud\n07 → gcx resources push"| GC["Grafana Cloud\nfolder: jenkins-2026"]
-  SRC -->|"oss\n03 → ConfigMap + sidecar"| OSS["In-cluster Grafana\njenkis-2026-grafana-dashboards CM"]
+  SRC -->|"oss\nHelm chart → ArgoCD\noss-grafana-dashboards (auto-sync,\nciEngine-gated)"| OSS["In-cluster Grafana\njenkins-2026-grafana-dashboards CM\n(dashboardsConfigMaps mount)"]
 
   GEN_AZ["generate.py\nLoki→AzureMonitor\nTempo→AzureMonitor"]
   GEN_AWS["generate.py\nLoki→CloudWatch Logs\nTempo→X-Ray"]
