@@ -124,21 +124,51 @@ provision_alerts() {
     log_info "Notification policy applied."
   fi
 
+  # --- resolve the target Grafana's Prometheus datasource UID ----------------
+  # The rule JSONs ship with datasourceUid "grafanacloud-prom" (the grafana-cloud
+  # default). In every other mode the Prometheus datasource has a different UID
+  # (oss = "prometheus"; managed-azure/aws use AMG-assigned UIDs), so uploading
+  # the rules verbatim would point them at a non-existent datasource and they'd
+  # fail to evaluate ("datasource not found"). Discover the UID from the target
+  # Grafana (prefer the default Prometheus datasource) and substitute it below.
+  local prom_ds_uid
+  prom_ds_uid="$(gcapi GET /api/datasources 2>/dev/null | python3 -c "
+import json,sys
+try:
+    dss=json.load(sys.stdin)
+except Exception:
+    dss=[]
+proms=[d for d in dss if d.get('type')=='prometheus']
+default=[d for d in proms if d.get('isDefault')]
+print((default or proms or [{}])[0].get('uid',''))
+" 2>/dev/null || true)"
+  if [[ -z "${prom_ds_uid}" ]]; then
+    log_warn "Could not resolve a Prometheus datasource UID from Grafana — uploading alert rules unchanged (they may not evaluate if the datasource UID differs)."
+    prom_ds_uid="grafanacloud-prom"
+  else
+    log_info "Alert rules will target Prometheus datasource UID '${prom_ds_uid}'."
+  fi
+
   # --- alert rules -----------------------------------------------------------
   log_step "Upserting alert rules"
   for rule_file in "${ALERTS_DIR}/rules"/*.json; do
     RULE_UID="$(python3 -c "import json; print(json.load(open('${rule_file}'))['uid'])")"
     RULE_TITLE="$(python3 -c "import json; print(json.load(open('${rule_file}'))['title'])")"
+    # Rewrite the shipped grafanacloud-prom datasourceUid to the target's UID.
+    RULE_TMP="$(mktemp)"
+    sed "s/\"datasourceUid\": *\"grafanacloud-prom\"/\"datasourceUid\": \"${prom_ds_uid}\"/g" \
+      "${rule_file}" > "${RULE_TMP}"
     HTTP_CODE="$(gcapi_code GET "/api/v1/provisioning/alert-rules/${RULE_UID}")"
     if [[ "${HTTP_CODE}" == "200" ]]; then
       gcapi PUT "/api/v1/provisioning/alert-rules/${RULE_UID}" \
-        -d @"${rule_file}" > /dev/null
+        -d @"${RULE_TMP}" > /dev/null
       log_info "Updated alert rule: ${RULE_TITLE}"
     else
       gcapi POST /api/v1/provisioning/alert-rules \
-        -d @"${rule_file}" > /dev/null
+        -d @"${RULE_TMP}" > /dev/null
       log_info "Created alert rule: ${RULE_TITLE}"
     fi
+    rm -f "${RULE_TMP}"
   done
 }
 
