@@ -18,6 +18,15 @@ prometheus:
     # Required for the otel-collector "gateway" release's
     # prometheusremotewrite exporter (values-oss.yaml).
     enableRemoteWriteReceiver: true
+    # By default kube-prometheus-stack only selects ServiceMonitors/PodMonitors
+    # carrying its own release label (serviceMonitorSelector matchLabels
+    # release=<release>). The CNPG operator creates PodMonitors for the
+    # postgres-* clusters WITHOUT that label, so they were ignored and the
+    # Postgres/CNPG dashboard had no data. Select all monitors cluster-wide so
+    # cnpg_*/pg_* metrics are scraped (the collector handles this in non-oss
+    # modes via its prometheus receiver cnpg job).
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
     # Without this, exemplars arriving via remote-write are silently dropped,
     # so the Prometheus datasource's exemplarTraceIdDestinations (metrics ->
     # Tempo traces correlation) has nothing to render. Enables the in-memory
@@ -213,8 +222,20 @@ grafana:
           datasourceUid: loki
           spanStartTimeShift: "-5m"
           spanEndTimeShift: "5m"
-          filterByTraceID: true
-          tags: ["service.name"]
+          # The microservices' app logs do NOT yet carry an OTel trace_id: the
+          # OTel Java agent puts trace_id/span_id in the MDC, but the logback
+          # pattern in the microservices gitops repo doesn't print it (and the
+          # default Spring pattern uses micrometer's camelCase traceId, not the
+          # agent's snake_case trace_id). So a trace_id-based join would return
+          # nothing. Until that's fixed app-side, jump trace -> logs by SERVICE +
+          # TIME WINDOW: map the span's service.name attribute to the Loki stream
+          # label service_name. Flip filterByTraceID back to true once app logs
+          # emit trace_id (see docs/301-OBSERVABILITY.md "logs<->traces").
+          filterByTraceID: false
+          filterBySpanID: false
+          tags:
+            - key: "service.name"
+              value: "service_name"
         tracesToMetrics:
           datasourceUid: prometheus
           tags:
