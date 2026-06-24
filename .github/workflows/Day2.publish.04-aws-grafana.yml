@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       ci_engine:
-        description: "CI engine the cluster runs (publishes that engine's overview): jenkins | tekton"
+        description: "Fallback CI engine if the GCS active-ci-engine record is missing (Day1 records it). jenkins | tekton"
         required: true
         default: "jenkins"
         type: choice
@@ -55,14 +55,28 @@ jobs:
         with:
           ref: ${{ inputs.git_ref || github.ref }}
 
-      # GCP auth is only needed to read the terraform GCS state (read-only); no
-      # cluster is touched.
+      # GCP auth is only needed to read the terraform GCS state + the active-CI-engine
+      # record (read-only); no cluster is touched.
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v2
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
           workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Resolve active CI engine (durable GCS record from Day1)
+        id: ci-engine
+        run: |
+          # Read the engine Day1 recorded to GCS (cluster-decoupled — no kubectl).
+          # Fall back to the manual ci_engine input if the record is absent (e.g.
+          # a cluster provisioned before this record existed).
+          engine="$(gcloud storage cat "gs://${{ secrets.TF_STATE_BUCKET }}/jenkins-2026/active-ci-engine" 2>/dev/null || true)"
+          [ -z "${engine}" ] && engine="${{ inputs.ci_engine }}"
+          echo "engine=${engine}" >> "${GITHUB_OUTPUT}"
+          echo "Active CI engine: ${engine}"
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
@@ -135,7 +149,7 @@ jobs:
         if: ${{ env.AWS_DASHBOARD_PUBLISH_ROLE_ARN != '' }}
         env:
           JENKINS2026_OBS_MODE: managed-aws
-          JENKINS2026_CI_ENGINE: ${{ inputs.ci_engine }}
+          JENKINS2026_CI_ENGINE: ${{ steps.ci-engine.outputs.engine }}
         run: ./scripts/07-grafana-dashboards.sh
 
       - name: Skipped (no publisher role)

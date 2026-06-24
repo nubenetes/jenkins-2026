@@ -34,7 +34,7 @@ Full resource name of the Workload Identity Federation provider, e.g. `projects/
 Email of the CI service account impersonated via WIF, e.g. `ci@my-project.iam.gserviceaccount.com`. Needs roles: `container.admin`, `storage.admin`, `iam.serviceAccountTokenCreator`.
 
 **`TF_STATE_BUCKET`**
-Name of the GCS bucket used for Terraform remote state by `terraform/gke`, `terraform/grafana-cloud-token`, `terraform/azure-managed-grafana`, and `terraform/aws-managed-grafana`. Written into `backend_override.tf` at workflow runtime; never committed.
+Name of the GCS bucket used for Terraform remote state by `terraform/gke`, `terraform/grafana-cloud-token`, `terraform/azure-managed-grafana`, and `terraform/aws-managed-grafana`. Written into `backend_override.tf` at workflow runtime; never committed. Also holds the durable **`jenkins-2026/active-ci-engine`** object: `Day1.cluster.01-gke` writes the deployed CI engine there, and the cluster-decoupled dashboard publishers `Day2.publish.03-azure-grafana` / `Day2.publish.04-aws-grafana` read it (via read-only GCP auth) to gate the off-engine CI overview without needing cluster access.
 
 ---
 
