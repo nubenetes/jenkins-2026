@@ -97,14 +97,24 @@ If using the default `observability.mode: grafana-cloud`:
 ./scripts/up.sh
 ```
 
-### Step 7: Run Jenkins Pipelines & Verify
+### Step 7: Run Pipelines & Verify
 
 Once deployed:
 1. Run `./scripts/status.sh` to obtain the port-forwarding commands and passwords.
+
+**With `ci.engine=jenkins` (default):**
 2. Port-forward to Jenkins: `kubectl -n jenkins port-forward svc/jenkins 8080:8080` and open `http://localhost:8080`.
 3. Log in with the administrative basic password or click **Sign in with Google**.
 4. In the Jenkins dashboard, run the seeded pipelines (`gateway` and `jhipstersamplemicroservice`) to build and push their first Docker images.
-5. Trigger the `microservices-k6-smoke` pipeline in Jenkins to generate synthetic traffic and verify telemetry in Grafana Cloud.
+5. Trigger the `microservices-k6-smoke` pipeline in Jenkins to generate synthetic traffic and verify telemetry in Grafana.
+
+**With `ci.engine=tekton`:** the normal trigger is a `git push` to a microservices fork (Pipelines-as-Code). To run one by hand, use the ready-made manifests — no hand-config needed:
+```bash
+kubectl create -f tekton/runs/gateway.yaml                    # build the gateway
+kubectl create -f tekton/runs/jhipstersamplemicroservice.yaml # build the other service
+kubectl create -f tekton/runs/k6-smoke.yaml                   # synthetic traffic
+```
+Or paste one into the Tekton Dashboard's *Create PipelineRun* (YAML mode) once, then click **Rerun** for true one-click reruns. See [403 § Running a pipeline by hand](./403-TEKTON.md#running-a-pipeline-by-hand-dashboard--kubectl--tkn).
 
 ## Automated End-to-End Test (Provisioning + Decommissioning)
 
