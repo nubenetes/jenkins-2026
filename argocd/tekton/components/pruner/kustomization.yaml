@@ -1,10 +1,14 @@
 # Tekton Pruner - garbage-collects completed PipelineRuns/TaskRuns, the Tekton
-# equivalent of the Jenkins pipelines' buildDiscarder(numToKeepStr: '20').
+# equivalent of the Jenkins pipelines' buildDiscarder.
 # VENDORED (release.yaml) - GitHub-only release, vendored like the other
 # components. Source: https://github.com/tektoncd/pruner/releases/download/v0.4.0/release.yaml
 #
-# The patch lowers the default global historyLimit 100 -> 20 to mirror the
-# Jenkins "keep 20 builds" retention.
+# The patch lowers the default global historyLimit 100 -> 5. Each microservices
+# PipelineRun fans out into ~10 TaskRun pods, each pulling large build-tool
+# images (kaniko, codeql, trivy, semgrep, k6). Keeping 20 runs (~200 pods + their
+# referenced images) filled the 50 GiB node image filesystem to ~88%, so the
+# kubelet's image GC could not reclaim space (FreeDiskSpaceFailed events). 5 runs
+# is enough recent history for debugging while keeping disk usage bounded.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
@@ -19,4 +23,4 @@ patches:
       data:
         global-config: |-
           enforcedConfigLevel: global
-          historyLimit: 20
+          historyLimit: 5
