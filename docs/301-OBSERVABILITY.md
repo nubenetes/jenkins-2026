@@ -313,7 +313,7 @@ The dashboard groups by `pod` + `namespace` (labels present on **both** scrape p
 
 ## Grafana Alerting
 
-Alert rules, a contact point, and a notification policy live as plain JSON in [`observability/grafana/alerting/`](../observability/grafana/alerting/) and are applied on every deploy by `scripts/07.5-grafana-alerts.sh`.
+Alert rules, a contact point, and a notification policy live as plain JSON in [`observability/grafana/alerting/`](../observability/grafana/alerting/) and are applied on every deploy by `scripts/07.5-grafana-alerts.sh`. How they reach Grafana depends on the mode (see [Observability Mode Support](#observability-mode-support)): external Grafana (grafana-cloud / managed-azure / managed-aws) is provisioned via the HTTP API, while **oss** is provisioned **declaratively** through a sidecar-loaded ConfigMap so it survives Grafana pod restarts.
 
 ### Contact Point and Notification Policy
 
@@ -340,7 +340,7 @@ Only set the secrets that differ from your OIDC admin email. For most setups onl
 
 ### Alert Rules
 
-Five rules live in `observability/grafana/alerting/rules/`, all filed under the `jenkins-2026` rule group in the `jenkins-2026 Alerts` Grafana folder:
+Five rules live in `observability/grafana/alerting/rules/`, all filed under the `jenkins-2026` rule group in the **`jenkins-2026 Alerts` Grafana folder**:
 
 | File | Severity | `for` | What fires |
 |---|---|---|---|
@@ -349,6 +349,10 @@ Five rules live in `observability/grafana/alerting/rules/`, all filed under the 
 | `03-cnpg-degraded.json` | critical | 2m | Any `postgres-*` pod in `microservices` stays NotReady |
 | `04-http-5xx-rate.json` | warning | 3m | HTTP 5xx rate > 0.05 req/s for any service |
 | `05-jvm-heap-high.json` | warning | 5m | JVM heap ratio > 85% for any service |
+
+> **Where to find them in Grafana.** `jenkins-2026 Alerts` is a Grafana **folder**, not a dashboard — it is the mandatory container (and RBAC boundary) every alert rule must belong to. It shows up **empty in the Dashboards browser** because it holds alert rules, not dashboards; the rules live under **Alerting → Alert rules** (filter by the `jenkins-2026 Alerts` folder), with the contact point and notification policy under **Alerting → Contact points / Notification policies**.
+
+> **Datasource UID rewrite.** The rule JSONs ship with `datasourceUid: grafanacloud-prom` (the grafana-cloud default). At provisioning time the active Grafana's Prometheus datasource UID is resolved and substituted (oss → `prometheus`; managed-azure/aws → the AMG-assigned UID), so rules evaluate against the right datasource in every mode instead of a non-existent one.
 
 ### Adding More Rules
 
@@ -359,7 +363,7 @@ Drop a `.json` file into `observability/grafana/alerting/rules/` following the s
 | Mode | Alert provisioning |
 |---|---|
 | `grafana-cloud` | ✅ Grafana HTTP provisioning API — Bearer token from `grafana-cloud-credentials` Secret |
-| `oss` | ✅ Grafana HTTP provisioning API — admin password from `kube-prometheus-stack-grafana` Secret (port-forwarded). Rules appear in Grafana immediately; **email delivery also requires `grafana.ini.smtp.*` in `helm/observability/values-oss.yaml`** |
+| `oss` | ✅ **Declarative file provisioning** — `07.5` builds a `grafana_alert`-labelled ConfigMap (rules + contact point + policy, `datasourceUid` → `prometheus`) that the kube-prometheus-stack alerts sidecar loads on every Grafana boot, so alerting **survives pod restarts** (Grafana's DB is ephemeral here). No port-forward / API / admin password. **Email delivery also requires `grafana.ini.smtp.*` in `values-oss.yaml`** |
 | `managed-azure` | ✅ Azure Managed Grafana HTTP API — Azure AD token via `az account get-access-token` (GitHub OIDC → Azure in CI) |
 | `managed-aws` | ✅ Amazon Managed Grafana HTTP API — AMG service-account token minted via `aws grafana create-workspace-api-key` (GitHub OIDC → `AWS_DASHBOARD_PUBLISH_ROLE_ARN` in CI) |
 
