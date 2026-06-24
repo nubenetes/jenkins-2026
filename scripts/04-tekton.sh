@@ -65,6 +65,18 @@ for deploy in tekton-pipelines-controller tekton-pipelines-webhook \
     || log_warn "${deploy} not Available yet - check 'kubectl -n ${J2026_ARGOCD_NAMESPACE} get applications' (tekton-*)."
 done
 
+# Tekton's webhook self-issues its serving cert and injects the caBundle into its
+# webhook configs. On a fresh cluster ArgoCD's first sync of the config ConfigMaps
+# races that cert: the config.webhook.pipeline.tekton.dev validating webhook then
+# fails ("tls: unrecognized name" / x509 unknown authority) and tekton-pipelines is
+# left SyncFailed. Restarting the webhook makes it re-issue a matching cert; a hard
+# refresh then lets the app's automated sync (prune+selfHeal) converge. Idempotent.
+log_step "Stabilising the Tekton admission webhook (first-sync cert race)"
+kubectl -n "${TEKTON_NS}" rollout restart deployment/tekton-pipelines-webhook >/dev/null 2>&1 || true
+kubectl -n "${TEKTON_NS}" rollout status deployment/tekton-pipelines-webhook --timeout=120s >/dev/null 2>&1 || true
+kubectl -n "${J2026_ARGOCD_NAMESPACE}" annotate application tekton-pipelines \
+  argocd.argoproj.io/refresh=hard --overwrite >/dev/null 2>&1 || true
+
 log_info "Tekton deployed via ArgoCD."
 log_info "  Apps: kubectl -n ${J2026_ARGOCD_NAMESPACE} get applications -l app.kubernetes.io/part-of=tekton 2>/dev/null || kubectl -n ${J2026_ARGOCD_NAMESPACE} get applications | grep tekton"
 log_info "  Pipelines-as-code + per-service runs are applied/kicked by scripts/06-tekton-pipelines.sh (run by up.sh)."

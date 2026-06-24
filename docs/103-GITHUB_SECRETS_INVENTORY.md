@@ -197,14 +197,18 @@ If left unset, the image pull and git clone steps proceed unauthenticated (works
 
 ## 9. Tekton CI Engine (`ci.engine: tekton`)
 
-Used by `Day1.cluster.01-gke` and `Day2.redeploy.03-tekton` when the Tekton CI engine is selected (`ci.engine: tekton`). Tekton reuses the **existing** registry, git, and IAP secrets — `REGISTRY_USERNAME` / `REGISTRY_PASSWORD` (image push/pull), `GIT_USERNAME` / `GIT_TOKEN` (private Microservices fork), and `IAP_OAUTH_CLIENT_ID` / `IAP_OAUTH_CLIENT_SECRET` (the Tekton Dashboard is gated by the same Google IAP as Headlamp). The only **new** secret is the optional webhook HMAC token below.
+Used by `Day1.cluster.01-gke` and `Day2.redeploy.03-tekton` when the Tekton CI engine is selected (`ci.engine: tekton`). Tekton reuses the **existing** registry, git, and IAP secrets — `REGISTRY_USERNAME` / `REGISTRY_PASSWORD` (image push/pull), `GIT_USERNAME` / `GIT_TOKEN` (private Microservices fork), and `IAP_OAUTH_CLIENT_ID` / `IAP_OAUTH_CLIENT_SECRET` (the Tekton Dashboard is gated by the same Google IAP as Headlamp). The only **new** secrets are the two optional webhook HMAC tokens below.
 
 | Secret | Required | Description |
 |--------|----------|-------------|
 | `TEKTON_GITHUB_WEBHOOK_SECRET` | optional | GitHub HMAC token validating requests to the Tekton Triggers EventListener |
+| `PAC_WEBHOOK_SECRET` | optional | GitHub HMAC token validating requests to the Pipelines-as-Code (PaC) controller |
 
 **`TEKTON_GITHUB_WEBHOOK_SECRET`**
 A shared-secret HMAC token GitHub signs webhook deliveries with, validated by the Tekton Triggers `EventListener`. Optional — empty by default; only needed if you expose the EventListener webhook so GitHub can trigger PipelineRuns. You generate it yourself (e.g. `openssl rand -hex 20`) and set it as a GitHub Actions secret **and** in the GitHub repo's webhook config. Consumed by `Day1.cluster.01-gke` and `Day2.redeploy.03-tekton`.
+
+**`PAC_WEBHOOK_SECRET`**
+The equivalent HMAC token for **Pipelines-as-Code** (the git-driven CI path, the default for the app repos). `scripts/01-namespaces.sh` writes it into the `pipelines-as-code-secret` (referenced by [`tekton/pac/repositories.yaml`](../tekton/pac/repositories.yaml)); empty by default, so PaC works unauthenticated until you set it and configure the matching GitHub webhook secret. Generate with `openssl rand -hex 20`. Consumed by `Day1.cluster.01-gke` and `Day2.redeploy.03-tekton`.
 
 ---
 
@@ -276,6 +280,7 @@ egress to Grafana Cloud k6's ingest. Works for **either** CI engine.
 | `GIT_USERNAME` | no | private microservices fork | manual |
 | `GIT_TOKEN` | **yes** | private microservices fork | manual |
 | `TEKTON_GITHUB_WEBHOOK_SECRET` | **yes** | Tekton EventListener webhook (`ci.engine=tekton`, optional) | manual — `openssl rand` |
+| `PAC_WEBHOOK_SECRET` | **yes** | Pipelines-as-Code webhook (`ci.engine=tekton`, optional) | manual — `openssl rand` |
 
 ---
 

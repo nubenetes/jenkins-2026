@@ -16,6 +16,18 @@
 
 - **Rotating the Jenkins admin password**: delete the `jenkins-credentials` Secret in the `jenkins` namespace and re-run `scripts/01-namespaces.sh` + `scripts/04-jenkins.sh`.
 
+## Dataplane V2 enforcement & fresh-cluster stalls
+
+The cluster runs GKE Dataplane V2 (Cilium/eBPF), so NetworkPolicies actually enforce (see [501 § Zero-Trust](./501-PLATFORM_OPERATIONS.md)). A few things look like failures but are expected/self-healing:
+
+- **`microservices-stable` shows ArgoCD health `Unknown` (even when everything works)**: expected, not a failure. ArgoCD has no health assessment for the CloudNativePG `Cluster`/`Pooler` and OpenTelemetry `Instrumentation` CRs the app owns, so the aggregate app health stays `Unknown` while the actual workloads are fine. Verify with `kubectl -n microservices get deploy` (gateway + jhipster `Available`). `scripts/up.sh` therefore gates the pre-OTel-injection wait on the **Deployments becoming Available**, not on app health (waiting on `Healthy` used to burn the full 10-minute timeout every run).
+
+- **`tekton-pipelines` ArgoCD app `SyncFailed` with `config.webhook.pipeline.tekton.dev` / `tls: unrecognized name` / `x509`**: the Tekton webhook self-issues its serving cert, and on a fresh cluster ArgoCD first-syncs the Tekton config ConfigMaps before that cert exists. `scripts/04-tekton.sh` now restarts `tekton-pipelines-webhook` + hard-refreshes the app automatically, so the next automated sync converges. If you still see it, run it by hand: `kubectl -n tekton-pipelines rollout restart deploy/tekton-pipelines-webhook` then re-Sync the app.
+
+- **`gateway` CrashLoop / Liquibase connect-timeout, or pods never Ready**: under enforcement the app needs explicit allows the app chart's own policies miss — egress to CNPG Postgres (by `cnpg.io/cluster`, port 5432) and to the API server (443, for JHipster's Hazelcast discovery). These are carried by the additive `microservices-cnpg-platform` policy in [`infrastructure/networkpolicies.yaml`](../infrastructure/networkpolicies.yaml); confirm it's applied (`kubectl -n microservices get netpol`).
+
+- **A Gateway-exposed UI is unreachable / its GKE backend is `UNHEALTHY`** (argocd, headlamp, …): the NetworkPolicy ingress must allow the **pod** `targetPort` (e.g. argocd-server `8080`, headlamp `4466`), not the Service port — the container-native LB (NEG) sends to the pod port. See the [501 enforcement-gotchas block](./501-PLATFORM_OPERATIONS.md).
+
 ## ArgoCD OIDC Issues
 
 **ArgoCD OIDC Login fails with `redirect_uri_mismatch` or `Invalid redirect URL`**:
