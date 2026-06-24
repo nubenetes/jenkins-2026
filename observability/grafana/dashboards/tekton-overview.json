@@ -159,19 +159,19 @@
         "hide": 0, "includeAll": false, "label": "Prometheus / Mimir", "multi": false,
         "name": "DS_PROMETHEUS", "options": [], "query": "prometheus", "queryValue": "",
         "refresh": 1, "regex": "", "skipUrlSync": false, "type": "datasource",
-        "current": { "selected": true, "text": "grafanacloud-prom", "value": "grafanacloud-prom" }
+        "current": {}
       },
       {
         "hide": 0, "includeAll": false, "label": "Loki", "multi": false,
         "name": "DS_LOKI", "options": [], "query": "loki", "queryValue": "",
         "refresh": 1, "regex": "/^(?!.*alert-state-history|.*usage-insights).*$/", "skipUrlSync": false, "type": "datasource",
-        "current": { "selected": true, "text": "grafanacloud-logs", "value": "grafanacloud-logs" }
+        "current": {}
       },
       {
         "hide": 0, "includeAll": false, "label": "Tempo", "multi": false,
         "name": "DS_TEMPO", "options": [], "query": "tempo", "queryValue": "",
         "refresh": 1, "regex": "", "skipUrlSync": false, "type": "datasource",
-        "current": { "selected": true, "text": "grafanacloud-traces", "value": "grafanacloud-traces" }
+        "current": {}
       }
     ]
   },
