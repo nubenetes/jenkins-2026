@@ -238,10 +238,15 @@ Only the dashboard for the **active CI engine** is published; the off-engine one
 | `jenkins` (default) | `jenkins-overview` (all variants) | `tekton-overview` |
 | `tekton` | `tekton-overview` (all variants) | `jenkins-overview` |
 
-This applies to all backends, but the gating lives in two places depending on the path:
+This applies to all backends. Crucially, the **active engine is resolved per path**, never from `config/config.yaml`'s `ci.engine` (which is just the repo default — `jenkins` — and need not match what a cluster was actually deployed with):
 
-- **grafana-cloud / managed-azure / managed-aws** (external Grafana, published via API): the publish script ([`scripts/07-grafana-dashboards.sh`](../scripts/07-grafana-dashboards.sh)) and the [`Day2.publish.*` workflows](../.github/workflows/) skip the off-engine dashboard and delete it if present, driven by `JENKINS2026_CI_ENGINE` / `inputs.ci_engine`.
-- **oss** (in-cluster Grafana): the gating is baked into the dashboards Helm chart (`ciEngine` value) and applied declaratively by ArgoCD — see below. No script or manual publish step decides it.
+| Path | How the active engine is resolved |
+|---|---|
+| **oss** (in-cluster Grafana) | The dashboards Helm chart gates on the `ciEngine` value, set by the `observability-oss` app-of-apps from `scripts/03-observability.sh` (`{{ciEngine}}` ← `J2026_CI_ENGINE`). `Day2.publish.01-oss` re-applies the parent app with the engine detected from the cluster. See [OSS dashboards: GitOps-managed by ArgoCD](#oss-dashboards-gitops-managed-by-argocd). |
+| **grafana-cloud** / any cluster-connected `07-grafana-dashboards.sh` run | `07` resolves it via the shared `j2026_active_ci_engine` helper ([`scripts/lib/common.sh`](../scripts/lib/common.sh)): explicit `JENKINS2026_CI_ENGINE` override → **live-cluster detection** (Jenkins StatefulSet = jenkins, Tekton controller = tekton) → config default. |
+| **managed-azure** / **managed-aws** (`Day2.publish.03` / `.04`) | These publish from the repo to external Grafana **with no cluster access by design**, so they can't detect via kubectl. Day1 records the deployed engine to a durable GCS object (`gs://<TF_STATE_BUCKET>/jenkins-2026/active-ci-engine`); the publishers read it (falling back to the manual `ci_engine` input only if the record is absent). |
+
+So once a cluster is deployed, every dashboard publisher — cluster-connected or not — gates on the **actually-deployed** engine without anyone selecting it by hand.
 
 #### OSS dashboards: GitOps-managed by ArgoCD
 

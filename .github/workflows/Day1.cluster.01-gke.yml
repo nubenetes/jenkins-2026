@@ -172,6 +172,19 @@ jobs:
             --zone "$(terraform output -raw location)" \
             --project "${{ secrets.GCP_PROJECT_ID }}"
 
+      # Record the deployed CI engine as a durable GCS object. The managed-azure /
+      # managed-aws dashboard publishers (Day2.publish.03 / .04) publish from the
+      # repo + terraform state to external Grafana WITHOUT cluster access, so they
+      # can't detect the engine via kubectl; they read this record to gate the
+      # off-engine CI overview correctly (falling back to their manual ci_engine
+      # input if the object is absent). Cluster-connected paths detect via
+      # j2026_active_ci_engine instead.
+      - name: Record active CI engine to GCS
+        run: |
+          printf '%s' "${{ inputs.ci_engine }}" \
+            | gcloud storage cp - "gs://${{ secrets.TF_STATE_BUCKET }}/jenkins-2026/active-ci-engine"
+          echo "Recorded active CI engine '${{ inputs.ci_engine }}' to gs://${{ secrets.TF_STATE_BUCKET }}/jenkins-2026/active-ci-engine"
+
       # The Grafana Cloud stack slug is generated (random) by terraform/grafana-
       # cloud-stack and is no longer a GitHub variable. Read it from that module's
       # GCS state (written by the grafana-cloud-bootstrap pre-flight job) and reuse
