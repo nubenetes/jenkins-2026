@@ -28,6 +28,14 @@ The cluster runs GKE Dataplane V2 (Cilium/eBPF), so NetworkPolicies actually enf
 
 - **A Gateway-exposed UI is unreachable / its GKE backend is `UNHEALTHY`** (argocd, headlamp, …): the NetworkPolicy ingress must allow the **pod** `targetPort` (e.g. argocd-server `8080`, headlamp `4466`), not the Service port — the container-native LB (NEG) sends to the pod port. See the [501 enforcement-gotchas block](./501-PLATFORM_OPERATIONS.md).
 
+## Switching `observability.mode` on a running cluster
+
+Re-running `Day1` (or `scripts/03-observability.sh`) with a different `observability.mode` converges the **same** cluster onto the new backend; each mode branch retires the other modes' agents so the switch is idempotent. Two things that previously bit on a switch (now handled):
+
+- **`k8s-monitoring` install fails: "A Node Exporter already appears to be running ... host port conflict" (9100)** — switching `oss` → `grafana-cloud`/`managed-*` left the OSS `kube-prometheus-stack` node-exporter DaemonSet (hostPort 9100, via ArgoCD) running while the new mode installed its own. ArgoCD's cascade-prune is async, so it raced the install. `remove_oss_observability_app` now **waits** for that DaemonSet to disappear (with a direct-delete backstop) before the new exporter is installed. If you ever hit it manually: `kubectl delete application observability-oss -n argocd --wait=false; kubectl delete ds -n observability -l app.kubernetes.io/name=prometheus-node-exporter`.
+
+- **Wrong CI-overview dashboard lingers (e.g. "Jenkins CI Overview" on a `ci.engine=tekton` cluster)** — Grafana Cloud / Azure Managed Grafana stacks are **persistent**, and `gcx push` / `POST /api/dashboards/db` only upsert, so a previously-published off-engine dashboard survived an engine switch. `scripts/07-grafana-dashboards.sh` now **deletes the inactive engine's overview by UID** in every mode (grafana-cloud, managed-azure, managed-aws; oss drops it at render time). To remove a stale one by hand: `curl -X DELETE "$GRAFANA_BASE_URL/api/dashboards/uid/jenkins2026-jenkins-overview" -H "Authorization: Bearer $GRAFANA_API_KEY"`.
+
 ## ArgoCD OIDC Issues
 
 **ArgoCD OIDC Login fails with `redirect_uri_mismatch` or `Invalid redirect URL`**:

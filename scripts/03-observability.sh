@@ -38,6 +38,25 @@ remove_oss_observability_app() {
     log_info "Removing observability-oss ArgoCD app (cascade-prunes the in-cluster OSS stack)"
     kubectl delete application observability-oss -n argocd --ignore-not-found --wait=false
   fi
+  # The cascade-prune above is asynchronous. The OSS kube-prometheus-stack ships a
+  # node-exporter DaemonSet on hostPort 9100 (hostNetwork); k8s-monitoring (grafana
+  # -cloud) and the managed-* infra agents run their OWN node-exporter on the same
+  # port and FAIL a pre-install validation if the OSS one is still present
+  # ("A Node Exporter already appears to be running ... host port conflict"). So on
+  # an in-place mode switch we must wait for it to disappear before the caller
+  # installs its exporter. Selected by the chart's stable label (robust to the
+  # release-name prefix, e.g. oss-kube-prometheus-stack-prometheus-node-exporter).
+  local sel="app.kubernetes.io/name=prometheus-node-exporter"
+  if [ -n "$(kubectl get ds -n "${J2026_OBS_NAMESPACE}" -l "${sel}" -o name 2>/dev/null)" ]; then
+    log_info "Waiting for the OSS node-exporter DaemonSet (hostPort 9100) to be pruned"
+    local i=0
+    until [ -z "$(kubectl get ds -n "${J2026_OBS_NAMESPACE}" -l "${sel}" -o name 2>/dev/null)" ]; do
+      i=$((i + 1)); [ "${i}" -ge 36 ] && break; sleep 5   # up to ~3 min
+    done
+    # Backstop: if ArgoCD hasn't finished pruning yet (parent app already deleted,
+    # so the child won't recreate it), remove the conflicting DaemonSet directly.
+    kubectl delete ds -n "${J2026_OBS_NAMESPACE}" -l "${sel}" --ignore-not-found >/dev/null 2>&1 || true
+  fi
 }
 
 case "${J2026_OBS_MODE}" in

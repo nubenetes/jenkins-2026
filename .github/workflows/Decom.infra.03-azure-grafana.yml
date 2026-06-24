@@ -12,6 +12,7 @@ name: "Decom.infra.03 Azure managed-grafana"
 # the azure-bootstrap Environment's required reviewer.
 on:
   workflow_dispatch:
+  workflow_call: # reused by Decom.infra.00-all (umbrella)
 
 permissions:
   contents: read
