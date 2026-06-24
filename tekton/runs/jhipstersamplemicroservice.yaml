@@ -1,0 +1,56 @@
+# Ready-to-run PipelineRun for the `jhipstersamplemicroservice` service. Same shape
+# as gateway.yaml (tekton-ci SA + source/dockerconfig workspaces) but with an
+# explicit `params:` block, since the pipeline defaults to the gateway service.
+# Run: kubectl create -f tekton/runs/jhipstersamplemicroservice.yaml
+# (or paste into the Tekton Dashboard once and "Rerun"). Param values mirror
+# jenkins/pipelines/seed/services.yaml — keep them in sync if that file changes.
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: jhipstersamplemicroservice-stable-
+  namespace: tekton-ci
+  labels:
+    jenkins2026.io/service: jhipstersamplemicroservice
+    jenkins2026.io/env: stable
+spec:
+  taskRunTemplate:
+    serviceAccountName: tekton-ci
+  pipelineRef:
+    name: microservices-pipeline
+  params:
+    - name: service-name
+      value: jhipstersamplemicroservice
+    - name: service-type
+      value: java
+    - name: git-repo-url
+      value: https://github.com/nubenetes/jhipster-sample-app-microservice.git
+    - name: git-branch
+      value: main
+    - name: module-path
+      value: ""
+    - name: target-namespace
+      value: microservices
+    - name: env-name
+      value: stable
+    - name: port
+      value: "8081"
+    - name: health-path
+      value: /management/health
+    - name: image
+      value: ghcr.io/nubenetes/jenkins-2026-microservices/jhipstersamplemicroservice:main
+    - name: registry-host
+      value: ghcr.io
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 4Gi
+    - name: dockerconfig
+      secret:
+        secretName: tekton-registry
+        items:
+          - key: .dockerconfigjson
+            path: config.json

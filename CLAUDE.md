@@ -50,7 +50,9 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
   engines read).
 - `tekton/` - Tekton pipelines-as-code, used when `ci.engine=tekton` (the
   alternative to Jenkins; Jenkins is the default). Tasks/Pipelines/Triggers/RBAC
-  porting the Jenkins shared library in `vars/`. Installed by
+  porting the Jenkins shared library in `vars/`, plus `pac/` (Pipelines-as-Code
+  Repository CRs) and `runs/` (ready-to-run PipelineRun manifests — the
+  one-click/`kubectl create -f` equivalent of the Jenkins seed job). Installed by
   `scripts/04-tekton.sh` + `scripts/06-tekton-pipelines.sh` (the Tekton
   equivalents of `04-jenkins.sh` / `06-seed-pipelines.sh`). Tekton is
   GitOps-managed by ArgoCD via the `argocd/tekton` app-of-apps (see below); the
