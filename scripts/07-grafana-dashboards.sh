@@ -359,6 +359,21 @@ case "${J2026_OBS_MODE}" in
         log_warn "Failed to publish ${name}."
       fi
     done
+    # Delete the off-engine CI overview if it exists (e.g. jenkins-overview when
+    # ci.engine=tekton, and vice-versa) so stale dashboards don't persist across
+    # engine switches.
+    if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
+      delete_uid="jenkins2026-jenkins-overview"
+    else
+      delete_uid="jenkins2026-tekton-overview"
+    fi
+    if api GET "/api/dashboards/uid/${delete_uid}" >/dev/null 2>&1; then
+      if api DELETE "/api/dashboards/uid/${delete_uid}" >/dev/null 2>&1; then
+        log_info "Deleted off-engine dashboard ${delete_uid}."
+      else
+        log_warn "Could not delete off-engine dashboard ${delete_uid} (may not exist)."
+      fi
+    fi
     ;;
 
   *)
