@@ -209,13 +209,29 @@ case "${J2026_OBS_MODE}" in
 
     GF_BASE_URL="http://localhost:13000"
 
-    GF_API_KEY="$(curl -sf -u "admin:${GF_ADMIN_PWD}" \
-      -X POST "${GF_BASE_URL}/api/auth/keys" \
+    # Grafana 11+ deprecated the legacy /api/auth/keys endpoint and 13.x removed
+    # it (POST returns 404). Mint a short-lived token via a Service Account
+    # instead - the supported replacement: create an ephemeral Admin SA, then a
+    # 300s token on it. The SA is deleted on exit (which also revokes the token).
+    GF_SA_ID="$(curl -sf -u "admin:${GF_ADMIN_PWD}" \
+      -X POST "${GF_BASE_URL}/api/serviceaccounts" \
       -H "Content-Type: application/json" \
-      -d "{\"name\":\"alerts-prov-$(date +%s)\",\"role\":\"Admin\",\"secondsToLive\":300}" \
+      -d "{\"name\":\"alerts-prov-$(date +%s)\",\"role\":\"Admin\"}" \
+      | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])" 2>/dev/null || true)"
+    if [[ -z "${GF_SA_ID:-}" ]]; then
+      log_error "oss: failed to create Grafana service account for alert provisioning."
+      exit 1
+    fi
+    # Extend cleanup: kill the port-forward AND delete the ephemeral SA.
+    trap "curl -sf -u 'admin:${GF_ADMIN_PWD}' -X DELETE '${GF_BASE_URL}/api/serviceaccounts/${GF_SA_ID}' >/dev/null 2>&1 || true; kill ${PF_PID} 2>/dev/null || true" EXIT
+
+    GF_API_KEY="$(curl -sf -u "admin:${GF_ADMIN_PWD}" \
+      -X POST "${GF_BASE_URL}/api/serviceaccounts/${GF_SA_ID}/tokens" \
+      -H "Content-Type: application/json" \
+      -d "{\"name\":\"alerts-prov-token-$(date +%s)\",\"secondsToLive\":300}" \
       | python3 -c "import json,sys; print(json.load(sys.stdin)['key'])" 2>/dev/null || true)"
     if [[ -z "${GF_API_KEY:-}" ]]; then
-      log_error "oss: failed to mint Grafana API key from admin credentials."
+      log_error "oss: failed to mint Grafana service-account token for alert provisioning."
       exit 1
     fi
 
