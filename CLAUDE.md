@@ -71,9 +71,12 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
   pipelines-as-code), applied by `04-tekton.sh` when `ci.engine=tekton`. Because of
   this, `scripts/up.sh` installs ArgoCD (`08.5`) **before** observability
   (`03`), and `03-observability.sh` (oss) applies the app-of-apps + its
-  script-managed companion objects (dashboards ConfigMap, `grafana-jenkins-ds`
-  Secret, `grafana-runtime-config` ConfigMap) rather than `helm install`-ing the
-  charts directly. See [`argocd/README.md`](argocd/README.md).
+  script-managed companion objects (`grafana-jenkins-ds` Secret,
+  `grafana-runtime-config` ConfigMap) rather than `helm install`-ing the charts
+  directly. The Grafana dashboards ConfigMap is GitOps-managed by the
+  `oss-grafana-dashboards` child app (rendered from `observability/grafana/dashboards/`,
+  a small Helm chart, CI-engine-gated via `ciEngine`). See
+  [`argocd/README.md`](argocd/README.md).
 - `terraform/`:
   - `bootstrap/` - **one-time, local state**, run by hand. Creates the GCS
     Terraform state bucket + GitHub OIDC/Workload Identity Federation trust
