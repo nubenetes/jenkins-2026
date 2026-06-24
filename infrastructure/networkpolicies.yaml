@@ -199,3 +199,45 @@ spec:
       port: 4466
   egress:
   - {}
+---
+# Platform-level allows for the microservices namespace that the app chart's own
+# NetworkPolicies (managed in the microservices GitOps repo) don't cover correctly
+# under enforcement:
+#   - gateway/microservice apps -> their CloudNativePG Postgres (pooler + instances)
+#     on 5432. The chart's gateway-policy/microservice-policy egress targets
+#     app.kubernetes.io/name: postgres-*[-pooler], which NO CNPG pod carries (CNPG
+#     labels pods app.kubernetes.io/name=postgresql + cnpg.io/cluster=<name>), so
+#     under enforcement liquibase times out and the apps CrashLoop. This selects by
+#     cnpg.io/cluster, which they do carry.
+#   - Prometheus (observability) -> CNPG metrics on 9187 (the postgres-policy
+#     ingress only allows 5432).
+# Additive: a SEPARATE policy the ArgoCD microservices app does not own, so it is
+# not reverted on sync, and (being in git) it survives cluster recreates. The
+# durable app-side fix still belongs in the GitOps chart's egress selectors.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: microservices-cnpg-platform
+  namespace: microservices
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  egress:
+  - to:
+    - podSelector:
+        matchExpressions:
+        - key: cnpg.io/cluster
+          operator: Exists
+    ports:
+    - protocol: TCP
+      port: 5432
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: observability
+    ports:
+    - protocol: TCP
+      port: 9187
