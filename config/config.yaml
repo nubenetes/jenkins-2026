@@ -81,7 +81,7 @@ tekton:
   # pre-populated with runnable entries (click Rerun) from the first provision — at
   # the cost of one build per service per Day1. Default false: PaC's git-push
   # trigger is the normal path. Ephemeral override: JENKINS2026_TEKTON_SEED_RUNS.
-  seedRuns: false
+  seedRuns: true
   # Reference of the pinned component versions. The EFFECTIVE manifests are
   # VENDORED at argocd/tekton/components/*/ (release*.yaml) because Tekton now
   # publishes these only as GitHub release assets, not on the GCS bucket - keep
