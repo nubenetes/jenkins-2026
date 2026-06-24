@@ -126,3 +126,62 @@ spec:
         cidr: 35.191.0.0/16
   egress:
   - {}
+---
+# Baseline ingress-hardening for the ArgoCD UI namespace (zero-trust): deny
+# inbound to the internal components (repo-server, redis, dex, controllers) from
+# OTHER namespaces, while keeping argocd-server's API/UI ports reachable. Egress
+# stays open (ArgoCD reaches the API server of every namespace, git, and OCI
+# registries). No admission webhooks here, so this is safe under Dataplane V2.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: argocd-baseline
+  namespace: argocd
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Intra-namespace mesh (server <-> repo-server <-> redis <-> dex <-> the
+  # application/applicationset controllers).
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: argocd
+  # argocd-server API/UI (80/443) reachable from ANY source — covers the GKE
+  # Gateway + health checks, the Tekton/Jenkins gitops-deploy syncs, the CI token
+  # bootstrap (kubectl port-forward), and the argocd CLI. Only argocd-server
+  # listens on these ports, so this does not expose the internal components.
+  - ports:
+    - protocol: TCP
+      port: 80
+    - protocol: TCP
+      port: 443
+  egress:
+  - {}
+---
+# Baseline ingress-hardening for Headlamp (zero-trust): the only inbound is the
+# GKE Gateway to the UI (port 80); Headlamp reaches the Kubernetes API via
+# egress. No admission webhooks, so safe under Dataplane V2.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: headlamp-baseline
+  namespace: headlamp
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: headlamp
+  # Headlamp UI (80) from any source — GKE Gateway + health checks.
+  - ports:
+    - protocol: TCP
+      port: 80
+  egress:
+  - {}
