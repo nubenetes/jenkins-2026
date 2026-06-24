@@ -131,6 +131,9 @@ jobs:
       - name: Summary
         if: always()
         run: |
+          domain="$(yq '.platform.baseDomain' config/config.yaml 2>/dev/null || true)"
+          grafana_url=""
+          [[ -n "${domain}" ]] && grafana_url="https://grafana.${domain}"
           {
             echo "### OSS Grafana refreshed"
             echo
@@ -140,4 +143,9 @@ jobs:
             echo
             echo "The in-cluster OSS stack itself is GitOps-managed by ArgoCD"
             echo "(\`argocd/observability-oss\`); commits auto-sync."
+            if [[ -n "${grafana_url}" ]]; then
+              echo
+              echo "**Grafana:** ${grafana_url}"
+            fi
           } >> "${GITHUB_STEP_SUMMARY}"
+          [[ -n "${grafana_url}" ]] && echo "Grafana: ${grafana_url}"
