@@ -126,6 +126,65 @@ jobs:
             --zone "$(terraform output -raw location)" \
             --project "${{ secrets.GCP_PROJECT_ID }}"
 
+      # Read the Grafana URL from the cluster Secret BEFORE any cloud login step.
+      # configure-aws-credentials (and az login) register secrets as masked values,
+      # which would replace the region/token in any URL printed afterwards with ***.
+      # We surface the URL via GITHUB_ENV so Summary can print it unmasked.
+      - name: Read Grafana URL from cluster Secret
+        id: read-grafana-url
+        run: |
+          MODE="${{ steps.detect-mode.outputs.mode }}"
+          NS="observability"
+          url=""
+          case "${MODE}" in
+            managed-aws)
+              url="$(kubectl get secret aws-managed-credentials -n "${NS}" \
+                -o jsonpath='{.data.GRAFANA_BASE_URL}' 2>/dev/null | base64 -d || true)" ;;
+            managed-azure)
+              url="$(kubectl get secret azure-monitor-credentials -n "${NS}" \
+                -o jsonpath='{.data.GRAFANA_BASE_URL}' 2>/dev/null | base64 -d || true)" ;;
+            grafana-cloud)
+              url="$(kubectl get secret grafana-cloud-credentials -n "${NS}" \
+                -o jsonpath='{.data.GRAFANA_BASE_URL}' 2>/dev/null | base64 -d || true)" ;;
+            oss)
+              domain="$(yq '.platform.baseDomain' config/config.yaml 2>/dev/null || true)"
+              [[ -n "${domain}" ]] && url="https://grafana.${domain}" ;;
+          esac
+          [[ -n "${url}" ]] && echo "GRAFANA_BASE_URL=${url}" >> "${GITHUB_ENV}"
+          [[ -n "${url}" ]] && echo "Grafana: ${url}"
+
+      # Summary runs BEFORE cloud login steps so configure-aws-credentials /
+      # az login have not yet registered secrets as masked values — the Grafana
+      # URL (which contains the AWS region) would otherwise print as ***.
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Grafana alerts published"
+            echo
+            echo "Provisioned contact point, notification policy, and alert rules"
+            echo "from \`observability/grafana/alerting/\` via the Grafana provisioning API."
+            echo
+            echo "- Observability mode: \`$(yq '.observability.mode' config/config.yaml)\` (from config/config.yaml)"
+            echo "- Cluster: \`${{ secrets.GCP_PROJECT_ID }}\`"
+            if [[ -n "${GRAFANA_BASE_URL:-}" ]]; then
+              echo
+              echo "**Grafana:** ${GRAFANA_BASE_URL}"
+            fi
+            echo
+            echo "To add rules: drop a JSON file into \`observability/grafana/alerting/rules/\`"
+            echo "following the existing format, then re-run this workflow."
+            echo
+            echo "**Alert email resolution** (highest → lowest priority):"
+            echo "1. \`GRAFANA_ALERT_EMAIL_<MODE>\` — per-mode secret, e.g. \`GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD\`"
+            echo "2. \`GRAFANA_ALERT_EMAIL\` — generic override for all modes"
+            echo "3. \`jenkins-credentials.oidc-admin-email\` — cluster default (JENKINS_OIDC_ADMIN_EMAIL)"
+            echo
+            echo "Grafana Cloud requires the address to be an org member — set"
+            echo "\`GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD\` when that differs from your OIDC admin email."
+          } >> "${GITHUB_STEP_SUMMARY}"
+          [[ -n "${GRAFANA_BASE_URL:-}" ]] && echo "Grafana: ${GRAFANA_BASE_URL}"
+
       # managed-aws: authenticate via GitHub OIDC before calling
       # 'aws grafana create-workspace-api-key' inside the script.
       # Only runs when managed-aws is explicitly selected — avoids spurious
@@ -154,27 +213,3 @@ jobs:
           GRAFANA_ALERT_EMAIL_MANAGED_AZURE: ${{ secrets.GRAFANA_ALERT_EMAIL_MANAGED_AZURE }}
           GRAFANA_ALERT_EMAIL_MANAGED_AWS: ${{ secrets.GRAFANA_ALERT_EMAIL_MANAGED_AWS }}
         run: ./scripts/07.5-grafana-alerts.sh
-
-      - name: Summary
-        if: always()
-        run: |
-          {
-            echo "### Grafana alerts published"
-            echo
-            echo "Provisioned contact point, notification policy, and alert rules"
-            echo "from \`observability/grafana/alerting/\` via the Grafana provisioning API."
-            echo
-            echo "- Observability mode: \`$(yq '.observability.mode' config/config.yaml)\` (from config/config.yaml)"
-            echo "- Cluster: \`${{ secrets.GCP_PROJECT_ID }}\`"
-            echo
-            echo "To add rules: drop a JSON file into \`observability/grafana/alerting/rules/\`"
-            echo "following the existing format, then re-run this workflow."
-            echo
-            echo "**Alert email resolution** (highest → lowest priority):"
-            echo "1. \`GRAFANA_ALERT_EMAIL_<MODE>\` — per-mode secret, e.g. \`GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD\`"
-            echo "2. \`GRAFANA_ALERT_EMAIL\` — generic override for all modes"
-            echo "3. \`jenkins-credentials.oidc-admin-email\` — cluster default (JENKINS_OIDC_ADMIN_EMAIL)"
-            echo
-            echo "Grafana Cloud requires the address to be an org member — set"
-            echo "\`GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD\` when that differs from your OIDC admin email."
-          } >> "${GITHUB_STEP_SUMMARY}"
