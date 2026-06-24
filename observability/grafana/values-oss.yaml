@@ -155,7 +155,7 @@ grafana:
     - name: Prometheus
       type: prometheus
       uid: prometheus
-      url: http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090
+      url: http://oss-kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090
       access: proxy
       isDefault: true
       jsonData:
@@ -172,7 +172,7 @@ grafana:
     - name: Loki
       type: loki
       uid: loki
-      url: http://loki-gateway.observability.svc.cluster.local
+      url: http://oss-loki-gateway.observability.svc.cluster.local
       access: proxy
       jsonData:
         derivedFields:
@@ -194,7 +194,7 @@ grafana:
       # no 3200->3100 remap and no 3100 port at all). Pointing the datasource at
       # 3100 silently breaks every Tempo query - the panels look empty even
       # though spans are ingested fine.
-      url: http://tempo.observability.svc.cluster.local:3200
+      url: http://oss-tempo.observability.svc.cluster.local:3200
       access: proxy
       jsonData:
         tracesToLogsV2:
