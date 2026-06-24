@@ -76,6 +76,12 @@ tekton:
   namespace: tekton-pipelines
   # Namespace PipelineRuns execute in (service account, registry/git creds, RBAC).
   pipelineNamespace: tekton-ci
+  # When true, Day1 (06-tekton-pipelines.sh) ALSO seeds one PipelineRun per service
+  # under Pipelines-as-Code (from tekton/runs/), so the Tekton Dashboard is
+  # pre-populated with runnable entries (click Rerun) from the first provision — at
+  # the cost of one build per service per Day1. Default false: PaC's git-push
+  # trigger is the normal path. Ephemeral override: JENKINS2026_TEKTON_SEED_RUNS.
+  seedRuns: false
   # Reference of the pinned component versions. The EFFECTIVE manifests are
   # VENDORED at argocd/tekton/components/*/ (release*.yaml) because Tekton now
   # publishes these only as GitHub release assets, not on the GCS bucket - keep
