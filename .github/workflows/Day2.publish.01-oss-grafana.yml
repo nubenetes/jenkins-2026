@@ -114,10 +114,28 @@ jobs:
         run: |
           source scripts/lib/common.sh
           source scripts/lib/config.sh
+          # Ship only the ACTIVE CI engine's overview (jenkins XOR tekton); the
+          # off-engine one would render empty. Detect the DEPLOYED engine from the
+          # cluster, NOT config.yaml: config.yaml's ci.engine is the repo default
+          # (jenkins) and does not reflect the JENKINS2026_CI_ENGINE override a
+          # tekton cluster was deployed with. The Jenkins StatefulSet only exists
+          # in jenkins mode (tekton mode retires it), so its presence is the
+          # authoritative signal. Mirror scripts/03-observability.sh: stage to a
+          # temp dir and drop the off-engine dashboard before building the ConfigMap.
+          if kubectl get statefulset "${J2026_JENKINS_RELEASE}" -n "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
+            _skip_ci="tekton-overview"
+          else
+            _skip_ci="jenkins-overview"
+          fi
+          echo "Detected CI engine dashboard to keep (skipping ${_skip_ci})"
+          _dash_stage="$(mktemp -d)"
+          cp observability/grafana/dashboards/*.json "${_dash_stage}/"
+          rm -f "${_dash_stage}/${_skip_ci}.json"
           kubectl create configmap jenkins-2026-grafana-dashboards \
             -n "${J2026_GRAFANA_OSS_NAMESPACE}" \
-            --from-file=observability/grafana/dashboards \
+            --from-file="${_dash_stage}" \
             --dry-run=client -o yaml | kubectl apply -f -
+          rm -rf "${_dash_stage}"
 
       - name: Nudge ArgoCD to re-sync observability-oss (best-effort)
         run: |
