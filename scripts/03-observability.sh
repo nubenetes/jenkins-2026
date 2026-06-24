@@ -250,13 +250,13 @@ EOT
     # (07-grafana-dashboards no-op, 07.5-grafana-alerts) talk to Grafana.
     log_step "Waiting for ArgoCD to provision the OSS observability stack (Grafana)"
     if timeout 300 bash -c "
-      until kubectl get deployment kube-prometheus-stack-grafana -n '${J2026_GRAFANA_OSS_NAMESPACE}' >/dev/null 2>&1; do
+      until kubectl get deployment oss-kube-prometheus-stack-grafana -n '${J2026_GRAFANA_OSS_NAMESPACE}' >/dev/null 2>&1; do
         sleep 5
       done
     "; then
-      wait_for_deployment "kube-prometheus-stack-grafana" "${J2026_GRAFANA_OSS_NAMESPACE}"
+      wait_for_deployment "oss-kube-prometheus-stack-grafana" "${J2026_GRAFANA_OSS_NAMESPACE}"
     else
-      log_warn "kube-prometheus-stack-grafana did not appear within 5m — check 'kubectl -n argocd get applications' (observability-oss / oss-kube-prometheus-stack)."
+      log_warn "oss-kube-prometheus-stack-grafana did not appear within 5m — check 'kubectl -n argocd get applications' (observability-oss / oss-kube-prometheus-stack)."
     fi
     wait_for_deployment "otel-collector-gateway" "${J2026_OBS_NAMESPACE}"
     ;;

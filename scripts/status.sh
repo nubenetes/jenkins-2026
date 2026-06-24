@@ -34,5 +34,5 @@ log_info "Jenkins UI:   kubectl -n ${J2026_JENKINS_NAMESPACE} port-forward svc/$
 log_info "ArgoCD UI:    kubectl -n ${J2026_ARGOCD_NAMESPACE} port-forward svc/${J2026_ARGOCD_RELEASE}-server 8081:443 (login: admin / see argocd-initial-admin-secret secret)"
 log_info "Microservices UI (stable):  kubectl -n ${J2026_MICROSERVICES_NS_STABLE} port-forward svc/microservices-angular 8082:8080"
 if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
-  log_info "Grafana:      kubectl -n ${J2026_GRAFANA_OSS_NAMESPACE} port-forward svc/kube-prometheus-stack-grafana 3000:80  (login: admin / see kube-prometheus-stack-grafana secret)"
+  log_info "Grafana:      kubectl -n ${J2026_GRAFANA_OSS_NAMESPACE} port-forward svc/oss-kube-prometheus-stack-grafana 3000:80  (login: admin / see oss-kube-prometheus-stack-grafana secret)"
 fi
