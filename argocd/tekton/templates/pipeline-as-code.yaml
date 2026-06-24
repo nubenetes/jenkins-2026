@@ -20,6 +20,12 @@ spec:
     path: tekton
     directory:
       recurse: true
+      # Exclude tekton/runs/ — those are ready-to-run PipelineRun manifests with
+      # generateName, meant for manual `kubectl create` / Dashboard one-click (and
+      # the opt-in tekton.seedRuns Day1 seeding). ArgoCD cannot manage generateName
+      # objects (no stable name to diff), so syncing them leaves the app permanently
+      # OutOfSync. (pac/ Repository CRs DO have stable names and stay ArgoCD-managed.)
+      exclude: 'runs/*'
   destination:
     server: https://kubernetes.default.svc
     # Namespace-less resources (Tasks, Pipelines, EventListener, ServiceAccounts)
