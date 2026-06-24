@@ -147,6 +147,18 @@ grafana:
       # per organization can be marked as default", see
       # prometheus-community/helm-charts#482). Disable the chart's copy.
       defaultDatasourceEnabled: false
+    # File-based alerting provisioning. Grafana's DB is ephemeral here
+    # (persistence.enabled: false above), so alert rules pushed via the HTTP
+    # provisioning API would be lost on every Grafana pod restart (e.g. an
+    # ArgoCD Replace sync or a node eviction). Instead scripts/07.5-grafana-alerts.sh
+    # (oss branch) writes a Grafana file-provisioning document into a ConfigMap
+    # labelled grafana_alert=1; this sidecar mounts it into provisioning/alerting/
+    # on startup, so the rules/contact-point/policy are re-applied every boot and
+    # survive restarts. Other obs modes use external Grafana (API provisioning).
+    alerts:
+      enabled: true
+      label: grafana_alert
+      labelValue: "1"
 
   # Loki + Tempo datasources, plus our own "Prometheus" entry (replacing the
   # chart's auto-provisioned one, see sidecar.datasources above) with
