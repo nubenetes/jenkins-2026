@@ -173,3 +173,32 @@ otel_agent_injected() {
   done
   return "${found}"
 }
+
+# --- active CI engine resolution --------------------------------------------
+#
+# j2026_active_ci_engine - echoes the ACTIVE CI engine ("jenkins" or "tekton"),
+# resolved with this precedence:
+#   1. An explicit JENKINS2026_CI_ENGINE override (Day1 matrix sets it on every
+#      cluster-touching step, so this branch wins during provisioning and avoids
+#      any "is the engine deployed yet?" race).
+#   2. Detection from the live cluster: the Jenkins StatefulSet exists only in
+#      jenkins mode (04-tekton.sh retires it), and the Tekton controller exists
+#      only in tekton mode. This is what makes a STANDALONE Day2.publish run
+#      correct regardless of config.yaml's ci.engine default (which is just the
+#      repo default and may not match what the cluster was deployed with).
+#   3. The config.yaml value (J2026_CI_ENGINE) when no cluster is reachable.
+j2026_active_ci_engine() {
+  if [[ -n "${JENKINS2026_CI_ENGINE:-}" ]]; then
+    echo "${JENKINS2026_CI_ENGINE}"
+    return
+  fi
+  if kubectl get statefulset "${J2026_JENKINS_RELEASE}" -n "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
+    echo "jenkins"
+    return
+  fi
+  if kubectl get deployment tekton-pipelines-controller -n "${J2026_TEKTON_NAMESPACE}" >/dev/null 2>&1; then
+    echo "tekton"
+    return
+  fi
+  echo "${J2026_CI_ENGINE}"
+}
