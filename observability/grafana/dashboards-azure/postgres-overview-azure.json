@@ -30,7 +30,7 @@
         "y": 0
       },
       "id": 100,
-      "title": "Tekton CI \u2014 pipeline & task runs (controller metrics)",
+      "title": "PostgreSQL / CloudNativePG \u2014 cluster health (cnpg_* metrics)",
       "type": "row",
       "panels": []
     },
@@ -39,7 +39,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "PipelineRuns currently executing (tekton_pipelines_controller_running_pipelineruns).",
+      "description": "PostgreSQL instances reporting up (cnpg_collector_up == 1) across the microservices CNPG clusters.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -49,8 +49,12 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "red",
                 "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
               }
             ]
           },
@@ -87,13 +91,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(tekton_pipelines_controller_running_pipelineruns)",
-          "legendFormat": "running",
+          "expr": "sum(cnpg_collector_up{namespace=\"microservices\"})",
+          "legendFormat": "up",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Running PipelineRuns",
+      "title": "Instances Up",
       "type": "stat"
     },
     {
@@ -101,7 +105,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "TaskRuns currently executing (tekton_pipelines_controller_running_taskruns).",
+      "description": "Total active backends/connections across all instances (cnpg_backends_total).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -113,6 +117,14 @@
               {
                 "color": "green",
                 "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 150
               }
             ]
           },
@@ -149,13 +161,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(tekton_pipelines_controller_running_taskruns)",
-          "legendFormat": "running",
+          "expr": "sum(cnpg_backends_total{namespace=\"microservices\"})",
+          "legendFormat": "connections",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Running TaskRuns",
+      "title": "Total Connections",
       "type": "stat"
     },
     {
@@ -163,32 +175,22 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Share of PipelineRuns that completed with status=success over the dashboard range.",
+      "description": "Total on-disk size of all databases (cnpg_pg_database_size_bytes).",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
-          "max": 1,
-          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 0.8
-              },
-              {
                 "color": "green",
-                "value": 0.99
+                "value": null
               }
             ]
           },
-          "unit": "percentunit"
+          "unit": "bytes"
         },
         "overrides": []
       },
@@ -199,68 +201,6 @@
         "y": 1
       },
       "id": 3,
-      "options": {
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "textMode": "auto"
-      },
-      "pluginVersion": "10.4.0",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "(sum(increase(tekton_pipelines_controller_pipelinerun_total{status=\"success\"}[$__range])) or vector(0)) / clamp_min(sum(increase(tekton_pipelines_controller_pipelinerun_total[$__range])), 1)",
-          "legendFormat": "success rate",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "PipelineRun Success Rate",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "description": "Total PipelineRuns started in the dashboard range (tekton_pipelines_controller_pipelinerun_total).",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 18,
-        "y": 1
-      },
-      "id": 4,
       "options": {
         "colorMode": "value",
         "graphMode": "area",
@@ -283,13 +223,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(tekton_pipelines_controller_pipelinerun_total[$__range]))",
-          "legendFormat": "pipelineruns",
+          "expr": "sum(cnpg_pg_database_size_bytes{namespace=\"microservices\"})",
+          "legendFormat": "size",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "PipelineRuns (range)",
+      "title": "Total Database Size",
       "type": "stat"
     },
     {
@@ -297,7 +237,77 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "PipelineRun completion rate by status (success / failed / cancelled).",
+      "description": "Worst replication lag across replicas (cnpg_pg_replication_lag, seconds). 0 when all replicas are caught up.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 30
+              }
+            ]
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 1
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "pluginVersion": "10.4.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "max(cnpg_pg_replication_lag{namespace=\"microservices\"})",
+          "legendFormat": "lag",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "Max Replication Lag",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Active backends per instance pod (cnpg_backends_total).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -305,12 +315,8 @@
           },
           "custom": {
             "drawStyle": "line",
-            "fillOpacity": 20,
-            "lineWidth": 1,
-            "stacking": {
-              "group": "A",
-              "mode": "normal"
-            }
+            "fillOpacity": 10,
+            "lineWidth": 2
           },
           "unit": "short"
         },
@@ -323,63 +329,6 @@
         "y": 6
       },
       "id": 5,
-      "options": {
-        "legend": {
-          "calcs": [
-            "sum"
-          ],
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum by (status) (rate(tekton_pipelines_controller_pipelinerun_total[$__rate_interval]))",
-          "legendFormat": "{{status}}",
-          "range": true,
-          "refId": "A"
-        }
-      ],
-      "title": "PipelineRuns by Status",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "description": "PipelineRun wall-clock duration percentiles (tekton_pipelines_controller_pipelinerun_duration_seconds).",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "lineWidth": 2
-          },
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 6
-      },
-      "id": 6,
       "options": {
         "legend": {
           "calcs": [
@@ -402,24 +351,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(tekton_pipelines_controller_pipelinerun_duration_seconds_bucket[$__rate_interval])))",
-          "legendFormat": "p95",
+          "expr": "sum by (pod) (cnpg_backends_total{namespace=\"microservices\"})",
+          "legendFormat": "{{pod}}",
           "range": true,
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(tekton_pipelines_controller_pipelinerun_duration_seconds_bucket[$__rate_interval])))",
-          "legendFormat": "p50",
-          "range": true,
-          "refId": "B"
         }
       ],
-      "title": "PipelineRun Duration (p50 / p95)",
+      "title": "Connections by Instance",
       "type": "timeseries"
     },
     {
@@ -427,7 +365,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "TaskRuns by status (tekton_pipelines_controller_taskrun_total).",
+      "description": "Database on-disk size per instance/database (cnpg_pg_database_size_bytes).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -435,28 +373,24 @@
           },
           "custom": {
             "drawStyle": "line",
-            "fillOpacity": 20,
-            "lineWidth": 1,
-            "stacking": {
-              "group": "A",
-              "mode": "normal"
-            }
+            "fillOpacity": 10,
+            "lineWidth": 2
           },
-          "unit": "short"
+          "unit": "bytes"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 0,
-        "y": 14
+        "x": 12,
+        "y": 6
       },
-      "id": 7,
+      "id": 6,
       "options": {
         "legend": {
           "calcs": [
-            "sum"
+            "max"
           ],
           "displayMode": "table",
           "placement": "bottom",
@@ -474,13 +408,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (status) (rate(tekton_pipelines_controller_taskrun_total[$__rate_interval]))",
-          "legendFormat": "{{status}}",
+          "expr": "sum by (pod, datname) (cnpg_pg_database_size_bytes{namespace=\"microservices\"})",
+          "legendFormat": "{{pod}} / {{datname}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "TaskRuns by Status",
+      "title": "Database Size by Instance",
       "type": "timeseries"
     },
     {
@@ -488,7 +422,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Time from TaskRun creation to its pod starting (tekton_pipelines_controller_taskruns_pod_latency_milliseconds) \u2014 scheduling/startup overhead.",
+      "description": "WAL generation rate per instance (rate of cnpg_collector_wal_bytes) \u2014 write/transaction throughput proxy.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -499,7 +433,65 @@
             "fillOpacity": 10,
             "lineWidth": 2
           },
-          "unit": "ms"
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "id": 7,
+      "options": {
+        "legend": {
+          "calcs": [
+            "max",
+            "mean"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum by (pod) (rate(cnpg_collector_wal_bytes{namespace=\"microservices\"}[$__rate_interval]))",
+          "legendFormat": "{{pod}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "WAL Generation Rate",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Replication lag per instance in seconds (cnpg_pg_replication_lag) and number of streaming replicas connected.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineWidth": 2
+          },
+          "unit": "s"
         },
         "overrides": []
       },
@@ -532,13 +524,13 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(tekton_pipelines_controller_taskruns_pod_latency_milliseconds_bucket[$__rate_interval])))",
-          "legendFormat": "p95 pod latency",
+          "expr": "max by (pod) (cnpg_pg_replication_lag{namespace=\"microservices\"})",
+          "legendFormat": "{{pod}} lag",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "TaskRun Pod Scheduling Latency (p95)",
+      "title": "Replication Lag by Instance",
       "type": "timeseries"
     },
     {
@@ -550,7 +542,7 @@
         "y": 22
       },
       "id": 101,
-      "title": "Logs & Traces (pipeline execution)",
+      "title": "PostgreSQL logs",
       "type": "row",
       "panels": []
     },
@@ -559,10 +551,10 @@
         "type": "grafana-azure-monitor-datasource",
         "uid": "azure-monitor-oob"
       },
-      "description": "Logs from the Tekton pipeline-execution namespaces (the PipelineRun/TaskRun pods).",
+      "description": "Logs from the CNPG Postgres instance pods (the 'postgres' container) in the microservices namespace.",
       "gridPos": {
         "h": 9,
-        "w": 12,
+        "w": 24,
         "x": 0,
         "y": 23
       },
@@ -595,68 +587,7 @@
           "refId": "A"
         }
       ],
-      "title": "Tekton Pipeline Pod Logs",
-      "type": "table",
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
-      },
-      "description": "Distributed traces emitted by the Tekton pipeline (the steps export OTLP to the collector). Use to drill into a single PipelineRun's spans.",
-      "gridPos": {
-        "h": 9,
-        "w": 12,
-        "x": 12,
-        "y": 23
-      },
-      "id": 10,
-      "options": {
-        "edges": {},
-        "nodes": {}
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
-          },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "union requests, dependencies\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, operation_Id, cloud_RoleName, name, duration, success, itemType\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
-          "refId": "A"
-        }
-      ],
-      "title": "Tekton Pipeline Traces",
+      "title": "Postgres Pod Logs",
       "type": "table",
       "fieldConfig": {
         "defaults": {},
@@ -687,8 +618,9 @@
   "schemaVersion": 39,
   "tags": [
     "jenkins-2026",
-    "tekton",
-    "ci"
+    "postgres",
+    "cnpg",
+    "database"
   ],
   "templating": {
     "list": [
@@ -747,8 +679,8 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "Jenkins-2026 Tekton CI Observability",
-  "uid": "jenkins2026-tekton-overview",
+  "title": "Jenkins-2026 PostgreSQL / CloudNativePG",
+  "uid": "jenkins2026-postgres-overview",
   "version": 1,
   "weekStart": ""
 }
