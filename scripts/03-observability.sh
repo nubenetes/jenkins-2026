@@ -17,7 +17,10 @@
 #     "${J2026_AZURE_MONITOR_SECRET}" Secret - see
 #     observability/otel-collector/secret-managed-azure.example.yaml.
 #
-#   managed-aws - documented stub; no resources created (planned).
+#   managed-aws - two opentelemetry-collector releases exporting to AWS (metrics
+#     -> Amazon Managed Service for Prometheus via remote-write with SigV4;
+#     traces/logs -> X-Ray/CloudWatch). Visualized in Amazon Managed Grafana.
+#     Auth via the GKE->AWS OIDC web-identity role (no access keys).
 #
 # Requires scripts/02-otel-operator.sh to have run first (CRDs).
 set -euo pipefail
