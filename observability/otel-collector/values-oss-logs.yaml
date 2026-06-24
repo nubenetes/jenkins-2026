@@ -93,7 +93,7 @@ config:
 
   exporters:
     otlphttp/loki:
-      endpoint: http://loki-gateway.observability.svc.cluster.local/otlp
+      endpoint: http://oss-loki-gateway.observability.svc.cluster.local/otlp
       tls:
         insecure: true
 

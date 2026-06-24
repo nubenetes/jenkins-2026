@@ -116,24 +116,24 @@ config:
 
   exporters:
     otlp/tempo:
-      endpoint: tempo.observability.svc.cluster.local:4317
+      endpoint: oss-tempo.observability.svc.cluster.local:4317
       tls:
         insecure: true
     otlphttp/loki:
       # Loki >= 3.0 native OTLP endpoint.
-      endpoint: http://loki-gateway.observability.svc.cluster.local/otlp
+      endpoint: http://oss-loki-gateway.observability.svc.cluster.local/otlp
       tls:
         insecure: true
     prometheusremotewrite:
       # Requires `--web.enable-remote-write-receiver` on the
       # kube-prometheus-stack Prometheus (enableRemoteWriteReceiver in
       # grafana/values-oss.yaml). The Service name must match the one the chart
-      # actually creates - "kube-prometheus-stack-prometheus" (release name
-      # "kube-prometheus-stack") - which is also the Prometheus datasource URL
-      # in grafana/values-oss.yaml. Pointing it at a non-existent Service
-      # silently drops the span-metrics/service-graph remote-write, leaving the
-      # traces->metrics correlation and service map empty.
-      endpoint: http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090/api/v1/write
+      # actually creates - "oss-kube-prometheus-stack-prometheus" (the ArgoCD
+      # app-of-apps release name is "oss-kube-prometheus-stack") - which is also
+      # the Prometheus datasource URL in grafana/values-oss.yaml. Pointing it at
+      # a non-existent Service silently drops the span-metrics/service-graph
+      # remote-write, leaving the traces->metrics correlation and service map empty.
+      endpoint: http://oss-kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090/api/v1/write
       resource_to_telemetry_conversion:
         enabled: true
 

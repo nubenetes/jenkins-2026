@@ -42,4 +42,4 @@ traces:
 # values-oss.yaml) are written back into Prometheus via remote-write.
 metricsGenerator:
   enabled: true
-  remoteWriteUrl: http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090/api/v1/write
+  remoteWriteUrl: http://oss-kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090/api/v1/write
