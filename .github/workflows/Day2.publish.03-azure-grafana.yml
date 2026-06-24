@@ -86,7 +86,13 @@ jobs:
           appinsights="$(az graph query -q "resources | where type =~ 'microsoft.insights/components' | project id" --query 'data[0].id' -o tsv)"
           echo "Publishing to ${grafana} (${rg}); App Insights: ${appinsights##*/}"
           # Publish only the active CI engine's overview (jenkins XOR tekton).
-          if [ "${{ inputs.ci_engine }}" = "tekton" ]; then skip_ci="jenkins-overview-azure"; else skip_ci="tekton-overview-azure"; fi
+          if [ "${{ inputs.ci_engine }}" = "tekton" ]; then
+            skip_ci="jenkins-overview-azure"
+            delete_uid="jenkins2026-jenkins-overview"
+          else
+            skip_ci="tekton-overview-azure"
+            delete_uid="jenkins2026-tekton-overview"
+          fi
           for f in observability/grafana/dashboards-azure/*-azure.json; do
             [ "$(basename "${f}" .json)" = "${skip_ci}" ] && { echo "skipping ${skip_ci} (ci_engine=${{ inputs.ci_engine }})"; continue; }
             sed "s|\${appinsights}|${appinsights}|g" "${f}" > /tmp/dash.json
@@ -97,6 +103,16 @@ jobs:
               echo "::warning::failed to publish $(basename "${f}")"
             fi
           done
+          # Delete the off-engine CI overview if it still exists from a previous run.
+          if az grafana dashboard show -n "${grafana}" -g "${rg}" \
+               --definition "${delete_uid}" --only-show-errors >/dev/null 2>&1; then
+            if az grafana dashboard delete -n "${grafana}" -g "${rg}" \
+                 --definition "${delete_uid}" --only-show-errors; then
+              echo "deleted off-engine dashboard ${delete_uid}"
+            else
+              echo "::warning::could not delete off-engine dashboard ${delete_uid}"
+            fi
+          fi
 
       - name: Skipped (no AZURE_CLIENT_ID)
         if: ${{ env.AZURE_CLIENT_ID == '' }}

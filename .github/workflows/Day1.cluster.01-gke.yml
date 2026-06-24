@@ -568,9 +568,13 @@ jobs:
           # auto-select at view time). Kept out of the repo - resolved here.
           appinsights="$(az graph query -q "resources | where type =~ 'microsoft.insights/components' | project id" --query 'data[0].id' -o tsv)"
           echo "Publishing to ${grafana} (${rg}); App Insights: ${appinsights##*/}"
-          # Skip the off-engine CI overview (jenkins XOR tekton) matching
-          # the same logic as 07-grafana-dashboards.sh::is_offengine_dashboard.
-          [[ "${JENKINS2026_CI_ENGINE}" == "tekton" ]] && skip_dash="jenkins-overview" || skip_dash="tekton-overview"
+          # Skip the off-engine CI overview (jenkins XOR tekton) and delete it
+          # if it still exists from a previous run with a different engine.
+          if [[ "${JENKINS2026_CI_ENGINE}" == "tekton" ]]; then
+            skip_dash="jenkins-overview"; delete_uid="jenkins2026-jenkins-overview"
+          else
+            skip_dash="tekton-overview";  delete_uid="jenkins2026-tekton-overview"
+          fi
           for f in observability/grafana/dashboards-azure/*-azure.json; do
             name="$(basename "${f}" -azure.json)"
             if [[ "${name}" == "${skip_dash}" ]]; then
@@ -585,6 +589,13 @@ jobs:
               echo "::warning::failed to publish $(basename "${f}")"
             fi
           done
+          if az grafana dashboard show -n "${grafana}" -g "${rg}" \
+               --definition "${delete_uid}" --only-show-errors >/dev/null 2>&1; then
+            az grafana dashboard delete -n "${grafana}" -g "${rg}" \
+              --definition "${delete_uid}" --only-show-errors \
+              && echo "deleted off-engine dashboard ${delete_uid}" \
+              || echo "::warning::could not delete off-engine dashboard ${delete_uid}"
+          fi
           # Generic Kubernetes/node infra is covered by Azure Managed Grafana's
           # built-in dashboards (Compute Resources / Kubelet / Node Exporter /
           # USE Method), auto-provisioned from the Azure Monitor workspace
