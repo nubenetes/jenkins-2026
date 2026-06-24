@@ -244,7 +244,7 @@ spec:
     - "${J2026_GATEWAY_GRAFANA_HOST}"
   rules:
     - backendRefs:
-        - name: kube-prometheus-stack-grafana
+        - name: oss-kube-prometheus-stack-grafana
           port: 80
 EOT
 
@@ -252,7 +252,7 @@ EOT
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
 metadata:
-  name: kube-prometheus-stack-grafana
+  name: oss-kube-prometheus-stack-grafana
   namespace: ${J2026_GRAFANA_OSS_NAMESPACE}
 spec:
   default:
@@ -263,7 +263,7 @@ spec:
   targetRef:
     group: ""
     kind: Service
-    name: kube-prometheus-stack-grafana
+    name: oss-kube-prometheus-stack-grafana
 EOT
 fi
 
@@ -445,7 +445,7 @@ spec:
   targetRef:
     group: ""
     kind: Service
-    name: kube-prometheus-stack-grafana
+    name: oss-kube-prometheus-stack-grafana
   default:
     iap:
       enabled: true
