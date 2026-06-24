@@ -160,15 +160,16 @@ spec:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: argocd
-  # argocd-server API/UI (80/443) reachable from ANY source — covers the GKE
-  # Gateway + health checks, the Tekton/Jenkins gitops-deploy syncs, the CI token
-  # bootstrap (kubectl port-forward), and the argocd CLI. Only argocd-server
-  # listens on these ports, so this does not expose the internal components.
+  # argocd-server reachable from ANY source — covers the GKE Gateway + health
+  # checks, the Tekton/Jenkins gitops-deploy syncs, the CI token bootstrap
+  # (kubectl port-forward) and the argocd CLI. NOTE: this is the POD port (8080,
+  # the argocd-server containerPort that both Service ports 80 and 443 target) —
+  # the GKE container-native LB (NEG) sends to the pod's targetPort, NOT the
+  # Service port, so allowing 80/443 here left the backend UNHEALTHY. Only
+  # argocd-server listens on 8080, so the internal components stay closed.
   - ports:
     - protocol: TCP
-      port: 80
-    - protocol: TCP
-      port: 443
+      port: 8080
   egress:
   - {}
 ---
@@ -190,9 +191,11 @@ spec:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: headlamp
-  # Headlamp UI (80) from any source — GKE Gateway + health checks.
+  # Headlamp UI from any source — GKE Gateway + health checks. POD port 4466
+  # (the headlamp containerPort that Service port 80 targets) — the container-
+  # native LB sends to the pod's targetPort, not the Service port.
   - ports:
     - protocol: TCP
-      port: 80
+      port: 4466
   egress:
   - {}
