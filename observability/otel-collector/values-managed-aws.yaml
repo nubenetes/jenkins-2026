@@ -199,6 +199,28 @@ config:
                 action: keep
               - target_label: cluster
                 replacement: jenkins-2026
+          # CloudNativePG (CNPG) Postgres metrics (cnpg_*/pg_*) from the
+          # postgres-* cluster instance pods (metrics port 9187). In oss mode
+          # the in-cluster Prometheus scrapes these via the CNPG PodMonitor.
+          - job_name: cnpg
+            scrape_interval: 30s
+            kubernetes_sd_configs:
+              - role: pod
+                namespaces:
+                  names: [microservices]
+            relabel_configs:
+              - source_labels: [__meta_kubernetes_pod_label_cnpg_io_podRole]
+                regex: instance
+                action: keep
+              - source_labels: [__meta_kubernetes_pod_container_port_number]
+                regex: "9187"
+                action: keep
+              - source_labels: [__meta_kubernetes_namespace]
+                target_label: namespace
+              - source_labels: [__meta_kubernetes_pod_name]
+                target_label: pod
+              - target_label: cluster
+                replacement: jenkins-2026
 
   processors:
     batch: {}
