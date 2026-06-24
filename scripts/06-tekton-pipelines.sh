@@ -177,10 +177,18 @@ EOT
     log_step "tekton.seedRuns=true - seeding PipelineRuns from tekton/runs/ (one build per service)"
     for rf in "${J2026_ROOT_DIR}"/tekton/runs/*.yaml; do
       [[ -f "${rf}" ]] || continue
-      if kubectl create -f "${rf}" >/dev/null 2>&1; then
+      # Retry: the first create right after 04-tekton restarted the Tekton
+      # admission webhook can hit it mid-warm-up (the webhook validates every
+      # PipelineRun), so a single attempt occasionally flakes on the first file.
+      seeded=false
+      for attempt in 1 2 3; do
+        if kubectl create -f "${rf}" >/dev/null 2>&1; then seeded=true; break; fi
+        sleep 5
+      done
+      if [[ "${seeded}" == "true" ]]; then
         log_info "  seeded $(basename "${rf}")"
       else
-        log_warn "  could not seed $(basename "${rf}") (check namespace tekton-ci / SA tekton-ci)"
+        log_warn "  could not seed $(basename "${rf}") after 3 tries (Tekton admission webhook warming up? namespace tekton-ci / SA tekton-ci)"
       fi
     done
   fi
