@@ -194,14 +194,17 @@ Each observability mode has its **own independent set of dashboards** published 
 
 #### Source of truth: canonical dashboards
 
-Four canonical JSON files live in [`observability/grafana/dashboards/`](../observability/grafana/dashboards/). They use portable datasource template variables (`${DS_PROMETHEUS}` / `${DS_LOKI}` / `${DS_TEMPO}`) and are the **single source of truth** for content:
+The canonical JSON files live in [`observability/grafana/dashboards/`](../observability/grafana/dashboards/). They use portable datasource template variables (`${DS_PROMETHEUS}` / `${DS_LOKI}` / `${DS_TEMPO}`) and are the **single source of truth** for content. The **Shipped** column shows which dashboards are always present versus the two CI-overview dashboards that are mutually exclusive — only the one for the active `ci.engine` is shipped (see [CI-engine-aware publishing](#ci-engine-aware-publishing)):
 
-| Dashboard (uid) | What it shows |
-|---|---|
-| `jenkins-overview` | Jenkins CI: active runs, queue, executors, pipeline results, build traces, pod logs |
-| `microservices-overview` | Per-service HTTP RED, JVM/GC, restarts, traces table, pod logs |
-| `k6-smoke-overview` | k6 iterations, checks/req-failed/p95 thresholds, run traces + logs |
-| `tekton-overview` | Tekton pipeline runs, task durations, build traces (only published when `ci.engine=tekton`) |
+| Dashboard (uid) | What it shows | Shipped |
+|---|---|---|
+| `microservices-overview` | Per-service HTTP RED, JVM/GC, restarts, traces table, pod logs | always |
+| `k6-smoke-overview` | k6 iterations, checks/req-failed/p95 thresholds, run traces + logs | always |
+| `postgres-overview` | PostgreSQL / CloudNativePG: instances up, connections, DB size, replication lag, WAL rate, per-instance panels + Postgres pod logs (needs the CNPG `cnpg_*`/`pg_*` metrics scraped — see [Database (CNPG) observability](#database-cnpg-observability)) | always |
+| `jenkins-overview` | Jenkins CI: active runs, queue, executors, pipeline results, build traces, pod logs | only `ci.engine=jenkins` |
+| `tekton-overview` | Tekton pipeline runs, task durations, build traces, pipeline pod logs | only `ci.engine=tekton` |
+
+> Adding a dashboard = drop a `<name>.json` into [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) and run the variant generators (below). In `oss` mode the Helm-chart ConfigMap picks it up automatically (it globs `*.json`); for the other modes `scripts/07-grafana-dashboards.sh` publishes every `*.json`. Only `jenkins-overview` / `tekton-overview` are CI-engine-gated; everything else ships in all modes.
 
 #### Per-backend variants
 
@@ -209,7 +212,7 @@ Each managed backend requires adapted datasources (AMP instead of Prometheus, Cl
 
 | Directory | Published to | Datasources used | How generated |
 |---|---|---|---|
-| [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) | OSS Grafana (in-cluster) | Prometheus · Loki · Tempo | Used directly as-is |
+| [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) | OSS Grafana (in-cluster) | Prometheus · Loki · Tempo | Rendered into the dashboards ConfigMap by a Helm chart, **GitOps-managed by ArgoCD** (auto-sync) — see [OSS dashboards: GitOps-managed by ArgoCD](#oss-dashboards-gitops-managed-by-argocd) |
 | *(same as above)* | Grafana Cloud | grafanacloud-prom · grafanacloud-logs · grafanacloud-traces | Used directly; `gcx` binds datasource UIDs at push time |
 | [`observability/grafana/dashboards-azure/`](../observability/grafana/dashboards-azure/) | Azure Managed Grafana | Azure Monitor (metrics + logs + traces) | [`generate.py`](../observability/grafana/dashboards-azure/generate.py) replaces Loki/Tempo panels with Azure Monitor equivalents |
 | [`observability/grafana/dashboards-aws/`](../observability/grafana/dashboards-aws/) | Amazon Managed Grafana | AMP (PromQL) · CloudWatch Logs · X-Ray | [`generate.py`](../observability/grafana/dashboards-aws/generate.py) replaces Loki panels with CW Logs Insights, Tempo panels with X-Ray |
@@ -235,7 +238,21 @@ Only the dashboard for the **active CI engine** is published; the off-engine one
 | `jenkins` (default) | `jenkins-overview` (all variants) | `tekton-overview` |
 | `tekton` | `tekton-overview` (all variants) | `jenkins-overview` |
 
-This applies to all backends. The publish script ([`scripts/07-grafana-dashboards.sh`](../scripts/07-grafana-dashboards.sh)) and the [`Day2.publish.*` workflows](../.github/workflows/) both respect the `JENKINS2026_CI_ENGINE` / `inputs.ci_engine` value.
+This applies to all backends, but the gating lives in two places depending on the path:
+
+- **grafana-cloud / managed-azure / managed-aws** (external Grafana, published via API): the publish script ([`scripts/07-grafana-dashboards.sh`](../scripts/07-grafana-dashboards.sh)) and the [`Day2.publish.*` workflows](../.github/workflows/) skip the off-engine dashboard and delete it if present, driven by `JENKINS2026_CI_ENGINE` / `inputs.ci_engine`.
+- **oss** (in-cluster Grafana): the gating is baked into the dashboards Helm chart (`ciEngine` value) and applied declaratively by ArgoCD — see below. No script or manual publish step decides it.
+
+#### OSS dashboards: GitOps-managed by ArgoCD
+
+For `observability.mode=oss` the dashboards are **not** script-managed. [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) doubles as a small Helm chart ([`Chart.yaml`](../observability/grafana/dashboards/Chart.yaml) + [`templates/configmap.yaml`](../observability/grafana/dashboards/templates/configmap.yaml)): the canonical `*.json` files are read via `.Files.Glob` and rendered into the `jenkins-2026-grafana-dashboards` ConfigMap (mounted by Grafana via `dashboardsConfigMaps` in [`values-oss.yaml`](../observability/grafana/values-oss.yaml)), **dropping the off-engine CI overview** based on the `ciEngine` value.
+
+The [`observability-oss`](../argocd/observability-oss/) app-of-apps emits an `oss-grafana-dashboards` child Application ([`templates/grafana-dashboards.yaml`](../argocd/observability-oss/templates/grafana-dashboards.yaml)) pointing at that chart, with `ciEngine` flowing app-of-apps → parent Application parameter → [`scripts/03-observability.sh`](../scripts/03-observability.sh) (`{{ciEngine}}` substituted from `J2026_CI_ENGINE`). It carries `sync-wave: -1` so the ConfigMap exists before Grafana mounts it.
+
+Consequences:
+- **Editing a canonical dashboard and committing is enough** — ArgoCD auto-syncs it; no `Day2.publish.01-oss-grafana` run is required (that workflow now only nudges a re-sync).
+- The off-engine gating is correct by construction: a tekton cluster never shows an empty Jenkins CI dashboard (and vice-versa), because the chart drops it at render time using the deploy-time engine — not `config/config.yaml`'s default.
+- The `*.json` files are still the source for `generate.py` (AWS/Azure variants) and the cloud/azure/aws API publish; those glob `*.json` and ignore the chart's `Chart.yaml` / `values.yaml` / `templates/`.
 
 #### Regenerating the AWS and Azure variants
 
@@ -258,7 +275,7 @@ flowchart TD
   SRC["observability/grafana/dashboards/*.json\n(canonical source of truth)"]
 
   SRC -->|"grafana-cloud\n07 → gcx resources push"| GC["Grafana Cloud\nfolder: jenkins-2026"]
-  SRC -->|"oss\n03 → ConfigMap + sidecar"| OSS["In-cluster Grafana\njenkis-2026-grafana-dashboards CM"]
+  SRC -->|"oss\nHelm chart → ArgoCD\noss-grafana-dashboards (auto-sync,\nciEngine-gated)"| OSS["In-cluster Grafana\njenkins-2026-grafana-dashboards CM\n(dashboardsConfigMaps mount)"]
 
   GEN_AZ["generate.py\nLoki→AzureMonitor\nTempo→AzureMonitor"]
   GEN_AWS["generate.py\nLoki→CloudWatch Logs\nTempo→X-Ray"]
@@ -277,6 +294,17 @@ flowchart TD
 - **Portable datasources**: panels reference `${DS_PROMETHEUS}` / `${DS_LOKI}` / `${DS_TEMPO}` template variables — the same JSON works unchanged in OSS and Grafana Cloud modes.
 - **Environment-scoped logs**: a hidden `namespace` variable resolves the real namespace per environment via `label_values(jvm_memory_used_bytes{deployment_environment="$deployment_environment"}, k8s_namespace_name)`. If no microservices metrics are in the backend yet, this variable is empty and log/trace panels that depend on it will show "No data".
 - **Fixed rate window for sparse metrics**: `[15m]` rate window on JVM GC Pause Time p99 to prevent `NaN` on idle JVMs at short zoom levels.
+
+## Database (CNPG) observability
+
+The microservices' PostgreSQL clusters are run by the **CloudNativePG (CNPG)** operator. Each instance pod exposes Prometheus metrics (`cnpg_*` / `pg_*`) on port `9187`, and the `postgres-overview` dashboard (above) visualizes them. Getting those metrics into each backend is mode-aware:
+
+| Mode | How CNPG metrics are scraped |
+|---|---|
+| `oss` | The in-cluster kube-prometheus-stack Prometheus scrapes the CNPG operator's **PodMonitors**. The chart's default selector only matches monitors carrying its own release label, which the operator-generated PodMonitors lack — so [`values-oss.yaml`](../observability/grafana/values-oss.yaml) sets `serviceMonitorSelectorNilUsesHelmValues` / `podMonitorSelectorNilUsesHelmValues: false` to select all monitors cluster-wide. |
+| `grafana-cloud` · `managed-azure` · `managed-aws` | There is no in-cluster Prometheus, so the OTel collector's `prometheus` receiver carries a `cnpg` scrape job (`role: pod`, `microservices` ns, `cnpg.io/podRole=instance`, port `9187`) in each `observability/otel-collector/values-<mode>.yaml`, producing the same `namespace`/`pod` labels the OSS PodMonitor path yields. |
+
+The dashboard groups by `pod` + `namespace` (labels present on **both** scrape paths) so the same canonical JSON works everywhere. CNPG cluster monitoring itself (`spec.monitoring.enablePodMonitor: true`) is set on the `Cluster` CRs in the microservices GitOps repo.
 
 ## Grafana Alerting
 

@@ -143,9 +143,10 @@ Only applied when `observability.mode=oss` (by `scripts/03-observability.sh`). T
 
 - **App-of-apps as a Helm chart** (not a plain directory) so the dynamic repo/branch/version flow down to the children — a plain directory app can't template per-environment values.
 - **`ServerSideApply=true`** on `oss-kube-prometheus-stack` for the same oversized-CRD reason as `cnpg-operator` (the Prometheus operator CRDs).
-- **Companion inputs stay script-managed** (not in any app, so ArgoCD never owns/prunes them): the `jenkins-2026-grafana-dashboards` ConfigMap (Grafana sidecar), the `grafana-jenkins-ds` Secret (`$JENKINS_API_TOKEN`) and the `grafana-runtime-config` ConfigMap (`GF_SERVER_ROOT_URL`), all created by `scripts/03-observability.sh` and consumed via the chart's sidecar / `grafana.envValueFrom` (all `optional: true`).
+- **Dashboards are GitOps-managed**: the `jenkins-2026-grafana-dashboards` ConfigMap is rendered from [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) (a small Helm chart) by the `oss-grafana-dashboards` child app, CI-engine-gated via the `ciEngine` value. (Previously script-managed; moved to ArgoCD for auto-sync.)
+- **Per-cluster companion inputs stay script-managed** (not in any app, so ArgoCD never owns/prunes them): the `grafana-jenkins-ds` Secret (`$JENKINS_API_TOKEN`) and the `grafana-runtime-config` ConfigMap (`GF_SERVER_ROOT_URL`), created by `scripts/03-observability.sh` and consumed via `grafana.envValueFrom` (all `optional: true`).
 - **Teardown**: deleting the parent `Application` cascade-prunes the charts via the `resources-finalizer.argocd.argoproj.io` on each child; `scripts/down.sh` (oss) does this *before* uninstalling ArgoCD, and a mode switch away from oss removes it via `remove_oss_observability_app` in `scripts/03-observability.sh`.
-- **Day-2 refresh**: [`Day2.publish.01-oss-grafana`](../.github/workflows/Day2.publish.01-oss-grafana.yml) rebuilds the dashboards ConfigMap, nudges a re-sync and republishes alerts without a reprovision.
+- **Day-2 refresh**: [`Day2.publish.01-oss-grafana`](../.github/workflows/Day2.publish.01-oss-grafana.yml) nudges an ArgoCD re-sync (which reconciles the dashboards child app) and republishes alerts without a reprovision — it no longer builds the dashboards ConfigMap itself (ArgoCD owns it).
 
 ### `tekton` — Tekton CI engine app-of-apps ([`tekton-app.yaml`](tekton-app.yaml) → [`tekton/`](tekton))
 

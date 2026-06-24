@@ -153,7 +153,7 @@ These terms come from the SRE / platform-engineering world and describe **when i
 >
 > ² **Day2.publish.05** reads Grafana credentials from k8s Secrets (grafana-cloud-credentials, azure-monitor-credentials, aws-managed-credentials) so it requires an active cluster. The alert rules themselves are also provisioned automatically by `Day1.cluster.01` via `scripts/up.sh` — `Day2.publish.05` is only needed to push changes without a full reprovision.
 >
-> ³ **Day2.publish.01** refreshes the in-cluster OSS Grafana on a running cluster. The OSS stack (kube-prometheus-stack/Loki/Tempo) is GitOps-managed by the `observability-oss` ArgoCD app-of-apps (`argocd/observability-oss`), so chart/value changes auto-sync on commit; this workflow rebuilds the dashboards ConfigMap, nudges an ArgoCD re-sync, and republishes alert rules without a full reprovision.
+> ³ **Day2.publish.01** refreshes the in-cluster OSS Grafana on a running cluster. The OSS stack (kube-prometheus-stack/Loki/Tempo) is GitOps-managed by the `observability-oss` ArgoCD app-of-apps (`argocd/observability-oss`), so chart/value changes — including the dashboards, now GitOps-managed by the `oss-grafana-dashboards` child app — auto-sync on commit; this workflow nudges an ArgoCD re-sync and republishes alert rules without a full reprovision.
 
 ### Typical session lifecycle
 
@@ -408,7 +408,7 @@ Verdicts: **Idempotent** = converges to desired state, safe to re-run · **One-s
 | `Day2.redeploy.03-tekton` | **Idempotent** | `01`/`04-tekton`/`06-tekton-pipelines`/`09-gateway` — all `kubectl apply` / `--dry-run\|apply`; PaC webhook creation skips if one already targets the controller. |
 | `Day2.redeploy.04-headlamp` | **Idempotent** | `01-namespaces.sh` + `08-headlamp.sh` (`helm upgrade --install`). |
 | `Day2.redeploy.05-gateway` | **Idempotent** | `01-namespaces.sh` (namespaces + IAP Secrets) + `09-gateway.sh` (Gateway/HTTPRoutes/GCPBackendPolicies, all `kubectl apply`). |
-| `Day2.publish.01-oss-grafana` | **Idempotent** | Refreshes the dashboards ConfigMap (`--dry-run\|apply`) and nudges the `observability-oss` app re-sync (`kubectl annotate --overwrite`). |
+| `Day2.publish.01-oss-grafana` | **Idempotent** | Nudges the `observability-oss` app re-sync (`kubectl annotate --overwrite`), which reconciles the GitOps-managed dashboards child app + republishes alerts. |
 | `Day2.publish.03-azure-grafana` | **One-shot but safe** | `az grafana dashboard create --overwrite` re-publishes; no error/dup on re-run. |
 | `Day2.publish.04-aws-grafana` | **One-shot but safe** | `07-grafana-dashboards.sh` re-publishes to AMG; no accumulation. |
 | `Day2.publish.05-alerts` | **Idempotent** | `07.5-grafana-alerts.sh` uses Grafana's provisioning API (contact points / rules / policies are upserts). |

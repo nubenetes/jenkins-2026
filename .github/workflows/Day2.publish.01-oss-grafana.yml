@@ -110,14 +110,12 @@ jobs:
             --zone "$(terraform output -raw location)" \
             --project "${{ secrets.GCP_PROJECT_ID }}"
 
-      - name: Refresh dashboards ConfigMap (Grafana sidecar reloads it)
-        run: |
-          source scripts/lib/common.sh
-          source scripts/lib/config.sh
-          kubectl create configmap jenkins-2026-grafana-dashboards \
-            -n "${J2026_GRAFANA_OSS_NAMESPACE}" \
-            --from-file=observability/grafana/dashboards \
-            --dry-run=client -o yaml | kubectl apply -f -
+      # NOTE: the dashboards ConfigMap is no longer rebuilt here. It is now
+      # GitOps-managed by the oss-grafana-dashboards child app of the
+      # observability-oss app-of-apps (rendered from observability/grafana/
+      # dashboards/, CI-engine-gated). The "Nudge ArgoCD" step below re-syncs it
+      # together with the rest of the OSS stack when the canonical dashboards or
+      # values change on commit.
 
       - name: Nudge ArgoCD to re-sync observability-oss (best-effort)
         run: |
@@ -137,7 +135,7 @@ jobs:
           {
             echo "### OSS Grafana refreshed"
             echo
-            echo "- Rebuilt \`jenkins-2026-grafana-dashboards\` ConfigMap from \`observability/grafana/dashboards/\`"
+            echo "- Re-synced \`jenkins-2026-grafana-dashboards\` (GitOps: oss-grafana-dashboards child app)"
             echo "- Nudged ArgoCD \`observability-oss\` to re-sync (chart/value changes)"
             echo "- Republished Grafana alert rules"
             echo
