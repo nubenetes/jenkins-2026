@@ -1,0 +1,43 @@
+# Ready-to-run PipelineRun for the `gateway` service — the Tekton equivalent of the
+# one-click Jenkins seed job. The Tekton Dashboard's blank "Create PipelineRun" form
+# does NOT default the two things a hand-started run needs, which is why a naive
+# one-click fails:
+#   1) the `tekton-ci` ServiceAccount (RBAC to clone / build / push / deploy), and
+#   2) the workspace bindings — `source` (an RWO PVC) and `dockerconfig` (the
+#      registry pull/push Secret).
+# All pipeline PARAMS already default to the gateway service, so none are set here.
+#
+# Use it either way:
+#   kubectl create -f tekton/runs/gateway.yaml        # new run each time (generateName)
+#   # …or, for a true one-click loop: paste this YAML into the Tekton Dashboard's
+#   # "Create PipelineRun" (YAML mode) once, then click "Rerun" on the result.
+#
+# To build a different service, copy this file and add a `params:` block overriding
+# service-name and its related params together (see jhipstersamplemicroservice.yaml).
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: gateway-stable-
+  namespace: tekton-ci
+  labels:
+    jenkins2026.io/service: gateway
+    jenkins2026.io/env: stable
+spec:
+  taskRunTemplate:
+    serviceAccountName: tekton-ci
+  pipelineRef:
+    name: microservices-pipeline
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 4Gi
+    - name: dockerconfig
+      secret:
+        secretName: tekton-registry
+        items:
+          - key: .dockerconfigjson
+            path: config.json

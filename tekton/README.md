@@ -19,6 +19,10 @@ tekton/
   tasks/     one Task per Jenkins pipeline stage (see table below)
   pipelines/ microservices-pipeline (full CI/CD) + microservices-k6-smoke
   triggers/  EventListener + TriggerTemplate + TriggerBinding (API/webhook runs)
+  pac/       Pipelines-as-Code Repository CRs (git-push-driven runs)
+  runs/      ready-to-run PipelineRun manifests (one-click / kubectl create -f) —
+             SA + workspaces pre-bound, so the Dashboard's "Create" doesn't need
+             hand-filling; the Jenkins-one-click equivalent
 ```
 
 ## Stage mapping (Jenkins → Tekton)
