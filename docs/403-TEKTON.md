@@ -61,41 +61,32 @@ In this repo the pipeline is the JHipster microservices build ported 1:1 from th
 How a `git push` becomes running pods — the CRDs (definitions) on the left, one execution (the runtime objects) on the right:
 
 ```mermaid
-flowchart LR
-  push([git push to nubenetes/*]):::ext
+flowchart TB
+  push([git push to nubenetes/*]):::ext --> pac[PaC controller]
+  push -. webhook method .-> el[EventListener: el-microservices<br/>interceptors → Binding → Template]
 
-  subgraph defs[Definitions - CRDs, GitOps-installed]
-    repo[Repository CR<br/>.tekton/ on-event]
-    pipe[Pipeline: microservices-pipeline<br/>DAG + params + workspaces]
-    tasks[Tasks: fetch-source · semgrep · codeql<br/>trivy · maven · build-push · gitops-deploy · smoke]
+  subgraph defs[Definitions — CRDs, GitOps-installed]
+    direction LR
+    repo[Repository CR<br/>.tekton/ on-event] --> pipe[Pipeline: microservices-pipeline<br/>DAG + params + workspaces]
+    tasks[Tasks: fetch-source · semgrep · codeql · trivy<br/>maven · build-push · gitops-deploy · smoke]
   end
 
-  subgraph trig[Event → run]
-    pac[PaC controller]
-    el[EventListener el-microservices<br/>interceptors → Binding → Template]
-  end
-
-  subgraph run[One execution - runtime]
-    plr[PipelineRun]
-    tr1[TaskRun: fetch-source] --> pod1[(Pod: step containers)]
-    tr2[TaskRun: maven-build-test] --> pod2[(Pod)]
-    tr3[TaskRun: gitops-deploy] --> pod3[(Pod)]
-    ws[(Workspace<br/>RWO PVC 'source')]:::vol
-  end
-
-  push --> pac
-  push -.webhook method.-> el
   pac --> repo
-  repo --> pipe
-  el --> plr
+  el --> plr[PipelineRun]
   pac --> plr
-  pipe -->|pipelineRef cluster resolver| plr
-  tasks -->|taskRef| plr
-  plr --> tr1 --> tr2 --> tr3
-  ws -.cloned once, reused.- tr1
-  ws -.- tr2
-  ws -.- tr3
-  tr2 -->|"results $(tasks.X.results.Y)"| tr3
+  pipe -. pipelineRef cluster resolver .-> plr
+  tasks -. taskRef .-> plr
+
+  subgraph run[One execution — one TaskRun per Task, each TaskRun = one Pod]
+    direction TB
+    tr1[TaskRun: fetch-source] --> tr2[TaskRun: maven-build-test] -->|"results $(tasks.X.results.Y)"| tr3[TaskRun: gitops-deploy]
+    pod[(Pod: step<br/>containers)]:::vol
+    ws[(Workspace<br/>RWO PVC source)]:::vol
+  end
+
+  plr --> tr1
+  tr1 -. each TaskRun spawns .-> pod
+  ws -. shared by all TaskRuns .- tr1
 
   classDef ext fill:#fde,stroke:#c39;
   classDef vol fill:#ffd,stroke:#cc3;
