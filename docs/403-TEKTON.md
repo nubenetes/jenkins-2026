@@ -30,7 +30,7 @@ Tekton is **Kubernetes-native CI/CD**: there is no Jenkins-style controller runn
 
 So a CI run is literally: *something creates a `PipelineRun` CR → the Tekton controller creates a `TaskRun` per Task → each `TaskRun` is a Pod → results/workspaces flow between them → the run object records success/failure*. You watch it all in the **Tekton Dashboard** (behind IAP). You **rarely create runs by hand** — a `git push` does it (see *Pipelines-as-Code* below).
 
-In this repo the pipeline is the JHipster microservices build ported 1:1 from the Jenkins shared library: `fetch-source → semgrep → codeql → trivy-iac → maven-build-test → build-push-image → trivy-image → gitops-deploy → smoke-test`, all sharing the one `source` workspace ([`tekton/pipelines/microservices-pipeline.yaml`](../tekton/pipelines/microservices-pipeline.yaml), tasks in [`tekton/tasks/`](../tekton/tasks/)).
+In this repo the pipeline is the JHipster microservices build ported 1:1 from the Jenkins shared library — pipeline tasks `fetch-source → semgrep-scan → codeql-analyze → trivy-iac → build-test → build-push-image → trivy-image → gitops-deploy → smoke-test → k6-smoke`, all sharing the one `source` workspace ([`tekton/pipelines/microservices-pipeline.yaml`](../tekton/pipelines/microservices-pipeline.yaml), tasks in [`tekton/tasks/`](../tekton/tasks/)).
 </details>
 
 <details>
@@ -68,7 +68,7 @@ flowchart TB
   subgraph defs[Definitions — CRDs, GitOps-installed]
     direction LR
     repo[Repository CR<br/>.tekton/ on-event] --> pipe[Pipeline: microservices-pipeline<br/>DAG + params + workspaces]
-    tasks[Tasks: fetch-source · semgrep · codeql · trivy<br/>maven · build-push · gitops-deploy · smoke]
+    tasks[Tasks: fetch-source · semgrep-scan · codeql-analyze · trivy-iac<br/>build-test · build-push-image · trivy-image · gitops-deploy · smoke-test · k6-smoke]
   end
 
   pac --> repo
@@ -79,7 +79,7 @@ flowchart TB
 
   subgraph run[One execution — one TaskRun per Task, each TaskRun = one Pod]
     direction TB
-    tr1[TaskRun: fetch-source] --> tr2[TaskRun: maven-build-test] -->|"results $(tasks.X.results.Y)"| tr3[TaskRun: gitops-deploy]
+    tr1[TaskRun: fetch-source] --> tr2[TaskRun: build-test] -->|"results $(tasks.X.results.Y)"| tr3[TaskRun: gitops-deploy]
     pod[(Pod: step<br/>containers)]:::vol
     ws[(Workspace<br/>RWO PVC source)]:::vol
   end

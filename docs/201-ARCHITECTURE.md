@@ -244,6 +244,8 @@ jenkins/pipelines/           Jenkinsfile.microservices + seed job (Job DSL + ser
 vars/, resources/            Jenkins global shared library (must be at repo root)
 tekton/                      Tekton pipelines-as-code (ci.engine=tekton): Tasks/Pipelines/Triggers/RBAC + port of the Jenkins shared library (vars/)
 observability/               OTel Operator/Collector + Grafana/Loki/Tempo/Prometheus values + dashboards
+argocd/                      ArgoCD Applications/ApplicationSets + app-of-apps (platform-postgres, observability-oss, tekton) + argo-rollouts-app.yaml
+infrastructure/              engine-neutral platform manifests applied by 01-namespaces / 08.5-argocd: NetworkPolicies (default/-jenkins/-tekton), Gateway, Karpenter, scheduling, Argo Rollouts Gateway-API RBAC, secrets
 scripts/                     00-09 numbered steps + up.sh / down.sh / status.sh
 terraform/gke/               throwaway GKE cluster for test/e2e.sh
 terraform/bootstrap/         one-time setup for GitHub Actions automation (state bucket + WIF)
