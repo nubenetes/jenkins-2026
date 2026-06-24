@@ -213,65 +213,70 @@ case "${J2026_OBS_MODE}" in
     ;;
 
   oss)
-    # Reads admin password from the oss-kube-prometheus-stack-grafana Secret,
-    # port-forwards the in-cluster Grafana Service, mints a short-lived API key,
-    # then provisions the alerting resources.
+    # In-cluster Grafana runs with an ephemeral DB (persistence.enabled: false in
+    # observability/grafana/values-oss.yaml — a bound PVC's volumeName is
+    # immutable and breaks apply/Replace). API-provisioned alerting would be lost
+    # on every Grafana pod restart (ArgoCD Replace sync, node eviction, ...), so
+    # provision DECLARATIVELY: write a Grafana file-provisioning document into a
+    # ConfigMap labelled grafana_alert=1, which the kube-prometheus-stack alerts
+    # sidecar (grafana.sidecar.alerts) mounts into provisioning/alerting/ on every
+    # boot. No port-forward / API token needed (unlike cloud/azure/aws).
     #
-    # NOTE: Email delivery also requires SMTP to be configured in the Grafana
-    # Helm chart (grafana.ini.smtp.*). The alert rules and contact point are
-    # provisioned regardless — without SMTP the rules appear in Grafana but
-    # emails won't be sent. Refer to helm/observability/values-oss.yaml for
-    # the SMTP configuration hook (to be added in a follow-up).
-    GF_ADMIN_PWD="$(kubectl get secret oss-kube-prometheus-stack-grafana \
-      -n "${J2026_OBS_NAMESPACE}" \
-      -o jsonpath='{.data.admin-password}' 2>/dev/null | base64 -d || true)"
-    if [[ -z "${GF_ADMIN_PWD:-}" ]]; then
-      log_error "oss: admin-password not found in oss-kube-prometheus-stack-grafana secret."
-      exit 1
-    fi
-
-    log_step "Port-forwarding oss-kube-prometheus-stack-grafana → localhost:13000"
-    kubectl port-forward -n "${J2026_OBS_NAMESPACE}" \
-      svc/oss-kube-prometheus-stack-grafana 13000:80 &
-    PF_PID=$!
-    trap "kill ${PF_PID} 2>/dev/null || true" EXIT
-    sleep 4
-
-    GF_BASE_URL="http://localhost:13000"
-
-    # Grafana 11+ deprecated the legacy /api/auth/keys endpoint and 13.x removed
-    # it (POST returns 404). Mint a short-lived token via a Service Account
-    # instead - the supported replacement: create an ephemeral Admin SA, then a
-    # 300s token on it. The SA is deleted on exit (which also revokes the token).
-    GF_SA_ID="$(curl -sf -u "admin:${GF_ADMIN_PWD}" \
-      -X POST "${GF_BASE_URL}/api/serviceaccounts" \
-      -H "Content-Type: application/json" \
-      -d "{\"name\":\"alerts-prov-$(date +%s)\",\"role\":\"Admin\"}" \
-      | python3 -c "import json,sys; print(json.load(sys.stdin)['id'])" 2>/dev/null || true)"
-    if [[ -z "${GF_SA_ID:-}" ]]; then
-      log_error "oss: failed to create Grafana service account for alert provisioning."
-      exit 1
-    fi
-    # Extend cleanup: kill the port-forward AND delete the ephemeral SA.
-    trap "curl -sf -u 'admin:${GF_ADMIN_PWD}' -X DELETE '${GF_BASE_URL}/api/serviceaccounts/${GF_SA_ID}' >/dev/null 2>&1 || true; kill ${PF_PID} 2>/dev/null || true" EXIT
-
-    GF_API_KEY="$(curl -sf -u "admin:${GF_ADMIN_PWD}" \
-      -X POST "${GF_BASE_URL}/api/serviceaccounts/${GF_SA_ID}/tokens" \
-      -H "Content-Type: application/json" \
-      -d "{\"name\":\"alerts-prov-token-$(date +%s)\",\"secondsToLive\":300}" \
-      | python3 -c "import json,sys; print(json.load(sys.stdin)['key'])" 2>/dev/null || true)"
-    if [[ -z "${GF_API_KEY:-}" ]]; then
-      log_error "oss: failed to mint Grafana service-account token for alert provisioning."
-      exit 1
-    fi
-
+    # NOTE: email delivery still requires SMTP in grafana.ini.smtp.* (follow-up).
     GF_EMAIL="$(resolve_email)"
     if [[ -z "${GF_EMAIL}" ]]; then
-      log_warn "No alert email found (set GRAFANA_ALERT_EMAIL_$(echo "${J2026_OBS_MODE}" | tr '[:lower:]-' '[:upper:]_'), GRAFANA_ALERT_EMAIL, or populate jenkins-credentials oidc-admin-email) — skipping alert provisioning."
-      exit 0
+      log_warn "No alert email found (set GRAFANA_ALERT_EMAIL_$(echo "${J2026_OBS_MODE}" | tr '[:lower:]-' '[:upper:]_'), GRAFANA_ALERT_EMAIL, or populate jenkins-credentials oidc-admin-email) — provisioning rules + policy without a contact point."
+    else
+      log_info "Alert notifications will go to: ${GF_EMAIL}"
     fi
-    log_info "Alert notifications will go to: ${GF_EMAIL}"
-    provision_alerts "${GF_BASE_URL}" "${GF_API_KEY}" "${GF_EMAIL}"
+
+    # Build the file-provisioning document (JSON is a valid YAML subset, which
+    # Grafana's provisioning loader accepts). Rewrite the shipped grafanacloud-prom
+    # datasourceUid to the OSS Prometheus datasource UID ("prometheus", set in
+    # values-oss.yaml additionalDataSources). When no email is resolved, only the
+    # rule groups are emitted (no contact point / policy).
+    ALERTING_DOC="$(python3 - "${ALERTS_DIR}" "prometheus" "${GF_EMAIL}" <<'PY'
+import json, sys, glob, os
+alerts_dir, prom_uid, email = sys.argv[1], sys.argv[2], sys.argv[3]
+rules = []
+for f in sorted(glob.glob(os.path.join(alerts_dir, "rules", "*.json"))):
+    r = json.load(open(f))
+    for d in r.get("data", []):
+        if d.get("datasourceUid") == "grafanacloud-prom":
+            d["datasourceUid"] = prom_uid
+    rules.append({
+        "uid": r["uid"], "title": r["title"], "condition": r["condition"],
+        "for": r.get("for", "0s"), "noDataState": r.get("noDataState", "NoData"),
+        "execErrState": r.get("execErrState", "Error"),
+        "labels": r.get("labels", {}), "annotations": r.get("annotations", {}),
+        "data": r["data"],
+    })
+doc = {"apiVersion": 1, "groups": [{
+    "orgId": 1, "name": "jenkins-2026", "folder": "jenkins-2026 Alerts",
+    "interval": "1m", "rules": rules}]}
+if email:
+    doc["contactPoints"] = [{"orgId": 1, "name": "jenkins-2026-email", "receivers": [
+        {"uid": "jenkins2026-email-cp", "type": "email",
+         "settings": {"addresses": email}, "disableResolveMessage": False}]}]
+    doc["policies"] = [{"orgId": 1, "receiver": "jenkins-2026-email",
+                        "group_by": ["alertname", "namespace"], "group_wait": "30s",
+                        "group_interval": "5m", "repeat_interval": "4h"}]
+print(json.dumps(doc, indent=2))
+PY
+)"
+    if [[ -z "${ALERTING_DOC}" ]]; then
+      log_error "oss: failed to build the alerting provisioning document."
+      exit 1
+    fi
+
+    log_step "Applying declarative alerting ConfigMap (grafana_alert sidecar)"
+    kubectl create configmap jenkins-2026-grafana-alerting \
+      -n "${J2026_GRAFANA_OSS_NAMESPACE}" \
+      --from-literal=jenkins-2026-alerting.yaml="${ALERTING_DOC}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+    kubectl label configmap jenkins-2026-grafana-alerting \
+      -n "${J2026_GRAFANA_OSS_NAMESPACE}" grafana_alert=1 --overwrite
+    log_info "OSS alerting provisioned declaratively (survives Grafana restarts)."
     ;;
 
   managed-azure)
