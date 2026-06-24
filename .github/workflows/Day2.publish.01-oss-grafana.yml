@@ -110,12 +110,34 @@ jobs:
             --zone "$(terraform output -raw location)" \
             --project "${{ secrets.GCP_PROJECT_ID }}"
 
-      # NOTE: the dashboards ConfigMap is no longer rebuilt here. It is now
-      # GitOps-managed by the oss-grafana-dashboards child app of the
-      # observability-oss app-of-apps (rendered from observability/grafana/
-      # dashboards/, CI-engine-gated). The "Nudge ArgoCD" step below re-syncs it
-      # together with the rest of the OSS stack when the canonical dashboards or
-      # values change on commit.
+      # The dashboards ConfigMap is no longer rebuilt here — it is GitOps-managed
+      # by the oss-grafana-dashboards child app of the observability-oss
+      # app-of-apps (rendered from observability/grafana/dashboards/, CI-engine
+      # gated). Re-apply the parent app with the DEPLOYED engine so the dashboards
+      # child drops the right off-engine CI overview: config.yaml's ci.engine is
+      # the repo default (jenkins) and the parent app may predate this feature
+      # (no ciEngine param -> the chart default jenkins would publish
+      # jenkins-overview on a tekton cluster). Detect the engine from the cluster
+      # (the Jenkins StatefulSet only exists in jenkins mode) and re-apply, same
+      # substitution scripts/03-observability.sh does at Day1.
+      - name: Reconcile observability-oss app-of-apps (deployed CI engine)
+        run: |
+          source scripts/lib/common.sh
+          source scripts/lib/config.sh
+          if kubectl get statefulset "${J2026_JENKINS_RELEASE}" -n "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
+            ENGINE=jenkins
+          else
+            ENGINE=tekton
+          fi
+          echo "Detected CI engine: ${ENGINE}"
+          REPO_URL="${J2026_SELF_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
+          OSS_APP_FILE="$(mktemp)"
+          sed "s@{{repoUrl}}@${REPO_URL}@g;
+               s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g;
+               s@{{ciEngine}}@${ENGINE}@g" \
+              argocd/observability-oss-app.yaml > "${OSS_APP_FILE}"
+          kubectl apply -f "${OSS_APP_FILE}"
+          rm -f "${OSS_APP_FILE}"
 
       - name: Nudge ArgoCD to re-sync observability-oss (best-effort)
         run: |
