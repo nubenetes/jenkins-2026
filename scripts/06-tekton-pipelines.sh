@@ -88,13 +88,23 @@ if [[ "${PAC_ENABLED}" == "true" ]]; then
       "https://api.github.com/repos/${repo_path}/hooks" 2>/dev/null \
       | yq -p=json -o=tsv '.[].config.url' 2>/dev/null | grep -Fx "${pac_url}" || true)"
     if [[ -z "${existing}" ]]; then
-      hook_payload="$(printf '{"name":"web","active":true,"events":["push","pull_request"],"config":{"url":"%s","content_type":"json","insecure_ssl":"0","secret":"%s"}}' "${pac_url}" "${webhook_secret}")"
-      curl -fsS -X POST -H "Authorization: token ${GIT_TOKEN}" \
-        -H "Accept: application/vnd.github+json" \
-        "https://api.github.com/repos/${repo_path}/hooks" \
-        -d "${hook_payload}" \
-        >/dev/null && log_info "  webhook created on ${repo_path}" \
-        || log_warn "  could not create webhook on ${repo_path}"
+      # Build the JSON with yq env() so a secret/URL containing special characters
+      # is escaped correctly. A printf-built body produces invalid JSON when the
+      # value has a quote/backslash/newline -> GitHub rejects it with HTTP 400
+      # ("Problems parsing JSON"), which is the most common cause of a failed hook
+      # create here. One POST only; capture HTTP code + body to report WHY on error.
+      hook_payload="$(jq -nc --arg url "${pac_url}" --arg secret "${webhook_secret}" \
+        '{name:"web",active:true,events:["push","pull_request"],config:{url:$url,content_type:"json",insecure_ssl:"0",secret:$secret}}')"
+      hook_resp="$(curl -sS -w $'\n%{http_code}' -X POST \
+        -H "Authorization: token ${GIT_TOKEN}" -H "Accept: application/vnd.github+json" \
+        "https://api.github.com/repos/${repo_path}/hooks" -d "${hook_payload}" 2>/dev/null)"
+      hook_code="${hook_resp##*$'\n'}"; hook_body="${hook_resp%$'\n'*}"
+      if [[ "${hook_code}" =~ ^2 ]]; then
+        log_info "  webhook created on ${repo_path}"
+      else
+        hook_msg="$(printf '%s' "${hook_body}" | jq -r '.message // empty' 2>/dev/null || true)"
+        log_warn "  could not create webhook on ${repo_path} (HTTP ${hook_code}: ${hook_msg:-see GitHub}). PaC still runs via the committed .tekton/${name}.yaml IF a webhook to ${pac_url} already exists; otherwise add one in the fork's Settings -> Webhooks (content-type=json, events: push + pull_request, secret = the pac-webhook value)."
+      fi
     else
       log_info "  webhook already present on ${repo_path}"
     fi
