@@ -100,7 +100,10 @@ grafana:
     # Pinned for reproducibility (see CLAUDE.md "pin for reproducibility").
     # Overrides the Grafana version the kube-prometheus-stack subchart would
     # otherwise default to, so OSS mode tracks a known Grafana OSS release.
-    tag: "13.0.2"
+    # 13.1.0 = latest GA (released 2026-06-23). Only the OSS in-cluster Grafana is
+    # version-pinnable here; the managed backends (Grafana Cloud / Azure Managed
+    # Grafana / Amazon Managed Grafana) are versioned by their providers.
+    tag: "13.1.0"
 
   # Absolute URL Grafana uses for redirects and generated links. The
   # in-cluster default below is correct for kubectl port-forward access; when
