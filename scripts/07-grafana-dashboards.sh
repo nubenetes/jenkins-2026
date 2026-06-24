@@ -30,8 +30,13 @@ DASHBOARDS_DIR="${J2026_ROOT_DIR}/observability/grafana/dashboards"
 
 # Publish only the ACTIVE CI engine's overview dashboard (jenkins XOR tekton) so a
 # tekton cluster doesn't show an empty "Jenkins CI" dashboard (and vice-versa). The
-# k6 / microservices dashboards are engine-neutral and always shipped.
-if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
+# k6 / microservices / postgres dashboards are engine-neutral and always shipped.
+# Resolve the engine via the shared helper (explicit override → live-cluster
+# detection → config.yaml default) so a standalone Day2.publish run is correct
+# even when config.yaml's ci.engine default does not match the deployed cluster.
+ACTIVE_CI_ENGINE="$(j2026_active_ci_engine)"
+log_info "Active CI engine: ${ACTIVE_CI_ENGINE}"
+if [[ "${ACTIVE_CI_ENGINE}" == "tekton" ]]; then
   SKIP_CI_DASHBOARD="jenkins-overview"
 else
   SKIP_CI_DASHBOARD="tekton-overview"
@@ -81,7 +86,7 @@ case "${J2026_OBS_MODE}" in
 
     for dashboard in "${DASHBOARDS_DIR}"/*.json; do
       name="$(basename "${dashboard}" .json)"
-      if is_offengine_dashboard "${name}"; then log_info "Skipping ${name} (ci.engine=${J2026_CI_ENGINE})"; continue; fi
+      if is_offengine_dashboard "${name}"; then log_info "Skipping ${name} (ci.engine=${ACTIVE_CI_ENGINE})"; continue; fi
       uid="$(jq -r '.uid' "${dashboard}")"
       
       # Wrap dashboard JSON into a gcx-compatible resource manifest
@@ -182,7 +187,7 @@ case "${J2026_OBS_MODE}" in
     log_step "Publishing dashboards to Azure Managed Grafana (${GRAFANA_BASE_URL})"
     for dashboard in "${AZURE_DASHBOARDS_DIR}"/*-azure.json; do
       name="$(basename "${dashboard}" .json)"
-      if is_offengine_dashboard "${name}"; then log_info "Skipping ${name} (ci.engine=${J2026_CI_ENGINE})"; continue; fi
+      if is_offengine_dashboard "${name}"; then log_info "Skipping ${name} (ci.engine=${ACTIVE_CI_ENGINE})"; continue; fi
       # Wrap into the /api/dashboards/db request body and overwrite by uid.
       payload="$(jq -n --slurpfile db "${dashboard}" \
         '{dashboard: ($db[0] + {id: null}), folderUid: "", overwrite: true}')"
@@ -339,7 +344,7 @@ case "${J2026_OBS_MODE}" in
     for dashboard in "${AWS_DASHBOARDS_DIR}"/*-aws.json "${AWS_DASHBOARDS_DIR}"/community/*.json; do
       [[ -f "${dashboard}" ]] || continue
       name="$(basename "${dashboard}" .json)"
-      if is_offengine_dashboard "${name}"; then log_info "Skipping ${name} (ci.engine=${J2026_CI_ENGINE})"; continue; fi
+      if is_offengine_dashboard "${name}"; then log_info "Skipping ${name} (ci.engine=${ACTIVE_CI_ENGINE})"; continue; fi
       payload="$(jq --arg cw "${CW_UID}" --arg xray "${XRAY_UID}" --arg prom "${PROM_UID}" --arg promname "${PROM_NAME}" '
         def fixuid: walk(if type=="object" and .uid=="DS_CW_UID" then .uid=$cw
                          elif type=="object" and .uid=="DS_XRAY_UID" then .uid=$xray
@@ -362,7 +367,7 @@ case "${J2026_OBS_MODE}" in
     # Delete the off-engine CI overview if it exists (e.g. jenkins-overview when
     # ci.engine=tekton, and vice-versa) so stale dashboards don't persist across
     # engine switches.
-    if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
+    if [[ "${ACTIVE_CI_ENGINE}" == "tekton" ]]; then
       delete_uid="jenkins2026-jenkins-overview"
     else
       delete_uid="jenkins2026-tekton-overview"
