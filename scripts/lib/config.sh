@@ -106,6 +106,12 @@ export J2026_TEKTON_DASHBOARD_SERVICE="$(yq_get '.tekton.dashboard.serviceName' 
 export J2026_TEKTON_DASHBOARD_PORT="$(yq_get '.tekton.dashboard.servicePort' '9097')"
 export J2026_TEKTON_REGISTRY_SECRET="$(yq_get '.tekton.registryCredentialsSecretName' 'tekton-registry')"
 export J2026_TEKTON_GIT_SECRET="$(yq_get '.tekton.gitCredentialsSecretName' 'tekton-git')"
+# FEATURE FLAG: JENKINS2026_TEKTON_SEED_RUNS overrides tekton.seedRuns. When true,
+# scripts/06-tekton-pipelines.sh ALSO creates one PipelineRun per service under PaC
+# (from tekton/runs/) so the Tekton Dashboard is pre-populated with runnable entries
+# (click Rerun) from the first Day1 — at the cost of one build per service per
+# provision. Default false: PaC's git-push trigger is the normal path.
+export J2026_TEKTON_SEED_RUNS="${JENKINS2026_TEKTON_SEED_RUNS:-$(yq_get '.tekton.seedRuns' 'false')}"
 
 
 # --- observability ---------------------------------------------------------

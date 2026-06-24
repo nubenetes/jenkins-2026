@@ -386,16 +386,30 @@ Start them manually for ad-hoc runs, debugging, or to fire the k6 smoke on deman
 
 ### Option A — Tekton Dashboard (GUI, behind IAP)
 
-Open `https://tekton.<baseDomain>` (Google IAP login, [§ Dashboard](#dashboard-on-the-internet-behind-google-iap)). The Dashboard is **read-write**, so:
+Open `https://tekton.<baseDomain>` (Google IAP login, [§ Dashboard](#dashboard-on-the-internet-behind-google-iap)). The Dashboard is **read-write**.
 
-1. **PipelineRuns → Create**, or **Pipelines → `microservices-k6-smoke` → Create PipelineRun**.
-2. Namespace **`tekton-ci`**; fill the params; set the **ServiceAccount** to `tekton-ci`.
-3. For the **`source`** workspace choose **VolumeClaimTemplate** (a few Gi, RWO).
-4. **Create** — then watch it stream in the run's view.
+> **Why the blank "Create PipelineRun" form fails with defaults** (unlike a one-click Jenkins seed job): all pipeline **params** default to the gateway service, but the Dashboard's form does **not** default the two things a run actually needs — the **`tekton-ci` ServiceAccount** (RBAC to clone/build/push/deploy; the form would otherwise use `default`, which can't) and the **workspace bindings** (`source` = an RWO PVC, `dockerconfig` = the registry Secret). Leave those blank and the run errors immediately.
+
+**The one-click-equivalent path** — use the ready-made manifests in [`tekton/runs/`](../tekton/runs/) which already set the SA + workspaces:
+
+1. **First run**: in **PipelineRuns → Create**, switch the form to **YAML mode** and paste [`tekton/runs/gateway.yaml`](../tekton/runs/gateway.yaml) (or `jhipstersamplemicroservice.yaml` / `k6-smoke.yaml`), then **Create**. (Same content as `kubectl create -f` in Option B.)
+2. **Every run after that is truly one-click**: open that PipelineRun and click **Rerun** — it reuses the exact SA, workspaces, and params. This is the closest equivalent to the Jenkins one-click build.
+
+If you fill the form by hand instead: namespace **`tekton-ci`**, set **ServiceAccount = `tekton-ci`**, and for **`source`** choose **VolumeClaimTemplate** (a few Gi, RWO) and for **`dockerconfig`** the **`tekton-registry`** Secret.
+
+> **Pre-populate the Dashboard from the first Day1** — set `tekton.seedRuns: true` (or `JENKINS2026_TEKTON_SEED_RUNS=true`). `scripts/06-tekton-pipelines.sh` then seeds one PipelineRun per service from [`tekton/runs/`](../tekton/runs/) during provisioning, so the Dashboard lists runnable entries you can **Rerun** with one click immediately — no first paste/`kubectl create` needed. The trade-off: it runs **one build per service per Day1**, which is why it is **off by default** (PaC's git-push trigger is the normal way to start runs). This is a CI-engine convenience only — it does not change how PaC works.
 
 ### Option B — `kubectl create` (a PipelineRun manifest)
 
-`generateName` → use `kubectl create` (not `apply`):
+The repo ships ready-to-run manifests in [`tekton/runs/`](../tekton/runs/) (SA + workspaces already set) — the simplest path:
+
+```bash
+kubectl create -f tekton/runs/gateway.yaml                       # build the gateway
+kubectl create -f tekton/runs/jhipstersamplemicroservice.yaml    # build the other service
+kubectl create -f tekton/runs/k6-smoke.yaml                      # run the k6 smoke test
+```
+
+They use `generateName`, so `kubectl create` (not `apply`) gives a fresh run each time. Inline equivalents if you'd rather hand-roll one:
 
 ```yaml
 # k6-run.yaml

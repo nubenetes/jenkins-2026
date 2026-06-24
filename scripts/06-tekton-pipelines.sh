@@ -169,6 +169,21 @@ EOT
     rm -rf "${work}"
   done
   log_info "PaC activated. Pushes/PRs to the forks now run microservices-pipeline; watch the Tekton Dashboard."
+  # Opt-in (tekton.seedRuns / JENKINS2026_TEKTON_SEED_RUNS): also kick one run per
+  # service now from the same tekton/runs/ manifests used for manual one-click, so
+  # the Dashboard is pre-populated with runnable entries (Rerun) from the first
+  # Day1. Costs one build per service; PaC's git-push trigger remains the default.
+  if [[ "${J2026_TEKTON_SEED_RUNS}" == "true" ]]; then
+    log_step "tekton.seedRuns=true - seeding PipelineRuns from tekton/runs/ (one build per service)"
+    for rf in "${J2026_ROOT_DIR}"/tekton/runs/*.yaml; do
+      [[ -f "${rf}" ]] || continue
+      if kubectl create -f "${rf}" >/dev/null 2>&1; then
+        log_info "  seeded $(basename "${rf}")"
+      else
+        log_warn "  could not seed $(basename "${rf}") (check namespace tekton-ci / SA tekton-ci)"
+      fi
+    done
+  fi
   exit 0
 fi
 
