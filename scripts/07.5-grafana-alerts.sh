@@ -12,7 +12,7 @@
 #   2. GRAFANA_ALERT_EMAIL         generic fallback
 #   3. jenkins-credentials.oidc-admin-email  cluster default
 #
-#   oss            - reads admin password from kube-prometheus-stack-grafana Secret,
+#   oss            - reads admin password from oss-kube-prometheus-stack-grafana Secret,
 #                    port-forwards the in-cluster Grafana Service, and mints a
 #                    short-lived Admin API key. Rules/contact point appear in Grafana
 #                    regardless; email delivery also requires SMTP in values-oss.yaml.
@@ -183,7 +183,7 @@ case "${J2026_OBS_MODE}" in
     ;;
 
   oss)
-    # Reads admin password from the kube-prometheus-stack-grafana Secret,
+    # Reads admin password from the oss-kube-prometheus-stack-grafana Secret,
     # port-forwards the in-cluster Grafana Service, mints a short-lived API key,
     # then provisions the alerting resources.
     #
@@ -192,17 +192,17 @@ case "${J2026_OBS_MODE}" in
     # provisioned regardless — without SMTP the rules appear in Grafana but
     # emails won't be sent. Refer to helm/observability/values-oss.yaml for
     # the SMTP configuration hook (to be added in a follow-up).
-    GF_ADMIN_PWD="$(kubectl get secret kube-prometheus-stack-grafana \
+    GF_ADMIN_PWD="$(kubectl get secret oss-kube-prometheus-stack-grafana \
       -n "${J2026_OBS_NAMESPACE}" \
       -o jsonpath='{.data.admin-password}' 2>/dev/null | base64 -d || true)"
     if [[ -z "${GF_ADMIN_PWD:-}" ]]; then
-      log_error "oss: admin-password not found in kube-prometheus-stack-grafana secret."
+      log_error "oss: admin-password not found in oss-kube-prometheus-stack-grafana secret."
       exit 1
     fi
 
-    log_step "Port-forwarding kube-prometheus-stack-grafana → localhost:13000"
+    log_step "Port-forwarding oss-kube-prometheus-stack-grafana → localhost:13000"
     kubectl port-forward -n "${J2026_OBS_NAMESPACE}" \
-      svc/kube-prometheus-stack-grafana 13000:80 &
+      svc/oss-kube-prometheus-stack-grafana 13000:80 &
     PF_PID=$!
     trap "kill ${PF_PID} 2>/dev/null || true" EXIT
     sleep 4
