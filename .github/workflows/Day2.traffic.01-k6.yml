@@ -64,6 +64,7 @@ jobs:
         env:
           K6_OTEL_EXPORTER_PROTOCOL: http/protobuf
           K6_OTEL_SERVICE_NAME: k6-microservices-smoke
+          K6_OTEL_EXPORT_INTERVAL: 2s
           OTEL_RESOURCE_ATTRIBUTES: service.name=k6-microservices-smoke,service.namespace=jenkins-2026,deployment.environment=stable
           # Optional Grafana Cloud k6 (the k6-app) streaming; empty -> skipped.
           K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
