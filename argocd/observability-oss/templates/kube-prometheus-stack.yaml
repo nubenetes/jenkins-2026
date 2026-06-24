@@ -3,6 +3,16 @@ kind: Application
 metadata:
   name: oss-kube-prometheus-stack
   namespace: argocd
+  annotations:
+    # The prometheus-operator CRDs (prometheuses/alertmanagers/...) have huge
+    # OpenAPI schemas. ArgoCD's default client-side diff writes the rendered
+    # manifest into the kubectl.kubernetes.io/last-applied-configuration
+    # annotation to compute drift, which blows the 256KB metadata.annotations
+    # limit -> every sync fails on the dry-run ("metadata.annotations: Too long")
+    # and downstream resources (Grafana datasources) never apply. ServerSideDiff
+    # computes the diff server-side (no annotation), the companion to the
+    # ServerSideApply syncOption below. Same fix as argocd/tekton (pipelines.yaml).
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
   # Cascade-prune the chart's resources when the parent app-of-apps is deleted
   # (observability.mode switch away from oss, or full teardown).
   finalizers:
@@ -32,7 +42,15 @@ spec:
       - CreateNamespace=true
       # kube-prometheus-stack ships large operator CRDs; client-side apply
       # 3-way-merges them into the last-applied-configuration annotation and can
-      # blow the 256KB metadata.annotations limit. Server-side apply avoids the
+      # blow the 256KB metadata.annotations limit. ServerSideApply avoids the
       # annotation entirely (same reason as the cnpg-operator child in
       # argocd/platform-postgres).
       - ServerSideApply=true
+      # ServerSideApply alone is not honored for the chart's CRD apply on this
+      # ArgoCD (v3.5.x): the CRD patch still goes client-side and fails with
+      # "metadata.annotations: Too long", aborting the whole sync (so the Grafana
+      # datasources never apply). Replace=true makes ArgoCD use kubectl replace
+      # (a full PUT, no last-applied annotation) - same pairing the Tekton
+      # app-of-apps uses for its equally large CRDs. clusterIP-bearing Services
+      # are preserved by ArgoCD on replace (verified against the Tekton app).
+      - Replace=true

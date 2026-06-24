@@ -735,11 +735,7 @@
         "regex": "",
         "skipUrlSync": false,
         "type": "datasource",
-        "current": {
-          "selected": true,
-          "text": "grafanacloud-prom",
-          "value": "grafanacloud-prom"
-        }
+        "current": {}
       },
       {
         "hide": 0,
@@ -754,11 +750,7 @@
         "regex": "/^(?!.*alert-state-history|.*usage-insights).*$/",
         "skipUrlSync": false,
         "type": "datasource",
-        "current": {
-          "selected": true,
-          "value": "grafanacloud-logs",
-          "text": "grafanacloud-logs"
-        }
+        "current": {}
       },
       {
         "hide": 0,
@@ -773,11 +765,7 @@
         "regex": "",
         "skipUrlSync": false,
         "type": "datasource",
-        "current": {
-          "selected": true,
-          "text": "grafanacloud-traces",
-          "value": "grafanacloud-traces"
-        }
+        "current": {}
       },
       {
         "current": {
