@@ -51,17 +51,24 @@ done
 # resource per namespace) - `helm upgrade` needs get/list/watch on it (plus
 # write verbs to create/update it) to diff against the live cluster, or it
 # fails with "instrumentations.opentelemetry.io ... is forbidden".
-log_step "Granting Jenkins ServiceAccount access to the Instrumentation CRD"
-kubectl create clusterrole jenkins-otel-instrumentation-editor \
-  --verb=get,list,watch,create,update,patch,delete \
-  --resource=instrumentations.opentelemetry.io \
-  --dry-run=client -o yaml | kubectl apply -f -
-for ns in "${J2026_MICROSERVICES_NS_STABLE}"; do
-  kubectl create rolebinding jenkins-otel-instrumentation-editor \
-    --clusterrole=jenkins-otel-instrumentation-editor \
-    --serviceaccount="${J2026_JENKINS_NAMESPACE}:jenkins" \
-    -n "${ns}" \
+#
+# Only relevant when ci.engine=jenkins: the Jenkins pipeline runs `helm upgrade`
+# under the `jenkins` ServiceAccount. With ci.engine=tekton the microservices
+# deploy via ArgoCD (the gitops-deploy task syncs, it doesn't helm-upgrade), so
+# there's no `jenkins` SA to bind and this grant would be a dead no-op.
+if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
+  log_step "Granting Jenkins ServiceAccount access to the Instrumentation CRD"
+  kubectl create clusterrole jenkins-otel-instrumentation-editor \
+    --verb=get,list,watch,create,update,patch,delete \
+    --resource=instrumentations.opentelemetry.io \
     --dry-run=client -o yaml | kubectl apply -f -
-done
+  for ns in "${J2026_MICROSERVICES_NS_STABLE}"; do
+    kubectl create rolebinding jenkins-otel-instrumentation-editor \
+      --clusterrole=jenkins-otel-instrumentation-editor \
+      --serviceaccount="${J2026_JENKINS_NAMESPACE}:jenkins" \
+      -n "${ns}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+  done
+fi
 
 log_info "OpenTelemetry Operator ready."
