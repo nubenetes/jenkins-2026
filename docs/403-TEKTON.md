@@ -397,6 +397,8 @@ Open `https://tekton.<baseDomain>` (Google IAP login, [§ Dashboard](#dashboard-
 
 If you fill the form by hand instead: namespace **`tekton-ci`**, set **ServiceAccount = `tekton-ci`**, and for **`source`** choose **VolumeClaimTemplate** (a few Gi, RWO) and for **`dockerconfig`** the **`tekton-registry`** Secret.
 
+> **Pre-populate the Dashboard from the first Day1** — set `tekton.seedRuns: true` (or `JENKINS2026_TEKTON_SEED_RUNS=true`). `scripts/06-tekton-pipelines.sh` then seeds one PipelineRun per service from [`tekton/runs/`](../tekton/runs/) during provisioning, so the Dashboard lists runnable entries you can **Rerun** with one click immediately — no first paste/`kubectl create` needed. The trade-off: it runs **one build per service per Day1**, which is why it is **off by default** (PaC's git-push trigger is the normal way to start runs). This is a CI-engine convenience only — it does not change how PaC works.
+
 ### Option B — `kubectl create` (a PipelineRun manifest)
 
 The repo ships ready-to-run manifests in [`tekton/runs/`](../tekton/runs/) (SA + workspaces already set) — the simplest path:
