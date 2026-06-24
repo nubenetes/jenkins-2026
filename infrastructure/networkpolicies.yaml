@@ -233,6 +233,15 @@ spec:
     ports:
     - protocol: TCP
       port: 5432
+  # Kubernetes API server (443). The jhipstersamplemicroservice uses Hazelcast
+  # with Kubernetes member discovery, which queries the API server; without this
+  # egress it logs "Couldn't connect to the service" and never becomes Ready under
+  # enforcement. The API server is the control plane (not a pod/namespace), so it
+  # is allowed by port with no selector. The chart's microservice-policy egress
+  # omits this.
+  - ports:
+    - protocol: TCP
+      port: 443
   ingress:
   - from:
     - namespaceSelector:

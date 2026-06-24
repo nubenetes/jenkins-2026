@@ -3,6 +3,14 @@ kind: Application
 metadata:
   name: argo-rollouts
   namespace: argocd
+  annotations:
+    # The argo-rollouts CRDs (rollouts/analysisruns/experiments/...) have large
+    # OpenAPI schemas; client-side diff writes the manifest into the
+    # last-applied-configuration annotation and blows the 256KB limit, leaving the
+    # app permanently OutOfSync. ServerSideDiff computes the diff server-side (the
+    # companion to ServerSideApply below) — same fix as oss-kube-prometheus-stack
+    # and the Tekton app-of-apps.
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
   finalizers:
     - resources-finalizer.argocd.argoproj.io
 spec:
