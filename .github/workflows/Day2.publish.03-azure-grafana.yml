@@ -64,6 +64,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Publish dashboards to Azure Managed Grafana
+        id: publish_azure
         if: ${{ env.AZURE_CLIENT_ID != '' }}
         run: |
           az extension add -n amg --only-show-errors || true
@@ -76,6 +77,8 @@ jobs:
             echo "::warning::no Azure Managed Grafana found - skipping dashboard publish"
             exit 0
           fi
+          grafana_url="$(az grafana show -n "${grafana}" -g "${rg}" --query properties.endpoint -o tsv | tr -d '/')"
+          echo "grafana_url=https://${grafana_url#https://}" >> "${GITHUB_OUTPUT}"
           # Resolve the App Insights resource and substitute it for the
           # ${appinsights} placeholder so the log/trace panels bind to a
           # concrete resource (a dashboard template variable wouldn't reliably
@@ -109,4 +112,10 @@ jobs:
             echo "Re-published \`observability/grafana/dashboards-azure/\` to Azure"
             echo "Managed Grafana (no cluster touched). Instance discovered via"
             echo "**az grafana list**; auth via GitHub OIDC (no access keys)."
+            if [[ -n "${{ steps.publish_azure.outputs.grafana_url }}" ]]; then
+              echo
+              echo "**Grafana:** ${{ steps.publish_azure.outputs.grafana_url }}"
+            fi
           } >> "${GITHUB_STEP_SUMMARY}"
+          # Also print to the normal log for easy click-through.
+          [[ -n "${{ steps.publish_azure.outputs.grafana_url }}" ]] && echo "Grafana: ${{ steps.publish_azure.outputs.grafana_url }}"

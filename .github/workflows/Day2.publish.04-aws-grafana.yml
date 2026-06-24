@@ -101,6 +101,26 @@ jobs:
             echo "AWS_REGION=$(tf aws_region)"
           } >> "${GITHUB_ENV}"
 
+      # Summary runs BEFORE AWS login so configure-aws-credentials has not yet
+      # registered the region as a masked secret — otherwise the region string
+      # is replaced with *** in all subsequent log output, including the URL.
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### managed-aws dashboards published"
+            echo
+            echo "Re-published \`observability/grafana/dashboards-aws/\` to Amazon"
+            echo "Managed Grafana (no cluster touched). AMG params read from the"
+            echo "**terraform/aws-managed-grafana** GCS state; auth via GitHub OIDC."
+            if [[ -n "${GRAFANA_BASE_URL:-}" ]]; then
+              echo
+              echo "**Grafana:** ${GRAFANA_BASE_URL}"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+          # Also print to the normal log for easy click-through.
+          [[ -n "${GRAFANA_BASE_URL:-}" ]] && echo "Grafana: ${GRAFANA_BASE_URL}"
+
       # Least-privilege dashboard-publisher role (terraform/aws-managed-grafana),
       # assumed via GitHub OIDC - no access keys. scripts/07 mints a short-lived
       # AMG service-account token with it.
@@ -122,14 +142,3 @@ jobs:
         if: ${{ env.AWS_DASHBOARD_PUBLISH_ROLE_ARN == '' }}
         run: |
           echo "::warning::AWS_DASHBOARD_PUBLISH_ROLE_ARN not set - skipping. Re-run 'Day0.infra.04 AWS managed-grafana' and set the secret first (see README \"GitHub Actions automation\")."
-
-      - name: Summary
-        if: always()
-        run: |
-          {
-            echo "### managed-aws dashboards published"
-            echo
-            echo "Re-published \`observability/grafana/dashboards-aws/\` to Amazon"
-            echo "Managed Grafana (no cluster touched). AMG params read from the"
-            echo "**terraform/aws-managed-grafana** GCS state; auth via GitHub OIDC."
-          } >> "${GITHUB_STEP_SUMMARY}"
