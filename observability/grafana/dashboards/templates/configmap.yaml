@@ -1,0 +1,24 @@
+{{- /*
+Render the canonical dashboard JSONs (this chart's *.json files) into the
+ConfigMap that values-oss.yaml mounts via grafana.dashboardsConfigMaps. Drop the
+off-engine CI overview so a tekton cluster never shows an empty Jenkins CI
+dashboard (and vice-versa) — the GitOps equivalent of the SKIP_CI_DASHBOARD
+gating in scripts/07-grafana-dashboards.sh.
+*/ -}}
+{{- $skip := ternary "jenkins-overview.json" "tekton-overview.json" (eq .Values.ciEngine "tekton") -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jenkins-2026-grafana-dashboards
+  namespace: {{ .Values.namespace | quote }}
+  labels:
+    app.kubernetes.io/part-of: jenkins-2026
+    app.kubernetes.io/component: grafana-dashboards
+data:
+{{- range $path, $_ := .Files.Glob "*.json" }}
+{{- $name := base $path }}
+{{- if ne $name $skip }}
+  {{ $name }}: |-
+{{ $.Files.Get $path | indent 4 }}
+{{- end }}
+{{- end }}

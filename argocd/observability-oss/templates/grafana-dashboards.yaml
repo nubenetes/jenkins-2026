@@ -1,0 +1,39 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: oss-grafana-dashboards
+  namespace: argocd
+  annotations:
+    # Sync before kube-prometheus-stack so the ConfigMap that Grafana mounts via
+    # dashboardsConfigMaps exists when the Grafana pod starts (minimises the
+    # FailedMount window; the pod self-heals once the ConfigMap lands either way).
+    argocd.argoproj.io/sync-wave: "-1"
+  # Cascade-prune with the parent app-of-apps (mode switch away from oss / teardown).
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  # The dashboards ConfigMap, rendered from observability/grafana/dashboards/
+  # (a small Helm chart: the canonical *.json files + a ConfigMap template that
+  # drops the off-engine CI overview based on ciEngine). Replaces the previous
+  # script-managed ConfigMap (scripts/03-observability.sh / Day2.publish.01) so
+  # dashboards are GitOps/auto-synced.
+  source:
+    repoURL: {{ .Values.repoURL | quote }}
+    targetRevision: {{ .Values.targetRevision | quote }}
+    path: observability/grafana/dashboards
+    helm:
+      parameters:
+        - name: ciEngine
+          value: {{ .Values.ciEngine | quote }}
+        - name: namespace
+          value: {{ .Values.namespace.grafana | quote }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.namespace.grafana | quote }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
