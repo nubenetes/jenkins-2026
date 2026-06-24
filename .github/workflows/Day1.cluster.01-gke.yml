@@ -459,6 +459,8 @@ jobs:
 
       - name: Publish dashboards to Azure Managed Grafana
         if: ${{ inputs.observability_mode == 'managed-azure' }}
+        env:
+          JENKINS2026_CI_ENGINE: ${{ inputs.ci_engine }}
         run: |
           az extension add -n amg --only-show-errors || true
           az extension add -n resource-graph --only-show-errors || true
@@ -476,7 +478,15 @@ jobs:
           # auto-select at view time). Kept out of the repo - resolved here.
           appinsights="$(az graph query -q "resources | where type =~ 'microsoft.insights/components' | project id" --query 'data[0].id' -o tsv)"
           echo "Publishing to ${grafana} (${rg}); App Insights: ${appinsights##*/}"
+          # Skip the off-engine CI overview (jenkins XOR tekton) matching
+          # the same logic as 07-grafana-dashboards.sh::is_offengine_dashboard.
+          [[ "${JENKINS2026_CI_ENGINE}" == "tekton" ]] && skip_dash="jenkins-overview" || skip_dash="tekton-overview"
           for f in observability/grafana/dashboards-azure/*-azure.json; do
+            name="$(basename "${f}" -azure.json)"
+            if [[ "${name}" == "${skip_dash}" ]]; then
+              echo "skipping ${name}-azure (ci.engine=${JENKINS2026_CI_ENGINE})"
+              continue
+            fi
             sed "s|\${appinsights}|${appinsights}|g" "${f}" > /tmp/dash.json
             if az grafana dashboard create -n "${grafana}" -g "${rg}" \
                  --definition @/tmp/dash.json --overwrite --only-show-errors >/dev/null; then
@@ -508,6 +518,7 @@ jobs:
         if: ${{ inputs.observability_mode == 'managed-aws' && env.AWS_DASHBOARD_PUBLISH_ROLE_ARN != '' }}
         env:
           JENKINS2026_OBS_MODE: managed-aws
+          JENKINS2026_CI_ENGINE: ${{ inputs.ci_engine }}
         run: ./scripts/07-grafana-dashboards.sh
 
       - name: Summary
