@@ -180,19 +180,13 @@ EOT
     # ArgoCD app) so ArgoCD never owns/prunes these per-cluster values; the
     # chart references them via the sidecar / envValueFrom (optional=true, so a
     # missing object just falls back).
-    log_step "Creating jenkins-2026-grafana-dashboards ConfigMap in ${J2026_GRAFANA_OSS_NAMESPACE}"
-    # Ship only the active CI engine's overview (jenkins XOR tekton); the other would
-    # render empty. Stage to a temp dir and drop the off-engine dashboard before the
-    # Grafana sidecar imports the ConfigMap.
-    if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then _skip_ci="jenkins-overview"; else _skip_ci="tekton-overview"; fi
-    _dash_stage="$(mktemp -d)"
-    cp "${J2026_ROOT_DIR}/observability/grafana/dashboards"/*.json "${_dash_stage}/"
-    rm -f "${_dash_stage}/${_skip_ci}.json"
-    kubectl create configmap jenkins-2026-grafana-dashboards \
-      -n "${J2026_GRAFANA_OSS_NAMESPACE}" \
-      --from-file="${_dash_stage}" \
-      --dry-run=client -o yaml | kubectl apply -f -
-    rm -rf "${_dash_stage}"
+    # The jenkins-2026-grafana-dashboards ConfigMap is now GitOps-managed by the
+    # oss-grafana-dashboards child app of the observability-oss app-of-apps
+    # (rendered from observability/grafana/dashboards/ — a small Helm chart that
+    # drops the off-engine CI overview based on ciEngine). It used to be built
+    # here with `kubectl create configmap`; ArgoCD owns it now, so it auto-syncs
+    # on commit and needs no Day2.publish re-run. The ciEngine value flows to the
+    # app-of-apps via the {{ciEngine}} parameter substituted above.
 
     # The Grafana->Jenkins datasource only makes sense when Jenkins is the CI engine
     # (and the jenkins-credentials Secret exists). Skip it in tekton mode.
@@ -227,7 +221,8 @@ EOT
     OSS_APP_FILE="$(mktemp)"
     REPO_URL="${J2026_SELF_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
     sed "s@{{repoUrl}}@${REPO_URL}@g;
-         s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g" \
+         s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g;
+         s@{{ciEngine}}@${J2026_CI_ENGINE}@g" \
         "${J2026_ROOT_DIR}/argocd/observability-oss-app.yaml" > "${OSS_APP_FILE}"
     kubectl apply -f "${OSS_APP_FILE}"
     rm "${OSS_APP_FILE}"

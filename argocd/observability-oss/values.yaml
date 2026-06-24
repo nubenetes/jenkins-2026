@@ -5,6 +5,12 @@
 repoURL: https://github.com/nubenetes/jenkins-2026.git
 targetRevision: main
 
+# Active CI engine (jenkins|tekton), passed down from scripts/03-observability.sh
+# (J2026_CI_ENGINE) via the parent Application's helm parameters. Drives the
+# oss-grafana-dashboards child app, which drops the off-engine CI overview
+# (jenkins-overview when tekton, tekton-overview when jenkins).
+ciEngine: jenkins
+
 namespace:
   # Loki + Tempo (and the OTel collectors, which stay script-managed).
   observability: observability
