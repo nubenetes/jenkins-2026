@@ -125,6 +125,16 @@ resource "google_container_cluster" "this" {
   # Day1.cluster.01), not an in-place Day1 re-run.
   datapath_provider = "ADVANCED_DATAPATH"
 
+  # Pod-to-pod TRANSPARENT ENCRYPTION (WireGuard), the lightweight, sidecar-free
+  # way to close the in-cluster encryption gap on GKE — Dataplane V2's managed
+  # Cilium does it for us (we can't configure Cilium directly on GKE). Requires
+  # ADVANCED_DATAPATH above. It encrypts INTER-NODE pod traffic on the wire (pods
+  # co-located on the same node never leave it, so they aren't encrypted).
+  # Caveat: this is transport encryption, NOT identity-based mutual auth (no
+  # per-workload mTLS identity/authZ like Istio/Linkerd) — it closes the
+  # "plaintext on the wire" gap without a service mesh. Some CPU/latency overhead.
+  in_transit_encryption_config = "IN_TRANSIT_ENCRYPTION_INTER_NODE_TRANSPARENT"
+
   # Required for the Gateway/HTTPRoute/GCPBackendPolicy resources applied by
   # scripts/09-gateway.sh - see README.md "Public access (GKE Gateway API +
   # IAP)".
