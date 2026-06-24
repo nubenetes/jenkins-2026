@@ -10,6 +10,15 @@ fullnameOverride: otel-collector-logs
 
 mode: daemonset
 
+# Reuse the gateway's ServiceAccount (otel-collector-gateway) so the projected
+# OIDC token carries the sub that the IAM trust policy already trusts
+# (system:serviceaccount:observability:otel-collector-gateway). Creating a
+# separate SA (otel-collector-logs) would require adding it to the trust
+# policy's values list in terraform/aws-managed-grafana/main.tf.
+serviceAccount:
+  create: false
+  name: otel-collector-gateway
+
 image:
   repository: otel/opentelemetry-collector-contrib
 
