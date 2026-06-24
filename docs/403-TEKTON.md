@@ -388,14 +388,20 @@ Start them manually for ad-hoc runs, debugging, or to fire the k6 smoke on deman
 
 Open `https://tekton.<baseDomain>` (Google IAP login, [§ Dashboard](#dashboard-on-the-internet-behind-google-iap)). The Dashboard is **read-write**.
 
-> **Why the blank "Create PipelineRun" form fails with defaults** (unlike a one-click Jenkins seed job): all pipeline **params** default to the gateway service, but the Dashboard's form does **not** default the two things a run actually needs — the **`tekton-ci` ServiceAccount** (RBAC to clone/build/push/deploy; the form would otherwise use `default`, which can't) and the **workspace bindings** (`source` = an RWO PVC, `dockerconfig` = the registry Secret). Leave those blank and the run errors immediately.
+> **⚠️ The Dashboard's _visual_ "Create PipelineRun" form cannot bind workspaces — by design, in every version.** This is the key thing to understand before reaching for the GUI:
+>
+> - All pipeline **params** default (to the gateway service), and the **ServiceAccount** is handled cluster-wide (we set `default-service-account: tekton-ci` in `config-defaults`, so a run created without an SA uses `tekton-ci` instead of the powerless `default`).
+> - But the visual form has **no field to bind a workspace at all**. Binding/selecting workspaces in the GUI has been an open Tekton feature request since **2020** — [tektoncd/dashboard#1283](https://github.com/tektoncd/dashboard/issues/1283) (still open, roadmap *Todo*), see also [tektoncd/pipeline#6144](https://github.com/tektoncd/pipeline/issues/6144) and [#5635](https://github.com/tektoncd/pipeline/issues/5635). It is **not** a misconfiguration on our side and **not** fixed by upgrading the Dashboard (latest as of writing still lacks it).
+> - So a visually-filled `Create` of `microservices-pipeline` **always** fails with `pipeline requires workspace with name "source" be provided by pipelinerun`, because this pipeline's 9 tasks share a **required** `source` PVC (and `dockerconfig`). Tekton has no "default workspace binding" to fall back on.
+>
+> **When the visual form _is_ fine:** pipelines that declare **no** workspaces (it fully works there, params pre-filled), or quick param-only tweaks. The limitation is specifically *visual-form + a pipeline with required workspaces* — which is exactly this one.
 
 **The one-click-equivalent path** — use the ready-made manifests in [`tekton/runs/`](../tekton/runs/) which already set the SA + workspaces:
 
 1. **First run**: in **PipelineRuns → Create**, switch the form to **YAML mode** and paste [`tekton/runs/gateway.yaml`](../tekton/runs/gateway.yaml) (or `jhipstersamplemicroservice.yaml` / `k6-smoke.yaml`), then **Create**. (Same content as `kubectl create -f` in Option B.)
 2. **Every run after that is truly one-click**: open that PipelineRun and click **Rerun** — it reuses the exact SA, workspaces, and params. This is the closest equivalent to the Jenkins one-click build.
 
-If you fill the form by hand instead: namespace **`tekton-ci`**, set **ServiceAccount = `tekton-ci`**, and for **`source`** choose **VolumeClaimTemplate** (a few Gi, RWO) and for **`dockerconfig`** the **`tekton-registry`** Secret.
+There is **no** hand-fill path in the *visual* form that succeeds for this pipeline (no workspace field — see the limitation above), so for `microservices-pipeline` the supported manual options are: the **YAML mode** of the Create dialog (paste a `tekton/runs/*.yaml`), **Rerun** of an existing/seeded run, or `kubectl create` (Option B). All three carry the `source`/`dockerconfig` bindings the visual form cannot.
 
 > **Pre-populate the Dashboard from the first Day1** — set `tekton.seedRuns: true` (or `JENKINS2026_TEKTON_SEED_RUNS=true`). `scripts/06-tekton-pipelines.sh` then seeds one PipelineRun per service from [`tekton/runs/`](../tekton/runs/) during provisioning, so the Dashboard lists runnable entries you can **Rerun** with one click immediately — no first paste/`kubectl create` needed. The trade-off: it runs **one build per service per Day1**, which is why it is **off by default** (PaC's git-push trigger is the normal way to start runs). This is a CI-engine convenience only — it does not change how PaC works.
 
