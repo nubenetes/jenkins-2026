@@ -55,6 +55,11 @@ spec:
           value: "true"
         - name: OTEL_RESOURCE_ATTRIBUTES
           value: service.name=k6-microservices-smoke,service.namespace=jenkins-2026,deployment.environment=$(params.env-name)
+        # Push every 2s so short tests (≈12s) get several export windows instead
+        # of just one at t=10s (the 10s default), reducing the blast radius of a
+        # transient memory_limiter rejection in the OTel gateway collector.
+        - name: K6_OTEL_EXPORT_INTERVAL
+          value: 2s
         - name: OTLP_ENDPOINT_RAW
           value: $(params.otlp-endpoint)
         # Optional Grafana Cloud k6 (the k6-app) streaming. All from the optional
