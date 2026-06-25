@@ -296,18 +296,22 @@ PY
     # active GitHub OIDC → Azure federated credential.
     GF_BASE_URL="${GRAFANA_BASE_URL:-$(kubectl get secret azure-monitor-credentials \
       -n "${J2026_OBS_NAMESPACE}" \
-      -o jsonpath='{.data.AZURE_GRAFANA_ENDPOINT}' 2>/dev/null | base64 -d || true)}"
+      -o jsonpath='{.data.GRAFANA_BASE_URL}' 2>/dev/null | base64 -d || true)}"
     if [[ -z "${GF_BASE_URL:-}" ]]; then
-      log_error "managed-azure: GRAFANA_BASE_URL not found (set env var or check azure-monitor-credentials secret)."
-      exit 1
+      log_warn "managed-azure: GRAFANA_BASE_URL not in azure-monitor-credentials secret yet — skipping alert provisioning."
+      exit 0
     fi
 
     GF_API_KEY="$(az account get-access-token \
       --resource "https://grafana.azure.com/" \
       --query "accessToken" -o tsv 2>/dev/null || true)"
     if [[ -z "${GF_API_KEY:-}" ]]; then
-      log_error "managed-azure: failed to get Azure AD token (is 'az login' done / are Azure OIDC credentials valid?)"
-      exit 1
+      # Expected inside scripts/up.sh under CI: the runner is not logged into Azure
+      # there (azure/login is a later Day1 step), so skip cleanly — the Day1
+      # "Provision alerts to Azure Managed Grafana" step re-runs this post-login.
+      # For a LOCAL run, just `az login` first.
+      log_warn "managed-azure: no Azure AD token (no 'az login' in this context) — skipping alert provisioning (the Day1 post-login step provisions them)."
+      exit 0
     fi
 
     GF_EMAIL="$(resolve_email)"
