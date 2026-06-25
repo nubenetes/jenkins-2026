@@ -139,9 +139,9 @@ When executing the **Day1.cluster.01 GKE provision** workflow manually, you are 
    - If the `git_ref` field below is left empty, the runner will check out this exact reference.
 
 2. **observability_mode (Dropdown - Choice)**:
-   - **Type**: Choice (`grafana-cloud` | `oss` | `managed-azure` | `managed-aws`).
-   - **Default**: `grafana-cloud`.
-   - Overrides the `observability.mode` setting in `config/config.yaml` for this execution lifecycle.
+   - **Type**: Choice (`oss` | `grafana-cloud` | `managed-azure` | `managed-aws`).
+   - **Default**: `oss` (needs no external backend; `config/config.yaml`'s durable default is still `grafana-cloud` for local `up.sh`).
+   - Overrides the `observability.mode` setting in `config/config.yaml` for this execution lifecycle. Exactly **one** backend is active per cluster and the choice is **deterministic/idempotent** (like `ci_engine`): a rerun with a different mode auto-retires the previously-deployed backend's in-cluster footprint and provisions the chosen one. See [301 § observability backends](301-OBSERVABILITY.md).
 
 3. **enable_gateway (Checkbox - Boolean)**:
    - **Default**: `false`.
