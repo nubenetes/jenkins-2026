@@ -143,12 +143,17 @@ When executing the **Day1.cluster.01 GKE provision** workflow manually, you are 
    - **Default**: `oss` (needs no external backend; `config/config.yaml`'s durable default is still `grafana-cloud` for local `up.sh`).
    - Overrides the `observability.mode` setting in `config/config.yaml` for this execution lifecycle. Exactly **one** backend is active per cluster and the choice is **deterministic/idempotent** (like `ci_engine`): a rerun with a different mode auto-retires the previously-deployed backend's in-cluster footprint and provisions the chosen one. See [301 § observability backends](301-OBSERVABILITY.md).
 
-3. **enable_gateway (Checkbox - Boolean)**:
+3. **destroy_unused_backends (Checkbox - Boolean) — DESTRUCTIVE, opt-in**:
+   - **Default**: `false`.
+   - When `true`, also `terraform destroy` the **persistent** backend (Grafana Cloud stack / Azure / AWS Managed Grafana) of every mode you did **not** select, so only the chosen backend exists. Reuses the `Decom.infra.0{2,3,4}` workflows via `workflow_call`; independent of the cluster provision (a destroy of a never-provisioned backend can't block it).
+   - ⚠ **Irreversible**: wipes that backend's history/dashboards; re-selecting the mode later recreates it empty. Needs the non-selected backends' credentials/identifiers configured.
+
+4. **enable_gateway (Checkbox - Boolean)**:
    - **Default**: `false`.
    - Determines whether the public GKE Gateway L7 load balancer should be provisioned.
    - **Prerequisites**: Requires `Day0.infra.01 Gateway bootstrap` applied, wildcard DNS records, and IAP OAuth client credentials.
 
-4. **git_ref (Text Box - String)**:
+5. **git_ref (Text Box - String)**:
    - **Default**: `""` (empty).
    - Leave empty to use the **"Use workflow from"** dropdown selection.
    - Provide a branch name, tag, or SHA to override.
