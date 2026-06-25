@@ -9,11 +9,22 @@ def call(Map cfg) {
   container('helm') {
     sh """
       set -eux
-      # Service endpoints/kube-proxy/CNI can take a few seconds to catch up
-      # with a just-finished rollout, so a fresh pod's first connection can
-      # time out even though the new Pods are Ready - retry on any error.
-      kubectl -n ${cfg.namespace} run smoke-${cfg.serviceName}-${env.BUILD_NUMBER} \
+      # Run the throwaway curl pod in the AGENT's OWN namespace (jenkins), NOT the
+      # target microservices namespace. Under NetworkPolicy enforcement (GKE Dataplane
+      # V2) the microservices namespace is default-deny egress (DNS only) and the
+      # microservice only accepts ingress from the gateway pod or the CI namespaces —
+      # so a curl pod created there can neither egress nor be accepted, and the health
+      # check times out (curl exit 28). Instead: create it in the jenkins namespace
+      # (microservice-policy allows that namespace's ingress) and label it
+      # jenkins=slave so jenkins-agent-policy grants it open egress — the same path the
+      # build agents use. The target stays the microservices-namespace Service FQDN.
+      #
+      # Service endpoints/kube-proxy/CNI can also lag a just-finished rollout, so a
+      # fresh pod's first connection can time out even when Pods are Ready - retry.
+      ns="\$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)"
+      kubectl -n "\$ns" run smoke-${cfg.serviceName}-${env.BUILD_NUMBER} \
         --rm -i --restart=Never --image=curlimages/curl:8.10.1 \
+        --labels=jenkins=slave \
         --command -- curl -sf --connect-timeout 5 --max-time 60 \
         --retry 5 --retry-delay 3 --retry-all-errors \
         http://${cfg.serviceName}.${cfg.namespace}.svc.cluster.local:${cfg.port}${cfg.healthPath}
