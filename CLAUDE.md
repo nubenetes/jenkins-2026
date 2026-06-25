@@ -172,8 +172,10 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
 
 - Don't run `test/e2e.sh` or trigger `Day1.cluster.01-gke`/`Decom.cluster.01-gke`
   (or `Day2.redeploy.02-jenkins` / `Day2.redeploy.03-tekton` against a real
-  cluster) workflows without explicit confirmation - they create/modify real,
-  billed GCP (and optionally Grafana Cloud) resources.
+  cluster, or the `Decom.infra.00-all` "Everything" umbrella, which tears down the
+  cluster **and** every persistent backend at once) workflows without explicit
+  confirmation - they create/modify/destroy real, billed GCP (and optionally
+  Grafana Cloud / Azure / AWS) resources.
 - **Applying changes = re-run, not Decom+Day1.** `Day1.cluster.01-gke` is
   idempotent and converges in place on an existing cluster (`terraform apply`
   no-ops when the cluster is already in state; `up.sh` re-applies every step;
