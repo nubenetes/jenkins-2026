@@ -1,0 +1,86 @@
+name: "Decom.infra.00 Everything (cluster + all backends, umbrella)"
+
+# Opt-in convenience umbrella: tears down EVERYTHING in one dispatch — the GKE
+# cluster AND every persistent observability backend — so a PoC never leaves a
+# forgotten, billed backend behind after switching observability.mode around
+# (e.g. an orphaned Grafana Cloud stack from before you moved to managed-azure).
+#
+# It REUSES each per-resource Decom workflow via `workflow_call` (no teardown
+# logic is duplicated here). Nothing runs unless you type "destroy" to confirm.
+# Order matters and is enforced via `needs`: the cluster goes FIRST (its
+# decommission also destroys the ephemeral grafana-cloud-token, which references
+# the Grafana Cloud stack), THEN the persistent backends destroy in parallel.
+#
+# The persistent-backend checkboxes default to ON (the point is "destroy all").
+# Untick one to spare it. The Gateway static IP defaults to OFF — keeping it
+# avoids losing the IP and forcing DNS re-propagation; tick it only for a truly
+# total teardown.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "destroy" to confirm the FULL teardown (IRREVERSIBLE)'
+        required: true
+        type: string
+      grafana_cloud:
+        description: "Destroy the Grafana Cloud stack (Decom.infra.02)"
+        type: boolean
+        default: true
+      azure_grafana:
+        description: "Destroy Azure Managed Grafana (Decom.infra.03)"
+        type: boolean
+        default: true
+      aws_grafana:
+        description: "Destroy Amazon Managed Grafana (Decom.infra.04)"
+        type: boolean
+        default: true
+      gateway:
+        description: "Also destroy the Gateway static IP + cert (Decom.infra.01) — ⚠ loses the IP, forces DNS re-propagation"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate confirmation
+        run: |
+          if [ "${{ inputs.confirm }}" != "destroy" ]; then
+            echo "::error::You must type 'destroy' in the confirm box to proceed."; exit 1
+          fi
+
+  # Always part of "everything". Goes first so the grafana-cloud-token (destroyed
+  # here) is gone before the Grafana Cloud stack below. Idempotent — a no-op if the
+  # cluster is already down.
+  cluster:
+    needs: guard
+    uses: ./.github/workflows/Decom.cluster.01-gke.yml
+    secrets: inherit
+
+  grafana-cloud:
+    needs: [guard, cluster]
+    if: ${{ inputs.grafana_cloud }}
+    uses: ./.github/workflows/Decom.infra.02-grafana-cloud.yml
+    secrets: inherit
+
+  azure-grafana:
+    needs: [guard, cluster]
+    if: ${{ inputs.azure_grafana }}
+    uses: ./.github/workflows/Decom.infra.03-azure-grafana.yml
+    secrets: inherit
+
+  aws-grafana:
+    needs: [guard, cluster]
+    if: ${{ inputs.aws_grafana }}
+    uses: ./.github/workflows/Decom.infra.04-aws-grafana.yml
+    secrets: inherit
+
+  gateway:
+    needs: [guard, cluster]
+    if: ${{ inputs.gateway }}
+    uses: ./.github/workflows/Decom.infra.01-gateway.yml
+    secrets: inherit

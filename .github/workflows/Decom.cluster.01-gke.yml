@@ -13,6 +13,16 @@ on:
         required: false
         default: ""
         type: string
+  # Reused by the Decom.infra.00 "Everything" umbrella so the full teardown
+  # (cluster + all persistent backends) runs from one dispatch without duplicating
+  # the decommission logic here.
+  workflow_call:
+    inputs:
+      git_ref:
+        description: "Git ref to check out (empty = caller's ref)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read

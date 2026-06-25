@@ -49,6 +49,8 @@ The GitHub Actions sidebar sorts by each workflow's `name:` field, and every `na
 
 > **CI engine choice.** `Day1.cluster.01-gke` has a `ci_engine` input (`jenkins` default | `tekton`) that flows to `scripts/up.sh` as `JENKINS2026_CI_ENGINE`, selecting which CI engine the provision installs. The `redeploy` tier therefore holds `01` ArgoCD, `02` Jenkins, `03` Tekton, `04` Headlamp — `02` and `03` are mutually-exclusive engines. See [403. Tekton](./403-TEKTON.md) for the deep-dive.
 
+> **Full-teardown umbrella.** `Decom.infra.00` ("Everything") is an opt-in convenience workflow that tears down the GKE cluster **and** every persistent observability backend in one dispatch — so switching `observability.mode` around never leaves a forgotten, billed backend (e.g. an orphaned Grafana Cloud stack from before you moved to managed-azure). It reuses each per-resource Decom workflow via `workflow_call` (no teardown logic is duplicated); type `destroy` to confirm. The cluster runs first (its decom also destroys the ephemeral `grafana-cloud-token` that references the Grafana Cloud stack), then the backends in parallel. The three backend checkboxes default **on**; the Gateway static IP defaults **off** (keeping it avoids losing the IP and re-propagating DNS). Untick any to spare it.
+
 ---
 
 ## Full workflow matrix
@@ -214,9 +216,9 @@ A new session (reprovision after full teardown) only needs **Day1** — Day0 out
 
 ## Complete workflow inventory — matrix table
 
-All 20 workflows in a single numbered table. The filename's three components (`DayN`, `tier`, `ZZ`) are broken out separately so the meaning of every part is visible at a glance. Click the code to open the workflow's **Run workflow** page directly in GitHub Actions.
+All 21 workflows in a single numbered table (rows 1–20 in filename/execution order; **row 21** is the opt-in full-teardown umbrella, which orchestrates the others and sits outside the linear runbook). The filename's three components (`DayN`, `tier`, `ZZ`) are broken out separately so the meaning of every part is visible at a glance. Click the code to open the workflow's **Run workflow** page directly in GitHub Actions.
 
-> **Reading the sequence**: rows are ordered by filename (= correct execution order). `Day0`/`Day1` before `Day2` before `Decom`; within `Decom`, the cluster (row 16) before the persistent backends (rows 17–20). This ordering is **enforced by the `name:` prefixes** — opening the GitHub Actions sidebar and reading top-to-bottom gives the correct runbook.
+> **Reading the sequence**: rows are ordered by filename (= correct execution order). `Day0`/`Day1` before `Day2` before `Decom`; within `Decom`, the cluster (row 16) before the persistent backends (rows 17–20). This ordering is **enforced by the `name:` prefixes** — opening the GitHub Actions sidebar and reading top-to-bottom gives the correct runbook. Row 21 (`Decom.infra.00`) is an opt-in umbrella that orchestrates a full teardown (it runs rows 16–20 for you, cluster first) and is therefore outside the linear order.
 
 | # | `DayN` — Phase | `tier` — group | `ZZ` resource | Code → GitHub Actions | Description | Prerequisites | Frequency |
 |:---:|---|---|---|---|---|---|---|
@@ -240,12 +242,15 @@ All 20 workflows in a single numbered table. The filename's three components (`D
 | **18** | **Decom** Destroy | **infra** — foundational, last | **02** Grafana Cloud stack | [**`Decom.infra.02-grafana-cloud`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.02-grafana-cloud.yml) | `terraform destroy` on `terraform/grafana-cloud-stack`. Permanently removes the Grafana Cloud instance, dashboards, access-policy tokens. Irreversible. | **Row 16** complete | **One-time** |
 | **19** | **Decom** Destroy | **infra** — foundational, last | **03** Azure Mgd Grafana | [**`Decom.infra.03-azure-grafana`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.03-azure-grafana.yml) | `terraform destroy` on `terraform/azure-managed-grafana`. Removes Azure Managed Grafana, Monitor workspace, App Insights, Log Analytics and the Entra SP. | **Row 16** complete | **One-time** |
 | **20** | **Decom** Destroy | **infra** — foundational, last | **04** AWS AMG / AMP | [**`Decom.infra.04-aws-grafana`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.04-aws-grafana.yml) | `terraform destroy` on `terraform/aws-managed-grafana`. Removes Amazon Managed Grafana, AMP, CloudWatch log group, OIDC provider and IAM role. | **Row 16** complete | **One-time** |
+| **21** | **Decom** Destroy | **infra.00** — umbrella, opt-in | **00** Everything | [**`Decom.infra.00-all`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.00-all.yml) | Full teardown in one dispatch: tears down the cluster **and** every persistent backend, reusing rows 16–20 via `workflow_call` (no duplicated logic). Type `destroy` to confirm. Cluster first (so the ephemeral `grafana-cloud-token` is gone before the Grafana Cloud stack), then backends in parallel. Backend checkboxes default **on**; Gateway IP defaults **off**. Avoids leaving a forgotten/billed backend after switching `observability.mode`. | None (orchestrates rows 16–20) | **When done** |
 
 ---
 
-## Decom: independent per backend (no umbrella)
+## Decom: independent per backend, plus an opt-in "Everything" umbrella
 
-The persistent backends (Gateway IP/cert, Grafana Cloud, Azure, AWS) each have their **own** `Decom.infra.0{1..4}` workflow — one `terraform destroy` per module. They are deliberately **not chained** (and there is **no** "destroy everything" umbrella): the backends are independent and persistent, you normally use only one per cluster (and with the `oss` default, often none at all), and an implicit cascade would wipe backends you still need. There is also little to deduplicate — each teardown is module-specific, not shared logic. Run **only** the per-backend workflow(s) for what you actually provisioned, after `Decom.cluster.01-gke`.
+The persistent backends (Gateway IP/cert, Grafana Cloud, Azure, AWS) each have their **own** `Decom.infra.0{1..4}` workflow — one `terraform destroy` per module. They are independent and persistent: you normally use only one per cluster (and with the `oss` default, often none at all). For a **targeted** teardown, run **only** the per-backend workflow(s) for what you actually provisioned, after `Decom.cluster.01-gke`.
+
+For a **full** teardown there is also an opt-in umbrella, **`Decom.infra.00` ("Everything")**, that tears down the cluster **and** every persistent backend in one dispatch — so switching `observability.mode` around never leaves a forgotten, billed backend (e.g. an orphaned Grafana Cloud stack from before you moved to managed-azure). It reuses each per-resource Decom via `workflow_call` (no teardown logic is duplicated); type `destroy` to confirm. Order is enforced with `needs`: the **cluster runs first** (its decom also destroys the ephemeral `grafana-cloud-token`, which references the Grafana Cloud stack), then the backends destroy in parallel. The three backend checkboxes default **on** (the point is destroy-all); the Gateway static IP defaults **off** (keeping it avoids losing the IP and re-propagating DNS). Untick any to spare it. This is the one place a cascade is intentional — gated behind the explicit `destroy` confirmation and per-backend opt-out.
 
 ## Day2 ordering: tiers are categories, not stages
 

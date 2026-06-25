@@ -609,6 +609,19 @@ jobs:
           # auto-select at view time). Kept out of the repo - resolved here.
           appinsights="$(az graph query -q "resources | where type =~ 'microsoft.insights/components' | project id" --query 'data[0].id' -o tsv)"
           echo "Publishing to ${grafana} (${rg}); App Insights: ${appinsights##*/}"
+          # Ensure the shared "CI-CD Observability" folder (uid jenkins-2026) so the
+          # Azure dashboards land in the SAME single folder as the alert rules (07.5)
+          # — consistent with oss/grafana-cloud/aws, not the root. Created via the
+          # data-plane API (AMG audience 6f2d169c) to pin the uid; `az grafana folder
+          # create` can't set a uid, which would orphan a second same-titled folder.
+          gf_ep="$(az grafana show -n "${grafana}" -g "${rg}" --query properties.endpoint -o tsv)"
+          gf_tok="$(az account get-access-token --resource 6f2d169c-08f3-4a4c-a982-bcaf2d038c45 --query accessToken -o tsv)"
+          curl -fsS -X POST "${gf_ep%/}/api/folders" -H "Authorization: Bearer ${gf_tok}" \
+            -H "Content-Type: application/json" \
+            -d '{"uid":"jenkins-2026","title":"CI-CD Observability"}' >/dev/null 2>&1 || true
+          curl -fsS -X PUT "${gf_ep%/}/api/folders/jenkins-2026" -H "Authorization: Bearer ${gf_tok}" \
+            -H "Content-Type: application/json" \
+            -d '{"title":"CI-CD Observability","overwrite":true}' >/dev/null 2>&1 || true
           # Skip the off-engine CI overview (jenkins XOR tekton) and delete it
           # if it still exists from a previous run with a different engine.
           if [[ "${JENKINS2026_CI_ENGINE}" == "tekton" ]]; then
@@ -624,6 +637,7 @@ jobs:
             fi
             sed "s|\${appinsights}|${appinsights}|g" "${f}" > /tmp/dash.json
             if az grafana dashboard create -n "${grafana}" -g "${rg}" \
+                 --folder "jenkins-2026" \
                  --definition @/tmp/dash.json --overwrite --only-show-errors >/dev/null; then
               echo "published $(basename "${f}")"
             else

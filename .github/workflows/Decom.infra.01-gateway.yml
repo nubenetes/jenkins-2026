@@ -4,6 +4,8 @@ name: "Decom.infra.01 Gateway"
 # to completely remove the persistent gateway resources (static IP, cert mapping).
 on:
   workflow_dispatch:
+  # Reused by the Decom.infra.00 "Everything" umbrella (opt-in gateway teardown).
+  workflow_call:
 
 permissions:
   contents: read
