@@ -44,7 +44,9 @@ Setting `JENKINS_OIDC_ADMIN_EMAIL` also dynamically configures administrator per
 
 [`helm/jenkins/values-common.yaml`](../helm/jenkins/values-common.yaml) tracks the latest Jenkins LTS (`controller.image.tag`) and pins **every** plugin — including transitive dependencies — to the exact version resolved against that core by `jenkins-plugin-cli`. This means a routine controller pod restart always installs the identical plugin set.
 
-`scripts/04-jenkins.sh` installs the jenkinsci/helm-charts `jenkins` chart with three JCasC fragments passed via `--set-file`:
+**Chart version (pinned).** The Helm chart is pinned in [`config/config.yaml`](../config/config.yaml) → `jenkins.chart.version: "5.9.29"` (the latest as of 2026-06-25; appVersion `2.555.3`, matching `controller.image.tag`). ArgoCD installs exactly this version via [`argocd/jenkins-app.yaml`](../argocd/jenkins-app.yaml)'s `targetRevision`. It was previously `""` (always-latest), but a silent chart bump to the 5.9.x line **split `authorizationStrategy` and `securityRealm` into their own ConfigMaps** that render independently of `controller.JCasC.defaultConfig: false` — so the chart's defaults (`loggedInUsersCanDoAnything` + a local admin) collided with the same keys in our `jcasc-base.yaml` and the controller crashed at boot (`Single entry map expected to configure a … AuthorizationStrategy but found multiple entries`). For that reason `values-common.yaml` also sets `controller.JCasC.authorizationStrategy: ""` and `securityRealm: ""` so the chart emits **neither** — `jcasc-base.yaml` is the single source of both (Role-Based Strategy + the OIDC/Google realm). **Bump the pin deliberately** (and re-verify those two overrides against the new chart's `values.yaml`) rather than tracking latest.
+
+`scripts/04-jenkins.sh` deploys the jenkinsci/helm-charts `jenkins` chart as a single ArgoCD `Application` ([`argocd/jenkins-app.yaml`](../argocd/jenkins-app.yaml)) and delivers the JCasC fragments below as labeled ConfigMaps (`jenkins-jenkins-config=true`) that the config-reload sidecar auto-merges (ArgoCD installs the chart from git and can't `--set-file` them in):
 
 | File | Purpose |
 |---|---|
