@@ -895,7 +895,7 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "jenkins-2026 / k6 Observability Smoke Test",
+  "title": "CI-CD / k6 Observability Smoke Test",
   "uid": "jenkins2026-k6-smoke-overview",
   "version": 2,
   "weekStart": ""
