@@ -20,6 +20,20 @@ helm_uninstall() {
   fi
 }
 
+# Delete ALL PodDisruptionBudgets up front. A PDB with ALLOWED DISRUPTIONS: 0
+# (e.g. CNPG's postgres-* / postgres-*-primary) blocks voluntary pod eviction,
+# which stalls BOTH namespace draining AND - critically - the GKE node-pool drain
+# that `terraform destroy` runs next. A stuck CNPG pod kept a DELETE_NODE_POOL
+# operation RUNNING for hours (run 28202019543). Removing PDBs is safe here (the
+# whole cluster is about to be destroyed) and lets every later drain proceed.
+if kubectl version >/dev/null 2>&1; then
+  log_step "Removing all PodDisruptionBudgets (unblock node/namespace drains)"
+  kubectl get pdb -A --no-headers 2>/dev/null | awk '{print $1, $2}' \
+    | while read -r _ns _name; do
+        [[ -n "${_name}" ]] && kubectl delete pdb "${_name}" -n "${_ns}" --ignore-not-found 2>/dev/null || true
+      done
+fi
+
 # In oss mode the in-cluster stack (kube-prometheus-stack/Loki/Tempo) is managed
 # by the observability-oss ArgoCD app-of-apps. Delete it FIRST, while ArgoCD is
 # still running, so the controller cascade-prunes those charts via the resources
