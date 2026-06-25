@@ -29,6 +29,11 @@ on:
           - grafana-cloud
           - managed-azure
           - managed-aws
+      destroy_unused_backends:
+        description: "DESTRUCTIVE / opt-in. Also terraform-destroy the PERSISTENT backend (Grafana Cloud stack / Azure / AWS Managed Grafana) of every observability mode you did NOT select, so only the chosen backend exists. ⚠ Irreversible: wipes that backend's history/dashboards; re-selecting the mode recreates it empty. Needs that backend's credentials/identifiers set. Default false (mode switch only retires the in-cluster footprint)."
+        required: false
+        default: false
+        type: boolean
       ci_engine:
         description: "CI engine to deploy: jenkins (default - Helm + JCasC + Job-DSL seed) or tekton (Tekton Pipelines/Triggers/Dashboard, IAP-protected, with the pipeline ported to tekton/). Mutually exclusive - see docs/403-TEKTON.md."
         required: true
@@ -84,6 +89,29 @@ jobs:
   aws-bootstrap:
     if: ${{ inputs.observability_mode == 'managed-aws' }}
     uses: ./.github/workflows/Day0.infra.04-aws-grafana.yml
+    secrets: inherit
+
+  # ── Single-backend enforcement (opt-in, DESTRUCTIVE) ────────────────────────
+  # When destroy_unused_backends=true, terraform-destroy the PERSISTENT backend of
+  # every mode that is NOT the one being deployed, so only the selected Grafana
+  # exists. Reuses the per-backend Decom.infra.0{2,3,4} workflows via workflow_call
+  # (same pattern as the bootstrap jobs above). Independent of `provision` (they
+  # touch different, external backends) and intentionally NOT in its `needs`, so a
+  # destroy of a never-provisioned backend (missing creds) can't block the cluster.
+  # Skipped entirely when the flag is off. oss selected => all three are destroyed.
+  destroy-grafana-cloud:
+    if: ${{ inputs.destroy_unused_backends && inputs.observability_mode != 'grafana-cloud' }}
+    uses: ./.github/workflows/Decom.infra.02-grafana-cloud.yml
+    secrets: inherit
+
+  destroy-azure:
+    if: ${{ inputs.destroy_unused_backends && inputs.observability_mode != 'managed-azure' }}
+    uses: ./.github/workflows/Decom.infra.03-azure-grafana.yml
+    secrets: inherit
+
+  destroy-aws:
+    if: ${{ inputs.destroy_unused_backends && inputs.observability_mode != 'managed-aws' }}
+    uses: ./.github/workflows/Decom.infra.04-aws-grafana.yml
     secrets: inherit
 
   # ── Main provision job ──────────────────────────────────────────────────────

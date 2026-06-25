@@ -12,6 +12,7 @@ name: "Decom.infra.03 Azure managed-grafana"
 # the azure-bootstrap Environment's required reviewer.
 on:
   workflow_dispatch:
+  workflow_call: # reused by Day1.cluster.01 when destroy_unused_backends=true
 
 permissions:
   contents: read
