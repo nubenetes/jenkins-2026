@@ -124,6 +124,8 @@ The `EXIT` trap should still have run `terraform destroy`, but to be sure no bil
 
 **WIF auth step fails with `permission denied` / `iam.workloadIdentityPools` not found**: re-run `terraform -chdir=terraform/bootstrap apply` (it may not have finished) and confirm `GCP_WORKLOAD_IDENTITY_PROVIDER` / `GCP_SERVICE_ACCOUNT` match its outputs exactly, and that `github_repo` in `terraform/bootstrap/terraform.tfvars` matches this repo's `org/name`.
 
+**`Decom.infra.01 Gateway` fails on `terraform destroy` with `Error 403: Permission 'certificatemanager.certmapentries.delete' denied`**: the CI service account had `roles/certificatemanager.editor`, which — surprisingly — grants create/get/list/update but **no `.delete`** on *any* certificatemanager resource (certs/certmaps/certmapentries/dnsauthorizations). So the Gateway bootstrap could create the cert map but not tear it down. Fixed in `terraform/bootstrap` by switching to **`roles/certificatemanager.owner`** (includes the deletes). **This is a one-time, human-run bootstrap change** — re-run `terraform -chdir=terraform/bootstrap apply` to grant it, then re-run `Decom.infra.01` to finish removing the cert map/entry/cert/DNS-authorization (a failed destroy deletes the static IP first, leaving those behind in state + GCP).
+
 ## Jenkins & GitOps Push Issues
 
 **GitOps Push Authentication Failure (`exit code 128`) during Jenkins build**:
