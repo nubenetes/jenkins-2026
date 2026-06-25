@@ -104,12 +104,12 @@ All agent pod containers follow a least-privilege model:
 | `jnlp` | `jenkins/inbound-agent` | 1000 | false | Jenkins default non-root agent |
 | `maven` | `maven:3.9.9-eclipse-temurin-21` | 0 (image default) | false | Cache mountPath `/root/.m2`; migrate when cache path moves |
 | `node` | `node:20-bookworm` | 0 (image default) | false | Cache mountPath `/root/.npm`; migrate when cache path moves |
-| `git` | `alpine/git:latest` | **1000** (k8s override) | false | `HOME=/tmp` required for `git config --global` under non-root |
+| `git` | `alpine/git:2.54.0` | **1000** (k8s override) | false | `HOME=/tmp` required for `git config --global` under non-root |
 | `helm` | `alpine/k8s:1.31.3` | **1000** (k8s override) | false | `HOME=/tmp`; ArgoCD CLI downloaded to `/tmp/argocd-cli` |
 | `semgrep` | `semgrep/semgrep:1.79.0` | 0 (image default) | false | No filesystem writes requiring root |
 | `trivy` | `aquasec/trivy:0.52.2` | 0 (image default) | false | No filesystem writes requiring root |
 | `docker` | `docker:26-dind` | **0 (required)** | true (privileged) | Docker-in-Docker daemon requires root and a privileged context |
-| `codeql` | `mcr.microsoft.com/cstsectools/codeql-container` | **0 (required)** | — | Runs `apt-get` + Node.js installer at pipeline time |
+| `codeql` | `mcr.microsoft.com/cstsectools/codeql-container@…ba940166` (digest-pinned) | **0 (required)** | — | Runs `apt-get` + Node.js installer at pipeline time |
 
 **Key implementation notes:**
 - `runAsUser: 1000` on `alpine/git` and `alpine/k8s` is applied via Kubernetes `securityContext` — it overrides the image's default UID at runtime without modifying the image itself.
