@@ -44,23 +44,23 @@ The following diagram illustrates how the persistent infrastructure bootstrap wo
 graph TD
     subgraph Bootstrapping ["Day-0 · Phase 0 Create (persistent, one-time)"]
         A["terraform/bootstrap<br>Owner/Admin roles"] -->|"WIF + GCS bucket"| B["Workload Identity<br>+ Remote State"]
-        B --> C["Day0.infra.01 Gateway<br>bootstrap"]
-        B --> D["Day0.infra.02 Grafana Cloud<br>bootstrap"]
-        B --> C2["Day0.infra.03 Azure<br>bootstrap"]
-        B --> C3["Day0.infra.04 AWS<br>bootstrap"]
+        B --> C["Day0.infra.01 Gateway<br>bootstrap<br>🔒 gateway-bootstrap"]
+        B --> D["Day0.infra.02 Grafana Cloud<br>bootstrap<br>🔒 grafana-cloud-bootstrap"]
+        B --> C2["Day0.infra.03 Azure<br>bootstrap<br>🔒 azure-bootstrap"]
+        B --> C3["Day0.infra.04 AWS<br>bootstrap<br>🔒 aws-bootstrap"]
         C -->|"static IP + cert"| F[("Gateway<br>+ Cert Map")]
         D -->|"stack ID + token"| E[("Grafana Cloud")]
     end
 
     subgraph GKE_Lifecycle ["Day-1 → Day-2 → Decommission · GKE Cluster Lifecycle"]
-        F & E & B --> G["Day1.cluster.01 GKE provision<br>tf/gke + scripts/up.sh"]
+        F & E & B --> G["Day1.cluster.01 GKE provision<br>tf/gke + scripts/up.sh<br>🔒 gke-production"]
         G --> H["GKE Cluster Active<br>Jenkins / ArgoCD / services"]
         H --> I["Day2.redeploy.02 Redeploy Jenkins"]
         H --> J["Day2.redeploy.04 Redeploy Headlamp"]
         B --> L2["Day2.publish.04 Publish AWS dashboards<br>(no cluster needed)"]
         B --> M2["Day2.publish.03 Publish Azure dashboards<br>(no cluster needed)"]
         I & J --> H
-        H --> K["Decom.cluster.01 GKE decommission<br>down.sh + tf destroy"]
+        H --> K["Decom.cluster.01 GKE decommission<br>down.sh + tf destroy<br>🔒 gke-production"]
         K -->|"cluster gone<br>assets kept"| B
     end
 
@@ -71,10 +71,10 @@ graph TD
     end
 
     subgraph Persistent_Teardown ["Decommission · Phase 9 Destroy (persistent, one-time)"]
-        K --> P1["Decom.infra.01 Gateway<br>decommission"]
-        K --> P2["Decom.infra.02 Grafana Cloud<br>decommission"]
-        K --> P3["Decom.infra.03 Azure<br>decommission"]
-        K --> P4["Decom.infra.04 AWS<br>decommission"]
+        K --> P1["Decom.infra.01 Gateway<br>decommission<br>🔒 gateway-bootstrap"]
+        K --> P2["Decom.infra.02 Grafana Cloud<br>decommission<br>🔒 grafana-cloud-bootstrap"]
+        K --> P3["Decom.infra.03 Azure<br>decommission<br>🔒 azure-bootstrap"]
+        K --> P4["Decom.infra.04 AWS<br>decommission<br>🔒 aws-bootstrap"]
         P1 & P2 & P3 & P4 -->|"all resources removed"| N["Clean Slate"]
     end
 
@@ -87,6 +87,11 @@ graph TD
 ```
 
 </details>
+
+> 🔒 = a required-reviewer GitHub **Environment** gate. Each persistent Day0
+> resource has its **own** (`gateway-bootstrap`, `grafana-cloud-bootstrap`,
+> `azure-bootstrap`, `aws-bootstrap`); `gke-production` gates the cluster and all
+> Day2 cluster-ops. See [Environment Protection and Manual Approvals](#environment-protection-and-manual-approvals).
 
 > The four persistent teardowns (`Decom.infra.01..04`) are independent — for a **targeted** teardown run **only** the one(s) you actually provisioned (with the `oss` default, often none), after `Decom.cluster.01`. For a **full** teardown, the opt-in **`Decom.infra.00` ("Everything")** umbrella tears down the cluster **and** every persistent backend in one dispatch (reuses each per-resource Decom via `workflow_call`; type `destroy` to confirm; cluster first, then backends in parallel; backends default on, Gateway IP default off). See [101 § Decom: independent per backend, plus an opt-in umbrella](./101-GITHUB_ACTIONS_WORKFLOWS.md#decom-independent-per-backend-plus-an-opt-in-everything-umbrella).
 
@@ -191,6 +196,43 @@ cluster gate):
   - `Day0.infra.02` / `Decom.infra.02` Grafana Cloud → `grafana-cloud-bootstrap`
   - `Day0.infra.03` / `Decom.infra.03` Azure → `azure-bootstrap`
   - `Day0.infra.04` / `Decom.infra.04` AWS → `aws-bootstrap`
+
+#### Why one environment per resource (design rationale)
+
+Originally every gated workflow shared the single `gke-production` environment.
+Splitting it into one environment **per persistent Day0 resource** (plus
+`gke-production` for the cluster) buys three things:
+
+1. **One approval = one concern.** Approving "destroy the Grafana Cloud stack" no
+   longer reads as (or is logged as) approving a change to the **GKE production
+   cluster**. The audit trail names the actual resource.
+2. **No duplicate prompts in a single run.** A `Day1.cluster.01` run with
+   `destroy_unused_backends=true` invokes a backend's *destroy* reusable workflow
+   **and** the `provision` job. When the backend reused `gke-production`, that one
+   environment was approved **twice** in the same run (once for the destroy, once
+   for provision — observed in run `28195110914`). With per-resource gates each
+   prompt is distinct and `gke-production` is approved once, for the cluster.
+3. **The gate travels with the reusable workflow, not the caller.** Each
+   `Day0.infra.0N` / `Decom.infra.0N` declares its `environment:` on the job
+   itself. So **every** entry point that `uses:` it inherits the same single gate:
+   the standalone dispatch, the `Day1` bootstrap *preflight* (`Day0.infra.0N` via
+   `workflow_call`), and the **`Decom.infra.00` "Everything" umbrella**. There is
+   never a second, divergent place to configure approval.
+
+> **Decommissioning the Gateway — which workflow?** Either path runs the **same**
+> reusable `Decom.infra.01-gateway.yml`, so the **`gateway-bootstrap`** approval is
+> identical regardless of how you start it:
+> - **Standalone**: dispatch **`Decom.infra.01 Gateway decommission`** directly —
+>   the normal way to retire just the Gateway.
+> - **Umbrella**: **`Decom.infra.00` ("Everything")** *can* destroy the Gateway,
+>   but its `gateway` input **defaults to `false`** (destroying the Gateway loses
+>   the static IP and forces DNS re-propagation). The umbrella tears down the
+>   cluster + observability backends by default and only touches the Gateway when
+>   you explicitly set `gateway: true`.
+>
+> In other words: a routine full teardown leaves the persistent Gateway IP/cert in
+> place; you destroy the Gateway **deliberately**, via `Decom.infra.01` (or the
+> umbrella's opt-in toggle), and it is gated by `gateway-bootstrap` either way.
 
 ### Setting up Environment Rules
 
