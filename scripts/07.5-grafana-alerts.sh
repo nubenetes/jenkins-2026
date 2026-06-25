@@ -73,17 +73,17 @@ provision_alerts() {
   }
 
   # --- folder ----------------------------------------------------------------
-  log_step "Ensuring alert folder 'CI/CD Alerts'"
+  log_step "Ensuring alert folder 'CI-CD Alerts'"
   # UID kept stable (jenkins-2026-alerts) so this is an in-place rename, never a
   # second folder. POST creates it if absent (409 = already exists → OK)...
   gcapi POST /api/folders \
-    -d '{"uid":"jenkins-2026-alerts","title":"CI/CD Alerts"}' \
+    -d '{"uid":"jenkins-2026-alerts","title":"CI-CD Alerts"}' \
     > /dev/null 2>/dev/null || true
   # ...and PUT renames it if it pre-existed under the old "jenkins-2026 Alerts"
   # title (POST does not update an existing folder). Idempotent / deterministic
   # across reruns and engine switches.
   gcapi PUT /api/folders/jenkins-2026-alerts \
-    -d '{"title":"CI/CD Alerts","overwrite":true}' > /dev/null 2>/dev/null || true
+    -d '{"title":"CI-CD Alerts","overwrite":true}' > /dev/null 2>/dev/null || true
 
   # --- contact point ---------------------------------------------------------
   log_step "Upserting email contact point"
@@ -258,7 +258,7 @@ for f in sorted(glob.glob(os.path.join(alerts_dir, "rules", "*.json"))):
         "data": r["data"],
     })
 doc = {"apiVersion": 1, "groups": [{
-    "orgId": 1, "name": "jenkins-2026", "folder": "CI/CD Alerts",
+    "orgId": 1, "name": "jenkins-2026", "folder": "CI-CD Alerts",
     "interval": "1m", "rules": rules}]}
 if email:
     doc["contactPoints"] = [{"orgId": 1, "name": "jenkins-2026-email", "receivers": [
