@@ -22,59 +22,72 @@
 <details>
 <summary>🔍 Click to expand System Architecture Diagram</summary>
 
+Two pluggable choices, both deterministic & idempotent: the **CI engine** (`ci.engine`: Jenkins **xor** Tekton) and the **observability backend** (`observability.mode`: one of oss / grafana-cloud / managed-azure / managed-aws). ArgoCD is always the CD/GitOps engine. This is the same overview as [README § 3](../README.md#3-architecture-overview); the [Component Diagram](#component-diagram) below drills into the Jenkins/microservices/observability internals.
+
 ```mermaid
-graph TB
-    subgraph "External Services"
-        GH["GitHub"]
-        GC["Grafana Cloud"]
-        GCP["GCP IAP /<br/>DNS / OAuth"]
+flowchart TB
+    users([Users / GitHub webhooks]):::ext
+
+    subgraph GH["GitHub"]
+      R1["nubenetes/jenkins-2026<br/>IaC · scripts · pipelines · JCasC / tekton"]
+      R2["nubenetes/jenkins-2026-gitops-config<br/>microservices + CNPG manifests"]
     end
 
-    subgraph "GKE Cluster"
-        subgraph "GKE Gateway API"
-            GW["GKE Gateway"]
-        end
-
-        subgraph "jenkins namespace"
-            J["Jenkins Controller"]
-            JC["JCasC / Jobs"]
-        end
-
-        subgraph "argocd namespace"
-            ACD["ArgoCD Server"]
-            DEX["ArgoCD Dex /<br/>OIDC"]
-        end
-
-        subgraph "observability namespace"
-            OTEL["OTel Operator/<br/>Collector"]
-            K8S["k8s-monitoring<br/>(Grafana Alloy)"]
-        end
-
-        subgraph "microservices namespace"
-            PCS["Microservices<br/>Services"]
-        end
-
-        subgraph "GKE Cluster Infrastructure"
-            NODES["Nodes & Kubelet"]
-            EVENTS["Kubernetes Events"]
-        end
+    subgraph EDGE["GCP edge"]
+      IAP["Gateway API + Google IAP<br/>DNS · OAuth"]
     end
 
-    GH -->|SCM| J
-    GH -->|SCM| ACD
-    GCP -->|"IAP / OAuth"| GW
-    GW --> J
-    GW --> ACD
-    GW --> PCS
-    J -->|"CI / Build"| GH
-    ACD -->|"CD / GitOps"| PCS
-    PCS -->|OTLP| OTEL
-    J -->|OTLP| OTEL
-    OTEL -->|OTLP/HTTP| GC
+    subgraph GKE["GKE cluster — Dataplane V2 (Cilium/eBPF NetworkPolicies) + WireGuard"]
+      ACD["ArgoCD<br/>CD / GitOps engine"]
+      subgraph CI["CI engine — pick ONE (ci.engine)"]
+        JEN["Jenkins<br/>Helm + JCasC + Job-DSL seed"]
+        TEK["Tekton<br/>Pipelines/Triggers/Dashboard + PaC"]
+      end
+      subgraph PLAT["Platform add-ons"]
+        HL["Headlamp"]
+        PGA["pgAdmin"]
+        ROLL["Argo Rollouts<br/>canary / blue-green"]
+        ESO["External Secrets"]
+        CNPGOP["CNPG operator"]
+      end
+      subgraph MS["Microservices (gateway + jhipstersample)"]
+        APP["Spring Boot apps<br/>OTel auto-instrumented"]
+        PG[("CNPG Postgres HA<br/>3 replicas + PgBouncer poolers")]
+      end
+      subgraph OBS["In-cluster observability"]
+        OP["OTel Operator"]
+        COL["OTel Collector<br/>reconfigured per mode"]
+        OSST["OSS stack: Prometheus · Loki<br/>Tempo · Grafana (mode=oss)"]
+      end
+    end
 
-    NODES -->|Scraped by| K8S
-    EVENTS -->|Collected by| K8S
-    K8S -->|OTLP/HTTP| GC
+    subgraph BK["External observability backends — pick ONE (observability.mode), Day0 Terraform"]
+      GCLOUD["Grafana Cloud<br/>grafana-cloud"]
+      AZ["Azure Managed Grafana<br/>+ Monitor / App Insights — managed-azure"]
+      AWSG["Amazon Managed Grafana<br/>+ AMP / X-Ray / CloudWatch — managed-aws"]
+    end
+
+    users --> IAP
+    R1 -->|"terraform + scripts/up.sh"| GKE
+    R1 -->|"shared library / pipeline defs"| CI
+    IAP -->|IAP-protected| JEN & TEK & ACD & HL & PGA
+    IAP -->|"open (no IAP)"| APP
+    ACD -->|"installs / syncs"| CI & PLAT & MS
+    R2 -->|"ArgoCD source"| ACD
+    CI -->|"build → push image → commit gitops"| R2
+    CI -->|"argocd app sync"| ACD
+    APP --> PG
+    APP -->|OTLP| COL
+    CI -->|OTLP| COL
+    OP -.->|injects agent| APP
+    COL -->|mode=oss| OSST
+    COL -->|mode=grafana-cloud| GCLOUD
+    COL -->|mode=managed-azure| AZ
+    COL -->|mode=managed-aws| AWSG
+
+    classDef ext fill:#fde,stroke:#c39;
+    classDef pick fill:#eef,stroke:#66c;
+    class JEN,TEK,GCLOUD,AZ,AWSG,OSST pick;
 ```
 
 </details>
