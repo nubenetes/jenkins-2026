@@ -47,11 +47,12 @@ This isn't theoretical — every floating version here has bitten us at least on
 | **grafana/pdc-agent** | `0.2.0` | `03-observability.sh` (`--version`) | grafana-cloud mode only |
 | **Headlamp** chart | `0.43.0` | `config.yaml` `headlamp.chart.version` + [`headlamp-app.yaml`](../argocd/headlamp-app.yaml) | ArgoCD `targetRevision` |
 | **kube-prometheus-stack / Loki / Tempo** | `87.0.1 / 7.0.0 / 1.24.4` | [`argocd/observability-oss/values.yaml`](../argocd/observability-oss/values.yaml) | ArgoCD `targetRevision` |
-| **CloudNativePG** chart | `0.28.3` | [`argocd/platform-postgres/values.yaml`](../argocd/platform-postgres/values.yaml) | ArgoCD `targetRevision` |
+| **CloudNativePG** chart (operator) | `0.28.3` | [`argocd/platform-postgres/values.yaml`](../argocd/platform-postgres/values.yaml) | ArgoCD `targetRevision` |
+| **PostgreSQL** (CNPG database image) | `18.3-system-trixie` | gitops `helm/microservices` `spec.imageName` (`global.postgresImage`) | image tag |
 | **Argo Rollouts** | `2.37.7` | [`argo-rollouts-app.yaml`](../argocd/argo-rollouts-app.yaml) | ArgoCD `targetRevision` |
 | **External Secrets** | `0.12.1` | [`external-secrets-app.yaml`](../argocd/external-secrets-app.yaml) | ArgoCD `targetRevision` |
 | **Tekton** pipelines/triggers/dashboard/… | `v1.13.1` / `v0.36.0` / `v0.69.0` / … | `config.yaml` `tekton.versions` + **vendored** [`argocd/tekton/components/`](../argocd/tekton/) | pinned release YAML, applied by `04-tekton.sh` |
-| **Tekton task images** | `alpine/git:2.54.0`, `codeql-container:@c6f3f8cb…` | [`tekton/tasks/*.yaml`](../tekton/tasks/) | image tag/digest |
+| **CI agent images** (Jenkins pod templates + Tekton tasks) | maven `3.9.9`, node `20-bookworm`, docker `26-dind`, alpine/k8s `1.31.3`, semgrep `1.79.0`, trivy `0.52.2`, k6 `2.0.0`, `alpine/git:2.54.0`, `codeql-container@c6f3f8cb…` | [`vars/MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy) · [`tekton/tasks/*.yaml`](../tekton/tasks/) | image tag/digest (both engines share the same git + codeql pins) |
 | **`yq`** (CI) | `v4.53.3` | `.github/workflows/*` | release-download URL |
 | **GitHub Actions** | full commit SHA (`@<sha> # vX`) | `.github/workflows/*` | SHA pin + [`dependabot.yml`](../.github/dependabot.yml) |
 | **Terraform providers** | exact (per lockfile) | `terraform/*/.terraform.lock.hcl` | committed lockfiles + `~> X.0` in `versions.tf` |
