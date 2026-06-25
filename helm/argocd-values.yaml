@@ -12,10 +12,12 @@ controller:
       # Loki + Tempo, hundreds of objects) AND the full Tekton app-of-apps
       # (pipelines/triggers/dashboard/chains/pruner/pac + CRDs) - OOM-killed it at
       # 1Gi (exit 137), which stalled syncing tekton-pipelines and hung up.sh.
-      memory: 512Mi
+      # Raised 1Gi -> 2Gi -> 3Gi for extra headroom under that combo (the
+      # e2-standard-8 nodes have ample memory).
+      memory: 768Mi
     limits:
       cpu: 1000m
-      memory: 2Gi
+      memory: 3Gi
 
 applicationSet:
   resources:
