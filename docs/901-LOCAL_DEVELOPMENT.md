@@ -1,4 +1,4 @@
-[← Previous: 601. DevSecOps](./601-DEVSECOPS.md) | [🏠 Home](../README.md) | [→ Next: 902. Troubleshooting](./902-TROUBLESHOOTING.md)
+[← Previous: 602. Version Pinning](./602-VERSION_PINNING.md) | [🏠 Home](../README.md) | [→ Next: 902. Troubleshooting](./902-TROUBLESHOOTING.md)
 
 ---
 
@@ -173,7 +173,7 @@ Namespace-level `ResourceQuota` hard limits:
 
 ---
 
-[← Previous: 601. DevSecOps](./601-DEVSECOPS.md) | [🏠 Home](../README.md) | [→ Next: 902. Troubleshooting](./902-TROUBLESHOOTING.md)
+[← Previous: 602. Version Pinning](./602-VERSION_PINNING.md) | [🏠 Home](../README.md) | [→ Next: 902. Troubleshooting](./902-TROUBLESHOOTING.md)
 
 ---
 

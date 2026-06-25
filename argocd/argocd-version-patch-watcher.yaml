@@ -52,20 +52,29 @@ spec:
             - |
               set -euo pipefail
               
-              CONSTRAINT="3.5.x"
+              # Constraint is templated from config/config.yaml (argocd.version_constraint)
+              # by scripts/08.5-argocd.sh at apply time, so config is the SINGLE source
+              # of the tracked line for Day1, Day2 AND this watcher (no drift).
+              CONSTRAINT="__ARGOCD_CONSTRAINT__"
               echo "Starting ArgoCD version check for constraint: ${CONSTRAINT}"
-              
+
+              # Derive the tag regex from the constraint (e.g. 3.5.x -> ^v3\.5\.[0-9]+$),
+              # matching resolve_argocd_version in 08.5-argocd.sh.
+              BASE=$(echo "${CONSTRAINT}" | sed 's/\.x$//' | sed 's/\./\\./g')
+              STABLE_RE="^v${BASE}\\.[0-9]+$"
+              ANY_RE="^v${BASE}\\.[0-9]+(-rc[0-9]+)?$"
+
               # Fetch latest stable version from GitHub API
-              LATEST_VERSION=$(curl -s https://api.github.com/repos/argoproj/argo-cd/releases | jq -r --arg constraint "${CONSTRAINT}" '
-                map(select(.prerelease == false and .draft == false and (.tag_name | test("^v3\\.5\\.[0-9]+$"))))
+              LATEST_VERSION=$(curl -s https://api.github.com/repos/argoproj/argo-cd/releases | jq -r --arg re "${STABLE_RE}" '
+                map(select(.prerelease == false and .draft == false and (.tag_name | test($re))))
                 | sort_by(.published_at) | last | .tag_name
               ')
-              
+
               # Fallback to pre-releases if no stable release is found
               if [ -z "$LATEST_VERSION" ] || [ "$LATEST_VERSION" = "null" ]; then
-                echo "No stable release found. Searching for pre-releases matching 3.5.x..."
-                LATEST_VERSION=$(curl -s https://api.github.com/repos/argoproj/argo-cd/releases | jq -r '
-                  map(select(.draft == false and (.tag_name | test("^v3\\.5\\.[0-9]+(-rc[0-9]+)?$"))))
+                echo "No stable release found. Searching for pre-releases matching ${CONSTRAINT}..."
+                LATEST_VERSION=$(curl -s https://api.github.com/repos/argoproj/argo-cd/releases | jq -r --arg re "${ANY_RE}" '
+                  map(select(.draft == false and (.tag_name | test($re))))
                   | sort_by(.published_at) | last | .tag_name
                 ')
               fi

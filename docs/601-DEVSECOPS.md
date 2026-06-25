@@ -1,4 +1,4 @@
-[← Previous: 502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md) | [🏠 Home](../README.md) | [→ Next: 901. Local Development](./901-LOCAL_DEVELOPMENT.md)
+[← Previous: 502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md) | [🏠 Home](../README.md) | [→ Next: 602. Version Pinning](./602-VERSION_PINNING.md)
 
 ---
 
@@ -105,7 +105,7 @@ post {
 
 ---
 
-[← Previous: 502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md) | [🏠 Home](../README.md) | [→ Next: 901. Local Development](./901-LOCAL_DEVELOPMENT.md)
+[← Previous: 502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md) | [🏠 Home](../README.md) | [→ Next: 602. Version Pinning](./602-VERSION_PINNING.md)
 
 ---
 
