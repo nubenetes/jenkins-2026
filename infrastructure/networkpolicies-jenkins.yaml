@@ -51,3 +51,25 @@ spec:
       port: 8080
   egress:
   - {}
+---
+# Jenkins build agents (Kubernetes-plugin pods, label jenkins=slave) are
+# OUTBOUND-ONLY: they connect to the controller (the 8080 tcpSlaveAgentListener
+# + JNLP 50000) and reach git/registry/ArgoCD/the microservices for builds. The
+# default-deny above caps EVERY pod's egress at DNS, and jenkins-policy's open
+# egress only covers the controller (app.kubernetes.io/name=jenkins) — so without
+# this the agents can't even reach the controller and every build (starting with
+# the seed job) hangs at "Waiting for agent to connect" until it times out. Open
+# egress (they need no ingress); mirrors the tekton-ci-baseline for pipeline pods.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: jenkins-agent-policy
+  namespace: jenkins
+spec:
+  podSelector:
+    matchLabels:
+      jenkins: slave
+  policyTypes:
+  - Egress
+  egress:
+  - {}
