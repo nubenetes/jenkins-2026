@@ -30,8 +30,10 @@ jobs:
   bootstrap:
     runs-on: ubuntu-latest
     # Approval gate (creates a persistent, billed Grafana Cloud resource) -
-    # same required-reviewer protection as the GKE/decommission workflows.
-    environment: gke-production
+    # dedicated grafana-cloud-bootstrap environment (own required-reviewer gate,
+    # like azure-bootstrap / aws-bootstrap), so the Grafana Cloud approval is not
+    # conflated with - or duplicated against - the cluster's gke-production gate.
+    environment: grafana-cloud-bootstrap
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
