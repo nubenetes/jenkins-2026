@@ -2,7 +2,7 @@
   "uid": "j2026-http-5xx-rate",
   "title": "High HTTP 5xx Error Rate",
   "ruleGroup": "jenkins-2026",
-  "folderUID": "jenkins-2026-alerts",
+  "folderUID": "jenkins-2026",
   "condition": "threshold",
   "for": "3m",
   "noDataState": "NoData",

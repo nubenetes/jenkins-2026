@@ -2,7 +2,7 @@
   "uid": "j2026-jvm-heap-high",
   "title": "JVM Heap Usage Above 85%",
   "ruleGroup": "jenkins-2026",
-  "folderUID": "jenkins-2026-alerts",
+  "folderUID": "jenkins-2026",
   "condition": "threshold",
   "for": "5m",
   "noDataState": "NoData",

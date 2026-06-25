@@ -73,17 +73,22 @@ provision_alerts() {
   }
 
   # --- folder ----------------------------------------------------------------
-  log_step "Ensuring alert folder 'CI/CD Alerts'"
-  # UID kept stable (jenkins-2026-alerts) so this is an in-place rename, never a
-  # second folder. POST creates it if absent (409 = already exists → OK)...
+  # Single, flat folder shared by dashboards AND alert rules (uid jenkins-2026,
+  # title "CI-CD Observability") — simplest/most intuitive, and it avoids a
+  # separate alerts folder showing up empty in the Dashboards browser. 07 / gcx
+  # normally creates it for grafana-cloud; ensure it here too so a standalone
+  # alerts run still has a folder. POST creates if absent (409 = exists → OK),
+  # PUT keeps the title correct in place.
+  log_step "Ensuring the shared 'CI-CD Observability' folder (dashboards + alerts)"
   gcapi POST /api/folders \
-    -d '{"uid":"jenkins-2026-alerts","title":"CI/CD Alerts"}' \
+    -d '{"uid":"jenkins-2026","title":"CI-CD Observability"}' \
     > /dev/null 2>/dev/null || true
-  # ...and PUT renames it if it pre-existed under the old "jenkins-2026 Alerts"
-  # title (POST does not update an existing folder). Idempotent / deterministic
-  # across reruns and engine switches.
-  gcapi PUT /api/folders/jenkins-2026-alerts \
-    -d '{"title":"CI/CD Alerts","overwrite":true}' > /dev/null 2>/dev/null || true
+  gcapi PUT /api/folders/jenkins-2026 \
+    -d '{"title":"CI-CD Observability","overwrite":true}' > /dev/null 2>/dev/null || true
+  # Delete the legacy separate alerts folder from the old two-folder layout
+  # (forceDeleteRules so a leftover with stale rules is removed too; the current
+  # rules are re-provisioned into the shared folder below). No-op if absent.
+  gcapi DELETE "/api/folders/jenkins-2026-alerts?forceDeleteRules=true" > /dev/null 2>/dev/null || true
 
   # --- contact point ---------------------------------------------------------
   log_step "Upserting email contact point"
@@ -258,7 +263,7 @@ for f in sorted(glob.glob(os.path.join(alerts_dir, "rules", "*.json"))):
         "data": r["data"],
     })
 doc = {"apiVersion": 1, "groups": [{
-    "orgId": 1, "name": "jenkins-2026", "folder": "CI/CD Alerts",
+    "orgId": 1, "name": "jenkins-2026", "folder": "CI-CD Observability",
     "interval": "1m", "rules": rules}]}
 if email:
     doc["contactPoints"] = [{"orgId": 1, "name": "jenkins-2026-email", "receivers": [
