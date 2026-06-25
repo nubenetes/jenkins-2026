@@ -20,13 +20,13 @@ on:
   workflow_dispatch:
     inputs:
       observability_mode:
-        description: "observability.mode override"
+        description: "Observability backend (only ONE is active per cluster). Deterministic & idempotent like ci_engine: a rerun that picks a different backend auto-retires the previously-deployed one and provisions the chosen one (scripts/03-observability.sh)."
         required: true
-        default: "grafana-cloud"
+        default: "oss"
         type: choice
         options:
-          - grafana-cloud
           - oss
+          - grafana-cloud
           - managed-azure
           - managed-aws
       ci_engine:
