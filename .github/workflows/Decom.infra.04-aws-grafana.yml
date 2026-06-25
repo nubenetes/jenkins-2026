@@ -31,7 +31,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_BOOTSTRAP_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ vars.AWS_REGION || secrets.AWS_REGION }}
           role-session-name: jenkins-2026-aws-decommission
 
       - name: Authenticate to GCP (Terraform state backend)
@@ -77,7 +77,7 @@ jobs:
       - name: Terraform destroy (destroy persistent AWS backend)
         working-directory: terraform/aws-managed-grafana
         env:
-          TF_VAR_region: ${{ secrets.AWS_REGION }}
+          TF_VAR_region: ${{ vars.AWS_REGION || secrets.AWS_REGION }}
           TF_VAR_gke_oidc_issuer_url: ${{ secrets.GKE_OIDC_ISSUER_URL }}
         run: terraform destroy -auto-approve -input=false
 
