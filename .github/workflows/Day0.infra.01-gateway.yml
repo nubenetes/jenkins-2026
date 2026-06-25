@@ -20,6 +20,9 @@ name: "Day0.infra.01 Gateway"
 # (config/config.yaml's gateway.staticIPName / gateway.certMapName).
 on:
   workflow_dispatch:
+  # Reusable: invoked by the "Day1.cluster.00 Everything up" umbrella so a full
+  # from-scratch provision can bootstrap the persistent Gateway in one click.
+  workflow_call:
 
 permissions:
   contents: read
