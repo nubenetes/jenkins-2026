@@ -208,6 +208,24 @@ The canonical JSON files live in [`observability/grafana/dashboards/`](../observ
 
 > Adding a dashboard = drop a `<name>.json` into [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) and run the variant generators (below). In `oss` mode the Helm-chart ConfigMap picks it up automatically (it globs `*.json`); for the other modes `scripts/07-grafana-dashboards.sh` publishes every `*.json`. Only `jenkins-overview` / `tekton-overview` are CI-engine-gated; everything else ships in all modes.
 
+#### Where everything lives in Grafana (folders)
+
+**All of _our_ content — every dashboard above _and_ all five [alert rules](#alert-rules) — lives in a single flat folder named `CI-CD Observability`** (engine-neutral; folder uid `jenkins-2026`), in **every** backend. So no matter which Grafana you open:
+
+- **Dashboards** → the *Dashboards* browser → open the **`CI-CD Observability`** folder. The visible titles are `jenkins-2026 / Microservices Overview`, `jenkins-2026 / k6 Observability Smoke Test`, `Jenkins-2026 PostgreSQL / CloudNativePG`, and the active CI-overview (`jenkins-2026 / Jenkins CI Overview` **or** `Jenkins-2026 Tekton CI Observability`).
+- **Alert rules** → *Alerting → Alert rules* → the **same** `CI-CD Observability` folder (a Grafana folder holds dashboards **and** rules together). The email contact point + routing are under *Alerting → Contact points / Notification policies*.
+
+> Folder names are deliberately **slash-free** (`CI-CD`, not `CI/CD`): a `/` makes Grafana's alerting provisioning treat the title as a nested-folder path (`CI/CD Alerts` → a `CI` folder with a `CD Alerts` child).
+
+Alongside our folder, **each backend ships its own built-in dashboards** in different places — these are **not** managed by this repo:
+
+| Backend | Our dashboards + alerts | Built-in / bundled dashboards (where to find them) |
+|---|---|---|
+| **oss** (in-cluster) | `CI-CD Observability` folder | kube-prometheus-stack auto-ships ~27 dashboards in the **`General`** folder: *Kubernetes / Compute Resources / …*, *Kubernetes / API server*, *Node Exporter / Nodes*, *CoreDNS*, *Grafana Overview*, *etcd*, *Prometheus*, … |
+| **grafana-cloud** | `CI-CD Observability` folder | The **Kubernetes Monitoring** app (left nav → *Kubernetes*) provides cluster/node/pod/workload views + integration dashboards; managed by Grafana Labs (not a folder you publish into). |
+| **managed-azure** | `CI-CD Observability` folder (the `*-azure` dashboard variants) | Azure's own **Azure Monitor / Container Insights** dashboards come from the Azure side. |
+| **managed-aws** | `CI-CD Observability` folder | AMG ships **no** built-in k8s dashboards, so we **vendor** the community ones into the **same** `CI-CD Observability` folder: *Kubernetes Views — Global / Namespaces / Nodes / Pods* + *Node Exporter Full* (from [`observability/grafana/dashboards-aws/community/`](../observability/grafana/dashboards-aws/community/)). Log/trace panels use the CloudWatch / X-Ray datasources. |
+
 #### Per-backend variants
 
 Each managed backend requires adapted datasources (AMP instead of Prometheus, CloudWatch instead of Loki, X-Ray instead of Tempo). Variants are generated from the canonical files and live in separate directories:
