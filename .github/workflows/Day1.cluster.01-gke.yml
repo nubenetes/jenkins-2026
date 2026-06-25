@@ -643,6 +643,19 @@ jobs:
           # integration - the collector scrapes cadvisor/kubelet/node/ksm to
           # feed them (values-managed-azure.yaml). Nothing to publish here.
 
+      # Provision the alert rules to Azure Managed Grafana. up.sh runs
+      # 07.5-grafana-alerts.sh too, but inside up.sh the runner is not yet logged
+      # into Azure (the azure/login above is a later step), so 07.5 cannot mint the
+      # Azure AD token and the rules are skipped there. Re-run it here, post-login,
+      # so the 5 rules land in the CI-CD Observability folder (Alerting -> Alert
+      # rules) — the managed-azure equivalent of the OSS alerts. Idempotent.
+      - name: Provision alerts to Azure Managed Grafana
+        if: ${{ inputs.observability_mode == 'managed-azure' }}
+        env:
+          JENKINS2026_OBS_MODE: managed-azure
+          JENKINS2026_CI_ENGINE: ${{ inputs.ci_engine }}
+        run: ./scripts/07.5-grafana-alerts.sh
+
       # Auto-publish the managed-aws dashboard variants to Amazon Managed
       # Grafana. up.sh's 07-grafana-dashboards.sh skips when the runner has no
       # AWS credentials (the keyless design only federates the collector), so
@@ -662,4 +675,14 @@ jobs:
           JENKINS2026_OBS_MODE: managed-aws
           JENKINS2026_CI_ENGINE: ${{ inputs.ci_engine }}
         run: ./scripts/07-grafana-dashboards.sh
+
+      # Provision the alert rules to Amazon Managed Grafana, post AWS-login (same
+      # reason as Azure above: 07.5 inside up.sh can't mint the AMG token without
+      # AWS creds). Lands the 5 rules in the CI-CD Observability folder. Idempotent.
+      - name: Provision alerts to Amazon Managed Grafana
+        if: ${{ inputs.observability_mode == 'managed-aws' && env.AWS_DASHBOARD_PUBLISH_ROLE_ARN != '' }}
+        env:
+          JENKINS2026_OBS_MODE: managed-aws
+          JENKINS2026_CI_ENGINE: ${{ inputs.ci_engine }}
+        run: ./scripts/07.5-grafana-alerts.sh
 
