@@ -155,6 +155,7 @@ The first recreate with enforcement surfaced several latent rules that had silen
 - **Match CNPG pods by `cnpg.io/cluster`, not `app.kubernetes.io/name`.** CNPG labels its pods `app.kubernetes.io/name=postgresql`; an egress allow targeting `app.kubernetes.io/name: postgres-*[-pooler]` matches nothing → apps time out on Liquibase. (Carried by the additive `microservices-cnpg-platform` policy, plus `9187` ingress for metrics scraping.)
 - **K8s-API egress for app discovery.** The JHipster microservice uses Hazelcast Kubernetes member discovery (queries the API server on `443`); without egress to `443` it never goes Ready. Apps that talk to the API need explicit egress.
 - **Jenkins build agents need their OWN egress allow.** The `jenkins` `default-deny` caps every pod's egress at DNS, and `jenkins-policy`'s open egress only matches the controller (`app.kubernetes.io/name=jenkins`). The ephemeral Kubernetes-plugin agent pods (label `jenkins=slave`) matched neither, so they couldn't reach the controller's `8080` tcpSlaveAgentListener / `50000` JNLP — every build hung at "Waiting for agent to connect" and the **seed job timed out**. The separate `jenkins-agent-policy` (in [`networkpolicies-jenkins.yaml`](../infrastructure/networkpolicies-jenkins.yaml)) grants `jenkins=slave` pods open egress (no ingress — they're outbound-only, like the tekton-ci pipeline pods).
+- **CI smoke tests must run where egress *and* ingress are allowed.** The post-deploy health check (`<svc>:8081/management/health`, or the gateway on `8080`) crosses into the locked-down `microservices` namespace. Two policies must both permit it: (a) the microservice's own ingress — `microservice-policy` (in the **gitops-config** repo, `helm/microservices/networkpolicies.yaml`) allows the app port from the `gateway` pod **and** the `tekton-ci` / `jenkins` namespaces; and (b) the smoke pod's **egress**. Tekton satisfies (b) naturally — its smoke runs as a pipeline pod in `tekton-ci` (open egress). Jenkins' `microservicesSmokeTest` originally did `kubectl -n microservices run`, putting the curl pod **in the microservices namespace** (default-deny egress = DNS only) → it could never connect → **curl exit 28**. Fixed by creating the pod in the **agent's `jenkins` namespace** labelled `jenkins=slave` (open egress via `jenkins-agent-policy`), targeting the microservices Service FQDN. Rule of thumb: a CI health-check pod must live in a namespace whose egress is open *and* that the target's ingress allows — never in the target's own locked-down namespace.
 - **Additive vs owned.** A separate NetworkPolicy that no ArgoCD app owns (e.g. `microservices-cnpg-platform`) is **not reverted on sync** and survives recreates (it's in git, applied by `01-namespaces.sh`) — the clean way to add platform allows on top of app-chart policies you don't control.
 </details>
 
@@ -209,6 +210,7 @@ flowchart LR
 
   api -.->|:9443 webhooks| obs
   cieng -->|OTLP :4317/4318| obs
+  cieng -->|smoke health<br/>jhipster :8081 / gateway :8080| gw
   gw -->|OTLP :4317/4318| obs
   graf -->|scrape :9187| pg
   gw -->|:5432| pg
