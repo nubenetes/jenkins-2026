@@ -143,9 +143,11 @@ export J2026_OBS_MANAGED_PROVIDER
 export J2026_OTEL_OPERATOR_REPO_NAME="$(yq_get '.observability.otelOperator.chart.repoName' 'open-telemetry')"
 export J2026_OTEL_OPERATOR_REPO_URL="$(yq_get '.observability.otelOperator.chart.repoUrl' 'https://open-telemetry.github.io/opentelemetry-helm-charts')"
 export J2026_OTEL_OPERATOR_CHART="$(yq_get '.observability.otelOperator.chart.chartName' 'open-telemetry/opentelemetry-operator')"
+export J2026_OTEL_OPERATOR_CHART_VERSION="$(yq_get '.observability.otelOperator.chart.version' '')"
 export J2026_OTEL_OPERATOR_RELEASE="$(yq_get '.observability.otelOperator.releaseName' 'otel-operator')"
 
 export J2026_OTEL_COLLECTOR_CHART="$(yq_get '.observability.otelCollector.chart.chartName' 'open-telemetry/opentelemetry-collector')"
+export J2026_OTEL_COLLECTOR_CHART_VERSION="$(yq_get '.observability.otelCollector.chart.version' '')"
 export J2026_OTEL_GATEWAY_RELEASE="$(yq_get '.observability.otelCollector.gatewayReleaseName' 'otel-collector-gateway')"
 export J2026_OTEL_LOGS_RELEASE="$(yq_get '.observability.otelCollector.logsReleaseName' 'otel-collector-logs')"
 export J2026_GRAFANA_CLOUD_SECRET="$(yq_get '.observability.otelCollector.grafanaCloudSecretName' 'grafana-cloud-credentials')"

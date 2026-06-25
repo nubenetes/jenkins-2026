@@ -24,7 +24,7 @@ spec:
     - name: source
   steps:
     - name: checkout-infra
-      image: alpine/git:latest
+      image: alpine/git:2.54.0
       env:
         - name: HOME
           value: /tmp

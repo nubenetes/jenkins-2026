@@ -17,7 +17,7 @@ spec:
     - name: source
   steps:
     - name: clone-microservices
-      image: alpine/git:latest
+      image: alpine/git:2.54.0
       env:
         - name: HOME
           value: /tmp
@@ -35,7 +35,7 @@ spec:
           clone --depth 1 --branch "$(params.git-branch)" \
           "$(params.git-repo-url)" microservices-src
     - name: clone-infra
-      image: alpine/git:latest
+      image: alpine/git:2.54.0
       env:
         - name: HOME
           value: /tmp
@@ -50,7 +50,7 @@ spec:
           clone --depth 1 --branch "$(params.self-repo-branch)" \
           "$(params.self-repo-url)" jenkins-2026-infra
     - name: gateway-patch
-      image: alpine/git:latest
+      image: alpine/git:2.54.0
       env:
         - name: HOME
           value: /tmp
