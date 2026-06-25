@@ -92,22 +92,28 @@ jobs:
         run: |
           az extension add -n amg --only-show-errors || true
           az extension add -n resource-graph --only-show-errors || true
-          # Discover the Azure Managed Grafana instance (the one the OIDC SP has
-          # Grafana Admin on) without depending on terraform state outputs.
-          read -r grafana rg < <(az grafana list \
-            --query "[?starts_with(name,'jenkins-2026')].[name,resourceGroup] | [0]" -o tsv)
-          if [[ -z "${grafana}" ]]; then
+          # Get the AMG endpoint straight from `az grafana list` output
+          # (.properties.endpoint) — do NOT call `az grafana show -g <rg>` /
+          # `az grafana dashboard create`: an empty/changed resourceGroup field
+          # sends those down an ARM path that fails with InvalidApiVersionParameter
+          # (stale amg-extension api-version). Publish via the data-plane API
+          # (endpoint + Azure AD token, AMG audience 6f2d169c) instead.
+          obj="$(az grafana list --query "[?starts_with(name,'jenkins-2026')] | [0]" -o json 2>/dev/null || echo '{}')"
+          ep="$(jq -r '.properties.endpoint // empty' <<<"${obj}")"
+          if [[ -z "${ep}" ]]; then
             echo "::warning::no Azure Managed Grafana found - skipping dashboard publish"
             exit 0
           fi
-          grafana_url="$(az grafana show -n "${grafana}" -g "${rg}" --query properties.endpoint -o tsv | tr -d '/')"
-          echo "grafana_url=https://${grafana_url#https://}" >> "${GITHUB_OUTPUT}"
-          # Resolve the App Insights resource and substitute it for the
-          # ${appinsights} placeholder so the log/trace panels bind to a
-          # concrete resource (a dashboard template variable wouldn't reliably
-          # auto-select at view time). Kept out of the repo - resolved here.
-          appinsights="$(az graph query -q "resources | where type =~ 'microsoft.insights/components' | project id" --query 'data[0].id' -o tsv)"
-          echo "Publishing to ${grafana} (${rg}); App Insights: ${appinsights##*/}"
+          echo "grafana_url=${ep%/}" >> "${GITHUB_OUTPUT}"
+          tok="$(az account get-access-token --resource 6f2d169c-08f3-4a4c-a982-bcaf2d038c45 --query accessToken -o tsv)"
+          gapi() { local m="$1" p="$2"; shift 2; curl -fsS -X "${m}" "${ep%/}${p}" \
+            -H "Authorization: Bearer ${tok}" -H "Content-Type: application/json" "$@"; }
+          # App Insights resource for the ${appinsights} placeholder (non-fatal).
+          appinsights="$(az graph query -q "resources | where type =~ 'microsoft.insights/components' | project id" --query 'data[0].id' -o tsv 2>/dev/null || true)"
+          echo "Publishing to ${ep}; App Insights: ${appinsights##*/}"
+          # Shared "CI-CD Observability" folder (uid jenkins-2026), like Day1.
+          gapi POST /api/folders -d '{"uid":"jenkins-2026","title":"CI-CD Observability"}' >/dev/null 2>&1 || true
+          gapi PUT /api/folders/jenkins-2026 -d '{"title":"CI-CD Observability","overwrite":true}' >/dev/null 2>&1 || true
           # Publish only the active CI engine's overview (jenkins XOR tekton).
           if [ "${{ steps.ci-engine.outputs.engine }}" = "tekton" ]; then
             skip_ci="jenkins-overview-azure"
@@ -119,23 +125,16 @@ jobs:
           for f in observability/grafana/dashboards-azure/*-azure.json; do
             [ "$(basename "${f}" .json)" = "${skip_ci}" ] && { echo "skipping ${skip_ci} (ci_engine=${{ steps.ci-engine.outputs.engine }})"; continue; }
             sed "s|\${appinsights}|${appinsights}|g" "${f}" > /tmp/dash.json
-            if az grafana dashboard create -n "${grafana}" -g "${rg}" \
-                 --definition @/tmp/dash.json --overwrite --only-show-errors >/dev/null; then
+            payload="$(jq -n --slurpfile db /tmp/dash.json '{dashboard: ($db[0] + {id: null}), folderUid: "jenkins-2026", overwrite: true}')"
+            if printf '%s' "${payload}" | gapi POST /api/dashboards/db --data-binary @- >/dev/null 2>&1; then
               echo "published $(basename "${f}")"
             else
               echo "::warning::failed to publish $(basename "${f}")"
             fi
           done
-          # Delete the off-engine CI overview if it still exists from a previous run.
-          if az grafana dashboard show -n "${grafana}" -g "${rg}" \
-               --definition "${delete_uid}" --only-show-errors >/dev/null 2>&1; then
-            if az grafana dashboard delete -n "${grafana}" -g "${rg}" \
-                 --definition "${delete_uid}" --only-show-errors; then
-              echo "deleted off-engine dashboard ${delete_uid}"
-            else
-              echo "::warning::could not delete off-engine dashboard ${delete_uid}"
-            fi
-          fi
+          # Delete the off-engine CI overview if present (data-plane, by uid; no-op if absent).
+          gapi DELETE "/api/dashboards/uid/${delete_uid}" >/dev/null 2>&1 \
+            && echo "deleted off-engine dashboard ${delete_uid}" || true
 
       - name: Skipped (no AZURE_CLIENT_ID)
         if: ${{ env.AZURE_CLIENT_ID == '' }}

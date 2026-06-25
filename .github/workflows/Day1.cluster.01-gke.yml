@@ -621,35 +621,30 @@ jobs:
         env:
           JENKINS2026_CI_ENGINE: ${{ inputs.ci_engine }}
         run: |
-          az extension add -n amg --only-show-errors || true
-          az extension add -n resource-graph --only-show-errors || true
-          # Discover the Azure Managed Grafana instance (the one the OIDC SP has
-          # Grafana Admin on) without depending on terraform state outputs.
-          read -r grafana rg < <(az grafana list \
-            --query "[?starts_with(name,'jenkins-2026')].[name,resourceGroup] | [0]" -o tsv)
-          if [[ -z "${grafana}" ]]; then
-            echo "::warning::no Azure Managed Grafana found - skipping dashboard publish"
+          # Publish via the Grafana DATA-PLANE API (curl), NOT `az grafana
+          # list/show/dashboard create` — those make ARM calls that depend on the
+          # resource group and have started failing with InvalidApiVersionParameter
+          # (stale api-version in the amg CLI extension). The data-plane API needs
+          # only the endpoint + an Azure AD token (AMG audience 6f2d169c). This is
+          # the same approach 07-grafana-dashboards.sh uses for grafana-cloud/aws.
+          ep="$(kubectl get secret azure-monitor-credentials -n observability \
+            -o jsonpath='{.data.GRAFANA_BASE_URL}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+          if [[ -z "${ep}" ]]; then
+            echo "::warning::no Azure Managed Grafana endpoint in azure-monitor-credentials - skipping dashboard publish"
             exit 0
           fi
-          # Resolve the App Insights resource and substitute it for the
-          # ${appinsights} placeholder so the log/trace panels bind to a
-          # concrete resource (a dashboard template variable wouldn't reliably
-          # auto-select at view time). Kept out of the repo - resolved here.
-          appinsights="$(az graph query -q "resources | where type =~ 'microsoft.insights/components' | project id" --query 'data[0].id' -o tsv)"
-          echo "Publishing to ${grafana} (${rg}); App Insights: ${appinsights##*/}"
-          # Ensure the shared "CI-CD Observability" folder (uid jenkins-2026) so the
-          # Azure dashboards land in the SAME single folder as the alert rules (07.5)
-          # — consistent with oss/grafana-cloud/aws, not the root. Created via the
-          # data-plane API (AMG audience 6f2d169c) to pin the uid; `az grafana folder
-          # create` can't set a uid, which would orphan a second same-titled folder.
-          gf_ep="$(az grafana show -n "${grafana}" -g "${rg}" --query properties.endpoint -o tsv)"
-          gf_tok="$(az account get-access-token --resource 6f2d169c-08f3-4a4c-a982-bcaf2d038c45 --query accessToken -o tsv)"
-          curl -fsS -X POST "${gf_ep%/}/api/folders" -H "Authorization: Bearer ${gf_tok}" \
-            -H "Content-Type: application/json" \
-            -d '{"uid":"jenkins-2026","title":"CI-CD Observability"}' >/dev/null 2>&1 || true
-          curl -fsS -X PUT "${gf_ep%/}/api/folders/jenkins-2026" -H "Authorization: Bearer ${gf_tok}" \
-            -H "Content-Type: application/json" \
-            -d '{"title":"CI-CD Observability","overwrite":true}' >/dev/null 2>&1 || true
+          tok="$(az account get-access-token --resource 6f2d169c-08f3-4a4c-a982-bcaf2d038c45 --query accessToken -o tsv)"
+          gapi() { local m="$1" p="$2"; shift 2; curl -fsS -X "${m}" "${ep%/}${p}" \
+            -H "Authorization: Bearer ${tok}" -H "Content-Type: application/json" "$@"; }
+          # Resolve the App Insights resource for the ${appinsights} placeholder
+          # (log/trace panels). resource-graph extension; non-fatal if it fails.
+          az extension add -n resource-graph --only-show-errors || true
+          appinsights="$(az graph query -q "resources | where type =~ 'microsoft.insights/components' | project id" --query 'data[0].id' -o tsv 2>/dev/null || true)"
+          echo "Publishing to ${ep}; App Insights: ${appinsights##*/}"
+          # Shared "CI-CD Observability" folder (uid jenkins-2026) — same single
+          # folder as the alert rules (07.5), consistent with oss/grafana-cloud/aws.
+          gapi POST /api/folders -d '{"uid":"jenkins-2026","title":"CI-CD Observability"}' >/dev/null 2>&1 || true
+          gapi PUT /api/folders/jenkins-2026 -d '{"title":"CI-CD Observability","overwrite":true}' >/dev/null 2>&1 || true
           # Skip the off-engine CI overview (jenkins XOR tekton) and delete it
           # if it still exists from a previous run with a different engine.
           if [[ "${JENKINS2026_CI_ENGINE}" == "tekton" ]]; then
@@ -664,21 +659,17 @@ jobs:
               continue
             fi
             sed "s|\${appinsights}|${appinsights}|g" "${f}" > /tmp/dash.json
-            if az grafana dashboard create -n "${grafana}" -g "${rg}" \
-                 --folder "jenkins-2026" \
-                 --definition @/tmp/dash.json --overwrite --only-show-errors >/dev/null; then
+            payload="$(jq -n --slurpfile db /tmp/dash.json \
+              '{dashboard: ($db[0] + {id: null}), folderUid: "jenkins-2026", overwrite: true}')"
+            if printf '%s' "${payload}" | gapi POST /api/dashboards/db --data-binary @- >/dev/null 2>&1; then
               echo "published $(basename "${f}")"
             else
               echo "::warning::failed to publish $(basename "${f}")"
             fi
           done
-          if az grafana dashboard show -n "${grafana}" -g "${rg}" \
-               --definition "${delete_uid}" --only-show-errors >/dev/null 2>&1; then
-            az grafana dashboard delete -n "${grafana}" -g "${rg}" \
-              --definition "${delete_uid}" --only-show-errors \
-              && echo "deleted off-engine dashboard ${delete_uid}" \
-              || echo "::warning::could not delete off-engine dashboard ${delete_uid}"
-          fi
+          # Delete the off-engine dashboard if present (data-plane, by uid; no-op if absent).
+          gapi DELETE "/api/dashboards/uid/${delete_uid}" >/dev/null 2>&1 \
+            && echo "deleted off-engine dashboard ${delete_uid}" || true
           # Generic Kubernetes/node infra is covered by Azure Managed Grafana's
           # built-in dashboards (Compute Resources / Kubelet / Node Exporter /
           # USE Method), auto-provisioned from the Azure Monitor workspace
