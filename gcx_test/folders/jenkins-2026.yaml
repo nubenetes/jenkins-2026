@@ -1,6 +1,9 @@
 apiVersion: folder.grafana.app/v1
 kind: Folder
+# metadata.name is the folder UID (kept stable so existing dashboards stay put and
+# the rename is in-place, no orphan folder). Only the visible title is engine-neutral
+# ("CI/CD Observability") now that the CI engine can be Jenkins OR Tekton.
 metadata:
   name: jenkins-2026
 spec:
-  title: "jenkins-2026"
+  title: "CI/CD Observability"
