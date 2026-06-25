@@ -310,7 +310,7 @@ controller:
     - workflow-aggregator:608.v67378e9d3db_1
     - git:5.10.1
     - github-branch-source:1967.1970.vd86979736546
-    - configuration-as-code:2088.ve3b_42c663c80
+    - configuration-as-code:2089.v970a_0b_a_8cc6d
     - job-dsl:3654.vdf58f53e2d15
     # Provides folder support.
     - cloudbees-folder:6.1100.ve9eed61d16c4
@@ -319,7 +319,7 @@ controller:
     # Modern, lightweight pipeline visualization (pan/zoom stage graph) -
     # the maintained successor to the discontinued Blue Ocean. Adds a
     # "Pipeline Graph" tab to every build page, no extra config needed.
-    - pipeline-graph-view:940.v790e7a_c51722
+    - pipeline-graph-view:949.v1cf0f01ca_cfa_
     - opentelemetry:3.1589.ve81b_b_fa_927d5
     - credentials-binding:725.ve52b_2328a_fde
     - role-strategy:867.vd09254229f9b_

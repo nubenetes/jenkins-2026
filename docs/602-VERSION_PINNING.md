@@ -39,6 +39,7 @@ This isn't theoretical — every floating version here has bitten us at least on
 | Component | Pinned to | Source of truth | Mechanism |
 |---|---|---|---|
 | **Jenkins** chart | `5.9.29` | `config/config.yaml` `jenkins.chart.version` | ArgoCD `targetRevision` ([`jenkins-app.yaml`](../argocd/jenkins-app.yaml)) |
+| **Jenkins plugins** (full set, exact) | per [`helm/jenkins/values-common.yaml`](../helm/jenkins/values-common.yaml) `controller.installPlugins` | same file | `jenkins-plugin-cli`-resolved against `controller.image.tag`; **bump deliberately** — incl. for security advisories (see below) |
 | **ArgoCD** *(exception)* | **tracks `3.5.x`** | `config/config.yaml` `argocd.version_constraint` | runtime resolve + daily watcher — see below |
 | **OTel operator** chart | `0.117.0` | `config.yaml` `observability.otelOperator.chart.version` | `helm --version` in [`02-otel-operator.sh`](../scripts/02-otel-operator.sh) |
 | **OTel collector** chart | `0.159.0` | `config.yaml` `observability.otelCollector.chart.version` | `helm --version` in [`03-observability.sh`](../scripts/03-observability.sh) |
@@ -105,6 +106,7 @@ init` honours the lockfile, so every run uses identical providers. Bump with
 | Type | How |
 |---|---|
 | Helm chart in `config.yaml` | edit the `…chart.version`, re-run Day1 (or the matching `Day2.redeploy`) |
+| Jenkins plugin | edit its version in `values-common.yaml` `controller.installPlugins`, re-run `Day2.redeploy.02-jenkins`. Manage Jenkins → *Manage Jenkins* surfaces available updates **and security advisories** — pinned plugins don't self-update, so apply advisory fixes here (bump interdependent security plugins together). A wholesale refresh = re-run the `jenkins-plugin-cli` recipe in the `installPlugins` comment against `controller.image.tag` |
 | ArgoCD-app chart (`argocd/*`) | edit `targetRevision` / the app-of-apps `values.yaml`, sync |
 | Tekton component | bump `config.yaml` `tekton.versions` **and** re-vendor `argocd/tekton/components/*` |
 | Tekton task image / `yq` | edit the tag / release URL |
