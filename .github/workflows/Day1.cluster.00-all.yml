@@ -1,0 +1,88 @@
+name: "Day1.cluster.00 Everything up"
+
+# One-click, from-scratch provision umbrella - the symmetric counterpart of the
+# "Decom.infra.00 Everything" teardown. It chains the only two pieces a totally
+# clean account needs, in order:
+#
+#   1. Day0.infra.01 Gateway bootstrap  - the persistent, DNS-coupled static IP +
+#      wildcard cert map (idempotent: a no-op when they already exist).
+#   2. Day1.cluster.01 GKE provision    - the cluster + full stack; this already
+#      bootstraps the chosen observability backend (Day0.infra.0{2,3,4}) as its
+#      own preflight, so the umbrella does NOT need to call those.
+#
+# Everything below is idempotent and re-runnable, so this is safe whether you are
+# starting from absolute zero or from the usual "decommissioned" state (where the
+# Decom.infra.00 umbrella left the Gateway in place by default). Approvals are the
+# natural per-resource set: gateway-bootstrap (+ the selected backend's env, via
+# Day1's preflight) + gke-production (the cluster).
+#
+# NOTE: from ABSOLUTE zero (Gateway never bootstrapped), step 1 allocates a NEW
+# static IP - follow its job summary to point your DNS A-records at it. On a
+# rebuild where the Gateway persisted, the IP is unchanged (no DNS change needed).
+on:
+  workflow_dispatch:
+    inputs:
+      observability_mode:
+        description: "Observability backend (Day1 auto-bootstraps the matching Day0.infra.0{2,3,4})."
+        required: true
+        default: "oss"
+        type: choice
+        options:
+          - oss
+          - grafana-cloud
+          - managed-azure
+          - managed-aws
+      ci_engine:
+        description: "CI engine to deploy (jenkins default | tekton)."
+        required: true
+        default: "jenkins"
+        type: choice
+        options:
+          - jenkins
+          - tekton
+      bootstrap_gateway:
+        description: "Run the Day0.infra.01 Gateway bootstrap first (idempotent). Uncheck if the Gateway IP/cert already exist and you want to skip its approval gate."
+        required: true
+        default: true
+        type: boolean
+      destroy_unused_backends:
+        description: "DESTRUCTIVE / opt-in. Terraform-destroy the persistent backend of every mode you did NOT select (passed straight to Day1.cluster.01)."
+        required: false
+        default: false
+        type: boolean
+      git_ref:
+        description: "Git branch, tag, or SHA to check out (empty = the ref selected in 'Use workflow from')."
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: jenkins-2026-gke
+  cancel-in-progress: false
+
+jobs:
+  # 1. Persistent Gateway (static IP + cert map). Idempotent; gated by the
+  #    gateway-bootstrap environment. Skipped if bootstrap_gateway=false.
+  gateway-bootstrap:
+    if: ${{ inputs.bootstrap_gateway }}
+    uses: ./.github/workflows/Day0.infra.01-gateway.yml
+    secrets: inherit
+
+  # 2. Cluster + full stack (also bootstraps the chosen observability backend as
+  #    its own preflight). always() && !failure() so a *skipped* gateway step does
+  #    not skip provision, while a real gateway failure still blocks it.
+  provision:
+    needs: [gateway-bootstrap]
+    if: ${{ always() && !failure() && !cancelled() }}
+    uses: ./.github/workflows/Day1.cluster.01-gke.yml
+    with:
+      observability_mode: ${{ inputs.observability_mode }}
+      ci_engine: ${{ inputs.ci_engine }}
+      destroy_unused_backends: ${{ inputs.destroy_unused_backends }}
+      enable_gateway: true
+      git_ref: ${{ inputs.git_ref }}
+    secrets: inherit

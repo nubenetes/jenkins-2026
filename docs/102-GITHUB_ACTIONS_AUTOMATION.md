@@ -115,6 +115,13 @@ graph TD
 > `gateway:true`). If `gateway.baseDomain` is empty, `09-gateway.sh` skips the
 > Gateway entirely.
 
+> **One-click from scratch.** To avoid having to remember the Gateway prerequisite,
+> the **`Day1.cluster.00` ("Everything up")** umbrella does both steps in one
+> dispatch — `Day0.infra.01` (Gateway bootstrap) **then** `Day1.cluster.01` (cluster
+> + full stack + the chosen backend bootstrap). It is the symmetric counterpart of
+> the `Decom.infra.00` ("Everything") teardown: **one click up, one click down**,
+> both idempotent. See [101 § Provision umbrella](./101-GITHUB_ACTIONS_WORKFLOWS.md#provision-per-step-workflows-plus-an-opt-in-everything-up-umbrella).
+
 ### Detailed Workflow Reference and Lifecycle Management
 
 > Each workflow is tagged with its **Day-0 / Day-1 / Day-2 / Decommission** lifecycle
