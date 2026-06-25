@@ -126,7 +126,7 @@ observability:
   #   managed-azure - export to Azure Monitor (managed Prometheus + App
   #                   Insights/Log Analytics); visualize in Azure Managed
   #                   Grafana. See observability/otel-collector/
-  #                   secret-managed-azure.example.yaml + docs/observability.md.
+  #                   secret-managed-azure.example.yaml + docs/301-OBSERVABILITY.md.
   #   managed-aws   - export to Amazon Managed Service for Prometheus +
   #                   X-Ray/CloudWatch; visualize in Amazon Managed Grafana.
   mode: grafana-cloud

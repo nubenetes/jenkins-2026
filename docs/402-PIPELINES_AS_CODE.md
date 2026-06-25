@@ -13,7 +13,7 @@ A Jenkins seed job (defined via JCasC, running Job DSL against [`jenkins/pipelin
 - `jhipstersamplemicroservice`
 - `microservices-k6-smoke`
 
-The first 2 pipelines run [`Jenkinsfile.microservices`](../jenkins/pipelines/Jenkinsfile.microservices) (build/deploy, one Microservices service each); the last job runs [`Jenkinsfile.microservices-k6-smoke`](../jenkins/pipelines/Jenkinsfile.microservices-k6-smoke) (synthetic traffic + telemetry).
+The first 2 pipelines invoke the [`MicroservicesPipeline`](../vars/MicroservicesPipeline.groovy) shared-library entry point (build/deploy, one Microservices service each); the last job invokes [`MicroservicesK6SmokePipeline`](../vars/MicroservicesK6SmokePipeline.groovy) (synthetic traffic + telemetry). The seed job (`seed_jobs.groovy`) generates the jobs with an inline `cps` script that calls these `vars/` entry points — there are no standalone `Jenkinsfile.microservices*` files.
 
 ## Pipeline Branch & Environment Mapping
 
@@ -87,7 +87,7 @@ Defined in [`MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy
 *   **Build & Push Image** — Delegates Docker packaging to `microservicesImage.groovy`, leveraging Jib or DinD to build and push to GHCR.
 *   **Trivy Image Scan** — Runs `trivy image` against the published container image.
 *   **Deploy to Kubernetes** — Delegates to `microservicesDeploy.groovy`. Checks out the GitOps repository, modifies the service's image tag using `yq`, pushes to the `main` branch, and runs the `argocd` CLI to trigger and wait for a synchronized healthy cluster rollout.
-*   **Smoke Test** — Delegates to `microservicesSmokeTest.groovy` for HTTP health check validation. The throwaway curl pod runs in the **agent's `jenkins` namespace** labelled `jenkins=slave` (so `jenkins-agent-policy` grants it egress), targeting the microservices Service FQDN — **not** in the `microservices` namespace, which is default-deny egress under NetworkPolicy enforcement and would time out (`curl exit 28`). See [501 § NetworkPolicy gotchas](./501-PLATFORM_OPERATIONS.md).
+*   **Smoke Test** — Delegates to `microservicesSmokeTest.groovy` for HTTP health check validation. The throwaway curl pod runs in the **agent's `jenkins` namespace** labelled `jenkins=slave` (so `jenkins-agent-policy` grants it egress), targeting the microservices Service FQDN — **not** in the `microservices` namespace, which is default-deny egress under NetworkPolicy enforcement and would time out (`curl exit 28`). See [501 § NetworkPolicy matrix](./501-PLATFORM_OPERATIONS.md#networkpolicy-matrix).
 *   **Integration k6 Smoke Test** — Triggers the downstream `microservices-k6-smoke` pipeline.
 *   **Post Action Handler** — Saves unit test results via `junit` plugin and records static analysis warnings using `warnings-ng` plugin.
 

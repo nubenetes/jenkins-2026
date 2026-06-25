@@ -31,7 +31,7 @@ graph TB
     end
 
     subgraph "GKE Cluster"
-        subgraph "ingress-nginx / Gateway API"
+        subgraph "GKE Gateway API"
             GW["GKE Gateway"]
         end
 
@@ -465,7 +465,7 @@ graph TD
     end
 
     subgraph Cluster ["GKE Cluster (v1.35/v1.36)"]
-        GatewayAPI["GKE Gateway API<br/>gke-l7-gxlb"]
+        GatewayAPI["GKE Gateway API<br/>gke-l7-global-external-managed"]
         BackendTLS["BackendTLSPolicy<br/>Secure TLS to pods"]
         WI["Workload Identity Federation"]
     end
@@ -488,7 +488,7 @@ graph TD
 |---|---|---|
 | **Static IP** | `jenkins-2026-gateway-ip` | Global persistent `google_compute_global_address`. Survives cluster rebuilds. |
 | **TLS Certificate** | `jenkins-2026-cert` | Google-managed wildcard cert for `jenkins2026.nubenetes.com` + `*.jenkins2026.nubenetes.com`. |
-| **GKE Cluster** | `jenkins-2026` | Zonal cluster in `europe-southwest1-a`. VPC-native, Gateway API `CHANNEL_STANDARD`, Workload Identity enabled. |
+| **GKE Cluster** | `jenkins-2026` | Zonal cluster in `europe-southwest1-a`. VPC-native, Gateway API addon `CHANNEL_STANDARD` (cluster release channel `REGULAR`), Workload Identity enabled. |
 | **Karpenter NodePool** | `ephemeral-runners` | Spot instances (`c2`, `n2`, `e2`, `c3` families). Scales to zero under idle conditions. |
 | **Node SA** | `jenkins-2026-nodes` | Minimal-privilege: `roles/logging.logWriter`, `roles/monitoring.metricWriter`, `roles/artifactregistry.reader`. |
 | **CI Agent SA** | `jenkins-2026-ci-agent` | GitHub Actions OIDC WIF — no static JSON keys. |
