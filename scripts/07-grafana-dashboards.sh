@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Publishes observability/grafana/dashboards/*.json:
 #
-#   grafana-cloud - imports them into the "jenkins-2026" folder via the
+#   grafana-cloud - imports them into the "CI/CD Observability" folder via the
 #     Grafana HTTP API, using GRAFANA_BASE_URL + GRAFANA_API_KEY from the
 #     "${J2026_GRAFANA_CLOUD_SECRET}" Secret (see secret.example.yaml).
 #
@@ -135,6 +135,13 @@ case "${J2026_OBS_MODE}" in
     # We use --include-managed to ensure we can update folders/dashboards even if they were 
     # previously managed by other tools (or gcx api calls).
     gcx resources push -p "${RESOURCES_DIR}" --on-error abort --include-managed
+
+    # Belt-and-suspenders rename: ensure the (UID-stable) dashboards folder shows the
+    # engine-neutral title even if a persistent stack still had the old "jenkins-2026"
+    # title. In-place by UID, so no orphan/second folder. Idempotent.
+    curl -fsS -X PUT "${GRAFANA_BASE_URL%/}/api/folders/${FOLDER_UID}" \
+      -H "Authorization: Bearer ${GRAFANA_API_KEY}" -H "Content-Type: application/json" \
+      -d '{"title":"CI/CD Observability","overwrite":true}' >/dev/null 2>&1 || true
 
     log_step "Configuring Grafana Kubernetes Monitoring app data sources"
     GRAFANA_STACK_ID="$(kubectl get secret "${J2026_GRAFANA_CLOUD_SECRET}" -n "${J2026_OBS_NAMESPACE}" -o jsonpath='{.data.GRAFANA_STACK_ID}' | base64 -d)"
