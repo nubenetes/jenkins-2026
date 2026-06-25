@@ -110,7 +110,7 @@ jobs:
             -H "Authorization: Bearer ${tok}" -H "Content-Type: application/json" "$@"; }
           # App Insights resource for the ${appinsights} placeholder (non-fatal).
           appinsights="$(az graph query -q "resources | where type =~ 'microsoft.insights/components' | project id" --query 'data[0].id' -o tsv 2>/dev/null || true)"
-          echo "Publishing to ${ep}; App Insights: ${appinsights##*/}"
+          echo "Publishing dashboards (App Insights: ${appinsights##*/}) to: ${ep}"
           # Shared "CI-CD Observability" folder (uid jenkins-2026), like Day1.
           gapi POST /api/folders -d '{"uid":"jenkins-2026","title":"CI-CD Observability"}' >/dev/null 2>&1 || true
           gapi PUT /api/folders/jenkins-2026 -d '{"title":"CI-CD Observability","overwrite":true}' >/dev/null 2>&1 || true
