@@ -64,6 +64,44 @@ kubectl -n argocd patch statefulset argocd-application-controller --type merge \
 # the pod recreates with more memory, finishes syncing Tekton, and up.sh proceeds
 ```
 
+## Decommission stalls (`terraform destroy` hangs for hours on `DELETE_NODE_POOL`)
+
+**Symptom**: a teardown (`Decom.cluster.01`, or the `Decom.infra.00` umbrella) runs
+for hours and never finishes. `gcloud container operations list --filter='status!=DONE'`
+shows a **`DELETE_NODE_POOL` stuck `RUNNING`**; the cluster is `RECONCILING` with its
+nodes still alive; `kubectl get pods -A` shows CNPG `postgres-*-N` pods stuck
+`Terminating`. There are **no** orphaned load-balancer resources (it is not a network
+issue).
+
+**Cause**: GKE node-pool deletion **cordons and drains** each node, which evicts pods
+*voluntarily* — and a **PodDisruptionBudget with `ALLOWED DISRUPTIONS: 0`** forbids
+that eviction. CNPG creates exactly such PDBs (`postgres-<svc>` / `postgres-<svc>-primary`).
+So a Postgres pod can't be evicted, the node can't drain, and `DELETE_NODE_POOL`
+waits indefinitely (until the 6 h Actions limit), leaving the cluster — and its
+billed nodes — alive.
+
+**Fix (permanent)**: `scripts/down.sh` now **deletes every PodDisruptionBudget up
+front** (`kubectl get pdb -A … | delete`), before namespace draining and well before
+`terraform destroy`. PDBs only gate *voluntary* disruptions, so removing them is safe
+when the whole cluster is being destroyed, and no later drain can be blocked.
+
+**Unblock a teardown that's already hung** (no need to wait for the timeout):
+
+```bash
+kubectl delete pdb --all -A   # frees the eviction; the node drains, DELETE_NODE_POOL completes
+# then, if the Actions job already died, re-run Decom.cluster.01 so terraform destroy finishes cleanly
+```
+
+> **Related decom robustness fixes:** namespace teardown is now **finalize-driven** —
+> `down.sh` issues `kubectl delete namespace --wait=false` then force-clears
+> `spec.finalizers` via the `/finalize` API, instead of a `--timeout=2m` wait (which
+> produced noisy "timed out waiting for the condition" lines and added up to 2 min per
+> namespace). The **Gateway-API** deletes deliberately keep a bounded `--timeout`
+> *with a real wait* — their finalizers release actual GCP load-balancer resources, so
+> force-clearing them would orphan billed infra. Rule of thumb: **force-finalize
+> etcd-only objects (namespaces, ArgoCD Apps); wait on finalizers that free external
+> cloud resources (Gateway/LB, PVs).**
+
 ## ArgoCD OIDC Issues
 
 **ArgoCD OIDC Login fails with `redirect_uri_mismatch` or `Invalid redirect URL`**:
