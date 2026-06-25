@@ -55,16 +55,25 @@ still experimental and we deliberately skip it. Maturity is GA unless noted.
 | **Frontend Observability** (RUM) | GA | **Yes** — Angular RUM snippet (see [Angular RUM](#angular-rum)) | ⭐ Already populated |
 | **Synthetic Monitoring** (uptime/latency probes) | GA | No | 👍 **Good, cheap add** — HTTP checks against the public IAP endpoints (jenkins/argocd/microservices) for uptime + SLOs. IaC-able and keyless via the Grafana Terraform provider (it supports Synthetic Monitoring) using the existing stack token |
 | **Cloud provider → GCP** | GA | No (IaC scaffolding in [`terraform/grafana-cloud-gcp`](../terraform/grafana-cloud-gcp/)) | 🤔 Stable, but needs a **long-lived SA key** (the scraper isn't a GCP workload → no WIF), the only non-keyless credential. Optional — see [§ GCP platform metrics](#gcp-platform-metrics--cloud-provider-integration-optional) |
-| **Profiles** (Pyroscope, continuous JVM profiling) | GA | No | 👍 Valuable for microservice performance; medium effort (an Alloy `pyroscope.*` component / agent) |
+| **Profiles** (Pyroscope, continuous JVM profiling) | GA (product) | No | ⏸️ **Deferred** — valuable, but every collection path conflicts with our setup: the Java agent fights the OTel-Operator-owned `JAVA_TOOL_OPTIONS`, needs opening external app egress, and the no-app-change alternative (Alloy `pyroscope.java`) is experimental + privileged. See [§ Profiles/Pyroscope: why it's deferred](#profilespyroscope-why-its-deferred) |
 | **Database Observability** (Postgres query perf) | **public preview / experimental** | No | ❌ **Skip for now** — the Alloy `database_observability` component has frequent breaking changes. Revisit when GA |
 | OnCall / Incident / SLO | GA (ops process, not telemetry) | — | As needed for alerting/on-call; not a priority for a throwaway PoC |
 
 **What to incorporate (stable + worthwhile):** lead with **Application Observability**
 — it already receives our traces/metrics, so it's the biggest no-risk win (open it,
 enable if prompted). Then **Synthetic Monitoring** (GA, lightweight, IaC-able + keyless)
-for uptime/SLOs on the public endpoints. **Profiles/Pyroscope** is a solid GA option for
-JVM perf when you want it. **Skip Database Observability** until it leaves preview;
-**Cloud provider → GCP** is stable but trades off the keyless posture (long-lived key).
+for uptime/SLOs on the public endpoints. **Defer Profiles/Pyroscope** — although the
+Grafana Cloud product is GA, *for this stack* it has no clean collection path (it
+collides with the OTel-Operator auto-instrumentation; see below). **Skip Database
+Observability** until it leaves preview; **Cloud provider → GCP** is stable but trades
+off the keyless posture (long-lived key).
+
+> **The OpenTelemetry Operator is the project standard** for application telemetry across
+> **all four** backends — it auto-injects the Java agent (`Instrumentation` CR →
+> `JAVA_TOOL_OPTIONS`) so traces/metrics flow to the active backend uniformly. None of
+> the Grafana Cloud apps above replace or modify it; they sit alongside. Anything that
+> would fight the operator (notably a second profiling `-javaagent`) is deferred rather
+> than risk the standard.
 
 ### Wiring up the stable additions (grafana-cloud only)
 
@@ -80,15 +89,33 @@ All of these are **gated to `observability.mode=grafana-cloud`** — no-ops in t
   endpoints (`microservices` host; the IAP hosts would just return Google's OAuth page).
   Keyless — both provider tokens derive from the stack access policy, like
   `grafana-cloud-token`. Apply only in grafana-cloud mode.
-- **Profiles / Pyroscope (continuous JVM profiling)** — the stable path is the **Pyroscope
-  Java agent** on each microservice JVM (`-javaagent` + `PYROSCOPE_*` env pointing at the
-  Grafana Cloud **Profiles** push endpoint), enabled only in grafana-cloud mode. It is
-  **cross-repo** (the agent + env go on the microservices Deployment in the
-  `jenkins-2026-gitops-config` repo) and needs a **Profiles write endpoint + token** added
-  to the `grafana-cloud-credentials` Secret (from `terraform/grafana-cloud-stack`/`-token`).
-  Avoid a privileged node-level profiler (`pyroscope.java`/eBPF via Alloy needs
-  `SYS_PTRACE`/hostPID). Self-hosted Pyroscope would be required for oss; managed-azure/-aws
-  have no equivalent.
+- **Profiles / Pyroscope** — **deferred**; see the analysis below.
+
+### Profiles/Pyroscope: why it's deferred
+
+Continuous JVM profiling would be useful, and the Grafana Cloud Profiles product is GA,
+but **for this stack there is no clean, stable collection path** — each option has a
+real downside, and we won't risk the OTel-Operator standard for it:
+
+1. **Pyroscope Java agent** (the "stable" path) — a second `-javaagent` on the JVM. But
+   the **OTel Operator already owns `JAVA_TOOL_OPTIONS`** (it injects the OTel Java agent
+   via the `Instrumentation` CR). Adding a second agent means either disabling the
+   operator's auto-injection for the microservices and re-assembling *both* agents by
+   hand, or baking the Pyroscope SDK into the image — but we run **upstream JHipster
+   images** we don't build. Either way it fights the project's telemetry standard.
+2. **External egress** — the agent pushes profiles straight to Grafana Cloud (external
+   HTTPS), but the `microservices` namespace is default-deny egress (only Postgres + the
+   in-cluster collector). It would need **opening external `:443` egress** from the app
+   pods — a real network-posture change.
+3. **Alloy `pyroscope.java`** (node-level async-profiler, no app change, no app egress) —
+   avoids 1 and 2, but the component is **experimental** (which we avoid) and needs a
+   **privileged Alloy** (`SYS_PTRACE`/`hostPID`).
+
+**Decision:** defer Pyroscope (like Database Observability) until there's a stable path
+that doesn't collide with the OTel-Operator auto-instrumentation. The TF foundation
+(a `profiles:write`-scoped token already exists on the stack; the stack exposes a
+`profiles_url`) is ready if we revisit. Self-hosted Pyroscope would be needed for oss;
+managed-azure/-aws have no equivalent.
 
 ## OTel Components
 
