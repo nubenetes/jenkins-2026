@@ -148,9 +148,11 @@ fi
 #         ArgoCD controller is already gone so finalizers would never be
 #         processed and the namespace would hang indefinitely
 #       - Any other resource type stuck in Terminating
-#  2. Issue kubectl delete namespace with a 2-minute timeout.
-#  3. If still Terminating, patch spec.finalizers=[] via the /finalize
-#     sub-resource API so the API server releases the namespace immediately.
+#  2. Issue a non-blocking `kubectl delete namespace --wait=false`, then
+#     immediately patch spec.finalizers=[] via the /finalize sub-resource API so
+#     the API server releases the namespace at once — event-driven, NO fixed
+#     `--timeout` wait (the old `delete --timeout=2m` produced the noisy
+#     "timed out waiting for the condition" lines and could add ~2 min per slow ns).
 drain_namespace() {
   local ns="$1"
   kubectl get namespace "${ns}" > /dev/null 2>&1 || { log_info "Namespace ${ns} does not exist - skipping"; return 0; }
@@ -175,22 +177,24 @@ drain_namespace() {
     kubectl delete "${pvc}" -n "${ns}" --ignore-not-found --timeout=30s 2>/dev/null || true
   done
 
-  log_info "Deleting namespace ${ns}..."
-  kubectl delete namespace "${ns}" --ignore-not-found --timeout=2m && return 0
-
-  # Namespace still terminating — patch spec.finalizers=[] via /finalize API
-  log_warn "Namespace ${ns} still Terminating — patching namespace finalizers to unblock..."
+  # Object finalizers were already stripped above, so the namespace can terminate
+  # immediately. Delete WITHOUT blocking, then force-release via the /finalize
+  # subresource — event-driven, no `delete --timeout` wait. (Force-finalize is safe
+  # here precisely because the whole cluster is about to be terraform-destroyed.)
+  log_info "Deleting namespace ${ns} (finalize-driven, no fixed timeout)..."
+  kubectl delete namespace "${ns}" --ignore-not-found --wait=false 2>/dev/null || true
   kubectl get namespace "${ns}" -o json 2>/dev/null \
     | python3 -c "import sys,json; ns=json.load(sys.stdin); ns['spec']['finalizers']=[]; print(json.dumps(ns))" \
     | kubectl replace --raw "/api/v1/namespaces/${ns}/finalize" -f - 2>/dev/null || true
 
-  # Give GKE up to 30 s to acknowledge the patch
+  # Short, bounded confirmation poll (best-effort, ~10 s max; NOT a hard timeout —
+  # any remnant is removed when the cluster itself is terraform-destroyed).
   local i=0
-  while kubectl get namespace "${ns}" > /dev/null 2>&1 && [[ $i -lt 6 ]]; do
-    sleep 5; ((i++))
+  while kubectl get namespace "${ns}" > /dev/null 2>&1 && [[ $i -lt 5 ]]; do
+    sleep 2; ((i++))
   done
   kubectl get namespace "${ns}" > /dev/null 2>&1 \
-    && log_warn "Namespace ${ns} still present after finalize patch — GKE may finish cleanup in the background" \
+    && log_warn "Namespace ${ns} still present — GKE will finish cleanup, or terraform destroy will remove it" \
     || log_info "Namespace ${ns} deleted."
 }
 
