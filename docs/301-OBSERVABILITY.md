@@ -281,7 +281,7 @@ Then re-publish with the appropriate [`Day2.publish.*` workflow](../.github/work
 flowchart TD
   SRC["observability/grafana/dashboards/*.json\n(canonical source of truth)"]
 
-  SRC -->|"grafana-cloud\n07 → gcx resources push"| GC["Grafana Cloud\nfolder: jenkins-2026"]
+  SRC -->|"grafana-cloud\n07 → gcx resources push"| GC["Grafana Cloud\nfolder: CI/CD Observability"]
   SRC -->|"oss\nHelm chart → ArgoCD\noss-grafana-dashboards (auto-sync,\nciEngine-gated)"| OSS["In-cluster Grafana\njenkins-2026-grafana-dashboards CM\n(dashboardsConfigMaps mount)"]
 
   GEN_AZ["generate.py\nLoki→AzureMonitor\nTempo→AzureMonitor"]
@@ -342,7 +342,7 @@ Only set the secrets that differ from your OIDC admin email. For most setups onl
 
 ### Alert Rules
 
-Five rules live in `observability/grafana/alerting/rules/`, all filed under the `jenkins-2026` rule group in the **`jenkins-2026 Alerts` Grafana folder**:
+Five rules live in `observability/grafana/alerting/rules/`, all filed under the `jenkins-2026` rule group in the **`CI/CD Alerts` Grafana folder** (engine-neutral name, valid for both Jenkins and Tekton; folder UID stays `jenkins-2026-alerts` internally so the rename is in-place):
 
 | File | Severity | `for` | What fires |
 |---|---|---|---|
@@ -352,7 +352,7 @@ Five rules live in `observability/grafana/alerting/rules/`, all filed under the 
 | `04-http-5xx-rate.json` | warning | 3m | HTTP 5xx rate > 0.05 req/s for any service |
 | `05-jvm-heap-high.json` | warning | 5m | JVM heap ratio > 85% for any service |
 
-> **Where to find them in Grafana.** `jenkins-2026 Alerts` is a Grafana **folder**, not a dashboard — it is the mandatory container (and RBAC boundary) every alert rule must belong to. It shows up **empty in the Dashboards browser** because it holds alert rules, not dashboards; the rules live under **Alerting → Alert rules** (filter by the `jenkins-2026 Alerts` folder), with the contact point and notification policy under **Alerting → Contact points / Notification policies**.
+> **Where to find them in Grafana.** `CI/CD Alerts` is a Grafana **folder**, not a dashboard — it is the mandatory container (and RBAC boundary) every alert rule must belong to. It shows up **empty in the Dashboards browser** because it holds alert rules, not dashboards; the rules live under **Alerting → Alert rules** (filter by the `CI/CD Alerts` folder), with the contact point and notification policy under **Alerting → Contact points / Notification policies**.
 
 > **Datasource UID rewrite.** The rule JSONs ship with `datasourceUid: grafanacloud-prom` (the grafana-cloud default). At provisioning time the active Grafana's Prometheus datasource UID is resolved and substituted (oss → `prometheus`; managed-azure/aws → the AMG-assigned UID), so rules evaluate against the right datasource in every mode instead of a non-existent one.
 
