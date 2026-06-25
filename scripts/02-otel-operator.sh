@@ -13,6 +13,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 log_step "Installing ${J2026_OTEL_OPERATOR_RELEASE} (${J2026_OTEL_OPERATOR_CHART}) into ${J2026_OBS_NAMESPACE}"
 
 helm upgrade --install "${J2026_OTEL_OPERATOR_RELEASE}" "${J2026_OTEL_OPERATOR_CHART}" \
+  ${J2026_OTEL_OPERATOR_CHART_VERSION:+--version=${J2026_OTEL_OPERATOR_CHART_VERSION}} \
   --namespace "${J2026_OBS_NAMESPACE}" \
   --create-namespace \
   -f "${J2026_ROOT_DIR}/observability/otel-operator/values.yaml"

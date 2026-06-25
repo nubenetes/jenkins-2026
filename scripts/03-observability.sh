@@ -91,11 +91,13 @@ case "${J2026_OBS_MODE}" in
     kubectl delete deployment "${J2026_OTEL_GATEWAY_RELEASE}" -n "${J2026_OBS_NAMESPACE}" --ignore-not-found
 
     helm upgrade --install "${J2026_OTEL_GATEWAY_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
+      ${J2026_OTEL_COLLECTOR_CHART_VERSION:+--version=${J2026_OTEL_COLLECTOR_CHART_VERSION}} \
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${J2026_ROOT_DIR}/observability/otel-collector/values-grafana-cloud.yaml"
 
     log_step "Installing ${J2026_OTEL_LOGS_RELEASE} (node log DaemonSet -> Grafana Cloud)"
     helm upgrade --install "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
+      ${J2026_OTEL_COLLECTOR_CHART_VERSION:+--version=${J2026_OTEL_COLLECTOR_CHART_VERSION}} \
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${J2026_ROOT_DIR}/observability/otel-collector/values-grafana-cloud-logs.yaml"
 
@@ -106,6 +108,7 @@ case "${J2026_OBS_MODE}" in
 
     if [[ -n "${GRAFANA_PDC_TOKEN}" ]]; then
       helm upgrade --install pdc-agent grafana/pdc-agent \
+        --version=0.2.0 \
         --namespace "${J2026_OBS_NAMESPACE}" \
         --set cluster="${GRAFANA_PDC_CLUSTER}" \
         --set hostedGrafanaId="${GRAFANA_STACK_ID}" \
@@ -177,6 +180,7 @@ EOT
     helm repo update >/dev/null 2>&1 || true
 
     helm upgrade --install k8s-monitoring grafana/k8s-monitoring \
+      --version=4.1.6 \
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${GENERATED_OBS_DIR}/k8s-monitoring-values.yaml"
 
@@ -254,11 +258,13 @@ EOT
     kubectl delete configmap otel-collector-gateway -n "${J2026_OBS_NAMESPACE}" --ignore-not-found
     kubectl delete deployment "${J2026_OTEL_GATEWAY_RELEASE}" -n "${J2026_OBS_NAMESPACE}" --ignore-not-found
     helm upgrade --install "${J2026_OTEL_GATEWAY_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
+      ${J2026_OTEL_COLLECTOR_CHART_VERSION:+--version=${J2026_OTEL_COLLECTOR_CHART_VERSION}} \
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${J2026_ROOT_DIR}/observability/otel-collector/values-oss.yaml"
 
     log_step "Installing ${J2026_OTEL_LOGS_RELEASE} (node log DaemonSet -> Loki)"
     helm upgrade --install "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
+      ${J2026_OTEL_COLLECTOR_CHART_VERSION:+--version=${J2026_OTEL_COLLECTOR_CHART_VERSION}} \
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${J2026_ROOT_DIR}/observability/otel-collector/values-oss-logs.yaml"
 
@@ -322,11 +328,13 @@ EOT
     kubectl delete configmap otel-collector-gateway -n "${J2026_OBS_NAMESPACE}" --ignore-not-found
     kubectl delete deployment "${J2026_OTEL_GATEWAY_RELEASE}" -n "${J2026_OBS_NAMESPACE}" --ignore-not-found
     helm upgrade --install "${J2026_OTEL_GATEWAY_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
+      ${J2026_OTEL_COLLECTOR_CHART_VERSION:+--version=${J2026_OTEL_COLLECTOR_CHART_VERSION}} \
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${J2026_ROOT_DIR}/observability/otel-collector/values-managed-azure.yaml"
 
     log_step "Installing ${J2026_OTEL_LOGS_RELEASE} (node log DaemonSet -> Azure Monitor)"
     helm upgrade --install "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
+      ${J2026_OTEL_COLLECTOR_CHART_VERSION:+--version=${J2026_OTEL_COLLECTOR_CHART_VERSION}} \
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${J2026_ROOT_DIR}/observability/otel-collector/values-managed-azure-logs.yaml"
 
@@ -374,11 +382,13 @@ EOT
     kubectl delete configmap otel-collector-gateway -n "${J2026_OBS_NAMESPACE}" --ignore-not-found
     kubectl delete deployment "${J2026_OTEL_GATEWAY_RELEASE}" -n "${J2026_OBS_NAMESPACE}" --ignore-not-found
     helm upgrade --install "${J2026_OTEL_GATEWAY_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
+      ${J2026_OTEL_COLLECTOR_CHART_VERSION:+--version=${J2026_OTEL_COLLECTOR_CHART_VERSION}} \
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${J2026_ROOT_DIR}/observability/otel-collector/values-managed-aws.yaml"
 
     log_step "Installing ${J2026_OTEL_LOGS_RELEASE} (node log DaemonSet -> CloudWatch Logs)"
     helm upgrade --install "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
+      ${J2026_OTEL_COLLECTOR_CHART_VERSION:+--version=${J2026_OTEL_COLLECTOR_CHART_VERSION}} \
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${J2026_ROOT_DIR}/observability/otel-collector/values-managed-aws-logs.yaml"
 

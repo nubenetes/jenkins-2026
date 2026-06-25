@@ -458,7 +458,11 @@ fi
 kubectl apply -f "${APPSET_FILE}"
 rm "${APPSET_FILE}"
 
-log_step "Applying ArgoCD Version Patch Watcher CronJob"
-kubectl apply -f "${J2026_ROOT_DIR}/argocd/argocd-version-patch-watcher.yaml" -n "${J2026_ARGOCD_NAMESPACE}"
+log_step "Applying ArgoCD Version Patch Watcher CronJob (tracking ${J2026_ARGOCD_VERSION_CONSTRAINT})"
+# Template the tracked constraint from config so the daily auto-upgrade watcher,
+# Day1 and Day2.redeploy.01 all read the SAME source (config.yaml argocd.version_constraint).
+sed "s|__ARGOCD_CONSTRAINT__|${J2026_ARGOCD_VERSION_CONSTRAINT}|g" \
+  "${J2026_ROOT_DIR}/argocd/argocd-version-patch-watcher.yaml" \
+  | kubectl apply -n "${J2026_ARGOCD_NAMESPACE}" -f -
 
 log_info "ArgoCD installed and GitOps configured."

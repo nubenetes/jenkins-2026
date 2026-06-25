@@ -23,6 +23,7 @@ navigation:
 - [`501-PLATFORM_OPERATIONS.md`](docs/501-PLATFORM_OPERATIONS.md) — ArgoCD, Headlamp, Gateway API + IAP, chaos/QA
 - [`502-MICROSERVICES_GITOPS.md`](docs/502-MICROSERVICES_GITOPS.md) — Helm vs Kustomize, resource lifecycle design decisions
 - [`601-DEVSECOPS.md`](docs/601-DEVSECOPS.md) — Semgrep, CodeQL, Trivy, warnings-ng
+- [`602-VERSION_PINNING.md`](docs/602-VERSION_PINNING.md) — version-pinning policy + matrix (charts/images/actions/Terraform), pros/cons, the deliberate ArgoCD 3.5.x auto-tracking exception, how to bump a pin
 - [`901-LOCAL_DEVELOPMENT.md`](docs/901-LOCAL_DEVELOPMENT.md) — prerequisites, quick start, e2e test
 - [`902-TROUBLESHOOTING.md`](docs/902-TROUBLESHOOTING.md) — common issues
 

@@ -1,0 +1,18 @@
+version: 2
+
+# Keep the SHA-pinned GitHub Actions current. The workflows pin every action to a
+# full commit SHA (with a "# vX" comment for readability); Dependabot understands
+# that form and opens PRs that bump the SHA + comment together, so we get
+# supply-chain immutability AND timely updates without hand-resolving SHAs.
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore(actions)"
+    groups:
+      # One grouped PR per run instead of one per action — easier to review/merge.
+      github-actions:
+        patterns:
+          - "*"
