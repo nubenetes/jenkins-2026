@@ -13,6 +13,7 @@ Managed Grafana, or Amazon Managed Grafana. See
 in [`docs/`](docs/) — all numbered `NNN-TITLE.md` with header/footer
 navigation:
 
+- [`100-BOOTSTRAP.md`](docs/100-BOOTSTRAP.md) — the root of trust (Day0 "phase 0"): the one-command, human-run `scripts/bootstrap.sh up`/`down` that creates/destroys the WIF trust + state bucket + CI SA, the bootstrap paradox, the self-hosted-state model
 - [`101-GITHUB_ACTIONS_WORKFLOWS.md`](docs/101-GITHUB_ACTIONS_WORKFLOWS.md) — CI/CD workflow naming (`DayN.tier.ZZ-resource`), lifecycle matrix, clickable workflow inventory
 - [`102-GITHUB_ACTIONS_AUTOMATION.md`](docs/102-GITHUB_ACTIONS_AUTOMATION.md) — WIF setup, GitHub secrets, bootstrapping architecture
 - [`103-GITHUB_SECRETS_INVENTORY.md`](docs/103-GITHUB_SECRETS_INVENTORY.md) — complete inventory of every GitHub secret and variable: purpose, sensitivity, source, which workflows use each
@@ -87,9 +88,17 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
   a small Helm chart, CI-engine-gated via `ciEngine`). See
   [`argocd/README.md`](argocd/README.md).
 - `terraform/`:
-  - `bootstrap/` - **one-time, local state**, run by hand. Creates the GCS
-    Terraform state bucket + GitHub OIDC/Workload Identity Federation trust
-    for `Day1.cluster.01-gke.yml`/`Decom.cluster.01-gke.yml`.
+  - `bootstrap/` - the **root of trust** (Day0 "phase 0"), run by hand via
+    [`scripts/bootstrap.sh`](scripts/bootstrap.sh) (`up`/`down`). Creates the GCS
+    Terraform state bucket + GitHub OIDC/Workload Identity Federation trust + CI
+    service account (+ roles) + Postgres backups bucket. **First** `apply` seeds with
+    LOCAL state, then the script **migrates that state into the bucket** (prefix
+    `jenkins-2026/bootstrap`) so even bootstrap is remote-state going forward (the
+    `backend_override.tf` it writes is gitignored). Can't be a CI workflow (the
+    "bootstrap paradox": CI needs the WIF + bucket this creates). `bootstrap.sh down`
+    is the symmetric root teardown (migrate state local → `terraform destroy` with
+    `state_bucket_force_destroy=true` → delete the 4 GitHub secrets). See
+    [`docs/100-BOOTSTRAP.md`](docs/100-BOOTSTRAP.md).
   - `gateway-bootstrap/` - persistent Gateway resources (static external IP +
     wildcard cert map + DNS authorization) so the public endpoints survive cluster
     rebuilds. Applied one-time by `Day0.infra.01-gateway.yml`, destroyed by

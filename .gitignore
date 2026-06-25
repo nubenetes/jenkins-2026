@@ -57,6 +57,9 @@ terraform/aws-managed-grafana/terraform.tfvars
 # grafana-cloud-bootstrap.yml before `terraform init` to point at the GCS
 # state bucket - never present in local/test/e2e.sh runs.
 terraform/gke/backend_override.tf
+# Written by scripts/bootstrap.sh to self-host the bootstrap root's own state in
+# the bucket it creates (after the first local-state seed).
+terraform/bootstrap/backend_override.tf
 terraform/grafana-cloud-token/backend_override.tf
 terraform/grafana-cloud-stack/backend_override.tf
 terraform/gateway-bootstrap/backend_override.tf

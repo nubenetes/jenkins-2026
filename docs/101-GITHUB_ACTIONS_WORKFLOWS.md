@@ -1,4 +1,4 @@
-[🏠 Home](../README.md) | [→ Next: 102. GitHub Actions Automation](./102-GITHUB_ACTIONS_AUTOMATION.md)
+[← Previous: 100. Bootstrap](./100-BOOTSTRAP.md) | [🏠 Home](../README.md) | [→ Next: 102. GitHub Actions Automation](./102-GITHUB_ACTIONS_AUTOMATION.md)
 
 ---
 
@@ -498,7 +498,7 @@ This is the workflow-level expression of the repo-wide **idempotency** conventio
 
 ---
 
-[🏠 Home](../README.md) | [→ Next: 102. GitHub Actions Automation](./102-GITHUB_ACTIONS_AUTOMATION.md)
+[← Previous: 100. Bootstrap](./100-BOOTSTRAP.md) | [🏠 Home](../README.md) | [→ Next: 102. GitHub Actions Automation](./102-GITHUB_ACTIONS_AUTOMATION.md)
 
 ---
 
