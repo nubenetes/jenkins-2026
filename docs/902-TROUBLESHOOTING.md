@@ -38,6 +38,32 @@ Re-running `Day1` (or `scripts/03-observability.sh`) with a different `observabi
 
 - **Wrong CI-overview dashboard lingers (e.g. "Jenkins CI Overview" on a `ci.engine=tekton` cluster)** — Grafana Cloud / Azure Managed Grafana stacks are **persistent**, and `gcx push` / `POST /api/dashboards/db` only upsert, so a previously-published off-engine dashboard survived an engine switch. `scripts/07-grafana-dashboards.sh` now **deletes the inactive engine's overview by UID** in every mode (grafana-cloud, managed-azure, managed-aws; oss drops it at render time). To remove a stale one by hand: `curl -X DELETE "$GRAFANA_BASE_URL/api/dashboards/uid/jenkins2026-jenkins-overview" -H "Authorization: Bearer $GRAFANA_API_KEY"`.
 
+## ArgoCD application-controller OOM (Day1 hangs at "Deploy the stack")
+
+**Symptom**: a `Day1` run stalls in `scripts/up.sh` (often when switching
+`ci.engine=jenkins` → `tekton` **with** `observability.mode=oss`); `kubectl get pods
+-n argocd` shows `argocd-application-controller-0` in `CrashLoopBackOff`, and
+`kubectl get applications -n argocd` shows `tekton-pipelines` (and others) stuck
+with an empty/`OutOfSync` status. The controller's last state is
+`reason: OOMKilled, exitCode: 137`.
+
+**Cause**: the application-controller holds the live-state cache of **every**
+managed object. The heaviest combination — the OSS stack (kube-prometheus-stack +
+Loki + Tempo, hundreds of objects) **and** the full Tekton app-of-apps
+(pipelines / triggers / dashboard / chains / pruner / pac + their CRDs) — exceeded
+the controller's `1Gi` memory limit. It OOM-loops, can't finish syncing
+`tekton-pipelines`, and `up.sh` waits forever.
+
+**Fix**: the controller limit is raised to **2Gi** (request `512Mi`) in
+[`helm/argocd-values.yaml`](../helm/argocd-values.yaml); re-run `Day1` (or
+`scripts/08.5-argocd.sh`) to apply. To unblock a **currently hung** run in place:
+
+```bash
+kubectl -n argocd patch statefulset argocd-application-controller --type merge \
+  -p '{"spec":{"template":{"spec":{"containers":[{"name":"application-controller","resources":{"requests":{"memory":"512Mi"},"limits":{"memory":"2Gi"}}}]}}}}'
+# the pod recreates with more memory, finishes syncing Tekton, and up.sh proceeds
+```
+
 ## ArgoCD OIDC Issues
 
 **ArgoCD OIDC Login fails with `redirect_uri_mismatch` or `Invalid redirect URL`**:
