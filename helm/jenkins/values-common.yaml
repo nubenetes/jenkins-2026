@@ -309,7 +309,7 @@ controller:
     - kubernetes:4423.vb_59f230b_ce53
     - workflow-aggregator:608.v67378e9d3db_1
     - git:5.10.1
-    - github-branch-source:1967.1969.v205fd594c821
+    - github-branch-source:1967.1970.vd86979736546
     - configuration-as-code:2088.ve3b_42c663c80
     - job-dsl:3654.vdf58f53e2d15
     # Provides folder support.
@@ -334,7 +334,7 @@ controller:
     # Exposes Jenkins (jobs, builds, logs, SCM) as an MCP server for
     # LLM/agent clients - see README.md "Headlamp" sibling section on MCP
     # tooling for how to point an MCP client at it.
-    - mcp-server:0.177.v629fdb_2557fe
+    - mcp-server:0.178.vffe5a_e770f3b_
     # Google login (OpenID Connect) - see securityRealm.oic in
     # jenkins/casc/jcasc-base.yaml and README.md "Jenkins" Google login section.
     - oic-auth:4.690.v5821cf665e43
@@ -357,7 +357,7 @@ controller:
     - display-url-api:2.217.va_6b_de84cc74b_
     - echarts-api:6.0.0-1287.vfd24c22a_3d00
     - font-awesome-api:7.2.0-990.vf220b_2a_496f9
-    - git-client:6.6.0
+    - git-client:6.6.1
     - github:1.47.0
     - github-api:1.330-492.v3941a_032db_2a_
     - gson-api:2.14.0-201.v8eefe5515533
@@ -402,7 +402,7 @@ controller:
     - prism-api:1.30.0-741.v034eb_0b_0a_a_fa_
     - resource-disposer:0.25
     - scm-api:728.vc30dcf7a_0df5
-    - script-security:1402.v94c9ce464861
+    - script-security:1402.1405.vc96e74964250
     - snakeyaml-api:2.5-149.v72471e9c6371
     - snakeyaml-engine-api:3.0.1-5.vd98ea_ff3b_92e
     - ssh-credentials:372.va_250881b_08cd
@@ -413,7 +413,7 @@ controller:
     - woodstox-core-api:7.2.1-6.v3718a_a_11f5c4
     - workflow-api:1413.v2ff1a_5e720fa_
     - workflow-basic-steps:1098.v808b_fd7f8cf4
-    - workflow-cps:4331.v9d06ed4658ff
+    - workflow-cps:4331.4333.v50a_b_076c5199
     - workflow-durable-task-step:1479.v56e587f413a_7
     - workflow-job:1571.1580.v18e46842c125
     - workflow-multibranch:821.vc3b_4ea_780798
