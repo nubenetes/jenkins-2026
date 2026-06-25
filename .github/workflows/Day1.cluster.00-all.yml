@@ -60,9 +60,12 @@ permissions:
   contents: read
   id-token: write
 
-concurrency:
-  group: jenkins-2026-gke
-  cancel-in-progress: false
+# NOTE: deliberately NO `concurrency` here. This umbrella only orchestrates; the
+# real GKE work runs inside the called Day1.cluster.01, which already owns the
+# `jenkins-2026-gke` concurrency group. If the umbrella also declared that group it
+# would hold it while waiting for the `provision` job — which needs the same group —
+# deadlocking the reusable call (GitHub then fails the run before `provision` even
+# starts). The Decom.infra.00 teardown umbrella follows the same no-concurrency rule.
 
 jobs:
   # 1. Persistent Gateway (static IP + cert map). Idempotent; gated by the
