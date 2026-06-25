@@ -117,6 +117,10 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
     SA **key** is the one long-lived credential (Grafana Cloud's GCP scraper can't use
     WIF) — minted out-of-band, never stored in state, pasted into the Grafana Cloud UI.
     See [`docs/301`](docs/301-OBSERVABILITY.md) + the module README.
+  - `grafana-cloud-synthetics/` - **grafana-cloud-only**, keyless. Grafana Cloud
+    Synthetic Monitoring (GA) HTTP uptime/latency checks against the public, non-IAP
+    endpoints (`microservices` host). Both provider tokens derive from the stack access
+    policy (like `grafana-cloud-token`). Apply only when `observability.mode=grafana-cloud`.
   - `azure-managed-grafana/` - the `observability.mode=managed-azure` backend:
     Azure Managed Grafana, Azure Monitor workspace + DCE/DCR (managed
     Prometheus), Application Insights + Log Analytics, and the Entra service

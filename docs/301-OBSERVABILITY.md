@@ -66,6 +66,30 @@ for uptime/SLOs on the public endpoints. **Profiles/Pyroscope** is a solid GA op
 JVM perf when you want it. **Skip Database Observability** until it leaves preview;
 **Cloud provider → GCP** is stable but trades off the keyless posture (long-lived key).
 
+### Wiring up the stable additions (grafana-cloud only)
+
+All of these are **gated to `observability.mode=grafana-cloud`** — no-ops in the other backends.
+
+- **Application Observability** — *already on.* No code: the microservices carry the OTel
+  Java auto-instrumentation (the `microservices-java` `Instrumentation` CR injects the
+  agent; `OTEL_SERVICE_NAME` is set) and the collector exports OTLP traces+metrics to
+  Grafana Cloud. Just open the app; enable it in the UI if prompted. (In oss the same
+  traces land in Tempo; in managed-azure/-aws in App Insights / X-Ray.)
+- **Synthetic Monitoring** — IaC in [`terraform/grafana-cloud-synthetics`](../terraform/grafana-cloud-synthetics/):
+  HTTP uptime/latency checks (Grafana-Cloud-hosted probes) against the **public, non-IAP**
+  endpoints (`microservices` host; the IAP hosts would just return Google's OAuth page).
+  Keyless — both provider tokens derive from the stack access policy, like
+  `grafana-cloud-token`. Apply only in grafana-cloud mode.
+- **Profiles / Pyroscope (continuous JVM profiling)** — the stable path is the **Pyroscope
+  Java agent** on each microservice JVM (`-javaagent` + `PYROSCOPE_*` env pointing at the
+  Grafana Cloud **Profiles** push endpoint), enabled only in grafana-cloud mode. It is
+  **cross-repo** (the agent + env go on the microservices Deployment in the
+  `jenkins-2026-gitops-config` repo) and needs a **Profiles write endpoint + token** added
+  to the `grafana-cloud-credentials` Secret (from `terraform/grafana-cloud-stack`/`-token`).
+  Avoid a privileged node-level profiler (`pyroscope.java`/eBPF via Alloy needs
+  `SYS_PTRACE`/hostPID). Self-hosted Pyroscope would be required for oss; managed-azure/-aws
+  have no equivalent.
+
 ## OTel Components
 
 ### OpenTelemetry Operator
