@@ -124,7 +124,7 @@ Or paste one into the Tekton Dashboard's *Create PipelineRun* (YAML mode) once, 
 2. **`gcloud container clusters get-credentials`** — points `kubectl`/`helm` at the new cluster.
 3. **`scripts/00-check-prereqs.sh` + `scripts/01-namespaces.sh`**.
 4. **`scripts/up.sh`** — the full stack, exactly as in Quick start.
-5. **`test/smoke-test.sh`** — verifies Jenkins controller pod is `Running`, seed job created the stable pipelines, OTel Operator/collectors are running, and both Microservices namespaces have all `Deployment`s.
+5. **`test/smoke-test.sh`** — CI-engine-aware: verifies the active CI engine is up (Jenkins controller `Running` + seed pipelines, or the Tekton stack + PaC Repository CRs/PipelineRuns), OTel Operator/collectors are running, and the **stable** Microservices namespace has all `Deployment`s (the `develop` tier is off by default).
 6. **`scripts/down.sh`** (with `J2026_DELETE_NAMESPACES=true`) then **`terraform -chdir=terraform/gke destroy`** — decommissions everything.
 
 Step 6 runs **unconditionally** via an `EXIT` trap, even if steps 1-5 fail partway through, so a failed run still leaves the GCP project clean.
