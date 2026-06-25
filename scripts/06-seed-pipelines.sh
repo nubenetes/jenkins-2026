@@ -28,10 +28,27 @@ jenkins_exec() {
 # The crumb is bound to the session cookie that issued it, so the
 # crumbIssuer request and the build request must share a cookie jar -
 # persisted in the pod's /tmp across these separate `kubectl exec` calls.
-log_step "Fetching CSRF crumb"
+#
+# `kubectl rollout status` above only guarantees the pod is Ready, not that the
+# Jenkins HTTP API is already serving - right after a (re)start curl can get an
+# empty reply (exit 52) or a 503 while Jenkins finishes booting/applying JCasC.
+# Poll the crumbIssuer until it returns a valid crumb instead of failing hard.
+log_step "Fetching CSRF crumb (waiting for the Jenkins HTTP API to serve)"
 jenkins_exec rm -f /tmp/seed-cookies.txt
-CRUMB_JSON="$(jenkins_exec curl -s -c /tmp/seed-cookies.txt -u "${AUTH}" 'http://localhost:8080/crumbIssuer/api/json')"
-CRUMB="$(printf '%s' "${CRUMB_JSON}" | python3 -c 'import sys,json; print(json.load(sys.stdin)["crumb"])')"
+CRUMB=""
+DEADLINE=$(( SECONDS + 300 ))
+while [[ $SECONDS -lt $DEADLINE ]]; do
+  CRUMB_JSON="$(jenkins_exec curl -s --max-time 10 -c /tmp/seed-cookies.txt -u "${AUTH}" \
+      'http://localhost:8080/crumbIssuer/api/json' 2>/dev/null || true)"
+  CRUMB="$(printf '%s' "${CRUMB_JSON}" \
+    | python3 -c 'import sys,json; print(json.load(sys.stdin)["crumb"])' 2>/dev/null || true)"
+  [[ -n "${CRUMB}" ]] && break
+  sleep 3
+done
+if [[ -z "${CRUMB}" ]]; then
+  log_error "Timed out (5m) waiting for the Jenkins crumbIssuer API to respond"
+  exit 1
+fi
 
 log_step "Triggering the 'seed-jobs' pipeline"
 # -i includes response headers so we can read the Location header for the queue item ID
