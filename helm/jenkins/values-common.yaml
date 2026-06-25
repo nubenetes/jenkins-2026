@@ -13,9 +13,9 @@
 #
 # Chart origin: https://github.com/jenkinsci/helm-charts (charts/jenkins),
 # published at https://charts.jenkins.io as jenkins/jenkins.
-# config/config.yaml jenkins.chart.version is "" (always installs latest) -
-# chart 5.9.25 / appVersion 2.555.3 as of 2026-06-13. Default values.yaml for
-# comparison:
+# config/config.yaml jenkins.chart.version is pinned to 5.9.29 / appVersion 2.555.3
+# (was "" = latest, which silently moved chart versions and broke JCasC). Default
+# values.yaml for comparison:
 # https://github.com/jenkinsci/helm-charts/blob/main/charts/jenkins/values.yaml
 #
 # This file and the platform overlays set ONLY the values that differ from

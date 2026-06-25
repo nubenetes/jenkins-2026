@@ -49,8 +49,10 @@ jenkins:
     repoName: jenkins
     repoUrl: https://charts.jenkins.io
     chartName: jenkins/jenkins
-    # Empty = latest. Pin for reproducibility, e.g. "5.8.16".
-    version: ""
+    # Pinned for reproducibility (empty = latest, which silently moved to 5.9.x and
+    # reintroduced the JCasC authz/securityRealm double-entry crash). 5.9.29 is the
+    # latest as of 2026-06-25 (appVersion 2.555.3, matching controller.image.tag).
+    version: "5.9.29"
   adminUser: admin
   # Name of the k8s Secret (created by scripts/01-namespaces.sh) holding the
   # admin password and other pipeline credentials (registry, git, Grafana).
