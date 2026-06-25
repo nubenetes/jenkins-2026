@@ -30,6 +30,19 @@ It can't use Workload Identity Federation (the scraper isn't a GCP workload), so
 
 ## Grafana Cloud Observability apps — status & recommendation
 
+> ⚠️ **`observability.mode=grafana-cloud` ONLY.** Everything in this section —
+> Application Observability, Synthetic Monitoring, Profiles, Database Observability,
+> the Cloud-provider integration — is a **Grafana Cloud product**. It does **not** exist
+> or apply in the other backends; each has its own native equivalent instead:
+> | Concern | grafana-cloud | oss | managed-azure | managed-aws |
+> |---|---|---|---|---|
+> | APM / tracing | **Application Observability** | Tempo + Grafana | Application Insights | X-Ray |
+> | Uptime probes | **Synthetic Monitoring** | — (none) | Azure availability tests | CloudWatch Synthetics |
+> | Profiling | **Profiles (Pyroscope)** | self-hosted Pyroscope | — | — |
+> Anything this project wires up here (Synthetic checks, the Pyroscope agent, the GCP
+> cloud-provider SA) is therefore **gated to grafana-cloud mode** and is a no-op in
+> oss/managed-azure/managed-aws — consistent with the deterministic single-backend model.
+
 Grafana Cloud's **Observability** menu bundles several apps. Some are **already fed by
 this project's existing pipeline** (our OTLP traces/metrics, the RUM snippet, the
 `k8s-monitoring` Alloy) — just open them, no work. Others are worth adding; one is
