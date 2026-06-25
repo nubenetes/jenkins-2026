@@ -135,6 +135,7 @@ A self-contained proof of concept that deploys **Jenkins** on **Kubernetes**, co
 
 **[301 · Observability](./docs/301-OBSERVABILITY.md)**
 - [Key Features](./docs/301-OBSERVABILITY.md#key-features)
+- [Grafana Cloud Observability apps — status & recommendation](./docs/301-OBSERVABILITY.md#grafana-cloud-observability-apps--status--recommendation)
 - [OTel Components](./docs/301-OBSERVABILITY.md#otel-components)
   - [OpenTelemetry Operator](./docs/301-OBSERVABILITY.md#opentelemetry-operator)
   - [Java Auto-Instrumentation](./docs/301-OBSERVABILITY.md#java-auto-instrumentation)
@@ -285,8 +286,9 @@ A self-contained proof of concept that deploys **Jenkins** on **Kubernetes**, co
 
 | Code | Category | Document | Description |
 | :--- | :--- | :--- | :--- |
-| **101** | CI/CD Workflows | [GitHub Actions Workflows](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md) | `Y.X.ZZ` naming scheme, lifecycle phases, Phase×Step matrix, ZZ resource identity, full workflow matrix with clickable GitHub Actions links, lifecycle Mermaid diagram, complete 15-row numbered inventory |
+| **101** | CI/CD Workflows | [GitHub Actions Workflows](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md) | `DayN.tier.ZZ-resource` naming scheme, lifecycle phases, the per-`ZZ` lifecycle matrix, full workflow matrix with clickable GitHub Actions links, lifecycle Mermaid diagram, complete numbered inventory (incl. the opt-in `Decom.infra.00` teardown umbrella) |
 | **102** | CI/CD Workflows | [GitHub Actions Automation](./docs/102-GITHUB_ACTIONS_AUTOMATION.md) | WIF setup, GitHub secrets reference, bootstrapping architecture, persistent vs. short-lived resources, `git_ref` parameter, environment protection / manual approvals |
+| **103** | CI/CD Workflows | [GitHub Secrets & Variables Inventory](./docs/103-GITHUB_SECRETS_INVENTORY.md) | Every GitHub Actions secret and repository variable used across the workflows — purpose, required vs. optional, source, which subsystem; incl. the keyless WIF/OIDC identifiers and the `AWS_REGION` repo variable |
 | **201** | Architecture | [Architecture](./docs/201-ARCHITECTURE.md) | System architecture, component diagram, microservices & database architecture (CNPG), CI/CD flow, configuration (`config/config.yaml`), repository layout, GKE cluster topology, FinOps & cost analysis |
 | **301** | Observability | [Observability](./docs/301-OBSERVABILITY.md) | OTel components (Operator, Java agent, Angular RUM, Collector), telemetry architecture, signal correlation (metrics↔traces↔logs), structured logging, dashboards, k6 smoke test, OSS in-cluster mode, all four observability modes |
 | **401** | Jenkins | [Jenkins](./docs/401-JENKINS.md) | Accessing the UI & admin password, Google OIDC login, plugins & JCasC fragments, global shared library, MCP server |
@@ -295,6 +297,7 @@ A self-contained proof of concept that deploys **Jenkins** on **Kubernetes**, co
 | **501** | Platform | [Platform Operations](./docs/501-PLATFORM_OPERATIONS.md) | ArgoCD inventory, telemetry simulation, platform QA & chaos scenarios, Golden Path IDP modernizations (K8s v1.35/v1.36, Karpenter), Headlamp cluster UI, GKE Gateway API + IAP public access |
 | **502** | Microservices | [Microservices GitOps](./docs/502-MICROSERVICES_GITOPS.md) | Helm vs. Kustomize design decision, resource lifecycle & decommission orchestration (NEG synchronization barrier), pgAdmin & database administration |
 | **601** | Security | [DevSecOps](./docs/601-DEVSECOPS.md) | Semgrep SAST, CodeQL deep SAST, Trivy IaC + image scanning, `warnings-ng` plugin SARIF dashboards in Jenkins |
+| **602** | Security | [Version Pinning](./docs/602-VERSION_PINNING.md) | Version-pinning policy + matrix (charts, images, `yq`, GitHub Actions SHAs, Terraform lockfiles), pros/cons, the deliberate ArgoCD 3.5.x auto-tracking exception, how to bump a pin |
 | **901** | Reference | [Local Development](./docs/901-LOCAL_DEVELOPMENT.md) | Prerequisites, quick start, step-by-step deployment guide, automated e2e test (`test/e2e.sh`), resource quotas & QoS, Terraform version |
 | **902** | Reference | [Troubleshooting](./docs/902-TROUBLESHOOTING.md) | Common issues, ArgoCD OIDC, Terraform & CI, Jenkins & GitOps push authentication failures |
 
@@ -321,36 +324,77 @@ See [901. Local Development](./docs/901-LOCAL_DEVELOPMENT.md) for the full step-
 
 ## 3. Architecture Overview
 
+Two pluggable choices, both deterministic & idempotent: the **CI engine** (`ci.engine`: Jenkins **xor** Tekton) and the **observability backend** (`observability.mode`: one of oss / grafana-cloud / managed-azure / managed-aws). ArgoCD is always the CD/GitOps engine.
+
 ```mermaid
-graph TB
-    subgraph "External Services"
-        GH["GitHub"]
-        GC["Grafana Cloud"]
-        GCP["GCP IAP / DNS / OAuth"]
+flowchart TB
+    users([Users / GitHub webhooks]):::ext
+
+    subgraph GH["GitHub"]
+      R1["nubenetes/jenkins-2026<br/>IaC · scripts · pipelines · JCasC / tekton"]
+      R2["nubenetes/jenkins-2026-gitops-config<br/>microservices + CNPG manifests"]
     end
 
-    subgraph "GKE Cluster"
-        GW["GKE Gateway"]
-        J["Jenkins Controller"]
-        ACD["ArgoCD Server"]
-        OTEL["OTel Operator/Collector"]
-        PCS["Microservices"]
+    subgraph EDGE["GCP edge"]
+      IAP["Gateway API + Google IAP<br/>DNS · OAuth"]
     end
 
-    GH -->|SCM| J
-    GH -->|SCM| ACD
-    GCP -->|"IAP / OAuth"| GW
-    GW --> J
-    GW --> ACD
-    GW --> PCS
-    J -->|"CI / Build"| GH
-    ACD -->|"CD / GitOps"| PCS
-    PCS -->|OTLP| OTEL
-    J -->|OTLP| OTEL
-    OTEL -->|OTLP/HTTP| GC
+    subgraph GKE["GKE cluster — Dataplane V2 (Cilium/eBPF NetworkPolicies) + WireGuard"]
+      ACD["ArgoCD<br/>CD / GitOps engine"]
+      subgraph CI["CI engine — pick ONE (ci.engine)"]
+        JEN["Jenkins<br/>Helm + JCasC + Job-DSL seed"]
+        TEK["Tekton<br/>Pipelines/Triggers/Dashboard + PaC"]
+      end
+      subgraph PLAT["Platform add-ons"]
+        HL["Headlamp"]
+        PGA["pgAdmin"]
+        ROLL["Argo Rollouts<br/>canary / blue-green"]
+        ESO["External Secrets"]
+        CNPGOP["CNPG operator"]
+      end
+      subgraph MS["Microservices (gateway + jhipstersample)"]
+        APP["Spring Boot apps<br/>OTel auto-instrumented"]
+        PG[("CNPG Postgres HA<br/>3 replicas + PgBouncer poolers")]
+      end
+      subgraph OBS["In-cluster observability"]
+        OP["OTel Operator"]
+        COL["OTel Collector<br/>reconfigured per mode"]
+        OSST["OSS stack: Prometheus · Loki<br/>Tempo · Grafana (mode=oss)"]
+      end
+    end
+
+    subgraph BK["External observability backends — pick ONE (observability.mode), Day0 Terraform"]
+      GCLOUD["Grafana Cloud<br/>grafana-cloud"]
+      AZ["Azure Managed Grafana<br/>+ Monitor / App Insights — managed-azure"]
+      AWSG["Amazon Managed Grafana<br/>+ AMP / X-Ray / CloudWatch — managed-aws"]
+    end
+
+    users --> IAP
+    R1 -->|"terraform + scripts/up.sh"| GKE
+    R1 -->|"shared library / pipeline defs"| CI
+    IAP -->|IAP-protected| JEN & TEK & ACD & HL & PGA
+    IAP -->|"open (no IAP)"| APP
+    ACD -->|"installs / syncs"| CI & PLAT & MS
+    R2 -->|"ArgoCD source"| ACD
+    CI -->|"build → push image → commit gitops"| R2
+    CI -->|"argocd app sync"| ACD
+    APP --> PG
+    APP -->|OTLP| COL
+    CI -->|OTLP| COL
+    OP -.->|injects agent| APP
+    COL -->|mode=oss| OSST
+    COL -->|mode=grafana-cloud| GCLOUD
+    COL -->|mode=managed-azure| AZ
+    COL -->|mode=managed-aws| AWSG
+
+    classDef ext fill:#fde,stroke:#c39;
+    classDef pick fill:#eef,stroke:#66c;
+    class JEN,TEK,GCLOUD,AZ,AWSG,OSST pick;
 ```
 
-For the full component diagram, microservices database architecture (CloudNative-PG HA), and CI/CD flow see [201. Architecture](./docs/201-ARCHITECTURE.md).
+> The **CI engine** (Jenkins/Tekton) and **observability backend** (oss/grafana-cloud/managed-azure/managed-aws) boxes are *mutually exclusive* — exactly one of each is active per cluster, selected by `config/config.yaml` (or the `Day1.cluster.01` inputs) and switched deterministically. The three external backends are decoupled, persistent, **keyless** (WIF/OIDC) Day0 resources.
+
+For the full component diagram, microservices database architecture (CloudNative-PG HA), and CI/CD flow see [201. Architecture](./docs/201-ARCHITECTURE.md). For the Grafana Cloud Observability apps (App Observability, Synthetic Monitoring, Profiles — grafana-cloud only) see [301. Observability](./docs/301-OBSERVABILITY.md#grafana-cloud-observability-apps--status--recommendation).
 
 ---
 

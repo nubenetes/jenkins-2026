@@ -1,4 +1,6 @@
-<!-- PREV: [102 GitHub Actions Automation](102-GITHUB_ACTIONS_AUTOMATION.md) | NEXT: [201 Architecture](201-ARCHITECTURE.md) -->
+[← Previous: 102. GitHub Actions Automation](./102-GITHUB_ACTIONS_AUTOMATION.md) | [🏠 Home](../README.md) | [→ Next: 201. Architecture](./201-ARCHITECTURE.md)
+
+---
 
 # 103 — GitHub Secrets & Variables Inventory
 
@@ -284,4 +286,8 @@ egress to Grafana Cloud k6's ingest. Works for **either** CI engine.
 
 ---
 
-<!-- PREV: [102 GitHub Actions Automation](102-GITHUB_ACTIONS_AUTOMATION.md) | NEXT: [201 Architecture](201-ARCHITECTURE.md) -->
+[← Previous: 102. GitHub Actions Automation](./102-GITHUB_ACTIONS_AUTOMATION.md) | [🏠 Home](../README.md) | [→ Next: 201. Architecture](./201-ARCHITECTURE.md)
+
+---
+
+*103. GitHub Secrets & Variables Inventory — jenkins-2026*
