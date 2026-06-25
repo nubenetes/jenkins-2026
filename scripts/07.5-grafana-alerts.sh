@@ -346,17 +346,35 @@ PY
       exit 1
     fi
 
-    GF_API_KEY="$(aws grafana create-workspace-api-key \
-      --key-role ADMIN \
-      --key-name "jenkins-2026-alerts-$(date +%s)" \
-      --seconds-to-live 300 \
-      --workspace-id "${GRAFANA_WORKSPACE_ID}" \
-      --output json 2>/dev/null \
-      | python3 -c "import json,sys; print(json.load(sys.stdin)['key'])" || true)"
+    # AMG has no static API key, and AWS DEPRECATED workspace API keys
+    # (create-workspace-api-key now returns nothing) — mint a short-lived
+    # service-account token instead, the same keyless method
+    # 07-grafana-dashboards.sh uses. Needs an AWS region.
+    AWS_REGION="${AWS_REGION:-$(kubectl get secret aws-managed-credentials \
+      -n "${J2026_OBS_NAMESPACE}" -o jsonpath='{.data.AWS_REGION}' 2>/dev/null | base64 -d || true)}"
+    export AWS_REGION AWS_DEFAULT_REGION="${AWS_REGION}"
+    SA_NAME="jenkins-2026-alerts"
+    SA_ID="$(aws grafana list-workspace-service-accounts --workspace-id "${GRAFANA_WORKSPACE_ID}" \
+      --query "serviceAccounts[?name=='${SA_NAME}'].id | [0]" --output text 2>/dev/null || true)"
+    if [[ -z "${SA_ID}" || "${SA_ID}" == "None" ]]; then
+      SA_ID="$(aws grafana create-workspace-service-account --workspace-id "${GRAFANA_WORKSPACE_ID}" \
+        --name "${SA_NAME}" --grafana-role ADMIN --query 'id' --output text 2>/dev/null || true)"
+    fi
+    TOKEN_JSON="$(aws grafana create-workspace-service-account-token --workspace-id "${GRAFANA_WORKSPACE_ID}" \
+      --service-account-id "${SA_ID}" --name "alerts-$(date +%s)" --seconds-to-live 900 --output json 2>/dev/null || true)"
+    GF_API_KEY="$(jq -r '.serviceAccountToken.key // empty' <<<"${TOKEN_JSON}" 2>/dev/null || true)"
+    TOKEN_ID="$(jq -r '.serviceAccountToken.id // empty' <<<"${TOKEN_JSON}" 2>/dev/null || true)"
     if [[ -z "${GF_API_KEY:-}" ]]; then
       log_error "managed-aws: failed to mint AMG service-account token (check AWS credentials and workspace ID)."
       exit 1
     fi
+    # Clean up the short-lived token on exit (keep the reusable service account).
+    cleanup_aws_token() {
+      [[ -n "${SA_ID:-}" && -n "${TOKEN_ID:-}" ]] && aws grafana delete-workspace-service-account-token \
+        --workspace-id "${GRAFANA_WORKSPACE_ID}" --service-account-id "${SA_ID}" \
+        --token-id "${TOKEN_ID}" >/dev/null 2>&1 || true
+    }
+    trap cleanup_aws_token EXIT
 
     GF_EMAIL="$(resolve_email)"
     if [[ -z "${GF_EMAIL}" ]]; then
