@@ -210,6 +210,7 @@ flowchart LR
 
   api -.->|:9443 webhooks| obs
   cieng -->|OTLP :4317/4318| obs
+  cieng -->|smoke health<br/>jhipster :8081 / gateway :8080| gw
   gw -->|OTLP :4317/4318| obs
   graf -->|scrape :9187| pg
   gw -->|:5432| pg
