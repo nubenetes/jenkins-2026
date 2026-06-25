@@ -6,8 +6,9 @@ Guidance for Claude Code when working in this repo.
 
 A Jenkins-on-Kubernetes PoC: Jenkins (Helm chart + JCasC) running
 pipelines-as-code for the Spring Microservices microservices, with full
-OpenTelemetry observability (traces/metrics/logs) into either Grafana Cloud
-or an in-cluster OSS Grafana/Loki/Tempo/Prometheus stack. See
+OpenTelemetry observability (traces/metrics/logs) into one of four backends:
+Grafana Cloud, an in-cluster OSS Grafana/Loki/Tempo/Prometheus stack, Azure
+Managed Grafana, or Amazon Managed Grafana. See
 [`README.md`](README.md) for the index and quick start. Deep-dive docs live
 in [`docs/`](docs/) — all numbered `NNN-TITLE.md` with header/footer
 navigation:

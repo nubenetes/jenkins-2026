@@ -13,7 +13,7 @@
 - **Spring Microservices + Angular UI**, deployed by those pipelines via a single parameterized Helm chart.
 - **OpenTelemetry** end to end: Jenkins, the Java services (OTel Operator auto-instrumentation), and the Angular UI (RUM snippet) all export traces/metrics/logs to an in-cluster OTel Collector, forwarding to **Grafana Cloud** (default) or an in-cluster OSS stack.
 - **ArgoCD (GitOps)**: The entire Microservices stack is managed declaratively by ArgoCD, integrated with Google OIDC for SSO.
-- **CloudNative-PG (CNPG)**: HA PostgreSQL 18 clusters (1 Primary + 2 Replicas) provisioned via CNPG CRDs, with PgBouncer connection pooling.
+- **CloudNative-PG (CNPG)**: HA **PostgreSQL 18.3** clusters (3 instances: 1 primary + 2 replicas; the image is **pinned** via the chart's `spec.imageName`) provisioned via CNPG CRDs, with PgBouncer connection pooling. *(The chart + `Cluster`/`Pooler` CRs live in the [gitops-config repo](https://github.com/nubenetes/jenkins-2026-gitops-config), not this one.)*
 
 > **Two-repo GitOps setup.** This is the **infra repo** (cluster bootstrap, Jenkins, ArgoCD, observability). Image tags and ArgoCD manifests live in the companion **[`nubenetes/jenkins-2026-gitops-config`](https://github.com/nubenetes/jenkins-2026-gitops-config)** repo.
 
@@ -265,7 +265,7 @@ terraform/bootstrap/         one-time setup for GitHub Actions automation (state
 terraform/gateway-bootstrap/ one-time setup for public access (static IP + managed certificate)
 scripts/08.5-argocd.sh       ArgoCD installation and OIDC configuration
 test/                        e2e.sh (provision → up.sh → smoke-test.sh → down.sh → destroy)
-.github/workflows/           Y.X.ZZ-<name>.yml — see 101. GitHub Actions Workflows
+.github/workflows/           DayN.tier.ZZ-resource.yml — see 101. GitHub Actions Workflows
 docs/                        numbered docs (this file and siblings)
 ```
 
