@@ -28,6 +28,31 @@ Separate from the OTLP pipeline above, Grafana Cloud's **Observability → Cloud
 
 It can't use Workload Identity Federation (the scraper isn't a GCP workload), so it needs a **service-account key** uploaded in the Grafana Cloud UI — **the one long-lived credential in the project**, vs the keyless WIF/federation everywhere else. The read-only SA + roles (`monitoring.viewer`, `cloudasset.viewer`) are IaC-managed (human-run, opt-in) in [`terraform/grafana-cloud-gcp`](../terraform/grafana-cloud-gcp/); the key is minted out-of-band (never stored in Terraform state) and pasted into the UI. See that module's README for the runbook. For trial exploration you can also just configure it by hand in the UI.
 
+## Grafana Cloud Observability apps — status & recommendation
+
+Grafana Cloud's **Observability** menu bundles several apps. Some are **already fed by
+this project's existing pipeline** (our OTLP traces/metrics, the RUM snippet, the
+`k8s-monitoring` Alloy) — just open them, no work. Others are worth adding; one is
+still experimental and we deliberately skip it. Maturity is GA unless noted.
+
+| App | Maturity | Already fed by us? | Recommendation |
+|---|---|---|---|
+| **Application Observability** (APM: service map, RED metrics, traces) | GA | **Yes** — we already export OTLP traces+metrics from Jenkins, the microservices (OTel auto-instrumentation) and the Angular RUM | ⭐ **Use it now** — zero new code, just enable/open it. Highest "free" value: service map + p95 latency + error rates for the services and Jenkins |
+| **Kubernetes Monitoring** | GA | **Yes** — we deploy `k8s-monitoring` (Alloy) in grafana-cloud mode | ⭐ Already populated (cluster/node/pod/workload views) |
+| **Frontend Observability** (RUM) | GA | **Yes** — Angular RUM snippet (see [Angular RUM](#angular-rum)) | ⭐ Already populated |
+| **Synthetic Monitoring** (uptime/latency probes) | GA | No | 👍 **Good, cheap add** — HTTP checks against the public IAP endpoints (jenkins/argocd/microservices) for uptime + SLOs. IaC-able and keyless via the Grafana Terraform provider (it supports Synthetic Monitoring) using the existing stack token |
+| **Cloud provider → GCP** | GA | No (IaC scaffolding in [`terraform/grafana-cloud-gcp`](../terraform/grafana-cloud-gcp/)) | 🤔 Stable, but needs a **long-lived SA key** (the scraper isn't a GCP workload → no WIF), the only non-keyless credential. Optional — see [§ GCP platform metrics](#gcp-platform-metrics--cloud-provider-integration-optional) |
+| **Profiles** (Pyroscope, continuous JVM profiling) | GA | No | 👍 Valuable for microservice performance; medium effort (an Alloy `pyroscope.*` component / agent) |
+| **Database Observability** (Postgres query perf) | **public preview / experimental** | No | ❌ **Skip for now** — the Alloy `database_observability` component has frequent breaking changes. Revisit when GA |
+| OnCall / Incident / SLO | GA (ops process, not telemetry) | — | As needed for alerting/on-call; not a priority for a throwaway PoC |
+
+**What to incorporate (stable + worthwhile):** lead with **Application Observability**
+— it already receives our traces/metrics, so it's the biggest no-risk win (open it,
+enable if prompted). Then **Synthetic Monitoring** (GA, lightweight, IaC-able + keyless)
+for uptime/SLOs on the public endpoints. **Profiles/Pyroscope** is a solid GA option for
+JVM perf when you want it. **Skip Database Observability** until it leaves preview;
+**Cloud provider → GCP** is stable but trades off the keyless posture (long-lived key).
+
 ## OTel Components
 
 ### OpenTelemetry Operator

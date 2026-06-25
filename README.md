@@ -135,6 +135,7 @@ A self-contained proof of concept that deploys **Jenkins** on **Kubernetes**, co
 
 **[301 · Observability](./docs/301-OBSERVABILITY.md)**
 - [Key Features](./docs/301-OBSERVABILITY.md#key-features)
+- [Grafana Cloud Observability apps — status & recommendation](./docs/301-OBSERVABILITY.md#grafana-cloud-observability-apps--status--recommendation)
 - [OTel Components](./docs/301-OBSERVABILITY.md#otel-components)
   - [OpenTelemetry Operator](./docs/301-OBSERVABILITY.md#opentelemetry-operator)
   - [Java Auto-Instrumentation](./docs/301-OBSERVABILITY.md#java-auto-instrumentation)
