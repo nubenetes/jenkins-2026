@@ -9,10 +9,11 @@
 #     "jenkins-2026-grafana-dashboards" ConfigMap + kube-prometheus-stack's
 #     Grafana sidecar.
 #
-#   managed-azure - publishes them to Azure Managed Grafana via its Grafana
-#     HTTP API (GRAFANA_BASE_URL + GRAFANA_API_KEY from the
-#     "${J2026_AZURE_MONITOR_SECRET}" Secret). Metric panels are portable;
-#     trace/log panels need Azure-specific rework (follow-up).
+#   managed-azure - no-op here: Azure Managed Grafana has no static API key
+#     (Entra-only auth), so this script can't publish. The dashboards are
+#     published post azure/login by the dedicated step in Day1.cluster.01-gke.yml
+#     (Entra data-plane token, ${appinsights} substitution, az grafana dashboard
+#     create into the "CI-CD Observability" folder).
 #
 #   managed-aws - publishes the managed-aws dashboard variants to Amazon Managed
 #     Grafana (AMG). AMG has no static API key, so a SHORT-LIVED workspace
@@ -174,68 +175,18 @@ case "${J2026_OBS_MODE}" in
     ;;
 
   managed-azure)
-    # Publish dashboards to Azure Managed Grafana via its Grafana HTTP API
-    # (GRAFANA_BASE_URL + GRAFANA_API_KEY in the azure-monitor-credentials
-    # Secret). NOTE: the metric panels are portable (Azure Monitor managed
-    # Prometheus is PromQL-compatible - just pick that datasource), but the
-    # trace (App Insights) and log (Log Analytics) panels need Azure-specific
-    # rework and won't render against Tempo/Loki queries. Tracked as a
-    # follow-up - see docs/observability.md "managed-azure".
-    if ! kubectl get secret "${J2026_AZURE_MONITOR_SECRET}" -n "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1; then
-      log_warn "Secret '${J2026_AZURE_MONITOR_SECRET}' not found - skipping dashboard import."
-      exit 0
-    fi
-    GRAFANA_BASE_URL="$(kubectl get secret "${J2026_AZURE_MONITOR_SECRET}" -n "${J2026_OBS_NAMESPACE}" -o jsonpath='{.data.GRAFANA_BASE_URL}' | base64 -d)"
-    GRAFANA_API_KEY="$(kubectl get secret "${J2026_AZURE_MONITOR_SECRET}" -n "${J2026_OBS_NAMESPACE}" -o jsonpath='{.data.GRAFANA_API_KEY}' | base64 -d)"
-    if [[ -z "${GRAFANA_BASE_URL}" || -z "${GRAFANA_API_KEY}" ]]; then
-      log_warn "GRAFANA_BASE_URL / GRAFANA_API_KEY not set in '${J2026_AZURE_MONITOR_SECRET}' - skipping dashboard import."
-      exit 0
-    fi
-
-    # Pin a 60s scrape-interval hint on the Prometheus-typed datasource (Azure
-    # Monitor managed Prometheus). The microservices' OTel metrics are pushed every
-    # 60s, so without this Grafana assumes 15s, $__rate_interval collapses to ~60s,
-    # and rate() over that window sees a single sample - leaving every rate-based
-    # panel empty. Idempotent: merges timeInterval into whatever jsonData exists.
-    az_api() { local m="$1" p="$2"; shift 2; curl -fsS -X "${m}" "${GRAFANA_BASE_URL%/}${p}" \
-      -H "Authorization: Bearer ${GRAFANA_API_KEY}" -H "Content-Type: application/json" "$@"; }
-    az_prom="$(az_api GET "/api/datasources" 2>/dev/null \
-      | jq -c 'map(select(.type=="prometheus")) | .[0] // empty' || true)"
-    if [[ -n "${az_prom}" ]]; then
-      az_uid="$(jq -r '.uid' <<<"${az_prom}")"
-      printf '%s' "$(jq '.jsonData = ((.jsonData // {}) + {timeInterval:"60s"})' <<<"${az_prom}")" \
-        | az_api PUT "/api/datasources/uid/${az_uid}" --data-binary @- >/dev/null 2>&1 \
-        && log_info "Set Prometheus datasource timeInterval=60s (fixes \$__rate_interval on rate panels)." \
-        || log_warn "Could not set Prometheus datasource timeInterval - rate panels may be empty."
-    fi
-
-    # Azure Managed Grafana reads from Azure Monitor datasources, so publish the
-    # managed-azure dashboard variants (metric panels unchanged; log/trace
-    # panels rewritten to Azure Monitor Logs/Traces). Generated from the
-    # canonical dashboards by observability/grafana/dashboards-azure/generate.py.
-    AZURE_DASHBOARDS_DIR="${J2026_ROOT_DIR}/observability/grafana/dashboards-azure"
-    log_step "Publishing dashboards to Azure Managed Grafana (${GRAFANA_BASE_URL})"
-    # Shared "CI-CD Observability" folder (uid jenkins-2026) so dashboards land in
-    # the same single folder as the alert rules (07.5), not the root — consistent
-    # with grafana-cloud/oss. Idempotent (POST creates, PUT keeps the title).
-    az_api POST /api/folders -d '{"uid":"jenkins-2026","title":"CI-CD Observability"}' >/dev/null 2>&1 || true
-    az_api PUT /api/folders/jenkins-2026 -d '{"title":"CI-CD Observability","overwrite":true}' >/dev/null 2>&1 || true
-    for dashboard in "${AZURE_DASHBOARDS_DIR}"/*-azure.json; do
-      name="$(basename "${dashboard}" .json)"
-      if is_offengine_dashboard "${name}"; then log_info "Skipping ${name} (ci.engine=${ACTIVE_CI_ENGINE})"; continue; fi
-      # Wrap into the /api/dashboards/db request body and overwrite by uid.
-      payload="$(jq -n --slurpfile db "${dashboard}" \
-        '{dashboard: ($db[0] + {id: null}), folderUid: "jenkins-2026", overwrite: true}')"
-      if curl -fsS -X POST "${GRAFANA_BASE_URL%/}/api/dashboards/db" \
-          -H "Authorization: Bearer ${GRAFANA_API_KEY}" \
-          -H "Content-Type: application/json" \
-          -d "${payload}" >/dev/null; then
-        log_info "Published ${name}."
-      else
-        log_warn "Failed to publish ${name} (metric panels may still need an Azure Monitor datasource)."
-      fi
-    done
-    delete_offengine_dashboard "${GRAFANA_BASE_URL}" "${GRAFANA_API_KEY}"
+    # No-op here: Azure Managed Grafana has NO static API key (it authenticates
+    # via Entra ID), so the azure-monitor-credentials Secret carries no
+    # GRAFANA_API_KEY for this script to use. Publishing instead runs in the
+    # dedicated "Publish dashboards to Azure Managed Grafana" step of
+    # Day1.cluster.01-gke.yml, which (post azure/login) mints an Entra
+    # data-plane token (AMG audience 6f2d169c-08f3-4a4c-a982-bcaf2d038c45),
+    # substitutes the ${appinsights} placeholder via `az graph query`, and
+    # imports the dashboards-azure/*-azure.json variants into the "CI-CD
+    # Observability" folder via the Grafana data-plane API. up.sh's runner
+    # is not yet logged into Azure when it reaches this step, mirroring how
+    # 07.5-grafana-alerts.sh is re-run post-login for the same reason.
+    log_info "observability.mode=managed-azure: dashboards published post-azure/login by Day1.cluster.01-gke.yml (AMG has no static API key)."
     ;;
 
   managed-aws)
