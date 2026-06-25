@@ -24,10 +24,14 @@ locals {
     "roles/iam.serviceAccountUser",
     "roles/resourcemanager.projectIamAdmin",
     "roles/serviceusage.serviceUsageAdmin",
-    # Lets 01.02-gateway-bootstrap.yml's terraform/gateway-bootstrap apply
-    # create the DNS authorization and certificate map for the public
-    # Gateway's managed certificate.
-    "roles/certificatemanager.editor",
+    # Lets Day0.infra.01-gateway's terraform/gateway-bootstrap manage the DNS
+    # authorization + certificate map for the public Gateway's managed cert.
+    # NOTE: must be OWNER, not editor — roles/certificatemanager.editor grants
+    # create/get/list/update but NO .delete on ANY certificatemanager resource
+    # (certs/certmaps/certmapentries/dnsauthorizations), so Decom.infra.01's
+    # terraform destroy failed with 403 'certmapentries.delete denied' (run
+    # 28202019543). owner includes the .delete permissions.
+    "roles/certificatemanager.owner",
   ]
 }
 
