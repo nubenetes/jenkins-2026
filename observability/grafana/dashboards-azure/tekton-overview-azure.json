@@ -747,7 +747,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "Jenkins-2026 Tekton CI Observability",
+  "title": "CI-CD / Tekton CI Observability",
   "uid": "jenkins2026-tekton-overview",
   "version": 1,
   "weekStart": ""

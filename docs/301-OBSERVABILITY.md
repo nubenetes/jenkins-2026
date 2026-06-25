@@ -212,7 +212,7 @@ The canonical JSON files live in [`observability/grafana/dashboards/`](../observ
 
 **All of _our_ content — every dashboard above _and_ all five [alert rules](#alert-rules) — lives in a single flat folder named `CI-CD Observability`** (engine-neutral; folder uid `jenkins-2026`), in **every** backend. So no matter which Grafana you open:
 
-- **Dashboards** → the *Dashboards* browser → open the **`CI-CD Observability`** folder. The visible titles are `jenkins-2026 / Microservices Overview`, `jenkins-2026 / k6 Observability Smoke Test`, `Jenkins-2026 PostgreSQL / CloudNativePG`, and the active CI-overview (`jenkins-2026 / Jenkins CI Overview` **or** `Jenkins-2026 Tekton CI Observability`).
+- **Dashboards** → the *Dashboards* browser → open the **`CI-CD Observability`** folder. The visible titles are engine-neutral too: `CI-CD / Microservices Overview`, `CI-CD / k6 Observability Smoke Test`, `CI-CD / PostgreSQL (CloudNativePG)`, and the active CI-overview (`CI-CD / Jenkins CI Overview` **or** `CI-CD / Tekton CI Observability`). (Dashboard **uids** stay `jenkins2026-*` internally — stable identifiers, not shown in the UI.)
 - **Alert rules** → *Alerting → Alert rules* → the **same** `CI-CD Observability` folder (a Grafana folder holds dashboards **and** rules together). The email contact point + routing are under *Alerting → Contact points / Notification policies*.
 
 > Folder names are deliberately **slash-free** (`CI-CD`, not `CI/CD`): a `/` makes Grafana's alerting provisioning treat the title as a nested-folder path (`CI/CD Alerts` → a `CI` folder with a `CD Alerts` child).
