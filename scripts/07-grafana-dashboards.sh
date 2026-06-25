@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Publishes observability/grafana/dashboards/*.json:
 #
-#   grafana-cloud - imports them into the "CI/CD Observability" folder via the
+#   grafana-cloud - imports them into the "CI-CD Observability" folder via the
 #     Grafana HTTP API, using GRAFANA_BASE_URL + GRAFANA_API_KEY from the
 #     "${J2026_GRAFANA_CLOUD_SECRET}" Secret (see secret.example.yaml).
 #
@@ -141,7 +141,7 @@ case "${J2026_OBS_MODE}" in
     # title. In-place by UID, so no orphan/second folder. Idempotent.
     curl -fsS -X PUT "${GRAFANA_BASE_URL%/}/api/folders/${FOLDER_UID}" \
       -H "Authorization: Bearer ${GRAFANA_API_KEY}" -H "Content-Type: application/json" \
-      -d '{"title":"CI/CD Observability","overwrite":true}' >/dev/null 2>&1 || true
+      -d '{"title":"CI-CD Observability","overwrite":true}' >/dev/null 2>&1 || true
 
     log_step "Configuring Grafana Kubernetes Monitoring app data sources"
     GRAFANA_STACK_ID="$(kubectl get secret "${J2026_GRAFANA_CLOUD_SECRET}" -n "${J2026_OBS_NAMESPACE}" -o jsonpath='{.data.GRAFANA_STACK_ID}' | base64 -d)"
