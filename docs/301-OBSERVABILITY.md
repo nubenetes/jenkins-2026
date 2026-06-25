@@ -22,6 +22,12 @@ Every component — Jenkins, the Spring Boot microservices, and the Angular UI �
   - **Zero-Touch Config**: Automatically maps default Prometheus, Loki, and Tempo data sources via `gcx api`.
 - **Correlated telemetry**: Traces, metrics, and logs are fully correlated. Log-to-trace links and system datasources are pre-configured by default on Grafana Cloud.
 
+## GCP platform metrics — Cloud provider integration (optional)
+
+Separate from the OTLP pipeline above, Grafana Cloud's **Observability → Cloud provider → GCP** is a Grafana-Cloud-hosted scraper that pulls **GCP Cloud Monitoring** metrics (GKE control plane, Compute, the L7 Gateway/LB, GCS, quotas, …) into the stack — **no in-cluster collector**, complementary to our OTel signals (which cover workloads/pods; this covers the GCP-managed platform layer).
+
+It can't use Workload Identity Federation (the scraper isn't a GCP workload), so it needs a **service-account key** uploaded in the Grafana Cloud UI — **the one long-lived credential in the project**, vs the keyless WIF/federation everywhere else. The read-only SA + roles (`monitoring.viewer`, `cloudasset.viewer`) are IaC-managed (human-run, opt-in) in [`terraform/grafana-cloud-gcp`](../terraform/grafana-cloud-gcp/); the key is minted out-of-band (never stored in Terraform state) and pasted into the UI. See that module's README for the runbook. For trial exploration you can also just configure it by hand in the UI.
+
 ## OTel Components
 
 ### OpenTelemetry Operator
