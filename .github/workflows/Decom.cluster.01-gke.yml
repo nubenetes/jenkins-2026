@@ -111,6 +111,9 @@ jobs:
         run: |
           CLUSTER_NAME="$(terraform output -raw cluster_name || true)"
           LOCATION="$(terraform output -raw location || true)"
+          # Surface the cluster name to later steps (the orphaned-PV-disk sweep runs
+          # after `terraform destroy`, when `terraform output` no longer resolves it).
+          echo "CLUSTER_NAME=${CLUSTER_NAME}" >> "$GITHUB_ENV"
           if [[ -n "$CLUSTER_NAME" && -n "$LOCATION" ]]; then
             gcloud container clusters get-credentials \
               "$CLUSTER_NAME" \
@@ -149,6 +152,28 @@ jobs:
               exit 1
             fi
           fi
+
+      - name: Sweep orphaned PersistentVolume disks (CSI PDs terraform leaves behind)
+        if: ${{ env.CLUSTER_NAME != '' }}
+        run: |
+          # Dynamically-provisioned PV disks (pd.csi.storage.gke.io — e.g. the CNPG
+          # Postgres volumes) are created by the in-cluster CSI driver, NOT terraform,
+          # so `terraform destroy` cannot delete them. A clean teardown lets the CSI
+          # driver reclaim them when down.sh deletes the PVCs; but a forced / non-
+          # graceful teardown (stuck pods, force-deleted cluster) can orphan them,
+          # leaving small pd-ssd disks billing indefinitely. They keep the cluster's
+          # GKE labels, so any disk still tagged with our (now-deleted) cluster name
+          # is a safe orphan to remove. Best-effort; never fail the teardown on it.
+          gcloud compute disks list \
+            --project "${{ secrets.GCP_PROJECT_ID }}" \
+            --filter="labels.goog-k8s-cluster-name=${CLUSTER_NAME} AND -users:*" \
+            --format="value(name,zone.basename())" 2>/dev/null \
+          | while read -r DISK ZONE; do
+              [[ -z "${DISK}" ]] && continue
+              echo "Deleting orphaned PV disk ${DISK} (${ZONE})..."
+              gcloud compute disks delete "${DISK}" --zone "${ZONE}" \
+                --project "${{ secrets.GCP_PROJECT_ID }}" --quiet || true
+            done
 
       # The stack slug (generated, no longer a GitHub variable) is needed for the
       # grafana_cloud_stack data-source lookup during the token destroy. Read it

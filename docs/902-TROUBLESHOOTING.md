@@ -102,6 +102,24 @@ kubectl delete pdb --all -A   # frees the eviction; the node drains, DELETE_NODE
 > etcd-only objects (namespaces, ArgoCD Apps); wait on finalizers that free external
 > cloud resources (Gateway/LB, PVs).**
 
+### Orphaned PersistentVolume disks after a forced teardown
+
+Dynamically-provisioned **PV disks** (`pd.csi.storage.gke.io` — e.g. the CNPG
+Postgres volumes) are created by the in-cluster CSI driver, **not** terraform, so
+`terraform destroy` cannot delete them. A *clean* teardown reclaims them (the CSI
+driver deletes the PD when `down.sh` deletes the PVC); a *forced* teardown (stuck
+pods, force-deleted cluster) can leave them behind as small `pd-ssd` disks that keep
+billing. They keep the cluster's GKE labels, so `Decom.cluster.01` now **sweeps them
+after `terraform destroy`**:
+
+```bash
+# what the workflow runs; also handy to clean up by hand after a chaotic teardown
+gcloud compute disks list --project "$PROJECT" \
+  --filter="labels.goog-k8s-cluster-name=jenkins-2026 AND -users:*" \
+  --format="value(name,zone.basename())" \
+| while read -r DISK ZONE; do gcloud compute disks delete "$DISK" --zone "$ZONE" --quiet; done
+```
+
 ## ArgoCD OIDC Issues
 
 **ArgoCD OIDC Login fails with `redirect_uri_mismatch` or `Invalid redirect URL`**:
