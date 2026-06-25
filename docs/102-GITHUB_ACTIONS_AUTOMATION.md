@@ -282,7 +282,7 @@ EOF
    | `JENKINS_OIDC_ADMIN_EMAIL` | Google account email granted the Jenkins `admin` role via OIDC — **your own email, never committed to the repo** |
    | `IAP_OAUTH_CLIENT_ID` / `IAP_OAUTH_CLIENT_SECRET` | OAuth client gating Jenkins/Headlamp via Identity-Aware Proxy |
    | `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` / `AZURE_GRAFANA_ADMIN_OBJECT_IDS` | `observability_mode: managed-azure` — identifiers only, no secret values |
-   | `AWS_BOOTSTRAP_ROLE_ARN` / `AWS_REGION` / `GKE_OIDC_ISSUER_URL` | `observability_mode: managed-aws` — identifiers only, no secret values |
+   | `AWS_BOOTSTRAP_ROLE_ARN` / `AWS_REGION` (repo **Variable**) / `GKE_OIDC_ISSUER_URL` | `observability_mode: managed-aws` — identifiers only, no secret values. `AWS_REGION` is a GitHub Actions **Variable** (not a Secret) so its value isn't masked inside the Amazon Managed Grafana URL; workflows read `vars.AWS_REGION` with a `secrets.AWS_REGION` fallback. |
    | `AWS_DASHBOARD_PUBLISH_ROLE_ARN` | `observability_mode: managed-aws` — least-privilege IAM role for dashboard publishing |
 
 5. **(Optional) Full Grafana Cloud lifecycle automation** — for `observability_mode: grafana-cloud`:
