@@ -95,6 +95,33 @@ graph TD
 
 > The four persistent teardowns (`Decom.infra.01..04`) are independent — for a **targeted** teardown run **only** the one(s) you actually provisioned (with the `oss` default, often none), after `Decom.cluster.01`. For a **full** teardown, the opt-in **`Decom.infra.00` ("Everything")** umbrella tears down the cluster **and** every persistent backend in one dispatch (reuses each per-resource Decom via `workflow_call`; type `destroy` to confirm; cluster first, then backends in parallel; backends default on, Gateway IP default off). See [101 § Decom: independent per backend, plus an opt-in umbrella](./101-GITHUB_ACTIONS_WORKFLOWS.md#decom-independent-per-backend-plus-an-opt-in-everything-umbrella).
 
+> **What `Day1.cluster.01` bootstraps automatically — and what it does not.**
+> `Day1` runs the matching **observability backend** bootstrap as a preflight job
+> (`Day0.infra.0{2,3,4}` via `workflow_call`, gated by `if: observability_mode==…`),
+> so the selected backend is created for you. It does **not** bootstrap the
+> **Gateway**: `Day0.infra.01` is a one-time Day0 step that creates the
+> **DNS-coupled** persistent resources (static IP you wire into your DNS A-records,
+> wildcard cert map). Inside `provision`, `scripts/09-gateway.sh` only creates the
+> **in-cluster** `Gateway`/`HTTPRoute` objects, which **reference** that static IP +
+> cert map **by name** — it does not create them.
+>
+> **Why the asymmetry:** the Gateway IP/cert are meant to **survive cluster
+> rebuilds** (so DNS never has to re-propagate). That is exactly why the
+> `Decom.infra.00` umbrella leaves the Gateway in place by default (`gateway:false`)
+> — so the normal "everything decommissioned" state still has the Gateway, and a
+> later `Day1` simply re-binds the in-cluster objects to the existing IP. You only
+> need to (re-)run `Day0.infra.01` **before** `Day1` if you destroyed the Gateway
+> **deliberately** (standalone `Decom.infra.01`, or the umbrella with
+> `gateway:true`). If `gateway.baseDomain` is empty, `09-gateway.sh` skips the
+> Gateway entirely.
+
+> **One-click from scratch.** To avoid having to remember the Gateway prerequisite,
+> the **`Day1.cluster.00` ("Everything up")** umbrella does both steps in one
+> dispatch — `Day0.infra.01` (Gateway bootstrap) **then** `Day1.cluster.01` (cluster
+> + full stack + the chosen backend bootstrap). It is the symmetric counterpart of
+> the `Decom.infra.00` ("Everything") teardown: **one click up, one click down**,
+> both idempotent. See [101 § Provision umbrella](./101-GITHUB_ACTIONS_WORKFLOWS.md#provision-per-step-workflows-plus-an-opt-in-everything-up-umbrella).
+
 ### Detailed Workflow Reference and Lifecycle Management
 
 > Each workflow is tagged with its **Day-0 / Day-1 / Day-2 / Decommission** lifecycle
