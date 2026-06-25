@@ -23,6 +23,8 @@ The deployment lifecycle is managed by **ArgoCD**. Application manifests are sto
 | `argo-rollouts` | `Application` | `argo-rollouts` chart (2.37.7) | `https://argoproj.github.io/argo-helm` | `argo-rollouts` | Healthy |
 
 > Plus three **app-of-apps** (`platform-postgres`, `observability-oss` when `observability.mode=oss`, and `tekton` when `ci.engine=tekton`), each a small Helm chart whose children carry the actual workloads. See [`argocd/README.md`](../argocd/README.md).
+>
+> Not an `Application`, but applied alongside them: [`argocd/argocd-version-patch-watcher.yaml`](../argocd/argocd-version-patch-watcher.yaml) — a daily `CronJob` in the `argocd` namespace that keeps ArgoCD auto-tracking the latest **3.5.x** patch (see [602 § version pinning](./602-VERSION_PINNING.md)).
 
 ### Security & Integration
 
