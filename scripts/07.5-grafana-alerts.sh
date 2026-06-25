@@ -302,8 +302,11 @@ PY
       exit 0
     fi
 
+    # AMG data-plane API audience (NOT https://grafana.azure.com — that audience is
+    # rejected with HTTP 401). Per Microsoft Learn "Authenticate to Azure Managed
+    # Grafana Data Plane APIs": resource = 6f2d169c-08f3-4a4c-a982-bcaf2d038c45.
     GF_API_KEY="$(az account get-access-token \
-      --resource "https://grafana.azure.com/" \
+      --resource "6f2d169c-08f3-4a4c-a982-bcaf2d038c45" \
       --query "accessToken" -o tsv 2>/dev/null || true)"
     if [[ -z "${GF_API_KEY:-}" ]]; then
       # Expected inside scripts/up.sh under CI: the runner is not logged into Azure
