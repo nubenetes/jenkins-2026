@@ -25,6 +25,18 @@ spec:
     automated:
       prune: true
       selfHeal: true
+    # Self-heal the first-sync race on a fresh cluster: ArgoCD may sync the Tekton
+    # config-* ConfigMaps before tekton-pipelines-webhook has issued its serving
+    # cert, so config.webhook.pipeline.tekton.dev briefly fails (tls / not-ready).
+    # Automated retry with backoff makes the sync converge on its own once the
+    # webhook is up — no manual/script webhook restart needed. (Combined with the
+    # removal of Replace=true below, manual Syncs also stop re-triggering it.)
+    retry:
+      limit: 8
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
     syncOptions:
       - CreateNamespace=true
       # The large Tekton CRDs blow the client-side last-applied annotation limit;
