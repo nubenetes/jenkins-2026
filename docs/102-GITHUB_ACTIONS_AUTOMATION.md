@@ -88,7 +88,7 @@ graph TD
 
 </details>
 
-> The four persistent teardowns (`Decom.infra.01..04`) are independent — run **only** the one(s) you actually provisioned (with the `oss` default, often none), after `Decom.cluster.01`. They are deliberately **not chained** and there is **no** "destroy everything" umbrella. See [101 § Decom: independent per backend](./101-GITHUB_ACTIONS_WORKFLOWS.md#decom-independent-per-backend-no-umbrella).
+> The four persistent teardowns (`Decom.infra.01..04`) are independent — for a **targeted** teardown run **only** the one(s) you actually provisioned (with the `oss` default, often none), after `Decom.cluster.01`. For a **full** teardown, the opt-in **`Decom.infra.00` ("Everything")** umbrella tears down the cluster **and** every persistent backend in one dispatch (reuses each per-resource Decom via `workflow_call`; type `destroy` to confirm; cluster first, then backends in parallel; backends default on, Gateway IP default off). See [101 § Decom: independent per backend, plus an opt-in umbrella](./101-GITHUB_ACTIONS_WORKFLOWS.md#decom-independent-per-backend-plus-an-opt-in-everything-umbrella).
 
 ### Detailed Workflow Reference and Lifecycle Management
 
