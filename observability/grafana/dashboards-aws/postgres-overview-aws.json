@@ -623,7 +623,7 @@
   },
   "timepicker": {},
   "timezone": "browser",
-  "title": "Jenkins-2026 PostgreSQL / CloudNativePG",
+  "title": "CI-CD / PostgreSQL (CloudNativePG)",
   "uid": "jenkins2026-postgres-overview",
   "version": 1,
   "weekStart": ""
