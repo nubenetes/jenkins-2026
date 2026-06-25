@@ -195,7 +195,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.AWS_DASHBOARD_PUBLISH_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ vars.AWS_REGION || secrets.AWS_REGION }}
 
       - name: Azure login (managed-azure)
         if: ${{ steps.detect-mode.outputs.mode == 'managed-azure' && env.AZURE_CLIENT_ID != '' }}

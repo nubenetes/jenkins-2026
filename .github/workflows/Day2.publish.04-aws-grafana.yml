@@ -143,7 +143,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.AWS_DASHBOARD_PUBLISH_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ vars.AWS_REGION || secrets.AWS_REGION }}
 
       - name: Publish dashboards to Amazon Managed Grafana
         if: ${{ env.AWS_DASHBOARD_PUBLISH_ROLE_ARN != '' }}

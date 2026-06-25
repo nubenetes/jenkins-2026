@@ -526,15 +526,17 @@ jobs:
           mode="${{ inputs.observability_mode }}"
 
           # Grafana URL depends on the observability mode (not the gateway/engine).
+          # Compute the raw URL (for a clickable link) and a short note separately.
           if [[ "${mode}" == "grafana-cloud" ]]; then
-            grafana="https://${{ steps.gc_stack.outputs.slug }}.grafana.net  (Grafana Cloud sign-in)"
+            grafana_url="https://${{ steps.gc_stack.outputs.slug }}.grafana.net"; grafana_note="Grafana Cloud sign-in"
           elif [[ "${mode}" == "oss" ]]; then
-            grafana="https://grafana.${dom}  (IAP)"
+            grafana_url="https://grafana.${dom}"; grafana_note="IAP"
           else
             sec="azure-monitor-credentials"; [[ "${mode}" == "managed-aws" ]] && sec="aws-managed-credentials"
-            g="$(kubectl get secret "${sec}" -n observability -o jsonpath='{.data.GRAFANA_BASE_URL}' 2>/dev/null | base64 -d 2>/dev/null || true)"
-            grafana="${g:-(see the ${mode} backend / terraform outputs)}  (managed)"
+            grafana_url="$(kubectl get secret "${sec}" -n observability -o jsonpath='{.data.GRAFANA_BASE_URL}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+            grafana_note="managed"
           fi
+          grafana="${grafana_url:-(see the ${mode} backend / terraform outputs)}  (${grafana_note})"
 
           # CI-engine-specific UI: Jenkins XOR Tekton Dashboard (mutually exclusive).
           if [[ "${engine}" == "tekton" ]]; then
@@ -574,6 +576,32 @@ jobs:
           }
           gen                                   # -> normal job log
           { echo '```'; gen; echo '```'; } >> "${GITHUB_STEP_SUMMARY}"   # -> summary panel
+
+          # Clickable links (the code block above isn't clickable). Markdown links
+          # in the step summary so Grafana — OSS, Azure, AWS or Grafana Cloud — and
+          # the IAP UIs can be opened in one click.
+          {
+            echo
+            echo "### 🔗 Quick links"
+            echo
+            if [[ -n "${grafana_url:-}" ]]; then
+              echo "- **Grafana** (${grafana_note}): [${grafana_url}](${grafana_url})"
+            else
+              echo "- **Grafana**: see the ${mode} backend / terraform outputs"
+            fi
+            if [[ "${{ inputs.enable_gateway }}" == "true" ]]; then
+              echo "- **ArgoCD**: [https://argocd.${dom}](https://argocd.${dom})"
+              if [[ "${engine}" == "tekton" ]]; then
+                echo "- **Tekton Dashboard**: [https://tekton.${dom}](https://tekton.${dom})"
+              else
+                echo "- **Jenkins**: [https://jenkins.${dom}](https://jenkins.${dom})"
+              fi
+              echo "- **Headlamp**: [https://headlamp.${dom}](https://headlamp.${dom})"
+              echo "- **pgAdmin**: [https://pgadmin.${dom}](https://pgadmin.${dom})"
+              echo "- **Microservices**: [https://microservices.${dom}](https://microservices.${dom})"
+            fi
+            echo
+          } >> "${GITHUB_STEP_SUMMARY}"
 
       # Auto-publish the managed-azure dashboard variants to Azure Managed
       # Grafana, for parity with the grafana-cloud/oss modes (which publish via
@@ -681,7 +709,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.AWS_DASHBOARD_PUBLISH_ROLE_ARN }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          aws-region: ${{ vars.AWS_REGION || secrets.AWS_REGION }}
 
       - name: Publish dashboards to Amazon Managed Grafana
         if: ${{ inputs.observability_mode == 'managed-aws' && env.AWS_DASHBOARD_PUBLISH_ROLE_ARN != '' }}
