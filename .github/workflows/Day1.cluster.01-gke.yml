@@ -640,7 +640,7 @@ jobs:
           # (log/trace panels). resource-graph extension; non-fatal if it fails.
           az extension add -n resource-graph --only-show-errors || true
           appinsights="$(az graph query -q "resources | where type =~ 'microsoft.insights/components' | project id" --query 'data[0].id' -o tsv 2>/dev/null || true)"
-          echo "Publishing to ${ep}; App Insights: ${appinsights##*/}"
+          echo "Publishing dashboards (App Insights: ${appinsights##*/}) to: ${ep}"
           # Shared "CI-CD Observability" folder (uid jenkins-2026) — same single
           # folder as the alert rules (07.5), consistent with oss/grafana-cloud/aws.
           gapi POST /api/folders -d '{"uid":"jenkins-2026","title":"CI-CD Observability"}' >/dev/null 2>&1 || true
