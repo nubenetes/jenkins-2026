@@ -286,8 +286,9 @@ A self-contained proof of concept that deploys **Jenkins** on **Kubernetes**, co
 
 | Code | Category | Document | Description |
 | :--- | :--- | :--- | :--- |
-| **101** | CI/CD Workflows | [GitHub Actions Workflows](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md) | `Y.X.ZZ` naming scheme, lifecycle phases, Phase×Step matrix, ZZ resource identity, full workflow matrix with clickable GitHub Actions links, lifecycle Mermaid diagram, complete 15-row numbered inventory |
+| **101** | CI/CD Workflows | [GitHub Actions Workflows](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md) | `DayN.tier.ZZ-resource` naming scheme, lifecycle phases, the per-`ZZ` lifecycle matrix, full workflow matrix with clickable GitHub Actions links, lifecycle Mermaid diagram, complete numbered inventory (incl. the opt-in `Decom.infra.00` teardown umbrella) |
 | **102** | CI/CD Workflows | [GitHub Actions Automation](./docs/102-GITHUB_ACTIONS_AUTOMATION.md) | WIF setup, GitHub secrets reference, bootstrapping architecture, persistent vs. short-lived resources, `git_ref` parameter, environment protection / manual approvals |
+| **103** | CI/CD Workflows | [GitHub Secrets & Variables Inventory](./docs/103-GITHUB_SECRETS_INVENTORY.md) | Every GitHub Actions secret and repository variable used across the workflows — purpose, required vs. optional, source, which subsystem; incl. the keyless WIF/OIDC identifiers and the `AWS_REGION` repo variable |
 | **201** | Architecture | [Architecture](./docs/201-ARCHITECTURE.md) | System architecture, component diagram, microservices & database architecture (CNPG), CI/CD flow, configuration (`config/config.yaml`), repository layout, GKE cluster topology, FinOps & cost analysis |
 | **301** | Observability | [Observability](./docs/301-OBSERVABILITY.md) | OTel components (Operator, Java agent, Angular RUM, Collector), telemetry architecture, signal correlation (metrics↔traces↔logs), structured logging, dashboards, k6 smoke test, OSS in-cluster mode, all four observability modes |
 | **401** | Jenkins | [Jenkins](./docs/401-JENKINS.md) | Accessing the UI & admin password, Google OIDC login, plugins & JCasC fragments, global shared library, MCP server |
@@ -296,6 +297,7 @@ A self-contained proof of concept that deploys **Jenkins** on **Kubernetes**, co
 | **501** | Platform | [Platform Operations](./docs/501-PLATFORM_OPERATIONS.md) | ArgoCD inventory, telemetry simulation, platform QA & chaos scenarios, Golden Path IDP modernizations (K8s v1.35/v1.36, Karpenter), Headlamp cluster UI, GKE Gateway API + IAP public access |
 | **502** | Microservices | [Microservices GitOps](./docs/502-MICROSERVICES_GITOPS.md) | Helm vs. Kustomize design decision, resource lifecycle & decommission orchestration (NEG synchronization barrier), pgAdmin & database administration |
 | **601** | Security | [DevSecOps](./docs/601-DEVSECOPS.md) | Semgrep SAST, CodeQL deep SAST, Trivy IaC + image scanning, `warnings-ng` plugin SARIF dashboards in Jenkins |
+| **602** | Security | [Version Pinning](./docs/602-VERSION_PINNING.md) | Version-pinning policy + matrix (charts, images, `yq`, GitHub Actions SHAs, Terraform lockfiles), pros/cons, the deliberate ArgoCD 3.5.x auto-tracking exception, how to bump a pin |
 | **901** | Reference | [Local Development](./docs/901-LOCAL_DEVELOPMENT.md) | Prerequisites, quick start, step-by-step deployment guide, automated e2e test (`test/e2e.sh`), resource quotas & QoS, Terraform version |
 | **902** | Reference | [Troubleshooting](./docs/902-TROUBLESHOOTING.md) | Common issues, ArgoCD OIDC, Terraform & CI, Jenkins & GitOps push authentication failures |
 
