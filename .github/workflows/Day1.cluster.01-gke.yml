@@ -52,6 +52,30 @@ on:
         required: false
         default: ""
         type: string
+  # Reusable mirror of the dispatch inputs, so the "Day1.cluster.00 Everything up"
+  # umbrella can call this workflow (choice inputs become string under workflow_call).
+  workflow_call:
+    inputs:
+      observability_mode:
+        required: false
+        default: "oss"
+        type: string
+      destroy_unused_backends:
+        required: false
+        default: false
+        type: boolean
+      ci_engine:
+        required: false
+        default: "jenkins"
+        type: string
+      enable_gateway:
+        required: false
+        default: true
+        type: boolean
+      git_ref:
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
