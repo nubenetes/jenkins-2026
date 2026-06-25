@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Publishes observability/grafana/dashboards/*.json:
 #
-#   grafana-cloud - imports them into the "CI/CD Observability" folder via the
+#   grafana-cloud - imports them into the "CI-CD Observability" folder via the
 #     Grafana HTTP API, using GRAFANA_BASE_URL + GRAFANA_API_KEY from the
 #     "${J2026_GRAFANA_CLOUD_SECRET}" Secret (see secret.example.yaml).
 #
@@ -141,7 +141,7 @@ case "${J2026_OBS_MODE}" in
     # title. In-place by UID, so no orphan/second folder. Idempotent.
     curl -fsS -X PUT "${GRAFANA_BASE_URL%/}/api/folders/${FOLDER_UID}" \
       -H "Authorization: Bearer ${GRAFANA_API_KEY}" -H "Content-Type: application/json" \
-      -d '{"title":"CI/CD Observability","overwrite":true}' >/dev/null 2>&1 || true
+      -d '{"title":"CI-CD Observability","overwrite":true}' >/dev/null 2>&1 || true
 
     log_step "Configuring Grafana Kubernetes Monitoring app data sources"
     GRAFANA_STACK_ID="$(kubectl get secret "${J2026_GRAFANA_CLOUD_SECRET}" -n "${J2026_OBS_NAMESPACE}" -o jsonpath='{.data.GRAFANA_STACK_ID}' | base64 -d)"
@@ -215,12 +215,17 @@ case "${J2026_OBS_MODE}" in
     # canonical dashboards by observability/grafana/dashboards-azure/generate.py.
     AZURE_DASHBOARDS_DIR="${J2026_ROOT_DIR}/observability/grafana/dashboards-azure"
     log_step "Publishing dashboards to Azure Managed Grafana (${GRAFANA_BASE_URL})"
+    # Shared "CI-CD Observability" folder (uid jenkins-2026) so dashboards land in
+    # the same single folder as the alert rules (07.5), not the root — consistent
+    # with grafana-cloud/oss. Idempotent (POST creates, PUT keeps the title).
+    az_api POST /api/folders -d '{"uid":"jenkins-2026","title":"CI-CD Observability"}' >/dev/null 2>&1 || true
+    az_api PUT /api/folders/jenkins-2026 -d '{"title":"CI-CD Observability","overwrite":true}' >/dev/null 2>&1 || true
     for dashboard in "${AZURE_DASHBOARDS_DIR}"/*-azure.json; do
       name="$(basename "${dashboard}" .json)"
       if is_offengine_dashboard "${name}"; then log_info "Skipping ${name} (ci.engine=${ACTIVE_CI_ENGINE})"; continue; fi
       # Wrap into the /api/dashboards/db request body and overwrite by uid.
       payload="$(jq -n --slurpfile db "${dashboard}" \
-        '{dashboard: ($db[0] + {id: null}), folderUid: "", overwrite: true}')"
+        '{dashboard: ($db[0] + {id: null}), folderUid: "jenkins-2026", overwrite: true}')"
       if curl -fsS -X POST "${GRAFANA_BASE_URL%/}/api/dashboards/db" \
           -H "Authorization: Bearer ${GRAFANA_API_KEY}" \
           -H "Content-Type: application/json" \
@@ -366,6 +371,11 @@ case "${J2026_OBS_MODE}" in
 
     AWS_DASHBOARDS_DIR="${J2026_ROOT_DIR}/observability/grafana/dashboards-aws"
     log_step "Publishing dashboards to Amazon Managed Grafana (${GRAFANA_BASE_URL})"
+    # Shared "CI-CD Observability" folder (uid jenkins-2026) so dashboards land in
+    # the same single folder as the alert rules (07.5), not the root — consistent
+    # with grafana-cloud/oss. Idempotent.
+    api POST /api/folders -d '{"uid":"jenkins-2026","title":"CI-CD Observability"}' >/dev/null 2>&1 || true
+    api PUT /api/folders/jenkins-2026 -d '{"title":"CI-CD Observability","overwrite":true}' >/dev/null 2>&1 || true
     # Two sets, both bound to AMP via the same ${DS_PROMETHEUS} substitution:
     #   *-aws.json          - the custom project dashboards (generate.py)
     #   community/*.json     - vendored upstream Kubernetes/node dashboards
@@ -385,7 +395,7 @@ case "${J2026_OBS_MODE}" in
              then .current={selected:true,text:$promname,value:$prom}
              else . end)
          | .id=null)
-        | {dashboard:., folderUid:"", overwrite:true}' "${dashboard}")"
+        | {dashboard:., folderUid:"jenkins-2026", overwrite:true}' "${dashboard}")"
       # Stream the body via stdin (--data-binary @-) rather than passing it as a
       # curl argument: some vendored dashboards (e.g. node-exporter-full, ~500KB)
       # exceed ARG_MAX as a command-line arg and would silently fail to publish.
