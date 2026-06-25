@@ -136,11 +136,16 @@ observability:
       repoName: open-telemetry
       repoUrl: https://open-telemetry.github.io/opentelemetry-helm-charts
       chartName: open-telemetry/opentelemetry-operator
+      # Pinned for reproducibility (empty would install latest). 0.117.0 =
+      # appVersion 0.153.0, latest as of 2026-06-25.
+      version: "0.117.0"
     releaseName: otel-operator
 
   otelCollector:
     chart:
       chartName: open-telemetry/opentelemetry-collector
+      # Pinned (empty = latest). 0.159.0 = appVersion 0.154.0, latest 2026-06-25.
+      version: "0.159.0"
     gatewayReleaseName: otel-collector-gateway
     logsReleaseName: otel-collector-logs
     # k8s Secret with Grafana Cloud OTLP endpoint + base64(instanceID:apiKey)
@@ -180,8 +185,9 @@ headlamp:
     repoName: headlamp
     repoUrl: https://kubernetes-sigs.github.io/headlamp/
     chartName: headlamp/headlamp
-    # Empty = latest. Pin for reproducibility, e.g. "0.42.0".
-    version: ""
+    # Pinned for reproducibility (empty = latest). 0.43.0 matches the version the
+    # ArgoCD headlamp app installs (argocd/headlamp-app.yaml).
+    version: "0.43.0"
   # k8s Secret (created by scripts/01-namespaces.sh) holding the Google OAuth
   # client ID/secret for Headlamp's in-app OIDC. NOT currently consumed by
   # helm/headlamp/values.yaml (which is intentionally empty) - per-user Google
@@ -216,8 +222,12 @@ headlamp:
 argocd:
   namespace: argocd
   releaseName: argocd
-  version: "v3.5.0-rc1"
-  version_constraint: "3.5.x"
+  # GA only: v3.5.0 currently exists solely as a release candidate (no GA yet), so
+  # track the latest 3.4.x GA instead. resolve_argocd_version (08.5-argocd.sh) picks
+  # the newest patch matching the constraint at install time; "3.4.x" excludes
+  # pre-releases. v3.4.4 = latest GA as of 2026-06-25.
+  version: "v3.4.4"
+  version_constraint: "3.4.x"
 
 # -----------------------------------------------------------------------------
 # pgAdmin (Postgres database administration UI)
