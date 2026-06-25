@@ -1,25 +1,32 @@
+# Static reference mirror of the Gateway that scripts/09-gateway.sh GENERATES and
+# applies at runtime (from config/config.yaml, into .generated/gateway/gateway.yaml —
+# gitignored). The script is the source of truth; this file is committed only so the
+# shape of the deployed object is reviewable in-tree. Keep it byte-aligned with the
+# 09-gateway.sh heredoc. Values below are the config.yaml defaults
+# (gateway.namespace / .staticIPName / .certMapName).
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: jenkins-2026-gateway
-  namespace: gateway-infra
+  namespace: platform-ingress
+  annotations:
+    # GKE Certificate Manager wildcard cert map (terraform/gateway-bootstrap).
+    networking.gke.io/certmap: jenkins-2026-cert-map
 spec:
-  gatewayClassName: gke-l7-gxlb # GKE Global L7 external Load Balancer class
+  gatewayClassName: gke-l7-global-external-managed
+  addresses:
+    # Persistent static external IP (terraform/gateway-bootstrap).
+    - type: NamedAddress
+      value: jenkins-2026-gateway-ip
   listeners:
     - name: https
       protocol: HTTPS
       port: 443
-      allowedRoutes:
-        namespaces:
-          from: All
       tls:
         mode: Terminate
         options:
-          # Link to GKE managed wildcard certificate map configured in bootstrap
-          networking.gke.io/certmap: jenkins-2026-cert-map
-    - name: http
-      protocol: HTTP
-      port: 80
+          # Cert comes from the certmap annotation above, not a pre-shared cert.
+          networking.gke.io/pre-shared-certs: ""
       allowedRoutes:
         namespaces:
           from: All
