@@ -89,7 +89,7 @@ spec:
         requests: {cpu: 5m, memory: 64Mi}
         limits: {cpu: 100m, memory: 128Mi}
     - name: git
-      image: alpine/git:latest
+      image: alpine/git:2.54.0
       command: ['sleep']
       args: ['infinity']
       # runAsUser: 1000 overrides the image default (root). Kubernetes enforces
@@ -119,7 +119,9 @@ spec:
         requests: {cpu: 200m, memory: 512Mi}
         limits: {cpu: '2', memory: 2.0Gi}
     - name: codeql
-      image: mcr.microsoft.com/cstsectools/codeql-container:latest
+      # Pinned by digest (matches the Tekton codeql-analyze task) - this image
+      # publishes no version tags, so :latest was the only floating one left.
+      image: mcr.microsoft.com/cstsectools/codeql-container:c6f3f8cbd3e0ebc36d9ad6dfe6a4c166ba940166
       command: ['sleep']
       args: ['infinity']
       # Requires root: installs Node.js via apt-get and runs CodeQL analysis
