@@ -54,13 +54,13 @@ Loki + Tempo, hundreds of objects) **and** the full Tekton app-of-apps
 the controller's `1Gi` memory limit. It OOM-loops, can't finish syncing
 `tekton-pipelines`, and `up.sh` waits forever.
 
-**Fix**: the controller limit is raised to **2Gi** (request `512Mi`) in
+**Fix**: the controller limit is raised to **3Gi** (request `768Mi`) in
 [`helm/argocd-values.yaml`](../helm/argocd-values.yaml); re-run `Day1` (or
 `scripts/08.5-argocd.sh`) to apply. To unblock a **currently hung** run in place:
 
 ```bash
 kubectl -n argocd patch statefulset argocd-application-controller --type merge \
-  -p '{"spec":{"template":{"spec":{"containers":[{"name":"application-controller","resources":{"requests":{"memory":"512Mi"},"limits":{"memory":"2Gi"}}}]}}}}'
+  -p '{"spec":{"template":{"spec":{"containers":[{"name":"application-controller","resources":{"requests":{"memory":"768Mi"},"limits":{"memory":"3Gi"}}}]}}}}'
 # the pod recreates with more memory, finishes syncing Tekton, and up.sh proceeds
 ```
 
