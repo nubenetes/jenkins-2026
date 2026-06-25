@@ -211,11 +211,12 @@ There are **five** required-reviewer environments, so each approval maps to one
 concern (and a Day1 run that touches a backend isn't double-prompted on the
 cluster gate):
 
-* **`gke-production`** — the cluster and everything that operates on the running
-  cluster:
+* **`gke-production`** — the cluster lifecycle plus every `Day2.*` operation:
   - `Day1.cluster.01 GKE provision`
   - `Decom.cluster.01 GKE decommission`
-  - all `Day2.*` (redeploy / publish / traffic)
+  - all `Day2.*` (redeploy / publish / traffic). Most act on the running cluster;
+    the two managed-Grafana publishes (`Day2.publish.03/04`) need no cluster but
+    share this gate for approval symmetry.
 * **One environment per persistent Day0 resource** — used by **both** the
   bootstrap (`Day0.infra.0N`) and the decommission (`Decom.infra.0N`) of that
   resource, so its approval is independent of the cluster gate:
