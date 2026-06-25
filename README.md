@@ -77,6 +77,11 @@ A self-contained proof of concept that deploys **Jenkins** on **Kubernetes**, co
 
 ---
 
+**[100 · Bootstrap — the Root of Trust](./docs/100-BOOTSTRAP.md)**
+- [Why it can't be a GitHub Actions workflow (the bootstrap paradox)](./docs/100-BOOTSTRAP.md#why-it-cant-be-a-github-actions-workflow-the-bootstrap-paradox)
+- [Create the root: `bootstrap.sh up`](./docs/100-BOOTSTRAP.md#create-the-root-bootstrapsh-up) · [Destroy: `bootstrap.sh down`](./docs/100-BOOTSTRAP.md#destroy-the-root-bootstrapsh-down)
+- [The state model (self-hosted in the bucket)](./docs/100-BOOTSTRAP.md#the-state-model-self-hosted-in-the-bucket)
+
 **[101 · GitHub Actions Workflows](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md)**
 - [Naming convention: `Y.X.ZZ`](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#naming-convention-yxzz)
   - [Phase × Step matrix](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#phase--step-matrix)
