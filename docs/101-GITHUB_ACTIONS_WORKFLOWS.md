@@ -276,6 +276,16 @@ are the natural per-resource set: `gateway-bootstrap` + the selected backend's e
 (via Day1's preflight) + `gke-production`. No provisioning logic is duplicated — the
 umbrella only orchestrates the existing reusable workflows.
 
+> **Umbrellas carry NO `concurrency:` block** (both `Day1.cluster.00` and
+> `Decom.infra.00`). The GKE serialization lives on the leaf workflows that actually
+> touch the cluster (`Day1.cluster.01` / `Decom.cluster.01`, group `jenkins-2026-gke`).
+> If an umbrella *also* declared that group it would **hold** it while waiting for its
+> own `provision`/`cluster` job — which needs the same group — deadlocking the reusable
+> call; GitHub then fails the run before that job starts (this happened once on
+> `Day1.cluster.00` and was fixed by removing its `concurrency`). The
+> `Day0.infra.0N` bootstraps have no concurrency group, so nesting them under the
+> cluster workflow never deadlocks either.
+
 ## Decom: independent per backend, plus an opt-in "Everything" umbrella
 
 The persistent backends (Gateway IP/cert, Grafana Cloud, Azure, AWS) each have their **own** `Decom.infra.0{1..4}` workflow — one `terraform destroy` per module. They are independent and persistent: you normally use only one per cluster (and with the `oss` default, often none at all). For a **targeted** teardown, run **only** the per-backend workflow(s) for what you actually provisioned, after `Decom.cluster.01-gke`.
