@@ -21,6 +21,12 @@ variable "state_bucket_name" {
   default     = ""
 }
 
+variable "state_bucket_force_destroy" {
+  description = "Allow `terraform destroy` to delete the state bucket even when it still holds objects (other modules' state + non-current versions). Default false (safety). scripts/bootstrap.sh down passes true so the root teardown can remove the bucket."
+  type        = bool
+  default     = false
+}
+
 variable "ci_service_account_id" {
   description = "Account ID (local part of the email) for the CI service account."
   type        = string

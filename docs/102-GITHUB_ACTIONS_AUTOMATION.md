@@ -298,6 +298,13 @@ EOF
 
 ## One-time Setup (Bootstrapping)
 
+> **Fastest path — one command:** `./scripts/bootstrap.sh up` does everything in
+> this section for you (prompts for identity, creates the bucket + WIF + CI SA,
+> migrates its own state into the bucket, and sets the 4 GitHub secrets), and
+> `./scripts/bootstrap.sh down` is the symmetric root teardown. See the full,
+> beginner-friendly walkthrough with diagrams in [100. Bootstrap](./100-BOOTSTRAP.md).
+> The manual steps below are the equivalent if you prefer to run them by hand.
+
 > **Why this step can't itself run in GitHub Actions**: `Day1.cluster.01-gke.yml`
 > and `Decom.cluster.01-gke.yml` authenticate to GCP via Workload Identity
 > Federation (WIF) — but that WIF trust relationship, the CI service account,

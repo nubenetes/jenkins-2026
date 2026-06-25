@@ -62,7 +62,11 @@ resource "google_storage_bucket" "tf_state" {
   project  = var.project_id
 
   uniform_bucket_level_access = true
-  force_destroy               = false
+  # Default false (safety: don't let an apply nuke all remote state). The root
+  # teardown (scripts/bootstrap.sh down) passes state_bucket_force_destroy=true so
+  # `terraform destroy` can remove the bucket even though it still holds other
+  # modules' state objects + non-current versions.
+  force_destroy = var.state_bucket_force_destroy
 
   versioning {
     enabled = true
