@@ -58,6 +58,17 @@ controller:
   # ConfigMaps are discovered and merged.
   JCasC:
     defaultConfig: false
+    # defaultConfig:false is NOT enough on recent chart versions (5.9.x): the chart
+    # renders separate `…-config-authorizationstrategy` and `…-config-securityrealm`
+    # ConfigMaps from these two values (defaulting to loggedInUsersCanDoAnything +
+    # a local admin), labeled jenkins-jenkins-config=true so the sidecar loads them.
+    # Our jenkins/casc/jcasc-base.yaml already provides BOTH (roleBased + the oic /
+    # Google security realm), so leaving the chart defaults on makes JCasC see two
+    # authorizationStrategy / securityRealm entries and the controller crashes at
+    # boot ("Single entry map expected to configure a … AuthorizationStrategy").
+    # Empty them so only our casc provides them.
+    authorizationStrategy: ""
+    securityRealm: ""
     configScripts:
       zzz-external-configmaps: |
         # Intentionally empty. Real JCasC lives in jenkins/casc/* and is applied
