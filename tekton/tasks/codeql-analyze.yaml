@@ -12,7 +12,7 @@ spec:
     - name: source
   steps:
     - name: analyze
-      image: mcr.microsoft.com/cstsectools/codeql-container:latest
+      image: mcr.microsoft.com/cstsectools/codeql-container:c6f3f8cbd3e0ebc36d9ad6dfe6a4c166ba940166
       # The shared workspace is created by the root-running fetch-source/semgrep
       # steps, but this image defaults to a non-root user -> can't write codeql-db
       # / the node install ('Permission denied'). tekton-ci is not PodSecurity-
