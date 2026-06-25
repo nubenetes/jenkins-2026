@@ -22,6 +22,101 @@ Every component — Jenkins, the Spring Boot microservices, and the Angular UI �
   - **Zero-Touch Config**: Automatically maps default Prometheus, Loki, and Tempo data sources via `gcx api`.
 - **Correlated telemetry**: Traces, metrics, and logs are fully correlated. Log-to-trace links and system datasources are pre-configured by default on Grafana Cloud.
 
+## GCP platform metrics — Cloud provider integration (optional)
+
+Separate from the OTLP pipeline above, Grafana Cloud's **Observability → Cloud provider → GCP** is a Grafana-Cloud-hosted scraper that pulls **GCP Cloud Monitoring** metrics (GKE control plane, Compute, the L7 Gateway/LB, GCS, quotas, …) into the stack — **no in-cluster collector**, complementary to our OTel signals (which cover workloads/pods; this covers the GCP-managed platform layer).
+
+It can't use Workload Identity Federation (the scraper isn't a GCP workload), so it needs a **service-account key** uploaded in the Grafana Cloud UI — **the one long-lived credential in the project**, vs the keyless WIF/federation everywhere else. The read-only SA + roles (`monitoring.viewer`, `cloudasset.viewer`) are IaC-managed (human-run, opt-in) in [`terraform/grafana-cloud-gcp`](../terraform/grafana-cloud-gcp/); the key is minted out-of-band (never stored in Terraform state) and pasted into the UI. See that module's README for the runbook. For trial exploration you can also just configure it by hand in the UI.
+
+## Grafana Cloud Observability apps — status & recommendation
+
+> ⚠️ **`observability.mode=grafana-cloud` ONLY.** Everything in this section —
+> Application Observability, Synthetic Monitoring, Profiles, Database Observability,
+> the Cloud-provider integration — is a **Grafana Cloud product**. It does **not** exist
+> or apply in the other backends; each has its own native equivalent instead:
+> | Concern | grafana-cloud | oss | managed-azure | managed-aws |
+> |---|---|---|---|---|
+> | APM / tracing | **Application Observability** | Tempo + Grafana | Application Insights | X-Ray |
+> | Uptime probes | **Synthetic Monitoring** | — (none) | Azure availability tests | CloudWatch Synthetics |
+> | Profiling | **Profiles (Pyroscope)** | self-hosted Pyroscope | — | — |
+> Anything this project wires up here (Synthetic checks, the Pyroscope agent, the GCP
+> cloud-provider SA) is therefore **gated to grafana-cloud mode** and is a no-op in
+> oss/managed-azure/managed-aws — consistent with the deterministic single-backend model.
+
+Grafana Cloud's **Observability** menu bundles several apps. Some are **already fed by
+this project's existing pipeline** (our OTLP traces/metrics, the RUM snippet, the
+`k8s-monitoring` Alloy) — just open them, no work. Others are worth adding; one is
+still experimental and we deliberately skip it. Maturity is GA unless noted.
+
+| App | Maturity | Already fed by us? | Recommendation |
+|---|---|---|---|
+| **Application Observability** (APM: service map, RED metrics, traces) | GA | **Yes** — we already export OTLP traces+metrics from Jenkins, the microservices (OTel auto-instrumentation) and the Angular RUM | ⭐ **Use it now** — zero new code, just enable/open it. Highest "free" value: service map + p95 latency + error rates for the services and Jenkins |
+| **Kubernetes Monitoring** | GA | **Yes** — we deploy `k8s-monitoring` (Alloy) in grafana-cloud mode | ⭐ Already populated (cluster/node/pod/workload views) |
+| **Frontend Observability** (RUM) | GA | **Yes** — Angular RUM snippet (see [Angular RUM](#angular-rum)) | ⭐ Already populated |
+| **Synthetic Monitoring** (uptime/latency probes) | GA | No | 👍 **Good, cheap add** — HTTP checks against the public IAP endpoints (jenkins/argocd/microservices) for uptime + SLOs. IaC-able and keyless via the Grafana Terraform provider (it supports Synthetic Monitoring) using the existing stack token |
+| **Cloud provider → GCP** | GA | No (IaC scaffolding in [`terraform/grafana-cloud-gcp`](../terraform/grafana-cloud-gcp/)) | 🤔 Stable, but needs a **long-lived SA key** (the scraper isn't a GCP workload → no WIF), the only non-keyless credential. Optional — see [§ GCP platform metrics](#gcp-platform-metrics--cloud-provider-integration-optional) |
+| **Profiles** (Pyroscope, continuous JVM profiling) | GA (product) | No | ⏸️ **Deferred** — valuable, but every collection path conflicts with our setup: the Java agent fights the OTel-Operator-owned `JAVA_TOOL_OPTIONS`, needs opening external app egress, and the no-app-change alternative (Alloy `pyroscope.java`) is experimental + privileged. See [§ Profiles/Pyroscope: why it's deferred](#profilespyroscope-why-its-deferred) |
+| **Database Observability** (Postgres query perf) | **public preview / experimental** | No | ❌ **Skip for now** — the Alloy `database_observability` component has frequent breaking changes. Revisit when GA |
+| OnCall / Incident / SLO | GA (ops process, not telemetry) | — | As needed for alerting/on-call; not a priority for a throwaway PoC |
+
+**What to incorporate (stable + worthwhile):** lead with **Application Observability**
+— it already receives our traces/metrics, so it's the biggest no-risk win (open it,
+enable if prompted). Then **Synthetic Monitoring** (GA, lightweight, IaC-able + keyless)
+for uptime/SLOs on the public endpoints. **Defer Profiles/Pyroscope** — although the
+Grafana Cloud product is GA, *for this stack* it has no clean collection path (it
+collides with the OTel-Operator auto-instrumentation; see below). **Skip Database
+Observability** until it leaves preview; **Cloud provider → GCP** is stable but trades
+off the keyless posture (long-lived key).
+
+> **The OpenTelemetry Operator is the project standard** for application telemetry across
+> **all four** backends — it auto-injects the Java agent (`Instrumentation` CR →
+> `JAVA_TOOL_OPTIONS`) so traces/metrics flow to the active backend uniformly. None of
+> the Grafana Cloud apps above replace or modify it; they sit alongside. Anything that
+> would fight the operator (notably a second profiling `-javaagent`) is deferred rather
+> than risk the standard.
+
+### Wiring up the stable additions (grafana-cloud only)
+
+All of these are **gated to `observability.mode=grafana-cloud`** — no-ops in the other backends.
+
+- **Application Observability** — *already on.* No code: the microservices carry the OTel
+  Java auto-instrumentation (the `microservices-java` `Instrumentation` CR injects the
+  agent; `OTEL_SERVICE_NAME` is set) and the collector exports OTLP traces+metrics to
+  Grafana Cloud. Just open the app; enable it in the UI if prompted. (In oss the same
+  traces land in Tempo; in managed-azure/-aws in App Insights / X-Ray.)
+- **Synthetic Monitoring** — IaC in [`terraform/grafana-cloud-synthetics`](../terraform/grafana-cloud-synthetics/):
+  HTTP uptime/latency checks (Grafana-Cloud-hosted probes) against the **public, non-IAP**
+  endpoints (`microservices` host; the IAP hosts would just return Google's OAuth page).
+  Keyless — both provider tokens derive from the stack access policy, like
+  `grafana-cloud-token`. Apply only in grafana-cloud mode.
+- **Profiles / Pyroscope** — **deferred**; see the analysis below.
+
+### Profiles/Pyroscope: why it's deferred
+
+Continuous JVM profiling would be useful, and the Grafana Cloud Profiles product is GA,
+but **for this stack there is no clean, stable collection path** — each option has a
+real downside, and we won't risk the OTel-Operator standard for it:
+
+1. **Pyroscope Java agent** (the "stable" path) — a second `-javaagent` on the JVM. But
+   the **OTel Operator already owns `JAVA_TOOL_OPTIONS`** (it injects the OTel Java agent
+   via the `Instrumentation` CR). Adding a second agent means either disabling the
+   operator's auto-injection for the microservices and re-assembling *both* agents by
+   hand, or baking the Pyroscope SDK into the image — but we run **upstream JHipster
+   images** we don't build. Either way it fights the project's telemetry standard.
+2. **External egress** — the agent pushes profiles straight to Grafana Cloud (external
+   HTTPS), but the `microservices` namespace is default-deny egress (only Postgres + the
+   in-cluster collector). It would need **opening external `:443` egress** from the app
+   pods — a real network-posture change.
+3. **Alloy `pyroscope.java`** (node-level async-profiler, no app change, no app egress) —
+   avoids 1 and 2, but the component is **experimental** (which we avoid) and needs a
+   **privileged Alloy** (`SYS_PTRACE`/`hostPID`).
+
+**Decision:** defer Pyroscope (like Database Observability) until there's a stable path
+that doesn't collide with the OTel-Operator auto-instrumentation. The TF foundation
+(a `profiles:write`-scoped token already exists on the stack; the stack exposes a
+`profiles_url`) is ready if we revisit. Self-hosted Pyroscope would be needed for oss;
+managed-azure/-aws have no equivalent.
+
 ## OTel Components
 
 ### OpenTelemetry Operator
