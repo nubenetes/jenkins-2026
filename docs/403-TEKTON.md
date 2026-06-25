@@ -232,7 +232,7 @@ Tekton is **GitOps-managed by ArgoCD**, the same app-of-apps pattern as
 [`argocd/platform-postgres`](../argocd/platform-postgres).
 [`scripts/04-tekton.sh`](../scripts/04-tekton.sh) applies the parent Application
 [`argocd/tekton-app.yaml`](../argocd/tekton-app.yaml) (substituting repo/branch,
-exactly like the other app-of-apps), which renders four child Applications:
+exactly like the other app-of-apps), which renders seven child Applications:
 
 | Child Application | Source | Sync wave | Notes |
 |---|---|---|---|
@@ -264,7 +264,7 @@ everywhere. The choice per layer:
 | Layer | Tool used | Why this tool (and not the other) |
 |---|---|---|
 | **App-of-apps parent** (`argocd/tekton/`) | **Helm** | The wrapper must *template* `repoURL`/`targetRevision` (and could template versions) down into the child Applications. That per-environment templating is exactly what Helm does cleanly and what the repo already does for `observability-oss`/`platform-postgres`. Kustomize templates this only awkwardly (vars/replacements). |
-| **Upstream components** (Pipelines / Triggers / Dashboard) | **kustomize** over the pinned official release YAML | **Tekton has no official Helm chart.** Triggers/Dashboard are pulled as kustomize *remote resources* from the GCS release bucket; **Pipelines is vendored** (`release.yaml` committed in-tree) because v1.7+ is published only as a GitHub release asset (not on the GCS bucket), and a `github.com` URL is misclassified by kustomize as a git repo. Helm here would mean adopting an unofficial community chart — version lag + a third-party trust dependency for a security-sensitive CI engine. |
+| **Upstream components** (Pipelines / Triggers / Dashboard) | **kustomize** over the pinned official release YAML | **Tekton has no official Helm chart.** **All** upstream components are **vendored** — the pinned release YAMLs are committed in-tree under [`argocd/tekton/components/*/`](../argocd/tekton/) — because Tekton publishes recent releases only as GitHub release assets (not on the GCS bucket), and a `github.com` URL is misclassified by kustomize as a git repo. Helm here would mean adopting an unofficial community chart — version lag + a third-party trust dependency for a security-sensitive CI engine. |
 | **Pipelines-as-code** (`tekton/` Tasks/Pipelines/Triggers/RBAC) | **plain manifests** (ArgoCD directory source) | Static custom resources with no per-environment templating need; neither Helm nor kustomize adds value. Per-run values are supplied as Tekton **params** at `PipelineRun` time, not at apply time. |
 
 ### Why not "all Helm"
@@ -403,7 +403,7 @@ Open `https://tekton.<baseDomain>` (Google IAP login, [§ Dashboard](#dashboard-
 
 There is **no** hand-fill path in the *visual* form that succeeds for this pipeline (no workspace field — see the limitation above), so for `microservices-pipeline` the supported manual options are: the **YAML mode** of the Create dialog (paste a `tekton/runs/*.yaml`), **Rerun** of an existing/seeded run, or `kubectl create` (Option B). All three carry the `source`/`dockerconfig` bindings the visual form cannot.
 
-> **Pre-populate the Dashboard from the first Day1** — set `tekton.seedRuns: true` (or `JENKINS2026_TEKTON_SEED_RUNS=true`). `scripts/06-tekton-pipelines.sh` then seeds one PipelineRun per service from [`tekton/runs/`](../tekton/runs/) during provisioning, so the Dashboard lists runnable entries you can **Rerun** with one click immediately — no first paste/`kubectl create` needed. The trade-off: it runs **one build per service per Day1**, which is why it is **off by default** (PaC's git-push trigger is the normal way to start runs). This is a CI-engine convenience only — it does not change how PaC works.
+> **Pre-populate the Dashboard from the first Day1** — `tekton.seedRuns` (or `JENKINS2026_TEKTON_SEED_RUNS`) is **`true` by default**. `scripts/06-tekton-pipelines.sh` seeds one PipelineRun per service from [`tekton/runs/`](../tekton/runs/) during provisioning, so the Dashboard lists runnable entries you can **Rerun** with one click immediately — no first paste/`kubectl create` needed. The trade-off: it runs **one build per service per Day1**; set it `false` to skip (PaC's git-push trigger is the normal way to start runs). This is a CI-engine convenience only — it does not change how PaC works.
 
 ### Option B — `kubectl create` (a PipelineRun manifest)
 

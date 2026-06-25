@@ -89,6 +89,12 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
   - `bootstrap/` - **one-time, local state**, run by hand. Creates the GCS
     Terraform state bucket + GitHub OIDC/Workload Identity Federation trust
     for `Day1.cluster.01-gke.yml`/`Decom.cluster.01-gke.yml`.
+  - `gateway-bootstrap/` - persistent Gateway resources (static external IP +
+    wildcard cert map + DNS authorization) so the public endpoints survive cluster
+    rebuilds. Applied one-time by `Day0.infra.01-gateway.yml`, destroyed by
+    `Decom.infra.01-gateway.yml` (GCS remote state).
+  - `workload-identity/` - standalone GKE Workload Identity Federation helpers
+    (manual/auxiliary; not wired into the per-cluster CI lifecycle).
   - `gke/` - the throwaway GKE cluster. Local state for `test/e2e.sh`; GCS
     remote state (via a `backend_override.tf` written by the workflows) in
     CI. Runs **Dataplane V2** (`datapath_provider = ADVANCED_DATAPATH`) so
