@@ -53,6 +53,7 @@ Setting `JENKINS_OIDC_ADMIN_EMAIL` also dynamically configures administrator per
 | [`jcasc-base.yaml`](../jenkins/casc/jcasc-base.yaml) | Security realm (OIDC with Google, escape-hatch `admin` password), Role-Based Authorization Strategy, system message, **global pipeline library** `microservices-shared-library`, credentials (`container-registry`, `microservices-git`). |
 | [`jcasc-otel.yaml`](../jenkins/casc/jcasc-otel.yaml) | Configures the `opentelemetry` plugin's global exporter — OTLP/gRPC to `otel-collector-gateway.observability.svc.cluster.local:4317`. |
 | [`jcasc-seed-job.yaml`](../jenkins/casc/jcasc-seed-job.yaml) | Defines the main `seed-jobs` pipeline job that tracks `${JENKINS2026_REPO_BRANCH:-main}` to generate the stable pipelines. |
+| [`jcasc-modern-agents.yaml`](../jenkins/casc/jcasc-modern-agents.yaml) | Kubernetes-plugin cloud + ephemeral build-agent pod templates (the `jenkins=slave` agents: maven/node/helm containers, caches, resources). |
 
 Beyond the kubernetes/git/JCasC/OTel plugins, three are aimed at UX:
 

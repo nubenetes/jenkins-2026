@@ -149,7 +149,7 @@ When executing the **Day1.cluster.01 GKE provision** workflow manually, you are 
    - ⚠ **Irreversible**: wipes that backend's history/dashboards; re-selecting the mode later recreates it empty. Needs the non-selected backends' credentials/identifiers configured.
 
 4. **enable_gateway (Checkbox - Boolean)**:
-   - **Default**: `false`.
+   - **Default**: `true`.
    - Determines whether the public GKE Gateway L7 load balancer should be provisioned.
    - **Prerequisites**: Requires `Day0.infra.01 Gateway bootstrap` applied, wildcard DNS records, and IAP OAuth client credentials.
 

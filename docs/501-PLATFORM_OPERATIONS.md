@@ -19,6 +19,10 @@ The deployment lifecycle is managed by **ArgoCD**. Application manifests are sto
 | `pgadmin` | `Application` | `jenkins-2026-gitops-config` | `helm/pgadmin/` | `pgadmin` | Healthy |
 | `cnpg-operator` | `Application` | `cloudnative-pg` chart | `https://cloudnative-pg.github.io/charts` | `cnpg-system` | Healthy |
 | `external-secrets` | `Application` | `external-secrets` chart | `https://charts.external-secrets.io` | `external-secrets` | Healthy |
+| `jenkins` | `Application` | `jenkins` chart (pinned 5.9.29) | `https://charts.jenkins.io` | `jenkins` | Healthy *(when `ci.engine=jenkins`)* |
+| `argo-rollouts` | `Application` | `argo-rollouts` chart (2.37.7) | `https://argoproj.github.io/argo-helm` | `argo-rollouts` | Healthy |
+
+> Plus three **app-of-apps** (`platform-postgres`, `observability-oss` when `observability.mode=oss`, and `tekton` when `ci.engine=tekton`), each a small Helm chart whose children carry the actual workloads. See [`argocd/README.md`](../argocd/README.md).
 
 ### Security & Integration
 
