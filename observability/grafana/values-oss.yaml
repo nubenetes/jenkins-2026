@@ -269,7 +269,10 @@ grafana:
       providers:
         - name: jenkins-2026
           orgId: 1
-          folder: "jenkins-2026"
+          # Engine-neutral display folder (CI engine can be Jenkins OR Tekton). The
+          # provider name / configmap key / mount path below stay "jenkins-2026"
+          # (internal plumbing, not user-visible).
+          folder: "CI/CD Observability"
           type: file
           disableDeletion: false
           editable: true
