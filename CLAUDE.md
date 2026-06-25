@@ -111,6 +111,12 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
     read from `grafana-cloud-stack`'s state output and passed in by the workflow).
     Same GCS-remote-state-via-`backend_override.tf` pattern as `terraform/gke`;
     applied by `Day1.cluster.01-gke.yml`, destroyed by `Decom.cluster.01-gke.yml`.
+  - `grafana-cloud-gcp/` - **one-time, human-run, local state** (like `bootstrap`).
+    Read-only GCP SA (`roles/monitoring.viewer` + `cloudasset.viewer`) for Grafana
+    Cloud's *Observability → Cloud provider → GCP* hosted scraper. Optional/opt-in. The
+    SA **key** is the one long-lived credential (Grafana Cloud's GCP scraper can't use
+    WIF) — minted out-of-band, never stored in state, pasted into the Grafana Cloud UI.
+    See [`docs/301`](docs/301-OBSERVABILITY.md) + the module README.
   - `azure-managed-grafana/` - the `observability.mode=managed-azure` backend:
     Azure Managed Grafana, Azure Monitor workspace + DCE/DCR (managed
     Prometheus), Application Insights + Log Analytics, and the Entra service
