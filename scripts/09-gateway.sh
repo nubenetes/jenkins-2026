@@ -265,6 +265,15 @@ spec:
     kind: Service
     name: oss-kube-prometheus-stack-grafana
 EOT
+else
+  # Non-oss modes have no in-cluster Grafana. Delete any grafana HTTPRoute /
+  # HealthCheckPolicy left over from a previous oss run on this (persistent) cluster
+  # — otherwise it dangles pointing at the now-deleted oss-kube-prometheus-stack-grafana
+  # Service (BackendNotFound events + a 502 at the grafana host). Deterministic
+  # mode-switch cleanup, mirroring 03-observability retiring foreign backends. Idempotent.
+  log_step "Removing any leftover grafana HTTPRoute/HealthCheckPolicy (observability.mode=${J2026_OBS_MODE}, not oss)"
+  kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_GRAFANA}" -n "${J2026_GRAFANA_OSS_NAMESPACE}" --ignore-not-found
+  kubectl delete healthcheckpolicy oss-kube-prometheus-stack-grafana -n "${J2026_GRAFANA_OSS_NAMESPACE}" --ignore-not-found
 fi
 
 
