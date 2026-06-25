@@ -10,7 +10,7 @@ name: "Decom.infra.04 AWS managed-grafana"
 # for the GCS state backend. Gated behind the aws-bootstrap Environment.
 on:
   workflow_dispatch:
-  workflow_call: # reused by Decom.infra.00-all (umbrella)
+  workflow_call: # reused by Day1.cluster.01 when destroy_unused_backends=true
 
 permissions:
   contents: read
