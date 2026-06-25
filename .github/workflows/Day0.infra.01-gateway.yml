@@ -32,9 +32,10 @@ jobs:
   bootstrap:
     runs-on: ubuntu-latest
     # Approval gate (creates persistent, billed networking resources - static
-    # IP + managed cert) - same required-reviewer protection as the other
-    # infra workflows.
-    environment: gke-production
+    # IP + managed cert) - dedicated gateway-bootstrap environment (own
+    # required-reviewer gate), one per persistent Day0 resource like the
+    # grafana-cloud/azure/aws bootstraps, so it is independent of the cluster gate.
+    environment: gateway-bootstrap
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
