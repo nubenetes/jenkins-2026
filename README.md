@@ -233,6 +233,15 @@ A self-contained proof of concept that deploys **Jenkins** on **Kubernetes**, co
 
 ---
 
+**[602 · Version Pinning](./docs/602-VERSION_PINNING.md)**
+- [Why pin — and the trade-off](./docs/602-VERSION_PINNING.md#why-pin--and-the-trade-off)
+- [The matrix](./docs/602-VERSION_PINNING.md#the-matrix)
+- [The ArgoCD exception — deliberate 3.5.x tracking](./docs/602-VERSION_PINNING.md#the-argocd-exception--deliberate-35x-tracking)
+- [GitHub Actions: SHA pins + Dependabot](./docs/602-VERSION_PINNING.md#github-actions-sha-pins--dependabot)
+- [How to bump a pin](./docs/602-VERSION_PINNING.md#how-to-bump-a-pin)
+
+---
+
 **[901 · Local Development](./docs/901-LOCAL_DEVELOPMENT.md)**
 - [Prerequisites](./docs/901-LOCAL_DEVELOPMENT.md#prerequisites)
 - [Quick Start](./docs/901-LOCAL_DEVELOPMENT.md#quick-start)

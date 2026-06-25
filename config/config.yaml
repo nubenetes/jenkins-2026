@@ -222,12 +222,16 @@ headlamp:
 argocd:
   namespace: argocd
   releaseName: argocd
-  # GA only: v3.5.0 currently exists solely as a release candidate (no GA yet), so
-  # track the latest 3.4.x GA instead. resolve_argocd_version (08.5-argocd.sh) picks
-  # the newest patch matching the constraint at install time; "3.4.x" excludes
-  # pre-releases. v3.4.4 = latest GA as of 2026-06-25.
-  version: "v3.4.4"
-  version_constraint: "3.4.x"
+  # ArgoCD DELIBERATELY TRACKS the 3.5.x line (not a hard pin like the rest of the
+  # stack) — we want 3.5's new features and its ongoing patches. resolve_argocd_version
+  # (08.5-argocd.sh) picks the latest 3.5.x at install time (Day1 + Day2.redeploy.01):
+  # the newest GA, or the newest rc while 3.5.0 has no GA yet. The
+  # argocd-version-patch-watcher CronJob additionally live-upgrades to new 3.5.x
+  # patches daily, no re-run needed. `version` is only the offline fallback if the
+  # GitHub Releases API is unreachable. Trade-off (less deterministic than a pin) is
+  # accepted for ArgoCD by choice — see docs/602-VERSION_PINNING.md.
+  version: "v3.5.0-rc1"
+  version_constraint: "3.5.x"
 
 # -----------------------------------------------------------------------------
 # pgAdmin (Postgres database administration UI)
