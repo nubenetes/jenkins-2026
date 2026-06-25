@@ -347,10 +347,10 @@ GitHub has no way to draw that — it's a `bash if`, not a job — so `provision
 flowchart TD
     subgraph JOBS["GitHub Actions job graph (what the workflow_dispatch UI shows)"]
         direction TB
-        B1["grafana-cloud-bootstrap\nif mode=grafana-cloud\nuses Day0.infra.02"]
-        B2["azure-bootstrap\nif mode=managed-azure\nuses Day0.infra.03"]
-        B3["aws-bootstrap\nif mode=managed-aws\nuses Day0.infra.04"]
-        P["provision\nneeds: the 3 bootstraps"]
+        B1["grafana-cloud-bootstrap\nif mode=grafana-cloud\nuses Day0.infra.02\n🔒 env: grafana-cloud-bootstrap"]
+        B2["azure-bootstrap\nif mode=managed-azure\nuses Day0.infra.03\n🔒 env: azure-bootstrap"]
+        B3["aws-bootstrap\nif mode=managed-aws\nuses Day0.infra.04\n🔒 env: aws-bootstrap"]
+        P["provision\nneeds: the 3 bootstraps\n🔒 env: gke-production"]
         B1 --> P
         B2 --> P
         B3 --> P
@@ -376,6 +376,15 @@ flowchart TD
 
     P -.->|"one job runs all of the below as steps"| INSIDE
 ```
+
+> **Approval gates (🔒).** Each box is protected by its **own** required-reviewer
+> GitHub Environment, so one approval maps to one concern and the cluster gate is
+> never double-prompted: each backend bootstrap uses its own
+> `grafana-cloud-bootstrap` / `azure-bootstrap` / `aws-bootstrap` environment, and
+> only `provision` uses `gke-production`. The matching `Decom.infra.0{2,3,4}`
+> teardown workflows reuse the same per-backend environments. (Before this split,
+> Grafana Cloud borrowed `gke-production`, which got it approved twice in one Day1
+> run.) See [102 § Environment Protection and Manual Approvals](./102-GITHUB_ACTIONS_AUTOMATION.md#environment-protection-and-manual-approvals).
 
 ### Why it's modelled this way (not as per-engine jobs)
 

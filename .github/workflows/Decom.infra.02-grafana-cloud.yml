@@ -20,7 +20,10 @@ env:
 jobs:
   decommission:
     runs-on: ubuntu-latest
-    environment: gke-production
+    # Dedicated grafana-cloud-bootstrap gate (like azure-bootstrap / aws-bootstrap),
+    # so destroying Grafana Cloud is not conflated with - or duplicated against - the
+    # cluster's gke-production approval.
+    environment: grafana-cloud-bootstrap
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

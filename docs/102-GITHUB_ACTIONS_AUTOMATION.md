@@ -175,12 +175,20 @@ Mixing different tags, branches, or SHAs during the lifecycle of a single GKE cl
 
 To enforce cost control (FinOps), auditability, and guard against accidental destruction of active resources, critical workflows are protected by a GitHub Actions environment:
 
-* **Protected Workflows**:
+There are **four** required-reviewer environments, so each approval maps to one
+concern (and a Day1 run that touches a backend isn't double-prompted on the
+cluster gate):
+
+* **`gke-production`** — cluster + gateway lifecycle:
   - `Day1.cluster.01 GKE provision`
   - `Decom.cluster.01 GKE decommission`
   - `Decom.infra.01 Gateway decommission`
-  - `Decom.infra.02 Grafana Cloud decommission`
-* **Environment Name**: `gke-production`
+* **`grafana-cloud-bootstrap` / `azure-bootstrap` / `aws-bootstrap`** — one per
+  persistent observability backend, used by **both** the bootstrap and the
+  decommission of that backend so its approval is independent of the cluster gate:
+  - `Day0.infra.02` / `Decom.infra.02` Grafana Cloud → `grafana-cloud-bootstrap`
+  - `Day0.infra.03` / `Decom.infra.03` Azure → `azure-bootstrap`
+  - `Day0.infra.04` / `Decom.infra.04` AWS → `aws-bootstrap`
 
 ### Setting up Environment Rules
 
@@ -211,6 +219,10 @@ gh api --method PUT repos/nubenetes/jenkins-2026/environments/gke-production \
 }
 EOF
 ```
+
+> Repeat the same `PUT .../environments/<name>` for the three backend
+> environments — `grafana-cloud-bootstrap`, `azure-bootstrap`, `aws-bootstrap` —
+> so each persistent observability backend has its own approval gate.
 
 ## One-time Setup (Bootstrapping)
 
