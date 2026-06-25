@@ -124,7 +124,7 @@ Used by `Day0.infra.04-aws-grafana`, `Day1.cluster.01-gke`, `Day2.publish.04-aws
 | Secret | Required | Description |
 |--------|----------|-------------|
 | `AWS_BOOTSTRAP_ROLE_ARN` | **yes** (managed-aws) | IAM role assumed during one-time bootstrap (`Day0.infra.04`) |
-| `AWS_REGION` | **yes** (managed-aws) | AWS region for AMP, AMG, and CloudWatch, e.g. `eu-west-1` |
+| `AWS_REGION` | **yes** (managed-aws) | AWS region for AMP, AMG, and CloudWatch, e.g. `eu-west-1`. **Prefer a repo Variable** (`vars.AWS_REGION`) over a Secret — the region is not sensitive, and as a Secret GitHub masks it everywhere it appears, including inside the Amazon Managed Grafana URL (`https://g-….grafana-workspace.***.amazonaws.com`), which breaks the clickable link in the Day1 "Access URLs". Workflows read `${{ vars.AWS_REGION || secrets.AWS_REGION }}`, so set the Variable and delete the Secret to unmask it (the Secret remains a fallback until then). |
 | `GKE_OIDC_ISSUER_URL` | **yes** (managed-aws bootstrap) | GKE cluster OIDC issuer URL — used to configure the GKE→AWS OIDC trust |
 | `AWS_GRAFANA_ADMIN_SSO_EMAILS` | no (managed-aws) | Comma-separated emails of IAM Identity Center users granted Grafana Admin (`alice@example.com,bob@example.com`) |
 | `AWS_DASHBOARD_PUBLISH_ROLE_ARN` | **yes** (managed-aws publishing) | Least-privilege IAM role for dashboard publishing and alert provisioning |
