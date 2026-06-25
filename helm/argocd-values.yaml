@@ -7,10 +7,15 @@ controller:
   resources:
     requests:
       cpu: 100m
-      memory: 256Mi
+      # The application-controller holds the live-state cache of every managed
+      # object. The heaviest combo - OSS observability (kube-prometheus-stack +
+      # Loki + Tempo, hundreds of objects) AND the full Tekton app-of-apps
+      # (pipelines/triggers/dashboard/chains/pruner/pac + CRDs) - OOM-killed it at
+      # 1Gi (exit 137), which stalled syncing tekton-pipelines and hung up.sh.
+      memory: 512Mi
     limits:
       cpu: 1000m
-      memory: 1Gi
+      memory: 2Gi
 
 applicationSet:
   resources:
