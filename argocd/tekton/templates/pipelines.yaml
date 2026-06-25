@@ -27,14 +27,19 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
-      # Same handling as the CNPG operator: the large Tekton CRDs blow the
-      # client-side last-applied annotation limit; ServerSideApply+Replace is
-      # what reliably reconciles them.
+      # The large Tekton CRDs blow the client-side last-applied annotation limit;
+      # ServerSideApply (+ ServerSideDiff above) reconciles them without that
+      # annotation — so Replace=true is NOT needed for the CRDs.
+      #
+      # Replace=true was REMOVED on purpose: `kubectl replace` re-replaces every
+      # object on each sync (incl. the Tekton config-* ConfigMaps), which (a) fires
+      # config.webhook.pipeline.tekton.dev on every sync and (b) blanks the webhook
+      # caBundle that Tekton self-manages — so a manual Sync intermittently failed
+      # with `tls: unrecognized name` / x509 even though the app was Synced/Healthy.
+      # ServerSideApply only touches changed fields, so unchanged ConfigMaps don't
+      # re-trigger the webhook and the caBundle is left alone (also kept out of
+      # diffs via ignoreDifferences + RespectIgnoreDifferences below).
       - ServerSideApply=true
-      - Replace=true
-      # Do not overwrite caBundle fields that Tekton's webhook controller
-      # manages — without this, Replace=true blanks them on every sync and
-      # causes x509 "certificate signed by unknown authority" errors.
       - RespectIgnoreDifferences=true
   ignoreDifferences:
     - group: admissionregistration.k8s.io
