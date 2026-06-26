@@ -120,6 +120,40 @@ gcloud compute disks list --project "$PROJECT" \
 | while read -r DISK ZONE; do gcloud compute disks delete "$DISK" --zone "$ZONE" --quiet; done
 ```
 
+### Container-native LB NEGs block the VPC delete (a NEG-delete timeout is normal)
+
+The Gateway uses **container-native load balancing**: each backing Service gets a **NEG**
+(Network Endpoint Group). GCP refuses to delete a NEG while a backend service references it,
+and a leftover NEG references the VPC subnet — so it **blocks `terraform/gke`'s VPC delete**.
+A *timeout deleting a NEG during teardown is expected*, not an error: NEGs are GC'd
+**asynchronously** by the GKE controller, so `down.sh` gives it time then forces the rest.
+The teardown is **layered** (defense-in-depth — the layers are complementary, not exclusive):
+
+- **L1 — precise GC.** `down.sh` deletes the HTTPRoutes + Gateway with a finalizer-wait
+  (`kubectl delete … --timeout`), so the GKE controller releases the whole L7 LB chain
+  (forwarding-rule → proxy → url-map → backend-service → NEG) **while the cluster is still
+  alive**. The clean path — most NEGs disappear here.
+- **L2 — absorb async.** Poll up to **10 min** for the controller's async GC to finish (it
+  can lag under load).
+- **L3 — dependency-safe backstop.** Force-delete any survivors **in dependency order**: for
+  each stuck NEG, delete the forwarding-rules → target-proxies → url-maps → backend-services
+  that reference it, *then* the NEG — so the delete never fails with "resource in use"
+  (deleting just the NEG would).
+
+**Anti-pattern to avoid:** do **not** destroy the cluster first to "skip" the NEG cleanup —
+that kills the controller, orphans the NEGs, and L3 then races leftover backends. The order
+(clean up while the cluster is alive → destroy the cluster last) is deliberate. If
+`terraform destroy` ever still fails on the VPC with a NEG in use, **re-run `down.sh`**
+(idempotent) — by then the controller has usually finished and the NEG drains. Manual one-off:
+
+```bash
+gcloud compute network-endpoint-groups list --filter="network:jenkins-2026-vpc"
+# find the backend-service pinning a stuck NEG, delete it (--global), then delete the NEG:
+gcloud compute backend-services list --format=json \
+  | jq -r '.[]|select([.backends[]?.group//""]|any(contains("<neg-name>")))|.name'
+gcloud compute network-endpoint-groups delete <neg-name> --zone <zone>
+```
+
 ## CNPG Postgres WAL backups to GCS fail (`ContinuousArchiving=False`)
 
 **Symptom:** the microservices Postgres works, but the CNPG `Cluster` reports

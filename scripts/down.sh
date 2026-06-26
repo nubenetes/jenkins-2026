@@ -276,45 +276,79 @@ if command -v gcloud &>/dev/null; then
     fi
     vpc_name="${cluster_name}-vpc"
 
-    log_step "Waiting for GCP Network Endpoint Groups (NEGs) referencing VPC '${vpc_name}' to be deleted..."
-    # Wait up to 5 minutes for NEGs to be deleted asynchronously by GKE controllers
-    for i in {1..30}; do
-      negs=$(gcloud compute network-endpoint-groups list \
-        --filter="network:${vpc_name}" \
-        --project="${gcp_project}" \
-        --format="value(name)" 2>/dev/null || true)
+    # =======================================================================
+    # Layered, dependency-safe NEG (container-native LB endpoint) teardown.
+    # GCP refuses to delete a NEG while a backend service references it, and a
+    # leftover NEG blocks terraform/gke's VPC delete. Three complementary layers
+    # (see docs/902 § container-native LB NEGs):
+    #   L1 precise GC  — the Gateway + HTTPRoutes were already deleted above with a
+    #       finalizer-wait (--timeout), so the GKE controller releases the Gateway LB
+    #       chain WHILE THE CLUSTER IS STILL ALIVE. The clean path; most NEGs go here.
+    #   L2 absorb async — poll up to 10m for the controller's async GC to finish.
+    #   L3 backstop    — force-delete survivors in DEPENDENCY ORDER (forwarding-rule →
+    #       target-proxy → url-map → backend-service → NEG) so the delete can't fail
+    #       with "resource in use". Each step is best-effort/idempotent.
+    # NOT exclusive: L1 makes the common case clean+fast, L2 tolerates the async GC,
+    # L3 guarantees the worst case still drains. Avoid the anti-pattern of destroying
+    # the cluster first — that orphans the NEGs (controller gone) and L3 then races the
+    # dependencies.
+    # =======================================================================
+
+    # L3 helper: tear down the L7 LB chain that pins a NEG, then delete the NEG. Uses
+    # jq on `--format=json` (the group/service/target/urlMap fields are full self-links,
+    # so match by an `endswith "/<name>"` suffix) — robust where gcloud --filter on list
+    # fields is not. Global external LB scope (the PoC's Gateway); regional deletes just
+    # no-op via 2>/dev/null.
+    _force_delete_neg() {  # <name> <zone>
+      local name="$1" zone="$2" bss bs ums um tp
+      bss=$(gcloud compute backend-services list --project="${gcp_project}" --format=json 2>/dev/null \
+        | jq -r --arg n "/${name}" '.[] | select([.backends[]?.group // ""] | any(endswith($n))) | .name' 2>/dev/null | sort -u)
+      for bs in ${bss}; do
+        ums=$(gcloud compute url-maps list --project="${gcp_project}" --format=json 2>/dev/null \
+          | jq -r --arg b "/${bs}" '.[] | select(([.defaultService // ""] + [.pathMatchers[]?.defaultService // ""] + [.pathMatchers[]?.pathRules[]?.service // ""]) | any(endswith($b))) | .name' 2>/dev/null | sort -u)
+        for um in ${ums}; do
+          for tp in $(gcloud compute target-https-proxies list --project="${gcp_project}" --format=json 2>/dev/null | jq -r --arg u "/${um}" '.[] | select((.urlMap // "") | endswith($u)) | .name' 2>/dev/null) \
+                    $(gcloud compute target-http-proxies  list --project="${gcp_project}" --format=json 2>/dev/null | jq -r --arg u "/${um}" '.[] | select((.urlMap // "") | endswith($u)) | .name' 2>/dev/null); do
+            gcloud compute forwarding-rules list --global --project="${gcp_project}" --format=json 2>/dev/null \
+              | jq -r --arg t "/${tp}" '.[] | select((.target // "") | endswith($t)) | .name' 2>/dev/null \
+              | while read -r fr; do [[ -n "${fr}" ]] && { log_info "    L3: deleting forwarding-rule '${fr}'"; gcloud compute forwarding-rules delete "${fr}" --global --project="${gcp_project}" --quiet 2>/dev/null; }; done
+            log_info "    L3: deleting target-proxy '${tp}'"
+            gcloud compute target-https-proxies delete "${tp}" --project="${gcp_project}" --quiet 2>/dev/null
+            gcloud compute target-http-proxies  delete "${tp}" --project="${gcp_project}" --quiet 2>/dev/null
+          done
+          log_info "    L3: deleting url-map '${um}'"
+          gcloud compute url-maps delete "${um}" --project="${gcp_project}" --quiet 2>/dev/null
+        done
+        log_info "    L3: deleting backend-service '${bs}' (referenced NEG '${name}')"
+        gcloud compute backend-services delete "${bs}" --global --project="${gcp_project}" --quiet 2>/dev/null
+      done
+      log_info "  L3: force-deleting NEG '${name}' (zone ${zone})..."
+      gcloud compute network-endpoint-groups delete "${name}" --zone="${zone}" --project="${gcp_project}" --quiet \
+        || log_warn "  NEG '${name}' still won't delete (a backend may remain) — re-run down.sh (idempotent) or inspect the LB chain; terraform destroy of the VPC may fail until it's gone."
+    }
+
+    # --- L2: bounded adaptive wait (up to 10m) for the controller's async GC ---
+    log_step "Releasing container-native LB NEGs for VPC '${vpc_name}' (await GKE GC, then dependency-safe force-delete)"
+    _neg_deadline=$(( SECONDS + 600 ))
+    while :; do
+      negs=$(gcloud compute network-endpoint-groups list --filter="network:${vpc_name}" --project="${gcp_project}" --format="value(name)" 2>/dev/null || true)
       if [[ -z "${negs}" ]]; then
-        log_info "All NEGs deleted successfully."
+        log_info "L2: all NEGs released by the GKE controller — no force-delete needed (clean L1 path)."
         break
       fi
-      log_info "Still waiting for NEGs to be deleted (attempt $i/30): $(echo ${negs} | tr '\n' ' ')"
-      sleep 10
+      if [[ ${SECONDS} -ge ${_neg_deadline} ]]; then
+        log_warn "L2: NEGs still present after 10m of async GC — switching to dependency-ordered force-delete (L3)."
+        break
+      fi
+      log_info "  L2: waiting for the GKE controller to release $(echo ${negs} | wc -w) NEG(s) ($(( _neg_deadline - SECONDS ))s left)"
+      sleep 15
     done
 
-    # If NEGs still exist after timeout, force delete them to prevent blocking VPC deletion
-    negs=$(gcloud compute network-endpoint-groups list \
-      --filter="network:${vpc_name}" \
-      --project="${gcp_project}" \
-      --format="value(name)" 2>/dev/null || true)
-    if [[ -n "${negs}" ]]; then
-      log_warn "Timeout waiting for NEGs. Force-deleting remaining NEGs..."
-      # value() output is tab-separated and never emits a header row (unlike
-      # csv[no-header], which leaked a literal "name,zone" line here); zone is
-      # returned as a full self-link URL, so .basename() trims it to the bare
-      # zone name that `delete --zone` expects.
-      gcloud compute network-endpoint-groups list \
-        --filter="network:${vpc_name}" \
-        --project="${gcp_project}" \
-        --format="value(name,zone.basename())" 2>/dev/null | while read -r name zone; do
-          if [[ -n "${name}" && -n "${zone}" ]]; then
-            log_info "Force-deleting NEG '${name}' in zone '${zone}'..."
-            gcloud compute network-endpoint-groups delete "${name}" \
-              --zone="${zone}" \
-              --project="${gcp_project}" \
-              --quiet || log_warn "Failed to delete NEG '${name}' - terraform destroy of the VPC may fail."
-          fi
-        done
-    fi
+    # --- L3: dependency-ordered force-delete of any survivors -----------------
+    gcloud compute network-endpoint-groups list --filter="network:${vpc_name}" --project="${gcp_project}" \
+      --format="value(name,zone.basename())" 2>/dev/null | while read -r name zone; do
+        [[ -n "${name}" && -n "${zone}" ]] && _force_delete_neg "${name}" "${zone}"
+      done
   fi
 fi
 
