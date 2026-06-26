@@ -263,8 +263,8 @@ argocd/                      ArgoCD Applications/ApplicationSets + app-of-apps (
 infrastructure/              engine-neutral platform manifests applied by 01-namespaces / 08.5-argocd: NetworkPolicies (default/-jenkins/-tekton), Gateway, Karpenter, scheduling, Argo Rollouts Gateway-API RBAC, secrets
 scripts/                     00-09 numbered steps + up.sh / down.sh / status.sh
 terraform/gke/               throwaway GKE cluster for test/e2e.sh
-terraform/bootstrap/         one-time setup for GitHub Actions automation (state bucket + WIF)
-terraform/gateway-bootstrap/ one-time setup for public access (static IP + managed certificate)
+terraform/bootstrap/         one-time setup for GitHub Actions automation (state bucket + WIF + permanent public DNS zone)
+terraform/gateway-bootstrap/ one-time setup for public access (static IP + managed certificate + DNS records in the zone)
 scripts/08.5-argocd.sh       ArgoCD installation and OIDC configuration
 test/                        e2e.sh (provision → up.sh → smoke-test.sh → down.sh → destroy)
 .github/workflows/           DayN.tier.ZZ-resource.yml — see 101. GitHub Actions Workflows
@@ -559,6 +559,13 @@ graph TD
         User["User / Browser"]
     end
 
+    subgraph DNS ["DNS (Terraform-managed, idempotent)"]
+        ParentNS["Parent domain (Squarespace)<br/>NS jenkins2026 → delegated zone<br/>(one-time delegation)"]
+        Zone["Permanent Cloud DNS zone<br/>jenkins-2026-public-zone<br/>(terraform/bootstrap)"]
+        WildcardA["*.jenkins2026...com  A → static IP<br/>(records: gateway-bootstrap)"]
+        ParentNS --> Zone --> WildcardA
+    end
+
     subgraph GlobalLB ["Global L7 Load Balancer"]
         StaticIP["Static IP<br>jenkins-2026-gateway-ip"]
         CertMap["Cert Map<br>jenkins-2026-cert-map"]
@@ -584,6 +591,8 @@ graph TD
         PoolInfo["Spot Instances<br/>e2/n2/c2/c3 dynamic scaling"]
     end
 
+    User -->|"resolve host"| ParentNS
+    WildcardA -.->|"resolves to"| StaticIP
     User -->|"HTTPS"| StaticIP
     StaticIP --> CertMap
     CertMap --> WildcardTLS

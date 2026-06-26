@@ -43,12 +43,12 @@ The following diagram illustrates how the persistent infrastructure bootstrap wo
 ```mermaid
 graph TD
     subgraph Bootstrapping ["Day-0 · Phase 0 Create (persistent, one-time)"]
-        A["terraform/bootstrap<br>Owner/Admin roles"] -->|"WIF + GCS bucket"| B["Workload Identity<br>+ Remote State"]
+        A["terraform/bootstrap<br>Owner/Admin roles"] -->|"WIF + GCS bucket<br>+ permanent DNS zone"| B["Workload Identity<br>+ Remote State<br>+ DNS zone"]
         B --> C["Day0.infra.01 Gateway<br>bootstrap<br>🔒 gateway-bootstrap"]
         B --> D["Day0.infra.02 Grafana Cloud<br>bootstrap<br>🔒 grafana-cloud-bootstrap"]
         B --> C2["Day0.infra.03 Azure<br>bootstrap<br>🔒 azure-bootstrap"]
         B --> C3["Day0.infra.04 AWS<br>bootstrap<br>🔒 aws-bootstrap"]
-        C -->|"static IP + cert"| F[("Gateway<br>+ Cert Map")]
+        C -->|"static IP + cert<br>+ DNS records in the zone"| F[("Gateway<br>+ Cert Map<br>+ A/CNAME records")]
         D -->|"stack ID + token"| E[("Grafana Cloud")]
     end
 
@@ -100,10 +100,14 @@ graph TD
 > (`Day0.infra.0{2,3,4}` via `workflow_call`, gated by `if: observability_mode==…`),
 > so the selected backend is created for you. It does **not** bootstrap the
 > **Gateway**: `Day0.infra.01` is a one-time Day0 step that creates the
-> **DNS-coupled** persistent resources (static IP you wire into your DNS A-records,
-> wildcard cert map). Inside `provision`, `scripts/09-gateway.sh` only creates the
-> **in-cluster** `Gateway`/`HTTPRoute` objects, which **reference** that static IP +
-> cert map **by name** — it does not create them.
+> persistent resources (static IP, wildcard cert map) **and the wildcard-A +
+> cert-validation records inside the permanent delegated DNS zone** (the zone
+> itself lives in `terraform/bootstrap` — see [100](./100-BOOTSTRAP.md)). So DNS is
+> Terraform-managed, not hand-wired: the only manual DNS step is a one-time `NS`
+> delegation of `base_domain` at your parent domain. Inside `provision`,
+> `scripts/09-gateway.sh` only creates the **in-cluster** `Gateway`/`HTTPRoute`
+> objects, which **reference** that static IP + cert map **by name** — it does not
+> create them.
 >
 > **Why the asymmetry:** the Gateway IP/cert are meant to **survive cluster
 > rebuilds** (so DNS never has to re-propagate). That is exactly why the

@@ -50,7 +50,8 @@ flowchart LR
     BS --> WIF["WIF trust<br/>+ CI service account"]
     BS --> BUCKET[("GCS state bucket")]
     BS --> SECRETS["4 GitHub repo secrets"]
-    WIF & BUCKET & SECRETS --> GHA["GitHub Actions<br/>(Day0 / Day1 / Day2 / Decom)"]
+    BS --> DNS["Permanent public DNS zone<br/>(delegate once at parent domain)"]
+    WIF & BUCKET & SECRETS & DNS --> GHA["GitHub Actions<br/>(Day0 / Day1 / Day2 / Decom)"]
     GHA -->|"authenticate via WIF,<br/>store state in the bucket"| GCP[("Your GCP project")]
     classDef seed fill:#ffd,stroke:#aa0,stroke-width:2px;
     class BS seed;
@@ -145,7 +146,7 @@ sequenceDiagram
     U->>S: ./scripts/bootstrap.sh up
     S->>G: check gcloud user, ADC, gh — prompt login only if missing
     S->>U: ask GCP project ID (region/repo have defaults)
-    S->>T: init + apply (LOCAL state) → create bucket + WIF + SA
+    S->>T: init + apply (LOCAL state) → create bucket + WIF + SA + DNS zone
     S->>T: write backend_override.tf → init -migrate-state → state now in the bucket
     S->>C: gh secret set ×4 (from Terraform outputs)
     S->>U: ✓ Root ready — GitHub Actions can now run
