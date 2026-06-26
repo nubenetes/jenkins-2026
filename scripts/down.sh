@@ -240,6 +240,28 @@ else
   log_info "Namespaces left in place. Set J2026_DELETE_NAMESPACES=true to remove them too."
 fi
 
+# Final drain-prep — guarantee the upcoming GKE node-pool drain (run by the
+# `terraform destroy` step AFTER this script) cannot stall. That drain gracefully
+# evicts pods respecting PodDisruptionBudgets; CNPG's postgres PDB has ALLOWED
+# DISRUPTIONS: 0 and is RE-created by its operator — especially once ArgoCD is
+# uninstalled above and can't finish the cascade-prune — so the up-front blanket
+# PDB delete isn't enough and the drain hangs past terraform's timeout (the
+# DELETE_NODE_POOL op stays RUNNING; see run 28233699049). Since the whole cluster
+# is about to be destroyed, forcibly clear the blockers: scale workload
+# controllers to 0 (stop pod/PDB recreation), drop EVERY PDB, then force-delete
+# EVERY pod — the drain then finds nothing to evict and completes promptly. All
+# best-effort; never blocks teardown.
+if kubectl version >/dev/null 2>&1; then
+  log_step "Final drain-prep: stop controllers + clear PDBs + force-delete pods (so the node-pool drain can't stall)"
+  kubectl get ns -o name 2>/dev/null | sed 's#^namespace/##' \
+    | grep -vE '^(kube-system|kube-node-lease|kube-public|gke-managed|gmp-)' \
+    | while read -r _ns; do
+        kubectl scale deployment,statefulset -n "${_ns}" --all --replicas=0 2>/dev/null || true
+      done
+  kubectl delete pdb --all --all-namespaces --ignore-not-found 2>/dev/null || true
+  kubectl delete pods --all --all-namespaces --grace-period=0 --force 2>/dev/null || true
+fi
+
 if command -v gcloud &>/dev/null; then
   # Try to get active GCP project from gcloud config or environment
   gcp_project="$(gcloud config get-value project 2>/dev/null || true)"

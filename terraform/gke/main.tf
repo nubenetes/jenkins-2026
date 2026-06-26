@@ -214,6 +214,16 @@ resource "google_container_node_pool" "primary" {
     auto_upgrade = true
   }
 
+  # Deleting a node pool gracefully drains it (evicting pods, respecting PDBs +
+  # terminationGracePeriod). down.sh's final drain-prep removes the usual
+  # blockers, but give GCP comfortable headroom so a slow drain still completes
+  # within terraform's wait instead of erroring at the 30m default (the op keeps
+  # RUNNING and finishes anyway — a re-run then converges, but this avoids the
+  # spurious failure). See scripts/down.sh § Final drain-prep.
+  timeouts {
+    delete = "60m"
+  }
+
   node_config {
     machine_type    = var.machine_type
     disk_size_gb    = var.disk_size_gb
