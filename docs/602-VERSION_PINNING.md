@@ -40,7 +40,7 @@ This isn't theoretical — every floating version here has bitten us at least on
 |---|---|---|---|
 | **Jenkins** chart | `5.9.29` | `config/config.yaml` `jenkins.chart.version` | ArgoCD `targetRevision` ([`jenkins-app.yaml`](../argocd/jenkins-app.yaml)) |
 | **Jenkins plugins** (full set, exact) | per [`helm/jenkins/values-common.yaml`](../helm/jenkins/values-common.yaml) `controller.installPlugins` | same file | `jenkins-plugin-cli`-resolved against `controller.image.tag`; **bump deliberately** — incl. for security advisories (see below) |
-| **ArgoCD** *(exception)* | **tracks `3.5.x`** | `config/config.yaml` `argocd.version_constraint` | runtime resolve + daily watcher — see below |
+| **ArgoCD** *(policy)* | **latest stable `3.4.x`** + chart `9.5.22` | `config/config.yaml` `argocd.version_constraint` + `chartVersion` | runtime resolve + daily watcher — see below |
 | **OTel operator** chart | `0.117.0` | `config.yaml` `observability.otelOperator.chart.version` | `helm --version` in [`02-otel-operator.sh`](../scripts/02-otel-operator.sh) |
 | **OTel collector** chart | `0.159.0` | `config.yaml` `observability.otelCollector.chart.version` | `helm --version` in [`03-observability.sh`](../scripts/03-observability.sh) |
 | **grafana/k8s-monitoring** | `4.1.6` | `03-observability.sh` (`--version`) | grafana-cloud mode only |
@@ -61,30 +61,50 @@ This isn't theoretical — every floating version here has bitten us at least on
 > ever blanked it falls back to the chart repo's latest (same as before the pin), so
 > the pin is additive and can't break the install.
 
-## The ArgoCD exception — deliberate 3.5.x tracking
+## The ArgoCD version policy — pinned to stable 3.4.x
 
-ArgoCD is intentionally **not** hard-pinned: we track the **`3.5.x`** line to get its
-new features *and* its ongoing patches (3.5.0 currently ships only as a release
-candidate that is being patched). The trade-off — less deterministic than a pin — is
-accepted **for ArgoCD only**. Three mechanisms keep it current, all reading the same
-`config/config.yaml` `argocd.version_constraint`:
+ArgoCD is **not** hard-pinned to a single patch like the rest of the stack; it **tracks
+the latest stable `3.4.x`** (the newest *GA* patch of the 3.4 line, picked up
+automatically). It is **deliberately NOT on the 3.5 line**: `3.5.0` has **no GA yet**
+(only release candidates), and **`v3.5.0-rc1` shipped multiple controller bugs** that
+broke this stack:
 
-1. **Day1** (`scripts/08.5-argocd.sh` → `resolve_argocd_version`): at install it queries
-   the GitHub Releases API and picks the **latest stable** `3.5.x` (e.g. `v3.5.1`), or
-   the **newest rc** while no `3.5.x` GA exists yet. So the moment `v3.5.0` GA ships, a
-   fresh Day1 installs it; later `v3.5.x` patches likewise.
-2. **Day2** (`Day2.redeploy.01-argocd`): re-runs `08.5-argocd.sh` → same resolution, in
-   place, without recreating the cluster.
+- the Lua health-check sandbox lacked the `string` library → a `string.find` in our CNPG
+  `Cluster` health check raised a **`ComparisonError`**, leaving `microservices-stable`
+  stuck `Unknown` (see [902](./902-TROUBLESHOOTING.md));
+- completed Helm-**hook** Jobs weren't recognised under **k8s 1.35** Job conditions → the
+  kube-prometheus-stack admission-webhook hooks never "completed" and **wedged every sync**;
+- sync operations themselves wedged in `Running`.
+
+So we run the **stable 3.4 line** until 3.5 is GA. The old `version_constraint: "3.5.x"`
+auto-resolved to the **rc** precisely because 3.5 has no GA (the resolver falls back to
+rc when no GA matches); `"3.4.x"` only ever resolves to a **GA**, so we get stable
+patches automatically and **never an rc**.
+
+Two version knobs, both under `config/config.yaml` `argocd`:
+- **`version_constraint: "3.4.x"`** — the **image** (binary) tracks the latest 3.4.x GA.
+- **`chartVersion: "9.5.22"`** — the **argo-cd Helm chart** is pinned to the 3.4.x line
+  (chart `9.5.x` ships ArgoCD `3.4.x`; `9.6+`/`10.x` ship `3.5.x`/`3.6.x`). Pinned so the
+  chart's bundled CRDs/RBAC/templates match the pinned binary — otherwise
+  `08.5-argocd.sh` installs the *latest* chart, pairing 3.5/3.6 CRDs with a 3.4 binary.
+
+Three mechanisms keep the **image** current within 3.4.x, all reading the same constraint:
+
+1. **Day1** (`scripts/08.5-argocd.sh` → `resolve_argocd_version`): queries the GitHub
+   Releases API and picks the **latest stable** `3.4.x` (e.g. `v3.4.4`).
+2. **Day2** (`Day2.redeploy.01-argocd`): re-runs `08.5-argocd.sh` → same resolution, in place.
 3. **Automatic, no re-run** ([`argocd-version-patch-watcher.yaml`](../argocd/argocd-version-patch-watcher.yaml)):
-   a daily CronJob in the `argocd` namespace resolves the latest `3.5.x` and, if it
-   differs from the running `argocd-server` image, **live-patches** every ArgoCD
-   Deployment/StatefulSet to the new tag. GA preferred, rc fallback.
+   a daily CronJob resolves the latest `3.4.x` and live-patches the ArgoCD workloads if the
+   running image differs. The constraint is **templated from config** by `08.5-argocd.sh`
+   (`__ARGOCD_CONSTRAINT__`), so Day1, Day2 and the watcher never drift.
 
-The watcher's constraint is **templated from config** by `08.5-argocd.sh` (it
-substitutes `__ARGOCD_CONSTRAINT__`), so Day1, Day2 and the watcher can never drift —
-change `argocd.version_constraint` in one place and all three follow. To go back to a
-hard pin (e.g. once 3.5 stabilises), set the constraint to an exact `3.5.N` line and/or
-remove the watcher.
+> **⚠️ Moving to 3.5.x (ONLY when `3.5.0` is GA):** bump `argocd.version_constraint` →
+> `"3.5.x"`, `argocd.version` → the GA tag, **and** `argocd.chartVersion` → the matching
+> `9.6+`/`10.x` chart **together** (chart + binary must move together). Then **re-verify
+> the features that were disabled to dodge the rc1 bugs**: re-confirm the
+> kube-prometheus-stack `admissionWebhooks` (re-enabled in
+> `observability/grafana/values-oss.yaml`) sync cleanly and the CNPG `Cluster` health
+> check still computes. Do NOT move while 3.5 is still rc.
 
 ## GitHub Actions: SHA pins + Dependabot
 

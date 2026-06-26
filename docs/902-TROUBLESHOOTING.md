@@ -22,7 +22,7 @@
 
 The cluster runs GKE Dataplane V2 (Cilium/eBPF), so NetworkPolicies actually enforce (see [501 § Zero-Trust](./501-PLATFORM_OPERATIONS.md)). A few things look like failures but are expected/self-healing:
 
-- **`microservices-stable` shows ArgoCD health `Unknown` (even when everything works)**: expected, not a failure. ArgoCD has no health assessment for the CloudNativePG `Cluster`/`Pooler` and OpenTelemetry `Instrumentation` CRs the app owns, so the aggregate app health stays `Unknown` while the actual workloads are fine. Verify with `kubectl -n microservices get deploy` (gateway + jhipster `Available`). `scripts/up.sh` therefore gates the pre-OTel-injection wait on the **Deployments becoming Available**, not on app health (waiting on `Healthy` used to burn the full 10-minute timeout every run).
+- **`microservices-stable` shows ArgoCD health `Unknown` (even when everything works)**: ArgoCD ships **no** built-in health assessment for the CloudNativePG `Cluster`/`Pooler`/`ScheduledBackup` and OpenTelemetry `Instrumentation` CRs the app owns, so the aggregate app health rolled up to `Unknown` (the rollup takes the worst status, and `Unknown` is worst) even though every underlying workload was fine. **Fixed** by custom Lua health checks for those CRDs in [`helm/argocd-values.yaml`](../helm/argocd-values.yaml) (`configs.cm.resource.customizations.health.<group>_<kind>`) — the CNPG `Cluster` reports `Healthy` once its phase is `Cluster in healthy state`, the rest report `Healthy` on reconcile, so the app now goes **Healthy**. To pick the change up on a running cluster: re-run `scripts/08.5-argocd.sh` (or `Day1`), then `kubectl annotate application microservices-stable -n argocd argocd.argoproj.io/refresh=hard --overwrite`. Independently, `scripts/up.sh` still gates the pre-OTel-injection wait on the **Deployments becoming Available** (not on app health) — robust even for CRDs without a health check, and waiting on `Healthy` used to burn the full 10-minute timeout. Verify the workloads directly with `kubectl -n microservices get deploy` (gateway + jhipster `Available`).
 
 - **`tekton-pipelines` ArgoCD app `SyncFailed` with `config.webhook.pipeline.tekton.dev` / `tls: unrecognized name` / `x509`**: the Tekton webhook self-issues its serving cert, and on a fresh cluster ArgoCD can first-sync the Tekton config ConfigMaps before that cert exists. This **self-heals**, no manual step: the `tekton-pipelines` app has `syncPolicy.retry` (auto-retry with backoff) so the sync converges once the webhook is up, and it **no longer uses `Replace=true`** — `Replace` used to `kubectl replace` every object on each sync, which re-triggered the webhook and blanked the caBundle (that was also why a **manual** Sync failed even while the app showed Synced/Healthy). If you ever want to force it: `kubectl -n tekton-pipelines rollout restart deploy/tekton-pipelines-webhook`.
 
@@ -120,6 +120,73 @@ gcloud compute disks list --project "$PROJECT" \
 | while read -r DISK ZONE; do gcloud compute disks delete "$DISK" --zone "$ZONE" --quiet; done
 ```
 
+### Container-native LB NEGs block the VPC delete (a NEG-delete timeout is normal)
+
+The Gateway uses **container-native load balancing**: each backing Service gets a **NEG**
+(Network Endpoint Group). GCP refuses to delete a NEG while a backend service references it,
+and a leftover NEG references the VPC subnet — so it **blocks `terraform/gke`'s VPC delete**.
+A *timeout deleting a NEG during teardown is expected*, not an error: NEGs are GC'd
+**asynchronously** by the GKE controller, so `down.sh` gives it time then forces the rest.
+The teardown is **layered** (defense-in-depth — the layers are complementary, not exclusive):
+
+- **L1 — precise GC.** `down.sh` deletes the HTTPRoutes + Gateway with a finalizer-wait
+  (`kubectl delete … --timeout`), so the GKE controller releases the whole L7 LB chain
+  (forwarding-rule → proxy → url-map → backend-service → NEG) **while the cluster is still
+  alive**. The clean path — most NEGs disappear here.
+- **L2 — absorb async.** Poll up to **10 min** for the controller's async GC to finish (it
+  can lag under load).
+- **L3 — dependency-safe backstop.** Force-delete any survivors **in dependency order**: for
+  each stuck NEG, delete the forwarding-rules → target-proxies → url-maps → backend-services
+  that reference it, *then* the NEG — so the delete never fails with "resource in use"
+  (deleting just the NEG would).
+
+**Anti-pattern to avoid:** do **not** destroy the cluster first to "skip" the NEG cleanup —
+that kills the controller, orphans the NEGs, and L3 then races leftover backends. The order
+(clean up while the cluster is alive → destroy the cluster last) is deliberate. If
+`terraform destroy` ever still fails on the VPC with a NEG in use, **re-run `down.sh`**
+(idempotent) — by then the controller has usually finished and the NEG drains. Manual one-off:
+
+```bash
+gcloud compute network-endpoint-groups list --filter="network:jenkins-2026-vpc"
+# find the backend-service pinning a stuck NEG, delete it (--global), then delete the NEG:
+gcloud compute backend-services list --format=json \
+  | jq -r '.[]|select([.backends[]?.group//""]|any(contains("<neg-name>")))|.name'
+gcloud compute network-endpoint-groups delete <neg-name> --zone <zone>
+```
+
+## CNPG Postgres WAL backups to GCS fail (`ContinuousArchiving=False`)
+
+**Symptom:** the microservices Postgres works, but the CNPG `Cluster` reports
+`ContinuousArchiving=False` and the operator/instance logs show
+`barman-cloud-wal-... "Project was not passed and could not be auto-detected"`;
+nothing lands in the `*-jenkins-2026-postgres-backups` GCS bucket. App health is
+unaffected (postgres still serves on 5432).
+
+**Cause:** the GitOps chart's `templates/postgres.yaml` reads
+`global.gcpProject` / `global.gcpServiceAccount` / `global.gcsBackupBucket`, but
+`values-stable.yaml` left them unset, so it rendered the **placeholder defaults**
+(`jenkins-2026-sa@jenkins-2026` for the `serviceAccountTemplate` Workload-Identity
+annotation, `gs://jenkins-2026-postgres-backups` for `destinationPath`). The KSA
+was therefore annotated with a **GSA in a non-existent project** → the postgres
+pods got no GCP identity → barman couldn't authenticate or detect the project.
+
+**Fix (infra-side; the GitOps repo is untouched — the AppSet helm params override
+the chart placeholders at deploy):**
+1. `terraform/gke` creates a least-privilege GSA `jenkins-2026-pg-backups`
+   (`roles/storage.objectAdmin` on the backups bucket) + Workload-Identity bindings
+   for each CNPG Cluster KSA (`microservices/postgres-gateway`,
+   `microservices/postgres-jhipstersamplemicroservice`) — same pattern as the ESO GSA.
+2. `argocd/microservices-appset.yaml` passes `global.gcpProject` /
+   `gcpServiceAccount` / `gcsBackupBucket` as helm parameters, substituted from the
+   real project in `scripts/08.5-argocd.sh`.
+3. `infrastructure/networkpolicies.yaml` allows the `microservices` namespace egress
+   to the node-local metadata server (`169.254.169.254:80/988`) so the pods can fetch
+   the WI token under the namespace default-deny.
+
+Apply with a **Day1 re-run** (Terraform creates the GSA + bindings; ArgoCD re-renders
+the AppSet). Verify: `kubectl get cluster -n microservices` shows
+`ContinuousArchiving=True` and objects appear under `gs://<project>-jenkins-2026-postgres-backups/<svc>/`.
+
 ## ArgoCD OIDC Issues
 
 **ArgoCD OIDC Login fails with `redirect_uri_mismatch` or `Invalid redirect URL`**:
@@ -145,6 +212,11 @@ The `EXIT` trap should still have run `terraform destroy`, but to be sure no bil
 **`Decom.infra.01 Gateway` fails on `terraform destroy` with `Error 403: Permission 'certificatemanager.certmapentries.delete' denied`**: the CI service account had `roles/certificatemanager.editor`, which — surprisingly — grants create/get/list/update but **no `.delete`** on *any* certificatemanager resource (certs/certmaps/certmapentries/dnsauthorizations). So the Gateway bootstrap could create the cert map but not tear it down. Fixed in `terraform/bootstrap` by switching to **`roles/certificatemanager.owner`** (includes the deletes). **This is a one-time, human-run bootstrap change** — re-run `terraform -chdir=terraform/bootstrap apply` to grant it, then re-run `Decom.infra.01` to finish removing the cert map/entry/cert/DNS-authorization (a failed destroy deletes the static IP first, leaving those behind in state + GCP).
 
 ## Jenkins & GitOps Push Issues
+
+**Seed job times out fetching the CSRF crumb (HTTP 401) right after switching to `secrets.backend=eso`**:
+- **Symptom**: `06-seed-pipelines.sh` logs `Timed out (5m) waiting for the Jenkins crumbIssuer API` / `seed-jobs attempt N failed`, even though `jenkins-0` is `2/2 Running`. A `curl -u admin:<pw>` against `/crumbIssuer/api/json` returns **401**.
+- **Cause**: switching an **existing** cluster to `eso` (or the first `imperative→eso` migration) seeds a **new** stable `admin-password` into `jenkins-credentials` (via `sm_keep_or_generate` → Secret Manager → ESO `Merge`), but the **already-running** Jenkins pod was configured by JCasC with the *old* password and didn't adopt the new one. The seed job authenticates with the Secret's (new) password → 401. The ESO side is fine (`ExternalSecret jenkins-credentials` is `SecretSynced`, the Secret has all keys).
+- **Fix**: restart Jenkins so JCasC re-applies `securityRealm` with the current Secret value — **`kubectl delete pod jenkins-0 -n jenkins`** (a `kubectl rollout restart` is reverted by ArgoCD's selfHeal, which manages the StatefulSet; deleting the pod is recreated cleanly). Verify: `PW=$(kubectl get secret jenkins-credentials -n jenkins -o jsonpath='{.data.admin-password}'|base64 -d); kubectl exec -n jenkins jenkins-0 -c jenkins -- curl -s -o /dev/null -w '%{http_code}' -u admin:"$PW" http://localhost:8080/crumbIssuer/api/json` → **200**, then relaunch Day1. This is a **one-time** event per cluster — the password is stable thereafter (see [201](./201-ARCHITECTURE.md) § Feature-flag convergence).
 
 **GitOps Push Authentication Failure (`exit code 128`) during Jenkins build**:
 - **Symptom**: A microservice build fails at the gitops promotion stage when executing `git push origin main` on the `jenkins-2026-gitops-config` repository.

@@ -13,6 +13,12 @@ Complete reference for every GitHub Actions secret and repository variable used 
 > (the per-app layout + the IAP replication constraint), see
 > [201 § Namespaces & in-cluster Secrets](201-ARCHITECTURE.md#namespaces--in-cluster-secrets).
 
+> **Secrets backend (`secrets.backend`)**: by default (`imperative`) these values
+> become k8s Secrets directly via `01-namespaces.sh`. With `secrets.backend=eso`
+> they are pushed to **GCP Secret Manager** and synced in by the **External Secrets
+> Operator** (keyless, versioned, Cloud-Audit-Logged). See
+> [201 § Secrets backend](201-ARCHITECTURE.md#secrets-backend-imperative--eso).
+
 ---
 
 ## 1. GCP / Core Infrastructure
@@ -33,7 +39,7 @@ The GCP project that hosts the GKE cluster, GCS state bucket, and the Workload I
 Full resource name of the Workload Identity Federation provider, e.g. `projects/123/locations/global/workloadIdentityPools/pool/providers/github`. Used by `google-github-actions/auth` to exchange the OIDC token for a GCP access token — no service account key ever stored.
 
 **`GCP_SERVICE_ACCOUNT`**
-Email of the CI service account impersonated via WIF, e.g. `ci@my-project.iam.gserviceaccount.com`. Its project roles are granted by [`terraform/bootstrap`](../terraform/bootstrap/main.tf) (the authoritative source): `container.admin`, `compute.networkAdmin`, `compute.loadBalancerAdmin`, `iam.serviceAccountAdmin`, `iam.serviceAccountUser`, `resourcemanager.projectIamAdmin`, `serviceusage.serviceUsageAdmin`, **`certificatemanager.owner`** (owner — *not* editor; editor lacks the `.delete` permissions, so the Gateway cert map couldn't be torn down — see [902](./902-TROUBLESHOOTING.md)), plus `storage.objectAdmin` on the state bucket and `iam.workloadIdentityUser` for the GitHub WIF binding.
+Email of the CI service account impersonated via WIF, e.g. `ci@my-project.iam.gserviceaccount.com`. Its project roles are granted by [`terraform/bootstrap`](../terraform/bootstrap/main.tf) (the authoritative source): `container.admin`, `compute.networkAdmin`, `compute.loadBalancerAdmin`, `iam.serviceAccountAdmin`, `iam.serviceAccountUser`, `resourcemanager.projectIamAdmin`, `serviceusage.serviceUsageAdmin`, **`certificatemanager.owner`** (owner — *not* editor; editor lacks the `.delete` permissions, so the Gateway cert map couldn't be torn down — see [902](./902-TROUBLESHOOTING.md)), **`dns.admin`** (manage the delegated public DNS zone's records in `gateway-bootstrap`), **`secretmanager.admin`** (push secret values to Secret Manager when `secrets.backend=eso`), plus `storage.objectAdmin` on the state bucket and `iam.workloadIdentityUser` for the GitHub WIF binding.
 
 **`TF_STATE_BUCKET`**
 Name of the GCS bucket used for Terraform remote state by `terraform/gke`, `terraform/grafana-cloud-token`, `terraform/azure-managed-grafana`, and `terraform/aws-managed-grafana`. Written into `backend_override.tf` at workflow runtime; never committed. Also holds the durable **`jenkins-2026/active-ci-engine`** object: `Day1.cluster.01-gke` writes the deployed CI engine there, and the cluster-decoupled dashboard publishers `Day2.publish.03-azure-grafana` / `Day2.publish.04-aws-grafana` read it (via read-only GCP auth) to gate the off-engine CI overview without needing cluster access.
@@ -147,7 +153,7 @@ IAM role with scoped permissions for `aws grafana create-workspace-api-key` and 
 
 ## 6. Jenkins OIDC / Google Sign-In
 
-Used by `Day1.cluster.01-gke` and `Day2.redeploy.02-jenkins`. Optional — without them Jenkins falls back to the local `admin` account (escape hatch).
+Used by `Day1.cluster.01-gke` (Jenkins JCasC OIDC sign-in). `JENKINS_OIDC_ADMIN_EMAIL` is additionally reused as an admin/notification identity by `Day2.redeploy.01-argocd`, `Day2.redeploy.04-headlamp`, `Day2.redeploy.05-gateway` and `Day2.publish.05-alerts`. Optional — without them Jenkins falls back to the local `admin` account (escape hatch).
 
 | Secret | Required | Description |
 |--------|----------|-------------|
@@ -210,7 +216,7 @@ Used by `Day1.cluster.01-gke` and `Day2.redeploy.03-tekton` when the Tekton CI e
 A shared-secret HMAC token GitHub signs webhook deliveries with, validated by the Tekton Triggers `EventListener`. Optional — empty by default; only needed if you expose the EventListener webhook so GitHub can trigger PipelineRuns. You generate it yourself (e.g. `openssl rand -hex 20`) and set it as a GitHub Actions secret **and** in the GitHub repo's webhook config. Consumed by `Day1.cluster.01-gke` and `Day2.redeploy.03-tekton`.
 
 **`PAC_WEBHOOK_SECRET`**
-The equivalent HMAC token for **Pipelines-as-Code** (the git-driven CI path, the default for the app repos). `scripts/01-namespaces.sh` writes it into the `pipelines-as-code-secret` (referenced by [`tekton/pac/repositories.yaml`](../tekton/pac/repositories.yaml)); empty by default, so PaC works unauthenticated until you set it and configure the matching GitHub webhook secret. Generate with `openssl rand -hex 20`. Consumed by `Day1.cluster.01-gke` and `Day2.redeploy.03-tekton`.
+The equivalent HMAC token for **Pipelines-as-Code** (the git-driven CI path, the default for the app repos). `scripts/01-namespaces.sh` writes it into the `pac-webhook` Secret (key `webhook.secret`, referenced by [`tekton/pac/repositories.yaml`](../tekton/pac/repositories.yaml)); empty by default, so PaC works unauthenticated until you set it and configure the matching GitHub webhook secret. Generate with `openssl rand -hex 20`. Consumed by `Day1.cluster.01-gke` and `Day2.redeploy.03-tekton`.
 
 ---
 

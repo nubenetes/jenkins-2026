@@ -33,72 +33,91 @@ jenkins_exec() {
 # Jenkins HTTP API is already serving - right after a (re)start curl can get an
 # empty reply (exit 52) or a 503 while Jenkins finishes booting/applying JCasC.
 # Poll the crumbIssuer until it returns a valid crumb instead of failing hard.
-log_step "Fetching CSRF crumb (waiting for the Jenkins HTTP API to serve)"
-jenkins_exec rm -f /tmp/seed-cookies.txt
-CRUMB=""
-DEADLINE=$(( SECONDS + 300 ))
-while [[ $SECONDS -lt $DEADLINE ]]; do
-  CRUMB_JSON="$(jenkins_exec curl -s --max-time 10 -c /tmp/seed-cookies.txt -u "${AUTH}" \
-      'http://localhost:8080/crumbIssuer/api/json' 2>/dev/null || true)"
-  CRUMB="$(printf '%s' "${CRUMB_JSON}" \
-    | python3 -c 'import sys,json; print(json.load(sys.stdin)["crumb"])' 2>/dev/null || true)"
-  [[ -n "${CRUMB}" ]] && break
-  sleep 3
+# The seed build is occasionally flaky: the git checkout streams its output back
+# over the agent↔controller JNLP channel, and a freshly-(re)started controller
+# still applying JCasC / loading plugins can drop that channel mid-checkout
+# ("Could not checkout <sha>" / ClosedChannelException) — the SAME repo+branch
+# passes on a calmer run. So (re)trigger the WHOLE build a few times before giving
+# up, fetching a fresh crumb each attempt (a controller restart between attempts
+# would otherwise leave a stale crumb). A real, persistent error still fails every
+# attempt and surfaces. Tune with SEED_MAX_ATTEMPTS.
+SEED_MAX_ATTEMPTS="${SEED_MAX_ATTEMPTS:-3}"
+
+# fetch_crumb -> sets CRUMB (+ session cookie jar). Returns 1 if the API never serves.
+fetch_crumb() {
+  log_step "Fetching CSRF crumb (waiting for the Jenkins HTTP API to serve)"
+  jenkins_exec rm -f /tmp/seed-cookies.txt
+  CRUMB=""
+  local deadline=$(( SECONDS + 300 )) crumb_json
+  while [[ $SECONDS -lt $deadline ]]; do
+    crumb_json="$(jenkins_exec curl -s --max-time 10 -c /tmp/seed-cookies.txt -u "${AUTH}" \
+        'http://localhost:8080/crumbIssuer/api/json' 2>/dev/null || true)"
+    CRUMB="$(printf '%s' "${crumb_json}" \
+      | python3 -c 'import sys,json; print(json.load(sys.stdin)["crumb"])' 2>/dev/null || true)"
+    [[ -n "${CRUMB}" ]] && break
+    sleep 3
+  done
+  [[ -n "${CRUMB}" ]] || { log_warn "Timed out (5m) waiting for the Jenkins crumbIssuer API"; return 1; }
+  return 0
+}
+
+# run_seed_build -> POST /build, wait for it to start, then finish. 0 only on SUCCESS.
+run_seed_build() {
+  log_step "Triggering the 'seed-jobs' pipeline"
+  local trig http queue build result deadline
+  # -i includes response headers so we can read the Location header for the queue item ID
+  trig="$(jenkins_exec curl -si -b /tmp/seed-cookies.txt -u "${AUTH}" \
+    -H "Jenkins-Crumb: ${CRUMB}" -X POST 'http://localhost:8080/job/seed-jobs/build')"
+  http="$(printf '%s' "${trig}" | head -1 | tr -d '\r\n' | awk '{print $2}')"
+  # Location is always .../queue/item/<id>/ regardless of the configured Jenkins root URL
+  queue="$(printf '%s' "${trig}" | grep -i '^Location:' | tr -d '\r' | grep -oE '[0-9]+/?$' | tr -d '/')"
+  log_info "HTTP ${http} — queue item #${queue}"
+  [[ -n "${queue}" ]] || { log_warn "Failed to parse queue item (HTTP ${http}) — crumb may have expired"; return 1; }
+
+  log_step "Waiting for seed-jobs build to start"
+  build=""; deadline=$(( SECONDS + 120 ))
+  while [[ $SECONDS -lt $deadline ]]; do
+    build="$(jenkins_exec curl -sg -u "${AUTH}" \
+        "http://localhost:8080/queue/item/${queue}/api/json" \
+      | python3 -c 'import sys,json; d=json.load(sys.stdin); exe=d.get("executable"); print(exe["number"] if exe else "")' \
+      2>/dev/null || true)"
+    [[ -n "${build}" ]] && break
+    sleep 2
+  done
+  [[ -n "${build}" ]] || { log_warn "Timed out (2m) waiting for the build to start (queue #${queue})"; return 1; }
+  log_info "seed-jobs build #${build} started"
+
+  log_step "Waiting for seed-jobs build #${build} to complete"
+  result=""; deadline=$(( SECONDS + 360 ))
+  while [[ $SECONDS -lt $deadline ]]; do
+    result="$(jenkins_exec curl -sg -u "${AUTH}" \
+        "http://localhost:8080/job/seed-jobs/${build}/api/json" \
+      | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("result") or "")' \
+      2>/dev/null || true)"
+    [[ -n "${result}" ]] && break
+    sleep 3
+  done
+  if [[ "${result}" == "SUCCESS" ]]; then
+    log_info "seed-jobs build #${build} succeeded"
+    return 0
+  fi
+  log_warn "seed-jobs build #${build} ended with: ${result:-TIMEOUT}"
+  return 1
+}
+
+seed_ok=false
+for attempt in $(seq 1 "${SEED_MAX_ATTEMPTS}"); do
+  log_step "seed-jobs: attempt ${attempt}/${SEED_MAX_ATTEMPTS}"
+  if fetch_crumb && run_seed_build; then seed_ok=true; break; fi
+  if [[ "${attempt}" -lt "${SEED_MAX_ATTEMPTS}" ]]; then
+    log_warn "seed-jobs attempt ${attempt} failed (flaky agent/controller channel) — retrying in 10s…"
+    sleep 10
+  fi
 done
-if [[ -z "${CRUMB}" ]]; then
-  log_error "Timed out (5m) waiting for the Jenkins crumbIssuer API to respond"
+if [[ "${seed_ok}" != "true" ]]; then
+  log_error "seed-jobs failed after ${SEED_MAX_ATTEMPTS} attempts — check the build console in Jenkins (job/seed-jobs)."
   exit 1
 fi
-
-log_step "Triggering the 'seed-jobs' pipeline"
-# -i includes response headers so we can read the Location header for the queue item ID
-TRIGGER_RESPONSE="$(jenkins_exec curl -si -b /tmp/seed-cookies.txt -u "${AUTH}" \
-  -H "Jenkins-Crumb: ${CRUMB}" -X POST 'http://localhost:8080/job/seed-jobs/build')"
-HTTP_STATUS="$(printf '%s' "${TRIGGER_RESPONSE}" | head -1 | tr -d '\r\n' | awk '{print $2}')"
-# Location is always .../queue/item/<id>/ regardless of configured Jenkins root URL
-QUEUE_ITEM_ID="$(printf '%s' "${TRIGGER_RESPONSE}" | grep -i '^Location:' | tr -d '\r' | grep -oE '[0-9]+/?$' | tr -d '/')"
-log_info "HTTP ${HTTP_STATUS} — queue item #${QUEUE_ITEM_ID}"
-
-if [[ -z "${QUEUE_ITEM_ID}" ]]; then
-  log_error "Failed to parse queue item from trigger response (HTTP ${HTTP_STATUS})"
-  exit 1
-fi
-
-log_step "Waiting for seed-jobs build to start"
-BUILD_NUM=""
-DEADLINE=$(( SECONDS + 120 ))
-while [[ $SECONDS -lt $DEADLINE ]]; do
-  BUILD_NUM="$(jenkins_exec curl -sg -u "${AUTH}" \
-      "http://localhost:8080/queue/item/${QUEUE_ITEM_ID}/api/json" \
-    | python3 -c 'import sys,json; d=json.load(sys.stdin); exe=d.get("executable"); print(exe["number"] if exe else "")' \
-    2>/dev/null || true)"
-  [[ -n "${BUILD_NUM}" ]] && break
-  sleep 2
-done
-
-if [[ -z "${BUILD_NUM}" ]]; then
-  log_error "Timed out (2m) waiting for seed-jobs build to start (queue item #${QUEUE_ITEM_ID})"
-  exit 1
-fi
-log_info "seed-jobs build #${BUILD_NUM} started"
-
-log_step "Waiting for seed-jobs build #${BUILD_NUM} to complete"
-BUILD_RESULT=""
-DEADLINE=$(( SECONDS + 360 ))
-while [[ $SECONDS -lt $DEADLINE ]]; do
-  BUILD_RESULT="$(jenkins_exec curl -sg -u "${AUTH}" \
-      "http://localhost:8080/job/seed-jobs/${BUILD_NUM}/api/json" \
-    | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("result") or "")' \
-    2>/dev/null || true)"
-  [[ -n "${BUILD_RESULT}" ]] && break
-  sleep 3
-done
-
-if [[ "${BUILD_RESULT}" != "SUCCESS" ]]; then
-  log_error "seed-jobs build #${BUILD_NUM} ended with: ${BUILD_RESULT:-TIMEOUT}"
-  exit 1
-fi
-log_info "seed-jobs build #${BUILD_NUM} succeeded"
 
 log_step "Verifying Microservices pipeline jobs were created"
 expected=0

@@ -30,7 +30,7 @@ To keep operating costs low and deployment speed high, this project separates th
    - Applies the Grafana Cloud stack (`terraform/grafana-cloud-stack`, generated slug). By decoupling the metrics/tracing backend from the GKE cluster, your logs, metrics, and trace history survive multiple cluster spin-ups and tear-downs (the GKE decommission `Decom.cluster.01` leaves the stack intact; only `Decom.infra.02` destroys it).
 
 4. **Persistent Database Backups Storage (`terraform/bootstrap`)**:
-   - **Postgres Backups Bucket**: Configures the persistent GCS bucket `jenkins-2026-postgres-backups` with automated storage lifecycles (transition to `NEARLINE` after 3 days, delete after 7 days) to preserve backup histories across throwaway GKE lifecycle runs.
+   - **Postgres Backups Bucket**: Configures the persistent GCS bucket `<project>-jenkins-2026-postgres-backups` (project-scoped — GCS bucket names share one global namespace, so the project-ID prefix keeps it collision-proof across rebuilds, like the Terraform state bucket) with automated storage lifecycles (transition to `NEARLINE` after 3 days, delete after 7 days) to preserve backup histories across throwaway GKE lifecycle runs.
    - **Access Security**: Grants the GHA CI service accounts `storage.admin` permissions to manage bucket-level IAM policy bindings, enabling dynamic node service account access configuration during GKE provision runs.
 
 ## Workflow Architecture & Lifecycle Diagram
@@ -43,12 +43,12 @@ The following diagram illustrates how the persistent infrastructure bootstrap wo
 ```mermaid
 graph TD
     subgraph Bootstrapping ["Day-0 · Phase 0 Create (persistent, one-time)"]
-        A["terraform/bootstrap<br>Owner/Admin roles"] -->|"WIF + GCS bucket"| B["Workload Identity<br>+ Remote State"]
+        A["terraform/bootstrap<br>Owner/Admin roles"] -->|"WIF + GCS bucket<br>+ permanent DNS zone"| B["Workload Identity<br>+ Remote State<br>+ DNS zone"]
         B --> C["Day0.infra.01 Gateway<br>bootstrap<br>🔒 gateway-bootstrap"]
         B --> D["Day0.infra.02 Grafana Cloud<br>bootstrap<br>🔒 grafana-cloud-bootstrap"]
         B --> C2["Day0.infra.03 Azure<br>bootstrap<br>🔒 azure-bootstrap"]
         B --> C3["Day0.infra.04 AWS<br>bootstrap<br>🔒 aws-bootstrap"]
-        C -->|"static IP + cert"| F[("Gateway<br>+ Cert Map")]
+        C -->|"static IP + cert<br>+ DNS records in the zone"| F[("Gateway<br>+ Cert Map<br>+ A/CNAME records")]
         D -->|"stack ID + token"| E[("Grafana Cloud")]
     end
 
@@ -100,10 +100,14 @@ graph TD
 > (`Day0.infra.0{2,3,4}` via `workflow_call`, gated by `if: observability_mode==…`),
 > so the selected backend is created for you. It does **not** bootstrap the
 > **Gateway**: `Day0.infra.01` is a one-time Day0 step that creates the
-> **DNS-coupled** persistent resources (static IP you wire into your DNS A-records,
-> wildcard cert map). Inside `provision`, `scripts/09-gateway.sh` only creates the
-> **in-cluster** `Gateway`/`HTTPRoute` objects, which **reference** that static IP +
-> cert map **by name** — it does not create them.
+> persistent resources (static IP, wildcard cert map) **and the wildcard-A +
+> cert-validation records inside the permanent delegated DNS zone** (the zone
+> itself lives in `terraform/bootstrap` — see [100](./100-BOOTSTRAP.md)). So DNS is
+> Terraform-managed, not hand-wired: the only manual DNS step is a one-time `NS`
+> delegation of `base_domain` at your parent domain. Inside `provision`,
+> `scripts/09-gateway.sh` only creates the **in-cluster** `Gateway`/`HTTPRoute`
+> objects, which **reference** that static IP + cert map **by name** — it does not
+> create them.
 >
 > **Why the asymmetry:** the Gateway IP/cert are meant to **survive cluster
 > rebuilds** (so DNS never has to re-propagate). That is exactly why the
@@ -175,17 +179,22 @@ When executing the **Day1.cluster.01 GKE provision** workflow manually, you are 
    - **Default**: `oss` (needs no external backend; `config/config.yaml`'s durable default is still `grafana-cloud` for local `up.sh`).
    - Overrides the `observability.mode` setting in `config/config.yaml` for this execution lifecycle. Exactly **one** backend is active per cluster and the choice is **deterministic/idempotent** (like `ci_engine`): a rerun with a different mode auto-retires the previously-deployed backend's in-cluster footprint and provisions the chosen one. See [301 § observability backends](301-OBSERVABILITY.md).
 
-3. **destroy_unused_backends (Checkbox - Boolean) — DESTRUCTIVE, opt-in**:
+3. **secrets_backend (Dropdown - Choice)**:
+   - **Type**: Choice (`imperative` | `eso`).
+   - **Default**: `imperative` (behaviour unchanged — `kubectl create secret` from the GitHub secrets).
+   - Overrides `secrets.backend`. `eso` pushes the secret values to **GCP Secret Manager** and the **External Secrets Operator** syncs them into the cluster via Workload Identity (keyless, versioned, audited). The whole `up.sh` lifecycle honours it. See [201 § Secrets backend](201-ARCHITECTURE.md#secrets-backend-imperative--eso).
+
+4. **destroy_unused_backends (Checkbox - Boolean) — DESTRUCTIVE, opt-in**:
    - **Default**: `false`.
    - When `true`, also `terraform destroy` the **persistent** backend (Grafana Cloud stack / Azure / AWS Managed Grafana) of every mode you did **not** select, so only the chosen backend exists. Reuses the `Decom.infra.0{2,3,4}` workflows via `workflow_call`; independent of the cluster provision (a destroy of a never-provisioned backend can't block it).
    - ⚠ **Irreversible**: wipes that backend's history/dashboards; re-selecting the mode later recreates it empty. Needs the non-selected backends' credentials/identifiers configured.
 
-4. **enable_gateway (Checkbox - Boolean)**:
+5. **enable_gateway (Checkbox - Boolean)**:
    - **Default**: `true`.
    - Determines whether the public GKE Gateway L7 load balancer should be provisioned.
    - **Prerequisites**: Requires `Day0.infra.01 Gateway bootstrap` applied, wildcard DNS records, and IAP OAuth client credentials.
 
-5. **git_ref (Text Box - String)**:
+6. **git_ref (Text Box - String)**:
    - **Default**: `""` (empty).
    - Leave empty to use the **"Use workflow from"** dropdown selection.
    - Provide a branch name, tag, or SHA to override.

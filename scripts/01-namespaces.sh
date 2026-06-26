@@ -9,6 +9,7 @@ set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/secrets.sh"
 
 log_step "Creating namespaces"
 # Always-on, engine-neutral namespaces. The shared GKE Gateway (the single
@@ -40,7 +41,27 @@ fi
 if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
 kubectl_apply_namespace "${J2026_JENKINS_NAMESPACE}"
 log_step "Ensuring '${J2026_JENKINS_CREDENTIALS_SECRET}' Secret in ${J2026_JENKINS_NAMESPACE}"
-if kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
+if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
+  # eso → seed the create-time/sensitive keys into Secret Manager. admin-password is
+  # kept STABLE across runs (sm_keep_or_generate) so Jenkins + grafana-jenkins-ds agree
+  # on it. ESO projects these with creationPolicy: Merge (08.6), so the URL keys patched
+  # below + the argocd-token patched by 08.5 survive. Merge needs the Secret to exist, so
+  # ensure an (empty) base for the merge-patches + ESO to target.
+  admin_password="$(sm_keep_or_generate "${J2026_JENKINS_CREDENTIALS_SECRET}" admin-password "${ADMIN_PASSWORD:-$(openssl rand -base64 24 | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c20)}")"
+  provision_secret "${J2026_JENKINS_NAMESPACE}" "${J2026_JENKINS_CREDENTIALS_SECRET}" \
+    "admin-password=${admin_password}" \
+    "grafana-base-url=${GRAFANA_BASE_URL:-}" \
+    "registry-username=${REGISTRY_USERNAME:-}" \
+    "registry-password=${REGISTRY_PASSWORD:-}" \
+    "git-username=${GIT_USERNAME:-}" \
+    "git-token=${GIT_TOKEN:-}" \
+    "oidc-client-id=${JENKINS_OIDC_CLIENT_ID:-}" \
+    "oidc-client-secret=${JENKINS_OIDC_CLIENT_SECRET:-}" \
+    "oidc-admin-email=${JENKINS_OIDC_ADMIN_EMAIL:-}"
+  kubectl create secret generic "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  log_info "Seeded ${J2026_JENKINS_CREDENTIALS_SECRET} into Secret Manager (admin-password stable) — ESO will Merge it."
+elif kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
   log_info "Secret already exists - leaving it untouched."
   log_info "(to rotate the admin password, delete the secret and re-run this script)"
 else
@@ -90,7 +111,17 @@ EOF
 fi  # end ci.engine=jenkins (jenkins namespace + credentials)
 
 log_step "Ensuring '${J2026_HEADLAMP_CREDENTIALS_SECRET}' Secret in ${J2026_HEADLAMP_NAMESPACE}"
-if kubectl get secret "${J2026_HEADLAMP_CREDENTIALS_SECRET}" -n "${J2026_HEADLAMP_NAMESPACE}" >/dev/null 2>&1; then
+if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
+  # eso → all 6 keys are deterministic (env client id/secret + config-derived OIDC
+  # settings) and single-writer, so push the whole blob; ESO projects it (Owner, 08.6).
+  provision_secret "${J2026_HEADLAMP_NAMESPACE}" "${J2026_HEADLAMP_CREDENTIALS_SECRET}" \
+    "OIDC_CLIENT_ID=${HEADLAMP_OIDC_CLIENT_ID:-}" \
+    "OIDC_CLIENT_SECRET=${HEADLAMP_OIDC_CLIENT_SECRET:-}" \
+    "OIDC_ISSUER_URL=${J2026_HEADLAMP_OIDC_ISSUER_URL}" \
+    "OIDC_SCOPES=${J2026_HEADLAMP_OIDC_SCOPES}" \
+    "OIDC_CALLBACK_URL=${J2026_HEADLAMP_OIDC_CALLBACK_URL}" \
+    "OIDC_USE_ACCESS_TOKEN=false"
+elif kubectl get secret "${J2026_HEADLAMP_CREDENTIALS_SECRET}" -n "${J2026_HEADLAMP_NAMESPACE}" >/dev/null 2>&1; then
   log_info "Secret already exists - leaving OIDC_CLIENT_ID/OIDC_CLIENT_SECRET untouched."
   log_info "(to rotate the OIDC client secret, delete the secret and re-run this script)"
   log_info "Refreshing non-sensitive OIDC config keys (issuer/scopes/callback/useAccessToken)."
@@ -149,17 +180,27 @@ else
   else
     iap_namespaces+=("${J2026_JENKINS_NAMESPACE}")
   fi
-  for ns in "${iap_namespaces[@]}"; do
-    if kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" >/dev/null 2>&1; then
-      log_info "Secret already exists in ${ns} - leaving it untouched."
-    else
-      kubectl create secret generic "${J2026_GATEWAY_IAP_SECRET}" \
-        -n "${ns}" \
-        --from-literal=client_id="${IAP_OAUTH_CLIENT_ID:-}" \
-        --from-literal=client_secret="${IAP_OAUTH_CLIENT_SECRET:-}"
-      log_info "Created in ${ns}."
-    fi
-  done
+  if [[ "${J2026_SECRETS_BACKEND}" == "eso" ]]; then
+    # ESO mode: push the value once to GCP Secret Manager. The per-namespace
+    # ExternalSecrets in infrastructure/secrets/eso-bootstrap.yaml project it into
+    # each iap_namespaces member; scripts/08.6-eso-sync.sh applies them and waits
+    # for the resulting Secrets to materialise before the consumers run.
+    provision_secret "${iap_namespaces[*]}" "${J2026_GATEWAY_IAP_SECRET}" \
+      "client_id=${IAP_OAUTH_CLIENT_ID:-}" \
+      "client_secret=${IAP_OAUTH_CLIENT_SECRET:-}"
+  else
+    for ns in "${iap_namespaces[@]}"; do
+      if kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" >/dev/null 2>&1; then
+        log_info "Secret already exists in ${ns} - leaving it untouched."
+      else
+        kubectl create secret generic "${J2026_GATEWAY_IAP_SECRET}" \
+          -n "${ns}" \
+          --from-literal=client_id="${IAP_OAUTH_CLIENT_ID:-}" \
+          --from-literal=client_secret="${IAP_OAUTH_CLIENT_SECRET:-}"
+        log_info "Created in ${ns}."
+      fi
+    done
+  fi
 fi
 
 # Tekton pipeline credentials (ci.engine=tekton). The pipeline ServiceAccount
@@ -189,50 +230,69 @@ if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
     log_warn "REGISTRY_USERNAME/REGISTRY_PASSWORD not set - Tekton image push will fail until configured."
     tk_dockercfg='{"auths":{}}'
   fi
-  kubectl create secret generic "${J2026_TEKTON_REGISTRY_SECRET}" \
-    -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
-    --type=kubernetes.io/dockerconfigjson \
-    --from-literal=.dockerconfigjson="${tk_dockercfg}" \
-    --dry-run=client -o yaml | kubectl apply -f -
+  if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
+    # eso → store the raw creds in Secret Manager; the ExternalSecret (08.6)
+    # rebuilds the dockerconfigjson via its target.template from these keys.
+    provision_secret "${J2026_TEKTON_PIPELINE_NAMESPACE}" "${J2026_TEKTON_REGISTRY_SECRET}" \
+      "username=${tk_reg_user}" "password=${tk_reg_pass}" "registry=${tk_reg_host}"
+  else
+    kubectl create secret generic "${J2026_TEKTON_REGISTRY_SECRET}" \
+      -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
+      --type=kubernetes.io/dockerconfigjson \
+      --from-literal=.dockerconfigjson="${tk_dockercfg}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+  fi
 
   if [[ -z "${tk_git_token}" ]]; then
     log_warn "GIT_TOKEN not set - Tekton git push (GitOps deploy) and SARIF upload will fail until configured."
   fi
-  kubectl create secret generic "${J2026_TEKTON_GIT_SECRET}" \
-    -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
-    --type=kubernetes.io/basic-auth \
-    --from-literal=username="${tk_git_user:-git}" \
-    --from-literal=password="${tk_git_token}" \
-    --dry-run=client -o yaml \
-    | kubectl annotate --local -f - tekton.dev/git-0=https://github.com -o yaml \
-    | kubectl apply -f -
+  if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
+    # eso → store username/password; the ExternalSecret (08.6) emits a basic-auth
+    # Secret with the tekton.dev/git-0 annotation via its target.template.
+    provision_secret "${J2026_TEKTON_PIPELINE_NAMESPACE}" "${J2026_TEKTON_GIT_SECRET}" \
+      "username=${tk_git_user:-git}" "password=${tk_git_token}"
+  else
+    kubectl create secret generic "${J2026_TEKTON_GIT_SECRET}" \
+      -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
+      --type=kubernetes.io/basic-auth \
+      --from-literal=username="${tk_git_user:-git}" \
+      --from-literal=password="${tk_git_token}" \
+      --dry-run=client -o yaml \
+      | kubectl annotate --local -f - tekton.dev/git-0=https://github.com -o yaml \
+      | kubectl apply -f -
+  fi
 
   # GitHub HMAC secret for the Triggers EventListener (tekton/triggers/). Optional
   # (the upstream JHipster repos aren't owned, so push webhooks can't target them);
   # created empty unless TEKTON_GITHUB_WEBHOOK_SECRET is provided, so the
   # EventListener's github interceptor reference resolves either way.
-  kubectl create secret generic tekton-github-webhook-secret \
-    -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
-    --from-literal=secretToken="${TEKTON_GITHUB_WEBHOOK_SECRET:-}" \
-    --dry-run=client -o yaml | kubectl apply -f -
+  # eso → push to Secret Manager (08.6 projects it back); imperative → kubectl
+  # upsert. provision_secret branches on the active backend internally.
+  provision_secret "${J2026_TEKTON_PIPELINE_NAMESPACE}" tekton-github-webhook-secret \
+    "secretToken=${TEKTON_GITHUB_WEBHOOK_SECRET:-}"
 
   # PaC (Pipelines-as-Code) webhook HMAC secret, referenced by the Repository
   # CRs (tekton/pac/) and shared with the GitHub repo webhooks created by
   # 06-tekton-pipelines.sh. Optional - empty unless PAC_WEBHOOK_SECRET is set.
-  kubectl create secret generic pac-webhook \
-    -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
-    --from-literal=webhook.secret="${PAC_WEBHOOK_SECRET:-}" \
-    --dry-run=client -o yaml | kubectl apply -f -
+  if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
+    # eso → seed the HMAC into Secret Manager, generated-if-absent and kept STABLE
+    # (06-tekton-pipelines shares it with the GitHub webhooks); ESO projects it (Owner).
+    pac_secret="$(sm_keep_or_generate pac-webhook webhook.secret "${PAC_WEBHOOK_SECRET:-$(openssl rand -hex 20)}")"
+    provision_secret "${J2026_TEKTON_PIPELINE_NAMESPACE}" pac-webhook "webhook.secret=${pac_secret}"
+  else
+    kubectl create secret generic pac-webhook \
+      -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
+      --from-literal=webhook.secret="${PAC_WEBHOOK_SECRET:-}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+  fi
 
   # Optional Grafana Cloud k6 (the k6-app) streaming for the k6-smoke Task. Created
   # empty unless K6_CLOUD_TOKEN is set, so the Task's optional secretKeyRef resolves
   # either way; the cloud output (--out cloud) only activates when both are present.
-  kubectl create secret generic k6-cloud \
-    -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
-    --from-literal=token="${K6_CLOUD_TOKEN:-}" \
-    --from-literal=project-id="${K6_CLOUD_PROJECT_ID:-}" \
-    --from-literal=grafana-base-url="${GRAFANA_BASE_URL:-}" \
-    --dry-run=client -o yaml | kubectl apply -f -
+  provision_secret "${J2026_TEKTON_PIPELINE_NAMESPACE}" k6-cloud \
+    "token=${K6_CLOUD_TOKEN:-}" \
+    "project-id=${K6_CLOUD_PROJECT_ID:-}" \
+    "grafana-base-url=${GRAFANA_BASE_URL:-}"
 fi
 
 # Jenkins SA 'edit' binding only when ci.engine=jenkins (no jenkins SA/namespace in
@@ -298,11 +358,18 @@ else
   dockerconfigjson='{"auths":{}}'
 fi
 for ns in "${J2026_MICROSERVICES_NS_STABLE}"; do
-  kubectl create secret generic ghcr-credentials \
-    -n "${ns}" \
-    --type=kubernetes.io/dockerconfigjson \
-    --from-literal=.dockerconfigjson="${dockerconfigjson}" \
-    --dry-run=client -o yaml | kubectl apply -f -
+  if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
+    # eso → store the raw creds in Secret Manager; the ExternalSecret (08.6)
+    # rebuilds the dockerconfigjson via its target.template from these keys.
+    provision_secret "${ns}" ghcr-credentials \
+      "username=${REGISTRY_USERNAME:-}" "password=${REGISTRY_PASSWORD:-}" "registry=${registry_host}"
+  else
+    kubectl create secret generic ghcr-credentials \
+      -n "${ns}" \
+      --type=kubernetes.io/dockerconfigjson \
+      --from-literal=.dockerconfigjson="${dockerconfigjson}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+  fi
 done
 
 log_step "Applying ResourceQuotas to limit scaling and costs"

@@ -34,9 +34,14 @@ spec:
   - Ingress
   - Egress
   ingress:
+  # 8080: the controller HTTP port — serves the GKE Gateway/LB + health checks AND
+  # the build agents' WebSocket connection (websocket: true in jcasc-base.yaml).
+  # Open (no `from`) so both the LB and any in-cluster agent pod can reach it.
   - ports:
     - protocol: TCP
       port: 8080
+  # 50000: the legacy direct-JNLP tcpSlaveAgentListener. Unused while agents connect
+  # over WebSocket (above), but kept as a harmless fallback for intra-ns agents.
   - from:
     - podSelector: {}
     ports:
@@ -53,8 +58,10 @@ spec:
   - {}
 ---
 # Jenkins build agents (Kubernetes-plugin pods, label jenkins=slave) are
-# OUTBOUND-ONLY: they connect to the controller (the 8080 tcpSlaveAgentListener
-# + JNLP 50000) and reach git/registry/ArgoCD/the microservices for builds. The
+# OUTBOUND-ONLY: they connect to the controller over WebSocket on its HTTP port
+# (8080; websocket: true in jcasc-base.yaml — chosen because WireGuard inter-node
+# encryption black-holes the raw JNLP4 TCP channel cross-node) and reach
+# git/registry/ArgoCD/the microservices for builds. The
 # default-deny above caps EVERY pod's egress at DNS, and jenkins-policy's open
 # egress only covers the controller (app.kubernetes.io/name=jenkins) — so without
 # this the agents can't even reach the controller and every build (starting with

@@ -16,6 +16,12 @@
 # then it MIGRATES its own state into that bucket (self-hosting, no fragile local
 # .tfstate) and sets the 4 GitHub repo secrets the workflows need.
 #
+# `up` is self-healing: before each apply it reconcile_imports() — if a prior seed
+# created these named singletons but its state was lost or never migrated, the
+# resources are imported into state instead of colliding (409 "already exists").
+# So a clean checkout on a new machine converges the existing root rather than
+# failing. See docs/100-BOOTSTRAP.md § FAQ.
+#
 # `down` is the symmetric "Decom of the root": it migrates state back to local,
 # terraform-destroys everything (force-emptying the state bucket), and removes
 # the 4 GitHub secrets. Run it only AFTER a full Decom of clusters + backends.
@@ -33,6 +39,16 @@ ACTION="${1:-up}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BOOT_DIR="${ROOT_DIR}/terraform/bootstrap"
 STATE_PREFIX="jenkins-2026/bootstrap"   # where bootstrap self-hosts its own state
+
+# Named singletons this module creates, mirrored here so reconcile_imports() can
+# existence-check + import them when a prior seed's state was lost or never
+# migrated (else `apply` 409s "already exists"). Defaults match terraform/bootstrap
+# (variables.tf + the hardcoded bucket/zone names); override via env if you changed them.
+CI_SA_ID="${CI_SA_ID:-jenkins-2026-ci}"                       # var.ci_service_account_id
+WIP_POOL_ID="${WIP_POOL_ID:-jenkins-2026-github}"             # var.workload_identity_pool_id
+WIP_PROVIDER_ID="${WIP_PROVIDER_ID:-github-actions}"          # var.workload_identity_provider_id
+DNS_ZONE_NAME="${DNS_ZONE_NAME:-jenkins-2026-public-zone}"    # main.tf google_dns_managed_zone.public
+# BACKUPS_BUCKET is project-scoped, so it's derived in collect_inputs once PROJECT_ID is known.
 
 # ── pretty logging ───────────────────────────────────────────────────────────
 if [[ -t 1 ]]; then B=$'\e[1m'; G=$'\e[32m'; Y=$'\e[33m'; R=$'\e[31m'; C=$'\e[36m'; X=$'\e[0m'; else B=; G=; Y=; R=; C=; X=; fi
@@ -83,6 +99,7 @@ collect_inputs() {
   REGION="${REGION:-us-central1}"
   GITHUB_REPO="${GITHUB_REPO:-nubenetes/jenkins-2026}"
   BUCKET="${PROJECT_ID}-jenkins-2026-tfstate"   # matches local.state_bucket_name default in main.tf
+  BACKUPS_BUCKET="${BACKUPS_BUCKET:-${PROJECT_ID}-jenkins-2026-postgres-backups}"  # project-scoped (matches main.tf)
   info "project=${PROJECT_ID}  region=${REGION}  repo=${GITHUB_REPO}"
   info "state bucket=${BUCKET}  (bootstrap state prefix: ${STATE_PREFIX})"
   gcloud config set project "${PROJECT_ID}" >/dev/null 2>&1 || true
@@ -124,6 +141,53 @@ set_secrets() {
   info "secrets set: GCP_PROJECT_ID, TF_STATE_BUCKET, GCP_WORKLOAD_IDENTITY_PROVIDER, GCP_SERVICE_ACCOUNT"
 }
 
+# ── reconcile pre-existing resources into state (idempotent import) ────────────
+# A prior seed may have created the named singletons below but lost its state (the
+# original local .tfstate is gone, or it was never migrated into the bucket). A
+# fresh `apply` would then fail with 409 "already exists". This imports any that
+# exist in GCP but aren't yet tracked, so `apply` always converges instead of
+# colliding. It is a harmless no-op when state is already complete (each resource
+# is found in `state list` and skipped) — so it runs before EVERY apply, in both
+# the first-seed and converge branches. The IAM bindings (ci_roles, github_wif,
+# ci_state_bucket) are additive/idempotent at the API and don't 409, so they don't
+# need reconciling here.
+reconcile_imports() {
+  step "Reconciling pre-existing resources into Terraform state (avoids 409 on re-seed)"
+  local sa="${CI_SA_ID}@${PROJECT_ID}.iam.gserviceaccount.com"
+  local tracked; tracked="$(terraform -chdir="${BOOT_DIR}" state list 2>/dev/null || true)"
+
+  _imp() { # $1=address  $2=GCP existence-test cmd  $3=import id
+    local addr="$1" test="$2" id="$3"
+    grep -qxF "$addr" <<<"$tracked" && return 0          # already in state → skip
+    eval "$test" >/dev/null 2>&1 || return 0             # not in GCP → let apply create
+    info "importing pre-existing ${addr}"
+    if terraform -chdir="${BOOT_DIR}" import -input=false "$addr" "$id" >/dev/null 2>&1; then
+      info "  ✓ imported ${addr}"
+    else
+      warn "  import failed for ${addr} — apply will attempt to create it"
+    fi
+  }
+
+  _imp google_storage_bucket.tf_state \
+       "gsutil ls -b gs://${BUCKET}" \
+       "${PROJECT_ID}/${BUCKET}"
+  _imp google_storage_bucket.postgres_backups \
+       "gsutil ls -b gs://${BACKUPS_BUCKET}" \
+       "${PROJECT_ID}/${BACKUPS_BUCKET}"
+  _imp google_service_account.ci \
+       "gcloud iam service-accounts describe ${sa} --project ${PROJECT_ID}" \
+       "projects/${PROJECT_ID}/serviceAccounts/${sa}"
+  _imp google_iam_workload_identity_pool.github \
+       "gcloud iam workload-identity-pools describe ${WIP_POOL_ID} --project ${PROJECT_ID} --location global" \
+       "projects/${PROJECT_ID}/locations/global/workloadIdentityPools/${WIP_POOL_ID}"
+  _imp google_iam_workload_identity_pool_provider.github \
+       "gcloud iam workload-identity-pools providers describe ${WIP_PROVIDER_ID} --project ${PROJECT_ID} --location global --workload-identity-pool ${WIP_POOL_ID}" \
+       "projects/${PROJECT_ID}/locations/global/workloadIdentityPools/${WIP_POOL_ID}/providers/${WIP_PROVIDER_ID}"
+  _imp google_dns_managed_zone.public \
+       "gcloud dns managed-zones describe ${DNS_ZONE_NAME} --project ${PROJECT_ID}" \
+       "projects/${PROJECT_ID}/managedZones/${DNS_ZONE_NAME}"
+}
+
 # ── up ───────────────────────────────────────────────────────────────────────
 up() {
   ensure_auth
@@ -132,11 +196,13 @@ up() {
     step "Root already seeded — converging against remote state (gs://${BUCKET}/${STATE_PREFIX})"
     write_backend
     terraform -chdir="${BOOT_DIR}" init -input=false -reconfigure
+    reconcile_imports                                   # adopt resources missing from state (e.g. a stale remote state predating a new resource)
     terraform -chdir="${BOOT_DIR}" apply -input=false   # interactive approve
   else
     step "First seed — creating the bucket with LOCAL state, then migrating to remote"
     rm -f "${BOOT_DIR}/backend_override.tf"
     terraform -chdir="${BOOT_DIR}" init -input=false
+    reconcile_imports                                   # a prior seed whose state was lost leaves these in GCP — adopt them so apply doesn't 409
     terraform -chdir="${BOOT_DIR}" apply -input=false   # creates bucket + WIF + SA
     info "Bucket created — migrating bootstrap's own state into it…"
     write_backend

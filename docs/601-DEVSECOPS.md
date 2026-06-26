@@ -69,7 +69,7 @@ graph TD
   - **IaC Scan**: Evaluates Helm charts and GKE resources before building (warning-only/non-blocking).
   - **Image Scan**: Scans the final container image (OS packages + app dependencies) before pushing or updating the GitOps repo.
 - **Configuration**: Defined in [`trivy.yaml`](../trivy.yaml).
-- **Failure Policy**: both scans are **report-only / non-blocking** — they run with `--exit-code 0` (filtered to `CRITICAL,HIGH` severity) so findings are surfaced (and uploaded to GitHub Code Scanning / warnings-ng) but never halt the build or deploy stage. See [`tekton/tasks/trivy-image.yaml`](../tekton/tasks/trivy-image.yaml) and [`trivy-iac.yaml`](../tekton/tasks/trivy-iac.yaml). To make the image scan gating, change its `--exit-code` to `1`.
+- **Failure Policy**: both scans are **report-only / non-blocking** — they run with `--exit-code 0` (filtered to `CRITICAL,HIGH` severity) so findings are surfaced in the build log but never halt the build or deploy stage. Trivy runs with `format: table` (console output only — it does **not** upload SARIF to GitHub Code Scanning; only Semgrep + CodeQL produce/upload SARIF). See [`tekton/tasks/trivy-image.yaml`](../tekton/tasks/trivy-image.yaml) and [`trivy-iac.yaml`](../tekton/tasks/trivy-iac.yaml). To make the image scan gating, change its `--exit-code` to `1`.
 
 ### 4. Jenkins `warnings-ng` Plugin Integration (SARIF Visualizer)
 

@@ -17,3 +17,8 @@ output "project_id" {
   description = "GCP project ID. Set as the GCP_PROJECT_ID GitHub Actions secret/variable."
   value       = var.project_id
 }
+
+output "dns_zone_name_servers" {
+  description = "Nameservers of the permanent delegated <base_domain> zone. ONE-TIME, PERMANENT: at the parent domain's DNS (e.g. Squarespace) create NS records for <base_domain> pointing at these four. They never change (the zone lives in this never-torn-down root tier), so this delegation is done once for the life of the project."
+  value       = google_dns_managed_zone.public.name_servers
+}

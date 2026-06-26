@@ -50,10 +50,12 @@ Setting `JENKINS_OIDC_ADMIN_EMAIL` also dynamically configures administrator per
 
 | File | Purpose |
 |---|---|
-| [`jcasc-base.yaml`](../jenkins/casc/jcasc-base.yaml) | Security realm (OIDC with Google, escape-hatch `admin` password), Role-Based Authorization Strategy, system message, **global pipeline library** `microservices-shared-library`, credentials (`container-registry`, `microservices-git`). |
+| [`jcasc-base.yaml`](../jenkins/casc/jcasc-base.yaml) | Security realm (OIDC with Google, escape-hatch `admin` password), Role-Based Authorization Strategy, system message, **global pipeline library** `microservices-shared-library`, credentials (`container-registry`, `microservices-git`), **and the Kubernetes-plugin cloud + default build-agent pod template** (inbound agents connect over **WebSocket** — see the note below). |
 | [`jcasc-otel.yaml`](../jenkins/casc/jcasc-otel.yaml) | Configures the `opentelemetry` plugin's global exporter — OTLP/gRPC to `otel-collector-gateway.observability.svc.cluster.local:4317`. |
-| [`jcasc-seed-job.yaml`](../jenkins/casc/jcasc-seed-job.yaml) | Defines the main `seed-jobs` pipeline job that tracks `${JENKINS2026_REPO_BRANCH:-main}` to generate the stable pipelines. |
-| [`jcasc-modern-agents.yaml`](../jenkins/casc/jcasc-modern-agents.yaml) | Kubernetes-plugin cloud + ephemeral build-agent pod templates (the `jenkins=slave` agents: maven/node/helm containers, caches, resources). |
+| [`jcasc-seed-job.yaml`](../jenkins/casc/jcasc-seed-job.yaml) | Defines the main `seed-jobs` pipeline job that tracks the active repo branch (`J2026_SELF_REPO_BRANCH` — auto-tracks the **dispatched** branch in CI via `GITHUB_REF_NAME`, default `main` locally; see [`scripts/lib/config.sh`](../scripts/lib/config.sh)) to generate the stable pipelines. |
+| [`jcasc-modern-agents.yaml`](../jenkins/casc/jcasc-modern-agents.yaml) | **Reference snippet — NOT applied** (only `base`/`otel`/`seed-job` become ConfigMaps in `04-jenkins.sh`). A forward-looking template for K8s 1.35+ in-place vertical pod scaling of `maven-node-builder` agents; the **active** cloud + agent template live in `jcasc-base.yaml` above. |
+
+> **Build agents connect over WebSocket, not the raw JNLP TCP port.** The kubernetes cloud in `jcasc-base.yaml` sets `websocket: true`, so inbound build agents reach the controller over the HTTP port (`jenkinsUrl`, `:8080`) via a WebSocket upgrade instead of the direct JNLP4 tunnel (`jenkinsTunnel`, `:50000`). This is required because the cluster encrypts **inter-node** pod traffic with WireGuard (`in_transit_encryption_config`), which lowers the MTU — the JNLP4 TLS handshake then black-holes whenever an agent lands on a **different node** than the controller (the TCP connection is *accepted* but the channel never establishes, so the build aborts / the git checkout fails). WebSocket rides the same `:8080` HTTP path the UI/API already use, so it works regardless of node placement. Two config details matter: the cloud must **omit `jenkinsTunnel`** (leaving it set exports `JENKINS_TUNNEL` so the agent gets both `-tunnel` and `-webSocket`, which conflict → it prints its usage and exits `0` → build `ABORTED`), and the `jnlp` container **keeps** its positional `args` (`^${computer.jnlpmac} ^${computer.name}`) so the agent still receives its secret/name (the plugin does not inject those as env for a custom jnlp container). See [902 § Troubleshooting](./902-TROUBLESHOOTING.md).
 
 Beyond the kubernetes/git/JCasC/OTel plugins, three are aimed at UX:
 
@@ -69,7 +71,7 @@ Beyond the kubernetes/git/JCasC/OTel plugins, three are aimed at UX:
 
 Four steps used by every per-service pipeline: `microservicesBuild`, `microservicesImage`, `microservicesDeploy`, and `microservicesSmokeTest`. They handle everything from Maven/NPM builds to Helm deployments and OTel-instrumented smoke tests. A fifth step, `microservicesK6Smoke`, is used only by the `microservices-k6-smoke` job.
 
-The library is stored at the repo root (`vars/`, `resources/`) — required by the `modernSCM` retriever so Jenkins can check out the library from the same repo as the pipeline.
+The library is stored at the repo root (`vars/`) — required by the `modernSCM` retriever so Jenkins can check out the library from the same repo as the pipeline.
 
 See [402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) for the pipeline stages and execution details.
 

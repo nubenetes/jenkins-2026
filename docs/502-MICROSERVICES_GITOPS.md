@@ -4,6 +4,12 @@
 
 # 502. Microservices GitOps
 
+> ## ⚠️ The GitOps repo's `main` is CI-writable by design (no PR required)
+>
+> The pipeline's **GitOps Update** stage ([`vars/microservicesDeploy.groovy`](../vars/microservicesDeploy.groovy)) deploys by `git push origin main` **directly** to the **[`jenkins-2026-gitops-config`](https://github.com/nubenetes/jenkins-2026-gitops-config)** repo — it bumps the image tag in `helm/microservices/values-<env>.yaml` and ArgoCD reconciles it. So that repo's `main` branch must **accept the CI's direct push**: it is protected only against force-pushes/deletions, **not** with *require-a-pull-request*. Turning on require-PR there (the GitHub default for a "protected" branch) makes the PAT-authenticated push get rejected (an admin PAT does not bypass branch protection), so **every deploy's GitOps Update fails** with no commit ever landing and the image tags frozen.
+>
+> This is the **opposite** of the infra repo (**this** repo, `jenkins-2026`), whose `main` *is* strict-GitFlow-protected (PR-from-`develop`-only, `gitflow-guard` check, `enforce_admins`). The asymmetry is intentional: the **infra repo is human-reviewed**, the **GitOps repo is machine-managed** (image-tag bumps are not human-reviewed changes). Do not "harmonize" them. See [`CLAUDE.md` § Conventions](../CLAUDE.md) and the GitOps repo's README.
+
 ## GitOps Design Decision: Helm vs. Kustomize
 
 ### Overview

@@ -44,3 +44,9 @@ variable "workload_identity_provider_id" {
   type        = string
   default     = "github-actions"
 }
+
+variable "base_domain" {
+  description = "Public base domain. The PERMANENT delegated Cloud DNS zone (google_dns_managed_zone.public) is created here so its nameservers never change across gateway rebuilds; terraform/gateway-bootstrap fills it with the wildcard-A + cert-validation records. Must match config/config.yaml's gateway.baseDomain and terraform/gateway-bootstrap's base_domain."
+  type        = string
+  default     = "jenkins2026.nubenetes.com"
+}

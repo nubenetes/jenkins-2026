@@ -42,6 +42,14 @@ on:
         options:
           - jenkins
           - tekton
+      secrets_backend:
+        description: "How k8s Secrets are materialised: imperative (default - kubectl create from GitHub secrets) or eso (push to GCP Secret Manager + sync via External Secrets Operator, keyless). See docs/201 § Secrets backend."
+        required: true
+        default: "imperative"
+        type: choice
+        options:
+          - imperative
+          - eso
       enable_gateway:
         description: "Create the public Gateway/HTTPRoutes/IAP (needs the one-time Day0.infra.01 Gateway + DNS + IAP OAuth client - see README \"Public access\"). Default true: this project's intended access path. Uncheck ONLY for a fresh env before Day0.infra.01 is done - leaving it on without the bootstrap deploys a Gateway that can't get an IP/cert, and deploying it OFF while the gateway is already up makes Jenkins' root URL (and OIDC redirect_uri) revert to localhost -> redirect_uri_mismatch."
         required: true
@@ -67,6 +75,10 @@ on:
       ci_engine:
         required: false
         default: "jenkins"
+        type: string
+      secrets_backend:
+        required: false
+        default: "imperative"
         type: string
       enable_gateway:
         required: false
@@ -462,6 +474,7 @@ jobs:
         env:
           JENKINS2026_OBS_MODE: ${{ inputs.observability_mode }}
           JENKINS2026_CI_ENGINE: ${{ inputs.ci_engine }}
+          JENKINS2026_SECRETS_BACKEND: ${{ inputs.secrets_backend }}
           JENKINS2026_HEADLAMP_ADMIN_EMAILS: ${{ secrets.HEADLAMP_ADMIN_EMAILS }}
           REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
           REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
@@ -549,6 +562,12 @@ jobs:
           engine="${{ inputs.ci_engine }}"
           mode="${{ inputs.observability_mode }}"
 
+          # Project NUMBER (not the masked GCP_PROJECT_ID secret) for the Secret
+          # Manager console links below — the secret would be redacted to
+          # project=*** in the log/summary, but the number isn't a registered
+          # secret and the console accepts project=<number>, so the link works.
+          proj_num="$(gcloud projects describe "${{ secrets.GCP_PROJECT_ID }}" --format='value(projectNumber)' 2>/dev/null || true)"
+
           # Grafana URL depends on the observability mode (not the gateway/engine).
           # Compute the raw URL (for a clickable link) and a short note separately.
           if [[ "${mode}" == "grafana-cloud" ]]; then
@@ -596,6 +615,11 @@ jobs:
               echo "  Reach services via 'kubectl port-forward' (see README 'Accessing the UI')."
               echo "    Grafana:               ${grafana}"
             fi
+            if [[ "${{ inputs.secrets_backend }}" == "eso" && "${{ inputs.enable_gateway }}" == "true" ]]; then
+              echo
+              echo "  Secrets (secrets.backend=eso → GCP Secret Manager, synced by External Secrets):"
+              echo "    gateway-iap-oauth:     https://console.cloud.google.com/security/secret-manager/secret/gateway-iap-oauth/versions?project=${proj_num:-<your-project>}"
+            fi
             echo "════════════════════════════════════════════════════════════════════════"
           }
           gen                                   # -> normal job log
@@ -623,6 +647,9 @@ jobs:
               echo "- **Headlamp**: [https://headlamp.${dom}](https://headlamp.${dom})"
               echo "- **pgAdmin**: [https://pgadmin.${dom}](https://pgadmin.${dom})"
               echo "- **Microservices**: [https://microservices.${dom}](https://microservices.${dom})"
+              if [[ "${{ inputs.secrets_backend }}" == "eso" ]]; then
+                echo "- **Secret Manager** (gateway-iap-oauth, secrets.backend=eso): [console](https://console.cloud.google.com/security/secret-manager/secret/gateway-iap-oauth/versions?project=${proj_num:-})"
+              fi
             fi
             echo
           } >> "${GITHUB_STEP_SUMMARY}"

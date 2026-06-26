@@ -202,3 +202,30 @@ j2026_active_ci_engine() {
   fi
   echo "${J2026_CI_ENGINE}"
 }
+
+# --- active secrets backend resolution --------------------------------------
+#
+# j2026_active_secrets_backend - echoes the ACTIVE secrets backend ("imperative"
+# or "eso"), resolved with the SAME precedence as j2026_active_ci_engine:
+#   1. An explicit JENKINS2026_SECRETS_BACKEND override (Day1 + the Day2 redeploys
+#      that re-run 01-namespaces set it, so it wins during provisioning).
+#   2. Detection from the live cluster: the ClusterSecretStore 'gcp-store' is
+#      created ONLY in eso mode (scripts/08.6-eso-sync.sh), so its presence means
+#      the cluster was provisioned with secrets.backend=eso. This makes a
+#      STANDALONE Day2 redeploy (or Decom/down.sh) do the right thing even when
+#      the operator forgets to pass secrets_backend (whose default is imperative,
+#      which would otherwise diverge from an eso cluster). NOTE: the ESO operator
+#      itself is installed in BOTH modes (08.5-argocd.sh), so we key off the
+#      gcp-store CR specifically, not the operator's presence.
+#   3. The config.yaml value (J2026_SECRETS_BACKEND) when no cluster is reachable.
+j2026_active_secrets_backend() {
+  if [[ -n "${JENKINS2026_SECRETS_BACKEND:-}" ]]; then
+    echo "${JENKINS2026_SECRETS_BACKEND}"
+    return
+  fi
+  if kubectl get clustersecretstore gcp-store >/dev/null 2>&1; then
+    echo "eso"
+    return
+  fi
+  echo "${J2026_SECRETS_BACKEND:-imperative}"
+}

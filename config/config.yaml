@@ -40,6 +40,25 @@ ci:
   engine: jenkins
 
 # -----------------------------------------------------------------------------
+# Secrets backend
+# -----------------------------------------------------------------------------
+# How Kubernetes Secrets are materialised in the cluster:
+#   imperative (default) - scripts/01-namespaces.sh runs `kubectl create secret`
+#                          from the GitHub Actions secret env vars at provision time.
+#   eso                  - the GitHub-sourced secret values are pushed to GCP
+#                          Secret Manager, and the External Secrets Operator (ESO,
+#                          already installed) syncs them into the cluster via
+#                          Workload Identity (keyless). Adds a central source of
+#                          truth, versioning and Cloud Audit Logs. See
+#                          docs/201-ARCHITECTURE.md § Secrets Management +
+#                          infrastructure/secrets/eso-bootstrap.yaml.
+# FEATURE FLAG: override for a single run with JENKINS2026_SECRETS_BACKEND=eso
+# (config.yaml is the durable default; env var is the ephemeral override - same
+# pattern as ci.engine / observability.mode).
+secrets:
+  backend: imperative
+
+# -----------------------------------------------------------------------------
 # Jenkins (jenkinsci/helm-charts) - used when ci.engine == jenkins
 # -----------------------------------------------------------------------------
 jenkins:
@@ -62,6 +81,11 @@ jenkins:
   # This repo's own coordinates, used by JCasC for the global pipeline shared
   # library and by the seed job to fetch Jenkinsfile.microservices + seed scripts.
   selfRepoUrl: https://github.com/nubenetes/jenkins-2026.git
+  # Local/fallback default. In CI (GitHub Actions) lib/config.sh auto-tracks the
+  # DISPATCHED branch via GITHUB_REF_NAME, so a Day1 from `develop` exercises
+  # develop's library/seed and `main` from main — letting you validate library
+  # changes on develop before the promotion PR. Override anywhere with
+  # JENKINS2026_SELF_REPO_BRANCH. See scripts/lib/config.sh.
   selfRepoBranch: main
 
 # -----------------------------------------------------------------------------
@@ -222,16 +246,30 @@ headlamp:
 argocd:
   namespace: argocd
   releaseName: argocd
-  # ArgoCD DELIBERATELY TRACKS the 3.5.x line (not a hard pin like the rest of the
-  # stack) — we want 3.5's new features and its ongoing patches. resolve_argocd_version
-  # (08.5-argocd.sh) picks the latest 3.5.x at install time (Day1 + Day2.redeploy.01):
-  # the newest GA, or the newest rc while 3.5.0 has no GA yet. The
-  # argocd-version-patch-watcher CronJob additionally live-upgrades to new 3.5.x
-  # patches daily, no re-run needed. `version` is only the offline fallback if the
-  # GitHub Releases API is unreachable. Trade-off (less deterministic than a pin) is
-  # accepted for ArgoCD by choice — see docs/602-VERSION_PINNING.md.
-  version: "v3.5.0-rc1"
-  version_constraint: "3.5.x"
+  # ArgoCD tracks the latest STABLE 3.4.x line. 3.5.0 has NO GA yet (only release
+  # candidates), and v3.5.0-rc1 shipped multiple controller bugs that broke this
+  # stack: the Lua health-check sandbox lacked the `string` library (→ ComparisonError,
+  # microservices-stable stuck Unknown); completed Helm-hook Jobs weren't recognised
+  # under k8s 1.35 Job conditions (→ kube-prometheus-stack syncs wedged on the admission
+  # webhook hooks); and sync operations wedged. So we pin to the newest 3.4.x GA until
+  # 3.5.0 is GA. resolve_argocd_version (08.5-argocd.sh) with constraint "3.4.x" resolves
+  # the IMAGE to the newest 3.4.x GA — it only falls back to an rc when NO GA matches,
+  # which never happens for 3.4.x, so we NEVER get an rc (the old "3.5.x" constraint did,
+  # because 3.5 has no GA). The argocd-version-patch-watcher CronJob live-upgrades the
+  # IMAGE to new 3.4.x patches daily. `version` is the offline fallback if the GitHub
+  # Releases API is unreachable.
+  #
+  # ⚠️ MOVE TO 3.5.x ONLY WHEN 3.5.0 IS GA: bump version_constraint → "3.5.x", version →
+  # the GA tag, chartVersion → the matching 9.6+/10.x chart, then re-verify the features
+  # re-enabled for 3.4.x (kube-prometheus-stack admissionWebhooks in
+  # observability/grafana/values-oss.yaml). See docs/602-VERSION_PINNING.md.
+  version: "v3.4.4"
+  version_constraint: "3.4.x"
+  # Helm chart (argoproj/argo-helm `argo-cd`) pinned to the 3.4.x line: chart 9.5.x ships
+  # ArgoCD 3.4.x (9.5.22 → 3.4.4), while 9.6+/10.x ship 3.5.x/3.6.x. Pin so the chart's
+  # bundled CRDs/RBAC/templates match the pinned 3.4.x binary (08.5-argocd.sh otherwise
+  # installs the LATEST chart). Bump together with `version` when moving to 3.5 GA.
+  chartVersion: "9.5.22"
 
 # -----------------------------------------------------------------------------
 # pgAdmin (Postgres database administration UI)
@@ -248,8 +286,9 @@ pgadmin:
 gateway:
   # Public base domain. The Gateway's wildcard certificate (provisioned by
   # terraform/gateway-bootstrap) covers this domain and *.<baseDomain>.
-  # nubenetes.com is the project's domain (DNS at Squarespace) - not
-  # sensitive, so it's a committed default. Override via
+  # nubenetes.com is the project's domain, on Google Cloud DNS; terraform/gateway-bootstrap
+  # delegates a <baseDomain> sub-zone and manages its records (one-time NS
+  # delegation in the parent). Not sensitive, so it's a committed default. Override via
   # JENKINS2026_BASE_DOMAIN for forks/local testing with a different domain.
   # An empty value disables the gateway entirely (no Gateway/HTTPRoutes are
   # created) - useful before terraform/gateway-bootstrap has been run once.

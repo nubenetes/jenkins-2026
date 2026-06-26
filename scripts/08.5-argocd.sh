@@ -57,9 +57,9 @@ resolve_argocd_version() {
   echo "${baseline}"
 }
 
-RESOLVED_3_5_PATCH=$(resolve_argocd_version "${J2026_ARGOCD_VERSION_CONSTRAINT}" "${J2026_ARGOCD_VERSION}")
+RESOLVED_ARGOCD_VERSION=$(resolve_argocd_version "${J2026_ARGOCD_VERSION_CONSTRAINT}" "${J2026_ARGOCD_VERSION}")
 
-log_step "Installing ArgoCD into ${J2026_ARGOCD_NAMESPACE} (Version: ${RESOLVED_3_5_PATCH})"
+log_step "Installing ArgoCD into ${J2026_ARGOCD_NAMESPACE} (Version: ${RESOLVED_ARGOCD_VERSION})"
 kubectl_apply_namespace "${J2026_ARGOCD_NAMESPACE}"
 
 # Helm 3 recovery logic
@@ -79,8 +79,9 @@ kubectl delete configmap argocd-cm argocd-rbac-cm -n "${J2026_ARGOCD_NAMESPACE}"
 
 helm upgrade --install "${J2026_ARGOCD_RELEASE}" argo/argo-cd \
   --namespace "${J2026_ARGOCD_NAMESPACE}" \
+  --version "${J2026_ARGOCD_CHART_VERSION}" \
   -f "${J2026_ROOT_DIR}/helm/argocd-values.yaml" \
-  --set global.image.tag="${RESOLVED_3_5_PATCH}" \
+  --set global.image.tag="${RESOLVED_ARGOCD_VERSION}" \
   --timeout 10m
 
 # 2. Configure OIDC/RBAC
@@ -214,12 +215,12 @@ EXIT_CODE=1
 for attempt in 1 2 3; do
   kubectl delete pod argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
   kubectl run argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --restart=Never \
-    --image="quay.io/argoproj/argocd:${RESOLVED_3_5_PATCH}" \
+    --image="quay.io/argoproj/argocd:${RESOLVED_ARGOCD_VERSION}" \
     --overrides='{
       "spec": {
         "containers": [{
           "name": "argocd-token-gen",
-          "image": "quay.io/argoproj/argocd:'"${RESOLVED_3_5_PATCH}"'",
+          "image": "quay.io/argoproj/argocd:'"${RESOLVED_ARGOCD_VERSION}"'",
           "command": ["bash", "-c", "argocd account generate-token --account '"${CI_ARGOCD_ACCOUNT}"' --core"],
           "resources": {
             "requests": { "cpu": "50m", "memory": "128Mi" },
@@ -405,7 +406,17 @@ fi
 log_info "CNPG webhook ready."
 
 log_step "Configuring External Secrets Operator via ArgoCD"
-kubectl apply -f "${J2026_ROOT_DIR}/argocd/external-secrets-app.yaml"
+# Substitute the Workload Identity GSA email the ESO controller KSA impersonates
+# to read Secret Manager (secrets.backend=eso). The GSA + WI binding are created
+# by terraform/gke (google_service_account.eso, account_id eso-secret-reader).
+# Templated unconditionally — harmless in imperative mode (ESO installed, unused).
+ESO_APP_FILE=$(mktemp)
+ESO_GSA_EMAIL="eso-secret-reader@$(gcloud config get-value project 2>/dev/null).iam.gserviceaccount.com"
+# NOTE: '#' delimiter, not '@' — the GSA email contains '@'.
+sed "s#{{esoGsaEmail}}#${ESO_GSA_EMAIL}#g" \
+    "${J2026_ROOT_DIR}/argocd/external-secrets-app.yaml" > "${ESO_APP_FILE}"
+kubectl apply -f "${ESO_APP_FILE}"
+rm "${ESO_APP_FILE}"
 
 # Argo Rollouts (progressive delivery) + the Gateway API plugin RBAC. The
 # controller/CRDs/plugin are GitOps-managed by the argo-rollouts Application
@@ -433,9 +444,17 @@ log_step "Generating and applying Microservices ApplicationSet"
 # Using @ as delimiter for sed to avoid issues with URLs
 APPSET_FILE=$(mktemp)
 GITOPS_REPO_URL="https://github.com/nubenetes/jenkins-2026-gitops-config.git"
+# Postgres backups: override the chart's placeholder gcpProject/gcpServiceAccount/
+# gcsBackupBucket defaults with the real project so the CNPG serviceAccountTemplate
+# annotates each postgres KSA with an EXISTING GSA (terraform/gke pg_backups) and
+# barman archives WAL to the project-scoped bucket. PROJECT_ID like the ESO block.
+PROJECT_ID="$(gcloud config get-value project 2>/dev/null)"
 sed "s@{{repoUrl}}@${GITOPS_REPO_URL}@g;
      s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g;
-     s@{{platform}}@${J2026_PLATFORM}@g" \
+     s@{{platform}}@${J2026_PLATFORM}@g;
+     s@{{gcpProject}}@${PROJECT_ID}@g;
+     s@{{gcpServiceAccount}}@jenkins-2026-pg-backups@g;
+     s@{{gcsBackupBucket}}@${PROJECT_ID}-jenkins-2026-postgres-backups@g" \
     "${J2026_ROOT_DIR}/argocd/microservices-appset.yaml" > "${APPSET_FILE}"
 
 # Optional 'develop' tier (off by default - see microservices.developTrackEnabled

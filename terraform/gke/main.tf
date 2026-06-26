@@ -15,6 +15,12 @@ resource "google_project_service" "apis" {
   for_each = toset([
     "container.googleapis.com",
     "compute.googleapis.com",
+    # Secret Manager backs secrets.backend=eso: up.sh's provision_secret pushes
+    # secret values here (gcloud secrets create / versions add) and the External
+    # Secrets Operator reads them back via Workload Identity. Enabled
+    # unconditionally — harmless/unused in the default imperative mode, and
+    # re-enabling APIs is slow so it's left on. See docs/201 § Secrets Management.
+    "secretmanager.googleapis.com",
   ])
 
   project = var.project_id
@@ -70,6 +76,35 @@ resource "google_project_iam_member" "nodes_roles" {
   project = var.project_id
   role    = each.value
   member  = "serviceAccount:${google_service_account.nodes.email}"
+}
+
+# --- External Secrets Operator identity (secrets.backend=eso) -----------------
+# The cluster runs GKE Workload Identity (workload_metadata_config = GKE_METADATA
+# below), so pods authenticate as the GCP SA bound to their Kubernetes SA — NOT
+# as the node SA. ESO therefore needs its OWN least-privilege GSA (only
+# secretmanager.secretAccessor) that the ESO controller KSA impersonates via
+# Workload Identity. The KSA is annotated with this GSA's email by the
+# external-secrets ArgoCD app (helm values templated in scripts/08.5-argocd.sh).
+# Created unconditionally — harmless/unused in the default imperative mode. See
+# docs/201-ARCHITECTURE.md § Secrets Management.
+resource "google_service_account" "eso" {
+  project      = var.project_id
+  account_id   = "eso-secret-reader"
+  display_name = "jenkins-2026 External Secrets Operator (Secret Manager reader)"
+}
+
+resource "google_project_iam_member" "eso_secret_accessor" {
+  project = var.project_id
+  role    = "roles/secretmanager.secretAccessor"
+  member  = "serviceAccount:${google_service_account.eso.email}"
+}
+
+# Let the ESO controller KSA (namespace/name external-secrets/external-secrets,
+# the chart defaults) impersonate the GSA above.
+resource "google_service_account_iam_member" "eso_wi" {
+  service_account_id = google_service_account.eso.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[external-secrets/external-secrets]"
 }
 
 # IAM for Headlamp's per-user OIDC->GKE-API access-token passthrough (see
@@ -179,6 +214,16 @@ resource "google_container_node_pool" "primary" {
     auto_upgrade = true
   }
 
+  # Deleting a node pool gracefully drains it (evicting pods, respecting PDBs +
+  # terminationGracePeriod). down.sh's final drain-prep removes the usual
+  # blockers, but give GCP comfortable headroom so a slow drain still completes
+  # within terraform's wait instead of erroring at the 30m default (the op keeps
+  # RUNNING and finishes anyway — a re-run then converges, but this avoids the
+  # spurious failure). See scripts/down.sh § Final drain-prep.
+  timeouts {
+    delete = "60m"
+  }
+
   node_config {
     machine_type    = var.machine_type
     disk_size_gb    = var.disk_size_gb
@@ -198,9 +243,46 @@ resource "google_container_node_pool" "primary" {
   }
 }
 
-# Grant objectAdmin privileges on the pre-created backups bucket to the GKE node service account
+# Grant objectAdmin privileges on the pre-created backups bucket to the GKE node
+# service account. Bucket name is project-scoped (matches terraform/bootstrap's
+# google_storage_bucket.postgres_backups — see the note there on the global GCS
+# namespace). The CI SA can manage this binding because bootstrap grants it
+# storage.admin on the bucket (google_storage_bucket_iam_member.ci_postgres_backups).
 resource "google_storage_bucket_iam_member" "nodes_postgres_backups" {
-  bucket = "${var.cluster_name}-postgres-backups"
+  bucket = "${var.project_id}-jenkins-2026-postgres-backups"
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.nodes.email}"
+}
+
+# --- CNPG Postgres backups identity (barman -> GCS via Workload Identity) ------
+# The microservices CNPG Clusters archive WAL + base backups to the bucket above.
+# Under Workload Identity the postgres pods authenticate as the GSA bound to their
+# Kubernetes SA - NOT the node SA - so nodes_postgres_backups does not help them
+# (it stays for any node-level access). CNPG names the KSA after each Cluster
+# (postgres-<svc>, from the gitops chart templates/postgres.yaml) and annotates it
+# with this GSA via serviceAccountTemplate; the microservices ApplicationSet passes
+# the GSA account_id + project + bucket as helm params (scripts/08.5-argocd.sh), so
+# the chart's placeholder defaults (jenkins-2026-sa@jenkins-2026) are overridden by
+# the real project at deploy time. Least privilege: only objectAdmin on the one
+# backups bucket. See docs/502 / docs/902 § Postgres WAL backups.
+resource "google_service_account" "pg_backups" {
+  project      = var.project_id
+  account_id   = "${var.cluster_name}-pg-backups"
+  display_name = "jenkins-2026 CNPG Postgres backups (GCS writer)"
+}
+
+resource "google_storage_bucket_iam_member" "pg_backups" {
+  bucket = "${var.project_id}-jenkins-2026-postgres-backups"
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.pg_backups.email}"
+}
+
+# Let each CNPG Cluster KSA (microservices/postgres-<svc>) impersonate the GSA.
+# The set mirrors the services in jenkins/pipelines/services.yaml (each gets a CNPG
+# Cluster + KSA named postgres-<svc>); extend this set if services are added.
+resource "google_service_account_iam_member" "pg_backups_wi" {
+  for_each           = toset(["postgres-gateway", "postgres-jhipstersamplemicroservice"])
+  service_account_id = google_service_account.pg_backups.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[microservices/${each.value}]"
 }

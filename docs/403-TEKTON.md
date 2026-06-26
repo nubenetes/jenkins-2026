@@ -239,7 +239,7 @@ exactly like the other app-of-apps), which renders seven child Applications:
 | `tekton-pipelines` | `argocd/tekton/components/pipelines` (vendored `v1.13.1` `release.yaml`) | 0 | the engine + CRDs |
 | `tekton-triggers` | `argocd/tekton/components/triggers` (vendored `v0.36.0` release + interceptors) | 1 | API/webhook-driven runs |
 | `tekton-dashboard` | `argocd/tekton/components/dashboard` (vendored `v0.69.0` `release-full.yaml`) | 1 | **read-write** GUI; no native auth |
-| `tekton-pruner` | `argocd/tekton/components/pruner` (vendored `v0.4.0`) | 1 | GC of completed runs — `historyLimit: 20` (parity with Jenkins `buildDiscarder`) |
+| `tekton-pruner` | `argocd/tekton/components/pruner` (vendored `v0.4.0`) | 1 | GC of completed runs — `historyLimit: 5` (deliberately lower than Jenkins' `buildDiscarder` 20, to keep pod/image accumulation off the 50 GiB node disk) |
 | `tekton-chains` | `argocd/tekton/components/chains` (vendored `v0.27.1`) | 1 | supply-chain: x509/cosign image signing + in-toto SLSA provenance + Rekor; own `tekton-chains` ns |
 | `tekton-pac` | `argocd/tekton/components/pac` (vendored `v0.48.0`) | 1 | Pipelines-as-Code controller; own `pipelines-as-code` ns; webhook receiver exposed at `pac.<baseDomain>` |
 | `tekton-pipeline-as-code` | `tekton/` (Tasks/Pipelines/Triggers/RBAC + the `tekton-ci` SA) | 2 | the ported pipeline; lands in the `tekton-ci` namespace |
@@ -598,7 +598,7 @@ acceptable for this PoC.
   used to clone and to post commit statuses) and the **webhook secret**.
 - A **webhook on each fork**, created via `gh api repos/nubenetes/<repo>/hooks`
   (URL = the PaC controller route, `secret` = the webhook secret, events =
-  `pull_request`, `push`, `issue_comment`). The `gh`/`GIT_TOKEN` `repo` scope
+  `push`, `pull_request`). The `gh`/`GIT_TOKEN` `repo` scope
   already covers webhook management on org-owned repos — so this needs **no
   manual GitHub UI**.
 - **`.tekton/<svc>.yaml`** in each fork: a `PipelineRun` annotated
@@ -643,8 +643,10 @@ hence it is preferred.
 Two more child Applications round out the Tekton stack:
 
 - **Pruner** (`v0.4.0`) — garbage-collects completed PipelineRuns/TaskRuns. Its
-  `tekton-pruner-default-spec` is patched to `historyLimit: 20`, mirroring the
-  Jenkins pipelines' `buildDiscarder(numToKeepStr: '20')`. No extra setup.
+  `tekton-pruner-default-spec` is patched to `historyLimit: 5` (the vendored
+  default is 100) — deliberately lower than the Jenkins pipelines'
+  `buildDiscarder(numToKeepStr: '20')` to keep pod/image accumulation off the
+  50 GiB node disk. No extra setup.
 - **Chains** (`v0.27.1`) — supply-chain security: signs the built container
   images and emits **in-toto SLSA provenance** attestations, storing OCI
   signatures alongside the image in ghcr.io and recording them in the public
@@ -666,9 +668,10 @@ Two more child Applications round out the Tekton stack:
 
 ## Observability
 
-The `k6-smoke` Task carries `OTEL_SERVICE_NAME=tekton-pipeline-k6-smoke` —
-mirroring the Jenkins `jenkins-pipeline-*` convention so that pipeline telemetry
-lands in Tempo/Loki/Prometheus alongside everything else. See
+The `k6-smoke` Task carries `K6_OTEL_SERVICE_NAME=k6-microservices-smoke` (and
+the same `service.name` in `OTEL_RESOURCE_ATTRIBUTES`) so its load-test telemetry
+lands in Tempo/Loki/Prometheus alongside everything else. (Native PipelineRun/
+TaskRun controller tracing is a deferred follow-up — not wired today.) See
 [301. Observability](./301-OBSERVABILITY.md).
 
 > **Follow-up:** Tekton *controller* OpenTelemetry tracing (PipelineRun/TaskRun

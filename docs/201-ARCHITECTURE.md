@@ -80,6 +80,8 @@ flowchart TB
     APP -->|OTLP| COL
     CI -->|OTLP| COL
     OP -.->|injects agent| APP
+    SM["GCP Secret Manager<br/>secrets.backend=eso"]:::pick
+    SM -.->|"keyless WIF sync"| ESO
     COL -->|mode=oss| OSST
     COL -->|mode=grafana-cloud| GCLOUD
     COL -->|mode=managed-azure| AZ
@@ -250,19 +252,20 @@ The `ci.engine` flag (`jenkins` default, override `JENKINS2026_CI_ENGINE`) selec
 ```
 config/config.yaml          single source of truth (feature flags above)
 helm/jenkins/                jenkinsci/helm-charts values + values-gke.yaml overlay
-helm/microservices/          local chart for the Microservices workloads (2 envs)
 helm/headlamp/               kubernetes-sigs/headlamp values (cluster management UI)
+helm/pgadmin/                pgAdmin values (CNPG admin UI)
+helm/argocd-values.yaml      ArgoCD install values
 jenkins/casc/                JCasC: security, OTel exporter, seed job
-jenkins/pipelines/           Jenkinsfile.microservices + seed job (Job DSL + services.yaml)
-vars/, resources/            Jenkins global shared library (must be at repo root)
+jenkins/pipelines/           seed/ (seed job: Job DSL + Jenkinsfile.seed + services.yaml) + k6/ (smoke script)
+vars/                        Jenkins global shared library (must be at repo root; Microservices pipeline lives here)
 tekton/                      Tekton pipelines-as-code (ci.engine=tekton): Tasks/Pipelines/Triggers/RBAC + port of the Jenkins shared library (vars/)
 observability/               OTel Operator/Collector + Grafana/Loki/Tempo/Prometheus values + dashboards
 argocd/                      ArgoCD Applications/ApplicationSets + app-of-apps (platform-postgres, observability-oss, tekton) + argo-rollouts-app.yaml
 infrastructure/              engine-neutral platform manifests applied by 01-namespaces / 08.5-argocd: NetworkPolicies (default/-jenkins/-tekton), Gateway, Karpenter, scheduling, Argo Rollouts Gateway-API RBAC, secrets
 scripts/                     00-09 numbered steps + up.sh / down.sh / status.sh
 terraform/gke/               throwaway GKE cluster for test/e2e.sh
-terraform/bootstrap/         one-time setup for GitHub Actions automation (state bucket + WIF)
-terraform/gateway-bootstrap/ one-time setup for public access (static IP + managed certificate)
+terraform/bootstrap/         one-time setup for GitHub Actions automation (state bucket + WIF + permanent public DNS zone)
+terraform/gateway-bootstrap/ one-time setup for public access (static IP + managed certificate + DNS records in the zone)
 scripts/08.5-argocd.sh       ArgoCD installation and OIDC configuration
 test/                        e2e.sh (provision → up.sh → smoke-test.sh → down.sh → destroy)
 .github/workflows/           DayN.tier.ZZ-resource.yml — see 101. GitHub Actions Workflows
@@ -372,8 +375,10 @@ graph TD
 ### Diagram 2 — Secret provenance flow
 
 Every in-cluster Secret originates from a GitHub Actions secret (or a Terraform
-backend output), is materialised by `01-namespaces.sh` (or `08.5`/`03`) into the
-**consumer's** namespace, and is read only from there.
+backend output), is materialised into the **consumer's** namespace, and is read
+only from there. **How** it is materialised is selectable — see
+[Secrets backend](#secrets-backend-imperative--eso) below. The default
+(`imperative`) flow is:
 
 ```mermaid
 flowchart LR
@@ -399,6 +404,173 @@ flowchart LR
     C --> G["Headlamp"]
     D --> H["Jenkins controller"]
 ```
+
+### Secrets backend (`imperative` | `eso`)
+
+> 🔐 **Pluggable secrets backend.** A feature flag — `secrets.backend` in
+> `config/config.yaml` (override `JENKINS2026_SECRETS_BACKEND`, or the
+> **`secrets_backend` input** on `Day1.cluster.01` / `Day1.cluster.00`) — selects
+> **how** in-cluster Secrets are materialised, the same way `ci.engine` /
+> `observability.mode` select their dimensions. The **whole lifecycle** honours it
+> and is idempotent: `up.sh` (`01-namespaces.sh` push → `08.6-eso-sync.sh` sync), and
+> the **Day2 redeploys that re-run `01-namespaces.sh`** — `Day2.redeploy.03-tekton`,
+> `.04-headlamp`, `.05-gateway` — carry the same `secrets_backend` input (so a Day2 on
+> an `eso` cluster never recreates the Secret imperatively). Decom needs nothing extra:
+> `down.sh` deletes the namespaces (and with them the ExternalSecrets/Secrets), the
+> cluster teardown removes the `ClusterSecretStore`, and the Secret Manager entries
+> persist by design as the reusable source of truth.
+
+| Backend | How Secrets are made | Source of truth | Audit / versioning | Default |
+| :--- | :--- | :--- | :--- | :---: |
+| **`imperative`** | `01-namespaces.sh` runs `kubectl create secret` from the GitHub-secret env vars (Diagram 2 above) | GitHub Actions secrets | none in-cluster | ✅ |
+| **`eso`** | values pushed to **GCP Secret Manager**; the **External Secrets Operator** syncs them into namespaces via **Workload Identity (keyless)** | GCP Secret Manager (versioned) | **Cloud Audit Logs** + SM versions | |
+
+In `eso` mode the flow becomes (now wired for the gateway IAP secret, the Tekton
+pipeline credentials, and `ghcr-credentials`; the rest follows the same pattern —
+staged rollout below):
+
+```mermaid
+flowchart LR
+    GH["GitHub Actions secret<br/>(IAP_OAUTH_*)"] -->|"01-namespaces.sh<br/>(scripts/lib/secrets.sh)"| SM[("GCP Secret Manager<br/>gateway-iap-oauth (versioned)")]
+    SM -->|"Workload Identity (keyless)<br/>GSA eso-secret-reader: secretmanager.secretAccessor"| ESO["External Secrets Operator<br/>ClusterSecretStore gcp-store"]
+    ESO -->|"08.6-eso-sync.sh applies<br/>ExternalSecret per ns + waits"| K[("k8s Secret gateway-iap-oauth<br/>→ headlamp / pgadmin / engine ns")]
+    K --> P["GCPBackendPolicy (IAP)"]
+    classDef sm fill:#eef,stroke:#66c;
+    class SM,ESO sm;
+```
+
+**Why `eso` adds value:** a single managed source of truth, secret **versioning**,
+**Cloud Audit Logs** of every access, optional rotation, and it decouples secrets
+from the provision script — all keyless (WIF), no Vault/server to run. (Analysis of
+why **not** HashiCorp Vault here: it would add a stateful HA service + its own
+unseal root-of-trust, over-engineered for an ephemeral single-stack PoC.)
+
+**Coverage by ESO-fitness group.** `eso` is opt-in; the default stays `imperative`,
+unchanged until you validate the flag on a Day1 run. Which secrets are projected via
+ESO **when the flag is enabled** depends on how well each secret's *value lifecycle*
+fits ESO's core assumption — *the value already lives in Secret Manager, read-only*.
+The stack's secrets fall into four groups; **this PoC wires groups 1–3** and leaves
+only group 4 imperative:
+
+| Group | Secrets | ESO fit | In `eso` mode |
+| :--- | :--- | :--- | :--- |
+| **1 — clean** *(value is an external, static input)* | `gateway-iap-oauth` (+ its `-client-secret`), `tekton-github-webhook-secret`, `k6-cloud` | ✅ **Native** — `dataFrom.extract` / single `property` | ✅ **wired** |
+| **2 — templated** *(typed Secret built from external inputs)* | `ghcr-credentials` + `tekton`-registry (`dockerconfigjson`), `tekton`-git (`basic-auth` + `tekton.dev/git-0`) | ✅ via `target.template` — rebuilds the typed payload from `username`/`password`/`registry` keys | ✅ **wired** |
+| **3 — generated / multi-writer** | `jenkins-credentials` (admin pw generated at create; URL + `argocd-token` keys patched by later steps), `headlamp-credentials`, `pac-webhook` (`openssl rand`), `grafana-jenkins-ds` (mirrors the Jenkins pw) | ✅ **seed-then-project** — the generated value is seeded **stable** into SM (`sm_keep_or_generate`), and `jenkins-credentials` uses **`creationPolicy: Merge`** so the imperatively-patched keys survive | ✅ **wired** |
+| **4 — no upstream value** | `tekton-argocd` (token **minted in-cluster** by ArgoCD at deploy time), per-mode `grafana-cloud` / `azure-monitor` / `aws-managed` creds (**Terraform outputs**) | ❌ Nothing to sync *from* — the value is produced in-cluster / by Terraform, never pre-placed in SM | ❌ imperative |
+
+*(Validation: groups 1–2 confirmed live on a real Day1 — ExternalSecrets `SecretSynced`,
+correct types, consumers working; group 3 is newly wired and should be re-validated on a
+Day1 with `secrets_backend=eso`, especially the `jenkins-credentials` Merge + stable
+admin-password, since a mistake there affects Jenkins login.)*
+
+**Why group 4 stays imperative.** Groups 1–3 all end with the value *in* Secret Manager:
+groups 1–2 because it starts there (an external input), group 3 because we **seed** the
+generated value into SM once and keep it stable (`sm_keep_or_generate`) — and for the
+multi-writer `jenkins-credentials`, ESO uses `creationPolicy: Merge` so the URL keys (01)
+and the ArgoCD token (08.5) patched onto the Secret survive. Group 4 has **no upstream
+value to seed**: `tekton-argocd` is minted *by ArgoCD in-cluster at deploy time*, and the
+observability backend creds are *Terraform outputs* applied directly by the Day1 workflow.
+ESO-ifying those would mean writing an in-cluster / Terraform value *into* SM purely to read
+it straight back out — pure indirection with no managed-source-of-truth benefit, so they
+stay imperative by design.
+
+**Does the ESO integration add value — partial (1–3) vs complete (also 4)?**
+
+- **Partial (groups 1–3, what ships here): yes — and it now covers the high-value
+  secrets too.** It exercises the whole mechanism end-to-end (keyless WI auth, one
+  `ClusterSecretStore`, all four projection shapes + `Merge`) and gives a single managed
+  source of truth — **versioning + Cloud Audit Logs + rotation** — to the externally-sourced
+  creds (registry, IAP OAuth, webhook / k6 tokens) **and** the generated ones (the Jenkins
+  admin password, the PaC HMAC), while leaving the `imperative` default untouched (opt-in).
+- **Complete (also group 4): not worth it, even in production.** Unlike group 3, group 4
+  has no real upstream value — pushing an ArgoCD-minted token or a Terraform output into SM
+  just to read it back adds a moving part (a post-mint push-back) for zero centralization
+  benefit; those values are already managed where they are produced (ArgoCD / Terraform state).
+  So full ESO coverage is **not** a goal: group 4 is correctly left imperative. (Same
+  fit-the-tooling reasoning as choosing ESO over a self-hosted Vault above.)
+
+Pieces: the flag ([`config.sh`](../scripts/lib/config.sh)), the push helper
+([`scripts/lib/secrets.sh`](../scripts/lib/secrets.sh)), the sync+wait step
+([`scripts/08.6-eso-sync.sh`](../scripts/08.6-eso-sync.sh)), the reference manifests
+([`infrastructure/secrets/eso-bootstrap.yaml`](../infrastructure/secrets/eso-bootstrap.yaml)),
+and the GCP enablement, which has **three** parts (a write side and a read side
+either side of Secret Manager):
+
+- **API** — `secretmanager.googleapis.com`, enabled in `terraform/gke` alongside
+  `container`/`compute` (left on; unused in imperative mode).
+- **Write (push) side** — the CI service account that runs `up.sh` needs
+  `roles/secretmanager.admin` (the minimal predefined role that includes
+  `secrets.create`); granted in `terraform/bootstrap`'s `ci_roles`. **Adding it
+  to an existing bootstrap requires a one-time human `terraform apply` in
+  `terraform/bootstrap`** (the CI SA's roles live there, like all the others).
+- **Read (sync) side** — the cluster runs **GKE Workload Identity** (`GKE_METADATA`),
+  so ESO pods authenticate as the GSA bound to their KSA, **not** the node SA.
+  `terraform/gke` creates a dedicated least-privilege GSA (`eso-secret-reader`,
+  only `roles/secretmanager.secretAccessor`) and a `workloadIdentityUser` binding
+  to the controller KSA `external-secrets/external-secrets`; the KSA is annotated
+  with that GSA's email via the external-secrets ArgoCD app's helm values
+  (templated in `scripts/08.5-argocd.sh`). Because a pod's GCP identity is fixed
+  at creation, `08.6-eso-sync.sh` also **restarts the ESO controller** so it adopts
+  the annotation on an idempotent re-run (the controller pod from a prior run
+  predates it and would otherwise keep failing to authenticate).
+
+**Active-backend resolution (detection, not just the flag).** Like `ci.engine`
+(`j2026_active_ci_engine`), the *active* backend is resolved by
+`j2026_active_secrets_backend` ([`common.sh`](../scripts/lib/common.sh)) with the
+precedence: **explicit `JENKINS2026_SECRETS_BACKEND` override → detect from the
+live cluster → `config.yaml` default**. Detection keys off the `ClusterSecretStore/gcp-store`
+CR (created only in eso mode by `08.6`), *not* the ESO operator (installed in both
+modes). So a **standalone Day2 redeploy** — or `down.sh` during a Decom — does the
+right thing on an eso cluster **even if the operator forgets to pass
+`secrets_backend`** (whose default is `imperative`, which would otherwise diverge:
+`01-namespaces` would `kubectl`-create the Secret while the ESO `ExternalSecret`
+still owns it). Day1 always sets the override explicitly, so provisioning is
+unaffected; the `secrets_backend` workflow input is therefore an *optional override*
+of the detection, not a requirement.
+
+**Teardown.** In eso mode the Secret Manager secret is the one piece that outlives
+the cluster (it's project-level). `down.sh` deletes it on teardown (detected from
+the still-running cluster, so the Decom workflows need no `secrets_backend` input);
+best-effort, and a future Day1 re-pushes it from the GitHub secret.
+
+### Feature-flag convergence — idempotency vs in-place switching
+
+Two distinct properties, often conflated:
+
+- **Idempotency** — re-running `Day1` (or any `0N` step) with the **same** flags is a
+  no-op (`helm upgrade --install`, `kubectl apply`, `terraform apply` converge then do
+  nothing). This holds **universally**.
+- **Convergence on a flag CHANGE** — flipping a flag on a **live** cluster and re-running
+  should retire the **old** mode's resources and install the new one, not accumulate
+  orphans. The repo implements this with a deliberate **"retire the mode we are switching
+  away from"** pattern:
+
+| Flag | In-place switch | How the old mode is retired |
+| :--- | :--- | :--- |
+| **`ci.engine`** `jenkins`↔`tekton` | ✅ | `04-jenkins.sh` deletes the `tekton` ArgoCD app + the tekton namespaces; `04-tekton.sh` deletes the `jenkins` app + its namespace (engines are mutually exclusive — the retired engine's namespace is cleared symmetrically). |
+| **`observability.mode`** oss/grafana-cloud/managed-azure/managed-aws | ✅ | every branch of `03-observability.sh` retires the *other* modes' agents/stacks (e.g. it waits out the OSS node-exporter DaemonSet; `07-grafana-dashboards.sh` deletes the off-engine overview). See [902](./902-TROUBLESHOOTING.md). |
+| **`secrets.backend`** `imperative`↔`eso` | ✅ | `imperative→eso`: `08.6` installs the `ClusterSecretStore` + `ExternalSecrets`. `eso→imperative`: `08.6` **retires ESO** — RETAINs each target Secret (`deletionPolicy: Retain` + strips the `ownerReference` so the Owner ExternalSecret's GC can't delete it; Merge ones aren't owned), deletes the `ExternalSecrets`, and deletes `gcp-store`. `01-namespaces` already wrote imperative copies, so the Secrets survive and consumers keep working. |
+
+So **all three fundamental flags converge in place** — flip any of them and re-run `Day1`
+without a Decom; the cluster retires the old mode rather than leaving orphans. Two
+`secrets.backend`-specific subtleties:
+
+- **The first `eso→imperative` flip needs the explicit `secrets_backend=imperative` input.**
+  Detection (`j2026_active_secrets_backend`) is **sticky to eso** while `gcp-store` exists —
+  by design, so a Day2 redeploy that forgets the input can't silently revert and
+  double-provision. The explicit input overrides detection and triggers the retirement; once
+  that deletes `gcp-store`, detection resolves to `imperative` on its own thereafter. So
+  cycling the flag across many runs (`eso→imperative→eso→…`) **works and is symmetric**.
+- **A Jenkins restart is needed only ONCE — the first time the admin password changes**, not
+  per cycle. `jenkins-credentials`' `admin-password` is seeded **stable** into Secret Manager
+  (`sm_keep_or_generate`) and reused every run (eso reuses the SM value; imperative
+  skips-if-exists), so once Jenkins has adopted it (JCasC re-applies `securityRealm` on pod
+  start) it stays valid across flips. It only changes on the very first `imperative→eso`
+  migration of a cluster whose Jenkins **predates** the seeded password — there, delete the
+  `jenkins-0` pod once so JCasC adopts the Secret's value (see [902](./902-TROUBLESHOOTING.md)).
+  The Secret Manager secrets are left intact across flips (reused on switch-back; `down.sh`
+  removes them on teardown).
 
 ### Why the `gateway-iap-oauth` Secret is replicated
 
@@ -462,6 +634,13 @@ graph TD
         User["User / Browser"]
     end
 
+    subgraph DNS ["DNS (Terraform-managed, idempotent)"]
+        ParentNS["Parent domain (Squarespace)<br/>NS jenkins2026 → delegated zone<br/>(one-time delegation)"]
+        Zone["Permanent Cloud DNS zone<br/>jenkins-2026-public-zone<br/>(terraform/bootstrap)"]
+        WildcardA["*.jenkins2026...com  A → static IP<br/>(records: gateway-bootstrap)"]
+        ParentNS --> Zone --> WildcardA
+    end
+
     subgraph GlobalLB ["Global L7 Load Balancer"]
         StaticIP["Static IP<br>jenkins-2026-gateway-ip"]
         CertMap["Cert Map<br>jenkins-2026-cert-map"]
@@ -487,6 +666,8 @@ graph TD
         PoolInfo["Spot Instances<br/>e2/n2/c2/c3 dynamic scaling"]
     end
 
+    User -->|"resolve host"| ParentNS
+    WildcardA -.->|"resolves to"| StaticIP
     User -->|"HTTPS"| StaticIP
     StaticIP --> CertMap
     CertMap --> WildcardTLS

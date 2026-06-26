@@ -1,0 +1,36 @@
+# =============================================================================
+# Gitflow guard — only allow `develop` to be merged into `main`.
+# =============================================================================
+# Enforces the GitFlow promotion model: every change must land on `develop`
+# first and reach `main` only via a develop -> main promotion PR. This workflow
+# runs on every pull request targeting `main` and FAILS unless the PR's head
+# branch is exactly `develop`. Wire it up as a *required status check* on the
+# `main` branch protection (with "Require a pull request before merging"), so a
+# PR from any other branch (feature/*, hotfix/*, fork branches, …) cannot be
+# merged into `main`. See docs/101 / CLAUDE.md § Conventions > Branches.
+# =============================================================================
+name: Gitflow Guard
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  gitflow-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the PR into main to come from develop
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if [ "${HEAD_REF}" = "develop" ]; then
+            echo "✓ PR head is 'develop' — promotion to main is allowed."
+            exit 0
+          fi
+          echo "::error title=Gitflow violation::PRs into 'main' must come from 'develop' (this one is from '${HEAD_REF}')."
+          echo "GitFlow: branch off develop, merge your change to develop first, then open a develop -> main promotion PR."
+          exit 1

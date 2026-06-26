@@ -6,6 +6,51 @@
 
 All workflows live in [`.github/workflows/`](../.github/workflows/), are manually-triggered (`workflow_dispatch`), and follow a `DayN.tier.ZZ-resource.yml` naming convention whose **alphabetical sort order in the GitHub Actions UI is the correct execution order** for every phase of the lifecycle.
 
+## Branch protection & GitFlow promotion (both repos)
+
+This PoC spans **two** repos with **deliberately opposite** `main` branch-protection policies. Both are documented here (and mirrored in the GitOps repo's `README`) because getting either wrong silently breaks things — a too-strict GitOps `main` wedges every deploy, while a too-loose infra `main` lets unreviewed changes bypass GitFlow.
+
+### `jenkins-2026` (this repo) — strict GitFlow, human-reviewed
+
+`main` is reachable **only via a pull request from `develop`**. Actual `main` protection (GitHub → Settings → Branches):
+
+| Setting | Value | Why |
+| :--- | :--- | :--- |
+| Require a pull request before merging | **on** (0 required approvals) | No direct pushes to `main`; a PR is mandatory. 0 approvals because this is a single-maintainer PoC — the gate is the *check*, not a reviewer count. |
+| Required status check | **`gitflow-guard`** | [`gitflow-guard`](../.github/workflows/gitflow-guard.yml) fails any PR into `main` whose head branch is not exactly `develop`. This is what forbids `feature/*` / `hotfix/*` / fork → `main`. |
+| Include administrators (`enforce_admins`) | **on** | Even repo admins cannot bypass the PR + check (no "merge without waiting"). |
+| Allow force pushes | **off** | `main` history is append-only. |
+| Allow deletions | **off** | `main` cannot be deleted. |
+
+- **Allowed → `main`:** a PR from `develop`, after `gitflow-guard` passes.
+- **Forbidden → `main`:** direct push (any actor, incl. admin); a PR from `feature/*`, `hotfix/*`, a fork, or any branch ≠ `develop`; force-push; branch deletion.
+
+**The GitFlow loop in practice:**
+1. Branch off `develop` (e.g. `feat/...`), commit, open a PR **into `develop`** (never directly into `main`).
+2. Merge to `develop` and validate there (a `Day1` dispatched from `develop` auto-tracks develop's shared library/seed via `GITHUB_REF_NAME`).
+3. Open a **`develop` → `main`** promotion PR; `gitflow-guard` passes (head is `develop`); merge.
+
+### `jenkins-2026-gitops-config` (GitOps config) — CI-writable, machine-managed
+
+`main` is **direct-push** (no PR required). Actual `main` protection:
+
+| Setting | Value | Why |
+| :--- | :--- | :--- |
+| Require a pull request before merging | **off** | The Jenkins **GitOps Update** stage pushes image-tag bumps straight to `main` (`git push origin main`). Require-PR would reject the PAT push (an admin PAT does **not** bypass protection) and **wedge every deploy**. |
+| Required status checks | **none** | Image-tag bumps are machine-generated — nothing to gate them on. |
+| Include administrators | **off** | — |
+| Allow force pushes | **off** | Still protected against history rewrites / accidental clobber. |
+| Allow deletions | **off** | `main` cannot be deleted. |
+
+- **Allowed → `main`:** direct push (the CI's PAT, or a human pushing a chart/values edit).
+- **Forbidden → `main`:** force-push, branch deletion.
+
+> ⚠️ **Do NOT enable "Require a pull request" on the GitOps repo's `main`.** It is the single most common way to break this PoC: the next pipeline's *GitOps Update* push is rejected, no image tag lands, and ArgoCD silently keeps deploying the old tag. To human-review chart/values changes, do it via the PR-on-`jenkins-2026` flow that authored them — not by gating the GitOps `main`.
+
+### Why opposite policies (best practice, not an oversight)
+
+The **infra repo is human-authored** (scripts, Terraform, Helm values, docs) → it deserves strict GitFlow + review-gating. The **GitOps repo is machine-managed** (image tags written by CI on every successful build) → its `main` must accept unattended CI writes. "Harmonising" them either way breaks one side. See [`CLAUDE.md` § Conventions](../CLAUDE.md), [`502`](./502-MICROSERVICES_GITOPS.md), and the GitOps repo's `README`.
+
 ## Naming convention: `DayN.tier.ZZ-resource`
 
 Each component of the filename encodes a different dimension of the workflow's role:
@@ -237,9 +282,9 @@ All 22 workflows in a single numbered table (rows 1–20 in filename/execution o
 | **5** | **Day1** Create | **cluster** — depends on infra | **01** GKE cluster | [**`Day1.cluster.01-gke`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) | Provisions the throwaway GKE cluster (`terraform/gke`) then runs `scripts/up.sh` in full: namespaces → OTel → ArgoCD → observability → Jenkins → seed pipelines → Headlamp + smoke test. (ArgoCD precedes observability so oss mode can deploy the in-cluster stack via the `observability-oss` app-of-apps.) Reads persistent-resource outputs (rows 1–4) from GCS state. Always pair with row 16 (`Decom.cluster.01`). | Rows 1–4 as needed for the chosen `observability_mode`; `terraform/bootstrap` | **Per session** |
 | **6** | **Day2** Update | **redeploy** | **01** ArgoCD | [**`Day2.redeploy.01-argocd`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.01-argocd.yml) | Re-applies `scripts/08.5-argocd.sh`: ArgoCD Helm upgrade + OIDC/RBAC + Jenkins API token, and re-applies the GitOps Applications it owns (platform-postgres, External Secrets, Headlamp, microservices AppSet). ArgoCD is the CD engine the rest deploy through, hence `ZZ=01`. | Cluster active (row 5 run) | **Anytime** |
 | **7** | **Day2** Update | **redeploy** | **02** Jenkins | [**`Day2.redeploy.02-jenkins`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.02-jenkins.yml) | Re-applies `scripts/04-jenkins.sh`: Helm upgrade of `helm/jenkins/` + JCasC, and re-seeds the Microservices pipelines against the existing cluster. For Jenkins-only changes without a full provision cycle. | Cluster active (row 5 run) | **Anytime** |
-| **8** | **Day2** Update | **redeploy** | **03** Tekton | [**`Day2.redeploy.03-tekton`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.03-tekton.yml) | Re-applies `scripts/04-tekton.sh` (Tekton Pipelines/Triggers/Dashboard) + `scripts/06-tekton-pipelines.sh` (`tekton/` pipelines + per-service PipelineRuns). For Tekton-only changes without a full provision. | Cluster active (row 5 run, ci_engine=tekton) | **Anytime** |
-| **9** | **Day2** Update | **redeploy** | **04** Headlamp | [**`Day2.redeploy.04-headlamp`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.04-headlamp.yml) | Re-applies `scripts/01-namespaces.sh` (refreshes OIDC config keys on `headlamp-credentials`) and `scripts/08-headlamp.sh` (Helm upgrade of `helm/headlamp/`). | Cluster active (row 5 run) | **Anytime** |
-| **10** | **Day2** Update | **redeploy** | **05** Gateway | [**`Day2.redeploy.05-gateway`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.05-gateway.yml) | Re-applies `scripts/01-namespaces.sh` (namespaces + IAP Secrets) + `scripts/09-gateway.sh` (the Gateway, HTTPRoutes and GCPBackendPolicies/IAP). Use it to apply Gateway/route/IAP changes without a full provision. | Cluster active (row 5 run) | **Anytime** |
+| **8** | **Day2** Update | **redeploy** | **03** Tekton | [**`Day2.redeploy.03-tekton`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.03-tekton.yml) | Re-applies `scripts/04-tekton.sh` (Tekton Pipelines/Triggers/Dashboard) + `scripts/06-tekton-pipelines.sh` (`tekton/` pipelines + per-service PipelineRuns). For Tekton-only changes without a full provision. **Secrets-backend-aware** (`secrets_backend` input): re-runs `01-namespaces` + `08.6-eso-sync` so it never recreates an ESO-owned Secret imperatively. | Cluster active (row 5 run, ci_engine=tekton) | **Anytime** |
+| **9** | **Day2** Update | **redeploy** | **04** Headlamp | [**`Day2.redeploy.04-headlamp`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.04-headlamp.yml) | Re-applies `scripts/01-namespaces.sh` (refreshes OIDC config keys on `headlamp-credentials`) and `scripts/08-headlamp.sh` (Helm upgrade of `helm/headlamp/`). **Secrets-backend-aware** (`secrets_backend` input). | Cluster active (row 5 run) | **Anytime** |
+| **10** | **Day2** Update | **redeploy** | **05** Gateway | [**`Day2.redeploy.05-gateway`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.05-gateway.yml) | Re-applies `scripts/01-namespaces.sh` (namespaces + IAP Secrets) + `scripts/09-gateway.sh` (the Gateway, HTTPRoutes and GCPBackendPolicies/IAP). Use it to apply Gateway/route/IAP changes without a full provision. **Secrets-backend-aware** (`secrets_backend` input): runs `08.6-eso-sync` after `01-namespaces` so the IAP Secret is in place before the GCPBackendPolicy. | Cluster active (row 5 run) | **Anytime** |
 | **11** | **Day2** Update | **publish** | **01** OSS Grafana | [**`Day2.publish.01-oss-grafana`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.01-oss-grafana.yml) | Refreshes the in-cluster OSS Grafana without a reprovision: rebuilds the `jenkins-2026-grafana-dashboards` ConfigMap, nudges the `observability-oss` ArgoCD app to re-sync, republishes alert rules. The stack itself is GitOps-managed (`argocd/observability-oss`). | Cluster active (row 5 run), `observability.mode=oss` | **Anytime** |
 | **12** | **Day2** Update | **publish** | **03** Azure Mgd Grafana | [**`Day2.publish.03-azure-grafana`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.03-azure-grafana.yml) | (Re)publishes `observability/grafana/dashboards-azure/` to Azure Managed Grafana without re-provisioning the cluster. Discovers the instance via `az grafana list`; auth via GitHub OIDC. Use when a dashboard JSON changes. | Row 3 applied; `AZURE_*` secrets | **Anytime** |
 | **13** | **Day2** Update | **publish** | **04** AWS AMG | [**`Day2.publish.04-aws-grafana`**](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.04-aws-grafana.yml) | (Re)publishes `observability/grafana/dashboards-aws/` to Amazon Managed Grafana without re-provisioning. Reads AMG params from `terraform/aws-managed-grafana` GCS state; auth via GitHub OIDC. | Row 4 applied; `AWS_DASHBOARD_PUBLISH_ROLE_ARN` secret | **Anytime** |
@@ -399,8 +444,8 @@ flowchart TD
     subgraph INSIDE["Inside the single 'provision' job — steps, NOT shown as boxes in the UI"]
         direction TB
         TF["terraform apply (GKE cluster)"]
-        NS["01 namespaces + secrets\n(+ per-mode credentials Secret)"]
-        CD["08.5 ArgoCD -> 03 observability"]
+        NS["01 namespaces + secrets\n(imperative kubectl, or push to\nSecret Manager when secrets.backend=eso)"]
+        CD["08.5 ArgoCD -> 08.6 ESO sync (eso only) -> 03 observability"]
         UP{"up.sh branches on\nJENKINS2026_CI_ENGINE"}
         JEN["04-jenkins + 06-seed-pipelines"]
         TEK["04-tekton + 06-tekton-pipelines (PaC)"]

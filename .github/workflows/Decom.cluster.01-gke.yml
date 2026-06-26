@@ -164,16 +164,30 @@ jobs:
           # leaving small pd-ssd disks billing indefinitely. They keep the cluster's
           # GKE labels, so any disk still tagged with our (now-deleted) cluster name
           # is a safe orphan to remove. Best-effort; never fail the teardown on it.
-          gcloud compute disks list \
-            --project "${{ secrets.GCP_PROJECT_ID }}" \
-            --filter="labels.goog-k8s-cluster-name=${CLUSTER_NAME} AND -users:*" \
-            --format="value(name,zone.basename())" 2>/dev/null \
-          | while read -r DISK ZONE; do
-              [[ -z "${DISK}" ]] && continue
-              echo "Deleting orphaned PV disk ${DISK} (${ZONE})..."
-              gcloud compute disks delete "${DISK}" --zone "${ZONE}" \
-                --project "${{ secrets.GCP_PROJECT_ID }}" --quiet || true
-            done
+          #
+          # Disks DETACH ASYNCHRONOUSLY after terraform destroy removes the nodes, so a
+          # single pass right after destroy RACES the detachment (the -users:* filter
+          # matches nothing while the PDs still list the just-deleted nodes as users) and
+          # leaves them billing. Retry until every labeled disk is unattached + deleted,
+          # or a 5-min cap.
+          PROJECT="${{ secrets.GCP_PROJECT_ID }}"
+          deadline=$(( SECONDS + 300 ))
+          while :; do
+            gcloud compute disks list --project "${PROJECT}" \
+              --filter="labels.goog-k8s-cluster-name=${CLUSTER_NAME} AND -users:*" \
+              --format="value(name,zone.basename())" 2>/dev/null \
+            | while read -r DISK ZONE; do
+                [[ -z "${DISK}" ]] && continue
+                echo "Deleting orphaned PV disk ${DISK} (${ZONE})..."
+                gcloud compute disks delete "${DISK}" --zone "${ZONE}" --project "${PROJECT}" --quiet || true
+              done
+            remaining=$(gcloud compute disks list --project "${PROJECT}" \
+              --filter="labels.goog-k8s-cluster-name=${CLUSTER_NAME}" --format="value(name)" 2>/dev/null | wc -l)
+            [[ "${remaining}" -eq 0 ]] && { echo "All orphaned PV disks reclaimed."; break; }
+            [[ ${SECONDS} -ge ${deadline} ]] && { echo "::warning::${remaining} labeled disk(s) still present after 5m (may still be detaching) — re-run this workflow or delete by hand."; break; }
+            echo "${remaining} labeled disk(s) still attached/detaching — waiting 20s..."
+            sleep 20
+          done
 
       # The stack slug (generated, no longer a GitHub variable) is needed for the
       # grafana_cloud_stack data-source lookup during the token destroy. Read it

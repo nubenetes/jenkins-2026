@@ -14,6 +14,14 @@ name: "Day2.redeploy.04 Headlamp"
 on:
   workflow_dispatch:
     inputs:
+      secrets_backend:
+        description: "Secrets backend the cluster runs (must match the live cluster): imperative | eso"
+        required: true
+        default: "imperative"
+        type: choice
+        options:
+          - imperative
+          - eso
       git_ref:
         description: "Git branch, tag, or SHA to check out (leave empty to use the branch/tag selected in 'Use workflow from' above)"
         required: false
@@ -30,6 +38,7 @@ concurrency:
 
 env:
   TF_VERSION: "1.15.6"
+  JENKINS2026_SECRETS_BACKEND: ${{ inputs.secrets_backend }}
 
 jobs:
   redeploy-headlamp:
@@ -128,6 +137,12 @@ jobs:
           JENKINS_OIDC_ADMIN_EMAIL: ${{ secrets.JENKINS_OIDC_ADMIN_EMAIL }}
           IAP_OAUTH_CLIENT_ID: ${{ secrets.IAP_OAUTH_CLIENT_ID }}
           IAP_OAUTH_CLIENT_SECRET: ${{ secrets.IAP_OAUTH_CLIENT_SECRET }}
+
+      - name: Sync External Secrets (scripts/08.6-eso-sync.sh, eso mode only)
+        # No-op when secrets.backend=imperative. In eso mode, ensures the
+        # ESO-managed Secrets (e.g. gateway-iap-oauth in the headlamp ns) stay
+        # synced from Secret Manager after 01 pushed any updates.
+        run: ./scripts/08.6-eso-sync.sh
 
       - name: Redeploy Headlamp (scripts/08-headlamp.sh)
         run: ./scripts/08-headlamp.sh

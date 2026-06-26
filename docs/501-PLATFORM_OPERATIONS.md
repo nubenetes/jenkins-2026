@@ -36,7 +36,7 @@ The deployment lifecycle is managed by **ArgoCD**. Application manifests are sto
 
 ### 1. Continuous Traffic Simulation (GitHub Actions)
 
-Use the **[`Day2.traffic.01 Continuous Traffic Simulation`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml)** workflow:
+Use the **[`Day2.traffic.01 Continuous k6 simulation`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml)** workflow:
 - **Duration**: Default 15 minutes (configurable).
 - **Purpose**: Simulates real-world user traffic from outside the cluster, hitting the GKE Gateway and triggering end-to-end traces.
 
@@ -178,7 +178,7 @@ Every policy is in [`infrastructure/networkpolicies*.yaml`](../infrastructure/) 
 | `argocd` | always | `argocd-baseline` (all) | intra-ns mesh; **8080*** (argocd-server pod port: Gateway, CI sync, CLI, port-forward) | all |
 | `headlamp` | always | `headlamp-baseline` (all) | intra-ns mesh; **4466*** (headlamp pod port: Gateway) | all |
 | `tekton-ci` | `tekton` | `tekton-ci-baseline` (all) | intra-ns; EventListener **8080/9000*** (event/metrics). Pipeline pods get **no ingress** (outbound-only) | all |
-| `jenkins` | `jenkins` | `jenkins-policy` (controller) + `jenkins-agent-policy` (`jenkins=slave`) | **controller:** **8080*** (UI/Gateway), **50000** from intra-ns agents, `observability` → **8080**. **agents:** none (outbound-only) | **controller:** all. **agents:** all (reach controller **8080/50000** + git/registry/ArgoCD) |
+| `jenkins` | `jenkins` | `jenkins-policy` (controller) + `jenkins-agent-policy` (`jenkins=slave`) | **controller:** **8080*** (UI/Gateway **+ build-agent WebSocket**), **50000** (legacy JNLP, unused) from intra-ns agents, `observability` → **8080**. **agents:** none (outbound-only) | **controller:** all. **agents:** all (reach controller **8080** via WebSocket + git/registry/ArgoCD) |
 | `tekton-pipelines`, `cnpg-system`, `external-secrets`, `pipelines-as-code` | per mode | *(none — open by design)* | all (hosts admission webhooks the API server calls) | all |
 
 #### NetworkPolicy flow diagram
@@ -200,7 +200,7 @@ flowchart LR
     pg[(CNPG Postgres<br/>cnpg.io/cluster)]
   end
   subgraph ci[CI engine]
-    cieng[jenkins :8080/:50000<br/>· tekton-ci EL :8080/:9000]
+    cieng[jenkins :8080 WebSocket agents<br/>· tekton-ci EL :8080/:9000]
   end
   argocd[argocd-server :8080]:::ui
   headlamp[headlamp :4466]:::ui
@@ -402,13 +402,22 @@ Jenkins, Microservices, Headlamp, and pgAdmin can all be exposed on the public i
 
 ### One-time Setup
 
-1. **Run the "Day0.infra.01 Gateway bootstrap" workflow** to create a global static IP and a Google-managed wildcard certificate for `<baseDomain>` and `*.<baseDomain>`.
+**Idempotency model.** Only **two** of the steps below are genuinely manual and
+permanent — the **`NS` delegation** (step 1) and the **IAP OAuth client** (step 3).
+Both live outside the per-cluster lifecycle (the permanent root tier's DNS zone in
+the parent domain / a project-level OAuth client + GitHub secrets), so they survive
+a `Decom`-everything — even an explicit `Decom.infra.01` gateway teardown — and are
+done **once, ever**. Everything else (the static IP, certificate, the zone's `A`/`CNAME`
+records, the IAP access bindings) is created/reconciled by Terraform on every
+`Day0.infra.01` / `Day1.cluster.00` run, so a teardown + rebuild brings the public
+URLs back with **no manual work**. (The delegated DNS **zone** itself is created once
+by the root bootstrap and never destroyed, which is what keeps the delegation permanent.)
 
-2. **Add the two DNS records** it prints:
-   - A wildcard **A** record: host `*.jenkins2026`, value the static IP.
-   - The **CNAME** record from the workflow's "DNS authorization record" output.
+1. **Delegate the subdomain — one time, permanent.** The **root bootstrap** (`scripts/bootstrap.sh up`, Day0 "phase 0") creates a **permanent** delegated Cloud DNS zone for `<baseDomain>` and prints its four nameservers (`dns_zone_name_servers` output). At the **parent** domain's DNS (e.g. **Squarespace** for `nubenetes.com`), create an `NS` record set for `<baseDomain>` (host `jenkins2026`) pointing at those four nameservers. This is the **only** manual DNS step, and it is truly **once, ever**: the zone lives in the never-torn-down root tier, so its nameservers never change — not even an explicit `Decom.infra.01` gateway teardown touches them. Remove any old hand-made `*.<baseDomain>` / `_acme-challenge.<baseDomain>` records from the parent zone — the delegation supersedes them.
 
-3. **Create the IAP OAuth client by hand** (the Terraform resources for this are deprecated as of July 2025). In the [GCP Console](https://console.cloud.google.com/): **APIs & Services** → **Credentials** → **Create credentials** → **OAuth client ID** → Application type **Web application**.
+2. **Run the "Day0.infra.01 Gateway bootstrap" workflow** to create the global static IP, the Google-managed wildcard certificate for `<baseDomain>` and `*.<baseDomain>`, the Certificate Manager DNS authorization, and the **records inside the delegated zone** (wildcard `A` → static IP, cert-validation `CNAME`). These are re-applied on every `Day0.infra.01` / `Day1.cluster.00` run, so they always track the current IP — a `Decom`-everything + rebuild brings the URLs back with **no further DNS work**.
+
+3. **Create the IAP OAuth client by hand — one time, permanent** (the Terraform resources for this are deprecated as of July 2025). In the [GCP Console](https://console.cloud.google.com/): **APIs & Services** → **Credentials** → **Create credentials** → **OAuth client ID** → Application type **Web application**. The client ID/secret are project-level and outlive any cluster; the `IAP_OAUTH_CLIENT_ID`/`IAP_OAUTH_CLIENT_SECRET` GitHub secrets feed the `gateway-iap-oauth` Kubernetes Secret each rebuild (via `scripts/01-namespaces.sh`, or pushed to GCP Secret Manager and synced by External Secrets when `secrets.backend=eso`). So like the `NS` delegation, this is done once and survives `Decom`/rebuild.
 
    **Authorized redirect URI**:
    ```

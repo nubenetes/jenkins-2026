@@ -354,9 +354,13 @@ for ns in "${iap_backend_namespaces[@]}"; do
   client_id="$(kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" -o jsonpath='{.data.client_id}' 2>/dev/null | base64 -d || true)"
   client_secret="$(kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" -o jsonpath='{.data.client_secret}' 2>/dev/null | base64 -d || true)"
   iap_client_id["${ns}"]="${client_id}"
-  kubectl create secret generic "${J2026_GATEWAY_IAP_SECRET}-client-secret" -n "${ns}" \
-    --from-literal=client_secret="${client_secret}" \
-    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  if [[ "$(j2026_active_secrets_backend)" != "eso" ]]; then
+    # eso → the ${IAP}-client-secret ExternalSecret (08.6) projects client_secret
+    # straight from Secret Manager; skip the imperative re-projection here.
+    kubectl create secret generic "${J2026_GATEWAY_IAP_SECRET}-client-secret" -n "${ns}" \
+      --from-literal=client_secret="${client_secret}" \
+      --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  fi
 
   if [[ -z "${client_id}" ]]; then
     log_warn "IAP OAuth credentials are not configured in namespace '${ns}'"

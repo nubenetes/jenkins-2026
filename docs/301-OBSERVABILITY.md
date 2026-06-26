@@ -146,7 +146,7 @@ Two `open-telemetry/opentelemetry-collector` releases:
 
 The `opentelemetry` plugin exports one span per pipeline run / stage / step as `service.name=jenkins` to the same gateway — so a Microservices deploy's CI trace and the resulting application traces share the same backend.
 
-> **Tekton CI (`ci.engine=tekton`).** When the alternative CI engine is selected, Tekton emits PipelineRun/TaskRun traces to the same in-cluster OTel collector — `scripts/04-tekton.sh` patches Tekton's `config-tracing` to point at the gateway — and the k6 Task carries `OTEL_SERVICE_NAME=tekton-pipeline-k6-smoke`, mirroring the Jenkins `jenkins-pipeline-*` convention. Pipeline telemetry therefore lands in Tempo/Loki/Prometheus exactly the same way regardless of CI engine. See [403. Tekton](./403-TEKTON.md).
+> **Tekton CI (`ci.engine=tekton`).** When the alternative CI engine is selected, the k6 smoke Task ships its own traces/metrics to the same in-cluster OTel gateway as `service.name=k6-microservices-smoke` (`K6_OTEL_SERVICE_NAME` + `OTEL_RESOURCE_ATTRIBUTES` in [`tekton/tasks/k6-smoke.yaml`](../tekton/tasks/k6-smoke.yaml)), so the load-test telemetry lands in Tempo/Loki/Prometheus alongside the application traces. Native Tekton **PipelineRun/TaskRun** tracing (patching the controller's `config-tracing`) is a deferred follow-up — not wired today. See [403. Tekton](./403-TEKTON.md).
 
 ## Telemetry Architecture and Signal Flow
 

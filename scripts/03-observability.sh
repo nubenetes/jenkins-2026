@@ -217,12 +217,19 @@ EOT
     # The Grafana->Jenkins datasource only makes sense when Jenkins is the CI engine
     # (and the jenkins-credentials Secret exists). Skip it in tekton mode.
     if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
-      log_step "Mirroring Jenkins admin password into grafana-jenkins-ds Secret (Jenkins datasource token)"
-      JENKINS_ADMIN_PASSWORD="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" -o jsonpath='{.data.admin-password}' | base64 -d)"
-      kubectl create secret generic grafana-jenkins-ds \
-        -n "${J2026_GRAFANA_OSS_NAMESPACE}" \
-        --from-literal=apiToken="${JENKINS_ADMIN_PASSWORD}" \
-        --dry-run=client -o yaml | kubectl apply -f -
+      if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
+        # eso → grafana-jenkins-ds is ESO-managed: a property projection of the
+        # jenkins-credentials Secret Manager blob's admin-password into key apiToken
+        # (08.6), so it follows the same stable password. Skip the imperative mirror.
+        log_info "grafana-jenkins-ds is ESO-managed (jenkins-credentials.admin-password → apiToken) — skipping imperative mirror."
+      else
+        log_step "Mirroring Jenkins admin password into grafana-jenkins-ds Secret (Jenkins datasource token)"
+        JENKINS_ADMIN_PASSWORD="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" -o jsonpath='{.data.admin-password}' | base64 -d)"
+        kubectl create secret generic grafana-jenkins-ds \
+          -n "${J2026_GRAFANA_OSS_NAMESPACE}" \
+          --from-literal=apiToken="${JENKINS_ADMIN_PASSWORD}" \
+          --dry-run=client -o yaml | kubectl apply -f -
+      fi
     fi
 
     # Public root_url only when the gateway is enabled; otherwise leave the

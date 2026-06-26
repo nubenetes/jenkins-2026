@@ -32,6 +32,18 @@ locals {
     # terraform destroy failed with 403 'certmapentries.delete denied' (run
     # 28202019543). owner includes the .delete permissions.
     "roles/certificatemanager.owner",
+    # Lets Day0.infra.01's terraform/gateway-bootstrap manage the delegated public
+    # DNS zone + records (wildcard A → static IP, cert-validation CNAME) so the
+    # public endpoint is idempotent across Decom/rebuild with no manual DNS. See
+    # docs/501-PLATFORM_OPERATIONS.md § Public access.
+    "roles/dns.admin",
+    # secrets.backend=eso: up.sh runs as this CI SA and pushes secret values to
+    # GCP Secret Manager (gcloud secrets create / versions add / versions access
+    # for the idempotency check). secretmanager.admin is the minimal PREDEFINED
+    # role that includes secrets.create (the secretVersion* roles don't). The
+    # node SA gets the read-only secretAccessor in terraform/gke instead. Unused
+    # in the default imperative mode. See docs/201 § Secrets Management.
+    "roles/secretmanager.admin",
   ]
 }
 
@@ -45,11 +57,39 @@ resource "google_project_service" "apis" {
     "sts.googleapis.com",
     "cloudresourcemanager.googleapis.com",
     "storage.googleapis.com",
+    # For the permanent public DNS zone below.
+    "dns.googleapis.com",
   ])
 
   project            = var.project_id
   service            = each.value
   disable_on_destroy = false
+}
+
+# -----------------------------------------------------------------------------
+# Permanent public DNS zone (delegated subdomain). Lives HERE — in the never-
+# torn-down root tier — so its nameservers are stable for the lifetime of the
+# project: you delegate <base_domain> from the parent domain (e.g. Squarespace)
+# to these nameservers ONCE, ever. terraform/gateway-bootstrap fills the zone
+# with the wildcard-A (→ static IP) and cert-validation CNAME and re-applies them
+# every Day0.infra.01 / Day1.cluster.00, so a Decom-everything — even an explicit
+# Decom.infra.01 gateway teardown — and rebuild brings the URLs back with NO DNS
+# changes (the zone, hence the delegation, never changes). The fixed zone name is
+# referenced by terraform/gateway-bootstrap's google_dns_record_set.managed_zone.
+# -----------------------------------------------------------------------------
+resource "google_dns_managed_zone" "public" {
+  project     = var.project_id
+  name        = "jenkins-2026-public-zone"
+  dns_name    = "${var.base_domain}."
+  description = "Permanent public zone for jenkins-2026 (${var.base_domain}); delegated from the parent domain. Records are managed by terraform/gateway-bootstrap."
+
+  # Let `bootstrap.sh down` (the root teardown) destroy the zone even if a record
+  # the gateway-bootstrap module created still lingers — Cloud DNS otherwise
+  # refuses to delete a non-empty zone. Mirrors the state bucket's force_destroy.
+  # Only ever exercised by the root teardown; ordinary Decom keeps the zone.
+  force_destroy = true
+
+  depends_on = [google_project_service.apis]
 }
 
 # -----------------------------------------------------------------------------
@@ -140,9 +180,14 @@ resource "google_service_account_iam_member" "github_wif" {
 }
 
 # 6. Google Cloud Storage bucket for PostgreSQL (CNPG) backups (persistent bootstrap tier)
+# NOTE: project-scoped name (like the state bucket above). GCS bucket names share ONE
+# global namespace, so a bare "jenkins-2026-postgres-backups" collides the moment the
+# project is rebuilt under a new project ID (the old project still owns the name) —
+# `apply` then fails with 409 "bucket name is not available". Prefixing with the
+# (globally-unique) project ID makes it collision-proof and portable across rebuilds.
 resource "google_storage_bucket" "postgres_backups" {
   project       = var.project_id
-  name          = "jenkins-2026-postgres-backups"
+  name          = "${var.project_id}-jenkins-2026-postgres-backups"
   location      = var.region
   force_destroy = false # Protect backup data
 
@@ -166,4 +211,17 @@ resource "google_storage_bucket" "postgres_backups" {
       age = 3 # Move backups to Nearline after 3 days to cut costs
     }
   }
+}
+
+# terraform/gke runs as the CI service account and manages the GKE node SA's
+# objectAdmin binding ON this bucket (google_storage_bucket_iam_member.
+# nodes_postgres_backups). A read-modify-write of a bucket's IAM policy needs
+# storage.buckets.getIamPolicy + setIamPolicy, which none of the CI SA's
+# project-level ci_roles grant — so without this, Day1's terraform/gke apply fails
+# with 403 "does not have storage.buckets.getIamPolicy". Grant storage.admin scoped
+# to THIS bucket only (least privilege; mirrors ci_state_bucket above).
+resource "google_storage_bucket_iam_member" "ci_postgres_backups" {
+  bucket = google_storage_bucket.postgres_backups.name
+  role   = "roles/storage.admin"
+  member = "serviceAccount:${google_service_account.ci.email}"
 }

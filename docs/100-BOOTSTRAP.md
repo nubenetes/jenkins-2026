@@ -22,6 +22,7 @@ touched Terraform or GCP, you can still follow this — every command is copy‑
 - [Prerequisites](#prerequisites)
 - [Create the root: `bootstrap.sh up`](#create-the-root-bootstrapsh-up)
 - [What it creates](#what-it-creates)
+- [Delegate the DNS subdomain (one-time)](#delegate-the-dns-subdomain-one-time)
 - [The state model (self-hosted in the bucket)](#the-state-model-self-hosted-in-the-bucket)
 - [Destroy the root: `bootstrap.sh down`](#destroy-the-root-bootstrapsh-down)
 - [FAQ & troubleshooting](#faq--troubleshooting)
@@ -50,7 +51,8 @@ flowchart LR
     BS --> WIF["WIF trust<br/>+ CI service account"]
     BS --> BUCKET[("GCS state bucket")]
     BS --> SECRETS["4 GitHub repo secrets"]
-    WIF & BUCKET & SECRETS --> GHA["GitHub Actions<br/>(Day0 / Day1 / Day2 / Decom)"]
+    BS --> DNS["Permanent public DNS zone<br/>(delegate once at parent domain)"]
+    WIF & BUCKET & SECRETS & DNS --> GHA["GitHub Actions<br/>(Day0 / Day1 / Day2 / Decom)"]
     GHA -->|"authenticate via WIF,<br/>store state in the bucket"| GCP[("Your GCP project")]
     classDef seed fill:#ffd,stroke:#aa0,stroke-width:2px;
     class BS seed;
@@ -145,7 +147,7 @@ sequenceDiagram
     U->>S: ./scripts/bootstrap.sh up
     S->>G: check gcloud user, ADC, gh — prompt login only if missing
     S->>U: ask GCP project ID (region/repo have defaults)
-    S->>T: init + apply (LOCAL state) → create bucket + WIF + SA
+    S->>T: init + apply (LOCAL state) → create bucket + WIF + SA + DNS zone
     S->>T: write backend_override.tf → init -migrate-state → state now in the bucket
     S->>C: gh secret set ×4 (from Terraform outputs)
     S->>U: ✓ Root ready — GitHub Actions can now run
@@ -176,6 +178,11 @@ on a second run it detects the remote state and just re-applies.
 | **WIF pool + provider** | `google_iam_workload_identity_pool*` | keyless GitHub→GCP trust |
 | **WIF binding** | `google_service_account_iam_member.github_wif` | lets *this repo* impersonate the SA |
 | **Postgres backups bucket** | `google_storage_bucket.postgres_backups` | survives cluster rebuilds |
+| **Public DNS zone** `jenkins-2026-public-zone` | `google_dns_managed_zone.public` | the **permanent** delegated zone for `base_domain`; lives here so its nameservers never change. `Day0.infra.01`/`gateway-bootstrap` fills it with the wildcard-A + cert records. See [501 § Public access](./501-PLATFORM_OPERATIONS.md) |
+
+> **One-time DNS delegation.** The zone is created here, but you must **delegate** it
+> from your parent domain (Squarespace) **once** before the public URLs work. The full
+> step-by-step is just below: [Delegate the DNS subdomain](#delegate-the-dns-subdomain-one-time).
 
 …and then sets these **4 GitHub repo secrets** (the only ones the GCP workflows need):
 
@@ -185,6 +192,79 @@ on a second run it detects the remote state and just re-applies.
 | `TF_STATE_BUCKET` | `state_bucket` |
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | `workload_identity_provider` |
 | `GCP_SERVICE_ACCOUNT` | `ci_service_account_email` |
+
+---
+
+## Delegate the DNS subdomain (one-time)
+
+The bootstrap **creates** the Cloud DNS zone `jenkins-2026-public-zone` for
+`base_domain` (default `jenkins2026.nubenetes.com`) — but a zone in GCP is inert until
+the **parent domain delegates to it**. Until you do this once, the public internet still
+asks your registrar (**Squarespace**) for anything under `*.jenkins2026.nubenetes.com`,
+so the URLs (`https://argocd.jenkins2026.nubenetes.com`, …) won't resolve to your cluster
+and the Google-managed certificate can't validate. You do this **once for the life of the
+project** — see [why this is the only time](#why-this-is-the-only-time) below.
+
+```mermaid
+flowchart LR
+    P["Parent domain @ Squarespace<br/>nubenetes.com"] -->|"NS jenkins2026 →<br/>(4 Google nameservers)"| Z["Cloud DNS zone<br/>jenkins-2026-public-zone<br/>(root tier — permanent)"]
+    Z -->|"A *.jenkins2026 → static IP<br/>CNAME _acme-challenge<br/>(managed by gateway-bootstrap)"| LB["Public URLs<br/>argocd./jenkins./… .jenkins2026.nubenetes.com"]
+    classDef perm fill:#ffd,stroke:#aa0,stroke-width:2px;
+    class Z perm;
+```
+
+### Step 1 — get the zone's four nameservers
+
+```bash
+terraform -chdir=terraform/bootstrap output -raw dns_zone_name_servers
+```
+
+You'll get four Google nameservers, e.g.:
+
+```
+ns-cloud-b1.googledomains.com.
+ns-cloud-b2.googledomains.com.
+ns-cloud-b3.googledomains.com.
+ns-cloud-b4.googledomains.com.
+```
+
+### Step 2 — delegate at the parent domain (Squarespace)
+
+In Squarespace, open the domain `nubenetes.com` → **DNS Settings** / **Custom Records**
+and make these changes (Host = the subdomain label, here `jenkins2026`):
+
+| Action | Type | Host | Value |
+| :--- | :--- | :--- | :--- |
+| **Add** ×4 | `NS` | `jenkins2026` | one record per nameserver from Step 1 |
+| **Delete** | `A` | `*.jenkins2026` | the old hand-made wildcard A, if present (e.g. a fixed `34.120.231.149`) |
+| **Delete** | `CNAME` | `_acme-challenge.jenkins2026` | the old cert-validation CNAME, if present |
+
+> **Why delete the old records?** Once the `NS` records delegate
+> `jenkins2026.nubenetes.com`, **everything** under it
+> (`*.jenkins2026.nubenetes.com`, `_acme-challenge.jenkins2026.nubenetes.com`, …) is
+> answered by **Google's** nameservers — your Squarespace `A`/`CNAME` at those names are
+> shadowed and ignored. Removing them avoids confusion; the live records now live
+> **inside the Cloud DNS zone**, managed by Terraform
+> (`terraform/gateway-bootstrap`), not by you.
+
+### Step 3 — populate the zone (run a workflow)
+
+Run **`Day0.infra.01`** (or `Day1.cluster.00`, which re-applies it). It fills the zone
+with the wildcard `A` record (`*.jenkins2026 → <static external IP>`) and the
+cert-validation `CNAME`. These are re-applied on **every** `Day0.infra.01` /
+`Day1.cluster.00`, so they always track the current IP — no manual edits, ever.
+
+### Why this is the only time
+
+The zone lives in the **never-torn-down root tier** (`terraform/bootstrap`), so its four
+nameservers never change. A `Decom`-everything — even an explicit `Decom.infra.01`
+gateway teardown — leaves the zone (hence the delegation) intact; only the `A`/`CNAME`
+records are dropped and recreated by the next rebuild, pointing at the new IP. **So after
+this one-time delegation you never touch Squarespace again.** The single exception is a
+full **root** teardown ([`bootstrap.sh down`](#destroy-the-root-bootstrapsh-down)): that
+destroys the zone, and bringing the project back creates a **new** zone with **new**
+nameservers, so you'd redo Step 2 once more. An ordinary `Decom.infra.00` does **not** do
+this.
 
 ---
 
@@ -247,8 +327,11 @@ default (a safety so a normal apply can never nuke all your state). The teardown
 it via a variable so `terraform destroy` can delete the bucket even though it still
 holds other modules' (now-decommissioned) state objects + versioned copies.
 
-To bring the project back later, just run `./scripts/bootstrap.sh up` again (a fresh
-seed) and re-create your DNS records / run Day0 + Day1.
+To bring the project back later, run `./scripts/bootstrap.sh up` again (a fresh seed),
+re-do the one-time `NS` delegation at your parent domain (the new zone gets new
+nameservers — see the delegation note above), then run Day0 + Day1. (This re-delegation
+is only needed after a **root** teardown like this; an ordinary `Decom.infra.00` leaves
+the root — and the zone — in place, so no DNS step is needed to rebuild.)
 
 ---
 
@@ -268,10 +351,15 @@ but same family: the CI SA needs `roles/certificatemanager.owner` (editor lacks 
 `.delete` permissions). It's granted by the bootstrap — re-run `./scripts/bootstrap.sh up`
 to converge the role. See [902](./902-TROUBLESHOOTING.md).
 
-**Lost the local state before migration finished.** If the first `apply` created the
-bucket but the migrate step didn't run, re-run `./scripts/bootstrap.sh up`: it detects
-the bucket and reconfigures against the remote state (importing any drift may be needed
-in rare cases — `terraform import`).
+**409 "already exists" / lost the local state.** If a prior seed created the
+resources (state bucket, CI SA, WIF pool, backups bucket, DNS zone) but its state was
+lost or never migrated — e.g. you're on a **new machine** with a clean checkout (the
+`backend_override.tf` is gitignored) — a naïve `apply` would collide with `409 already
+exists`. `bootstrap.sh up` **self-heals**: before each apply it runs `reconcile_imports`,
+which existence-checks each named singleton and `terraform import`s any that exist in GCP
+but aren't yet in state, then converges normally and migrates state into the bucket. So
+the fix is simply to **re-run `./scripts/bootstrap.sh up`** — no manual `terraform import`
+needed. (The additive IAM bindings are idempotent and don't collide.)
 
 **Is it safe to re-run `up`?** Yes — idempotent. It's the way to apply a bootstrap
 change (e.g. a new IAM role) to the live project.

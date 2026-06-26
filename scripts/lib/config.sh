@@ -71,6 +71,21 @@ case "${J2026_CI_ENGINE}" in
     ;;
 esac
 
+# --- secrets backend (feature flag) ------------------------------------------
+# FEATURE FLAG: JENKINS2026_SECRETS_BACKEND overrides secrets.backend from
+# config.yaml for a single run. imperative (default) = kubectl create secret;
+# eso = push to GCP Secret Manager + sync via External Secrets Operator.
+J2026_SECRETS_BACKEND="${JENKINS2026_SECRETS_BACKEND:-$(yq_get '.secrets.backend' 'imperative')}"
+export J2026_SECRETS_BACKEND
+case "${J2026_SECRETS_BACKEND}" in
+  imperative|eso) ;;
+  *)
+    log_error "Unsupported secrets backend '${J2026_SECRETS_BACKEND}' (expected imperative|eso)."
+    log_error "Set secrets.backend in ${J2026_CONFIG_FILE} or export JENKINS2026_SECRETS_BACKEND."
+    exit 1
+    ;;
+esac
+
 # --- jenkins -------------------------------------------------------------
 
 export J2026_JENKINS_NAMESPACE="$(yq_get '.jenkins.namespace' 'jenkins')"
@@ -83,7 +98,17 @@ export J2026_JENKINS_ADMIN_USER="$(yq_get '.jenkins.adminUser' 'admin')"
 
 export J2026_JENKINS_CREDENTIALS_SECRET="$(yq_get '.jenkins.credentialsSecretName' 'jenkins-credentials')"
 export J2026_SELF_REPO_URL="$(yq_get '.jenkins.selfRepoUrl' 'https://github.com/nubenetes/jenkins-2026.git')"
-export J2026_SELF_REPO_BRANCH="$(yq_get '.jenkins.selfRepoBranch' 'main')"
+# Branch of THIS repo that Jenkins checks out for the shared library + seed job
+# (templated into JCasC as {{branchStable}} and the `repo-branch` secret by
+# 04-jenkins.sh). Resolution, highest precedence first:
+#   1. JENKINS2026_SELF_REPO_BRANCH — explicit ephemeral override (feature-flag pattern).
+#   2. GITHUB_REF_NAME — in CI, auto-track the DISPATCHED branch, so a Day1 launched
+#      from `develop` exercises develop's library/seed (and `main` from main). This is
+#      what lets you validate library/pipeline changes on develop BEFORE the promotion
+#      PR, instead of always pulling the pinned default. (GitHub Actions sets this in
+#      every step; it is unset locally, so local runs fall through to the config value.)
+#   3. jenkins.selfRepoBranch in config.yaml (default 'main') — the local/fallback default.
+export J2026_SELF_REPO_BRANCH="${JENKINS2026_SELF_REPO_BRANCH:-${GITHUB_REF_NAME:-$(yq_get '.jenkins.selfRepoBranch' 'main')}}"
 
 export J2026_JENKINS_OIDC_ADMIN_EMAIL="${JENKINS_OIDC_ADMIN_EMAIL:-}"
 if [[ -z "${J2026_JENKINS_OIDC_ADMIN_EMAIL}" ]]; then
@@ -304,8 +329,10 @@ export J2026_MICROSERVICES_DEVELOP_NAMESPACE="$(yq_get '.microservices.namespace
 
 export J2026_ARGOCD_NAMESPACE="$(yq_get '.argocd.namespace' 'argocd')"
 export J2026_ARGOCD_RELEASE="$(yq_get '.argocd.releaseName' 'argocd')"
-export J2026_ARGOCD_VERSION="$(yq_get '.argocd.version' 'v3.5.0-rc1')"
-export J2026_ARGOCD_VERSION_CONSTRAINT="$(yq_get '.argocd.version_constraint' '3.5.x')"
+export J2026_ARGOCD_VERSION="$(yq_get '.argocd.version' 'v3.4.4')"
+export J2026_ARGOCD_VERSION_CONSTRAINT="$(yq_get '.argocd.version_constraint' '3.4.x')"
+# argo-cd Helm chart version pinned to the 3.4.x line (chart 9.5.x ships ArgoCD 3.4.x).
+export J2026_ARGOCD_CHART_VERSION="$(yq_get '.argocd.chartVersion' '9.5.22')"
 
 # Branch of the gitops-config repo that the develop tier's ArgoCD app tracks.
 # Used by 08.5-argocd.sh as the 'branch' of the develop ApplicationSet generator
