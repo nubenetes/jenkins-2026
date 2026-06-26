@@ -1,10 +1,26 @@
-# Argo CD v3.5 Configuration
+# Argo CD Configuration (pinned to stable 3.4.x)
 
 This directory contains manifests and configurations for deploying and managing Argo CD.
 
-## Argo CD 3.5.x Upgrade & Breaking Changes Reference
+## Version policy: pinned to stable 3.4.x (3.5 upgrade deferred until GA)
 
-Upgrading to Argo CD v3.5 introduces several structural modifications. Custom integrations, external plugins, and custom gRPC API clients must remediate their setups to be compatible with the 3.5 runtime environment.
+> **⚠️ ArgoCD is pinned to the latest stable `3.4.x`, NOT `3.5.x`.** `3.5.0` has no GA yet
+> (only release candidates), and **`v3.5.0-rc1` shipped multiple controller bugs** that broke
+> this stack: the Lua health-check sandbox lacked the `string` library (→ `ComparisonError`,
+> `microservices-stable` stuck `Unknown`); completed Helm-hook Jobs weren't recognised under
+> k8s 1.35 Job conditions (→ kube-prometheus-stack syncs wedged on the admission-webhook
+> hooks); and sync operations wedged. So we run **stable 3.4.x** (chart `9.5.22`, image latest
+> `v3.4.x`) until 3.5 is GA. Both knobs live in `config/config.yaml` `argocd`
+> (`version_constraint: "3.4.x"` + `chartVersion: "9.5.22"`). See
+> [`docs/602-VERSION_PINNING.md`](../docs/602-VERSION_PINNING.md).
+
+### Argo CD 3.5.x breaking-changes reference (for the eventual GA upgrade)
+
+The notes below document what to remediate **when 3.5.0 GAs and we move onto it** (bump
+`version_constraint`/`version`/`chartVersion` together, then re-verify the kube-prometheus-stack
+`admissionWebhooks` re-enabled for 3.4.x). They do **not** apply while pinned to 3.4.x. Upgrading
+to v3.5 will introduce several structural modifications; custom integrations, external plugins,
+and custom gRPC API clients must remediate to be compatible with the 3.5 runtime.
 
 ### 1. React 19 UI Compliance
 *   **The Change**: Argo CD's web console has been modernized to use **React 19**.
@@ -25,7 +41,7 @@ Upgrading to Argo CD v3.5 introduces several structural modifications. Custom in
 
 ## Patch Watcher Service
 
-The `argocd-version-patch-watcher` CronJob is deployed to run daily at midnight. It queries GitHub Releases for new `v3.5.x` releases, compares them to the running in-cluster tags, and live-patches the deployments/statefulsets when a newer stable patch version is published.
+The `argocd-version-patch-watcher` CronJob is deployed to run daily at midnight. It queries GitHub Releases for new releases on the tracked line (currently **`3.4.x`**, templated from `config/config.yaml` `argocd.version_constraint`), compares them to the running in-cluster tags, and live-patches the deployments/statefulsets when a newer stable patch version is published.
 
 ## Topology: `ApplicationSet` vs app-of-apps vs single `Application`
 
@@ -155,7 +171,7 @@ Only applied when `ci.engine=tekton` (by `scripts/04-tekton.sh`, the alternative
 - **`tekton-pipelines`** (wave 0) — [`tekton/components/pipelines`](tekton/components/pipelines): a kustomization over the **vendored** `release.yaml` (Tekton v1.13.1). Oversized-CRD handling (`ServerSideApply=true` + `Replace=true` + `ServerSideDiff=true`) — same rationale as `cnpg-operator`.
 - **`tekton-triggers`** (wave 1) — [`tekton/components/triggers`](tekton/components/triggers): vendored `release.yaml` + `interceptors.yaml` (v0.36.0).
 - **`tekton-dashboard`** (wave 1) — [`tekton/components/dashboard`](tekton/components/dashboard): vendored `release-full.yaml` (v0.69.0, read-write GUI). Exposed behind Google IAP by `scripts/09-gateway.sh`.
-- **`tekton-pruner`** (wave 1) — [`tekton/components/pruner`](tekton/components/pruner): vendored `release.yaml` (v0.4.0) + a patch lowering `historyLimit` from 100 to 5 (deliberately lower than the Jenkins `buildDiscarder` 20, to keep pod/image accumulation off the 50 GiB node disk). GC of completed runs.
+- **`tekton-pruner`** (wave 1) — [`tekton/components/pruner`](tekton/components/pruner): vendored `release.yaml` (v0.4.0) + a patch lowering `historyLimit` to 20 (parity with the Jenkins `buildDiscarder`). GC of completed runs.
 - **`tekton-chains`** (wave 1) — [`tekton/components/chains`](tekton/components/chains): vendored `release.yaml` (v0.27.1) + a `chains-config` patch enabling x509/cosign image signing, in-toto SLSA provenance and the Rekor transparency log. Installs into its own `tekton-chains` namespace. The cosign `signing-secrets` is generated out-of-band (`cosign generate-key-pair k8s://tekton-chains/signing-secrets`) and ArgoCD ignores its `data` so it is never overwritten.
 - **`tekton-pac`** (wave 1) — [`tekton/components/pac`](tekton/components/pac): vendored `release.yaml` (v0.48.0, k8s variant) — the Pipelines-as-Code controller, in its own `pipelines-as-code` namespace. Webhook mode (no GitHub App): the controller is exposed publicly at `pac.<baseDomain>` (no IAP) by `scripts/09-gateway.sh`, per-fork `Repository` CRs live in `tekton/pac/`, and webhooks are created on the forks by `scripts/06-tekton-pipelines.sh`. See [`docs/403-TEKTON.md`](../docs/403-TEKTON.md#pipelines-as-code-pac-git-driven-ci).
 - **`tekton-pipeline-as-code`** (wave 2) — the repo-root [`tekton/`](../tekton) dir (Tasks/Pipelines/Triggers/RBAC + the `tekton-ci` ServiceAccount + the PaC `Repository` CRs under `tekton/pac/`), synced into the `tekton-ci` namespace. Wave 2 so the Pipelines/Triggers/PaC CRDs (waves 0–1) exist first.

@@ -58,7 +58,7 @@ spec:
               CONSTRAINT="__ARGOCD_CONSTRAINT__"
               echo "Starting ArgoCD version check for constraint: ${CONSTRAINT}"
 
-              # Derive the tag regex from the constraint (e.g. 3.5.x -> ^v3\.5\.[0-9]+$),
+              # Derive the tag regex from the constraint (e.g. 3.4.x -> ^v3\.4\.[0-9]+$),
               # matching resolve_argocd_version in 08.5-argocd.sh.
               BASE=$(echo "${CONSTRAINT}" | sed 's/\.x$//' | sed 's/\./\\./g')
               STABLE_RE="^v${BASE}\\.[0-9]+$"
@@ -84,7 +84,7 @@ spec:
                 exit 1
               fi
               
-              echo "Latest v3.5.x release found: $LATEST_VERSION"
+              echo "Latest ${CONSTRAINT} release found: $LATEST_VERSION"
               
               # Fetch currently running version of argocd-server
               RUNNING_IMAGE=$(kubectl get deployment argocd-server -n argocd -o jsonpath='{.spec.template.spec.containers[0].image}')
