@@ -83,6 +83,12 @@ resource "google_dns_managed_zone" "public" {
   dns_name    = "${var.base_domain}."
   description = "Permanent public zone for jenkins-2026 (${var.base_domain}); delegated from the parent domain. Records are managed by terraform/gateway-bootstrap."
 
+  # Let `bootstrap.sh down` (the root teardown) destroy the zone even if a record
+  # the gateway-bootstrap module created still lingers — Cloud DNS otherwise
+  # refuses to delete a non-empty zone. Mirrors the state bucket's force_destroy.
+  # Only ever exercised by the root teardown; ordinary Decom keeps the zone.
+  force_destroy = true
+
   depends_on = [google_project_service.apis]
 }
 
