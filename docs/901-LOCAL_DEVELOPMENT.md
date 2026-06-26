@@ -16,7 +16,8 @@
 ## Quick Start
 
 ```bash
-# 1. Review/edit config/config.yaml - observability.mode (grafana-cloud|oss|managed-azure|managed-aws).
+# 1. Review/edit config/config.yaml - observability.mode (grafana-cloud|oss|managed-azure|managed-aws),
+#    ci.engine (jenkins|tekton), secrets.backend (imperative|eso).
 #    Default: grafana-cloud.
 
 # 2. (grafana-cloud mode only) create the OTLP credentials secret:
@@ -43,7 +44,7 @@ export GIT_USERNAME=<github-username>      GIT_TOKEN=<github-token>
 ./scripts/down.sh
 ```
 
-`scripts/up.sh` runs, in order: prereq/repo checks → namespaces, secrets & NetworkPolicies → the OpenTelemetry Operator → **ArgoCD** (`08.5`, installed *before* observability because the OSS stack is GitOps-managed by ArgoCD) → the observability backend (`03`) → the selected CI engine and its pipelines (`04`/`06` — Jenkins+seed, or Tekton+pipelines per `ci.engine`) → Grafana dashboards (`07`) → Grafana alerts (`07.5`) → Headlamp (`08`) → Gateway + routes/IAP (`09`) → wait for the microservices Deployments, then the OTel injection self-heal guard. Every step is idempotent (`helm upgrade --install` / `kubectl apply`), so re-running `up.sh` after a partial failure is safe. Each step also runs standalone: `./scripts/0N-*.sh`.
+`scripts/up.sh` runs, in order: prereq/repo checks → namespaces, secrets & NetworkPolicies → the OpenTelemetry Operator → **ArgoCD** (`08.5`, installed *before* observability because the OSS stack is GitOps-managed by ArgoCD) → External Secrets sync (`08.6`, only when `secrets.backend=eso`) → the observability backend (`03`) → the selected CI engine and its pipelines (`04`/`06` — Jenkins+seed, or Tekton+pipelines per `ci.engine`) → Grafana dashboards (`07`) → Grafana alerts (`07.5`) → Headlamp (`08`) → Gateway + routes/IAP (`09`) → wait for the microservices Deployments, then the OTel injection self-heal guard. Every step is idempotent (`helm upgrade --install` / `kubectl apply`), so re-running `up.sh` after a partial failure is safe. Each step also runs standalone: `./scripts/0N-*.sh`.
 
 ## Step-by-Step Deployment Guide (For Other People)
 
