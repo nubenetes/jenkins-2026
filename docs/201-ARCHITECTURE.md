@@ -548,7 +548,7 @@ Two distinct properties, often conflated:
 
 | Flag | In-place switch | How the old mode is retired |
 | :--- | :--- | :--- |
-| **`ci.engine`** `jenkins`↔`tekton` | ✅ | `04-jenkins.sh` deletes the `tekton` ArgoCD app + the tekton namespaces; `04-tekton.sh` deletes the `jenkins` app (engines are mutually exclusive). |
+| **`ci.engine`** `jenkins`↔`tekton` | ✅ | `04-jenkins.sh` deletes the `tekton` ArgoCD app + the tekton namespaces; `04-tekton.sh` deletes the `jenkins` app + its namespace (engines are mutually exclusive — the retired engine's namespace is cleared symmetrically). |
 | **`observability.mode`** oss/grafana-cloud/managed-azure/managed-aws | ✅ | every branch of `03-observability.sh` retires the *other* modes' agents/stacks (e.g. it waits out the OSS node-exporter DaemonSet; `07-grafana-dashboards.sh` deletes the off-engine overview). See [902](./902-TROUBLESHOOTING.md). |
 | **`secrets.backend`** `imperative`↔`eso` | ✅ | `imperative→eso`: `08.6` installs the `ClusterSecretStore` + `ExternalSecrets`. `eso→imperative`: `08.6` **retires ESO** — RETAINs each target Secret (`deletionPolicy: Retain` + strips the `ownerReference` so the Owner ExternalSecret's GC can't delete it; Merge ones aren't owned), deletes the `ExternalSecrets`, and deletes `gcp-store`. `01-namespaces` already wrote imperative copies, so the Secrets survive and consumers keep working. |
 

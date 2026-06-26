@@ -45,6 +45,12 @@ if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
   kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_JENKINS}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found
   kubectl delete healthcheckpolicy "${J2026_JENKINS_RELEASE}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found
 fi
+# Delete the Jenkins namespace itself — symmetric with 04-jenkins.sh, which deletes the
+# tekton namespaces when switching the other way. Clears the orphaned objects left once
+# the Jenkins Application is pruned (jenkins-credentials, the JCasC ConfigMaps, the IAP
+# secret copies). The shared microservices are GitOps-managed in their own namespace, so
+# they survive the engine switch. Idempotent / best-effort.
+kubectl delete namespace "${J2026_JENKINS_NAMESPACE}" --ignore-not-found --timeout=3m || true
 
 log_step "Applying Tekton app-of-apps via ArgoCD (argocd/tekton-app.yaml)"
 TEKTON_APP_FILE="$(mktemp)"
