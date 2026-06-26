@@ -2,6 +2,123 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.22.0] - 2026-06-27
+
+The largest release to date — **91 PRs** (#258–#350) since v0.21.0, plus the
+secrets/ArgoCD/decommission hardening that followed. Headlines: **Tekton joins
+Jenkins as a selectable CI engine**, a **pluggable secrets backend** (imperative
+or GCP Secret Manager + External Secrets Operator), **Dataplane V2** NetworkPolicy
+enforcement with WireGuard, **Azure/AWS Managed Grafana** + OSS declarative
+alerting brought to full parity, **one-click lifecycle umbrellas** with
+per-resource approval environments, and a hardened, finalizer-driven
+**decommission** path.
+
+### Added
+
+- **Tekton as a selectable CI engine (`ci.engine: jenkins | tekton`).** A complete
+  alternative to Jenkins, GitOps-managed by ArgoCD via the `argocd/tekton`
+  app-of-apps: Pipelines (pinned `v1.9.4`, with vendored `release.yaml`), Triggers,
+  the IAP-protected Dashboard, and **Pipelines-as-Code** (#258, #261, #262). The
+  Jenkins shared library is ported to `tekton/` (Tasks/Pipelines/RBAC) with
+  **one-click microservices `PipelineRun`s** (defaulted params) and an opt-in
+  `tekton.seedRuns` flag that pre-populates the Dashboard on Day1 (#268, #300,
+  #302, #303). `Day2.redeploy.03-tekton` is self-sufficient (runs `09-gateway`)
+  (#263); the two engines are **mutually exclusive in both directions** — switching
+  retires the other engine's namespace/apps (#267, #270, #286).
+- **Pluggable secrets backend (`secrets.backend: imperative | eso`).** Default
+  `imperative` (`kubectl create secret`), or `eso` = push to **GCP Secret Manager**
+  and let the **External Secrets Operator** sync it in over Workload Identity
+  (ClusterSecretStore + ExternalSecrets). Covers all four projection shapes
+  (`extract`, `property`, templated `dockerconfigjson`, `basic-auth` with the
+  `tekton.dev/git-0` annotation) across the gateway/Tekton/Jenkins secret groups,
+  with **clean `eso ↔ imperative` convergence in both directions** (switching away
+  orphans the live Secrets and retains the Secret-Manager copies). Additive and
+  opt-in — existing deploys are unaffected until the flag is flipped (#350).
+- **Dataplane V2 (Cilium/eBPF) with enforced NetworkPolicies** + **WireGuard**
+  inter-node pod encryption (both immutable cluster fields). Ships the netpol set
+  that keeps enforcement from breaking the platform: the OTel-operator admission
+  webhook, Workload-Identity metadata egress, and agent→controller paths (#295,
+  #297, #298).
+- **Azure & AWS Managed Grafana brought to full parity** with Grafana Cloud / OSS:
+  engine-aware dashboards + a dedicated Tekton CI dashboard (#274), Tekton metrics
+  (#275), the managed-aws logs pipeline (#278), and **alert provisioning on every
+  backend** — Azure/AWS via the Grafana **data-plane API** with the correct token
+  audience (#310, #311, #313, #315), and OSS via a **declarative sidecar ConfigMap
+  that survives restarts** (#290) — all minting **Service-Account tokens** now that
+  Grafana 13 removed API keys (#288).
+- **One-click lifecycle umbrellas + per-resource approval environments.**
+  `Day1.cluster.00` "Everything up" provisions the whole stack in one click (#336);
+  `Decom.infra.00` "Everything" tears down cluster + every backend (#312). Each
+  persistent backend/gateway gets its **own GitHub approval environment**
+  (`gateway-bootstrap`, `grafana-cloud`, …) rather than sharing `gke-production`
+  (#334, #335), and all cluster-touching Day2 workflows now sit behind the
+  `gke-production` gate (#271).
+- **One-command bootstrap root-of-trust lifecycle** (`scripts/bootstrap.sh
+  up`/`down`) — symmetric create/destroy of the WIF trust + Terraform-state bucket
+  + CI service account + the permanent public DNS zone, fully documented (#348).
+- **CNPG Postgres continuous WAL archiving to GCS** (Barman object-store) backed by
+  a dedicated backups service account over Workload Identity (`terraform/gke`
+  `pg_backups` SA + bucket IAM, wired through the microservices ApplicationSet).
+- **IaC service account for Grafana Cloud's GCP cloud-provider integration**
+  (read-only `monitoring.viewer` + `cloudasset.viewer`) (#329).
+
+### Changed
+
+- **ArgoCD pinned to 3.4.x** (chart `9.5.22`, image `v3.4.x`) off the `3.5.0-rc1`
+  bug streak, re-enabling the features that rc1 had forced off (this supersedes the
+  earlier "auto-track `3.5.x`" stance in #322; move to `3.5.x` only at GA). SSO
+  RBAC now matches users **by email** (Google issues no `groups` claim) so SSO
+  logins see apps (#273); application-controller memory raised to **3Gi** to stop
+  OOM under oss+tekton (#337, #338).
+- **Jenkins hardening:** Helm chart pinned to **5.9.29** (#319); plugins pinned and
+  bumped to security-fixed versions, including `configuration-as-code`,
+  `pipeline-graph-view` and `warnings-ng`, plus 5 CVE bumps (#324, #325); the last
+  `:latest` agent images pinned to match Tekton (#340).
+- **Observability defaults:** OSS Grafana **13.1.0** (#304); engine-neutral folder
+  names (`CI-CD Observability` / Alerts) (#306, #308); **default
+  `observability.mode=oss`** with a deterministic single-backend switch (#305).
+
+### Fixed
+
+- **Decommission robustness:** **layered, dependency-safe NEG teardown** in
+  `down.sh` — finalizer-wait (L1) → adaptive 10-minute async-GC wait (L2) →
+  dependency-ordered force-delete (forwarding-rule → target-proxy → url-map →
+  backend-service → NEG, L3) so the VPC delete can't be blocked by a NEG still
+  "in use"; finalize-driven namespace teardown (drop the fixed 2-minute timeout)
+  (#342); delete all PDBs up front so the node-pool drain can't hang (#343);
+  **orphaned PV-disk sweep now retries** while disks detach asynchronously after
+  `terraform destroy` (the single-pass sweep raced the detachment and left disks
+  billing) (#345); CI SA granted `certificatemanager.owner` (editor lacks
+  `.delete`) (#346).
+- **Jenkins / JCasC:** empty chart `authorizationStrategy`/`securityRealm` to stop
+  the JCasC double-entry crash (#318); build-agent egress to the controller
+  (seed-job timeout) (#320); the k6 smoke pod runs in the agent namespace under the
+  enforcing NetworkPolicy (#326); poll the `crumbIssuer` API instead of a one-shot
+  curl (Day1 exit 52) (#332).
+- **Gateway / observability:** `oss-` release-prefix corrected across every OSS
+  backend cross-reference (no data in Grafana) (#284–#287); leftover Grafana
+  `HTTPRoute` deleted when not in oss mode (#328); managed-aws logs OOM / CloudWatch
+  stream conflicts / IAM trust (#278, #281); node-exporter host-port race on
+  `oss→grafana-cloud` switch (#299); `oss-kube-prometheus-stack` OutOfSync churn
+  (random Grafana admin-password per render) settled via `ignoreDifferences`.
+- **ArgoCD sync:** Tekton app-of-apps OutOfSync (chained `ignoreDifferences` +
+  Dashboard `ServerSideDiff`) (#269, #289); `tekton/runs` excluded from the PaC app
+  (#301).
+- **CI plumbing:** removed `concurrency` from the Everything-up umbrella (deadlock)
+  (#341); restored executable bits on scripts dropped by Windows edits (#279,
+  #296); Dependabot group bump of 9 GitHub Actions (#323).
+- **History:** purged the NotebookLM multimedia (infographics/videos/audio) from
+  the README, Git LFS, and git history.
+
+> **Migration notes**
+> - `ci.engine` and `secrets.backend` default to the prior behaviour
+>   (`jenkins` / `imperative`) — both are **opt-in**; existing deployments are
+>   unaffected until you flip the flag.
+> - **Dataplane V2 + WireGuard are immutable cluster fields** — adopting them on an
+>   existing cluster requires a Decom + Day1 (cluster recreate).
+> - Re-point any branch-protection required checks / `gh workflow run` calls to the
+>   `Day2.redeploy.0{1,2,4}-*` workflow names from v0.21.0 if not already done.
+
 ## [v0.21.0] - 2026-06-23
 
 Workflow-naming cleanup: makes the `name:` fields obey the scheme's own
