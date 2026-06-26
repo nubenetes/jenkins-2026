@@ -60,7 +60,24 @@ done
 kubectl wait --for=condition=established --timeout=120s "${eso_crds[@]/#/crd/}"
 
 # Controller + webhook deployments must also be ready: the ESO validating webhook
-# admits the ClusterSecretStore/ExternalSecret resources we apply next.
+# admits the ClusterSecretStore/ExternalSecret resources we apply next, and we
+# annotate + restart the CONTROLLER below. ArgoCD creates the CRDs and the
+# ServiceAccount BEFORE the Deployments, so wait for the controller Deployment to
+# actually EXIST first — otherwise the `kubectl rollout restart` below fails with
+# "deployments.apps external-secrets not found" and aborts the script (set -e). A
+# label-only `rollout status` does NOT cover this: with no matching Deployment yet
+# it returns immediately rather than waiting.
+log_step "Waiting for the ESO controller Deployment (ArgoCD creates it after the CRDs/SA)"
+deadline=$(( SECONDS + 300 ))
+until kubectl get deployment external-secrets -n external-secrets >/dev/null 2>&1; do
+  if [[ $SECONDS -ge $deadline ]]; then
+    log_error "ESO controller Deployment 'external-secrets' never appeared — is the external-secrets ArgoCD app synced?"
+    log_error "Check: kubectl get application external-secrets -n argocd; kubectl get deploy -n external-secrets"
+    exit 1
+  fi
+  log_info "  ... waiting for ArgoCD to create the external-secrets Deployment..."
+  sleep 5
+done
 kubectl rollout status deployment -n external-secrets \
   -l app.kubernetes.io/instance=external-secrets --timeout=5m 2>/dev/null || \
   log_warn "Could not confirm ESO rollout via label — continuing (apply will retry)."
