@@ -80,6 +80,8 @@ flowchart TB
     APP -->|OTLP| COL
     CI -->|OTLP| COL
     OP -.->|injects agent| APP
+    SM["GCP Secret Manager<br/>secrets.backend=eso"]:::pick
+    SM -.->|"keyless WIF sync"| ESO
     COL -->|mode=oss| OSST
     COL -->|mode=grafana-cloud| GCLOUD
     COL -->|mode=managed-azure| AZ
@@ -372,8 +374,10 @@ graph TD
 ### Diagram 2 — Secret provenance flow
 
 Every in-cluster Secret originates from a GitHub Actions secret (or a Terraform
-backend output), is materialised by `01-namespaces.sh` (or `08.5`/`03`) into the
-**consumer's** namespace, and is read only from there.
+backend output), is materialised into the **consumer's** namespace, and is read
+only from there. **How** it is materialised is selectable — see
+[Secrets backend](#secrets-backend-imperative--eso) below. The default
+(`imperative`) flow is:
 
 ```mermaid
 flowchart LR
@@ -399,6 +403,61 @@ flowchart LR
     C --> G["Headlamp"]
     D --> H["Jenkins controller"]
 ```
+
+### Secrets backend (`imperative` | `eso`)
+
+> 🔐 **Pluggable secrets backend.** A feature flag — `secrets.backend` in
+> `config/config.yaml` (override `JENKINS2026_SECRETS_BACKEND`, or the
+> **`secrets_backend` input** on `Day1.cluster.01` / `Day1.cluster.00`) — selects
+> **how** in-cluster Secrets are materialised, the same way `ci.engine` /
+> `observability.mode` select their dimensions. The **whole lifecycle** honours it
+> and is idempotent: `up.sh` (`01-namespaces.sh` push → `08.6-eso-sync.sh` sync), and
+> the **Day2 redeploys that re-run `01-namespaces.sh`** — `Day2.redeploy.03-tekton`,
+> `.04-headlamp`, `.05-gateway` — carry the same `secrets_backend` input (so a Day2 on
+> an `eso` cluster never recreates the Secret imperatively). Decom needs nothing extra:
+> `down.sh` deletes the namespaces (and with them the ExternalSecrets/Secrets), the
+> cluster teardown removes the `ClusterSecretStore`, and the Secret Manager entries
+> persist by design as the reusable source of truth.
+
+| Backend | How Secrets are made | Source of truth | Audit / versioning | Default |
+| :--- | :--- | :--- | :--- | :---: |
+| **`imperative`** | `01-namespaces.sh` runs `kubectl create secret` from the GitHub-secret env vars (Diagram 2 above) | GitHub Actions secrets | none in-cluster | ✅ |
+| **`eso`** | values pushed to **GCP Secret Manager**; the **External Secrets Operator** syncs them into namespaces via **Workload Identity (keyless)** | GCP Secret Manager (versioned) | **Cloud Audit Logs** + SM versions | |
+
+In `eso` mode the flow becomes (currently wired for `gateway-iap-oauth`; the rest
+follows the same pattern — staged rollout below):
+
+```mermaid
+flowchart LR
+    GH["GitHub Actions secret<br/>(IAP_OAUTH_*)"] -->|"01-namespaces.sh<br/>(scripts/lib/secrets.sh)"| SM[("GCP Secret Manager<br/>gateway-iap-oauth (versioned)")]
+    SM -->|"Workload Identity (keyless)<br/>node SA: secretmanager.secretAccessor"| ESO["External Secrets Operator<br/>ClusterSecretStore gcp-store"]
+    ESO -->|"08.6-eso-sync.sh applies<br/>ExternalSecret per ns + waits"| K[("k8s Secret gateway-iap-oauth<br/>→ headlamp / pgadmin / engine ns")]
+    K --> P["GCPBackendPolicy (IAP)"]
+    classDef sm fill:#eef,stroke:#66c;
+    class SM,ESO sm;
+```
+
+**Why `eso` adds value:** a single managed source of truth, secret **versioning**,
+**Cloud Audit Logs** of every access, optional rotation, and it decouples secrets
+from the provision script — all keyless (WIF), no Vault/server to run. (Analysis of
+why **not** HashiCorp Vault here: it would add a stateful HA service + its own
+unseal root-of-trust, over-engineered for an ephemeral single-stack PoC.)
+
+**Staged rollout.** `eso` is opt-in; the default stays `imperative` so existing
+provisions are unchanged until you validate the flag on a Day1 run.
+
+| Stage | Secret(s) | Status |
+| :--- | :--- | :--- |
+| **1 (this PR)** | `gateway-iap-oauth` (×N namespaces) | ✅ wired |
+| 2 | `headlamp-credentials` | roadmap |
+| 3 | `jenkins-credentials` (carries a *generated* admin password → must be seeded into SM) | roadmap |
+| 4 | per-mode `grafana-cloud` / `azure-monitor` / `aws-managed` credentials (come from Terraform outputs via the Day1 workflow) | roadmap |
+
+Pieces: the flag ([`config.sh`](../scripts/lib/config.sh)), the push helper
+([`scripts/lib/secrets.sh`](../scripts/lib/secrets.sh)), the sync+wait step
+([`scripts/08.6-eso-sync.sh`](../scripts/08.6-eso-sync.sh)), the reference manifests
+([`infrastructure/secrets/eso-bootstrap.yaml`](../infrastructure/secrets/eso-bootstrap.yaml)),
+and the IAM (`roles/secretmanager.secretAccessor` on the node SA in `terraform/gke`).
 
 ### Why the `gateway-iap-oauth` Secret is replicated
 

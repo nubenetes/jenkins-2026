@@ -65,6 +65,11 @@ resource "google_project_iam_member" "nodes_roles" {
     "roles/monitoring.metricWriter",
     "roles/monitoring.viewer",
     "roles/artifactregistry.reader",
+    # Lets the External Secrets Operator (running with the node SA via Workload
+    # Identity) read GCP Secret Manager when secrets.backend=eso. Additive and
+    # harmless in the default imperative mode (simply unused). See
+    # docs/201-ARCHITECTURE.md § Secrets Management.
+    "roles/secretmanager.secretAccessor",
   ])
 
   project = var.project_id

@@ -14,6 +14,14 @@ name: "Day2.redeploy.03 Tekton"
 on:
   workflow_dispatch:
     inputs:
+      secrets_backend:
+        description: "Secrets backend the cluster runs (must match the live cluster): imperative | eso"
+        required: true
+        default: "imperative"
+        type: choice
+        options:
+          - imperative
+          - eso
       git_ref:
         description: "Git branch, tag, or SHA to check out (leave empty to use the branch/tag selected in 'Use workflow from' above)"
         required: false
@@ -32,6 +40,7 @@ env:
   TF_VERSION: "1.15.6"
   # Selects the Tekton path in scripts/lib/config.sh (and the 04/06 scripts).
   JENKINS2026_CI_ENGINE: tekton
+  JENKINS2026_SECRETS_BACKEND: ${{ inputs.secrets_backend }}
 
 jobs:
   redeploy-tekton:
@@ -136,6 +145,12 @@ jobs:
           GIT_USERNAME: ${{ secrets.GIT_USERNAME }}
           GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
           PAC_WEBHOOK_SECRET: ${{ secrets.PAC_WEBHOOK_SECRET }}
+
+      - name: Sync External Secrets (scripts/08.6-eso-sync.sh, eso mode only)
+        # No-op when secrets.backend=imperative. In eso mode, re-applies the
+        # ClusterSecretStore + ExternalSecrets and waits for the IAP Secret before
+        # 09-gateway wires the GCPBackendPolicy to it.
+        run: ./scripts/08.6-eso-sync.sh
 
       # Idempotent: (re)creates the public Gateway routes incl. the Tekton
       # Dashboard (IAP) and the PaC controller (pac.<domain>), so a Tekton-only
