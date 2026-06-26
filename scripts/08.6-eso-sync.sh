@@ -36,7 +36,28 @@ if [[ -z "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
   exit 0
 fi
 
-log_step "Waiting for the External Secrets Operator to be ready"
+log_step "Waiting for the External Secrets Operator (CRDs + controller) to be ready"
+# ESO is installed ASYNCHRONOUSLY by ArgoCD (argocd/external-secrets-app.yaml,
+# applied but NOT waited on by 08.5). Its CRDs only appear after ArgoCD's first
+# sync of the chart, so we must wait for them to be registered + established
+# BEFORE applying any ClusterSecretStore/ExternalSecret below — otherwise kubectl
+# fails with: no matches for kind "ClusterSecretStore" in version
+# "external-secrets.io/v1beta1".
+eso_crds=(clustersecretstores.external-secrets.io externalsecrets.external-secrets.io)
+deadline=$(( SECONDS + 300 ))
+until kubectl get crd "${eso_crds[@]}" >/dev/null 2>&1; do
+  if [[ $SECONDS -ge $deadline ]]; then
+    log_error "External Secrets CRDs never appeared — is the external-secrets ArgoCD app synced?"
+    log_error "Check: kubectl get application external-secrets -n argocd"
+    exit 1
+  fi
+  log_info "  ... waiting for ArgoCD to install the External Secrets CRDs..."
+  sleep 5
+done
+kubectl wait --for=condition=established --timeout=120s "${eso_crds[@]/#/crd/}"
+
+# Controller + webhook deployments must also be ready: the ESO validating webhook
+# admits the ClusterSecretStore/ExternalSecret resources we apply next.
 kubectl rollout status deployment -n external-secrets \
   -l app.kubernetes.io/instance=external-secrets --timeout=5m 2>/dev/null || \
   log_warn "Could not confirm ESO rollout via label — continuing (apply will retry)."
