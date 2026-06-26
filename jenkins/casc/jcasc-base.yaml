@@ -49,19 +49,21 @@ jenkins:
         serverUrl: "https://kubernetes.default.svc.cluster.local"
         namespace: "${JENKINS_NAMESPACE:-jenkins}"
         jenkinsUrl: "http://jenkins.${JENKINS_NAMESPACE:-jenkins}.svc.cluster.local:8080"
-        jenkinsTunnel: "jenkins-agent.${JENKINS_NAMESPACE:-jenkins}.svc.cluster.local:50000"
-        # Inbound agents connect over the HTTP port (jenkinsUrl, 8080) via a
-        # WebSocket upgrade instead of the raw TCP JNLP tunnel (jenkinsTunnel,
-        # :50000). The cluster encrypts INTER-NODE pod traffic with WireGuard
-        # (in_transit_encryption_config), which lowers the effective MTU; the JNLP4
-        # TLS handshake then black-holes whenever a build agent lands on a DIFFERENT
-        # node from the controller — the TCP connection is *accepted* but the channel
-        # never establishes ("Accepted JNLP4-connect…" → "Waiting for agent to
-        # connect" → terminate), which surfaced as the seed build failing with
-        # `GitException: Could not checkout <sha>` (the checkout streams over that
-        # dead channel). WebSocket rides the proven 8080 HTTP path (the same one the
-        # UI/API use), so agents connect regardless of node placement. jenkinsTunnel
-        # is kept but ignored while websocket is true. See docs/902 / docs/401.
+        # Inbound agents connect over the HTTP port (jenkinsUrl, 8080) via a WebSocket
+        # upgrade. The cluster encrypts INTER-NODE pod traffic with WireGuard
+        # (in_transit_encryption_config), which lowers the effective MTU; the raw JNLP4
+        # TLS handshake on the TCP agent port (:50000) then black-holes whenever a
+        # build agent lands on a DIFFERENT node from the controller — the connection is
+        # accepted but the channel never establishes, surfacing as the seed build
+        # failing (GitException "Could not checkout <sha>" / ABORTED). WebSocket rides
+        # the proven 8080 HTTP path (the same one the UI/API use), so agents connect
+        # regardless of node placement.
+        #
+        # NOTE: jenkinsTunnel is deliberately OMITTED. Leaving it set exports
+        # JENKINS_TUNNEL to the agent, and the inbound-agent entrypoint then builds the
+        # connection with BOTH -tunnel and -webSocket — which are mutually exclusive,
+        # so the agent prints its usage text and exits 0 ("jnlp terminated (0)" →
+        # build ABORTED). See docs/902 / docs/401.
         websocket: true
         containerCapStr: "10"
         connectTimeout: 5
@@ -75,13 +77,14 @@ jenkins:
             containers:
               - name: "jnlp"
                 alwaysPullImage: false
-                # No explicit args: let the kubernetes plugin build the agent command
-                # line. With websocket: true (above) it injects -webSocket (+ -url /
-                # -name / -secret). The old positional override
-                # "^${computer.jnlpmac} ^${computer.name}" is the legacy DIRECT-JNLP
-                # form — incompatible with websocket — so the agent rejected its args,
-                # printed its usage text and exited immediately ("Error in
-                # provisioning" → build ABORTED).
+                # Pass the agent secret + name positionally. The inbound-agent
+                # entrypoint builds the connection command from these, adding
+                # -webSocket (from JENKINS_WEB_SOCKET, set by websocket: true above)
+                # and NO -tunnel (jenkinsTunnel is omitted). The plugin does NOT inject
+                # the secret/name as env for a custom jnlp container, so WITHOUT these
+                # args the agent has no credentials and prints its usage text then
+                # exits 0 → build ABORTED.
+                args: "^${computer.jnlpmac} ^${computer.name}"
                 image: "jenkins/inbound-agent:3355.v388858a_47b_33-22"
                 privileged: "false"
                 resourceLimitCpu: "500m"
