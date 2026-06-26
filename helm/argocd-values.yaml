@@ -86,21 +86,27 @@ server:
 configs:
   cm:
     resource.customizations.health.postgresql.cnpg.io_Cluster: |
+      -- NB: ArgoCD's Lua sandbox here does NOT load the `string` library, so
+      -- string.find/match/etc. raise "attempt to index a non-table object(nil)"
+      -- and the WHOLE app health computation errors out (ComparisonError →
+      -- app health Unknown). Use only core Lua (ipairs / == / or) — drive off the
+      -- Ready condition rather than string-matching the phase.
       local hs = {}
-      if obj.status ~= nil and obj.status.phase ~= nil then
-        local phase = obj.status.phase
-        if phase == "Cluster in healthy state" then
-          hs.status = "Healthy"
-        elseif string.find(phase, "Failed") or string.find(phase, "failure") then
-          hs.status = "Degraded"
-        else
-          hs.status = "Progressing"
+      if obj.status ~= nil and obj.status.conditions ~= nil then
+        for i, c in ipairs(obj.status.conditions) do
+          if c.type == "Ready" then
+            if c.status == "True" then
+              hs.status = "Healthy"
+            else
+              hs.status = "Degraded"
+            end
+            hs.message = obj.status.phase or c.message or "CNPG Cluster"
+            return hs
+          end
         end
-        hs.message = phase
-        return hs
       end
       hs.status = "Progressing"
-      hs.message = "Waiting for CNPG Cluster status"
+      hs.message = "Waiting for CNPG Cluster Ready condition"
       return hs
     resource.customizations.health.postgresql.cnpg.io_Pooler: |
       local hs = {}

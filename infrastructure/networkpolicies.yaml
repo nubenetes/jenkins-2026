@@ -211,6 +211,9 @@ spec:
 #     cnpg.io/cluster, which they do carry.
 #   - Prometheus (observability) -> CNPG metrics on 9187 (the postgres-policy
 #     ingress only allows 5432).
+#   - the CNPG operator (cnpg-system) -> each instance's status web server on 8000,
+#     so it can extract instance status (else the Cluster's Ready condition stays
+#     False under enforcement — see the inline note on that ingress rule).
 # Additive: a SEPARATE policy the ArgoCD microservices app does not own, so it is
 # not reverted on sync, and (being in git) it survives cluster recreates. The
 # durable app-side fix still belongs in the GitOps chart's egress selectors.
@@ -243,6 +246,7 @@ spec:
     - protocol: TCP
       port: 443
   ingress:
+  # Prometheus (observability) -> CNPG metrics on 9187.
   - from:
     - namespaceSelector:
         matchLabels:
@@ -250,3 +254,18 @@ spec:
     ports:
     - protocol: TCP
       port: 9187
+  # The CNPG operator (cnpg-system) -> each instance's status web server on 8000.
+  # The operator polls this to extract instance status; under enforcement the
+  # microservices default-deny blocks it, so the operator logs "Cannot extract Pod
+  # status" / "HTTP communication issue", the Cluster's Ready condition stays False
+  # ("Instance Status Extraction Error"), and microservices-stable rolls up to
+  # Degraded — even though postgres is actually serving on 5432 and the apps work.
+  # (cnpg-system has no NetworkPolicies, so its egress is already open; only this
+  # ingress allow is needed.)
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: cnpg-system
+    ports:
+    - protocol: TCP
+      port: 8000
