@@ -173,7 +173,7 @@ on a second run it detects the remote state and just re-applies.
 | :--- | :--- | :--- |
 | **GCS state bucket** `<project>-jenkins-2026-tfstate` | `google_storage_bucket.tf_state` | remote Terraform state for **every** other module (versioned) |
 | **CI service account** `jenkins-2026-ci@…` | `google_service_account.ci` | the identity GitHub Actions impersonates |
-| **CI roles** | `google_project_iam_member.ci_roles` | what that SA may do (see [103](./103-GITHUB_SECRETS_INVENTORY.md#1-gcp--core-infrastructure)) |
+| **CI roles** | `google_project_iam_member.ci_roles` | what that SA may do (see [103](./103-GITHUB_SECRETS_INVENTORY.md#gcp_service_account)) |
 | **WIF pool + provider** | `google_iam_workload_identity_pool*` | keyless GitHub→GCP trust |
 | **WIF binding** | `google_service_account_iam_member.github_wif` | lets *this repo* impersonate the SA |
 | **Postgres backups bucket** | `google_storage_bucket.postgres_backups` | survives cluster rebuilds |
@@ -275,10 +275,15 @@ but same family: the CI SA needs `roles/certificatemanager.owner` (editor lacks 
 `.delete` permissions). It's granted by the bootstrap — re-run `./scripts/bootstrap.sh up`
 to converge the role. See [902](./902-TROUBLESHOOTING.md).
 
-**Lost the local state before migration finished.** If the first `apply` created the
-bucket but the migrate step didn't run, re-run `./scripts/bootstrap.sh up`: it detects
-the bucket and reconfigures against the remote state (importing any drift may be needed
-in rare cases — `terraform import`).
+**409 "already exists" / lost the local state.** If a prior seed created the
+resources (state bucket, CI SA, WIF pool, backups bucket, DNS zone) but its state was
+lost or never migrated — e.g. you're on a **new machine** with a clean checkout (the
+`backend_override.tf` is gitignored) — a naïve `apply` would collide with `409 already
+exists`. `bootstrap.sh up` **self-heals**: before each apply it runs `reconcile_imports`,
+which existence-checks each named singleton and `terraform import`s any that exist in GCP
+but aren't yet in state, then converges normally and migrates state into the bucket. So
+the fix is simply to **re-run `./scripts/bootstrap.sh up`** — no manual `terraform import`
+needed. (The additive IAM bindings are idempotent and don't collide.)
 
 **Is it safe to re-run `up`?** Yes — idempotent. It's the way to apply a bootstrap
 change (e.g. a new IAM role) to the live project.
