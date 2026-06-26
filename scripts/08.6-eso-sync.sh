@@ -74,7 +74,12 @@ kubectl rollout status deployment -n external-secrets \
 # fixed at creation), which is exactly what happens on an idempotent re-run over an
 # existing cluster. Without this the ExternalSecrets never sync (auth failure) and
 # the wait below times out.
-ESO_GSA_EMAIL="eso-secret-reader@$(gcloud config get-value project 2>/dev/null).iam.gserviceaccount.com"
+GCP_PROJECT="$(gcloud config get-value project 2>/dev/null || true)"
+if [[ -z "${GCP_PROJECT}" ]]; then
+  log_error "Could not resolve the active gcloud project — required for the ClusterSecretStore projectID + the ESO Workload Identity GSA."
+  exit 1
+fi
+ESO_GSA_EMAIL="eso-secret-reader@${GCP_PROJECT}.iam.gserviceaccount.com"
 log_step "Ensuring the ESO controller authenticates as ${ESO_GSA_EMAIL} (Workload Identity)"
 kubectl annotate serviceaccount external-secrets -n external-secrets \
   "iam.gke.io/gcp-service-account=${ESO_GSA_EMAIL}" --overwrite
@@ -83,7 +88,7 @@ kubectl rollout status deployment external-secrets -n external-secrets --timeout
   log_warn "Could not confirm ESO controller restart — continuing (sync wait will catch auth failures)."
 
 log_step "Applying the ClusterSecretStore (gcp-store → Secret Manager via Workload Identity)"
-kubectl apply -f - <<'EOF'
+kubectl apply -f - <<EOF
 apiVersion: external-secrets.io/v1beta1
 kind: ClusterSecretStore
 metadata:
@@ -91,8 +96,13 @@ metadata:
 spec:
   provider:
     gcpsm:
-      # projectID omitted → defaults to the hosting GKE node's project.
-      # auth omitted → Workload Identity (the node SA needs roles/secretmanager.secretAccessor).
+      # ESO's gcpsm provider REQUIRES an explicit projectID — it does NOT fall back
+      # to the GKE node's metadata project. Without it the store fails to even build
+      # a client: "could not get provider client: unable to find ProjectID in
+      # storeSpec" (Ready=False), so nothing ever syncs.
+      projectID: ${GCP_PROJECT}
+      # auth omitted → Workload Identity: the ESO controller pod runs as the
+      # eso-secret-reader GSA (SA annotation + restart above).
       auth: {}
 EOF
 
