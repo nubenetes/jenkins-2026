@@ -30,8 +30,8 @@ To keep operating costs low and deployment speed high, this project separates th
    - Applies the Grafana Cloud stack (`terraform/grafana-cloud-stack`, generated slug). By decoupling the metrics/tracing backend from the GKE cluster, your logs, metrics, and trace history survive multiple cluster spin-ups and tear-downs (the GKE decommission `Decom.cluster.01` leaves the stack intact; only `Decom.infra.02` destroys it).
 
 4. **Persistent Database Backups Storage (`terraform/bootstrap`)**:
-   - **Postgres Backups Bucket**: Configures the persistent GCS bucket `jenkins-2026-postgres-backups` with automated storage lifecycles (transition to `NEARLINE` after 3 days, delete after 7 days) to preserve backup histories across throwaway GKE lifecycle runs.
-   - **Access**: the **GKE node service account** is granted `roles/storage.objectAdmin` **on this bucket** (`google_storage_bucket_iam_member.nodes_postgres_backups` in `terraform/gke`) so CNPG can read/write backups. No project-level `storage.admin` is granted to the CI service account.
+   - **Postgres Backups Bucket**: Configures the persistent GCS bucket `<project>-jenkins-2026-postgres-backups` (project-scoped — GCS bucket names share one global namespace, so the project-ID prefix keeps it collision-proof across rebuilds, like the Terraform state bucket) with automated storage lifecycles (transition to `NEARLINE` after 3 days, delete after 7 days) to preserve backup histories across throwaway GKE lifecycle runs.
+   - **Access Security**: Grants the GHA CI service accounts `storage.admin` permissions to manage bucket-level IAM policy bindings, enabling dynamic node service account access configuration during GKE provision runs.
 
 ## Workflow Architecture & Lifecycle Diagram
 
@@ -179,27 +179,22 @@ When executing the **Day1.cluster.01 GKE provision** workflow manually, you are 
    - **Default**: `oss` (needs no external backend; `config/config.yaml`'s durable default is still `grafana-cloud` for local `up.sh`).
    - Overrides the `observability.mode` setting in `config/config.yaml` for this execution lifecycle. Exactly **one** backend is active per cluster and the choice is **deterministic/idempotent** (like `ci_engine`): a rerun with a different mode auto-retires the previously-deployed backend's in-cluster footprint and provisions the chosen one. See [301 § observability backends](301-OBSERVABILITY.md).
 
-3. **ci_engine (Dropdown - Choice)**:
-   - **Type**: Choice (`jenkins` | `tekton`).
-   - **Default**: `jenkins`.
-   - Overrides `ci.engine` in `config/config.yaml`. Selects which CI engine the cluster deploys/runs (Jenkins by default; `tekton` swaps in the Tekton control plane + pipelines-as-code). Deterministic/idempotent: a rerun with a different engine retires the other. See [403 Tekton](403-TEKTON.md).
-
-4. **secrets_backend (Dropdown - Choice)**:
+3. **secrets_backend (Dropdown - Choice)**:
    - **Type**: Choice (`imperative` | `eso`).
    - **Default**: `imperative` (behaviour unchanged — `kubectl create secret` from the GitHub secrets).
    - Overrides `secrets.backend`. `eso` pushes the secret values to **GCP Secret Manager** and the **External Secrets Operator** syncs them into the cluster via Workload Identity (keyless, versioned, audited). The whole `up.sh` lifecycle honours it. See [201 § Secrets backend](201-ARCHITECTURE.md#secrets-backend-imperative--eso).
 
-5. **destroy_unused_backends (Checkbox - Boolean) — DESTRUCTIVE, opt-in**:
+4. **destroy_unused_backends (Checkbox - Boolean) — DESTRUCTIVE, opt-in**:
    - **Default**: `false`.
    - When `true`, also `terraform destroy` the **persistent** backend (Grafana Cloud stack / Azure / AWS Managed Grafana) of every mode you did **not** select, so only the chosen backend exists. Reuses the `Decom.infra.0{2,3,4}` workflows via `workflow_call`; independent of the cluster provision (a destroy of a never-provisioned backend can't block it).
    - ⚠ **Irreversible**: wipes that backend's history/dashboards; re-selecting the mode later recreates it empty. Needs the non-selected backends' credentials/identifiers configured.
 
-6. **enable_gateway (Checkbox - Boolean)**:
+5. **enable_gateway (Checkbox - Boolean)**:
    - **Default**: `true`.
    - Determines whether the public GKE Gateway L7 load balancer should be provisioned.
    - **Prerequisites**: Requires `Day0.infra.01 Gateway bootstrap` applied, wildcard DNS records, and IAP OAuth client credentials.
 
-7. **git_ref (Text Box - String)**:
+6. **git_ref (Text Box - String)**:
    - **Default**: `""` (empty).
    - Leave empty to use the **"Use workflow from"** dropdown selection.
    - Provide a branch name, tag, or SHA to override.
