@@ -6,19 +6,39 @@
 
 ## Prerequisites
 
-- An existing GKE Kubernetes cluster and a `kubectl` context pointing at it. **This repo provisions no cluster infrastructure** (except via `test/e2e.sh`).
-- `kubectl`, `helm` (v3), [`yq`](https://github.com/mikefarah/yq) (Go version, `mikefarah/yq`), `git`, `bash`. `gh` (GitHub CLI) only if you plan to push this repo yourself.
-- Cluster permissions to create namespaces, RBAC, CRDs (OpenTelemetry Operator) and the workloads described in [201. Architecture](./201-ARCHITECTURE.md).
-- A container registry you can push to (default: `ghcr.io/nubenetes/jenkins-2026-microservices` — works anonymously for pulls; pushing needs a token with `write:packages`).
-- **ArgoCD OIDC Redirect URI**: To use Google OIDC with ArgoCD, you MUST add `https://argocd.<baseDomain>/api/dex/callback` to your Google OAuth client's **Authorized redirect URIs**.
+| Tool | Why | Install |
+| :--- | :--- | :--- |
+| `kubectl`, `helm` (v3) | deploy workloads | cluster toolchain |
+| [`yq`](https://github.com/mikefarah/yq) (Go version) | parse `config/config.yaml` | `brew install yq` / [releases](https://github.com/mikefarah/yq/releases) |
+| `gcloud` + `gsutil` | GCP auth, Secret Manager, ADC | [cloud.google.com/sdk](https://cloud.google.com/sdk/docs/install) |
+| `terraform` (≥ 1.9) | bootstrap + GKE cluster | [developer.hashicorp.com/terraform](https://developer.hashicorp.com/terraform/downloads) |
+| `gh` (GitHub CLI) | set repo secrets (bootstrap) | [cli.github.com](https://cli.github.com/) |
+| `git`, `bash` | source control + scripts | standard |
+
+You also need:
+- A **GCP project** with **billing enabled** and **Owner** (or Editor + `resourcemanager.projectIamAdmin`) on it.
+- Push / admin access to the GitHub repo (to set its secrets).
+- A container registry you can push to (default: `ghcr.io/nubenetes/jenkins-2026-microservices` — anonymous pulls; pushing needs a `write:packages` token).
+- **ArgoCD OIDC Redirect URI**: add `https://argocd.<baseDomain>/api/dex/callback` to your Google OAuth client's **Authorized redirect URIs**.
 - (default observability mode) A [Grafana Cloud](https://grafana.com/products/cloud/) stack (free tier is enough) for its OTLP gateway endpoint + API key.
+
+> **Script permissions** — if you get `-bash: ./scripts/up.sh: Permission denied` after cloning or editing scripts on Windows, restore the execute bit before running anything:
+> ```bash
+> chmod +x scripts/*.sh scripts/lib/*.sh test/*.sh
+> ```
+> All scripts are committed with `100755` mode in git; this only needs to be done once per local checkout if your editor/OS strips the bit.
 
 ## Quick Start
 
 ```bash
+# 0. (once, before anything else) Bootstrap the GCP root of trust.
+#    Creates the WIF trust, GCS state bucket, CI service account, permanent DNS zone,
+#    and sets the 4 GitHub repo secrets. See docs/100-BOOTSTRAP.md.
+./scripts/bootstrap.sh up
+
 # 1. Review/edit config/config.yaml - observability.mode (grafana-cloud|oss|managed-azure|managed-aws),
 #    ci.engine (jenkins|tekton), secrets.backend (imperative|eso).
-#    Default: grafana-cloud.
+#    Default: grafana-cloud + jenkins + imperative.
 
 # 2. (grafana-cloud mode only) create the OTLP credentials secret:
 cp observability/otel-collector/secret.example.yaml observability/otel-collector/secret.yaml
@@ -63,15 +83,51 @@ Update the repository reference URLs in `config/config.yaml` to point to your fo
 - Edit `microservices.git.org` to match your GitHub organization or username.
 - Commit and push this change to your infra repo fork.
 
-### Step 3: Configure GKE / OAuth Credentials (Optional)
+### Step 3: Bootstrap — Root of Trust + Public DNS Zone
+
+> **Run once, by hand, on your laptop.** This is the only step that cannot be a GitHub Actions workflow (it creates the WIF trust and GCS bucket that all other workflows depend on). See [100. Bootstrap](./100-BOOTSTRAP.md) for the full explanation.
+
+```bash
+# (optional) pass inputs non-interactively:
+# export PROJECT_ID=my-gcp-project REGION=us-central1 GITHUB_REPO=myorg/jenkins-2026
+./scripts/bootstrap.sh up
+```
+
+What it creates:
+- **WIF trust** + CI service account — lets GitHub Actions authenticate to GCP keylessly.
+- **GCS state bucket** — remote Terraform state for every other module.
+- **Permanent public DNS zone** `jenkins-2026-public-zone` for `base_domain` (e.g. `jenkins2026.nubenetes.com`) — lives in the never-destroyed root tier so its nameservers never change across cluster rebuilds.
+- **4 GitHub repo secrets** (`GCP_PROJECT_ID`, `TF_STATE_BUCKET`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT`).
+
+It is **idempotent**: re-run any time to converge (e.g. after adding a role or renewing a permission).
+
+#### One-time DNS delegation (Squarespace / your parent DNS)
+
+After `bootstrap.sh up`, delegate the subdomain to Cloud DNS **once for the life of the project**:
+
+1. Get the zone's nameservers:
+   ```bash
+   terraform -chdir=terraform/bootstrap output dns_zone_name_servers
+   ```
+   Example output: `["ns-cloud-a1.googledomains.com.", "ns-cloud-a2.googledomains.com.", ...]`
+
+2. In your parent domain's DNS (e.g. Squarespace for `nubenetes.com`):
+   - **Add 4 `NS` records** for the subdomain host (e.g. `jenkins2026`) pointing to those 4 nameservers.
+   - **Delete** any pre-existing `A` or `CNAME` records for `*.jenkins2026` (they conflict with the delegation).
+
+3. Run `Day0.infra.01` (or `Day1.cluster.00`) — it populates the zone with the wildcard-A record (`*.jenkins2026 → <external IP>`) and the cert-validation CNAME. From this point on, every Decom+rebuild reuses the same zone and the same NS delegation — **no further DNS changes required**.
+
+> **Why this is permanent:** the zone lives in the root tier (`terraform/bootstrap`), which is only destroyed when you intentionally abandon the project (`bootstrap.sh down`). Even a full `Decom.infra.00` teardown leaves the zone and its nameservers in place. Only the A and CNAME records (managed by `gateway-bootstrap`) are recreated on each rebuild.
+
+### Step 4: Configure GKE / OAuth Credentials (Optional)
 
 If you want to enable public access (Identity-Aware Proxy load balancer) or "Sign in with Google" OIDC login:
 1. **Google OAuth Client for Jenkins**: Follow [401. Jenkins](./401-JENKINS.md) to create an OAuth client. Register `<your-jenkins-url>/securityRealm/finishLogin` as the redirect URI.
 2. **Google Identity-Aware Proxy (IAP) (GKE only)**: Follow [501. Platform Operations](./501-PLATFORM_OPERATIONS.md) to set up the OAuth client gating the endpoints.
 
-### Step 4: Add GitHub Repository Secrets
+### Step 5: Add Remaining GitHub Repository Secrets
 
-In your fork of the infra repository, go to **Settings > Secrets and variables > Actions** and add:
+The bootstrap already set the 4 GCP secrets. Add the remaining application-layer secrets in **Settings > Secrets and variables > Actions**:
 - `REGISTRY_USERNAME` / `REGISTRY_PASSWORD`: Credentials for your container registry.
 - `GIT_USERNAME` / `GIT_TOKEN`: GitHub account credentials used by the Jenkins pipeline.
 - `JENKINS_OIDC_CLIENT_ID` / `JENKINS_OIDC_CLIENT_SECRET`: Google OAuth client credentials for Jenkins Google login.
@@ -80,7 +136,7 @@ In your fork of the infra repository, go to **Settings > Secrets and variables >
 
 See [102. GitHub Actions Automation](./102-GITHUB_ACTIONS_AUTOMATION.md) for the complete secrets reference.
 
-### Step 5: (Optional) Set Up Grafana Cloud Stack
+### Step 6: (Optional) Set Up Grafana Cloud Stack
 
 If using the default `observability.mode: grafana-cloud`:
 1. Log into your [Grafana Cloud Portal](https://grafana.com/) and copy your OTLP endpoint and Access Policy token.
@@ -91,14 +147,14 @@ If using the default `observability.mode: grafana-cloud`:
    kubectl apply -f observability/otel-collector/secret.yaml
    ```
 
-### Step 6: Deploy the Stack
+### Step 7: Deploy the Stack
 
 ```bash
 # Ensure you have set your kubectl context to your target cluster
 ./scripts/up.sh
 ```
 
-### Step 7: Run Pipelines & Verify
+### Step 8: Run Pipelines & Verify
 
 Once deployed:
 1. Run `./scripts/status.sh` to obtain the port-forwarding commands and passwords.
@@ -163,11 +219,10 @@ All namespace `ResourceQuota` objects are strictly configured to prevent GKE aut
 | **pgadmin** | `pgadmin-pgadmin4` | `100m` | `500m` | `256Mi` | `512Mi` |
 
 Namespace-level `ResourceQuota` hard limits:
-- `jenkins` (only when `ci.engine=jenkins`): requests `16.0` CPU / `32.0Gi` (limits `60.0` / `64.0Gi`).
-- `observability`: requests `3.0` CPU / `6.0Gi` (limits `6.0` / `10.0Gi`) — or `6.0` CPU / `12.0Gi` (limits `12.0` / `20.0Gi`) in `observability.mode=oss`, where the whole stack runs in-cluster.
-- `headlamp`: requests `200m` CPU / `256Mi` (limits `500m` / `512Mi`).
-- `argocd`: requests `1.5` CPU / `3.0Gi` (limits `5` / `8.0Gi`).
-- `pgadmin`: requests `300m` CPU / `512Mi` (limits `1.0` / `1.0Gi`).
+- `jenkins`: Requests max `3.0` CPU / `8.0Gi` memory.
+- `microservices`: Requests max `1.5` CPU / `3.0Gi` memory.
+- `observability`: Requests max `3.0` CPU / `6.0Gi` memory.
+- `argocd`: Requests max `1.5` CPU / `3.0Gi` memory.
 
 ### Terraform Version & Stacks
 
