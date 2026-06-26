@@ -98,7 +98,12 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
   - `bootstrap/` - the **root of trust** (Day0 "phase 0"), run by hand via
     [`scripts/bootstrap.sh`](scripts/bootstrap.sh) (`up`/`down`). Creates the GCS
     Terraform state bucket + GitHub OIDC/Workload Identity Federation trust + CI
-    service account (+ roles) + Postgres backups bucket. **First** `apply` seeds with
+    service account (+ roles, incl. `dns.admin`) + Postgres backups bucket + the
+    **permanent delegated public DNS zone** (`jenkins-2026-public-zone` for
+    `base_domain`; lives here so its nameservers never change — you delegate
+    `base_domain` from the parent domain to them once, ever, via the
+    `dns_zone_name_servers` output; `terraform/gateway-bootstrap` fills it with the
+    records). **First** `apply` seeds with
     LOCAL state, then the script **migrates that state into the bucket** (prefix
     `jenkins-2026/bootstrap`) so even bootstrap is remote-state going forward (the
     `backend_override.tf` it writes is gitignored). Can't be a CI workflow (the
@@ -107,14 +112,15 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
     `state_bucket_force_destroy=true` → delete the 4 GitHub secrets). See
     [`docs/100-BOOTSTRAP.md`](docs/100-BOOTSTRAP.md).
   - `gateway-bootstrap/` - persistent Gateway resources (static external IP +
-    wildcard cert map + DNS authorization + a **delegated Cloud DNS zone** for
-    `baseDomain` whose wildcard-A and cert-validation-CNAME records Terraform keeps
-    in sync with the static IP) so the public endpoints survive cluster rebuilds and
-    come back with **no manual DNS**. The only manual DNS step is a one-time,
-    permanent `NS` delegation of `baseDomain` from the parent domain to this zone's
-    nameservers (`dns_zone_name_servers` output). Applied by `Day0.infra.01-gateway.yml`
+    wildcard cert map + DNS authorization) **plus the wildcard-A and
+    cert-validation-CNAME records** inside the permanent `bootstrap` DNS zone
+    (referenced by the fixed name `jenkins-2026-public-zone`), so the public
+    endpoints survive cluster rebuilds and come back with **no manual DNS**: every
+    `Day0.infra.01`/`Day1.cluster.00` run reconciles the records to the current IP,
+    while the zone (hence the one-time parent-domain `NS` delegation) lives in the
+    never-destroyed root tier and never changes. Applied by `Day0.infra.01-gateway.yml`
     (and re-applied by `Day1.cluster.00`), destroyed by `Decom.infra.01-gateway.yml`
-    (GCS remote state).
+    (the records drop and are recreated on rebuild; the zone persists). GCS remote state.
   - `workload-identity/` - standalone GKE Workload Identity Federation helpers
     (manual/auxiliary; not wired into the per-cluster CI lifecycle).
   - `gke/` - the throwaway GKE cluster. Local state for `test/e2e.sh`; GCS

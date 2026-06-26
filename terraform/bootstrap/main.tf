@@ -57,11 +57,33 @@ resource "google_project_service" "apis" {
     "sts.googleapis.com",
     "cloudresourcemanager.googleapis.com",
     "storage.googleapis.com",
+    # For the permanent public DNS zone below.
+    "dns.googleapis.com",
   ])
 
   project            = var.project_id
   service            = each.value
   disable_on_destroy = false
+}
+
+# -----------------------------------------------------------------------------
+# Permanent public DNS zone (delegated subdomain). Lives HERE — in the never-
+# torn-down root tier — so its nameservers are stable for the lifetime of the
+# project: you delegate <base_domain> from the parent domain (e.g. Squarespace)
+# to these nameservers ONCE, ever. terraform/gateway-bootstrap fills the zone
+# with the wildcard-A (→ static IP) and cert-validation CNAME and re-applies them
+# every Day0.infra.01 / Day1.cluster.00, so a Decom-everything — even an explicit
+# Decom.infra.01 gateway teardown — and rebuild brings the URLs back with NO DNS
+# changes (the zone, hence the delegation, never changes). The fixed zone name is
+# referenced by terraform/gateway-bootstrap's google_dns_record_set.managed_zone.
+# -----------------------------------------------------------------------------
+resource "google_dns_managed_zone" "public" {
+  project     = var.project_id
+  name        = "jenkins-2026-public-zone"
+  dns_name    = "${var.base_domain}."
+  description = "Permanent public zone for jenkins-2026 (${var.base_domain}); delegated from the parent domain. Records are managed by terraform/gateway-bootstrap."
+
+  depends_on = [google_project_service.apis]
 }
 
 # -----------------------------------------------------------------------------

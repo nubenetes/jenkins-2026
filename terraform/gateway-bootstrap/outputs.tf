@@ -1,11 +1,6 @@
 output "static_ip_address" {
-  description = "Global static IP address. The *.<base_domain> wildcard A record is now managed by this module (google_dns_record_set.wildcard_a) in the delegated zone — no manual record needed."
+  description = "Global static IP address. The *.<base_domain> wildcard A record is now managed by this module (google_dns_record_set.wildcard_a) in the permanent delegated zone — no manual record needed. (The zone's nameservers / one-time delegation come from terraform/bootstrap's dns_zone_name_servers output.)"
   value       = google_compute_global_address.gateway_ip.address
-}
-
-output "dns_zone_name_servers" {
-  description = "Nameservers of the delegated <base_domain> zone. ONE-TIME, PERMANENT: at the PARENT domain's DNS, create NS records for <base_domain> pointing at these. This is the only manual DNS step; it survives every Decom/rebuild."
-  value       = google_dns_managed_zone.public.name_servers
 }
 
 output "static_ip_name" {

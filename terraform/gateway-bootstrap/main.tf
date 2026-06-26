@@ -62,39 +62,29 @@ resource "google_certificate_manager_certificate_map_entry" "this" {
 }
 
 # =============================================================================
-# Delegated public DNS zone — makes the public endpoint fully idempotent.
+# DNS records — make the public endpoint fully idempotent.
 #
-# Terraform owns the records, so a Decom-everything + rebuild brings the URLs
-# back with NO manual DNS: Day0.infra.01 / Day1.cluster.00 re-apply this module
-# every run, so the wildcard A always tracks the (persistent) static IP and the
-# Certificate Manager authorization CNAME is always present (cert auto-provisions).
+# The delegated zone itself lives in the PERMANENT root tier (terraform/bootstrap's
+# google_dns_managed_zone.public, name "jenkins-2026-public-zone") so its
+# nameservers — hence the one-time parent-domain delegation — never change. Here
+# we just (re)create the records INSIDE it: every Day0.infra.01 / Day1.cluster.00
+# run reconciles the wildcard A to the current static IP and ensures the cert
+# authorization CNAME exists. So a Decom-everything — even an explicit Decom.infra.01
+# gateway teardown that drops these records and the IP — comes back with NO manual
+# DNS: the records are recreated against the unchanged zone on rebuild.
 #
-# The ONLY manual DNS step is a ONE-TIME, PERMANENT delegation: at the PARENT
-# domain's DNS, create NS records for <base_domain> pointing at this zone's
-# nameservers (output dns_zone_name_servers). That delegation lives in the parent
-# zone, so it survives every Decom/rebuild here. (Remove any old, hand-made
-# *.<base_domain> / _acme-challenge.<base_domain> records from the parent zone —
-# the delegation supersedes them.)
+# managed_zone is referenced by the fixed NAME (the zone is in bootstrap's state,
+# not this module's) — keep it in sync with terraform/bootstrap.
 # =============================================================================
-resource "google_project_service" "dns" {
-  project            = var.project_id
-  service            = "dns.googleapis.com"
-  disable_on_destroy = false
-}
-
-resource "google_dns_managed_zone" "public" {
-  project     = var.project_id
-  name        = "jenkins-2026-public-zone"
-  dns_name    = "${var.base_domain}."
-  description = "Public zone for jenkins-2026 (${var.base_domain}); delegated from the parent domain."
-  depends_on  = [google_project_service.dns]
+locals {
+  public_zone_name = "jenkins-2026-public-zone" # == terraform/bootstrap google_dns_managed_zone.public.name
 }
 
 # Wildcard A → the persistent gateway IP. Covers every app host
 # (argocd/jenkins/headlamp/pgadmin/grafana/microservices[-develop]).
 resource "google_dns_record_set" "wildcard_a" {
   project      = var.project_id
-  managed_zone = google_dns_managed_zone.public.name
+  managed_zone = local.public_zone_name
   name         = "*.${var.base_domain}."
   type         = "A"
   ttl          = 300
@@ -105,7 +95,7 @@ resource "google_dns_record_set" "wildcard_a" {
 # cert (jenkins-2026-cert) automatically, with no hand-created record.
 resource "google_dns_record_set" "cert_auth" {
   project      = var.project_id
-  managed_zone = google_dns_managed_zone.public.name
+  managed_zone = local.public_zone_name
   name         = google_certificate_manager_dns_authorization.this.dns_resource_record[0].name
   type         = google_certificate_manager_dns_authorization.this.dns_resource_record[0].type
   ttl          = 300
