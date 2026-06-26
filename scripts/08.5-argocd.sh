@@ -405,7 +405,17 @@ fi
 log_info "CNPG webhook ready."
 
 log_step "Configuring External Secrets Operator via ArgoCD"
-kubectl apply -f "${J2026_ROOT_DIR}/argocd/external-secrets-app.yaml"
+# Substitute the Workload Identity GSA email the ESO controller KSA impersonates
+# to read Secret Manager (secrets.backend=eso). The GSA + WI binding are created
+# by terraform/gke (google_service_account.eso, account_id eso-secret-reader).
+# Templated unconditionally — harmless in imperative mode (ESO installed, unused).
+ESO_APP_FILE=$(mktemp)
+ESO_GSA_EMAIL="eso-secret-reader@$(gcloud config get-value project 2>/dev/null).iam.gserviceaccount.com"
+# NOTE: '#' delimiter, not '@' — the GSA email contains '@'.
+sed "s#{{esoGsaEmail}}#${ESO_GSA_EMAIL}#g" \
+    "${J2026_ROOT_DIR}/argocd/external-secrets-app.yaml" > "${ESO_APP_FILE}"
+kubectl apply -f "${ESO_APP_FILE}"
+rm "${ESO_APP_FILE}"
 
 # Argo Rollouts (progressive delivery) + the Gateway API plugin RBAC. The
 # controller/CRDs/plugin are GitOps-managed by the argo-rollouts Application

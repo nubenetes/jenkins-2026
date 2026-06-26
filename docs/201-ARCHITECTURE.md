@@ -430,7 +430,7 @@ follows the same pattern — staged rollout below):
 ```mermaid
 flowchart LR
     GH["GitHub Actions secret<br/>(IAP_OAUTH_*)"] -->|"01-namespaces.sh<br/>(scripts/lib/secrets.sh)"| SM[("GCP Secret Manager<br/>gateway-iap-oauth (versioned)")]
-    SM -->|"Workload Identity (keyless)<br/>node SA: secretmanager.secretAccessor"| ESO["External Secrets Operator<br/>ClusterSecretStore gcp-store"]
+    SM -->|"Workload Identity (keyless)<br/>GSA eso-secret-reader: secretmanager.secretAccessor"| ESO["External Secrets Operator<br/>ClusterSecretStore gcp-store"]
     ESO -->|"08.6-eso-sync.sh applies<br/>ExternalSecret per ns + waits"| K[("k8s Secret gateway-iap-oauth<br/>→ headlamp / pgadmin / engine ns")]
     K --> P["GCPBackendPolicy (IAP)"]
     classDef sm fill:#eef,stroke:#66c;
@@ -467,8 +467,13 @@ either side of Secret Manager):
   `secrets.create`); granted in `terraform/bootstrap`'s `ci_roles`. **Adding it
   to an existing bootstrap requires a one-time human `terraform apply` in
   `terraform/bootstrap`** (the CI SA's roles live there, like all the others).
-- **Read (sync) side** — the GKE node SA needs `roles/secretmanager.secretAccessor`
-  so ESO can read via Workload Identity; granted in `terraform/gke`.
+- **Read (sync) side** — the cluster runs **GKE Workload Identity** (`GKE_METADATA`),
+  so ESO pods authenticate as the GSA bound to their KSA, **not** the node SA.
+  `terraform/gke` creates a dedicated least-privilege GSA (`eso-secret-reader`,
+  only `roles/secretmanager.secretAccessor`) and a `workloadIdentityUser` binding
+  to the controller KSA `external-secrets/external-secrets`; the KSA is annotated
+  with that GSA's email via the external-secrets ArgoCD app's helm values
+  (templated in `scripts/08.5-argocd.sh`).
 
 ### Why the `gateway-iap-oauth` Secret is replicated
 

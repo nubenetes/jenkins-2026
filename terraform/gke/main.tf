@@ -71,16 +71,40 @@ resource "google_project_iam_member" "nodes_roles" {
     "roles/monitoring.metricWriter",
     "roles/monitoring.viewer",
     "roles/artifactregistry.reader",
-    # Lets the External Secrets Operator (running with the node SA via Workload
-    # Identity) read GCP Secret Manager when secrets.backend=eso. Additive and
-    # harmless in the default imperative mode (simply unused). See
-    # docs/201-ARCHITECTURE.md § Secrets Management.
-    "roles/secretmanager.secretAccessor",
   ])
 
   project = var.project_id
   role    = each.value
   member  = "serviceAccount:${google_service_account.nodes.email}"
+}
+
+# --- External Secrets Operator identity (secrets.backend=eso) -----------------
+# The cluster runs GKE Workload Identity (workload_metadata_config = GKE_METADATA
+# below), so pods authenticate as the GCP SA bound to their Kubernetes SA — NOT
+# as the node SA. ESO therefore needs its OWN least-privilege GSA (only
+# secretmanager.secretAccessor) that the ESO controller KSA impersonates via
+# Workload Identity. The KSA is annotated with this GSA's email by the
+# external-secrets ArgoCD app (helm values templated in scripts/08.5-argocd.sh).
+# Created unconditionally — harmless/unused in the default imperative mode. See
+# docs/201-ARCHITECTURE.md § Secrets Management.
+resource "google_service_account" "eso" {
+  project      = var.project_id
+  account_id   = "eso-secret-reader"
+  display_name = "jenkins-2026 External Secrets Operator (Secret Manager reader)"
+}
+
+resource "google_project_iam_member" "eso_secret_accessor" {
+  project = var.project_id
+  role    = "roles/secretmanager.secretAccessor"
+  member  = "serviceAccount:${google_service_account.eso.email}"
+}
+
+# Let the ESO controller KSA (namespace/name external-secrets/external-secrets,
+# the chart defaults) impersonate the GSA above.
+resource "google_service_account_iam_member" "eso_wi" {
+  service_account_id = google_service_account.eso.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[external-secrets/external-secrets]"
 }
 
 # IAM for Headlamp's per-user OIDC->GKE-API access-token passthrough (see
