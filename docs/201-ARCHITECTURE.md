@@ -473,7 +473,10 @@ either side of Secret Manager):
   only `roles/secretmanager.secretAccessor`) and a `workloadIdentityUser` binding
   to the controller KSA `external-secrets/external-secrets`; the KSA is annotated
   with that GSA's email via the external-secrets ArgoCD app's helm values
-  (templated in `scripts/08.5-argocd.sh`).
+  (templated in `scripts/08.5-argocd.sh`). Because a pod's GCP identity is fixed
+  at creation, `08.6-eso-sync.sh` also **restarts the ESO controller** so it adopts
+  the annotation on an idempotent re-run (the controller pod from a prior run
+  predates it and would otherwise keep failing to authenticate).
 
 **Active-backend resolution (detection, not just the flag).** Like `ci.engine`
 (`j2026_active_ci_engine`), the *active* backend is resolved by

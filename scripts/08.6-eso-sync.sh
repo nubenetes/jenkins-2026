@@ -65,6 +65,23 @@ kubectl rollout status deployment -n external-secrets \
   -l app.kubernetes.io/instance=external-secrets --timeout=5m 2>/dev/null || \
   log_warn "Could not confirm ESO rollout via label — continuing (apply will retry)."
 
+# The ESO CONTROLLER is what reads Secret Manager, so it must run with the Workload
+# Identity annotation mapping its KSA to the eso-secret-reader GSA (terraform/gke
+# grants that GSA secretmanager.secretAccessor + binds it to this KSA). ArgoCD sets
+# the same annotation from the chart (argocd/external-secrets-app.yaml) — we set it
+# here too for immediacy (same value → no drift) and RESTART the controller: a pod
+# created BEFORE the annotation existed won't adopt it (a pod's GCP identity is
+# fixed at creation), which is exactly what happens on an idempotent re-run over an
+# existing cluster. Without this the ExternalSecrets never sync (auth failure) and
+# the wait below times out.
+ESO_GSA_EMAIL="eso-secret-reader@$(gcloud config get-value project 2>/dev/null).iam.gserviceaccount.com"
+log_step "Ensuring the ESO controller authenticates as ${ESO_GSA_EMAIL} (Workload Identity)"
+kubectl annotate serviceaccount external-secrets -n external-secrets \
+  "iam.gke.io/gcp-service-account=${ESO_GSA_EMAIL}" --overwrite
+kubectl rollout restart deployment external-secrets -n external-secrets
+kubectl rollout status deployment external-secrets -n external-secrets --timeout=3m 2>/dev/null || \
+  log_warn "Could not confirm ESO controller restart — continuing (sync wait will catch auth failures)."
+
 log_step "Applying the ClusterSecretStore (gcp-store → Secret Manager via Workload Identity)"
 kubectl apply -f - <<'EOF'
 apiVersion: external-secrets.io/v1beta1
