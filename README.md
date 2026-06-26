@@ -83,9 +83,9 @@ A self-contained proof of concept that deploys **Jenkins** on **Kubernetes**, co
 - [The state model (self-hosted in the bucket)](./docs/100-BOOTSTRAP.md#the-state-model-self-hosted-in-the-bucket)
 
 **[101 · GitHub Actions Workflows](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md)**
-- [Naming convention: `Y.X.ZZ`](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#naming-convention-yxzz)
-  - [Phase × Step matrix](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#phase--step-matrix)
-  - [Resource identifier (ZZ): constant across all phases](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#resource-identifier-zz-constant-across-all-phases)
+- [Naming convention: `DayN.tier.ZZ-resource`](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#naming-convention-dayntierzz-resource)
+  - [Day × workflow matrix](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#day--workflow-matrix)
+  - [Resource identifier (ZZ): stable across all phases](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#resource-identifier-zz-stable-across-all-phases)
 - [Full workflow matrix](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#full-workflow-matrix)
 - [Lifecycle diagram](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#lifecycle-diagram)
 - [Day-0 / Day-1 / Day-2 operations](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#day-0--day-1--day-2-operations)
@@ -101,7 +101,7 @@ A self-contained proof of concept that deploys **Jenkins** on **Kubernetes**, co
   - [Detailed Workflow Reference and Lifecycle Management](./docs/102-GITHUB_ACTIONS_AUTOMATION.md#detailed-workflow-reference-and-lifecycle-management)
 - [Version Pinning and the `git_ref` Parameter](./docs/102-GITHUB_ACTIONS_AUTOMATION.md#version-pinning-and-the-git_ref-parameter)
   - [The `git_ref` Parameter](./docs/102-GITHUB_ACTIONS_AUTOMATION.md#the-git_ref-parameter)
-  - [Form Fields Reference (Day1.cluster.01 GKE Provision)](./docs/102-GITHUB_ACTIONS_AUTOMATION.md#form-fields-reference-0201-gke-provision)
+  - [Form Fields Reference (Day1.cluster.01 GKE Provision)](./docs/102-GITHUB_ACTIONS_AUTOMATION.md#form-fields-reference-day1cluster01-gke-provision)
   - [The Danger of Divergent References](./docs/102-GITHUB_ACTIONS_AUTOMATION.md#the-danger-of-divergent-references)
 - [Environment Protection and Manual Approvals](./docs/102-GITHUB_ACTIONS_AUTOMATION.md#environment-protection-and-manual-approvals)
   - [Setting up Environment Rules](./docs/102-GITHUB_ACTIONS_AUTOMATION.md#setting-up-environment-rules)
@@ -258,7 +258,7 @@ A self-contained proof of concept that deploys **Jenkins** on **Kubernetes**, co
   - [Step 4: Add GitHub Repository Secrets](./docs/901-LOCAL_DEVELOPMENT.md#step-4-add-github-repository-secrets)
   - [Step 5: Set Up Grafana Cloud Stack](./docs/901-LOCAL_DEVELOPMENT.md#step-5-optional-set-up-grafana-cloud-stack)
   - [Step 6: Deploy the Stack](./docs/901-LOCAL_DEVELOPMENT.md#step-6-deploy-the-stack)
-  - [Step 7: Run Jenkins Pipelines & Verify](./docs/901-LOCAL_DEVELOPMENT.md#step-7-run-jenkins-pipelines--verify)
+  - [Step 7: Run Pipelines & Verify](./docs/901-LOCAL_DEVELOPMENT.md#step-7-run-pipelines--verify)
 - [Automated End-to-End Test](./docs/901-LOCAL_DEVELOPMENT.md#automated-end-to-end-test-provisioning--decommissioning)
   - [Running It](./docs/901-LOCAL_DEVELOPMENT.md#running-it)
   - [Prerequisites for e2e](./docs/901-LOCAL_DEVELOPMENT.md#prerequisites-for-e2e)
@@ -427,8 +427,10 @@ All 22 workflows live in [`.github/workflows/`](.github/workflows/) following th
 > re-applies every step; ArgoCD re-syncs from git). You do **not** need to
 > decommission to pick up a change. For a CI-engine-only change, the lighter
 > `Day2.redeploy.02-jenkins` / `Day2.redeploy.03-tekton` redeploys also converge
-> in place (they re-run `09-gateway` too). `Decom.cluster.01` is only for tearing
-> the cluster down when you're done, to stop charges.
+> in place (`.03-tekton` also re-runs `01-namespaces` + `08.6-eso-sync` + `09-gateway`;
+> `.02-jenkins` re-applies only the Jenkins chart + seed jobs — use
+> `Day2.redeploy.05-gateway` to re-apply the gateway routes). `Decom.cluster.01`
+> is only for tearing the cluster down when you're done, to stop charges.
 
 ---
 

@@ -252,11 +252,12 @@ The `ci.engine` flag (`jenkins` default, override `JENKINS2026_CI_ENGINE`) selec
 ```
 config/config.yaml          single source of truth (feature flags above)
 helm/jenkins/                jenkinsci/helm-charts values + values-gke.yaml overlay
-helm/microservices/          local chart for the Microservices workloads (2 envs)
 helm/headlamp/               kubernetes-sigs/headlamp values (cluster management UI)
+helm/pgadmin/                pgAdmin values (CNPG admin UI)
+helm/argocd-values.yaml      ArgoCD install values
 jenkins/casc/                JCasC: security, OTel exporter, seed job
-jenkins/pipelines/           Jenkinsfile.microservices + seed job (Job DSL + services.yaml)
-vars/, resources/            Jenkins global shared library (must be at repo root)
+jenkins/pipelines/           seed/ (seed job: Job DSL + Jenkinsfile.seed + services.yaml) + k6/ (smoke script)
+vars/                        Jenkins global shared library (must be at repo root; Microservices pipeline lives here)
 tekton/                      Tekton pipelines-as-code (ci.engine=tekton): Tasks/Pipelines/Triggers/RBAC + port of the Jenkins shared library (vars/)
 observability/               OTel Operator/Collector + Grafana/Loki/Tempo/Prometheus values + dashboards
 argocd/                      ArgoCD Applications/ApplicationSets + app-of-apps (platform-postgres, observability-oss, tekton) + argo-rollouts-app.yaml

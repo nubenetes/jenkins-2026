@@ -173,7 +173,7 @@ on a second run it detects the remote state and just re-applies.
 | :--- | :--- | :--- |
 | **GCS state bucket** `<project>-jenkins-2026-tfstate` | `google_storage_bucket.tf_state` | remote Terraform state for **every** other module (versioned) |
 | **CI service account** `jenkins-2026-ci@…` | `google_service_account.ci` | the identity GitHub Actions impersonates |
-| **CI roles** | `google_project_iam_member.ci_roles` | what that SA may do (see [103](./103-GITHUB_SECRETS_INVENTORY.md#gcp_service_account)) |
+| **CI roles** | `google_project_iam_member.ci_roles` | what that SA may do (see [103](./103-GITHUB_SECRETS_INVENTORY.md#1-gcp--core-infrastructure)) |
 | **WIF pool + provider** | `google_iam_workload_identity_pool*` | keyless GitHub→GCP trust |
 | **WIF binding** | `google_service_account_iam_member.github_wif` | lets *this repo* impersonate the SA |
 | **Postgres backups bucket** | `google_storage_bucket.postgres_backups` | survives cluster rebuilds |
