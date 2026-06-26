@@ -71,6 +71,21 @@ case "${J2026_CI_ENGINE}" in
     ;;
 esac
 
+# --- secrets backend (feature flag) ------------------------------------------
+# FEATURE FLAG: JENKINS2026_SECRETS_BACKEND overrides secrets.backend from
+# config.yaml for a single run. imperative (default) = kubectl create secret;
+# eso = push to GCP Secret Manager + sync via External Secrets Operator.
+J2026_SECRETS_BACKEND="${JENKINS2026_SECRETS_BACKEND:-$(yq_get '.secrets.backend' 'imperative')}"
+export J2026_SECRETS_BACKEND
+case "${J2026_SECRETS_BACKEND}" in
+  imperative|eso) ;;
+  *)
+    log_error "Unsupported secrets backend '${J2026_SECRETS_BACKEND}' (expected imperative|eso)."
+    log_error "Set secrets.backend in ${J2026_CONFIG_FILE} or export JENKINS2026_SECRETS_BACKEND."
+    exit 1
+    ;;
+esac
+
 # --- jenkins -------------------------------------------------------------
 
 export J2026_JENKINS_NAMESPACE="$(yq_get '.jenkins.namespace' 'jenkins')"

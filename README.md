@@ -387,6 +387,8 @@ flowchart TB
     APP -->|OTLP| COL
     CI -->|OTLP| COL
     OP -.->|injects agent| APP
+    SM["GCP Secret Manager<br/>secrets.backend=eso"]:::pick
+    SM -.->|"keyless WIF sync"| ESO
     COL -->|mode=oss| OSST
     COL -->|mode=grafana-cloud| GCLOUD
     COL -->|mode=managed-azure| AZ
