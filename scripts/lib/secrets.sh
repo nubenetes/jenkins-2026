@@ -107,3 +107,16 @@ PY
     log_info "Secret Manager secret '${name}' updated (new version) — ESO will sync it into ${ns}. $(gcp_console_secret_url "${name}")"
   fi
 }
+
+# sm_keep_or_generate <sm-secret-name> <json-key> <fallback>
+#   Echoes the EXISTING value of <json-key> in the Secret Manager blob if present
+#   (so generated/once-set values like the Jenkins admin password or the PaC webhook
+#   HMAC stay STABLE across idempotent re-runs — otherwise each run would mint a new
+#   one and break consumers); otherwise echoes <fallback> (typically a freshly
+#   generated value). eso mode only. Requires gcloud + jq.
+sm_keep_or_generate() {
+  local name="$1" key="$2" fallback="$3" cur=""
+  cur="$(gcloud secrets versions access latest --secret="${name}" 2>/dev/null \
+        | jq -r --arg k "${key}" '.[$k] // empty' 2>/dev/null || true)"
+  if [[ -n "${cur}" ]]; then printf '%s' "${cur}"; else printf '%s' "${fallback}"; fi
+}

@@ -41,7 +41,27 @@ fi
 if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
 kubectl_apply_namespace "${J2026_JENKINS_NAMESPACE}"
 log_step "Ensuring '${J2026_JENKINS_CREDENTIALS_SECRET}' Secret in ${J2026_JENKINS_NAMESPACE}"
-if kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
+if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
+  # eso → seed the create-time/sensitive keys into Secret Manager. admin-password is
+  # kept STABLE across runs (sm_keep_or_generate) so Jenkins + grafana-jenkins-ds agree
+  # on it. ESO projects these with creationPolicy: Merge (08.6), so the URL keys patched
+  # below + the argocd-token patched by 08.5 survive. Merge needs the Secret to exist, so
+  # ensure an (empty) base for the merge-patches + ESO to target.
+  admin_password="$(sm_keep_or_generate "${J2026_JENKINS_CREDENTIALS_SECRET}" admin-password "${ADMIN_PASSWORD:-$(openssl rand -base64 24 | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c20)}")"
+  provision_secret "${J2026_JENKINS_NAMESPACE}" "${J2026_JENKINS_CREDENTIALS_SECRET}" \
+    "admin-password=${admin_password}" \
+    "grafana-base-url=${GRAFANA_BASE_URL:-}" \
+    "registry-username=${REGISTRY_USERNAME:-}" \
+    "registry-password=${REGISTRY_PASSWORD:-}" \
+    "git-username=${GIT_USERNAME:-}" \
+    "git-token=${GIT_TOKEN:-}" \
+    "oidc-client-id=${JENKINS_OIDC_CLIENT_ID:-}" \
+    "oidc-client-secret=${JENKINS_OIDC_CLIENT_SECRET:-}" \
+    "oidc-admin-email=${JENKINS_OIDC_ADMIN_EMAIL:-}"
+  kubectl create secret generic "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \
+    --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  log_info "Seeded ${J2026_JENKINS_CREDENTIALS_SECRET} into Secret Manager (admin-password stable) — ESO will Merge it."
+elif kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
   log_info "Secret already exists - leaving it untouched."
   log_info "(to rotate the admin password, delete the secret and re-run this script)"
 else
@@ -91,7 +111,17 @@ EOF
 fi  # end ci.engine=jenkins (jenkins namespace + credentials)
 
 log_step "Ensuring '${J2026_HEADLAMP_CREDENTIALS_SECRET}' Secret in ${J2026_HEADLAMP_NAMESPACE}"
-if kubectl get secret "${J2026_HEADLAMP_CREDENTIALS_SECRET}" -n "${J2026_HEADLAMP_NAMESPACE}" >/dev/null 2>&1; then
+if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
+  # eso → all 6 keys are deterministic (env client id/secret + config-derived OIDC
+  # settings) and single-writer, so push the whole blob; ESO projects it (Owner, 08.6).
+  provision_secret "${J2026_HEADLAMP_NAMESPACE}" "${J2026_HEADLAMP_CREDENTIALS_SECRET}" \
+    "OIDC_CLIENT_ID=${HEADLAMP_OIDC_CLIENT_ID:-}" \
+    "OIDC_CLIENT_SECRET=${HEADLAMP_OIDC_CLIENT_SECRET:-}" \
+    "OIDC_ISSUER_URL=${J2026_HEADLAMP_OIDC_ISSUER_URL}" \
+    "OIDC_SCOPES=${J2026_HEADLAMP_OIDC_SCOPES}" \
+    "OIDC_CALLBACK_URL=${J2026_HEADLAMP_OIDC_CALLBACK_URL}" \
+    "OIDC_USE_ACCESS_TOKEN=false"
+elif kubectl get secret "${J2026_HEADLAMP_CREDENTIALS_SECRET}" -n "${J2026_HEADLAMP_NAMESPACE}" >/dev/null 2>&1; then
   log_info "Secret already exists - leaving OIDC_CLIENT_ID/OIDC_CLIENT_SECRET untouched."
   log_info "(to rotate the OIDC client secret, delete the secret and re-run this script)"
   log_info "Refreshing non-sensitive OIDC config keys (issuer/scopes/callback/useAccessToken)."
@@ -244,10 +274,17 @@ if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
   # PaC (Pipelines-as-Code) webhook HMAC secret, referenced by the Repository
   # CRs (tekton/pac/) and shared with the GitHub repo webhooks created by
   # 06-tekton-pipelines.sh. Optional - empty unless PAC_WEBHOOK_SECRET is set.
-  kubectl create secret generic pac-webhook \
-    -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
-    --from-literal=webhook.secret="${PAC_WEBHOOK_SECRET:-}" \
-    --dry-run=client -o yaml | kubectl apply -f -
+  if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
+    # eso → seed the HMAC into Secret Manager, generated-if-absent and kept STABLE
+    # (06-tekton-pipelines shares it with the GitHub webhooks); ESO projects it (Owner).
+    pac_secret="$(sm_keep_or_generate pac-webhook webhook.secret "${PAC_WEBHOOK_SECRET:-$(openssl rand -hex 20)}")"
+    provision_secret "${J2026_TEKTON_PIPELINE_NAMESPACE}" pac-webhook "webhook.secret=${pac_secret}"
+  else
+    kubectl create secret generic pac-webhook \
+      -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
+      --from-literal=webhook.secret="${PAC_WEBHOOK_SECRET:-}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+  fi
 
   # Optional Grafana Cloud k6 (the k6-app) streaming for the k6-smoke Task. Created
   # empty unless K6_CLOUD_TOKEN is set, so the Task's optional secretKeyRef resolves

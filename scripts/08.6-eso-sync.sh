@@ -15,13 +15,14 @@
 #   3. wait for ESO to materialise the resulting k8s Secret in each namespace,
 #      so the downstream steps find it.
 #
-# Scope: the gateway IAP OAuth secret (+ its single-key client-secret projection);
-# the Tekton pipeline creds (tekton-github-webhook-secret, k6-cloud, the registry
-# dockerconfigjson, the git basic-auth) when ci.engine=tekton; and ghcr-credentials.
-# STILL imperative (generated/multi-writer/in-cluster-minted values that don't fit
-# the "value already in Secret Manager" model): jenkins-credentials, headlamp-
-# credentials, pac-webhook, grafana-jenkins-ds, tekton-argocd, and the per-mode
-# observability backend credentials. See docs/201 § Secrets Management.
+# Scope: the gateway IAP OAuth secret (+ its single-key client-secret projection); the
+# Tekton pipeline creds (webhook, k6-cloud, registry dockerconfigjson, git basic-auth,
+# pac-webhook) when ci.engine=tekton; ghcr-credentials; and the generated/multi-writer
+# secrets — jenkins-credentials (Merge, with a stable seeded admin-password),
+# headlamp-credentials, and grafana-jenkins-ds (mirrors that admin-password).
+# STILL imperative (no upstream value to push): tekton-argocd (minted in-cluster by
+# ArgoCD) + the per-mode observability backend credentials (Terraform outputs).
+# See docs/201 § Secrets Management.
 # =============================================================================
 set -euo pipefail
 
@@ -146,19 +147,21 @@ spec:
 EOF
 }
 
-# Project ALL keys of SM blob <key> into Secret <name> (Opaque).
-es_extract() {  # <name> <ns> <key>
+# Project ALL keys of SM blob <key> into Secret <name>. creationPolicy defaults to
+# Owner; pass Merge for a multi-writer Secret (e.g. jenkins-credentials, whose URL /
+# argocd-token keys are patched imperatively) — Merge needs the Secret to pre-exist.
+es_extract() {  # <name> <ns> <key> [creationPolicy=Owner]
   kubectl get namespace "${2}" >/dev/null 2>&1 || return 0
   { _es_open "${1}" "${2}"; cat <<EOF
   target:
     name: ${1}
-    creationPolicy: Owner
+    creationPolicy: ${4:-Owner}
   dataFrom:
     - extract:
         key: ${3}
 EOF
   } | kubectl apply -f - >/dev/null
-  EMITTED+=("${2}|${1}"); log_step "ExternalSecret ${1} → ${2} (extract ${3})"
+  EMITTED+=("${2}|${1}"); log_step "ExternalSecret ${1} → ${2} (extract ${3}, ${4:-Owner})"
 }
 
 # Project a SINGLE property of SM blob <key> into a one-key Secret (Opaque).
@@ -260,7 +263,26 @@ if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
   es_extract      "k6-cloud"                        "${tns}" "k6-cloud"
   es_dockerconfig "${J2026_TEKTON_REGISTRY_SECRET}" "${tns}" "${J2026_TEKTON_REGISTRY_SECRET}"
   es_basicauth    "${J2026_TEKTON_GIT_SECRET}"      "${tns}" "${J2026_TEKTON_GIT_SECRET}" "https://github.com"
+  es_extract      "pac-webhook"                     "${tns}" "pac-webhook"
 fi
+
+# --- emit: Jenkins credentials (only when ci.engine=jenkins) ------------------
+# Merge (not Owner): 01-namespaces seeds the create-time/sensitive keys to SM (with a
+# STABLE admin-password) and creates an empty base Secret; the URL keys (01) and the
+# argocd-token (08.5) are patched onto that Secret imperatively, so ESO must MERGE its
+# keys in without owning/clobbering the rest.
+if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
+  es_extract "${J2026_JENKINS_CREDENTIALS_SECRET}" "${J2026_JENKINS_NAMESPACE}" \
+    "${J2026_JENKINS_CREDENTIALS_SECRET}" "Merge"
+  # the OSS Grafana→Jenkins datasource token mirrors the same stable admin password.
+  [[ "${J2026_OBS_MODE}" == "oss" ]] && \
+    es_property "grafana-jenkins-ds" "${J2026_GRAFANA_OSS_NAMESPACE}" \
+      "${J2026_JENKINS_CREDENTIALS_SECRET}" "admin-password" "apiToken"
+fi
+
+# --- emit: Headlamp OIDC credentials (always; Headlamp is always deployed) ----
+es_extract "${J2026_HEADLAMP_CREDENTIALS_SECRET}" "${J2026_HEADLAMP_NAMESPACE}" \
+  "${J2026_HEADLAMP_CREDENTIALS_SECRET}"
 
 # --- emit: microservices image pull secret (always) --------------------------
 es_dockerconfig "ghcr-credentials" "${J2026_MICROSERVICES_NS_STABLE}" "ghcr-credentials"
@@ -270,7 +292,10 @@ log_step "Waiting for ESO to materialise the Secrets"
 for pair in "${EMITTED[@]}"; do
   ns="${pair%%|*}"; name="${pair#*|}"
   deadline=$(( SECONDS + 120 ))
-  until kubectl get secret "${name}" -n "${ns}" >/dev/null 2>&1; do
+  # Wait on the ExternalSecret's Ready (SecretSynced) condition, NOT mere Secret
+  # existence: for a Merge target the Secret pre-exists, so existence proves nothing —
+  # only Ready=True confirms ESO actually fetched + projected the value from SM.
+  until [[ "$(kubectl get externalsecret "${name}" -n "${ns}" -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null)" == "True" ]]; do
     if [[ $SECONDS -ge $deadline ]]; then
       log_error "Timed out waiting for ESO to create ${name} in ${ns}."
       log_error "Source secret: $(gcp_console_secret_url "${name}")"

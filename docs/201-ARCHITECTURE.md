@@ -449,50 +449,46 @@ unseal root-of-trust, over-engineered for an ephemeral single-stack PoC.)
 unchanged until you validate the flag on a Day1 run. Which secrets are projected via
 ESO **when the flag is enabled** depends on how well each secret's *value lifecycle*
 fits ESO's core assumption — *the value already lives in Secret Manager, read-only*.
-The stack's secrets fall into four groups; **this PoC wires groups 1–2** (all four
-ExternalSecret projection shapes) and leaves groups 3–4 imperative:
+The stack's secrets fall into four groups; **this PoC wires groups 1–3** and leaves
+only group 4 imperative:
 
 | Group | Secrets | ESO fit | In `eso` mode |
 | :--- | :--- | :--- | :--- |
-| **1 — clean** *(value is an external, static input)* | `gateway-iap-oauth` (+ its `-client-secret`), `tekton-github-webhook-secret`, `k6-cloud` | ✅ **Native** — `dataFrom.extract` (all keys) / single `property` | ✅ **wired** |
-| **2 — templated** *(typed Secret built from external inputs)* | `ghcr-credentials` + `tekton`-registry (`dockerconfigjson`), `tekton`-git (`basic-auth` + `tekton.dev/git-0` annotation) | ✅ via `target.template` — rebuilds the typed payload from `username`/`password`/`registry` keys | ✅ **wired** |
-| **3 — generated / multi-writer** | `jenkins-credentials` (admin pw **generated** at create; URL + `argocd-token` keys **patched** by later steps), `headlamp-credentials` (config keys patched each run), `pac-webhook` (`openssl rand` in `06`), `grafana-jenkins-ds` (mirrors the generated Jenkins pw) | ⚠️ Only with a **flow redesign** — seed/push the generated value to SM first, `creationPolicy: Merge` so post-create patches survive | ❌ imperative |
-| **4 — no upstream value** | `tekton-argocd` (token **minted in-cluster** by ArgoCD at deploy time), per-mode `grafana-cloud` / `azure-monitor` / `aws-managed` creds (**Terraform outputs** applied by the Day1 workflow) | ❌ Nothing to sync *from* — the value is produced in-cluster / by Terraform, never pre-placed in SM | ❌ imperative |
+| **1 — clean** *(value is an external, static input)* | `gateway-iap-oauth` (+ its `-client-secret`), `tekton-github-webhook-secret`, `k6-cloud` | ✅ **Native** — `dataFrom.extract` / single `property` | ✅ **wired** |
+| **2 — templated** *(typed Secret built from external inputs)* | `ghcr-credentials` + `tekton`-registry (`dockerconfigjson`), `tekton`-git (`basic-auth` + `tekton.dev/git-0`) | ✅ via `target.template` — rebuilds the typed payload from `username`/`password`/`registry` keys | ✅ **wired** |
+| **3 — generated / multi-writer** | `jenkins-credentials` (admin pw generated at create; URL + `argocd-token` keys patched by later steps), `headlamp-credentials`, `pac-webhook` (`openssl rand`), `grafana-jenkins-ds` (mirrors the Jenkins pw) | ✅ **seed-then-project** — the generated value is seeded **stable** into SM (`sm_keep_or_generate`), and `jenkins-credentials` uses **`creationPolicy: Merge`** so the imperatively-patched keys survive | ✅ **wired** |
+| **4 — no upstream value** | `tekton-argocd` (token **minted in-cluster** by ArgoCD at deploy time), per-mode `grafana-cloud` / `azure-monitor` / `aws-managed` creds (**Terraform outputs**) | ❌ Nothing to sync *from* — the value is produced in-cluster / by Terraform, never pre-placed in SM | ❌ imperative |
 
-**Why only groups 1–2 for this PoC.** Groups 1–2 share the property ESO is built
-around: the value is an **external, static input** (a GitHub Actions secret / env var)
-that can simply *live* in Secret Manager and be projected read-only. Migrating them is
-a mechanical refactor — same value, same lifecycle, just sourced from SM via keyless
-Workload Identity — so it is low-risk and still exercises **all four** ExternalSecret
-shapes (plain `extract`, single `property`, `dockerconfigjson` template, `basic-auth`
-template). Groups 3–4 violate that assumption: their values are **generated or mutated
-in-cluster** (group 3) or have **no upstream value at all** (group 4 — minted by ArgoCD,
-or emitted as Terraform outputs). ESO-ifying those is not a refactor but a redesign —
-generate-then-push-to-SM, `Merge` policies for the multi-writer keys, and for group 4
-the awkward indirection of writing an in-cluster / Terraform value *into* SM purely to
-read it straight back out. For a single-stack, regularly-torn-down PoC whose goal is to
-**demonstrate the keyless WI → Secret Manager → ESO pattern across the representative
-secret shapes**, that extra machinery is over-engineering.
+*(Validation: groups 1–2 confirmed live on a real Day1 — ExternalSecrets `SecretSynced`,
+correct types, consumers working; group 3 is newly wired and should be re-validated on a
+Day1 with `secrets_backend=eso`, especially the `jenkins-credentials` Merge + stable
+admin-password, since a mistake there affects Jenkins login.)*
 
-**Does the ESO integration add value — partial vs complete?**
+**Why group 4 stays imperative.** Groups 1–3 all end with the value *in* Secret Manager:
+groups 1–2 because it starts there (an external input), group 3 because we **seed** the
+generated value into SM once and keep it stable (`sm_keep_or_generate`) — and for the
+multi-writer `jenkins-credentials`, ESO uses `creationPolicy: Merge` so the URL keys (01)
+and the ArgoCD token (08.5) patched onto the Secret survive. Group 4 has **no upstream
+value to seed**: `tekton-argocd` is minted *by ArgoCD in-cluster at deploy time*, and the
+observability backend creds are *Terraform outputs* applied directly by the Day1 workflow.
+ESO-ifying those would mean writing an in-cluster / Terraform value *into* SM purely to read
+it straight back out — pure indirection with no managed-source-of-truth benefit, so they
+stay imperative by design.
 
-- **Partial (groups 1–2, what ships here): yes — as a faithful proof of the pattern.**
-  It exercises the whole mechanism end-to-end (keyless WI auth, one `ClusterSecretStore`,
-  all four projection types) and gives the *externally-sourced* secrets (registry creds,
-  IAP OAuth, webhook / k6 tokens) a single managed source of truth with **versioning +
-  Cloud Audit Logs + rotation**, while leaving the `imperative` default untouched (opt-in).
-  Its honest limitation: it does **not** centralize the highest-value secret — the
-  *generated* Jenkins admin password (group 3) — so it is a pattern demonstration, not a
-  complete secrets posture.
-- **Complete (also groups 3–4): worth it for production, not for this PoC.** In a
-  long-lived system you *would* want the generated / minted secrets in a managed store too
-  (rotation, audit, no long-lived credentials generated in-cluster). But that means
-  re-architecting how those values are **produced** — seed-then-push, `creationPolicy:
-  Merge`, a post-mint push-back for `tekton-argocd` — and swallowing the group-4 indirection.
-  In an ephemeral PoC that already proves the mechanism, the marginal security gain does not
-  justify the added moving parts: full coverage is a **production-hardening** follow-up, not a
-  PoC requirement. (Same reasoning as choosing ESO over a self-hosted Vault above — fit the
-  tooling to a throwaway single-stack, don't over-build it.)
+**Does the ESO integration add value — partial (1–3) vs complete (also 4)?**
+
+- **Partial (groups 1–3, what ships here): yes — and it now covers the high-value
+  secrets too.** It exercises the whole mechanism end-to-end (keyless WI auth, one
+  `ClusterSecretStore`, all four projection shapes + `Merge`) and gives a single managed
+  source of truth — **versioning + Cloud Audit Logs + rotation** — to the externally-sourced
+  creds (registry, IAP OAuth, webhook / k6 tokens) **and** the generated ones (the Jenkins
+  admin password, the PaC HMAC), while leaving the `imperative` default untouched (opt-in).
+- **Complete (also group 4): not worth it, even in production.** Unlike group 3, group 4
+  has no real upstream value — pushing an ArgoCD-minted token or a Terraform output into SM
+  just to read it back adds a moving part (a post-mint push-back) for zero centralization
+  benefit; those values are already managed where they are produced (ArgoCD / Terraform state).
+  So full ESO coverage is **not** a goal: group 4 is correctly left imperative. (Same
+  fit-the-tooling reasoning as choosing ESO over a self-hosted Vault above.)
 
 Pieces: the flag ([`config.sh`](../scripts/lib/config.sh)), the push helper
 ([`scripts/lib/secrets.sh`](../scripts/lib/secrets.sh)), the sync+wait step
