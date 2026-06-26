@@ -57,9 +57,9 @@ resolve_argocd_version() {
   echo "${baseline}"
 }
 
-RESOLVED_3_5_PATCH=$(resolve_argocd_version "${J2026_ARGOCD_VERSION_CONSTRAINT}" "${J2026_ARGOCD_VERSION}")
+RESOLVED_ARGOCD_VERSION=$(resolve_argocd_version "${J2026_ARGOCD_VERSION_CONSTRAINT}" "${J2026_ARGOCD_VERSION}")
 
-log_step "Installing ArgoCD into ${J2026_ARGOCD_NAMESPACE} (Version: ${RESOLVED_3_5_PATCH})"
+log_step "Installing ArgoCD into ${J2026_ARGOCD_NAMESPACE} (Version: ${RESOLVED_ARGOCD_VERSION})"
 kubectl_apply_namespace "${J2026_ARGOCD_NAMESPACE}"
 
 # Helm 3 recovery logic
@@ -79,8 +79,9 @@ kubectl delete configmap argocd-cm argocd-rbac-cm -n "${J2026_ARGOCD_NAMESPACE}"
 
 helm upgrade --install "${J2026_ARGOCD_RELEASE}" argo/argo-cd \
   --namespace "${J2026_ARGOCD_NAMESPACE}" \
+  --version "${J2026_ARGOCD_CHART_VERSION}" \
   -f "${J2026_ROOT_DIR}/helm/argocd-values.yaml" \
-  --set global.image.tag="${RESOLVED_3_5_PATCH}" \
+  --set global.image.tag="${RESOLVED_ARGOCD_VERSION}" \
   --timeout 10m
 
 # 2. Configure OIDC/RBAC
@@ -214,12 +215,12 @@ EXIT_CODE=1
 for attempt in 1 2 3; do
   kubectl delete pod argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found=true --wait=true >/dev/null 2>&1 || true
   kubectl run argocd-token-gen -n "${J2026_ARGOCD_NAMESPACE}" --restart=Never \
-    --image="quay.io/argoproj/argocd:${RESOLVED_3_5_PATCH}" \
+    --image="quay.io/argoproj/argocd:${RESOLVED_ARGOCD_VERSION}" \
     --overrides='{
       "spec": {
         "containers": [{
           "name": "argocd-token-gen",
-          "image": "quay.io/argoproj/argocd:'"${RESOLVED_3_5_PATCH}"'",
+          "image": "quay.io/argoproj/argocd:'"${RESOLVED_ARGOCD_VERSION}"'",
           "command": ["bash", "-c", "argocd account generate-token --account '"${CI_ARGOCD_ACCOUNT}"' --core"],
           "resources": {
             "requests": { "cpu": "50m", "memory": "128Mi" },

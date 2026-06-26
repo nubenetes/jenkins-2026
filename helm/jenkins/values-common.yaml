@@ -319,7 +319,7 @@ controller:
     # Modern, lightweight pipeline visualization (pan/zoom stage graph) -
     # the maintained successor to the discontinued Blue Ocean. Adds a
     # "Pipeline Graph" tab to every build page, no extra config needed.
-    - pipeline-graph-view:949.v1cf0f01ca_cfa_
+    - pipeline-graph-view:950.v67b_f1a_ce89f7
     - opentelemetry:3.1589.ve81b_b_fa_927d5
     - credentials-binding:725.ve52b_2328a_fde
     - role-strategy:867.vd09254229f9b_
@@ -339,7 +339,7 @@ controller:
     # jenkins/casc/jcasc-base.yaml and README.md "Jenkins" Google login section.
     - oic-auth:4.690.v5821cf665e43
     # Static analysis reporting plugin
-    - warnings-ng:13.10097.v277a_958a_b_c09
+    - warnings-ng:13.10153.v011f47a_3ef01
     # --- transitive dependencies (pinned for reproducibility) ---
     - apache-httpcomponents-client-4-api:4.5.14-269.vfa_2321039a_83
     - apache-httpcomponents-client-5-api:5.6.1-195.v65ffe15189a_d

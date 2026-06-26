@@ -329,8 +329,10 @@ export J2026_MICROSERVICES_DEVELOP_NAMESPACE="$(yq_get '.microservices.namespace
 
 export J2026_ARGOCD_NAMESPACE="$(yq_get '.argocd.namespace' 'argocd')"
 export J2026_ARGOCD_RELEASE="$(yq_get '.argocd.releaseName' 'argocd')"
-export J2026_ARGOCD_VERSION="$(yq_get '.argocd.version' 'v3.5.0-rc1')"
-export J2026_ARGOCD_VERSION_CONSTRAINT="$(yq_get '.argocd.version_constraint' '3.5.x')"
+export J2026_ARGOCD_VERSION="$(yq_get '.argocd.version' 'v3.4.4')"
+export J2026_ARGOCD_VERSION_CONSTRAINT="$(yq_get '.argocd.version_constraint' '3.4.x')"
+# argo-cd Helm chart version pinned to the 3.4.x line (chart 9.5.x ships ArgoCD 3.4.x).
+export J2026_ARGOCD_CHART_VERSION="$(yq_get '.argocd.chartVersion' '9.5.22')"
 
 # Branch of the gitops-config repo that the develop tier's ArgoCD app tracks.
 # Used by 08.5-argocd.sh as the 'branch' of the develop ApplicationSet generator

@@ -246,16 +246,30 @@ headlamp:
 argocd:
   namespace: argocd
   releaseName: argocd
-  # ArgoCD DELIBERATELY TRACKS the 3.5.x line (not a hard pin like the rest of the
-  # stack) — we want 3.5's new features and its ongoing patches. resolve_argocd_version
-  # (08.5-argocd.sh) picks the latest 3.5.x at install time (Day1 + Day2.redeploy.01):
-  # the newest GA, or the newest rc while 3.5.0 has no GA yet. The
-  # argocd-version-patch-watcher CronJob additionally live-upgrades to new 3.5.x
-  # patches daily, no re-run needed. `version` is only the offline fallback if the
-  # GitHub Releases API is unreachable. Trade-off (less deterministic than a pin) is
-  # accepted for ArgoCD by choice — see docs/602-VERSION_PINNING.md.
-  version: "v3.5.0-rc1"
-  version_constraint: "3.5.x"
+  # ArgoCD tracks the latest STABLE 3.4.x line. 3.5.0 has NO GA yet (only release
+  # candidates), and v3.5.0-rc1 shipped multiple controller bugs that broke this
+  # stack: the Lua health-check sandbox lacked the `string` library (→ ComparisonError,
+  # microservices-stable stuck Unknown); completed Helm-hook Jobs weren't recognised
+  # under k8s 1.35 Job conditions (→ kube-prometheus-stack syncs wedged on the admission
+  # webhook hooks); and sync operations wedged. So we pin to the newest 3.4.x GA until
+  # 3.5.0 is GA. resolve_argocd_version (08.5-argocd.sh) with constraint "3.4.x" resolves
+  # the IMAGE to the newest 3.4.x GA — it only falls back to an rc when NO GA matches,
+  # which never happens for 3.4.x, so we NEVER get an rc (the old "3.5.x" constraint did,
+  # because 3.5 has no GA). The argocd-version-patch-watcher CronJob live-upgrades the
+  # IMAGE to new 3.4.x patches daily. `version` is the offline fallback if the GitHub
+  # Releases API is unreachable.
+  #
+  # ⚠️ MOVE TO 3.5.x ONLY WHEN 3.5.0 IS GA: bump version_constraint → "3.5.x", version →
+  # the GA tag, chartVersion → the matching 9.6+/10.x chart, then re-verify the features
+  # re-enabled for 3.4.x (kube-prometheus-stack admissionWebhooks in
+  # observability/grafana/values-oss.yaml). See docs/602-VERSION_PINNING.md.
+  version: "v3.4.4"
+  version_constraint: "3.4.x"
+  # Helm chart (argoproj/argo-helm `argo-cd`) pinned to the 3.4.x line: chart 9.5.x ships
+  # ArgoCD 3.4.x (9.5.22 → 3.4.4), while 9.6+/10.x ship 3.5.x/3.6.x. Pin so the chart's
+  # bundled CRDs/RBAC/templates match the pinned 3.4.x binary (08.5-argocd.sh otherwise
+  # installs the LATEST chart). Bump together with `version` when moving to 3.5 GA.
+  chartVersion: "9.5.22"
 
 # -----------------------------------------------------------------------------
 # pgAdmin (Postgres database administration UI)
