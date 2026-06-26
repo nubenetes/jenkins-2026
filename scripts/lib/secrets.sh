@@ -50,10 +50,21 @@ gcp_console_secret_url() {
 #   eso        -> upsert a Secret Manager secret named <secret-name> holding a
 #                 JSON {key:value,...} (idempotent: only adds a new version when
 #                 the content changed). ESO projects it into <namespace> later.
+# Resolve the ACTIVE backend once per process (override → cluster-detect → config;
+# see j2026_active_secrets_backend in common.sh) and cache it so repeated
+# provision_secret calls don't re-hit kubectl.
+_J2026_ACTIVE_SECRETS_BACKEND=""
+_active_secrets_backend() {
+  if [[ -z "${_J2026_ACTIVE_SECRETS_BACKEND}" ]]; then
+    _J2026_ACTIVE_SECRETS_BACKEND="$(j2026_active_secrets_backend)"
+  fi
+  printf '%s' "${_J2026_ACTIVE_SECRETS_BACKEND}"
+}
+
 provision_secret() {
   local ns="$1" name="$2"; shift 2
 
-  if [[ "${J2026_SECRETS_BACKEND:-imperative}" != "eso" ]]; then
+  if [[ "$(_active_secrets_backend)" != "eso" ]]; then
     # --- imperative (default): direct kubectl upsert ---------------------------
     local args=()
     local kv

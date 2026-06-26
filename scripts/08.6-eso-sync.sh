@@ -25,8 +25,11 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/secrets.sh"  # gcp_console_secret_url
 
-if [[ "${J2026_SECRETS_BACKEND}" != "eso" ]]; then
-  log_info "secrets.backend=${J2026_SECRETS_BACKEND} (not eso) — skipping External Secrets sync."
+# Active backend = explicit override → cluster detection → config default (so a
+# standalone Day2 redeploy on an eso cluster syncs even without secrets_backend).
+ACTIVE_SECRETS_BACKEND="$(j2026_active_secrets_backend)"
+if [[ "${ACTIVE_SECRETS_BACKEND}" != "eso" ]]; then
+  log_info "secrets.backend=${ACTIVE_SECRETS_BACKEND} (not eso) — skipping External Secrets sync."
   exit 0
 fi
 

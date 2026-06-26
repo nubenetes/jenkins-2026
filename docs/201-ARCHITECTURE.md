@@ -475,6 +475,25 @@ either side of Secret Manager):
   with that GSA's email via the external-secrets ArgoCD app's helm values
   (templated in `scripts/08.5-argocd.sh`).
 
+**Active-backend resolution (detection, not just the flag).** Like `ci.engine`
+(`j2026_active_ci_engine`), the *active* backend is resolved by
+`j2026_active_secrets_backend` ([`common.sh`](../scripts/lib/common.sh)) with the
+precedence: **explicit `JENKINS2026_SECRETS_BACKEND` override → detect from the
+live cluster → `config.yaml` default**. Detection keys off the `ClusterSecretStore/gcp-store`
+CR (created only in eso mode by `08.6`), *not* the ESO operator (installed in both
+modes). So a **standalone Day2 redeploy** — or `down.sh` during a Decom — does the
+right thing on an eso cluster **even if the operator forgets to pass
+`secrets_backend`** (whose default is `imperative`, which would otherwise diverge:
+`01-namespaces` would `kubectl`-create the Secret while the ESO `ExternalSecret`
+still owns it). Day1 always sets the override explicitly, so provisioning is
+unaffected; the `secrets_backend` workflow input is therefore an *optional override*
+of the detection, not a requirement.
+
+**Teardown.** In eso mode the Secret Manager secret is the one piece that outlives
+the cluster (it's project-level). `down.sh` deletes it on teardown (detected from
+the still-running cluster, so the Decom workflows need no `secrets_backend` input);
+best-effort, and a future Day1 re-pushes it from the GitHub secret.
+
 ### Why the `gateway-iap-oauth` Secret is replicated
 
 This is the one secret that legitimately lives in several namespaces — and it is a

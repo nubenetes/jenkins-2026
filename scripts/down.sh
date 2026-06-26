@@ -34,6 +34,25 @@ if kubectl version >/dev/null 2>&1; then
       done
 fi
 
+# eso teardown: the gateway IAP secret VALUE lives in GCP Secret Manager (pushed
+# by 01-namespaces.sh). The in-cluster ESO resources die with the cluster, but the
+# project-level Secret Manager secret would be orphaned. Delete it for a symmetric
+# teardown — a future Day1 re-pushes it from the GitHub secret. The backend is
+# DETECTED from the still-running cluster (ClusterSecretStore gcp-store), so no
+# secrets_backend input is needed on the Decom workflows. Best-effort: never block
+# teardown (needs roles/secretmanager.admin on the CI SA, granted in bootstrap).
+if kubectl version >/dev/null 2>&1 && [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
+  if [[ -n "${J2026_GATEWAY_IAP_SECRET:-}" ]] && \
+     gcloud secrets describe "${J2026_GATEWAY_IAP_SECRET}" >/dev/null 2>&1; then
+    log_step "Deleting GCP Secret Manager secret '${J2026_GATEWAY_IAP_SECRET}' (eso teardown)"
+    if gcloud secrets delete "${J2026_GATEWAY_IAP_SECRET}" --quiet >/dev/null 2>&1; then
+      log_info "Deleted Secret Manager secret '${J2026_GATEWAY_IAP_SECRET}'."
+    else
+      log_warn "Could not delete Secret Manager secret '${J2026_GATEWAY_IAP_SECRET}' (already gone / perms?)."
+    fi
+  fi
+fi
+
 # In oss mode the in-cluster stack (kube-prometheus-stack/Loki/Tempo) is managed
 # by the observability-oss ArgoCD app-of-apps. Delete it FIRST, while ArgoCD is
 # still running, so the controller cascade-prunes those charts via the resources
