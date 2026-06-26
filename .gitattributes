@@ -1,2 +1,0 @@
-docs/notebooklm/en/* filter=lfs diff=lfs merge=lfs -text
-docs/notebooklm/es/* filter=lfs diff=lfs merge=lfs -text
