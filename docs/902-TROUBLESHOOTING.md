@@ -6,12 +6,6 @@
 
 ## Common Issues
 
-- **`kubectl` suddenly fails with `Unable to connect to the server: dial tcp <ip>:443: i/o timeout` (after a rebuild)**: your **kubeconfig is stale**. A from-scratch rebuild (Decom + Day1, or any cluster recreation) gives the control plane a **new endpoint IP**, but your local kubeconfig still points at the old one. CI never hits this (every workflow re-runs `get-credentials`); it only bites a **local operator**. Fix — refresh your machine's setup in one idempotent step:
-  ```bash
-  bash scripts/dev-setup.sh
-  ```
-  (or just the kubeconfig: `gcloud container clusters get-credentials <cluster> --location <zone> --project <project>`). Note WSL and Windows keep **separate** kubeconfigs, so refresh whichever shell you use. See [901 § Operator workstation setup](./901-LOCAL_DEVELOPMENT.md#operator-workstation-setup-scriptsdev-setupsh).
-
 - **`yq` not found**: install [`mikefarah/yq`](https://github.com/mikefarah/yq) (the Go binary — not the Python `yq` wrapper around `jq`).
 
 - **`scripts/03-observability.sh` fails with "Secret ... not found"**: create `observability/otel-collector/secret.yaml` from the `.example` template and `kubectl apply` it (see [901. Quick start](./901-LOCAL_DEVELOPMENT.md)) before re-running.
@@ -28,13 +22,7 @@
 
 The cluster runs GKE Dataplane V2 (Cilium/eBPF), so NetworkPolicies actually enforce (see [501 § Zero-Trust](./501-PLATFORM_OPERATIONS.md)). A few things look like failures but are expected/self-healing:
 
-- **`microservices-stable` shows ArgoCD health `Unknown` / a `ComparisonError`**: ArgoCD ships **no** built-in health for the CloudNativePG `Cluster`/`Pooler`/`ScheduledBackup` and OpenTelemetry `Instrumentation` CRs the app owns, so without custom checks the app rolls up to `Unknown`. Custom Lua health checks live in [`helm/argocd-values.yaml`](../helm/argocd-values.yaml) (`configs.cm.resource.customizations.health.<group>_<kind>`). **Two gotchas hit here** (it is NOT the deploy branch):
-  1. **Lua sandbox** — ArgoCD's Lua for health checks in this build does **not** load the `string` library, so a check calling `string.find` raised `<string>:N: attempt to index a non-table object(nil) with key 'find'`, which errored the *whole* app-health computation (`ComparisonError` → app health `Unknown`). The CNPG `Cluster` check therefore uses **core Lua only** — it drives off the `Ready` condition (`ipairs`/`==`), never the `string` library.
-  2. **CNPG operator can't read instance status** — the `Cluster` can sit `Ready=False` (`Instance Status Extraction Error: HTTP communication issue`) because, under Dataplane V2 enforcement, the CNPG operator (`cnpg-system`) can't reach each instance's status web server on **:8000** in `microservices`; it can't extract status, so the cluster never converges (it reported a stale `1/1` until the policy was fixed, then correctly converged `1/3 → 3/3`, `Cluster in healthy state`, `Ready=True`). The additive `microservices-cnpg-platform` policy in [`infrastructure/networkpolicies.yaml`](../infrastructure/networkpolicies.yaml) allows `cnpg-system → :8000` to fix it.
-
-  To pick the changes up on a running cluster: re-run `scripts/08.5-argocd.sh` + `scripts/01-namespaces.sh` (or `Day1`), then `kubectl annotate application microservices-stable -n argocd argocd.argoproj.io/refresh=hard --overwrite`. `scripts/up.sh` also gates the pre-OTel-injection wait on the **Deployments becoming Available** (not app health). **NOTE:** WAL archiving to the GCS backups bucket can still fail (`ContinuousArchiving=False`, *"Project was not passed"*) — a separate backup-config issue in the gitops CNPG manifest; it does **not** affect instance readiness or app health.
-
-- **Jenkins `seed-jobs` (or any build) fails with `GitException: Could not checkout <sha>`, `ABORTED`, or hangs at "Waiting for agent to connect"**: a build **agent** pod landed on a **different node** than the controller, and the cluster's WireGuard inter-node encryption (`in_transit_encryption_config`) lowers the MTU so the raw **JNLP4 TCP** handshake (`jenkinsTunnel`, `:50000`) black-holes — the TCP connection is *accepted* (`Accepted JNLP4-connect…` in the controller log) but the channel never establishes, so the checkout (which streams over it) dies. It's intermittent by node placement (passes when the agent co-locates with the controller). **Fixed** by connecting agents over **WebSocket** (`websocket: true` in [`jenkins/casc/jcasc-base.yaml`](../jenkins/casc/jcasc-base.yaml)) on the controller's HTTP port (`jenkinsUrl`, `:8080` — the proven UI/API path) instead of `:50000`; see [401 § Plugins & JCasC](./401-JENKINS.md). Two config details matter (both surface as the agent printing its usage text and exiting `0` → `ABORTED`): the cloud must **omit `jenkinsTunnel`** — leaving it set exports `JENKINS_TUNNEL`, so the inbound-agent entrypoint builds the command with both `-tunnel` and `-webSocket`, which are mutually exclusive — and the `jnlp` container **keeps** its positional `args` (`^${computer.jnlpmac} ^${computer.name}`) so the agent receives its secret/name (the plugin does not inject those as env for a custom jnlp container). `scripts/06-seed-pipelines.sh` also retries the seed build (`SEED_MAX_ATTEMPTS`, default 3) as a backstop for genuinely transient blips.
+- **`microservices-stable` shows ArgoCD health `Unknown` (even when everything works)**: ArgoCD ships **no** built-in health assessment for the CloudNativePG `Cluster`/`Pooler`/`ScheduledBackup` and OpenTelemetry `Instrumentation` CRs the app owns, so the aggregate app health rolled up to `Unknown` (the rollup takes the worst status, and `Unknown` is worst) even though every underlying workload was fine. **Fixed** by custom Lua health checks for those CRDs in [`helm/argocd-values.yaml`](../helm/argocd-values.yaml) (`configs.cm.resource.customizations.health.<group>_<kind>`) — the CNPG `Cluster` reports `Healthy` once its phase is `Cluster in healthy state`, the rest report `Healthy` on reconcile, so the app now goes **Healthy**. To pick the change up on a running cluster: re-run `scripts/08.5-argocd.sh` (or `Day1`), then `kubectl annotate application microservices-stable -n argocd argocd.argoproj.io/refresh=hard --overwrite`. Independently, `scripts/up.sh` still gates the pre-OTel-injection wait on the **Deployments becoming Available** (not on app health) — robust even for CRDs without a health check, and waiting on `Healthy` used to burn the full 10-minute timeout. Verify the workloads directly with `kubectl -n microservices get deploy` (gateway + jhipster `Available`).
 
 - **`tekton-pipelines` ArgoCD app `SyncFailed` with `config.webhook.pipeline.tekton.dev` / `tls: unrecognized name` / `x509`**: the Tekton webhook self-issues its serving cert, and on a fresh cluster ArgoCD can first-sync the Tekton config ConfigMaps before that cert exists. This **self-heals**, no manual step: the `tekton-pipelines` app has `syncPolicy.retry` (auto-retry with backoff) so the sync converges once the webhook is up, and it **no longer uses `Replace=true`** — `Replace` used to `kubectl replace` every object on each sync, which re-triggered the webhook and blanked the caBundle (that was also why a **manual** Sync failed even while the app showed Synced/Healthy). If you ever want to force it: `kubectl -n tekton-pipelines rollout restart deploy/tekton-pipelines-webhook`.
 
@@ -131,6 +119,39 @@ gcloud compute disks list --project "$PROJECT" \
   --format="value(name,zone.basename())" \
 | while read -r DISK ZONE; do gcloud compute disks delete "$DISK" --zone "$ZONE" --quiet; done
 ```
+
+## CNPG Postgres WAL backups to GCS fail (`ContinuousArchiving=False`)
+
+**Symptom:** the microservices Postgres works, but the CNPG `Cluster` reports
+`ContinuousArchiving=False` and the operator/instance logs show
+`barman-cloud-wal-... "Project was not passed and could not be auto-detected"`;
+nothing lands in the `*-jenkins-2026-postgres-backups` GCS bucket. App health is
+unaffected (postgres still serves on 5432).
+
+**Cause:** the GitOps chart's `templates/postgres.yaml` reads
+`global.gcpProject` / `global.gcpServiceAccount` / `global.gcsBackupBucket`, but
+`values-stable.yaml` left them unset, so it rendered the **placeholder defaults**
+(`jenkins-2026-sa@jenkins-2026` for the `serviceAccountTemplate` Workload-Identity
+annotation, `gs://jenkins-2026-postgres-backups` for `destinationPath`). The KSA
+was therefore annotated with a **GSA in a non-existent project** → the postgres
+pods got no GCP identity → barman couldn't authenticate or detect the project.
+
+**Fix (infra-side; the GitOps repo is untouched — the AppSet helm params override
+the chart placeholders at deploy):**
+1. `terraform/gke` creates a least-privilege GSA `jenkins-2026-pg-backups`
+   (`roles/storage.objectAdmin` on the backups bucket) + Workload-Identity bindings
+   for each CNPG Cluster KSA (`microservices/postgres-gateway`,
+   `microservices/postgres-jhipstersamplemicroservice`) — same pattern as the ESO GSA.
+2. `argocd/microservices-appset.yaml` passes `global.gcpProject` /
+   `gcpServiceAccount` / `gcsBackupBucket` as helm parameters, substituted from the
+   real project in `scripts/08.5-argocd.sh`.
+3. `infrastructure/networkpolicies.yaml` allows the `microservices` namespace egress
+   to the node-local metadata server (`169.254.169.254:80/988`) so the pods can fetch
+   the WI token under the namespace default-deny.
+
+Apply with a **Day1 re-run** (Terraform creates the GSA + bindings; ArgoCD re-renders
+the AppSet). Verify: `kubectl get cluster -n microservices` shows
+`ContinuousArchiving=True` and objects appear under `gs://<project>-jenkins-2026-postgres-backups/<svc>/`.
 
 ## ArgoCD OIDC Issues
 
