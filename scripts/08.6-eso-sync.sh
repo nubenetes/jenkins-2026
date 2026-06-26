@@ -10,14 +10,18 @@
 # Manager (see scripts/lib/secrets.sh). Here we:
 #   1. apply the ClusterSecretStore (gcp-store) that authenticates to Secret
 #      Manager via Workload Identity (keyless),
-#   2. apply an ExternalSecret per namespace that needs `gateway-iap-oauth`, and
+#   2. apply the ExternalSecrets (one per secret×namespace) via the emitters below
+#      (plain extract / single-property / dockerconfigjson / basic-auth templates), and
 #   3. wait for ESO to materialise the resulting k8s Secret in each namespace,
 #      so the downstream steps find it.
 #
-# Scope (stage 1): the gateway IAP OAuth secret. jenkins-credentials (generated
-# admin password), headlamp-credentials, and the per-mode observability
-# credentials remain on their current path; see docs/201 § Secrets Management for
-# the staged rollout.
+# Scope: the gateway IAP OAuth secret (+ its single-key client-secret projection);
+# the Tekton pipeline creds (tekton-github-webhook-secret, k6-cloud, the registry
+# dockerconfigjson, the git basic-auth) when ci.engine=tekton; and ghcr-credentials.
+# STILL imperative (generated/multi-writer/in-cluster-minted values that don't fit
+# the "value already in Secret Manager" model): jenkins-credentials, headlamp-
+# credentials, pac-webhook, grafana-jenkins-ds, tekton-argocd, and the per-mode
+# observability backend credentials. See docs/201 § Secrets Management.
 # =============================================================================
 set -euo pipefail
 
@@ -33,11 +37,9 @@ if [[ "${ACTIVE_SECRETS_BACKEND}" != "eso" ]]; then
   exit 0
 fi
 
-# Gateway disabled => no IAP secret to sync.
-if [[ -z "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
-  log_info "gateway.baseDomain empty — no IAP secret to sync."
-  exit 0
-fi
+# NOTE: no blanket gateway early-exit here — the gateway IAP ExternalSecrets are
+# guarded by J2026_GATEWAY_BASE_DOMAIN in the emit section below, so the NON-gateway
+# secrets (Tekton pipeline creds, ghcr-credentials) still sync when the gateway is off.
 
 log_step "Waiting for the External Secrets Operator (CRDs + controller) to be ready"
 # ESO is installed ASYNCHRONOUSLY by ArgoCD (argocd/external-secrets-app.yaml,
@@ -123,53 +125,161 @@ spec:
       auth: {}
 EOF
 
-# Namespaces that hold the gateway IAP secret — must match 01-namespaces.sh.
-iap_namespaces=("${J2026_HEADLAMP_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}")
-[[ "${J2026_OBS_MODE}" == "oss" ]] && iap_namespaces+=("${J2026_GRAFANA_OSS_NAMESPACE}")
-if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
-  iap_namespaces+=("${J2026_TEKTON_NAMESPACE}")
-else
-  iap_namespaces+=("${J2026_JENKINS_NAMESPACE}")
-fi
+# --- ExternalSecret emitters --------------------------------------------------
+# Each projects a GCP Secret Manager blob into a namespace and records
+# "namespace|name" in EMITTED so the single wait pass below covers it. The blobs
+# are pushed by scripts/lib/secrets.sh provision_secret (01-namespaces.sh etc.).
+EMITTED=()
 
-for ns in "${iap_namespaces[@]}"; do
-  kubectl get namespace "${ns}" >/dev/null 2>&1 || continue
-  log_step "ExternalSecret ${J2026_GATEWAY_IAP_SECRET} → ${ns}"
-  kubectl apply -f - <<EOF
+_es_open() {  # <name> <ns> — ExternalSecret header (through secretStoreRef)
+  cat <<EOF
 apiVersion: external-secrets.io/v1beta1
 kind: ExternalSecret
 metadata:
-  name: ${J2026_GATEWAY_IAP_SECRET}
-  namespace: ${ns}
+  name: ${1}
+  namespace: ${2}
 spec:
   refreshInterval: 1h
   secretStoreRef:
     name: gcp-store
     kind: ClusterSecretStore
+EOF
+}
+
+# Project ALL keys of SM blob <key> into Secret <name> (Opaque).
+es_extract() {  # <name> <ns> <key>
+  kubectl get namespace "${2}" >/dev/null 2>&1 || return 0
+  { _es_open "${1}" "${2}"; cat <<EOF
   target:
-    name: ${J2026_GATEWAY_IAP_SECRET}
+    name: ${1}
     creationPolicy: Owner
   dataFrom:
     - extract:
-        key: ${J2026_GATEWAY_IAP_SECRET}
+        key: ${3}
 EOF
-done
+  } | kubectl apply -f - >/dev/null
+  EMITTED+=("${2}|${1}"); log_step "ExternalSecret ${1} → ${2} (extract ${3})"
+}
 
+# Project a SINGLE property of SM blob <key> into a one-key Secret (Opaque).
+es_property() {  # <name> <ns> <key> <property> <out-key>
+  kubectl get namespace "${2}" >/dev/null 2>&1 || return 0
+  { _es_open "${1}" "${2}"; cat <<EOF
+  target:
+    name: ${1}
+    creationPolicy: Owner
+  data:
+    - secretKey: ${5}
+      remoteRef:
+        key: ${3}
+        property: ${4}
+EOF
+  } | kubectl apply -f - >/dev/null
+  EMITTED+=("${2}|${1}"); log_step "ExternalSecret ${1} → ${2} (property ${3}.${4})"
+}
+
+# Build a kubernetes.io/dockerconfigjson Secret from username/password/registry
+# keys of SM blob <key> (empty-auths when no username — matches the imperative path).
+es_dockerconfig() {  # <name> <ns> <key>
+  kubectl get namespace "${2}" >/dev/null 2>&1 || return 0
+  { _es_open "${1}" "${2}"; cat <<EOF
+  target:
+    name: ${1}
+    creationPolicy: Owner
+    template:
+      type: kubernetes.io/dockerconfigjson
+      engineVersion: v2
+      data:
+        .dockerconfigjson: |
+          {{- if .username -}}
+          {"auths":{"{{ .registry }}":{"username":"{{ .username }}","password":"{{ .password }}","auth":"{{ printf "%s:%s" .username .password | b64enc }}"}}}
+          {{- else -}}
+          {"auths":{}}
+          {{- end -}}
+  data:
+    - secretKey: username
+      remoteRef: { key: ${3}, property: username }
+    - secretKey: password
+      remoteRef: { key: ${3}, property: password }
+    - secretKey: registry
+      remoteRef: { key: ${3}, property: registry }
+EOF
+  } | kubectl apply -f - >/dev/null
+  EMITTED+=("${2}|${1}"); log_step "ExternalSecret ${1} → ${2} (dockerconfigjson)"
+}
+
+# Build a kubernetes.io/basic-auth Secret (+ tekton.dev/git-0 annotation) from
+# username/password keys of SM blob <key>.
+es_basicauth() {  # <name> <ns> <key> <git-host>
+  kubectl get namespace "${2}" >/dev/null 2>&1 || return 0
+  { _es_open "${1}" "${2}"; cat <<EOF
+  target:
+    name: ${1}
+    creationPolicy: Owner
+    template:
+      type: kubernetes.io/basic-auth
+      engineVersion: v2
+      metadata:
+        annotations:
+          tekton.dev/git-0: ${4}
+      data:
+        username: "{{ .username }}"
+        password: "{{ .password }}"
+  data:
+    - secretKey: username
+      remoteRef: { key: ${3}, property: username }
+    - secretKey: password
+      remoteRef: { key: ${3}, property: password }
+EOF
+  } | kubectl apply -f - >/dev/null
+  EMITTED+=("${2}|${1}"); log_step "ExternalSecret ${1} → ${2} (basic-auth)"
+}
+
+# --- emit: gateway IAP secrets (only when the gateway is enabled) -------------
+# Namespace membership must match 01-namespaces.sh / 09-gateway.sh.
+if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
+  iap_namespaces=("${J2026_HEADLAMP_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}")
+  [[ "${J2026_OBS_MODE}" == "oss" ]] && iap_namespaces+=("${J2026_GRAFANA_OSS_NAMESPACE}")
+  if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
+    iap_namespaces+=("${J2026_TEKTON_NAMESPACE}")
+  else
+    iap_namespaces+=("${J2026_JENKINS_NAMESPACE}")
+  fi
+  for ns in "${iap_namespaces[@]}"; do
+    es_extract  "${J2026_GATEWAY_IAP_SECRET}" "${ns}" "${J2026_GATEWAY_IAP_SECRET}"
+    # the GCPBackendPolicy oauth2ClientSecret ref wants a single-key Secret.
+    es_property "${J2026_GATEWAY_IAP_SECRET}-client-secret" "${ns}" \
+      "${J2026_GATEWAY_IAP_SECRET}" "client_secret" "client_secret"
+  done
+fi
+
+# --- emit: Tekton pipeline secrets (only when ci.engine=tekton) ---------------
+if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
+  tns="${J2026_TEKTON_PIPELINE_NAMESPACE}"
+  es_extract      "tekton-github-webhook-secret"   "${tns}" "tekton-github-webhook-secret"
+  es_extract      "k6-cloud"                        "${tns}" "k6-cloud"
+  es_dockerconfig "${J2026_TEKTON_REGISTRY_SECRET}" "${tns}" "${J2026_TEKTON_REGISTRY_SECRET}"
+  es_basicauth    "${J2026_TEKTON_GIT_SECRET}"      "${tns}" "${J2026_TEKTON_GIT_SECRET}" "https://github.com"
+fi
+
+# --- emit: microservices image pull secret (always) --------------------------
+es_dockerconfig "ghcr-credentials" "${J2026_MICROSERVICES_NS_STABLE}" "ghcr-credentials"
+
+# --- wait: every emitted Secret must materialise -----------------------------
 log_step "Waiting for ESO to materialise the Secrets"
-for ns in "${iap_namespaces[@]}"; do
-  kubectl get namespace "${ns}" >/dev/null 2>&1 || continue
+for pair in "${EMITTED[@]}"; do
+  ns="${pair%%|*}"; name="${pair#*|}"
   deadline=$(( SECONDS + 120 ))
-  until kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" >/dev/null 2>&1; do
+  until kubectl get secret "${name}" -n "${ns}" >/dev/null 2>&1; do
     if [[ $SECONDS -ge $deadline ]]; then
-      log_error "Timed out waiting for ESO to create ${J2026_GATEWAY_IAP_SECRET} in ${ns}."
-      log_error "Source secret: $(gcp_console_secret_url "${J2026_GATEWAY_IAP_SECRET}")"
-      # Self-diagnosing dump (the usual culprits: Workload Identity auth on the
-      # controller, or the JSON keys in Secret Manager not matching the extract).
+      log_error "Timed out waiting for ESO to create ${name} in ${ns}."
+      log_error "Source secret: $(gcp_console_secret_url "${name}")"
+      # Usual culprits: Workload Identity auth on the controller, or the JSON keys
+      # in Secret Manager not matching the extract/property/template references.
       log_error "--- ExternalSecret status (${ns}) ---"
-      kubectl get externalsecret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" \
+      kubectl get externalsecret "${name}" -n "${ns}" \
         -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.reason}: {.message}{"\n"}{end}' 2>/dev/null || true
-      kubectl describe externalsecret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" 2>/dev/null \
-        | grep -A20 -iE '^Events:' || true
+      kubectl describe externalsecret "${name}" -n "${ns}" 2>/dev/null | grep -A20 -iE '^Events:' || true
       log_error "--- ClusterSecretStore gcp-store status ---"
       kubectl get clustersecretstore gcp-store \
         -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.reason}: {.message}{"\n"}{end}' 2>/dev/null || true
@@ -177,12 +287,12 @@ for ns in "${iap_namespaces[@]}"; do
       kubectl get serviceaccount external-secrets -n external-secrets \
         -o jsonpath='WI annotation: {.metadata.annotations.iam\.gke\.io/gcp-service-account}{"\n"}' 2>/dev/null || true
       kubectl logs -n external-secrets -l app.kubernetes.io/name=external-secrets \
-        --tail=40 --since=5m 2>/dev/null | grep -iE 'error|denied|forbid|token|identity|gateway-iap' | tail -20 || true
+        --tail=40 --since=5m 2>/dev/null | grep -iE 'error|denied|forbid|token|identity' | tail -20 || true
       exit 1
     fi
     sleep 3
   done
-  log_info "OK: ${J2026_GATEWAY_IAP_SECRET} synced into ${ns}."
+  log_info "OK: ${name} synced into ${ns}."
 done
 
 log_info "External Secrets sync complete."

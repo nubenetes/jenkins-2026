@@ -200,32 +200,46 @@ if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
     log_warn "REGISTRY_USERNAME/REGISTRY_PASSWORD not set - Tekton image push will fail until configured."
     tk_dockercfg='{"auths":{}}'
   fi
-  kubectl create secret generic "${J2026_TEKTON_REGISTRY_SECRET}" \
-    -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
-    --type=kubernetes.io/dockerconfigjson \
-    --from-literal=.dockerconfigjson="${tk_dockercfg}" \
-    --dry-run=client -o yaml | kubectl apply -f -
+  if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
+    # eso → store the raw creds in Secret Manager; the ExternalSecret (08.6)
+    # rebuilds the dockerconfigjson via its target.template from these keys.
+    provision_secret "${J2026_TEKTON_PIPELINE_NAMESPACE}" "${J2026_TEKTON_REGISTRY_SECRET}" \
+      "username=${tk_reg_user}" "password=${tk_reg_pass}" "registry=${tk_reg_host}"
+  else
+    kubectl create secret generic "${J2026_TEKTON_REGISTRY_SECRET}" \
+      -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
+      --type=kubernetes.io/dockerconfigjson \
+      --from-literal=.dockerconfigjson="${tk_dockercfg}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+  fi
 
   if [[ -z "${tk_git_token}" ]]; then
     log_warn "GIT_TOKEN not set - Tekton git push (GitOps deploy) and SARIF upload will fail until configured."
   fi
-  kubectl create secret generic "${J2026_TEKTON_GIT_SECRET}" \
-    -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
-    --type=kubernetes.io/basic-auth \
-    --from-literal=username="${tk_git_user:-git}" \
-    --from-literal=password="${tk_git_token}" \
-    --dry-run=client -o yaml \
-    | kubectl annotate --local -f - tekton.dev/git-0=https://github.com -o yaml \
-    | kubectl apply -f -
+  if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
+    # eso → store username/password; the ExternalSecret (08.6) emits a basic-auth
+    # Secret with the tekton.dev/git-0 annotation via its target.template.
+    provision_secret "${J2026_TEKTON_PIPELINE_NAMESPACE}" "${J2026_TEKTON_GIT_SECRET}" \
+      "username=${tk_git_user:-git}" "password=${tk_git_token}"
+  else
+    kubectl create secret generic "${J2026_TEKTON_GIT_SECRET}" \
+      -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
+      --type=kubernetes.io/basic-auth \
+      --from-literal=username="${tk_git_user:-git}" \
+      --from-literal=password="${tk_git_token}" \
+      --dry-run=client -o yaml \
+      | kubectl annotate --local -f - tekton.dev/git-0=https://github.com -o yaml \
+      | kubectl apply -f -
+  fi
 
   # GitHub HMAC secret for the Triggers EventListener (tekton/triggers/). Optional
   # (the upstream JHipster repos aren't owned, so push webhooks can't target them);
   # created empty unless TEKTON_GITHUB_WEBHOOK_SECRET is provided, so the
   # EventListener's github interceptor reference resolves either way.
-  kubectl create secret generic tekton-github-webhook-secret \
-    -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
-    --from-literal=secretToken="${TEKTON_GITHUB_WEBHOOK_SECRET:-}" \
-    --dry-run=client -o yaml | kubectl apply -f -
+  # eso → push to Secret Manager (08.6 projects it back); imperative → kubectl
+  # upsert. provision_secret branches on the active backend internally.
+  provision_secret "${J2026_TEKTON_PIPELINE_NAMESPACE}" tekton-github-webhook-secret \
+    "secretToken=${TEKTON_GITHUB_WEBHOOK_SECRET:-}"
 
   # PaC (Pipelines-as-Code) webhook HMAC secret, referenced by the Repository
   # CRs (tekton/pac/) and shared with the GitHub repo webhooks created by
@@ -238,12 +252,10 @@ if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
   # Optional Grafana Cloud k6 (the k6-app) streaming for the k6-smoke Task. Created
   # empty unless K6_CLOUD_TOKEN is set, so the Task's optional secretKeyRef resolves
   # either way; the cloud output (--out cloud) only activates when both are present.
-  kubectl create secret generic k6-cloud \
-    -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
-    --from-literal=token="${K6_CLOUD_TOKEN:-}" \
-    --from-literal=project-id="${K6_CLOUD_PROJECT_ID:-}" \
-    --from-literal=grafana-base-url="${GRAFANA_BASE_URL:-}" \
-    --dry-run=client -o yaml | kubectl apply -f -
+  provision_secret "${J2026_TEKTON_PIPELINE_NAMESPACE}" k6-cloud \
+    "token=${K6_CLOUD_TOKEN:-}" \
+    "project-id=${K6_CLOUD_PROJECT_ID:-}" \
+    "grafana-base-url=${GRAFANA_BASE_URL:-}"
 fi
 
 # Jenkins SA 'edit' binding only when ci.engine=jenkins (no jenkins SA/namespace in
@@ -309,11 +321,18 @@ else
   dockerconfigjson='{"auths":{}}'
 fi
 for ns in "${J2026_MICROSERVICES_NS_STABLE}"; do
-  kubectl create secret generic ghcr-credentials \
-    -n "${ns}" \
-    --type=kubernetes.io/dockerconfigjson \
-    --from-literal=.dockerconfigjson="${dockerconfigjson}" \
-    --dry-run=client -o yaml | kubectl apply -f -
+  if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
+    # eso → store the raw creds in Secret Manager; the ExternalSecret (08.6)
+    # rebuilds the dockerconfigjson via its target.template from these keys.
+    provision_secret "${ns}" ghcr-credentials \
+      "username=${REGISTRY_USERNAME:-}" "password=${REGISTRY_PASSWORD:-}" "registry=${registry_host}"
+  else
+    kubectl create secret generic ghcr-credentials \
+      -n "${ns}" \
+      --type=kubernetes.io/dockerconfigjson \
+      --from-literal=.dockerconfigjson="${dockerconfigjson}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+  fi
 done
 
 log_step "Applying ResourceQuotas to limit scaling and costs"
