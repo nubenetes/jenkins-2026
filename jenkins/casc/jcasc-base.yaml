@@ -75,7 +75,13 @@ jenkins:
             containers:
               - name: "jnlp"
                 alwaysPullImage: false
-                args: "^${computer.jnlpmac} ^${computer.name}"
+                # No explicit args: let the kubernetes plugin build the agent command
+                # line. With websocket: true (above) it injects -webSocket (+ -url /
+                # -name / -secret). The old positional override
+                # "^${computer.jnlpmac} ^${computer.name}" is the legacy DIRECT-JNLP
+                # form — incompatible with websocket — so the agent rejected its args,
+                # printed its usage text and exited immediately ("Error in
+                # provisioning" → build ABORTED).
                 image: "jenkins/inbound-agent:3355.v388858a_47b_33-22"
                 privileged: "false"
                 resourceLimitCpu: "500m"
