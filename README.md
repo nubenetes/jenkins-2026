@@ -251,16 +251,34 @@ A self-contained proof of concept that deploys **Jenkins** on **Kubernetes**, co
 ## 2. Quick Start
 
 ```bash
-# 1. Review/edit config/config.yaml — observability.mode (grafana-cloud|oss|managed-azure|managed-aws)
-#    and ci.engine (jenkins default | tekton; override JENKINS2026_CI_ENGINE — see docs/403-TEKTON.md)
-# 2. (grafana-cloud mode only) Create the OTLP credentials secret:
+# 0. (once, before anything else) Bootstrap the GCP root of trust — WIF trust, GCS
+#    state bucket, CI service account, permanent DNS zone, and the 4 GitHub repo
+#    secrets. See docs/100-BOOTSTRAP.md.
+./scripts/bootstrap.sh up
+
+# 1. Review/edit config/config.yaml — observability.mode (grafana-cloud|oss|managed-azure|managed-aws),
+#    ci.engine (jenkins|tekton), secrets.backend (imperative|eso).
+#    Default: grafana-cloud + jenkins + imperative. (CI matrix overrides: JENKINS2026_* env vars.)
+
+# 2. (grafana-cloud mode only) create the OTLP credentials secret:
 cp observability/otel-collector/secret.example.yaml observability/otel-collector/secret.yaml
+#    edit secret.yaml (Grafana Cloud OTLP endpoint + base64(instanceID:apiKey)), then:
 kubectl create namespace observability --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f observability/otel-collector/secret.yaml
-# 3. Provision everything:
+
+# 3. (optional) registry/git creds consumed by scripts/01-namespaces.sh
+#    (needed if MICROSERVICES_REGISTRY packages are private — the GHCR default):
+export REGISTRY_USERNAME=<github-username> REGISTRY_PASSWORD=<ghcr-token>
+export GIT_USERNAME=<github-username>      GIT_TOKEN=<github-token>
+
+# 4. provision everything:
 ./scripts/up.sh
-# 4. Check status / get port-forward commands:
+
+# 5. check status / get port-forward commands:
 ./scripts/status.sh
+
+# tear down (namespaces kept by default; see scripts/down.sh):
+./scripts/down.sh
 ```
 
 See [901. Local Development](./docs/901-LOCAL_DEVELOPMENT.md) for the full step-by-step guide.
