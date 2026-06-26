@@ -245,6 +245,22 @@ spec:
   - ports:
     - protocol: TCP
       port: 443
+  # GKE Workload Identity: the CNPG postgres pods authenticate to GCS (barman WAL
+  # backups) as their bound GSA (terraform/gke pg_backups) via the node-local
+  # metadata server. Under this namespace's default-deny egress that link-local
+  # endpoint is blocked, so the WI token fetch fails and barman reports "Project
+  # was not passed and could not be auto-detected" (Cluster ContinuousArchiving=
+  # False). 169.254.169.254: :80 is the GCE metadata proxied by the
+  # gke-metadata-server DaemonSet, :988 its own listener. The apps don't use WI,
+  # but this policy is namespace-wide (podSelector: {}) and the allow is harmless.
+  - to:
+    - ipBlock:
+        cidr: 169.254.169.254/32
+    ports:
+    - protocol: TCP
+      port: 80
+    - protocol: TCP
+      port: 988
   ingress:
   # Prometheus (observability) -> CNPG metrics on 9187.
   - from:

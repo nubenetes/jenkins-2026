@@ -30,6 +30,18 @@ spec:
           parameters:
             - name: global.platform
               value: '{{platform}}'
+            # Postgres WAL/base backups (CNPG barman -> GCS via Workload Identity).
+            # These override the chart's placeholder defaults
+            # (jenkins-2026-sa@jenkins-2026 / jenkins-2026-postgres-backups) with the
+            # real project, so the CNPG serviceAccountTemplate annotates each
+            # postgres KSA with an existing GSA and barman writes to the real bucket.
+            # Substituted from J2026 env in scripts/08.5-argocd.sh.
+            - name: global.gcpProject
+              value: '{{gcpProject}}'
+            - name: global.gcpServiceAccount
+              value: '{{gcpServiceAccount}}'
+            - name: global.gcsBackupBucket
+              value: '{{gcsBackupBucket}}'
       destination:
         server: https://kubernetes.default.svc
         namespace: '{{namespace}}'

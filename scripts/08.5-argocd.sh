@@ -444,9 +444,17 @@ log_step "Generating and applying Microservices ApplicationSet"
 # Using @ as delimiter for sed to avoid issues with URLs
 APPSET_FILE=$(mktemp)
 GITOPS_REPO_URL="https://github.com/nubenetes/jenkins-2026-gitops-config.git"
+# Postgres backups: override the chart's placeholder gcpProject/gcpServiceAccount/
+# gcsBackupBucket defaults with the real project so the CNPG serviceAccountTemplate
+# annotates each postgres KSA with an EXISTING GSA (terraform/gke pg_backups) and
+# barman archives WAL to the project-scoped bucket. PROJECT_ID like the ESO block.
+PROJECT_ID="$(gcloud config get-value project 2>/dev/null)"
 sed "s@{{repoUrl}}@${GITOPS_REPO_URL}@g;
      s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g;
-     s@{{platform}}@${J2026_PLATFORM}@g" \
+     s@{{platform}}@${J2026_PLATFORM}@g;
+     s@{{gcpProject}}@${PROJECT_ID}@g;
+     s@{{gcpServiceAccount}}@jenkins-2026-pg-backups@g;
+     s@{{gcsBackupBucket}}@${PROJECT_ID}-jenkins-2026-postgres-backups@g" \
     "${J2026_ROOT_DIR}/argocd/microservices-appset.yaml" > "${APPSET_FILE}"
 
 # Optional 'develop' tier (off by default - see microservices.developTrackEnabled

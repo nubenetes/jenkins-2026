@@ -253,3 +253,36 @@ resource "google_storage_bucket_iam_member" "nodes_postgres_backups" {
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.nodes.email}"
 }
+
+# --- CNPG Postgres backups identity (barman -> GCS via Workload Identity) ------
+# The microservices CNPG Clusters archive WAL + base backups to the bucket above.
+# Under Workload Identity the postgres pods authenticate as the GSA bound to their
+# Kubernetes SA - NOT the node SA - so nodes_postgres_backups does not help them
+# (it stays for any node-level access). CNPG names the KSA after each Cluster
+# (postgres-<svc>, from the gitops chart templates/postgres.yaml) and annotates it
+# with this GSA via serviceAccountTemplate; the microservices ApplicationSet passes
+# the GSA account_id + project + bucket as helm params (scripts/08.5-argocd.sh), so
+# the chart's placeholder defaults (jenkins-2026-sa@jenkins-2026) are overridden by
+# the real project at deploy time. Least privilege: only objectAdmin on the one
+# backups bucket. See docs/502 / docs/902 § Postgres WAL backups.
+resource "google_service_account" "pg_backups" {
+  project      = var.project_id
+  account_id   = "${var.cluster_name}-pg-backups"
+  display_name = "jenkins-2026 CNPG Postgres backups (GCS writer)"
+}
+
+resource "google_storage_bucket_iam_member" "pg_backups" {
+  bucket = "${var.project_id}-jenkins-2026-postgres-backups"
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.pg_backups.email}"
+}
+
+# Let each CNPG Cluster KSA (microservices/postgres-<svc>) impersonate the GSA.
+# The set mirrors the services in jenkins/pipelines/services.yaml (each gets a CNPG
+# Cluster + KSA named postgres-<svc>); extend this set if services are added.
+resource "google_service_account_iam_member" "pg_backups_wi" {
+  for_each           = toset(["postgres-gateway", "postgres-jhipstersamplemicroservice"])
+  service_account_id = google_service_account.pg_backups.name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[microservices/${each.value}]"
+}
