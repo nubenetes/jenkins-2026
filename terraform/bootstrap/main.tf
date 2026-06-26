@@ -180,9 +180,14 @@ resource "google_service_account_iam_member" "github_wif" {
 }
 
 # 6. Google Cloud Storage bucket for PostgreSQL (CNPG) backups (persistent bootstrap tier)
+# NOTE: project-scoped name (like the state bucket above). GCS bucket names share ONE
+# global namespace, so a bare "jenkins-2026-postgres-backups" collides the moment the
+# project is rebuilt under a new project ID (the old project still owns the name) —
+# `apply` then fails with 409 "bucket name is not available". Prefixing with the
+# (globally-unique) project ID makes it collision-proof and portable across rebuilds.
 resource "google_storage_bucket" "postgres_backups" {
   project       = var.project_id
-  name          = "jenkins-2026-postgres-backups"
+  name          = "${var.project_id}-jenkins-2026-postgres-backups"
   location      = var.region
   force_destroy = false # Protect backup data
 
@@ -206,4 +211,17 @@ resource "google_storage_bucket" "postgres_backups" {
       age = 3 # Move backups to Nearline after 3 days to cut costs
     }
   }
+}
+
+# terraform/gke runs as the CI service account and manages the GKE node SA's
+# objectAdmin binding ON this bucket (google_storage_bucket_iam_member.
+# nodes_postgres_backups). A read-modify-write of a bucket's IAM policy needs
+# storage.buckets.getIamPolicy + setIamPolicy, which none of the CI SA's
+# project-level ci_roles grant — so without this, Day1's terraform/gke apply fails
+# with 403 "does not have storage.buckets.getIamPolicy". Grant storage.admin scoped
+# to THIS bucket only (least privilege; mirrors ci_state_bucket above).
+resource "google_storage_bucket_iam_member" "ci_postgres_backups" {
+  bucket = google_storage_bucket.postgres_backups.name
+  role   = "roles/storage.admin"
+  member = "serviceAccount:${google_service_account.ci.email}"
 }

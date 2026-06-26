@@ -243,9 +243,13 @@ resource "google_container_node_pool" "primary" {
   }
 }
 
-# Grant objectAdmin privileges on the pre-created backups bucket to the GKE node service account
+# Grant objectAdmin privileges on the pre-created backups bucket to the GKE node
+# service account. Bucket name is project-scoped (matches terraform/bootstrap's
+# google_storage_bucket.postgres_backups — see the note there on the global GCS
+# namespace). The CI SA can manage this binding because bootstrap grants it
+# storage.admin on the bucket (google_storage_bucket_iam_member.ci_postgres_backups).
 resource "google_storage_bucket_iam_member" "nodes_postgres_backups" {
-  bucket = "${var.cluster_name}-postgres-backups"
+  bucket = "${var.project_id}-jenkins-2026-postgres-backups"
   role   = "roles/storage.objectAdmin"
   member = "serviceAccount:${google_service_account.nodes.email}"
 }

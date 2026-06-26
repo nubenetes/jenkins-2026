@@ -47,8 +47,8 @@ STATE_PREFIX="jenkins-2026/bootstrap"   # where bootstrap self-hosts its own sta
 CI_SA_ID="${CI_SA_ID:-jenkins-2026-ci}"                       # var.ci_service_account_id
 WIP_POOL_ID="${WIP_POOL_ID:-jenkins-2026-github}"             # var.workload_identity_pool_id
 WIP_PROVIDER_ID="${WIP_PROVIDER_ID:-github-actions}"          # var.workload_identity_provider_id
-BACKUPS_BUCKET="${BACKUPS_BUCKET:-jenkins-2026-postgres-backups}"  # main.tf google_storage_bucket.postgres_backups
 DNS_ZONE_NAME="${DNS_ZONE_NAME:-jenkins-2026-public-zone}"    # main.tf google_dns_managed_zone.public
+# BACKUPS_BUCKET is project-scoped, so it's derived in collect_inputs once PROJECT_ID is known.
 
 # ── pretty logging ───────────────────────────────────────────────────────────
 if [[ -t 1 ]]; then B=$'\e[1m'; G=$'\e[32m'; Y=$'\e[33m'; R=$'\e[31m'; C=$'\e[36m'; X=$'\e[0m'; else B=; G=; Y=; R=; C=; X=; fi
@@ -99,6 +99,7 @@ collect_inputs() {
   REGION="${REGION:-us-central1}"
   GITHUB_REPO="${GITHUB_REPO:-nubenetes/jenkins-2026}"
   BUCKET="${PROJECT_ID}-jenkins-2026-tfstate"   # matches local.state_bucket_name default in main.tf
+  BACKUPS_BUCKET="${BACKUPS_BUCKET:-${PROJECT_ID}-jenkins-2026-postgres-backups}"  # project-scoped (matches main.tf)
   info "project=${PROJECT_ID}  region=${REGION}  repo=${GITHUB_REPO}"
   info "state bucket=${BUCKET}  (bootstrap state prefix: ${STATE_PREFIX})"
   gcloud config set project "${PROJECT_ID}" >/dev/null 2>&1 || true
