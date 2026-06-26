@@ -46,11 +46,12 @@ spec:
       # annotation entirely (same reason as the cnpg-operator child in
       # argocd/platform-postgres).
       - ServerSideApply=true
-      # ServerSideApply alone is not honored for the chart's CRD apply on this
-      # ArgoCD (v3.5.x): the CRD patch still goes client-side and fails with
-      # "metadata.annotations: Too long", aborting the whole sync (so the Grafana
-      # datasources never apply). Replace=true makes ArgoCD use kubectl replace
-      # (a full PUT, no last-applied annotation) - same pairing the Tekton
-      # app-of-apps uses for its equally large CRDs. clusterIP-bearing Services
-      # are preserved by ArgoCD on replace (verified against the Tekton app).
-      - Replace=true
+      # NOTE: Replace=true was added ONLY for ArgoCD v3.5.0-rc1, where ServerSideApply
+      # was not honored for the oversized CRD apply ("metadata.annotations: Too long").
+      # On the pinned STABLE 3.4.x, ServerSideApply works (verified: managed resources
+      # carry no last-applied annotation), and Replace=true is actively HARMFUL: with
+      # selfHeal it `kubectl replace`s all ~119 resources every cycle, the API server
+      # re-defaults the fields replace strips → perpetual OutOfSync → endless re-sync
+      # (the Grafana Deployment climbed to generation 15 and the sync hung for many
+      # minutes "waiting for healthy state"). Removed — ServerSideApply alone handles the
+      # large CRDs. Re-add only on a pre-release ArgoCD where SSA regresses. See docs/602.
