@@ -410,8 +410,14 @@ flowchart LR
 > `config/config.yaml` (override `JENKINS2026_SECRETS_BACKEND`, or the
 > **`secrets_backend` input** on `Day1.cluster.01` / `Day1.cluster.00`) — selects
 > **how** in-cluster Secrets are materialised, the same way `ci.engine` /
-> `observability.mode` select their dimensions. The whole `up.sh` lifecycle honours
-> it: `01-namespaces.sh` (push) and `08.6-eso-sync.sh` (sync) branch on it.
+> `observability.mode` select their dimensions. The **whole lifecycle** honours it
+> and is idempotent: `up.sh` (`01-namespaces.sh` push → `08.6-eso-sync.sh` sync), and
+> the **Day2 redeploys that re-run `01-namespaces.sh`** — `Day2.redeploy.03-tekton`,
+> `.04-headlamp`, `.05-gateway` — carry the same `secrets_backend` input (so a Day2 on
+> an `eso` cluster never recreates the Secret imperatively). Decom needs nothing extra:
+> `down.sh` deletes the namespaces (and with them the ExternalSecrets/Secrets), the
+> cluster teardown removes the `ClusterSecretStore`, and the Secret Manager entries
+> persist by design as the reusable source of truth.
 
 | Backend | How Secrets are made | Source of truth | Audit / versioning | Default |
 | :--- | :--- | :--- | :--- | :---: |
