@@ -23,6 +23,7 @@ set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/secrets.sh"  # gcp_console_secret_url
 
 if [[ "${J2026_SECRETS_BACKEND}" != "eso" ]]; then
   log_info "secrets.backend=${J2026_SECRETS_BACKEND} (not eso) — skipping External Secrets sync."
@@ -94,6 +95,7 @@ for ns in "${iap_namespaces[@]}"; do
     if [[ $SECONDS -ge $deadline ]]; then
       log_error "Timed out waiting for ESO to create ${J2026_GATEWAY_IAP_SECRET} in ${ns}."
       log_error "Check: kubectl describe externalsecret ${J2026_GATEWAY_IAP_SECRET} -n ${ns}"
+      log_error "Source secret: $(gcp_console_secret_url "${J2026_GATEWAY_IAP_SECRET}")"
       exit 1
     fi
     sleep 3

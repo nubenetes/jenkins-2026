@@ -20,6 +20,31 @@
 # the rest of the tooling).
 # =============================================================================
 
+# --- GCP Secret Manager console deep-links -----------------------------------
+# Resolve the active gcloud project ONCE per process (cached), so the eso logs
+# below can emit a clickable console URL without a gcloud call per secret.
+_J2026_GCP_PROJECT_CACHE=""
+_gcp_project() {
+  if [[ -z "${_J2026_GCP_PROJECT_CACHE}" ]]; then
+    _J2026_GCP_PROJECT_CACHE="$(gcloud config get-value project 2>/dev/null || true)"
+  fi
+  printf '%s' "${_J2026_GCP_PROJECT_CACHE}"
+}
+
+# gcp_console_secret_url <name> — clickable Secret Manager deep-link (versions
+# tab). Neither the project nor the secret name is sensitive (no secret VALUE is
+# ever logged). Falls back to the bare name if the project can't be resolved.
+gcp_console_secret_url() {
+  local name="$1" proj
+  proj="$(_gcp_project)"
+  if [[ -n "${proj}" ]]; then
+    printf 'https://console.cloud.google.com/security/secret-manager/secret/%s/versions?project=%s' \
+      "${name}" "${proj}"
+  else
+    printf '%s' "${name}"
+  fi
+}
+
 # provision_secret <namespace> <secret-name> <key=value> [<key=value> ...]
 #   imperative -> kubectl upsert the Secret in <namespace>
 #   eso        -> upsert a Secret Manager secret named <secret-name> holding a
@@ -57,7 +82,7 @@ PY
   # from the hosting project too).
   if ! gcloud secrets describe "${name}" >/dev/null 2>&1; then
     gcloud secrets create "${name}" --replication-policy=automatic >/dev/null
-    log_info "Secret Manager secret '${name}' created."
+    log_info "Secret Manager secret '${name}' created — $(gcp_console_secret_url "${name}")"
   fi
 
   # Only add a new version when the payload actually changed (avoids version churn
@@ -65,9 +90,9 @@ PY
   local current=""
   current="$(gcloud secrets versions access latest --secret="${name}" 2>/dev/null || true)"
   if [[ "${current}" == "${json}" ]]; then
-    log_info "Secret Manager secret '${name}' already up to date (no new version)."
+    log_info "Secret Manager secret '${name}' already up to date (no new version) — $(gcp_console_secret_url "${name}")"
   else
     printf '%s' "${json}" | gcloud secrets versions add "${name}" --data-file=- >/dev/null
-    log_info "Secret Manager secret '${name}' updated (new version) — ESO will sync it into ${ns}."
+    log_info "Secret Manager secret '${name}' updated (new version) — ESO will sync it into ${ns}. $(gcp_console_secret_url "${name}")"
   fi
 }
