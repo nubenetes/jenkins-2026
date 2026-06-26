@@ -179,6 +179,11 @@ The `EXIT` trap should still have run `terraform destroy`, but to be sure no bil
 
 ## Jenkins & GitOps Push Issues
 
+**Seed job times out fetching the CSRF crumb (HTTP 401) right after switching to `secrets.backend=eso`**:
+- **Symptom**: `06-seed-pipelines.sh` logs `Timed out (5m) waiting for the Jenkins crumbIssuer API` / `seed-jobs attempt N failed`, even though `jenkins-0` is `2/2 Running`. A `curl -u admin:<pw>` against `/crumbIssuer/api/json` returns **401**.
+- **Cause**: switching an **existing** cluster to `eso` (or the first `imperative→eso` migration) seeds a **new** stable `admin-password` into `jenkins-credentials` (via `sm_keep_or_generate` → Secret Manager → ESO `Merge`), but the **already-running** Jenkins pod was configured by JCasC with the *old* password and didn't adopt the new one. The seed job authenticates with the Secret's (new) password → 401. The ESO side is fine (`ExternalSecret jenkins-credentials` is `SecretSynced`, the Secret has all keys).
+- **Fix**: restart Jenkins so JCasC re-applies `securityRealm` with the current Secret value — **`kubectl delete pod jenkins-0 -n jenkins`** (a `kubectl rollout restart` is reverted by ArgoCD's selfHeal, which manages the StatefulSet; deleting the pod is recreated cleanly). Verify: `PW=$(kubectl get secret jenkins-credentials -n jenkins -o jsonpath='{.data.admin-password}'|base64 -d); kubectl exec -n jenkins jenkins-0 -c jenkins -- curl -s -o /dev/null -w '%{http_code}' -u admin:"$PW" http://localhost:8080/crumbIssuer/api/json` → **200**, then relaunch Day1. This is a **one-time** event per cluster — the password is stable thereafter (see [201](./201-ARCHITECTURE.md) § Feature-flag convergence).
+
 **GitOps Push Authentication Failure (`exit code 128`) during Jenkins build**:
 - **Symptom**: A microservice build fails at the gitops promotion stage when executing `git push origin main` on the `jenkins-2026-gitops-config` repository.
 - **Cause**: The `jenkins-credentials` Kubernetes Secret in the `jenkins` namespace was created with empty strings for `git-username` and `git-token`. This typically happens if the GitHub Action provision workflow ran without the `GIT_USERNAME` and `GIT_TOKEN` repository secrets configured.

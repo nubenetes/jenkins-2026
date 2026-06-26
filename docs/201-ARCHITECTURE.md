@@ -534,6 +534,44 @@ the cluster (it's project-level). `down.sh` deletes it on teardown (detected fro
 the still-running cluster, so the Decom workflows need no `secrets_backend` input);
 best-effort, and a future Day1 re-pushes it from the GitHub secret.
 
+### Feature-flag convergence — idempotency vs in-place switching
+
+Two distinct properties, often conflated:
+
+- **Idempotency** — re-running `Day1` (or any `0N` step) with the **same** flags is a
+  no-op (`helm upgrade --install`, `kubectl apply`, `terraform apply` converge then do
+  nothing). This holds **universally**.
+- **Convergence on a flag CHANGE** — flipping a flag on a **live** cluster and re-running
+  should retire the **old** mode's resources and install the new one, not accumulate
+  orphans. The repo implements this with a deliberate **"retire the mode we are switching
+  away from"** pattern:
+
+| Flag | In-place switch | How the old mode is retired |
+| :--- | :--- | :--- |
+| **`ci.engine`** `jenkins`↔`tekton` | ✅ | `04-jenkins.sh` deletes the `tekton` ArgoCD app + the tekton namespaces; `04-tekton.sh` deletes the `jenkins` app (engines are mutually exclusive). |
+| **`observability.mode`** oss/grafana-cloud/managed-azure/managed-aws | ✅ | every branch of `03-observability.sh` retires the *other* modes' agents/stacks (e.g. it waits out the OSS node-exporter DaemonSet; `07-grafana-dashboards.sh` deletes the off-engine overview). See [902](./902-TROUBLESHOOTING.md). |
+| **`secrets.backend`** `imperative`↔`eso` | ✅ | `imperative→eso`: `08.6` installs the `ClusterSecretStore` + `ExternalSecrets`. `eso→imperative`: `08.6` **retires ESO** — RETAINs each target Secret (`deletionPolicy: Retain` + strips the `ownerReference` so the Owner ExternalSecret's GC can't delete it; Merge ones aren't owned), deletes the `ExternalSecrets`, and deletes `gcp-store`. `01-namespaces` already wrote imperative copies, so the Secrets survive and consumers keep working. |
+
+So **all three fundamental flags converge in place** — flip any of them and re-run `Day1`
+without a Decom; the cluster retires the old mode rather than leaving orphans. Two
+`secrets.backend`-specific subtleties:
+
+- **The first `eso→imperative` flip needs the explicit `secrets_backend=imperative` input.**
+  Detection (`j2026_active_secrets_backend`) is **sticky to eso** while `gcp-store` exists —
+  by design, so a Day2 redeploy that forgets the input can't silently revert and
+  double-provision. The explicit input overrides detection and triggers the retirement; once
+  that deletes `gcp-store`, detection resolves to `imperative` on its own thereafter. So
+  cycling the flag across many runs (`eso→imperative→eso→…`) **works and is symmetric**.
+- **A Jenkins restart is needed only ONCE — the first time the admin password changes**, not
+  per cycle. `jenkins-credentials`' `admin-password` is seeded **stable** into Secret Manager
+  (`sm_keep_or_generate`) and reused every run (eso reuses the SM value; imperative
+  skips-if-exists), so once Jenkins has adopted it (JCasC re-applies `securityRealm` on pod
+  start) it stays valid across flips. It only changes on the very first `imperative→eso`
+  migration of a cluster whose Jenkins **predates** the seeded password — there, delete the
+  `jenkins-0` pod once so JCasC adopts the Secret's value (see [902](./902-TROUBLESHOOTING.md)).
+  The Secret Manager secrets are left intact across flips (reused on switch-back; `down.sh`
+  removes them on teardown).
+
 ### Why the `gateway-iap-oauth` Secret is replicated
 
 This is the one secret that legitimately lives in several namespaces — and it is a

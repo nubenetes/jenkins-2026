@@ -3,8 +3,10 @@
 # scripts/08.6-eso-sync.sh — wire up External Secrets Operator (eso mode only)
 # =============================================================================
 # Runs right AFTER 08.5-argocd.sh (which installs the ESO operator) and BEFORE the
-# secret consumers (04-jenkins/tekton, 08-headlamp, 09-gateway). It is a NO-OP
-# unless secrets.backend=eso.
+# secret consumers (04-jenkins/tekton, 08-headlamp, 09-gateway). In eso mode it syncs
+# the ExternalSecrets; in imperative mode it RETIRES any ESO objects left from a prior
+# eso run (keeping the Secrets) so the eso→imperative switch converges in place, like
+# ci.engine/observability.mode. No-op only when imperative AND no ESO objects exist.
 #
 # In eso mode, 01-namespaces.sh already pushed the secret VALUE to GCP Secret
 # Manager (see scripts/lib/secrets.sh). Here we:
@@ -34,7 +36,42 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/secrets.sh"  # gcp_console_secret_url
 # standalone Day2 redeploy on an eso cluster syncs even without secrets_backend).
 ACTIVE_SECRETS_BACKEND="$(j2026_active_secrets_backend)"
 if [[ "${ACTIVE_SECRETS_BACKEND}" != "eso" ]]; then
-  log_info "secrets.backend=${ACTIVE_SECRETS_BACKEND} (not eso) — skipping External Secrets sync."
+  # --- imperative: RETIRE any ESO objects from a previous eso run ----------------
+  # Switching secrets.backend eso→imperative converges IN PLACE, the same "retire the
+  # mode we are switching away from" pattern as ci.engine (04-jenkins/04-tekton delete
+  # the other engine's app+namespaces) and observability.mode (03-observability retires
+  # the other backends). 01-namespaces has already written imperative copies of the
+  # Secrets, so here we only remove ESO's *management*: RETAIN each target Secret (Owner
+  # ExternalSecrets would otherwise garbage-collect it via its ownerReference; Merge ones
+  # don't own it), delete the ExternalSecrets, and delete the ClusterSecretStore so the
+  # active-backend detection (gcp-store presence, see j2026_active_secrets_backend) flips
+  # to imperative on future runs with no override. The Secret Manager secrets are left
+  # intact (reused if you switch back; down.sh deletes them on teardown).
+  # NOTE: the switch needs the EXPLICIT secrets_backend=imperative input the first time —
+  # detection is sticky to eso while gcp-store exists, by design (a Day2 without the input
+  # must not silently revert). After this retirement deletes gcp-store, detection is clean.
+  if kubectl get clustersecretstore gcp-store >/dev/null 2>&1; then
+    log_step "secrets.backend=${ACTIVE_SECRETS_BACKEND}: retiring ESO from a previous eso run (Secrets are kept)"
+    kubectl get externalsecrets -A -o json 2>/dev/null \
+      | jq -r '.items[] | select(.spec.secretStoreRef.name=="gcp-store")
+               | "\(.metadata.namespace)\t\(.metadata.name)\t\(.spec.target.name // .metadata.name)"' \
+      | while IFS=$'\t' read -r ns es sec; do
+          [[ -z "${ns}" ]] && continue
+          # 1) make the Secret survive the ExternalSecret deletion (deletionPolicy +
+          #    a direct ownerReference strip as a controller-down backstop)
+          kubectl patch externalsecret "${es}" -n "${ns}" --type merge \
+            -p '{"spec":{"target":{"deletionPolicy":"Retain"}}}' >/dev/null 2>&1
+          kubectl patch secret "${sec}" -n "${ns}" --type merge \
+            -p '{"metadata":{"ownerReferences":null}}' >/dev/null 2>&1 || true
+          # 2) remove ESO's ExternalSecret
+          kubectl delete externalsecret "${es}" -n "${ns}" --ignore-not-found >/dev/null 2>&1
+          log_info "  retired ExternalSecret ${ns}/${es} → Secret ${ns}/${sec} kept (now a plain imperative Secret)"
+        done
+    kubectl delete clustersecretstore gcp-store --ignore-not-found >/dev/null 2>&1
+    log_info "  deleted ClusterSecretStore gcp-store — active backend now resolves to imperative on future runs."
+  else
+    log_info "secrets.backend=${ACTIVE_SECRETS_BACKEND} (not eso), no ESO objects present — nothing to retire."
+  fi
   exit 0
 fi
 
