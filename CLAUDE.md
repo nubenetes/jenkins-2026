@@ -107,9 +107,14 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
     `state_bucket_force_destroy=true` → delete the 4 GitHub secrets). See
     [`docs/100-BOOTSTRAP.md`](docs/100-BOOTSTRAP.md).
   - `gateway-bootstrap/` - persistent Gateway resources (static external IP +
-    wildcard cert map + DNS authorization) so the public endpoints survive cluster
-    rebuilds. Applied one-time by `Day0.infra.01-gateway.yml`, destroyed by
-    `Decom.infra.01-gateway.yml` (GCS remote state).
+    wildcard cert map + DNS authorization + a **delegated Cloud DNS zone** for
+    `baseDomain` whose wildcard-A and cert-validation-CNAME records Terraform keeps
+    in sync with the static IP) so the public endpoints survive cluster rebuilds and
+    come back with **no manual DNS**. The only manual DNS step is a one-time,
+    permanent `NS` delegation of `baseDomain` from the parent domain to this zone's
+    nameservers (`dns_zone_name_servers` output). Applied by `Day0.infra.01-gateway.yml`
+    (and re-applied by `Day1.cluster.00`), destroyed by `Decom.infra.01-gateway.yml`
+    (GCS remote state).
   - `workload-identity/` - standalone GKE Workload Identity Federation helpers
     (manual/auxiliary; not wired into the per-cluster CI lifecycle).
   - `gke/` - the throwaway GKE cluster. Local state for `test/e2e.sh`; GCS

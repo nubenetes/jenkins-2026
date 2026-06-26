@@ -402,11 +402,9 @@ Jenkins, Microservices, Headlamp, and pgAdmin can all be exposed on the public i
 
 ### One-time Setup
 
-1. **Run the "Day0.infra.01 Gateway bootstrap" workflow** to create a global static IP and a Google-managed wildcard certificate for `<baseDomain>` and `*.<baseDomain>`.
+1. **Run the "Day0.infra.01 Gateway bootstrap" workflow** to create a global static IP, a Google-managed wildcard certificate for `<baseDomain>` and `*.<baseDomain>`, **and a delegated Cloud DNS zone** for `<baseDomain>` whose records (wildcard `A` → static IP, cert-validation `CNAME`) Terraform keeps in sync.
 
-2. **Add the two DNS records** it prints:
-   - A wildcard **A** record: host `*.jenkins2026`, value the static IP.
-   - The **CNAME** record from the workflow's "DNS authorization record" output.
+2. **Delegate the subdomain — one time, permanent.** At the **parent** domain's DNS (e.g. the `nubenetes.com` Cloud DNS zone), create an `NS` record set for `<baseDomain>` pointing at the four nameservers from the workflow's **`dns_zone_name_servers`** output. This is the **only** manual DNS step: it lives in the parent zone, so it survives every Decom/rebuild — a `Decom`-everything + rebuild brings the URLs back with **no further DNS work** (the gateway tier, incl. this zone + the static IP, is kept by default, and `Day0.infra.01`/`Day1.cluster.00` re-apply the records each run). Remove any old hand-made `*.<baseDomain>` / `_acme-challenge.<baseDomain>` records from the parent zone — the delegation supersedes them.
 
 3. **Create the IAP OAuth client by hand** (the Terraform resources for this are deprecated as of July 2025). In the [GCP Console](https://console.cloud.google.com/): **APIs & Services** → **Credentials** → **Create credentials** → **OAuth client ID** → Application type **Web application**.
 

@@ -267,8 +267,9 @@ pgadmin:
 gateway:
   # Public base domain. The Gateway's wildcard certificate (provisioned by
   # terraform/gateway-bootstrap) covers this domain and *.<baseDomain>.
-  # nubenetes.com is the project's domain (DNS at Squarespace) - not
-  # sensitive, so it's a committed default. Override via
+  # nubenetes.com is the project's domain, on Google Cloud DNS; terraform/gateway-bootstrap
+  # delegates a <baseDomain> sub-zone and manages its records (one-time NS
+  # delegation in the parent). Not sensitive, so it's a committed default. Override via
   # JENKINS2026_BASE_DOMAIN for forks/local testing with a different domain.
   # An empty value disables the gateway entirely (no Gateway/HTTPRoutes are
   # created) - useful before terraform/gateway-bootstrap has been run once.

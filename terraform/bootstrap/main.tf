@@ -32,6 +32,11 @@ locals {
     # terraform destroy failed with 403 'certmapentries.delete denied' (run
     # 28202019543). owner includes the .delete permissions.
     "roles/certificatemanager.owner",
+    # Lets Day0.infra.01's terraform/gateway-bootstrap manage the delegated public
+    # DNS zone + records (wildcard A → static IP, cert-validation CNAME) so the
+    # public endpoint is idempotent across Decom/rebuild with no manual DNS. See
+    # docs/501-PLATFORM_OPERATIONS.md § Public access.
+    "roles/dns.admin",
     # secrets.backend=eso: up.sh runs as this CI SA and pushes secret values to
     # GCP Secret Manager (gcloud secrets create / versions add / versions access
     # for the idempotency check). secretmanager.admin is the minimal PREDEFINED
