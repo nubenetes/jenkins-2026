@@ -457,7 +457,18 @@ Pieces: the flag ([`config.sh`](../scripts/lib/config.sh)), the push helper
 ([`scripts/lib/secrets.sh`](../scripts/lib/secrets.sh)), the sync+wait step
 ([`scripts/08.6-eso-sync.sh`](../scripts/08.6-eso-sync.sh)), the reference manifests
 ([`infrastructure/secrets/eso-bootstrap.yaml`](../infrastructure/secrets/eso-bootstrap.yaml)),
-and the IAM (`roles/secretmanager.secretAccessor` on the node SA in `terraform/gke`).
+and the GCP enablement, which has **three** parts (a write side and a read side
+either side of Secret Manager):
+
+- **API** — `secretmanager.googleapis.com`, enabled in `terraform/gke` alongside
+  `container`/`compute` (left on; unused in imperative mode).
+- **Write (push) side** — the CI service account that runs `up.sh` needs
+  `roles/secretmanager.admin` (the minimal predefined role that includes
+  `secrets.create`); granted in `terraform/bootstrap`'s `ci_roles`. **Adding it
+  to an existing bootstrap requires a one-time human `terraform apply` in
+  `terraform/bootstrap`** (the CI SA's roles live there, like all the others).
+- **Read (sync) side** — the GKE node SA needs `roles/secretmanager.secretAccessor`
+  so ESO can read via Workload Identity; granted in `terraform/gke`.
 
 ### Why the `gateway-iap-oauth` Secret is replicated
 

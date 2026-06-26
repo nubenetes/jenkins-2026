@@ -15,6 +15,12 @@ resource "google_project_service" "apis" {
   for_each = toset([
     "container.googleapis.com",
     "compute.googleapis.com",
+    # Secret Manager backs secrets.backend=eso: up.sh's provision_secret pushes
+    # secret values here (gcloud secrets create / versions add) and the External
+    # Secrets Operator reads them back via Workload Identity. Enabled
+    # unconditionally — harmless/unused in the default imperative mode, and
+    # re-enabling APIs is slow so it's left on. See docs/201 § Secrets Management.
+    "secretmanager.googleapis.com",
   ])
 
   project = var.project_id

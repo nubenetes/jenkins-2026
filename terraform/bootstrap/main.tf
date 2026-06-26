@@ -32,6 +32,13 @@ locals {
     # terraform destroy failed with 403 'certmapentries.delete denied' (run
     # 28202019543). owner includes the .delete permissions.
     "roles/certificatemanager.owner",
+    # secrets.backend=eso: up.sh runs as this CI SA and pushes secret values to
+    # GCP Secret Manager (gcloud secrets create / versions add / versions access
+    # for the idempotency check). secretmanager.admin is the minimal PREDEFINED
+    # role that includes secrets.create (the secretVersion* roles don't). The
+    # node SA gets the read-only secretAccessor in terraform/gke instead. Unused
+    # in the default imperative mode. See docs/201 § Secrets Management.
+    "roles/secretmanager.admin",
   ]
 }
 
