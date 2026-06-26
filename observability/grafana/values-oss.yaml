@@ -13,6 +13,22 @@
 # helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
 #   -n observability --create-namespace -f observability/grafana/values-oss.yaml
 
+# The prometheus-operator admission webhook (validates Prometheus/PrometheusRule
+# CRs at admission) ships as chart Helm HOOK Jobs (admission-create /
+# admission-patch via kube-webhook-certgen) that generate the webhook's TLS cert.
+# ArgoCD runs them as sync hooks and WAITS for them — but on ArgoCD v3.5.0-rc1 the
+# controller does not recognise a completed hook Job's health under k8s 1.35 Job
+# conditions, so the Job succeeds yet ArgoCD waits forever ("waiting for
+# completion of hook .../admission-create"), wedging every sync of this app.
+# Disable the admission webhook: the operator still validates the CRs at reconcile
+# time (we lose only admission-time rejection), which keeps GitOps syncs
+# unblocked. This is the standard kube-prometheus-stack-on-ArgoCD setting.
+prometheusOperator:
+  admissionWebhooks:
+    enabled: false
+    patch:
+      enabled: false
+
 prometheus:
   prometheusSpec:
     # Required for the otel-collector "gateway" release's
