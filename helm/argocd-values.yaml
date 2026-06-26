@@ -74,3 +74,55 @@ server:
     limits:
       cpu: 500m
       memory: 256Mi
+
+# Custom health checks for CRDs ArgoCD has no built-in assessment for. Without
+# them the `microservices-stable` Application — the only one deploying CNPG
+# (Cluster/Pooler/ScheduledBackup) and the OpenTelemetry Instrumentation CR —
+# rolls up to **Unknown** even though every underlying workload (gateway/jhipster
+# Deployments, postgres clusters, poolers) is actually Running/Ready. The keys are
+# merged into argocd-cm on top of the chart defaults (additive). The Lua scripts
+# follow ArgoCD's resource.customizations.health.<group>_<kind> convention.
+# See docs/902 § ArgoCD app health Unknown (CNPG/OTel CRDs).
+configs:
+  cm:
+    resource.customizations.health.postgresql.cnpg.io_Cluster: |
+      local hs = {}
+      if obj.status ~= nil and obj.status.phase ~= nil then
+        local phase = obj.status.phase
+        if phase == "Cluster in healthy state" then
+          hs.status = "Healthy"
+        elseif string.find(phase, "Failed") or string.find(phase, "failure") then
+          hs.status = "Degraded"
+        else
+          hs.status = "Progressing"
+        end
+        hs.message = phase
+        return hs
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for CNPG Cluster status"
+      return hs
+    resource.customizations.health.postgresql.cnpg.io_Pooler: |
+      local hs = {}
+      if obj.status ~= nil then
+        hs.status = "Healthy"
+        hs.message = "Pooler reconciled (backing Deployment health is tracked separately)"
+        return hs
+      end
+      hs.status = "Progressing"
+      hs.message = "Waiting for Pooler status"
+      return hs
+    resource.customizations.health.postgresql.cnpg.io_ScheduledBackup: |
+      local hs = {}
+      -- A ScheduledBackup is a cron-like definition; it has no runtime to be
+      -- unhealthy. Accepted by the operator == Healthy.
+      hs.status = "Healthy"
+      hs.message = "ScheduledBackup configured"
+      return hs
+    resource.customizations.health.opentelemetry.io_Instrumentation: |
+      local hs = {}
+      -- Instrumentation is auto-injection config consumed by the OTel Operator
+      -- webhook; it has no runtime state. Its presence == Healthy.
+      hs.status = "Healthy"
+      hs.message = "Instrumentation configured"
+      return hs
