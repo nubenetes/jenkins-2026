@@ -75,7 +75,7 @@ export GIT_USERNAME=<github-username>      GIT_TOKEN=<github-token>
 ./scripts/down.sh
 ```
 
-`scripts/up.sh` runs, in order: prereq/repo checks → namespaces, secrets & NetworkPolicies → the OpenTelemetry Operator ��� **ArgoCD** (`08.5`, installed *before* observability because the OSS stack is GitOps-managed by ArgoCD) → External Secrets sync (`08.6`, only when `secrets.backend=eso`) → the observability backend (`03`) → the selected CI engine and its pipelines (`04`/`06` �� Jenkins+seed, or Tekton+pipelines per `ci.engine`) → Grafana dashboards (`07`) → Grafana alerts (`07.5`) → Headlamp (`08`) → Gateway + routes/IAP (`09`) → wait for the microservices Deployments, then the OTel injection self-heal guard. Every step is idempotent (`helm upgrade --install` / `kubectl apply`), so re-running `up.sh` after a partial failure is safe. Each step also runs standalone: `./scripts/0N-*.sh`.
+`scripts/up.sh` runs, in order: prereq/repo checks → namespaces, secrets & NetworkPolicies → the OpenTelemetry Operator → **ArgoCD** (`08.5`, installed *before* observability because the OSS stack is GitOps-managed by ArgoCD) → External Secrets sync (`08.6`, only when `secrets.backend=eso`) → the observability backend (`03`) → the selected CI engine and its pipelines (`04`/`06` — Jenkins+seed, or Tekton+pipelines per `ci.engine`) → Grafana dashboards (`07`) → Grafana alerts (`07.5`) → Headlamp (`08`) → Gateway + routes/IAP (`09`) → wait for the microservices Deployments, then the OTel injection self-heal guard. Every step is idempotent (`helm upgrade --install` / `kubectl apply`), so re-running `up.sh` after a partial failure is safe. Each step also runs standalone: `./scripts/0N-*.sh`.
 
 ## Step-by-Step Deployment Guide (For Other People)
 
@@ -126,7 +126,7 @@ After `bootstrap.sh up`, delegate the subdomain to Cloud DNS **once for the life
    - **Add 4 `NS` records** for the subdomain host (e.g. `jenkins2026`) pointing to those 4 nameservers.
    - **Delete** any pre-existing `A` or `CNAME` records for `*.jenkins2026` (they conflict with the delegation).
 
-3. Run `Day0.infra.01` (or `Day1.cluster.00`) — it populates the zone with the wildcard-A record (`*.jenkins2026 → <external IP>`) and the cert-validation CNAME. From this point on, every Decom+rebuild reuses the same zone and the same NS delegation ��� **no further DNS changes required**.
+3. Run `Day0.infra.01` (or `Day1.cluster.00`) — it populates the zone with the wildcard-A record (`*.jenkins2026 → <external IP>`) and the cert-validation CNAME. From this point on, every Decom+rebuild reuses the same zone and the same NS delegation — **no further DNS changes required**.
 
 > **Why this is permanent:** the zone lives in the root tier (`terraform/bootstrap`), which is only destroyed when you intentionally abandon the project (`bootstrap.sh down`). Even a full `Decom.infra.00` teardown leaves the zone and its nameservers in place. Only the A and CNAME records (managed by `gateway-bootstrap`) are recreated on each rebuild.
 
@@ -191,7 +191,7 @@ Or paste one into the Tekton Dashboard's *Create PipelineRun* (YAML mode) once, 
 1. **`terraform -chdir=terraform/gke apply`** — provisions a throwaway GKE cluster.
 2. **`gcloud container clusters get-credentials`** — points `kubectl`/`helm` at the new cluster.
 3. **`scripts/00-check-prereqs.sh` + `scripts/01-namespaces.sh`**.
-4. **`scripts/up.sh`** �� the full stack, exactly as in Quick start.
+4. **`scripts/up.sh`** — the full stack, exactly as in Quick start.
 5. **`test/smoke-test.sh`** — CI-engine-aware: verifies the active CI engine is up (Jenkins controller `Running` + seed pipelines, or the Tekton stack + PaC Repository CRs/PipelineRuns), OTel Operator/collectors are running, and the **stable** Microservices namespace has all `Deployment`s (the `develop` tier is off by default).
 6. **`scripts/down.sh`** (with `J2026_DELETE_NAMESPACES=true`) then **`terraform -chdir=terraform/gke destroy`** — decommissions everything.
 
