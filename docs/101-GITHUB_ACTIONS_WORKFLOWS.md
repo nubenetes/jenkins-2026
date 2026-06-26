@@ -399,8 +399,8 @@ flowchart TD
     subgraph INSIDE["Inside the single 'provision' job — steps, NOT shown as boxes in the UI"]
         direction TB
         TF["terraform apply (GKE cluster)"]
-        NS["01 namespaces + secrets\n(+ per-mode credentials Secret)"]
-        CD["08.5 ArgoCD -> 03 observability"]
+        NS["01 namespaces + secrets\n(imperative kubectl, or push to\nSecret Manager when secrets.backend=eso)"]
+        CD["08.5 ArgoCD -> 08.6 ESO sync (eso only) -> 03 observability"]
         UP{"up.sh branches on\nJENKINS2026_CI_ENGINE"}
         JEN["04-jenkins + 06-seed-pipelines"]
         TEK["04-tekton + 06-tekton-pipelines (PaC)"]
