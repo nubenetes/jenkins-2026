@@ -98,7 +98,17 @@ export J2026_JENKINS_ADMIN_USER="$(yq_get '.jenkins.adminUser' 'admin')"
 
 export J2026_JENKINS_CREDENTIALS_SECRET="$(yq_get '.jenkins.credentialsSecretName' 'jenkins-credentials')"
 export J2026_SELF_REPO_URL="$(yq_get '.jenkins.selfRepoUrl' 'https://github.com/nubenetes/jenkins-2026.git')"
-export J2026_SELF_REPO_BRANCH="$(yq_get '.jenkins.selfRepoBranch' 'main')"
+# Branch of THIS repo that Jenkins checks out for the shared library + seed job
+# (templated into JCasC as {{branchStable}} and the `repo-branch` secret by
+# 04-jenkins.sh). Resolution, highest precedence first:
+#   1. JENKINS2026_SELF_REPO_BRANCH — explicit ephemeral override (feature-flag pattern).
+#   2. GITHUB_REF_NAME — in CI, auto-track the DISPATCHED branch, so a Day1 launched
+#      from `develop` exercises develop's library/seed (and `main` from main). This is
+#      what lets you validate library/pipeline changes on develop BEFORE the promotion
+#      PR, instead of always pulling the pinned default. (GitHub Actions sets this in
+#      every step; it is unset locally, so local runs fall through to the config value.)
+#   3. jenkins.selfRepoBranch in config.yaml (default 'main') — the local/fallback default.
+export J2026_SELF_REPO_BRANCH="${JENKINS2026_SELF_REPO_BRANCH:-${GITHUB_REF_NAME:-$(yq_get '.jenkins.selfRepoBranch' 'main')}}"
 
 export J2026_JENKINS_OIDC_ADMIN_EMAIL="${JENKINS_OIDC_ADMIN_EMAIL:-}"
 if [[ -z "${J2026_JENKINS_OIDC_ADMIN_EMAIL}" ]]; then

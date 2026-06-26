@@ -81,6 +81,11 @@ jenkins:
   # This repo's own coordinates, used by JCasC for the global pipeline shared
   # library and by the seed job to fetch Jenkinsfile.microservices + seed scripts.
   selfRepoUrl: https://github.com/nubenetes/jenkins-2026.git
+  # Local/fallback default. In CI (GitHub Actions) lib/config.sh auto-tracks the
+  # DISPATCHED branch via GITHUB_REF_NAME, so a Day1 from `develop` exercises
+  # develop's library/seed and `main` from main — letting you validate library
+  # changes on develop before the promotion PR. Override anywhere with
+  # JENKINS2026_SELF_REPO_BRANCH. See scripts/lib/config.sh.
   selfRepoBranch: main
 
 # -----------------------------------------------------------------------------

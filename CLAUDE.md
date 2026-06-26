@@ -41,6 +41,12 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
   `JENKINS2026_CI_ENGINE` / `JENKINS2026_SECRETS_BACKEND` env vars override
   `platform.target` / `observability.mode` / `ci.engine` / `secrets.backend`
   from the config file for a single run (CI matrix override pattern).
+  `J2026_SELF_REPO_BRANCH` (the branch Jenkins checks out for the shared library
+  + seed job) additionally **auto-tracks the dispatched branch in CI** via
+  `GITHUB_REF_NAME` (so a Day1 from `develop` validates develop's library/seed
+  before the promotion PR; `main` from main), overridable by
+  `JENKINS2026_SELF_REPO_BRANCH`, falling back to `jenkins.selfRepoBranch`
+  (default `main`) locally.
 - `scripts/lib/secrets.sh` - `provision_secret` helper behind the
   `secrets.backend` flag: `imperative` (default, `kubectl create secret`) or
   `eso` (push to GCP Secret Manager; the External Secrets Operator syncs it in
@@ -55,11 +61,9 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
 - `helm/jenkins/`, `helm/microservices/` - Helm values overlays.
 - `jenkins/casc/` - JCasC YAML (seed jobs, shared library, OTel plugin
   config, RBAC).
-- `jenkins/pipelines/` - `seed/` (the seed job: `seed_jobs.groovy` DSL +
-  `Jenkinsfile.seed` + `services.yaml`, the shared service registry both CI
-  engines read) and `k6/` (`microservices-smoke.js`). The Microservices pipeline
-  logic itself is the root `vars/` Jenkins shared library
-  (`MicroservicesPipeline.groovy`, `microservicesBuild/Deploy/Image/SmokeTest`, …).
+- `jenkins/pipelines/` - `Jenkinsfile.microservices`, seed job DSL
+  (`seed_jobs.groovy`), `services.yaml` (the shared service registry both CI
+  engines read).
 - `tekton/` - Tekton pipelines-as-code, used when `ci.engine=tekton` (the
   alternative to Jenkins; Jenkins is the default). Tasks/Pipelines/Triggers/RBAC
   porting the Jenkins shared library in `vars/`, plus `pac/` (Pipelines-as-Code
@@ -227,10 +231,8 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
   idempotent and converges in place on an existing cluster (`terraform apply`
   no-ops when the cluster is already in state; `up.sh` re-applies every step;
   ArgoCD re-syncs from git). To pick up a change, **re-run `Day1`** (or, for a
-  CI-engine-only change, `Day2.redeploy.02-jenkins` / `Day2.redeploy.03-tekton`
-  — `.03-tekton` also re-runs `01-namespaces` + `08.6-eso-sync` + `09-gateway`,
-  while `.02-jenkins` re-applies only the Jenkins chart + seed jobs);
-  ArgoCD-only manifest changes can be pulled with
+  CI-engine-only change, `Day2.redeploy.02-jenkins` / `Day2.redeploy.03-tekton`,
+  which also run `09-gateway`); ArgoCD-only manifest changes can be pulled with
   `kubectl annotate application <app> -n argocd argocd.argoproj.io/refresh=hard
   --overwrite`. `Decom.cluster.01-gke` is for **tearing the cluster down when
   done** (to stop charges), not a prerequisite for changes - but do remember to
