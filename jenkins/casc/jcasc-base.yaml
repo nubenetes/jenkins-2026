@@ -95,6 +95,16 @@ jenkins:
   globalNodeProperties:
     - envVars:
         env:
+          # Skip the Git LFS smudge filter on every agent checkout. This repo tracks
+          # a few documentation images (docs/notebooklm/*.jpg) in Git LFS, and when
+          # the GitHub account's LFS bandwidth budget is exhausted the smudge download
+          # 403s ("This repository exceeded its LFS budget"), which fails `git checkout`
+          # (exit 128) and aborts the build at SCM checkout. Builds never need those
+          # images, so leave the LFS pointer files in place instead of downloading the
+          # content. (Permanent alternatives: raise the LFS budget, or migrate the
+          # images out of LFS.) See docs/902.
+          - key: "GIT_LFS_SKIP_SMUDGE"
+            value: "1"
           - key: "GRAFANA_BASE_URL"
             value: "${GRAFANA_BASE_URL:-}"
           - key: "JENKINS2026_REPO_URL"
