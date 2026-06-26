@@ -6,6 +6,12 @@
 
 ## Common Issues
 
+- **`kubectl` suddenly fails with `Unable to connect to the server: dial tcp <ip>:443: i/o timeout` (after a rebuild)**: your **kubeconfig is stale**. A from-scratch rebuild (Decom + Day1, or any cluster recreation) gives the control plane a **new endpoint IP**, but your local kubeconfig still points at the old one. CI never hits this (every workflow re-runs `get-credentials`); it only bites a **local operator**. Fix — refresh your machine's setup in one idempotent step:
+  ```bash
+  bash scripts/dev-setup.sh
+  ```
+  (or just the kubeconfig: `gcloud container clusters get-credentials <cluster> --location <zone> --project <project>`). Note WSL and Windows keep **separate** kubeconfigs, so refresh whichever shell you use. See [901 § Operator workstation setup](./901-LOCAL_DEVELOPMENT.md#operator-workstation-setup-scriptsdev-setupsh).
+
 - **`yq` not found**: install [`mikefarah/yq`](https://github.com/mikefarah/yq) (the Go binary — not the Python `yq` wrapper around `jq`).
 
 - **`scripts/03-observability.sh` fails with "Secret ... not found"**: create `observability/otel-collector/secret.yaml` from the `.example` template and `kubectl apply` it (see [901. Quick start](./901-LOCAL_DEVELOPMENT.md)) before re-running.
@@ -97,7 +103,7 @@ kubectl delete pdb --all -A   # frees the eviction; the node drains, DELETE_NODE
 > `spec.finalizers` via the `/finalize` API, instead of a `--timeout=2m` wait (which
 > produced noisy "timed out waiting for the condition" lines and added up to 2 min per
 > namespace). The **Gateway-API** deletes deliberately keep a bounded `--timeout`
-> *with a real wait* — their finalizers release actual GCP load-balancer resources, so
+> *with a real wait* ��� their finalizers release actual GCP load-balancer resources, so
 > force-clearing them would orphan billed infra. Rule of thumb: **force-finalize
 > etcd-only objects (namespaces, ArgoCD Apps); wait on finalizers that free external
 > cloud resources (Gateway/LB, PVs).**

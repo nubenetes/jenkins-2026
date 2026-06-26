@@ -22,11 +22,22 @@ You also need:
 - **ArgoCD OIDC Redirect URI**: add `https://argocd.<baseDomain>/api/dex/callback` to your Google OAuth client's **Authorized redirect URIs**.
 - (default observability mode) A [Grafana Cloud](https://grafana.com/products/cloud/) stack (free tier is enough) for its OTLP gateway endpoint + API key.
 
-> **Script permissions** — if you get `-bash: ./scripts/up.sh: Permission denied` after cloning or editing scripts on Windows, restore the execute bit before running anything:
+### Operator workstation setup (`scripts/dev-setup.sh`)
+
+If you drive an **already-provisioned** cluster from your laptop (Linux/WSL), run this **after every from-scratch rebuild** to point your machine at the new cluster:
+
+```bash
+bash scripts/dev-setup.sh   # 'bash …' the first time, in case the +x bit is missing
+```
+
+It is idempotent and configures **only your machine** (no cloud resources). Six steps: checks the required CLIs → ensures `gcloud` auth (user + ADC) → resolves the project → installs `gke-gcloud-auth-plugin` → **refreshes the kubeconfig** for the current cluster → restores the scripts' `+x` bits. It auto-discovers the cluster (or take `CLUSTER_NAME` / `CLUSTER_LOCATION` / `PROJECT_ID` overrides).
+
+It is the cure for the post-rebuild **`Unable to connect to the server: dial tcp <old-ip>:443: i/o timeout`**: a rebuild rotates the control-plane IP, so a kubeconfig from a previous incarnation goes stale (see [902 § Troubleshooting](./902-TROUBLESHOOTING.md)). It is intentionally **not** part of `bootstrap.sh` (Day0 — runs before any cluster exists) or `up.sh` (platform-agnostic — works against whatever `kubectl` context you give it).
+
+> **Just the permissions?** If you only hit `-bash: ./scripts/up.sh: Permission denied` (an editor/OS dropped the bit — all scripts are committed `100755`), the minimal fix is:
 > ```bash
 > chmod +x scripts/*.sh scripts/lib/*.sh test/*.sh
 > ```
-> All scripts are committed with `100755` mode in git; this only needs to be done once per local checkout if your editor/OS strips the bit.
 
 ## Quick Start
 
@@ -64,7 +75,7 @@ export GIT_USERNAME=<github-username>      GIT_TOKEN=<github-token>
 ./scripts/down.sh
 ```
 
-`scripts/up.sh` runs, in order: prereq/repo checks → namespaces, secrets & NetworkPolicies → the OpenTelemetry Operator → **ArgoCD** (`08.5`, installed *before* observability because the OSS stack is GitOps-managed by ArgoCD) → External Secrets sync (`08.6`, only when `secrets.backend=eso`) → the observability backend (`03`) → the selected CI engine and its pipelines (`04`/`06` — Jenkins+seed, or Tekton+pipelines per `ci.engine`) → Grafana dashboards (`07`) → Grafana alerts (`07.5`) → Headlamp (`08`) → Gateway + routes/IAP (`09`) → wait for the microservices Deployments, then the OTel injection self-heal guard. Every step is idempotent (`helm upgrade --install` / `kubectl apply`), so re-running `up.sh` after a partial failure is safe. Each step also runs standalone: `./scripts/0N-*.sh`.
+`scripts/up.sh` runs, in order: prereq/repo checks → namespaces, secrets & NetworkPolicies → the OpenTelemetry Operator ��� **ArgoCD** (`08.5`, installed *before* observability because the OSS stack is GitOps-managed by ArgoCD) → External Secrets sync (`08.6`, only when `secrets.backend=eso`) → the observability backend (`03`) → the selected CI engine and its pipelines (`04`/`06` �� Jenkins+seed, or Tekton+pipelines per `ci.engine`) → Grafana dashboards (`07`) → Grafana alerts (`07.5`) → Headlamp (`08`) → Gateway + routes/IAP (`09`) → wait for the microservices Deployments, then the OTel injection self-heal guard. Every step is idempotent (`helm upgrade --install` / `kubectl apply`), so re-running `up.sh` after a partial failure is safe. Each step also runs standalone: `./scripts/0N-*.sh`.
 
 ## Step-by-Step Deployment Guide (For Other People)
 
@@ -115,7 +126,7 @@ After `bootstrap.sh up`, delegate the subdomain to Cloud DNS **once for the life
    - **Add 4 `NS` records** for the subdomain host (e.g. `jenkins2026`) pointing to those 4 nameservers.
    - **Delete** any pre-existing `A` or `CNAME` records for `*.jenkins2026` (they conflict with the delegation).
 
-3. Run `Day0.infra.01` (or `Day1.cluster.00`) — it populates the zone with the wildcard-A record (`*.jenkins2026 → <external IP>`) and the cert-validation CNAME. From this point on, every Decom+rebuild reuses the same zone and the same NS delegation — **no further DNS changes required**.
+3. Run `Day0.infra.01` (or `Day1.cluster.00`) — it populates the zone with the wildcard-A record (`*.jenkins2026 → <external IP>`) and the cert-validation CNAME. From this point on, every Decom+rebuild reuses the same zone and the same NS delegation ��� **no further DNS changes required**.
 
 > **Why this is permanent:** the zone lives in the root tier (`terraform/bootstrap`), which is only destroyed when you intentionally abandon the project (`bootstrap.sh down`). Even a full `Decom.infra.00` teardown leaves the zone and its nameservers in place. Only the A and CNAME records (managed by `gateway-bootstrap`) are recreated on each rebuild.
 
@@ -180,7 +191,7 @@ Or paste one into the Tekton Dashboard's *Create PipelineRun* (YAML mode) once, 
 1. **`terraform -chdir=terraform/gke apply`** — provisions a throwaway GKE cluster.
 2. **`gcloud container clusters get-credentials`** — points `kubectl`/`helm` at the new cluster.
 3. **`scripts/00-check-prereqs.sh` + `scripts/01-namespaces.sh`**.
-4. **`scripts/up.sh`** — the full stack, exactly as in Quick start.
+4. **`scripts/up.sh`** �� the full stack, exactly as in Quick start.
 5. **`test/smoke-test.sh`** — CI-engine-aware: verifies the active CI engine is up (Jenkins controller `Running` + seed pipelines, or the Tekton stack + PaC Repository CRs/PipelineRuns), OTel Operator/collectors are running, and the **stable** Microservices namespace has all `Deployment`s (the `develop` tier is off by default).
 6. **`scripts/down.sh`** (with `J2026_DELETE_NAMESPACES=true`) then **`terraform -chdir=terraform/gke destroy`** — decommissions everything.
 
