@@ -163,10 +163,11 @@ All namespace `ResourceQuota` objects are strictly configured to prevent GKE aut
 | **pgadmin** | `pgadmin-pgadmin4` | `100m` | `500m` | `256Mi` | `512Mi` |
 
 Namespace-level `ResourceQuota` hard limits:
-- `jenkins`: Requests max `3.0` CPU / `8.0Gi` memory.
-- `microservices`: Requests max `1.5` CPU / `3.0Gi` memory.
-- `observability`: Requests max `3.0` CPU / `6.0Gi` memory.
-- `argocd`: Requests max `1.5` CPU / `3.0Gi` memory.
+- `jenkins` (only when `ci.engine=jenkins`): requests `16.0` CPU / `32.0Gi` (limits `60.0` / `64.0Gi`).
+- `observability`: requests `3.0` CPU / `6.0Gi` (limits `6.0` / `10.0Gi`) — or `6.0` CPU / `12.0Gi` (limits `12.0` / `20.0Gi`) in `observability.mode=oss`, where the whole stack runs in-cluster.
+- `headlamp`: requests `200m` CPU / `256Mi` (limits `500m` / `512Mi`).
+- `argocd`: requests `1.5` CPU / `3.0Gi` (limits `5` / `8.0Gi`).
+- `pgadmin`: requests `300m` CPU / `512Mi` (limits `1.0` / `1.0Gi`).
 
 ### Terraform Version & Stacks
 

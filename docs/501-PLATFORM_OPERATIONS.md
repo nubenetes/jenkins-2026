@@ -36,7 +36,7 @@ The deployment lifecycle is managed by **ArgoCD**. Application manifests are sto
 
 ### 1. Continuous Traffic Simulation (GitHub Actions)
 
-Use the **[`Day2.traffic.01 Continuous Traffic Simulation`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml)** workflow:
+Use the **[`Day2.traffic.01 Continuous k6 simulation`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml)** workflow:
 - **Duration**: Default 15 minutes (configurable).
 - **Purpose**: Simulates real-world user traffic from outside the cluster, hitting the GKE Gateway and triggering end-to-end traces.
 

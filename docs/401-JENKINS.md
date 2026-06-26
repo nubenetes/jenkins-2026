@@ -53,7 +53,7 @@ Setting `JENKINS_OIDC_ADMIN_EMAIL` also dynamically configures administrator per
 | [`jcasc-base.yaml`](../jenkins/casc/jcasc-base.yaml) | Security realm (OIDC with Google, escape-hatch `admin` password), Role-Based Authorization Strategy, system message, **global pipeline library** `microservices-shared-library`, credentials (`container-registry`, `microservices-git`). |
 | [`jcasc-otel.yaml`](../jenkins/casc/jcasc-otel.yaml) | Configures the `opentelemetry` plugin's global exporter — OTLP/gRPC to `otel-collector-gateway.observability.svc.cluster.local:4317`. |
 | [`jcasc-seed-job.yaml`](../jenkins/casc/jcasc-seed-job.yaml) | Defines the main `seed-jobs` pipeline job that tracks `${JENKINS2026_REPO_BRANCH:-main}` to generate the stable pipelines. |
-| [`jcasc-modern-agents.yaml`](../jenkins/casc/jcasc-modern-agents.yaml) | Kubernetes-plugin cloud + ephemeral build-agent pod templates (the `jenkins=slave` agents: maven/node/helm containers, caches, resources). |
+| [`jcasc-modern-agents.yaml`](../jenkins/casc/jcasc-modern-agents.yaml) | Kubernetes-plugin cloud + ephemeral build-agent pod templates (the `maven-node-builder` agents, pod label `role: jenkins-agent`: maven/node/helm containers, caches, resources). |
 
 Beyond the kubernetes/git/JCasC/OTel plugins, three are aimed at UX:
 
@@ -69,7 +69,7 @@ Beyond the kubernetes/git/JCasC/OTel plugins, three are aimed at UX:
 
 Four steps used by every per-service pipeline: `microservicesBuild`, `microservicesImage`, `microservicesDeploy`, and `microservicesSmokeTest`. They handle everything from Maven/NPM builds to Helm deployments and OTel-instrumented smoke tests. A fifth step, `microservicesK6Smoke`, is used only by the `microservices-k6-smoke` job.
 
-The library is stored at the repo root (`vars/`, `resources/`) — required by the `modernSCM` retriever so Jenkins can check out the library from the same repo as the pipeline.
+The library is stored at the repo root (`vars/`) — required by the `modernSCM` retriever so Jenkins can check out the library from the same repo as the pipeline.
 
 See [402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) for the pipeline stages and execution details.
 
