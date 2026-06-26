@@ -55,3 +55,26 @@ spec:
       # (the Grafana Deployment climbed to generation 15 and the sync hung for many
       # minutes "waiting for healthy state"). Removed — ServerSideApply alone handles the
       # large CRDs. Re-add only on a pre-release ArgoCD where SSA regresses. See docs/602.
+  # The Grafana subchart (kube-prometheus-stack 87.x dropped the fixed "prom-operator"
+  # admin password) renders admin-password as `randAlphaNum 40` on EVERY render when no
+  # grafana.adminPassword / admin.existingSecret is pinned — so the rendered grafana
+  # Secret differs from live on every sync → the Secret is perpetually OutOfSync, and the
+  # Grafana Deployment follows via its checksum/secret pod-template annotation → the app
+  # sits forever "Syncing"/OutOfSync (though Healthy; IAP is the real auth — the
+  # admin/<pw> path is only a kubectl-port-forward fallback). Ignore just those two fields
+  # so the app settles; the live admin password stays at whatever was first synced. (The
+  # clean alternative — pin grafana.admin.existingSecret to a script-managed Secret —
+  # would also work but needs a stable password source; ignoreDifferences is enough here.)
+  ignoreDifferences:
+    - group: ""
+      kind: Secret
+      name: oss-kube-prometheus-stack-grafana
+      namespace: {{ .Values.namespace.grafana | quote }}
+      jsonPointers:
+        - /data/admin-password
+    - group: apps
+      kind: Deployment
+      name: oss-kube-prometheus-stack-grafana
+      namespace: {{ .Values.namespace.grafana | quote }}
+      jqPathExpressions:
+        - '.spec.template.metadata.annotations."checksum/secret"'
