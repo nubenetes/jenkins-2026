@@ -178,7 +178,7 @@ Every policy is in [`infrastructure/networkpolicies*.yaml`](../infrastructure/) 
 | `argocd` | always | `argocd-baseline` (all) | intra-ns mesh; **8080*** (argocd-server pod port: Gateway, CI sync, CLI, port-forward) | all |
 | `headlamp` | always | `headlamp-baseline` (all) | intra-ns mesh; **4466*** (headlamp pod port: Gateway) | all |
 | `tekton-ci` | `tekton` | `tekton-ci-baseline` (all) | intra-ns; EventListener **8080/9000*** (event/metrics). Pipeline pods get **no ingress** (outbound-only) | all |
-| `jenkins` | `jenkins` | `jenkins-policy` (controller) + `jenkins-agent-policy` (`jenkins=slave`) | **controller:** **8080*** (UI/Gateway), **50000** from intra-ns agents, `observability` → **8080**. **agents:** none (outbound-only) | **controller:** all. **agents:** all (reach controller **8080/50000** + git/registry/ArgoCD) |
+| `jenkins` | `jenkins` | `jenkins-policy` (controller) + `jenkins-agent-policy` (`jenkins=slave`) | **controller:** **8080*** (UI/Gateway **+ build-agent WebSocket**), **50000** (legacy JNLP, unused) from intra-ns agents, `observability` → **8080**. **agents:** none (outbound-only) | **controller:** all. **agents:** all (reach controller **8080** via WebSocket + git/registry/ArgoCD) |
 | `tekton-pipelines`, `cnpg-system`, `external-secrets`, `pipelines-as-code` | per mode | *(none — open by design)* | all (hosts admission webhooks the API server calls) | all |
 
 #### NetworkPolicy flow diagram
@@ -200,7 +200,7 @@ flowchart LR
     pg[(CNPG Postgres<br/>cnpg.io/cluster)]
   end
   subgraph ci[CI engine]
-    cieng[jenkins :8080/:50000<br/>· tekton-ci EL :8080/:9000]
+    cieng[jenkins :8080 WebSocket agents<br/>· tekton-ci EL :8080/:9000]
   end
   argocd[argocd-server :8080]:::ui
   headlamp[headlamp :4466]:::ui
