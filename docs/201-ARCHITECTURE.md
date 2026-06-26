@@ -407,9 +407,11 @@ flowchart LR
 ### Secrets backend (`imperative` | `eso`)
 
 > 🔐 **Pluggable secrets backend.** A feature flag — `secrets.backend` in
-> `config/config.yaml` (override `JENKINS2026_SECRETS_BACKEND`) — selects **how**
-> in-cluster Secrets are materialised, the same way `ci.engine` / `observability.mode`
-> select their dimensions.
+> `config/config.yaml` (override `JENKINS2026_SECRETS_BACKEND`, or the
+> **`secrets_backend` input** on `Day1.cluster.01` / `Day1.cluster.00`) — selects
+> **how** in-cluster Secrets are materialised, the same way `ci.engine` /
+> `observability.mode` select their dimensions. The whole `up.sh` lifecycle honours
+> it: `01-namespaces.sh` (push) and `08.6-eso-sync.sh` (sync) branch on it.
 
 | Backend | How Secrets are made | Source of truth | Audit / versioning | Default |
 | :--- | :--- | :--- | :--- | :---: |

@@ -40,6 +40,14 @@ on:
         options:
           - jenkins
           - tekton
+      secrets_backend:
+        description: "Secrets backend: imperative (default) | eso (GCP Secret Manager + External Secrets Operator)."
+        required: true
+        default: "imperative"
+        type: choice
+        options:
+          - imperative
+          - eso
       bootstrap_gateway:
         description: "Run the Day0.infra.01 Gateway bootstrap first (idempotent). Uncheck if the Gateway IP/cert already exist and you want to skip its approval gate."
         required: true
@@ -85,6 +93,7 @@ jobs:
     with:
       observability_mode: ${{ inputs.observability_mode }}
       ci_engine: ${{ inputs.ci_engine }}
+      secrets_backend: ${{ inputs.secrets_backend }}
       destroy_unused_backends: ${{ inputs.destroy_unused_backends }}
       enable_gateway: true
       git_ref: ${{ inputs.git_ref }}
