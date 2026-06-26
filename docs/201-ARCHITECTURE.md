@@ -425,8 +425,9 @@ flowchart LR
 | **`imperative`** | `01-namespaces.sh` runs `kubectl create secret` from the GitHub-secret env vars (Diagram 2 above) | GitHub Actions secrets | none in-cluster | ✅ |
 | **`eso`** | values pushed to **GCP Secret Manager**; the **External Secrets Operator** syncs them into namespaces via **Workload Identity (keyless)** | GCP Secret Manager (versioned) | **Cloud Audit Logs** + SM versions | |
 
-In `eso` mode the flow becomes (currently wired for `gateway-iap-oauth`; the rest
-follows the same pattern — staged rollout below):
+In `eso` mode the flow becomes (now wired for the gateway IAP secret, the Tekton
+pipeline credentials, and `ghcr-credentials`; the rest follows the same pattern —
+staged rollout below):
 
 ```mermaid
 flowchart LR
@@ -447,12 +448,12 @@ unseal root-of-trust, over-engineered for an ephemeral single-stack PoC.)
 **Staged rollout.** `eso` is opt-in; the default stays `imperative` so existing
 provisions are unchanged until you validate the flag on a Day1 run.
 
-| Stage | Secret(s) | Status |
-| :--- | :--- | :--- |
-| **1 (this PR)** | `gateway-iap-oauth` (×N namespaces) | ✅ wired |
-| 2 | `headlamp-credentials` | roadmap |
-| 3 | `jenkins-credentials` (carries a *generated* admin password → must be seeded into SM) | roadmap |
-| 4 | per-mode `grafana-cloud` / `azure-monitor` / `aws-managed` credentials (come from Terraform outputs via the Day1 workflow) | roadmap |
+| Stage | Secret(s) | Projection | Status |
+| :--- | :--- | :--- | :--- |
+| **1** | `gateway-iap-oauth` (×N namespaces) | `extract` | ✅ wired |
+| **2** | `gateway-iap-oauth-client-secret` (single key), `tekton-github-webhook-secret`, `k6-cloud`, `tekton`-registry (dockerconfigjson), `tekton`-git (basic-auth + `tekton.dev/git-0`), `ghcr-credentials` (dockerconfigjson) | `extract` / `property` / `template` | ✅ wired |
+| — *deferred* | `jenkins-credentials` (generated admin pw + multi-writer patches), `headlamp-credentials` (config keys patched each run), `pac-webhook` (`openssl rand` at runtime), `grafana-jenkins-ds` (mirrors the generated Jenkins pw), `tekton-argocd` (token minted in-cluster by ArgoCD) | — | imperative (don't fit "value already in SM") |
+| — *deferred* | per-mode `grafana-cloud` / `azure-monitor` / `aws-managed` credentials (from Terraform outputs via the Day1 workflow) | — | imperative |
 
 Pieces: the flag ([`config.sh`](../scripts/lib/config.sh)), the push helper
 ([`scripts/lib/secrets.sh`](../scripts/lib/secrets.sh)), the sync+wait step
