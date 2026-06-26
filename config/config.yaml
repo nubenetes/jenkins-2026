@@ -40,6 +40,25 @@ ci:
   engine: jenkins
 
 # -----------------------------------------------------------------------------
+# Secrets backend
+# -----------------------------------------------------------------------------
+# How Kubernetes Secrets are materialised in the cluster:
+#   imperative (default) - scripts/01-namespaces.sh runs `kubectl create secret`
+#                          from the GitHub Actions secret env vars at provision time.
+#   eso                  - the GitHub-sourced secret values are pushed to GCP
+#                          Secret Manager, and the External Secrets Operator (ESO,
+#                          already installed) syncs them into the cluster via
+#                          Workload Identity (keyless). Adds a central source of
+#                          truth, versioning and Cloud Audit Logs. See
+#                          docs/201-ARCHITECTURE.md § Secrets Management +
+#                          infrastructure/secrets/eso-bootstrap.yaml.
+# FEATURE FLAG: override for a single run with JENKINS2026_SECRETS_BACKEND=eso
+# (config.yaml is the durable default; env var is the ephemeral override - same
+# pattern as ci.engine / observability.mode).
+secrets:
+  backend: imperative
+
+# -----------------------------------------------------------------------------
 # Jenkins (jenkinsci/helm-charts) - used when ci.engine == jenkins
 # -----------------------------------------------------------------------------
 jenkins:

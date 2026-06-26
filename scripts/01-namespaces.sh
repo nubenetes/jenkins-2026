@@ -9,6 +9,7 @@ set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/secrets.sh"
 
 log_step "Creating namespaces"
 # Always-on, engine-neutral namespaces. The shared GKE Gateway (the single
@@ -149,17 +150,27 @@ else
   else
     iap_namespaces+=("${J2026_JENKINS_NAMESPACE}")
   fi
-  for ns in "${iap_namespaces[@]}"; do
-    if kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" >/dev/null 2>&1; then
-      log_info "Secret already exists in ${ns} - leaving it untouched."
-    else
-      kubectl create secret generic "${J2026_GATEWAY_IAP_SECRET}" \
-        -n "${ns}" \
-        --from-literal=client_id="${IAP_OAUTH_CLIENT_ID:-}" \
-        --from-literal=client_secret="${IAP_OAUTH_CLIENT_SECRET:-}"
-      log_info "Created in ${ns}."
-    fi
-  done
+  if [[ "${J2026_SECRETS_BACKEND}" == "eso" ]]; then
+    # ESO mode: push the value once to GCP Secret Manager. The per-namespace
+    # ExternalSecrets in infrastructure/secrets/eso-bootstrap.yaml project it into
+    # each iap_namespaces member; scripts/08.6-eso-sync.sh applies them and waits
+    # for the resulting Secrets to materialise before the consumers run.
+    provision_secret "${iap_namespaces[*]}" "${J2026_GATEWAY_IAP_SECRET}" \
+      "client_id=${IAP_OAUTH_CLIENT_ID:-}" \
+      "client_secret=${IAP_OAUTH_CLIENT_SECRET:-}"
+  else
+    for ns in "${iap_namespaces[@]}"; do
+      if kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" >/dev/null 2>&1; then
+        log_info "Secret already exists in ${ns} - leaving it untouched."
+      else
+        kubectl create secret generic "${J2026_GATEWAY_IAP_SECRET}" \
+          -n "${ns}" \
+          --from-literal=client_id="${IAP_OAUTH_CLIENT_ID:-}" \
+          --from-literal=client_secret="${IAP_OAUTH_CLIENT_SECRET:-}"
+        log_info "Created in ${ns}."
+      fi
+    done
+  fi
 fi
 
 # Tekton pipeline credentials (ci.engine=tekton). The pipeline ServiceAccount

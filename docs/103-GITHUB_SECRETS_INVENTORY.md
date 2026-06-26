@@ -13,6 +13,12 @@ Complete reference for every GitHub Actions secret and repository variable used 
 > (the per-app layout + the IAP replication constraint), see
 > [201 § Namespaces & in-cluster Secrets](201-ARCHITECTURE.md#namespaces--in-cluster-secrets).
 
+> **Secrets backend (`secrets.backend`)**: by default (`imperative`) these values
+> become k8s Secrets directly via `01-namespaces.sh`. With `secrets.backend=eso`
+> they are pushed to **GCP Secret Manager** and synced in by the **External Secrets
+> Operator** (keyless, versioned, Cloud-Audit-Logged). See
+> [201 § Secrets backend](201-ARCHITECTURE.md#secrets-backend-imperative--eso).
+
 ---
 
 ## 1. GCP / Core Infrastructure

@@ -38,9 +38,16 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
   script sources `scripts/lib/common.sh` then `scripts/lib/config.sh`.
 - `scripts/lib/config.sh` - loads `config/config.yaml` via `yq`, exports it
   as `J2026_*` env vars. `JENKINS2026_PLATFORM` / `JENKINS2026_OBS_MODE` /
-  `JENKINS2026_CI_ENGINE` env vars override `platform.target` /
-  `observability.mode` / `ci.engine` from the config file for a single run
-  (CI matrix override pattern).
+  `JENKINS2026_CI_ENGINE` / `JENKINS2026_SECRETS_BACKEND` env vars override
+  `platform.target` / `observability.mode` / `ci.engine` / `secrets.backend`
+  from the config file for a single run (CI matrix override pattern).
+- `scripts/lib/secrets.sh` - `provision_secret` helper behind the
+  `secrets.backend` flag: `imperative` (default, `kubectl create secret`) or
+  `eso` (push to GCP Secret Manager; the External Secrets Operator syncs it in
+  via Workload Identity). `scripts/08.6-eso-sync.sh` applies the
+  ClusterSecretStore + ExternalSecrets (+ waits) in eso mode; reference manifests
+  in `infrastructure/secrets/eso-bootstrap.yaml`. Stage 1 covers
+  `gateway-iap-oauth`. See [`docs/201`](docs/201-ARCHITECTURE.md#secrets-backend-imperative--eso).
 - `config/config.yaml` - single source of truth: target platform
   (gke), observability mode (grafana-cloud/oss/managed-azure/managed-aws),
   CI engine (`ci.engine`: jenkins default | tekton),

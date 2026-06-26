@@ -36,6 +36,11 @@ log_step "jenkins-2026 up - platform=${J2026_PLATFORM} ci-engine=${J2026_CI_ENGI
 log_step "Installing 08.5-argocd (CD Engine)"
 "${SCRIPT_DIR}/08.5-argocd.sh"
 
+# Wire up External Secrets (no-op unless secrets.backend=eso). Runs after ESO is
+# installed by 08.5 and before the secret consumers (03/04/08/09).
+log_step "Syncing External Secrets (08.6, eso mode only)"
+"${SCRIPT_DIR}/08.6-eso-sync.sh"
+
 log_step "Installing 03-observability (sequential to prevent API pressure)"
 "${SCRIPT_DIR}/03-observability.sh"
 
