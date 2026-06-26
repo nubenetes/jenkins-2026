@@ -135,8 +135,22 @@ for ns in "${iap_namespaces[@]}"; do
   until kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" >/dev/null 2>&1; do
     if [[ $SECONDS -ge $deadline ]]; then
       log_error "Timed out waiting for ESO to create ${J2026_GATEWAY_IAP_SECRET} in ${ns}."
-      log_error "Check: kubectl describe externalsecret ${J2026_GATEWAY_IAP_SECRET} -n ${ns}"
       log_error "Source secret: $(gcp_console_secret_url "${J2026_GATEWAY_IAP_SECRET}")"
+      # Self-diagnosing dump (the usual culprits: Workload Identity auth on the
+      # controller, or the JSON keys in Secret Manager not matching the extract).
+      log_error "--- ExternalSecret status (${ns}) ---"
+      kubectl get externalsecret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" \
+        -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.reason}: {.message}{"\n"}{end}' 2>/dev/null || true
+      kubectl describe externalsecret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" 2>/dev/null \
+        | grep -A20 -iE '^Events:' || true
+      log_error "--- ClusterSecretStore gcp-store status ---"
+      kubectl get clustersecretstore gcp-store \
+        -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.reason}: {.message}{"\n"}{end}' 2>/dev/null || true
+      log_error "--- ESO controller SA + logs (auth) ---"
+      kubectl get serviceaccount external-secrets -n external-secrets \
+        -o jsonpath='WI annotation: {.metadata.annotations.iam\.gke\.io/gcp-service-account}{"\n"}' 2>/dev/null || true
+      kubectl logs -n external-secrets -l app.kubernetes.io/name=external-secrets \
+        --tail=40 --since=5m 2>/dev/null | grep -iE 'error|denied|forbid|token|identity|gateway-iap' | tail -20 || true
       exit 1
     fi
     sleep 3
