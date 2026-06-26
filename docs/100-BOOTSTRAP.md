@@ -176,6 +176,9 @@ on a second run it detects the remote state and just re-applies.
 | **WIF pool + provider** | `google_iam_workload_identity_pool*` | keyless GitHub→GCP trust |
 | **WIF binding** | `google_service_account_iam_member.github_wif` | lets *this repo* impersonate the SA |
 | **Postgres backups bucket** | `google_storage_bucket.postgres_backups` | survives cluster rebuilds |
+| **Public DNS zone** `jenkins-2026-public-zone` | `google_dns_managed_zone.public` | the **permanent** delegated zone for `base_domain`; lives here so its nameservers never change. `Day0.infra.01`/`gateway-bootstrap` fills it with the wildcard-A + cert records. See [501 § Public access](./501-PLATFORM_OPERATIONS.md) |
+
+> **One-time DNS delegation.** After `up`, run `terraform -chdir=terraform/bootstrap output dns_zone_name_servers` and create matching `NS` records for `base_domain` at your **parent domain's** DNS (e.g. Squarespace for `nubenetes.com`). Because the zone lives in this never-destroyed root tier, you do this **once for the life of the project** — every Decom/rebuild (even a gateway teardown) reuses it with no DNS changes.
 
 …and then sets these **4 GitHub repo secrets** (the only ones the GCP workflows need):
 
@@ -247,8 +250,11 @@ default (a safety so a normal apply can never nuke all your state). The teardown
 it via a variable so `terraform destroy` can delete the bucket even though it still
 holds other modules' (now-decommissioned) state objects + versioned copies.
 
-To bring the project back later, just run `./scripts/bootstrap.sh up` again (a fresh
-seed) and re-create your DNS records / run Day0 + Day1.
+To bring the project back later, run `./scripts/bootstrap.sh up` again (a fresh seed),
+re-do the one-time `NS` delegation at your parent domain (the new zone gets new
+nameservers — see the delegation note above), then run Day0 + Day1. (This re-delegation
+is only needed after a **root** teardown like this; an ordinary `Decom.infra.00` leaves
+the root — and the zone — in place, so no DNS step is needed to rebuild.)
 
 ---
 
