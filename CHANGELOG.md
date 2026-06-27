@@ -2,6 +2,50 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.22.1] - 2026-06-27
+
+A documentation + reliability patch on top of v0.22.0: a fix that restores
+**pgAdmin → CNPG Postgres** connectivity under Dataplane V2 enforcement, and a
+ground-up rewrite of the **Jenkins docs (401/402)** following the same
+"newcomers → specialists" structure as 403, with **21 new Mermaid diagrams**.
+
+### Fixed
+
+- **pgAdmin could not reach the CNPG Postgres databases (a connection timeout,
+  easily mistaken for a wrong DB password).** The `pgadmin-policy` NetworkPolicy
+  selected `app.kubernetes.io/name: pgadmin`, but the pgAdmin chart labels its
+  pods `pgadmin4` — so the selector matched nothing and only the DNS-only
+  `default-deny` applied, blocking **both** the runtime `:5432` egress to
+  Postgres and the `setup-pgpass` init container's `:443` call to the API server
+  (so no `.pgpass` was written either, breaking zero-password login). Corrected
+  the selector to `pgadmin4` in `infrastructure/networkpolicies.yaml` (applied by
+  `scripts/01-namespaces.sh`, not ArgoCD). Surfaced once Dataplane V2 enforcement
+  took effect on a cluster rebuild (#353).
+- **pgAdmin restarts deadlocked on its ReadWriteOnce PVC.** The Deployment used
+  the default RollingUpdate, so a `rollout restart` spawned the new pod before the
+  old one released the volume (Multi-Attach). Set `strategy: Recreate` in
+  `helm/pgadmin/values.yaml`, and hardened the `setup-pgpass` init container to
+  wait up to 600s for the CNPG `*-app` secrets and **fail closed** (retry via
+  back-off) instead of starting pgAdmin degraded with no `.pgpass` (#353).
+
+### Documentation
+
+- **`docs/401-JENKINS.md` and `docs/402-PIPELINES_AS_CODE.md` rewritten to the
+  403 "newcomers → specialists" pattern** — each gains a `🟢`/`🔴` explainer and
+  an *object-model & run-flow* overview, plus **21 new Mermaid diagrams** spanning
+  the full range: high- and low-level architecture flowcharts, sequence diagrams
+  (OIDC sign-in, agent provisioning over WebSocket, controller boot/JCasC reload,
+  the 11-stage build, GitOps deploy), `stateDiagram` (agent + build lifecycles),
+  `classDiagram` (the JCasC config model + the shared-library steps), an
+  `erDiagram` (the `services.yaml` registry), and `mindmap`s. Every diagram is
+  annotated with a rich "Reading it" explanation, and all blocks were validated
+  against the Mermaid parser. Also corrected a stale claim (a Google login gets
+  the `developer` role, not `authenticated-base`) and the stage count (11, not 10).
+- **`docs/502` / `docs/902`**: documented the CNPG application-user password
+  retrieval (`kubectl get secret postgres-*-app`) alongside the superuser
+  break-glass, and added a pgAdmin-connectivity troubleshooting entry making clear
+  the symptom is a network/policy timeout, not the password (#353).
+
 ## [v0.22.0] - 2026-06-27
 
 The largest release to date — **91 PRs** (#258–#350) since v0.21.0, plus the
