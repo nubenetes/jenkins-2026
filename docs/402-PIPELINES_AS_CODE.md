@@ -10,6 +10,9 @@ Everything Jenkins-side is defined in this repository — security, the global s
 
 The whole CI definition is a chain of generators: a **cron seed job** reads a small YAML registry and **writes the per-service jobs**, each of which calls **one shared-library entry point** that runs the same 11-stage build in a **multi-container agent pod**. Read this once and every later section is "which file holds which stage".
 
+<details>
+<summary>🧠 Mental model — pipelines as code (mindmap)</summary>
+
 ```mermaid
 mindmap
   root((Pipelines as Code))
@@ -36,6 +39,8 @@ mindmap
       ArgoCD sync
       OTel self-heal
 ```
+
+</details>
 
 **Reading it —** read the branches as a chain of generators, left to right in time: a small **Registry** feeds the **Seed** job, which writes the per-service jobs, each of which calls one **Shared-library** entry point, which runs the build inside a 9-container **Agent pod**, whose final act is the **Deploy** handoff to GitOps. Every leaf is a real artifact in the repo — so the entire CI definition is auditable as code, with nothing hand-wired in the UI.
 
@@ -76,6 +81,9 @@ So the loop is: *seed job reads `services.yaml` → generates `gateway`/`jhipste
 
 Generation (left, runs on the seed-job cron) vs one execution (right, an ephemeral pod):
 
+<details>
+<summary>🔀 Seed-to-run object model & flow</summary>
+
 ```mermaid
 flowchart TB
   subgraph gen["Generation — seed-jobs (cron H/30), idempotent"]
@@ -103,11 +111,16 @@ flowchart TB
   classDef ext fill:#fde,stroke:#c39;
 ```
 
+</details>
+
 **Reading it —** the left box runs on a timer and is pure *generation*: `seed_jobs.groovy` parses `services.yaml` and emits one job per service (plus the k6 job and the list view), cloning into a `-develop` tier only when the flag is on. The right box is *one build*: a job pulls the shared library at the deployed infra branch and runs the 11 stages, ending in the GitOps deploy. The dashed arrow closes the loop — the deploy stage writes the new image tag *back* into the GitOps repo, which is what actually ships it. Note the asymmetry: generation is scheduled (`H/30`), but the builds themselves are started by hand or downstream.
 
 ## High-level architecture
 
 The CI data flow end to end — source repos, the Jenkins controller/agent, the GitOps handoff, and observability:
+
+<details>
+<summary>🏛️ High-level CI architecture</summary>
 
 ```mermaid
 flowchart LR
@@ -137,6 +150,8 @@ flowchart LR
   class ghcr,gops,src store;
 ```
 
+</details>
+
 **Reading it —** trace a single build's data flow left to right. The agent pod pulls *three* sources — the app repo (the code), this repo (library + seed + registry), and a clone of the GitOps repo — then fans out to *three* sinks: it pushes the image to GHCR, bumps the tag in the GitOps repo (a direct `git push` to `main`), and emits telemetry to the collector. The deploy is deliberately indirect: Jenkins never applies manifests to the `microservices` namespace itself — it commits a tag and asks **ArgoCD** to sync, then verifies over the same gRPC API. The only direct touches into `microservices` are the smoke-test curl and the OTel self-heal restart.
 
 ## The Seed Job
@@ -149,6 +164,9 @@ A Jenkins seed job (defined via JCasC, running Job DSL against [`seed_jobs.groov
 The first 2 pipelines invoke the [`MicroservicesPipeline`](../vars/MicroservicesPipeline.groovy) shared-library entry point (build/deploy, one Microservices service each); the last job invokes [`MicroservicesK6SmokePipeline`](../vars/MicroservicesK6SmokePipeline.groovy) (synthetic traffic + telemetry). The seed job (`seed_jobs.groovy`) generates the jobs with an inline `cps` script that calls these `vars/` entry points — there are no standalone `Jenkinsfile.microservices*` files.
 
 #### How the seed job generates the job graph
+
+<details>
+<summary>🌱 How the seed job generates the job graph (sequence)</summary>
 
 ```mermaid
 sequenceDiagram
@@ -175,6 +193,8 @@ sequenceDiagram
   Note over DSL,J: idempotent — re-running converges the job graph
 ```
 
+</details>
+
 **Reading it —** the seed job is itself a tiny pipeline. It checks the repo out, then hands control to `jobDsl` running **unsandboxed** (`sandbox:false`) — that's deliberate and required, because it lets the script `snakeyaml`-parse `services.yaml` (sandboxed Groovy would block that). The double loop (env × service) *is* the entire job graph expressed in code, and because Job DSL **reconciles** rather than appends, re-running prunes anything no longer in the registry — so the graph self-heals and stale `-develop` jobs disappear when the flag is turned off.
 
 ## Pipeline Branch & Environment Mapping
@@ -183,6 +203,9 @@ Instead of separating stable and development pipelines into separate jobs and fo
 
 *   **Target Namespace:** `microservices`
 *   **Environment Name:** `stable` (modifies `values-stable.yaml` in the GitOps config repository on the `main` branch)
+
+<details>
+<summary>🪢 Branch & environment mapping (stable vs develop)</summary>
 
 ```mermaid
 flowchart TB
@@ -200,6 +223,8 @@ flowchart TB
   sval --> shared[(shared Grafana/Loki/Tempo/Prom<br/>split by namespace/labels)]
   dval --> shared
 ```
+
+</details>
 
 **Reading it —** the single switch is `DEVELOP_TRACK_ENABLED`. The **stable** tier always exists; the **develop** tier is an opt-in *clone* that differs in only three places — its jobs carry a `-develop` suffix, deploy to `microservices-develop`, and read `values-develop.yaml` on the GitOps repo's `develop` branch. Crucially the *app image is identical* (the upstream apps have no `develop` branch), so this is a second **deployment** tier, not a second build. Both tiers funnel into one shared observability stack, separated only by namespace/labels — which is why enabling it roughly doubles the runtime footprint but not the telemetry plumbing.
 
@@ -242,6 +267,9 @@ When enabled:
 
 The seed job reads one YAML — [`services.yaml`](../jenkins/pipelines/seed/services.yaml) — whose shape drives everything generated downstream:
 
+<details>
+<summary>🗂️ The service registry model (ER diagram)</summary>
+
 ```mermaid
 erDiagram
   REGISTRY ||--|{ SERVICE : "services[]"
@@ -271,6 +299,8 @@ erDiagram
   }
 ```
 
+</details>
+
 **Reading it —** this is the schema the seed job consumes. One `REGISTRY` holds many `SERVICE` rows plus the `NAMESPACES`/`BRANCHES` maps, and each `SERVICE` fans out to one or more generated `JOB`s. The point is that **every per-service knob the pipeline needs lives in one place** — add a row here (name/type/repo/port/health) and the seed job generates its jobs, wires its parameters, and the pipeline builds/deploys it with no other change. `type` (`java`/`angular`) is the field that later switches Maven-vs-npm builds and Jib-vs-docker packaging.
 
 ## Detailed Pipeline Execution Stages
@@ -293,6 +323,9 @@ Defined in [`MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy
 *   **Post Action Handler** — Saves unit test results via `junit` plugin and records static analysis warnings using `warnings-ng` plugin (`recordIssues` over the two SARIFs).
 
 #### Build run, end to end (which container does what)
+
+<details>
+<summary>🔧 Build run, end to end (sequence)</summary>
 
 ```mermaid
 sequenceDiagram
@@ -321,9 +354,14 @@ sequenceDiagram
   Note over MB,MS: downstream microservices-k6-smoke runs last
 ```
 
+</details>
+
 **Reading it —** the columns are the agent pod's tool containers, and the diagram shows the build *hopping between them* — each stage runs `container('<name>')` so the right tool (and UID) handles each step. Watch the scanners (Semgrep/CodeQL/Trivy) report into GitHub from the `helm` container (it ships curl), the build move from `maven`/`node` into the privileged `docker` sidecar to produce the image, then the `helm` container drive the whole GitOps deploy — tag bump, push, `argocd sync/wait`, and the OTel self-heal — before the smoke curl. The k6 job runs last, downstream and blocking.
 
 #### Build lifecycle (state)
+
+<details>
+<summary>♻️ Build lifecycle (state diagram)</summary>
 
 ```mermaid
 stateDiagram-v2
@@ -345,6 +383,8 @@ stateDiagram-v2
   Failed --> [*]
 ```
 
+</details>
+
 **Reading it —** the spine is the 11 stages collapsed into states. Two nuances are worth internalising. First, the scanners are *non-blocking* (`Scan` flows straight into `Build`) — they upload findings but don't fail the build, by design. Second, the terminal states are **three**, not two: a k6 threshold breach (`exit 99`) lands in **Unstable**, *not* Failed — a deliberate signal that the deploy is live but a latency/error budget was missed, distinct from a hard break (`curl exit 28`, a compile/test error).
 
 ### 2. k6 Integration Smoke Test Pipeline
@@ -354,6 +394,9 @@ Defined in [`MicroservicesK6SmokePipeline.groovy`](../vars/MicroservicesK6SmokeP
 ## The shared library (`vars/`)
 
 Each pipeline is a thin entry point that delegates to reusable steps. The class/collaboration model:
+
+<details>
+<summary>🧩 The shared library (class diagram)</summary>
 
 ```mermaid
 classDiagram
@@ -397,11 +440,16 @@ classDiagram
   MicroservicesK6SmokePipeline ..> microservicesK6Smoke
 ```
 
+</details>
+
 **Reading it —** this is the collaboration model of [`vars/`](../vars/). The two *pipelines* are thin orchestrators; the real work lives in the lower-case *steps* they depend on (dashed `..>` = "uses"). It tells you exactly where to change behaviour: build logic in `microservicesBuild`, packaging strategy (Jib vs build-image vs docker) in `microservicesImage`, the whole GitOps+ArgoCD+OTel dance in `microservicesDeploy`, and the network-policy-aware health check in `microservicesSmokeTest`. `MicroservicesPipeline` triggers `MicroservicesK6SmokePipeline` downstream — which is why k6 is both a *stage* and a *standalone job*.
 
 #### GitOps deploy detail (`microservicesDeploy.groovy`)
 
 The deploy stage is where Jenkins hands off to GitOps — and why the OTel self-heal exists:
+
+<details>
+<summary>🚢 GitOps deploy detail (microservicesDeploy)</summary>
 
 ```mermaid
 flowchart TB
@@ -418,11 +466,16 @@ flowchart TB
   recheck -->|no| warn[WARN: still not injected]
 ```
 
+</details>
+
 **Reading it —** the deploy is a *commit*, not a `kubectl apply`: clone the GitOps repo, `yq` the one image tag, push to `main` (this direct push is exactly *why* the GitOps repo's `main` is direct-push, not PR-gated — a required PR would wedge every deploy), then drive ArgoCD over gRPC and block on `app wait`. The branch at the bottom is the subtle part: the OTel operator's mutating webhook is `failurePolicy: Ignore`, so a pod admitted before the `Instrumentation` CR was ready starts *without* the Java agent — the self-heal detects the missing `-javaagent` and does a single `rollout restart` to repair observability without failing the deploy.
 
 ## Pipeline Container Security
 
 The build runs in a single multi-container agent pod; all containers follow a least-privilege model:
+
+<details>
+<summary>🔒 Pipeline container security (agent pod)</summary>
 
 ```mermaid
 flowchart TB
@@ -442,6 +495,8 @@ flowchart TB
   note["* runAsUser:1000 via k8s securityContext<br/>(HOME=/tmp for git config / argocd CLI)"]:::n
   classDef n fill:#ffd,stroke:#cc3;
 ```
+
+</details>
 
 **Reading it —** one pod, nine containers, one least-privilege rule each. The takeaway: only `docker` (DinD) is **privileged / root-required**; `git` and `helm` are *forced* down to UID 1000 via the Kubernetes `securityContext` (overriding their image default, with `HOME=/tmp` so non-root tooling works); the rest run as their image's user with `allowPrivilegeEscalation:false`. The host-path caches (dashed) are mounted only where they pay off (Maven/npm/Trivy/CodeQL) to make re-runs fast. The table below restates the same model with exact images and UIDs.
 

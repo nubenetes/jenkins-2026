@@ -16,6 +16,37 @@ Tasks/Pipelines under [`tekton/`](../tekton/).
 Tekton is **Kubernetes-native CI/CD**: there is no Jenkins-style controller running pipelines for you — every CI concept is a **Custom Resource** (CRD) the API server stores and the Tekton controllers reconcile. Read this section once and the rest of the doc is just "where each file lives".
 
 <details>
+<summary>🧠 Mental model — Tekton (mindmap)</summary>
+
+```mermaid
+mindmap
+  root((Tekton CI))
+    Definitions as CRDs
+      Task
+      Pipeline DAG
+      Repository for PaC
+    Execution
+      PipelineRun
+      TaskRun is one Pod
+      Workspace RWO PVC
+    Triggers
+      PaC controller
+      EventListener
+      webhook + HMAC
+    Control plane
+      pipelines-controller
+      webhook
+      Dashboard via IAP
+    Supply chain
+      Chains SLSA signing
+      Pruner GC
+```
+
+</details>
+
+**Reading it —** the five branches are the layers Tekton splits CI into: **Definitions** (the reusable CRDs), **Execution** (the per-run objects — each TaskRun is literally a Pod), **Triggers** (what turns a git event into a run), the **Control plane** that reconciles it all, and the **Supply-chain** add-ons. Everything is an API-server object — there is no engine state outside Kubernetes, which is the whole contrast with the Jenkins controller in [401](./401-JENKINS.md).
+
+<details>
 <summary>🟢 For newcomers — the mental model in 7 objects</summary>
 
 | Object | What it is | Jenkins analogy |
@@ -60,6 +91,9 @@ In this repo the pipeline is the JHipster microservices build ported 1:1 from th
 
 How a `git push` becomes running pods — the CRDs (definitions) on the left, one execution (the runtime objects) on the right:
 
+<details>
+<summary>🔀 Tekton object model & run flow</summary>
+
 ```mermaid
 flowchart TB
   push([git push to nubenetes/*]):::ext --> pac[PaC controller]
@@ -92,7 +126,110 @@ flowchart TB
   classDef vol fill:#ffd,stroke:#cc3;
 ```
 
+</details>
+
 `runAfter` makes the DAG linear here (mirrors the single-agent Jenkins job); the shared RWO PVC is why an `affinity-assistant` co-schedules the TaskRun pods on one node. Chains signs the pushed image's provenance; Pruner GCs old PipelineRuns/TaskRuns.
+
+#### Tekton CRD object model
+
+The definitions-vs-execution split expressed as a class model (compare 401's `classDiagram` of the JCasC model — same idea, Kubernetes-native):
+
+<details>
+<summary>🧩 Tekton CRD object model (class diagram)</summary>
+
+```mermaid
+classDiagram
+  class Pipeline {
+    DAG of Tasks
+    params and workspaces
+  }
+  class Task {
+    ordered steps as containers
+    params and results
+  }
+  class PipelineRun {
+    one execution
+    param values + workspace binds
+  }
+  class TaskRun {
+    one Task execution
+    is one Pod
+  }
+  class Workspace {
+    RWO PVC named source
+    shared by all TaskRuns
+  }
+  class Repository {
+    PaC links fork to cluster
+    triggers on push
+  }
+  Pipeline "1" *-- "many" Task : runAfter DAG
+  PipelineRun ..> Pipeline : pipelineRef cluster resolver
+  PipelineRun "1" *-- "many" TaskRun
+  TaskRun ..> Task : taskRef
+  TaskRun ..> Workspace : mounts
+  Repository ..> PipelineRun : creates on push
+```
+
+</details>
+
+**Reading it —** a `Pipeline` composes many `Task`s (ordered by `runAfter`); at runtime a `PipelineRun` (one execution) composes one `TaskRun` **per Task** — and each `TaskRun` *is* a Pod. `pipelineRef`/`taskRef` resolve the definitions via the **cluster resolver**, every TaskRun mounts the shared RWO `source` Workspace, and a PaC `Repository` is what creates the PipelineRun on a push.
+
+## High-level architecture
+
+The same shape as 401/402's architecture views, in Tekton terms — GitOps install, a control plane, an execution namespace, and the GitOps handoff:
+
+<details>
+<summary>🏛️ High-level Tekton architecture</summary>
+
+```mermaid
+flowchart LR
+  push([git push to nubenetes forks]):::ext --> pac["PaC controller<br/>pac.&lt;domain&gt;"]
+  subgraph cp["Control plane — ns tekton-pipelines"]
+    ctl[pipelines-controller]
+    wh[webhook]
+    dash[Dashboard :9097]
+  end
+  pac --> ctl
+  subgraph ex["Execution — ns tekton-ci"]
+    plr[PipelineRun] --> tr[TaskRun pods]
+  end
+  ctl -->|create TaskRun pods| plr
+  tr -->|build + push| ghcr[(ghcr.io)]:::store
+  tr -->|argocd sync| argo[ArgoCD] --> ms[(microservices)]
+  tr -->|tag bump + push| gops[(gitops-config)]:::store
+  user([admin]) -->|Google IAP| dash
+  appofapps[ArgoCD app-of-apps] -. installs .-> cp
+  classDef ext fill:#fde,stroke:#c39;
+  classDef store fill:#eef,stroke:#66c;
+```
+
+</details>
+
+**Reading it —** a git push reaches the **PaC controller**, which asks the **control plane** (ns `tekton-pipelines`, installed by the ArgoCD app-of-apps) to create a `PipelineRun` in the **execution** namespace (ns `tekton-ci`); its TaskRun pods build+push the image, bump the GitOps tag, and drive ArgoCD — exactly the Jenkins data-flow from [402](./402-PIPELINES_AS_CODE.md), with the Dashboard fronted by Google IAP like Headlamp.
+
+#### PipelineRun / TaskRun lifecycle
+
+<details>
+<summary>♻️ PipelineRun / TaskRun lifecycle (state diagram)</summary>
+
+```mermaid
+stateDiagram-v2
+  [*] --> Created: PipelineRun created
+  Created --> Running: controller schedules the DAG
+  Running --> TaskRunning: one TaskRun Pod per Task
+  TaskRunning --> TaskRunning: next Task (runAfter)
+  TaskRunning --> Succeeded: all Tasks pass
+  TaskRunning --> Failed: a Task fails
+  Succeeded --> Signed: Chains signs provenance
+  Signed --> Pruned: Pruner GC historyLimit 5
+  Failed --> Pruned
+  Pruned --> [*]
+```
+
+</details>
+
+**Reading it —** the run lifecycle mirrors 401/402's build-lifecycle state diagrams: a `PipelineRun` goes `Created → Running`, spawns a `TaskRun` Pod per Task (advancing along the `runAfter` DAG), and ends `Succeeded` or `Failed`. The two Tekton-specific tail states are **Signed** (Chains records SLSA provenance on success) and **Pruned** (the Pruner GCs completed runs at `historyLimit: 5` — the parity knob for Jenkins' `buildDiscarder`).
 
 ## Selecting the engine
 
@@ -144,6 +281,9 @@ a separate Decom. The retirement is **best-effort + idempotent**, and the two
 directions are **not symmetric** (Tekton has dedicated namespaces that are reaped;
 Jenkins shares the `jenkins` namespace, which is left intact).
 
+<details>
+<summary>🔁 Switching engines — what's removed vs kept</summary>
+
 ```mermaid
 flowchart TD
     subgraph TT["Select tekton → 04-tekton.sh retires Jenkins"]
@@ -165,6 +305,8 @@ flowchart TD
     TT --- SURV
     TJ --- SURV
 ```
+
+</details>
 
 **Side-by-side (the asymmetry):**
 
@@ -357,6 +499,34 @@ for ad-hoc/debug only):
 | **Seed** — *fallback* | no gateway/PaC (e.g. local `up.sh`) | `06-tekton-pipelines.sh` kicks **one PipelineRun per service per env** directly — the Tekton analogue of the Jenkins seed job. |
 
 So the normal loop is **commit to the app fork → CI runs itself** (the same model as Jenkins multibranch). `06-tekton-pipelines.sh` runs **once per deploy** only to wire it up: in PaC mode it creates the per-fork webhooks and pushes `.tekton/<svc>.yaml`; in fallback mode it seeds the runs. After that, you don't touch it.
+
+<details>
+<summary>🚀 PaC: git push → PipelineRun (sequence)</summary>
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor Dev as Developer
+  participant GH as GitHub fork (nubenetes/*)
+  participant PaC as PaC controller
+  participant Ctl as pipelines-controller
+  participant Pod as TaskRun pods (tekton-ci)
+  participant GO as gitops-config + ArgoCD
+
+  Dev->>GH: git push / open PR
+  GH->>PaC: webhook (HMAC-signed)
+  PaC->>PaC: match .tekton/{svc}.yaml (on-event, on-target-branch)
+  PaC->>Ctl: create PipelineRun (params filled from template)
+  Ctl->>Pod: one TaskRun Pod per Task (shared source PVC)
+  Pod-->>Ctl: results flow between Tasks
+  Pod->>GO: gitops-deploy → argocd app sync
+  Ctl-->>GH: commit status (success / failure)
+  Note over Dev,GH: git is the trigger — runs are rarely created by hand
+```
+
+</details>
+
+**Reading it —** the Git-driven happy path, the Tekton analogue of a Jenkins build trigger. A push/PR fires the fork's **HMAC-signed webhook** to the PaC controller, which matches the repo's `.tekton/<svc>.yaml` annotations, fills every param from the template, and creates the `PipelineRun`; the controller fans it into one TaskRun Pod per Task (sharing the `source` PVC) and reports a **commit status** back to GitHub. As with Jenkins multibranch, *git is the trigger* — you rarely create runs by hand.
 
 **Housekeeping is automatic too:**
 - **Tekton Pruner** garbage-collects completed PipelineRuns/TaskRuns (`historyLimit`, parity with the Jenkins `buildDiscarder`) — old runs don't pile up.

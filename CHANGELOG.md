@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.22.2] - 2026-06-27
+
+A documentation-rendering patch: every Mermaid diagram in the CI-engine docs is
+now **collapsible**, and the Tekton doc gains diagrams matching 401/402 so all
+three read homogeneously.
+
+### Changed
+
+- **Every Mermaid diagram in `docs/401`, `docs/402` and `docs/403` is now wrapped
+  in a collapsible `<details>` block** (28 diagrams total). GitHub renders a
+  Mermaid block only when its `<details>` is expanded, so a page no longer tries
+  to render many diagrams at once — which, under load/latency, often failed and
+  left the raw diagram source (with an error) on screen. Collapsed-by-default
+  also keeps the prose scannable; each diagram still carries its "Reading it"
+  explanation directly beneath.
+
+### Added
+
+- **`docs/403-TEKTON.md` gains 5 new diagrams for parity with 401/402** (none of
+  the existing diagrams removed): a `mindmap` mental model, a `classDiagram` of
+  the Tekton CRD object model (Pipeline / Task / PipelineRun / TaskRun /
+  Workspace / Repository), a high-level architecture `flowchart`, a
+  `stateDiagram` of the PipelineRun/TaskRun lifecycle, and a `sequenceDiagram` of
+  the Pipelines-as-Code `git push → PipelineRun` flow — each with a "Reading it"
+  explanation and cross-references to the Jenkins equivalents. All 28 diagrams
+  across the three docs were validated against the Mermaid parser.
+
 ## [v0.22.1] - 2026-06-27
 
 A documentation + reliability patch on top of v0.22.0: a fix that restores
