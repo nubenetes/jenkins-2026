@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.25.1] - 2026-06-27
+
+### Documentation
+
+- **README intro expanded and restructured.** The dense single-paragraph "At a
+  glance" was rewritten into a scannable, deeper overview: a reframed lead
+  sentence (*build → scan → ship → observe → load-test*), a **"What it chains
+  together, end to end"** bullet list (one component per bullet — CI engine,
+  GitOps CD, observability + the four backends, k6 load testing, DevSecOps,
+  platform & networking — each **linking to its numbered doc**), and a **"How it
+  runs"** list (keyless WIF, the idempotent Day0→Day1→Day2→Decom lifecycle, and
+  the feature flags incl. the ESO secrets backend). The k6 paragraph is unchanged.
+
 ## [v0.25.0] - 2026-06-27
 
 ### Added
