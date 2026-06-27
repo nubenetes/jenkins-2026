@@ -7,6 +7,9 @@ metadata:
   name: k6-smoke
 spec:
   params:
+    # ---- Preset (loads a committed config; the params below override it) ----
+    - name: preset
+      default: none            # none | smoke | load-baseline | ... (presets/index.yaml)
     # ---- Target ----
     - name: target-namespace
     - name: env-name
@@ -61,6 +64,46 @@ spec:
           -c filter.lfs.smudge= -c filter.lfs.process= -c filter.lfs.required=false \
           clone --depth 1 --branch "$(params.self-repo-branch)" \
           "$(params.self-repo-url)" k6-infra
+    - name: resolve-preset
+      # Reads the selected committed preset (jenkins/pipelines/k6/presets/<name>.yaml)
+      # and writes its values to k6sim-preset.env in the workspace; run-k6 then uses
+      # them for any param left empty (param > preset > script default). yq image is
+      # used because the cluster has no pod egress to download tooling at runtime.
+      image: mikefarah/yq:4.53.3
+      script: |
+        #!/bin/sh
+        set -eu
+        OUT="$(workspaces.source.path)/k6sim-preset.env"
+        : > "$OUT"
+        PRESET="$(params.preset)"
+        PF="$(workspaces.source.path)/k6-infra/jenkins/pipelines/k6/presets/${PRESET}.yaml"
+        if [ "${PRESET}" = "none" ]; then
+          echo "No preset selected (preset=none)."
+          exit 0
+        fi
+        if [ ! -f "${PF}" ]; then
+          echo "WARNING: preset '${PRESET}' not found at ${PF} - continuing with params only."
+          exit 0
+        fi
+        echo "Resolving k6 preset '${PRESET}' from ${PF}"
+        get() { yq ".params.$1 // \"\"" "${PF}"; }
+        {
+          echo "PRESET_PROFILE=$(get profile)"
+          echo "PRESET_VUS=$(get vus)"
+          echo "PRESET_ITERATIONS=$(get iterations)"
+          echo "PRESET_DURATION=$(get duration)"
+          echo "PRESET_STAGES=$(get stages)"
+          echo "PRESET_RPS=$(get rps)"
+          echo "PRESET_SLEEP=$(get sleep)"
+          echo "PRESET_SCENARIOS=$(get scenarios)"
+          echo "PRESET_P95_MS=$(get p95Ms)"
+          echo "PRESET_ERROR_RATE=$(get errorRate)"
+          echo "PRESET_DEBUG=$(get debug)"
+          echo "PRESET_ENV_NAME=$(get envName)"
+          echo "PRESET_TARGET_NAMESPACE=$(get targetNamespace)"
+          echo "PRESET_TARGET_URL=$(get targetUrl)"
+        } > "${OUT}"
+        echo "Wrote ${OUT}:"; cat "${OUT}"
     - name: run-k6
       image: grafana/k6:2.0.0
       env:
@@ -101,8 +144,8 @@ spec:
           value: k6-microservices-smoke
         - name: K6_OTEL_GRPC_EXPORTER_INSECURE
           value: "true"
-        - name: OTEL_RESOURCE_ATTRIBUTES
-          value: service.name=k6-microservices-smoke,service.namespace=jenkins-2026,deployment.environment=$(params.env-name)
+        # OTEL_RESOURCE_ATTRIBUTES is built in the script from the RESOLVED ENV_NAME
+        # (a preset may override env-name), so it is not a static env var here.
         # Push every 2s so short tests (≈12s) get several export windows instead
         # of just one at t=10s (the 10s default), reducing the blast radius of a
         # transient memory_limiter rejection in the OTel gateway collector.
@@ -133,6 +176,29 @@ spec:
       script: |
         #!/bin/sh
         set -eux
+        # Merge the resolved preset (k6sim-preset.env) under the params: a param
+        # left empty falls back to the preset value; the preset's profile/env/target
+        # win when set (param > preset > script default).
+        PRESETF="$(workspaces.source.path)/k6sim-preset.env"
+        if [ -f "${PRESETF}" ]; then . "${PRESETF}"; fi
+        : "${K6SIM_VUS:=${PRESET_VUS:-}}"
+        : "${K6SIM_ITERATIONS:=${PRESET_ITERATIONS:-}}"
+        : "${K6SIM_DURATION:=${PRESET_DURATION:-}}"
+        : "${K6SIM_STAGES:=${PRESET_STAGES:-}}"
+        : "${K6SIM_RPS:=${PRESET_RPS:-}}"
+        : "${K6SIM_SLEEP:=${PRESET_SLEEP:-}}"
+        : "${K6SIM_SCENARIOS:=${PRESET_SCENARIOS:-}}"
+        : "${K6SIM_P95_MS:=${PRESET_P95_MS:-}}"
+        : "${K6SIM_ERROR_RATE:=${PRESET_ERROR_RATE:-}}"
+        [ -n "${PRESET_PROFILE:-}" ] && K6SIM_PROFILE="${PRESET_PROFILE}"
+        [ -n "${PRESET_DEBUG:-}" ] && [ "${K6SIM_DEBUG}" = "false" ] && K6SIM_DEBUG="${PRESET_DEBUG}"
+        [ -n "${PRESET_ENV_NAME:-}" ] && ENV_NAME="${PRESET_ENV_NAME}"
+        [ -n "${PRESET_TARGET_NAMESPACE:-}" ] && TARGET_NAMESPACE="${PRESET_TARGET_NAMESPACE}"
+        if [ -z "${TARGET_URL:-}" ] && [ -n "${PRESET_TARGET_URL:-}" ]; then TARGET_URL="${PRESET_TARGET_URL}"; fi
+        export K6SIM_PROFILE K6SIM_VUS K6SIM_ITERATIONS K6SIM_DURATION K6SIM_STAGES \
+               K6SIM_RPS K6SIM_SLEEP K6SIM_SCENARIOS K6SIM_P95_MS K6SIM_ERROR_RATE \
+               K6SIM_DEBUG ENV_NAME TARGET_NAMESPACE TARGET_URL
+        export OTEL_RESOURCE_ATTRIBUTES="service.name=k6-microservices-smoke,service.namespace=jenkins-2026,deployment.environment=${ENV_NAME}"
         cd "$(workspaces.source.path)/k6-infra"
         # Build outputs: OTLP (when an endpoint is configured) AND Grafana Cloud k6
         # (when a token + project id are set) - both can run at once.

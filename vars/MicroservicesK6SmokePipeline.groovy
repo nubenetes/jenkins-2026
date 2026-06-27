@@ -21,6 +21,10 @@ def call(Map cfg) {
     // Put the seed-provided default first so it is the choice param's default.
     def profileChoices = [defaultProfile] + (allProfiles - defaultProfile)
 
+    // Preset library (jenkins/pipelines/k6/presets/*.yaml), names injected by the
+    // seed job from presets/index.yaml. 'none' (default) = pure manual inputs.
+    def presetChoices = ['none'] + (cfg.presetChoices ?: [])
+
     pipeline {
         agent {
             kubernetes {
@@ -64,6 +68,9 @@ spec:
         }
 
         parameters {
+            // ---- Preset (loads a committed config; manual fields below override) ----
+            choice(name: 'PRESET', choices: presetChoices,
+                   description: 'Load a committed k6 config from jenkins/pipelines/k6/presets/<name>.yaml. Any field below left as-is that the preset sets is taken from the preset; a field you change overrides it. "none" = pure manual. See docs/302.')
             // ---- Target -----------------------------------------------------
             string(name: 'TARGET_NAMESPACE', defaultValue: cfg.targetNamespace ?: 'microservices',
                    description: 'In-cluster namespace whose Services receive the traffic.')
@@ -131,23 +138,44 @@ spec:
             }
             stage('Run k6 Traffic') {
                 steps {
-                    microservicesK6Smoke(
-                        namespace:   params.TARGET_NAMESPACE,
-                        envName:     params.ENV_NAME,
-                        targetUrl:   params.TARGET_URL,
-                        genaiEnabled: cfg.genaiEnabled,
-                        profile:     params.PROFILE,
-                        vus:         params.VUS,
-                        iterations:  params.ITERATIONS,
-                        duration:    params.DURATION,
-                        stages:      params.STAGES,
-                        rps:         params.RPS,
-                        sleep:       params.SLEEP,
-                        scenarios:   params.SCENARIOS,
-                        p95Ms:       params.P95_MS,
-                        errorRate:   params.ERROR_RATE,
-                        debug:       params.DEBUG
-                    )
+                    script {
+                        // Load the selected preset (committed YAML) if any, then merge:
+                        // a non-empty manual field overrides the preset; the preset
+                        // overrides the script default. PROFILE (a choice, always has a
+                        // value) is taken from the preset when one is selected.
+                        def preset = [:]
+                        if (params.PRESET && params.PRESET != 'none') {
+                            def f = "jenkins/pipelines/k6/presets/${params.PRESET}.yaml"
+                            if (fileExists(f)) {
+                                preset = (readYaml(file: f).params ?: [:])
+                                echo "Loaded k6 preset '${params.PRESET}' from ${f}: ${preset}"
+                            } else {
+                                echo "WARNING: preset file ${f} not found - using manual inputs only."
+                            }
+                        }
+                        def usingPreset = !preset.isEmpty()
+                        def has = { v -> v != null && v.toString().trim() != '' }
+                        // manual non-empty wins, else preset value, else '' (script default)
+                        def pick = { manual, key -> has(manual) ? manual.toString() : (preset[key] != null ? preset[key].toString() : '') }
+
+                        microservicesK6Smoke(
+                            namespace:    preset.targetNamespace ?: params.TARGET_NAMESPACE,
+                            envName:      preset.envName ?: params.ENV_NAME,
+                            targetUrl:    pick(params.TARGET_URL, 'targetUrl'),
+                            genaiEnabled: cfg.genaiEnabled,
+                            profile:      usingPreset ? (preset.profile ?: 'smoke') : params.PROFILE,
+                            vus:          pick(params.VUS, 'vus'),
+                            iterations:   pick(params.ITERATIONS, 'iterations'),
+                            duration:     pick(params.DURATION, 'duration'),
+                            stages:       pick(params.STAGES, 'stages'),
+                            rps:          pick(params.RPS, 'rps'),
+                            sleep:        pick(params.SLEEP, 'sleep'),
+                            scenarios:    pick(params.SCENARIOS, 'scenarios'),
+                            p95Ms:        pick(params.P95_MS, 'p95Ms'),
+                            errorRate:    pick(params.ERROR_RATE, 'errorRate'),
+                            debug:        params.DEBUG || (preset.debug?.toString() == 'true')
+                        )
+                    }
                 }
             }
         }

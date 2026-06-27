@@ -1,0 +1,19 @@
+# Preset: breakpoint-capacity (advanced)
+# Ramps the arrival rate upward until the latency budget is breached, then
+# ABORTS (abortOnFail). The last sustained rate before the abort is your capacity
+# ceiling / "knee". The only profile that fails fast on a breach by design.
+name: breakpoint-capacity
+level: advanced
+description: Ramp arrival rate to 400 req/s over 8m until p95 breaks (aborts at the knee).
+useCase: >
+  Find the maximum sustainable throughput. Read the THROUGHPUT line at the moment
+  of abort — that req/s is the ceiling. Tighten p95Ms to find the knee for a
+  stricter SLO.
+params:
+  profile: breakpoint
+  rps: "400"         # the ramp target; it aborts before reaching it if p95 breaks
+  duration: "8m"     # ramp length
+  vus: "50"          # pre-allocated pool (scaled internally for headroom)
+  scenarios: all
+  p95Ms: "1500"      # the budget whose breach defines the knee
+  errorRate: "0.1"

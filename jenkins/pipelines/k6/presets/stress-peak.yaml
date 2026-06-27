@@ -1,0 +1,18 @@
+# Preset: stress-peak (advanced)
+# Pushes past expected traffic to find where the system starts to degrade. Uses
+# the stress profile (ramp to base, then 2× base, hold, ramp down). A breach of
+# the (looser) budgets here is informative, not a failure.
+name: stress-peak
+level: advanced
+description: Stress beyond normal — ramp 50→100 VUs, hold 2m.
+useCase: >
+  Capacity exploration before a launch / traffic event: how does latency and
+  error rate behave at 2× expected load? Watch the LATENCY tail (p99/max) and
+  http_req_failed in the analysis.
+params:
+  profile: stress
+  vus: "50"          # base; the stress profile ramps to 2× this (100)
+  duration: "2m"     # hold time at peak
+  scenarios: all
+  p95Ms: "5000"      # looser budget — we EXPECT to stress it
+  errorRate: "0.1"

@@ -1,0 +1,17 @@
+# Preset: soak-endurance (advanced)
+# A long, flat, moderate run to surface problems that only appear over time:
+# memory leaks, connection-pool exhaustion, slow GC drift, disk/log growth.
+name: soak-endurance
+level: advanced
+description: Long flat run — 10 VUs for 1h (extend as needed).
+useCase: >
+  Endurance / leak hunting. Bump `duration` to 4h/8h for an overnight soak.
+  Pair with the Grafana dashboards to watch memory/GC/connections trend over the
+  whole window.
+params:
+  profile: soak
+  vus: "10"
+  duration: "1h"     # raise to 4h, 8h, ... for a longer soak
+  scenarios: all
+  p95Ms: "3000"
+  errorRate: "0.05"

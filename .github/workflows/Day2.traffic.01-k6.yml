@@ -3,8 +3,23 @@ name: "Day2.traffic.01 Continuous k6 simulation"
 on:
   workflow_dispatch:
     inputs:
+      preset:
+        description: "Load a committed config from jenkins/pipelines/k6/presets/<name>.yaml (fields below override it). KEEP options in sync with presets/index.yaml."
+        type: choice
+        default: none
+        options:
+          - none
+          - smoke
+          - load-baseline
+          - frontend-only
+          - develop-smoke
+          - stress-peak
+          - spike-recovery
+          - soak-endurance
+          - rps-steady
+          - breakpoint-capacity
       profile:
-        description: "Workload profile"
+        description: "Workload profile (used when preset=none; otherwise the preset's profile wins)"
         type: choice
         default: smoke
         options: [smoke, load, stress, soak, spike, breakpoint]
@@ -14,8 +29,8 @@ on:
         default: stable
         options: [stable, develop]
       duration:
-        description: "Hold duration (e.g. 30s, 10m, 1h). Overrides the iteration budget / profile hold; clear it to keep a profile's native shape (spike/breakpoint)."
-        default: "15m"
+        description: "Hold duration (e.g. 30s, 10m, 1h). Overrides the iteration budget / profile hold. Empty + no preset/stages/rps → defaults to 15m (this is the continuous-simulation workflow)."
+        default: ""
         required: false
       vus:
         description: "Virtual users (empty → profile default)"
@@ -85,6 +100,77 @@ jobs:
             https://github.com/mikefarah/yq/releases/download/v4.53.3/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
 
+      - name: Resolve k6 parameters (preset + manual overrides)
+        env:
+          IN_PRESET: ${{ github.event.inputs.preset || 'none' }}
+          IN_PROFILE: ${{ github.event.inputs.profile || 'smoke' }}
+          IN_ENV_NAME: ${{ github.event.inputs.env_name || 'stable' }}
+          IN_DURATION: ${{ github.event.inputs.duration }}
+          IN_VUS: ${{ github.event.inputs.vus }}
+          IN_STAGES: ${{ github.event.inputs.stages }}
+          IN_RPS: ${{ github.event.inputs.rps }}
+          IN_SCENARIOS: ${{ github.event.inputs.scenarios }}
+          IN_P95_MS: ${{ github.event.inputs.p95_ms }}
+          IN_ERROR_RATE: ${{ github.event.inputs.error_rate }}
+          IN_TARGET_URL: ${{ github.event.inputs.target_url }}
+          IN_DEBUG: ${{ github.event.inputs.debug }}
+        run: |
+          set -euo pipefail
+          PF="jenkins/pipelines/k6/presets/${IN_PRESET}.yaml"
+          USING_PRESET=false
+          if [ "${IN_PRESET}" != "none" ] && [ -f "${PF}" ]; then
+            USING_PRESET=true
+            echo "Loading k6 preset '${IN_PRESET}' from ${PF}"
+          elif [ "${IN_PRESET}" != "none" ]; then
+            echo "::warning::preset ${PF} not found — using manual inputs only"
+          fi
+          # Read a key from the preset's .params (empty if no preset / key absent).
+          getp() { if [ "${USING_PRESET}" = true ]; then yq ".params.$1 // \"\"" "${PF}"; else echo ""; fi; }
+          # precedence: manual (non-empty) > preset > "" (script default)
+          resolve() { if [ -n "$1" ]; then printf '%s' "$1"; else getp "$2"; fi; }
+
+          # profile: the preset's profile wins when a preset is selected
+          if [ "${USING_PRESET}" = true ]; then
+            PROFILE="$(getp profile)"; [ -z "${PROFILE}" ] && PROFILE="${IN_PROFILE}"
+          else
+            PROFILE="${IN_PROFILE}"
+          fi
+          VUS="$(resolve "${IN_VUS}" vus)"
+          ITERATIONS="$(getp iterations)"          # no manual input for iterations
+          DURATION="$(resolve "${IN_DURATION}" duration)"
+          STAGES="$(resolve "${IN_STAGES}" stages)"
+          RPS="$(resolve "${IN_RPS}" rps)"
+          SCENARIOS="$(resolve "${IN_SCENARIOS}" scenarios)"; [ -z "${SCENARIOS}" ] && SCENARIOS="all"
+          P95_MS="$(resolve "${IN_P95_MS}" p95Ms)"
+          ERROR_RATE="$(resolve "${IN_ERROR_RATE}" errorRate)"
+          # env_name: a preset may pin it; otherwise the input
+          ENVP="$(getp envName)"; ENV_NAME="${IN_ENV_NAME}"; [ -n "${ENVP}" ] && ENV_NAME="${ENVP}"
+          TARGET_URL_INPUT="$(resolve "${IN_TARGET_URL}" targetUrl)"
+
+          # This is the "continuous simulation" workflow: with no preset and no
+          # explicit shape, keep the historical 15m smoke so dashboards stay alive.
+          if [ "${USING_PRESET}" = false ] && [ -z "${DURATION}${STAGES}${RPS}" ]; then
+            DURATION="15m"
+          fi
+
+          {
+            echo "K6SIM_PROFILE=${PROFILE}"
+            echo "K6SIM_VUS=${VUS}"
+            echo "K6SIM_ITERATIONS=${ITERATIONS}"
+            echo "K6SIM_DURATION=${DURATION}"
+            echo "K6SIM_STAGES=${STAGES}"
+            echo "K6SIM_RPS=${RPS}"
+            echo "K6SIM_SCENARIOS=${SCENARIOS}"
+            echo "K6SIM_P95_MS=${P95_MS}"
+            echo "K6SIM_ERROR_RATE=${ERROR_RATE}"
+            echo "K6SIM_DEBUG=${IN_DEBUG}"
+            echo "ENV_NAME=${ENV_NAME}"
+            echo "ENV_NAME_INPUT=${ENV_NAME}"
+            echo "TARGET_URL_INPUT=${TARGET_URL_INPUT}"
+            echo "OTEL_RESOURCE_ATTRIBUTES=service.name=k6-microservices-smoke,service.namespace=jenkins-2026,deployment.environment=${ENV_NAME}"
+          } >> "${GITHUB_ENV}"
+          echo "Resolved: preset=${IN_PRESET} profile=${PROFILE} env=${ENV_NAME} vus=${VUS:-<def>} dur=${DURATION:-<none>} stages=${STAGES:-<none>} rps=${RPS:-<none>} scenarios=${SCENARIOS}"
+
       - name: Authenticate to GCP
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
         continue-on-error: true
@@ -112,22 +198,10 @@ jobs:
         env:
           K6_OTEL_SERVICE_NAME: k6-microservices-smoke
           K6_OTEL_EXPORT_INTERVAL: 2s
-          OTEL_RESOURCE_ATTRIBUTES: service.name=k6-microservices-smoke,service.namespace=jenkins-2026,deployment.environment=${{ github.event.inputs.env_name || 'stable' }}
-          # Workload contract (K6SIM_*), straight from the dispatch inputs. Empty
-          # → the k6 script default. K6SIM_DURATION carries the legacy `duration`
-          # input so existing dashboards-keep-alive runs behave as before.
-          ENV_NAME: ${{ github.event.inputs.env_name || 'stable' }}
-          K6SIM_PROFILE: ${{ github.event.inputs.profile || 'smoke' }}
-          K6SIM_VUS: ${{ github.event.inputs.vus }}
-          K6SIM_DURATION: ${{ github.event.inputs.duration }}
-          K6SIM_STAGES: ${{ github.event.inputs.stages }}
-          K6SIM_RPS: ${{ github.event.inputs.rps }}
-          K6SIM_SCENARIOS: ${{ github.event.inputs.scenarios || 'all' }}
-          K6SIM_P95_MS: ${{ github.event.inputs.p95_ms }}
-          K6SIM_ERROR_RATE: ${{ github.event.inputs.error_rate }}
-          K6SIM_DEBUG: ${{ github.event.inputs.debug }}
-          ENV_NAME_INPUT: ${{ github.event.inputs.env_name || 'stable' }}
-          TARGET_URL_INPUT: ${{ github.event.inputs.target_url }}
+          # The K6SIM_* workload contract, ENV_NAME(_INPUT), TARGET_URL_INPUT and
+          # OTEL_RESOURCE_ATTRIBUTES are resolved (preset + manual overrides) by the
+          # "Resolve k6 parameters" step into $GITHUB_ENV — they are already in the
+          # environment here.
           # Optional Grafana Cloud k6 (the k6-app) streaming; empty -> skipped.
           K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
           K6_CLOUD_PROJECT_ID: ${{ secrets.K6_CLOUD_PROJECT_ID }}
@@ -324,7 +398,7 @@ jobs:
 
           BASE="${GRAFANA_BASE_URL:-}"
           DASH="jenkins2026-k6-smoke-overview/jenkins-2026-k6-observability-smoke-test"
-          PARAMS="orgId=1&var-deployment_environment=${{ github.event.inputs.env_name || 'stable' }}"
+          PARAMS="orgId=1&var-deployment_environment=${ENV_NAME:-stable}"
           [[ -n "${DS_PROM}" ]]     && PARAMS="${PARAMS}&var-DS_PROMETHEUS=${DS_PROM}"
           [[ -n "${DS_LOKI}" ]]     && PARAMS="${PARAMS}&var-DS_LOKI=${DS_LOKI}"
           [[ -n "${DS_TEMPO}" ]]    && PARAMS="${PARAMS}&var-DS_TEMPO=${DS_TEMPO}"

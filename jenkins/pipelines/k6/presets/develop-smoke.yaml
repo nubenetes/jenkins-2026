@@ -1,0 +1,19 @@
+# Preset: develop-smoke (basic)
+# The smoke test, retargeted to the optional lean `develop` tier. Pins the
+# namespace + environment so the run shows up under deployment.environment=develop
+# in Grafana, regardless of which job/tier it was launched from.
+name: develop-smoke
+level: basic
+description: Smoke against the develop tier (microservices-develop, env=develop).
+useCase: >
+  Validate the lean develop tier feeds telemetry, or drive develop traffic from
+  the GitHub Actions / Tekton runner. Requires microservices.developTrackEnabled.
+params:
+  profile: smoke
+  vus: "4"
+  iterations: "12"
+  scenarios: all
+  envName: develop
+  targetNamespace: microservices-develop
+  p95Ms: "3000"
+  errorRate: "0.05"

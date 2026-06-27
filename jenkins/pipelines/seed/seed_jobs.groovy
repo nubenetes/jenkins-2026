@@ -29,6 +29,17 @@ def registry = new Yaml().load(yamlText)
 def namespaces  = registry.namespaces
 def gitFlowRefs = registry.branches
 
+// k6 preset library (jenkins/pipelines/k6/presets/index.yaml) → the PRESET choice
+// of every k6 job. Read at seed time so the dropdown is populated without a
+// workspace checkout. Each name maps to a <name>.yaml loaded at run time.
+def presetNames = []
+try {
+  def presetsIndex = new Yaml().load(readFileFromWorkspace('jenkins/pipelines/k6/presets/index.yaml'))
+  presetNames = (presetsIndex.presets ?: []).collect { it.name }
+} catch (ignored) {
+  println "[seed] k6 presets index not found - PRESET choice will be 'none' only"
+}
+
 // Shared library version follows whatever infra branch is deployed (single
 // controller), for both tiers.
 def pipelineRepoBranch = infraBranch
@@ -125,8 +136,7 @@ MicroservicesK6SmokePipeline(
     envName: '${e.name}',
     genaiEnabled: ${genaiServiceEnabled},
     profile: 'smoke',
-    vus: '4',
-    iterations: '12'
+    presetChoices: [${presetNames.collect { "'${it}'" }.join(', ')}]
 )
 """.stripIndent())
         sandbox(true)

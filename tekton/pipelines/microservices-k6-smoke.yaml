@@ -7,6 +7,9 @@ metadata:
   name: microservices-k6-smoke
 spec:
   params:
+    # ---- Preset (loads a committed config; the params below override it) ----
+    - name: preset
+      default: none
     # ---- Target ----
     - name: target-namespace
       default: microservices
@@ -52,6 +55,7 @@ spec:
       workspaces:
         - { name: source, workspace: source }
       params:
+        - { name: preset, value: $(params.preset) }
         - { name: target-namespace, value: $(params.target-namespace) }
         - { name: env-name, value: $(params.env-name) }
         - { name: target-url, value: $(params.target-url) }

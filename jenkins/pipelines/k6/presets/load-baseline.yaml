@@ -1,0 +1,16 @@
+# Preset: load-baseline (basic)
+# A real but gentle load test at expected steady-state traffic, with SLO-ish
+# budgets. The first step up from smoke.
+name: load-baseline
+level: basic
+description: Baseline load — ramp to 20 VUs, hold 5m (p95<2s, err<2%).
+useCase: >
+  Nightly / pre-merge confidence that the app holds expected load within SLOs.
+  Good default for "does this change regress latency under normal traffic?".
+params:
+  profile: load
+  vus: "20"
+  duration: "5m"
+  scenarios: all
+  p95Ms: "2000"
+  errorRate: "0.02"
