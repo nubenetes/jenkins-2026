@@ -161,7 +161,7 @@ observability:
   # Cloud free-tier 15k active-series cap (e.g. while validating the develop tier).
   # App/CNPG/Tekton metrics (via the otel-collector) are unaffected. Loses the
   # built-in "K8s Compute" views. Override per-run: JENKINS2026_OBS_LEAN_METRICS=true.
-  leanMetrics: false
+  leanMetrics: true
 
   otelOperator:
     chart:
