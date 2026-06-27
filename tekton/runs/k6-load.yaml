@@ -1,0 +1,39 @@
+# Advanced example PipelineRun: a real LOAD test (not a smoke test) against the
+# optional `develop` tier. Demonstrates overriding the k6 parameters exposed by
+# the `microservices-k6-smoke` pipeline — ramp to 30 VUs, hold 5m, scoped to the
+# microservices-develop namespace and the `develop` Grafana environment, with a
+# tighter 1500ms p(95) budget.
+#
+# Run: kubectl create -f tekton/runs/k6-load.yaml
+# Requires the develop tier deployed (microservices.developTrackEnabled=true).
+# See docs/302-K6_LOAD_TESTING.md § Tekton and § Profiles.
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: microservices-k6-load-develop-
+  namespace: tekton-ci
+  labels:
+    jenkins2026.io/service: microservices-k6-smoke
+    jenkins2026.io/env: develop
+spec:
+  taskRunTemplate:
+    serviceAccountName: tekton-ci
+  pipelineRef:
+    name: microservices-k6-smoke
+  params:
+    - { name: profile, value: load }
+    - { name: env-name, value: develop }
+    - { name: target-namespace, value: microservices-develop }
+    - { name: vus, value: "30" }
+    - { name: duration, value: "5m" }
+    - { name: scenarios, value: "gateway-ui,gateway-health,gateway-proxy" }
+    - { name: p95-ms, value: "1500" }
+    - { name: sleep, value: "0.2" }
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 1Gi

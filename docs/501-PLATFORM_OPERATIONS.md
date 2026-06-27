@@ -133,10 +133,13 @@ flowchart TB
 
 ## Telemetry Verification & Simulation
 
+> **Full k6 reference:** the three runners below share one parametrizable script — **profiles** (smoke/load/stress/soak/spike/breakpoint), the `K6SIM_*` contract, `stable`-vs-`develop` targeting, and the layered result analysis are all documented in **[302 · k6 Traffic, Load & Observability Testing](./302-K6_LOAD_TESTING.md)**. The summaries here are the platform-ops view.
+
 ### 1. Continuous Traffic Simulation (GitHub Actions)
 
 Use the **[`Day2.traffic.01 Continuous k6 simulation`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml)** workflow:
-- **Duration**: Default 15 minutes (configurable).
+- **Profile/shape**: `profile` input (default `smoke`) + overrides (`vus`, `duration`, `stages`, `rps`, thresholds) — a real **load/stress/spike** run, not just smoke. See [302 § GitHub Actions](./302-K6_LOAD_TESTING.md#github-actions).
+- **Tier**: `env_name` input — `stable` (public `microservices.<domain>` host) or `develop` (port-forwards the develop gateway).
 - **Purpose**: Simulates real-world user traffic from outside the cluster, hitting the GKE Gateway and triggering end-to-end traces.
 
 The simulation reads the OTLP endpoint, auth and Grafana URL straight from the
@@ -146,7 +149,7 @@ deployment.
 
 ### 2. On-Demand Smoke Test (Jenkins)
 
-Trigger the **`microservices-k6-smoke`** job from the Jenkins UI. See [301. Observability](./301-OBSERVABILITY.md) for details on what it measures.
+Trigger the **`microservices-k6-smoke`** job (or **`microservices-k6-smoke-develop`** for the develop tier) from the Jenkins UI via **Build with Parameters** — pick the profile/VUs/duration/thresholds, or just Build for the default smoke. See [302 § Jenkins](./302-K6_LOAD_TESTING.md#jenkins) and [301. Observability](./301-OBSERVABILITY.md) for what it measures.
 
 ### 3. How to Verify Correlation in Grafana
 

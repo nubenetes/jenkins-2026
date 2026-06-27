@@ -19,6 +19,7 @@ navigation:
 - [`103-GITHUB_SECRETS_INVENTORY.md`](docs/103-GITHUB_SECRETS_INVENTORY.md) — complete inventory of every GitHub secret and variable: purpose, sensitivity, source, which workflows use each
 - [`201-ARCHITECTURE.md`](docs/201-ARCHITECTURE.md) — system architecture, config, repository layout
 - [`301-OBSERVABILITY.md`](docs/301-OBSERVABILITY.md) — OTel components, signal correlation, dashboards, all four obs modes
+- [`302-K6_LOAD_TESTING.md`](docs/302-K6_LOAD_TESTING.md) — the parametrizable k6 traffic/load engine: the `K6SIM_*` contract, smoke/load/stress/soak/spike/breakpoint profiles, the same script run from Jenkins/Tekton/GitHub Actions, `stable`-vs-`develop` targeting, and the layered (basic→expert) result analysis
 - [`401-JENKINS.md`](docs/401-JENKINS.md) — Jenkins UI, plugins, JCasC, MCP
 - [`402-PIPELINES_AS_CODE.md`](docs/402-PIPELINES_AS_CODE.md) — seed job, pipeline stages, develop tier
 - [`403-TEKTON.md`](docs/403-TEKTON.md) — Tekton as the alternative CI engine (`ci.engine` flag), Pipelines/Triggers/Dashboard, IAP-protected Dashboard, the pipeline ported to `tekton/`

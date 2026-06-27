@@ -1,9 +1,13 @@
-# Ready-to-run PipelineRun for the k6 smoke test (the `microservices-k6-smoke`
-# pipeline). All params default (target-namespace=microservices, env=stable,
-# vus=5, iterations=50), and it needs only the `source` workspace — no registry
-# secret. Run: kubectl create -f tekton/runs/k6-smoke.yaml (or paste into the
-# Tekton Dashboard once and "Rerun"). Requires the microservices to be deployed
-# and reachable.
+# Ready-to-run PipelineRun for the k6 traffic test (the `microservices-k6-smoke`
+# pipeline). All params default (profile=smoke, target-namespace=microservices,
+# env=stable → 4 VUs × 12 shared iterations), and it needs only the `source`
+# workspace — no registry secret. Run: kubectl create -f tekton/runs/k6-smoke.yaml
+# (or paste into the Tekton Dashboard once and "Rerun"). Requires the
+# microservices to be deployed and reachable.
+#
+# To re-shape a run, uncomment the `params:` block below (or edit it in the
+# Dashboard "Create PipelineRun" form). See docs/302-K6_LOAD_TESTING.md for the
+# full parameter reference and tekton/runs/k6-load.yaml for an advanced example.
 apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
@@ -17,6 +21,14 @@ spec:
     serviceAccountName: tekton-ci
   pipelineRef:
     name: microservices-k6-smoke
+  # params:
+  #   - { name: profile, value: smoke }      # smoke|load|stress|soak|spike|breakpoint
+  #   - { name: env-name, value: stable }    # stable | develop
+  #   - { name: target-namespace, value: microservices }
+  #   - { name: vus, value: "" }             # empty → profile default
+  #   - { name: duration, value: "" }        # e.g. 5m
+  #   - { name: scenarios, value: all }
+  #   - { name: p95-ms, value: "" }          # empty → 3000
   workspaces:
     - name: source
       volumeClaimTemplate:

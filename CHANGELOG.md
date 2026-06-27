@@ -2,6 +2,59 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.24.0] - 2026-06-27
+
+### Added
+
+- **k6 turned into a fully parametrizable traffic/load engine — one script, one
+  `K6SIM_*` contract, three runners.** `jenkins/pipelines/k6/microservices-smoke.js`
+  is now driven by a unified, **backward-compatible** variable contract (no vars =
+  the original 4 VUs × 12 iterations smoke test):
+  - **Workload profiles**: `smoke` (default) · `load` · `stress` · `soak` ·
+    `spike` · `breakpoint`, each mapping to the right k6 executor + shape.
+  - **Overrides**: `K6SIM_VUS` / `K6SIM_ITERATIONS` / `K6SIM_DURATION` /
+    `K6SIM_STAGES` (custom ramps) / `K6SIM_RPS` (arrival-rate) / `K6SIM_SLEEP`,
+    request-flow selection (`K6SIM_SCENARIOS`), tunable thresholds
+    (`K6SIM_P95_MS` / `K6SIM_ERROR_RATE`) and `K6SIM_DEBUG`. The `K6SIM_` prefix
+    avoids k6's **reserved** execution-option env vars clashing with the
+    `scenarios` block; runners no longer pass `--vus`/`--duration` CLI flags.
+  - **Jenkins**: `MicroservicesK6SmokePipeline` gains a full **Build with
+    Parameters** form; `microservicesK6Smoke` threads the whole contract.
+  - **Tekton**: `Task` + `Pipeline` expose every knob; new advanced example
+    `tekton/runs/k6-load.yaml` (load profile vs the develop tier).
+  - **GitHub Actions** (`Day2.traffic.01-k6`): `profile` / `env_name` / `vus` /
+    `duration` / `stages` / `rps` / `scenarios` / threshold inputs; resolves the
+    target per tier (**stable** → public host, **develop** → port-forward the
+    develop gateway).
+- **Layered k6 result analysis (Jenkins + GitHub Actions).** Both runners now
+  print **SUMMARY** (checks, error %, RPS) · **LATENCY** (avg/min/med/**p90/p95/
+  p99/max** + server TTFB vs connect/TLS) · **THROUGHPUT & RELIABILITY**
+  (iterations, **dropped iters**, peak VUs, bytes) · a **THRESHOLDS** PASS/FAIL
+  table · and a final **VERDICT** — readable at newcomer, operator and specialist
+  depth.
+
+### Fixed
+
+- **k6 develop targeting.** `vars/MicroservicesPipeline.groovy` always triggered
+  the hardcoded **stable** `microservices-k6-smoke` job, so a **develop** build
+  smoke-tested the wrong namespace. It now hands off to the **tier-matched**
+  `microservices-k6-smoke-develop` job. With this, **all three runners
+  (Jenkins/Tekton/GitHub Actions) support both `stable` and `develop`** — they
+  used to be stable-only in practice.
+
+### Documentation
+
+- **New `docs/302-K6_LOAD_TESTING.md`** — the single home for k6: **🧠 Mental
+  model** + **🟢 For newcomers** + **🔵 For specialists** (all collapsible
+  diagrams), the **full `K6SIM_*` parameter reference** (basic→advanced tables),
+  the **profiles** table + shape diagram, the **three runners**, **basic &
+  advanced tutorials**, **basic & expert result-reading** guidance, the **`stable`
+  vs `develop` compatibility matrix**, and troubleshooting.
+- Navigation + indexes wired up: header/footer nav (`301` ← **`302`** → `401`),
+  the **README** Document Inventory, **CLAUDE.md** doc index, and cross-links from
+  **`301`** (k6 smoke section), **`402`** (seed job) and **`501`** (telemetry
+  simulation).
+
 ## [v0.23.9] - 2026-06-27
 
 ### Fixed

@@ -7,18 +7,41 @@ metadata:
   name: microservices-k6-smoke
 spec:
   params:
+    # ---- Target ----
     - name: target-namespace
       default: microservices
     - name: env-name
       default: stable
-    - name: vus
-      default: "5"
-    - name: iterations
-      default: "50"
+    - name: target-url
+      default: ""
     - name: self-repo-url
       default: https://github.com/nubenetes/jenkins-2026.git
     - name: self-repo-branch
       default: main
+    # ---- Workload (empty → the k6 script default; see microservices-smoke.js) ----
+    - name: profile
+      default: smoke           # smoke | load | stress | soak | spike | breakpoint
+    - name: vus
+      default: ""
+    - name: iterations
+      default: ""
+    - name: duration
+      default: ""
+    - name: stages
+      default: ""              # "30s:10,2m:50,30s:0"
+    - name: rps
+      default: ""
+    - name: sleep
+      default: ""
+    - name: scenarios
+      default: ""              # "all" | "gateway-ui,gateway-health,..."
+    # ---- Thresholds ----
+    - name: p95-ms
+      default: ""
+    - name: error-rate
+      default: ""
+    - name: debug
+      default: "false"
     - name: otlp-endpoint
       default: ""
   workspaces:
@@ -31,8 +54,18 @@ spec:
       params:
         - { name: target-namespace, value: $(params.target-namespace) }
         - { name: env-name, value: $(params.env-name) }
-        - { name: vus, value: $(params.vus) }
-        - { name: iterations, value: $(params.iterations) }
+        - { name: target-url, value: $(params.target-url) }
         - { name: self-repo-url, value: $(params.self-repo-url) }
         - { name: self-repo-branch, value: $(params.self-repo-branch) }
+        - { name: profile, value: $(params.profile) }
+        - { name: vus, value: $(params.vus) }
+        - { name: iterations, value: $(params.iterations) }
+        - { name: duration, value: $(params.duration) }
+        - { name: stages, value: $(params.stages) }
+        - { name: rps, value: $(params.rps) }
+        - { name: sleep, value: $(params.sleep) }
+        - { name: scenarios, value: $(params.scenarios) }
+        - { name: p95-ms, value: $(params.p95-ms) }
+        - { name: error-rate, value: $(params.error-rate) }
+        - { name: debug, value: $(params.debug) }
         - { name: otlp-endpoint, value: $(params.otlp-endpoint) }
