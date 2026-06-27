@@ -126,7 +126,7 @@ The GitHub Actions sidebar sorts by each workflow's `name:` field, and every `na
 
 ### Resource identifier (ZZ): stable across all phases
 
-`ZZ` is the stable identity of a resource. Given `ZZ=03` (Azure) you can find all its workflows across the lifecycle by the suffix alone:
+`ZZ` is the **stable identity of a resource**. Given `ZZ=03` (Azure) you can find all its workflows across the lifecycle by the suffix alone:
 
 | ZZ | Resource | Day0 (bootstrap) | Day2 (ops) | Decom (teardown) |
 |---|---|---|---|---|

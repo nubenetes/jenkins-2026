@@ -30,7 +30,7 @@ If you drive an **already-provisioned** cluster from your laptop (Linux/WSL), ru
 bash scripts/dev-setup.sh   # 'bash …' the first time, in case the +x bit is missing
 ```
 
-It is idempotent and configures **only your machine** (no cloud resources). Six steps: checks the required CLIs → ensures `gcloud` auth (user + ADC) → resolves the project → installs `gke-gcloud-auth-plugin` → **refreshes the kubeconfig** for the current cluster → restores the scripts' `+x` bits. It auto-discovers the cluster (or take `CLUSTER_NAME` / `CLUSTER_LOCATION` / `PROJECT_ID` overrides).
+It is **idempotent** and configures **only your machine** (no cloud resources). Six steps: checks the required CLIs → ensures `gcloud` auth (user + ADC) → resolves the project → installs `gke-gcloud-auth-plugin` → **refreshes the kubeconfig** for the current cluster → restores the scripts' `+x` bits. It auto-discovers the cluster (or take `CLUSTER_NAME` / `CLUSTER_LOCATION` / `PROJECT_ID` overrides).
 
 It is the cure for the post-rebuild **`Unable to connect to the server: dial tcp <old-ip>:443: i/o timeout`**: a rebuild rotates the control-plane IP, so a kubeconfig from a previous incarnation goes stale (see [902 § Troubleshooting](./902-TROUBLESHOOTING.md)). It is intentionally **not** part of `bootstrap.sh` (Day0 — runs before any cluster exists) or `up.sh` (platform-agnostic — works against whatever `kubectl` context you give it).
 
@@ -83,7 +83,7 @@ This guide walks through deploying the entire POC (Infrastructure, Jenkins pipel
 
 ### Step 1: Fork and Clone the Repositories
 
-Since this is a two-repo GitOps setup, you must fork both repositories:
+Since this is a **two-repo GitOps setup**, you must fork both repositories:
 1. Fork and clone **[`jenkins-2026`](https://github.com/nubenetes/jenkins-2026)** (this infrastructure repository).
 2. Fork and clone **[`jenkins-2026-gitops-config`](https://github.com/nubenetes/jenkins-2026-gitops-config)** (the GitOps config repository).
 
@@ -132,7 +132,7 @@ After `bootstrap.sh up`, delegate the subdomain to Cloud DNS **once for the life
 
 ### Step 4: Configure GKE / OAuth Credentials (Optional)
 
-If you want to enable public access (Identity-Aware Proxy load balancer) or "Sign in with Google" OIDC login:
+If you want to enable **public access** (Identity-Aware Proxy load balancer) or **"Sign in with Google" OIDC login**:
 1. **Google OAuth Client for Jenkins**: Follow [401. Jenkins](./401-JENKINS.md) to create an OAuth client. Register `<your-jenkins-url>/securityRealm/finishLogin` as the redirect URI.
 2. **Google Identity-Aware Proxy (IAP) (GKE only)**: Follow [501. Platform Operations](./501-PLATFORM_OPERATIONS.md) to set up the OAuth client gating the endpoints.
 

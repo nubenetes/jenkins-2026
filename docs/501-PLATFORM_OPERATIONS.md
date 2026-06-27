@@ -6,7 +6,7 @@
 
 ## Understanding platform operations (newcomers → specialists)
 
-Everything around the CI engine — *how apps get deployed, how the world reaches them, how the cluster stays safe, and how releases roll out* — is declarative and reconciled. There is no "click to deploy": Git is the input, controllers do the work. Read this once and the rest of the page is "which controller owns which plane".
+Everything around the CI engine — *how apps get deployed, how the world reaches them, how the cluster stays safe, and how releases roll out* — is **declarative and reconciled**. There is no "click to deploy": **Git is the input**, controllers do the work. Read this once and the rest of the page is "which controller owns which plane".
 
 <details>
 <summary>📊 Platform planes (mindmap)</summary>

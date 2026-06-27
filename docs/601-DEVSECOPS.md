@@ -4,7 +4,7 @@
 
 # 601. DevSecOps Security Pipeline
 
-The jenkins-2026 platform implements a multi-layered security pipeline (DevSecOps) following modern Cloud Native Security and Zero-Trust principles. This setup natively integrates three security layers: static code analysis, semantic SAST, infrastructure misconfiguration audits, and container image vulnerability scans.
+The jenkins-2026 platform implements a **multi-layered security pipeline (DevSecOps)** following modern **Cloud Native Security and Zero-Trust** principles. This setup natively integrates three security layers: static code analysis, semantic SAST, infrastructure misconfiguration audits, and container image vulnerability scans.
 
 ## Understanding the security pipeline (newcomers → specialists)
 
@@ -133,7 +133,7 @@ graph TD
 
 ### 1. Semgrep (Lightweight SAST / Custom Rules)
 
-- **Responsibility**: Fast commit-stage check for security anti-patterns (disabled CSRF, insecure HTTP, hardcoded secrets) and ruleset compliance.
+- **Responsibility**: **Fast commit-stage check** for security anti-patterns (disabled CSRF, insecure HTTP, hardcoded secrets) and ruleset compliance.
 - **What the Report is About**: Fast static analysis on the source code looking for syntactic patterns that match known security anti-patterns.
 - **Where to View the Report**:
   - **GitHub Code Scanning UI (Interactive)**: Automatically uploaded to the [GitHub Code Scanning Alerts (Semgrep)](https://github.com/nubenetes/jenkins-2026/security/code-scanning). Maps findings directly to code lines.
@@ -141,7 +141,7 @@ graph TD
 
 ### 2. CodeQL (Deep SAST / Semantic Analysis)
 
-- **Responsibility**: Semantic code analysis to detect complex multi-file data flow vulnerabilities (SQL Injection, XSS, SSRF).
+- **Responsibility**: **Semantic code analysis** to detect complex multi-file **data-flow vulnerabilities** (SQL Injection, XSS, SSRF).
 - **What the Report is About**: CodeQL compiles and builds a database of the source code structure, allowing semantic queries to trace variables and untrusted user input (sources) all the way to dangerous execution sinks (such as raw database queries, file writes, or command executions).
 - **Where to View the Report**:
   - **GitHub Code Scanning UI (Interactive)**: Automatically uploaded to the [GitHub Code Scanning Alerts (CodeQL)](https://github.com/nubenetes/jenkins-2026/security/code-scanning). The dashboard lets you interactively trace the data flow path of the vulnerability.
@@ -157,7 +157,7 @@ graph TD
 
 ### 4. Jenkins `warnings-ng` Plugin Integration (SARIF Visualizer)
 
-Provides interactive static analysis dashboards natively within the Jenkins build UI:
+Provides **interactive static analysis dashboards** natively within the Jenkins build UI:
 
 - On every build, the pipeline runs Semgrep and CodeQL and outputs `.sarif` files.
 - The pipeline invokes the `recordIssues` post-action step of the `warnings-ng` plugin to parse these SARIF reports.

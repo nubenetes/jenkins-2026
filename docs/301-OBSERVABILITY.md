@@ -178,11 +178,11 @@ managed-azure/-aws have no equivalent.
 
 ### OpenTelemetry Operator
 
-Installed first (`scripts/02-otel-operator.sh`). Provides the `Instrumentation` and `OpenTelemetryCollector` CRDs. [`scripts/02-otel-operator.sh`](../scripts/02-otel-operator.sh) waits for the webhook to actually be serving (its caBundle populated) before proceeding.
+**Installed first** (`scripts/02-otel-operator.sh`). Provides the `Instrumentation` and `OpenTelemetryCollector` CRDs. [`scripts/02-otel-operator.sh`](../scripts/02-otel-operator.sh) **waits for the webhook to actually be serving** (its caBundle populated) before proceeding.
 
 ### Java Auto-Instrumentation
 
-The `helm/microservices` chart creates an `Instrumentation` CR (`microservices-java`) per namespace, pointing at `otel-collector-gateway.observability.svc.cluster.local:4317`. Each `java`-typed service's Deployment gets the pod annotation `instrumentation.opentelemetry.io/inject-java: "true"`, so the operator's mutating webhook injects the OTel Java agent automatically — no code changes to Microservices.
+The `helm/microservices` chart creates an `Instrumentation` CR (`microservices-java`) per namespace, pointing at `otel-collector-gateway.observability.svc.cluster.local:4317`. Each `java`-typed service's Deployment gets the pod annotation `instrumentation.opentelemetry.io/inject-java: "true"`, so the operator's mutating webhook **injects the OTel Java agent automatically — no code changes** to Microservices.
 
 Key settings on the `Instrumentation` CR:
 - `OTEL_INSTRUMENTATION_LOGBACK_APPENDER_ENABLED=true` — injects `trace_id`/`span_id` into every log line's MDC.
@@ -201,7 +201,7 @@ Two `open-telemetry/opentelemetry-collector` releases:
 
 ### Jenkins Plugin
 
-The `opentelemetry` plugin exports one span per pipeline run / stage / step as `service.name=jenkins` to the same gateway — so a Microservices deploy's CI trace and the resulting application traces share the same backend.
+The `opentelemetry` plugin exports one span per pipeline run / stage / step as `service.name=jenkins` to the same gateway — so a Microservices deploy's **CI trace and the resulting application traces share the same backend**.
 
 > **Tekton CI (`ci.engine=tekton`).** When the alternative CI engine is selected, the k6 smoke Task ships its own traces/metrics to the same in-cluster OTel gateway as `service.name=k6-microservices-smoke` (`K6_OTEL_SERVICE_NAME` + `OTEL_RESOURCE_ATTRIBUTES` in [`tekton/tasks/k6-smoke.yaml`](../tekton/tasks/k6-smoke.yaml)), so the load-test telemetry lands in Tempo/Loki/Prometheus alongside the application traces. Native Tekton **PipelineRun/TaskRun** tracing (patching the controller's `config-tracing`) is a deferred follow-up — not wired today. See [403. Tekton](./403-TEKTON.md).
 

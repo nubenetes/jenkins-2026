@@ -139,13 +139,13 @@ securityContext:
 
 #### 3. Continuous Integration Automation
 
-In the Jenkins pipeline, updating a microservice deployment target is simplified to a single YAML key-value update using `yq`:
+In the Jenkins pipeline, updating a microservice deployment target is simplified to a **single YAML key-value update** using `yq`:
 
 ```bash
 yq -i '.services.jhipstersamplemicroservice.image.tag = "new-tag"' values-stable.yaml
 ```
 
-Using Kustomize would require running `kustomize edit set image` on specific overlay files, adding tool dependencies to pipeline runner images.
+Using Kustomize would require running `kustomize edit set image` on specific overlay files, adding **tool dependencies** to pipeline runner images.
 
 #### 4. The deploy loop — a commit, not an apply
 
