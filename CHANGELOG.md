@@ -28,6 +28,20 @@ All notable changes to this project will be documented in this file.
   - First step of the GitOps-vs-imperative review roadmap (see
     [`argocd/README.md`](argocd/README.md) topology table).
 
+### Fixed
+
+- **Grafana `postgres-overview` dashboard now covers the develop tier.** Its queries
+  were hardcoded to `namespace="microservices"` (stable only), so the optional
+  develop tier's CNPG Postgres (`microservices-develop`) was invisible. Added a
+  **`Tier (namespace)`** template variable (auto-discovered from the CNPG metrics'
+  `namespace` label, so `microservices-develop` appears once its instance is up) and
+  parameterized all 8 metric + 1 log queries to `$namespace`. Regenerated the AWS /
+  Azure variants via their `generate.py`, so **all four Grafana backends** (OSS,
+  Grafana Cloud, AMG, Azure Managed Grafana) get it. (The `microservices-overview`
+  and `k6-smoke-overview` dashboards already had the `stable`/`develop` selector;
+  `jenkins-overview` and `tekton-overview` are control-plane-scoped — single
+  environment — so correctly have none.)
+
 ### Documentation
 
 - **New `docs/201` section: "Imperative (push) vs GitOps (pull): the provisioning
