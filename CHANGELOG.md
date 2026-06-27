@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.23.4] - 2026-06-27
+
+### Documentation
+
+- **Cross-linked the new [`503. Networking`](docs/503-NETWORKING.md) doc** from the
+  two places readers most likely arrive from: `docs/201` (the GKE-topology /
+  network-dataplane note) and `docs/501` (above the NetworkPolicy matrix), so the
+  per-namespace policy detail points up to the full network architecture (landing
+  zone, CIDR plan, ingress/egress, segmentation) it sits inside.
+
 ## [v0.23.3] - 2026-06-27
 
 ### Added
