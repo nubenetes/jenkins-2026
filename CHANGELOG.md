@@ -6,6 +6,16 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- **`observability.leanMetrics` feature flag (default off) — fit the develop tier under
+  the Grafana Cloud free-tier 15k active-series cap.** When `true` (grafana-cloud mode;
+  per-run override `JENKINS2026_OBS_LEAN_METRICS=true`), `scripts/03-observability.sh`
+  disables the k8s-monitoring **cluster-infra** metrics (cadvisor/kube-state/node-exporter)
+  — the high-cardinality series the custom `jenkins2026-*` dashboards don't use — freeing
+  thousands of active series. App/CNPG/Tekton/k6/Jenkins metrics (via the otel-collector)
+  are unaffected; `clusterEvents` stays on (→ Loki, ~0 metric series). Trade-off: the
+  built-in "K8s Compute" views go empty. Meant as a temporary validation knob; the
+  metrics cap doesn't affect Tempo traces / Loki logs, so develop is always verifiable
+  there. See [`docs/301`](docs/301-OBSERVABILITY.md).
 - **`Day2.publish.02-grafana-cloud` workflow — the missing per-backend dashboard
   publisher.** The per-backend Day2 publish set had `01-oss` / `03-azure` /
   `04-aws` but no **grafana-cloud** entry (ZZ=02), even though grafana-cloud is the

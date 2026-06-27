@@ -155,6 +155,14 @@ observability:
   #                   X-Ray/CloudWatch; visualize in Amazon Managed Grafana.
   mode: grafana-cloud
 
+  # When true (grafana-cloud mode), 03-observability disables the k8s-monitoring
+  # CLUSTER INFRA metrics (cadvisor/kube-state/node-exporter) — the high-cardinality
+  # series the custom jenkins2026-* dashboards don't use — to stay under the Grafana
+  # Cloud free-tier 15k active-series cap (e.g. while validating the develop tier).
+  # App/CNPG/Tekton metrics (via the otel-collector) are unaffected. Loses the
+  # built-in "K8s Compute" views. Override per-run: JENKINS2026_OBS_LEAN_METRICS=true.
+  leanMetrics: false
+
   otelOperator:
     chart:
       repoName: open-telemetry
