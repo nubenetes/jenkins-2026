@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 ## [v0.27.0] - 2026-06-27
 
+### Added
+
+- **`Day2.publish.02-grafana-cloud` workflow — the missing per-backend dashboard
+  publisher.** The per-backend Day2 publish set had `01-oss` / `03-azure` /
+  `04-aws` but no **grafana-cloud** entry (ZZ=02), even though grafana-cloud is the
+  default mode — so refreshing Grafana Cloud dashboards required a full Day1. The new
+  workflow runs `scripts/07-grafana-dashboards.sh` + `07.5-grafana-alerts.sh` in
+  grafana-cloud mode (reads `GRAFANA_BASE_URL`/`API_KEY` from the in-cluster
+  `grafana-cloud-credentials` Secret, imports via the Grafana API), making the
+  observability-backend lifecycle symmetric: every persistent backend now has
+  Day0.infra + Day2.publish + Decom.infra. Docs/diagrams in
+  [`docs/101`](docs/101-GITHUB_ACTIONS_WORKFLOWS.md) updated.
+
+### Fixed
+
+- **ArgoCD `microservices` AppProject now allows the `microservices-develop`
+  namespace.** Its `destinations` whitelisted only `microservices`, so the develop
+  tier's generated Application was rejected with `InvalidSpecError` (namespace not in
+  the allowed destinations) → it stayed `Unknown/Unknown`, deployed **zero pods**, and
+  any pipeline doing `argocd app wait microservices-develop` (the GitOps Update stage
+  of `microservicesDeploy.groovy`) **hung** until timeout; the public develop endpoint
+  500'd (Service, no pods). Pre-existing develop-track bug, surfaced once the tier was
+  first exercised end-to-end. One-line whitelist add (harmless when the track is off).
+
 ### Changed
 
 - **Static platform RBAC moved from imperative `kubectl` to GitOps (new ArgoCD
