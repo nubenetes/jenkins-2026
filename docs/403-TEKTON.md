@@ -234,7 +234,7 @@ stateDiagram-v2
 ## Selecting the engine
 
 `ci.engine` in [`config/config.yaml`](../config/config.yaml) is the durable
-default; `JENKINS2026_CI_ENGINE` is the ephemeral override — the same
+default; `JENKINS2026_CI_ENGINE` is the **ephemeral override** — the same
 durable-default + override pattern as `observability.mode` / `JENKINS2026_OBS_MODE`.
 
 ```yaml
@@ -454,8 +454,8 @@ https://tekton.<baseDomain>   →  Google IAP login  →  Tekton Dashboard
 ## The pipeline, ported
 
 The full Jenkins microservices pipeline ([`vars/MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy))
-is ported to Tekton under [`tekton/`](../tekton/) — one Task per stage, wired
-into `microservices-pipeline`. Both engines read the same service registry
+is ported to Tekton under [`tekton/`](../tekton/) — **one Task per stage**, wired
+into `microservices-pipeline`. Both engines read **the same service registry**
 ([`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml)).
 
 | Jenkins stage | Tekton Task | Notable difference |
@@ -472,7 +472,7 @@ into `microservices-pipeline`. Both engines read the same service registry
 | Integration k6 | `k6-smoke` (+ standalone `microservices-k6-smoke` Pipeline) | — |
 
 [`scripts/06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh) is the
-seed-job analogue: it applies the Tasks/Pipelines/Triggers and generates one
+**seed-job analogue**: it applies the Tasks/Pipelines/Triggers and generates one
 `PipelineRun` per service per environment (stable always; develop when
 `JENKINS2026_DEVELOP_TRACK_ENABLED=true`), kicking them asynchronously.
 

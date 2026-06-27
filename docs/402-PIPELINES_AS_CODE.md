@@ -230,7 +230,7 @@ flowchart TB
 
 ### Why the GitOps Repo Uses Only the `main` Branch
 
-The companion repository `jenkins-2026-gitops-config` is configured to track only a single `main` branch by default:
+The companion repository `jenkins-2026-gitops-config` is configured to track only a **single `main` branch** by default:
 1. **Single Environment Target (default)**: Only the stable target namespace (`microservices`) is deployed.
 2. **Simplified Promotion**: The Jenkins CI pipeline writes image tags directly inside `values-stable.yaml` on the `main` branch.
 
@@ -434,11 +434,11 @@ stateDiagram-v2
 
 ### 2. k6 Integration Smoke Test Pipeline
 
-Defined in [`MicroservicesK6SmokePipeline.groovy`](../vars/MicroservicesK6SmokePipeline.groovy), this pipeline simulates load traffic (`vus:4, iterations:12` by default) and populates observability metrics. The k6 script ([`microservices-smoke.js`](../jenkins/pipelines/k6/microservices-smoke.js)) hits the gateway UI root, gateway/microservice health endpoints, and the gateway→microservice proxy route, with thresholds `http_req_failed < 5%` and `p95 < 3s`, exporting OTLP to the collector (exit 99 → UNSTABLE, not FAILURE). See [301. Observability](./301-OBSERVABILITY.md) for what it does and why.
+Defined in [`MicroservicesK6SmokePipeline.groovy`](../vars/MicroservicesK6SmokePipeline.groovy), this pipeline simulates load traffic (`vus:4, iterations:12` by default) and populates observability metrics. The k6 script ([`microservices-smoke.js`](../jenkins/pipelines/k6/microservices-smoke.js)) hits the gateway UI root, gateway/microservice health endpoints, and the gateway→microservice proxy route, with thresholds `http_req_failed < 5%` and `p95 < 3s`, exporting OTLP to the collector (exit 99 → **UNSTABLE, not FAILURE**). See [301. Observability](./301-OBSERVABILITY.md) for what it does and why.
 
 ## The shared library (`vars/`)
 
-Each pipeline is a thin entry point that delegates to reusable steps. The class/collaboration model:
+Each pipeline is a **thin entry point** that delegates to reusable steps. The class/collaboration model:
 
 <details>
 <summary>🧩 The shared library (class diagram)</summary>

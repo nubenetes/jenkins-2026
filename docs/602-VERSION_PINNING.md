@@ -20,8 +20,8 @@ reproducible and a moving upstream tag can never silently break or change the st
 | **Security patches** | ⚠️ You must bump deliberately (Dependabot helps) | ✅ Picked up automatically |
 | **Maintenance** | ⚠️ Periodic bumps + lockfile updates | ✅ Zero effort (until it breaks) |
 
-We accept the maintenance cost for reproducibility and a controlled blast radius.
-This isn't theoretical — every floating version here has bitten us at least once:
+We accept the maintenance cost for **reproducibility and a controlled blast radius**.
+This isn't theoretical — **every floating version here has bitten us at least once**:
 
 - **Jenkins chart was `""` (latest)** → it silently moved to 5.9.x, which split
   `authorizationStrategy`/`securityRealm` into their own ConfigMaps and crashed JCasC
@@ -137,8 +137,8 @@ init` honours the lockfile, so every run uses identical providers. Bump with
 
 ## Known residual
 
-`az extension add -n amg / resource-graph` (in the Azure dashboard workflows) is not
-version-pinned — Azure CLI extensions auto-update and `--version` pinning is brittle.
+`az extension add -n amg / resource-graph` (in the Azure dashboard workflows) is **not
+version-pinned** — Azure CLI extensions auto-update and `--version` pinning is brittle.
 Risk is low now that the Azure publish path uses the Grafana **data-plane API** rather
 than the fragile `az grafana` ARM subcommands (see [301. Observability](./301-OBSERVABILITY.md)).
 

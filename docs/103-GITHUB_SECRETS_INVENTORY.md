@@ -36,7 +36,7 @@ These four secrets are **required by every GCP-touching workflow**. They are pro
 The GCP project that hosts the GKE cluster, GCS state bucket, and the Workload Identity Pool. Referenced in workflow step summaries and passed as `TF_VAR_project_id` to Terraform.
 
 **`GCP_WORKLOAD_IDENTITY_PROVIDER`**
-Full resource name of the Workload Identity Federation provider, e.g. `projects/123/locations/global/workloadIdentityPools/pool/providers/github`. Used by `google-github-actions/auth` to exchange the OIDC token for a GCP access token — no service account key ever stored.
+Full resource name of the Workload Identity Federation provider, e.g. `projects/123/locations/global/workloadIdentityPools/pool/providers/github`. Used by `google-github-actions/auth` to exchange the OIDC token for a GCP access token — **no service account key ever stored**.
 
 **`GCP_SERVICE_ACCOUNT`**
 Email of the CI service account impersonated via WIF, e.g. `ci@my-project.iam.gserviceaccount.com`. Its project roles are granted by [`terraform/bootstrap`](../terraform/bootstrap/main.tf) (the authoritative source): `container.admin`, `compute.networkAdmin`, `compute.loadBalancerAdmin`, `iam.serviceAccountAdmin`, `iam.serviceAccountUser`, `resourcemanager.projectIamAdmin`, `serviceusage.serviceUsageAdmin`, **`certificatemanager.owner`** (owner — *not* editor; editor lacks the `.delete` permissions, so the Gateway cert map couldn't be torn down — see [902](./902-TROUBLESHOOTING.md)), **`dns.admin`** (manage the delegated public DNS zone's records in `gateway-bootstrap`), **`secretmanager.admin`** (push secret values to Secret Manager when `secrets.backend=eso`), plus `storage.objectAdmin` on the state bucket and `iam.workloadIdentityUser` for the GitHub WIF binding.

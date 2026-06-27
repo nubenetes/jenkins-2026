@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.23.8] - 2026-06-27
+
+### Documentation
+
+- **Strategic bold-emphasis pass across the README + all docs for scannability.**
+  - **README Document Inventory**: every row's description now **bolds its key
+    terms** (matching the 503 row), and a few were refreshed with recent topics
+    (301 alert rules, 402 develop-tier rationale, 502 parameterized CNPG HA, 501
+    Argo Rollouts).
+  - **All docs (`100`–`902`)**: a judicious, conservative pass bolded the most
+    strategic terms in otherwise-flat prose — emphasis only, no wording/fact/
+    structure changes; existing bold/italic/code/links preserved; headings, code,
+    Mermaid and `🟢`/`🔴`/"Reading it —" blocks left untouched. Already
+    emphasis-rich docs (`102`, `902`) needed no change. All 91 diagrams re-validated.
+
 ## [v0.23.7] - 2026-06-27
 
 ### Documentation

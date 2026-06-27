@@ -179,7 +179,7 @@ flowchart LR
 kubectl -n jenkins port-forward svc/jenkins 8080:8080
 ```
 
-Open <http://localhost:8080>. If [Google login](#google-login-openid-connect) is configured, use the **Sign in with Google** button. Otherwise (or for break-glass/automation access), log in as `${JENKINS_ADMIN_ID}` (`jenkins.adminUser` in `config/config.yaml`, default `admin`) via the **escape hatch** — this login always works, regardless of OIDC. The password is randomly generated on first run by `scripts/01-namespaces.sh`. Retrieve it:
+Open <http://localhost:8080>. If [Google login](#google-login-openid-connect) is configured, use the **Sign in with Google** button. Otherwise (or for break-glass/automation access), log in as `${JENKINS_ADMIN_ID}` (`jenkins.adminUser` in `config/config.yaml`, default `admin`) via the **escape hatch** — this login **always works, regardless of OIDC**. The password is randomly generated on first run by `scripts/01-namespaces.sh`. Retrieve it:
 
 ```bash
 kubectl -n jenkins get secret jenkins-credentials -o jsonpath='{.data.admin-password}' | base64 -d; echo
@@ -244,11 +244,11 @@ sequenceDiagram
 
 ## Plugins & JCasC Fragments
 
-[`helm/jenkins/values-common.yaml`](../helm/jenkins/values-common.yaml) tracks the latest Jenkins LTS (`controller.image.tag: 2.555.3-lts-jdk21`) and pins **every** plugin — ~20 curated top-level plugins plus ~82 transitive dependencies — to the exact version resolved against that core by `jenkins-plugin-cli`. This means a routine controller pod restart always installs the identical plugin set.
+[`helm/jenkins/values-common.yaml`](../helm/jenkins/values-common.yaml) tracks the latest Jenkins LTS (`controller.image.tag: 2.555.3-lts-jdk21`) and pins **every** plugin — ~20 curated top-level plugins plus ~82 transitive dependencies — to the exact version resolved against that core by `jenkins-plugin-cli`. This means a routine controller pod restart always installs the **identical plugin set**.
 
 **Chart version (pinned).** The Helm chart is pinned in [`config/config.yaml`](../config/config.yaml) → `jenkins.chart.version: "5.9.29"` (the latest as of 2026-06-25; appVersion `2.555.3`, matching `controller.image.tag`). ArgoCD installs exactly this version via [`argocd/jenkins-app.yaml`](../argocd/jenkins-app.yaml)'s `targetRevision`. It was previously `""` (always-latest), but a silent chart bump to the 5.9.x line **split `authorizationStrategy` and `securityRealm` into their own ConfigMaps** that render independently of `controller.JCasC.defaultConfig: false` — so the chart's defaults (`loggedInUsersCanDoAnything` + a local admin) collided with the same keys in our `jcasc-base.yaml` and the controller crashed at boot (`Single entry map expected to configure a … AuthorizationStrategy but found multiple entries`). For that reason `values-common.yaml` also sets `controller.JCasC.authorizationStrategy: ""` and `securityRealm: ""` so the chart emits **neither** — `jcasc-base.yaml` is the single source of both (Role-Based Strategy + the OIDC/Google realm). **Bump the pin deliberately** (and re-verify those two overrides against the new chart's `values.yaml`) rather than tracking latest.
 
-`scripts/04-jenkins.sh` deploys the jenkinsci/helm-charts `jenkins` chart as a single ArgoCD `Application` ([`argocd/jenkins-app.yaml`](../argocd/jenkins-app.yaml)) and delivers the JCasC fragments below as labeled ConfigMaps (`jenkins-jenkins-config=true`) that the config-reload sidecar auto-merges (ArgoCD installs the chart from git and can't `--set-file` them in):
+`scripts/04-jenkins.sh` deploys the jenkinsci/helm-charts `jenkins` chart as a single ArgoCD `Application` ([`argocd/jenkins-app.yaml`](../argocd/jenkins-app.yaml)) and delivers the JCasC fragments below as labeled ConfigMaps (`jenkins-jenkins-config=true`) that the **config-reload sidecar** auto-merges (ArgoCD installs the chart from git and can't `--set-file` them in):
 
 | File | ConfigMap | Purpose |
 |---|---|---|
@@ -421,9 +421,9 @@ stateDiagram-v2
 
 ## Global Shared Library
 
-Four steps used by every per-service pipeline: `microservicesBuild`, `microservicesImage`, `microservicesDeploy`, and `microservicesSmokeTest`. They handle everything from Maven/NPM builds to Helm deployments and OTel-instrumented smoke tests. A fifth step, `microservicesK6Smoke`, is used only by the `microservices-k6-smoke` job.
+**Four steps** used by every per-service pipeline: `microservicesBuild`, `microservicesImage`, `microservicesDeploy`, and `microservicesSmokeTest`. They handle everything from **Maven/NPM builds** to **Helm deployments** and OTel-instrumented smoke tests. A fifth step, `microservicesK6Smoke`, is used only by the `microservices-k6-smoke` job.
 
-The library is declared in JCasC as `microservices-shared-library` (`implicit: true`, so every pipeline gets it without an explicit `@Library`; `defaultVersion` = the active repo branch; `modernSCM` git retriever). It is stored at the repo root (`vars/`) — required by the `modernSCM` retriever so Jenkins can check out the library from the same repo as the pipeline.
+The library is declared in JCasC as `microservices-shared-library` (`implicit: true`, so every pipeline gets it without an explicit `@Library`; `defaultVersion` = the active repo branch; `modernSCM` git retriever). It is stored **at the repo root (`vars/`)** — required by the `modernSCM` retriever so Jenkins can check out the library from the same repo as the pipeline.
 
 See [402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) for the pipeline stages, the shared-library class model, and execution details.
 

@@ -186,7 +186,7 @@ stateDiagram-v2
 **Reading it —** the root has essentially one steady state, **Active**, reached after the two-phase seed (local apply → migrate state into the bucket → set the 4 secrets) and then held across every cluster build/teardown; re-running `up` just self-converges (`reconcile_imports`). The only way out is the deliberate `down`, which must migrate state **back** to local first (a bucket can't delete itself while holding its own state) before destroying everything and removing the secrets. A normal `Decom.infra.00` never leaves **Active** — which is exactly why the root is created first and destroyed last, if ever.
 
 The root is created **first** and destroyed **last** (if ever). A normal Decom leaves
-the root in place — it costs almost nothing (two empty-ish buckets) and saves you
+the root in place — it **costs almost nothing** (two empty-ish buckets) and saves you
 re-seeding every time.
 
 ---
@@ -425,7 +425,7 @@ sequenceDiagram
 </details>
 
 Why `state_bucket_force_destroy=true`? The bucket has `force_destroy = false` by
-default (a safety so a normal apply can never nuke all your state). The teardown flips
+default (**a safety so a normal apply can never nuke all your state**). The teardown flips
 it via a variable so `terraform destroy` can delete the bucket even though it still
 holds other modules' (now-decommissioned) state objects + versioned copies.
 
