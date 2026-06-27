@@ -45,6 +45,28 @@ The **bootstrap** is the one-time step that **creates those two things** (plus a
 backups bucket). It is the *root of trust*: the seed that makes the whole automated
 lifecycle possible.
 
+<details>
+<summary>🟢 For newcomers — what the root of trust is</summary>
+
+The **root of trust** is the one foundation everything else stands on. Before GitHub Actions can build anything in your cloud, two things must already exist:
+
+- **a way to log in** to GCP without storing a password — *Workload Identity Federation* (WIF), a keyless trust, and
+- **a shared place to remember what it built** — a *Terraform state bucket* in GCS (so the morning's "provision" run and the evening's "destroy" run see the same state).
+
+Nothing in CI can create these for itself — it would need them to already exist (the paradox below). So **you** create them once, by hand, from your laptop with your own Owner login: `scripts/bootstrap.sh up`. After that you essentially never touch your laptop again — every later step is a one-click GitHub workflow.
+</details>
+
+<details>
+<summary>🔴 For specialists — what the seed provisions and how its own state is bootstrapped</summary>
+
+`terraform/bootstrap` provisions: a **WIF pool + provider** federating `token.actions.githubusercontent.com` to a **CI service account** (`jenkins-2026-ci@…`) via `google_service_account_iam_member.github_wif` (scoped to *this* repo), the SA's project roles, the **GCS state bucket** (`<project>-jenkins-2026-tfstate`, versioned), a **Postgres-backups bucket**, and the **permanent public DNS zone**.
+
+State is handled in **two phases** — the first `apply` runs on **local** state (the bucket doesn't exist yet), then the script writes `backend_override.tf` and `terraform init -migrate-state` moves state **into** the bucket (prefix `jenkins-2026/bootstrap`), so steady-state is fully remote. Re-runs are idempotent: `reconcile_imports` existence-checks each named singleton and `terraform import`s any that already exist in GCP (self-healing the `409 already exists` you'd otherwise hit on a fresh checkout, since `backend_override.tf` is gitignored). Finally it sets the **4 repo secrets** (`GCP_PROJECT_ID`, `TF_STATE_BUCKET`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT`) the GCP workflows consume.
+</details>
+
+<details>
+<summary>🌱 The root of trust — what bootstrap creates</summary>
+
 ```mermaid
 flowchart LR
     you([You, a human<br/>with Owner on the project]) -->|run once, locally| BS["scripts/bootstrap.sh up"]
@@ -58,12 +80,17 @@ flowchart LR
     class BS seed;
 ```
 
+</details>
+
 ---
 
 ## Why it can't be a GitHub Actions workflow (the bootstrap paradox)
 
 A natural question: *"everything else is a one-click workflow — why isn't the
 bootstrap?"* Because it would have to use the very things it is creating:
+
+<details>
+<summary>🐔🥚 The bootstrap paradox — why CI can't create its own root</summary>
 
 ```mermaid
 flowchart TD
@@ -76,6 +103,8 @@ flowchart TD
     classDef bad fill:#fdd,stroke:#c33;
     class P1,P2,P3 bad;
 ```
+
+</details>
 
 So there must always be **one manual seed**, done by a human with their own
 credentials. That seed is `scripts/bootstrap.sh`. After it runs once, GitHub Actions
@@ -92,6 +121,9 @@ takes over and **everything else is remote and automated.**
 
 ## Where it sits in the lifecycle
 
+<details>
+<summary>🗺️ Where the root sits in the lifecycle</summary>
+
 ```mermaid
 flowchart LR
     P0["phase 0 · ROOT<br/>scripts/bootstrap.sh up"]:::root --> D0["Day0 · persistent infra<br/>Gateway + backends"]
@@ -102,6 +134,27 @@ flowchart LR
     DC ==>|"only if abandoning the project"| P9["phase 0 · ROOT teardown<br/>scripts/bootstrap.sh down"]:::root
     classDef root fill:#ffd,stroke:#aa0,stroke-width:2px;
 ```
+
+</details>
+
+<details>
+<summary>♻️ Root lifecycle — seed, steady state, teardown (state diagram)</summary>
+
+```mermaid
+stateDiagram-v2
+  [*] --> LocalSeed: bootstrap.sh up — terraform apply (LOCAL state)
+  LocalSeed --> StateInBucket: write backend_override.tf + init -migrate-state
+  StateInBucket --> Active: gh secret set x4
+  Active --> Active: re-run up (idempotent — reconcile_imports + converge)
+  Active --> Active: Day0 / Day1 / Day2 / Decom run via WIF
+  Active --> LocalAgain: bootstrap.sh down — migrate state back to LOCAL
+  LocalAgain --> Destroyed: terraform destroy (force_destroy bucket) + remove 4 secrets
+  Destroyed --> [*]
+```
+
+</details>
+
+**Reading it —** the root has essentially one steady state, **Active**, reached after the two-phase seed (local apply → migrate state into the bucket → set the 4 secrets) and then held across every cluster build/teardown; re-running `up` just self-converges (`reconcile_imports`). The only way out is the deliberate `down`, which must migrate state **back** to local first (a bucket can't delete itself while holding its own state) before destroying everything and removing the secrets. A normal `Decom.infra.00` never leaves **Active** — which is exactly why the root is created first and destroyed last, if ever.
 
 The root is created **first** and destroyed **last** (if ever). A normal Decom leaves
 the root in place — it costs almost nothing (two empty-ish buckets) and saves you
@@ -136,6 +189,9 @@ already authenticated** — you don't pre-run any `gcloud auth` commands yoursel
 
 That's it. It will, in order:
 
+<details>
+<summary>▶️ bootstrap.sh up — step by step (sequence)</summary>
+
 ```mermaid
 sequenceDiagram
     autonumber
@@ -149,9 +205,11 @@ sequenceDiagram
     S->>U: ask GCP project ID (region/repo have defaults)
     S->>T: init + apply (LOCAL state) → create bucket + WIF + SA + DNS zone
     S->>T: write backend_override.tf → init -migrate-state → state now in the bucket
-    S->>C: gh secret set ×4 (from Terraform outputs)
-    S->>U: ✓ Root ready — GitHub Actions can now run
+    S->>C: gh secret set x4 (from Terraform outputs)
+    S->>U: Root ready — GitHub Actions can now run
 ```
+
+</details>
 
 **Non-interactive** (CI-less automation or scripting): pass the inputs as env vars so
 nothing is prompted:
@@ -205,6 +263,9 @@ so the URLs (`https://argocd.jenkins2026.nubenetes.com`, …) won't resolve to y
 and the Google-managed certificate can't validate. You do this **once for the life of the
 project** — see [why this is the only time](#why-this-is-the-only-time) below.
 
+<details>
+<summary>🌐 DNS delegation — parent domain to the permanent zone</summary>
+
 ```mermaid
 flowchart LR
     P["Parent domain @ Squarespace<br/>nubenetes.com"] -->|"NS jenkins2026 →<br/>(4 Google nameservers)"| Z["Cloud DNS zone<br/>jenkins-2026-public-zone<br/>(root tier — permanent)"]
@@ -212,6 +273,8 @@ flowchart LR
     classDef perm fill:#ffd,stroke:#aa0,stroke-width:2px;
     class Z perm;
 ```
+
+</details>
 
 ### Step 1 — get the zone's four nameservers
 
@@ -274,6 +337,9 @@ Bootstrap is special: it **creates the very bucket** that stores remote state, s
 first apply *cannot* use it yet. The script handles this in two phases, so you end up
 with **no fragile local `.tfstate`**:
 
+<details>
+<summary>💾 Self-hosted state — the two-phase local→bucket migration</summary>
+
 ```mermaid
 flowchart LR
     subgraph Phase1["Phase 1 — first seed"]
@@ -285,6 +351,8 @@ flowchart LR
     end
     Phase1 --> Phase2
 ```
+
+</details>
 
 After this, the bootstrap's own state is **remote** (in the same bucket as every other
 module, just under a different prefix) — so any operator with GCP access can re-run it;
@@ -309,6 +377,9 @@ there is no precious local file to lose.
 # type 'destroy-root' when prompted
 ```
 
+<details>
+<summary>⏹️ bootstrap.sh down — root teardown (sequence)</summary>
+
 ```mermaid
 sequenceDiagram
     autonumber
@@ -321,6 +392,8 @@ sequenceDiagram
     S->>T: terraform destroy -var state_bucket_force_destroy=true (force-empties + deletes the bucket)
     S->>U: remove the 4 GitHub secrets
 ```
+
+</details>
 
 Why `state_bucket_force_destroy=true`? The bucket has `force_destroy = false` by
 default (a safety so a normal apply can never nuke all your state). The teardown flips

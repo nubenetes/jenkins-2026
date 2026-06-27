@@ -4,6 +4,69 @@
 
 # 501. Platform Operations
 
+## Understanding platform operations (newcomers → specialists)
+
+Everything around the CI engine — *how apps get deployed, how the world reaches them, how the cluster stays safe, and how releases roll out* — is declarative and reconciled. There is no "click to deploy": Git is the input, controllers do the work. Read this once and the rest of the page is "which controller owns which plane".
+
+<details>
+<summary>📊 Platform planes (mindmap)</summary>
+
+```mermaid
+mindmap
+  root((Platform planes))
+    Delivery
+      ArgoCD GitOps
+      app-of-apps
+      selfHeal + prune
+    Ingress
+      one GKE Gateway
+      HTTPRoute per app
+      Google IAP
+      wildcard cert
+    Security
+      Dataplane V2 netpols
+      WireGuard inter-node
+      Workload Identity
+      ESO secrets
+    Progressive delivery
+      Argo Rollouts
+      canary weights
+      AnalysisRun gate
+    Resilience
+      CNPG HA failover
+      Karpenter spot
+      in-place resize
+```
+
+</details>
+
+<details>
+<summary>🟢 For newcomers — the five platform planes</summary>
+
+The platform splits into five concerns, each run by its own controller — you rarely touch them by hand:
+
+| Plane | What it does | Owned by |
+|---|---|---|
+| **Delivery** | Turns Git into running workloads. You bump an image tag in the GitOps repo; ArgoCD notices and reconciles the cluster. | ArgoCD (`selfHeal` + `prune`) |
+| **Ingress** | Puts apps on the public internet — **one** global HTTPS load balancer, **one** wildcard cert, one `HTTPRoute` per app. | GKE Gateway API |
+| **Identity at the edge** | Before a request reaches Jenkins/Headlamp/pgAdmin, **Google IAP** checks you're an allowed account. (The demo `microservices` host is public — no IAP.) | Identity-Aware Proxy |
+| **Security inside** | Every namespace is default-deny; only listed traffic flows. Pod-to-pod traffic between nodes is encrypted. No static cloud keys anywhere. | Dataplane V2 NetworkPolicies + WireGuard + Workload Identity |
+| **Safe releases** | Ship a new version to 20% of users first, watch it, widen only if healthy. | Argo Rollouts (canary) |
+
+So a deploy is: *CI writes a tag → ArgoCD syncs → the new pod comes up behind the Gateway → IAP gates who can reach it → NetworkPolicies gate what it can talk to → (optionally) Argo Rollouts shifts traffic to it gradually*.
+</details>
+
+<details>
+<summary>🔴 For specialists — how each plane is wired here</summary>
+
+- **Delivery:** ArgoCD (auto-tracking the latest **3.5.x** via a daily CronJob watcher) runs single `Application`s (microservices `ApplicationSet`→`microservices-stable`, `headlamp`, `pgadmin`, `cnpg-operator`, `external-secrets`, `jenkins`, `argo-rollouts`) plus three **app-of-apps** (`platform-postgres`, `observability-oss`, `tekton`). A scoped `jenkins` ArgoCD account + API token lets the pipeline `argocd app sync --wait`. All apps `selfHeal: true` + `prune: true`.
+- **Ingress:** one `Gateway` (`gatewayClassName: gke-l7-global-external-managed`) = one global external HTTPS LB + one Google-managed wildcard cert + one `HTTPRoute` per app; `BackendTLSPolicy` encrypts the LB→pod hop. Opt-in via `gateway.baseDomain` (empty disables it; `09-gateway.sh` no-ops off-GKE).
+- **Edge identity:** IAP gates `jenkins`/`headlamp`/`pgadmin`/`grafana(oss)`; access = the emails granted `roles/iap.httpsResourceAccessor` (reuses `HEADLAMP_ADMIN_EMAILS`). The `microservices` host is intentionally public.
+- **Security inside:** Dataplane V2 (`datapath_provider = ADVANCED_DATAPATH`) is what makes NetworkPolicies *enforce*; sensitive namespaces are `default-deny` + curated allowlists (see the matrix below). `in_transit_encryption_config` adds transparent WireGuard inter-node pod encryption (transport, not mTLS identity). Workload Identity Federation removes all static SA JSON keys; ESO syncs Secret Manager → namespaced Secrets. Dataplane V2 + WireGuard are **immutable** cluster fields (changing them recreates the cluster).
+- **Progressive delivery:** the `argo-rollouts` controller + the `argoproj-labs/gatewayAPI` traffic-router plugin patch `HTTPRoute` `backendRefs[].weight` between the stable and `*-canary` Services — sidecar-free, no mesh. An `AnalysisRun` can gate promotion on Prometheus span-metrics (5xx / p95) and auto-rollback.
+- **Resilience:** CNPG HA promotes a standby on primary loss; Karpenter provisions Spot nodes (taint `jenkins-agent=true:NoSchedule`) with disruption budgets; K8s v1.35 in-place vertical resize grows agent containers without pod restarts.
+</details>
+
 ## ArgoCD Inventory (GitOps)
 
 The deployment lifecycle is managed by **ArgoCD**. Application manifests are stored in [`nubenetes/jenkins-2026-gitops-config/argocd/`](https://github.com/nubenetes/jenkins-2026-gitops-config/tree/main/argocd) and applied to the cluster by `scripts/08.5-argocd.sh`. Jenkins CI writes image tags into that repo; ArgoCD detects the change and reconciles the cluster.
@@ -25,6 +88,41 @@ The deployment lifecycle is managed by **ArgoCD**. Application manifests are sto
 > Plus three **app-of-apps** (`platform-postgres`, `observability-oss` when `observability.mode=oss`, and `tekton` when `ci.engine=tekton`), each a small Helm chart whose children carry the actual workloads. See [`argocd/README.md`](../argocd/README.md).
 >
 > Not an `Application`, but applied alongside them: [`argocd/argocd-version-patch-watcher.yaml`](../argocd/argocd-version-patch-watcher.yaml) — a daily `CronJob` in the `argocd` namespace that keeps ArgoCD auto-tracking the latest **3.5.x** patch (see [602 § version pinning](./602-VERSION_PINNING.md)).
+
+<details>
+<summary>📊 ArgoCD application inventory & app-of-apps tree</summary>
+
+```mermaid
+flowchart TB
+  argocd[ArgoCD]:::root
+
+  subgraph single["Single Applications"]
+    direction TB
+    appset["microservices<br/>ApplicationSet"] --> msstable[microservices-stable]
+    headlamp[headlamp]
+    pgadmin[pgadmin]
+    cnpg[cnpg-operator]
+    eso[external-secrets]
+    jenkins["jenkins<br/>(ci.engine=jenkins)"]
+    rollouts[argo-rollouts]
+  end
+
+  subgraph aoa["App-of-apps (each a small Helm chart)"]
+    direction TB
+    pp["platform-postgres"] --> ppc["CNPG operator<br/>+ pgAdmin"]
+    oss["observability-oss<br/>(mode=oss)"] --> ossc["kube-prometheus-stack<br/>Loki · Tempo · dashboards"]
+    tk["tekton<br/>(ci.engine=tekton)"] --> tkc["pipelines · triggers · dashboard<br/>pruner · chains · pac"]
+  end
+
+  argocd --> appset & headlamp & pgadmin & cnpg & eso & jenkins & rollouts
+  argocd --> pp & oss & tk
+  watcher[[daily CronJob<br/>auto-track 3.5.x]] -.-> argocd
+  classDef root fill:#eef,stroke:#66c;
+```
+
+</details>
+
+**Reading it —** ArgoCD owns two kinds of children. **Single `Application`s** map one chart/path to one namespace (the `microservices` `ApplicationSet` is the exception — it *generates* `microservices-stable`, and a `microservices-develop` when the develop track is on). **App-of-apps** are small Helm charts whose only job is to render a *family* of correlated children, so repo/branch/version flow down in one place — used where components must move together (Postgres operator+UI, the OSS stack, the Tekton control plane). The dashed watcher keeps ArgoCD itself on the latest 3.5.x patch. Engine/mode flags gate three of them (`jenkins`, `observability-oss`, `tekton`).
 
 ### Security & Integration
 
@@ -183,6 +281,9 @@ Every policy is in [`infrastructure/networkpolicies*.yaml`](../infrastructure/) 
 
 #### NetworkPolicy flow diagram
 
+<details>
+<summary>📊 NetworkPolicy flow — who may talk to whom</summary>
+
 ```mermaid
 flowchart LR
   net([Internet]):::ext
@@ -231,6 +332,8 @@ flowchart LR
   classDef infra fill:#eef,stroke:#66c;
   classDef ui fill:#efe,stroke:#393;
 ```
+
+</details>
 
 ### 4. GitOps Separation of Concerns
 All infrastructural manifests (`karpenter/`, `gateway/`, `headlamp/`, `scheduling/`) are decoupled from CI pipeline definitions and placed inside the [`infrastructure/`](../infrastructure/) directory for full reconciliation via Argo CD.
@@ -298,6 +401,9 @@ A plain Kubernetes `Deployment` rolls out a new version by **replacing pods**: o
 - **Day-2**: `kubectl argo rollouts get rollout gateway -n microservices -w`, `... promote`/`... abort`, or the dashboard. CI's `gitops-deploy` waits on Rollout health (B4) so it doesn't report success mid-canary.
 </details>
 
+<details>
+<summary>📊 Argo Rollouts canary — traffic split mechanics</summary>
+
 ```mermaid
 flowchart TB
   user([User traffic]):::ext --> route
@@ -328,6 +434,33 @@ flowchart TB
   classDef ext fill:#fde,stroke:#c39;
   classDef route fill:#eef,stroke:#66c;
 ```
+
+</details>
+
+**Reading it —** the `Rollout` (replacing the `gateway` `Deployment`) owns two ReplicaSets — `stable` (vN) and `canary` (vN+1) — each behind its own Service. At every `setWeight` step the controller calls the **gatewayAPI plugin**, which patches the `backendRefs[].weight` on the shared `microservices` `HTTPRoute` — so the *existing* Gateway does the traffic split, with **no sidecar and no mesh**. An optional `AnalysisRun` queries the in-cluster Prometheus (5xx / p95); on failure it aborts → weight back to 0 and the canary RS scales down (no image re-pull).
+
+#### Canary rollout steps (state)
+
+<details>
+<summary>📊 Canary progressive-delivery lifecycle</summary>
+
+```mermaid
+stateDiagram-v2
+  [*] --> Stable: vN at 100%
+  Stable --> Canary20: push vN+1 → setWeight 20
+  Canary20 --> Paused20: pause (auto or manual)
+  Paused20 --> Analysis: AnalysisRun 5xx / p95
+  Analysis --> Aborted: metrics fail
+  Analysis --> Canary50: metrics pass → setWeight 50
+  Canary50 --> Canary100: pause → setWeight 100
+  Canary100 --> Promoted: vN+1 is the new stable
+  Aborted --> Stable: weight → 0, canary scaled down
+  Promoted --> [*]
+```
+
+</details>
+
+**Reading it —** the spine is the weighted promotion `20 → 50 → 100`, with a `pause` between steps (timed, or `pause: {}` to wait for a manual `kubectl argo rollouts promote`). The decisive branch is `Analysis`: an `AnalysisRun` gate turns a bad canary into an **automatic rollback** (`Aborted` → weight 0, canary scaled down) instead of a full-blast outage — a release only ever exposes ~20% of users to a regression. CI's `gitops-deploy` waits on Rollout health so it never reports success mid-canary.
 
 ## Headlamp (Cluster Management UI)
 
@@ -389,6 +522,38 @@ Jenkins, Microservices, Headlamp, and pgAdmin can all be exposed on the public i
 `<baseDomain>` is `gateway.baseDomain` in `config/config.yaml` — `jenkins2026.nubenetes.com` by default.
 
 **This whole feature is opt-in**: set `JENKINS2026_BASE_DOMAIN=""` to disable it. `scripts/09-gateway.sh` is also a no-op on `platform.target` other than `gke`.
+
+<details>
+<summary>📊 A request from the internet to a backend pod (Gateway + IAP)</summary>
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor U as User (browser)
+  participant GFE as Google GFE / GKE Gateway
+  participant IAP as Identity-Aware Proxy
+  participant HR as HTTPRoute
+  participant Pod as Backend pod
+
+  U->>GFE: HTTPS app.baseDomain (wildcard cert)
+  alt host is IAP-gated (jenkins / headlamp / pgadmin / grafana-oss)
+    GFE->>IAP: check session
+    IAP-->>U: redirect to Google sign-in (if no session)
+    U->>IAP: Google OAuth
+    IAP->>IAP: email has roles/iap.httpsResourceAccessor?
+    IAP-->>U: 403 if not allowed
+    IAP->>HR: forward (+ X-Goog-Authenticated-User-Email)
+  else microservices host (public demo, no IAP)
+    GFE->>HR: forward directly
+  end
+  HR->>Pod: route to pod targetPort (jenkins 8080 / headlamp 4466)
+  Note over GFE,Pod: BackendTLSPolicy encrypts + validates the LB→pod hop
+  Pod-->>U: response
+```
+
+</details>
+
+**Reading it —** one global external HTTPS LB terminates the wildcard cert, and a *per-host* decision follows: IAP-gated hosts must pass a Google sign-in **and** an allowlist check (`roles/iap.httpsResourceAccessor`, the same emails as `HEADLAMP_ADMIN_EMAILS`) before any traffic reaches the app — so the app's own auth (Jenkins OIDC, pgAdmin's trusted header, …) is a *second* layer, not the only one. The `microservices` host is deliberately public. Two gotchas live here: the `HTTPRoute` must target the **pod `targetPort`** (8080/4466), not the Service port, or the GKE health check fails; and `BackendTLSPolicy` secures the LB→pod hop.
 
 ### Authentication & Authorization Matrix
 

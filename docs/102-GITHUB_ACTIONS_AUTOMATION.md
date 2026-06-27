@@ -18,6 +18,29 @@ can find what the provision run created.
 
 To keep operating costs low and deployment speed high, this project separates the environment lifecycle into **short-lived workload resources** (GKE cluster, database pods, Helm releases) and **persistent, account-level resources (bootstrap)**. We use specialized bootstrap stages for the following reasons:
 
+<details>
+<summary>🟢 For newcomers — the mental model</summary>
+
+Everything here runs in **GitHub Actions**, but the resources split into two tiers by lifetime:
+
+| Tier | Examples | Lifetime |
+|---|---|---|
+| **Persistent (Day0 bootstrap)** | WIF trust + CI service account, the GCS state bucket, the permanent DNS zone, the Grafana Cloud / Azure / AWS observability backends | created once, **kept** across cluster rebuilds |
+| **Short-lived (Day1 cluster)** | the GKE cluster, database pods, Helm releases, in-cluster workloads | created and destroyed on demand |
+
+The point of the split: tearing the cluster down (to stop billing) must **not** lose your IP, certificate, dashboards, or metrics history — those live in the persistent tier. The other surprise for newcomers: GitHub Actions never stores a GCP password or JSON key. It logs in **keylessly** via **Workload Identity Federation** — GitHub proves its identity with a short-lived OIDC token that Google trusts, and gets a temporary token to act as the CI service account.
+
+</details>
+
+<details>
+<summary>🔴 For specialists — the wiring</summary>
+
+- **Keyless auth (WIF).** A workflow requests a GitHub-signed OIDC JWT (`sub = repo:<owner>/<repo>:environment:<env>`), presents it to Google STS at the Workload Identity **provider**, and — if the provider's **attribute condition** matches this repo — receives a short-lived federated token to impersonate the CI service account (`jenkins-2026-ci@…`). No secret is stored; the trust is scoped to the repo (and optionally branch/environment) by that condition. The only repo secrets are four **non-secret identifiers** (`GCP_PROJECT_ID`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT`, `TF_STATE_BUCKET`).
+- **Remote state is mandatory, not a nicety.** `Day1.cluster.01` and `Decom.cluster.01` are **separate workflow runs on fresh runners**, so Terraform state must live in the **GCS bucket** (each module under its own prefix) — that is how a teardown run finds what a provision run created. Local state would be lost between runs.
+- **Five approval gates.** `gke-production` gates the cluster lifecycle + every `Day2.*`; one gate **per persistent Day0 resource** (`gateway-bootstrap`, `grafana-cloud-bootstrap`, `azure-bootstrap`, `aws-bootstrap`) is declared on the reusable workflow itself, so every entry point (standalone dispatch, the `Day1` preflight via `workflow_call`, the `Decom.infra.00` umbrella) inherits the same single approval.
+
+</details>
+
 1. **GCP Auth and Terraform State (`terraform/bootstrap`)**:
    - **Workload Identity Federation (WIF)**: Establishes a secure, keyless trust relationship between GitHub Actions and your GCP project. GitHub can authenticate dynamically using OpenID Connect (OIDC) tokens instead of saving permanent GCP service account JSON keys inside repository secrets.
    - **GCS Remote Backend**: Sets up the persistent bucket where all GHA workflow runs store and retrieve Terraform state.
@@ -32,6 +55,36 @@ To keep operating costs low and deployment speed high, this project separates th
 4. **Persistent Database Backups Storage (`terraform/bootstrap`)**:
    - **Postgres Backups Bucket**: Configures the persistent GCS bucket `<project>-jenkins-2026-postgres-backups` (project-scoped — GCS bucket names share one global namespace, so the project-ID prefix keeps it collision-proof across rebuilds, like the Terraform state bucket) with automated storage lifecycles (transition to `NEARLINE` after 3 days, delete after 7 days) to preserve backup histories across throwaway GKE lifecycle runs.
    - **Access Security**: Grants the GHA CI service accounts `storage.admin` permissions to manage bucket-level IAM policy bindings, enabling dynamic node service account access configuration during GKE provision runs.
+
+#### How WIF keyless auth works (the token exchange)
+
+The single hardest concept here — how a GitHub workflow touches GCP with **no stored key** — is a four-hop token exchange:
+
+<details>
+<summary>📊 WIF keyless auth — GitHub OIDC → Google STS → impersonate CI SA</summary>
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant W as GitHub Actions job
+  participant GH as GitHub OIDC provider
+  participant STS as Google STS (WIF provider)
+  participant SA as CI service account
+  participant TF as Terraform + GCS state bucket
+  W->>GH: request OIDC token (permissions id-token write)
+  GH-->>W: signed JWT, sub = repo owner/repo environment gke-production
+  W->>STS: exchange JWT at the Workload Identity provider
+  STS->>STS: verify issuer + attribute condition (repo matches)
+  STS-->>W: short-lived federated access token
+  W->>SA: impersonate jenkins-2026-ci (generateAccessToken)
+  SA-->>W: short-lived SA access token
+  W->>TF: terraform apply, state in the project tfstate bucket
+  Note over W,SA: no JSON key ever stored — every token is minted per run and expires
+```
+
+</details>
+
+**Reading it —** *keyless* means the repo holds only **names**, not a credential: the four bootstrap outputs are the provider path, the SA email, the project ID, and the bucket — none of them secret. Each run, GitHub mints a fresh OIDC JWT; Google's WIF provider accepts it **only if its attribute condition matches this repo** (and, where set, the job's `environment`/branch), then returns a short-lived token to impersonate the CI service account. Because the token is per-run and expires, there is nothing to leak or rotate. State lives in the bucket so a *separate* `Decom` run authenticates the very same way and finds the `Day1` run's state.
 
 ## Workflow Architecture & Lifecycle Diagram
 
@@ -233,6 +286,29 @@ cluster gate):
   - `Day0.infra.02` / `Decom.infra.02` Grafana Cloud → `grafana-cloud-bootstrap`
   - `Day0.infra.03` / `Decom.infra.03` Azure → `azure-bootstrap`
   - `Day0.infra.04` / `Decom.infra.04` AWS → `aws-bootstrap`
+
+<details>
+<summary>📊 The five approval gates — which workflows each protects</summary>
+
+```mermaid
+flowchart LR
+  subgraph gates["5 required-reviewer environments"]
+    g1[gke-production]
+    g2[gateway-bootstrap]
+    g3[grafana-cloud-bootstrap]
+    g4[azure-bootstrap]
+    g5[aws-bootstrap]
+  end
+  g1 --> w1["Day1.cluster.01 · Decom.cluster.01<br/>+ all Day2.* (redeploy / publish / traffic)"]
+  g2 --> w2["Day0.infra.01 · Decom.infra.01<br/>Gateway"]
+  g3 --> w3["Day0.infra.02 · Decom.infra.02<br/>Grafana Cloud"]
+  g4 --> w4["Day0.infra.03 · Decom.infra.03<br/>Azure"]
+  g5 --> w5["Day0.infra.04 · Decom.infra.04<br/>AWS"]
+```
+
+</details>
+
+**Reading it —** **one gate = one concern**: approving "destroy the Grafana Cloud stack" is logged as exactly that, never as a change to the production cluster. Each per-resource gate is declared on the **reusable** `Day0.infra.0N` / `Decom.infra.0N` workflow itself, so every entry point that `uses:` it — the standalone dispatch, the `Day1` bootstrap preflight (`workflow_call`), and the `Decom.infra.00` "Everything" umbrella — inherits the **same** single approval, with no second, divergent place to configure it.
 
 #### Why one environment per resource (design rationale)
 
