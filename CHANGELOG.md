@@ -28,6 +28,19 @@ All notable changes to this project will be documented in this file.
   - First step of the GitOps-vs-imperative review roadmap (see
     [`argocd/README.md`](argocd/README.md) topology table).
 
+### Documentation
+
+- **New `docs/201` section: "Imperative (push) vs GitOps (pull): the provisioning
+  split".** A complete, scannable inventory of which resources ArgoCD pulls vs which
+  the setup scripts push, the **six concrete reasons** a resource stays imperative
+  (bootstrap paradox · secret values · runtime-derived manifests · live-reload
+  companions · external side-effects · Dataplane V2 enforcement timing), a
+  resource-by-resource ownership table, a **two-planes Mermaid diagram** (bootstrap →
+  hand-off → reconcile), and the "irreducible imperative core". Cross-linked from
+  `CLAUDE.md`, `argocd/README.md` (topology table now notes it's only the GitOps
+  half + lists `platform-config`), and the existing
+  [201 § Secrets backend](docs/201-ARCHITECTURE.md) deep-dive.
+
 ## [v0.26.0] - 2026-06-27
 
 ### Added
