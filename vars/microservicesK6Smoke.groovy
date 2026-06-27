@@ -1,12 +1,24 @@
 /**
  * microservicesK6Smoke(namespace: '<ns>', envName: 'stable'|'develop',
- *                   genaiEnabled: true|false, vus: '<n>', iterations: '<n>')
+ *                   genaiEnabled: true|false,
+ *                   // workload (all optional; '' / null → the k6 script default)
+ *                   profile: 'smoke'|'load'|'stress'|'soak'|'spike'|'breakpoint',
+ *                   vus: '<n>', iterations: '<n>', duration: '<dur>',
+ *                   stages: '30s:10,1m:50,30s:0', rps: '<n>', sleep: '<secs>',
+ *                   scenarios: 'all'|'gateway-ui,gateway-health,...',
+ *                   p95Ms: '<n>', errorRate: '<0..1>', debug: true|false,
+ *                   targetUrl: '<external base URL>')
  *
  * Runs jenkins/pipelines/k6/microservices-smoke.js from the 'k6' container of the
  * pod template defined in jenkins/pipelines/Jenkinsfile.microservices-k6-smoke -
- * a small amount of synthetic traffic (a few VUs/iterations, NOT a load test)
- * against the Microservices Services in `namespace`, to give Grafana Cloud fresh
- * traces/metrics/logs to correlate.
+ * synthetic traffic against the Microservices Services in `namespace`, to give
+ * Grafana fresh traces/metrics/logs to correlate.
+ *
+ * The default profile (smoke, a few VUs/iterations) is NOT a load test; the
+ * load/stress/soak/spike/breakpoint profiles and the fine-grained overrides
+ * (VUs, duration, ramping stages, arrival rate, thresholds, think-time, request
+ * flows) all flow straight into the K6SIM_* contract the script reads. See
+ * docs/302-K6_LOAD_TESTING.md.
  *
  * k6's own request metrics are exported (-o opentelemetry) to the same
  * otel-collector-gateway used by the OTel Java auto-instrumentation
@@ -31,9 +43,22 @@ def call(Map cfg) {
   container('k6') {
     withEnv([
       "TARGET_NAMESPACE=${cfg.namespace}",
+      "TARGET_URL=${cfg.targetUrl ?: ''}",
+      "ENV_NAME=${cfg.envName}",
       "GENAI_SERVICE_ENABLED=${cfg.genaiEnabled}",
-      "K6_VUS=${cfg.vus}",
-      "K6_ITERATIONS=${cfg.iterations}",
+      // Workload contract (K6SIM_*). Empty string → the k6 script's own default,
+      // so callers only override what they care about. See microservices-smoke.js.
+      "K6SIM_PROFILE=${cfg.profile ?: 'smoke'}",
+      "K6SIM_VUS=${cfg.vus ?: ''}",
+      "K6SIM_ITERATIONS=${cfg.iterations ?: ''}",
+      "K6SIM_DURATION=${cfg.duration ?: ''}",
+      "K6SIM_STAGES=${cfg.stages ?: ''}",
+      "K6SIM_RPS=${cfg.rps ?: ''}",
+      "K6SIM_SLEEP=${cfg.sleep ?: ''}",
+      "K6SIM_SCENARIOS=${cfg.scenarios ?: ''}",
+      "K6SIM_P95_MS=${cfg.p95Ms ?: ''}",
+      "K6SIM_ERROR_RATE=${cfg.errorRate ?: ''}",
+      "K6SIM_DEBUG=${cfg.debug ?: ''}",
       "K6_OTEL_SERVICE_NAME=k6-microservices-smoke",
       "K6_OTEL_GRPC_EXPORTER_ENDPOINT=otel-collector-gateway.observability.svc.cluster.local:4317",
       "K6_OTEL_GRPC_EXPORTER_INSECURE=true",
@@ -75,8 +100,19 @@ def call(Map cfg) {
 
 /**
  * Prints the raw k6-summary.json (also archived as a build artifact by
- * Jenkinsfile.microservices-k6-smoke) plus a short human-readable pass/fail
- * breakdown of the metrics that matter most for this smoke test.
+ * Jenkinsfile.microservices-k6-smoke) plus a layered human-readable analysis:
+ *
+ *   1. SUMMARY  - the at-a-glance pass/fail line anyone can read.
+ *   2. LATENCY  - full percentile spread (avg/min/med/p90/p95/p99/max) so an
+ *                 expert sees the tail, not just p95, and where the budget bites.
+ *   3. THROUGHPUT & RELIABILITY - RPS, iterations, dropped iterations, peak VUs,
+ *                 bytes in/out, plus connection-level timings (TLS/connect/wait)
+ *                 when k6 emits them (external TARGET_URL runs).
+ *   4. THRESHOLDS - every configured threshold expression with its PASS/FAIL,
+ *                 and a final verdict (PASS / UNSTABLE-thresholds / see-checks).
+ *
+ * Helpers (numOf/msVal/fmtBytes/...) tolerate the metric being absent so a
+ * minimal smoke run and a full breakpoint run both print cleanly.
  */
 def printK6Summary() {
   echo '--- k6-summary.json ---'
@@ -84,37 +120,113 @@ def printK6Summary() {
 
   def metrics = readJSON(file: 'k6-summary.json').metrics ?: [:]
 
-  def lines = ['--- k6 run analysis ---']
+  // ---- 1. SUMMARY (basic, at-a-glance) -------------------------------------
+  def lines = ['', '========== k6 run analysis ==========', '--- SUMMARY ---']
 
   def checks = metrics.checks
   if (checks?.values != null) {
-    def passes = (checks.values.passes ?: 0) as Number
-    def fails = (checks.values.fails ?: 0) as Number
-    def rate = (checks.values.rate ?: 0) as Number
-    lines << "checks:            ${passes}/${passes + fails} passed (${String.format('%.1f', rate * 100)}%)"
+    def passes = numOf(checks.values.passes)
+    def fails = numOf(checks.values.fails)
+    def rate = numOf(checks.values.rate)
+    lines << "checks:            ${passes as int}/${(passes + fails) as int} passed (${pct(rate)})${fails > 0 ? '  <-- ' + (fails as int) + ' FAILED' : ''}"
   }
 
   def httpReqFailed = metrics.http_req_failed
   if (httpReqFailed?.values != null) {
-    def rate = (httpReqFailed.values.rate ?: 0) as Number
-    lines << "http_req_failed:   ${String.format('%.2f', rate * 100)}% failed (threshold rate<0.05: ${thresholdStatus(httpReqFailed)})"
+    lines << "http_req_failed:   ${pct(numOf(httpReqFailed.values.rate))} failed   [${thresholdStatus(httpReqFailed)}]"
   }
 
-  def httpReqDuration = metrics.http_req_duration
-  if (httpReqDuration?.values != null) {
-    def p95 = (httpReqDuration.values['p(95)'] ?: 0) as Number
-    def avg = (httpReqDuration.values.avg ?: 0) as Number
-    lines << "http_req_duration: avg=${String.format('%.0f', avg)}ms, p95=${String.format('%.0f', p95)}ms (threshold p(95)<3000ms: ${thresholdStatus(httpReqDuration)})"
+  def reqs = metrics.http_reqs
+  if (reqs?.values != null) {
+    lines << "http_reqs:         ${numOf(reqs.values.count) as int} total (${String.format('%.2f', numOf(reqs.values.rate))} req/s)"
   }
 
+  // ---- 2. LATENCY (expert: full percentile spread) -------------------------
+  def dur = metrics.http_req_duration
+  if (dur?.values != null) {
+    lines << ''
+    lines << '--- LATENCY (http_req_duration, ms)  [' + thresholdStatus(dur) + '] ---'
+    lines << "  avg=${ms(dur.values.avg)}  min=${ms(dur.values.min)}  med=${ms(dur.values.med)}"
+    lines << "  p90=${ms(dur.values['p(90)'])}  p95=${ms(dur.values['p(95)'])}  p99=${ms(dur.values['p(99)'])}  max=${ms(dur.values.max)}"
+    // Connection-level breakdown (only meaningful for external TARGET_URL runs).
+    def waiting = metrics.http_req_waiting
+    if (waiting?.values != null) {
+      lines << "  server (waiting/TTFB) avg=${ms(waiting.values.avg)}  p95=${ms(waiting.values['p(95)'])}" +
+               connDetail(metrics)
+    }
+  }
+
+  // ---- 3. THROUGHPUT & RELIABILITY -----------------------------------------
   def iterations = metrics.iterations
-  if (iterations?.values != null) {
-    def count = (iterations.values.count ?: 0) as Number
-    def rate = (iterations.values.rate ?: 0) as Number
-    lines << "iterations:        ${count} (${String.format('%.2f', rate)}/s)"
+  def vusMax = metrics.vus_max
+  def dropped = metrics.dropped_iterations
+  def dataRecv = metrics.data_received
+  def dataSent = metrics.data_sent
+  if (iterations?.values != null || dataRecv?.values != null) {
+    lines << ''
+    lines << '--- THROUGHPUT & RELIABILITY ---'
+    if (iterations?.values != null) {
+      lines << "  iterations:      ${numOf(iterations.values.count) as int} (${String.format('%.2f', numOf(iterations.values.rate))}/s)"
+    }
+    if (dropped?.values != null && numOf(dropped.values.count) > 0) {
+      lines << "  dropped iters:   ${numOf(dropped.values.count) as int}  <-- arrival-rate executor could not keep up (under-provisioned VUs)"
+    }
+    if (vusMax?.values != null) {
+      lines << "  peak VUs:        ${numOf(vusMax.values.value ?: vusMax.values.max) as int}"
+    }
+    if (dataRecv?.values != null) {
+      lines << "  data received:   ${fmtBytes(numOf(dataRecv.values.count))} (${fmtBytes(numOf(dataRecv.values.rate))}/s)"
+    }
+    if (dataSent?.values != null) {
+      lines << "  data sent:       ${fmtBytes(numOf(dataSent.values.count))} (${fmtBytes(numOf(dataSent.values.rate))}/s)"
+    }
   }
+
+  // ---- 4. THRESHOLDS table + verdict ---------------------------------------
+  lines << ''
+  lines << '--- THRESHOLDS ---'
+  def anyThreshold = false
+  def allOk = true
+  metrics.each { name, m ->
+    def th = m?.thresholds
+    if (th instanceof Map && !th.isEmpty()) {
+      th.each { expr, res ->
+        anyThreshold = true
+        def ok = (res instanceof Map) ? (res.ok != false) : (res != false)
+        if (!ok) { allOk = false }
+        lines << "  [${ok ? 'PASS' : 'FAIL'}] ${name}: ${expr}"
+      }
+    }
+  }
+  if (!anyThreshold) { lines << '  (none configured)' }
+
+  def checksFailed = checks?.values != null && numOf(checks.values.fails) > 0
+  def verdict = !allOk ? 'UNSTABLE - one or more thresholds breached (k6 exit 99)'
+              : checksFailed ? 'PASS on thresholds, but some functional checks FAILED - inspect SUMMARY'
+              : 'PASS - thresholds met and all checks green'
+  lines << ''
+  lines << "VERDICT: ${verdict}"
+  lines << '====================================='
 
   echo lines.join('\n')
+}
+
+// ---- formatting helpers (null-tolerant) ------------------------------------
+def numOf(v) { (v ?: 0) as Number }
+def pct(Number rate) { "${String.format('%.2f', rate * 100)}%" }
+def ms(v) { "${String.format('%.0f', numOf(v))}" }
+def fmtBytes(Number n) {
+  if (n >= 1024 * 1024) return "${String.format('%.1f', n / (1024 * 1024))} MB"
+  if (n >= 1024) return "${String.format('%.1f', n / 1024)} KB"
+  return "${n as int} B"
+}
+def connDetail(Map metrics) {
+  def parts = []
+  def conn = metrics.http_req_connecting
+  def tls = metrics.http_req_tls_handshaking
+  if (conn?.values != null) parts << "connect avg=${ms(conn.values.avg)}"
+  if (tls?.values != null && numOf(tls.values.avg) > 0) parts << "tls avg=${ms(tls.values.avg)}"
+  return parts ? "  (${parts.join(', ')})" : ''
 }
 
 /**

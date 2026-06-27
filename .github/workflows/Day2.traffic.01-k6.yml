@@ -3,10 +3,52 @@ name: "Day2.traffic.01 Continuous k6 simulation"
 on:
   workflow_dispatch:
     inputs:
+      profile:
+        description: "Workload profile"
+        type: choice
+        default: smoke
+        options: [smoke, load, stress, soak, spike, breakpoint]
+      env_name:
+        description: "Target tier (stable = public URL; develop = port-forward the develop gateway)"
+        type: choice
+        default: stable
+        options: [stable, develop]
       duration:
-        description: "Duration of the simulation (e.g. 10m, 1h)"
+        description: "Hold duration (e.g. 30s, 10m, 1h). Overrides the iteration budget / profile hold; clear it to keep a profile's native shape (spike/breakpoint)."
         default: "15m"
-        required: true
+        required: false
+      vus:
+        description: "Virtual users (empty → profile default)"
+        default: ""
+        required: false
+      stages:
+        description: 'Custom ramping stages "dur:target,..." e.g. 30s:10,2m:50,30s:0 (overrides profile)'
+        default: ""
+        required: false
+      rps:
+        description: "Constant arrival rate (req/s; overrides profile)"
+        default: ""
+        required: false
+      scenarios:
+        description: 'Request flows: "all" or comma list of gateway-ui,gateway-health,microservice-health,gateway-proxy'
+        default: "all"
+        required: false
+      p95_ms:
+        description: "p(95) latency budget in ms (empty → 3000)"
+        default: ""
+        required: false
+      error_rate:
+        description: "Max error rate 0..1 (empty → 0.05)"
+        default: ""
+        required: false
+      target_url:
+        description: "Override target base URL (empty → derived from env_name)"
+        default: ""
+        required: false
+      debug:
+        description: "Per-iteration k6 debug logging"
+        type: boolean
+        default: false
   # Optional: Run on a schedule to keep the dashboards alive
   # schedule:
   #   - cron: '0 * * * *' # Every hour
@@ -70,7 +112,22 @@ jobs:
         env:
           K6_OTEL_SERVICE_NAME: k6-microservices-smoke
           K6_OTEL_EXPORT_INTERVAL: 2s
-          OTEL_RESOURCE_ATTRIBUTES: service.name=k6-microservices-smoke,service.namespace=jenkins-2026,deployment.environment=stable
+          OTEL_RESOURCE_ATTRIBUTES: service.name=k6-microservices-smoke,service.namespace=jenkins-2026,deployment.environment=${{ github.event.inputs.env_name || 'stable' }}
+          # Workload contract (K6SIM_*), straight from the dispatch inputs. Empty
+          # → the k6 script default. K6SIM_DURATION carries the legacy `duration`
+          # input so existing dashboards-keep-alive runs behave as before.
+          ENV_NAME: ${{ github.event.inputs.env_name || 'stable' }}
+          K6SIM_PROFILE: ${{ github.event.inputs.profile || 'smoke' }}
+          K6SIM_VUS: ${{ github.event.inputs.vus }}
+          K6SIM_DURATION: ${{ github.event.inputs.duration }}
+          K6SIM_STAGES: ${{ github.event.inputs.stages }}
+          K6SIM_RPS: ${{ github.event.inputs.rps }}
+          K6SIM_SCENARIOS: ${{ github.event.inputs.scenarios || 'all' }}
+          K6SIM_P95_MS: ${{ github.event.inputs.p95_ms }}
+          K6SIM_ERROR_RATE: ${{ github.event.inputs.error_rate }}
+          K6SIM_DEBUG: ${{ github.event.inputs.debug }}
+          ENV_NAME_INPUT: ${{ github.event.inputs.env_name || 'stable' }}
+          TARGET_URL_INPUT: ${{ github.event.inputs.target_url }}
           # Optional Grafana Cloud k6 (the k6-app) streaming; empty -> skipped.
           K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
           K6_CLOUD_PROJECT_ID: ${{ secrets.K6_CLOUD_PROJECT_ID }}
@@ -151,26 +208,47 @@ jobs:
 
           echo "GRAFANA_BASE_URL=${GRAFANA_URL}" >> "${GITHUB_ENV}"
 
-          export TARGET_URL="https://microservices.jenkins2026.nubenetes.com"
+          # ---------------------------------------------------------------------------
+          # Resolve the application target URL.
+          #   explicit target_url input → use as-is
+          #   env_name=develop          → port-forward the develop gateway (no public host)
+          #   env_name=stable (default) → the public microservices host from config.yaml
+          # ---------------------------------------------------------------------------
+          APP_PF_PID=""
+          if [[ -n "${TARGET_URL_INPUT:-}" ]]; then
+            export TARGET_URL="${TARGET_URL_INPUT}"
+          elif [[ "${ENV_NAME_INPUT}" == "develop" ]]; then
+            kubectl port-forward svc/gateway -n microservices-develop 18080:8080 &
+            APP_PF_PID=$!
+            sleep 4
+            export TARGET_URL="http://localhost:18080"
+            echo "Target → develop gateway via port-forward (PID ${APP_PF_PID})"
+          else
+            HOST="$(yq '.gateway.hosts.microservices' config/config.yaml 2>/dev/null || echo microservices)"
+            DOMAIN="$(yq '.gateway.baseDomain' config/config.yaml 2>/dev/null || true)"
+            export TARGET_URL="https://${HOST}.${DOMAIN}"
+          fi
+          echo "TARGET_URL=${TARGET_URL}  (env=${ENV_NAME_INPUT}, profile=${K6SIM_PROFILE})"
 
           CLOUD_OUT=""
           if [[ -n "${K6_CLOUD_TOKEN:-}" && -n "${K6_CLOUD_PROJECT_ID:-}" ]]; then
             CLOUD_OUT="--out cloud"
           fi
 
+          # Execution shape (VUs/duration/stages/rps) comes entirely from the
+          # K6SIM_* env (the script's scenarios block) — no --vus/--duration CLI
+          # flags, which k6 forbids mixing with a scenarios-based script.
+          # TARGET_URL and ENV_NAME reach the script as __ENV automatically.
           set +e
           k6 run jenkins/pipelines/k6/microservices-smoke.js \
             -o opentelemetry ${CLOUD_OUT} \
-            --vus 2 \
-            --duration ${{ github.event.inputs.duration || '15m' }} \
-            --env TARGET_URL="${TARGET_URL}" \
-            --env ENV_NAME=stable \
             --summary-export=k6-summary.json
           EXIT_CODE=$?
           set -e
 
-          # Stop port-forward if we started one
+          # Stop port-forwards if we started any
           [[ -n "${PF_PID}" ]] && kill "${PF_PID}" 2>/dev/null || true
+          [[ -n "${APP_PF_PID}" ]] && kill "${APP_PF_PID}" 2>/dev/null || true
 
           END_TIME_MS=$(date +%s%3N)
           FROM_TIME=$((START_TIME_MS - 300000))
@@ -202,7 +280,28 @@ jobs:
           echo "K6 TRAFFIC SIMULATION SUMMARY  (mode: ${OBS_MODE:-unknown})"
           echo "=============================================================================="
           if [ -f k6-summary.json ]; then
-            cat k6-summary.json | jq '.metrics'
+            jq -r '
+              .metrics as $m
+              | "--- SUMMARY ---",
+                "checks:          \(($m.checks.values.passes // 0))/\((($m.checks.values.passes // 0)+($m.checks.values.fails // 0))) passed (\((((($m.checks.values.rate // 0)*10000)|round)/100))%)",
+                "http_req_failed: \((((($m.http_req_failed.values.rate // 0)*10000)|round)/100))% failed",
+                "http_reqs:       \(($m.http_reqs.values.count // 0)) total (\(((($m.http_reqs.values.rate // 0)*100)|round)/100)/s)",
+                "",
+                "--- LATENCY (http_req_duration, ms) ---",
+                "  avg=\(($m.http_req_duration.values.avg // 0)|floor)  med=\(($m.http_req_duration.values.med // 0)|floor)  p90=\(($m.http_req_duration.values["p(90)"] // 0)|floor)  p95=\(($m.http_req_duration.values["p(95)"] // 0)|floor)  p99=\(($m.http_req_duration.values["p(99)"] // 0)|floor)  max=\(($m.http_req_duration.values.max // 0)|floor)",
+                "  server (TTFB) avg=\(($m.http_req_waiting.values.avg // 0)|floor)  p95=\(($m.http_req_waiting.values["p(95)"] // 0)|floor)",
+                "",
+                "--- THROUGHPUT & RELIABILITY ---",
+                "  iterations:    \(($m.iterations.values.count // 0)) (\(((($m.iterations.values.rate // 0)*100)|round)/100)/s)",
+                "  dropped iters: \($m.dropped_iterations.values.count // 0)",
+                "  peak VUs:      \($m.vus_max.values.value // $m.vus_max.values.max // 0)",
+                "  data recv:     \((($m.data_received.values.count // 0)/1024)|floor) KB   sent: \((($m.data_sent.values.count // 0)/1024)|floor) KB",
+                "",
+                "--- THRESHOLDS ---",
+                ( [ $m | to_entries[] as $e | ($e.value.thresholds // {}) | to_entries[]
+                    | "  [\(if .value.ok==false then "FAIL" else "PASS" end)] \($e.key): \(.key)" ]
+                  | if length==0 then "  (none configured)" else .[] end )
+            ' k6-summary.json
           else
             echo "k6-summary.json not found. Check the simulation logs for errors."
           fi
@@ -225,7 +324,7 @@ jobs:
 
           BASE="${GRAFANA_BASE_URL:-}"
           DASH="jenkins2026-k6-smoke-overview/jenkins-2026-k6-observability-smoke-test"
-          PARAMS="orgId=1&var-deployment_environment=stable"
+          PARAMS="orgId=1&var-deployment_environment=${{ github.event.inputs.env_name || 'stable' }}"
           [[ -n "${DS_PROM}" ]]     && PARAMS="${PARAMS}&var-DS_PROMETHEUS=${DS_PROM}"
           [[ -n "${DS_LOKI}" ]]     && PARAMS="${PARAMS}&var-DS_LOKI=${DS_LOKI}"
           [[ -n "${DS_TEMPO}" ]]    && PARAMS="${PARAMS}&var-DS_TEMPO=${DS_TEMPO}"

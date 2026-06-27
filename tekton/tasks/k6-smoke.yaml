@@ -7,17 +7,40 @@ metadata:
   name: k6-smoke
 spec:
   params:
+    # ---- Target ----
     - name: target-namespace
     - name: env-name
       default: stable
+    - name: target-url
+      default: ""
     - name: self-repo-url
       default: https://github.com/nubenetes/jenkins-2026.git
     - name: self-repo-branch
       default: main
+    # ---- Workload (empty → the k6 script's own default; see microservices-smoke.js) ----
+    - name: profile
+      default: smoke           # smoke | load | stress | soak | spike | breakpoint
     - name: vus
-      default: "5"
+      default: ""
     - name: iterations
-      default: "50"
+      default: ""
+    - name: duration
+      default: ""
+    - name: stages
+      default: ""              # "30s:10,2m:50,30s:0"
+    - name: rps
+      default: ""
+    - name: sleep
+      default: ""
+    - name: scenarios
+      default: ""              # "all" | "gateway-ui,gateway-health,..."
+    # ---- Thresholds ----
+    - name: p95-ms
+      default: ""              # http_req_duration p(95) budget, ms (default 3000)
+    - name: error-rate
+      default: ""              # http_req_failed max rate 0..1 (default 0.05)
+    - name: debug
+      default: "false"
     - name: otlp-endpoint
       default: ""
   workspaces:
@@ -41,12 +64,37 @@ spec:
     - name: run-k6
       image: grafana/k6:2.0.0
       env:
-        - name: K6_VUS
-          value: $(params.vus)
-        - name: K6_ITERATIONS
-          value: $(params.iterations)
         - name: TARGET_NAMESPACE
           value: $(params.target-namespace)
+        - name: TARGET_URL
+          value: $(params.target-url)
+        - name: ENV_NAME
+          value: $(params.env-name)
+        # Workload contract (K6SIM_*). k6 reserves K6_VUS/K6_DURATION/etc as its
+        # own option env vars, which clash with the script's `scenarios` block —
+        # hence the K6SIM_ prefix. Empty → the script default.
+        - name: K6SIM_PROFILE
+          value: $(params.profile)
+        - name: K6SIM_VUS
+          value: $(params.vus)
+        - name: K6SIM_ITERATIONS
+          value: $(params.iterations)
+        - name: K6SIM_DURATION
+          value: $(params.duration)
+        - name: K6SIM_STAGES
+          value: $(params.stages)
+        - name: K6SIM_RPS
+          value: $(params.rps)
+        - name: K6SIM_SLEEP
+          value: $(params.sleep)
+        - name: K6SIM_SCENARIOS
+          value: $(params.scenarios)
+        - name: K6SIM_P95_MS
+          value: $(params.p95-ms)
+        - name: K6SIM_ERROR_RATE
+          value: $(params.error-rate)
+        - name: K6SIM_DEBUG
+          value: $(params.debug)
         # OTLP output (k6 2.x schema, same as the Jenkins job + the GitHub k6
         # workflow): gRPC to the in-cluster collector, which forwards to the backend.
         - name: K6_OTEL_SERVICE_NAME
@@ -97,7 +145,11 @@ spec:
         if [ -n "${K6_CLOUD_TOKEN:-}" ] && [ -n "${K6_CLOUD_PROJECT_ID:-}" ]; then
           CLOUD_OUT="--out cloud"
         fi
-        k6 run ${OTEL_OUT} ${CLOUD_OUT} --vus "${K6_VUS}" --iterations "${K6_ITERATIONS}" \
+        # Execution shape (VUs/iterations/duration/stages/rps) comes entirely from
+        # the K6SIM_* env above via the script's `scenarios` block — do NOT pass
+        # --vus/--iterations here (k6 forbids mixing CLI execution shortcuts with
+        # a scenarios-based script).
+        k6 run ${OTEL_OUT} ${CLOUD_OUT} \
           --summary-export="$(workspaces.source.path)/k6-summary.json" \
           jenkins/pipelines/k6/microservices-smoke.js
         if [ -n "${CLOUD_OUT}" ] && [ -n "${K6_GRAFANA_BASE_URL:-}" ]; then

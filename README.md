@@ -229,6 +229,18 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 
 ---
 
+**[302 · k6 Traffic, Load & Observability Testing](./docs/302-K6_LOAD_TESTING.md)**
+- [Understanding k6 here (newcomers → specialists)](./docs/302-K6_LOAD_TESTING.md#understanding-k6-here-newcomers--specialists)
+- [The parameter contract (`K6SIM_*`)](./docs/302-K6_LOAD_TESTING.md#the-parameter-contract-k6sim_)
+- [Workload profiles](./docs/302-K6_LOAD_TESTING.md#workload-profiles)
+- [Running it — the three engines](./docs/302-K6_LOAD_TESTING.md#running-it--the-three-engines) ([Jenkins](./docs/302-K6_LOAD_TESTING.md#jenkins) · [Tekton](./docs/302-K6_LOAD_TESTING.md#tekton) · [GitHub Actions](./docs/302-K6_LOAD_TESTING.md#github-actions))
+- [Tutorials (basic & advanced)](./docs/302-K6_LOAD_TESTING.md#tutorials)
+- [Reading the results — basic & expert](./docs/302-K6_LOAD_TESTING.md#reading-the-results--basic--expert)
+- [stable vs develop — compatibility matrix](./docs/302-K6_LOAD_TESTING.md#stable-vs-develop--compatibility-matrix)
+- [Troubleshooting](./docs/302-K6_LOAD_TESTING.md#troubleshooting)
+
+---
+
 **[401 · Jenkins](./docs/401-JENKINS.md)**
 - [Accessing the UI & Admin Password](./docs/401-JENKINS.md#accessing-the-ui--admin-password)
 - [Google Login (OpenID Connect)](./docs/401-JENKINS.md#google-login-openid-connect)

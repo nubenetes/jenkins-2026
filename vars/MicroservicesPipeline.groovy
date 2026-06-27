@@ -523,8 +523,14 @@ EOF
             stage('Integration k6 Smoke Test') {
                 steps {
                     script {
-                        def k6JobName = 'microservices-k6-smoke'
-                        echo "Triggering integration k6 smoke test: ${k6JobName}..."
+                        // Trigger the k6 job for THIS tier: 'develop' deploys to the
+                        // microservices-develop namespace, so it must hand off to the
+                        // 'microservices-k6-smoke-develop' job (the seed generates one
+                        // k6 job per environment). Previously hardcoded to the stable
+                        // job, which smoke-tested the wrong namespace on develop runs.
+                        def k6Suffix = params.envName == 'develop' ? '-develop' : ''
+                        def k6JobName = "microservices-k6-smoke${k6Suffix}"
+                        echo "Triggering integration k6 smoke test: ${k6JobName} (env=${params.envName})..."
                         build job: k6JobName, wait: true
                     }
                 }

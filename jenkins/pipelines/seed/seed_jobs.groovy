@@ -124,6 +124,7 @@ MicroservicesK6SmokePipeline(
     targetNamespace: '${e.namespace}',
     envName: '${e.name}',
     genaiEnabled: ${genaiServiceEnabled},
+    profile: 'smoke',
     vus: '4',
     iterations: '12'
 )
