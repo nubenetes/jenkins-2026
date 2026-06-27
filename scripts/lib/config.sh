@@ -42,6 +42,16 @@ yq_get_list() {
 J2026_PLATFORM="${JENKINS2026_PLATFORM:-$(yq_get '.platform.target' 'gke')}"
 export J2026_PLATFORM
 
+# Log verbosity (info|debug). common.sh seeds it from JENKINS2026_LOG_LEVEL; here we add
+# the config.yaml durable default (logging.level) and validate. Env override wins. See
+# log_debug() in common.sh — there is no 'trace'/set -x level by design (secret leakage).
+J2026_LOG_LEVEL="${JENKINS2026_LOG_LEVEL:-$(yq_get '.logging.level' 'info')}"
+case "${J2026_LOG_LEVEL}" in
+  info|debug) ;;
+  *) log_warn "Unknown logging.level '${J2026_LOG_LEVEL}' (expected info|debug) — using 'info'."; J2026_LOG_LEVEL=info ;;
+esac
+export J2026_LOG_LEVEL
+
 if [[ "${J2026_PLATFORM}" != "gke" ]]; then
   log_error "Unsupported platform '${J2026_PLATFORM}' (expected gke)."
   exit 1

@@ -23,6 +23,19 @@ platform:
     serviceType: ClusterIP
 
 # -----------------------------------------------------------------------------
+# Log verbosity
+# -----------------------------------------------------------------------------
+# How chatty the scripts/0N-*.sh are (and TF_LOG for the Terraform steps).
+#   info  (default) - the normal [STEP]/[INFO] output.
+#   debug           - additionally emit [DEBUG] lines (log_debug in lib/common.sh)
+#                     and TF_LOG=DEBUG. No 'trace'/`set -x` level by design: bash
+#                     xtrace would leak script-derived secret values into the logs.
+# Per-run override: JENKINS2026_LOG_LEVEL=debug (the GHA workflows expose it as the
+# 'log_level' dropdown input). Use GitHub's ACTIONS_STEP_DEBUG for runner-level tracing.
+logging:
+  level: info
+
+# -----------------------------------------------------------------------------
 # CI engine selector
 # -----------------------------------------------------------------------------
 # Which continuous-integration engine the platform deploys and runs the

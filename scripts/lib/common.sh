@@ -18,14 +18,28 @@ if [[ -t 1 ]]; then
   J2026_C_WARN=$'\033[33m'
   J2026_C_ERROR=$'\033[31m'
   J2026_C_STEP=$'\033[1;35m'
+  J2026_C_DEBUG=$'\033[2m'
 else
-  J2026_C_RESET=""; J2026_C_INFO=""; J2026_C_WARN=""; J2026_C_ERROR=""; J2026_C_STEP=""
+  J2026_C_RESET=""; J2026_C_INFO=""; J2026_C_WARN=""; J2026_C_ERROR=""; J2026_C_STEP=""; J2026_C_DEBUG=""
 fi
+
+# Verbosity: info (default) | debug. Set via JENKINS2026_LOG_LEVEL (the GHA workflows'
+# log_level dropdown input) or config.yaml logging.level (re-read in config.sh). Only
+# 'debug' adds output. There is DELIBERATELY no 'trace'/`set -x` level: bash xtrace
+# prints command arguments, which would leak the secret VALUES the provisioning scripts
+# pass to `kubectl create secret`/`kubectl patch` (generated admin password, dockerconfig,
+# the ArgoCD-minted token, …) into the run log — GitHub only masks registered secrets,
+# not script-derived ones. Use the native ACTIONS_STEP_DEBUG for runner-level tracing.
+: "${J2026_LOG_LEVEL:=${JENKINS2026_LOG_LEVEL:-info}}"
+export J2026_LOG_LEVEL
 
 log_info()  { printf '%s[INFO ]%s %s\n'  "${J2026_C_INFO}"  "${J2026_C_RESET}" "$*"; }
 log_warn()  { printf '%s[WARN ]%s %s\n'  "${J2026_C_WARN}"  "${J2026_C_RESET}" "$*" >&2; }
 log_error() { printf '%s[ERROR]%s %s\n'  "${J2026_C_ERROR}" "${J2026_C_RESET}" "$*" >&2; }
 log_step()  { printf '%s[STEP ]%s %s\n'  "${J2026_C_STEP}"  "${J2026_C_RESET}" "$*"; }
+# Only emits when J2026_LOG_LEVEL=debug. Goes to stderr so it never pollutes a
+# function's stdout "return value" (e.g. helpers that echo a value to be captured).
+log_debug() { [[ "${J2026_LOG_LEVEL}" == "debug" ]] && printf '%s[DEBUG]%s %s\n' "${J2026_C_DEBUG}" "${J2026_C_RESET}" "$*" >&2 || true; }
 
 # --- prereqs ----------------------------------------------------------------
 
