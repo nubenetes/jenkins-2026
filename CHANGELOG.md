@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.23.2] - 2026-06-27
+
+### Documentation
+
+- **Overhauled the `README.md` introduction and reviewed the whole file for
+  integrity with the current platform.** The old intro mentioned only Jenkins + the
+  four Grafana backends and was otherwise stale. The new intro is in **two parts,
+  each with a collapsible design diagram**:
+  - **High-level** — an "at a glance" paragraph + a **high-level design** Mermaid
+    diagram (collapsible).
+  - **Low-level** — a collapsible *In depth* section with a **low-level (planes &
+    components) design** Mermaid diagram, a **feature-flag table** (default vs
+    optional: `ci.engine` jenkins|**tekton**, `observability.mode`
+    grafana-cloud/oss/managed-azure/managed-aws, `secrets.backend` imperative|**eso**
+    = GCP Secret Manager + ESO, `microservices.developTrackEnabled` = the lean
+    **develop tier**, `gateway.baseDomain` = IAP public access), the **always-on**
+    platform, and a "what's inside, by area" breakdown.
+  - Also: the **§3 Architecture Overview** diagram now shows the optional
+    `microservices-develop` tier (dashed) + the `eso` secrets path in its caption.
+    All three README diagrams are **collapsible** and validated against the Mermaid
+    parser; verified the workflow count, script references, and the doc inventory.
+
 ## [v0.23.1] - 2026-06-27
 
 ### Documentation

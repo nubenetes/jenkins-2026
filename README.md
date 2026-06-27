@@ -2,7 +2,93 @@
 
 > **Two-repo GitOps setup.** This is the **infra repo** (cluster bootstrap, Jenkins, ArgoCD, observability). Image tags and ArgoCD manifests live in the companion **[`nubenetes/jenkins-2026-gitops-config`](https://github.com/nubenetes/jenkins-2026-gitops-config)** repo.
 
-A self-contained proof of concept that deploys **Jenkins** on **Kubernetes**, configures it entirely through Configuration-as-Code + Job DSL ("pipelines as code"), and uses it to build, containerize, and deploy the JHipster microservices reference application. Configured specifically for **Google Kubernetes Engine (GKE)**, with full OpenTelemetry observability into Grafana Cloud, in-cluster OSS Grafana, Azure Managed Grafana, or Amazon Managed Grafana.
+**At a glance.** A self-contained, two-repo **GitOps** proof-of-concept platform: it deploys a CI engine (**Jenkins** by default, or **Tekton**) on **Google Kubernetes Engine**, configures it **entirely as code** (*nothing is clicked in a UI*), and uses it to build, **security-scan**, containerize, and **GitOps-deploy** the JHipster microservices reference app through **ArgoCD** — with end-to-end **OpenTelemetry** observability into any of four Grafana backends. Everything runs from **GitHub Actions** authenticating to GCP **keylessly** (Workload Identity Federation — no JSON keys), across a clean **Day0 → Day1 → Day2 → Decom** lifecycle. A handful of **feature flags** (sensible defaults, powerful opt-ins) select the CI engine, the observability backend, the secrets backend, an optional **lean `develop` tier**, and public access.
+
+<details>
+<summary>📐 High-level design — the platform at a glance (click to expand)</summary>
+
+```mermaid
+flowchart LR
+  dev([You / git push]) --> gha["GitHub Actions<br/>keyless WIF → GCP"]
+  gha --> prov[provision GKE + full stack]
+  prov --> K
+  subgraph K["GKE cluster"]
+    ci["CI engine<br/>Jenkins default / Tekton"] --> argo["ArgoCD · GitOps CD"]
+    argo --> apps["JHipster microservices<br/>+ CloudNativePG"]
+    apps --> otel["OpenTelemetry"]
+  end
+  ci -. "push image tag" .-> gops[("gitops-config repo")]
+  gops --> argo
+  otel --> graf[("Grafana: Cloud · OSS · Azure · AWS")]
+  classDef pick fill:#eef,stroke:#66c;
+  class ci,graf pick;
+```
+
+</details>
+
+<details>
+<summary>🔬 <b>In depth</b> — feature flags, components &amp; lifecycle (the full technical breakdown)</summary>
+
+<details>
+<summary>🔬 Low-level design — planes &amp; components (dashed = optional / off by default)</summary>
+
+```mermaid
+flowchart TB
+  subgraph CP["Control / GitOps plane"]
+    argo["ArgoCD<br/>app-of-apps + ApplicationSet"]
+    eso["External Secrets ↔ GCP Secret Manager<br/>optional · secrets.backend=eso"]:::opt
+  end
+  subgraph CI["CI plane — pick one (ci.engine)"]
+    jen["Jenkins<br/>JCasC + seed job + shared lib · WebSocket agents"]
+    tek["Tekton<br/>Pipelines/Triggers/Dashboard + PaC + Chains"]
+  end
+  subgraph DATA["Microservices + data plane"]
+    gw[gateway] --> msapp[jhipster microservice]
+    cnpg[("CNPG HA Postgres<br/>3 instances + poolers + WAL backups")]
+    msd["microservices-develop<br/>optional · lean: 1 instance, no backups"]:::opt
+  end
+  subgraph OBS["Observability plane — pick one (observability.mode)"]
+    op["OTel operator<br/>auto-instrument"] --> col["OTel collector"]
+    col --> back[("Grafana: Cloud · OSS · Azure · AWS")]
+  end
+  sec["Zero-trust: Dataplane V2 netpols + WireGuard · Google IAP · keyless WIF/OIDC"]
+
+  CI -->|"build → scan → image → commit tag"| CP
+  CP -->|"sync"| DATA
+  DATA -->|"OTLP traces/metrics/logs"| OBS
+  sec -.-> CI & DATA & OBS
+  classDef opt fill:#eef,stroke:#66c,stroke-dasharray: 4 3;
+```
+
+</details>
+
+#### Feature flags
+
+Durable default in [`config/config.yaml`](config/config.yaml); per-run override via a `JENKINS2026_*` env var (local) or a GitHub Actions input (CI):
+
+| Capability | Flag | Default | Optional |
+|---|---|---|---|
+| **CI engine** | `ci.engine` | **`jenkins`** — official Helm chart + JCasC + Job-DSL seed | **`tekton`** — a full alternative: Tekton Pipelines / Triggers / Dashboard (IAP-protected) + **Pipelines-as-Code**, the same pipeline ported to [`tekton/`](tekton/). Mutually exclusive; switching retires the other. |
+| **Observability backend** | `observability.mode` | **`grafana-cloud`** *(the GitHub Actions `Day1` input defaults to **`oss`**)* | **`oss`** (in-cluster Grafana / Loki / Tempo / kube-prometheus) · **`managed-azure`** · **`managed-aws`** — exactly one active per cluster; a rerun deterministically switches. |
+| **Secrets backend** | `secrets.backend` | **`imperative`** — `kubectl create secret` from GitHub secrets | **`eso`** — push values to **GCP Secret Manager** + sync via the **External Secrets Operator** over Workload Identity (keyless, versioned, audited). |
+| **Develop tier** | `microservices.developTrackEnabled` | **`false`** | **`true`** — an optional **lean, non-HA** second deploy tier (`microservices-develop`: CNPG single instance, single pooler, no backups), engine-neutral, into the same observability stack. |
+| **Public access** | `gateway.baseDomain` | **set** → one global **GKE Gateway** + Google **IAP** + a wildcard cert front every UI | **`""`** to disable (reach services via `kubectl port-forward`). |
+
+**Always on (no flag):** **ArgoCD** (the GitOps CD engine) · **CloudNativePG** HA Postgres + **pgAdmin** · **Headlamp** (cluster UI) · the **OpenTelemetry** operator + collector · **Argo Rollouts** (sidecar-free canary / blue-green via the Gateway API) · **Dataplane V2** (Cilium/eBPF) **enforced NetworkPolicies** + **WireGuard** inter-node pod encryption · **DevSecOps** scanning in every build · **Karpenter** spot autoscaling · and **pinned versions** throughout.
+
+#### What's inside, by area
+
+- **CI engines (pick one — `ci.engine`).** *Jenkins* (default): the official Helm chart, configured 100% via **JCasC** + a Job-DSL **seed job** that generates one pipeline per microservice from a `services.yaml` registry; a global **shared library** (`vars/`) runs each build in an ephemeral multi-container agent pod that connects back over **WebSocket**. *Tekton*: Pipelines/Triggers, the IAP-protected **Dashboard**, **Pipelines-as-Code** (git-push-driven), and **Chains** (SLSA provenance) — the same pipeline ported to [`tekton/`](tekton/). Both converge at the deploy boundary (ArgoCD), so the rest of the platform is engine-neutral.
+- **The pipeline (both engines).** ~11 stages: checkout → **Semgrep** SAST → **CodeQL** → **Trivy** IaC → build & test (Maven/npm) → build & push image (Jib / Spring-Boot build-image / Kaniko) → **Trivy** image scan → **GitOps deploy** (`yq` the image tag → push to the gitops repo → `argocd app sync` → OTel self-heal) → smoke test → **k6**. Findings upload as SARIF to GitHub Code Scanning (non-blocking).
+- **GitOps CD (always — ArgoCD).** App-of-apps + an `ApplicationSet` render the microservices Helm chart; the CNPG operator, External Secrets, Headlamp, Argo Rollouts, and Jenkins/Tekton are all ArgoCD `Application`s. CI never `kubectl apply`s apps — it commits an image tag and ArgoCD reconciles.
+- **Data (always — CloudNativePG).** Per-service HA Postgres (3 instances + PgBouncer poolers + WAL/base backups to GCS via Workload Identity), administered through **pgAdmin** (IAP, zero-password `.pgpass`). The optional *develop* tier runs a **lean** single-instance, no-backup variant.
+- **Observability (pick one backend — `observability.mode`).** The OTel **operator** auto-instruments the JVM apps; an OTel **collector** fans traces/metrics/logs out to **Grafana Cloud**, an in-cluster **OSS** stack (Prometheus/Loki/Tempo/Grafana), **Azure** Managed Grafana, or **Amazon** Managed Grafana — correlated by `trace_id`, with dashboards + alert rules provisioned per mode. Jenkins/Tekton runs emit spans too.
+- **Security & zero-trust.** Keyless **WIF/OIDC** everywhere (no JSON keys); **Dataplane V2** (Cilium/eBPF) **enforced** NetworkPolicies + **WireGuard** inter-node encryption; **Google IAP** fronts every admin UI; in-build **DevSecOps** scanning (Semgrep · CodeQL · Trivy · warnings-ng; Tekton adds **Chains**/SLSA); optional **ESO** + GCP Secret Manager.
+- **Lifecycle & ops.** A one-time, human-run **bootstrap** (`scripts/bootstrap.sh`) creates the root of trust (WIF + Terraform-state bucket + permanent DNS zone). Then **GitHub Actions** drive **Day0** (persistent infra: Gateway IP/cert, the chosen Grafana backend) → **Day1** (cluster + full stack) → **Day2** (redeploy / publish / traffic ops) → **Decom** (teardown), each behind a required-reviewer environment gate. Every workflow is **idempotent** — re-run to apply a change; you never Decom to converge.
+
+**Two-repo split:** this **infra repo** owns the cluster + CI engine + platform; the companion **[`gitops-config`](https://github.com/nubenetes/jenkins-2026-gitops-config)** repo owns the deployed microservices' image tags + Helm manifests — CI pushes image-tag bumps there, ArgoCD syncs them.
+
+</details>
 
 ---
 
@@ -287,7 +373,10 @@ See [901. Local Development](./docs/901-LOCAL_DEVELOPMENT.md) for the full step-
 
 ## 3. Architecture Overview
 
-Two pluggable choices, both deterministic & idempotent: the **CI engine** (`ci.engine`: Jenkins **xor** Tekton) and the **observability backend** (`observability.mode`: one of oss / grafana-cloud / managed-azure / managed-aws). ArgoCD is always the CD/GitOps engine.
+Several pluggable choices (the [feature-flag table](#jenkins-2026) above), all deterministic & idempotent — the two big ones are the **CI engine** (`ci.engine`: Jenkins **xor** Tekton) and the **observability backend** (`observability.mode`: one of oss / grafana-cloud / managed-azure / managed-aws), plus the opt-in **secrets backend** (`secrets.backend=eso` → GCP Secret Manager) and the optional **lean `develop` tier**. ArgoCD is always the CD/GitOps engine.
+
+<details>
+<summary>🏛️ Architecture overview — pluggable CI engine + observability backend</summary>
 
 ```mermaid
 flowchart TB
@@ -352,12 +441,18 @@ flowchart TB
     COL -->|mode=managed-azure| AZ
     COL -->|mode=managed-aws| AWSG
 
+    %% Optional lean develop tier (microservices.developTrackEnabled, off by default)
+    MSD["microservices-develop<br/>optional · lean CNPG: 1 instance, no backups"]:::pick
+    ACD -. "develop track on (optional)" .-> MSD
+
     classDef ext fill:#fde,stroke:#c39;
     classDef pick fill:#eef,stroke:#66c;
     class JEN,TEK,GCLOUD,AZ,AWSG,OSST pick;
 ```
 
-> The **CI engine** (Jenkins/Tekton) and **observability backend** (oss/grafana-cloud/managed-azure/managed-aws) boxes are *mutually exclusive* — exactly one of each is active per cluster, selected by `config/config.yaml` (or the `Day1.cluster.01` inputs) and switched deterministically. The three external backends are decoupled, persistent, **keyless** (WIF/OIDC) Day0 resources.
+</details>
+
+> The **CI engine** (Jenkins/Tekton) and **observability backend** (oss/grafana-cloud/managed-azure/managed-aws) boxes are *mutually exclusive* — exactly one of each is active per cluster, selected by `config/config.yaml` (or the `Day1.cluster.01` inputs) and switched deterministically. The three external backends are decoupled, persistent, **keyless** (WIF/OIDC) Day0 resources. The dashed **`microservices-develop`** node is the optional **lean** second deploy tier (`microservices.developTrackEnabled` / the `develop_track` input, **off by default**): a non-HA `microservices-develop` namespace (single CNPG instance, no backups) alongside `stable`, into the same observability stack. **Secrets** are `imperative` by default, or pushed to **GCP Secret Manager** and synced by the **External Secrets Operator** when `secrets.backend=eso`.
 
 For the full component diagram, microservices database architecture (CloudNative-PG HA), and CI/CD flow see [201. Architecture](./docs/201-ARCHITECTURE.md). For the Grafana Cloud Observability apps (App Observability, Synthetic Monitoring, Profiles — grafana-cloud only) see [301. Observability](./docs/301-OBSERVABILITY.md#grafana-cloud-observability-apps--status--recommendation).
 
