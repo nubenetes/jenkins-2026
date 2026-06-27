@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.23.2] - 2026-06-27
+
+### Documentation
+
+- **Rewrote the `README.md` introduction** to accurately and precisely describe
+  what the repo actually contains. The old intro mentioned only Jenkins + the four
+  Grafana backends; the new one adds **Tekton** (the alternative CI engine) and a
+  **feature-flag table** spelling out every selectable capability — what's **default**
+  vs **optional** — `ci.engine` (jenkins | tekton), `observability.mode`
+  (grafana-cloud/oss/managed-azure/managed-aws), `secrets.backend` (imperative |
+  **eso** = GCP Secret Manager + External Secrets Operator), `microservices.developTrackEnabled`
+  (the optional **lean develop tier**), and `gateway.baseDomain` (public access +
+  IAP) — plus the **always-on** platform (ArgoCD, CNPG, Argo Rollouts, Dataplane V2
+  + WireGuard, DevSecOps scanning, Karpenter) and the keyless WIF / Day0→Decom model.
+
 ## [v0.23.1] - 2026-06-27
 
 ### Documentation

@@ -2,7 +2,19 @@
 
 > **Two-repo GitOps setup.** This is the **infra repo** (cluster bootstrap, Jenkins, ArgoCD, observability). Image tags and ArgoCD manifests live in the companion **[`nubenetes/jenkins-2026-gitops-config`](https://github.com/nubenetes/jenkins-2026-gitops-config)** repo.
 
-A self-contained proof of concept that deploys **Jenkins** on **Kubernetes**, configures it entirely through Configuration-as-Code + Job DSL ("pipelines as code"), and uses it to build, containerize, and deploy the JHipster microservices reference application. Configured specifically for **Google Kubernetes Engine (GKE)**, with full OpenTelemetry observability into Grafana Cloud, in-cluster OSS Grafana, Azure Managed Grafana, or Amazon Managed Grafana.
+A self-contained, **GitOps** proof-of-concept platform: it deploys **Jenkins** (or **Tekton**) on **Google Kubernetes Engine**, configures the CI engine **entirely as code** (JCasC + Job DSL, or Tekton CRDs — *nothing is clicked in a UI*), and uses it to build, **security-scan**, containerize, and **GitOps-deploy** the JHipster microservices reference app through **ArgoCD** — with end-to-end **OpenTelemetry** observability into any of four Grafana backends. Everything runs from **GitHub Actions** that authenticate to GCP **keylessly** (Workload Identity Federation — no JSON keys stored anywhere), across a clean **Day0 → Day1 → Day2 → Decom** lifecycle.
+
+The whole platform is **configuration-driven** ([`config/config.yaml`](config/config.yaml)) — a small set of **feature flags** with sensible defaults and powerful, opt-in options (durable default in the file, per-run override via a `JENKINS2026_*` env var / a GitHub Actions input):
+
+| Capability | Flag | Default | Optional |
+|---|---|---|---|
+| **CI engine** | `ci.engine` | **`jenkins`** — Helm chart + JCasC + Job-DSL seed | **`tekton`** — a full alternative: Tekton Pipelines / Triggers / Dashboard (IAP-protected) + **Pipelines-as-Code**, the same pipeline ported to [`tekton/`](tekton/). Mutually exclusive; switching retires the other. |
+| **Observability backend** | `observability.mode` | **`grafana-cloud`** *(the GitHub Actions `Day1` input defaults to **`oss`**)* | **`oss`** (in-cluster Grafana / Loki / Tempo / kube-prometheus) · **`managed-azure`** · **`managed-aws`** — exactly one active per cluster; a rerun deterministically switches. |
+| **Secrets backend** | `secrets.backend` | **`imperative`** — `kubectl create secret` from GitHub secrets | **`eso`** — push values to **GCP Secret Manager** + sync via the **External Secrets Operator** over Workload Identity (keyless, versioned, audited). |
+| **Develop tier** | `microservices.developTrackEnabled` | **`false`** | **`true`** — an optional **lean, non-HA** second deploy tier (`microservices-develop`: CNPG single instance, single pooler, no backups), engine-neutral, into the same observability stack. |
+| **Public access** | `gateway.baseDomain` | **set** → one global **GKE Gateway** + Google **IAP** + a wildcard cert front every UI | **`""`** to disable (reach services via `kubectl port-forward`). |
+
+**Always on (no flag):** **ArgoCD** (the GitOps CD engine) · **CloudNativePG** HA Postgres + **pgAdmin** · **Headlamp** (cluster UI) · the **OpenTelemetry** operator + collector · **Argo Rollouts** (sidecar-free canary / blue-green via the Gateway API) · **Dataplane V2** (Cilium/eBPF) **enforced NetworkPolicies** + **WireGuard** inter-node pod encryption · **DevSecOps** scanning in every build (**Semgrep** · **CodeQL** · **Trivy** · warnings-ng; Tekton adds **Chains**/SLSA) · **Karpenter** spot autoscaling · and **pinned versions** throughout. Two-repo split: this **infra repo** owns the cluster + CI engine; the companion **gitops-config** repo owns the deployed microservices' image tags + manifests.
 
 ---
 
