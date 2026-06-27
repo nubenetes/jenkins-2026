@@ -266,6 +266,12 @@ The first recreate with enforcement surfaced several latent rules that had silen
 
 #### NetworkPolicy matrix
 
+> This matrix is the per-namespace allow/deny detail. For the **full network
+> architecture** it sits inside — the landing zone (single-VPC, *not* hub-spoke),
+> the VPC/subnet + pod/service **CIDR plan**, north-south ingress (Gateway + IAP +
+> NEG) & egress, east-west (VPC-native · Dataplane V2 · WireGuard), and this
+> segmentation model explained end to end — see **[503. Networking](./503-NETWORKING.md)**.
+
 Every policy is in [`infrastructure/networkpolicies*.yaml`](../infrastructure/) (engine-neutral always-on, plus `-jenkins`/`-tekton` files applied per `ci.engine`). `*` = "from/to any source" (the rule lists ports but no peer). Every `default-deny` namespace also egresses to CoreDNS (`kube-system:53`), omitted from the table.
 
 | Namespace | Mode | Policy / pods | Ingress allowed | Egress allowed |
