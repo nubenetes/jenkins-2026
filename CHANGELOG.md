@@ -19,6 +19,13 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **k6 GitHub Actions summary no longer crashes on k6 2.0.0 threshold output.** The
+  *Show Results Summary* step's `jq` read each threshold as an object (`.value.ok`),
+  but k6 2.0.0 emits thresholds as a plain **boolean** → `jq: Cannot index boolean
+  with string "ok"` → the step exited 5 and the whole job went red **even though the
+  test ran fine** (and the printed summary showed 0 reqs/iters — a parse artifact,
+  not reality: the run actually did 203 iterations / 4 VUs against develop). Now
+  handles both shapes (`.value | if type=="object" then .ok else . end`).
 - **ArgoCD `microservices` AppProject now allows the `microservices-develop`
   namespace.** Its `destinations` whitelisted only `microservices`, so the develop
   tier's generated Application was rejected with `InvalidSpecError` (namespace not in

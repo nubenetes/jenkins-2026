@@ -372,7 +372,8 @@ jobs:
                 "",
                 "--- THRESHOLDS ---",
                 ( [ $m | to_entries[] as $e | ($e.value.thresholds // {}) | to_entries[]
-                    | "  [\(if .value.ok==false then "FAIL" else "PASS" end)] \($e.key): \(.key)" ]
+                    | (.value | if type=="object" then .ok else . end) as $ok
+                    | "  [\(if $ok==false then "FAIL" else "PASS" end)] \($e.key): \(.key)" ]
                   | if length==0 then "  (none configured)" else .[] end )
             ' k6-summary.json
           else
