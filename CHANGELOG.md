@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.22.6] - 2026-06-27
+
+### Added
+
+- **The missing "Mental model" `mindmap` in `docs/100`, `docs/101`, `docs/502`,
+  `docs/601`** — completing the consistency pass started in v0.22.5 (102). **All
+  11 diagram docs** (100, 101, 102, 201, 301, 401, 402, 403, 501, 502, 601) now
+  open their newcomers/specialists section with a collapsible mindmap + a
+  "Reading it" note.
+
+### Fixed
+
+- **Broken/invisible emoji in `docs/402`**: the `🪢` (U+1FAA2 KNOT, a Unicode 13
+  emoji many fonts/renderers lack, so it showed as an empty box) in the "Branch &
+  environment mapping" summary is replaced with `🌳` (a universally-rendered
+  Unicode 6.0 emoji). A scan of all docs confirms no remaining Unicode-11+ emoji
+  or mojibake (`U+FFFD`).
+
 ## [v0.22.5] - 2026-06-27
 
 ### Added
