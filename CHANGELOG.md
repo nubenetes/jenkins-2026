@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.23.9] - 2026-06-27
+
+### Fixed
+
+- **Docs aligned with the real ArgoCD pin (3.4.x, not 3.5.x).** ArgoCD is pinned
+  to the latest stable **`3.4.x`** (off the buggy `3.5.0-rc`, until `3.5.0` GAs) —
+  `config/config.yaml` `argocd.version: v3.4.4` / `version_constraint: "3.4.x"`.
+  Stale "auto-tracking 3.5.x" claims were corrected in **`README.md`** (the
+  Document-Inventory row **and** the TOC link, whose anchor was also broken),
+  **`docs/501`** (4 spots, incl. the app-of-apps Mermaid watcher node), and
+  **`CLAUDE.md`**'s doc index. `docs/602` and `argocd/README.md` already correctly
+  documented the 3.4.x pin + the deferred-3.5 rationale. All 501 diagrams revalidated.
+
 ## [v0.23.8] - 2026-06-27
 
 ### Documentation
