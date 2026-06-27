@@ -5,7 +5,49 @@
 **At a glance.** A self-contained, two-repo **GitOps** proof-of-concept platform: it deploys a CI engine (**Jenkins** by default, or **Tekton**) on **Google Kubernetes Engine**, configures it **entirely as code** (*nothing is clicked in a UI*), and uses it to build, **security-scan**, containerize, and **GitOps-deploy** the JHipster microservices reference app through **ArgoCD** — with end-to-end **OpenTelemetry** observability into any of four Grafana backends. Everything runs from **GitHub Actions** authenticating to GCP **keylessly** (Workload Identity Federation — no JSON keys), across a clean **Day0 → Day1 → Day2 → Decom** lifecycle. A handful of **feature flags** (sensible defaults, powerful opt-ins) select the CI engine, the observability backend, the secrets backend, an optional **lean `develop` tier**, and public access.
 
 <details>
-<summary>📐 High-level design — the platform at a glance (click to expand)</summary>
+<summary>🧠 Mental model — the whole platform in one map</summary>
+
+```mermaid
+mindmap
+  root((jenkins-2026))
+    CI engine
+      Jenkins default
+      Tekton optional
+    GitOps CD
+      ArgoCD always
+      app-of-apps
+    Workloads
+      JHipster microservices
+      CloudNativePG
+      develop tier optional
+    Observability
+      OpenTelemetry
+      four Grafana backends
+    Platform
+      GKE Dataplane V2
+      WireGuard + IAP
+      keyless WIF
+    Lifecycle
+      Day0 bootstrap
+      Day1 cluster
+      Day2 ops
+      Decom teardown
+```
+
+</details>
+
+<details>
+<summary>🟢 For newcomers — the platform in plain terms (+ a high-level map)</summary>
+
+Think of it as a **build-and-ship factory for apps, described entirely in code**:
+
+- A **CI engine** (Jenkins by default, or Tekton) builds, scans, and packages the demo microservices.
+- **ArgoCD** (GitOps) deploys them — the CI never runs `kubectl`; it just commits a new image tag that ArgoCD reconciles onto the cluster.
+- **OpenTelemetry** ships traces/metrics/logs to one of four Grafana backends, all correlated.
+- **GitHub Actions** drives everything and logs into Google Cloud **with no stored key** (Workload Identity), provisioning/tearing down the cluster on demand (Day0 → Day1 → Day2 → Decom).
+- A few **feature flags** pick the CI engine, the observability backend, the secrets backend, an optional **lean `develop`** environment, and public access — defaults are sane, options are opt-in.
+
+**High-level design** — the platform at a glance:
 
 ```mermaid
 flowchart LR
@@ -27,7 +69,7 @@ flowchart LR
 </details>
 
 <details>
-<summary>🔬 <b>In depth</b> — feature flags, components &amp; lifecycle (the full technical breakdown)</summary>
+<summary>🔴 For specialists — In depth: feature flags, components &amp; lifecycle (the full technical breakdown)</summary>
 
 <details>
 <summary>🔬 Low-level design — planes &amp; components (dashed = optional / off by default)</summary>
