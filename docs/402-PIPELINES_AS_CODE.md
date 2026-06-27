@@ -248,6 +248,25 @@ A second `develop` deployment tier is available behind a feature flag, **disable
 
 **Internal-only.** develop is **not** publicly exposed (`values-develop.yaml` `ingress.enabled: false`, no HTTPRoute) — reach it from inside the cluster: `kubectl -n microservices-develop port-forward svc/gateway 8080:8080`.
 
+#### `stable` vs `develop` — what differs, and why
+
+`stable` is the **production-representative** tier (full HA, backups, alerts, public access); `develop` is a **lean, disposable validation** tier. Everything `develop` drops, it drops **on purpose** — it gets exactly what it needs and nothing it doesn't:
+
+| Aspect | `stable` (production-like) | `develop` (lean) | Why |
+|---|---|---|---|
+| Namespace | `microservices` | `microservices-develop` | isolate the two tiers |
+| **CNPG Postgres** | **HA — 3 instances** (primary + 2 standbys) | **1 instance** (no standby) | develop data is **disposable**; no need to survive a node/zone loss |
+| **PgBouncer pooler** | 3 replicas | 1 replica | match the single DB; minimal footprint |
+| **Backups** (Barman→GCS + daily `ScheduledBackup`) | **on** | **off** | nothing to back up — re-create from CI any time |
+| **App resources** (req/limit mem) | `512Mi` / `1Gi` | `256Mi` / `512Mi` | pack the experiment cheaply |
+| **Alerts** | **yes** — pages on failure | **no** (rules filter `namespace="microservices"`) | a validation tier breaking shouldn't page on-call (see [301 § Alert Rules](./301-OBSERVABILITY.md#alert-rules)) |
+| **Public access** | via the Gateway (microservices host, no-IAP) | **internal-only** (`port-forward`) | no second public surface for an experiment |
+| **GitOps branch / values** | `main` / `values-stable.yaml` | `develop` / `values-develop.yaml` | track infra/config changes separately |
+| **Observability** | shared stack | shared stack | one Grafana/Loki/Tempo/Prometheus; split by `deployment_environment` |
+| **Footprint** | ~12 Postgres-related pods | ~4 | "resources you need, not more" |
+
+**The rationale in one line:** develop exists to **validate a change cheaply and fast** before it reaches the production-like `stable` tier — so it reuses the *same app image, same CI/CD path, and same observability*, but skips the things that only matter for production (HA, backups, alerting, a public endpoint). Enabling it roughly doubles only the **runtime** footprint, not the platform.
+
 #### How to enable
 
 Durable default in [`config/config.yaml`](../config/config.yaml), ephemeral override via env, **or the GitHub Actions input** — the same durable-default + override pattern as `ci.engine` / `observability.mode`:
