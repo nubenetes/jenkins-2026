@@ -6,16 +6,23 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 
-- **Rewrote the `README.md` introduction** to accurately and precisely describe
-  what the repo actually contains. The old intro mentioned only Jenkins + the four
-  Grafana backends; the new one adds **Tekton** (the alternative CI engine) and a
-  **feature-flag table** spelling out every selectable capability — what's **default**
-  vs **optional** — `ci.engine` (jenkins | tekton), `observability.mode`
-  (grafana-cloud/oss/managed-azure/managed-aws), `secrets.backend` (imperative |
-  **eso** = GCP Secret Manager + External Secrets Operator), `microservices.developTrackEnabled`
-  (the optional **lean develop tier**), and `gateway.baseDomain` (public access +
-  IAP) — plus the **always-on** platform (ArgoCD, CNPG, Argo Rollouts, Dataplane V2
-  + WireGuard, DevSecOps scanning, Karpenter) and the keyless WIF / Day0→Decom model.
+- **Overhauled the `README.md` introduction and reviewed the whole file for
+  integrity with the current platform.** The old intro mentioned only Jenkins + the
+  four Grafana backends and was otherwise stale. The new intro is in **two parts,
+  each with a collapsible design diagram**:
+  - **High-level** — an "at a glance" paragraph + a **high-level design** Mermaid
+    diagram (collapsible).
+  - **Low-level** — a collapsible *In depth* section with a **low-level (planes &
+    components) design** Mermaid diagram, a **feature-flag table** (default vs
+    optional: `ci.engine` jenkins|**tekton**, `observability.mode`
+    grafana-cloud/oss/managed-azure/managed-aws, `secrets.backend` imperative|**eso**
+    = GCP Secret Manager + ESO, `microservices.developTrackEnabled` = the lean
+    **develop tier**, `gateway.baseDomain` = IAP public access), the **always-on**
+    platform, and a "what's inside, by area" breakdown.
+  - Also: the **§3 Architecture Overview** diagram now shows the optional
+    `microservices-develop` tier (dashed) + the `eso` secrets path in its caption.
+    All three README diagrams are **collapsible** and validated against the Mermaid
+    parser; verified the workflow count, script references, and the doc inventory.
 
 ## [v0.23.1] - 2026-06-27
 
