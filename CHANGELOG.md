@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.22.3] - 2026-06-27
+
+A documentation patch extending the 401/402/403 treatment to four more docs:
+**newcomers/specialists** explainers, **new Mermaid diagrams**, and every diagram
+made **collapsible**.
+
+### Added
+
+- **10 new Mermaid diagrams + 🟢/🔴 newcomers-specialists blocks across
+  `docs/100`, `docs/102`, `docs/501`, `docs/502`** (same style as 401/402/403):
+  - **100-BOOTSTRAP**: a `stateDiagram` of the root-of-trust lifecycle, plus a
+    🟢/🔴 pair.
+  - **102-GITHUB_ACTIONS_AUTOMATION**: a `sequenceDiagram` of the **WIF keyless
+    auth** (GitHub OIDC → Google STS → impersonate CI SA), a `flowchart` of the
+    five approval-gate environments → workflows, plus a 🟢/🔴 pair.
+  - **501-PLATFORM_OPERATIONS**: a platform `mindmap`, a Gateway+IAP request-flow
+    `sequenceDiagram`, an ArgoCD app-of-apps `flowchart`, a canary
+    progressive-delivery `stateDiagram`, plus a top-level 🟢/🔴 pair.
+  - **502-MICROSERVICES_GITOPS**: a `classDiagram` of the Helm values model, a
+    `sequenceDiagram` of the GitOps deploy loop, a `sequenceDiagram` of the NEG
+    synchronization barrier, plus a 🟢/🔴 pair.
+  - Each new diagram carries a "Reading it" explanation; all validated against
+    the Mermaid parser.
+
+### Changed
+
+- **Every Mermaid diagram in `docs/100`, `docs/102`, `docs/501`, `docs/502` is
+  now wrapped in a collapsible `<details>` block** (21 diagrams), so GitHub
+  renders each only on expand — the same render-latency fix applied to 401/402/403
+  in v0.22.2. Pre-existing `<details>` (e.g. the Argo Rollouts 🟢/🔴, the
+  NetworkPolicy-enforcement gotchas) were left intact.
+
 ## [v0.22.2] - 2026-06-27
 
 A documentation-rendering patch: every Mermaid diagram in the CI-engine docs is
