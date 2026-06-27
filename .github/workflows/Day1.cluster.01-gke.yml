@@ -55,6 +55,11 @@ on:
         required: true
         default: true
         type: boolean
+      develop_track:
+        description: "Deploy the optional 'develop' microservices tier alongside 'stable' (OFF by default). Adds a microservices-develop namespace + ArgoCD app from values-develop.yaml on the gitops 'develop' branch — a LEAN, non-HA tier (CNPG single instance, no backups) — plus -develop CI jobs/runs. Prereq: the gitops-config repo's 'develop' branch with values-develop.yaml. See docs/402."
+        required: false
+        default: false
+        type: boolean
       git_ref:
         description: "Git branch, tag, or SHA to check out (leave empty to use the branch/tag selected in 'Use workflow from' above)"
         required: false
@@ -83,6 +88,10 @@ on:
       enable_gateway:
         required: false
         default: true
+        type: boolean
+      develop_track:
+        required: false
+        default: false
         type: boolean
       git_ref:
         required: false
@@ -280,6 +289,8 @@ jobs:
 
       - name: Namespaces & prereqs
         env:
+          # Provision the develop tier's namespace + netpol/secrets/RBAC when on (default off).
+          JENKINS2026_DEVELOP_TRACK_ENABLED: ${{ inputs.develop_track }}
           REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
           REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
           GIT_USERNAME: ${{ secrets.GIT_USERNAME }}
@@ -475,6 +486,10 @@ jobs:
           JENKINS2026_OBS_MODE: ${{ inputs.observability_mode }}
           JENKINS2026_CI_ENGINE: ${{ inputs.ci_engine }}
           JENKINS2026_SECRETS_BACKEND: ${{ inputs.secrets_backend }}
+          # Optional second deploy tier (off by default). Flows through up.sh to
+          # 08.5-argocd (AppSet develop generator), 04-jenkins/06-seed (Jenkins
+          # -develop jobs) and 06-tekton-pipelines (Tekton develop runs).
+          JENKINS2026_DEVELOP_TRACK_ENABLED: ${{ inputs.develop_track }}
           JENKINS2026_HEADLAMP_ADMIN_EMAILS: ${{ secrets.HEADLAMP_ADMIN_EMAILS }}
           REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
           REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
@@ -603,8 +618,11 @@ jobs:
               [[ "${mode}" == "oss" ]] && echo "    Grafana (OSS):         https://grafana.${dom}"
               echo
               echo "  Open (no IAP):"
-              echo "    Microservices:         https://microservices.${dom}"
-              echo "    Microservices develop: https://microservices-develop.${dom}${ci_open}"
+              echo "    Microservices:         https://microservices.${dom}${ci_open}"
+              # The optional develop tier is in-cluster only (lean, no public route).
+              if [[ "${{ inputs.develop_track }}" == "true" ]]; then
+                echo "    Microservices develop: in-cluster only — kubectl -n microservices-develop port-forward svc/gateway 8080:8080"
+              fi
               echo
               echo "  Observability:"
               echo "    Grafana:               ${grafana}"

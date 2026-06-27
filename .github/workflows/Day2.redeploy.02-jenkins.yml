@@ -19,6 +19,11 @@ name: "Day2.redeploy.02 Jenkins"
 on:
   workflow_dispatch:
     inputs:
+      develop_track:
+        description: "Regenerate the optional lean 'develop' microservices Jenkins jobs alongside 'stable' (OFF by default). Note: the develop ArgoCD app/namespace is owned by Day1.cluster.01 — run that with develop_track=true first to provision the tier."
+        required: false
+        default: false
+        type: boolean
       git_ref:
         description: "Git branch, tag, or SHA to check out (leave empty to use the branch/tag selected in 'Use workflow from' above)"
         required: false
@@ -35,6 +40,9 @@ concurrency:
 
 env:
   TF_VERSION: "1.15.6"
+  # Honour the develop tier in 04-jenkins (writes develop-enabled into jenkins-credentials)
+  # and the re-seed (generates the -develop jobs). Off by default.
+  JENKINS2026_DEVELOP_TRACK_ENABLED: ${{ inputs.develop_track }}
 
 jobs:
   redeploy-jenkins:
