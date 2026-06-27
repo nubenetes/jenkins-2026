@@ -79,7 +79,10 @@ def call(Map cfg) {
           if [ -n "${K6_CLOUD_TOKEN:-}" ] && [ -n "${K6_CLOUD_PROJECT_ID:-}" ]; then
             CLOUD_OUT="--out cloud"
           fi
-          k6 run -o opentelemetry ${CLOUD_OUT} --summary-export=k6-summary.json jenkins/pipelines/k6/microservices-smoke.js
+          # k6-summary.json is written by the script's handleSummary() (CWD), not
+          # --summary-export: k6 2.0's --summary-export flattened schema made the
+          # readJSON parser below (printK6Summary) read all-zeros.
+          k6 run -o opentelemetry ${CLOUD_OUT} jenkins/pipelines/k6/microservices-smoke.js
         ''',
         returnStatus: true
       )

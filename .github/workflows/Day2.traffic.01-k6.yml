@@ -313,9 +313,12 @@ jobs:
           # flags, which k6 forbids mixing with a scenarios-based script.
           # TARGET_URL and ENV_NAME reach the script as __ENV automatically.
           set +e
+          # k6-summary.json is written by the script's handleSummary() (CWD),
+          # NOT --summary-export — k6 2.0's --summary-export emits a flattened
+          # schema that made the jq summary below read all-zeros. See
+          # jenkins/pipelines/k6/microservices-smoke.js.
           k6 run jenkins/pipelines/k6/microservices-smoke.js \
-            -o opentelemetry ${CLOUD_OUT} \
-            --summary-export=k6-summary.json
+            -o opentelemetry ${CLOUD_OUT}
           EXIT_CODE=$?
           set -e
 
