@@ -95,10 +95,24 @@ if [[ -n "${grafana_base_url}" ]]; then
 fi
 
 microservices_url=""
+microservices_develop_url=""
 jenkins_public_url=""
 if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
   microservices_url="https://${J2026_GATEWAY_MICROSERVICES_HOST}"
   jenkins_public_url="${J2026_JENKINS_URL}"
+  # Develop tier URL only when the lean develop track is enabled (09-gateway
+  # generates its HTTPRoute under the same flag).
+  if [[ "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" == "true" ]]; then
+    microservices_develop_url="https://${J2026_GATEWAY_MICROSERVICES_DEVELOP_HOST}"
+  fi
+fi
+
+# Pre-rendered <li> for the develop tier in the systemMessage banner - empty (so
+# the line vanishes from the banner) unless the develop track is publicly exposed.
+# Same inject-a-full-HTML-fragment pattern as grafana_k8s_app_link.
+microservices_develop_link=""
+if [[ -n "${microservices_develop_url}" ]]; then
+  microservices_develop_link="<li>Microservices (develop): <a href=\"${microservices_develop_url}\" style=\"color: #0052cc; text-decoration: underline;\">${microservices_develop_url}</a></li>"
 fi
 
 log_step "Patching dynamic values into ${J2026_JENKINS_CREDENTIALS_SECRET}"
@@ -107,6 +121,8 @@ kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_N
     --arg gbu "${grafana_base_url}" \
     --arg gk8s "${grafana_k8s_app_link}" \
     --arg msu "${microservices_url}" \
+    --arg msdu "${microservices_develop_url}" \
+    --arg msdl "${microservices_develop_link}" \
     --arg jpu "${jenkins_public_url}" \
     --arg br "${J2026_SELF_REPO_BRANCH}" \
     --arg genai "${J2026_MICROSERVICES_GENAI_SERVICE_ENABLED}" \
@@ -115,6 +131,8 @@ kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_N
         "grafana-base-url":$gbu,
         "grafana-k8s-app-link":$gk8s,
         "microservices-url":$msu,
+        "microservices-develop-url":$msdu,
+        "microservices-develop-link":$msdl,
         "jenkins-public-url":$jpu,
         "repo-branch":$br,
         "genai-enabled":$genai,
@@ -124,8 +142,9 @@ kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_N
 # Rolls the controller whenever the Secret-backed banner/behaviour values change
 # (ArgoCD won't roll on an out-of-band Secret edit otherwise) - passed as the
 # controller.podAnnotations.bannerLinksChecksum helm parameter below.
-banner_links_checksum="$(printf '%s|%s|%s|%s|%s|%s' \
+banner_links_checksum="$(printf '%s|%s|%s|%s|%s|%s|%s' \
   "${grafana_base_url}" "${grafana_k8s_app_link}" "${microservices_url}" \
+  "${microservices_develop_url}" \
   "${jenkins_public_url}" "${J2026_SELF_REPO_BRANCH}" "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" \
   | sha256sum | cut -c1-16)"
 

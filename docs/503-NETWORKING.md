@@ -209,6 +209,7 @@ sequenceDiagram
 | Grafana *(oss mode)* | `grafana.<domain>` | `80` | **yes** |
 | ArgoCD | `argocd.<domain>` | `8080` | no |
 | Microservices | `microservices.<domain>` | `8080` (gateway) | no (public demo) |
+| Microservices *(develop tier)* | `microservices-develop.<domain>` | `8080` (gateway) | no (public demo; only when `microservices.developTrackEnabled`) |
 | PaC webhook *(tekton)* | `pac.<domain>` | `8080` | no (**HMAC**) |
 
 > Public access is **opt-in** (`gateway.baseDomain`; `""` disables the whole Gateway). The static IP + cert + DNS zone are **persistent Day0** resources that survive cluster rebuilds (see [501 § Public access](./501-PLATFORM_OPERATIONS.md) and [100](./100-BOOTSTRAP.md)).

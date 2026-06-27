@@ -2,6 +2,61 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.26.0] - 2026-06-27
+
+### Added
+
+- **The optional `develop` microservices tier is now publicly exposed**, at its
+  own host `https://microservices-develop.<gateway.baseDomain>` (e.g.
+  `https://microservices-develop.jenkins2026.nubenetes.com`) — previously the
+  tier was *in-cluster only* (reachable solely via `kubectl port-forward`). It is
+  fully integrated, end to end:
+  - **Gateway route** — `scripts/09-gateway.sh` generates a dedicated
+    `microservices-develop` `HTTPRoute` + `HealthCheckPolicy` (pointing at the
+    develop `gateway` Service), **gated on `microservices.developTrackEnabled`**.
+    Public, **no IAP** — same edge posture as the stable `microservices` host —
+    and covered by the existing `*.<base_domain>` **wildcard cert/DNS** (no extra
+    certificate or DNS record). Disabling the tier on a persistent cluster
+    **retires** the route/policy idempotently (mirrors the Grafana enable/cleanup
+    pattern). Teardown added to `scripts/down.sh`.
+  - **New config knob** `gateway.hosts.microservicesDevelop` (default
+    `microservices-develop`) + the `J2026_GATEWAY_HOST_MICROSERVICES_DEVELOP` /
+    `J2026_GATEWAY_MICROSERVICES_DEVELOP_HOST` exports in `scripts/lib/config.sh`.
+  - **Jenkins system banner** — the develop URL is surfaced in the JCasC
+    `systemMessage` via a new pre-rendered `MICROSERVICES_DEVELOP_LINK` (the
+    line vanishes when the tier isn't exposed), plus a `MICROSERVICES_DEVELOP_URL`
+    env. Patched into `jenkins-credentials` by `scripts/01-namespaces.sh` and
+    `scripts/04-jenkins.sh` (and folded into the banner-roll checksum).
+  - **GitHub Actions "Access URLs" logs** — `Day1.cluster.01-gke` now prints the
+    develop URL (instead of the old `in-cluster only` note), as does the
+    `scripts/09-gateway.sh` summary (so `Day2.redeploy.03-tekton` /
+    `Day2.redeploy.05-gateway` show it too).
+- **Tekton parity for the Jenkins banner** — since the upstream Tekton Dashboard
+  has no system-message banner, `scripts/06-tekton-pipelines.sh` now stamps the
+  platform's public URLs as `jenkins2026.io/url-*` annotations onto **every**
+  seeded PipelineRun (the PaC `.tekton/<svc>.yaml` pushed to forks, the
+  `tekton.seedRuns` runs, and the local fallback runs), including
+  `url-microservices-develop` when the tier is on. They render in the Dashboard's
+  run-detail view; no-op when the Gateway is disabled.
+
+### Changed
+
+- **GitHub Actions k6 (`Day2.traffic.01-k6.yml`): `env_name=develop` now targets
+  the public `microservices-develop` host** over the internet (same external
+  targeting as `stable`), replacing the previous `kubectl port-forward` to
+  `localhost`. The in-cluster Tekton/Jenkins k6 paths still target the tier by
+  namespace DNS (correct for a Pod inside the cluster).
+
+### Documentation
+
+- Aligned all docs/diagrams with the develop tier's public exposure: **402**
+  (Internal-only → public host + the stable-vs-develop table), **302** (the k6
+  GitHub Actions targeting + compatibility matrix + `develop-smoke` note),
+  **501** (the public-URL table + traffic-sim tier note), **503** (the public
+  hosts table), **403** (a new note documenting the `jenkins2026.io/url-*`
+  PipelineRun annotations), and the **README** architecture diagram (the develop
+  node now shows its public route).
+
 ## [v0.25.2] - 2026-06-27
 
 ### Documentation

@@ -139,7 +139,7 @@ flowchart TB
 
 Use the **[`Day2.traffic.01 Continuous k6 simulation`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml)** workflow:
 - **Profile/shape**: `profile` input (default `smoke`) + overrides (`vus`, `duration`, `stages`, `rps`, thresholds) — a real **load/stress/spike** run, not just smoke. See [302 § GitHub Actions](./302-K6_LOAD_TESTING.md#github-actions).
-- **Tier**: `env_name` input — `stable` (public `microservices.<domain>` host) or `develop` (port-forwards the develop gateway).
+- **Tier**: `env_name` input — `stable` (public `microservices.<domain>` host) or `develop` (public `microservices-develop.<domain>` host).
 - **Purpose**: Simulates real-world user traffic from outside the cluster, hitting the GKE Gateway and triggering end-to-end traces.
 
 The simulation reads the OTLP endpoint, auth and Grafana URL straight from the
@@ -527,6 +527,7 @@ Jenkins, Microservices, Headlamp, and pgAdmin can all be exposed on the public i
 |---|---|---|
 | Jenkins | `https://jenkins.<baseDomain>` | yes |
 | Microservices | `https://microservices.<baseDomain>` | no (public demo app) |
+| Microservices (develop) | `https://microservices-develop.<baseDomain>` | no (public demo app; only when `microservices.developTrackEnabled`) |
 | Headlamp | `https://headlamp.<baseDomain>` | yes |
 | pgAdmin | `https://pgadmin.<baseDomain>` | yes |
 | Grafana | `https://grafana.<baseDomain>` | yes (only when `observability.mode=oss`) |

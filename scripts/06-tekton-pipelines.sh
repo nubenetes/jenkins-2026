@@ -29,6 +29,38 @@ mkdir -p "${GEN_DIR}"
 otlp_endpoint="http://otel-collector-gateway.${J2026_OBS_NAMESPACE}.svc.cluster.local:4317"
 registry_host="${J2026_MICROSERVICES_REGISTRY%%/*}"
 
+# --- access-URL annotations (Tekton parity for the Jenkins systemMessage banner) --
+# Tekton's Dashboard has no system banner, so surface the same engine-neutral public
+# URLs (the set 09-gateway.sh exposes, incl. the optional microservices-develop tier)
+# as jenkins2026.io/url-* annotations on every PipelineRun this script seeds — they
+# render in the Dashboard's run-detail view. Empty/no-op when the gateway is disabled.
+pr_ann_pairs=()
+if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
+  pr_ann_pairs+=("jenkins2026.io/url-microservices=https://${J2026_GATEWAY_MICROSERVICES_HOST}")
+  [[ "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" == "true" ]] \
+    && pr_ann_pairs+=("jenkins2026.io/url-microservices-develop=https://${J2026_GATEWAY_MICROSERVICES_DEVELOP_HOST}")
+  pr_ann_pairs+=("jenkins2026.io/url-tekton-dashboard=https://${J2026_GATEWAY_TEKTON_HOST}")
+  pr_ann_pairs+=("jenkins2026.io/url-argocd=https://argocd.${J2026_GATEWAY_BASE_DOMAIN}")
+  pr_ann_pairs+=("jenkins2026.io/url-headlamp=https://${J2026_GATEWAY_HEADLAMP_HOST}")
+  pr_ann_pairs+=("jenkins2026.io/url-pgadmin=https://${J2026_GATEWAY_PGADMIN_HOST}")
+  [[ "${J2026_OBS_MODE}" == "oss" ]] \
+    && pr_ann_pairs+=("jenkins2026.io/url-grafana=https://${J2026_GATEWAY_GRAFANA_HOST}")
+fi
+# Two forms derived once: a JSON object (merged into the committed tekton/runs/*.yaml
+# via yq) and a pre-indented YAML block (embedded under metadata: in the generated
+# heredocs). Both are empty/no-ops without a gateway.
+pr_ann_json="{}"
+pr_ann_yaml=""    # lines indented 4 spaces, to sit under a `  annotations:` key
+pr_ann_meta=""    # a full `\n  annotations:<lines>` block, or empty
+if (( ${#pr_ann_pairs[@]} > 0 )); then
+  pr_ann_json="$(printf '%s\n' "${pr_ann_pairs[@]}" \
+    | jq -Rn '[inputs | split("=") | {(.[0]): (.[1:] | join("="))}] | add')"
+  for kv in "${pr_ann_pairs[@]}"; do
+    pr_ann_yaml+=$'\n'"    ${kv%%=*}: \"${kv#*=}\""
+  done
+  pr_ann_meta=$'\n  annotations:'"${pr_ann_yaml}"
+fi
+
 # Wait for ArgoCD to have synced the Pipeline + the pipeline ServiceAccount.
 log_step "Waiting for ArgoCD to sync the Tekton pipelines-as-code into ${PIPELINE_NS}"
 timeout 600 bash -c '
@@ -123,7 +155,7 @@ metadata:
   annotations:
     pipelinesascode.tekton.dev/on-event: "[push, pull_request]"
     pipelinesascode.tekton.dev/on-target-branch: "[main]"
-    pipelinesascode.tekton.dev/max-keep-runs: "5"
+    pipelinesascode.tekton.dev/max-keep-runs: "5"${pr_ann_yaml}
 spec:
   taskRunTemplate:
     serviceAccountName: tekton-ci
@@ -187,12 +219,21 @@ EOT
     log_step "tekton.seedRuns=true - seeding PipelineRuns from tekton/runs/ (one build per service)"
     for rf in "${J2026_ROOT_DIR}"/tekton/runs/*.yaml; do
       [[ -f "${rf}" ]] || continue
+      # Merge the access-URL annotations in (no-op without a gateway) so the seeded
+      # runs carry the same banner-parity URLs as the PaC/fallback ones.
+      src="${rf}"
+      if [[ "${pr_ann_json}" != "{}" ]]; then
+        src="${GEN_DIR}/seed-$(basename "${rf}")"
+        # `*` (deep-merge) not `+`: map addition isn't supported on older yq (the
+        # local v4.16), while `*` merges maps on every yq v4 and keeps existing keys.
+        yq eval ".metadata.annotations = ((.metadata.annotations // {}) * ${pr_ann_json})" "${rf}" > "${src}"
+      fi
       # Retry: the first create right after 04-tekton restarted the Tekton
       # admission webhook can hit it mid-warm-up (the webhook validates every
       # PipelineRun), so a single attempt occasionally flakes on the first file.
       seeded=false
       for attempt in 1 2 3; do
-        if kubectl create -f "${rf}" >/dev/null 2>&1; then seeded=true; break; fi
+        if kubectl create -f "${src}" >/dev/null 2>&1; then seeded=true; break; fi
         sleep 5
       done
       if [[ "${seeded}" == "true" ]]; then
@@ -229,7 +270,7 @@ apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
   generateName: ${name}-${env}-
-  namespace: ${PIPELINE_NS}
+  namespace: ${PIPELINE_NS}${pr_ann_meta}
   labels: {jenkins2026.io/service: "${name}", jenkins2026.io/env: "${env}"}
 spec:
   taskRunTemplate: {serviceAccountName: tekton-ci}

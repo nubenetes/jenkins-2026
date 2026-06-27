@@ -189,6 +189,24 @@ controller:
           name: jenkins-credentials
           key: microservices-url
           optional: true
+    # Public URL of the lean develop tier (https://microservices-develop.<gateway.baseDomain>),
+    # empty unless microservices.developTrackEnabled AND the Gateway is on - patched
+    # by scripts/01-namespaces.sh / 04-jenkins.sh.
+    - name: MICROSERVICES_DEVELOP_URL
+      valueFrom:
+        secretKeyRef:
+          name: jenkins-credentials
+          key: microservices-develop-url
+          optional: true
+    # Pre-rendered <li> for the develop tier in the systemMessage banner (empty
+    # when the develop tier isn't exposed, so the banner line vanishes). Surfaced
+    # in jcasc-base.yaml as ${MICROSERVICES_DEVELOP_LINK}.
+    - name: MICROSERVICES_DEVELOP_LINK
+      valueFrom:
+        secretKeyRef:
+          name: jenkins-credentials
+          key: microservices-develop-link
+          optional: true
 
     # Optional Grafana Cloud k6 (the k6-app) streaming for microservicesK6Smoke.groovy.
     # Empty unless K6_CLOUD_TOKEN/K6_CLOUD_PROJECT_ID are provided (patched into the

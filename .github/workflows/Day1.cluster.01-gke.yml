@@ -619,9 +619,9 @@ jobs:
               echo
               echo "  Open (no IAP):"
               echo "    Microservices:         https://microservices.${dom}${ci_open}"
-              # The optional develop tier is in-cluster only (lean, no public route).
+              # The optional lean develop tier gets its own public route (09-gateway.sh).
               if [[ "${{ inputs.develop_track }}" == "true" ]]; then
-                echo "    Microservices develop: in-cluster only — kubectl -n microservices-develop port-forward svc/gateway 8080:8080"
+                echo "    Microservices develop: https://microservices-develop.${dom}"
               fi
               echo
               echo "  Observability:"

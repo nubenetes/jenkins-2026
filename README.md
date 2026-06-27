@@ -539,8 +539,9 @@ flowchart TB
     COL -->|mode=managed-aws| AWSG
 
     %% Optional lean develop tier (microservices.developTrackEnabled, off by default)
-    MSD["microservices-develop<br/>optional · lean CNPG: 1 instance, no backups"]:::pick
+    MSD["microservices-develop<br/>optional · lean CNPG: 1 instance, no backups<br/>public: microservices-develop.&lt;domain&gt;"]:::pick
     ACD -. "develop track on (optional)" .-> MSD
+    IAP -. "open (no IAP), develop track on" .-> MSD
 
     classDef ext fill:#fde,stroke:#c39;
     classDef pick fill:#eef,stroke:#66c;

@@ -124,6 +124,67 @@ spec:
           port: 8080
 EOT
 
+# Optional lean develop tier - only routed when microservices.developTrackEnabled
+# (the namespace itself is created by 01-namespaces.sh under the same flag). Public,
+# NO IAP - same edge posture as the stable microservices host. Mirrors the grafana
+# enable/cleanup pattern below so disabling the tier on a persistent cluster retires
+# its dangling route/policy instead of leaving a 502 at the develop host.
+if [[ "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" == "true" ]]; then
+  log_step "Generating HTTPRoute + HealthCheckPolicy (microservices develop tier)"
+  cat >"${GENERATED_DIR}/httproute-microservices-develop.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ${J2026_GATEWAY_HTTPROUTE_MICROSERVICES_DEVELOP}
+  namespace: ${J2026_MICROSERVICES_DEVELOP_NAMESPACE}
+spec:
+  parentRefs:
+    - name: ${J2026_GATEWAY_NAME}
+      namespace: ${J2026_GATEWAY_NAMESPACE}
+      sectionName: https
+  hostnames:
+    - "${J2026_GATEWAY_MICROSERVICES_DEVELOP_HOST}"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: gateway
+          port: 8080
+EOT
+
+  cat >"${GENERATED_DIR}/healthcheckpolicy-microservices-develop.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: gateway
+  namespace: ${J2026_MICROSERVICES_DEVELOP_NAMESPACE}
+spec:
+  default:
+    config:
+      type: HTTP
+      httpHealthCheck:
+        requestPath: /management/health
+  targetRef:
+    group: ""
+    kind: Service
+    name: gateway
+EOT
+else
+  # Develop tier disabled - retire any route/policy left over from a previous
+  # develop_track run on this (persistent) cluster, but only when the namespace
+  # still exists (--ignore-not-found doesn't cover a missing namespace). Also drop
+  # any stale generated manifests so the apply below can't re-create the route.
+  rm -f "${GENERATED_DIR}/httproute-microservices-develop.yaml" \
+        "${GENERATED_DIR}/healthcheckpolicy-microservices-develop.yaml"
+  if kubectl get namespace "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" >/dev/null 2>&1; then
+    log_step "Removing any leftover microservices-develop HTTPRoute/HealthCheckPolicy (developTrackEnabled=false)"
+    kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_MICROSERVICES_DEVELOP}" -n "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" --ignore-not-found
+    kubectl delete healthcheckpolicy gateway -n "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" --ignore-not-found
+  fi
+fi
+
 cat >"${GENERATED_DIR}/httproute-headlamp.yaml" <<EOT
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -478,6 +539,9 @@ if [[ "${J2026_CI_ENGINE}" != "tekton" ]]; then
 fi
 log_info "  ArgoCD:            https://${J2026_GATEWAY_ARGOCD_HOST}"
 log_info "  Microservices:         https://${J2026_GATEWAY_MICROSERVICES_HOST}"
+if [[ "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" == "true" ]]; then
+  log_info "  Microservices develop: https://${J2026_GATEWAY_MICROSERVICES_DEVELOP_HOST}"
+fi
 log_info "  Headlamp:          https://${J2026_GATEWAY_HEADLAMP_HOST}"
 log_info "  pgAdmin:           https://${J2026_GATEWAY_PGADMIN_HOST}"
 if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
