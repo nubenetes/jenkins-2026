@@ -12,13 +12,29 @@ name: "Decom.infra.03 Azure managed-grafana"
 # the azure-bootstrap Environment's required reviewer.
 on:
   workflow_dispatch:
+    inputs:
+      log_level:
+        description: "Script/Terraform verbosity: info (default) or debug (adds [DEBUG] script lines + TF_LOG=DEBUG). For runner-level tracing use GitHub's ACTIONS_STEP_DEBUG."
+        required: false
+        default: "info"
+        type: choice
+        options:
+          - info
+          - debug
   workflow_call: # reused by Day1.cluster.01 when destroy_unused_backends=true
+    inputs:
+      log_level:
+        required: false
+        default: "info"
+        type: string
 
 permissions:
   contents: read
   id-token: write
 
 env:
+  JENKINS2026_LOG_LEVEL: ${{ inputs.log_level || 'info' }}
+  TF_LOG: ${{ inputs.log_level == 'debug' && 'DEBUG' || '' }}
   TF_VERSION: "1.15.6"
 
 jobs:

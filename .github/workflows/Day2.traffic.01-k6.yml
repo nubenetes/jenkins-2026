@@ -64,9 +64,21 @@ on:
         description: "Per-iteration k6 debug logging"
         type: boolean
         default: false
+      log_level:
+        description: "Script/Terraform verbosity: info (default) or debug (adds [DEBUG] script lines + TF_LOG=DEBUG). For runner-level tracing use GitHub's ACTIONS_STEP_DEBUG."
+        required: false
+        default: "info"
+        type: choice
+        options:
+          - info
+          - debug
   # Optional: Run on a schedule to keep the dashboards alive
   # schedule:
   #   - cron: '0 * * * *' # Every hour
+
+env:
+  JENKINS2026_LOG_LEVEL: ${{ inputs.log_level || 'info' }}
+  TF_LOG: ${{ inputs.log_level == 'debug' && 'DEBUG' || '' }}
 
 jobs:
   simulate-traffic:

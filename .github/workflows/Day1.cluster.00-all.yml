@@ -68,6 +68,14 @@ on:
         required: false
         default: ""
         type: string
+      log_level:
+        description: "Script/Terraform verbosity: info (default) or debug (adds [DEBUG] script lines + TF_LOG=DEBUG). For runner-level tracing use GitHub's ACTIONS_STEP_DEBUG."
+        required: false
+        default: "info"
+        type: choice
+        options:
+          - info
+          - debug
 
 permissions:
   contents: read
@@ -80,12 +88,18 @@ permissions:
 # deadlocking the reusable call (GitHub then fails the run before `provision` even
 # starts). The Decom.infra.00 teardown umbrella follows the same no-concurrency rule.
 
+env:
+  JENKINS2026_LOG_LEVEL: ${{ inputs.log_level || 'info' }}
+  TF_LOG: ${{ inputs.log_level == 'debug' && 'DEBUG' || '' }}
+
 jobs:
   # 1. Persistent Gateway (static IP + cert map). Idempotent; gated by the
   #    gateway-bootstrap environment. Skipped if bootstrap_gateway=false.
   gateway-bootstrap:
     if: ${{ inputs.bootstrap_gateway }}
     uses: ./.github/workflows/Day0.infra.01-gateway.yml
+    with:
+      log_level: ${{ inputs.log_level || 'info' }}
     secrets: inherit
 
   # 2. Cluster + full stack (also bootstraps the chosen observability backend as
@@ -96,6 +110,7 @@ jobs:
     if: ${{ always() && !failure() && !cancelled() }}
     uses: ./.github/workflows/Day1.cluster.01-gke.yml
     with:
+      log_level: ${{ inputs.log_level || 'info' }}
       observability_mode: ${{ inputs.observability_mode }}
       ci_engine: ${{ inputs.ci_engine }}
       secrets_backend: ${{ inputs.secrets_backend }}

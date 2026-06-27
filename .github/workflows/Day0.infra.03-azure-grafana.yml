@@ -23,13 +23,29 @@ name: "Day0.infra.03 Azure managed-grafana"
 # confirmed before Day1.cluster.01 reads its outputs to build the in-cluster Secret.
 on:
   workflow_dispatch:
+    inputs:
+      log_level:
+        description: "Script/Terraform verbosity: info (default) or debug (adds [DEBUG] script lines + TF_LOG=DEBUG). For runner-level tracing use GitHub's ACTIONS_STEP_DEBUG."
+        required: false
+        default: "info"
+        type: choice
+        options:
+          - info
+          - debug
   workflow_call:
+    inputs:
+      log_level:
+        required: false
+        default: "info"
+        type: string
 
 permissions:
   contents: read
   id-token: write
 
 env:
+  JENKINS2026_LOG_LEVEL: ${{ inputs.log_level || 'info' }}
+  TF_LOG: ${{ inputs.log_level == 'debug' && 'DEBUG' || '' }}
   TF_VERSION: "1.15.6"
 
 jobs:
