@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.23.5] - 2026-06-27
+
+### Documentation
+
+- **Brought the `README.md` intro in line with the docs' explainer pattern**: added
+  a collapsible **🧠 Mental model** mindmap (the whole platform in one map), reframed
+  the high-level design diagram inside a **🟢 For newcomers** block (plain-terms
+  "build-and-ship factory" explanation), and relabelled the existing *In depth*
+  section as **🔴 For specialists**. All four README diagrams stay collapsible and
+  Mermaid-validated.
+
 ## [v0.23.4] - 2026-06-27
 
 ### Documentation
