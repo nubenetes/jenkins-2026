@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.22.5] - 2026-06-27
+
+### Added
+
+- **`docs/102-GITHUB_ACTIONS_AUTOMATION.md`: the missing "Mental model"
+  `mindmap`** — a consistency fix so 102 matches the other docs (401/402/403,
+  201/301/501), which all open their newcomers/specialists section with a
+  collapsible mindmap. The mindmap covers the five pillars of the CI automation
+  (keyless WIF identity · remote Terraform state · persistent-vs-short-lived
+  tiers · DayN lifecycle · five approval gates), with a "Reading it" note.
+  Validated against the Mermaid parser.
+
 ## [v0.22.4] - 2026-06-27
 
 The final documentation patch in the diagram series: the 401/402/403 treatment

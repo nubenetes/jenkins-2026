@@ -19,6 +19,37 @@ can find what the provision run created.
 To keep operating costs low and deployment speed high, this project separates the environment lifecycle into **short-lived workload resources** (GKE cluster, database pods, Helm releases) and **persistent, account-level resources (bootstrap)**. We use specialized bootstrap stages for the following reasons:
 
 <details>
+<summary>🧠 Mental model — CI automation (mindmap)</summary>
+
+```mermaid
+mindmap
+  root((CI Automation))
+    Identity keyless
+      WIF trust
+      CI service account
+      GitHub OIDC token
+      no JSON key
+    Terraform state
+      GCS bucket
+      remote and shared across runs
+    Resource tiers
+      Persistent Day0 bootstrap
+      Short-lived Day1 cluster
+    Lifecycle
+      Day0 infra
+      Day1 cluster
+      Day2 ops
+      Decom teardown
+    Approval gates
+      five environments
+      required reviewers
+```
+
+</details>
+
+**Reading it —** the five branches are the pillars of how this project drives GCP from CI: a **keyless identity** (WIF — no stored JSON key), **remote Terraform state** (a GCS bucket shared across separate workflow runs), the **persistent-vs-short-lived** resource split (so a teardown keeps your IP/cert/dashboards), the **DayN lifecycle** phases, and the **five approval gates**. Everything below is just detail on one of these.
+
+<details>
 <summary>🟢 For newcomers — the mental model</summary>
 
 Everything here runs in **GitHub Actions**, but the resources split into two tiers by lifetime:
