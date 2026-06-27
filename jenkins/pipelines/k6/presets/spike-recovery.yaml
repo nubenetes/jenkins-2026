@@ -1,0 +1,18 @@
+# Preset: spike-recovery (advanced)
+# A sudden burst to a high VU count, a short hold, then a sharp drop — to test
+# how the platform absorbs a spike (HPA/Karpenter reaction, queueing) and how
+# fast it recovers afterwards.
+name: spike-recovery
+level: advanced
+description: Sudden burst to 100 VUs then drop — tests autoscaling + recovery.
+useCase: >
+  Resilience / elasticity check: does a flash-crowd cause errors, and does the
+  system settle once it passes? Correlate the spike with pod/node scaling in
+  Grafana.
+params:
+  profile: spike
+  vus: "100"         # spike peak
+  duration: "1m"     # hold at peak before the sharp ramp-down
+  scenarios: all
+  p95Ms: "5000"
+  errorRate: "0.15"

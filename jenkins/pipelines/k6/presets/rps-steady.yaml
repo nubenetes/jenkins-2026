@@ -1,0 +1,19 @@
+# Preset: rps-steady (advanced)
+# Fixed-throughput test using the open model (constant-arrival-rate): k6 keeps a
+# steady request rate regardless of how slow responses get, so latency under a
+# known load is measured honestly. Watch `dropped_iterations` — non-zero means
+# the VU pool couldn't sustain the rate (raise `vus`).
+name: rps-steady
+level: advanced
+description: Fixed throughput — 120 req/s for 5m (constant-arrival-rate).
+useCase: >
+  "Can we sustain N req/s within budget?" Capacity sign-off against a target
+  throughput rather than a VU count. `vus` here is the pre-allocated pool.
+params:
+  profile: load     # ignored — rps forces a constant-arrival-rate executor
+  rps: "120"
+  duration: "5m"
+  vus: "40"          # pre-allocated VUs; raise if dropped_iterations > 0
+  scenarios: all
+  p95Ms: "2000"
+  errorRate: "0.02"

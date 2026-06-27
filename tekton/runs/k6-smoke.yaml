@@ -22,13 +22,14 @@ spec:
   pipelineRef:
     name: microservices-k6-smoke
   # params:
-  #   - { name: profile, value: smoke }      # smoke|load|stress|soak|spike|breakpoint
+  #   - { name: preset, value: load-baseline } # load a committed preset (presets/index.yaml)
+  #   - { name: profile, value: smoke }      # smoke|load|stress|soak|spike|breakpoint (overrides preset)
   #   - { name: env-name, value: stable }    # stable | develop
   #   - { name: target-namespace, value: microservices }
-  #   - { name: vus, value: "" }             # empty → profile default
+  #   - { name: vus, value: "" }             # empty → preset / profile default
   #   - { name: duration, value: "" }        # e.g. 5m
   #   - { name: scenarios, value: all }
-  #   - { name: p95-ms, value: "" }          # empty → 3000
+  #   - { name: p95-ms, value: "" }          # empty → preset / 3000
   workspaces:
     - name: source
       volumeClaimTemplate:

@@ -1,0 +1,17 @@
+# Preset: smoke (basic)
+# The default lightweight observability smoke test — a few VUs sharing a small
+# iteration budget. NOT a load test; just enough traffic to prove the pipes and
+# feed Grafana a fresh, fully-correlated trace/metric/log example.
+name: smoke
+level: basic
+description: Default lightweight smoke — 4 VUs × 12 iterations. Telemetry only.
+useCase: >
+  Post-deploy integration check (the Jenkins build pipeline's k6 stage) and the
+  everyday "is the telemetry flowing?" run. Cheap, seconds-long.
+params:
+  profile: smoke
+  vus: "4"
+  iterations: "12"
+  scenarios: all
+  p95Ms: "3000"
+  errorRate: "0.05"

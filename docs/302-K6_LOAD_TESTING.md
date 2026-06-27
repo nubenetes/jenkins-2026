@@ -6,7 +6,7 @@
 
 One k6 script, **one parameter contract**, three ways to run it. This page is the single home for the k6 work that the other docs only touch in passing — [301 · Observability](./301-OBSERVABILITY.md#k6-observability-smoke-test) (where the telemetry lands), [402 · Pipelines as Code](./402-PIPELINES_AS_CODE.md#2-k6-integration-smoke-test-pipeline) (the Jenkins job) and [501 · Platform Operations](./501-PLATFORM_OPERATIONS.md#telemetry-verification--simulation) (continuous simulation). Read this once and every k6 knob — from a 12-iteration smoke test to a multi-stage breakpoint run against the `develop` tier — is "set one variable".
 
-> **TL;DR.** The same `jenkins/pipelines/k6/microservices-smoke.js` runs from **Jenkins**, **Tekton** and **GitHub Actions**. With **no parameters** it is the original lightweight **smoke** test (4 VUs × 12 iterations). Set `K6SIM_PROFILE=load|stress|soak|spike|breakpoint` (or override VUs / duration / stages / RPS / thresholds) and it becomes a real load test — **against either the `stable` or the `develop` tier**.
+> **TL;DR.** The same `jenkins/pipelines/k6/microservices-smoke.js` runs from **Jenkins**, **Tekton** and **GitHub Actions**. With **no parameters** it is the original lightweight **smoke** test (4 VUs × 12 iterations). Set `K6SIM_PROFILE=load|stress|soak|spike|breakpoint` (or override VUs / duration / stages / RPS / thresholds) and it becomes a real load test — **against either the `stable` or the `develop` tier**. Don't want to type knobs? **Pick a committed [preset](#config-presets-committed-test-configs)** from a dropdown and it loads a whole named config.
 
 ## Understanding k6 here (newcomers → specialists)
 
@@ -31,6 +31,10 @@ mindmap
       load · stress
       soak · spike
       breakpoint
+    Presets
+      committed YAML configs
+      dropdown selectable
+      manual overrides
     Runners
       Jenkins job + form
       Tekton Pipeline/Run
@@ -155,6 +159,211 @@ flowchart TB
 
 ---
 
+## Config presets (committed test configs)
+
+Typing the full `K6SIM_*` set every time is tedious and error-prone. **Presets** solve this: each is a small **committed YAML file** under [`jenkins/pipelines/k6/presets/`](../jenkins/pipelines/k6/presets/) that bundles a complete, named configuration (profile + VUs/duration/stages/rps + scenarios + thresholds + optional target). You **pick one from a dropdown** and the runner loads its parameters; anything you still type by hand **overrides** the preset.
+
+**Precedence (highest first):** manual field (non-empty) → **preset** value → script default. Selecting `none` = pure manual inputs / defaults (the historical behaviour).
+
+> **Format = YAML, by design.** The repo standardises on YAML + `yq` everywhere (`config/config.yaml`, Helm values, JCasC, Tekton). TOML would add a second config language and new tooling for zero benefit, so presets are YAML and read with the same `yq` already in the runners.
+
+**How each engine selects a preset:**
+
+| Engine | Selector | Loader | Notes |
+|---|---|---|---|
+| **Jenkins** | `PRESET` **choice** in *Build with Parameters* (seeded from `presets/index.yaml`) | `readYaml` in the pipeline merges preset + manual | The job's tier still sets the default namespace/env unless the preset pins them. |
+| **GitHub Actions** | `preset` **dropdown** input | a *Resolve k6 parameters* step (`yq`) writes the merged `K6SIM_*` to `$GITHUB_ENV` | Options are listed in the workflow — keep in sync with `index.yaml`. |
+| **Tekton** | `preset` **param** | a `resolve-preset` step (`yq`) writes `k6sim-preset.env`; `run-k6` fills any empty param from it | Idiomatic param; `tekton/runs/*.yaml` can hard-set it. |
+
+<details>
+<summary>🔄 Diagram — preset resolution & precedence (flowchart)</summary>
+
+```mermaid
+flowchart TD
+  U([user picks PRESET + optional manual fields]) --> Q{PRESET == none?}
+  Q -- yes --> M[use manual inputs / script defaults]
+  Q -- no --> L["load presets/&lt;name&gt;.yaml (yq / readYaml)"]
+  L --> R{"for each knob:<br/>manual field set?"}
+  R -- yes --> KM[manual value wins]
+  R -- no --> KP[preset value]
+  KM & KP & M --> ENV["K6SIM_* env → microservices-smoke.js"]
+  ENV --> RUN[k6 run → OTLP → Grafana]
+```
+
+</details>
+
+### Preset inventory — matrix
+
+Every committed preset, what it does, and when to reach for it. **Shape** is the default; any field is still overridable at run time.
+
+| Preset (file) | Level | Profile | Shape (VUs / rate · duration) | Scenarios | p95 / err budget | Target | Use case |
+|---|---|---|---|---|---|---|---|
+| **`smoke`** | 🟢 basic | `smoke` | 4 VUs × 12 iters | all | 3000ms / 5% | job tier | Post-deploy telemetry check (the build pipeline's k6 stage); "is it flowing?". |
+| **`load-baseline`** | 🟢 basic | `load` | →20 VUs · 5m | all | 2000ms / 2% | job tier | Steady expected-load SLO check (nightly / pre-merge). |
+| **`frontend-only`** | 🟢 basic | `load` | 10 VUs · 3m | gateway-ui, gateway-proxy | 2500ms / 2% | job tier | Focus the **edge/gateway path** users actually hit. |
+| **`develop-smoke`** | 🟢 basic | `smoke` | 4 VUs × 12 iters | all | 3000ms / 5% | **develop** ns | Validate the lean **develop** tier / drive develop traffic. |
+| **`stress-peak`** | 🔵 adv. | `stress` | 50→**100** VUs · hold 2m | all | 5000ms / 10% | job tier | Capacity exploration at ~2× load; watch the tail. |
+| **`spike-recovery`** | 🔵 adv. | `spike` | →**100** VUs · hold 1m · sharp drop | all | 5000ms / 15% | job tier | Flash-crowd **elasticity + recovery** (HPA/Karpenter). |
+| **`soak-endurance`** | 🔵 adv. | `soak` | 10 VUs · **1h** | all | 3000ms / 5% | job tier | **Leak/drift** hunting over time (extend duration). |
+| **`rps-steady`** | 🔵 adv. | arrival-rate | **120 req/s** · 5m (40 preVUs) | all | 2000ms / 2% | job tier | **Throughput** sign-off (open model); watch dropped iters. |
+| **`breakpoint-capacity`** | 🔵 adv. | `breakpoint` | →**400 req/s** · 8m · **aborts at knee** | all | 1500ms / 10% | job tier | Find the **capacity ceiling** (last rate before breach). |
+
+### Per-preset use case + diagram
+
+Each preset's intent, with a diagram (varied types — load-shape charts, request-flow graphs, sequences). Click to expand.
+
+<details>
+<summary>🟢 <code>smoke</code> — telemetry-only sanity (request-flow graph)</summary>
+
+A handful of VUs run a few iterations of the full session. Not a load test — it exists to produce one fresh, fully-correlated trace/metric/log example per iteration.
+
+```mermaid
+flowchart LR
+  vu([4 VUs × 12 iters]) --> a["GET gateway /"]
+  a --> b["GET gateway /management/health"]
+  b --> c["GET microservice /health<br/>(in-cluster only)"]
+  c --> d["GET gateway → proxy → microservice<br/>/services/.../readiness"]
+  d --> otlp["OTLP → Grafana"]
+```
+
+</details>
+
+<details>
+<summary>🟢 <code>load-baseline</code> — steady expected load (VUs-over-time chart)</summary>
+
+Ramp to 20 VUs, hold 5 minutes, ramp down — the first real load step. Tight budgets (p95 < 2s, err < 2%) make it a regression gate under normal traffic.
+
+```mermaid
+xychart-beta
+    title "load-baseline — VUs over time"
+    x-axis "time" [0s, 30s, "hold 5m", 30s]
+    y-axis "VUs" 0 --> 25
+    line [0, 20, 20, 0]
+```
+
+</details>
+
+<details>
+<summary>🟢 <code>frontend-only</code> — edge/gateway path only (scoped request-flow)</summary>
+
+Only the user-facing routes (gateway landing + the proxied microservice), skipping the internal health probes. Use when validating a gateway/HTTPRoute change.
+
+```mermaid
+flowchart LR
+  vu([10 VUs · 3m]) --> ui["gateway UI /"]
+  vu --> px["gateway → proxy → microservice readiness"]
+  ui --> g[("only edge path<br/>exercised")]
+  px --> g
+  g -. "skipped" .- skip["direct microservice /health<br/>gateway /management/health"]
+```
+
+</details>
+
+<details>
+<summary>🟢 <code>develop-smoke</code> — smoke against the develop tier (targeting graph)</summary>
+
+The smoke test pinned to the lean **develop** tier (`microservices-develop` namespace, `deployment.environment=develop`), regardless of which job launched it. Requires `microservices.developTrackEnabled`.
+
+```mermaid
+flowchart TB
+  p["preset: develop-smoke<br/>envName=develop<br/>targetNamespace=microservices-develop"] --> k6([k6 smoke])
+  k6 --> nsd["ns: microservices-develop"]
+  k6 --> graf["Grafana<br/>var-deployment_environment=develop"]
+```
+
+</details>
+
+<details>
+<summary>🔵 <code>stress-peak</code> — beyond normal, find degradation (VUs-over-time chart)</summary>
+
+Ramp to a base (50) then 2× (100), hold, ramp down, with **looser** budgets — a breach here is informative. Watch p99/max and `http_req_failed` in the analysis.
+
+```mermaid
+xychart-beta
+    title "stress-peak — VUs over time"
+    x-axis "time" [0s, "1m", "2m", "hold 2m", "1m"]
+    y-axis "VUs" 0 --> 110
+    line [0, 50, 100, 100, 0]
+```
+
+</details>
+
+<details>
+<summary>🔵 <code>spike-recovery</code> — flash crowd & recovery (VUs-over-time chart)</summary>
+
+A sudden burst to 100 VUs, a short hold, then a sharp drop — tests how the platform absorbs the spike (autoscaling, queueing) and how fast it settles afterwards.
+
+```mermaid
+xychart-beta
+    title "spike-recovery — VUs over time"
+    x-axis "time" [0s, "10s", "hold 1m", "10s", "after"]
+    y-axis "VUs" 0 --> 110
+    line [0, 100, 100, 0, 0]
+```
+
+</details>
+
+<details>
+<summary>🔵 <code>soak-endurance</code> — long flat run, leak hunting (VUs-over-time chart)</summary>
+
+Moderate, constant load held for a long time (1h, extend to 8h) to surface leaks, pool exhaustion and GC drift that only appear over time. Pair with Grafana memory/GC panels across the whole window.
+
+```mermaid
+xychart-beta
+    title "soak-endurance — VUs over time"
+    x-axis "time" [0s, "5m", "30m", "1h"]
+    y-axis "VUs" 0 --> 15
+    line [10, 10, 10, 10]
+```
+
+</details>
+
+<details>
+<summary>🔵 <code>rps-steady</code> — fixed throughput, open model (sequence diagram)</summary>
+
+Constant **arrival rate** (120 req/s): k6 launches requests on a schedule regardless of response time (open model), so latency under a known load is measured honestly. If `dropped_iterations` > 0, raise `vus` (the pre-allocated pool).
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant K as k6 (constant-arrival-rate)
+    participant P as VU pool (40 preallocated)
+    participant G as gateway
+    loop every 1/120 s, for 5m
+        K->>P: schedule 1 request (regardless of latency)
+        P->>G: HTTP request
+        G-->>P: response
+    end
+    Note over K,P: if pool exhausted → dropped_iterations++ (raise vus)
+```
+
+</details>
+
+<details>
+<summary>🔵 <code>breakpoint-capacity</code> — ramp until it breaks (VUs/rate chart with knee)</summary>
+
+Arrival rate ramps toward 400 req/s; the moment the p(95) budget (1500ms) breaks, the run **aborts** (`abortOnFail`). The last sustained rate before the abort is the capacity ceiling. The only profile that fails fast by design.
+
+```mermaid
+xychart-beta
+    title "breakpoint-capacity — req/s until knee"
+    x-axis "time" [0s, "2m", "4m", "6m", "knee ✂"]
+    y-axis "req/s" 0 --> 420
+    line [1, 120, 240, 360, 400]
+```
+
+</details>
+
+### Adding a preset
+
+1. Drop a `jenkins/pipelines/k6/presets/<name>.yaml` (copy an existing one; fill `params:` with any subset of the `K6SIM_*` knobs in camelCase — `profile`, `vus`, `duration`, `stages`, `rps`, `scenarios`, `p95Ms`, `errorRate`, `envName`, `targetNamespace`, `targetUrl`, …).
+2. Add it to `presets/index.yaml` (name + level + description) — this drives the **Jenkins** dropdown and the docs.
+3. Add the name to the **GitHub Actions** workflow `preset` input `options:` (kept in sync manually, like the secrets inventory).
+
+Tekton needs no list — it resolves whatever `preset` name you pass against the file in git.
+
+---
+
 ## Running it — the three engines
 
 All three call the exact same script with the same contract. The original question this page also answers: **all three now support `develop`**, not just `stable`.
@@ -177,17 +386,18 @@ flowchart LR
 
 ### Jenkins
 
-The seed job (`jenkins/pipelines/seed/seed_jobs.groovy`) generates **one k6 job per tier**: `microservices-k6-smoke` (stable) and, when the develop tier is on (`JENKINS2026_DEVELOP_TRACK_ENABLED=true`), `microservices-k6-smoke-develop`. Each is a **`MicroservicesK6SmokePipeline`** (`vars/MicroservicesK6SmokePipeline.groovy`) with a full **"Build with Parameters"** form — `PROFILE`, `VUS`, `DURATION`, `STAGES`, `RPS`, `SCENARIOS`, `P95_MS`, `ERROR_RATE`, `TARGET_URL`, `DEBUG` — defaulting to the seeded smoke values. The build/deploy pipeline (`vars/MicroservicesPipeline.groovy`) triggers the **tier-matched** k6 job as its *Integration k6 Smoke Test* stage.
+The seed job (`jenkins/pipelines/seed/seed_jobs.groovy`) generates **one k6 job per tier**: `microservices-k6-smoke` (stable) and, when the develop tier is on (`JENKINS2026_DEVELOP_TRACK_ENABLED=true`), `microservices-k6-smoke-develop`. Each is a **`MicroservicesK6SmokePipeline`** (`vars/MicroservicesK6SmokePipeline.groovy`) with a full **"Build with Parameters"** form — a **`PRESET`** dropdown (seeded from `presets/index.yaml`) plus `PROFILE`, `VUS`, `DURATION`, `STAGES`, `RPS`, `SCENARIOS`, `P95_MS`, `ERROR_RATE`, `TARGET_URL`, `DEBUG`. The build/deploy pipeline (`vars/MicroservicesPipeline.groovy`) triggers the **tier-matched** k6 job as its *Integration k6 Smoke Test* stage.
 
-- **Basic:** open `microservices-k6-smoke` → **Build with Parameters** → leave defaults → **Build** (the smoke test).
-- **Advanced:** set `PROFILE=load`, `VUS=30`, `DURATION=5m` → a real load test, same job.
-- **develop:** open `microservices-k6-smoke-develop` (targets `microservices-develop`, `ENV_NAME=develop`).
+- **Easiest:** pick a `PRESET` (e.g. `load-baseline`) → **Build**. The preset's config loads; leave the rest untouched.
+- **Basic:** open `microservices-k6-smoke` → **Build with Parameters** → leave defaults (`PRESET=none`) → **Build** (the smoke test).
+- **Advanced:** set `PROFILE=load`, `VUS=30`, `DURATION=5m` → a real load test, same job. (Manual fields override a chosen preset.)
+- **develop:** open `microservices-k6-smoke-develop` (targets `microservices-develop`, `ENV_NAME=develop`), or pick the `develop-smoke` preset from any job.
 
 ### Tekton
 
-`tekton/pipelines/microservices-k6-smoke.yaml` (→ `tekton/tasks/k6-smoke.yaml`) exposes the same knobs as Pipeline **params**. Ready-to-run examples live in `tekton/runs/`:
+`tekton/pipelines/microservices-k6-smoke.yaml` (→ `tekton/tasks/k6-smoke.yaml`) exposes the same knobs as Pipeline **params**, including a **`preset`** param (a `resolve-preset` step `yq`-loads the committed file; any param you set overrides it). Ready-to-run examples live in `tekton/runs/`:
 
-- `tekton/runs/k6-smoke.yaml` — defaults (stable smoke); a commented `params:` block shows how to override.
+- `tekton/runs/k6-smoke.yaml` — defaults (stable smoke); a commented `params:` block shows how to override (incl. `preset`).
 - `tekton/runs/k6-load.yaml` — an **advanced** example: `profile=load`, `vus=30`, `duration=5m`, scoped to the **develop** tier with a tighter `p95-ms=1500`.
 
 ```bash
@@ -195,6 +405,9 @@ The seed job (`jenkins/pipelines/seed/seed_jobs.groovy`) generates **one k6 job 
 kubectl create -f tekton/runs/k6-smoke.yaml
 # advanced (load against develop)
 kubectl create -f tekton/runs/k6-load.yaml
+# pick a committed preset
+tkn pipeline start microservices-k6-smoke -n tekton-ci \
+  -w name=source,volumeClaimTemplateFile=/dev/stdin -p preset=stress-peak
 # ad-hoc override
 tkn pipeline start microservices-k6-smoke -n tekton-ci \
   -w name=source,volumeClaimTemplateFile=/dev/stdin \
@@ -203,7 +416,7 @@ tkn pipeline start microservices-k6-smoke -n tekton-ci \
 
 ### GitHub Actions
 
-`.github/workflows/Day2.traffic.01-k6.yml` is a `workflow_dispatch` with the full input set: **`profile`**, **`env_name`** (`stable`/`develop`), `duration`, `vus`, `stages`, `rps`, `scenarios`, `p95_ms`, `error_rate`, `target_url`, `debug`. It resolves the target automatically:
+`.github/workflows/Day2.traffic.01-k6.yml` is a `workflow_dispatch` with a **`preset`** dropdown plus the full input set: **`profile`**, **`env_name`** (`stable`/`develop`), `duration`, `vus`, `stages`, `rps`, `scenarios`, `p95_ms`, `error_rate`, `target_url`, `debug`. A *Resolve k6 parameters* step merges the chosen preset with any manual inputs (manual wins). It resolves the target automatically:
 
 - **`env_name=stable`** → the public `microservices.<baseDomain>` host from `config/config.yaml`.
 - **`env_name=develop`** → **port-forwards the develop gateway** (`svc/gateway -n microservices-develop`) and points `TARGET_URL` at it (the develop tier has no public host).
@@ -214,6 +427,12 @@ It detects the active observability mode from in-cluster secrets and routes OTLP
 ---
 
 ## Tutorials
+
+### Easiest — run a committed preset (no knobs)
+
+1. **Jenkins:** open the k6 job → **Build with Parameters** → set `PRESET` (e.g. `load-baseline`) → **Build**. **GitHub Actions:** Run workflow, choose `preset`. **Tekton:** `tkn pipeline start microservices-k6-smoke -p preset=load-baseline ...`.
+2. The preset's whole config loads; everything else stays default. Read the analysis + Grafana link as usual.
+3. To tweak one thing, also fill that single field — it overrides the preset. See the [preset inventory](#preset-inventory--matrix) for what each does.
 
 ### Basic — a smoke test that lights up Grafana
 

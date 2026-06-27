@@ -1,0 +1,17 @@
+# Preset: frontend-only (basic)
+# Exercises only the user-facing routes (gateway landing page + the proxied
+# microservice call), skipping the direct in-cluster health hits. Useful to
+# isolate the edge/gateway path or to drive traffic that mirrors a browser.
+name: frontend-only
+level: basic
+description: User-facing routes only (gateway UI + proxy), 10 VUs for 3m.
+useCase: >
+  Focus load on the gateway/edge path (the part real users hit), e.g. when
+  validating a gateway or HTTPRoute change, without the internal health probes.
+params:
+  profile: load
+  vus: "10"
+  duration: "3m"
+  scenarios: gateway-ui,gateway-proxy
+  p95Ms: "2500"
+  errorRate: "0.02"

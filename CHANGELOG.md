@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.25.0] - 2026-06-27
+
+### Added
+
+- **k6 config presets — committed, selectable test configurations.** A new
+  preset library at **`jenkins/pipelines/k6/presets/`** (`index.yaml` + one
+  **YAML** file per preset) bundles a complete named `K6SIM_*` config (profile +
+  VUs/duration/stages/rps + scenarios + thresholds + optional target). Instead of
+  typing every knob, you **pick a preset from a dropdown** and the runner loads
+  it; any field still entered by hand **overrides** it (**precedence: manual >
+  preset > script default**). Ships **9 presets** across basic→advanced:
+  `smoke`, `load-baseline`, `frontend-only`, `develop-smoke`, `stress-peak`,
+  `spike-recovery`, `soak-endurance`, `rps-steady`, `breakpoint-capacity`.
+  - **Jenkins**: a `PRESET` choice in *Build with Parameters* (seeded from
+    `index.yaml`); the pipeline `readYaml`-merges preset + manual inputs.
+  - **GitHub Actions**: a `preset` dropdown input + a *Resolve k6 parameters*
+    step (`yq`) that writes the merged contract to `$GITHUB_ENV`.
+  - **Tekton**: a `preset` param + a `resolve-preset` step (`yq`) that loads the
+    committed file; `run-k6` fills any empty param from it.
+  - **YAML, not TOML**, deliberately — reuses the repo's existing `yq` tooling
+    rather than adding a second config language.
+
+### Documentation
+
+- **`docs/302`: a full preset section** — how selection/precedence works per
+  engine (with a resolution **flowchart**), a detailed **inventory matrix** of all
+  9 presets (level, profile, shape, scenarios, budgets, target, use case), and a
+  **collapsible diagram per preset** using varied Mermaid types (request-flow
+  graphs, `xychart-beta` VUs/rate-over-time charts, a sequence diagram), plus an
+  "add a preset" guide and an "easiest — run a preset" tutorial.
+- **README intro substantially expanded** to give the k6 load/traffic engine
+  first-class billing: a new *"Closing the loop — load & traffic testing"*
+  paragraph, a **Load testing** branch in the Mental-model mindmap, and a
+  newcomer bullet. Index TOC + Document-Inventory row updated for presets.
+
 ## [v0.24.0] - 2026-06-27
 
 ### Added

@@ -4,6 +4,8 @@
 
 **At a glance.** A self-contained, two-repo **GitOps** proof-of-concept platform: it deploys a CI engine (**Jenkins** by default, or **Tekton**) on **Google Kubernetes Engine**, configures it **entirely as code** (*nothing is clicked in a UI*), and uses it to build, **security-scan**, containerize, and **GitOps-deploy** the JHipster microservices reference app through **ArgoCD** — with end-to-end **OpenTelemetry** observability into any of four Grafana backends. Everything runs from **GitHub Actions** authenticating to GCP **keylessly** (Workload Identity Federation — no JSON keys), across a clean **Day0 → Day1 → Day2 → Decom** lifecycle. A handful of **feature flags** (sensible defaults, powerful opt-ins) select the CI engine, the observability backend, the secrets backend, an optional **lean `develop` tier**, and public access.
 
+**Closing the loop — load & traffic testing.** The platform doesn't just deploy and observe; it **drives traffic** through a first-class **[k6 engine](./docs/302-K6_LOAD_TESTING.md)**. One script, **one `K6SIM_*` parameter contract**, runs from **all three** entry points (**Jenkins**, **Tekton**, **GitHub Actions**) and across both the `stable` and `develop` tiers — from a 12-iteration **smoke** test to **load / stress / soak / spike / breakpoint** profiles. Configurations are **committed presets in git** (selectable from a dropdown), and every run feeds the same Grafana, with a **layered, basic→expert result analysis** printed inline.
+
 <details>
 <summary>🧠 Mental model — the whole platform in one map</summary>
 
@@ -23,6 +25,10 @@ mindmap
     Observability
       OpenTelemetry
       four Grafana backends
+    Load testing
+      k6 traffic engine
+      profiles + presets
+      Jenkins · Tekton · GHA
     Platform
       GKE Dataplane V2
       WireGuard + IAP
@@ -44,6 +50,7 @@ Think of it as a **build-and-ship factory for apps, described entirely in code**
 - A **CI engine** (Jenkins by default, or Tekton) builds, scans, and packages the demo microservices.
 - **ArgoCD** (GitOps) deploys them — the CI never runs `kubectl`; it just commits a new image tag that ArgoCD reconciles onto the cluster.
 - **OpenTelemetry** ships traces/metrics/logs to one of four Grafana backends, all correlated.
+- **k6** generates traffic — from a tiny smoke test to full load/stress/soak runs — using **ready-made configs (presets) you pick from a menu**, so the dashboards always have something real to show.
 - **GitHub Actions** drives everything and logs into Google Cloud **with no stored key** (Workload Identity), provisioning/tearing down the cluster on demand (Day0 → Day1 → Day2 → Decom).
 - A few **feature flags** pick the CI engine, the observability backend, the secrets backend, an optional **lean `develop`** environment, and public access — defaults are sane, options are opt-in.
 
@@ -233,6 +240,7 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 - [Understanding k6 here (newcomers → specialists)](./docs/302-K6_LOAD_TESTING.md#understanding-k6-here-newcomers--specialists)
 - [The parameter contract (`K6SIM_*`)](./docs/302-K6_LOAD_TESTING.md#the-parameter-contract-k6sim_)
 - [Workload profiles](./docs/302-K6_LOAD_TESTING.md#workload-profiles)
+- [Config presets (committed test configs) + inventory matrix & per-preset diagrams](./docs/302-K6_LOAD_TESTING.md#config-presets-committed-test-configs)
 - [Running it — the three engines](./docs/302-K6_LOAD_TESTING.md#running-it--the-three-engines) ([Jenkins](./docs/302-K6_LOAD_TESTING.md#jenkins) · [Tekton](./docs/302-K6_LOAD_TESTING.md#tekton) · [GitHub Actions](./docs/302-K6_LOAD_TESTING.md#github-actions))
 - [Tutorials (basic & advanced)](./docs/302-K6_LOAD_TESTING.md#tutorials)
 - [Reading the results — basic & expert](./docs/302-K6_LOAD_TESTING.md#reading-the-results--basic--expert)
@@ -386,7 +394,7 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 | **103** | CI/CD Workflows | [GitHub Secrets & Variables Inventory](./docs/103-GITHUB_SECRETS_INVENTORY.md) | **Every GitHub Actions secret and repository variable** used across the workflows — purpose, **required vs. optional**, source, which subsystem; incl. the **keyless WIF/OIDC** identifiers and the `AWS_REGION` repo variable |
 | **201** | Architecture | [Architecture](./docs/201-ARCHITECTURE.md) | **System architecture** + component diagram, **microservices & database architecture (CNPG)**, **CI/CD flow**, configuration (`config/config.yaml`), repository layout, **GKE cluster topology**, **FinOps** & cost analysis |
 | **301** | Observability | [Observability](./docs/301-OBSERVABILITY.md) | **OTel components** (Operator, Java agent, Angular RUM, Collector), telemetry architecture, **signal correlation** (metrics↔traces↔logs), structured logging, dashboards, **alert rules**, k6 smoke test, **all four observability modes** |
-| **302** | Observability | [k6 Traffic, Load & Observability Testing](./docs/302-K6_LOAD_TESTING.md) | The **parametrizable k6 engine**: the unified **`K6SIM_*` contract**, **profiles** (smoke/load/stress/soak/spike/breakpoint), the same script run from **Jenkins/Tekton/GitHub Actions**, **`stable`-vs-`develop`** targeting, **basic & advanced tutorials**, and the **layered (basic→expert) result analysis** |
+| **302** | Observability | [k6 Traffic, Load & Observability Testing](./docs/302-K6_LOAD_TESTING.md) | The **parametrizable k6 engine**: the unified **`K6SIM_*` contract**, **profiles** (smoke/load/stress/soak/spike/breakpoint), **committed config presets** (dropdown-selectable) with an **inventory matrix + per-preset diagrams**, the same script run from **Jenkins/Tekton/GitHub Actions**, **`stable`-vs-`develop`** targeting, **basic & advanced tutorials**, and the **layered (basic→expert) result analysis** |
 | **401** | Jenkins | [Jenkins](./docs/401-JENKINS.md) | Accessing the UI & **admin password**, **Google OIDC** login, **plugins & JCasC** fragments, global **shared library**, **MCP server** |
 | **402** | Pipelines | [Pipelines as Code](./docs/402-PIPELINES_AS_CODE.md) | **Seed job**, **branch & environment mapping** (incl. the optional lean **`develop` tier** + its stable-vs-develop rationale), **pipeline execution stages** (Semgrep/CodeQL/Trivy/Build/Deploy/Smoke), **container security**, reliability fixes |
 | **403** | Tekton | [Tekton](./docs/403-TEKTON.md) | **Alternative CI engine** (`ci.engine` flag) — Tekton **Pipelines/Triggers/Dashboard** + **Pipelines-as-Code**, IAP-protected Dashboard, the microservices pipeline ported to `tekton/`, **credentials & observability parity** |

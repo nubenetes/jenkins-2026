@@ -1,0 +1,49 @@
+# =============================================================================
+# k6 preset library — index
+# =============================================================================
+# The canonical, ORDERED list of selectable k6 presets. Each entry has a matching
+# <name>.yaml file in this directory holding the actual parameters (the K6SIM_*
+# contract — see jenkins/pipelines/k6/microservices-smoke.js and
+# docs/302-K6_LOAD_TESTING.md).
+#
+# This index is the single source of truth for the dropdown order + descriptions:
+#   - Jenkins reads it at SEED time (jenkins/pipelines/seed/seed_jobs.groovy) to
+#     build the PRESET choice of every k6 job.
+#   - GitHub Actions hardcodes the same names in the `preset` input options
+#     (.github/workflows/Day2.traffic.01-k6.yml) — KEEP THE TWO IN SYNC.
+#   - Tekton resolves a chosen preset file at run time (tekton/tasks/k6-smoke.yaml).
+#
+# Selecting a preset LOADS its parameters; any field still entered by hand
+# overrides the preset value (precedence: manual > preset > script default).
+# `none` (no preset) = pure manual inputs / script defaults.
+#
+# To add a preset: drop a <name>.yaml here, add it below, and (for GitHub Actions)
+# add the name to the workflow's `preset` input options.
+presets:
+  - name: smoke
+    level: basic
+    description: Default lightweight smoke — 4 VUs × 12 iterations. Telemetry only, not a load test.
+  - name: load-baseline
+    level: basic
+    description: Baseline load — ramp to 20 VUs, hold 5m at expected steady traffic (p95<2s, err<2%).
+  - name: frontend-only
+    level: basic
+    description: User-facing routes only (gateway UI + proxied service), 10 VUs for 3m.
+  - name: develop-smoke
+    level: basic
+    description: Smoke against the lean develop tier (microservices-develop namespace, env=develop).
+  - name: stress-peak
+    level: advanced
+    description: Stress beyond normal — ramp 50→100 VUs, hold 2m, to find where it degrades.
+  - name: spike-recovery
+    level: advanced
+    description: Sudden burst to 100 VUs then drop — tests autoscaling + recovery.
+  - name: soak-endurance
+    level: advanced
+    description: Long flat run — 10 VUs for 1h to surface leaks / drift (extend duration as needed).
+  - name: rps-steady
+    level: advanced
+    description: Fixed throughput — 120 req/s for 5m (open model, constant-arrival-rate).
+  - name: breakpoint-capacity
+    level: advanced
+    description: Ramp arrival rate to 400 req/s over 8m until the p95 budget breaks (aborts at the knee).
