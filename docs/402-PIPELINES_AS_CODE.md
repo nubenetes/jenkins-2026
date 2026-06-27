@@ -258,7 +258,7 @@ A second `develop` deployment tier is available behind a feature flag, **disable
 | **CNPG Postgres** | **HA — 3 instances** (primary + 2 standbys) | **1 instance** (no standby) | develop data is **disposable**; no need to survive a node/zone loss |
 | **PgBouncer pooler** | 3 replicas | 1 replica | match the single DB; minimal footprint |
 | **Backups** (Barman→GCS + daily `ScheduledBackup`) | **on** | **off** | nothing to back up — re-create from CI any time |
-| **App resources** (req/limit mem) | `512Mi` / `1Gi` | `256Mi` / `512Mi` | pack the experiment cheaply |
+| **App resources** (req/limit mem) | `512Mi` / `1Gi` | `384Mi` / `768Mi` | leaner than stable, but the limit must still fit the **OTel Java agent** (~+150Mi metaspace/native) or the instrumented pods OOMKill → CrashLoop; `512Mi` was too tight |
 | **Alerts** | **yes** — pages on failure | **no** (rules filter `namespace="microservices"`) | a validation tier breaking shouldn't page on-call (see [301 § Alert Rules](./301-OBSERVABILITY.md#alert-rules)) |
 | **Public access** | via the Gateway (`microservices` host, no-IAP) | via the Gateway (`microservices-develop` host, no-IAP) | each tier gets its own public host; both covered by the `*.<base_domain>` wildcard cert/DNS |
 | **GitOps branch / values** | `main` / `values-stable.yaml` | `develop` / `values-develop.yaml` | track infra/config changes separately |
