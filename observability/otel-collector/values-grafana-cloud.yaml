@@ -120,6 +120,17 @@ config:
                 target_label: pod
               - target_label: cluster
                 replacement: jenkins-2026
+            # Drop the single biggest Grafana-Cloud active-series consumer:
+            # cnpg_pg_settings_setting emits one series per postgresql.conf
+            # setting per instance (~2300 series across the tiers) — static
+            # config values, not a useful time-series, and used by no dashboard.
+            # On the free-tier 15k active-series cap this alone was ~15% of the
+            # budget and pushed app/JVM metrics into intermittent rejection
+            # (err-mimir-max-active-series). See docs/301 + observability.leanMetrics.
+            metric_relabel_configs:
+              - source_labels: [__name__]
+                regex: cnpg_pg_settings_setting
+                action: drop
 
   processors:
     batch: {}

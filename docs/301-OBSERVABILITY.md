@@ -100,6 +100,37 @@ It can't use Workload Identity Federation (the scraper isn't a GCP workload), so
 > cloud-provider SA) is therefore **gated to grafana-cloud mode** and is a no-op in
 > oss/managed-azure/managed-aws — consistent with the deterministic single-backend model.
 
+### Free-tier active-series cap & `observability.leanMetrics`
+
+The Grafana Cloud **free tier caps metrics at 15,000 active series** per tenant
+(`err-mimir-max-active-series`). On this cluster the **bulk** of those series come from
+the **k8s-monitoring / Alloy** cluster-infra scrape (cadvisor per-container, kube-state
+per-object, node-exporter per-node) — *not* from the app. The custom `jenkins2026-*`
+dashboards barely touch those: they read **app** metrics (OTel `http_server_request_*` /
+`jvm_*`), **CNPG** (`cnpg_*`/`pg_*`, scraped on `:9187`), **k6** (`k6_*`), **Jenkins**
+(`jenkins_*`/`ci_pipeline_*`) and **Tekton** (`tekton_*`) — all of which flow through the
+**otel-collector**, a path entirely independent of k8s-monitoring.
+
+Enabling the optional **lean `develop` tier** roughly **doubles** the app-metric series
+(same metrics, `deployment.environment=develop`), which can tip a free-tier tenant over
+15k → Grafana Cloud starts **rejecting** series and the develop dashboards go spotty.
+
+The **`observability.leanMetrics`** flag (default `false`; per-run override
+`JENKINS2026_OBS_LEAN_METRICS=true`) makes `scripts/03-observability.sh` **disable the
+k8s-monitoring cluster-infra metrics** (cadvisor/kube-state/node-exporter), freeing
+thousands of series so the develop app metrics fit. **App / CNPG / Tekton / k6 / Jenkins
+metrics are unaffected** (they don't go through k8s-monitoring). The trade-off is the
+Grafana Cloud built-in **"K8s Compute Resources"** views (the Jenkins-banner
+`grafana_k8s_app_link`) — those go empty. `clusterEvents` stays on (it ships to **Loki**,
+costs ~0 metric series). Meant as a **temporary validation knob**; flip it back off (or
+upgrade the plan) for full cluster-infra metrics.
+
+> **Validating develop without metrics at all.** The 15k cap is a **metrics** limit;
+> **traces (Tempo)** and **logs (Loki)** have separate free-tier quotas. So you can always
+> confirm the develop tier is instrumented and emitting via Explore —
+> Tempo `{ resource.deployment.environment = "develop" }` and
+> Loki `{deployment_environment="develop"}` — regardless of the metrics cap.
+
 Grafana Cloud's **Observability** menu bundles several apps. Some are **already fed by
 this project's existing pipeline** (our OTLP traces/metrics, the RUM snippet, the
 `k8s-monitoring` Alloy) — just open them, no work. Others are worth adding; one is

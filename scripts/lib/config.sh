@@ -148,6 +148,16 @@ export J2026_OBS_NAMESPACE="$(yq_get '.observability.namespace' 'observability')
 J2026_OBS_MODE="${JENKINS2026_OBS_MODE:-$(yq_get '.observability.mode' 'grafana-cloud')}"
 export J2026_OBS_MODE
 
+# FEATURE FLAG: lean metrics — when true, scripts/03-observability.sh (grafana-cloud
+# mode) disables the k8s-monitoring/Alloy CLUSTER INFRA metrics (cadvisor / kube-state
+# / node-exporter), the high-cardinality series that the custom jenkins2026-* dashboards
+# don't use. App / CNPG / Tekton metrics go via the otel-collector and are UNAFFECTED.
+# Trades the Grafana Cloud built-in "K8s Compute" views for thousands of freed active
+# series — meant to keep the develop tier under the Grafana Cloud free-tier 15k
+# active-series cap while validating. Durable default off; override per-run with
+# JENKINS2026_OBS_LEAN_METRICS=true. See docs/301.
+export J2026_OBS_LEAN_METRICS="${JENKINS2026_OBS_LEAN_METRICS:-$(yq_get '.observability.leanMetrics' 'false')}"
+
 case "${J2026_OBS_MODE}" in
   grafana-cloud|oss|managed-azure|managed-aws) ;;
   *)

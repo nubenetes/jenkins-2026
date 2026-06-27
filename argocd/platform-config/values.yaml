@@ -1,0 +1,19 @@
+# Defaults for the platform-config chart. ciEngine/developTrackEnabled are
+# overridden by the parent Application's helm.parameters (set by
+# scripts/08.5-argocd.sh from J2026_CI_ENGINE / J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED).
+# The namespace defaults mirror config/config.yaml — keep them in sync if you
+# override the namespaces there (same convention as argocd/observability-oss/values.yaml).
+
+# Active CI engine — gates the Jenkins-vs-Tekton RBAC.
+ciEngine: jenkins            # jenkins | tekton
+# microservices.developTrackEnabled — gates the develop-tier bindings. NOTE: this
+# arrives as the STRING "true"/"false" via helm.parameters, so templates compare
+# it as a string ({{ if eq (... | toString) "true" }}), never as a bare bool.
+developTrackEnabled: false
+
+namespaces:
+  jenkins: jenkins
+  pgadmin: pgadmin
+  tektonPipeline: tekton-ci
+  microservicesStable: microservices
+  microservicesDevelop: microservices-develop

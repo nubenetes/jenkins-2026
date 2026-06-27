@@ -315,55 +315,12 @@ if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
     "grafana-base-url=${GRAFANA_BASE_URL:-}"
 fi
 
-# Jenkins SA 'edit' binding only when ci.engine=jenkins (no jenkins SA/namespace in
-# tekton mode; the tekton-ci SA gets its own edit binding via tekton/rbac).
-if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
-log_step "Granting Jenkins ServiceAccount 'edit' in microservices namespaces"
-for ns in "${MS_NAMESPACES[@]}"; do
-  kubectl create rolebinding jenkins-edit \
-    --clusterrole=edit \
-    --serviceaccount="${J2026_JENKINS_NAMESPACE}:jenkins" \
-    -n "${ns}" \
-    --dry-run=client -o yaml | kubectl apply -f -
-done
-fi
-
-# Tekton parity: the stable tekton-ci-edit RoleBinding ships in tekton/rbac (GitOps,
-# ns microservices). The develop namespace is provisioned imperatively here, so bind
-# 'edit' for the tekton-ci SA in it too — gitops-deploy does `kubectl -n <ns> rollout
-# restart` (the OTel self-heal) against the target tier. Only when tekton + develop.
-if [[ "${J2026_CI_ENGINE}" == "tekton" && "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" == "true" ]]; then
-  log_step "Granting tekton-ci ServiceAccount 'edit' in ${J2026_MICROSERVICES_DEVELOP_NAMESPACE}"
-  kubectl create rolebinding tekton-ci-edit \
-    --clusterrole=edit \
-    --serviceaccount="${J2026_TEKTON_PIPELINE_NAMESPACE}:tekton-ci" \
-    -n "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" \
-    --dry-run=client -o yaml | kubectl apply -f -
-fi
-
-log_step "Granting pgAdmin ServiceAccount read access to Postgres user secrets in microservices namespaces"
-for ns in "${MS_NAMESPACES[@]}"; do
-  # Create a Role that only allows reading the specific database user secrets
-  kubectl apply -f - -n "${ns}" <<EOF
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: pgadmin-secret-reader
-rules:
-- apiGroups: [""]
-  resources: ["secrets"]
-  resourceNames:
-  - postgres-gateway-app
-  - postgres-jhipstersamplemicroservice-app
-  verbs: ["get", "list"]
-EOF
-  # Bind this Role to pgAdmin's ServiceAccount (pgadmin) in the pgadmin namespace
-  kubectl create rolebinding pgadmin-secret-reader-binding \
-    --role=pgadmin-secret-reader \
-    --serviceaccount="${J2026_PGADMIN_NAMESPACE}:pgadmin" \
-    -n "${ns}" \
-    --dry-run=client -o yaml | kubectl apply -f -
-done
+# Static platform RBAC (Jenkins/Tekton SA 'edit' bindings + the pgAdmin
+# secret-reader Role/binding) is now GitOps-owned by the ArgoCD `platform-config`
+# app (argocd/platform-config/, planted by 08.5-argocd.sh) — it's timing-insensitive
+# (its consumers, the CI pipelines and pgAdmin, run long after ArgoCD syncs). The
+# NetworkPolicies + ResourceQuotas/LimitRanges below stay here on purpose: they must
+# land BEFORE workloads for Dataplane V2 enforcement timing. See argocd/README.md.
 
 # 'ghcr-credentials' imagePullSecret (helm/microservices values-*.yaml
 # imagePullSecret) - same REGISTRY_USERNAME/REGISTRY_PASSWORD the

@@ -1,0 +1,40 @@
+{{- /*
+pgAdmin secret-reader RBAC (was scripts/01-namespaces.sh, engine-neutral). A Role
+scoped to ONLY the CNPG-generated app user secrets in each microservices namespace,
+bound to the pgAdmin ServiceAccount so the UI can read DB credentials. Applied in
+every microservices namespace (stable always, develop when the tier is on).
+*/ -}}
+{{- $pgadminNs := .Values.namespaces.pgadmin }}
+{{- $msNamespaces := list .Values.namespaces.microservicesStable }}
+{{- if eq (.Values.developTrackEnabled | toString) "true" }}
+{{- $msNamespaces = append $msNamespaces .Values.namespaces.microservicesDevelop }}
+{{- end }}
+{{- range $ns := $msNamespaces }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pgadmin-secret-reader
+  namespace: {{ $ns }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames:
+      - postgres-gateway-app
+      - postgres-jhipstersamplemicroservice-app
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pgadmin-secret-reader-binding
+  namespace: {{ $ns }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pgadmin-secret-reader
+subjects:
+  - kind: ServiceAccount
+    name: pgadmin
+    namespace: {{ $pgadminNs }}
+{{- end }}
