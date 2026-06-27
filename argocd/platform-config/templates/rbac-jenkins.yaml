@@ -1,0 +1,58 @@
+{{- /*
+Jenkins-engine RBAC (was scripts/01-namespaces.sh and scripts/02-otel-operator.sh,
+applied only when ci.engine=jenkins). No jenkins ServiceAccount/namespace exists
+in tekton mode, so the whole block is gated on ciEngine.
+*/ -}}
+{{- if eq .Values.ciEngine "jenkins" }}
+{{- $jenkinsNs := .Values.namespaces.jenkins }}
+{{- $msNamespaces := list .Values.namespaces.microservicesStable }}
+{{- if eq (.Values.developTrackEnabled | toString) "true" }}
+{{- $msNamespaces = append $msNamespaces .Values.namespaces.microservicesDevelop }}
+{{- end }}
+{{- /* Jenkins SA 'edit' in each microservices namespace so pipelines can
+       helm upgrade / kubectl apply into the deploy tier(s). */}}
+{{- range $ns := $msNamespaces }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: jenkins-edit
+  namespace: {{ $ns }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: edit
+subjects:
+  - kind: ServiceAccount
+    name: jenkins
+    namespace: {{ $jenkinsNs }}
+{{- end }}
+---
+{{- /* The built-in 'edit' ClusterRole doesn't cover the OTel Operator's
+       Instrumentation CRD; `helm upgrade` of helm/microservices needs these verbs
+       on it or it fails with "instrumentations.opentelemetry.io ... is forbidden".
+       Bound only in the stable namespace (the pipeline manages the Instrumentation
+       there). */}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: jenkins-otel-instrumentation-editor
+rules:
+  - apiGroups: ["opentelemetry.io"]
+    resources: ["instrumentations"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: jenkins-otel-instrumentation-editor
+  namespace: {{ .Values.namespaces.microservicesStable }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: jenkins-otel-instrumentation-editor
+subjects:
+  - kind: ServiceAccount
+    name: jenkins
+    namespace: {{ .Values.namespaces.jenkins }}
+{{- end }}

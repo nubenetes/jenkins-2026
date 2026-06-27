@@ -47,29 +47,12 @@ for i in $(seq 1 60); do
   sleep 2
 done
 
-# The built-in 'edit' ClusterRole doesn't cover the OTel Operator's CRDs
-# (helm/microservices/templates/instrumentation.yaml manages an Instrumentation
-# resource per namespace) - `helm upgrade` needs get/list/watch on it (plus
-# write verbs to create/update it) to diff against the live cluster, or it
-# fails with "instrumentations.opentelemetry.io ... is forbidden".
-#
-# Only relevant when ci.engine=jenkins: the Jenkins pipeline runs `helm upgrade`
-# under the `jenkins` ServiceAccount. With ci.engine=tekton the microservices
-# deploy via ArgoCD (the gitops-deploy task syncs, it doesn't helm-upgrade), so
-# there's no `jenkins` SA to bind and this grant would be a dead no-op.
-if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
-  log_step "Granting Jenkins ServiceAccount access to the Instrumentation CRD"
-  kubectl create clusterrole jenkins-otel-instrumentation-editor \
-    --verb=get,list,watch,create,update,patch,delete \
-    --resource=instrumentations.opentelemetry.io \
-    --dry-run=client -o yaml | kubectl apply -f -
-  for ns in "${J2026_MICROSERVICES_NS_STABLE}"; do
-    kubectl create rolebinding jenkins-otel-instrumentation-editor \
-      --clusterrole=jenkins-otel-instrumentation-editor \
-      --serviceaccount="${J2026_JENKINS_NAMESPACE}:jenkins" \
-      -n "${ns}" \
-      --dry-run=client -o yaml | kubectl apply -f -
-  done
-fi
+# The Jenkins SA grant on the OTel Operator's Instrumentation CRD
+# (jenkins-otel-instrumentation-editor ClusterRole + RoleBinding — `helm upgrade`
+# of helm/microservices needs get/list/watch+write on it, else it fails with
+# "instrumentations.opentelemetry.io ... is forbidden") is now GitOps-owned by the
+# ArgoCD `platform-config` app (argocd/platform-config/, rendered only when
+# ci.engine=jenkins). It's timing-insensitive — the Jenkins pipeline that consumes
+# it runs long after ArgoCD has synced. See argocd/README.md.
 
 log_info "OpenTelemetry Operator ready."

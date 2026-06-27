@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.27.0] - 2026-06-27
+
+### Changed
+
+- **Static platform RBAC moved from imperative `kubectl` to GitOps (new ArgoCD
+  `platform-config` app).** The engine-aware, *timing-insensitive* RBAC that
+  `scripts/01-namespaces.sh` and `scripts/02-otel-operator.sh` used to
+  `kubectl create … | kubectl apply` — the **Jenkins** SA `edit` bindings in the
+  microservices namespaces, the **Tekton** develop-tier `tekton-ci-edit` binding,
+  the **pgAdmin** `pgadmin-secret-reader` Role/binding, and the
+  **`jenkins-otel-instrumentation-editor`** `ClusterRole`+binding — is now rendered
+  by a small Helm chart at **`argocd/platform-config/`** and owned by ArgoCD
+  (drift-detected + self-healed). `ciEngine`/`developTrackEnabled` flow down as
+  `helm.parameters` (planted by `08.5-argocd.sh`), so only the active engine's
+  bindings render. Safe to move because every consumer (CI pipelines, pgAdmin) runs
+  long after ArgoCD has synced.
+  - **Deliberately NOT migrated:** NetworkPolicies and ResourceQuotas/LimitRanges
+    stay script-applied in `01-namespaces.sh`. They are applied **early, before any
+    workload**, which is required for Dataplane V2 enforcement timing (e.g. the OTel
+    Operator's `:9443` webhook allow and the `microservices-cnpg-platform` policy
+    must exist before those workloads come up) — an ArgoCD app would sync them
+    *concurrently* with workloads, a timing regression. The Headlamp per-email admin
+    `ClusterRoleBinding`s stay imperative too (derived from a user list).
+  - First step of the GitOps-vs-imperative review roadmap (see
+    [`argocd/README.md`](argocd/README.md) topology table).
+
 ## [v0.26.0] - 2026-06-27
 
 ### Added

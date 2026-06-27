@@ -82,10 +82,16 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
   dashboards) Helm values + the `grafana-cloud-credentials` secret template.
 - `argocd/` - ArgoCD `Application`/`ApplicationSet` manifests (the GitOps
   layer): single `Application`s for External Secrets, Headlamp, **Jenkins**
-  (`jenkins-app.yaml`, the official chart, when `ci.engine=jenkins`), and
+  (`jenkins-app.yaml`, the official chart, when `ci.engine=jenkins`),
   **Argo Rollouts** (`argo-rollouts-app.yaml`, controller + Gateway API
   traffic-router plugin for sidecar-free canary/blue-green — see
-  [`docs/501`](docs/501-PLATFORM_OPERATIONS.md) § Progressive Delivery), the
+  [`docs/501`](docs/501-PLATFORM_OPERATIONS.md) § Progressive Delivery), and
+  **`platform-config`** (`platform-config-app.yaml` → the local `argocd/platform-config/`
+  Helm chart: the static, engine-aware platform **RBAC** — Jenkins/Tekton SA `edit`
+  bindings, pgAdmin secret-reader, the OTel-instrumentation `ClusterRole` — that
+  `01-namespaces.sh`/`02-otel-operator.sh` used to apply imperatively; NetworkPolicies
+  and ResourceQuotas/LimitRanges deliberately stay script-applied, they must land
+  before workloads for Dataplane V2 timing), the
   microservices AppSet, plus three **app-of-apps** (each a small Helm chart so repo/branch/version flow down to
   its children): `platform-postgres/` (the CNPG operator + pgAdmin that
   administers it), `observability-oss/`, which deploys the in-cluster OSS
