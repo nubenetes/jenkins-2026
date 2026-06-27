@@ -2,6 +2,68 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.0] - 2026-06-28
+
+### Added
+
+- **`logging.level` verbosity flag (`info` default | `debug`).** Durable default in
+  `config/config.yaml` (`logging.level`), per-run override `JENKINS2026_LOG_LEVEL`,
+  following the existing feature-flag pattern. `scripts/lib/common.sh` adds `log_debug()`
+  (emits only at `debug`, to stderr so it never pollutes a function's captured stdout);
+  `scripts/lib/config.sh` adds the config default + validation. Every dispatchable GitHub
+  Actions workflow gains a **`log_level` dropdown** (reusable workflows mirror it as a
+  `workflow_call` input; umbrellas/preflights pass it down); a top-level `env` exports
+  `JENKINS2026_LOG_LEVEL` (drives `log_debug`) and `TF_LOG=DEBUG` for the Terraform steps
+  when `debug`. Deliberately **no `trace`/`set -x` level**: bash xtrace would leak
+  script-derived secret values (admin password, dockerconfig, ArgoCD token) into the logs,
+  which GitHub does not mask — use the native `ACTIONS_STEP_DEBUG` for runner tracing.
+- **`Day2.scale.01 Pause` / `Day2.scale.02 Resume` workflows — park the cluster at
+  ~zero cost without a Decom+rebuild.** Pause disables autoscaling and scales every GKE
+  node pool to 0 (removes the 24/7 worker-VM cost while preserving the cluster, PVs/CNPG
+  data, ArgoCD + apps, static IP, DNS, certs); Resume scales the pools back up and
+  re-enables autoscaling (inputs default to `terraform/gke`'s node_count/min/max), pods
+  reschedule and ArgoCD reconciles in minutes. Imperative `gcloud` (fast); the
+  `terraform/gke` state drift is benign and reconciled by Resume or the next Day1.
+  Grafana Cloud is free-tier (nothing to pause). See
+  [`docs/101`](docs/101-GITHUB_ACTIONS_WORKFLOWS.md).
+
+### Fixed
+
+- **k6 run summary showed all-zeros in every engine (GHA, Jenkins, Tekton).** k6 2.0's
+  `--summary-export` emits a *flattened* schema (`metrics.<m>.<stat>`), but all three
+  consumers parse the nested `metrics.<m>.values.<stat>` (+ `.thresholds[expr].ok`)
+  shape, so they silently rendered 0 requests / 0 checks / `[FAIL]` thresholds even when
+  the run passed. Fixed at the source: `jenkins/pipelines/k6/microservices-smoke.js` now
+  emits the summary via `handleSummary()` (whose `data` keeps the stable `.values.*`
+  schema), output path overridable via `K6_SUMMARY_OUT` (Tekton); dropped
+  `--summary-export` from all three engines. Also added `summaryTrendStats` with `p(99)`
+  (k6's default trend stats omit it, so the summaries printed `p99=0`). Validated: 10/10
+  GHA use-cases (default + 9 presets) in parallel, all success, real numbers, thresholds
+  PASS. This is the complete fix for the symptom the v0.27.0 boolean-threshold patch only
+  partially addressed.
+- **Grafana Cloud free-tier 15k active-series cap exceeded → metrics rejected
+  (`err-mimir-max-active-series`), so app/JVM dashboard panels churned empty.** Two
+  durable cuts: `observability.leanMetrics` default flipped **false → true** (infra
+  metrics stay off across redeploys), and the otel-collector `cnpg` scrape now drops
+  `cnpg_pg_settings_setting` (~2272 series — one per postgresql.conf setting per
+  instance, the single biggest consumer, used by no dashboard) via
+  `metric_relabel_configs`. See [`docs/301`](docs/301-OBSERVABILITY.md).
+
+### Changed
+
+- **`Day2.traffic.01` k6 workflow no longer requires manual approval.** Removed
+  `environment: gke-production` (required-reviewers gate) — it only drives read-only HTTP
+  traffic against the already-running public endpoints, provisions/destroys nothing, and
+  all its secrets are repo-level, so the gate only blocked automation/scheduling. Day1,
+  Decom and the heavier Day2.* workflows keep the gate.
+
+> Companion fixes in the **`jenkins-2026-gitops-config`** repo (deployed via ArgoCD, not
+> tracked here): the lean `develop` tier no longer CrashLoops — raised the Java CPU limit
+> 500m→1500m + startup-probe budget 5→10min (CPU-starved cold start), and switched the
+> develop deployments to the `Recreate` strategy so a rolling update's overlapping pods
+> don't starve the new pod of PgBouncer session-mode connections (its reactive r2dbc
+> health check hung → startup probe never passed).
+
 ## [v0.27.0] - 2026-06-27
 
 ### Added

@@ -467,6 +467,17 @@ Jenkins: set those fields. Tekton: `-p stages=... -p p95-ms=1500 -p scenarios=..
 
 ## Reading the results — basic & expert
 
+> **How `k6-summary.json` is produced.** The script defines a **`handleSummary()`** that
+> writes the end-of-test summary itself, rather than relying on k6's `--summary-export`.
+> k6 2.0's `--summary-export` emits a *flattened* schema (`metrics.<m>.<stat>`), but all
+> three engines parse the nested `metrics.<m>.values.<stat>` (+ `.thresholds[expr].ok`)
+> shape — so `--summary-export` silently made every summary read **all-zeros / `[FAIL]`**
+> even on a passing run. `handleSummary()`'s `data` object keeps the stable `.values.*`
+> schema, fixing GHA, Jenkins and Tekton from one place. The output path is the CWD
+> `k6-summary.json` by default, overridable via **`K6_SUMMARY_OUT`** (Tekton runs k6 from a
+> sub-dir and writes to the workspace root). `summaryTrendStats` includes `p(99)` so the
+> percentile spread below is complete (k6's defaults omit p99).
+
 Both the Jenkins job (`printK6Summary()` in `vars/microservicesK6Smoke.groovy`) and the GitHub Actions *Show Results Summary* step now print a **layered analysis** of `k6-summary.json` (also archived as a build artifact / uploaded as `k6-summary-report`):
 
 ```text

@@ -115,15 +115,24 @@ Enabling the optional **lean `develop` tier** roughly **doubles** the app-metric
 (same metrics, `deployment.environment=develop`), which can tip a free-tier tenant over
 15k → Grafana Cloud starts **rejecting** series and the develop dashboards go spotty.
 
-The **`observability.leanMetrics`** flag (default `false`; per-run override
-`JENKINS2026_OBS_LEAN_METRICS=true`) makes `scripts/03-observability.sh` **disable the
+The **`observability.leanMetrics`** flag (**default `true`**; per-run override
+`JENKINS2026_OBS_LEAN_METRICS=false`) makes `scripts/03-observability.sh` **disable the
 k8s-monitoring cluster-infra metrics** (cadvisor/kube-state/node-exporter), freeing
 thousands of series so the develop app metrics fit. **App / CNPG / Tekton / k6 / Jenkins
 metrics are unaffected** (they don't go through k8s-monitoring). The trade-off is the
 Grafana Cloud built-in **"K8s Compute Resources"** views (the Jenkins-banner
 `grafana_k8s_app_link`) — those go empty. `clusterEvents` stays on (it ships to **Loki**,
-costs ~0 metric series). Meant as a **temporary validation knob**; flip it back off (or
-upgrade the plan) for full cluster-infra metrics.
+costs ~0 metric series). It defaults **on** so a redeploy can't silently re-flood the cap;
+flip it off (`JENKINS2026_OBS_LEAN_METRICS=false`, or `leanMetrics: false`) or upgrade the
+plan when you want full cluster-infra metrics back.
+
+**CNPG cardinality trim (always on).** Even with the infra metrics off, the single
+biggest *app-path* consumer was **`cnpg_pg_settings_setting`** — one series per
+`postgresql.conf` setting **per instance** (~2,272 series across the tiers), pure static
+config that no dashboard reads. The otel-collector's `cnpg` scrape drops it via
+`metric_relabel_configs` (`observability/otel-collector/values-grafana-cloud.yaml`),
+reclaiming ~15% of the cap for app/JVM/trace metrics. All other `cnpg_*`/`pg_*` series
+(used by `postgres-overview`) are kept.
 
 > **Validating develop without metrics at all.** The 15k cap is a **metrics** limit;
 > **traces (Tempo)** and **logs (Loki)** have separate free-tier quotas. So you can always
