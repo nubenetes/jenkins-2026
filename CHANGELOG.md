@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.23.3] - 2026-06-27
+
+### Added
+
+- **New doc [`503-NETWORKING.md`](docs/503-NETWORKING.md) — "Network Architecture,
+  Landing Zone & Segmentation"**, with the same `🧠 mental model` mindmap +
+  `🟢 newcomers` / `🔴 specialists` pattern as the other docs and **8 collapsible,
+  Mermaid-validated diagrams**: the VPC/subnet/secondary-range topology, the
+  **landing-zone topology pattern** (single-project / single-VPC + Kubernetes-layer
+  segmentation — **why it is *not* hub-spoke**, with motivations/justifications and
+  the growth path to hub-spoke), the IP-address plan (nodes `10.10.0.0/20` · pods
+  `10.20.0.0/16` · services `10.30.0.0/20`), north-south **ingress** (Internet → DNS
+  → L7 LB → IAP → Gateway → container-native NEG → pod, as a sequence) and **egress**
+  (no Cloud NAT, the four observability backends), east-west pod/service networking
+  (VPC-native alias IPs · Dataplane V2/Cilium eBPF · WireGuard inter-node), the
+  NetworkPolicy **segmentation** model (default-deny / deny-ingress baseline / open
+  operator namespaces), and a defense-in-depth summary. All values verbatim from
+  `terraform/gke`, `gateway-bootstrap`, `infrastructure/networkpolicies*`, `config`.
+- Wired the new page into navigation (header/footer prev/next: `502 → 503 → 601`)
+  and the **README** (Table of Contents + Document Inventory) and **CLAUDE.md** index.
+
 ## [v0.23.2] - 2026-06-27
 
 ### Documentation
