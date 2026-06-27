@@ -18,6 +18,9 @@ StatefulSet whose entire configuration is rebuilt from three ConfigMaps on every
 boot, and every build runs in a throwaway pod that connects back over a WebSocket.
 Read this section once and the rest of the page is just "where each knob lives".
 
+<details>
+<summary>🧠 Mental model — Jenkins on Kubernetes (mindmap)</summary>
+
 ```mermaid
 mindmap
   root((Jenkins on K8s))
@@ -45,6 +48,8 @@ mindmap
       traces and logs
       OTLP to collector
 ```
+
+</details>
 
 **Reading it —** the five branches are the five planes that organise the rest of this page: the **Controller** (the always-on server that schedules but never builds), **Config as Code** (the YAML that *is* the configuration), **Identity** (who may do what), **Agents** (where builds actually execute), and **Signals** (telemetry leaving the system). Every leaf is a concrete field in a file under [`jenkins/casc/`](../jenkins/casc/) or [`helm/jenkins/`](../helm/jenkins/) — there is no UI-only state to memorise.
 
@@ -87,6 +92,9 @@ So a CI run is literally: *the seed job generates per-service jobs → a job is 
 
 How the repo's declarations on the left become a running build on the right — config/definitions (rebuilt from git every boot) vs one execution (ephemeral pod):
 
+<details>
+<summary>🔀 Jenkins object model & run flow</summary>
+
 ```mermaid
 flowchart TB
   subgraph defs["Definitions — JCasC + Job DSL, rebuilt from git on every boot"]
@@ -115,11 +123,16 @@ flowchart TB
   classDef vol fill:#ffd,stroke:#cc3;
 ```
 
+</details>
+
 **Reading it —** the left box is *declarations*: the three JCasC ConfigMaps configure a controller that owns the realm, the cloud, and the library, while the `seed-jobs` cron turns `services.yaml` into the per-service jobs. The right box is *one execution*: triggering a job makes the kubernetes cloud mint an ephemeral pod that dials back over WebSocket on `:8080`, runs the stages, then is reaped. The dashed arrows are the cross-cutting facts that trip people up — the cloud only *templates* the pod (it runs nothing itself), the shared library is injected implicitly, and every run/stage/step becomes an OTel span. The crucial property: **restart the controller and every box on the left is rebuilt from git** — the UI is a read-only view, never a source of truth.
 
 ## High-level architecture
 
 The whole Jenkins-on-Kubernetes system: GitOps delivery (ArgoCD), the config plane (JCasC CMs + sidecar), identity (Google IAP at the edge + OIDC in-app), the agent plane, and the signal plane (OTel) — plus the banner deep-links the controller renders to the rest of the platform.
+
+<details>
+<summary>🏛️ High-level architecture</summary>
 
 ```mermaid
 flowchart LR
@@ -156,6 +169,8 @@ flowchart LR
   class chart,vals,casc,cmaps store;
 ```
 
+</details>
+
 **Reading it —** three independent paths converge on the one controller pod. **GitOps** (top): ArgoCD renders the upstream chart plus this repo's `values` and reconciles the StatefulSet. **Config** (middle): `04-jenkins.sh` writes the JCasC as *labeled ConfigMaps*, which the config-reload **sidecar** watches and merges live — so a config change needs no image rebuild and usually no restart. **Runtime** (bottom): users arrive through the Google-IAP-fronted Gateway and authenticate again in-app via OIDC, while the kubernetes cloud spins agent pods that connect back over WebSocket and the OTel plugin streams spans to the collector. The dashed line is the payoff — Jenkins never `kubectl apply`s the apps; it bumps a tag in the GitOps repo and lets ArgoCD deploy.
 
 ## Accessing the UI & Admin Password
@@ -180,6 +195,9 @@ Setting `JENKINS_OIDC_ADMIN_EMAIL` also dynamically configures administrator per
 
 #### Sign-in flow & role mapping
 
+<details>
+<summary>🔐 OIDC sign-in & role mapping (sequence)</summary>
+
 ```mermaid
 sequenceDiagram
   autonumber
@@ -203,6 +221,8 @@ sequenceDiagram
   end
   Note over U,J: escape-hatch admin (JENKINS_ADMIN_ID)<br/>bypasses Google entirely → group escape-hatch-admin → admin
 ```
+
+</details>
 
 **Reading it —** two design choices make this secure-by-default. First, **authentication and authorization are separate**: Google only proves *who* you are (steps 6–7 return an `email`); the Role-Based Strategy then decides *what* you may do — every Google login is a `developer` (build/replay), and only the address in `JENKINS_OIDC_ADMIN_EMAIL` is promoted to `admin`. Second, the **escape hatch** (bottom note) is a parallel, OIDC-independent path: the local `admin` always works even if Google, the client secret, or your config is broken — which is precisely why it exists. The redirect URI you register below must match `location.url`, since oic-auth derives the callback from it.
 
@@ -238,6 +258,9 @@ sequenceDiagram
 | [`jcasc-modern-agents.yaml`](../jenkins/casc/jcasc-modern-agents.yaml) | *(none)* | **Reference snippet — NOT applied** (only `base`/`otel`/`seed-job` become ConfigMaps in `04-jenkins.sh`). A forward-looking template for K8s 1.35+ in-place vertical pod scaling of `maven-node-builder` agents; the **active** cloud + agent template live in `jcasc-base.yaml` above. |
 
 #### The JCasC configuration model (what `jcasc-base.yaml` declares)
+
+<details>
+<summary>🧩 The JCasC configuration model (class diagram)</summary>
 
 ```mermaid
 classDiagram
@@ -298,6 +321,8 @@ classDiagram
   Jenkins ..> OTelExporter : jcasc-otel.yaml
 ```
 
+</details>
+
 **Reading it —** this is the literal object graph of [`jcasc-base.yaml`](../jenkins/casc/jcasc-base.yaml): `Jenkins` *composes* a security realm, an authorization strategy (exactly two global roles), one `KubernetesCloud` owning a `PodTemplate` with the `jnlp` container, the implicit shared library, and the two credentials; the OTel exporter is a sibling fragment from [`jcasc-otel.yaml`](../jenkins/casc/jcasc-otel.yaml). The filled-diamond composition mirrors the merge the config-reload sidecar performs at boot. The two fields that have caused outages are encoded right on the cloud — `jenkinsTunnel = OMITTED` and `websocket = true` (the note below explains why).
 
 > **Build agents connect over WebSocket, not the raw JNLP TCP port.** The kubernetes cloud in `jcasc-base.yaml` sets `websocket: true`, so inbound build agents reach the controller over the HTTP port (`jenkinsUrl`, `:8080`) via a WebSocket upgrade instead of the direct JNLP4 tunnel (`jenkinsTunnel`, `:50000`). This is required because the cluster encrypts **inter-node** pod traffic with WireGuard (`in_transit_encryption_config`), which lowers the MTU — the JNLP4 TLS handshake then black-holes whenever an agent lands on a **different node** than the controller (the TCP connection is *accepted* but the channel never establishes, so the build aborts / the git checkout fails). WebSocket rides the same `:8080` HTTP path the UI/API already use, so it works regardless of node placement. Two config details matter: the cloud must **omit `jenkinsTunnel`** (leaving it set exports `JENKINS_TUNNEL` so the agent gets both `-tunnel` and `-webSocket`, which conflict → it prints its usage and exits `0` → build `ABORTED`), and the `jnlp` container **keeps** its positional `args` (`^${computer.jnlpmac} ^${computer.name}`) so the agent still receives its secret/name (the plugin does not inject those as env for a custom jnlp container). See [902 § Troubleshooting](./902-TROUBLESHOOTING.md).
@@ -317,6 +342,9 @@ Beyond the kubernetes/git/JCasC/OTel plugins, three are aimed at UX:
 Every build runs in a **fresh pod** that the kubernetes cloud creates on demand and deletes when idle. The controller never runs builds itself (`numExecutors: 0`).
 
 #### Provisioning sequence (queue → pod → WebSocket → run → reap)
+
+<details>
+<summary>⚙️ Agent provisioning over WebSocket (sequence)</summary>
 
 ```mermaid
 sequenceDiagram
@@ -339,9 +367,14 @@ sequenceDiagram
   Note over C,P: cross-node placement is fine —<br/>WebSocket avoids the WireGuard-MTU JNLP4 black-hole
 ```
 
+</details>
+
 **Reading it —** this is the lifecycle of *one* agent end to end. The controller asks the Kube API for a pod (waiting up to `waitForPodSec: 600`), the `jnlp` container boots and dials back **outbound** over WebSocket carrying its secret+name as positional `args`, the controller streams the steps in, and once the build drains the pod is deleted (`retentionTimeout`). Because the agent *initiates* the connection over plain HTTP `:8080`, it never matters which node it landed on — the next diagram explains why that property is the whole point here.
 
 #### Why WebSocket, not the JNLP4 TCP tunnel
+
+<details>
+<summary>🕸️ Why WebSocket, not the JNLP4 tunnel (flowchart)</summary>
 
 ```mermaid
 flowchart TB
@@ -359,9 +392,14 @@ flowchart TB
   classDef n fill:#ffd,stroke:#cc3;
 ```
 
+</details>
+
 **Reading it —** the whole decision hinges on one question: *did the agent land on the controller's node?* The red path (raw JNLP4 on `:50000`) works same-node but, cross-node, traverses the WireGuard link whose lowered MTU silently black-holes the TLS handshake — the TCP socket is accepted, the channel never forms, and it surfaces as an aborted build or a failed `git checkout`. The green path (WebSocket on `:8080`) rides the same HTTP plane as the UI/API, so placement is irrelevant. The floating caption is the second trap: `jenkinsTunnel` must be *omitted*, because leaving it set hands the agent both `-tunnel` and `-webSocket` (mutually exclusive) → it prints usage and exits `0` → a silent ABORT.
 
 #### Agent pod lifecycle
+
+<details>
+<summary>♻️ Agent pod lifecycle (state diagram)</summary>
 
 ```mermaid
 stateDiagram-v2
@@ -376,6 +414,8 @@ stateDiagram-v2
   Aborted --> Terminated
   Terminated --> [*]
 ```
+
+</details>
 
 **Reading it —** the happy path is `Queued → Provisioning → Connecting → Online → Running → Idle → Terminated`. The agent is genuinely disposable, so `Terminated` is the normal end of *every* build, not a failure. The one branch that matters is `Connecting → Aborted` — that's the WireGuard-MTU / tunnel-conflict failure from the previous two diagrams, and it's the state you'd land in if someone re-introduced `jenkinsTunnel` or disabled `websocket`.
 
@@ -397,6 +437,9 @@ it in a parent that renders a single child would be over-engineering. Same shape
 as [`argocd/headlamp-app.yaml`](../argocd/headlamp-app.yaml) and
 [`argocd/external-secrets-app.yaml`](../argocd/external-secrets-app.yaml).
 
+<details>
+<summary>📦 Jenkins as an ArgoCD multi-source Application</summary>
+
 ```mermaid
 flowchart TB
   subgraph app["ArgoCD Application: jenkins (multi-source)"]
@@ -416,6 +459,8 @@ flowchart TB
   class sec,cms store;
 ```
 
+</details>
+
 **Reading it —** the Application stitches *three* inputs ArgoCD reconciles as one: the upstream chart, this repo's `values` (the `$values` multi-source), and a pair of `helm.parameters`. Around it, `04-jenkins.sh` owns the things git shouldn't — it patches per-deploy values into the `jenkins-credentials` Secret and (re)creates the JCasC ConfigMaps. The subtle piece is `bannerLinksChecksum`: it exists *only* so that when those out-of-band values change, a helm parameter changes too and ArgoCD actually **rolls the controller** (it would never notice an edit to a Secret it doesn't own otherwise).
 
 The Application installs the **official `jenkinsci/jenkins` chart** (multi-source:
@@ -434,6 +479,9 @@ How the few apply-time/runtime inputs are made GitOps-friendly:
 - **Rollout/health → ArgoCD** (`automated` + `selfHeal`), replacing the old imperative `helm rollback`.
 
 #### Deploy & boot sequence (`04-jenkins.sh` → controller up)
+
+<details>
+<summary>🚀 Deploy & boot sequence (04-jenkins.sh)</summary>
 
 ```mermaid
 sequenceDiagram
@@ -456,6 +504,8 @@ sequenceDiagram
   J->>J: seed-jobs (cron) generates per-service jobs
   Note over S,J: re-run is idempotent — converges in place (no Decom)
 ```
+
+</details>
 
 **Reading it —** this is what one `04-jenkins.sh` run does, in order: retire the other engine if you're switching, compute the dynamic banner links + their checksum, push those into the Secret, lay down the JCasC ConfigMaps, then hand the chart to ArgoCD. The controller comes up, the sidecar merges the three JCasC fragments, and the `seed-jobs` cron materialises the per-service jobs. The closing note is the operational rule from [CLAUDE.md](../CLAUDE.md): this is **idempotent** — to pick up a change you *re-run it*; you never Decom first.
 
