@@ -6,6 +6,64 @@
 
 The jenkins-2026 platform implements a multi-layered security pipeline (DevSecOps) following modern Cloud Native Security and Zero-Trust principles. This setup natively integrates three security layers: static code analysis, semantic SAST, infrastructure misconfiguration audits, and container image vulnerability scans.
 
+## Understanding the security pipeline (newcomers → specialists)
+
+<details>
+<summary>🟢 For newcomers — the security layers in plain terms</summary>
+
+"Shift-left" means catching security problems during the build, not in production. Each commit's CI run fans out into four checks:
+
+| Layer | Tool | What it inspects |
+|---|---|---|
+| **SAST (fast)** | Semgrep | the source code for known-bad patterns (disabled CSRF, hardcoded secrets, insecure HTTP) |
+| **SAST (deep)** | CodeQL | the code *semantically* — traces untrusted input from source to dangerous sink (SQLi, XSS, SSRF) |
+| **IaC** | Trivy config | Helm charts + Kubernetes manifests for misconfigurations |
+| **Image** | Trivy image | the built container (OS packages + app dependencies) for known CVEs |
+
+Semgrep and CodeQL write **SARIF** files that land in **GitHub Code Scanning** (click a finding → jump to the code line) and in the Jenkins build UI via the **warnings-ng** plugin. Trivy prints to the build log. None of these **fail** the build by default — they surface findings without blocking the deploy.
+</details>
+
+<details>
+<summary>🔴 For specialists — where each scan runs and how findings flow</summary>
+
+- **Pipeline placement**: Semgrep, CodeQL and Trivy-IaC run on the checked-out source *before* the image build; Trivy-image runs on the freshly built image before the GitOps tag bump. Each runs in its own pipeline container.
+- **Non-blocking by design**: Trivy runs with `--exit-code 0` (filtered to `CRITICAL,HIGH`) and the SAST steps tolerate findings (`|| true`), so the deploy is never halted — findings are *reported*, not *gated*. To gate the image scan, flip its `--exit-code` to `1`.
+- **SARIF upload**: only Semgrep + CodeQL emit SARIF; the pipeline gzip+base64-encodes each `*.sarif` and POSTs it to the GitHub code-scanning API (`/code-scanning/sarifs`). Trivy is `format: table` (console only — no SARIF upload).
+- **In-Jenkins view**: the `post { always { recordIssues(...) } }` block parses both SARIFs with the `warnings-ng` plugin → "Semgrep Warnings" / "CodeQL Warnings" trends.
+- **Tekton parity**: under `ci.engine=tekton` the same scans run as Tasks (`trivy-iac.yaml` / `trivy-image.yaml`, etc.), and **Tekton Chains** additionally signs the pushed image and records SLSA provenance (see [403](./403-TEKTON.md)).
+</details>
+
+#### Security scan data flow
+
+<details>
+<summary>📊 Security scan fan-in (sources → scanners → SARIF / log)</summary>
+
+```mermaid
+flowchart LR
+  src["App source<br/>microservices-src"]:::in
+  repo["Repo + Helm charts"]:::in
+  img["Built container image"]:::in
+
+  src --> sg[Semgrep SAST]
+  src --> cq[CodeQL deep SAST]
+  repo --> tiac["Trivy IaC<br/>--exit-code 0"]
+  img --> timg["Trivy image<br/>CRITICAL,HIGH · --exit-code 0"]
+
+  sg --> sarif[["SARIF files"]]
+  cq --> sarif
+  sarif --> gh["GitHub Code Scanning"]:::out
+  sarif --> wng["warnings-ng recordIssues<br/>Jenkins build UI"]:::out
+  tiac --> logc["Build log only<br/>non-blocking"]:::out
+  timg --> logc
+
+  classDef in fill:#eef,stroke:#66c;
+  classDef out fill:#efe,stroke:#393;
+```
+
+</details>
+
+**Reading it —** three input artifacts on the left (source, IaC, image) fan into four scanners. The two SAST tools converge on **SARIF** (→ GitHub Code Scanning + the warnings-ng Jenkins view), while both Trivy scans report to the **build log only**. The split is the key insight: SARIF findings are browsable and trend-tracked over time; Trivy's are console-only and, like the SAST steps, **non-blocking** by default — so security is *visible* without *gating* the deploy (flip Trivy's `--exit-code` to `1` to gate).
+
 ## Pipeline Lifecycle
 
 <details>

@@ -17,6 +17,72 @@
 
 > **Two-repo GitOps setup.** This is the **infra repo** (cluster bootstrap, Jenkins, ArgoCD, observability). Image tags and ArgoCD manifests live in the companion **[`nubenetes/jenkins-2026-gitops-config`](https://github.com/nubenetes/jenkins-2026-gitops-config)** repo.
 
+## Understanding the architecture (newcomers → specialists)
+
+One file (`config/config.yaml`) drives everything, three feature flags pick the variant, and the rest is GitOps. Read this once and every section below is "where each piece lives".
+
+<details>
+<summary>🧠 System mental model (mindmap)</summary>
+
+```mermaid
+mindmap
+  root((jenkins-2026))
+    Source of truth
+      config.yaml
+      J2026 env vars
+      three feature flags
+    CI engine
+      Jenkins default
+      Tekton alternative
+      mutually exclusive
+    GitOps CD
+      ArgoCD
+      gitops-config repo
+      app-of-apps
+    Workloads
+      gateway + jhipster
+      CNPG Postgres HA
+      PgBouncer poolers
+    Observability
+      OpenTelemetry
+      oss · grafana-cloud
+      managed-azure · managed-aws
+    Platform
+      Gateway API + IAP
+      Dataplane V2 + WireGuard
+      secrets imperative or eso
+```
+
+</details>
+
+**Reading it —** the six branches are the planes the rest of this doc details: a single **source of truth** (`config.yaml` → `J2026_*` env via [`scripts/lib/config.sh`](../scripts/lib/config.sh)), a pick-one **CI engine**, **ArgoCD** as the always-on GitOps CD, the **workloads** (the two JHipster services + their HA CNPG Postgres), **OpenTelemetry** flowing to one of four backends, and the **platform** layer (ingress/IAP, Dataplane V2, pluggable secrets). The three feature flags — `ci.engine`, `observability.mode`, `secrets.backend` — are the only knobs that change the shape.
+
+<details>
+<summary>🟢 For newcomers — what this deploys</summary>
+
+| Piece | In plain terms |
+|---|---|
+| **Single source of truth** | `config/config.yaml` holds every setting; scripts load it as `J2026_*` env vars. Change config, re-run — no hand-editing manifests. |
+| **CI** | **Jenkins** (default) — or **Tekton** — builds each service, pushes the image to GHCR, then **commits the new image tag** to the GitOps repo. |
+| **CD (GitOps)** | **ArgoCD** watches the GitOps repo and reconciles the cluster to match it. CI never `kubectl apply`s the apps. |
+| **Apps** | Two JHipster services — `gateway` (Spring Boot + Angular UI) and `jhipstersamplemicroservice` — each with a 3-node **HA Postgres** (CloudNative-PG) behind a PgBouncer pooler. |
+| **Observability** | Everything emits **OpenTelemetry** (traces/metrics/logs) to an in-cluster collector, which forwards to one of four backends. |
+| **Three switches** | `ci.engine` (jenkins\|tekton), `observability.mode` (oss\|grafana-cloud\|managed-azure\|managed-aws), `secrets.backend` (imperative\|eso) — each deterministic & idempotent. |
+
+</details>
+
+<details>
+<summary>🔴 For specialists — how the pieces are wired</summary>
+
+- **Two-repo GitOps**: this **infra repo** (bootstrap, Jenkins/Tekton, ArgoCD, observability) vs the **gitops-config repo** (microservices Helm + CNPG manifests + image tags). CI writes tags into the latter; ArgoCD reconciles from it.
+- **`ci.engine` — Jenkins xor Tekton**, mutually exclusive and **engine-gated**: the `jenkins` namespace exists only in jenkins-mode, the `tekton-*` namespaces only in tekton-mode. The public ingress is engine-neutral (`platform-ingress`).
+- **`observability.mode` — four backends**, the OTel collector reconfigured per mode; each branch retires the others' agents on a switch.
+- **`secrets.backend` — `imperative` (default) vs `eso`**: ESO syncs from **GCP Secret Manager** over **keyless Workload Identity**; groups 1–3 are wired, group 4 (in-cluster/Terraform-minted) stays imperative.
+- **Platform**: one GKE **Gateway** + **Google IAP**, **Dataplane V2** (Cilium/eBPF NetworkPolicy enforcement) + **WireGuard** inter-node encryption, **Karpenter** spot agents, and the IAP OAuth secret **replicated** per backend namespace (a GKE constraint, not a smell).
+- Each in-cluster Secret lives in its **consumer's** namespace (locality for tight RBAC + clean teardown); see the Namespace & Secret topology below.
+
+</details>
+
 ## System Architecture
 
 <details>
@@ -96,6 +162,9 @@ flowchart TB
 
 ## Component Diagram
 
+<details>
+<summary>📊 Component diagram — Jenkins / microservices / observability namespaces</summary>
+
 ```mermaid
 flowchart TD
     repo["github.com/nubenetes/jenkins-2026<br/>JCasC, Jenkinsfile, shared library,<br/>Helm charts, seed/services.yaml"]
@@ -129,6 +198,8 @@ flowchart TD
     otel -->|"observability.mode:<br/>oss"| oss
     k8s_mon -->|"OTLP/HTTP"| grafana_cloud
 ```
+
+</details>
 
 ## Microservices & Database Architecture
 
@@ -338,6 +409,9 @@ the IAP backend policies need (the replicated client). `jenkins` is dashed — i
 exists only in jenkins-mode (replace it mentally with the `tekton-*` namespaces in
 tekton-mode).
 
+<details>
+<summary>📊 Diagram 1 — Namespace &amp; Secret topology</summary>
+
 ```mermaid
 graph TD
     subgraph PI["platform-ingress (always)"]
@@ -372,6 +446,8 @@ graph TD
     class JN,JC,IAP_JN,GPJN gated;
 ```
 
+</details>
+
 ### Diagram 2 — Secret provenance flow
 
 Every in-cluster Secret originates from a GitHub Actions secret (or a Terraform
@@ -379,6 +455,9 @@ backend output), is materialised into the **consumer's** namespace, and is read
 only from there. **How** it is materialised is selectable — see
 [Secrets backend](#secrets-backend-imperative--eso) below. The default
 (`imperative`) flow is:
+
+<details>
+<summary>📊 Diagram 2 — Secret provenance flow (imperative)</summary>
 
 ```mermaid
 flowchart LR
@@ -405,6 +484,8 @@ flowchart LR
     D --> H["Jenkins controller"]
 ```
 
+</details>
+
 ### Secrets backend (`imperative` | `eso`)
 
 > 🔐 **Pluggable secrets backend.** A feature flag — `secrets.backend` in
@@ -429,6 +510,9 @@ In `eso` mode the flow becomes (now wired for the gateway IAP secret, the Tekton
 pipeline credentials, and `ghcr-credentials`; the rest follows the same pattern —
 staged rollout below):
 
+<details>
+<summary>📊 ESO sync flow (secrets.backend=eso) — Secret Manager → Workload Identity → k8s Secret</summary>
+
 ```mermaid
 flowchart LR
     GH["GitHub Actions secret<br/>(IAP_OAUTH_*)"] -->|"01-namespaces.sh<br/>(scripts/lib/secrets.sh)"| SM[("GCP Secret Manager<br/>gateway-iap-oauth (versioned)")]
@@ -438,6 +522,8 @@ flowchart LR
     classDef sm fill:#eef,stroke:#66c;
     class SM,ESO sm;
 ```
+
+</details>
 
 **Why `eso` adds value:** a single managed source of truth, secret **versioning**,
 **Cloud Audit Logs** of every access, optional rotation, and it decouples secrets
@@ -581,6 +667,9 @@ Identity-Aware Proxy references an OAuth-client `Secret` by name, and that Secre
 no way to point a backend policy at a Secret in another namespace, so the single
 OAuth client has to be copied into every IAP-protected backend namespace.
 
+<details>
+<summary>📊 Why the gateway-iap-oauth Secret is replicated per backend namespace</summary>
+
 ```mermaid
 graph TD
     GHS["GitHub secret<br/>IAP_OAUTH_CLIENT_ID/SECRET"] --> NS["01-namespaces.sh<br/>replicate to each IAP backend ns"]
@@ -594,6 +683,8 @@ graph TD
     J --> JP["GCPBackendPolicy → Jenkins Service"]
     H -. "ArgoCD (no IAP, uses OIDC) reads<br/>the client from headlamp" .-> ACD["argocd/ ArgoCD server"]
 ```
+
+</details>
 
 > ArgoCD is **not** IAP-gated (it has its own Google OIDC login), but it reuses the
 > *same* OAuth client. It therefore reads `gateway-iap-oauth` from the always-present

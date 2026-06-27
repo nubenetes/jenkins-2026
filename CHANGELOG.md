@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.22.4] - 2026-06-27
+
+The final documentation patch in the diagram series: the 401/402/403 treatment
+now covers **every** numbered doc with diagrams — `docs/101`, `docs/201`,
+`docs/301`, `docs/601` get newcomers/specialists blocks, new diagrams, and
+collapsible wrapping.
+
+### Added
+
+- **5 new Mermaid diagrams + 🟢/🔴 newcomers-specialists blocks across
+  `docs/101`, `docs/201`, `docs/301`, `docs/601`**:
+  - **101-GITHUB_ACTIONS_WORKFLOWS**: a `stateDiagram` of the
+    Day0→Day1→Day2→Decom cluster lifecycle and a dependency `flowchart`
+    (Day0 prerequisites + the shared `jenkins-2026-gke` concurrency group), plus a
+    🟢/🔴 pair on the `DayN.tier.ZZ` naming scheme.
+  - **201-ARCHITECTURE**: a system-overview `mindmap` + a 🟢/🔴 pair.
+  - **301-OBSERVABILITY**: an observability-model `mindmap` + a 🟢/🔴 pair (the
+    six existing diagrams were already collapsible).
+  - **601-DEVSECOPS**: a security-scan fan-in `flowchart` (sources → Semgrep /
+    CodeQL / Trivy → SARIF / GitHub Code Scanning) + a 🟢/🔴 pair.
+  - Each new diagram carries a "Reading it" explanation; all validated against
+    the Mermaid parser.
+
+### Changed
+
+- **All previously-bare Mermaid diagrams in `docs/101` and `docs/201` are now
+  collapsible (`<details>`)** — completing the render-latency fix begun in
+  v0.22.2/v0.22.3. With this release **every Mermaid diagram in the docs is
+  wrapped in a `<details>`**. Pre-existing `<details>` were left intact.
+
 ## [v0.22.3] - 2026-06-27
 
 A documentation patch extending the 401/402/403 treatment to four more docs:
