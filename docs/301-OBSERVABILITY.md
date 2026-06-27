@@ -522,6 +522,15 @@ Five rules live in `observability/grafana/alerting/rules/`, all filed under the 
 | `04-http-5xx-rate.json` | warning | 3m | HTTP 5xx rate > 0.05 req/s for any service |
 | `05-jvm-heap-high.json` | warning | 5m | JVM heap ratio > 85% for any service |
 
+> **Scope — stable only; the `develop` tier never pages.** Every rule filters on
+> `namespace="microservices"` (the **stable** tier), so the optional lean `develop`
+> tier (`microservices-develop` — see [402 § Optional develop Tier](./402-PIPELINES_AS_CODE.md))
+> is **deliberately excluded** from alerting: a disposable validation tier shouldn't
+> trigger pages. Its telemetry is still fully visible in the (env-aware) dashboards
+> via the `deployment_environment=develop` variable — just not alerted on. To alert
+> on develop too, add rules scoped to `namespace="microservices-develop"` with their
+> own (ideally non-paging) contact point.
+
 > **Where to find them in Grafana.** The rules live under **Alerting → Alert rules**, filed in the **`CI-CD Observability`** folder (the same folder as the dashboards — Grafana folders are the mandatory container + RBAC boundary for alert rules, and can hold dashboards and rules together). The contact point and notification policy are under **Alerting → Contact points / Notification policies**. Folder names must be **slash-free**: a `/` makes Grafana's alerting provisioning treat the name as a nested-folder path (e.g. `CI/CD Alerts` → a `CI` folder with a `CD Alerts` child), which is why the folder is `CI-CD` not `CI/CD`.
 
 > **Datasource UID rewrite.** The rule JSONs ship with `datasourceUid: grafanacloud-prom` (the grafana-cloud default). At provisioning time the active Grafana's Prometheus datasource UID is resolved and substituted (oss → `prometheus`; managed-azure/aws → the AMG-assigned UID), so rules evaluate against the right datasource in every mode instead of a non-existent one.
