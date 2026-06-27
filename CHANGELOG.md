@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.23.7] - 2026-06-27
+
+### Documentation
+
+- **`docs/402`: added a consolidated `stable` vs `develop` comparison table + the
+  rationale.** One place now spells out, per aspect, how the lean **develop** tier
+  differs from the production-representative **stable** tier — CNPG HA (3 vs 1),
+  pooler (3 vs 1), backups (on vs off), app resources, **alerts** (yes vs no /
+  stable-only), **public access** (Gateway vs internal-only), GitOps branch/values,
+  shared observability, and footprint (~12 vs ~4 pods) — **and why** each difference
+  exists: develop validates a change cheaply/fast (same app image, CI/CD path and
+  observability) while skipping what only matters for production (HA, backups,
+  alerting, a public endpoint).
+
 ## [v0.23.6] - 2026-06-27
 
 ### Documentation
