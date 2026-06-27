@@ -205,7 +205,7 @@ Instead of separating stable and development pipelines into separate jobs and fo
 *   **Environment Name:** `stable` (modifies `values-stable.yaml` in the GitOps config repository on the `main` branch)
 
 <details>
-<summary>🪢 Branch & environment mapping (stable vs develop)</summary>
+<summary>🌳 Branch & environment mapping (stable vs develop)</summary>
 
 ```mermaid
 flowchart TB

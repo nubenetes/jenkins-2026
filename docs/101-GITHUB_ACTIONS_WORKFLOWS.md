@@ -9,6 +9,35 @@ All workflows live in [`.github/workflows/`](../.github/workflows/), are manuall
 ## Understanding the workflow scheme (newcomers → specialists)
 
 <details>
+<summary>🧠 Mental model — the DayN workflow scheme (mindmap)</summary>
+
+```mermaid
+mindmap
+  root((DayN workflows))
+    Naming DayN.tier.ZZ
+      DayN lifecycle phase
+      tier semantic word
+      ZZ per-resource id
+      alphabetical = run order
+    Phases
+      Day0 bootstrap
+      Day1 cluster
+      Day2 ops
+      Decom teardown
+    Orchestration
+      concurrency jenkins-2026-gke
+      workflow_call reuse
+      umbrellas up and down
+    Approval gates
+      five environments
+      required reviewers
+```
+
+</details>
+
+**Reading it —** the workflow inventory decoded in one picture: the **naming** (`DayN.tier.ZZ` — the prefix sorts the Actions UI into execution order), the four lifecycle **phases**, the **orchestration** (one shared concurrency group so runs queue instead of racing on Terraform state; reusable `workflow_call`; the one-click umbrellas), and the **approval gates**. The tables below are each of these in full.
+
+<details>
 <summary>🟢 For newcomers — what the filenames tell you</summary>
 
 Every workflow is named `DayN.tier.ZZ-resource`, and that name is a tiny runbook:

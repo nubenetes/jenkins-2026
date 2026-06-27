@@ -9,6 +9,32 @@ The jenkins-2026 platform implements a multi-layered security pipeline (DevSecOp
 ## Understanding the security pipeline (newcomers → specialists)
 
 <details>
+<summary>🧠 Mental model — DevSecOps shift-left (mindmap)</summary>
+
+```mermaid
+mindmap
+  root((DevSecOps shift-left))
+    SAST
+      Semgrep
+      CodeQL
+    IaC scan
+      Trivy config
+    Image scan
+      Trivy image
+    Aggregation
+      warnings-ng
+    Reporting
+      SARIF to GitHub
+      non-blocking gates
+    Supply chain
+      Tekton Chains SLSA
+```
+
+</details>
+
+**Reading it —** the branches are the layers of scanning applied as code moves through the pipeline: **SAST** on the source (Semgrep + CodeQL), **IaC** scanning of the manifests, **image** scanning of the built container, **aggregation** of findings (warnings-ng), and **reporting** to GitHub Code Scanning as SARIF (non-blocking, so a finding informs but doesn't fail the build). Tekton's Chains/SLSA provenance is the supply-chain complement.
+
+<details>
 <summary>🟢 For newcomers — the security layers in plain terms</summary>
 
 "Shift-left" means catching security problems during the build, not in production. Each commit's CI run fans out into four checks:

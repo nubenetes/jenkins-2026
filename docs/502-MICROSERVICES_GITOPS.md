@@ -13,6 +13,33 @@
 ## Understanding the microservices GitOps model (newcomers → specialists)
 
 <details>
+<summary>🧠 Mental model — microservices GitOps (mindmap)</summary>
+
+```mermaid
+mindmap
+  root((Microservices GitOps))
+    Source of truth
+      Helm values-env.yaml
+      services map
+    Templating
+      one row renders
+      Deployment + Service
+      CNPG + Pooler + Backup
+    CI deploy loop
+      yq image tag
+      git push main direct
+      ArgoCD sync and wait
+    Teardown order
+      NEG sync barrier
+      poll gcloud
+      then destroy VPC
+```
+
+</details>
+
+**Reading it —** the four branches are the lifecycle of a microservice in this repo: its config lives as a row in a Helm **values** file (the *source of truth*); one row **templates** into five Kubernetes objects; the Jenkins **CI deploy loop** bumps the image tag and lets ArgoCD reconcile; and **teardown** needs the NEG synchronization barrier before destroying the VPC. Each is expanded below.
+
+<details>
 <summary>🟢 For newcomers — the model in plain terms</summary>
 
 In **GitOps**, the cluster's desired state lives in **git** and a controller (**ArgoCD**) continuously makes the cluster match it. Here, each microservice is just a **row** in a Helm values file (`values-stable.yaml` / `values-develop.yaml`) in the separate **`jenkins-2026-gitops-config`** repo.

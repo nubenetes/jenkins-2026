@@ -46,6 +46,35 @@ backups bucket). It is the *root of trust*: the seed that makes the whole automa
 lifecycle possible.
 
 <details>
+<summary>🧠 Mental model — the root of trust (mindmap)</summary>
+
+```mermaid
+mindmap
+  root((Root of Trust))
+    Why it exists
+      bootstrap paradox
+      one manual seed
+    What it creates
+      WIF trust
+      CI service account
+      GCS state bucket
+      backups bucket
+      public DNS zone
+    State model
+      local seed first
+      migrate into bucket
+    Outputs
+      four GitHub secrets
+    Lifecycle
+      up converge idempotent
+      down rarely
+```
+
+</details>
+
+**Reading it —** the five branches are everything the one manual seed sets up so GitHub Actions can take over: *why* it must be manual (the paradox), *what* it creates (the WIF trust + CI SA + buckets + DNS zone), the two-phase *state model* (local → bucket), the four secret *outputs*, and its *lifecycle* (`up` is idempotent; `down` is rare). Each is detailed below.
+
+<details>
 <summary>🟢 For newcomers — what the root of trust is</summary>
 
 The **root of trust** is the one foundation everything else stands on. Before GitHub Actions can build anything in your cloud, two things must already exist:
