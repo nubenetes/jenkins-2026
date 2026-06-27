@@ -19,7 +19,15 @@
 - **A clean Day0 → Day1 → Day2 → Decom lifecycle.** Persistent bootstrap (**Day0**), cluster up (**Day1**), running-cluster ops (**Day2**), teardown (**Decom**) — every workflow **idempotent and safe to re-run**. See [101](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md).
 - **Tuned by a handful of feature flags** (sensible defaults, powerful opt-ins): the **CI engine** (Jenkins/Tekton), the **observability backend** (the four above), the **secrets backend** (imperative `kubectl` or **GCP Secret Manager + External Secrets Operator**), an optional **lean `develop` tier**, and **public access** (Gateway + IAP). All live in [`config/config.yaml`](./config/config.yaml) with per-run `JENKINS2026_*` overrides.
 
-**Closing the loop — load & traffic testing.** The platform doesn't just deploy and observe; it **drives traffic** through a first-class **[k6 engine](./docs/302-K6_LOAD_TESTING.md)**. One script, **one `K6SIM_*` parameter contract**, runs from **all three** entry points (**Jenkins**, **Tekton**, **GitHub Actions**) and across both the `stable` and `develop` tiers — from a 12-iteration **smoke** test to **load / stress / soak / spike / breakpoint** profiles. Configurations are **committed presets in git** (selectable from a dropdown), and every run feeds the same Grafana, with a **layered, basic→expert result analysis** printed inline.
+**Closing the loop — load & traffic testing.** The platform doesn't just deploy and observe; it **drives traffic** through a first-class, fully parametrizable **[k6 engine](./docs/302-K6_LOAD_TESTING.md)** — so the dashboards always have something real to show, and the app is exercised, not just shipped.
+
+**What the k6 engine gives you:**
+
+- **One script, one contract.** A single `jenkins/pipelines/k6/microservices-smoke.js` driven by **one `K6SIM_*` variable contract** — backward-compatible, so *no parameters* = the original lightweight smoke test.
+- **Six workload profiles.** From a 12-iteration **smoke** test to real **load · stress · soak · spike · breakpoint** runs, each a sensible preset shape you can still fine-tune (VUs, duration, ramping stages, arrival rate, thresholds).
+- **Committed presets, pick-from-a-menu.** Whole named configs live as **YAML files in git** ([`presets/`](./jenkins/pipelines/k6/presets/)) and are **selectable from a dropdown**; any field you type by hand overrides the preset (**manual > preset > default**).
+- **The same test from all three runners.** **Jenkins**, **Tekton** and **GitHub Actions** run the identical script and contract, against **both the `stable` and `develop` tiers**.
+- **One Grafana, layered analysis.** Every run exports OTLP into the **same Grafana** (correlated with the app's own telemetry) and prints a **basic→expert result analysis** inline (latency percentiles, throughput, threshold pass/fail + verdict).
 
 <details>
 <summary>🧠 Mental model — the whole platform in one map</summary>
