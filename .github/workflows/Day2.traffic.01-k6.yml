@@ -72,9 +72,12 @@ jobs:
   simulate-traffic:
     name: k6 Traffic Simulation
     runs-on: ubuntu-latest
-    # Manual approval gate (GitHub Environment required reviewers) - runs against a
-    # real billed cluster, same posture as Day1/Decom and the other Day2.* workflows.
-    environment: gke-production
+    # No environment gate on purpose: this workflow only drives read-only HTTP
+    # traffic against the already-running public endpoints — it provisions and
+    # destroys nothing — so the gke-production "required reviewers" approval (kept
+    # on Day1/Decom and the heavier Day2.* workflows) would only block
+    # automation/scheduling here. All secrets it uses are repo-level, so dropping
+    # the environment loses no access.
     permissions:
       contents: read
       id-token: write
