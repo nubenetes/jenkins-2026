@@ -6,6 +6,30 @@
 
 All workflows live in [`.github/workflows/`](../.github/workflows/), are manually-triggered (`workflow_dispatch`), and follow a `DayN.tier.ZZ-resource.yml` naming convention whose **alphabetical sort order in the GitHub Actions UI is the correct execution order** for every phase of the lifecycle.
 
+## Understanding the workflow scheme (newcomers → specialists)
+
+<details>
+<summary>🟢 For newcomers — what the filenames tell you</summary>
+
+Every workflow is named `DayN.tier.ZZ-resource`, and that name is a tiny runbook:
+
+- **`DayN` = lifecycle phase** (SRE Day-0/1/2 terminology): `Day0` = one-time persistent bootstrap (WIF, the Gateway IP/cert, observability backends) · `Day1` = create the throwaway GKE cluster + full stack · `Day2` = operations on a **running** cluster (redeploy a component, publish dashboards, run traffic) · `Decom` = teardown. `Decom` sorts after `Day2`, so teardown always lands last.
+- **`tier` = a short word for the group within the phase** (`infra`, `cluster`, `redeploy`, `publish`, `traffic`) — a readable label, not a number.
+- **`ZZ` = a per-resource id** that stays the same across phases: `03` is always Azure (`Day0.infra.03` → `Day2.publish.03` → `Decom.infra.03`), so you can follow one resource through its whole life by the suffix.
+
+The punchline: **GitHub sorts the Actions sidebar by each workflow's `name:`, every `name:` starts with its `DayN.tier.ZZ` prefix, so reading the list top-to-bottom _is_ the order to run things** — Day0 → Day1 → Day2 → Decom (cluster before backends). No separate runbook needed.
+</details>
+
+<details>
+<summary>🔴 For specialists — the mechanics behind the scheme</summary>
+
+- **Controlled `tier` vocabulary**: `infra` (persistent Day0/Decom) · `cluster` (the GKE cluster) · `redeploy` (re-apply one component) · `publish` (push dashboards/alerts) · `traffic` (k6). The tier-then-`ZZ` order is a real dependency chain in **Create** (`Day0.infra` before `Day1.cluster`) and **Decom** (`cluster` before `infra`), but in **Day2** the tiers are independent *categories*, not stages — nothing chains them.
+- **GKE serialization**: every cluster-touching leaf workflow (`Day1.cluster.01`, `Decom.cluster.01`, and the `Day2.*` that act on the cluster) shares `concurrency: group: jenkins-2026-gke`, so GitHub **queues** them instead of letting two runs race the same Terraform state.
+- **Reusable workflows + umbrellas**: `Day1.cluster.01` `workflow_call`s the matching `Day0.infra.0{2,3,4}` backend bootstrap as a preflight; the two opt-in umbrellas (`Day1.cluster.00` "Everything up" / `Decom.infra.00` "Everything") orchestrate the leaves via `workflow_call` with **no `concurrency:` of their own** (or they would deadlock holding the group their own child job needs).
+- **Per-resource approval gates**: each persistent Day0 resource has its own required-reviewer GitHub Environment (`gateway-bootstrap`, `grafana-cloud-bootstrap`, `azure-bootstrap`, `aws-bootstrap`); the cluster + all Day2 use `gke-production`. The gate travels with the reusable workflow, so every entry point inherits the same single approval. See [102 § Environment Protection](./102-GITHUB_ACTIONS_AUTOMATION.md#environment-protection-and-manual-approvals).
+- **No auto-chaining**: every workflow is `workflow_dispatch`-only (no `workflow_run:`), so a human reviews each phase — critical for `Decom`, where an automatic trigger on a failed cluster teardown could cascade into destroying persistent backends.
+</details>
+
 ## Branch protection & GitFlow promotion (both repos)
 
 This PoC spans **two** repos with **deliberately opposite** `main` branch-protection policies. Both are documented here (and mirrored in the GitOps repo's `README`) because getting either wrong silently breaks things — a too-strict GitOps `main` wedges every deploy, while a too-loose infra `main` lets unreviewed changes bypass GitFlow.
@@ -167,6 +191,65 @@ flowchart TD
 
 </details>
 
+### Cluster lifecycle (state view)
+
+<details>
+<summary>📊 Cluster lifecycle — Day0 → Day1 → Day2 → Decom (state diagram)</summary>
+
+```mermaid
+stateDiagram-v2
+    [*] --> Root: bootstrap.sh up (once, local)
+    Root --> Day0: Day0.infra.0N (Gateway + backend, persistent)
+    Day0 --> Day1: Day1.cluster.01 (cluster + full stack)
+    Day1 --> Day2: cluster running
+    Day2 --> Day2: redeploy / publish / traffic (re-runnable)
+    Day2 --> DecomCluster: Decom.cluster.01
+    DecomCluster --> Day0: cluster gone; backends + root kept
+    DecomCluster --> DecomInfra: Decom.infra.0N (optional, permanent)
+    DecomInfra --> RootTeardown: bootstrap.sh down (rare)
+    RootTeardown --> [*]
+    note right of DecomCluster
+      re-provision = back to Day1
+      (Day0 state in GCS is reused)
+    end note
+```
+
+</details>
+
+**Reading it —** the root of trust (`bootstrap.sh up`) is created once and sits beneath everything; `Day0` provisions the persistent infra, `Day1` the throwaway cluster, and `Day2` is the self-loop where day-to-day ops live (every box is re-runnable). The key edge is `Decom.cluster.01 → Day0`: a normal teardown drops only the cluster and **keeps the backends + root**, so re-provisioning skips `Day0` entirely (its state still lives in GCS). Only abandoning the project walks the rarely-used `Decom.infra → bootstrap.sh down` tail.
+
+### Workflow dependencies & GKE serialization
+
+<details>
+<summary>📊 Workflow dependencies + the jenkins-2026-gke concurrency group</summary>
+
+```mermaid
+flowchart TD
+    boot["bootstrap.sh up<br/>WIF + GCS state"]:::root
+    gw["Day0.infra.01<br/>Gateway IP/cert"]
+    bk["Day0.infra.02/03/04<br/>observability backend"]
+    boot --> gw
+    boot --> bk
+    gw --> day1
+    bk -.->|workflow_call preflight| day1
+    subgraph cc["concurrency: jenkins-2026-gke — queued, not raced"]
+        day1["Day1.cluster.01<br/>cluster + up.sh"]
+        d2["Day2.* cluster ops"]
+        decom["Decom.cluster.01"]
+    end
+    day1 --> d2 --> decom
+    decom -.->|persistent kept| gw
+    umb["umbrellas Day1.cluster.00 / Decom.infra.00<br/>no concurrency — orchestrate via workflow_call"]:::umb
+    umb -.-> day1
+    umb -.-> decom
+    classDef root fill:#ffd,stroke:#aa0,stroke-width:2px;
+    classDef umb fill:#eef,stroke:#66c;
+```
+
+</details>
+
+**Reading it —** solid arrows are create-order dependencies (`Day0.infra.01` Gateway and the backend bootstrap must exist before `Day1`); dotted arrows are reuse/orchestration. The shaded box is the `jenkins-2026-gke` **concurrency group**: `Day1.cluster.01`, the cluster-touching `Day2.*`, and `Decom.cluster.01` all share it, so GitHub **queues** them rather than letting two runs race the same Terraform state. The umbrellas deliberately carry **no** concurrency of their own — otherwise they would hold the group their own child job needs and deadlock.
+
 ---
 
 ## Day-0 / Day-1 / Day-2 operations
@@ -212,6 +295,9 @@ These terms come from the SRE / platform-engineering world and describe **when i
 > ³ **Day2.publish.01** refreshes the in-cluster OSS Grafana on a running cluster. The OSS stack (kube-prometheus-stack/Loki/Tempo) is GitOps-managed by the `observability-oss` ArgoCD app-of-apps (`argocd/observability-oss`), so chart/value changes — including the dashboards, now GitOps-managed by the `oss-grafana-dashboards` child app — auto-sync on commit; this workflow nudges an ArgoCD re-sync and republishes alert rules without a full reprovision.
 
 ### Typical session lifecycle
+
+<details>
+<summary>📊 Typical session lifecycle (Day0 → Day1 → Day2 → Decom)</summary>
 
 ```mermaid
 flowchart TD
@@ -262,6 +348,8 @@ flowchart TD
     style D2 fill:#fff8e1,stroke:#ff9800
     style DECOM fill:#fce4ec,stroke:#e91e63
 ```
+
+</details>
 
 A new session (reprovision after full teardown) only needs **Day1** — Day0 outputs are still in GCS state and are reused automatically by `Day1.cluster.01`.
 
@@ -428,6 +516,9 @@ GitHub has no way to draw that — it's a `bash if`, not a job — so `provision
 
 ### What actually runs
 
+<details>
+<summary>📊 What actually runs — job graph vs in-job steps</summary>
+
 ```mermaid
 flowchart TD
     subgraph JOBS["GitHub Actions job graph (what the workflow_dispatch UI shows)"]
@@ -461,6 +552,8 @@ flowchart TD
 
     P -.->|"one job runs all of the below as steps"| INSIDE
 ```
+
+</details>
 
 > **Approval gates (🔒).** Each box is protected by its **own** required-reviewer
 > GitHub Environment, so one approval maps to one concern and the cluster gate is

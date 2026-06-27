@@ -10,6 +10,63 @@ Jenkins (via the `opentelemetry` plugin), every Java microservice (via OTel Oper
 
 Every component — Jenkins, the Spring Boot microservices, and the Angular UI — exports OpenTelemetry **traces**, **metrics**, and **logs**, correlated by `trace_id`/`span_id` and common resource attributes (`service.name`, `service.namespace=jenkins-2026`, `deployment.environment=stable`).
 
+## Understanding observability (newcomers → specialists)
+
+Everything emits **OpenTelemetry**, an in-cluster **collector** fans the signals out, and **exactly one** of four backends stores and renders them. Read this once and the rest of the page is just "which knob lives where".
+
+<details>
+<summary>🧠 Mental model — the observability pipeline (mindmap)</summary>
+
+```mermaid
+mindmap
+  root((Observability))
+    Signals
+      traces
+      metrics
+      logs
+      correlated by trace_id
+    Sources
+      Jenkins plugin
+      Java auto-agent
+      Angular RUM
+      k6 smoke
+    Pipeline
+      OTel Operator inject
+      collector gateway OTLP
+      collector logs DaemonSet
+      span_metrics + service_graph
+    Backends
+      Grafana Cloud
+      in-cluster OSS
+      Azure Managed
+      AWS Managed
+```
+
+</details>
+
+**Reading it —** the four branches are the four stages a signal passes through: a **Source** emits it, the **Pipeline** (OTel Operator + the two collectors) receives/enriches/routes it, and one **Backend** stores it — all three **Signals** stitched together by a shared `trace_id`. Every leaf is a concrete component below; nothing here is backend-specific except the last branch, which is chosen by `observability.mode`.
+
+<details>
+<summary>🟢 For newcomers — the model in plain terms</summary>
+
+- **Three signals, one pipeline.** Traces (the path of a request), metrics (numbers over time), and logs (text lines) are all emitted as **OpenTelemetry (OTLP)** and shipped to a single in-cluster **collector**. Because every signal carries the same **`trace_id`**, Grafana can jump metric → trace → log and back.
+- **Who emits what** — Jenkins (its `opentelemetry` plugin), each Java microservice (an OTel agent the platform injects automatically, no code change), the Angular UI (a tiny browser RUM snippet), and the k6 smoke test.
+- **One backend at a time.** The same telemetry can land in any **one** of four backends, picked by `observability.mode`: the in-cluster **OSS** stack (Prometheus+Loki+Tempo+Grafana), **Grafana Cloud**, **Azure Managed Grafana**, or **Amazon Managed Grafana**. Switching mode retires the old backend's in-cluster footprint and wires up the new one — you never run two at once.
+- **You look at it in Grafana** — dashboards + Explore, in the one `CI-CD Observability` folder.
+
+</details>
+
+<details>
+<summary>🔴 For specialists — the moving parts and how they're wired here</summary>
+
+- **Injection (OTel Operator).** `scripts/02-otel-operator.sh` installs the operator + the `Instrumentation`/`OpenTelemetryCollector` CRDs. The `microservices-java` `Instrumentation` CR makes the operator's **mutating webhook** inject the Java agent (`JAVA_TOOL_OPTIONS`) into every `inject-java: "true"` pod — `parentbased_traceidratio@1.0`, MDC `trace_id`/`span_id`, `service.namespace=jenkins-2026`. The webhook is `failurePolicy: Ignore`, so a pod admitted before the CR is cached starts **uninstrumented** — guarded by `02-otel-operator.sh` (wait-for-serving), `ensure-otel-injection.sh` (verify-and-heal `rollout restart`), and the smoke test.
+- **Collection (two collectors).** `otel-collector-gateway` (Deployment) takes OTLP/gRPC `:4317` + OTLP/HTTP `:4318` (CORS for the RUM beacon) and runs traces/metrics/logs pipelines plus the **`span_metrics` + `service_graph` connectors** (the source of `traces_spanmetrics_*` with `trace_id` **exemplars** and the Tempo Service Map / RED metrics). `otel-collector-logs` (DaemonSet) tails pod stdout via the `filelog` receiver.
+- **Per-mode export.** The collectors' **exporters** are the only backend-specific part: grafana-cloud → Mimir/Tempo/Loki; oss → in-cluster Prometheus/Tempo/Loki; managed-azure → Azure Monitor/App Insights; managed-aws → AMP/X-Ray/CloudWatch. Deterministic & idempotent — re-running with a different mode retires the previous footprint.
+- **Correlation.** `exemplarTraceIdDestinations` (metrics→traces), Tempo `tracesToLogs`/`tracesToMetrics`+`serviceMap` (traces→logs/metrics), Loki `derivedFields` regex (logs→traces). The hardest link (logs→traces) needs ECS-JSON logs + reactive context propagation — see [Structured Logging](#structured-logging-deep-dive).
+- **Dashboards & alerts** live in one engine-neutral `CI-CD Observability` folder; canonical JSON in `observability/grafana/dashboards/`, with per-backend variants generated for Azure/AWS.
+
+</details>
+
 ## Key Features
 
 - **gcx CLI GitOps**: Dashboard deployment in Grafana Cloud is managed via the native **`gcx` CLI**. The `scripts/07-grafana-dashboards.sh` script automatically installs and authenticates the `gcx` CLI, wraps raw JSON dashboards into Kubernetes-style `apiVersion: dashboard.grafana.app/v1` manifests, and pushes resources declaratively using `gcx resources push --include-managed`.
