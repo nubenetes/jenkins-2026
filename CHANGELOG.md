@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.25.2] - 2026-06-27
+
+### Documentation
+
+- **README k6 intro restructured to match the v0.25.1 intro pass.** The dense
+  "Closing the loop — load & traffic testing" paragraph became a lead sentence +
+  a **"What the k6 engine gives you"** bullet list (one script/one contract; the
+  six workload profiles; committed dropdown-selectable presets with
+  manual>preset>default precedence; the same test from all three runners across
+  `stable`/`develop`; one Grafana + layered analysis), aligned with the
+  bullet-driven "What it chains together" / "How it runs" style.
+
 ## [v0.25.1] - 2026-06-27
 
 ### Documentation
