@@ -2,6 +2,59 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.23.0] - 2026-06-27
+
+The optional **`develop` microservices tier** becomes a first-class,
+GitHub-Actions-gated feature — **off by default**, engine-neutral (Jenkins **and**
+Tekton), and deployed as a deliberately **lean, non-HA tier** so both environments
+fit comfortably on the cluster. (Spans this repo + the `jenkins-2026-gitops-config`
+repo.)
+
+### Added
+
+- **`develop_track` workflow input (default `false`)** on `Day1.cluster.01-gke`,
+  the `Day1.cluster.00-all` umbrella, `Day2.redeploy.02-jenkins`, and
+  `Day2.redeploy.03-tekton` — wired to the existing `JENKINS2026_DEVELOP_TRACK_ENABLED`
+  flag (durable default `microservices.developTrackEnabled: false`). Turning it on
+  provisions a second `microservices-develop` deploy tier alongside `stable`.
+- **Engine-neutral develop tier (Jenkins + Tekton).** Jenkins generates
+  `<svc>-develop` jobs (04-jenkins + `seed_jobs.groovy`); Tekton seeds develop
+  PipelineRuns (`06-tekton-pipelines` + the `env-name=develop` task branches). The
+  deploy target is ArgoCD's `microservices-develop` Application (engine-neutral),
+  created by `08.5-argocd` appending a `develop` generator to the microservices
+  ApplicationSet (values-develop.yaml on the gitops `develop` branch).
+- **Lean develop tier (`jenkins-2026-gitops-config`).** The microservices chart's
+  `templates/postgres.yaml` is parameterized — `global.postgresInstances` /
+  `global.poolerInstances` (default **3**) and `global.postgresBackupEnabled`
+  (default **true**) — so **stable is unchanged**. `values-develop.yaml` sets them
+  to **1 / 1 / false**: a single CNPG instance (no HA standbys), a single PgBouncer
+  pooler, and no Barman/ScheduledBackup (disposable data). Footprint: stable ≈ 12
+  CNPG pods vs develop ≈ 4.
+
+### Changed
+
+- **`scripts/01-namespaces.sh` provisions the develop namespace end-to-end when the
+  flag is on** (engine-neutral, gated): creates `microservices-develop`; binds
+  `edit` for the active engine's SA (jenkins SA, or `tekton-ci` SA); pgAdmin
+  secret-reader; `ghcr-credentials` imagePullSecret; and replicates the additive
+  `microservices-cnpg-platform` NetworkPolicy into it (CNPG 5432 / API-server 443
+  Hazelcast / WI-metadata egress + 9187 metrics ingress).
+- **NetworkPolicies**: `observability-policy` (OTLP `4317/4318` ingress) and
+  `pgadmin-policy` (egress `5432`) now list `microservices-develop` statically
+  (a namespaceSelector for an absent namespace matches nothing, so it is harmless
+  when the tier is off).
+- **Observability**: the non-OSS collector values (grafana-cloud / managed-azure /
+  managed-aws) add `microservices-develop` to the CNPG `:9187` scrape (OSS already
+  scrapes all namespaces); ESO mode emits a `ghcr-credentials` ExternalSecret for
+  the develop namespace; `down.sh` tears the develop namespace down on teardown.
+- **Docs**: `docs/402` (develop tier + lean CNPG + provisioning diagram), `docs/102`
+  (the `develop_track` form field), `docs/502` (the parameterized CNPG HA knobs).
+
+> The develop tier is **internal-only** (no public HTTPRoute; `values-develop`
+> `ingress.enabled: false`) — reach it via `kubectl -n microservices-develop
+> port-forward svc/gateway 8080:8080`. It reports into the same shared
+> observability stack, separated by namespace/labels.
+
 ## [v0.22.6] - 2026-06-27
 
 ### Added

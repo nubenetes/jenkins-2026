@@ -46,6 +46,10 @@ spec:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: microservices
+    # Optional 'develop' tier — harmless when absent (matches nothing).
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: microservices-develop
     ports:
     - protocol: TCP
       port: 5432
@@ -103,6 +107,12 @@ spec:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: microservices
+    # Optional 'develop' deploy tier (microservices.developTrackEnabled). A
+    # namespaceSelector for an absent namespace matches nothing, so this is harmless
+    # when the tier is off and lets develop's apps push OTLP when it is on.
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: microservices-develop
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: tekton-ci

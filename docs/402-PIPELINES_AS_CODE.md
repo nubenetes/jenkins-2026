@@ -212,13 +212,13 @@ flowchart TB
   reg["services.yaml<br/>app branch = main (both tiers)"] --> sw{DEVELOP_TRACK_ENABLED?}
   sw -->|always| stable
   sw -->|true| develop
-  subgraph stable["stable tier"]
+  subgraph stable["stable tier (HA)"]
     sjobs["jobs: gateway, jhipster…<br/>k6-smoke"] --> sns["ns: microservices"]
-    sns --> sval["gitops main → values-stable.yaml"]
+    sns --> sval["gitops main → values-stable.yaml<br/>CNPG 3 instances · 3 pooler · backups on"]
   end
-  subgraph develop["develop tier (opt-in)"]
+  subgraph develop["develop tier (opt-in, LEAN)"]
     djobs["jobs: *-develop"] --> dns["ns: microservices-develop"]
-    dns --> dval["gitops develop → values-develop.yaml"]
+    dns --> dval["gitops develop → values-develop.yaml<br/>CNPG 1 instance · 1 pooler · no backups"]
   end
   sval --> shared[(shared Grafana/Loki/Tempo/Prom<br/>split by namespace/labels)]
   dval --> shared
@@ -226,7 +226,7 @@ flowchart TB
 
 </details>
 
-**Reading it —** the single switch is `DEVELOP_TRACK_ENABLED`. The **stable** tier always exists; the **develop** tier is an opt-in *clone* that differs in only three places — its jobs carry a `-develop` suffix, deploy to `microservices-develop`, and read `values-develop.yaml` on the GitOps repo's `develop` branch. Crucially the *app image is identical* (the upstream apps have no `develop` branch), so this is a second **deployment** tier, not a second build. Both tiers funnel into one shared observability stack, separated only by namespace/labels — which is why enabling it roughly doubles the runtime footprint but not the telemetry plumbing.
+**Reading it —** the single switch is `DEVELOP_TRACK_ENABLED`. The **stable** tier always exists; the **develop** tier is an opt-in tier that differs in its jobs (a `-develop` suffix), namespace (`microservices-develop`), and values (`values-develop.yaml` on the GitOps repo's `develop` branch). Crucially the *app image is identical* (the upstream apps have no `develop` branch), so this is a second **deployment** tier, not a second build. And it is deliberately **lean**: where stable runs HA Postgres (3 CNPG instances + a 3-replica pooler + daily backups), develop runs a **single** non-HA CNPG instance, a single pooler, and **no backups** — so it adds only a handful of pods, not a full second copy. Both tiers funnel into one shared observability stack, separated only by namespace/labels. See the dedicated section below.
 
 ### Why the GitOps Repo Uses Only the `main` Branch
 
@@ -236,15 +236,21 @@ The companion repository `jenkins-2026-gitops-config` is configured to track onl
 
 ### Optional `develop` Tier (Feature Flag, Off by Default)
 
-A second `develop` deployment tier is available behind a feature flag. It is **disabled by default** because enabling it roughly **doubles the microservices footprint**.
+A second `develop` deployment tier is available behind a feature flag, **disabled by default**. It is *only a second deployment tier of the microservices*, not a second platform:
 
-**What it is (and is not).** `develop` is *only a second deployment tier of the microservices*, not a second platform:
 * The upstream JHipster app repos have **no `develop` branch** (only `main`), so the develop tier **builds the same app image** as stable.
-* It differs from stable only in **target namespace** (`microservices-develop`) and its **own `values-develop.yaml`**.
-* It tracks the **`develop` branch of the GitOps config repo** for infra/config changes.
-* **Observability is a single shared stack.** The develop tier reports into the *same* Grafana/Loki/Tempo/Prometheus, distinguished by namespace/labels.
+* It differs from stable only in **target namespace** (`microservices-develop`), its **own `values-develop.yaml`** (tracked on the GitOps repo's **`develop` branch**), and a **lean Postgres** profile.
+* **Observability is a single shared stack** — the develop tier reports into the *same* Grafana/Loki/Tempo/Prometheus, distinguished by namespace/labels (`deployment_environment=develop`).
 
-**How to enable:**
+**Engine-neutral.** The tier works the same under **Jenkins** *and* **Tekton**: the deploy target is an engine-neutral ArgoCD `microservices-develop` Application; only the *generation* of the `-develop` CI jobs differs (Jenkins seed job vs Tekton seeded `PipelineRun`s).
+
+**Lean by design (resources you need, not more).** The Helm chart parameterizes the CNPG HA knobs — `global.postgresInstances` / `global.poolerInstances` (default `3`) and `global.postgresBackupEnabled` (default `true`). `values-develop.yaml` overrides them to **`1` / `1` / `false`**: a single Postgres instance (no standbys), a single PgBouncer pooler, and no Barman/ScheduledBackup (develop data is disposable). So per service develop runs **1 CNPG + 1 pooler** instead of stable's **3 + 3** — the whole tier is ~4 Postgres-related pods vs stable's ~12. On the 2× `e2-standard-8` cluster this fits with ample headroom.
+
+**Internal-only.** develop is **not** publicly exposed (`values-develop.yaml` `ingress.enabled: false`, no HTTPRoute) — reach it from inside the cluster: `kubectl -n microservices-develop port-forward svc/gateway 8080:8080`.
+
+#### How to enable
+
+Durable default in [`config/config.yaml`](../config/config.yaml), ephemeral override via env, **or the GitHub Actions input** — the same durable-default + override pattern as `ci.engine` / `observability.mode`:
 
 ```yaml
 # config/config.yaml
@@ -257,11 +263,31 @@ microservices:
 export JENKINS2026_DEVELOP_TRACK_ENABLED=true
 ```
 
-When enabled:
-1. **ArgoCD** — `scripts/08.5-argocd.sh` appends a `develop` generator element to the `microservices` ApplicationSet, creating a `microservices-develop` Application.
-2. **Jenkins** — the seed job generates parallel `<svc>-develop` and `microservices-k6-smoke-develop` jobs, grouped in a separate **`microservices-develop`** ListView.
+In CI, the **`develop_track`** boolean input (**off by default**) on `Day1.cluster.01-gke` (and the `Day1.cluster.00-all` umbrella, plus `Day2.redeploy.02-jenkins` / `Day2.redeploy.03-tekton`) maps to `JENKINS2026_DEVELOP_TRACK_ENABLED` — tick it to provision the tier for that run.
 
-> **Prerequisite**: the GitOps repo `jenkins-2026-gitops-config` must have a `develop` branch containing `helm/microservices/values-develop.yaml`, otherwise the `microservices-develop` ArgoCD app will fail to sync.
+> **Prerequisite**: the GitOps repo `jenkins-2026-gitops-config` must have a `develop` branch containing `helm/microservices/values-develop.yaml` (with the lean `global.postgres*` overrides), otherwise the `microservices-develop` ArgoCD app will fail to sync.
+
+<details>
+<summary>🌿 Develop-tier provisioning path (flowchart)</summary>
+
+```mermaid
+flowchart TB
+  flag(["develop_track = true<br/>(or developTrackEnabled)"]):::ext --> up["scripts/up.sh"]
+  up --> ns["01-namespaces.sh<br/>create ns microservices-develop<br/>+ CNPG netpol · ghcr secret · edit RBAC"]
+  up --> as["08.5-argocd.sh<br/>append 'develop' AppSet generator"]
+  up --> ciedge{ci.engine?}
+  ciedge -->|jenkins| jen["04-jenkins + seed_jobs.groovy<br/>generate -develop jobs"]
+  ciedge -->|tekton| tek["06-tekton-pipelines.sh<br/>seed develop PipelineRuns"]
+  as --> app["ArgoCD: microservices-develop<br/>values-develop.yaml @ gitops develop"]
+  app --> lean[("lean CNPG<br/>1 instance · 1 pooler · no backups")]:::store
+  ns -.->|netpol + secrets land in the ns| app
+  classDef ext fill:#fde,stroke:#c39;
+  classDef store fill:#eef,stroke:#66c;
+```
+
+</details>
+
+**Reading it —** one flag drives three engine-neutral things through `up.sh`: **01-namespaces** provisions the `microservices-develop` namespace with the same platform plumbing stable gets (the additive CNPG NetworkPolicy, the `ghcr-credentials` pull secret, and an `edit` RoleBinding for the active engine's SA — Jenkins or `tekton-ci`); **08.5** appends a `develop` generator to the microservices ApplicationSet so ArgoCD creates the `microservices-develop` app from the lean `values-develop.yaml`; and the active CI engine generates the `-develop` jobs/runs. The OTLP-ingress and pgAdmin-egress NetworkPolicies already list `microservices-develop` statically (harmless when absent), and the non-OSS collectors add it to the CNPG metrics scrape — so telemetry flows with no extra wiring.
 
 ## The service registry model
 

@@ -22,6 +22,11 @@ on:
         options:
           - imperative
           - eso
+      develop_track:
+        description: "Re-apply the optional lean 'develop' microservices tier alongside 'stable' (OFF by default): the develop namespace/netpol/RBAC (01-namespaces) and the develop Tekton runs (06-tekton-pipelines). The develop ArgoCD app is owned by Day1.cluster.01."
+        required: false
+        default: false
+        type: boolean
       git_ref:
         description: "Git branch, tag, or SHA to check out (leave empty to use the branch/tag selected in 'Use workflow from' above)"
         required: false
@@ -41,6 +46,9 @@ env:
   # Selects the Tekton path in scripts/lib/config.sh (and the 04/06 scripts).
   JENKINS2026_CI_ENGINE: tekton
   JENKINS2026_SECRETS_BACKEND: ${{ inputs.secrets_backend }}
+  # Optional lean develop tier (off by default) — 01-namespaces provisions its
+  # namespace/netpol/RBAC and 06-tekton-pipelines seeds its runs.
+  JENKINS2026_DEVELOP_TRACK_ENABLED: ${{ inputs.develop_track }}
 
 jobs:
   redeploy-tekton:

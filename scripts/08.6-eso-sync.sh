@@ -323,6 +323,10 @@ es_extract "${J2026_HEADLAMP_CREDENTIALS_SECRET}" "${J2026_HEADLAMP_NAMESPACE}" 
 
 # --- emit: microservices image pull secret (always) --------------------------
 es_dockerconfig "ghcr-credentials" "${J2026_MICROSERVICES_NS_STABLE}" "ghcr-credentials"
+# Optional 'develop' deploy tier (off by default): same pull secret in its namespace.
+if [[ "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" == "true" ]]; then
+  es_dockerconfig "ghcr-credentials" "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" "ghcr-credentials"
+fi
 
 # --- wait: every emitted Secret must materialise -----------------------------
 log_step "Waiting for ESO to materialise the Secrets"

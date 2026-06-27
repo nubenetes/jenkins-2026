@@ -22,6 +22,20 @@ for ns in "${J2026_GATEWAY_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_HEADLAM
   kubectl_apply_namespace "${ns}"
 done
 
+# Optional 'develop' microservices deploy tier (OFF by default; feature flag
+# microservices.developTrackEnabled / JENKINS2026_DEVELOP_TRACK_ENABLED). When on,
+# provision its namespace up-front so the RBAC/secrets/NetworkPolicies below — and
+# ArgoCD's later sync (08.5 appends a 'develop' ApplicationSet generator) — land in
+# it. A LEAN, non-HA tier (gitops values-develop.yaml: CNPG single instance, no
+# backups) — see docs/402. MS_NAMESPACES drives every per-namespace loop below so
+# stable-only behaviour is unchanged when the flag is off (engine-neutral).
+MS_NAMESPACES=("${J2026_MICROSERVICES_NS_STABLE}")
+if [[ "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" == "true" ]]; then
+  MS_NAMESPACES+=("${J2026_MICROSERVICES_DEVELOP_NAMESPACE}")
+  kubectl_apply_namespace "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}"
+  log_info "Develop track enabled - provisioning namespace ${J2026_MICROSERVICES_DEVELOP_NAMESPACE} (lean tier)."
+fi
+
 # Tekton control-plane + pipeline-execution namespaces are created up-front (when
 # ci.engine=tekton) so the IAP and registry/git Secrets below can land in them
 # before 04-tekton.sh installs the components. kubectl_apply_namespace is a no-op
@@ -299,7 +313,7 @@ fi
 # tekton mode; the tekton-ci SA gets its own edit binding via tekton/rbac).
 if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
 log_step "Granting Jenkins ServiceAccount 'edit' in microservices namespaces"
-for ns in "${J2026_MICROSERVICES_NS_STABLE}"; do
+for ns in "${MS_NAMESPACES[@]}"; do
   kubectl create rolebinding jenkins-edit \
     --clusterrole=edit \
     --serviceaccount="${J2026_JENKINS_NAMESPACE}:jenkins" \
@@ -308,9 +322,23 @@ for ns in "${J2026_MICROSERVICES_NS_STABLE}"; do
 done
 fi
 
-log_step "Granting pgAdmin ServiceAccount read access to Postgres user secrets in microservices namespace"
-# Create a Role that only allows reading the specific database user secrets
-kubectl apply -f - -n "${J2026_MICROSERVICES_NS_STABLE}" <<EOF
+# Tekton parity: the stable tekton-ci-edit RoleBinding ships in tekton/rbac (GitOps,
+# ns microservices). The develop namespace is provisioned imperatively here, so bind
+# 'edit' for the tekton-ci SA in it too — gitops-deploy does `kubectl -n <ns> rollout
+# restart` (the OTel self-heal) against the target tier. Only when tekton + develop.
+if [[ "${J2026_CI_ENGINE}" == "tekton" && "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" == "true" ]]; then
+  log_step "Granting tekton-ci ServiceAccount 'edit' in ${J2026_MICROSERVICES_DEVELOP_NAMESPACE}"
+  kubectl create rolebinding tekton-ci-edit \
+    --clusterrole=edit \
+    --serviceaccount="${J2026_TEKTON_PIPELINE_NAMESPACE}:tekton-ci" \
+    -n "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" \
+    --dry-run=client -o yaml | kubectl apply -f -
+fi
+
+log_step "Granting pgAdmin ServiceAccount read access to Postgres user secrets in microservices namespaces"
+for ns in "${MS_NAMESPACES[@]}"; do
+  # Create a Role that only allows reading the specific database user secrets
+  kubectl apply -f - -n "${ns}" <<EOF
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -323,13 +351,13 @@ rules:
   - postgres-jhipstersamplemicroservice-app
   verbs: ["get", "list"]
 EOF
-
-# Bind this Role to pgAdmin's ServiceAccount (pgadmin) in the pgadmin namespace
-kubectl create rolebinding pgadmin-secret-reader-binding \
-  --role=pgadmin-secret-reader \
-  --serviceaccount="${J2026_PGADMIN_NAMESPACE}:pgadmin" \
-  -n "${J2026_MICROSERVICES_NS_STABLE}" \
-  --dry-run=client -o yaml | kubectl apply -f -
+  # Bind this Role to pgAdmin's ServiceAccount (pgadmin) in the pgadmin namespace
+  kubectl create rolebinding pgadmin-secret-reader-binding \
+    --role=pgadmin-secret-reader \
+    --serviceaccount="${J2026_PGADMIN_NAMESPACE}:pgadmin" \
+    -n "${ns}" \
+    --dry-run=client -o yaml | kubectl apply -f -
+done
 
 # 'ghcr-credentials' imagePullSecret (helm/microservices values-*.yaml
 # imagePullSecret) - same REGISTRY_USERNAME/REGISTRY_PASSWORD the
@@ -357,7 +385,7 @@ if [[ -n "${REGISTRY_USERNAME:-}" && -n "${REGISTRY_PASSWORD:-}" ]]; then
 else
   dockerconfigjson='{"auths":{}}'
 fi
-for ns in "${J2026_MICROSERVICES_NS_STABLE}"; do
+for ns in "${MS_NAMESPACES[@]}"; do
   if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
     # eso → store the raw creds in Secret Manager; the ExternalSecret (08.6)
     # rebuilds the dockerconfigjson via its target.template from these keys.
@@ -484,6 +512,15 @@ done
 
 log_step "Applying NetworkPolicies for platform namespaces"
 kubectl apply -f "${J2026_ROOT_DIR}/infrastructure/networkpolicies.yaml"
+# Develop tier: the additive 'microservices-cnpg-platform' policy hardcodes
+# namespace: microservices (stable). Replicate it into the develop namespace so its
+# pods get the same CNPG (5432) / API-server (443, Hazelcast) / WI-metadata egress +
+# 9187 metrics ingress. (The OTLP ingress allow in observability-policy and pgAdmin's
+# egress already list microservices-develop statically — see networkpolicies.yaml.)
+if [[ "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" == "true" ]]; then
+  yq eval 'select(.metadata.name == "microservices-cnpg-platform") | .metadata.namespace = env(J2026_MICROSERVICES_DEVELOP_NAMESPACE)' \
+    "${J2026_ROOT_DIR}/infrastructure/networkpolicies.yaml" | kubectl apply -f -
+fi
 # Jenkins-namespace NetworkPolicies only when ci.engine=jenkins (no jenkins ns in
 # tekton mode - applying them there fails with 'namespaces "jenkins" not found').
 if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then

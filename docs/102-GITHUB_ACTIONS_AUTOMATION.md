@@ -278,7 +278,12 @@ When executing the **Day1.cluster.01 GKE provision** workflow manually, you are 
    - Determines whether the public GKE Gateway L7 load balancer should be provisioned.
    - **Prerequisites**: Requires `Day0.infra.01 Gateway bootstrap` applied, wildcard DNS records, and IAP OAuth client credentials.
 
-6. **git_ref (Text Box - String)**:
+6. **develop_track (Checkbox - Boolean)**:
+   - **Default**: `false`.
+   - Deploys the optional **lean `develop` microservices tier** alongside `stable`: a `microservices-develop` namespace + ArgoCD app from `values-develop.yaml` on the GitOps repo's `develop` branch (a single non-HA CNPG instance, single pooler, no backups), plus `-develop` CI jobs/runs. Engine-neutral (Jenkins or Tekton). Overrides `microservices.developTrackEnabled` via `JENKINS2026_DEVELOP_TRACK_ENABLED`.
+   - **Prerequisite**: the `jenkins-2026-gitops-config` repo must have a `develop` branch with `helm/microservices/values-develop.yaml`. See [402 § Optional develop Tier](./402-PIPELINES_AS_CODE.md).
+
+7. **git_ref (Text Box - String)**:
    - **Default**: `""` (empty).
    - Leave empty to use the **"Use workflow from"** dropdown selection.
    - Provide a branch name, tag, or SHA to override.
