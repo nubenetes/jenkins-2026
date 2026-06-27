@@ -16,6 +16,13 @@ pgadmin4:
     name: "pgadmin"
     automountServiceAccountToken: true
 
+  # The pgadmin-data PVC is ReadWriteOnce: a RollingUpdate would spawn the new
+  # pod before the old one releases the volume, deadlocking on Multi-Attach
+  # ("Volume is already used by pod(s)..."). Recreate tears the old pod down
+  # first so the single replica can always remount. Restarts are cheap here.
+  strategy:
+    type: Recreate
+
   # Custom init container to fetch PostgreSQL user secrets and write the .pgpass file
   extraInitContainers: |
     - name: setup-pgpass
@@ -27,15 +34,20 @@ pgadmin4:
         - -c
         - |
           apk add --no-cache kubectl
-          # Wait up to 150s for Postgres secrets to exist
+          # Wait up to 600s for the CNPG app secrets to exist AND be readable.
+          # On a cluster rebuild CNPG can take minutes to reconcile the cluster
+          # and mint these; the old 150s cap let pgAdmin start degraded (no
+          # pgpass). This gate also depends on egress :443 to the API server
+          # reaching kubectl — if the NetworkPolicy selector is wrong, every
+          # attempt fails here, which is the symptom to look for.
           i=1
-          while [ $i -le 75 ]; do
+          while [ $i -le 150 ]; do
             if kubectl get secret postgres-gateway-app -n microservices >/dev/null 2>&1 && \
                kubectl get secret postgres-jhipstersamplemicroservice-app -n microservices >/dev/null 2>&1; then
               break
             fi
-            echo "Waiting for PostgreSQL user secrets to be ready... (attempt $i/75)"
-            sleep 2
+            echo "Waiting for PostgreSQL user secrets to be ready/readable... (attempt $i/150)"
+            sleep 4
             i=$((i + 1))
           done
 
@@ -56,7 +68,11 @@ pgadmin4:
             chown 5050:5050 /var/lib/pgadmin/pgpass
             echo "pgpass file successfully generated with proper escaping."
           else
-            echo "PostgreSQL user secrets not ready. Starting pgAdmin without pre-populated pgpass."
+            # Fail closed: exit non-zero so Kubernetes restarts this init
+            # container (back-off) until the secrets are reachable, rather than
+            # starting pgAdmin with no pgpass (silent zero-password-login break).
+            echo "ERROR: CNPG app secrets not ready/readable after wait window — failing init so it retries." >&2
+            exit 1
           fi
       volumeMounts:
         - name: pgadmin-data

@@ -132,7 +132,21 @@ A total of **2 Postgres databases** are provisioned in the cluster (both in the 
 *   **URL:** `https://pgadmin.jenkins2026.nubenetes.com` (gated behind GKE Gateway + Google IAP).
 *   **Auto-Login (Google ID):** pgAdmin is configured with Webserver Authentication (`AUTHENTICATION_SOURCES = ['webserver']`) to trust the `X-Goog-Authenticated-User-Email` header injected by Google IAP. A custom Python WSGI middleware automatically strips the `accounts.google.com:` namespace prefix from the header.
 *   **Pre-populated Connections:** Both database connections (Gateway and JHipster Microservice backend) are automatically preconfigured on startup as shared connections.
-*   **Automated Database Authentication (Zero-Password Login):** An init container (`setup-pgpass`) dynamically retrieves passwords from secrets and writes them with secure `0600` permissions to `/var/lib/pgadmin/pgpass`.
+*   **Automated Database Authentication (Zero-Password Login):** An init container (`setup-pgpass`) dynamically retrieves passwords from secrets and writes them with secure `0600` permissions to `/var/lib/pgadmin/pgpass`. The pgAdmin pod reads those secrets via a dedicated ServiceAccount (`pgadmin`) bound to the `pgadmin-secret-reader` Role; both the init container's `:443` API-server call and the runtime `:5432` egress depend on the `pgadmin-policy` NetworkPolicy selecting the pod (`app.kubernetes.io/name: pgadmin4`). If connections time out, see [902 § pgAdmin connections time out](./902-TROUBLESHOOTING.md) — it's a network/policy issue, not the password.
+
+### Retrieving the application-user passwords (the pgAdmin connections)
+
+Zero-password login means you normally never need these. To fetch them by hand (e.g. for `psql` from elsewhere, or to sanity-check), read the CNPG-generated `*-app` secrets in the `microservices` namespace — the value matches the `pgpass` field pgAdmin uses, and **rotates every time the Postgres cluster is rebuilt**:
+
+```bash
+# "Stable - Gateway DB"  (user "gateway")
+kubectl get secret postgres-gateway-app -n microservices -o jsonpath='{.data.password}' | base64 -d; echo
+
+# "Stable - JHipster Microservice DB"  (user "jhipstersamplemicroservice")
+kubectl get secret postgres-jhipstersamplemicroservice-app -n microservices -o jsonpath='{.data.password}' | base64 -d; echo
+```
+
+> These are the **application** roles (`gateway` / `jhipstersamplemicroservice`), distinct from the Postgres **superuser** below. Note the two authentication planes don't overlap: Kubernetes RBAC (what lets your `kubectl` read the Secret) is independent of the PostgreSQL role you authenticate as — being cluster-admin doesn't make you the `postgres` superuser inside the database.
 
 ### SRE Break-Glass CLI (Connecting as Superuser)
 

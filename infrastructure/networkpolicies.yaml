@@ -30,7 +30,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: pgadmin
+      app.kubernetes.io/name: pgadmin4
   policyTypes:
   - Ingress
   - Egress
