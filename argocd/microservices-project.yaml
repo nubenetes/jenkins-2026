@@ -10,6 +10,15 @@ spec:
   destinations:
     - namespace: microservices
       server: https://kubernetes.default.svc
+    # The optional lean develop tier (microservices.developTrackEnabled). The
+    # microservices ApplicationSet generates a 'microservices-develop' Application
+    # targeting this namespace; without it whitelisted here ArgoCD rejects that app
+    # with InvalidSpecError ("namespace 'microservices-develop' do not match any of
+    # the allowed destinations") → the develop app stays Unknown/Unknown and never
+    # deploys (and any pipeline doing `argocd app wait microservices-develop` hangs).
+    # Harmless when the develop track is off (no app targets it).
+    - namespace: microservices-develop
+      server: https://kubernetes.default.svc
   clusterResourceWhitelist:
     - group: ""
       kind: Namespace
