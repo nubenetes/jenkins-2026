@@ -208,6 +208,10 @@ export const options = {
     http_req_failed: [{ threshold: `rate<${ERR_RATE}`, abortOnFail }],
     http_req_duration: [{ threshold: `p(95)<${P95_MS}`, abortOnFail }],
   },
+  // Populate every percentile the CI summaries render (GHA jq + Jenkins parser
+  // both print p99); k6's default trend stats omit p(99), so without this it
+  // always showed p99=0.
+  summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
 };
 
 // ---- traceparent generation (so every iteration is one correlated trace) ----
