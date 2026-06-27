@@ -10,6 +10,26 @@
 >
 > This is the **opposite** of the infra repo (**this** repo, `jenkins-2026`), whose `main` *is* strict-GitFlow-protected (PR-from-`develop`-only, `gitflow-guard` check, `enforce_admins`). The asymmetry is intentional: the **infra repo is human-reviewed**, the **GitOps repo is machine-managed** (image-tag bumps are not human-reviewed changes). Do not "harmonize" them. See [`CLAUDE.md` § Conventions](../CLAUDE.md) and the GitOps repo's README.
 
+## Understanding the microservices GitOps model (newcomers → specialists)
+
+<details>
+<summary>🟢 For newcomers — the model in plain terms</summary>
+
+In **GitOps**, the cluster's desired state lives in **git** and a controller (**ArgoCD**) continuously makes the cluster match it. Here, each microservice is just a **row** in a Helm values file (`values-stable.yaml` / `values-develop.yaml`) in the separate **`jenkins-2026-gitops-config`** repo.
+
+To ship a new build, Jenkins does **not** `kubectl apply` anything — it edits one line (the image tag) with `yq`, `git push`es it to that repo's `main`, and ArgoCD notices and rolls it out. Adding a whole new service is **one new row**. The only sharp edge is at **teardown**: deleting Services/Gateways leaves GCP load-balancer plumbing (NEGs) being cleaned up in the background, and tearing the cluster down too fast orphans them — so a "synchronization barrier" waits for them first.
+
+</details>
+
+<details>
+<summary>🔴 For specialists — the mechanics</summary>
+
+- **One Helm chart, N services.** `helm/microservices` templates a `range .Values.services` loop that renders, per entry, a `Deployment` + `Service` + CNPG `Cluster` + PgBouncer `Pooler` + `ScheduledBackup`. DRY beats Kustomize overlays here; a `global.platform` branch switches securityContext/ingress without parallel overlays.
+- **CI writes `main` directly.** `vars/microservicesDeploy.groovy` runs `yq -i '.services.<svc>.image.tag=…'` then `git push origin main` to the GitOps repo. That repo's `main` is therefore **direct-push** (force-push-blocked only) — *not* require-PR — the deliberate opposite of this infra repo's strict GitFlow. Require-PR there would reject the PAT push and wedge **every** deploy.
+- **Decommission ordering.** `Service`/`Gateway` deletion returns instantly, but GKE's NEG controller deletes the backing GCP NEGs **asynchronously**; `terraform destroy` racing ahead kills the masters mid-cleanup → orphaned NEGs → VPC delete fails. `scripts/down.sh` adds a synchronization barrier that polls `gcloud compute network-endpoint-groups list` (≤5 min) and force-deletes stragglers before Terraform proceeds.
+
+</details>
+
 ## GitOps Design Decision: Helm vs. Kustomize
 
 ### Overview
@@ -43,6 +63,37 @@ metadata:
 
 This single loop dynamically generates the `Deployment`, `Service`, `Postgres` CNPG Cluster, `PgBouncer` pooler, and scheduled backups for *every* registered microservice. Kustomize lacks template logic and variables.
 
+<details>
+<summary>📊 The Helm values model — one row, five objects</summary>
+
+```mermaid
+classDiagram
+  class ValuesFile {
+    per env stable or develop
+    global.platform switch
+    services map
+  }
+  class Service {
+    image.tag bumped by CI
+    port and healthPath
+  }
+  class Deployment
+  class K8sService
+  class CNPGCluster
+  class PgBouncerPooler
+  class ScheduledBackup
+  ValuesFile "1" *-- "many" Service : services map
+  Service ..> Deployment : range loop renders
+  Service ..> K8sService
+  Service ..> CNPGCluster
+  Service ..> PgBouncerPooler
+  Service ..> ScheduledBackup
+```
+
+</details>
+
+**Reading it —** one values file, many services, and a single Helm `range` loop fans each service entry out into five Kubernetes objects. This is the DRY win over Kustomize: adding a microservice is **one new `Service` row** (name/tag/port/health), and the same template stamps out its Deployment, Service, CNPG database, connection pooler, and scheduled backup.
+
 #### 2. Platform Adaptability
 
 ```yaml
@@ -67,6 +118,33 @@ yq -i '.services.jhipstersamplemicroservice.image.tag = "new-tag"' values-stable
 ```
 
 Using Kustomize would require running `kustomize edit set image` on specific overlay files, adding tool dependencies to pipeline runner images.
+
+#### 4. The deploy loop — a commit, not an apply
+
+<details>
+<summary>📊 GitOps deploy sequence (yq → push → ArgoCD sync)</summary>
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant J as Jenkins (microservicesDeploy)
+  participant GO as gitops-config repo (main)
+  participant AC as ArgoCD
+  participant MS as microservices ns
+  J->>GO: clone helm/microservices/values-{env}.yaml
+  J->>J: yq -i .services.{svc}.image.tag = {tag}
+  J->>GO: commit + git push origin main (direct, no PR)
+  AC->>GO: detect change (auto-sync)
+  AC->>MS: app sync — apply rendered manifests
+  MS-->>AC: Deployment rolls the new image
+  J->>AC: argocd app wait --health --timeout 300
+  AC-->>J: Synced + Healthy
+  J->>J: proceed to smoke test
+```
+
+</details>
+
+**Reading it —** the deploy is a *commit*, not an apply. Jenkins mutates exactly one line — the image tag — in the GitOps repo's `values-{env}.yaml` and pushes it straight to `main` (which is why that branch must accept direct pushes). ArgoCD's auto-sync is the actual deployer; Jenkins then blocks on `argocd app wait --health` so the pipeline only reports success once the cluster has converged. Adding a service is the same flow with a new row.
 
 ## Design Decision: Resource Lifecycle & Decommission Orchestration
 
@@ -124,6 +202,33 @@ To prevent VPC deletion blockages, we introduced an **explicit synchronization b
    ```
 
 This architecture bridges the asynchronous nature of Kubernetes controllers with the synchronous demands of Terraform state lifecycle management.
+
+<details>
+<summary>📊 The NEG synchronization barrier (teardown ordering)</summary>
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant D as scripts/down.sh
+  participant K as GKE NEG controller
+  participant G as GCP (NEGs / LB)
+  participant T as terraform destroy
+  D->>K: delete Services + Gateway
+  K-->>D: 200 OK (config removed instantly)
+  K->>G: async — delete backing NEGs / forwarding rules
+  Note over D,T: barrier — do NOT let Terraform race ahead
+  loop up to 5 min
+    D->>G: gcloud network-endpoint-groups list (filter VPC)
+    G-->>D: any still present?
+  end
+  D->>G: force-delete stuck NEGs (gcloud ... delete --quiet)
+  D->>T: NEGs gone — run terraform destroy
+  T->>G: delete VPC (no "network in use by networkEndpointGroups")
+```
+
+</details>
+
+**Reading it —** the race is the whole point. Deleting a `Service`/`Gateway` returns success immediately, but GKE deletes the backing GCP NEGs *in the background*; if `terraform destroy` tears down the masters first, those controllers die mid-cleanup and the orphaned NEGs block VPC deletion. The barrier in `down.sh` polls GCP directly (≤5 min), force-deletes stragglers, and only then lets Terraform proceed — bridging async Kubernetes controllers with synchronous Terraform state.
 
 ## pgAdmin & Database Administration
 
