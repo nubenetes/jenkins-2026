@@ -24,7 +24,7 @@ on:
         default: smoke
         options: [smoke, load, stress, soak, spike, breakpoint]
       env_name:
-        description: "Target tier (stable = public URL; develop = port-forward the develop gateway)"
+        description: "Target tier — selects the public URL: stable → microservices.<baseDomain>, develop → microservices-develop.<baseDomain>. Both are external internet endpoints; also tags the telemetry deployment.environment=<tier>."
         type: choice
         default: stable
         options: [stable, develop]
