@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.23.6] - 2026-06-27
+
+### Documentation
+
+- **`docs/301` Alert Rules: documented the alerting scope w.r.t. the new develop
+  tier.** All five rules filter on `namespace="microservices"` (stable), so the
+  optional lean `develop` tier is **deliberately excluded** from alerting — a
+  disposable validation tier shouldn't page; its telemetry is still visible in the
+  env-aware dashboards. Added a note explaining this and how to opt develop in.
+- (Repo metadata) refreshed both repos' GitHub **About** descriptions to mention
+  the pluggable **secrets backend** (imperative | GCP Secret Manager + ESO), keyless
+  WIF, and the optional **lean develop tier** (and, for gitops-config, the
+  parameterized CNPG HA: stable HA vs lean develop).
+
 ## [v0.23.5] - 2026-06-27
 
 ### Documentation
