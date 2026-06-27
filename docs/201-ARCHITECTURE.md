@@ -179,7 +179,14 @@ flowchart TD
         microservices["gateway (Spring Boot + Angular UI),<br/>jhipstersamplemicroservice (Spring Boot backend)"]
     end
 
+    subgraph microservices_dev_ns["namespace: microservices-develop (optional develop tier)"]
+        microservices_dev["same services · deployment.environment=develop<br/>lean CNPG: 1 instance · no backups"]
+    end
+
     jenkins -->|"helm upgrade --install<br/>(per-service image tag)"| microservices
+    jenkins -. "develop track on (optional)" .-> microservices_dev
+    classDef optTier stroke-dasharray:5 5;
+    class microservices_dev_ns,microservices_dev optTier;
 
     subgraph observability_ns["namespace: observability"]
         otel["OpenTelemetry Operator (CRDs: Instrumentation,<br/>OpenTelemetryCollector) - Java auto-instrumentation<br/>otel-collector-gateway (Deployment, OTLP receiver)<br/>otel-collector-logs (DaemonSet, filelog receiver)"]
@@ -430,6 +437,9 @@ graph TD
     subgraph MS["microservices (always)"]
         GHCR["ghcr-credentials"]
     end
+    subgraph MSD["microservices-develop (develop track only)"]
+        GHCRD["ghcr-credentials"]
+    end
     subgraph JN["jenkins (jenkins-mode only)"]
         JC["jenkins-credentials"]
         IAP_JN["gateway-iap-oauth (copy)"]
@@ -441,9 +451,10 @@ graph TD
     IAP_JN --> GPJN["GCPBackendPolicy<br/>jenkins IAP"]
     JC -. "JCasC (same ns only)" .-> JKS["Jenkins controller"]
     GHCR -. "imagePullSecret" .-> POD["microservices pods"]
+    GHCRD -. "imagePullSecret" .-> PODD["microservices-develop pods"]
 
     classDef gated stroke-dasharray: 5 5;
-    class JN,JC,IAP_JN,GPJN gated;
+    class JN,JC,IAP_JN,GPJN,MSD,GHCRD,PODD gated;
 ```
 
 </details>
