@@ -99,6 +99,7 @@ flowchart TB
   subgraph single["Single Applications"]
     direction TB
     appset["microservices<br/>ApplicationSet"] --> msstable[microservices-stable]
+    appset -. "develop track on (optional)" .-> msdev["microservices-develop<br/>(lean tier)"]
     headlamp[headlamp]
     pgadmin[pgadmin]
     cnpg[cnpg-operator]
@@ -300,6 +301,7 @@ flowchart LR
     gw[gateway / jhipster]
     pg[(CNPG Postgres<br/>cnpg.io/cluster)]
   end
+  msd[microservices-develop<br/>optional develop tier · own lean CNPG]:::infra
   subgraph ci[CI engine]
     cieng[jenkins :8080 WebSocket agents<br/>· tekton-ci EL :8080/:9000]
   end
@@ -323,6 +325,7 @@ flowchart LR
   gw -->|:5432| pg
   gw -->|:443 Hazelcast| api
   pgadmin -->|:5432| pg
+  obs -. "OTLP :4317 + scrape :9187 (when develop on)" .- msd
 
   obs --> dns
   ms --> dns

@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.23.1] - 2026-06-27
+
+### Documentation
+
+- **Audited every existing Mermaid diagram for `develop`-tier integrity** and
+  updated the 4 where the optional tier is genuinely part of the model, marking it
+  **dashed / "(optional · develop track)"** and reflecting its lean shape (1 CNPG
+  instance, no backups):
+  - **`docs/201`** — the Component diagram gains a dashed `microservices-develop`
+    namespace (`deployment.environment=develop`, lean CNPG); the Namespace & Secret
+    topology gains the optional develop `ghcr-credentials`.
+  - **`docs/501`** — the ArgoCD app-of-apps tree gains a dashed
+    `microservices-develop` (lean tier) under the microservices ApplicationSet; the
+    NetworkPolicy flow gains an optional `microservices-develop` node with its
+    dashed OTLP/`:9187` link.
+  - The remaining diagrams were reviewed and **intentionally left unchanged**:
+    env-agnostic ones (all of `docs/301` — develop flows identically, distinguished
+    by the `deployment_environment` attribute, not topology), steady-state/canonical
+    stable views, and internal-only contexts (Gateway+IAP, ESO IAP projection) where
+    develop correctly does not appear. All affected diagrams validated against the
+    Mermaid parser.
+
 ## [v0.23.0] - 2026-06-27
 
 The optional **`develop` microservices tier** becomes a first-class,
