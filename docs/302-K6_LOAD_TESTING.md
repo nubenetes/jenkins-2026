@@ -262,7 +262,7 @@ flowchart LR
 <details>
 <summary>🟢 <code>develop-smoke</code> — smoke against the develop tier (targeting graph)</summary>
 
-The smoke test pinned to the lean **develop** tier (`microservices-develop` namespace, `deployment.environment=develop`), regardless of which job launched it. Requires `microservices.developTrackEnabled`.
+The smoke test pinned to the lean **develop** tier (`microservices-develop` namespace, `deployment.environment=develop`), regardless of which job launched it. Requires `microservices.developTrackEnabled`. In-cluster runners (Jenkins/Tekton) reach it by namespace DNS as drawn below; the external GitHub Actions runner targets the tier's public `microservices-develop.<baseDomain>` host instead.
 
 ```mermaid
 flowchart TB
@@ -419,7 +419,7 @@ tkn pipeline start microservices-k6-smoke -n tekton-ci \
 `.github/workflows/Day2.traffic.01-k6.yml` is a `workflow_dispatch` with a **`preset`** dropdown plus the full input set: **`profile`**, **`env_name`** (`stable`/`develop`), `duration`, `vus`, `stages`, `rps`, `scenarios`, `p95_ms`, `error_rate`, `target_url`, `debug`. A *Resolve k6 parameters* step merges the chosen preset with any manual inputs (manual wins). It resolves the target automatically:
 
 - **`env_name=stable`** → the public `microservices.<baseDomain>` host from `config/config.yaml`.
-- **`env_name=develop`** → **port-forwards the develop gateway** (`svc/gateway -n microservices-develop`) and points `TARGET_URL` at it (the develop tier has no public host).
+- **`env_name=develop`** → the public **`microservices-develop.<baseDomain>`** host (`gateway.hosts.microservicesDevelop`) — the develop tier now has its own public route (see [402 · develop tier](./402-PIPELINES_AS_CODE.md#optional-develop-tier-feature-flag-off-by-default)), so the runner targets it directly over the internet exactly like `stable`.
 - **`target_url`** input → overrides both.
 
 It detects the active observability mode from in-cluster secrets and routes OTLP accordingly (Grafana Cloud HTTP/protobuf, or gRPC via a collector port-forward for oss/managed). Run it from **Actions → Day2.traffic.01 → Run workflow** (manual-approval gated, like the other Day2 workflows).
@@ -517,7 +517,7 @@ The original motivation for this work: the k6 jobs used to be **stable-only** in
 |---|---|---|---|
 | **Jenkins** | ✅ | ✅ | Dedicated `microservices-k6-smoke-develop` job (seed-generated when the tier is on); the build pipeline triggers the **tier-matched** job. |
 | **Tekton** | ✅ | ✅ | `env-name`/`target-namespace` params (`tekton/runs/k6-load.yaml` shows develop). |
-| **GitHub Actions** | ✅ | ✅ | `env_name=develop` input → port-forwards the develop gateway. |
+| **GitHub Actions** | ✅ | ✅ | `env_name=develop` input → the public `microservices-develop.<baseDomain>` host (same external targeting as `stable`). |
 
 > The develop tier is **opt-in** (`microservices.developTrackEnabled` / `JENKINS2026_DEVELOP_TRACK_ENABLED`) and reports into the **same** Grafana, distinguished by `deployment.environment=develop` and namespace/labels — not a separate stack. See [402 · Optional develop Tier](./402-PIPELINES_AS_CODE.md#optional-develop-tier-feature-flag-off-by-default).
 

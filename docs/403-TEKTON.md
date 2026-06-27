@@ -575,6 +575,17 @@ There is **no** hand-fill path in the *visual* form that succeeds for this pipel
 
 > **Pre-populate the Dashboard from the first Day1** — `tekton.seedRuns` (or `JENKINS2026_TEKTON_SEED_RUNS`) is **`true` by default**. `scripts/06-tekton-pipelines.sh` seeds one PipelineRun per service from [`tekton/runs/`](../tekton/runs/) during provisioning, so the Dashboard lists runnable entries you can **Rerun** with one click immediately — no first paste/`kubectl create` needed. The trade-off: it runs **one build per service per Day1**; set it `false` to skip (PaC's git-push trigger is the normal way to start runs). This is a CI-engine convenience only — it does not change how PaC works.
 
+> **Access URLs on every run (the Tekton parity for the Jenkins banner)** — Tekton's
+> upstream Dashboard has no system-message banner, so `scripts/06-tekton-pipelines.sh`
+> stamps the platform's public URLs as `jenkins2026.io/url-*` annotations onto **every**
+> PipelineRun it seeds (the PaC `.tekton/<svc>.yaml` pushed to the forks, the
+> `tekton.seedRuns` runs, and the local fallback runs alike). Open any run in the
+> Dashboard's detail view and its metadata lists `url-microservices`,
+> `url-microservices-develop` (when `microservices.developTrackEnabled`),
+> `url-tekton-dashboard`, `url-argocd`, `url-headlamp`, `url-pgadmin` and
+> `url-grafana` (oss mode) — the same engine-neutral set `scripts/09-gateway.sh`
+> exposes. They are a no-op when the Gateway is disabled (`gateway.baseDomain=""`).
+
 ### Option B — `kubectl create` (a PipelineRun manifest)
 
 The repo ships ready-to-run manifests in [`tekton/runs/`](../tekton/runs/) (SA + workspaces already set) — the simplest path:

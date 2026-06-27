@@ -285,18 +285,17 @@ jobs:
           # ---------------------------------------------------------------------------
           # Resolve the application target URL.
           #   explicit target_url input → use as-is
-          #   env_name=develop          → port-forward the develop gateway (no public host)
+          #   env_name=develop          → the public microservices-develop host (its own
+          #                               HTTPRoute, exposed by 09-gateway.sh)
           #   env_name=stable (default) → the public microservices host from config.yaml
           # ---------------------------------------------------------------------------
           APP_PF_PID=""
           if [[ -n "${TARGET_URL_INPUT:-}" ]]; then
             export TARGET_URL="${TARGET_URL_INPUT}"
           elif [[ "${ENV_NAME_INPUT}" == "develop" ]]; then
-            kubectl port-forward svc/gateway -n microservices-develop 18080:8080 &
-            APP_PF_PID=$!
-            sleep 4
-            export TARGET_URL="http://localhost:18080"
-            echo "Target → develop gateway via port-forward (PID ${APP_PF_PID})"
+            HOST="$(yq '.gateway.hosts.microservicesDevelop' config/config.yaml 2>/dev/null || echo microservices-develop)"
+            DOMAIN="$(yq '.gateway.baseDomain' config/config.yaml 2>/dev/null || true)"
+            export TARGET_URL="https://${HOST}.${DOMAIN}"
           else
             HOST="$(yq '.gateway.hosts.microservices' config/config.yaml 2>/dev/null || echo microservices)"
             DOMAIN="$(yq '.gateway.baseDomain' config/config.yaml 2>/dev/null || true)"

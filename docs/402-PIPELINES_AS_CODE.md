@@ -246,7 +246,7 @@ A second `develop` deployment tier is available behind a feature flag, **disable
 
 **Lean by design (resources you need, not more).** The Helm chart parameterizes the CNPG HA knobs — `global.postgresInstances` / `global.poolerInstances` (default `3`) and `global.postgresBackupEnabled` (default `true`). `values-develop.yaml` overrides them to **`1` / `1` / `false`**: a single Postgres instance (no standbys), a single PgBouncer pooler, and no Barman/ScheduledBackup (develop data is disposable). So per service develop runs **1 CNPG + 1 pooler** instead of stable's **3 + 3** — the whole tier is ~4 Postgres-related pods vs stable's ~12. On the 2× `e2-standard-8` cluster this fits with ample headroom.
 
-**Internal-only.** develop is **not** publicly exposed (`values-develop.yaml` `ingress.enabled: false`, no HTTPRoute) — reach it from inside the cluster: `kubectl -n microservices-develop port-forward svc/gateway 8080:8080`.
+**Publicly exposed (its own host).** Like `stable`, the develop tier gets a public route when the Gateway is on: `scripts/09-gateway.sh` generates a dedicated `microservices-develop` HTTPRoute + HealthCheckPolicy (gated on `microservices.developTrackEnabled`) pointing at the develop `gateway` Service, reachable at **`https://microservices-develop.<gateway.baseDomain>`** (e.g. `https://microservices-develop.jenkins2026.nubenetes.com`) — public, **no IAP**, same edge posture as the stable `microservices` host, covered by the existing `*.<base_domain>` wildcard cert/DNS (no extra cert or DNS record). The host prefix is `gateway.hosts.microservicesDevelop` in `config/config.yaml`. The URL is surfaced in the Jenkins systemMessage banner (`MICROSERVICES_DEVELOP_LINK`) and in the GitHub Actions "Access URLs" logs. Disabling the tier on a persistent cluster retires the route/policy idempotently. (The chart's own `ingress.enabled: false` in `values-develop.yaml` is unrelated — exposure is via the Gateway API HTTPRoute, not the chart Ingress.)
 
 #### `stable` vs `develop` — what differs, and why
 
@@ -260,12 +260,12 @@ A second `develop` deployment tier is available behind a feature flag, **disable
 | **Backups** (Barman→GCS + daily `ScheduledBackup`) | **on** | **off** | nothing to back up — re-create from CI any time |
 | **App resources** (req/limit mem) | `512Mi` / `1Gi` | `256Mi` / `512Mi` | pack the experiment cheaply |
 | **Alerts** | **yes** — pages on failure | **no** (rules filter `namespace="microservices"`) | a validation tier breaking shouldn't page on-call (see [301 § Alert Rules](./301-OBSERVABILITY.md#alert-rules)) |
-| **Public access** | via the Gateway (microservices host, no-IAP) | **internal-only** (`port-forward`) | no second public surface for an experiment |
+| **Public access** | via the Gateway (`microservices` host, no-IAP) | via the Gateway (`microservices-develop` host, no-IAP) | each tier gets its own public host; both covered by the `*.<base_domain>` wildcard cert/DNS |
 | **GitOps branch / values** | `main` / `values-stable.yaml` | `develop` / `values-develop.yaml` | track infra/config changes separately |
 | **Observability** | shared stack | shared stack | one Grafana/Loki/Tempo/Prometheus; split by `deployment_environment` |
 | **Footprint** | ~12 Postgres-related pods | ~4 | "resources you need, not more" |
 
-**The rationale in one line:** develop exists to **validate a change cheaply and fast** before it reaches the production-like `stable` tier — so it reuses the *same app image, same CI/CD path, and same observability*, but skips the things that only matter for production (HA, backups, alerting, a public endpoint). Enabling it roughly doubles only the **runtime** footprint, not the platform.
+**The rationale in one line:** develop exists to **validate a change cheaply and fast** before it reaches the production-like `stable` tier — so it reuses the *same app image, same CI/CD path, and same observability*, but skips the things that only matter for production (HA, backups, alerting). Enabling it roughly doubles only the **runtime** footprint, not the platform.
 
 #### How to enable
 

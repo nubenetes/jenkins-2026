@@ -309,6 +309,9 @@ gateway:
   hosts:
     jenkins: "jenkins"
     microservices: "microservices"
+    # Only used when microservices.developTrackEnabled=true (the lean develop
+    # tier). Public, NO IAP - same edge posture as the stable microservices host.
+    microservicesDevelop: "microservices-develop"
     headlamp: "headlamp"
     pgadmin: "pgadmin"
     # Only used when ci.engine=tekton (Tekton Dashboard, IAP-protected).
