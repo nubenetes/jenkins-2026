@@ -11,7 +11,7 @@ def call(Map cfg) {
       sh """
         set -eux
         unset MAVEN_CONFIG
-        export MAVEN_OPTS="-Xmx2048m -XX:+UseG1GC"
+        export MAVEN_OPTS="-Xmx2048m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError"
         export NODE_OPTIONS="--max-old-space-size=3072"
         if [ -n "${cfg.module}" ] && [ -f "${cfg.module}/mvnw" ]; then
           cd ${cfg.module}
