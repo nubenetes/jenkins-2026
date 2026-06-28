@@ -8,11 +8,12 @@ Increment over v0.28.30 (fix Tekton k6 resolve-preset permission error).
 
 ### Fixed
 - **Tekton k6-smoke `resolve-preset` step failed with "Permission denied".** The step uses the
-  `mikefarah/yq` image, which runs as **uid 1000**, but the shared `source` workspace is populated by
-  earlier steps/tasks running as **root** (alpine/git `checkout-infra`, the git-clone), so
-  `/workspace/source` is root-owned and uid 1000 cannot create `k6sim-preset.env` there. Added
-  `securityContext.runAsUser: 0` to the `resolve-preset` step (it only writes a small env file the
-  non-root run-k6 step then reads). Surfaced when running the Tekton CI engine (ci.engine=tekton).
+  `mikefarah/yq` image (runs as **uid 1000**), but the `source` workspace is root-owned (populated by
+  the root `checkout-infra`/git-clone), so uid 1000 could not create `k6sim-preset.env` there — a
+  regression surfaced after cluster rebuilds (obs-mode switches recreated the node pool/PVC) when
+  running ci.engine=tekton. Fixed **without adding root**: the already-root `checkout-infra` step now
+  pre-creates `k6sim-preset.env` world-writable (0666), so the **non-root** `resolve-preset` (uid 1000)
+  just fills it and `run-k6` reads it — least privilege, no `runAsUser: 0`.
 
 ## [v0.28.30] - 2026-06-28
 
