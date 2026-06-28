@@ -30,6 +30,10 @@ spec:
         limits:
           cpu: "4"
           memory: 4Gi
+      # Node-local Maven cache (hostPath, like the Jenkins agents) so Jib reuses the
+      # downloaded deps across PipelineRuns instead of re-fetching every build.
+      volumeMounts:
+        - { name: maven-cache, mountPath: /root/.m2 }
       script: |
         #!/bin/bash
         set -eux
@@ -71,3 +75,6 @@ spec:
           --context="$(workspaces.source.path)" \
           --dockerfile="$(workspaces.source.path)/jenkins-2026-infra/resources/angular/Dockerfile" \
           --destination="$(params.image)"
+  volumes:
+    - name: maven-cache
+      hostPath: { path: /tmp/tekton-maven-cache, type: DirectoryOrCreate }
