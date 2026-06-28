@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.31] - 2026-06-28
+
+Increment over v0.28.30 (fix Tekton k6 resolve-preset permission error).
+
+### Fixed
+- **Tekton k6-smoke `resolve-preset` step failed with "Permission denied".** The step uses the
+  `mikefarah/yq` image (runs as **uid 1000**), but the `source` workspace is root-owned (populated by
+  the root `checkout-infra`/git-clone), so uid 1000 could not create `k6sim-preset.env` there — a
+  regression surfaced after cluster rebuilds (obs-mode switches recreated the node pool/PVC) when
+  running ci.engine=tekton. Fixed **without adding root**: the already-root `checkout-infra` step now
+  pre-creates `k6sim-preset.env` world-writable (0666), so the **non-root** `resolve-preset` (uid 1000)
+  just fills it and `run-k6` reads it — least privilege, no `runAsUser: 0`.
+
 ## [v0.28.30] - 2026-06-28
 
 Increment over v0.28.29 (new k6 test type: synthetic Faro RUM beacons).

@@ -64,12 +64,22 @@ spec:
           -c filter.lfs.smudge= -c filter.lfs.process= -c filter.lfs.required=false \
           clone --depth 1 --branch "$(params.self-repo-branch)" \
           "$(params.self-repo-url)" k6-infra
+        # This (root) step owns the workspace; the next step (resolve-preset) runs the
+        # mikefarah/yq image as uid 1000 (non-root) and cannot create a file in this
+        # root-owned dir. Pre-create the preset env file world-writable here so
+        # resolve-preset can fill it WITHOUT itself running as root (least privilege).
+        : > "$(workspaces.source.path)/k6sim-preset.env"
+        chmod 0666 "$(workspaces.source.path)/k6sim-preset.env"
     - name: resolve-preset
       # Reads the selected committed preset (jenkins/pipelines/k6/presets/<name>.yaml)
       # and writes its values to k6sim-preset.env in the workspace; run-k6 then uses
       # them for any param left empty (param > preset > script default). yq image is
       # used because the cluster has no pod egress to download tooling at runtime.
       image: mikefarah/yq:4.53.3
+      # mikefarah/yq runs as uid 1000 (non-root). The root-owned workspace would block
+      # it from creating k6sim-preset.env, so the root checkout-infra step above
+      # pre-creates that file world-writable (0666) — this step stays non-root and just
+      # fills it (least privilege; run-k6 reads it next).
       script: |
         #!/bin/sh
         set -eu
