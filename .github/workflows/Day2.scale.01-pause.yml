@@ -11,6 +11,11 @@ name: "Day2.scale.01 Pause cluster (nodes → 0, save cost)"
 # static IP. Grafana Cloud is free-tier (nothing to pause); the Azure/AWS managed
 # backends, if ever provisioned, are billed separately and are not paused here.
 #
+# It disables autoRepair + force-drains (kubectl drain --disable-eviction, which
+# bypasses PodDisruptionBudgets like the CNPG Postgres ones) before resizing to 0,
+# otherwise the graceful resize stalls forever and autoRepair bounces nodes back.
+# "Day2.scale.02 Resume" re-enables autoscaling AND autoRepair.
+#
 # State note: this uses imperative `gcloud` (fast), so terraform/gke state drifts
 # (it still records autoscaling on / node_count N). That is benign — "Day2.scale.02
 # Resume" restores it, and a later `Day1.cluster.01-gke` re-apply reconciles it too.
@@ -41,7 +46,7 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
 
-      - name: Scale every node pool to 0 (disable autoscaling first)
+      - name: Pause — disable autoscaling + autoRepair, force-drain, scale to 0
         run: |
           set -euo pipefail
           CLUSTER="$(gcloud container clusters list --format='value(name)' | head -1)"
@@ -51,14 +56,40 @@ jobs:
           fi
           ZONE="$(gcloud container clusters list --filter="name=${CLUSTER}" --format='value(location)' | head -1)"
           echo "Cluster=${CLUSTER} location=${ZONE}"
+          gcloud components install gke-gcloud-auth-plugin --quiet
+          gcloud container clusters get-credentials "${CLUSTER}" --location "${ZONE}" --project "${{ secrets.GCP_PROJECT_ID }}"
 
           mapfile -t POOLS < <(gcloud container node-pools list --cluster "${CLUSTER}" --location "${ZONE}" --format='value(name)')
+
+          # 1. Disable autoscaling (so it can't re-add nodes for the now-Pending pods)
+          #    AND autoRepair — autoRepair recreates cordoned/drained nodes it deems
+          #    "unhealthy", which otherwise bounces the pool straight back up mid-pause.
+          #    "Day2.scale.02 Resume" re-enables both.
           for NP in "${POOLS[@]}"; do
-            echo "::group::Pausing node pool ${NP}"
-            # Disable autoscaling so the autoscaler doesn't immediately re-create
-            # nodes to satisfy the now-Pending pods.
+            echo "::group::Disable autoscaling + autoRepair on ${NP}"
             gcloud container clusters update "${CLUSTER}" --location "${ZONE}" \
               --node-pool "${NP}" --no-enable-autoscaling --quiet || true
+            gcloud container node-pools update "${NP}" --cluster "${CLUSTER}" --location "${ZONE}" \
+              --no-enable-autorepair --quiet || true
+            echo "::endgroup::"
+          done
+
+          # 2. Force-drain every node. --disable-eviction uses DELETE instead of the
+          #    eviction API, so it BYPASSES PodDisruptionBudgets — the CNPG Postgres
+          #    PDBs (minAvailable=1 on single-instance pods, ALLOWED DISRUPTIONS=0)
+          #    otherwise block a graceful node-pool resize forever. Data is on the PVs,
+          #    so evicting Postgres is safe for a pause.
+          echo "::group::Force-drain all nodes (bypass PDBs via DELETE)"
+          for N in $(kubectl get nodes -o name 2>/dev/null); do
+            kubectl drain "${N}" --force --ignore-daemonsets --delete-emptydir-data \
+              --disable-eviction --grace-period=30 --timeout=120s || true
+          done
+          echo "::endgroup::"
+
+          # 3. Resize each pool to 0. Nodes are already empty + autoRepair off, so the
+          #    resize completes promptly and STAYS at 0 (nothing recreates them).
+          for NP in "${POOLS[@]}"; do
+            echo "::group::Scale ${NP} -> 0"
             gcloud container clusters resize "${CLUSTER}" --location "${ZONE}" \
               --node-pool "${NP}" --num-nodes 0 --quiet
             echo "::endgroup::"
