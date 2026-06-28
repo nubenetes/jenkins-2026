@@ -1482,7 +1482,8 @@
   "tags": [
     "jenkins-2026",
     "microservices",
-    "jvm"
+    "jvm",
+    "jenkins"
   ],
   "templating": {
     "list": [
