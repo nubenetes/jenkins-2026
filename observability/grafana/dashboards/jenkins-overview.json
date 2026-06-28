@@ -25,7 +25,7 @@
       "type": "text",
       "transparent": true,
       "gridPos": {
-        "h": 18,
+        "h": 20,
         "w": 24,
         "x": 0,
         "y": 0
@@ -33,468 +33,21 @@
       "id": 101,
       "options": {
         "mode": "markdown",
-        "content": "## CI-CD / Jenkins Controller \u2014 what this board shows\nMetrics come from the **Jenkins OpenTelemetry plugin** (service `jenkins`). Two families:\n- **`ci_pipeline_run_*`** \u2014 OpenTelemetry **CI/CD semantic-convention** metrics, one series **per pipeline** (`ci_pipeline_id`): launched / started / active / completed / **success / failed / aborted** + run **duration** histogram. These are emitted **as builds run** \u2014 if no build has run in the selected time range, the *Pipeline* panels are flat/empty (not a fault). Filter with **`ci_pipeline_id`**.\n- **`jenkins_*`** \u2014 **controller internals**, continuously while Jenkins is up: **executors** (busy/idle/\u2026), **build queue** (blocked/buildable/waiting), **agents/nodes** (online/offline), **plugins**, **SCM events**. These have data whenever the controller is running.\n\n### What to look at\n- \ud83d\udfe2 **Throughput & success** \u2014 build success rate %, completed-by-result, failed builds. Is the pipeline green?\n- \ud83d\udfe1 **Latency & queue** \u2014 run duration p50/p95 per pipeline, queue size & **wait time** (jobs waiting for a free executor).\n- \ud83d\udd35 **Capacity** \u2014 executor utilisation (busy/total), agents online, SCM-event pool \u2014 is the controller a bottleneck?\n\n### \u26a0\ufe0f Why a panel reads `0` or \"No data\" \u2014 and why that's usually correct\nThis Jenkins runs on **Kubernetes with ephemeral pod agents** (the kubernetes-plugin spins an agent pod **per build** and tears it down after; the controller's built-in node has **`numExecutors: 0`** \u2014 it never runs builds), and it sits **idle most of the time**. Consequences you'll see:\n- **`Busy executors` can exceed `Built-in executors` (e.g. busy 4 > total 2) \u2014 this is normal, not a capacity problem.** They measure **different scopes**: `Built-in executors` (`jenkins_executor_total`) counts only the controller's static built-in node; **busy** executors live on the **ephemeral agent pods** (not in that total). And the OTel plugin emits each agent under **two label variants** (node-name `gateway-develop_7-\u2026` **and** pod-name `gateway-develop-7-\u2026-xxxxx`), so a `sum` **double-counts** during a build (2 real busy agents \u2192 busy \u2248 4). **Parallel-build capacity is the k8s `containerCap` (10\u201320 pods), not the executor count** \u2014 adding controller executors would NOT speed up or parallelise builds. For real concurrency read **Active pipeline runs**; for saturation watch **queue wait time / queue size**.\n- **Idle controller** \u2014 *Executor states*, *Queue states*, *Active runs*, *SCM event pool* read **`0` when nothing is building**. They spike during a build. Healthy.\n- **Pipeline RED + run-duration need *recent* builds** \u2014 `ci_pipeline_run_*` counters go **stale when idle**, so the rate/quantile panels would be empty; they're wrapped to read **`0` (flat) when no build is in the window**. A `0` on *Run duration p95* means \"no recent build\", **not** a 0 ms build \u2014 **run a build (or widen the range)** to see real values.\n- **`\u2026_failed_total` only exists after the first failure** \u2014 so *Builds failed* / *Failed builds* read `0` while every build is green.\n\n> Pipeline ids are the seed jobs (`gateway`, `jhipstersamplemicroservice`, `microservices-k6-smoke`, \u2026). Trigger a build to light up the pipeline panels. Controller gauges are live whenever Jenkins is up. Controller JVM is summarised here \u2014 full depth in **CI-CD JVM internals** (`service_name=jenkins`)."
+        "content": "## CI-CD / Jenkins Controller \u2014 architecture & how to read this board\n\nThis board is shaped to the **actual CI architecture** of this platform, not a generic Jenkins:\n\n**The pipeline topology**\n- A **seed job** (`seed-jobs`, Job DSL in `jenkins/pipelines/seed/`) generates one **`pipelineJob`** per service \u00d7 environment: `gateway`, `gateway-develop`, `jhipstersamplemicroservice(-develop)`, `microservices-k6-smoke(-develop)`. **There is NO multibranch / organization-folder / webhook scanning.**\n- Each generated job is a one-liner that calls the **declarative shared-library** pipeline `MicroservicesPipeline(...)` (`vars/MicroservicesPipeline.groovy`) \u2014 stages: Checkout \u2192 Semgrep \u2192 CodeQL \u2192 Trivy \u2192 **Build & Test** \u2192 Build & Push image \u2192 Deploy (ArgoCD GitOps) \u2192 **Smoke Test** \u2192 k6.\n- Builds run on **ephemeral Kubernetes pod agents** (kubernetes-plugin, one 9-container pod per build, `containerCap` 10\u201320). The controller's built-in node has **`numExecutors: 0`** \u2014 it never runs builds.\n- Deploy is **GitOps**: the pipeline bumps the image tag in the gitops repo and **ArgoCD** syncs it; there is no `kubectl apply` from Jenkins.\n\n**Metric families (Jenkins OpenTelemetry plugin, service `jenkins`)**\n- **`ci_pipeline_run_*`** \u2014 OTel CI/CD semantic-convention run metrics: launched / started / active / completed / **success / failed / aborted** + run **duration** histogram. \u26a0\ufe0f **In this plugin version they are AGGREGATE across all pipelines** (no usable `ci_pipeline_id` breakdown \u2014 it collapses to `#other#`). So the pipeline panels show **controller-wide totals**; to inspect an **individual build / stage / step**, use the **Traces** panel (Tempo: pipeline \u2192 stage \u2192 step spans) at the bottom.\n- **`jenkins_*`** \u2014 controller internals: **executors**, **build queue**, **ephemeral (cloud) agents**, **plugins**.\n\n**Why some panels read `0` \u2014 and why that's correct here**\n- \ud83d\udfe2 **Healthy `0`** \u2014 *Builds failed/aborted*, *Agent launch failures*, *Queue* are `0` on a green, idle controller (`\u2026_failed_total` only exists after the first failure).\n- \u2699\ufe0f **Ephemeral agents** \u2014 *Built-in executors* is the controller's static count (builds DON'T use it); **busy executors live on per-build agent pods**, so `busy > built-in` during a build is normal (the OTel plugin even double-labels each agent by node-name + pod-name). **Capacity = `containerCap`, not executors** \u2014 adding executors won't speed up builds. The real concurrency signal is **Active pipeline runs** + **Cloud agents**.\n- \ud83d\udcc8 **Needs a recent build** \u2014 `ci_pipeline_run_*` rate/duration panels read `0`/flat when no build is in the time window. Run a build or widen the range.\n- \u274c **Removed: SCM-event / multibranch panels** \u2014 `jenkins_scm_event_*` track multibranch/organization-folder SCM API scanning, which **this seed-job architecture never does** (always `0`). They've been replaced by the **Ephemeral build agents** section, which is what actually reflects this setup."
       }
     },
     {
       "type": "row",
-      "title": "Controller health (live \u2014 jenkins_* gauges)",
+      "title": "Controller health",
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 18
+        "y": 20
       },
       "id": 102,
       "panels": []
-    },
-    {
-      "type": "stat",
-      "title": "Agents online",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 0,
-        "y": 19
-      },
-      "id": 103,
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "orientation": "auto",
-        "textMode": "auto",
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum(jenkins_agents_online) or vector(0)",
-          "refId": "A",
-          "range": false,
-          "instant": true,
-          "legendFormat": ""
-        }
-      ],
-      "description": "Connected build agents."
-    },
-    {
-      "type": "stat",
-      "title": "Agents offline",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 4,
-        "y": 19
-      },
-      "id": 104,
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "orientation": "auto",
-        "textMode": "auto",
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum(jenkins_agents_offline) or vector(0)",
-          "refId": "A",
-          "range": false,
-          "instant": true,
-          "legendFormat": ""
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "title": "Built-in executors",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 8,
-        "y": 19
-      },
-      "id": 105,
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "orientation": "auto",
-        "textMode": "auto",
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum(jenkins_executor_total) or vector(0)",
-          "refId": "A",
-          "range": false,
-          "instant": true,
-          "legendFormat": ""
-        }
-      ],
-      "description": "Static executors on the controller's built-in node only. Per-build work runs on EPHEMERAL k8s agents, which are NOT counted in this total."
-    },
-    {
-      "type": "stat",
-      "title": "Busy executors (all nodes)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 12,
-        "y": 19
-      },
-      "id": 106,
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "orientation": "auto",
-        "textMode": "auto",
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum(jenkins_executor_busy) or vector(0)",
-          "refId": "A",
-          "range": false,
-          "instant": true,
-          "legendFormat": ""
-        }
-      ],
-      "description": "Busy executors across built-in + ephemeral agents. The OTel plugin emits each agent under two label variants (node-name AND pod-name), so this can DOUBLE-COUNT during a build \u2014 see the note. Use 'Active pipeline runs' for the real concurrency."
-    },
-    {
-      "type": "stat",
-      "title": "Builds aborted",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 16,
-        "y": 19
-      },
-      "id": 107,
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "color": {
-            "mode": "thresholds"
-          },
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "orientation": "auto",
-        "textMode": "auto",
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum(increase(ci_pipeline_run_aborted_total[$__range])) or vector(0)",
-          "refId": "A",
-          "range": false,
-          "instant": true,
-          "legendFormat": ""
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "title": "Queue size",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 20,
-        "y": 19
-      },
-      "id": 108,
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 3
-              },
-              {
-                "color": "red",
-                "value": 10
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "orientation": "auto",
-        "textMode": "auto",
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum(jenkins_queue_count) or vector(0)",
-          "refId": "A",
-          "range": false,
-          "instant": true,
-          "legendFormat": ""
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "title": "Active pipeline runs",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 0,
-        "y": 23
-      },
-      "id": 109,
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "orientation": "auto",
-        "textMode": "auto",
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "auto"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum(ci_pipeline_run_active) or vector(0)",
-          "refId": "A",
-          "range": false,
-          "instant": true,
-          "legendFormat": ""
-        }
-      ]
     },
     {
       "type": "stat",
@@ -506,10 +59,10 @@
       "gridPos": {
         "h": 4,
         "w": 4,
-        "x": 4,
-        "y": 23
+        "x": 0,
+        "y": 21
       },
-      "id": 110,
+      "id": 103,
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
@@ -565,7 +118,7 @@
           "legendFormat": ""
         }
       ],
-      "description": "Over the selected range."
+      "description": "Aggregate across all seed jobs, over the selected range."
     },
     {
       "type": "stat",
@@ -577,10 +130,10 @@
       "gridPos": {
         "h": 4,
         "w": 4,
-        "x": 8,
-        "y": 23
+        "x": 4,
+        "y": 21
       },
-      "id": 111,
+      "id": 104,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -639,10 +192,10 @@
       "gridPos": {
         "h": 4,
         "w": 4,
-        "x": 12,
-        "y": 23
+        "x": 8,
+        "y": 21
       },
-      "id": 112,
+      "id": 105,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -697,6 +250,452 @@
     },
     {
       "type": "stat",
+      "title": "Builds aborted",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 21
+      },
+      "id": 106,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(increase(ci_pipeline_run_aborted_total[$__range])) or vector(0)",
+          "refId": "A",
+          "range": false,
+          "instant": true,
+          "legendFormat": ""
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Active runs now",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 21
+      },
+      "id": 107,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(ci_pipeline_run_active) or vector(0)",
+          "refId": "A",
+          "range": false,
+          "instant": true,
+          "legendFormat": ""
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Agents online",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 21
+      },
+      "id": 108,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(jenkins_agents_online) or vector(0)",
+          "refId": "A",
+          "range": false,
+          "instant": true,
+          "legendFormat": ""
+        }
+      ],
+      "description": "Connected agents (built-in node + any live ephemeral agent pods)."
+    },
+    {
+      "type": "stat",
+      "title": "Built-in executors",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 25
+      },
+      "id": 109,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(jenkins_executor_total) or vector(0)",
+          "refId": "A",
+          "range": false,
+          "instant": true,
+          "legendFormat": ""
+        }
+      ],
+      "description": "Static executors on the controller's built-in node (numExecutors:0 means builds run on ephemeral agents, NOT here)."
+    },
+    {
+      "type": "stat",
+      "title": "Busy executors (all nodes)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 25
+      },
+      "id": 110,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(jenkins_executor_busy) or vector(0)",
+          "refId": "A",
+          "range": false,
+          "instant": true,
+          "legendFormat": ""
+        }
+      ],
+      "description": "Busy executors across built-in + ephemeral agents. Can exceed 'Built-in executors' during a build (agents add executors; the OTel plugin also double-labels each agent). Use 'Active runs' for true concurrency."
+    },
+    {
+      "type": "stat",
+      "title": "Queue size",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 25
+      },
+      "id": 111,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 3
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(jenkins_queue_count) or vector(0)",
+          "refId": "A",
+          "range": false,
+          "instant": true,
+          "legendFormat": ""
+        }
+      ],
+      "description": "Jobs waiting for a free agent-pod slot (containerCap)."
+    },
+    {
+      "type": "stat",
+      "title": "Cloud agent pods (total)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 25
+      },
+      "id": 112,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "orientation": "auto",
+        "textMode": "auto",
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(jenkins_cloud_agents_completed_total) or vector(0)",
+          "refId": "A",
+          "range": false,
+          "instant": true,
+          "legendFormat": ""
+        }
+      ],
+      "description": "Ephemeral k8s agent pods provisioned+completed since controller start \u2014 \u2248 total builds run."
+    },
+    {
+      "type": "stat",
       "title": "Plugins installed",
       "datasource": {
         "type": "prometheus",
@@ -706,7 +705,7 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 23
+        "y": 25
       },
       "id": 113,
       "fieldConfig": {
@@ -758,7 +757,7 @@
     },
     {
       "type": "stat",
-      "title": "Plugin updates available",
+      "title": "Plugin updates",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -767,7 +766,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 23
+        "y": 25
       },
       "id": 114,
       "fieldConfig": {
@@ -823,20 +822,20 @@
     },
     {
       "type": "row",
-      "title": "Pipeline runs (CI semconv \u2014 ci_pipeline_run_*)",
+      "title": "Pipeline runs \u2014 aggregate (all seed jobs \u00b7 ci_pipeline_run_*; per-build detail in Traces below)",
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 27
+        "y": 29
       },
       "id": 115,
       "panels": []
     },
     {
       "type": "timeseries",
-      "title": "Run outcome rate by pipeline",
+      "title": "Run outcomes /s (success / failed / aborted)",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -845,7 +844,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 28
+        "y": 30
       },
       "id": 116,
       "fieldConfig": {
@@ -864,7 +863,8 @@
           },
           "color": {
             "mode": "palette-classic"
-          }
+          },
+          "min": 0
         },
         "overrides": []
       },
@@ -890,11 +890,11 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(sum by (ci_pipeline_id) (rate(ci_pipeline_run_success_total{ci_pipeline_id=~\"$ci_pipeline_id\"}[$__rate_interval]))) or vector(0)",
+          "expr": "sum(rate(ci_pipeline_run_success_total[$__rate_interval])) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
-          "legendFormat": "success {{ci_pipeline_id}}"
+          "legendFormat": "success"
         },
         {
           "datasource": {
@@ -902,11 +902,11 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(sum by (ci_pipeline_id) (rate(ci_pipeline_run_failed_total{ci_pipeline_id=~\"$ci_pipeline_id\"}[$__rate_interval]))) or vector(0)",
+          "expr": "sum(rate(ci_pipeline_run_failed_total[$__rate_interval])) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
-          "legendFormat": "failed {{ci_pipeline_id}}"
+          "legendFormat": "failed"
         },
         {
           "datasource": {
@@ -914,17 +914,17 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(sum by (ci_pipeline_id) (rate(ci_pipeline_run_aborted_total{ci_pipeline_id=~\"$ci_pipeline_id\"}[$__rate_interval]))) or vector(0)",
+          "expr": "sum(rate(ci_pipeline_run_aborted_total[$__rate_interval])) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
-          "legendFormat": "aborted {{ci_pipeline_id}}"
+          "legendFormat": "aborted"
         }
       ]
     },
     {
       "type": "timeseries",
-      "title": "Run duration p50 / p95 by pipeline",
+      "title": "Run lifecycle /s (launched / started / completed)",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -933,12 +933,12 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 28
+        "y": 30
       },
       "id": 117,
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
+          "unit": "short",
           "custom": {
             "drawStyle": "line",
             "lineWidth": 2,
@@ -952,7 +952,8 @@
           },
           "color": {
             "mode": "palette-classic"
-          }
+          },
+          "min": 0
         },
         "overrides": []
       },
@@ -978,11 +979,11 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(histogram_quantile(0.50, sum by (le, ci_pipeline_id) (rate(ci_pipeline_run_duration_seconds_bucket{ci_pipeline_id=~\"$ci_pipeline_id\"}[$__rate_interval])))) or vector(0)",
+          "expr": "sum(rate(ci_pipeline_run_launched_total[$__rate_interval])) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
-          "legendFormat": "p50 {{ci_pipeline_id}}"
+          "legendFormat": "launched"
         },
         {
           "datasource": {
@@ -990,11 +991,23 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(histogram_quantile(0.95, sum by (le, ci_pipeline_id) (rate(ci_pipeline_run_duration_seconds_bucket{ci_pipeline_id=~\"$ci_pipeline_id\"}[$__rate_interval])))) or vector(0)",
+          "expr": "sum(rate(ci_pipeline_run_started_total[$__rate_interval])) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
-          "legendFormat": "p95 {{ci_pipeline_id}}"
+          "legendFormat": "started"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(ci_pipeline_run_completed_total[$__rate_interval])) or vector(0)",
+          "refId": "A",
+          "range": true,
+          "instant": false,
+          "legendFormat": "completed"
         }
       ]
     },
@@ -1009,7 +1022,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 36
+        "y": 38
       },
       "id": 118,
       "fieldConfig": {
@@ -1055,7 +1068,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(sum(ci_pipeline_run_active{ci_pipeline_id=~\"$ci_pipeline_id\"}) or vector(0))",
+          "expr": "sum(ci_pipeline_run_active) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
@@ -1065,7 +1078,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Launched / started / completed rate",
+      "title": "Run duration percentiles (p50 / p95 / p99)",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -1074,12 +1087,12 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 36
+        "y": 38
       },
       "id": 119,
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
+          "unit": "s",
           "custom": {
             "drawStyle": "line",
             "lineWidth": 2,
@@ -1119,11 +1132,11 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(sum(rate(ci_pipeline_run_launched_total{ci_pipeline_id=~\"$ci_pipeline_id\"}[$__rate_interval]))) or vector(0)",
+          "expr": "(histogram_quantile(0.50, sum by (le) (rate(ci_pipeline_run_duration_seconds_bucket[$__rate_interval])))) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
-          "legendFormat": "launched"
+          "legendFormat": "p50"
         },
         {
           "datasource": {
@@ -1131,11 +1144,11 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(sum(rate(ci_pipeline_run_started_total{ci_pipeline_id=~\"$ci_pipeline_id\"}[$__rate_interval]))) or vector(0)",
+          "expr": "(histogram_quantile(0.95, sum by (le) (rate(ci_pipeline_run_duration_seconds_bucket[$__rate_interval])))) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
-          "legendFormat": "started"
+          "legendFormat": "p95"
         },
         {
           "datasource": {
@@ -1143,13 +1156,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(sum(rate(ci_pipeline_run_completed_total{ci_pipeline_id=~\"$ci_pipeline_id\"}[$__rate_interval]))) or vector(0)",
+          "expr": "(histogram_quantile(0.99, sum by (le) (rate(ci_pipeline_run_duration_seconds_bucket[$__rate_interval])))) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
-          "legendFormat": "completed"
+          "legendFormat": "p99"
         }
-      ]
+      ],
+      "description": "Whole-pipeline run time (aggregate). Reads 0 when no build is in the window. For per-stage timing use the Traces panel."
     },
     {
       "type": "row",
@@ -1159,14 +1173,14 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 44
+        "y": 46
       },
       "id": 120,
       "panels": []
     },
     {
       "type": "timeseries",
-      "title": "Completed by result (rate)",
+      "title": "Completed by result /s",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -1175,7 +1189,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 45
+        "y": 47
       },
       "id": 121,
       "fieldConfig": {
@@ -1189,70 +1203,6 @@
             "spanNulls": true,
             "stacking": {
               "mode": "normal",
-              "group": "A"
-            }
-          },
-          "color": {
-            "mode": "palette-classic"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "calcs": [
-            "lastNotNull",
-            "max",
-            "mean"
-          ]
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "(sum by (ci_pipeline_run_result) (rate(ci_pipeline_run_duration_seconds_count{ci_pipeline_id=~\"$ci_pipeline_id\"}[$__rate_interval]))) or vector(0)",
-          "refId": "A",
-          "range": true,
-          "instant": false,
-          "legendFormat": "{{ci_pipeline_run_result}}"
-        }
-      ]
-    },
-    {
-      "type": "timeseries",
-      "title": "Failed builds (rate)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 45
-      },
-      "id": 122,
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 10,
-            "showPoints": "never",
-            "spanNulls": true,
-            "stacking": {
-              "mode": "none",
               "group": "A"
             }
           },
@@ -1285,18 +1235,18 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(sum(rate(ci_pipeline_run_failed_total{ci_pipeline_id=~\"$ci_pipeline_id\"}[$__rate_interval])) or vector(0))",
+          "expr": "sum by (ci_pipeline_run_result) (rate(ci_pipeline_run_duration_seconds_count[$__rate_interval])) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
-          "legendFormat": "failed/s"
+          "legendFormat": "{{ci_pipeline_run_result}}"
         }
       ],
-      "description": "ci_pipeline_run_failed_total only exists once a build has failed \u2192 reads 0 while every build is green."
+      "description": "Completed runs grouped by result label on the duration metric."
     },
     {
       "type": "timeseries",
-      "title": "Success rate % by pipeline",
+      "title": "Build success rate %",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -1304,10 +1254,10 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 0,
-        "y": 53
+        "x": 12,
+        "y": 47
       },
-      "id": 123,
+      "id": 122,
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
@@ -1351,17 +1301,17 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * (sum by (ci_pipeline_id) (rate(ci_pipeline_run_success_total{ci_pipeline_id=~\"$ci_pipeline_id\"}[$__rate_interval])) or vector(0)) / clamp_min(sum by (ci_pipeline_id) (rate(ci_pipeline_run_completed_total{ci_pipeline_id=~\"$ci_pipeline_id\"}[$__rate_interval])),1)",
+          "expr": "100 * (sum(rate(ci_pipeline_run_success_total[$__rate_interval])) or vector(0)) / clamp_min(sum(rate(ci_pipeline_run_completed_total[$__rate_interval])),1)",
           "refId": "A",
           "range": true,
           "instant": false,
-          "legendFormat": "{{ci_pipeline_id}}"
+          "legendFormat": "success %"
         }
       ]
     },
     {
       "type": "timeseries",
-      "title": "Avg run duration by pipeline",
+      "title": "Failed builds /s",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -1369,13 +1319,13 @@
       "gridPos": {
         "h": 8,
         "w": 12,
-        "x": 12,
-        "y": 53
+        "x": 0,
+        "y": 55
       },
-      "id": 124,
+      "id": 123,
       "fieldConfig": {
         "defaults": {
-          "unit": "s",
+          "unit": "short",
           "custom": {
             "drawStyle": "line",
             "lineWidth": 2,
@@ -1389,7 +1339,8 @@
           },
           "color": {
             "mode": "palette-classic"
-          }
+          },
+          "min": 0
         },
         "overrides": []
       },
@@ -1415,30 +1366,95 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(sum by (ci_pipeline_id) (rate(ci_pipeline_run_duration_seconds_sum{ci_pipeline_id=~\"$ci_pipeline_id\"}[$__rate_interval])) / clamp_min(sum by (ci_pipeline_id) (rate(ci_pipeline_run_duration_seconds_count{ci_pipeline_id=~\"$ci_pipeline_id\"}[$__rate_interval])),1)) or vector(0)",
+          "expr": "sum(rate(ci_pipeline_run_failed_total[$__rate_interval])) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
-          "legendFormat": "{{ci_pipeline_id}}"
+          "legendFormat": "failed/s"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Avg run duration",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 55
+      },
+      "id": 124,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max",
+            "mean"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "(sum(rate(ci_pipeline_run_duration_seconds_sum[$__rate_interval])) / clamp_min(sum(rate(ci_pipeline_run_duration_seconds_count[$__rate_interval])),1)) or vector(0)",
+          "refId": "A",
+          "range": true,
+          "instant": false,
+          "legendFormat": "avg duration"
         }
       ]
     },
     {
       "type": "row",
-      "title": "Executors & build queue",
+      "title": "Ephemeral build agents (Kubernetes) & queue \u2014 this architecture's capacity model",
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 61
+        "y": 63
       },
       "id": 125,
       "panels": []
     },
     {
       "type": "timeseries",
-      "title": "Executor states",
+      "title": "Cloud agent pods completed /s",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -1447,9 +1463,230 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 62
+        "y": 64
       },
       "id": 126,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max",
+            "mean"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(jenkins_cloud_agents_completed_total[$__rate_interval])) or vector(0)",
+          "refId": "A",
+          "range": true,
+          "instant": false,
+          "legendFormat": "agent pods/s"
+        }
+      ],
+      "description": "Rate of ephemeral k8s agent pods finishing a build \u2014 the real build-throughput signal here."
+    },
+    {
+      "type": "timeseries",
+      "title": "Agents online vs total",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 64
+      },
+      "id": 127,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max",
+            "mean"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(jenkins_agents_online) or vector(0)",
+          "refId": "A",
+          "range": true,
+          "instant": false,
+          "legendFormat": "online"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(jenkins_agents_total) or vector(0)",
+          "refId": "A",
+          "range": true,
+          "instant": false,
+          "legendFormat": "total"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(jenkins_agents_offline) or vector(0)",
+          "refId": "A",
+          "range": true,
+          "instant": false,
+          "legendFormat": "offline"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Agent launch failures /s",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 72
+      },
+      "id": 128,
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull",
+            "max",
+            "mean"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(jenkins_agents_launch_failure_total[$__rate_interval])) or vector(0)",
+          "refId": "A",
+          "range": true,
+          "instant": false,
+          "legendFormat": "launch failures/s"
+        }
+      ],
+      "description": "Pod-agent scheduling/connection failures. 0 = healthy."
+    },
+    {
+      "type": "timeseries",
+      "title": "Executor states (busy / idle / available)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 72
+      },
+      "id": 129,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -1522,35 +1759,23 @@
           "range": true,
           "instant": false,
           "legendFormat": "available"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum(jenkins_executor_connecting) or vector(0)",
-          "refId": "A",
-          "range": true,
-          "instant": false,
-          "legendFormat": "connecting"
         }
       ]
     },
     {
       "type": "timeseries",
-      "title": "Queue states",
+      "title": "Build queue states (blocked / buildable / waiting)",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 62
+        "w": 8,
+        "x": 16,
+        "y": 72
       },
-      "id": 127,
+      "id": 130,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -1637,9 +1862,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 70
+        "y": 80
       },
-      "id": 128,
+      "id": 131,
       "fieldConfig": {
         "defaults": {
           "unit": "ms",
@@ -1683,14 +1908,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(sum(rate(jenkins_queue_time_spent_millis_milliseconds_total[$__rate_interval])) or vector(0)) / clamp_min(sum(rate(jenkins_queue_left_total[$__rate_interval])),1)",
+          "expr": "((sum(rate(jenkins_queue_time_spent_millis_milliseconds_total[$__rate_interval])) or vector(0)) / clamp_min(sum(rate(jenkins_queue_left_total[$__rate_interval])),1))",
           "refId": "A",
           "range": true,
           "instant": false,
-          "legendFormat": "avg wait (ms)"
+          "legendFormat": "avg wait"
         }
       ],
-      "description": "Mean time a job waited in the queue before an executor picked it up."
+      "description": "Mean time a job waited for a free agent-pod slot before starting."
     },
     {
       "type": "timeseries",
@@ -1703,9 +1928,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 70
+        "y": 80
       },
-      "id": 129,
+      "id": 132,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -1759,389 +1984,15 @@
     },
     {
       "type": "row",
-      "title": "Agents / nodes & SCM events",
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 78
-      },
-      "id": 130,
-      "panels": []
-    },
-    {
-      "type": "timeseries",
-      "title": "Agents (online / offline / total)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 8,
-        "x": 0,
-        "y": 79
-      },
-      "id": 131,
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 10,
-            "showPoints": "never",
-            "spanNulls": true,
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            }
-          },
-          "color": {
-            "mode": "palette-classic"
-          },
-          "min": 0
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "calcs": [
-            "lastNotNull",
-            "max",
-            "mean"
-          ]
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum(jenkins_agents_online) or vector(0)",
-          "refId": "A",
-          "range": true,
-          "instant": false,
-          "legendFormat": "online"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum(jenkins_agents_offline) or vector(0)",
-          "refId": "A",
-          "range": true,
-          "instant": false,
-          "legendFormat": "offline"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum(jenkins_agents_total) or vector(0)",
-          "refId": "A",
-          "range": true,
-          "instant": false,
-          "legendFormat": "total"
-        }
-      ]
-    },
-    {
-      "type": "timeseries",
-      "title": "Agent launch failures (rate)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 8,
-        "x": 8,
-        "y": 79
-      },
-      "id": 132,
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 10,
-            "showPoints": "never",
-            "spanNulls": true,
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            }
-          },
-          "color": {
-            "mode": "palette-classic"
-          },
-          "min": 0
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "calcs": [
-            "lastNotNull",
-            "max",
-            "mean"
-          ]
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum(rate(jenkins_agents_launch_failure_total[$__rate_interval])) or vector(0)",
-          "refId": "A",
-          "range": true,
-          "instant": false,
-          "legendFormat": "launch failures/s"
-        }
-      ]
-    },
-    {
-      "type": "timeseries",
-      "title": "Cloud agents completed (rate)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 8,
-        "x": 16,
-        "y": 79
-      },
-      "id": 133,
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 10,
-            "showPoints": "never",
-            "spanNulls": true,
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            }
-          },
-          "color": {
-            "mode": "palette-classic"
-          },
-          "min": 0
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "calcs": [
-            "lastNotNull",
-            "max",
-            "mean"
-          ]
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum(rate(jenkins_cloud_agents_completed_total[$__rate_interval])) or vector(0)",
-          "refId": "A",
-          "range": true,
-          "instant": false,
-          "legendFormat": "completed/s"
-        }
-      ]
-    },
-    {
-      "type": "timeseries",
-      "title": "SCM event pool \u2014 active threads vs queued",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 87
-      },
-      "id": 134,
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 10,
-            "showPoints": "never",
-            "spanNulls": true,
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            }
-          },
-          "color": {
-            "mode": "palette-classic"
-          },
-          "min": 0
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "calcs": [
-            "lastNotNull",
-            "max",
-            "mean"
-          ]
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum(jenkins_scm_event_active_threads) or vector(0)",
-          "refId": "A",
-          "range": true,
-          "instant": false,
-          "legendFormat": "active threads"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum(jenkins_scm_event_queued_tasks) or vector(0)",
-          "refId": "A",
-          "range": true,
-          "instant": false,
-          "legendFormat": "queued tasks"
-        }
-      ]
-    },
-    {
-      "type": "timeseries",
-      "title": "SCM events completed (rate)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 87
-      },
-      "id": 135,
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 10,
-            "showPoints": "never",
-            "spanNulls": true,
-            "stacking": {
-              "mode": "none",
-              "group": "A"
-            }
-          },
-          "color": {
-            "mode": "palette-classic"
-          },
-          "min": 0
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "calcs": [
-            "lastNotNull",
-            "max",
-            "mean"
-          ]
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum(rate(jenkins_scm_event_completed_tasks_total[$__rate_interval])) or vector(0)",
-          "refId": "A",
-          "range": true,
-          "instant": false,
-          "legendFormat": "completed/s"
-        }
-      ]
-    },
-    {
-      "type": "row",
       "title": "Controller JVM (summary \u2014 deep dive in 'CI-CD JVM internals')",
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 95
+        "y": 88
       },
-      "id": 136,
+      "id": 133,
       "panels": []
     },
     {
@@ -2155,9 +2006,9 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 96
+        "y": 89
       },
-      "id": 137,
+      "id": 134,
       "fieldConfig": {
         "defaults": {
           "unit": "bytes",
@@ -2220,9 +2071,9 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 96
+        "y": 89
       },
-      "id": 138,
+      "id": 135,
       "fieldConfig": {
         "defaults": {
           "unit": "s",
@@ -2284,9 +2135,9 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 96
+        "y": 89
       },
-      "id": 139,
+      "id": 136,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -2349,9 +2200,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 104
+        "y": 97
       },
-      "id": 140,
+      "id": 137,
       "fieldConfig": {
         "defaults": {
           "unit": "percentunit",
@@ -2414,9 +2265,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 104
+        "y": 97
       },
-      "id": 141,
+      "id": 138,
       "fieldConfig": {
         "defaults": {
           "unit": "bytes",
@@ -2470,67 +2321,32 @@
     },
     {
       "type": "row",
-      "title": "Logs & traces",
+      "title": "Logs & traces \u2014 per-build / per-stage drill-down",
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 112
+        "y": 105
       },
-      "id": 142,
+      "id": 139,
       "panels": []
     },
     {
-      "type": "logs",
-      "title": "Jenkins controller logs",
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "description": "Controller pod logs. Filter by $level.",
-      "gridPos": {
-        "h": 10,
-        "w": 24,
-        "x": 0,
-        "y": 113
-      },
-      "id": 143,
-      "options": {
-        "dedupStrategy": "none",
-        "enableLogDetails": true,
-        "prettifyLogMessage": false,
-        "showLabels": false,
-        "showTime": true,
-        "sortOrder": "Descending",
-        "wrapLogMessage": true
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "refId": "A",
-          "expr": "{k8s_namespace_name=\"jenkins\"} | detected_level=~\"$level\" | json | line_format \"{{ if .message }}{{ .message }}{{ else if .msg }}{{ .msg }}{{ else }}{{ __line__ }}{{ end }}\""
-        }
-      ]
-    },
-    {
       "type": "table",
-      "title": "Jenkins traces \u2014 pipeline / stage / step spans",
+      "title": "Build traces \u2014 pipeline / stage / step spans (the per-job view)",
       "datasource": {
         "type": "tempo",
         "uid": "tempo"
       },
-      "description": "Build traces from the OTel plugin: pipeline \u2192 stage \u2192 step spans. Click a Trace ID \u2192 trace view (links to logs).",
+      "description": "Since the run metrics above are aggregate, THIS is where you inspect an individual build: each trace = one pipeline run, with stage and step spans (Checkout, Semgrep, Build & Test, Deploy, Smoke Test\u2026). Click a Trace ID \u2192 trace view (links to logs).",
       "gridPos": {
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 123
+        "y": 106
       },
-      "id": 144,
+      "id": 140,
       "fieldConfig": {
         "defaults": {
           "custom": {
@@ -2554,8 +2370,43 @@
           "refId": "A",
           "queryType": "traceql",
           "tableType": "traces",
-          "limit": 20,
+          "limit": 25,
           "query": "{ resource.service.name = \"jenkins\" }"
+        }
+      ]
+    },
+    {
+      "type": "logs",
+      "title": "Jenkins controller logs",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "description": "Controller pod logs. Filter by $level. (Build-agent logs are on the ephemeral pods \u2014 see a build's console / its trace.)",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 116
+      },
+      "id": 141,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "refId": "A",
+          "expr": "{k8s_namespace_name=\"jenkins\"} | detected_level=~\"$level\" | json | line_format \"{{ if .message }}{{ .message }}{{ else if .msg }}{{ .msg }}{{ else }}{{ __line__ }}{{ end }}\""
         }
       ]
     }
@@ -2581,26 +2432,6 @@
         "multi": false,
         "refresh": 1,
         "regex": ""
-      },
-      {
-        "name": "ci_pipeline_id",
-        "label": "Pipeline",
-        "type": "query",
-        "datasource": {
-          "type": "prometheus",
-          "uid": "${DS_PROMETHEUS}"
-        },
-        "query": {
-          "query": "label_values(ci_pipeline_run_duration_seconds_count, ci_pipeline_id)",
-          "refId": "StandardVariableQuery"
-        },
-        "refresh": 2,
-        "sort": 1,
-        "multi": true,
-        "includeAll": true,
-        "allValue": ".*",
-        "current": {},
-        "options": []
       },
       {
         "name": "level",

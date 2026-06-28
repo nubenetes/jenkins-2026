@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.18] - 2026-06-28
+
+Increment over v0.28.17 (Jenkins dashboard re-oriented to the seed-job architecture).
+
+### Changed
+- **`CI-CD / Jenkins Controller` dashboard reshaped to the actual CI architecture.** Removed the
+  **SCM-event / multibranch panels** (`jenkins_scm_event_*`) — this controller runs **seed-generated
+  `pipelineJob`s** (declarative shared-library `MicroservicesPipeline`), NOT multibranch/webhook
+  scanning, so those series are structurally always `0`. Replaced them with an **"Ephemeral build
+  agents (Kubernetes) & queue"** section (cloud agent pods completed, agents online/total, launch
+  failures, executor states, queue states, queue wait time, throughput) that reflects this setup's
+  real capacity model. Dropped the misleading **per-`ci_pipeline_id`** breakdown + variable: in this
+  Jenkins-OTel-plugin version `ci_pipeline_run_*` are **aggregate** (the id collapses to `#other#`),
+  so the pipeline panels now read as honest controller-wide totals and per-build/stage/step
+  inspection is via the **Traces** panel (Tempo). The in-dashboard note was expanded to explain the
+  whole topology (seed → pipelineJobs → shared-lib → ephemeral k8s agents → ArgoCD GitOps), the
+  metric families, why metrics are aggregate, the ephemeral-agent capacity model (containerCap, not
+  executors), and why each kind of panel may read 0. 41 panels, 0 overlaps/gaps, every panel renders.
+
 ## [v0.28.17] - 2026-06-28
 
 Increment over v0.28.16 (fix flaky Smoke Test — deploy readiness wait used namespace "null").
