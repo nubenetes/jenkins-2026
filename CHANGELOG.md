@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.30] - 2026-06-28
+
+Increment over v0.28.29 (new k6 test type: synthetic Faro RUM beacons).
+
+### Added
+- **k6 `rum-faro` test type (profile `rum`) — synthetic Grafana Faro RUM beacons.** A first-class k6
+  test that does NOT load-test the microservices: each iteration is a synthetic browser session that
+  POSTs a Faro beacon (page-load log + Core Web Vitals + a browser `documentLoad` span; a fraction
+  also a JS exception) to the collector's faro receiver, populating the **Frontend RUM (Angular /
+  Faro)** dashboard — the synthetic-RUM path, now as a committed k6 preset. New script
+  `jenkins/pipelines/k6/faro-rum.js` + preset `presets/rum-faro.yaml`, selectable in the
+  **`Day2.traffic.01-k6`** dropdown (`preset=rum-faro` / `profile=rum`) with `env_name`,
+  session-count and error-rate knobs. **oss / grafana-cloud only** — the runner skips it on
+  managed-azure/aws (Faro degrades to generic App Insights/CloudWatch); explained in the GHA form,
+  `presets/index.yaml` (deliberately excluded from `run_all`/Jenkins/Tekton), and **docs/302**.
+
 ## [v0.28.29] - 2026-06-28
 
 Increment over v0.28.28 (fix JVM runtime-context panel on OSS/managed backends).
