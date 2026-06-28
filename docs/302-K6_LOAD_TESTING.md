@@ -1,4 +1,4 @@
-[← Previous: 301. Observability](./301-OBSERVABILITY.md) | [🏠 Home](../README.md) | [→ Next: 401. Jenkins](./401-JENKINS.md)
+[← Previous: 301. Observability](./301-OBSERVABILITY.md) | [🏠 Home](../README.md) | [→ Next: 303. JVM Tuning](./303-JVM-TUNING.md)
 
 ---
 
@@ -547,7 +547,7 @@ The original motivation for this work: the k6 jobs used to be **stable-only** in
 
 ---
 
-[← Previous: 301. Observability](./301-OBSERVABILITY.md) | [🏠 Home](../README.md) | [→ Next: 401. Jenkins](./401-JENKINS.md)
+[← Previous: 301. Observability](./301-OBSERVABILITY.md) | [🏠 Home](../README.md) | [→ Next: 303. JVM Tuning](./303-JVM-TUNING.md)
 
 ---
 

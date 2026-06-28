@@ -272,6 +272,15 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 - [stable vs develop — compatibility matrix](./docs/302-K6_LOAD_TESTING.md#stable-vs-develop--compatibility-matrix)
 - [Troubleshooting](./docs/302-K6_LOAD_TESTING.md#troubleshooting)
 
+**[303 · JVM Tuning & Runtime Strategy](./docs/303-JVM-TUNING.md)**
+- [Understanding JVM tuning here (newcomers → specialists)](./docs/303-JVM-TUNING.md#understanding-jvm-tuning-here-newcomers--specialists)
+- [The tuning we applied](./docs/303-JVM-TUNING.md#the-tuning-we-applied) ([per-environment values](./docs/303-JVM-TUNING.md#per-environment-values))
+- [GC algorithm options](./docs/303-JVM-TUNING.md#gc-algorithm-options)
+- [Runtime / startup options](./docs/303-JVM-TUNING.md#runtime--startup-options-the-big-picture)
+- [OpenTelemetry instrumentation modes](./docs/303-JVM-TUNING.md#opentelemetry-instrumentation-modes)
+- [Why CRaC is the chosen advanced direction](./docs/303-JVM-TUNING.md#why-crac-is-the-chosen-advanced-direction)
+- [Analyzing JVM performance in Grafana](./docs/303-JVM-TUNING.md#analyzing-jvm-performance-in-grafana)
+
 ---
 
 **[401 · Jenkins](./docs/401-JENKINS.md)**
