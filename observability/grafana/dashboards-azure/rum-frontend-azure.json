@@ -93,12 +93,11 @@
           "type": "loki",
           "uid": "${DS_LOKI}"
         },
-        "definition": "label_values({kind=~\".+\"}, service_name)",
+        "definition": "label_values(service_name)",
         "query": {
-          "label": "service_name",
-          "stream": "{kind=~\".+\"}",
-          "type": 1,
-          "refId": "LokiVariableQueryEditor-VariableQuery"
+          "query": "label_values(service_name)",
+          "refId": "StandardVariableQuery",
+          "type": 1
         },
         "current": {
           "text": "angular-gateway",
@@ -108,7 +107,8 @@
         "includeAll": false,
         "multi": false,
         "refresh": 2,
-        "sort": 1
+        "sort": 1,
+        "regex": "/^angular-.*/"
       }
     ]
   },
