@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.39] - 2026-06-29
+
+Increment over v0.28.38 (docs: manual pause-recovery note).
+
+### Docs
+- **docs/501 — added a "Manual recovery (interrupted / partial pause)" note.** Captures the
+  operational lesson from a churned recovery: do NOT fire several `gcloud container clusters resize
+  --num-nodes 0` back-to-back (the queued node-pool operations fight — one stalls on a CNPG PDB while
+  another reconciles nodes back — so the count bounces 0→2→3). The deterministic recovery: confirm all
+  four recreate-forces off (NAP + pool autoscaling/autoRepair/autoUpgrade) → `kubectl drain
+  --disable-eviction` every node → wait until no RUNNING operation (a wedged SET_NODE_POOL_SIZE can't
+  be cancelled) → issue ONE resize to 0. A concurrent UPGRADE_MASTER (control-plane upgrade) is
+  harmless (never creates worker nodes).
+
 ## [v0.28.38] - 2026-06-29
 
 Increment over v0.28.37 (pause bugfix: also disable cluster NAP + node-pool autoUpgrade).
