@@ -1,8 +1,15 @@
 # Grafana Cloud dashboard exports (optimized) — backup / source of truth
 
-These are the **6 platform dashboards exported from Grafana Cloud**, in Grafana's
+These are the **platform dashboards exported from Grafana Cloud**, in Grafana's
 **v2 dashboard schema** (`apiVersion: dashboard.grafana.app/v2`, `kind: Dashboard`),
-serialized as **YAML**.
+kept in **both serializations**:
+
+- **YAML** (`*.yaml`) — **6 dashboards** (the full set, incl. *JVM internals*).
+- **JSON** (`*.json`) — **5 dashboards** (same content; *JVM internals* was **not**
+  re-exported as JSON, so it exists here only as YAML).
+
+Both formats are the **same v2 resources** — pick whichever the tooling prefers
+(`gcx resources push` accepts either).
 
 ## Where they came from
 
@@ -30,14 +37,14 @@ They are **based on the previous dashboards but substantially more optimized.**
 
 ## Mapping (title ← file)
 
-| Dashboard | File |
-|---|---|
-| CI-CD / Jenkins Controller | `dashboard-1782669023549.yaml` |
-| CI-CD / k6 Observability | `dashboard-1782669069528.yaml` |
-| CI-CD / Microservices Overview | `dashboard-1782669097484.yaml` |
-| CI-CD / PostgreSQL (CloudNativePG) | `dashboard-1782669127927.yaml` |
-| CI-CD Frontend RUM (Angular / Faro) | `dashboard-1782669148583.yaml` |
-| CI-CD JVM internals (all Java services + Jenkins) | `dashboard-1782669169211.yaml` |
+| Dashboard | YAML | JSON |
+|---|---|---|
+| CI-CD / Jenkins Controller | `dashboard-1782669023549.yaml` | `dashboard-1782669732187.json` |
+| CI-CD / k6 Observability | `dashboard-1782669069528.yaml` | `dashboard-1782669744836.json` |
+| CI-CD / Microservices Overview | `dashboard-1782669097484.yaml` | `dashboard-1782669755436.json` |
+| CI-CD / PostgreSQL (CloudNativePG) | `dashboard-1782669127927.yaml` | `dashboard-1782669765865.json` |
+| CI-CD Frontend RUM (Angular / Faro) | `dashboard-1782669148583.yaml` | `dashboard-1782669775397.json` |
+| CI-CD JVM internals (all Java services + Jenkins) | `dashboard-1782669169211.yaml` | *(YAML only — not re-exported as JSON)* |
 
 ## How these get provisioned
 
