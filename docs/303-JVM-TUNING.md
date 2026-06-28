@@ -177,7 +177,7 @@ Open risks to spike first: **Hazelcast + CRaC** and **agent + CRaC**. Until vali
 
 ## Analyzing JVM performance in Grafana
 
-The **`CI-CD JVM internals (microservices)`** dashboard (uid `jenkins2026-jvm-internals`) exposes everything inside the JVMs. **Label model:** JVM metrics filter by **`k8s_namespace_name`** (`microservices`=stable, `microservices-develop`=develop) **+ `service_name`** — **not** `deployment_environment` (the OTel agent's JVM metrics don't carry it; only `target_info`/spanmetrics/traces/logs do).
+The **`CI-CD JVM internals (all Java services + Jenkins)`** dashboard (uid `jenkins2026-jvm-internals`, tags `jvm`/`jenkins`) exposes everything inside the JVMs — both microservices **and the Jenkins controller** (it's a Java app too; filter by `service_name`). **Label model:** JVM metrics filter by **`k8s_namespace_name`** (`microservices`=stable, `microservices-develop`=develop) **+ `service_name`** — **not** `deployment_environment` (the OTel agent's JVM metrics don't carry it; only `target_info`/spanmetrics/traces/logs do). The `namespace` variable uses `allValue='.*'` so the **Jenkins** controller series — which carry no `k8s_namespace_name` — appear under *All*.
 
 Rows: **Heap** (used-by-pool, used vs committed vs max, live-set after GC) · **Non-heap** (Metaspace / code cache / compressed class) · **Garbage Collection** (time rate, frequency, pause p95/p99 by `jvm_gc_name`) · **Threads & classes** · **CPU** · **HTTP response times**.
 

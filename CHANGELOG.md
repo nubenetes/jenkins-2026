@@ -26,8 +26,89 @@ All notable changes to this project will be documented in this file.
   `terraform/gke` state drift is benign and reconciled by Resume or the next Day1.
   Grafana Cloud is free-tier (nothing to pause). See
   [`docs/101`](docs/101-GITHUB_ACTIONS_WORKFLOWS.md).
+- **`jvm-internals` dashboard (uid `jenkins2026-jvm-internals`) — deep JVM diagnostics
+  for every Java workload.** Modelled on community dashboards 20429 + 18812 but rewritten
+  for the OTel metric names: heap by pool (Eden/Survivor/Tenured) + live-set-after-GC,
+  non-heap (Metaspace/CodeHeap), GC time/freq/pause-quantiles by collector, threads
+  (count/state/daemon), CPU (process + system + load), classes, buffer pools, HTTP
+  latency, and a runtime-context table (`target_info`: JDK name/impl/version, OTel agent
+  version). Covers the **Jenkins controller** too (filter by `service_name`; the
+  `namespace` var uses `allValue='.*'` so the Jenkins JVM series — which carry no
+  `k8s_namespace_name` — show under *All*); titled "CI-CD JVM internals (all Java services
+  + Jenkins)", tagged `jenkins`/`jvm`. See [`docs/303`](docs/303-JVM-TUNING.md).
+- **`rum-frontend` dashboard (uid `jenkins2026-rum-frontend`) — Angular Real User
+  Monitoring via Grafana Faro.** Core Web Vitals (LCP/INP/CLS/FCP/TTFB with Google
+  thresholds), JS errors/exceptions, sessions, browser audience, live RUM logs and browser
+  traces. Populates once the SPA ships the Faro Web SDK (roadmap in
+  [`docs/202`](docs/202-MICROSERVICES-APP-ARCHITECTURE.md)).
+- **Grafana Faro RUM receiver in the otel-collector.** Switched the gateway collector to
+  the **contrib** distro and added the `faro` receiver (`:8027`, CORS) wired into the
+  traces + logs pipelines, so the Angular SPA's browser RUM beacon (Web Vitals, errors,
+  sessions, browser spans) rides the same collector→backend path as the Java services'
+  telemetry. Validated end-to-end (beacon → Loki/Tempo).
+- **Experimental JVM runtime telemetry** on the OTel Java agent
+  (`OTEL_INSTRUMENTATION_RUNTIME_TELEMETRY_EMIT_EXPERIMENTAL_TELEMETRY=true` on the
+  `microservices-java` Instrumentation CR) → buffer pools (direct/mapped) + system CPU,
+  powering the deeper `jvm-internals` panels.
+- **`Day2.traffic.02 Synthetic RUM` workflow** — POSTs synthetic Faro beacons (Web Vitals,
+  sessions, JS errors, **and OTLP browser traces**) to the faro receiver via
+  `kubectl port-forward`, to populate/demo/validate the RUM dashboard before the Angular SPA
+  is instrumented. No environment gate (synthetic telemetry, repo-level secrets); k6
+  (HTTP) can't generate RUM — real RUM needs the instrumented SPA driven by a browser.
+- **Grafana dashboards inventory** in [`docs/301`](docs/301-OBSERVABILITY.md) (master
+  matrix + per-dashboard detail + the label-model / No-Data gotchas).
+- **`docs/202-MICROSERVICES-APP-ARCHITECTURE.md`** (the demo app: gateway = Java/Spring
+  Cloud Gateway serving the Angular SPA, not Angular itself; Java-vs-Angular matrix;
+  request flow; the Angular RUM/Faro roadmap) and **`docs/303-JVM-TUNING.md`** (JVM tuning
+  + GC/runtime/OTel-instrumentation matrices, why CRaC over GraalVM Native, how to read the
+  JVM dashboard).
+
+### Performance
+
+- **JVM tuning across every JVM in the platform.** The microservices ran on container
+  defaults that were wrong for a server workload — HotSpot picks **SerialGC** when the
+  memory limit is <1792MB (proven live: `jvm_gc_name={Copy,MarkSweepCompact}`) + only 25%
+  heap. Fixed via `JDK_JAVA_OPTIONS` (kept separate from the OTel agent's
+  `JAVA_TOOL_OPTIONS`; they compose):
+  - **Microservices runtime** (gitops deployment template): `-XX:+UseG1GC`,
+    `-XX:MaxRAMPercentage=50`, `-XX:+UseStringDeduplication`, `-XX:+ExitOnOutOfMemoryError`.
+  - **Jenkins controller** (`helm/jenkins/values-common.yaml` `controller.javaOpts`):
+    `MaxRAMPercentage 25→60` (live heap now ~1.8G), `+UseG1GC +ParallelRefProcEnabled
+    +DisableExplicitGC +UseStringDeduplication +ExitOnOutOfMemoryError` (Jenkins was
+    already G1 — server-class 3Gi — but heap-starved). The chart still appends
+    `-Dcasc.reload.token`.
+  - **Maven build JVMs** — Jenkins (`vars/microservicesBuild.groovy`,
+    `vars/microservicesImage.groovy`) and Tekton (`tekton/tasks/maven-build-test.yaml`,
+    `tekton/tasks/build-push-image.yaml`): dropped `SerialGC` → `G1GC` +
+    `ExitOnOutOfMemoryError` (the image-build steps were on SerialGC).
+  - Runtime: JDK 25.0.3 LTS / Eclipse Temurin / HotSpot. Rationale, GC/runtime matrices and
+    the CRaC vs GraalVM-Native analysis in [`docs/303`](docs/303-JVM-TUNING.md).
 
 ### Fixed
+
+- **Kubernetes probes used the aggregate health endpoint for liveness (anti-pattern).**
+  All three Java probes (gitops deployment template) moved to Spring Boot's dedicated
+  availability groups: `livenessProbe → /management/health/liveness`, `readiness` +
+  `startupProbe → /management/health/readiness`. The aggregate `/management/health`
+  includes the DB/R2DBC indicators, so a transient dependency blip was failing liveness
+  and restart-looping pods. See [`docs/502`](docs/502-MICROSERVICES_GITOPS.md).
+- **Every Loki/Tempo dashboard panel showed No-Data even with data present.** The stack
+  has **no default Loki or Tempo datasource** (only Prometheus is the global default), so
+  the `${DS_LOKI}`/`${DS_TEMPO}` template variables didn't resolve (and an empty/stale
+  `var-DS_LOKI` in a bookmarked URL overrode any binding). Hardcoded `grafanacloud-logs`/
+  `grafanacloud-traces` in the panels and dropped the `DS_LOKI`/`DS_TEMPO` template vars
+  across all dashboards (`generate.py` still rewrites Loki/Tempo → CloudWatch/X-Ray by type
+  for the aws/azure variants).
+- **RUM dashboard query/variable fixes:** Loki `kind` is *structured metadata*, not an
+  indexed stream label, so `{kind="measurement"}` in the stream selector returned nothing
+  — filter `kind` after `| logfmt`; the `app` variable was an empty time-bounded
+  `label_values` query → made it a constant; the Tempo panel used
+  `queryType=traceqlSearch` (structured filters) with a raw TraceQL string → changed to
+  `traceql`; dropped the deprecated **FID** Web-Vital target (Faro emits **INP**).
+- **`microservices-overview` JVM panels + `postgres-overview` were empty** for the
+  selected tier: JVM metrics carry `k8s_namespace_name`/`service_name`, not
+  `deployment_environment`, so those panels were repointed (the env→namespace mapping is
+  derived via `target_info`).
 
 - **k6 run summary showed all-zeros in every engine (GHA, Jenkins, Tekton).** k6 2.0's
   `--summary-export` emits a *flattened* schema (`metrics.<m>.<stat>`), but all three
@@ -57,12 +138,20 @@ All notable changes to this project will be documented in this file.
   all its secrets are repo-level, so the gate only blocked automation/scheduling. Day1,
   Decom and the heavier Day2.* workflows keep the gate.
 
-> Companion fixes in the **`jenkins-2026-gitops-config`** repo (deployed via ArgoCD, not
+> Companion changes in the **`jenkins-2026-gitops-config`** repo (deployed via ArgoCD, not
 > tracked here): the lean `develop` tier no longer CrashLoops — raised the Java CPU limit
 > 500m→1500m + startup-probe budget 5→10min (CPU-starved cold start), and switched the
 > develop deployments to the `Recreate` strategy so a rolling update's overlapping pods
 > don't starve the new pod of PgBouncer session-mode connections (its reactive r2dbc
-> health check hung → startup probe never passed).
+> health check hung → startup probe never passed). Also moved the three Java probes to
+> Spring Boot's **dedicated availability groups** (`liveness → /…/liveness`, `readiness` +
+> `startup → /…/readiness`) so a transient DB blip no longer fails *liveness* and
+> restart-loops the pod; applied the runtime **JVM tuning** (`JDK_JAVA_OPTIONS`: G1 +
+> `MaxRAMPercentage=50` + StringDeduplication + ExitOnOOM — kept separate from the OTel
+> agent's `JAVA_TOOL_OPTIONS`); and enabled the agent's **experimental runtime telemetry**
+> (buffer pools + system CPU) for the deeper `jvm-internals` panels. See
+> [`docs/502`](docs/502-MICROSERVICES_GITOPS.md) (probes/strategy) and
+> [`docs/303`](docs/303-JVM-TUNING.md) (JVM).
 
 ## [v0.27.0] - 2026-06-27
 
