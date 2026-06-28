@@ -840,7 +840,7 @@
     {
       "id": 15,
       "type": "logs",
-      "title": "INP / FID p75 over time",
+      "title": "INP p75 over time",
       "datasource": {
         "type": "cloudwatch",
         "uid": "DS_CW_UID"

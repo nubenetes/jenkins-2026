@@ -901,7 +901,7 @@
     {
       "id": 15,
       "type": "table",
-      "title": "INP / FID p75 over time",
+      "title": "INP p75 over time",
       "datasource": {
         "type": "grafana-azure-monitor-datasource",
         "uid": "azure-monitor-oob"
