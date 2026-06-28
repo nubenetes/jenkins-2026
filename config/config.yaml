@@ -335,6 +335,9 @@ gateway:
     microservicesDevelop: "microservices-develop"
     headlamp: "headlamp"
     pgadmin: "pgadmin"
+    # Grafana Faro RUM beacon endpoint (browser → otel-collector faro receiver).
+    # Public, NO IAP (browser-facing; CORS-open receiver). Always routed.
+    faro: "faro"
     # Only used when ci.engine=tekton (Tekton Dashboard, IAP-protected).
     tekton: "tekton"
     # PaC controller webhook receiver (ci.engine=tekton). Public, NO IAP - GitHub
