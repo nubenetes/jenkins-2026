@@ -70,6 +70,13 @@ spec:
       # them for any param left empty (param > preset > script default). yq image is
       # used because the cluster has no pod egress to download tooling at runtime.
       image: mikefarah/yq:4.53.3
+      # mikefarah/yq runs as uid 1000 by default, but the `source` workspace is
+      # populated by earlier steps/tasks running as root (alpine/git checkout-infra,
+      # git-clone), so /workspace/source is root-owned and uid 1000 cannot create
+      # k6sim-preset.env there ("Permission denied"). Run this step as root too — it
+      # only writes a small env file the (non-root) run-k6 step then reads (0644).
+      securityContext:
+        runAsUser: 0
       script: |
         #!/bin/sh
         set -eu
