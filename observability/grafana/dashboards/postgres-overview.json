@@ -25,7 +25,7 @@
       "type": "text",
       "transparent": true,
       "gridPos": {
-        "h": 3,
+        "h": 12,
         "w": 24,
         "x": 0,
         "y": 0
@@ -33,7 +33,7 @@
       "id": 101,
       "options": {
         "mode": "markdown",
-        "content": "### Tier model \u2014 pick the tier in **Tier (namespace)** above\n- **`microservices` (stable)** \u2014 3-instance **HA** CNPG clusters with WAL archiving + **backups** \u2192 every section populates.\n- **`microservices-develop` (develop)** \u2014 the deliberately **lean** tier: **single-instance (no replicas), no backups**. So the **Replication (streaming)** and **WAL archiving & backups** sections are **empty there by design** \u2014 not a fault. Many other panels also read **0 when healthy/idle** (0 deadlocks, 0 replication lag, 100% cache \u2192 0 disk-read time). Generate traffic (k6) to light up the activity panels."
+        "content": "## PostgreSQL / CloudNativePG \u2014 read me first\n\nPick the tier in the **`Tier (namespace)`** variable above. The two tiers differ **by design**, so which panels carry data depends on the tier:\n\n| | **`microservices`** (stable) | **`microservices-develop`** (develop) |\n|---|---|---|\n| Instances | **3** \u2014 HA (1 primary + 2 replicas) | **1** \u2014 single, no replicas |\n| Backups / WAL archive | **enabled** \u2192 GCS (`barmanObjectStore`, daily `ScheduledBackup`) | **none** (lean tier) |\n| Full dashboard? | **yes \u2014 every section populates** | Replication + Backups sections **empty by design** |\n\n### Why a healthy dashboard shows many `0`s\nMost \"empty\"-looking panels are **health indicators where `0` is the *good* value** \u2014 they only go non-zero under a real problem (or under load). Breakdown:\n\n- **\ud83d\udfe2 `0` = healthy on *any* tier** (not a fault, don't \"fix\"): *Switchover required* (No), *Fencing* (Off), *Collector errors* / *Last collection error* (OK), *Deadlocks & conflicts*, *Backends waiting*, *Rollback ratio*, *Block read/I\u00b7O time* (= 100% cache hit), *WAL buffers full*, *MXID age*, and on stable *Replication lag / diff bytes* (= replicas keep up, 0 lag).\n- **\u2796 Empty on develop only \u2014 single-instance, no replicas:** *Streaming/Sync replicas*, *Replication lag*, *Write/flush/replay lag*, *Replication diff bytes*, *Retained-WAL slots*, *Replica WAL receivers up*, *Active slots*. (Populated on **stable**.)\n- **\u2796 Empty on develop only \u2014 no backups configured:** *Time since last backup*, *First recoverability point*, *WAL archived vs failed*, *Pending WAL to archive*. (Populated on **stable**.)\n- **\ud83d\udcc8 Need traffic to be non-zero** (idle DB \u2192 flat): *Commits/TPS*, *Tuple operations*, *Temp files & spill*, *WAL bytes/records*, *Checkpoints*, *Connections*. Generate load with the **`Day2.traffic.01-k6`** workflow (or any app traffic).\n\n> So on **stable** under load, essentially every data-bearing panel populates and the rest read `0` because the cluster is **healthy**. On **develop**, additionally the Replication and Backups sections stay empty \u2014 that is the lean tier, not a bug."
       }
     },
     {
@@ -44,7 +44,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 3
+        "y": 12
       },
       "id": 102,
       "panels": []
@@ -60,7 +60,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 4
+        "y": 13
       },
       "id": 103,
       "fieldConfig": {
@@ -126,7 +126,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 4
+        "y": 13
       },
       "id": 104,
       "fieldConfig": {
@@ -188,7 +188,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 4
+        "y": 13
       },
       "id": 105,
       "fieldConfig": {
@@ -250,7 +250,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 4
+        "y": 13
       },
       "id": 106,
       "fieldConfig": {
@@ -313,7 +313,7 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 4
+        "y": 13
       },
       "id": 107,
       "fieldConfig": {
@@ -375,7 +375,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 4
+        "y": 13
       },
       "id": 108,
       "fieldConfig": {
@@ -437,7 +437,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 8
+        "y": 17
       },
       "id": 109,
       "fieldConfig": {
@@ -499,7 +499,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 8
+        "y": 17
       },
       "id": 110,
       "fieldConfig": {
@@ -570,7 +570,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 8
+        "y": 17
       },
       "id": 111,
       "fieldConfig": {
@@ -651,7 +651,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 8
+        "y": 17
       },
       "id": 112,
       "fieldConfig": {
@@ -732,7 +732,7 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 8
+        "y": 17
       },
       "id": 113,
       "fieldConfig": {
@@ -799,7 +799,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 8
+        "y": 17
       },
       "id": 114,
       "fieldConfig": {
@@ -858,7 +858,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 12
+        "y": 21
       },
       "id": 115,
       "panels": []
@@ -874,7 +874,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 13
+        "y": 22
       },
       "id": 116,
       "fieldConfig": {
@@ -939,7 +939,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 13
+        "y": 22
       },
       "id": 117,
       "fieldConfig": {
@@ -1003,7 +1003,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 21
+        "y": 30
       },
       "id": 118,
       "fieldConfig": {
@@ -1067,7 +1067,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 21
+        "y": 30
       },
       "id": 119,
       "fieldConfig": {
@@ -1131,7 +1131,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 29
+        "y": 38
       },
       "id": 120,
       "fieldConfig": {
@@ -1212,7 +1212,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 29
+        "y": 38
       },
       "id": 121,
       "fieldConfig": {
@@ -1274,7 +1274,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 37
+        "y": 46
       },
       "id": 122,
       "panels": []
@@ -1290,7 +1290,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 38
+        "y": 47
       },
       "id": 123,
       "fieldConfig": {
@@ -1366,7 +1366,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 38
+        "y": 47
       },
       "id": 124,
       "fieldConfig": {
@@ -1451,7 +1451,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 38
+        "y": 47
       },
       "id": 125,
       "fieldConfig": {
@@ -1563,7 +1563,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 46
+        "y": 55
       },
       "id": 126,
       "fieldConfig": {
@@ -1640,7 +1640,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 46
+        "y": 55
       },
       "id": 127,
       "fieldConfig": {
@@ -1729,7 +1729,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 54
+        "y": 63
       },
       "id": 128,
       "panels": []
@@ -1745,7 +1745,7 @@
         "h": 4,
         "w": 12,
         "x": 0,
-        "y": 55
+        "y": 64
       },
       "id": 129,
       "fieldConfig": {
@@ -1816,7 +1816,7 @@
         "h": 4,
         "w": 12,
         "x": 12,
-        "y": 55
+        "y": 64
       },
       "id": 130,
       "fieldConfig": {
@@ -1879,7 +1879,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 59
+        "y": 68
       },
       "id": 131,
       "fieldConfig": {
@@ -1944,7 +1944,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 59
+        "y": 68
       },
       "id": 132,
       "fieldConfig": {
@@ -2017,7 +2017,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 67
+        "y": 76
       },
       "id": 133,
       "panels": []
@@ -2033,7 +2033,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 68
+        "y": 77
       },
       "id": 134,
       "fieldConfig": {
@@ -2097,7 +2097,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 68
+        "y": 77
       },
       "id": 135,
       "fieldConfig": {
@@ -2173,7 +2173,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 68
+        "y": 77
       },
       "id": 136,
       "fieldConfig": {
@@ -2238,7 +2238,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 76
+        "y": 85
       },
       "id": 137,
       "fieldConfig": {
@@ -2315,7 +2315,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 76
+        "y": 85
       },
       "id": 138,
       "fieldConfig": {
@@ -2388,7 +2388,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 84
+        "y": 93
       },
       "id": 139,
       "panels": []
@@ -2404,7 +2404,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 85
+        "y": 94
       },
       "id": 140,
       "fieldConfig": {
@@ -2488,7 +2488,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 85
+        "y": 94
       },
       "id": 141,
       "fieldConfig": {
@@ -2577,7 +2577,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 93
+        "y": 102
       },
       "id": 142,
       "fieldConfig": {
@@ -2678,7 +2678,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 93
+        "y": 102
       },
       "id": 143,
       "fieldConfig": {
@@ -2743,7 +2743,7 @@
         "h": 4,
         "w": 12,
         "x": 0,
-        "y": 101
+        "y": 110
       },
       "id": 144,
       "fieldConfig": {
@@ -2820,7 +2820,7 @@
         "h": 4,
         "w": 12,
         "x": 12,
-        "y": 101
+        "y": 110
       },
       "id": 145,
       "fieldConfig": {
@@ -2878,7 +2878,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 105
+        "y": 114
       },
       "id": 146,
       "panels": []
@@ -2894,7 +2894,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 106
+        "y": 115
       },
       "id": 147,
       "fieldConfig": {
@@ -2958,7 +2958,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 106
+        "y": 115
       },
       "id": 148,
       "fieldConfig": {
@@ -3043,7 +3043,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 106
+        "y": 115
       },
       "id": 149,
       "fieldConfig": {
@@ -3127,7 +3127,7 @@
         "h": 4,
         "w": 24,
         "x": 0,
-        "y": 114
+        "y": 123
       },
       "id": 150,
       "fieldConfig": {
@@ -3195,7 +3195,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 118
+        "y": 127
       },
       "id": 151,
       "panels": []
@@ -3211,7 +3211,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 119
+        "y": 128
       },
       "id": 152,
       "fieldConfig": {
@@ -3292,7 +3292,7 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 119
+        "y": 128
       },
       "id": 153,
       "fieldConfig": {
@@ -3365,7 +3365,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 119
+        "y": 128
       },
       "id": 154,
       "fieldConfig": {
@@ -3426,7 +3426,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 119
+        "y": 128
       },
       "id": 155,
       "fieldConfig": {
@@ -3491,7 +3491,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 123
+        "y": 132
       },
       "id": 156,
       "fieldConfig": {
@@ -3583,7 +3583,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 123
+        "y": 132
       },
       "id": 157,
       "fieldConfig": {
@@ -3645,7 +3645,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 131
+        "y": 140
       },
       "id": 158,
       "panels": []
@@ -3661,7 +3661,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 132
+        "y": 141
       },
       "id": 159,
       "fieldConfig": {
@@ -3749,7 +3749,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 132
+        "y": 141
       },
       "id": 160,
       "fieldConfig": {
@@ -3813,7 +3813,7 @@
         "h": 4,
         "w": 24,
         "x": 0,
-        "y": 140
+        "y": 149
       },
       "id": 161,
       "fieldConfig": {
@@ -3890,7 +3890,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 144
+        "y": 153
       },
       "id": 162,
       "panels": []
@@ -3907,7 +3907,7 @@
         "h": 11,
         "w": 24,
         "x": 0,
-        "y": 145
+        "y": 154
       },
       "id": 163,
       "options": {
