@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.12] - 2026-06-28
+
+Increment over v0.28.11 (deep Jenkins Controller dashboard).
+
+### Changed
+- **`CI-CD / Jenkins Controller` dashboard rebuilt** (12 → 44 panels, 8 sections) on the Jenkins
+  **OpenTelemetry plugin** metrics, with an explanatory note distinguishing the two metric
+  families: **`ci_pipeline_run_*`** (OTel CI/CD semconv — per-pipeline launched/started/active/
+  completed/success/failed/aborted + duration; emitted as builds run) and **`jenkins_*`**
+  (controller internals — executors, build queue, agents/nodes, plugins, SCM events; live while
+  the controller is up). Sections: controller health, pipeline runs (RED), build outcomes,
+  executors & queue (incl. avg queue wait time), agents/nodes & SCM events, controller JVM
+  summary, logs & pipeline/stage/step traces. New `ci_pipeline_id` multi-select. Layout tiles
+  cleanly (0 overlaps/0 gaps); every panel verified to return series. Note explains that pipeline
+  panels are empty until a build runs, while controller panels are always live.
+
 ## [v0.28.11] - 2026-06-28
 
 Increment over v0.28.10 (deep k6 Observability dashboard).
