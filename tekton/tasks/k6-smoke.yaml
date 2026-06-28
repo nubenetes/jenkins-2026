@@ -198,7 +198,7 @@ spec:
         export K6SIM_PROFILE K6SIM_VUS K6SIM_ITERATIONS K6SIM_DURATION K6SIM_STAGES \
                K6SIM_RPS K6SIM_SLEEP K6SIM_SCENARIOS K6SIM_P95_MS K6SIM_ERROR_RATE \
                K6SIM_DEBUG ENV_NAME TARGET_NAMESPACE TARGET_URL
-        export OTEL_RESOURCE_ATTRIBUTES="service.name=k6-microservices-smoke,service.namespace=jenkins-2026,deployment.environment=${ENV_NAME},ci.runner=tekton,k6.profile=${K6SIM_PROFILE}"
+        export OTEL_RESOURCE_ATTRIBUTES="service.name=k6-microservices-smoke,service.namespace=jenkins-2026,deployment.environment=${ENV_NAME}"
         cd "$(workspaces.source.path)/k6-infra"
         # Build outputs: OTLP (when an endpoint is configured) AND Grafana Cloud k6
         # (when a token + project id are set) - both can run at once.
@@ -220,7 +220,11 @@ spec:
         # --summary-export — k6 2.0's --summary-export emits a flattened schema
         # that broke the .values.* parsers. See microservices-smoke.js.
         export K6_SUMMARY_OUT="$(workspaces.source.path)/k6-summary.json"
+        # ci_runner/k6_profile as k6 --tag (metric labels), not resource attrs — see
+        # the Jenkins/GHA runners: Grafana Cloud only promotes a fixed set of resource
+        # attrs to labels, so custom ones must be metric tags for the dashboard filters.
         k6 run ${OTEL_OUT} ${CLOUD_OUT} \
+          --tag ci_runner=tekton --tag "k6_profile=${K6SIM_PROFILE}" \
           jenkins/pipelines/k6/microservices-smoke.js
         if [ -n "${CLOUD_OUT}" ] && [ -n "${K6_GRAFANA_BASE_URL:-}" ]; then
           echo "k6 results streamed to Grafana Cloud k6: ${K6_GRAFANA_BASE_URL}/a/k6-app/projects/${K6_CLOUD_PROJECT_ID}"

@@ -182,7 +182,7 @@ jobs:
             echo "ENV_NAME=${ENV_NAME}"
             echo "ENV_NAME_INPUT=${ENV_NAME}"
             echo "TARGET_URL_INPUT=${TARGET_URL_INPUT}"
-            echo "OTEL_RESOURCE_ATTRIBUTES=service.name=k6-microservices-smoke,service.namespace=jenkins-2026,deployment.environment=${ENV_NAME},ci.runner=gha,k6.profile=${PROFILE}"
+            echo "OTEL_RESOURCE_ATTRIBUTES=service.name=k6-microservices-smoke,service.namespace=jenkins-2026,deployment.environment=${ENV_NAME}"
           } >> "${GITHUB_ENV}"
           echo "Resolved: preset=${IN_PRESET} profile=${PROFILE} env=${ENV_NAME} vus=${VUS:-<def>} dur=${DURATION:-<none>} stages=${STAGES:-<none>} rps=${RPS:-<none>} scenarios=${SCENARIOS}"
 
@@ -332,7 +332,13 @@ jobs:
           # NOT --summary-export — k6 2.0's --summary-export emits a flattened
           # schema that made the jq summary below read all-zeros. See
           # jenkins/pipelines/k6/microservices-smoke.js.
+          # ci_runner/k6_profile as k6 --tag (metric labels on every series), NOT
+          # resource attributes: Grafana Cloud's OTLP ingestion only promotes a fixed
+          # set of resource attrs to labels (deployment.environment yes, custom ones
+          # land in target_info only) — so the dashboard's label_values()/filters need
+          # them as metric tags, which k6 attaches to all metrics in every output.
           k6 run jenkins/pipelines/k6/microservices-smoke.js \
+            --tag ci_runner=gha --tag "k6_profile=${PROFILE}" \
             -o opentelemetry ${CLOUD_OUT}
           EXIT_CODE=$?
           set -e

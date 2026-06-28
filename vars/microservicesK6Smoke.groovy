@@ -63,7 +63,7 @@ def call(Map cfg) {
       "K6_OTEL_GRPC_EXPORTER_ENDPOINT=otel-collector-gateway.observability.svc.cluster.local:4317",
       "K6_OTEL_GRPC_EXPORTER_INSECURE=true",
       "K6_OTEL_EXPORT_INTERVAL=2s",
-      "OTEL_RESOURCE_ATTRIBUTES=service.namespace=jenkins-2026,deployment.environment=${cfg.envName},ci.runner=jenkins,k6.profile=${cfg.profile ?: 'smoke'}",
+      "OTEL_RESOURCE_ATTRIBUTES=service.namespace=jenkins-2026,deployment.environment=${cfg.envName}",
       // Optional Grafana Cloud k6 (the k6-app) streaming; empty -> skipped.
       // Injected into the controller env from the jenkins-credentials Secret
       // (helm/jenkins/values-common.yaml containerEnv, populated by 04-jenkins.sh).
@@ -82,7 +82,11 @@ def call(Map cfg) {
           # k6-summary.json is written by the script's handleSummary() (CWD), not
           # --summary-export: k6 2.0's --summary-export flattened schema made the
           # readJSON parser below (printK6Summary) read all-zeros.
-          k6 run -o opentelemetry ${CLOUD_OUT} jenkins/pipelines/k6/microservices-smoke.js
+          # ci_runner/k6_profile as k6 --tag (metric labels on every series), not
+          # resource attrs: Grafana Cloud only promotes a fixed set of resource attrs
+          # to labels, so custom ones must be metric tags for the dashboard filters.
+          k6 run --tag ci_runner=jenkins --tag "k6_profile=${K6SIM_PROFILE}" \
+            -o opentelemetry ${CLOUD_OUT} jenkins/pipelines/k6/microservices-smoke.js
         ''',
         returnStatus: true
       )
