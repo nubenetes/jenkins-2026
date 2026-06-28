@@ -209,7 +209,7 @@
             "uid": "${DS_LOKI}"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({service_name=\"$app\", deployment_environment=\"$deployment_environment\", kind=\"exception\"} [$__range]))",
+          "expr": "sum(count_over_time({service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`exception` [$__range]))",
           "queryType": "instant",
           "refId": "A"
         }
@@ -270,7 +270,7 @@
             "uid": "${DS_LOKI}"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({service_name=\"$app\", deployment_environment=\"$deployment_environment\", kind=\"measurement\"} [$__range]))",
+          "expr": "sum(count_over_time({service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`measurement` [$__range]))",
           "queryType": "instant",
           "refId": "A"
         }
@@ -454,7 +454,7 @@
             "uid": "${DS_LOKI}"
           },
           "editorMode": "code",
-          "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\", kind=\"measurement\"} | logfmt | lcp!=\"\" | unwrap lcp [$__range])",
+          "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`measurement` | lcp!=\"\" | unwrap lcp [$__range])",
           "queryType": "instant",
           "refId": "A"
         }
@@ -519,7 +519,7 @@
             "uid": "${DS_LOKI}"
           },
           "editorMode": "code",
-          "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\", kind=\"measurement\"} | logfmt | inp!=\"\" | unwrap inp [$__range])",
+          "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`measurement` | inp!=\"\" | unwrap inp [$__range])",
           "queryType": "instant",
           "refId": "A"
         }
@@ -584,7 +584,7 @@
             "uid": "${DS_LOKI}"
           },
           "editorMode": "code",
-          "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\", kind=\"measurement\"} | logfmt | cls!=\"\" | unwrap cls [$__range])",
+          "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`measurement` | cls!=\"\" | unwrap cls [$__range])",
           "queryType": "instant",
           "refId": "A"
         }
@@ -649,7 +649,7 @@
             "uid": "${DS_LOKI}"
           },
           "editorMode": "code",
-          "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\", kind=\"measurement\"} | logfmt | fcp!=\"\" | unwrap fcp [$__range])",
+          "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`measurement` | fcp!=\"\" | unwrap fcp [$__range])",
           "queryType": "instant",
           "refId": "A"
         }
@@ -714,7 +714,7 @@
             "uid": "${DS_LOKI}"
           },
           "editorMode": "code",
-          "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\", kind=\"measurement\"} | logfmt | ttfb!=\"\" | unwrap ttfb [$__range])",
+          "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`measurement` | ttfb!=\"\" | unwrap ttfb [$__range])",
           "queryType": "instant",
           "refId": "A"
         }
@@ -779,7 +779,7 @@
             "uid": "${DS_LOKI}"
           },
           "editorMode": "code",
-          "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\", kind=\"measurement\"} | logfmt | lcp!=\"\" | unwrap lcp [$__interval])",
+          "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`measurement` | lcp!=\"\" | unwrap lcp [$__interval])",
           "queryType": "range",
           "refId": "A",
           "legendFormat": "LCP p75"
@@ -827,7 +827,7 @@
             "uid": "${DS_LOKI}"
           },
           "editorMode": "code",
-          "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\", kind=\"measurement\"} | logfmt | inp!=\"\" | unwrap inp [$__interval])",
+          "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`measurement` | inp!=\"\" | unwrap inp [$__interval])",
           "queryType": "range",
           "refId": "A",
           "legendFormat": "INP p75"
@@ -838,7 +838,7 @@
             "uid": "${DS_LOKI}"
           },
           "editorMode": "code",
-          "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\", kind=\"measurement\"} | logfmt | fid!=\"\" | unwrap fid [$__interval])",
+          "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`measurement` | fid!=\"\" | unwrap fid [$__interval])",
           "queryType": "range",
           "refId": "A",
           "legendFormat": "FID p75"
@@ -886,7 +886,7 @@
             "uid": "${DS_LOKI}"
           },
           "editorMode": "code",
-          "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\", kind=\"measurement\"} | logfmt | cls!=\"\" | unwrap cls [$__interval])",
+          "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`measurement` | cls!=\"\" | unwrap cls [$__interval])",
           "queryType": "range",
           "refId": "A",
           "legendFormat": "CLS p75"
@@ -947,7 +947,7 @@
             "uid": "${DS_LOKI}"
           },
           "editorMode": "code",
-          "expr": "sum(count_over_time({service_name=\"$app\", deployment_environment=\"$deployment_environment\", kind=\"exception\"} [$__interval]))",
+          "expr": "sum(count_over_time({service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`exception` [$__interval]))",
           "queryType": "range",
           "refId": "A",
           "legendFormat": "exceptions"
@@ -995,7 +995,7 @@
             "uid": "${DS_LOKI}"
           },
           "editorMode": "code",
-          "expr": "topk(10, sum by (browser_name)(count_over_time({service_name=\"$app\", deployment_environment=\"$deployment_environment\", kind=\"exception\"} | logfmt [$__range])))",
+          "expr": "topk(10, sum by (browser_name)(count_over_time({service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`exception` [$__range])))",
           "queryType": "instant",
           "refId": "A",
           "format": "table"
@@ -1030,7 +1030,7 @@
             "uid": "${DS_LOKI}"
           },
           "editorMode": "code",
-          "expr": "{service_name=\"$app\", deployment_environment=\"$deployment_environment\", kind=\"exception\"} | logfmt",
+          "expr": "{service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`exception`",
           "queryType": "range",
           "refId": "A"
         }
