@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.8] - 2026-06-28
+
+Increment over v0.28.7 (fix CNPG WAL archiving / backups).
+
+### Fixed
+- **CNPG WAL archiving + backups were failing 403 — now work.** The `<cluster>-pg-backups` GSA
+  (impersonated by the postgres pods via Workload Identity) had `roles/storage.objectAdmin` on
+  the backups bucket, which lacks `storage.buckets.get` — the permission
+  `barman-cloud-check-wal-archive` calls when validating the destination. Result: every WAL
+  archive failed (`ContinuousArchivingFailing`, 1000+ failures, `.ready` WAL piling up) and no
+  base backup could run, so the dashboard's backup/archiving panels read "no backups configured".
+  Fix: grant the GSA `roles/storage.admin` **scoped to the backups bucket** (mirrors
+  `ci_postgres_backups`; still least-privilege). After applying, archiving recovered
+  (`ContinuousArchivingSuccess`) and base backups for both stable clusters completed. develop is
+  unaffected (lean tier — no `barmanObjectStore`, so it never archived). `terraform/gke`.
+
 ## [v0.28.7] - 2026-06-28
 
 Increment over v0.28.6 (postgres dashboard polish + traces-sampling rationale).
