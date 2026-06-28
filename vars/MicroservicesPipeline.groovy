@@ -195,7 +195,12 @@ spec:
 
         environment {
             REGISTRY      = "${env.MICROSERVICES_REGISTRY ?: 'ghcr.io/nubenetes/jenkins-2026-microservices'}"
-            IMAGE_TAG     = "${cfg.gitBranch}"
+            // Immutable, traceable tag: <branch>-<build#> (e.g. develop-42) instead of a
+            // mutable branch tag that every build overwrites. Each build publishes a unique
+            // tag, GitOps Update pins values-<env>.yaml to it, and ArgoCD deploys that exact
+            // build — so a deploy is reproducible and rollback = repoint to a prior tag.
+            // BUILD_NUMBER is available at pipeline start (no checkout needed).
+            IMAGE_TAG     = "${cfg.gitBranch}-${env.BUILD_NUMBER}"
             IMAGE         = "${env.REGISTRY}/${cfg.serviceName}:${env.IMAGE_TAG}"
             OTEL_SERVICE_NAME = "jenkins-pipeline-${cfg.serviceName}"
         }
