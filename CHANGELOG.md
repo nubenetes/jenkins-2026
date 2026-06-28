@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.27] - 2026-06-28
+
+Increment over v0.28.26 (fix OSS Grafana stuck on the dashboards ConfigMap).
+
+### Fixed
+- **OSS Grafana hung in `ContainerCreating` — dashboards ConfigMap exceeded the 256 KiB annotation
+  limit.** After the dashboards were optimized (3–6× larger; ~0.45 MiB aggregated), ArgoCD's
+  client-side apply of the single `jenkins-2026-grafana-dashboards` ConfigMap stuffed the whole
+  object into the `kubectl.kubernetes.io/last-applied-configuration` **annotation**, which has a hard
+  **262144-byte limit** (separate from the 1 MiB object limit) → `metadata.annotations: Too long` →
+  the ConfigMap never applied → Grafana `FailedMount` (`configmap ... not found`) → "does not have
+  minimum availability". Fixed by adding **`ServerSideApply=true`** to the `oss-grafana-dashboards`
+  Application sync options (SSA writes no last-applied annotation; the ConfigMap is still well under
+  the 1 MiB object cap). Recovered the live cluster by syncing the app with SSA.
+
 ## [v0.28.26] - 2026-06-28
 
 Increment over v0.28.25 (document RUM/Faro fidelity per backend).
