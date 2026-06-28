@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.29] - 2026-06-28
+
+Increment over v0.28.28 (fix JVM runtime-context panel on OSS/managed backends).
+
+### Fixed
+- **JVM dashboard "runtime context" panel showed no data on OSS.** The panel queried
+  `target_info{... , service_name=~"$service_name"}`, but `target_info` carries **no `service_name`
+  label** when metrics reach an in-cluster Prometheus via the collector's prometheusremotewrite
+  exporter (service.name maps to `job`; the service identity is in `k8s_container_name` /
+  `k8s_deployment_name`). Grafana Cloud's OTLP ingestion *does* add `service_name`, which is why the
+  Cloud-optimized board worked there but went blank on OSS when a specific service was selected.
+  Switched the `target_info` matcher to **`k8s_container_name=~"$service_name"`** (present on both
+  OSS and Cloud), in the canonical board; regenerated the Azure/AWS variants.
+
 ## [v0.28.28] - 2026-06-28
 
 Increment over v0.28.27 (oss: heal missing CNPG PodMonitors on obs-mode switch).
