@@ -176,6 +176,20 @@ observability:
   # built-in "K8s Compute" views. Override per-run: JENKINS2026_OBS_LEAN_METRICS=true.
   leanMetrics: true
 
+  # Minimum log severity shipped to the backend (Loki / CloudWatch / Azure). Applied
+  # as a `filter` processor in the otel-collector-logs DaemonSet, so it trims what you
+  # see in EVERY Grafana logs panel (microservices AND platform components) regardless
+  # of observability mode. Levels:
+  #   trace          - keep everything (no filtering; current pre-flag behaviour).
+  #   debug          - drop TRACE.
+  #   info (default) - drop DEBUG + TRACE (the usual noise floor for dashboards).
+  #   warn           - drop INFO + DEBUG + TRACE.
+  #   error          - keep only ERROR (+ FATAL).
+  # It matches the level token in structured lines (ECS/JSON `"level":"…"` and logfmt
+  # `level=…`); plain-text lines with no level token are NEVER dropped (no blackout).
+  # Override per-run: JENKINS2026_LOG_MIN_SEVERITY=warn. See docs/301.
+  logMinSeverity: info
+
   otelOperator:
     chart:
       repoName: open-telemetry

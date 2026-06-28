@@ -59,6 +59,44 @@ remove_oss_observability_app() {
   fi
 }
 
+# Renders an otel-collector "-logs" values file into a temp copy with the configurable
+# minimum-log-severity `filter` processor injected, and echoes the path (use with
+# `helm -f`). The filter drops structured log records whose level token is below
+# J2026_LOG_MIN_SEVERITY — matching JSON `"level":"<lvl>"` (ECS nested + flat) and logfmt
+# `level=<lvl>` in the body (RE2, case-insensitive). Plain-text lines carry no level
+# token, so they are NEVER dropped (no accidental blackout). 'trace' = no filtering:
+# the original file is returned unchanged. All log output goes to stderr so stdout
+# stays a clean path for $(...) capture.
+otel_logs_values_with_filter() {
+  local src="$1"
+  if [[ "${J2026_LOG_MIN_SEVERITY}" == "trace" ]]; then
+    printf '%s' "${src}"
+    return 0
+  fi
+  # Severities strictly below the chosen minimum are dropped.
+  local drop
+  case "${J2026_LOG_MIN_SEVERITY}" in
+    debug) drop="trace" ;;
+    info)  drop="trace|debug" ;;
+    warn)  drop="trace|debug|info" ;;
+    error) drop="trace|debug|info|warn" ;;
+  esac
+  # OTTL drop condition. Built from a single-quoted template (no bash escaping) with a
+  # @DROP@ placeholder, so the only substitution is the level alternation. In the OTTL
+  # string literal: \" = literal quote (to match the JSON quotes), \\s = regex \s.
+  local tmpl='IsMatch(body, "(?i)(\"level\"\\s*:\\s*\"(@DROP@)\"|level=(@DROP@))")'
+  local cond="${tmpl//@DROP@/${drop}}"
+  local dst
+  dst="$(mktemp --suffix=-otel-logs.yaml)"
+  COND="${cond}" yq eval '
+    .config.processors["filter/severity"].error_mode = "ignore" |
+    .config.processors["filter/severity"].logs.log_record = [strenv(COND)] |
+    .config.service.pipelines.logs.processors += ["filter/severity"]
+  ' "${src}" > "${dst}"
+  log_info "otel-collector-logs: dropping log severities < ${J2026_LOG_MIN_SEVERITY} (${drop})" >&2
+  printf '%s' "${dst}"
+}
+
 case "${J2026_OBS_MODE}" in
   grafana-cloud)
     log_step "Observability mode: grafana-cloud"
@@ -99,7 +137,7 @@ case "${J2026_OBS_MODE}" in
     helm upgrade --install "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
       ${J2026_OTEL_COLLECTOR_CHART_VERSION:+--version=${J2026_OTEL_COLLECTOR_CHART_VERSION}} \
       --namespace "${J2026_OBS_NAMESPACE}" \
-      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-grafana-cloud-logs.yaml"
+      -f "$(otel_logs_values_with_filter "${J2026_ROOT_DIR}/observability/otel-collector/values-grafana-cloud-logs.yaml")"
 
     log_step "Installing pdc-agent (Private Data Source Connect)"
     GRAFANA_PDC_TOKEN="$(kubectl get secret "${J2026_GRAFANA_CLOUD_SECRET}" -n "${J2026_OBS_NAMESPACE}" -o jsonpath='{.data.GRAFANA_PDC_TOKEN}' | base64 -d)"
@@ -287,7 +325,7 @@ EOT
     helm upgrade --install "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
       ${J2026_OTEL_COLLECTOR_CHART_VERSION:+--version=${J2026_OTEL_COLLECTOR_CHART_VERSION}} \
       --namespace "${J2026_OBS_NAMESPACE}" \
-      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-oss-logs.yaml"
+      -f "$(otel_logs_values_with_filter "${J2026_ROOT_DIR}/observability/otel-collector/values-oss-logs.yaml")"
 
     # ArgoCD provisions Grafana asynchronously — wait for the Deployment to be
     # created by the sync, then for it to be Ready, before downstream steps
@@ -357,7 +395,7 @@ EOT
     helm upgrade --install "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
       ${J2026_OTEL_COLLECTOR_CHART_VERSION:+--version=${J2026_OTEL_COLLECTOR_CHART_VERSION}} \
       --namespace "${J2026_OBS_NAMESPACE}" \
-      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-managed-azure-logs.yaml"
+      -f "$(otel_logs_values_with_filter "${J2026_ROOT_DIR}/observability/otel-collector/values-managed-azure-logs.yaml")"
 
     wait_for_deployment "otel-collector-gateway" "${J2026_OBS_NAMESPACE}"
     ;;
@@ -411,7 +449,7 @@ EOT
     helm upgrade --install "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
       ${J2026_OTEL_COLLECTOR_CHART_VERSION:+--version=${J2026_OTEL_COLLECTOR_CHART_VERSION}} \
       --namespace "${J2026_OBS_NAMESPACE}" \
-      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-managed-aws-logs.yaml"
+      -f "$(otel_logs_values_with_filter "${J2026_ROOT_DIR}/observability/otel-collector/values-managed-aws-logs.yaml")"
 
     wait_for_deployment "otel-collector-gateway" "${J2026_OBS_NAMESPACE}"
     ;;

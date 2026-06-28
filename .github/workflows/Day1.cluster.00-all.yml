@@ -76,6 +76,17 @@ on:
         options:
           - info
           - debug
+      log_min_severity:
+        description: "Minimum log severity shipped to Grafana (otel-collector-logs filter; affects ALL logs panels — app + platform). trace=keep all; info (default) drops DEBUG/TRACE. Passed straight to Day1.cluster.01."
+        required: false
+        default: "info"
+        type: choice
+        options:
+          - trace
+          - debug
+          - info
+          - warn
+          - error
 
 permissions:
   contents: read
@@ -111,6 +122,7 @@ jobs:
     uses: ./.github/workflows/Day1.cluster.01-gke.yml
     with:
       log_level: ${{ inputs.log_level || 'info' }}
+      log_min_severity: ${{ inputs.log_min_severity || 'info' }}
       observability_mode: ${{ inputs.observability_mode }}
       ci_engine: ${{ inputs.ci_engine }}
       secrets_backend: ${{ inputs.secrets_backend }}

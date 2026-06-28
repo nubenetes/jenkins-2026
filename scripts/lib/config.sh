@@ -168,6 +168,21 @@ export J2026_OBS_MODE
 # JENKINS2026_OBS_LEAN_METRICS=true. See docs/301.
 export J2026_OBS_LEAN_METRICS="${JENKINS2026_OBS_LEAN_METRICS:-$(yq_get '.observability.leanMetrics' 'false')}"
 
+# FEATURE FLAG: minimum log severity. The otel-collector-logs DaemonSet gets a `filter`
+# processor (injected by 03-observability.sh) that drops structured log records below this
+# level, trimming every Grafana logs panel across all four obs modes. Durable default
+# 'info'; override per-run with JENKINS2026_LOG_MIN_SEVERITY. 'trace' = no filtering.
+J2026_LOG_MIN_SEVERITY="${JENKINS2026_LOG_MIN_SEVERITY:-$(yq_get '.observability.logMinSeverity' 'info')}"
+export J2026_LOG_MIN_SEVERITY
+case "${J2026_LOG_MIN_SEVERITY}" in
+  trace|debug|info|warn|error) ;;
+  *)
+    log_error "Invalid observability.logMinSeverity '${J2026_LOG_MIN_SEVERITY}' (expected trace|debug|info|warn|error)."
+    log_error "Set observability.logMinSeverity in ${J2026_CONFIG_FILE} or export JENKINS2026_LOG_MIN_SEVERITY."
+    exit 1
+    ;;
+esac
+
 case "${J2026_OBS_MODE}" in
   grafana-cloud|oss|managed-azure|managed-aws) ;;
   *)

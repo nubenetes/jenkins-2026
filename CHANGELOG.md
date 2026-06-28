@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.3] - 2026-06-28
+
+Increment over v0.28.2 (configurable Grafana log severity).
+
+### Added
+- **`observability.logMinSeverity` — a global minimum log severity for Grafana.** A `filter`
+  processor injected into the `otel-collector-logs` DaemonSet (by `scripts/03-observability.sh`
+  via `yq`) drops log records below the chosen level **before** they reach the backend, trimming
+  **every** Grafana logs panel — microservices **and** platform components (ArgoCD, CNPG, dex…) —
+  across all four obs modes. Matches structured-line level tokens (JSON `"level":"…"`, incl. the
+  microservices' ECS nested form, and logfmt `level=…`), case-insensitively; **plain-text lines
+  are never dropped** (no accidental blackout). `trace` disables the filter (ship everything).
+  Durable default `info` (drops DEBUG/TRACE); per-run override `JENKINS2026_LOG_MIN_SEVERITY`, or
+  the **`log_min_severity` dropdown** on the workflows that re-apply `03-observability`:
+  `Day1.cluster.01-gke` (+ the `Day1.cluster.00-all` umbrella), and — for a light change on a
+  running cluster without a full Day1 — `Day2.redeploy.01-argocd` / `Day2.publish.01-oss-grafana`.
+  Distinct from the existing `log_level` knob, which only governs CI script/Terraform verbosity.
+  See [docs/301 § Log Levels](docs/301-OBSERVABILITY.md#log-levels).
+
 ## [v0.28.2] - 2026-06-28
 
 Increment over v0.28.1 (resume-side recovery).

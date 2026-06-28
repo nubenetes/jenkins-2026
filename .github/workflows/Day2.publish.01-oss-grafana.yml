@@ -28,6 +28,17 @@ on:
         options:
           - info
           - debug
+      log_min_severity:
+        description: "Minimum log severity shipped to Grafana (otel-collector-logs filter; affects ALL logs panels — app + platform). This run re-applies 03-observability, so it's a light way to change it without a full Day1. trace=keep all; info (default) drops DEBUG/TRACE."
+        required: false
+        default: "info"
+        type: choice
+        options:
+          - trace
+          - debug
+          - info
+          - warn
+          - error
 
 permissions:
   contents: read
@@ -40,6 +51,7 @@ concurrency:
 env:
   JENKINS2026_LOG_LEVEL: ${{ inputs.log_level || 'info' }}
   TF_LOG: ${{ inputs.log_level == 'debug' && 'DEBUG' || '' }}
+  JENKINS2026_LOG_MIN_SEVERITY: ${{ inputs.log_min_severity || 'info' }}
   TF_VERSION: "1.15.6"
   # Force the oss code path in scripts/lib/config.sh + scripts/07.5 regardless of
   # config.yaml's default observability.mode (env-override pattern).

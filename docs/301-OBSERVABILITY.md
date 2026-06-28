@@ -356,7 +356,9 @@ flowchart LR
 
 ### Log Levels
 
-The `microservices-logback` ConfigMap is the single authority on log levels (it *replaces* JHipster's own `logback-spring.xml`):
+There are **two independent levers**, at two different points in the pipeline:
+
+**1. Source-side (microservices only) — the `microservices-logback` ConfigMap.** This is the authority on what each microservice *emits*. It lives in the **GitOps repo** and *replaces* JHipster's own `logback-spring.xml`:
 
 ```xml
 <logger name="org.springframework" level="WARN"/>
@@ -369,7 +371,20 @@ The `microservices-logback` ConfigMap is the single authority on log levels (it 
 <root level="INFO"/>
 ```
 
-This is **mode-independent** — applies unchanged across all four observability modes (`grafana-cloud`, `oss`, `managed-azure`, `managed-aws`).
+This is **mode-independent** — applies unchanged across all four observability modes. Use it to make a microservice emit *more* (e.g. drop a package to `DEBUG` to see request-time lines).
+
+**2. Pipeline-side (everything) — `observability.logMinSeverity`.** A `filter` processor injected into the **`otel-collector-logs`** DaemonSet (by `scripts/03-observability.sh`, via `yq`) that drops log records **below a chosen severity** *before* they reach the backend — so it trims **every** Grafana logs panel, **microservices AND platform components** (ArgoCD, CNPG, dex, …), in all four modes. Use it to cut noise globally without touching each component.
+
+```yaml
+# config/config.yaml — durable default; per-run override JENKINS2026_LOG_MIN_SEVERITY,
+# or the log_min_severity dropdown on the workflows that re-apply 03-observability:
+# Day1.cluster.01-gke (+ the Day1.cluster.00-all umbrella), and — for a light change on a
+# running cluster without a full Day1 — Day2.redeploy.01-argocd / Day2.publish.01-oss-grafana.
+observability:
+  logMinSeverity: info   # trace=keep all · debug · info (default) · warn · error
+```
+
+How it filters: it matches the level token in **structured** lines — JSON `"level":"<lvl>"` (covers the microservices' ECS nested `"log":{"level":…}`, CNPG's flat `"level":…`) and logfmt `level=<lvl>` (ArgoCD) — case-insensitively (RE2). **Plain-text lines carry no level token, so they are never dropped** (no accidental blackout). `trace` disables the filter entirely (pre-flag behaviour: ship everything). The two levers compose: e.g. keep the logback `<root>` at `INFO` but set `logMinSeverity: warn` for a quiet dashboard, then dial back to `info`/`trace` when debugging.
 
 Two real reasons business logs look sparse at `INFO`:
 1. **The services are idle.** Run `microservices-k6-smoke` to generate traffic and correlation.
