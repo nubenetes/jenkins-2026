@@ -27,7 +27,7 @@ spec:
         SETTINGS="$(workspaces.source.path)/jenkins-2026-infra/jenkins/maven-settings.xml"
         cd "$(workspaces.source.path)/microservices-src"
         unset MAVEN_CONFIG
-        export MAVEN_OPTS="-Xmx2048m -XX:+UseG1GC"
+        export MAVEN_OPTS="-Xmx2048m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError"
         export NODE_OPTIONS="--max-old-space-size=3072"
         MOD="$(params.module-path)"
         if [ -n "${MOD}" ] && [ -f "${MOD}/mvnw" ]; then

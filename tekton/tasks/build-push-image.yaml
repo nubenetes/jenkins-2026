@@ -40,7 +40,9 @@ spec:
         MOD="$(params.module-path)"
         if [ -n "${MOD}" ] && [ -f "${MOD}/mvnw" ]; then cd "${MOD}"; fi
         unset MAVEN_CONFIG
-        export MAVEN_OPTS="-Xmx1024m -XX:+UseSerialGC"
+        # G1 (not SerialGC — poor on the multi-core build pod) + fail-fast on OOM,
+        # mirroring the Jenkins build/image steps and the runtime tuning (docs/303).
+        export MAVEN_OPTS="-Xmx1024m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError"
         if grep -q "jib-maven-plugin" pom.xml; then
           ./mvnw -B -Pprod -DskipTests -Dmaven.compiler.maxmem=512m jib:build \
             -Djib.to.image="$(params.image)" -Djib.serialize=true
