@@ -311,7 +311,7 @@
     {
       "datasource": {
         "type": "tempo",
-        "uid": "${DS_TEMPO}"
+        "uid": "grafanacloud-traces"
       },
       "description": "Recent traces across all microservices for the selected environment. Each request through gateway -> downstream microservice is a single trace (W3C traceparent propagated end-to-end via OpenTelemetry).",
       "fieldConfig": {
@@ -348,7 +348,7 @@
         {
           "datasource": {
             "type": "tempo",
-            "uid": "${DS_TEMPO}"
+            "uid": "grafanacloud-traces"
           },
           "query": "{resource.deployment.environment = \"$deployment_environment\" && resource.service.name =~ \"${service_name:pipe}\" && span.\"url.path\" !~ \"/management/health.*\"}",
           "queryType": "traceql",
@@ -361,7 +361,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "${DS_LOKI}"
+        "uid": "grafanacloud-logs"
       },
       "description": "Application logs for the selected environment's namespace (microservices / microservices-develop). Lines containing trace_id=<hex> can be opened directly in Tempo via the Loki datasource's derived field.",
       "fieldConfig": {
@@ -388,7 +388,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${DS_LOKI}"
+            "uid": "grafanacloud-logs"
           },
           "expr": "{k8s_namespace_name=\"$namespace\"} | json | line_format \"{{ if .message }}{{ .message }}{{ else if .msg }}{{ .msg }}{{ else }}{{ __line__ }}{{ end }}\"",
           "refId": "A"
@@ -568,36 +568,6 @@
         "name": "DS_PROMETHEUS",
         "options": [],
         "query": "prometheus",
-        "queryValue": "",
-        "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
-        "type": "datasource",
-        "current": {}
-      },
-      {
-        "current": {},
-        "hide": 0,
-        "includeAll": false,
-        "label": "Loki",
-        "multi": false,
-        "name": "DS_LOKI",
-        "options": [],
-        "query": "loki",
-        "queryValue": "",
-        "refresh": 1,
-        "regex": "/^(?!.*alert-state-history|.*usage-insights).*$/",
-        "skipUrlSync": false,
-        "type": "datasource"
-      },
-      {
-        "hide": 0,
-        "includeAll": false,
-        "label": "Tempo",
-        "multi": false,
-        "name": "DS_TEMPO",
-        "options": [],
-        "query": "tempo",
         "queryValue": "",
         "refresh": 1,
         "regex": "",

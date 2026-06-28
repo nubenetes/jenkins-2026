@@ -413,7 +413,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "${DS_LOKI}"
+        "uid": "grafanacloud-logs"
       },
       "description": "Controller + agent pod logs. Each line containing a trace_id can be opened directly in Tempo via the Loki datasource's derived field (see observability/grafana/values-oss.yaml or the Grafana Cloud Loki datasource configuration).",
       "fieldConfig": {
@@ -440,7 +440,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${DS_LOKI}"
+            "uid": "grafanacloud-logs"
           },
           "expr": "{k8s_namespace_name=\"jenkins\"} | json | line_format \"{{ if .message }}{{ .message }}{{ else if .msg }}{{ .msg }}{{ else }}{{ __line__ }}{{ end }}\"",
           "refId": "A"
@@ -452,7 +452,7 @@
     {
       "datasource": {
         "type": "tempo",
-        "uid": "${DS_TEMPO}"
+        "uid": "grafanacloud-traces"
       },
       "description": "Recent traces for the Jenkins controller (service.name=jenkins, set by jenkins/casc/jcasc-otel.yaml). Each pipeline build, stage and step is exported as a span.",
       "fieldConfig": {
@@ -489,7 +489,7 @@
         {
           "datasource": {
             "type": "tempo",
-            "uid": "${DS_TEMPO}"
+            "uid": "grafanacloud-traces"
           },
           "query": "{resource.service.name = \"jenkins\"}",
           "queryType": "traceql",
@@ -730,36 +730,6 @@
         "name": "DS_PROMETHEUS",
         "options": [],
         "query": "prometheus",
-        "queryValue": "",
-        "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
-        "type": "datasource",
-        "current": {}
-      },
-      {
-        "hide": 0,
-        "includeAll": false,
-        "label": "Loki",
-        "multi": false,
-        "name": "DS_LOKI",
-        "options": [],
-        "query": "loki",
-        "queryValue": "",
-        "refresh": 1,
-        "regex": "/^(?!.*alert-state-history|.*usage-insights).*$/",
-        "skipUrlSync": false,
-        "type": "datasource",
-        "current": {}
-      },
-      {
-        "hide": 0,
-        "includeAll": false,
-        "label": "Tempo",
-        "multi": false,
-        "name": "DS_TEMPO",
-        "options": [],
-        "query": "tempo",
         "queryValue": "",
         "refresh": 1,
         "regex": "",

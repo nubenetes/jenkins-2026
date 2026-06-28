@@ -30,7 +30,7 @@
         "y": 0
       },
       "id": 100,
-      "title": "Tekton CI — pipeline & task runs (controller metrics)",
+      "title": "Tekton CI \u2014 pipeline & task runs (controller metrics)",
       "type": "row",
       "panels": []
     },
@@ -488,7 +488,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Time from TaskRun creation to its pod starting (tekton_pipelines_controller_taskruns_pod_latency_milliseconds) — scheduling/startup overhead.",
+      "description": "Time from TaskRun creation to its pod starting (tekton_pipelines_controller_taskruns_pod_latency_milliseconds) \u2014 scheduling/startup overhead.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -557,7 +557,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "${DS_LOKI}"
+        "uid": "grafanacloud-logs"
       },
       "description": "Logs from the Tekton pipeline-execution namespaces (the PipelineRun/TaskRun pods).",
       "gridPos": {
@@ -581,7 +581,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${DS_LOKI}"
+            "uid": "grafanacloud-logs"
           },
           "editorMode": "code",
           "expr": "{k8s_namespace_name=~\"tekton-ci|tekton-pipelines\"}",
@@ -595,7 +595,7 @@
     {
       "datasource": {
         "type": "tempo",
-        "uid": "${DS_TEMPO}"
+        "uid": "grafanacloud-traces"
       },
       "description": "Distributed traces emitted by the Tekton pipeline (the steps export OTLP to the collector). Use to drill into a single PipelineRun's spans.",
       "gridPos": {
@@ -613,7 +613,7 @@
         {
           "datasource": {
             "type": "tempo",
-            "uid": "${DS_TEMPO}"
+            "uid": "grafanacloud-traces"
           },
           "filters": [],
           "limit": 50,
@@ -644,36 +644,6 @@
         "name": "DS_PROMETHEUS",
         "options": [],
         "query": "prometheus",
-        "queryValue": "",
-        "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
-        "type": "datasource",
-        "current": {}
-      },
-      {
-        "hide": 0,
-        "includeAll": false,
-        "label": "Loki",
-        "multi": false,
-        "name": "DS_LOKI",
-        "options": [],
-        "query": "loki",
-        "queryValue": "",
-        "refresh": 1,
-        "regex": "/^(?!.*alert-state-history|.*usage-insights).*$/",
-        "skipUrlSync": false,
-        "type": "datasource",
-        "current": {}
-      },
-      {
-        "hide": 0,
-        "includeAll": false,
-        "label": "Tempo",
-        "multi": false,
-        "name": "DS_TEMPO",
-        "options": [],
-        "query": "tempo",
         "queryValue": "",
         "refresh": 1,
         "regex": "",

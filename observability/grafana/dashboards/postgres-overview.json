@@ -30,7 +30,7 @@
         "y": 0
       },
       "id": 100,
-      "title": "PostgreSQL / CloudNativePG — cluster health (cnpg_* metrics)",
+      "title": "PostgreSQL / CloudNativePG \u2014 cluster health (cnpg_* metrics)",
       "type": "row",
       "panels": []
     },
@@ -422,7 +422,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "WAL generation rate per instance (rate of cnpg_collector_wal_bytes) — write/transaction throughput proxy.",
+      "description": "WAL generation rate per instance (rate of cnpg_collector_wal_bytes) \u2014 write/transaction throughput proxy.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -549,7 +549,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "${DS_LOKI}"
+        "uid": "grafanacloud-logs"
       },
       "description": "Logs from the CNPG Postgres instance pods (the 'postgres' container) in the microservices namespace.",
       "gridPos": {
@@ -573,7 +573,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "${DS_LOKI}"
+            "uid": "grafanacloud-logs"
           },
           "editorMode": "code",
           "expr": "{k8s_namespace_name=\"$namespace\", k8s_container_name=\"postgres\"}",
@@ -606,21 +606,6 @@
         "queryValue": "",
         "refresh": 1,
         "regex": "",
-        "skipUrlSync": false,
-        "type": "datasource",
-        "current": {}
-      },
-      {
-        "hide": 0,
-        "includeAll": false,
-        "label": "Loki",
-        "multi": false,
-        "name": "DS_LOKI",
-        "options": [],
-        "query": "loki",
-        "queryValue": "",
-        "refresh": 1,
-        "regex": "/^(?!.*alert-state-history|.*usage-insights).*$/",
         "skipUrlSync": false,
         "type": "datasource",
         "current": {}
