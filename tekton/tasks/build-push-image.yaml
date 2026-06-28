@@ -1,10 +1,10 @@
 # Stage "Build & Push Image" of the Jenkins pipeline (vars/microservicesImage.groovy),
 # made daemonless for Tekton (no privileged docker-in-docker):
-# FOLLOW-UP (P3 immutable tags, Jenkins already done via <branch>-<build#>): the
-# Tekton 'image' param is one full ref passed to build/trivy/gitops, so an immutable
-# tag must be computed ONCE (e.g. <branch>-$(context.pipelineRun.name)) and threaded
-# to all three to avoid build-pushes-X / gitops-deploys-Y mismatches. Do when Tekton
-# is deployed (validatable). Today the run passes a branch tag.
+# P3 immutable tags (parity with the Jenkins <branch>-<build#> tag): the pipeline
+# (microservices-pipeline.yaml) appends $(context.pipelineRun.name) to BOTH the build/
+# trivy `image` tag and the gitops `image-tag`, so build-push, scan and the gitops bump
+# all reference the SAME unique per-run image (<branch>-<pipelineRunName>). NOT yet
+# validated — Tekton is inactive (ci.engine=jenkins); verify on first deploy.
 #   - java   : Jib (mvnw jib:build) pushes straight to the registry
 #   - angular: Kaniko builds resources/angular/Dockerfile and pushes
 # Registry auth comes from the 'dockerconfig' workspace (the tekton-registry
