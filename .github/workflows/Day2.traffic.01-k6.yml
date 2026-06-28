@@ -338,7 +338,7 @@ jobs:
           # land in target_info only) — so the dashboard's label_values()/filters need
           # them as metric tags, which k6 attaches to all metrics in every output.
           k6 run jenkins/pipelines/k6/microservices-smoke.js \
-            --tag ci_runner=gha --tag "k6_profile=${PROFILE}" \
+            --tag ci_runner=gha --tag "k6_profile=${K6SIM_PROFILE}" \
             -o opentelemetry ${CLOUD_OUT}
           EXIT_CODE=$?
           set -e
