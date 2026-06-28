@@ -25,7 +25,7 @@
       "type": "text",
       "transparent": true,
       "gridPos": {
-        "h": 12,
+        "h": 16,
         "w": 24,
         "x": 0,
         "y": 0
@@ -33,7 +33,7 @@
       "id": 101,
       "options": {
         "mode": "markdown",
-        "content": "## CI-CD / Jenkins Controller \u2014 what this board shows\nMetrics come from the **Jenkins OpenTelemetry plugin** (service `jenkins`). Two families:\n- **`ci_pipeline_run_*`** \u2014 OpenTelemetry **CI/CD semantic-convention** metrics, one series **per pipeline** (`ci_pipeline_id`): launched / started / active / completed / **success / failed / aborted** + run **duration** histogram. These are emitted **as builds run** \u2014 if no build has run in the selected time range, the *Pipeline* panels are flat/empty (not a fault). Filter with **`ci_pipeline_id`**.\n- **`jenkins_*`** \u2014 **controller internals**, continuously while Jenkins is up: **executors** (busy/idle/\u2026), **build queue** (blocked/buildable/waiting), **agents/nodes** (online/offline), **plugins**, **SCM events**. These have data whenever the controller is running.\n\n### What to look at\n- \ud83d\udfe2 **Throughput & success** \u2014 build success rate %, completed-by-result, failed builds. Is the pipeline green?\n- \ud83d\udfe1 **Latency & queue** \u2014 run duration p50/p95 per pipeline, queue size & **wait time** (jobs waiting for a free executor).\n- \ud83d\udd35 **Capacity** \u2014 executor utilisation (busy/total), agents online, SCM-event pool \u2014 is the controller a bottleneck?\n\n> Pipeline ids here are the seed jobs (e.g. `gateway`, `jhipstersamplemicroservice`, `microservices-k6-smoke`). Trigger builds (or the seed job) to populate the pipeline panels. Controller (queue/executor/agent) panels populate as long as Jenkins is up. JVM of the controller is summarised here \u2014 full depth in **CI-CD JVM internals** (`service_name=jenkins`)."
+        "content": "## CI-CD / Jenkins Controller \u2014 what this board shows\nMetrics come from the **Jenkins OpenTelemetry plugin** (service `jenkins`). Two families:\n- **`ci_pipeline_run_*`** \u2014 OpenTelemetry **CI/CD semantic-convention** metrics, one series **per pipeline** (`ci_pipeline_id`): launched / started / active / completed / **success / failed / aborted** + run **duration** histogram. These are emitted **as builds run** \u2014 if no build has run in the selected time range, the *Pipeline* panels are flat/empty (not a fault). Filter with **`ci_pipeline_id`**.\n- **`jenkins_*`** \u2014 **controller internals**, continuously while Jenkins is up: **executors** (busy/idle/\u2026), **build queue** (blocked/buildable/waiting), **agents/nodes** (online/offline), **plugins**, **SCM events**. These have data whenever the controller is running.\n\n### What to look at\n- \ud83d\udfe2 **Throughput & success** \u2014 build success rate %, completed-by-result, failed builds. Is the pipeline green?\n- \ud83d\udfe1 **Latency & queue** \u2014 run duration p50/p95 per pipeline, queue size & **wait time** (jobs waiting for a free executor).\n- \ud83d\udd35 **Capacity** \u2014 executor utilisation (busy/total), agents online, SCM-event pool \u2014 is the controller a bottleneck?\n\n### \u26a0\ufe0f Why a panel reads `0` or \"No data\" \u2014 and why that's usually correct\nThis Jenkins runs on **Kubernetes with ephemeral pod agents** (the kubernetes-plugin spins an agent pod **per build** and tears it down after), and it sits **idle most of the time**. Consequences you'll see:\n- **Dynamic agents/executors** \u2014 `jenkins_executor_total/busy` and `jenkins_agents_*` track **agents that only exist during a build**. Idle \u21d2 executors `0` and agents just the controller's built-in node. They **spike during a build** (watch the *Executor states* timeseries). `Executors total = 0` is **not** a misconfiguration \u2014 build capacity is provisioned on demand.\n- **Idle controller** \u2014 *Queue states*, *Active runs*, *SCM event pool* read **`0` when nothing is building / no SCM scan is in flight**. Healthy.\n- **Pipeline RED + run-duration percentiles need *recent* builds** \u2014 `ci_pipeline_run_duration` is a histogram; the p50/p95 panels use `rate(...[$__rate_interval])`, which is **`0` once the last build falls outside the window** \u21d2 the quantile is undefined and the panel is empty. **Run a build (or widen the time range)** and they fill in. This is inherent to rate-of-histogram, not a fault.\n- **`\u2026_failed_total` only exists after the first failure** \u2014 so *Builds failed* / *Failed builds* read `0` while every build is green.\n\n> Pipeline ids are the seed jobs (`gateway`, `jhipstersamplemicroservice`, `microservices-k6-smoke`, \u2026). Trigger a build to light up the pipeline panels. Controller gauges are live whenever Jenkins is up. Controller JVM is summarised here \u2014 full depth in **CI-CD JVM internals** (`service_name=jenkins`)."
       }
     },
     {
@@ -44,7 +44,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 12
+        "y": 16
       },
       "id": 102,
       "panels": []
@@ -60,7 +60,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 13
+        "y": 17
       },
       "id": 103,
       "fieldConfig": {
@@ -122,7 +122,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 13
+        "y": 17
       },
       "id": 104,
       "fieldConfig": {
@@ -187,7 +187,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 13
+        "y": 17
       },
       "id": 105,
       "fieldConfig": {
@@ -248,7 +248,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 13
+        "y": 17
       },
       "id": 106,
       "fieldConfig": {
@@ -309,7 +309,7 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 13
+        "y": 17
       },
       "id": 107,
       "fieldConfig": {
@@ -379,7 +379,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 13
+        "y": 17
       },
       "id": 108,
       "fieldConfig": {
@@ -448,7 +448,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 17
+        "y": 21
       },
       "id": 109,
       "fieldConfig": {
@@ -509,7 +509,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 17
+        "y": 21
       },
       "id": 110,
       "fieldConfig": {
@@ -580,7 +580,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 17
+        "y": 21
       },
       "id": 111,
       "fieldConfig": {
@@ -642,7 +642,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 17
+        "y": 21
       },
       "id": 112,
       "fieldConfig": {
@@ -708,7 +708,7 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 17
+        "y": 21
       },
       "id": 113,
       "fieldConfig": {
@@ -769,7 +769,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 17
+        "y": 21
       },
       "id": 114,
       "fieldConfig": {
@@ -831,7 +831,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 21
+        "y": 25
       },
       "id": 115,
       "panels": []
@@ -847,7 +847,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 22
+        "y": 26
       },
       "id": 116,
       "fieldConfig": {
@@ -935,7 +935,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 22
+        "y": 26
       },
       "id": 117,
       "fieldConfig": {
@@ -1011,7 +1011,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 30
+        "y": 34
       },
       "id": 118,
       "fieldConfig": {
@@ -1057,11 +1057,11 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (ci_pipeline_id) (ci_pipeline_run_active{ci_pipeline_id=~\"$ci_pipeline_id\"})",
+          "expr": "(sum(ci_pipeline_run_active{ci_pipeline_id=~\"$ci_pipeline_id\"}) or vector(0))",
           "refId": "A",
           "range": true,
           "instant": false,
-          "legendFormat": "{{ci_pipeline_id}}"
+          "legendFormat": "active runs"
         }
       ]
     },
@@ -1076,7 +1076,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 30
+        "y": 34
       },
       "id": 119,
       "fieldConfig": {
@@ -1161,7 +1161,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 38
+        "y": 42
       },
       "id": 120,
       "panels": []
@@ -1177,7 +1177,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 39
+        "y": 43
       },
       "id": 121,
       "fieldConfig": {
@@ -1241,7 +1241,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 39
+        "y": 43
       },
       "id": 122,
       "fieldConfig": {
@@ -1287,13 +1287,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (ci_pipeline_id) (rate(ci_pipeline_run_failed_total{ci_pipeline_id=~\"$ci_pipeline_id\"}[$__rate_interval]))",
+          "expr": "(sum(rate(ci_pipeline_run_failed_total{ci_pipeline_id=~\"$ci_pipeline_id\"}[$__rate_interval])) or vector(0))",
           "refId": "A",
           "range": true,
           "instant": false,
-          "legendFormat": "{{ci_pipeline_id}}"
+          "legendFormat": "failed/s"
         }
-      ]
+      ],
+      "description": "ci_pipeline_run_failed_total only exists once a build has failed \u2192 reads 0 while every build is green."
     },
     {
       "type": "timeseries",
@@ -1306,7 +1307,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 47
+        "y": 51
       },
       "id": 123,
       "fieldConfig": {
@@ -1371,7 +1372,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 47
+        "y": 51
       },
       "id": 124,
       "fieldConfig": {
@@ -1432,7 +1433,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 55
+        "y": 59
       },
       "id": 125,
       "panels": []
@@ -1448,7 +1449,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 56
+        "y": 60
       },
       "id": 126,
       "fieldConfig": {
@@ -1494,7 +1495,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(jenkins_executor_busy)",
+          "expr": "sum(jenkins_executor_busy) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
@@ -1506,7 +1507,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(jenkins_executor_idle)",
+          "expr": "sum(jenkins_executor_idle) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
@@ -1518,7 +1519,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(jenkins_executor_available)",
+          "expr": "sum(jenkins_executor_available) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
@@ -1530,7 +1531,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(jenkins_executor_connecting)",
+          "expr": "sum(jenkins_executor_connecting) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
@@ -1549,7 +1550,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 56
+        "y": 60
       },
       "id": 127,
       "fieldConfig": {
@@ -1595,7 +1596,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(jenkins_queue_blocked)",
+          "expr": "sum(jenkins_queue_blocked) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
@@ -1607,7 +1608,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(jenkins_queue_buildable)",
+          "expr": "sum(jenkins_queue_buildable) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
@@ -1619,7 +1620,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(jenkins_queue_waiting)",
+          "expr": "sum(jenkins_queue_waiting) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
@@ -1638,7 +1639,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 64
+        "y": 68
       },
       "id": 128,
       "fieldConfig": {
@@ -1704,7 +1705,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 64
+        "y": 68
       },
       "id": 129,
       "fieldConfig": {
@@ -1766,7 +1767,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 72
+        "y": 76
       },
       "id": 130,
       "panels": []
@@ -1782,7 +1783,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 73
+        "y": 77
       },
       "id": 131,
       "fieldConfig": {
@@ -1828,7 +1829,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(jenkins_agents_online)",
+          "expr": "sum(jenkins_agents_online) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
@@ -1840,7 +1841,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(jenkins_agents_offline)",
+          "expr": "sum(jenkins_agents_offline) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
@@ -1852,7 +1853,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(jenkins_agents_total)",
+          "expr": "sum(jenkins_agents_total) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
@@ -1871,7 +1872,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 73
+        "y": 77
       },
       "id": 132,
       "fieldConfig": {
@@ -1936,7 +1937,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 73
+        "y": 77
       },
       "id": 133,
       "fieldConfig": {
@@ -2001,7 +2002,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 81
+        "y": 85
       },
       "id": 134,
       "fieldConfig": {
@@ -2047,7 +2048,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(jenkins_scm_event_active_threads)",
+          "expr": "sum(jenkins_scm_event_active_threads) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
@@ -2059,7 +2060,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(jenkins_scm_event_queued_tasks)",
+          "expr": "sum(jenkins_scm_event_queued_tasks) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
@@ -2078,7 +2079,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 81
+        "y": 85
       },
       "id": 135,
       "fieldConfig": {
@@ -2140,7 +2141,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 89
+        "y": 93
       },
       "id": 136,
       "panels": []
@@ -2156,7 +2157,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 90
+        "y": 94
       },
       "id": 137,
       "fieldConfig": {
@@ -2221,7 +2222,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 90
+        "y": 94
       },
       "id": 138,
       "fieldConfig": {
@@ -2285,7 +2286,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 90
+        "y": 94
       },
       "id": 139,
       "fieldConfig": {
@@ -2350,7 +2351,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 98
+        "y": 102
       },
       "id": 140,
       "fieldConfig": {
@@ -2415,7 +2416,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 98
+        "y": 102
       },
       "id": 141,
       "fieldConfig": {
@@ -2477,7 +2478,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 106
+        "y": 110
       },
       "id": 142,
       "panels": []
@@ -2494,7 +2495,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 107
+        "y": 111
       },
       "id": 143,
       "options": {
@@ -2529,7 +2530,7 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 117
+        "y": 121
       },
       "id": 144,
       "fieldConfig": {

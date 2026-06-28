@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.13] - 2026-06-28
+
+Increment over v0.28.12 (Jenkins dashboard idle-state polish).
+
+### Fixed
+- **Jenkins dashboard: no spurious "No data" when the controller is idle.** Controller gauge
+  timeseries (executors, queue, agents, SCM-event pool, active runs) and the failed-builds panel
+  now use `or vector(0)`, so they render `0` instead of "No data" when a sub-series is absent
+  (e.g. no offline agents, no failures yet). The in-dashboard note gained a **"Why a panel reads
+  0 / No data"** section explaining the Kubernetes **ephemeral pod-agent** model (executors/agents
+  are `0` when idle and spike per build), that idle controller panels read `0`, and that the
+  **run-duration percentiles are inherently empty without a recent build** (rate-of-histogram = 0
+  outside the window) — run a build or widen the range. None of these are faults.
+
 ## [v0.28.12] - 2026-06-28
 
 Increment over v0.28.11 (deep Jenkins Controller dashboard).
