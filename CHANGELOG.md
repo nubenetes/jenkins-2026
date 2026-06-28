@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.6] - 2026-06-28
+
+Increment over v0.28.5 (deep CloudNativePG/PostgreSQL dashboard).
+
+### Changed
+- **`CI-CD / PostgreSQL (CloudNativePG)` dashboard rebuilt** from 11 → 62 panels across 10
+  sections, modelled on the official CloudNativePG dashboard + Postgres SRE practice, driven
+  by the live `cnpg_*` metric set (PG 18.3 / current CNPG): cluster health & topology
+  (primary/replicas/version/uptime/switchover/fencing), connections & sessions (by
+  state/instance/db/user, waiting, longest txn), throughput/TPS & row activity (commits vs
+  rollbacks, rollback ratio, tuple ops, temp spill, deadlocks/conflicts), cache & block I/O
+  (hit ratio, read/write time), WAL & checkpoints (bytes/records/FPI, buffers-full, timed vs
+  requested, write/sync time), streaming replication (lag seconds, write/flush/replay lag &
+  diff bytes, slots/retained WAL, WAL receiver), storage + **transaction-ID/multixact
+  wraparound** monitoring, WAL archiving & backups, bgwriter & collector health, and a logs
+  panel with the `$level` filter. New template vars: `pod` (instance) and `datname` (database),
+  both multi-select. All queries verified against the live Grafana Cloud Prometheus.
+
 ## [v0.28.5] - 2026-06-28
 
 Increment over v0.28.4 (Grafana Cloud tier profile).
