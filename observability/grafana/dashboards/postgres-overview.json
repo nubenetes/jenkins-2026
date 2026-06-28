@@ -1348,7 +1348,7 @@
           },
           "editorMode": "code",
           "expr": "-sum by (pod) (rate(cnpg_pg_stat_database_xact_rollback_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "rollback {{pod}}"
@@ -1509,7 +1509,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(cnpg_pg_stat_database_tup_updated_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "updated"
@@ -1521,7 +1521,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(cnpg_pg_stat_database_tup_deleted_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
-          "refId": "A",
+          "refId": "C",
           "range": true,
           "instant": false,
           "legendFormat": "deleted"
@@ -1533,7 +1533,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(cnpg_pg_stat_database_tup_fetched_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
-          "refId": "A",
+          "refId": "D",
           "range": true,
           "instant": false,
           "legendFormat": "fetched"
@@ -1545,7 +1545,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(cnpg_pg_stat_database_tup_returned_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
-          "refId": "A",
+          "refId": "E",
           "range": true,
           "instant": false,
           "legendFormat": "returned"
@@ -1621,7 +1621,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(cnpg_pg_stat_database_temp_bytes_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "temp bytes /s"
@@ -1714,7 +1714,7 @@
           },
           "editorMode": "code",
           "expr": "sum by (pod) (rate(cnpg_pg_stat_database_conflicts_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "conflicts {{pod}}"
@@ -2002,7 +2002,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(cnpg_pg_stat_database_blk_write_time_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "write"
@@ -2155,7 +2155,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(cnpg_collector_wal_fpi{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "full-page images /s"
@@ -2296,7 +2296,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(cnpg_pg_stat_checkpointer_checkpoints_req_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "requested"
@@ -2373,7 +2373,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(cnpg_pg_stat_checkpointer_sync_time_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "sync"
@@ -2546,7 +2546,7 @@
           },
           "editorMode": "code",
           "expr": "avg(cnpg_pg_stat_replication_flush_lag_seconds{namespace=\"$namespace\", pod=~\"$pod\"}) or vector(0)",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "flush"
@@ -2558,7 +2558,7 @@
           },
           "editorMode": "code",
           "expr": "avg(cnpg_pg_stat_replication_replay_lag_seconds{namespace=\"$namespace\", pod=~\"$pod\"}) or vector(0)",
-          "refId": "A",
+          "refId": "C",
           "range": true,
           "instant": false,
           "legendFormat": "replay"
@@ -2635,7 +2635,7 @@
           },
           "editorMode": "code",
           "expr": "avg(cnpg_pg_stat_replication_write_diff_bytes{namespace=\"$namespace\", pod=~\"$pod\"}) or vector(0)",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "write"
@@ -2647,7 +2647,7 @@
           },
           "editorMode": "code",
           "expr": "avg(cnpg_pg_stat_replication_flush_diff_bytes{namespace=\"$namespace\", pod=~\"$pod\"}) or vector(0)",
-          "refId": "A",
+          "refId": "C",
           "range": true,
           "instant": false,
           "legendFormat": "flush"
@@ -2659,7 +2659,7 @@
           },
           "editorMode": "code",
           "expr": "avg(cnpg_pg_stat_replication_replay_diff_bytes{namespace=\"$namespace\", pod=~\"$pod\"}) or vector(0)",
-          "refId": "A",
+          "refId": "D",
           "range": true,
           "instant": false,
           "legendFormat": "replay"
@@ -3565,7 +3565,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(cnpg_pg_stat_archiver_failed_count_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "failed /s"
@@ -3719,7 +3719,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(cnpg_pg_stat_bgwriter_buffers_alloc_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "allocated"
@@ -3731,7 +3731,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(cnpg_pg_stat_checkpointer_buffers_written_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
-          "refId": "A",
+          "refId": "C",
           "range": true,
           "instant": false,
           "legendFormat": "checkpointer written"

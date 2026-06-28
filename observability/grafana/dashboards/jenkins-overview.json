@@ -903,7 +903,7 @@
           },
           "editorMode": "code",
           "expr": "sum(increase(ci_pipeline_run_failed_total[$__rate_interval])) or vector(0)",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "failed"
@@ -915,7 +915,7 @@
           },
           "editorMode": "code",
           "expr": "sum(increase(ci_pipeline_run_aborted_total[$__rate_interval])) or vector(0)",
-          "refId": "A",
+          "refId": "C",
           "range": true,
           "instant": false,
           "legendFormat": "aborted"
@@ -993,7 +993,7 @@
           },
           "editorMode": "code",
           "expr": "sum(increase(ci_pipeline_run_started_total[$__rate_interval])) or vector(0)",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "started"
@@ -1005,7 +1005,7 @@
           },
           "editorMode": "code",
           "expr": "sum(increase(ci_pipeline_run_completed_total[$__rate_interval])) or vector(0)",
-          "refId": "A",
+          "refId": "C",
           "range": true,
           "instant": false,
           "legendFormat": "completed"
@@ -1146,7 +1146,7 @@
           },
           "editorMode": "code",
           "expr": "(histogram_quantile(0.95, sum by (le) (rate(ci_pipeline_run_duration_seconds_bucket[$__range]))) >= 0) or vector(0)",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "p95"
@@ -1158,7 +1158,7 @@
           },
           "editorMode": "code",
           "expr": "(histogram_quantile(0.99, sum by (le) (rate(ci_pipeline_run_duration_seconds_bucket[$__range]))) >= 0) or vector(0)",
-          "refId": "A",
+          "refId": "C",
           "range": true,
           "instant": false,
           "legendFormat": "p99"
@@ -1589,7 +1589,7 @@
           },
           "editorMode": "code",
           "expr": "sum(jenkins_agents_total) or vector(0)",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "total"
@@ -1601,7 +1601,7 @@
           },
           "editorMode": "code",
           "expr": "sum(jenkins_agents_offline) or vector(0)",
-          "refId": "A",
+          "refId": "C",
           "range": true,
           "instant": false,
           "legendFormat": "offline"
@@ -1744,7 +1744,7 @@
           },
           "editorMode": "code",
           "expr": "sum(jenkins_executor_idle) or vector(0)",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "idle"
@@ -1756,7 +1756,7 @@
           },
           "editorMode": "code",
           "expr": "sum(jenkins_executor_available) or vector(0)",
-          "refId": "A",
+          "refId": "C",
           "range": true,
           "instant": false,
           "legendFormat": "available"
@@ -1833,7 +1833,7 @@
           },
           "editorMode": "code",
           "expr": "sum(jenkins_queue_buildable) or vector(0)",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "buildable"
@@ -1845,7 +1845,7 @@
           },
           "editorMode": "code",
           "expr": "sum(jenkins_queue_waiting) or vector(0)",
-          "refId": "A",
+          "refId": "C",
           "range": true,
           "instant": false,
           "legendFormat": "waiting"

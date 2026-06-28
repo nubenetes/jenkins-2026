@@ -963,7 +963,7 @@
           },
           "editorMode": "code",
           "expr": "max(vus_max{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\", k6_preset=~\"$k6_preset\"})",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "max VUs"
@@ -1104,7 +1104,7 @@
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.99, sum by (le) (rate(iteration_duration_milliseconds_bucket{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\", k6_preset=~\"$k6_preset\"}[$__rate_interval])))",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "p99"
@@ -1193,7 +1193,7 @@
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.95, sum by (le) (rate(http_req_duration_milliseconds_bucket{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\", k6_preset=~\"$k6_preset\"}[$__rate_interval])))",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "p95"
@@ -1205,7 +1205,7 @@
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.99, sum by (le) (rate(http_req_duration_milliseconds_bucket{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\", k6_preset=~\"$k6_preset\"}[$__rate_interval])))",
-          "refId": "A",
+          "refId": "C",
           "range": true,
           "instant": false,
           "legendFormat": "p99"
@@ -1486,7 +1486,7 @@
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.95, sum by (le) (rate(http_req_duration_milliseconds_bucket{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\", k6_preset=~\"$k6_preset\"}[$__rate_interval])))",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "total"
@@ -1563,7 +1563,7 @@
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.95, sum by (le) (rate(http_req_connecting_milliseconds_bucket{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\", k6_preset=~\"$k6_preset\"}[$__rate_interval])))",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "connecting"
@@ -1575,7 +1575,7 @@
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.95, sum by (le) (rate(http_req_tls_handshaking_milliseconds_bucket{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\", k6_preset=~\"$k6_preset\"}[$__rate_interval])))",
-          "refId": "A",
+          "refId": "C",
           "range": true,
           "instant": false,
           "legendFormat": "tls"
@@ -1651,7 +1651,7 @@
           },
           "editorMode": "code",
           "expr": "histogram_quantile(0.95, sum by (le) (rate(http_req_receiving_milliseconds_bucket{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\", k6_preset=~\"$k6_preset\"}[$__rate_interval])))",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "receiving"
@@ -1727,7 +1727,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(http_req_connecting_milliseconds_sum{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\", k6_preset=~\"$k6_preset\"}[$__rate_interval]))/clamp_min(sum(rate(http_req_connecting_milliseconds_count{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\", k6_preset=~\"$k6_preset\"}[$__rate_interval])),1)",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "connecting"
@@ -1739,7 +1739,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(http_req_tls_handshaking_milliseconds_sum{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\", k6_preset=~\"$k6_preset\"}[$__rate_interval]))/clamp_min(sum(rate(http_req_tls_handshaking_milliseconds_count{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\", k6_preset=~\"$k6_preset\"}[$__rate_interval])),1)",
-          "refId": "A",
+          "refId": "C",
           "range": true,
           "instant": false,
           "legendFormat": "tls"
@@ -1751,7 +1751,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(http_req_sending_milliseconds_sum{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\", k6_preset=~\"$k6_preset\"}[$__rate_interval]))/clamp_min(sum(rate(http_req_sending_milliseconds_count{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\", k6_preset=~\"$k6_preset\"}[$__rate_interval])),1)",
-          "refId": "A",
+          "refId": "D",
           "range": true,
           "instant": false,
           "legendFormat": "sending"
@@ -1763,7 +1763,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(http_req_waiting_milliseconds_sum{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\", k6_preset=~\"$k6_preset\"}[$__rate_interval]))/clamp_min(sum(rate(http_req_waiting_milliseconds_count{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\", k6_preset=~\"$k6_preset\"}[$__rate_interval])),1)",
-          "refId": "A",
+          "refId": "E",
           "range": true,
           "instant": false,
           "legendFormat": "waiting"
@@ -1775,7 +1775,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(http_req_receiving_milliseconds_sum{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\", k6_preset=~\"$k6_preset\"}[$__rate_interval]))/clamp_min(sum(rate(http_req_receiving_milliseconds_count{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\", k6_preset=~\"$k6_preset\"}[$__rate_interval])),1)",
-          "refId": "A",
+          "refId": "F",
           "range": true,
           "instant": false,
           "legendFormat": "receiving"
@@ -1930,7 +1930,7 @@
           },
           "editorMode": "code",
           "expr": "sum(rate(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\", k6_preset=~\"$k6_preset\"}[$__rate_interval]))",
-          "refId": "A",
+          "refId": "B",
           "range": true,
           "instant": false,
           "legendFormat": "total/s"

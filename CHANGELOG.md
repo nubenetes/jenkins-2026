@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.20] - 2026-06-28
+
+Increment over v0.28.19 (fix duplicate-refId "No data" across all generated dashboards).
+
+### Fixed
+- **Multi-query panels showed "No data" — duplicate `refId: "A"`.** The dashboard generator gave
+  every query in a panel the same `refId: "A"`; Grafana requires unique refIds per panel and
+  rejects the whole panel (`[query.duplicateRefId]`) → "No data". This hit only **multi-query
+  timeseries** (single-query panels were fine), which is why it looked intermittent. Reassigned
+  refIds to `A/B/C…` per target across **all generated dashboards** (Jenkins, PostgreSQL/CNPG,
+  Microservices, k6 — 48 queries). Single-query, JVM, RUM and Tekton dashboards were unaffected.
+  (Diagnosed with help from Grafana's assistant, which flagged the duplicate refIds.)
+
 ## [v0.28.19] - 2026-06-28
 
 Increment over v0.28.18 (Jenkins dashboard: NaN guard + readable low-volume panels).
