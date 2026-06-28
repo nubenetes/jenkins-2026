@@ -393,12 +393,81 @@ The canonical JSON files live in [`observability/grafana/dashboards/`](../observ
 | Dashboard (uid) | What it shows | Shipped |
 |---|---|---|
 | `microservices-overview` | Per-service HTTP RED, JVM/GC, restarts, traces table, pod logs | always |
+| `jvm-internals` | Deep JVM diagnostics: heap by pool + live-set-after-GC, non-heap, GC time/freq/pause-quantiles by collector, threads (count/state/daemon), CPU (process+system+load), classes, buffer pools, JVM/runtime context | always |
 | `k6-smoke-overview` | k6 iterations, checks/req-failed/p95 thresholds, run traces + logs | always |
 | `postgres-overview` | PostgreSQL / CloudNativePG: instances up, connections, DB size, replication lag, WAL rate, per-instance panels + Postgres pod logs (needs the CNPG `cnpg_*`/`pg_*` metrics scraped — see [Database (CNPG) observability](#database-cnpg-observability)) | always |
+| `rum-frontend` | Angular **Real User Monitoring** (Grafana Faro): Core Web Vitals (LCP/INP/CLS/TTFB/FCP), JS errors, sessions, browser breakdown, browser→backend traces | always |
 | `jenkins-overview` | Jenkins CI: active runs, queue, executors, pipeline results, build traces, pod logs | only `ci.engine=jenkins` |
 | `tekton-overview` | Tekton pipeline runs, task durations, build traces, pipeline pod logs | only `ci.engine=tekton` |
 
 > Adding a dashboard = drop a `<name>.json` into [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) and run the variant generators (below). In `oss` mode the Helm-chart ConfigMap picks it up automatically (it globs `*.json`); for the other modes `scripts/07-grafana-dashboards.sh` publishes every `*.json`. Only `jenkins-overview` / `tekton-overview` are CI-engine-gated; everything else ships in all modes.
+
+#### Dashboard inventory — what each one offers
+
+The master matrix below maps every dashboard to its purpose, signals, scope and the
+questions it answers; the per-dashboard detail follows.
+
+| Dashboard | Purpose / audience | Datasource(s) | Scope | Env / namespace filter | Example questions it answers | Doc |
+|---|---|---|---|---|---|---|
+| **microservices-overview** | "Are the Java services healthy?" — SRE/dev day-to-day | Prom · Loki · Tempo | gateway + jhipstersamplemicroservice | `deployment_environment` (stable/develop) · `service_name` · `namespace` | Is the error rate up? p95 latency? which service? recent traces/logs? | [502](502-MICROSERVICES_GITOPS.md) |
+| **jvm-internals** | Deep JVM diagnostics — perf/GC tuning | Prom | the two Java services' JVMs | **`k8s_namespace_name`** · `service_name` *(JVM metrics carry these, **not** `deployment_environment`)* | GC pause too long? heap leak? thread/CPU bottleneck? buffer-pool growth? which JDK/agent version? | [303](303-JVM-TUNING.md) |
+| **postgres-overview** | DB health — both tiers | Prom · Loki | CloudNativePG clusters | `namespace` (microservices=stable / -develop) | Connections saturated? replication lag? DB size growth? WAL rate? | [502](502-MICROSERVICES_GITOPS.md) |
+| **k6-smoke-overview** | Load/traffic results | Prom · Tempo · Loki | k6 runs | `deployment_environment` | Did the run meet p95/error thresholds? how many checks passed? | [302](302-K6_LOAD_TESTING.md) |
+| **rum-frontend** | Angular **Real User Monitoring** (Faro) | Loki · Tempo | the browser SPA | `service_name` (app) · `deployment_environment` | Are Core Web Vitals (LCP/INP/CLS) good? JS errors? sessions? full browser→backend trace? | [202](202-MICROSERVICES-APP-ARCHITECTURE.md) |
+| **jenkins-overview** | Jenkins CI engine (when active) | Prom · Tempo · Loki | the Jenkins controller | `ci_pipeline_id` *(single cluster-wide CI — no per-env)* | Build success/duration trend? queue/executors? failing pipeline? | [101](101-GITHUB_ACTIONS_WORKFLOWS.md) / [401](401-JENKINS.md) |
+| **tekton-overview** | Tekton CI engine (when active) | Prom · Tempo · Loki | the Tekton controller | — | PipelineRun durations/results? task failures? | [403](403-TEKTON.md) |
+
+> **Label-model gotcha.** Backend **app** metrics (HTTP, traces, logs) carry
+> `deployment_environment` (stable/develop). **JVM** metrics and **RUM** signals do
+> **not** — JVM filters by `k8s_namespace_name` (`microservices`=stable /
+> `microservices-develop`=develop) + `service_name`; RUM by `service_name` (the Faro
+> app) + `deployment_environment`. So the env selector differs per dashboard by design.
+
+<details>
+<summary>📋 <b>Per-dashboard detail — key panels & questions answered</b></summary>
+
+**`microservices-overview`** — the front door. *Key panels:* HTTP request rate, 5xx
+error rate and p95 latency per service (`http_server_request_duration_seconds`);
+summary JVM heap + GC; pod restarts; a Tempo traces table; a Loki pod-logs panel.
+*Answers:* is a service erroring or slow, and which? what do its latest traces/logs
+say? did a pod just restart? → drill into `jvm-internals` for the JVM root cause.
+
+**`jvm-internals`** — the JVM microscope (modelled on community dashboards 20429 +
+18812, all queries OTel-native). *Key panels:* heap used **by pool** (Eden/Survivor/
+Tenured) + committed/max + **live-set-after-GC** (leak signal); non-heap (Metaspace,
+CodeHeap, Compressed Class); **GC** time-rate / frequency / pause **p95-p99 by
+collector** (`jvm_gc_name`); threads (count, **by state**, daemon split); CPU
+(process + system utilization + load avg); class loading; **buffer pools** (direct/
+mapped); and a **JVM/runtime context table** (JDK name/impl/version, OTel agent
+version, OS/arch — from `target_info`). *Answers:* GC pauses too long/frequent? heap
+or Metaspace leaking? thread/CPU-bound? which exact JDK + agent is running? See the
+[symptom → panel troubleshooting matrix in 303](303-JVM-TUNING.md).
+
+**`postgres-overview`** — CloudNativePG health for **both** tiers via the `namespace`
+variable. *Key panels:* instances up (`cnpg_collector_up`), backends/connections,
+DB size, replication lag, WAL rate, per-instance panels, Postgres pod logs.
+*Answers:* are we near the connection cap? is a replica lagging? is a DB growing
+unexpectedly? (The lean develop tier runs 1 instance/1 pooler — see [502](502-MICROSERVICES_GITOPS.md).)
+
+**`k6-smoke-overview`** — the result board for the [k6 engine](302-K6_LOAD_TESTING.md),
+split by `deployment_environment`. *Key panels:* iterations/VUs, checks pass rate,
+`http_req_failed`, p95 latency vs the threshold, plus the run's traces + logs.
+*Answers:* did this run meet its p95/error budget? where did it break?
+
+**`rum-frontend`** — Angular **Real User Monitoring** via Grafana Faro (data arrives
+through the otel-collector **faro receiver** → Loki/Tempo). *Key panels:* **Core Web
+Vitals** (LCP/INP/CLS/TTFB/FCP with Google's good/needs-improvement/poor thresholds),
+JS error rate + recent exceptions, sessions over time, browser/OS breakdown, and
+browser→gateway→microservice **end-to-end traces**. *Answers:* is the UI fast for real
+users? are there client-side errors? *Populates once the SPA is instrumented with the
+Faro Web SDK — the receiver + pipeline are already live; see the [RUM roadmap in 202](202-MICROSERVICES-APP-ARCHITECTURE.md).*
+
+**`jenkins-overview`** / **`tekton-overview`** — the CI-engine board (only the active
+engine's is published). *Key panels:* run/build counts, durations, success/failure
+trend, queue/executors (Jenkins), build traces + CI pod logs. Jenkins is a single
+cluster-wide controller, so it filters by `ci_pipeline_id`, not by environment.
+
+</details>
 
 #### Where everything lives in Grafana (folders)
 

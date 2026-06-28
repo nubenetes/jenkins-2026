@@ -96,7 +96,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max(jvm_cpu_recent_utilization_ratio{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"})",
+          "expr": "max(jvm_cpu_recent_utilization_ratio{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"})",
           "legendFormat": "JVM CPU Load",
           "refId": "A"
         }
@@ -148,7 +148,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(jvm_memory_used_bytes{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\", jvm_memory_type=\"heap\"})",
+          "expr": "sum(jvm_memory_used_bytes{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\", jvm_memory_type=\"heap\"})",
           "legendFormat": "Heap Used",
           "refId": "A"
         }
@@ -200,7 +200,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(jvm_memory_used_bytes{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"})",
+          "expr": "sum(jvm_memory_used_bytes{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"})",
           "legendFormat": "Total Memory Used",
           "refId": "A"
         }
@@ -269,7 +269,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(jvm_memory_used_bytes{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\", jvm_memory_type=\"heap\"}) / sum(jvm_memory_limit_bytes{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\", jvm_memory_type=\"heap\"} > 0)",
+          "expr": "sum(jvm_memory_used_bytes{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\", jvm_memory_type=\"heap\"}) / sum(jvm_memory_limit_bytes{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\", jvm_memory_type=\"heap\"} > 0)",
           "legendFormat": "Heap Used %",
           "refId": "A"
         }
@@ -321,7 +321,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(jvm_thread_count{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"})",
+          "expr": "sum(jvm_thread_count{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"})",
           "legendFormat": "Live Threads",
           "refId": "A"
         }
@@ -390,7 +390,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(jvm_gc_duration_seconds_sum{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval]))",
+          "expr": "sum(rate(jvm_gc_duration_seconds_sum{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval]))",
           "legendFormat": "GC Time /s",
           "refId": "A"
         }
@@ -438,7 +438,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (service_name)(jvm_class_count{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"})",
+          "expr": "sum by (service_name)(jvm_class_count{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"})",
           "legendFormat": "{{service_name}} loaded",
           "refId": "A"
         },
@@ -447,7 +447,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (service_name)(rate(jvm_class_loaded_total{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval]))",
+          "expr": "sum by (service_name)(rate(jvm_class_loaded_total{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval]))",
           "legendFormat": "{{service_name}} load/s",
           "refId": "B"
         },
@@ -456,7 +456,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (service_name)(rate(jvm_class_unloaded_total{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval]))",
+          "expr": "sum by (service_name)(rate(jvm_class_unloaded_total{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval]))",
           "legendFormat": "{{service_name}} unload/s",
           "refId": "C"
         }
@@ -504,7 +504,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (service_name, jvm_thread_daemon)(jvm_thread_count{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"})",
+          "expr": "sum by (service_name, jvm_thread_daemon)(jvm_thread_count{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"})",
           "legendFormat": "{{service_name}} daemon={{jvm_thread_daemon}}",
           "refId": "A"
         }
@@ -552,7 +552,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (service_name, jvm_thread_state)(jvm_thread_count{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"})",
+          "expr": "sum by (service_name, jvm_thread_state)(jvm_thread_count{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"})",
           "legendFormat": "{{service_name}} {{jvm_thread_state}}",
           "refId": "A"
         }
@@ -600,7 +600,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max by (service_name)(jvm_cpu_recent_utilization_ratio{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"})",
+          "expr": "max by (service_name)(jvm_cpu_recent_utilization_ratio{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"})",
           "legendFormat": "{{service_name}} util",
           "refId": "A"
         },
@@ -609,7 +609,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (service_name)(rate(jvm_cpu_time_seconds_total{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval]))",
+          "expr": "sum by (service_name)(rate(jvm_cpu_time_seconds_total{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval]))",
           "legendFormat": "{{service_name}} cores",
           "refId": "B"
         }
@@ -670,7 +670,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (service_name, jvm_gc_name)(rate(jvm_gc_duration_seconds_sum{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval]))",
+          "expr": "sum by (service_name, jvm_gc_name)(rate(jvm_gc_duration_seconds_sum{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval]))",
           "legendFormat": "{{service_name}} {{jvm_gc_name}}",
           "refId": "A"
         }
@@ -718,7 +718,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (service_name, jvm_gc_name)(rate(jvm_gc_duration_seconds_count{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval]))",
+          "expr": "sum by (service_name, jvm_gc_name)(rate(jvm_gc_duration_seconds_count{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval]))",
           "legendFormat": "{{service_name}} {{jvm_gc_name}}",
           "refId": "A"
         }
@@ -766,7 +766,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, service_name, jvm_gc_name)(rate(jvm_gc_duration_seconds_bucket{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le, service_name, jvm_gc_name)(rate(jvm_gc_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval])))",
           "legendFormat": "{{service_name}} {{jvm_gc_name}} p95",
           "refId": "A"
         },
@@ -775,7 +775,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.99, sum by (le, service_name, jvm_gc_name)(rate(jvm_gc_duration_seconds_bucket{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le, service_name, jvm_gc_name)(rate(jvm_gc_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval])))",
           "legendFormat": "{{service_name}} {{jvm_gc_name}} p99",
           "refId": "B"
         }
@@ -836,7 +836,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (service_name)(jvm_memory_used_bytes{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\", jvm_memory_type=\"heap\"})",
+          "expr": "sum by (service_name)(jvm_memory_used_bytes{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\", jvm_memory_type=\"heap\"})",
           "legendFormat": "{{service_name}} used",
           "refId": "A"
         },
@@ -845,7 +845,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (service_name)(jvm_memory_committed_bytes{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\", jvm_memory_type=\"heap\"})",
+          "expr": "sum by (service_name)(jvm_memory_committed_bytes{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\", jvm_memory_type=\"heap\"})",
           "legendFormat": "{{service_name}} committed",
           "refId": "B"
         },
@@ -854,7 +854,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (service_name)(jvm_memory_limit_bytes{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\", jvm_memory_type=\"heap\"} > 0)",
+          "expr": "sum by (service_name)(jvm_memory_limit_bytes{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\", jvm_memory_type=\"heap\"} > 0)",
           "legendFormat": "{{service_name}} max",
           "refId": "C"
         }
@@ -902,7 +902,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (service_name)(jvm_memory_used_bytes{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\", jvm_memory_type=\"non_heap\"})",
+          "expr": "sum by (service_name)(jvm_memory_used_bytes{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\", jvm_memory_type=\"non_heap\"})",
           "legendFormat": "{{service_name}} used",
           "refId": "A"
         },
@@ -911,7 +911,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (service_name)(jvm_memory_committed_bytes{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\", jvm_memory_type=\"non_heap\"})",
+          "expr": "sum by (service_name)(jvm_memory_committed_bytes{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\", jvm_memory_type=\"non_heap\"})",
           "legendFormat": "{{service_name}} committed",
           "refId": "B"
         }
@@ -975,7 +975,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (jvm_memory_pool_name)(jvm_memory_used_bytes{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"})",
+          "expr": "sum by (jvm_memory_pool_name)(jvm_memory_used_bytes{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"})",
           "legendFormat": "{{jvm_memory_pool_name}}",
           "refId": "A"
         }
@@ -1023,7 +1023,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (jvm_memory_pool_name)(jvm_memory_used_after_last_gc_bytes{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"})",
+          "expr": "sum by (jvm_memory_pool_name)(jvm_memory_used_after_last_gc_bytes{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"})",
           "legendFormat": "{{jvm_memory_pool_name}}",
           "refId": "A"
         }
@@ -1084,7 +1084,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (service_name, jvm_buffer_pool_name)(jvm_buffer_memory_used_bytes{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"})",
+          "expr": "sum by (service_name, jvm_buffer_pool_name)(jvm_buffer_memory_used_bytes{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"})",
           "legendFormat": "{{service_name}} {{jvm_buffer_pool_name}}",
           "refId": "A"
         }
@@ -1132,7 +1132,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (service_name, jvm_buffer_pool_name)(jvm_buffer_count{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"})",
+          "expr": "sum by (service_name, jvm_buffer_pool_name)(jvm_buffer_count{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"})",
           "legendFormat": "{{service_name}} {{jvm_buffer_pool_name}}",
           "refId": "A"
         }
@@ -1181,7 +1181,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "refId": "A",
-          "expr": "max by (service_name)(jvm_cpu_recent_utilization_ratio{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"})",
+          "expr": "max by (service_name)(jvm_cpu_recent_utilization_ratio{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"})",
           "legendFormat": "{{service_name}} process cpu"
         },
         {
@@ -1190,7 +1190,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "refId": "B",
-          "expr": "max by (service_name)(jvm_system_cpu_utilization_ratio{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"})",
+          "expr": "max by (service_name)(jvm_system_cpu_utilization_ratio{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"})",
           "legendFormat": "{{service_name}} system cpu"
         },
         {
@@ -1199,7 +1199,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "refId": "C",
-          "expr": "max by (service_name)(jvm_system_cpu_load_1m{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"})",
+          "expr": "max by (service_name)(jvm_system_cpu_load_1m{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"})",
           "legendFormat": "{{service_name}} load 1m"
         }
       ],
@@ -1259,7 +1259,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.50, sum by (le, service_name)(rate(http_server_request_duration_seconds_bucket{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.50, sum by (le, service_name)(rate(http_server_request_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval])))",
           "legendFormat": "{{service_name}} p50",
           "refId": "A"
         },
@@ -1268,7 +1268,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, service_name)(rate(http_server_request_duration_seconds_bucket{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le, service_name)(rate(http_server_request_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval])))",
           "legendFormat": "{{service_name}} p95",
           "refId": "B"
         },
@@ -1277,7 +1277,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.99, sum by (le, service_name)(rate(http_server_request_duration_seconds_bucket{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.99, sum by (le, service_name)(rate(http_server_request_duration_seconds_bucket{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval])))",
           "legendFormat": "{{service_name}} p99",
           "refId": "C"
         }
@@ -1325,7 +1325,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (service_name, http_response_status_code)(rate(http_server_request_duration_seconds_count{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval]))",
+          "expr": "sum by (service_name, http_response_status_code)(rate(http_server_request_duration_seconds_count{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval]))",
           "legendFormat": "{{service_name}} [{{http_response_status_code}}]",
           "refId": "A"
         }
@@ -1394,7 +1394,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * (sum(rate(http_server_request_duration_seconds_count{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\", http_response_status_code=~\"5..\"}[$__rate_interval])) or vector(0)) / sum(rate(http_server_request_duration_seconds_count{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval]))",
+          "expr": "100 * (sum(rate(http_server_request_duration_seconds_count{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\", http_response_status_code=~\"5..\"}[$__rate_interval])) or vector(0)) / sum(rate(http_server_request_duration_seconds_count{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval]))",
           "legendFormat": "HTTP 5xx error rate",
           "refId": "A"
         }
@@ -1422,7 +1422,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "target_info{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"}",
+          "expr": "target_info{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"}",
           "format": "table",
           "instant": true,
           "refId": "A"
@@ -1534,7 +1534,10 @@
         "type": "datasource"
       },
       {
-        "current": {},
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
         "datasource": {
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
@@ -1542,9 +1545,9 @@
         "definition": "label_values(jvm_memory_used_bytes, k8s_namespace_name)",
         "description": "Tier: stable = namespace microservices, develop = microservices-develop. JVM/app metrics carry k8s_namespace_name (not deployment_environment), so namespace is the tier discriminator.",
         "hide": 0,
-        "includeAll": false,
-        "label": "Tier (namespace)",
-        "multi": false,
+        "includeAll": true,
+        "label": "Namespace (All incl. Jenkins)",
+        "multi": true,
         "name": "namespace",
         "options": [],
         "query": {
@@ -1559,17 +1562,14 @@
       },
       {
         "current": {
-          "selected": true,
           "text": "All",
-          "value": [
-            "$__all"
-          ]
+          "value": "$__all"
         },
         "datasource": {
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "definition": "label_values(jvm_memory_used_bytes{k8s_namespace_name=\"$namespace\"}, service_name)",
+        "definition": "label_values(jvm_memory_used_bytes, service_name)",
         "hide": 0,
         "includeAll": true,
         "allValue": ".+",
@@ -1577,14 +1577,15 @@
         "name": "service_name",
         "options": [],
         "query": {
-          "query": "label_values(jvm_memory_used_bytes{k8s_namespace_name=\"$namespace\"}, service_name)",
+          "query": "label_values(jvm_memory_used_bytes, service_name)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 2,
         "regex": "",
         "skipUrlSync": false,
         "sort": 1,
-        "type": "query"
+        "type": "query",
+        "label": "Service (JVM app)"
       }
     ]
   },
