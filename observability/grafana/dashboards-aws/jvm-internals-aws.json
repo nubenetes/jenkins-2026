@@ -1564,7 +1564,7 @@
   },
   "timepicker": {},
   "timezone": "",
-  "title": "CI-CD JVM internals (microservices)",
+  "title": "CI-CD JVM internals (all Java services + Jenkins)",
   "uid": "jenkins2026-jvm-internals",
   "version": 2,
   "weekStart": ""
