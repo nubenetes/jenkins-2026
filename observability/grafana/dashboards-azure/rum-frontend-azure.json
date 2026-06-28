@@ -1,21 +1,1479 @@
 {
-  "uid": "jenkins2026-rum-frontend",
-  "title": "CI-CD Frontend RUM (Angular / Faro)",
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "folderUID": "jenkins-2026",
+  "graphTooltip": 0,
+  "links": [],
+  "panels": [
+    {
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "content": "**Frontend RUM (Real User Monitoring) for the Angular SPA via Grafana Faro.** The `faro` receiver + traces/logs pipeline are **live** in the otel-collector (browser \u2192 collector \u2192 Grafana Cloud). Panels populate **once the Angular app is instrumented with the Faro Web SDK**. Data model: Faro beacon \u2192 OTLP \u2192 Loki (labels `service_name`=Faro app, `deployment_environment`, `kind`\u2208{log,measurement,exception,event}) + Tempo (browser spans). Web-Vitals thresholds follow Google\u2019s good/needs-improvement/poor bands.\n\n| Section | What it answers |\n|---|---|\n| **Overview** | Session count, exception count, Web-Vitals KPIs (LCP / INP / CLS / FCP / TTFB) and browser diversity |\n| **Core Web Vitals (p75)** | p75 stat cards + trend lines for all five Web-Vitals metrics |\n| **Errors & exceptions** | Exception rate over time, top browsers by exceptions, raw exception log stream |\n| **Sessions & audience** | Session trend, browser + OS/mobile breakdown |\n| **Live RUM logs & browser traces** | Full Faro event stream and Tempo browser trace list |",
+        "mode": "markdown"
+      },
+      "title": "About this dashboard",
+      "type": "text"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 3
+      },
+      "id": 2,
+      "panels": [],
+      "title": "Overview",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "azure-monitor-oob"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "operation_Id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Correlate: filter this trace (operation_Id)",
+                    "url": "?var-operation_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 4
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "azure-monitor-oob"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "${appinsights}"
+            ],
+            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
+            "dashboardTime": true,
+            "resultFormat": "table"
+          },
+          "refId": "A"
+        }
+      ],
+      "title": "Sessions",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "azure-monitor-oob"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "operation_Id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Correlate: filter this trace (operation_Id)",
+                    "url": "?var-operation_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 4
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "azure-monitor-oob"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "${appinsights}"
+            ],
+            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
+            "dashboardTime": true,
+            "resultFormat": "table"
+          },
+          "refId": "A"
+        }
+      ],
+      "title": "Exceptions",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "azure-monitor-oob"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "operation_Id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Correlate: filter this trace (operation_Id)",
+                    "url": "?var-operation_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 8,
+        "y": 4
+      },
+      "id": 5,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "azure-monitor-oob"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "${appinsights}"
+            ],
+            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
+            "dashboardTime": true,
+            "resultFormat": "table"
+          },
+          "refId": "A"
+        }
+      ],
+      "title": "Measurements (Web-Vitals samples)",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "azure-monitor-oob"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "operation_Id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Correlate: filter this trace (operation_Id)",
+                    "url": "?var-operation_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 13,
+        "y": 4
+      },
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "azure-monitor-oob"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "${appinsights}"
+            ],
+            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
+            "dashboardTime": true,
+            "resultFormat": "table"
+          },
+          "refId": "A"
+        }
+      ],
+      "title": "Total RUM events",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "azure-monitor-oob"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "operation_Id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Correlate: filter this trace (operation_Id)",
+                    "url": "?var-operation_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 4
+      },
+      "id": 7,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "azure-monitor-oob"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "${appinsights}"
+            ],
+            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
+            "dashboardTime": true,
+            "resultFormat": "table"
+          },
+          "refId": "A"
+        }
+      ],
+      "title": "Browsers seen",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "id": 8,
+      "panels": [],
+      "title": "Core Web Vitals (p75)",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "azure-monitor-oob"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "operation_Id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Correlate: filter this trace (operation_Id)",
+                    "url": "?var-operation_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 0,
+        "y": 9
+      },
+      "id": 9,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "azure-monitor-oob"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "${appinsights}"
+            ],
+            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
+            "dashboardTime": true,
+            "resultFormat": "table"
+          },
+          "refId": "A"
+        }
+      ],
+      "title": "LCP",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "azure-monitor-oob"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "operation_Id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Correlate: filter this trace (operation_Id)",
+                    "url": "?var-operation_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 5,
+        "y": 9
+      },
+      "id": 10,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "azure-monitor-oob"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "${appinsights}"
+            ],
+            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
+            "dashboardTime": true,
+            "resultFormat": "table"
+          },
+          "refId": "A"
+        }
+      ],
+      "title": "INP",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "azure-monitor-oob"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "operation_Id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Correlate: filter this trace (operation_Id)",
+                    "url": "?var-operation_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 10,
+        "y": 9
+      },
+      "id": 11,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "azure-monitor-oob"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "${appinsights}"
+            ],
+            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
+            "dashboardTime": true,
+            "resultFormat": "table"
+          },
+          "refId": "A"
+        }
+      ],
+      "title": "CLS",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "azure-monitor-oob"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "operation_Id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Correlate: filter this trace (operation_Id)",
+                    "url": "?var-operation_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 14,
+        "y": 9
+      },
+      "id": 12,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "azure-monitor-oob"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "${appinsights}"
+            ],
+            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
+            "dashboardTime": true,
+            "resultFormat": "table"
+          },
+          "refId": "A"
+        }
+      ],
+      "title": "FCP",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "azure-monitor-oob"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "operation_Id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Correlate: filter this trace (operation_Id)",
+                    "url": "?var-operation_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 19,
+        "y": 9
+      },
+      "id": 13,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "azure-monitor-oob"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "${appinsights}"
+            ],
+            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
+            "dashboardTime": true,
+            "resultFormat": "table"
+          },
+          "refId": "A"
+        }
+      ],
+      "title": "TTFB",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "azure-monitor-oob"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "operation_Id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Correlate: filter this trace (operation_Id)",
+                    "url": "?var-operation_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 13
+      },
+      "id": 14,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "azure-monitor-oob"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "${appinsights}"
+            ],
+            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
+            "dashboardTime": true,
+            "resultFormat": "table"
+          },
+          "refId": "A"
+        }
+      ],
+      "title": "LCP p75 over time",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "azure-monitor-oob"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "operation_Id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Correlate: filter this trace (operation_Id)",
+                    "url": "?var-operation_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 8,
+        "y": 13
+      },
+      "id": 15,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "azure-monitor-oob"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "${appinsights}"
+            ],
+            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
+            "dashboardTime": true,
+            "resultFormat": "table"
+          },
+          "refId": "A"
+        }
+      ],
+      "title": "INP p75 over time",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "azure-monitor-oob"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "operation_Id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Correlate: filter this trace (operation_Id)",
+                    "url": "?var-operation_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 13
+      },
+      "id": 16,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "azure-monitor-oob"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "${appinsights}"
+            ],
+            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
+            "dashboardTime": true,
+            "resultFormat": "table"
+          },
+          "refId": "A"
+        }
+      ],
+      "title": "CLS p75 over time",
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "id": 17,
+      "panels": [],
+      "title": "Errors & exceptions",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "azure-monitor-oob"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "operation_Id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Correlate: filter this trace (operation_Id)",
+                    "url": "?var-operation_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 21
+      },
+      "id": 18,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "azure-monitor-oob"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "${appinsights}"
+            ],
+            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
+            "dashboardTime": true,
+            "resultFormat": "table"
+          },
+          "refId": "A"
+        }
+      ],
+      "title": "Exceptions over time",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "azure-monitor-oob"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 21
+      },
+      "id": 19,
+      "options": {
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "azure-monitor-oob"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "${appinsights}"
+            ],
+            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
+            "dashboardTime": true,
+            "resultFormat": "table"
+          },
+          "refId": "A"
+        }
+      ],
+      "title": "Top browsers by exceptions",
+      "type": "table",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "operation_Id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Correlate: filter this trace (operation_Id)",
+                    "url": "?var-operation_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "azure-monitor-oob"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 28
+      },
+      "id": 20,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "azure-monitor-oob"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "${appinsights}"
+            ],
+            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
+            "dashboardTime": true,
+            "resultFormat": "table"
+          },
+          "refId": "A"
+        }
+      ],
+      "title": "Recent exceptions",
+      "type": "table",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "operation_Id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Correlate: filter this trace (operation_Id)",
+                    "url": "?var-operation_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 36
+      },
+      "id": 21,
+      "panels": [],
+      "title": "Sessions & audience",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "azure-monitor-oob"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "operation_Id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Correlate: filter this trace (operation_Id)",
+                    "url": "?var-operation_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 37
+      },
+      "id": 22,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "azure-monitor-oob"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "${appinsights}"
+            ],
+            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
+            "dashboardTime": true,
+            "resultFormat": "table"
+          },
+          "refId": "A"
+        }
+      ],
+      "title": "Sessions over time",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "azure-monitor-oob"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 6,
+        "x": 12,
+        "y": 37
+      },
+      "id": 23,
+      "options": {
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "azure-monitor-oob"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "${appinsights}"
+            ],
+            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
+            "dashboardTime": true,
+            "resultFormat": "table"
+          },
+          "refId": "A"
+        }
+      ],
+      "title": "Popular browsers",
+      "type": "table",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "operation_Id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Correlate: filter this trace (operation_Id)",
+                    "url": "?var-operation_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "azure-monitor-oob"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 6,
+        "x": 18,
+        "y": 37
+      },
+      "id": 24,
+      "options": {
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "azure-monitor-oob"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "${appinsights}"
+            ],
+            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
+            "dashboardTime": true,
+            "resultFormat": "table"
+          },
+          "refId": "A"
+        }
+      ],
+      "title": "OS / mobile",
+      "type": "table",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "operation_Id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Correlate: filter this trace (operation_Id)",
+                    "url": "?var-operation_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 44
+      },
+      "id": 25,
+      "panels": [],
+      "title": "Live RUM logs & browser traces",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "azure-monitor-oob"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 16,
+        "x": 0,
+        "y": 45
+      },
+      "id": 26,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "azure-monitor-oob"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "${appinsights}"
+            ],
+            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
+            "dashboardTime": true,
+            "resultFormat": "table"
+          },
+          "refId": "A"
+        }
+      ],
+      "title": "Live RUM events",
+      "type": "table",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "operation_Id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Correlate: filter this trace (operation_Id)",
+                    "url": "?var-operation_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "azure-monitor-oob"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 8,
+        "x": 16,
+        "y": 45
+      },
+      "id": 27,
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "azure-monitor-oob"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "resources": [
+              "${appinsights}"
+            ],
+            "query": "union requests, dependencies\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, operation_Id, cloud_RoleName, name, duration, success, itemType\n| order by timestamp desc",
+            "dashboardTime": true,
+            "resultFormat": "table"
+          },
+          "refId": "A"
+        }
+      ],
+      "title": "Browser traces (Tempo)",
+      "type": "table",
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "operation_Id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Correlate: filter this trace (operation_Id)",
+                    "url": "?var-operation_id=${__value.raw}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 42,
   "tags": [
     "jenkins-2026",
     "rum",
     "frontend",
     "faro"
   ],
-  "schemaVersion": 39,
-  "version": 1,
-  "editable": true,
-  "time": {
-    "from": "now-3h",
-    "to": "now"
-  },
-  "refresh": "30s",
-  "timezone": "",
   "templating": {
     "list": [
       {
@@ -51,29 +1509,29 @@
         "hide": 0
       },
       {
-        "name": "DS_PROMETHEUS",
-        "type": "datasource",
-        "query": "prometheus",
-        "label": "Prometheus / Mimir",
         "current": {
+          "selected": true,
           "text": "grafanacloud-prom",
-          "value": "grafanacloud-prom",
-          "selected": true
+          "value": "grafanacloud-prom"
         },
-        "options": [],
+        "hide": 0,
         "includeAll": false,
+        "label": "Prometheus / Mimir",
         "multi": false,
-        "hide": 0
+        "name": "DS_PROMETHEUS",
+        "options": [],
+        "query": "prometheus",
+        "type": "datasource"
       },
       {
-        "name": "deployment_environment",
-        "type": "custom",
-        "label": "Environment",
-        "query": "stable,develop",
         "current": {
           "text": "develop",
           "value": "develop"
         },
+        "includeAll": false,
+        "label": "Environment",
+        "multi": false,
+        "name": "deployment_environment",
         "options": [
           {
             "selected": false,
@@ -86,1476 +1544,96 @@
             "value": "develop"
           }
         ],
-        "includeAll": false,
-        "multi": false
+        "query": "stable,develop",
+        "type": "custom"
       },
       {
-        "name": "app",
-        "label": "Faro app",
-        "type": "custom",
-        "query": "angular-gateway",
         "current": {
           "text": "angular-gateway",
           "value": "angular-gateway"
         },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Faro app",
+        "multi": false,
+        "name": "app",
         "options": [
           {
+            "selected": true,
             "text": "angular-gateway",
-            "value": "angular-gateway",
-            "selected": true
+            "value": "angular-gateway"
           }
         ],
-        "includeAll": false,
-        "multi": false,
-        "hide": 0
+        "query": "angular-gateway",
+        "type": "custom"
+      },
+      {
+        "allValue": ".+",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "description": "Filter log panels by severity (detected_level). All = everything incl. plain-text (unknown).",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Log level",
+        "multi": true,
+        "name": "level",
+        "options": [
+          {
+            "selected": true,
+            "text": "All",
+            "value": "$__all"
+          },
+          {
+            "selected": false,
+            "text": "error",
+            "value": "error"
+          },
+          {
+            "selected": false,
+            "text": "warn",
+            "value": "warn"
+          },
+          {
+            "selected": false,
+            "text": "info",
+            "value": "info"
+          },
+          {
+            "selected": false,
+            "text": "debug",
+            "value": "debug"
+          },
+          {
+            "selected": false,
+            "text": "trace",
+            "value": "trace"
+          },
+          {
+            "selected": false,
+            "text": "unknown",
+            "value": "unknown"
+          }
+        ],
+        "query": "error,warn,info,debug,trace,unknown",
+        "skipUrlSync": false,
+        "type": "custom"
       }
     ]
   },
-  "panels": [
-    {
-      "id": 1,
-      "type": "text",
-      "title": "About this dashboard",
-      "gridPos": {
-        "h": 3,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
-      "options": {
-        "mode": "markdown",
-        "content": "**Frontend RUM (Real User Monitoring) for the Angular SPA via Grafana Faro.** The `faro` receiver + traces/logs pipeline are **live** in the otel-collector (browser \u2192 collector \u2192 Grafana Cloud). Panels populate **once the Angular app is instrumented with the Faro Web SDK** \u2014 see the *Frontend observability roadmap* in `docs/202`. Data model: Faro beacon \u2192 OTLP \u2192 Loki (labels `service_name`=Faro app, `deployment_environment`, `kind`\u2208{log,measurement,exception,event}) + Tempo (browser spans). Web-Vitals thresholds follow Google's good/needs-improvement/poor bands."
-      }
-    },
-    {
-      "id": 2,
-      "type": "row",
-      "title": "Overview",
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 3
-      },
-      "panels": []
-    },
-    {
-      "id": 3,
-      "type": "table",
-      "title": "Sessions",
-      "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 0,
-        "y": 4
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
-          },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
-          "refId": "A"
-        }
-      ],
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "value",
-        "graphMode": "area",
-        "textMode": "auto"
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": 4,
-      "type": "table",
-      "title": "Exceptions",
-      "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 4,
-        "y": 4
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
-          },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
-          "refId": "A"
-        }
-      ],
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "value",
-        "graphMode": "area",
-        "textMode": "auto"
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": 5,
-      "type": "table",
-      "title": "Measurements (Web-Vitals samples)",
-      "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 5,
-        "x": 8,
-        "y": 4
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
-          },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
-          "refId": "A"
-        }
-      ],
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "value",
-        "graphMode": "area",
-        "textMode": "auto"
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": 6,
-      "type": "table",
-      "title": "Total RUM events",
-      "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 5,
-        "x": 13,
-        "y": 4
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
-          },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
-          "refId": "A"
-        }
-      ],
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "value",
-        "graphMode": "area",
-        "textMode": "auto"
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": 7,
-      "type": "table",
-      "title": "Browsers seen",
-      "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 18,
-        "y": 4
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
-          },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
-          "refId": "A"
-        }
-      ],
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "value",
-        "graphMode": "area",
-        "textMode": "auto"
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": 8,
-      "type": "row",
-      "title": "Core Web Vitals (p75)",
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 8
-      },
-      "panels": []
-    },
-    {
-      "id": 9,
-      "type": "table",
-      "title": "LCP",
-      "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 5,
-        "x": 0,
-        "y": 9
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
-          },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
-          "refId": "A"
-        }
-      ],
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "value",
-        "graphMode": "area",
-        "textMode": "auto"
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": 10,
-      "type": "table",
-      "title": "INP",
-      "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 5,
-        "x": 5,
-        "y": 9
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
-          },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
-          "refId": "A"
-        }
-      ],
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "value",
-        "graphMode": "area",
-        "textMode": "auto"
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": 11,
-      "type": "table",
-      "title": "CLS",
-      "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 10,
-        "y": 9
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
-          },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
-          "refId": "A"
-        }
-      ],
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "value",
-        "graphMode": "area",
-        "textMode": "auto"
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": 12,
-      "type": "table",
-      "title": "FCP",
-      "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 5,
-        "x": 14,
-        "y": 9
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
-          },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
-          "refId": "A"
-        }
-      ],
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "value",
-        "graphMode": "area",
-        "textMode": "auto"
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": 13,
-      "type": "table",
-      "title": "TTFB",
-      "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 5,
-        "x": 19,
-        "y": 9
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
-          },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
-          "refId": "A"
-        }
-      ],
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "value",
-        "graphMode": "area",
-        "textMode": "auto"
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": 14,
-      "type": "table",
-      "title": "LCP p75 over time",
-      "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 8,
-        "x": 0,
-        "y": 13
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
-          },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "id": 15,
-      "type": "table",
-      "title": "INP p75 over time",
-      "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 8,
-        "x": 8,
-        "y": 13
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
-          },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "id": 16,
-      "type": "table",
-      "title": "CLS p75 over time",
-      "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 8,
-        "x": 16,
-        "y": 13
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
-          },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "id": 17,
-      "type": "row",
-      "title": "Errors & exceptions",
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 20
-      },
-      "panels": []
-    },
-    {
-      "id": 18,
-      "type": "table",
-      "title": "Exceptions over time",
-      "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 12,
-        "x": 0,
-        "y": 21
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
-          },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "id": 19,
-      "type": "table",
-      "title": "Top browsers by exceptions",
-      "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 12,
-        "x": 12,
-        "y": 21
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
-          },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
-          "refId": "A"
-        }
-      ],
-      "options": {
-        "showHeader": true
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": 20,
-      "type": "table",
-      "title": "Recent exceptions",
-      "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 28
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
-          },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
-          "refId": "A"
-        }
-      ],
-      "options": {
-        "showTime": true,
-        "wrapLogMessage": true,
-        "enableLogDetails": true,
-        "dedupStrategy": "none",
-        "sortOrder": "Descending"
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": 21,
-      "type": "row",
-      "title": "Sessions & audience",
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 36
-      },
-      "panels": []
-    },
-    {
-      "id": 22,
-      "type": "table",
-      "title": "Sessions over time",
-      "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 12,
-        "x": 0,
-        "y": 37
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
-          },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
-    },
-    {
-      "id": 23,
-      "type": "table",
-      "title": "Popular browsers",
-      "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 6,
-        "x": 12,
-        "y": 37
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
-          },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
-          "refId": "A"
-        }
-      ],
-      "options": {
-        "showHeader": true
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": 24,
-      "type": "table",
-      "title": "OS / mobile",
-      "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 6,
-        "x": 18,
-        "y": 37
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
-          },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
-          "refId": "A"
-        }
-      ],
-      "options": {
-        "showHeader": true
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": 25,
-      "type": "row",
-      "title": "Live RUM logs & browser traces",
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 44
-      },
-      "panels": []
-    },
-    {
-      "id": 26,
-      "type": "table",
-      "title": "Live RUM events",
-      "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 16,
-        "x": 0,
-        "y": 45
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
-          },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
-          "refId": "A"
-        }
-      ],
-      "options": {
-        "showTime": true,
-        "wrapLogMessage": true,
-        "enableLogDetails": true,
-        "dedupStrategy": "none",
-        "sortOrder": "Descending"
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    },
-    {
-      "id": 27,
-      "type": "table",
-      "title": "Browser traces (Tempo)",
-      "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 8,
-        "x": 16,
-        "y": 45
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
-          },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "union requests, dependencies\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, operation_Id, cloud_RoleName, name, duration, success, itemType\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
-          "refId": "A"
-        }
-      ],
-      "options": {},
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      }
-    }
-  ]
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "CI-CD Frontend RUM (Angular / Faro)",
+  "uid": "jenkins2026-rum-frontend",
+  "weekStart": ""
 }
