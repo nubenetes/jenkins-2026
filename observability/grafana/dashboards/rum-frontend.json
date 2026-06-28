@@ -1,104 +1,42 @@
 {
-  "uid": "jenkins2026-rum-frontend",
-  "title": "CI-CD Frontend RUM (Angular / Faro)",
-  "tags": [
-    "jenkins-2026",
-    "rum",
-    "frontend",
-    "faro"
-  ],
-  "schemaVersion": 39,
-  "version": 1,
-  "editable": true,
-  "time": {
-    "from": "now-3h",
-    "to": "now"
-  },
-  "refresh": "30s",
-  "timezone": "",
-  "templating": {
+  "annotations": {
     "list": [
       {
-        "name": "DS_PROMETHEUS",
-        "type": "datasource",
-        "query": "prometheus",
-        "label": "Prometheus / Mimir",
-        "current": {
-          "text": "grafanacloud-prom",
-          "value": "grafanacloud-prom",
-          "selected": true
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
         },
-        "options": [],
-        "includeAll": false,
-        "multi": false,
-        "hide": 0
-      },
-      {
-        "name": "deployment_environment",
-        "type": "custom",
-        "label": "Environment",
-        "query": "stable,develop",
-        "current": {
-          "text": "develop",
-          "value": "develop"
-        },
-        "options": [
-          {
-            "selected": false,
-            "text": "stable",
-            "value": "stable"
-          },
-          {
-            "selected": true,
-            "text": "develop",
-            "value": "develop"
-          }
-        ],
-        "includeAll": false,
-        "multi": false
-      },
-      {
-        "name": "app",
-        "label": "Faro app",
-        "type": "custom",
-        "query": "angular-gateway",
-        "current": {
-          "text": "angular-gateway",
-          "value": "angular-gateway"
-        },
-        "options": [
-          {
-            "text": "angular-gateway",
-            "value": "angular-gateway",
-            "selected": true
-          }
-        ],
-        "includeAll": false,
-        "multi": false,
-        "hide": 0
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
       }
     ]
   },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "folderUID": "jenkins-2026",
+  "graphTooltip": 0,
+  "links": [],
   "panels": [
     {
-      "id": 1,
-      "type": "text",
-      "title": "About this dashboard",
       "gridPos": {
         "h": 3,
         "w": 24,
         "x": 0,
         "y": 0
       },
+      "id": 1,
       "options": {
-        "mode": "markdown",
-        "content": "**Frontend RUM (Real User Monitoring) for the Angular SPA via Grafana Faro.** The `faro` receiver + traces/logs pipeline are **live** in the otel-collector (browser \u2192 collector \u2192 Grafana Cloud). Panels populate **once the Angular app is instrumented with the Faro Web SDK** \u2014 see the *Frontend observability roadmap* in `docs/202`. Data model: Faro beacon \u2192 OTLP \u2192 Loki (labels `service_name`=Faro app, `deployment_environment`, `kind`\u2208{log,measurement,exception,event}) + Tempo (browser spans). Web-Vitals thresholds follow Google's good/needs-improvement/poor bands."
-      }
+        "content": "**Frontend RUM (Real User Monitoring) for the Angular SPA via Grafana Faro.** The `faro` receiver + traces/logs pipeline are **live** in the otel-collector (browser \u2192 collector \u2192 Grafana Cloud). Panels populate **once the Angular app is instrumented with the Faro Web SDK**. Data model: Faro beacon \u2192 OTLP \u2192 Loki (labels `service_name`=Faro app, `deployment_environment`, `kind`\u2208{log,measurement,exception,event}) + Tempo (browser spans). Web-Vitals thresholds follow Google\u2019s good/needs-improvement/poor bands.\n\n| Section | What it answers |\n|---|---|\n| **Overview** | Session count, exception count, Web-Vitals KPIs (LCP / INP / CLS / FCP / TTFB) and browser diversity |\n| **Core Web Vitals (p75)** | p75 stat cards + trend lines for all five Web-Vitals metrics |\n| **Errors & exceptions** | Exception rate over time, top browsers by exceptions, raw exception log stream |\n| **Sessions & audience** | Session trend, browser + OS/mobile breakdown |\n| **Live RUM logs & browser traces** | Full Faro event stream and Tempo browser trace list |",
+        "mode": "markdown"
+      },
+      "title": "About this dashboard",
+      "type": "text"
     },
     {
-      "id": 2,
-      "type": "row",
-      "title": "Overview",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -106,21 +44,51 @@
         "x": 0,
         "y": 3
       },
-      "panels": []
+      "id": 2,
+      "panels": [],
+      "title": "Overview",
+      "type": "row"
     },
     {
-      "id": 3,
-      "type": "stat",
-      "title": "Sessions",
       "datasource": {
         "type": "loki",
         "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
       },
       "gridPos": {
         "h": 4,
         "w": 4,
         "x": 0,
         "y": 4
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
       },
       "targets": [
         {
@@ -134,7 +102,45 @@
           "refId": "A"
         }
       ],
+      "title": "Sessions",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 4
+      },
+      "id": 4,
       "options": {
+        "colorMode": "value",
+        "graphMode": "area",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -142,42 +148,7 @@
           "fields": "",
           "values": false
         },
-        "colorMode": "value",
-        "graphMode": "area",
         "textMode": "auto"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          }
-        },
-        "overrides": []
-      }
-    },
-    {
-      "id": 4,
-      "type": "stat",
-      "title": "Exceptions",
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 4,
-        "y": 4
       },
       "targets": [
         {
@@ -191,7 +162,41 @@
           "refId": "A"
         }
       ],
+      "title": "Exceptions",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 8,
+        "y": 4
+      },
+      "id": 5,
       "options": {
+        "colorMode": "value",
+        "graphMode": "area",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -199,46 +204,7 @@
           "fields": "",
           "values": false
         },
-        "colorMode": "value",
-        "graphMode": "area",
         "textMode": "auto"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          }
-        },
-        "overrides": []
-      }
-    },
-    {
-      "id": 5,
-      "type": "stat",
-      "title": "Measurements (Web-Vitals samples)",
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 5,
-        "x": 8,
-        "y": 4
       },
       "targets": [
         {
@@ -252,7 +218,41 @@
           "refId": "A"
         }
       ],
+      "title": "Measurements (Web-Vitals samples)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 13,
+        "y": 4
+      },
+      "id": 6,
       "options": {
+        "colorMode": "value",
+        "graphMode": "area",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -260,42 +260,7 @@
           "fields": "",
           "values": false
         },
-        "colorMode": "value",
-        "graphMode": "area",
         "textMode": "auto"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          }
-        },
-        "overrides": []
-      }
-    },
-    {
-      "id": 6,
-      "type": "stat",
-      "title": "Total RUM events",
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 5,
-        "x": 13,
-        "y": 4
       },
       "targets": [
         {
@@ -309,7 +274,41 @@
           "refId": "A"
         }
       ],
+      "title": "Total RUM events",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 4
+      },
+      "id": 7,
       "options": {
+        "colorMode": "value",
+        "graphMode": "area",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -317,42 +316,7 @@
           "fields": "",
           "values": false
         },
-        "colorMode": "value",
-        "graphMode": "area",
         "textMode": "auto"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          }
-        },
-        "overrides": []
-      }
-    },
-    {
-      "id": 7,
-      "type": "stat",
-      "title": "Browsers seen",
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 18,
-        "y": 4
       },
       "targets": [
         {
@@ -366,41 +330,10 @@
           "refId": "A"
         }
       ],
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "value",
-        "graphMode": "area",
-        "textMode": "auto"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          }
-        },
-        "overrides": []
-      }
+      "title": "Browsers seen",
+      "type": "stat"
     },
     {
-      "id": 8,
-      "type": "row",
-      "title": "Core Web Vitals (p75)",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -408,21 +341,59 @@
         "x": 0,
         "y": 8
       },
-      "panels": []
+      "id": 8,
+      "panels": [],
+      "title": "Core Web Vitals (p75)",
+      "type": "row"
     },
     {
-      "id": 9,
-      "type": "stat",
-      "title": "LCP",
       "datasource": {
         "type": "loki",
         "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "yellow",
+                "value": 2500
+              },
+              {
+                "color": "red",
+                "value": 4000
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
       },
       "gridPos": {
         "h": 4,
         "w": 5,
         "x": 0,
         "y": 9
+      },
+      "id": 9,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
       },
       "targets": [
         {
@@ -436,7 +407,49 @@
           "refId": "A"
         }
       ],
+      "title": "LCP",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "yellow",
+                "value": 200
+              },
+              {
+                "color": "red",
+                "value": 500
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 5,
+        "y": 9
+      },
+      "id": 10,
       "options": {
+        "colorMode": "value",
+        "graphMode": "area",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -444,50 +457,7 @@
           "fields": "",
           "values": false
         },
-        "colorMode": "value",
-        "graphMode": "area",
         "textMode": "auto"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ms",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 2500
-              },
-              {
-                "color": "red",
-                "value": 4000
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          }
-        },
-        "overrides": []
-      }
-    },
-    {
-      "id": 10,
-      "type": "stat",
-      "title": "INP",
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 5,
-        "x": 5,
-        "y": 9
       },
       "targets": [
         {
@@ -501,7 +471,49 @@
           "refId": "A"
         }
       ],
+      "title": "INP",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "yellow",
+                "value": 0.1
+              },
+              {
+                "color": "red",
+                "value": 0.25
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 10,
+        "y": 9
+      },
+      "id": 11,
       "options": {
+        "colorMode": "value",
+        "graphMode": "area",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -509,50 +521,7 @@
           "fields": "",
           "values": false
         },
-        "colorMode": "value",
-        "graphMode": "area",
         "textMode": "auto"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ms",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 200
-              },
-              {
-                "color": "red",
-                "value": 500
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          }
-        },
-        "overrides": []
-      }
-    },
-    {
-      "id": 11,
-      "type": "stat",
-      "title": "CLS",
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 10,
-        "y": 9
       },
       "targets": [
         {
@@ -566,7 +535,49 @@
           "refId": "A"
         }
       ],
+      "title": "CLS",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "yellow",
+                "value": 1800
+              },
+              {
+                "color": "red",
+                "value": 3000
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 14,
+        "y": 9
+      },
+      "id": 12,
       "options": {
+        "colorMode": "value",
+        "graphMode": "area",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -574,50 +585,7 @@
           "fields": "",
           "values": false
         },
-        "colorMode": "value",
-        "graphMode": "area",
         "textMode": "auto"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 0.1
-              },
-              {
-                "color": "red",
-                "value": 0.25
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          }
-        },
-        "overrides": []
-      }
-    },
-    {
-      "id": 12,
-      "type": "stat",
-      "title": "FCP",
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 5,
-        "x": 14,
-        "y": 9
       },
       "targets": [
         {
@@ -631,7 +599,49 @@
           "refId": "A"
         }
       ],
+      "title": "FCP",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green"
+              },
+              {
+                "color": "yellow",
+                "value": 800
+              },
+              {
+                "color": "red",
+                "value": 1800
+              }
+            ]
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 19,
+        "y": 9
+      },
+      "id": 13,
       "options": {
+        "colorMode": "value",
+        "graphMode": "area",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -639,50 +649,7 @@
           "fields": "",
           "values": false
         },
-        "colorMode": "value",
-        "graphMode": "area",
         "textMode": "auto"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ms",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 1800
-              },
-              {
-                "color": "red",
-                "value": 3000
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          }
-        },
-        "overrides": []
-      }
-    },
-    {
-      "id": 13,
-      "type": "stat",
-      "title": "TTFB",
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 5,
-        "x": 19,
-        "y": 9
       },
       "targets": [
         {
@@ -696,58 +663,40 @@
           "refId": "A"
         }
       ],
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "colorMode": "value",
-        "graphMode": "area",
-        "textMode": "auto"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ms",
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 800
-              },
-              {
-                "color": "red",
-                "value": 1800
-              }
-            ]
-          },
-          "color": {
-            "mode": "thresholds"
-          }
-        },
-        "overrides": []
-      }
+      "title": "TTFB",
+      "type": "stat"
     },
     {
-      "id": 14,
-      "type": "timeseries",
-      "title": "LCP p75 over time",
       "datasource": {
         "type": "loki",
         "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "showPoints": "auto"
+          },
+          "unit": "ms"
+        },
+        "overrides": []
       },
       "gridPos": {
         "h": 7,
         "w": 8,
         "x": 0,
         "y": 13
+      },
+      "id": 14,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
       },
       "targets": [
         {
@@ -757,22 +706,37 @@
           },
           "editorMode": "code",
           "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`measurement` | lcp!=\"\" | unwrap lcp [$__interval])",
+          "legendFormat": "LCP p75",
           "queryType": "range",
-          "refId": "A",
-          "legendFormat": "LCP p75"
+          "refId": "A"
         }
       ],
+      "title": "LCP p75 over time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "fieldConfig": {
         "defaults": {
-          "unit": "ms",
           "custom": {
             "drawStyle": "line",
             "fillOpacity": 10,
             "showPoints": "auto"
-          }
+          },
+          "unit": "ms"
         },
         "overrides": []
       },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 8,
+        "y": 13
+      },
+      "id": 15,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -781,21 +745,6 @@
         "tooltip": {
           "mode": "multi"
         }
-      }
-    },
-    {
-      "id": 15,
-      "type": "timeseries",
-      "title": "INP p75 over time",
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 8,
-        "x": 8,
-        "y": 13
       },
       "targets": [
         {
@@ -805,22 +754,37 @@
           },
           "editorMode": "code",
           "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`measurement` | inp!=\"\" | unwrap inp [$__interval])",
+          "legendFormat": "INP p75",
           "queryType": "range",
-          "refId": "A",
-          "legendFormat": "INP p75"
+          "refId": "A"
         }
       ],
+      "title": "INP p75 over time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "fieldConfig": {
         "defaults": {
-          "unit": "ms",
           "custom": {
             "drawStyle": "line",
             "fillOpacity": 10,
             "showPoints": "auto"
-          }
+          },
+          "unit": "short"
         },
         "overrides": []
       },
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 13
+      },
+      "id": 16,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -829,21 +793,6 @@
         "tooltip": {
           "mode": "multi"
         }
-      }
-    },
-    {
-      "id": 16,
-      "type": "timeseries",
-      "title": "CLS p75 over time",
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 8,
-        "x": 16,
-        "y": 13
       },
       "targets": [
         {
@@ -853,22 +802,50 @@
           },
           "editorMode": "code",
           "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`measurement` | cls!=\"\" | unwrap cls [$__interval])",
+          "legendFormat": "CLS p75",
           "queryType": "range",
-          "refId": "A",
-          "legendFormat": "CLS p75"
+          "refId": "A"
         }
       ],
+      "title": "CLS p75 over time",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 20
+      },
+      "id": 17,
+      "panels": [],
+      "title": "Errors & exceptions",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
           "custom": {
             "drawStyle": "line",
             "fillOpacity": 10,
             "showPoints": "auto"
-          }
+          },
+          "unit": "short"
         },
         "overrides": []
       },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 21
+      },
+      "id": 18,
       "options": {
         "legend": {
           "displayMode": "list",
@@ -877,34 +854,6 @@
         "tooltip": {
           "mode": "multi"
         }
-      }
-    },
-    {
-      "id": 17,
-      "type": "row",
-      "title": "Errors & exceptions",
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 20
-      },
-      "panels": []
-    },
-    {
-      "id": 18,
-      "type": "timeseries",
-      "title": "Exceptions over time",
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 12,
-        "x": 0,
-        "y": 21
       },
       "targets": [
         {
@@ -914,36 +863,15 @@
           },
           "editorMode": "code",
           "expr": "sum(count_over_time({service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`exception` [$__interval]))",
+          "legendFormat": "exceptions",
           "queryType": "range",
-          "refId": "A",
-          "legendFormat": "exceptions"
+          "refId": "A"
         }
       ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "custom": {
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "showPoints": "auto"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
+      "title": "Exceptions over time",
+      "type": "timeseries"
     },
     {
-      "id": 19,
-      "type": "table",
-      "title": "Top browsers by exceptions",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -954,6 +882,10 @@
         "x": 12,
         "y": 21
       },
+      "id": 19,
+      "options": {
+        "showHeader": true
+      },
       "targets": [
         {
           "datasource": {
@@ -962,23 +894,15 @@
           },
           "editorMode": "code",
           "expr": "topk(10, sum by (browser_name)(count_over_time({service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`exception` [$__range])))",
+          "format": "table",
           "queryType": "instant",
-          "refId": "A",
-          "format": "table"
+          "refId": "A"
         }
       ],
-      "options": {
-        "showHeader": true
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      }
+      "title": "Top browsers by exceptions",
+      "type": "table"
     },
     {
-      "id": 20,
-      "type": "logs",
-      "title": "Recent exceptions",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -989,6 +913,14 @@
         "x": 0,
         "y": 28
       },
+      "id": 20,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
       "targets": [
         {
           "datasource": {
@@ -996,23 +928,15 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`exception`",
+          "expr": "{service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | detected_level=~\"$level\" | logfmt | kind=`exception`",
           "queryType": "range",
           "refId": "A"
         }
       ],
-      "options": {
-        "showTime": true,
-        "wrapLogMessage": true,
-        "enableLogDetails": true,
-        "dedupStrategy": "none",
-        "sortOrder": "Descending"
-      }
+      "title": "Recent exceptions",
+      "type": "logs"
     },
     {
-      "id": 21,
-      "type": "row",
-      "title": "Sessions & audience",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -1020,21 +944,42 @@
         "x": 0,
         "y": 36
       },
-      "panels": []
+      "id": 21,
+      "panels": [],
+      "title": "Sessions & audience",
+      "type": "row"
     },
     {
-      "id": 22,
-      "type": "timeseries",
-      "title": "Sessions over time",
       "datasource": {
         "type": "loki",
         "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "showPoints": "auto"
+          },
+          "unit": "short"
+        },
+        "overrides": []
       },
       "gridPos": {
         "h": 7,
         "w": 12,
         "x": 0,
         "y": 37
+      },
+      "id": 22,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
       },
       "targets": [
         {
@@ -1044,36 +989,15 @@
           },
           "editorMode": "code",
           "expr": "count(count by (session_id)(count_over_time({service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | session_id!=\"\" [$__interval])))",
+          "legendFormat": "sessions",
           "queryType": "range",
-          "refId": "A",
-          "legendFormat": "sessions"
+          "refId": "A"
         }
       ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "custom": {
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "showPoints": "auto"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
+      "title": "Sessions over time",
+      "type": "timeseries"
     },
     {
-      "id": 23,
-      "type": "table",
-      "title": "Popular browsers",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -1084,6 +1008,10 @@
         "x": 12,
         "y": 37
       },
+      "id": 23,
+      "options": {
+        "showHeader": true
+      },
       "targets": [
         {
           "datasource": {
@@ -1092,23 +1020,15 @@
           },
           "editorMode": "code",
           "expr": "topk(10, sum by (browser_name, browser_version)(count_over_time({service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | browser_name!=\"\" [$__range])))",
+          "format": "table",
           "queryType": "instant",
-          "refId": "A",
-          "format": "table"
+          "refId": "A"
         }
       ],
-      "options": {
-        "showHeader": true
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      }
+      "title": "Popular browsers",
+      "type": "table"
     },
     {
-      "id": 24,
-      "type": "table",
-      "title": "OS / mobile",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -1119,6 +1039,10 @@
         "x": 18,
         "y": 37
       },
+      "id": 24,
+      "options": {
+        "showHeader": true
+      },
       "targets": [
         {
           "datasource": {
@@ -1127,23 +1051,15 @@
           },
           "editorMode": "code",
           "expr": "sum by (browser_os, browser_mobile)(count_over_time({service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | browser_os!=\"\" [$__range]))",
+          "format": "table",
           "queryType": "instant",
-          "refId": "A",
-          "format": "table"
+          "refId": "A"
         }
       ],
-      "options": {
-        "showHeader": true
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      }
+      "title": "OS / mobile",
+      "type": "table"
     },
     {
-      "id": 25,
-      "type": "row",
-      "title": "Live RUM logs & browser traces",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -1151,12 +1067,12 @@
         "x": 0,
         "y": 44
       },
-      "panels": []
+      "id": 25,
+      "panels": [],
+      "title": "Live RUM logs & browser traces",
+      "type": "row"
     },
     {
-      "id": 26,
-      "type": "logs",
-      "title": "Live RUM events",
       "datasource": {
         "type": "loki",
         "uid": "loki"
@@ -1167,6 +1083,14 @@
         "x": 0,
         "y": 45
       },
+      "id": 26,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
       "targets": [
         {
           "datasource": {
@@ -1174,23 +1098,15 @@
             "uid": "loki"
           },
           "editorMode": "code",
-          "expr": "{service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt",
+          "expr": "{service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | detected_level=~\"$level\" | logfmt",
           "queryType": "range",
           "refId": "A"
         }
       ],
-      "options": {
-        "showTime": true,
-        "wrapLogMessage": true,
-        "enableLogDetails": true,
-        "dedupStrategy": "none",
-        "sortOrder": "Descending"
-      }
+      "title": "Live RUM events",
+      "type": "logs"
     },
     {
-      "id": 27,
-      "type": "table",
-      "title": "Browser traces (Tempo)",
       "datasource": {
         "type": "tempo",
         "uid": "tempo"
@@ -1201,24 +1117,160 @@
         "x": 16,
         "y": 45
       },
+      "id": 27,
       "targets": [
         {
           "datasource": {
             "type": "tempo",
             "uid": "tempo"
           },
+          "limit": 20,
+          "query": "{ resource.service.name = \"$app\" }",
           "queryType": "traceql",
           "refId": "A",
-          "query": "{ resource.service.name = \"$app\" }",
-          "limit": 20,
           "tableType": "traces"
         }
       ],
-      "options": {},
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      }
+      "title": "Browser traces (Tempo)",
+      "type": "table"
     }
-  ]
+  ],
+  "refresh": "30s",
+  "schemaVersion": 42,
+  "tags": [
+    "jenkins-2026",
+    "rum",
+    "frontend",
+    "faro"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "selected": true,
+          "text": "grafanacloud-prom",
+          "value": "grafanacloud-prom"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Prometheus / Mimir",
+        "multi": false,
+        "name": "DS_PROMETHEUS",
+        "options": [],
+        "query": "prometheus",
+        "type": "datasource"
+      },
+      {
+        "current": {
+          "text": "develop",
+          "value": "develop"
+        },
+        "includeAll": false,
+        "label": "Environment",
+        "multi": false,
+        "name": "deployment_environment",
+        "options": [
+          {
+            "selected": false,
+            "text": "stable",
+            "value": "stable"
+          },
+          {
+            "selected": true,
+            "text": "develop",
+            "value": "develop"
+          }
+        ],
+        "query": "stable,develop",
+        "type": "custom"
+      },
+      {
+        "current": {
+          "text": "angular-gateway",
+          "value": "angular-gateway"
+        },
+        "hide": 0,
+        "includeAll": false,
+        "label": "Faro app",
+        "multi": false,
+        "name": "app",
+        "options": [
+          {
+            "selected": true,
+            "text": "angular-gateway",
+            "value": "angular-gateway"
+          }
+        ],
+        "query": "angular-gateway",
+        "type": "custom"
+      },
+      {
+        "allValue": ".+",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "description": "Filter log panels by severity (detected_level). All = everything incl. plain-text (unknown).",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Log level",
+        "multi": true,
+        "name": "level",
+        "options": [
+          {
+            "selected": true,
+            "text": "All",
+            "value": "$__all"
+          },
+          {
+            "selected": false,
+            "text": "error",
+            "value": "error"
+          },
+          {
+            "selected": false,
+            "text": "warn",
+            "value": "warn"
+          },
+          {
+            "selected": false,
+            "text": "info",
+            "value": "info"
+          },
+          {
+            "selected": false,
+            "text": "debug",
+            "value": "debug"
+          },
+          {
+            "selected": false,
+            "text": "trace",
+            "value": "trace"
+          },
+          {
+            "selected": false,
+            "text": "unknown",
+            "value": "unknown"
+          }
+        ],
+        "query": "error,warn,info,debug,trace,unknown",
+        "skipUrlSync": false,
+        "type": "custom"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "CI-CD Frontend RUM (Angular / Faro)",
+  "uid": "jenkins2026-rum-frontend",
+  "weekStart": ""
 }

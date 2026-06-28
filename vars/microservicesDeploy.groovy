@@ -119,7 +119,7 @@ def call(Map cfg) {
       container('helm') {
         sh """
           set -eux
-          NAMESPACE="${cfg.targetNamespace}"
+          NAMESPACE="${cfg.namespace}"
           DEPLOY="${cfg.serviceName}"
 
           # Wait for at least one Ready pod before checking injection

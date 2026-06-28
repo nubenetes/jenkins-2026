@@ -168,13 +168,32 @@ observability:
   #                   X-Ray/CloudWatch; visualize in Amazon Managed Grafana.
   mode: grafana-cloud
 
-  # When true (grafana-cloud mode), 03-observability disables the k8s-monitoring
-  # CLUSTER INFRA metrics (cadvisor/kube-state/node-exporter) — the high-cardinality
-  # series the custom jenkins2026-* dashboards don't use — to stay under the Grafana
-  # Cloud free-tier 15k active-series cap (e.g. while validating the develop tier).
-  # App/CNPG/Tekton metrics (via the otel-collector) are unaffected. Loses the
-  # built-in "K8s Compute" views. Override per-run: JENKINS2026_OBS_LEAN_METRICS=true.
-  leanMetrics: true
+  # Grafana Cloud subscription tier — a PROFILE that governs the volume-control defaults
+  # below so the free tier stays under its limits (15k active series + log volume). Only
+  # meaningful in grafana-cloud mode. Override per-run with JENKINS2026_GRAFANA_CLOUD_TIER
+  # or the grafana_cloud_tier GHA dropdown.
+  #   free (default) → leanMetrics on,  logMinSeverity=warn  (aggressive trim — fits free)
+  #   paid           → leanMetrics off, logMinSeverity=trace (full fidelity)
+  grafanaCloudTier: free
+
+  # When true (grafana-cloud mode), 03-observability disables the k8s-monitoring CLUSTER
+  # INFRA metrics (cadvisor/kube-state/node-exporter) — the high-cardinality series the
+  # custom jenkins2026-* dashboards don't use — to stay under the free-tier 15k cap.
+  # App/CNPG/Tekton metrics (via the otel-collector) are unaffected. Loses the built-in
+  # "K8s Compute" views.
+  #   auto (default) → derive from grafanaCloudTier (free→true, paid→false; non-cloud→false)
+  #   true | false   → force, regardless of tier. Per-run override JENKINS2026_OBS_LEAN_METRICS.
+  leanMetrics: auto
+
+  # Minimum log severity shipped to the backend (Loki / CloudWatch / Azure). Applied as a
+  # `filter` processor in the otel-collector-logs DaemonSet (parses the level → severity,
+  # drops below this), so it trims EVERY Grafana logs panel (app + platform) in all modes.
+  # Levels: trace (keep all) · debug · info · warn · error (only ERROR/FATAL).
+  # Structured lines (ECS/JSON `"level"`, logfmt `level=`) are classified; plain-text lines
+  # have no level token and are NEVER dropped (no blackout).
+  #   auto (default) → derive from grafanaCloudTier (free→warn, paid→trace; non-cloud→info)
+  #   <level>        → force. Per-run override JENKINS2026_LOG_MIN_SEVERITY. See docs/301.
+  logMinSeverity: auto
 
   otelOperator:
     chart:

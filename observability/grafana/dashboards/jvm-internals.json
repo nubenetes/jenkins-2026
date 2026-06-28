@@ -17,18 +17,33 @@
   },
   "editable": true,
   "fiscalYearStartMonth": 0,
+  "folderUID": "jenkins-2026",
   "graphTooltip": 1,
-  "id": null,
   "links": [],
   "liveNow": false,
   "panels": [
+    {
+      "gridPos": {
+        "h": 11,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1030,
+      "options": {
+        "content": "## CI-CD JVM Internals \u2014 what this board shows & how to read it\nDeep-dive JVM telemetry for all Java microservices and the Jenkins controller, exported via the **OpenTelemetry Java agent** (zero-code instrumentation). All metrics follow the [OpenTelemetry JVM Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/runtime/jvm-metrics/).\n\n| Section | What it answers |\n|---|---|\n| **Overview** | CPU utilization, heap used %, live threads, and GC overhead at a glance |\n| **Garbage Collection** | GC time/s, collection frequency, and pause p95/p99 per collector (SerialGC vs G1) |\n| **Heap & Non-Heap** | Used vs committed vs max for heap; metaspace + code-cache for non-heap |\n| **Memory Pools** | Per-pool breakdown (Eden / Survivor / Tenured / Metaspace / CodeHeap) |\n| **Buffers & advanced** | Direct/mapped NIO buffer pools; experimental runtime telemetry |\n| **HTTP response times** | Server-side latency p50/p95/p99 and request rate \u2014 correlate with GC pauses above |\n| **Logs & Traces** | Error/warn log stream and recent traces for the selected service |\n\n> **Tip:** Correlate a GC pause spike (*GC Pause p95/p99*) with a latency spike (*HTTP latency p50/p95/p99*) \u2014 they often land at the same timestamp.",
+        "mode": "markdown"
+      },
+      "transparent": true,
+      "type": "text"
+    },
     {
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 11
       },
       "id": 1001,
       "panels": [],
@@ -46,14 +61,12 @@
           "color": {
             "mode": "thresholds"
           },
-          "unit": "percentunit",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               },
               {
                 "color": "yellow",
@@ -64,7 +77,8 @@
                 "value": 0.9
               }
             ]
-          }
+          },
+          "unit": "percentunit"
         },
         "overrides": []
       },
@@ -72,7 +86,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 1
+        "y": 12
       },
       "id": 2,
       "options": {
@@ -115,8 +129,8 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "bytes",
-          "mappings": []
+          "mappings": [],
+          "unit": "bytes"
         },
         "overrides": []
       },
@@ -124,7 +138,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 1
+        "y": 12
       },
       "id": 3,
       "options": {
@@ -167,8 +181,8 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "bytes",
-          "mappings": []
+          "mappings": [],
+          "unit": "bytes"
         },
         "overrides": []
       },
@@ -176,7 +190,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 1
+        "y": 12
       },
       "id": 4,
       "options": {
@@ -219,14 +233,12 @@
           "color": {
             "mode": "thresholds"
           },
-          "unit": "percentunit",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               },
               {
                 "color": "yellow",
@@ -237,7 +249,8 @@
                 "value": 0.92
               }
             ]
-          }
+          },
+          "unit": "percentunit"
         },
         "overrides": []
       },
@@ -245,7 +258,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 1
+        "y": 12
       },
       "id": 5,
       "options": {
@@ -288,8 +301,8 @@
           "color": {
             "mode": "palette-classic"
           },
-          "unit": "short",
-          "mappings": []
+          "mappings": [],
+          "unit": "short"
         },
         "overrides": []
       },
@@ -297,7 +310,7 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 1
+        "y": 12
       },
       "id": 6,
       "options": {
@@ -340,14 +353,12 @@
           "color": {
             "mode": "thresholds"
           },
-          "unit": "s",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               },
               {
                 "color": "yellow",
@@ -358,7 +369,8 @@
                 "value": 0.3
               }
             ]
-          }
+          },
+          "unit": "s"
         },
         "overrides": []
       },
@@ -366,7 +378,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 1
+        "y": 12
       },
       "id": 7,
       "options": {
@@ -420,7 +432,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 5
+        "y": 16
       },
       "id": 8,
       "options": {
@@ -486,7 +498,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 5
+        "y": 16
       },
       "id": 9,
       "options": {
@@ -534,7 +546,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 12
+        "y": 23
       },
       "id": 10,
       "options": {
@@ -582,7 +594,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 12
+        "y": 23
       },
       "id": 11,
       "options": {
@@ -623,7 +635,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 19
+        "y": 30
       },
       "id": 1012,
       "panels": [],
@@ -652,7 +664,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 20
+        "y": 31
       },
       "id": 13,
       "options": {
@@ -700,7 +712,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 20
+        "y": 31
       },
       "id": 14,
       "options": {
@@ -748,7 +760,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 20
+        "y": 31
       },
       "id": 15,
       "options": {
@@ -789,7 +801,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 28
+        "y": 39
       },
       "id": 1016,
       "panels": [],
@@ -818,7 +830,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 29
+        "y": 40
       },
       "id": 17,
       "options": {
@@ -884,7 +896,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 29
+        "y": 40
       },
       "id": 18,
       "options": {
@@ -925,7 +937,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 37
+        "y": 48
       },
       "id": 1019,
       "panels": [],
@@ -957,7 +969,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 38
+        "y": 49
       },
       "id": 20,
       "options": {
@@ -1005,7 +1017,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 38
+        "y": 49
       },
       "id": 21,
       "options": {
@@ -1037,7 +1049,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 46
+        "y": 57
       },
       "id": 1022,
       "panels": [],
@@ -1066,7 +1078,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 47
+        "y": 58
       },
       "id": 23,
       "options": {
@@ -1114,7 +1126,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 47
+        "y": 58
       },
       "id": 24,
       "options": {
@@ -1162,7 +1174,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 47
+        "y": 58
       },
       "id": 25,
       "options": {
@@ -1180,27 +1192,27 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "refId": "A",
           "expr": "max by (service_name)(jvm_cpu_recent_utilization_ratio{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"})",
-          "legendFormat": "{{service_name}} process cpu"
+          "legendFormat": "{{service_name}} process cpu",
+          "refId": "A"
         },
         {
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "refId": "B",
           "expr": "max by (service_name)(jvm_system_cpu_utilization_ratio{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"})",
-          "legendFormat": "{{service_name}} system cpu"
+          "legendFormat": "{{service_name}} system cpu",
+          "refId": "B"
         },
         {
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "refId": "C",
           "expr": "max by (service_name)(jvm_system_cpu_load_1m{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"})",
-          "legendFormat": "{{service_name}} load 1m"
+          "legendFormat": "{{service_name}} load 1m",
+          "refId": "C"
         }
       ],
       "title": "CPU \u2014 process / system utilization + load avg",
@@ -1212,7 +1224,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 55
+        "y": 66
       },
       "id": 1026,
       "panels": [],
@@ -1241,7 +1253,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 56
+        "y": 67
       },
       "id": 27,
       "options": {
@@ -1307,7 +1319,7 @@
         "h": 8,
         "w": 6,
         "x": 12,
-        "y": 56
+        "y": 67
       },
       "id": 28,
       "options": {
@@ -1344,14 +1356,12 @@
           "color": {
             "mode": "thresholds"
           },
-          "unit": "percent",
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
-                "value": null
+                "color": "green"
               },
               {
                 "color": "yellow",
@@ -1362,7 +1372,8 @@
                 "value": 5
               }
             ]
-          }
+          },
+          "unit": "percent"
         },
         "overrides": []
       },
@@ -1370,7 +1381,7 @@
         "h": 8,
         "w": 6,
         "x": 18,
-        "y": 56
+        "y": 67
       },
       "id": 29,
       "options": {
@@ -1403,19 +1414,30 @@
       "type": "stat"
     },
     {
-      "type": "table",
-      "title": "JVM / runtime context (name \u00b7 implementation \u00b7 version \u00b7 OTel agent)",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Per-service runtime context from target_info (resource attributes): JVM name/vendor/version, OS/arch, exec path, command args, OTel agent (distro) version.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": true
+          }
+        },
+        "overrides": []
       },
       "gridPos": {
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 64
+        "y": 75
       },
-      "description": "Per-service runtime context from target_info (resource attributes): JVM name/vendor/version, OS/arch, exec path, command args, OTel agent (distro) version.",
+      "id": 1031,
+      "options": {
+        "cellHeight": "sm",
+        "showHeader": true
+      },
       "targets": [
         {
           "datasource": {
@@ -1428,6 +1450,7 @@
           "refId": "A"
         }
       ],
+      "title": "JVM / runtime context (name \u00b7 implementation \u00b7 version \u00b7 OTel agent)",
       "transformations": [
         {
           "id": "labelsToFields",
@@ -1440,22 +1463,22 @@
               "Time": true,
               "Value": true,
               "__name__": true,
-              "job": true,
               "instance": true,
-              "service_instance_id": true,
-              "process_pid": true
+              "job": true,
+              "process_pid": true,
+              "service_instance_id": true
             },
             "renameByName": {
-              "service_name": "Service",
+              "host_arch": "Arch",
               "k8s_namespace_name": "Tier (ns)",
-              "service_version": "App version",
+              "os_description": "OS",
+              "process_command_args": "Command args",
+              "process_executable_path": "Java path",
+              "process_runtime_description": "JVM implementation",
               "process_runtime_name": "JVM runtime",
               "process_runtime_version": "JVM version",
-              "process_runtime_description": "JVM implementation",
-              "process_executable_path": "Java path",
-              "process_command_args": "Command args",
-              "os_description": "OS",
-              "host_arch": "Arch",
+              "service_name": "Service",
+              "service_version": "App version",
               "telemetry_distro_name": "OTel distro",
               "telemetry_distro_version": "OTel agent ver",
               "telemetry_sdk_version": "OTel SDK ver"
@@ -1463,22 +1486,102 @@
           }
         }
       ],
-      "options": {
-        "showHeader": true,
-        "cellHeight": "sm"
+      "type": "table"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 82
       },
+      "id": 1027,
+      "panels": [],
+      "title": "Logs & Traces",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "description": "App logs for $service_name filtered by $level (default error|warn). Click a line's trace_id to jump to the trace (logs\u2192traces via the Loki datasource's derived fields).",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 83
+      },
+      "id": 1028,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "expr": "{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"} | detected_level=~\"$level\" | json | line_format \"{{ if .message }}{{ .message }}{{ else if .msg }}{{ .msg }}{{ else }}{{ __line__ }}{{ end }}\"",
+          "refId": "A"
+        }
+      ],
+      "title": "Errors & Warnings \u2014 selected service",
+      "type": "logs"
+    },
+    {
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "description": "Recent traces for $service_name. Click a Trace ID \u2192 trace view, which links to logs (tracesToLogs) and metrics (tracesToMetrics) via the Tempo datasource config.",
       "fieldConfig": {
         "defaults": {
           "custom": {
-            "filterable": true
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
           }
         },
         "overrides": []
-      }
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 83
+      },
+      "id": 1029,
+      "options": {
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "limit": 20,
+          "query": "{ resource.service.name =~ \"$service_name\" }",
+          "queryType": "traceql",
+          "refId": "A",
+          "tableType": "traces"
+        }
+      ],
+      "title": "Traces \u2014 selected service",
+      "type": "table"
     }
   ],
   "refresh": "30s",
-  "schemaVersion": 39,
+  "schemaVersion": 42,
   "tags": [
     "jenkins-2026",
     "microservices",
@@ -1533,6 +1636,7 @@
         "type": "datasource"
       },
       {
+        "allValue": ".*",
         "current": {
           "text": "All",
           "value": "$__all"
@@ -1557,10 +1661,10 @@
         "regex": "",
         "skipUrlSync": false,
         "sort": 1,
-        "type": "query",
-        "allValue": ".*"
+        "type": "query"
       },
       {
+        "allValue": ".+",
         "current": {
           "text": "All",
           "value": "$__all"
@@ -1572,7 +1676,7 @@
         "definition": "label_values(jvm_memory_used_bytes, service_name)",
         "hide": 0,
         "includeAll": true,
-        "allValue": ".+",
+        "label": "Service (JVM app)",
         "multi": true,
         "name": "service_name",
         "options": [],
@@ -1584,8 +1688,67 @@
         "regex": "",
         "skipUrlSync": false,
         "sort": 1,
-        "type": "query",
-        "label": "Service (JVM app)"
+        "type": "query"
+      },
+      {
+        "allValue": ".+",
+        "current": {
+          "selected": true,
+          "text": [
+            "error",
+            "warn"
+          ],
+          "value": [
+            "error",
+            "warn"
+          ]
+        },
+        "description": "Filter the logs panel by severity (detected_level). All = everything incl. plain-text (unknown).",
+        "hide": 0,
+        "includeAll": true,
+        "label": "Log level",
+        "multi": true,
+        "name": "level",
+        "options": [
+          {
+            "selected": false,
+            "text": "All",
+            "value": "$__all"
+          },
+          {
+            "selected": true,
+            "text": "error",
+            "value": "error"
+          },
+          {
+            "selected": true,
+            "text": "warn",
+            "value": "warn"
+          },
+          {
+            "selected": false,
+            "text": "info",
+            "value": "info"
+          },
+          {
+            "selected": false,
+            "text": "debug",
+            "value": "debug"
+          },
+          {
+            "selected": false,
+            "text": "trace",
+            "value": "trace"
+          },
+          {
+            "selected": false,
+            "text": "unknown",
+            "value": "unknown"
+          }
+        ],
+        "query": "error,warn,info,debug,trace,unknown",
+        "skipUrlSync": false,
+        "type": "custom"
       }
     ]
   },
@@ -1597,6 +1760,5 @@
   "timezone": "",
   "title": "CI-CD JVM internals (all Java services + Jenkins)",
   "uid": "jenkins2026-jvm-internals",
-  "version": 2,
   "weekStart": ""
 }

@@ -69,14 +69,14 @@ mindmap
 
 ## Key Features
 
-- **gcx CLI GitOps**: Dashboard deployment in Grafana Cloud is managed via the native **`gcx` CLI**. The `scripts/07-grafana-dashboards.sh` script automatically installs and authenticates the `gcx` CLI, wraps raw JSON dashboards into Kubernetes-style `apiVersion: dashboard.grafana.app/v1` manifests, and pushes resources declaratively using `gcx resources push --include-managed`.
+- **Dashboard provisioning over the Grafana HTTP API**: `scripts/07-grafana-dashboards.sh` publishes `observability/grafana/dashboards/*.json` to Grafana Cloud with a plain, idempotent **`POST /api/dashboards/db`** import (`overwrite:true`, keyed by `uid`, into the *CI-CD Observability* folder) using the static `GRAFANA_API_KEY` — no `gcx` CLI dependency. (It previously used `gcx resources push`; gcx routes through Grafana's newer Kubernetes-style resource layer whose async create/delete + optimistic concurrency intermittently fail on Grafana Cloud with `409 AlreadyExists` / `409 "object has been modified"` and can desync the legacy vs k8s storage, so the reliable legacy import is used instead — the same path the managed-aws branch uses.) The AI-optimized v2-schema source exports are kept verbatim under [`observability/grafana/dashboards-cloud-export/`](../observability/grafana/dashboards-cloud-export/) for when gcx gains solid v2 support.
 - **Jenkins Data Source**: The [Jenkins Datasource](https://grafana.com/grafana/plugins/grafana-jenkins-datasource/) is automatically provisioned.
   - **One-time Manual Step**: You must manually install the **`grafana-jenkins-datasource`** plugin in your Grafana Cloud portal (**Administration > Plugins**) before the first deployment.
   - **PDC Tunnel**: In Grafana Cloud mode, it uses **Private Data Source Connect (PDC)** to securely tunnel from the cloud to your in-cluster Jenkins instance.
 - **Model Context Protocol (MCP)**: This project supports Grafana Cloud's hosted **MCP server**. Connecting an AI agent (like Gemini) to your stack via MCP allows for real-time querying of Jenkins traces, metrics, and logs. In your Grafana Cloud portal, go to **Administration > Assistant > Cloud MCP** to find your connection endpoint.
 - **GKE Kubernetes Cluster Observability**: Automatic telemetry collection for GKE hosts, nodes, namespaces, and cluster events using the official `grafana/k8s-monitoring` Helm chart (pinned `4.1.6`).
   - **Zero Log Duplication**: Disables log collection inside the chart (`podLogsViaLoki.enabled=false`) to prevent dual ingestion charges.
-  - **Zero-Touch Config**: Automatically maps default Prometheus, Loki, and Tempo data sources via `gcx api`.
+  - **Zero-Touch Config**: Automatically maps default Prometheus, Loki, and Tempo data sources via the Grafana HTTP API (`POST /api/plugins/grafana-k8s-app/settings`).
 - **Correlated telemetry**: Traces, metrics, and logs are fully correlated. Log-to-trace links and system datasources are pre-configured by default on Grafana Cloud.
 
 ## GCP platform metrics — Cloud provider integration (optional)
@@ -356,7 +356,9 @@ flowchart LR
 
 ### Log Levels
 
-The `microservices-logback` ConfigMap is the single authority on log levels (it *replaces* JHipster's own `logback-spring.xml`):
+There are **two independent levers**, at two different points in the pipeline:
+
+**1. Source-side (microservices only) — the `microservices-logback` ConfigMap.** This is the authority on what each microservice *emits*. It lives in the **GitOps repo** and *replaces* JHipster's own `logback-spring.xml`:
 
 ```xml
 <logger name="org.springframework" level="WARN"/>
@@ -369,7 +371,27 @@ The `microservices-logback` ConfigMap is the single authority on log levels (it 
 <root level="INFO"/>
 ```
 
-This is **mode-independent** — applies unchanged across all four observability modes (`grafana-cloud`, `oss`, `managed-azure`, `managed-aws`).
+This is **mode-independent** — applies unchanged across all four observability modes. Use it to make a microservice emit *more* (e.g. drop a package to `DEBUG` to see request-time lines).
+
+**2. Pipeline-side (everything) — `observability.logMinSeverity`.** A `filter` processor injected into the **`otel-collector-logs`** DaemonSet (by `scripts/03-observability.sh`, via `yq`) that drops log records **below a chosen severity** *before* they reach the backend — so it trims **every** Grafana logs panel, **microservices AND platform components** (ArgoCD, CNPG, dex, …), in all four modes. Use it to cut noise globally without touching each component.
+
+```yaml
+# config/config.yaml — durable default; per-run override JENKINS2026_LOG_MIN_SEVERITY,
+# or the log_min_severity dropdown on the workflows that re-apply 03-observability:
+# Day1.cluster.01-gke (+ the Day1.cluster.00-all umbrella), and — for a light change on a
+# running cluster without a full Day1 — Day2.redeploy.01-argocd / Day2.publish.01-oss-grafana.
+observability:
+  grafanaCloudTier: free   # free (default) | paid — the volume profile (see below)
+  logMinSeverity: auto     # auto=from tier (free→warn, paid→trace) · or force trace/debug/info/warn/error
+```
+
+> **The `grafanaCloudTier` profile.** `logMinSeverity` (logs) and `leanMetrics` (metrics) default to `auto`, deriving from the tier so the **free** tier fits its limits in one switch: `free` → `leanMetrics` on + `logMinSeverity=warn`; `paid` → full metrics + ship all logs (`trace`). It governs **metrics and logs** — an explicit value (or the `JENKINS2026_*` env / GHA dropdowns) overrides the tier.
+>
+> **Traces are deliberately NOT sampled on either tier (100% shipped).** Two reasons: (1) in this low-traffic PoC the trace volume comfortably fits the Grafana Cloud free tier, so sampling buys nothing; (2) sampling would **break correlation** — a `trace_id` embedded in a log line (or a metric exemplar) could point at a trace that was dropped, turning the log→trace / metric→trace jumps into dead ends. If traffic ever grows enough to need it, add a `probabilistic_sampler` (or tail-sampling) to the collector's traces pipeline gated on the tier — accepting that correlation-from-logs becomes best-effort.
+
+How it works: a `regex_parser` in the `otel-collector-logs` filelog receiver extracts the level token from **structured** lines — JSON `"level":"<lvl>"` (covers the microservices' ECS nested `"log":{"level":…}`, CNPG's flat `"level":…`) and logfmt `level=<lvl>` (ArgoCD), case-insensitively — and **sets the OTLP record severity** from it (plain-text lines get `level=unknown`). The `filter/severity` processor then drops by `severity_number` (`!= UNSPECIFIED and < <threshold>`), so anything whose level couldn't be parsed is **never dropped** (no accidental blackout). `trace` disables the filter entirely (ship everything). The two levers compose: e.g. keep the logback `<root>` at `INFO` but set `logMinSeverity: warn` for a quiet dashboard, then dial back when debugging.
+
+**3. Interactive per-panel filter — the `$level` dashboard variable.** Because the collector now stamps every record with a severity, Loki derives a `detected_level` on **100%** of log lines (`unknown` for plain text). Every logs panel carries a multi-select **`Log level`** variable (`error/warn/info/debug/trace/unknown`, default **All**) wired as `… | detected_level=~"$level"` — so you can slice the panel by level live, non-destructively, on top of whatever the collector floor (`logMinSeverity`) already let through. `All` (`.+`) includes everything, plain text included.
 
 Two real reasons business logs look sparse at `INFO`:
 1. **The services are idle.** Run `microservices-k6-smoke` to generate traffic and correlation.
@@ -511,7 +533,7 @@ Each managed backend requires adapted datasources (AMP instead of Prometheus, Cl
 | Directory | Published to | Datasources used | How generated |
 |---|---|---|---|
 | [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) | OSS Grafana (in-cluster) | Prometheus · Loki · Tempo | Rendered into the dashboards ConfigMap by a Helm chart, **GitOps-managed by ArgoCD** (auto-sync) — see [OSS dashboards: GitOps-managed by ArgoCD](#oss-dashboards-gitops-managed-by-argocd) |
-| *(same as above)* | Grafana Cloud | grafanacloud-prom · grafanacloud-logs · grafanacloud-traces | Used directly; `gcx` binds datasource UIDs at push time |
+| *(same as above)* | Grafana Cloud | grafanacloud-prom · grafanacloud-logs · grafanacloud-traces | Imported via `POST /api/dashboards/db`; `loki`/`tempo` uids rewritten to the Grafana Cloud built-ins at import time |
 | [`observability/grafana/dashboards-azure/`](../observability/grafana/dashboards-azure/) | Azure Managed Grafana | Azure Monitor (metrics + logs + traces) | [`generate.py`](../observability/grafana/dashboards-azure/generate.py) replaces Loki/Tempo panels with Azure Monitor equivalents |
 | [`observability/grafana/dashboards-aws/`](../observability/grafana/dashboards-aws/) | Amazon Managed Grafana | AMP (PromQL) · CloudWatch Logs · X-Ray | [`generate.py`](../observability/grafana/dashboards-aws/generate.py) replaces Loki panels with CW Logs Insights, Tempo panels with X-Ray |
 
@@ -577,7 +599,7 @@ Then re-publish with the appropriate [`Day2.publish.*` workflow](../.github/work
 flowchart TD
   SRC["observability/grafana/dashboards/*.json\n(canonical source of truth)"]
 
-  SRC -->|"grafana-cloud\n07 → gcx resources push"| GC["Grafana Cloud\nfolder: CI-CD Observability"]
+  SRC -->|"grafana-cloud\n07 → POST /api/dashboards/db"| GC["Grafana Cloud\nfolder: CI-CD Observability"]
   SRC -->|"oss\nHelm chart → ArgoCD\noss-grafana-dashboards (auto-sync,\nciEngine-gated)"| OSS["In-cluster Grafana\njenkins-2026-grafana-dashboards CM\n(dashboardsConfigMaps mount)"]
 
   GEN_AZ["generate.py\nLoki→AzureMonitor\nTempo→AzureMonitor"]
@@ -597,6 +619,37 @@ flowchart TD
 - **Portable datasources**: panels reference `${DS_PROMETHEUS}` / `${DS_LOKI}` / `${DS_TEMPO}` template variables — the same JSON works unchanged in OSS and Grafana Cloud modes.
 - **Environment-scoped logs**: a hidden `namespace` variable resolves the real namespace per environment via `label_values(jvm_memory_used_bytes{deployment_environment="$deployment_environment"}, k8s_namespace_name)`. If no microservices metrics are in the backend yet, this variable is empty and log/trace panels that depend on it will show "No data".
 - **Fixed rate window for sparse metrics**: `[15m]` rate window on JVM GC Pause Time p99 to prevent `NaN` on idle JVMs at short zoom levels.
+
+### Grafana Cloud dashboard provisioning: HTTP API today, gcx + v2 tomorrow
+
+> **TL;DR** — Grafana Cloud dashboards are published with the classic **`POST /api/dashboards/db`** HTTP import (reliable, idempotent), **not** `gcx resources push`. `gcx` was **decommissioned for dashboard provisioning** because its newer Kubernetes-style resource layer is not yet reliable on Grafana Cloud. **When `gcx` matures, migrating back to it (pushing the native v2 resources) is the recommended end state** — the optimized v2 exports are already kept in the repo for exactly that.
+
+**Background — two dashboard formats.** Grafana is mid-migration between two on-disk/API representations:
+
+| | **Classic model** (used by the operational JSON) | **v2 schema** (`dashboard.grafana.app/v2`) |
+|---|---|---|
+| Shape | `panels[]` + `gridPos` + `templating` | `elements` + `layout` (e.g. `RowsLayout`) + `variables` |
+| Where | [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) | [`observability/grafana/dashboards-cloud-export/`](../observability/grafana/dashboards-cloud-export/) (YAML + JSON) |
+| Provisioned by | `POST /api/dashboards/db` (this project, today) | `gcx resources push` (future) |
+| Grafana "Export as JSON" | — | **this is what current Grafana Cloud exports** |
+
+The dashboards-cloud-export/ files are the **AI-optimized exports** (Grafana Cloud assistant) in **v2**, kept **verbatim** as the source of truth. The operational classic JSON in dashboards/ is **derived** from them by reading each dashboard's classic representation back via the Grafana API (Grafana serves a v2-native dashboard as the classic model on the legacy endpoint), normalized to the repo's portable datasource convention.
+
+**Why `gcx` is decommissioned (for now).** `gcx resources push` routes through Grafana's **Kubernetes-style resource API** (`apiVersion: dashboard.grafana.app/*`, `kind: Dashboard`). On Grafana Cloud that layer is **not yet reliable for automation**:
+
+- **`gcx` cannot push native v2 resources idempotently** — pushing a `dashboard.grafana.app/v2` resource is treated as a **create**, so re-runs and any name that already exists fail with **`409 AlreadyExists`**; updates fail with **`409 Conflict: object has been modified` (stale `resourceVersion`)** because the optimistic-concurrency `resourceVersion` is not round-tripped.
+- **Async create/delete** — deletes return immediately but the resource stays *terminating*, so an immediate recreate hits the still-reserved name (`409 AlreadyExists`) even though both the legacy `GET` and `gcx get` already report it gone.
+- **legacy ↔ k8s storage desync (split-brain)** — heavy create/delete/v1↔v2 churn can leave the two storage layers inconsistent (legacy `GET` says *exists/provisioned*, `gcx get` says *absent*), which then rejects **both** paths (`gcx` create → `AlreadyExists`; `POST /api/dashboards/db` → `Cannot save provisioned dashboard`).
+
+The plain **`POST /api/dashboards/db`** import has none of these problems: it is a single, **idempotent upsert keyed by `uid`** (`overwrite: true`), unaffected by the k8s-layer concurrency/GC — the same path the **managed-aws** branch already uses. So `scripts/07-grafana-dashboards.sh` uses it for the `grafana-cloud` mode and **no longer installs or calls `gcx`** at all (the Kubernetes-Monitoring-app config also moved to `POST /api/plugins/grafana-k8s-app/settings`).
+
+**Recommended future migration (when `gcx`/v2 is solid).** The native v2 + `gcx` path is the strategic direction (declarative, GitOps-style, the format Grafana now exports). Once `gcx resources push` performs a proper **server-side apply / upsert** for `dashboard.grafana.app/v2` (idempotent re-runs, no `409`, correct `resourceVersion` handling), migrate by:
+
+1. Normalizing the [`dashboards-cloud-export/`](../observability/grafana/dashboards-cloud-export/) v2 resources to stable `metadata.name` = `jenkins2026-*` + the `grafana.app/folder: jenkins-2026` annotation, with server-managed metadata (`resourceVersion`/`uid`/`namespace`/timestamps) stripped.
+2. Switching the `grafana-cloud` branch of `scripts/07-grafana-dashboards.sh` back to `gcx login` + `gcx resources push -p <dir>` of those v2 resources (drop the `POST /api/dashboards/db` loop).
+3. Keeping the classic JSON in `dashboards/` for the **OSS** mode (its sidecar ConfigMap + the Azure/AWS `generate.py` variants are classic-model and unaffected).
+
+Until then, the HTTP-API import stays — it is the dependable choice for automated, repeatable provisioning across rebuilds.
 
 ## Database (CNPG) observability
 

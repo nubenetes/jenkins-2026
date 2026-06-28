@@ -263,17 +263,21 @@ resource "google_storage_bucket_iam_member" "nodes_postgres_backups" {
 # with this GSA via serviceAccountTemplate; the microservices ApplicationSet passes
 # the GSA account_id + project + bucket as helm params (scripts/08.5-argocd.sh), so
 # the chart's placeholder defaults (jenkins-2026-sa@jenkins-2026) are overridden by
-# the real project at deploy time. Least privilege: only objectAdmin on the one
-# backups bucket. See docs/502 / docs/902 § Postgres WAL backups.
+# the real project at deploy time. See docs/502 / docs/902 § Postgres WAL backups.
 resource "google_service_account" "pg_backups" {
   project      = var.project_id
   account_id   = "${var.cluster_name}-pg-backups"
   display_name = "jenkins-2026 CNPG Postgres backups (GCS writer)"
 }
 
+# storage.admin (bucket-scoped), NOT objectAdmin: barman-cloud-check-wal-archive does a
+# storage.buckets.get when validating the destination, which objectAdmin lacks — so
+# objectAdmin makes WAL archiving fail 403 ("does not have storage.buckets.get") and no
+# backup can ever run. Mirrors ci_postgres_backups (same lesson) and is still least-
+# privilege: scoped to the one backups bucket only.
 resource "google_storage_bucket_iam_member" "pg_backups" {
   bucket = "${var.project_id}-jenkins-2026-postgres-backups"
-  role   = "roles/storage.objectAdmin"
+  role   = "roles/storage.admin"
   member = "serviceAccount:${google_service_account.pg_backups.email}"
 }
 

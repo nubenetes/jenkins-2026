@@ -5,7 +5,7 @@ Park the throwaway cluster at **~zero compute cost** without a Decom + Day1 rebu
 | Workflow | What it does |
 |---|---|
 | **[`Day2.scale.01 Pause`](../.github/workflows/Day2.scale.01-pause.yml)** | Scales every node pool → 0. Cluster, PVs (CNPG Postgres data), ArgoCD + apps, static IP, DNS, certs all survive — only the worker VMs go away. |
-| **[`Day2.scale.02 Resume`](../.github/workflows/Day2.scale.02-resume.yml)** | Scales node pools back up; pods reschedule, ArgoCD reconciles, CNPG recreates its PDBs — no rebuild. |
+| **[`Day2.scale.02 Resume`](../.github/workflows/Day2.scale.02-resume.yml)** | Scales node pools back up; pods reschedule, ArgoCD reconciles, CNPG recreates its PDBs — no rebuild. Then runs a **post-resume recovery pass** (re-clones any unstartable CNPG replica, restarts ArgoCD dex if its OIDC connector init raced DNS — see below). |
 
 **What still costs while paused** (all small): the zonal **control plane** (covered by the GKE free-tier management credit), the **persistent disks** backing the PVs, and the reserved **static IP**. Grafana Cloud is free-tier (nothing to pause). Azure/AWS managed backends, if ever provisioned, are billed separately and are **not** paused here.
 
@@ -39,6 +39,7 @@ flowchart TD
     R1[Resize each pool to N] --> R2[Re-enable autoscaling + autoRepair]
     R2 --> R3[Pods reschedule]
     R3 --> R4[ArgoCD reconciles - CNPG recreates PDBs]
+    R4 --> R5["Post-resume recovery<br/>re-clone stuck CNPG replicas<br/>+ restart dex if connector init raced DNS"]
   end
   P5 -. "minutes later" .-> R1
 ```
@@ -62,6 +63,16 @@ graph LR
 ```
 
 </details>
+
+### The resume-side gotcha: one-time init races DNS on fresh nodes (real incident)
+
+A resume brings up **brand-new nodes**. For a short window after they go Ready, CoreDNS + the egress path are still converging (Dataplane V2 / WireGuard re-establishing). Workloads that run a **one-time startup init and never retry it** can run that init inside this window, fail, and stay broken even though the pod looks `Running`/`Ready`. Two cases were hit and are now auto-healed by the **post-resume recovery step** in `Day2.scale.02 Resume`:
+
+1. **CNPG replicas left unstartable by the pause's force-drain.** The `--disable-eviction` DELETE that bypasses the PDBs is ungraceful, so a replica's data dir can come back in a state the instance-manager can't start postgres from — the **startup probe fails with HTTP 500 forever** (zero postgres logs; the operator just keeps polling and seeing `connection refused` on the local socket). Fix = **re-clone the replica**: delete its PVCs (data + WAL) + pod, and the operator re-bootstraps it via `pg_basebackup` from the primary. The step does this **only for replicas** — the current primary (`.status.currentPrimary`) is never auto-recreated (it holds the authoritative data; a stuck primary is surfaced as a `::warning::` for manual handling). A grace window lets genuinely-still-starting replicas settle first, so a healthy resume is a no-op.
+
+2. **ArgoCD dex's OIDC connector init.** dex dials the SSO provider's `/.well-known/openid-configuration` **once at startup**; if DNS/egress wasn't ready it logs `failed to open all connectors` / `failed to initialize server`, never retries, and **doesn't listen on `:5556`** — so SSO login fails with `dial tcp …:5556: connect: connection refused` (note: the pod still reports `Ready`, so the readiness probe doesn't catch this). dex is stateless (`storage=memory`), so the step **restarts the deployment** (only when that failure is actually in its log) and it re-inits cleanly.
+
+> Both are **idempotent** — on a clean resume nothing matches and the step is a no-op. They exist because the failing inits don't self-retry; everything else (app Deployments, the CNPG primary, ArgoCD's other components) reconciles on its own once nodes return.
 
 Related lifecycle: [`Day1.cluster.01-gke`](../.github/workflows/Day1.cluster.01-gke.yml) (provision / reconcile drift), [`Decom.cluster.01-gke`](../.github/workflows/Decom.cluster.01-gke.yml) (full teardown). Full workflow inventory: [101](./101-GITHUB_ACTIONS_WORKFLOWS.md).
 

@@ -40,6 +40,26 @@ on:
         options:
           - info
           - debug
+      grafana_cloud_tier:
+        description: "Grafana Cloud tier profile (grafana-cloud mode). free (default) = leanMetrics on + logMinSeverity=warn (fits free-tier); paid = full metrics + all logs. Traces are NOT sampled on either tier (100% shipped) — they fit the free tier here and sampling would break trace↔log/metric correlation. This run re-applies 03-observability."
+        required: false
+        default: "free"
+        type: choice
+        options:
+          - free
+          - paid
+      log_min_severity:
+        description: "Override the min log severity sent to Grafana (re-applies 03-observability — light way to change it without a full Day1). auto (default) = derive from grafana_cloud_tier; or force a level."
+        required: false
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - trace
+          - debug
+          - info
+          - warn
+          - error
 
 permissions:
   contents: read
@@ -52,6 +72,8 @@ concurrency:
 env:
   JENKINS2026_LOG_LEVEL: ${{ inputs.log_level || 'info' }}
   TF_LOG: ${{ inputs.log_level == 'debug' && 'DEBUG' || '' }}
+  JENKINS2026_GRAFANA_CLOUD_TIER: ${{ inputs.grafana_cloud_tier || 'free' }}
+  JENKINS2026_LOG_MIN_SEVERITY: ${{ inputs.log_min_severity || 'auto' }}
   TF_VERSION: "1.15.6"
   # Selects the jenkins vs tekton path in scripts/lib/config.sh + 08.5-argocd.sh -
   # notably WHERE the ArgoCD API token is stored: jenkins-credentials (jenkins ns)

@@ -2,6 +2,392 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.23] - 2026-06-28
+
+Increment over v0.28.22 (Grafana Cloud dashboards: publish over the HTTP API, drop gcx).
+
+### Changed
+- **`scripts/07-grafana-dashboards.sh` (grafana-cloud) now publishes over the Grafana HTTP API,
+  not `gcx`.** Dashboards are imported with a plain idempotent **`POST /api/dashboards/db`**
+  (`overwrite:true`, keyed by `uid`, into the *CI-CD Observability* folder), and the Kubernetes
+  Monitoring app is configured via `POST /api/plugins/grafana-k8s-app/settings` — so the branch no
+  longer installs, authenticates, or calls the `gcx` CLI at all. `gcx resources push` routes through
+  Grafana's newer Kubernetes-style resource layer, which on Grafana Cloud intermittently fails
+  (`409 AlreadyExists` on create, `409 "object has been modified"` on update, async-delete
+  terminating-name reservations, and legacy↔k8s storage desync). The legacy import is a reliable
+  idempotent upsert — the same path the managed-aws branch uses. Verified: full publish + re-run
+  both clean, 6/6 dashboards live.
+
+### Docs
+- **docs/301-OBSERVABILITY.md** — new section *"Grafana Cloud dashboard provisioning: HTTP API today,
+  gcx + v2 tomorrow"* documenting the classic-model vs **v2 schema** (`dashboard.grafana.app/v2`)
+  split, why gcx is decommissioned for now (v2 push not idempotent, async create/delete, split-brain),
+  why the HTTP-API import is used instead, and the **recommended future migration back to gcx + native
+  v2** once gcx gains a proper server-side apply. Updated the Key Features bullet, the datasource table,
+  and the provisioning Mermaid diagram accordingly; fixed the `(gcx)` mentions in
+  `Day2.publish.02-grafana-cloud.yml` comments.
+
+## [v0.28.22] - 2026-06-28
+
+Increment over v0.28.21 (adopt the AI-optimized dashboards as the operational source).
+
+### Changed
+- **Operational dashboards refreshed with the Grafana-AI-optimized versions.** The dashboards were
+  deleted, re-imported into a clean Grafana, optimized + error-corrected by the Grafana Cloud AI
+  assistant, and exported (v2 schema). The verbatim v2 exports are kept under
+  `observability/grafana/dashboards-cloud-export/` (both YAML and JSON, 6 each). The **operational**
+  classic-model dashboards in `observability/grafana/dashboards/` were then refreshed from the
+  optimized result by **pulling each dashboard's classic representation via the Grafana API**
+  (Grafana serves a v2-native dashboard as the classic model on the legacy endpoint), normalized to
+  the repo convention (datasource uids `grafanacloud-logs/traces` → `loki/tempo`, volatile
+  `id`/`version` stripped). All six validated: 0 duplicate refIds, 0 layout overlaps.
+
+### Notes
+- **Provisioning stays on the proven `gcx` v1 path.** `gcx resources push` of **native v2**
+  resources (`dashboard.grafana.app/v2`) is currently unreliable against Grafana Cloud — the
+  k8s-style resource layer uses optimistic concurrency + async deletes, so pushes intermittently
+  fail with `409 AlreadyExists` / `409 Conflict: object has been modified`. So
+  `scripts/07-grafana-dashboards.sh` continues to wrap the classic JSON as
+  `dashboard.grafana.app/v1` (reliable upsert). When gcx gains solid v2 support, the
+  `dashboards-cloud-export/` resources can be pushed directly.
+
+## [v0.28.21] - 2026-06-28
+
+Increment over v0.28.20 (sync Grafana-AI note-text improvements into git).
+
+### Changed
+- **Dashboard note text refreshed from the Grafana assistant's review.** The assistant reviewed
+  all dashboards and improved their in-panel documentation; those notes were ported back into the
+  repo's classic-model dashboards (the assistant exports the new v2 schema, which the repo/publish
+  flow can't consume, so only the markdown note content was extracted and applied):
+  **k6** and **Microservices** notes expanded; **RUM** note expanded; **JVM internals** gained a
+  brand-new "what this board shows / sections-at-a-glance" note (added as a top text panel, layout
+  shifted); **Jenkins** already synced (e53c50a); **PostgreSQL** unchanged. Panels/queries/layout
+  otherwise untouched. Republished to Grafana Cloud.
+
+## [v0.28.20] - 2026-06-28
+
+Increment over v0.28.19 (fix duplicate-refId "No data" across all generated dashboards).
+
+### Fixed
+- **Multi-query panels showed "No data" — duplicate `refId: "A"`.** The dashboard generator gave
+  every query in a panel the same `refId: "A"`; Grafana requires unique refIds per panel and
+  rejects the whole panel (`[query.duplicateRefId]`) → "No data". This hit only **multi-query
+  timeseries** (single-query panels were fine), which is why it looked intermittent. Reassigned
+  refIds to `A/B/C…` per target across **all generated dashboards** (Jenkins, PostgreSQL/CNPG,
+  Microservices, k6 — 48 queries). Single-query, JVM, RUM and Tekton dashboards were unaffected.
+  (Diagnosed with help from Grafana's assistant, which flagged the duplicate refIds.)
+
+## [v0.28.19] - 2026-06-28
+
+Increment over v0.28.18 (Jenkins dashboard: NaN guard + readable low-volume panels).
+
+### Fixed
+- **Run-duration-percentiles panel showed "No data".** `histogram_quantile()` of flat (non-
+  incrementing) buckets returns **NaN**, and `or vector(0)` only catches an empty vector, not NaN —
+  so the panel read "No data" whenever no build was in the rate window. Fixed with a
+  `(histogram_quantile(...) >= 0) or vector(0)` guard (NaN fails the comparison → dropped → `0`),
+  and switched the window to `$__range` so any build in the visible range defines the percentile.
+- **Pipeline outcome/lifecycle timeseries looked empty** — they used per-second `rate()` of rarely-
+  incrementing counters (≈0.01/s on a low-volume CI), which renders as a flat near-zero line.
+  Switched to `increase()` (build COUNTS per scrape interval), so they show readable bars when
+  builds finish. The agent/executor/queue gauges already return live values (e.g. agents=2); a
+  stale browser tab from earlier republishes shows them as "No data" until a hard refresh.
+
+## [v0.28.18] - 2026-06-28
+
+Increment over v0.28.17 (Jenkins dashboard re-oriented to the seed-job architecture).
+
+### Changed
+- **`CI-CD / Jenkins Controller` dashboard reshaped to the actual CI architecture.** Removed the
+  **SCM-event / multibranch panels** (`jenkins_scm_event_*`) — this controller runs **seed-generated
+  `pipelineJob`s** (declarative shared-library `MicroservicesPipeline`), NOT multibranch/webhook
+  scanning, so those series are structurally always `0`. Replaced them with an **"Ephemeral build
+  agents (Kubernetes) & queue"** section (cloud agent pods completed, agents online/total, launch
+  failures, executor states, queue states, queue wait time, throughput) that reflects this setup's
+  real capacity model. Dropped the misleading **per-`ci_pipeline_id`** breakdown + variable: in this
+  Jenkins-OTel-plugin version `ci_pipeline_run_*` are **aggregate** (the id collapses to `#other#`),
+  so the pipeline panels now read as honest controller-wide totals and per-build/stage/step
+  inspection is via the **Traces** panel (Tempo). The in-dashboard note was expanded to explain the
+  whole topology (seed → pipelineJobs → shared-lib → ephemeral k8s agents → ArgoCD GitOps), the
+  metric families, why metrics are aggregate, the ephemeral-agent capacity model (containerCap, not
+  executors), and why each kind of panel may read 0. 41 panels, 0 overlaps/gaps, every panel renders.
+
+## [v0.28.17] - 2026-06-28
+
+Increment over v0.28.16 (fix flaky Smoke Test — deploy readiness wait used namespace "null").
+
+### Fixed
+- **Microservices deploy never waited for the new pod to be Ready → flaky Smoke Test failures.**
+  `microservicesDeploy.groovy` read `cfg.targetNamespace`, but the caller
+  (`MicroservicesPipeline.groovy`) and the docstring pass the key **`namespace`** — so the var
+  was `null` and the post-sync wait ran `kubectl -n null rollout status deploy/<svc>` which
+  failed `Forbidden` and was swallowed by `|| true`. The deploy thus returned before the new
+  gateway pod (JHipster ≈ 30 s startup) was Ready, and the next stage's health curl raced it →
+  `curl exit 28` (timeout). Passed intermittently (warm pod) and failed on a fresh rollout
+  (builds #7/#8). Fix: read `cfg.namespace` so the rollout-status waits in the real namespace.
+  Pre-existing bug, unrelated to the agent-resource bump.
+
+## [v0.28.16] - 2026-06-28
+
+Increment over v0.28.15 (right-size the ACTUAL microservices build agent + dead-code notice).
+
+### Changed
+- **The real microservices build agent (`vars/MicroservicesPipeline.groovy`) got the resource
+  bump.** v0.28.15 sized the root `Jenkinsfile` (the standalone DevSecOps demo); the gateway/
+  jhipster builds actually run via the **declarative shared-library** `MicroservicesPipeline`
+  (seed jobs call `MicroservicesPipeline(...)`). Its `maven` container went req `1 CPU/2Gi`,
+  lim `4 CPU/4Gi` → req **`2 CPU/4Gi`**, lim **`6 CPU/8Gi`** + **In-Place Pod Resize**
+  (`resizePolicy`). Root cause of slow builds: the JHipster Maven build runs the Angular/Webpack
+  frontend in-process (`NODE_OPTIONS=3072m` ≈ 3Gi) alongside the Maven JVM (2Gi) → ~5Gi peak in a
+  4Gi container = OOM/thrash in the frontend phase. 8Gi fixes it. `MAVEN_OPTS` left at `-Xmx2048m`
+  (correct — raising it would re-overcommit against the node build). Already-modern bits kept:
+  declarative-in-shared-library, `idleMinutes 5` warm-pod reuse, `mvnw -T 4`, hostPath `.m2`/npm
+  caches, the agent-image-prepull DaemonSet.
+
+### Docs
+- **`jcasc-modern-agents.yaml` marked NOT WIRED** with a header explaining it's reference-only
+  (nothing loads it), that the real agents are the inline pod specs in the pipelines, and where
+  the In-Place Resize idea is actually applied — to stop it being mistaken for active config.
+
+## [v0.28.15] - 2026-06-28
+
+Increment over v0.28.14 (faster Jenkins build agent).
+
+### Changed
+- **Bigger build-agent `maven` container for faster JHipster builds.** The pipeline pod
+  (root `Jenkinsfile`) bumped the `maven` container from req `1 CPU / 2Gi`, lim `4 CPU / 4Gi`
+  to req **`2 CPU / 4Gi`**, lim **`6 CPU / 8Gi`** — the heavy step is Maven + Angular/Webpack,
+  which is CPU/memory-hungry and was GC-thrashing at 4Gi. Headroom exists (nodes are
+  `e2-standard-8`, ~60% CPU / 35% mem used). Also added **In-Place Pod Resize** (`resizePolicy`,
+  GA in K8s 1.33+; cluster is 1.35) so the container can grow under load without a restart.
+  Note: parallel-build capacity is governed by the k8s `containerCap` (10–20 agent pods), not
+  controller executors (built-in `numExecutors: 0`); this change speeds each build, not concurrency.
+
+## [v0.28.14] - 2026-06-28
+
+Increment over v0.28.13 (Jenkins executor semantics + idle pipeline panels).
+
+### Fixed
+- **Jenkins dashboard: pipeline panels no longer show "No data" when idle, and the executor
+  numbers are explained.** All `ci_pipeline_run_*` rate/quantile queries are wrapped in
+  `or vector(0)` so they read `0` (flat) when no build is in the window instead of "No data"
+  (a `0` on run-duration means "no recent build", documented). The misleading "Executor
+  utilization %" stat was removed (it divided busy executors — which include ephemeral agents,
+  double-counted by the OTel plugin's dual node-name/pod-name labels — by `jenkins_executor_total`,
+  which counts only the controller's built-in node → `busy > total` nonsense). Renamed to
+  **Built-in executors** / **Busy executors (all nodes)** with descriptions, added **Builds
+  aborted**, and the note now explains: builds run on **ephemeral k8s agent pods** (built-in
+  `numExecutors: 0`), parallel capacity is the **`containerCap` (10–20 pods)** not the executor
+  count, and `busy > total` during a build is expected (different scopes + dual-label double-count).
+
+## [v0.28.13] - 2026-06-28
+
+Increment over v0.28.12 (Jenkins dashboard idle-state polish).
+
+### Fixed
+- **Jenkins dashboard: no spurious "No data" when the controller is idle.** Controller gauge
+  timeseries (executors, queue, agents, SCM-event pool, active runs) and the failed-builds panel
+  now use `or vector(0)`, so they render `0` instead of "No data" when a sub-series is absent
+  (e.g. no offline agents, no failures yet). The in-dashboard note gained a **"Why a panel reads
+  0 / No data"** section explaining the Kubernetes **ephemeral pod-agent** model (executors/agents
+  are `0` when idle and spike per build), that idle controller panels read `0`, and that the
+  **run-duration percentiles are inherently empty without a recent build** (rate-of-histogram = 0
+  outside the window) — run a build or widen the range. None of these are faults.
+
+## [v0.28.12] - 2026-06-28
+
+Increment over v0.28.11 (deep Jenkins Controller dashboard).
+
+### Changed
+- **`CI-CD / Jenkins Controller` dashboard rebuilt** (12 → 44 panels, 8 sections) on the Jenkins
+  **OpenTelemetry plugin** metrics, with an explanatory note distinguishing the two metric
+  families: **`ci_pipeline_run_*`** (OTel CI/CD semconv — per-pipeline launched/started/active/
+  completed/success/failed/aborted + duration; emitted as builds run) and **`jenkins_*`**
+  (controller internals — executors, build queue, agents/nodes, plugins, SCM events; live while
+  the controller is up). Sections: controller health, pipeline runs (RED), build outcomes,
+  executors & queue (incl. avg queue wait time), agents/nodes & SCM events, controller JVM
+  summary, logs & pipeline/stage/step traces. New `ci_pipeline_id` multi-select. Layout tiles
+  cleanly (0 overlaps/0 gaps); every panel verified to return series. Note explains that pipeline
+  panels are empty until a build runs, while controller panels are always live.
+
+## [v0.28.11] - 2026-06-28
+
+Increment over v0.28.10 (deep k6 Observability dashboard).
+
+### Changed
+- **`CI-CD / k6 Observability` dashboard rebuilt** (14 → 39 panels, 8 sections) on the live k6
+  OTel metric set, mirroring the Postgres/Microservices rebuilds, with a **detailed reference
+  note**: matrix tables for the **6 workload profiles** (smoke/load/stress/soak/spike/breakpoint)
+  and the **10 committed presets** (shape · budgets · use case), a newcomer→operator→specialist
+  **reading guide**, and the filter model (`deployment_environment` / `ci_runner` / `k6_profile` /
+  new **`k6_preset`** picker). Sections: run summary, throughput & VUs & iterations, latency
+  percentiles, **HTTP request-timing phase breakdown** (blocked/connecting/TLS/sending/**waiting
+  =TTFB**/receiving — server-vs-network diagnosis), checks & errors, data transfer, traces & logs.
+  Layout tiles cleanly (0 overlaps/0 gaps); every panel verified to return series over a window
+  containing a real k6 run. Note explains k6 counters are per-run/ephemeral → widen the time range.
+
+## [v0.28.10] - 2026-06-28
+
+Increment over v0.28.9 (deep Microservices Overview dashboard).
+
+### Changed
+- **`CI-CD / Microservices Overview` dashboard rebuilt** (9 → 48 panels, 9 sections) on the live
+  app/OTel metric set, mirroring the depth of the Postgres rebuild: service-health RED summary,
+  HTTP RED (rate / status codes / p50-p95-p99 / error-rate by service), endpoints/routes (top-N
+  rate & p95), **span-metrics RED** (`traces_spanmetrics_*`: calls / errors / duration / by span
+  kind), **service dependency graph** (`traces_service_graph_*` edges: rate / failed / client &
+  server latency), a JVM & runtime summary (heap / GC p99 / threads / CPU; full depth in the JVM
+  dashboard), logs (`$level` filter) and a Tempo traces table. New `deployment_environment` tier
+  picker + multi-select `service_name`. Layout tiles cleanly (0 overlaps / 0 gaps); every app
+  panel verified to return series on the stable tier.
+- **Free-tier / leanMetrics panels kept, not deleted.** A "Kubernetes pod & container infra"
+  section (pod restarts, container memory/CPU, deployment replicas, pod phase) is retained even
+  though it's **empty on the free tier** (leanMetrics drops kube-state/cAdvisor) — so the board is
+  ready the moment `grafanaCloudTier` is set to `paid`. A prominent in-dashboard note explains the
+  free-tier vs paid behaviour and why each kind of panel may read 0.
+
+## [v0.28.9] - 2026-06-28
+
+Increment over v0.28.8 (postgres dashboard validation fix).
+
+### Fixed
+- **Postgres dashboard "WAL receiver up" always showed down.** It used
+  `min(cnpg_pg_replication_is_wal_receiver_up)`, which includes the primary (whose receiver is
+  always 0) and so masked healthy replicas. Changed to `sum(...)` → "Replica WAL receivers up"
+  shows the count actually streaming (4 on stable; 0 on develop, mapped to "no replicas
+  (single-instance)"). Full validation under live k6 load confirms **every panel returns series
+  on both the stable and develop tiers** (no "No data"); remaining zeros are healthy state
+  (0 replication lag, 0 deadlocks, 100% cache → 0 disk-read time) or by-design on the lean
+  develop tier (single-instance, no backups).
+
+## [v0.28.8] - 2026-06-28
+
+Increment over v0.28.7 (fix CNPG WAL archiving / backups).
+
+### Fixed
+- **CNPG WAL archiving + backups were failing 403 — now work.** The `<cluster>-pg-backups` GSA
+  (impersonated by the postgres pods via Workload Identity) had `roles/storage.objectAdmin` on
+  the backups bucket, which lacks `storage.buckets.get` — the permission
+  `barman-cloud-check-wal-archive` calls when validating the destination. Result: every WAL
+  archive failed (`ContinuousArchivingFailing`, 1000+ failures, `.ready` WAL piling up) and no
+  base backup could run, so the dashboard's backup/archiving panels read "no backups configured".
+  Fix: grant the GSA `roles/storage.admin` **scoped to the backups bucket** (mirrors
+  `ci_postgres_backups`; still least-privilege). After applying, archiving recovered
+  (`ContinuousArchivingSuccess`) and base backups for both stable clusters completed. develop is
+  unaffected (lean tier — no `barmanObjectStore`, so it never archived). `terraform/gke`.
+
+## [v0.28.7] - 2026-06-28
+
+Increment over v0.28.6 (postgres dashboard polish + traces-sampling rationale).
+
+### Fixed
+- **PostgreSQL/CNPG dashboard: no empty panels, no layout gaps.** Every band now tiles to a
+  full 24-col width at a uniform height (0 overlaps, 0 gaps). Resilience added so stats render
+  `0`/explanatory text instead of "No data": collector-errors, backup/recoverability (mapped to
+  "no backups configured"), archival counters, and the replication-detail panels (which are
+  empty on single-instance tiers like develop) now read `0` with descriptions noting they need
+  replicas. Verified against the live Grafana Cloud Prometheus on both the stable and develop tiers.
+
+### Docs
+- **Documented why traces are not sampled on the free tier** — in `docs/301` and in the
+  `grafana_cloud_tier` GHA dropdown description itself: traces ship at 100% on both tiers because
+  the PoC volume fits the free tier and sampling would break trace↔log/metric correlation.
+
+## [v0.28.6] - 2026-06-28
+
+Increment over v0.28.5 (deep CloudNativePG/PostgreSQL dashboard).
+
+### Changed
+- **`CI-CD / PostgreSQL (CloudNativePG)` dashboard rebuilt** from 11 → 62 panels across 10
+  sections, modelled on the official CloudNativePG dashboard + Postgres SRE practice, driven
+  by the live `cnpg_*` metric set (PG 18.3 / current CNPG): cluster health & topology
+  (primary/replicas/version/uptime/switchover/fencing), connections & sessions (by
+  state/instance/db/user, waiting, longest txn), throughput/TPS & row activity (commits vs
+  rollbacks, rollback ratio, tuple ops, temp spill, deadlocks/conflicts), cache & block I/O
+  (hit ratio, read/write time), WAL & checkpoints (bytes/records/FPI, buffers-full, timed vs
+  requested, write/sync time), streaming replication (lag seconds, write/flush/replay lag &
+  diff bytes, slots/retained WAL, WAL receiver), storage + **transaction-ID/multixact
+  wraparound** monitoring, WAL archiving & backups, bgwriter & collector health, and a logs
+  panel with the `$level` filter. New template vars: `pod` (instance) and `datname` (database),
+  both multi-select. All queries verified against the live Grafana Cloud Prometheus.
+
+## [v0.28.5] - 2026-06-28
+
+Increment over v0.28.4 (Grafana Cloud tier profile).
+
+### Added
+- **`observability.grafanaCloudTier` (`free` default | `paid`)** — a one-switch profile that
+  sets the volume-control defaults so the free tier stays under its limits. `free` →
+  `leanMetrics` on + `logMinSeverity=warn`; `paid` → full metrics + ship all logs (`trace`).
+  It governs **metrics (`leanMetrics`) and logs (`logMinSeverity`)** — **not traces yet.**
+  `leanMetrics`/`logMinSeverity` now default to **`auto`** (derive from the tier); an explicit
+  value, the `JENKINS2026_*` env, or the GHA dropdown overrides it (precedence: env > explicit
+  config > tier). Exposed as a **`grafana_cloud_tier`** dropdown on the workflows that re-apply
+  `03-observability` (`Day1.cluster.01-gke` + the `Day1.cluster.00-all` umbrella +
+  `Day2.redeploy.01-argocd`); `log_min_severity` gained an `auto` option (now its default).
+  Only meaningful in grafana-cloud mode (other backends stay neutral: lean off, severity info).
+
+## [v0.28.4] - 2026-06-28
+
+Increment over v0.28.3 (severity parsing + per-panel level filtering in Grafana).
+
+### Added
+- **Filter logs by level in the Grafana dashboards.** Every logs panel now carries a
+  multi-select **`Log level`** variable wired as `… | detected_level=~"$level"` —
+  interactive, non-destructive slicing by severity (`error/warn/info/debug/trace/unknown`,
+  `All` includes plain-text). Default **All** on the 6 overview dashboards; **`error|warn`**
+  on `jvm-internals` (troubleshooting-focused).
+- **`jvm-internals` gains a Logs & Traces row** — an "Errors & Warnings (selected service)"
+  logs panel scoped by `$service_name`, and a "Traces (selected service)" Tempo panel.
+  Correlation is inherited from the datasource config (logs↔traces via derived fields /
+  tracesToLogs, traces→metrics via tracesToMetrics), so a trace_id in a log line jumps to
+  the trace, and a span jumps to its logs/metrics.
+
+### Changed
+- **The `logMinSeverity` collector filter now drops by parsed OTLP severity, not body regex.**
+  A `regex_parser` in the `otel-collector-logs` filelog receiver extracts the level token from
+  all three on-cluster formats (ECS nested `log.level`, flat `level`, logfmt `level=`) and
+  **sets the record severity**; `filter/severity` then compares `severity_number`. This both
+  hardens the floor filter (no body-regex false positives) and gives Loki a reliable
+  `detected_level` on 100% of lines — which is what powers the new `$level` dashboard filter.
+  Plain-text lines get `level=unknown` and are never dropped/hidden.
+
+## [v0.28.3] - 2026-06-28
+
+Increment over v0.28.2 (configurable Grafana log severity).
+
+### Added
+- **`observability.logMinSeverity` — a global minimum log severity for Grafana.** A `filter`
+  processor injected into the `otel-collector-logs` DaemonSet (by `scripts/03-observability.sh`
+  via `yq`) drops log records below the chosen level **before** they reach the backend, trimming
+  **every** Grafana logs panel — microservices **and** platform components (ArgoCD, CNPG, dex…) —
+  across all four obs modes. Matches structured-line level tokens (JSON `"level":"…"`, incl. the
+  microservices' ECS nested form, and logfmt `level=…`), case-insensitively; **plain-text lines
+  are never dropped** (no accidental blackout). `trace` disables the filter (ship everything).
+  Durable default `info` (drops DEBUG/TRACE); per-run override `JENKINS2026_LOG_MIN_SEVERITY`, or
+  the **`log_min_severity` dropdown** on the workflows that re-apply `03-observability`:
+  `Day1.cluster.01-gke` (+ the `Day1.cluster.00-all` umbrella), and — for a light change on a
+  running cluster without a full Day1 — `Day2.redeploy.01-argocd` / `Day2.publish.01-oss-grafana`.
+  Distinct from the existing `log_level` knob, which only governs CI script/Terraform verbosity.
+  See [docs/301 § Log Levels](docs/301-OBSERVABILITY.md#log-levels).
+
+## [v0.28.2] - 2026-06-28
+
+Increment over v0.28.1 (resume-side recovery).
+
+### Fixed
+- **Resume now auto-heals two one-time-init races on fresh nodes.** After `Day2.scale.02 Resume`
+  brings new nodes up, CoreDNS/egress is briefly still converging, so a workload whose startup
+  init runs once and never retries can fail and stay broken. Two cases were hit and are now
+  recovered automatically by a post-resume step: **(1)** CNPG **replicas** the pause's
+  force-drain (`--disable-eviction` DELETE) left unstartable (startup probe HTTP 500 forever) are
+  **re-cloned** from the primary via `pg_basebackup` (replicas only — the primary is never
+  auto-recreated); **(2)** **ArgoCD dex**, whose OIDC connector dial to the SSO provider timed out
+  on DNS (`connection refused` on `:5556` at login, even though the pod reports `Ready`), is
+  **restarted** so it re-inits cleanly. Both are idempotent no-ops on a clean resume. See
+  [docs/501](docs/501-PLATFORM_OPERATIONS.md#the-resume-side-gotcha-one-time-init-races-dns-on-fresh-nodes-real-incident).
+
 ## [v0.28.1] - 2026-06-28
 
 Increment over v0.28.0 (post-release fixes + activation).

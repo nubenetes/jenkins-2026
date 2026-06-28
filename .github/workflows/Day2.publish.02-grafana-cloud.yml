@@ -9,7 +9,7 @@ name: "Day2.publish.02 Grafana Cloud dashboards/alerts"
 # external managed stack: scripts/07-grafana-dashboards.sh reads GRAFANA_BASE_URL +
 # GRAFANA_API_KEY from the in-cluster `grafana-cloud-credentials` Secret (created at
 # Day1 from the Terraform-minted token) and imports observability/grafana/dashboards/
-# via the Grafana HTTP API (gcx). So this still needs the live cluster — to read that
+# via the Grafana HTTP API (POST /api/dashboards/db). So this still needs the live cluster — to read that
 # Secret — but touches no workloads. scripts/07.5-grafana-alerts.sh refreshes the
 # alert rules (its grafana-cloud path uses the same Secret).
 #
@@ -123,7 +123,7 @@ jobs:
 
       # Reads GRAFANA_BASE_URL + GRAFANA_API_KEY from the in-cluster
       # grafana-cloud-credentials Secret and imports observability/grafana/dashboards/
-      # into the "CI-CD Observability" folder via the Grafana HTTP API (gcx).
+      # into the "CI-CD Observability" folder via the Grafana HTTP API (POST /api/dashboards/db).
       - name: Republish Grafana Cloud dashboards (scripts/07-grafana-dashboards.sh)
         run: ./scripts/07-grafana-dashboards.sh
 
@@ -138,7 +138,7 @@ jobs:
           {
             echo "### Grafana Cloud dashboards/alerts republished"
             echo
-            echo "- Re-imported \`observability/grafana/dashboards/\` via the Grafana API (gcx)"
+            echo "- Re-imported \`observability/grafana/dashboards/\` via the Grafana API (POST /api/dashboards/db)"
             echo "- Republished the Grafana alert rules (scripts/07.5)"
             echo
             echo "Source of truth is git; the Grafana Cloud stack itself is Terraform-managed"

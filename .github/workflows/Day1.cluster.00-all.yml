@@ -76,6 +76,26 @@ on:
         options:
           - info
           - debug
+      grafana_cloud_tier:
+        description: "Grafana Cloud tier profile (grafana-cloud mode). free (default) = leanMetrics on + logMinSeverity=warn (fits free-tier); paid = full metrics + all logs. Traces are NOT sampled on either tier (100% shipped) — they fit the free tier here and sampling would break trace↔log/metric correlation. Passed to Day1.cluster.01."
+        required: false
+        default: "free"
+        type: choice
+        options:
+          - free
+          - paid
+      log_min_severity:
+        description: "Override the min log severity sent to Grafana. auto (default) = derive from grafana_cloud_tier; or force a level. Passed straight to Day1.cluster.01."
+        required: false
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - trace
+          - debug
+          - info
+          - warn
+          - error
 
 permissions:
   contents: read
@@ -111,6 +131,8 @@ jobs:
     uses: ./.github/workflows/Day1.cluster.01-gke.yml
     with:
       log_level: ${{ inputs.log_level || 'info' }}
+      grafana_cloud_tier: ${{ inputs.grafana_cloud_tier || 'free' }}
+      log_min_severity: ${{ inputs.log_min_severity || 'auto' }}
       observability_mode: ${{ inputs.observability_mode }}
       ci_engine: ${{ inputs.ci_engine }}
       secrets_backend: ${{ inputs.secrets_backend }}

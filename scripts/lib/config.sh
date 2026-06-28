@@ -158,15 +158,58 @@ export J2026_OBS_NAMESPACE="$(yq_get '.observability.namespace' 'observability')
 J2026_OBS_MODE="${JENKINS2026_OBS_MODE:-$(yq_get '.observability.mode' 'grafana-cloud')}"
 export J2026_OBS_MODE
 
-# FEATURE FLAG: lean metrics — when true, scripts/03-observability.sh (grafana-cloud
-# mode) disables the k8s-monitoring/Alloy CLUSTER INFRA metrics (cadvisor / kube-state
-# / node-exporter), the high-cardinality series that the custom jenkins2026-* dashboards
-# don't use. App / CNPG / Tekton metrics go via the otel-collector and are UNAFFECTED.
-# Trades the Grafana Cloud built-in "K8s Compute" views for thousands of freed active
-# series — meant to keep the develop tier under the Grafana Cloud free-tier 15k
-# active-series cap while validating. Durable default off; override per-run with
-# JENKINS2026_OBS_LEAN_METRICS=true. See docs/301.
-export J2026_OBS_LEAN_METRICS="${JENKINS2026_OBS_LEAN_METRICS:-$(yq_get '.observability.leanMetrics' 'false')}"
+# FEATURE FLAG: Grafana Cloud tier — a PROFILE governing the volume-control defaults
+# (leanMetrics + logMinSeverity) so the free tier stays under its limits. Only meaningful
+# in grafana-cloud mode. Durable default 'free'; override JENKINS2026_GRAFANA_CLOUD_TIER
+# or the grafana_cloud_tier GHA dropdown. See docs/301.
+J2026_GRAFANA_CLOUD_TIER="${JENKINS2026_GRAFANA_CLOUD_TIER:-$(yq_get '.observability.grafanaCloudTier' 'free')}"
+export J2026_GRAFANA_CLOUD_TIER
+case "${J2026_GRAFANA_CLOUD_TIER}" in
+  free|paid) ;;
+  *)
+    log_error "Invalid observability.grafanaCloudTier '${J2026_GRAFANA_CLOUD_TIER}' (expected free|paid)."
+    exit 1
+    ;;
+esac
+
+# Tier-derived defaults for the two volume knobs. The tier only shapes them in
+# grafana-cloud mode; other backends are neutral (lean off, severity info).
+if [[ "${J2026_OBS_MODE}" == "grafana-cloud" && "${J2026_GRAFANA_CLOUD_TIER}" == "free" ]]; then
+  _lean_default="true";  _sev_default="warn"
+elif [[ "${J2026_OBS_MODE}" == "grafana-cloud" && "${J2026_GRAFANA_CLOUD_TIER}" == "paid" ]]; then
+  _lean_default="false"; _sev_default="trace"
+else
+  _lean_default="false"; _sev_default="info"
+fi
+
+# FEATURE FLAG: lean metrics — when true, scripts/03-observability.sh (grafana-cloud mode)
+# disables the k8s-monitoring/Alloy CLUSTER INFRA metrics (cadvisor / kube-state /
+# node-exporter), the high-cardinality series the custom jenkins2026-* dashboards don't use
+# (app/CNPG/Tekton metrics via the otel-collector are UNAFFECTED). Precedence:
+# env JENKINS2026_OBS_LEAN_METRICS > explicit config (true|false) > 'auto'/unset = tier
+# default. 'auto' is honoured from EITHER layer (the GHA dropdown passes 'auto' to mean
+# "derive from tier" — emitting an empty string via a ${{ }} ternary isn't reliable).
+_lean_raw="${JENKINS2026_OBS_LEAN_METRICS:-$(yq_get '.observability.leanMetrics' 'auto')}"
+[[ "${_lean_raw}" == "auto" || -z "${_lean_raw}" ]] && _lean_raw="${_lean_default}"
+export J2026_OBS_LEAN_METRICS="${_lean_raw}"
+
+# FEATURE FLAG: minimum log severity. The otel-collector-logs DaemonSet gets a `filter`
+# processor (injected by 03-observability.sh) that drops structured log records below this
+# level, trimming every Grafana logs panel across all four obs modes. Precedence:
+# env JENKINS2026_LOG_MIN_SEVERITY > explicit config (a level) > 'auto'/unset = tier
+# default. 'auto' is honoured from EITHER layer (same reason as leanMetrics above).
+_sev_raw="${JENKINS2026_LOG_MIN_SEVERITY:-$(yq_get '.observability.logMinSeverity' 'auto')}"
+[[ "${_sev_raw}" == "auto" || -z "${_sev_raw}" ]] && _sev_raw="${_sev_default}"
+J2026_LOG_MIN_SEVERITY="${_sev_raw}"
+export J2026_LOG_MIN_SEVERITY
+case "${J2026_LOG_MIN_SEVERITY}" in
+  trace|debug|info|warn|error) ;;
+  *)
+    log_error "Invalid logMinSeverity '${J2026_LOG_MIN_SEVERITY}' (expected trace|debug|info|warn|error; or 'auto' in config)."
+    log_error "Set observability.logMinSeverity/grafanaCloudTier in ${J2026_CONFIG_FILE} or export JENKINS2026_LOG_MIN_SEVERITY."
+    exit 1
+    ;;
+esac
 
 case "${J2026_OBS_MODE}" in
   grafana-cloud|oss|managed-azure|managed-aws) ;;
