@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.22] - 2026-06-28
+
+Increment over v0.28.21 (adopt the AI-optimized dashboards as the operational source).
+
+### Changed
+- **Operational dashboards refreshed with the Grafana-AI-optimized versions.** The dashboards were
+  deleted, re-imported into a clean Grafana, optimized + error-corrected by the Grafana Cloud AI
+  assistant, and exported (v2 schema). The verbatim v2 exports are kept under
+  `observability/grafana/dashboards-cloud-export/` (both YAML and JSON, 6 each). The **operational**
+  classic-model dashboards in `observability/grafana/dashboards/` were then refreshed from the
+  optimized result by **pulling each dashboard's classic representation via the Grafana API**
+  (Grafana serves a v2-native dashboard as the classic model on the legacy endpoint), normalized to
+  the repo convention (datasource uids `grafanacloud-logs/traces` → `loki/tempo`, volatile
+  `id`/`version` stripped). All six validated: 0 duplicate refIds, 0 layout overlaps.
+
+### Notes
+- **Provisioning stays on the proven `gcx` v1 path.** `gcx resources push` of **native v2**
+  resources (`dashboard.grafana.app/v2`) is currently unreliable against Grafana Cloud — the
+  k8s-style resource layer uses optimistic concurrency + async deletes, so pushes intermittently
+  fail with `409 AlreadyExists` / `409 Conflict: object has been modified`. So
+  `scripts/07-grafana-dashboards.sh` continues to wrap the classic JSON as
+  `dashboard.grafana.app/v1` (reliable upsert). When gcx gains solid v2 support, the
+  `dashboards-cloud-export/` resources can be pushed directly.
+
 ## [v0.28.21] - 2026-06-28
 
 Increment over v0.28.20 (sync Grafana-AI note-text improvements into git).
