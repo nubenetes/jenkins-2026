@@ -43,7 +43,7 @@ mindmap
 Every workflow is named `DayN.tier.ZZ-resource`, and that name is a tiny runbook:
 
 - **`DayN` = lifecycle phase** (SRE Day-0/1/2 terminology): `Day0` = one-time persistent bootstrap (WIF, the Gateway IP/cert, observability backends) · `Day1` = create the throwaway GKE cluster + full stack · `Day2` = operations on a **running** cluster (redeploy a component, publish dashboards, run traffic) · `Decom` = teardown. `Decom` sorts after `Day2`, so teardown always lands last.
-- **`tier` = a short word for the group within the phase** (`infra`, `cluster`, `redeploy`, `publish`, `traffic`, `scale`) — a readable label, not a number.
+- **`tier` = a short word for the group within the phase** (`infra`, `cluster`, `redeploy`, `publish`, `traffic`, `scale`, `registry`) — a readable label, not a number.
 - **`ZZ` = a per-resource id** that stays the same across phases: `03` is always Azure (`Day0.infra.03` → `Day2.publish.03` → `Decom.infra.03`), so you can follow one resource through its whole life by the suffix.
 
 The punchline: **GitHub sorts the Actions sidebar by each workflow's `name:`, every `name:` starts with its `DayN.tier.ZZ` prefix, so reading the list top-to-bottom _is_ the order to run things** — Day0 → Day1 → Day2 → Decom (cluster before backends). No separate runbook needed.
@@ -52,7 +52,7 @@ The punchline: **GitHub sorts the Actions sidebar by each workflow's `name:`, ev
 <details>
 <summary>🔴 For specialists — the mechanics behind the scheme</summary>
 
-- **Controlled `tier` vocabulary**: `infra` (persistent Day0/Decom) · `cluster` (the GKE cluster) · `redeploy` (re-apply one component) · `publish` (push dashboards/alerts) · `traffic` (k6) · `scale` (pause/resume the node pools to park the cluster at ~zero cost). The tier-then-`ZZ` order is a real dependency chain in **Create** (`Day0.infra` before `Day1.cluster`) and **Decom** (`cluster` before `infra`), but in **Day2** the tiers are independent *categories*, not stages — nothing chains them.
+- **Controlled `tier` vocabulary**: `infra` (persistent Day0/Decom) · `cluster` (the GKE cluster) · `redeploy` (re-apply one component) · `publish` (push dashboards/alerts) · `traffic` (k6) · `scale` (pause/resume the node pools to park the cluster at ~zero cost) · `registry` (prune old container image versions from ghcr). The tier-then-`ZZ` order is a real dependency chain in **Create** (`Day0.infra` before `Day1.cluster`) and **Decom** (`cluster` before `infra`), but in **Day2** the tiers are independent *categories*, not stages — nothing chains them.
 - **GKE serialization**: every cluster-touching leaf workflow (`Day1.cluster.01`, `Decom.cluster.01`, and the `Day2.*` that act on the cluster) shares `concurrency: group: jenkins-2026-gke`, so GitHub **queues** them instead of letting two runs race the same Terraform state.
 - **Reusable workflows + umbrellas**: `Day1.cluster.01` `workflow_call`s the matching `Day0.infra.0{2,3,4}` backend bootstrap as a preflight; the two opt-in umbrellas (`Day1.cluster.00` "Everything up" / `Decom.infra.00` "Everything") orchestrate the leaves via `workflow_call` with **no `concurrency:` of their own** (or they would deadlock holding the group their own child job needs).
 - **Per-resource approval gates**: each persistent Day0 resource has its own required-reviewer GitHub Environment (`gateway-bootstrap`, `grafana-cloud-bootstrap`, `azure-bootstrap`, `aws-bootstrap`); the cluster + the **provisioning/teardown** Day2 use `gke-production`. The gate travels with the reusable workflow, so every entry point inherits the same single approval. **Exceptions (no gate):** `Day2.traffic.01-k6` drives only read-only HTTP traffic against the already-running public endpoints (provisions/destroys nothing, all secrets repo-level), so its gate was removed to unblock automation/scheduling; the `Day2.scale.*` pause/resume workflows only resize node pools. See [102 § Environment Protection](./102-GITHUB_ACTIONS_AUTOMATION.md#environment-protection-and-manual-approvals).
@@ -112,7 +112,7 @@ Each component of the filename encodes a different dimension of the workflow's r
 | Component | Values | Meaning |
 |---|---|---|
 | **DayN** | `Day0` `Day1` `Day2` `Decom` | **Lifecycle phase** (SRE Day-0/1/2 terminology) — self-documenting; see [Day-0/1/2 operations](#day-0--day-1--day-2-operations) below. `Decom` sorts after `Day2`, so teardown always lands last. |
-| **tier** | `infra` `cluster` `redeploy` `publish` `traffic` `scale` | **Execution group within the phase** — a brief semantic word (controlled vocabulary) replacing the old middle digit. |
+| **tier** | `infra` `cluster` `redeploy` `publish` `traffic` `scale` `registry` | **Execution group within the phase** — a brief semantic word (controlled vocabulary) replacing the old middle digit. |
 | **ZZ** | `00`–`05` | **Resource identifier** — stable for the same resource across all phases (`00` = umbrella). |
 | **resource** | `gateway`, `gke`, `jenkins`, … | **Identifies the resource only** — no action verb (the `DayN` prefix already says bootstrap/publish/teardown). |
 
@@ -708,6 +708,10 @@ This is the workflow-level expression of the repo-wide **idempotency** conventio
 ---
 
 [← Previous: 100. Bootstrap](./100-BOOTSTRAP.md) | [🏠 Home](../README.md) | [→ Next: 102. GitHub Actions Automation](./102-GITHUB_ACTIONS_AUTOMATION.md)
+
+## Image retention (`registry` tier)
+
+`Day2.registry.01-image-retention` prunes old microservices container image versions from ghcr — needed because the **immutable per-build image tags** (`<branch>-<build#>` for Jenkins, `<branch>-<pipelineRunName>` for Tekton — see [502](./502-MICROSERVICES_GITOPS.md)) accumulate one tag per build. Weekly cron + manual dispatch; inputs `keep` (recent versions to retain per service, default 30 — above deploy cadence so the live tag is never cut) and `dry_run`. It is the sole member of the `registry` tier: a pure **GitHub Packages** operation (no GKE, so no `jenkins-2026-gke` concurrency group) with no Day0/Decom counterpart.
 
 ---
 

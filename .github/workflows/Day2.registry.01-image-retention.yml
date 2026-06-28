@@ -1,0 +1,56 @@
+name: "Day2.registry.01 Image retention (ghcr prune)"
+
+# Prunes old microservices container image versions from GitHub Container Registry.
+# Immutable per-build tags (<branch>-<build#> in Jenkins, <branch>-<pipelineRunName>
+# in Tekton — see vars/MicroservicesPipeline.groovy + tekton/pipelines) never get
+# overwritten, so the packages grow one tag per build. This keeps the most recent N
+# versions per service (the currently-deployed tag is recent, so it's preserved) and
+# deletes the rest, bounding storage. Layer dedup means the real saving is the old app
+# layers. Runs weekly + on demand. Pure GitHub Packages op — no cluster/GKE access.
+#
+# Note: ghcr storage is FREE for PUBLIC packages; this matters mainly if the packages
+# are private. Keeps a generous floor so an older-but-still-deployed tag is never cut.
+on:
+  schedule:
+    - cron: "17 4 * * 0" # Sundays 04:17 UTC
+  workflow_dispatch:
+    inputs:
+      keep:
+        description: "How many most-recent versions to KEEP per service (the rest are deleted). Keep it well above your deploy cadence so a deployed tag is never pruned."
+        required: false
+        default: "30"
+        type: string
+      dry_run:
+        description: "List what would be deleted without deleting."
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: jenkins-2026-image-retention
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    name: "Prune ${{ matrix.service }}"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [gateway, jhipstersamplemicroservice]
+    steps:
+      - name: Prune old versions
+        uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
+        with:
+          owner: nubenetes
+          package-name: "jenkins-2026-microservices/${{ matrix.service }}"
+          package-type: container
+          # Keep the N most-recent versions; delete older tagged + untagged ones.
+          min-versions-to-keep: ${{ inputs.keep || '30' }}
+          # Also sweep untagged (orphaned) layers that overwrites/retags leave behind.
+          delete-only-untagged-versions: false
+          dry-run: ${{ inputs.dry_run || false }}

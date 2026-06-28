@@ -124,6 +124,52 @@ spec:
           port: 8080
 EOT
 
+# Grafana Faro RUM beacon endpoint (browser → otel-collector faro receiver :8027).
+# Public, NO IAP (browser-facing; the receiver is CORS-open). The LB health check is
+# TCP on 8027 — the faro receiver only answers POST, so an HTTP GET probe would mark
+# the backend unhealthy → 502. The wildcard cert + *.<baseDomain> DNS already cover
+# this host, so no per-host DNS is needed. Used by the Angular SPA's Faro Web SDK.
+cat >"${GENERATED_DIR}/httproute-faro.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ${J2026_GATEWAY_HTTPROUTE_FARO}
+  namespace: ${J2026_OBS_NAMESPACE}
+spec:
+  parentRefs:
+    - name: ${J2026_GATEWAY_NAME}
+      namespace: ${J2026_GATEWAY_NAMESPACE}
+      sectionName: https
+  hostnames:
+    - "${J2026_GATEWAY_FARO_HOST}"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: otel-collector-gateway
+          port: 8027
+EOT
+
+cat >"${GENERATED_DIR}/healthcheckpolicy-faro.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: ${J2026_GATEWAY_HTTPROUTE_FARO}
+  namespace: ${J2026_OBS_NAMESPACE}
+spec:
+  default:
+    config:
+      type: TCP
+      tcpHealthCheck:
+        port: 8027
+  targetRef:
+    group: ""
+    kind: Service
+    name: otel-collector-gateway
+EOT
+
 # Optional lean develop tier - only routed when microservices.developTrackEnabled
 # (the namespace itself is created by 01-namespaces.sh under the same flag). Public,
 # NO IAP - same edge posture as the stable microservices host. Mirrors the grafana

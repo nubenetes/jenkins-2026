@@ -335,6 +335,9 @@ gateway:
     microservicesDevelop: "microservices-develop"
     headlamp: "headlamp"
     pgadmin: "pgadmin"
+    # Grafana Faro RUM beacon endpoint (browser → otel-collector faro receiver).
+    # Public, NO IAP (browser-facing; CORS-open receiver). Always routed.
+    faro: "faro"
     # Only used when ci.engine=tekton (Tekton Dashboard, IAP-protected).
     tekton: "tekton"
     # PaC controller webhook receiver (ci.engine=tekton). Public, NO IAP - GitHub
@@ -376,9 +379,18 @@ microservices:
     url: https://github.com/nubenetes/jenkins-2026.git
 
   branches:
+    # Per-tier branch model — three DISTINCT axes, don't conflate:
+    #  1. App SOURCE branch (what CI builds): jenkins/pipelines/seed/services.yaml
+    #     `branches` (stable=main, develop=develop — both are now real branches on the
+    #     nubenetes forks).
+    #  2. GitOps branch the *develop* ArgoCD app tracks: `develop` below (always develop).
+    #  3. GitOps branch the *stable* ArgoCD app tracks: the DEPLOY branch
+    #     (J2026_SELF_REPO_BRANCH), NOT `stable` here — a Day1 from `develop` puts the
+    #     stable tier's gitops on develop too (validate the whole platform end-to-end
+    #     before promotion); a Day1 from `main` → stable gitops = main. Same auto-track
+    #     pattern as the Jenkins shared-lib/seed. `stable` below feeds the TEKTON stable
+    #     source branch (J2026_MICROSERVICES_BRANCH_STABLE), not the ArgoCD stable branch.
     stable: main
-    # Branch of the gitops-config repo that the develop tier's ArgoCD app tracks
-    # (the app SOURCE branch stays 'main' - see jenkins/pipelines/seed/services.yaml).
     develop: develop
 
   # Container images built by the pipelines are pushed here.

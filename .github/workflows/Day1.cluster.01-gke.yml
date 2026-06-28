@@ -649,6 +649,7 @@ jobs:
               if [[ "${{ inputs.develop_track }}" == "true" ]]; then
                 echo "    Microservices develop: https://microservices-develop.${dom}"
               fi
+              echo "    Faro RUM ingest:       https://faro.${dom}  (browser Faro beacon → otel-collector; not a UI — the Angular SPA posts here)"
               echo
               echo "  Observability:"
               echo "    Grafana:               ${grafana}"

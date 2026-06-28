@@ -302,6 +302,9 @@ kubectl apply -f "${J2026_ROOT_DIR}/argocd/microservices-project.yaml"
 log_step "Configuring platform-config (static platform RBAC) via ArgoCD"
 PLATFORM_CONFIG_APP_FILE=$(mktemp)
 REPO_URL="${J2026_SELF_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
+# {{branchStable}} = the DEPLOY branch (J2026_SELF_REPO_BRANCH), so the stable tier's
+# gitops tracks whatever branch you deployed from (main in prod, develop when validating
+# develop end-to-end). NOT config.yaml microservices.branches.stable. See that file.
 sed "s@{{repoUrl}}@${REPO_URL}@g;
      s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g;
      s@{{ciEngine}}@${J2026_CI_ENGINE}@g;

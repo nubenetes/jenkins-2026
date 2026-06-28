@@ -489,6 +489,29 @@ psql -h localhost -U postgres -d gateway
 
 [← Previous: 501. Platform Operations](./501-PLATFORM_OPERATIONS.md) | [🏠 Home](../README.md) | [→ Next: 503. Networking](./503-NETWORKING.md)
 
+## Image tags: immutable + retention
+
+Built images are tagged **immutably** — one tag per build — instead of a mutable branch tag every build overwrote:
+
+| Engine | Tag | Where |
+|---|---|---|
+| Jenkins | `<branch>-<BUILD_NUMBER>` (e.g. `develop-42`) | `vars/MicroservicesPipeline.groovy` |
+| Tekton | `<branch>-<pipelineRunName>` | `$(context.pipelineRun.name)` appended to the build/trivy `image` **and** the gitops `image-tag` (so they match) in `tekton/pipelines/microservices-pipeline.yaml` |
+
+Why: **reproducible deploys** (a tag pins one build), **rollback** (repoint `values-<env>.yaml` to a prior tag), and reliable **ArgoCD change-detection** — with a static `:main` tag the gitops values never changed between builds, so ArgoCD saw no diff and leaned on a forced `app sync` + `imagePullPolicy: Always`; an immutable tag changes the values each build, the GitOps-correct trigger. Accumulation is bounded by **`Day2.registry.01 Image retention`** (keeps the most-recent N per service, sweeps untagged) — and ghcr storage is free for public packages, with Docker layer dedup adding only the changed app layer per tag. *(Tekton's immutable tag is implemented but not yet validated — the engine is inactive.)*
+
+## Branch model: app-source vs gitops vs deploy branch
+
+Three **distinct** branch axes — conflating them is the classic confusion here:
+
+| Axis | Set by | stable | develop |
+|---|---|---|---|
+| **App SOURCE** branch the CI builds | `jenkins/pipelines/seed/services.yaml` `branches` | `main` | `develop` |
+| **GitOps** branch the **develop** ArgoCD app tracks | `config.yaml` `microservices.branches.develop` | — | `develop` (always) |
+| **GitOps** branch the **stable** ArgoCD app tracks | the **deploy branch** `J2026_SELF_REPO_BRANCH` (auto-tracks the dispatched branch) | the branch Day1 ran from | — |
+
+A Day1 from `main` (production) → stable tracks gitops `main`, develop tracks gitops `develop`. A Day1 from `develop` puts the **stable tier's gitops on develop too** — deliberate, so you validate the whole platform end-to-end before the promotion PR. `config.yaml microservices.branches.stable` is **not** the ArgoCD stable branch; it feeds only the **Tekton** stable source branch. The nubenetes app forks now carry a real `develop` branch (off `main`), so the develop tier builds genuinely different app code (true branch-based promotion), not a re-deploy of the `main` image.
+
 ---
 
 *502. Microservices GitOps — jenkins-2026*

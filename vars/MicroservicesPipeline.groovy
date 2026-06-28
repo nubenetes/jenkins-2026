@@ -195,7 +195,12 @@ spec:
 
         environment {
             REGISTRY      = "${env.MICROSERVICES_REGISTRY ?: 'ghcr.io/nubenetes/jenkins-2026-microservices'}"
-            IMAGE_TAG     = "${cfg.gitBranch}"
+            // Immutable, traceable tag: <branch>-<build#> (e.g. develop-42) instead of a
+            // mutable branch tag that every build overwrites. Each build publishes a unique
+            // tag, GitOps Update pins values-<env>.yaml to it, and ArgoCD deploys that exact
+            // build — so a deploy is reproducible and rollback = repoint to a prior tag.
+            // BUILD_NUMBER is available at pipeline start (no checkout needed).
+            IMAGE_TAG     = "${cfg.gitBranch}-${env.BUILD_NUMBER}"
             IMAGE         = "${env.REGISTRY}/${cfg.serviceName}:${env.IMAGE_TAG}"
             OTEL_SERVICE_NAME = "jenkins-pipeline-${cfg.serviceName}"
         }
@@ -204,7 +209,21 @@ spec:
             stage('Checkout Microservices source') {
                 steps {
                     dir('microservices-src') {
-                        git url: cfg.gitRepoUrl, branch: cfg.gitBranch
+                        // Shallow, single-branch, no-tags clone. The plain `git` step
+                        // fetched ALL history + every branch ref + tags of the (large
+                        // JHipster) app repo — the slow part of "Checkout". depth:1 +
+                        // noTags + single branch is dramatically faster (we only build
+                        // the tip of one branch). Not the agent scheduling (pods are
+                        // warmed by the prepull DaemonSet + idleMinutes reuse).
+                        checkout([
+                            $class: 'GitSCM',
+                            branches: [[name: "*/${cfg.gitBranch}"]],
+                            userRemoteConfigs: [[url: cfg.gitRepoUrl]],
+                            extensions: [
+                                [$class: 'CloneOption', shallow: true, depth: 1, noTags: true, honorRefspec: true],
+                                [$class: 'CheckoutOption', timeout: 20],
+                            ],
+                        ])
                         script {
                             if (cfg.serviceName == 'gateway') {
                                 sh """

@@ -21,6 +21,13 @@ spec:
         limits:
           cpu: "4"
           memory: 4Gi
+      # Node-local Maven/npm caches (hostPath, like the Jenkins agent pods) so deps
+      # aren't re-downloaded on every PipelineRun — the main Tekton build-speed gap
+      # vs Jenkins. Node-local (not a PVC) avoids RWX/concurrency cost; mirrors
+      # vars/MicroservicesPipeline.groovy's /tmp/jenkins-*-cache hostPaths.
+      volumeMounts:
+        - { name: maven-cache, mountPath: /root/.m2 }
+        - { name: npm-cache, mountPath: /root/.npm }
       script: |
         #!/bin/bash
         set -eux
@@ -38,3 +45,8 @@ spec:
         else
           ./mvnw -B -ntp -T 4 -s "${SETTINGS}" -DskipITs -Dmaven.compiler.maxmem=1024m -DargLine="-Xmx1536m" clean verify
         fi
+  volumes:
+    - name: maven-cache
+      hostPath: { path: /tmp/tekton-maven-cache, type: DirectoryOrCreate }
+    - name: npm-cache
+      hostPath: { path: /tmp/tekton-npm-cache, type: DirectoryOrCreate }

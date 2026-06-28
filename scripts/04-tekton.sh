@@ -80,6 +80,14 @@ done
 # here anymore — the sync converges on its own once the webhook is up. If you ever
 # need to force it by hand: `kubectl -n ${TEKTON_NS} rollout restart deploy/tekton-pipelines-webhook`.
 
+# Warm the task image caches on every node so TaskRun pods start fast (a TaskRun is
+# only Running once all its step images are present; the build pipeline pulls
+# maven/kaniko/codeql/... — codeql is multi-GB). Best-effort. Tekton analogue of the
+# Jenkins agent-image-prepull DaemonSet.
+log_step "Applying Tekton task image pre-pull DaemonSet"
+kubectl apply -f "${J2026_ROOT_DIR}/tekton/agent-image-prepull.yaml" || \
+  log_warn "Tekton image pre-pull DaemonSet not applied - first TaskRuns on a fresh node will be slower."
+
 log_info "Tekton deployed via ArgoCD."
 log_info "  Apps: kubectl -n ${J2026_ARGOCD_NAMESPACE} get applications -l app.kubernetes.io/part-of=tekton 2>/dev/null || kubectl -n ${J2026_ARGOCD_NAMESPACE} get applications | grep tekton"
 log_info "  Pipelines-as-code + per-service runs are applied/kicked by scripts/06-tekton-pipelines.sh (run by up.sh)."

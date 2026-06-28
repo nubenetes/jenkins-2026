@@ -36,10 +36,16 @@ All notable changes to this project will be documented in this file.
   `namespace` var uses `allValue='.*'` so the Jenkins JVM series — which carry no
   `k8s_namespace_name` — show under *All*); titled "CI-CD JVM internals (all Java services
   + Jenkins)", tagged `jenkins`/`jvm`. See [`docs/303`](docs/303-JVM-TUNING.md).
+- **Angular Faro RUM instrumented end-to-end + activated.** The gateway SPA ships the
+  Grafana Faro Web SDK (`@grafana/faro-web-sdk` + `-web-tracing`); deployed live on the
+  **develop** tier (image `gateway:develop-<build#>`, bundle serves Faro → public endpoint)
+  and **promoted `develop`→`main`** (Faro `environment` flipped to `stable`) so the stable
+  tier gets RUM on its next build. Public ingest at `faro.<baseDomain>` (HTTPRoute + TCP
+  HealthCheckPolicy). Build needed `skipLibCheck: true` in the gateway tsconfig (see docs/902).
 - **`rum-frontend` dashboard (uid `jenkins2026-rum-frontend`) — Angular Real User
   Monitoring via Grafana Faro.** Core Web Vitals (LCP/INP/CLS/FCP/TTFB with Google
   thresholds), JS errors/exceptions, sessions, browser audience, live RUM logs and browser
-  traces. Populates once the SPA ships the Faro Web SDK (roadmap in
+  traces. Populated by the Faro Web SDK now shipped in the gateway SPA (live on develop, promoted to main — see
   [`docs/202`](docs/202-MICROSERVICES-APP-ARCHITECTURE.md)).
 - **Grafana Faro RUM receiver in the otel-collector — on ALL four backends.** Switched the
   gateway collector to the **contrib** distro and added the `faro` receiver (`:8027`, CORS)
@@ -88,6 +94,33 @@ All notable changes to this project will be documented in this file.
   + GC/runtime/OTel-instrumentation matrices, why CRaC over GraalVM Native, how to read the
   JVM dashboard).
 
+- **Public Faro RUM endpoint — `faro.<baseDomain>` (no IAP).** The browser needs to reach
+  the Faro receiver, so `scripts/09-gateway.sh` now publishes an HTTPRoute
+  `faro.<baseDomain>` → `otel-collector-gateway:8027` with a **TCP** `HealthCheckPolicy`
+  (the receiver only answers POST, so an HTTP-GET LB probe would mark it unhealthy; the
+  wildcard cert + `*.<baseDomain>` DNS already cover the host). `config.yaml`
+  `gateway.hosts.faro` + `J2026_GATEWAY_FARO_HOST`. Surfaced like every other endpoint in
+  the Day1 **Access URLs** step and the **Jenkins system banner** — flagged a *beacon
+  endpoint, not a UI* (POSTs only).
+- **Angular RUM wired end-to-end (Grafana Faro Web SDK).** The gateway's Angular SPA (its
+  **`develop`** branch fork) is instrumented with `@grafana/faro-web-sdk` + `-web-tracing`
+  (`2.8.0`): `app/core/faro/faro.ts` initialised from `main.ts`, endpoint/`environment`
+  from `environments/*`, posting to the public endpoint above. Real RUM flows once
+  `gateway-develop` is built+deployed and the develop site is opened in a browser; it
+  reaches the **stable** tier by promoting the gateway `develop`→`main` (flip the Faro
+  `environment` to `stable`), not by separately instrumenting `main`. See
+  [`docs/202`](docs/202-MICROSERVICES-APP-ARCHITECTURE.md).
+- **App forks gain a real `develop` branch.** `nubenetes/jhipster-sample-app-gateway`
+  and `…-microservice` now carry a `develop` branch (off `main`; upstream `jhipster/*` has
+  only `main`), and `services.yaml` `branches.develop=develop` — so the develop tier builds
+  the app's **develop** branch (true branch-based promotion), not a re-deploy of `main`.
+- **`Day2.registry.01 Image retention` workflow.** Immutable per-build tags accumulate one
+  tag per build, so this weekly (+ manual) workflow keeps the most-recent N versions per
+  service (`gateway`, `jhipstersamplemicroservice`; default 30, above deploy cadence so the
+  deployed tag is never cut) and sweeps untagged layers, bounding ghcr storage. Pure GitHub
+  Packages op (no GKE); `keep`/`dry_run` inputs; new `registry` workflow tier — see
+  [`docs/101`](docs/101-GITHUB_ACTIONS_WORKFLOWS.md).
+
 ### Performance
 
 - **JVM tuning across every JVM in the platform.** The microservices ran on container
@@ -108,6 +141,33 @@ All notable changes to this project will be documented in this file.
     `ExitOnOutOfMemoryError` (the image-build steps were on SerialGC).
   - Runtime: JDK 25.0.3 LTS / Eclipse Temurin / HotSpot. Rationale, GC/runtime matrices and
     the CRaC vs GraalVM-Native analysis in [`docs/303`](docs/303-JVM-TUNING.md).
+- **Faster Jenkins builds — start sooner, run in parallel.** (The concurrency cap was
+  already 10, in JCasC `jenkins/casc/jcasc-base.yaml` `containerCapStr`, **not** the helm
+  `agent.containerCap` which the JCasC cloud overrides — so it was never the bottleneck.)
+  Three levers: an **agent image pre-pull DaemonSet** (`helm/jenkins/agent-image-prepull.yaml`,
+  applied by `04-jenkins.sh`) that pre-pulls all 8 agent images (maven/node/dind/helm/git/
+  semgrep/**codeql, multi-GB**/trivy) onto every node so a build pod goes *Running* without a
+  cold multi-image pull; **`idleMinutes 5`** on the inline pod templates
+  (`vars/MicroservicesPipeline.groovy`, `vars/MicroservicesK6SmokePipeline.groovy`) so a
+  re-run reuses the warm pod; and a **shallow checkout** — the app-source checkout switched
+  from a full `git` clone (all history/branches/tags of the large JHipster repo) to
+  `checkout([GitSCM … CloneOption depth:1, noTags, single-branch])`. See
+  [`docs/401`](docs/401-JENKINS.md).
+- **Faster Tekton builds.** Checkout was already shallow (`--depth 1`). Added **node-local
+  Maven/npm caches** (hostPath `/tmp/tekton-*-cache` → `/root/.m2`,`/root/.npm` on
+  `maven-build-test` + `build-push-image`, mirroring the Jenkins agents) so deps aren't
+  re-downloaded every PipelineRun, plus a **task image pre-pull DaemonSet**
+  (`tekton/agent-image-prepull.yaml`, applied by `04-tekton.sh`). See
+  [`docs/403`](docs/403-TEKTON.md).
+- **Immutable image tags.** Built images are tagged immutably — Jenkins
+  `<branch>-<BUILD_NUMBER>` (`vars/MicroservicesPipeline.groovy`), Tekton
+  `<branch>-<pipelineRunName>` (`$(context.pipelineRun.name)` appended to the build/trivy
+  `image` **and** the gitops `image-tag` so they match, `tekton/pipelines/microservices-pipeline.yaml`)
+  — instead of a mutable branch tag every build overwrote. Benefits: reproducible deploys,
+  rollback (repoint to a prior tag), and reliable **ArgoCD change-detection** (the gitops
+  values tag now changes per build, vs a static `:main` ArgoCD saw no diff on). Tekton
+  variant not yet validated (engine inactive); storage bounded by the retention workflow.
+  See [`docs/502`](docs/502-MICROSERVICES_GITOPS.md).
 
 ### Fixed
 
@@ -171,6 +231,14 @@ All notable changes to this project will be documented in this file.
   `cnpg_pg_settings_setting` (~2272 series — one per postgresql.conf setting per
   instance, the single biggest consumer, used by no dashboard) via
   `metric_relabel_configs`. See [`docs/301`](docs/301-OBSERVABILITY.md).
+- **Angular build failed after adding Faro (`TS2304: Cannot find name 'global'`,
+  `TS2307: Cannot find module 'path'`).** `@grafana/faro-web-sdk`/`-web-tracing` pull
+  transitive `.d.ts` (faro-core, `@opentelemetry/instrumentation`) that reference Node
+  types, but the gateway's Angular `tsconfig.json` had `types: []` and no `skipLibCheck`,
+  so `npm run webapp:build` (frontend-maven-plugin) failed. Fixed by adding
+  **`skipLibCheck: true`** to the gateway `tsconfig.json` (develop branch) — skips
+  type-checking node_modules `.d.ts` only; the SDKs are browser-safe at runtime. See
+  [`docs/902`](docs/902-TROUBLESHOOTING.md).
 
 ### Changed
 
@@ -179,6 +247,18 @@ All notable changes to this project will be documented in this file.
   traffic against the already-running public endpoints, provisions/destroys nothing, and
   all its secrets are repo-level, so the gate only blocked automation/scheduling. Day1,
   Decom and the heavier Day2.* workflows keep the gate.
+
+- **Per-tier branch model documented + reconciled (three distinct axes).** Clarified the
+  confusing branch wiring: (1) **app source** branch the CI builds —
+  `jenkins/pipelines/seed/services.yaml` `branches` (stable=`main`, develop=`develop`);
+  (2) gitops branch the **develop** ArgoCD app tracks — `config.yaml`
+  `microservices.branches.develop` (=`develop`, always); (3) gitops branch the **stable**
+  ArgoCD app tracks — the **deploy branch** (`J2026_SELF_REPO_BRANCH`), *not*
+  `microservices.branches.stable`: a Day1 from `develop` puts the stable tier's gitops on
+  develop too (validate end-to-end before promotion), from `main` → main.
+  `microservices.branches.stable` feeds only the **Tekton** stable source branch.
+  Documented in `config.yaml` + a pointer in `08.5-argocd.sh`. See
+  [`docs/502`](docs/502-MICROSERVICES_GITOPS.md).
 
 > Companion changes in the **`jenkins-2026-gitops-config`** repo (deployed via ArgoCD, not
 > tracked here): the lean `develop` tier no longer CrashLoops — raised the Java CPU limit

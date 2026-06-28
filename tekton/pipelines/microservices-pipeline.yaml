@@ -95,7 +95,7 @@ spec:
       params:
         - { name: service-type, value: $(params.service-type) }
         - { name: module-path, value: $(params.module-path) }
-        - { name: image, value: $(params.image) }
+        - { name: image, value: "$(params.image)-$(context.pipelineRun.name)" }
     - name: trivy-image
       runAfter: [build-push-image]
       taskRef: { name: trivy-image }
@@ -103,7 +103,7 @@ spec:
         - { name: source, workspace: source }
         - { name: dockerconfig, workspace: dockerconfig }
       params:
-        - { name: image, value: $(params.image) }
+        - { name: image, value: "$(params.image)-$(context.pipelineRun.name)" }
     - name: gitops-deploy
       runAfter: [trivy-image]
       taskRef: { name: gitops-deploy }
@@ -113,7 +113,13 @@ spec:
         - { name: service-name, value: $(params.service-name) }
         - { name: env-name, value: $(params.env-name) }
         - { name: target-namespace, value: $(params.target-namespace) }
-        - { name: image-tag, value: $(params.git-branch) }
+        # P3 immutable tag: append the PipelineRun name so the tag is unique per run
+        # (e.g. develop-<runname>) — matches the build/trivy `image` tag above (both
+        # = <git-branch>-$(context.pipelineRun.name)), so build-pushes, scans and the
+        # gitops bump all reference the SAME immutable image. Mirrors the Jenkins
+        # <branch>-<build#> tag. Assumes the run's `image` tag == git-branch (the
+        # standard runs/PaC set both from the same branch).
+        - { name: image-tag, value: "$(params.git-branch)-$(context.pipelineRun.name)" }
     - name: smoke-test
       runAfter: [gitops-deploy]
       taskRef: { name: smoke-test }

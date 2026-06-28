@@ -794,6 +794,10 @@ Amazon Managed Grafana (AMG) authenticates **only** via **AWS IAM Identity Cente
 
 [← Previous: 202. Microservices App Architecture](./202-MICROSERVICES-APP-ARCHITECTURE.md) | [🏠 Home](../README.md) | [→ Next: 302. k6 Traffic & Load Testing](./302-K6_LOAD_TESTING.md)
 
+## Frontend RUM (Faro): public ingest endpoint
+
+The Angular SPA's [Grafana Faro](https://grafana.com/oss/faro/) beacon runs in the browser, so it needs a public path to the collector. `scripts/09-gateway.sh` publishes an HTTPRoute **`faro.<baseDomain>`** (no IAP) → `otel-collector-gateway:8027` — the contrib **faro receiver**, wired into the traces+logs pipelines on all four backends — with a **TCP** `HealthCheckPolicy` (the receiver only answers `POST`, so an HTTP-GET load-balancer probe would mark the backend unhealthy). The wildcard cert + `*.<baseDomain>` DNS already cover the host. The endpoint surfaces in the Day1 **Access URLs** step and the Jenkins system banner (as a *beacon endpoint, not a UI*). Full wiring + activation: [`docs/202`](./202-MICROSERVICES-APP-ARCHITECTURE.md).
+
 ---
 
 *301. Observability — jenkins-2026*
