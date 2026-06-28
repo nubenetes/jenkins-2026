@@ -2,6 +2,80 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.30] - 2026-06-28
+
+Increment over v0.28.29 (new k6 test type: synthetic Faro RUM beacons).
+
+### Added
+- **k6 `rum-faro` test type (profile `rum`) — synthetic Grafana Faro RUM beacons.** A first-class k6
+  test that does NOT load-test the microservices: each iteration is a synthetic browser session that
+  POSTs a Faro beacon (page-load log + Core Web Vitals + a browser `documentLoad` span; a fraction
+  also a JS exception) to the collector's faro receiver, populating the **Frontend RUM (Angular /
+  Faro)** dashboard — the synthetic-RUM path, now as a committed k6 preset. New script
+  `jenkins/pipelines/k6/faro-rum.js` + preset `presets/rum-faro.yaml`, selectable in the
+  **`Day2.traffic.01-k6`** dropdown (`preset=rum-faro` / `profile=rum`) with `env_name`,
+  session-count and error-rate knobs. **oss / grafana-cloud only** — the runner skips it on
+  managed-azure/aws (Faro degrades to generic App Insights/CloudWatch); explained in the GHA form,
+  `presets/index.yaml` (deliberately excluded from `run_all`/Jenkins/Tekton), and **docs/302**.
+
+## [v0.28.29] - 2026-06-28
+
+Increment over v0.28.28 (fix JVM runtime-context panel on OSS/managed backends).
+
+### Fixed
+- **JVM dashboard "runtime context" panel showed no data on OSS.** The panel queried
+  `target_info{... , service_name=~"$service_name"}`, but `target_info` carries **no `service_name`
+  label** when metrics reach an in-cluster Prometheus via the collector's prometheusremotewrite
+  exporter (service.name maps to `job`; the service identity is in `k8s_container_name` /
+  `k8s_deployment_name`). Grafana Cloud's OTLP ingestion *does* add `service_name`, which is why the
+  Cloud-optimized board worked there but went blank on OSS when a specific service was selected.
+  Switched the `target_info` matcher to **`k8s_container_name=~"$service_name"`** (present on both
+  OSS and Cloud), in the canonical board; regenerated the Azure/AWS variants.
+
+## [v0.28.28] - 2026-06-28
+
+Increment over v0.28.27 (oss: heal missing CNPG PodMonitors on obs-mode switch).
+
+### Fixed
+- **OSS Grafana's PostgreSQL dashboard missed a tier (e.g. `microservices`/stable) after switching
+  `observability.mode` to `oss` on a running cluster.** In oss mode the in-cluster Prometheus scrapes
+  CNPG metrics via the **PodMonitor** the CNPG operator creates per Cluster — but only when the
+  PodMonitor CRD exists *at reconcile time*. A Cluster created earlier under grafana-cloud/managed-*
+  (no in-cluster prometheus-operator → no CRD) was left without a PodMonitor and the operator never
+  retried, so that tier's Postgres never appeared in Grafana (works on grafana-cloud, where the OTel
+  collector scrapes the `postgres-*:9187` pods directly, no PodMonitor needed). `scripts/03-observability.sh`
+  (oss) now nudges the CNPG operator to reconcile after kube-prometheus-stack provides the CRD —
+  guarded + idempotent (only restarts when a CNPG-Cluster namespace is actually missing its PodMonitor;
+  no-op on fresh deploys). Imperative by design: forcing an existing operator to re-reconcile is an
+  operation, not declarative state.
+
+## [v0.28.27] - 2026-06-28
+
+Increment over v0.28.26 (fix OSS Grafana stuck on the dashboards ConfigMap).
+
+### Fixed
+- **OSS Grafana hung in `ContainerCreating` — dashboards ConfigMap exceeded the 256 KiB annotation
+  limit.** After the dashboards were optimized (3–6× larger; ~0.45 MiB aggregated), ArgoCD's
+  client-side apply of the single `jenkins-2026-grafana-dashboards` ConfigMap stuffed the whole
+  object into the `kubectl.kubernetes.io/last-applied-configuration` **annotation**, which has a hard
+  **262144-byte limit** (separate from the 1 MiB object limit) → `metadata.annotations: Too long` →
+  the ConfigMap never applied → Grafana `FailedMount` (`configmap ... not found`) → "does not have
+  minimum availability". Fixed by adding **`ServerSideApply=true`** to the `oss-grafana-dashboards`
+  Application sync options (SSA writes no last-applied annotation; the ConfigMap is still well under
+  the 1 MiB object cap). Recovered the live cluster by syncing the app with SSA.
+
+## [v0.28.26] - 2026-06-28
+
+Increment over v0.28.25 (document RUM/Faro fidelity per backend).
+
+### Docs
+- **Clarified that Angular RUM (Grafana Faro) is native only on Grafana Cloud and OSS.** Added a
+  per-backend matrix to docs/301 (*Frontend RUM (Grafana Faro) per backend*): full fidelity on
+  **grafana-cloud** and **oss** (both store Faro logs/traces in Loki/Tempo; OSS renders the canonical
+  board directly), **degraded** on managed-azure/managed-aws (generic App Insights KQL / CloudWatch +
+  X-Ray). Cross-linked from docs/202's Faro implementation section. Use Grafana Cloud or OSS for real
+  Angular RUM.
+
 ## [v0.28.25] - 2026-06-28
 
 Increment over v0.28.24 (document RUM degradation on the managed backends).

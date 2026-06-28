@@ -1444,7 +1444,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "target_info{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"}",
+          "expr": "target_info{k8s_namespace_name=~\"$namespace\", k8s_container_name=~\"$service_name\"}",
           "format": "table",
           "instant": true,
           "refId": "A"

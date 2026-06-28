@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       preset:
-        description: "Load a committed config from jenkins/pipelines/k6/presets/<name>.yaml (fields below override it). KEEP options in sync with presets/index.yaml."
+        description: "Load a committed config from jenkins/pipelines/k6/presets/<name>.yaml (fields below override it). KEEP options in sync with presets/index.yaml. NOTE: 'rum-faro' is a SPECIAL test type — it does NOT load-test the microservices; it emits synthetic Grafana Faro RUM beacons (Web Vitals + JS errors) to populate the Frontend RUM dashboard, and is only supported on observability.mode=oss / grafana-cloud (skipped on managed-azure/aws — Faro degrades there). See docs/302."
         type: choice
         default: none
         options:
@@ -18,6 +18,7 @@ on:
           - soak-endurance
           - rps-steady
           - breakpoint-capacity
+          - rum-faro
       run_all_presets:
         description: "Run ALL presets from presets/index.yaml IN PARALLEL (one job each), each with its file's own values. One click → every use case lands in the dashboard, filterable by Runner/Profile. Ignores the single preset/profile/override fields below."
         type: boolean
@@ -27,10 +28,10 @@ on:
         required: false
         default: ""
       profile:
-        description: "Workload profile (used when preset=none; otherwise the preset's profile wins)"
+        description: "Workload profile (used when preset=none; otherwise the preset's profile wins). 'rum' is the special Faro RUM-beacon test type (oss / grafana-cloud only — see the 'rum-faro' preset / docs/302), not a microservices load profile."
         type: choice
         default: smoke
-        options: [smoke, load, stress, soak, spike, breakpoint]
+        options: [smoke, load, stress, soak, spike, breakpoint, rum]
       env_name:
         description: "Target tier — selects the public URL: stable → microservices.<baseDomain>, develop → microservices-develop.<baseDomain>. Both are external internet endpoints; also tags the telemetry deployment.environment=<tier>."
         type: choice
@@ -289,6 +290,22 @@ jobs:
           fi
           echo "Observability mode (detected from cluster): ${MODE}"
 
+          # --- RUM (Faro) test type selection + backend guard --------------------
+          # profile=rum (the rum-faro preset) emits synthetic Grafana Faro beacons
+          # instead of load-testing the microservices, and is only meaningful on
+          # oss / grafana-cloud (Faro → Loki/Tempo). managed-azure/aws degrade Faro
+          # to generic App Insights/CloudWatch, so skip cleanly there. See docs/302.
+          K6_SCRIPT="jenkins/pipelines/k6/microservices-smoke.js"
+          if [[ "${K6SIM_PROFILE}" == "rum" ]]; then
+            if [[ "${MODE}" != "oss" && "${MODE}" != "grafana-cloud" ]]; then
+              echo "::warning::RUM (Faro) test type is oss / grafana-cloud only (current: ${MODE}) — skipping."
+              { echo "### ⏭️ RUM (Faro) preset skipped";
+                echo "- \`rum-faro\` populates the Frontend RUM dashboard only on **oss** / **grafana-cloud** (Faro → Loki/Tempo). Current obs mode: \`${MODE}\` stores Faro as generic data. See docs/302."; } >> "${GITHUB_STEP_SUMMARY}"
+              exit 0
+            fi
+            K6_SCRIPT="jenkins/pipelines/k6/faro-rum.js"
+          fi
+
           # ---------------------------------------------------------------------------
           # Resolve OTLP destination and Grafana URL based on the active obs mode.
           #
@@ -387,7 +404,17 @@ jobs:
           # set of resource attrs to labels (deployment.environment yes, custom ones
           # land in target_info only) — so the dashboard's label_values()/filters need
           # them as metric tags, which k6 attaches to all metrics in every output.
-          k6 run jenkins/pipelines/k6/microservices-smoke.js \
+          # RUM test type: also port-forward the faro receiver (:8027) and point the
+          # script at it; beacons flow collector → Loki/Tempo. (k6's own metrics still
+          # go out via -o opentelemetry, tagged k6_profile=rum, so the k6 board shows it.)
+          FARO_PF_PID=""
+          if [[ "${K6SIM_PROFILE}" == "rum" ]]; then
+            kubectl port-forward svc/otel-collector-gateway -n "${NS}" 8027:8027 >/tmp/faro-pf.log 2>&1 &
+            FARO_PF_PID=$!; sleep 4
+            export FARO_URL="http://localhost:8027/"
+            echo "RUM: Faro beacons → ${FARO_URL} (collector faro receiver)"
+          fi
+          k6 run "${K6_SCRIPT}" \
             --tag ci_runner=gha --tag "k6_profile=${K6SIM_PROFILE}" --tag "k6_preset=${{ matrix.preset }}" \
             -o opentelemetry ${CLOUD_OUT}
           EXIT_CODE=$?
@@ -396,6 +423,7 @@ jobs:
           # Stop port-forwards if we started any
           [[ -n "${PF_PID}" ]] && kill "${PF_PID}" 2>/dev/null || true
           [[ -n "${APP_PF_PID}" ]] && kill "${APP_PF_PID}" 2>/dev/null || true
+          [[ -n "${FARO_PF_PID:-}" ]] && kill "${FARO_PF_PID}" 2>/dev/null || true
 
           END_TIME_MS=$(date +%s%3N)
           FROM_TIME=$((START_TIME_MS - 300000))

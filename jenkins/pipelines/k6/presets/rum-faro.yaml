@@ -1,0 +1,29 @@
+# Preset: rum-faro (basic) — SPECIAL test type
+# Not a microservices load test. Emits synthetic **Grafana Faro RUM** beacons
+# (page-load logs + Core Web Vitals + a browser documentLoad span; a fraction
+# also a JS exception) to the otel-collector's faro receiver, populating the
+# "CI-CD Frontend RUM (Angular / Faro)" dashboard — the same path a real browser
+# running the Angular Faro Web SDK uses (docs/202), without needing a browser.
+#
+# ⚠️ Backend support: RUM/Faro is native ONLY on observability.mode = oss and
+# grafana-cloud (both store the Faro logs/traces in Loki/Tempo). On
+# managed-azure / managed-aws Faro degrades to generic App Insights / CloudWatch,
+# so the GitHub Actions runner SKIPS this preset there. See docs/302 / docs/301.
+#
+# Runner: GitHub Actions only (it runs jenkins/pipelines/k6/faro-rum.js when
+# profile=rum). Intentionally NOT in presets/index.yaml — the Jenkins/Tekton k6
+# jobs and `run_all` use the HTTP load script (microservices-smoke.js), not the
+# Faro emitter.
+name: rum-faro
+level: basic
+description: Synthetic Grafana Faro RUM beacons (Web Vitals + JS errors) → Frontend RUM dashboard. OSS / Grafana-Cloud only.
+useCase: >
+  Populate / demo / validate the Frontend RUM (Angular / Faro) dashboard before
+  (or without) real browser traffic — Core Web Vitals, sessions, browser audience
+  and JS errors, end-to-end into Loki/Tempo. OSS or Grafana Cloud backends only.
+params:
+  profile: rum
+  vus: "5"
+  iterations: "40"
+  errorRate: "0.2"
+  p95Ms: "1500"

@@ -37,3 +37,11 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      # Server-Side Apply: the dashboards ConfigMap aggregates all canonical *.json
+      # (~0.45 MiB). A client-side apply would also stuff the whole object into the
+      # kubectl.kubernetes.io/last-applied-configuration ANNOTATION, which has a hard
+      # 256 KiB limit (distinct from the 1 MiB object limit) -> "metadata.annotations:
+      # Too long: may not be more than 262144 bytes" and the ConfigMap never lands, so
+      # Grafana hangs in ContainerCreating (FailedMount). SSA stores no such annotation,
+      # so the ConfigMap applies fine (it's still well under the 1 MiB object cap).
+      - ServerSideApply=true

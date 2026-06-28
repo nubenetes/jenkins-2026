@@ -207,6 +207,30 @@ Every committed preset, what it does, and when to reach for it. **Shape** is the
 | **`soak-endurance`** | 🔵 adv. | `soak` | 10 VUs · **1h** | all | 3000ms / 5% | job tier | **Leak/drift** hunting over time (extend duration). |
 | **`rps-steady`** | 🔵 adv. | arrival-rate | **120 req/s** · 5m (40 preVUs) | all | 2000ms / 2% | job tier | **Throughput** sign-off (open model); watch dropped iters. |
 | **`breakpoint-capacity`** | 🔵 adv. | `breakpoint` | →**400 req/s** · 8m · **aborts at knee** | all | 1500ms / 10% | job tier | Find the **capacity ceiling** (last rate before breach). |
+| **`rum-faro`** ⭐ | 🟢 basic | `rum` *(special)* | 5 VUs × **40 sessions** | — *(Faro beacons)* | 1500ms / — | **faro receiver** | **Synthetic RUM** — Web Vitals + JS errors → Frontend RUM dashboard. **oss / grafana-cloud only.** |
+
+### Special test type — RUM (Faro) beacons (`rum-faro` · profile `rum`)
+
+⭐ **This is not a microservices load test.** It runs a **different k6 script**
+([`faro-rum.js`](../jenkins/pipelines/k6/faro-rum.js), not `microservices-smoke.js`):
+each iteration is one synthetic browser **session** that POSTs a **Grafana Faro**
+beacon — a page-load log + **Core Web Vitals** (LCP/FCP/TTFB/INP/CLS) + a browser
+`documentLoad` span; a configurable fraction (`K6SIM_ERROR_RATE`, default 0.2) also
+POST a JS exception — to the otel-collector's **faro receiver** (`:8027`). The
+collector converts them to OTLP logs+traces and ships them to Loki/Tempo, **populating
+the [`CI-CD Frontend RUM (Angular / Faro)`](./301-OBSERVABILITY.md) dashboard** — the
+same path a real browser running the Angular Faro Web SDK uses ([docs/202](./202-MICROSERVICES-APP-ARCHITECTURE.md#frontend-observability--angular-rum-with-grafana-faro-implemented)),
+without needing a browser.
+
+| | `rum-faro` |
+|---|---|
+| **k6 script** | `faro-rum.js` (HTTP POSTs of Faro beacons; k6's own request metrics still export via OTLP, tagged `k6_profile=rum`, so the k6 board shows the run) |
+| **Target** | the **faro receiver** (`otel-collector-gateway:8027`), **not** the app URL |
+| **Knobs** | `K6SIM_VUS` (concurrent browsers, 5) · `K6SIM_ITERATIONS` (sessions, 40) · `K6SIM_DURATION` (→ continuous instead of a fixed count) · `K6SIM_ERROR_RATE` (JS-error fraction) · `env_name` (`develop`/`stable` → `deployment.environment`) |
+| **Backends** | ✅ **oss** · ✅ **grafana-cloud** — Faro is stored natively in Loki/Tempo. ❌ **managed-azure / managed-aws** — Faro degrades to generic App Insights / CloudWatch ([301](./301-OBSERVABILITY.md#frontend-rum-grafana-faro-per-backend--native-on-grafana-cloud--oss)), so the runner **skips it with a clear message** there. |
+| **Runner** | **GitHub Actions only** ([`Day2.traffic.01-k6`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml), `preset=rum-faro` or `profile=rum`). Intentionally **not** in `presets/index.yaml`, so `run_all` and the Jenkins/Tekton k6 jobs (HTTP load script) don't pick it up. |
+
+**Run it:** GitHub Actions → *Day2.traffic.01 k6* → `preset = rum-faro`, `env_name = develop` (or `stable`) → Run. In ~30s the Frontend RUM dashboard (filter `app=angular-gateway`, `env=<tier>`) lights up. (Equivalent to the older [`Day2.traffic.02-rum`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.02-rum.yml) bash emitter, now as a first-class k6 test type.)
 
 ### Per-preset use case + diagram
 

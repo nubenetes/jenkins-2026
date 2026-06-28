@@ -336,6 +336,38 @@ EOT
       log_warn "oss-kube-prometheus-stack-grafana did not appear within 5m — check 'kubectl -n argocd get applications' (observability-oss / oss-kube-prometheus-stack)."
     fi
     wait_for_deployment "otel-collector-gateway" "${J2026_OBS_NAMESPACE}"
+
+    # In oss mode the in-cluster Prometheus scrapes CloudNativePG metrics (cnpg_*)
+    # via the PodMonitor that the CNPG operator creates per Cluster — but ONLY when
+    # the PodMonitor CRD exists at reconcile time. A Cluster created before the CRD
+    # (e.g. switching obs mode TO oss on a running cluster that previously ran
+    # grafana-cloud/managed-* — which have no in-cluster prometheus-operator, hence
+    # no PodMonitor CRD) is left without a PodMonitor and the operator won't retry
+    # until it reconciles, so that tier's Postgres silently never appears in Grafana.
+    # kube-prometheus-stack (synced above) provides the CRD now, so nudge the CNPG
+    # operator to reconcile and create any missing PodMonitors. No-op on fresh
+    # deploys (CRD precedes Cluster creation → PodMonitor already there). Idempotent:
+    # only restarts when a CNPG-Cluster namespace is actually missing its PodMonitor.
+    if kubectl get crd podmonitors.monitoring.coreos.com >/dev/null 2>&1; then
+      cnpg_dep_ns="$(kubectl get deploy -A -l app.kubernetes.io/name=cloudnative-pg \
+        -o jsonpath='{.items[0].metadata.namespace}' 2>/dev/null || true)"
+      cnpg_dep_name="$(kubectl get deploy -A -l app.kubernetes.io/name=cloudnative-pg \
+        -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+      if [[ -n "${cnpg_dep_name}" ]]; then
+        missing_pm=0
+        for cl_ns in $(kubectl get cluster.postgresql.cnpg.io -A \
+          -o jsonpath='{range .items[*]}{.metadata.namespace}{"\n"}{end}' 2>/dev/null | sort -u); do
+          if [[ "$(kubectl get podmonitor -n "${cl_ns}" --no-headers 2>/dev/null | wc -l)" -eq 0 ]]; then
+            missing_pm=1
+          fi
+        done
+        if [[ "${missing_pm}" -eq 1 ]]; then
+          log_step "Nudging CNPG operator to create missing PodMonitors (oss Prometheus scrape)"
+          kubectl rollout restart "deploy/${cnpg_dep_name}" -n "${cnpg_dep_ns}" || true
+          kubectl rollout status "deploy/${cnpg_dep_name}" -n "${cnpg_dep_ns}" --timeout=120s || true
+        fi
+      fi
+    fi
     ;;
 
   managed-azure)
