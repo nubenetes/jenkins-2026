@@ -63,7 +63,7 @@ def call(Map cfg) {
       "K6_OTEL_GRPC_EXPORTER_ENDPOINT=otel-collector-gateway.observability.svc.cluster.local:4317",
       "K6_OTEL_GRPC_EXPORTER_INSECURE=true",
       "K6_OTEL_EXPORT_INTERVAL=2s",
-      "OTEL_RESOURCE_ATTRIBUTES=service.namespace=jenkins-2026,deployment.environment=${cfg.envName}",
+      "OTEL_RESOURCE_ATTRIBUTES=service.namespace=jenkins-2026,deployment.environment=${cfg.envName},ci.runner=jenkins,k6.profile=${cfg.profile ?: 'smoke'}",
       // Optional Grafana Cloud k6 (the k6-app) streaming; empty -> skipped.
       // Injected into the controller env from the jenkins-credentials Secret
       // (helm/jenkins/values-common.yaml containerEnv, populated by 04-jenkins.sh).

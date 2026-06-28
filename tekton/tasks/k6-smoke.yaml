@@ -198,7 +198,7 @@ spec:
         export K6SIM_PROFILE K6SIM_VUS K6SIM_ITERATIONS K6SIM_DURATION K6SIM_STAGES \
                K6SIM_RPS K6SIM_SLEEP K6SIM_SCENARIOS K6SIM_P95_MS K6SIM_ERROR_RATE \
                K6SIM_DEBUG ENV_NAME TARGET_NAMESPACE TARGET_URL
-        export OTEL_RESOURCE_ATTRIBUTES="service.name=k6-microservices-smoke,service.namespace=jenkins-2026,deployment.environment=${ENV_NAME}"
+        export OTEL_RESOURCE_ATTRIBUTES="service.name=k6-microservices-smoke,service.namespace=jenkins-2026,deployment.environment=${ENV_NAME},ci.runner=tekton,k6.profile=${K6SIM_PROFILE}"
         cd "$(workspaces.source.path)/k6-infra"
         # Build outputs: OTLP (when an endpoint is configured) AND Grafana Cloud k6
         # (when a token + project id are set) - both can run at once.
