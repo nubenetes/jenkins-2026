@@ -23,7 +23,11 @@
         "type": "datasource",
         "query": "prometheus",
         "label": "Prometheus / Mimir",
-        "current": {},
+        "current": {
+          "text": "grafanacloud-prom",
+          "value": "grafanacloud-prom",
+          "selected": true
+        },
         "options": [],
         "includeAll": false,
         "multi": false,

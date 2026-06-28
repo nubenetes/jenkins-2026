@@ -23,7 +23,11 @@
         "type": "datasource",
         "query": "prometheus",
         "label": "Prometheus / Mimir",
-        "current": {},
+        "current": {
+          "text": "grafanacloud-prom",
+          "value": "grafanacloud-prom",
+          "selected": true
+        },
         "options": [],
         "includeAll": false,
         "multi": false,
@@ -34,7 +38,11 @@
         "type": "datasource",
         "query": "loki",
         "label": "Loki",
-        "current": {},
+        "current": {
+          "text": "grafanacloud-logs",
+          "value": "grafanacloud-logs",
+          "selected": true
+        },
         "options": [],
         "includeAll": false,
         "multi": false,
@@ -45,7 +53,11 @@
         "type": "datasource",
         "query": "tempo",
         "label": "Tempo",
-        "current": {},
+        "current": {
+          "text": "grafanacloud-traces",
+          "value": "grafanacloud-traces",
+          "selected": true
+        },
         "options": [],
         "includeAll": false,
         "multi": false,
