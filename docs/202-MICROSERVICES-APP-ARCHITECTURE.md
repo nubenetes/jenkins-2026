@@ -186,6 +186,33 @@ Once RUM flows, a frontend dashboard joins the existing set and traces correlate
 | How they're deployed (GitOps/Helm) | [502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md) |
 | Generator / framework | [JHipster](https://www.jhipster.tech/) · [Spring Cloud Gateway](https://spring.io/projects/spring-cloud-gateway) · [Angular](https://angular.dev/) |
 
+### Origin & why these repos are forks
+
+Both service repos are **GitHub forks of the official JHipster sample apps** —
+[`jhipster/jhipster-sample-app-gateway`](https://github.com/jhipster/jhipster-sample-app-gateway)
+and [`jhipster/jhipster-sample-app-microservice`](https://github.com/jhipster/jhipster-sample-app-microservice),
+the canonical JHipster microservices demo (a Spring Cloud **gateway** that serves the
+Angular SPA + a REST **microservice**) — forked into the **[`nubenetes`](https://github.com/nubenetes)**
+org so the project **owns** them. Ownership is required to:
+
+- **commit pipelines-as-code** into each app repo (the Jenkins `Jenkinsfile`, the Tekton
+  `.tekton/` `PipelineRun`s) — you cannot push CI config to upstream repos you don't control;
+- let **CI build them and report commit status** (Jenkins / Tekton Pipelines-as-Code /
+  GitHub Actions) on owned repos — see [403 § "why fork"](./403-TEKTON.md);
+- **pin versions** and host the project-specific changes the demo needs — branch tracking
+  and the planned **CRaC** ([303](./303-JVM-TUNING.md)) + **Angular Faro RUM** (above)
+  work, none of which belongs upstream.
+
+[`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml) points the
+pipelines at these forks (not at `jhipster/*`).
+
+> **Branches.** The forks currently track **`main` only** (the upstream apps ship no
+> `develop` branch), so the `develop` tier builds the *same* image as `stable` and differs
+> only in deploy namespace + `values-develop.yaml`. Adding a real `develop` branch to each
+> fork (and flipping `services.yaml` `branches.develop` → `develop`) would make the develop
+> tier exercise **true branch-based app-code promotion** (a faithful dev→prod flow), at the
+> cost of keeping two app branches in sync. See [402](./402-PIPELINES_AS_CODE.md).
+
 ---
 
 [← Previous: 201. Architecture](./201-ARCHITECTURE.md) | [🏠 Home](../README.md) | [→ Next: 301. Observability](./301-OBSERVABILITY.md)

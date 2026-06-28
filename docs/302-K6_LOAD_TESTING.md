@@ -422,7 +422,58 @@ tkn pipeline start microservices-k6-smoke -n tekton-ci \
 - **`env_name=develop`** → the public **`microservices-develop.<baseDomain>`** host (`gateway.hosts.microservicesDevelop`) — the develop tier now has its own public route (see [402 · develop tier](./402-PIPELINES_AS_CODE.md#optional-develop-tier-feature-flag-off-by-default)), so the runner targets it directly over the internet exactly like `stable`.
 - **`target_url`** input → overrides both.
 
-It detects the active observability mode from in-cluster secrets and routes OTLP accordingly (Grafana Cloud HTTP/protobuf, or gRPC via a collector port-forward for oss/managed). Run it from **Actions → Day2.traffic.01 → Run workflow** (manual-approval gated, like the other Day2 workflows).
+It detects the active observability mode from in-cluster secrets and routes OTLP accordingly (Grafana Cloud HTTP/protobuf, or gRPC via a collector port-forward for oss/managed). Run it from **Actions → Day2.traffic.01 → Run workflow** (no approval gate — it only drives read-only HTTP traffic, so automation/scheduling isn't blocked; the heavier Day2.* workflows keep their gate).
+
+#### Run ALL presets in one click (`run_all_presets`)
+
+Set **`run_all_presets=true`** and the workflow runs **every** preset in
+[`presets/index.yaml`](../jenkins/pipelines/k6/presets/index.yaml) as a **parallel GitHub
+Actions matrix** — a tiny `prepare` job emits the preset list (`fromJson`), then one
+`k6: <preset>` job runs per preset (`fail-fast: false`, `max-parallel: 4` so a full sweep
+doesn't crush the lean app with 9 simultaneous profiles). One click → every use case lands
+in the dashboard, filterable by Runner/Profile/Preset.
+
+- **`run_all_duration`** (optional) — cap **every** preset to one short duration (e.g.
+  `30s`), clearing each preset's stages/rps/iterations, for a quick comprehensive pass
+  instead of each file's own (e.g. the 1h `soak-endurance`) values. Empty = each file's own.
+- **Environment** — `env_name` (`stable`/`develop`) applies to every preset that doesn't
+  pin its own; `develop-smoke` pins `develop`. Precedence: **preset's pinned `envName` >
+  `env_name` input > default `stable`**.
+
+```bash
+# every use case, capped to 30s each, against stable
+gh workflow run "Day2.traffic.01-k6.yml" --ref develop \
+  -f run_all_presets=true -f run_all_duration=30s
+# … the same, but all against develop
+gh workflow run "Day2.traffic.01-k6.yml" --ref develop \
+  -f run_all_presets=true -f run_all_duration=30s -f env_name=develop
+```
+
+### Filtering results by Runner / Profile / Preset
+
+Every k6 run is tagged so the **`CI-CD / k6 Observability Smoke Test`** dashboard can slice
+by **who ran it and what shape it was** — three k6 **`--tag`** values become Prometheus
+labels on every k6 metric series:
+
+| Tag → label | Values | Set by |
+|---|---|---|
+| `ci_runner`  | `gha` · `jenkins` · `tekton` | the runner (literal per engine) |
+| `k6_profile` | `smoke` · `load` · `stress` · `soak` · `spike` · `breakpoint` | `${K6SIM_PROFILE}` |
+| `k6_preset`  | the preset name (e.g. `breakpoint-capacity`), or `none` for ad-hoc | the selected preset |
+
+The dashboard exposes **Runner** and **Profile** template variables (plus the existing
+**Environment**); `allValue='.*'` + includeAll means pre-existing untagged runs still show
+under *All*, and selecting a value narrows once tagged runs land.
+
+> **Why `--tag` and not `OTEL_RESOURCE_ATTRIBUTES`.** It's tempting to add
+> `ci.runner=…,k6.profile=…` as OTEL *resource* attributes. Don't — **Grafana Cloud's
+> OTLP→Prometheus ingestion only promotes a fixed set of resource attributes to labels**
+> (`deployment.environment` is promoted; arbitrary custom ones are **not** — they land only
+> in the `target_info` metric). So resource-attr tags never reach `iterations_total` /
+> `http_req_*`, and the dashboard's `label_values()` + panel filters stay empty. k6 `--tag`
+> attaches the value to **every** metric series in **every** output, so it works on all
+> backends. (Symptom if you get this wrong: `label_values(iterations_total, ci_runner)` is
+> empty while `{ci_runner="gha"}` matches only `target_info`.)
 
 ---
 
