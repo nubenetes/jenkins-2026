@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.32] - 2026-06-29
+
+Increment over v0.28.31 (Tekton gitops-deploy: tolerate concurrent ArgoCD auto-sync).
+
+### Fixed
+- **Tekton `gitops-deploy` failed with `FailedPrecondition: another operation is already in
+  progress`.** The microservices ArgoCD apps have automated **selfHeal**, so pushing the new image
+  tag (the GitOps Update step) triggers an **auto-sync** that can be mid-flight when the task's
+  explicit `argocd app sync` runs — they race. The deploy actually succeeds (auto-sync applies the
+  same commit), but the explicit `app sync` errored and failed the task. Made the explicit sync
+  **retry + non-fatal**, and rely on `argocd app wait --sync --health` to confirm the app converges
+  to the pushed revision and becomes healthy regardless of which sync won.
+
 ## [v0.28.31] - 2026-06-28
 
 Increment over v0.28.30 (fix Tekton k6 resolve-preset permission error).
