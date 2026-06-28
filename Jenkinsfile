@@ -18,8 +18,14 @@ spec:
         - name: DOCKER_HOST
           value: tcp://localhost:2375
       resources:
-        requests: {cpu: '1.0', memory: 2.0Gi}
-        limits: {cpu: '4', memory: 4.0Gi}
+        requests: {cpu: '2', memory: 4.0Gi}
+        limits: {cpu: '6', memory: 8.0Gi}
+      # In-Place Pod Resize (K8s 1.33+ GA; cluster is 1.35): let the build container grow
+      # CPU/memory under load WITHOUT a pod restart. The heavy step here is the JHipster
+      # Maven + Angular/Webpack build, which is CPU- and memory-hungry; 4Gi caused GC thrash.
+      resizePolicy:
+        - {resourceName: cpu, restartPolicy: NotRequired}
+        - {resourceName: memory, restartPolicy: NotRequired}
       volumeMounts:
         - name: maven-cache
           mountPath: /root/.m2

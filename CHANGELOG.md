@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.15] - 2026-06-28
+
+Increment over v0.28.14 (faster Jenkins build agent).
+
+### Changed
+- **Bigger build-agent `maven` container for faster JHipster builds.** The pipeline pod
+  (root `Jenkinsfile`) bumped the `maven` container from req `1 CPU / 2Gi`, lim `4 CPU / 4Gi`
+  to req **`2 CPU / 4Gi`**, lim **`6 CPU / 8Gi`** — the heavy step is Maven + Angular/Webpack,
+  which is CPU/memory-hungry and was GC-thrashing at 4Gi. Headroom exists (nodes are
+  `e2-standard-8`, ~60% CPU / 35% mem used). Also added **In-Place Pod Resize** (`resizePolicy`,
+  GA in K8s 1.33+; cluster is 1.35) so the container can grow under load without a restart.
+  Note: parallel-build capacity is governed by the k8s `containerCap` (10–20 agent pods), not
+  controller executors (built-in `numExecutors: 0`); this change speeds each build, not concurrency.
+
 ## [v0.28.14] - 2026-06-28
 
 Increment over v0.28.13 (Jenkins executor semantics + idle pipeline panels).
