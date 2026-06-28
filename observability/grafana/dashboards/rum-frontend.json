@@ -114,7 +114,7 @@
       "title": "Sessions",
       "datasource": {
         "type": "loki",
-        "uid": "grafanacloud-logs"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 4,
@@ -126,7 +126,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "grafanacloud-logs"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "count(count by (session_id)(count_over_time({service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | session_id!=\"\" [$__range])))",
@@ -171,7 +171,7 @@
       "title": "Exceptions",
       "datasource": {
         "type": "loki",
-        "uid": "grafanacloud-logs"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 4,
@@ -183,7 +183,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "grafanacloud-logs"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "sum(count_over_time({service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`exception` [$__range]))",
@@ -232,7 +232,7 @@
       "title": "Measurements (Web-Vitals samples)",
       "datasource": {
         "type": "loki",
-        "uid": "grafanacloud-logs"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 4,
@@ -244,7 +244,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "grafanacloud-logs"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "sum(count_over_time({service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`measurement` [$__range]))",
@@ -289,7 +289,7 @@
       "title": "Total RUM events",
       "datasource": {
         "type": "loki",
-        "uid": "grafanacloud-logs"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 4,
@@ -301,7 +301,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "grafanacloud-logs"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "sum(count_over_time({service_name=\"$app\", deployment_environment=\"$deployment_environment\"} [$__range]))",
@@ -346,7 +346,7 @@
       "title": "Browsers seen",
       "datasource": {
         "type": "loki",
-        "uid": "grafanacloud-logs"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 4,
@@ -358,7 +358,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "grafanacloud-logs"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "count(count by (browser_name)(count_over_time({service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | browser_name!=\"\" [$__range])))",
@@ -416,7 +416,7 @@
       "title": "LCP",
       "datasource": {
         "type": "loki",
-        "uid": "grafanacloud-logs"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 4,
@@ -428,7 +428,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "grafanacloud-logs"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`measurement` | lcp!=\"\" | unwrap lcp [$__range])",
@@ -481,7 +481,7 @@
       "title": "INP",
       "datasource": {
         "type": "loki",
-        "uid": "grafanacloud-logs"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 4,
@@ -493,7 +493,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "grafanacloud-logs"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`measurement` | inp!=\"\" | unwrap inp [$__range])",
@@ -546,7 +546,7 @@
       "title": "CLS",
       "datasource": {
         "type": "loki",
-        "uid": "grafanacloud-logs"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 4,
@@ -558,7 +558,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "grafanacloud-logs"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`measurement` | cls!=\"\" | unwrap cls [$__range])",
@@ -611,7 +611,7 @@
       "title": "FCP",
       "datasource": {
         "type": "loki",
-        "uid": "grafanacloud-logs"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 4,
@@ -623,7 +623,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "grafanacloud-logs"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`measurement` | fcp!=\"\" | unwrap fcp [$__range])",
@@ -676,7 +676,7 @@
       "title": "TTFB",
       "datasource": {
         "type": "loki",
-        "uid": "grafanacloud-logs"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 4,
@@ -688,7 +688,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "grafanacloud-logs"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`measurement` | ttfb!=\"\" | unwrap ttfb [$__range])",
@@ -741,7 +741,7 @@
       "title": "LCP p75 over time",
       "datasource": {
         "type": "loki",
-        "uid": "grafanacloud-logs"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 7,
@@ -753,7 +753,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "grafanacloud-logs"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`measurement` | lcp!=\"\" | unwrap lcp [$__interval])",
@@ -789,7 +789,7 @@
       "title": "INP p75 over time",
       "datasource": {
         "type": "loki",
-        "uid": "grafanacloud-logs"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 7,
@@ -801,7 +801,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "grafanacloud-logs"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`measurement` | inp!=\"\" | unwrap inp [$__interval])",
@@ -837,7 +837,7 @@
       "title": "CLS p75 over time",
       "datasource": {
         "type": "loki",
-        "uid": "grafanacloud-logs"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 7,
@@ -849,7 +849,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "grafanacloud-logs"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "quantile_over_time(0.75, {service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`measurement` | cls!=\"\" | unwrap cls [$__interval])",
@@ -898,7 +898,7 @@
       "title": "Exceptions over time",
       "datasource": {
         "type": "loki",
-        "uid": "grafanacloud-logs"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 7,
@@ -910,7 +910,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "grafanacloud-logs"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "sum(count_over_time({service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`exception` [$__interval]))",
@@ -946,7 +946,7 @@
       "title": "Top browsers by exceptions",
       "datasource": {
         "type": "loki",
-        "uid": "grafanacloud-logs"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 7,
@@ -958,7 +958,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "grafanacloud-logs"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "topk(10, sum by (browser_name)(count_over_time({service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`exception` [$__range])))",
@@ -981,7 +981,7 @@
       "title": "Recent exceptions",
       "datasource": {
         "type": "loki",
-        "uid": "grafanacloud-logs"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 8,
@@ -993,7 +993,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "grafanacloud-logs"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "{service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | kind=`exception`",
@@ -1028,7 +1028,7 @@
       "title": "Sessions over time",
       "datasource": {
         "type": "loki",
-        "uid": "grafanacloud-logs"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 7,
@@ -1040,7 +1040,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "grafanacloud-logs"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "count(count by (session_id)(count_over_time({service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | session_id!=\"\" [$__interval])))",
@@ -1076,7 +1076,7 @@
       "title": "Popular browsers",
       "datasource": {
         "type": "loki",
-        "uid": "grafanacloud-logs"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 7,
@@ -1088,7 +1088,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "grafanacloud-logs"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "topk(10, sum by (browser_name, browser_version)(count_over_time({service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | browser_name!=\"\" [$__range])))",
@@ -1111,7 +1111,7 @@
       "title": "OS / mobile",
       "datasource": {
         "type": "loki",
-        "uid": "grafanacloud-logs"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 7,
@@ -1123,7 +1123,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "grafanacloud-logs"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "sum by (browser_os, browser_mobile)(count_over_time({service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt | browser_os!=\"\" [$__range]))",
@@ -1159,7 +1159,7 @@
       "title": "Live RUM events",
       "datasource": {
         "type": "loki",
-        "uid": "grafanacloud-logs"
+        "uid": "loki"
       },
       "gridPos": {
         "h": 9,
@@ -1171,7 +1171,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "grafanacloud-logs"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "{service_name=\"$app\", deployment_environment=\"$deployment_environment\"} | logfmt",
@@ -1193,7 +1193,7 @@
       "title": "Browser traces (Tempo)",
       "datasource": {
         "type": "tempo",
-        "uid": "grafanacloud-traces"
+        "uid": "tempo"
       },
       "gridPos": {
         "h": 9,
@@ -1205,7 +1205,7 @@
         {
           "datasource": {
             "type": "tempo",
-            "uid": "grafanacloud-traces"
+            "uid": "tempo"
           },
           "queryType": "traceql",
           "refId": "A",

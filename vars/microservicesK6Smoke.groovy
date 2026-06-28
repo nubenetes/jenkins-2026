@@ -82,7 +82,11 @@ def call(Map cfg) {
           # k6-summary.json is written by the script's handleSummary() (CWD), not
           # --summary-export: k6 2.0's --summary-export flattened schema made the
           # readJSON parser below (printK6Summary) read all-zeros.
-          k6 run -o opentelemetry ${CLOUD_OUT} jenkins/pipelines/k6/microservices-smoke.js
+          # ci_runner/k6_profile as k6 --tag (metric labels on every series), not
+          # resource attrs: Grafana Cloud only promotes a fixed set of resource attrs
+          # to labels, so custom ones must be metric tags for the dashboard filters.
+          k6 run --tag ci_runner=jenkins --tag "k6_profile=${K6SIM_PROFILE}" \
+            -o opentelemetry ${CLOUD_OUT} jenkins/pipelines/k6/microservices-smoke.js
         ''',
         returnStatus: true
       )
@@ -215,13 +219,19 @@ def printK6Summary() {
 }
 
 // ---- formatting helpers (null-tolerant) ------------------------------------
-def numOf(v) { (v ?: 0) as Number }
-def pct(Number rate) { "${String.format('%.2f', rate * 100)}%" }
+// numOf returns a primitive double on purpose: when a rate is exactly 0 or 1
+// (e.g. http_req_failed rate=1 when 100% of requests fail), k6's JSON encodes it
+// as an integer (`1`), and String.format('%.2f', <Integer>) throws
+// IllegalFormatConversionException — which crashed printK6Summary() and turned an
+// UNSTABLE threshold breach into a hard build FAILURE that hid the real cause.
+def numOf(v) { (v ?: 0) as double }
+def pct(Number rate) { "${String.format('%.2f', (rate as double) * 100)}%" }
 def ms(v) { "${String.format('%.0f', numOf(v))}" }
 def fmtBytes(Number n) {
-  if (n >= 1024 * 1024) return "${String.format('%.1f', n / (1024 * 1024))} MB"
-  if (n >= 1024) return "${String.format('%.1f', n / 1024)} KB"
-  return "${n as int} B"
+  double d = (n ?: 0) as double
+  if (d >= 1024 * 1024) return "${String.format('%.1f', d / (1024 * 1024))} MB"
+  if (d >= 1024) return "${String.format('%.1f', d / 1024)} KB"
+  return "${d as int} B"
 }
 def connDetail(Map metrics) {
   def parts = []

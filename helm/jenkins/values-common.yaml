@@ -464,6 +464,12 @@ controller:
     - workflow-support:1015.v785e5a_b_b_8b_22
 
 agent:
+  # NOTE: the ACTIVE Kubernetes cloud (incl. its container cap) is defined in JCasC
+  # — jenkins/casc/jcasc-base.yaml (containerCapStr: "10") — which OVERRIDES this
+  # chart-level agent block, so changing containerCap here has no effect. Tune the
+  # concurrent-agent cap in jcasc-base.yaml. The real "slow to start / not parallel"
+  # fixes are: the agent-image-prepull DaemonSet (fast pod start) + `idleMinutes`
+  # on the INLINE pod templates in vars/MicroservicesPipeline.groovy (warm reuse).
   containerCap: 2
   # Per-pipeline pod templates (maven/node/dind/kubectl/helm containers) are
   # defined inline in jenkins/pipelines/Jenkinsfile.microservices via the

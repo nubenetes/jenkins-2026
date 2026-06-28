@@ -41,11 +41,15 @@ All notable changes to this project will be documented in this file.
   thresholds), JS errors/exceptions, sessions, browser audience, live RUM logs and browser
   traces. Populates once the SPA ships the Faro Web SDK (roadmap in
   [`docs/202`](docs/202-MICROSERVICES-APP-ARCHITECTURE.md)).
-- **Grafana Faro RUM receiver in the otel-collector.** Switched the gateway collector to
-  the **contrib** distro and added the `faro` receiver (`:8027`, CORS) wired into the
-  traces + logs pipelines, so the Angular SPA's browser RUM beacon (Web Vitals, errors,
-  sessions, browser spans) rides the same collector→backend path as the Java services'
-  telemetry. Validated end-to-end (beacon → Loki/Tempo).
+- **Grafana Faro RUM receiver in the otel-collector — on ALL four backends.** Switched the
+  gateway collector to the **contrib** distro and added the `faro` receiver (`:8027`, CORS)
+  wired into the traces + logs pipelines, so the Angular SPA's browser RUM beacon (Web
+  Vitals, errors, sessions, browser spans) rides the same collector→backend path as the
+  Java services' telemetry. Added to **all four** collector configs
+  (`values-grafana-cloud` / `-oss` / `-managed-azure` / `-managed-aws`), so RUM works on
+  every observability backend, not just grafana-cloud (OSS gets fully-functional RUM — its
+  in-cluster Loki/Tempo match the dashboard uids). Validated end-to-end (beacon →
+  Loki/Tempo).
 - **Experimental JVM runtime telemetry** on the OTel Java agent
   (`OTEL_INSTRUMENTATION_RUNTIME_TELEMETRY_EMIT_EXPERIMENTAL_TELEMETRY=true` on the
   `microservices-java` Instrumentation CR) → buffer pools (direct/mapped) + system CPU,
@@ -55,6 +59,27 @@ All notable changes to this project will be documented in this file.
   `kubectl port-forward`, to populate/demo/validate the RUM dashboard before the Angular SPA
   is instrumented. No environment gate (synthetic telemetry, repo-level secrets); k6
   (HTTP) can't generate RUM — real RUM needs the instrumented SPA driven by a browser.
+- **k6 dashboard filters by Runner / Profile / Preset.** Every k6 run is now tagged via
+  **k6 `--tag`** — `ci_runner` (`gha`/`jenkins`/`tekton`), `k6_profile`
+  (smoke/load/stress/soak/spike/breakpoint) and `k6_preset` (the preset name) — across all
+  three runners (`.github/workflows/Day2.traffic.01-k6.yml`, `vars/microservicesK6Smoke.groovy`,
+  `tekton/tasks/k6-smoke.yaml`). **Why `--tag` and not OTEL resource attributes:** Grafana
+  Cloud's OTLP→Prometheus ingestion only promotes a *fixed* set of resource attributes to
+  labels (`deployment.environment` yes; custom ones land only in `target_info`), so they'd
+  never reach `iterations_total`/`http_req_*` and the dashboard's `label_values()`/filters
+  would stay empty — `--tag` attaches the value to **every** metric series in every output.
+  The k6 dashboard gained **Runner** + **Profile** template variables (`allValue='.*'` +
+  includeAll, so pre-existing untagged data still shows under *All*) filtering all panels.
+  See [`docs/302`](docs/302-K6_LOAD_TESTING.md).
+- **`run_all_presets` — one-click "run every k6 use case" (parallel matrix).** A new
+  boolean input on `Day2.traffic.01-k6` runs **every** preset in `presets/index.yaml` as a
+  parallel GitHub Actions **matrix** (a `prepare` job emits the list via `fromJson`; one
+  `k6: <preset>` job each; `fail-fast: false`, `max-parallel: 4`) — one click and all use
+  cases land in the dashboard, filterable by Runner/Profile/Preset. Companion
+  **`run_all_duration`** input caps **every** preset to one short duration (e.g. `30s`,
+  clearing its stages/rps/iterations) for a quick comprehensive pass instead of each file's
+  own (e.g. 1h soak) values. `env_name` still selects the tier (preset's pinned `envName` >
+  `env_name` input > default `stable`). See [`docs/302`](docs/302-K6_LOAD_TESTING.md).
 - **Grafana dashboards inventory** in [`docs/301`](docs/301-OBSERVABILITY.md) (master
   matrix + per-dashboard detail + the label-model / No-Data gotchas).
 - **`docs/202-MICROSERVICES-APP-ARCHITECTURE.md`** (the demo app: gateway = Java/Spring
@@ -95,10 +120,13 @@ All notable changes to this project will be documented in this file.
 - **Every Loki/Tempo dashboard panel showed No-Data even with data present.** The stack
   has **no default Loki or Tempo datasource** (only Prometheus is the global default), so
   the `${DS_LOKI}`/`${DS_TEMPO}` template variables didn't resolve (and an empty/stale
-  `var-DS_LOKI` in a bookmarked URL overrode any binding). Hardcoded `grafanacloud-logs`/
-  `grafanacloud-traces` in the panels and dropped the `DS_LOKI`/`DS_TEMPO` template vars
-  across all dashboards (`generate.py` still rewrites Loki/Tempo → CloudWatch/X-Ray by type
-  for the aws/azure variants).
+  `var-DS_LOKI` in a bookmarked URL overrode any binding). Dropped the `DS_LOKI`/`DS_TEMPO`
+  template vars and bound the datasource **portably**: the base dashboards reference the
+  **neutral uids `loki`/`tempo`** (which match the in-cluster OSS Grafana,
+  `grafana/values-oss.yaml`), and `scripts/07-grafana-dashboards.sh` **rewrites them to
+  `grafanacloud-logs`/`grafanacloud-traces` at publish time** for grafana-cloud (a `jq walk`)
+  — the same per-backend rewrite `generate.py` already does for Loki/Tempo → CloudWatch/X-Ray
+  on the aws/azure variants. One base, every backend works (OSS reads it as-is).
 - **RUM dashboard query/variable fixes:** Loki `kind` is *structured metadata*, not an
   indexed stream label, so `{kind="measurement"}` in the stream selector returned nothing
   — filter `kind` after `| logfmt`; the `app` variable was an empty time-bounded
@@ -122,6 +150,20 @@ All notable changes to this project will be documented in this file.
   GHA use-cases (default + 9 presets) in parallel, all success, real numbers, thresholds
   PASS. This is the complete fix for the symptom the v0.27.0 boolean-threshold patch only
   partially addressed.
+- **Jenkins pipeline targeted namespace `"null"` (k6 hit `gateway.null.svc`, deploy targeted
+  namespace `null`).** `MicroservicesPipeline` named its argument map `params` but declares
+  **no `parameters{}` block**, so inside the declarative pipeline `params.targetNamespace`
+  resolved to the *empty build-params global*, not the seed-baked arg → the literal string
+  `"null"`. Renamed the arg to **`cfg`** (the safe pattern every other `vars/*.groovy`
+  already uses), pass `TARGET_NAMESPACE`/`ENV_NAME` **explicitly** when triggering the k6 job
+  (Jenkins doesn't apply a job's default param values on its first build after a re-seed),
+  and added a preset→param→`cfg`→default coalesce in the k6 pipeline. Also fixed a Groovy
+  summary crash: `String.format('%.2f', <Integer>)` threw `IllegalFormatConversionException`
+  when a rate was exactly `0`/`1` (e.g. `http_req_failed=1` at 100% failure), turning an
+  UNSTABLE threshold breach into a hard FAILURE — `numOf()` now returns a primitive `double`.
+- **GHA k6 `--tag` aborted under `set -u`** (`PROFILE: unbound variable`): the k6-run step
+  referenced `${PROFILE}` (a var from an earlier step) instead of the step-local
+  `${K6SIM_PROFILE}` env. Jenkins/Tekton already used the always-set `K6SIM_PROFILE`.
 - **Grafana Cloud free-tier 15k active-series cap exceeded → metrics rejected
   (`err-mimir-max-active-series`), so app/JVM dashboard panels churned empty.** Two
   durable cuts: `observability.leanMetrics` default flipped **false → true** (infra

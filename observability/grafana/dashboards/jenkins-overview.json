@@ -413,7 +413,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "grafanacloud-logs"
+        "uid": "loki"
       },
       "description": "Controller + agent pod logs. Each line containing a trace_id can be opened directly in Tempo via the Loki datasource's derived field (see observability/grafana/values-oss.yaml or the Grafana Cloud Loki datasource configuration).",
       "fieldConfig": {
@@ -440,7 +440,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "grafanacloud-logs"
+            "uid": "loki"
           },
           "expr": "{k8s_namespace_name=\"jenkins\"} | json | line_format \"{{ if .message }}{{ .message }}{{ else if .msg }}{{ .msg }}{{ else }}{{ __line__ }}{{ end }}\"",
           "refId": "A"
@@ -452,7 +452,7 @@
     {
       "datasource": {
         "type": "tempo",
-        "uid": "grafanacloud-traces"
+        "uid": "tempo"
       },
       "description": "Recent traces for the Jenkins controller (service.name=jenkins, set by jenkins/casc/jcasc-otel.yaml). Each pipeline build, stage and step is exported as a span.",
       "fieldConfig": {
@@ -489,7 +489,7 @@
         {
           "datasource": {
             "type": "tempo",
-            "uid": "grafanacloud-traces"
+            "uid": "tempo"
           },
           "query": "{resource.service.name = \"jenkins\"}",
           "queryType": "traceql",

@@ -1,0 +1,38 @@
+# Pre-pulls the Jenkins agent container images onto every node so build pods start
+# fast: a build pod is only "Running" once ALL its container images are present, and
+# the microservices pipeline pod has 8 containers (maven/node/dind/helm/git/semgrep/
+# codeql/trivy) — codeql alone is multi-GB. Caching them out-of-band means the first
+# stage no longer waits on a cold multi-image pull. initContainers pull each image
+# (run `true` and exit); the main container just idles. Apply via 04-jenkins.sh.
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: jenkins-agent-image-prepull
+  namespace: jenkins
+  labels: { app.kubernetes.io/name: jenkins-agent-image-prepull }
+spec:
+  selector:
+    matchLabels: { app.kubernetes.io/name: jenkins-agent-image-prepull }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: jenkins-agent-image-prepull }
+    spec:
+      # Low priority + tolerations so it never blocks real workloads; it just warms caches.
+      terminationGracePeriodSeconds: 0
+      automountServiceAccountToken: false
+      initContainers:
+        - { name: maven,   image: "maven:3.9.9-eclipse-temurin-21", command: ["true"], imagePullPolicy: IfNotPresent }
+        - { name: node,    image: "node:20-bookworm",               command: ["true"], imagePullPolicy: IfNotPresent }
+        - { name: dind,    image: "docker:26-dind",                 command: ["true"], imagePullPolicy: IfNotPresent }
+        - { name: k8s,     image: "alpine/k8s:1.31.3",              command: ["true"], imagePullPolicy: IfNotPresent }
+        - { name: git,     image: "alpine/git:2.54.0",              command: ["true"], imagePullPolicy: IfNotPresent }
+        - { name: semgrep, image: "semgrep/semgrep:1.79.0",        command: ["true"], imagePullPolicy: IfNotPresent }
+        - { name: trivy,   image: "aquasec/trivy:0.52.2",          command: ["true"], imagePullPolicy: IfNotPresent }
+        - { name: k6,      image: "grafana/k6:2.0.0",              command: ["true"], imagePullPolicy: IfNotPresent }
+        - { name: codeql,  image: "mcr.microsoft.com/cstsectools/codeql-container:c6f3f8cbd3e0ebc36d9ad6dfe6a4c166ba940166", command: ["true"], imagePullPolicy: IfNotPresent }
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.10
+          resources:
+            requests: { cpu: "1m", memory: "8Mi" }
+            limits:   { cpu: "10m", memory: "16Mi" }

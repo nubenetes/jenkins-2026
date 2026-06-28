@@ -186,6 +186,33 @@ Once RUM flows, a frontend dashboard joins the existing set and traces correlate
 | How they're deployed (GitOps/Helm) | [502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md) |
 | Generator / framework | [JHipster](https://www.jhipster.tech/) · [Spring Cloud Gateway](https://spring.io/projects/spring-cloud-gateway) · [Angular](https://angular.dev/) |
 
+### Origin & why these repos are forks
+
+Both service repos are **GitHub forks of the official JHipster sample apps** —
+[`jhipster/jhipster-sample-app-gateway`](https://github.com/jhipster/jhipster-sample-app-gateway)
+and [`jhipster/jhipster-sample-app-microservice`](https://github.com/jhipster/jhipster-sample-app-microservice),
+the canonical JHipster microservices demo (a Spring Cloud **gateway** that serves the
+Angular SPA + a REST **microservice**) — forked into the **[`nubenetes`](https://github.com/nubenetes)**
+org so the project **owns** them. Ownership is required to:
+
+- **commit pipelines-as-code** into each app repo (the Jenkins `Jenkinsfile`, the Tekton
+  `.tekton/` `PipelineRun`s) — you cannot push CI config to upstream repos you don't control;
+- let **CI build them and report commit status** (Jenkins / Tekton Pipelines-as-Code /
+  GitHub Actions) on owned repos — see [403 § "why fork"](./403-TEKTON.md);
+- **pin versions** and host the project-specific changes the demo needs — branch tracking
+  and the planned **CRaC** ([303](./303-JVM-TUNING.md)) + **Angular Faro RUM** (above)
+  work, none of which belongs upstream.
+
+[`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml) points the
+pipelines at these forks (not at `jhipster/*`).
+
+> **Branches.** The nubenetes forks now carry a real **`develop`** branch (created off
+> `main`; the original upstream `jhipster/*` repos have only `main`), and `services.yaml`
+> `branches.develop` is set to **`develop`** — so the develop tier exercises **true
+> branch-based app-code promotion** (develop code → develop env, promote to `main` →
+> stable env), not just a different deploy of the same `main` image. Keep the two app
+> branches in sync. See [402](./402-PIPELINES_AS_CODE.md).
+
 ---
 
 [← Previous: 201. Architecture](./201-ARCHITECTURE.md) | [🏠 Home](../README.md) | [→ Next: 301. Observability](./301-OBSERVABILITY.md)

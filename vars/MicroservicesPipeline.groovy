@@ -7,10 +7,14 @@
  *
  * Declarative shared library wrapper for the standard Microservices build/deploy pipeline.
  */
-def call(Map params) {
+def call(Map cfg) {
     pipeline {
         agent {
             kubernetes {
+                // Keep the agent pod warm ~5 min after the build so a re-run / the next
+                // service's build REUSES it instead of cold-starting a fresh 8-container
+                // pod (pod schedule + multi-image pull + JNLP connect is the slow part).
+                idleMinutes 5
                 yaml """
 apiVersion: v1
 kind: Pod
@@ -191,18 +195,18 @@ spec:
 
         environment {
             REGISTRY      = "${env.MICROSERVICES_REGISTRY ?: 'ghcr.io/nubenetes/jenkins-2026-microservices'}"
-            IMAGE_TAG     = "${params.gitBranch}"
-            IMAGE         = "${env.REGISTRY}/${params.serviceName}:${env.IMAGE_TAG}"
-            OTEL_SERVICE_NAME = "jenkins-pipeline-${params.serviceName}"
+            IMAGE_TAG     = "${cfg.gitBranch}"
+            IMAGE         = "${env.REGISTRY}/${cfg.serviceName}:${env.IMAGE_TAG}"
+            OTEL_SERVICE_NAME = "jenkins-pipeline-${cfg.serviceName}"
         }
 
         stages {
             stage('Checkout Microservices source') {
                 steps {
                     dir('microservices-src') {
-                        git url: params.gitRepoUrl, branch: params.gitBranch
+                        git url: cfg.gitRepoUrl, branch: cfg.gitBranch
                         script {
-                            if (params.serviceName == 'gateway') {
+                            if (cfg.serviceName == 'gateway') {
                                 sh """
                                     echo 'Patching gateway User.java to remove Hibernate Cache annotations...'
                                     if [ -f src/main/java/io/github/jhipster/sample/domain/User.java ]; then
@@ -445,7 +449,7 @@ EOF
                                 REPO_URL="${env.JENKINS2026_GITOPS_REPO_URL ?: 'https://github.com/nubenetes/jenkins-2026-gitops-config.git'}"
                                 REPO_CLEAN=\$(echo "\${REPO_URL}" | sed 's|https://||')
                                 git clone --depth 1 \
-                                    --branch ${params.envName == 'stable' ? 'main' : 'develop'} \
+                                    --branch ${cfg.envName == 'stable' ? 'main' : 'develop'} \
                                     "https://\${GIT_USER:-git}:\${GIT_TOKEN:-}@\${REPO_CLEAN}" \
                                     gitops-config-src
                             """
@@ -467,7 +471,7 @@ EOF
             stage('Build & Test') {
                 steps {
                     dir('microservices-src') {
-                        microservicesBuild(type: params.serviceType, module: params.modulePath)
+                        microservicesBuild(type: cfg.serviceType, module: cfg.modulePath)
                     }
                 }
             }
@@ -476,8 +480,8 @@ EOF
                 steps {
                     dir('microservices-src') {
                         microservicesImage(
-                            type: params.serviceType,
-                            module: params.modulePath,
+                            type: cfg.serviceType,
+                            module: cfg.modulePath,
                             image: env.IMAGE,
                             registryHost: env.REGISTRY.tokenize('/')[0]
                         )
@@ -500,10 +504,10 @@ EOF
             stage('Deploy to Kubernetes') {
                 steps {
                     microservicesDeploy(
-                        serviceName: params.serviceName,
-                        envName: params.envName,
-                        namespace: params.targetNamespace,
-                        platform: params.platform,
+                        serviceName: cfg.serviceName,
+                        envName: cfg.envName,
+                        namespace: cfg.targetNamespace,
+                        platform: cfg.platform,
                         tag: env.IMAGE_TAG
                     )
                 }
@@ -512,10 +516,10 @@ EOF
             stage('Smoke Test') {
                 steps {
                     microservicesSmokeTest(
-                        serviceName: params.serviceName,
-                        namespace: params.targetNamespace,
-                        port: params.port,
-                        healthPath: params.healthPath
+                        serviceName: cfg.serviceName,
+                        namespace: cfg.targetNamespace,
+                        port: cfg.port,
+                        healthPath: cfg.healthPath
                     )
                 }
             }
@@ -528,10 +532,19 @@ EOF
                         // 'microservices-k6-smoke-develop' job (the seed generates one
                         // k6 job per environment). Previously hardcoded to the stable
                         // job, which smoke-tested the wrong namespace on develop runs.
-                        def k6Suffix = params.envName == 'develop' ? '-develop' : ''
+                        def k6Suffix = cfg.envName == 'develop' ? '-develop' : ''
                         def k6JobName = "microservices-k6-smoke${k6Suffix}"
-                        echo "Triggering integration k6 smoke test: ${k6JobName} (env=${params.envName})..."
-                        build job: k6JobName, wait: true
+                        echo "Triggering integration k6 smoke test: ${k6JobName} (env=${cfg.envName}, ns=${cfg.targetNamespace})..."
+                        // Pass TARGET_NAMESPACE/ENV_NAME explicitly rather than relying on the
+                        // k6 job's parameter defaults: Jenkins does NOT apply a declarative
+                        // job's default parameter values on its FIRST build after the seed
+                        // (re)defines it, so a default-only trigger sent namespace="null"
+                        // (-> gateway.null.svc, 100% request failures). Explicit params are
+                        // robust on first build, re-seeds and manual runs alike.
+                        build job: k6JobName, wait: true, parameters: [
+                            string(name: 'TARGET_NAMESPACE', value: cfg.targetNamespace),
+                            string(name: 'ENV_NAME', value: cfg.envName)
+                        ]
                     }
                 }
             }

@@ -355,8 +355,9 @@ gateway:
 microservices:
   # Optional second deployment tier. OFF by default: enabling it roughly doubles
   # the microservices footprint (a full gateway + services stack in a separate
-  # 'develop' namespace). The upstream JHipster app repos have no develop branch
-  # (main only), so 'develop' deploys the SAME app image as 'stable'; it only
+  # 'develop' namespace). The nubenetes app forks now carry a real 'develop'
+  # branch (off main), so 'develop' builds the app's develop branch (true
+  # branch-based promotion) per jenkins/pipelines/seed/services.yaml; it also
   # differs in target namespace + its own gitops values-develop.yaml, and it
   # tracks the gitops-config repo's 'develop' branch for infra/config changes.
   # Observability (Grafana/Loki/Tempo/Prometheus) is a single shared stack - the

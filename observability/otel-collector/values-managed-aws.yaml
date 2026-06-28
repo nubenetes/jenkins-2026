@@ -87,6 +87,12 @@ ports:
     servicePort: 4318
     hostPort: 4318
     protocol: TCP
+  # Grafana Faro RUM beacon endpoint (browser → faro receiver).
+  faro:
+    enabled: true
+    containerPort: 8027
+    servicePort: 8027
+    protocol: TCP
 
 config:
   extensions:
@@ -107,6 +113,12 @@ config:
           cors:
             allowed_origins:
               - "*"
+    # Grafana Faro RUM receiver (browser beacon → OTLP traces+logs). Contrib-only.
+    faro:
+      endpoint: 0.0.0.0:8027
+      cors:
+        allowed_origins:
+          - "*"
 
     # Same standard job set the AMG built-in Kubernetes dashboards expect
     # (cadvisor + kubelet via the API server proxy, node-exporter, ksm), all
@@ -273,7 +285,7 @@ config:
     extensions: [health_check, sigv4auth]
     pipelines:
       traces:
-        receivers: [otlp]
+        receivers: [otlp, faro]
         processors: [memory_limiter, resource, batch]
         exporters: [awsxray, span_metrics, service_graph]
       metrics/spanmetrics:
@@ -289,6 +301,6 @@ config:
         processors: [memory_limiter, resource, batch]
         exporters: [prometheusremotewrite]
       logs:
-        receivers: [otlp]
+        receivers: [otlp, faro]
         processors: [memory_limiter, resource, batch]
         exporters: [awscloudwatchlogs]

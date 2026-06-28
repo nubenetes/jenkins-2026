@@ -23,12 +23,27 @@
   "liveNow": false,
   "panels": [
     {
+      "type": "text",
+      "title": "About these filters",
+      "id": 9001,
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**Filters** \u2014 `Runner` (gha \u00b7 jenkins \u00b7 tekton) \u00b7 `Profile` (smoke \u00b7 load \u00b7 stress \u00b7 soak \u00b7 spike \u00b7 breakpoint) \u00b7 `Preset` \u00b7 `Environment` (stable \u00b7 develop). Default is **All**. \u26a0\ufe0f If panels read **No data**, a selected filter probably has **no matching run** \u2014 e.g. a `Profile` you didn't launch, or a `Runner`/`Environment` that hasn't run yet. Reset to **All** or pick the combo you actually ran. Tags come from each run via k6 `--tag` (see [docs/302](https://github.com/nubenetes/jenkins-2026/blob/main/docs/302-K6_LOAD_TESTING.md))."
+      }
+    },
+    {
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 3
       },
       "id": 100,
       "panels": [],
@@ -64,7 +79,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 1
+        "y": 4
       },
       "id": 1,
       "options": {
@@ -87,7 +102,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(increase(iterations_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range]))",
+          "expr": "sum(increase(iterations_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\"}[$__range]))",
           "instant": true,
           "legendFormat": "Iterations",
           "refId": "A"
@@ -129,7 +144,7 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 1
+        "y": 4
       },
       "id": 2,
       "options": {
@@ -152,7 +167,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "(sum(increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", condition=\"nonzero\"}[$__range])) or vector(0)) / sum(increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range]))",
+          "expr": "(sum(increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\", condition=\"nonzero\"}[$__range])) or vector(0)) / sum(increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\"}[$__range]))",
           "instant": true,
           "legendFormat": "Checks pass rate",
           "refId": "A"
@@ -194,7 +209,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 1
+        "y": 4
       },
       "id": 3,
       "options": {
@@ -217,7 +232,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "(sum(increase(http_req_failed_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", condition=\"nonzero\"}[$__range])) or vector(0)) / sum(increase(http_req_failed_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range]))",
+          "expr": "(sum(increase(http_req_failed_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\", condition=\"nonzero\"}[$__range])) or vector(0)) / sum(increase(http_req_failed_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\"}[$__range]))",
           "instant": true,
           "legendFormat": "http_req_failed rate",
           "refId": "A"
@@ -259,7 +274,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 1
+        "y": 4
       },
       "id": 4,
       "options": {
@@ -282,7 +297,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_req_duration_milliseconds_bucket{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_req_duration_milliseconds_bucket{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\"}[$__range])))",
           "instant": true,
           "legendFormat": "http_req_duration p95",
           "refId": "A"
@@ -338,7 +353,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 5
+        "y": 8
       },
       "id": 5,
       "options": {
@@ -356,7 +371,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, name) (rate(http_req_duration_milliseconds_bucket{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.95, sum by (le, name) (rate(http_req_duration_milliseconds_bucket{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\"}[$__rate_interval])))",
           "legendFormat": "{{name}} p95",
           "refId": "A"
         },
@@ -365,7 +380,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.50, sum by (le, name) (rate(http_req_duration_milliseconds_bucket{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__rate_interval])))",
+          "expr": "histogram_quantile(0.50, sum by (le, name) (rate(http_req_duration_milliseconds_bucket{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\"}[$__rate_interval])))",
           "legendFormat": "{{name}} p50",
           "refId": "B"
         }
@@ -407,7 +422,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 5
+        "y": 8
       },
       "id": 6,
       "options": {
@@ -425,7 +440,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (name, status) (rate(http_reqs_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__rate_interval]))",
+          "expr": "sum by (name, status) (rate(http_reqs_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\"}[$__rate_interval]))",
           "legendFormat": "{{name}} [{{status}}]",
           "refId": "A"
         }
@@ -501,7 +516,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 13
+        "y": 16
       },
       "id": 7,
       "options": {
@@ -520,7 +535,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (check, condition) (increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range]))",
+          "expr": "sum by (check, condition) (increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\"}[$__range]))",
           "format": "table",
           "instant": true,
           "refId": "A"
@@ -551,7 +566,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 13
+        "y": 16
       },
       "id": 8,
       "options": {
@@ -569,7 +584,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "vus{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}",
+          "expr": "vus{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\"}",
           "legendFormat": "VUs",
           "refId": "A"
         },
@@ -578,7 +593,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "vus_max{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}",
+          "expr": "vus_max{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\"}",
           "legendFormat": "VUs max",
           "refId": "B"
         }
@@ -592,7 +607,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 21
+        "y": 24
       },
       "id": 101,
       "panels": [],
@@ -602,7 +617,7 @@
     {
       "datasource": {
         "type": "tempo",
-        "uid": "grafanacloud-traces"
+        "uid": "tempo"
       },
       "description": "Traces generated by this smoke test run. Each k6 iteration sends a W3C traceparent header through the gateway and the downstream microservices, so every iteration produces one end-to-end trace tagged with deployment.environment=$deployment_environment.",
       "fieldConfig": {
@@ -632,14 +647,14 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 22
+        "y": 25
       },
       "id": 9,
       "targets": [
         {
           "datasource": {
             "type": "tempo",
-            "uid": "grafanacloud-traces"
+            "uid": "tempo"
           },
           "query": "{resource.deployment.environment = \"$deployment_environment\" && span.\"url.path\" !~ \"/management/health.*\"}",
           "queryType": "traceql",
@@ -652,7 +667,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "grafanacloud-logs"
+        "uid": "loki"
       },
       "description": "Microservices application logs for the namespace this smoke test targeted (microservices / microservices-develop). Lines containing trace_id=<hex> can be opened directly in Tempo via the Loki datasource's derived field, correlating with the trace IDs k6 logs to the Jenkins console.",
       "fieldConfig": {
@@ -663,7 +678,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 31
+        "y": 34
       },
       "id": 10,
       "options": {
@@ -679,7 +694,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "grafanacloud-logs"
+            "uid": "loki"
           },
           "expr": "{k8s_namespace_name=\"$namespace\"} | json | line_format \"{{ if .message }}{{ .message }}{{ else if .msg }}{{ .msg }}{{ else }}{{ __line__ }}{{ end }}\"",
           "refId": "A"
@@ -715,7 +730,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 34
+        "y": 37
       },
       "id": 11,
       "options": {
@@ -738,7 +753,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "1 - ((sum(increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", condition=\"nonzero\"}[$__range])) or vector(0)) / sum(increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\"}[$__range])))",
+          "expr": "1 - ((sum(increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\", condition=\"nonzero\"}[$__range])) or vector(0)) / sum(increase(checks_total{service_name=\"k6-microservices-smoke\", deployment_environment=\"$deployment_environment\", ci_runner=~\"$ci_runner\", k6_profile=~\"$k6_profile\"}[$__range])))",
           "legendFormat": "HTTP Error Rate",
           "refId": "A"
         }
@@ -797,6 +812,62 @@
         "queryValue": "",
         "skipUrlSync": false,
         "type": "custom"
+      },
+      {
+        "name": "ci_runner",
+        "label": "Runner",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(iterations_total{service_name=\"k6-microservices-smoke\"}, ci_runner)",
+        "query": {
+          "query": "label_values(iterations_total{service_name=\"k6-microservices-smoke\"}, ci_runner)",
+          "refId": "StandardVariableQuery",
+          "type": 1
+        },
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all",
+          "selected": true
+        },
+        "options": [],
+        "refresh": 2,
+        "sort": 1,
+        "hide": 0,
+        "skipUrlSync": false
+      },
+      {
+        "name": "k6_profile",
+        "label": "Profile",
+        "type": "query",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(iterations_total{service_name=\"k6-microservices-smoke\"}, k6_profile)",
+        "query": {
+          "query": "label_values(iterations_total{service_name=\"k6-microservices-smoke\"}, k6_profile)",
+          "refId": "StandardVariableQuery",
+          "type": 1
+        },
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {
+          "text": "All",
+          "value": "$__all",
+          "selected": true
+        },
+        "options": [],
+        "refresh": 2,
+        "sort": 1,
+        "hide": 0,
+        "skipUrlSync": false
       },
       {
         "current": {},
