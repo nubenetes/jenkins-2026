@@ -23,12 +23,27 @@
   "liveNow": false,
   "panels": [
     {
+      "type": "text",
+      "transparent": true,
+      "gridPos": {
+        "h": 11,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1030,
+      "options": {
+        "mode": "markdown",
+        "content": "## CI-CD JVM Internals \u2014 what this board shows & how to read it\nDeep-dive JVM telemetry for all Java microservices and the Jenkins controller, exported via the **OpenTelemetry Java agent** (zero-code instrumentation). All metrics follow the [OpenTelemetry JVM Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/runtime/jvm-metrics/).\n\n| Section | What it answers |\n|---|---|\n| **Overview** | CPU utilization, heap used %, live threads, and GC overhead at a glance |\n| **Garbage Collection** | GC time/s, collection frequency, and pause p95/p99 per collector (SerialGC vs G1) |\n| **Heap & Non-Heap** | Used vs committed vs max for heap; metaspace + code-cache for non-heap |\n| **Memory Pools** | Per-pool breakdown (Eden / Survivor / Tenured / Metaspace / CodeHeap) |\n| **Buffers & advanced** | Direct/mapped NIO buffer pools; experimental runtime telemetry |\n| **HTTP response times** | Server-side latency p50/p95/p99 and request rate \u2014 correlate with GC pauses above |\n| **Logs & Traces** | Error/warn log stream and recent traces for the selected service |\n\n> **Tip:** Correlate a GC pause spike (*GC Pause p95/p99*) with a latency spike (*HTTP latency p50/p95/p99*) \u2014 they often land at the same timestamp."
+      }
+    },
+    {
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 11
       },
       "id": 1001,
       "panels": [],
@@ -72,7 +87,7 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 1
+        "y": 12
       },
       "id": 2,
       "options": {
@@ -124,7 +139,7 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 1
+        "y": 12
       },
       "id": 3,
       "options": {
@@ -176,7 +191,7 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 1
+        "y": 12
       },
       "id": 4,
       "options": {
@@ -245,7 +260,7 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 1
+        "y": 12
       },
       "id": 5,
       "options": {
@@ -297,7 +312,7 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 1
+        "y": 12
       },
       "id": 6,
       "options": {
@@ -366,7 +381,7 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 1
+        "y": 12
       },
       "id": 7,
       "options": {
@@ -420,7 +435,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 5
+        "y": 16
       },
       "id": 8,
       "options": {
@@ -486,7 +501,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 5
+        "y": 16
       },
       "id": 9,
       "options": {
@@ -534,7 +549,7 @@
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 12
+        "y": 23
       },
       "id": 10,
       "options": {
@@ -582,7 +597,7 @@
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 12
+        "y": 23
       },
       "id": 11,
       "options": {
@@ -623,7 +638,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 19
+        "y": 30
       },
       "id": 1012,
       "panels": [],
@@ -652,7 +667,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 20
+        "y": 31
       },
       "id": 13,
       "options": {
@@ -700,7 +715,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 20
+        "y": 31
       },
       "id": 14,
       "options": {
@@ -748,7 +763,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 20
+        "y": 31
       },
       "id": 15,
       "options": {
@@ -789,7 +804,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 28
+        "y": 39
       },
       "id": 1016,
       "panels": [],
@@ -818,7 +833,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 29
+        "y": 40
       },
       "id": 17,
       "options": {
@@ -884,7 +899,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 29
+        "y": 40
       },
       "id": 18,
       "options": {
@@ -925,7 +940,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 37
+        "y": 48
       },
       "id": 1019,
       "panels": [],
@@ -957,7 +972,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 38
+        "y": 49
       },
       "id": 20,
       "options": {
@@ -1005,7 +1020,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 38
+        "y": 49
       },
       "id": 21,
       "options": {
@@ -1037,7 +1052,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 46
+        "y": 57
       },
       "id": 1022,
       "panels": [],
@@ -1066,7 +1081,7 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 47
+        "y": 58
       },
       "id": 23,
       "options": {
@@ -1114,7 +1129,7 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 47
+        "y": 58
       },
       "id": 24,
       "options": {
@@ -1162,7 +1177,7 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 47
+        "y": 58
       },
       "id": 25,
       "options": {
@@ -1212,7 +1227,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 55
+        "y": 66
       },
       "id": 1026,
       "panels": [],
@@ -1241,7 +1256,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 56
+        "y": 67
       },
       "id": 27,
       "options": {
@@ -1307,7 +1322,7 @@
         "h": 8,
         "w": 6,
         "x": 12,
-        "y": 56
+        "y": 67
       },
       "id": 28,
       "options": {
@@ -1370,7 +1385,7 @@
         "h": 8,
         "w": 6,
         "x": 18,
-        "y": 56
+        "y": 67
       },
       "id": 29,
       "options": {
@@ -1413,7 +1428,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 64
+        "y": 75
       },
       "description": "Per-service runtime context from target_info (resource attributes): JVM name/vendor/version, OS/arch, exec path, command args, OTel agent (distro) version.",
       "targets": [
@@ -1484,7 +1499,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 71
+        "y": 82
       },
       "id": 1027,
       "panels": []
@@ -1501,7 +1516,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 72
+        "y": 83
       },
       "id": 1028,
       "options": {
@@ -1536,7 +1551,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 72
+        "y": 83
       },
       "id": 1029,
       "fieldConfig": {

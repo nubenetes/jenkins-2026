@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.21] - 2026-06-28
+
+Increment over v0.28.20 (sync Grafana-AI note-text improvements into git).
+
+### Changed
+- **Dashboard note text refreshed from the Grafana assistant's review.** The assistant reviewed
+  all dashboards and improved their in-panel documentation; those notes were ported back into the
+  repo's classic-model dashboards (the assistant exports the new v2 schema, which the repo/publish
+  flow can't consume, so only the markdown note content was extracted and applied):
+  **k6** and **Microservices** notes expanded; **RUM** note expanded; **JVM internals** gained a
+  brand-new "what this board shows / sections-at-a-glance" note (added as a top text panel, layout
+  shifted); **Jenkins** already synced (e53c50a); **PostgreSQL** unchanged. Panels/queries/layout
+  otherwise untouched. Republished to Grafana Cloud.
+
 ## [v0.28.20] - 2026-06-28
 
 Increment over v0.28.19 (fix duplicate-refId "No data" across all generated dashboards).
