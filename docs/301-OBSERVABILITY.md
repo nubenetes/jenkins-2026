@@ -537,6 +537,8 @@ Each managed backend requires adapted datasources (AMP instead of Prometheus, Cl
 | [`observability/grafana/dashboards-azure/`](../observability/grafana/dashboards-azure/) | Azure Managed Grafana | Azure Monitor (metrics + logs + traces) | [`generate.py`](../observability/grafana/dashboards-azure/generate.py) replaces Loki/Tempo panels with Azure Monitor equivalents |
 | [`observability/grafana/dashboards-aws/`](../observability/grafana/dashboards-aws/) | Amazon Managed Grafana | AMP (PromQL) · CloudWatch Logs · X-Ray | [`generate.py`](../observability/grafana/dashboards-aws/generate.py) replaces Loki panels with CW Logs Insights, Tempo panels with X-Ray |
 
+> ⚠️ **RUM (`rum-frontend`) is degraded on the managed backends.** The RUM board is ~entirely **Grafana Faro** (browser frontend) data, which Grafana Cloud renders natively (Loki/Tempo + the Frontend Observability app). On **Azure Managed Grafana** / **Amazon Managed Grafana** there is no Faro-native store, so `generate.py` maps the Faro logs/traces to generic **App Insights KQL** / **CloudWatch Logs + X-Ray** — the data still arrives (collector `faro` receiver → `azuremonitor`/AWS exporter) but **not in Faro's data model**, so Faro-specific panels (web-vitals, sessions, per-route breakdowns) show generic rows or no data. `generate.py` appends this caveat to the RUM variant's note panel. **For full RUM fidelity, use the Grafana Cloud backend.** OSS renders the canonical board directly (Loki/Tempo) and is unaffected.
+
 Key implication: **if a panel shows "No data" in one Grafana, that does not mean the others are broken** — each instance is independent. Common causes of "No data" per panel type:
 
 | Panel type | Backend | Typical cause of "No data" |

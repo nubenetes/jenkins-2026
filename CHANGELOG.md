@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.25] - 2026-06-28
+
+Increment over v0.28.24 (document RUM degradation on the managed backends).
+
+### Changed
+- **Azure/AWS RUM dashboard now carries a "degraded view" caveat.** The `rum-frontend` board is
+  almost entirely **Grafana Faro** (browser frontend) data, native to Grafana Cloud (Loki/Tempo +
+  Frontend Observability). On Azure/Amazon Managed Grafana there is no Faro-native store, so
+  `generate.py` maps the Faro logs/traces to generic App Insights KQL / CloudWatch Logs + X-Ray —
+  the data arrives but not in Faro's model, so Faro-specific panels degrade. Both `generate.py`
+  scripts now append a clear caveat to the RUM variant's note panel (only the RUM board), and
+  docs/301 documents the limitation. OSS is unaffected (renders the canonical Loki/Tempo board).
+
 ## [v0.28.24] - 2026-06-28
 
 Increment over v0.28.23 (regenerate Azure + AWS dashboard variants from the optimized canonical).

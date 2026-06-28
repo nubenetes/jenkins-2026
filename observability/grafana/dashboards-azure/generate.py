@@ -181,6 +181,35 @@ def _to_azure_traces(panel: dict) -> None:
     ]
 
 
+# The RUM dashboard is ~entirely Grafana Faro (browser frontend) data, which Grafana
+# Cloud renders natively via Loki/Tempo + the Frontend Observability app. Azure Monitor
+# is NOT a Faro-native backend: the Faro logs/traces are translated here to generic KQL
+# over Application Insights, so Faro-specific panels (web-vitals, sessions, per-route
+# breakdowns) degrade to generic trace rows / no data. Append a caveat to the note panel
+# so the difference vs the Grafana Cloud RUM board is expected, not mistaken for a fault.
+_RUM_AZURE_CAVEAT = (
+    "\n\n---\n\n"
+    "> **⚠️ Azure Monitor variant — RUM is a degraded view here.** Frontend signals come from "
+    "**Grafana Faro** (browser RUM). Grafana Cloud renders them natively (Loki/Tempo + the "
+    "Frontend Observability app); on **Azure Managed Grafana** the Faro logs/traces are translated "
+    "to **generic KQL over Application Insights** (`traces`/`dependencies`), so Faro-specific panels "
+    "(web-vitals, sessions, per-page/route breakdowns) show generic rows or no data. The data does "
+    "reach App Insights (collector `faro` receiver → `azuremonitor` exporter) — just not in Faro's "
+    "data model. **For full RUM fidelity use the Grafana Cloud backend.**"
+)
+
+
+def _append_rum_caveat(dash: dict) -> None:
+    title = dash.get("title", "")
+    if "RUM" not in title and "Faro" not in title:
+        return
+    for panel in dash.get("panels", []):
+        if panel.get("type") == "text":
+            opts = panel.setdefault("options", {})
+            opts["content"] = (opts.get("content", "") or "") + _RUM_AZURE_CAVEAT
+            return
+
+
 def transform(dash: dict) -> dict:
     # Swap DS_LOKI / DS_TEMPO out of the templating list, keep everything else.
     tlist = dash.get("templating", {}).get("list", [])
@@ -195,6 +224,7 @@ def transform(dash: dict) -> dict:
         elif t == "tempo":
             _to_azure_traces(panel)
         # prometheus / row / text panels: untouched.
+    _append_rum_caveat(dash)
     return dash
 
 

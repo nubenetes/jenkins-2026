@@ -87,6 +87,32 @@ def _to_xray_traces(panel: dict) -> None:
     ]
 
 
+# RUM is ~entirely Grafana Faro (browser frontend) data, native to Grafana Cloud
+# (Loki/Tempo + Frontend Observability). On Amazon Managed Grafana the Faro logs/traces
+# are translated to CloudWatch Logs / X-Ray, which do not carry Faro's RUM data model,
+# so Faro-specific panels degrade. Append a caveat to the note so it's expected.
+_RUM_AWS_CAVEAT = (
+    "\n\n---\n\n"
+    "> **⚠️ AWS variant — RUM is a degraded view here.** Frontend signals come from "
+    "**Grafana Faro** (browser RUM), native to Grafana Cloud (Loki/Tempo + Frontend "
+    "Observability). On **Amazon Managed Grafana** the Faro logs/traces are mapped to "
+    "**CloudWatch Logs / X-Ray**, which lack Faro's RUM data model, so Faro-specific panels "
+    "(web-vitals, sessions, per-page/route breakdowns) show generic rows or no data. "
+    "**For full RUM fidelity use the Grafana Cloud backend.**"
+)
+
+
+def _append_rum_caveat(dash: dict) -> None:
+    title = dash.get("title", "")
+    if "RUM" not in title and "Faro" not in title:
+        return
+    for panel in dash.get("panels", []):
+        if panel.get("type") == "text":
+            opts = panel.setdefault("options", {})
+            opts["content"] = (opts.get("content", "") or "") + _RUM_AWS_CAVEAT
+            return
+
+
 def transform(dash: dict) -> dict:
     # Drop the Loki/Tempo datasource template variables; keep DS_PROMETHEUS
     # (binds to Amazon Managed Prometheus) and everything else.
@@ -107,6 +133,7 @@ def transform(dash: dict) -> dict:
         elif t == "tempo":
             _to_xray_traces(panel)
         # prometheus / row / text panels: untouched.
+    _append_rum_caveat(dash)
     return dash
 
 
