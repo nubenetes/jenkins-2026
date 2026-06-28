@@ -18,6 +18,14 @@ on:
           - soak-endurance
           - rps-steady
           - breakpoint-capacity
+      run_all_presets:
+        description: "Run ALL presets from presets/index.yaml IN PARALLEL (one job each), each with its file's own values. One click → every use case lands in the dashboard, filterable by Runner/Profile. Ignores the single preset/profile/override fields below."
+        type: boolean
+        default: false
+      run_all_duration:
+        description: "run_all only: cap EVERY preset to this short duration (e.g. 30s, 1m) for a quick comprehensive pass — overrides each preset's stages/rps/duration. Empty = use each file's own (possibly long, e.g. 1h soak) values."
+        required: false
+        default: ""
       profile:
         description: "Workload profile (used when preset=none; otherwise the preset's profile wins)"
         type: choice
@@ -81,8 +89,40 @@ env:
   TF_LOG: ${{ inputs.log_level == 'debug' && 'DEBUG' || '' }}
 
 jobs:
+  # Build the preset matrix: run_all_presets=true → every preset in index.yaml
+  # (one parallel job each); otherwise a single entry (the chosen preset, or
+  # 'none' = manual inputs / script defaults). fromJson() feeds it to the matrix.
+  prepare:
+    name: Resolve preset matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - id: m
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.run_all_presets }}" = "true" ]; then
+            names=$(awk '/^[[:space:]]*-[[:space:]]*name:/{print $3}' \
+                      jenkins/pipelines/k6/presets/index.yaml | jq -R . | jq -cs .)
+          else
+            names=$(printf '%s' '${{ inputs.preset || 'none' }}' | jq -R . | jq -cs .)
+          fi
+          echo "matrix=${names}" >> "$GITHUB_OUTPUT"
+          echo "Preset matrix: ${names}"
+
   simulate-traffic:
-    name: k6 Traffic Simulation
+    name: "k6: ${{ matrix.preset }}"
+    needs: prepare
+    strategy:
+      fail-fast: false
+      # Cap concurrency so a full run_all doesn't crush the lean app with 9
+      # simultaneous profiles (incl. stress/breakpoint); each run's k6 metrics are
+      # tagged + isolated regardless, so they stay filterable in the dashboard.
+      max-parallel: 4
+      matrix:
+        preset: ${{ fromJson(needs.prepare.outputs.matrix) }}
     runs-on: ubuntu-latest
     # No environment gate on purpose: this workflow only drives read-only HTTP
     # traffic against the already-running public endpoints — it provisions and
@@ -117,7 +157,9 @@ jobs:
 
       - name: Resolve k6 parameters (preset + manual overrides)
         env:
-          IN_PRESET: ${{ github.event.inputs.preset || 'none' }}
+          IN_PRESET: ${{ matrix.preset }}
+          IN_RUN_ALL: ${{ inputs.run_all_presets }}
+          IN_RUN_ALL_DURATION: ${{ inputs.run_all_duration }}
           IN_PROFILE: ${{ github.event.inputs.profile || 'smoke' }}
           IN_ENV_NAME: ${{ github.event.inputs.env_name || 'stable' }}
           IN_DURATION: ${{ github.event.inputs.duration }}
@@ -166,6 +208,14 @@ jobs:
           # explicit shape, keep the historical 15m smoke so dashboards stay alive.
           if [ "${USING_PRESET}" = false ] && [ -z "${DURATION}${STAGES}${RPS}" ]; then
             DURATION="15m"
+          fi
+
+          # run_all short mode: cap EVERY preset to one short duration for a quick
+          # comprehensive pass — clear stages/rps/iterations so the short duration
+          # actually governs (ramps/arrival-rate would otherwise set their own length).
+          if [ "${IN_RUN_ALL}" = "true" ] && [ -n "${IN_RUN_ALL_DURATION}" ]; then
+            DURATION="${IN_RUN_ALL_DURATION}"; STAGES=""; RPS=""; ITERATIONS=""
+            echo "run_all short mode: ${IN_PRESET} capped to duration=${DURATION}"
           fi
 
           {
@@ -338,7 +388,7 @@ jobs:
           # land in target_info only) — so the dashboard's label_values()/filters need
           # them as metric tags, which k6 attaches to all metrics in every output.
           k6 run jenkins/pipelines/k6/microservices-smoke.js \
-            --tag ci_runner=gha --tag "k6_profile=${K6SIM_PROFILE}" \
+            --tag ci_runner=gha --tag "k6_profile=${K6SIM_PROFILE}" --tag "k6_preset=${{ matrix.preset }}" \
             -o opentelemetry ${CLOUD_OUT}
           EXIT_CODE=$?
           set -e
