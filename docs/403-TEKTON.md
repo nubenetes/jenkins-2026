@@ -871,6 +871,223 @@ Tekton's checkout is already shallow (`--depth 1` in every clone task — `fetch
 - **Node-local Maven/npm caches** — `maven-build-test` and `build-push-image` mount hostPath caches (`/tmp/tekton-maven-cache` → `/root/.m2`, `/tmp/tekton-npm-cache` → `/root/.npm`), mirroring the Jenkins agents' `/tmp/jenkins-*-cache`. Node-local (not a PVC) → no RWX/concurrency cost; deps survive across PipelineRuns instead of being re-downloaded every build.
 - **Task image pre-pull** — `tekton/agent-image-prepull.yaml` (DaemonSet in `tekton-pipelines`, applied by `04-tekton.sh`) pre-pulls the task images (maven · kaniko · **codeql** · semgrep · trivy · k6 · …) so a `TaskRun` starts without a cold pull — the analogue of the Jenkins prepull DaemonSet.
 
+## ArgoCD ⇄ Tekton: how GitOps drives an ephemeral CI engine (deep dive + gotchas)
+
+This is the low-level companion to [§ What gets installed](#what-gets-installed-gitops-via-argocd-app-of-apps). Tekton is **GitOps-managed by ArgoCD**, but Tekton's runtime (PipelineRuns/TaskRuns/their Pods) is **ephemeral and self-creating** — a fundamentally different shape from the long-lived Deployments ArgoCD was built for. That impedance mismatch is the source of every gotcha below. Read this once and the "why is my Tekton app stuck Progressing / why did my live fix vanish / why Permission denied" questions all have one mental model.
+
+> **TL;DR mental model.** ArgoCD reconciles **desired state** (the pipeline *definitions*) on a loop and owns them; Tekton **runs** are *imperative, one-shot jobs* that ArgoCD must NOT own but still *sees* (via a tracking label). So: (1) fixes only stick when they're in **git on `main`** (selfHeal reverts `kubectl apply`); (2) an app's **health** is decided by the few resources that *have* a health check (Deployment/**DaemonSet**), not by config CRs or runs; (3) the namespace's **Pod Security Standard** silently gates every Pod a controller (DaemonSet/Tekton) creates.
+
+### What ArgoCD owns vs what it must not
+
+The `tekton-pipeline-as-code` Application syncs the **definitions** from `tekton/` — `Pipeline`, `Task`, `Triggers` (`EventListener`/`TriggerBinding`/`TriggerTemplate`), the PaC `Repository` CRs, RBAC, and the **image-prepull `DaemonSet`**. It **explicitly excludes `runs/*`** (the ready-to-run `PipelineRun` manifests), because `PipelineRun`s are created **imperatively** — by PaC on a git push, or by the Day1 seed (`kubectl create`) — and use `generateName`, which ArgoCD cannot track as desired state:
+
+```yaml
+# argocd/tekton/templates/pipeline-as-code.yaml  (the child Application's source)
+source:
+  path: tekton
+  directory:
+    exclude: 'runs/*'   # PipelineRuns are imperative/generateName — never GitOps-owned
+```
+
+<details>
+<summary>📊 Diagram — ownership: definitions (GitOps, owned) vs runs (imperative, only observed)</summary>
+
+```mermaid
+flowchart TB
+  subgraph git["Git (main) — desired state"]
+    defs["tekton/*.yaml<br/>Pipeline · Task · Triggers · Repository · RBAC · prepull DaemonSet"]
+    runs["tekton/runs/*.yaml<br/>(PipelineRun, generateName)"]
+  end
+  subgraph argo["ArgoCD app: tekton-pipeline-as-code"]
+    sync["sync + selfHeal loop"]
+  end
+  subgraph cluster["cluster (tekton-ci / tekton-pipelines)"]
+    owned["OWNED: Pipeline/Task/Triggers/Repository/RBAC/DaemonSet"]
+    pr["PipelineRun → TaskRun → Pod<br/>(created by PaC push OR Day1 seed kubectl create)"]
+  end
+  defs --> sync --> owned
+  runs -. "excluded: runs/*" .-> sync
+  owned -. "EventListener/PaC create runs at push time" .-> pr
+  pr -. "inherit app tracking label → SHOWN in the tree (not owned)" .-> argo
+  classDef ex fill:#fee,stroke:#c00; class runs,pr ex
+```
+</details>
+
+**The subtlety that bites everyone:** even though runs are excluded from the *source*, the PaC-created `PipelineRun`s **inherit the ArgoCD tracking label** (`app.kubernetes.io/instance` / `argocd.argoproj.io/tracking-id`) from their parent context, so ArgoCD **displays** them in the app's resource tree. They're *observed* but not *owned* — which is why they appear when you debug health, yet syncing the app never tries to create/prune them.
+
+### ArgoCD's health model for Tekton resources (why "empty health" is normal)
+
+An ArgoCD Application's **aggregate health** is the worst health among the resources in its tree. But **most Kubernetes kinds have no health check at all** — ArgoCD only assesses kinds it has a (built-in or custom Lua) health function for. A resource with *no* health function contributes **nothing** (treated as Healthy). This is why a tree full of `Task`/`Pipeline`/`Repository`/`ServiceAccount` shows blank health and that is **correct, not a misconfiguration**:
+
+| Tekton / related kind | ArgoCD health check? | Effect on app health |
+|---|---|---|
+| `Task`, `Pipeline`, `TriggerBinding`, `TriggerTemplate`, `EventListener`, `Repository`, `ServiceAccount`, `RoleBinding`, `ClusterRoleBinding` | ❌ no (pure config / no runtime state) | none — blank health, treated Healthy |
+| `PipelineRun`, `TaskRun` | ❌ no built-in (Tekton isn't in ArgoCD's built-in set) | none on their own — a *failed* run does **not** Degrade the app |
+| **`Deployment`** (the EventListener's `el-*`) | ✅ yes | Progressing/Degraded if replicas not Available |
+| **`DaemonSet`** (the image-prepull) | ✅ yes | **Progressing if `numberReady != desiredNumberScheduled`** |
+| **`Pod`** (a TaskRun's step pod) | ✅ yes | Pending/Running-not-ready = Progressing; only while a run is active |
+
+> **Consequence:** if the Tekton app is stuck non-Healthy, suspect the **only kinds that carry health** — the EventListener `Deployment` and the **prepull `DaemonSet`** — *before* the runs. (We first blamed the PipelineRuns; the real culprit was the DaemonSet. See Gotcha 1.)
+
+<details>
+<summary>📊 Diagram — how the app's aggregate health is computed</summary>
+
+```mermaid
+flowchart LR
+  A["Task/Pipeline/Repository/…<br/>(no health fn)"] --> AH["contributes: nothing"]
+  B["PipelineRun/TaskRun<br/>(no built-in health fn)"] --> BH["contributes: nothing"]
+  C["EventListener Deployment"] --> CH["Healthy if Available"]
+  D["prepull DaemonSet"] --> DH["Healthy only if ready==desired"]
+  E["active run's step Pod"] --> EH["Progressing while running"]
+  AH & BH & CH & DH & EH --> AGG{"aggregate = worst status"}
+  AGG --> APP["Application.status.health"]
+```
+</details>
+
+### Gotcha 1 — app stuck **Progressing**: the prepull DaemonSet vs the namespace's restricted PSS
+
+**Symptom.** `tekton-pipeline-as-code` is `Synced` but perpetually `Progressing`, with an **empty health message** and *no* managed resource showing a bad status.
+
+**Root cause (low level).** The `tekton-pipelines` namespace enforces the **`restricted` [Pod Security Standard](https://kubernetes.io/docs/concepts/security/pod-security-standards/)**. The image-prepull `DaemonSet`'s containers (which just run `true`/`pause` to warm the image cache) had **no `securityContext`**, so the **DaemonSet controller cannot create a single Pod** — every attempt is rejected at admission:
+
+```text
+Error creating: pods "tekton-task-image-prepull-xxxxx" is forbidden:
+violates PodSecurity "restricted:latest":
+  allowPrivilegeEscalation != false (containers … must set allowPrivilegeEscalation=false),
+  unrestricted capabilities (… must set capabilities.drop=["ALL"]),
+  runAsNonRoot != true (… must set runAsNonRoot=true),
+  seccompProfile (… must set seccompProfile.type to "RuntimeDefault")
+```
+
+So `kubectl get ds` shows `DESIRED=2 CURRENT=0 READY=0`. A DaemonSet with `ready != desired` is **Progressing** → it drags the whole Application to Progressing. Easy to misread because the DaemonSet lives in `tekton-pipelines` (not `tekton-ci`), and its **blank entry in `.status.resources`** hides that *it* is the one managed kind with a real health check.
+
+**Diagnosis path (reproducible).**
+```bash
+# 1) app Progressing but nothing in .status.resources is non-Healthy → look at the TREE kinds with health
+kubectl get application tekton-pipeline-as-code -n argocd -o jsonpath='{.status.health.status}'   # Progressing
+# 2) the only health-bearing managed kind besides Deployments is the DaemonSet — check it
+kubectl get ds tekton-task-image-prepull -n tekton-pipelines      # DESIRED=2 CURRENT=0 READY=0  ← smoking gun
+# 3) WHY zero pods? the controller's events
+kubectl describe ds tekton-task-image-prepull -n tekton-pipelines | sed -n '/Events:/,$p'        # FailedCreate: violates PodSecurity "restricted"
+```
+
+**Fix (code).** Give every container the restricted-compliant `securityContext`. They only run `true`/`pause`, so unprivileged + non-root is harmless. A YAML **anchor** (`&sc`/`*sc`) keeps it DRY across the 10 init-containers + `pause`:
+
+```yaml
+# tekton/agent-image-prepull.yaml
+spec:
+  template:
+    spec:
+      securityContext:                          # pod-level: inherited by all containers
+        runAsNonRoot: true
+        runAsUser: 65532                         # REQUIRED: runAsNonRoot needs a non-root uid, else the
+        seccompProfile: { type: RuntimeDefault } #          kubelet rejects images whose default user is root
+      initContainers:
+        - { name: git, image: "alpine/git:2.54.0", command: ["true"], imagePullPolicy: IfNotPresent,
+            securityContext: &sc { allowPrivilegeEscalation: false, capabilities: { drop: ["ALL"] } } }
+        - { name: maven, image: "maven:3.9.9-eclipse-temurin-21", command: ["true"], securityContext: *sc }
+        # … kaniko, trivy, k6, yq, curl, semgrep, codeql — all `securityContext: *sc`
+      containers:
+        - { name: pause, image: registry.k8s.io/pause:3.10, securityContext: *sc, … }
+```
+
+After it syncs: `DESIRED=2 CURRENT=2 READY=2` → DaemonSet Healthy → **app Healthy**. (`runAsUser` is mandatory — `runAsNonRoot: true` alone makes the kubelet reject any image whose default user is root, which `maven`/`kaniko`/`pause` are.)
+
+<details>
+<summary>📊 Diagram — the (mis)diagnosis path that led to the real cause</summary>
+
+```mermaid
+flowchart TD
+  P["app Progressing, empty msg"] --> Q1{"non-Healthy resource in<br/>.status.resources?"}
+  Q1 -- "no (all blank)" --> Q2{"active/failed PipelineRuns?"}
+  Q2 -- "looks suspicious" --> W["❌ first hypothesis: runs degrade the app<br/>(health customization / exclusion)"]
+  W --> X["still Progressing → wrong"]
+  X --> Q3["enumerate tree by KIND →<br/>which have a health fn?"]
+  Q3 --> D["DaemonSet: 0/2 ready"]
+  D --> E["describe → FailedCreate: restricted PSS"]
+  E --> F["✅ add securityContext → 2/2 ready → Healthy"]
+  classDef bad fill:#fee,stroke:#c00; class W,X bad
+  classDef good fill:#efe,stroke:#0a0; class F good
+```
+</details>
+
+> **Lesson:** when an ArgoCD app is stuck non-Healthy with no obvious cause, enumerate the tree by *kind* and check only the **health-bearing** ones (`Deployment`, `DaemonSet`, `Pod`). A restricted PSS rejecting a controller's Pods is invisible in `.status.resources` (the DaemonSet entry is blank) and only shows in the **controller's events**.
+
+### Gotcha 2 — your live `kubectl apply`/`kubectl patch` keeps reverting
+
+Because the Tekton objects (and `argocd-cm`'s relevant keys, and the apps' `spec`) are **GitOps-owned with `selfHeal: true`**, any imperative live edit is **reverted within ~minutes** to match git on `main`. The app-of-apps even reverts a child Application's `spec.syncPolicy` you patch by hand. Therefore:
+
+- A real fix **must land in git on `main`** (this repo: PR `develop → main`; the cluster's ArgoCD tracks `main`), then sync.
+- A one-shot, *non-spec* nudge (force a sync, or run a `PipelineRun`) is fine — that's an *operation*, not desired state:
+
+```bash
+# force a one-off sync of a child app (operation, not reverted) — e.g. to pull a freshly-merged commit
+kubectl patch application tekton-pipeline-as-code -n argocd --type merge \
+  -p '{"operation":{"initiatedBy":{"username":"me"},"sync":{}}}'
+# to push new syncOptions into a child managed by an app-of-apps, sync the PARENT first (it re-renders the child spec)
+kubectl patch application observability-oss -n argocd --type merge -p '{"operation":{"sync":{}}}'
+```
+
+### Gotcha 3 — `resolve-preset` step: `Permission denied` writing the workspace
+
+**Symptom.**
+```text
+/tekton/scripts/script-1-xxxxx: line 4: can't create /workspace/source/k6sim-preset.env: Permission denied
+```
+**Root cause.** Tekton steps in a Task **share the `source` workspace**, but run as **different UIDs** per step image. `checkout-infra` (`alpine/git`) runs as **root** and creates `/workspace/source` root-owned; `resolve-preset` uses **`mikefarah/yq`, which runs as uid 1000** → it cannot create a file in the root-owned dir.
+
+**Fix (least-privilege, no root).** Have the already-root `checkout-infra` step **pre-create the file world-writable**, so the non-root step just fills it:
+```sh
+# checkout-infra step (root), after the git clone:
+: > "$(workspaces.source.path)/k6sim-preset.env"
+chmod 0666 "$(workspaces.source.path)/k6sim-preset.env"   # uid 1000 (yq) can now write it; run-k6 reads it
+```
+(Alternative — `securityContext.runAsUser: 0` on `resolve-preset` — also works but adds a root step; the pre-create keeps every step non-root.)
+
+### Gotcha 4 — `gitops-deploy`: `another operation is already in progress`
+
+**Symptom.**
+```text
+rpc error: code = FailedPrecondition desc = another operation is already in progress
+```
+**Root cause.** The microservices apps have **`automated.selfHeal: true`**. The deploy's *GitOps Update* step pushes the new image tag → ArgoCD **auto-syncs** it → that auto-sync is **mid-flight** when the task's *explicit* `argocd app sync` runs. Two syncs race; the explicit one loses. The deploy actually **succeeded** (the auto-sync applied the same commit) — only the command errored.
+
+**Fix.** Make the explicit sync **retry + non-fatal**, then rely on `app wait` to confirm convergence (whoever won):
+```bash
+for attempt in 1 2 3 4 5 6; do
+  if "${ARGOCD}" app sync "${APP}" … ; then break; fi
+  echo "sync attempt ${attempt} lost the race with auto-sync; retrying…"; sleep 10
+done
+"${ARGOCD}" app wait "${APP}" --sync --health --timeout 300 …   # confirms the pushed revision is live + healthy
+```
+
+### Gotcha 5 — develop-tier pipelines: gating parity with Jenkins
+
+Develop is an **optional tier** behind `microservices.developTrackEnabled` (env override `JENKINS2026_DEVELOP_TRACK_ENABLED`). The Jenkins seed only generates `*-develop` jobs when it's on. Tekton has **two seeding paths** and only one was gated:
+
+- **Fallback** (no gateway/PaC): `envs=(stable); [[ flag ]] && envs+=(develop)` — already gated. ✅
+- **PaC seedRuns** (the path used *with* a gateway): seeds the committed `tekton/runs/*.yaml`, which had **stable-only** service runs → no develop service pipelines, and the develop k6 run seeded **ungated**.
+
+**Fix.** Add `tekton/runs/{gateway,jhipstersamplemicroservice}-develop.yaml` (build the app's `develop` branch into `microservices-develop`, label `jenkins2026.io/env: develop`) and gate the seedRuns loop by that label:
+```bash
+# scripts/06-tekton-pipelines.sh — skip env=develop runs when the develop track is off
+run_env="$(yq eval '.metadata.labels."jenkins2026.io/env" // "stable"' "${rf}")"
+if [[ "${run_env}" == "develop" && "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" != "true" ]]; then continue; fi
+```
+
+### Operational troubleshooting matrix
+
+| Symptom | Where to look | Root cause | Fix |
+|---|---|---|---|
+| App `Progressing` forever, empty msg, nothing non-Healthy in `.status.resources` | `kubectl get ds … -n tekton-pipelines`; its `describe` events | prepull DaemonSet Pods rejected by **restricted PSS** (0/N ready) | restricted `securityContext` on the DS (Gotcha 1) |
+| Live `kubectl apply`/patch reverts after minutes | the owning ArgoCD app (`selfHeal`) | GitOps reconciliation | land it in git on `main`, then sync (Gotcha 2) |
+| `resolve-preset` → `Permission denied` on `/workspace/source` | the step image's UID vs workspace owner | yq (uid 1000) vs root-owned workspace | pre-create file `0666` in the root step (Gotcha 3) |
+| `gitops-deploy` → `another operation is already in progress` | the app's `automated.selfHeal` | explicit sync races the auto-sync | retry + `app wait --sync --health` (Gotcha 4) |
+| No `develop` pipelines in the Dashboard | `tekton/runs/`; `06-tekton-pipelines.sh` | no develop service runs / ungated | add `*-develop.yaml` + gate by env label (Gotcha 5) |
+| A *failed* PipelineRun does NOT mark the app Degraded | — | PipelineRun has no ArgoCD health fn (by design) | nothing — runs don't affect app health; inspect the run in the Tekton Dashboard |
+
+> **Design takeaway.** Keep Tekton **definitions** in git (ArgoCD-owned) and Tekton **runs** out of GitOps ownership (`exclude: runs/*`); let run *status* live in the Tekton Dashboard, not in ArgoCD's app health. The only resources that should ever move an ArgoCD app's health are the **workloads with a real readiness contract** — here, the EventListener Deployment and the prepull DaemonSet — and those are exactly where the namespace's Pod Security Standard can silently block you.
+
 ---
 
 *403. Tekton — jenkins-2026*
