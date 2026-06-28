@@ -23,8 +23,13 @@ mode: deployment
 replicaCount: 1
 
 
+# Contrib distro (superset of the k8s distro) — required for the `faro` receiver
+# that ingests the Angular SPA's Grafana Faro RUM beacon (browser → collector →
+# Grafana Cloud), keeping frontend telemetry on the same backend-agnostic path as
+# the rest. All previously-used components (otlp/jaeger/zipkin/prometheus,
+# span_metrics/service_graph, otlphttp) exist in contrib too, so this is drop-in.
 image:
-  repository: otel/opentelemetry-collector-k8s
+  repository: otel/opentelemetry-collector-contrib
 
 resources:
   requests:
@@ -54,6 +59,13 @@ ports:
     servicePort: 4318
     hostPort: 4318
     protocol: TCP
+  # Grafana Faro RUM beacon endpoint (browser → faro receiver). Service-exposed so
+  # the Gateway HTTPRoute can publish it for the Angular SPA.
+  faro:
+    enabled: true
+    containerPort: 8027
+    servicePort: 8027
+    protocol: TCP
 
 # RBAC for the prometheus receiver's kubernetes_sd (Tekton controller scrape).
 clusterRole:
@@ -78,6 +90,17 @@ config:
           cors:
             allowed_origins:
               - "*"
+    # Grafana Faro RUM receiver: ingests the Angular SPA's browser beacon (Web
+    # Vitals, JS errors, browser spans) and converts it to OTLP traces+logs, so
+    # frontend RUM rides the same collector→backend path as the Java services'
+    # telemetry. Browser-facing, so CORS is open (no service-mesh mTLS for a
+    # browser). Exposed publicly (no IAP) via the Gateway — see 09-gateway.sh /
+    # the faro HTTPRoute. Contrib-only component (hence the contrib image above).
+    faro:
+      endpoint: 0.0.0.0:8027
+      cors:
+        allowed_origins:
+          - "*"
     # Scrape Tekton controller metrics (tekton_pipelines_controller_*) so the
     # Tekton CI dashboard works in grafana-cloud (remote-written via otlp_http).
     prometheus:
@@ -182,7 +205,7 @@ config:
       # Spans are forwarded to Grafana Cloud AND fanned out to the
       # spanmetrics/servicegraph connectors.
       traces:
-        receivers: [otlp]
+        receivers: [otlp, faro]
         processors: [memory_limiter, resource, batch]
         exporters: [otlp_http/grafana_cloud, span_metrics, service_graph]
       # Span-derived metrics produced by the connectors -> Grafana Cloud.
@@ -195,6 +218,6 @@ config:
         processors: [memory_limiter, resource, batch]
         exporters: [otlp_http/grafana_cloud]
       logs:
-        receivers: [otlp]
+        receivers: [otlp, faro]
         processors: [memory_limiter, resource, batch]
         exporters: [otlp_http/grafana_cloud]

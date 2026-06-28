@@ -1,0 +1,132 @@
+name: "Day2.traffic.02 Synthetic RUM (Faro beacons)"
+
+# Simulates frontend Real User Monitoring WITHOUT a browser or app changes: POSTs
+# synthetic Grafana Faro beacons (Core Web Vitals, page loads, sessions, JS errors)
+# to the otel-collector's faro receiver, which converts them to OTLP and ships them
+# to the active observability backend (Grafana Cloud / OSS / managed). Use it to
+# populate / demo / validate the "CI-CD Frontend RUM (Angular / Faro)" dashboard
+# before the Angular SPA is instrumented with the Faro Web SDK (the real path —
+# see docs/202). For REAL RUM, drive the instrumented SPA with a real browser
+# (Playwright); k6 (HTTP-level) cannot generate RUM.
+#
+# Reaches the in-cluster faro receiver via `kubectl port-forward` (the runner has
+# GKE creds), so no public endpoint is required. No environment gate (read-only-ish
+# synthetic telemetry, repo-level secrets) — same posture as Day2.traffic.01 k6.
+on:
+  workflow_dispatch:
+    inputs:
+      env_name:
+        description: "Tier tag for the synthetic sessions (deployment.environment)."
+        type: choice
+        default: develop
+        options: [develop, stable]
+      sessions:
+        description: "How many synthetic browser sessions to emit."
+        required: false
+        default: "20"
+        type: string
+      error_rate:
+        description: "Fraction of sessions that also emit a JS exception (0..1)."
+        required: false
+        default: "0.2"
+        type: string
+      log_level:
+        description: "Script verbosity: info (default) or debug."
+        required: false
+        default: "info"
+        type: choice
+        options:
+          - info
+          - debug
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: jenkins-2026-gke
+  cancel-in-progress: false
+
+env:
+  JENKINS2026_LOG_LEVEL: ${{ inputs.log_level || 'info' }}
+
+jobs:
+  synthetic-rum:
+    name: Emit synthetic Faro RUM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Install gke-gcloud-auth-plugin
+        run: gcloud components install gke-gcloud-auth-plugin --quiet
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d # v5.1.0
+
+      - name: Fetch kubeconfig
+        run: |
+          CLUSTER="$(gcloud container clusters list --format='value(name)' | head -1)"
+          ZONE="$(gcloud container clusters list --filter="name=${CLUSTER}" --format='value(location)' | head -1)"
+          gcloud container clusters get-credentials "${CLUSTER}" --location "${ZONE}" --project "${{ secrets.GCP_PROJECT_ID }}"
+
+      - name: Emit synthetic Faro beacons
+        env:
+          ENV_NAME: ${{ inputs.env_name }}
+          SESSIONS: ${{ inputs.sessions }}
+          ERROR_RATE: ${{ inputs.error_rate }}
+        run: |
+          set -euo pipefail
+          kubectl -n observability port-forward deploy/otel-collector-gateway 8027:8027 >/tmp/pf.log 2>&1 &
+          PF=$!; trap 'kill $PF 2>/dev/null || true' EXIT
+          sleep 5
+          BROWSERS=("Chrome:126:Windows" "Chrome:126:macOS" "Firefox:128:Linux" "Safari:17:iOS:true" "Edge:126:Windows")
+          ok=0
+          for i in $(seq 1 "${SESSIONS}"); do
+            TS="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
+            B="${BROWSERS[$((RANDOM % ${#BROWSERS[@]}))]}"
+            BNAME="${B%%:*}"; REST="${B#*:}"; BVER="${REST%%:*}"; REST="${REST#*:}"; BOS="${REST%%:*}"
+            MOBILE=false; [[ "$BOS" == "iOS" ]] && MOBILE=true
+            # Realistic-ish Web Vitals (ms / unitless), jittered
+            LCP=$((1200 + RANDOM % 2600)); FCP=$((800 + RANDOM % 1600)); TTFB=$((150 + RANDOM % 900))
+            INP=$((80 + RANDOM % 350)); CLS="0.0$((RANDOM % 25))"
+            # OTLP browser span (hex traceId/spanId, ns timestamps) so the Tempo
+            # "Browser traces" panel populates too — the faro receiver forwards it.
+            TID="$(head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+            SID="$(head -c8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+            ENDN="$(date +%s)000000000"; STN="$(( $(date +%s) - 1 ))000000000"
+            BODY="$(cat <<JSON
+          {"meta":{"app":{"name":"angular-gateway","version":"0.0.1","environment":"${ENV_NAME}"},"sdk":{"name":"@grafana/faro-web-sdk","version":"1.0.0"},"session":{"id":"sess-gha-$i-${RANDOM}"},"browser":{"name":"${BNAME}","version":"${BVER}","os":"${BOS}","mobile":${MOBILE}},"page":{"url":"https://microservices-${ENV_NAME}.jenkins2026.nubenetes.com/"}},
+          "logs":[{"message":"page loaded","level":"info","context":{},"timestamp":"${TS}"}],
+          "measurements":[{"type":"web-vitals","values":{"lcp":${LCP},"fcp":${FCP},"ttfb":${TTFB},"inp":${INP},"cls":${CLS}},"timestamp":"${TS}"}],
+          "traces":{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"angular-gateway"}},{"key":"deployment.environment","value":{"stringValue":"${ENV_NAME}"}}]},"scopeSpans":[{"scope":{"name":"@grafana/faro-web-tracing"},"spans":[{"traceId":"${TID}","spanId":"${SID}","name":"documentLoad","kind":1,"startTimeUnixNano":"${STN}","endTimeUnixNano":"${ENDN}"}]}]}]}}
+          JSON
+          )"
+            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST -H 'Content-Type: application/json' --data "${BODY}" http://localhost:8027/ || echo 000)"
+            [[ "$code" == "202" || "$code" == "200" ]] && ok=$((ok+1))
+            # Some sessions also throw a JS exception
+            if awk "BEGIN{exit !($RANDOM/32767 < ${ERROR_RATE})}"; then
+              ERR="$(cat <<JSON
+          {"meta":{"app":{"name":"angular-gateway","version":"0.0.1","environment":"${ENV_NAME}"},"sdk":{"name":"@grafana/faro-web-sdk","version":"1.0.0"},"session":{"id":"sess-gha-$i-${RANDOM}"},"browser":{"name":"${BNAME}","version":"${BVER}","os":"${BOS}","mobile":${MOBILE}}},
+          "exceptions":[{"type":"TypeError","value":"Cannot read properties of undefined (reading 'data')","timestamp":"${TS}","stacktrace":{"frames":[{"filename":"main.js","function":"render","lineno":$((RANDOM%500))}]}}]}
+          JSON
+          )"
+              curl -s -o /dev/null --max-time 10 -X POST -H 'Content-Type: application/json' --data "${ERR}" http://localhost:8027/ || true
+            fi
+          done
+          echo "Emitted ${ok}/${SESSIONS} session beacons (HTTP 202) to the faro receiver."
+          {
+            echo "### 🧪 Synthetic RUM emitted"
+            echo "- Sessions: \`${ok}/${SESSIONS}\` accepted (HTTP 202) · env \`${ENV_NAME}\`"
+            echo "- Signals per session: page-load log + Web Vitals (LCP/FCP/TTFB/INP/CLS); ~\`${ERROR_RATE}\` also a JS exception."
+            echo "- View: the **CI-CD Frontend RUM (Angular / Faro)** dashboard (filter app=angular-gateway, env=${ENV_NAME})."
+            echo
+            echo "> Synthetic (no real browser). Real RUM needs the Angular SPA instrumented with the Faro Web SDK (docs/202) driven by a real browser / Playwright."
+          } >> "${GITHUB_STEP_SUMMARY}"

@@ -26,7 +26,9 @@ def call(Map cfg) {
         sh """
           set -eux
           unset MAVEN_CONFIG
-          export MAVEN_OPTS="-Xmx1024m -XX:+UseSerialGC"
+          # G1 (not SerialGC — single-threaded, poor on the multi-core build agent) +
+          # fail-fast on OOM, consistent with the runtime/controller JVM tuning (docs/303).
+          export MAVEN_OPTS="-Xmx1024m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError"
           # Check if we are in a subfolder or monorepo
           BUILD_DIR="."
           if [ -n "${cfg.module}" ] && [ -f "${cfg.module}/mvnw" ]; then

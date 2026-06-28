@@ -238,6 +238,15 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 
 ---
 
+**[202 · Microservices App Architecture](./docs/202-MICROSERVICES-APP-ARCHITECTURE.md)**
+- [Understanding the app (newcomers → specialists)](./docs/202-MICROSERVICES-APP-ARCHITECTURE.md#understanding-the-app-newcomers--specialists)
+- [Components](./docs/202-MICROSERVICES-APP-ARCHITECTURE.md#components)
+- [Java vs Angular — where each runs](./docs/202-MICROSERVICES-APP-ARCHITECTURE.md#java-vs-angular--where-each-actually-runs)
+- [How a request flows](./docs/202-MICROSERVICES-APP-ARCHITECTURE.md#how-a-request-flows)
+- [Frontend observability roadmap — Angular RUM](./docs/202-MICROSERVICES-APP-ARCHITECTURE.md#frontend-observability-roadmap--instrumenting-angular-with-rum)
+
+---
+
 **[301 · Observability](./docs/301-OBSERVABILITY.md)**
 - [Key Features](./docs/301-OBSERVABILITY.md#key-features)
 - [Grafana Cloud Observability apps — status & recommendation](./docs/301-OBSERVABILITY.md#grafana-cloud-observability-apps--status--recommendation)
@@ -569,7 +578,7 @@ For the full component diagram, microservices database architecture (CloudNative
 
 ## 4. GitHub Actions Workflows
 
-All 22 workflows live in [`.github/workflows/`](.github/workflows/) following the `DayN.tier.ZZ-resource` naming convention — **alphabetical sort order = correct execution order** for the **Create** (`Day0`→`Day1`) and **Decom** phases. Within **Day2** the tiers (`redeploy`/`publish`/`traffic`) are independent **categories**, not an ordered sequence — each workflow is idempotent and dispatched on its own ([why](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#day2-ordering-tiers-are-categories-not-stages)). See [101. GitHub Actions Workflows](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md) for the full inventory with clickable GitHub Actions links.
+All 26 workflows live in [`.github/workflows/`](.github/workflows/) following the `DayN.tier.ZZ-resource` naming convention — **alphabetical sort order = correct execution order** for the **Create** (`Day0`→`Day1`) and **Decom** phases. Within **Day2** the tiers (`redeploy`/`publish`/`traffic`/`scale`) are independent **categories**, not an ordered sequence — each workflow is idempotent and dispatched on its own ([why](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#day2-ordering-tiers-are-categories-not-stages)). See [101. GitHub Actions Workflows](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md) for the full inventory with clickable GitHub Actions links.
 
 | Phase | tier | Resource | Workflow |
 |---|---|---|---|
@@ -577,8 +586,9 @@ All 22 workflows live in [`.github/workflows/`](.github/workflows/) following th
 | `Day1` Create | `cluster.00` (umbrella, opt-in) | **Everything up** — one-click from-scratch: Gateway bootstrap + cluster + full stack | [Day1.cluster.00](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.00-all.yml) |
 | `Day1` Create | `cluster` | GKE cluster + full stack | [Day1.cluster.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) |
 | `Day2` Update | `redeploy` | ArgoCD, Jenkins, Tekton, Headlamp, Gateway | [Day2.redeploy.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.01-argocd.yml) · [Day2.redeploy.02](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.02-jenkins.yml) · [Day2.redeploy.03](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.03-tekton.yml) · [Day2.redeploy.04](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.04-headlamp.yml) · [Day2.redeploy.05](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.05-gateway.yml) |
-| `Day2` Update | `publish` | OSS Grafana, Azure/AWS dashboards, Grafana alerts | [Day2.publish.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.01-oss-grafana.yml) · [Day2.publish.03](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.03-azure-grafana.yml) · [Day2.publish.04](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.04-aws-grafana.yml) · [Day2.publish.05](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.05-alerts.yml) |
-| `Day2` Update | `traffic` | k6 traffic | [Day2.traffic.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml) |
+| `Day2` Update | `publish` | OSS / Grafana Cloud / Azure / AWS dashboards, Grafana alerts | [Day2.publish.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.01-oss-grafana.yml) · [Day2.publish.02](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.02-grafana-cloud.yml) · [Day2.publish.03](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.03-azure-grafana.yml) · [Day2.publish.04](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.04-aws-grafana.yml) · [Day2.publish.05](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.05-alerts.yml) |
+| `Day2` Update | `traffic` | k6 traffic · synthetic RUM (Faro beacons) | [Day2.traffic.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml) · [Day2.traffic.02](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.02-rum.yml) |
+| `Day2` Update | `scale` | Pause / resume node pools (park at ~zero cost) | [Day2.scale.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.scale.01-pause.yml) · [Day2.scale.02](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.scale.02-resume.yml) |
 | `Decom` Destroy | `cluster` (first) | GKE cluster (destroy first) | [Decom.cluster.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml) |
 | `Decom` Destroy | `infra` (last) | Gateway, Grafana Cloud, Azure, AWS (destroy last) | [Decom.infra.01](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.01-gateway.yml) · [Decom.infra.02](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.02-grafana-cloud.yml) · [Decom.infra.03](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.03-azure-grafana.yml) · [Decom.infra.04](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.04-aws-grafana.yml) |
 | `Decom` Destroy | `infra.00` (umbrella, opt-in) | **Everything** — cluster + all persistent backends in one dispatch (type `destroy`) | [Decom.infra.00](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.00-all.yml) |
