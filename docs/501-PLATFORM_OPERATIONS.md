@@ -11,32 +11,35 @@ Park the throwaway cluster at **~zero compute cost** without a Decom + Day1 rebu
 
 > Pause/resume is **not** a rebuild and keeps the disks. For a full teardown that stops *all* charges use [`Decom.cluster.01-gke`](../.github/workflows/Decom.cluster.01-gke.yml); to recreate, [`Day1.cluster.01-gke`](../.github/workflows/Day1.cluster.01-gke.yml) (a re-apply also reconciles the gcloud state drift the imperative pause leaves in `terraform/gke` state).
 
-### The two gotchas a naïve "resize to 0" hits (real incident)
+### The four gotchas a naïve "resize to 0" hits (real incident)
 
-A plain `gcloud container clusters resize --num-nodes 0` **stalls forever** on this cluster:
+A plain `gcloud container clusters resize --num-nodes 0` **stalls forever / bounces back** on this cluster. There are **four independent node-recreating forces** — disabling fewer than all four leaves nodes running:
 
 1. **CNPG Postgres PodDisruptionBudgets block the graceful drain.** Each Postgres pod has a PDB `minAvailable=1`; single-instance tiers (the `develop` tier, and any primary once it is down to one) → **ALLOWED DISRUPTIONS = 0**. The resize drains via the **eviction API**, which honours PDBs → it waits indefinitely, the `gcloud` client times out (~20 min) and the GitHub step fails while the **server-side operation stays RUNNING and wedged** (and it cannot be cancelled — only node-upgrade ops can).
-2. **autoRepair recreates the drained nodes.** With `management.autoRepair: true`, GKE flags cordoned/drained nodes as unhealthy and **recreates** them — the node count bounces back up (seen spiking to 3-4) and never reaches 0.
+2. **node-pool `autoRepair` recreates the drained nodes.** With `management.autoRepair: true`, GKE flags cordoned/drained nodes as unhealthy and **recreates** them.
+3. **node-pool `autoUpgrade` surge-creates replacement nodes.** A version auto-upgrade does a surge (new nodes before draining old), re-adding nodes mid-pause.
+4. **Cluster-level Node Auto-Provisioning (NAP) re-provisions nodes for the Pending pods.** ⚠️ *This is the subtle one.* NAP (`autoscaling.enableNodeAutoprovisioning`) is a **cluster** setting, **separate from a node pool's autoscaling**: for any Pending pod it can't place it spins up **brand-new nodes/pools** — so even with the node pool's own autoscaling off, NAP brings the cluster **straight back up** (node count seen bouncing to 3-4). `terraform/gke` does **not** manage NAP, so it was an out-of-band setting; the pause now turns it off and leaves it off (IaC-consistent — the node pool's own min/max autoscaling, restored by Resume, is enough).
 
-**The fix (now in the pause workflow):**
+**The fix (now in the pause workflow) — disable ALL FOUR forces, then drain + resize:**
 
-- **Disable autoscaling** (so it can't re-add nodes for the now-Pending pods) **and autoRepair** (so it can't recreate drained nodes).
+- **Disable cluster NAP** (`gcloud container clusters update --no-enable-autoprovisioning`) — *first*, the root cause of the bounce-back.
+- **Disable the node pool's autoscaling, autoRepair AND autoUpgrade** (`--no-enable-autoscaling` · `--no-enable-autorepair --no-enable-autoupgrade`).
 - **Force-drain** every node: `kubectl drain --disable-eviction --force --delete-emptydir-data --ignore-daemonsets`. `--disable-eviction` deletes pods via the **DELETE API instead of the eviction API**, so it **bypasses PDBs entirely** — safe because the data lives on the PVs, not the pod.
-- Then `gcloud container clusters resize ... --num-nodes 0` — nodes are already empty + autoRepair is off → it completes and **stays** at 0.
-- **Resume re-enables autoscaling AND autoRepair** (it must restore autoRepair, which the pause turned off).
+- Then `gcloud container clusters resize ... --num-nodes 0` — nodes are already empty and nothing can re-add them → it completes and **stays** at 0.
+- **Resume re-enables autoscaling + autoRepair + autoUpgrade** (NAP is intentionally left off — see gotcha 4).
 
 <details><summary>🔁 Pause / resume sequence (Mermaid)</summary>
 
 ```mermaid
 flowchart TD
   subgraph Pause["⏸️ Day2.scale.01 Pause"]
-    P1[Disable autoscaling] --> P2[Disable autoRepair]
-    P2 --> P3["Force-drain all nodes<br/>kubectl drain --disable-eviction<br/>(bypasses CNPG PDBs)"]
+    P0["Disable cluster NAP<br/>--no-enable-autoprovisioning"] --> P1["Disable pool autoscaling<br/>+ autoRepair + autoUpgrade"]
+    P1 --> P3["Force-drain all nodes<br/>kubectl drain --disable-eviction<br/>(bypasses CNPG PDBs)"]
     P3 --> P4[Resize each pool to 0]
-    P4 --> P5["Nodes 0 - stays 0<br/>workloads Pending"]
+    P4 --> P5["Nodes 0 - STAYS 0<br/>(all 4 recreate-forces off)<br/>workloads Pending"]
   end
   subgraph Resume["▶️ Day2.scale.02 Resume"]
-    R1[Resize each pool to N] --> R2[Re-enable autoscaling + autoRepair]
+    R1[Resize each pool to N] --> R2["Re-enable autoscaling +<br/>autoRepair + autoUpgrade<br/>(NAP left off — IaC-consistent)"]
     R2 --> R3[Pods reschedule]
     R3 --> R4[ArgoCD reconciles - CNPG recreates PDBs]
     R4 --> R5["Post-resume recovery<br/>re-clone stuck CNPG replicas<br/>+ restart dex if connector init raced DNS"]
