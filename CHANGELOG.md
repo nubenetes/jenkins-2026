@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.23] - 2026-06-28
+
+Increment over v0.28.22 (Grafana Cloud dashboards: publish over the HTTP API, drop gcx).
+
+### Changed
+- **`scripts/07-grafana-dashboards.sh` (grafana-cloud) now publishes over the Grafana HTTP API,
+  not `gcx`.** Dashboards are imported with a plain idempotent **`POST /api/dashboards/db`**
+  (`overwrite:true`, keyed by `uid`, into the *CI-CD Observability* folder), and the Kubernetes
+  Monitoring app is configured via `POST /api/plugins/grafana-k8s-app/settings` — so the branch no
+  longer installs, authenticates, or calls the `gcx` CLI at all. `gcx resources push` routes through
+  Grafana's newer Kubernetes-style resource layer, which on Grafana Cloud intermittently fails
+  (`409 AlreadyExists` on create, `409 "object has been modified"` on update, async-delete
+  terminating-name reservations, and legacy↔k8s storage desync). The legacy import is a reliable
+  idempotent upsert — the same path the managed-aws branch uses. Verified: full publish + re-run
+  both clean, 6/6 dashboards live.
+
+### Docs
+- **docs/301-OBSERVABILITY.md** — new section *"Grafana Cloud dashboard provisioning: HTTP API today,
+  gcx + v2 tomorrow"* documenting the classic-model vs **v2 schema** (`dashboard.grafana.app/v2`)
+  split, why gcx is decommissioned for now (v2 push not idempotent, async create/delete, split-brain),
+  why the HTTP-API import is used instead, and the **recommended future migration back to gcx + native
+  v2** once gcx gains a proper server-side apply. Updated the Key Features bullet, the datasource table,
+  and the provisioning Mermaid diagram accordingly; fixed the `(gcx)` mentions in
+  `Day2.publish.02-grafana-cloud.yml` comments.
+
 ## [v0.28.22] - 2026-06-28
 
 Increment over v0.28.21 (adopt the AI-optimized dashboards as the operational source).

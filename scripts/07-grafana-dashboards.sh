@@ -88,69 +88,46 @@ case "${J2026_OBS_MODE}" in
       exit 0
     fi
 
-    # Ensure gcx is installed
-    if ! command -v gcx &> /dev/null; then
-      log_step "Installing gcx CLI"
-      # Install to a local bin to avoid sudo
-      mkdir -p "${HOME}/.local/bin"
-      curl -fsSL https://raw.githubusercontent.com/grafana/gcx/main/scripts/install.sh | BINDIR="${HOME}/.local/bin" sh
-      export PATH="${HOME}/.local/bin:${PATH}"
-    fi
-
-    log_step "Authenticating with gcx CLI"
-    # gcx login --yes performs non-interactive login, discovering the stack ID and namespace
-    gcx login --yes default --server "${GRAFANA_BASE_URL}" --token "${GRAFANA_API_KEY}" --allow-server-override
-
-    RESOURCES_DIR="${J2026_ROOT_DIR}/gcx_test"
+    # This branch talks to Grafana Cloud purely over the Grafana HTTP API with the
+    # static GRAFANA_API_KEY - no gcx CLI dependency. (gcx's k8s-style resource layer
+    # proved unreliable here; see the publish loop below.)
     FOLDER_UID="jenkins-2026"
+    api() { curl -fsS -X "$1" "${GRAFANA_BASE_URL%/}$2" \
+      -H "Authorization: Bearer ${GRAFANA_API_KEY}" -H "Content-Type: application/json" "${@:3}"; }
 
-    log_step "Preparing dashboard manifests in ${RESOURCES_DIR}/dashboards"
-    mkdir -p "${RESOURCES_DIR}/dashboards"
+    # Ensure the shared "CI-CD Observability" folder (uid jenkins-2026), and keep its
+    # title even if a persistent stack still had the old "jenkins-2026" title. Idempotent.
+    api POST /api/folders -d "{\"uid\":\"${FOLDER_UID}\",\"title\":\"CI-CD Observability\"}" >/dev/null 2>&1 || true
+    api PUT "/api/folders/${FOLDER_UID}" -d '{"title":"CI-CD Observability","overwrite":true}' >/dev/null 2>&1 || true
 
+    log_step "Publishing dashboards via the Grafana HTTP API (POST /api/dashboards/db)"
+    # Use the legacy import endpoint (idempotent upsert by uid, overwrite:true) rather
+    # than `gcx resources push`. gcx pushes through Grafana's newer k8s-style resource
+    # layer, whose async create/delete + optimistic concurrency intermittently fail on
+    # Grafana Cloud with "409 AlreadyExists" / "409 object has been modified", and can
+    # desync the legacy vs k8s storage. /api/dashboards/db is a reliable, idempotent
+    # upsert - the same path the managed-aws branch uses. Datasource uids are rewritten
+    # to the Grafana Cloud built-ins; id is nulled so the import keys purely on uid.
     for dashboard in "${DASHBOARDS_DIR}"/*.json; do
       name="$(basename "${dashboard}" .json)"
       if is_offengine_dashboard "${name}"; then log_info "Skipping ${name} (ci.engine=${ACTIVE_CI_ENGINE})"; continue; fi
-      uid="$(jq -r '.uid' "${dashboard}")"
-      
-      # Wrap dashboard JSON into a gcx-compatible resource manifest
-      # We use .uid for metadata.name and ensure folderUID is set in spec
-      # We also add the grafana.app/folder annotation which gcx uses for display
-      jq -n --slurpfile db "${dashboard}" \
-        --arg folderUID "${FOLDER_UID}" \
-        --arg uid "${uid}" \
-        '{
-          apiVersion: "dashboard.grafana.app/v1",
-          kind: "Dashboard",
-          metadata: {
-            name: $uid,
-            annotations: {
-              "grafana.app/folder": $folderUID
-            }
-          },
-          spec: (($db[0] | walk(
-                   if type=="object" and .uid=="loki"  then .uid="grafanacloud-logs"
-                   elif type=="object" and .uid=="tempo" then .uid="grafanacloud-traces"
-                   else . end)) + {folderUID: $folderUID})
-        }' > "${RESOURCES_DIR}/dashboards/${name}.json"
+      payload="$(jq --arg folderUID "${FOLDER_UID}" '
+        (walk(if type=="object" and .uid=="loki"  then .uid="grafanacloud-logs"
+              elif type=="object" and .uid=="tempo" then .uid="grafanacloud-traces"
+              else . end) | .id=null)
+        | {dashboard:., folderUid:$folderUID, overwrite:true}' "${dashboard}")"
+      # Stream via stdin (--data-binary @-): large dashboards can exceed ARG_MAX.
+      if printf '%s' "${payload}" | api POST /api/dashboards/db --data-binary @- >/dev/null 2>&1; then
+        log_info "Published ${name}."
+      else
+        log_warn "Failed to publish ${name}."
+      fi
     done
-
-    log_step "Pushing resources via gcx resources push"
-    # This will push both the folder (from gcx_test/folders) and the dashboards
-    # We use --include-managed to ensure we can update folders/dashboards even if they were 
-    # previously managed by other tools (or gcx api calls).
-    gcx resources push -p "${RESOURCES_DIR}" --on-error abort --include-managed
-
-    # Belt-and-suspenders rename: ensure the (UID-stable) dashboards folder shows the
-    # engine-neutral title even if a persistent stack still had the old "jenkins-2026"
-    # title. In-place by UID, so no orphan/second folder. Idempotent.
-    curl -fsS -X PUT "${GRAFANA_BASE_URL%/}/api/folders/${FOLDER_UID}" \
-      -H "Authorization: Bearer ${GRAFANA_API_KEY}" -H "Content-Type: application/json" \
-      -d '{"title":"CI-CD Observability","overwrite":true}' >/dev/null 2>&1 || true
 
     log_step "Configuring Grafana Kubernetes Monitoring app data sources"
     GRAFANA_STACK_ID="$(kubectl get secret "${J2026_GRAFANA_CLOUD_SECRET}" -n "${J2026_OBS_NAMESPACE}" -o jsonpath='{.data.GRAFANA_STACK_ID}' | base64 -d)"
     if [[ -n "${GRAFANA_STACK_ID}" ]]; then
-      gcx api /api/plugins/grafana-k8s-app/settings -X POST -d "{
+      api POST /api/plugins/grafana-k8s-app/settings -d "{
         \"enabled\": true,
         \"jsonData\": {
           \"grafana_instance_id\": ${GRAFANA_STACK_ID},
