@@ -549,7 +549,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "grafanacloud-logs"
+        "uid": "loki"
       },
       "description": "Logs from the CNPG Postgres instance pods (the 'postgres' container) in the microservices namespace.",
       "gridPos": {
@@ -573,7 +573,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "grafanacloud-logs"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "{k8s_namespace_name=\"$namespace\", k8s_container_name=\"postgres\"}",

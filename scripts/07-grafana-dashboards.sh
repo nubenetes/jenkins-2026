@@ -127,7 +127,10 @@ case "${J2026_OBS_MODE}" in
               "grafana.app/folder": $folderUID
             }
           },
-          spec: ($db[0] + {folderUID: $folderUID})
+          spec: (($db[0] | walk(
+                   if type=="object" and .uid=="loki"  then .uid="grafanacloud-logs"
+                   elif type=="object" and .uid=="tempo" then .uid="grafanacloud-traces"
+                   else . end)) + {folderUID: $folderUID})
         }' > "${RESOURCES_DIR}/dashboards/${name}.json"
     done
 

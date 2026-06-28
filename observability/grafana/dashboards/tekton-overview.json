@@ -557,7 +557,7 @@
     {
       "datasource": {
         "type": "loki",
-        "uid": "grafanacloud-logs"
+        "uid": "loki"
       },
       "description": "Logs from the Tekton pipeline-execution namespaces (the PipelineRun/TaskRun pods).",
       "gridPos": {
@@ -581,7 +581,7 @@
         {
           "datasource": {
             "type": "loki",
-            "uid": "grafanacloud-logs"
+            "uid": "loki"
           },
           "editorMode": "code",
           "expr": "{k8s_namespace_name=~\"tekton-ci|tekton-pipelines\"}",
@@ -595,7 +595,7 @@
     {
       "datasource": {
         "type": "tempo",
-        "uid": "grafanacloud-traces"
+        "uid": "tempo"
       },
       "description": "Distributed traces emitted by the Tekton pipeline (the steps export OTLP to the collector). Use to drill into a single PipelineRun's spans.",
       "gridPos": {
@@ -613,7 +613,7 @@
         {
           "datasource": {
             "type": "tempo",
-            "uid": "grafanacloud-traces"
+            "uid": "tempo"
           },
           "filters": [],
           "limit": 50,
