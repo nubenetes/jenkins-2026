@@ -33,10 +33,14 @@ jenkins:
             <li><a href="${GRAFANA_BASE_URL:-#}/d/jenkins2026-jenkins-overview" style="color: #0052cc; text-decoration: underline;">Jenkins Overview</a></li>
             <li><a href="${GRAFANA_BASE_URL:-#}/d/jenkins2026-microservices-overview" style="color: #0052cc; text-decoration: underline;">Microservices Services</a></li>
             <li><a href="${GRAFANA_BASE_URL:-#}/d/jenkins2026-k6-smoke-overview" style="color: #0052cc; text-decoration: underline;">K6 Smoke Test</a></li>
+            <li><a href="${GRAFANA_BASE_URL:-#}/d/jenkins2026-rum-frontend" style="color: #0052cc; text-decoration: underline;">Frontend RUM (Angular / Faro)</a></li>
+            <li><a href="${GRAFANA_BASE_URL:-#}/d/jenkins2026-jvm-internals" style="color: #0052cc; text-decoration: underline;">JVM internals (all Java + Jenkins)</a></li>
             <li><a href="${GRAFANA_BASE_URL:-#}/alerting/list" style="color: #0052cc; text-decoration: underline;">Alert Rules</a></li>
             ${GRAFANA_K8S_APP_LINK:-}
           </ul>
         </li>
+        <li>Faro RUM ingest: <a href="https://faro.${J2026_GATEWAY_BASE_DOMAIN:-jenkins2026.nubenetes.com}" style="color: #0052cc; text-decoration: underline;">https://faro.${J2026_GATEWAY_BASE_DOMAIN:-jenkins2026.nubenetes.com}</a>
+          <small style="color:#5e6c84;">(browser beacon endpoint — the Angular SPA's Faro SDK posts here; not a UI)</small></li>
       </ul>
     </div>
 
