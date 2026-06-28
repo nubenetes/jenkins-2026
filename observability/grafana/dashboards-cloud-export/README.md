@@ -4,9 +4,8 @@ These are the **platform dashboards exported from Grafana Cloud**, in Grafana's
 **v2 dashboard schema** (`apiVersion: dashboard.grafana.app/v2`, `kind: Dashboard`),
 kept in **both serializations**:
 
-- **YAML** (`*.yaml`) — **6 dashboards** (the full set, incl. *JVM internals*).
-- **JSON** (`*.json`) — **5 dashboards** (same content; *JVM internals* was **not**
-  re-exported as JSON, so it exists here only as YAML).
+- **YAML** (`*.yaml`) — **6 dashboards** (the full set).
+- **JSON** (`*.json`) — **6 dashboards** (same content, same set).
 
 Both formats are the **same v2 resources** — pick whichever the tooling prefers
 (`gcx resources push` accepts either).
@@ -44,7 +43,7 @@ They are **based on the previous dashboards but substantially more optimized.**
 | CI-CD / Microservices Overview | `dashboard-1782669097484.yaml` | `dashboard-1782669755436.json` |
 | CI-CD / PostgreSQL (CloudNativePG) | `dashboard-1782669127927.yaml` | `dashboard-1782669765865.json` |
 | CI-CD Frontend RUM (Angular / Faro) | `dashboard-1782669148583.yaml` | `dashboard-1782669775397.json` |
-| CI-CD JVM internals (all Java services + Jenkins) | `dashboard-1782669169211.yaml` | *(YAML only — not re-exported as JSON)* |
+| CI-CD JVM internals (all Java services + Jenkins) | `dashboard-1782669169211.yaml` | `dashboard-1782669785795.json` |
 
 ## How these get provisioned
 
