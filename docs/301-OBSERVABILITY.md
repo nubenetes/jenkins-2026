@@ -381,8 +381,11 @@ This is **mode-independent** — applies unchanged across all four observability
 # Day1.cluster.01-gke (+ the Day1.cluster.00-all umbrella), and — for a light change on a
 # running cluster without a full Day1 — Day2.redeploy.01-argocd / Day2.publish.01-oss-grafana.
 observability:
-  logMinSeverity: info   # trace=keep all · debug · info (default) · warn · error
+  grafanaCloudTier: free   # free (default) | paid — the volume profile (see below)
+  logMinSeverity: auto     # auto=from tier (free→warn, paid→trace) · or force trace/debug/info/warn/error
 ```
+
+> **The `grafanaCloudTier` profile.** `logMinSeverity` (logs) and `leanMetrics` (metrics) default to `auto`, deriving from the tier so the **free** tier fits its limits in one switch: `free` → `leanMetrics` on + `logMinSeverity=warn`; `paid` → full metrics + ship all logs (`trace`). It governs **metrics and logs today — not traces yet.** An explicit value (or the `JENKINS2026_*` env / GHA dropdowns) overrides the tier.
 
 How it works: a `regex_parser` in the `otel-collector-logs` filelog receiver extracts the level token from **structured** lines — JSON `"level":"<lvl>"` (covers the microservices' ECS nested `"log":{"level":…}`, CNPG's flat `"level":…`) and logfmt `level=<lvl>` (ArgoCD), case-insensitively — and **sets the OTLP record severity** from it (plain-text lines get `level=unknown`). The `filter/severity` processor then drops by `severity_number` (`!= UNSPECIFIED and < <threshold>`), so anything whose level couldn't be parsed is **never dropped** (no accidental blackout). `trace` disables the filter entirely (ship everything). The two levers compose: e.g. keep the logback `<root>` at `INFO` but set `logMinSeverity: warn` for a quiet dashboard, then dial back when debugging.
 

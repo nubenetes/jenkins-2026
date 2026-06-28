@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.5] - 2026-06-28
+
+Increment over v0.28.4 (Grafana Cloud tier profile).
+
+### Added
+- **`observability.grafanaCloudTier` (`free` default | `paid`)** — a one-switch profile that
+  sets the volume-control defaults so the free tier stays under its limits. `free` →
+  `leanMetrics` on + `logMinSeverity=warn`; `paid` → full metrics + ship all logs (`trace`).
+  It governs **metrics (`leanMetrics`) and logs (`logMinSeverity`)** — **not traces yet.**
+  `leanMetrics`/`logMinSeverity` now default to **`auto`** (derive from the tier); an explicit
+  value, the `JENKINS2026_*` env, or the GHA dropdown overrides it (precedence: env > explicit
+  config > tier). Exposed as a **`grafana_cloud_tier`** dropdown on the workflows that re-apply
+  `03-observability` (`Day1.cluster.01-gke` + the `Day1.cluster.00-all` umbrella +
+  `Day2.redeploy.01-argocd`); `log_min_severity` gained an `auto` option (now its default).
+  Only meaningful in grafana-cloud mode (other backends stay neutral: lean off, severity info).
+
 ## [v0.28.4] - 2026-06-28
 
 Increment over v0.28.3 (severity parsing + per-panel level filtering in Grafana).
