@@ -74,7 +74,7 @@ on:
           - info
           - debug
       grafana_cloud_tier:
-        description: "Grafana Cloud tier profile (grafana-cloud mode). free (default) = leanMetrics on + logMinSeverity=warn (fits free-tier limits); paid = full metrics + ship all logs."
+        description: "Grafana Cloud tier profile (grafana-cloud mode). free (default) = leanMetrics on + logMinSeverity=warn (fits free-tier limits); paid = full metrics + ship all logs. Traces are NOT sampled on either tier (100% shipped): in this low-traffic PoC they fit the free tier, and sampling would break trace↔log/metric correlation (a trace_id in a log could point to a dropped trace)."
         required: false
         default: "free"
         type: choice

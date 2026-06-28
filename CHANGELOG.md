@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.7] - 2026-06-28
+
+Increment over v0.28.6 (postgres dashboard polish + traces-sampling rationale).
+
+### Fixed
+- **PostgreSQL/CNPG dashboard: no empty panels, no layout gaps.** Every band now tiles to a
+  full 24-col width at a uniform height (0 overlaps, 0 gaps). Resilience added so stats render
+  `0`/explanatory text instead of "No data": collector-errors, backup/recoverability (mapped to
+  "no backups configured"), archival counters, and the replication-detail panels (which are
+  empty on single-instance tiers like develop) now read `0` with descriptions noting they need
+  replicas. Verified against the live Grafana Cloud Prometheus on both the stable and develop tiers.
+
+### Docs
+- **Documented why traces are not sampled on the free tier** — in `docs/301` and in the
+  `grafana_cloud_tier` GHA dropdown description itself: traces ship at 100% on both tiers because
+  the PoC volume fits the free tier and sampling would break trace↔log/metric correlation.
+
 ## [v0.28.6] - 2026-06-28
 
 Increment over v0.28.5 (deep CloudNativePG/PostgreSQL dashboard).
