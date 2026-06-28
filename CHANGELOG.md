@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.10] - 2026-06-28
+
+Increment over v0.28.9 (deep Microservices Overview dashboard).
+
+### Changed
+- **`CI-CD / Microservices Overview` dashboard rebuilt** (9 → 48 panels, 9 sections) on the live
+  app/OTel metric set, mirroring the depth of the Postgres rebuild: service-health RED summary,
+  HTTP RED (rate / status codes / p50-p95-p99 / error-rate by service), endpoints/routes (top-N
+  rate & p95), **span-metrics RED** (`traces_spanmetrics_*`: calls / errors / duration / by span
+  kind), **service dependency graph** (`traces_service_graph_*` edges: rate / failed / client &
+  server latency), a JVM & runtime summary (heap / GC p99 / threads / CPU; full depth in the JVM
+  dashboard), logs (`$level` filter) and a Tempo traces table. New `deployment_environment` tier
+  picker + multi-select `service_name`. Layout tiles cleanly (0 overlaps / 0 gaps); every app
+  panel verified to return series on the stable tier.
+- **Free-tier / leanMetrics panels kept, not deleted.** A "Kubernetes pod & container infra"
+  section (pod restarts, container memory/CPU, deployment replicas, pod phase) is retained even
+  though it's **empty on the free tier** (leanMetrics drops kube-state/cAdvisor) — so the board is
+  ready the moment `grafanaCloudTier` is set to `paid`. A prominent in-dashboard note explains the
+  free-tier vs paid behaviour and why each kind of panel may read 0.
+
 ## [v0.28.9] - 2026-06-28
 
 Increment over v0.28.8 (postgres dashboard validation fix).
