@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.33] - 2026-06-29
+
+Increment over v0.28.32 (Tekton: gate develop seed runs behind the develop-track flag, like Jenkins).
+
+### Fixed / Added
+- **Tekton develop-tier pipelines were missing and the gating was inconsistent.** Under PaC (a
+  gateway present), `06-tekton-pipelines.sh` seeds the committed `tekton/runs/*.yaml`, which only had
+  **stable** service runs — so the **develop** service pipelines (gateway / jhipstersamplemicroservice)
+  never appeared in the Tekton Dashboard, while the develop **k6** run was seeded **ungated**
+  (regardless of the flag). Now matches the Jenkins model: added `tekton/runs/gateway-develop.yaml`
+  and `tekton/runs/jhipstersamplemicroservice-develop.yaml` (build the app's `develop` branch into
+  `microservices-develop`, env=develop), and the seedRuns loop **skips any run labelled
+  `jenkins2026.io/env=develop` when the develop track is off** (`microservices.developTrackEnabled` /
+  `JENKINS2026_DEVELOP_TRACK_ENABLED`) — so develop pipelines are optional + gated on Tekton exactly
+  as on Jenkins. (The PaC git-push trigger per develop branch is a separate, deeper concern.)
+
 ## [v0.28.32] - 2026-06-29
 
 Increment over v0.28.31 (Tekton gitops-deploy: tolerate concurrent ArgoCD auto-sync).

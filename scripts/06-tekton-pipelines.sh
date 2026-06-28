@@ -219,6 +219,15 @@ EOT
     log_step "tekton.seedRuns=true - seeding PipelineRuns from tekton/runs/ (one build per service)"
     for rf in "${J2026_ROOT_DIR}"/tekton/runs/*.yaml; do
       [[ -f "${rf}" ]] || continue
+      # Gate develop-tier runs behind the develop-track feature flag — parity with the
+      # Jenkins seed, which only generates *-develop jobs when developTrackEnabled. Any
+      # run labelled jenkins2026.io/env=develop (the *-develop service runs + the k6
+      # develop run) is skipped when the track is off; stable runs always seed.
+      run_env="$(yq eval '.metadata.labels."jenkins2026.io/env" // "stable"' "${rf}" 2>/dev/null)"
+      if [[ "${run_env}" == "develop" && "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" != "true" ]]; then
+        log_info "  skipping $(basename "${rf}") (develop track disabled)"
+        continue
+      fi
       # Merge the access-URL annotations in (no-op without a gateway) so the seeded
       # runs carry the same banner-parity URLs as the PaC/fallback ones.
       src="${rf}"
