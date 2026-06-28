@@ -1,4 +1,4 @@
-[← Previous: 201. Architecture](./201-ARCHITECTURE.md) | [🏠 Home](../README.md) | [→ Next: 302. k6 Traffic & Load Testing](./302-K6_LOAD_TESTING.md)
+[← Previous: 202. Microservices App Architecture](./202-MICROSERVICES-APP-ARCHITECTURE.md) | [🏠 Home](../README.md) | [→ Next: 302. k6 Traffic & Load Testing](./302-K6_LOAD_TESTING.md)
 
 ---
 
@@ -706,7 +706,7 @@ Amazon Managed Grafana (AMG) authenticates **only** via **AWS IAM Identity Cente
 
 ---
 
-[← Previous: 201. Architecture](./201-ARCHITECTURE.md) | [🏠 Home](../README.md) | [→ Next: 302. k6 Traffic & Load Testing](./302-K6_LOAD_TESTING.md)
+[← Previous: 202. Microservices App Architecture](./202-MICROSERVICES-APP-ARCHITECTURE.md) | [🏠 Home](../README.md) | [→ Next: 302. k6 Traffic & Load Testing](./302-K6_LOAD_TESTING.md)
 
 ---
 

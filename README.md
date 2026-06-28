@@ -238,6 +238,15 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 
 ---
 
+**[202 · Microservices App Architecture](./docs/202-MICROSERVICES-APP-ARCHITECTURE.md)**
+- [Understanding the app (newcomers → specialists)](./docs/202-MICROSERVICES-APP-ARCHITECTURE.md#understanding-the-app-newcomers--specialists)
+- [Components](./docs/202-MICROSERVICES-APP-ARCHITECTURE.md#components)
+- [Java vs Angular — where each runs](./docs/202-MICROSERVICES-APP-ARCHITECTURE.md#java-vs-angular--where-each-actually-runs)
+- [How a request flows](./docs/202-MICROSERVICES-APP-ARCHITECTURE.md#how-a-request-flows)
+- [Frontend observability roadmap — Angular RUM](./docs/202-MICROSERVICES-APP-ARCHITECTURE.md#frontend-observability-roadmap--instrumenting-angular-with-rum)
+
+---
+
 **[301 · Observability](./docs/301-OBSERVABILITY.md)**
 - [Key Features](./docs/301-OBSERVABILITY.md#key-features)
 - [Grafana Cloud Observability apps — status & recommendation](./docs/301-OBSERVABILITY.md#grafana-cloud-observability-apps--status--recommendation)
