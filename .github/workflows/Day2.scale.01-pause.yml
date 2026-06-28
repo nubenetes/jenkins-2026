@@ -61,16 +61,30 @@ jobs:
 
           mapfile -t POOLS < <(gcloud container node-pools list --cluster "${CLUSTER}" --location "${ZONE}" --format='value(name)')
 
-          # 1. Disable autoscaling (so it can't re-add nodes for the now-Pending pods)
-          #    AND autoRepair — autoRepair recreates cordoned/drained nodes it deems
-          #    "unhealthy", which otherwise bounces the pool straight back up mid-pause.
-          #    "Day2.scale.02 Resume" re-enables both.
+          # 0. Disable cluster-level Node Auto-Provisioning (NAP) FIRST. NAP is a
+          #    CLUSTER setting (separate from a node pool's autoscaling): for any
+          #    Pending pod it can't place, it spins up brand-new nodes/pools — so even
+          #    with the node pool's own autoscaling off, NAP re-provisions nodes for the
+          #    Pending workloads and the cluster bounces straight back up mid-pause.
+          #    (This is the gap that made a "successful" pause leave 1-3 nodes running.)
+          #    terraform/gke does NOT manage NAP, so leaving it off is IaC-consistent;
+          #    the node pool's min/max autoscaling — re-enabled by Resume — is enough.
+          echo "::group::Disable cluster Node Auto-Provisioning (NAP)"
+          gcloud container clusters update "${CLUSTER}" --location "${ZONE}" \
+            --no-enable-autoprovisioning --quiet || true
+          echo "::endgroup::"
+
+          # 1. Disable autoscaling (so it can't re-add nodes for the now-Pending pods),
+          #    autoRepair (it recreates cordoned/drained nodes it deems "unhealthy") AND
+          #    autoUpgrade (a surge upgrade creates replacement nodes) — any of the three
+          #    otherwise bounces the pool straight back up mid-pause.
+          #    "Day2.scale.02 Resume" re-enables autoscaling/autoRepair/autoUpgrade.
           for NP in "${POOLS[@]}"; do
-            echo "::group::Disable autoscaling + autoRepair on ${NP}"
+            echo "::group::Disable autoscaling + autoRepair + autoUpgrade on ${NP}"
             gcloud container clusters update "${CLUSTER}" --location "${ZONE}" \
               --node-pool "${NP}" --no-enable-autoscaling --quiet || true
             gcloud container node-pools update "${NP}" --cluster "${CLUSTER}" --location "${ZONE}" \
-              --no-enable-autorepair --quiet || true
+              --no-enable-autorepair --no-enable-autoupgrade --quiet || true
             echo "::endgroup::"
           done
 

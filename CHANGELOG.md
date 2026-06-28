@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.38] - 2026-06-29
+
+Increment over v0.28.37 (pause bugfix: also disable cluster NAP + node-pool autoUpgrade).
+
+### Fixed
+- **`Day2.scale.01 Pause` left the cluster running (1-4 nodes) despite reporting success.** The pause
+  disabled the node pool's autoscaling + autoRepair, but TWO other node-recreating forces were left
+  on: **cluster-level Node Auto-Provisioning (NAP)** — a *cluster* setting separate from the pool's
+  autoscaling that re-provisions brand-new nodes for the Pending pods (the root cause of the
+  bounce-back), and node-pool **autoUpgrade** (surge-creates replacement nodes). Pause now also runs
+  `gcloud container clusters update --no-enable-autoprovisioning` (disable NAP, *first*) and
+  `--no-enable-autoupgrade`, so after the force-drain + resize-to-0 the cluster **stays at 0**. NAP is
+  not managed by `terraform/gke`, so it's left off (IaC-consistent); `Day2.scale.02 Resume` re-enables
+  autoscaling + autoRepair + **autoUpgrade**. docs/501 updated (two→four gotchas + Mermaid).
+
 ## [v0.28.37] - 2026-06-29
 
 Increment over v0.28.36 (deep-dive docs: ArgoCD ⇄ Tekton integration).
