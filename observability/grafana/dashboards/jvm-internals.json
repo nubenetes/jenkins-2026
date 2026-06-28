@@ -1180,21 +1180,30 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "max by (service_name)(jvm_system_cpu_utilization_ratio{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"})",
-          "legendFormat": "{{service_name}} cpu util",
-          "refId": "B"
+          "refId": "A",
+          "expr": "max by (service_name)(jvm_cpu_recent_utilization_ratio{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"})",
+          "legendFormat": "{{service_name}} process cpu"
         },
         {
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
+          "refId": "B",
+          "expr": "max by (service_name)(jvm_system_cpu_utilization_ratio{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"})",
+          "legendFormat": "{{service_name}} system cpu"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "refId": "C",
           "expr": "max by (service_name)(jvm_system_cpu_load_1m{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"})",
-          "legendFormat": "{{service_name}} load 1m",
-          "refId": "B"
+          "legendFormat": "{{service_name}} load 1m"
         }
       ],
-      "title": "System CPU (utilization + load avg)",
+      "title": "CPU \u2014 process / system utilization + load avg",
       "type": "timeseries"
     },
     {
