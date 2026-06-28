@@ -1,3 +1,70 @@
+## Pausing & resuming the cluster (cost saving)
+
+Park the throwaway cluster at **~zero compute cost** without a Decom + Day1 rebuild: scale every GKE node pool to **0** (the worker VMs are the bulk of the spend), leaving everything else intact, then scale back in minutes.
+
+| Workflow | What it does |
+|---|---|
+| **[`Day2.scale.01 Pause`](../.github/workflows/Day2.scale.01-pause.yml)** | Scales every node pool → 0. Cluster, PVs (CNPG Postgres data), ArgoCD + apps, static IP, DNS, certs all survive — only the worker VMs go away. |
+| **[`Day2.scale.02 Resume`](../.github/workflows/Day2.scale.02-resume.yml)** | Scales node pools back up; pods reschedule, ArgoCD reconciles, CNPG recreates its PDBs — no rebuild. |
+
+**What still costs while paused** (all small): the zonal **control plane** (covered by the GKE free-tier management credit), the **persistent disks** backing the PVs, and the reserved **static IP**. Grafana Cloud is free-tier (nothing to pause). Azure/AWS managed backends, if ever provisioned, are billed separately and are **not** paused here.
+
+> Pause/resume is **not** a rebuild and keeps the disks. For a full teardown that stops *all* charges use [`Decom.cluster.01-gke`](../.github/workflows/Decom.cluster.01-gke.yml); to recreate, [`Day1.cluster.01-gke`](../.github/workflows/Day1.cluster.01-gke.yml) (a re-apply also reconciles the gcloud state drift the imperative pause leaves in `terraform/gke` state).
+
+### The two gotchas a naïve "resize to 0" hits (real incident)
+
+A plain `gcloud container clusters resize --num-nodes 0` **stalls forever** on this cluster:
+
+1. **CNPG Postgres PodDisruptionBudgets block the graceful drain.** Each Postgres pod has a PDB `minAvailable=1`; single-instance tiers (the `develop` tier, and any primary once it is down to one) → **ALLOWED DISRUPTIONS = 0**. The resize drains via the **eviction API**, which honours PDBs → it waits indefinitely, the `gcloud` client times out (~20 min) and the GitHub step fails while the **server-side operation stays RUNNING and wedged** (and it cannot be cancelled — only node-upgrade ops can).
+2. **autoRepair recreates the drained nodes.** With `management.autoRepair: true`, GKE flags cordoned/drained nodes as unhealthy and **recreates** them — the node count bounces back up (seen spiking to 3-4) and never reaches 0.
+
+**The fix (now in the pause workflow):**
+
+- **Disable autoscaling** (so it can't re-add nodes for the now-Pending pods) **and autoRepair** (so it can't recreate drained nodes).
+- **Force-drain** every node: `kubectl drain --disable-eviction --force --delete-emptydir-data --ignore-daemonsets`. `--disable-eviction` deletes pods via the **DELETE API instead of the eviction API**, so it **bypasses PDBs entirely** — safe because the data lives on the PVs, not the pod.
+- Then `gcloud container clusters resize ... --num-nodes 0` — nodes are already empty + autoRepair is off → it completes and **stays** at 0.
+- **Resume re-enables autoscaling AND autoRepair** (it must restore autoRepair, which the pause turned off).
+
+<details><summary>🔁 Pause / resume sequence (Mermaid)</summary>
+
+```mermaid
+flowchart TD
+  subgraph Pause["⏸️ Day2.scale.01 Pause"]
+    P1[Disable autoscaling] --> P2[Disable autoRepair]
+    P2 --> P3["Force-drain all nodes<br/>kubectl drain --disable-eviction<br/>(bypasses CNPG PDBs)"]
+    P3 --> P4[Resize each pool to 0]
+    P4 --> P5["Nodes 0 - stays 0<br/>workloads Pending"]
+  end
+  subgraph Resume["▶️ Day2.scale.02 Resume"]
+    R1[Resize each pool to N] --> R2[Re-enable autoscaling + autoRepair]
+    R2 --> R3[Pods reschedule]
+    R3 --> R4[ArgoCD reconciles - CNPG recreates PDBs]
+  end
+  P5 -. "minutes later" .-> R1
+```
+
+</details>
+
+<details><summary>🗺️ What pause removes vs what survives (dependency map)</summary>
+
+```mermaid
+graph LR
+  Pause["Day2.scale.01 Pause"]
+  Pause -->|neutralise first| B1["CNPG Postgres PDBs<br/>force-drain --disable-eviction"]
+  Pause -->|neutralise first| B2["node autoRepair<br/>disabled"]
+  Pause -->|removes| M1["node pool MIG to 0"]
+  M1 --> M2["worker VMs deleted<br/>(approx the whole compute bill)"]
+  Pause -.->|untouched, survives| S1["GKE control plane"]
+  Pause -.->|untouched, survives| S2["PVs / CNPG Postgres data"]
+  Pause -.->|untouched, survives| S3["ArgoCD + all apps<br/>(Pending until resume)"]
+  Pause -.->|untouched, survives| S4["static IP - DNS - certs"]
+  Pause -.->|external, free-tier| S5["Grafana Cloud"]
+```
+
+</details>
+
+Related lifecycle: [`Day1.cluster.01-gke`](../.github/workflows/Day1.cluster.01-gke.yml) (provision / reconcile drift), [`Decom.cluster.01-gke`](../.github/workflows/Decom.cluster.01-gke.yml) (full teardown). Full workflow inventory: [101](./101-GITHUB_ACTIONS_WORKFLOWS.md).
+
 [← Previous: 403. Tekton](./403-TEKTON.md) | [🏠 Home](../README.md) | [→ Next: 502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md)
 
 ---

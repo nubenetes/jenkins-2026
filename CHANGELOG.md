@@ -171,6 +171,14 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- **Cluster pause/resume (`Day2.scale.01`/`.02`) handle CNPG PDBs + autoRepair.** A plain
+  `gcloud container clusters resize --num-nodes 0` stalled forever: CNPG Postgres
+  PodDisruptionBudgets (`minAvailable=1` on single-instance tiers → ALLOWED DISRUPTIONS=0)
+  block the eviction-API drain, and `autoRepair` recreated the drained nodes. Pause now
+  disables autoscaling **and** autoRepair, force-drains with `kubectl drain --disable-eviction`
+  (DELETE API → bypasses PDBs; data is on the PVs), then resizes to 0; resume re-enables both.
+  Documented in [docs/501](docs/501-PLATFORM_OPERATIONS.md#pausing--resuming-the-cluster-cost-saving).
+
 - **Kubernetes probes used the aggregate health endpoint for liveness (anti-pattern).**
   All three Java probes (gitops deployment template) moved to Spring Boot's dedicated
   availability groups: `livenessProbe → /management/health/liveness`, `readiness` +
