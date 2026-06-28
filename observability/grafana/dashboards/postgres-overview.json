@@ -22,6 +22,21 @@
   "liveNow": false,
   "panels": [
     {
+      "type": "text",
+      "transparent": true,
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 101,
+      "options": {
+        "mode": "markdown",
+        "content": "### Tier model \u2014 pick the tier in **Tier (namespace)** above\n- **`microservices` (stable)** \u2014 3-instance **HA** CNPG clusters with WAL archiving + **backups** \u2192 every section populates.\n- **`microservices-develop` (develop)** \u2014 the deliberately **lean** tier: **single-instance (no replicas), no backups**. So the **Replication (streaming)** and **WAL archiving & backups** sections are **empty there by design** \u2014 not a fault. Many other panels also read **0 when healthy/idle** (0 deadlocks, 0 replication lag, 100% cache \u2192 0 disk-read time). Generate traffic (k6) to light up the activity panels."
+      }
+    },
+    {
       "type": "row",
       "title": "Cluster health & topology",
       "collapsed": false,
@@ -29,9 +44,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 3
       },
-      "id": 101,
+      "id": 102,
       "panels": []
     },
     {
@@ -45,9 +60,9 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 1
+        "y": 4
       },
-      "id": 102,
+      "id": 103,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -111,9 +126,9 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 1
+        "y": 4
       },
-      "id": 103,
+      "id": 104,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -173,9 +188,9 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 1
+        "y": 4
       },
-      "id": 104,
+      "id": 105,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -235,9 +250,9 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 1
+        "y": 4
       },
-      "id": 105,
+      "id": 106,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -298,9 +313,9 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 1
+        "y": 4
       },
-      "id": 106,
+      "id": 107,
       "fieldConfig": {
         "defaults": {
           "unit": "s",
@@ -360,9 +375,9 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 1
+        "y": 4
       },
-      "id": 107,
+      "id": 108,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -422,9 +437,9 @@
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 5
+        "y": 8
       },
-      "id": 108,
+      "id": 109,
       "fieldConfig": {
         "defaults": {
           "unit": "bytes",
@@ -484,9 +499,9 @@
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 5
+        "y": 8
       },
-      "id": 109,
+      "id": 110,
       "fieldConfig": {
         "defaults": {
           "unit": "s",
@@ -555,9 +570,9 @@
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 5
+        "y": 8
       },
-      "id": 110,
+      "id": 111,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -636,9 +651,9 @@
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 5
+        "y": 8
       },
-      "id": 111,
+      "id": 112,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -717,9 +732,9 @@
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 5
+        "y": 8
       },
-      "id": 112,
+      "id": 113,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -784,9 +799,9 @@
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 5
+        "y": 8
       },
-      "id": 113,
+      "id": 114,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -843,9 +858,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 9
+        "y": 12
       },
-      "id": 114,
+      "id": 115,
       "panels": []
     },
     {
@@ -859,9 +874,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 10
+        "y": 13
       },
-      "id": 115,
+      "id": 116,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -924,9 +939,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 10
+        "y": 13
       },
-      "id": 116,
+      "id": 117,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -988,9 +1003,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 18
+        "y": 21
       },
-      "id": 117,
+      "id": 118,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -1052,9 +1067,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 18
+        "y": 21
       },
-      "id": 118,
+      "id": 119,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -1116,9 +1131,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 26
+        "y": 29
       },
-      "id": 119,
+      "id": 120,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -1197,9 +1212,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 26
+        "y": 29
       },
-      "id": 120,
+      "id": 121,
       "fieldConfig": {
         "defaults": {
           "unit": "s",
@@ -1259,9 +1274,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 34
+        "y": 37
       },
-      "id": 121,
+      "id": 122,
       "panels": []
     },
     {
@@ -1275,9 +1290,9 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 35
+        "y": 38
       },
-      "id": 122,
+      "id": 123,
       "fieldConfig": {
         "defaults": {
           "unit": "ops",
@@ -1351,9 +1366,9 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 35
+        "y": 38
       },
-      "id": 123,
+      "id": 124,
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
@@ -1436,9 +1451,9 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 35
+        "y": 38
       },
-      "id": 124,
+      "id": 125,
       "fieldConfig": {
         "defaults": {
           "unit": "ops",
@@ -1548,9 +1563,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 43
+        "y": 46
       },
-      "id": 125,
+      "id": 126,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -1625,9 +1640,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 43
+        "y": 46
       },
-      "id": 126,
+      "id": 127,
       "fieldConfig": {
         "defaults": {
           "unit": "ops",
@@ -1714,9 +1729,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 51
+        "y": 54
       },
-      "id": 127,
+      "id": 128,
       "panels": []
     },
     {
@@ -1730,9 +1745,9 @@
         "h": 4,
         "w": 12,
         "x": 0,
-        "y": 52
+        "y": 55
       },
-      "id": 128,
+      "id": 129,
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
@@ -1801,9 +1816,9 @@
         "h": 4,
         "w": 12,
         "x": 12,
-        "y": 52
+        "y": 55
       },
-      "id": 129,
+      "id": 130,
       "fieldConfig": {
         "defaults": {
           "unit": "ms",
@@ -1864,9 +1879,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 56
+        "y": 59
       },
-      "id": 130,
+      "id": 131,
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
@@ -1929,9 +1944,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 56
+        "y": 59
       },
-      "id": 131,
+      "id": 132,
       "fieldConfig": {
         "defaults": {
           "unit": "ms",
@@ -2002,9 +2017,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 64
+        "y": 67
       },
-      "id": 132,
+      "id": 133,
       "panels": []
     },
     {
@@ -2018,9 +2033,9 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 65
+        "y": 68
       },
-      "id": 133,
+      "id": 134,
       "fieldConfig": {
         "defaults": {
           "unit": "Bps",
@@ -2082,9 +2097,9 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 65
+        "y": 68
       },
-      "id": 134,
+      "id": 135,
       "fieldConfig": {
         "defaults": {
           "unit": "ops",
@@ -2158,9 +2173,9 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 65
+        "y": 68
       },
-      "id": 135,
+      "id": 136,
       "fieldConfig": {
         "defaults": {
           "unit": "ops",
@@ -2223,9 +2238,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 73
+        "y": 76
       },
-      "id": 136,
+      "id": 137,
       "fieldConfig": {
         "defaults": {
           "unit": "ops",
@@ -2300,9 +2315,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 73
+        "y": 76
       },
-      "id": 137,
+      "id": 138,
       "fieldConfig": {
         "defaults": {
           "unit": "ms",
@@ -2373,9 +2388,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 81
+        "y": 84
       },
-      "id": 138,
+      "id": 139,
       "panels": []
     },
     {
@@ -2389,9 +2404,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 82
+        "y": 85
       },
-      "id": 139,
+      "id": 140,
       "fieldConfig": {
         "defaults": {
           "unit": "s",
@@ -2473,9 +2488,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 82
+        "y": 85
       },
-      "id": 140,
+      "id": 141,
       "fieldConfig": {
         "defaults": {
           "unit": "s",
@@ -2562,9 +2577,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 90
+        "y": 93
       },
-      "id": 141,
+      "id": 142,
       "fieldConfig": {
         "defaults": {
           "unit": "bytes",
@@ -2663,9 +2678,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 90
+        "y": 93
       },
-      "id": 142,
+      "id": 143,
       "fieldConfig": {
         "defaults": {
           "unit": "bytes",
@@ -2728,9 +2743,9 @@
         "h": 4,
         "w": 12,
         "x": 0,
-        "y": 98
+        "y": 101
       },
-      "id": 143,
+      "id": 144,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -2805,9 +2820,9 @@
         "h": 4,
         "w": 12,
         "x": 12,
-        "y": 98
+        "y": 101
       },
-      "id": 144,
+      "id": 145,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -2863,9 +2878,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 102
+        "y": 105
       },
-      "id": 145,
+      "id": 146,
       "panels": []
     },
     {
@@ -2879,9 +2894,9 @@
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 103
+        "y": 106
       },
-      "id": 146,
+      "id": 147,
       "fieldConfig": {
         "defaults": {
           "unit": "bytes",
@@ -2943,9 +2958,9 @@
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 103
+        "y": 106
       },
-      "id": 147,
+      "id": 148,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -3028,9 +3043,9 @@
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 103
+        "y": 106
       },
-      "id": 148,
+      "id": 149,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -3112,9 +3127,9 @@
         "h": 4,
         "w": 24,
         "x": 0,
-        "y": 111
+        "y": 114
       },
-      "id": 149,
+      "id": 150,
       "fieldConfig": {
         "defaults": {
           "unit": "percent",
@@ -3180,9 +3195,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 115
+        "y": 118
       },
-      "id": 150,
+      "id": 151,
       "panels": []
     },
     {
@@ -3196,9 +3211,9 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 116
+        "y": 119
       },
-      "id": 151,
+      "id": 152,
       "fieldConfig": {
         "defaults": {
           "unit": "s",
@@ -3277,9 +3292,9 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 116
+        "y": 119
       },
-      "id": 152,
+      "id": 153,
       "fieldConfig": {
         "defaults": {
           "unit": "dateTimeFromNow",
@@ -3350,9 +3365,9 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 116
+        "y": 119
       },
-      "id": 153,
+      "id": 154,
       "fieldConfig": {
         "defaults": {
           "unit": "s",
@@ -3411,9 +3426,9 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 116
+        "y": 119
       },
-      "id": 154,
+      "id": 155,
       "fieldConfig": {
         "defaults": {
           "unit": "s",
@@ -3476,9 +3491,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 120
+        "y": 123
       },
-      "id": 155,
+      "id": 156,
       "fieldConfig": {
         "defaults": {
           "unit": "ops",
@@ -3568,9 +3583,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 120
+        "y": 123
       },
-      "id": 156,
+      "id": 157,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -3630,9 +3645,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 128
+        "y": 131
       },
-      "id": 157,
+      "id": 158,
       "panels": []
     },
     {
@@ -3646,9 +3661,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 129
+        "y": 132
       },
-      "id": 158,
+      "id": 159,
       "fieldConfig": {
         "defaults": {
           "unit": "ops",
@@ -3734,9 +3749,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 129
+        "y": 132
       },
-      "id": 159,
+      "id": 160,
       "fieldConfig": {
         "defaults": {
           "unit": "s",
@@ -3798,9 +3813,9 @@
         "h": 4,
         "w": 24,
         "x": 0,
-        "y": 137
+        "y": 140
       },
-      "id": 160,
+      "id": 161,
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -3875,9 +3890,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 141
+        "y": 144
       },
-      "id": 161,
+      "id": 162,
       "panels": []
     },
     {
@@ -3892,9 +3907,9 @@
         "h": 11,
         "w": 24,
         "x": 0,
-        "y": 142
+        "y": 145
       },
-      "id": 162,
+      "id": 163,
       "options": {
         "dedupStrategy": "none",
         "enableLogDetails": true,
