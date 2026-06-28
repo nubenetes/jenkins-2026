@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.1] - 2026-06-28
+
+Increment over v0.28.0 (post-release fixes + activation).
+
+### Added
+- **Angular Faro RUM activated end-to-end.** The gateway SPA's Faro Web SDK is **live on
+  the develop tier** (deployed image `gateway:develop-<build#>`, the served bundle posts to
+  the public `faro.<baseDomain>` endpoint) and the instrumentation was **promoted to `main`**
+  (Faro `environment` flipped to `stable`) so the stable tier gets RUM on its next build.
+
+### Fixed
+- **Cost-saving pause/resume no longer stalls.** `Day2.scale.01 Pause`'s graceful node-pool
+  resize-to-0 hung indefinitely on **CNPG Postgres PodDisruptionBudgets** (`minAvailable=1`,
+  single-instance → 0 allowed disruptions) and **autoRepair** recreating drained nodes. It now
+  disables autoscaling **and autoRepair**, force-drains with `kubectl drain --disable-eviction`
+  (DELETE, bypasses PDBs; data is on PVs), then resizes to 0; `Day2.scale.02 Resume` re-enables
+  autoscaling **and autoRepair**. See [docs/501](docs/501-PLATFORM_OPERATIONS.md).
+- **Gateway Angular build with Faro.** `@grafana/faro-*` transitive `.d.ts` reference Node types
+  (`global`/`path`) → the Angular build failed (TS2304/TS2307) until `skipLibCheck: true` was
+  added to the gateway tsconfig (app fork, develop + main).
+
 ## [v0.28.0] - 2026-06-28
 
 ### Added
@@ -170,6 +191,14 @@ All notable changes to this project will be documented in this file.
   See [`docs/502`](docs/502-MICROSERVICES_GITOPS.md).
 
 ### Fixed
+
+- **Cluster pause/resume (`Day2.scale.01`/`.02`) handle CNPG PDBs + autoRepair.** A plain
+  `gcloud container clusters resize --num-nodes 0` stalled forever: CNPG Postgres
+  PodDisruptionBudgets (`minAvailable=1` on single-instance tiers → ALLOWED DISRUPTIONS=0)
+  block the eviction-API drain, and `autoRepair` recreated the drained nodes. Pause now
+  disables autoscaling **and** autoRepair, force-drains with `kubectl drain --disable-eviction`
+  (DELETE API → bypasses PDBs; data is on the PVs), then resizes to 0; resume re-enables both.
+  Documented in [docs/501](docs/501-PLATFORM_OPERATIONS.md#pausing--resuming-the-cluster-cost-saving).
 
 - **Kubernetes probes used the aggregate health endpoint for liveness (anti-pattern).**
   All three Java probes (gitops deployment template) moved to Spring Boot's dedicated
