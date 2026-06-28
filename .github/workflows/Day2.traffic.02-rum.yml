@@ -97,10 +97,16 @@ jobs:
             # Realistic-ish Web Vitals (ms / unitless), jittered
             LCP=$((1200 + RANDOM % 2600)); FCP=$((800 + RANDOM % 1600)); TTFB=$((150 + RANDOM % 900))
             INP=$((80 + RANDOM % 350)); CLS="0.0$((RANDOM % 25))"
+            # OTLP browser span (hex traceId/spanId, ns timestamps) so the Tempo
+            # "Browser traces" panel populates too — the faro receiver forwards it.
+            TID="$(head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+            SID="$(head -c8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+            ENDN="$(date +%s)000000000"; STN="$(( $(date +%s) - 1 ))000000000"
             BODY="$(cat <<JSON
           {"meta":{"app":{"name":"angular-gateway","version":"0.0.1","environment":"${ENV_NAME}"},"sdk":{"name":"@grafana/faro-web-sdk","version":"1.0.0"},"session":{"id":"sess-gha-$i-${RANDOM}"},"browser":{"name":"${BNAME}","version":"${BVER}","os":"${BOS}","mobile":${MOBILE}},"page":{"url":"https://microservices-${ENV_NAME}.jenkins2026.nubenetes.com/"}},
           "logs":[{"message":"page loaded","level":"info","context":{},"timestamp":"${TS}"}],
-          "measurements":[{"type":"web-vitals","values":{"lcp":${LCP},"fcp":${FCP},"ttfb":${TTFB},"inp":${INP},"cls":${CLS}},"timestamp":"${TS}"}]}
+          "measurements":[{"type":"web-vitals","values":{"lcp":${LCP},"fcp":${FCP},"ttfb":${TTFB},"inp":${INP},"cls":${CLS}},"timestamp":"${TS}"}],
+          "traces":{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"angular-gateway"}},{"key":"deployment.environment","value":{"stringValue":"${ENV_NAME}"}}]},"scopeSpans":[{"scope":{"name":"@grafana/faro-web-tracing"},"spans":[{"traceId":"${TID}","spanId":"${SID}","name":"documentLoad","kind":1,"startTimeUnixNano":"${STN}","endTimeUnixNano":"${ENDN}"}]}]}]}}
           JSON
           )"
             code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST -H 'Content-Type: application/json' --data "${BODY}" http://localhost:8027/ || echo 000)"
