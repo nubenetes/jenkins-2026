@@ -93,6 +93,30 @@ controller:
       cpu: "1.5"
       memory: "3072Mi"
 
+  # JVM tuning for the controller (HotSpot, JDK 25 / Temurin). Jenkins is already
+  # "server-class" (3Gi → the JVM defaults to G1, unlike the lean microservices that
+  # fell back to SerialGC), so the wins here are heap + GC quality, not the collector:
+  #   -XX:MaxRAMPercentage=60   the default is 25% (~768Mi of the 3Gi limit); 60%
+  #                             (~1.8Gi heap) gives heavy builds headroom while leaving
+  #                             room for Metaspace (many plugins) + threads. No OTel
+  #                             -javaagent here (Jenkins uses the in-process OTel
+  #                             plugin), so it can run hotter than the microservices' 50%.
+  #   -XX:+ParallelRefProcEnabled  parallelise G1 reference processing — a long-standing
+  #                                Jenkins recommendation (ref-heavy workloads).
+  #   -XX:+DisableExplicitGC    ignore System.gc() calls from plugins that would force
+  #                             stop-the-world full GCs.
+  #   -XX:+UseStringDeduplication  G1-only; Jenkins is very String-heavy.
+  #   -XX:+ExitOnOutOfMemoryError  let Kubernetes restart the controller on OOM rather
+  #                                than leaving a wedged JVM. See docs/303.
+  # The chart still appends -Dcasc.reload.token automatically (JCasC auto-reload).
+  javaOpts: >-
+    -XX:+UseG1GC
+    -XX:MaxRAMPercentage=60.0
+    -XX:+ParallelRefProcEnabled
+    -XX:+DisableExplicitGC
+    -XX:+UseStringDeduplication
+    -XX:+ExitOnOutOfMemoryError
+
   # Environment variables consumed by the ${VAR:-default} placeholders in
   # jenkins/casc/*.yaml. This list is COMPLETE and committed (ArgoCD installs the
   # chart from git, so there is no runtime --set/--set-file overlay anymore — see
