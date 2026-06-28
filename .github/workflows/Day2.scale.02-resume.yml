@@ -6,6 +6,14 @@ name: "Day2.scale.02 Resume cluster (nodes back up)"
 # reschedule onto the new nodes and ArgoCD reconciles automatically — no rebuild,
 # no Decom/Day1. Takes a few minutes (node provisioning + pod startup).
 #
+# It then runs a post-resume recovery pass for two known races on FRESH nodes, where a
+# workload's ONE-TIME startup init runs before CoreDNS/egress are ready, fails, and never
+# retries: (1) CNPG replicas whose data dir the pause's force-drain (DELETE, bypassing
+# PDBs) left unstartable — re-cloned from the primary via pg_basebackup (replicas only,
+# never the primary); (2) ArgoCD dex, whose OIDC connector dial to the SSO provider timed
+# out ("connection refused" on :5556 at login) — restarted so it re-inits cleanly. Both
+# steps are idempotent no-ops when nothing is stuck.
+#
 # The node-count / autoscaling values below default to terraform/gke's defaults
 # (node_count=2, min=2, max=4); override the inputs if you changed them there.
 on:
@@ -95,6 +103,90 @@ jobs:
           done
           kubectl get nodes 2>&1 || true
 
+      - name: Recover post-resume init failures (CNPG replicas + dex)
+        run: |
+          set -euo pipefail
+          # On FRESH nodes a workload's one-time startup init (postmaster start, OIDC
+          # connector dial) can run BEFORE CoreDNS/egress are ready, fail, and never retry.
+          # Two known cases — heal both idempotently. Safe no-op when nothing is stuck.
+          CLUSTER="$(gcloud container clusters list --format='value(name)' | head -1)"
+          if [[ -z "${CLUSTER}" ]]; then
+            echo "::warning::No GKE cluster found — skipping recovery."
+            exit 0
+          fi
+          ZONE="$(gcloud container clusters list --filter="name=${CLUSTER}" --format='value(location)' | head -1)"
+          gcloud components install gke-gcloud-auth-plugin --quiet
+          gcloud container clusters get-credentials "${CLUSTER}" --location "${ZONE}" --project "${{ secrets.GCP_PROJECT_ID }}"
+
+          # ---- 1. CNPG: re-clone stuck REPLICAS ---------------------------------
+          # The pause force-drains nodes (kubectl drain --disable-eviction = DELETE, which
+          # bypasses PDBs), which can leave a replica's data dir in a state the instance
+          # manager can't start postgres from (startup probe HTTP 500 forever). Fix =
+          # re-clone: delete the replica's PVCs (data + WAL) + pod; the operator
+          # re-bootstraps it via pg_basebackup from the primary. Done ONLY for replicas —
+          # the current primary is NEVER auto-recreated (it holds the authoritative data).
+          if kubectl get crd clusters.postgresql.cnpg.io >/dev/null 2>&1; then
+            echo "::group::CNPG replica recovery"
+            # Grace window first so a replica that's merely still starting (not stuck) isn't
+            # needlessly re-cloned. Exit early the moment every cluster is at desired ready.
+            GRACE=240
+            echo "Grace ${GRACE}s for CNPG to self-heal before intervening..."
+            for _ in $(seq 1 $((GRACE / 15))); do
+              pending="$(kubectl get clusters.postgresql.cnpg.io -A \
+                -o jsonpath='{range .items[*]}{.status.readyInstances}/{.status.instances};{end}' 2>/dev/null \
+                | tr ';' '\n' | awk -F/ 'NF==2 && $1!=$2' | wc -l)"
+              [[ "${pending:-0}" -eq 0 ]] && { echo "All CNPG clusters healthy."; break; }
+              sleep 15
+            done
+            # Re-clone every still-not-Ready instance that is NOT its cluster's primary.
+            recloned=0
+            while read -r NS POD CL READY; do
+              [[ -z "${POD:-}" || "${READY}" == "True" ]] && continue
+              PRIMARY="$(kubectl get clusters.postgresql.cnpg.io "${CL}" -n "${NS}" -o jsonpath='{.status.currentPrimary}' 2>/dev/null || true)"
+              if [[ "${POD}" == "${PRIMARY}" ]]; then
+                echo "::warning::${NS}/${POD} is the PRIMARY and not Ready — NOT auto-recreating (data risk). Investigate manually."
+                continue
+              fi
+              echo "Re-cloning stuck replica ${NS}/${POD} (delete PVCs + pod, operator re-bootstraps)..."
+              kubectl delete pvc "${POD}" "${POD}-wal" -n "${NS}" --ignore-not-found --wait=false || true
+              kubectl delete pod "${POD}" -n "${NS}" --ignore-not-found --wait=false || true
+              recloned=$((recloned + 1))
+            done < <(kubectl get pods -A -l cnpg.io/podRole=instance \
+              -o jsonpath='{range .items[*]}{.metadata.namespace}{" "}{.metadata.name}{" "}{.metadata.labels.cnpg\.io/cluster}{" "}{range .status.conditions[?(@.type=="Ready")]}{.status}{end}{"\n"}{end}' 2>/dev/null || true)
+            if [[ "${recloned}" -gt 0 ]]; then
+              echo "Re-cloned ${recloned} replica(s); waiting for clusters to converge..."
+              for _ in $(seq 1 40); do
+                pending="$(kubectl get clusters.postgresql.cnpg.io -A \
+                  -o jsonpath='{range .items[*]}{.status.readyInstances}/{.status.instances};{end}' 2>/dev/null \
+                  | tr ';' '\n' | awk -F/ 'NF==2 && $1!=$2' | wc -l)"
+                [[ "${pending:-0}" -eq 0 ]] && { echo "All CNPG clusters healthy."; break; }
+                sleep 15
+              done
+            else
+              echo "No stuck replicas — nothing to re-clone."
+            fi
+            kubectl get clusters.postgresql.cnpg.io -A 2>&1 || true
+            echo "::endgroup::"
+          fi
+
+          # ---- 2. ArgoCD dex: restart if its OIDC connector init failed ----------
+          # dex dials the SSO OIDC provider ONCE at startup; if egress/DNS wasn't ready it
+          # logs "failed to open all connectors" and never retries, so SSO login gets
+          # "connection refused" on :5556. dex is stateless (storage=memory), so a restart
+          # re-inits cleanly. Restart ONLY when the failure is actually in its log.
+          if kubectl get deploy argocd-dex-server -n argocd >/dev/null 2>&1; then
+            echo "::group::ArgoCD dex recovery"
+            if kubectl logs -n argocd deploy/argocd-dex-server --tail=50 2>/dev/null \
+                 | grep -qE "failed to open all connectors|failed to initialize server"; then
+              echo "dex OIDC connector init failed — restarting..."
+              kubectl rollout restart deployment argocd-dex-server -n argocd
+              kubectl rollout status deployment argocd-dex-server -n argocd --timeout=120s || true
+            else
+              echo "dex healthy — no restart needed."
+            fi
+            echo "::endgroup::"
+          fi
+
       - name: Summary
         if: always()
         run: |
@@ -104,4 +196,8 @@ jobs:
             echo "Node pools scaled back to \`${{ inputs.num_nodes }}\` (autoscale ${{ inputs.min_nodes }}–${{ inputs.max_nodes }})."
             echo "Pods reschedule onto the new nodes and ArgoCD reconciles automatically —"
             echo "give the apps a few minutes to become Ready. Nothing was rebuilt."
+            echo
+            echo "Post-resume recovery ran: re-cloned any CNPG replica left unstartable by the"
+            echo "pause's force-drain, and restarted ArgoCD dex if its OIDC connector init failed"
+            echo "(both idempotent — no-ops when nothing was stuck)."
           } >> "${GITHUB_STEP_SUMMARY}"

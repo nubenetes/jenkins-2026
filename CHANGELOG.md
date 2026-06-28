@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.2] - 2026-06-28
+
+Increment over v0.28.1 (resume-side recovery).
+
+### Fixed
+- **Resume now auto-heals two one-time-init races on fresh nodes.** After `Day2.scale.02 Resume`
+  brings new nodes up, CoreDNS/egress is briefly still converging, so a workload whose startup
+  init runs once and never retries can fail and stay broken. Two cases were hit and are now
+  recovered automatically by a post-resume step: **(1)** CNPG **replicas** the pause's
+  force-drain (`--disable-eviction` DELETE) left unstartable (startup probe HTTP 500 forever) are
+  **re-cloned** from the primary via `pg_basebackup` (replicas only — the primary is never
+  auto-recreated); **(2)** **ArgoCD dex**, whose OIDC connector dial to the SSO provider timed out
+  on DNS (`connection refused` on `:5556` at login, even though the pod reports `Ready`), is
+  **restarted** so it re-inits cleanly. Both are idempotent no-ops on a clean resume. See
+  [docs/501](docs/501-PLATFORM_OPERATIONS.md#the-resume-side-gotcha-one-time-init-races-dns-on-fresh-nodes-real-incident).
+
 ## [v0.28.1] - 2026-06-28
 
 Increment over v0.28.0 (post-release fixes + activation).
