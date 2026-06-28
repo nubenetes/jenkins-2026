@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.28] - 2026-06-28
+
+Increment over v0.28.27 (oss: heal missing CNPG PodMonitors on obs-mode switch).
+
+### Fixed
+- **OSS Grafana's PostgreSQL dashboard missed a tier (e.g. `microservices`/stable) after switching
+  `observability.mode` to `oss` on a running cluster.** In oss mode the in-cluster Prometheus scrapes
+  CNPG metrics via the **PodMonitor** the CNPG operator creates per Cluster — but only when the
+  PodMonitor CRD exists *at reconcile time*. A Cluster created earlier under grafana-cloud/managed-*
+  (no in-cluster prometheus-operator → no CRD) was left without a PodMonitor and the operator never
+  retried, so that tier's Postgres never appeared in Grafana (works on grafana-cloud, where the OTel
+  collector scrapes the `postgres-*:9187` pods directly, no PodMonitor needed). `scripts/03-observability.sh`
+  (oss) now nudges the CNPG operator to reconcile after kube-prometheus-stack provides the CRD —
+  guarded + idempotent (only restarts when a CNPG-Cluster namespace is actually missing its PodMonitor;
+  no-op on fresh deploys). Imperative by design: forcing an existing operator to re-reconcile is an
+  operation, not declarative state.
+
 ## [v0.28.27] - 2026-06-28
 
 Increment over v0.28.26 (fix OSS Grafana stuck on the dashboards ConfigMap).
