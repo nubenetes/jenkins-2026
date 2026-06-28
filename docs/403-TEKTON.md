@@ -864,6 +864,13 @@ TaskRun controller tracing is a deferred follow-up — not wired today.) See
 
 [← Previous: 402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) | [🏠 Home](../README.md) | [→ Next: 501. Platform Operations](./501-PLATFORM_OPERATIONS.md)
 
+## Build speed
+
+Tekton's checkout is already shallow (`--depth 1` in every clone task — `fetch-source`, `gitops-deploy`, `k6-smoke`, `trivy-iac`), and there is no "agent scheduling / containerCap" concept (each `TaskRun` **is** a Pod; parallelism = node capacity). The two gaps vs the Jenkins agents, now closed:
+
+- **Node-local Maven/npm caches** — `maven-build-test` and `build-push-image` mount hostPath caches (`/tmp/tekton-maven-cache` → `/root/.m2`, `/tmp/tekton-npm-cache` → `/root/.npm`), mirroring the Jenkins agents' `/tmp/jenkins-*-cache`. Node-local (not a PVC) → no RWX/concurrency cost; deps survive across PipelineRuns instead of being re-downloaded every build.
+- **Task image pre-pull** — `tekton/agent-image-prepull.yaml` (DaemonSet in `tekton-pipelines`, applied by `04-tekton.sh`) pre-pulls the task images (maven · kaniko · **codeql** · semgrep · trivy · k6 · …) so a `TaskRun` starts without a cold pull — the analogue of the Jenkins prepull DaemonSet.
+
 ---
 
 *403. Tekton — jenkins-2026*

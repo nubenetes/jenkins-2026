@@ -256,6 +256,19 @@ The `EXIT` trap should still have run `terraform destroy`, but to be sure no bil
 
 [← Previous: 901. Local Development](./901-LOCAL_DEVELOPMENT.md) | [🏠 Home](../README.md)
 
+## Angular build fails after adding Grafana Faro (`TS2304` / `TS2307`)
+
+**Symptom.** `gateway-develop` (any build of the Faro-instrumented gateway) fails in `npm run webapp:build` (frontend-maven-plugin):
+
+```
+error TS2304: Cannot find name 'global'.     (@grafana/faro-core)
+error TS2307: Cannot find module 'path'.     (@opentelemetry/instrumentation, via @grafana/faro-web-tracing)
+```
+
+**Cause.** The Faro Web SDK + Web Tracing pull transitive `.d.ts` definitions that reference **Node.js** globals/modules (`global`, `path`), but the gateway's Angular `tsconfig.json` ships `types: []` and no `skipLibCheck`, so TypeScript type-checks those library `.d.ts` and fails — they are browser-safe at *runtime*; only the type refs are Node-y.
+
+**Fix.** Add `"skipLibCheck": true` to the gateway `tsconfig.json` `compilerOptions` (it only skips type-checking `node_modules` `.d.ts`, not your code). Applied on the gateway **develop** branch alongside the Faro instrumentation.
+
 ---
 
 *902. Troubleshooting — jenkins-2026*
