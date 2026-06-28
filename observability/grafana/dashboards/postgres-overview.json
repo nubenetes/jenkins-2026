@@ -2719,7 +2719,7 @@
     },
     {
       "type": "stat",
-      "title": "WAL receiver up (replicas)",
+      "title": "Replica WAL receivers up",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -2755,12 +2755,8 @@
               "type": "value",
               "options": {
                 "0": {
-                  "text": "no replica / down",
+                  "text": "no replicas (single-instance)",
                   "color": "text"
-                },
-                "1": {
-                  "text": "up",
-                  "color": "green"
                 }
               }
             }
@@ -2789,13 +2785,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "min(cnpg_pg_replication_is_wal_receiver_up{namespace=\"$namespace\", pod=~\"$pod\"}) or vector(0)",
+          "expr": "sum(cnpg_pg_replication_is_wal_receiver_up{namespace=\"$namespace\", pod=~\"$pod\"}) or vector(0)",
           "refId": "A",
           "range": false,
           "instant": true,
           "legendFormat": ""
         }
-      ]
+      ],
+      "description": "Count of replicas with their WAL receiver streaming. 0 on single-instance tiers (e.g. develop). Uses sum() so the primary (which has no receiver) doesn't mask healthy replicas."
     },
     {
       "type": "stat",

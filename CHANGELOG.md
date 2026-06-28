@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.9] - 2026-06-28
+
+Increment over v0.28.8 (postgres dashboard validation fix).
+
+### Fixed
+- **Postgres dashboard "WAL receiver up" always showed down.** It used
+  `min(cnpg_pg_replication_is_wal_receiver_up)`, which includes the primary (whose receiver is
+  always 0) and so masked healthy replicas. Changed to `sum(...)` → "Replica WAL receivers up"
+  shows the count actually streaming (4 on stable; 0 on develop, mapped to "no replicas
+  (single-instance)"). Full validation under live k6 load confirms **every panel returns series
+  on both the stable and develop tiers** (no "No data"); remaining zeros are healthy state
+  (0 replication lag, 0 deadlocks, 100% cache → 0 disk-read time) or by-design on the lean
+  develop tier (single-instance, no backups).
+
 ## [v0.28.8] - 2026-06-28
 
 Increment over v0.28.7 (fix CNPG WAL archiving / backups).
