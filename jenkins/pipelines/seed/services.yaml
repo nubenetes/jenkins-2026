@@ -5,14 +5,16 @@ namespaces:
   stable: microservices
   develop: microservices-develop
 
-# App SOURCE branch the pipeline checks out and builds. The upstream JHipster
-# repos have no develop branch, so 'develop' also builds from 'main' (same image)
-# - the develop tier differs only in deploy namespace + gitops values-develop.yaml.
-# (The gitops-config branch the develop ArgoCD app tracks is set separately via
-# config.yaml microservices.branches.develop.)
+# App SOURCE branch the pipeline checks out and builds. The nubenetes forks now
+# carry a real 'develop' branch (created off main), so the develop tier builds
+# from the app's 'develop' branch — true branch-based promotion (develop code →
+# develop env, promote to main → stable env), not just a different deploy of the
+# same main image. The develop tier still also differs in deploy namespace +
+# gitops values-develop.yaml. (The gitops-config branch the develop ArgoCD app
+# tracks is set separately via config.yaml microservices.branches.develop=develop.)
 branches:
   stable: main
-  develop: main
+  develop: develop
 
 services:
   # Forked into the nubenetes org so we own them (PaC needs webhook/App access).

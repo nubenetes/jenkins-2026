@@ -206,12 +206,12 @@ org so the project **owns** them. Ownership is required to:
 [`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml) points the
 pipelines at these forks (not at `jhipster/*`).
 
-> **Branches.** The forks currently track **`main` only** (the upstream apps ship no
-> `develop` branch), so the `develop` tier builds the *same* image as `stable` and differs
-> only in deploy namespace + `values-develop.yaml`. Adding a real `develop` branch to each
-> fork (and flipping `services.yaml` `branches.develop` → `develop`) would make the develop
-> tier exercise **true branch-based app-code promotion** (a faithful dev→prod flow), at the
-> cost of keeping two app branches in sync. See [402](./402-PIPELINES_AS_CODE.md).
+> **Branches.** The nubenetes forks now carry a real **`develop`** branch (created off
+> `main`; the original upstream `jhipster/*` repos have only `main`), and `services.yaml`
+> `branches.develop` is set to **`develop`** — so the develop tier exercises **true
+> branch-based app-code promotion** (develop code → develop env, promote to `main` →
+> stable env), not just a different deploy of the same `main` image. Keep the two app
+> branches in sync. See [402](./402-PIPELINES_AS_CODE.md).
 
 ---
 
