@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.34] - 2026-06-29
+
+Increment over v0.28.33 (stop Tekton PipelineRuns from dragging the ArgoCD app to Progressing).
+
+### Fixed
+- **`tekton-pipeline-as-code` ArgoCD app stuck "Progressing".** PaC-created PipelineRuns inherit the
+  app's tracking label, so ArgoCD evaluated their health — a Running run → Progressing, a Failed run
+  → Degraded — keeping the whole app perpetually non-Healthy even though the pipeline DEFINITIONS
+  (Pipeline/Task/Triggers/Repository) were fine. Added ArgoCD health customizations
+  (`resource.customizations.health.tekton.dev_PipelineRun` / `_TaskRun` → Healthy) so run state is
+  tracked in the Tekton Dashboard, not ArgoCD — same pattern already used for CNPG/OTel CRs.
+
 ## [v0.28.33] - 2026-06-29
 
 Increment over v0.28.32 (Tekton: gate develop seed runs behind the develop-track flag, like Jenkins).

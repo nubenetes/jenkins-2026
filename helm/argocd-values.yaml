@@ -132,3 +132,19 @@ configs:
       hs.status = "Healthy"
       hs.message = "Instrumentation configured"
       return hs
+    # Tekton PipelineRun/TaskRun are ephemeral CI JOBS, not desired state. The
+    # tekton GitOps app's concern is the pipeline DEFINITIONS (Pipeline/Task/Triggers/
+    # Repository); a run's Running (Progressing) / Failed (Degraded) status — which the
+    # PaC-created runs inherit the app's tracking label from — would otherwise drag the
+    # whole app to Progressing/Degraded forever. Run status lives in the Tekton
+    # Dashboard, so report runs as Healthy from ArgoCD's point of view.
+    resource.customizations.health.tekton.dev_PipelineRun: |
+      local hs = {}
+      hs.status = "Healthy"
+      hs.message = "PipelineRun status is tracked in Tekton, not ArgoCD"
+      return hs
+    resource.customizations.health.tekton.dev_TaskRun: |
+      local hs = {}
+      hs.status = "Healthy"
+      hs.message = "TaskRun status is tracked in Tekton, not ArgoCD"
+      return hs
