@@ -204,7 +204,21 @@ spec:
             stage('Checkout Microservices source') {
                 steps {
                     dir('microservices-src') {
-                        git url: cfg.gitRepoUrl, branch: cfg.gitBranch
+                        // Shallow, single-branch, no-tags clone. The plain `git` step
+                        // fetched ALL history + every branch ref + tags of the (large
+                        // JHipster) app repo — the slow part of "Checkout". depth:1 +
+                        // noTags + single branch is dramatically faster (we only build
+                        // the tip of one branch). Not the agent scheduling (pods are
+                        // warmed by the prepull DaemonSet + idleMinutes reuse).
+                        checkout([
+                            $class: 'GitSCM',
+                            branches: [[name: "*/${cfg.gitBranch}"]],
+                            userRemoteConfigs: [[url: cfg.gitRepoUrl]],
+                            extensions: [
+                                [$class: 'CloneOption', shallow: true, depth: 1, noTags: true, honorRefspec: true],
+                                [$class: 'CheckoutOption', timeout: 20],
+                            ],
+                        ])
                         script {
                             if (cfg.serviceName == 'gateway') {
                                 sh """
