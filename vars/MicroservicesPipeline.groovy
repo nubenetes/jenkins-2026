@@ -31,9 +31,17 @@ spec:
       env:
         - name: DOCKER_HOST
           value: tcp://localhost:2375
+      # Sized for the JHipster build (microservicesBuild.groovy runs `mvnw -T 4 clean verify`):
+      # the Maven JVM (MAVEN_OPTS -Xmx) PLUS up to 4 parallel module builds, each forking a
+      # test JVM (-Xmx1536m). At 4Gi this overcommitted → OOM/GC-thrash → slow builds. 8Gi
+      # gives headroom for -T 4 + forked tests; 6 CPU lets the 4 threads + scanners run.
       resources:
-        requests: {cpu: '1.0', memory: 2.0Gi}
-        limits: {cpu: '4', memory: 4.0Gi}
+        requests: {cpu: '2', memory: 4.0Gi}
+        limits: {cpu: '6', memory: 8.0Gi}
+      # In-Place Pod Resize (K8s 1.33+ GA; cluster 1.35) — grow under load without a restart.
+      resizePolicy:
+        - {resourceName: cpu, restartPolicy: NotRequired}
+        - {resourceName: memory, restartPolicy: NotRequired}
       volumeMounts:
         - name: maven-cache
           mountPath: /root/.m2

@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.16] - 2026-06-28
+
+Increment over v0.28.15 (right-size the ACTUAL microservices build agent + dead-code notice).
+
+### Changed
+- **The real microservices build agent (`vars/MicroservicesPipeline.groovy`) got the resource
+  bump.** v0.28.15 sized the root `Jenkinsfile` (the standalone DevSecOps demo); the gateway/
+  jhipster builds actually run via the **declarative shared-library** `MicroservicesPipeline`
+  (seed jobs call `MicroservicesPipeline(...)`). Its `maven` container went req `1 CPU/2Gi`,
+  lim `4 CPU/4Gi` → req **`2 CPU/4Gi`**, lim **`6 CPU/8Gi`** + **In-Place Pod Resize**
+  (`resizePolicy`). Root cause of slow builds: the JHipster Maven build runs the Angular/Webpack
+  frontend in-process (`NODE_OPTIONS=3072m` ≈ 3Gi) alongside the Maven JVM (2Gi) → ~5Gi peak in a
+  4Gi container = OOM/thrash in the frontend phase. 8Gi fixes it. `MAVEN_OPTS` left at `-Xmx2048m`
+  (correct — raising it would re-overcommit against the node build). Already-modern bits kept:
+  declarative-in-shared-library, `idleMinutes 5` warm-pod reuse, `mvnw -T 4`, hostPath `.m2`/npm
+  caches, the agent-image-prepull DaemonSet.
+
+### Docs
+- **`jcasc-modern-agents.yaml` marked NOT WIRED** with a header explaining it's reference-only
+  (nothing loads it), that the real agents are the inline pod specs in the pipelines, and where
+  the In-Place Resize idea is actually applied — to stop it being mistaken for active config.
+
 ## [v0.28.15] - 2026-06-28
 
 Increment over v0.28.14 (faster Jenkins build agent).

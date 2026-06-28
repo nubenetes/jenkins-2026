@@ -1,3 +1,19 @@
+# ⚠️ NOT WIRED — REFERENCE / EXPERIMENT ONLY. DO NOT ASSUME THIS IS ACTIVE.
+# ---------------------------------------------------------------------------------------------
+# This file is NOT loaded by anything. scripts/04-jenkins.sh only mounts jcasc-base / jcasc-otel
+# / jcasc-seed-job (see helm/jenkins/values-common.yaml). The REAL build agents are defined
+# inline in the pipelines that use them:
+#   - Microservices build/deploy → vars/MicroservicesPipeline.groovy (declarative shared lib;
+#     maven container req 2/4Gi · lim 6/8Gi + resizePolicy In-Place + idleMinutes 5).
+#   - Seed job                   → jenkins/pipelines/seed/Jenkinsfile.seed
+#   - DevSecOps demo             → ./Jenkinsfile
+# The k8s CLOUD itself (name/namespace/containerCap/websocket + a minimal `default` jnlp
+# template) lives in jcasc-base.yaml; pipelines run their inline pods ON that cloud.
+# Kept only as a worked example of the In-Place Pod Vertical Scaling (resizePolicy) idea, which
+# is already applied where it matters (the MicroservicesPipeline maven container). If you ever
+# consolidate many pipelines onto one shared heavy agent, promote that template here and have the
+# pipelines `inheritFrom` it — until then, edit the pipeline pod specs above, not this file.
+#
 # Jenkins Configuration as Code (JCasC) Snippet for In-Place Pod Vertical Scaling (Kubernetes v1.35+)
 # Ephemeral build agents dynamically scale up their limits under peak build stress without restarts.
 jenkins:
