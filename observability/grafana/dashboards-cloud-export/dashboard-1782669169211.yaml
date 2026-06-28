@@ -1,0 +1,3049 @@
+apiVersion: dashboard.grafana.app/v2
+kind: Dashboard
+metadata:
+  name: innrq4f
+  namespace: stacks-1705996
+  uid: 404c0628-8c29-4690-9a61-86a27c8bc7a3
+  resourceVersion: '2071289794654110128'
+  generation: 2
+  creationTimestamp: '2026-06-28T16:02:35Z'
+  labels:
+    grafana.app/deprecatedInternalID: '4110769825402880'
+  annotations:
+    grafana.app/createdBy: user:bfqff5hednbpcf
+    grafana.app/saved-from-ui: Grafana Cloud
+    grafana.app/updatedBy: user:bfqff5hednbpcf
+    grafana.app/updatedTimestamp: '2026-06-28T17:49:04Z'
+spec:
+  annotations:
+    - kind: AnnotationQuery
+      spec:
+        query:
+          kind: DataQuery
+          group: grafana
+          version: v0
+          datasource:
+            name: '-- Grafana --'
+          spec: {}
+        enable: true
+        hide: true
+        iconColor: rgba(0, 211, 255, 1)
+        name: Annotations & Alerts
+        builtIn: true
+  cursorSync: Crosshair
+  description: >-
+    Deep-dive JVM telemetry for all Java microservices and the Jenkins
+    controller, instrumented via the OpenTelemetry Java agent (zero-code). Use
+    this board to diagnose CPU saturation, heap pressure, GC overhead, thread
+    contention, and HTTP latency degradation — with thresholds and legends
+    pre-tuned for on-call triage.
+  editable: true
+  elements:
+    panel-10:
+      kind: Panel
+      spec:
+        id: 10
+        title: JVM Thread State
+        description: >-
+          Thread states stacked over time — runnable / waiting / timed_waiting /
+          blocked. A growing **blocked** band = lock contention; a growing
+          **waiting** band = thread-pool or queue starvation.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        sum by (service_name,
+                        jvm_thread_state)(jvm_thread_count{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"})
+                      legendFormat: '{{service_name}} {{jvm_thread_state}}'
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - last
+                  - max
+                displayMode: list
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: none
+            fieldConfig:
+              defaults:
+                unit: short
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 15
+                  gradientMode: none
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: linear
+                  lineWidth: 1
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: auto
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: normal
+                  thresholdsStyle:
+                    mode: 'off'
+              overrides: []
+    panel-1028:
+      kind: Panel
+      spec:
+        id: 1028
+        title: Errors & Warnings — selected service
+        description: >-
+          App logs for $service_name filtered by $level (default error|warn).
+          Click a line's trace_id to jump to the trace (logs→traces via the Loki
+          datasource's derived fields).
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      expr: >-
+                        {k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"} |
+                        detected_level=~"${level:pipe}" | json | line_format "{{
+                        if .message }}{{ .message }}{{ else if .msg }}{{ .msg
+                        }}{{ else }}{{ __line__ }}{{ end }}"
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: logs
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              dedupStrategy: none
+              enableInfiniteScrolling: false
+              enableLogDetails: true
+              prettifyLogMessage: false
+              showControls: false
+              showFieldSelector: false
+              showLabels: false
+              showLevel: true
+              showLogAttributes: true
+              showTime: true
+              sortOrder: Descending
+              timestampResolution: ms
+              unwrappedColumns: false
+              wrapLogMessage: true
+            fieldConfig:
+              defaults: {}
+              overrides: []
+    panel-1029:
+      kind: Panel
+      spec:
+        id: 1029
+        title: Traces — selected service
+        description: >-
+          Recent traces for $service_name. Click a Trace ID → trace view, which
+          links to logs (tracesToLogs) and metrics (tracesToMetrics) via the
+          Tempo datasource config.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: tempo
+                    version: v0
+                    datasource:
+                      name: grafanacloud-traces
+                    spec:
+                      limit: 20
+                      query: >-
+                        { resource.service.name =~ "$service_name" &&
+                        resource.k8s.namespace.name =~ "$namespace" }
+                      queryType: traceql
+                      tableType: traces
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: table
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              cellHeight: sm
+              showHeader: true
+            fieldConfig:
+              defaults:
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 80
+                      color: red
+                custom:
+                  align: auto
+                  cellOptions:
+                    type: auto
+                  footer:
+                    reducers: []
+                  inspect: false
+              overrides: []
+    panel-1030:
+      kind: Panel
+      spec:
+        id: 1030
+        title: JVM / runtime context (name · implementation · version · OTel agent)
+        description: >-
+          Per-service runtime context from target_info (resource attributes):
+          JVM name/vendor/version, OS/arch, exec path, command args, OTel agent
+          (distro) version.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        target_info{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"}
+                      format: table
+                      instant: true
+                  refId: A
+                  hidden: false
+            transformations:
+              - kind: Transformation
+                group: labelsToFields
+                spec:
+                  options: {}
+              - kind: Transformation
+                group: organize
+                spec:
+                  options:
+                    excludeByName:
+                      Time: true
+                      Value: true
+                      __name__: true
+                      instance: true
+                      job: true
+                      process_pid: true
+                      service_instance_id: true
+                    renameByName:
+                      host_arch: Arch
+                      k8s_namespace_name: Tier (ns)
+                      os_description: OS
+                      process_command_args: Command args
+                      process_executable_path: Java path
+                      process_runtime_description: JVM implementation
+                      process_runtime_name: JVM runtime
+                      process_runtime_version: JVM version
+                      service_name: Service
+                      service_version: App version
+                      telemetry_distro_name: OTel distro
+                      telemetry_distro_version: OTel agent ver
+                      telemetry_sdk_version: OTel SDK ver
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: table
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              cellHeight: sm
+              showHeader: true
+            fieldConfig:
+              defaults:
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 80
+                      color: red
+                custom:
+                  align: auto
+                  cellOptions:
+                    type: auto
+                  filterable: true
+                  footer:
+                    reducers: []
+                  inspect: false
+              overrides: []
+    panel-1031:
+      kind: Panel
+      spec:
+        id: 1031
+        title: ''
+        description: ''
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries: []
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: text
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              code:
+                language: plaintext
+                showLineNumbers: false
+                showMiniMap: false
+              content: >-
+                ## CI-CD JVM Internals — how to read & use this board
+
+
+                Deep-dive JVM telemetry for all Java microservices and the
+                Jenkins controller, exported via the **OpenTelemetry Java
+                agent** (zero-code instrumentation). All metrics follow the
+                [OpenTelemetry JVM Semantic
+                Conventions](https://opentelemetry.io/docs/specs/semconv/runtime/jvm-metrics/).
+
+
+                ---
+
+
+                ### What each section answers
+
+
+                | Section | Key question |
+
+                |---|---|
+
+                | **Overview** | Is anything in the red right now? CPU, heap %,
+                live threads, and GC overhead at a glance |
+
+                | **Garbage Collection** | How much time is the JVM spending in
+                GC? Are pauses bounded? Which collector (SerialGC vs G1) is
+                running? |
+
+                | **Heap & Non-Heap** | How close is heap to its maximum? Is
+                Metaspace or CodeHeap growing without bound? |
+
+                | **Memory Pools** | Which pool is filling — Eden, Tenured, or
+                Metaspace? Is the live set **after GC** growing (leak
+                indicator)? |
+
+                | **Buffers & advanced** | Are direct/mapped NIO buffers
+                accumulating off-heap? (Requires experimental OTel telemetry.) |
+
+                | **HTTP response times** | Is GC pressure causing latency
+                spikes? Which status codes drive the error rate? |
+
+                | **Logs & Traces** | What errors are firing, and what do recent
+                traces look like for the selected service? |
+
+
+                ---
+
+
+                ### On-call triage flow
+
+
+                1. **Overview row** — scan the 6 KPI cards. Anything red? Start
+                there.
+
+                2. **Heap Used % > 80 %** → open *JVM Heap* and *Memory Pool —
+                live set after GC*. A rising Tenured/Old-gen floor between
+                collections = slow memory leak.
+
+                3. **GC Time /s > 0.1** → check *GC Used Time* and *GC Pause
+                p95/p99*. Pauses > 200 ms will show as latency spikes in the
+                HTTP section.
+
+                4. **Latency spike** → align *HTTP latency p50/p95/p99* and *GC
+                Pause p95/p99* timestamps. If they coincide, GC is the root
+                cause; consider tuning heap size or switching to G1.
+
+                5. **High thread count or blocked threads** → *JVM Thread State*
+                (stacked view). A growing `blocked` band = lock contention; a
+                growing `waiting` band = thread-pool or queue starvation.
+
+                6. **5xx rate > 1 %** → jump to *Errors & Warnings* (Loki) and
+                *Traces* (Tempo) for the affected service.
+
+
+                ---
+
+
+                ### Threshold reference
+
+
+                Threshold lines are drawn directly on the relevant charts —
+                yellow = warning, red = critical.
+
+
+                | Signal | ⚠️ Yellow | 🔴 Red |
+
+                |---|---|---|
+
+                | CPU utilization (process & system) | 70 % | 90 % |
+
+                | GC Used Time | 0.1 s/s | 0.3 s/s |
+
+                | GC Pause p95/p99 | 200 ms | 500 ms |
+
+                | HTTP latency | 500 ms | 1 000 ms |
+
+                | Heap Used % (gauge) | 80 % | 92 % |
+
+                | HTTP 5xx error rate | 1 % | 5 % |
+
+                | Live Threads (stat) | 200 | 500 |
+
+
+                > **Note:** Heap Used (bytes) and Total Memory thresholds are
+                rough defaults (512 MB / 1.5 GB and 1 GB / 2.5 GB). Adjust them
+                to your actual `-Xmx` and container memory limits for accurate
+                alerting.
+              mode: markdown
+            fieldConfig:
+              defaults: {}
+              overrides: []
+    panel-11:
+      kind: Panel
+      spec:
+        id: 11
+        title: JVM CPU Used
+        description: >-
+          Process CPU utilization ratio over time. **Threshold lines at 70 %
+          (yellow) and 90 % (red)**. Sustained > 70 % warrants tuning; > 90 % =
+          CPU-bound, consider scaling or profiling.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        max by
+                        (service_name)(jvm_cpu_recent_utilization_ratio{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"})
+                      legendFormat: '{{service_name}} util'
+                  refId: A
+                  hidden: false
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        sum by
+                        (service_name)(rate(jvm_cpu_time_seconds_total{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"}[$__rate_interval]))
+                      legendFormat: '{{service_name}} cores'
+                  refId: B
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - mean
+                  - max
+                displayMode: list
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: none
+            fieldConfig:
+              defaults:
+                unit: percentunit
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 0.7
+                      color: yellow
+                    - value: 0.9
+                      color: red
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 15
+                  gradientMode: none
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: linear
+                  lineWidth: 1
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: auto
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: none
+                  thresholdsStyle:
+                    mode: line
+              overrides: []
+    panel-13:
+      kind: Panel
+      spec:
+        id: 13
+        title: GC Used Time (per collector)
+        description: >-
+          GC time consumed per second by collector (SerialGC Copy/MarkSweep vs
+          G1 Young/Old). **Threshold lines at 0.1 s/s (yellow) and 0.3 s/s
+          (red)**. Approaching 1.0 s/s = GC-bound; increase heap or switch to
+          G1/ZGC.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        sum by (service_name,
+                        jvm_gc_name)(rate(jvm_gc_duration_seconds_sum{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"}[$__rate_interval]))
+                      legendFormat: '{{service_name}} {{jvm_gc_name}}'
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - mean
+                  - max
+                  - last
+                displayMode: list
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: none
+            fieldConfig:
+              defaults:
+                unit: s
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 0.1
+                      color: yellow
+                    - value: 0.3
+                      color: red
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 15
+                  gradientMode: none
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: linear
+                  lineWidth: 1
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: auto
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: none
+                  thresholdsStyle:
+                    mode: line
+              overrides: []
+    panel-14:
+      kind: Panel
+      spec:
+        id: 14
+        title: GC Active (frequency)
+        description: Collections/s by collector.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        sum by (service_name,
+                        jvm_gc_name)(rate(jvm_gc_duration_seconds_count{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"}[$__rate_interval]))
+                      legendFormat: '{{service_name}} {{jvm_gc_name}}'
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - last
+                  - max
+                displayMode: list
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: none
+            fieldConfig:
+              defaults:
+                unit: ops
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 15
+                  gradientMode: none
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: linear
+                  lineWidth: 1
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: auto
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: none
+                  thresholdsStyle:
+                    mode: 'off'
+              overrides: []
+    panel-15:
+      kind: Panel
+      spec:
+        id: 15
+        title: GC Pause p95 / p99
+        description: >-
+          Stop-the-world pause distribution (p95 / p99) in **ms**. **Yellow ≥
+          200 ms · Red ≥ 500 ms**. G1 keeps pauses bounded vs SerialGC.
+          Correlate spikes with the *HTTP latency* panel — they will appear at
+          the same timestamp.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        histogram_quantile(0.95, sum by (le, service_name,
+                        jvm_gc_name)(rate(jvm_gc_duration_seconds_bucket{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"}[$__rate_interval])))
+                      legendFormat: '{{service_name}} {{jvm_gc_name}} p95'
+                  refId: A
+                  hidden: false
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        histogram_quantile(0.99, sum by (le, service_name,
+                        jvm_gc_name)(rate(jvm_gc_duration_seconds_bucket{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"}[$__rate_interval])))
+                      legendFormat: '{{service_name}} {{jvm_gc_name}} p99'
+                  refId: B
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - mean
+                  - max
+                  - last
+                displayMode: list
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: none
+            fieldConfig:
+              defaults:
+                unit: ms
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 200
+                      color: yellow
+                    - value: 500
+                      color: red
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 15
+                  gradientMode: none
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: linear
+                  lineWidth: 1
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: auto
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: none
+                  thresholdsStyle:
+                    mode: line
+              overrides: []
+    panel-17:
+      kind: Panel
+      spec:
+        id: 17
+        title: JVM Heap
+        description: >-
+          Heap memory over time: used vs committed vs max. The gap between
+          committed and max is headroom before OOM. A used line approaching max
+          without GC relief = heap exhaustion risk.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        sum by
+                        (service_name)(jvm_memory_used_bytes{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name", jvm_memory_type="heap"})
+                      legendFormat: '{{service_name}} used'
+                  refId: A
+                  hidden: false
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        sum by
+                        (service_name)(jvm_memory_committed_bytes{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name", jvm_memory_type="heap"})
+                      legendFormat: '{{service_name}} committed'
+                  refId: B
+                  hidden: false
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        sum by
+                        (service_name)(jvm_memory_limit_bytes{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name", jvm_memory_type="heap"} >
+                        0)
+                      legendFormat: '{{service_name}} max'
+                  refId: C
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - last
+                  - max
+                displayMode: list
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: none
+            fieldConfig:
+              defaults:
+                unit: bytes
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 15
+                  gradientMode: none
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: linear
+                  lineWidth: 1
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: auto
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: none
+                  thresholdsStyle:
+                    mode: 'off'
+              overrides: []
+    panel-18:
+      kind: Panel
+      spec:
+        id: 18
+        title: JVM Non-Heap
+        description: Metaspace + CodeHeap + Compressed Class (used vs committed).
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        sum by
+                        (service_name)(jvm_memory_used_bytes{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name",
+                        jvm_memory_type="non_heap"})
+                      legendFormat: '{{service_name}} used'
+                  refId: A
+                  hidden: false
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        sum by
+                        (service_name)(jvm_memory_committed_bytes{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name",
+                        jvm_memory_type="non_heap"})
+                      legendFormat: '{{service_name}} committed'
+                  refId: B
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - last
+                  - max
+                displayMode: list
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: none
+            fieldConfig:
+              defaults:
+                unit: bytes
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 15
+                  gradientMode: none
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: linear
+                  lineWidth: 1
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: auto
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: none
+                  thresholdsStyle:
+                    mode: 'off'
+              overrides: []
+    panel-2:
+      kind: Panel
+      spec:
+        id: 2
+        title: JVM CPU Load
+        description: Recent process CPU utilization (0-1) vs the CPUs the JVM sees.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        max(jvm_cpu_recent_utilization_ratio{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"})
+                      legendFormat: JVM CPU Load
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: stat
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              colorMode: value
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs:
+                  - lastNotNull
+                fields: ''
+                values: false
+              showPercentChange: false
+              textMode: auto
+              wideLayout: true
+            fieldConfig:
+              defaults:
+                unit: percentunit
+                min: 0
+                max: 1
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 0.7
+                      color: yellow
+                    - value: 0.9
+                      color: red
+                color:
+                  mode: thresholds
+              overrides: []
+    panel-20:
+      kind: Panel
+      spec:
+        id: 20
+        title: JVM Memory Pool Used
+        description: >-
+          Used per pool (Eden/Survivor/Tenured/Metaspace/CodeHeap/Compressed
+          Class).
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        sum by (service_name,
+                        jvm_memory_pool_name)(jvm_memory_used_bytes{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"})
+                      legendFormat: '{{service_name}} {{jvm_memory_pool_name}}'
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - last
+                  - max
+                displayMode: list
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: none
+            fieldConfig:
+              defaults:
+                unit: bytes
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 15
+                  gradientMode: none
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: linear
+                  lineWidth: 1
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: auto
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: normal
+                  thresholdsStyle:
+                    mode: 'off'
+              overrides: []
+    panel-21:
+      kind: Panel
+      spec:
+        id: 21
+        title: JVM Memory Pool — live set after GC
+        description: >-
+          Heap used per pool **immediately after a GC collection** — the true
+          live set. A rising Tenured / Old-gen floor between GC cycles = objects
+          are being promoted faster than they are collected = memory leak.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        sum by (service_name,
+                        jvm_memory_pool_name)(jvm_memory_used_after_last_gc_bytes{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"})
+                      legendFormat: '{{service_name}} {{jvm_memory_pool_name}}'
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - last
+                  - max
+                displayMode: list
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: none
+            fieldConfig:
+              defaults:
+                unit: bytes
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 15
+                  gradientMode: none
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: linear
+                  lineWidth: 1
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: auto
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: none
+                  thresholdsStyle:
+                    mode: 'off'
+              overrides: []
+    panel-23:
+      kind: Panel
+      spec:
+        id: 23
+        title: Buffer Pools — memory used
+        description: >-
+          Off-heap direct and mapped NIO buffer pools (bytes in use). Needs the
+          OTel agent’s experimental telemetry flag. Growing direct memory
+          without a matching load increase = buffer leak (common in Netty-based
+          services).
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        sum by (service_name,
+                        jvm_buffer_pool_name)(jvm_buffer_memory_used_bytes{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"})
+                      legendFormat: '{{service_name}} {{jvm_buffer_pool_name}}'
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - last
+                  - max
+                displayMode: list
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: none
+            fieldConfig:
+              defaults:
+                unit: bytes
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 15
+                  gradientMode: none
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: linear
+                  lineWidth: 1
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: auto
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: none
+                  thresholdsStyle:
+                    mode: 'off'
+              overrides: []
+    panel-24:
+      kind: Panel
+      spec:
+        id: 24
+        title: Buffer Pools — count
+        description: Number of buffers in each pool.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        sum by (service_name,
+                        jvm_buffer_pool_name)(jvm_buffer_count{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"})
+                      legendFormat: '{{service_name}} {{jvm_buffer_pool_name}}'
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - last
+                displayMode: list
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: none
+            fieldConfig:
+              defaults:
+                unit: none
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 15
+                  gradientMode: none
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: linear
+                  lineWidth: 1
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: auto
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: none
+                  thresholdsStyle:
+                    mode: 'off'
+              overrides: []
+    panel-25:
+      kind: Panel
+      spec:
+        id: 25
+        title: CPU — process / system utilization + load avg
+        description: >-
+          Process CPU ratio + system CPU ratio + system load average 1 m.
+          **Threshold lines at 70 % and 90 %** apply to the 0–1 ratio series.
+          Load avg can exceed 1 on a busy multi-core host — compare to CPU count
+          for saturation signal.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        max by
+                        (service_name)(jvm_cpu_recent_utilization_ratio{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"})
+                      legendFormat: '{{service_name}} process cpu'
+                  refId: A
+                  hidden: false
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        max by
+                        (service_name)(jvm_system_cpu_utilization_ratio{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"})
+                      legendFormat: '{{service_name}} system cpu'
+                  refId: B
+                  hidden: false
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        max by
+                        (service_name)(jvm_system_cpu_load_1m{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"})
+                      legendFormat: '{{service_name}} load 1m'
+                  refId: C
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - mean
+                  - max
+                displayMode: list
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: none
+            fieldConfig:
+              defaults:
+                unit: percentunit
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 0.7
+                      color: yellow
+                    - value: 0.9
+                      color: red
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 15
+                  gradientMode: none
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: linear
+                  lineWidth: 1
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: auto
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: none
+                  thresholdsStyle:
+                    mode: line
+              overrides:
+                - matcher:
+                    id: byFrameRefID
+                    options: C
+                  properties:
+                    - id: unit
+                      value: short
+                    - id: custom.axisPlacement
+                      value: right
+                    - id: custom.axisLabel
+                      value: load avg (1m)
+    panel-27:
+      kind: Panel
+      spec:
+        id: 27
+        title: HTTP latency p50 / p95 / p99
+        description: >-
+          Server-side request latency in **ms** (p50 / p95 / p99). **Threshold
+          lines at 500 ms (yellow) and 1 000 ms (red)**. Correlate spikes with
+          *GC Pause p95/p99* — co-located spikes = GC-induced latency.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        histogram_quantile(0.50, sum by (le,
+                        service_name)(rate(http_server_request_duration_seconds_bucket{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"}[$__rate_interval])))
+                      legendFormat: '{{service_name}} p50'
+                  refId: A
+                  hidden: false
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        histogram_quantile(0.95, sum by (le,
+                        service_name)(rate(http_server_request_duration_seconds_bucket{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"}[$__rate_interval])))
+                      legendFormat: '{{service_name}} p95'
+                  refId: B
+                  hidden: false
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        histogram_quantile(0.99, sum by (le,
+                        service_name)(rate(http_server_request_duration_seconds_bucket{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"}[$__rate_interval])))
+                      legendFormat: '{{service_name}} p99'
+                  refId: C
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - mean
+                  - max
+                  - last
+                displayMode: list
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: none
+            fieldConfig:
+              defaults:
+                unit: ms
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 500
+                      color: yellow
+                    - value: 1000
+                      color: red
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 15
+                  gradientMode: none
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: linear
+                  lineWidth: 1
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: auto
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: none
+                  thresholdsStyle:
+                    mode: line
+              overrides: []
+    panel-28:
+      kind: Panel
+      spec:
+        id: 28
+        title: Request rate by status
+        description: >-
+          Throughput stacked by HTTP status code (2xx / 4xx / 5xx). The stacked
+          view shows composition at a glance — a growing 5xx band means errors
+          are rising relative to total traffic.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        sum by (service_name,
+                        http_response_status_code)(rate(http_server_request_duration_seconds_count{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"}[$__rate_interval]))
+                      legendFormat: '{{service_name}} [{{http_response_status_code}}]'
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - last
+                  - max
+                displayMode: list
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: none
+            fieldConfig:
+              defaults:
+                unit: reqps
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 15
+                  gradientMode: none
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: linear
+                  lineWidth: 1
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: auto
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: normal
+                  thresholdsStyle:
+                    mode: 'off'
+              overrides: []
+    panel-29:
+      kind: Panel
+      spec:
+        id: 29
+        title: HTTP 5xx error rate
+        description: Percentage of requests returning 5xx.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        100 *
+                        sum(rate(http_server_request_duration_seconds_count{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name",
+                        http_response_status_code=~"5.."}[$__rate_interval])) /
+                        (sum(rate(http_server_request_duration_seconds_count{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"}[$__rate_interval])) > 0)
+                      legendFormat: HTTP 5xx error rate
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: stat
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              colorMode: value
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs:
+                  - lastNotNull
+                fields: ''
+                values: false
+              showPercentChange: false
+              textMode: auto
+              wideLayout: true
+            fieldConfig:
+              defaults:
+                unit: percent
+                min: 0
+                max: 100
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 1
+                      color: yellow
+                    - value: 5
+                      color: red
+                color:
+                  mode: thresholds
+              overrides: []
+    panel-3:
+      kind: Panel
+      spec:
+        id: 3
+        title: Heap Used
+        description: >-
+          Total heap used across selected services. **Yellow ≥ 512 MB · Red ≥
+          1.5 GB** — adjust to your -Xmx. Use *Heap Used %* for a relative view
+          that normalises across services with different heap configs.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        sum(jvm_memory_used_bytes{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name", jvm_memory_type="heap"})
+                      legendFormat: Heap Used
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: stat
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              colorMode: value
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs:
+                  - lastNotNull
+                fields: ''
+                values: false
+              showPercentChange: false
+              textMode: auto
+              wideLayout: true
+            fieldConfig:
+              defaults:
+                unit: bytes
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 536870912
+                      color: yellow
+                    - value: 1610612736
+                      color: red
+                color:
+                  mode: thresholds
+              overrides: []
+    panel-4:
+      kind: Panel
+      spec:
+        id: 4
+        title: Total Memory Used
+        description: >-
+          Heap + non-heap (Metaspace, CodeHeap, Compressed Class, direct
+          buffers). **Yellow ≥ 1 GB · Red ≥ 2.5 GB** — tune to your container
+          memory limit. Divergence from heap alone = growing off-heap usage.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        sum(jvm_memory_used_bytes{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"})
+                      legendFormat: Total Memory Used
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: stat
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              colorMode: value
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs:
+                  - lastNotNull
+                fields: ''
+                values: false
+              showPercentChange: false
+              textMode: auto
+              wideLayout: true
+            fieldConfig:
+              defaults:
+                unit: bytes
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 1073741824
+                      color: yellow
+                    - value: 2684354560
+                      color: red
+                color:
+                  mode: thresholds
+              overrides: []
+    panel-5:
+      kind: Panel
+      spec:
+        id: 5
+        title: Heap Used %
+        description: Heap used / max (-XX:MaxRAMPercentage). >80% = GC pressure.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        sum(jvm_memory_used_bytes{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name", jvm_memory_type="heap"})
+                        /
+                        sum(jvm_memory_limit_bytes{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name", jvm_memory_type="heap"} >
+                        0)
+                      legendFormat: Heap Used %
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: gauge
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              barShape: flat
+              barWidthFactor: 0.5
+              colorMode: value
+              effects:
+                barGlow: false
+                centerGlow: false
+                gradient: true
+              endpointMarker: point
+              graphMode: area
+              justifyMode: auto
+              minVizHeight: 75
+              minVizWidth: 75
+              orientation: auto
+              reduceOptions:
+                calcs:
+                  - lastNotNull
+                fields: ''
+                values: false
+              segmentCount: 1
+              segmentSpacing: 0.3
+              shape: gauge
+              showThresholdLabels: false
+              showThresholdMarkers: true
+              sizing: auto
+              sparkline: true
+              textMode: auto
+              wideLayout: true
+            fieldConfig:
+              defaults:
+                unit: percentunit
+                min: 0
+                max: 1
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 0.8
+                      color: yellow
+                    - value: 0.92
+                      color: red
+                color:
+                  mode: thresholds
+              overrides: []
+    panel-6:
+      kind: Panel
+      spec:
+        id: 6
+        title: Live Threads
+        description: >-
+          Live JVM thread count across selected services. **Yellow ≥ 200 · Red ≥
+          500**. Sustained growth without a load increase = thread leak. See
+          *JVM Thread State* for composition.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        sum(jvm_thread_count{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"})
+                      legendFormat: Live Threads
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: stat
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              colorMode: value
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs:
+                  - lastNotNull
+                fields: ''
+                values: false
+              showPercentChange: false
+              textMode: auto
+              wideLayout: true
+            fieldConfig:
+              defaults:
+                unit: none
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 200
+                      color: yellow
+                    - value: 500
+                      color: red
+                color:
+                  mode: thresholds
+              overrides: []
+    panel-7:
+      kind: Panel
+      spec:
+        id: 7
+        title: GC Time /s
+        description: >-
+          Seconds spent in GC per second — a rate. Approaches 1.0 when the JVM
+          is nearly GC-bound. Correlates directly with latency degradation and
+          CPU steal visible in the CPU panels.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        sum(rate(jvm_gc_duration_seconds_sum{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"}[$__rate_interval]))
+                      legendFormat: GC Time /s
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: stat
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              colorMode: value
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs:
+                  - lastNotNull
+                fields: ''
+                values: false
+              showPercentChange: false
+              textMode: auto
+              wideLayout: true
+            fieldConfig:
+              defaults:
+                unit: s
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 0.1
+                      color: yellow
+                    - value: 0.3
+                      color: red
+                color:
+                  mode: thresholds
+              overrides: []
+    panel-8:
+      kind: Panel
+      spec:
+        id: 8
+        title: JVM Class Loading
+        description: Loaded classes (current) + load/unload churn.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        sum by
+                        (service_name)(jvm_class_count{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"})
+                      legendFormat: '{{service_name}} loaded'
+                  refId: A
+                  hidden: false
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        sum by
+                        (service_name)(rate(jvm_class_loaded_total{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"}[$__rate_interval]))
+                      legendFormat: '{{service_name}} load/s'
+                  refId: B
+                  hidden: false
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        sum by
+                        (service_name)(rate(jvm_class_unloaded_total{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"}[$__rate_interval]))
+                      legendFormat: '{{service_name}} unload/s'
+                  refId: C
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - last
+                displayMode: list
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: none
+            fieldConfig:
+              defaults:
+                unit: short
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 15
+                  gradientMode: none
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: linear
+                  lineWidth: 1
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: auto
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: none
+                  thresholdsStyle:
+                    mode: 'off'
+              overrides: []
+    panel-9:
+      kind: Panel
+      spec:
+        id: 9
+        title: JVM Threads
+        description: >-
+          Live thread count split by daemon vs non-daemon over time. Legend
+          shows **Last** and **Max**. Daemon threads are typically framework/GC
+          threads; non-daemon threads control JVM shutdown.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      expr: >-
+                        sum by (service_name,
+                        jvm_thread_daemon)(jvm_thread_count{k8s_namespace_name=~"$namespace",
+                        service_name=~"$service_name"})
+                      legendFormat: '{{service_name}} daemon={{jvm_thread_daemon}}'
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - last
+                  - max
+                displayMode: list
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: none
+            fieldConfig:
+              defaults:
+                unit: short
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 15
+                  gradientMode: none
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: linear
+                  lineWidth: 1
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: auto
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: none
+                  thresholdsStyle:
+                    mode: 'off'
+              overrides: []
+  layout:
+    kind: RowsLayout
+    spec:
+      rows:
+        - kind: RowsLayoutRow
+          spec:
+            title: ''
+            collapse: false
+            hideHeader: true
+            fillScreen: false
+            layout:
+              kind: GridLayout
+              spec:
+                items:
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 0
+                      width: 24
+                      height: 13
+                      element:
+                        kind: ElementReference
+                        name: panel-1031
+        - kind: RowsLayoutRow
+          spec:
+            title: Overview
+            collapse: false
+            layout:
+              kind: GridLayout
+              spec:
+                items:
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 0
+                      width: 4
+                      height: 4
+                      element:
+                        kind: ElementReference
+                        name: panel-2
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 4
+                      'y': 0
+                      width: 4
+                      height: 4
+                      element:
+                        kind: ElementReference
+                        name: panel-3
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 8
+                      'y': 0
+                      width: 4
+                      height: 4
+                      element:
+                        kind: ElementReference
+                        name: panel-4
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 12
+                      'y': 0
+                      width: 4
+                      height: 4
+                      element:
+                        kind: ElementReference
+                        name: panel-5
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 16
+                      'y': 0
+                      width: 4
+                      height: 4
+                      element:
+                        kind: ElementReference
+                        name: panel-6
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 20
+                      'y': 0
+                      width: 4
+                      height: 4
+                      element:
+                        kind: ElementReference
+                        name: panel-7
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 4
+                      width: 12
+                      height: 7
+                      element:
+                        kind: ElementReference
+                        name: panel-8
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 12
+                      'y': 4
+                      width: 12
+                      height: 7
+                      element:
+                        kind: ElementReference
+                        name: panel-9
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 11
+                      width: 12
+                      height: 7
+                      element:
+                        kind: ElementReference
+                        name: panel-10
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 12
+                      'y': 11
+                      width: 12
+                      height: 7
+                      element:
+                        kind: ElementReference
+                        name: panel-11
+        - kind: RowsLayoutRow
+          spec:
+            title: Garbage Collection
+            collapse: false
+            layout:
+              kind: GridLayout
+              spec:
+                items:
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 0
+                      width: 8
+                      height: 8
+                      element:
+                        kind: ElementReference
+                        name: panel-13
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 8
+                      'y': 0
+                      width: 8
+                      height: 8
+                      element:
+                        kind: ElementReference
+                        name: panel-14
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 16
+                      'y': 0
+                      width: 8
+                      height: 8
+                      element:
+                        kind: ElementReference
+                        name: panel-15
+        - kind: RowsLayoutRow
+          spec:
+            title: Heap & Non-Heap
+            collapse: false
+            layout:
+              kind: GridLayout
+              spec:
+                items:
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 0
+                      width: 12
+                      height: 8
+                      element:
+                        kind: ElementReference
+                        name: panel-17
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 12
+                      'y': 0
+                      width: 12
+                      height: 8
+                      element:
+                        kind: ElementReference
+                        name: panel-18
+        - kind: RowsLayoutRow
+          spec:
+            title: Memory Pools
+            collapse: false
+            layout:
+              kind: GridLayout
+              spec:
+                items:
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 0
+                      width: 12
+                      height: 8
+                      element:
+                        kind: ElementReference
+                        name: panel-20
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 12
+                      'y': 0
+                      width: 12
+                      height: 8
+                      element:
+                        kind: ElementReference
+                        name: panel-21
+        - kind: RowsLayoutRow
+          spec:
+            title: Buffers & advanced (experimental OTel runtime telemetry)
+            collapse: false
+            layout:
+              kind: GridLayout
+              spec:
+                items:
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 0
+                      width: 8
+                      height: 8
+                      element:
+                        kind: ElementReference
+                        name: panel-23
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 8
+                      'y': 0
+                      width: 8
+                      height: 8
+                      element:
+                        kind: ElementReference
+                        name: panel-24
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 16
+                      'y': 0
+                      width: 8
+                      height: 8
+                      element:
+                        kind: ElementReference
+                        name: panel-25
+        - kind: RowsLayoutRow
+          spec:
+            title: HTTP response times
+            collapse: false
+            layout:
+              kind: GridLayout
+              spec:
+                items:
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 0
+                      width: 12
+                      height: 8
+                      element:
+                        kind: ElementReference
+                        name: panel-27
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 12
+                      'y': 0
+                      width: 6
+                      height: 8
+                      element:
+                        kind: ElementReference
+                        name: panel-28
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 18
+                      'y': 0
+                      width: 6
+                      height: 8
+                      element:
+                        kind: ElementReference
+                        name: panel-29
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 8
+                      width: 24
+                      height: 7
+                      element:
+                        kind: ElementReference
+                        name: panel-1030
+        - kind: RowsLayoutRow
+          spec:
+            title: Logs & Traces
+            collapse: false
+            layout:
+              kind: GridLayout
+              spec:
+                items:
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 0
+                      width: 12
+                      height: 10
+                      element:
+                        kind: ElementReference
+                        name: panel-1028
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 12
+                      'y': 0
+                      width: 12
+                      height: 10
+                      element:
+                        kind: ElementReference
+                        name: panel-1029
+  links: []
+  liveNow: false
+  preload: false
+  tags:
+    - jenkins-2026
+    - microservices
+    - jvm
+    - jenkins
+  timeSettings:
+    timezone: browser
+    from: now-6h
+    to: now
+    autoRefresh: 30s
+    autoRefreshIntervals:
+      - 5s
+      - 10s
+      - 30s
+      - 1m
+      - 5m
+      - 15m
+      - 30m
+      - 1h
+      - 2h
+      - 1d
+    hideTimepicker: false
+    fiscalYearStartMonth: 0
+  title: CI-CD JVM internals (all Java services + Jenkins)
+  variables:
+    - kind: DatasourceVariable
+      spec:
+        name: DS_PROMETHEUS
+        pluginId: prometheus
+        refresh: onDashboardLoad
+        regex: ''
+        current:
+          text: ''
+          value: ''
+        options: []
+        multi: false
+        includeAll: false
+        label: Prometheus / Mimir
+        hide: dontHide
+        skipUrlSync: false
+        allowCustomValue: true
+    - kind: DatasourceVariable
+      spec:
+        name: DS_LOKI
+        pluginId: loki
+        refresh: onDashboardLoad
+        regex: /^(?!.*alert-state-history|.*usage-insights).*$/
+        current:
+          text: ''
+          value: ''
+        options: []
+        multi: false
+        includeAll: false
+        label: Loki
+        hide: dontHide
+        skipUrlSync: false
+        allowCustomValue: true
+    - kind: DatasourceVariable
+      spec:
+        name: DS_TEMPO
+        pluginId: tempo
+        refresh: onDashboardLoad
+        regex: ''
+        current:
+          text: ''
+          value: ''
+        options: []
+        multi: false
+        includeAll: false
+        label: Tempo
+        hide: dontHide
+        skipUrlSync: false
+        allowCustomValue: true
+    - kind: QueryVariable
+      spec:
+        name: namespace
+        current:
+          text: All
+          value: $__all
+        label: Namespace (All incl. Jenkins)
+        hide: dontHide
+        refresh: onTimeRangeChanged
+        skipUrlSync: false
+        description: >-
+          Tier: stable = namespace microservices, develop =
+          microservices-develop. JVM/app metrics carry k8s_namespace_name (not
+          deployment_environment), so namespace is the tier discriminator.
+        query:
+          kind: DataQuery
+          group: prometheus
+          version: v0
+          datasource:
+            name: ${DS_PROMETHEUS}
+          spec:
+            query: label_values(jvm_memory_used_bytes, k8s_namespace_name)
+            refId: StandardVariableQuery
+        regex: ''
+        regexApplyTo: value
+        sort: alphabeticalAsc
+        definition: label_values(jvm_memory_used_bytes, k8s_namespace_name)
+        options: []
+        multi: true
+        includeAll: true
+        allValue: .*
+        allowCustomValue: true
+    - kind: QueryVariable
+      spec:
+        name: service_name
+        current:
+          text: All
+          value: $__all
+        label: Service (JVM app)
+        hide: dontHide
+        refresh: onTimeRangeChanged
+        skipUrlSync: false
+        query:
+          kind: DataQuery
+          group: prometheus
+          version: v0
+          datasource:
+            name: ${DS_PROMETHEUS}
+          spec:
+            query: label_values(jvm_memory_used_bytes, service_name)
+            refId: StandardVariableQuery
+        regex: ''
+        regexApplyTo: value
+        sort: alphabeticalAsc
+        definition: label_values(jvm_memory_used_bytes, service_name)
+        options: []
+        multi: true
+        includeAll: true
+        allValue: .+
+        allowCustomValue: true
+    - kind: CustomVariable
+      spec:
+        name: level
+        query: error,warn,info,debug,trace,unknown
+        current:
+          text:
+            - error
+            - warn
+          value:
+            - error
+            - warn
+        options:
+          - selected: false
+            text: All
+            value: $__all
+          - selected: true
+            text: error
+            value: error
+          - selected: true
+            text: warn
+            value: warn
+          - selected: false
+            text: info
+            value: info
+          - selected: false
+            text: debug
+            value: debug
+          - selected: false
+            text: trace
+            value: trace
+          - selected: false
+            text: unknown
+            value: unknown
+        multi: true
+        includeAll: true
+        allValue: .+
+        label: Log level
+        hide: dontHide
+        skipUrlSync: false
+        description: >-
+          Filter the logs panel by severity (detected_level). All = everything
+          incl. plain-text (unknown).
+        allowCustomValue: true
+        valuesFormat: csv

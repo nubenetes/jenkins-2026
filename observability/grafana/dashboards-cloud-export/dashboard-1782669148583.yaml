@@ -1,0 +1,3253 @@
+apiVersion: dashboard.grafana.app/v2
+kind: Dashboard
+metadata:
+  name: in7bmb6
+  namespace: stacks-1705996
+  uid: 64bd3e40-12d9-4aff-8780-f95850ed31f0
+  resourceVersion: '2071285468560884150'
+  generation: 2
+  creationTimestamp: '2026-06-28T16:02:23Z'
+  labels:
+    grafana.app/deprecatedInternalID: '4110717811838976'
+  annotations:
+    grafana.app/createdBy: user:bfqff5hednbpcf
+    grafana.app/saved-from-ui: Grafana Cloud
+    grafana.app/updatedBy: user:bfqff5hednbpcf
+    grafana.app/updatedTimestamp: '2026-06-28T17:31:52Z'
+spec:
+  annotations:
+    - kind: AnnotationQuery
+      spec:
+        query:
+          kind: DataQuery
+          group: grafana
+          version: v0
+          datasource:
+            name: '-- Grafana --'
+          spec: {}
+        enable: true
+        hide: true
+        iconColor: rgba(0, 211, 255, 1)
+        name: Annotations & Alerts
+        builtIn: true
+  cursorSync: 'Off'
+  description: >-
+    Angular SPA Real User Monitoring via Grafana Faro — monitor Core Web Vitals
+    (LCP, INP, CLS, FCP, TTFB), session trends, and JavaScript exceptions.
+    Filter by environment and app using the top variables.
+  editable: true
+  elements:
+    panel-1:
+      kind: Panel
+      spec:
+        id: 1
+        title: About this dashboard
+        description: ''
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries: []
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: text
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              code:
+                language: plaintext
+                showLineNumbers: false
+                showMiniMap: false
+              content: >-
+                ## CI-CD Frontend RUM — Angular / Grafana Faro
+
+
+                Real User Monitoring for the Angular SPA instrumented with
+                Grafana Faro. Every event the SDK emits (page loads, Web Vitals
+                measurements, exceptions, user sessions) is collected by the
+                otel-collector, shipped to **Loki** as structured logs, and
+                correlated with **Tempo** browser traces.
+
+
+                ---
+
+
+                ### How to use the variables
+
+
+                | Variable | Type | How to use |
+
+                |---|---|---|
+
+                | **Environment** | Dropdown | Switch between `develop`,
+                `staging`, `production` |
+
+                | **App** | Dropdown | Select the Faro-instrumented app (e.g.
+                `angular-gateway`) |
+
+                | **App Version** | Text (regex) | Type `.*` for all versions
+                (default). Type `0\.0\.1$` to pin a specific build, or
+                `0\.0\.1\|0\.0\.2` to compare two deploys side by side. Trend
+                panels split lines by version automatically. |
+
+                | **Browser** | Dropdown | Filter all CWV and exception panels
+                to a specific browser, or leave on **All** |
+
+                | **Page URL filter** | Text (regex) | Scope page-level panels
+                to a URL pattern, e.g. `/checkout` |
+
+
+                ---
+
+
+                ### Colour scale
+
+
+                > All threshold colours follow **Google Core Web Vitals**
+                standards throughout the dashboard.
+
+
+                | Colour | Meaning | LCP | INP | CLS | FCP | TTFB |
+
+                |---|---|---|---|---|---|---|
+
+                | Green | Good | < 2.5 s | < 200 ms | < 0.10 | < 1.8 s | < 800
+                ms |
+
+                | Yellow | Needs improvement | 2.5 - 4 s | 200 - 500 ms | 0.10 -
+                0.25 | 1.8 - 3 s | 800 ms - 1.8 s |
+
+                | Red | Poor | > 4 s | > 500 ms | > 0.25 | > 3 s | > 1.8 s |
+
+
+                ---
+
+
+                ### Dashboard sections
+
+
+                | Section | What it answers |
+
+                |---|---|
+
+                | **Overview** | High-level KPIs: active sessions, exception
+                count, Web Vitals sample volume, total RUM events, unique
+                browsers |
+
+                | **Core Web Vitals (p75)** | Stat cards for current p75 of LCP,
+                INP, CLS, FCP, TTFB. Trend lines split by `app_version` so you
+                can see a CWV regression the moment a new build is deployed |
+
+                | **Web Vitals Pass Rate** | % of real measurements that hit the
+                Good threshold for LCP, INP, and FCP. A drop here after a deploy
+                is the first sign of a regression |
+
+                | **Errors & exceptions** | Exception volume over time, top
+                browsers and pages by exception count, breakdown by error type,
+                raw exception log stream |
+
+                | **Sessions & audience** | Session trend, browser market share,
+                OS and mobile breakdown |
+
+                | **Page & Browser Performance** | LCP p75 split by browser
+                (spot browser-specific regressions), slowest pages ranked by LCP
+                p75, exception rate per 100 page loads |
+
+                | **Live RUM logs & browser traces** | Full raw Faro event
+                stream for ad-hoc debugging, plus Tempo browser trace list with
+                span durations |
+
+
+                ---
+
+
+                *Pipeline: Faro SDK -> otel-collector -> Loki (measurements /
+                exceptions / sessions) + Tempo (browser traces)*
+              mode: markdown
+            fieldConfig:
+              defaults: {}
+              overrides: []
+    panel-10:
+      kind: Panel
+      spec:
+        id: 10
+        title: INP
+        description: >-
+          Interaction to Next Paint p75. Google thresholds: ≤200ms good / ≤500ms
+          needs improvement / >500ms poor.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      editorMode: code
+                      expr: >-
+                        avg by () (quantile_over_time(0.75,
+                        {service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind=`measurement` |
+                        app_version=~"$app_version" |
+                        browser_name=~"$browser_name" | inp!="" | unwrap inp |
+                        __error__="" [$__range]))
+                      queryType: instant
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: stat
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              colorMode: value
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs:
+                  - lastNotNull
+                fields: ''
+                values: false
+              showPercentChange: false
+              textMode: auto
+              wideLayout: true
+            fieldConfig:
+              defaults:
+                unit: ms
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 200
+                      color: yellow
+                    - value: 500
+                      color: red
+                color:
+                  mode: thresholds
+              overrides: []
+    panel-11:
+      kind: Panel
+      spec:
+        id: 11
+        title: CLS
+        description: >-
+          Cumulative Layout Shift p75 (unitless score). Google thresholds: ≤0.1
+          good / ≤0.25 needs improvement / >0.25 poor.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      editorMode: code
+                      expr: >-
+                        avg by () (quantile_over_time(0.75,
+                        {service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind=`measurement` |
+                        app_version=~"$app_version" |
+                        browser_name=~"$browser_name" | cls!="" | unwrap cls |
+                        __error__="" [$__range]))
+                      queryType: instant
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: stat
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              colorMode: value
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs:
+                  - lastNotNull
+                fields: ''
+                values: false
+              showPercentChange: false
+              textMode: auto
+              wideLayout: true
+            fieldConfig:
+              defaults:
+                unit: none
+                decimals: 2
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 0.1
+                      color: yellow
+                    - value: 0.25
+                      color: red
+                color:
+                  mode: thresholds
+              overrides: []
+    panel-12:
+      kind: Panel
+      spec:
+        id: 12
+        title: FCP
+        description: >-
+          First Contentful Paint p75. Google thresholds: ≤1.8s good / ≤3s needs
+          improvement / >3s poor.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      editorMode: code
+                      expr: >-
+                        avg by () (quantile_over_time(0.75,
+                        {service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind=`measurement` |
+                        app_version=~"$app_version" |
+                        browser_name=~"$browser_name" | fcp!="" | unwrap fcp |
+                        __error__="" [$__range]))
+                      queryType: instant
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: stat
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              colorMode: value
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs:
+                  - lastNotNull
+                fields: ''
+                values: false
+              showPercentChange: false
+              textMode: auto
+              wideLayout: true
+            fieldConfig:
+              defaults:
+                unit: ms
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 1800
+                      color: yellow
+                    - value: 3000
+                      color: red
+                color:
+                  mode: thresholds
+              overrides: []
+    panel-13:
+      kind: Panel
+      spec:
+        id: 13
+        title: TTFB
+        description: >-
+          Time to First Byte p75. Google thresholds: ≤800ms good / ≤1.8s needs
+          improvement / >1.8s poor.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      editorMode: code
+                      expr: >-
+                        avg by () (quantile_over_time(0.75,
+                        {service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind=`measurement` |
+                        app_version=~"$app_version" |
+                        browser_name=~"$browser_name" | ttfb!="" | unwrap ttfb |
+                        __error__="" [$__range]))
+                      queryType: instant
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: stat
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              colorMode: value
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs:
+                  - lastNotNull
+                fields: ''
+                values: false
+              showPercentChange: false
+              textMode: auto
+              wideLayout: true
+            fieldConfig:
+              defaults:
+                unit: ms
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 800
+                      color: yellow
+                    - value: 1800
+                      color: red
+                color:
+                  mode: thresholds
+              overrides: []
+    panel-14:
+      kind: Panel
+      spec:
+        id: 14
+        title: LCP p75 over time
+        description: >-
+          Largest Contentful Paint 75th percentile trend. Rising values = slower
+          rendering (network, TTFB, or image size).
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      editorMode: code
+                      expr: >-
+                        avg by (app_version) (quantile_over_time(0.75,
+                        {service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind=`measurement` |
+                        app_version=~"$app_version" |
+                        browser_name=~"$browser_name" | lcp!="" | unwrap lcp |
+                        __error__="" [$__auto]))
+                      legendFormat: '{{app_version}}'
+                      queryType: range
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - mean
+                  - max
+                  - last
+                displayMode: list
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: desc
+            fieldConfig:
+              defaults:
+                unit: ms
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 2500
+                      color: yellow
+                    - value: 4000
+                      color: red
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 10
+                  gradientMode: opacity
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: linear
+                  lineWidth: 1
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: auto
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: none
+                  thresholdsStyle:
+                    mode: line
+              overrides: []
+    panel-15:
+      kind: Panel
+      spec:
+        id: 15
+        title: INP p75 over time
+        description: >-
+          Interaction to Next Paint 75th percentile trend. Spikes correlate with
+          long JavaScript tasks.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      editorMode: code
+                      expr: >-
+                        avg by (app_version) (quantile_over_time(0.75,
+                        {service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind=`measurement` |
+                        app_version=~"$app_version" |
+                        browser_name=~"$browser_name" | inp!="" | unwrap inp |
+                        __error__="" [$__auto]))
+                      legendFormat: '{{app_version}}'
+                      queryType: range
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - mean
+                  - max
+                  - last
+                displayMode: list
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: desc
+            fieldConfig:
+              defaults:
+                unit: ms
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 200
+                      color: yellow
+                    - value: 500
+                      color: red
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 10
+                  gradientMode: opacity
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: linear
+                  lineWidth: 1
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: auto
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: none
+                  thresholdsStyle:
+                    mode: line
+              overrides: []
+    panel-16:
+      kind: Panel
+      spec:
+        id: 16
+        title: CLS p75 over time
+        description: >-
+          Cumulative Layout Shift 75th percentile trend. Spikes = layout
+          instability from late-loading images or ads.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      editorMode: code
+                      expr: >-
+                        avg by (app_version) (quantile_over_time(0.75,
+                        {service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind=`measurement` |
+                        app_version=~"$app_version" |
+                        browser_name=~"$browser_name" | cls!="" | unwrap cls |
+                        __error__="" [$__auto]))
+                      legendFormat: '{{app_version}}'
+                      queryType: range
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - mean
+                  - max
+                  - last
+                displayMode: list
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: desc
+            fieldConfig:
+              defaults:
+                unit: none
+                decimals: 2
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 0.1
+                      color: yellow
+                    - value: 0.25
+                      color: red
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 10
+                  gradientMode: opacity
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: linear
+                  lineWidth: 1
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: auto
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: none
+                  thresholdsStyle:
+                    mode: line
+              overrides: []
+    panel-18:
+      kind: Panel
+      spec:
+        id: 18
+        title: Exceptions over time
+        description: >-
+          JavaScript exception rate over time. Orange threshold at 1, red at 10
+          — adjust to your baseline. Correlate spikes with deployments.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      editorMode: code
+                      expr: >-
+                        sum(count_over_time({service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind=`exception` [$__auto]))
+                      legendFormat: exceptions
+                      queryType: range
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - sum
+                  - max
+                displayMode: list
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: desc
+            fieldConfig:
+              defaults:
+                unit: short
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 1
+                      color: orange
+                    - value: 10
+                      color: red
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 10
+                  gradientMode: opacity
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: linear
+                  lineWidth: 1
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: auto
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: none
+                  thresholdsStyle:
+                    mode: line
+              overrides: []
+    panel-19:
+      kind: Panel
+      spec:
+        id: 19
+        title: Top browsers by exceptions
+        description: >-
+          Which browser types generate the most exceptions. Cell colour reflects
+          exception count — orange = low, red = elevated. Helps triage
+          browser-specific bugs.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      editorMode: code
+                      expr: >-
+                        topk(10, sum by
+                        (browser_name)(count_over_time({service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind=`exception` [$__range])))
+                      format: table
+                      queryType: instant
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: table
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              cellHeight: sm
+              showHeader: true
+            fieldConfig:
+              defaults:
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 80
+                      color: red
+                custom:
+                  align: auto
+                  cellOptions:
+                    type: auto
+                  footer:
+                    reducers: []
+                  inspect: false
+              overrides:
+                - matcher:
+                    id: byType
+                    options: number
+                  properties:
+                    - id: custom.cellOptions
+                      value:
+                        type: color-background
+                    - id: thresholds
+                      value:
+                        mode: absolute
+                        steps:
+                          - color: green
+                            value: 0
+                          - color: orange
+                            value: 1
+                          - color: red
+                            value: 10
+    panel-20:
+      kind: Panel
+      spec:
+        id: 20
+        title: Recent exceptions
+        description: >-
+          Live stream of Faro exception events. Click a row to expand the stack
+          trace and attributes.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      editorMode: code
+                      expr: >-
+                        {service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        detected_level=~"$level" | logfmt | kind=`exception`
+                      queryType: range
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: logs
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              dedupStrategy: none
+              enableInfiniteScrolling: false
+              enableLogDetails: true
+              prettifyLogMessage: true
+              showControls: false
+              showFieldSelector: false
+              showLevel: true
+              showLogAttributes: true
+              showTime: true
+              sortOrder: Descending
+              timestampResolution: ms
+              unwrappedColumns: false
+              wrapLogMessage: true
+            fieldConfig:
+              defaults: {}
+              overrides: []
+    panel-22:
+      kind: Panel
+      spec:
+        id: 22
+        title: Sessions over time
+        description: >-
+          Unique session count per interval. Sudden drops may indicate a deploy
+          failure or broken Faro instrumentation.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      editorMode: code
+                      expr: >-
+                        count(count by
+                        (session_id)(count_over_time({service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | session_id!="" [$__auto])))
+                      legendFormat: sessions
+                      queryType: range
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - sum
+                  - max
+                displayMode: list
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: desc
+            fieldConfig:
+              defaults:
+                unit: short
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 10
+                  gradientMode: opacity
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: linear
+                  lineWidth: 1
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: auto
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: none
+                  thresholdsStyle:
+                    mode: 'off'
+              overrides: []
+    panel-23:
+      kind: Panel
+      spec:
+        id: 23
+        title: Popular browsers
+        description: Browser name/version breakdown by event count.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      editorMode: code
+                      expr: >-
+                        topk(10, sum by (browser_name,
+                        browser_version)(count_over_time({service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | browser_name!="" [$__range])))
+                      format: table
+                      queryType: instant
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: table
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              cellHeight: sm
+              showHeader: true
+            fieldConfig:
+              defaults:
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 80
+                      color: red
+                custom:
+                  align: auto
+                  cellOptions:
+                    type: auto
+                  footer:
+                    reducers: []
+                  inspect: false
+              overrides:
+                - matcher:
+                    id: byType
+                    options: number
+                  properties:
+                    - id: custom.cellOptions
+                      value:
+                        type: gauge
+    panel-24:
+      kind: Panel
+      spec:
+        id: 24
+        title: OS / mobile
+        description: >-
+          Operating system and mobile flag breakdown. Flags mobile users who may
+          experience Core Web Vitals differently.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      editorMode: code
+                      expr: >-
+                        sum by (browser_os,
+                        browser_mobile)(count_over_time({service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | browser_os!="" [$__range]))
+                      format: table
+                      queryType: instant
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: table
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              cellHeight: sm
+              showHeader: true
+            fieldConfig:
+              defaults:
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 80
+                      color: red
+                custom:
+                  align: auto
+                  cellOptions:
+                    type: auto
+                  footer:
+                    reducers: []
+                  inspect: false
+              overrides:
+                - matcher:
+                    id: byType
+                    options: number
+                  properties:
+                    - id: custom.cellOptions
+                      value:
+                        type: gauge
+    panel-26:
+      kind: Panel
+      spec:
+        id: 26
+        title: Live RUM events
+        description: >-
+          Raw Faro beacon stream (all kinds). Use for real-time debugging;
+          filter by level variable for errors.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      editorMode: code
+                      expr: >-
+                        {service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        detected_level=~"$level" | logfmt
+                      queryType: range
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: logs
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              dedupStrategy: none
+              enableInfiniteScrolling: false
+              enableLogDetails: true
+              prettifyLogMessage: true
+              showControls: false
+              showFieldSelector: false
+              showLevel: true
+              showLogAttributes: true
+              showTime: true
+              sortOrder: Descending
+              timestampResolution: ms
+              unwrappedColumns: false
+              wrapLogMessage: true
+            fieldConfig:
+              defaults: {}
+              overrides: []
+    panel-27:
+      kind: Panel
+      spec:
+        id: 27
+        title: Browser traces (Tempo)
+        description: >-
+          Browser-initiated traces propagated via Faro. Click a Trace ID to open
+          the full trace.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: tempo
+                    version: v0
+                    datasource:
+                      name: grafanacloud-traces
+                    spec:
+                      limit: 20
+                      query: '{ resource.service.name = "$app" }'
+                      queryType: traceql
+                      tableType: traces
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: table
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              cellHeight: sm
+              showHeader: true
+            fieldConfig:
+              defaults:
+                unit: ms
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 80
+                      color: red
+                custom:
+                  align: auto
+                  cellOptions:
+                    type: auto
+                  footer:
+                    reducers: []
+                  inspect: false
+              overrides: []
+    panel-28:
+      kind: Panel
+      spec:
+        id: 28
+        title: FCP p75 over time
+        description: >-
+          First Contentful Paint 75th percentile trend split by app version.
+          Rising values = render-blocking resources or large DOM.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      app: grafana-assistant-app
+                      expr: >-
+                        avg by (app_version) (quantile_over_time(0.75,
+                        {service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind="measurement" |
+                        app_version=~"$app_version" |
+                        browser_name=~"$browser_name" | fcp!="" | unwrap fcp |
+                        __error__="" [$__auto]))
+                      instant: false
+                      legendFormat: '{{app_version}}'
+                      queryType: range
+                      range: true
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - mean
+                  - max
+                  - last
+                displayMode: list
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: desc
+            fieldConfig:
+              defaults:
+                unit: ms
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 1800
+                      color: yellow
+                    - value: 3000
+                      color: red
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 10
+                  gradientMode: opacity
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: smooth
+                  lineWidth: 2
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: auto
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: none
+                  thresholdsStyle:
+                    mode: line
+              overrides: []
+    panel-29:
+      kind: Panel
+      spec:
+        id: 29
+        title: TTFB p75 over time
+        description: >-
+          Time to First Byte 75th percentile trend split by app version. Spikes
+          indicate backend or CDN latency regressions.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      app: grafana-assistant-app
+                      expr: >-
+                        avg by (app_version) (quantile_over_time(0.75,
+                        {service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind="measurement" |
+                        app_version=~"$app_version" |
+                        browser_name=~"$browser_name" | ttfb!="" | unwrap ttfb |
+                        __error__="" [$__auto]))
+                      instant: false
+                      legendFormat: '{{app_version}}'
+                      queryType: range
+                      range: true
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - mean
+                  - max
+                  - last
+                displayMode: list
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: desc
+            fieldConfig:
+              defaults:
+                unit: ms
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 800
+                      color: yellow
+                    - value: 1800
+                      color: red
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 10
+                  gradientMode: opacity
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: smooth
+                  lineWidth: 2
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: auto
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: none
+                  thresholdsStyle:
+                    mode: line
+              overrides: []
+    panel-3:
+      kind: Panel
+      spec:
+        id: 3
+        title: Sessions
+        description: >-
+          Unique session IDs seen in the selected range. Turns red if sessions
+          drop to 0 — may indicate broken instrumentation or a deploy failure.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      editorMode: code
+                      expr: >-
+                        count(count by
+                        (session_id)(count_over_time({service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | session_id!="" [$__range])))
+                      queryType: instant
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: stat
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              colorMode: value
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs:
+                  - lastNotNull
+                fields: ''
+                values: false
+              showPercentChange: true
+              textMode: auto
+              wideLayout: true
+            fieldConfig:
+              defaults:
+                unit: short
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: red
+                    - value: 1
+                      color: green
+                color:
+                  mode: thresholds
+              overrides: []
+    panel-30:
+      kind: Panel
+      spec:
+        id: 30
+        title: '% Good LCP'
+        description: >-
+          Share of page loads with LCP ≤ 2.5 s (Google 'good' threshold).
+          Target: ≥ 75%.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      app: grafana-assistant-app
+                      expr: >-
+                        sum(count_over_time({service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind="measurement" |
+                        app_version=~"$app_version" |
+                        browser_name=~"$browser_name" | lcp != "" | lcp <= 2500
+                        [$__range]))
+                      instant: true
+                      queryType: instant
+                      range: false
+                  refId: A
+                  hidden: true
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      app: grafana-assistant-app
+                      expr: >-
+                        sum(count_over_time({service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind="measurement" |
+                        app_version=~"$app_version" |
+                        browser_name=~"$browser_name" | lcp != "" [$__range]))
+                      instant: true
+                      queryType: instant
+                      range: false
+                  refId: B
+                  hidden: true
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: __expr__
+                    version: v0
+                    datasource:
+                      name: __expr__
+                    spec:
+                      app: grafana-assistant-app
+                      expression: $A / $B * 100
+                      type: math
+                  refId: C
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: stat
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              colorMode: background_solid
+              graphMode: none
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs:
+                  - lastNotNull
+                fields: ''
+                values: false
+              showPercentChange: false
+              textMode: auto
+              wideLayout: true
+            fieldConfig:
+              defaults:
+                unit: percent
+                min: 0
+                max: 100
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: red
+                    - value: 50
+                      color: yellow
+                    - value: 75
+                      color: green
+                color:
+                  mode: thresholds
+              overrides: []
+    panel-31:
+      kind: Panel
+      spec:
+        id: 31
+        title: '% Good INP'
+        description: >-
+          Share of page loads with INP ≤ 200 ms (Google 'good' threshold).
+          Target: ≥ 75%.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      app: grafana-assistant-app
+                      expr: >-
+                        sum(count_over_time({service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind="measurement" |
+                        app_version=~"$app_version" |
+                        browser_name=~"$browser_name" | inp != "" | inp <= 200
+                        [$__range]))
+                      instant: true
+                      queryType: instant
+                      range: false
+                  refId: A
+                  hidden: true
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      app: grafana-assistant-app
+                      expr: >-
+                        sum(count_over_time({service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind="measurement" |
+                        app_version=~"$app_version" |
+                        browser_name=~"$browser_name" | inp != "" [$__range]))
+                      instant: true
+                      queryType: instant
+                      range: false
+                  refId: B
+                  hidden: true
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: __expr__
+                    version: v0
+                    datasource:
+                      name: __expr__
+                    spec:
+                      app: grafana-assistant-app
+                      expression: $A / $B * 100
+                      type: math
+                  refId: C
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: stat
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              colorMode: background_solid
+              graphMode: none
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs:
+                  - lastNotNull
+                fields: ''
+                values: false
+              showPercentChange: false
+              textMode: auto
+              wideLayout: true
+            fieldConfig:
+              defaults:
+                unit: percent
+                min: 0
+                max: 100
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: red
+                    - value: 50
+                      color: yellow
+                    - value: 75
+                      color: green
+                color:
+                  mode: thresholds
+              overrides: []
+    panel-32:
+      kind: Panel
+      spec:
+        id: 32
+        title: '% Good FCP'
+        description: >-
+          Share of page loads with FCP ≤ 1.8 s (Google 'good' threshold).
+          Target: ≥ 75%.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      app: grafana-assistant-app
+                      expr: >-
+                        sum(count_over_time({service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind="measurement" |
+                        app_version=~"$app_version" |
+                        browser_name=~"$browser_name" | fcp != "" | fcp <= 1800
+                        [$__range]))
+                      instant: true
+                      queryType: instant
+                      range: false
+                  refId: A
+                  hidden: true
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      app: grafana-assistant-app
+                      expr: >-
+                        sum(count_over_time({service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind="measurement" |
+                        app_version=~"$app_version" |
+                        browser_name=~"$browser_name" | fcp != "" [$__range]))
+                      instant: true
+                      queryType: instant
+                      range: false
+                  refId: B
+                  hidden: true
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: __expr__
+                    version: v0
+                    datasource:
+                      name: __expr__
+                    spec:
+                      app: grafana-assistant-app
+                      expression: $A / $B * 100
+                      type: math
+                  refId: C
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: stat
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              colorMode: background_solid
+              graphMode: none
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs:
+                  - lastNotNull
+                fields: ''
+                values: false
+              showPercentChange: false
+              textMode: auto
+              wideLayout: true
+            fieldConfig:
+              defaults:
+                unit: percent
+                min: 0
+                max: 100
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: red
+                    - value: 50
+                      color: yellow
+                    - value: 75
+                      color: green
+                color:
+                  mode: thresholds
+              overrides: []
+    panel-33:
+      kind: Panel
+      spec:
+        id: 33
+        title: Exception breakdown by type
+        description: >-
+          Top exception types in the selected range. Helps identify whether
+          errors are isolated incidents or systematic JS bugs.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      app: grafana-assistant-app
+                      expr: >-
+                        topk(10, sum by
+                        (type)(count_over_time({service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind="exception" | app_version=~"$app_version"
+                        | browser_name=~"$browser_name" [$__range])))
+                      instant: true
+                      queryType: instant
+                      range: false
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: table
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              cellHeight: sm
+              enablePagination: false
+              showHeader: true
+            fieldConfig:
+              defaults:
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 1
+                      color: orange
+                    - value: 10
+                      color: red
+                color:
+                  mode: thresholds
+                custom:
+                  align: auto
+                  cellOptions:
+                    type: auto
+                  footer:
+                    reducers: []
+                  inspect: false
+              overrides:
+                - matcher:
+                    id: byType
+                    options: number
+                  properties:
+                    - id: custom.cellOptions
+                      value:
+                        type: color-background
+    panel-34:
+      kind: Panel
+      spec:
+        id: 34
+        title: Top pages by exceptions
+        description: >-
+          Pages generating the most exceptions. Pinpoints which routes have
+          broken JS. Cross-reference with the exception type table.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      app: grafana-assistant-app
+                      expr: >-
+                        topk(10, sum by
+                        (page_url)(count_over_time({service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind="exception" | app_version=~"$app_version"
+                        | browser_name=~"$browser_name" [$__range])))
+                      instant: true
+                      queryType: instant
+                      range: false
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: table
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              cellHeight: sm
+              enablePagination: false
+              showHeader: true
+            fieldConfig:
+              defaults:
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 1
+                      color: orange
+                    - value: 10
+                      color: red
+                color:
+                  mode: thresholds
+                custom:
+                  align: auto
+                  cellOptions:
+                    type: auto
+                  footer:
+                    reducers: []
+                  inspect: false
+              overrides:
+                - matcher:
+                    id: byType
+                    options: number
+                  properties:
+                    - id: custom.cellOptions
+                      value:
+                        type: color-background
+    panel-35:
+      kind: Panel
+      spec:
+        id: 35
+        title: LCP p75 by browser
+        description: >-
+          LCP p75 trend split by browser. Diverging lines indicate
+          browser-specific performance regressions.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      app: grafana-assistant-app
+                      expr: >-
+                        avg by (browser_name) (quantile_over_time(0.75,
+                        {service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind="measurement" |
+                        app_version=~"$app_version" |
+                        browser_name=~"$browser_name" | lcp!="" | unwrap lcp |
+                        __error__="" [$__auto]))
+                      instant: false
+                      legendFormat: '{{browser_name}}'
+                      queryType: range
+                      range: true
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - mean
+                  - max
+                  - last
+                displayMode: list
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: desc
+            fieldConfig:
+              defaults:
+                unit: ms
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 2500
+                      color: yellow
+                    - value: 4000
+                      color: red
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 10
+                  gradientMode: opacity
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: smooth
+                  lineWidth: 2
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: auto
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: none
+                  thresholdsStyle:
+                    mode: line
+              overrides: []
+    panel-36:
+      kind: Panel
+      spec:
+        id: 36
+        title: Slowest pages by LCP p75
+        description: >-
+          Top 10 slowest pages by LCP p75. Sort by Value to find the
+          worst-performing routes. Filter using the Page URL variable.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      app: grafana-assistant-app
+                      expr: >-
+                        topk(10, avg by (page_url)(quantile_over_time(0.75,
+                        {service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind="measurement" |
+                        app_version=~"$app_version" |
+                        browser_name=~"$browser_name" | lcp!="" | unwrap lcp |
+                        __error__="" [$__range])))
+                      instant: true
+                      queryType: instant
+                      range: false
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: table
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              cellHeight: sm
+              enablePagination: false
+              showHeader: true
+              sortBy:
+                - desc: true
+                  displayName: Value
+            fieldConfig:
+              defaults:
+                unit: ms
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 2500
+                      color: yellow
+                    - value: 4000
+                      color: red
+                color:
+                  mode: thresholds
+                custom:
+                  align: auto
+                  cellOptions:
+                    type: auto
+                  footer:
+                    reducers: []
+                  inspect: false
+              overrides:
+                - matcher:
+                    id: byType
+                    options: number
+                  properties:
+                    - id: custom.cellOptions
+                      value:
+                        type: color-background
+    panel-37:
+      kind: Panel
+      spec:
+        id: 37
+        title: Exception rate (per 100 page loads)
+        description: >-
+          Exceptions per 100 page loads over time. Normalised metric — more
+          reliable than raw counts at variable traffic levels.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      app: grafana-assistant-app
+                      expr: >-
+                        sum(count_over_time({service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind=`exception` [$__auto]))
+                      instant: false
+                      queryType: range
+                      range: true
+                  refId: A
+                  hidden: true
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      app: grafana-assistant-app
+                      expr: >-
+                        sum(count_over_time({service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind=`measurement` [$__auto]))
+                      instant: false
+                      queryType: range
+                      range: true
+                  refId: B
+                  hidden: true
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: __expr__
+                    version: v0
+                    datasource:
+                      name: __expr__
+                    spec:
+                      app: grafana-assistant-app
+                      expression: $A / $B * 100
+                      type: math
+                  refId: C
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - mean
+                  - max
+                displayMode: list
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: desc
+            fieldConfig:
+              defaults:
+                unit: short
+                decimals: 2
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 1
+                      color: orange
+                    - value: 5
+                      color: red
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  axisSoftMin: 0
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 20
+                  gradientMode: opacity
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: smooth
+                  lineWidth: 2
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: auto
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: none
+                  thresholdsStyle:
+                    mode: line
+              overrides:
+                - matcher:
+                    id: byFrameRefID
+                    options: C
+                  properties:
+                    - id: displayName
+                      value: Exceptions / 100 page loads
+    panel-4:
+      kind: Panel
+      spec:
+        id: 4
+        title: Exceptions
+        description: >-
+          Total JavaScript exceptions captured by Faro. Non-zero warrants
+          investigation in the Errors section below.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      editorMode: code
+                      expr: >-
+                        sum(count_over_time({service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind=`exception` [$__range]))
+                      queryType: instant
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: stat
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              colorMode: value
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs:
+                  - lastNotNull
+                fields: ''
+                values: false
+              showPercentChange: false
+              textMode: auto
+              wideLayout: true
+            fieldConfig:
+              defaults:
+                unit: short
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 1
+                      color: orange
+                    - value: 10
+                      color: red
+                color:
+                  mode: thresholds
+              overrides: []
+    panel-5:
+      kind: Panel
+      spec:
+        id: 5
+        title: Measurements (Web-Vitals samples)
+        description: >-
+          Total Web-Vitals measurement events received. Each page load
+          contributes one sample per metric.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      editorMode: code
+                      expr: >-
+                        sum(count_over_time({service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind=`measurement` [$__range]))
+                      queryType: instant
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: stat
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              colorMode: value
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs:
+                  - lastNotNull
+                fields: ''
+                values: false
+              showPercentChange: false
+              textMode: auto
+              wideLayout: true
+            fieldConfig:
+              defaults:
+                unit: short
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                color:
+                  mode: thresholds
+              overrides: []
+    panel-6:
+      kind: Panel
+      spec:
+        id: 6
+        title: Total RUM events
+        description: >-
+          All Faro beacon events (logs, measurements, exceptions, events) in the
+          selected range.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      editorMode: code
+                      expr: >-
+                        sum(count_over_time({service_name="$app",
+                        deployment_environment="$deployment_environment"}
+                        [$__range]))
+                      queryType: instant
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: stat
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              colorMode: value
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs:
+                  - lastNotNull
+                fields: ''
+                values: false
+              showPercentChange: false
+              textMode: auto
+              wideLayout: true
+            fieldConfig:
+              defaults:
+                unit: short
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                color:
+                  mode: thresholds
+              overrides: []
+    panel-7:
+      kind: Panel
+      spec:
+        id: 7
+        title: Browsers seen
+        description: >-
+          Number of distinct browser types active in the selected range. Useful
+          for compatibility awareness.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      editorMode: code
+                      expr: >-
+                        count(count by
+                        (browser_name)(count_over_time({service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | browser_name!="" [$__range])))
+                      queryType: instant
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: stat
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              colorMode: value
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs:
+                  - lastNotNull
+                fields: ''
+                values: false
+              showPercentChange: false
+              textMode: auto
+              wideLayout: true
+            fieldConfig:
+              defaults:
+                unit: short
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                color:
+                  mode: thresholds
+              overrides: []
+    panel-9:
+      kind: Panel
+      spec:
+        id: 9
+        title: LCP
+        description: >-
+          Largest Contentful Paint p75. Google thresholds: ≤2.5s good / ≤4s
+          needs improvement / >4s poor.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: loki
+                    version: v0
+                    datasource:
+                      name: grafanacloud-logs
+                    spec:
+                      editorMode: code
+                      expr: >-
+                        avg by () (quantile_over_time(0.75,
+                        {service_name="$app",
+                        deployment_environment="$deployment_environment"} |
+                        logfmt | kind=`measurement` |
+                        app_version=~"$app_version" |
+                        browser_name=~"$browser_name" | lcp!="" | unwrap lcp |
+                        __error__="" [$__range]))
+                      queryType: instant
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: stat
+          version: 13.2.0-28156739792
+          spec:
+            options:
+              colorMode: value
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs:
+                  - lastNotNull
+                fields: ''
+                values: false
+              showPercentChange: false
+              textMode: auto
+              wideLayout: true
+            fieldConfig:
+              defaults:
+                unit: ms
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 2500
+                      color: yellow
+                    - value: 4000
+                      color: red
+                color:
+                  mode: thresholds
+              overrides: []
+  layout:
+    kind: RowsLayout
+    spec:
+      rows:
+        - kind: RowsLayoutRow
+          spec:
+            title: ''
+            collapse: false
+            hideHeader: true
+            layout:
+              kind: GridLayout
+              spec:
+                items:
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 0
+                      width: 23
+                      height: 19
+                      element:
+                        kind: ElementReference
+                        name: panel-1
+        - kind: RowsLayoutRow
+          spec:
+            title: Overview
+            collapse: false
+            layout:
+              kind: GridLayout
+              spec:
+                items:
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 0
+                      width: 4
+                      height: 4
+                      element:
+                        kind: ElementReference
+                        name: panel-3
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 4
+                      'y': 0
+                      width: 4
+                      height: 4
+                      element:
+                        kind: ElementReference
+                        name: panel-4
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 8
+                      'y': 0
+                      width: 5
+                      height: 4
+                      element:
+                        kind: ElementReference
+                        name: panel-5
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 13
+                      'y': 0
+                      width: 5
+                      height: 4
+                      element:
+                        kind: ElementReference
+                        name: panel-6
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 18
+                      'y': 0
+                      width: 6
+                      height: 4
+                      element:
+                        kind: ElementReference
+                        name: panel-7
+        - kind: RowsLayoutRow
+          spec:
+            title: Core Web Vitals (p75)
+            collapse: false
+            layout:
+              kind: GridLayout
+              spec:
+                items:
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 0
+                      width: 5
+                      height: 4
+                      element:
+                        kind: ElementReference
+                        name: panel-9
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 5
+                      'y': 0
+                      width: 5
+                      height: 4
+                      element:
+                        kind: ElementReference
+                        name: panel-10
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 10
+                      'y': 0
+                      width: 4
+                      height: 4
+                      element:
+                        kind: ElementReference
+                        name: panel-11
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 14
+                      'y': 0
+                      width: 5
+                      height: 4
+                      element:
+                        kind: ElementReference
+                        name: panel-12
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 19
+                      'y': 0
+                      width: 5
+                      height: 4
+                      element:
+                        kind: ElementReference
+                        name: panel-13
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 4
+                      width: 8
+                      height: 8
+                      element:
+                        kind: ElementReference
+                        name: panel-14
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 8
+                      'y': 4
+                      width: 8
+                      height: 8
+                      element:
+                        kind: ElementReference
+                        name: panel-15
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 16
+                      'y': 4
+                      width: 8
+                      height: 8
+                      element:
+                        kind: ElementReference
+                        name: panel-16
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 12
+                      width: 12
+                      height: 8
+                      element:
+                        kind: ElementReference
+                        name: panel-28
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 12
+                      'y': 12
+                      width: 12
+                      height: 8
+                      element:
+                        kind: ElementReference
+                        name: panel-29
+        - kind: RowsLayoutRow
+          spec:
+            title: Web Vitals Pass Rate
+            collapse: false
+            hideHeader: false
+            fillScreen: false
+            layout:
+              kind: GridLayout
+              spec:
+                items:
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 0
+                      width: 8
+                      height: 5
+                      element:
+                        kind: ElementReference
+                        name: panel-30
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 8
+                      'y': 0
+                      width: 8
+                      height: 5
+                      element:
+                        kind: ElementReference
+                        name: panel-31
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 16
+                      'y': 0
+                      width: 8
+                      height: 5
+                      element:
+                        kind: ElementReference
+                        name: panel-32
+        - kind: RowsLayoutRow
+          spec:
+            title: Errors & exceptions
+            collapse: false
+            layout:
+              kind: GridLayout
+              spec:
+                items:
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 0
+                      width: 12
+                      height: 7
+                      element:
+                        kind: ElementReference
+                        name: panel-18
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 12
+                      'y': 0
+                      width: 12
+                      height: 7
+                      element:
+                        kind: ElementReference
+                        name: panel-19
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 7
+                      width: 24
+                      height: 8
+                      element:
+                        kind: ElementReference
+                        name: panel-20
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 15
+                      width: 8
+                      height: 8
+                      element:
+                        kind: ElementReference
+                        name: panel-33
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 8
+                      'y': 15
+                      width: 16
+                      height: 8
+                      element:
+                        kind: ElementReference
+                        name: panel-34
+        - kind: RowsLayoutRow
+          spec:
+            title: Sessions & audience
+            collapse: false
+            layout:
+              kind: GridLayout
+              spec:
+                items:
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 0
+                      width: 12
+                      height: 7
+                      element:
+                        kind: ElementReference
+                        name: panel-22
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 12
+                      'y': 0
+                      width: 6
+                      height: 7
+                      element:
+                        kind: ElementReference
+                        name: panel-23
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 18
+                      'y': 0
+                      width: 6
+                      height: 7
+                      element:
+                        kind: ElementReference
+                        name: panel-24
+        - kind: RowsLayoutRow
+          spec:
+            title: Page & Browser Performance
+            collapse: false
+            hideHeader: false
+            fillScreen: false
+            layout:
+              kind: GridLayout
+              spec:
+                items:
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 0
+                      width: 12
+                      height: 8
+                      element:
+                        kind: ElementReference
+                        name: panel-37
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 12
+                      'y': 0
+                      width: 12
+                      height: 8
+                      element:
+                        kind: ElementReference
+                        name: panel-35
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 8
+                      width: 24
+                      height: 8
+                      element:
+                        kind: ElementReference
+                        name: panel-36
+        - kind: RowsLayoutRow
+          spec:
+            title: Live RUM logs & browser traces
+            collapse: false
+            layout:
+              kind: GridLayout
+              spec:
+                items:
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 0
+                      width: 16
+                      height: 9
+                      element:
+                        kind: ElementReference
+                        name: panel-26
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 16
+                      'y': 0
+                      width: 8
+                      height: 9
+                      element:
+                        kind: ElementReference
+                        name: panel-27
+  links: []
+  liveNow: false
+  preload: false
+  tags:
+    - jenkins-2026
+    - rum
+    - frontend
+    - faro
+  timeSettings:
+    timezone: browser
+    from: now-3h
+    to: now
+    autoRefresh: 30s
+    autoRefreshIntervals:
+      - 5s
+      - 10s
+      - 30s
+      - 1m
+      - 5m
+      - 15m
+      - 30m
+      - 1h
+      - 2h
+      - 1d
+    hideTimepicker: false
+    fiscalYearStartMonth: 0
+  title: CI-CD Frontend RUM (Angular / Faro)
+  variables:
+    - kind: DatasourceVariable
+      spec:
+        name: DS_PROMETHEUS
+        pluginId: prometheus
+        refresh: onDashboardLoad
+        regex: ''
+        current:
+          text: grafanacloud-prom
+          value: grafanacloud-prom
+        options: []
+        multi: false
+        includeAll: false
+        label: Prometheus / Mimir
+        hide: dontHide
+        skipUrlSync: false
+        allowCustomValue: true
+    - kind: CustomVariable
+      spec:
+        name: deployment_environment
+        query: stable,develop
+        current:
+          text: develop
+          value: develop
+        options:
+          - selected: false
+            text: stable
+            value: stable
+          - selected: true
+            text: develop
+            value: develop
+        multi: false
+        includeAll: false
+        label: Environment
+        hide: dontHide
+        skipUrlSync: false
+        allowCustomValue: true
+        valuesFormat: csv
+    - kind: CustomVariable
+      spec:
+        name: app
+        query: angular-gateway
+        current:
+          text: angular-gateway
+          value: angular-gateway
+        options:
+          - selected: true
+            text: angular-gateway
+            value: angular-gateway
+        multi: false
+        includeAll: false
+        label: Faro app
+        hide: dontHide
+        skipUrlSync: false
+        allowCustomValue: true
+        valuesFormat: csv
+    - kind: CustomVariable
+      spec:
+        name: level
+        query: error,warn,info,debug,trace,unknown
+        current:
+          text:
+            - All
+          value:
+            - $__all
+        options:
+          - selected: true
+            text: All
+            value: $__all
+          - selected: false
+            text: error
+            value: error
+          - selected: false
+            text: warn
+            value: warn
+          - selected: false
+            text: info
+            value: info
+          - selected: false
+            text: debug
+            value: debug
+          - selected: false
+            text: trace
+            value: trace
+          - selected: false
+            text: unknown
+            value: unknown
+        multi: true
+        includeAll: true
+        allValue: .+
+        label: Log level
+        hide: dontHide
+        skipUrlSync: false
+        description: >-
+          Filter log panels by severity (detected_level). All = everything incl.
+          plain-text (unknown).
+        allowCustomValue: true
+        valuesFormat: csv
+    - kind: TextVariable
+      spec:
+        name: app_version
+        current:
+          text: .*
+          value: .*
+        query: .*
+        label: App Version
+        hide: dontHide
+        skipUrlSync: false
+        description: >-
+          Regex filter for app_version — use .* for all, or e.g. 0\.0\.1$ for a
+          specific build
+    - kind: CustomVariable
+      spec:
+        name: browser_name
+        query: Chrome,Edge,Firefox,Safari
+        current:
+          text: All
+          value: $__all
+        options: []
+        multi: false
+        includeAll: true
+        allValue: .*
+        label: Browser
+        hide: dontHide
+        skipUrlSync: false
+        description: Filter by browser name
+        allowCustomValue: true
+        valuesFormat: csv
+    - kind: TextVariable
+      spec:
+        name: page_url
+        current:
+          text: .*
+          value: .*
+        query: .*
+        label: Page URL filter
+        hide: dontHide
+        skipUrlSync: false
