@@ -158,9 +158,13 @@ spec:
                         // manual non-empty wins, else preset value, else '' (script default)
                         def pick = { manual, key -> has(manual) ? manual.toString() : (preset[key] != null ? preset[key].toString() : '') }
 
+                        // Coalesce preset -> build-param -> seed-baked cfg -> sane default.
+                        // The cfg fallback matters because Jenkins doesn't apply a job's
+                        // default param values on its FIRST build after the seed (re)defines
+                        // it, so params.TARGET_NAMESPACE can be null then (-> "null" namespace).
                         microservicesK6Smoke(
-                            namespace:    preset.targetNamespace ?: params.TARGET_NAMESPACE,
-                            envName:      preset.envName ?: params.ENV_NAME,
+                            namespace:    preset.targetNamespace ?: params.TARGET_NAMESPACE ?: cfg.targetNamespace ?: 'microservices',
+                            envName:      preset.envName ?: params.ENV_NAME ?: cfg.envName ?: 'stable',
                             targetUrl:    pick(params.TARGET_URL, 'targetUrl'),
                             genaiEnabled: cfg.genaiEnabled,
                             profile:      usingPreset ? (preset.profile ?: 'smoke') : params.PROFILE,
