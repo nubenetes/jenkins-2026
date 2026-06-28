@@ -36,10 +36,16 @@ All notable changes to this project will be documented in this file.
   `namespace` var uses `allValue='.*'` so the Jenkins JVM series — which carry no
   `k8s_namespace_name` — show under *All*); titled "CI-CD JVM internals (all Java services
   + Jenkins)", tagged `jenkins`/`jvm`. See [`docs/303`](docs/303-JVM-TUNING.md).
+- **Angular Faro RUM instrumented end-to-end + activated.** The gateway SPA ships the
+  Grafana Faro Web SDK (`@grafana/faro-web-sdk` + `-web-tracing`); deployed live on the
+  **develop** tier (image `gateway:develop-<build#>`, bundle serves Faro → public endpoint)
+  and **promoted `develop`→`main`** (Faro `environment` flipped to `stable`) so the stable
+  tier gets RUM on its next build. Public ingest at `faro.<baseDomain>` (HTTPRoute + TCP
+  HealthCheckPolicy). Build needed `skipLibCheck: true` in the gateway tsconfig (see docs/902).
 - **`rum-frontend` dashboard (uid `jenkins2026-rum-frontend`) — Angular Real User
   Monitoring via Grafana Faro.** Core Web Vitals (LCP/INP/CLS/FCP/TTFB with Google
   thresholds), JS errors/exceptions, sessions, browser audience, live RUM logs and browser
-  traces. Populates once the SPA ships the Faro Web SDK (roadmap in
+  traces. Populated by the Faro Web SDK now shipped in the gateway SPA (live on develop, promoted to main — see
   [`docs/202`](docs/202-MICROSERVICES-APP-ARCHITECTURE.md)).
 - **Grafana Faro RUM receiver in the otel-collector — on ALL four backends.** Switched the
   gateway collector to the **contrib** distro and added the `faro` receiver (`:8027`, CORS)
