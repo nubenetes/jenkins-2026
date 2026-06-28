@@ -27,6 +27,14 @@ on:
         required: false
         default: ""
         type: string
+      log_level:
+        description: "Script/Terraform verbosity: info (default) or debug (adds [DEBUG] script lines + TF_LOG=DEBUG). For runner-level tracing use GitHub's ACTIONS_STEP_DEBUG."
+        required: false
+        default: "info"
+        type: choice
+        options:
+          - info
+          - debug
 
 permissions:
   contents: read
@@ -38,6 +46,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  JENKINS2026_LOG_LEVEL: ${{ inputs.log_level || 'info' }}
+  TF_LOG: ${{ inputs.log_level == 'debug' && 'DEBUG' || '' }}
   # Surfaced as env so steps can skip cleanly (secrets can't be used in `if:`)
   # when the OIDC SP hasn't been set up yet (re-run Day0.infra.03 + set the secrets).
   AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}

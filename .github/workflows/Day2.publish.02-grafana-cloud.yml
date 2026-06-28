@@ -1,29 +1,23 @@
-name: "Day2.redeploy.02 Jenkins"
+name: "Day2.publish.02 Grafana Cloud dashboards/alerts"
 
-# Manually-triggered: re-applies only scripts/04-jenkins.sh (Helm
-# upgrade --install of helm/jenkins + jenkins/casc JCasC fragments) and
-# scripts/06-seed-pipelines.sh against the cluster from the last "Day1.cluster.01 GKE
-# provision" run, without touching terraform/gke or any other component of the
-# stack.
+# Manually-triggered: republishes the Grafana dashboards (and alert rules) to the
+# Grafana Cloud stack WITHOUT a full reprovision — the grafana-cloud peer of
+# "Day2.publish.01 OSS Grafana" / ".03 Azure" / ".04 AWS" (filling the ZZ=02
+# grafana-cloud slot so the per-backend publish set is complete & homogeneous).
 #
-# Use this to apply a Jenkins-only change (Helm values, JCasC, plugin list,
-# shared library) without rerunning the whole provision/decommission lifecycle.
-# Requires the namespaces/secrets created by scripts/01-namespaces.sh during
-# that "Day1.cluster.01 GKE" run to still exist on the cluster.
+# Unlike oss (where the stack is an in-cluster ArgoCD app), Grafana Cloud is an
+# external managed stack: scripts/07-grafana-dashboards.sh reads GRAFANA_BASE_URL +
+# GRAFANA_API_KEY from the in-cluster `grafana-cloud-credentials` Secret (created at
+# Day1 from the Terraform-minted token) and imports observability/grafana/dashboards/
+# via the Grafana HTTP API (gcx). So this still needs the live cluster — to read that
+# Secret — but touches no workloads. scripts/07.5-grafana-alerts.sh refreshes the
+# alert rules (its grafana-cloud path uses the same Secret).
 #
-# NOTE: Grafana dashboards are deliberately NOT republished here - that's the
-# job of the per-backend dashboard workflows (e.g. "Day2.publish.04 Publish AWS
-# dashboards"). Running scripts/07 here would assume config.yaml's default
-# observability.mode (grafana-cloud) regardless of the live cluster's mode, and
-# the grafana-cloud branch hard-fails when its credentials secret is absent.
+# Only meaningful when the live cluster runs observability.mode=grafana-cloud.
+# Requires the cluster from the last "Day1.cluster.01 GKE" run to still exist.
 on:
   workflow_dispatch:
     inputs:
-      develop_track:
-        description: "Regenerate the optional lean 'develop' microservices Jenkins jobs alongside 'stable' (OFF by default). Note: the develop ArgoCD app/namespace is owned by Day1.cluster.01 — run that with develop_track=true first to provision the tier."
-        required: false
-        default: false
-        type: boolean
       git_ref:
         description: "Git branch, tag, or SHA to check out (leave empty to use the branch/tag selected in 'Use workflow from' above)"
         required: false
@@ -50,15 +44,16 @@ env:
   JENKINS2026_LOG_LEVEL: ${{ inputs.log_level || 'info' }}
   TF_LOG: ${{ inputs.log_level == 'debug' && 'DEBUG' || '' }}
   TF_VERSION: "1.15.6"
-  # Honour the develop tier in 04-jenkins (writes develop-enabled into jenkins-credentials)
-  # and the re-seed (generates the -develop jobs). Off by default.
-  JENKINS2026_DEVELOP_TRACK_ENABLED: ${{ inputs.develop_track }}
+  # Force the grafana-cloud code path in scripts/07 + scripts/07.5 regardless of
+  # config.yaml's default observability.mode (env-override pattern).
+  JENKINS2026_OBS_MODE: grafana-cloud
 
 jobs:
-  redeploy-jenkins:
+  publish-grafana-cloud:
     runs-on: ubuntu-latest
-    # Manual approval gate (GitHub Environment required reviewers) - modifies a real
-    # billed cluster, same posture as Day1/Decom and the other Day2.* workflows.
+    # Manual approval gate (GitHub Environment required reviewers) - reads from a real
+    # billed cluster + writes to the Grafana Cloud stack, same posture as the other
+    # Day2.* workflows.
     environment: gke-production
     steps:
       - name: Checkout
@@ -86,9 +81,6 @@ jobs:
 
       - name: Set up kubectl
         uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d # v5.1.0
-
-      - name: Set up Helm
-        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
 
       - name: Install yq
         run: |
@@ -129,23 +121,29 @@ jobs:
             --zone "$(terraform output -raw location)" \
             --project "${{ secrets.GCP_PROJECT_ID }}"
 
-      - name: Check prereqs & add Helm repos (scripts/00-check-prereqs.sh)
-        run: ./scripts/00-check-prereqs.sh
+      # Reads GRAFANA_BASE_URL + GRAFANA_API_KEY from the in-cluster
+      # grafana-cloud-credentials Secret and imports observability/grafana/dashboards/
+      # into the "CI-CD Observability" folder via the Grafana HTTP API (gcx).
+      - name: Republish Grafana Cloud dashboards (scripts/07-grafana-dashboards.sh)
+        run: ./scripts/07-grafana-dashboards.sh
 
-      - name: Redeploy Jenkins (scripts/04-jenkins.sh)
-        run: ./scripts/04-jenkins.sh
-
-      - name: Re-seed Microservices pipelines (scripts/06-seed-pipelines.sh)
-        run: ./scripts/06-seed-pipelines.sh
+      - name: Republish Grafana Cloud alerts (scripts/07.5-grafana-alerts.sh)
+        run: ./scripts/07.5-grafana-alerts.sh || echo "::warning::alert provisioning reported an issue (non-fatal)"
 
       - name: Summary
         if: always()
         run: |
+          url="$(kubectl get secret grafana-cloud-credentials -n observability \
+            -o jsonpath='{.data.GRAFANA_BASE_URL}' 2>/dev/null | base64 -d 2>/dev/null || true)"
           {
-            echo "### Jenkins redeployed"
+            echo "### Grafana Cloud dashboards/alerts republished"
             echo
-            echo "Re-applied helm/jenkins + jenkins/casc and re-triggered seed-jobs"
-            echo "against the cluster from the last **Day1.cluster.01 GKE** run."
-            echo "(Grafana dashboards are published by the per-backend dashboard"
-            echo "workflows, e.g. **Day2.publish.04 AWS dashboards**.)"
+            echo "- Re-imported \`observability/grafana/dashboards/\` via the Grafana API (gcx)"
+            echo "- Republished the Grafana alert rules (scripts/07.5)"
+            echo
+            echo "Source of truth is git; the Grafana Cloud stack itself is Terraform-managed"
+            echo "(\`terraform/grafana-cloud-stack\`). Only meaningful on an"
+            echo "observability.mode=grafana-cloud cluster."
+            [[ -n "${url}" ]] && { echo; echo "**Grafana:** ${url}"; }
           } >> "${GITHUB_STEP_SUMMARY}"
+          [[ -n "${url}" ]] && echo "Grafana: ${url}"

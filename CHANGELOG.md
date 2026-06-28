@@ -2,6 +2,162 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.0] - 2026-06-28
+
+### Added
+
+- **`logging.level` verbosity flag (`info` default | `debug`).** Durable default in
+  `config/config.yaml` (`logging.level`), per-run override `JENKINS2026_LOG_LEVEL`,
+  following the existing feature-flag pattern. `scripts/lib/common.sh` adds `log_debug()`
+  (emits only at `debug`, to stderr so it never pollutes a function's captured stdout);
+  `scripts/lib/config.sh` adds the config default + validation. Every dispatchable GitHub
+  Actions workflow gains a **`log_level` dropdown** (reusable workflows mirror it as a
+  `workflow_call` input; umbrellas/preflights pass it down); a top-level `env` exports
+  `JENKINS2026_LOG_LEVEL` (drives `log_debug`) and `TF_LOG=DEBUG` for the Terraform steps
+  when `debug`. Deliberately **no `trace`/`set -x` level**: bash xtrace would leak
+  script-derived secret values (admin password, dockerconfig, ArgoCD token) into the logs,
+  which GitHub does not mask — use the native `ACTIONS_STEP_DEBUG` for runner tracing.
+- **`Day2.scale.01 Pause` / `Day2.scale.02 Resume` workflows — park the cluster at
+  ~zero cost without a Decom+rebuild.** Pause disables autoscaling and scales every GKE
+  node pool to 0 (removes the 24/7 worker-VM cost while preserving the cluster, PVs/CNPG
+  data, ArgoCD + apps, static IP, DNS, certs); Resume scales the pools back up and
+  re-enables autoscaling (inputs default to `terraform/gke`'s node_count/min/max), pods
+  reschedule and ArgoCD reconciles in minutes. Imperative `gcloud` (fast); the
+  `terraform/gke` state drift is benign and reconciled by Resume or the next Day1.
+  Grafana Cloud is free-tier (nothing to pause). See
+  [`docs/101`](docs/101-GITHUB_ACTIONS_WORKFLOWS.md).
+
+### Fixed
+
+- **k6 run summary showed all-zeros in every engine (GHA, Jenkins, Tekton).** k6 2.0's
+  `--summary-export` emits a *flattened* schema (`metrics.<m>.<stat>`), but all three
+  consumers parse the nested `metrics.<m>.values.<stat>` (+ `.thresholds[expr].ok`)
+  shape, so they silently rendered 0 requests / 0 checks / `[FAIL]` thresholds even when
+  the run passed. Fixed at the source: `jenkins/pipelines/k6/microservices-smoke.js` now
+  emits the summary via `handleSummary()` (whose `data` keeps the stable `.values.*`
+  schema), output path overridable via `K6_SUMMARY_OUT` (Tekton); dropped
+  `--summary-export` from all three engines. Also added `summaryTrendStats` with `p(99)`
+  (k6's default trend stats omit it, so the summaries printed `p99=0`). Validated: 10/10
+  GHA use-cases (default + 9 presets) in parallel, all success, real numbers, thresholds
+  PASS. This is the complete fix for the symptom the v0.27.0 boolean-threshold patch only
+  partially addressed.
+- **Grafana Cloud free-tier 15k active-series cap exceeded → metrics rejected
+  (`err-mimir-max-active-series`), so app/JVM dashboard panels churned empty.** Two
+  durable cuts: `observability.leanMetrics` default flipped **false → true** (infra
+  metrics stay off across redeploys), and the otel-collector `cnpg` scrape now drops
+  `cnpg_pg_settings_setting` (~2272 series — one per postgresql.conf setting per
+  instance, the single biggest consumer, used by no dashboard) via
+  `metric_relabel_configs`. See [`docs/301`](docs/301-OBSERVABILITY.md).
+
+### Changed
+
+- **`Day2.traffic.01` k6 workflow no longer requires manual approval.** Removed
+  `environment: gke-production` (required-reviewers gate) — it only drives read-only HTTP
+  traffic against the already-running public endpoints, provisions/destroys nothing, and
+  all its secrets are repo-level, so the gate only blocked automation/scheduling. Day1,
+  Decom and the heavier Day2.* workflows keep the gate.
+
+> Companion fixes in the **`jenkins-2026-gitops-config`** repo (deployed via ArgoCD, not
+> tracked here): the lean `develop` tier no longer CrashLoops — raised the Java CPU limit
+> 500m→1500m + startup-probe budget 5→10min (CPU-starved cold start), and switched the
+> develop deployments to the `Recreate` strategy so a rolling update's overlapping pods
+> don't starve the new pod of PgBouncer session-mode connections (its reactive r2dbc
+> health check hung → startup probe never passed).
+
+## [v0.27.0] - 2026-06-27
+
+### Added
+
+- **`observability.leanMetrics` feature flag (default off) — fit the develop tier under
+  the Grafana Cloud free-tier 15k active-series cap.** When `true` (grafana-cloud mode;
+  per-run override `JENKINS2026_OBS_LEAN_METRICS=true`), `scripts/03-observability.sh`
+  disables the k8s-monitoring **cluster-infra** metrics (cadvisor/kube-state/node-exporter)
+  — the high-cardinality series the custom `jenkins2026-*` dashboards don't use — freeing
+  thousands of active series. App/CNPG/Tekton/k6/Jenkins metrics (via the otel-collector)
+  are unaffected; `clusterEvents` stays on (→ Loki, ~0 metric series). Trade-off: the
+  built-in "K8s Compute" views go empty. Meant as a temporary validation knob; the
+  metrics cap doesn't affect Tempo traces / Loki logs, so develop is always verifiable
+  there. See [`docs/301`](docs/301-OBSERVABILITY.md).
+- **`Day2.publish.02-grafana-cloud` workflow — the missing per-backend dashboard
+  publisher.** The per-backend Day2 publish set had `01-oss` / `03-azure` /
+  `04-aws` but no **grafana-cloud** entry (ZZ=02), even though grafana-cloud is the
+  default mode — so refreshing Grafana Cloud dashboards required a full Day1. The new
+  workflow runs `scripts/07-grafana-dashboards.sh` + `07.5-grafana-alerts.sh` in
+  grafana-cloud mode (reads `GRAFANA_BASE_URL`/`API_KEY` from the in-cluster
+  `grafana-cloud-credentials` Secret, imports via the Grafana API), making the
+  observability-backend lifecycle symmetric: every persistent backend now has
+  Day0.infra + Day2.publish + Decom.infra. Docs/diagrams in
+  [`docs/101`](docs/101-GITHUB_ACTIONS_WORKFLOWS.md) updated.
+
+### Fixed
+
+- **k6 GitHub Actions summary no longer crashes on k6 2.0.0 threshold output.** The
+  *Show Results Summary* step's `jq` read each threshold as an object (`.value.ok`),
+  but k6 2.0.0 emits thresholds as a plain **boolean** → `jq: Cannot index boolean
+  with string "ok"` → the step exited 5 and the whole job went red **even though the
+  test ran fine** (and the printed summary showed 0 reqs/iters — a parse artifact,
+  not reality: the run actually did 203 iterations / 4 VUs against develop). Now
+  handles both shapes (`.value | if type=="object" then .ok else . end`).
+- **ArgoCD `microservices` AppProject now allows the `microservices-develop`
+  namespace.** Its `destinations` whitelisted only `microservices`, so the develop
+  tier's generated Application was rejected with `InvalidSpecError` (namespace not in
+  the allowed destinations) → it stayed `Unknown/Unknown`, deployed **zero pods**, and
+  any pipeline doing `argocd app wait microservices-develop` (the GitOps Update stage
+  of `microservicesDeploy.groovy`) **hung** until timeout; the public develop endpoint
+  500'd (Service, no pods). Pre-existing develop-track bug, surfaced once the tier was
+  first exercised end-to-end. One-line whitelist add (harmless when the track is off).
+
+### Changed
+
+- **Static platform RBAC moved from imperative `kubectl` to GitOps (new ArgoCD
+  `platform-config` app).** The engine-aware, *timing-insensitive* RBAC that
+  `scripts/01-namespaces.sh` and `scripts/02-otel-operator.sh` used to
+  `kubectl create … | kubectl apply` — the **Jenkins** SA `edit` bindings in the
+  microservices namespaces, the **Tekton** develop-tier `tekton-ci-edit` binding,
+  the **pgAdmin** `pgadmin-secret-reader` Role/binding, and the
+  **`jenkins-otel-instrumentation-editor`** `ClusterRole`+binding — is now rendered
+  by a small Helm chart at **`argocd/platform-config/`** and owned by ArgoCD
+  (drift-detected + self-healed). `ciEngine`/`developTrackEnabled` flow down as
+  `helm.parameters` (planted by `08.5-argocd.sh`), so only the active engine's
+  bindings render. Safe to move because every consumer (CI pipelines, pgAdmin) runs
+  long after ArgoCD has synced.
+  - **Deliberately NOT migrated:** NetworkPolicies and ResourceQuotas/LimitRanges
+    stay script-applied in `01-namespaces.sh`. They are applied **early, before any
+    workload**, which is required for Dataplane V2 enforcement timing (e.g. the OTel
+    Operator's `:9443` webhook allow and the `microservices-cnpg-platform` policy
+    must exist before those workloads come up) — an ArgoCD app would sync them
+    *concurrently* with workloads, a timing regression. The Headlamp per-email admin
+    `ClusterRoleBinding`s stay imperative too (derived from a user list).
+  - First step of the GitOps-vs-imperative review roadmap (see
+    [`argocd/README.md`](argocd/README.md) topology table).
+
+### Fixed
+
+- **Grafana `postgres-overview` dashboard now covers the develop tier.** Its queries
+  were hardcoded to `namespace="microservices"` (stable only), so the optional
+  develop tier's CNPG Postgres (`microservices-develop`) was invisible. Added a
+  **`Tier (namespace)`** template variable (auto-discovered from the CNPG metrics'
+  `namespace` label, so `microservices-develop` appears once its instance is up) and
+  parameterized all 8 metric + 1 log queries to `$namespace`. Regenerated the AWS /
+  Azure variants via their `generate.py`, so **all four Grafana backends** (OSS,
+  Grafana Cloud, AMG, Azure Managed Grafana) get it. (The `microservices-overview`
+  and `k6-smoke-overview` dashboards already had the `stable`/`develop` selector;
+  `jenkins-overview` and `tekton-overview` are control-plane-scoped — single
+  environment — so correctly have none.)
+
+### Documentation
+
+- **New `docs/201` section: "Imperative (push) vs GitOps (pull): the provisioning
+  split".** A complete, scannable inventory of which resources ArgoCD pulls vs which
+  the setup scripts push, the **six concrete reasons** a resource stays imperative
+  (bootstrap paradox · secret values · runtime-derived manifests · live-reload
+  companions · external side-effects · Dataplane V2 enforcement timing), a
+  resource-by-resource ownership table, a **two-planes Mermaid diagram** (bootstrap →
+  hand-off → reconcile), and the "irreducible imperative core". Cross-linked from
+  `CLAUDE.md`, `argocd/README.md` (topology table now notes it's only the GitOps
+  half + lists `platform-config`), and the existing
+  [201 § Secrets backend](docs/201-ARCHITECTURE.md) deep-dive.
+
 ## [v0.26.0] - 2026-06-27
 
 ### Added

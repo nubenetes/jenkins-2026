@@ -1,0 +1,13 @@
+apiVersion: v2
+name: platform-config
+description: >-
+  Static, engine-aware platform RBAC, managed via GitOps — the ArgoCD-owned
+  half of what scripts/01-namespaces.sh + scripts/02-otel-operator.sh used to
+  apply imperatively. ONLY timing-insensitive RBAC lives here (its consumers —
+  CI pipelines, pgAdmin — run long after ArgoCD has synced). NetworkPolicies and
+  ResourceQuotas/LimitRanges deliberately STAY script-applied: 01-namespaces.sh
+  applies them early, before any workload, which matters for Dataplane V2
+  enforcement timing (e.g. the OTel-operator 9443 webhook allow and the
+  microservices-cnpg-platform policy must exist before those workloads come up).
+type: application
+version: 0.1.0

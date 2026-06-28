@@ -23,6 +23,19 @@ platform:
     serviceType: ClusterIP
 
 # -----------------------------------------------------------------------------
+# Log verbosity
+# -----------------------------------------------------------------------------
+# How chatty the scripts/0N-*.sh are (and TF_LOG for the Terraform steps).
+#   info  (default) - the normal [STEP]/[INFO] output.
+#   debug           - additionally emit [DEBUG] lines (log_debug in lib/common.sh)
+#                     and TF_LOG=DEBUG. No 'trace'/`set -x` level by design: bash
+#                     xtrace would leak script-derived secret values into the logs.
+# Per-run override: JENKINS2026_LOG_LEVEL=debug (the GHA workflows expose it as the
+# 'log_level' dropdown input). Use GitHub's ACTIONS_STEP_DEBUG for runner-level tracing.
+logging:
+  level: info
+
+# -----------------------------------------------------------------------------
 # CI engine selector
 # -----------------------------------------------------------------------------
 # Which continuous-integration engine the platform deploys and runs the
@@ -154,6 +167,14 @@ observability:
   #   managed-aws   - export to Amazon Managed Service for Prometheus +
   #                   X-Ray/CloudWatch; visualize in Amazon Managed Grafana.
   mode: grafana-cloud
+
+  # When true (grafana-cloud mode), 03-observability disables the k8s-monitoring
+  # CLUSTER INFRA metrics (cadvisor/kube-state/node-exporter) — the high-cardinality
+  # series the custom jenkins2026-* dashboards don't use — to stay under the Grafana
+  # Cloud free-tier 15k active-series cap (e.g. while validating the develop tier).
+  # App/CNPG/Tekton metrics (via the otel-collector) are unaffected. Loses the
+  # built-in "K8s Compute" views. Override per-run: JENKINS2026_OBS_LEAN_METRICS=true.
+  leanMetrics: true
 
   otelOperator:
     chart:

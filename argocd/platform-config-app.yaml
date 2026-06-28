@@ -1,0 +1,34 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-config
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  # The ArgoCD-owned half of the platform RBAC: this Application renders the local
+  # Helm chart at argocd/platform-config/, which emits the engine-aware static
+  # RoleBindings/Role/ClusterRole that scripts/01-namespaces.sh + 02-otel-operator.sh
+  # used to apply imperatively. {{ciEngine}}/{{developTrackEnabled}} are substituted
+  # by scripts/08.5-argocd.sh at apply time (from J2026_CI_ENGINE /
+  # J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED) so the right engine's RBAC renders.
+  # (NetworkPolicies + ResourceQuotas/LimitRanges intentionally stay script-applied —
+  # they must land early, before workloads, for Dataplane V2 enforcement timing.)
+  source:
+    repoURL: '{{repoUrl}}'
+    targetRevision: '{{branchStable}}'
+    path: argocd/platform-config
+    helm:
+      parameters:
+        - name: ciEngine
+          value: '{{ciEngine}}'
+        - name: developTrackEnabled
+          value: '{{developTrackEnabled}}'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

@@ -215,8 +215,12 @@ spec:
         # the K6SIM_* env above via the script's `scenarios` block — do NOT pass
         # --vus/--iterations here (k6 forbids mixing CLI execution shortcuts with
         # a scenarios-based script).
+        # k6-summary.json is written by the script's handleSummary() to the path
+        # in K6_SUMMARY_OUT (the workspace root, one level above this CWD), NOT
+        # --summary-export — k6 2.0's --summary-export emits a flattened schema
+        # that broke the .values.* parsers. See microservices-smoke.js.
+        export K6_SUMMARY_OUT="$(workspaces.source.path)/k6-summary.json"
         k6 run ${OTEL_OUT} ${CLOUD_OUT} \
-          --summary-export="$(workspaces.source.path)/k6-summary.json" \
           jenkins/pipelines/k6/microservices-smoke.js
         if [ -n "${CLOUD_OUT}" ] && [ -n "${K6_GRAFANA_BASE_URL:-}" ]; then
           echo "k6 results streamed to Grafana Cloud k6: ${K6_GRAFANA_BASE_URL}/a/k6-app/projects/${K6_CLOUD_PROJECT_ID}"

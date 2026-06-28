@@ -287,7 +287,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (service_name) (jvm_memory_used_bytes{deployment_environment=\"$deployment_environment\", service_name=~\"$service_name\", jvm_memory_type=\"heap\"})",
+          "expr": "sum by (service_name) (jvm_memory_used_bytes{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\", jvm_memory_type=\"heap\"})",
           "legendFormat": "{{service_name}}",
           "refId": "A"
         }
@@ -551,7 +551,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.99, sum by (le, service_name) (rate(jvm_gc_duration_seconds_bucket{deployment_environment=\"$deployment_environment\", service_name=~\"$service_name\"}[15m])))",
+          "expr": "histogram_quantile(0.99, sum by (le, service_name) (rate(jvm_gc_duration_seconds_bucket{k8s_namespace_name=\"$namespace\", service_name=~\"$service_name\"}[15m])))",
           "legendFormat": "{{service_name}} GC p99",
           "refId": "A"
         }
@@ -645,7 +645,7 @@
           "type": "prometheus",
           "uid": "${DS_PROMETHEUS}"
         },
-        "definition": "label_values(jvm_memory_used_bytes{deployment_environment=\"$deployment_environment\"}, k8s_namespace_name)",
+        "definition": "label_values(target_info{deployment_environment=\"$deployment_environment\"}, k8s_namespace_name)",
         "description": "Hidden: resolves the k8s namespace for the selected environment (stable->microservices, develop->microservices-develop) so log panels/links scope correctly. Shared service names across envs make namespace the only discriminator.",
         "hide": 2,
         "includeAll": false,
@@ -653,7 +653,7 @@
         "name": "namespace",
         "options": [],
         "query": {
-          "query": "label_values(jvm_memory_used_bytes{deployment_environment=\"$deployment_environment\"}, k8s_namespace_name)",
+          "query": "label_values(target_info{deployment_environment=\"$deployment_environment\"}, k8s_namespace_name)",
           "refId": "StandardVariableQuery"
         },
         "refresh": 2,

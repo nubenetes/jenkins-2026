@@ -17,9 +17,10 @@ navigation:
 - [`101-GITHUB_ACTIONS_WORKFLOWS.md`](docs/101-GITHUB_ACTIONS_WORKFLOWS.md) — CI/CD workflow naming (`DayN.tier.ZZ-resource`), lifecycle matrix, clickable workflow inventory
 - [`102-GITHUB_ACTIONS_AUTOMATION.md`](docs/102-GITHUB_ACTIONS_AUTOMATION.md) — WIF setup, GitHub secrets, bootstrapping architecture
 - [`103-GITHUB_SECRETS_INVENTORY.md`](docs/103-GITHUB_SECRETS_INVENTORY.md) — complete inventory of every GitHub secret and variable: purpose, sensitivity, source, which workflows use each
-- [`201-ARCHITECTURE.md`](docs/201-ARCHITECTURE.md) — system architecture, config, repository layout
+- [`201-ARCHITECTURE.md`](docs/201-ARCHITECTURE.md) — system architecture, config, repository layout, the **imperative (push) vs GitOps (pull) provisioning split** (full inventory + the six reasons a resource stays imperative), namespaces & in-cluster secrets
 - [`301-OBSERVABILITY.md`](docs/301-OBSERVABILITY.md) — OTel components, signal correlation, dashboards, all four obs modes
 - [`302-K6_LOAD_TESTING.md`](docs/302-K6_LOAD_TESTING.md) — the parametrizable k6 traffic/load engine: the `K6SIM_*` contract, smoke/load/stress/soak/spike/breakpoint profiles, the same script run from Jenkins/Tekton/GitHub Actions, `stable`-vs-`develop` targeting, and the layered (basic→expert) result analysis
+- [`303-JVM-TUNING.md`](docs/303-JVM-TUNING.md) — JVM tuning & runtime strategy for the Java microservices: the container-default trap (SerialGC + 25% heap) and the G1/heap fix, GC-algorithm + runtime-option matrices (HotSpot+G1 · AOT cache · **CRaC** · GraalVM Native · OpenJ9), OTel instrumentation modes (agent vs Spring starter vs eBPF), why **CRaC** is the chosen advanced direction (keeps the OTel agent, unlike GraalVM Native), and how to read the JVM-internals dashboard to find GC/heap/CPU/thread bottlenecks
 - [`401-JENKINS.md`](docs/401-JENKINS.md) — Jenkins UI, plugins, JCasC, MCP
 - [`402-PIPELINES_AS_CODE.md`](docs/402-PIPELINES_AS_CODE.md) — seed job, pipeline stages, develop tier
 - [`403-TEKTON.md`](docs/403-TEKTON.md) — Tekton as the alternative CI engine (`ci.engine` flag), Pipelines/Triggers/Dashboard, IAP-protected Dashboard, the pipeline ported to `tekton/`
@@ -82,10 +83,16 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
   dashboards) Helm values + the `grafana-cloud-credentials` secret template.
 - `argocd/` - ArgoCD `Application`/`ApplicationSet` manifests (the GitOps
   layer): single `Application`s for External Secrets, Headlamp, **Jenkins**
-  (`jenkins-app.yaml`, the official chart, when `ci.engine=jenkins`), and
+  (`jenkins-app.yaml`, the official chart, when `ci.engine=jenkins`),
   **Argo Rollouts** (`argo-rollouts-app.yaml`, controller + Gateway API
   traffic-router plugin for sidecar-free canary/blue-green — see
-  [`docs/501`](docs/501-PLATFORM_OPERATIONS.md) § Progressive Delivery), the
+  [`docs/501`](docs/501-PLATFORM_OPERATIONS.md) § Progressive Delivery), and
+  **`platform-config`** (`platform-config-app.yaml` → the local `argocd/platform-config/`
+  Helm chart: the static, engine-aware platform **RBAC** — Jenkins/Tekton SA `edit`
+  bindings, pgAdmin secret-reader, the OTel-instrumentation `ClusterRole` — that
+  `01-namespaces.sh`/`02-otel-operator.sh` used to apply imperatively; NetworkPolicies
+  and ResourceQuotas/LimitRanges deliberately stay script-applied, they must land
+  before workloads for Dataplane V2 timing), the
   microservices AppSet, plus three **app-of-apps** (each a small Helm chart so repo/branch/version flow down to
   its children): `platform-postgres/` (the CNPG operator + pgAdmin that
   administers it), `observability-oss/`, which deploys the in-cluster OSS

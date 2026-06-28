@@ -24,7 +24,7 @@ on:
         default: smoke
         options: [smoke, load, stress, soak, spike, breakpoint]
       env_name:
-        description: "Target tier (stable = public URL; develop = port-forward the develop gateway)"
+        description: "Target tier — selects the public URL: stable → microservices.<baseDomain>, develop → microservices-develop.<baseDomain>. Both are external internet endpoints; also tags the telemetry deployment.environment=<tier>."
         type: choice
         default: stable
         options: [stable, develop]
@@ -64,17 +64,32 @@ on:
         description: "Per-iteration k6 debug logging"
         type: boolean
         default: false
+      log_level:
+        description: "Script/Terraform verbosity: info (default) or debug (adds [DEBUG] script lines + TF_LOG=DEBUG). For runner-level tracing use GitHub's ACTIONS_STEP_DEBUG."
+        required: false
+        default: "info"
+        type: choice
+        options:
+          - info
+          - debug
   # Optional: Run on a schedule to keep the dashboards alive
   # schedule:
   #   - cron: '0 * * * *' # Every hour
+
+env:
+  JENKINS2026_LOG_LEVEL: ${{ inputs.log_level || 'info' }}
+  TF_LOG: ${{ inputs.log_level == 'debug' && 'DEBUG' || '' }}
 
 jobs:
   simulate-traffic:
     name: k6 Traffic Simulation
     runs-on: ubuntu-latest
-    # Manual approval gate (GitHub Environment required reviewers) - runs against a
-    # real billed cluster, same posture as Day1/Decom and the other Day2.* workflows.
-    environment: gke-production
+    # No environment gate on purpose: this workflow only drives read-only HTTP
+    # traffic against the already-running public endpoints — it provisions and
+    # destroys nothing — so the gke-production "required reviewers" approval (kept
+    # on Day1/Decom and the heavier Day2.* workflows) would only block
+    # automation/scheduling here. All secrets it uses are repo-level, so dropping
+    # the environment loses no access.
     permissions:
       contents: read
       id-token: write
@@ -313,9 +328,12 @@ jobs:
           # flags, which k6 forbids mixing with a scenarios-based script.
           # TARGET_URL and ENV_NAME reach the script as __ENV automatically.
           set +e
+          # k6-summary.json is written by the script's handleSummary() (CWD),
+          # NOT --summary-export — k6 2.0's --summary-export emits a flattened
+          # schema that made the jq summary below read all-zeros. See
+          # jenkins/pipelines/k6/microservices-smoke.js.
           k6 run jenkins/pipelines/k6/microservices-smoke.js \
-            -o opentelemetry ${CLOUD_OUT} \
-            --summary-export=k6-summary.json
+            -o opentelemetry ${CLOUD_OUT}
           EXIT_CODE=$?
           set -e
 
@@ -372,7 +390,8 @@ jobs:
                 "",
                 "--- THRESHOLDS ---",
                 ( [ $m | to_entries[] as $e | ($e.value.thresholds // {}) | to_entries[]
-                    | "  [\(if .value.ok==false then "FAIL" else "PASS" end)] \($e.key): \(.key)" ]
+                    | (.value | if type=="object" then .ok else . end) as $ok
+                    | "  [\(if $ok==false then "FAIL" else "PASS" end)] \($e.key): \(.key)" ]
                   | if length==0 then "  (none configured)" else .[] end )
             ' k6-summary.json
           else

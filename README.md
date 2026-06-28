@@ -145,6 +145,8 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 | **Secrets backend** | `secrets.backend` | **`imperative`** — `kubectl create secret` from GitHub secrets | **`eso`** — push values to **GCP Secret Manager** + sync via the **External Secrets Operator** over Workload Identity (keyless, versioned, audited). |
 | **Develop tier** | `microservices.developTrackEnabled` | **`false`** | **`true`** — an optional **lean, non-HA** second deploy tier (`microservices-develop`: CNPG single instance, single pooler, no backups), engine-neutral, into the same observability stack. |
 | **Public access** | `gateway.baseDomain` | **set** → one global **GKE Gateway** + Google **IAP** + a wildcard cert front every UI | **`""`** to disable (reach services via `kubectl port-forward`). |
+| **Lean metrics** | `observability.leanMetrics` | **`true`** | **`false`** *(grafana-cloud)* — **on by default** to stay under the Grafana Cloud **free-tier 15k active-series** cap: drops the k8s-monitoring **cluster infra metrics** (cadvisor/kube-state/node-exporter) the custom dashboards don't use. App/CNPG/Tekton metrics (via the otel-collector) are unaffected; loses the built-in "K8s Compute" views. Set `false` (or upgrade the plan) for full cluster-infra metrics. |
+| **Log verbosity** | `logging.level` | **`info`** | **`debug`** — additionally emit `[DEBUG]` script lines (`log_debug`) and `TF_LOG=DEBUG` for the Terraform steps. Per-run override `JENKINS2026_LOG_LEVEL`; the GitHub Actions workflows expose it as a `log_level` dropdown. No `trace`/`set -x` level by design (would leak script-derived secrets); use `ACTIONS_STEP_DEBUG` for runner tracing. |
 
 **Always on (no flag):** **ArgoCD** (the GitOps CD engine) · **CloudNativePG** HA Postgres + **pgAdmin** · **Headlamp** (cluster UI) · the **OpenTelemetry** operator + collector · **Argo Rollouts** (sidecar-free canary / blue-green via the Gateway API) · **Dataplane V2** (Cilium/eBPF) **enforced NetworkPolicies** + **WireGuard** inter-node pod encryption · **DevSecOps** scanning in every build · **Karpenter** spot autoscaling · and **pinned versions** throughout.
 
@@ -269,6 +271,15 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 - [Reading the results — basic & expert](./docs/302-K6_LOAD_TESTING.md#reading-the-results--basic--expert)
 - [stable vs develop — compatibility matrix](./docs/302-K6_LOAD_TESTING.md#stable-vs-develop--compatibility-matrix)
 - [Troubleshooting](./docs/302-K6_LOAD_TESTING.md#troubleshooting)
+
+**[303 · JVM Tuning & Runtime Strategy](./docs/303-JVM-TUNING.md)**
+- [Understanding JVM tuning here (newcomers → specialists)](./docs/303-JVM-TUNING.md#understanding-jvm-tuning-here-newcomers--specialists)
+- [The tuning we applied](./docs/303-JVM-TUNING.md#the-tuning-we-applied) ([per-environment values](./docs/303-JVM-TUNING.md#per-environment-values))
+- [GC algorithm options](./docs/303-JVM-TUNING.md#gc-algorithm-options)
+- [Runtime / startup options](./docs/303-JVM-TUNING.md#runtime--startup-options-the-big-picture)
+- [OpenTelemetry instrumentation modes](./docs/303-JVM-TUNING.md#opentelemetry-instrumentation-modes)
+- [Why CRaC is the chosen advanced direction](./docs/303-JVM-TUNING.md#why-crac-is-the-chosen-advanced-direction)
+- [Analyzing JVM performance in Grafana](./docs/303-JVM-TUNING.md#analyzing-jvm-performance-in-grafana)
 
 ---
 

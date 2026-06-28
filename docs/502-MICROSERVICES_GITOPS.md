@@ -258,6 +258,192 @@ sequenceDiagram
 
 **Reading it —** the race is the whole point. Deleting a `Service`/`Gateway` returns success immediately, but GKE deletes the backing GCP NEGs *in the background*; if `terraform destroy` tears down the masters first, those controllers die mid-cleanup and the orphaned NEGs block VPC deletion. The barrier in `down.sh` polls GCP directly (≤5 min), force-deletes stragglers, and only then lets Terraform proceed — bridging async Kubernetes controllers with synchronous Terraform state.
 
+## Design Decision: Pod resilience — health probes, resources & rollout strategy
+
+Both microservices tiers (`stable` and `develop`) render from the **same** Helm
+template (`helm/microservices/templates/deployment.yaml`), so the probe design is
+shared; the per-tier values (`values-stable.yaml` / `values-develop.yaml`) differ
+only where the goals differ (production headroom vs lean). This section is the
+*why* behind that config.
+
+<details>
+<summary>🟢 <b>For newcomers — the three probes as a "new hire" analogy</b></summary>
+
+Think of a pod as an employee and Kubernetes as the manager:
+
+- 🚀 **startupProbe = "finished onboarding?"** — the manager doesn't assign work or
+  fire the new hire while they're still setting up their laptop. JHipster's
+  "onboarding" (Spring Boot context + Liquibase DB migrations + the OpenTelemetry
+  Java agent) can take **1–3 minutes**, so we give it up to **10 minutes** before
+  giving up.
+- ✅ **readinessProbe = "open for customers?"** — if the employee steps away (busy,
+  garbage-collecting, waiting on the DB), the manager **stops sending them
+  customers** but lets them keep their job; they rejoin when ready. No drama.
+- ❤️ **livenessProbe = "still breathing?"** — only if the employee is truly
+  unresponsive (deadlocked) does the manager **replace them** (restart the pod).
+
+**The classic mistake:** wiring "still breathing?" to *also* mean "is the database
+up?". Then a 30-second DB hiccup makes Kubernetes think every pod is dead and
+**restart them all in a loop** — which, of course, does nothing for the database.
+That's exactly the anti-pattern the "dedicated groups" fix below avoids.
+
+</details>
+
+### The three Kubernetes probes — what each does and why it matters
+
+Kubernetes runs three independent probes against each container; conflating them
+(or pointing them at the wrong endpoint) is a classic source of restart-loops and
+traffic black-holes.
+
+| Probe | Question it answers | On failure, the kubelet… | Our endpoint | Our timing | Why it matters here |
+|---|---|---|---|---|---|
+| **startupProbe** | "Has the app finished booting?" | keeps the container running but **holds off liveness & readiness** until it first succeeds; only kills the container after `failureThreshold` is exhausted | `/management/health/readiness` | `period 10s × failureThreshold 60` = **10 min** budget | A JHipster cold start (Spring Boot + Liquibase + the OTel Java agent) is slow; without this, **liveness fires mid-boot and CrashLoops the pod** before it ever serves. The long budget absorbs CPU-throttled / contended boots. |
+| **readinessProbe** | "Can it serve traffic *right now*?" | **removes the pod from the Service endpoints** (no traffic) — does **not** restart it | `/management/health/readiness` | `delay 30s · period 10s · failureThreshold 6` | A pod that's GC-thrashing, overloaded, or waiting on a dependency is pulled from load-balancing and rejoins when healthy — **without** a disruptive restart. |
+| **livenessProbe** | "Is the process alive / not deadlocked?" | **restarts the container** | `/management/health/liveness` | `delay 60s · period 20s · failureThreshold 6` | Only a true wedge (deadlock, unrecoverable state) should trigger a restart. It must **not** depend on external systems (see below). |
+
+**How they interact (the order matters):**
+
+- While the **startupProbe** is still running, the readiness and liveness probes are
+  **suspended** — Kubernetes won't pull traffic or restart the pod just because the
+  app hasn't finished booting. They only "switch on" after startup first succeeds.
+- That's why the readiness/liveness `initialDelaySeconds` (30s / 60s) are a
+  belt-and-braces backup: with the startupProbe present, the real gate is the
+  10-minute startup budget.
+
+**Worked examples (what actually happens):**
+
+- 🐢 *Slow boot:* a fresh `jhipstersamplemicroservice` pod takes ~2 min (Liquibase +
+  agent). Probes: startup keeps probing `/readiness` every 10s, succeeds at ~2 min,
+  → liveness/readiness activate, pod goes `Ready`. **Without** a startupProbe, the
+  60s-delay liveness would have started failing at 60s and restarted the pod at
+  ~180s → CrashLoop (this is the exact bug that hit `develop`).
+- 🔌 *DB blip mid-life:* Postgres is briefly unreachable. `/readiness` (which checks
+  R2DBC) fails → pod is **pulled from the Service** (no 500s to users) but **not
+  restarted**; `/liveness` stays green (the JVM is fine). DB recovers → readiness
+  passes → pod rejoins. **No restart, no data loss.**
+- 💥 *Real deadlock:* the JVM wedges. `/liveness` fails 6×20s = 120s → kubelet
+  restarts the container. Correct: a restart is the only cure for a wedge.
+
+**Use cases per probe:**
+
+- **startupProbe** → any slow-booting JVM app (Spring Boot, especially with
+  Liquibase/Flyway migrations and a java agent). The single most important probe
+  for JHipster on Kubernetes.
+- **readinessProbe** → graceful handling of transient overload, GC pauses, rolling
+  dependency restarts, and **zero-downtime deploys** (old pod keeps serving until
+  the new one is `Ready`).
+- **livenessProbe** → self-healing from unrecoverable states only (deadlocks, OOM
+  aftermath, stuck threads).
+
+### Best practice: dedicated availability groups, never the aggregate for liveness
+
+Spring Boot Actuator exposes three health surfaces. The **aggregate**
+`/management/health` rolls up *every* indicator (DB, R2DBC, disk, downstream); the
+**availability groups** `/management/health/liveness` and `…/readiness` are scoped.
+
+| Endpoint | Includes | Correct use | Wrong use → symptom |
+|---|---|---|---|
+| `/management/health` (aggregate) | all indicators incl. DB / R2DBC / downstream | humans, dashboards | **as livenessProbe** → a transient DB blip fails the probe → kubelet **restarts every pod in a loop** (a restart can't fix a DB outage) |
+| `/management/health/liveness` | only the JVM liveness state | **livenessProbe** | — |
+| `/management/health/readiness` | readiness state (deps that gate serving) | **readinessProbe** + **startupProbe** | — |
+
+We point each probe at its dedicated group (both verified to return `200` on these
+JHipster images — Spring `AvailabilityProbes` auto-enable on Kubernetes). This is
+the single most important probe correctness fix: it stops a dependency hiccup from
+turning into a cluster-wide restart storm.
+
+> **Side-by-side: a 30-second DB outage, aggregate vs dedicated liveness**
+>
+> | t | livenessProbe → `/management/health` (aggregate) ❌ | livenessProbe → `/management/health/liveness` ✅ |
+> |---|---|---|
+> | 0s | DB drops; aggregate health = `DOWN` | liveness state still `UP` (JVM fine) |
+> | 0–120s | liveness fails 6×20s | liveness keeps passing |
+> | ~120s | **kubelet restarts the pod** (cold boot ~2 min, DB still down → repeat) → **CrashLoop across all replicas** | readiness (not liveness) marks it not-ready → pulled from Service |
+> | DB back | still mid-restart, slow recovery | readiness passes instantly → pod rejoins, **zero restarts** |
+
+<details>
+<summary>🔵 <b>For specialists — enabling & verifying the groups</b></summary>
+
+- The availability groups come from Spring Boot's `ApplicationAvailability` +
+  `AvailabilityProbesAutoConfiguration`, which **auto-activates on Kubernetes**
+  (detected via `spring.main.cloud-platform` / the k8s API on the classpath). No
+  app code change was needed — JHipster ships actuator and the probes light up in
+  cluster. You can force them anywhere with
+  `management.endpoint.health.probes.enabled=true`.
+- The readiness group is wired to liveness/readiness *state transitions*
+  (`AvailabilityChangeEvent`), and you can map specific indicators into a group via
+  `management.endpoint.health.group.readiness.include=readinessState,db,...`.
+- Verify without a dashboard:
+  ```bash
+  kubectl -n microservices port-forward deploy/gateway 18080:8080 &
+  curl -s -o /dev/null -w '%{http_code}\n' localhost:18080/management/health/liveness   # 200
+  curl -s -o /dev/null -w '%{http_code}\n' localhost:18080/management/health/readiness  # 200
+  ```
+  (Cross-pod curl is blocked by the namespace NetworkPolicy; port-forward goes via
+  the API server and bypasses it, and so do the kubelet's own probes.)
+
+</details>
+
+### `stable` vs `develop` — configuration matrix
+
+The differences are **deliberate**: `stable` favours production headroom and
+zero-downtime deploys; `develop` favours minimal footprint. Both are "optimised" —
+for their respective goals.
+
+| Dimension | `stable` (ns `microservices`) | `develop` (ns `microservices-develop`) | Why they differ |
+|---|---|---|---|
+| CPU request / limit | `100m` / `1000m` | `100m` / `1500m` | Limit is a burst ceiling for the cold start; develop got the bigger limit when its boot was the one being debugged. Both idle ~10m. |
+| Memory request / limit | `512Mi` / `1Gi` | `384Mi` / `768Mi` | stable has more headroom; develop is lean (data is disposable). |
+| startup / readiness / liveness probes | ✅ all three, dedicated groups | ✅ all three, dedicated groups | Shared template — identical design. |
+| App replicas | 1 | 1 | Template-fixed; neither is HA at the app layer (PoC). |
+| CNPG Postgres instances | 3 (HA) | 1 | `global.postgresInstances` (lean develop = single). |
+| **PgBouncer poolers** | **3** (session, `default_pool_size` 20 each) | **1** (session, `default_pool_size` 20) | The pooler count is what makes the rollout strategy safe — see below. |
+| Rollout strategy | **RollingUpdate** | **Recreate** | Driven by pooler capacity — see below. |
+| Backups (Barman / ScheduledBackup) | on | off | develop data is disposable. |
+
+**Key takeaways:**
+
+- ✅ **Both tiers are optimised** — the differences are intentional, not neglect.
+  `stable` was *not* left unreviewed: it shares the probe design and simply carries
+  more headroom + HA Postgres.
+- 🧩 The one knob that drives the rest is **pooler count** (3 vs 1): it's what makes
+  `stable` safe under `RollingUpdate` and forced `develop` onto `Recreate`.
+- 💸 `develop` is tuned for **cost/footprint** (disposable data, single Postgres,
+  no backups); `stable` for **resilience** (HA Postgres, zero-downtime deploys).
+
+### Rollout strategy: why `develop` uses `Recreate` and `stable` keeps `RollingUpdate`
+
+The two services use **session-mode** PgBouncer pooling: each client connection
+holds a server connection for its whole life, so one Java instance (Hikari +
+R2DBC) pins ~20 server connections. The deploy strategy must respect that.
+
+| Strategy | Behaviour during a deploy | Connection demand at peak | Downtime | Fit |
+|---|---|---|---|---|
+| **RollingUpdate** | starts the **new** pod *before* terminating the old (surge) → old + new run together | ~40 server conns (2 × ~20) | none | ✅ **stable**: its **3 poolers** (~60 server conns) absorb the overlap, so the new pod gets connections and zero-downtime holds. |
+| **Recreate** | **terminates the old** pod first → frees its ~20 conns → *then* starts the new | ~20 server conns (1 at a time) | brief (single pod) | ✅ **develop**: its **single** pooler offers only ~20 conns, so a RollingUpdate overlap **starved the new pod of connections → its reactive r2dbc health hung → startupProbe never passed → CrashLoop**. Recreate avoids the overlap; brief downtime is fine for a lean, disposable tier. |
+
+**Worked example — the `develop` deadlock under `RollingUpdate` (what we actually saw):**
+
+| t | Old pod | New pod (surge) | Pooler (1 × `default_pool_size` 20) |
+|---|---|---|---|
+| 0s | `Ready`, holds ~20 server conns | created | 20/20 in use |
+| 0–30s | still serving | boots; opens Hikari+R2DBC… | new client conns **queue** (`cl_waiting`) |
+| 30s–10min | won't terminate (new not `Ready`) | `/management/health/readiness` (r2dbc) **hangs** waiting for a connection | still 20/20 — starved |
+| ~10min | — | startupProbe exhausts → **killed → CrashLoop** | — |
+
+The deadlock is mutual: RollingUpdate keeps the old pod (and its 20 connections)
+alive *until the new pod is `Ready`*, but the new pod can't become `Ready` until it
+gets connections the old pod won't release. `Recreate` breaks the cycle by removing
+the old pod first. (`SHOW POOLS` on the pooler during the incident showed
+`cl_waiting=1`, all 20 server connections held by the old pod.)
+
+> **The lean trade-off.** Keeping `RollingUpdate` on `develop` would have required
+> *un-leaning* it (a 2nd/3rd pooler, or `transaction`-mode pooling — which needs
+> Spring R2DBC prepared-statement caching disabled, a riskier change, or shrinking
+> the app's Hikari/R2DBC pools). `Recreate` buys correctness for **zero extra
+> resources**, at the cost of a few seconds of deploy downtime — the right call for
+> develop, unnecessary for stable.
+
 ## pgAdmin & Database Administration
 
 A total of **2 Postgres databases** are provisioned in the cluster (both in the `microservices` namespace). They can be administered via **pgAdmin 4**:

@@ -1,0 +1,102 @@
+name: "Day2.scale.02 Resume cluster (nodes back up)"
+
+# Cost-saving RESUME: brings a cluster paused by "Day2.scale.01 Pause" back online
+# by scaling its node pools back up and re-enabling autoscaling. Pending pods
+# reschedule onto the new nodes and ArgoCD reconciles automatically — no rebuild,
+# no Decom/Day1. Takes a few minutes (node provisioning + pod startup).
+#
+# The node-count / autoscaling values below default to terraform/gke's defaults
+# (node_count=2, min=2, max=4); override the inputs if you changed them there.
+on:
+  workflow_dispatch:
+    inputs:
+      num_nodes:
+        description: "Nodes to scale each pool back to (match terraform/gke node_count)."
+        required: false
+        default: "2"
+        type: string
+      min_nodes:
+        description: "Autoscaling min (match terraform/gke min_node_count)."
+        required: false
+        default: "2"
+        type: string
+      max_nodes:
+        description: "Autoscaling max (match terraform/gke max_node_count)."
+        required: false
+        default: "4"
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: jenkins-2026-gke
+  cancel-in-progress: false
+
+jobs:
+  resume:
+    name: Scale node pools back up
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Scale node pools up + re-enable autoscaling
+        env:
+          NUM_NODES: ${{ inputs.num_nodes }}
+          MIN_NODES: ${{ inputs.min_nodes }}
+          MAX_NODES: ${{ inputs.max_nodes }}
+        run: |
+          set -euo pipefail
+          CLUSTER="$(gcloud container clusters list --format='value(name)' | head -1)"
+          if [[ -z "${CLUSTER}" ]]; then
+            echo "::error::No GKE cluster found — nothing to resume. Provision with Day1.cluster.01-gke."
+            exit 1
+          fi
+          ZONE="$(gcloud container clusters list --filter="name=${CLUSTER}" --format='value(location)' | head -1)"
+          echo "Cluster=${CLUSTER} location=${ZONE} → ${NUM_NODES} nodes (autoscale ${MIN_NODES}-${MAX_NODES})"
+
+          mapfile -t POOLS < <(gcloud container node-pools list --cluster "${CLUSTER}" --location "${ZONE}" --format='value(name)')
+          for NP in "${POOLS[@]}"; do
+            echo "::group::Resuming node pool ${NP}"
+            gcloud container clusters resize "${CLUSTER}" --location "${ZONE}" \
+              --node-pool "${NP}" --num-nodes "${NUM_NODES}" --quiet
+            gcloud container clusters update "${CLUSTER}" --location "${ZONE}" \
+              --node-pool "${NP}" --enable-autoscaling \
+              --min-nodes "${MIN_NODES}" --max-nodes "${MAX_NODES}" --quiet
+            echo "::endgroup::"
+          done
+
+      - name: Wait for nodes Ready
+        run: |
+          set -euo pipefail
+          CLUSTER="$(gcloud container clusters list --format='value(name)' | head -1)"
+          ZONE="$(gcloud container clusters list --filter="name=${CLUSTER}" --format='value(location)' | head -1)"
+          gcloud container clusters get-credentials "${CLUSTER}" --location "${ZONE}" --project "${{ secrets.GCP_PROJECT_ID }}"
+          gcloud components install gke-gcloud-auth-plugin --quiet
+          for i in $(seq 1 30); do
+            ready="$(kubectl get nodes --no-headers 2>/dev/null | grep -c ' Ready ' || true)"
+            echo "Ready nodes: ${ready:-0}"
+            [[ "${ready:-0}" -ge 1 ]] && break
+            sleep 10
+          done
+          kubectl get nodes 2>&1 || true
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### ▶️ Cluster resumed"
+            echo
+            echo "Node pools scaled back to \`${{ inputs.num_nodes }}\` (autoscale ${{ inputs.min_nodes }}–${{ inputs.max_nodes }})."
+            echo "Pods reschedule onto the new nodes and ArgoCD reconciles automatically —"
+            echo "give the apps a few minutes to become Ready. Nothing was rebuilt."
+          } >> "${GITHUB_STEP_SUMMARY}"

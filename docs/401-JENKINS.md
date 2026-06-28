@@ -1,4 +1,4 @@
-[← Previous: 302. k6 Traffic & Load Testing](./302-K6_LOAD_TESTING.md) | [🏠 Home](../README.md) | [→ Next: 402. Pipelines as Code](./402-PIPELINES_AS_CODE.md)
+[← Previous: 303. JVM Tuning](./303-JVM-TUNING.md) | [🏠 Home](../README.md) | [→ Next: 402. Pipelines as Code](./402-PIPELINES_AS_CODE.md)
 
 ---
 
@@ -521,7 +521,7 @@ Teardown deletes the Application (cascade-prune) in `down.sh`; switching to
 
 ---
 
-[← Previous: 302. k6 Traffic & Load Testing](./302-K6_LOAD_TESTING.md) | [🏠 Home](../README.md) | [→ Next: 402. Pipelines as Code](./402-PIPELINES_AS_CODE.md)
+[← Previous: 303. JVM Tuning](./303-JVM-TUNING.md) | [🏠 Home](../README.md) | [→ Next: 402. Pipelines as Code](./402-PIPELINES_AS_CODE.md)
 
 ---
 

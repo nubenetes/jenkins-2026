@@ -42,6 +42,16 @@ yq_get_list() {
 J2026_PLATFORM="${JENKINS2026_PLATFORM:-$(yq_get '.platform.target' 'gke')}"
 export J2026_PLATFORM
 
+# Log verbosity (info|debug). common.sh seeds it from JENKINS2026_LOG_LEVEL; here we add
+# the config.yaml durable default (logging.level) and validate. Env override wins. See
+# log_debug() in common.sh — there is no 'trace'/set -x level by design (secret leakage).
+J2026_LOG_LEVEL="${JENKINS2026_LOG_LEVEL:-$(yq_get '.logging.level' 'info')}"
+case "${J2026_LOG_LEVEL}" in
+  info|debug) ;;
+  *) log_warn "Unknown logging.level '${J2026_LOG_LEVEL}' (expected info|debug) — using 'info'."; J2026_LOG_LEVEL=info ;;
+esac
+export J2026_LOG_LEVEL
+
 if [[ "${J2026_PLATFORM}" != "gke" ]]; then
   log_error "Unsupported platform '${J2026_PLATFORM}' (expected gke)."
   exit 1
@@ -147,6 +157,16 @@ export J2026_OBS_NAMESPACE="$(yq_get '.observability.namespace' 'observability')
 # override pattern as JENKINS2026_PLATFORM above.
 J2026_OBS_MODE="${JENKINS2026_OBS_MODE:-$(yq_get '.observability.mode' 'grafana-cloud')}"
 export J2026_OBS_MODE
+
+# FEATURE FLAG: lean metrics — when true, scripts/03-observability.sh (grafana-cloud
+# mode) disables the k8s-monitoring/Alloy CLUSTER INFRA metrics (cadvisor / kube-state
+# / node-exporter), the high-cardinality series that the custom jenkins2026-* dashboards
+# don't use. App / CNPG / Tekton metrics go via the otel-collector and are UNAFFECTED.
+# Trades the Grafana Cloud built-in "K8s Compute" views for thousands of freed active
+# series — meant to keep the develop tier under the Grafana Cloud free-tier 15k
+# active-series cap while validating. Durable default off; override per-run with
+# JENKINS2026_OBS_LEAN_METRICS=true. See docs/301.
+export J2026_OBS_LEAN_METRICS="${JENKINS2026_OBS_LEAN_METRICS:-$(yq_get '.observability.leanMetrics' 'false')}"
 
 case "${J2026_OBS_MODE}" in
   grafana-cloud|oss|managed-azure|managed-aws) ;;

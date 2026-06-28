@@ -1,0 +1,81 @@
+name: "Day2.scale.01 Pause cluster (nodes → 0, save cost)"
+
+# Cost-saving PAUSE: scales every GKE node pool to 0 (and disables autoscaling so
+# it can't bounce back) WITHOUT destroying anything. The cluster, its persistent
+# volumes (CNPG Postgres data), ArgoCD + all apps, the reserved static IP, DNS and
+# certs all survive — only the worker VMs (the 24/7 cost) go away. Resume in minutes
+# with "Day2.scale.02 Resume", NOT a full Decom + Day1 rebuild.
+#
+# What still costs while paused (all tiny): the zonal control plane (covered by the
+# GKE free-tier management credit), persistent disks for the PVs, and the reserved
+# static IP. Grafana Cloud is free-tier (nothing to pause); the Azure/AWS managed
+# backends, if ever provisioned, are billed separately and are not paused here.
+#
+# State note: this uses imperative `gcloud` (fast), so terraform/gke state drifts
+# (it still records autoscaling on / node_count N). That is benign — "Day2.scale.02
+# Resume" restores it, and a later `Day1.cluster.01-gke` re-apply reconciles it too.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+# Share the cluster-wide lock so a pause can't race a Day1/Decom/Day2 run.
+concurrency:
+  group: jenkins-2026-gke
+  cancel-in-progress: false
+
+jobs:
+  pause:
+    name: Scale node pools to 0
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Scale every node pool to 0 (disable autoscaling first)
+        run: |
+          set -euo pipefail
+          CLUSTER="$(gcloud container clusters list --format='value(name)' | head -1)"
+          if [[ -z "${CLUSTER}" ]]; then
+            echo "::warning::No GKE cluster found — nothing to pause (already decommissioned?)."
+            exit 0
+          fi
+          ZONE="$(gcloud container clusters list --filter="name=${CLUSTER}" --format='value(location)' | head -1)"
+          echo "Cluster=${CLUSTER} location=${ZONE}"
+
+          mapfile -t POOLS < <(gcloud container node-pools list --cluster "${CLUSTER}" --location "${ZONE}" --format='value(name)')
+          for NP in "${POOLS[@]}"; do
+            echo "::group::Pausing node pool ${NP}"
+            # Disable autoscaling so the autoscaler doesn't immediately re-create
+            # nodes to satisfy the now-Pending pods.
+            gcloud container clusters update "${CLUSTER}" --location "${ZONE}" \
+              --node-pool "${NP}" --no-enable-autoscaling --quiet || true
+            gcloud container clusters resize "${CLUSTER}" --location "${ZONE}" \
+              --node-pool "${NP}" --num-nodes 0 --quiet
+            echo "::endgroup::"
+          done
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### ⏸️ Cluster paused (nodes scaled to 0)"
+            echo
+            echo "All worker VMs removed — compute cost ≈ \$0 while paused."
+            echo "Preserved: cluster, PVs/CNPG data, ArgoCD + apps, static IP, DNS, certs."
+            echo
+            echo "Workloads are now **Pending** (no nodes). Resume with **Day2.scale.02 Resume**"
+            echo "— it scales nodes back, pods reschedule and ArgoCD reconciles automatically."
+            echo
+            echo "Grafana Cloud is free-tier (not paused). Azure/AWS managed backends, if used,"
+            echo "are billed separately and are not paused by this workflow."
+          } >> "${GITHUB_STEP_SUMMARY}"

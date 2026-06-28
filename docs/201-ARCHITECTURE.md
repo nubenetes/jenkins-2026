@@ -350,6 +350,139 @@ test/                        e2e.sh (provision → up.sh → smoke-test.sh → d
 docs/                        numbered docs (this file and siblings)
 ```
 
+## Imperative (push) vs GitOps (pull): the provisioning split
+
+The platform is provisioned by **two cooperating planes**, and which one owns a
+resource is a deliberate, per-resource decision — not an accident of history.
+
+- **GitOps plane (pull).** ArgoCD continuously **pulls** declarative manifests
+  from this git repo and reconciles the cluster to match — drift-detected,
+  self-healed, pruned. This owns everything that *can* be expressed as a static
+  (or parameter-templated) manifest: the Helm charts and the workloads. See
+  [`argocd/README.md`](../argocd/README.md) for the Application/ApplicationSet/
+  app-of-apps topology.
+- **Imperative plane (push).** The numbered `scripts/0N-*.sh` **push** resources
+  with `kubectl`/`helm`/`kubectl patch`. This owns everything that *can't* live in
+  the pull loop: the bootstrap of ArgoCD itself, secret **values**, runtime-derived
+  manifests, live-reload companions, and genuinely external side-effects.
+
+> **The mental model:** ArgoCD is the steady-state reconciler; the scripts are the
+> bootstrapper and the bridge for everything git can't hold. The scripts even
+> *plant* the ArgoCD `Application`s (one `kubectl apply` each) — so "imperative"
+> here is often **how you hand a resource to GitOps**, not an alternative to it.
+
+### The decision framework — six reasons a resource stays imperative
+
+A resource is GitOps-managed **by default**. It stays imperative only if it hits
+one of these (each is a hard constraint, not a preference):
+
+1. **Bootstrap paradox.** ArgoCD can't deploy ArgoCD. The CD engine itself (plus
+   the OTel Operator and the otel-collector it configures from runtime values) is
+   `helm upgrade --install`-ed by `scripts/08.5-argocd.sh` / `02` / `03`. `up.sh`
+   installs ArgoCD (`08.5`) **before** observability (`03`) precisely so `03` can
+   then apply the `observability-oss` app-of-apps.
+2. **Secret values never enter git.** All `Secret` *material* originates outside
+   git (GitHub Actions secrets, generated, or Terraform outputs). The delivery
+   *mechanism* is selectable — `imperative` (`kubectl create`) or `eso` (push to
+   GCP Secret Manager, the External Secrets Operator syncs it back, GitOps-style) —
+   but the value's origin is never the repo. Full detail:
+   [Secrets backend](#secrets-backend-imperative--eso) and the
+   [Secret provenance flow](#diagram-2--secret-provenance-flow).
+3. **Runtime-derived values not known at commit time.** The IAP `client_id` read
+   live from a cluster Secret, the generated Grafana Cloud slug, the static IP, the
+   interpolated domain/branch, the ArgoCD-minted API token. The whole
+   Gateway / HTTPRoute / HealthCheckPolicy / GCPBackendPolicy set is **generated
+   per-run** from `config.yaml` into `.generated/` and applied (`09-gateway.sh`).
+4. **Live-reload single-source companions.** The JCasC ConfigMaps (`04-jenkins.sh`
+   from `jenkins/casc/*`) and the OSS-Grafana companion `grafana-jenkins-ds` Secret
+   / `grafana-runtime-config` ConfigMap (`03`) are kept **out of GitOps on purpose**
+   so a single source stays canonical and the sidecar can hot-reload without a sync.
+   See [301 § script-managed companions](./301-OBSERVABILITY.md).
+5. **External side-effects ArgoCD has no verb for.** Pushing `.tekton/` to the
+   GitHub forks + creating webhooks + seeding the first PipelineRuns
+   (`06-tekton-pipelines.sh`), minting the ArgoCD API token, patching the CNPG
+   webhook `caBundle` (`08.5`). These are *actions*, not manifests.
+6. **Enforcement-ordering sensitivity.** A few static manifests must land **before
+   the workloads they protect** — the **NetworkPolicies** and
+   **ResourceQuotas/LimitRanges** in `01-namespaces.sh`. Under Dataplane V2 the OTel
+   Operator's `:9443` webhook allow and the `microservices-cnpg-platform` egress
+   must exist *before* those pods come up, or the workloads wedge (OutOfSync /
+   Degraded). An ArgoCD app would sync them *concurrently* with the workloads — a
+   timing regression — so they are deliberately kept on the early imperative path.
+
+### Complete inventory — who owns what, and why
+
+| Resource | Plane | Where | Why this plane |
+|---|---|---|---|
+| Jenkins, External-Secrets, Headlamp, Argo-Rollouts charts | **GitOps** | `argocd/*-app.yaml` (single Applications) | One chart each; declarative, versioned, self-healed. |
+| Microservices (per service, per tier) | **GitOps** | `argocd/microservices-appset.yaml` (ApplicationSet) | Homogeneous fleet from the service registry; CI bumps image tags in the gitops-config repo, ArgoCD syncs. |
+| CNPG+pgAdmin · OSS Prometheus/Loki/Tempo/Grafana · Tekton stack | **GitOps** | `platform-postgres` / `observability-oss` / `tekton` app-of-apps | Heterogeneous, ordered (sync-waves), per-child sync options. |
+| **Static platform RBAC** (Jenkins/Tekton SA `edit`, pgAdmin secret-reader, OTel-instrumentation `ClusterRole`) | **GitOps** | `argocd/platform-config/` (new) — planted by `08.5` | Timing-insensitive (consumers run long after sync); textbook GitOps. *Migrated here from `01`/`02` — see [argocd/README](../argocd/README.md).* |
+| ArgoCD itself · OTel Operator · otel-collector | **Imperative** | `08.5` / `02` / `03` `helm upgrade --install` | Bootstrap paradox (#1); the collector is also runtime-config-coupled (#4). |
+| The ArgoCD `Application`/`AppSet`/app-of-apps manifests | **Imperative→GitOps** | `08.5` / `03` `kubectl apply` (sed-substituted) | *Planting* the root apps **is** how GitOps starts (the app-of-apps bootstrap). |
+| ArgoCD self-config (`argocd-cm`/`argocd-rbac-cm` OIDC/RBAC/CI account) | **Imperative** | `08.5` `kubectl patch` | Bootstrap paradox (#1) — how the engine learns to log in. |
+| All in-cluster `Secret`s (jenkins/headlamp/IAP/tekton/ghcr/grafana-ds…) | **Imperative** *(or ESO)* | `01` / `03` / `08.5`; `08.6` in `eso` mode | Secret values never in git (#2). `eso` makes *delivery* GitOps-style. |
+| Gateway · HTTPRoutes · HealthCheckPolicies · GCPBackendPolicies (IAP) | **Imperative** | `09-gateway.sh` → `.generated/` | Generated per-run with the live domain/IP/IAP-client-id (#3). |
+| Runtime patches into `jenkins-credentials`/`headlamp-credentials` (URLs, tokens, banner links) | **Imperative** | `01` / `04` / `08.5` `kubectl patch` | Values discovered at run time (#3). |
+| JCasC ConfigMaps · `grafana-jenkins-ds` · `grafana-runtime-config` | **Imperative** | `04` / `03` | Live-reload single-source companions (#4). |
+| Tekton PaC push/webhooks/seed · ArgoCD token mint · CNPG `caBundle` patch | **Imperative** | `06` / `08.5` | External / in-cluster side-effects (#5). |
+| **NetworkPolicies** · **ResourceQuotas/LimitRanges** | **Imperative** | `01-namespaces.sh` | Must land **before** workloads for Dataplane V2 enforcement timing (#6). |
+| Namespace creation + labels | **Imperative** | `01-namespaces.sh` | The floor everything else lands in; must exist before any apply/sync. |
+| Headlamp per-email admin `ClusterRoleBinding`s | **Imperative** | `08-headlamp.sh` | Derived from a user list, not a static manifest. |
+
+### The two planes (diagram)
+
+<details>
+<summary>📊 Provisioning planes — push (scripts) vs pull (ArgoCD)</summary>
+
+```mermaid
+flowchart TD
+    subgraph BOOT["Bootstrap (imperative, helm/kubectl) — the floor"]
+        NS["01: namespaces + labels"]
+        SEC["01/03/08.5: Secrets (or ESO)"]
+        NP["01: NetworkPolicies + Quotas<br/>(early, before workloads — DPv2 timing)"]
+        OP["02/03: OTel Operator + collector"]
+        ARGO["08.5: helm install ArgoCD<br/>+ patch OIDC/RBAC"]
+    end
+    subgraph PLANT["Hand-off — scripts plant the root Applications"]
+        APPS["08.5/03: kubectl apply argocd/*-app.yaml<br/>(sed-substituted repo/branch/engine)"]
+    end
+    subgraph PULL["GitOps plane (ArgoCD reconciles — pull, self-heal, prune)"]
+        CHARTS["charts: Jenkins · ESO · Headlamp · Rollouts"]
+        FLEET["AppSet: microservices (per tier)"]
+        AOA["app-of-apps: postgres · observability-oss · tekton"]
+        PCFG["platform-config: static RBAC"]
+    end
+    subgraph RUNTIME["Imperative, AFTER ArgoCD is up (runtime-derived)"]
+        GW["09: Gateway/HTTPRoutes/IAP (.generated/)"]
+        JCASC["04: JCasC ConfigMaps (live-reload)"]
+        SIDE["06: Tekton PaC push/webhooks/seed"]
+    end
+
+    BOOT --> PLANT --> PULL
+    ARGO -.->|"installs/syncs"| PULL
+    BOOT --> RUNTIME
+    PULL -.->|"steady state: drift-detect + self-heal"| PULL
+
+    classDef imp fill:#fde,stroke:#c39;
+    classDef git fill:#eef,stroke:#66c;
+    class NS,SEC,NP,OP,ARGO,APPS,GW,JCASC,SIDE imp;
+    class CHARTS,FLEET,AOA,PCFG git;
+```
+
+</details>
+
+### The irreducible imperative core
+
+Even with maximal GitOps adoption, five things can **never** move to the pull loop:
+(1) **ArgoCD itself + its self-config** — the engine can't bootstrap the engine;
+(2) **secret source values** — they originate outside git, ESO only changes
+*delivery*; (3) **external side-effects** — pushing to GitHub forks, creating
+webhooks; (4) **live-reload single-source companions** — JCasC + Grafana inputs,
+migrating them regresses the hot-reload design; (5) **reconciliation race-fixes** —
+the CNPG `caBundle` patch and the token mint. Everything else is GitOps-managed, or
+is a deliberate, documented exception above.
+
 ## Namespaces & in-cluster Secrets
 
 > In-cluster Kubernetes `Secret`s, **not** the GitHub Actions secrets — those are

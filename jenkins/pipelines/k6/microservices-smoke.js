@@ -208,6 +208,10 @@ export const options = {
     http_req_failed: [{ threshold: `rate<${ERR_RATE}`, abortOnFail }],
     http_req_duration: [{ threshold: `p(95)<${P95_MS}`, abortOnFail }],
   },
+  // Populate every percentile the CI summaries render (GHA jq + Jenkins parser
+  // both print p99); k6's default trend stats omit p(99), so without this it
+  // always showed p99=0.
+  summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
 };
 
 // ---- traceparent generation (so every iteration is one correlated trace) ----
@@ -269,4 +273,50 @@ export default function () {
     get(`${API_GATEWAY}/services/jhipstersamplemicroservice/management/health/readiness`, traceparent, 'gateway-proxy-microservice-health');
     sleep(SLEEP);
   }
+}
+
+// ---- end-of-test summary ----------------------------------------------------
+// Write the run summary as JSON for the CI engines to parse. Why handleSummary
+// and not k6's --summary-export: k6 2.0's --summary-export emits a FLATTENED
+// schema (metrics.<m>.<stat>) that silently broke EVERY consumer — the GHA jq,
+// the Jenkins readJSON parser and the Tekton task all read
+// metrics.<m>.values.<stat> and so saw all-zeros. handleSummary's `data` keeps
+// the stable nested `.values.*` (+ `.thresholds[expr].ok`) schema those parsers
+// expect, so emitting it here fixes all three engines from a single place.
+// Output path is overridable via K6_SUMMARY_OUT — Tekton runs k6 from a
+// sub-directory and reads the file from the workspace root, so it sets the
+// absolute path; GHA/Jenkins use the CWD-relative default.
+export function handleSummary(data) {
+  const out = envStr('K6_SUMMARY_OUT', 'k6-summary.json');
+  const m = data.metrics || {};
+  const val = (name, stat) => {
+    try {
+      const x = m[name].values[stat];
+      return x === undefined || x === null ? 0 : x;
+    } catch (e) {
+      return 0;
+    }
+  };
+  const thr = [];
+  for (const [name, metric] of Object.entries(m)) {
+    for (const [expr, res] of Object.entries(metric.thresholds || {})) {
+      const ok = typeof res === 'object' ? res.ok : res;
+      thr.push(`  [${ok === false ? 'FAIL' : 'PASS'}] ${name}: ${expr}`);
+    }
+  }
+  const passed = val('checks', 'passes');
+  const stdout =
+    [
+      '',
+      '========== k6 run summary ==========',
+      `checks:   ${passed}/${passed + val('checks', 'fails')} passed`,
+      `requests: ${val('http_reqs', 'count')} total, ${(val('http_req_failed', 'rate') * 100).toFixed(2)}% failed`,
+      `latency:  avg=${Math.round(val('http_req_duration', 'avg'))}ms p95=${Math.round(val('http_req_duration', 'p(95)'))}ms`,
+      `volume:   ${val('iterations', 'count')} iters, peak ${val('vus_max', 'value')} VUs`,
+      '--- thresholds ---',
+      ...(thr.length ? thr : ['  (none)']),
+      '====================================',
+      '',
+    ].join('\n');
+  return { [out]: JSON.stringify(data), stdout };
 }

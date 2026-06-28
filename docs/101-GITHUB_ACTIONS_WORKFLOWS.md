@@ -43,7 +43,7 @@ mindmap
 Every workflow is named `DayN.tier.ZZ-resource`, and that name is a tiny runbook:
 
 - **`DayN` = lifecycle phase** (SRE Day-0/1/2 terminology): `Day0` = one-time persistent bootstrap (WIF, the Gateway IP/cert, observability backends) · `Day1` = create the throwaway GKE cluster + full stack · `Day2` = operations on a **running** cluster (redeploy a component, publish dashboards, run traffic) · `Decom` = teardown. `Decom` sorts after `Day2`, so teardown always lands last.
-- **`tier` = a short word for the group within the phase** (`infra`, `cluster`, `redeploy`, `publish`, `traffic`) — a readable label, not a number.
+- **`tier` = a short word for the group within the phase** (`infra`, `cluster`, `redeploy`, `publish`, `traffic`, `scale`) — a readable label, not a number.
 - **`ZZ` = a per-resource id** that stays the same across phases: `03` is always Azure (`Day0.infra.03` → `Day2.publish.03` → `Decom.infra.03`), so you can follow one resource through its whole life by the suffix.
 
 The punchline: **GitHub sorts the Actions sidebar by each workflow's `name:`, every `name:` starts with its `DayN.tier.ZZ` prefix, so reading the list top-to-bottom _is_ the order to run things** — Day0 → Day1 → Day2 → Decom (cluster before backends). No separate runbook needed.
@@ -52,10 +52,11 @@ The punchline: **GitHub sorts the Actions sidebar by each workflow's `name:`, ev
 <details>
 <summary>🔴 For specialists — the mechanics behind the scheme</summary>
 
-- **Controlled `tier` vocabulary**: `infra` (persistent Day0/Decom) · `cluster` (the GKE cluster) · `redeploy` (re-apply one component) · `publish` (push dashboards/alerts) · `traffic` (k6). The tier-then-`ZZ` order is a real dependency chain in **Create** (`Day0.infra` before `Day1.cluster`) and **Decom** (`cluster` before `infra`), but in **Day2** the tiers are independent *categories*, not stages — nothing chains them.
+- **Controlled `tier` vocabulary**: `infra` (persistent Day0/Decom) · `cluster` (the GKE cluster) · `redeploy` (re-apply one component) · `publish` (push dashboards/alerts) · `traffic` (k6) · `scale` (pause/resume the node pools to park the cluster at ~zero cost). The tier-then-`ZZ` order is a real dependency chain in **Create** (`Day0.infra` before `Day1.cluster`) and **Decom** (`cluster` before `infra`), but in **Day2** the tiers are independent *categories*, not stages — nothing chains them.
 - **GKE serialization**: every cluster-touching leaf workflow (`Day1.cluster.01`, `Decom.cluster.01`, and the `Day2.*` that act on the cluster) shares `concurrency: group: jenkins-2026-gke`, so GitHub **queues** them instead of letting two runs race the same Terraform state.
 - **Reusable workflows + umbrellas**: `Day1.cluster.01` `workflow_call`s the matching `Day0.infra.0{2,3,4}` backend bootstrap as a preflight; the two opt-in umbrellas (`Day1.cluster.00` "Everything up" / `Decom.infra.00` "Everything") orchestrate the leaves via `workflow_call` with **no `concurrency:` of their own** (or they would deadlock holding the group their own child job needs).
-- **Per-resource approval gates**: each persistent Day0 resource has its own required-reviewer GitHub Environment (`gateway-bootstrap`, `grafana-cloud-bootstrap`, `azure-bootstrap`, `aws-bootstrap`); the cluster + all Day2 use `gke-production`. The gate travels with the reusable workflow, so every entry point inherits the same single approval. See [102 § Environment Protection](./102-GITHUB_ACTIONS_AUTOMATION.md#environment-protection-and-manual-approvals).
+- **Per-resource approval gates**: each persistent Day0 resource has its own required-reviewer GitHub Environment (`gateway-bootstrap`, `grafana-cloud-bootstrap`, `azure-bootstrap`, `aws-bootstrap`); the cluster + the **provisioning/teardown** Day2 use `gke-production`. The gate travels with the reusable workflow, so every entry point inherits the same single approval. **Exceptions (no gate):** `Day2.traffic.01-k6` drives only read-only HTTP traffic against the already-running public endpoints (provisions/destroys nothing, all secrets repo-level), so its gate was removed to unblock automation/scheduling; the `Day2.scale.*` pause/resume workflows only resize node pools. See [102 § Environment Protection](./102-GITHUB_ACTIONS_AUTOMATION.md#environment-protection-and-manual-approvals).
+- **Cross-cutting `log_level` input**: every dispatchable workflow exposes a `log_level` dropdown (`info` default | `debug`); reusable workflows mirror it as a `workflow_call` input and the umbrellas/preflights pass it down. It exports `JENKINS2026_LOG_LEVEL` (drives `log_debug` in the scripts) and `TF_LOG=DEBUG` for the Terraform steps (only at `debug`). There is **no `trace`/`set -x` level** by design — bash xtrace would leak script-derived secret values GitHub doesn't mask; use the native `ACTIONS_STEP_DEBUG` for runner-level tracing. Durable default lives in `config.yaml` (`logging.level`).
 - **No auto-chaining**: every workflow is `workflow_dispatch`-only (no `workflow_run:`), so a human reviews each phase — critical for `Decom`, where an automatic trigger on a failed cluster teardown could cascade into destroying persistent backends.
 </details>
 
@@ -131,7 +132,7 @@ The GitHub Actions sidebar sorts by each workflow's `name:` field, and every `na
 | ZZ | Resource | Day0 (bootstrap) | Day2 (ops) | Decom (teardown) |
 |---|---|---|---|---|
 | `01` | Gateway (static IP + cert) | `Day0.infra.01-gateway` | — | `Decom.infra.01-gateway` |
-| `02` | Grafana Cloud stack | `Day0.infra.02-grafana-cloud` | — | `Decom.infra.02-grafana-cloud` |
+| `02` | Grafana Cloud stack | `Day0.infra.02-grafana-cloud` | `Day2.publish.02-grafana-cloud` | `Decom.infra.02-grafana-cloud` |
 | `03` | Azure Managed Grafana | `Day0.infra.03-azure-grafana` | `Day2.publish.03-azure-grafana` | `Decom.infra.03-azure-grafana` |
 | `04` | AWS AMG | `Day0.infra.04-aws-grafana` | `Day2.publish.04-aws-grafana` | `Decom.infra.04-aws-grafana` |
 | `01` | GKE cluster | `Day1.cluster.01-gke` | — | `Decom.cluster.01-gke` |
@@ -142,6 +143,8 @@ The GitHub Actions sidebar sorts by each workflow's `name:` field, and every `na
 | `01` | OSS Grafana stack | *(by `Day1.cluster.01` via ArgoCD)* | `Day2.publish.01-oss-grafana` | *(by `Decom.cluster.01`)* |
 | `05` | Grafana alerts | *(by `Day1.cluster.01`)* | `Day2.publish.05-alerts` | — |
 | `01` | k6 traffic | — | `Day2.traffic.01-k6` | — |
+| `01` | Cluster pause (nodes → 0) | — | `Day2.scale.01-pause` | — |
+| `02` | Cluster resume (nodes back up) | — | `Day2.scale.02-resume` | — |
 
 *The same `ZZ` is reused across different `tier`s (e.g. `infra.01` is the Gateway, `cluster.01` is GKE, `redeploy.01` is ArgoCD); read `tier`+`ZZ` together. Within the `redeploy` tier `ZZ` follows install order — ArgoCD (`01`, the CD engine that deploys the rest), Jenkins (`02`), Tekton (`03`), Headlamp (`04`), Gateway/ingress (`05`) — so ArgoCD sorts first. Jenkins (`02`) and Tekton (`03`) are the two mutually-exclusive CI engines selected by the `ci.engine` flag (Jenkins default); only the active one is provisioned.*
 
@@ -158,7 +161,7 @@ Rows = resources · Columns = lifecycle phases · Cell = filename (link) or — 
 | Resource | `Day0/Day1` Create | `Day2` Update | `Decom` Destroy |
 |---|---|---|---|
 | **Gateway** (static IP + cert) | [Day0.infra.01-gateway](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.01-gateway.yml) | [Day2.redeploy.05-gateway](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.05-gateway.yml) *(in-cluster Gateway + routes/IAP)* | [Decom.infra.01-gateway](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.01-gateway.yml) |
-| **Grafana Cloud stack** | [Day0.infra.02-grafana-cloud](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.02-grafana-cloud.yml) | — | [Decom.infra.02-grafana-cloud](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.02-grafana-cloud.yml) |
+| **Grafana Cloud stack** | [Day0.infra.02-grafana-cloud](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.02-grafana-cloud.yml) | [Day2.publish.02-grafana-cloud](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.02-grafana-cloud.yml) | [Decom.infra.02-grafana-cloud](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.02-grafana-cloud.yml) |
 | **Azure Managed Grafana** | [Day0.infra.03-azure-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.03-azure-grafana.yml) | [Day2.publish.03-azure-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.03-azure-grafana.yml) | [Decom.infra.03-azure-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.03-azure-grafana.yml) |
 | **AWS AMG** | [Day0.infra.04-aws-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.04-aws-grafana.yml) | [Day2.publish.04-aws-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.04-aws-grafana.yml) | [Decom.infra.04-aws-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.04-aws-grafana.yml) |
 | **GKE cluster** | [Day1.cluster.01-gke](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) | — | [Decom.cluster.01-gke](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml) |
@@ -169,6 +172,7 @@ Rows = resources · Columns = lifecycle phases · Cell = filename (link) or — 
 | **OSS Grafana stack** (ArgoCD) | *(provisioned by Day1.cluster.01)* | [Day2.publish.01-oss-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.01-oss-grafana.yml) | *(destroyed by Decom.cluster.01)* |
 | **Grafana alerts** | *(provisioned by Day1.cluster.01)* | [Day2.publish.05-alerts](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.05-alerts.yml) | — |
 | **k6 traffic** | — | [Day2.traffic.01-k6](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml) | — |
+| **Cluster pause/resume** (cost) | — | [Day2.scale.01-pause](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.scale.01-pause.yml) · [Day2.scale.02-resume](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.scale.02-resume.yml) | — |
 | **Everything** (umbrella, opt-in) | [Day1.cluster.00-all](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.00-all.yml) *(Gateway + cluster + backend, one click)* | — | [Decom.infra.00-all](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.00-all.yml) *(cluster + all backends, one click)* |
 
 ---
@@ -189,6 +193,8 @@ flowchart TD
 
     subgraph PHASE5 ["Day2 — Update (independent, any order)"]
         direction TB
+        P5_1o["Day2.publish.01 OSS dashboards"]
+        P5_1g["Day2.publish.02 Grafana Cloud dashboards"]
         P5_1a["Day2.publish.03 Azure dashboards"]
         P5_1b["Day2.publish.04 AWS dashboards"]
         P5_1c["Day2.publish.05 Grafana alerts"]
@@ -197,6 +203,8 @@ flowchart TD
         P5_2t["Day2.redeploy.03 Tekton"]
         P5_2b["Day2.redeploy.04 Headlamp"]
         P5_9["Day2.traffic.01 k6"]
+        P5_s1["Day2.scale.01 Pause (nodes → 0)"]
+        P5_s2["Day2.scale.02 Resume"]
     end
 
     subgraph PHASE9 ["Decom — Destroy (run in sorted order)"]
@@ -307,21 +315,47 @@ These terms come from the SRE / platform-engineering world and describe **when i
 | 9 | [Day2.redeploy.04-headlamp](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.04-headlamp.yml) | **Day2** | yes | yes | When Headlamp config changes |
 | 10 | [Day2.redeploy.05-gateway](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.05-gateway.yml) | **Day2** | yes | yes | When the Gateway/routes/IAP change |
 | 11 | [Day2.publish.01-oss-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.01-oss-grafana.yml) | **Day2** | yes ³ | yes | When OSS dashboards/alerts change |
-| 12 | [Day2.publish.03-azure-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.03-azure-grafana.yml) | **Day2** | **no** ¹ | yes | When dashboard JSON changes |
-| 13 | [Day2.publish.04-aws-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.04-aws-grafana.yml) | **Day2** | **no** ¹ | yes | When dashboard JSON changes |
-| 14 | [Day2.publish.05-alerts](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.05-alerts.yml) | **Day2** | yes ² | yes | When alert rules change |
-| 15 | [Day2.traffic.01-k6](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml) | **Day2** | yes | n/a | On demand / regular cadence |
-| 16 | [Decom.cluster.01-gke](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml) | **Decom** | destroys it | yes | Once per session |
-| 17 | [Decom.infra.01-gateway](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.01-gateway.yml) | **Decom** | no | yes | Once (permanent — ⚠ loses static IP) |
-| 18 | [Decom.infra.02-grafana-cloud](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.02-grafana-cloud.yml) | **Decom** | no | yes | Once (permanent — ⚠ irreversible) |
-| 19 | [Decom.infra.03-azure-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.03-azure-grafana.yml) | **Decom** | no | yes | Once (permanent — ⚠ irreversible) |
-| 20 | [Decom.infra.04-aws-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.04-aws-grafana.yml) | **Decom** | no | yes | Once (permanent — ⚠ irreversible) |
+| 12 | [Day2.publish.02-grafana-cloud](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.02-grafana-cloud.yml) | **Day2** | yes ² | yes | When dashboard/alert JSON changes |
+| 13 | [Day2.publish.03-azure-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.03-azure-grafana.yml) | **Day2** | **no** ¹ | yes | When dashboard JSON changes |
+| 14 | [Day2.publish.04-aws-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.04-aws-grafana.yml) | **Day2** | **no** ¹ | yes | When dashboard JSON changes |
+| 15 | [Day2.publish.05-alerts](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.05-alerts.yml) | **Day2** | yes ² | yes | When alert rules change |
+| 16 | [Day2.traffic.01-k6](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml) | **Day2** | yes | n/a | On demand / regular cadence |
+| 17 | [Day2.scale.01-pause](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.scale.01-pause.yml) | **Day2** | yes | yes | To park the cluster at ~zero cost for a few days |
+| 18 | [Day2.scale.02-resume](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.scale.02-resume.yml) | **Day2** | yes | yes | To bring a paused cluster back online |
+| 19 | [Decom.cluster.01-gke](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml) | **Decom** | destroys it | yes | Once per session |
+| 20 | [Decom.infra.01-gateway](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.01-gateway.yml) | **Decom** | no | yes | Once (permanent — ⚠ loses static IP) |
+| 21 | [Decom.infra.02-grafana-cloud](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.02-grafana-cloud.yml) | **Decom** | no | yes | Once (permanent — ⚠ irreversible) |
+| 22 | [Decom.infra.03-azure-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.03-azure-grafana.yml) | **Decom** | no | yes | Once (permanent — ⚠ irreversible) |
+| 23 | [Decom.infra.04-aws-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.04-aws-grafana.yml) | **Decom** | no | yes | Once (permanent — ⚠ irreversible) |
 
 > ¹ **Day2.publish.03 and Day2.publish.04** connect directly to the persistent managed-grafana backends (Azure AMG / Amazon AMG) — no running GKE cluster needed. They read Terraform state from GCS and authenticate via GitHub OIDC → Azure/AWS.
 >
-> ² **Day2.publish.05** reads Grafana credentials from k8s Secrets (grafana-cloud-credentials, azure-monitor-credentials, aws-managed-credentials) so it requires an active cluster. The alert rules themselves are also provisioned automatically by `Day1.cluster.01` via `scripts/up.sh` — `Day2.publish.05` is only needed to push changes without a full reprovision.
+> ² **Day2.publish.02 and Day2.publish.05** read Grafana credentials from k8s Secrets (grafana-cloud-credentials, azure-monitor-credentials, aws-managed-credentials) so they require an active cluster. Unlike the Azure/AWS managed-Grafana publishers (¹), the Grafana Cloud stack has no Terraform-state-readable API path here — its token lands in the in-cluster `grafana-cloud-credentials` Secret at Day1, so `Day2.publish.02` reads it from there (same as oss/alerts). The dashboards/alerts are also provisioned automatically by `Day1.cluster.01` via `scripts/up.sh` — these Day2 workflows just push changes without a full reprovision.
 >
 > ³ **Day2.publish.01** refreshes the in-cluster OSS Grafana on a running cluster. The OSS stack (kube-prometheus-stack/Loki/Tempo) is GitOps-managed by the `observability-oss` ArgoCD app-of-apps (`argocd/observability-oss`), so chart/value changes — including the dashboards, now GitOps-managed by the `oss-grafana-dashboards` child app — auto-sync on commit; this workflow nudges an ArgoCD re-sync and republishes alert rules without a full reprovision.
+
+### Pause / resume to save cost (without Decom + rebuild)
+
+When you want to stop paying for a cluster for a few days but keep it intact,
+**don't** `Decom.cluster.01` + `Day1.cluster.01` (a full teardown + ~20-min
+rebuild + redeploy). Instead:
+
+- **`Day2.scale.01-pause`** disables autoscaling and scales every GKE node pool to
+  **0**. The 24/7 worker-VM cost goes to ~0 while the cluster, its persistent
+  volumes (CNPG Postgres data), ArgoCD + all apps, the reserved static IP, DNS and
+  certs all survive. Workloads go `Pending` (no nodes).
+- **`Day2.scale.02-resume`** scales the pools back up and re-enables autoscaling
+  (inputs default to `terraform/gke`'s `node_count`/`min`/`max`); pods reschedule
+  and ArgoCD reconciles in **minutes** — nothing is rebuilt.
+
+It uses imperative `gcloud` (fast), so `terraform/gke` state drifts (it still
+records autoscaling on / `node_count` N) — that's benign and reconciled by Resume
+or the next `Day1.cluster.01` apply. What still costs while paused (all tiny): the
+zonal control plane (covered by the GKE free-tier management credit), the PVs'
+persistent disks, and the reserved static IP. **Grafana Cloud is free-tier** so
+there's nothing to pause there; the Azure/AWS managed backends, if ever
+provisioned, are billed separately and would be torn down via their own
+`Decom.infra.0{3,4}` (they don't "pause" cheaply).
 
 ### Typical session lifecycle
 

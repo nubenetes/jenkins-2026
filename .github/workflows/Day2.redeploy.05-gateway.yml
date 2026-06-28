@@ -45,6 +45,14 @@ on:
         required: false
         default: ""
         type: string
+      log_level:
+        description: "Script/Terraform verbosity: info (default) or debug (adds [DEBUG] script lines + TF_LOG=DEBUG). For runner-level tracing use GitHub's ACTIONS_STEP_DEBUG."
+        required: false
+        default: "info"
+        type: choice
+        options:
+          - info
+          - debug
 
 permissions:
   contents: read
@@ -55,6 +63,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  JENKINS2026_LOG_LEVEL: ${{ inputs.log_level || 'info' }}
+  TF_LOG: ${{ inputs.log_level == 'debug' && 'DEBUG' || '' }}
   TF_VERSION: "1.15.6"
   JENKINS2026_CI_ENGINE: ${{ inputs.ci_engine }}
   JENKINS2026_OBS_MODE: ${{ inputs.observability_mode }}

@@ -65,6 +65,14 @@ on:
         required: false
         default: ""
         type: string
+      log_level:
+        description: "Script/Terraform verbosity: info (default) or debug (adds [DEBUG] script lines + TF_LOG=DEBUG). For runner-level tracing use GitHub's ACTIONS_STEP_DEBUG."
+        required: false
+        default: "info"
+        type: choice
+        options:
+          - info
+          - debug
   # Reusable mirror of the dispatch inputs, so the "Day1.cluster.00 Everything up"
   # umbrella can call this workflow (choice inputs become string under workflow_call).
   workflow_call:
@@ -97,6 +105,10 @@ on:
         required: false
         default: ""
         type: string
+      log_level:
+        required: false
+        default: "info"
+        type: string
 
 permissions:
   contents: read
@@ -107,6 +119,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  JENKINS2026_LOG_LEVEL: ${{ inputs.log_level || 'info' }}
+  TF_LOG: ${{ inputs.log_level == 'debug' && 'DEBUG' || '' }}
   TF_VERSION: "1.15.6"
   # Surfaced as env so the managed-aws dashboard-publish steps can skip cleanly
   # (secrets can't be used in `if:`) when the role hasn't been set up yet.
@@ -124,16 +138,22 @@ jobs:
   grafana-cloud-bootstrap:
     if: ${{ inputs.observability_mode == 'grafana-cloud' }}
     uses: ./.github/workflows/Day0.infra.02-grafana-cloud.yml
+    with:
+      log_level: ${{ inputs.log_level || 'info' }}
     secrets: inherit
 
   azure-bootstrap:
     if: ${{ inputs.observability_mode == 'managed-azure' }}
     uses: ./.github/workflows/Day0.infra.03-azure-grafana.yml
+    with:
+      log_level: ${{ inputs.log_level || 'info' }}
     secrets: inherit
 
   aws-bootstrap:
     if: ${{ inputs.observability_mode == 'managed-aws' }}
     uses: ./.github/workflows/Day0.infra.04-aws-grafana.yml
+    with:
+      log_level: ${{ inputs.log_level || 'info' }}
     secrets: inherit
 
   # ── Single-backend enforcement (opt-in, DESTRUCTIVE) ────────────────────────
@@ -147,16 +167,22 @@ jobs:
   destroy-grafana-cloud:
     if: ${{ inputs.destroy_unused_backends && inputs.observability_mode != 'grafana-cloud' }}
     uses: ./.github/workflows/Decom.infra.02-grafana-cloud.yml
+    with:
+      log_level: ${{ inputs.log_level || 'info' }}
     secrets: inherit
 
   destroy-azure:
     if: ${{ inputs.destroy_unused_backends && inputs.observability_mode != 'managed-azure' }}
     uses: ./.github/workflows/Decom.infra.03-azure-grafana.yml
+    with:
+      log_level: ${{ inputs.log_level || 'info' }}
     secrets: inherit
 
   destroy-aws:
     if: ${{ inputs.destroy_unused_backends && inputs.observability_mode != 'managed-aws' }}
     uses: ./.github/workflows/Decom.infra.04-aws-grafana.yml
+    with:
+      log_level: ${{ inputs.log_level || 'info' }}
     secrets: inherit
 
   # ── Main provision job ──────────────────────────────────────────────────────
