@@ -1207,7 +1207,7 @@
             "type": "tempo",
             "uid": "grafanacloud-traces"
           },
-          "queryType": "traceqlSearch",
+          "queryType": "traceql",
           "refId": "A",
           "query": "{ resource.service.name = \"$app\" }",
           "limit": 20,
