@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.14] - 2026-06-28
+
+Increment over v0.28.13 (Jenkins executor semantics + idle pipeline panels).
+
+### Fixed
+- **Jenkins dashboard: pipeline panels no longer show "No data" when idle, and the executor
+  numbers are explained.** All `ci_pipeline_run_*` rate/quantile queries are wrapped in
+  `or vector(0)` so they read `0` (flat) when no build is in the window instead of "No data"
+  (a `0` on run-duration means "no recent build", documented). The misleading "Executor
+  utilization %" stat was removed (it divided busy executors — which include ephemeral agents,
+  double-counted by the OTel plugin's dual node-name/pod-name labels — by `jenkins_executor_total`,
+  which counts only the controller's built-in node → `busy > total` nonsense). Renamed to
+  **Built-in executors** / **Busy executors (all nodes)** with descriptions, added **Builds
+  aborted**, and the note now explains: builds run on **ephemeral k8s agent pods** (built-in
+  `numExecutors: 0`), parallel capacity is the **`containerCap` (10–20 pods)** not the executor
+  count, and `busy > total` during a build is expected (different scopes + dual-label double-count).
+
 ## [v0.28.13] - 2026-06-28
 
 Increment over v0.28.12 (Jenkins dashboard idle-state polish).
