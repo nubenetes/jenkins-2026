@@ -835,7 +835,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Run outcomes /s (success / failed / aborted)",
+      "title": "Run outcomes (builds per interval: success / failed / aborted)",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -890,7 +890,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(ci_pipeline_run_success_total[$__rate_interval])) or vector(0)",
+          "expr": "sum(increase(ci_pipeline_run_success_total[$__rate_interval])) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
@@ -902,7 +902,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(ci_pipeline_run_failed_total[$__rate_interval])) or vector(0)",
+          "expr": "sum(increase(ci_pipeline_run_failed_total[$__rate_interval])) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
@@ -914,17 +914,18 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(ci_pipeline_run_aborted_total[$__rate_interval])) or vector(0)",
+          "expr": "sum(increase(ci_pipeline_run_aborted_total[$__rate_interval])) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
           "legendFormat": "aborted"
         }
-      ]
+      ],
+      "description": "Build COUNTS per scrape interval (not per-second) \u2014 readable for a low-volume CI. Bars rise when builds finish."
     },
     {
       "type": "timeseries",
-      "title": "Run lifecycle /s (launched / started / completed)",
+      "title": "Run lifecycle (builds per interval: launched / started / completed)",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -979,7 +980,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(ci_pipeline_run_launched_total[$__rate_interval])) or vector(0)",
+          "expr": "sum(increase(ci_pipeline_run_launched_total[$__rate_interval])) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
@@ -991,7 +992,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(ci_pipeline_run_started_total[$__rate_interval])) or vector(0)",
+          "expr": "sum(increase(ci_pipeline_run_started_total[$__rate_interval])) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
@@ -1003,7 +1004,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(ci_pipeline_run_completed_total[$__rate_interval])) or vector(0)",
+          "expr": "sum(increase(ci_pipeline_run_completed_total[$__rate_interval])) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
@@ -1132,7 +1133,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(histogram_quantile(0.50, sum by (le) (rate(ci_pipeline_run_duration_seconds_bucket[$__rate_interval])))) or vector(0)",
+          "expr": "(histogram_quantile(0.50, sum by (le) (rate(ci_pipeline_run_duration_seconds_bucket[$__range]))) >= 0) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
@@ -1144,7 +1145,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(histogram_quantile(0.95, sum by (le) (rate(ci_pipeline_run_duration_seconds_bucket[$__rate_interval])))) or vector(0)",
+          "expr": "(histogram_quantile(0.95, sum by (le) (rate(ci_pipeline_run_duration_seconds_bucket[$__range]))) >= 0) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
@@ -1156,14 +1157,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(histogram_quantile(0.99, sum by (le) (rate(ci_pipeline_run_duration_seconds_bucket[$__rate_interval])))) or vector(0)",
+          "expr": "(histogram_quantile(0.99, sum by (le) (rate(ci_pipeline_run_duration_seconds_bucket[$__range]))) >= 0) or vector(0)",
           "refId": "A",
           "range": true,
           "instant": false,
           "legendFormat": "p99"
         }
       ],
-      "description": "Whole-pipeline run time (aggregate). Reads 0 when no build is in the window. For per-stage timing use the Traces panel."
+      "description": "Whole-pipeline run time over the visible range (aggregate). histogram_quantile of flat buckets is NaN, so the `>=0 or vector(0)` guard shows 0 instead of 'No data' when no build ran. For per-stage timing use the Traces panel."
     },
     {
       "type": "row",

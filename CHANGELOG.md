@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.19] - 2026-06-28
+
+Increment over v0.28.18 (Jenkins dashboard: NaN guard + readable low-volume panels).
+
+### Fixed
+- **Run-duration-percentiles panel showed "No data".** `histogram_quantile()` of flat (non-
+  incrementing) buckets returns **NaN**, and `or vector(0)` only catches an empty vector, not NaN —
+  so the panel read "No data" whenever no build was in the rate window. Fixed with a
+  `(histogram_quantile(...) >= 0) or vector(0)` guard (NaN fails the comparison → dropped → `0`),
+  and switched the window to `$__range` so any build in the visible range defines the percentile.
+- **Pipeline outcome/lifecycle timeseries looked empty** — they used per-second `rate()` of rarely-
+  incrementing counters (≈0.01/s on a low-volume CI), which renders as a flat near-zero line.
+  Switched to `increase()` (build COUNTS per scrape interval), so they show readable bars when
+  builds finish. The agent/executor/queue gauges already return live values (e.g. agents=2); a
+  stale browser tab from earlier republishes shows them as "No data" until a hard refresh.
+
 ## [v0.28.18] - 2026-06-28
 
 Increment over v0.28.17 (Jenkins dashboard re-oriented to the seed-job architecture).
