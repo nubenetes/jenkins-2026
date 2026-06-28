@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.37] - 2026-06-29
+
+Increment over v0.28.36 (deep-dive docs: ArgoCD ⇄ Tekton integration).
+
+### Docs
+- **docs/403-TEKTON.md — new "ArgoCD ⇄ Tekton: how GitOps drives an ephemeral CI engine (deep dive +
+  gotchas)" section.** Low-level, example-driven write-up of the ArgoCD↔Tekton integration learned
+  this session: definitions-owned-vs-runs-observed (the `exclude: runs/*` + tracking-label model),
+  ArgoCD's health model for Tekton kinds (why config CRs/runs show blank health and only
+  Deployment/DaemonSet/Pod move app health), and the 5 gotchas with reproducible diagnosis + code
+  fixes — (1) app stuck Progressing = prepull DaemonSet rejected by the restricted Pod Security
+  Standard, (2) live edits reverted by selfHeal, (3) resolve-preset `Permission denied` (yq uid 1000
+  vs root-owned workspace), (4) gitops-deploy auto-sync race, (5) develop-tier gating parity. Includes
+  collapsible Mermaid diagrams (ownership, health aggregation, the misdiagnosis path) and an
+  operational troubleshooting matrix.
+
 ## [v0.28.36] - 2026-06-29
 
 Increment over v0.28.35 (revert the unrelated PipelineRun changes — the DaemonSet PSS fix was the real one).
