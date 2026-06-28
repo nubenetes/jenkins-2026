@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.35] - 2026-06-29
+
+Increment over v0.28.34 (the REAL cause of tekton-pipeline-as-code Progressing).
+
+### Fixed
+- **`tekton-pipeline-as-code` stuck Progressing — the image-prepull DaemonSet couldn't create ANY
+  pod.** `tekton/agent-image-prepull.yaml` (DESIRED=2, CURRENT/READY=0) was rejected by the
+  `tekton-pipelines` namespace's **restricted Pod Security Standard**: its containers (git/k8s/maven/
+  kaniko/trivy/k6/yq/curl/semgrep/codeql/pause, all run `true`/pause to pre-pull) set no
+  securityContext. A DaemonSet at 0/N ready is **Progressing**, which dragged the GitOps app there —
+  NOT the PipelineRuns (that was an incomplete earlier diagnosis). Added the restricted-compliant
+  securityContext (pod: runAsNonRoot + uid 65532 + seccompProfile RuntimeDefault; per-container:
+  allowPrivilegeEscalation=false, capabilities.drop=[ALL]). The PipelineRun/TaskRun ArgoCD health
+  customization (v0.28.34) and the live resource.exclusions were unrelated and are being reverted.
+
 ## [v0.28.34] - 2026-06-29
 
 Increment over v0.28.33 (stop Tekton PipelineRuns from dragging the ArgoCD app to Progressing).

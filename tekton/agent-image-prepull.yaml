@@ -3,6 +3,13 @@
 # pipeline pulls maven/kaniko/codeql/semgrep/trivy — codeql is multi-GB). The Tekton
 # analogue of the Jenkins helm/jenkins/agent-image-prepull.yaml DaemonSet. Applied by
 # scripts/04-tekton.sh (only when ci.engine=tekton). initContainers pull each image.
+#
+# The tekton-pipelines namespace enforces the **restricted** Pod Security Standard, so
+# every container must set the restricted securityContext (runAsNonRoot + a non-root
+# uid, seccompProfile RuntimeDefault, no privilege escalation, drop ALL caps) or the
+# DaemonSet pods are rejected ("violates PodSecurity restricted") — leaving the DS at
+# 0/N ready and the GitOps app perpetually Progressing. The containers only run `true`
+# (pull-and-exit) / pause, so running unprivileged + non-root is harmless.
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -18,20 +25,27 @@ spec:
     spec:
       terminationGracePeriodSeconds: 0
       automountServiceAccountToken: false
+      # Pod-level restricted PSS bits (runAsNonRoot + non-root uid + seccomp); the
+      # per-container securityContext (&sc) adds the bits that MUST be per-container.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile: { type: RuntimeDefault }
       initContainers:
-        - { name: git,    image: "alpine/git:2.54.0",            command: ["true"], imagePullPolicy: IfNotPresent }
-        - { name: k8s,    image: "alpine/k8s:1.31.3",            command: ["true"], imagePullPolicy: IfNotPresent }
-        - { name: maven,  image: "maven:3.9.9-eclipse-temurin-21", command: ["true"], imagePullPolicy: IfNotPresent }
-        - { name: kaniko, image: "gcr.io/kaniko-project/executor:v1.23.2-debug", command: ["true"], imagePullPolicy: IfNotPresent }
-        - { name: trivy,  image: "aquasec/trivy:0.52.2",          command: ["true"], imagePullPolicy: IfNotPresent }
-        - { name: k6,     image: "grafana/k6:2.0.0",             command: ["true"], imagePullPolicy: IfNotPresent }
-        - { name: yq,     image: "mikefarah/yq:4.53.3",          command: ["true"], imagePullPolicy: IfNotPresent }
-        - { name: curl,   image: "curlimages/curl:8.10.1",       command: ["true"], imagePullPolicy: IfNotPresent }
-        - { name: semgrep, image: "semgrep/semgrep:1.79.0",     command: ["true"], imagePullPolicy: IfNotPresent }
-        - { name: codeql, image: "mcr.microsoft.com/cstsectools/codeql-container:c6f3f8cbd3e0ebc36d9ad6dfe6a4c166ba940166", command: ["true"], imagePullPolicy: IfNotPresent }
+        - { name: git,    image: "alpine/git:2.54.0",            command: ["true"], imagePullPolicy: IfNotPresent, securityContext: &sc { allowPrivilegeEscalation: false, capabilities: { drop: ["ALL"] } } }
+        - { name: k8s,    image: "alpine/k8s:1.31.3",            command: ["true"], imagePullPolicy: IfNotPresent, securityContext: *sc }
+        - { name: maven,  image: "maven:3.9.9-eclipse-temurin-21", command: ["true"], imagePullPolicy: IfNotPresent, securityContext: *sc }
+        - { name: kaniko, image: "gcr.io/kaniko-project/executor:v1.23.2-debug", command: ["true"], imagePullPolicy: IfNotPresent, securityContext: *sc }
+        - { name: trivy,  image: "aquasec/trivy:0.52.2",          command: ["true"], imagePullPolicy: IfNotPresent, securityContext: *sc }
+        - { name: k6,     image: "grafana/k6:2.0.0",             command: ["true"], imagePullPolicy: IfNotPresent, securityContext: *sc }
+        - { name: yq,     image: "mikefarah/yq:4.53.3",          command: ["true"], imagePullPolicy: IfNotPresent, securityContext: *sc }
+        - { name: curl,   image: "curlimages/curl:8.10.1",       command: ["true"], imagePullPolicy: IfNotPresent, securityContext: *sc }
+        - { name: semgrep, image: "semgrep/semgrep:1.79.0",     command: ["true"], imagePullPolicy: IfNotPresent, securityContext: *sc }
+        - { name: codeql, image: "mcr.microsoft.com/cstsectools/codeql-container:c6f3f8cbd3e0ebc36d9ad6dfe6a4c166ba940166", command: ["true"], imagePullPolicy: IfNotPresent, securityContext: *sc }
       containers:
         - name: pause
           image: registry.k8s.io/pause:3.10
+          securityContext: *sc
           resources:
             requests: { cpu: "1m", memory: "8Mi" }
             limits:   { cpu: "10m", memory: "16Mi" }
