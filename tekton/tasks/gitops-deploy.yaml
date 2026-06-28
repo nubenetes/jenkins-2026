@@ -78,8 +78,24 @@ spec:
           *:*) ;;
           *) server="${server}:80"; flags="${flags} --plaintext" ;;
         esac
-        "${ARGOCD}" app sync "microservices-$(params.env-name)" --server "${server}" --auth-token "${ARGOCD_AUTH_TOKEN:-}" ${flags}
-        "${ARGOCD}" app wait "microservices-$(params.env-name)" --sync --timeout 300 --server "${server}" --auth-token "${ARGOCD_AUTH_TOKEN:-}" ${flags}
+        APP="microservices-$(params.env-name)"
+        # The app has automated selfHeal: pushing the new image tag (the GitOps Update
+        # step before this) makes ArgoCD auto-sync it, which can be MID-FLIGHT when this
+        # explicit sync runs → "FailedPrecondition: another operation is already in
+        # progress". That's benign (the auto-sync deploys the same commit), so retry the
+        # explicit sync a few times and, if a concurrent op keeps winning, fall through —
+        # the `app wait --sync` below confirms the app reaches the pushed revision either
+        # way. Don't let -e abort on the retried sync.
+        synced=0
+        for attempt in 1 2 3 4 5 6; do
+          if "${ARGOCD}" app sync "${APP}" --server "${server}" --auth-token "${ARGOCD_AUTH_TOKEN:-}" ${flags}; then
+            synced=1; break
+          fi
+          echo "app sync attempt ${attempt} failed (likely a concurrent auto-sync); retrying in 10s..."
+          sleep 10
+        done
+        [ "${synced}" = 1 ] || echo "Proceeding without an explicit sync — verifying convergence via 'app wait' (auto-sync handles the deploy)."
+        "${ARGOCD}" app wait "${APP}" --sync --health --timeout 300 --server "${server}" --auth-token "${ARGOCD_AUTH_TOKEN:-}" ${flags}
     - name: otel-injection-selfheal
       image: alpine/k8s:1.31.3
       script: |

@@ -1,0 +1,59 @@
+# Ready-to-run PipelineRun for the `gateway` service on the DEVELOP tier — the Tekton
+# equivalent of the Jenkins `gateway-develop` seed job. Mirrors gateway.yaml but builds
+# the app's `develop` branch into the `microservices-develop` namespace (env=develop).
+#
+# OPTIONAL / GATED: like the Jenkins develop jobs, this is only seeded when the develop
+# track is enabled (config.yaml microservices.developTrackEnabled=true, or
+# JENKINS2026_DEVELOP_TRACK_ENABLED=true). scripts/06-tekton-pipelines.sh skips every
+# run labelled jenkins2026.io/env=develop when the flag is off. Run by hand any time:
+#   kubectl create -f tekton/runs/gateway-develop.yaml
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  generateName: gateway-develop-
+  namespace: tekton-ci
+  labels:
+    jenkins2026.io/service: gateway
+    jenkins2026.io/env: develop
+spec:
+  taskRunTemplate:
+    serviceAccountName: tekton-ci
+  pipelineRef:
+    name: microservices-pipeline
+  params:
+    - name: service-name
+      value: gateway
+    - name: service-type
+      value: java
+    - name: git-repo-url
+      value: https://github.com/nubenetes/jhipster-sample-app-gateway.git
+    - name: git-branch
+      value: develop
+    - name: module-path
+      value: ""
+    - name: target-namespace
+      value: microservices-develop
+    - name: env-name
+      value: develop
+    - name: port
+      value: "8080"
+    - name: health-path
+      value: /management/health
+    - name: image
+      value: ghcr.io/nubenetes/jenkins-2026-microservices/gateway:develop
+    - name: registry-host
+      value: ghcr.io
+  workspaces:
+    - name: source
+      volumeClaimTemplate:
+        spec:
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 4Gi
+    - name: dockerconfig
+      secret:
+        secretName: tekton-registry
+        items:
+          - key: .dockerconfigjson
+            path: config.json

@@ -2,6 +2,47 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.34] - 2026-06-29
+
+Increment over v0.28.33 (stop Tekton PipelineRuns from dragging the ArgoCD app to Progressing).
+
+### Fixed
+- **`tekton-pipeline-as-code` ArgoCD app stuck "Progressing".** PaC-created PipelineRuns inherit the
+  app's tracking label, so ArgoCD evaluated their health — a Running run → Progressing, a Failed run
+  → Degraded — keeping the whole app perpetually non-Healthy even though the pipeline DEFINITIONS
+  (Pipeline/Task/Triggers/Repository) were fine. Added ArgoCD health customizations
+  (`resource.customizations.health.tekton.dev_PipelineRun` / `_TaskRun` → Healthy) so run state is
+  tracked in the Tekton Dashboard, not ArgoCD — same pattern already used for CNPG/OTel CRs.
+
+## [v0.28.33] - 2026-06-29
+
+Increment over v0.28.32 (Tekton: gate develop seed runs behind the develop-track flag, like Jenkins).
+
+### Fixed / Added
+- **Tekton develop-tier pipelines were missing and the gating was inconsistent.** Under PaC (a
+  gateway present), `06-tekton-pipelines.sh` seeds the committed `tekton/runs/*.yaml`, which only had
+  **stable** service runs — so the **develop** service pipelines (gateway / jhipstersamplemicroservice)
+  never appeared in the Tekton Dashboard, while the develop **k6** run was seeded **ungated**
+  (regardless of the flag). Now matches the Jenkins model: added `tekton/runs/gateway-develop.yaml`
+  and `tekton/runs/jhipstersamplemicroservice-develop.yaml` (build the app's `develop` branch into
+  `microservices-develop`, env=develop), and the seedRuns loop **skips any run labelled
+  `jenkins2026.io/env=develop` when the develop track is off** (`microservices.developTrackEnabled` /
+  `JENKINS2026_DEVELOP_TRACK_ENABLED`) — so develop pipelines are optional + gated on Tekton exactly
+  as on Jenkins. (The PaC git-push trigger per develop branch is a separate, deeper concern.)
+
+## [v0.28.32] - 2026-06-29
+
+Increment over v0.28.31 (Tekton gitops-deploy: tolerate concurrent ArgoCD auto-sync).
+
+### Fixed
+- **Tekton `gitops-deploy` failed with `FailedPrecondition: another operation is already in
+  progress`.** The microservices ArgoCD apps have automated **selfHeal**, so pushing the new image
+  tag (the GitOps Update step) triggers an **auto-sync** that can be mid-flight when the task's
+  explicit `argocd app sync` runs — they race. The deploy actually succeeds (auto-sync applies the
+  same commit), but the explicit `app sync` errored and failed the task. Made the explicit sync
+  **retry + non-fatal**, and rely on `argocd app wait --sync --health` to confirm the app converges
+  to the pushed revision and becomes healthy regardless of which sync won.
+
 ## [v0.28.31] - 2026-06-28
 
 Increment over v0.28.30 (fix Tekton k6 resolve-preset permission error).
