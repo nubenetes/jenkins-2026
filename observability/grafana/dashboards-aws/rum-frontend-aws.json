@@ -11,7 +11,7 @@
   "version": 1,
   "editable": true,
   "time": {
-    "from": "now-6h",
+    "from": "now-3h",
     "to": "now"
   },
   "refresh": "30s",
@@ -55,28 +55,23 @@
       },
       {
         "name": "app",
-        "type": "query",
-        "label": "Faro app (frontend)",
-        "datasource": {
-          "type": "loki",
-          "uid": "${DS_LOKI}"
-        },
-        "definition": "label_values(service_name)",
-        "query": {
-          "query": "label_values(service_name)",
-          "refId": "StandardVariableQuery",
-          "type": 1
-        },
+        "label": "Faro app",
+        "type": "custom",
+        "query": "angular-gateway",
         "current": {
           "text": "angular-gateway",
           "value": "angular-gateway"
         },
-        "options": [],
+        "options": [
+          {
+            "text": "angular-gateway",
+            "value": "angular-gateway",
+            "selected": true
+          }
+        ],
         "includeAll": false,
         "multi": false,
-        "refresh": 2,
-        "sort": 1,
-        "regex": "/^angular-.*/"
+        "hide": 0
       }
     ]
   },
