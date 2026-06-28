@@ -69,6 +69,12 @@ ports:
     servicePort: 4318
     hostPort: 4318
     protocol: TCP
+  # Grafana Faro RUM beacon endpoint (browser → faro receiver).
+  faro:
+    enabled: true
+    containerPort: 8027
+    servicePort: 8027
+    protocol: TCP
 
 config:
   extensions:
@@ -100,6 +106,12 @@ config:
           cors:
             allowed_origins:
               - "*"
+    # Grafana Faro RUM receiver (browser beacon → OTLP traces+logs). Contrib-only.
+    faro:
+      endpoint: 0.0.0.0:8027
+      cors:
+        allowed_origins:
+          - "*"
 
     # Scrape Kubernetes infrastructure metrics (kube-state-metrics + node
     # exporter, both deployed by 03-observability.sh in managed-azure mode) and
@@ -273,7 +285,7 @@ config:
     extensions: [health_check, oauth2client]
     pipelines:
       traces:
-        receivers: [otlp]
+        receivers: [otlp, faro]
         processors: [memory_limiter, resource, batch]
         exporters: [azuremonitor, span_metrics, service_graph]
       metrics/spanmetrics:
@@ -290,6 +302,6 @@ config:
         processors: [memory_limiter, resource, batch]
         exporters: [prometheusremotewrite]
       logs:
-        receivers: [otlp]
+        receivers: [otlp, faro]
         processors: [memory_limiter, resource, batch]
         exporters: [azuremonitor]
