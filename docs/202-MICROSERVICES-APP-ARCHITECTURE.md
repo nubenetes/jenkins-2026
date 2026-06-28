@@ -182,6 +182,8 @@ flowchart LR
 | **Receiver** | this repo | the **faro receiver** on all 4 collector backends (`observability/otel-collector/values-*.yaml`) → OTLP traces+logs |
 | **Dashboard** | this repo | **CI-CD Frontend RUM (Angular / Faro)** (`jenkins2026-rum-frontend`) — Web Vitals, errors, sessions, browser audience, browser traces. See [301](./301-OBSERVABILITY.md) |
 
+> **Backend fidelity — RUM is native on Grafana Cloud & OSS only.** Faro is a Grafana-native signal (Loki/Tempo). It has **full fidelity on `observability.mode=grafana-cloud` and `oss`** (both store Faro logs/traces in Loki/Tempo, so the dashboard renders exactly as designed; OSS reads the canonical board directly). On **`managed-azure`/`managed-aws`** there is no Faro-native store, so the dashboard variants map Faro to generic App Insights KQL / CloudWatch + X-Ray and **degrade** — data arrives but Faro-specific panels (web-vitals, sessions, per-route) show generic rows or no data. Full per-backend matrix in [301 § Frontend RUM (Grafana Faro) per backend](./301-OBSERVABILITY.md#frontend-rum-grafana-faro-per-backend--native-on-grafana-cloud--oss). **Use Grafana Cloud or OSS for real Angular RUM.**
+
 The Faro ingest URL (`https://faro.<baseDomain>`) is surfaced like every other endpoint: the GHA **Access URLs** step (`Day1.cluster.01-gke`) and the **Jenkins system banner** — though it's a beacon endpoint, **not a UI** (POSTs only).
 
 ### Activating real data

@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.26] - 2026-06-28
+
+Increment over v0.28.25 (document RUM/Faro fidelity per backend).
+
+### Docs
+- **Clarified that Angular RUM (Grafana Faro) is native only on Grafana Cloud and OSS.** Added a
+  per-backend matrix to docs/301 (*Frontend RUM (Grafana Faro) per backend*): full fidelity on
+  **grafana-cloud** and **oss** (both store Faro logs/traces in Loki/Tempo; OSS renders the canonical
+  board directly), **degraded** on managed-azure/managed-aws (generic App Insights KQL / CloudWatch +
+  X-Ray). Cross-linked from docs/202's Faro implementation section. Use Grafana Cloud or OSS for real
+  Angular RUM.
+
 ## [v0.28.25] - 2026-06-28
 
 Increment over v0.28.24 (document RUM degradation on the managed backends).

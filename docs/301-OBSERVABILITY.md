@@ -537,7 +537,28 @@ Each managed backend requires adapted datasources (AMP instead of Prometheus, Cl
 | [`observability/grafana/dashboards-azure/`](../observability/grafana/dashboards-azure/) | Azure Managed Grafana | Azure Monitor (metrics + logs + traces) | [`generate.py`](../observability/grafana/dashboards-azure/generate.py) replaces Loki/Tempo panels with Azure Monitor equivalents |
 | [`observability/grafana/dashboards-aws/`](../observability/grafana/dashboards-aws/) | Amazon Managed Grafana | AMP (PromQL) · CloudWatch Logs · X-Ray | [`generate.py`](../observability/grafana/dashboards-aws/generate.py) replaces Loki panels with CW Logs Insights, Tempo panels with X-Ray |
 
-> ⚠️ **RUM (`rum-frontend`) is degraded on the managed backends.** The RUM board is ~entirely **Grafana Faro** (browser frontend) data, which Grafana Cloud renders natively (Loki/Tempo + the Frontend Observability app). On **Azure Managed Grafana** / **Amazon Managed Grafana** there is no Faro-native store, so `generate.py` maps the Faro logs/traces to generic **App Insights KQL** / **CloudWatch Logs + X-Ray** — the data still arrives (collector `faro` receiver → `azuremonitor`/AWS exporter) but **not in Faro's data model**, so Faro-specific panels (web-vitals, sessions, per-route breakdowns) show generic rows or no data. `generate.py` appends this caveat to the RUM variant's note panel. **For full RUM fidelity, use the Grafana Cloud backend.** OSS renders the canonical board directly (Loki/Tempo) and is unaffected.
+### Frontend RUM (Grafana Faro) per backend — native on Grafana Cloud & OSS
+
+The **`CI-CD Frontend RUM (Angular / Faro)`** dashboard (`jenkins2026-rum-frontend`) is the browser-side
+counterpart to the JVM/backend boards. Its data is **[Grafana Faro](https://grafana.com/oss/faro/)** —
+the Angular SPA's Web SDK beacons Web-Vitals / JS errors / sessions / browser spans to the collector's
+**`faro` receiver**, which exports them as OTLP **logs + traces**. Faro is a **Grafana-native** signal:
+it has full fidelity only where the backend stores those signals in **Loki/Tempo** and Grafana can read
+them with Faro's data model. That is the case for **two of the four backends**:
+
+| Backend | RUM/Faro support | How |
+|---|---|---|
+| **Grafana Cloud** | ✅ **Native — full fidelity** | Faro logs/traces → **Loki/Tempo**; queried with LogQL/TraceQL exactly as the canonical board expects. Pairs with Grafana Cloud's **Frontend Observability** app for the richest RUM view. |
+| **OSS (in-cluster)** | ✅ **Native — full fidelity** | Faro logs/traces → the **in-cluster Loki/Tempo** (uids `loki`/`tempo`, matching the canonical board). The `oss-grafana-dashboards` ArgoCD app renders the **canonical** `rum-frontend.json` directly — **no variant, nothing to regenerate**. |
+| **Azure Managed Grafana** | ⚠️ **Degraded** | No Faro-native store. `generate.py` maps Faro logs/traces to **generic App Insights KQL** (`traces`/`dependencies`). Data arrives (collector `faro` → `azuremonitor` exporter) but **not in Faro's model**, so web-vitals / sessions / per-route panels show generic rows or no data. |
+| **Amazon Managed Grafana** | ⚠️ **Degraded** | Same story → **CloudWatch Logs + X-Ray**. |
+
+`generate.py` appends a "degraded view" caveat to the RUM panel's note on the **Azure/AWS variants only**,
+so the difference is expected, not mistaken for a fault. **Bottom line:** RUM is first-class on **Grafana
+Cloud and OSS** (both read Loki/Tempo); on the managed cloud backends it's a best-effort generic view —
+use **Grafana Cloud or OSS** for the real Angular-RUM experience. The end-to-end Faro pipeline (Angular
+Web SDK → `faro.<baseDomain>` HTTPRoute → collector `faro` receiver → backend) is documented in
+[`docs/202`](./202-MICROSERVICES-APP-ARCHITECTURE.md#frontend-observability--angular-rum-with-grafana-faro-implemented).
 
 Key implication: **if a panel shows "No data" in one Grafana, that does not mean the others are broken** — each instance is independent. Common causes of "No data" per panel type:
 
