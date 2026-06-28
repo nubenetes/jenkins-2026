@@ -23,12 +23,27 @@
   "liveNow": false,
   "panels": [
     {
+      "type": "text",
+      "title": "About these filters",
+      "id": 9001,
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "**Filters** \u2014 `Runner` (gha \u00b7 jenkins \u00b7 tekton) \u00b7 `Profile` (smoke \u00b7 load \u00b7 stress \u00b7 soak \u00b7 spike \u00b7 breakpoint) \u00b7 `Preset` \u00b7 `Environment` (stable \u00b7 develop). Default is **All**. \u26a0\ufe0f If panels read **No data**, a selected filter probably has **no matching run** \u2014 e.g. a `Profile` you didn't launch, or a `Runner`/`Environment` that hasn't run yet. Reset to **All** or pick the combo you actually ran. Tags come from each run via k6 `--tag` (see [docs/302](https://github.com/nubenetes/jenkins-2026/blob/main/docs/302-K6_LOAD_TESTING.md))."
+      }
+    },
+    {
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 3
       },
       "id": 100,
       "panels": [],
@@ -64,7 +79,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 1
+        "y": 4
       },
       "id": 1,
       "options": {
@@ -129,7 +144,7 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 1
+        "y": 4
       },
       "id": 2,
       "options": {
@@ -194,7 +209,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 1
+        "y": 4
       },
       "id": 3,
       "options": {
@@ -259,7 +274,7 @@
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 1
+        "y": 4
       },
       "id": 4,
       "options": {
@@ -338,7 +353,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 5
+        "y": 8
       },
       "id": 5,
       "options": {
@@ -407,7 +422,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 5
+        "y": 8
       },
       "id": 6,
       "options": {
@@ -501,7 +516,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 13
+        "y": 16
       },
       "id": 7,
       "options": {
@@ -551,7 +566,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 13
+        "y": 16
       },
       "id": 8,
       "options": {
@@ -592,7 +607,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 21
+        "y": 24
       },
       "id": 101,
       "panels": [],
@@ -632,7 +647,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 22
+        "y": 25
       },
       "id": 9,
       "targets": [
@@ -663,7 +678,7 @@
         "h": 9,
         "w": 24,
         "x": 0,
-        "y": 31
+        "y": 34
       },
       "id": 10,
       "options": {
@@ -715,7 +730,7 @@
         "h": 6,
         "w": 8,
         "x": 0,
-        "y": 34
+        "y": 37
       },
       "id": 11,
       "options": {
