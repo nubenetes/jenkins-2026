@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.11] - 2026-06-28
+
+Increment over v0.28.10 (deep k6 Observability dashboard).
+
+### Changed
+- **`CI-CD / k6 Observability` dashboard rebuilt** (14 → 39 panels, 8 sections) on the live k6
+  OTel metric set, mirroring the Postgres/Microservices rebuilds, with a **detailed reference
+  note**: matrix tables for the **6 workload profiles** (smoke/load/stress/soak/spike/breakpoint)
+  and the **10 committed presets** (shape · budgets · use case), a newcomer→operator→specialist
+  **reading guide**, and the filter model (`deployment_environment` / `ci_runner` / `k6_profile` /
+  new **`k6_preset`** picker). Sections: run summary, throughput & VUs & iterations, latency
+  percentiles, **HTTP request-timing phase breakdown** (blocked/connecting/TLS/sending/**waiting
+  =TTFB**/receiving — server-vs-network diagnosis), checks & errors, data transfer, traces & logs.
+  Layout tiles cleanly (0 overlaps/0 gaps); every panel verified to return series over a window
+  containing a real k6 run. Note explains k6 counters are per-run/ephemeral → widen the time range.
+
 ## [v0.28.10] - 2026-06-28
 
 Increment over v0.28.9 (deep Microservices Overview dashboard).
