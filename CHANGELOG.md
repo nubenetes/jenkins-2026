@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.36] - 2026-06-29
+
+Increment over v0.28.35 (revert the unrelated PipelineRun changes — the DaemonSet PSS fix was the real one).
+
+### Reverted
+- **Removed the ArgoCD `tekton.dev/PipelineRun` + `TaskRun` health customizations** (added in v0.28.34)
+  and the live `resource.exclusions` for them. They were an incomplete diagnosis of the
+  `tekton-pipeline-as-code` Progressing — the actual cause was the image-prepull DaemonSet being
+  rejected by the restricted PSS (fixed in v0.28.35). PipelineRuns are tracked by ArgoCD again;
+  they carry no built-in health check, so they don't affect the app's health on their own.
+
 ## [v0.28.35] - 2026-06-29
 
 Increment over v0.28.34 (the REAL cause of tekton-pipeline-as-code Progressing).
