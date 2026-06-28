@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.17] - 2026-06-28
+
+Increment over v0.28.16 (fix flaky Smoke Test — deploy readiness wait used namespace "null").
+
+### Fixed
+- **Microservices deploy never waited for the new pod to be Ready → flaky Smoke Test failures.**
+  `microservicesDeploy.groovy` read `cfg.targetNamespace`, but the caller
+  (`MicroservicesPipeline.groovy`) and the docstring pass the key **`namespace`** — so the var
+  was `null` and the post-sync wait ran `kubectl -n null rollout status deploy/<svc>` which
+  failed `Forbidden` and was swallowed by `|| true`. The deploy thus returned before the new
+  gateway pod (JHipster ≈ 30 s startup) was Ready, and the next stage's health curl raced it →
+  `curl exit 28` (timeout). Passed intermittently (warm pod) and failed on a fresh rollout
+  (builds #7/#8). Fix: read `cfg.namespace` so the rollout-status waits in the real namespace.
+  Pre-existing bug, unrelated to the agent-resource bump.
+
 ## [v0.28.16] - 2026-06-28
 
 Increment over v0.28.15 (right-size the ACTUAL microservices build agent + dead-code notice).
