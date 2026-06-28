@@ -464,7 +464,17 @@ controller:
     - workflow-support:1015.v785e5a_b_b_8b_22
 
 agent:
-  containerCap: 2
+  # Max concurrent agent pods for the Kubernetes cloud. Was 2 — that serialised
+  # every build (2 at a time → long queue waits). 8 lets several pipelines run in
+  # parallel (Java or not); beyond ~3-4 heavy maven builds the node pool autoscales.
+  containerCap: 8
+  # Keep an idle agent online ~5 min after a build so the NEXT build of the same
+  # template REUSES it instead of cold-starting a fresh pod (the big "why does it
+  # take so long to start" cost: pod schedule + multi-image pull + JNLP connect).
+  idleMinutes: 5
+  # Don't delete a failed build's pod immediately (keeps it for debugging);
+  # successful pods are still reaped. Pairs with idleMinutes for warm reuse.
+  podRetention: "onFailure"
   # Per-pipeline pod templates (maven/node/dind/kubectl/helm containers) are
   # defined inline in jenkins/pipelines/Jenkinsfile.microservices via the
   # `agent { kubernetes { yaml ... } }` directive, so we keep the chart-level

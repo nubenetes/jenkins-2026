@@ -194,5 +194,13 @@ if ! wait_for_resource "statefulset" "${J2026_JENKINS_RELEASE}" "${J2026_JENKINS
   exit 1
 fi
 
+# Warm the agent image caches on every node so build pods start fast (a build pod
+# only goes Running once ALL its container images are present; the microservices
+# pipeline pod has 8, incl. the multi-GB codeql image). Best-effort: a slow/missing
+# pre-pull never blocks builds, it just makes the first one on a fresh node slower.
+log_step "Applying Jenkins agent image pre-pull DaemonSet"
+kubectl apply -f "${J2026_ROOT_DIR}/helm/jenkins/agent-image-prepull.yaml" || \
+  log_warn "Agent image pre-pull DaemonSet not applied - first builds on a fresh node will be slower."
+
 log_info "Jenkins ready (ArgoCD Application 'jenkins'). Forward the UI with:"
 log_info "  kubectl -n ${J2026_JENKINS_NAMESPACE} port-forward svc/${J2026_JENKINS_RELEASE} 8080:8080"

@@ -28,6 +28,8 @@ def call(Map cfg) {
     pipeline {
         agent {
             kubernetes {
+                // Keep the agent warm ~5 min so a re-run reuses the pod (no cold start).
+                idleMinutes 5
                 yaml """
 apiVersion: v1
 kind: Pod

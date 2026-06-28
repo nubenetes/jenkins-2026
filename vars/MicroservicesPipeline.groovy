@@ -11,6 +11,10 @@ def call(Map cfg) {
     pipeline {
         agent {
             kubernetes {
+                // Keep the agent pod warm ~5 min after the build so a re-run / the next
+                // service's build REUSES it instead of cold-starting a fresh 8-container
+                // pod (pod schedule + multi-image pull + JNLP connect is the slow part).
+                idleMinutes 5
                 yaml """
 apiVersion: v1
 kind: Pod
