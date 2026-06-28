@@ -1475,6 +1475,97 @@
         },
         "overrides": []
       }
+    },
+    {
+      "type": "row",
+      "title": "Logs & Traces",
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 71
+      },
+      "id": 1027,
+      "panels": []
+    },
+    {
+      "type": "logs",
+      "title": "Errors & Warnings \u2014 selected service",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "description": "App logs for $service_name filtered by $level (default error|warn). Click a line's trace_id to jump to the trace (logs\u2192traces via the Loki datasource's derived fields).",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 72
+      },
+      "id": 1028,
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "loki"
+          },
+          "refId": "A",
+          "expr": "{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"} | detected_level=~\"$level\" | json | line_format \"{{ if .message }}{{ .message }}{{ else if .msg }}{{ .msg }}{{ else }}{{ __line__ }}{{ end }}\""
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Traces \u2014 selected service",
+      "datasource": {
+        "type": "tempo",
+        "uid": "tempo"
+      },
+      "description": "Recent traces for $service_name. Click a Trace ID \u2192 trace view, which links to logs (tracesToLogs) and metrics (tracesToMetrics) via the Tempo datasource config.",
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 72
+      },
+      "id": 1029,
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "tempo",
+            "uid": "tempo"
+          },
+          "refId": "A",
+          "queryType": "traceql",
+          "tableType": "traces",
+          "limit": 20,
+          "query": "{ resource.service.name =~ \"$service_name\" }"
+        }
+      ]
     }
   ],
   "refresh": "30s",
@@ -1586,6 +1677,66 @@
         "sort": 1,
         "type": "query",
         "label": "Service (JVM app)"
+      },
+      {
+        "name": "level",
+        "label": "Log level",
+        "type": "custom",
+        "description": "Filter the logs panel by severity (detected_level). All = everything incl. plain-text (unknown).",
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".+",
+        "query": "error,warn,info,debug,trace,unknown",
+        "options": [
+          {
+            "text": "All",
+            "value": "$__all",
+            "selected": false
+          },
+          {
+            "text": "error",
+            "value": "error",
+            "selected": true
+          },
+          {
+            "text": "warn",
+            "value": "warn",
+            "selected": true
+          },
+          {
+            "text": "info",
+            "value": "info",
+            "selected": false
+          },
+          {
+            "text": "debug",
+            "value": "debug",
+            "selected": false
+          },
+          {
+            "text": "trace",
+            "value": "trace",
+            "selected": false
+          },
+          {
+            "text": "unknown",
+            "value": "unknown",
+            "selected": false
+          }
+        ],
+        "current": {
+          "text": [
+            "error",
+            "warn"
+          ],
+          "value": [
+            "error",
+            "warn"
+          ],
+          "selected": true
+        },
+        "hide": 0,
+        "skipUrlSync": false
       }
     ]
   },

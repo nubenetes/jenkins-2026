@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.4] - 2026-06-28
+
+Increment over v0.28.3 (severity parsing + per-panel level filtering in Grafana).
+
+### Added
+- **Filter logs by level in the Grafana dashboards.** Every logs panel now carries a
+  multi-select **`Log level`** variable wired as `… | detected_level=~"$level"` —
+  interactive, non-destructive slicing by severity (`error/warn/info/debug/trace/unknown`,
+  `All` includes plain-text). Default **All** on the 6 overview dashboards; **`error|warn`**
+  on `jvm-internals` (troubleshooting-focused).
+- **`jvm-internals` gains a Logs & Traces row** — an "Errors & Warnings (selected service)"
+  logs panel scoped by `$service_name`, and a "Traces (selected service)" Tempo panel.
+  Correlation is inherited from the datasource config (logs↔traces via derived fields /
+  tracesToLogs, traces→metrics via tracesToMetrics), so a trace_id in a log line jumps to
+  the trace, and a span jumps to its logs/metrics.
+
+### Changed
+- **The `logMinSeverity` collector filter now drops by parsed OTLP severity, not body regex.**
+  A `regex_parser` in the `otel-collector-logs` filelog receiver extracts the level token from
+  all three on-cluster formats (ECS nested `log.level`, flat `level`, logfmt `level=`) and
+  **sets the record severity**; `filter/severity` then compares `severity_number`. This both
+  hardens the floor filter (no body-regex false positives) and gives Loki a reliable
+  `detected_level` on 100% of lines — which is what powers the new `$level` dashboard filter.
+  Plain-text lines get `level=unknown` and are never dropped/hidden.
+
 ## [v0.28.3] - 2026-06-28
 
 Increment over v0.28.2 (configurable Grafana log severity).

@@ -87,6 +87,24 @@ config:
       operators:
         - type: container
           id: container-parser
+        # Extract the log level from structured lines into attributes.level and set the
+        # record severity from it: JSON `"level":"X"` (covers the microservices' ECS
+        # nested log.level AND flat level like CNPG) and logfmt `level=X` (e.g. ArgoCD).
+        # This is what makes severity uniform across formats — powering both the Grafana
+        # level filter/colouring and the severity-based filter/severity processor below.
+        - type: regex_parser
+          if: 'body matches "(?i)(\"level\"\\s*:\\s*\"\\w+\"|\\blevel=\\w+)"'
+          regex: '(?i)(?:"level"\s*:\s*"|level=)(?P<level>\w+)'
+          parse_from: body
+          parse_to: attributes
+          severity:
+            parse_from: attributes.level
+        # Plain-text lines (no level token) get level=unknown so the dashboard $level
+        # variable (and its "All") include them instead of silently hiding them.
+        - type: add
+          if: 'attributes.level == nil'
+          field: attributes.level
+          value: unknown
 
   processors:
     batch: {}

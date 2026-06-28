@@ -61,31 +61,26 @@ remove_oss_observability_app() {
 
 # Renders an otel-collector "-logs" values file into a temp copy with the configurable
 # minimum-log-severity `filter` processor injected, and echoes the path (use with
-# `helm -f`). The filter drops structured log records whose level token is below
-# J2026_LOG_MIN_SEVERITY — matching JSON `"level":"<lvl>"` (ECS nested + flat) and logfmt
-# `level=<lvl>` in the body (RE2, case-insensitive). Plain-text lines carry no level
-# token, so they are NEVER dropped (no accidental blackout). 'trace' = no filtering:
-# the original file is returned unchanged. All log output goes to stderr so stdout
-# stays a clean path for $(...) capture.
+# `helm -f`). The filelog operators (static, in the values files) parse the level token
+# and set the record severity, so this filter is a clean numeric `severity_number`
+# comparison — it drops records below J2026_LOG_MIN_SEVERITY while the
+# `!= SEVERITY_NUMBER_UNSPECIFIED` guard keeps anything whose level couldn't be parsed
+# (no accidental blackout). 'trace' = no filtering: the original file is returned
+# unchanged. All log output goes to stderr so stdout stays a clean path for $(...).
 otel_logs_values_with_filter() {
   local src="$1"
   if [[ "${J2026_LOG_MIN_SEVERITY}" == "trace" ]]; then
     printf '%s' "${src}"
     return 0
   fi
-  # Severities strictly below the chosen minimum are dropped.
-  local drop
+  local enum
   case "${J2026_LOG_MIN_SEVERITY}" in
-    debug) drop="trace" ;;
-    info)  drop="trace|debug" ;;
-    warn)  drop="trace|debug|info" ;;
-    error) drop="trace|debug|info|warn" ;;
+    debug) enum="SEVERITY_NUMBER_DEBUG" ;;
+    info)  enum="SEVERITY_NUMBER_INFO" ;;
+    warn)  enum="SEVERITY_NUMBER_WARN" ;;
+    error) enum="SEVERITY_NUMBER_ERROR" ;;
   esac
-  # OTTL drop condition. Built from a single-quoted template (no bash escaping) with a
-  # @DROP@ placeholder, so the only substitution is the level alternation. In the OTTL
-  # string literal: \" = literal quote (to match the JSON quotes), \\s = regex \s.
-  local tmpl='IsMatch(body, "(?i)(\"level\"\\s*:\\s*\"(@DROP@)\"|level=(@DROP@))")'
-  local cond="${tmpl//@DROP@/${drop}}"
+  local cond="severity_number != SEVERITY_NUMBER_UNSPECIFIED and severity_number < ${enum}"
   local dst
   dst="$(mktemp --suffix=-otel-logs.yaml)"
   COND="${cond}" yq eval '
@@ -93,7 +88,7 @@ otel_logs_values_with_filter() {
     .config.processors["filter/severity"].logs.log_record = [strenv(COND)] |
     .config.service.pipelines.logs.processors += ["filter/severity"]
   ' "${src}" > "${dst}"
-  log_info "otel-collector-logs: dropping log severities < ${J2026_LOG_MIN_SEVERITY} (${drop})" >&2
+  log_info "otel-collector-logs: dropping log severities < ${J2026_LOG_MIN_SEVERITY}" >&2
   printf '%s' "${dst}"
 }
 
