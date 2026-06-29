@@ -164,17 +164,68 @@ case "${J2026_OBS_MODE}" in
     GENERATED_OBS_DIR="${J2026_ROOT_DIR}/.generated/observability"
     mkdir -p "${GENERATED_OBS_DIR}"
 
-    # Lean metrics (observability.leanMetrics / JENKINS2026_OBS_LEAN_METRICS): drop the
-    # high-cardinality CLUSTER INFRA metrics (cadvisor/kube-state/node-exporter) to stay
-    # under the Grafana Cloud free-tier 15k active-series cap (e.g. while validating the
-    # develop tier). App/CNPG/Tekton metrics go via the otel-collector and are untouched.
-    # clusterEvents stays on — it ships to Loki (logs), ~0 metric series, and keeps the
-    # Alloy collector with at least one active feature.
+    # Lean metrics (observability.leanMetrics / JENKINS2026_OBS_LEAN_METRICS): trim the
+    # high-cardinality CLUSTER INFRA metrics to stay under the Grafana Cloud free-tier 15k
+    # active-series cap (e.g. while validating the develop tier). App/CNPG/Tekton metrics go
+    # via the otel-collector and are untouched. clusterEvents stays on — it ships to Loki
+    # (logs), ~0 metric series, and keeps the Alloy collector with at least one active feature.
+    #
+    # LEAN ≠ "all cluster metrics off". We keep a deliberately TINY node-inventory slice so the
+    # "CI-CD / Node Auto-Provisioning (Spot)" dashboard works even on the free tier: only
+    # kube-state-metrics, and within it only `kube_node_info`, `kube_node_spec_taint` and
+    # `kube_node_status_condition` (≈ a handful of series per node — ~30-50 total here, vs the
+    # 15k cap). Everything expensive — cadvisor (per-container), kubelet, node-exporter (host)
+    # — stays OFF. The dashboard derives Spot/ComputeClass membership from the node TAINTS
+    # (`kube_node_spec_taint{key="cloud.google.com/gke-spot"|".../compute-class"}`), which KSM
+    # exposes by DEFAULT — not from node LABELS (`kube_node_labels`), whose `label_*` dimensions
+    # would need a KSM `--metric-labels-allowlist` we deliberately don't set. KSM is still
+    # DEPLOYED in lean mode (it produces those node metrics); node-exporter is not. See
+    # docs/301 (§ leanMetrics) and docs/runbooks/nap-spot-provisioning.md.
     if [[ "${J2026_OBS_LEAN_METRICS}" == "true" ]]; then
-      km_cluster_metrics=false; km_host_metrics=false; km_deploy_backing=false
-      log_warn "observability.leanMetrics=true → k8s-monitoring cluster infra metrics (cadvisor/kube-state/node-exporter) DISABLED to cut Grafana Cloud active series. App/CNPG/Tekton metrics unaffected; 'K8s Compute' built-in views will be empty."
+      km_host_metrics=false
+      km_deploy_ksm=true
+      km_deploy_node_exporter=false
+      km_cluster_metrics_block=$(cat <<'KMEOF'
+clusterMetrics:
+  enabled: true
+  # Drop every high-cardinality source; keep only the node-inventory slice (kube-state-metrics
+  # restricted to the three kube_node_* metrics below).
+  kubelet:
+    enabled: false
+  kubeletResource:
+    enabled: false
+  kubeletProbes:
+    enabled: false
+  cadvisor:
+    enabled: false
+  apiServer:
+    enabled: false
+  kubeControllerManager:
+    enabled: false
+  kubeDNS:
+    enabled: false
+  kubeProxy:
+    enabled: false
+  kubeScheduler:
+    enabled: false
+  kube-state-metrics:
+    enabled: true
+    metricsTuning:
+      # Replace KSM's default allow-list with ONLY the node-inventory metrics the NAP
+      # dashboard needs. kube_node_spec_taint carries the gke-spot / compute-class taints.
+      useDefaultAllowList: false
+      includeMetrics:
+        - kube_node_info
+        - kube_node_spec_taint
+        - kube_node_status_condition
+KMEOF
+)
+      log_warn "observability.leanMetrics=true → k8s-monitoring trimmed to a NODE-INVENTORY slice only (kube_node_* for the NAP/Spot dashboard); cadvisor/kubelet/node-exporter DISABLED to cut Grafana Cloud active series. App/CNPG/Tekton metrics unaffected; 'K8s Compute' built-in views stay empty."
     else
-      km_cluster_metrics=true; km_host_metrics=true; km_deploy_backing=true
+      km_host_metrics=true
+      km_deploy_ksm=true
+      km_deploy_node_exporter=true
+      km_cluster_metrics_block=$'clusterMetrics:\n  enabled: true'
     fi
 
     cat >"${GENERATED_OBS_DIR}/k8s-monitoring-values.yaml" <<EOT
@@ -198,21 +249,21 @@ podLogsViaLoki:
 podLogsViaOpenTelemetry:
   enabled: false
 
-# Enable node/pod/container metrics and events (cluster infra metrics gated by
-# observability.leanMetrics — disabled to cut Grafana Cloud active series).
-clusterMetrics:
-  enabled: ${km_cluster_metrics}
+# Cluster metrics (cluster infra metrics gated by observability.leanMetrics): full set when
+# lean is off, a tiny node-inventory slice when lean is on — see the leanMetrics logic above.
+${km_cluster_metrics_block}
 hostMetrics:
   enabled: ${km_host_metrics}
 clusterEvents:
   enabled: true
 
-# Deploy telemetry backing services (skipped in lean mode — nothing scrapes them then)
+# Deploy telemetry backing services. kube-state-metrics stays DEPLOYED even in lean mode (it
+# produces the node-inventory metrics the NAP/Spot dashboard reads); node-exporter is lean-gated.
 telemetryServices:
   kube-state-metrics:
-    deploy: ${km_deploy_backing}
+    deploy: ${km_deploy_ksm}
   node-exporter:
-    deploy: ${km_deploy_backing}
+    deploy: ${km_deploy_node_exporter}
 
 # Define the Alloy collector instance
 collectors:

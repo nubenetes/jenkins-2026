@@ -127,6 +127,20 @@ costs ~0 metric series). It defaults **on** so a redeploy can't silently re-floo
 flip it off (`JENKINS2026_OBS_LEAN_METRICS=false`, or `leanMetrics: false`) or upgrade the
 plan when you want full cluster-infra metrics back.
 
+> **Lean keeps a tiny node-inventory slice (so the NAP/Spot dashboard still works on free).**
+> "Lean" does **not** mean *all* cluster metrics off. `03-observability.sh` keeps
+> kube-state-metrics deployed and scrapes **only three node metrics** — `kube_node_info`,
+> `kube_node_spec_taint`, `kube_node_status_condition` (via `clusterMetrics.kube-state-metrics.metricsTuning`
+> `useDefaultAllowList: false` + `includeMetrics`) — roughly a handful of series per node
+> (~30–50 total), negligible against the 15k cap. That is exactly what the **CI-CD / Node
+> Auto-Provisioning (Spot)** dashboard needs: it derives Spot / ComputeClass membership from
+> the node **taints** (`kube_node_spec_taint{key="cloud.google.com/gke-spot"}` /
+> `…/compute-class`), which KSM exposes **by default** — *not* from node labels
+> (`kube_node_labels`), whose `label_*` dimensions would require a KSM
+> `--metric-labels-allowlist` we deliberately don't enable. So this one dashboard populates
+> in **every** mode (oss, paid, and lean/free); the expensive cadvisor/kubelet/node-exporter
+> series stay off. See the [NAP → Spot CI nodes runbook](./runbooks/nap-spot-provisioning.md).
+
 **CNPG cardinality trim (always on).** Even with the infra metrics off, the single
 biggest *app-path* consumer was **`cnpg_pg_settings_setting`** — one series per
 `postgresql.conf` setting **per instance** (~2,272 series across the tiers), pure static
@@ -424,7 +438,7 @@ The canonical JSON files live in [`observability/grafana/dashboards/`](../observ
 | `k6-smoke-overview` | k6 iterations, checks/req-failed/p95 thresholds, run traces + logs | always |
 | `postgres-overview` | PostgreSQL / CloudNativePG: instances up, connections, DB size, replication lag, WAL rate, per-instance panels + Postgres pod logs (needs the CNPG `cnpg_*`/`pg_*` metrics scraped — see [Database (CNPG) observability](#database-cnpg-observability)) | always |
 | `rum-frontend` | Angular **Real User Monitoring** (Grafana Faro): Core Web Vitals (LCP/INP/CLS/TTFB/FCP), JS errors, sessions, browser breakdown, browser→backend traces | always |
-| `node-autoprovisioning` | **Node Auto-Provisioning (Spot)**: Spot vs static node counts over time — watch NAP scale up CI build nodes and consolidate back toward zero. Needs kube-state-metrics node metrics (oss / paid Grafana Cloud; trimmed in the lean free profile) | always |
+| `node-autoprovisioning` | **Node Auto-Provisioning (Spot)**: Spot vs static node counts over time — watch NAP scale up CI build nodes and consolidate back toward zero. Reads node **taints** via kube-state-metrics (`kube_node_info`/`kube_node_spec_taint`); the lean profile keeps that tiny node-inventory slice, so it works in **all** modes (see the leanMetrics note above) | always |
 | `jenkins-overview` | Jenkins CI: active runs, queue, executors, pipeline results, build traces, pod logs | only `ci.engine=jenkins` |
 | `tekton-overview` | Tekton pipeline runs, task durations, build traces, pipeline pod logs | only `ci.engine=tekton` |
 

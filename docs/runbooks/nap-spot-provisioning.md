@@ -158,6 +158,33 @@ creation (~1–3 min) + node join + a **cold pull of every agent image** (severa
 **10–15+ min for the first build**; it is not stuck. (Future option: give the prepull DaemonSet
 tolerations for the `ci-spot` taints, or accept the cold start — it's ephemeral CI.)
 
+## Why the "CI-CD / Node Auto-Provisioning (Spot)" dashboard has data even on the free tier
+
+The dashboard ([`observability/grafana/dashboards/node-autoprovisioning.json`](../../observability/grafana/dashboards/node-autoprovisioning.json))
+counts nodes from kube-state-metrics. That collides with the free-tier `leanMetrics` profile,
+which trims the high-cardinality cluster-infra metrics — so the naive version would show **No
+data** in `grafana-cloud` mode. Two deliberate choices make it work in **every** mode instead:
+
+1. **Read taints, not labels.** The panels query
+   `kube_node_spec_taint{key="cloud.google.com/gke-spot"}` and
+   `…{key="cloud.google.com/compute-class",value="ci-spot"}`. KSM emits `kube_node_spec_taint`
+   **by default**. The intuitive alternative, `kube_node_labels{label_cloud_google_com_gke_spot="true"}`,
+   does **not** work out of the box: KSM only populates the `label_*` dimensions of
+   `kube_node_labels` when started with `--metric-labels-allowlist=nodes=[…]`, which we don't
+   set. GKE auto-applies the `gke-spot` / `compute-class` taints to the pools NAP creates, so
+   the taint metric is a reliable, zero-config signal.
+2. **A node-inventory allow-list survives lean mode.** [`scripts/03-observability.sh`](../../scripts/03-observability.sh)
+   does **not** disable cluster metrics wholesale in lean mode — it keeps kube-state-metrics
+   deployed and scrapes **only** `kube_node_info`, `kube_node_spec_taint` and
+   `kube_node_status_condition` (`clusterMetrics.kube-state-metrics.metricsTuning.useDefaultAllowList: false`
+   + `includeMetrics`). That's ~30–50 series total — negligible against the 15k free-tier cap —
+   while cadvisor/kubelet/node-exporter stay off.
+
+So if the dashboard is empty, it is **not** the lean profile: check that the `kube-state-metrics`
+Pod is `Running`, that the `k8s-monitoring-alloy` collector is up, and — most likely — that a
+**build has actually triggered a Spot node** (no Spot nodes = the count is legitimately 0). The
+panels use `or vector(0)`, so an empty result renders **0**, not "No data".
+
 ## Troubleshooting — agent stuck `Pending`
 
 ```bash
