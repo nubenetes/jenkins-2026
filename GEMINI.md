@@ -120,6 +120,8 @@ Check the rollout status of all services:
 1. **Jib/Maven Daemon Issues**: Ensure you run clean compiles with Docker-in-Docker. The shared library handles DinD mounting automatically.
 2. **ArgoCD App Synchronization**: The ApplicationSet (`argocd/microservices-appset.yaml`) points to the `jenkins-2026-gitops-config` repository. AppSync triggers automatically when Jenkins commits and pushes updated image tags to the gitops repo.
 3. **Observability Logs**: All application logs are forwarded by Loki logs agent to Grafana Cloud. Log-to-trace correlation is established via `trace_id` annotations parsed from standard SLF4J MDC logs.
+4. **GKE Concurrency & Lock Serialization**: GKE allows only one concurrent mutating operation per cluster/zone. Sequential `gcloud` CLI updates (such as changing autoscaling, auto-repair, or resizing node pools) without waiting will fail due to API locks. Always use the `wait_for_gke_operations` helper function inside workflows/scripts to serialize mutations.
+5. **Pod Disruption Budgets (PDBs) Eviction Blocks**: When scaling node pools to 0 or performing manual drains on GKE, single-instance CloudNative-PG Postgres pods with strict PDBs (`minAvailable=1`) will block eviction indefinitely. Bypassing this requires draining nodes via `kubectl drain --disable-eviction`, which forces deletion via the DELETE API rather than the Eviction API.
 
 ---
 
