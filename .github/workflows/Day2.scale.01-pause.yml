@@ -61,6 +61,27 @@ jobs:
 
           mapfile -t POOLS < <(gcloud container node-pools list --cluster "${CLUSTER}" --location "${ZONE}" --format='value(name)')
 
+          # Helper to wait for any RUNNING GKE operations in the zone
+          wait_for_gke_operations() {
+            local op_count
+            for i in $(seq 1 30); do
+              mapfile -t RUNNING_OPS < <(gcloud container operations list --location "${ZONE}" --filter="status=RUNNING" --format="value(name,operationType)" 2>/dev/null || true)
+              local clean_ops=()
+              for op in "${RUNNING_OPS[@]}"; do
+                [[ -n "${op}" ]] && clean_ops+=("${op}")
+              done
+              op_count="${#clean_ops[@]}"
+              if [[ "${op_count:-0}" -eq 0 ]]; then
+                return 0
+              fi
+              echo "Waiting for ${op_count} running GKE operation(s) to finish:"
+              printf "  - %s\n" "${clean_ops[@]}"
+              sleep 15
+            done
+            echo "::warning::Timed out waiting for running GKE operations to finish."
+            return 1
+          }
+
           # 0. Disable cluster-level Node Auto-Provisioning (NAP) FIRST. NAP is a
           #    CLUSTER setting (separate from a node pool's autoscaling): for any
           #    Pending pod it can't place, it spins up brand-new nodes/pools — so even
@@ -69,9 +90,10 @@ jobs:
           #    (This is the gap that made a "successful" pause leave 1-3 nodes running.)
           #    terraform/gke does NOT manage NAP, so leaving it off is IaC-consistent;
           #    the node pool's min/max autoscaling — re-enabled by Resume — is enough.
+          wait_for_gke_operations
           echo "::group::Disable cluster Node Auto-Provisioning (NAP)"
           gcloud container clusters update "${CLUSTER}" --location "${ZONE}" \
-            --no-enable-autoprovisioning --quiet || true
+            --no-enable-autoprovisioning --quiet
           echo "::endgroup::"
 
           # 1. Disable autoscaling (so it can't re-add nodes for the now-Pending pods),
@@ -80,11 +102,13 @@ jobs:
           #    otherwise bounces the pool straight back up mid-pause.
           #    "Day2.scale.02 Resume" re-enables autoscaling/autoRepair/autoUpgrade.
           for NP in "${POOLS[@]}"; do
+            wait_for_gke_operations
             echo "::group::Disable autoscaling + autoRepair + autoUpgrade on ${NP}"
-            gcloud container clusters update "${CLUSTER}" --location "${ZONE}" \
-              --node-pool "${NP}" --no-enable-autoscaling --quiet || true
             gcloud container node-pools update "${NP}" --cluster "${CLUSTER}" --location "${ZONE}" \
-              --no-enable-autorepair --no-enable-autoupgrade --quiet || true
+              --no-enable-autoscaling --quiet
+            wait_for_gke_operations
+            gcloud container node-pools update "${NP}" --cluster "${CLUSTER}" --location "${ZONE}" \
+              --no-enable-autorepair --no-enable-autoupgrade --quiet
             echo "::endgroup::"
           done
 
@@ -103,6 +127,7 @@ jobs:
           # 3. Resize each pool to 0. Nodes are already empty + autoRepair off, so the
           #    resize completes promptly and STAYS at 0 (nothing recreates them).
           for NP in "${POOLS[@]}"; do
+            wait_for_gke_operations
             echo "::group::Scale ${NP} -> 0"
             gcloud container clusters resize "${CLUSTER}" --location "${ZONE}" \
               --node-pool "${NP}" --num-nodes 0 --quiet

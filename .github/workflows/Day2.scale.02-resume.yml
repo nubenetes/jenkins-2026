@@ -74,21 +74,48 @@ jobs:
           echo "Cluster=${CLUSTER} location=${ZONE} → ${NUM_NODES} nodes (autoscale ${MIN_NODES}-${MAX_NODES})"
 
           mapfile -t POOLS < <(gcloud container node-pools list --cluster "${CLUSTER}" --location "${ZONE}" --format='value(name)')
+
+          # Helper to wait for any RUNNING GKE operations in the zone
+          wait_for_gke_operations() {
+            local op_count
+            for i in $(seq 1 30); do
+              mapfile -t RUNNING_OPS < <(gcloud container operations list --location "${ZONE}" --filter="status=RUNNING" --format="value(name,operationType)" 2>/dev/null || true)
+              local clean_ops=()
+              for op in "${RUNNING_OPS[@]}"; do
+                [[ -n "${op}" ]] && clean_ops+=("${op}")
+              done
+              op_count="${#clean_ops[@]}"
+              if [[ "${op_count:-0}" -eq 0 ]]; then
+                return 0
+              fi
+              echo "Waiting for ${op_count} running GKE operation(s) to finish:"
+              printf "  - %s\n" "${clean_ops[@]}"
+              sleep 15
+            done
+            echo "::warning::Timed out waiting for running GKE operations to finish."
+            return 1
+          }
+
           for NP in "${POOLS[@]}"; do
             echo "::group::Resuming node pool ${NP}"
+            wait_for_gke_operations
             gcloud container clusters resize "${CLUSTER}" --location "${ZONE}" \
               --node-pool "${NP}" --num-nodes "${NUM_NODES}" --quiet
-            gcloud container clusters update "${CLUSTER}" --location "${ZONE}" \
-              --node-pool "${NP}" --enable-autoscaling \
+            
+            wait_for_gke_operations
+            gcloud container node-pools update "${NP}" --cluster "${CLUSTER}" --location "${ZONE}" \
+              --enable-autoscaling \
               --min-nodes "${MIN_NODES}" --max-nodes "${MAX_NODES}" --quiet
+
             # Re-enable autoRepair + autoUpgrade — "Day2.scale.01 Pause" disabled both
             # (and cluster NAP) so nothing recreated nodes mid-pause; restore node
             # self-healing + version auto-upgrade for normal operation. NAP is NOT
             # re-enabled on purpose: terraform/gke doesn't manage it (it was an
             # out-of-band setting that broke pause), and the node pool's own
             # autoscaling restored above is sufficient.
+            wait_for_gke_operations
             gcloud container node-pools update "${NP}" --cluster "${CLUSTER}" --location "${ZONE}" \
-              --enable-autorepair --enable-autoupgrade --quiet || true
+              --enable-autorepair --enable-autoupgrade --quiet
             echo "::endgroup::"
           done
 
