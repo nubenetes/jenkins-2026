@@ -189,6 +189,17 @@ controller:
           name: jenkins-credentials
           key: develop-enabled
           optional: true
+    # Custom ComputeClass the build agents target so GKE Node Auto-Provisioning spins up
+    # Spot, scale-to-zero nodes for them (empty when nodeAutoProvisioning is disabled, in
+    # which case agents stay on the static pool). Patched into the Secret by
+    # scripts/04-jenkins.sh; surfaced to builds as GKE_COMPUTE_CLASS via JCasC and read in
+    # vars/MicroservicesPipeline.groovy / MicroservicesK6SmokePipeline.groovy.
+    - name: JENKINS2026_GKE_COMPUTE_CLASS
+      valueFrom:
+        secretKeyRef:
+          name: jenkins-credentials
+          key: gke-compute-class
+          optional: true
     - name: GRAFANA_BASE_URL
       valueFrom:
         secretKeyRef:

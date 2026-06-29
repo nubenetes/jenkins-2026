@@ -62,6 +62,22 @@ export J2026_INGRESS_CLASS="$(yq_get ".platform.gke.ingressClassName" '')"
 export J2026_SERVICE_TYPE="$(yq_get ".platform.gke.serviceType" 'ClusterIP')"
 export J2026_USE_ROUTE="false"
 
+# --- node auto-provisioning / ComputeClass (feature flag) --------------------
+# GKE NAP — the GA, Google-native equivalent of Karpenter. When enabled, 01-namespaces.sh
+# applies the Custom ComputeClass (infrastructure/compute-classes/) and the CI agents
+# target it (Spot, scale-to-zero) via the GKE_COMPUTE_CLASS env surfaced through JCasC.
+# FEATURE FLAG: JENKINS2026_NODE_AUTOPROVISIONING_ENABLED overrides nodeAutoProvisioning.enabled.
+J2026_NODE_AUTOPROVISIONING_ENABLED="${JENKINS2026_NODE_AUTOPROVISIONING_ENABLED:-$(yq_get '.nodeAutoProvisioning.enabled' 'true')}"
+export J2026_NODE_AUTOPROVISIONING_ENABLED
+case "${J2026_NODE_AUTOPROVISIONING_ENABLED}" in
+  true|false) ;;
+  *)
+    log_error "Invalid nodeAutoProvisioning.enabled '${J2026_NODE_AUTOPROVISIONING_ENABLED}' (expected true|false)."
+    exit 1
+    ;;
+esac
+export J2026_NODE_AUTOPROVISIONING_COMPUTE_CLASS="$(yq_get '.nodeAutoProvisioning.computeClass' 'ci-spot')"
+
 # --- ci engine (feature flag) ------------------------------------------------
 
 # FEATURE FLAG: JENKINS2026_CI_ENGINE, if set, overrides ci.engine from

@@ -1,0 +1,68 @@
+# GKE Custom ComputeClass — the Google-native, GA equivalent of a Karpenter NodePool.
+#
+# WHY this and not Karpenter: there is no production-ready Karpenter provider for GCP
+# (the only one, cloudpilot-ai/karpenter-provider-gcp, is alpha). GKE's own
+# ComputeClass + Node Auto-Provisioning (NAP) gives the same outcome — ephemeral,
+# Spot-first, scale-to-zero nodes that bin-pack bursty CI agents — while staying GA,
+# Google-supported, keyless, and entirely inside our Terraform/IaC.
+#
+# HOW it works: NAP must be enabled on the cluster (terraform/gke
+# `enable_node_autoprovisioning`, default true). A Pod opts in with
+#   nodeSelector: { cloud.google.com/compute-class: ci-spot }
+# GKE then provisions a right-sized node pool following the priority rules below
+# (Spot first, on-demand fallback) and AUTOMATICALLY applies the matching label +
+# taint `cloud.google.com/compute-class=ci-spot:NoSchedule` to it, so only Pods that
+# both select the class and tolerate that taint land there. The CI build agents do
+# exactly that, gated by the `nodeAutoProvisioning.enabled` flag (the controller's
+# GKE_COMPUTE_CLASS env, surfaced through JCasC). The long-lived platform stays on the
+# static `jenkins-2026-pool`, so NAP is never on the critical path of a provision.
+#
+# Applied (idempotently, non-fatally) by scripts/01-namespaces.sh on GKE when the flag
+# is on; removed by scripts/down.sh before teardown. See docs/201-ARCHITECTURE.md.
+apiVersion: cloud.google.com/v1
+kind: ComputeClass
+metadata:
+  name: ci-spot
+spec:
+  # NAP auto-creates/deletes the node pools backing this class.
+  nodePoolAutoCreation:
+    enabled: true
+
+  # Ordered fallback: cheapest first. GKE tries each rule top-to-bottom until it can
+  # place the Pod. Spot across several modern families (better spot availability than a
+  # single family), then a small on-demand safety net so a Spot stock-out never wedges a
+  # build. minCores/minMemoryGb keep nodes big enough for the heavy JHipster Maven build
+  # (mvnw -T 4 + forked test JVMs) while excluding e2-micro/small/medium.
+  priorities:
+    - machineFamily: c3
+      spot: true
+      minCores: 4
+      minMemoryGb: 16
+    - machineFamily: n2
+      spot: true
+      minCores: 4
+      minMemoryGb: 16
+    - machineFamily: c2
+      spot: true
+      minCores: 4
+      minMemoryGb: 16
+    - machineFamily: e2
+      spot: true
+      minCores: 4
+      minMemoryGb: 16
+    # On-demand fallback (only used if no Spot capacity is available in any family above).
+    - machineFamily: e2
+      spot: false
+      minCores: 4
+      minMemoryGb: 16
+
+  # When no priority rule can be satisfied, still scale up on a best-effort basis rather
+  # than leaving the Pod Pending forever (a stuck CI agent is worse than a pricier node).
+  whenUnsatisfiable: ScaleUpAnyway
+
+  # Consolidate aggressively: as soon as a Spot CI node sits underutilized for a few
+  # minutes, GKE reschedules and removes it — this is what delivers the scale-to-zero
+  # cost profile between builds.
+  autoscalingPolicy:
+    consolidationDelayMinutes: 5
+    consolidationThreshold: 70

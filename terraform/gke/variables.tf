@@ -45,6 +45,33 @@ variable "max_node_count" {
   default     = 4
 }
 
+variable "enable_node_autoprovisioning" {
+  type        = bool
+  description = <<-EOT
+    Enable GKE Node Auto-Provisioning (NAP) — the GA, Google-native equivalent of
+    Karpenter. When true, the cluster auto-creates and deletes right-sized node pools
+    (including Spot pools) on demand, driven by Custom ComputeClasses (see
+    infrastructure/compute-classes/). The static `${cluster_name}-pool` still hosts the
+    long-lived platform (ArgoCD/Jenkins/observability/CNPG); NAP adds ephemeral,
+    scale-to-zero capacity for bursty CI agents. Pause/resume (Day2.scale.*) toggle NAP
+    out-of-band via gcloud; a later Day1 apply reconciles it back on (the resume
+    semantics), so that drift is expected and benign.
+  EOT
+  default     = true
+}
+
+variable "nap_max_cpu" {
+  type        = number
+  description = "NAP upper bound on total vCPUs across all auto-provisioned pools (a cost guardrail; the static pool is counted separately)."
+  default     = 64
+}
+
+variable "nap_max_memory_gb" {
+  type        = number
+  description = "NAP upper bound on total memory (GB) across all auto-provisioned pools (cost guardrail)."
+  default     = 256
+}
+
 variable "disk_size_gb" {
   type        = number
   description = "Boot disk size (GB) per node."

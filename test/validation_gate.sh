@@ -3,8 +3,9 @@
 # golden-path-validator.sh
 # 
 # Comprehensive QA, Chaos & Compliance Validation Gate for the jenkins-2026 IDP.
-# Syntactically and semantically audits GKE Gateway API, Karpenter CRDs,
-# v1.35/v1.36 scheduling compliance, and security settings.
+# Syntactically and semantically audits GKE Gateway API, Node Auto-Provisioning
+# Custom ComputeClasses (infrastructure/compute-classes/), scheduling compliance,
+# and security settings.
 # =============================================================================
 set -euo pipefail
 

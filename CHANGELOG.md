@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.42] - 2026-06-29
+
+Increment over v0.28.41 (wire up elastic Spot CI nodes — GKE-native, GA).
+
+### Added
+- **GKE Node Auto-Provisioning (NAP) + a Custom ComputeClass — the GA, Google-native
+  equivalent of Karpenter, fully wired in.** There is no production-ready Karpenter
+  provider for GCP (the only one, `cloudpilot-ai/karpenter-provider-gcp`, is alpha), so
+  the platform now uses GKE's own NAP to get the same outcome — ephemeral, **Spot**,
+  scale-to-zero nodes that bin-pack bursty CI agents — while staying GA, keyless, and
+  entirely inside our IaC.
+  - `terraform/gke`: enables NAP via a `cluster_autoscaling` block (gated by the new
+    `enable_node_autoprovisioning` var, default true) with `resource_limits`
+    (cpu/memory guardrails) + `auto_provisioning_defaults` reusing the dedicated node SA
+    `jenkins-2026-nodes` (least privilege, not the broad default compute SA), Shielded
+    VMs, COS_CONTAINERD, auto-repair/upgrade, and the `OPTIMIZE_UTILIZATION` profile.
+  - `infrastructure/compute-classes/ci-spot.yaml`: a Custom ComputeClass (the real
+    equivalent of a Karpenter NodePool) with `nodePoolAutoCreation` and **Spot-first**
+    priority rules (families `c3`/`n2`/`c2`/`e2`) falling back to on-demand. GKE
+    auto-labels + taints the pools it creates with the class name. Replaces the stale
+    draft `infrastructure/karpenter/{NodePool,GCPNodeClass}.yaml` (deleted — they used an
+    outdated `GCPNodeClass` API).
+  - Feature flag `nodeAutoProvisioning.enabled` (default true; override
+    `JENKINS2026_NODE_AUTOPROVISIONING_ENABLED`) + `computeClass: ci-spot` in
+    `config/config.yaml`, read in `scripts/lib/config.sh`. `scripts/01-namespaces.sh`
+    applies the ComputeClass **non-fatally** on GKE (no platform pod depends on it, so a
+    NAP hiccup never fails a provision); `scripts/down.sh` removes it before teardown.
+  - The static `jenkins-2026-pool` keeps the long-lived platform; only the CI build
+    agents (`vars/MicroservicesPipeline.groovy`, `vars/MicroservicesK6SmokePipeline.groovy`)
+    target the class — via `nodeSelector cloud.google.com/compute-class: ci-spot` +
+    tolerations, emitted only when the controller env `GKE_COMPUTE_CLASS` is set (surfaced
+    through `jenkins-credentials` → JCasC from the flag; empty → agents stay on the static
+    pool). Docs (201/302/402/501 + README) updated from "Karpenter" to NAP/ComputeClass.
+
 ## [v0.28.41] - 2026-06-29
 
 Increment over v0.28.40 (documentation audit — sync docs with `main` code).

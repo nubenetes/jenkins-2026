@@ -78,7 +78,7 @@ mindmap
 - **`ci.engine` — Jenkins xor Tekton**, mutually exclusive and **engine-gated**: the `jenkins` namespace exists only in jenkins-mode, the `tekton-*` namespaces only in tekton-mode. The public ingress is engine-neutral (`platform-ingress`).
 - **`observability.mode` — four backends**, the OTel collector reconfigured per mode; each branch retires the others' agents on a switch.
 - **`secrets.backend` — `imperative` (default) vs `eso`**: ESO syncs from **GCP Secret Manager** over **keyless Workload Identity**; groups 1–3 are wired, group 4 (in-cluster/Terraform-minted) stays imperative.
-- **Platform**: one GKE **Gateway** + **Google IAP**, **Dataplane V2** (Cilium/eBPF NetworkPolicy enforcement) + **WireGuard** inter-node encryption, **Karpenter** spot agents, and the IAP OAuth secret **replicated** per backend namespace (a GKE constraint, not a smell).
+- **Platform**: one GKE **Gateway** + **Google IAP**, **Dataplane V2** (Cilium/eBPF NetworkPolicy enforcement) + **WireGuard** inter-node encryption, **Node Auto-Provisioning** (GKE-native, GA) Spot CI-agent nodes via a Custom **ComputeClass**, and the IAP OAuth secret **replicated** per backend namespace (a GKE constraint, not a smell).
 - Each in-cluster Secret lives in its **consumer's** namespace (locality for tight RBAC + clean teardown); see the Namespace & Secret topology below.
 
 </details>
@@ -339,7 +339,7 @@ vars/                        Jenkins global shared library (must be at repo root
 tekton/                      Tekton pipelines-as-code (ci.engine=tekton): Tasks/Pipelines/Triggers/RBAC + port of the Jenkins shared library (vars/)
 observability/               OTel Operator/Collector + Grafana/Loki/Tempo/Prometheus values + dashboards
 argocd/                      ArgoCD Applications/ApplicationSets + app-of-apps (platform-postgres, observability-oss, tekton) + argo-rollouts-app.yaml
-infrastructure/              engine-neutral platform manifests applied by 01-namespaces / 08.5-argocd: NetworkPolicies (default/-jenkins/-tekton), Gateway, Karpenter, scheduling, Argo Rollouts Gateway-API RBAC, secrets
+infrastructure/              engine-neutral platform manifests applied by 01-namespaces / 08.5-argocd: NetworkPolicies (default/-jenkins/-tekton), Gateway, Node Auto-Provisioning ComputeClasses (compute-classes/), scheduling, Argo Rollouts Gateway-API RBAC, secrets
 scripts/                     00-09 numbered steps + up.sh / down.sh / status.sh
 terraform/gke/               throwaway GKE cluster for test/e2e.sh
 terraform/bootstrap/         one-time setup for GitHub Actions automation (state bucket + WIF + permanent public DNS zone)
@@ -892,14 +892,18 @@ graph TD
         end
     end
 
-    subgraph Cluster ["GKE Cluster (v1.35/v1.36)"]
+    subgraph Cluster ["GKE Cluster (release channel: REGULAR)"]
         GatewayAPI["GKE Gateway API<br/>gke-l7-global-external-managed"]
         BackendTLS["BackendTLSPolicy<br/>Secure TLS to pods"]
         WI["Workload Identity Federation"]
     end
 
-    subgraph KarpenterPool ["Karpenter NodePool: ephemeral-runners"]
-        PoolInfo["Spot Instances<br/>e2/n2/c2/c3 dynamic scaling"]
+    subgraph StaticPool ["Static node pool: jenkins-2026-pool (e2-standard-8, min2/max4)"]
+        StaticInfo["Long-lived platform<br/>ArgoCD/Jenkins/observability/CNPG"]
+    end
+
+    subgraph NAPSpotPool ["NAP Spot pools (ComputeClass ci-spot)"]
+        PoolInfo["Auto-created Spot nodes<br/>c3/n2/c2/e2 · scale-to-zero · CI agents"]
     end
 
     User -->|"resolve host"| ParentNS
@@ -909,7 +913,8 @@ graph TD
     CertMap --> WildcardTLS
     WildcardTLS -->|"terminates TLS"| GatewayAPI
     GatewayAPI -->|"routes via BackendTLSPolicy"| BackendTLS
-    BackendTLS -->|"zero-trust HTTPS"| KarpenterPool
+    BackendTLS -->|"zero-trust HTTPS"| StaticPool
+    BackendTLS -->|"zero-trust HTTPS"| NAPSpotPool
 ```
 
 </details>
@@ -919,7 +924,8 @@ graph TD
 | **Static IP** | `jenkins-2026-gateway-ip` | Global persistent `google_compute_global_address`. Survives cluster rebuilds. |
 | **TLS Certificate** | `jenkins-2026-cert` | Google-managed wildcard cert for `jenkins2026.nubenetes.com` + `*.jenkins2026.nubenetes.com`. |
 | **GKE Cluster** | `jenkins-2026` | Zonal cluster in `europe-southwest1-a`. VPC-native, Gateway API addon `CHANNEL_STANDARD` (cluster release channel `REGULAR`), Workload Identity enabled. |
-| **Karpenter NodePool** | `ephemeral-runners` | Spot instances (`c2`, `n2`, `e2`, `c3` families). Scales to zero under idle conditions. |
+| **Static node pool** | `jenkins-2026-pool` | `e2-standard-8`, min 2 / max 4. Hosts the long-lived platform (ArgoCD/Jenkins/observability/CNPG). |
+| **NAP Spot pools** | ComputeClass `ci-spot` | GKE Node Auto-Provisioning auto-creates Spot pools (`c3`, `n2`, `c2`, `e2` families) for CI build agents. Scales to zero under idle conditions. |
 | **Node SA** | `jenkins-2026-nodes` | Minimal-privilege: `roles/logging.logWriter`, `roles/monitoring.metricWriter`, `roles/artifactregistry.reader`. |
 | **CI Agent SA** | `jenkins-2026-ci-agent` | GitHub Actions OIDC WIF — no static JSON keys. |
 
