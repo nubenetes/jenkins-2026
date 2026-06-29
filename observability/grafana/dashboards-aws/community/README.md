@@ -7,7 +7,7 @@ for Prometheus (AMP)** at publish time.
 Why these live here at all: in `managed-aws` mode the cluster/node infra metrics
 (cadvisor + kubelet + node-exporter + kube-state-metrics) are scraped by the OTel
 Collector's `prometheus` receiver and remote-written to AMP via SigV4 (see
-[`../../otel-collector/values-managed-aws.yaml`](../../otel-collector/values-managed-aws.yaml)).
+[`observability/otel-collector/values-managed-aws.yaml`](../../../otel-collector/values-managed-aws.yaml)).
 Unlike Azure Managed Grafana (which auto-provisions infra dashboards from its
 Azure Monitor integration), **AMG ships no Kubernetes dashboards** - the metrics
 sit in AMP but nothing renders them. These dashboards fill that gap.
@@ -116,22 +116,22 @@ imports cleanly and binds to AMP without baking in any account/datasource id:
 
 - **renames the prometheus datasource template variable to `DS_PROMETHEUS`** and
   rewrites every `${<oldname>}` reference to `${DS_PROMETHEUS}`.
-  [`../../../scripts/07-grafana-dashboards.sh`](../../../scripts/07-grafana-dashboards.sh)
+  [`scripts/07-grafana-dashboards.sh`](../../../../scripts/07-grafana-dashboards.sh)
   substitutes `${DS_PROMETHEUS}` with the real AMP datasource uid it discovers
   (or creates) at publish time - the same account-agnostic, keyless binding the
   custom `*-aws.json` variants use for their CloudWatch / X-Ray datasources.
 - **strips `__inputs` / `__requires`** (the grafana.com import wrapper) and nulls
   `id`, so AMG imports by stable `uid` and overwrites in place on re-run.
 
-Pinned sources (bump in `vendor.py`, then re-run):
+Pinned sources (bump in [`vendor.py`](vendor.py), then re-run):
 
 | File | Upstream | Pin |
 |---|---|---|
-| `k8s-views-global.json` | dotdc `k8s-views-global` | `v3.0.6` |
-| `k8s-views-namespaces.json` | dotdc `k8s-views-namespaces` | `v3.0.6` |
-| `k8s-views-nodes.json` | dotdc `k8s-views-nodes` | `v3.0.6` |
-| `k8s-views-pods.json` | dotdc `k8s-views-pods` | `v3.0.6` |
-| `node-exporter-full.json` | grafana.com 1860 "Node Exporter Full" | rev `45` |
+| [`k8s-views-global.json`](k8s-views-global.json) | dotdc `k8s-views-global` | `v3.0.6` |
+| [`k8s-views-namespaces.json`](k8s-views-namespaces.json) | dotdc `k8s-views-namespaces` | `v3.0.6` |
+| [`k8s-views-nodes.json`](k8s-views-nodes.json) | dotdc `k8s-views-nodes` | `v3.0.6` |
+| [`k8s-views-pods.json`](k8s-views-pods.json) | dotdc `k8s-views-pods` | `v3.0.6` |
+| [`node-exporter-full.json`](node-exporter-full.json) | grafana.com 1860 "Node Exporter Full" | rev `45` |
 
 Re-vendor (refresh from the pinned upstreams):
 
@@ -141,7 +141,7 @@ python3 observability/grafana/dashboards-aws/community/vendor.py
 
 ## How they're published
 
-`scripts/07-grafana-dashboards.sh` (mode `managed-aws`) publishes both
+[`scripts/07-grafana-dashboards.sh`](../../../../scripts/07-grafana-dashboards.sh) (mode `managed-aws`) publishes both
 `dashboards-aws/*-aws.json` and `dashboards-aws/community/*.json` to AMG over its
 Grafana HTTP API, binding `${DS_PROMETHEUS}` to the AMP datasource. It's
 get-or-create / overwrite-by-uid, so re-runs converge without duplicates. See the

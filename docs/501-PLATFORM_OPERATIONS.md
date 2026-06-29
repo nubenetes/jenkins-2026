@@ -34,7 +34,7 @@ mindmap
       AnalysisRun gate
     Resilience
       CNPG HA failover
-      Karpenter spot
+      NAP Spot ComputeClass
       in-place resize
 ```
 
@@ -64,12 +64,12 @@ So a deploy is: *CI writes a tag → ArgoCD syncs → the new pod comes up behin
 - **Edge identity:** IAP gates `jenkins`/`headlamp`/`pgadmin`/`grafana(oss)`; access = the emails granted `roles/iap.httpsResourceAccessor` (reuses `HEADLAMP_ADMIN_EMAILS`). The `microservices` host is intentionally public.
 - **Security inside:** Dataplane V2 (`datapath_provider = ADVANCED_DATAPATH`) is what makes NetworkPolicies *enforce*; sensitive namespaces are `default-deny` + curated allowlists (see the matrix below). `in_transit_encryption_config` adds transparent WireGuard inter-node pod encryption (transport, not mTLS identity). Workload Identity Federation removes all static SA JSON keys; ESO syncs Secret Manager → namespaced Secrets. Dataplane V2 + WireGuard are **immutable** cluster fields (changing them recreates the cluster).
 - **Progressive delivery:** the `argo-rollouts` controller + the `argoproj-labs/gatewayAPI` traffic-router plugin patch `HTTPRoute` `backendRefs[].weight` between the stable and `*-canary` Services — sidecar-free, no mesh. An `AnalysisRun` can gate promotion on Prometheus span-metrics (5xx / p95) and auto-rollback.
-- **Resilience:** CNPG HA promotes a standby on primary loss; Karpenter provisions Spot nodes (taint `jenkins-agent=true:NoSchedule`) with disruption budgets; K8s v1.35 in-place vertical resize grows agent containers without pod restarts.
+- **Resilience:** CNPG HA promotes a standby on primary loss; GKE Node Auto-Provisioning auto-creates Spot pools (ComputeClass `ci-spot`, taints `cloud.google.com/compute-class=ci-spot:NoSchedule` + `cloud.google.com/gke-spot=true:NoSchedule`) that scale to zero; in-place vertical resize grows agent containers without pod restarts.
 </details>
 
 ## ArgoCD Inventory (GitOps)
 
-The deployment lifecycle is managed by **ArgoCD**. Application manifests are stored in [`nubenetes/jenkins-2026-gitops-config/argocd/`](https://github.com/nubenetes/jenkins-2026-gitops-config/tree/main/argocd) and applied to the cluster by `scripts/08.5-argocd.sh`. Jenkins CI writes image tags into that repo; ArgoCD detects the change and reconciles the cluster.
+The deployment lifecycle is managed by **ArgoCD**. Application manifests are stored in [`nubenetes/jenkins-2026-gitops-config/argocd/`](https://github.com/nubenetes/jenkins-2026-gitops-config/tree/main/argocd) and applied to the cluster by [`scripts/08.5-argocd.sh`](../scripts/08.5-argocd.sh). Jenkins CI writes image tags into that repo; ArgoCD detects the change and reconciles the cluster.
 
 ### Projects & Applications
 
@@ -166,7 +166,7 @@ Once traffic is running, go to your Grafana Cloud instance:
 ./test/validation_gate.sh
 ```
 
-This script lints and dry-runs all platform resources (WIF, Karpenter, Gateway API, RBAC policies, VPA limits) against the target API schema.
+This script lints and dry-runs all platform resources (WIF, Node Auto-Provisioning ComputeClass, Gateway API, RBAC policies, VPA limits) against the target API schema.
 
 ### 2. Platform Verification & Stress-Test Playbooks
 
@@ -189,10 +189,10 @@ Prove that dynamic build agents scale up their container resources dynamically w
    ```
    Status transitions: `Resize: Proposed` → `Resize: InProgress` → `Resize: Succeeded` without the pod restarting.
 
-#### Scenario B: Karpenter Elasticity & Spot Provisioning
+#### Scenario B: Node Auto-Provisioning Elasticity & Spot Provisioning
 
-1. **Deploy a Burst Load**: Schedule 50 parallel sleep pods targeted to the agent node group.
-2. **Watch Node Allocation**: `kubectl get nodes -l role=jenkins-agent -o custom-columns=NAME:.metadata.name,CAPACITY:.metadata.labels.karpenter\.sh/capacity-type -w`
+1. **Deploy a Burst Load**: Schedule 50 parallel sleep pods onto the `ci-spot` ComputeClass.
+2. **Watch Node Allocation**: `kubectl get nodes -l cloud.google.com/compute-class=ci-spot -o custom-columns=NAME:.metadata.name,SPOT:.metadata.labels.cloud\.google\.com/gke-spot -w`
 3. **Trigger Scale Down**: `kubectl scale deployment k6-burst-test -n jenkins --replicas=0`
 4. **Verify Consolidation**: `kubectl get events --field-selector reason=ScaleDown -n kube-system`
 
@@ -226,21 +226,25 @@ kubectl auth can-i get secrets --all-namespaces \
    ```
    Within seconds, CNPG promotes a standby to Primary. The deleted pod is automatically rescheduled as a standby replica.
 
-## Golden Path IDP Modernizations (K8s v1.35/v1.36 & Karpenter)
+## Golden Path IDP Modernizations (Node Auto-Provisioning & modern scheduling)
 
-The repository has been refactored to serve as a **Golden Path Internal Developer Platform (IDP)** utilizing Kubernetes v1.35/v1.36 features, Karpenter autoscaling, zero-trust security, and decoupled GitOps patterns.
+The repository has been refactored to serve as a **Golden Path Internal Developer Platform (IDP)** utilizing modern Kubernetes scheduling features, GKE Node Auto-Provisioning, zero-trust security, and decoupled GitOps patterns.
 
-### 1. Kubernetes v1.35/v1.36 Compliance
-* **In-Place Pod Vertical Scaling (GA in v1.35)**: Jenkins ephemeral agent pod templates are defined with explicit `resizePolicy` parameters (`NotRequired` for CPU and Memory), allowing active Maven or Node build containers to scale resource requests/limits dynamically without restarting the pod.
+### 1. Modern Scheduling Compliance
+* **In-Place Pod Vertical Scaling**: Jenkins ephemeral agent pod templates are defined with explicit `resizePolicy` parameters (`NotRequired` for CPU and Memory), allowing active Maven or Node build containers to scale resource requests/limits dynamically without restarting the pod.
 * **Safe JVM Resource Resizing Floors**: Configured `VerticalPodAutoscaler` (VPA) rules for JVM microservices to enforce `minAllowed` memory thresholds (`512Mi`).
-* **Workload-Aware / Gang Scheduling (v1.36)**: Integrated `PodGroup` scheduling resources (`parallel-smoke-tests`) to prevent resource starvation deadlocks during heavy concurrent microservice testing workflows.
-* **UI/UX Constrained Impersonation**: Implemented K8s v1.36 `ConstrainedImpersonation` policies in Headlamp UI roles. This allows the Headlamp UI ServiceAccount to impersonate specific target user groups without requiring global cluster-admin role escalation permissions.
+* **Workload-Aware / Gang Scheduling**: Integrated `PodGroup` scheduling resources (`parallel-smoke-tests`) to prevent resource starvation deadlocks during heavy concurrent microservice testing workflows.
+* **UI/UX Constrained Impersonation**: Implemented `ConstrainedImpersonation` policies in Headlamp UI roles. This allows the Headlamp UI ServiceAccount to impersonate specific target user groups without requiring global cluster-admin role escalation permissions.
 
-### 2. Elastic Karpenter Autoscaling (v1.0+)
-* **GCPNodeClass**: Configures GKE machine parameters, 100 GB `pd-balanced` boot disks, and links Workload Identity node service accounts.
-* **NodePool**: Manages Spot capacity-types, targeting compute families (`c2`, `n2`, `e2`, `c3`) and injecting taints (`jenkins-agent=true:NoSchedule`) so only build agents land on elastic spot pools.
-* **Disruption Budgets**: Configured to restrict consolidations during core business hours (Mon-Fri) to safeguard long-running master build pipelines while allowing aggressive cost cutting at night.
-* **Autoscaler Isolation**: Standard GKE nodes and Karpenter node pools are strictly isolated — preventing scheduling/autoscaling race conditions.
+### 2. Elastic Node Auto-Provisioning (Spot ComputeClass)
+* **Cluster-level NAP**: [`terraform/gke`](../terraform/gke/) enables a `cluster_autoscaling` block (`resource_limits` for cpu/memory + `auto_provisioning_defaults`: the dedicated node SA `jenkins-2026-nodes`, COS_CONTAINERD, Shielded VMs, auto-repair/upgrade, `pd-balanced`, `OPTIMIZE_UTILIZATION` profile), gated by the `enable_node_autoprovisioning` variable (default true).
+* **Custom ComputeClass `ci-spot`**: [`infrastructure/compute-classes/ci-spot.yaml`](../infrastructure/compute-classes/ci-spot.yaml) sets `nodePoolAutoCreation.enabled: true` with `priorities` preferring **Spot** across families (`c3`, `n2`, `c2`, `e2`) then falling back to on-demand `e2`, `whenUnsatisfiable: ScaleUpAnyway`. GKE auto-applies the `compute-class=ci-spot` / `gke-spot=true` `NoSchedule` taints so only build agents (which carry the matching nodeSelector + tolerations) land on the elastic Spot pools.
+* **Autoscaler Isolation**: The static `jenkins-2026-pool` (long-lived platform) and the NAP-auto-created Spot pools are strictly isolated, so a NAP issue never blocks the core provision.
+* **Spot preemption — trade-off & resilience (read before relying on it).** Spot VMs can be reclaimed by GCE with **~30s notice**, so a node running a CI agent can disappear *mid-build*. This is a deliberate, acceptable trade-off here because **CI is exactly the right workload for Spot**: builds are **ephemeral and idempotent** (re-running produces the same artifact) and **nothing on the critical platform path runs on Spot** — ArgoCD, Jenkins/Tekton controllers, observability and CNPG all stay on the static pool. The resilience design is layered:
+  * **On-demand fallback** — the `ci-spot` ComputeClass falls back to on-demand `e2` (`whenUnsatisfiable: ScaleUpAnyway`), so a Spot **stock-out** never leaves a build Pending; it just runs on a regular node.
+  * **Preemption ≠ stuck** — if a Spot node *is* reclaimed, GKE reschedules the agent Pod and NAP provisions a fresh node (Spot, or on-demand on stock-out); the affected build fails fast and is simply re-run (no manual cleanup).
+  * **Escape hatch** — for a run where you want **guaranteed, non-preemptible completion** (e.g. a release build), flip the single flag: set `nodeAutoProvisioning.enabled: false` (or `JENKINS2026_NODE_AUTOPROVISIONING_ENABLED=false`) and the agents schedule on the static pool instead. One toggle, no manifest edits — see [`config/config.yaml`](../config/config.yaml).
+  * **Watch it** — the **CI-CD / Node Auto-Provisioning (Spot)** Grafana dashboard ([`observability/grafana/dashboards/node-autoprovisioning.json`](../observability/grafana/dashboards/node-autoprovisioning.json)) shows Spot vs static node counts over time, so you can see scale-up on a build and consolidation back toward zero after it.
 
 ### 3. Zero-Trust Security & Workload Identity
 * **Workload Identity Federation**: All static JSON Service Account keys are removed. Both external CI engines (GitHub Actions) and in-cluster workloads assume GCP IAM Roles dynamically via OIDC.
@@ -348,7 +352,7 @@ flowchart LR
 </details>
 
 ### 4. GitOps Separation of Concerns
-All infrastructural manifests (`karpenter/`, `gateway/`, `headlamp/`, `scheduling/`) are decoupled from CI pipeline definitions and placed inside the [`infrastructure/`](../infrastructure/) directory for full reconciliation via Argo CD.
+All infrastructural manifests ([`compute-classes/`](../infrastructure/compute-classes/), [`gateway/`](../infrastructure/gateway/), [`headlamp/`](../infrastructure/headlamp/), [`scheduling/`](../infrastructure/scheduling/)) are decoupled from CI pipeline definitions and placed inside the [`infrastructure/`](../infrastructure/) directory for full reconciliation via Argo CD.
 
 ### 5. Build Performance & High Availability Caching
 * **Jenkins Agent Caching**: Java (Maven `/root/.m2`) and Node (npm `/root/.npm`) containers in pipeline agent templates mount hostPath volumes (`/tmp/jenkins-maven-cache` and `/tmp/jenkins-npm-cache`). Sharing a fast local node directory avoids ReadWriteOnce volume mounting locks while reducing typical compilation times from 5-10 minutes to under 1 minute.
@@ -358,7 +362,7 @@ All infrastructural manifests (`karpenter/`, `gateway/`, `headlamp/`, `schedulin
 
 Canary / blue-green delivery, **sidecar-free**, reusing the existing GKE Gateway API ingress (no service mesh):
 
-* **Controller (installed)**: [`argocd/argo-rollouts-app.yaml`](../argocd/argo-rollouts-app.yaml) GitOps-installs the Argo Rollouts controller (Helm chart, pinned) with the **Gateway API traffic-router plugin** (`argoproj-labs/gatewayAPI`) configured via `controller.trafficRouterPlugins`. [`infrastructure/argo-rollouts-gatewayapi-rbac.yaml`](../infrastructure/argo-rollouts-gatewayapi-rbac.yaml) grants the controller `update/patch` on `gateway.networking.k8s.io` HTTPRoutes (the chart default lacks it). Applied by `scripts/08.5-argocd.sh`. The read-only Rollouts dashboard is enabled (cluster-internal).
+* **Controller (installed)**: [`argocd/argo-rollouts-app.yaml`](../argocd/argo-rollouts-app.yaml) GitOps-installs the Argo Rollouts controller (Helm chart, pinned) with the **Gateway API traffic-router plugin** (`argoproj-labs/gatewayAPI`) configured via `controller.trafficRouterPlugins`. [`infrastructure/argo-rollouts-gatewayapi-rbac.yaml`](../infrastructure/argo-rollouts-gatewayapi-rbac.yaml) grants the controller `update/patch` on `gateway.networking.k8s.io` HTTPRoutes (the chart default lacks it). Applied by [`scripts/08.5-argocd.sh`](../scripts/08.5-argocd.sh). The read-only Rollouts dashboard is enabled (cluster-internal).
 * **How the canary shifts traffic**: a `Rollout` (replacing the `gateway` `Deployment`) with `stableService: gateway` + `canaryService: gateway-canary` and `trafficRouting.plugins."argoproj-labs/gatewayAPI"` pointing at the `microservices` HTTPRoute. The plugin rewrites the HTTPRoute `backendRefs` **weights** between the stable and canary Services through the canary steps (e.g. 20% → 50% → 100% with pauses). No Envoy, no sidecars.
 
 **Remaining steps (cross-repo — the controller above is the in-cluster foundation):**
@@ -496,7 +500,7 @@ Your Google account email is **never committed to this repo** — it's supplied 
 gh secret set HEADLAMP_ADMIN_EMAILS --body "you@gmail.com,colleague@gmail.com"
 ```
 
-Then (re-)run **Day1.cluster.01 GKE provision** to add the `roles/iap.httpsResourceAccessor` IAM binding via `terraform/gke`.
+Then (re-)run **Day1.cluster.01 GKE provision** to add the `roles/iap.httpsResourceAccessor` IAM binding via [`terraform/gke`](../terraform/gke/).
 
 ### Accessing the UI
 
@@ -532,9 +536,9 @@ Jenkins, Microservices, Headlamp, and pgAdmin can all be exposed on the public i
 | pgAdmin | `https://pgadmin.<baseDomain>` | yes |
 | Grafana | `https://grafana.<baseDomain>` | yes (only when `observability.mode=oss`) |
 
-`<baseDomain>` is `gateway.baseDomain` in `config/config.yaml` — `jenkins2026.nubenetes.com` by default.
+`<baseDomain>` is `gateway.baseDomain` in [`config/config.yaml`](../config/config.yaml) — `jenkins2026.nubenetes.com` by default.
 
-**This whole feature is opt-in**: set `JENKINS2026_BASE_DOMAIN=""` to disable it. `scripts/09-gateway.sh` is also a no-op on `platform.target` other than `gke`.
+**This whole feature is opt-in**: set `JENKINS2026_BASE_DOMAIN=""` to disable it. [`scripts/09-gateway.sh`](../scripts/09-gateway.sh) is also a no-op on `platform.target` other than `gke`.
 
 <details>
 <summary>📊 A request from the internet to a backend pod (Gateway + IAP)</summary>
@@ -595,7 +599,7 @@ by the root bootstrap and never destroyed, which is what keeps the delegation pe
 
 2. **Run the "Day0.infra.01 Gateway bootstrap" workflow** to create the global static IP, the Google-managed wildcard certificate for `<baseDomain>` and `*.<baseDomain>`, the Certificate Manager DNS authorization, and the **records inside the delegated zone** (wildcard `A` → static IP, cert-validation `CNAME`). These are re-applied on every `Day0.infra.01` / `Day1.cluster.00` run, so they always track the current IP — a `Decom`-everything + rebuild brings the URLs back with **no further DNS work**.
 
-3. **Create the IAP OAuth client by hand — one time, permanent** (the Terraform resources for this are deprecated as of July 2025). In the [GCP Console](https://console.cloud.google.com/): **APIs & Services** → **Credentials** → **Create credentials** → **OAuth client ID** → Application type **Web application**. The client ID/secret are project-level and outlive any cluster; the `IAP_OAUTH_CLIENT_ID`/`IAP_OAUTH_CLIENT_SECRET` GitHub secrets feed the `gateway-iap-oauth` Kubernetes Secret each rebuild (via `scripts/01-namespaces.sh`, or pushed to GCP Secret Manager and synced by External Secrets when `secrets.backend=eso`). So like the `NS` delegation, this is done once and survives `Decom`/rebuild.
+3. **Create the IAP OAuth client by hand — one time, permanent** (the Terraform resources for this are deprecated as of July 2025). In the [GCP Console](https://console.cloud.google.com/): **APIs & Services** → **Credentials** → **Create credentials** → **OAuth client ID** → Application type **Web application**. The client ID/secret are project-level and outlive any cluster; the `IAP_OAUTH_CLIENT_ID`/`IAP_OAUTH_CLIENT_SECRET` GitHub secrets feed the `gateway-iap-oauth` Kubernetes Secret each rebuild (via [`scripts/01-namespaces.sh`](../scripts/01-namespaces.sh), or pushed to GCP Secret Manager and synced by External Secrets when `secrets.backend=eso`). So like the `NS` delegation, this is done once and survives `Decom`/rebuild.
 
    **Authorized redirect URI**:
    ```
@@ -607,7 +611,7 @@ by the root bootstrap and never destroyed, which is what keeps the delegation pe
    gh secret set IAP_OAUTH_CLIENT_SECRET --body "<client secret>"
    ```
 
-4. **IAP access control** reuses `HEADLAMP_ADMIN_EMAILS`: each listed email is granted `roles/iap.httpsResourceAccessor` via `terraform/gke`.
+4. **IAP access control** reuses `HEADLAMP_ADMIN_EMAILS`: each listed email is granted `roles/iap.httpsResourceAccessor` via [`terraform/gke`](../terraform/gke/).
 
 ### Troubleshooting: Load Balancer Propagation Delay
 
@@ -637,7 +641,7 @@ Park the throwaway cluster at **~zero compute cost** without a Decom + Day1 rebu
 
 **What still costs while paused** (all small): the zonal **control plane** (covered by the GKE free-tier management credit), the **persistent disks** backing the PVs, and the reserved **static IP**. Grafana Cloud is free-tier (nothing to pause). Azure/AWS managed backends, if ever provisioned, are billed separately and are **not** paused here.
 
-> Pause/resume is **not** a rebuild and keeps the disks. For a full teardown that stops *all* charges use [`Decom.cluster.01-gke`](../.github/workflows/Decom.cluster.01-gke.yml); to recreate, [`Day1.cluster.01-gke`](../.github/workflows/Day1.cluster.01-gke.yml) (a re-apply also reconciles the gcloud state drift the imperative pause leaves in `terraform/gke` state).
+> Pause/resume is **not** a rebuild and keeps the disks. For a full teardown that stops *all* charges use [`Decom.cluster.01-gke`](../.github/workflows/Decom.cluster.01-gke.yml); to recreate, [`Day1.cluster.01-gke`](../.github/workflows/Day1.cluster.01-gke.yml) (a re-apply also reconciles the gcloud state drift the imperative pause leaves in [`terraform/gke`](../terraform/gke/) state).
 
 ### The four gotchas a naïve "resize to 0" hits (real incident)
 
@@ -646,7 +650,7 @@ A plain `gcloud container clusters resize --num-nodes 0` **stalls forever / boun
 1. **CNPG Postgres PodDisruptionBudgets block the graceful drain.** Each Postgres pod has a PDB `minAvailable=1`; single-instance tiers (the `develop` tier, and any primary once it is down to one) → **ALLOWED DISRUPTIONS = 0**. The resize drains via the **eviction API**, which honours PDBs → it waits indefinitely, the `gcloud` client times out (~20 min) and the GitHub step fails while the **server-side operation stays RUNNING and wedged** (and it cannot be cancelled — only node-upgrade ops can).
 2. **node-pool `autoRepair` recreates the drained nodes.** With `management.autoRepair: true`, GKE flags cordoned/drained nodes as unhealthy and **recreates** them.
 3. **node-pool `autoUpgrade` surge-creates replacement nodes.** A version auto-upgrade does a surge (new nodes before draining old), re-adding nodes mid-pause.
-4. **Cluster-level Node Auto-Provisioning (NAP) re-provisions nodes for the Pending pods.** ⚠️ *This is the subtle one.* NAP (`autoscaling.enableNodeAutoprovisioning`) is a **cluster** setting, **separate from a node pool's autoscaling**: for any Pending pod it can't place it spins up **brand-new nodes/pools** — so even with the node pool's own autoscaling off, NAP brings the cluster **straight back up** (node count seen bouncing to 3-4). `terraform/gke` does **not** manage NAP, so it was an out-of-band setting; the pause now turns it off and leaves it off (IaC-consistent — the node pool's own min/max autoscaling, restored by Resume, is enough).
+4. **Cluster-level Node Auto-Provisioning (NAP) re-provisions nodes for the Pending pods.** ⚠️ *This is the subtle one.* NAP (`autoscaling.enableNodeAutoprovisioning`) is a **cluster** setting, **separate from a node pool's autoscaling**: for any Pending pod it can't place it spins up **brand-new nodes/pools** — so even with the node pool's own autoscaling off, NAP brings the cluster **straight back up** (node count seen bouncing to 3-4). [`terraform/gke`](../terraform/gke/) does **not** manage NAP, so it was an out-of-band setting; the pause now turns it off and leaves it off (IaC-consistent — the node pool's own min/max autoscaling, restored by Resume, is enough).
 
 **The fix (now in the pause workflow) — disable ALL FOUR forces, then drain + resize:**
 

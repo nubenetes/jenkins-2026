@@ -1,0 +1,56 @@
+name: "Terraform validate (fmt + validate)"
+
+# Lightweight PR guard (like gitflow-guard) — NOT a DayN lifecycle workflow. Catches HCL
+# syntax / schema / formatting errors BEFORE a Day1 picks them up in-flight on a real,
+# billed cluster. Runs entirely offline: `-backend=false` (no GCS creds / no remote
+# state) + provider install, so it needs no GCP/Azure/AWS credentials. Covers every
+# Terraform module in the repo, not just the one a PR touches.
+
+on:
+  pull_request:
+    paths:
+      - "terraform/**"
+      - ".github/workflows/terraform-validate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TF_VERSION: "1.15.6"
+
+jobs:
+  validate:
+    name: fmt-check + validate (all modules)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: terraform fmt -check (recursive)
+        run: terraform fmt -check -recursive -diff terraform/
+
+      - name: terraform validate (every module)
+        run: |
+          set -euo pipefail
+          fail=0
+          # Every directory that directly contains a *.tf file is a module root.
+          # Exclude provider caches under .terraform/.
+          modules=$(find terraform -type f -name '*.tf' -not -path '*/.terraform/*' -printf '%h\n' | sort -u)
+          for m in ${modules}; do
+            echo "::group::validate ${m}"
+            # -backend=false: validate needs no GCS backend / remote state, but still
+            # installs providers so the schema check is real. The CI-written
+            # backend_override.tf files are gitignored, so modules validate as committed.
+            if terraform -chdir="${m}" init -backend=false -input=false -no-color >/dev/null; then
+              terraform -chdir="${m}" validate -no-color || fail=1
+            else
+              echo "::error::terraform init failed for ${m}"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done
+          exit ${fail}

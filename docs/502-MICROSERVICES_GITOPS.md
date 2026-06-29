@@ -53,8 +53,8 @@ To ship a new build, Jenkins does **not** `kubectl apply` anything — it edits 
 
 - **One Helm chart, N services.** `helm/microservices` templates a `range .Values.services` loop that renders, per entry, a `Deployment` + `Service` + CNPG `Cluster` + PgBouncer `Pooler` + `ScheduledBackup`. DRY beats Kustomize overlays here; a `global.platform` branch switches securityContext/ingress without parallel overlays.
 - **Parameterized Postgres HA (stable vs lean develop).** The CNPG `Cluster.instances`, `Pooler.instances` and the Barman backup + `ScheduledBackup` are driven by `global.postgresInstances` / `global.poolerInstances` (default `3`) and `global.postgresBackupEnabled` (default `true`) — so **stable** keeps full HA (3 instances + 3-replica pooler + daily GCS backups). The optional **`develop` tier** (`values-develop.yaml`) overrides them to **`1` / `1` / `false`**: a single non-HA instance, single pooler, no backups (disposable data) — ~4 Postgres pods vs stable's ~12. See [402 § Optional develop Tier](./402-PIPELINES_AS_CODE.md).
-- **CI writes `main` directly.** `vars/microservicesDeploy.groovy` runs `yq -i '.services.<svc>.image.tag=…'` then `git push origin main` to the GitOps repo. That repo's `main` is therefore **direct-push** (force-push-blocked only) — *not* require-PR — the deliberate opposite of this infra repo's strict GitFlow. Require-PR there would reject the PAT push and wedge **every** deploy.
-- **Decommission ordering.** `Service`/`Gateway` deletion returns instantly, but GKE's NEG controller deletes the backing GCP NEGs **asynchronously**; `terraform destroy` racing ahead kills the masters mid-cleanup → orphaned NEGs → VPC delete fails. `scripts/down.sh` adds a synchronization barrier that polls `gcloud compute network-endpoint-groups list` (≤5 min) and force-deletes stragglers before Terraform proceeds.
+- **CI writes `main` directly.** [`vars/microservicesDeploy.groovy`](../vars/microservicesDeploy.groovy) runs `yq -i '.services.<svc>.image.tag=…'` then `git push origin main` to the GitOps repo. That repo's `main` is therefore **direct-push** (force-push-blocked only) — *not* require-PR — the deliberate opposite of this infra repo's strict GitFlow. Require-PR there would reject the PAT push and wedge **every** deploy.
+- **Decommission ordering.** `Service`/`Gateway` deletion returns instantly, but GKE's NEG controller deletes the backing GCP NEGs **asynchronously**; `terraform destroy` racing ahead kills the masters mid-cleanup → orphaned NEGs → VPC delete fails. [`scripts/down.sh`](../scripts/down.sh) adds a synchronization barrier that polls `gcloud compute network-endpoint-groups list` (≤5 min) and force-deletes stragglers before Terraform proceeds.
 
 </details>
 
@@ -181,7 +181,7 @@ sequenceDiagram
 When Kubernetes resources like `Services` or `Gateways` are deleted:
 1. Kubernetes instantly deletes the configuration objects from the cluster's API database and returns success.
 2. Under the hood, GKE's background controllers asynchronously call the Google Cloud API to delete the associated Network Endpoint Groups (NEGs), Load Balancers, and Forwarding Rules.
-3. If `terraform destroy` runs immediately after `scripts/down.sh` completes, the GKE cluster starts teardown. This terminates the GKE masters and the background controllers **before** GCP has finished deleting the NEGs.
+3. If `terraform destroy` runs immediately after [`scripts/down.sh`](../scripts/down.sh) completes, the GKE cluster starts teardown. This terminates the GKE masters and the background controllers **before** GCP has finished deleting the NEGs.
 4. The GCP zonal NEGs are orphaned in the cloud, causing `terraform destroy` to fail on VPC deletion with:
    `Error waiting for Deleting Network: The network resource '...-vpc' is already being used by '.../networkEndpointGroups/...'`
 
@@ -216,11 +216,11 @@ graph TD
 | :--- | :--- | :--- | :--- |
 | **1. Pure Terraform** (Helm/K8s Providers) | Declare Helm charts and Gateway manifests inside Terraform HCL. | Single tool orchestrates all resources. | Terraform's Helm provider **cannot** detect or wait for GKE's background GCP API deletions. **The race condition remains.** |
 | **2. Declare LB in Terraform** | Write GCP Load Balancer HCL instead of using GKE Gateway API. | Terraform tracks and destroys the load balancer synchronously. | Defeats the purpose of the GKE Gateway API/Ingress. App developers must request Terraform changes for routing. |
-| **3. Synchronization Barrier (Current Solution)** | Implement a polling and force-clean check in the teardown script (`scripts/down.sh`) using the `gcloud` CLI. | **Bulletproof**: Blocks until the cloud provider reports all NEGs are gone. **Self-healing**: Force-deletes NEGs if GKE controllers hang. Non-intrusive to developer workflows. | Requires `gcloud` to be authenticated during teardown (already true in our CI/CD runner). |
+| **3. Synchronization Barrier (Current Solution)** | Implement a polling and force-clean check in the teardown script ([`scripts/down.sh`](../scripts/down.sh)) using the `gcloud` CLI. | **Bulletproof**: Blocks until the cloud provider reports all NEGs are gone. **Self-healing**: Force-deletes NEGs if GKE controllers hang. Non-intrusive to developer workflows. | Requires `gcloud` to be authenticated during teardown (already true in our CI/CD runner). |
 
 ### Technical Rationale & Mechanics
 
-To prevent VPC deletion blockages, we introduced an **explicit synchronization barrier** in `scripts/down.sh` right after the namespace deletion/cleanup phase. This barrier:
+To prevent VPC deletion blockages, we introduced an **explicit synchronization barrier** in [`scripts/down.sh`](../scripts/down.sh) right after the namespace deletion/cleanup phase. This barrier:
 1. **Detects the Active GCP Context**: Uses the local authenticated `gcloud` client.
 2. **Polls GCP directly**: Queries `gcloud compute network-endpoint-groups list` with a filter on the target VPC.
 3. **Waits for clean deletion**: Blocks up to 5 minutes to let GKE controllers finish natural deletions.
@@ -491,8 +491,8 @@ Built images are tagged **immutably** — one tag per build — instead of a mut
 
 | Engine | Tag | Where |
 |---|---|---|
-| Jenkins | `<branch>-<BUILD_NUMBER>` (e.g. `develop-42`) | `vars/MicroservicesPipeline.groovy` |
-| Tekton | `<branch>-<pipelineRunName>` | `$(context.pipelineRun.name)` appended to the build/trivy `image` **and** the gitops `image-tag` (so they match) in `tekton/pipelines/microservices-pipeline.yaml` |
+| Jenkins | `<branch>-<BUILD_NUMBER>` (e.g. `develop-42`) | [`vars/MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy) |
+| Tekton | `<branch>-<pipelineRunName>` | `$(context.pipelineRun.name)` appended to the build/trivy `image` **and** the gitops `image-tag` (so they match) in [`tekton/pipelines/microservices-pipeline.yaml`](../tekton/pipelines/microservices-pipeline.yaml) |
 
 Why: **reproducible deploys** (a tag pins one build), **rollback** (repoint `values-<env>.yaml` to a prior tag), and reliable **ArgoCD change-detection** — with a static `:main` tag the gitops values never changed between builds, so ArgoCD saw no diff and leaned on a forced `app sync` + `imagePullPolicy: Always`; an immutable tag changes the values each build, the GitOps-correct trigger. Accumulation is bounded by **`Day2.registry.01 Image retention`** (keeps the most-recent N per service, sweeps untagged) — and ghcr storage is free for public packages, with Docker layer dedup adding only the changed app layer per tag. *(Tekton's immutable tag is implemented but not yet validated — the engine is inactive.)*
 
@@ -502,7 +502,7 @@ Three **distinct** branch axes — conflating them is the classic confusion here
 
 | Axis | Set by | stable | develop |
 |---|---|---|---|
-| **App SOURCE** branch the CI builds | `jenkins/pipelines/seed/services.yaml` `branches` | `main` | `develop` |
+| **App SOURCE** branch the CI builds | [`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml) `branches` | `main` | `develop` |
 | **GitOps** branch the **develop** ArgoCD app tracks | `config.yaml` `microservices.branches.develop` | — | `develop` (always) |
 | **GitOps** branch the **stable** ArgoCD app tracks | the **deploy branch** `J2026_SELF_REPO_BRANCH` (auto-tracks the dispatched branch) | the branch Day1 ran from | — |
 

@@ -2,6 +2,79 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.43] - 2026-06-29
+
+Increment over v0.28.42 (clickable file references throughout the docs).
+
+### Docs
+- **Every in-prose reference to a real repo file/directory is now a clickable relative
+  link** across all 25 markdown docs (and the gitops-config repo's READMEs) — one-click
+  navigation from any filename mention to the file. Pure link-wrapping (backticks kept
+  inside the link text); code blocks, mermaid, glob patterns, env vars, commands and
+  already-linked tokens left untouched; every relative href verified to resolve (0 broken
+  links). Started from the `dashboards-cloud-export` "Mapping (title ← file)" table and
+  applied repo-wide.
+- **gitops-config README** — corrected the "Related Repositories" table (the real app
+  source is the `nubenetes/jhipster-sample-app-*` forks, not `spring-microservices/*`; the
+  gateway is a Java/JHipster app that serves the Angular SPA, not an Angular app) and
+  refreshed the stale `infrastructure/karpenter/` mention to NAP / `compute-classes/`.
+
+## [v0.28.42] - 2026-06-29
+
+Increment over v0.28.41 (wire up elastic Spot CI nodes — GKE-native, GA).
+
+### Added
+- **GKE Node Auto-Provisioning (NAP) + a Custom ComputeClass — the GA, Google-native
+  equivalent of Karpenter, fully wired in.** There is no production-ready Karpenter
+  provider for GCP (the only one, `cloudpilot-ai/karpenter-provider-gcp`, is alpha), so
+  the platform now uses GKE's own NAP to get the same outcome — ephemeral, **Spot**,
+  scale-to-zero nodes that bin-pack bursty CI agents — while staying GA, keyless, and
+  entirely inside our IaC.
+  - `terraform/gke`: enables NAP via a `cluster_autoscaling` block (gated by the new
+    `enable_node_autoprovisioning` var, default true) with `resource_limits`
+    (cpu/memory guardrails) + `auto_provisioning_defaults` reusing the dedicated node SA
+    `jenkins-2026-nodes` (least privilege, not the broad default compute SA), Shielded
+    VMs, COS_CONTAINERD, auto-repair/upgrade, and the `OPTIMIZE_UTILIZATION` profile.
+  - `infrastructure/compute-classes/ci-spot.yaml`: a Custom ComputeClass (the real
+    equivalent of a Karpenter NodePool) with `nodePoolAutoCreation` and **Spot-first**
+    priority rules (families `c3`/`n2`/`c2`/`e2`) falling back to on-demand. GKE
+    auto-labels + taints the pools it creates with the class name. Replaces the stale
+    draft `infrastructure/karpenter/{NodePool,GCPNodeClass}.yaml` (deleted — they used an
+    outdated `GCPNodeClass` API).
+  - Feature flag `nodeAutoProvisioning.enabled` (default true; override
+    `JENKINS2026_NODE_AUTOPROVISIONING_ENABLED`) + `computeClass: ci-spot` in
+    `config/config.yaml`, read in `scripts/lib/config.sh`. `scripts/01-namespaces.sh`
+    applies the ComputeClass **non-fatally** on GKE (no platform pod depends on it, so a
+    NAP hiccup never fails a provision); `scripts/down.sh` removes it before teardown.
+  - **Single source of truth:** that one flag also drives the cluster-level Terraform
+    toggle — `scripts/lib/config.sh`, `test/e2e.sh` and `Day1.cluster.01-gke.yml` all
+    derive `TF_VAR_enable_node_autoprovisioning` from `nodeAutoProvisioning.enabled`, so
+    cluster NAP can never desync from the in-cluster ComputeClass wiring.
+  - The static `jenkins-2026-pool` keeps the long-lived platform; only the CI build
+    agents (`vars/MicroservicesPipeline.groovy`, `vars/MicroservicesK6SmokePipeline.groovy`)
+    target the class — via `nodeSelector cloud.google.com/compute-class: ci-spot` +
+    tolerations, emitted only when the controller env `GKE_COMPUTE_CLASS` is set (surfaced
+    through `jenkins-credentials` → JCasC from the flag; empty → agents stay on the static
+    pool). Docs (201/302/402/501 + README) updated from "Karpenter" to NAP/ComputeClass.
+  - **Spot preemption resilience documented** (`docs/501`): the trade-off (~30s reclaim
+    notice can kill a build mid-run) plus the layered mitigations — on-demand fallback on
+    Spot stock-out, idempotent/re-runnable CI, and the one-flag escape hatch
+    (`nodeAutoProvisioning.enabled: false` → agents on the static pool for a guaranteed,
+    non-preemptible run).
+  - **NAP observability**: new Grafana dashboard
+    `observability/grafana/dashboards/node-autoprovisioning.json` ("CI-CD / Node
+    Auto-Provisioning (Spot)") — Spot vs static node counts over time so you can watch
+    scale-up on a build and consolidation back toward zero. Auto-shipped by the existing
+    `*.json` glob (publish script + oss dashboards chart).
+
+### Added (CI)
+- **`terraform-validate` PR guard** (`.github/workflows/terraform-validate.yml`): runs
+  `terraform fmt -check -recursive` + offline `terraform validate` (`-backend=false`, no
+  cloud creds) over **every** Terraform module on PRs touching `terraform/**`, so HCL
+  syntax/schema/format errors are caught before a Day1 hits them in-flight on a real
+  cluster. Closes the gap that this NAP change couldn't be `terraform validate`-checked
+  in the authoring environment.
+
 ## [v0.28.41] - 2026-06-29
 
 Increment over v0.28.40 (documentation audit — sync docs with `main` code).

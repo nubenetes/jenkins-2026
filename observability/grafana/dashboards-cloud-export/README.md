@@ -13,7 +13,7 @@ Both formats are the **same v2 resources** — pick whichever the tooling prefer
 ## Where they came from
 
 1. The original dashboards (classic-model JSON in [`../dashboards/`](../dashboards/))
-   were published to Grafana Cloud by `scripts/07-grafana-dashboards.sh` (via `gcx`).
+   were published to Grafana Cloud by [`scripts/07-grafana-dashboards.sh`](../../../scripts/07-grafana-dashboards.sh) (via `gcx`).
 2. They were then **deleted in Grafana Cloud, re-imported into a clean Grafana, and
    optimized + error-corrected by the Grafana Cloud AI assistant** (layout, queries,
    panel options and the in-panel documentation text).
@@ -38,17 +38,17 @@ They are **based on the previous dashboards but substantially more optimized.**
 
 | Dashboard | YAML | JSON |
 |---|---|---|
-| CI-CD / Jenkins Controller | `dashboard-1782669023549.yaml` | `dashboard-1782669732187.json` |
-| CI-CD / k6 Observability | `dashboard-1782669069528.yaml` | `dashboard-1782669744836.json` |
-| CI-CD / Microservices Overview | `dashboard-1782669097484.yaml` | `dashboard-1782669755436.json` |
-| CI-CD / PostgreSQL (CloudNativePG) | `dashboard-1782669127927.yaml` | `dashboard-1782669765865.json` |
-| CI-CD Frontend RUM (Angular / Faro) | `dashboard-1782669148583.yaml` | `dashboard-1782669775397.json` |
-| CI-CD JVM internals (all Java services + Jenkins) | `dashboard-1782669169211.yaml` | `dashboard-1782669785795.json` |
+| CI-CD / Jenkins Controller | [`dashboard-1782669023549.yaml`](dashboard-1782669023549.yaml) | [`dashboard-1782669732187.json`](dashboard-1782669732187.json) |
+| CI-CD / k6 Observability | [`dashboard-1782669069528.yaml`](dashboard-1782669069528.yaml) | [`dashboard-1782669744836.json`](dashboard-1782669744836.json) |
+| CI-CD / Microservices Overview | [`dashboard-1782669097484.yaml`](dashboard-1782669097484.yaml) | [`dashboard-1782669755436.json`](dashboard-1782669755436.json) |
+| CI-CD / PostgreSQL (CloudNativePG) | [`dashboard-1782669127927.yaml`](dashboard-1782669127927.yaml) | [`dashboard-1782669765865.json`](dashboard-1782669765865.json) |
+| CI-CD Frontend RUM (Angular / Faro) | [`dashboard-1782669148583.yaml`](dashboard-1782669148583.yaml) | [`dashboard-1782669775397.json`](dashboard-1782669775397.json) |
+| CI-CD JVM internals (all Java services + Jenkins) | [`dashboard-1782669169211.yaml`](dashboard-1782669169211.yaml) | [`dashboard-1782669785795.json`](dashboard-1782669785795.json) |
 
 ## How these get provisioned
 
 Provisioning is automated with **`gcx`** (`gcx login` + `gcx resources push`) from
-`scripts/07-grafana-dashboards.sh`, the same tool the GitHub Actions workflows use to
+[`scripts/07-grafana-dashboards.sh`](../../../scripts/07-grafana-dashboards.sh), the same tool the GitHub Actions workflows use to
 push dashboards to Grafana Cloud. `gcx` consumes Grafana **resource manifests**
 (`apiVersion/kind/metadata/spec`) — both the v1 form the script wraps classic JSON
 into and the **v2** form of these files. See

@@ -78,7 +78,7 @@ mindmap
 - **`ci.engine` — Jenkins xor Tekton**, mutually exclusive and **engine-gated**: the `jenkins` namespace exists only in jenkins-mode, the `tekton-*` namespaces only in tekton-mode. The public ingress is engine-neutral (`platform-ingress`).
 - **`observability.mode` — four backends**, the OTel collector reconfigured per mode; each branch retires the others' agents on a switch.
 - **`secrets.backend` — `imperative` (default) vs `eso`**: ESO syncs from **GCP Secret Manager** over **keyless Workload Identity**; groups 1–3 are wired, group 4 (in-cluster/Terraform-minted) stays imperative.
-- **Platform**: one GKE **Gateway** + **Google IAP**, **Dataplane V2** (Cilium/eBPF NetworkPolicy enforcement) + **WireGuard** inter-node encryption, **Karpenter** spot agents, and the IAP OAuth secret **replicated** per backend namespace (a GKE constraint, not a smell).
+- **Platform**: one GKE **Gateway** + **Google IAP**, **Dataplane V2** (Cilium/eBPF NetworkPolicy enforcement) + **WireGuard** inter-node encryption, **Node Auto-Provisioning** (GKE-native, GA) Spot CI-agent nodes via a Custom **ComputeClass**, and the IAP OAuth secret **replicated** per backend namespace (a GKE constraint, not a smell).
 - Each in-cluster Secret lives in its **consumer's** namespace (locality for tight RBAC + clean teardown); see the Namespace & Secret topology below.
 
 </details>
@@ -309,7 +309,7 @@ sequenceDiagram
 
 </details>
 
-**Progressive delivery**: the platform installs **Argo Rollouts** + the Gateway API traffic-router plugin (GitOps via `argocd/argo-rollouts-app.yaml`), so the microservices can roll out as weighted **canaries** by shifting the GKE Gateway HTTPRoute backend weights — sidecar-free, no service mesh. See [`docs/501` § Progressive Delivery](501-PLATFORM_OPERATIONS.md).
+**Progressive delivery**: the platform installs **Argo Rollouts** + the Gateway API traffic-router plugin (GitOps via [`argocd/argo-rollouts-app.yaml`](../argocd/argo-rollouts-app.yaml)), so the microservices can roll out as weighted **canaries** by shifting the GKE Gateway HTTPRoute backend weights — sidecar-free, no service mesh. See [`docs/501` § Progressive Delivery](501-PLATFORM_OPERATIONS.md).
 
 Single source of truth, loaded by every script via [`scripts/lib/config.sh`](../scripts/lib/config.sh) (`yq` → `J2026_*` env vars). Feature flags:
 
@@ -339,7 +339,7 @@ vars/                        Jenkins global shared library (must be at repo root
 tekton/                      Tekton pipelines-as-code (ci.engine=tekton): Tasks/Pipelines/Triggers/RBAC + port of the Jenkins shared library (vars/)
 observability/               OTel Operator/Collector + Grafana/Loki/Tempo/Prometheus values + dashboards
 argocd/                      ArgoCD Applications/ApplicationSets + app-of-apps (platform-postgres, observability-oss, tekton) + argo-rollouts-app.yaml
-infrastructure/              engine-neutral platform manifests applied by 01-namespaces / 08.5-argocd: NetworkPolicies (default/-jenkins/-tekton), Gateway, Karpenter, scheduling, Argo Rollouts Gateway-API RBAC, secrets
+infrastructure/              engine-neutral platform manifests applied by 01-namespaces / 08.5-argocd: NetworkPolicies (default/-jenkins/-tekton), Gateway, Node Auto-Provisioning ComputeClasses (compute-classes/), scheduling, Argo Rollouts Gateway-API RBAC, secrets
 scripts/                     00-09 numbered steps + up.sh / down.sh / status.sh
 terraform/gke/               throwaway GKE cluster for test/e2e.sh
 terraform/bootstrap/         one-time setup for GitHub Actions automation (state bucket + WIF + permanent public DNS zone)
@@ -378,7 +378,7 @@ one of these (each is a hard constraint, not a preference):
 
 1. **Bootstrap paradox.** ArgoCD can't deploy ArgoCD. The CD engine itself (plus
    the OTel Operator and the otel-collector it configures from runtime values) is
-   `helm upgrade --install`-ed by `scripts/08.5-argocd.sh` / `02` / `03`. `up.sh`
+   `helm upgrade --install`-ed by [`scripts/08.5-argocd.sh`](../scripts/08.5-argocd.sh) / `02` / `03`. [`up.sh`](../scripts/up.sh)
    installs ArgoCD (`08.5`) **before** observability (`03`) precisely so `03` can
    then apply the `observability-oss` app-of-apps.
 2. **Secret values never enter git.** All `Secret` *material* originates outside
@@ -392,19 +392,19 @@ one of these (each is a hard constraint, not a preference):
    live from a cluster Secret, the generated Grafana Cloud slug, the static IP, the
    interpolated domain/branch, the ArgoCD-minted API token. The whole
    Gateway / HTTPRoute / HealthCheckPolicy / GCPBackendPolicy set is **generated
-   per-run** from `config.yaml` into `.generated/` and applied (`09-gateway.sh`).
-4. **Live-reload single-source companions.** The JCasC ConfigMaps (`04-jenkins.sh`
+   per-run** from `config.yaml` into `.generated/` and applied ([`09-gateway.sh`](../scripts/09-gateway.sh)).
+4. **Live-reload single-source companions.** The JCasC ConfigMaps ([`04-jenkins.sh`](../scripts/04-jenkins.sh)
    from `jenkins/casc/*`) and the OSS-Grafana companion `grafana-jenkins-ds` Secret
    / `grafana-runtime-config` ConfigMap (`03`) are kept **out of GitOps on purpose**
    so a single source stays canonical and the sidecar can hot-reload without a sync.
    See [301 § script-managed companions](./301-OBSERVABILITY.md).
 5. **External side-effects ArgoCD has no verb for.** Pushing `.tekton/` to the
    GitHub forks + creating webhooks + seeding the first PipelineRuns
-   (`06-tekton-pipelines.sh`), minting the ArgoCD API token, patching the CNPG
+   ([`06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh)), minting the ArgoCD API token, patching the CNPG
    webhook `caBundle` (`08.5`). These are *actions*, not manifests.
 6. **Enforcement-ordering sensitivity.** A few static manifests must land **before
    the workloads they protect** — the **NetworkPolicies** and
-   **ResourceQuotas/LimitRanges** in `01-namespaces.sh`. Under Dataplane V2 the OTel
+   **ResourceQuotas/LimitRanges** in [`01-namespaces.sh`](../scripts/01-namespaces.sh). Under Dataplane V2 the OTel
    Operator's `:9443` webhook allow and the `microservices-cnpg-platform` egress
    must exist *before* those pods come up, or the workloads wedge (OutOfSync /
    Degraded). An ArgoCD app would sync them *concurrently* with the workloads — a
@@ -415,21 +415,21 @@ one of these (each is a hard constraint, not a preference):
 | Resource | Plane | Where | Why this plane |
 |---|---|---|---|
 | Jenkins, External-Secrets, Headlamp, Argo-Rollouts charts | **GitOps** | `argocd/*-app.yaml` (single Applications) | One chart each; declarative, versioned, self-healed. |
-| Microservices (per service, per tier) | **GitOps** | `argocd/microservices-appset.yaml` (ApplicationSet) | Homogeneous fleet from the service registry; CI bumps image tags in the gitops-config repo, ArgoCD syncs. |
+| Microservices (per service, per tier) | **GitOps** | [`argocd/microservices-appset.yaml`](../argocd/microservices-appset.yaml) (ApplicationSet) | Homogeneous fleet from the service registry; CI bumps image tags in the gitops-config repo, ArgoCD syncs. |
 | CNPG+pgAdmin · OSS Prometheus/Loki/Tempo/Grafana · Tekton stack | **GitOps** | `platform-postgres` / `observability-oss` / `tekton` app-of-apps | Heterogeneous, ordered (sync-waves), per-child sync options. |
-| **Static platform RBAC** (Jenkins/Tekton SA `edit`, pgAdmin secret-reader, OTel-instrumentation `ClusterRole`) | **GitOps** | `argocd/platform-config/` (new) — planted by `08.5` | Timing-insensitive (consumers run long after sync); textbook GitOps. *Migrated here from `01`/`02` — see [argocd/README](../argocd/README.md).* |
+| **Static platform RBAC** (Jenkins/Tekton SA `edit`, pgAdmin secret-reader, OTel-instrumentation `ClusterRole`) | **GitOps** | [`argocd/platform-config/`](../argocd/platform-config/) (new) — planted by `08.5` | Timing-insensitive (consumers run long after sync); textbook GitOps. *Migrated here from `01`/`02` — see [argocd/README](../argocd/README.md).* |
 | ArgoCD itself · OTel Operator · otel-collector | **Imperative** | `08.5` / `02` / `03` `helm upgrade --install` | Bootstrap paradox (#1); the collector is also runtime-config-coupled (#4). |
-| The ArgoCD `Application`/`AppSet`/`AppProject`/app-of-apps manifests (incl. `argocd/microservices-project.yaml`) | **Imperative→GitOps** | `08.5` / `03` `kubectl apply` (sed-substituted) | *Planting* the root apps **is** how GitOps starts (the app-of-apps bootstrap). |
-| ArgoCD version patch-watcher (`argocd/argocd-version-patch-watcher.yaml` — CronJob + RBAC) | **Imperative** | `08.5` `kubectl apply` | Daily watcher that tracks the latest ArgoCD `3.4.x` patch within the pinned minor (see [602](./602-VERSION_PINNING.md)); a cluster-side CronJob, not a GitOps app. |
+| The ArgoCD `Application`/`AppSet`/`AppProject`/app-of-apps manifests (incl. [`argocd/microservices-project.yaml`](../argocd/microservices-project.yaml)) | **Imperative→GitOps** | `08.5` / `03` `kubectl apply` (sed-substituted) | *Planting* the root apps **is** how GitOps starts (the app-of-apps bootstrap). |
+| ArgoCD version patch-watcher ([`argocd/argocd-version-patch-watcher.yaml`](../argocd/argocd-version-patch-watcher.yaml) — CronJob + RBAC) | **Imperative** | `08.5` `kubectl apply` | Daily watcher that tracks the latest ArgoCD `3.4.x` patch within the pinned minor (see [602](./602-VERSION_PINNING.md)); a cluster-side CronJob, not a GitOps app. |
 | ArgoCD self-config (`argocd-cm`/`argocd-rbac-cm` OIDC/RBAC/CI account) | **Imperative** | `08.5` `kubectl patch` | Bootstrap paradox (#1) — how the engine learns to log in. |
 | All in-cluster `Secret`s (jenkins/headlamp/IAP/tekton/ghcr/grafana-ds…) | **Imperative** *(or ESO)* | `01` / `03` / `08.5`; `08.6` in `eso` mode | Secret values never in git (#2). `eso` makes *delivery* GitOps-style. |
-| Gateway · HTTPRoutes · HealthCheckPolicies · GCPBackendPolicies (IAP) | **Imperative** | `09-gateway.sh` → `.generated/` | Generated per-run with the live domain/IP/IAP-client-id (#3). |
+| Gateway · HTTPRoutes · HealthCheckPolicies · GCPBackendPolicies (IAP) | **Imperative** | [`09-gateway.sh`](../scripts/09-gateway.sh) → `.generated/` | Generated per-run with the live domain/IP/IAP-client-id (#3). |
 | Runtime patches into `jenkins-credentials`/`headlamp-credentials` (URLs, tokens, banner links) | **Imperative** | `01` / `04` / `08.5` `kubectl patch` | Values discovered at run time (#3). |
 | JCasC ConfigMaps · `grafana-jenkins-ds` · `grafana-runtime-config` | **Imperative** | `04` / `03` | Live-reload single-source companions (#4). |
 | Tekton PaC push/webhooks/seed · ArgoCD token mint · CNPG `caBundle` patch | **Imperative** | `06` / `08.5` | External / in-cluster side-effects (#5). |
-| **NetworkPolicies** · **ResourceQuotas/LimitRanges** | **Imperative** | `01-namespaces.sh` | Must land **before** workloads for Dataplane V2 enforcement timing (#6). |
-| Namespace creation + labels | **Imperative** | `01-namespaces.sh` | The floor everything else lands in; must exist before any apply/sync. |
-| Headlamp per-email admin `ClusterRoleBinding`s | **Imperative** | `08-headlamp.sh` | Derived from a user list, not a static manifest. |
+| **NetworkPolicies** · **ResourceQuotas/LimitRanges** | **Imperative** | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | Must land **before** workloads for Dataplane V2 enforcement timing (#6). |
+| Namespace creation + labels | **Imperative** | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | The floor everything else lands in; must exist before any apply/sync. |
+| Headlamp per-email admin `ClusterRoleBinding`s | **Imperative** | [`08-headlamp.sh`](../scripts/08-headlamp.sh) | Derived from a user list, not a static manifest. |
 
 ### The two planes (diagram)
 
@@ -531,15 +531,15 @@ is a deliberate, documented exception above.
 
 | Secret | Namespace(s) | Contents | Shared / replicated? | Created by | Consumed by |
 |---|---|---|---|---|---|
-| **`jenkins-credentials`** | `jenkins` *(jenkins-mode)* | admin-password · registry user/pass · git user/token · oidc-client-id/secret · **oidc-admin-email** · microservices URLs · k6-cloud token/project | No — Jenkins config bundle | `01-namespaces.sh` | Jenkins controller (JCasC) |
-| **`gateway-iap-oauth`** | `headlamp`, `pgadmin` (+ `grafana-oss` / `tekton-pipelines` / `jenkins` per mode) | IAP OAuth `client_id` / `client_secret` | **YES — replicated** (GKE constraint) | `01-namespaces.sh` | each ns's `GCPBackendPolicy` (IAP); `08.5` reads it (**from `headlamp`**) for ArgoCD's Google OIDC |
-| `headlamp-credentials` | `headlamp` | OIDC client id/secret (+ issuer/scopes/callback) | No | `01-namespaces.sh` | Headlamp deployment |
-| `tekton-registry` | `tekton-ci` *(tekton-mode)* | `dockerconfigjson` (ghcr.io push/pull, Jib auth) | No | `01-namespaces.sh` | PipelineRuns (build-push-image) |
-| `tekton-git` | `tekton-ci` *(tekton-mode)* | git basic-auth, annotated for `github.com` | No | `01-namespaces.sh` | clone / gitops-deploy tasks |
-| `tekton-github-webhook-secret` · `pac-webhook` | `tekton-ci` · `pipelines-as-code` *(tekton-mode)* | webhook HMAC token | No | `01-namespaces.sh` | Triggers EventListener / PaC |
-| `k6-cloud` | `tekton-ci` *(tekton-mode; same keys also in `jenkins-credentials`)* | `K6_CLOUD_TOKEN` / `K6_CLOUD_PROJECT_ID` | No | `01-namespaces.sh` | k6 tasks (`--out cloud`, the k6-app) |
-| `ghcr-credentials` | `microservices` (+ `-develop`) | `dockerconfigjson` imagePullSecret | No | `01-namespaces.sh` | microservices pods (image pull) |
-| `grafana-jenkins-ds` | `grafana-oss` *(oss + jenkins-mode)* | `apiToken` (mirror of Jenkins admin password) | No | `03-observability.sh` *(gated to jenkins-mode)* | Grafana → Jenkins datasource |
+| **`jenkins-credentials`** | `jenkins` *(jenkins-mode)* | admin-password · registry user/pass · git user/token · oidc-client-id/secret · **oidc-admin-email** · microservices URLs · k6-cloud token/project | No — Jenkins config bundle | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | Jenkins controller (JCasC) |
+| **`gateway-iap-oauth`** | `headlamp`, `pgadmin` (+ `grafana-oss` / `tekton-pipelines` / `jenkins` per mode) | IAP OAuth `client_id` / `client_secret` | **YES — replicated** (GKE constraint) | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | each ns's `GCPBackendPolicy` (IAP); `08.5` reads it (**from `headlamp`**) for ArgoCD's Google OIDC |
+| `headlamp-credentials` | `headlamp` | OIDC client id/secret (+ issuer/scopes/callback) | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | Headlamp deployment |
+| `tekton-registry` | `tekton-ci` *(tekton-mode)* | `dockerconfigjson` (ghcr.io push/pull, Jib auth) | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | PipelineRuns (build-push-image) |
+| `tekton-git` | `tekton-ci` *(tekton-mode)* | git basic-auth, annotated for `github.com` | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | clone / gitops-deploy tasks |
+| `tekton-github-webhook-secret` · `pac-webhook` | `tekton-ci` · `pipelines-as-code` *(tekton-mode)* | webhook HMAC token | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | Triggers EventListener / PaC |
+| `k6-cloud` | `tekton-ci` *(tekton-mode; same keys also in `jenkins-credentials`)* | `K6_CLOUD_TOKEN` / `K6_CLOUD_PROJECT_ID` | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | k6 tasks (`--out cloud`, the k6-app) |
+| `ghcr-credentials` | `microservices` (+ `-develop`) | `dockerconfigjson` imagePullSecret | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | microservices pods (image pull) |
+| `grafana-jenkins-ds` | `grafana-oss` *(oss + jenkins-mode)* | `apiToken` (mirror of Jenkins admin password) | No | [`03-observability.sh`](../scripts/03-observability.sh) *(gated to jenkins-mode)* | Grafana → Jenkins datasource |
 | `grafana-cloud-credentials` / `azure-monitor-credentials` / `aws-managed-credentials` | `observability` | backend endpoint + token/SP/role per `observability.mode` | No | Day1 workflow / scripts | otel-collector exporter |
 
 ### Diagram 1 — Namespace & Secret topology
@@ -638,8 +638,8 @@ flowchart LR
 > **`secrets_backend` input** on `Day1.cluster.01` / `Day1.cluster.00`) — selects
 > **how** in-cluster Secrets are materialised, the same way `ci.engine` /
 > `observability.mode` select their dimensions. The **whole lifecycle** honours it
-> and is idempotent: `up.sh` (`01-namespaces.sh` push → `08.6-eso-sync.sh` sync), and
-> the **Day2 redeploys that re-run `01-namespaces.sh`** — `Day2.redeploy.03-tekton`,
+> and is idempotent: [`up.sh`](../scripts/up.sh) ([`01-namespaces.sh`](../scripts/01-namespaces.sh) push → [`08.6-eso-sync.sh`](../scripts/08.6-eso-sync.sh) sync), and
+> the **Day2 redeploys that re-run [`01-namespaces.sh`](../scripts/01-namespaces.sh)** — `Day2.redeploy.03-tekton`,
 > `.04-headlamp`, `.05-gateway` — carry the same `secrets_backend` input (so a Day2 on
 > an `eso` cluster never recreates the Secret imperatively). Decom needs nothing extra:
 > `down.sh` deletes the namespaces (and with them the ExternalSecrets/Secrets), the
@@ -648,7 +648,7 @@ flowchart LR
 
 | Backend | How Secrets are made | Source of truth | Audit / versioning | Default |
 | :--- | :--- | :--- | :--- | :---: |
-| **`imperative`** | `01-namespaces.sh` runs `kubectl create secret` from the GitHub-secret env vars (Diagram 2 above) | GitHub Actions secrets | none in-cluster | ✅ |
+| **`imperative`** | [`01-namespaces.sh`](../scripts/01-namespaces.sh) runs `kubectl create secret` from the GitHub-secret env vars (Diagram 2 above) | GitHub Actions secrets | none in-cluster | ✅ |
 | **`eso`** | values pushed to **GCP Secret Manager**; the **External Secrets Operator** syncs them into namespaces via **Workload Identity (keyless)** | GCP Secret Manager (versioned) | **Cloud Audit Logs** + SM versions | |
 
 In `eso` mode the flow becomes (now wired for the gateway IAP secret, the Tekton
@@ -728,21 +728,21 @@ Pieces: the flag ([`config.sh`](../scripts/lib/config.sh)), the push helper
 and the GCP enablement, which has **three** parts (a write side and a read side
 either side of Secret Manager):
 
-- **API** — `secretmanager.googleapis.com`, enabled in `terraform/gke` alongside
+- **API** — `secretmanager.googleapis.com`, enabled in [`terraform/gke`](../terraform/gke/) alongside
   `container`/`compute` (left on; unused in imperative mode).
-- **Write (push) side** — the CI service account that runs `up.sh` needs
+- **Write (push) side** — the CI service account that runs [`up.sh`](../scripts/up.sh) needs
   `roles/secretmanager.admin` (the minimal predefined role that includes
-  `secrets.create`); granted in `terraform/bootstrap`'s `ci_roles`. **Adding it
+  `secrets.create`); granted in [`terraform/bootstrap`](../terraform/bootstrap/)'s `ci_roles`. **Adding it
   to an existing bootstrap requires a one-time human `terraform apply` in
-  `terraform/bootstrap`** (the CI SA's roles live there, like all the others).
+  [`terraform/bootstrap`](../terraform/bootstrap/)** (the CI SA's roles live there, like all the others).
 - **Read (sync) side** — the cluster runs **GKE Workload Identity** (`GKE_METADATA`),
   so ESO pods authenticate as the GSA bound to their KSA, **not** the node SA.
-  `terraform/gke` creates a dedicated least-privilege GSA (`eso-secret-reader`,
+  [`terraform/gke`](../terraform/gke/) creates a dedicated least-privilege GSA (`eso-secret-reader`,
   only `roles/secretmanager.secretAccessor`) and a `workloadIdentityUser` binding
   to the controller KSA `external-secrets/external-secrets`; the KSA is annotated
   with that GSA's email via the external-secrets ArgoCD app's helm values
-  (templated in `scripts/08.5-argocd.sh`). Because a pod's GCP identity is fixed
-  at creation, `08.6-eso-sync.sh` also **restarts the ESO controller** so it adopts
+  (templated in [`scripts/08.5-argocd.sh`](../scripts/08.5-argocd.sh)). Because a pod's GCP identity is fixed
+  at creation, [`08.6-eso-sync.sh`](../scripts/08.6-eso-sync.sh) also **restarts the ESO controller** so it adopts
   the annotation on an idempotent re-run (the controller pod from a prior run
   predates it and would otherwise keep failing to authenticate).
 
@@ -779,8 +779,8 @@ Two distinct properties, often conflated:
 
 | Flag | In-place switch | How the old mode is retired |
 | :--- | :--- | :--- |
-| **`ci.engine`** `jenkins`↔`tekton` | ✅ | `04-jenkins.sh` deletes the `tekton` ArgoCD app + the tekton namespaces; `04-tekton.sh` deletes the `jenkins` app + its namespace (engines are mutually exclusive — the retired engine's namespace is cleared symmetrically). |
-| **`observability.mode`** oss/grafana-cloud/managed-azure/managed-aws | ✅ | every branch of `03-observability.sh` retires the *other* modes' agents/stacks (e.g. it waits out the OSS node-exporter DaemonSet; `07-grafana-dashboards.sh` deletes the off-engine overview). See [902](./902-TROUBLESHOOTING.md). |
+| **`ci.engine`** `jenkins`↔`tekton` | ✅ | [`04-jenkins.sh`](../scripts/04-jenkins.sh) deletes the `tekton` ArgoCD app + the tekton namespaces; [`04-tekton.sh`](../scripts/04-tekton.sh) deletes the `jenkins` app + its namespace (engines are mutually exclusive — the retired engine's namespace is cleared symmetrically). |
+| **`observability.mode`** oss/grafana-cloud/managed-azure/managed-aws | ✅ | every branch of [`03-observability.sh`](../scripts/03-observability.sh) retires the *other* modes' agents/stacks (e.g. it waits out the OSS node-exporter DaemonSet; [`07-grafana-dashboards.sh`](../scripts/07-grafana-dashboards.sh) deletes the off-engine overview). See [902](./902-TROUBLESHOOTING.md). |
 | **`secrets.backend`** `imperative`↔`eso` | ✅ | `imperative→eso`: `08.6` installs the `ClusterSecretStore` + `ExternalSecrets`. `eso→imperative`: `08.6` **retires ESO** — RETAINs each target Secret (`deletionPolicy: Retain` + strips the `ownerReference` so the Owner ExternalSecret's GC can't delete it; Merge ones aren't owned), deletes the `ExternalSecrets`, and deletes `gcp-store`. `01-namespaces` already wrote imperative copies, so the Secrets survive and consumers keep working. |
 
 So **all three fundamental flags converge in place** — flip any of them and re-run `Day1`
@@ -846,10 +846,10 @@ jenkins-mode, that coupling surfaced as bugs. The fixes:
 | Coupling (when `jenkins` ns was the "platform" ns) | Fix |
 |---|---|
 | The **GKE Gateway** lived in `jenkins` → deleting the ns (or running tekton) killed all public access | Gateway moved to the engine-neutral **`platform-ingress`** namespace |
-| `08.5-argocd.sh` read the **IAP client** from `jenkins` for ArgoCD's OIDC → empty in tekton-mode | now reads `gateway-iap-oauth` from **`headlamp`** (always present) |
-| `03-observability.sh` read `jenkins-credentials` for a **Grafana→Jenkins datasource** | gated to `ci.engine=jenkins` (pointless without Jenkins) |
-| `07.5-grafana-alerts.sh` read `jenkins-credentials.oidc-admin-email` as an alert-email fallback | already guarded (`|| true`); yields empty harmlessly in tekton-mode |
-| NetworkPolicies / ResourceQuota / LimitRange / RBAC **targeting the `jenkins` ns** applied unconditionally | all gated to `ci.engine=jenkins` (the jenkins-ns NetworkPolicies live in `infrastructure/networkpolicies-jenkins.yaml`) |
+| [`08.5-argocd.sh`](../scripts/08.5-argocd.sh) read the **IAP client** from `jenkins` for ArgoCD's OIDC → empty in tekton-mode | now reads `gateway-iap-oauth` from **`headlamp`** (always present) |
+| [`03-observability.sh`](../scripts/03-observability.sh) read `jenkins-credentials` for a **Grafana→Jenkins datasource** | gated to `ci.engine=jenkins` (pointless without Jenkins) |
+| [`07.5-grafana-alerts.sh`](../scripts/07.5-grafana-alerts.sh) read `jenkins-credentials.oidc-admin-email` as an alert-email fallback | already guarded (`|| true`); yields empty harmlessly in tekton-mode |
+| NetworkPolicies / ResourceQuota / LimitRange / RBAC **targeting the `jenkins` ns** applied unconditionally | all gated to `ci.engine=jenkins` (the jenkins-ns NetworkPolicies live in [`infrastructure/networkpolicies-jenkins.yaml`](../infrastructure/networkpolicies-jenkins.yaml)) |
 
 The end state matches the design principles above: **secrets per-app**, the IAP
 client replicated only because GKE requires it, the public ingress engine-neutral,
@@ -857,7 +857,7 @@ and nothing reaching into `jenkins-credentials` except Jenkins itself.
 
 ## GKE Cluster Topology & Sizing
 
-The throwaway cluster is provisioned via `terraform/gke/` with a custom **VPC-native** configuration optimized for **stability and cost**. A **persistent** global static IP and Google-managed wildcard TLS certificate (`terraform/gateway-bootstrap/`) survive cluster rebuilds so DNS records never need updating.
+The throwaway cluster is provisioned via [`terraform/gke/`](../terraform/gke/) with a custom **VPC-native** configuration optimized for **stability and cost**. A **persistent** global static IP and Google-managed wildcard TLS certificate ([`terraform/gateway-bootstrap/`](../terraform/gateway-bootstrap/)) survive cluster rebuilds so DNS records never need updating.
 
 **Network dataplane**: the cluster runs **GKE Dataplane V2** (Cilium/eBPF, `datapath_provider = ADVANCED_DATAPATH`) so Kubernetes `NetworkPolicy` is actually enforced, with **WireGuard inter-node pod encryption** (`in_transit_encryption_config`) on top — sidecar-free, no service mesh. Both are immutable fields (changing them recreates the cluster). See [`docs/501` § Zero-Trust Security](501-PLATFORM_OPERATIONS.md) for the NetworkPolicy model and the encryption scope/caveats, and **[`docs/503` Networking](503-NETWORKING.md)** for the full network architecture — the landing zone (single-VPC, *not* hub-spoke), VPC/subnet + pod/service **CIDR plan**, north-south ingress/egress, east-west, and the segmentation model end to end.
 
@@ -892,14 +892,18 @@ graph TD
         end
     end
 
-    subgraph Cluster ["GKE Cluster (v1.35/v1.36)"]
+    subgraph Cluster ["GKE Cluster (release channel: REGULAR)"]
         GatewayAPI["GKE Gateway API<br/>gke-l7-global-external-managed"]
         BackendTLS["BackendTLSPolicy<br/>Secure TLS to pods"]
         WI["Workload Identity Federation"]
     end
 
-    subgraph KarpenterPool ["Karpenter NodePool: ephemeral-runners"]
-        PoolInfo["Spot Instances<br/>e2/n2/c2/c3 dynamic scaling"]
+    subgraph StaticPool ["Static node pool: jenkins-2026-pool (e2-standard-8, min2/max4)"]
+        StaticInfo["Long-lived platform<br/>ArgoCD/Jenkins/observability/CNPG"]
+    end
+
+    subgraph NAPSpotPool ["NAP Spot pools (ComputeClass ci-spot)"]
+        PoolInfo["Auto-created Spot nodes<br/>c3/n2/c2/e2 · scale-to-zero · CI agents"]
     end
 
     User -->|"resolve host"| ParentNS
@@ -909,7 +913,8 @@ graph TD
     CertMap --> WildcardTLS
     WildcardTLS -->|"terminates TLS"| GatewayAPI
     GatewayAPI -->|"routes via BackendTLSPolicy"| BackendTLS
-    BackendTLS -->|"zero-trust HTTPS"| KarpenterPool
+    BackendTLS -->|"zero-trust HTTPS"| StaticPool
+    BackendTLS -->|"zero-trust HTTPS"| NAPSpotPool
 ```
 
 </details>
@@ -919,7 +924,8 @@ graph TD
 | **Static IP** | `jenkins-2026-gateway-ip` | Global persistent `google_compute_global_address`. Survives cluster rebuilds. |
 | **TLS Certificate** | `jenkins-2026-cert` | Google-managed wildcard cert for `jenkins2026.nubenetes.com` + `*.jenkins2026.nubenetes.com`. |
 | **GKE Cluster** | `jenkins-2026` | Zonal cluster in `europe-southwest1-a`. VPC-native, Gateway API addon `CHANNEL_STANDARD` (cluster release channel `REGULAR`), Workload Identity enabled. |
-| **Karpenter NodePool** | `ephemeral-runners` | Spot instances (`c2`, `n2`, `e2`, `c3` families). Scales to zero under idle conditions. |
+| **Static node pool** | `jenkins-2026-pool` | `e2-standard-8`, min 2 / max 4. Hosts the long-lived platform (ArgoCD/Jenkins/observability/CNPG). |
+| **NAP Spot pools** | ComputeClass `ci-spot` | GKE Node Auto-Provisioning auto-creates Spot pools (`c3`, `n2`, `c2`, `e2` families) for CI build agents. Scales to zero under idle conditions. |
 | **Node SA** | `jenkins-2026-nodes` | Minimal-privilege: `roles/logging.logWriter`, `roles/monitoring.metricWriter`, `roles/artifactregistry.reader`. |
 | **CI Agent SA** | `jenkins-2026-ci-agent` | GitHub Actions OIDC WIF — no static JSON keys. |
 

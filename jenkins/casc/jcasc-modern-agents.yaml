@@ -32,9 +32,18 @@ jenkins:
             workspaceVolume:
               emptyDirWorkspaceVolume:
                 memory: true
-            # Toleration to match the Karpenter Spot node pool taints
+            # Target the GKE Node Auto-Provisioning Custom ComputeClass (ci-spot) so the
+            # agent lands on a Spot, scale-to-zero auto-provisioned node, tolerating the
+            # taints GKE applies to those pools. (The wired pipelines in vars/ do this
+            # dynamically from env.GKE_COMPUTE_CLASS — see infrastructure/compute-classes/.)
+            nodeSelector:
+              cloud.google.com/compute-class: "ci-spot"
             tolerations:
-              - key: "jenkins-agent"
+              - key: "cloud.google.com/compute-class"
+                operator: "Equal"
+                value: "ci-spot"
+                effect: "NoSchedule"
+              - key: "cloud.google.com/gke-spot"
                 operator: "Equal"
                 value: "true"
                 effect: "NoSchedule"

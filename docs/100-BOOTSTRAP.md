@@ -88,7 +88,7 @@ Nothing in CI can create these for itself — it would need them to already exis
 <details>
 <summary>🔴 For specialists — what the seed provisions and how its own state is bootstrapped</summary>
 
-`terraform/bootstrap` provisions: a **WIF pool + provider** federating `token.actions.githubusercontent.com` to a **CI service account** (`jenkins-2026-ci@…`) via `google_service_account_iam_member.github_wif` (scoped to *this* repo), the SA's project roles, the **GCS state bucket** (`<project>-jenkins-2026-tfstate`, versioned), a **Postgres-backups bucket**, and the **permanent public DNS zone**.
+[`terraform/bootstrap`](../terraform/bootstrap) provisions: a **WIF pool + provider** federating `token.actions.githubusercontent.com` to a **CI service account** (`jenkins-2026-ci@…`) via `google_service_account_iam_member.github_wif` (scoped to *this* repo), the SA's project roles, the **GCS state bucket** (`<project>-jenkins-2026-tfstate`, versioned), a **Postgres-backups bucket**, and the **permanent public DNS zone**.
 
 State is handled in **two phases** — the first `apply` runs on **local** state (the bucket doesn't exist yet), then the script writes `backend_override.tf` and `terraform init -migrate-state` moves state **into** the bucket (prefix `jenkins-2026/bootstrap`), so steady-state is fully remote. Re-runs are idempotent: `reconcile_imports` existence-checks each named singleton and `terraform import`s any that already exist in GCP (self-healing the `409 already exists` you'd otherwise hit on a fresh checkout, since `backend_override.tf` is gitignored). Finally it sets the **4 repo secrets** (`GCP_PROJECT_ID`, `TF_STATE_BUCKET`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT`) the GCP workflows consume.
 </details>
@@ -337,7 +337,7 @@ and make these changes (Host = the subdomain label, here `jenkins2026`):
 > answered by **Google's** nameservers — your Squarespace `A`/`CNAME` at those names are
 > shadowed and ignored. Removing them avoids confusion; the live records now live
 > **inside the Cloud DNS zone**, managed by Terraform
-> (`terraform/gateway-bootstrap`), not by you.
+> ([`terraform/gateway-bootstrap`](../terraform/gateway-bootstrap)), not by you.
 
 ### Step 3 — populate the zone (run a workflow)
 
@@ -348,7 +348,7 @@ cert-validation `CNAME`. These are re-applied on **every** `Day0.infra.01` /
 
 ### Why this is the only time
 
-The zone lives in the **never-torn-down root tier** (`terraform/bootstrap`), so its four
+The zone lives in the **never-torn-down root tier** ([`terraform/bootstrap`](../terraform/bootstrap)), so its four
 nameservers never change. A `Decom`-everything — even an explicit `Decom.infra.01`
 gateway teardown — leaves the zone (hence the delegation) intact; only the `A`/`CNAME`
 records are dropped and recreated by the next rebuild, pointing at the new IP. **So after

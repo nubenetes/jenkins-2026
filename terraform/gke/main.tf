@@ -193,6 +193,56 @@ resource "google_container_cluster" "this" {
     workload_pool = "${var.project_id}.svc.id.goog"
   }
 
+  # GKE Node Auto-Provisioning (NAP) — the GA, Google-native equivalent of Karpenter
+  # (there is no production-ready Karpenter provider for GCP). NAP watches for
+  # unschedulable Pods and auto-creates/deletes right-sized node pools, including Spot
+  # pools and scale-to-zero, driven by the Custom ComputeClasses in
+  # infrastructure/compute-classes/ (Pods select one via the
+  # `cloud.google.com/compute-class` nodeSelector; GKE auto-labels + taints the pools it
+  # creates with the class name). The static pool above stays for the long-lived platform;
+  # NAP only kicks in for the tainted CI-agent workloads that target a ComputeClass, so a
+  # NAP hiccup never blocks the core provision (no platform pod depends on it).
+  # `auto_provisioning_defaults` reuses the dedicated node SA (least privilege, not the
+  # broad default compute SA), Shielded VMs, and auto-repair/upgrade. Toggle with
+  # `enable_node_autoprovisioning`. OPTIMIZE_UTILIZATION makes the autoscaler consolidate
+  # and scale auto-created pools down aggressively (right for ephemeral CI bursts).
+  dynamic "cluster_autoscaling" {
+    for_each = var.enable_node_autoprovisioning ? [1] : []
+    content {
+      enabled             = true
+      autoscaling_profile = "OPTIMIZE_UTILIZATION"
+
+      resource_limits {
+        resource_type = "cpu"
+        minimum       = 0
+        maximum       = var.nap_max_cpu
+      }
+      resource_limits {
+        resource_type = "memory"
+        minimum       = 0
+        maximum       = var.nap_max_memory_gb
+      }
+
+      auto_provisioning_defaults {
+        service_account = google_service_account.nodes.email
+        oauth_scopes    = ["https://www.googleapis.com/auth/cloud-platform"]
+        image_type      = "COS_CONTAINERD"
+        disk_type       = "pd-balanced"
+        disk_size       = 100
+
+        management {
+          auto_repair  = true
+          auto_upgrade = true
+        }
+
+        shielded_instance_config {
+          enable_secure_boot          = true
+          enable_integrity_monitoring = true
+        }
+      }
+    }
+  }
+
   depends_on = [google_project_service.apis]
 }
 
