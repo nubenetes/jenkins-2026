@@ -166,7 +166,7 @@ Provides **interactive static analysis dashboards** natively within the Jenkins 
   - **Tabular Details**: A searchable table of all issues grouped by category, file name, age, and severity.
   - **Inline Code Highlights**: Direct integration with the Jenkins workspace viewer.
 
-**Plugin configuration** (pinned in `helm/jenkins/values-common.yaml`):
+**Plugin configuration** (pinned in [`helm/jenkins/values-common.yaml`](../helm/jenkins/values-common.yaml)):
 ```yaml
 - warnings-ng:13.10153.v011f47a_3ef01
 ```

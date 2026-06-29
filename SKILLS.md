@@ -37,7 +37,7 @@ Deploys the OTel collector and agents, and logs collectors.
     ```
 
 ### Skill 5: Deploys Jenkins with JCasC configuration
-Deploys the Jenkins Helm chart. Jenkins is configured with JCasC (`jenkins/casc/jcasc-base.yaml`) to set up credentials, shared libraries, and seed jobs.
+Deploys the Jenkins Helm chart. Jenkins is configured with JCasC ([`jenkins/casc/jcasc-base.yaml`](jenkins/casc/jcasc-base.yaml)) to set up credentials, shared libraries, and seed jobs.
 *   **Command:**
     ```bash
     ./scripts/04-jenkins.sh

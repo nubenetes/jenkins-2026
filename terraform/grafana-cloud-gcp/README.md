@@ -13,7 +13,7 @@ so it can't use Workload Identity Federation — it needs a **service-account ke
 uploaded in the Grafana Cloud UI. This module IaC-manages the durable part (the SA +
 read-only roles) but **deliberately does not create the key** (a long-lived key in
 Terraform state would defeat the purpose). It's a one-time, project-level IAM grant —
-run by hand with local state, like `terraform/bootstrap`. Optional / opt-in.
+run by hand with local state, like [`terraform/bootstrap`](../bootstrap). Optional / opt-in.
 
 ## Setup
 

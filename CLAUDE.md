@@ -33,14 +33,14 @@ navigation:
 - [`901-LOCAL_DEVELOPMENT.md`](docs/901-LOCAL_DEVELOPMENT.md) — prerequisites, quick start, e2e test
 - [`902-TROUBLESHOOTING.md`](docs/902-TROUBLESHOOTING.md) — common issues
 
-Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-as-code.md`) redirect to the numbered equivalents.
+Legacy stubs ([`docs/architecture.md`](docs/architecture.md), [`docs/observability.md`](docs/observability.md), [`docs/pipelines-as-code.md`](docs/pipelines-as-code.md)) redirect to the numbered equivalents.
 
 ## Repo layout
 
 - `scripts/0N-*.sh` - numbered, idempotent setup steps run in order by
-  `scripts/up.sh` (and torn down in reverse by `scripts/down.sh`). Every
-  script sources `scripts/lib/common.sh` then `scripts/lib/config.sh`.
-- `scripts/lib/config.sh` - loads `config/config.yaml` via `yq`, exports it
+  [`scripts/up.sh`](scripts/up.sh) (and torn down in reverse by [`scripts/down.sh`](scripts/down.sh)). Every
+  script sources [`scripts/lib/common.sh`](scripts/lib/common.sh) then [`scripts/lib/config.sh`](scripts/lib/config.sh).
+- [`scripts/lib/config.sh`](scripts/lib/config.sh) - loads [`config/config.yaml`](config/config.yaml) via `yq`, exports it
   as `J2026_*` env vars. `JENKINS2026_PLATFORM` / `JENKINS2026_OBS_MODE` /
   `JENKINS2026_CI_ENGINE` / `JENKINS2026_SECRETS_BACKEND` env vars override
   `platform.target` / `observability.mode` / `ci.engine` / `secrets.backend`
@@ -51,44 +51,44 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
   before the promotion PR; `main` from main), overridable by
   `JENKINS2026_SELF_REPO_BRANCH`, falling back to `jenkins.selfRepoBranch`
   (default `main`) locally.
-- `scripts/lib/secrets.sh` - `provision_secret` helper behind the
+- [`scripts/lib/secrets.sh`](scripts/lib/secrets.sh) - `provision_secret` helper behind the
   `secrets.backend` flag: `imperative` (default, `kubectl create secret`) or
   `eso` (push to GCP Secret Manager; the External Secrets Operator syncs it in
-  via Workload Identity). `scripts/08.6-eso-sync.sh` applies the
+  via Workload Identity). [`scripts/08.6-eso-sync.sh`](scripts/08.6-eso-sync.sh) applies the
   ClusterSecretStore + ExternalSecrets (+ waits) in eso mode; reference manifests
-  in `infrastructure/secrets/eso-bootstrap.yaml`. Stage 1 covers
+  in [`infrastructure/secrets/eso-bootstrap.yaml`](infrastructure/secrets/eso-bootstrap.yaml). Stage 1 covers
   `gateway-iap-oauth`. See [`docs/201`](docs/201-ARCHITECTURE.md#secrets-backend-imperative--eso).
-- `config/config.yaml` - single source of truth: target platform
+- [`config/config.yaml`](config/config.yaml) - single source of truth: target platform
   (gke), observability mode (grafana-cloud/oss/managed-azure/managed-aws),
   CI engine (`ci.engine`: jenkins default | tekton),
   Jenkins/Microservices namespaces, branches, registry, service list.
-- `helm/jenkins/`, `helm/microservices/` - Helm values overlays.
-- `jenkins/casc/` - JCasC YAML (seed jobs, shared library, OTel plugin
+- [`helm/jenkins/`](helm/jenkins/), `helm/microservices/` - Helm values overlays.
+- [`jenkins/casc/`](jenkins/casc/) - JCasC YAML (seed jobs, shared library, OTel plugin
   config, RBAC).
-- `jenkins/pipelines/` - `Jenkinsfile.microservices`, seed job DSL
+- [`jenkins/pipelines/`](jenkins/pipelines/) - `Jenkinsfile.microservices`, seed job DSL
   (`seed_jobs.groovy`), `services.yaml` (the shared service registry both CI
   engines read).
-- `tekton/` - Tekton pipelines-as-code, used when `ci.engine=tekton` (the
+- [`tekton/`](tekton/) - Tekton pipelines-as-code, used when `ci.engine=tekton` (the
   alternative to Jenkins; Jenkins is the default). Tasks/Pipelines/Triggers/RBAC
-  porting the Jenkins shared library in `vars/`, plus `pac/` (Pipelines-as-Code
+  porting the Jenkins shared library in [`vars/`](vars/), plus `pac/` (Pipelines-as-Code
   Repository CRs) and `runs/` (ready-to-run PipelineRun manifests — the
   one-click/`kubectl create -f` equivalent of the Jenkins seed job; the opt-in
   `tekton.seedRuns` flag makes Day1 seed these so the Dashboard is pre-populated).
   Installed by
-  `scripts/04-tekton.sh` + `scripts/06-tekton-pipelines.sh` (the Tekton
-  equivalents of `04-jenkins.sh` / `06-seed-pipelines.sh`). Tekton is
-  GitOps-managed by ArgoCD via the `argocd/tekton` app-of-apps (see below); the
+  [`scripts/04-tekton.sh`](scripts/04-tekton.sh) + [`scripts/06-tekton-pipelines.sh`](scripts/06-tekton-pipelines.sh) (the Tekton
+  equivalents of [`04-jenkins.sh`](scripts/04-jenkins.sh) / [`06-seed-pipelines.sh`](scripts/06-seed-pipelines.sh)). Tekton is
+  GitOps-managed by ArgoCD via the [`argocd/tekton`](argocd/tekton) app-of-apps (see below); the
   Tekton Dashboard is exposed behind Google IAP like Headlamp. See
   [`docs/403-TEKTON.md`](docs/403-TEKTON.md).
-- `observability/` - otel-operator, otel-collector, and Grafana (OSS +
+- [`observability/`](observability/) - otel-operator, otel-collector, and Grafana (OSS +
   dashboards) Helm values + the `grafana-cloud-credentials` secret template.
-- `argocd/` - ArgoCD `Application`/`ApplicationSet` manifests (the GitOps
+- [`argocd/`](argocd/) - ArgoCD `Application`/`ApplicationSet` manifests (the GitOps
   layer): single `Application`s for External Secrets, Headlamp, **Jenkins**
   (`jenkins-app.yaml`, the official chart, when `ci.engine=jenkins`),
   **Argo Rollouts** (`argo-rollouts-app.yaml`, controller + Gateway API
   traffic-router plugin for sidecar-free canary/blue-green — see
   [`docs/501`](docs/501-PLATFORM_OPERATIONS.md) § Progressive Delivery), and
-  **`platform-config`** (`platform-config-app.yaml` → the local `argocd/platform-config/`
+  **`platform-config`** (`platform-config-app.yaml` → the local [`argocd/platform-config/`](argocd/platform-config/)
   Helm chart: the static, engine-aware platform **RBAC** — Jenkins/Tekton SA `edit`
   bindings, pgAdmin secret-reader, the OTel-instrumentation `ClusterRole` — that
   `01-namespaces.sh`/`02-otel-operator.sh` used to apply imperatively; NetworkPolicies
@@ -102,15 +102,15 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
   release YAMLs — Tekton ships recent releases only as GitHub assets, not GCS, and
   a github.com URL is git-misclassified by kustomize — plus the `tekton/`
   pipelines-as-code), applied by `04-tekton.sh` when `ci.engine=tekton`. Because of
-  this, `scripts/up.sh` installs ArgoCD (`08.5`) **before** observability
+  this, [`scripts/up.sh`](scripts/up.sh) installs ArgoCD (`08.5`) **before** observability
   (`03`), and `03-observability.sh` (oss) applies the app-of-apps + its
   script-managed companion objects (`grafana-jenkins-ds` Secret,
   `grafana-runtime-config` ConfigMap) rather than `helm install`-ing the charts
   directly. The Grafana dashboards ConfigMap is GitOps-managed by the
-  `oss-grafana-dashboards` child app (rendered from `observability/grafana/dashboards/`,
+  `oss-grafana-dashboards` child app (rendered from [`observability/grafana/dashboards/`](observability/grafana/dashboards/),
   a small Helm chart, CI-engine-gated via `ciEngine`). See
   [`argocd/README.md`](argocd/README.md).
-- `terraform/`:
+- [`terraform/`](terraform/):
   - `bootstrap/` - the **root of trust** (Day0 "phase 0"), run by hand via
     [`scripts/bootstrap.sh`](scripts/bootstrap.sh) (`up`/`down`). Creates the GCS
     Terraform state bucket + GitHub OIDC/Workload Identity Federation trust + CI
@@ -118,7 +118,7 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
     **permanent delegated public DNS zone** (`jenkins-2026-public-zone` for
     `base_domain`; lives here so its nameservers never change — you delegate
     `base_domain` from the parent domain to them once, ever, via the
-    `dns_zone_name_servers` output; `terraform/gateway-bootstrap` fills it with the
+    `dns_zone_name_servers` output; [`terraform/gateway-bootstrap`](terraform/gateway-bootstrap) fills it with the
     records). **First** `apply` seeds with
     LOCAL state, then the script **migrates that state into the bucket** (prefix
     `jenkins-2026/bootstrap`) so even bootstrap is remote-state going forward (the
@@ -159,7 +159,7 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
   - `grafana-cloud-token/` - ephemeral access-policy + service-account
     tokens scoped to the stack above, looked up by slug via a data source (slug
     read from `grafana-cloud-stack`'s state output and passed in by the workflow).
-    Same GCS-remote-state-via-`backend_override.tf` pattern as `terraform/gke`;
+    Same GCS-remote-state-via-`backend_override.tf` pattern as [`terraform/gke`](terraform/gke);
     applied by `Day1.cluster.01-gke.yml`, destroyed by `Decom.cluster.01-gke.yml`.
   - `grafana-cloud-gcp/` - **one-time, human-run, local state** (like `bootstrap`).
     Read-only GCP SA (`roles/monitoring.viewer` + `cloudasset.viewer`) for Grafana
@@ -192,9 +192,9 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
     collector authenticates at runtime via a projected SA web-identity token.
     Only identifiers (`AWS_BOOTSTRAP_ROLE_ARN`/`AWS_REGION`/`GKE_OIDC_ISSUER_URL`)
     are GitHub secrets.
-- `test/e2e.sh` - full local lifecycle: provision GKE, deploy everything,
-  smoke test, tear down. `test/smoke-test.sh` is the smoke test alone.
-- `.github/workflows/` - workflows named `DayN.tier.ZZ-resource.yml`. **DayN** =
+- [`test/e2e.sh`](test/e2e.sh) - full local lifecycle: provision GKE, deploy everything,
+  smoke test, tear down. [`test/smoke-test.sh`](test/smoke-test.sh) is the smoke test alone.
+- [`.github/workflows/`](.github/workflows/) - workflows named `DayN.tier.ZZ-resource.yml`. **DayN** =
   lifecycle phase, self-documenting: `Day0` (persistent bootstrap) · `Day1`
   (cluster) · `Day2` (running-cluster ops) · `Decom` (teardown). **tier** = a
   brief semantic word from a controlled vocabulary (`infra`, `cluster`, `redeploy`,
@@ -214,10 +214,10 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
 
 ## Conventions
 
-- **Branches**: `main` and `develop` branches are supported. The stable Microservices pipeline jobs (`gateway`, `jhipstersamplemicroservice`, `microservices-k6-smoke`) are generated at the root. They dynamically determine their configuration (target namespace, environment, and library branch) based on the branch (`JENKINS2026_REPO_BRANCH`) that is currently active/deployed. The **nubenetes app forks now carry a real `develop` branch** (off `main`), so the develop tier builds the app's `develop` branch — true branch-based promotion — set in `jenkins/pipelines/seed/services.yaml` (`branches.develop: develop`); the original upstream `jhipster/*` repos have only `main`.
+- **Branches**: `main` and `develop` branches are supported. The stable Microservices pipeline jobs (`gateway`, `jhipstersamplemicroservice`, `microservices-k6-smoke`) are generated at the root. They dynamically determine their configuration (target namespace, environment, and library branch) based on the branch (`JENKINS2026_REPO_BRANCH`) that is currently active/deployed. The **nubenetes app forks now carry a real `develop` branch** (off `main`), so the develop tier builds the app's `develop` branch — true branch-based promotion — set in [`jenkins/pipelines/seed/services.yaml`](jenkins/pipelines/seed/services.yaml) (`branches.develop: develop`); the original upstream `jhipster/*` repos have only `main`.
 - **⚠️ The two repos have DELIBERATELY OPPOSITE `main` branch-protection policies — do not "fix" one to match the other:**
-  - **`jenkins-2026`** (this infra repo, human-driven) — **strict GitFlow**: `main` is protected with *require-PR* + the **`gitflow-guard`** required status check (`.github/workflows/gitflow-guard.yml`) + `enforce_admins=true`, so `main` is reachable **only via a PR from `develop`** (no direct pushes, no feature/hotfix→main, no admin bypass). Every change lands on `develop` first.
-  - **`jenkins-2026-gitops-config`** (the GitOps config repo, **CI-driven**) — `main` is **direct-push** (require-PR removed; force-push still blocked). The Microservices pipeline's *GitOps Update* stage (`vars/microservicesDeploy.groovy`) does `git push origin main` to bump image tags; require-PR there would reject the push (the PAT doesn't bypass) and **wedge every deploy**. Image-tag bumps are machine-managed, not human-reviewed, so `main` must accept the CI's direct push. See [`docs/502`](docs/502-MICROSERVICES_GITOPS.md) and that repo's README.
+  - **`jenkins-2026`** (this infra repo, human-driven) — **strict GitFlow**: `main` is protected with *require-PR* + the **`gitflow-guard`** required status check ([`.github/workflows/gitflow-guard.yml`](.github/workflows/gitflow-guard.yml)) + `enforce_admins=true`, so `main` is reachable **only via a PR from `develop`** (no direct pushes, no feature/hotfix→main, no admin bypass). Every change lands on `develop` first.
+  - **`jenkins-2026-gitops-config`** (the GitOps config repo, **CI-driven**) — `main` is **direct-push** (require-PR removed; force-push still blocked). The Microservices pipeline's *GitOps Update* stage ([`vars/microservicesDeploy.groovy`](vars/microservicesDeploy.groovy)) does `git push origin main` to bump image tags; require-PR there would reject the push (the PAT doesn't bypass) and **wedge every deploy**. Image-tag bumps are machine-managed, not human-reviewed, so `main` must accept the CI's direct push. See [`docs/502`](docs/502-MICROSERVICES_GITOPS.md) and that repo's README.
 - **Secrets never committed**: `observability/otel-collector/secret.yaml`,
   `**/secret.local.yaml`, `*.env`, all `*.tfstate*`, `**/.terraform/`,
   `terraform/*/terraform.tfvars`, and the CI-written `backend_override.tf`
@@ -226,7 +226,7 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
 - **Idempotency**: every `scripts/0N-*.sh` step and Terraform module should
   be safe to re-run. `up.sh`/`down.sh` and the GitHub Actions workflows rely
   on this.
-- **Feature-flag pattern**: durable default in `config/config.yaml`,
+- **Feature-flag pattern**: durable default in [`config/config.yaml`](config/config.yaml),
   ephemeral override via `JENKINS2026_*` env var - follow this pattern for
   any new config knobs rather than adding new flags ad hoc.
 - Shell scripts: `bash`, `set -euo pipefail` via `lib/common.sh`, `yq` for
@@ -250,12 +250,12 @@ Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-a
   --overwrite`. `Decom.cluster.01-gke` is for **tearing the cluster down when
   done** (to stop charges), not a prerequisite for changes - but do remember to
   Decom an idle cluster.
-- `terraform/bootstrap` is a one-time, human-run step with local gitignored
+- [`terraform/bootstrap`](terraform/bootstrap) is a one-time, human-run step with local gitignored
   state - never wire it into CI, and never re-run `terraform apply` there without
   checking the existing state file first (re-creating it would orphan/duplicate
-  persistent resources). (`terraform/grafana-cloud-stack` used to be in this
+  persistent resources). ([`terraform/grafana-cloud-stack`](terraform/grafana-cloud-stack) used to be in this
   category but is now CI-managed with GCS remote state and a generated slug -
-  see the `terraform/` layout above.)
+  see the [`terraform/`](terraform/) layout above.)
 - When editing Terraform, run `terraform fmt -recursive` and
   `terraform validate` (after `terraform init -backend=false` if no backend
   is configured yet) before considering the change done.

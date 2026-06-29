@@ -6,10 +6,10 @@
 
 [`Day1.cluster.01-gke.yml`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) and
 [`Decom.cluster.01-gke.yml`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml)
-are the CI equivalent of `test/e2e.sh`, split into two manually-triggered
+are the CI equivalent of [`test/e2e.sh`](../test/e2e.sh), split into two manually-triggered
 workflows so the cluster can be left running between them (e.g. provision in
 the morning, demo it, decommission in the evening). They run the exact same
-`terraform/gke` + `scripts/0N-*.sh` + `test/smoke-test.sh` as `test/e2e.sh`,
+[`terraform/gke`](../terraform/gke) + `scripts/0N-*.sh` + [`test/smoke-test.sh`](../test/smoke-test.sh) as [`test/e2e.sh`](../test/e2e.sh),
 but since each is a separate workflow run on a fresh runner, Terraform state
 has to be **remote** (a GCS bucket) instead of local so the decommission run
 can find what the provision run created.
@@ -72,7 +72,7 @@ The point of the split: tearing the cluster down (to stop billing) must **not** 
 
 </details>
 
-1. **GCP Auth and Terraform State (`terraform/bootstrap`)**:
+1. **GCP Auth and Terraform State ([`terraform/bootstrap`](../terraform/bootstrap))**:
    - **Workload Identity Federation (WIF)**: Establishes a secure, keyless trust relationship between GitHub Actions and your GCP project. GitHub can authenticate dynamically using OpenID Connect (OIDC) tokens instead of saving permanent GCP service account JSON keys inside repository secrets.
    - **GCS Remote Backend**: Sets up the persistent bucket where all GHA workflow runs store and retrieve Terraform state.
 
@@ -81,9 +81,9 @@ The point of the split: tearing the cluster down (to stop billing) must **not** 
    - If these networking assets were tied to the short-lived GKE cluster, deleting the cluster would release the IP address and destroy the SSL certificate. This would force you to manually update DNS records at your domain registrar (e.g. Squarespace) and wait for DNS propagation every single time you provisioned a new cluster. Keeping the gateway bootstrapped persistently ensures your external endpoints are immediately reachable upon cluster creation.
 
 3. **Persistent Observability Backend (`Day0.infra.02 Grafana Cloud bootstrap`)**:
-   - Applies the Grafana Cloud stack (`terraform/grafana-cloud-stack`, generated slug). By decoupling the metrics/tracing backend from the GKE cluster, your logs, metrics, and trace history survive multiple cluster spin-ups and tear-downs (the GKE decommission `Decom.cluster.01` leaves the stack intact; only `Decom.infra.02` destroys it).
+   - Applies the Grafana Cloud stack ([`terraform/grafana-cloud-stack`](../terraform/grafana-cloud-stack), generated slug). By decoupling the metrics/tracing backend from the GKE cluster, your logs, metrics, and trace history survive multiple cluster spin-ups and tear-downs (the GKE decommission `Decom.cluster.01` leaves the stack intact; only `Decom.infra.02` destroys it).
 
-4. **Persistent Database Backups Storage (`terraform/bootstrap`)**:
+4. **Persistent Database Backups Storage ([`terraform/bootstrap`](../terraform/bootstrap))**:
    - **Postgres Backups Bucket**: Configures the persistent GCS bucket `<project>-jenkins-2026-postgres-backups` (project-scoped — GCS bucket names share one global namespace, so the project-ID prefix keeps it collision-proof across rebuilds, like the Terraform state bucket) with automated storage lifecycles (transition to `NEARLINE` after 3 days, delete after 7 days) to preserve backup histories across throwaway GKE lifecycle runs.
    - **Access Security**: Grants the GHA CI service accounts `storage.admin` permissions to manage bucket-level IAM policy bindings, enabling dynamic node service account access configuration during GKE provision runs.
 
@@ -186,10 +186,10 @@ graph TD
 > **Gateway**: `Day0.infra.01` is a one-time Day0 step that creates the
 > persistent resources (static IP, wildcard cert map) **and the wildcard-A +
 > cert-validation records inside the permanent delegated DNS zone** (the zone
-> itself lives in `terraform/bootstrap` — see [100](./100-BOOTSTRAP.md)). So DNS is
+> itself lives in [`terraform/bootstrap`](../terraform/bootstrap) — see [100](./100-BOOTSTRAP.md)). So DNS is
 > Terraform-managed, not hand-wired: the only manual DNS step is a one-time `NS`
 > delegation of `base_domain` at your parent domain. Inside `provision`,
-> `scripts/09-gateway.sh` only creates the **in-cluster** `Gateway`/`HTTPRoute`
+> [`scripts/09-gateway.sh`](../scripts/09-gateway.sh) only creates the **in-cluster** `Gateway`/`HTTPRoute`
 > objects, which **reference** that static IP + cert map **by name** — it does not
 > create them.
 >
@@ -219,8 +219,8 @@ graph TD
 > the running cluster (`5.x`), **Decommission** = teardown (`9.x`).
 
 #### 1. Persistent Bootstrap Workflows (Day-0)
-- **`Day0.infra.01 Gateway bootstrap`**: Provisions account-level GCP networking assets using `terraform/gateway-bootstrap`. This includes a reserved external IP (`jenkins-2026-gateway-ip`), DNS authorizations, and a Google-managed wildcard SSL certificate map. Keeping this IP and SSL certificate persistent avoids losing the reserved IP during a GKE rebuild, eliminating the need to update wildcard DNS records at your domain registrar and wait for DNS propagation.
-- **`Day0.infra.02 Grafana Cloud bootstrap`**: Provisions a dedicated Grafana Cloud stack (hosted metrics/traces/logs backend) using `terraform/grafana-cloud-stack`, with a Terraform-generated slug. By separating the observability backend from the short-lived GKE cluster, application performance metrics and history remain readable even after GKE is decommissioned and rebuilt — the stack lives until you run `Decom.infra.02 Grafana Cloud decommission`, which tears it down (the org/free tier is untouched).
+- **`Day0.infra.01 Gateway bootstrap`**: Provisions account-level GCP networking assets using [`terraform/gateway-bootstrap`](../terraform/gateway-bootstrap). This includes a reserved external IP (`jenkins-2026-gateway-ip`), DNS authorizations, and a Google-managed wildcard SSL certificate map. Keeping this IP and SSL certificate persistent avoids losing the reserved IP during a GKE rebuild, eliminating the need to update wildcard DNS records at your domain registrar and wait for DNS propagation.
+- **`Day0.infra.02 Grafana Cloud bootstrap`**: Provisions a dedicated Grafana Cloud stack (hosted metrics/traces/logs backend) using [`terraform/grafana-cloud-stack`](../terraform/grafana-cloud-stack), with a Terraform-generated slug. By separating the observability backend from the short-lived GKE cluster, application performance metrics and history remain readable even after GKE is decommissioned and rebuilt — the stack lives until you run `Decom.infra.02 Grafana Cloud decommission`, which tears it down (the org/free tier is untouched).
 
 #### 2. Persistent Decommission Workflows (Decommission · Clean Slate)
 When you want to tear down the entire project permanently, you must run the decommission workflows in the reverse order of setup to avoid dangling resources:
@@ -260,8 +260,8 @@ When executing the **Day1.cluster.01 GKE provision** workflow manually, you are 
 
 2. **observability_mode (Dropdown - Choice)**:
    - **Type**: Choice (`oss` | `grafana-cloud` | `managed-azure` | `managed-aws`).
-   - **Default**: `oss` (needs no external backend; `config/config.yaml`'s durable default is still `grafana-cloud` for local `up.sh`).
-   - Overrides the `observability.mode` setting in `config/config.yaml` for this execution lifecycle. Exactly **one** backend is active per cluster and the choice is **deterministic/idempotent** (like `ci_engine`): a rerun with a different mode auto-retires the previously-deployed backend's in-cluster footprint and provisions the chosen one. See [301 § observability backends](301-OBSERVABILITY.md).
+   - **Default**: `oss` (needs no external backend; [`config/config.yaml`](../config/config.yaml)'s durable default is still `grafana-cloud` for local `up.sh`).
+   - Overrides the `observability.mode` setting in [`config/config.yaml`](../config/config.yaml) for this execution lifecycle. Exactly **one** backend is active per cluster and the choice is **deterministic/idempotent** (like `ci_engine`): a rerun with a different mode auto-retires the previously-deployed backend's in-cluster footprint and provisions the chosen one. See [301 § observability backends](301-OBSERVABILITY.md).
 
 3. **secrets_backend (Dropdown - Choice)**:
    - **Type**: Choice (`imperative` | `eso`).
@@ -293,7 +293,7 @@ When executing the **Day1.cluster.01 GKE provision** workflow manually, you are 
 Mixing different tags, branches, or SHAs during the lifecycle of a single GKE cluster will cause deployment and state management failures:
 
 1. **Terraform State Conflicts**: If you provision GKE using tag `v0.8.0` and later run the decommission workflow targeting `v0.9.0`, Terraform will compare the stored GCS backend state against updated node pool, VPC, or IAM definitions — causing plan mismatches or deletion failures.
-2. **Helper Script & Template Divergence**: Platform components rely on configuration schemas in `config/config.yaml`. Mismatched versions can cause namespace naming conventions or credential key format differences.
+2. **Helper Script & Template Divergence**: Platform components rely on configuration schemas in [`config/config.yaml`](../config/config.yaml). Mismatched versions can cause namespace naming conventions or credential key format differences.
 3. **Application and Database Incompatibility**: Mismatched versions between the infra repo and the GitOps repo can cause pods to crash due to missing secrets or incorrect network policies.
 
 > [!IMPORTANT]
@@ -431,7 +431,7 @@ EOF
 > Federation (WIF) — but that WIF trust relationship, the CI service account,
 > and the GCS state bucket don't exist yet. Something has to create them
 > first using *real* GCP credentials, which is exactly what
-> `terraform/bootstrap` does. This is a one-time, local "break glass" step;
+> [`terraform/bootstrap`](../terraform/bootstrap) does. This is a one-time, local "break glass" step;
 > every run after that happens entirely in GitHub Actions.
 
 1. **Authenticate locally** as a principal with `roles/owner` (or
@@ -442,7 +442,7 @@ EOF
    gcloud auth application-default login
    ```
 
-2. **Run `terraform/bootstrap`** once. This creates the GCS state bucket and
+2. **Run [`terraform/bootstrap`](../terraform/bootstrap)** once. This creates the GCS state bucket and
    a Workload Identity Federation pool/provider + service account that
    GitHub Actions will use to authenticate to GCP **without a JSON key**:
 

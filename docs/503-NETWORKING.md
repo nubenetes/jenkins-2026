@@ -162,7 +162,7 @@ flowchart TB
 | Subnet **primary** | `jenkins-2026-subnet` | **`10.10.0.0/20`** (`subnet_cidr`) | Node VM IPs | [`terraform/gke`](../terraform/gke/) |
 | Secondary | **`pods`** | **`10.20.0.0/16`** (`pods_cidr`) | Pod alias IPs (≈ 65 k) | `ip_allocation_policy` |
 | Secondary | **`services`** | **`10.30.0.0/20`** (`services_cidr`) | Service `ClusterIP`s | `ip_allocation_policy` |
-| Region / zone | — | `europe-southwest1` / `-a` | cluster location | `terraform/gke/variables.tf` |
+| Region / zone | — | `europe-southwest1` / `-a` | cluster location | [`terraform/gke/variables.tf`](../terraform/gke/variables.tf) |
 
 > All three are **variables** with the defaults above — change them in one place before `Day1`. The ranges are disjoint and sized for a single PoC cluster (the `/16` pod range is GKE's generous default).
 
