@@ -1,106 +1,3 @@
-## Pausing & resuming the cluster (cost saving)
-
-Park the throwaway cluster at **~zero compute cost** without a Decom + Day1 rebuild: scale every GKE node pool to **0** (the worker VMs are the bulk of the spend), leaving everything else intact, then scale back in minutes.
-
-| Workflow | What it does |
-|---|---|
-| **[`Day2.scale.01 Pause`](../.github/workflows/Day2.scale.01-pause.yml)** | Scales every node pool → 0. Cluster, PVs (CNPG Postgres data), ArgoCD + apps, static IP, DNS, certs all survive — only the worker VMs go away. |
-| **[`Day2.scale.02 Resume`](../.github/workflows/Day2.scale.02-resume.yml)** | Scales node pools back up; pods reschedule, ArgoCD reconciles, CNPG recreates its PDBs — no rebuild. Then runs a **post-resume recovery pass** (re-clones any unstartable CNPG replica, restarts ArgoCD dex if its OIDC connector init raced DNS — see below). |
-
-**What still costs while paused** (all small): the zonal **control plane** (covered by the GKE free-tier management credit), the **persistent disks** backing the PVs, and the reserved **static IP**. Grafana Cloud is free-tier (nothing to pause). Azure/AWS managed backends, if ever provisioned, are billed separately and are **not** paused here.
-
-> Pause/resume is **not** a rebuild and keeps the disks. For a full teardown that stops *all* charges use [`Decom.cluster.01-gke`](../.github/workflows/Decom.cluster.01-gke.yml); to recreate, [`Day1.cluster.01-gke`](../.github/workflows/Day1.cluster.01-gke.yml) (a re-apply also reconciles the gcloud state drift the imperative pause leaves in `terraform/gke` state).
-
-### The four gotchas a naïve "resize to 0" hits (real incident)
-
-A plain `gcloud container clusters resize --num-nodes 0` **stalls forever / bounces back** on this cluster. There are **four independent node-recreating forces** — disabling fewer than all four leaves nodes running:
-
-1. **CNPG Postgres PodDisruptionBudgets block the graceful drain.** Each Postgres pod has a PDB `minAvailable=1`; single-instance tiers (the `develop` tier, and any primary once it is down to one) → **ALLOWED DISRUPTIONS = 0**. The resize drains via the **eviction API**, which honours PDBs → it waits indefinitely, the `gcloud` client times out (~20 min) and the GitHub step fails while the **server-side operation stays RUNNING and wedged** (and it cannot be cancelled — only node-upgrade ops can).
-2. **node-pool `autoRepair` recreates the drained nodes.** With `management.autoRepair: true`, GKE flags cordoned/drained nodes as unhealthy and **recreates** them.
-3. **node-pool `autoUpgrade` surge-creates replacement nodes.** A version auto-upgrade does a surge (new nodes before draining old), re-adding nodes mid-pause.
-4. **Cluster-level Node Auto-Provisioning (NAP) re-provisions nodes for the Pending pods.** ⚠️ *This is the subtle one.* NAP (`autoscaling.enableNodeAutoprovisioning`) is a **cluster** setting, **separate from a node pool's autoscaling**: for any Pending pod it can't place it spins up **brand-new nodes/pools** — so even with the node pool's own autoscaling off, NAP brings the cluster **straight back up** (node count seen bouncing to 3-4). `terraform/gke` does **not** manage NAP, so it was an out-of-band setting; the pause now turns it off and leaves it off (IaC-consistent — the node pool's own min/max autoscaling, restored by Resume, is enough).
-
-**The fix (now in the pause workflow) — disable ALL FOUR forces, then drain + resize:**
-
-- **Disable cluster NAP** (`gcloud container clusters update --no-enable-autoprovisioning`) — *first*, the root cause of the bounce-back.
-- **Disable the node pool's autoscaling, autoRepair AND autoUpgrade** using specific node pool commands (`gcloud container node-pools update --no-enable-autoscaling` and `--no-enable-autorepair --no-enable-autoupgrade`) to prevent API lock conflicts.
-- **Serialize GKE mutations** via the new `wait_for_gke_operations` helper function. Since GKE allows only one mutating operation at a time, the workflow blocks and waits until each in-progress operation finishes before starting the next.
-- **Force-drain** every node: `kubectl drain --disable-eviction --force --delete-emptydir-data --ignore-daemonsets`. `--disable-eviction` deletes pods via the **DELETE API instead of the eviction API**, so it **bypasses PDBs entirely** — safe because the data lives on the PVs, not the pod.
-- Then `gcloud container clusters resize ... --num-nodes 0` — nodes are already empty and nothing can re-add them → it completes and **stays** at 0.
-- **Resume re-enables autoscaling + autoRepair + autoUpgrade** (with similar serialization and specific node-pool updates; NAP is intentionally left off — see gotcha 4).
-
-<details><summary>🔁 Pause / resume sequence (Mermaid)</summary>
-
-```mermaid
-flowchart TD
-  subgraph Pause["⏸️ Day2.scale.01 Pause"]
-    P0["Disable cluster NAP<br/>--no-enable-autoprovisioning"] --> P1["Disable pool autoscaling<br/>+ autoRepair + autoUpgrade"]
-    P1 --> P3["Force-drain all nodes<br/>kubectl drain --disable-eviction<br/>(bypasses CNPG PDBs)"]
-    P3 --> P4[Resize each pool to 0]
-    P4 --> P5["Nodes 0 - STAYS 0<br/>(all 4 recreate-forces off)<br/>workloads Pending"]
-  end
-  subgraph Resume["▶️ Day2.scale.02 Resume"]
-    R1[Resize each pool to N] --> R2["Re-enable autoscaling +<br/>autoRepair + autoUpgrade<br/>(NAP left off — IaC-consistent)"]
-    R2 --> R3[Pods reschedule]
-    R3 --> R4[ArgoCD reconciles - CNPG recreates PDBs]
-    R4 --> R5["Post-resume recovery<br/>re-clone stuck CNPG replicas<br/>+ restart dex if connector init raced DNS"]
-  end
-  P5 -. "minutes later" .-> R1
-```
-
-</details>
-
-> **Manual recovery (interrupted / partial pause).** If a pause is interrupted, or you run the
-> steps by hand and the cluster won't reach 0, **do NOT fire several `gcloud container clusters
-> resize --num-nodes 0` back-to-back** — each queues a separate node-pool operation and they
-> **fight** (one stalls draining a CNPG primary behind its PDB while another reconciles nodes back),
-> so the count keeps churning (seen bouncing 0→2→3).
-> 
-> _Note: The automated pause/resume workflows now include a `wait_for_gke_operations` helper that
-> automatically checks and waits for any pending/running GKE operations to avoid these conflicts._
-> 
-> Recover deterministically, once:
-> 1. Confirm **all four** recreate-forces are off — `gcloud container clusters describe …` →
->    `autoscaling.enableNodeAutoprovisioning` empty (NAP), and `… node-pools describe …` →
->    `autoscaling`/`management.autoRepair`/`management.autoUpgrade` all empty.
-> 2. `kubectl drain <node> --disable-eviction --force --ignore-daemonsets --delete-emptydir-data` every node (DELETE bypasses the CNPG PDBs).
-> 3. **Wait until `gcloud container operations list --filter='status=RUNNING'` is empty** — a wedged
->    `SET_NODE_POOL_SIZE` can't be cancelled; let it finish before issuing anything new.
-> 4. Issue **one** `gcloud container clusters resize … --num-nodes 0` and let its operation complete.
->
-> A concurrent **`UPGRADE_MASTER`** op (control-plane auto-upgrade, cluster `RECONCILING`) is harmless
-> — it never creates worker nodes, so the pool stays at 0.
-
-<details><summary>🗺️ What pause removes vs what survives (dependency map)</summary>
-
-```mermaid
-graph LR
-  Pause["Day2.scale.01 Pause"]
-  Pause -->|neutralise first| B1["CNPG Postgres PDBs<br/>force-drain --disable-eviction"]
-  Pause -->|neutralise first| B2["node autoRepair<br/>disabled"]
-  Pause -->|removes| M1["node pool MIG to 0"]
-  M1 --> M2["worker VMs deleted<br/>(approx the whole compute bill)"]
-  Pause -.->|untouched, survives| S1["GKE control plane"]
-  Pause -.->|untouched, survives| S2["PVs / CNPG Postgres data"]
-  Pause -.->|untouched, survives| S3["ArgoCD + all apps<br/>(Pending until resume)"]
-  Pause -.->|untouched, survives| S4["static IP - DNS - certs"]
-  Pause -.->|external, free-tier| S5["Grafana Cloud"]
-```
-
-</details>
-
-### The resume-side gotcha: one-time init races DNS on fresh nodes (real incident)
-
-A resume brings up **brand-new nodes**. For a short window after they go Ready, CoreDNS + the egress path are still converging (Dataplane V2 / WireGuard re-establishing). Workloads that run a **one-time startup init and never retry it** can run that init inside this window, fail, and stay broken even though the pod looks `Running`/`Ready`. Two cases were hit and are now auto-healed by the **post-resume recovery step** in `Day2.scale.02 Resume`:
-
-1. **CNPG replicas left unstartable by the pause's force-drain.** The `--disable-eviction` DELETE that bypasses the PDBs is ungraceful, so a replica's data dir can come back in a state the instance-manager can't start postgres from — the **startup probe fails with HTTP 500 forever** (zero postgres logs; the operator just keeps polling and seeing `connection refused` on the local socket). Fix = **re-clone the replica**: delete its PVCs (data + WAL) + pod, and the operator re-bootstraps it via `pg_basebackup` from the primary. The step does this **only for replicas** — the current primary (`.status.currentPrimary`) is never auto-recreated (it holds the authoritative data; a stuck primary is surfaced as a `::warning::` for manual handling). A grace window lets genuinely-still-starting replicas settle first, so a healthy resume is a no-op.
-
-2. **ArgoCD dex's OIDC connector init.** dex dials the SSO provider's `/.well-known/openid-configuration` **once at startup**; if DNS/egress wasn't ready it logs `failed to open all connectors` / `failed to initialize server`, never retries, and **doesn't listen on `:5556`** — so SSO login fails with `dial tcp …:5556: connect: connection refused` (note: the pod still reports `Ready`, so the readiness probe doesn't catch this). dex is stateless (`storage=memory`), so the step **restarts the deployment** (only when that failure is actually in its log) and it re-inits cleanly.
-
-> Both are **idempotent** — on a clean resume nothing matches and the step is a no-op. They exist because the failing inits don't self-retry; everything else (app Deployments, the CNPG primary, ArgoCD's other components) reconciles on its own once nodes return.
-
-Related lifecycle: [`Day1.cluster.01-gke`](../.github/workflows/Day1.cluster.01-gke.yml) (provision / reconcile drift), [`Decom.cluster.01-gke`](../.github/workflows/Decom.cluster.01-gke.yml) (full teardown). Full workflow inventory: [101](./101-GITHUB_ACTIONS_WORKFLOWS.md).
-
 [← Previous: 403. Tekton](./403-TEKTON.md) | [🏠 Home](../README.md) | [→ Next: 502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md)
 
 ---
@@ -728,6 +625,109 @@ gcloud certificate-manager certificates describe jenkins-2026-cert \
 # Verify backend health
 gcloud compute backend-services get-health gkegw1-y6i2-jenkins-jenkins-8080-p2ivomotuf95 --global
 ```
+
+## Pausing & resuming the cluster (cost saving)
+
+Park the throwaway cluster at **~zero compute cost** without a Decom + Day1 rebuild: scale every GKE node pool to **0** (the worker VMs are the bulk of the spend), leaving everything else intact, then scale back in minutes.
+
+| Workflow | What it does |
+|---|---|
+| **[`Day2.scale.01 Pause`](../.github/workflows/Day2.scale.01-pause.yml)** | Scales every node pool → 0. Cluster, PVs (CNPG Postgres data), ArgoCD + apps, static IP, DNS, certs all survive — only the worker VMs go away. |
+| **[`Day2.scale.02 Resume`](../.github/workflows/Day2.scale.02-resume.yml)** | Scales node pools back up; pods reschedule, ArgoCD reconciles, CNPG recreates its PDBs — no rebuild. Then runs a **post-resume recovery pass** (re-clones any unstartable CNPG replica, restarts ArgoCD dex if its OIDC connector init raced DNS — see below). |
+
+**What still costs while paused** (all small): the zonal **control plane** (covered by the GKE free-tier management credit), the **persistent disks** backing the PVs, and the reserved **static IP**. Grafana Cloud is free-tier (nothing to pause). Azure/AWS managed backends, if ever provisioned, are billed separately and are **not** paused here.
+
+> Pause/resume is **not** a rebuild and keeps the disks. For a full teardown that stops *all* charges use [`Decom.cluster.01-gke`](../.github/workflows/Decom.cluster.01-gke.yml); to recreate, [`Day1.cluster.01-gke`](../.github/workflows/Day1.cluster.01-gke.yml) (a re-apply also reconciles the gcloud state drift the imperative pause leaves in `terraform/gke` state).
+
+### The four gotchas a naïve "resize to 0" hits (real incident)
+
+A plain `gcloud container clusters resize --num-nodes 0` **stalls forever / bounces back** on this cluster. There are **four independent node-recreating forces** — disabling fewer than all four leaves nodes running:
+
+1. **CNPG Postgres PodDisruptionBudgets block the graceful drain.** Each Postgres pod has a PDB `minAvailable=1`; single-instance tiers (the `develop` tier, and any primary once it is down to one) → **ALLOWED DISRUPTIONS = 0**. The resize drains via the **eviction API**, which honours PDBs → it waits indefinitely, the `gcloud` client times out (~20 min) and the GitHub step fails while the **server-side operation stays RUNNING and wedged** (and it cannot be cancelled — only node-upgrade ops can).
+2. **node-pool `autoRepair` recreates the drained nodes.** With `management.autoRepair: true`, GKE flags cordoned/drained nodes as unhealthy and **recreates** them.
+3. **node-pool `autoUpgrade` surge-creates replacement nodes.** A version auto-upgrade does a surge (new nodes before draining old), re-adding nodes mid-pause.
+4. **Cluster-level Node Auto-Provisioning (NAP) re-provisions nodes for the Pending pods.** ⚠️ *This is the subtle one.* NAP (`autoscaling.enableNodeAutoprovisioning`) is a **cluster** setting, **separate from a node pool's autoscaling**: for any Pending pod it can't place it spins up **brand-new nodes/pools** — so even with the node pool's own autoscaling off, NAP brings the cluster **straight back up** (node count seen bouncing to 3-4). `terraform/gke` does **not** manage NAP, so it was an out-of-band setting; the pause now turns it off and leaves it off (IaC-consistent — the node pool's own min/max autoscaling, restored by Resume, is enough).
+
+**The fix (now in the pause workflow) — disable ALL FOUR forces, then drain + resize:**
+
+- **Disable cluster NAP** (`gcloud container clusters update --no-enable-autoprovisioning`) — *first*, the root cause of the bounce-back.
+- **Disable the node pool's autoscaling, autoRepair AND autoUpgrade** using specific node pool commands (`gcloud container node-pools update --no-enable-autoscaling` and `--no-enable-autorepair --no-enable-autoupgrade`) to prevent API lock conflicts.
+- **Serialize GKE mutations** via the new `wait_for_gke_operations` helper function. Since GKE allows only one mutating operation at a time, the workflow blocks and waits until each in-progress operation finishes before starting the next.
+- **Force-drain** every node: `kubectl drain --disable-eviction --force --delete-emptydir-data --ignore-daemonsets`. `--disable-eviction` deletes pods via the **DELETE API instead of the eviction API**, so it **bypasses PDBs entirely** — safe because the data lives on the PVs, not the pod.
+- Then `gcloud container clusters resize ... --num-nodes 0` — nodes are already empty and nothing can re-add them → it completes and **stays** at 0.
+- **Resume re-enables autoscaling + autoRepair + autoUpgrade** (with similar serialization and specific node-pool updates; NAP is intentionally left off — see gotcha 4).
+
+<details><summary>🔁 Pause / resume sequence (Mermaid)</summary>
+
+```mermaid
+flowchart TD
+  subgraph Pause["⏸️ Day2.scale.01 Pause"]
+    P0["Disable cluster NAP<br/>--no-enable-autoprovisioning"] --> P1["Disable pool autoscaling<br/>+ autoRepair + autoUpgrade"]
+    P1 --> P3["Force-drain all nodes<br/>kubectl drain --disable-eviction<br/>(bypasses CNPG PDBs)"]
+    P3 --> P4[Resize each pool to 0]
+    P4 --> P5["Nodes 0 - STAYS 0<br/>(all 4 recreate-forces off)<br/>workloads Pending"]
+  end
+  subgraph Resume["▶️ Day2.scale.02 Resume"]
+    R1[Resize each pool to N] --> R2["Re-enable autoscaling +<br/>autoRepair + autoUpgrade<br/>(NAP left off — IaC-consistent)"]
+    R2 --> R3[Pods reschedule]
+    R3 --> R4[ArgoCD reconciles - CNPG recreates PDBs]
+    R4 --> R5["Post-resume recovery<br/>re-clone stuck CNPG replicas<br/>+ restart dex if connector init raced DNS"]
+  end
+  P5 -. "minutes later" .-> R1
+```
+
+</details>
+
+> **Manual recovery (interrupted / partial pause).** If a pause is interrupted, or you run the
+> steps by hand and the cluster won't reach 0, **do NOT fire several `gcloud container clusters
+> resize --num-nodes 0` back-to-back** — each queues a separate node-pool operation and they
+> **fight** (one stalls draining a CNPG primary behind its PDB while another reconciles nodes back),
+> so the count keeps churning (seen bouncing 0→2→3).
+> 
+> _Note: The automated pause/resume workflows now include a `wait_for_gke_operations` helper that
+> automatically checks and waits for any pending/running GKE operations to avoid these conflicts._
+> 
+> Recover deterministically, once:
+> 1. Confirm **all four** recreate-forces are off — `gcloud container clusters describe …` →
+>    `autoscaling.enableNodeAutoprovisioning` empty (NAP), and `… node-pools describe …` →
+>    `autoscaling`/`management.autoRepair`/`management.autoUpgrade` all empty.
+> 2. `kubectl drain <node> --disable-eviction --force --ignore-daemonsets --delete-emptydir-data` every node (DELETE bypasses the CNPG PDBs).
+> 3. **Wait until `gcloud container operations list --filter='status=RUNNING'` is empty** — a wedged
+>    `SET_NODE_POOL_SIZE` can't be cancelled; let it finish before issuing anything new.
+> 4. Issue **one** `gcloud container clusters resize … --num-nodes 0` and let its operation complete.
+>
+> A concurrent **`UPGRADE_MASTER`** op (control-plane auto-upgrade, cluster `RECONCILING`) is harmless
+> — it never creates worker nodes, so the pool stays at 0.
+
+<details><summary>🗺️ What pause removes vs what survives (dependency map)</summary>
+
+```mermaid
+graph LR
+  Pause["Day2.scale.01 Pause"]
+  Pause -->|neutralise first| B1["CNPG Postgres PDBs<br/>force-drain --disable-eviction"]
+  Pause -->|neutralise first| B2["node autoRepair<br/>disabled"]
+  Pause -->|removes| M1["node pool MIG to 0"]
+  M1 --> M2["worker VMs deleted<br/>(approx the whole compute bill)"]
+  Pause -.->|untouched, survives| S1["GKE control plane"]
+  Pause -.->|untouched, survives| S2["PVs / CNPG Postgres data"]
+  Pause -.->|untouched, survives| S3["ArgoCD + all apps<br/>(Pending until resume)"]
+  Pause -.->|untouched, survives| S4["static IP - DNS - certs"]
+  Pause -.->|external, free-tier| S5["Grafana Cloud"]
+```
+
+</details>
+
+### The resume-side gotcha: one-time init races DNS on fresh nodes (real incident)
+
+A resume brings up **brand-new nodes**. For a short window after they go Ready, CoreDNS + the egress path are still converging (Dataplane V2 / WireGuard re-establishing). Workloads that run a **one-time startup init and never retry it** can run that init inside this window, fail, and stay broken even though the pod looks `Running`/`Ready`. Two cases were hit and are now auto-healed by the **post-resume recovery step** in `Day2.scale.02 Resume`:
+
+1. **CNPG replicas left unstartable by the pause's force-drain.** The `--disable-eviction` DELETE that bypasses the PDBs is ungraceful, so a replica's data dir can come back in a state the instance-manager can't start postgres from — the **startup probe fails with HTTP 500 forever** (zero postgres logs; the operator just keeps polling and seeing `connection refused` on the local socket). Fix = **re-clone the replica**: delete its PVCs (data + WAL) + pod, and the operator re-bootstraps it via `pg_basebackup` from the primary. The step does this **only for replicas** — the current primary (`.status.currentPrimary`) is never auto-recreated (it holds the authoritative data; a stuck primary is surfaced as a `::warning::` for manual handling). A grace window lets genuinely-still-starting replicas settle first, so a healthy resume is a no-op.
+
+2. **ArgoCD dex's OIDC connector init.** dex dials the SSO provider's `/.well-known/openid-configuration` **once at startup**; if DNS/egress wasn't ready it logs `failed to open all connectors` / `failed to initialize server`, never retries, and **doesn't listen on `:5556`** — so SSO login fails with `dial tcp …:5556: connect: connection refused` (note: the pod still reports `Ready`, so the readiness probe doesn't catch this). dex is stateless (`storage=memory`), so the step **restarts the deployment** (only when that failure is actually in its log) and it re-inits cleanly.
+
+> Both are **idempotent** — on a clean resume nothing matches and the step is a no-op. They exist because the failing inits don't self-retry; everything else (app Deployments, the CNPG primary, ArgoCD's other components) reconciles on its own once nodes return.
+
+Related lifecycle: [`Day1.cluster.01-gke`](../.github/workflows/Day1.cluster.01-gke.yml) (provision / reconcile drift), [`Decom.cluster.01-gke`](../.github/workflows/Decom.cluster.01-gke.yml) (full teardown). Full workflow inventory: [101](./101-GITHUB_ACTIONS_WORKFLOWS.md).
 
 ---
 

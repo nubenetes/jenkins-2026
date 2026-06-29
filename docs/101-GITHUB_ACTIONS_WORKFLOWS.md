@@ -712,11 +712,13 @@ This is the workflow-level expression of the repo-wide **idempotency** conventio
 
 ---
 
-[← Previous: 100. Bootstrap](./100-BOOTSTRAP.md) | [🏠 Home](../README.md) | [→ Next: 102. GitHub Actions Automation](./102-GITHUB_ACTIONS_AUTOMATION.md)
-
 ## Image retention (`registry` tier)
 
 `Day2.registry.01-image-retention` prunes old microservices container image versions from ghcr — needed because the **immutable per-build image tags** (`<branch>-<build#>` for Jenkins, `<branch>-<pipelineRunName>` for Tekton — see [502](./502-MICROSERVICES_GITOPS.md)) accumulate one tag per build. Weekly cron + manual dispatch; inputs `keep` (recent versions to retain per service, default 30 — above deploy cadence so the live tag is never cut) and `dry_run`. It is the sole member of the `registry` tier: a pure **GitHub Packages** operation (no GKE, so no `jenkins-2026-gke` concurrency group) with no Day0/Decom counterpart.
+
+---
+
+[← Previous: 100. Bootstrap](./100-BOOTSTRAP.md) | [🏠 Home](../README.md) | [→ Next: 102. GitHub Actions Automation](./102-GITHUB_ACTIONS_AUTOMATION.md)
 
 ---
 

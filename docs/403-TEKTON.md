@@ -860,10 +860,6 @@ TaskRun controller tracing is a deferred follow-up — not wired today.) See
 > ConfigMap that could be patched (in the pipelines kustomization) to point at
 > the in-cluster collector.
 
----
-
-[← Previous: 402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) | [🏠 Home](../README.md) | [→ Next: 501. Platform Operations](./501-PLATFORM_OPERATIONS.md)
-
 ## Build speed
 
 Tekton's checkout is already shallow (`--depth 1` in every clone task — `fetch-source`, `gitops-deploy`, `k6-smoke`, `trivy-iac`), and there is no "agent scheduling / containerCap" concept (each `TaskRun` **is** a Pod; parallelism = node capacity). The two gaps vs the Jenkins agents, now closed:
@@ -1087,6 +1083,10 @@ if [[ "${run_env}" == "develop" && "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}
 | A *failed* PipelineRun does NOT mark the app Degraded | — | PipelineRun has no ArgoCD health fn (by design) | nothing — runs don't affect app health; inspect the run in the Tekton Dashboard |
 
 > **Design takeaway.** Keep Tekton **definitions** in git (ArgoCD-owned) and Tekton **runs** out of GitOps ownership (`exclude: runs/*`); let run *status* live in the Tekton Dashboard, not in ArgoCD's app health. The only resources that should ever move an ArgoCD app's health are the **workloads with a real readiness contract** — here, the EventListener Deployment and the prepull DaemonSet — and those are exactly where the namespace's Pod Security Standard can silently block you.
+
+---
+
+[← Previous: 402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) | [🏠 Home](../README.md) | [→ Next: 501. Platform Operations](./501-PLATFORM_OPERATIONS.md)
 
 ---
 
