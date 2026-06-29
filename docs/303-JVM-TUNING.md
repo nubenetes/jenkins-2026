@@ -64,7 +64,7 @@ JDK 25 (Temurin/HotSpot), `UseContainerSupport` on. Ergonomics on a <1792 MB cgr
 
 ## The tuning we applied
 
-Set in the shared Helm template (`helm/microservices/templates/deployment.yaml`) for both tiers, via `JDK_JAVA_OPTIONS`:
+Set in the shared Helm template (`helm/microservices/templates/deployment.yaml`, which lives in the **`jenkins-2026-gitops-config`** repo — the microservices chart is GitOps-managed, not in this infra repo) for both tiers, via `JDK_JAVA_OPTIONS`:
 
 | Flag | What it does | Value | Why this value |
 |---|---|---|---|

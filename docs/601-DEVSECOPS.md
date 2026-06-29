@@ -168,7 +168,7 @@ Provides **interactive static analysis dashboards** natively within the Jenkins 
 
 **Plugin configuration** (pinned in `helm/jenkins/values-common.yaml`):
 ```yaml
-- warnings-ng:13.10097.v277a_958a_b_c09
+- warnings-ng:13.10153.v011f47a_3ef01
 ```
 
 **Pipeline integration** (in `post` block of `MicroservicesPipeline.groovy`):

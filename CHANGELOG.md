@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.41] - 2026-06-29
+
+Increment over v0.28.40 (documentation audit — sync docs with `main` code).
+
+### Docs
+- **Full documentation audit of both repos against the code in `main`.** Six parallel
+  reviewers cross-checked every numbered doc (100–902) + README/CLAUDE/index/CHANGELOG and
+  the `jenkins-2026-gitops-config` repo against the actual code. The docs were globally
+  well-synced; the drift fixes found:
+  - **docs/402** — the `develop` tier now **builds the app's `develop` branch** (the nubenetes
+    app forks carry a real `develop` branch; `services.yaml` `branches.develop: develop` → true
+    branch-based promotion). Removed the stale "same `main` image / upstream apps have no
+    `develop` branch" claim (which contradicted CLAUDE.md and docs/403). Fixed the ER `BRANCHES`
+    map (`develop "develop"`), the branch-mapping flowchart, the narrative, and the seed-job k6
+    snippet (no hard-coded `vus`/`iterations`).
+  - **docs/101** — added the 27th workflow `Day2.registry.01-image-retention` (ghcr image prune)
+    to all four inventory/matrix tables; corrected the `26 → 27` / `rows 1-24 → 1-25` counts and
+    the renumbered cross-references (including a pre-existing stale "row 16" → "row 21" for
+    `Decom.cluster.01`).
+  - **docs/201** — added `argocd/microservices-project.yaml` (AppProject) and
+    `argocd-version-patch-watcher.yaml` (CronJob) to the "complete" imperative/GitOps inventory.
+  - **docs/601** — bumped the warnings-ng plugin pin to the real value
+    `13.10153.v011f47a_3ef01`.
+  - **docs/303** — clarified the microservices Helm `deployment.yaml` lives in the
+    `jenkins-2026-gitops-config` repo, not this infra repo.
+  - **docs/301** — `observability.leanMetrics` default is `auto` (→ `true` on the free tier),
+    not `true`.
+  - **SKILLS.md** — refreshed the namespace list (`headlamp` + tekton namespaces).
+
 ## [v0.28.40] - 2026-06-29
 
 Increment over v0.28.39 (robust GKE pause/resume workflows).

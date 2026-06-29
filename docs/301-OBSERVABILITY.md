@@ -115,7 +115,8 @@ Enabling the optional **lean `develop` tier** roughly **doubles** the app-metric
 (same metrics, `deployment.environment=develop`), which can tip a free-tier tenant over
 15k → Grafana Cloud starts **rejecting** series and the develop dashboards go spotty.
 
-The **`observability.leanMetrics`** flag (**default `true`**; per-run override
+The **`observability.leanMetrics`** flag (**default `auto`** → resolves to `true` on the
+free tier, `false` on paid — see the grafanaCloudTier profile below; per-run override
 `JENKINS2026_OBS_LEAN_METRICS=false`) makes `scripts/03-observability.sh` **disable the
 k8s-monitoring cluster-infra metrics** (cadvisor/kube-state/node-exporter), freeing
 thousands of series so the develop app metrics fit. **App / CNPG / Tekton / k6 / Jenkins

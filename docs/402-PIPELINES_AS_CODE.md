@@ -63,7 +63,7 @@ So the loop is: *seed job reads `services.yaml` → generates `gateway`/`jhipste
 <details>
 <summary>🔴 For specialists — the moving parts and how they're wired here</summary>
 
-**Generation (self-bootstrapping):** `jcasc-seed-job.yaml` defines `seed-jobs` (a `cpsScm` pipeline tracking `JENKINS2026_REPO_BRANCH`, cron `H/30 * * * *`). It runs [`Jenkinsfile.seed`](../jenkins/pipelines/seed/) → `jobDsl` (`sandbox: false`, so it may `org.yaml.snakeyaml.Yaml`-parse the registry) against [`seed_jobs.groovy`](../jenkins/pipelines/seed/seed_jobs.groovy). For the **stable** env always (+ **develop** when `JENKINS2026_DEVELOP_TRACK_ENABLED=true`), it emits per service a `cps` job whose script is `@Library("microservices-shared-library@<infraBranch>") _` + `MicroservicesPipeline(...)`, a `microservices-k6-smoke[-develop]` job calling `MicroservicesK6SmokePipeline(profile:'smoke', vus:4, iterations:12)` (a **Build with Parameters** form exposes the full profile/VUs/duration/threshold knobs — see [302 · k6 Traffic & Load Testing](./302-K6_LOAD_TESTING.md)), and a `microservices[-develop]` ListView. `buildDiscarder numToKeep(20)` (seed itself keeps 10). It prunes the legacy `pac-dev` folder and the develop view when the track is off.
+**Generation (self-bootstrapping):** `jcasc-seed-job.yaml` defines `seed-jobs` (a `cpsScm` pipeline tracking `JENKINS2026_REPO_BRANCH`, cron `H/30 * * * *`). It runs [`Jenkinsfile.seed`](../jenkins/pipelines/seed/) → `jobDsl` (`sandbox: false`, so it may `org.yaml.snakeyaml.Yaml`-parse the registry) against [`seed_jobs.groovy`](../jenkins/pipelines/seed/seed_jobs.groovy). For the **stable** env always (+ **develop** when `JENKINS2026_DEVELOP_TRACK_ENABLED=true`), it emits per service a `cps` job whose script is `@Library("microservices-shared-library@<infraBranch>") _` + `MicroservicesPipeline(...)`, a `microservices-k6-smoke[-develop]` job calling `MicroservicesK6SmokePipeline(targetNamespace, envName, genaiEnabled, profile:'smoke', presetChoices:[…])` (the VUs/iterations are no longer hard-coded — the smoke defaults live in `MicroservicesK6SmokePipeline.groovy`, and a **Build with Parameters** form exposes the full profile/VUs/duration/threshold knobs — see [302 · k6 Traffic & Load Testing](./302-K6_LOAD_TESTING.md)), and a `microservices[-develop]` ListView. `buildDiscarder numToKeep(20)` (seed itself keeps 10). It prunes the legacy `pac-dev` folder and the develop view when the track is off.
 
 **Execution agent:** `MicroservicesPipeline` declares a **9-container** pod (SA `jenkins`, toleration `jenkins-agent=true:NoSchedule` for Karpenter spot nodes): `maven` (`maven:3.9.9-eclipse-temurin-21`), `node` (`node:20-bookworm`), `docker` (`docker:26-dind`, privileged), `helm` (`alpine/k8s:1.31.3` — kubectl/helm/argocd/yq), `git` (`alpine/git:2.54.0`), `semgrep`, `trivy`, `codeql` (digest-pinned), `jnlp`. Host-path caches (`/tmp/jenkins-{maven,npm,trivy,codeql}-cache`) speed re-runs. `disableConcurrentBuilds()`, `buildDiscarder(20)`. `IMAGE = <MICROSERVICES_REGISTRY>/<service>:<gitBranch>`.
 
@@ -209,7 +209,7 @@ Instead of separating stable and development pipelines into separate jobs and fo
 
 ```mermaid
 flowchart TB
-  reg["services.yaml<br/>app branch = main (both tiers)"] --> sw{DEVELOP_TRACK_ENABLED?}
+  reg["services.yaml<br/>app branch: stable=main · develop=develop"] --> sw{DEVELOP_TRACK_ENABLED?}
   sw -->|always| stable
   sw -->|true| develop
   subgraph stable["stable tier (HA)"]
@@ -226,7 +226,7 @@ flowchart TB
 
 </details>
 
-**Reading it —** the single switch is `DEVELOP_TRACK_ENABLED`. The **stable** tier always exists; the **develop** tier is an opt-in tier that differs in its jobs (a `-develop` suffix), namespace (`microservices-develop`), and values (`values-develop.yaml` on the GitOps repo's `develop` branch). Crucially the *app image is identical* (the upstream apps have no `develop` branch), so this is a second **deployment** tier, not a second build. And it is deliberately **lean**: where stable runs HA Postgres (3 CNPG instances + a 3-replica pooler + daily backups), develop runs a **single** non-HA CNPG instance, a single pooler, and **no backups** — so it adds only a handful of pods, not a full second copy. Both tiers funnel into one shared observability stack, separated only by namespace/labels. See the dedicated section below.
+**Reading it —** the single switch is `DEVELOP_TRACK_ENABLED`. The **stable** tier always exists; the **develop** tier is an opt-in tier that differs in its jobs (a `-develop` suffix), namespace (`microservices-develop`), and values (`values-develop.yaml` on the GitOps repo's `develop` branch). The nubenetes app **forks now carry a real `develop` branch** (`services.yaml` `branches.develop: develop`), so the develop tier **builds the app's `develop` branch** — true branch-based promotion, a second build, not just a second deployment. And it is deliberately **lean**: where stable runs HA Postgres (3 CNPG instances + a 3-replica pooler + daily backups), develop runs a **single** non-HA CNPG instance, a single pooler, and **no backups** — so it adds only a handful of pods, not a full second copy. Both tiers funnel into one shared observability stack, separated only by namespace/labels. See the dedicated section below.
 
 ### Why the GitOps Repo Uses Only the `main` Branch
 
@@ -238,7 +238,7 @@ The companion repository `jenkins-2026-gitops-config` is configured to track onl
 
 A second `develop` deployment tier is available behind a feature flag, **disabled by default**. It is *only a second deployment tier of the microservices*, not a second platform:
 
-* The upstream JHipster app repos have **no `develop` branch** (only `main`), so the develop tier **builds the same app image** as stable.
+* The nubenetes app **forks carry a real `develop` branch** (off `main`), set via `services.yaml` `branches.develop: develop`, so the develop tier **builds the app's `develop` branch** — true branch-based promotion. (Only the *original upstream* `jhipster/*` repos have just `main`; this project builds the forks.)
 * It differs from stable only in **target namespace** (`microservices-develop`), its **own `values-develop.yaml`** (tracked on the GitOps repo's **`develop` branch**), and a **lean Postgres** profile.
 * **Observability is a single shared stack** — the develop tier reports into the *same* Grafana/Loki/Tempo/Prometheus, distinguished by namespace/labels (`deployment_environment=develop`).
 
@@ -335,7 +335,7 @@ erDiagram
   }
   BRANCHES {
     string stable "main"
-    string develop "main"
+    string develop "develop"
   }
   JOB {
     string name "<svc>[-develop]"
