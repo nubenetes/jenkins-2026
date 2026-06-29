@@ -401,6 +401,15 @@ there is no precious local file to lose.
 
 **Run it only after a full Decom** (clusters + all backends already destroyed):
 
+> 🔴 **Why the order is not optional.** The state bucket this destroys holds the
+> remote Terraform state of **every other module** (gke, gateway, the observability
+> backends). If you run `down` while any of them is still alive, you **delete their
+> state along with the bucket** — Terraform then no longer knows those resources
+> exist, so they become **orphaned and keep billing**, and you can no longer
+> `terraform destroy` them cleanly (you'd have to hunt each one down by hand in the
+> GCP/Azure/AWS console). Always `Decom` everything above the root **first**, confirm
+> the project is empty, **then** `down`.
+
 ```bash
 ./scripts/bootstrap.sh down
 # type 'destroy-root' when prompted
@@ -465,6 +474,17 @@ needed. (The additive IAM bindings are idempotent and don't collide.)
 
 **Is it safe to re-run `up`?** Yes — idempotent. It's the way to apply a bootstrap
 change (e.g. a new IAM role) to the live project.
+
+**Can I test the whole root lifecycle (`down` then `up`)?** Yes — it's fully supported
+and symmetric. Two things are **not** automatic, though: (1) you must `Decom` the
+clusters + all backends **first** (see the 🔴 warning in
+[Destroy the root](#destroy-the-root-bootstrapsh-down) — otherwise `down` deletes the
+state bucket holding their state and orphans them), and (2) after `up`, the recreated
+DNS zone has **new** nameservers, so you re-do the one-time `NS` delegation at the
+parent domain ([Step 2](#step-2--delegate-at-the-parent-domain-squarespace)).
+Everything else (buckets, WIF, CI SA, the 4 secrets) comes back automatically. If you
+only want to confirm the root *converges* without tearing anything down, just re-run
+`up` — it's idempotent and free.
 
 ---
 
