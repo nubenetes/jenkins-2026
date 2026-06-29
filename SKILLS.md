@@ -20,7 +20,7 @@ Deploys namespaces and bootstrap credentials.
     ```bash
     ./scripts/01-namespaces.sh
     ```
-*   **Implications:** Deploys namespaces `jenkins`, `observability`, `argocd`, `pgadmin`, `microservices`. Sets up IAP OAuth secrets.
+*   **Implications:** Deploys namespaces `jenkins`, `observability`, `argocd`, `pgadmin`, `headlamp`, `microservices` (+ the gateway namespace; `tekton`/`tekton-pipelines`/`pipelines-as-code` when `ci.engine=tekton`). Sets up IAP OAuth secrets.
 
 ### Skill 3: Deploy the OpenTelemetry Operator
 Ensures the mutating webhook and CRDs are running before deployment of microservices or observability.
