@@ -49,6 +49,22 @@ flowchart TD
 
 </details>
 
+> **Manual recovery (interrupted / partial pause).** If a pause is interrupted, or you run the
+> steps by hand and the cluster won't reach 0, **do NOT fire several `gcloud container clusters
+> resize --num-nodes 0` back-to-back** — each queues a separate node-pool operation and they
+> **fight** (one stalls draining a CNPG primary behind its PDB while another reconciles nodes back),
+> so the count keeps churning (seen bouncing 0→2→3). Recover deterministically, once:
+> 1. Confirm **all four** recreate-forces are off — `gcloud container clusters describe …` →
+>    `autoscaling.enableNodeAutoprovisioning` empty (NAP), and `… node-pools describe …` →
+>    `autoscaling`/`management.autoRepair`/`management.autoUpgrade` all empty.
+> 2. `kubectl drain <node> --disable-eviction --force --ignore-daemonsets --delete-emptydir-data` every node (DELETE bypasses the CNPG PDBs).
+> 3. **Wait until `gcloud container operations list --filter='status=RUNNING'` is empty** — a wedged
+>    `SET_NODE_POOL_SIZE` can't be cancelled; let it finish before issuing anything new.
+> 4. Issue **one** `gcloud container clusters resize … --num-nodes 0` and let its operation complete.
+>
+> A concurrent **`UPGRADE_MASTER`** op (control-plane auto-upgrade, cluster `RECONCILING`) is harmless
+> — it never creates worker nodes, so the pool stays at 0.
+
 <details><summary>🗺️ What pause removes vs what survives (dependency map)</summary>
 
 ```mermaid
