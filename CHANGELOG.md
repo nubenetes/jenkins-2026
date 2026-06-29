@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.44] - 2026-06-29
+
+### Docs
+- **docs/403 — added a "Beyond Jenkins & Tekton — the `ci.engine` contract & candidate
+  engines (roadmap)" section.** Documents, as analysis only (nothing implemented), the
+  six-point contract any `ci.engine` must satisfy and a fit-ranked survey of candidate
+  engines for this GitHub-centric, Argo-on-GKE stack: **GitHub Actions self-hosted (ARC)**
+  and **Argo Workflows (+ Argo Events)** as the best fits (ARC's ephemeral runners being
+  the ideal showcase for the new NAP `ci-spot` Spot nodes), then Woodpecker/Drone,
+  Concourse and Dagger — plus a dedicated **GitLab CI** analysis (the Runner fits the
+  cluster, but GitLab-as-control-plane introduces a second forge that fights the
+  single-GitHub-source-of-truth model; keyless-to-GCP and built-in DevSecOps noted). So a
+  future `ci.engine` value is a deliberate choice rather than a guess.
+
 ## [v0.28.43] - 2026-06-29
 
 Increment over v0.28.42 (clickable file references throughout the docs).
