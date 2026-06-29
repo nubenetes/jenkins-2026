@@ -51,7 +51,7 @@ variable "enable_node_autoprovisioning" {
     Enable GKE Node Auto-Provisioning (NAP) — the GA, Google-native equivalent of
     Karpenter. When true, the cluster auto-creates and deletes right-sized node pools
     (including Spot pools) on demand, driven by Custom ComputeClasses (see
-    infrastructure/compute-classes/). The static `${cluster_name}-pool` still hosts the
+    infrastructure/compute-classes/). The static "<cluster_name>-pool" still hosts the
     long-lived platform (ArgoCD/Jenkins/observability/CNPG); NAP adds ephemeral,
     scale-to-zero capacity for bursty CI agents. Pause/resume (Day2.scale.*) toggle NAP
     out-of-band via gcloud; a later Day1 apply reconciles it back on (the resume
