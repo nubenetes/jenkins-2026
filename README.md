@@ -270,6 +270,7 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 - [Observability Modes](./docs/301-OBSERVABILITY.md#observability-modes)
   - [Logging in to Amazon Managed Grafana (managed-aws)](./docs/301-OBSERVABILITY.md#logging-in-to-amazon-managed-grafana-managed-aws)
 - Runbook: [Log Correlation Validation](./docs/runbooks/log-correlation-validation.md)
+- Runbook: [NAP → Spot CI nodes](./docs/runbooks/nap-spot-provisioning.md)
 
 ---
 
@@ -429,6 +430,13 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
   - [6. Grafana — prove both correlation directions](./docs/runbooks/log-correlation-validation.md#6-grafana--prove-both-correlation-directions)
   - [Rollback](./docs/runbooks/log-correlation-validation.md#rollback)
   - [Gotchas](./docs/runbooks/log-correlation-validation.md#gotchas-why-panels-can-look-empty-without-anything-being-broken)
+- [NAP → Spot CI nodes](./docs/runbooks/nap-spot-provisioning.md) — live validation that GKE Node Auto-Provisioning + the `ci-spot` ComputeClass bring up Spot, scale-to-zero nodes for CI build agents, and how to read the `SSD_TOTAL_GB` quota ceiling that actually bounds it
+  - [Background — what should happen](./docs/runbooks/nap-spot-provisioning.md#background--what-should-happen)
+  - [0. Get cluster access (the gotchas)](./docs/runbooks/nap-spot-provisioning.md#0-get-cluster-access-the-gotchas-in-order)
+  - [2. Trigger a build and watch the agent + node](./docs/runbooks/nap-spot-provisioning.md#2-trigger-a-build-and-watch-the-agent--node)
+  - [3. The real ceiling: `SSD_TOTAL_GB` quota](./docs/runbooks/nap-spot-provisioning.md#3-the-real-ceiling-ssd_total_gb-quota-the-part-everyone-trips-on)
+  - [4. Cold-start caveat (first build on a fresh Spot node)](./docs/runbooks/nap-spot-provisioning.md#4-cold-start-caveat--the-first-build-on-a-fresh-spot-node-is-slow)
+  - [Troubleshooting — agent stuck Pending](./docs/runbooks/nap-spot-provisioning.md#troubleshooting--agent-stuck-pending)
 
 
 ## 1. Document Inventory

@@ -247,6 +247,11 @@ The repository has been refactored to serve as a **Golden Path Internal Develope
   * **Watch it** — the **CI-CD / Node Auto-Provisioning (Spot)** Grafana dashboard ([`observability/grafana/dashboards/node-autoprovisioning.json`](../observability/grafana/dashboards/node-autoprovisioning.json)) shows Spot vs static node counts over time, so you can see scale-up on a build and consolidation back toward zero after it.
   * **The real ceiling is the regional `SSD_TOTAL_GB` quota, not NAP.** Each node's `pd-balanced` boot disk counts against that quota, so the number of *concurrent* Spot CI nodes is bounded by `SSD_TOTAL_GB` ÷ disk-size (plus the static-pool disks and the CNPG Postgres PVs). Symptom when you hit it: the agent Pod stays `Pending` and `kubectl get events` shows `cluster-autoscaler … ScaleUpFailed … Quota 'SSD_TOTAL_GB' exceeded` (NAP keeps retrying across machine families — it's doing the right thing, GCE is refusing the disk). The NAP node disk is kept at `var.disk_size_gb` (50 GB, same as the static pool) precisely to stretch this quota; for more headroom, request an `SSD_TOTAL_GB` increase in the region (a GCP project quota, unrelated to the code).
 
+> **Runbook**: for a step-by-step live validation (get cluster access despite the
+> auth-plugin/stale-IP gotchas, trigger a build, watch NAP bring up a Spot `ci-spot` node,
+> and read the `SSD_TOTAL_GB` quota ceiling + cold-start behaviour) see the
+> [NAP → Spot CI nodes runbook](./runbooks/nap-spot-provisioning.md).
+
 ### 3. Zero-Trust Security & Workload Identity
 * **Workload Identity Federation**: All static JSON Service Account keys are removed. Both external CI engines (GitHub Actions) and in-cluster workloads assume GCP IAM Roles dynamically via OIDC.
 * **GKE Gateway API + BackendTLSPolicy**: Traffic between the Gateway load balancer and backend pods (Jenkins/Headlamp) is encrypted and validated using `BackendTLSPolicy` targets.
