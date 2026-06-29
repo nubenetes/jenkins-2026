@@ -175,10 +175,14 @@ data** in `grafana-cloud` mode. Two deliberate choices make it work in **every**
    the taint metric is a reliable, zero-config signal.
 2. **A node-inventory allow-list survives lean mode.** [`scripts/03-observability.sh`](../../scripts/03-observability.sh)
    does **not** disable cluster metrics wholesale in lean mode — it keeps kube-state-metrics
-   deployed and scrapes **only** `kube_node_info`, `kube_node_spec_taint` and
-   `kube_node_status_condition` (`clusterMetrics.kube-state-metrics.metricsTuning.useDefaultAllowList: false`
+   deployed and scrapes **only** `kube_node_info`, `kube_node_labels`, `kube_node_spec_taint`
+   and `kube_node_status_condition` (`clusterMetrics.kube-state-metrics.metricsTuning.useDefaultAllowList: false`
    + `includeMetrics`). That's ~30–50 series total — negligible against the 15k free-tier cap —
-   while cadvisor/kubelet/node-exporter stay off.
+   while cadvisor/kubelet/node-exporter stay off. (`kube_node_labels` carries
+   `label_node_kubernetes_io_instance_type`, the only cluster-wide source of a node's **machine
+   type** for static-pool nodes — NAP node names embed it, static `…-pool-…` names don't. KSM
+   already exposes that label via the chart's default `--metric-labels-allowlist`, so only the
+   scrape keep-list needed it; the chart/KSM is untouched.)
 
 So if the dashboard is empty, it is **not** the lean profile: check that the `kube-state-metrics`
 Pod is `Running`, that the `k8s-monitoring-alloy` collector is up, and — most likely — that a

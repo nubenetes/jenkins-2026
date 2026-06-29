@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.47] - 2026-06-29
+
+Increment over v0.28.46 (surface node machine type for static-pool nodes).
+
+### Fixed
+- **Keep `kube_node_labels` in the lean kube-state-metrics scrape allow-list**
+  (`scripts/03-observability.sh`), so a node's **machine type**
+  (`label_node_kubernetes_io_instance_type`) reaches Grafana Cloud. NAP node names embed the
+  type (`nap-e2-standard-2-…`) but static-pool names (`jenkins-2026-pool-…`) don't, so
+  `kube_node_labels` is the only cluster-wide source for static nodes. **No chart / KSM
+  change** — KSM already exposes `node.kubernetes.io/instance-type` via the chart's default
+  `--metric-labels-allowlist`; only this scrape keep-list was dropping the metric. Adds ~1
+  series per node (negligible). Docs (`docs/301`, NAP runbook) updated to 4 node metrics.
+
 ## [v0.28.46] - 2026-06-29
 
 Increment over v0.28.45 (make the NAP/Spot dashboard work on the free tier).

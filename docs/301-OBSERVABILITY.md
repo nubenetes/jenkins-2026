@@ -129,10 +129,14 @@ plan when you want full cluster-infra metrics back.
 
 > **Lean keeps a tiny node-inventory slice (so the NAP/Spot dashboard still works on free).**
 > "Lean" does **not** mean *all* cluster metrics off. `03-observability.sh` keeps
-> kube-state-metrics deployed and scrapes **only three node metrics** — `kube_node_info`,
-> `kube_node_spec_taint`, `kube_node_status_condition` (via `clusterMetrics.kube-state-metrics.metricsTuning`
-> `useDefaultAllowList: false` + `includeMetrics`) — roughly a handful of series per node
-> (~30–50 total), negligible against the 15k cap. That is exactly what the **CI-CD / Node
+> kube-state-metrics deployed and scrapes **only four node metrics** — `kube_node_info`,
+> `kube_node_labels`, `kube_node_spec_taint`, `kube_node_status_condition` (via
+> `clusterMetrics.kube-state-metrics.metricsTuning` `useDefaultAllowList: false` +
+> `includeMetrics`) — roughly a handful of series per node (~30–50 total), negligible
+> against the 15k cap. (`kube_node_labels` carries `label_node_kubernetes_io_instance_type`
+> — the machine type, the only cluster-wide source of it for static-pool nodes, whose names
+> don't embed it; KSM already exposes that label via the chart's default
+> `--metric-labels-allowlist`, so only the scrape keep-list needed it.) That is exactly what the **CI-CD / Node
 > Auto-Provisioning (Spot)** dashboard needs: it derives Spot / ComputeClass membership from
 > the node **taints** (`kube_node_spec_taint{key="cloud.google.com/gke-spot"}` /
 > `…/compute-class`), which KSM exposes **by default** — *not* from node labels
