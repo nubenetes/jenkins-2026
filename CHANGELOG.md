@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.46] - 2026-06-29
+
+Increment over v0.28.45 (make the NAP/Spot dashboard work on the free tier).
+
+### Fixed
+- **The "CI-CD / Node Auto-Provisioning (Spot)" dashboard now populates in every
+  observability mode — including the lean/free Grafana Cloud profile.** It was empty in
+  `grafana-cloud` mode because `leanMetrics` (default on free tier) disabled
+  kube-state-metrics entirely, so the `kube_node_*` series it queries weren't shipped. Two
+  changes fix it without re-flooding the 15k free-tier series cap:
+  - **`scripts/03-observability.sh`** — lean mode no longer turns cluster metrics fully off.
+    It keeps kube-state-metrics deployed and scrapes **only** `kube_node_info`,
+    `kube_node_spec_taint` and `kube_node_status_condition`
+    (`clusterMetrics.kube-state-metrics.metricsTuning.useDefaultAllowList: false` +
+    `includeMetrics`) — ~30–50 series total, negligible vs the cap — while cadvisor / kubelet /
+    node-exporter stay off.
+  - **`observability/grafana/dashboards/node-autoprovisioning.json`** — queries now read node
+    **taints** (`kube_node_spec_taint{key="cloud.google.com/gke-spot"|".../compute-class"}`),
+    which KSM exposes by default, instead of node **labels** (`kube_node_labels`), whose
+    `label_*` dimensions need a KSM `--metric-labels-allowlist` we deliberately don't set.
+  - Documented in detail in `docs/301` (§ leanMetrics), the runbook
+    `docs/runbooks/nap-spot-provisioning.md`, and the `03-observability.sh` comments.
+
 ## [v0.28.45] - 2026-06-29
 
 Increment over v0.28.44 (NAP node disk right-sizing — surfaced by a live Spot run).
