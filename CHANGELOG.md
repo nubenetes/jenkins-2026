@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.40] - 2026-06-29
+
+Increment over v0.28.39 (robust GKE pause/resume workflows).
+
+### Fixed
+- **GKE Pause/Resume workflow conflicts and race conditions.** Resolved GKE API lock conflicts where multiple sequential configuration commands would fail or clash. Key improvements:
+  - Added a `wait_for_gke_operations` helper function in both `Day2.scale.01-pause.yml` and `Day2.scale.02-resume.yml` to serialize mutations and serialize node pool resizing.
+  - Replaced general `gcloud container clusters update` commands with node-pool specific `gcloud container node-pools update` commands for toggling autoscaler settings.
+  - Removed permissive `|| true` error masking from critical GKE configuration steps (NAP, autoscaling, autoRepair, autoUpgrade) to ensure workflows fail loudly if GKE updates fail.
+
 ## [v0.28.39] - 2026-06-29
 
 Increment over v0.28.38 (docs: manual pause-recovery note).
