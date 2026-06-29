@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.43] - 2026-06-29
+
+Increment over v0.28.42 (clickable file references throughout the docs).
+
+### Docs
+- **Every in-prose reference to a real repo file/directory is now a clickable relative
+  link** across all 25 markdown docs (and the gitops-config repo's READMEs) — one-click
+  navigation from any filename mention to the file. Pure link-wrapping (backticks kept
+  inside the link text); code blocks, mermaid, glob patterns, env vars, commands and
+  already-linked tokens left untouched; every relative href verified to resolve (0 broken
+  links). Started from the `dashboards-cloud-export` "Mapping (title ← file)" table and
+  applied repo-wide.
+- **gitops-config README** — corrected the "Related Repositories" table (the real app
+  source is the `nubenetes/jhipster-sample-app-*` forks, not `spring-microservices/*`; the
+  gateway is a Java/JHipster app that serves the Angular SPA, not an Angular app) and
+  refreshed the stale `infrastructure/karpenter/` mention to NAP / `compute-classes/`.
+
 ## [v0.28.42] - 2026-06-29
 
 Increment over v0.28.41 (wire up elastic Spot CI nodes — GKE-native, GA).
