@@ -245,6 +245,12 @@ The repository has been refactored to serve as a **Golden Path Internal Develope
   * **Preemption ≠ stuck** — if a Spot node *is* reclaimed, GKE reschedules the agent Pod and NAP provisions a fresh node (Spot, or on-demand on stock-out); the affected build fails fast and is simply re-run (no manual cleanup).
   * **Escape hatch** — for a run where you want **guaranteed, non-preemptible completion** (e.g. a release build), flip the single flag: set `nodeAutoProvisioning.enabled: false` (or `JENKINS2026_NODE_AUTOPROVISIONING_ENABLED=false`) and the agents schedule on the static pool instead. One toggle, no manifest edits — see [`config/config.yaml`](../config/config.yaml).
   * **Watch it** — the **CI-CD / Node Auto-Provisioning (Spot)** Grafana dashboard ([`observability/grafana/dashboards/node-autoprovisioning.json`](../observability/grafana/dashboards/node-autoprovisioning.json)) shows Spot vs static node counts over time, so you can see scale-up on a build and consolidation back toward zero after it.
+  * **The real ceiling is the regional `SSD_TOTAL_GB` quota, not NAP.** Each node's `pd-balanced` boot disk counts against that quota, so the number of *concurrent* Spot CI nodes is bounded by `SSD_TOTAL_GB` ÷ disk-size (plus the static-pool disks and the CNPG Postgres PVs). Symptom when you hit it: the agent Pod stays `Pending` and `kubectl get events` shows `cluster-autoscaler … ScaleUpFailed … Quota 'SSD_TOTAL_GB' exceeded` (NAP keeps retrying across machine families — it's doing the right thing, GCE is refusing the disk). The NAP node disk is kept at `var.disk_size_gb` (50 GB, same as the static pool) precisely to stretch this quota; for more headroom, request an `SSD_TOTAL_GB` increase in the region (a GCP project quota, unrelated to the code).
+
+> **Runbook**: for a step-by-step live validation (get cluster access despite the
+> auth-plugin/stale-IP gotchas, trigger a build, watch NAP bring up a Spot `ci-spot` node,
+> and read the `SSD_TOTAL_GB` quota ceiling + cold-start behaviour) see the
+> [NAP → Spot CI nodes runbook](./runbooks/nap-spot-provisioning.md).
 
 ### 3. Zero-Trust Security & Workload Identity
 * **Workload Identity Federation**: All static JSON Service Account keys are removed. Both external CI engines (GitHub Actions) and in-cluster workloads assume GCP IAM Roles dynamically via OIDC.
