@@ -241,6 +241,12 @@ resource "google_container_node_pool" "primary" {
 
     tags = ["jenkins-2026"]
   }
+
+  lifecycle {
+    ignore_changes = [
+      node_config[0].kubelet_config,
+    ]
+  }
 }
 
 # Grant objectAdmin privileges on the pre-created backups bucket to the GKE node
