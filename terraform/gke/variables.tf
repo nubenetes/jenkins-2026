@@ -56,6 +56,13 @@ variable "enable_node_autoprovisioning" {
     scale-to-zero capacity for bursty CI agents. Pause/resume (Day2.scale.*) toggle NAP
     out-of-band via gcloud; a later Day1 apply reconciles it back on (the resume
     semantics), so that drift is expected and benign.
+
+    NOTE: do not set this directly in CI — it is DRIVEN from the single config flag
+    `nodeAutoProvisioning.enabled` in config/config.yaml. scripts/lib/config.sh,
+    test/e2e.sh and the Day1 workflow all export TF_VAR_enable_node_autoprovisioning from
+    that flag, so the cluster-level NAP toggle can never desync from the in-cluster
+    ComputeClass wiring. The `true` default here only applies to a bare `terraform apply`
+    with no TF_VAR set.
   EOT
   default     = true
 }

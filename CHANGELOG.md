@@ -29,6 +29,10 @@ Increment over v0.28.41 (wire up elastic Spot CI nodes — GKE-native, GA).
     `config/config.yaml`, read in `scripts/lib/config.sh`. `scripts/01-namespaces.sh`
     applies the ComputeClass **non-fatally** on GKE (no platform pod depends on it, so a
     NAP hiccup never fails a provision); `scripts/down.sh` removes it before teardown.
+  - **Single source of truth:** that one flag also drives the cluster-level Terraform
+    toggle — `scripts/lib/config.sh`, `test/e2e.sh` and `Day1.cluster.01-gke.yml` all
+    derive `TF_VAR_enable_node_autoprovisioning` from `nodeAutoProvisioning.enabled`, so
+    cluster NAP can never desync from the in-cluster ComputeClass wiring.
   - The static `jenkins-2026-pool` keeps the long-lived platform; only the CI build
     agents (`vars/MicroservicesPipeline.groovy`, `vars/MicroservicesK6SmokePipeline.groovy`)
     target the class — via `nodeSelector cloud.google.com/compute-class: ci-spot` +

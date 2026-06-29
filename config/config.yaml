@@ -33,11 +33,12 @@ platform:
 # pod depends on it, the ComputeClass apply step is non-fatal — a NAP issue never blocks
 # the core provision.
 #
-# `enabled` here gates the in-cluster wiring (applying the ComputeClass in
-# 01-namespaces.sh + the agents' GKE_COMPUTE_CLASS targeting surfaced through JCasC). The
-# matching cluster-level toggle is the Terraform `enable_node_autoprovisioning` var (also
-# default true); keep the two in sync — turning this off without disabling NAP in
-# Terraform just means no workload targets the auto-created pools.
+# `enabled` is the SINGLE SOURCE OF TRUTH for the whole feature: it gates the in-cluster
+# wiring (the ComputeClass apply in 01-namespaces.sh + the agents' GKE_COMPUTE_CLASS
+# targeting via JCasC) AND drives the cluster-level Terraform toggle
+# (`enable_node_autoprovisioning`) — config.sh / test/e2e.sh / the Day1 workflow all derive
+# `TF_VAR_enable_node_autoprovisioning` from this value, so cluster NAP and the in-cluster
+# wiring can never desync. Flip this one flag to turn the whole thing on/off.
 # FEATURE FLAG: override for a single run with JENKINS2026_NODE_AUTOPROVISIONING_ENABLED.
 nodeAutoProvisioning:
   enabled: true

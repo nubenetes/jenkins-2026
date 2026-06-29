@@ -78,6 +78,14 @@ case "${J2026_NODE_AUTOPROVISIONING_ENABLED}" in
 esac
 export J2026_NODE_AUTOPROVISIONING_COMPUTE_CLASS="$(yq_get '.nodeAutoProvisioning.computeClass' 'ci-spot')"
 
+# Single source of truth: the SAME flag drives the cluster-level Terraform toggle
+# (terraform/gke `enable_node_autoprovisioning`), so cluster NAP, the in-cluster
+# ComputeClass, and the agents' targeting can never desync. Anything that sources this
+# lib before `terraform apply` (e.g. up.sh) picks it up automatically; test/e2e.sh and
+# the Day1 workflow derive the same value straight from config.yaml because they run
+# terraform BEFORE sourcing this lib.
+export TF_VAR_enable_node_autoprovisioning="${J2026_NODE_AUTOPROVISIONING_ENABLED}"
+
 # --- ci engine (feature flag) ------------------------------------------------
 
 # FEATURE FLAG: JENKINS2026_CI_ENGINE, if set, overrides ci.engine from

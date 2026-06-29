@@ -291,6 +291,10 @@ jobs:
           HEADLAMP_ADMIN_EMAILS: ${{ secrets.HEADLAMP_ADMIN_EMAILS }}
         run: |
           export TF_VAR_admin_emails="$(jq -nc --arg emails "${HEADLAMP_ADMIN_EMAILS}" '$emails | split(",") | map(gsub("^\\s+|\\s+$";"")) | map(select(length > 0))')"
+          # Node Auto-Provisioning toggle: single source of truth is config.yaml
+          # (nodeAutoProvisioning.enabled), derived here so cluster-level NAP can never
+          # desync from the in-cluster ComputeClass wiring that up.sh applies later.
+          export TF_VAR_enable_node_autoprovisioning="$(yq '.nodeAutoProvisioning.enabled // true' ../../config/config.yaml)"
           terraform apply -auto-approve -input=false
 
       - name: Fetch kubeconfig credentials
