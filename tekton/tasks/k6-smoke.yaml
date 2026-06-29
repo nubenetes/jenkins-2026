@@ -70,6 +70,12 @@ spec:
         # resolve-preset can fill it WITHOUT itself running as root (least privilege).
         : > "$(workspaces.source.path)/k6sim-preset.env"
         chmod 0666 "$(workspaces.source.path)/k6sim-preset.env"
+        # Same reasoning for the k6 summary: run-k6 (grafana/k6 image) is non-root and
+        # k6's handleSummary() writes k6-summary.json to the workspace root (K6_SUMMARY_OUT),
+        # which this root step owns — so pre-create it world-writable too, else k6 logs
+        # "could not open '.../k6-summary.json': permission denied" and drops the summary.
+        : > "$(workspaces.source.path)/k6-summary.json"
+        chmod 0666 "$(workspaces.source.path)/k6-summary.json"
     - name: resolve-preset
       # Reads the selected committed preset (jenkins/pipelines/k6/presets/<name>.yaml)
       # and writes its values to k6sim-preset.env in the workspace; run-k6 then uses
