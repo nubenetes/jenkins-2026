@@ -250,24 +250,24 @@ JENKINS2026_CI_ENGINE=tekton scripts/up.sh
 
 In CI, the **[`Day1.cluster.01-gke`](../.github/workflows/Day1.cluster.01-gke.yml)**
 workflow exposes a `ci_engine` choice input (`jenkins` default, or `tekton`)
-that flows to `scripts/up.sh` as `JENKINS2026_CI_ENGINE`. The two engines are
+that flows to [`scripts/up.sh`](../scripts/up.sh) as `JENKINS2026_CI_ENGINE`. The two engines are
 mutually exclusive on a given cluster.
 
-`scripts/lib/config.sh` validates the value (`jenkins|tekton`) and exports
+[`scripts/lib/config.sh`](../scripts/lib/config.sh) validates the value (`jenkins|tekton`) and exports
 `J2026_CI_ENGINE`, which `up.sh`/`down.sh` and the numbered steps branch on:
 
 | Step | `ci.engine=jenkins` | `ci.engine=tekton` |
 |---|---|---|
-| Install CI engine (`up.sh`) | `scripts/04-jenkins.sh` | [`scripts/04-tekton.sh`](../scripts/04-tekton.sh) |
-| Seed pipelines (`up.sh`) | `scripts/06-seed-pipelines.sh` | [`scripts/06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh) |
+| Install CI engine (`up.sh`) | [`scripts/04-jenkins.sh`](../scripts/04-jenkins.sh) | [`scripts/04-tekton.sh`](../scripts/04-tekton.sh) |
+| Seed pipelines (`up.sh`) | [`scripts/06-seed-pipelines.sh`](../scripts/06-seed-pipelines.sh) | [`scripts/06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh) |
 | Day2 redeploy | `Day2.redeploy.02-jenkins` | [`Day2.redeploy.03-tekton`](../.github/workflows/Day2.redeploy.03-tekton.yml) |
 | Teardown (`down.sh`) | Helm uninstall | engine-agnostic (removes both) |
 
 **The two engines are mutually exclusive.** A clean install only deploys the
-selected engine (`up.sh` branches on `ci.engine`, so Jenkins is never installed
+selected engine ([`up.sh`](../scripts/up.sh) branches on `ci.engine`, so Jenkins is never installed
 in tekton mode). Switching engines on a *running* cluster **decommissions the
-other one**: `scripts/04-tekton.sh` retires Jenkins if present (Helm uninstall +
-removes the Jenkins gateway route/IAP/health-check), and `scripts/04-jenkins.sh`
+other one**: [`scripts/04-tekton.sh`](../scripts/04-tekton.sh) retires Jenkins if present (Helm uninstall +
+removes the Jenkins gateway route/IAP/health-check), and [`scripts/04-jenkins.sh`](../scripts/04-jenkins.sh)
 retires Tekton if present (control-plane + pipeline namespaces + Tekton gateway
 route/IAP). This runs on both `up.sh` and the `Day2.redeploy.*` paths. The
 shared microservices are GitOps-managed by ArgoCD, so they survive the switch —
@@ -310,7 +310,7 @@ flowchart TD
 
 **Side-by-side (the asymmetry):**
 
-| Action | tekton → **jenkins** (`04-jenkins.sh`) | jenkins → **tekton** (`04-tekton.sh`) |
+| Action | tekton → **jenkins** ([`04-jenkins.sh`](../scripts/04-jenkins.sh)) | jenkins → **tekton** ([`04-tekton.sh`](../scripts/04-tekton.sh)) |
 |---|---|---|
 | Delete the outgoing engine's ArgoCD app | ✅ `tekton` (app-of-apps, 7 children) | ✅ `jenkins` (single Application) |
 | Delete its public Gateway routing | ✅ Dashboard IAP **+ PaC** route | ✅ Jenkins IAP route **+ HealthCheckPolicy** |
@@ -325,7 +325,7 @@ flowchart TD
 that can be fully reaped without collateral, so they are deleted (you lose the
 PipelineRun history and the `tekton-*`/`k6-cloud`/`pac-webhook` Secrets — all
 recreated on switch-back). Jenkins lives in the shared `jenkins` namespace that
-`01-namespaces.sh` manages and **reuses** (the admin password persists there), so
+[`01-namespaces.sh`](../scripts/01-namespaces.sh) manages and **reuses** (the admin password persists there), so
 the retirement is deliberately *less* destructive — it removes the controller +
 routing but keeps the namespace and credentials for a fast switch-back. In **both**
 directions a clean install of the *selected* engine never deploys the other
@@ -378,13 +378,13 @@ exactly like the other app-of-apps), which renders seven child Applications:
 
 | Child Application | Source | Sync wave | Notes |
 |---|---|---|---|
-| `tekton-pipelines` | `argocd/tekton/components/pipelines` (vendored `v1.13.1` `release.yaml`) | 0 | the engine + CRDs |
-| `tekton-triggers` | `argocd/tekton/components/triggers` (vendored `v0.36.0` release + interceptors) | 1 | API/webhook-driven runs |
-| `tekton-dashboard` | `argocd/tekton/components/dashboard` (vendored `v0.69.0` `release-full.yaml`) | 1 | **read-write** GUI; no native auth |
-| `tekton-pruner` | `argocd/tekton/components/pruner` (vendored `v0.4.0`) | 1 | GC of completed runs — `historyLimit: 5` (deliberately lower than Jenkins' `buildDiscarder` 20, to keep pod/image accumulation off the 50 GiB node disk) |
-| `tekton-chains` | `argocd/tekton/components/chains` (vendored `v0.27.1`) | 1 | supply-chain: x509/cosign image signing + in-toto SLSA provenance + Rekor; own `tekton-chains` ns |
-| `tekton-pac` | `argocd/tekton/components/pac` (vendored `v0.48.0`) | 1 | Pipelines-as-Code controller; own `pipelines-as-code` ns; webhook receiver exposed at `pac.<baseDomain>` |
-| `tekton-pipeline-as-code` | `tekton/` (Tasks/Pipelines/Triggers/RBAC + the `tekton-ci` SA) | 2 | the ported pipeline; lands in the `tekton-ci` namespace |
+| `tekton-pipelines` | [`argocd/tekton/components/pipelines`](../argocd/tekton/components/pipelines) (vendored `v1.13.1` `release.yaml`) | 0 | the engine + CRDs |
+| `tekton-triggers` | [`argocd/tekton/components/triggers`](../argocd/tekton/components/triggers) (vendored `v0.36.0` release + interceptors) | 1 | API/webhook-driven runs |
+| `tekton-dashboard` | [`argocd/tekton/components/dashboard`](../argocd/tekton/components/dashboard) (vendored `v0.69.0` `release-full.yaml`) | 1 | **read-write** GUI; no native auth |
+| `tekton-pruner` | [`argocd/tekton/components/pruner`](../argocd/tekton/components/pruner) (vendored `v0.4.0`) | 1 | GC of completed runs — `historyLimit: 5` (deliberately lower than Jenkins' `buildDiscarder` 20, to keep pod/image accumulation off the 50 GiB node disk) |
+| `tekton-chains` | [`argocd/tekton/components/chains`](../argocd/tekton/components/chains) (vendored `v0.27.1`) | 1 | supply-chain: x509/cosign image signing + in-toto SLSA provenance + Rekor; own `tekton-chains` ns |
+| `tekton-pac` | [`argocd/tekton/components/pac`](../argocd/tekton/components/pac) (vendored `v0.48.0`) | 1 | Pipelines-as-Code controller; own `pipelines-as-code` ns; webhook receiver exposed at `pac.<baseDomain>` |
+| `tekton-pipeline-as-code` | [`tekton/`](../tekton/) (Tasks/Pipelines/Triggers/RBAC + the `tekton-ci` SA) | 2 | the ported pipeline; lands in the `tekton-ci` namespace |
 
 The component manifests are **vendored** under `argocd/tekton/components/*/`
 (`release*.yaml`) — Tekton now ships these only as GitHub release assets (not on
@@ -393,9 +393,9 @@ git repo, so vendoring is the reliable, auditable choice. Versions are kept in
 sync with `ci.tekton.versions` in [`config/config.yaml`](../config/config.yaml). The large Tekton CRDs are
 handled the same way as the CNPG operator (`ServerSideApply=true` + `Replace=true`
 + `ServerSideDiff=true`). The credential Secrets are **not** GitOps-managed (they
-hold env-sourced secrets) — `01-namespaces.sh` / `08.5-argocd.sh` create them
+hold env-sourced secrets) — [`01-namespaces.sh`](../scripts/01-namespaces.sh) / [`08.5-argocd.sh`](../scripts/08.5-argocd.sh) create them
 imperatively; an SA may reference Secrets that don't exist yet, so ordering is
-fine. ArgoCD requires `08.5-argocd.sh` to run first (it already does in `up.sh`).
+fine. ArgoCD requires [`08.5-argocd.sh`](../scripts/08.5-argocd.sh) to run first (it already does in [`up.sh`](../scripts/up.sh)).
 
 ## Tooling: kustomize vs Helm (and why both)
 
@@ -431,7 +431,7 @@ Because the component manifests are vendored files (not Helm-templated), the
 **versions are pinned by the vendored `argocd/tekton/components/*/release*.yaml`**,
 not flowed from `config.yaml`. `ci.tekton.versions` documents the intended
 versions; keep the two in sync when bumping (re-download the release file). (An optional future refinement is to turn the
-`tekton/` pipelines-as-code into a small Helm chart to inject the observability
+[`tekton/`](../tekton/) pipelines-as-code into a small Helm chart to inject the observability
 namespace and tool-image versions — but the *component* versions would still
 live in the kustomizations regardless.)
 
@@ -568,22 +568,22 @@ Open `https://tekton.<baseDomain>` (Google IAP login, [§ Dashboard](#dashboard-
 
 **The one-click-equivalent path** — use the ready-made manifests in [`tekton/runs/`](../tekton/runs/) which already set the SA + workspaces:
 
-1. **First run**: in **PipelineRuns → Create**, switch the form to **YAML mode** and paste [`tekton/runs/gateway.yaml`](../tekton/runs/gateway.yaml) (or `jhipstersamplemicroservice.yaml` / `k6-smoke.yaml`), then **Create**. (Same content as `kubectl create -f` in Option B.)
+1. **First run**: in **PipelineRuns → Create**, switch the form to **YAML mode** and paste [`tekton/runs/gateway.yaml`](../tekton/runs/gateway.yaml) (or [`jhipstersamplemicroservice.yaml`](../tekton/runs/jhipstersamplemicroservice.yaml) / [`k6-smoke.yaml`](../tekton/runs/k6-smoke.yaml)), then **Create**. (Same content as `kubectl create -f` in Option B.)
 2. **Every run after that is truly one-click**: open that PipelineRun and click **Rerun** — it reuses the exact SA, workspaces, and params. This is the closest equivalent to the Jenkins one-click build.
 
 There is **no** hand-fill path in the *visual* form that succeeds for this pipeline (no workspace field — see the limitation above), so for `microservices-pipeline` the supported manual options are: the **YAML mode** of the Create dialog (paste a `tekton/runs/*.yaml`), **Rerun** of an existing/seeded run, or `kubectl create` (Option B). All three carry the `source`/`dockerconfig` bindings the visual form cannot.
 
-> **Pre-populate the Dashboard from the first Day1** — `tekton.seedRuns` (or `JENKINS2026_TEKTON_SEED_RUNS`) is **`true` by default**. `scripts/06-tekton-pipelines.sh` seeds one PipelineRun per service from [`tekton/runs/`](../tekton/runs/) during provisioning, so the Dashboard lists runnable entries you can **Rerun** with one click immediately — no first paste/`kubectl create` needed. The trade-off: it runs **one build per service per Day1**; set it `false` to skip (PaC's git-push trigger is the normal way to start runs). This is a CI-engine convenience only — it does not change how PaC works.
+> **Pre-populate the Dashboard from the first Day1** — `tekton.seedRuns` (or `JENKINS2026_TEKTON_SEED_RUNS`) is **`true` by default**. [`scripts/06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh) seeds one PipelineRun per service from [`tekton/runs/`](../tekton/runs/) during provisioning, so the Dashboard lists runnable entries you can **Rerun** with one click immediately — no first paste/`kubectl create` needed. The trade-off: it runs **one build per service per Day1**; set it `false` to skip (PaC's git-push trigger is the normal way to start runs). This is a CI-engine convenience only — it does not change how PaC works.
 
 > **Access URLs on every run (the Tekton parity for the Jenkins banner)** — Tekton's
-> upstream Dashboard has no system-message banner, so `scripts/06-tekton-pipelines.sh`
+> upstream Dashboard has no system-message banner, so [`scripts/06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh)
 > stamps the platform's public URLs as `jenkins2026.io/url-*` annotations onto **every**
 > PipelineRun it seeds (the PaC `.tekton/<svc>.yaml` pushed to the forks, the
 > `tekton.seedRuns` runs, and the local fallback runs alike). Open any run in the
 > Dashboard's detail view and its metadata lists `url-microservices`,
 > `url-microservices-develop` (when `microservices.developTrackEnabled`),
 > `url-tekton-dashboard`, `url-argocd`, `url-headlamp`, `url-pgadmin` and
-> `url-grafana` (oss mode) — the same engine-neutral set `scripts/09-gateway.sh`
+> `url-grafana` (oss mode) — the same engine-neutral set [`scripts/09-gateway.sh`](../scripts/09-gateway.sh)
 > exposes. They are a no-op when the Gateway is disabled (`gateway.baseDomain=""`).
 
 ### Option B — `kubectl create` (a PipelineRun manifest)
@@ -732,7 +732,7 @@ run also uploads to Grafana Cloud k6 and prints the `…/a/k6-app/projects/<id>`
 
 ## Triggers
 
-`tekton/triggers/` installs an `EventListener` + `TriggerTemplate` +
+[`tekton/triggers/`](../tekton/triggers/) installs an `EventListener` + `TriggerTemplate` +
 `TriggerBinding` (GitHub HMAC interceptor) so runs can be kicked via API/webhook.
 The upstream JHipster app repos aren't owned by this project, so push webhooks
 can't be wired to them — for the seed-script CI model the EventListener is for
@@ -785,11 +785,11 @@ acceptable for this PoC.
 - **`.tekton/<svc>.yaml`** in each fork: a `PipelineRun` annotated
   `pipelinesascode.tekton.dev/on-event` / `on-target-branch` that references the
   in-cluster `microservices-pipeline` (params per service). These are **generated
-  and pushed to the forks by `scripts/06-tekton-pipelines.sh`** (from
-  `services.yaml`) — the same script that creates the webhooks — so the forks need
+  and pushed to the forks by [`scripts/06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh)** (from
+  [`services.yaml`](../jenkins/pipelines/seed/services.yaml)) — the same script that creates the webhooks — so the forks need
   no manual setup; that first push is what triggers the initial run.
 - The HMAC secret comes from **`PAC_WEBHOOK_SECRET`** (GitHub Actions secret) if
-  set, else `06-tekton-pipelines.sh` generates a random one and stores it in the
+  set, else [`06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh) generates a random one and stores it in the
   `pac-webhook` Secret + uses it for the webhooks (so HMAC always matches).
 - If the gateway is disabled (no public PaC endpoint, e.g. local), the script
   falls back to kicking one `PipelineRun` per service directly (the seed model).
@@ -865,7 +865,7 @@ TaskRun controller tracing is a deferred follow-up — not wired today.) See
 Tekton's checkout is already shallow (`--depth 1` in every clone task — `fetch-source`, `gitops-deploy`, `k6-smoke`, `trivy-iac`), and there is no "agent scheduling / containerCap" concept (each `TaskRun` **is** a Pod; parallelism = node capacity). The two gaps vs the Jenkins agents, now closed:
 
 - **Node-local Maven/npm caches** — `maven-build-test` and `build-push-image` mount hostPath caches (`/tmp/tekton-maven-cache` → `/root/.m2`, `/tmp/tekton-npm-cache` → `/root/.npm`), mirroring the Jenkins agents' `/tmp/jenkins-*-cache`. Node-local (not a PVC) → no RWX/concurrency cost; deps survive across PipelineRuns instead of being re-downloaded every build.
-- **Task image pre-pull** — `tekton/agent-image-prepull.yaml` (DaemonSet in `tekton-pipelines`, applied by `04-tekton.sh`) pre-pulls the task images (maven · kaniko · **codeql** · semgrep · trivy · k6 · …) so a `TaskRun` starts without a cold pull — the analogue of the Jenkins prepull DaemonSet.
+- **Task image pre-pull** — [`tekton/agent-image-prepull.yaml`](../tekton/agent-image-prepull.yaml) (DaemonSet in `tekton-pipelines`, applied by [`04-tekton.sh`](../scripts/04-tekton.sh)) pre-pulls the task images (maven · kaniko · **codeql** · semgrep · trivy · k6 · …) so a `TaskRun` starts without a cold pull — the analogue of the Jenkins prepull DaemonSet.
 
 ## ArgoCD ⇄ Tekton: how GitOps drives an ephemeral CI engine (deep dive + gotchas)
 
@@ -1079,7 +1079,7 @@ if [[ "${run_env}" == "develop" && "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}
 | Live `kubectl apply`/patch reverts after minutes | the owning ArgoCD app (`selfHeal`) | GitOps reconciliation | land it in git on `main`, then sync (Gotcha 2) |
 | `resolve-preset` → `Permission denied` on `/workspace/source` | the step image's UID vs workspace owner | yq (uid 1000) vs root-owned workspace | pre-create file `0666` in the root step (Gotcha 3) |
 | `gitops-deploy` → `another operation is already in progress` | the app's `automated.selfHeal` | explicit sync races the auto-sync | retry + `app wait --sync --health` (Gotcha 4) |
-| No `develop` pipelines in the Dashboard | `tekton/runs/`; `06-tekton-pipelines.sh` | no develop service runs / ungated | add `*-develop.yaml` + gate by env label (Gotcha 5) |
+| No `develop` pipelines in the Dashboard | [`tekton/runs/`](../tekton/runs/); [`06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh) | no develop service runs / ungated | add `*-develop.yaml` + gate by env label (Gotcha 5) |
 | A *failed* PipelineRun does NOT mark the app Degraded | — | PipelineRun has no ArgoCD health fn (by design) | nothing — runs don't affect app health; inspect the run in the Tekton Dashboard |
 
 > **Design takeaway.** Keep Tekton **definitions** in git (ArgoCD-owned) and Tekton **runs** out of GitOps ownership (`exclude: runs/*`); let run *status* live in the Tekton Dashboard, not in ArgoCD's app health. The only resources that should ever move an ArgoCD app's health are the **workloads with a real readiness contract** — here, the EventListener Deployment and the prepull DaemonSet — and those are exactly where the namespace's Pod Security Standard can silently block you.

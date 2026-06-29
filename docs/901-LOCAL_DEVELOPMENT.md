@@ -9,7 +9,7 @@
 | Tool | Why | Install |
 | :--- | :--- | :--- |
 | `kubectl`, `helm` (v3) | deploy workloads | cluster toolchain |
-| [`yq`](https://github.com/mikefarah/yq) (Go version) | parse `config/config.yaml` | `brew install yq` / [releases](https://github.com/mikefarah/yq/releases) |
+| [`yq`](https://github.com/mikefarah/yq) (Go version) | parse [`config/config.yaml`](../config/config.yaml) | `brew install yq` / [releases](https://github.com/mikefarah/yq/releases) |
 | `gcloud` + `gsutil` | GCP auth, Secret Manager, ADC | [cloud.google.com/sdk](https://cloud.google.com/sdk/docs/install) |
 | `terraform` (≥ 1.9) | bootstrap + GKE cluster | [developer.hashicorp.com/terraform](https://developer.hashicorp.com/terraform/downloads) |
 | `gh` (GitHub CLI) | set repo secrets (bootstrap) | [cli.github.com](https://cli.github.com/) |
@@ -75,7 +75,7 @@ export GIT_USERNAME=<github-username>      GIT_TOKEN=<github-token>
 ./scripts/down.sh
 ```
 
-`scripts/up.sh` runs, in order: prereq/repo checks → namespaces, secrets & NetworkPolicies → the OpenTelemetry Operator → **ArgoCD** (`08.5`, installed *before* observability because the OSS stack is GitOps-managed by ArgoCD) → External Secrets sync (`08.6`, only when `secrets.backend=eso`) → the observability backend (`03`) → the selected CI engine and its pipelines (`04`/`06` — Jenkins+seed, or Tekton+pipelines per `ci.engine`) → Grafana dashboards (`07`) → Grafana alerts (`07.5`) → Headlamp (`08`) → Gateway + routes/IAP (`09`) → wait for the microservices Deployments, then the OTel injection self-heal guard. Every step is idempotent (`helm upgrade --install` / `kubectl apply`), so re-running `up.sh` after a partial failure is safe. Each step also runs standalone: `./scripts/0N-*.sh`.
+[`scripts/up.sh`](../scripts/up.sh) runs, in order: prereq/repo checks → namespaces, secrets & NetworkPolicies → the OpenTelemetry Operator → **ArgoCD** (`08.5`, installed *before* observability because the OSS stack is GitOps-managed by ArgoCD) → External Secrets sync (`08.6`, only when `secrets.backend=eso`) → the observability backend (`03`) → the selected CI engine and its pipelines (`04`/`06` — Jenkins+seed, or Tekton+pipelines per `ci.engine`) → Grafana dashboards (`07`) → Grafana alerts (`07.5`) → Headlamp (`08`) → Gateway + routes/IAP (`09`) → wait for the microservices Deployments, then the OTel injection self-heal guard. Every step is idempotent (`helm upgrade --install` / `kubectl apply`), so re-running `up.sh` after a partial failure is safe. Each step also runs standalone: `./scripts/0N-*.sh`.
 
 ## Step-by-Step Deployment Guide (For Other People)
 
@@ -89,7 +89,7 @@ Since this is a **two-repo GitOps setup**, you must fork both repositories:
 
 ### Step 2: Configure Repository Targets
 
-Update the repository reference URLs in `config/config.yaml` to point to your forks:
+Update the repository reference URLs in [`config/config.yaml`](../config/config.yaml) to point to your forks:
 - Edit `jenkins.selfRepoUrl` to point to your fork (e.g., `https://github.com/YOUR_ORG/jenkins-2026.git`).
 - Edit `microservices.git.org` to match your GitHub organization or username.
 - Commit and push this change to your infra repo fork.
@@ -168,7 +168,7 @@ If using the default `observability.mode: grafana-cloud`:
 ### Step 8: Run Pipelines & Verify
 
 Once deployed:
-1. Run `./scripts/status.sh` to obtain the port-forwarding commands and passwords.
+1. Run [`./scripts/status.sh`](../scripts/status.sh) to obtain the port-forwarding commands and passwords.
 
 **With `ci.engine=jenkins` (default):**
 2. Port-forward to Jenkins: `kubectl -n jenkins port-forward svc/jenkins 8080:8080` and open `http://localhost:8080`.
@@ -190,10 +190,10 @@ Or paste one into the Tekton Dashboard's *Create PipelineRun* (YAML mode) once, 
 
 1. **`terraform -chdir=terraform/gke apply`** — provisions a throwaway GKE cluster.
 2. **`gcloud container clusters get-credentials`** — points `kubectl`/`helm` at the new cluster.
-3. **`scripts/00-check-prereqs.sh` + `scripts/01-namespaces.sh`**.
-4. **`scripts/up.sh`** — the full stack, exactly as in Quick start.
-5. **`test/smoke-test.sh`** — CI-engine-aware: verifies the active CI engine is up (Jenkins controller `Running` + seed pipelines, or the Tekton stack + PaC Repository CRs/PipelineRuns), OTel Operator/collectors are running, and the **stable** Microservices namespace has all `Deployment`s (the `develop` tier is off by default).
-6. **`scripts/down.sh`** (with `J2026_DELETE_NAMESPACES=true`) then **`terraform -chdir=terraform/gke destroy`** — decommissions everything.
+3. **[`scripts/00-check-prereqs.sh`](../scripts/00-check-prereqs.sh) + [`scripts/01-namespaces.sh`](../scripts/01-namespaces.sh)**.
+4. **[`scripts/up.sh`](../scripts/up.sh)** — the full stack, exactly as in Quick start.
+5. **[`test/smoke-test.sh`](../test/smoke-test.sh)** — CI-engine-aware: verifies the active CI engine is up (Jenkins controller `Running` + seed pipelines, or the Tekton stack + PaC Repository CRs/PipelineRuns), OTel Operator/collectors are running, and the **stable** Microservices namespace has all `Deployment`s (the `develop` tier is off by default).
+6. **[`scripts/down.sh`](../scripts/down.sh)** (with `J2026_DELETE_NAMESPACES=true`) then **`terraform -chdir=terraform/gke destroy`** — decommissions everything.
 
 Step 6 runs **unconditionally** via an `EXIT` trap, even if steps 1-5 fail partway through, so a failed run still leaves the GCP project clean.
 

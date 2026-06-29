@@ -6,7 +6,7 @@
 
 One k6 script, **one parameter contract**, three ways to run it. This page is the single home for the k6 work that the other docs only touch in passing — [301 · Observability](./301-OBSERVABILITY.md#k6-observability-smoke-test) (where the telemetry lands), [402 · Pipelines as Code](./402-PIPELINES_AS_CODE.md#2-k6-integration-smoke-test-pipeline) (the Jenkins job) and [501 · Platform Operations](./501-PLATFORM_OPERATIONS.md#telemetry-verification--simulation) (continuous simulation). Read this once and every k6 knob — from a 12-iteration smoke test to a multi-stage breakpoint run against the `develop` tier — is "set one variable".
 
-> **TL;DR.** The same `jenkins/pipelines/k6/microservices-smoke.js` runs from **Jenkins**, **Tekton** and **GitHub Actions**. With **no parameters** it is the original lightweight **smoke** test (4 VUs × 12 iterations). Set `K6SIM_PROFILE=load|stress|soak|spike|breakpoint` (or override VUs / duration / stages / RPS / thresholds) and it becomes a real load test — **against either the `stable` or the `develop` tier**. Don't want to type knobs? **Pick a committed [preset](#config-presets-committed-test-configs)** from a dropdown and it loads a whole named config.
+> **TL;DR.** The same [`jenkins/pipelines/k6/microservices-smoke.js`](../jenkins/pipelines/k6/microservices-smoke.js) runs from **Jenkins**, **Tekton** and **GitHub Actions**. With **no parameters** it is the original lightweight **smoke** test (4 VUs × 12 iterations). Set `K6SIM_PROFILE=load|stress|soak|spike|breakpoint` (or override VUs / duration / stages / RPS / thresholds) and it becomes a real load test — **against either the `stable` or the `develop` tier**. Don't want to type knobs? **Pick a committed [preset](#config-presets-committed-test-configs)** from a dropdown and it loads a whole named config.
 
 ## Understanding k6 here (newcomers → specialists)
 
@@ -87,7 +87,7 @@ OTLP export (`-o opentelemetry`, k6 2.x schema) is configured by the **runner**,
 
 ## The parameter contract (`K6SIM_*`)
 
-Every runner threads the **same variables** into the script. They are all **optional** — an empty value means "use the script default", so you only ever set what you want to change. The script reads them in `jenkins/pipelines/k6/microservices-smoke.js`.
+Every runner threads the **same variables** into the script. They are all **optional** — an empty value means "use the script default", so you only ever set what you want to change. The script reads them in [`jenkins/pipelines/k6/microservices-smoke.js`](../jenkins/pipelines/k6/microservices-smoke.js).
 
 ### Target — *where* the traffic goes
 
@@ -165,13 +165,13 @@ Typing the full `K6SIM_*` set every time is tedious and error-prone. **Presets**
 
 **Precedence (highest first):** manual field (non-empty) → **preset** value → script default. Selecting `none` = pure manual inputs / defaults (the historical behaviour).
 
-> **Format = YAML, by design.** The repo standardises on YAML + `yq` everywhere (`config/config.yaml`, Helm values, JCasC, Tekton). TOML would add a second config language and new tooling for zero benefit, so presets are YAML and read with the same `yq` already in the runners.
+> **Format = YAML, by design.** The repo standardises on YAML + `yq` everywhere ([`config/config.yaml`](../config/config.yaml), Helm values, JCasC, Tekton). TOML would add a second config language and new tooling for zero benefit, so presets are YAML and read with the same `yq` already in the runners.
 
 **How each engine selects a preset:**
 
 | Engine | Selector | Loader | Notes |
 |---|---|---|---|
-| **Jenkins** | `PRESET` **choice** in *Build with Parameters* (seeded from `presets/index.yaml`) | `readYaml` in the pipeline merges preset + manual | The job's tier still sets the default namespace/env unless the preset pins them. |
+| **Jenkins** | `PRESET` **choice** in *Build with Parameters* (seeded from [`presets/index.yaml`](../jenkins/pipelines/k6/presets/index.yaml)) | `readYaml` in the pipeline merges preset + manual | The job's tier still sets the default namespace/env unless the preset pins them. |
 | **GitHub Actions** | `preset` **dropdown** input | a *Resolve k6 parameters* step (`yq`) writes the merged `K6SIM_*` to `$GITHUB_ENV` | Options are listed in the workflow — keep in sync with `index.yaml`. |
 | **Tekton** | `preset` **param** | a `resolve-preset` step (`yq`) writes `k6sim-preset.env`; `run-k6` fills any empty param from it | Idiomatic param; `tekton/runs/*.yaml` can hard-set it. |
 
@@ -212,7 +212,7 @@ Every committed preset, what it does, and when to reach for it. **Shape** is the
 ### Special test type — RUM (Faro) beacons (`rum-faro` · profile `rum`)
 
 ⭐ **This is not a microservices load test.** It runs a **different k6 script**
-([`faro-rum.js`](../jenkins/pipelines/k6/faro-rum.js), not `microservices-smoke.js`):
+([`faro-rum.js`](../jenkins/pipelines/k6/faro-rum.js), not [`microservices-smoke.js`](../jenkins/pipelines/k6/microservices-smoke.js)):
 each iteration is one synthetic browser **session** that POSTs a **Grafana Faro**
 beacon — a page-load log + **Core Web Vitals** (LCP/FCP/TTFB/INP/CLS) + a browser
 `documentLoad` span; a configurable fraction (`K6SIM_ERROR_RATE`, default 0.2) also
@@ -410,7 +410,7 @@ flowchart LR
 
 ### Jenkins
 
-The seed job (`jenkins/pipelines/seed/seed_jobs.groovy`) generates **one k6 job per tier**: `microservices-k6-smoke` (stable) and, when the develop tier is on (`JENKINS2026_DEVELOP_TRACK_ENABLED=true`), `microservices-k6-smoke-develop`. Each is a **`MicroservicesK6SmokePipeline`** (`vars/MicroservicesK6SmokePipeline.groovy`) with a full **"Build with Parameters"** form — a **`PRESET`** dropdown (seeded from `presets/index.yaml`) plus `PROFILE`, `VUS`, `DURATION`, `STAGES`, `RPS`, `SCENARIOS`, `P95_MS`, `ERROR_RATE`, `TARGET_URL`, `DEBUG`. The build/deploy pipeline (`vars/MicroservicesPipeline.groovy`) triggers the **tier-matched** k6 job as its *Integration k6 Smoke Test* stage.
+The seed job ([`jenkins/pipelines/seed/seed_jobs.groovy`](../jenkins/pipelines/seed/seed_jobs.groovy)) generates **one k6 job per tier**: `microservices-k6-smoke` (stable) and, when the develop tier is on (`JENKINS2026_DEVELOP_TRACK_ENABLED=true`), `microservices-k6-smoke-develop`. Each is a **`MicroservicesK6SmokePipeline`** ([`vars/MicroservicesK6SmokePipeline.groovy`](../vars/MicroservicesK6SmokePipeline.groovy)) with a full **"Build with Parameters"** form — a **`PRESET`** dropdown (seeded from [`presets/index.yaml`](../jenkins/pipelines/k6/presets/index.yaml)) plus `PROFILE`, `VUS`, `DURATION`, `STAGES`, `RPS`, `SCENARIOS`, `P95_MS`, `ERROR_RATE`, `TARGET_URL`, `DEBUG`. The build/deploy pipeline ([`vars/MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy)) triggers the **tier-matched** k6 job as its *Integration k6 Smoke Test* stage.
 
 - **Easiest:** pick a `PRESET` (e.g. `load-baseline`) → **Build**. The preset's config loads; leave the rest untouched.
 - **Basic:** open `microservices-k6-smoke` → **Build with Parameters** → leave defaults (`PRESET=none`) → **Build** (the smoke test).
@@ -419,10 +419,10 @@ The seed job (`jenkins/pipelines/seed/seed_jobs.groovy`) generates **one k6 job 
 
 ### Tekton
 
-`tekton/pipelines/microservices-k6-smoke.yaml` (→ `tekton/tasks/k6-smoke.yaml`) exposes the same knobs as Pipeline **params**, including a **`preset`** param (a `resolve-preset` step `yq`-loads the committed file; any param you set overrides it). Ready-to-run examples live in `tekton/runs/`:
+[`tekton/pipelines/microservices-k6-smoke.yaml`](../tekton/pipelines/microservices-k6-smoke.yaml) (→ [`tekton/tasks/k6-smoke.yaml`](../tekton/tasks/k6-smoke.yaml)) exposes the same knobs as Pipeline **params**, including a **`preset`** param (a `resolve-preset` step `yq`-loads the committed file; any param you set overrides it). Ready-to-run examples live in [`tekton/runs/`](../tekton/runs/):
 
-- `tekton/runs/k6-smoke.yaml` — defaults (stable smoke); a commented `params:` block shows how to override (incl. `preset`).
-- `tekton/runs/k6-load.yaml` — an **advanced** example: `profile=load`, `vus=30`, `duration=5m`, scoped to the **develop** tier with a tighter `p95-ms=1500`.
+- [`tekton/runs/k6-smoke.yaml`](../tekton/runs/k6-smoke.yaml) — defaults (stable smoke); a commented `params:` block shows how to override (incl. `preset`).
+- [`tekton/runs/k6-load.yaml`](../tekton/runs/k6-load.yaml) — an **advanced** example: `profile=load`, `vus=30`, `duration=5m`, scoped to the **develop** tier with a tighter `p95-ms=1500`.
 
 ```bash
 # basic
@@ -440,7 +440,7 @@ tkn pipeline start microservices-k6-smoke -n tekton-ci \
 
 ### GitHub Actions
 
-`.github/workflows/Day2.traffic.01-k6.yml` is a `workflow_dispatch` with a **`preset`** dropdown plus the full input set: **`profile`**, **`env_name`** (`stable`/`develop`), `duration`, `vus`, `stages`, `rps`, `scenarios`, `p95_ms`, `error_rate`, `target_url`, `debug`. A *Resolve k6 parameters* step merges the chosen preset with any manual inputs (manual wins). It resolves the target automatically:
+[`.github/workflows/Day2.traffic.01-k6.yml`](../.github/workflows/Day2.traffic.01-k6.yml) is a `workflow_dispatch` with a **`preset`** dropdown plus the full input set: **`profile`**, **`env_name`** (`stable`/`develop`), `duration`, `vus`, `stages`, `rps`, `scenarios`, `p95_ms`, `error_rate`, `target_url`, `debug`. A *Resolve k6 parameters* step merges the chosen preset with any manual inputs (manual wins). It resolves the target automatically:
 
 - **`env_name=stable`** → the public `microservices.<baseDomain>` host from `config/config.yaml`.
 - **`env_name=develop`** → the public **`microservices-develop.<baseDomain>`** host (`gateway.hosts.microservicesDevelop`) — the develop tier now has its own public route (see [402 · develop tier](./402-PIPELINES_AS_CODE.md#optional-develop-tier-feature-flag-off-by-default)), so the runner targets it directly over the internet exactly like `stable`.
@@ -553,7 +553,7 @@ Jenkins: set those fields. Tekton: `-p stages=... -p p95-ms=1500 -p scenarios=..
 > sub-dir and writes to the workspace root). `summaryTrendStats` includes `p(99)` so the
 > percentile spread below is complete (k6's defaults omit p99).
 
-Both the Jenkins job (`printK6Summary()` in `vars/microservicesK6Smoke.groovy`) and the GitHub Actions *Show Results Summary* step now print a **layered analysis** of `k6-summary.json` (also archived as a build artifact / uploaded as `k6-summary-report`):
+Both the Jenkins job (`printK6Summary()` in [`vars/microservicesK6Smoke.groovy`](../vars/microservicesK6Smoke.groovy)) and the GitHub Actions *Show Results Summary* step now print a **layered analysis** of `k6-summary.json` (also archived as a build artifact / uploaded as `k6-summary-report`):
 
 ```text
 ========== k6 run analysis ==========
@@ -602,7 +602,7 @@ The original motivation for this work: the k6 jobs used to be **stable-only** in
 | Engine | `stable` | `develop` | How develop is targeted |
 |---|---|---|---|
 | **Jenkins** | ✅ | ✅ | Dedicated `microservices-k6-smoke-develop` job (seed-generated when the tier is on); the build pipeline triggers the **tier-matched** job. |
-| **Tekton** | ✅ | ✅ | `env-name`/`target-namespace` params (`tekton/runs/k6-load.yaml` shows develop). |
+| **Tekton** | ✅ | ✅ | `env-name`/`target-namespace` params ([`tekton/runs/k6-load.yaml`](../tekton/runs/k6-load.yaml) shows develop). |
 | **GitHub Actions** | ✅ | ✅ | `env_name=develop` input → the public `microservices-develop.<baseDomain>` host (same external targeting as `stable`). |
 
 > The develop tier is **opt-in** (`microservices.developTrackEnabled` / `JENKINS2026_DEVELOP_TRACK_ENABLED`) and reports into the **same** Grafana, distinguished by `deployment.environment=develop` and namespace/labels — not a separate stack. See [402 · Optional develop Tier](./402-PIPELINES_AS_CODE.md#optional-develop-tier-feature-flag-off-by-default).

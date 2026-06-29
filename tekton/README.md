@@ -27,7 +27,7 @@ tekton/
 
 ## Stage mapping (Jenkins → Tekton)
 
-| Jenkins stage (`vars/MicroservicesPipeline.groovy`) | Tekton Task |
+| Jenkins stage ([`vars/MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy)) | Tekton Task |
 |---|---|
 | Checkout source (+ gateway patch) / Checkout infra | `fetch-source` |
 | Semgrep SAST + SARIF upload | `semgrep-scan` |
@@ -44,8 +44,8 @@ tekton/
 
 - `tekton-registry` — ghcr.io dockerconfigjson (Jib/Kaniko/Trivy via `DOCKER_CONFIG`)
 - `tekton-git` — git basic-auth, annotated `tekton.dev/git-0` (clone/push) + read as env for SARIF upload
-- `tekton-argocd` — ArgoCD API token (created by `scripts/08.5-argocd.sh`)
+- `tekton-argocd` — ArgoCD API token (created by [`scripts/08.5-argocd.sh`](../scripts/08.5-argocd.sh))
 - `tekton-github-webhook-secret` — optional GitHub HMAC token for the EventListener
 
 The Task YAML references these by their default names; if you change them in
-`config/config.yaml` (`ci.tekton.*CredentialsSecretName`), update the Tasks too.
+[`config/config.yaml`](../config/config.yaml) (`ci.tekton.*CredentialsSecretName`), update the Tasks too.
