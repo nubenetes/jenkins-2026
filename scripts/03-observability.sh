@@ -212,10 +212,18 @@ clusterMetrics:
     enabled: true
     metricsTuning:
       # Replace KSM's default allow-list with ONLY the node-inventory metrics the NAP
-      # dashboard needs. kube_node_spec_taint carries the gke-spot / compute-class taints.
+      # dashboard needs. kube_node_spec_taint carries the gke-spot / compute-class taints;
+      # kube_node_labels carries the node labels KSM is configured to expose — notably
+      # `label_node_kubernetes_io_instance_type` (the machine type), which is the only
+      # cluster-wide source of a node's machine type for STATIC pool nodes (NAP node names
+      # embed it, e.g. nap-e2-standard-2-…, but static `jenkins-2026-pool-…` names don't).
+      # KSM already exposes node.kubernetes.io/instance-type via the chart's default
+      # --metric-labels-allowlist, so no KSM/chart change is needed — we only have to keep
+      # the metric through this scrape. Still ~1 series per node → negligible vs the 15k cap.
       useDefaultAllowList: false
       includeMetrics:
         - kube_node_info
+        - kube_node_labels
         - kube_node_spec_taint
         - kube_node_status_condition
 KMEOF
