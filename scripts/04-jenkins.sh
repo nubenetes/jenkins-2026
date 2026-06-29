@@ -116,6 +116,14 @@ if [[ -n "${microservices_develop_url}" ]]; then
 fi
 
 log_step "Patching dynamic values into ${J2026_JENKINS_CREDENTIALS_SECRET}"
+# GKE Node Auto-Provisioning: the ComputeClass the build agents target so NAP spins up
+# Spot, scale-to-zero nodes for them. Empty when NAP is disabled, so agents fall back to
+# the static pool (the Groovy pipelines emit a nodeSelector only when this is non-empty).
+gke_compute_class=""
+if [[ "${J2026_NODE_AUTOPROVISIONING_ENABLED}" == "true" ]]; then
+  gke_compute_class="${J2026_NODE_AUTOPROVISIONING_COMPUTE_CLASS}"
+fi
+
 kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \
   --type=merge -p "$(jq -nc \
     --arg gbu "${grafana_base_url}" \
@@ -127,6 +135,7 @@ kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_N
     --arg br "${J2026_SELF_REPO_BRANCH}" \
     --arg genai "${J2026_MICROSERVICES_GENAI_SERVICE_ENABLED}" \
     --arg dev "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" \
+    --arg cc "${gke_compute_class}" \
     '{stringData:{
         "grafana-base-url":$gbu,
         "grafana-k8s-app-link":$gk8s,
@@ -136,16 +145,18 @@ kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_N
         "jenkins-public-url":$jpu,
         "repo-branch":$br,
         "genai-enabled":$genai,
-        "develop-enabled":$dev
+        "develop-enabled":$dev,
+        "gke-compute-class":$cc
     }}')"
 
 # Rolls the controller whenever the Secret-backed banner/behaviour values change
 # (ArgoCD won't roll on an out-of-band Secret edit otherwise) - passed as the
 # controller.podAnnotations.bannerLinksChecksum helm parameter below.
-banner_links_checksum="$(printf '%s|%s|%s|%s|%s|%s|%s' \
+banner_links_checksum="$(printf '%s|%s|%s|%s|%s|%s|%s|%s' \
   "${grafana_base_url}" "${grafana_k8s_app_link}" "${microservices_url}" \
   "${microservices_develop_url}" \
   "${jenkins_public_url}" "${J2026_SELF_REPO_BRANCH}" "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" \
+  "${gke_compute_class}" \
   | sha256sum | cut -c1-16)"
 
 # --- JCasC ConfigMaps (single source: jenkins/casc/*) ------------------------

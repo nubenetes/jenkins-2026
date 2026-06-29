@@ -8,6 +8,25 @@
  * Declarative shared library wrapper for the standard Microservices build/deploy pipeline.
  */
 def call(Map cfg) {
+    // GKE Node Auto-Provisioning: when the controller is configured with a Custom
+    // ComputeClass (env.GKE_COMPUTE_CLASS, set by JCasC from the nodeAutoProvisioning
+    // flag), pin the build agent onto it so GKE auto-provisions a Spot, scale-to-zero
+    // node and bin-packs the pod there (GKE auto-taints those pools with the class name,
+    // hence the matching tolerations). Empty → no nodeSelector, so the agent schedules on
+    // the static pool. See infrastructure/compute-classes/ + docs/201.
+    String computeClass = (env.GKE_COMPUTE_CLASS ?: '').trim()
+    String agentNodeScheduling = computeClass ? """
+  nodeSelector:
+    cloud.google.com/compute-class: ${computeClass}
+  tolerations:
+    - key: cloud.google.com/compute-class
+      operator: Equal
+      value: "${computeClass}"
+      effect: NoSchedule
+    - key: cloud.google.com/gke-spot
+      operator: Equal
+      value: "true"
+      effect: NoSchedule""" : ''
     pipeline {
         agent {
             kubernetes {
@@ -169,11 +188,7 @@ spec:
       resources:
         requests: {cpu: 10m, memory: 128Mi}
         limits: {cpu: 200m, memory: 256Mi}
-  tolerations:
-    - key: "jenkins-agent"
-      operator: "Equal"
-      value: "true"
-      effect: "NoSchedule"
+${agentNodeScheduling}
   volumes:
     - name: maven-cache
       hostPath:

@@ -32,6 +32,13 @@ if kubectl version >/dev/null 2>&1; then
     | while read -r _ns _name; do
         [[ -n "${_name}" ]] && kubectl delete pdb "${_name}" -n "${_ns}" --ignore-not-found 2>/dev/null || true
       done
+
+  # Node Auto-Provisioning: drop the Custom ComputeClass first so NAP stops provisioning
+  # new Spot nodes for any still-pending CI agent mid-teardown (its auto-created pools go
+  # away with the cluster on terraform destroy; emptying them as workloads scale to 0
+  # lets NAP consolidate them down meanwhile). Best-effort — never block teardown.
+  log_step "Removing Node Auto-Provisioning ComputeClass (if present)"
+  kubectl delete computeclass --all --ignore-not-found --timeout=30s 2>/dev/null || true
 fi
 
 # eso teardown: the gateway IAP secret VALUE lives in GCP Secret Manager (pushed

@@ -424,6 +424,7 @@ The canonical JSON files live in [`observability/grafana/dashboards/`](../observ
 | `k6-smoke-overview` | k6 iterations, checks/req-failed/p95 thresholds, run traces + logs | always |
 | `postgres-overview` | PostgreSQL / CloudNativePG: instances up, connections, DB size, replication lag, WAL rate, per-instance panels + Postgres pod logs (needs the CNPG `cnpg_*`/`pg_*` metrics scraped — see [Database (CNPG) observability](#database-cnpg-observability)) | always |
 | `rum-frontend` | Angular **Real User Monitoring** (Grafana Faro): Core Web Vitals (LCP/INP/CLS/TTFB/FCP), JS errors, sessions, browser breakdown, browser→backend traces | always |
+| `node-autoprovisioning` | **Node Auto-Provisioning (Spot)**: Spot vs static node counts over time — watch NAP scale up CI build nodes and consolidate back toward zero. Needs kube-state-metrics node metrics (oss / paid Grafana Cloud; trimmed in the lean free profile) | always |
 | `jenkins-overview` | Jenkins CI: active runs, queue, executors, pipeline results, build traces, pod logs | only `ci.engine=jenkins` |
 | `tekton-overview` | Tekton pipeline runs, task durations, build traces, pipeline pod logs | only `ci.engine=tekton` |
 

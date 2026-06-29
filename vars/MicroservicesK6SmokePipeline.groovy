@@ -25,6 +25,23 @@ def call(Map cfg) {
     // seed job from presets/index.yaml. 'none' (default) = pure manual inputs.
     def presetChoices = ['none'] + (cfg.presetChoices ?: [])
 
+    // GKE Node Auto-Provisioning: pin the (bursty, ephemeral) k6 agent onto the Custom
+    // ComputeClass when configured (env.GKE_COMPUTE_CLASS) so GKE spins up a Spot,
+    // scale-to-zero node for the load test. Empty → the static pool. See docs/201.
+    String computeClass = (env.GKE_COMPUTE_CLASS ?: '').trim()
+    String agentNodeScheduling = computeClass ? """
+  nodeSelector:
+    cloud.google.com/compute-class: ${computeClass}
+  tolerations:
+    - key: cloud.google.com/compute-class
+      operator: Equal
+      value: "${computeClass}"
+      effect: NoSchedule
+    - key: cloud.google.com/gke-spot
+      operator: Equal
+      value: "true"
+      effect: NoSchedule""" : ''
+
     pipeline {
         agent {
             kubernetes {
@@ -64,7 +81,7 @@ spec:
         allowPrivilegeEscalation: false
       resources:
         requests: {cpu: 10m, memory: 128Mi}
-        limits: {cpu: 200m, memory: 256Mi}
+        limits: {cpu: 200m, memory: 256Mi}${agentNodeScheduling}
 """
             }
         }

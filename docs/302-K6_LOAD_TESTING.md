@@ -203,7 +203,7 @@ Every committed preset, what it does, and when to reach for it. **Shape** is the
 | **`frontend-only`** | 🟢 basic | `load` | 10 VUs · 3m | gateway-ui, gateway-proxy | 2500ms / 2% | job tier | Focus the **edge/gateway path** users actually hit. |
 | **`develop-smoke`** | 🟢 basic | `smoke` | 4 VUs × 12 iters | all | 3000ms / 5% | **develop** ns | Validate the lean **develop** tier / drive develop traffic. |
 | **`stress-peak`** | 🔵 adv. | `stress` | 50→**100** VUs · hold 2m | all | 5000ms / 10% | job tier | Capacity exploration at ~2× load; watch the tail. |
-| **`spike-recovery`** | 🔵 adv. | `spike` | →**100** VUs · hold 1m · sharp drop | all | 5000ms / 15% | job tier | Flash-crowd **elasticity + recovery** (HPA/Karpenter). |
+| **`spike-recovery`** | 🔵 adv. | `spike` | →**100** VUs · hold 1m · sharp drop | all | 5000ms / 15% | job tier | Flash-crowd **elasticity + recovery** (HPA / GKE Node Auto-Provisioning). |
 | **`soak-endurance`** | 🔵 adv. | `soak` | 10 VUs · **1h** | all | 3000ms / 5% | job tier | **Leak/drift** hunting over time (extend duration). |
 | **`rps-steady`** | 🔵 adv. | arrival-rate | **120 req/s** · 5m (40 preVUs) | all | 2000ms / 2% | job tier | **Throughput** sign-off (open model); watch dropped iters. |
 | **`breakpoint-capacity`** | 🔵 adv. | `breakpoint` | →**400 req/s** · 8m · **aborts at knee** | all | 1500ms / 10% | job tier | Find the **capacity ceiling** (last rate before breach). |

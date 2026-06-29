@@ -118,6 +118,12 @@ jenkins:
             value: "${JENKINS2026_REPO_BRANCH:-main}"
           - key: "JENKINS2026_GITOPS_REPO_URL"
             value: "${JENKINS2026_GITOPS_REPO_URL:-https://github.com/nubenetes/jenkins-2026-gitops-config.git}"
+          # GKE Node Auto-Provisioning: the Custom ComputeClass the build agents target so
+          # NAP provisions Spot, scale-to-zero nodes for them. Empty when NAP is disabled
+          # (agents then schedule on the static pool). The pipelines in vars/ read this as
+          # env.GKE_COMPUTE_CLASS and emit a nodeSelector + tolerations only when non-empty.
+          - key: "GKE_COMPUTE_CLASS"
+            value: "${JENKINS2026_GKE_COMPUTE_CLASS:-}"
 
   securityRealm:
     oic:

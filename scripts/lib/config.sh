@@ -62,6 +62,30 @@ export J2026_INGRESS_CLASS="$(yq_get ".platform.gke.ingressClassName" '')"
 export J2026_SERVICE_TYPE="$(yq_get ".platform.gke.serviceType" 'ClusterIP')"
 export J2026_USE_ROUTE="false"
 
+# --- node auto-provisioning / ComputeClass (feature flag) --------------------
+# GKE NAP — the GA, Google-native equivalent of Karpenter. When enabled, 01-namespaces.sh
+# applies the Custom ComputeClass (infrastructure/compute-classes/) and the CI agents
+# target it (Spot, scale-to-zero) via the GKE_COMPUTE_CLASS env surfaced through JCasC.
+# FEATURE FLAG: JENKINS2026_NODE_AUTOPROVISIONING_ENABLED overrides nodeAutoProvisioning.enabled.
+J2026_NODE_AUTOPROVISIONING_ENABLED="${JENKINS2026_NODE_AUTOPROVISIONING_ENABLED:-$(yq_get '.nodeAutoProvisioning.enabled' 'true')}"
+export J2026_NODE_AUTOPROVISIONING_ENABLED
+case "${J2026_NODE_AUTOPROVISIONING_ENABLED}" in
+  true|false) ;;
+  *)
+    log_error "Invalid nodeAutoProvisioning.enabled '${J2026_NODE_AUTOPROVISIONING_ENABLED}' (expected true|false)."
+    exit 1
+    ;;
+esac
+export J2026_NODE_AUTOPROVISIONING_COMPUTE_CLASS="$(yq_get '.nodeAutoProvisioning.computeClass' 'ci-spot')"
+
+# Single source of truth: the SAME flag drives the cluster-level Terraform toggle
+# (terraform/gke `enable_node_autoprovisioning`), so cluster NAP, the in-cluster
+# ComputeClass, and the agents' targeting can never desync. Anything that sources this
+# lib before `terraform apply` (e.g. up.sh) picks it up automatically; test/e2e.sh and
+# the Day1 workflow derive the same value straight from config.yaml because they run
+# terraform BEFORE sourcing this lib.
+export TF_VAR_enable_node_autoprovisioning="${J2026_NODE_AUTOPROVISIONING_ENABLED}"
+
 # --- ci engine (feature flag) ------------------------------------------------
 
 # FEATURE FLAG: JENKINS2026_CI_ENGINE, if set, overrides ci.engine from

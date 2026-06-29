@@ -494,5 +494,21 @@ if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
   kubectl apply -f "${J2026_ROOT_DIR}/infrastructure/networkpolicies-tekton.yaml"
 fi
 
+# Node Auto-Provisioning (NAP): apply the Custom ComputeClass that backs Spot,
+# scale-to-zero CI-agent nodes (the GKE-native equivalent of a Karpenter NodePool). NAP
+# itself is enabled at the cluster level by terraform/gke; this just registers the class
+# Pods select via `cloud.google.com/compute-class`. NON-FATAL by design: no platform pod
+# depends on it, so a transient ComputeClass API hiccup (e.g. the CRD not yet reconciled
+# on a brand-new cluster) must never fail the provision. The class is cluster-scoped, so
+# it's only meaningful on GKE.
+if [[ "${J2026_PLATFORM}" == "gke" && "${J2026_NODE_AUTOPROVISIONING_ENABLED}" == "true" ]]; then
+  log_step "Applying Node Auto-Provisioning ComputeClass (${J2026_NODE_AUTOPROVISIONING_COMPUTE_CLASS})"
+  if kubectl apply -f "${J2026_ROOT_DIR}/infrastructure/compute-classes/"; then
+    log_info "ComputeClass '${J2026_NODE_AUTOPROVISIONING_COMPUTE_CLASS}' applied — CI agents will provision Spot nodes on demand."
+  else
+    log_warn "ComputeClass apply failed (NAP may not be ready yet). Continuing — this is non-fatal; re-run Day1 to converge."
+  fi
+fi
+
 log_info "Namespaces ready."
 

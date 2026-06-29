@@ -59,6 +59,11 @@ export TF_VAR_project_id="${GCP_PROJECT_ID}"
 export TF_VAR_region="${GCP_REGION:-europe-southwest1}"
 export TF_VAR_zone="${GCP_ZONE:-europe-southwest1-a}"
 export TF_VAR_cluster_name="${GCP_CLUSTER_NAME:-jenkins-2026}"
+# Node Auto-Provisioning toggle: single source of truth is config.yaml
+# (nodeAutoProvisioning.enabled), so cluster-level NAP can't desync from the in-cluster
+# ComputeClass wiring. config.sh is sourced AFTER terraform apply here, so derive it now
+# (honouring the per-run JENKINS2026_* override, same precedence as config.sh).
+export TF_VAR_enable_node_autoprovisioning="${JENKINS2026_NODE_AUTOPROVISIONING_ENABLED:-$(yq '.nodeAutoProvisioning.enabled // true' "${ROOT_DIR}/config/config.yaml")}"
 
 # The cluster is about to be destroyed wholesale, so also clean up
 # in-cluster namespaces during scripts/down.sh unless the caller overrides.
