@@ -39,6 +39,24 @@ Increment over v0.28.41 (wire up elastic Spot CI nodes — GKE-native, GA).
     tolerations, emitted only when the controller env `GKE_COMPUTE_CLASS` is set (surfaced
     through `jenkins-credentials` → JCasC from the flag; empty → agents stay on the static
     pool). Docs (201/302/402/501 + README) updated from "Karpenter" to NAP/ComputeClass.
+  - **Spot preemption resilience documented** (`docs/501`): the trade-off (~30s reclaim
+    notice can kill a build mid-run) plus the layered mitigations — on-demand fallback on
+    Spot stock-out, idempotent/re-runnable CI, and the one-flag escape hatch
+    (`nodeAutoProvisioning.enabled: false` → agents on the static pool for a guaranteed,
+    non-preemptible run).
+  - **NAP observability**: new Grafana dashboard
+    `observability/grafana/dashboards/node-autoprovisioning.json` ("CI-CD / Node
+    Auto-Provisioning (Spot)") — Spot vs static node counts over time so you can watch
+    scale-up on a build and consolidation back toward zero. Auto-shipped by the existing
+    `*.json` glob (publish script + oss dashboards chart).
+
+### Added (CI)
+- **`terraform-validate` PR guard** (`.github/workflows/terraform-validate.yml`): runs
+  `terraform fmt -check -recursive` + offline `terraform validate` (`-backend=false`, no
+  cloud creds) over **every** Terraform module on PRs touching `terraform/**`, so HCL
+  syntax/schema/format errors are caught before a Day1 hits them in-flight on a real
+  cluster. Closes the gap that this NAP change couldn't be `terraform validate`-checked
+  in the authoring environment.
 
 ## [v0.28.41] - 2026-06-29
 
