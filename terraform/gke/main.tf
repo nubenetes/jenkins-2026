@@ -228,7 +228,13 @@ resource "google_container_cluster" "this" {
         oauth_scopes    = ["https://www.googleapis.com/auth/cloud-platform"]
         image_type      = "COS_CONTAINERD"
         disk_type       = "pd-balanced"
-        disk_size       = 100
+        # Match the static pool's disk (var.disk_size_gb, default 50) instead of the 100 GB
+        # NAP default. Ephemeral CI nodes cache images on the host but keep no persistent
+        # data, so 50 GB is ample — and `pd-balanced` counts against the regional
+        # `SSD_TOTAL_GB` quota, so an oversized boot disk starves NAP of headroom to add
+        # Spot nodes (observed live: NAP scale-ups failing `Quota 'SSD_TOTAL_GB' exceeded`).
+        # Halving it lets ~2× more concurrent Spot CI nodes fit under the same quota.
+        disk_size = var.disk_size_gb
 
         management {
           auto_repair  = true

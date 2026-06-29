@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.45] - 2026-06-29
+
+Increment over v0.28.44 (NAP node disk right-sizing — surfaced by a live Spot run).
+
+### Fixed
+- **NAP node boot disk 100 GB → `var.disk_size_gb` (50 GB).** A real Day1 with builds
+  proved NAP end-to-end (build agents ran on auto-provisioned `n2` **Spot** `ci-spot`
+  nodes), but a third concurrent Spot node was refused with
+  `Quota 'SSD_TOTAL_GB' exceeded (Limit: 500.0)` — `pd-balanced` boot disks count against
+  the regional SSD quota, and the NAP default of 100 GB/node (vs the static pool's 50)
+  was starving that quota. NAP nodes now match the static pool's 50 GB, roughly doubling
+  how many concurrent Spot CI nodes fit under the same quota. Documented the quota ceiling
+  + symptom in `docs/501`.
+
 ## [v0.28.44] - 2026-06-29
 
 ### Docs
