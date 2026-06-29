@@ -519,10 +519,6 @@ Teardown deletes the Application (cascade-prune) in `down.sh`; switching to
 > Not done today — the imperative Secret keeps the secret material out of git
 > while still letting ArgoCD own the workload.
 
----
-
-[← Previous: 303. JVM Tuning](./303-JVM-TUNING.md) | [🏠 Home](../README.md) | [→ Next: 402. Pipelines as Code](./402-PIPELINES_AS_CODE.md)
-
 ## Build speed: fast agent startup & parallel builds
 
 Two things make a Jenkins-on-Kubernetes build feel slow *before the first stage runs*: **agent-pod provisioning** (schedule + pull every container image + JNLP connect) and **the checkout**. The concurrency cap is **not** one of them — it lives in JCasC (`jenkins/casc/jcasc-base.yaml`, `containerCapStr: "10"`), not the Helm chart's `agent.containerCap` (the JCasC Kubernetes cloud overrides the chart), so ~10 concurrent agent pods are already allowed (node capacity is the real ceiling beyond that).
@@ -534,6 +530,10 @@ Two things make a Jenkins-on-Kubernetes build feel slow *before the first stage 
 | **Shallow checkout** | The app-source checkout uses `checkout([GitSCM … CloneOption depth:1, noTags, single-branch])` instead of a full `git` clone (all history + every branch ref + tags of the large JHipster repo). The gitops/k6/image clones were already `--depth 1`. | `vars/MicroservicesPipeline.groovy` |
 
 > Beyond what the 2-node pool fits (maven requests 1 CPU, bursts to 4 → ~3–4 heavy Java builds in parallel), raise the node-pool min or `containerCapStr`; past that the autoscaler adds a node (~1–2 min), the slow path to avoid.
+
+---
+
+[← Previous: 303. JVM Tuning](./303-JVM-TUNING.md) | [🏠 Home](../README.md) | [→ Next: 402. Pipelines as Code](./402-PIPELINES_AS_CODE.md)
 
 ---
 
