@@ -1086,6 +1086,54 @@ if [[ "${run_env}" == "develop" && "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}
 
 ---
 
+## Beyond Jenkins & Tekton — the `ci.engine` contract & candidate engines (roadmap)
+
+> **Status: roadmap / analysis only.** Today `ci.engine` is **`jenkins | tekton`** (see [Selecting the engine](#selecting-the-engine)). Nothing below is implemented — this section captures *which other engines would fit, and why*, so a future flag value is a deliberate choice rather than a guess. Adding an engine is tractable precisely because both current engines already read one shared service registry ([`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml)) and follow the same contract.
+
+### The `ci.engine` contract (what any engine must provide)
+
+Whatever runs the build, it has to deliver the same outcomes Jenkins ([`vars/`](../vars/)) and Tekton ([`tekton/`](../tekton/)) already do, so the rest of the platform doesn't notice the swap:
+
+1. **Build & test** each service from [`services.yaml`](../jenkins/pipelines/seed/services.yaml) (JHipster Maven build, gateway MySQL→Postgres hot-patch).
+2. **DevSecOps scans** — Semgrep / CodeQL / Trivy, non-blocking, results surfaced (see [601. DevSecOps](./601-DEVSECOPS.md)).
+3. **Build & push** the image to GHCR (Jib / Spring-Boot build-image / docker).
+4. **GitOps update** — bump the image tag in the gitops-config repo and `git push origin main` (the machine-managed deploy; cf. [`vars/microservicesDeploy.groovy`](../vars/microservicesDeploy.groovy)). ArgoCD takes it from there.
+5. **OTel** — emit traces/metrics for the build itself (see [Observability](#observability)).
+6. **Platform integration** — install via an [`argocd/`](../argocd/) Application (GitOps), a numbered installer (`04-<engine>.sh` + `06-…` like [`scripts/04-tekton.sh`](../scripts/04-tekton.sh) / [`scripts/06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh)), its own namespace + RBAC, and gate everything behind `ci.engine` in [`config/config.yaml`](../config/config.yaml).
+
+A new engine that satisfies those six points drops in without touching the microservices, ArgoCD, or observability layers.
+
+### Candidate engines (ranked by fit *for this project*)
+
+| Engine | Fit | Why (for **this** GitHub-centric, Argo-on-GKE stack) |
+|---|---|---|
+| **GitHub Actions self-hosted — ARC** (Actions Runner Controller) | 🥇 best | Closes the loop: the Day0/Day1 lifecycle is *already* GitHub Actions, so running the microservices pipeline as GHA with in-cluster **ephemeral runners** is the natural third engine. Native GitHub webhooks (no separate trigger component). Installs as an ArgoCD app (`gha-runner-scale-set-controller` + `RunnerScaleSet`). **Best showcase for NAP:** ephemeral runner Pods are exactly the bursty workload the [`ci-spot` ComputeClass](../infrastructure/compute-classes/ci-spot.yaml) provisions Spot, scale-to-zero nodes for. |
+| **Argo Workflows** (+ Argo Events) | 🥇 strong | Completes the **Argo trifecta** already present (ArgoCD + Argo Rollouts). CNCF, K8s-native DAG pipelines; **Argo Events** is the Tekton-Triggers equivalent (webhook→workflow). The shared library ports to reusable `WorkflowTemplate`s, just as it ported to Tekton Tasks. |
+| **Woodpecker CI / Drone** | 🥈 good | Container-native and **ultra-light** (every step is a container) — a deliberate footprint contrast to Jenkins. Woodpecker (the live OSS Drone fork) is the better-maintained pick. |
+| **Concourse CI** | 🥈 niche | Strongly **opinionated** pipelines-as-code ("everything is a container + typed resources"). Architecturally instructive, but a heavier, more idiosyncratic model with its own learning curve. |
+| **Dagger** | 🧩 adjacent | Not a CI *server* but a **portable pipeline engine** (pipeline-as-code in containers, runs inside any CI). Fits better as a shared *build layer* than as a standalone `ci.engine`, but would let "the same build" run under any host. |
+
+### What about GitLab CI/CD?
+
+GitLab CI is an excellent product, but for **this** project it's a worse fit than ARC/Argo Workflows — and the reason is the *model*, not the runner. Split it in two:
+
+- **GitLab Runner (the executor) — fits fine.** The Kubernetes executor runs each job as an ephemeral Pod, installable via the official Helm chart as an ArgoCD app, and would happily use the `ci-spot` Spot nodes just like ARC.
+- **GitLab as the control plane — the friction.** GitLab CI wants the pipeline *and the repo* to live in a **GitLab project**. This stack is **GitHub-centric to the core**: forks on GitHub, the gitops-config repo on GitHub, the lifecycle workflows are GitHub Actions, the keyless WIF trust is for GitHub OIDC, secrets in GitHub, SARIF uploads to GitHub Code Scanning, fork webhooks. Adding GitLab CI means either **self-hosting GitLab** (a heavy, stateful app — Postgres + Redis + Gitaly + Sidekiq) or coupling to **gitlab.com** + "CI/CD for external repositories" (repo mirroring + status back). Either way you introduce a **second forge** redundant with GitHub, which fights the "single GitHub source of truth + keyless WIF + best-of-breed components on GKE" model. ARC adds no forge (GitHub-native); Argo Workflows adds none at all (pure K8s); GitLab brings its own.
+
+Points in its favour, for completeness:
+
+- **Keyless to GCP is preserved** — GitLab CI supports OIDC ID tokens → Workload Identity Federation, so the no-static-keys posture survives.
+- **DevSecOps built in** — GitLab ships SAST/DAST/dependency/container scanning, which could *replace* the Semgrep/CodeQL/Trivy trio — but that's the opposite philosophy (all-in-one forge vs. decoupled components).
+- The pipeline model (`stages` / `needs:` DAG, `include:` / **CI/CD components** as the shared-library equivalent) ports cleanly; the GitOps-update stage is just a job that pushes to the gitops repo.
+
+**Verdict:** as a peer `ci.engine` to Jenkins/Tekton, GitLab ranks **below ARC and Argo Workflows here** because of the second-forge cost. Where it *would* shine is a different feature entirely — not "another CI engine" but **"GitLab as an alternative platform"** (the Golden Path told with GitLab + its integrated DevSecOps as a counterpoint to the GitHub+components stack). That's a sibling project, not one more flag value.
+
+### Recommendation
+
+If one engine is added, **GitHub Actions + ARC** — maximum fit with the GitHub-centric setup, native triggers, and the best demonstration of the NAP Spot nodes (ephemeral runners = exactly what `ci-spot` was built for). If two, **ARC + Argo Workflows** gives a full spread: heavyweight-extensible (Jenkins), K8s-declarative (Tekton), GitHub-native (GHA/ARC), and Argo-native (Workflows).
+
+---
+
 [← Previous: 402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) | [🏠 Home](../README.md) | [→ Next: 501. Platform Operations](./501-PLATFORM_OPERATIONS.md)
 
 ---
