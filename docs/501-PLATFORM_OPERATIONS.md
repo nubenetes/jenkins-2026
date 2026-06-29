@@ -23,10 +23,11 @@ A plain `gcloud container clusters resize --num-nodes 0` **stalls forever / boun
 **The fix (now in the pause workflow) — disable ALL FOUR forces, then drain + resize:**
 
 - **Disable cluster NAP** (`gcloud container clusters update --no-enable-autoprovisioning`) — *first*, the root cause of the bounce-back.
-- **Disable the node pool's autoscaling, autoRepair AND autoUpgrade** (`--no-enable-autoscaling` · `--no-enable-autorepair --no-enable-autoupgrade`).
+- **Disable the node pool's autoscaling, autoRepair AND autoUpgrade** using specific node pool commands (`gcloud container node-pools update --no-enable-autoscaling` and `--no-enable-autorepair --no-enable-autoupgrade`) to prevent API lock conflicts.
+- **Serialize GKE mutations** via the new `wait_for_gke_operations` helper function. Since GKE allows only one mutating operation at a time, the workflow blocks and waits until each in-progress operation finishes before starting the next.
 - **Force-drain** every node: `kubectl drain --disable-eviction --force --delete-emptydir-data --ignore-daemonsets`. `--disable-eviction` deletes pods via the **DELETE API instead of the eviction API**, so it **bypasses PDBs entirely** — safe because the data lives on the PVs, not the pod.
 - Then `gcloud container clusters resize ... --num-nodes 0` — nodes are already empty and nothing can re-add them → it completes and **stays** at 0.
-- **Resume re-enables autoscaling + autoRepair + autoUpgrade** (NAP is intentionally left off — see gotcha 4).
+- **Resume re-enables autoscaling + autoRepair + autoUpgrade** (with similar serialization and specific node-pool updates; NAP is intentionally left off — see gotcha 4).
 
 <details><summary>🔁 Pause / resume sequence (Mermaid)</summary>
 
@@ -53,7 +54,12 @@ flowchart TD
 > steps by hand and the cluster won't reach 0, **do NOT fire several `gcloud container clusters
 > resize --num-nodes 0` back-to-back** — each queues a separate node-pool operation and they
 > **fight** (one stalls draining a CNPG primary behind its PDB while another reconciles nodes back),
-> so the count keeps churning (seen bouncing 0→2→3). Recover deterministically, once:
+> so the count keeps churning (seen bouncing 0→2→3).
+> 
+> _Note: The automated pause/resume workflows now include a `wait_for_gke_operations` helper that
+> automatically checks and waits for any pending/running GKE operations to avoid these conflicts._
+> 
+> Recover deterministically, once:
 > 1. Confirm **all four** recreate-forces are off — `gcloud container clusters describe …` →
 >    `autoscaling.enableNodeAutoprovisioning` empty (NAP), and `… node-pools describe …` →
 >    `autoscaling`/`management.autoRepair`/`management.autoUpgrade` all empty.
