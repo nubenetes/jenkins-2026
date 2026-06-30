@@ -43,6 +43,63 @@ jobs:
           ref: ${{ env.INFRA_BRANCH }}
           path: infra
 
+      # The 'gateway' fork is the upstream JHipster sample — generated for MySQL — but the
+      # platform runs PostgreSQL (CloudNativePG). EVERY CI engine patches it to Postgres + a
+      # NoOp cache AT BUILD TIME so the fork stays a clean upstream mirror (do NOT migrate the
+      # fork). This mirrors tekton/tasks/fetch-source.yaml + the Argo Workflows wf template.
+      # No-op for any other service (the `if` guard). ITs are skipped (-DskipITs below), like
+      # the other engines, so the test-side DB config (testcontainer/changelogs) need not match.
+      - name: Patch gateway → PostgreSQL + NoOp cache
+        if: env.SERVICE == 'gateway'
+        working-directory: microservices-src
+        run: |
+          if [ -f src/main/java/io/github/jhipster/sample/domain/User.java ]; then
+            sed -i '/org.hibernate.annotations.Cache/d' src/main/java/io/github/jhipster/sample/domain/User.java
+            sed -i '/@Cache(usage = CacheConcurrencyStrategy/d' src/main/java/io/github/jhipster/sample/domain/User.java
+          fi
+          if [ -f src/main/java/io/github/jhipster/sample/repository/UserRepository.java ]; then
+            sed -i '/public interface UserRepository/a \    String USERS_BY_LOGIN_CACHE = "usersByLogin";\n    String USERS_BY_EMAIL_CACHE = "usersByEmail";' src/main/java/io/github/jhipster/sample/repository/UserRepository.java
+          fi
+          if [ -f pom.xml ]; then
+            sed -i 's|<groupId>com.mysql</groupId>|<groupId>org.postgresql</groupId>|g' pom.xml
+            sed -i 's|<artifactId>mysql-connector-j</artifactId>|<artifactId>postgresql</artifactId>|g' pom.xml
+            sed -i 's|<groupId>io.asyncer</groupId>|<groupId>org.postgresql</groupId>|g' pom.xml
+            sed -i 's|<artifactId>r2dbc-mysql</artifactId>|<artifactId>r2dbc-postgresql</artifactId>|g' pom.xml
+            sed -i 's|<artifactId>mysql</artifactId>|<artifactId>postgresql</artifactId>|g' pom.xml
+            sed -i 's|<liquibase-plugin.driver>com.mysql.cj.jdbc.Driver</liquibase-plugin.driver>|<liquibase-plugin.driver>org.postgresql.Driver</liquibase-plugin.driver>|g' pom.xml
+            sed -i 's|<liquibase-plugin.hibernate-dialect>org.hibernate.dialect.MySQL8Dialect</liquibase-plugin.hibernate-dialect>|<liquibase-plugin.hibernate-dialect>org.hibernate.dialect.PostgreSQLDialect</liquibase-plugin.hibernate-dialect>|g' pom.xml
+            sed -i 's|jdbc:mysql://localhost:3306/jhipsterSampleGateway|jdbc:postgresql://localhost:5432/jhipsterSampleGateway|g' pom.xml
+          fi
+          if [ -f src/main/resources/config/application-prod.yml ]; then
+            sed -i 's|jdbc:mysql://localhost:3306/jhipsterSampleGateway.*|jdbc:postgresql://localhost:5432/jhipsterSampleGateway|g' src/main/resources/config/application-prod.yml
+            sed -i 's|r2dbc:mysql://localhost:3306/jhipsterSampleGateway.*|r2dbc:postgresql://localhost:5432/jhipsterSampleGateway|g' src/main/resources/config/application-prod.yml
+          fi
+          # `clean verify` test-COMPILES src/test even with -DskipITs, so the MySQL testcontainer
+          # reference must follow the now-Postgres driver set or it won't compile.
+          if [ -f src/test/java/io/github/jhipster/sample/config/DatabaseTestcontainer.java ]; then
+            sed -i 's|org.testcontainers.containers.MySQLContainer|org.testcontainers.containers.PostgreSQLContainer|g; s|MySQLContainer|PostgreSQLContainer|g; s|"mysql:[0-9.]*"|"postgres:16-alpine"|g; /\.withConfigurationOverride(/d' src/test/java/io/github/jhipster/sample/config/DatabaseTestcontainer.java
+          fi
+          mkdir -p src/main/java/io/github/jhipster/sample/config
+          printf '%s\n' \
+            'package io.github.jhipster.sample.config;' \
+            '' \
+            'import org.springframework.cache.CacheManager;' \
+            'import org.springframework.cache.annotation.EnableCaching;' \
+            'import org.springframework.cache.support.NoOpCacheManager;' \
+            'import org.springframework.context.annotation.Bean;' \
+            'import org.springframework.context.annotation.Configuration;' \
+            '' \
+            '@Configuration' \
+            '@EnableCaching' \
+            'public class CacheConfiguration {' \
+            '    @Bean' \
+            '    public CacheManager cacheManager() {' \
+            '        return new NoOpCacheManager();' \
+            '    }' \
+            '}' \
+            > src/main/java/io/github/jhipster/sample/config/CacheConfiguration.java
+          echo "Gateway patched → PostgreSQL + NoOp cache (mirrors fetch-source.yaml)."
+
       # ARC ephemeral runners (ghcr.io/actions/actions-runner) are MINIMAL — unlike
       # GitHub-hosted ubuntu-latest they ship NO JDK, so a bare `./mvnw` fails with
       # "JAVA_HOME is not defined". Install the same Temurin major the other engines'
@@ -105,7 +162,10 @@ jobs:
           [ -n "$MODULE" ] && [ -d "$MODULE" ] && cd "$MODULE"
           if [ "$SERVICE_TYPE" = "java" ]; then
             export MAVEN_OPTS="-Xmx2048m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError"
-            ./mvnw -B -ntp -s "${{ github.workspace }}/infra/jenkins/maven-settings.xml" clean verify
+            # -DskipITs: run unit tests, skip the heavy Integration Tests (DB testcontainer) —
+            # identical to the other engines (tekton/tasks/maven-build-test.yaml), and it keeps
+            # the gateway's test-side DB config (testcontainer/changelogs) out of the build path.
+            ./mvnw -B -ntp -s "${{ github.workspace }}/infra/jenkins/maven-settings.xml" -DskipITs clean verify
           else
             npm ci && npm run build
           fi
