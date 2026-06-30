@@ -14,23 +14,35 @@ All workflows live in [`.github/workflows/`](../.github/workflows/), are manuall
 ```mermaid
 mindmap
   root((DayN workflows))
-    Naming DayN.tier.ZZ
+    Naming DayN.tier.ZZ-resource
       DayN lifecycle phase
       tier semantic word
       ZZ per-resource id
+      resource name no verb
       alphabetical = run order
     Phases
-      Day0 bootstrap
+      Day0 infra bootstrap
       Day1 cluster
       Day2 ops
+        publish 01-05
+        redeploy 01-05
+        registry 01
+        scale 01-02
+        traffic 01-02
       Decom teardown
     Orchestration
       concurrency jenkins-2026-gke
       workflow_call reuse
-      umbrellas up and down
+      umbrella up Day1.cluster.00-all
+      umbrella down Decom.infra.00-all
+      Day2 no intra-phase order
     Approval gates
       five environments
-      required reviewers
+      gke-production
+      gateway-bootstrap
+      grafana-cloud-bootstrap
+      azure-bootstrap
+      aws-bootstrap
 ```
 
 </details>
@@ -155,6 +167,57 @@ The GitHub Actions sidebar sorts by each workflow's `name:` field, and every `na
 
 > **Full-teardown umbrella.** `Decom.infra.00` ("Everything") is an opt-in convenience workflow that tears down the GKE cluster **and** every persistent observability backend in one dispatch — so switching `observability.mode` around never leaves a forgotten, billed backend (e.g. an orphaned Grafana Cloud stack from before you moved to managed-azure). It reuses each per-resource Decom workflow via `workflow_call` (no teardown logic is duplicated); type `destroy` to confirm. The cluster runs first (its decom also destroys the ephemeral `grafana-cloud-token` that references the Grafana Cloud stack), then the backends in parallel. The three backend checkboxes default **on**; the Gateway static IP defaults **off** (keeping it avoids losing the IP and re-propagating DNS). Untick any to spare it.
 
+<details>
+<summary>📊 Umbrella fan-out — how Day1.cluster.00 / Decom.infra.00 reuse the per-resource workflows (workflow_call) + where gke serialization attaches</summary>
+
+```mermaid
+flowchart TD
+    subgraph UP["🟢 Day1.cluster.00-all &quot;Everything up&quot; (no concurrency of its own)"]
+        direction TB
+        u_gw["job: gateway-bootstrap<br/>if bootstrap_gateway<br/>uses Day0.infra.01-gateway<br/>🔒 gateway-bootstrap"]
+        u_prov["job: provision<br/>needs gateway-bootstrap<br/>if always() &amp;&amp; !failure()<br/>uses Day1.cluster.01-gke"]
+        u_gw --> u_prov
+    end
+
+    subgraph NEST["Day1.cluster.01-gke — its OWN preflight fan-out (nested workflow_call)"]
+        direction TB
+        n_pick{"observability_mode"}
+        n_gc["grafana-cloud-bootstrap<br/>uses Day0.infra.02<br/>🔒 grafana-cloud-bootstrap"]
+        n_az["azure-bootstrap<br/>uses Day0.infra.03<br/>🔒 azure-bootstrap"]
+        n_aws["aws-bootstrap<br/>uses Day0.infra.04<br/>🔒 aws-bootstrap"]
+        n_dc["decom of the NON-selected backends<br/>uses Decom.infra.02 / 03 / 04<br/>(never leaves a billed backend)"]
+        n_prov["provision: scripts/up.sh in full<br/>needs the 3 bootstraps<br/>🔒 gke-production"]
+        n_pick --> n_gc --> n_prov
+        n_pick --> n_az --> n_prov
+        n_pick --> n_aws --> n_prov
+        n_pick --> n_dc
+    end
+    u_prov -. "workflow_call (nested)" .-> NEST
+
+    subgraph DOWN["🔴 Decom.infra.00-all &quot;Everything&quot; (no concurrency of its own)"]
+        direction TB
+        d_guard["job: guard<br/>type 'destroy' to confirm"]
+        d_cl["job: cluster (FIRST)<br/>needs guard<br/>uses Decom.cluster.01-gke"]
+        d_gc["grafana_cloud (default ON)<br/>uses Decom.infra.02"]
+        d_az["azure_grafana (default ON)<br/>uses Decom.infra.03"]
+        d_aws["aws_grafana (default ON)<br/>uses Decom.infra.04"]
+        d_gwy["gateway (default OFF)<br/>uses Decom.infra.01"]
+        d_guard --> d_cl
+        d_cl --> d_gc
+        d_cl --> d_az
+        d_cl --> d_aws
+        d_cl --> d_gwy
+    end
+
+    serial["concurrency: jenkins-2026-gke<br/>lives on the LEAVES (Day1.cluster.01 / Decom.cluster.01),<br/>NOT the umbrellas — so GKE-touching calls queue, never race;<br/>umbrellas stay group-free or they would deadlock on their own child"]:::note
+    NEST -.-> serial
+    d_cl -.-> serial
+
+    classDef note fill:#eef,stroke:#66c;
+```
+
+</details>
+
 ---
 
 ## Full workflow matrix
@@ -182,18 +245,63 @@ Rows = resources · Columns = lifecycle phases · Cell = filename (link) or — 
 
 ---
 
+## Pick your workflow: the operator decision tree
+
+<details>
+<summary>🧭 Pick your workflow — operator intent → exact workflow(s) (decision tree)</summary>
+
+```mermaid
+flowchart TD
+    START(["What do I want to do?"])
+
+    START --> Q_FIRST{"First bring-up<br/>from scratch?"}
+    Q_FIRST -->|"yes, one click"| UMB["Day1.cluster.00-all<br/>(Gateway + backend + cluster)"]
+    Q_FIRST -->|"yes, step by step"| STEPS["Day0.infra.01-gateway,<br/>then the backend your<br/>observability_mode needs,<br/>then Day1.cluster.01-gke"]
+    Q_FIRST -->|"no, cluster exists"| Q_INTENT{"What's my intent?"}
+
+    Q_INTENT -->|"change one component"| Q_WHAT{"Which component?"}
+    Q_WHAT -->|"ArgoCD / Jenkins / Tekton /<br/>Headlamp / Gateway-IAP"| REDEPLOY["Day2.redeploy.01-argocd ·<br/>02-jenkins · 03-tekton ·<br/>04-headlamp · 05-gateway<br/>(pick the one you changed)"]
+    Q_WHAT -->|"any other change<br/>(scripts, Helm, Terraform)"| RERUN["re-run Day1.cluster.01-gke<br/>(idempotent, converges in place)"]
+
+    Q_INTENT -->|"publish dashboards / alerts"| Q_BACKEND{"Which backend?"}
+    Q_BACKEND -->|"oss"| POSS["Day2.publish.01-oss-grafana"]
+    Q_BACKEND -->|"grafana-cloud"| PGC["Day2.publish.02-grafana-cloud"]
+    Q_BACKEND -->|"managed-azure / managed-aws"| PMAN["Day2.publish.03-azure-grafana /<br/>04-aws-grafana"]
+    Q_BACKEND -->|"alerts only"| PALERT["Day2.publish.05-alerts"]
+
+    Q_INTENT -->|"run load / traffic"| TRAFFIC["Day2.traffic.01-k6 (load) ·<br/>02-rum (synthetic RUM beacons)"]
+    Q_INTENT -->|"prune old ghcr images"| REG["Day2.registry.01-image-retention<br/>(no cluster needed)"]
+
+    Q_INTENT -->|"pause to save cost"| Q_DURATION{"For how long?"}
+    Q_DURATION -->|"a few days, keep it intact"| PAUSE["Day2.scale.01-pause<br/>(resume with 02-resume)"]
+    Q_DURATION -->|"done with it, tear down"| Q_TEAR{"Tear down what?"}
+
+    Q_INTENT -->|"tear down"| Q_TEAR
+    Q_TEAR -->|"just the cluster<br/>(keep backends + IP)"| DCLUSTER["Decom.cluster.01-gke"]
+    Q_TEAR -->|"cluster + a backend<br/>I provisioned"| DTARGET["Decom.cluster.01-gke first,<br/>then Decom.infra.0N for that backend"]
+    Q_TEAR -->|"everything, one click"| DALL["Decom.infra.00-all<br/>(type 'destroy' to confirm)"]
+
+    classDef umb fill:#ffd,stroke:#aa0,stroke-width:2px;
+    classDef destroy fill:#fce4ec,stroke:#e91e63;
+    class UMB umb;
+    class DCLUSTER,DTARGET,DALL destroy;
+```
+
+</details>
+
 ## Lifecycle diagram
 
 <details>
 <summary>Expand: full lifecycle flow (Mermaid)</summary>
 
 ```mermaid
+---
 flowchart TD
     subgraph PHASE0 ["Day0 + Day1 — Create (run in sorted order)"]
         direction TB
-        P0_1["Day0.infra.01 Gateway\nDay0.infra.02 Grafana Cloud\nDay0.infra.03 Azure bootstrap\nDay0.infra.04 AWS bootstrap\n━━ one-time, persistent ━━"]
-        P0_2["Day1.cluster.01 GKE\n━━ throwaway cluster ━━"]
-        P0_1 -->|"persistent resources ready\n(GCS state, credentials)"| P0_2
+        P0_1["Day0.infra.01 Gateway<br/>Day0.infra.02 Grafana Cloud<br/>Day0.infra.03 Azure bootstrap<br/>Day0.infra.04 AWS bootstrap<br/>━━ one-time, persistent ━━"]
+        P0_2["Day1.cluster.01 GKE<br/>━━ throwaway cluster ━━"]
+        P0_1 -->|"persistent resources ready<br/>(GCS state, credentials)"| P0_2
     end
 
     subgraph PHASE5 ["Day2 — Update (independent, any order)"]
@@ -207,6 +315,8 @@ flowchart TD
         P5_2a["Day2.redeploy.02 Jenkins"]
         P5_2t["Day2.redeploy.03 Tekton"]
         P5_2b["Day2.redeploy.04 Headlamp"]
+        P5_2g["Day2.redeploy.05 Gateway"]
+        P5_reg["Day2.registry.01 Image retention"]
         P5_9["Day2.traffic.01 k6"]
         P5_9r["Day2.traffic.02 Synthetic RUM"]
         P5_s1["Day2.scale.01 Pause (nodes → 0)"]
@@ -215,13 +325,13 @@ flowchart TD
 
     subgraph PHASE9 ["Decom — Destroy (run in sorted order)"]
         direction TB
-        P9_1["Decom.cluster.01 GKE\n━━ throwaway cluster first ━━"]
-        P9_2["Decom.infra.01 Gateway\nDecom.infra.02 Grafana Cloud\nDecom.infra.03 Azure decommission\nDecom.infra.04 AWS decommission\n━━ persistent resources last ━━"]
-        P9_1 -->|"cluster gone\nno dangling references"| P9_2
+        P9_1["Decom.cluster.01 GKE<br/>━━ throwaway cluster first ━━"]
+        P9_2["Decom.infra.01 Gateway<br/>Decom.infra.02 Grafana Cloud<br/>Decom.infra.03 Azure decommission<br/>Decom.infra.04 AWS decommission<br/>━━ persistent resources last ━━"]
+        P9_1 -->|"cluster gone<br/>no dangling references"| P9_2
     end
 
-    UP["🟢 Day1.cluster.00 — Everything up\n(one-click umbrella: Gateway + cluster + backend)"]:::umbrella
-    DOWN["🔴 Decom.infra.00 — Everything\n(one-click umbrella: cluster + all backends)"]:::umbrella
+    UP["🟢 Day1.cluster.00 — Everything up<br/>(one-click umbrella: Gateway + cluster + backend)"]:::umbrella
+    DOWN["🔴 Decom.infra.00 — Everything<br/>(one-click umbrella: cluster + all backends)"]:::umbrella
     UP -.->|"orchestrates"| PHASE0
     DOWN -.->|"orchestrates"| PHASE9
 
@@ -244,16 +354,20 @@ stateDiagram-v2
     [*] --> Root: bootstrap.sh up (once, local)
     Root --> Day0: Day0.infra.0N (Gateway + backend, persistent)
     Day0 --> Day1: Day1.cluster.01 (cluster + full stack)
+    Root --> Day1: Day1.cluster.00-all (one-click "Everything up": Day0 + Day1)
     Day1 --> Day2: cluster running
-    Day2 --> Day2: redeploy / publish / traffic (re-runnable)
+    Day2 --> Day2: re-runnable ops — publish / redeploy / registry / scale / traffic
     Day2 --> DecomCluster: Decom.cluster.01
     DecomCluster --> Day0: cluster gone; backends + root kept
-    DecomCluster --> DecomInfra: Decom.infra.0N (optional, permanent)
+    DecomCluster --> DecomInfra: Decom.infra.0N (per-backend / gateway, permanent)
+    Day2 --> DecomInfra: Decom.infra.00-all ("Everything" teardown: cluster + backends)
     DecomInfra --> RootTeardown: bootstrap.sh down (rare)
     RootTeardown --> [*]
     note right of DecomCluster
       re-provision = back to Day1
-      (Day0 state in GCS is reused)
+      (Day0 state in GCS is reused;
+      gke-production env-gates fronts
+      Day1/Decom.cluster/Day2 redeploy+publish+scale)
     end note
 ```
 
@@ -268,25 +382,29 @@ stateDiagram-v2
 
 ```mermaid
 flowchart TD
-    boot["bootstrap.sh up<br/>WIF + GCS state"]:::root
-    gw["Day0.infra.01<br/>Gateway IP/cert"]
-    bk["Day0.infra.02/03/04<br/>observability backend"]
+    boot["bootstrap.sh up<br/>WIF + GCS state (root of trust)"]:::root
+    gw["Day0.infra.01<br/>Gateway IP/cert<br/>(env: gateway-bootstrap)"]
+    bk["Day0.infra.02/03/04<br/>observability backend<br/>(env: grafana-cloud/azure/aws-bootstrap)"]
     boot --> gw
     boot --> bk
     gw --> day1
-    bk -.->|workflow_call preflight| day1
+    bk -.->|workflow_call preflight<br/>bootstrap selected backend| day1
     subgraph cc["concurrency: jenkins-2026-gke — queued, not raced"]
-        day1["Day1.cluster.01<br/>cluster + up.sh"]
-        d2["Day2.* cluster ops"]
-        decom["Decom.cluster.01"]
+        day1["Day1.cluster.01<br/>cluster + up.sh in full<br/>(env: gke-production)"]
+        d2["Day2.* cluster ops<br/>redeploy.* / publish.01-05 / scale.* / traffic.*<br/>(redeploy/publish/scale gated by gke-production)"]
+        decom["Decom.cluster.01<br/>(env: gke-production)"]
     end
-    day1 --> d2 --> decom
-    decom -.->|persistent kept| gw
+    day1 --> d2
+    day1 --> decom
+    day1 -.->|workflow_call: Decom.infra.02/03/04<br/>tear down NON-selected backends| bk
+    decom -.->|persistent kept<br/>backends + root survive| gw
+    nocc["Day2.registry.01-image-retention<br/>no cluster — separate group (jenkins-2026-image-retention)"]:::nocc
     umb["umbrellas Day1.cluster.00 / Decom.infra.00<br/>no concurrency — orchestrate via workflow_call"]:::umb
     umb -.-> day1
     umb -.-> decom
     classDef root fill:#ffd,stroke:#aa0,stroke-width:2px;
     classDef umb fill:#eef,stroke:#66c;
+    classDef nocc fill:#efe,stroke:#6a6,stroke-dasharray:4 2;
 ```
 
 </details>
@@ -378,50 +496,115 @@ provisioned, are billed separately and would be torn down via their own
 flowchart TD
     subgraph D0["Day0 — one-time persistent bootstrap"]
         direction LR
-        w0101["Day0.infra.01\nGateway bootstrap"]
-        w0102["Day0.infra.02\nGrafana Cloud bootstrap"]
-        w0103["Day0.infra.03\nAzure bootstrap"]
-        w0104["Day0.infra.04\nAWS bootstrap"]
+        w0101["Day0.infra.01<br/>Gateway bootstrap"]
+        w0102["Day0.infra.02<br/>Grafana Cloud bootstrap"]
+        w0103["Day0.infra.03<br/>Azure bootstrap"]
+        w0104["Day0.infra.04<br/>AWS bootstrap"]
     end
 
     subgraph D1["Day1 — cluster provision (once per session)"]
-        w0201["Day1.cluster.01\nGKE provision\n(runs scripts/up.sh in full)"]
+        direction LR
+        w0200["Day1.cluster.00<br/>Everything up (umbrella)"]
+        w0201["Day1.cluster.01<br/>GKE provision<br/>(runs scripts/up.sh in full)"]
+        w0200 -->|"orchestrates"| w0201
     end
 
-    subgraph D2["Day2 — operations on running cluster"]
+    subgraph D2["Day2 — operations on running cluster (independent, idempotent, unordered)"]
         direction LR
-        subgraph content["Content publish (no cluster needed for *.03/04)"]
-            w5103["Day2.publish.03\nAzure dashboards"]
-            w5104["Day2.publish.04\nAWS dashboards"]
-            w5105["Day2.publish.05\nGrafana alerts"]
+        subgraph publish["Publish (01–05) — gke-production gated"]
+            w5101["Day2.publish.01<br/>OSS Grafana"]
+            w5102["Day2.publish.02<br/>Grafana Cloud"]
+            w5103["Day2.publish.03<br/>Azure dashboards"]
+            w5104["Day2.publish.04<br/>AWS dashboards"]
+            w5105["Day2.publish.05<br/>Alerts"]
         end
-        subgraph redeploy["Component redeploys"]
-            w52ar["Day2.redeploy.01\nArgoCD"]
-            w5202["Day2.redeploy.02\nJenkins"]
-            w52tk2["Day2.redeploy.03\nTekton"]
-            w5203["Day2.redeploy.04\nHeadlamp"]
+        subgraph redeploy["Redeploy (01–05)"]
+            w52ar["Day2.redeploy.01<br/>ArgoCD"]
+            w5202["Day2.redeploy.02<br/>Jenkins"]
+            w52tk2["Day2.redeploy.03<br/>Tekton"]
+            w5203["Day2.redeploy.04<br/>Headlamp"]
+            w5205["Day2.redeploy.05<br/>Gateway"]
         end
-        subgraph sim["Traffic"]
-            w5901["Day2.traffic.01\nk6"]
+        subgraph traffic["Traffic (01–02)"]
+            w5901["Day2.traffic.01<br/>k6"]
+            w5902["Day2.traffic.02<br/>RUM"]
+        end
+        subgraph scale["Scale (01–02) — gke-production gated"]
+            w5301["Day2.scale.01<br/>Pause"]
+            w5302["Day2.scale.02<br/>Resume"]
+        end
+        subgraph registry["Registry (01)"]
+            w5401["Day2.registry.01<br/>Image retention<br/>(ghcr; no cluster)"]
         end
     end
 
     subgraph DECOM["Decom (reverse order)"]
         direction LR
-        w9101["Decom.cluster.01\nGKE decommission"]
-        w92xx["Decom.infra.01–04\nPersistent backends\n(only if permanent)"]
+        w9000["Decom.infra.00<br/>Everything teardown (umbrella)"]
+        w9101["Decom.cluster.01<br/>GKE decommission"]
+        w9201["Decom.infra.01<br/>Gateway IP (default OFF)"]
+        w92xx["Decom.infra.02–04<br/>Persistent backends<br/>(grafana-cloud / azure / aws)"]
+        w9000 -->|"orchestrates"| w9101
         w9101 -->|"cluster gone"| w92xx
+        w9101 -->|"cluster gone"| w9201
     end
 
     D0 -->|"GCS state reused by Day1.cluster.01"| D1
     D1 -->|"cluster running"| D2
     D2 -->|"session complete"| DECOM
-    DECOM -->|"re-provision: skip Day0\n(GCS state still exists)"| D1
+    DECOM -->|"re-provision: skip Day0<br/>(GCS state still exists)"| D1
 
     style D0 fill:#e8f4e8,stroke:#4caf50
     style D1 fill:#e3f2fd,stroke:#2196f3
     style D2 fill:#fff8e1,stroke:#ff9800
     style DECOM fill:#fce4ec,stroke:#e91e63
+```
+
+</details>
+
+<details>
+<summary>⏱️ A typical session over time — Day0 once, then Day1, the Day2 loop, then Decom (sequence diagram: gates, the GKE queue, and GCS-state reuse)</summary>
+
+```mermaid
+sequenceDiagram
+    actor Op as Operator / CI
+    participant GH as GitHub Actions<br/>(queue: jenkins-2026-gke)
+    participant Env as Approval gates<br/>(5 Environments)
+    participant GCS as GCS Terraform state
+    participant GCP as GCP — cluster + backends
+
+    Note over Op,GCP: Day0 — one-time persistent bootstrap (run once, months apart)
+    Op->>GH: dispatch Day0.infra.01-gateway
+    GH->>Env: request review (gateway-bootstrap)
+    Env-->>GH: approved
+    GH->>GCP: terraform apply (static IP + cert + DNS auth)
+    GH->>GCS: write gateway-bootstrap state
+
+    Note over Op,GCP: Day1 — provision the throwaway cluster (once per session)
+    Op->>GH: dispatch Day1.cluster.01-gke (observability_mode, ci_engine)
+    GH->>GCS: read Day0 outputs (IP/cert, backend) — reused, not recreated
+    GH->>GCP: backend bootstrap job (workflow_call Day0.infra.02/03/04)
+    Note right of GH: parallel jobs also Decom the<br/>non-selected backends (no billed orphan)
+    GH->>Env: provision job requests review (gke-production)
+    Env-->>GH: approved
+    GH->>GCP: terraform apply (GKE) then up.sh in full
+    Note right of GCP: 01 ns+secrets to 08.5 ArgoCD to 03 obs to<br/>04+06 (jenkins OR tekton) to 07/07.5 to 08 to 09 to smoke
+
+    Note over Op,GCP: Day2 — independent, idempotent ops (any order, re-runnable)
+    loop each change, dispatched by hand
+        Op->>GH: dispatch one Day2.* (redeploy / publish / traffic / scale)
+        GH->>GH: queued on jenkins-2026-gke (serialized, not raced)
+        GH->>Env: gke-production gate (k6 + RUM are ungated)
+        Env-->>GH: approved
+        GH->>GCP: apply targeted patch on the running cluster
+    end
+
+    Note over Op,GCP: Decom — tear the cluster down when done (cluster first)
+    Op->>GH: dispatch Decom.cluster.01-gke
+    GH->>Env: review (gke-production)
+    Env-->>GH: approved
+    GH->>GCP: down.sh + terraform destroy (cluster + ephemeral token)
+    Note over GCS,GCP: Day0 backends + state KEPT — reprovision jumps straight back to Day1
 ```
 
 </details>
@@ -600,29 +783,39 @@ GitHub has no way to draw that — it's a `bash if`, not a job — so `provision
 <summary>📊 What actually runs — job graph vs in-job steps</summary>
 
 ```mermaid
+---
 flowchart TD
     subgraph JOBS["GitHub Actions job graph (what the workflow_dispatch UI shows)"]
         direction TB
-        B1["grafana-cloud-bootstrap\nif mode=grafana-cloud\nuses Day0.infra.02\n🔒 env: grafana-cloud-bootstrap"]
-        B2["azure-bootstrap\nif mode=managed-azure\nuses Day0.infra.03\n🔒 env: azure-bootstrap"]
-        B3["aws-bootstrap\nif mode=managed-aws\nuses Day0.infra.04\n🔒 env: aws-bootstrap"]
-        P["provision\nneeds: the 3 bootstraps\n🔒 env: gke-production"]
+        B1["grafana-cloud-bootstrap<br/>if mode=grafana-cloud<br/>uses Day0.infra.02<br/>🔒 env: grafana-cloud-bootstrap"]
+        B2["azure-bootstrap<br/>if mode=managed-azure<br/>uses Day0.infra.03<br/>🔒 env: azure-bootstrap"]
+        B3["aws-bootstrap<br/>if mode=managed-aws<br/>uses Day0.infra.04<br/>🔒 env: aws-bootstrap"]
+        P["provision<br/>needs: the 3 bootstraps<br/>🔒 env: gke-production"]
         B1 --> P
         B2 --> P
         B3 --> P
+
+        D1["destroy-grafana-cloud<br/>uses Decom.infra.02"]
+        D2["destroy-azure<br/>uses Decom.infra.03"]
+        D3["destroy-aws<br/>uses Decom.infra.04"]
+        DEC{{"if destroy_unused_backends=true<br/>retire every NON-selected backend<br/>(DESTRUCTIVE, opt-in)<br/>NOT in provision's needs"}}
+        DEC --> D1
+        DEC --> D2
+        DEC --> D3
     end
 
     subgraph INSIDE["Inside the single 'provision' job — steps, NOT shown as boxes in the UI"]
         direction TB
-        TF["terraform apply (GKE cluster)"]
-        NS["01 namespaces + secrets\n(imperative kubectl, or push to\nSecret Manager when secrets.backend=eso)"]
+        TF["terraform apply (GKE cluster) + fetch kubeconfig"]
+        PD["sweep-orphaned-PDs<br/>(reclaim unattached pvc-* CSI disks)"]
+        NS["01 namespaces + secrets<br/>(imperative kubectl, or push to<br/>Secret Manager when secrets.backend=eso)<br/>then 02 otel-operator"]
         CD["08.5 ArgoCD -> 08.6 ESO sync (eso only) -> 03 observability"]
-        UP{"up.sh branches on\nJENKINS2026_CI_ENGINE"}
+        UP{"up.sh branches on<br/>JENKINS2026_CI_ENGINE"}
         JEN["04-jenkins + 06-seed-pipelines"]
         TEK["04-tekton + 06-tekton-pipelines (PaC)"]
-        REST["07/07.5 dashboards+alerts\n08 headlamp · 09 gateway/IAP"]
+        REST["07/07.5 dashboards+alerts<br/>08 headlamp · 09 gateway/IAP"]
         SMOKE["smoke-test"]
-        TF --> NS --> CD --> UP
+        TF --> PD --> NS --> CD --> UP
         UP -->|jenkins default| JEN
         UP -->|tekton| TEK
         JEN --> REST
@@ -631,6 +824,7 @@ flowchart TD
     end
 
     P -.->|"one job runs all of the below as steps"| INSIDE
+---
 ```
 
 </details>
@@ -655,6 +849,61 @@ flowchart TD
 So the run graph deliberately shows only the **structural** fan-in (the preflight backends) and folds every **configuration** choice into the single `provision` job. If you ever *wanted* the engine choice as boxes, you'd split `provision` into a shared-preamble job plus `if: ci_engine == …` deploy jobs (passing kubeconfig as an artifact) — possible, but a lot of duplication for a PoC, and it would break the "one idempotent provision" model described below.
 
 ---
+
+### Observability mode → which workflows apply
+
+<details>
+<summary>📊 Observability mode → which Day0 / Day2.publish / Decom workflows apply (and which are no-ops)</summary>
+
+```mermaid
+flowchart LR
+    O["observability.mode<br/>(config.yaml / Day1 input)"]:::pick
+    O --> GC["grafana-cloud"]:::mode
+    O --> OSS["oss (default)"]:::mode
+    O --> AZ["managed-azure"]:::mode
+    O --> AW["managed-aws"]:::mode
+
+    subgraph DAY0["Day0 bootstrap (persistent, one-time)"]
+        direction TB
+        d02["Day0.infra.02<br/>grafana-cloud stack"]
+        d03["Day0.infra.03<br/>azure-grafana"]
+        d04["Day0.infra.04<br/>aws-grafana"]
+        dNO["no Day0 backend<br/>(OSS stack is in-cluster,<br/>deployed by Day1 via ArgoCD)"]:::noop
+    end
+
+    subgraph PUB["Day2.publish (push dashboards to the active Grafana)"]
+        direction TB
+        p02["Day2.publish.02<br/>grafana-cloud"]
+        p01["Day2.publish.01<br/>oss-grafana (in-cluster Grafana)"]
+        p03["Day2.publish.03<br/>azure-grafana"]
+        p04["Day2.publish.04<br/>aws-grafana"]
+        p05["Day2.publish.05<br/>alerts — all modes w/ live Grafana"]:::shared
+    end
+
+    subgraph DEC["Decom backend (persistent teardown)"]
+        direction TB
+        x02["Decom.infra.02<br/>grafana-cloud"]
+        x03["Decom.infra.03<br/>azure-grafana"]
+        x04["Decom.infra.04<br/>aws-grafana"]
+        xNO["no backend Decom<br/>(OSS dies with the cluster<br/>via Decom.cluster.01-gke)"]:::noop
+    end
+
+    GC --> d02 --> p02 --> x02
+    OSS --> dNO --> p01 --> xNO
+    AZ --> d03 --> p03 --> x03
+    AW --> d04 --> p04 --> x04
+    p02 -.-> p05
+    p01 -.-> p05
+    p03 -.-> p05
+    p04 -.-> p05
+
+    classDef pick fill:#ede7f6,stroke:#673ab7,stroke-width:2px;
+    classDef mode fill:#e3f2fd,stroke:#2196f3,stroke-width:2px;
+    classDef noop fill:#eee,stroke:#9e9e9e,stroke-dasharray:4 3,color:#555;
+    classDef shared fill:#fff8e1,stroke:#ff9800;
+```
+
+</details>
 
 ## Idempotency: every workflow is safe to re-run
 
