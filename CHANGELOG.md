@@ -4,16 +4,26 @@ All notable changes to this project will be documented in this file.
 
 ## [v0.28.56] - 2026-07-01
 
+Consolidates everything since **v0.28.54**: two brand-new CI engines (GitHub Actions/ARC
++ Argo Workflows) implemented and live-validated end-to-end, then hardened and standardized
+against the existing Jenkins/Tekton engines.
+
 ### Added
-- **1-click develop tier for the GitHub Actions / ARC engine (#459).** The rendered
-  fork workflow now carries a `workflow_dispatch` trigger and `06-githubactions-pipelines.sh`
-  also renders it to the fork's `develop` branch when develop-track is enabled — completing
-  the branch-based tier model across all four engines: push/PR-merge to `main` = **stable**
-  (→ `microservices` ns), push to `develop` = **develop** (→ `microservices-develop` ns).
-- **AI-optimized Argo Workflows + GitHub Actions ARC Grafana dashboards (#458).** New
-  `argo-workflows-ci` / `github-actions-ci` dashboards (export inventory + deployed refresh,
-  plus azure/aws variants) so the two newest engines have the same OTel pipeline observability
-  as Jenkins/Tekton.
+- **Two new CI engines — GitHub Actions self-hosted (ARC) and Argo Workflows (#428).** Beyond
+  Jenkins (default) and Tekton, the `ci.engine` flag now also accepts `githubactions` and
+  `argoworkflows`. Both run the same 10-stage microservices pipeline from the shared
+  `services.yaml`, on in-cluster ephemeral runners (the `ci-spot` NAP Spot ComputeClass). Each
+  engine deploys mutually-exclusively and **retires all three siblings** on switch (#443).
+- **1-click develop tier for the GitHub Actions / ARC engine (#459).** The rendered fork
+  workflow carries a `workflow_dispatch` trigger and `06-githubactions-pipelines.sh` also
+  renders it to the fork's `develop` branch — completing the branch-based tier model across all
+  four engines: push/PR-merge to `main` = **stable** (→ `microservices` ns), push to `develop`
+  = **develop** (→ `microservices-develop` ns).
+- **OTel pipeline observability for both new engines (#435, #458, #436).** Argo Workflows
+  controller-metrics scrape wired in + dashboard fixed to v3.6+ OTel metric names (#435); new
+  AI-optimized `argo-workflows-ci` / `github-actions-ci` Grafana dashboards (export inventory +
+  deployed refresh, azure/aws variants) (#458); `timeoutSec=3600` on the argo-server +
+  tekton-dashboard backends so the long-lived UI streams don't drop (#436).
 
 ### Changed
 - **Single shared app-source patch for all four CI engines (#460, #462).** New
@@ -23,6 +33,8 @@ All notable changes to this project will be documented in this file.
   Workflows and GitHub Actions now all call this single script instead of four divergent inline
   copies (DRY) — the forks stay clean upstream mirrors and the gateway runs the built Postgres
   image. Documented with rationale in `docs/402`.
+- **Argo Workflows pinned to v3.7.15 (#434).** Bumped v3.6.4 → v3.7.15 (latest 3.x; the 4.0
+  CRDs exceed the GKE etcd object-size limit).
 
 ### Fixed
 - **GitHub Actions / ARC engine live-validation hardening (#438, #446, #452, #454, #456).**
@@ -31,9 +43,17 @@ All notable changes to this project will be documented in this file.
   so SAST actually runs (#454); seed each fork's CI secrets (`GIT_*`/`REGISTRY_*`) to fix the
   Jib `403 DENIED` push (#456); ARC controller restart after auth + smoke-test
   `AutoscalingListener Running` check + per-fork Access URLs in the Day1 report (#446).
+- **Engine-aware platform plumbing for the two new engines (#431, #432, #433).** Gateway
+  `HealthCheckPolicy` guarded to `== jenkins` (emits neither for githubactions/argoworkflows)
+  (#431); smoke-test checks made engine-aware (#432); NetworkPolicy allows OTLP to the collector
+  from the `argo-ci` + `arc-runners` namespaces (#433).
+- **GKE node-pool stability/quota (#429, #430).** Ignore `initial_node_count` drift so the
+  autoscaler no longer triggers a static-pool destroy+recreate on every Day1 re-run (#429);
+  primary-pool boot disk → `pd-standard` to escape the 500 GB `SSD_TOTAL_GB` cap (#430).
 
 ### Documentation
-- ARC setup/operations: the public-repo runner-group blocker behind stuck-`queued` runs and
+- ARC setup/operations: step-by-step GitHub App registration + runner-registration
+  troubleshooting (#439); the public-repo runner-group blocker behind stuck-`queued` runs and
   the explicit **"Allow public repositories"** setup step (#448, #450); "where are the
   pipelines?" + branch-based triggering guide (#446); shell-specific `gh secret set` for the
   App private key (#444); secrets-inventory placeholder hygiene (#441).
