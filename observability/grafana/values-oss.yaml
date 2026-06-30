@@ -26,6 +26,15 @@
 #   admissionWebhooks.enabled: false) only if you bump ArgoCD back onto a buggy
 #   pre-release. See docs/602 + docs/902.
 
+# Expose the node instance-type label on kube_node_labels (kube-state-metrics drops node
+# labels by default) so the NAP/Spot dashboard can show each node's MACHINE TYPE — including
+# static-pool nodes, whose names (unlike NAP's nap-<type>-…) don't embed it. Parity with the
+# grafana-cloud (k8s-monitoring default) and managed-azure/aws (03-observability.sh) KSM
+# allow-lists. ~1 series per node — negligible.
+kube-state-metrics:
+  metricLabelsAllowlist:
+    - nodes=[node.kubernetes.io/instance-type,beta.kubernetes.io/instance-type]
+
 prometheus:
   prometheusSpec:
     # Required for the otel-collector "gateway" release's

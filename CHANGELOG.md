@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.52] - 2026-06-30
+
+### Fixed
+- **Expose the node `instance-type` label in kube-state-metrics on every backend**, so the
+  NAP/Spot dashboard's **machine-type** view works on all four — not just Grafana Cloud.
+  Investigation of the managed-azure path confirmed the OTel collector **already scrapes
+  kube-state-metrics** (so the core NAP node-count panels work in azure/aws as-is — an earlier
+  caveat was over-cautious); the only gap was node *labels*, which KSM drops by default.
+  - `scripts/03-observability.sh` (managed-azure **and** managed-aws): the standalone
+    `prometheus-community/kube-state-metrics` install now sets
+    `--metric-labels-allowlist=nodes=[node.kubernetes.io/instance-type,beta.kubernetes.io/instance-type]`.
+  - `observability/grafana/values-oss.yaml`: same via `kube-state-metrics.metricLabelsAllowlist`
+    on the kube-prometheus-stack KSM.
+  - Grafana Cloud already exposed it via the k8s-monitoring chart default. ~1 series/node.
+  - Documented in `docs/301`.
+
 ## [v0.28.51] - 2026-06-30
 
 ### Docs

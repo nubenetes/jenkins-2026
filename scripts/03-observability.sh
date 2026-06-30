@@ -462,9 +462,15 @@ EOT
     log_step "Installing kube-state-metrics + node-exporter (Kubernetes infra metrics)"
     helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null 2>&1 || true
     helm repo update prometheus-community >/dev/null 2>&1 || true
+    # Expose the node instance-type label on kube_node_labels (KSM drops node labels by
+    # default) so the NAP/Spot dashboard can show each node's MACHINE TYPE — including the
+    # static-pool nodes, whose names (unlike NAP's nap-<type>-…) don't embed it. These are the
+    # same node labels the grafana-cloud KSM exposes via the k8s-monitoring chart default. The
+    # escaped comma (\,) keeps the two-label list as ONE --set value instead of two.
     helm upgrade --install kube-state-metrics prometheus-community/kube-state-metrics \
       --namespace "${J2026_OBS_NAMESPACE}" \
-      --set fullnameOverride=kube-state-metrics
+      --set fullnameOverride=kube-state-metrics \
+      --set 'metricLabelsAllowlist[0]=nodes=[node.kubernetes.io/instance-type\,beta.kubernetes.io/instance-type]'
     helm upgrade --install prometheus-node-exporter prometheus-community/prometheus-node-exporter \
       --namespace "${J2026_OBS_NAMESPACE}" \
       --set fullnameOverride=prometheus-node-exporter
@@ -516,9 +522,15 @@ EOT
     log_step "Installing kube-state-metrics + node-exporter (Kubernetes infra metrics)"
     helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null 2>&1 || true
     helm repo update prometheus-community >/dev/null 2>&1 || true
+    # Expose the node instance-type label on kube_node_labels (KSM drops node labels by
+    # default) so the NAP/Spot dashboard can show each node's MACHINE TYPE — including the
+    # static-pool nodes, whose names (unlike NAP's nap-<type>-…) don't embed it. These are the
+    # same node labels the grafana-cloud KSM exposes via the k8s-monitoring chart default. The
+    # escaped comma (\,) keeps the two-label list as ONE --set value instead of two.
     helm upgrade --install kube-state-metrics prometheus-community/kube-state-metrics \
       --namespace "${J2026_OBS_NAMESPACE}" \
-      --set fullnameOverride=kube-state-metrics
+      --set fullnameOverride=kube-state-metrics \
+      --set 'metricLabelsAllowlist[0]=nodes=[node.kubernetes.io/instance-type\,beta.kubernetes.io/instance-type]'
     helm upgrade --install prometheus-node-exporter prometheus-community/prometheus-node-exporter \
       --namespace "${J2026_OBS_NAMESPACE}" \
       --set fullnameOverride=prometheus-node-exporter
