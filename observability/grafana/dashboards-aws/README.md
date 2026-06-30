@@ -31,6 +31,7 @@ panels are rewritten:
 | Metrics | Prometheus / PromQL | **unchanged** - Amazon Managed Service for Prometheus is Prometheus-compatible, so `${DS_PROMETHEUS}` binds to it and the PromQL works as-is |
 | Logs | Loki / LogQL | **CloudWatch Logs** Insights over the collector's log group |
 | Traces | Tempo / TraceQL | **AWS X-Ray** `getTraceSummaries` |
+| Loki/Tempo **query** template variable (e.g. `log_namespace`) | options queried from Loki | converted to a static **`custom`** variable (keeps the all-value) - a LogQL options query has no CloudWatch/X-Ray equivalent, so this avoids a dangling `loki` datasource ref |
 
 > **X-Ray plugin.** AMG creates the X-Ray datasource *entry* but does not
 > register the datasource *plugin*, so trace panels return "Plugin not

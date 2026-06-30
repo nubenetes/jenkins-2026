@@ -27,6 +27,7 @@ trace panels are rewritten:
 | Metrics | Prometheus / PromQL | **unchanged** - Azure Monitor managed Prometheus is Prometheus-compatible, so `${DS_PROMETHEUS}` binds to it and the PromQL works as-is |
 | Logs | Loki / LogQL | Azure Monitor **Logs** (KQL `traces` - App Insights classic schema) |
 | Traces | Tempo / TraceQL | Azure Monitor **Logs** (KQL `union requests, dependencies`) |
+| Loki/Tempo **query** template variable (e.g. `log_namespace`) | options queried from Loki | converted to a static **`custom`** variable (keeps the all-value) - a LogQL options query has no Azure equivalent, so this avoids a dangling `loki` datasource ref |
 
 **Generated, not hand-edited.** Regenerate after changing the canonical
 dashboards:
