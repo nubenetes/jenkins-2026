@@ -433,7 +433,7 @@ Each observability mode has its **own independent set of dashboards** published 
 
 #### Source of truth: canonical dashboards
 
-The canonical JSON files live in [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) and are the **single source of truth** for content. Panels reference datasources by their fixed names (`grafanacloud-logs` / `grafanacloud-traces`; Prometheus is the stack default), **not** via `${DS_LOKI}`/`${DS_TEMPO}` template variables — the stack has **no default Loki or Tempo datasource**, so those vars wouldn't resolve (see the No-Data gotcha below); the aws/azure variant generators rewrite the Loki/Tempo references to CloudWatch/X-Ray by datasource type. The **Shipped** column shows which dashboards are always present versus the two CI-overview dashboards that are mutually exclusive — only the one for the active `ci.engine` is shipped (see [CI-engine-aware publishing](#ci-engine-aware-publishing)):
+The canonical JSON files live in [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) and are the **single source of truth** for content. Panels reference datasources by their fixed names (`grafanacloud-logs` / `grafanacloud-traces`; Prometheus is the stack default), **not** via `${DS_LOKI}`/`${DS_TEMPO}` template variables — the stack has **no default Loki or Tempo datasource**, so those vars wouldn't resolve (see the No-Data gotcha below); the aws/azure variant generators rewrite the Loki/Tempo references to CloudWatch/X-Ray by datasource type. The generators also **neutralize Loki/Tempo _query-type_ template variables** (e.g. the redesigned Tekton board's `log_namespace` filter, whose dropdown options are *queried from Loki*): in the aws/azure variants they become a static `custom` variable keeping the all-value, since a LogQL/TraceQL options query has no Azure/CloudWatch equivalent. The **Shipped** column shows which dashboards are always present versus the two CI-overview dashboards that are mutually exclusive — only the one for the active `ci.engine` is shipped (see [CI-engine-aware publishing](#ci-engine-aware-publishing)):
 
 | Dashboard (uid) | What it shows | Shipped |
 |---|---|---|
@@ -444,7 +444,16 @@ The canonical JSON files live in [`observability/grafana/dashboards/`](../observ
 | `rum-frontend` | Angular **Real User Monitoring** (Grafana Faro): Core Web Vitals (LCP/INP/CLS/TTFB/FCP), JS errors, sessions, browser breakdown, browser→backend traces | always |
 | `node-autoprovisioning` | **Node Auto-Provisioning (Spot)**: Spot vs static node counts over time — watch NAP scale up CI build nodes and consolidate back toward zero. Reads node **taints** via kube-state-metrics (`kube_node_info`/`kube_node_spec_taint`); the lean profile keeps that tiny node-inventory slice, so it works in **all** modes (see the leanMetrics note above) | always |
 | `jenkins-overview` | Jenkins CI: active runs, queue, executors, pipeline results, build traces, pod logs | only `ci.engine=jenkins` |
-| `tekton-overview` | Tekton pipeline runs, task durations, build traces, pipeline pod logs | only `ci.engine=tekton` |
+| `tekton-overview` | **Tekton CI Observability** (redesigned in Grafana Cloud): PipelineRun/TaskRun durations & results, running/queued runs, per-task failures, build traces, and pipeline pod logs filtered by a `log_namespace` variable | only `ci.engine=tekton` |
+
+> **`node-autoprovisioning` and `tekton-overview` are the Grafana-Cloud-redesigned boards.**
+> They were authored/optimized in Grafana Cloud, exported in the v2 schema (kept verbatim in
+> [`dashboards-cloud-export/`](../observability/grafana/dashboards-cloud-export/)), and their
+> **classic** model was pulled back via `GET /api/dashboards/uid/<uid>` and normalized into the
+> canonical `dashboards/` (id nulled; Prometheus on `${DS_PROMETHEUS}`; Loki/Tempo mapped to the
+> `loki`/`tempo` placeholders). The aws/azure variants were regenerated, so both ship to **all
+> four** backends. (The Tekton board replaced the previous, obsolete one — same uid/filename, so
+> the CI-engine gating is unchanged.)
 
 > Adding a dashboard = drop a `<name>.json` into [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) and run the variant generators (below). In `oss` mode the Helm-chart ConfigMap picks it up automatically (it globs `*.json`); for the other modes [`scripts/07-grafana-dashboards.sh`](../scripts/07-grafana-dashboards.sh) publishes every `*.json`. Only `jenkins-overview` / `tekton-overview` are CI-engine-gated; everything else ships in all modes.
 

@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.51] - 2026-06-30
+
+### Docs
+- **Documented the redesigned NAP + Tekton dashboards and the 4-backend variant changes.**
+  `docs/301`: updated the `tekton-overview` inventory row (the redesigned "Tekton CI
+  Observability"), noted that both `node-autoprovisioning` and `tekton-overview` are the
+  Grafana-Cloud-redesigned boards (v2 backups in `dashboards-cloud-export/`, classic model
+  pulled back into `dashboards/`, variants regenerated for all four backends), and documented
+  the new generator behaviour — neutralizing Loki/Tempo **query-type** template variables
+  (e.g. the Tekton board's `log_namespace` filter) into a static `custom` variable in the
+  aws/azure variants. The `dashboards-azure/` and `dashboards-aws/` READMEs gained the same
+  query-variable row in their rewrite tables.
+
 ## [v0.28.50] - 2026-06-30
 
 ### Fixed
