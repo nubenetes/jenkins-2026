@@ -126,9 +126,9 @@ After `bootstrap.sh up`, delegate the subdomain to Cloud DNS **once for the life
    - **Add 4 `NS` records** for the subdomain host (e.g. `jenkins2026`) pointing to those 4 nameservers.
    - **Delete** any pre-existing `A` or `CNAME` records for `*.jenkins2026` (they conflict with the delegation).
 
-3. Run `Day0.infra.01` (or `Day1.cluster.00`) — it populates the zone with the wildcard-A record (`*.jenkins2026 → <external IP>`) and the cert-validation CNAME. From this point on, every Decom+rebuild reuses the same zone and the same NS delegation — **no further DNS changes required**.
+3. Run `Day0.infra.01` (or `Day1.cluster.00-all`) — it populates the zone with the wildcard-A record (`*.jenkins2026 → <external IP>`) and the cert-validation CNAME. From this point on, every Decom+rebuild reuses the same zone and the same NS delegation — **no further DNS changes required**.
 
-> **Why this is permanent:** the zone lives in the root tier (`terraform/bootstrap`), which is only destroyed when you intentionally abandon the project (`bootstrap.sh down`). Even a full `Decom.infra.00` teardown leaves the zone and its nameservers in place. Only the A and CNAME records (managed by `gateway-bootstrap`) are recreated on each rebuild.
+> **Why this is permanent:** the zone lives in the root tier (`terraform/bootstrap`), which is only destroyed when you intentionally abandon the project (`bootstrap.sh down`). Even a full `Decom.infra.00-all` teardown leaves the zone and its nameservers in place. Only the A and CNAME records (managed by `gateway-bootstrap`) are recreated on each rebuild.
 
 ### Step 4: Configure GKE / OAuth Credentials (Optional)
 

@@ -225,10 +225,10 @@ Check the rollout status of all services:
     cert-validation-CNAME records** inside the permanent `bootstrap` DNS zone
     (referenced by the fixed name `jenkins-2026-public-zone`), so the public
     endpoints survive cluster rebuilds and come back with **no manual DNS**: every
-    `Day0.infra.01`/`Day1.cluster.00` run reconciles the records to the current IP,
+    `Day0.infra.01`/`Day1.cluster.00-all` run reconciles the records to the current IP,
     while the zone (hence the one-time parent-domain `NS` delegation) lives in the
     never-destroyed root tier and never changes. Applied by `Day0.infra.01-gateway.yml`
-    (and re-applied by `Day1.cluster.00`), destroyed by `Decom.infra.01-gateway.yml`
+    (and re-applied by `Day1.cluster.00-all`), destroyed by `Decom.infra.01-gateway.yml`
     (the records drop and are recreated on rebuild; the zone persists). GCS remote state.
   - `workload-identity/` - standalone GKE Workload Identity Federation helpers
     (manual/auxiliary; not wired into the per-cluster CI lifecycle).

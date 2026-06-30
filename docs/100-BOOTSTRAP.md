@@ -158,7 +158,7 @@ flowchart LR
     P0["phase 0 · ROOT<br/>scripts/bootstrap.sh up"]:::root --> D0["Day0 · persistent infra<br/>Gateway + backends"]
     D0 --> D1["Day1 · cluster<br/>(Day1.cluster.01 / .00)"]
     D1 --> D2["Day2 · ops<br/>redeploy / publish / traffic"]
-    D2 --> DC["Decom · teardown<br/>(Decom.infra.00)"]
+    D2 --> DC["Decom · teardown<br/>(Decom.infra.00-all)"]
     DC -.->|"cluster + backends gone,<br/>root stays (cheap, reusable)"| D0
     DC ==>|"only if abandoning the project"| P9["phase 0 · ROOT teardown<br/>scripts/bootstrap.sh down"]:::root
     classDef root fill:#ffd,stroke:#aa0,stroke-width:2px;
@@ -183,7 +183,7 @@ stateDiagram-v2
 
 </details>
 
-**Reading it —** the root has essentially one steady state, **Active**, reached after the two-phase seed (local apply → migrate state into the bucket → set the 4 secrets) and then held across every cluster build/teardown; re-running `up` just self-converges (`reconcile_imports`). The only way out is the deliberate `down`, which must migrate state **back** to local first (a bucket can't delete itself while holding its own state) before destroying everything and removing the secrets. A normal `Decom.infra.00` never leaves **Active** — which is exactly why the root is created first and destroyed last, if ever.
+**Reading it —** the root has essentially one steady state, **Active**, reached after the two-phase seed (local apply → migrate state into the bucket → set the 4 secrets) and then held across every cluster build/teardown; re-running `up` just self-converges (`reconcile_imports`). The only way out is the deliberate `down`, which must migrate state **back** to local first (a bucket can't delete itself while holding its own state) before destroying everything and removing the secrets. A normal `Decom.infra.00-all` never leaves **Active** — which is exactly why the root is created first and destroyed last, if ever.
 
 The root is created **first** and destroyed **last** (if ever). A normal Decom leaves
 the root in place — it **costs almost nothing** (two empty-ish buckets) and saves you
@@ -341,10 +341,10 @@ and make these changes (Host = the subdomain label, here `jenkins2026`):
 
 ### Step 3 — populate the zone (run a workflow)
 
-Run **`Day0.infra.01`** (or `Day1.cluster.00`, which re-applies it). It fills the zone
+Run **`Day0.infra.01`** (or `Day1.cluster.00-all`, which re-applies it). It fills the zone
 with the wildcard `A` record (`*.jenkins2026 → <static external IP>`) and the
 cert-validation `CNAME`. These are re-applied on **every** `Day0.infra.01` /
-`Day1.cluster.00`, so they always track the current IP — no manual edits, ever.
+`Day1.cluster.00-all`, so they always track the current IP — no manual edits, ever.
 
 ### Why this is the only time
 
@@ -355,7 +355,7 @@ records are dropped and recreated by the next rebuild, pointing at the new IP. *
 this one-time delegation you never touch Squarespace again.** The single exception is a
 full **root** teardown ([`bootstrap.sh down`](#destroy-the-root-bootstrapsh-down)): that
 destroys the zone, and bringing the project back creates a **new** zone with **new**
-nameservers, so you'd redo Step 2 once more. An ordinary `Decom.infra.00` does **not** do
+nameservers, so you'd redo Step 2 once more. An ordinary `Decom.infra.00-all` does **not** do
 this.
 
 ---
@@ -394,7 +394,7 @@ there is no precious local file to lose.
 
 ## Destroy the root: `bootstrap.sh down`
 
-> ⚠️ **Rarely needed.** A normal teardown (`Decom.infra.00`) leaves the root in place.
+> ⚠️ **Rarely needed.** A normal teardown (`Decom.infra.00-all`) leaves the root in place.
 > Only destroy the root if you are **abandoning the project entirely**. It removes the
 > WIF trust, the CI service account, **and the state bucket** — after which **no GitHub
 > Actions workflow can touch GCP** until you run `up` again.
@@ -441,7 +441,7 @@ holds other modules' (now-decommissioned) state objects + versioned copies.
 To bring the project back later, run `./scripts/bootstrap.sh up` again (a fresh seed),
 re-do the one-time `NS` delegation at your parent domain (the new zone gets new
 nameservers — see the delegation note above), then run Day0 + Day1. (This re-delegation
-is only needed after a **root** teardown like this; an ordinary `Decom.infra.00` leaves
+is only needed after a **root** teardown like this; an ordinary `Decom.infra.00-all` leaves
 the root — and the zone — in place, so no DNS step is needed to rebuild.)
 
 ---

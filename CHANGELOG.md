@@ -1910,8 +1910,8 @@ per-resource approval environments, and a hardened, finalizer-driven
   that survives restarts** (#290) — all minting **Service-Account tokens** now that
   Grafana 13 removed API keys (#288).
 - **One-click lifecycle umbrellas + per-resource approval environments.**
-  `Day1.cluster.00` "Everything up" provisions the whole stack in one click (#336);
-  `Decom.infra.00` "Everything" tears down cluster + every backend (#312). Each
+  `Day1.cluster.00-all` "Everything up" provisions the whole stack in one click (#336);
+  `Decom.infra.00-all` "Everything" tears down cluster + every backend (#312). Each
   persistent backend/gateway gets its **own GitHub approval environment**
   (`gateway-bootstrap`, `grafana-cloud`, …) rather than sharing `gke-production`
   (#334, #335), and all cluster-touching Day2 workflows now sit behind the
