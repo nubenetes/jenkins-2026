@@ -92,70 +92,144 @@ Two pluggable choices, both deterministic & idempotent: the **CI engine** (`ci.e
 
 ```mermaid
 flowchart TB
-    users([Users / GitHub webhooks]):::ext
+    users(["Users · browser SPA"]):::ext
+    gha(["GitHub Actions runners"]):::ext
+    gitops(["jenkins-2026-gitops-config repo<br/>(CI-driven · direct-push main)"]):::ext
 
-    subgraph GH["GitHub"]
-      R1["nubenetes/jenkins-2026<br/>IaC · scripts · pipelines · JCasC / tekton"]
-      R2["nubenetes/jenkins-2026-gitops-config<br/>microservices + CNPG manifests"]
+    subgraph L0["L0 · Day0 root-of-trust — human-run, NEVER torn down (bootstrap paradox)"]
+      direction LR
+      BOOT["terraform/bootstrap · scripts/bootstrap.sh up/down<br/>state: local → migrate to GCS (prefix jenkins-2026/bootstrap)"]:::prov
+      WIF["GitHub OIDC → Workload Identity Pool 'jenkins-2026-github'<br/>provider 'github-actions' (attribute_condition repo==nubenetes/jenkins-2026)"]:::prov
+      CISA["CI SA jenkins-2026-ci<br/>container.admin · network/LB.admin · dns.admin · secretmanager.admin · certmanager.owner"]:::prov
+      STATE[("GCS state bucket &lt;project&gt;-jenkins-2026-tfstate<br/>versioned · ONE bucket, per-module prefixes")]:::prov
+      DNSZONE["Permanent DNS zone 'jenkins-2026-public-zone'<br/>(base_domain · one-time parent NS delegation)"]:::prov
+      PGBK[("GCS bucket jenkins-2026-postgres-backups<br/>Nearline 3d / delete 7d")]:::prov
     end
 
-    subgraph EDGE["GCP edge"]
-      IAP["Gateway API + Google IAP<br/>DNS · OAuth"]
+    subgraph L1["L1 · Provisioning / IaC — single bucket + per-module prefixes via CI-written backend_override.tf"]
+      direction LR
+      GWB["terraform/gateway-bootstrap (PERSISTENT, survives rebuilds)<br/>static IP jenkins-2026-gateway-ip · Cert-Manager wildcard cert map · DNS authorization<br/>writes wildcard-A + cert CNAME into the bootstrap zone (by fixed name)"]:::prov
+      GKETF["terraform/gke (throwaway cluster, prefix jenkins-2026/gke)<br/>VPC-native: nodes 10.10/20 · pods 10.20/16 · svc 10.30/20<br/>Dataplane V2 (Cilium/eBPF) + WireGuard inter-node — IMMUTABLE (change = recreate)<br/>Gateway API · Workload Identity · deletion_protection=false"]:::prov
+      OBSTF["Obs-backend modules (each ephemeral, own prefix)<br/>grafana-cloud-stack (random slug) · grafana-cloud-token<br/>azure-managed-grafana · aws-managed-grafana"]:::prov
     end
 
-    subgraph GKE["GKE cluster — Dataplane V2 (Cilium/eBPF NetworkPolicies) + WireGuard"]
-      ACD["ArgoCD<br/>CD / GitOps engine"]
-      subgraph CI["CI engine — pick ONE (ci.engine)"]
-        JEN["Jenkins<br/>Helm + JCasC + Job-DSL seed"]
-        TEK["Tekton<br/>Pipelines/Triggers/Dashboard + PaC"]
+    subgraph L2["L2 · GCP edge — layered chain, container-native NEG to pod targetPort"]
+      direction LR
+      DNS["Cloud DNS wildcard *.base_domain → static IP"]:::edge
+      LB["Google L7 LB (gke-l7-global-external-managed)<br/>wildcard TLS terminate · BackendTLSPolicy re-encrypt → jenkins/headlamp"]:::edge
+      IAPN["Identity-Aware Proxy (admin Google-account allowlist)<br/>protects: jenkins/tekton-dash · headlamp · pgadmin · grafana-oss"]:::edge
+      GW["GKE Gateway 'jenkins-2026-gateway' (ns platform-ingress)<br/>host-based HTTPRoutes · HealthCheckPolicy · GCPBackendPolicy(IAP)"]:::edge
+    end
+
+    subgraph GKE["GKE cluster"]
+      direction TB
+
+      subgraph CP["L3 · Control plane"]
+        direction LR
+        ACD["ArgoCD (pinned 3.4.x + patch-watcher CronJob)<br/>1 ApplicationSet (microservices) · app-of-apps: platform-postgres / observability-oss / tekton<br/>single apps: jenkins · headlamp · external-secrets · argo-rollouts · platform-config"]:::ctrl
+        subgraph CIENG["CI engine — pick ONE (ci.engine = jenkins XOR tekton) · same 10-stage contract"]
+          direction LR
+          JEN["Jenkins controller (chart 5.9.29)<br/>JCasC · Job-DSL seed · 9-container K8s agent pod"]:::pick
+          TEK["Tekton (Pipelines/Triggers/Dashboard/Chains/PaC, vendored)<br/>single-PVC sequential TaskRuns · EventListener + PaC webhook"]:::pick
+        end
+        OPS["Operators · External Secrets · OTel Operator · CNPG operator<br/>Argo Rollouts + GatewayAPI plugin (CAPABILITY only · apps still plain Deployments)"]:::ctrl
+        PUSH["Imperative PUSH lane (scripts/0N-*.sh) — NOT ArgoCD-owned<br/>JCasC ConfigMaps · grafana-jenkins-ds Secret · cosign/Tekton Secrets · NetworkPolicies · ResourceQuotas"]:::push
       end
-      subgraph PLAT["Platform add-ons"]
-        HL["Headlamp"]
-        PGA["pgAdmin"]
-        ROLL["Argo Rollouts<br/>canary / blue-green"]
-        ESO["External Secrets"]
-        CNPGOP["CNPG operator"]
+
+      subgraph DP["L4 · Data / runtime plane (ns microservices · + -develop lean optional)"]
+        direction LR
+        GWAPP["JHipster gateway (Java · Spring Cloud Gateway :8080)<br/>serves Angular SPA bundle from jar · Hazelcast→NoOp patch"]:::data
+        MSVC["jhipstersamplemicroservice (Spring Boot REST :8081)"]:::data
+        POOL["PgBouncer Poolers (session) — app JDBC+R2DBC target THIS hop"]:::data
+        PG[("CNPG Cluster per service<br/>3-replica HA primary+standbys · WAL+data PVCs")]:::data
       end
-      subgraph MS["Microservices (gateway + jhipstersample)"]
-        APP["Spring Boot apps<br/>OTel auto-instrumented"]
-        PG[("CNPG Postgres HA<br/>3 replicas + PgBouncer poolers")]
-      end
-      subgraph OBS["In-cluster observability"]
-        OP["OTel Operator"]
-        COL["OTel Collector<br/>reconfigured per mode"]
-        OSST["OSS stack: Prometheus · Loki<br/>Tempo · Grafana (mode=oss)"]
+
+      subgraph NODES["Node substrate — single flag nodeAutoProvisioning.enabled fans to BOTH"]
+        direction LR
+        STATICP["STATIC pool jenkins-2026-pool (e2-standard-8, 2–4)<br/>hosts long-lived platform"]:::node
+        NAP["ELASTIC NAP (Karpenter-equiv) → ci-spot ComputeClass<br/>Spot-first c3&gt;n2&gt;c2&gt;e2 · scale-to-zero (runNodePool=ci-spot)"]:::node
+        QUOTA["SSD_TOTAL_GB = 500 regional ceiling — NOT Terraform-raisable<br/>(why runNodePool defaults to static, NAP disk halved to 50GB)"]:::node
       end
     end
 
-    subgraph BK["External observability backends — pick ONE (observability.mode), Day0 Terraform"]
-      GCLOUD["Grafana Cloud<br/>grafana-cloud"]
-      AZ["Azure Managed Grafana<br/>+ Monitor / App Insights — managed-azure"]
-      AWSG["Amazon Managed Grafana<br/>+ AMP / X-Ray / CloudWatch — managed-aws"]
+    subgraph OBSP["L5 · Observability pipeline — 4 sources → 2 collectors"]
+      direction LR
+      SRCS["Sources (4): Java auto-agent · Jenkins plugin · k6 smoke · Angular Faro RUM (browser, public/no-IAP)"]:::obs
+      COLG["otel-collector-gateway (Deployment)<br/>OTLP 4317/4318 + faro:8027 · span_metrics + service_graph CONNECTORS → RED + service map"]:::obs
+      COLL["otel-collector-logs (DaemonSet)<br/>filelog tail → severity"]:::obs
     end
 
-    users --> IAP
-    R1 -->|"terraform + scripts/up.sh"| GKE
-    R1 -->|"shared library / pipeline defs"| CI
-    IAP -->|IAP-protected| JEN & TEK & ACD & HL & PGA
-    IAP -->|"open (no IAP)"| APP
-    ACD -->|"installs / syncs"| CI & PLAT & MS
-    R2 -->|"ArgoCD source"| ACD
-    CI -->|"build → push image → commit gitops"| R2
-    CI -->|"argocd app sync"| ACD
-    APP --> PG
-    APP -->|OTLP| COL
-    CI -->|OTLP| COL
-    OP -.->|injects agent| APP
-    SM["GCP Secret Manager<br/>secrets.backend=eso"]:::pick
-    SM -.->|"keyless WIF sync"| ESO
-    COL -->|mode=oss| OSST
-    COL -->|mode=grafana-cloud| GCLOUD
-    COL -->|mode=managed-azure| AZ
-    COL -->|mode=managed-aws| AWSG
+    subgraph BK["L6 · Backend store — single mode-switched exporter, pick ONE (observability.mode)"]
+      direction LR
+      OSS["OSS in-cluster (ArgoCD-managed)<br/>Prometheus · Loki · Tempo · Grafana<br/>correlation triangle: exemplars ⇄ derivedFields ⇄ serviceMap"]:::pick
+      GCLOUD["Grafana Cloud (Mimir/Tempo/Loki via OTLP)<br/>+ pdc-agent · Alloy"]:::pick
+      AZ["Azure: azuremonitor(traces+logs) + remote-write(metrics)<br/>keyless Entra oauth2 — App Insights / Azure Monitor"]:::pick
+      AWS["AWS: awsxray + cloudwatchlogs + sigv4 remote-write<br/>keyless GKE→AWS OIDC AssumeRoleWithWebIdentity — AMP/X-Ray/CW"]:::pick
+    end
 
-    classDef ext fill:#fde,stroke:#c39;
-    classDef pick fill:#eef,stroke:#66c;
-    class JEN,TEK,GCLOUD,AZ,AWSG,OSST pick;
+    SM["GCP Secret Manager (secrets.backend=eso)"]:::pick
+    GHCR["ghcr.io/nubenetes/jenkins-2026-microservices<br/>(GHCR, not Artifact Registry)"]:::ext
+
+    %% --- trust + provisioning ---
+    gha -->|"OIDC token (repo-scoped)"| WIF
+    WIF -->|"impersonate (keyless, NO json key)"| CISA
+    BOOT --> WIF & CISA & STATE & DNSZONE & PGBK
+    CISA -->|"terraform apply (backend_override.tf → bucket/prefix)"| L1
+    STATE -.->|"per-module prefixes + cross-module state reads"| L1
+    GWB -->|"static IP + wildcard cert"| L2
+    GWB -. "DNS records by fixed name" .-> DNSZONE
+    GKETF -->|"creates cluster"| GKE
+    GKETF -. "reads obs-module GCS outputs → mint in-cluster Secrets" .-> OBSTF
+    DNSZONE --> DNS
+
+    %% --- edge chain ---
+    users --> DNS --> LB --> IAPN --> GW
+    GW -->|"IAP-protected NEG→pod"| JEN & TEK
+    GW -->|"OPEN: argocd · microservices · pac webhook · faro RUM"| ACD & GWAPP & SRCS
+
+    %% --- in-cluster provisioning + control plane ---
+    CISA -->|"scripts/up.sh ordered: 00→01→02→08.5-argocd→08.6-eso→03→04→06→07→08→09"| GKE
+    ACD -->|"installs / syncs"| CIENG & OPS & DP
+    PUSH -. "companions ArgoCD won't own" .-> CIENG & DP
+    OPS -. "OTel agent inject · ESO+CNPG via Workload Identity" .-> DP
+
+    %% --- CI shared 10-stage contract + GitOps handoff ---
+    CIENG -->|"10-stage: checkout→Semgrep→CodeQL→Trivy IaC→build&test→Jib build&push→Trivy image→GitOps bump→smoke→k6"| GHCR
+    CIENG -. "commit image-tag bump" .-> gitops
+    gitops -->|"ArgoCD source (microservices ApplicationSet)"| ACD
+    CIENG -->|"argocd app sync"| ACD
+
+    %% --- data plane wiring ---
+    GWAPP -->|"/services/** rewrite"| MSVC
+    GWAPP --> POOL
+    MSVC --> POOL
+    POOL --> PG
+    PG -. "Barman WAL + ScheduledBackup (Workload Identity)" .-> PGBK
+    CIENG -. "agents land on" .-> NAP
+    ACD -. "platform pods land on" .-> STATICP
+    NAP -. "competes for" .-> QUOTA
+
+    %% --- observability ---
+    DP -->|"OTLP (agent injected, zero code change)"| SRCS
+    CIENG -->|OTLP| SRCS
+    SRCS --> COLG
+    DP -. "pod stdout" .-> COLL
+    COLG -->|"mode-switch: exactly ONE backend active"| OSS & GCLOUD & AZ & AWS
+    COLL --> OSS & GCLOUD & AZ & AWS
+    OSS -. "grafana behind IAP/Gateway like jenkins" .-> GW
+
+    %% --- secrets backend ---
+    OPS -->|"ESO: ClusterSecretStore gcp-store · ExternalSecret · keyless WIF (eso-secret-reader)"| SM
+
+    classDef ext fill:#fde,stroke:#c39,color:#000;
+    classDef prov fill:#fef3e0,stroke:#d39000,color:#000;
+    classDef edge fill:#e8f6ff,stroke:#1f7ab0,color:#000;
+    classDef ctrl fill:#eef0ff,stroke:#5560c0,color:#000;
+    classDef data fill:#eafbef,stroke:#2e9e54,color:#000;
+    classDef obs fill:#f3ecff,stroke:#7a52c0,color:#000;
+    classDef node fill:#f5f5f5,stroke:#888,color:#000;
+    classDef push fill:#fff5f5,stroke:#c05050,color:#000;
+    classDef pick fill:#ffe6f0,stroke:#cc3377,color:#000;
 ```
 
 </details>
