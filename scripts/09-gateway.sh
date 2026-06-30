@@ -625,6 +625,10 @@ spec:
     kind: Service
     name: ${J2026_TEKTON_DASHBOARD_SERVICE}
   default:
+    # The Tekton Dashboard also serves long-lived watch/log streams behind IAP;
+    # give it the same long backend timeout so streaming UI updates aren't cut by
+    # the GKE ALB default 30s (same fix + rationale as the argoworkflows Server).
+    timeoutSec: 3600
     iap:
       enabled: true
       clientID: "${iap_client_id[${J2026_TEKTON_NAMESPACE}]}"
@@ -646,6 +650,14 @@ spec:
     kind: Service
     name: ${J2026_ARGOWF_SERVER_SERVICE}
   default:
+    # argo-server's /api/v1/workflow-events is a long-lived, server-streaming
+    # (chunked) response that the Argo UI keeps open for live updates. The GKE
+    # ALB default 30s backend-service response timeout severs it, so the UI
+    # reconnects and re-dumps the full workflow list on a tight cadence ("Failed
+    # to connect" toast). Verified the cut tracks timeoutSec exactly (set 120 →
+    # streams cut at 120s); 1h keeps the watch effectively persistent and the UI
+    # auto-reconnects. Per-Service policy, so this only affects the argo-server.
+    timeoutSec: 3600
     iap:
       enabled: true
       clientID: "${iap_client_id[${J2026_ARGOWF_NAMESPACE}]}"
