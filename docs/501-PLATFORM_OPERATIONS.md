@@ -279,6 +279,36 @@ flowchart LR
 
 ①+② are **fixed** (the platform + databases); only **③ grows** with `ci-spot` concurrency. So the usable Spot budget is roughly `500 − (PVs) − (static disks)` ÷ 50 GB ≈ **3–4 concurrent Spot CI nodes** before the ceiling bites.
 
+**Detailed disk inventory — ① the persistent PVs** (measured live; the architectural footprint, paused state):
+
+| Namespace | Component | PVC(s) | Disk type | Size each | Qty | Subtotal | Why this size/type |
+|---|---|---|---|---|---|---|---|
+| `microservices` | **CNPG Postgres — stable HA** | `postgres-{gateway,jhipstersample}-{1,2,3}` + `…-wal` | `pd-ssd` | 1 GB | 12 | **12 GB** | 3 HA instances × 2 services × (data + WAL); `pd-ssd` for low-latency WAL fsync / random I/O |
+| `microservices-develop` | **CNPG Postgres — lean dev** | `postgres-{gateway,jhipstersample}-1` + `…-wal` | `pd-ssd` | 1 GB | 4 | **4 GB** | single instance × 2 services × (data + WAL); non-HA dev tier |
+| `observability` | **Prometheus TSDB** | `prometheus-…-0` | `pd-balanced` | 10 GB | 1 | 10 GB | metrics time-series store (mode=oss); balanced is enough |
+| `observability` | **Loki** | `storage-oss-loki-0` | `pd-balanced` | 10 GB | 1 | 10 GB | log chunks store |
+| `observability` | **Tempo** | `storage-oss-tempo-0` | `pd-balanced` | 10 GB | 1 | 10 GB | trace store |
+| `pgadmin` | **pgAdmin** | `pgadmin-pgadmin4` | `pd-balanced` | 10 GB | 1 | 10 GB | pgAdmin config/session state |
+| `tekton-ci` | **Tekton run workspaces** | `pvc-<hash>` (volumeClaimTemplate) | `pd-balanced` | 1–4 GB | ≤5 | ~14 GB | one RWO `source` workspace per PipelineRun; bounded by the Pruner `historyLimit: 5` |
+| | | | | | | **≈ 70 GB live** | |
+
+> ⚠️ **Orphaned disks inflate the measured total.** The region currently shows **102 GB / 54 disks**, ~32 GB above the ~70 GB live footprint. Evidence: **duplicate PVC names that cannot coexist in a live cluster** (e.g. `postgres-gateway-2` maps to **3** separate disks) and disks spanning **3 creation dates** (`06-27`, `06-28`, `06-29`) while the live cluster was last built on one. **Cause:** a Terraform `Decom` deletes the GKE cluster *without* gracefully deleting the PVCs, so `reclaimPolicy: Delete` never fires and the underlying PDs are **orphaned** in GCP — they accumulate one generation per rebuild. **Reclaim:** the [`scripts/down.sh`](../scripts/down.sh) orphaned-PD sweep (run at teardown), or manually `gcloud compute disks delete` the unattached ones. These orphans count against the quota and the ~$13/mo disk floor, so cleaning them is free headroom.
+
+**Disk class — why each workload gets `pd-ssd` vs `pd-balanced`:**
+
+| Disk class | Workloads | Rationale | ≈ Cost |
+|---|---|---|---|
+| **`pd-ssd`** | CNPG Postgres data + WAL | DB needs low-latency random I/O + fast WAL fsync (commit latency) | ~$0.17 / GB·mo |
+| **`pd-balanced`** | node boot disks · Prometheus/Loki/Tempo · pgAdmin · Tekton workspaces | general-purpose SSD; ample for OS/boot, append-mostly TSDB, and scratch | ~$0.10 / GB·mo |
+
+**② + ③ — node boot disks (static vs Spot) and the workload each serves:**
+
+| Disk | Node pool | Class · size | Lifecycle | Workload it carries | Quota impact |
+|---|---|---|---|---|---|
+| **Static node boot** | `jenkins-2026-pool` | `pd-balanced` · 50 GB | always-on (0 only when **Paused**) | platform (ArgoCD/Jenkins/observability/CNPG) **+ CI build pods by default** (`runNodePool: static`) | **fixed** — 2–4 nodes = 100–200 GB |
+| **Spot node boot** | NAP `ci-spot` (auto-created) | `pd-balanced` · 50 GB | **per-build, scale-to-zero** | CI build pods **only when** `runNodePool: ci-spot` | **elastic** — N × 50 GB, 0 at rest |
+| **Persistent PV** | — (CSI PD, not node-bound) | `pd-ssd`/`pd-balanced` · 1–10 GB | survives Pause; deleted only with the PVC | databases · observability · Tekton workspaces | **fixed** — ~70 GB live |
+
 **Usage these days (measured, limit = 500 GB):**
 
 | Cluster state | SSD used | % of 500 | What's on disk |
@@ -299,6 +329,15 @@ flowchart LR
 | **Quota increase request** | **$0** | the quota itself is free — you only pay for disks you actually create |
 
 > 💡 The quota does **not** cost anything — raising it to 2000 does **not** raise the bill. You only ever pay for the disks you actually provision. The quota is purely a *safety ceiling*; the cost lever is **Pause** (drops compute to ~$13/mo) or **Decom** (drops to ~$0).
+
+**Quota options — what you can set and how:**
+
+| Option | Effective `SSD_TOTAL_GB` | Cost | Mechanism / constraint |
+|---|---|---|---|
+| **Current** (project default) | **500 GB** | — | the region default for `europe-southwest1` |
+| **Self-service override** | **0 – 500 GB** | $0 | `google_service_usage_consumer_quota_override` (Terraform) / Service Usage API — can only **match or lower**; any value >500 → `COMMON_QUOTA_CONSUMER_OVERRIDE_TOO_HIGH` |
+| **Approved increase request** | up to the granted value (**2000 filed**) | $0 | Cloud Quotas `QuotaPreference` (`SSD-TOTAL-GB-per-project-region`) / Console → Quotas — **needs Google approval** (currently pending) |
+| **Reduce demand instead** (no quota change) | n/a | **saves $** | `runNodePool: static` (no per-build disk) · fewer HA instances (`postgresInstances` 3→1) · **clean orphaned PDs** (~32 GB reclaimable now) |
 
 **The increase request to Google (500 → 2000):**
 - A consumer-quota **override** caps at the self-service max, which for `SSD_TOTAL_GB` **equals the current limit (500)** → higher returns `COMMON_QUOTA_CONSUMER_OVERRIDE_TOO_HIGH`. **Not Terraform-able** (an override to 2000 would fail the apply).
