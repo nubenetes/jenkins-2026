@@ -899,11 +899,11 @@ graph TD
     end
 
     subgraph StaticPool ["Static node pool: jenkins-2026-pool (e2-standard-8, min2/max4)"]
-        StaticInfo["Long-lived platform<br/>ArgoCD/Jenkins/observability/CNPG"]
+        StaticInfo["Long-lived platform<br/>ArgoCD/Jenkins/observability/CNPG<br/>+ CI build pods by DEFAULT (runNodePool=static)"]
     end
 
     subgraph NAPSpotPool ["NAP Spot pools (ComputeClass ci-spot)"]
-        PoolInfo["Auto-created Spot nodes<br/>c3/n2/c2/e2 · scale-to-zero · CI agents"]
+        PoolInfo["Auto-created Spot nodes<br/>c3/n2/c2/e2 · scale-to-zero<br/>CI build pods only when runNodePool=ci-spot (opt-in)"]
     end
 
     User -->|"resolve host"| ParentNS
@@ -924,8 +924,8 @@ graph TD
 | **Static IP** | `jenkins-2026-gateway-ip` | Global persistent `google_compute_global_address`. Survives cluster rebuilds. |
 | **TLS Certificate** | `jenkins-2026-cert` | Google-managed wildcard cert for `jenkins2026.nubenetes.com` + `*.jenkins2026.nubenetes.com`. |
 | **GKE Cluster** | `jenkins-2026` | Zonal cluster in `europe-southwest1-a`. VPC-native, Gateway API addon `CHANNEL_STANDARD` (cluster release channel `REGULAR`), Workload Identity enabled. |
-| **Static node pool** | `jenkins-2026-pool` | `e2-standard-8`, min 2 / max 4. Hosts the long-lived platform (ArgoCD/Jenkins/observability/CNPG). |
-| **NAP Spot pools** | ComputeClass `ci-spot` | GKE Node Auto-Provisioning auto-creates Spot pools (`c3`, `n2`, `c2`, `e2` families) for CI build agents. Scales to zero under idle conditions. |
+| **Static node pool** | `jenkins-2026-pool` | `e2-standard-8`, min 2 / max 4. Hosts the long-lived platform (ArgoCD/Jenkins/observability/CNPG) **and the CI build pods by default** (`{jenkins,tekton}.runNodePool: static` — robust, no NAP/Spot/quota dependency). |
+| **NAP Spot pools** | ComputeClass `ci-spot` | GKE Node Auto-Provisioning auto-creates Spot pools (`c3`, `n2`, `c2`, `e2` families), scale-to-zero. Used for CI build pods **only when an engine opts in** with `runNodePool: ci-spot` (Jenkins is the better Spot fit; Tekton stays `static` — see [docs/501](501-PLATFORM_OPERATIONS.md#jenkins-vs-tekton-on-spot-ci-spot--why-the-placement-flag-is-per-engine)). |
 | **Node SA** | `jenkins-2026-nodes` | Minimal-privilege: `roles/logging.logWriter`, `roles/monitoring.metricWriter`, `roles/artifactregistry.reader`. |
 | **CI Agent SA** | `jenkins-2026-ci-agent` | GitHub Actions OIDC WIF — no static JSON keys. |
 
