@@ -2,6 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.56] - 2026-07-01
+
+### Added
+- **1-click develop tier for the GitHub Actions / ARC engine (#459).** The rendered
+  fork workflow now carries a `workflow_dispatch` trigger and `06-githubactions-pipelines.sh`
+  also renders it to the fork's `develop` branch when develop-track is enabled — completing
+  the branch-based tier model across all four engines: push/PR-merge to `main` = **stable**
+  (→ `microservices` ns), push to `develop` = **develop** (→ `microservices-develop` ns).
+- **AI-optimized Argo Workflows + GitHub Actions ARC Grafana dashboards (#458).** New
+  `argo-workflows-ci` / `github-actions-ci` dashboards (export inventory + deployed refresh,
+  plus azure/aws variants) so the two newest engines have the same OTel pipeline observability
+  as Jenkins/Tekton.
+
+### Changed
+- **Single shared app-source patch for all four CI engines (#460, #462).** New
+  [`resources/patch-app-source.sh`](resources/patch-app-source.sh) is the one source of truth
+  for the gateway **MySQL→PostgreSQL + NoOp-cache build-time patch** (the upstream JHipster
+  gateway sample is MySQL-scaffolded; the platform runs CloudNativePG). Jenkins, Tekton, Argo
+  Workflows and GitHub Actions now all call this single script instead of four divergent inline
+  copies (DRY) — the forks stay clean upstream mirrors and the gateway runs the built Postgres
+  image. Documented with rationale in `docs/402`.
+
+### Fixed
+- **GitHub Actions / ARC engine live-validation hardening (#438, #446, #452, #454, #456).**
+  Set `controllerServiceAccount` so ArgoCD can render the runner scale set (#438); install
+  JDK 21 + `yq` + `argocd` on the minimal ARC runner image (#452); CodeQL `build-mode: none`
+  so SAST actually runs (#454); seed each fork's CI secrets (`GIT_*`/`REGISTRY_*`) to fix the
+  Jib `403 DENIED` push (#456); ARC controller restart after auth + smoke-test
+  `AutoscalingListener Running` check + per-fork Access URLs in the Day1 report (#446).
+
+### Documentation
+- ARC setup/operations: the public-repo runner-group blocker behind stuck-`queued` runs and
+  the explicit **"Allow public repositories"** setup step (#448, #450); "where are the
+  pipelines?" + branch-based triggering guide (#446); shell-specific `gh secret set` for the
+  App private key (#444); secrets-inventory placeholder hygiene (#441).
+
 ## [v0.28.55] - 2026-06-30
 
 ### Added
