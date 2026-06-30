@@ -132,22 +132,22 @@ The GitHub Actions sidebar sorts by each workflow's `name:` field, and every `na
 
 | ZZ | Resource | Day0 (bootstrap) | Day2 (ops) | Decom (teardown) |
 |---|---|---|---|---|
-| `01` | Gateway (static IP + cert) | `Day0.infra.01-gateway` | — | `Decom.infra.01-gateway` |
-| `02` | Grafana Cloud stack | `Day0.infra.02-grafana-cloud` | `Day2.publish.02-grafana-cloud` | `Decom.infra.02-grafana-cloud` |
-| `03` | Azure Managed Grafana | `Day0.infra.03-azure-grafana` | `Day2.publish.03-azure-grafana` | `Decom.infra.03-azure-grafana` |
-| `04` | AWS AMG | `Day0.infra.04-aws-grafana` | `Day2.publish.04-aws-grafana` | `Decom.infra.04-aws-grafana` |
-| `01` | GKE cluster | `Day1.cluster.01-gke` | — | `Decom.cluster.01-gke` |
-| `01` | ArgoCD (CD engine) | *(by `Day1.cluster.01`)* | `Day2.redeploy.01-argocd` | *(by `Decom.cluster.01`)* |
-| `02` | Jenkins | *(by `Day1.cluster.01`)* | `Day2.redeploy.02-jenkins` | *(by `Decom.cluster.01`)* |
-| `03` | Tekton (CI engine, alt to Jenkins) | *(by `Day1.cluster.01` with ci_engine=tekton)* | `Day2.redeploy.03-tekton` | *(by `Decom.cluster.01`)* |
-| `04` | Headlamp | *(by `Day1.cluster.01`)* | `Day2.redeploy.04-headlamp` | *(by `Decom.cluster.01`)* |
-| `01` | OSS Grafana stack | *(by `Day1.cluster.01` via ArgoCD)* | `Day2.publish.01-oss-grafana` | *(by `Decom.cluster.01`)* |
-| `05` | Grafana alerts | *(by `Day1.cluster.01`)* | `Day2.publish.05-alerts` | — |
-| `01` | k6 traffic | — | `Day2.traffic.01-k6` | — |
-| `02` | Synthetic RUM (Faro beacons) | — | `Day2.traffic.02-rum` | — |
-| `01` | Cluster pause (nodes → 0) | — | `Day2.scale.01-pause` | — |
-| `02` | Cluster resume (nodes back up) | — | `Day2.scale.02-resume` | — |
-| `01` | Container registry retention (ghcr prune) | — | `Day2.registry.01-image-retention` | — |
+| `01` | Gateway (static IP + cert) | [`Day0.infra.01-gateway`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.01-gateway.yml) | — | [`Decom.infra.01-gateway`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.01-gateway.yml) |
+| `02` | Grafana Cloud stack | [`Day0.infra.02-grafana-cloud`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.02-grafana-cloud.yml) | [`Day2.publish.02-grafana-cloud`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.02-grafana-cloud.yml) | [`Decom.infra.02-grafana-cloud`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.02-grafana-cloud.yml) |
+| `03` | Azure Managed Grafana | [`Day0.infra.03-azure-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.03-azure-grafana.yml) | [`Day2.publish.03-azure-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.03-azure-grafana.yml) | [`Decom.infra.03-azure-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.03-azure-grafana.yml) |
+| `04` | AWS AMG | [`Day0.infra.04-aws-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.04-aws-grafana.yml) | [`Day2.publish.04-aws-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.04-aws-grafana.yml) | [`Decom.infra.04-aws-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.04-aws-grafana.yml) |
+| `01` | GKE cluster | [`Day1.cluster.01-gke`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) | — | [`Decom.cluster.01-gke`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml) |
+| `01` | ArgoCD (CD engine) | *(by [`Day1.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml))* | [`Day2.redeploy.01-argocd`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.01-argocd.yml) | *(by [`Decom.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml))* |
+| `02` | Jenkins | *(by [`Day1.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml))* | [`Day2.redeploy.02-jenkins`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.02-jenkins.yml) | *(by [`Decom.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml))* |
+| `03` | Tekton (CI engine, alt to Jenkins) | *(by [`Day1.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) with ci_engine=tekton)* | [`Day2.redeploy.03-tekton`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.03-tekton.yml) | *(by [`Decom.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml))* |
+| `04` | Headlamp | *(by [`Day1.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml))* | [`Day2.redeploy.04-headlamp`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.04-headlamp.yml) | *(by [`Decom.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml))* |
+| `01` | OSS Grafana stack | *(by [`Day1.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) via ArgoCD)* | [`Day2.publish.01-oss-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.01-oss-grafana.yml) | *(by [`Decom.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml))* |
+| `05` | Grafana alerts | *(by [`Day1.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml))* | [`Day2.publish.05-alerts`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.05-alerts.yml) | — |
+| `01` | k6 traffic | — | [`Day2.traffic.01-k6`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml) | — |
+| `02` | Synthetic RUM (Faro beacons) | — | [`Day2.traffic.02-rum`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.02-rum.yml) | — |
+| `01` | Cluster pause (nodes → 0) | — | [`Day2.scale.01-pause`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.scale.01-pause.yml) | — |
+| `02` | Cluster resume (nodes back up) | — | [`Day2.scale.02-resume`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.scale.02-resume.yml) | — |
+| `01` | Container registry retention (ghcr prune) | — | [`Day2.registry.01-image-retention`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.registry.01-image-retention.yml) | — |
 
 *The same `ZZ` is reused across different `tier`s (e.g. `infra.01` is the Gateway, `cluster.01` is GKE, `redeploy.01` is ArgoCD); read `tier`+`ZZ` together. Within the `redeploy` tier `ZZ` follows install order — ArgoCD (`01`, the CD engine that deploys the rest), Jenkins (`02`), Tekton (`03`), Headlamp (`04`), Gateway/ingress (`05`) — so ArgoCD sorts first. Jenkins (`02`) and Tekton (`03`) are the two mutually-exclusive CI engines selected by the `ci.engine` flag (Jenkins default); only the active one is provisioned.*
 
@@ -520,11 +520,11 @@ So in Day2 the `tier` is a **classification of what kind of operation a workflow
 
 | Apparent relationship | Real dependency? | Why |
 |---|---|---|
-| `redeploy.01-argocd` → `publish.01-oss-grafana` | **No** | `publish.01` nudges the `observability-oss` ArgoCD app to re-sync, but ArgoCD already exists from `Day1`. `redeploy.01` is only run if you **changed** ArgoCD config; `publish.01` works fine having never run it. |
-| `redeploy.02-jenkins` → `traffic.01-k6` | **No** | k6 hits the gateway/microservices endpoints (deployed by `Day1` + the ArgoCD AppSet). Jenkins is CI — it doesn't serve the runtime traffic k6 targets. |
-| `redeploy.02-jenkins` ↔ `redeploy.03-tekton` | **No (mutually exclusive, not ordered)** | They redeploy the two alternative CI engines selected by `ci.engine` (Jenkins default \| Tekton). Only the active engine is provisioned by `Day1`; you run whichever one matches your cluster's `ci.engine`. Not an ordering dependency. |
-| `publish.05-alerts` ↔ `publish.01-oss-grafana` | **No (they overlap, they don't order)** | Both publish alert rules; they are idempotent and last-writer-wins. Running either one alone leaves the correct state. |
-| any `publish.*` → needs a live Grafana | **Yes, but backwards to `Day1`/`Day0`** | The Grafana instance is provided by `Day1.cluster.01` (oss mode) or by a `Day0.infra.0{3,4}` backend (Azure/AWS) — never by a sibling Day2 workflow. |
+| [`redeploy.01-argocd`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.01-argocd.yml) → [`publish.01-oss-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.01-oss-grafana.yml) | **No** | `publish.01` nudges the `observability-oss` ArgoCD app to re-sync, but ArgoCD already exists from `Day1`. `redeploy.01` is only run if you **changed** ArgoCD config; `publish.01` works fine having never run it. |
+| [`redeploy.02-jenkins`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.02-jenkins.yml) → [`traffic.01-k6`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml) | **No** | k6 hits the gateway/microservices endpoints (deployed by `Day1` + the ArgoCD AppSet). Jenkins is CI — it doesn't serve the runtime traffic k6 targets. |
+| [`redeploy.02-jenkins`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.02-jenkins.yml) ↔ [`redeploy.03-tekton`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.03-tekton.yml) | **No (mutually exclusive, not ordered)** | They redeploy the two alternative CI engines selected by `ci.engine` (Jenkins default \| Tekton). Only the active engine is provisioned by `Day1`; you run whichever one matches your cluster's `ci.engine`. Not an ordering dependency. |
+| [`publish.05-alerts`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.05-alerts.yml) ↔ [`publish.01-oss-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.01-oss-grafana.yml) | **No (they overlap, they don't order)** | Both publish alert rules; they are idempotent and last-writer-wins. Running either one alone leaves the correct state. |
+| any `publish.*` → needs a live Grafana | **Yes, but backwards to `Day1`/`Day0`** | The Grafana instance is provided by [`Day1.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) (oss mode) or by a `Day0.infra.0{3,4}` backend (Azure/AWS) — never by a sibling Day2 workflow. |
 
 Note the pattern in the last column: ArgoCD genuinely *is* "the engine the rest deploy through" (hence `ZZ=01` within `redeploy`), but that engine↔applications relationship is established in **Day1** (initial provision) and maintained by GitOps auto-sync — **not** re-litigated in Day2. By the time you run any Day2 workflow the cluster is already complete and running; each Day2 workflow is a targeted, idempotent patch on top of it.
 
@@ -676,26 +676,26 @@ Verdicts: **Idempotent** = converges to desired state, safe to re-run · **One-s
 
 | Workflow | Verdict | Why |
 |---|---|---|
-| `Day0.infra.01-gateway` | **Idempotent** | `terraform apply` on the gateway/IP/cert module (GCS state) converges. |
-| `Day0.infra.02-grafana-cloud` | **Idempotent** | `terraform apply`; the random stack slug is generated once and persisted in state, so re-applies reuse it. |
-| `Day0.infra.03-azure-grafana` | **Idempotent** | `terraform apply` on the Azure backend (GCS state) converges. |
-| `Day0.infra.04-aws-grafana` | **Idempotent** | `terraform apply` on the AWS backend (GCS state) converges. |
-| `Day1.cluster.01-gke` | **Idempotent** | `terraform apply` no-ops on an existing cluster; `up.sh` re-applies every step (`--dry-run\|apply`, `helm upgrade --install`); ArgoCD re-syncs. See above. |
-| `Day2.redeploy.01-argocd` | **Idempotent** | `08.5-argocd.sh` = `helm upgrade --install` + idempotent `kubectl apply` of the ArgoCD `Application`s. |
-| `Day2.redeploy.02-jenkins` | **Idempotent** | `04-jenkins.sh` (`helm upgrade --install`, JCasC ConfigMaps via `--dry-run\|apply`) + `06-seed-pipelines.sh`. |
-| `Day2.redeploy.03-tekton` | **Idempotent** | `01`/`04-tekton`/`06-tekton-pipelines`/`09-gateway` — all `kubectl apply` / `--dry-run\|apply`; PaC webhook creation skips if one already targets the controller. |
-| `Day2.redeploy.04-headlamp` | **Idempotent** | `01-namespaces.sh` + `08-headlamp.sh` (`helm upgrade --install`). |
-| `Day2.redeploy.05-gateway` | **Idempotent** | `01-namespaces.sh` (namespaces + IAP Secrets) + `09-gateway.sh` (Gateway/HTTPRoutes/GCPBackendPolicies, all `kubectl apply`). |
-| `Day2.publish.01-oss-grafana` | **Idempotent** | Nudges the `observability-oss` app re-sync (`kubectl annotate --overwrite`), which reconciles the GitOps-managed dashboards child app + republishes alerts. |
-| `Day2.publish.03-azure-grafana` | **One-shot but safe** | `az grafana dashboard create --overwrite` re-publishes; no error/dup on re-run. |
-| `Day2.publish.04-aws-grafana` | **One-shot but safe** | `07-grafana-dashboards.sh` re-publishes to AMG; no accumulation. |
-| `Day2.publish.05-alerts` | **Idempotent** | `07.5-grafana-alerts.sh` uses Grafana's provisioning API (contact points / rules / policies are upserts). |
-| `Day2.traffic.01-k6` | **One-shot but safe** | Runs a k6 load test; re-running just runs another test (each uploads its own artifact). |
-| `Decom.cluster.01-gke` | **Idempotent** | `terraform destroy` no-ops when already gone; `down.sh` uses `--ignore-not-found` / `\|\| true` throughout. |
-| `Decom.infra.01-gateway` | **Idempotent** | `terraform destroy` on the gateway module is a no-op once destroyed. |
-| `Decom.infra.02-grafana-cloud` | **Idempotent** | Applies first to drop delete-protection, then `terraform destroy`; both converge. |
-| `Decom.infra.03-azure-grafana` | **Idempotent** | Pre-destroy cleanup guarded with `\|\| true`; `terraform destroy` tolerates absent resources. |
-| `Decom.infra.04-aws-grafana` | **Idempotent** | `terraform destroy` on the AWS backend converges. |
+| [`Day0.infra.01-gateway`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.01-gateway.yml) | **Idempotent** | `terraform apply` on the gateway/IP/cert module (GCS state) converges. |
+| [`Day0.infra.02-grafana-cloud`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.02-grafana-cloud.yml) | **Idempotent** | `terraform apply`; the random stack slug is generated once and persisted in state, so re-applies reuse it. |
+| [`Day0.infra.03-azure-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.03-azure-grafana.yml) | **Idempotent** | `terraform apply` on the Azure backend (GCS state) converges. |
+| [`Day0.infra.04-aws-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.04-aws-grafana.yml) | **Idempotent** | `terraform apply` on the AWS backend (GCS state) converges. |
+| [`Day1.cluster.01-gke`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) | **Idempotent** | `terraform apply` no-ops on an existing cluster; `up.sh` re-applies every step (`--dry-run\|apply`, `helm upgrade --install`); ArgoCD re-syncs. See above. |
+| [`Day2.redeploy.01-argocd`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.01-argocd.yml) | **Idempotent** | `08.5-argocd.sh` = `helm upgrade --install` + idempotent `kubectl apply` of the ArgoCD `Application`s. |
+| [`Day2.redeploy.02-jenkins`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.02-jenkins.yml) | **Idempotent** | `04-jenkins.sh` (`helm upgrade --install`, JCasC ConfigMaps via `--dry-run\|apply`) + `06-seed-pipelines.sh`. |
+| [`Day2.redeploy.03-tekton`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.03-tekton.yml) | **Idempotent** | `01`/`04-tekton`/`06-tekton-pipelines`/`09-gateway` — all `kubectl apply` / `--dry-run\|apply`; PaC webhook creation skips if one already targets the controller. |
+| [`Day2.redeploy.04-headlamp`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.04-headlamp.yml) | **Idempotent** | `01-namespaces.sh` + `08-headlamp.sh` (`helm upgrade --install`). |
+| [`Day2.redeploy.05-gateway`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.05-gateway.yml) | **Idempotent** | `01-namespaces.sh` (namespaces + IAP Secrets) + `09-gateway.sh` (Gateway/HTTPRoutes/GCPBackendPolicies, all `kubectl apply`). |
+| [`Day2.publish.01-oss-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.01-oss-grafana.yml) | **Idempotent** | Nudges the `observability-oss` app re-sync (`kubectl annotate --overwrite`), which reconciles the GitOps-managed dashboards child app + republishes alerts. |
+| [`Day2.publish.03-azure-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.03-azure-grafana.yml) | **One-shot but safe** | `az grafana dashboard create --overwrite` re-publishes; no error/dup on re-run. |
+| [`Day2.publish.04-aws-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.04-aws-grafana.yml) | **One-shot but safe** | `07-grafana-dashboards.sh` re-publishes to AMG; no accumulation. |
+| [`Day2.publish.05-alerts`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.05-alerts.yml) | **Idempotent** | `07.5-grafana-alerts.sh` uses Grafana's provisioning API (contact points / rules / policies are upserts). |
+| [`Day2.traffic.01-k6`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml) | **One-shot but safe** | Runs a k6 load test; re-running just runs another test (each uploads its own artifact). |
+| [`Decom.cluster.01-gke`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml) | **Idempotent** | `terraform destroy` no-ops when already gone; `down.sh` uses `--ignore-not-found` / `\|\| true` throughout. |
+| [`Decom.infra.01-gateway`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.01-gateway.yml) | **Idempotent** | `terraform destroy` on the gateway module is a no-op once destroyed. |
+| [`Decom.infra.02-grafana-cloud`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.02-grafana-cloud.yml) | **Idempotent** | Applies first to drop delete-protection, then `terraform destroy`; both converge. |
+| [`Decom.infra.03-azure-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.03-azure-grafana.yml) | **Idempotent** | Pre-destroy cleanup guarded with `\|\| true`; `terraform destroy` tolerates absent resources. |
+| [`Decom.infra.04-aws-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.04-aws-grafana.yml) | **Idempotent** | `terraform destroy` on the AWS backend converges. |
 
 ### Should every workflow be *converging*-idempotent?
 
