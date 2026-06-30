@@ -2,6 +2,79 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.52] - 2026-06-30
+
+### Fixed
+- **Expose the node `instance-type` label in kube-state-metrics on every backend**, so the
+  NAP/Spot dashboard's **machine-type** view works on all four — not just Grafana Cloud.
+  Investigation of the managed-azure path confirmed the OTel collector **already scrapes
+  kube-state-metrics** (so the core NAP node-count panels work in azure/aws as-is — an earlier
+  caveat was over-cautious); the only gap was node *labels*, which KSM drops by default.
+  - `scripts/03-observability.sh` (managed-azure **and** managed-aws): the standalone
+    `prometheus-community/kube-state-metrics` install now sets
+    `--metric-labels-allowlist=nodes=[node.kubernetes.io/instance-type,beta.kubernetes.io/instance-type]`.
+  - `observability/grafana/values-oss.yaml`: same via `kube-state-metrics.metricLabelsAllowlist`
+    on the kube-prometheus-stack KSM.
+  - Grafana Cloud already exposed it via the k8s-monitoring chart default. ~1 series/node.
+  - Documented in `docs/301`.
+
+## [v0.28.51] - 2026-06-30
+
+### Docs
+- **Documented the redesigned NAP + Tekton dashboards and the 4-backend variant changes.**
+  `docs/301`: updated the `tekton-overview` inventory row (the redesigned "Tekton CI
+  Observability"), noted that both `node-autoprovisioning` and `tekton-overview` are the
+  Grafana-Cloud-redesigned boards (v2 backups in `dashboards-cloud-export/`, classic model
+  pulled back into `dashboards/`, variants regenerated for all four backends), and documented
+  the new generator behaviour — neutralizing Loki/Tempo **query-type** template variables
+  (e.g. the Tekton board's `log_namespace` filter) into a static `custom` variable in the
+  aws/azure variants. The `dashboards-azure/` and `dashboards-aws/` READMEs gained the same
+  query-variable row in their rewrite tables.
+
+## [v0.28.50] - 2026-06-30
+
+### Fixed
+- **Azure/AWS dashboard variants regenerated for the redesigned NAP + Tekton dashboards**,
+  so they're compatible across all four observability backends — not just Grafana
+  Cloud/OSS. `generate.py` (azure + aws) globs `../dashboards/*.json`, so re-running them
+  produced the new `node-autoprovisioning-{azure,aws}.json` and updated
+  `tekton-overview-{azure,aws}.json` (Prometheus → Azure Monitor / AMP, Loki → Log
+  Analytics / CloudWatch, Tempo → App Insights / X-Ray).
+- **Variant generators now neutralize Loki/Tempo *query-type* template variables.** The new
+  Tekton dashboard adds a `log_namespace` filter whose options are queried from **Loki** —
+  the generators rewrote panel datasources but left that variable dangling at a missing
+  `loki` datasource in the Azure/AWS variants. They now convert such variables to a static
+  `custom` variable (keeping the all-value), so nothing references a non-existent datasource.
+
+## [v0.28.49] - 2026-06-30
+
+### Changed
+- **Publish the redesigned Node Auto-Provisioning + Tekton dashboards from IaC.** The two
+  Grafana-Cloud-redesigned dashboards are now the ones the publish flow ships
+  (`observability/grafana/dashboards/`), replacing the previous `node-autoprovisioning.json`
+  and the **obsolete** `tekton-overview.json` (now "CI-CD / Tekton CI Observability", a
+  significant upgrade). Because the publish API (`POST /api/dashboards/db` in
+  `07-grafana-dashboards.sh`) wants the **classic** model but the exports are **v2** schema,
+  the classic model was pulled from Grafana via `GET /api/dashboards/uid/<uid>` and normalized
+  to the repo convention: `id: null`, Prometheus via the `${DS_PROMETHEUS}` template variable
+  (unchanged), and Loki/Tempo concrete uids (`grafanacloud-logs`/`-traces`) mapped back to the
+  `loki`/`tempo` placeholders the publish walk + azure/aws variant generators expect. Same
+  filenames + uids (`jenkins2026-{node-autoprovisioning,tekton-overview}`), so the CI-engine
+  gating and off-engine cleanup keep working unchanged. The verbatim v2 backups in
+  `dashboards-cloud-export/` were **not** touched.
+
+## [v0.28.48] - 2026-06-30
+
+### Added
+- **Two new Grafana Cloud dashboard exports** in
+  `observability/grafana/dashboards-cloud-export/` (v2 schema, YAML + JSON): **CI-CD / Node
+  Auto-Provisioning (Spot)** (`jenkins2026-node-autoprovisioning`) and **CI-CD / Tekton CI
+  Observability** (`jenkins2026-tekton-overview`), redesigned in Grafana Cloud and exported
+  on 2026-06-29 from stack `stacks-1707745`. The folder is the verbatim provenance backup
+  (not the publish source). Its `README.md` is updated accordingly: counts 6 → 8, two new
+  mapping rows (clickable), the dual export-session/stack provenance, and the note that the
+  newer exports keep stable `jenkins2026-*` uids (vs the original six's random re-import ids).
+
 ## [v0.28.47] - 2026-06-29
 
 Increment over v0.28.46 (surface node machine type for static-pool nodes).
