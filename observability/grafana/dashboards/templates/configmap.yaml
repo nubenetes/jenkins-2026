@@ -1,11 +1,14 @@
 {{- /*
 Render the canonical dashboard JSONs (this chart's *.json files) into the
 ConfigMap that values-oss.yaml mounts via grafana.dashboardsConfigMaps. Drop the
-off-engine CI overview so a tekton cluster never shows an empty Jenkins CI
-dashboard (and vice-versa) — the GitOps equivalent of the SKIP_CI_DASHBOARD
-gating in scripts/07-grafana-dashboards.sh.
+off-engine CI overview(s) so a cluster only ever shows the ACTIVE CI engine's CI
+dashboard (never an empty one for an engine that isn't deployed) — the GitOps
+equivalent of the SKIP_CI_DASHBOARD gating in scripts/07-grafana-dashboards.sh.
+One dashboard per ci.engine: jenkins | tekton | githubactions | argoworkflows.
 */ -}}
-{{- $skip := ternary "jenkins-overview.json" "tekton-overview.json" (eq .Values.ciEngine "tekton") -}}
+{{- $ciDash := dict "jenkins" "jenkins-overview.json" "tekton" "tekton-overview.json" "githubactions" "github-actions-ci.json" "argoworkflows" "argo-workflows-ci.json" -}}
+{{- $allCi := list "jenkins-overview.json" "tekton-overview.json" "github-actions-ci.json" "argo-workflows-ci.json" -}}
+{{- $keep := index $ciDash .Values.ciEngine | default "" -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -17,7 +20,8 @@ metadata:
 data:
 {{- range $path, $_ := .Files.Glob "*.json" }}
 {{- $name := base $path }}
-{{- if ne $name $skip }}
+{{- /* skip a CI-engine dashboard unless it is the active engine's */ -}}
+{{- if not (and (has $name $allCi) (ne $name $keep)) }}
   {{ $name }}: |-
 {{ $.Files.Get $path | indent 4 }}
 {{- end }}

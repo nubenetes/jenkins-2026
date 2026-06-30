@@ -30,7 +30,7 @@
         "y": 0
       },
       "id": 25,
-      "title": "\ud83d\udcd6 Overview & Documentation",
+      "title": "📖 Overview & Documentation",
       "type": "row"
     },
     {
@@ -47,29 +47,7 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "## Tekton CI Observability\n\nReal-time and historical view of the **Tekton Pipelines controller** running in your cluster. Tracks every PipelineRun and TaskRun from submission through completion.\n\n**Five signals this dashboard tracks**\n- \ud83d\udfe2 **Health** \u2014 are pipelines succeeding? \u2192 *PipelineRun Success Rate*, *PipelineRuns by Status*, *Outcome Distribution*\n- \u26a1 **Speed** \u2014 how long do pipelines take? \u2192 *PipelineRun Duration* (p50 / p95 / mean), *Mean PipelineRun Duration*\n- \ud83d\udce6 **Capacity** \u2014 is the cluster keeping up? \u2192 *Concurrent Runs*, *Pod Scheduling Latency*\n- \ud83d\udcca **Velocity** \u2014 how fast is CI delivering? \u2192 *CI Throughput*, *Total PipelineRuns*, *Top Pipelines by Volume*\n- \ud83d\udccb **Logs & Traces** \u2014 what happened in a specific run? \u2192 *Pod Logs*, *Traces*, *Log Error Rate*, *Log Volume by Level*\n\n> **Scope:** use **Status**, **Pipeline**, and **Log Namespace** filters to narrow every panel to a specific team or pipeline \u00b7 Adjust the time-range picker (top-right) to zoom into any incident window",
-        "mode": "markdown"
-      },
-      "pluginVersion": "13.2.0-28226228576",
-      "targets": [],
-      "title": "",
-      "type": "text"
-    },
-    {
-      "gridPos": {
-        "h": 7,
-        "w": 24,
-        "x": 0,
-        "y": 9
-      },
-      "id": 14,
-      "options": {
-        "code": {
-          "language": "plaintext",
-          "showLineNumbers": false,
-          "showMiniMap": false
-        },
-        "content": "## Audience Guide \u2014 what to look at\n\n| Audience | Key Questions | Panels to open |\n|---|---|---|\n| **Engineering** | Are pipelines healthy? Where are failures? | Failure Rate, PipelineRuns by Status, Pod Scheduling Latency |\n| **Tech Lead** | What is CI throughput? Is build time regressing? | CI Throughput, Mean Duration, Concurrent Runs, PipelineRun Duration (p50/p95) |\n| **Product / Management** | How many releases shipped? What is the failure rate? | Total PipelineRuns, Failed PipelineRuns, Failure Rate %, Outcome Distribution |\n| **SRE / On-call** | Is the cluster keeping up? Any pod scheduling delays? | Concurrent Runs, Pod Scheduling Latency, Log Error Rate, Logs & Traces |\n\n> **Filters:** use **Status**, **Pipeline**, and **Log Namespace** at the top to scope every panel to a specific pipeline or team.",
+        "content": "## GitHub Actions (ARC) CI Observability\n\nReal-time and historical view of the **Actions Runner Controller (ARC)** running self-hosted, **ephemeral** GitHub Actions runners in this cluster. Each queued job spins up a throwaway runner Pod in the **`arc-runners`** namespace on the **Spot `ci-spot`** capacity, then the pod is torn down — true scale-to-zero CI.\n\n**Five signals this dashboard tracks**\n- 🟢 **Health** — are runner pods completing, not crash-looping? → *Runner Pod Phase*, *Failed/Errored Runner Pods*, *Outcome Distribution*\n- ⚡ **Speed** — how fast does a runner come up and finish? → *Runner Pod Age*, *Pod Scheduling Latency*\n- 📦 **Capacity** — is ARC scaling up under load and back to zero when idle? → *Active Runner Pods*, *Spot CI nodes*, *Scale-up vs scale-to-zero*\n- 📊 **Velocity** — how much CI is flowing? → *Runner Pod Throughput*, *Total Runner Pods*\n- 📋 **Logs & Traces** — what happened in a specific job? → *Runner Pod Logs*, *Traces*, *Log Error Rate*, *Log Volume by Level*\n\n> **Scope:** use **Status**, **Runner Scale Set**, and **Log Namespace** filters to narrow every panel · Runner membership reads from `kube_pod_*` / `kube_node_spec_taint` via kube-state-metrics, kept even in the lean/free Grafana Cloud profile — so this board works in **all four** observability backends.",
         "mode": "markdown"
       },
       "pluginVersion": "13.2.0-28226228576",
@@ -82,7 +60,7 @@
         "h": 11,
         "w": 12,
         "x": 0,
-        "y": 16
+        "y": 9
       },
       "id": 12,
       "options": {
@@ -91,12 +69,12 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "**Step 1 \u00b7 Read the KPI cards (top row)**\nThe four cards give you an instant snapshot for the selected window:\n- **Running PipelineRuns / TaskRuns** \u2014 how many are executing *right now* (instant gauge, updates every 30 s)\n- **PipelineRuns (range)** \u2014 total completions in the current time window\n- **Success Rate** \u2014 \ud83d\udfe2 \u2265 99 % \u00b7 \ud83d\udfe1 \u2265 80 % \u00b7 \ud83d\udd34 below 80 %\n\n**Step 2 \u00b7 Read the trend charts**\n*PipelineRuns by Status* and *TaskRuns by Status* show completion rate (ops/s) over time broken down by outcome. A rising `failed` stack means a step is erroring. A rising `cancelled` stack often means a timeout or manual cancel.\n\n**Step 3 \u00b7 Narrow with the Log level filter**\nSet **Log level \u2192 error** (or **warn**) from the dropdown at the top-left. The *Tekton Pipeline Pod Logs* panel will then show only failure events from the Tekton pods.\n\n**Step 4 \u00b7 Drill into a Trace**\nClick any **Trace ID** in the *Tekton Pipeline Traces* table to open the full span waterfall \u2014 shows exactly which Task step took the longest or produced an error span.",
+        "content": "**Step 1 · Read the KPI cards (top row)**\n- **Active Runner Pods** — ARC runner pods running *right now* in `arc-runners` (instant gauge)\n- **Runner Pods (range)** — total runner pods created in the window\n- **Pod Success Rate** — 🟢 ≥ 99 % · 🟡 ≥ 80 % · 🔴 below 80 %\n- **Spot CI nodes** — elastic NAP capacity backing the runners\n\n**Step 2 · Read the trend charts**\n*Runner Pods by Phase* shows Running/Succeeded/Failed/Pending over time. A rising `Failed` stack means runner pods are erroring (image pull, OOM, job failure). *Active Runner Pods vs Spot nodes* shows ARC scaling up under load and consolidating back toward **0**.\n\n**Step 3 · Narrow with the Log level filter**\nSet **Log level → error** to make *Runner Pod Logs* show only failure events from the runner pods.\n\n**Step 4 · Drill into a Trace**\nClick any **Trace ID** in *Runner Traces* to open the span waterfall for that job's instrumented steps.",
         "mode": "markdown"
       },
       "pluginVersion": "13.2.0-28226228576",
       "targets": [],
-      "title": "\ud83d\udfe2 Basic Usage Guide",
+      "title": "🟢 Basic Usage Guide",
       "type": "text"
     },
     {
@@ -104,7 +82,7 @@
         "h": 11,
         "w": 12,
         "x": 12,
-        "y": 16
+        "y": 9
       },
       "id": 13,
       "options": {
@@ -113,12 +91,12 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "**Duration regression**\nIf p95 spikes while p50 stays flat \u2192 a minority of runs have an outlier step; open *Traces* to find the longest span. If all three lines (p95, p50, mean) rise together \u2192 the cluster is resource-constrained; check node CPU/memory.\n\n**Pod scheduling latency spike (> 500 ms p95)**\nA large p95\u2013p50 gap in *TaskRun Pod Scheduling Latency* means scheduling variance \u2014 some pods wait far longer than others (node-selector mismatch, taints, or autoscaler lag). Uniformly high p50 is global scheduler pressure; check your node pool.\n\n**Queue build-up**\n*Running PipelineRuns / TaskRuns* climbing without a matching rise in completions \u2192 backlog growing. Check the Tekton controller resource limits: `kubectl top pod -n tekton-pipelines`.\n\n**Key metric reference**\n\n| Metric suffix | Type | What it tracks |\n|---|---|---|\n| `running_pipelineruns` | Gauge | Active PipelineRuns right now |\n| `running_taskruns` | Gauge | Active TaskRuns right now |\n| `pipelinerun_total` | Counter | Completed PipelineRuns labeled by `status` |\n| `pipelinerun_duration_seconds` | Histogram | Wall-clock PipelineRun duration |\n| `taskruns_pod_latency_milliseconds` | Histogram | TaskRun creation \u2192 pod start time |",
+        "content": "**Runners not scaling up**\nJobs queued on GitHub but *Active Runner Pods* flat at 0 → the `gha-rs-controller` / listener can't reach the GitHub API or the scale set has no capacity. Check `gha_rs_controller_*` reconcile metrics and the listener pod logs in `arc-systems`.\n\n**Pods stuck Pending (scheduling latency spike)**\nA large *Runner Pod Scheduling Latency* p95 means runner pods wait for a Spot node — NAP is provisioning `ci-spot` capacity (cold-start) or hit Spot preemption / quota. Cross-check the **Node Auto-Provisioning** board.\n\n**Runners not scaling to zero**\n*Active Runner Pods* never returns to 0 between jobs → a runner is wedged (stuck job, finalizer). `kubectl get pods -n arc-runners`.\n\n**Key metric reference**\n\n| Metric | Type | What it tracks |\n|---|---|---|\n| `kube_pod_status_phase{namespace=\"arc-runners\"}` | Gauge | Runner pods by phase |\n| `kube_pod_created{namespace=\"arc-runners\"}` | Gauge | Runner pod creation timestamp |\n| `kube_pod_status_ready{namespace=\"arc-runners\"}` | Gauge | Runner readiness |\n| `gha_rs_controller_*` (if exported) | Various | gha-rs-controller reconcile activity |\n| `kube_node_spec_taint{key=\"cloud.google.com/gke-spot\"}` | Gauge | Spot CI nodes backing runners |",
         "mode": "markdown"
       },
       "pluginVersion": "13.2.0-28226228576",
       "targets": [],
-      "title": "\ud83d\udd34 Advanced Runbook",
+      "title": "🔴 Advanced Runbook",
       "type": "text"
     },
     {
@@ -127,10 +105,10 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 27
+        "y": 20
       },
       "id": 26,
-      "title": "\ud83d\udcca Business Overview & Velocity",
+      "title": "📊 Business Overview & Velocity",
       "type": "row"
     },
     {
@@ -138,19 +116,13 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Total failed PipelineRuns in the selected time range. Yellow \u22651, Red \u22655.",
+      "description": "Runner pods currently in Failed phase in arc-runners. Yellow ≥1, Red ≥5.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
           "decimals": 0,
-          "links": [
-            {
-              "title": "Explore logs for failures \u2192",
-              "url": "/d/jenkins2026-tekton-overview?viewPanel=9&orgId=1&from=${__from}&to=${__to}"
-            }
-          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -175,7 +147,7 @@
         "h": 4,
         "w": 6,
         "x": 0,
-        "y": 28
+        "y": 21
       },
       "id": 15,
       "options": {
@@ -198,19 +170,20 @@
       "pluginVersion": "13.2.0-28226228576",
       "targets": [
         {
-          "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "(sum(increase(tekton_pipelines_controller_pipelinerun_total{status=\"failed\"}[$__range])) or vector(0))",
+          "editorMode": "code",
+          "expr": "sum(kube_pod_status_phase{namespace=\"arc-runners\",phase=\"Failed\"}) or vector(0)",
           "instant": true,
+          "legendFormat": "A",
           "queryType": "instant",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Failed PipelineRuns",
+      "title": "Failed/Errored Runner Pods",
       "type": "stat"
     },
     {
@@ -218,7 +191,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Total TaskRuns completed in the selected time range.",
+      "description": "Total ARC runner pods created in the selected time range.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -242,7 +215,7 @@
         "h": 4,
         "w": 6,
         "x": 6,
-        "y": 28
+        "y": 21
       },
       "id": 16,
       "options": {
@@ -265,19 +238,20 @@
       "pluginVersion": "13.2.0-28226228576",
       "targets": [
         {
-          "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(increase(tekton_pipelines_controller_taskrun_total[$__range]))",
+          "editorMode": "code",
+          "expr": "sum(increase(kube_pod_created{namespace=\"arc-runners\"}[$__range]) > bool 0) or vector(0)",
           "instant": true,
+          "legendFormat": "A",
           "queryType": "instant",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Total TaskRuns",
+      "title": "Total Runner Pods (range)",
       "type": "stat"
     },
     {
@@ -285,7 +259,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "PipelineRuns per hour (throughput) over the selected time range.",
+      "description": "Runner pods created per hour over the selected range.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -297,7 +271,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "blue",
+                "color": "green",
                 "value": 0
               }
             ]
@@ -309,7 +283,7 @@
         "h": 4,
         "w": 6,
         "x": 12,
-        "y": 28
+        "y": 21
       },
       "id": 17,
       "options": {
@@ -332,19 +306,20 @@
       "pluginVersion": "13.2.0-28226228576",
       "targets": [
         {
-          "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(rate(tekton_pipelines_controller_pipelinerun_total[$__range])) * 3600",
+          "editorMode": "code",
+          "expr": "(sum(changes(kube_pod_created{namespace=\"arc-runners\"}[$__range])) or vector(0)) / clamp_min($__range_s/3600, 1)",
           "instant": true,
+          "legendFormat": "A",
           "queryType": "instant",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "CI Throughput (runs/h)",
+      "title": "CI Throughput (pods/h)",
       "type": "stat"
     },
     {
@@ -352,12 +327,13 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Mean PipelineRun duration. Yellow \u22655 min, Red \u226515 min.",
+      "description": "ARC runner pods currently Running. Yellow ≥10, Red ≥25.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -367,22 +343,22 @@
               },
               {
                 "color": "yellow",
-                "value": 300
+                "value": 10
               },
               {
                 "color": "red",
-                "value": 900
+                "value": 25
               }
             ]
           },
-          "unit": "s"
+          "unit": "short"
         }
       },
       "gridPos": {
         "h": 4,
         "w": 6,
         "x": 18,
-        "y": 28
+        "y": 21
       },
       "id": 18,
       "options": {
@@ -405,19 +381,20 @@
       "pluginVersion": "13.2.0-28226228576",
       "targets": [
         {
-          "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(increase(tekton_pipelines_controller_pipelinerun_duration_seconds_sum[$__range])) / clamp_min(sum(increase(tekton_pipelines_controller_pipelinerun_duration_seconds_count[$__range])), 1)",
+          "editorMode": "code",
+          "expr": "sum(kube_pod_status_phase{namespace=\"arc-runners\",phase=\"Running\"}) or vector(0)",
           "instant": true,
+          "legendFormat": "A",
           "queryType": "instant",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Mean PipelineRun Duration",
+      "title": "Active Runner Pods",
       "type": "stat"
     },
     {
@@ -425,7 +402,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Rolling PipelineRun failure rate. Yellow >5%, Red >20%.",
+      "description": "Rolling share of arc-runners pods in Failed phase. Yellow >5%, Red >20%.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -437,7 +414,6 @@
             "axisColorMode": "text",
             "axisLabel": "",
             "axisPlacement": "auto",
-            "axisSoftMax": 1,
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
@@ -466,8 +442,6 @@
               "mode": "area"
             }
           },
-          "max": 1,
-          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -485,14 +459,16 @@
               }
             ]
           },
-          "unit": "percentunit"
+          "unit": "percentunit",
+          "max": 1,
+          "min": 0
         }
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 32
+        "y": 25
       },
       "id": 19,
       "options": {
@@ -520,12 +496,12 @@
       "pluginVersion": "13.2.0-28226228576",
       "targets": [
         {
-          "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "(sum(rate(tekton_pipelines_controller_pipelinerun_total{status=\"failed\"}[$__rate_interval])) or vector(0)) / clamp_min(sum(rate(tekton_pipelines_controller_pipelinerun_total[$__rate_interval])), 1e-9)",
+          "editorMode": "code",
+          "expr": "(sum(kube_pod_status_phase{namespace=\"arc-runners\",phase=\"Failed\"}) or vector(0)) / clamp_min(sum(kube_pod_status_phase{namespace=\"arc-runners\"}), 1)",
           "instant": false,
           "legendFormat": "Failure Rate",
           "queryType": "range",
@@ -533,7 +509,7 @@
           "refId": "A"
         }
       ],
-      "title": "PipelineRun Failure Rate",
+      "title": "Runner Pod Failure Rate",
       "type": "timeseries"
     },
     {
@@ -541,7 +517,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Number of concurrently running PipelineRuns and TaskRuns \u2014 indicates executor utilization.",
+      "description": "ARC runner pods rise under load and consolidate to 0; the Spot CI nodes (NAP ci-spot) track them. The static platform pool stays flat.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -590,14 +566,15 @@
               }
             ]
           },
-          "unit": "short"
+          "unit": "short",
+          "min": 0
         }
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 32
+        "y": 25
       },
       "id": 20,
       "options": {
@@ -625,33 +602,46 @@
       "pluginVersion": "13.2.0-28226228576",
       "targets": [
         {
-          "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(tekton_pipelines_controller_running_pipelineruns)",
+          "editorMode": "code",
+          "expr": "sum(kube_pod_status_phase{namespace=\"arc-runners\",phase=\"Running\"}) or vector(0)",
           "instant": false,
-          "legendFormat": "PipelineRuns",
+          "legendFormat": "Active runner pods",
           "queryType": "range",
           "range": true,
           "refId": "A"
         },
         {
-          "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum(tekton_pipelines_controller_running_taskruns)",
+          "editorMode": "code",
+          "expr": "count(kube_node_spec_taint{key=\"cloud.google.com/gke-spot\"}) or vector(0)",
           "instant": false,
-          "legendFormat": "TaskRuns",
+          "legendFormat": "Spot CI nodes (NAP)",
           "queryType": "range",
           "range": true,
           "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "count(kube_node_info) - (count(kube_node_spec_taint{key=\"cloud.google.com/gke-spot\"}) or vector(0))",
+          "instant": false,
+          "legendFormat": "Static pool",
+          "queryType": "range",
+          "range": true,
+          "refId": "C"
         }
       ],
-      "title": "Concurrent Runs (Executor Utilization)",
+      "title": "Active Runner Pods vs Spot CI Nodes (scale-up / scale-to-zero)",
       "type": "timeseries"
     },
     {
@@ -660,10 +650,10 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 40
+        "y": 33
       },
       "id": 27,
-      "title": "\ud83d\udd2c Pipeline Analysis",
+      "title": "🔬 Runner Pod Analysis",
       "type": "row"
     },
     {
@@ -671,7 +661,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Donut breakdown of all PipelineRun outcomes in the selected time range.",
+      "description": "Donut breakdown of arc-runners pod phases in the current snapshot.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -687,6 +677,21 @@
           }
         },
         "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "success"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
           {
             "matcher": {
               "id": "byName",
@@ -720,13 +725,13 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "success"
+              "options": "failed"
             },
             "properties": [
               {
                 "id": "color",
                 "value": {
-                  "fixedColor": "green",
+                  "fixedColor": "red",
                   "mode": "fixed"
                 }
               }
@@ -750,7 +755,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "failed"
+              "options": "Error"
             },
             "properties": [
               {
@@ -765,13 +770,13 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Cancelled"
+              "options": "cancelled"
             },
             "properties": [
               {
                 "id": "color",
                 "value": {
-                  "fixedColor": "orange",
+                  "fixedColor": "yellow",
                   "mode": "fixed"
                 }
               }
@@ -780,7 +785,22 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "cancelled"
+              "options": "Cancelled"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "timeout"
             },
             "properties": [
               {
@@ -821,6 +841,21 @@
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Pending"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
           }
         ]
       },
@@ -828,7 +863,7 @@
         "h": 10,
         "w": 10,
         "x": 0,
-        "y": 41
+        "y": 34
       },
       "id": 21,
       "options": {
@@ -863,20 +898,20 @@
       "pluginVersion": "13.2.0-28226228576",
       "targets": [
         {
-          "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (status) (increase(tekton_pipelines_controller_pipelinerun_total{status!=\"\"}[$__range]))",
+          "editorMode": "code",
+          "expr": "sum by (phase) (kube_pod_status_phase{namespace=\"arc-runners\"} > 0)",
           "instant": true,
-          "legendFormat": "{{status}}",
+          "legendFormat": "{{phase}}",
           "queryType": "instant",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "PipelineRun Outcome Distribution",
+      "title": "Runner Pod Outcome Distribution",
       "type": "piechart"
     },
     {
@@ -884,7 +919,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Top 10 pipelines by run volume in the selected time range.",
+      "description": "Runner pods by owning runner scale-set deployment (label app.kubernetes.io/instance or the ARC scale-set label).",
       "fieldConfig": {
         "defaults": {
           "custom": {
@@ -916,7 +951,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Runs"
+              "options": "Pods"
             },
             "properties": [
               {
@@ -954,7 +989,7 @@
         "h": 10,
         "w": 14,
         "x": 10,
-        "y": 41
+        "y": 34
       },
       "id": 22,
       "options": {
@@ -971,12 +1006,11 @@
       "pluginVersion": "13.2.0-28226228576",
       "targets": [
         {
-          "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "topk(10, sum by (pipeline, namespace) (increase(tekton_pipelines_controller_pipelinerun_duration_seconds_count{pipeline=~\"$pipeline\"}[$__range])))",
+          "expr": "topk(10, count by (pod) (kube_pod_status_phase{namespace=\"$runner_scaleset\",phase=~\"Running|Pending\"} > 0))",
           "instant": true,
           "legendFormat": "",
           "queryType": "instant",
@@ -984,14 +1018,13 @@
           "refId": "A"
         }
       ],
-      "title": "Top Pipelines by Volume",
+      "title": "Active Runner Pods (by pod)",
       "transformations": [
         {
           "id": "labelsToFields",
           "options": {
             "keepLabels": [
-              "pipeline",
-              "namespace"
+              "pod"
             ],
             "mode": "columns"
           }
@@ -1003,14 +1036,12 @@
               "Time": true
             },
             "indexByName": {
-              "Value": 2,
-              "namespace": 1,
-              "pipeline": 0
+              "Value": 1,
+              "pod": 0
             },
             "renameByName": {
-              "Value": "Runs",
-              "namespace": "Namespace",
-              "pipeline": "Pipeline"
+              "Value": "Pods",
+              "pod": "Runner Pod"
             }
           }
         }
@@ -1023,10 +1054,10 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 51
+        "y": 44
       },
       "id": 28,
-      "title": "Tekton CI \u2014 pipeline & task runs (controller metrics)",
+      "title": "GitHub Actions / ARC — runner pods & controller (kube-state-metrics)",
       "type": "row"
     },
     {
@@ -1034,19 +1065,13 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "PipelineRuns currently executing (tekton_pipelines_controller_running_pipelineruns).",
+      "description": "ARC runner pods in Running phase (kube_pod_status_phase, ns arc-runners).",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
           "decimals": 0,
-          "links": [
-            {
-              "title": "Explore traces \u2192",
-              "url": "/d/jenkins2026-tekton-overview?viewPanel=10&orgId=1&from=${__from}&to=${__to}"
-            }
-          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -1071,7 +1096,7 @@
         "h": 5,
         "w": 6,
         "x": 0,
-        "y": 52
+        "y": 45
       },
       "id": 1,
       "options": {
@@ -1099,7 +1124,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(tekton_pipelines_controller_running_pipelineruns)",
+          "expr": "sum(kube_pod_status_phase{namespace=\"arc-runners\",phase=\"Running\"}) or vector(0)",
           "instant": true,
           "legendFormat": "running",
           "queryType": "instant",
@@ -1107,7 +1132,7 @@
           "refId": "A"
         }
       ],
-      "title": "Running PipelineRuns",
+      "title": "Running Runner Pods",
       "type": "stat"
     },
     {
@@ -1115,19 +1140,13 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "TaskRuns currently executing (tekton_pipelines_controller_running_taskruns).",
+      "description": "ARC runner pods Pending (waiting on a Spot node to be provisioned).",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
           "decimals": 0,
-          "links": [
-            {
-              "title": "Explore traces \u2192",
-              "url": "/d/jenkins2026-tekton-overview?viewPanel=10&orgId=1&from=${__from}&to=${__to}"
-            }
-          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -1137,11 +1156,11 @@
               },
               {
                 "color": "yellow",
-                "value": 10
+                "value": 5
               },
               {
                 "color": "red",
-                "value": 25
+                "value": 15
               }
             ]
           },
@@ -1152,7 +1171,7 @@
         "h": 5,
         "w": 6,
         "x": 6,
-        "y": 52
+        "y": 45
       },
       "id": 2,
       "options": {
@@ -1180,15 +1199,15 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(tekton_pipelines_controller_running_taskruns)",
+          "expr": "sum(kube_pod_status_phase{namespace=\"arc-runners\",phase=\"Pending\"}) or vector(0)",
           "instant": true,
-          "legendFormat": "running",
+          "legendFormat": "pending",
           "queryType": "instant",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Running TaskRuns",
+      "title": "Pending Runner Pods",
       "type": "stat"
     },
     {
@@ -1196,20 +1215,13 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Share of PipelineRuns that completed with status=success over the dashboard range.",
+      "description": "Share of arc-runners pods Succeeded vs all terminal pods in snapshot.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
-          "links": [
-            {
-              "title": "Explore error logs \u2192",
-              "url": "/d/jenkins2026-tekton-overview?viewPanel=9&orgId=1&from=${__from}&to=${__to}"
-            }
-          ],
-          "max": 1,
-          "min": 0,
+          "decimals": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -1227,14 +1239,16 @@
               }
             ]
           },
-          "unit": "percentunit"
+          "unit": "percentunit",
+          "max": 1,
+          "min": 0
         }
       },
       "gridPos": {
         "h": 5,
         "w": 6,
         "x": 12,
-        "y": 52
+        "y": 45
       },
       "id": 3,
       "options": {
@@ -1262,7 +1276,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(sum(increase(tekton_pipelines_controller_pipelinerun_total{status=\"success\"}[$__range])) or vector(0)) / clamp_min(sum(increase(tekton_pipelines_controller_pipelinerun_total[$__range])), 1)",
+          "expr": "(sum(kube_pod_status_phase{namespace=\"arc-runners\",phase=\"Succeeded\"}) or vector(0)) / clamp_min(sum(kube_pod_status_phase{namespace=\"arc-runners\",phase=~\"Succeeded|Failed\"}), 1)",
           "instant": true,
           "legendFormat": "success rate",
           "queryType": "instant",
@@ -1270,7 +1284,7 @@
           "refId": "A"
         }
       ],
-      "title": "PipelineRun Success Rate",
+      "title": "Runner Pod Success Rate",
       "type": "stat"
     },
     {
@@ -1278,7 +1292,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Total PipelineRuns started in the dashboard range (tekton_pipelines_controller_pipelinerun_total).",
+      "description": "Distinct ARC runner pods seen in the dashboard range.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1286,12 +1300,6 @@
             "mode": "fixed"
           },
           "decimals": 0,
-          "links": [
-            {
-              "title": "Explore traces \u2192",
-              "url": "/d/jenkins2026-tekton-overview?viewPanel=10&orgId=1&from=${__from}&to=${__to}"
-            }
-          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -1308,7 +1316,7 @@
         "h": 5,
         "w": 6,
         "x": 18,
-        "y": 52
+        "y": 45
       },
       "id": 4,
       "options": {
@@ -1336,15 +1344,15 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(tekton_pipelines_controller_pipelinerun_total[$__range]))",
+          "expr": "count(count by (pod) (kube_pod_info{namespace=\"arc-runners\"})) or vector(0)",
           "instant": true,
-          "legendFormat": "pipelineruns",
+          "legendFormat": "pods",
           "queryType": "instant",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Total PipelineRuns",
+      "title": "Total Runner Pods",
       "type": "stat"
     },
     {
@@ -1352,7 +1360,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "PipelineRun completion rate by status (success / failed / cancelled).",
+      "description": "ARC runner pod count by phase over time (kube_pod_status_phase, ns arc-runners).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1392,12 +1400,6 @@
               "mode": "off"
             }
           },
-          "links": [
-            {
-              "title": "Explore error logs \u2192",
-              "url": "/d/jenkins2026-tekton-overview?viewPanel=9&orgId=1&from=${__from}&to=${__to}"
-            }
-          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -1428,7 +1430,67 @@
           {
             "matcher": {
               "id": "byName",
+              "options": "Succeeded"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "succeeded"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
               "options": "failed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Failed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Error"
             },
             "properties": [
               {
@@ -1458,6 +1520,21 @@
           {
             "matcher": {
               "id": "byName",
+              "options": "Cancelled"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
               "options": "timeout"
             },
             "properties": [
@@ -1469,6 +1546,51 @@
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Running"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "running"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Pending"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
           }
         ]
       },
@@ -1476,7 +1598,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 57
+        "y": 50
       },
       "id": 5,
       "options": {
@@ -1510,15 +1632,15 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (status) (rate(tekton_pipelines_controller_pipelinerun_total{status=~\"$run_status\"}[$__rate_interval]))",
+          "expr": "sum by (phase) (kube_pod_status_phase{namespace=\"arc-runners\",phase=~\"$run_status\"} > 0)",
           "instant": false,
-          "legendFormat": "{{status}}",
+          "legendFormat": "{{phase}}",
           "queryType": "range",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "PipelineRuns by Status",
+      "title": "Runner Pods by Phase",
       "type": "timeseries"
     },
     {
@@ -1526,7 +1648,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "PipelineRun wall-clock duration percentiles (tekton_pipelines_controller_pipelinerun_duration_seconds).",
+      "description": "Age of the oldest active runner pod (now - kube_pod_created) — a high value means a wedged / non-terminating runner.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1549,7 +1671,7 @@
               "viz": false
             },
             "insertNulls": false,
-            "lineInterpolation": "smooth",
+            "lineInterpolation": "linear",
             "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
@@ -1566,12 +1688,6 @@
               "mode": "line"
             }
           },
-          "links": [
-            {
-              "title": "Explore traces \u2192",
-              "url": "/d/jenkins2026-tekton-overview?viewPanel=10&orgId=1&from=${__from}&to=${__to}"
-            }
-          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -1581,11 +1697,11 @@
               },
               {
                 "color": "yellow",
-                "value": 300
+                "value": 600
               },
               {
                 "color": "red",
-                "value": 600
+                "value": 1800
               }
             ]
           },
@@ -1596,7 +1712,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 57
+        "y": 50
       },
       "id": 6,
       "options": {
@@ -1624,48 +1740,33 @@
       "pluginVersion": "13.2.0-28226228576",
       "targets": [
         {
-          "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "exemplar": true,
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(tekton_pipelines_controller_pipelinerun_duration_seconds_bucket[$__rate_interval])))",
+          "editorMode": "code",
+          "expr": "max(time() - kube_pod_created{namespace=\"arc-runners\"}) or vector(0)",
           "instant": false,
-          "legendFormat": "p95",
+          "legendFormat": "oldest pod age",
           "queryType": "range",
           "range": true,
           "refId": "A"
         },
         {
-          "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "exemplar": true,
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(tekton_pipelines_controller_pipelinerun_duration_seconds_bucket[$__rate_interval])))",
+          "editorMode": "code",
+          "expr": "avg(time() - kube_pod_created{namespace=\"arc-runners\"}) or vector(0)",
           "instant": false,
-          "legendFormat": "p50",
+          "legendFormat": "mean pod age",
           "queryType": "range",
           "range": true,
           "refId": "B"
-        },
-        {
-          "app": "grafana-assistant-app",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum(rate(tekton_pipelines_controller_pipelinerun_duration_seconds_sum[$__rate_interval])) / clamp_min(sum(rate(tekton_pipelines_controller_pipelinerun_duration_seconds_count[$__rate_interval])), 1e-9)",
-          "instant": false,
-          "legendFormat": "mean",
-          "queryType": "range",
-          "range": true,
-          "refId": "C"
         }
       ],
-      "title": "PipelineRun Duration (p50 / p95 / mean)",
+      "title": "Runner Pod Age (oldest active)",
       "type": "timeseries"
     },
     {
@@ -1673,7 +1774,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "TaskRuns by status (tekton_pipelines_controller_taskrun_total).",
+      "description": "Actions-runner-controller reconcile activity, if the controller exports gha_rs_controller_* metrics (controller-runtime). No data = metrics not scraped (optional).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1707,18 +1808,12 @@
             "spanNulls": false,
             "stacking": {
               "group": "A",
-              "mode": "normal"
+              "mode": "none"
             },
             "thresholdsStyle": {
               "mode": "off"
             }
           },
-          "links": [
-            {
-              "title": "Explore error logs \u2192",
-              "url": "/d/jenkins2026-tekton-overview?viewPanel=9&orgId=1&from=${__from}&to=${__to}"
-            }
-          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -1729,75 +1824,13 @@
             ]
           },
           "unit": "short"
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "success"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "green",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "failed"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "red",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "cancelled"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "yellow",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "timeout"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "orange",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          }
-        ]
+        }
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 65
+        "y": 58
       },
       "id": 7,
       "options": {
@@ -1831,15 +1864,28 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (status) (rate(tekton_pipelines_controller_taskrun_total{status=~\"$run_status\"}[$__rate_interval]))",
+          "expr": "sum by (controller) (rate(gha_rs_controller_reconcile_total[$__rate_interval]))",
           "instant": false,
-          "legendFormat": "{{status}}",
+          "legendFormat": "{{controller}}",
           "queryType": "range",
           "range": true,
           "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(controller_runtime_reconcile_total{namespace=\"arc-systems\"}[$__rate_interval]))",
+          "instant": false,
+          "legendFormat": "reconciles (controller-runtime)",
+          "queryType": "range",
+          "range": true,
+          "refId": "B"
         }
       ],
-      "title": "TaskRuns by Status",
+      "title": "gha-rs-controller Reconciles",
       "type": "timeseries"
     },
     {
@@ -1847,7 +1893,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Time from TaskRun creation to its pod starting (tekton_pipelines_controller_taskruns_pod_latency_milliseconds) \u2014 scheduling/startup overhead.",
+      "description": "Time runner pods spend Pending before a Spot node is ready (kube_pod_status_phase Pending count is a proxy for cold-start backlog).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1870,7 +1916,7 @@
               "viz": false
             },
             "insertNulls": false,
-            "lineInterpolation": "smooth",
+            "lineInterpolation": "linear",
             "lineWidth": 2,
             "pointSize": 5,
             "scaleDistribution": {
@@ -1884,40 +1930,27 @@
               "mode": "none"
             },
             "thresholdsStyle": {
-              "mode": "line"
+              "mode": "off"
             }
           },
-          "links": [
-            {
-              "title": "Explore traces \u2192",
-              "url": "/d/jenkins2026-tekton-overview?viewPanel=10&orgId=1&from=${__from}&to=${__to}"
-            }
-          ],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
                 "value": 0
-              },
-              {
-                "color": "yellow",
-                "value": 500
-              },
-              {
-                "color": "red",
-                "value": 2000
               }
             ]
           },
-          "unit": "ms"
+          "unit": "short",
+          "min": 0
         }
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 65
+        "y": 58
       },
       "id": 8,
       "options": {
@@ -1945,46 +1978,33 @@
       "pluginVersion": "13.2.0-28226228576",
       "targets": [
         {
-          "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(tekton_pipelines_controller_taskruns_pod_latency_milliseconds_bucket[$__rate_interval])))",
+          "editorMode": "code",
+          "expr": "sum(kube_pod_status_phase{namespace=\"arc-runners\",phase=\"Pending\"}) or vector(0)",
           "instant": false,
-          "legendFormat": "p95",
+          "legendFormat": "pending pods",
           "queryType": "range",
           "range": true,
           "refId": "A"
         },
         {
-          "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(tekton_pipelines_controller_taskruns_pod_latency_milliseconds_bucket[$__rate_interval])))",
+          "editorMode": "code",
+          "expr": "count(kube_node_spec_taint{key=\"cloud.google.com/compute-class\",value=\"ci-spot\"}) or vector(0)",
           "instant": false,
-          "legendFormat": "p50",
+          "legendFormat": "ci-spot nodes ready",
           "queryType": "range",
           "range": true,
           "refId": "B"
-        },
-        {
-          "app": "grafana-assistant-app",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "expr": "sum(rate(tekton_pipelines_controller_taskruns_pod_latency_milliseconds_sum[$__rate_interval])) / clamp_min(sum(rate(tekton_pipelines_controller_taskruns_pod_latency_milliseconds_count[$__rate_interval])), 1e-9)",
-          "instant": false,
-          "legendFormat": "mean",
-          "queryType": "range",
-          "range": true,
-          "refId": "C"
         }
       ],
-      "title": "TaskRun Pod Scheduling Latency (p50 / p95 / mean)",
+      "title": "Runner Pod Scheduling Latency",
       "type": "timeseries"
     },
     {
@@ -1993,23 +2013,23 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 73
+        "y": 66
       },
       "id": 29,
-      "title": "Logs & Traces (pipeline execution)",
+      "title": "Logs & Traces (runner execution)",
       "type": "row"
     },
     {
       "datasource": {
-        "type": "cloudwatch",
-        "uid": "DS_CW_UID"
+        "type": "loki",
+        "uid": "loki"
       },
-      "description": "Logs from the Tekton pipeline-execution namespaces (the PipelineRun/TaskRun pods).",
+      "description": "Logs from the ARC runner namespaces (the ephemeral runner pods).",
       "gridPos": {
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 74
+        "y": 67
       },
       "id": 9,
       "options": {
@@ -2033,29 +2053,24 @@
       "targets": [
         {
           "datasource": {
-            "type": "cloudwatch",
-            "uid": "DS_CW_UID"
+            "type": "loki",
+            "uid": "loki"
           },
-          "queryMode": "Logs",
-          "region": "default",
-          "logGroups": [
-            {
-              "name": "/jenkins-2026/jenkins-2026/otel"
-            }
-          ],
-          "expression": "fields @timestamp, @message, @logStream | sort @timestamp desc | limit 100",
+          "editorMode": "code",
+          "expr": "{k8s_namespace_name=~\"${log_namespace}\"} | detected_level =~ \"${level}\"",
+          "queryType": "range",
           "refId": "A"
         }
       ],
-      "title": "Tekton Pipeline Pod Logs",
+      "title": "Runner Pod Logs",
       "type": "logs"
     },
     {
       "datasource": {
-        "type": "grafana-x-ray-datasource",
-        "uid": "DS_XRAY_UID"
+        "type": "tempo",
+        "uid": "tempo"
       },
-      "description": "Distributed traces emitted by the Tekton pipeline (the steps export OTLP to the collector). Use to drill into a single PipelineRun's spans.",
+      "description": "Distributed traces emitted by instrumented job steps (OTLP to the collector). Drill into a single job's spans.",
       "fieldConfig": {
         "defaults": {
           "custom": {
@@ -2087,7 +2102,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 74
+        "y": 67
       },
       "id": 10,
       "options": {
@@ -2101,16 +2116,18 @@
       "targets": [
         {
           "datasource": {
-            "type": "grafana-x-ray-datasource",
-            "uid": "DS_XRAY_UID"
+            "type": "tempo",
+            "uid": "tempo"
           },
-          "queryType": "getTraceSummaries",
-          "query": "",
-          "region": "default",
-          "refId": "A"
+          "filters": [],
+          "limit": 50,
+          "query": "{ resource.service.namespace = \"${trace_namespace}\" }",
+          "queryType": "traceql",
+          "refId": "A",
+          "tableType": "traces"
         }
       ],
-      "title": "Tekton Pipeline Traces",
+      "title": "Runner Traces",
       "type": "table"
     },
     {
@@ -2119,18 +2136,18 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 83
+        "y": 76
       },
       "id": 30,
-      "title": "\ud83d\udcc8 Log Analytics",
+      "title": "📈 Log Analytics",
       "type": "row"
     },
     {
       "datasource": {
-        "type": "cloudwatch",
-        "uid": "DS_CW_UID"
+        "type": "loki",
+        "uid": "loki"
       },
-      "description": "Rate of error-level log lines from Tekton namespaces. Spikes indicate pod/task failures.",
+      "description": "Rate of error-level log lines. Spikes indicate runner/workflow pod failures.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -2194,7 +2211,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 84
+        "y": 77
       },
       "id": 23,
       "options": {
@@ -2223,27 +2240,24 @@
       "targets": [
         {
           "datasource": {
-            "type": "cloudwatch",
-            "uid": "DS_CW_UID"
+            "type": "loki",
+            "uid": "loki"
           },
-          "queryMode": "Logs",
-          "region": "default",
-          "logGroups": [
-            {
-              "name": "/jenkins-2026/jenkins-2026/otel"
-            }
-          ],
-          "expression": "fields @timestamp, @message, @logStream | sort @timestamp desc | limit 100",
+          "expr": "sum(rate({k8s_namespace_name=~\"${log_namespace}\"} | detected_level = \"error\" [$__auto]))",
+          "instant": false,
+          "legendFormat": "Error log rate",
+          "queryType": "range",
+          "range": true,
           "refId": "A"
         }
       ],
       "title": "Log Error Rate",
-      "type": "logs"
+      "type": "timeseries"
     },
     {
       "datasource": {
-        "type": "cloudwatch",
-        "uid": "DS_CW_UID"
+        "type": "loki",
+        "uid": "loki"
       },
       "description": "Log volume broken down by severity level. Stacked view highlights relative noise across info/warn/error.",
       "fieldConfig": {
@@ -2301,7 +2315,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 84
+        "y": 77
       },
       "id": 24,
       "options": {
@@ -2330,22 +2344,19 @@
       "targets": [
         {
           "datasource": {
-            "type": "cloudwatch",
-            "uid": "DS_CW_UID"
+            "type": "loki",
+            "uid": "loki"
           },
-          "queryMode": "Logs",
-          "region": "default",
-          "logGroups": [
-            {
-              "name": "/jenkins-2026/jenkins-2026/otel"
-            }
-          ],
-          "expression": "fields @timestamp, @message, @logStream | sort @timestamp desc | limit 100",
+          "expr": "sum by (detected_level) (rate({k8s_namespace_name=~\"${log_namespace}\"} | detected_level != \"\" [$__auto]))",
+          "instant": false,
+          "legendFormat": "{{detected_level}}",
+          "queryType": "range",
+          "range": true,
           "refId": "A"
         }
       ],
       "title": "Log Volume by Level",
-      "type": "logs"
+      "type": "timeseries"
     }
   ],
   "preload": false,
@@ -2353,7 +2364,8 @@
   "schemaVersion": 42,
   "tags": [
     "jenkins-2026",
-    "tekton",
+    "github-actions",
+    "arc",
     "ci"
   ],
   "templating": {
@@ -2361,8 +2373,8 @@
       {
         "allowCustomValue": true,
         "current": {
-          "text": "grafanacloud-jenkins2026obsy4pwj88m-prom",
-          "value": "grafanacloud-prom"
+          "text": "",
+          "value": ""
         },
         "hide": 0,
         "includeAll": false,
@@ -2413,7 +2425,7 @@
         "multi": true,
         "name": "run_status",
         "options": [],
-        "query": "success,failed,cancelled,timeout",
+        "query": "Running,Succeeded,Failed,Pending,Unknown",
         "skipUrlSync": false,
         "type": "custom",
         "valuesFormat": "csv"
@@ -2421,37 +2433,22 @@
       {
         "allowCustomValue": true,
         "current": {
-          "text": "All",
-          "value": [
-            "$__all"
-          ]
-        },
-        "datasource": {
-          "type": "prometheus",
-          "uid": "grafanacloud-prom"
+          "text": "arc-runners",
+          "value": "arc-runners"
         },
         "hide": 0,
-        "includeAll": true,
-        "label": "Pipeline",
-        "multi": true,
-        "name": "pipeline",
+        "includeAll": false,
+        "label": "Runner Namespace",
+        "multi": false,
+        "name": "runner_scaleset",
         "options": [],
-        "query": {
-          "label": "pipeline",
-          "metric": "tekton_pipelines_controller_pipelinerun_duration_seconds_count",
-          "qryType": 1,
-          "query": "label_values(tekton_pipelines_controller_pipelinerun_duration_seconds_count,pipeline)",
-          "refId": "PrometheusVariableQueryEditor-VariableQuery"
-        },
-        "refresh": 1,
-        "regex": "",
-        "regexApplyTo": "value",
+        "query": "arc-runners",
         "skipUrlSync": false,
-        "sort": 1,
-        "type": "query"
+        "type": "custom",
+        "valuesFormat": "csv"
       },
       {
-        "allValue": "tekton-ci|tekton-pipelines",
+        "allValue": "arc-runners|arc-systems",
         "allowCustomValue": true,
         "current": {
           "text": [
@@ -2461,19 +2458,27 @@
             "$__all"
           ]
         },
+        "datasource": {
+          "type": "loki",
+          "uid": "loki"
+        },
         "hide": 0,
         "includeAll": true,
         "label": "Log Namespace",
         "multi": true,
         "name": "log_namespace",
         "options": [],
-        "query": "tekton-ci,tekton-pipelines",
-        "refresh": 0,
+        "query": {
+          "label": "k8s_namespace_name",
+          "stream": "{k8s_namespace_name=~\"arc-runners|arc-systems\"}",
+          "type": 1
+        },
+        "refresh": 1,
         "regex": "",
         "regexApplyTo": "value",
         "skipUrlSync": false,
         "sort": 1,
-        "type": "custom"
+        "type": "query"
       },
       {
         "allowCustomValue": true,
@@ -2513,7 +2518,9 @@
     ]
   },
   "timezone": "browser",
-  "title": "CI-CD / Tekton CI Observability",
-  "uid": "jenkins2026-tekton-overview",
-  "version": 3
+  "title": "CI-CD / GitHub Actions (ARC) CI Observability",
+  "uid": "jenkins2026-github-actions-ci",
+  "version": 1,
+  "weekStart": "",
+  "description": "GitHub Actions self-hosted CI via Actions Runner Controller (ARC). Ephemeral runner pods in the arc-runners namespace on Spot ci-spot capacity, observed through kube-state-metrics (kube_pod_*) and node taints (kube_node_spec_taint) — the lean node/pod-inventory slice 03-observability.sh keeps in every observability mode, so this board works across all four backends."
 }

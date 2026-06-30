@@ -37,40 +37,43 @@ DASHBOARDS_DIR="${J2026_ROOT_DIR}/observability/grafana/dashboards"
 # even when config.yaml's ci.engine default does not match the deployed cluster.
 ACTIVE_CI_ENGINE="$(j2026_active_ci_engine)"
 log_info "Active CI engine: ${ACTIVE_CI_ENGINE}"
-if [[ "${ACTIVE_CI_ENGINE}" == "tekton" ]]; then
-  SKIP_CI_DASHBOARD="jenkins-overview"
-else
-  SKIP_CI_DASHBOARD="tekton-overview"
-fi
-# return 0 (skip) when the basename is the inactive engine's overview - matches the
-# canonical name and the -azure / -aws variant suffixes.
+# One CI overview dashboard per ci.engine; only the ACTIVE engine's is published.
+case "${ACTIVE_CI_ENGINE}" in
+  tekton)        KEEP_CI_DASHBOARD="tekton-overview" ;;
+  githubactions) KEEP_CI_DASHBOARD="github-actions-ci" ;;
+  argoworkflows) KEEP_CI_DASHBOARD="argo-workflows-ci" ;;
+  *)             KEEP_CI_DASHBOARD="jenkins-overview" ;;
+esac
+ALL_CI_DASHBOARDS="jenkins-overview tekton-overview github-actions-ci argo-workflows-ci"
+# return 0 (skip) when the basename (sans -azure/-aws suffix) is a CI overview for an
+# INACTIVE engine.
 is_offengine_dashboard() {
-  case "$1" in
-    "${SKIP_CI_DASHBOARD}" | "${SKIP_CI_DASHBOARD}"-azure | "${SKIP_CI_DASHBOARD}"-aws) return 0 ;;
-    *) return 1 ;;
-  esac
+  local base="${1%-azure}"; base="${base%-aws}" d
+  for d in ${ALL_CI_DASHBOARDS}; do
+    [[ "${base}" == "${d}" && "${base}" != "${KEEP_CI_DASHBOARD}" ]] && return 0
+  done
+  return 1
 }
 
-# Delete the INACTIVE engine's overview dashboard by UID via the legacy HTTP API
+# Delete the INACTIVE engines' overview dashboards by UID via the legacy HTTP API
 # (Bearer auth). Skipping the off-engine dashboard at publish time is not enough on
 # a PERSISTENT stack (Grafana Cloud / Azure Managed Grafana): gcx push and
-# POST /api/dashboards/db only upsert, so a stale jenkins-overview survives a switch
-# to tekton (and vice-versa). Idempotent: no-op when it isn't there. $1=base URL,
-# $2=API key. (managed-aws does the equivalent with its short-lived SA token.)
+# POST /api/dashboards/db only upsert, so a stale off-engine overview survives an
+# engine switch. Idempotent: no-op when absent. $1=base URL, $2=API key.
+# (managed-aws does the equivalent with its short-lived SA token.)
 delete_offengine_dashboard() {
-  local base="${1%/}" key="$2" off_uid
-  if [[ "${ACTIVE_CI_ENGINE}" == "tekton" ]]; then
-    off_uid="jenkins2026-jenkins-overview"
-  else
-    off_uid="jenkins2026-tekton-overview"
-  fi
-  if curl -fsS "${base}/api/dashboards/uid/${off_uid}" -H "Authorization: Bearer ${key}" >/dev/null 2>&1; then
-    if curl -fsS -X DELETE "${base}/api/dashboards/uid/${off_uid}" -H "Authorization: Bearer ${key}" >/dev/null 2>&1; then
-      log_info "Deleted off-engine dashboard ${off_uid} (ci.engine=${ACTIVE_CI_ENGINE})."
-    else
-      log_warn "Could not delete off-engine dashboard ${off_uid}."
+  local base="${1%/}" key="$2" d off_uid
+  for d in ${ALL_CI_DASHBOARDS}; do
+    [[ "${d}" == "${KEEP_CI_DASHBOARD}" ]] && continue
+    off_uid="jenkins2026-${d}"
+    if curl -fsS "${base}/api/dashboards/uid/${off_uid}" -H "Authorization: Bearer ${key}" >/dev/null 2>&1; then
+      if curl -fsS -X DELETE "${base}/api/dashboards/uid/${off_uid}" -H "Authorization: Bearer ${key}" >/dev/null 2>&1; then
+        log_info "Deleted off-engine dashboard ${off_uid} (ci.engine=${ACTIVE_CI_ENGINE})."
+      else
+        log_warn "Could not delete off-engine dashboard ${off_uid}."
+      fi
     fi
-  fi
+  done
 }
 
 case "${J2026_OBS_MODE}" in
