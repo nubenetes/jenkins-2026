@@ -1,6 +1,6 @@
 # Preset: spike-recovery (advanced)
 # A sudden burst to a high VU count, a short hold, then a sharp drop — to test
-# how the platform absorbs a spike (HPA/Karpenter reaction, queueing) and how
+# how the platform absorbs a spike (HPA / GKE Node Auto-Provisioning reaction, queueing) and how
 # fast it recovers afterwards.
 name: spike-recovery
 level: advanced
