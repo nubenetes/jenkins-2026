@@ -323,13 +323,26 @@ next to your App; the browser URL is then
 `https://github.com/organizations/nubenetes/settings/installations/<NUMBER>`, and that
 trailing `<NUMBER>` is the installation ID → `ARC_GITHUB_APP_INSTALLATION_ID`.
 
-**5 — Store the three secrets** on `nubenetes/jenkins-2026`:
+**5 — Store the three secrets** on `nubenetes/jenkins-2026`. The two IDs are plain
+`--body` values (any shell); the private key is read **from the `.pem` file**, and how you
+feed a file to `gh` **differs by shell**.
+
+App ID + installation ID — any shell:
 ```bash
 gh secret set ARC_GITHUB_APP_ID              --repo nubenetes/jenkins-2026 --body "<app-id>"
 gh secret set ARC_GITHUB_APP_INSTALLATION_ID --repo nubenetes/jenkins-2026 --body "<installation-id>"
-gh secret set ARC_GITHUB_APP_PRIVATE_KEY     --repo nubenetes/jenkins-2026 < ~/Downloads/<app>.private-key.pem
 ```
-(Or repo → *Settings → Secrets and variables → Actions → New repository secret*.)
+Private key — **Linux / macOS / Git Bash / WSL** (stdin redirection with `<`):
+```bash
+gh secret set ARC_GITHUB_APP_PRIVATE_KEY --repo nubenetes/jenkins-2026 < ./<app>.private-key.pem
+```
+Private key — **Windows PowerShell** (PowerShell has **no `<` redirection operator** — it
+errors `'<' is reserved for future use` — so pipe the file with `Get-Content -Raw` instead):
+```powershell
+Get-Content -Raw .\<app>.private-key.pem | gh secret set ARC_GITHUB_APP_PRIVATE_KEY --repo nubenetes/jenkins-2026
+```
+(Or set all three in the UI: repo → *Settings → Secrets and variables → Actions → New
+repository secret* — for the key, paste the full `.pem` including the `-----BEGIN/END-----` lines.)
 
 **6 — Re-deploy.** `authMode: app` is already the default, so **no config change is
 needed**. Re-run `Day1.cluster.01-gke` (or `Day2.redeploy.06-githubactions`):
