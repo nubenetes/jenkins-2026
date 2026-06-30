@@ -4,8 +4,8 @@
 # The namespace defaults mirror config/config.yaml — keep them in sync if you
 # override the namespaces there (same convention as argocd/observability-oss/values.yaml).
 
-# Active CI engine — gates the Jenkins-vs-Tekton RBAC.
-ciEngine: jenkins            # jenkins | tekton
+# Active CI engine — gates the per-engine RBAC.
+ciEngine: jenkins            # jenkins | tekton | githubactions | argoworkflows
 # microservices.developTrackEnabled — gates the develop-tier bindings. NOTE: this
 # arrives as the STRING "true"/"false" via helm.parameters, so templates compare
 # it as a string ({{ if eq (... | toString) "true" }}), never as a bare bool.
@@ -15,5 +15,12 @@ namespaces:
   jenkins: jenkins
   pgadmin: pgadmin
   tektonPipeline: tekton-ci
+  arcRunner: arc-runners            # ci.engine=githubactions: where the ARC runner pods + SA live
+  argoworkflowsRun: argo-ci         # ci.engine=argoworkflows: where the Workflow pods + SA live
   microservicesStable: microservices
   microservicesDevelop: microservices-develop
+
+# ci.engine=githubactions: the ARC chart-derived runner ServiceAccount the runner pods run as
+# (gha-runner-scale-set chart names it <scaleSet>-gha-rs-no-permission). Verify against the
+# pinned ARC chart (githubactions.versions.arc) when bumping.
+runnerServiceAccount: jenkins-2026-runners-gha-rs-no-permission

@@ -293,9 +293,18 @@ resource "google_container_node_pool" "primary" {
   }
 
   node_config {
-    machine_type    = var.machine_type
-    disk_size_gb    = var.disk_size_gb
-    disk_type       = "pd-balanced"
+    machine_type = var.machine_type
+    disk_size_gb = var.disk_size_gb
+    # pd-standard (NOT pd-balanced): node BOOT disks (OS + image cache + emptyDir) do
+    # NOT need SSD-tier IOPS, and the region's SSD_TOTAL_GB quota is a hard 500 GB cap
+    # (self-service max). Keeping the static platform pool on pd-balanced consumed that
+    # cap (3x50 GB) and, once NAP auto-provisioned overflow nodes for the platform, left
+    # no SSD headroom to even CREATE this pool's 3rd node — wedging every Day1 with
+    # `Quota 'SSD_TOTAL_GB' exceeded`. pd-standard charges the separate DISKS_TOTAL_GB
+    # quota (4 TB, ~empty), so this pool no longer counts against the SSD cap; the
+    # platform then consolidates onto 3 e2-standard-8 nodes and the NAP overflow drains.
+    # (CNPG/data PVs keep their own pd-* StorageClass — only the node boot disk changes.)
+    disk_type       = "pd-standard"
     service_account = google_service_account.nodes.email
     oauth_scopes    = ["https://www.googleapis.com/auth/cloud-platform"]
 
@@ -313,6 +322,16 @@ resource "google_container_node_pool" "primary" {
   lifecycle {
     ignore_changes = [
       node_config[0].kubelet_config,
+      # The cluster autoscaler scales this pool within min/max (var.min_node_count..
+      # var.max_node_count), so the LIVE node count drifts away from var.node_count
+      # (e.g. consolidated to 2). The provider reads that live count back into
+      # initial_node_count, and since initial_node_count is ForceNew, the drift
+      # (observed: `initial_node_count = 2 -> 3 # forces replacement`) DESTROYS +
+      # RECREATES the whole static pool on every idempotent Day1 re-run — a brief
+      # outage of the platform pool (ArgoCD/Jenkins/CNPG/observability). Ignore it so
+      # autoscaler-driven count changes never trigger a replacement. var.node_count is
+      # still the seed at first creation; min/max keep governing autoscaling.
+      initial_node_count,
     ]
   }
 }

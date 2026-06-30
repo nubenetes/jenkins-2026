@@ -1,0 +1,31 @@
+# Advanced example Workflow: a real LOAD test (not a smoke test) against the optional
+# `develop` tier. Demonstrates overriding the k6 parameters exposed by the
+# `microservices-k6-smoke` WorkflowTemplate - ramp to 30 VUs, hold 5m, scoped to the
+# microservices-develop namespace and the `develop` Grafana environment, with a tighter
+# 1500ms p(95) budget.
+#
+# Run: kubectl create -f argoworkflows/runs/k6-load.yaml
+# Requires the develop tier deployed (microservices.developTrackEnabled=true).
+# See docs/302-K6_LOAD_TESTING.md and docs/405-ARGO_WORKFLOWS.md.
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: microservices-k6-load-develop-
+  namespace: argo-ci
+  labels:
+    jenkins2026.io/service: microservices-k6-smoke
+    jenkins2026.io/env: develop
+spec:
+  serviceAccountName: argoworkflows-ci
+  workflowTemplateRef:
+    name: microservices-k6-smoke
+  arguments:
+    parameters:
+      - { name: profile, value: load }
+      - { name: env-name, value: develop }
+      - { name: target-namespace, value: microservices-develop }
+      - { name: vus, value: "30" }
+      - { name: duration, value: "5m" }
+      - { name: scenarios, value: "gateway-ui,gateway-health,gateway-proxy" }
+      - { name: p95-ms, value: "1500" }
+      - { name: sleep, value: "0.2" }

@@ -214,6 +214,13 @@ j2026_active_ci_engine() {
     echo "tekton"
     return
   fi
+  # ARC controller Deployment is release-name-prefixed (<release>-gha-rs-controller), so
+  # match by the well-known label to stay release-agnostic.
+  if [[ -n "$(kubectl get deployment -n "${J2026_GHA_NAMESPACE:-arc-systems}" \
+       -l app.kubernetes.io/part-of=gha-rs-controller -o name 2>/dev/null)" ]]; then
+    echo "githubactions"
+    return
+  fi
   echo "${J2026_CI_ENGINE}"
 }
 

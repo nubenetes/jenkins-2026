@@ -220,6 +220,71 @@ The equivalent HMAC token for **Pipelines-as-Code** (the git-driven CI path, the
 
 ---
 
+## 9.5. GitHub Actions / ARC CI Engine (`ci.engine: githubactions`)
+
+Used by `Day1.cluster.01-gke` and `Day2.redeploy.06-githubactions` when the GitHub
+Actions CI engine is selected (`ci.engine: githubactions`). ARC (Actions Runner
+Controller) registers the in-cluster self-hosted runners with GitHub via a **GitHub
+App**; the three secrets below are that App's credentials. [`scripts/01-namespaces.sh`](../scripts/01-namespaces.sh)
+materialises them into the **`arc-github-app`** Secret in the `arc-runners` namespace
+(ESO-synced in `secrets.backend=eso` mode via [`scripts/08.6-eso-sync.sh`](../scripts/08.6-eso-sync.sh)). They are
+**only meaningful when `ci_engine=githubactions`**. ARC otherwise reuses the existing
+ghcr registry secret (`arc-registry` imagePullSecret) and `GIT_*` env.
+
+| Secret | Required | Description |
+|--------|----------|-------------|
+| `ARC_GITHUB_APP_ID` | optional | GitHub App **App ID** for the ARC runner-registration App |
+| `ARC_GITHUB_APP_INSTALLATION_ID` | optional | The App's **installation ID** on the org/repo |
+| `ARC_GITHUB_APP_PRIVATE_KEY` | optional | The App's **private key** (PEM). **Sensitive — a private key.** |
+
+**`ARC_GITHUB_APP_ID` / `ARC_GITHUB_APP_INSTALLATION_ID`**
+Non-sensitive identifiers of the ARC GitHub App. Created when you **register the ARC
+GitHub App on the org** (GitHub → Settings → Developer settings → GitHub Apps), grant
+it the runner-admin permissions ARC needs, and install it. Read the App ID off the
+App's page and the installation ID off its install URL.
+
+**`ARC_GITHUB_APP_PRIVATE_KEY`**
+The App's generated private key (a `.pem`). **High sensitivity** — treat like any
+signing key; never commit. Consumed by `Day1.cluster.01-gke` and
+`Day2.redeploy.06-githubactions` → [`scripts/01-namespaces.sh`](../scripts/01-namespaces.sh) (builds the `arc-github-app`
+Secret in `arc-runners`).
+
+> **PAT fallback.** If you skip the GitHub App, ARC can instead authenticate with a
+> classic **PAT** supplied as `GIT_TOKEN` (used as the runner-registration
+> `github_token`). Either way, when the engine renders `.github/workflows/` into the
+> app forks, **`GIT_TOKEN` must additionally carry the `workflow` scope** to push
+> workflow files.
+
+---
+
+## 9.6. Argo Workflows CI Engine (`ci.engine: argoworkflows`)
+
+Used by `Day1.cluster.01-gke` and `Day2.redeploy.07-argoworkflows` when the Argo
+Workflows CI engine is selected (`ci.engine: argoworkflows`). Argo Workflows + Argo
+Events reuses the **existing** registry, git, and IAP secrets — `REGISTRY_USERNAME` /
+`REGISTRY_PASSWORD` (image push/pull), `GIT_USERNAME` / `GIT_TOKEN` (private
+Microservices fork), and `IAP_OAUTH_CLIENT_ID` / `IAP_OAUTH_CLIENT_SECRET` (the Argo
+Workflows Server UI is gated by the same Google IAP as Headlamp). The only **new**
+secret is the one optional webhook HMAC token below.
+
+| Secret | Required | Description |
+|--------|----------|-------------|
+| `ARGOWORKFLOWS_GITHUB_WEBHOOK_SECRET` | optional | GitHub HMAC token validating requests to the Argo Events EventSource (GitHub webhook receiver) |
+
+**`ARGOWORKFLOWS_GITHUB_WEBHOOK_SECRET`**
+A shared-secret HMAC token GitHub signs webhook deliveries with, validated by the Argo
+Events GitHub **EventSource** (the public, no-IAP receiver at `argo-events.<domain>`).
+**Low/medium sensitivity** — a shared HMAC, not a private key. Optional: you generate it
+yourself (e.g. `openssl rand -hex 20`) and set it as a GitHub Actions secret **and** in
+the GitHub repo's webhook config. [`scripts/01-namespaces.sh`](../scripts/01-namespaces.sh) seeds it into the
+`argoworkflows-github-webhook` Secret in the `argo-events` namespace (ESO-synced in
+`secrets.backend=eso` mode via [`scripts/08.6-eso-sync.sh`](../scripts/08.6-eso-sync.sh)); if absent,
+[`scripts/06-argoworkflows-pipelines.sh`](../scripts/06-argoworkflows-pipelines.sh) generates one (falling back to
+`PAC_WEBHOOK_SECRET`). Consumed by `Day1.cluster.01-gke` and
+`Day2.redeploy.07-argoworkflows`.
+
+---
+
 ## 10. Grafana Cloud k6 (the k6-app) — optional
 
 The k6 smoke pipeline always exports request metrics via **OTLP** to your Grafana
@@ -289,6 +354,10 @@ egress to Grafana Cloud k6's ingest. Works for **either** CI engine.
 | `GIT_TOKEN` | **yes** | private microservices fork | manual |
 | `TEKTON_GITHUB_WEBHOOK_SECRET` | **yes** | Tekton EventListener webhook (`ci.engine=tekton`, optional) | manual — `openssl rand` |
 | `PAC_WEBHOOK_SECRET` | **yes** | Pipelines-as-Code webhook (`ci.engine=tekton`, optional) | manual — `openssl rand` |
+| `ARC_GITHUB_APP_ID` | no | ARC runner registration (`ci.engine=githubactions`; PAT fallback via `GIT_TOKEN`) | GitHub App registration |
+| `ARC_GITHUB_APP_INSTALLATION_ID` | no | ARC runner registration (`ci.engine=githubactions`; PAT fallback via `GIT_TOKEN`) | GitHub App registration |
+| `ARC_GITHUB_APP_PRIVATE_KEY` | **yes** | ARC runner registration (`ci.engine=githubactions`; PAT fallback via `GIT_TOKEN`) | GitHub App registration |
+| `ARGOWORKFLOWS_GITHUB_WEBHOOK_SECRET` | low/medium | Argo Events GitHub webhook EventSource (`ci.engine=argoworkflows`, optional; `PAC_WEBHOOK_SECRET` fallback) | manual — `openssl rand` |
 
 ---
 

@@ -96,10 +96,12 @@ spec:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: observability
-  # OTLP (4317/4318) from whichever CI engine is active (jenkins OR the tekton
-  # pipeline namespaces) plus the microservices auto-instrumentation. A
-  # namespaceSelector for an absent namespace just matches nothing, so listing
-  # both engines here is safe regardless of ci.engine.
+  # OTLP (4317/4318) from whichever CI engine is active (jenkins, the tekton
+  # pipeline namespaces, the ARC runner namespace, or the Argo Workflows execution
+  # namespace) plus the microservices auto-instrumentation. A namespaceSelector for
+  # an absent namespace just matches nothing, so listing every engine here is safe
+  # regardless of ci.engine — the CI build/k6 steps push their spans/metrics to the
+  # collector from the engine's run namespace, so each must be allowed in.
   - from:
     - namespaceSelector:
         matchLabels:
@@ -119,6 +121,14 @@ spec:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: tekton-pipelines
+    # ci.engine=argoworkflows: the Workflow/k6 pods push OTLP from the run namespace.
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: argo-ci
+    # ci.engine=githubactions: the ARC runner pods (incl. the k6 step) push OTLP.
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: arc-runners
     ports:
     - protocol: TCP
       port: 4317

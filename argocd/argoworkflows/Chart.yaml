@@ -1,0 +1,11 @@
+apiVersion: v2
+name: argoworkflows
+description: >-
+  App-of-apps for the Argo Workflows CI engine (ci.engine=argoworkflows).
+  Renders child Applications for the Argo Workflows controller+server, the Argo
+  Events controllers+EventBus, and the pipelines-as-code under argoworkflows/.
+  repoURL/targetRevision flow down from the parent Application's helm.parameters
+  (set by scripts/04-argoworkflows.sh) so the kustomize/manifest children's git
+  source tracks the active branch. Mirrors argocd/tekton.
+type: application
+version: 0.1.0

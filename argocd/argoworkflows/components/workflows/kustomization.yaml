@@ -1,0 +1,67 @@
+# Argo Workflows (workflow-controller + argo-server), installed via ArgoCD.
+#
+# The release manifest is VENDORED (release.yaml in this dir). argoproj publishes
+# Argo Workflows releases as GitHub release assets (install.yaml), not on a GCS
+# bucket, and a github.com URL is misclassified by kustomize as a git repo, so a
+# remote resource isn't viable. Vendoring is reliable (local file) and auditable.
+#
+# Source: https://github.com/argoproj/argo-workflows/releases/download/v3.7.15/install.yaml
+# (v3.7.15 = pinned; stays on the 3.7.x line — Argo Workflows 4.0 ships full-schema
+# CRDs >1.5 MB that exceed GKE's etcd object limit and can't be applied). To bump:
+# re-download install.yaml from the matching tag into release.yaml and update
+# config/config.yaml argoworkflows.versions.workflows.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: argo
+resources:
+  - release.yaml
+
+# Two patches:
+#
+# 1) Default the controller's workflow-defaults ServiceAccount to the run SA
+#    (argoworkflows-ci) — parity with Tekton's config-defaults
+#    default-service-account=tekton-ci patch. A Workflow submitted WITHOUT a
+#    serviceAccountName (e.g. from the Argo Server UI "Submit Workflow" form,
+#    which does not default the SA) then runs as argoworkflows-ci instead of the
+#    powerless default SA. Run-pod placement (nodeSelector/tolerations) is NOT
+#    set here — it's driven by the argoworkflows.runNodePool flag (static|ci-spot)
+#    and patched into workflowDefaults at run time by scripts/06-argoworkflows-pipelines.sh,
+#    so ArgoCD ignores that field (see ignoreDifferences in
+#    argocd/argoworkflows/templates/workflows.yaml + RespectIgnoreDifferences).
+#
+# 2) Run argo-server with --auth-mode=server and --secure=false. The Server UI
+#    has no native auth, so it is exposed behind Google IAP at the Gateway exactly
+#    like the Tekton Dashboard (09-gateway.sh): IAP provides the auth layer and
+#    terminates TLS, so the server serves plain HTTP. The default install runs the
+#    server with TLS (readinessProbe scheme HTTPS) — flip it to HTTP to match.
+patches:
+  - patch: |-
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: workflow-controller-configmap
+        namespace: argo
+      data:
+        workflowDefaults: |
+          spec:
+            serviceAccountName: argoworkflows-ci
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: argo-server
+        namespace: argo
+      spec:
+        template:
+          spec:
+            containers:
+              - name: argo-server
+                args:
+                  - server
+                  - --auth-mode=server
+                  - --secure=false
+                readinessProbe:
+                  httpGet:
+                    path: /
+                    port: 2746
+                    scheme: HTTP

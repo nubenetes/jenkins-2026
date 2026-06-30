@@ -1,0 +1,27 @@
+# Ready-to-run Workflow for the `gateway` service - the Argo Workflows equivalent of
+# the one-click Jenkins seed job (and the Tekton tekton/runs/gateway.yaml). All
+# pipeline PARAMS already default to the gateway service in the microservices-pipeline
+# WorkflowTemplate, so none are overridden here. The shared 'source' workspace
+# (volumeClaimTemplate) and the registry dockerconfig volume live in the
+# WorkflowTemplate, so the run object only needs the templateRef + run SA.
+#
+# Use it either way:
+#   kubectl create -f argoworkflows/runs/gateway.yaml   # new run each time (generateName)
+#   argo submit argoworkflows/runs/gateway.yaml         # ...or via the argo CLI / UI "Resubmit"
+#
+# To build a different service, copy this file and add an `arguments.parameters:`
+# block overriding service-name and its related params together (see
+# jhipstersamplemicroservice.yaml). Excluded from ArgoCD (directory.exclude: runs/*)
+# because generateName has no stable name to diff.
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: gateway-stable-
+  namespace: argo-ci
+  labels:
+    jenkins2026.io/service: gateway
+    jenkins2026.io/env: stable
+spec:
+  serviceAccountName: argoworkflows-ci
+  workflowTemplateRef:
+    name: microservices-pipeline

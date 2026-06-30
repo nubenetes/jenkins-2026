@@ -30,7 +30,7 @@
         "y": 0
       },
       "id": 25,
-      "title": "\u00f0\u0178\u201c\u2013 Overview & Documentation",
+      "title": "\ud83d\udcd6 Overview & Documentation",
       "type": "row"
     },
     {
@@ -47,7 +47,7 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "## Tekton CI Observability\n\nReal-time and historical view of the **Tekton Pipelines controller** running in your cluster. Tracks every PipelineRun and TaskRun from submission through completion.\n\n**Five signals this dashboard tracks**\n- \u00f0\u0178\u0178\u00a2 **Health** \u00e2\u20ac\u201d are pipelines succeeding? \u00e2\u2020\u2019 *PipelineRun Success Rate*, *PipelineRuns by Status*, *Outcome Distribution*\n- \u00e2\u0161\u00a1 **Speed** \u00e2\u20ac\u201d how long do pipelines take? \u00e2\u2020\u2019 *PipelineRun Duration* (p50 / p95 / mean), *Mean PipelineRun Duration*\n- \u00f0\u0178\u201c\u00a6 **Capacity** \u00e2\u20ac\u201d is the cluster keeping up? \u00e2\u2020\u2019 *Concurrent Runs*, *Pod Scheduling Latency*\n- \u00f0\u0178\u201c\u0160 **Velocity** \u00e2\u20ac\u201d how fast is CI delivering? \u00e2\u2020\u2019 *CI Throughput*, *Total PipelineRuns*, *Top Pipelines by Volume*\n- \u00f0\u0178\u201c\u2039 **Logs & Traces** \u00e2\u20ac\u201d what happened in a specific run? \u00e2\u2020\u2019 *Pod Logs*, *Traces*, *Log Error Rate*, *Log Volume by Level*\n\n> **Scope:** use **Status**, **Pipeline**, and **Log Namespace** filters to narrow every panel to a specific team or pipeline \u00c2\u00b7 Adjust the time-range picker (top-right) to zoom into any incident window",
+        "content": "## Tekton CI Observability\n\nReal-time and historical view of the **Tekton Pipelines controller** running in your cluster. Tracks every PipelineRun and TaskRun from submission through completion.\n\n**Five signals this dashboard tracks**\n- \ud83d\udfe2 **Health** \u2014 are pipelines succeeding? \u2192 *PipelineRun Success Rate*, *PipelineRuns by Status*, *Outcome Distribution*\n- \u26a1 **Speed** \u2014 how long do pipelines take? \u2192 *PipelineRun Duration* (p50 / p95 / mean), *Mean PipelineRun Duration*\n- \ud83d\udce6 **Capacity** \u2014 is the cluster keeping up? \u2192 *Concurrent Runs*, *Pod Scheduling Latency*\n- \ud83d\udcca **Velocity** \u2014 how fast is CI delivering? \u2192 *CI Throughput*, *Total PipelineRuns*, *Top Pipelines by Volume*\n- \ud83d\udccb **Logs & Traces** \u2014 what happened in a specific run? \u2192 *Pod Logs*, *Traces*, *Log Error Rate*, *Log Volume by Level*\n\n> **Scope:** use **Status**, **Pipeline**, and **Log Namespace** filters to narrow every panel to a specific team or pipeline \u00b7 Adjust the time-range picker (top-right) to zoom into any incident window",
         "mode": "markdown"
       },
       "pluginVersion": "13.2.0-28226228576",
@@ -69,7 +69,7 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "## Audience Guide \u00e2\u20ac\u201d what to look at\n\n| Audience | Key Questions | Panels to open |\n|---|---|---|\n| **Engineering** | Are pipelines healthy? Where are failures? | Failure Rate, PipelineRuns by Status, Pod Scheduling Latency |\n| **Tech Lead** | What is CI throughput? Is build time regressing? | CI Throughput, Mean Duration, Concurrent Runs, PipelineRun Duration (p50/p95) |\n| **Product / Management** | How many releases shipped? What is the failure rate? | Total PipelineRuns, Failed PipelineRuns, Failure Rate %, Outcome Distribution |\n| **SRE / On-call** | Is the cluster keeping up? Any pod scheduling delays? | Concurrent Runs, Pod Scheduling Latency, Log Error Rate, Logs & Traces |\n\n> **Filters:** use **Status**, **Pipeline**, and **Log Namespace** at the top to scope every panel to a specific pipeline or team.",
+        "content": "## Audience Guide \u2014 what to look at\n\n| Audience | Key Questions | Panels to open |\n|---|---|---|\n| **Engineering** | Are pipelines healthy? Where are failures? | Failure Rate, PipelineRuns by Status, Pod Scheduling Latency |\n| **Tech Lead** | What is CI throughput? Is build time regressing? | CI Throughput, Mean Duration, Concurrent Runs, PipelineRun Duration (p50/p95) |\n| **Product / Management** | How many releases shipped? What is the failure rate? | Total PipelineRuns, Failed PipelineRuns, Failure Rate %, Outcome Distribution |\n| **SRE / On-call** | Is the cluster keeping up? Any pod scheduling delays? | Concurrent Runs, Pod Scheduling Latency, Log Error Rate, Logs & Traces |\n\n> **Filters:** use **Status**, **Pipeline**, and **Log Namespace** at the top to scope every panel to a specific pipeline or team.",
         "mode": "markdown"
       },
       "pluginVersion": "13.2.0-28226228576",
@@ -91,12 +91,12 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "**Step 1 \u00c2\u00b7 Read the KPI cards (top row)**\nThe four cards give you an instant snapshot for the selected window:\n- **Running PipelineRuns / TaskRuns** \u00e2\u20ac\u201d how many are executing *right now* (instant gauge, updates every 30 s)\n- **PipelineRuns (range)** \u00e2\u20ac\u201d total completions in the current time window\n- **Success Rate** \u00e2\u20ac\u201d \u00f0\u0178\u0178\u00a2 \u00e2\u2030\u00a5 99 % \u00c2\u00b7 \u00f0\u0178\u0178\u00a1 \u00e2\u2030\u00a5 80 % \u00c2\u00b7 \u00f0\u0178\u201d\u00b4 below 80 %\n\n**Step 2 \u00c2\u00b7 Read the trend charts**\n*PipelineRuns by Status* and *TaskRuns by Status* show completion rate (ops/s) over time broken down by outcome. A rising `failed` stack means a step is erroring. A rising `cancelled` stack often means a timeout or manual cancel.\n\n**Step 3 \u00c2\u00b7 Narrow with the Log level filter**\nSet **Log level \u00e2\u2020\u2019 error** (or **warn**) from the dropdown at the top-left. The *Tekton Pipeline Pod Logs* panel will then show only failure events from the Tekton pods.\n\n**Step 4 \u00c2\u00b7 Drill into a Trace**\nClick any **Trace ID** in the *Tekton Pipeline Traces* table to open the full span waterfall \u00e2\u20ac\u201d shows exactly which Task step took the longest or produced an error span.",
+        "content": "**Step 1 \u00b7 Read the KPI cards (top row)**\nThe four cards give you an instant snapshot for the selected window:\n- **Running PipelineRuns / TaskRuns** \u2014 how many are executing *right now* (instant gauge, updates every 30 s)\n- **PipelineRuns (range)** \u2014 total completions in the current time window\n- **Success Rate** \u2014 \ud83d\udfe2 \u2265 99 % \u00b7 \ud83d\udfe1 \u2265 80 % \u00b7 \ud83d\udd34 below 80 %\n\n**Step 2 \u00b7 Read the trend charts**\n*PipelineRuns by Status* and *TaskRuns by Status* show completion rate (ops/s) over time broken down by outcome. A rising `failed` stack means a step is erroring. A rising `cancelled` stack often means a timeout or manual cancel.\n\n**Step 3 \u00b7 Narrow with the Log level filter**\nSet **Log level \u2192 error** (or **warn**) from the dropdown at the top-left. The *Tekton Pipeline Pod Logs* panel will then show only failure events from the Tekton pods.\n\n**Step 4 \u00b7 Drill into a Trace**\nClick any **Trace ID** in the *Tekton Pipeline Traces* table to open the full span waterfall \u2014 shows exactly which Task step took the longest or produced an error span.",
         "mode": "markdown"
       },
       "pluginVersion": "13.2.0-28226228576",
       "targets": [],
-      "title": "\u00f0\u0178\u0178\u00a2 Basic Usage Guide",
+      "title": "\ud83d\udfe2 Basic Usage Guide",
       "type": "text"
     },
     {
@@ -113,12 +113,12 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "**Duration regression**\nIf p95 spikes while p50 stays flat \u00e2\u2020\u2019 a minority of runs have an outlier step; open *Traces* to find the longest span. If all three lines (p95, p50, mean) rise together \u00e2\u2020\u2019 the cluster is resource-constrained; check node CPU/memory.\n\n**Pod scheduling latency spike (> 500 ms p95)**\nA large p95\u00e2\u20ac\u201cp50 gap in *TaskRun Pod Scheduling Latency* means scheduling variance \u00e2\u20ac\u201d some pods wait far longer than others (node-selector mismatch, taints, or autoscaler lag). Uniformly high p50 is global scheduler pressure; check your node pool.\n\n**Queue build-up**\n*Running PipelineRuns / TaskRuns* climbing without a matching rise in completions \u00e2\u2020\u2019 backlog growing. Check the Tekton controller resource limits: `kubectl top pod -n tekton-pipelines`.\n\n**Key metric reference**\n\n| Metric suffix | Type | What it tracks |\n|---|---|---|\n| `running_pipelineruns` | Gauge | Active PipelineRuns right now |\n| `running_taskruns` | Gauge | Active TaskRuns right now |\n| `pipelinerun_total` | Counter | Completed PipelineRuns labeled by `status` |\n| `pipelinerun_duration_seconds` | Histogram | Wall-clock PipelineRun duration |\n| `taskruns_pod_latency_milliseconds` | Histogram | TaskRun creation \u00e2\u2020\u2019 pod start time |",
+        "content": "**Duration regression**\nIf p95 spikes while p50 stays flat \u2192 a minority of runs have an outlier step; open *Traces* to find the longest span. If all three lines (p95, p50, mean) rise together \u2192 the cluster is resource-constrained; check node CPU/memory.\n\n**Pod scheduling latency spike (> 500 ms p95)**\nA large p95\u2013p50 gap in *TaskRun Pod Scheduling Latency* means scheduling variance \u2014 some pods wait far longer than others (node-selector mismatch, taints, or autoscaler lag). Uniformly high p50 is global scheduler pressure; check your node pool.\n\n**Queue build-up**\n*Running PipelineRuns / TaskRuns* climbing without a matching rise in completions \u2192 backlog growing. Check the Tekton controller resource limits: `kubectl top pod -n tekton-pipelines`.\n\n**Key metric reference**\n\n| Metric suffix | Type | What it tracks |\n|---|---|---|\n| `running_pipelineruns` | Gauge | Active PipelineRuns right now |\n| `running_taskruns` | Gauge | Active TaskRuns right now |\n| `pipelinerun_total` | Counter | Completed PipelineRuns labeled by `status` |\n| `pipelinerun_duration_seconds` | Histogram | Wall-clock PipelineRun duration |\n| `taskruns_pod_latency_milliseconds` | Histogram | TaskRun creation \u2192 pod start time |",
         "mode": "markdown"
       },
       "pluginVersion": "13.2.0-28226228576",
       "targets": [],
-      "title": "\u00f0\u0178\u201d\u00b4 Advanced Runbook",
+      "title": "\ud83d\udd34 Advanced Runbook",
       "type": "text"
     },
     {
@@ -130,7 +130,7 @@
         "y": 27
       },
       "id": 26,
-      "title": "\u00f0\u0178\u201c\u0160 Business Overview & Velocity",
+      "title": "\ud83d\udcca Business Overview & Velocity",
       "type": "row"
     },
     {
@@ -138,7 +138,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Total failed PipelineRuns in the selected time range. Yellow \u00e2\u2030\u00a51, Red \u00e2\u2030\u00a55.",
+      "description": "Total failed PipelineRuns in the selected time range. Yellow \u22651, Red \u22655.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -147,7 +147,7 @@
           "decimals": 0,
           "links": [
             {
-              "title": "Explore logs for failures \u00e2\u2020\u2019",
+              "title": "Explore logs for failures \u2192",
               "url": "/d/jenkins2026-tekton-overview?viewPanel=9&orgId=1&from=${__from}&to=${__to}"
             }
           ],
@@ -352,7 +352,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Mean PipelineRun duration. Yellow \u00e2\u2030\u00a55 min, Red \u00e2\u2030\u00a515 min.",
+      "description": "Mean PipelineRun duration. Yellow \u22655 min, Red \u226515 min.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -541,7 +541,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Number of concurrently running PipelineRuns and TaskRuns \u00e2\u20ac\u201d indicates executor utilization.",
+      "description": "Number of concurrently running PipelineRuns and TaskRuns \u2014 indicates executor utilization.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -663,7 +663,7 @@
         "y": 40
       },
       "id": 27,
-      "title": "\u00f0\u0178\u201d\u00ac Pipeline Analysis",
+      "title": "\ud83d\udd2c Pipeline Analysis",
       "type": "row"
     },
     {
@@ -1026,7 +1026,7 @@
         "y": 51
       },
       "id": 28,
-      "title": "Tekton CI \u00e2\u20ac\u201d pipeline & task runs (controller metrics)",
+      "title": "Tekton CI \u2014 pipeline & task runs (controller metrics)",
       "type": "row"
     },
     {
@@ -1043,7 +1043,7 @@
           "decimals": 0,
           "links": [
             {
-              "title": "Explore traces \u00e2\u2020\u2019",
+              "title": "Explore traces \u2192",
               "url": "/d/jenkins2026-tekton-overview?viewPanel=10&orgId=1&from=${__from}&to=${__to}"
             }
           ],
@@ -1124,7 +1124,7 @@
           "decimals": 0,
           "links": [
             {
-              "title": "Explore traces \u00e2\u2020\u2019",
+              "title": "Explore traces \u2192",
               "url": "/d/jenkins2026-tekton-overview?viewPanel=10&orgId=1&from=${__from}&to=${__to}"
             }
           ],
@@ -1204,7 +1204,7 @@
           },
           "links": [
             {
-              "title": "Explore error logs \u00e2\u2020\u2019",
+              "title": "Explore error logs \u2192",
               "url": "/d/jenkins2026-tekton-overview?viewPanel=9&orgId=1&from=${__from}&to=${__to}"
             }
           ],
@@ -1288,7 +1288,7 @@
           "decimals": 0,
           "links": [
             {
-              "title": "Explore traces \u00e2\u2020\u2019",
+              "title": "Explore traces \u2192",
               "url": "/d/jenkins2026-tekton-overview?viewPanel=10&orgId=1&from=${__from}&to=${__to}"
             }
           ],
@@ -1394,7 +1394,7 @@
           },
           "links": [
             {
-              "title": "Explore error logs \u00e2\u2020\u2019",
+              "title": "Explore error logs \u2192",
               "url": "/d/jenkins2026-tekton-overview?viewPanel=9&orgId=1&from=${__from}&to=${__to}"
             }
           ],
@@ -1568,7 +1568,7 @@
           },
           "links": [
             {
-              "title": "Explore traces \u00e2\u2020\u2019",
+              "title": "Explore traces \u2192",
               "url": "/d/jenkins2026-tekton-overview?viewPanel=10&orgId=1&from=${__from}&to=${__to}"
             }
           ],
@@ -1715,7 +1715,7 @@
           },
           "links": [
             {
-              "title": "Explore error logs \u00e2\u2020\u2019",
+              "title": "Explore error logs \u2192",
               "url": "/d/jenkins2026-tekton-overview?viewPanel=9&orgId=1&from=${__from}&to=${__to}"
             }
           ],
@@ -1847,7 +1847,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Time from TaskRun creation to its pod starting (tekton_pipelines_controller_taskruns_pod_latency_milliseconds) \u00e2\u20ac\u201d scheduling/startup overhead.",
+      "description": "Time from TaskRun creation to its pod starting (tekton_pipelines_controller_taskruns_pod_latency_milliseconds) \u2014 scheduling/startup overhead.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1889,7 +1889,7 @@
           },
           "links": [
             {
-              "title": "Explore traces \u00e2\u2020\u2019",
+              "title": "Explore traces \u2192",
               "url": "/d/jenkins2026-tekton-overview?viewPanel=10&orgId=1&from=${__from}&to=${__to}"
             }
           ],
@@ -2148,7 +2148,7 @@
         "y": 83
       },
       "id": 30,
-      "title": "\u00f0\u0178\u201c\u02c6 Log Analytics",
+      "title": "\ud83d\udcc8 Log Analytics",
       "type": "row"
     },
     {

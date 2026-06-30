@@ -1,0 +1,24 @@
+{{- /*
+Argo Workflows-engine RBAC (was scripts/01-namespaces.sh). The STABLE argoworkflows-ci
+'edit' RoleBinding ships in argoworkflows/rbac (GitOps, ns microservices); only the
+DEVELOP-tier binding was imperative, because that namespace is provisioned out-of-band.
+gitops-deploy does `kubectl -n <ns> rollout restart` (the OTel self-heal) against the
+target tier, so the argoworkflows-ci SA needs 'edit' there. Only when ci.engine=argoworkflows
+AND the develop tier is enabled.
+*/ -}}
+{{- if and (eq .Values.ciEngine "argoworkflows") (eq (.Values.developTrackEnabled | toString) "true") }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argoworkflows-ci-edit
+  namespace: {{ .Values.namespaces.microservicesDevelop }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: edit
+subjects:
+  - kind: ServiceAccount
+    name: argoworkflows-ci
+    namespace: {{ .Values.namespaces.argoworkflowsRun }}
+{{- end }}

@@ -1,0 +1,44 @@
+# RBAC for the Argo Events Sensor's trigger pod. The Sensor (sensor.yaml) runs as
+# 'operate-workflow-sa' and creates Workflows in the run namespace (argo-ci) when a
+# GitHub push arrives. This is the documented Argo Events sensor RBAC, vendored here
+# and GitOps-synced by the argoworkflows-pipeline-as-code ArgoCD app (it recurses
+# over argoworkflows/). The Role lands in argo-ci (where the Workflows are created),
+# while the SA lives in argo-events (where the Sensor pod runs); the RoleBinding in
+# argo-ci references the cross-namespace SA subject explicitly.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: operate-workflow-sa
+  namespace: argo-events
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: operate-workflow-role
+  namespace: argo-ci
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources:
+      - workflows
+      - workflowtemplates
+    verbs:
+      - create
+      - get
+      - list
+      - watch
+      - update
+      - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: operate-workflow-role-binding
+  namespace: argo-ci
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: operate-workflow-role
+subjects:
+  - kind: ServiceAccount
+    name: operate-workflow-sa
+    namespace: argo-events

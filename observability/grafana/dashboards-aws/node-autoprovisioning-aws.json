@@ -15,7 +15,7 @@
       }
     ]
   },
-  "description": "GKE Node Auto-Provisioning (NAP) \u00e2\u20ac\u201d the GA, Google-native Karpenter equivalent. Visualizes the elastic, Spot, scale-to-zero capacity that the ci-spot Custom ComputeClass provisions for bursty CI agents, alongside the static platform pool. Node membership (Spot / ci-spot) is read from the node TAINTS via kube-state-metrics (kube_node_info / kube_node_spec_taint), which scripts/03-observability.sh keeps even in the lean/free Grafana Cloud profile (a tiny node-inventory allow-list), so this board works in all observability modes.",
+  "description": "GKE Node Auto-Provisioning (NAP) \u2014 the GA, Google-native Karpenter equivalent. Visualizes the elastic, Spot, scale-to-zero capacity that the ci-spot Custom ComputeClass provisions for bursty CI agents, alongside the static platform pool. Node membership (Spot / ci-spot) is read from the node TAINTS via kube-state-metrics (kube_node_info / kube_node_spec_taint), which scripts/03-observability.sh keeps even in the lean/free Grafana Cloud profile (a tiny node-inventory allow-list), so this board works in all observability modes.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -31,7 +31,7 @@
       },
       "id": 1,
       "options": {
-        "content": "## Node Auto-Provisioning (NAP) \u00e2\u20ac\u201d elastic Spot CI nodes\nGKE **Node Auto-Provisioning** is the GA, Google-native equivalent of Karpenter. The `ci-spot` **Custom ComputeClass** ([`infrastructure/compute-classes/ci-spot.yaml`](../infrastructure/compute-classes/ci-spot.yaml)) makes NAP auto-create **Spot, scale-to-zero** node pools for bursty CI build agents (Spot-first c3/n2/c2/e2 \u00e2\u2020\u2019 on-demand fallback). The long-lived platform stays on the **static** `jenkins-2026-pool`. See [`docs/201`](../docs/201-ARCHITECTURE.md) and [`docs/501`](../docs/501-PLATFORM_OPERATIONS.md).\n\n**How to read it:** watch **Spot nodes** rise when a pipeline build starts and fall back toward **0** a few minutes after it finishes (consolidation) \u00e2\u20ac\u201d that is the scale-to-zero cost profile. The **Static pool** line should stay flat (the platform). *No data?* It reads node taints from kube-state-metrics (`kube_node_spec_taint`); `03-observability.sh` keeps that tiny node-inventory slice even in lean/free-tier mode, so check KSM is up (`kube-state-metrics` pod) and that a build has actually triggered a Spot node.",
+        "content": "## Node Auto-Provisioning (NAP) \u2014 elastic Spot CI nodes\nGKE **Node Auto-Provisioning** is the GA, Google-native equivalent of Karpenter. The `ci-spot` **Custom ComputeClass** ([`infrastructure/compute-classes/ci-spot.yaml`](../infrastructure/compute-classes/ci-spot.yaml)) makes NAP auto-create **Spot, scale-to-zero** node pools for bursty CI build agents (Spot-first c3/n2/c2/e2 \u2192 on-demand fallback). The long-lived platform stays on the **static** `jenkins-2026-pool`. See [`docs/201`](../docs/201-ARCHITECTURE.md) and [`docs/501`](../docs/501-PLATFORM_OPERATIONS.md).\n\n**How to read it:** watch **Spot nodes** rise when a pipeline build starts and fall back toward **0** a few minutes after it finishes (consolidation) \u2014 that is the scale-to-zero cost profile. The **Static pool** line should stay flat (the platform). *No data?* It reads node taints from kube-state-metrics (`kube_node_spec_taint`); `03-observability.sh` keeps that tiny node-inventory slice even in lean/free-tier mode, so check KSM is up (`kube-state-metrics` pod) and that a build has actually triggered a Spot node.",
         "mode": "markdown"
       },
       "type": "text"
@@ -99,7 +99,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Nodes labelled cloud.google.com/gke-spot=true \u00e2\u20ac\u201d the ephemeral capacity NAP provisions for the ci-spot ComputeClass.",
+      "description": "Nodes labelled cloud.google.com/gke-spot=true \u2014 the ephemeral capacity NAP provisions for the ci-spot ComputeClass.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -201,7 +201,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Non-Spot nodes \u00e2\u20ac\u201d the long-lived jenkins-2026-pool hosting ArgoCD/Jenkins/observability/CNPG.",
+      "description": "Non-Spot nodes \u2014 the long-lived jenkins-2026-pool hosting ArgoCD/Jenkins/observability/CNPG.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -332,7 +332,7 @@
           "refId": "C"
         }
       ],
-      "title": "Node count over time \u00e2\u20ac\u201d Spot (NAP) vs static pool",
+      "title": "Node count over time \u2014 Spot (NAP) vs static pool",
       "type": "timeseries"
     }
   ],

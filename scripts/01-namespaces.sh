@@ -48,6 +48,27 @@ if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
   done
 fi
 
+# GitHub Actions / ARC control-plane (arc-systems) + runner (arc-runners) namespaces
+# are created up-front (when ci.engine=githubactions) so the GitHub App + registry
+# Secrets below can land in the runner namespace before 04-githubactions.sh syncs the
+# AutoscalingRunnerSet — its githubConfigSecret must exist before the runner-set App
+# syncs, or registration fails. kubectl_apply_namespace is a no-op if the ns exists.
+if [[ "${J2026_CI_ENGINE}" == "githubactions" ]]; then
+  for ns in "${J2026_GHA_NAMESPACE}" "${J2026_GHA_RUNNER_NAMESPACE}"; do
+    kubectl_apply_namespace "${ns}"
+  done
+fi
+
+# Argo Workflows control plane (argo) + Argo Events (argo-events) + Workflow execution
+# (argo-ci) namespaces are created up-front (when ci.engine=argoworkflows) so the IAP,
+# registry/git, and GitHub-webhook Secrets below can land in them before 04-argoworkflows.sh
+# installs the controllers. kubectl_apply_namespace is a no-op if the ns already exists.
+if [[ "${J2026_CI_ENGINE}" == "argoworkflows" ]]; then
+  for ns in "${J2026_ARGOWF_NAMESPACE}" "${J2026_ARGOWF_EVENTS_NAMESPACE}" "${J2026_ARGOWF_RUN_NAMESPACE}"; do
+    kubectl_apply_namespace "${ns}"
+  done
+fi
+
 # Jenkins namespace + jenkins-credentials Secret ONLY when ci.engine=jenkins (the
 # Jenkins controller is the sole consumer; the shared Gateway now lives in its own
 # ${J2026_GATEWAY_NAMESPACE} namespace, so a tekton cluster gets NO jenkins namespace
@@ -194,11 +215,18 @@ else
   # The IAP-protected CI backend is engine-specific: the Tekton Dashboard
   # (ci.engine=tekton) or Jenkins (ci.engine=jenkins) - its GCPBackendPolicy lives
   # in that engine's namespace, so only that one gets the IAP secret (the jenkins
-  # namespace doesn't exist in tekton mode).
+  # namespace doesn't exist in tekton mode). ci.engine=githubactions has NO
+  # IAP-protected CI backend (runs live in GitHub's Actions tab, no in-cluster
+  # dashboard), so neither engine namespace is added - an explicit elif, not an
+  # else, so githubactions doesn't fall through to the jenkins branch.
   if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
     iap_namespaces+=("${J2026_TEKTON_NAMESPACE}")
-  else
+  elif [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
     iap_namespaces+=("${J2026_JENKINS_NAMESPACE}")
+  elif [[ "${J2026_CI_ENGINE}" == "argoworkflows" ]]; then
+    # The Argo Workflows Server UI (argo ns) has no native auth → IAP-protected, like
+    # the Tekton Dashboard. (The argo-events webhook receiver is public, no IAP.)
+    iap_namespaces+=("${J2026_ARGOWF_NAMESPACE}")
   fi
   if [[ "${J2026_SECRETS_BACKEND}" == "eso" ]]; then
     # ESO mode: push the value once to GCP Secret Manager. The per-namespace
@@ -310,6 +338,139 @@ if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
   # empty unless K6_CLOUD_TOKEN is set, so the Task's optional secretKeyRef resolves
   # either way; the cloud output (--out cloud) only activates when both are present.
   provision_secret "${J2026_TEKTON_PIPELINE_NAMESPACE}" k6-cloud \
+    "token=${K6_CLOUD_TOKEN:-}" \
+    "project-id=${K6_CLOUD_PROJECT_ID:-}" \
+    "grafana-base-url=${GRAFANA_BASE_URL:-}"
+fi
+
+# GitHub Actions / ARC pipeline credentials (ci.engine=githubactions). The
+# AutoscalingRunnerSet authenticates to GitHub via a GitHub App (recommended) or a
+# PAT fallback read from arc-github-app; the ephemeral runner pods pull their image
+# (and the dind sidecar) from ghcr.io via arc-registry (referenced as an
+# imagePullSecret in the runner pod template). Both land in the runner namespace
+# BEFORE 04-githubactions.sh syncs the runner-set, whose githubConfigSecret must
+# already exist. provision_secret branches on imperative|eso internally.
+if [[ "${J2026_CI_ENGINE}" == "githubactions" ]]; then
+  log_step "Ensuring ARC credentials in ${J2026_GHA_RUNNER_NAMESPACE}"
+  if [[ "${J2026_GHA_AUTH_MODE}" == "app" && -n "${ARC_GITHUB_APP_ID:-}" && -n "${ARC_GITHUB_APP_PRIVATE_KEY:-}" ]]; then
+    provision_secret "${J2026_GHA_RUNNER_NAMESPACE}" "${J2026_GHA_APP_SECRET}" \
+      "github_app_id=${ARC_GITHUB_APP_ID}" \
+      "github_app_installation_id=${ARC_GITHUB_APP_INSTALLATION_ID:-}" \
+      "github_app_private_key=${ARC_GITHUB_APP_PRIVATE_KEY}"
+  else
+    log_warn "ARC_GITHUB_APP_* unset (or authMode != app) - registering ARC runners via the GIT_TOKEN PAT (github_token)."
+    provision_secret "${J2026_GHA_RUNNER_NAMESPACE}" "${J2026_GHA_APP_SECRET}" \
+      "github_token=${GIT_TOKEN:-}"
+  fi
+
+  # GHCR pull (imagePullSecret) — same REGISTRY_*/jenkins-credentials fallback as the
+  # tekton-registry block, emitted as a dockerconfigjson Secret (imperative) or raw
+  # creds in Secret Manager rebuilt by the ExternalSecret template (eso).
+  gha_reg_user="${REGISTRY_USERNAME:-}"
+  gha_reg_pass="${REGISTRY_PASSWORD:-}"
+  if [[ ( -z "${gha_reg_user}" || -z "${gha_reg_pass}" ) ]] \
+     && kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
+    [[ -z "${gha_reg_user}" ]] && gha_reg_user="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" -o jsonpath='{.data.registry-username}' 2>/dev/null | base64 -d || true)"
+    [[ -z "${gha_reg_pass}" ]] && gha_reg_pass="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" -o jsonpath='{.data.registry-password}' 2>/dev/null | base64 -d || true)"
+  fi
+  gha_reg_host="${J2026_MICROSERVICES_REGISTRY%%/*}"
+  if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
+    provision_secret "${J2026_GHA_RUNNER_NAMESPACE}" "${J2026_GHA_REGISTRY_SECRET}" \
+      "username=${gha_reg_user}" "password=${gha_reg_pass}" "registry=${gha_reg_host}"
+  else
+    if [[ -n "${gha_reg_user}" && -n "${gha_reg_pass}" ]]; then
+      gha_reg_auth="$(printf '%s:%s' "${gha_reg_user}" "${gha_reg_pass}" | base64 -w0)"
+      gha_dockercfg="$(printf '{"auths":{"%s":{"username":"%s","password":"%s","auth":"%s"}}}' \
+        "${gha_reg_host}" "${gha_reg_user}" "${gha_reg_pass}" "${gha_reg_auth}")"
+    else
+      log_warn "REGISTRY_USERNAME/REGISTRY_PASSWORD not set - ARC runner image pull falls back to anonymous."
+      gha_dockercfg='{"auths":{}}'
+    fi
+    kubectl create secret generic "${J2026_GHA_REGISTRY_SECRET}" \
+      -n "${J2026_GHA_RUNNER_NAMESPACE}" \
+      --type=kubernetes.io/dockerconfigjson \
+      --from-literal=.dockerconfigjson="${gha_dockercfg}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+  fi
+
+  # Optional Grafana Cloud k6 streaming for the workflow's k6 step (parity with the
+  # tekton k6-cloud Secret). Created empty unless K6_CLOUD_TOKEN is set.
+  provision_secret "${J2026_GHA_RUNNER_NAMESPACE}" k6-cloud \
+    "token=${K6_CLOUD_TOKEN:-}" \
+    "project-id=${K6_CLOUD_PROJECT_ID:-}" \
+    "grafana-base-url=${GRAFANA_BASE_URL:-}"
+fi
+
+# Argo Workflows pipeline credentials (ci.engine=argoworkflows). The Workflow
+# ServiceAccount (argoworkflows-ci, created by the GitOps pac in argo-ci) references
+# these for ghcr.io push/pull (Jib/Kaniko) and git push to the gitops repo - same
+# REGISTRY_*/GIT_* env the Jenkins path consumes, with a jenkins-credentials fallback.
+# Unlike Tekton, the git Secret is a PLAIN basic-auth (no tekton.dev/git-0 annotation -
+# the fetch-source/gitops-deploy templates read creds from env, not a credential
+# initializer). The GitHub HMAC Secret lives in the EVENTS namespace (argo-events),
+# where the EventSource consumes it.
+if [[ "${J2026_CI_ENGINE}" == "argoworkflows" ]]; then
+  log_step "Ensuring Argo Workflows pipeline credentials in ${J2026_ARGOWF_RUN_NAMESPACE}"
+  awf_reg_user="${REGISTRY_USERNAME:-}"
+  awf_reg_pass="${REGISTRY_PASSWORD:-}"
+  awf_git_user="${GIT_USERNAME:-}"
+  awf_git_token="${GIT_TOKEN:-}"
+  if kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
+    [[ -z "${awf_reg_user}" ]]  && awf_reg_user="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" -o jsonpath='{.data.registry-username}' 2>/dev/null | base64 -d || true)"
+    [[ -z "${awf_reg_pass}" ]]  && awf_reg_pass="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" -o jsonpath='{.data.registry-password}' 2>/dev/null | base64 -d || true)"
+    [[ -z "${awf_git_user}" ]]  && awf_git_user="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" -o jsonpath='{.data.git-username}' 2>/dev/null | base64 -d || true)"
+    [[ -z "${awf_git_token}" ]] && awf_git_token="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" -o jsonpath='{.data.git-token}' 2>/dev/null | base64 -d || true)"
+  fi
+  awf_reg_host="${J2026_MICROSERVICES_REGISTRY%%/*}"
+  if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
+    provision_secret "${J2026_ARGOWF_RUN_NAMESPACE}" "${J2026_ARGOWF_REGISTRY_SECRET}" \
+      "username=${awf_reg_user}" "password=${awf_reg_pass}" "registry=${awf_reg_host}"
+  else
+    if [[ -n "${awf_reg_user}" && -n "${awf_reg_pass}" ]]; then
+      awf_reg_auth="$(printf '%s:%s' "${awf_reg_user}" "${awf_reg_pass}" | base64 -w0)"
+      awf_dockercfg="$(printf '{"auths":{"%s":{"username":"%s","password":"%s","auth":"%s"}}}' \
+        "${awf_reg_host}" "${awf_reg_user}" "${awf_reg_pass}" "${awf_reg_auth}")"
+    else
+      log_warn "REGISTRY_USERNAME/REGISTRY_PASSWORD not set - Argo Workflows image push will fail until configured."
+      awf_dockercfg='{"auths":{}}'
+    fi
+    kubectl create secret generic "${J2026_ARGOWF_REGISTRY_SECRET}" \
+      -n "${J2026_ARGOWF_RUN_NAMESPACE}" \
+      --type=kubernetes.io/dockerconfigjson \
+      --from-literal=.dockerconfigjson="${awf_dockercfg}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+  fi
+
+  if [[ -z "${awf_git_token}" ]]; then
+    log_warn "GIT_TOKEN not set - Argo Workflows git push (GitOps deploy) and SARIF upload will fail until configured."
+  fi
+  if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
+    provision_secret "${J2026_ARGOWF_RUN_NAMESPACE}" "${J2026_ARGOWF_GIT_SECRET}" \
+      "username=${awf_git_user:-git}" "password=${awf_git_token}"
+  else
+    kubectl create secret generic "${J2026_ARGOWF_GIT_SECRET}" \
+      -n "${J2026_ARGOWF_RUN_NAMESPACE}" \
+      --type=kubernetes.io/basic-auth \
+      --from-literal=username="${awf_git_user:-git}" \
+      --from-literal=password="${awf_git_token}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+  fi
+
+  # GitHub HMAC secret for the Argo Events EventSource (argoworkflows/events/eventsource.yaml,
+  # in argo-events). Optional; generated-if-absent and kept STABLE so 06-argoworkflows-pipelines
+  # shares it with the GitHub webhooks. Reuses ARGOWORKFLOWS_GITHUB_WEBHOOK_SECRET / PAC_WEBHOOK_SECRET.
+  if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
+    awf_webhook="$(sm_keep_or_generate argoworkflows-github-webhook secret "${ARGOWORKFLOWS_GITHUB_WEBHOOK_SECRET:-${PAC_WEBHOOK_SECRET:-$(openssl rand -hex 20)}}")"
+    provision_secret "${J2026_ARGOWF_EVENTS_NAMESPACE}" argoworkflows-github-webhook "secret=${awf_webhook}"
+  else
+    kubectl create secret generic argoworkflows-github-webhook \
+      -n "${J2026_ARGOWF_EVENTS_NAMESPACE}" \
+      --from-literal=secret="${ARGOWORKFLOWS_GITHUB_WEBHOOK_SECRET:-${PAC_WEBHOOK_SECRET:-}}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+  fi
+
+  # Optional Grafana Cloud k6 streaming for the k6 Workflow step (parity with tekton k6-cloud).
+  provision_secret "${J2026_ARGOWF_RUN_NAMESPACE}" k6-cloud \
     "token=${K6_CLOUD_TOKEN:-}" \
     "project-id=${K6_CLOUD_PROJECT_ID:-}" \
     "grafana-base-url=${GRAFANA_BASE_URL:-}"
@@ -492,6 +653,17 @@ fi
 # Tekton-namespace baseline only when ci.engine=tekton (no tekton-ci ns otherwise).
 if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
   kubectl apply -f "${J2026_ROOT_DIR}/infrastructure/networkpolicies-tekton.yaml"
+fi
+# ARC runner-namespace baseline only when ci.engine=githubactions (no arc-runners ns
+# otherwise). Egress to GitHub/GHCR (runner registration + image pull), the OTel
+# collector (build/k6 spans), the API server, and the microservices namespaces.
+if [[ "${J2026_CI_ENGINE}" == "githubactions" ]]; then
+  kubectl apply -f "${J2026_ROOT_DIR}/infrastructure/networkpolicies-githubactions.yaml"
+fi
+# Argo Workflows execution-namespace (argo-ci) baseline only when ci.engine=argoworkflows.
+# Egress to GitHub/GHCR, the OTel collector (4317), the API server, and microservices.
+if [[ "${J2026_CI_ENGINE}" == "argoworkflows" ]]; then
+  kubectl apply -f "${J2026_ROOT_DIR}/infrastructure/networkpolicies-argoworkflows.yaml"
 fi
 
 # Node Auto-Provisioning (NAP): apply the Custom ComputeClass that backs Spot,

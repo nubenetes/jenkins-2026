@@ -35,13 +35,15 @@ on:
         default: false
         type: boolean
       ci_engine:
-        description: "CI engine to deploy: jenkins (default - Helm + JCasC + Job-DSL seed) or tekton (Tekton Pipelines/Triggers/Dashboard, IAP-protected, with the pipeline ported to tekton/). Mutually exclusive - see docs/403-TEKTON.md."
+        description: "CI engine to deploy: jenkins (default - Helm + JCasC + Job-DSL seed), tekton (Tekton Pipelines/Triggers/Dashboard, IAP-protected; see docs/403), githubactions (ARC self-hosted ephemeral Spot runners, native GitHub webhooks, no in-cluster UI; see docs/404) or argoworkflows (Argo Workflows + Argo Events, IAP-protected Server UI; see docs/405). Mutually exclusive."
         required: true
         default: "jenkins"
         type: choice
         options:
           - jenkins
           - tekton
+          - githubactions
+          - argoworkflows
       secrets_backend:
         description: "How k8s Secrets are materialised: imperative (default - kubectl create from GitHub secrets) or eso (push to GCP Secret Manager + sync via External Secrets Operator, keyless). See docs/201 § Secrets backend."
         required: true
@@ -566,6 +568,16 @@ jobs:
           # for Pipelines-as-Code (ci_engine=tekton); empty unless the secrets are set.
           TEKTON_GITHUB_WEBHOOK_SECRET: ${{ secrets.TEKTON_GITHUB_WEBHOOK_SECRET }}
           PAC_WEBHOOK_SECRET: ${{ secrets.PAC_WEBHOOK_SECRET }}
+          # GitHub App credentials for ARC (ci_engine=githubactions); empty unless set,
+          # in which case 01-namespaces builds the arc-github-app Secret from them and
+          # ARC registers runners via the App (else it falls back to the GIT_TOKEN PAT).
+          ARC_GITHUB_APP_ID: ${{ secrets.ARC_GITHUB_APP_ID }}
+          ARC_GITHUB_APP_INSTALLATION_ID: ${{ secrets.ARC_GITHUB_APP_INSTALLATION_ID }}
+          ARC_GITHUB_APP_PRIVATE_KEY: ${{ secrets.ARC_GITHUB_APP_PRIVATE_KEY }}
+          # Optional GitHub HMAC for the Argo Events EventSource (ci_engine=argoworkflows);
+          # empty unless set, in which case 06-argoworkflows-pipelines seeds it (else it
+          # generates one). Falls back to PAC_WEBHOOK_SECRET in 01-namespaces.
+          ARGOWORKFLOWS_GITHUB_WEBHOOK_SECRET: ${{ secrets.ARGOWORKFLOWS_GITHUB_WEBHOOK_SECRET }}
           # Alert contact-point email for 07.5-grafana-alerts.sh. Per-mode secret
           # (grafana-cloud requires an org-member address) with a generic fallback;
           # empty falls back to jenkins-credentials oidc-admin-email. See docs/103 §3.
@@ -656,10 +668,18 @@ jobs:
           fi
           grafana="${grafana_url:-(see the ${mode} backend / terraform outputs)}  (${grafana_note})"
 
-          # CI-engine-specific UI: Jenkins XOR Tekton Dashboard (mutually exclusive).
+          # CI-engine-specific UI: Jenkins / Tekton Dashboard / GitHub Actions tab
+          # (mutually exclusive). githubactions has NO in-cluster UI (runs live in
+          # GitHub's Actions tab, ARC ephemeral Spot runners) - so no IAP URL.
           if [[ "${engine}" == "tekton" ]]; then
             ci_iap="    Tekton Dashboard:      https://tekton.${dom}"
             ci_open=$'\n''    Tekton PaC webhook:    https://pac.'"${dom}"'  (GitHub -> Pipelines-as-Code, HMAC, no IAP)'
+          elif [[ "${engine}" == "githubactions" ]]; then
+            ci_iap="    CI (GitHub Actions):   https://github.com/nubenetes  (runs in the Actions tab; ARC ephemeral Spot runners, no in-cluster UI)"
+            ci_open=""
+          elif [[ "${engine}" == "argoworkflows" ]]; then
+            ci_iap="    Argo Workflows UI:     https://argo.${dom}"
+            ci_open=$'\n''    Argo Events webhook:   https://argo-events.'"${dom}"'  (GitHub -> Argo Events Sensor, HMAC, no IAP)'
           else
             ci_iap="    Jenkins:               https://jenkins.${dom}"
             ci_open=""
@@ -720,6 +740,10 @@ jobs:
               echo "- **ArgoCD**: [https://argocd.${dom}](https://argocd.${dom})"
               if [[ "${engine}" == "tekton" ]]; then
                 echo "- **Tekton Dashboard**: [https://tekton.${dom}](https://tekton.${dom})"
+              elif [[ "${engine}" == "githubactions" ]]; then
+                echo "- **CI (GitHub Actions)**: [github.com/nubenetes](https://github.com/nubenetes) — runs in the Actions tab (ARC ephemeral Spot runners, no in-cluster UI)"
+              elif [[ "${engine}" == "argoworkflows" ]]; then
+                echo "- **Argo Workflows UI**: [https://argo.${dom}](https://argo.${dom})"
               else
                 echo "- **Jenkins**: [https://jenkins.${dom}](https://jenkins.${dom})"
               fi
@@ -775,16 +799,23 @@ jobs:
           # folder as the alert rules (07.5), consistent with oss/grafana-cloud/aws.
           gapi POST /api/folders -d '{"uid":"jenkins-2026","title":"CI-CD Observability"}' >/dev/null 2>&1 || true
           gapi PUT /api/folders/jenkins-2026 -d '{"title":"CI-CD Observability","overwrite":true}' >/dev/null 2>&1 || true
-          # Skip the off-engine CI overview (jenkins XOR tekton) and delete it
-          # if it still exists from a previous run with a different engine.
-          if [[ "${JENKINS2026_CI_ENGINE}" == "tekton" ]]; then
-            skip_dash="jenkins-overview"; delete_uid="jenkins2026-jenkins-overview"
-          else
-            skip_dash="tekton-overview";  delete_uid="jenkins2026-tekton-overview"
-          fi
+          # Keep only the ACTIVE engine's CI overview; skip + delete the other three
+          # (jenkins/tekton/githubactions/argoworkflows are mutually exclusive). Mirrors
+          # the KEEP_CI_DASHBOARD / ALL_CI_DASHBOARDS gating in 07-grafana-dashboards.sh.
+          case "${JENKINS2026_CI_ENGINE}" in
+            tekton)        keep_dash="tekton-overview" ;;
+            githubactions) keep_dash="github-actions-ci" ;;
+            argoworkflows) keep_dash="argo-workflows-ci" ;;
+            *)             keep_dash="jenkins-overview" ;;
+          esac
+          all_ci_dash="jenkins-overview tekton-overview github-actions-ci argo-workflows-ci"
           for f in observability/grafana/dashboards-azure/*-azure.json; do
             name="$(basename "${f}" -azure.json)"
-            if [[ "${name}" == "${skip_dash}" ]]; then
+            skip=""
+            for d in ${all_ci_dash}; do
+              [[ "${name}" == "${d}" && "${name}" != "${keep_dash}" ]] && skip="yes"
+            done
+            if [[ -n "${skip}" ]]; then
               echo "skipping ${name}-azure (ci.engine=${JENKINS2026_CI_ENGINE})"
               continue
             fi
@@ -797,9 +828,12 @@ jobs:
               echo "::warning::failed to publish $(basename "${f}")"
             fi
           done
-          # Delete the off-engine dashboard if present (data-plane, by uid; no-op if absent).
-          gapi DELETE "/api/dashboards/uid/${delete_uid}" >/dev/null 2>&1 \
-            && echo "deleted off-engine dashboard ${delete_uid}" || true
+          # Delete the inactive engines' overview dashboards by uid (data-plane; no-op if absent).
+          for d in ${all_ci_dash}; do
+            [[ "${d}" == "${keep_dash}" ]] && continue
+            gapi DELETE "/api/dashboards/uid/jenkins2026-${d}" >/dev/null 2>&1 \
+              && echo "deleted off-engine dashboard jenkins2026-${d}" || true
+          done
           # Generic Kubernetes/node infra is covered by Azure Managed Grafana's
           # built-in dashboards (Compute Resources / Kubelet / Node Exporter /
           # USE Method), auto-provisioned from the Azure Monitor workspace

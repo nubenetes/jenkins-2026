@@ -388,12 +388,12 @@ Tekton needs no list — it resolves whatever `preset` name you pass against the
 
 ---
 
-## Running it — the three engines
+## Running it — the four engines
 
-All three call the exact same script with the same contract. The original question this page also answers: **all three now support `develop`**, not just `stable`.
+All four call the exact same script with the same contract. The original question this page also answers: **all four now support `develop`**, not just `stable`.
 
 <details>
-<summary>🔀 Diagram — three runners, one script</summary>
+<summary>🔀 Diagram — four runners, one script</summary>
 
 ```mermaid
 flowchart LR
@@ -401,8 +401,9 @@ flowchart LR
     J["Jenkins job<br/>microservices-k6-smoke[-develop]<br/>Build with Parameters"]
     T["Tekton Pipeline<br/>microservices-k6-smoke<br/>PipelineRun params"]
     G["GitHub Actions<br/>Day2.traffic.01-k6<br/>workflow_dispatch inputs"]
+    A["Argo Workflow<br/>microservices-k6-smoke<br/>Workflow parameters"]
   end
-  J & T & G -->|K6SIM_* env| S["microservices-smoke.js"]
+  J & T & G & A -->|K6SIM_* env| S["microservices-smoke.js"]
   S --> OTLP["OTel collector → Grafana"]
 ```
 
@@ -473,6 +474,27 @@ gh workflow run "Day2.traffic.01-k6.yml" --ref develop \
   -f run_all_presets=true -f run_all_duration=30s -f env_name=develop
 ```
 
+### Argo Workflows
+
+[`argoworkflows/templates/microservices-k6-wftmpl.yaml`](../argoworkflows/templates/microservices-k6-wftmpl.yaml) is the standalone k6 `WorkflowTemplate` (`microservices-k6-smoke`, the Argo port of the Tekton k6 Pipeline), exposing the same knobs as Workflow **parameters** — including a **`preset`** param (a `resolve-preset` step `yq`-loads the committed file; any param you set overrides it). Ready-to-run Workflows live in [`argoworkflows/runs/`](../argoworkflows/runs/):
+
+- [`argoworkflows/runs/k6-smoke.yaml`](../argoworkflows/runs/k6-smoke.yaml) — defaults (stable smoke); a commented `parameters:` block shows how to override (incl. `preset`).
+- [`argoworkflows/runs/k6-load.yaml`](../argoworkflows/runs/k6-load.yaml) — an **advanced** example: `profile=load`, `vus=30`, `duration=5m`, scoped to the **develop** tier with a tighter `p95-ms=1500`.
+
+```bash
+# basic
+kubectl create -f argoworkflows/runs/k6-smoke.yaml
+# advanced (load against develop)
+kubectl create -f argoworkflows/runs/k6-load.yaml
+# pick a committed preset (submit the WorkflowTemplate directly)
+argo submit --from workflowtemplate/microservices-k6-smoke -n argo-ci -p preset=stress-peak
+# ad-hoc override
+argo submit --from workflowtemplate/microservices-k6-smoke -n argo-ci \
+  -p profile=stress -p vus=50 -p duration=3m -p env-name=stable
+```
+
+k6 also runs inline as the *k6 Smoke* stage of the build pipeline ([`argoworkflows/templates/microservices-wftmpl.yaml`](../argoworkflows/templates/microservices-wftmpl.yaml)). The `K6SIM_*` contract, the OTLP export, and the `--tag ci_runner=argoworkflows` labelling are identical to the other engines.
+
 ### Filtering results by Runner / Profile / Preset
 
 Every k6 run is tagged so the **`CI-CD / k6 Observability Smoke Test`** dashboard can slice
@@ -481,7 +503,7 @@ labels on every k6 metric series:
 
 | Tag → label | Values | Set by |
 |---|---|---|
-| `ci_runner`  | `gha` · `jenkins` · `tekton` | the runner (literal per engine) |
+| `ci_runner`  | `gha` · `jenkins` · `tekton` · `argoworkflows` | the runner (literal per engine) |
 | `k6_profile` | `smoke` · `load` · `stress` · `soak` · `spike` · `breakpoint` | `${K6SIM_PROFILE}` |
 | `k6_preset`  | the preset name (e.g. `breakpoint-capacity`), or `none` for ad-hoc | the selected preset |
 
@@ -505,13 +527,13 @@ under *All*, and selecting a value narrows once tagged runs land.
 
 ### Easiest — run a committed preset (no knobs)
 
-1. **Jenkins:** open the k6 job → **Build with Parameters** → set `PRESET` (e.g. `load-baseline`) → **Build**. **GitHub Actions:** Run workflow, choose `preset`. **Tekton:** `tkn pipeline start microservices-k6-smoke -p preset=load-baseline ...`.
+1. **Jenkins:** open the k6 job → **Build with Parameters** → set `PRESET` (e.g. `load-baseline`) → **Build**. **GitHub Actions:** Run workflow, choose `preset`. **Tekton:** `tkn pipeline start microservices-k6-smoke -p preset=load-baseline ...`. **Argo Workflows:** `argo submit --from workflowtemplate/microservices-k6-smoke -n argo-ci -p preset=load-baseline`.
 2. The preset's whole config loads; everything else stays default. Read the analysis + Grafana link as usual.
 3. To tweak one thing, also fill that single field — it overrides the preset. See the [preset inventory](#preset-inventory--matrix) for what each does.
 
 ### Basic — a smoke test that lights up Grafana
 
-1. **Jenkins:** `microservices-k6-smoke` → Build (no params). **GitHub Actions:** Run workflow, all defaults. **Tekton:** `kubectl create -f tekton/runs/k6-smoke.yaml`.
+1. **Jenkins:** `microservices-k6-smoke` → Build (no params). **GitHub Actions:** Run workflow, all defaults. **Tekton:** `kubectl create -f tekton/runs/k6-smoke.yaml`. **Argo Workflows:** `kubectl create -f argoworkflows/runs/k6-smoke.yaml`.
 2. Watch the console — the **k6 run analysis** prints a SUMMARY + VERDICT (see below).
 3. Open the **`CI-CD / k6 Observability Smoke Test`** dashboard (the run log prints a deep-link scoped to the run's `deployment_environment` and time window).
 
@@ -520,6 +542,7 @@ under *All*, and selecting a value narrows once tagged runs land.
 - **Jenkins:** run `microservices-k6-smoke-develop`.
 - **GitHub Actions:** Run workflow with `env_name=develop`.
 - **Tekton:** `kubectl create -f tekton/runs/k6-load.yaml` (or set `env-name=develop`, `target-namespace=microservices-develop`).
+- **Argo Workflows:** `kubectl create -f argoworkflows/runs/k6-load.yaml` (or set `env-name=develop`).
 
 ### Advanced — a custom ramping load test
 
@@ -531,7 +554,7 @@ P95_MS = 1500                              # tighter latency budget
 SCENARIOS = gateway-ui,gateway-proxy       # only the user-facing routes
 ```
 
-Jenkins: set those fields. Tekton: `-p stages=... -p p95-ms=1500 -p scenarios=...`. GitHub Actions: the matching inputs.
+Jenkins: set those fields. Tekton / Argo Workflows: `-p stages=... -p p95-ms=1500 -p scenarios=...`. GitHub Actions: the matching inputs.
 
 ### Advanced — throughput (RPS) and breakpoint
 
@@ -545,10 +568,10 @@ Jenkins: set those fields. Tekton: `-p stages=... -p p95-ms=1500 -p scenarios=..
 > **How `k6-summary.json` is produced.** The script defines a **`handleSummary()`** that
 > writes the end-of-test summary itself, rather than relying on k6's `--summary-export`.
 > k6 2.0's `--summary-export` emits a *flattened* schema (`metrics.<m>.<stat>`), but all
-> three engines parse the nested `metrics.<m>.values.<stat>` (+ `.thresholds[expr].ok`)
+> four engines parse the nested `metrics.<m>.values.<stat>` (+ `.thresholds[expr].ok`)
 > shape — so `--summary-export` silently made every summary read **all-zeros / `[FAIL]`**
 > even on a passing run. `handleSummary()`'s `data` object keeps the stable `.values.*`
-> schema, fixing GHA, Jenkins and Tekton from one place. The output path is the CWD
+> schema, fixing GHA, Jenkins, Tekton and Argo Workflows from one place. The output path is the CWD
 > `k6-summary.json` by default, overridable via **`K6_SUMMARY_OUT`** (Tekton runs k6 from a
 > sub-dir and writes to the workspace root). `summaryTrendStats` includes `p(99)` so the
 > percentile spread below is complete (k6's defaults omit p99).

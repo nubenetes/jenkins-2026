@@ -1,0 +1,12 @@
+apiVersion: v2
+name: githubactions
+description: >-
+  App-of-apps for the GitHub Actions / ARC CI engine (ci.engine=githubactions).
+  Renders two child Applications: gha-runner-scale-set-controller (controller +
+  CRDs, sync-wave 0) and gha-runner-scale-set (the AutoscalingRunnerSet of
+  ephemeral self-hosted runners, sync-wave 1), both from the official ARC OCI
+  Helm charts pinned to versions.arc. repoURL/targetRevision/runNodePool/
+  nodeAutoProvisioningEnabled flow down from the parent Application's
+  helm.parameters (set by scripts/04-githubactions.sh). Mirrors argocd/tekton.
+type: application
+version: 0.1.0

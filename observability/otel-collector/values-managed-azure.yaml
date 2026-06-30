@@ -213,6 +213,29 @@ config:
                 action: keep
               - target_label: cluster
                 replacement: jenkins-2026
+          # Scrape Argo Workflows controller metrics (argo_workflows_*) so the
+          # Argo Workflows CI dashboard works when ci.engine=argoworkflows. Argo
+          # v3.6+ serves /metrics over HTTPS (self-signed) on the controller pod's
+          # :9090 — there is no metrics Service, so discover the pod directly and
+          # skip TLS verify. No targets when argoworkflows isn't deployed.
+          - job_name: argo-workflows-controller
+            scrape_interval: 30s
+            scheme: https
+            tls_config:
+              insecure_skip_verify: true
+            kubernetes_sd_configs:
+              - role: pod
+                namespaces:
+                  names: [argo]
+            relabel_configs:
+              - source_labels: [__meta_kubernetes_pod_label_app]
+                regex: workflow-controller
+                action: keep
+              - source_labels: [__meta_kubernetes_pod_container_port_name]
+                regex: metrics
+                action: keep
+              - target_label: cluster
+                replacement: jenkins-2026
           # CloudNativePG (CNPG) Postgres metrics (cnpg_*/pg_*) from the
           # postgres-* cluster instance pods (metrics port 9187). In oss mode
           # the in-cluster Prometheus scrapes these via the CNPG PodMonitor.
