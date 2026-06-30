@@ -377,6 +377,26 @@ ran — they happen in this order):
    **Organization → Self-hosted runners → Read and write** fine-grained permission (classic
    scope: `admin:org`) and set `githubactions.authMode: pat`.
 
+### Troubleshooting: registered, but workflow runs sit in `queued` forever
+
+The listener **is** Running (`kubectl -n arc-systems get pods | grep listener`) and the
+controller log is 403-free, yet runs in the forks stay `queued` and **no runner pod** appears
+in `arc-runners`. The tell is the controller/listener log line `Calculated target runner count
+{"assigned job": 0, …}`: registration succeeded, but GitHub is **not routing the jobs to the
+scale set**.
+
+The usual cause is **public repositories**. GitHub **blocks public repos from using
+self-hosted runners by default** — a pull request from a fork could otherwise run untrusted
+code on your runners. The nubenetes microservices forks (`jhipster-sample-app-gateway`,
+`jhipster-sample-app-microservice`) are **public**, so this bites on first use. **Fix (org
+admin — a one-time UI toggle; there is no secret or API field for it):** *Organization →
+Settings → Actions → Runner groups →* open the group that holds `jenkins-2026-runners` (the
+**Default** group, unless you set `githubactions.runnerGroup`) *→* enable **"Allow public
+repositories"**, and make sure *Repository access* is **All repositories** (or explicitly
+lists the forks). The queued jobs are picked up within ~1 minute — an ephemeral runner pod
+appears in `arc-runners` and the run flips to *in_progress*. (Making the forks private is the
+alternative, but they are deliberately public demo forks.)
+
 ---
 
 ## 9.6. Argo Workflows CI Engine (`ci.engine: argoworkflows`)
