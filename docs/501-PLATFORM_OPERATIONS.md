@@ -253,6 +253,32 @@ The repository has been refactored to serve as a **Golden Path Internal Develope
 > and read the `SSD_TOTAL_GB` quota ceiling + cold-start behaviour) see the
 > [NAP → Spot CI nodes runbook](./runbooks/nap-spot-provisioning.md).
 
+#### Jenkins vs Tekton on Spot (`ci-spot`) — why the placement flag is *per engine*
+
+Both CI engines can target the `ci-spot` ComputeClass, but they have **fundamentally different pod-scheduling shapes**, so the same Spot node behaves very differently under each. This is why placement is a **separate flag per engine** ([`jenkins.runNodePool`](../config/config.yaml) / [`tekton.runNodePool`](../config/config.yaml)) rather than one shared knob — you want to make the engine-appropriate choice, and the engines are mutually exclusive anyway (`ci.engine`) so a shared flag would only ever describe the active one.
+
+| Dimension | **Jenkins** | **Tekton** |
+|---|---|---|
+| **Build = how many pods?** | **One** ephemeral multi-container agent pod (maven/node/dind/… containers share it) | **Many** TaskRun pods (clone → build → scan → push → deploy), one pod per Task |
+| **Inter-pod coupling** | None — the whole build *is* one pod | The Tasks share **one RWO `source` workspace PVC** (cloned once, reused), so Tekton's **affinity assistant** co-schedules **all** of a PipelineRun's pods onto **one node** (the only way to mount an RWO PVC across pods) |
+| **Spot preemption blast radius** | **One build** — the agent pod dies, GKE reschedules it, NAP brings a fresh node, the build is simply **re-run** (idempotent). Minimal. | **The entire PipelineRun** — every Task rides the same node; lose it and *all* in-flight Tasks die together (the RWO PVC was on that node). Much larger. |
+| **"Node too small/full" failure** | Rare — a single pod either fits the (4-vCPU+) Spot node or NAP scales another | **Real hazard** — if the assistant lands on a small NAP node (e.g. `e2-standard-2`), a later/retried Task (`codeql`, 500m) may not fit, and an affinity-pinned pod **can't move or trigger a useful scale-up** → the run hangs in `ExceededNodeResources` (the v0.28.53 bug) |
+| **Spot fit** | **Good citizen** — single, idempotent, short-lived pod is the textbook Spot workload | **Poor fit as-is** — a long, multi-Task run pinned to one preemptible node is exactly what Spot is *bad* at |
+| **Recommended `runNodePool`** | `static` by default; **`ci-spot` is the recommended opt-in** (most cost upside, least risk) | **`static`** (strongly) — keep Spot off unless you re-architect the workspace (RWX/Filestore + disable the affinity assistant, or per-Task `emptyDir` + artifact passing) |
+
+**So: is `static` still the right *default* even though Jenkins is the better Spot citizen?** Yes — for two independent reasons:
+1. **Robustness with zero preconditions.** `static` needs no NAP, no Spot capacity, and **no `SSD_TOTAL_GB` headroom** — it just works on a fresh cluster for everyone. `ci-spot` needs all three.
+2. **The quota ceiling is currently binding.** Each `ci-spot` node's boot disk counts against the regional `SSD_TOTAL_GB` quota, which **caps at 500 self-service** (raising it needs an approved request — see above). At 500, a couple of concurrent `ci-spot` agents can wedge in `Pending`. We observed exactly this on a real Day1 (the `gateway` agent stuck on `ScaleUpFailed … Quota 'SSD_TOTAL_GB' exceeded`).
+
+**Recommended rollout (sequenced):**
+
+| Phase | Jenkins | Tekton |
+|---|---|---|
+| **Now** (quota = 500) | `static` | `static` |
+| **After the `SSD_TOTAL_GB` increase is granted** | **`ci-spot`** — best cost/elasticity, lowest risk | `static` (the affinity-assistant hazard is independent of quota; only an RWX-workspace redesign would make Tekton-on-Spot safe) |
+
+Flip per engine with the config flag (durable) or the **`run_node_pool` input** on `Day2.redeploy.02-jenkins` / `Day2.redeploy.03-tekton` (per-run, no commit). See the Tekton-specific mechanics and the RWX/affinity-assistant alternatives in [`docs/403`](403-TEKTON.md).
+
 ### 3. Zero-Trust Security & Workload Identity
 * **Workload Identity Federation**: All static JSON Service Account keys are removed. Both external CI engines (GitHub Actions) and in-cluster workloads assume GCP IAM Roles dynamically via OIDC.
 * **GKE Gateway API + BackendTLSPolicy**: Traffic between the Gateway load balancer and backend pods (Jenkins/Headlamp) is encrypted and validated using `BackendTLSPolicy` targets.

@@ -316,8 +316,8 @@ These terms come from the SRE / platform-engineering world and describe **when i
 | 4 | [Day0.infra.04-aws-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.04-aws-grafana.yml) | **Day0** | no | yes | Once (re-run = no-op) |
 | 5 | [Day1.cluster.01-gke](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) | **Day1** | creates it | yes | Once per session |
 | 6 | [Day2.redeploy.01-argocd](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.01-argocd.yml) | **Day2** | yes | yes | When ArgoCD config / an Application changes |
-| 7 | [Day2.redeploy.02-jenkins](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.02-jenkins.yml) | **Day2** | yes | yes | When Jenkins config/JCasC changes |
-| 8 | [Day2.redeploy.03-tekton](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.03-tekton.yml) | **Day2** | yes | yes | When Tekton config/pipelines change |
+| 7 | [Day2.redeploy.02-jenkins](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.02-jenkins.yml) | **Day2** | yes | yes | When Jenkins config/JCasC changes. Input `run_node_pool` (`config`/`static`/`ci-spot`) flips build-agent placement for the run |
+| 8 | [Day2.redeploy.03-tekton](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.03-tekton.yml) | **Day2** | yes | yes | When Tekton config/pipelines change. Input `run_node_pool` (`config`/`static`/`ci-spot`) flips run-pod placement for the run |
 | 9 | [Day2.redeploy.04-headlamp](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.04-headlamp.yml) | **Day2** | yes | yes | When Headlamp config changes |
 | 10 | [Day2.redeploy.05-gateway](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.05-gateway.yml) | **Day2** | yes | yes | When the Gateway/routes/IAP change |
 | 11 | [Day2.publish.01-oss-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.01-oss-grafana.yml) | **Day2** | yes ³ | yes | When OSS dashboards/alerts change |

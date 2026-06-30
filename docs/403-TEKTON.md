@@ -84,7 +84,13 @@ In this repo the pipeline is the JHipster microservices build ported 1:1 from th
 > - **`static` (default, recommended)** → `nodeSelector: {app: jenkins-2026}`: the assistant always lands on the **static pool** (`e2-standard-8`), never on a small NAP node. Without it a run could pin to a 2-vCPU node where a later/retried task (e.g. `codeql`) can't fit, and an affinity-pinned pod can't move or trigger a useful scale-up (a new node won't carry the assistant) → the run hangs in `ExceededNodeResources`. The static nodes always exist (no NAP/Spot/quota dependency).
 > - **`ci-spot` (opt-in)** → the NAP Spot ComputeClass nodeSelector + tolerations (needs `nodeAutoProvisioning.enabled`): cheaper/elastic, but the **whole** PipelineRun rides one Spot node, so a preemption kills the entire run and SSD-quota pressure can stall it. Prefer `static` unless you specifically want Spot for Tekton.
 >
-> Jenkins exposes the symmetric `jenkins.runNodePool` flag, but the engines differ in *risk*: a Jenkins build is a single agent pod, so Spot preemption just restarts that one build (see [`docs/501`](501-PLATFORM_OPERATIONS.md) § Elastic Node Auto-Provisioning).
+> Jenkins exposes the symmetric `jenkins.runNodePool` flag, but the engines differ in *risk*: a Jenkins build is a single agent pod, so Spot preemption just restarts that one build (see [`docs/501`](501-PLATFORM_OPERATIONS.md) § Elastic Node Auto-Provisioning — full Jenkins-vs-Tekton-on-Spot comparison + the sequenced rollout).
+>
+> **Making Tekton-on-Spot actually safe (if you want it).** The single-node pinning is forced by the **shared RWO `source` workspace** + affinity assistant; it's not free to undo. Two re-architectures would let the assistant be disabled so Tasks spread across nodes (and ride Spot with a per-Task — not per-run — preemption blast radius):
+> 1. **RWX workspace (GCP Filestore CSI).** A `ReadWriteMany` `source` PVC mounts on multiple nodes → set `disable-affinity-assistant: "true"` → Tasks schedule freely (incl. `ci-spot`), and a preemption only loses the one Task on that node. *Cost:* Filestore is heavier (min instance size + price) and adds infra — usually overkill for a PoC.
+> 2. **No shared workspace — self-contained Tasks.** Each Task fetches what it needs (re-clone, or pull/push intermediate artifacts via GCS/object storage) instead of sharing a PVC. No affinity assistant needed. *Cost:* re-clone overhead + a real pipeline redesign (the clone-once data flow goes away).
+>
+> Until one of those lands, **`static` is the correct choice for Tekton** regardless of `SSD_TOTAL_GB` headroom — the hazard is the affinity-assistant/RWO coupling, not just quota.
 
 **Supply chain & housekeeping:**
 - **Chains** signs build provenance (SLSA-style attestations) for pushed images.
