@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.53] - 2026-06-30
+
+### Fixed
+- **Tekton PipelineRuns can no longer hang on a too-small node.** The pipelines use
+  ReadWriteOnce workspace PVCs, so Tekton's **affinity assistant** co-schedules every TaskRun
+  of a run onto **one** node. With no node placement, that node could be a small
+  NAP-autoprovisioned one (e.g. `e2-standard-2`, 2 vCPU); a later/retried task (e.g. `codeql`)
+  then didn't fit there and — being affinity-pinned — could neither move nor trigger a useful
+  scale-up, so the run hung in `ExceededNodeResources`. Fixed by setting a
+  **`default-pod-template` with `nodeSelector: {app: jenkins-2026}`** in `config-defaults`
+  ([`argocd/tekton/components/pipelines/kustomization.yaml`](argocd/tekton/components/pipelines/kustomization.yaml)),
+  so the assistant always lands on the **static pool** (`e2-standard-8`, 8 vCPU) — which
+  always exists (no NAP/Spot/quota dependency) and has ample headroom. Deterministic, lowest
+  risk (no workspace change, the affinity assistant stays — required for the RWO PVC). Documented
+  in `docs/403`.
+
 ## [v0.28.52] - 2026-06-30
 
 ### Fixed
