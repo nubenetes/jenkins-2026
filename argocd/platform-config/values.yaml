@@ -16,6 +16,7 @@ namespaces:
   pgadmin: pgadmin
   tektonPipeline: tekton-ci
   arcRunner: arc-runners            # ci.engine=githubactions: where the ARC runner pods + SA live
+  argoworkflowsRun: argo-ci         # ci.engine=argoworkflows: where the Workflow pods + SA live
   microservicesStable: microservices
   microservicesDevelop: microservices-develop
 

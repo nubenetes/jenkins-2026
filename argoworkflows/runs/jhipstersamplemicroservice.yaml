@@ -1,0 +1,43 @@
+# Ready-to-run Workflow for the `jhipstersamplemicroservice` service. Same shape as
+# gateway.yaml (argoworkflows-ci SA + the WorkflowTemplate's source/dockerconfig
+# volumes) but with an explicit `arguments.parameters:` block, since the pipeline
+# defaults to the gateway service.
+# Run: kubectl create -f argoworkflows/runs/jhipstersamplemicroservice.yaml
+# (or `argo submit` it, or use the UI "Resubmit"). Param values mirror
+# jenkins/pipelines/seed/services.yaml - keep them in sync if that file changes.
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: jhipstersamplemicroservice-stable-
+  namespace: argo-ci
+  labels:
+    jenkins2026.io/service: jhipstersamplemicroservice
+    jenkins2026.io/env: stable
+spec:
+  serviceAccountName: argoworkflows-ci
+  workflowTemplateRef:
+    name: microservices-pipeline
+  arguments:
+    parameters:
+      - name: service-name
+        value: jhipstersamplemicroservice
+      - name: service-type
+        value: java
+      - name: git-repo-url
+        value: https://github.com/nubenetes/jhipster-sample-app-microservice.git
+      - name: git-branch
+        value: main
+      - name: module-path
+        value: ""
+      - name: target-namespace
+        value: microservices
+      - name: env-name
+        value: stable
+      - name: port
+        value: "8081"
+      - name: health-path
+        value: /management/health
+      - name: image
+        value: ghcr.io/nubenetes/jenkins-2026-microservices/jhipstersamplemicroservice:main
+      - name: registry-host
+        value: ghcr.io

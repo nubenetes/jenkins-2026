@@ -107,6 +107,11 @@ validate_run_node_pool "${J2026_TEKTON_RUN_NODE_POOL}" "tekton.runNodePool"
 # Tekton's affinity-assistant. This engine IS the NAP Spot scale-to-zero showcase.
 export J2026_GITHUBACTIONS_RUN_NODE_POOL="${JENKINS2026_GITHUBACTIONS_RUN_NODE_POOL:-$(yq_get '.githubactions.runNodePool' 'ci-spot')}"
 validate_run_node_pool "${J2026_GITHUBACTIONS_RUN_NODE_POOL}" "githubactions.runNodePool"
+# Argo Workflows defaults to static: a Workflow's steps share one RWO 'source' workspace
+# PVC, so a Spot preemption mid-run loses the whole run (same caveat as Tekton's affinity
+# assistant). ci-spot is opt-in.
+export J2026_ARGOWORKFLOWS_RUN_NODE_POOL="${JENKINS2026_ARGOWORKFLOWS_RUN_NODE_POOL:-$(yq_get '.argoworkflows.runNodePool' 'static')}"
+validate_run_node_pool "${J2026_ARGOWORKFLOWS_RUN_NODE_POOL}" "argoworkflows.runNodePool"
 
 # --- ci engine (feature flag) ------------------------------------------------
 
@@ -120,9 +125,9 @@ J2026_CI_ENGINE="${JENKINS2026_CI_ENGINE:-$(yq_get '.ci.engine' 'jenkins')}"
 export J2026_CI_ENGINE
 
 case "${J2026_CI_ENGINE}" in
-  jenkins|tekton|githubactions) ;;
+  jenkins|tekton|githubactions|argoworkflows) ;;
   *)
-    log_error "Unsupported CI engine '${J2026_CI_ENGINE}' (expected jenkins|tekton|githubactions)."
+    log_error "Unsupported CI engine '${J2026_CI_ENGINE}' (expected jenkins|tekton|githubactions|argoworkflows)."
     log_error "Set ci.engine in ${J2026_CONFIG_FILE} or export JENKINS2026_CI_ENGINE."
     exit 1
     ;;
@@ -213,6 +218,26 @@ export J2026_GHA_APP_SECRET="$(yq_get '.githubactions.githubAppSecretName' 'arc-
 # true, 06-githubactions-pipelines.sh ALSO `gh workflow run`s each fork's microservices-ci
 # workflow on Day1 (parity with tekton.seedRuns). Default true.
 export J2026_GHA_SEED_RUNS="${JENKINS2026_GITHUBACTIONS_SEED_RUNS:-$(yq_get '.githubactions.seedRuns' 'true')}"
+
+
+# --- argo workflows (used when ci.engine == argoworkflows) -------------------
+# Argo Workflows controller+server (argo ns), Argo Events controller+EventBus
+# (argo-events ns), and the WorkflowTemplates/EventSource/Sensor that run in the
+# execution ns (argo-ci), installed via the argocd/argoworkflows app-of-apps.
+# The Server UI is IAP-protected at the Gateway (no native auth), like the Tekton Dashboard.
+export J2026_ARGOWF_NAMESPACE="$(yq_get '.argoworkflows.namespace' 'argo')"
+export J2026_ARGOWF_EVENTS_NAMESPACE="$(yq_get '.argoworkflows.eventsNamespace' 'argo-events')"
+export J2026_ARGOWF_RUN_NAMESPACE="$(yq_get '.argoworkflows.runNamespace' 'argo-ci')"
+export J2026_ARGOWF_VERSION_WORKFLOWS="$(yq_get '.argoworkflows.versions.workflows' 'v3.6.4')"
+export J2026_ARGOWF_VERSION_EVENTS="$(yq_get '.argoworkflows.versions.events' 'v1.9.4')"
+export J2026_ARGOWF_SERVER_SERVICE="$(yq_get '.argoworkflows.server.serviceName' 'argo-server')"
+export J2026_ARGOWF_SERVER_PORT="$(yq_get '.argoworkflows.server.servicePort' '2746')"
+export J2026_ARGOWF_REGISTRY_SECRET="$(yq_get '.argoworkflows.registryCredentialsSecretName' 'argoworkflows-registry')"
+export J2026_ARGOWF_GIT_SECRET="$(yq_get '.argoworkflows.gitCredentialsSecretName' 'argoworkflows-git')"
+# FEATURE FLAG: JENKINS2026_ARGOWORKFLOWS_SEED_RUNS overrides argoworkflows.seedRuns. When
+# true, 06-argoworkflows-pipelines.sh ALSO submits one Workflow per service (from
+# argoworkflows/runs/) so the Server UI is pre-populated (parity with tekton.seedRuns).
+export J2026_ARGOWF_SEED_RUNS="${JENKINS2026_ARGOWORKFLOWS_SEED_RUNS:-$(yq_get '.argoworkflows.seedRuns' 'false')}"
 
 
 # --- observability ---------------------------------------------------------
@@ -402,6 +427,16 @@ export J2026_GATEWAY_FARO_HOST="${J2026_GATEWAY_HOST_FARO}.${J2026_GATEWAY_BASE_
 export J2026_GATEWAY_GRAFANA_HOST="${J2026_GATEWAY_HOST_GRAFANA}.${J2026_GATEWAY_BASE_DOMAIN}"
 export J2026_GATEWAY_TEKTON_HOST="${J2026_GATEWAY_HOST_TEKTON}.${J2026_GATEWAY_BASE_DOMAIN}"
 export J2026_GATEWAY_PAC_HOST="${J2026_GATEWAY_HOST_PAC}.${J2026_GATEWAY_BASE_DOMAIN}"
+
+# Argo Workflows Server UI (IAP-protected) + Argo Events webhook receiver (public, no
+# IAP) — only used when ci.engine=argoworkflows.
+export J2026_GATEWAY_HTTPROUTE_ARGOWF="argoworkflows"
+export J2026_GATEWAY_HTTPROUTE_ARGOEVENTS="argo-events"
+export J2026_GATEWAY_IAP_POLICY_ARGOWF="argoworkflows-iap"
+J2026_GATEWAY_HOST_ARGOWF="$(yq_get '.gateway.hosts.argoworkflows' 'argo')"
+J2026_GATEWAY_HOST_ARGOEVENTS="$(yq_get '.gateway.hosts.argoevents' 'argo-events')"
+export J2026_GATEWAY_ARGOWF_HOST="${J2026_GATEWAY_HOST_ARGOWF}.${J2026_GATEWAY_BASE_DOMAIN}"
+export J2026_GATEWAY_ARGOEVENTS_HOST="${J2026_GATEWAY_HOST_ARGOEVENTS}.${J2026_GATEWAY_BASE_DOMAIN}"
 
 
 # Headlamp's OIDC redirect URI: the public gateway URL if the gateway is

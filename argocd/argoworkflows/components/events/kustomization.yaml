@@ -1,0 +1,20 @@
+# Argo Events (the unified controller-manager + the EventBus/EventSource/Sensor
+# CRDs), installed via ArgoCD, plus the default native-NATS EventBus.
+#
+# The release manifest is VENDORED (release.yaml in this dir). argoproj publishes
+# Argo Events releases as GitHub release assets (install.yaml), not on a GCS
+# bucket, and a github.com URL is misclassified by kustomize as a git repo, so a
+# remote resource isn't viable. Vendoring is reliable (local file) and auditable.
+#
+# Source: https://github.com/argoproj/argo-events/releases/download/v1.9.4/install.yaml
+# (v1.9.4 = pinned). To bump: re-download install.yaml from the matching tag into
+# release.yaml and update config/config.yaml argoworkflows.versions.events.
+#
+# eventbus.yaml (the default native-NATS EventBus) is applied alongside the install
+# so EventSources/Sensors have a bus to attach to the moment they sync.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: argo-events
+resources:
+  - release.yaml
+  - eventbus.yaml

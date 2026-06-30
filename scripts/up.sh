@@ -53,6 +53,7 @@ log_step "Installing 03-observability (sequential to prevent API pressure)"
 #   jenkins       -> 04-jenkins.sh        + 06-seed-pipelines.sh
 #   tekton        -> 04-tekton.sh         + 06-tekton-pipelines.sh
 #   githubactions -> 04-githubactions.sh  + 06-githubactions-pipelines.sh  (ARC self-hosted runners)
+#   argoworkflows -> 04-argoworkflows.sh  + 06-argoworkflows-pipelines.sh  (Argo Workflows + Events)
 case "${J2026_CI_ENGINE}" in
   tekton)
     log_step "Installing 04-tekton (CI engine = tekton)"
@@ -63,6 +64,11 @@ case "${J2026_CI_ENGINE}" in
     log_step "Installing 04-githubactions (CI engine = githubactions / ARC)"
     "${SCRIPT_DIR}/04-githubactions.sh"
     "${SCRIPT_DIR}/06-githubactions-pipelines.sh"
+    ;;
+  argoworkflows)
+    log_step "Installing 04-argoworkflows (CI engine = argoworkflows / Argo Workflows + Events)"
+    "${SCRIPT_DIR}/04-argoworkflows.sh"
+    "${SCRIPT_DIR}/06-argoworkflows-pipelines.sh"
     ;;
   *)
     log_step "Installing 04-jenkins (sequential to prevent API pressure)"

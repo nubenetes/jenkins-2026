@@ -1,0 +1,16 @@
+# Defaults for the argoworkflows app-of-apps. repoURL/targetRevision are
+# overridden by the parent Application's helm.parameters (set by
+# scripts/04-argoworkflows.sh from J2026_SELF_REPO_URL / J2026_SELF_REPO_BRANCH)
+# and used by every child's git source. The pinned Argo Workflows / Argo Events
+# component versions live in argocd/argoworkflows/components/*/ (the vendored
+# upstream release YAMLs).
+repoURL: https://github.com/nubenetes/jenkins-2026.git
+targetRevision: main
+
+namespace:
+  # Argo Workflows control plane (workflow-controller + argo-server) - argoproj default.
+  controlPlane: argo
+  # Argo Events controllers (eventbus/eventsource/sensor) + the EventBus CR.
+  events: argo-events
+  # Where Workflows execute (ServiceAccount, RBAC, the argoworkflows/ pipelines-as-code).
+  run: argo-ci

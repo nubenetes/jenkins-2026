@@ -339,21 +339,20 @@ case "${J2026_OBS_MODE}" in
         log_warn "Failed to publish ${name}."
       fi
     done
-    # Delete the off-engine CI overview if it exists (e.g. jenkins-overview when
-    # ci.engine=tekton, and vice-versa) so stale dashboards don't persist across
-    # engine switches.
-    if [[ "${ACTIVE_CI_ENGINE}" == "tekton" ]]; then
-      delete_uid="jenkins2026-jenkins-overview"
-    else
-      delete_uid="jenkins2026-tekton-overview"
-    fi
-    if api GET "/api/dashboards/uid/${delete_uid}" >/dev/null 2>&1; then
-      if api DELETE "/api/dashboards/uid/${delete_uid}" >/dev/null 2>&1; then
-        log_info "Deleted off-engine dashboard ${delete_uid}."
-      else
-        log_warn "Could not delete off-engine dashboard ${delete_uid} (may not exist)."
+    # Delete the INACTIVE engines' CI overviews so stale dashboards don't persist
+    # across engine switches (all four CI engines are mutually exclusive). Mirrors the
+    # delete_offengine_dashboard() helper, but via this branch's AMG `api` wrapper.
+    for d in ${ALL_CI_DASHBOARDS}; do
+      [[ "${d}" == "${KEEP_CI_DASHBOARD}" ]] && continue
+      delete_uid="jenkins2026-${d}"
+      if api GET "/api/dashboards/uid/${delete_uid}" >/dev/null 2>&1; then
+        if api DELETE "/api/dashboards/uid/${delete_uid}" >/dev/null 2>&1; then
+          log_info "Deleted off-engine dashboard ${delete_uid}."
+        else
+          log_warn "Could not delete off-engine dashboard ${delete_uid} (may not exist)."
+        fi
       fi
-    fi
+    done
     ;;
 
   *)

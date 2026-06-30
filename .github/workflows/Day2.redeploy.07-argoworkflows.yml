@@ -1,0 +1,204 @@
+name: "Day2.redeploy.07 Argo Workflows"
+
+# Manually-triggered: re-applies the Argo Workflows CI engine (scripts/04-argoworkflows.sh =
+# Argo Workflows controller/server + Argo Events controllers/EventBus + RBAC, and
+# scripts/06-argoworkflows-pipelines.sh = argoworkflows/ WorkflowTemplates/EventSource/Sensor
+# + per-service Workflows) against the cluster from the last "Day1.cluster.01 GKE provision"
+# run that was provisioned with ci_engine=argoworkflows, without touching terraform/gke or
+# any other component.
+#
+# Use this to apply an Argo Workflows-only change (a WorkflowTemplate/template edit, a pinned
+# version bump, the EventSource/Sensor) without rerunning the whole provision lifecycle. The
+# Argo Workflows analogue of "Day2.redeploy.02 Jenkins". Requires the namespaces/secrets
+# created by scripts/01-namespaces.sh + scripts/08.5-argocd.sh during an argoworkflows
+# "Day1.cluster.01 GKE" run to still exist on the cluster.
+on:
+  workflow_dispatch:
+    inputs:
+      secrets_backend:
+        description: "Secrets backend the cluster runs (must match the live cluster): imperative | eso"
+        required: true
+        default: "imperative"
+        type: choice
+        options:
+          - imperative
+          - eso
+      develop_track:
+        description: "Re-apply the optional lean 'develop' microservices tier alongside 'stable' (OFF by default): the develop namespace/netpol/RBAC (01-namespaces) and the develop Argo Workflows runs (06-argoworkflows-pipelines). The develop ArgoCD app is owned by Day1.cluster.01."
+        required: false
+        default: false
+        type: boolean
+      git_ref:
+        description: "Git branch, tag, or SHA to check out (leave empty to use the branch/tag selected in 'Use workflow from' above)"
+        required: false
+        default: ""
+        type: string
+      run_node_pool:
+        description: "Where Workflow pods run (argoworkflows.runNodePool). 'config' = use config.yaml (default static). 'static' = the jenkins-2026-pool — RECOMMENDED for Argo Workflows (a Workflow's steps share one RWO workspace PVC, so a Spot preemption mid-run loses the whole run). 'ci-spot' = NAP Spot ComputeClass (opt-in; needs NAP + SSD quota headroom). See docs/405."
+        required: false
+        default: "config"
+        type: choice
+        options:
+          - config
+          - static
+          - ci-spot
+      log_level:
+        description: "Script/Terraform verbosity: info (default) or debug (adds [DEBUG] script lines + TF_LOG=DEBUG). For runner-level tracing use GitHub's ACTIONS_STEP_DEBUG."
+        required: false
+        default: "info"
+        type: choice
+        options:
+          - info
+          - debug
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: jenkins-2026-gke
+  cancel-in-progress: false
+
+env:
+  JENKINS2026_LOG_LEVEL: ${{ inputs.log_level || 'info' }}
+  TF_LOG: ${{ inputs.log_level == 'debug' && 'DEBUG' || '' }}
+  TF_VERSION: "1.15.6"
+  # Selects the Argo Workflows path in scripts/lib/config.sh (and the 04/06 scripts).
+  JENKINS2026_CI_ENGINE: argoworkflows
+  JENKINS2026_SECRETS_BACKEND: ${{ inputs.secrets_backend }}
+  # Run-pod placement override (empty = fall back to config.yaml argoworkflows.runNodePool).
+  JENKINS2026_ARGOWORKFLOWS_RUN_NODE_POOL: ${{ inputs.run_node_pool != 'config' && inputs.run_node_pool || '' }}
+  # Optional lean develop tier (off by default) — 01-namespaces provisions its
+  # namespace/netpol/RBAC and 06-argoworkflows-pipelines seeds its runs.
+  JENKINS2026_DEVELOP_TRACK_ENABLED: ${{ inputs.develop_track }}
+
+jobs:
+  redeploy-argoworkflows:
+    runs-on: ubuntu-latest
+    # Manual approval gate (GitHub Environment required reviewers) - modifies a real
+    # billed cluster, same posture as Day1/Decom and the other Day2.* workflows.
+    environment: gke-production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ inputs.git_ref || github.ref }}
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Install gke-gcloud-auth-plugin
+        run: gcloud components install gke-gcloud-auth-plugin --quiet
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d # v5.1.0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+
+      - name: Install yq
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/yq \
+            https://github.com/mikefarah/yq/releases/download/v4.53.3/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Configure GCS backend (terraform/gke)
+        run: |
+          cat > terraform/gke/backend_override.tf <<EOF
+          terraform {
+            backend "gcs" {
+              bucket = "${{ secrets.TF_STATE_BUCKET }}"
+              prefix = "jenkins-2026/gke"
+            }
+          }
+          EOF
+
+      - name: Terraform init
+        working-directory: terraform/gke
+        run: |
+          for i in {1..3}; do
+            terraform init -input=false && break || {
+              if [ $i -lt 3 ]; then
+                echo "Terraform init failed, retrying in 10s..."
+                sleep 10
+              else
+                exit 1
+              fi
+            }
+          done
+
+      - name: Fetch kubeconfig credentials
+        working-directory: terraform/gke
+        run: |
+          gcloud container clusters get-credentials \
+            "$(terraform output -raw cluster_name)" \
+            --zone "$(terraform output -raw location)" \
+            --project "${{ secrets.GCP_PROJECT_ID }}"
+
+      - name: Check prereqs & add Helm repos (scripts/00-check-prereqs.sh)
+        run: ./scripts/00-check-prereqs.sh
+
+      - name: Refresh Argo Workflows namespaces/credentials (scripts/01-namespaces.sh)
+        run: ./scripts/01-namespaces.sh
+        env:
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+          GIT_USERNAME: ${{ secrets.GIT_USERNAME }}
+          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
+          IAP_OAUTH_CLIENT_ID: ${{ secrets.IAP_OAUTH_CLIENT_ID }}
+          IAP_OAUTH_CLIENT_SECRET: ${{ secrets.IAP_OAUTH_CLIENT_SECRET }}
+          ARGOWORKFLOWS_GITHUB_WEBHOOK_SECRET: ${{ secrets.ARGOWORKFLOWS_GITHUB_WEBHOOK_SECRET }}
+          PAC_WEBHOOK_SECRET: ${{ secrets.PAC_WEBHOOK_SECRET }}
+          # Optional Grafana Cloud k6 (k6-app) streaming for the k6 smoke pipeline.
+          K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
+          K6_CLOUD_PROJECT_ID: ${{ secrets.K6_CLOUD_PROJECT_ID }}
+
+      - name: Redeploy Argo Workflows control plane + Server UI (scripts/04-argoworkflows.sh)
+        run: ./scripts/04-argoworkflows.sh
+
+      - name: Re-apply Argo Workflows pipelines + activate webhook (scripts/06-argoworkflows-pipelines.sh)
+        run: ./scripts/06-argoworkflows-pipelines.sh
+        env:
+          # Webhook activation creates the per-fork GitHub webhooks pointing at the Argo Events receiver.
+          GIT_USERNAME: ${{ secrets.GIT_USERNAME }}
+          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
+          ARGOWORKFLOWS_GITHUB_WEBHOOK_SECRET: ${{ secrets.ARGOWORKFLOWS_GITHUB_WEBHOOK_SECRET }}
+          PAC_WEBHOOK_SECRET: ${{ secrets.PAC_WEBHOOK_SECRET }}
+
+      - name: Sync External Secrets (scripts/08.6-eso-sync.sh, eso mode only)
+        # No-op when secrets.backend=imperative. In eso mode, re-applies the
+        # ClusterSecretStore + ExternalSecrets and waits for the IAP Secret before
+        # 09-gateway wires the GCPBackendPolicy to it.
+        run: ./scripts/08.6-eso-sync.sh
+
+      # Idempotent: (re)creates the public Gateway routes incl. the Argo Workflows
+      # Server UI (IAP) and the Argo Events webhook receiver (argo-events.<domain>), so
+      # an Argo Workflows-only redeploy exposes them without a full Day1. Reads IAP creds
+      # from the cluster Secrets refreshed by 01-namespaces above.
+      - name: Re-apply Gateway routes (scripts/09-gateway.sh)
+        run: ./scripts/09-gateway.sh
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Argo Workflows redeployed"
+            echo
+            echo "Re-applied the Argo Workflows control plane + Server UI (scripts/04-argoworkflows.sh)"
+            echo "and the argoworkflows/ pipelines-as-code + per-service Workflows"
+            echo "(scripts/06-argoworkflows-pipelines.sh) against the cluster from the last"
+            echo "**Day1.cluster.01 GKE** run provisioned with ci_engine=argoworkflows."
+            echo "(Grafana dashboards are published by the per-backend dashboard workflows.)"
+          } >> "${GITHUB_STEP_SUMMARY}"

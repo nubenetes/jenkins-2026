@@ -75,6 +75,12 @@ logging:
 #                       Spot ComputeClass, the pipeline as a .github/workflows
 #                       file rendered into each fork (scripts/04-githubactions.sh,
 #                       06-githubactions-pipelines.sh). No in-cluster UI.
+#   argoworkflows     - Argo Workflows + Argo Events: K8s-native engine. The
+#                       pipeline ported to a WorkflowTemplate (templates ~ Tekton
+#                       Tasks) under argoworkflows/, an EventSource+Sensor (GitHub
+#                       webhook -> one Workflow per push) ~ Tekton Triggers, and the
+#                       Argo Workflows Server UI behind IAP like the Tekton Dashboard
+#                       (scripts/04-argoworkflows.sh, 06-argoworkflows-pipelines.sh).
 # FEATURE FLAG: override for a single run with JENKINS2026_CI_ENGINE=tekton
 # (config.yaml is the durable default; the env var is the ephemeral override -
 # same pattern as observability.mode / JENKINS2026_OBS_MODE).
@@ -230,6 +236,45 @@ githubactions:
   #   - arc-argocd       ArgoCD API token for the workflow's `argocd app sync`       (08.5-argocd.sh)
   registryCredentialsSecretName: arc-registry
   githubAppSecretName: arc-github-app
+
+# -----------------------------------------------------------------------------
+# Argo Workflows + Argo Events (argoproj) - used when ci.engine == argoworkflows
+# -----------------------------------------------------------------------------
+# GitOps-managed by ArgoCD (app-of-apps), identical pattern to tekton: scripts/
+# 04-argoworkflows.sh applies argocd/argoworkflows-app.yaml, whose children install
+# the Argo Workflows controller+server, the Argo Events controller+EventBus, and the
+# pipelines-as-code under argoworkflows/ (the WorkflowTemplates + EventSource/Sensor).
+# The Argo Workflows Server UI has no native auth, so it is exposed on the internet
+# behind Google IAP at the Gateway, exactly like the Tekton Dashboard (09-gateway.sh).
+argoworkflows:
+  # Where Workflow pods run (Workflow spec.nodeSelector). static (default) = the
+  # long-lived jenkins-2026-pool; ci-spot = the NAP Spot ComputeClass. static
+  # recommended: a Workflow's steps share one RWO workspace PVC, so a Spot preemption
+  # mid-run loses the whole run (same caveat as Tekton's affinity assistant).
+  # FEATURE FLAG: JENKINS2026_ARGOWORKFLOWS_RUN_NODE_POOL (static | ci-spot).
+  runNodePool: static
+  namespace: argo                # control plane (workflow-controller + argo-server)
+  eventsNamespace: argo-events   # Argo Events controller-manager + EventBus
+  runNamespace: argo-ci          # where Workflows execute (SA, creds, RBAC, the argoworkflows/ pac)
+  # When true, Day1 (06-argoworkflows-pipelines.sh) ALSO submits one Workflow per
+  # service (from argoworkflows/runs/) so the Argo Workflows Server UI is pre-populated.
+  # Parity with tekton.seedRuns. Override: JENKINS2026_ARGOWORKFLOWS_SEED_RUNS.
+  seedRuns: true
+  # Pinned component versions. The EFFECTIVE manifests are VENDORED at
+  # argocd/argoworkflows/components/*/ (release.yaml) - keep in sync when bumping; docs/602.
+  versions:
+    workflows: v3.6.4    # argo-workflows install.yaml (controller + server)
+    events: v1.9.4       # argo-events install.yaml (unified controller-manager) + EventBus
+  server:
+    serviceName: argo-server     # the argo-server Service the Gateway/IAP HTTPRoute targets
+    servicePort: 2746
+  # In-cluster Secrets (created by scripts/01-namespaces.sh / 08.5-argocd.sh in runNamespace):
+  #   - argoworkflows-registry        ghcr.io push/pull dockerconfigjson
+  #   - argoworkflows-git             git clone/push to the gitops repo (basic-auth)
+  #   - argoworkflows-argocd          ArgoCD API token for `argocd app sync`   (08.5-argocd.sh)
+  #   - argoworkflows-github-webhook  GitHub HMAC for the Sensor's EventSource
+  registryCredentialsSecretName: argoworkflows-registry
+  gitCredentialsSecretName: argoworkflows-git
 
 # -----------------------------------------------------------------------------
 # Observability
@@ -441,6 +486,11 @@ gateway:
     # PaC controller webhook receiver (ci.engine=tekton). Public, NO IAP - GitHub
     # must reach it; protected by the webhook HMAC secret instead.
     pac: "pac"
+    # Only used when ci.engine=argoworkflows (Argo Workflows Server UI, IAP-protected).
+    argoworkflows: "argo"
+    # Argo Events webhook receiver (ci.engine=argoworkflows). Public, NO IAP - GitHub
+    # must reach it; protected by the argoworkflows-github-webhook HMAC secret instead.
+    argoevents: "argo-events"
     # Only used when observability.mode=oss (in-cluster Grafana). Ignored in
     # grafana-cloud mode, where Grafana is reached at its *.grafana.net URL.
     grafana: "grafana"

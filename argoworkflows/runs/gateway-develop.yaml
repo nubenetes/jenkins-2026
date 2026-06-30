@@ -1,0 +1,46 @@
+# Ready-to-run Workflow for the `gateway` service on the DEVELOP tier - the Argo
+# Workflows equivalent of the Jenkins `gateway-develop` seed job (and the Tekton
+# tekton/runs/gateway-develop.yaml). Mirrors gateway.yaml but builds the app's
+# `develop` branch into the `microservices-develop` namespace (env=develop).
+#
+# OPTIONAL / GATED: like the Jenkins develop jobs, this is only seeded when the develop
+# track is enabled (config.yaml microservices.developTrackEnabled=true, or
+# JENKINS2026_DEVELOP_TRACK_ENABLED=true). scripts/06-argoworkflows-pipelines.sh skips
+# every run labelled jenkins2026.io/env=develop when the flag is off. Run by hand any time:
+#   kubectl create -f argoworkflows/runs/gateway-develop.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: gateway-develop-
+  namespace: argo-ci
+  labels:
+    jenkins2026.io/service: gateway
+    jenkins2026.io/env: develop
+spec:
+  serviceAccountName: argoworkflows-ci
+  workflowTemplateRef:
+    name: microservices-pipeline
+  arguments:
+    parameters:
+      - name: service-name
+        value: gateway
+      - name: service-type
+        value: java
+      - name: git-repo-url
+        value: https://github.com/nubenetes/jhipster-sample-app-gateway.git
+      - name: git-branch
+        value: develop
+      - name: module-path
+        value: ""
+      - name: target-namespace
+        value: microservices-develop
+      - name: env-name
+        value: develop
+      - name: port
+        value: "8080"
+      - name: health-path
+        value: /management/health
+      - name: image
+        value: ghcr.io/nubenetes/jenkins-2026-microservices/gateway:develop
+      - name: registry-host
+        value: ghcr.io
