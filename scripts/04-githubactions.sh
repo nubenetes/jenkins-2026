@@ -50,6 +50,14 @@ done
 if [[ -n "${ctrl}" ]]; then
   kubectl rollout status "${ctrl}" -n "${J2026_GHA_NAMESPACE}" --timeout=10m \
     || log_warn "ARC controller not Available yet — check 'kubectl -n ${J2026_ARGOCD_NAMESPACE} get applications | grep arc-'."
+  # ARC's controller backs off after auth failures and does NOT re-read the arc-github-app
+  # Secret when it changes. So when 01-namespaces (re)builds that Secret with new creds — e.g.
+  # adding the GitHub App key on a re-run after a first run fell back to the GIT_TOKEN PAT — a
+  # long-running controller keeps the stale creds, 403s on registration, and never creates the
+  # listener. Roll it so the fresh pod re-reads the current Secret. Cheap, idempotent.
+  log_step "Restarting the ARC controller so it re-reads the current arc-github-app Secret"
+  kubectl rollout restart "${ctrl}" -n "${J2026_GHA_NAMESPACE}" >/dev/null 2>&1 || true
+  kubectl rollout status "${ctrl}" -n "${J2026_GHA_NAMESPACE}" --timeout=5m 2>/dev/null || true
 else
   log_warn "ARC controller Deployment not found yet (ArgoCD still syncing the OCI charts?) — re-run to converge."
 fi
