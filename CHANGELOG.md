@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.55] - 2026-06-30
+
+### Added
+- **Two-layer auto-reclaim for orphaned CSI persistent disks.** A Terraform `Decom`
+  destroys the cluster (and the CSI driver) before Kubernetes deletes the PVCs, so
+  `reclaimPolicy: Delete` never fires and the backing `pvc-*` PDs are orphaned in the
+  project — accumulating one generation per rebuild, each burning `SSD_TOTAL_GB` quota
+  and cost (~32 GB observed). Fixed with: **① prevention** — `scripts/down.sh`'s new
+  `reclaim_namespace_pvcs` deletes PVCs *gracefully* (finalizer intact) so CSI reclaims
+  each PD **before** destroy, finalizer-strip only as fallback; **② sweep** — new
+  [`scripts/sweep-orphaned-pds.sh`](scripts/sweep-orphaned-pds.sh) (run by `up.sh` at every
+  cluster-up, or standalone) reconciles unattached `pvc-*` disks against live PV
+  `volumeHandle`s and deletes the difference. **Safety:** the sweep deletes only `pvc-*`
+  (never `gke-*` node disks), only unattached, only when not referenced by a live PV, and
+  **hard-aborts if the cluster is unreachable** (so a *paused* cluster's databases are never
+  mistaken for "0 live PVs"). Flags `J2026_ORPHAN_PD_SWEEP` (default true) +
+  `J2026_ORPHAN_PD_SWEEP_DRYRUN`. Documented in `docs/501` with cause/prevention/sweep
+  diagram + table.
+
 ## [v0.28.54] - 2026-06-30
 
 ### Added

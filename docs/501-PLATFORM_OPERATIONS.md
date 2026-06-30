@@ -336,7 +336,47 @@ flowchart LR
 | `tekton-ci` | **Tekton run workspaces** | `pvc-<hash>` (volumeClaimTemplate) | `pd-balanced` | 1–4 GB | ≤5 | ~14 GB | one RWO `source` workspace per PipelineRun; bounded by the Pruner `historyLimit: 5` |
 | | | | | | | **≈ 70 GB live** | |
 
-> ⚠️ **Orphaned disks inflate the measured total.** The region currently shows **102 GB / 54 disks**, ~32 GB above the ~70 GB live footprint. Evidence: **duplicate PVC names that cannot coexist in a live cluster** (e.g. `postgres-gateway-2` maps to **3** separate disks) and disks spanning **3 creation dates** (`06-27`, `06-28`, `06-29`) while the live cluster was last built on one. **Cause:** a Terraform `Decom` deletes the GKE cluster *without* gracefully deleting the PVCs, so `reclaimPolicy: Delete` never fires and the underlying PDs are **orphaned** in GCP — they accumulate one generation per rebuild. **Reclaim:** the [`scripts/down.sh`](../scripts/down.sh) orphaned-PD sweep (run at teardown), or manually `gcloud compute disks delete` the unattached ones. These orphans count against the quota and the ~$13/mo disk floor, so cleaning them is free headroom.
+> ⚠️ **Orphaned disks inflate the measured total.** The region currently shows **102 GB / 54 disks**, ~32 GB above the ~70 GB live footprint. Evidence: **duplicate PVC names that cannot coexist in a live cluster** (e.g. `postgres-gateway-2` maps to **3** separate disks) and disks spanning **3 creation dates** (`06-27`, `06-28`, `06-29`). These orphans count against the quota and the ~$13/mo disk floor — see the dedicated subsection below for the cause and the **two-layer auto-reclaim**.
+
+#### Orphaned persistent disks — cause, prevention (①), and the sweep (②)
+
+When a `Decom` tears the cluster down via `terraform destroy`, the GKE control plane (and with it the **CSI driver**) disappears **before** Kubernetes gets to delete the PVCs — so `reclaimPolicy: Delete` never fires and the backing `pd-*` disks are **orphaned** in the GCP project. They **accumulate one generation per rebuild**, each costing money and consuming `SSD_TOTAL_GB`. Two complementary layers handle this automatically (durable default; disable with `J2026_ORPHAN_PD_SWEEP=false`):
+
+```mermaid
+flowchart LR
+    subgraph PREV["① Prevention — scripts/down.sh (at teardown)"]
+        A["pods already removed"] --> B["reclaim_namespace_pvcs:<br/>delete PVCs GRACEFULLY<br/>(keep pvc-protection finalizer)"]
+        B --> C["CSI external-provisioner<br/>reclaims PV (reclaimPolicy=Delete)<br/>→ deletes the PD"]
+        C --> D["wait ≤2m for PVs to vanish"]
+        D -->|"straggler"| E["finalizer-strip fallback"]
+    end
+    subgraph SWEEP["② Sweep — scripts/sweep-orphaned-pds.sh (at every cluster-up)"]
+        F["kubectl get pv → live disk handles"] --> G{"cluster reachable?"}
+        G -->|"no (paused)"| H["ABORT — never guess"]
+        G -->|"yes"| I["list unattached pvc-* disks"]
+        I --> J["delete those NOT in the live set"]
+    end
+    E -.->|"anything missed"| F
+
+    classDef bad fill:#c50,stroke:#720,color:#fff;
+    class H bad;
+```
+
+| Layer | File | When | What it does | Why it's safe |
+|---|---|---|---|---|
+| **① Prevention** | [`scripts/down.sh`](../scripts/down.sh) `reclaim_namespace_pvcs` | teardown (`Decom`, `J2026_DELETE_NAMESPACES=true`) | deletes PVCs **gracefully** (finalizer intact) so CSI reclaims each PD *before* the cluster is destroyed; finalizer-strip only as fallback | runs while CSI is alive; bounded ~2 min/ns; data-namespace deletion is already gated behind the explicit `DELETE_NAMESPACES` flag |
+| **② Sweep** | [`scripts/sweep-orphaned-pds.sh`](../scripts/sweep-orphaned-pds.sh) (called by [`up.sh`](../scripts/up.sh)) | every **cluster-up** (Day1), or standalone | reconciles all unattached `pvc-*` disks against live PV `volumeHandle`s and deletes the difference | deletes **only** `pvc-*` (never `gke-*` node disks), **only** unattached, **only** if not referenced by a live PV; **aborts if the cluster is unreachable** so a *paused* cluster's PVs are never mistaken for "0 live PVs" |
+
+**Run it standalone** (e.g. after a `Resume`, with the cluster reachable):
+
+```bash
+# preview first (deletes nothing):
+J2026_ORPHAN_PD_SWEEP_DRYRUN=true scripts/sweep-orphaned-pds.sh
+# then the real sweep:
+scripts/sweep-orphaned-pds.sh
+```
+
+> 🔒 **Why the sweep refuses to run against a paused cluster.** Identifying orphans means "every `pvc-*` disk **not** backing a live PV". If `kubectl` can't reach the cluster, the live-PV list comes back empty and *every* disk would look orphaned — including a paused cluster's live databases. The sweep therefore **hard-aborts** when `kubectl get pv` fails. This is exactly why the current ~32 GB of orphans are cleaned at the **next cluster-up**, not while paused.
 
 **Disk class — why each workload gets `pd-ssd` vs `pd-balanced`:**
 
