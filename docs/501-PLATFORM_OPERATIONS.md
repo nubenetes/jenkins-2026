@@ -257,6 +257,50 @@ The repository has been refactored to serve as a **Golden Path Internal Develope
 
 > **TL;DR** — `SSD_TOTAL_GB` is a **regional GCP quota** (currently **500 GB** in `europe-southwest1`) that caps the *total* SSD-backed disk in the region. It counts **every** `pd-ssd` **and** `pd-balanced` disk — node boot disks *and* PVs — so it is the **binding capacity ceiling** for the cluster, and the reason `ci-spot` elasticity is bounded. It is **only meaningfully consumed at scale by `ci-spot`**; the `static` default needs no extra headroom.
 
+<details>
+<summary>🧠 <b>Mental model</b> — the whole picture in one map (read this first)</summary>
+
+**Basic version (one paragraph):** GCP limits how much fast disk (SSD) you can have in the region to **500 GB**. *Everything* with a disk counts: the databases, the monitoring stack, **and every VM's boot disk**. When CI runs on cheap **Spot** nodes, each new node adds a 50 GB boot disk — pile up enough at once and you hit the 500 GB wall, so the next build can't get a node and waits. The wall isn't a money limit (the quota is free); it's a **safety ceiling**. You pay only for disks that actually exist — which is why **pausing** the cluster (deletes the VM disks) drops the bill to almost nothing.
+
+**Advanced version (the model):**
+
+```mermaid
+mindmap
+  root((SSD_TOTAL_GB))
+    Quota = ceiling, NOT cost
+      500 GB region limit
+      counts every pd-ssd + pd-balanced
+      self-service override caps at 500
+      raise via QuotaPreference -> 2000 pending
+    What consumes it
+      Persistent PVs ~70 GB
+        CNPG pd-ssd 1GB data+WAL
+        Observability pd-balanced 10GB
+        Tekton workspaces RWO
+      Static node disks 100-200 GB
+      Spot ci-spot disks N x 50
+      Orphans ~32 GB reclaimable
+    Cost drivers
+      Quota itself = 0 dollars
+      Paused = disk floor ~13/mo
+      Running = compute dominates
+      Spot = ~60-80% cheaper compute
+    Levers
+      runNodePool static default
+      Pause or Decom
+      clean orphaned PDs
+      fewer HA Postgres instances
+```
+
+**The three things people conflate (and shouldn't):**
+| Concept | What it is | What it is NOT |
+|---|---|---|
+| **Quota** (`SSD_TOTAL_GB`) | a *capacity ceiling* on total SSD GB in the region | not a cost, not per-node, not per-pod |
+| **Disk** (`pd-ssd`/`pd-balanced`) | the actual billed storage (PVs + node boot disks) | not the quota; the quota just bounds their sum |
+| **Placement** (`runNodePool`) | whether CI adds *new* node disks (Spot) or reuses the static pool | not a quota or cost setting directly — but `ci-spot` is what pushes disk demand up |
+
+</details>
+
 **How the quota is computed — every SSD disk sums against the 500 GB ceiling:**
 
 ```mermaid
@@ -317,16 +361,45 @@ flowchart LR
 | **Running, idle CI** | ~200 GB | ~40 % | ① + 2 static node disks |
 | **Running, CI under load (peak observed)** | ~492 GB | **~98 %** | ① + up to 4 static + several `ci-spot` Spot nodes — *this is where builds wedged* |
 
-**Cost** (approximate GCP list prices for `europe-southwest1`; verify in the [pricing calculator](https://cloud.google.com/products/calculator)):
+**FinOps — cost breakdown** (approximate GCP list prices for `europe-southwest1`; verify in the [pricing calculator](https://cloud.google.com/products/calculator)).
 
-| Item | ≈ Rate | Note |
+*Basic:* the **quota is free**; you pay for **disks** (small) and **compute** (large). Paused ≈ **$20/month** (disks + IP only); running ≈ **$0.55/hour** (compute dominates); off (Decom) = **$0**.
+
+*Advanced:* compute is ~95 % of the running cost, so disk/quota tuning is about **capacity, not the bill** — the bill lever is *node hours* (Pause/Decom) and *Spot* (−60–80 % on compute). Cleaning the ~32 GB of orphaned PDs saves ~$5/mo **and** frees quota.
+
+**① Unit rates:**
+
+| Resource | ≈ Rate | Note |
 |---|---|---|
-| `pd-balanced` disk | ~$0.10 / GB·month | node boot disks + CNPG data PVs |
-| `pd-ssd` disk | ~$0.17 / GB·month | CNPG WAL + small PVCs |
-| **Disk while *paused*** | **≈ $13 / month** | the 102 GB of PVs persist (+ the static IP ~$7) — this is the floor you pay when paused |
-| `e2-standard-8` static node | ~$0.22 / hour ≈ $160 / month each (24×7) | the compute; **Spot is ~60–80 % cheaper** (see [docs/201 § FinOps](../docs/201-ARCHITECTURE.md#finops--cost-analysis)) |
-| `ci-spot` Spot node | per-minute, **scale-to-zero** | billed only while a build runs; $0 at rest |
-| **Quota increase request** | **$0** | the quota itself is free — you only pay for disks you actually create |
+| `pd-ssd` | ~$0.17 / GB·month | low-latency SSD — CNPG data + WAL |
+| `pd-balanced` | ~$0.10 / GB·month | general SSD — node boot, TSDBs, workspaces |
+| `e2-standard-8` (on-demand) | ~$0.22 / hour (~$160/mo) | static pool compute |
+| `e2-standard-8` (**Spot**) | ~$0.05–0.09 / hour | `ci-spot` nodes — **60–80 % cheaper**, preemptible |
+| Cluster management fee | $0.10 / hour | **waived** for the 1st zonal cluster per billing account |
+| Static external IP | ~$7 / month | the persistent Gateway IP |
+| **`SSD_TOTAL_GB` quota** | **$0** | a ceiling, not a charge |
+
+**② Disk cost by component** (the persistent floor — survives Pause):
+
+| Component | Type | GB | ≈ $/month |
+|---|---|---|---|
+| CNPG Postgres — stable HA | `pd-ssd` | 12 | ~$2.0 |
+| CNPG Postgres — develop | `pd-ssd` | 4 | ~$0.7 |
+| Observability (Prometheus/Loki/Tempo) | `pd-balanced` | 30 | ~$3.0 |
+| pgAdmin | `pd-balanced` | 10 | ~$1.0 |
+| Tekton workspaces (≤5 runs) | `pd-balanced` | 14 | ~$1.4 |
+| **Live PV subtotal** | | **70** | **~$8.1** |
+| Orphaned PDs (**reclaimable**) | `pd-ssd` | 32 | ~$5.4 |
+| **Measured total** | | **102** | **~$13.5** |
+
+**③ Total cost by cluster lifecycle state:**
+
+| State | What's billed | ≈ Per hour | ≈ Per month (if left 24×7) |
+|---|---|---|---|
+| **Decom** (destroyed) | nothing | **$0** | **$0** |
+| **Paused** (`Day2.scale.01`, nodes → 0) | PVs (~102 GB) + static IP | ~$0.03 | **~$20** |
+| **Running** (2 static nodes, idle CI) | 2× compute + node disks + PVs + IP | ~$0.55 | ~$345 |
+| **Running + Spot CI burst** | + N `ci-spot` Spot nodes (per build) | +~$0.07 / node·hr | ephemeral (scale-to-zero) |
 
 > 💡 The quota does **not** cost anything — raising it to 2000 does **not** raise the bill. You only ever pay for the disks you actually provision. The quota is purely a *safety ceiling*; the cost lever is **Pause** (drops compute to ~$13/mo) or **Decom** (drops to ~$0).
 
