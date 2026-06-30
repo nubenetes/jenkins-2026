@@ -118,11 +118,16 @@ elif [[ "${J2026_CI_ENGINE}" == "githubactions" ]]; then
   fi
 
   log_step "ARC runner scale set"
-  # At minRunners=0 there is no runner pod to check; assert the AutoscalingRunnerSet CR
-  # registered (the listener long-polls GitHub's queue). The per-fork microservices-ci.yml
-  # workflows live in the forks, not the cluster, so there is no in-cluster job count.
-  check "AutoscalingRunnerSet ${J2026_GHA_RUNNER_SCALE_SET_NAME} registered" \
+  # The CR existing is NOT enough — the controller creates the AutoscalingRunnerSet *before* it
+  # registers with GitHub, so a 403 (missing org runner-admin permission on the App/PAT) leaves
+  # the CR present but unregistered. The real success signal is the AutoscalingListener pod: the
+  # controller only creates it after minting a runner registration token. Check the CR exists AND
+  # a listener is Running. (At minRunners=0 there are no runner pods; the per-fork
+  # microservices-ci.yml workflows live in the forks, not the cluster.)
+  check "AutoscalingRunnerSet ${J2026_GHA_RUNNER_SCALE_SET_NAME} exists" \
     bash -c "kubectl -n '${RUNNER_NS}' get autoscalingrunnerset '${J2026_GHA_RUNNER_SCALE_SET_NAME}'"
+  check "ARC AutoscalingListener Running (scale set registered with GitHub)" \
+    bash -c "for _ in \$(seq 1 18); do kubectl -n '${GHA_NS}' get pods --field-selector=status.phase=Running -o name 2>/dev/null | grep -q listener && exit 0; sleep 5; done; echo 'no Running AutoscalingListener — the scale set did not register; check the controller logs for a 403 (org runner-admin permission on the GitHub App / PAT)'; exit 1"
 
 elif [[ "${J2026_CI_ENGINE}" == "argoworkflows" ]]; then
   ARGOWF_NS="${J2026_ARGOWF_NAMESPACE}"
