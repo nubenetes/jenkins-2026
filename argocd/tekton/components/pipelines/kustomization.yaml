@@ -33,3 +33,18 @@ patches:
         namespace: tekton-pipelines
       data:
         default-service-account: tekton-ci
+        # Pin every TaskRun/PipelineRun pod (and the Affinity Assistant they're co-scheduled
+        # around) to the STATIC node pool (label app=jenkins-2026 -> e2-standard-8, 8 vCPU).
+        # WHY: the pipelines use ReadWriteOnce workspace PVCs, so Tekton's affinity assistant
+        # co-locates every task of a run on ONE node (the only way to share an RWO PVC). With
+        # no nodeSelector, that node can be a small NAP-provisioned one (e.g. e2-standard-2,
+        # 2 vCPU); a later or retried task (e.g. codeql, 500m) then doesn't fit there, and an
+        # affinity-pinned pod can neither move nor trigger a useful scale-up (a new node won't
+        # carry the assistant) -> the PipelineRun hangs in 'ExceededNodeResources' forever.
+        # The big static nodes always exist (no NAP/Spot/quota dependency) and have ample
+        # headroom, so this removes that failure mode deterministically. (CI thus shares the
+        # static pool with the platform, whose CPU use is modest; ~2 concurrent runs fit, more
+        # queue — Pending that resolves, not a permanent hang.)
+        default-pod-template: |
+          nodeSelector:
+            app: jenkins-2026

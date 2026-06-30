@@ -80,6 +80,8 @@ In this repo the pipeline is the JHipster microservices build ported 1:1 from th
 
 **Workspaces & data flow:** the pipeline binds one **RWO PVC** `source` (cloned once by `fetch-source`, reused by every later Task — mirrors the single Jenkins agent workspace; an `affinity-assistant` co-schedules the TaskRuns onto one node so the RWO PVC mounts) plus a `dockerconfig` workspace for registry auth. Tasks pass small values via **results** (`$(tasks.X.results.Y)`) and params.
 
+> **Why the run pods are pinned to the static pool.** Because the affinity assistant forces *all* of a PipelineRun's TaskRuns onto **one** node (the only way to share an RWO PVC), that node must have headroom for the heaviest task. We therefore set a **`default-pod-template` `nodeSelector: {app: jenkins-2026}`** in [`config-defaults`](../argocd/tekton/components/pipelines/kustomization.yaml) so the assistant always lands on the **static pool** (the big `e2-standard-8` nodes), never on a small NAP-autoprovisioned node (e.g. `e2-standard-2`). Without it, a run could pin to a 2-vCPU node where a later or retried task (e.g. `codeql`) can't fit — and an affinity-pinned pod can't move or trigger a useful scale-up (a new node won't carry the assistant), so the run hangs in `ExceededNodeResources`. The static nodes always exist (no NAP/Spot/quota dependency), so this removes that failure mode deterministically; CI shares them with the platform (whose CPU use is modest).
+
 **Supply chain & housekeeping:**
 - **Chains** signs build provenance (SLSA-style attestations) for pushed images.
 - **Pruner** garbage-collects old PipelineRuns/TaskRuns (`historyLimit`, the Tekton equivalent of Jenkins `buildDiscarder`) — keeping pod/image accumulation off the nodes.
