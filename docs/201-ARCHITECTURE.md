@@ -247,17 +247,24 @@ flowchart TB
 
 </details>
 
-The overview reads **top-down as seven lifecycle/plane layers**:
+**How to read it — top-down, by layer:**
 
-- **L0 · Day0 root-of-trust** — human-run, never destroyed.
-- **L1 · Provisioning / IaC** — Terraform.
-- **L2 · GCP edge** — DNS → L7 LB → IAP → Gateway.
-- **L3 · Control plane** — ArgoCD + CI engine + operators + the imperative *push* lane.
-- **L4 · Data / runtime plane** — gateway + microservice + CNPG, on the static-vs-NAP node substrate.
+- **L0 · Day0 root-of-trust** — human-run, *never* torn down: WIF/OIDC keyless trust · the GCS Terraform-state bucket · the permanent DNS zone.
+- **L1 · Provisioning / IaC** — Terraform (one state bucket, per-module prefixes).
+- **L2 · GCP edge** — DNS → L7 LB → **IAP** → Gateway.
+- **L3 · Control plane** — ArgoCD + the chosen CI engine + operators + the imperative *push* lane ArgoCD doesn't own.
+- **L4 · Data / runtime plane** — the JHipster gateway + microservice + CloudNative-PG, on the static-vs-NAP node substrate.
 - **L5 · Observability pipeline** — the OpenTelemetry collectors.
 - **L6 · Backend store** — the one active backend.
 
-**Fill colour encodes the component _type_** (external · Day0/IaC · edge · control · data · observability · nodes · imperative-push · pluggable) — see the in-diagram **Legend**. The two pluggable axes (`ci.engine`: Jenkins xor Tekton; `observability.mode`: one of four) are mutually exclusive — exactly one each. The [Component Diagram](#component-diagram) below drills into the Jenkins / microservices / observability namespace internals.
+**Colours & pluggable choices:**
+
+- **Fill colour = component *type*** — see the **Legend** box (external · Day0/IaC · edge · control · data · observability · nodes · imperative-push · pluggable).
+- **CI engine** (Jenkins **xor** Tekton) and **observability backend** (oss / grafana-cloud / managed-azure / managed-aws) are *mutually exclusive* — exactly one of each per cluster, set in `config/config.yaml` (or the `Day1.cluster.01` inputs), switched deterministically. The three external backends are decoupled, persistent, **keyless** (WIF/OIDC) Day0 resources.
+- **Secrets** — `imperative` by default, or pushed to **GCP Secret Manager** + synced by the **External Secrets Operator** (`secrets.backend=eso`, keyless WIF).
+- **Lean `develop` tier** — optional (`microservices.developTrackEnabled`, **off by default**): a non-HA `microservices-develop` namespace alongside `stable`, folded into the **L4** label, into the same observability stack.
+
+The [Component Diagram](#component-diagram) below drills into the Jenkins / microservices / observability namespace internals.
 
 ## Component Diagram
 
