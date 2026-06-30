@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.48] - 2026-06-30
+
+### Added
+- **Two new Grafana Cloud dashboard exports** in
+  `observability/grafana/dashboards-cloud-export/` (v2 schema, YAML + JSON): **CI-CD / Node
+  Auto-Provisioning (Spot)** (`jenkins2026-node-autoprovisioning`) and **CI-CD / Tekton CI
+  Observability** (`jenkins2026-tekton-overview`), redesigned in Grafana Cloud and exported
+  on 2026-06-29 from stack `stacks-1707745`. The folder is the verbatim provenance backup
+  (not the publish source). Its `README.md` is updated accordingly: counts 6 → 8, two new
+  mapping rows (clickable), the dual export-session/stack provenance, and the note that the
+  newer exports keep stable `jenkins2026-*` uids (vs the original six's random re-import ids).
+
 ## [v0.28.47] - 2026-06-29
 
 Increment over v0.28.46 (surface node machine type for static-pool nodes).
