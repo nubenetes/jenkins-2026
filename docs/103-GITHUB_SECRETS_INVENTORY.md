@@ -344,13 +344,39 @@ Get-Content -Raw .\<app>.private-key.pem | gh secret set ARC_GITHUB_APP_PRIVATE_
 (Or set all three in the UI: repo → *Settings → Secrets and variables → Actions → New
 repository secret* — for the key, paste the full `.pem` including the `-----BEGIN/END-----` lines.)
 
-**6 — Re-deploy.** `authMode: app` is already the default, so **no config change is
+**6 — Allow your (public) forks to use the runners.** This step is **easy to miss and
+will silently break every build if skipped.** GitHub **blocks public repositories from
+using self-hosted runners by default** — a pull request from a fork could otherwise run
+untrusted code on your runners. The nubenetes microservices forks
+(`jhipster-sample-app-gateway`, `jhipster-sample-app-microservice`) are **public**, so
+without this the scale set registers perfectly but **workflow runs sit in `queued`
+forever**: GitHub never routes their jobs to the runners, and the listener logs
+`Calculated target runner count {"assigned job": 0, …}` (no runner pod is ever created).
+Enable it once, on the runner group that owns the scale set:
+
+- Open **`https://github.com/organizations/nubenetes/settings/actions/runner-groups`**
+  (Org → Settings → Actions → *Runner groups*).
+- Open the group that owns `jenkins-2026-runners` — the **Default** group, unless you set
+  `githubactions.runnerGroup`.
+- Tick **Allow public repositories**.
+- Under **Repository access**, choose **All repositories** (or add the microservices forks
+  explicitly).
+- **Save.**
+
+There is **no secret or config flag for this** — it is a one-time org-admin UI toggle.
+(If you instead keep the forks **private**, skip this step: private repos use self-hosted
+runners without the toggle.)
+
+**7 — Re-deploy.** `authMode: app` is already the default, so **no config change is
 needed**. Re-run `Day1.cluster.01-gke` (or `Day2.redeploy.06-githubactions`):
 `01-namespaces.sh` now finds the three secrets and builds the `arc-github-app` Secret
 with `github_app_id` / `github_app_installation_id` / `github_app_private_key` (instead
 of `github_token`). The controller mints a registration token, the **AutoscalingListener**
 pod starts in `arc-systems`, and the `jenkins-2026-runners` scale set registers —
-`test/smoke-test.sh`'s *"AutoscalingRunnerSet registered"* check then passes.
+`test/smoke-test.sh`'s *"ARC AutoscalingListener Running"* check then passes. With step 6
+done, a `push`/PR to a fork now spins up an ephemeral runner pod in `arc-runners` and the
+run executes (visible in that fork's Actions tab — there is no in-cluster CI UI; see
+[`404-GITHUB_ACTIONS.md`](./404-GITHUB_ACTIONS.md)).
 
 ### Troubleshooting: the runner scale set never registers
 
