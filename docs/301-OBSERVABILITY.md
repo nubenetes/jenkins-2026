@@ -135,8 +135,13 @@ plan when you want full cluster-infra metrics back.
 > `includeMetrics`) — roughly a handful of series per node (~30–50 total), negligible
 > against the 15k cap. (`kube_node_labels` carries `label_node_kubernetes_io_instance_type`
 > — the machine type, the only cluster-wide source of it for static-pool nodes, whose names
-> don't embed it; KSM already exposes that label via the chart's default
-> `--metric-labels-allowlist`, so only the scrape keep-list needed it.) That is exactly what the **CI-CD / Node
+> don't embed it; the grafana-cloud KSM exposes that label via the k8s-monitoring chart's
+> default `--metric-labels-allowlist`, so only the scrape keep-list needed it. On the **other
+> backends** the allow-list is **not** a chart default, so it's set explicitly —
+> `kube-state-metrics.metricLabelsAllowlist` in [`values-oss.yaml`](../observability/grafana/values-oss.yaml)
+> (oss) and `--metric-labels-allowlist` on the standalone KSM in
+> [`03-observability.sh`](../scripts/03-observability.sh) (managed-azure/aws) — so the
+> machine-type panel works across **all four** backends.) That is exactly what the **CI-CD / Node
 > Auto-Provisioning (Spot)** dashboard needs: it derives Spot / ComputeClass membership from
 > the node **taints** (`kube_node_spec_taint{key="cloud.google.com/gke-spot"}` /
 > `…/compute-class`), which KSM exposes **by default** — *not* from node labels
