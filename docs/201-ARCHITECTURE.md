@@ -939,6 +939,8 @@ Running Jenkins, ArgoCD, pgAdmin, two Postgres HA clusters (CNPG), OpenTelemetry
 - **Compute**: ~`$0.22/hour` per `e2-standard-8` in Madrid (`europe-southwest1`).
 - **Total run rate**: ~`$0.70–$0.80/hour` for the active 3-node cluster.
 - **Per-session cost**: ~`$0.10–$0.20` for a full 15–25 minute provision + smoke test + teardown cycle.
+- **Disk floor (paused)**: with `Day2.scale.01 Pause` (nodes → 0) compute stops but the **~102 GB of persistent PVs** (CNPG databases + platform) remain — ≈`$13/month` of `pd-balanced`/`pd-ssd` (+ the static IP ~`$7`). `Decom` drops this to ~`$0`.
+- **The `SSD_TOTAL_GB` quota is the binding capacity ceiling** (500 GB; every node boot disk + PV counts) and the limit on `ci-spot` Spot CI concurrency. For the full **disk-quota computation diagram, per-state usage %, cost breakdown, and the Google increase request (500 → 2000)** see [docs/501 § The `SSD_TOTAL_GB` quota](./501-PLATFORM_OPERATIONS.md#the-ssd_total_gb-quota--how-its-computed-what-it-costs-and-the-increase-request).
 - **Always decommission**: Run `Decom.cluster.01 GKE decommission` when finished — never leave the cluster running overnight.
 
 ---

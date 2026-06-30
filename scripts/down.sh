@@ -195,6 +195,40 @@ fi
 #     the API server releases the namespace at once — event-driven, NO fixed
 #     `--timeout` wait (the old `delete --timeout=2m` produced the noisy
 #     "timed out waiting for the condition" lines and could add ~2 min per slow ns).
+# reclaim_namespace_pvcs <ns>
+# PREVENTION half of the orphaned-PD story (the cleanup half is
+# scripts/sweep-orphaned-pds.sh). Deletes the namespace's PVCs *gracefully* —
+# WITHOUT stripping the kubernetes.io/pvc-protection finalizer — so the CSI
+# external-provisioner reclaims each PV (reclaimPolicy=Delete) and DELETES the
+# backing GCP persistent disk while the driver is still alive. We then wait
+# (bounded) for the backing PVs to disappear = PDs actually gone. Without this,
+# drain_namespace's finalizer-strip + the subsequent terraform-destroy would
+# remove the PVCs from etcd before CSI deletes the PDs -> orphaned disks that
+# accumulate one generation per rebuild and burn SSD_TOTAL_GB quota + cost.
+# Anything not reclaimed within the bound is left to the orphan-PD sweep.
+# See docs/501-PLATFORM_OPERATIONS.md § Orphaned persistent disks.
+reclaim_namespace_pvcs() {
+  local ns="$1"
+  kubectl get namespace "${ns}" > /dev/null 2>&1 || return 0
+  local pvs
+  pvs="$(kubectl get pvc -n "${ns}" -o jsonpath='{range .items[*]}{.spec.volumeName}{"\n"}{end}' 2>/dev/null | grep . || true)"
+  [[ -z "${pvs}" ]] && return 0
+  log_info "Reclaiming $(printf '%s\n' "${pvs}" | grep -c .) PV(s) in ${ns} via graceful PVC deletion (CSI deletes the PDs)..."
+  # Graceful delete (keep the pvc-protection finalizer); pods were already removed above.
+  kubectl delete pvc -n "${ns}" --all --wait=false 2>/dev/null || true
+  # Bounded wait (~2 min) for the backing PVs to vanish = PDs deleted by CSI.
+  local i=0 remaining
+  while [[ $i -lt 60 ]]; do
+    remaining=0
+    while read -r pv; do
+      [[ -n "${pv}" ]] && kubectl get pv "${pv}" > /dev/null 2>&1 && ((remaining++))
+    done <<< "${pvs}"
+    [[ "${remaining}" -eq 0 ]] && { log_info "All PVs in ${ns} reclaimed (PDs deleted)."; return 0; }
+    sleep 2; ((i++))
+  done
+  log_warn "Some PVs in ${ns} not reclaimed within ~2m - the orphan-PD sweep will catch them."
+}
+
 drain_namespace() {
   local ns="$1"
   kubectl get namespace "${ns}" > /dev/null 2>&1 || { log_info "Namespace ${ns} does not exist - skipping"; return 0; }
@@ -245,6 +279,9 @@ if [[ "${J2026_DELETE_NAMESPACES:-false}" == "true" ]]; then
   for ns in "${J2026_GATEWAY_NAMESPACE}" "${J2026_JENKINS_NAMESPACE}" "${J2026_TEKTON_NAMESPACE}" "${J2026_TEKTON_PIPELINE_NAMESPACE}" pipelines-as-code tekton-chains "${J2026_OBS_NAMESPACE}" "${J2026_GRAFANA_OSS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" "${J2026_ARGOCD_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}"; do
     # microservices-develop only exists when the develop track was enabled;
     # drain_namespace no-ops on an absent namespace, so listing it is always safe.
+    # First reclaim PVCs gracefully (CSI deletes the PDs → no orphaned disks),
+    # THEN force-drain the namespace (finalizer-strip fallback for any straggler).
+    reclaim_namespace_pvcs "${ns}"
     drain_namespace "${ns}"
   done
 else

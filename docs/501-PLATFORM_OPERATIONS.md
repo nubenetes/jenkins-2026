@@ -253,6 +253,221 @@ The repository has been refactored to serve as a **Golden Path Internal Develope
 > and read the `SSD_TOTAL_GB` quota ceiling + cold-start behaviour) see the
 > [NAP → Spot CI nodes runbook](./runbooks/nap-spot-provisioning.md).
 
+#### The `SSD_TOTAL_GB` quota — how it's computed, what it costs, and the increase request
+
+> **TL;DR** — `SSD_TOTAL_GB` is a **regional GCP quota** (currently **500 GB** in `europe-southwest1`) that caps the *total* SSD-backed disk in the region. It counts **every** `pd-ssd` **and** `pd-balanced` disk — node boot disks *and* PVs — so it is the **binding capacity ceiling** for the cluster, and the reason `ci-spot` elasticity is bounded. It is **only meaningfully consumed at scale by `ci-spot`**; the `static` default needs no extra headroom.
+
+<details>
+<summary>🧠 <b>Mental model</b> — the whole picture in one map (read this first)</summary>
+
+**Basic version (one paragraph):** GCP limits how much fast disk (SSD) you can have in the region to **500 GB**. *Everything* with a disk counts: the databases, the monitoring stack, **and every VM's boot disk**. When CI runs on cheap **Spot** nodes, each new node adds a 50 GB boot disk — pile up enough at once and you hit the 500 GB wall, so the next build can't get a node and waits. The wall isn't a money limit (the quota is free); it's a **safety ceiling**. You pay only for disks that actually exist — which is why **pausing** the cluster (deletes the VM disks) drops the bill to almost nothing.
+
+**Advanced version (the model):**
+
+```mermaid
+mindmap
+  root((SSD_TOTAL_GB))
+    Quota = ceiling, NOT cost
+      500 GB region limit
+      counts every pd-ssd + pd-balanced
+      self-service override caps at 500
+      raise via QuotaPreference -> 2000 pending
+    What consumes it
+      Persistent PVs ~70 GB
+        CNPG pd-ssd 1GB data+WAL
+        Observability pd-balanced 10GB
+        Tekton workspaces RWO
+      Static node disks 100-200 GB
+      Spot ci-spot disks N x 50
+      Orphans ~32 GB reclaimable
+    Cost drivers
+      Quota itself = 0 dollars
+      Paused = disk floor ~13/mo
+      Running = compute dominates
+      Spot = ~60-80% cheaper compute
+    Levers
+      runNodePool static default
+      Pause or Decom
+      clean orphaned PDs
+      fewer HA Postgres instances
+```
+
+**The three things people conflate (and shouldn't):**
+| Concept | What it is | What it is NOT |
+|---|---|---|
+| **Quota** (`SSD_TOTAL_GB`) | a *capacity ceiling* on total SSD GB in the region | not a cost, not per-node, not per-pod |
+| **Disk** (`pd-ssd`/`pd-balanced`) | the actual billed storage (PVs + node boot disks) | not the quota; the quota just bounds their sum |
+| **Placement** (`runNodePool`) | whether CI adds *new* node disks (Spot) or reuses the static pool | not a quota or cost setting directly — but `ci-spot` is what pushes disk demand up |
+
+</details>
+
+**How the quota is computed — every SSD disk sums against the 500 GB ceiling:**
+
+```mermaid
+flowchart LR
+    PV["① Persistent PVs — survive pause<br/>CNPG Postgres HA (data+WAL × instances × services)<br/>+ ArgoCD / Jenkins / Tekton workspace PVCs<br/>≈ 102 GB · 54 disks (measured, paused)"]
+    STATIC["② Static pool boot disks<br/>2–4 × e2-standard-8 × 50 GB<br/>= 100–200 GB"]
+    SPOT["③ ci-spot NAP node boot disks<br/>N × 50 GB — elastic, one per concurrent build node<br/>(0 when no CI running)"]
+
+    PV --> SUM{{"Σ must stay ≤ 500 GB<br/>(SSD_TOTAL_GB, region-wide)"}}
+    STATIC --> SUM
+    SPOT --> SUM
+    SUM -->|"within budget"| OK["✅ disks provision · nodes come up"]
+    SUM -->|"exceeds 500"| BAD["❌ GCE refuses the disk<br/>agent Pod stuck Pending<br/>ScaleUpFailed … Quota 'SSD_TOTAL_GB' exceeded"]
+
+    classDef ok fill:#0b6,stroke:#063,color:#fff;
+    classDef bad fill:#c50,stroke:#720,color:#fff;
+    class OK ok;
+    class BAD bad;
+```
+
+①+② are **fixed** (the platform + databases); only **③ grows** with `ci-spot` concurrency. So the usable Spot budget is roughly `500 − (PVs) − (static disks)` ÷ 50 GB ≈ **3–4 concurrent Spot CI nodes** before the ceiling bites.
+
+**Detailed disk inventory — ① the persistent PVs** (measured live; the architectural footprint, paused state):
+
+| Namespace | Component | PVC(s) | Disk type | Size each | Qty | Subtotal | Why this size/type |
+|---|---|---|---|---|---|---|---|
+| `microservices` | **CNPG Postgres — stable HA** | `postgres-{gateway,jhipstersample}-{1,2,3}` + `…-wal` | `pd-ssd` | 1 GB | 12 | **12 GB** | 3 HA instances × 2 services × (data + WAL); `pd-ssd` for low-latency WAL fsync / random I/O |
+| `microservices-develop` | **CNPG Postgres — lean dev** | `postgres-{gateway,jhipstersample}-1` + `…-wal` | `pd-ssd` | 1 GB | 4 | **4 GB** | single instance × 2 services × (data + WAL); non-HA dev tier |
+| `observability` | **Prometheus TSDB** | `prometheus-…-0` | `pd-balanced` | 10 GB | 1 | 10 GB | metrics time-series store (mode=oss); balanced is enough |
+| `observability` | **Loki** | `storage-oss-loki-0` | `pd-balanced` | 10 GB | 1 | 10 GB | log chunks store |
+| `observability` | **Tempo** | `storage-oss-tempo-0` | `pd-balanced` | 10 GB | 1 | 10 GB | trace store |
+| `pgadmin` | **pgAdmin** | `pgadmin-pgadmin4` | `pd-balanced` | 10 GB | 1 | 10 GB | pgAdmin config/session state |
+| `tekton-ci` | **Tekton run workspaces** | `pvc-<hash>` (volumeClaimTemplate) | `pd-balanced` | 1–4 GB | ≤5 | ~14 GB | one RWO `source` workspace per PipelineRun; bounded by the Pruner `historyLimit: 5` |
+| | | | | | | **≈ 70 GB live** | |
+
+> ⚠️ **Orphaned disks inflate the measured total.** The region currently shows **102 GB / 54 disks**, ~32 GB above the ~70 GB live footprint. Evidence: **duplicate PVC names that cannot coexist in a live cluster** (e.g. `postgres-gateway-2` maps to **3** separate disks) and disks spanning **3 creation dates** (`06-27`, `06-28`, `06-29`). These orphans count against the quota and the ~$13/mo disk floor — see the dedicated subsection below for the cause and the **two-layer auto-reclaim**.
+
+#### Orphaned persistent disks — cause, prevention (①), and the sweep (②)
+
+When a `Decom` tears the cluster down via `terraform destroy`, the GKE control plane (and with it the **CSI driver**) disappears **before** Kubernetes gets to delete the PVCs — so `reclaimPolicy: Delete` never fires and the backing `pd-*` disks are **orphaned** in the GCP project. They **accumulate one generation per rebuild**, each costing money and consuming `SSD_TOTAL_GB`. Two complementary layers handle this automatically (durable default; disable with `J2026_ORPHAN_PD_SWEEP=false`):
+
+```mermaid
+flowchart LR
+    subgraph PREV["① Prevention — scripts/down.sh (at teardown)"]
+        A["pods already removed"] --> B["reclaim_namespace_pvcs:<br/>delete PVCs GRACEFULLY<br/>(keep pvc-protection finalizer)"]
+        B --> C["CSI external-provisioner<br/>reclaims PV (reclaimPolicy=Delete)<br/>→ deletes the PD"]
+        C --> D["wait ≤2m for PVs to vanish"]
+        D -->|"straggler"| E["finalizer-strip fallback"]
+    end
+    subgraph SWEEP["② Sweep — scripts/sweep-orphaned-pds.sh (at every cluster-up)"]
+        F["kubectl get pv → live disk handles"] --> G{"cluster reachable?"}
+        G -->|"no (paused)"| H["ABORT — never guess"]
+        G -->|"yes"| I["list unattached pvc-* disks"]
+        I --> J["delete those NOT in the live set"]
+    end
+    E -.->|"anything missed"| F
+
+    classDef bad fill:#c50,stroke:#720,color:#fff;
+    class H bad;
+```
+
+| Layer | File | When | What it does | Why it's safe |
+|---|---|---|---|---|
+| **① Prevention** | [`scripts/down.sh`](../scripts/down.sh) `reclaim_namespace_pvcs` | teardown (`Decom`, `J2026_DELETE_NAMESPACES=true`) | deletes PVCs **gracefully** (finalizer intact) so CSI reclaims each PD *before* the cluster is destroyed; finalizer-strip only as fallback | runs while CSI is alive; bounded ~2 min/ns; data-namespace deletion is already gated behind the explicit `DELETE_NAMESPACES` flag |
+| **② Sweep** | [`scripts/sweep-orphaned-pds.sh`](../scripts/sweep-orphaned-pds.sh) (called by [`up.sh`](../scripts/up.sh)) | every **cluster-up** (Day1), or standalone | reconciles all unattached `pvc-*` disks against live PV `volumeHandle`s and deletes the difference | deletes **only** `pvc-*` (never `gke-*` node disks), **only** unattached, **only** if not referenced by a live PV; **aborts if the cluster is unreachable** so a *paused* cluster's PVs are never mistaken for "0 live PVs" |
+
+**Run it standalone** (e.g. after a `Resume`, with the cluster reachable):
+
+```bash
+# preview first (deletes nothing):
+J2026_ORPHAN_PD_SWEEP_DRYRUN=true scripts/sweep-orphaned-pds.sh
+# then the real sweep:
+scripts/sweep-orphaned-pds.sh
+```
+
+> 🔒 **Why the sweep refuses to run against a paused cluster.** Identifying orphans means "every `pvc-*` disk **not** backing a live PV". If `kubectl` can't reach the cluster, the live-PV list comes back empty and *every* disk would look orphaned — including a paused cluster's live databases. The sweep therefore **hard-aborts** when `kubectl get pv` fails. This is exactly why the current ~32 GB of orphans are cleaned at the **next cluster-up**, not while paused.
+
+**Disk class — why each workload gets `pd-ssd` vs `pd-balanced`:**
+
+| Disk class | Workloads | Rationale | ≈ Cost |
+|---|---|---|---|
+| **`pd-ssd`** | CNPG Postgres data + WAL | DB needs low-latency random I/O + fast WAL fsync (commit latency) | ~$0.17 / GB·mo |
+| **`pd-balanced`** | node boot disks · Prometheus/Loki/Tempo · pgAdmin · Tekton workspaces | general-purpose SSD; ample for OS/boot, append-mostly TSDB, and scratch | ~$0.10 / GB·mo |
+
+**② + ③ — node boot disks (static vs Spot) and the workload each serves:**
+
+| Disk | Node pool | Class · size | Lifecycle | Workload it carries | Quota impact |
+|---|---|---|---|---|---|
+| **Static node boot** | `jenkins-2026-pool` | `pd-balanced` · 50 GB | always-on (0 only when **Paused**) | platform (ArgoCD/Jenkins/observability/CNPG) **+ CI build pods by default** (`runNodePool: static`) | **fixed** — 2–4 nodes = 100–200 GB |
+| **Spot node boot** | NAP `ci-spot` (auto-created) | `pd-balanced` · 50 GB | **per-build, scale-to-zero** | CI build pods **only when** `runNodePool: ci-spot` | **elastic** — N × 50 GB, 0 at rest |
+| **Persistent PV** | — (CSI PD, not node-bound) | `pd-ssd`/`pd-balanced` · 1–10 GB | survives Pause; deleted only with the PVC | databases · observability · Tekton workspaces | **fixed** — ~70 GB live |
+
+**Usage these days (measured, limit = 500 GB):**
+
+| Cluster state | SSD used | % of 500 | What's on disk |
+|---|---|---|---|
+| **Paused** (`Day2.scale.01`, nodes → 0) | **102 GB** | **~20 %** | only ① — the 54 persistent PVs (DBs + platform); node disks are deleted |
+| **Running, idle CI** | ~200 GB | ~40 % | ① + 2 static node disks |
+| **Running, CI under load (peak observed)** | ~492 GB | **~98 %** | ① + up to 4 static + several `ci-spot` Spot nodes — *this is where builds wedged* |
+
+**FinOps — cost breakdown** (approximate GCP list prices for `europe-southwest1`; verify in the [pricing calculator](https://cloud.google.com/products/calculator)).
+
+*Basic:* the **quota is free**; you pay for **disks** (small) and **compute** (large). Paused ≈ **$20/month** (disks + IP only); running ≈ **$0.55/hour** (compute dominates); off (Decom) = **$0**.
+
+*Advanced:* compute is ~95 % of the running cost, so disk/quota tuning is about **capacity, not the bill** — the bill lever is *node hours* (Pause/Decom) and *Spot* (−60–80 % on compute). Cleaning the ~32 GB of orphaned PDs saves ~$5/mo **and** frees quota.
+
+**① Unit rates:**
+
+| Resource | ≈ Rate | Note |
+|---|---|---|
+| `pd-ssd` | ~$0.17 / GB·month | low-latency SSD — CNPG data + WAL |
+| `pd-balanced` | ~$0.10 / GB·month | general SSD — node boot, TSDBs, workspaces |
+| `e2-standard-8` (on-demand) | ~$0.22 / hour (~$160/mo) | static pool compute |
+| `e2-standard-8` (**Spot**) | ~$0.05–0.09 / hour | `ci-spot` nodes — **60–80 % cheaper**, preemptible |
+| Cluster management fee | $0.10 / hour | **waived** for the 1st zonal cluster per billing account |
+| Static external IP | ~$7 / month | the persistent Gateway IP |
+| **`SSD_TOTAL_GB` quota** | **$0** | a ceiling, not a charge |
+
+**② Disk cost by component** (the persistent floor — survives Pause):
+
+| Component | Type | GB | ≈ $/month |
+|---|---|---|---|
+| CNPG Postgres — stable HA | `pd-ssd` | 12 | ~$2.0 |
+| CNPG Postgres — develop | `pd-ssd` | 4 | ~$0.7 |
+| Observability (Prometheus/Loki/Tempo) | `pd-balanced` | 30 | ~$3.0 |
+| pgAdmin | `pd-balanced` | 10 | ~$1.0 |
+| Tekton workspaces (≤5 runs) | `pd-balanced` | 14 | ~$1.4 |
+| **Live PV subtotal** | | **70** | **~$8.1** |
+| Orphaned PDs (**reclaimable**) | `pd-ssd` | 32 | ~$5.4 |
+| **Measured total** | | **102** | **~$13.5** |
+
+**③ Total cost by cluster lifecycle state:**
+
+| State | What's billed | ≈ Per hour | ≈ Per month (if left 24×7) |
+|---|---|---|---|
+| **Decom** (destroyed) | nothing | **$0** | **$0** |
+| **Paused** (`Day2.scale.01`, nodes → 0) | PVs (~102 GB) + static IP | ~$0.03 | **~$20** |
+| **Running** (2 static nodes, idle CI) | 2× compute + node disks + PVs + IP | ~$0.55 | ~$345 |
+| **Running + Spot CI burst** | + N `ci-spot` Spot nodes (per build) | +~$0.07 / node·hr | ephemeral (scale-to-zero) |
+
+> 💡 The quota does **not** cost anything — raising it to 2000 does **not** raise the bill. You only ever pay for the disks you actually provision. The quota is purely a *safety ceiling*; the cost lever is **Pause** (drops compute to ~$13/mo) or **Decom** (drops to ~$0).
+
+**Quota options — what you can set and how:**
+
+| Option | Effective `SSD_TOTAL_GB` | Cost | Mechanism / constraint |
+|---|---|---|---|
+| **Current** (project default) | **500 GB** | — | the region default for `europe-southwest1` |
+| **Self-service override** | **0 – 500 GB** | $0 | `google_service_usage_consumer_quota_override` (Terraform) / Service Usage API — can only **match or lower**; any value >500 → `COMMON_QUOTA_CONSUMER_OVERRIDE_TOO_HIGH` |
+| **Approved increase request** | up to the granted value (**2000 filed**) | $0 | Cloud Quotas `QuotaPreference` (`SSD-TOTAL-GB-per-project-region`) / Console → Quotas — **needs Google approval** (currently pending) |
+| **Reduce demand instead** (no quota change) | n/a | **saves $** | `runNodePool: static` (no per-build disk) · fewer HA instances (`postgresInstances` 3→1) · **clean orphaned PDs** (~32 GB reclaimable now) |
+
+**The increase request to Google (500 → 2000):**
+- A consumer-quota **override** caps at the self-service max, which for `SSD_TOTAL_GB` **equals the current limit (500)** → higher returns `COMMON_QUOTA_CONSUMER_OVERRIDE_TOO_HIGH`. **Not Terraform-able** (an override to 2000 would fail the apply).
+- Going above 500 needs an **approved increase request**, submitted via the **Cloud Quotas API** as a `QuotaPreference` (`cloudquotas.googleapis.com`, quotaId `SSD-TOTAL-GB-per-project-region`, region `europe-southwest1`).
+- **Status:** a request to **2000** was filed (`QuotaPreference ssd-total-gb-esw1`); it currently shows `preferredValue: 2000`, `grantedValue: 500`, i.e. **pending Google's approval** (small bumps auto-approve, a 4× may go to human review — minutes to days). Re-`GET` the preference (or Console → *IAM & Admin → Quotas*) and watch `grantedValue` catch up.
+
+**Roadmap / decision guide:**
+
+| Goal | Action |
+|---|---|
+| **Default / now** — robust CI, no quota pressure | `{jenkins,tekton}.runNodePool: static` (no per-build disk). 500 GB is plenty. |
+| **Cut idle cost** | **Pause** (`Day2.scale.01`) → ~$13/mo · or **Decom** → ~$0 |
+| **Enable Spot CI at concurrency** | Wait for the 500 → 2000 grant, **then** flip **Jenkins** to `runNodePool: ci-spot` (best Spot fit). Tekton stays `static`. |
+| **More DB headroom without more quota** | reduce the HA Postgres footprint (3 → 1 instance on the develop tier) — fewer PVs |
+
+See the live-validation steps + the exact API call in [`docs/runbooks/nap-spot-provisioning.md`](runbooks/nap-spot-provisioning.md).
+
 #### Jenkins vs Tekton on Spot (`ci-spot`) — why the placement flag is *per engine*
 
 Both CI engines can target the `ci-spot` ComputeClass, but they have **fundamentally different pod-scheduling shapes**, so the same Spot node behaves very differently under each. This is why placement is a **separate flag per engine** ([`jenkins.runNodePool`](../config/config.yaml) / [`tekton.runNodePool`](../config/config.yaml)) rather than one shared knob — you want to make the engine-appropriate choice, and the engines are mutually exclusive anyway (`ci.engine`) so a shared flag would only ever describe the active one.

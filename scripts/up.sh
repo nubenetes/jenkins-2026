@@ -26,6 +26,11 @@ source "${SCRIPT_DIR}/lib/config.sh"
 log_step "jenkins-2026 up - platform=${J2026_PLATFORM} ci-engine=${J2026_CI_ENGINE} observability=${J2026_OBS_MODE}"
 
 "${SCRIPT_DIR}/00-check-prereqs.sh"
+# Reclaim any orphaned CSI persistent disks left by a previous incarnation BEFORE
+# this cluster provisions its own (they cost money + burn the SSD_TOTAL_GB quota).
+# Safe + idempotent: only deletes unattached pvc-* disks not referenced by a live
+# PV, and aborts if the cluster is unreachable. Non-fatal. See docs/501.
+bash "${SCRIPT_DIR}/sweep-orphaned-pds.sh" || log_warn "Orphan-PD sweep failed (non-fatal) - continuing"
 "${SCRIPT_DIR}/01-namespaces.sh"
 "${SCRIPT_DIR}/02-otel-operator.sh"
 
