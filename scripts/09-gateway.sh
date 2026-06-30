@@ -452,7 +452,12 @@ fi
 
 
 log_step "Generating HealthCheckPolicies (argocd, microservices; jenkins only when ci.engine=jenkins)"
-if [[ "${J2026_CI_ENGINE}" != "tekton" ]]; then
+# Jenkins HealthCheckPolicy ONLY when Jenkins is the CI engine - the other engines retire
+# the Jenkins Service + namespace (tekton/githubactions/argoworkflows), so an explicit ==
+# check, not != tekton: != tekton wrongly emitted healthcheckpolicy-jenkins.yaml in
+# githubactions/argoworkflows mode and `kubectl apply` failed with `namespaces "jenkins"
+# not found` (the jenkins ns doesn't exist there).
+if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
   cat >"${GENERATED_DIR}/healthcheckpolicy-jenkins.yaml" <<EOT
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
