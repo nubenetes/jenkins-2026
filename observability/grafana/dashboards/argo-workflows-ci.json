@@ -15,10 +15,10 @@
       }
     ]
   },
+  "description": "Argo Workflows container-native CI. Metrics from the workflow-controller Prometheus endpoint (argo_workflows_count{status}, argo_workflows_pods_count, argo_workflows_operation_duration_seconds), complemented by kube-state-metrics pod phases — the lean slice 03-observability.sh keeps in every observability mode, so this board works across all four backends.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
-  "id": null,
   "liveNow": false,
   "panels": [
     {
@@ -47,10 +47,10 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "## Argo Workflows CI Observability\n\nReal-time and historical view of the **Argo Workflows controller** (`workflow-controller`) running container-native CI pipelines in this cluster. Tracks every Workflow from submission through completion, with its pods scheduled on the **Spot `ci-spot`** capacity.\n\n**Five signals this dashboard tracks**\n- 🟢 **Health** — are workflows succeeding? → *Workflow Success Rate*, *Workflows by Phase*, *Outcome Distribution*\n- ⚡ **Speed** — how long do workflows take? → *Workflow Duration* (mean), *Mean Workflow Duration*\n- 📦 **Capacity** — is the controller keeping up? → *Running Workflows*, *Workflow Pods*\n- 📊 **Velocity** — how fast is CI delivering? → *CI Throughput*, *Total Workflows*\n- 📋 **Logs & Traces** — what happened in a specific run? → *Workflow Pod Logs*, *Traces*, *Log Error Rate*, *Log Volume by Level*\n\n> **Scope:** use **Status**, **Namespace**, and **Log Namespace** filters to narrow every panel · Metrics come from the `workflow-controller` Prometheus endpoint (`argo_workflows_*`); pod-level signals from kube-state-metrics. Works in **all four** observability backends.",
+        "content": "## Argo Workflows CI Observability\n\nReal-time and historical view of the **Argo Workflows controller** (`workflow-controller`) running container-native CI pipelines in this cluster. Tracks every Workflow from submission through completion, with its pods scheduled on the **Spot `ci-spot`** capacity.\n\n**Five signals this dashboard tracks**\n- 🟢 **Health** — are workflows succeeding? → *Workflow Success Rate*, *Workflows by Phase*, *Outcome Distribution*\n- ⚡ **Speed** — how long do workflows take? → *Workflow Duration* (mean), *Mean Workflow Duration*\n- 📦 **Capacity** — is the controller keeping up? → *Running Workflows*, *Workflow Pods*\n- 📊 **Velocity** — how fast is CI delivering? → *CI Throughput*, *Total Workflows*\n- 📋 **Logs & Traces** — what happened in a specific run? → *Workflow Pod Logs*, *Traces*, *Log Error Rate*, *Log Volume by Level*\n\n> **Scope:** use **Status**, **Log Namespace**, and **Trace Namespace** filters to narrow every panel · Metrics come from the `workflow-controller` Prometheus endpoint (`argo_workflows_*`); pod-level signals from kube-state-metrics. Works in **all four** observability backends.",
         "mode": "markdown"
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [],
       "title": "",
       "type": "text"
@@ -69,10 +69,10 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "**Step 1 · Read the KPI cards (top row)**\n- **Running Workflows** — workflows executing *right now* (`argo_workflows_gauge{status=\"Running\"}`)\n- **Workflows (range)** — total completions in the window\n- **Success Rate** — 🟢 ≥ 99 % · 🟡 ≥ 80 % · 🔴 below 80 %\n- **Workflow Pods** — `argo_workflows_pods_gauge` currently active\n\n**Step 2 · Read the trend charts**\n*Workflows by Phase* shows Running/Succeeded/Failed/Error/Pending over time. A rising `Failed`/`Error` stack means a step is erroring.\n\n**Step 3 · Narrow with the Log level filter**\nSet **Log level → error** so *Workflow Pod Logs* shows only failure events from the workflow pods.\n\n**Step 4 · Drill into a Trace**\nClick any **Trace ID** in *Workflow Traces* to open the span waterfall for that run.",
+        "content": "**Step 1 · Read the KPI cards (top row)**\n- **Running Workflows** — workflows executing *right now* (`argo_workflows_count{status=\"Running\"}`)\n- **Workflows (range)** — total completions in the window\n- **Success Rate** — 🟢 ≥ 99 % · 🟡 ≥ 80 % · 🔴 below 80 %\n- **Workflow Pods** — `argo_workflows_pods_count` currently active\n\n**Step 2 · Read the trend charts**\n*Workflows by Phase* shows Running/Succeeded/Failed/Error/Pending over time. A rising `Failed`/`Error` stack means a step is erroring.\n\n**Step 3 · Narrow with the Log level filter**\nSet **Log level → error** so *Workflow Pod Logs* shows only failure events from the workflow pods.\n\n**Step 4 · Drill into a Trace**\nClick any **Trace ID** in *Workflow Traces* to open the span waterfall for that run.",
         "mode": "markdown"
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [],
       "title": "🟢 Basic Usage Guide",
       "type": "text"
@@ -91,10 +91,10 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "**Duration regression**\nIf *Mean Workflow Duration* climbs while throughput is flat → a step got slower or the cluster is resource-constrained; open *Traces* for the longest span and check node CPU/memory.\n\n**Workflows stuck Pending**\n*Workflow Pods* not rising while *Running Workflows* climbs → pods can't schedule (Spot node cold-start / preemption / quota). Cross-check the **Node Auto-Provisioning** board.\n\n**Queue build-up**\n*Running Workflows* climbing without matching completions → backlog. Check the controller: `kubectl top pod -n argo` and the `argo_workflows_workers_busy` / queue-depth metrics.\n\n**Key metric reference**\n\n| Metric | Type | What it tracks |\n|---|---|---|\n| `argo_workflows_gauge{status}` | Gauge | Workflows by phase (Running/Succeeded/Failed/Error/Pending) |\n| `argo_workflows_pods_gauge` | Gauge | Active workflow pods |\n| `argo_workflows_operation_duration_seconds` | Histogram | Controller operation (reconcile) duration |\n| `argo_workflows_workers_busy` | Gauge | Busy controller workers (queue pressure) |\n| `argo_workflows_queue_depth_count` | Gauge | Workqueue depth |",
+        "content": "**Duration regression**\nIf *Mean Workflow Duration* climbs while throughput is flat → a step got slower or the cluster is resource-constrained; open *Traces* for the longest span and check node CPU/memory.\n\n**Workflows stuck Pending**\n*Workflow Pods* not rising while *Running Workflows* climbs → pods can't schedule (Spot node cold-start / preemption / quota). Cross-check the **Node Auto-Provisioning** board.\n\n**Queue build-up**\n*Running Workflows* climbing without matching completions → backlog. Check the controller: `kubectl top pod -n argo` and the `argo_workflows_workers_busy` / queue-depth metrics.\n\n**Key metric reference**\n\n| Metric | Type | What it tracks |\n|---|---|---|\n| `argo_workflows_count{status}` | Gauge | Workflows by phase (Running/Succeeded/Failed/Error/Pending) |\n| `argo_workflows_pods_count` | Gauge | Active workflow pods |\n| `argo_workflows_operation_duration_seconds` | Histogram | Controller operation (reconcile) duration |\n| `argo_workflows_workers_busy` | Gauge | Busy controller workers (queue pressure) |\n| `argo_workflows_queue_depth_count` | Gauge | Workqueue depth |",
         "mode": "markdown"
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [],
       "title": "🔴 Advanced Runbook",
       "type": "text"
@@ -167,7 +167,7 @@
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -175,9 +175,9 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(sum(argo_workflows_gauge{status=~\"Failed|Error\"}) or vector(0))",
+          "expr": "sum(argo_workflows_count{status=~\"Failed|Error\", namespace=~\"$wf_namespace\"}) or vector(0)",
           "instant": true,
-          "legendFormat": "A",
+          "legendFormat": "failed",
           "queryType": "instant",
           "range": false,
           "refId": "A"
@@ -191,7 +191,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Active workflow pods (argo_workflows_pods_gauge).",
+      "description": "Active workflow pods (argo_workflows_pods_count).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -235,7 +235,7 @@
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -243,7 +243,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(argo_workflows_pods_gauge) or vector(0)",
+          "expr": "sum(argo_workflows_pods_count) or vector(0)",
           "instant": true,
           "legendFormat": "A",
           "queryType": "instant",
@@ -259,7 +259,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Workflow completions per hour over the selected range.",
+      "description": "Estimated completed workflow runs per hour over the selected time range, using gauge delta to count newly-completed workflows.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -303,7 +303,7 @@
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -311,7 +311,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(argo_workflows_total_count{phase=~\"Succeeded|Failed|Error\"}[$__range])) * 3600",
+          "expr": "clamp_min(sum(delta(argo_workflows_count{status=~\"Succeeded|Failed|Error\", namespace=~\"$wf_namespace\"}[$__range])) or vector(0), 0) / ($__range_s / 3600)",
           "instant": true,
           "legendFormat": "A",
           "queryType": "instant",
@@ -327,7 +327,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Mean controller operation duration as a proxy for workflow processing time. Yellow ≥5 min, Red ≥15 min.",
+      "description": "Mean workflow template execution time over the selected time range (argo_workflows_workflowtemplate_runtime histogram).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -378,7 +378,7 @@
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -386,7 +386,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(argo_workflows_operation_duration_seconds_sum[$__range])) / clamp_min(sum(increase(argo_workflows_operation_duration_seconds_count[$__range])), 1)",
+          "expr": "(sum(increase(argo_workflows_workflowtemplate_runtime_sum{namespace=~\"$wf_namespace\"}[$__range])) or vector(0)) / clamp_min((sum(increase(argo_workflows_workflowtemplate_runtime_count{namespace=~\"$wf_namespace\"}[$__range])) or vector(0)), 1)",
           "instant": true,
           "legendFormat": "A",
           "queryType": "instant",
@@ -406,7 +406,7 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "thresholds"
+            "mode": "palette-classic"
           },
           "custom": {
             "axisBorderShow": false,
@@ -439,9 +439,11 @@
               "mode": "none"
             },
             "thresholdsStyle": {
-              "mode": "area"
+              "mode": "line+area"
             }
           },
+          "max": 1,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -459,9 +461,7 @@
               }
             ]
           },
-          "unit": "percentunit",
-          "max": 1,
-          "min": 0
+          "unit": "percentunit"
         }
       },
       "gridPos": {
@@ -493,7 +493,7 @@
           "sort": "desc"
         }
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -501,15 +501,15 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(sum(argo_workflows_gauge{status=~\"Failed|Error\"}) or vector(0)) / clamp_min(sum(argo_workflows_gauge), 1)",
+          "expr": "(sum(argo_workflows_count{status=~\"Failed|Error\", namespace=~\"$wf_namespace\"}) or vector(0)) / clamp_min((sum(argo_workflows_count{namespace=~\"$wf_namespace\"}) or vector(0)), 1)",
           "instant": false,
-          "legendFormat": "Failure Rate",
+          "legendFormat": "Failure Ratio",
           "queryType": "range",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Workflow Failure Rate",
+      "title": "Workflow Failure Ratio",
       "type": "timeseries"
     },
     {
@@ -557,6 +557,7 @@
               "mode": "off"
             }
           },
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -566,8 +567,7 @@
               }
             ]
           },
-          "unit": "short",
-          "min": 0
+          "unit": "short"
         }
       },
       "gridPos": {
@@ -599,7 +599,7 @@
           "sort": "desc"
         }
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -607,7 +607,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(argo_workflows_gauge{status=\"Running\"}) or vector(0)",
+          "expr": "sum(argo_workflows_count{status=\"Running\", namespace=~\"$wf_namespace\"}) or vector(0)",
           "instant": false,
           "legendFormat": "Running workflows",
           "queryType": "range",
@@ -620,7 +620,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(argo_workflows_pods_gauge) or vector(0)",
+          "expr": "sum(argo_workflows_pods_count) or vector(0)",
           "instant": false,
           "legendFormat": "Workflow pods",
           "queryType": "range",
@@ -882,7 +882,7 @@
           "sort": "none"
         }
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -890,7 +890,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (status) (argo_workflows_gauge{status!=\"\"} > 0)",
+          "expr": "sum by (status) (argo_workflows_gauge{status!=\"\"})",
           "instant": true,
           "legendFormat": "{{status}}",
           "queryType": "instant",
@@ -990,14 +990,15 @@
           }
         ]
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
+          "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (phase, namespace) (argo_workflows_total_count{namespace=~\"$wf_namespace\"} > 0)",
+          "expr": "sum by (status, k8s_namespace_name) (argo_workflows_gauge)",
           "instant": true,
           "legendFormat": "",
           "queryType": "instant",
@@ -1012,7 +1013,7 @@
           "options": {
             "keepLabels": [
               "status",
-              "namespace"
+              "k8s_namespace_name"
             ],
             "mode": "columns"
           }
@@ -1025,12 +1026,12 @@
             },
             "indexByName": {
               "Value": 2,
-              "namespace": 1,
+              "k8s_namespace_name": 1,
               "status": 0
             },
             "renameByName": {
               "Value": "Workflows",
-              "namespace": "Namespace",
+              "k8s_namespace_name": "Namespace",
               "status": "Phase"
             }
           }
@@ -1055,7 +1056,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Workflows currently executing (argo_workflows_gauge{status=\"Running\"}).",
+      "description": "Workflows currently executing (argo_workflows_count{status=\"Running\"}).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1106,7 +1107,7 @@
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -1114,7 +1115,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(argo_workflows_gauge{status=\"Running\"}) or vector(0)",
+          "expr": "sum(argo_workflows_count{status=\"Running\", namespace=~\"$wf_namespace\"}) or vector(0)",
           "instant": true,
           "legendFormat": "running",
           "queryType": "instant",
@@ -1130,7 +1131,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Workflow pods currently active (argo_workflows_pods_gauge).",
+      "description": "Workflow pods currently active (argo_workflows_pods_count).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1181,7 +1182,7 @@
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -1189,7 +1190,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(argo_workflows_pods_gauge) or vector(0)",
+          "expr": "sum(argo_workflows_pods_count) or vector(0)",
           "instant": true,
           "legendFormat": "pods",
           "queryType": "instant",
@@ -1211,7 +1212,9 @@
           "color": {
             "mode": "thresholds"
           },
-          "decimals": 0,
+          "decimals": 1,
+          "max": 1,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -1229,9 +1232,7 @@
               }
             ]
           },
-          "unit": "percentunit",
-          "max": 1,
-          "min": 0
+          "unit": "percentunit"
         }
       },
       "gridPos": {
@@ -1258,7 +1259,7 @@
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -1266,7 +1267,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(sum(argo_workflows_gauge{status=\"Succeeded\"}) or vector(0)) / clamp_min(sum(argo_workflows_gauge{status=~\"Succeeded|Failed|Error\"}), 1)",
+          "expr": "(sum(argo_workflows_count{status=\"Succeeded\", namespace=~\"$wf_namespace\"}) or vector(0)) / clamp_min((sum(argo_workflows_count{status=~\"Succeeded|Failed|Error\", namespace=~\"$wf_namespace\"}) or vector(0)), 1)",
           "instant": true,
           "legendFormat": "success rate",
           "queryType": "instant",
@@ -1282,7 +1283,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Total workflows in all phases right now (sum of argo_workflows_gauge).",
+      "description": "Total workflows in all phases right now (sum of argo_workflows_count).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1326,7 +1327,7 @@
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -1334,7 +1335,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(argo_workflows_gauge) or vector(0)",
+          "expr": "sum(argo_workflows_count{namespace=~\"$wf_namespace\"}) or vector(0)",
           "instant": true,
           "legendFormat": "workflows",
           "queryType": "instant",
@@ -1350,7 +1351,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Workflow count by phase over time (argo_workflows_gauge{status}).",
+      "description": "Workflow count by phase over time (argo_workflows_count{status}).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1365,7 +1366,7 @@
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "fillOpacity": 20,
+            "fillOpacity": 15,
             "gradientMode": "opacity",
             "hideFrom": {
               "legend": false,
@@ -1614,7 +1615,7 @@
           "sort": "desc"
         }
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -1727,7 +1728,7 @@
           "sort": "desc"
         }
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -1761,7 +1762,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(argo_workflows_operation_duration_seconds_sum[$__rate_interval])) / clamp_min(sum(rate(argo_workflows_operation_duration_seconds_count[$__rate_interval])), 1e-9)",
+          "expr": "sum(rate(argo_workflows_operation_duration_seconds_sum[$__rate_interval])) / sum(rate(argo_workflows_operation_duration_seconds_count[$__rate_interval]))",
           "instant": false,
           "legendFormat": "mean",
           "queryType": "range",
@@ -1777,7 +1778,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Argo workflow pods by phase over time (kube-state-metrics, ns argo). Complements the controller's argo_workflows_pods_gauge gauge.",
+      "description": "Shows all pod phases in the selected namespace(s). To scope to workflow pods only, join with kube_pod_labels filtering on label_workflows_argoproj_io_workflow!=\"\".",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1792,7 +1793,7 @@
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "fillOpacity": 20,
+            "fillOpacity": 15,
             "gradientMode": "opacity",
             "hideFrom": {
               "legend": false,
@@ -2041,7 +2042,7 @@
           "sort": "desc"
         }
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -2049,7 +2050,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (phase) (kube_pod_status_phase{namespace=~\"argo\",phase=~\"$run_status\"} > 0)",
+          "expr": "sum by (phase) (argo_workflows_pods_gauge)",
           "instant": false,
           "legendFormat": "{{phase}}",
           "queryType": "range",
@@ -2102,20 +2103,28 @@
               "mode": "none"
             },
             "thresholdsStyle": {
-              "mode": "off"
+              "mode": "line"
             }
           },
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
                 "color": "green",
                 "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 50
+              },
+              {
+                "color": "red",
+                "value": 100
               }
             ]
           },
-          "unit": "short",
-          "min": 0
+          "unit": "short"
         }
       },
       "gridPos": {
@@ -2147,7 +2156,7 @@
           "sort": "desc"
         }
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -2221,7 +2230,7 @@
         "unwrappedColumns": false,
         "wrapLogMessage": false
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -2284,7 +2293,7 @@
         "nodes": {},
         "showHeader": true
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -2323,7 +2332,7 @@
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "thresholds"
+            "mode": "palette-classic"
           },
           "custom": {
             "axisBorderShow": false,
@@ -2356,7 +2365,7 @@
               "mode": "none"
             },
             "thresholdsStyle": {
-              "mode": "area"
+              "mode": "line+area"
             }
           },
           "thresholds": {
@@ -2408,7 +2417,7 @@
           "sort": "desc"
         }
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -2446,7 +2455,7 @@
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "fillOpacity": 60,
+            "fillOpacity": 15,
             "gradientMode": "opacity",
             "hideFrom": {
               "legend": false,
@@ -2512,7 +2521,7 @@
           "sort": "desc"
         }
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -2543,10 +2552,6 @@
     "list": [
       {
         "allowCustomValue": true,
-        "current": {
-          "text": "",
-          "value": ""
-        },
         "hide": 0,
         "includeAll": false,
         "label": "Prometheus / Mimir",
@@ -2563,7 +2568,9 @@
         "allValue": ".+",
         "allowCustomValue": true,
         "current": {
-          "text": "All",
+          "text": [
+            "All"
+          ],
           "value": [
             "$__all"
           ]
@@ -2610,45 +2617,10 @@
           ]
         },
         "datasource": {
-          "type": "prometheus",
-          "uid": "${DS_PROMETHEUS}"
-        },
-        "hide": 0,
-        "includeAll": true,
-        "label": "Namespace",
-        "multi": true,
-        "name": "wf_namespace",
-        "options": [],
-        "query": {
-          "label": "namespace",
-          "metric": "argo_workflows_total_count",
-          "qryType": 1,
-          "query": "label_values(argo_workflows_total_count,namespace)",
-          "refId": "PrometheusVariableQueryEditor-VariableQuery"
-        },
-        "refresh": 1,
-        "regex": "",
-        "regexApplyTo": "value",
-        "skipUrlSync": false,
-        "sort": 1,
-        "type": "query"
-      },
-      {
-        "allValue": "argo|argo-events",
-        "allowCustomValue": true,
-        "current": {
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
-        },
-        "datasource": {
           "type": "loki",
           "uid": "loki"
         },
-        "hide": 0,
+        "hide": 2,
         "includeAll": true,
         "label": "Log Namespace",
         "multi": true,
@@ -2656,7 +2628,7 @@
         "options": [],
         "query": {
           "label": "k8s_namespace_name",
-          "stream": "{k8s_namespace_name=~\"argo|argo-events\"}",
+          "stream": "",
           "type": 1
         },
         "refresh": 1,
@@ -2669,16 +2641,16 @@
       {
         "allowCustomValue": true,
         "current": {
-          "text": "jenkins-2026",
-          "value": "jenkins-2026"
+          "text": "microservices",
+          "value": "microservices"
         },
-        "hide": 0,
+        "hide": 2,
         "includeAll": false,
         "label": "Trace Namespace",
         "multi": false,
         "name": "trace_namespace",
         "options": [],
-        "query": "jenkins-2026",
+        "query": "microservices",
         "skipUrlSync": false,
         "type": "custom",
         "valuesFormat": "csv"
@@ -2686,7 +2658,7 @@
     ]
   },
   "time": {
-    "from": "now-24h",
+    "from": "now-6h",
     "to": "now"
   },
   "timepicker": {
@@ -2705,8 +2677,5 @@
   },
   "timezone": "browser",
   "title": "CI-CD / Argo Workflows CI Observability",
-  "uid": "jenkins2026-argo-workflows-ci",
-  "version": 1,
-  "weekStart": "",
-  "description": "Argo Workflows container-native CI. Controller metrics (argo_workflows_gauge{status}, argo_workflows_pods_gauge, argo_workflows_total_count{namespace,phase}, argo_workflows_operation_duration_seconds) scraped over HTTPS from the workflow-controller :9090 endpoint by the otel-collector (argo-workflows-controller job), complemented by kube-state-metrics pod phases. Works across all observability backends."
+  "uid": "jenkins2026-argo-workflows-ci"
 }

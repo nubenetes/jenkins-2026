@@ -15,7 +15,7 @@
       }
     ]
   },
-  "description": "GitHub Actions self-hosted CI via Actions Runner Controller (ARC). Ephemeral runner pods in the arc-runners namespace on Spot ci-spot capacity, observed through kube-state-metrics (kube_pod_*) and node taints (kube_node_spec_taint) \u2014 the lean node/pod-inventory slice 03-observability.sh keeps in every observability mode, so this board works across all four backends.",
+  "description": "Argo Workflows container-native CI. Metrics from the workflow-controller Prometheus endpoint (argo_workflows_count{status}, argo_workflows_pods_count, argo_workflows_operation_duration_seconds), complemented by kube-state-metrics pod phases — the lean slice 03-observability.sh keeps in every observability mode, so this board works across all four backends.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -30,7 +30,7 @@
         "y": 0
       },
       "id": 25,
-      "title": "\ud83d\udcd6 Overview & Documentation",
+      "title": "📖 Overview & Documentation",
       "type": "row"
     },
     {
@@ -47,7 +47,7 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "## GitHub Actions (ARC) CI Observability\n\nReal-time and historical view of the **Actions Runner Controller (ARC)** running self-hosted, **ephemeral** GitHub Actions runners in this cluster. Each queued job spins up a throwaway runner Pod in the **`arc-runners`** namespace on the **Spot `ci-spot`** capacity, then the pod is torn down \u2014 true scale-to-zero CI.\n\n**Five signals this dashboard tracks**\n- \ud83d\udfe2 **Health** \u2014 are runner pods completing, not crash-looping? \u2192 *Runner Pod Phase*, *Failed/Errored Runner Pods*, *Outcome Distribution*\n- \u26a1 **Speed** \u2014 how fast does a runner come up and finish? \u2192 *Runner Pod Age*, *Pod Scheduling Latency*\n- \ud83d\udce6 **Capacity** \u2014 is ARC scaling up under load and back to zero when idle? \u2192 *Active Runner Pods*, *Spot CI nodes*, *Scale-up vs scale-to-zero*\n- \ud83d\udcca **Velocity** \u2014 how much CI is flowing? \u2192 *Runner Pod Throughput*, *Total Runner Pods*\n- \ud83d\udccb **Logs & Traces** \u2014 what happened in a specific job? \u2192 *Runner Pod Logs*, *Traces*, *Log Error Rate*, *Log Volume by Level*\n\n> **Scope:** use **Status**, **Runner Scale Set**, and **Log Namespace** filters to narrow every panel \u00b7 Runner membership reads from `kube_pod_*` / `kube_node_spec_taint` via kube-state-metrics, kept even in the lean/free Grafana Cloud profile \u2014 so this board works in **all four** observability backends.",
+        "content": "## Argo Workflows CI Observability\n\nReal-time and historical view of the **Argo Workflows controller** (`workflow-controller`) running container-native CI pipelines in this cluster. Tracks every Workflow from submission through completion, with its pods scheduled on the **Spot `ci-spot`** capacity.\n\n**Five signals this dashboard tracks**\n- 🟢 **Health** — are workflows succeeding? → *Workflow Success Rate*, *Workflows by Phase*, *Outcome Distribution*\n- ⚡ **Speed** — how long do workflows take? → *Workflow Duration* (mean), *Mean Workflow Duration*\n- 📦 **Capacity** — is the controller keeping up? → *Running Workflows*, *Workflow Pods*\n- 📊 **Velocity** — how fast is CI delivering? → *CI Throughput*, *Total Workflows*\n- 📋 **Logs & Traces** — what happened in a specific run? → *Workflow Pod Logs*, *Traces*, *Log Error Rate*, *Log Volume by Level*\n\n> **Scope:** use **Status**, **Log Namespace**, and **Trace Namespace** filters to narrow every panel · Metrics come from the `workflow-controller` Prometheus endpoint (`argo_workflows_*`); pod-level signals from kube-state-metrics. Works in **all four** observability backends.",
         "mode": "markdown"
       },
       "pluginVersion": "13.2.0-28268912997",
@@ -69,12 +69,12 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "**Step 1 \u00b7 Read the KPI cards (top row)**\n- **Active Runner Pods** \u2014 ARC runner pods running *right now* in `arc-runners` (instant gauge)\n- **Runner Pods (range)** \u2014 total runner pods created in the window\n- **Pod Success Rate** \u2014 \ud83d\udfe2 \u2265 99 % \u00b7 \ud83d\udfe1 \u2265 80 % \u00b7 \ud83d\udd34 below 80 %\n- **Spot CI nodes** \u2014 elastic NAP capacity backing the runners\n\n**Step 2 \u00b7 Read the trend charts**\n*Runner Pods by Phase* shows Running/Succeeded/Failed/Pending over time. A rising `Failed` stack means runner pods are erroring (image pull, OOM, job failure). *Active Runner Pods vs Spot nodes* shows ARC scaling up under load and consolidating back toward **0**.\n\n**Step 3 \u00b7 Narrow with the Log level filter**\nSet **Log level \u2192 error** to make *Runner Pod Logs* show only failure events from the runner pods.\n\n**Step 4 \u00b7 Drill into a Trace**\nClick any **Trace ID** in *Runner Traces* to open the span waterfall for that job's instrumented steps.",
+        "content": "**Step 1 · Read the KPI cards (top row)**\n- **Running Workflows** — workflows executing *right now* (`argo_workflows_count{status=\"Running\"}`)\n- **Workflows (range)** — total completions in the window\n- **Success Rate** — 🟢 ≥ 99 % · 🟡 ≥ 80 % · 🔴 below 80 %\n- **Workflow Pods** — `argo_workflows_pods_count` currently active\n\n**Step 2 · Read the trend charts**\n*Workflows by Phase* shows Running/Succeeded/Failed/Error/Pending over time. A rising `Failed`/`Error` stack means a step is erroring.\n\n**Step 3 · Narrow with the Log level filter**\nSet **Log level → error** so *Workflow Pod Logs* shows only failure events from the workflow pods.\n\n**Step 4 · Drill into a Trace**\nClick any **Trace ID** in *Workflow Traces* to open the span waterfall for that run.",
         "mode": "markdown"
       },
       "pluginVersion": "13.2.0-28268912997",
       "targets": [],
-      "title": "\ud83d\udfe2 Basic Usage Guide",
+      "title": "🟢 Basic Usage Guide",
       "type": "text"
     },
     {
@@ -91,12 +91,12 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "**Runners not scaling up**\nJobs queued on GitHub but *Active Runner Pods* flat at 0 \u2192 the `gha-rs-controller` / listener can't reach the GitHub API or the scale set has no capacity. Check `gha_rs_controller_*` reconcile metrics and the listener pod logs in `arc-systems`.\n\n**Pods stuck Pending (scheduling latency spike)**\nA large *Runner Pod Scheduling Latency* p95 means runner pods wait for a Spot node \u2014 NAP is provisioning `ci-spot` capacity (cold-start) or hit Spot preemption / quota. Cross-check the **Node Auto-Provisioning** board.\n\n**Runners not scaling to zero**\n*Active Runner Pods* never returns to 0 between jobs \u2192 a runner is wedged (stuck job, finalizer). `kubectl get pods -n arc-runners`.\n\n**Key metric reference**\n\n| Metric | Type | What it tracks |\n|---|---|---|\n| `kube_pod_status_phase{namespace=\"arc-runners\"}` | Gauge | Runner pods by phase |\n| `kube_pod_created{namespace=\"arc-runners\"}` | Gauge | Runner pod creation timestamp |\n| `kube_pod_status_ready{namespace=\"arc-runners\"}` | Gauge | Runner readiness |\n| `gha_rs_controller_*` (if exported) | Various | gha-rs-controller reconcile activity |\n| `kube_node_spec_taint{key=\"cloud.google.com/gke-spot\"}` | Gauge | Spot CI nodes backing runners |",
+        "content": "**Duration regression**\nIf *Mean Workflow Duration* climbs while throughput is flat → a step got slower or the cluster is resource-constrained; open *Traces* for the longest span and check node CPU/memory.\n\n**Workflows stuck Pending**\n*Workflow Pods* not rising while *Running Workflows* climbs → pods can't schedule (Spot node cold-start / preemption / quota). Cross-check the **Node Auto-Provisioning** board.\n\n**Queue build-up**\n*Running Workflows* climbing without matching completions → backlog. Check the controller: `kubectl top pod -n argo` and the `argo_workflows_workers_busy` / queue-depth metrics.\n\n**Key metric reference**\n\n| Metric | Type | What it tracks |\n|---|---|---|\n| `argo_workflows_count{status}` | Gauge | Workflows by phase (Running/Succeeded/Failed/Error/Pending) |\n| `argo_workflows_pods_count` | Gauge | Active workflow pods |\n| `argo_workflows_operation_duration_seconds` | Histogram | Controller operation (reconcile) duration |\n| `argo_workflows_workers_busy` | Gauge | Busy controller workers (queue pressure) |\n| `argo_workflows_queue_depth_count` | Gauge | Workqueue depth |",
         "mode": "markdown"
       },
       "pluginVersion": "13.2.0-28268912997",
       "targets": [],
-      "title": "\ud83d\udd34 Advanced Runbook",
+      "title": "🔴 Advanced Runbook",
       "type": "text"
     },
     {
@@ -108,7 +108,7 @@
         "y": 20
       },
       "id": 26,
-      "title": "\ud83d\udcca Business Overview & Velocity",
+      "title": "📊 Business Overview & Velocity",
       "type": "row"
     },
     {
@@ -116,7 +116,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Runner pods currently in Failed phase in arc-runners. Yellow \u22651, Red \u22655.",
+      "description": "Workflows currently in Failed/Error status. Yellow ≥1, Red ≥5.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -145,13 +145,13 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 8,
+        "w": 6,
         "x": 0,
         "y": 21
       },
       "id": 15,
       "options": {
-        "colorMode": "background_solid",
+        "colorMode": "background",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
@@ -175,15 +175,15 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(kube_pod_status_phase{namespace=\"$runner_scaleset\",phase=\"Failed\"}) or vector(0)",
+          "expr": "sum(argo_workflows_count{status=~\"Failed|Error\", namespace=~\"$wf_namespace\"}) or vector(0)",
           "instant": true,
-          "legendFormat": "A",
+          "legendFormat": "failed",
           "queryType": "instant",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Failed/Errored Runner Pods",
+      "title": "Failed Workflows",
       "type": "stat"
     },
     {
@@ -191,7 +191,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Total ARC runner pods created in the selected time range.",
+      "description": "Active workflow pods (argo_workflows_pods_count).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -213,8 +213,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 8,
-        "x": 8,
+        "w": 6,
+        "x": 6,
         "y": 21
       },
       "id": 16,
@@ -243,7 +243,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(kube_pod_created{namespace=\"$runner_scaleset\"} > ${__from:date:seconds}) or vector(0)",
+          "expr": "sum(argo_workflows_pods_count) or vector(0)",
           "instant": true,
           "legendFormat": "A",
           "queryType": "instant",
@@ -251,7 +251,7 @@
           "refId": "A"
         }
       ],
-      "title": "Total Runner Pods (range)",
+      "title": "Workflow Pods",
       "type": "stat"
     },
     {
@@ -259,7 +259,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Runner pods created per hour over the selected range.",
+      "description": "Estimated completed workflow runs per hour over the selected time range, using gauge delta to count newly-completed workflows.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -281,13 +281,13 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 8,
-        "x": 16,
+        "w": 6,
+        "x": 12,
         "y": 21
       },
       "id": 17,
       "options": {
-        "colorMode": "background_solid",
+        "colorMode": "background",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
@@ -311,7 +311,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(count(kube_pod_created{namespace=\"$runner_scaleset\"} > ${__from:date:seconds}) or vector(0)) / ($__range_s / 3600)",
+          "expr": "clamp_min(sum(delta(argo_workflows_count{status=~\"Succeeded|Failed|Error\", namespace=~\"$wf_namespace\"}[$__range])) or vector(0), 0) / ($__range_s / 3600)",
           "instant": true,
           "legendFormat": "A",
           "queryType": "instant",
@@ -319,7 +319,7 @@
           "refId": "A"
         }
       ],
-      "title": "CI Throughput (pods/h)",
+      "title": "CI Throughput (runs/h)",
       "type": "stat"
     },
     {
@@ -327,11 +327,86 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Rolling share of arc-runners pods in Failed phase. Yellow >5%, Red >20%.",
+      "description": "Mean workflow template execution time over the selected time range (argo_workflows_workflowtemplate_runtime histogram).",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
+          },
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 300
+              },
+              {
+                "color": "red",
+                "value": 900
+              }
+            ]
+          },
+          "unit": "s"
+        }
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 21
+      },
+      "id": 18,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "13.2.0-28268912997",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "(sum(increase(argo_workflows_workflowtemplate_runtime_sum{namespace=~\"$wf_namespace\"}[$__range])) or vector(0)) / clamp_min((sum(increase(argo_workflows_workflowtemplate_runtime_count{namespace=~\"$wf_namespace\"}[$__range])) or vector(0)), 1)",
+          "instant": true,
+          "legendFormat": "A",
+          "queryType": "instant",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Mean Workflow Duration",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "description": "Rolling share of workflows in Failed/Error status. Yellow >5%, Red >20%.",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
           },
           "custom": {
             "axisBorderShow": false,
@@ -364,7 +439,7 @@
               "mode": "none"
             },
             "thresholdsStyle": {
-              "mode": "area"
+              "mode": "line+area"
             }
           },
           "max": 1,
@@ -426,15 +501,15 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(sum(kube_pod_status_phase{namespace=\"$runner_scaleset\",phase=\"Failed\"}) or vector(0)) / clamp_min((sum(kube_pod_status_phase{namespace=\"$runner_scaleset\"}) or vector(0)), 1)",
+          "expr": "(sum(argo_workflows_count{status=~\"Failed|Error\", namespace=~\"$wf_namespace\"}) or vector(0)) / clamp_min((sum(argo_workflows_count{namespace=~\"$wf_namespace\"}) or vector(0)), 1)",
           "instant": false,
-          "legendFormat": "Failure Rate",
+          "legendFormat": "Failure Ratio",
           "queryType": "range",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Runner Pod Failure Rate",
+      "title": "Workflow Failure Ratio",
       "type": "timeseries"
     },
     {
@@ -442,7 +517,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "ARC runner pods rise under load and consolidate to 0; the Spot CI nodes (NAP ci-spot) track them. The static platform pool stays flat.",
+      "description": "Running workflows and active workflow pods — indicates controller/executor utilization.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -515,7 +590,7 @@
           "displayMode": "table",
           "enableFacetedFilter": false,
           "overflow": "ellipsis",
-          "placement": "right",
+          "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
@@ -532,9 +607,9 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(kube_pod_status_phase{namespace=\"$runner_scaleset\",phase=\"Running\"}) or vector(0)",
+          "expr": "sum(argo_workflows_count{status=\"Running\", namespace=~\"$wf_namespace\"}) or vector(0)",
           "instant": false,
-          "legendFormat": "Active runner pods",
+          "legendFormat": "Running workflows",
           "queryType": "range",
           "range": true,
           "refId": "A"
@@ -545,28 +620,15 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(kube_node_spec_taint{key=\"cloud.google.com/gke-spot\"}) or vector(0)",
+          "expr": "sum(argo_workflows_pods_count) or vector(0)",
           "instant": false,
-          "legendFormat": "Spot CI nodes (NAP)",
+          "legendFormat": "Workflow pods",
           "queryType": "range",
           "range": true,
           "refId": "B"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "count(kube_node_info unless on(node) kube_node_spec_taint{key=\"cloud.google.com/gke-spot\"}) or vector(0)",
-          "instant": false,
-          "legendFormat": "Static pool",
-          "queryType": "range",
-          "range": true,
-          "refId": "C"
         }
       ],
-      "title": "Active Runner Pods vs Spot CI Nodes (scale-up / scale-to-zero)",
+      "title": "Concurrent Workflows & Pods (Executor Utilization)",
       "type": "timeseries"
     },
     {
@@ -578,7 +640,7 @@
         "y": 33
       },
       "id": 27,
-      "title": "\ud83d\udd2c Runner Pod Analysis",
+      "title": "🔬 Workflow Analysis",
       "type": "row"
     },
     {
@@ -586,7 +648,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Donut breakdown of arc-runners pod phases in the current snapshot.",
+      "description": "Donut breakdown of all workflow phases in the current snapshot.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -817,7 +879,7 @@
         "tooltip": {
           "hideZeros": false,
           "mode": "multi",
-          "sort": "desc"
+          "sort": "none"
         }
       },
       "pluginVersion": "13.2.0-28268912997",
@@ -828,15 +890,15 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (phase) (kube_pod_status_phase{namespace=\"$runner_scaleset\"} > 0)",
+          "expr": "sum by (status) (argo_workflows_gauge{status!=\"\"})",
           "instant": true,
-          "legendFormat": "{{phase}}",
+          "legendFormat": "{{status}}",
           "queryType": "instant",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Runner Pod Outcome Distribution",
+      "title": "Workflow Outcome Distribution",
       "type": "piechart"
     },
     {
@@ -844,7 +906,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Runner pods by owning runner scale-set deployment (label app.kubernetes.io/instance or the ARC scale-set label).",
+      "description": "Workflow counts by phase and namespace.",
       "fieldConfig": {
         "defaults": {
           "custom": {
@@ -876,7 +938,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Pods"
+              "options": "Workflows"
             },
             "properties": [
               {
@@ -931,11 +993,12 @@
       "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
+          "app": "grafana-assistant-app",
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "kube_pod_status_phase{namespace=\"$runner_scaleset\",phase=~\"Running|Pending\"} > 0",
+          "expr": "sum by (status, k8s_namespace_name) (argo_workflows_gauge)",
           "instant": true,
           "legendFormat": "",
           "queryType": "instant",
@@ -943,13 +1006,14 @@
           "refId": "A"
         }
       ],
-      "title": "Active Runner Pods (by pod)",
+      "title": "Workflows by Phase & Namespace",
       "transformations": [
         {
           "id": "labelsToFields",
           "options": {
             "keepLabels": [
-              "pod"
+              "status",
+              "k8s_namespace_name"
             ],
             "mode": "columns"
           }
@@ -961,12 +1025,14 @@
               "Time": true
             },
             "indexByName": {
-              "Value": 1,
-              "pod": 0
+              "Value": 2,
+              "k8s_namespace_name": 1,
+              "status": 0
             },
             "renameByName": {
-              "Value": "Pods",
-              "pod": "Runner Pod"
+              "Value": "Workflows",
+              "k8s_namespace_name": "Namespace",
+              "status": "Phase"
             }
           }
         }
@@ -982,7 +1048,7 @@
         "y": 44
       },
       "id": 28,
-      "title": "GitHub Actions / ARC \u2014 runner pods & controller (kube-state-metrics)",
+      "title": "Argo Workflows CI — workflows & pods (controller metrics)",
       "type": "row"
     },
     {
@@ -990,7 +1056,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "ARC runner pods in Running phase (kube_pod_status_phase, ns arc-runners).",
+      "description": "Workflows currently executing (argo_workflows_count{status=\"Running\"}).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1049,7 +1115,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(kube_pod_status_phase{namespace=\"$runner_scaleset\",phase=\"Running\"}) or vector(0)",
+          "expr": "sum(argo_workflows_count{status=\"Running\", namespace=~\"$wf_namespace\"}) or vector(0)",
           "instant": true,
           "legendFormat": "running",
           "queryType": "instant",
@@ -1057,7 +1123,7 @@
           "refId": "A"
         }
       ],
-      "title": "Running Runner Pods",
+      "title": "Running Workflows",
       "type": "stat"
     },
     {
@@ -1065,7 +1131,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "ARC runner pods Pending (waiting on a Spot node to be provisioned).",
+      "description": "Workflow pods currently active (argo_workflows_pods_count).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1081,11 +1147,11 @@
               },
               {
                 "color": "yellow",
-                "value": 5
+                "value": 10
               },
               {
                 "color": "red",
-                "value": 15
+                "value": 25
               }
             ]
           },
@@ -1124,15 +1190,15 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(kube_pod_status_phase{namespace=\"$runner_scaleset\",phase=\"Pending\"}) or vector(0)",
+          "expr": "sum(argo_workflows_pods_count) or vector(0)",
           "instant": true,
-          "legendFormat": "pending",
+          "legendFormat": "pods",
           "queryType": "instant",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Pending Runner Pods",
+      "title": "Active Workflow Pods",
       "type": "stat"
     },
     {
@@ -1140,13 +1206,13 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Share of arc-runners pods Succeeded vs all terminal pods in snapshot.",
+      "description": "Share of workflows Succeeded vs all terminal workflows in snapshot.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
-          "decimals": 0,
+          "decimals": 1,
           "max": 1,
           "min": 0,
           "thresholds": {
@@ -1177,7 +1243,7 @@
       },
       "id": 3,
       "options": {
-        "colorMode": "background_solid",
+        "colorMode": "background",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
@@ -1201,7 +1267,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(sum(kube_pod_status_phase{namespace=\"$runner_scaleset\",phase=\"Succeeded\"}) or vector(0)) / clamp_min((sum(kube_pod_status_phase{namespace=\"$runner_scaleset\",phase=~\"Succeeded|Failed\"}) or vector(0)), 1)",
+          "expr": "(sum(argo_workflows_count{status=\"Succeeded\", namespace=~\"$wf_namespace\"}) or vector(0)) / clamp_min((sum(argo_workflows_count{status=~\"Succeeded|Failed|Error\", namespace=~\"$wf_namespace\"}) or vector(0)), 1)",
           "instant": true,
           "legendFormat": "success rate",
           "queryType": "instant",
@@ -1209,7 +1275,7 @@
           "refId": "A"
         }
       ],
-      "title": "Runner Pod Success Rate",
+      "title": "Workflow Success Rate",
       "type": "stat"
     },
     {
@@ -1217,7 +1283,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Distinct ARC runner pods seen in the dashboard range.",
+      "description": "Total workflows in all phases right now (sum of argo_workflows_count).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1269,15 +1335,15 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(kube_pod_info{namespace=\"$runner_scaleset\"}) or vector(0)",
+          "expr": "sum(argo_workflows_count{namespace=~\"$wf_namespace\"}) or vector(0)",
           "instant": true,
-          "legendFormat": "pods",
+          "legendFormat": "workflows",
           "queryType": "instant",
           "range": false,
           "refId": "A"
         }
       ],
-      "title": "Total Runner Pods",
+      "title": "Total Workflows",
       "type": "stat"
     },
     {
@@ -1285,7 +1351,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "ARC runner pod count by phase over time (kube_pod_status_phase, ns arc-runners).",
+      "description": "Workflow count by phase over time (argo_workflows_count{status}).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1300,7 +1366,7 @@
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "fillOpacity": 20,
+            "fillOpacity": 15,
             "gradientMode": "opacity",
             "hideFrom": {
               "legend": false,
@@ -1540,7 +1606,7 @@
           "displayMode": "table",
           "enableFacetedFilter": false,
           "overflow": "ellipsis",
-          "placement": "right",
+          "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
@@ -1557,15 +1623,15 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (phase) (kube_pod_status_phase{namespace=\"$runner_scaleset\",phase=~\"$run_status\"} > 0)",
+          "expr": "sum by (status) (argo_workflows_gauge{status=~\"$run_status\"})",
           "instant": false,
-          "legendFormat": "{{phase}}",
+          "legendFormat": "{{status}}",
           "queryType": "range",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Runner Pods by Phase",
+      "title": "Workflows by Phase",
       "type": "timeseries"
     },
     {
@@ -1573,7 +1639,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Age of the oldest active runner pod (now - kube_pod_created) \u2014 a high value means a wedged / non-terminating runner.",
+      "description": "workflow-controller operation (reconcile) duration percentiles (argo_workflows_operation_duration_seconds).",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1610,7 +1676,7 @@
               "mode": "none"
             },
             "thresholdsStyle": {
-              "mode": "area"
+              "mode": "line"
             }
           },
           "thresholds": {
@@ -1622,11 +1688,11 @@
               },
               {
                 "color": "yellow",
-                "value": 600
+                "value": 300
               },
               {
                 "color": "red",
-                "value": 1800
+                "value": 600
               }
             ]
           },
@@ -1670,9 +1736,9 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "max(time() - kube_pod_created{namespace=\"$runner_scaleset\"}) or vector(0)",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(argo_workflows_operation_duration_seconds_bucket[$__rate_interval])))",
           "instant": false,
-          "legendFormat": "oldest pod age",
+          "legendFormat": "p95",
           "queryType": "range",
           "range": true,
           "refId": "A"
@@ -1683,15 +1749,28 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "avg(time() - kube_pod_created{namespace=\"$runner_scaleset\"}) or vector(0)",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(argo_workflows_operation_duration_seconds_bucket[$__rate_interval])))",
           "instant": false,
-          "legendFormat": "mean pod age",
+          "legendFormat": "p50",
           "queryType": "range",
           "range": true,
           "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "sum(rate(argo_workflows_operation_duration_seconds_sum[$__rate_interval])) / sum(rate(argo_workflows_operation_duration_seconds_count[$__rate_interval]))",
+          "instant": false,
+          "legendFormat": "mean",
+          "queryType": "range",
+          "range": true,
+          "refId": "C"
         }
       ],
-      "title": "Runner Pod Age (oldest active)",
+      "title": "Controller Operation Duration (p50 / p95 / mean)",
       "type": "timeseries"
     },
     {
@@ -1699,7 +1778,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Actions-runner-controller reconcile activity, if the controller exports gha_rs_controller_* metrics (controller-runtime). No data = metrics not scraped (optional).",
+      "description": "Shows all pod phases in the selected namespace(s). To scope to workflow pods only, join with kube_pod_labels filtering on label_workflows_argoproj_io_workflow!=\"\".",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1714,7 +1793,7 @@
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "fillOpacity": 20,
+            "fillOpacity": 15,
             "gradientMode": "opacity",
             "hideFrom": {
               "legend": false,
@@ -1733,7 +1812,7 @@
             "spanNulls": false,
             "stacking": {
               "group": "A",
-              "mode": "none"
+              "mode": "normal"
             },
             "thresholdsStyle": {
               "mode": "off"
@@ -1749,7 +1828,189 @@
             ]
           },
           "unit": "short"
-        }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "success"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Succeeded"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "succeeded"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "green",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "failed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Failed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Error"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "red",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cancelled"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Cancelled"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "yellow",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "timeout"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "orange",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Running"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "running"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "blue",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Pending"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "purple",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 8,
@@ -1789,28 +2050,15 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (controller) (rate(gha_rs_controller_reconcile_total[$__rate_interval])) or vector(0)",
+          "expr": "sum by (phase) (argo_workflows_pods_gauge)",
           "instant": false,
-          "legendFormat": "{{controller}}",
+          "legendFormat": "{{phase}}",
           "queryType": "range",
           "range": true,
           "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum(rate(controller_runtime_reconcile_total{namespace=\"arc-systems\"}[$__rate_interval])) or vector(0)",
-          "instant": false,
-          "legendFormat": "reconciles (controller-runtime)",
-          "queryType": "range",
-          "range": true,
-          "refId": "B"
         }
       ],
-      "title": "gha-rs-controller Reconciles",
+      "title": "Workflow Pods by Phase",
       "type": "timeseries"
     },
     {
@@ -1818,7 +2066,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Time runner pods spend Pending before a Spot node is ready (kube_pod_status_phase Pending count is a proxy for cold-start backlog).",
+      "description": "workflow-controller workqueue depth & busy workers — rising depth means the controller can't keep up.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1855,7 +2103,7 @@
               "mode": "none"
             },
             "thresholdsStyle": {
-              "mode": "off"
+              "mode": "line"
             }
           },
           "min": 0,
@@ -1865,6 +2113,14 @@
               {
                 "color": "green",
                 "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 50
+              },
+              {
+                "color": "red",
+                "value": 100
               }
             ]
           },
@@ -1891,7 +2147,7 @@
           "displayMode": "table",
           "enableFacetedFilter": false,
           "overflow": "ellipsis",
-          "placement": "right",
+          "placement": "bottom",
           "showLegend": true
         },
         "tooltip": {
@@ -1908,9 +2164,9 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(kube_pod_status_phase{namespace=\"$runner_scaleset\",phase=\"Pending\"}) or vector(0)",
+          "expr": "sum(argo_workflows_queue_depth_count) or vector(0)",
           "instant": false,
-          "legendFormat": "pending pods",
+          "legendFormat": "queue depth",
           "queryType": "range",
           "range": true,
           "refId": "A"
@@ -1921,15 +2177,15 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(kube_node_spec_taint{key=\"cloud.google.com/gke-spot\"}) or vector(0)",
+          "expr": "sum(argo_workflows_workers_busy) or vector(0)",
           "instant": false,
-          "legendFormat": "ci-spot nodes ready",
+          "legendFormat": "busy workers",
           "queryType": "range",
           "range": true,
           "refId": "B"
         }
       ],
-      "title": "Pending Pods & CI-Spot Node Readiness",
+      "title": "Controller Queue Pressure",
       "type": "timeseries"
     },
     {
@@ -1941,15 +2197,15 @@
         "y": 66
       },
       "id": 29,
-      "title": "Logs & Traces (runner execution)",
+      "title": "Logs & Traces (workflow execution)",
       "type": "row"
     },
     {
       "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
+        "type": "loki",
+        "uid": "grafanacloud-logs"
       },
-      "description": "Logs from the ARC runner namespaces (the ephemeral runner pods).",
+      "description": "Logs from the Argo Workflows execution namespaces (the workflow pods).",
       "gridPos": {
         "h": 9,
         "w": 12,
@@ -1978,75 +2234,50 @@
       "targets": [
         {
           "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
+            "type": "loki",
+            "uid": "grafanacloud-logs"
           },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
+          "editorMode": "code",
+          "expr": "{k8s_namespace_name=~\"${log_namespace}\"} | detected_level =~ \"${level}\"",
+          "queryType": "range",
           "refId": "A"
         }
       ],
-      "title": "Runner Pod Logs",
-      "type": "table",
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      }
+      "title": "Workflow Pod Logs",
+      "type": "logs"
     },
     {
       "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
+        "type": "tempo",
+        "uid": "grafanacloud-traces"
       },
-      "description": "Distributed traces emitted by instrumented job steps (OTLP to the collector). Drill into a single job's spans.",
+      "description": "Distributed traces emitted by the workflow steps (OTLP to the collector). Drill into a single workflow's spans.",
       "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
             },
-            "properties": [
+            "footer": {
+              "reducers": []
+            },
+            "inspect": false
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
               {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
               }
             ]
           }
-        ]
+        }
       },
       "gridPos": {
         "h": 9,
@@ -2066,22 +2297,18 @@
       "targets": [
         {
           "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
+            "type": "tempo",
+            "uid": "grafanacloud-traces"
           },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "union requests, dependencies\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, operation_Id, cloud_RoleName, name, duration, success, itemType\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
-          "refId": "A"
+          "filters": [],
+          "limit": 50,
+          "query": "{ resource.service.namespace = \"${trace_namespace}\" }",
+          "queryType": "traceql",
+          "refId": "A",
+          "tableType": "traces"
         }
       ],
-      "title": "Runner Traces",
+      "title": "Workflow Traces",
       "type": "table"
     },
     {
@@ -2093,37 +2320,73 @@
         "y": 76
       },
       "id": 30,
-      "title": "\ud83d\udcc8 Log Analytics",
+      "title": "📈 Log Analytics",
       "type": "row"
     },
     {
       "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
+        "type": "loki",
+        "uid": "grafanacloud-logs"
       },
       "description": "Rate of error-level log lines. Spikes indicate runner/workflow pod failures.",
       "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "gradientMode": "opacity",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
             },
-            "properties": [
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "line+area"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
               {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 0.1
+              },
+              {
+                "color": "red",
+                "value": 0.5
               }
             ]
-          }
-        ]
+          },
+          "unit": "cps"
+        }
       },
       "gridPos": {
         "h": 8,
@@ -2158,52 +2421,76 @@
       "targets": [
         {
           "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
+            "type": "loki",
+            "uid": "grafanacloud-logs"
           },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
+          "expr": "sum(rate({k8s_namespace_name=~\"${log_namespace}\"} | detected_level = \"error\" [$__auto]))",
+          "instant": false,
+          "legendFormat": "Error log rate",
+          "queryType": "range",
+          "range": true,
           "refId": "A"
         }
       ],
       "title": "Log Error Rate",
-      "type": "table"
+      "type": "timeseries"
     },
     {
       "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
+        "type": "loki",
+        "uid": "grafanacloud-logs"
       },
       "description": "Log volume broken down by severity level. Stacked view highlights relative noise across info/warn/error.",
       "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "opacity",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
             },
-            "properties": [
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
               {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
+                "color": "green",
+                "value": 0
               }
             ]
-          }
-        ]
+          },
+          "unit": "cps"
+        }
       },
       "gridPos": {
         "h": 8,
@@ -2238,23 +2525,19 @@
       "targets": [
         {
           "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
+            "type": "loki",
+            "uid": "grafanacloud-logs"
           },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
+          "expr": "sum by (detected_level) (rate({k8s_namespace_name=~\"${log_namespace}\"} | detected_level != \"\" [$__auto]))",
+          "instant": false,
+          "legendFormat": "{{detected_level}}",
+          "queryType": "range",
+          "range": true,
           "refId": "A"
         }
       ],
       "title": "Log Volume by Level",
-      "type": "table"
+      "type": "timeseries"
     }
   ],
   "preload": false,
@@ -2262,46 +2545,17 @@
   "schemaVersion": 42,
   "tags": [
     "jenkins-2026",
-    "github-actions",
-    "arc",
+    "argo-workflows",
     "ci"
   ],
   "templating": {
     "list": [
       {
-        "name": "appinsights",
-        "label": "Application Insights",
-        "type": "query",
-        "datasource": {
-          "type": "grafana-azure-monitor-datasource",
-          "uid": "azure-monitor-oob"
-        },
-        "query": {
-          "queryType": "Azure Resource Graph",
-          "azureResourceGraph": {
-            "query": "resources | where type =~ 'microsoft.insights/components' | project id | order by id asc"
-          }
-        },
-        "refresh": 1,
-        "hide": 0,
-        "includeAll": false,
-        "multi": false,
-        "current": {},
-        "options": []
-      },
-      {
-        "name": "operation_id",
-        "label": "operation_Id (trace correlation)",
-        "type": "textbox",
-        "query": "",
-        "current": {
-          "text": "",
-          "value": ""
-        },
-        "hide": 0
-      },
-      {
         "allowCustomValue": true,
+        "current": {
+          "text": "grafanacloud-jenkins2026obsy4pwj88m-prom",
+          "value": "grafanacloud-prom"
+        },
         "hide": 0,
         "includeAll": false,
         "label": "Prometheus / Mimir",
@@ -2315,10 +2569,12 @@
         "type": "datasource"
       },
       {
-        "allValue": ".*",
+        "allValue": ".+",
         "allowCustomValue": true,
         "current": {
-          "text": "All",
+          "text": [
+            "All"
+          ],
           "value": [
             "$__all"
           ]
@@ -2336,10 +2592,11 @@
         "valuesFormat": "csv"
       },
       {
-        "allValue": ".*",
         "allowCustomValue": true,
         "current": {
-          "text": "All",
+          "text": [
+            "All"
+          ],
           "value": [
             "$__all"
           ]
@@ -2350,30 +2607,12 @@
         "multi": true,
         "name": "run_status",
         "options": [],
-        "query": "Running,Succeeded,Failed,Pending,Unknown",
+        "query": "Running,Succeeded,Failed,Error,Pending",
         "skipUrlSync": false,
         "type": "custom",
         "valuesFormat": "csv"
       },
       {
-        "allowCustomValue": true,
-        "current": {
-          "text": "arc-runners",
-          "value": "arc-runners"
-        },
-        "hide": 0,
-        "includeAll": false,
-        "label": "Runner Namespace",
-        "multi": false,
-        "name": "runner_scaleset",
-        "options": [],
-        "query": "arc-runners",
-        "skipUrlSync": false,
-        "type": "custom",
-        "valuesFormat": "csv"
-      },
-      {
-        "allValue": "arc-runners|arc-systems",
         "allowCustomValue": true,
         "current": {
           "text": "All",
@@ -2381,33 +2620,41 @@
             "$__all"
           ]
         },
-        "hide": 0,
+        "datasource": {
+          "type": "loki",
+          "uid": "grafanacloud-logs"
+        },
+        "hide": 2,
         "includeAll": true,
         "label": "Log Namespace",
         "multi": true,
         "name": "log_namespace",
         "options": [],
-        "query": "arc-runners,arc-systems",
-        "refresh": 0,
+        "query": {
+          "label": "k8s_namespace_name",
+          "stream": "",
+          "type": 1
+        },
+        "refresh": 1,
         "regex": "",
         "regexApplyTo": "value",
         "skipUrlSync": false,
         "sort": 1,
-        "type": "custom"
+        "type": "query"
       },
       {
         "allowCustomValue": true,
         "current": {
-          "text": "jenkins-2026",
-          "value": "jenkins-2026"
+          "text": "microservices",
+          "value": "microservices"
         },
-        "hide": 0,
+        "hide": 2,
         "includeAll": false,
         "label": "Trace Namespace",
         "multi": false,
         "name": "trace_namespace",
         "options": [],
-        "query": "jenkins-2026",
+        "query": "microservices",
         "skipUrlSync": false,
         "type": "custom",
         "valuesFormat": "csv"
@@ -2415,7 +2662,7 @@
     ]
   },
   "time": {
-    "from": "now-24h",
+    "from": "now-6h",
     "to": "now"
   },
   "timepicker": {
@@ -2433,6 +2680,8 @@
     ]
   },
   "timezone": "browser",
-  "title": "CI-CD / GitHub Actions (ARC) CI Observability",
-  "uid": "jenkins2026-github-actions-ci"
+  "title": "CI-CD / Argo Workflows CI Observability",
+  "version": 4,
+  "uid": "jenkins2026-argo-workflows-ci",
+  "id": 267681507258368
 }

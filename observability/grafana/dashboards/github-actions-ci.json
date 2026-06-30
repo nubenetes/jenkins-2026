@@ -15,10 +15,10 @@
       }
     ]
   },
+  "description": "GitHub Actions self-hosted CI via Actions Runner Controller (ARC). Ephemeral runner pods in the arc-runners namespace on Spot ci-spot capacity, observed through kube-state-metrics (kube_pod_*) and node taints (kube_node_spec_taint) — the lean node/pod-inventory slice 03-observability.sh keeps in every observability mode, so this board works across all four backends.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
-  "id": null,
   "liveNow": false,
   "panels": [
     {
@@ -50,7 +50,7 @@
         "content": "## GitHub Actions (ARC) CI Observability\n\nReal-time and historical view of the **Actions Runner Controller (ARC)** running self-hosted, **ephemeral** GitHub Actions runners in this cluster. Each queued job spins up a throwaway runner Pod in the **`arc-runners`** namespace on the **Spot `ci-spot`** capacity, then the pod is torn down — true scale-to-zero CI.\n\n**Five signals this dashboard tracks**\n- 🟢 **Health** — are runner pods completing, not crash-looping? → *Runner Pod Phase*, *Failed/Errored Runner Pods*, *Outcome Distribution*\n- ⚡ **Speed** — how fast does a runner come up and finish? → *Runner Pod Age*, *Pod Scheduling Latency*\n- 📦 **Capacity** — is ARC scaling up under load and back to zero when idle? → *Active Runner Pods*, *Spot CI nodes*, *Scale-up vs scale-to-zero*\n- 📊 **Velocity** — how much CI is flowing? → *Runner Pod Throughput*, *Total Runner Pods*\n- 📋 **Logs & Traces** — what happened in a specific job? → *Runner Pod Logs*, *Traces*, *Log Error Rate*, *Log Volume by Level*\n\n> **Scope:** use **Status**, **Runner Scale Set**, and **Log Namespace** filters to narrow every panel · Runner membership reads from `kube_pod_*` / `kube_node_spec_taint` via kube-state-metrics, kept even in the lean/free Grafana Cloud profile — so this board works in **all four** observability backends.",
         "mode": "markdown"
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [],
       "title": "",
       "type": "text"
@@ -72,7 +72,7 @@
         "content": "**Step 1 · Read the KPI cards (top row)**\n- **Active Runner Pods** — ARC runner pods running *right now* in `arc-runners` (instant gauge)\n- **Runner Pods (range)** — total runner pods created in the window\n- **Pod Success Rate** — 🟢 ≥ 99 % · 🟡 ≥ 80 % · 🔴 below 80 %\n- **Spot CI nodes** — elastic NAP capacity backing the runners\n\n**Step 2 · Read the trend charts**\n*Runner Pods by Phase* shows Running/Succeeded/Failed/Pending over time. A rising `Failed` stack means runner pods are erroring (image pull, OOM, job failure). *Active Runner Pods vs Spot nodes* shows ARC scaling up under load and consolidating back toward **0**.\n\n**Step 3 · Narrow with the Log level filter**\nSet **Log level → error** to make *Runner Pod Logs* show only failure events from the runner pods.\n\n**Step 4 · Drill into a Trace**\nClick any **Trace ID** in *Runner Traces* to open the span waterfall for that job's instrumented steps.",
         "mode": "markdown"
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [],
       "title": "🟢 Basic Usage Guide",
       "type": "text"
@@ -94,7 +94,7 @@
         "content": "**Runners not scaling up**\nJobs queued on GitHub but *Active Runner Pods* flat at 0 → the `gha-rs-controller` / listener can't reach the GitHub API or the scale set has no capacity. Check `gha_rs_controller_*` reconcile metrics and the listener pod logs in `arc-systems`.\n\n**Pods stuck Pending (scheduling latency spike)**\nA large *Runner Pod Scheduling Latency* p95 means runner pods wait for a Spot node — NAP is provisioning `ci-spot` capacity (cold-start) or hit Spot preemption / quota. Cross-check the **Node Auto-Provisioning** board.\n\n**Runners not scaling to zero**\n*Active Runner Pods* never returns to 0 between jobs → a runner is wedged (stuck job, finalizer). `kubectl get pods -n arc-runners`.\n\n**Key metric reference**\n\n| Metric | Type | What it tracks |\n|---|---|---|\n| `kube_pod_status_phase{namespace=\"arc-runners\"}` | Gauge | Runner pods by phase |\n| `kube_pod_created{namespace=\"arc-runners\"}` | Gauge | Runner pod creation timestamp |\n| `kube_pod_status_ready{namespace=\"arc-runners\"}` | Gauge | Runner readiness |\n| `gha_rs_controller_*` (if exported) | Various | gha-rs-controller reconcile activity |\n| `kube_node_spec_taint{key=\"cloud.google.com/gke-spot\"}` | Gauge | Spot CI nodes backing runners |",
         "mode": "markdown"
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [],
       "title": "🔴 Advanced Runbook",
       "type": "text"
@@ -145,13 +145,13 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
+        "w": 8,
         "x": 0,
         "y": 21
       },
       "id": 15,
       "options": {
-        "colorMode": "background",
+        "colorMode": "background_solid",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
@@ -167,7 +167,7 @@
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -175,7 +175,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(kube_pod_status_phase{namespace=\"arc-runners\",phase=\"Failed\"}) or vector(0)",
+          "expr": "sum(kube_pod_status_phase{namespace=\"$runner_scaleset\",phase=\"Failed\"}) or vector(0)",
           "instant": true,
           "legendFormat": "A",
           "queryType": "instant",
@@ -213,8 +213,8 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 6,
+        "w": 8,
+        "x": 8,
         "y": 21
       },
       "id": 16,
@@ -235,7 +235,7 @@
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -243,7 +243,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(kube_pod_created{namespace=\"arc-runners\"}[$__range]) > bool 0) or vector(0)",
+          "expr": "count(kube_pod_created{namespace=\"$runner_scaleset\"} > ${__from:date:seconds}) or vector(0)",
           "instant": true,
           "legendFormat": "A",
           "queryType": "instant",
@@ -281,13 +281,13 @@
       },
       "gridPos": {
         "h": 4,
-        "w": 6,
-        "x": 12,
+        "w": 8,
+        "x": 16,
         "y": 21
       },
       "id": 17,
       "options": {
-        "colorMode": "background",
+        "colorMode": "background_solid",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
@@ -303,7 +303,7 @@
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -311,7 +311,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(sum(changes(kube_pod_created{namespace=\"arc-runners\"}[$__range])) or vector(0)) / clamp_min($__range_s/3600, 1)",
+          "expr": "(count(kube_pod_created{namespace=\"$runner_scaleset\"} > ${__from:date:seconds}) or vector(0)) / ($__range_s / 3600)",
           "instant": true,
           "legendFormat": "A",
           "queryType": "instant",
@@ -320,81 +320,6 @@
         }
       ],
       "title": "CI Throughput (pods/h)",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${DS_PROMETHEUS}"
-      },
-      "description": "ARC runner pods currently Running. Yellow ≥10, Red ≥25.",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": 0
-              },
-              {
-                "color": "yellow",
-                "value": 10
-              },
-              {
-                "color": "red",
-                "value": 25
-              }
-            ]
-          },
-          "unit": "short"
-        }
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 18,
-        "y": 21
-      },
-      "id": 18,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "percentChangeColorMode": "standard",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "pluginVersion": "13.2.0-28226228576",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "editorMode": "code",
-          "expr": "sum(kube_pod_status_phase{namespace=\"arc-runners\",phase=\"Running\"}) or vector(0)",
-          "instant": true,
-          "legendFormat": "A",
-          "queryType": "instant",
-          "range": false,
-          "refId": "A"
-        }
-      ],
-      "title": "Active Runner Pods",
       "type": "stat"
     },
     {
@@ -442,6 +367,8 @@
               "mode": "area"
             }
           },
+          "max": 1,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -459,9 +386,7 @@
               }
             ]
           },
-          "unit": "percentunit",
-          "max": 1,
-          "min": 0
+          "unit": "percentunit"
         }
       },
       "gridPos": {
@@ -493,7 +418,7 @@
           "sort": "desc"
         }
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -501,7 +426,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(sum(kube_pod_status_phase{namespace=\"arc-runners\",phase=\"Failed\"}) or vector(0)) / clamp_min(sum(kube_pod_status_phase{namespace=\"arc-runners\"}), 1)",
+          "expr": "(sum(kube_pod_status_phase{namespace=\"$runner_scaleset\",phase=\"Failed\"}) or vector(0)) / clamp_min((sum(kube_pod_status_phase{namespace=\"$runner_scaleset\"}) or vector(0)), 1)",
           "instant": false,
           "legendFormat": "Failure Rate",
           "queryType": "range",
@@ -557,6 +482,7 @@
               "mode": "off"
             }
           },
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -566,8 +492,7 @@
               }
             ]
           },
-          "unit": "short",
-          "min": 0
+          "unit": "short"
         }
       },
       "gridPos": {
@@ -590,7 +515,7 @@
           "displayMode": "table",
           "enableFacetedFilter": false,
           "overflow": "ellipsis",
-          "placement": "bottom",
+          "placement": "right",
           "showLegend": true
         },
         "tooltip": {
@@ -599,7 +524,7 @@
           "sort": "desc"
         }
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -607,7 +532,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(kube_pod_status_phase{namespace=\"arc-runners\",phase=\"Running\"}) or vector(0)",
+          "expr": "sum(kube_pod_status_phase{namespace=\"$runner_scaleset\",phase=\"Running\"}) or vector(0)",
           "instant": false,
           "legendFormat": "Active runner pods",
           "queryType": "range",
@@ -633,7 +558,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(kube_node_info) - (count(kube_node_spec_taint{key=\"cloud.google.com/gke-spot\"}) or vector(0))",
+          "expr": "count(kube_node_info unless on(node) kube_node_spec_taint{key=\"cloud.google.com/gke-spot\"}) or vector(0)",
           "instant": false,
           "legendFormat": "Static pool",
           "queryType": "range",
@@ -892,10 +817,10 @@
         "tooltip": {
           "hideZeros": false,
           "mode": "multi",
-          "sort": "none"
+          "sort": "desc"
         }
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -903,7 +828,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (phase) (kube_pod_status_phase{namespace=\"arc-runners\"} > 0)",
+          "expr": "sum by (phase) (kube_pod_status_phase{namespace=\"$runner_scaleset\"} > 0)",
           "instant": true,
           "legendFormat": "{{phase}}",
           "queryType": "instant",
@@ -1003,14 +928,14 @@
           }
         ]
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "topk(10, count by (pod) (kube_pod_status_phase{namespace=\"$runner_scaleset\",phase=~\"Running|Pending\"} > 0))",
+          "expr": "kube_pod_status_phase{namespace=\"$runner_scaleset\",phase=~\"Running|Pending\"} > 0",
           "instant": true,
           "legendFormat": "",
           "queryType": "instant",
@@ -1116,7 +1041,7 @@
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -1124,7 +1049,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(kube_pod_status_phase{namespace=\"arc-runners\",phase=\"Running\"}) or vector(0)",
+          "expr": "sum(kube_pod_status_phase{namespace=\"$runner_scaleset\",phase=\"Running\"}) or vector(0)",
           "instant": true,
           "legendFormat": "running",
           "queryType": "instant",
@@ -1191,7 +1116,7 @@
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -1199,7 +1124,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(kube_pod_status_phase{namespace=\"arc-runners\",phase=\"Pending\"}) or vector(0)",
+          "expr": "sum(kube_pod_status_phase{namespace=\"$runner_scaleset\",phase=\"Pending\"}) or vector(0)",
           "instant": true,
           "legendFormat": "pending",
           "queryType": "instant",
@@ -1222,6 +1147,8 @@
             "mode": "thresholds"
           },
           "decimals": 0,
+          "max": 1,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -1239,9 +1166,7 @@
               }
             ]
           },
-          "unit": "percentunit",
-          "max": 1,
-          "min": 0
+          "unit": "percentunit"
         }
       },
       "gridPos": {
@@ -1252,7 +1177,7 @@
       },
       "id": 3,
       "options": {
-        "colorMode": "background",
+        "colorMode": "background_solid",
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
@@ -1268,7 +1193,7 @@
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -1276,7 +1201,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "(sum(kube_pod_status_phase{namespace=\"arc-runners\",phase=\"Succeeded\"}) or vector(0)) / clamp_min(sum(kube_pod_status_phase{namespace=\"arc-runners\",phase=~\"Succeeded|Failed\"}), 1)",
+          "expr": "(sum(kube_pod_status_phase{namespace=\"$runner_scaleset\",phase=\"Succeeded\"}) or vector(0)) / clamp_min((sum(kube_pod_status_phase{namespace=\"$runner_scaleset\",phase=~\"Succeeded|Failed\"}) or vector(0)), 1)",
           "instant": true,
           "legendFormat": "success rate",
           "queryType": "instant",
@@ -1336,7 +1261,7 @@
         "textMode": "auto",
         "wideLayout": true
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -1344,7 +1269,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(count by (pod) (kube_pod_info{namespace=\"arc-runners\"})) or vector(0)",
+          "expr": "count(kube_pod_info{namespace=\"$runner_scaleset\"}) or vector(0)",
           "instant": true,
           "legendFormat": "pods",
           "queryType": "instant",
@@ -1615,7 +1540,7 @@
           "displayMode": "table",
           "enableFacetedFilter": false,
           "overflow": "ellipsis",
-          "placement": "bottom",
+          "placement": "right",
           "showLegend": true
         },
         "tooltip": {
@@ -1624,7 +1549,7 @@
           "sort": "desc"
         }
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -1632,7 +1557,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (phase) (kube_pod_status_phase{namespace=\"arc-runners\",phase=~\"$run_status\"} > 0)",
+          "expr": "sum by (phase) (kube_pod_status_phase{namespace=\"$runner_scaleset\",phase=~\"$run_status\"} > 0)",
           "instant": false,
           "legendFormat": "{{phase}}",
           "queryType": "range",
@@ -1685,7 +1610,7 @@
               "mode": "none"
             },
             "thresholdsStyle": {
-              "mode": "line"
+              "mode": "area"
             }
           },
           "thresholds": {
@@ -1737,7 +1662,7 @@
           "sort": "desc"
         }
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -1745,7 +1670,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "max(time() - kube_pod_created{namespace=\"arc-runners\"}) or vector(0)",
+          "expr": "max(time() - kube_pod_created{namespace=\"$runner_scaleset\"}) or vector(0)",
           "instant": false,
           "legendFormat": "oldest pod age",
           "queryType": "range",
@@ -1758,7 +1683,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "avg(time() - kube_pod_created{namespace=\"arc-runners\"}) or vector(0)",
+          "expr": "avg(time() - kube_pod_created{namespace=\"$runner_scaleset\"}) or vector(0)",
           "instant": false,
           "legendFormat": "mean pod age",
           "queryType": "range",
@@ -1856,7 +1781,7 @@
           "sort": "desc"
         }
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -1864,7 +1789,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (controller) (rate(gha_rs_controller_reconcile_total[$__rate_interval]))",
+          "expr": "sum by (controller) (rate(gha_rs_controller_reconcile_total[$__rate_interval])) or vector(0)",
           "instant": false,
           "legendFormat": "{{controller}}",
           "queryType": "range",
@@ -1877,7 +1802,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(controller_runtime_reconcile_total{namespace=\"arc-systems\"}[$__rate_interval]))",
+          "expr": "sum(rate(controller_runtime_reconcile_total{namespace=\"arc-systems\"}[$__rate_interval])) or vector(0)",
           "instant": false,
           "legendFormat": "reconciles (controller-runtime)",
           "queryType": "range",
@@ -1933,6 +1858,7 @@
               "mode": "off"
             }
           },
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -1942,8 +1868,7 @@
               }
             ]
           },
-          "unit": "short",
-          "min": 0
+          "unit": "short"
         }
       },
       "gridPos": {
@@ -1966,7 +1891,7 @@
           "displayMode": "table",
           "enableFacetedFilter": false,
           "overflow": "ellipsis",
-          "placement": "bottom",
+          "placement": "right",
           "showLegend": true
         },
         "tooltip": {
@@ -1975,7 +1900,7 @@
           "sort": "desc"
         }
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -1983,7 +1908,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(kube_pod_status_phase{namespace=\"arc-runners\",phase=\"Pending\"}) or vector(0)",
+          "expr": "sum(kube_pod_status_phase{namespace=\"$runner_scaleset\",phase=\"Pending\"}) or vector(0)",
           "instant": false,
           "legendFormat": "pending pods",
           "queryType": "range",
@@ -1996,7 +1921,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "count(kube_node_spec_taint{key=\"cloud.google.com/compute-class\",value=\"ci-spot\"}) or vector(0)",
+          "expr": "count(kube_node_spec_taint{key=\"cloud.google.com/gke-spot\"}) or vector(0)",
           "instant": false,
           "legendFormat": "ci-spot nodes ready",
           "queryType": "range",
@@ -2004,7 +1929,7 @@
           "refId": "B"
         }
       ],
-      "title": "Runner Pod Scheduling Latency",
+      "title": "Pending Pods & CI-Spot Node Readiness",
       "type": "timeseries"
     },
     {
@@ -2049,7 +1974,7 @@
         "unwrappedColumns": false,
         "wrapLogMessage": false
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -2112,7 +2037,7 @@
         "nodes": {},
         "showHeader": true
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
@@ -2162,7 +2087,7 @@
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "fillOpacity": 20,
+            "fillOpacity": 15,
             "gradientMode": "opacity",
             "hideFrom": {
               "legend": false,
@@ -2236,14 +2161,14 @@
           "sort": "desc"
         }
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
           "datasource": {
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum(rate({k8s_namespace_name=~\"${log_namespace}\"} | detected_level = \"error\" [$__auto]))",
+          "expr": "sum(rate({k8s_namespace_name=~\"${log_namespace}\"} | pattern \"<ts>\\t<lvl>\\t<_>\" | lvl = \"ERROR\" [$__auto]))",
           "instant": false,
           "legendFormat": "Error log rate",
           "queryType": "range",
@@ -2274,7 +2199,7 @@
             "barAlignment": 0,
             "barWidthFactor": 0.6,
             "drawStyle": "line",
-            "fillOpacity": 60,
+            "fillOpacity": 10,
             "gradientMode": "opacity",
             "hideFrom": {
               "legend": false,
@@ -2309,7 +2234,69 @@
             ]
           },
           "unit": "cps"
-        }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "error|Error|ERROR"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#F2495C",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "warn|Warn|WARN|warning|Warning"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#FF9830",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "info|Info|INFO"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#5794F2",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "debug|Debug|DEBUG"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#808080",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 8,
@@ -2340,16 +2327,17 @@
           "sort": "desc"
         }
       },
-      "pluginVersion": "13.2.0-28226228576",
+      "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
+          "app": "grafana-assistant-app",
           "datasource": {
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "sum by (detected_level) (rate({k8s_namespace_name=~\"${log_namespace}\"} | detected_level != \"\" [$__auto]))",
+          "expr": "sum by (lvl) (rate({k8s_namespace_name=~\"${log_namespace}\"} | pattern \"<ts>\\t<lvl>\\t<_>\" | lvl != \"\" [$__auto]))",
           "instant": false,
-          "legendFormat": "{{detected_level}}",
+          "legendFormat": "{{lvl}}",
           "queryType": "range",
           "range": true,
           "refId": "A"
@@ -2372,10 +2360,6 @@
     "list": [
       {
         "allowCustomValue": true,
-        "current": {
-          "text": "",
-          "value": ""
-        },
         "hide": 0,
         "includeAll": false,
         "label": "Prometheus / Mimir",
@@ -2389,7 +2373,7 @@
         "type": "datasource"
       },
       {
-        "allValue": ".+",
+        "allValue": ".*",
         "allowCustomValue": true,
         "current": {
           "text": "All",
@@ -2410,11 +2394,10 @@
         "valuesFormat": "csv"
       },
       {
+        "allValue": ".*",
         "allowCustomValue": true,
         "current": {
-          "text": [
-            "All"
-          ],
+          "text": "All",
           "value": [
             "$__all"
           ]
@@ -2451,9 +2434,7 @@
         "allValue": "arc-runners|arc-systems",
         "allowCustomValue": true,
         "current": {
-          "text": [
-            "All"
-          ],
+          "text": "All",
           "value": [
             "$__all"
           ]
@@ -2519,8 +2500,5 @@
   },
   "timezone": "browser",
   "title": "CI-CD / GitHub Actions (ARC) CI Observability",
-  "uid": "jenkins2026-github-actions-ci",
-  "version": 1,
-  "weekStart": "",
-  "description": "GitHub Actions self-hosted CI via Actions Runner Controller (ARC). Ephemeral runner pods in the arc-runners namespace on Spot ci-spot capacity, observed through kube-state-metrics (kube_pod_*) and node taints (kube_node_spec_taint) — the lean node/pod-inventory slice 03-observability.sh keeps in every observability mode, so this board works across all four backends."
+  "uid": "jenkins2026-github-actions-ci"
 }

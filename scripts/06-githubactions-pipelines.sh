@@ -83,8 +83,29 @@ for i in $(seq 0 $((svc_count - 1))); do
     else
       git commit -m "ci: render microservices-ci.yml (ARC self-hosted runners) [jenkins-2026]" >/dev/null
       # NOTE: GIT_TOKEN must carry the `workflow` scope or this push is rejected.
-      if git push origin HEAD >/dev/null 2>&1; then log_info "  ${name}: workflow pushed."; rendered=$((rendered+1));
+      if git push origin HEAD >/dev/null 2>&1; then log_info "  ${name}: workflow pushed (main)."; rendered=$((rendered+1));
       else log_warn "  ${name}: push of .github/workflows/ rejected — GIT_TOKEN needs the 'workflow' scope."; fi
+    fi
+    # Also publish the workflow to the fork's `develop` branch so a push to develop — or a
+    # 1-click "Run workflow" from the develop branch — runs the DEVELOP tier. It is the SAME
+    # file: the workflow derives ENV_NAME/TARGET_NS from github.ref_name at run time, so on
+    # develop it deploys to the develop namespace. GitHub runs the workflow defined on the
+    # branch being pushed, so without this push to develop would no-op (no workflow there).
+    # Gated on the develop track being on AND the fork actually having a develop branch.
+    if [[ "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED:-false}" == "true" ]] \
+       && git ls-remote --exit-code --heads origin develop >/dev/null 2>&1; then
+      _wf="$(mktemp)"; cp .github/workflows/microservices-ci.yml "${_wf}"
+      git fetch --depth 1 origin develop >/dev/null 2>&1 && git checkout -q -B develop FETCH_HEAD
+      mkdir -p .github/workflows; cp "${_wf}" .github/workflows/microservices-ci.yml; rm -f "${_wf}"
+      git add .github/workflows/microservices-ci.yml
+      if git diff --cached --quiet; then
+        log_info "  ${name}: develop workflow already up to date."
+      elif git commit -m "ci: render microservices-ci.yml (develop tier) [jenkins-2026]" >/dev/null 2>&1 \
+           && git push origin develop >/dev/null 2>&1; then
+        log_info "  ${name}: workflow pushed (develop tier)."
+      else
+        log_warn "  ${name}: push to develop rejected — GIT_TOKEN needs the 'workflow' scope."
+      fi
     fi
     # Seed the repo secrets the rendered workflow needs onto each fork. Without them the Jib
     # step gets a 403 from ghcr.io and the GitOps tag-bump can't push. gh authenticates with

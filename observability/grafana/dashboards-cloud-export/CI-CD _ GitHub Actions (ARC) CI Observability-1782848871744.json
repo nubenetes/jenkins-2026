@@ -15,7 +15,7 @@
       }
     ]
   },
-  "description": "GitHub Actions self-hosted CI via Actions Runner Controller (ARC). Ephemeral runner pods in the arc-runners namespace on Spot ci-spot capacity, observed through kube-state-metrics (kube_pod_*) and node taints (kube_node_spec_taint) \u2014 the lean node/pod-inventory slice 03-observability.sh keeps in every observability mode, so this board works across all four backends.",
+  "description": "GitHub Actions self-hosted CI via Actions Runner Controller (ARC). Ephemeral runner pods in the arc-runners namespace on Spot ci-spot capacity, observed through kube-state-metrics (kube_pod_*) and node taints (kube_node_spec_taint) — the lean node/pod-inventory slice 03-observability.sh keeps in every observability mode, so this board works across all four backends.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -30,7 +30,7 @@
         "y": 0
       },
       "id": 25,
-      "title": "\ud83d\udcd6 Overview & Documentation",
+      "title": "📖 Overview & Documentation",
       "type": "row"
     },
     {
@@ -47,7 +47,7 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "## GitHub Actions (ARC) CI Observability\n\nReal-time and historical view of the **Actions Runner Controller (ARC)** running self-hosted, **ephemeral** GitHub Actions runners in this cluster. Each queued job spins up a throwaway runner Pod in the **`arc-runners`** namespace on the **Spot `ci-spot`** capacity, then the pod is torn down \u2014 true scale-to-zero CI.\n\n**Five signals this dashboard tracks**\n- \ud83d\udfe2 **Health** \u2014 are runner pods completing, not crash-looping? \u2192 *Runner Pod Phase*, *Failed/Errored Runner Pods*, *Outcome Distribution*\n- \u26a1 **Speed** \u2014 how fast does a runner come up and finish? \u2192 *Runner Pod Age*, *Pod Scheduling Latency*\n- \ud83d\udce6 **Capacity** \u2014 is ARC scaling up under load and back to zero when idle? \u2192 *Active Runner Pods*, *Spot CI nodes*, *Scale-up vs scale-to-zero*\n- \ud83d\udcca **Velocity** \u2014 how much CI is flowing? \u2192 *Runner Pod Throughput*, *Total Runner Pods*\n- \ud83d\udccb **Logs & Traces** \u2014 what happened in a specific job? \u2192 *Runner Pod Logs*, *Traces*, *Log Error Rate*, *Log Volume by Level*\n\n> **Scope:** use **Status**, **Runner Scale Set**, and **Log Namespace** filters to narrow every panel \u00b7 Runner membership reads from `kube_pod_*` / `kube_node_spec_taint` via kube-state-metrics, kept even in the lean/free Grafana Cloud profile \u2014 so this board works in **all four** observability backends.",
+        "content": "## GitHub Actions (ARC) CI Observability\n\nReal-time and historical view of the **Actions Runner Controller (ARC)** running self-hosted, **ephemeral** GitHub Actions runners in this cluster. Each queued job spins up a throwaway runner Pod in the **`arc-runners`** namespace on the **Spot `ci-spot`** capacity, then the pod is torn down — true scale-to-zero CI.\n\n**Five signals this dashboard tracks**\n- 🟢 **Health** — are runner pods completing, not crash-looping? → *Runner Pod Phase*, *Failed/Errored Runner Pods*, *Outcome Distribution*\n- ⚡ **Speed** — how fast does a runner come up and finish? → *Runner Pod Age*, *Pod Scheduling Latency*\n- 📦 **Capacity** — is ARC scaling up under load and back to zero when idle? → *Active Runner Pods*, *Spot CI nodes*, *Scale-up vs scale-to-zero*\n- 📊 **Velocity** — how much CI is flowing? → *Runner Pod Throughput*, *Total Runner Pods*\n- 📋 **Logs & Traces** — what happened in a specific job? → *Runner Pod Logs*, *Traces*, *Log Error Rate*, *Log Volume by Level*\n\n> **Scope:** use **Status**, **Runner Scale Set**, and **Log Namespace** filters to narrow every panel · Runner membership reads from `kube_pod_*` / `kube_node_spec_taint` via kube-state-metrics, kept even in the lean/free Grafana Cloud profile — so this board works in **all four** observability backends.",
         "mode": "markdown"
       },
       "pluginVersion": "13.2.0-28268912997",
@@ -69,12 +69,12 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "**Step 1 \u00b7 Read the KPI cards (top row)**\n- **Active Runner Pods** \u2014 ARC runner pods running *right now* in `arc-runners` (instant gauge)\n- **Runner Pods (range)** \u2014 total runner pods created in the window\n- **Pod Success Rate** \u2014 \ud83d\udfe2 \u2265 99 % \u00b7 \ud83d\udfe1 \u2265 80 % \u00b7 \ud83d\udd34 below 80 %\n- **Spot CI nodes** \u2014 elastic NAP capacity backing the runners\n\n**Step 2 \u00b7 Read the trend charts**\n*Runner Pods by Phase* shows Running/Succeeded/Failed/Pending over time. A rising `Failed` stack means runner pods are erroring (image pull, OOM, job failure). *Active Runner Pods vs Spot nodes* shows ARC scaling up under load and consolidating back toward **0**.\n\n**Step 3 \u00b7 Narrow with the Log level filter**\nSet **Log level \u2192 error** to make *Runner Pod Logs* show only failure events from the runner pods.\n\n**Step 4 \u00b7 Drill into a Trace**\nClick any **Trace ID** in *Runner Traces* to open the span waterfall for that job's instrumented steps.",
+        "content": "**Step 1 · Read the KPI cards (top row)**\n- **Active Runner Pods** — ARC runner pods running *right now* in `arc-runners` (instant gauge)\n- **Runner Pods (range)** — total runner pods created in the window\n- **Pod Success Rate** — 🟢 ≥ 99 % · 🟡 ≥ 80 % · 🔴 below 80 %\n- **Spot CI nodes** — elastic NAP capacity backing the runners\n\n**Step 2 · Read the trend charts**\n*Runner Pods by Phase* shows Running/Succeeded/Failed/Pending over time. A rising `Failed` stack means runner pods are erroring (image pull, OOM, job failure). *Active Runner Pods vs Spot nodes* shows ARC scaling up under load and consolidating back toward **0**.\n\n**Step 3 · Narrow with the Log level filter**\nSet **Log level → error** to make *Runner Pod Logs* show only failure events from the runner pods.\n\n**Step 4 · Drill into a Trace**\nClick any **Trace ID** in *Runner Traces* to open the span waterfall for that job's instrumented steps.",
         "mode": "markdown"
       },
       "pluginVersion": "13.2.0-28268912997",
       "targets": [],
-      "title": "\ud83d\udfe2 Basic Usage Guide",
+      "title": "🟢 Basic Usage Guide",
       "type": "text"
     },
     {
@@ -91,12 +91,12 @@
           "showLineNumbers": false,
           "showMiniMap": false
         },
-        "content": "**Runners not scaling up**\nJobs queued on GitHub but *Active Runner Pods* flat at 0 \u2192 the `gha-rs-controller` / listener can't reach the GitHub API or the scale set has no capacity. Check `gha_rs_controller_*` reconcile metrics and the listener pod logs in `arc-systems`.\n\n**Pods stuck Pending (scheduling latency spike)**\nA large *Runner Pod Scheduling Latency* p95 means runner pods wait for a Spot node \u2014 NAP is provisioning `ci-spot` capacity (cold-start) or hit Spot preemption / quota. Cross-check the **Node Auto-Provisioning** board.\n\n**Runners not scaling to zero**\n*Active Runner Pods* never returns to 0 between jobs \u2192 a runner is wedged (stuck job, finalizer). `kubectl get pods -n arc-runners`.\n\n**Key metric reference**\n\n| Metric | Type | What it tracks |\n|---|---|---|\n| `kube_pod_status_phase{namespace=\"arc-runners\"}` | Gauge | Runner pods by phase |\n| `kube_pod_created{namespace=\"arc-runners\"}` | Gauge | Runner pod creation timestamp |\n| `kube_pod_status_ready{namespace=\"arc-runners\"}` | Gauge | Runner readiness |\n| `gha_rs_controller_*` (if exported) | Various | gha-rs-controller reconcile activity |\n| `kube_node_spec_taint{key=\"cloud.google.com/gke-spot\"}` | Gauge | Spot CI nodes backing runners |",
+        "content": "**Runners not scaling up**\nJobs queued on GitHub but *Active Runner Pods* flat at 0 → the `gha-rs-controller` / listener can't reach the GitHub API or the scale set has no capacity. Check `gha_rs_controller_*` reconcile metrics and the listener pod logs in `arc-systems`.\n\n**Pods stuck Pending (scheduling latency spike)**\nA large *Runner Pod Scheduling Latency* p95 means runner pods wait for a Spot node — NAP is provisioning `ci-spot` capacity (cold-start) or hit Spot preemption / quota. Cross-check the **Node Auto-Provisioning** board.\n\n**Runners not scaling to zero**\n*Active Runner Pods* never returns to 0 between jobs → a runner is wedged (stuck job, finalizer). `kubectl get pods -n arc-runners`.\n\n**Key metric reference**\n\n| Metric | Type | What it tracks |\n|---|---|---|\n| `kube_pod_status_phase{namespace=\"arc-runners\"}` | Gauge | Runner pods by phase |\n| `kube_pod_created{namespace=\"arc-runners\"}` | Gauge | Runner pod creation timestamp |\n| `kube_pod_status_ready{namespace=\"arc-runners\"}` | Gauge | Runner readiness |\n| `gha_rs_controller_*` (if exported) | Various | gha-rs-controller reconcile activity |\n| `kube_node_spec_taint{key=\"cloud.google.com/gke-spot\"}` | Gauge | Spot CI nodes backing runners |",
         "mode": "markdown"
       },
       "pluginVersion": "13.2.0-28268912997",
       "targets": [],
-      "title": "\ud83d\udd34 Advanced Runbook",
+      "title": "🔴 Advanced Runbook",
       "type": "text"
     },
     {
@@ -108,7 +108,7 @@
         "y": 20
       },
       "id": 26,
-      "title": "\ud83d\udcca Business Overview & Velocity",
+      "title": "📊 Business Overview & Velocity",
       "type": "row"
     },
     {
@@ -116,7 +116,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Runner pods currently in Failed phase in arc-runners. Yellow \u22651, Red \u22655.",
+      "description": "Runner pods currently in Failed phase in arc-runners. Yellow ≥1, Red ≥5.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -578,7 +578,7 @@
         "y": 33
       },
       "id": 27,
-      "title": "\ud83d\udd2c Runner Pod Analysis",
+      "title": "🔬 Runner Pod Analysis",
       "type": "row"
     },
     {
@@ -982,7 +982,7 @@
         "y": 44
       },
       "id": 28,
-      "title": "GitHub Actions / ARC \u2014 runner pods & controller (kube-state-metrics)",
+      "title": "GitHub Actions / ARC — runner pods & controller (kube-state-metrics)",
       "type": "row"
     },
     {
@@ -1573,7 +1573,7 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Age of the oldest active runner pod (now - kube_pod_created) \u2014 a high value means a wedged / non-terminating runner.",
+      "description": "Age of the oldest active runner pod (now - kube_pod_created) — a high value means a wedged / non-terminating runner.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1946,8 +1946,8 @@
     },
     {
       "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
+        "type": "loki",
+        "uid": "grafanacloud-logs"
       },
       "description": "Logs from the ARC runner namespaces (the ephemeral runner pods).",
       "gridPos": {
@@ -1978,75 +1978,50 @@
       "targets": [
         {
           "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
+            "type": "loki",
+            "uid": "grafanacloud-logs"
           },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
+          "editorMode": "code",
+          "expr": "{k8s_namespace_name=~\"${log_namespace}\"} | detected_level =~ \"${level}\"",
+          "queryType": "range",
           "refId": "A"
         }
       ],
       "title": "Runner Pod Logs",
-      "type": "table",
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      }
+      "type": "logs"
     },
     {
       "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
+        "type": "tempo",
+        "uid": "grafanacloud-traces"
       },
       "description": "Distributed traces emitted by instrumented job steps (OTLP to the collector). Drill into a single job's spans.",
       "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
             },
-            "properties": [
+            "footer": {
+              "reducers": []
+            },
+            "inspect": false
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
               {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
               }
             ]
           }
-        ]
+        }
       },
       "gridPos": {
         "h": 9,
@@ -2066,19 +2041,15 @@
       "targets": [
         {
           "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
+            "type": "tempo",
+            "uid": "grafanacloud-traces"
           },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "union requests, dependencies\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, operation_Id, cloud_RoleName, name, duration, success, itemType\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
-          "refId": "A"
+          "filters": [],
+          "limit": 50,
+          "query": "{ resource.service.namespace = \"${trace_namespace}\" }",
+          "queryType": "traceql",
+          "refId": "A",
+          "tableType": "traces"
         }
       ],
       "title": "Runner Traces",
@@ -2093,37 +2064,73 @@
         "y": 76
       },
       "id": 30,
-      "title": "\ud83d\udcc8 Log Analytics",
+      "title": "📈 Log Analytics",
       "type": "row"
     },
     {
       "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
+        "type": "loki",
+        "uid": "grafanacloud-logs"
       },
       "description": "Rate of error-level log lines. Spikes indicate runner/workflow pod failures.",
       "fieldConfig": {
-        "defaults": {},
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "opacity",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
             },
-            "properties": [
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "area"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
               {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 0.1
+              },
+              {
+                "color": "red",
+                "value": 0.5
               }
             ]
-          }
-        ]
+          },
+          "unit": "cps"
+        }
       },
       "gridPos": {
         "h": 8,
@@ -2158,48 +2165,134 @@
       "targets": [
         {
           "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
+            "type": "loki",
+            "uid": "grafanacloud-logs"
           },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
+          "expr": "sum(rate({k8s_namespace_name=~\"${log_namespace}\"} | pattern \"<ts>\\t<lvl>\\t<_>\" | lvl = \"ERROR\" [$__auto]))",
+          "instant": false,
+          "legendFormat": "Error log rate",
+          "queryType": "range",
+          "range": true,
           "refId": "A"
         }
       ],
       "title": "Log Error Rate",
-      "type": "table"
+      "type": "timeseries"
     },
     {
       "datasource": {
-        "type": "grafana-azure-monitor-datasource",
-        "uid": "azure-monitor-oob"
+        "type": "loki",
+        "uid": "grafanacloud-logs"
       },
       "description": "Log volume broken down by severity level. Stacked view highlights relative noise across info/warn/error.",
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "cps"
+        },
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "operation_Id"
+              "id": "byRegexp",
+              "options": "error|Error|ERROR"
             },
             "properties": [
               {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "Correlate: filter this trace (operation_Id)",
-                    "url": "?var-operation_id=${__value.raw}",
-                    "targetBlank": false
-                  }
-                ]
+                "id": "color",
+                "value": {
+                  "fixedColor": "#F2495C",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "warn|Warn|WARN|warning|Warning"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#FF9830",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "info|Info|INFO"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#5794F2",
+                  "mode": "fixed"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "debug|Debug|DEBUG"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "fixedColor": "#808080",
+                  "mode": "fixed"
+                }
               }
             ]
           }
@@ -2237,24 +2330,21 @@
       "pluginVersion": "13.2.0-28268912997",
       "targets": [
         {
+          "app": "grafana-assistant-app",
           "datasource": {
-            "type": "grafana-azure-monitor-datasource",
-            "uid": "azure-monitor-oob"
+            "type": "loki",
+            "uid": "grafanacloud-logs"
           },
-          "queryType": "Azure Log Analytics",
-          "azureLogAnalytics": {
-            "resources": [
-              "${appinsights}"
-            ],
-            "query": "traces\n| where '${operation_id}' == '' or operation_Id == '${operation_id}'\n| project timestamp, severityLevel, cloud_RoleName, operation_Id, message\n| order by timestamp desc",
-            "dashboardTime": true,
-            "resultFormat": "table"
-          },
+          "expr": "sum by (lvl) (rate({k8s_namespace_name=~\"${log_namespace}\"} | pattern \"<ts>\\t<lvl>\\t<_>\" | lvl != \"\" [$__auto]))",
+          "instant": false,
+          "legendFormat": "{{lvl}}",
+          "queryType": "range",
+          "range": true,
           "refId": "A"
         }
       ],
       "title": "Log Volume by Level",
-      "type": "table"
+      "type": "timeseries"
     }
   ],
   "preload": false,
@@ -2269,39 +2359,11 @@
   "templating": {
     "list": [
       {
-        "name": "appinsights",
-        "label": "Application Insights",
-        "type": "query",
-        "datasource": {
-          "type": "grafana-azure-monitor-datasource",
-          "uid": "azure-monitor-oob"
-        },
-        "query": {
-          "queryType": "Azure Resource Graph",
-          "azureResourceGraph": {
-            "query": "resources | where type =~ 'microsoft.insights/components' | project id | order by id asc"
-          }
-        },
-        "refresh": 1,
-        "hide": 0,
-        "includeAll": false,
-        "multi": false,
-        "current": {},
-        "options": []
-      },
-      {
-        "name": "operation_id",
-        "label": "operation_Id (trace correlation)",
-        "type": "textbox",
-        "query": "",
-        "current": {
-          "text": "",
-          "value": ""
-        },
-        "hide": 0
-      },
-      {
         "allowCustomValue": true,
+        "current": {
+          "text": "grafanacloud-jenkins2026obsy4pwj88m-prom",
+          "value": "grafanacloud-prom"
+        },
         "hide": 0,
         "includeAll": false,
         "label": "Prometheus / Mimir",
@@ -2381,19 +2443,27 @@
             "$__all"
           ]
         },
+        "datasource": {
+          "type": "loki",
+          "uid": "grafanacloud-logs"
+        },
         "hide": 0,
         "includeAll": true,
         "label": "Log Namespace",
         "multi": true,
         "name": "log_namespace",
         "options": [],
-        "query": "arc-runners,arc-systems",
-        "refresh": 0,
+        "query": {
+          "label": "k8s_namespace_name",
+          "stream": "{k8s_namespace_name=~\"arc-runners|arc-systems\"}",
+          "type": 1
+        },
+        "refresh": 1,
         "regex": "",
         "regexApplyTo": "value",
         "skipUrlSync": false,
         "sort": 1,
-        "type": "custom"
+        "type": "query"
       },
       {
         "allowCustomValue": true,
@@ -2434,5 +2504,7 @@
   },
   "timezone": "browser",
   "title": "CI-CD / GitHub Actions (ARC) CI Observability",
-  "uid": "jenkins2026-github-actions-ci"
+  "version": 6,
+  "uid": "jenkins2026-github-actions-ci",
+  "id": 328495677255680
 }

@@ -71,6 +71,54 @@ to follow a build; you look at GitHub.
 > org **Self-hosted runners: Read & write**, and the controller must be rolled to re-read a
 > changed `arc-github-app` Secret).
 
+## Triggering a build — the branch-based tier model (stable vs develop)
+
+GitHub Actions here is **branch-based, not environment-selector-based**: there is no "choose an
+environment" field. **The branch a build runs on decides the tier**, because the rendered
+workflow derives everything from `github.ref_name` at run time:
+
+```yaml
+ENV_NAME:  ${{ github.ref_name == 'develop' && 'develop' || 'stable' }}
+TARGET_NS: ${{ github.ref_name == 'develop' && 'microservices-develop' || 'microservices' }}
+```
+
+| | **Stable** tier | **Develop** tier |
+|---|---|---|
+| Runs on the fork's branch | **`main`** | **`develop`** |
+| Code built | the app's `main` | the app's `develop` (true branch-based promotion) |
+| `ENV_NAME` | `stable` | `develop` |
+| Deploy namespace (`TARGET_NS`) | `microservices` | `microservices-develop` |
+| GitOps values bumped | `values-stable.yaml` on gitops-config `main` | `values-develop.yaml` on gitops-config `develop` |
+| Public URL | `microservices.<domain>` | `microservices-develop.<domain>` |
+
+So **the branch *is* the environment selector.** There are **two equivalent ways** to launch a
+build, both honouring that model:
+
+**1 — Push / merge a PR to the branch** (the GitOps-native way):
+- push to the fork's **`main`** → stable build → deploys to `microservices`;
+- push to the fork's **`develop`** → develop build → deploys to `microservices-develop`.
+
+**2 — 1-click "Run workflow"** (`workflow_dispatch`): on the fork's **Actions** tab → the
+**microservices-ci** workflow → **Run workflow** → in **"Use workflow from"** pick the branch
+(`main` = stable, `develop` = develop). **That branch dropdown is your environment selector.**
+It is also what the seed's `githubactions.seedRuns` uses (`gh workflow run`) to populate the
+Actions tab from Day1.
+
+> **Why the workflow lives on *both* branches.** GitHub runs the workflow file **from the branch
+> receiving the event** — so a push to `develop` only triggers if `develop` actually contains
+> `.github/workflows/microservices-ci.yml`. The seed
+> ([`06-githubactions-pipelines.sh`](../scripts/06-githubactions-pipelines.sh)) therefore renders
+> the **same** file to **`main` and — when the develop track is enabled — `develop`** of every
+> fork. The file is byte-identical on both branches; only `github.ref_name` differs at run time,
+> and that is what flips the tier. *(Before this, the seed pushed only to `main`, so the develop
+> tier could never be triggered — a push to `develop` no-op'd because there was no workflow
+> there.)*
+
+The develop tier also needs its **cluster side**: the `microservices-develop` namespace
+(+ NetworkPolicies/RBAC) and the `microservices-develop.<domain>` Gateway route. Those are
+provisioned by `Day1.cluster.01-gke` / `Day2.redeploy.06-githubactions` when the develop track
+is on (`develop_track: true`).
+
 ## Understanding ARC (newcomers → specialists)
 
 ARC is **GitHub Actions, but the runners live in your cluster**. There is no
@@ -499,8 +547,10 @@ the template's `{{...}}` placeholders per service).
 (no webhook-create loop — the GitHub App handles dispatch): it waits for the
 `AutoscalingRunnerSet` to register, applies the `static` opt-out patch if
 configured, then for each service clones the fork, renders the workflow, and
-**diff-then-pushes** it (idempotent). With `githubactions.seedRuns: true` (default,
-parity with `tekton.seedRuns`) it also `gh workflow run`s each fork so the Actions
+**diff-then-pushes** it (idempotent) to the fork's `main` — and, when the develop track is
+on, to its **`develop`** branch too, so push-to-develop / Run-workflow-from-develop runs the
+**develop tier** (see *[Triggering a build](#triggering-a-build--the-branch-based-tier-model-stable-vs-develop)* above). With `githubactions.seedRuns: true`
+(default, parity with `tekton.seedRuns`) it also `gh workflow run`s each fork so the Actions
 tab is populated from Day1.
 
 ### The rendered workflow
