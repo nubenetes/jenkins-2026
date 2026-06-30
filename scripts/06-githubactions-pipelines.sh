@@ -86,6 +86,18 @@ for i in $(seq 0 $((svc_count - 1))); do
       if git push origin HEAD >/dev/null 2>&1; then log_info "  ${name}: workflow pushed."; rendered=$((rendered+1));
       else log_warn "  ${name}: push of .github/workflows/ rejected — GIT_TOKEN needs the 'workflow' scope."; fi
     fi
+    # Seed the repo secrets the rendered workflow needs onto each fork. Without them the Jib
+    # step gets a 403 from ghcr.io and the GitOps tag-bump can't push. gh authenticates with
+    # GIT_TOKEN (needs admin on the fork, which the owned forks grant). GitHub never exposes
+    # secrets to fork-PR workflows, so seeding them on the (public) forks is the standard
+    # self-hosted-CI model — only same-repo pushes/PRs (org members) ever see them.
+    if command -v gh >/dev/null 2>&1; then
+      GH_TOKEN="${GIT_TOKEN}" gh secret set GIT_USERNAME --repo "${repo_path}" --body "${git_user}" >/dev/null 2>&1 || true
+      GH_TOKEN="${GIT_TOKEN}" gh secret set GIT_TOKEN    --repo "${repo_path}" --body "${GIT_TOKEN}" >/dev/null 2>&1 || true
+      [[ -n "${REGISTRY_USERNAME:-}" ]] && GH_TOKEN="${GIT_TOKEN}" gh secret set REGISTRY_USERNAME --repo "${repo_path}" --body "${REGISTRY_USERNAME}" >/dev/null 2>&1 || true
+      [[ -n "${REGISTRY_PASSWORD:-}" ]] && GH_TOKEN="${GIT_TOKEN}" gh secret set REGISTRY_PASSWORD --repo "${repo_path}" --body "${REGISTRY_PASSWORD}" >/dev/null 2>&1 || true
+      log_info "  ${name}: CI secrets (GIT_*/REGISTRY_*) seeded on the fork."
+    fi
     # Optional seed run so the Actions tab is populated from Day1 (parity with tekton.seedRuns).
     if [[ "${J2026_GHA_SEED_RUNS}" == "true" ]] && command -v gh >/dev/null 2>&1; then
       GH_TOKEN="${GIT_TOKEN}" gh workflow run microservices-ci.yml --repo "${repo_path}" --ref main >/dev/null 2>&1 \

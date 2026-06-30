@@ -178,9 +178,12 @@ jobs:
         env:
           # Pushes .github/workflows/microservices-ci.yml to the owned forks (the
           # GIT_TOKEN must carry the `workflow` scope) and optionally `gh workflow run`s
-          # each fork on Day1 (githubactions.seedRuns).
+          # each fork on Day1 (githubactions.seedRuns). Also seeds GIT_*/REGISTRY_* onto each
+          # fork as repo secrets so the rendered workflow can auth to GHCR (Jib) + push gitops bumps.
           GIT_USERNAME: ${{ secrets.GIT_USERNAME }}
           GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
 
       - name: Sync External Secrets (scripts/08.6-eso-sync.sh, eso mode only)
         # No-op when secrets.backend=imperative. In eso mode, re-applies the
