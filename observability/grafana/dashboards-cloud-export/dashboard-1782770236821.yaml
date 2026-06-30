@@ -1,0 +1,1127 @@
+apiVersion: dashboard.grafana.app/v2
+kind: Dashboard
+metadata:
+  name: jenkins2026-node-autoprovisioning
+  namespace: stacks-1707745
+  uid: 6aeaedb9-cbc1-4bc1-910b-f3507cbd2347
+  resourceVersion: '2071714566655443378'
+  generation: 4
+  creationTimestamp: '2026-06-29T18:46:45Z'
+  labels:
+    grafana.app/deprecatedInternalID: '10870794207232'
+  annotations:
+    grafana.app/createdBy: service-account:dfqmfqxy9thq8a
+    grafana.app/saved-from-ui: Grafana Cloud
+    grafana.app/updatedBy: user:dfqmk1fdru7eoe
+    grafana.app/updatedTimestamp: '2026-06-29T21:56:57Z'
+spec:
+  annotations:
+    - kind: AnnotationQuery
+      spec:
+        query:
+          kind: DataQuery
+          group: grafana
+          version: v0
+          datasource:
+            name: '-- Grafana --'
+          spec: {}
+        enable: true
+        hide: true
+        iconColor: rgba(0, 211, 255, 1)
+        name: Annotations & Alerts
+        builtIn: true
+  cursorSync: Crosshair
+  description: >-
+    GKE Node Auto-Provisioning (NAP) — the GA, Google-native Karpenter
+    equivalent. Visualizes the elastic, Spot, scale-to-zero capacity that the
+    ci-spot Custom ComputeClass provisions for bursty CI agents, alongside the
+    static platform pool. Node membership (Spot / ci-spot) is read from the node
+    TAINTS via kube-state-metrics (kube_node_info / kube_node_spec_taint), which
+    scripts/03-observability.sh keeps even in the lean/free Grafana Cloud
+    profile (a tiny node-inventory allow-list), so this board works in all
+    observability modes.
+  editable: true
+  elements:
+    panel-1:
+      kind: Panel
+      spec:
+        id: 1
+        title: ''
+        description: ''
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries: []
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: text
+          version: 13.2.0-28226228576
+          spec:
+            options:
+              code:
+                language: plaintext
+                showLineNumbers: false
+                showMiniMap: false
+              content: >-
+                ## Node Auto-Provisioning (NAP) — Elastic Spot CI nodes
+
+
+                GKE **Node Auto-Provisioning** creates and destroys Spot VM node
+                pools on demand — the Google-native equivalent of Karpenter. The
+                `ci-spot` **Custom ComputeClass** drives it: Spot-first VM
+                families (`c3 › n2 › c2 › e2`) with on-demand fallback,
+                targeting a **scale-to-zero** cost profile between builds.
+
+
+                | Pool | Lifecycle | Healthy state |
+
+                |---|---|---|
+
+                | 🟠 **Spot (NAP)** | Auto-provisioned when CI pods are pending
+                · deleted ≈5 min after idle | `0` at rest · rises during builds
+                |
+
+                | 🟣 **ci-spot ComputeClass** | Subset of Spot tagged with the
+                `ci-spot` class | Should equal Spot count |
+
+                | 🟢 **Static** (`jenkins-2026-pool`) | Always-on: Jenkins ·
+                ArgoCD · CNPG · observability | Must stay **≥ 1** · if `0` →
+                incident |
+
+
+                **Reading the elasticity chart** — a healthy build cycle looks
+                like **`0 → N → 0`**
+
+
+                🟠 Spot climbs when the scheduler sees pending CI-agent pods (≈2
+                min provisioning), peaks during the build, then drops as NAP
+                consolidates idle nodes (≈5 min after the last pod exits). 🟢
+                Static must stay flat — any dip is a platform incident. The
+                dashed **Total** line always equals Static + Spot.
+
+
+                ---
+
+                **No Spot data?** `kube_node_spec_taint` only emits while a Spot
+                node is live. ① Trigger a build · ② Verify `kube-state-metrics`
+                is running · ③ Run `gcloud container node-pools list` to confirm
+                NAP pools
+              mode: markdown
+            fieldConfig:
+              defaults: {}
+              overrides: []
+    panel-2:
+      kind: Panel
+      spec:
+        id: 2
+        title: Total nodes
+        description: Current cluster size across all node pools.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      editorMode: code
+                      expr: count(kube_node_info)
+                      legendFormat: nodes
+                      range: true
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: stat
+          version: 13.2.0-28226228576
+          spec:
+            options:
+              colorMode: value
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs:
+                  - lastNotNull
+                fields: ''
+                values: false
+              showPercentChange: false
+              textMode: auto
+              wideLayout: true
+            fieldConfig:
+              defaults:
+                unit: short
+                decimals: 0
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                color:
+                  mode: thresholds
+              overrides: []
+    panel-3:
+      kind: Panel
+      spec:
+        id: 3
+        title: Spot CI nodes (NAP)
+        description: >-
+          Nodes labelled cloud.google.com/gke-spot=true — the ephemeral capacity
+          NAP provisions for the ci-spot ComputeClass.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      editorMode: code
+                      expr: >-
+                        count(count by(node)
+                        (kube_node_spec_taint{key="cloud.google.com/gke-spot"}))
+                        or vector(0)
+                      legendFormat: spot
+                      range: true
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: stat
+          version: 13.2.0-28226228576
+          spec:
+            options:
+              colorMode: value
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs:
+                  - lastNotNull
+                fields: ''
+                values: false
+              showPercentChange: false
+              textMode: auto
+              wideLayout: true
+            fieldConfig:
+              defaults:
+                unit: short
+                decimals: 0
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 80
+                      color: red
+                color:
+                  mode: fixed
+                  fixedColor: orange
+              overrides: []
+    panel-4:
+      kind: Panel
+      spec:
+        id: 4
+        title: ci-spot ComputeClass nodes
+        description: >-
+          Nodes auto-created for the ci-spot Custom ComputeClass (GKE
+          auto-labels them cloud.google.com/compute-class=ci-spot).
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      editorMode: code
+                      expr: >-
+                        count(count by(node)
+                        (kube_node_spec_taint{key="cloud.google.com/compute-class",value="ci-spot"}))
+                        or vector(0)
+                      legendFormat: ci-spot
+                      range: true
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: stat
+          version: 13.2.0-28226228576
+          spec:
+            options:
+              colorMode: value
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs:
+                  - lastNotNull
+                fields: ''
+                values: false
+              showPercentChange: false
+              textMode: auto
+              wideLayout: true
+            fieldConfig:
+              defaults:
+                unit: short
+                decimals: 0
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                    - value: 80
+                      color: red
+                color:
+                  mode: fixed
+                  fixedColor: purple
+              overrides: []
+    panel-5:
+      kind: Panel
+      spec:
+        id: 5
+        title: Static platform nodes
+        description: >-
+          Non-Spot nodes — the long-lived jenkins-2026-pool hosting
+          ArgoCD/Jenkins/observability/CNPG.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      editorMode: code
+                      expr: >-
+                        count(kube_node_info unless on(node)
+                        kube_node_spec_taint{key="cloud.google.com/gke-spot"})
+                      legendFormat: static
+                      range: true
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: stat
+          version: 13.2.0-28226228576
+          spec:
+            options:
+              colorMode: value
+              graphMode: area
+              justifyMode: auto
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs:
+                  - lastNotNull
+                fields: ''
+                values: false
+              showPercentChange: false
+              textMode: auto
+              wideLayout: true
+            fieldConfig:
+              defaults:
+                unit: short
+                decimals: 0
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: red
+                    - value: 1
+                      color: yellow
+                    - value: 2
+                      color: green
+                color:
+                  mode: thresholds
+              overrides: []
+    panel-6:
+      kind: Panel
+      spec:
+        id: 6
+        title: Node count over time — Spot (NAP) vs static pool
+        description: >-
+          The elasticity signal: Spot nodes scale up during CI builds and
+          consolidate back toward 0 between them; the static pool stays flat.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      editorMode: code
+                      expr: >-
+                        count(count by(node)
+                        (kube_node_spec_taint{key="cloud.google.com/gke-spot"}))
+                        or vector(0)
+                      legendFormat: Spot (NAP)
+                      range: true
+                  refId: A
+                  hidden: false
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      editorMode: code
+                      expr: >-
+                        count(kube_node_info unless on(node)
+                        kube_node_spec_taint{key="cloud.google.com/gke-spot"})
+                      legendFormat: Static pool
+                      range: true
+                  refId: B
+                  hidden: false
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      editorMode: code
+                      expr: count(kube_node_info)
+                      legendFormat: Total
+                      range: true
+                  refId: C
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28226228576
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - min
+                  - max
+                  - lastNotNull
+                displayMode: table
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: desc
+            fieldConfig:
+              defaults:
+                unit: short
+                decimals: 0
+                min: 0
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 15
+                  gradientMode: none
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: stepAfter
+                  lineWidth: 2
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: never
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: none
+                  thresholdsStyle:
+                    mode: 'off'
+              overrides:
+                - matcher:
+                    id: byName
+                    options: Spot (NAP)
+                  properties:
+                    - id: color
+                      value:
+                        fixedColor: orange
+                        mode: fixed
+                    - id: custom.fillOpacity
+                      value: 25
+                - matcher:
+                    id: byName
+                    options: Static pool
+                  properties:
+                    - id: color
+                      value:
+                        fixedColor: green
+                        mode: fixed
+                    - id: custom.fillOpacity
+                      value: 5
+                - matcher:
+                    id: byName
+                    options: Total
+                  properties:
+                    - id: color
+                      value:
+                        fixedColor: blue
+                        mode: fixed
+                    - id: custom.lineWidth
+                      value: 1
+                    - id: custom.lineStyle
+                      value:
+                        dash:
+                          - 6
+                          - 3
+                        fill: dash
+                    - id: custom.fillOpacity
+                      value: 0
+    panel-7:
+      kind: Panel
+      spec:
+        id: 7
+        title: Node readiness
+        description: >-
+          Ready vs. Not-Ready node count. Any persistent Not-Ready line (orange)
+          signals a node that failed to join — investigate with kubectl describe
+          node.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      app: grafana-assistant-app
+                      expr: >-
+                        count(kube_node_status_condition{condition="Ready",status="true"}
+                        == 1)
+                      instant: false
+                      legendFormat: Ready
+                      queryType: range
+                      range: true
+                  refId: A
+                  hidden: false
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      app: grafana-assistant-app
+                      expr: >-
+                        count(kube_node_status_condition{condition="Ready",status="false"}
+                        == 1) or vector(0)
+                      instant: false
+                      legendFormat: Not Ready
+                      queryType: range
+                      range: true
+                  refId: B
+                  hidden: false
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      app: grafana-assistant-app
+                      expr: >-
+                        count(kube_node_status_condition{condition="Ready",status="unknown"}
+                        == 1) or vector(0)
+                      instant: false
+                      legendFormat: Unknown
+                      queryType: range
+                      range: true
+                  refId: C
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: timeseries
+          version: 13.2.0-28226228576
+          spec:
+            options:
+              annotations:
+                clustering: -1
+                multiLane: false
+              legend:
+                calcs:
+                  - lastNotNull
+                  - max
+                displayMode: table
+                enableFacetedFilter: false
+                overflow: ellipsis
+                placement: bottom
+                showLegend: true
+              tooltip:
+                hideZeros: false
+                mode: multi
+                sort: desc
+            fieldConfig:
+              defaults:
+                unit: short
+                decimals: 0
+                min: 0
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                color:
+                  mode: palette-classic
+                custom:
+                  axisBorderShow: false
+                  axisCenteredZero: false
+                  axisColorMode: text
+                  axisLabel: ''
+                  axisPlacement: auto
+                  barAlignment: 0
+                  barWidthFactor: 0.6
+                  drawStyle: line
+                  fillOpacity: 10
+                  gradientMode: none
+                  hideFrom:
+                    legend: false
+                    tooltip: false
+                    viz: false
+                  insertNulls: false
+                  lineInterpolation: stepAfter
+                  lineWidth: 2
+                  pointSize: 5
+                  scaleDistribution:
+                    type: linear
+                  showPoints: never
+                  showValues: false
+                  spanNulls: false
+                  stacking:
+                    group: A
+                    mode: none
+                  thresholdsStyle:
+                    mode: 'off'
+              overrides:
+                - matcher:
+                    id: byName
+                    options: Ready
+                  properties:
+                    - id: color
+                      value:
+                        fixedColor: green
+                        mode: fixed
+                - matcher:
+                    id: byName
+                    options: Not Ready
+                  properties:
+                    - id: color
+                      value:
+                        fixedColor: red
+                        mode: fixed
+                - matcher:
+                    id: byName
+                    options: Unknown
+                  properties:
+                    - id: color
+                      value:
+                        fixedColor: orange
+                        mode: fixed
+    panel-8:
+      kind: Panel
+      spec:
+        id: 8
+        title: Peak Spot nodes (this window)
+        description: >-
+          Maximum Spot nodes provisioned during the selected time range. Check
+          this after a build completes to gauge the burst size NAP reached.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: ${DS_PROMETHEUS}
+                    spec:
+                      app: grafana-assistant-app
+                      expr: >-
+                        count(count by(node)
+                        (kube_node_spec_taint{key="cloud.google.com/gke-spot"}))
+                        or vector(0)
+                      instant: false
+                      legendFormat: peak
+                      queryType: range
+                      range: true
+                  refId: A
+                  hidden: false
+            transformations: []
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: stat
+          version: 13.2.0-28226228576
+          spec:
+            options:
+              colorMode: background_solid
+              graphMode: none
+              justifyMode: center
+              orientation: auto
+              percentChangeColorMode: standard
+              reduceOptions:
+                calcs:
+                  - max
+                fields: ''
+                values: false
+              showPercentChange: false
+              textMode: value_and_name
+              wideLayout: true
+            fieldConfig:
+              defaults:
+                unit: short
+                decimals: 0
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: semi-dark-blue
+                    - value: 1
+                      color: orange
+                color:
+                  mode: thresholds
+              overrides: []
+    panel-9:
+      kind: Panel
+      spec:
+        id: 9
+        title: Node Detail Inventory
+        description: >-
+          Per-node metadata from kube-state-metrics. Type, zone and machine type
+          are derived from GKE naming conventions. Resource capacity and cost
+          are not available in Prometheus — see GCP Console for sizing and
+          billing details.
+        links: []
+        data:
+          kind: QueryGroup
+          spec:
+            queries:
+              - kind: PanelQuery
+                spec:
+                  query:
+                    kind: DataQuery
+                    group: prometheus
+                    version: v0
+                    datasource:
+                      name: grafanacloud-prom
+                    spec:
+                      app: grafana-assistant-app
+                      expr: >-
+                        label_replace(label_replace(label_replace(label_replace(label_replace(kube_node_info,
+                        "zone", "$1", "provider_id", "gce://[^/]+/([^/]+)/.*"),
+                        "machine_type", "$1", "node",
+                        ".*-nap-(.*)-[a-z]{2}-[a-z0-9]{8}-[a-z]{4}"),
+                        "machine_type", "— (check GCP Console)", "machine_type",
+                        "^$"), "node_type", "Spot / NAP", "node", ".*-nap-.*"),
+                        "node_type", "Static", "node", ".*-pool-.*")
+                      instant: false
+                      legendFormat: ''
+                      queryType: range
+                      range: true
+                  refId: A
+                  hidden: false
+            transformations:
+              - kind: Transformation
+                group: reduce
+                spec:
+                  options:
+                    includeTimeField: false
+                    labelsToFields: true
+                    reducers:
+                      - lastNotNull
+              - kind: Transformation
+                group: organize
+                spec:
+                  options:
+                    excludeByName:
+                      Field: true
+                      Last: true
+                      Last *: true
+                      __name__: true
+                      cluster: true
+                      instance: true
+                      job: true
+                      k8s_cluster_name: true
+                      kubeproxy_version: true
+                      provider_id: true
+                      service_instance_id: true
+                      service_name: true
+                      source: true
+                      system_uuid: true
+                    indexByName:
+                      container_runtime_version: 8
+                      internal_ip: 4
+                      kernel_version: 7
+                      kubelet_version: 9
+                      machine_type: 2
+                      node: 0
+                      node_type: 1
+                      os_image: 6
+                      pod_cidr: 5
+                      zone: 3
+                    renameByName:
+                      container_runtime_version: Runtime
+                      internal_ip: IP
+                      kernel_version: Kernel
+                      kubelet_version: Kubelet
+                      machine_type: Machine Type
+                      node: Node
+                      node_type: Type
+                      os_image: OS
+                      pod_cidr: Pod CIDR
+                      zone: Zone
+            queryOptions: {}
+        vizConfig:
+          kind: VizConfig
+          group: table
+          version: 13.2.0-28226228576
+          spec:
+            options:
+              cellHeight: sm
+              enablePagination: false
+              showHeader: true
+            fieldConfig:
+              defaults:
+                thresholds:
+                  mode: absolute
+                  steps:
+                    - value: 0
+                      color: green
+                color:
+                  mode: thresholds
+                custom:
+                  align: left
+                  cellOptions:
+                    type: auto
+                  footer:
+                    reducers: []
+                  inspect: false
+                  width: 0
+              overrides:
+                - matcher:
+                    id: byName
+                    options: Node
+                  properties:
+                    - id: custom.minWidth
+                      value: 240
+                    - id: custom.width
+                      value: 0
+                    - id: custom.wrapText
+                      value: false
+                - matcher:
+                    id: byName
+                    options: Type
+                  properties:
+                    - id: custom.width
+                      value: 110
+                    - id: custom.cellOptions
+                      value:
+                        type: color-text
+                    - id: mappings
+                      value:
+                        - options:
+                            Spot / NAP:
+                              color: orange
+                              index: 0
+                              text: 🟡 Spot / NAP
+                            Static:
+                              color: green
+                              index: 1
+                              text: 🟢 Static
+                          type: value
+                - matcher:
+                    id: byName
+                    options: Machine Type
+                  properties:
+                    - id: custom.width
+                      value: 120
+                - matcher:
+                    id: byName
+                    options: Zone
+                  properties:
+                    - id: custom.width
+                      value: 160
+                - matcher:
+                    id: byName
+                    options: IP
+                  properties:
+                    - id: custom.width
+                      value: 100
+                - matcher:
+                    id: byName
+                    options: Pod CIDR
+                  properties:
+                    - id: custom.width
+                      value: 110
+                - matcher:
+                    id: byName
+                    options: OS
+                  properties:
+                    - id: custom.width
+                      value: 185
+                - matcher:
+                    id: byName
+                    options: Kernel
+                  properties:
+                    - id: custom.width
+                      value: 95
+                - matcher:
+                    id: byName
+                    options: Runtime
+                  properties:
+                    - id: custom.width
+                      value: 155
+                - matcher:
+                    id: byName
+                    options: Kubelet
+                  properties:
+                    - id: custom.width
+                      value: 165
+  layout:
+    kind: RowsLayout
+    spec:
+      rows:
+        - kind: RowsLayoutRow
+          spec:
+            title: Node counts
+            collapse: false
+            hideHeader: true
+            fillScreen: false
+            layout:
+              kind: GridLayout
+              spec:
+                items:
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 0
+                      width: 24
+                      height: 12
+                      element:
+                        kind: ElementReference
+                        name: panel-1
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 12
+                      width: 4
+                      height: 6
+                      element:
+                        kind: ElementReference
+                        name: panel-2
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 4
+                      'y': 12
+                      width: 4
+                      height: 6
+                      element:
+                        kind: ElementReference
+                        name: panel-3
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 8
+                      'y': 12
+                      width: 4
+                      height: 6
+                      element:
+                        kind: ElementReference
+                        name: panel-4
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 12
+                      'y': 12
+                      width: 4
+                      height: 6
+                      element:
+                        kind: ElementReference
+                        name: panel-5
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 16
+                      'y': 12
+                      width: 8
+                      height: 6
+                      element:
+                        kind: ElementReference
+                        name: panel-8
+        - kind: RowsLayoutRow
+          spec:
+            title: Elasticity — scale to zero
+            collapse: false
+            hideHeader: false
+            fillScreen: false
+            layout:
+              kind: GridLayout
+              spec:
+                items:
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 0
+                      width: 24
+                      height: 10
+                      element:
+                        kind: ElementReference
+                        name: panel-6
+        - kind: RowsLayoutRow
+          spec:
+            title: Health
+            collapse: false
+            hideHeader: false
+            fillScreen: false
+            layout:
+              kind: GridLayout
+              spec:
+                items:
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 0
+                      width: 24
+                      height: 9
+                      element:
+                        kind: ElementReference
+                        name: panel-7
+                  - kind: GridLayoutItem
+                    spec:
+                      x: 0
+                      'y': 9
+                      width: 24
+                      height: 8
+                      element:
+                        kind: ElementReference
+                        name: panel-9
+  links: []
+  liveNow: false
+  preload: false
+  tags:
+    - jenkins-2026
+    - platform
+    - nap
+    - autoscaling
+  timeSettings:
+    timezone: browser
+    from: now-3h
+    to: now
+    autoRefresh: 30s
+    autoRefreshIntervals:
+      - 5s
+      - 10s
+      - 30s
+      - 1m
+      - 5m
+      - 15m
+      - 30m
+      - 1h
+      - 2h
+      - 1d
+    hideTimepicker: false
+    fiscalYearStartMonth: 0
+  title: CI-CD / Node Auto-Provisioning (Spot)
+  variables:
+    - kind: DatasourceVariable
+      spec:
+        name: DS_PROMETHEUS
+        pluginId: prometheus
+        refresh: onDashboardLoad
+        regex: ''
+        current:
+          text: grafanacloud-jenkins2026obsy4pwj88m-prom
+          value: grafanacloud-prom
+        options: []
+        multi: false
+        includeAll: false
+        label: Prometheus / Mimir
+        hide: dontHide
+        skipUrlSync: false
+        allowCustomValue: true
