@@ -39,6 +39,14 @@ if [[ "${J2026_CI_ENGINE}" != "tekton" ]] && \
   kubectl delete namespace "${J2026_TEKTON_NAMESPACE}" --ignore-not-found --timeout=3m || true
 fi
 
+# Retire the GitHub Actions / ARC and Argo Workflows engines too (the other two alternatives).
+# Delete each app-of-apps so ArgoCD cascade-prunes its controllers, then drop the namespaces.
+log_step "Retiring GitHub Actions / ARC + Argo Workflows if present (ci.engine=jenkins)"
+kubectl delete application githubactions -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false || true
+kubectl delete namespace "${J2026_GHA_NAMESPACE}" "${J2026_GHA_RUNNER_NAMESPACE}" --ignore-not-found --wait=false || true
+kubectl delete application argoworkflows -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false || true
+kubectl delete namespace "${J2026_ARGOWF_NAMESPACE}" "${J2026_ARGOWF_EVENTS_NAMESPACE}" --ignore-not-found --wait=false || true
+
 # --- compute dynamic banner values and patch them into the Secret ------------
 # Grafana base URL surfaced in the systemMessage banner (jcasc-base.yaml) and
 # the OTel plugin's "View in Grafana" links (jcasc-otel.yaml). Resolved per

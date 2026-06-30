@@ -60,6 +60,12 @@ kubectl delete namespace "${J2026_JENKINS_NAMESPACE}" --ignore-not-found --timeo
 log_step "Retiring Tekton if present (ci.engine=argoworkflows)"
 kubectl delete application tekton -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false || true
 
+# Retire GitHub Actions / ARC too (the fourth engine). Delete the app-of-apps so ArgoCD
+# cascade-prunes arc-controller + arc-runner-scale-set, then drop the arc namespaces.
+log_step "Retiring GitHub Actions / ARC if present (ci.engine=argoworkflows)"
+kubectl delete application githubactions -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false || true
+kubectl delete namespace "${J2026_GHA_NAMESPACE}" "${J2026_GHA_RUNNER_NAMESPACE}" --ignore-not-found --wait=false || true
+
 log_step "Applying Argo Workflows app-of-apps via ArgoCD (argocd/argoworkflows-app.yaml)"
 ARGOWF_APP_FILE="$(mktemp)"
 REPO_URL="${J2026_SELF_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"

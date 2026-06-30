@@ -10,11 +10,15 @@ source "${SCRIPT_DIR}/lib/config.sh"
 
 [[ "${J2026_CI_ENGINE}" != "githubactions" ]] && { log_info "ci.engine='${J2026_CI_ENGINE}' - skipping ARC (04-githubactions)."; exit 0; }
 
-# --- retire the sibling CI engines (ARC has two siblings: jenkins + tekton) ---
+# --- retire the sibling CI engines (githubactions has THREE: jenkins, tekton, argoworkflows) ---
 log_step "Retiring sibling CI engines if present (ci.engine=githubactions)"
-kubectl delete application jenkins -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false 2>/dev/null || true
-kubectl delete application tekton  -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false 2>/dev/null || true
+kubectl delete application jenkins       -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false 2>/dev/null || true
+kubectl delete application tekton        -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false 2>/dev/null || true
+kubectl delete application argoworkflows -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false 2>/dev/null || true
 helm_uninstall_if_present "${J2026_JENKINS_RELEASE}" "${J2026_JENKINS_NAMESPACE}" 2>/dev/null || true
+# Argo Workflows leaves the argo + argo-events namespaces (controller/server/EventBus) running;
+# delete them once its app-of-apps is pruned so the Argo workloads actually stop.
+kubectl delete namespace "${J2026_ARGOWF_NAMESPACE}" "${J2026_ARGOWF_EVENTS_NAMESPACE}" --ignore-not-found --wait=false 2>/dev/null || true
 if [[ -n "${J2026_GATEWAY_BASE_DOMAIN:-}" ]]; then
   # Drop the jenkins/tekton CI dashboard routes + IAP policies (githubactions has no UI route).
   kubectl delete gcpbackendpolicy "${J2026_GATEWAY_IAP_POLICY_JENKINS:-jenkins-iap}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found 2>/dev/null || true
