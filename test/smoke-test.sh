@@ -101,6 +101,55 @@ if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
       FAIL=1
     fi
   fi
+elif [[ "${J2026_CI_ENGINE}" == "githubactions" ]]; then
+  GHA_NS="${J2026_GHA_NAMESPACE}"
+  RUNNER_NS="${J2026_GHA_RUNNER_NAMESPACE}"
+
+  log_step "ARC controller"
+  # The gha-runner-scale-set-controller Deployment name is release-prefixed; match by
+  # the well-known label so the check is release-agnostic.
+  ARC_CTRL="$(kubectl get deploy -n "${GHA_NS}" -l app.kubernetes.io/part-of=gha-rs-controller -o name 2>/dev/null | head -n1)"
+  if [[ -n "${ARC_CTRL}" ]]; then
+    check "ARC controller deployment Available" \
+      bash -c "kubectl -n '${GHA_NS}' wait --for=condition=Available '${ARC_CTRL}' --timeout=30s"
+  else
+    log_error "FAIL - ARC controller (gha-rs-controller) not found in ${GHA_NS}"
+    FAIL=1
+  fi
+
+  log_step "ARC runner scale set"
+  # At minRunners=0 there is no runner pod to check; assert the AutoscalingRunnerSet CR
+  # registered (the listener long-polls GitHub's queue). The per-fork microservices-ci.yml
+  # workflows live in the forks, not the cluster, so there is no in-cluster job count.
+  check "AutoscalingRunnerSet ${J2026_GHA_RUNNER_SCALE_SET_NAME} registered" \
+    bash -c "kubectl -n '${RUNNER_NS}' get autoscalingrunnerset '${J2026_GHA_RUNNER_SCALE_SET_NAME}'"
+
+elif [[ "${J2026_CI_ENGINE}" == "argoworkflows" ]]; then
+  ARGOWF_NS="${J2026_ARGOWF_NAMESPACE}"
+  EVENTS_NS="${J2026_ARGOWF_EVENTS_NAMESPACE}"
+  RUN_NS="${J2026_ARGOWF_RUN_NAMESPACE}"
+
+  log_step "Argo Workflows control plane"
+  for deploy in workflow-controller "${J2026_ARGOWF_SERVER_SERVICE}"; do
+    check "${deploy} deployment Available" \
+      bash -c "kubectl -n '${ARGOWF_NS}' wait --for=condition=Available deploy/'${deploy}' --timeout=30s"
+  done
+  # Argo Events v1.9.x ships a single unified controller-manager Deployment.
+  check "Argo Events controller-manager Available" \
+    bash -c "kubectl -n '${EVENTS_NS}' wait --for=condition=Available deploy/controller-manager --timeout=30s"
+
+  log_step "Argo Workflows pipelines-as-code"
+  check "microservices-pipeline WorkflowTemplate exists" \
+    bash -c "kubectl -n '${RUN_NS}' get workflowtemplate microservices-pipeline"
+  check "argoworkflows-ci ServiceAccount exists" \
+    bash -c "kubectl -n '${RUN_NS}' get sa argoworkflows-ci"
+  # Trigger wiring (the Argo Events analogue of Tekton's PaC Repository CRs): one github
+  # EventSource + one microservices Sensor filter all forks (no per-service CR).
+  check "github EventSource exists" \
+    bash -c "kubectl -n '${EVENTS_NS}' get eventsource github"
+  check "microservices Sensor exists" \
+    bash -c "kubectl -n '${EVENTS_NS}' get sensor microservices"
+
 else
   JENKINS_NS="${J2026_JENKINS_NAMESPACE}"
   JENKINS_RELEASE="${J2026_JENKINS_RELEASE}"
