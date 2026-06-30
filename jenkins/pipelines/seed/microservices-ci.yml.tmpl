@@ -81,7 +81,14 @@ jobs:
       - name: CodeQL init
         if: env.SERVICE_TYPE == 'java'
         uses: github/codeql-action/init@v3
-        with: { languages: java }
+        with:
+          languages: java
+          # buildless Java scan: the app lives in microservices-src/ (+ optional MODULE) and
+          # builds with a custom maven-settings.xml, which CodeQL's default autobuild can't
+          # replicate — so it compiled nothing and failed analyze with "no source code seen
+          # during build" (exit 32). build-mode:none extracts the source directly: real SARIF,
+          # and no dependency on the Maven build succeeding (so even a failing app build is scanned).
+          build-mode: none
       - name: CodeQL analyze
         if: env.SERVICE_TYPE == 'java'
         uses: github/codeql-action/analyze@v3
