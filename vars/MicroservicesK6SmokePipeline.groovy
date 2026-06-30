@@ -25,11 +25,13 @@ def call(Map cfg) {
     // seed job from presets/index.yaml. 'none' (default) = pure manual inputs.
     def presetChoices = ['none'] + (cfg.presetChoices ?: [])
 
-    // GKE Node Auto-Provisioning: pin the (bursty, ephemeral) k6 agent onto the Custom
-    // ComputeClass when configured (env.GKE_COMPUTE_CLASS) so GKE spins up a Spot,
-    // scale-to-zero node for the load test. Empty → the static pool. See docs/201.
+    // k6 agent node placement — config flag jenkins.runNodePool, via JCasC env.RUN_NODE_POOL
+    // (static | ci-spot; default static). static -> jenkins-2026-pool (app=jenkins-2026, robust);
+    // ci-spot -> the NAP Spot ComputeClass (env.GKE_COMPUTE_CLASS). ci-spot needs NAP enabled;
+    // empty class falls back to static. See docs/201 + docs/501.
+    String runPool = (env.RUN_NODE_POOL ?: 'static').trim()
     String computeClass = (env.GKE_COMPUTE_CLASS ?: '').trim()
-    String agentNodeScheduling = computeClass ? """
+    String agentNodeScheduling = (runPool == 'ci-spot' && computeClass) ? """
   nodeSelector:
     cloud.google.com/compute-class: ${computeClass}
   tolerations:
@@ -40,7 +42,9 @@ def call(Map cfg) {
     - key: cloud.google.com/gke-spot
       operator: Equal
       value: "true"
-      effect: NoSchedule""" : ''
+      effect: NoSchedule""" : """
+  nodeSelector:
+    app: jenkins-2026"""
 
     pipeline {
         agent {

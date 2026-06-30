@@ -86,6 +86,23 @@ export J2026_NODE_AUTOPROVISIONING_COMPUTE_CLASS="$(yq_get '.nodeAutoProvisionin
 # terraform BEFORE sourcing this lib.
 export TF_VAR_enable_node_autoprovisioning="${J2026_NODE_AUTOPROVISIONING_ENABLED}"
 
+# --- CI run-pod placement (per-engine feature flags) -------------------------
+# Where the build pods run: 'static' (the long-lived jenkins-2026-pool, default — robust,
+# no NAP/Spot/quota dependency) or 'ci-spot' (the NAP Spot ComputeClass). Per-engine
+# because Jenkins (single agent pod) tolerates Spot preemption far better than Tekton
+# (affinity-assistant pins a whole PipelineRun to one node). 04-jenkins.sh / 06-tekton-
+# pipelines.sh consume these. FEATURE FLAGS: JENKINS2026_{JENKINS,TEKTON}_RUN_NODE_POOL.
+validate_run_node_pool() {
+  case "$1" in
+    static|ci-spot) ;;
+    *) log_error "Invalid $2 '$1' (expected static|ci-spot)."; exit 1 ;;
+  esac
+}
+export J2026_JENKINS_RUN_NODE_POOL="${JENKINS2026_JENKINS_RUN_NODE_POOL:-$(yq_get '.jenkins.runNodePool' 'static')}"
+validate_run_node_pool "${J2026_JENKINS_RUN_NODE_POOL}" "jenkins.runNodePool"
+export J2026_TEKTON_RUN_NODE_POOL="${JENKINS2026_TEKTON_RUN_NODE_POOL:-$(yq_get '.tekton.runNodePool' 'static')}"
+validate_run_node_pool "${J2026_TEKTON_RUN_NODE_POOL}" "tekton.runNodePool"
+
 # --- ci engine (feature flag) ------------------------------------------------
 
 # FEATURE FLAG: JENKINS2026_CI_ENGINE, if set, overrides ci.engine from

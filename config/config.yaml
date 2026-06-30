@@ -99,6 +99,14 @@ secrets:
 # Jenkins (jenkinsci/helm-charts) - used when ci.engine == jenkins
 # -----------------------------------------------------------------------------
 jenkins:
+  # Where the build-agent pods run. `static` (default) = the long-lived
+  # `jenkins-2026-pool` (e2-standard-8) — robust, always present, no NAP/Spot/quota
+  # dependency. `ci-spot` = the NAP-provisioned Spot ComputeClass (ephemeral,
+  # scale-to-zero) from infrastructure/compute-classes/ — cheaper, but needs
+  # nodeAutoProvisioning.enabled + SSD quota headroom, and a Spot preemption restarts
+  # the build (fine for Jenkins's single-pod agents). FEATURE FLAG: override with
+  # JENKINS2026_JENKINS_RUN_NODE_POOL. See docs/501 § Elastic Node Auto-Provisioning.
+  runNodePool: static
   namespace: jenkins
   releaseName: jenkins
   chart:
@@ -135,6 +143,14 @@ jenkins:
 # tekton/. The Dashboard has no native authentication, so it is exposed on the
 # internet behind Google IAP at the Gateway, exactly like Headlamp (09-gateway.sh).
 tekton:
+  # Where the PipelineRun/TaskRun pods run (set as the Tekton `default-pod-template`
+  # nodeSelector). `static` (default) = the long-lived `jenkins-2026-pool` (e2-standard-8)
+  # — robust, no NAP/Spot/quota dependency. `ci-spot` = the NAP Spot ComputeClass.
+  # ⚠ For Tekton, `static` is strongly recommended: the affinity-assistant pins ALL of a
+  # PipelineRun's tasks (sharing one RWO workspace PVC) to a SINGLE node, so a Spot
+  # preemption would kill the WHOLE run (not one task), and a too-small/full node hangs the
+  # run. FEATURE FLAG: override with JENKINS2026_TEKTON_RUN_NODE_POOL. See docs/403.
+  runNodePool: static
   # Control-plane namespace for Pipelines/Triggers/Dashboard (upstream default).
   namespace: tekton-pipelines
   # Namespace PipelineRuns execute in (service account, registry/git creds, RBAC).

@@ -124,6 +124,10 @@ jenkins:
           # env.GKE_COMPUTE_CLASS and emit a nodeSelector + tolerations only when non-empty.
           - key: "GKE_COMPUTE_CLASS"
             value: "${JENKINS2026_GKE_COMPUTE_CLASS:-}"
+          # Build-agent node placement (jenkins.runNodePool): static (jenkins-2026-pool) |
+          # ci-spot (NAP Spot ComputeClass). Read in vars/*.groovy. Default static.
+          - key: "RUN_NODE_POOL"
+            value: "${JENKINS2026_RUN_NODE_POOL:-static}"
 
   securityRealm:
     oic:
