@@ -214,6 +214,18 @@ def transform(dash: dict) -> dict:
     # Swap DS_LOKI / DS_TEMPO out of the templating list, keep everything else.
     tlist = dash.get("templating", {}).get("list", [])
     tlist = [v for v in tlist if v.get("name") not in ("DS_LOKI", "DS_TEMPO")]
+    # Neutralize query-type template variables that pull their options from Loki/Tempo (e.g.
+    # a "Log Namespace" filter): there is no Loki/Tempo datasource here, and their LogQL/
+    # TraceQL query has no Azure equivalent. Convert them to a static `custom` variable so the
+    # filter keeps its all-value and nothing points at a missing datasource.
+    for _v in tlist:
+        _ds = _v.get("datasource")
+        if isinstance(_ds, dict) and _ds.get("type") in ("loki", "tempo"):
+            _v["type"] = "custom"
+            _v.pop("datasource", None)
+            _v["query"] = (_v.get("allValue") or "").replace("|", ",")
+            _v["options"] = []
+            _v["refresh"] = 0
     tlist = AZURE_TEMPLATING + tlist
     dash.setdefault("templating", {})["list"] = tlist
 

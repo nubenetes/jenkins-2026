@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.50] - 2026-06-30
+
+### Fixed
+- **Azure/AWS dashboard variants regenerated for the redesigned NAP + Tekton dashboards**,
+  so they're compatible across all four observability backends — not just Grafana
+  Cloud/OSS. `generate.py` (azure + aws) globs `../dashboards/*.json`, so re-running them
+  produced the new `node-autoprovisioning-{azure,aws}.json` and updated
+  `tekton-overview-{azure,aws}.json` (Prometheus → Azure Monitor / AMP, Loki → Log
+  Analytics / CloudWatch, Tempo → App Insights / X-Ray).
+- **Variant generators now neutralize Loki/Tempo *query-type* template variables.** The new
+  Tekton dashboard adds a `log_namespace` filter whose options are queried from **Loki** —
+  the generators rewrote panel datasources but left that variable dangling at a missing
+  `loki` datasource in the Azure/AWS variants. They now convert such variables to a static
+  `custom` variable (keeping the all-value), so nothing references a non-existent datasource.
+
 ## [v0.28.49] - 2026-06-30
 
 ### Changed
