@@ -167,6 +167,8 @@ The GitHub Actions sidebar sorts by each workflow's `name:` field, and every `na
 
 > **Full-teardown umbrella.** `Decom.infra.00` ("Everything") is an opt-in convenience workflow that tears down the GKE cluster **and** every persistent observability backend in one dispatch — so switching `observability.mode` around never leaves a forgotten, billed backend (e.g. an orphaned Grafana Cloud stack from before you moved to managed-azure). It reuses each per-resource Decom workflow via `workflow_call` (no teardown logic is duplicated); type `destroy` to confirm. The cluster runs first (its decom also destroys the ephemeral `grafana-cloud-token` that references the Grafana Cloud stack), then the backends in parallel. The three backend checkboxes default **on**; the Gateway static IP defaults **off** (keeping it avoids losing the IP and re-propagating DNS). Untick any to spare it.
 
+Both umbrellas are thin orchestrators — they own no teardown/provision logic, they only `workflow_call` the per-resource workflows. The graph below shows the *job-level* fan-out the two prose notes above describe: the **up** umbrella is a **two-level nest** (its `provision` job *is* `Day1.cluster.01-gke`, which itself fans out to the per-backend `Day0.infra.0N` preflight — a workflow reusing a workflow reusing a workflow), and the **down** umbrella is `guard → cluster-first → parallel backends` with concrete default-checkbox states. It also pins down *why* the umbrellas carry **no** concurrency group while the leaf cluster workflows do — a group on the umbrella would deadlock against its own child in the same `jenkins-2026-gke` group.
+
 <details>
 <summary>📊 Umbrella fan-out — how Day1.cluster.00 / Decom.infra.00 reuse the per-resource workflows (workflow_call) + where gke serialization attaches</summary>
 
@@ -247,6 +249,8 @@ Rows = resources · Columns = lifecycle phases · Cell = filename (link) or — 
 
 ## Pick your workflow: the operator decision tree
 
+Every other diagram on this page is indexed by *how the system is built*; this one is indexed by *what you want to do right now*. Start from your intent and follow the branches to the exact workflow(s) to dispatch. It folds in three decisions the prose scatters elsewhere: re-run `Day1.cluster.01-gke` vs a targeted `Day2.redeploy.*` (idempotency §), **Pause** vs **Decom** to save cost (Pause/resume §), and which `publish.0N` matches your active `observability.mode`.
+
 <details>
 <summary>🧭 Pick your workflow — operator intent → exact workflow(s) (decision tree)</summary>
 
@@ -291,11 +295,12 @@ flowchart TD
 
 ## Lifecycle diagram
 
+The whole scheme in one frame: the three lifecycle phases as boxes — **Create** (Day0 persistent bootstrap → Day1 throwaway cluster), **Update** (the Day2 tier, whose workflows run in any order), and **Destroy** (Decom, cluster-first then persistent backends) — plus the two one-click umbrellas that wrap the Create/Destroy ends. The only hard ordering is the solid edges (Day0→Day1, and cluster→backends on teardown); everything inside the Day2 box is independent.
+
 <details>
 <summary>Expand: full lifecycle flow (Mermaid)</summary>
 
 ```mermaid
----
 flowchart TD
     subgraph PHASE0 ["Day0 + Day1 — Create (run in sorted order)"]
         direction TB
@@ -346,6 +351,8 @@ flowchart TD
 
 ### Cluster lifecycle (state view)
 
+The same lifecycle as a **state machine**, emphasizing the transitions a cluster moves through. The key payoff it makes explicit: a re-provision after `Decom.cluster.01-gke` jumps straight back to **Day1** — the Day0 state in GCS is *reused, not recreated* — and the **Day2 self-loop** (redeploy / publish / traffic / scale, all re-runnable) is where you spend most of a session.
+
 <details>
 <summary>📊 Cluster lifecycle — Day0 → Day1 → Day2 → Decom (state diagram)</summary>
 
@@ -376,6 +383,8 @@ stateDiagram-v2
 **Reading it —** the root of trust (`bootstrap.sh up`) is created once and sits beneath everything; `Day0` provisions the persistent infra, `Day1` the throwaway cluster, and `Day2` is the self-loop where day-to-day ops live (every box is re-runnable). The key edge is `Decom.cluster.01 → Day0`: a normal teardown drops only the cluster and **keeps the backends + root**, so re-provisioning skips `Day0` entirely (its state still lives in GCS). Only abandoning the project walks the rarely-used `Decom.infra → bootstrap.sh down` tail.
 
 ### Workflow dependencies & GKE serialization
+
+What actually depends on what, and how the shared **`jenkins-2026-gke` concurrency group** serializes every cluster-touching workflow (queued, never raced). Solid arrows are real dependencies; dotted arrows are `workflow_call` reuse or *persistent resources survive*. The reads that matter: Day2 ops hang off a running Day1, a `Decom.cluster.01` keeps the persistent Day0 tier (Gateway IP + backends survive), the umbrellas stay group-free (they orchestrate, they don't touch GKE directly), and `registry.01-image-retention` sits **outside** the cluster group entirely (its own `jenkins-2026-image-retention` group — no cluster needed).
 
 <details>
 <summary>📊 Workflow dependencies + the jenkins-2026-gke concurrency group</summary>
@@ -561,6 +570,8 @@ flowchart TD
 ```
 
 </details>
+
+The flowchart above is the static *topology* of the phases; the sequence below is the same lifecycle unfolding **over time** — who dispatches what, where each run sits in the `jenkins-2026-gke` queue, when one of the five approval Environments interrupts (and that `traffic.01-k6` / `traffic.02-rum` are **ungated**), and the payoff that **Decom keeps the Day0 state in GCS** so the next session re-enters straight at Day1. Read it top-to-bottom as one real run.
 
 <details>
 <summary>⏱️ A typical session over time — Day0 once, then Day1, the Day2 loop, then Decom (sequence diagram: gates, the GKE queue, and GCS-state reuse)</summary>
@@ -783,7 +794,6 @@ GitHub has no way to draw that — it's a `bash if`, not a job — so `provision
 <summary>📊 What actually runs — job graph vs in-job steps</summary>
 
 ```mermaid
----
 flowchart TD
     subgraph JOBS["GitHub Actions job graph (what the workflow_dispatch UI shows)"]
         direction TB
@@ -851,6 +861,8 @@ So the run graph deliberately shows only the **structural** fan-in (the prefligh
 ---
 
 ### Observability mode → which workflows apply
+
+This is the only diagram organized by `observability.mode` rather than by lifecycle phase. Pick your mode and read one row left-to-right: the **Day0** bootstrap it needs (if any), the **Day2.publish** that targets its Grafana, and the **backend Decom** that tears it down. Note the two deliberate no-ops — `oss` needs **no** Day0 backend and **no** backend Decom (its Grafana/Loki/Tempo stack lives in-cluster and is created by `Day1` via ArgoCD, then dies with the cluster on `Decom.cluster.01-gke`); `publish.05-alerts` is shared across every mode with a live Grafana.
 
 <details>
 <summary>📊 Observability mode → which Day0 / Day2.publish / Decom workflows apply (and which are no-ops)</summary>
