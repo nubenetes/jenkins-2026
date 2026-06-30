@@ -49,14 +49,24 @@ pods that execute the jobs *are* in-cluster (`arc-runners` namespace, `ci-spot` 
 one ephemeral pod per job, `minRunners: 0` scale-to-zero) — but you never look at the cluster
 to follow a build; you look at GitHub.
 
-> **⚠️ First-run gotcha — a run stuck on "Waiting for a runner".** A workflow run that was
-> queued *before* the `AutoscalingRunnerSet` finished registering with GitHub stays `queued`
-> **forever**: GitHub does **not** retroactively hand a pre-existing queued job to a freshly
-> registered scale set. This is GitHub behaviour, not a cluster bug. The fix is to
-> **re-trigger** (any new `push`/PR to the fork) once the listener is up —
-> `kubectl -n arc-systems get pods | grep listener` shows a **Running** `…-listener` pod when
-> registration succeeded. (`workflow_dispatch` is intentionally not wired, so a fresh push/PR
-> is how you re-trigger.) If registration itself is failing, see the §9.5 troubleshooting in
+> **⚠️ First-run gotcha — a run stuck on "Waiting for a runner" (usually: public forks).**
+> The run sits in `queued`, `kubectl -n arc-runners get pods` shows **no** runner pod, and the
+> controller log says `Calculated target runner count {"assigned job": 0, …}` even though the
+> `…-listener` pod is **Running**. That means registration *succeeded* but GitHub is **not
+> routing the jobs to the scale set** — and the usual reason is **public repositories**.
+> GitHub **blocks public repos from using self-hosted runners by default** (a fork PR could
+> otherwise run untrusted code on your runners), and the nubenetes microservices forks are
+> public, so this bites on first use. **Fix (org admin, one-time UI toggle — no secret/API for
+> it):** *Organization → Settings → Actions → Runner groups →* the group holding
+> `jenkins-2026-runners` (**Default**) *→* enable **"Allow public repositories"** (and ensure
+> *Repository access* = **All repositories**, or lists the forks). Queued jobs pick up within
+> ~1 min — a runner pod appears in `arc-runners` and the run flips to *in_progress*.
+>
+> Two rarer causes of the same "stuck queued" symptom: **(a)** the run was queued *before* the
+> `AutoscalingRunnerSet` finished registering — GitHub won't retro-assign it, so **re-trigger**
+> with a fresh `push`/PR (`workflow_dispatch` is intentionally not wired); **(b)** registration
+> itself is failing — there is **no** Running `…-listener` pod
+> (`kubectl -n arc-systems get pods | grep listener`); see the §9.5 troubleshooting in
 > [`103-GITHUB_SECRETS_INVENTORY.md`](./103-GITHUB_SECRETS_INVENTORY.md) (the GitHub App needs
 > org **Self-hosted runners: Read & write**, and the controller must be rolled to re-read a
 > changed `arc-github-app` Secret).
