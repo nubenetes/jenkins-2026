@@ -641,6 +641,19 @@ flowchart TB
     %% --- secrets backend ---
     OPS -->|"ESO: ClusterSecretStore gcp-store · ExternalSecret · keyless WIF (eso-secret-reader)"| SM
 
+    subgraph KEY["Legend · fill colour = component TYPE · each Ln box = a lifecycle/plane LAYER"]
+      direction LR
+      kext["external"]:::ext
+      kprov["Day0 · IaC"]:::prov
+      kedge["GCP edge"]:::edge
+      kctrl["control plane"]:::ctrl
+      kdata["data · runtime"]:::data
+      kobs["observability"]:::obs
+      knode["node substrate"]:::node
+      kpush["imperative PUSH"]:::push
+      kpick["pluggable · pick-ONE"]:::pick
+    end
+
     classDef ext fill:#fde,stroke:#c39,color:#000;
     classDef prov fill:#fef3e0,stroke:#d39000,color:#000;
     classDef edge fill:#e8f6ff,stroke:#1f7ab0,color:#000;
@@ -654,7 +667,9 @@ flowchart TB
 
 </details>
 
-> The **CI engine** (Jenkins/Tekton) and **observability backend** (oss/grafana-cloud/managed-azure/managed-aws) boxes are *mutually exclusive* — exactly one of each is active per cluster, selected by `config/config.yaml` (or the `Day1.cluster.01` inputs) and switched deterministically. The three external backends are decoupled, persistent, **keyless** (WIF/OIDC) Day0 resources. The dashed **`microservices-develop`** node is the optional **lean** second deploy tier (`microservices.developTrackEnabled` / the `develop_track` input, **off by default**): a non-HA `microservices-develop` namespace (single CNPG instance, no backups) alongside `stable`, into the same observability stack. **Secrets** are `imperative` by default, or pushed to **GCP Secret Manager** and synced by the **External Secrets Operator** when `secrets.backend=eso`.
+> **How to read it — top-down, by layer.** **L0** Day0 root-of-trust (human-run, *never* torn down: WIF/OIDC keyless trust · the GCS Terraform-state bucket · the permanent DNS zone) → **L1** Terraform / IaC → **L2** the GCP edge (DNS → L7 LB → **IAP** → Gateway) → **L3** the in-cluster **control plane** (ArgoCD + the chosen CI engine + operators + the imperative *push* lane ArgoCD doesn't own) → **L4** the **data / runtime plane** (the JHipster gateway + microservice + CloudNative-PG, on the static-vs-NAP node substrate) → **L5** the **OpenTelemetry pipeline** → **L6** the one active **backend store**. **Fill colour encodes the component *type*** — see the **Legend** box (external · Day0/IaC · edge · control · data · observability · nodes · imperative-push · pluggable).
+>
+> The **CI engine** (Jenkins **xor** Tekton) and the **observability backend** (oss / grafana-cloud / managed-azure / managed-aws) are *mutually exclusive* — exactly one of each per cluster, selected in `config/config.yaml` (or the `Day1.cluster.01` inputs) and switched deterministically; the three external backends are decoupled, persistent, **keyless** (WIF/OIDC) Day0 resources. **Secrets** are `imperative` by default, or pushed to **GCP Secret Manager** and synced by the **External Secrets Operator** (`secrets.backend=eso`, keyless WIF). The optional **lean `develop` tier** (`microservices.developTrackEnabled` / the `develop_track` input, **off by default**) adds a non-HA `microservices-develop` namespace (single CNPG instance, no backups) alongside `stable` — folded into the **L4** label, into the same observability stack.
 
 For the full component diagram, microservices database architecture (CloudNative-PG HA), and CI/CD flow see [201. Architecture](./docs/201-ARCHITECTURE.md). For the Grafana Cloud Observability apps (App Observability, Synthetic Monitoring, Profiles — grafana-cloud only) see [301. Observability](./docs/301-OBSERVABILITY.md#grafana-cloud-observability-apps--status--recommendation).
 

@@ -221,6 +221,19 @@ flowchart TB
     %% --- secrets backend ---
     OPS -->|"ESO: ClusterSecretStore gcp-store · ExternalSecret · keyless WIF (eso-secret-reader)"| SM
 
+    subgraph KEY["Legend · fill colour = component TYPE · each Ln box = a lifecycle/plane LAYER"]
+      direction LR
+      kext["external"]:::ext
+      kprov["Day0 · IaC"]:::prov
+      kedge["GCP edge"]:::edge
+      kctrl["control plane"]:::ctrl
+      kdata["data · runtime"]:::data
+      kobs["observability"]:::obs
+      knode["node substrate"]:::node
+      kpush["imperative PUSH"]:::push
+      kpick["pluggable · pick-ONE"]:::pick
+    end
+
     classDef ext fill:#fde,stroke:#c39,color:#000;
     classDef prov fill:#fef3e0,stroke:#d39000,color:#000;
     classDef edge fill:#e8f6ff,stroke:#1f7ab0,color:#000;
@@ -233,6 +246,8 @@ flowchart TB
 ```
 
 </details>
+
+The overview reads **top-down as seven lifecycle/plane layers**: **L0** Day0 root-of-trust (human-run, never destroyed) → **L1** Terraform/IaC → **L2** GCP edge (DNS → L7 LB → IAP → Gateway) → **L3** control plane (ArgoCD + CI engine + operators + the imperative *push* lane) → **L4** data/runtime plane (gateway + microservice + CNPG) on the static-vs-NAP node substrate → **L5** the OpenTelemetry pipeline → **L6** the one active backend store. **Fill colour encodes the component _type_** (external · Day0/IaC · edge · control · data · observability · nodes · imperative-push · pluggable) — see the in-diagram **Legend**. The two pluggable axes (`ci.engine`: Jenkins xor Tekton; `observability.mode`: one of four) are mutually exclusive — exactly one each. The [Component Diagram](#component-diagram) below drills into the Jenkins / microservices / observability namespace internals.
 
 ## Component Diagram
 
