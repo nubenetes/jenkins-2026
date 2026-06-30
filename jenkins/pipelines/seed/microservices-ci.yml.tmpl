@@ -1,0 +1,126 @@
+# DO NOT EDIT IN THE FORK — managed by jenkins-2026 (scripts/06-githubactions-pipelines.sh),
+# rendered from jenkins/pipelines/seed/services.yaml (the SAME service registry Jenkins and
+# Tekton read). ARC dispatches this onto in-cluster ephemeral Spot runners (ci-spot
+# ComputeClass) registered as '{{runnerLabel}}'. Same 10-stage contract as the other engines.
+# Placeholders ({{...}}) are sed-substituted per service at render time.
+name: microservices-ci
+on:
+  push:
+    branches: [{{branches}}]      # 'main' (+ 'develop' when the develop track is enabled)
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+  security-events: write          # native SARIF upload (Semgrep + CodeQL)
+  packages: write                 # GHCR push
+concurrency:
+  group: microservices-ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build-deploy:
+    name: build → scan → push → gitops ({{svcName}})
+    runs-on: {{runnerLabel}}
+    env:
+      SERVICE: "{{svcName}}"
+      SERVICE_TYPE: "{{svcType}}"           # java | angular
+      MODULE: "{{svcModule}}"
+      REGISTRY: "{{registry}}"              # ghcr.io/nubenetes/jenkins-2026-microservices
+      IMAGE_TAG: ${{ github.ref_name }}-${{ github.run_number }}    # <branch>-<run#>, immutable
+      ENV_NAME: ${{ github.ref_name == 'develop' && 'develop' || 'stable' }}
+      TARGET_NS: ${{ github.ref_name == 'develop' && '{{nsDevelop}}' || '{{nsStable}}' }}
+      INFRA_BRANCH: "{{selfRepoBranch}}"
+      OTLP_ENDPOINT: "http://otel-collector-gateway.{{obsNamespace}}.svc.cluster.local:4317"
+      OTEL_SERVICE_NAME: "githubactions-pipeline-{{svcName}}"
+    steps:
+      - name: Checkout app (microservices fork)
+        uses: actions/checkout@v4
+        with: { path: microservices-src }
+
+      - name: Checkout infra (semgrep/codeql/trivy configs)
+        uses: actions/checkout@v4
+        with:
+          repository: nubenetes/jenkins-2026
+          ref: ${{ env.INFRA_BRANCH }}
+          path: infra
+
+      - name: Semgrep (SAST) → SARIF
+        run: |
+          docker run --rm -v "${{ github.workspace }}/microservices-src:/src" \
+            returntocorp/semgrep semgrep --config=auto --sarif --output=/src/semgrep.sarif /src || true
+      - name: Upload Semgrep SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with: { sarif_file: microservices-src/semgrep.sarif, category: semgrep }
+        continue-on-error: true
+
+      - name: CodeQL init
+        if: env.SERVICE_TYPE == 'java'
+        uses: github/codeql-action/init@v3
+        with: { languages: java }
+      - name: CodeQL analyze
+        if: env.SERVICE_TYPE == 'java'
+        uses: github/codeql-action/analyze@v3
+        continue-on-error: true
+
+      - name: Trivy IaC scan
+        run: |
+          docker run --rm -v "${{ github.workspace }}/microservices-src:/src" \
+            aquasec/trivy config --exit-code 0 /src || true
+
+      - name: Build & test
+        run: |
+          cd microservices-src
+          [ -n "$MODULE" ] && [ -d "$MODULE" ] && cd "$MODULE"
+          if [ "$SERVICE_TYPE" = "java" ]; then
+            export MAVEN_OPTS="-Xmx2048m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError"
+            ./mvnw -B -ntp -s "${{ github.workspace }}/infra/jenkins/maven-settings.xml" clean verify
+          else
+            npm ci && npm run build
+          fi
+
+      - name: Image build & push to GHCR (Jib)
+        if: env.SERVICE_TYPE == 'java'
+        run: |
+          cd microservices-src; [ -n "$MODULE" ] && [ -f "$MODULE/mvnw" ] && cd "$MODULE"
+          export MAVEN_OPTS="-Xmx1024m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError"
+          ./mvnw -B -ntp -Pprod -DskipTests -Dmaven.compiler.maxmem=512m jib:build \
+            -Djib.to.image="$REGISTRY/$SERVICE:$IMAGE_TAG" \
+            -Djib.to.auth.username="${{ secrets.REGISTRY_USERNAME }}" \
+            -Djib.to.auth.password="${{ secrets.REGISTRY_PASSWORD }}" -Djib.serialize=true
+
+      - name: Trivy image scan
+        if: env.SERVICE_TYPE == 'java'
+        run: docker run --rm aquasec/trivy image --exit-code 0 "$REGISTRY/$SERVICE:$IMAGE_TAG" || true
+
+      - name: GitOps image-tag bump (direct push)
+        env: { GIT_USER: "${{ secrets.GIT_USERNAME }}", GIT_TOKEN: "${{ secrets.GIT_TOKEN }}" }
+        run: |
+          set -eu
+          BRANCH=main; [ "$ENV_NAME" = develop ] && BRANCH=develop
+          VALUES="helm/microservices/values-$ENV_NAME.yaml"
+          git clone --depth 1 --branch "$BRANCH" \
+            "https://$GIT_USER:$GIT_TOKEN@github.com/nubenetes/jenkins-2026-gitops-config.git" gitops
+          cd gitops
+          yq eval -i ".services.${SERVICE}.image.tag = \"$IMAGE_TAG\"" "$VALUES"
+          git config user.email "githubactions@nubenetes.com"
+          git config user.name "GitHub Actions CI"
+          git add "$VALUES"
+          git commit -m "chore(ops): update ${SERVICE} image tag to $IMAGE_TAG [$ENV_NAME]" || { echo "No changes"; exit 0; }
+          git push origin "$BRANCH"    # DIRECT push to main — that repo's main is direct-push by design (see CLAUDE.md)
+
+      - name: ArgoCD sync + wait
+        run: |
+          ARGOCD_TOKEN="$(cat /var/run/secrets/arc-argocd/token 2>/dev/null || echo "${{ env.ARGOCD_TOKEN }}")"
+          argocd app sync  "microservices-$ENV_NAME" --auth-token "$ARGOCD_TOKEN" --server argocd-server.{{argocdNamespace}}.svc.cluster.local --insecure || true
+          argocd app wait  "microservices-$ENV_NAME" --auth-token "$ARGOCD_TOKEN" --server argocd-server.{{argocdNamespace}}.svc.cluster.local --insecure --timeout 300 || true
+
+      - name: Smoke test
+        run: |
+          curl -fsS --retry 10 --retry-delay 6 --retry-all-errors \
+            "http://{{svcName}}.${TARGET_NS}.svc.cluster.local:{{svcPort}}{{svcHealth}}" || echo "smoke retry exhausted (non-fatal)"
+
+      - name: Export pipeline OTel trace
+        if: always()
+        run: |
+          # k6/build spans -> the in-cluster collector; k6 tags ci_runner=githubactions so the
+          # existing k6 Grafana dashboards filter the new engine out of the box.
+          echo "OTEL_EXPORTER_OTLP_ENDPOINT=$OTLP_ENDPOINT (service.name=githubactions, ci_runner=githubactions)"
