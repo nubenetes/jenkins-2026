@@ -1,0 +1,39 @@
+# argocd/githubactions/values.yaml — defaults for the ARC app-of-apps.
+# repoURL/targetRevision/runNodePool/nodeAutoProvisioningEnabled are overridden by the
+# parent Application's helm.parameters (scripts/04-githubactions.sh sed-substitutes the
+# {{...}} placeholders in argocd/githubactions-app.yaml from the J2026_* env).
+
+repoURL: https://github.com/nubenetes/jenkins-2026.git
+targetRevision: main
+
+namespace:
+  controlPlane: arc-systems   # gha-runner-scale-set-controller + CRDs
+  runners: arc-runners        # AutoscalingRunnerSet + ephemeral runner pods + creds
+
+versions:
+  arc: "0.12.1"               # gha-runner-scale-set-controller + gha-runner-scale-set (must match); see docs/602
+
+# The `runs-on:` label the forks' microservices-ci.yml workflow targets.
+runnerScaleSetName: jenkins-2026-runners
+# Org-level scale set: one set serves every microservices fork.
+githubConfigUrl: https://github.com/nubenetes
+# The in-cluster Secret (provisioned by 01-namespaces.sh into the runners namespace) that
+# holds the GitHub App creds (github_app_id/_installation_id/_private_key) or a PAT (github_token).
+githubConfigSecret: arc-github-app
+
+# Runner pod placement. ci-spot (default) = the NAP Spot ComputeClass (ephemeral runners
+# are the scale-to-zero showcase); static = the long-lived jenkins-2026-pool. Overridden by
+# the parent helm.parameter from J2026_GITHUBACTIONS_RUN_NODE_POOL.
+runNodePool: ci-spot
+nodeAutoProvisioningEnabled: true
+
+# Autoscaling bounds: minRunners 0 = true scale-to-zero between builds.
+minRunners: 0
+maxRunners: 6
+
+# dind = a privileged Docker sidecar for the angular buildpacks path (parity with the
+# Jenkins docker container); java uses Jib which needs no daemon. 'kubernetes' = rootless.
+containerMode: dind
+
+# Image pull secret for the runner pods (ghcr.io), provisioned by 01-namespaces.sh.
+registryCredentialsSecretName: arc-registry

@@ -102,6 +102,11 @@ export J2026_JENKINS_RUN_NODE_POOL="${JENKINS2026_JENKINS_RUN_NODE_POOL:-$(yq_ge
 validate_run_node_pool "${J2026_JENKINS_RUN_NODE_POOL}" "jenkins.runNodePool"
 export J2026_TEKTON_RUN_NODE_POOL="${JENKINS2026_TEKTON_RUN_NODE_POOL:-$(yq_get '.tekton.runNodePool' 'static')}"
 validate_run_node_pool "${J2026_TEKTON_RUN_NODE_POOL}" "tekton.runNodePool"
+# GitHub Actions / ARC defaults to ci-spot: each runner is a single ephemeral pod (one
+# job then terminated), so a Spot preemption loses at most one re-queued job — unlike
+# Tekton's affinity-assistant. This engine IS the NAP Spot scale-to-zero showcase.
+export J2026_GITHUBACTIONS_RUN_NODE_POOL="${JENKINS2026_GITHUBACTIONS_RUN_NODE_POOL:-$(yq_get '.githubactions.runNodePool' 'ci-spot')}"
+validate_run_node_pool "${J2026_GITHUBACTIONS_RUN_NODE_POOL}" "githubactions.runNodePool"
 
 # --- ci engine (feature flag) ------------------------------------------------
 
@@ -109,14 +114,15 @@ validate_run_node_pool "${J2026_TEKTON_RUN_NODE_POOL}" "tekton.runNodePool"
 # config.yaml (jenkins|tekton) - same "config file is the durable default, env
 # var is the ephemeral override" pattern as JENKINS2026_OBS_MODE above. Selects
 # which CI engine up.sh/down.sh deploy and which numbered steps run (jenkins ->
-# 04-jenkins.sh/06-seed-pipelines.sh; tekton -> 04-tekton.sh/06-tekton-pipelines.sh).
+# 04-jenkins.sh/06-seed-pipelines.sh; tekton -> 04-tekton.sh/06-tekton-pipelines.sh;
+# githubactions -> 04-githubactions.sh/06-githubactions-pipelines.sh = ARC self-hosted runners).
 J2026_CI_ENGINE="${JENKINS2026_CI_ENGINE:-$(yq_get '.ci.engine' 'jenkins')}"
 export J2026_CI_ENGINE
 
 case "${J2026_CI_ENGINE}" in
-  jenkins|tekton) ;;
+  jenkins|tekton|githubactions) ;;
   *)
-    log_error "Unsupported CI engine '${J2026_CI_ENGINE}' (expected jenkins|tekton)."
+    log_error "Unsupported CI engine '${J2026_CI_ENGINE}' (expected jenkins|tekton|githubactions)."
     log_error "Set ci.engine in ${J2026_CONFIG_FILE} or export JENKINS2026_CI_ENGINE."
     exit 1
     ;;
@@ -188,6 +194,25 @@ export J2026_TEKTON_GIT_SECRET="$(yq_get '.tekton.gitCredentialsSecretName' 'tek
 # (click Rerun) from the first Day1 — at the cost of one build per service per
 # provision. Default false: PaC's git-push trigger is the normal path.
 export J2026_TEKTON_SEED_RUNS="${JENKINS2026_TEKTON_SEED_RUNS:-$(yq_get '.tekton.seedRuns' 'false')}"
+
+
+# --- github actions / ARC (used when ci.engine == githubactions) -------------
+# Actions Runner Controller: the gha-runner-scale-set-controller + an AutoscalingRunnerSet
+# (ephemeral self-hosted runners) installed via the argocd/githubactions app-of-apps.
+# No central web UI (runs live in GitHub's Actions tab) -> no Gateway/IAP route.
+export J2026_GHA_NAMESPACE="$(yq_get '.githubactions.namespace' 'arc-systems')"
+export J2026_GHA_RUNNER_NAMESPACE="$(yq_get '.githubactions.runnerNamespace' 'arc-runners')"
+export J2026_GHA_RUNNER_SCALE_SET_NAME="$(yq_get '.githubactions.runnerScaleSetName' 'jenkins-2026-runners')"
+export J2026_GHA_CONFIG_URL="$(yq_get '.githubactions.githubConfigUrl' 'https://github.com/nubenetes')"
+export J2026_GHA_AUTH_MODE="$(yq_get '.githubactions.authMode' 'app')"
+export J2026_GHA_CONTAINER_MODE="$(yq_get '.githubactions.containerMode' 'dind')"
+export J2026_GHA_VERSION_ARC="$(yq_get '.githubactions.versions.arc' '0.12.1')"
+export J2026_GHA_REGISTRY_SECRET="$(yq_get '.githubactions.registryCredentialsSecretName' 'arc-registry')"
+export J2026_GHA_APP_SECRET="$(yq_get '.githubactions.githubAppSecretName' 'arc-github-app')"
+# FEATURE FLAG: JENKINS2026_GITHUBACTIONS_SEED_RUNS overrides githubactions.seedRuns. When
+# true, 06-githubactions-pipelines.sh ALSO `gh workflow run`s each fork's microservices-ci
+# workflow on Day1 (parity with tekton.seedRuns). Default true.
+export J2026_GHA_SEED_RUNS="${JENKINS2026_GITHUBACTIONS_SEED_RUNS:-$(yq_get '.githubactions.seedRuns' 'true')}"
 
 
 # --- observability ---------------------------------------------------------

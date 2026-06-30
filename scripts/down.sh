@@ -88,6 +88,14 @@ if kubectl get application tekton -n "${J2026_ARGOCD_NAMESPACE}" >/dev/null 2>&1
   kubectl delete application tekton -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false || true
 fi
 
+# GitHub Actions / ARC (ci.engine=githubactions) is a GitOps-managed app-of-apps. Delete
+# the parent while ArgoCD is alive so it cascade-prunes the controller + the runner scale
+# set (which de-registers the runners from GitHub). Engine-agnostic: no-op when absent.
+if kubectl get application githubactions -n "${J2026_ARGOCD_NAMESPACE}" >/dev/null 2>&1; then
+  log_step "Removing githubactions ArgoCD app-of-apps (ARC controller + runner scale set)"
+  kubectl delete application githubactions -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false || true
+fi
+
 # Jenkins (ci.engine=jenkins) is a GitOps-managed single Application. Delete it
 # while ArgoCD is alive so it cascade-prunes the chart. Engine-agnostic: no-op
 # when absent. (The helm_uninstall below is a legacy fallback for pre-ArgoCD
@@ -276,7 +284,7 @@ drain_namespace() {
 
 if [[ "${J2026_DELETE_NAMESPACES:-false}" == "true" ]]; then
   log_step "Deleting namespaces (J2026_DELETE_NAMESPACES=true)"
-  for ns in "${J2026_GATEWAY_NAMESPACE}" "${J2026_JENKINS_NAMESPACE}" "${J2026_TEKTON_NAMESPACE}" "${J2026_TEKTON_PIPELINE_NAMESPACE}" pipelines-as-code tekton-chains "${J2026_OBS_NAMESPACE}" "${J2026_GRAFANA_OSS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" "${J2026_ARGOCD_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}"; do
+  for ns in "${J2026_GATEWAY_NAMESPACE}" "${J2026_JENKINS_NAMESPACE}" "${J2026_TEKTON_NAMESPACE}" "${J2026_TEKTON_PIPELINE_NAMESPACE}" pipelines-as-code tekton-chains "${J2026_GHA_NAMESPACE}" "${J2026_GHA_RUNNER_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_GRAFANA_OSS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" "${J2026_ARGOCD_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}"; do
     # microservices-develop only exists when the develop track was enabled;
     # drain_namespace no-ops on an absent namespace, so listing it is always safe.
     # First reclaim PVCs gracefully (CSI deletes the PDs → no orphaned disks),

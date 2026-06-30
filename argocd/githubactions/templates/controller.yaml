@@ -1,0 +1,42 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: arc-controller
+  namespace: argocd
+  annotations:
+    # Wave 0: the controller + its CRDs (AutoscalingRunnerSet / EphemeralRunner /
+    # AutoscalingListener) must exist before the runner-scale-set child (wave 1).
+    argocd.argoproj.io/sync-wave: "0"
+    # The controller ships an admission webhook with the same first-sync caBundle/cert
+    # race as tekton-pipelines-webhook -> ServerSideDiff + the retry block below.
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    # Official ARC OCI Helm chart (no vendoring needed, unlike Tekton's GitHub-asset YAMLs).
+    # NOTE: the ArgoCD repo-server must allow anonymous OCI Helm pulls from ghcr.io (these
+    # charts are public). Pin the release name 'arc' so the emitted Deployment name is
+    # deterministic (arc-gha-rs-controller) and matches the 04/common.sh call sites.
+    repoURL: ghcr.io/actions/actions-runner-controller-charts
+    chart: gha-runner-scale-set-controller
+    targetRevision: '{{ .Values.versions.arc }}'
+    helm:
+      releaseName: arc
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: '{{ .Values.namespace.controlPlane }}'
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 8
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m

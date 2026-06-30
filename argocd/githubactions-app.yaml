@@ -1,0 +1,40 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: githubactions
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  # App-of-apps: renders the local Helm chart argocd/githubactions/, which emits
+  # the two child Applications for ARC (Actions Runner Controller): the
+  # gha-runner-scale-set-controller (CRDs + controller, sync-wave 0) and the
+  # gha-runner-scale-set (AutoscalingRunnerSet = ephemeral self-hosted runners,
+  # sync-wave 1). The {{repoUrl}}/{{branchStable}}/{{runNodePool}}/
+  # {{nodeAutoProvisioningEnabled}} placeholders are substituted by
+  # scripts/04-githubactions.sh at apply time and passed down as helm parameters.
+  # Only applied when ci.engine=githubactions. Mirrors argocd/tekton-app.yaml.
+  source:
+    repoURL: '{{repoUrl}}'
+    targetRevision: '{{branchStable}}'
+    path: argocd/githubactions
+    helm:
+      parameters:
+        - name: repoURL
+          value: '{{repoUrl}}'
+        - name: targetRevision
+          value: '{{branchStable}}'
+        - name: runNodePool
+          value: '{{runNodePool}}'
+        - name: nodeAutoProvisioningEnabled
+          value: '{{nodeAutoProvisioningEnabled}}'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
