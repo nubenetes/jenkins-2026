@@ -348,6 +348,42 @@ erDiagram
 
 **Reading it —** this is the schema the seed job consumes. One `REGISTRY` holds many `SERVICE` rows plus the `NAMESPACES`/`BRANCHES` maps, and each `SERVICE` fans out to one or more generated `JOB`s. The point is that **every per-service knob the pipeline needs lives in one place** — add a row here (name/type/repo/port/health) and the seed job generates its jobs, wires its parameters, and the pipeline builds/deploys it with no other change. `type` (`java`/`angular`) is the field that later switches Maven-vs-npm builds and Jib-vs-docker packaging.
 
+## Shared app-source patch (all four engines)
+
+[`services.yaml`](../jenkins/pipelines/seed/services.yaml) is *one* artifact the four CI engines (Jenkins, Tekton, Argo Workflows, GitHub Actions) share so they stay interchangeable; **[`resources/patch-app-source.sh`](../resources/patch-app-source.sh)** is the other. Every engine runs this one script **right after it checks out the app fork, before build** — it converts the `gateway` service from MySQL to PostgreSQL + a NoOp cache, and is a **no-op for every other service**. The script is **idempotent**, so re-running a build (or running it twice) is safe.
+
+**What it does (newcomer view).** Call it as `patch-app-source.sh <service-name> [app-source-dir]`. For any service other than `gateway` it prints "no patch needed" and exits 0. For `gateway` it rewrites the checked-out source in place: swaps the MySQL drivers/dialect/JDBC+R2DBC URLs for PostgreSQL in `pom.xml` and `application-prod.yml`, repoints the test-container at Postgres so the test sources still compile, drops the Hibernate 2nd-level `@Cache` from the reactive `User` entity, and adds a `CacheConfiguration` that wires a Spring `NoOpCacheManager`. The result is a gateway that builds and runs against the platform's CloudNativePG Postgres without touching the upstream repo.
+
+### Why the patch exists
+
+The microservices forks are deliberately kept as **clean, unmodified upstream JHipster samples** — they track upstream and stay an honest demo of what `jhipster` actually generates. But the gateway upstream (`jhipster/jhipster-sample-app-gateway`) is generated for **MySQL**, while this platform standardises on **PostgreSQL (CloudNativePG)**. Something has to reconcile that mismatch. Rather than diverge the fork, **each engine adapts the source at build time** — the fork stays pristine, and the MySQL→Postgres conversion lives entirely in CI.
+
+### Why one shared script (and not the alternatives)
+
+The patch logic used to be **copied inline into all four engines**. That is exactly the kind of duplication that rots: the copies **had already drifted** — a `DatabaseTestcontainer` fix (needed since JHipster v9.1.0 so the test sources test-compile against Postgres) existed in **only one** engine's copy. Centralising removes that whole failure mode:
+
+- **Single source of truth → no drift.** One file changes once; all four engines pick it up. No "fixed in Jenkins but not in GitHub Actions" skew.
+- **It extends a layer the engines already share.** The four engines already read the same [`services.yaml`](../jenkins/pipelines/seed/services.yaml); folding the patch into that same shared layer keeps them **truly interchangeable** — all four honour the same 10-stage contract, so a build means the same thing regardless of engine.
+- **One place to maintain.** When the next app/DB mismatch appears (a new service, a new upstream bump), there is exactly one script to edit instead of four.
+
+The alternatives are both worse:
+
+- **(a) Migrate the fork to Postgres.** This diverges the fork from upstream permanently — every upstream sync now conflicts, and the "sample" stops being a faithful copy of what JHipster emits. A dishonest demo.
+- **(b) Keep per-engine inline copies.** This is the status quo we left: the copies **drift** (as the missing `DatabaseTestcontainer` fix proved) and cost **4× the maintenance** for every future change.
+
+### How each engine calls it
+
+All four engines invoke the *same* script; only the path-resolution mechanism differs, because of how each engine gets at the `jenkins-2026` infra repo:
+
+| Engine | How it runs the script |
+|---|---|
+| **Jenkins** | `libraryResource('patch-app-source.sh')` — loaded from the shared library's `resources/` (this is why the script lives under `resources/`). |
+| **Tekton** | runs `resources/patch-app-source.sh` from its **cloned `jenkins-2026` infra** checkout. |
+| **Argo Workflows** | same as Tekton — `resources/patch-app-source.sh` from its cloned `jenkins-2026` infra. |
+| **GitHub Actions** | runs `resources/patch-app-source.sh` from its **`infra/` checkout** of this repo. |
+
+All four engines also run **Build & Test with `-DskipITs`** — the heavy DB **Integration Tests** are skipped — so the *test-side* DB config doesn't need to match the runtime Postgres. The patch repoints the test-container only so the test sources **compile** (`clean verify` test-compiles even with `-DskipITs`); it deliberately doesn't try to make the full integration-test DB stack run.
+
 ## Detailed Pipeline Execution Stages
 
 ### 1. Microservices Build & Deploy Pipeline
