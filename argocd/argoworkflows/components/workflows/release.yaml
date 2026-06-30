@@ -1876,6 +1876,25 @@ spec:
                         type: array
                     type: object
                   metadata:
+                    properties:
+                      annotations:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      finalizers:
+                        items:
+                          type: string
+                        type: array
+                      generateName:
+                        type: string
+                      labels:
+                        additionalProperties:
+                          type: string
+                        type: object
+                      name:
+                        type: string
+                      namespace:
+                        type: string
                     type: object
                   workflowTemplateRef:
                     properties:
@@ -2842,6 +2861,7 @@ rules:
   - ""
   resources:
   - configmaps
+  - namespaces
   verbs:
   - get
   - watch
@@ -3083,7 +3103,7 @@ spec:
       - args:
         - server
         env: []
-        image: quay.io/argoproj/argocli:v3.6.4
+        image: quay.io/argoproj/argocli:v3.7.15
         name: argo-server
         ports:
         - containerPort: 2746
@@ -3138,7 +3158,7 @@ spec:
             fieldRef:
               apiVersion: v1
               fieldPath: metadata.name
-        image: quay.io/argoproj/workflow-controller:v3.6.4
+        image: quay.io/argoproj/workflow-controller:v3.7.15
         livenessProbe:
           failureThreshold: 3
           httpGet:
