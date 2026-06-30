@@ -59,9 +59,11 @@ spec:
 EOT
 
 log_step "Generating HTTPRoutes (argocd, microservices, headlamp; jenkins only when ci.engine=jenkins)"
-# Jenkins HTTPRoute only when Jenkins is the CI engine - in tekton mode there is
-# no Jenkins Service to route to (04-tekton.sh retires it).
-if [[ "${J2026_CI_ENGINE}" != "tekton" ]]; then
+# Jenkins HTTPRoute only when Jenkins is the CI engine - the other engines retire
+# the Jenkins Service (tekton/githubactions/argoworkflows), so route to it ONLY for
+# ci.engine=jenkins (an explicit == check, not != tekton, so githubactions and
+# argoworkflows - which also have no Jenkins Service - emit no jenkins route).
+if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
   cat >"${GENERATED_DIR}/httproute-jenkins.yaml" <<EOT
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -331,6 +333,71 @@ spec:
 EOT
 fi
 
+# Argo Workflows Server UI is only deployed when ci.engine=argoworkflows. The Server runs
+# with --auth-mode=server --secure=false (plain HTTP), so it is IAP-protected at the
+# Gateway (GCPBackendPolicy below), exactly like the no-native-auth Tekton Dashboard.
+if [[ "${J2026_CI_ENGINE}" == "argoworkflows" ]]; then
+  log_step "Generating HTTPRoute + HealthCheckPolicy (Argo Workflows Server, ci.engine=argoworkflows)"
+  cat >"${GENERATED_DIR}/httproute-argoworkflows.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ${J2026_GATEWAY_HTTPROUTE_ARGOWF}
+  namespace: ${J2026_ARGOWF_NAMESPACE}
+spec:
+  parentRefs:
+    - name: ${J2026_GATEWAY_NAME}
+      namespace: ${J2026_GATEWAY_NAMESPACE}
+      sectionName: https
+  hostnames:
+    - "${J2026_GATEWAY_ARGOWF_HOST}"
+  rules:
+    - backendRefs:
+        - name: ${J2026_ARGOWF_SERVER_SERVICE}
+          port: ${J2026_ARGOWF_SERVER_PORT}
+EOT
+
+  cat >"${GENERATED_DIR}/healthcheckpolicy-argoworkflows.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: ${J2026_ARGOWF_SERVER_SERVICE}
+  namespace: ${J2026_ARGOWF_NAMESPACE}
+spec:
+  default:
+    config:
+      type: HTTP
+      httpHealthCheck:
+        requestPath: /
+  targetRef:
+    group: ""
+    kind: Service
+    name: ${J2026_ARGOWF_SERVER_SERVICE}
+EOT
+
+  # Argo Events EventSource (webhook receiver) - public, NO IAP (GitHub must reach it;
+  # the argoworkflows-github-webhook HMAC secret authenticates requests). The github
+  # EventSource provisions the Service github-eventsource-svc on port 12000.
+  cat >"${GENERATED_DIR}/httproute-argoevents.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ${J2026_GATEWAY_HTTPROUTE_ARGOEVENTS}
+  namespace: ${J2026_ARGOWF_EVENTS_NAMESPACE}
+spec:
+  parentRefs:
+    - name: ${J2026_GATEWAY_NAME}
+      namespace: ${J2026_GATEWAY_NAMESPACE}
+      sectionName: https
+  hostnames:
+    - "${J2026_GATEWAY_ARGOEVENTS_HOST}"
+  rules:
+    - backendRefs:
+        - name: github-eventsource-svc
+          port: 12000
+EOT
+fi
+
 # Grafana is only deployed in-cluster (and thus exposable) in
 # observability.mode=oss. In grafana-cloud mode it lives at *.grafana.net, so
 # there's no in-cluster Service to route to.
@@ -448,11 +515,18 @@ declare -A iap_client_id
 # client secret in that mode.
 iap_backend_namespaces=("${J2026_HEADLAMP_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}")
 # Jenkins is an IAP backend only when it is the CI engine (no Jenkins Service in
-# tekton mode); the Tekton Dashboard is the IAP backend instead when ci.engine=tekton.
+# the other modes); the Tekton Dashboard is the IAP backend instead when
+# ci.engine=tekton. ci.engine=githubactions has NO in-cluster CI dashboard (runs
+# live in GitHub's Actions tab), so neither engine namespace is added - an explicit
+# elif, not an else, so githubactions doesn't fall through to the jenkins branch.
 if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
   iap_backend_namespaces+=("${J2026_TEKTON_NAMESPACE}")
-else
+elif [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
   iap_backend_namespaces+=("${J2026_JENKINS_NAMESPACE}")
+elif [[ "${J2026_CI_ENGINE}" == "argoworkflows" ]]; then
+  # The Argo Workflows Server UI is IAP-protected too (no native auth), like the Tekton
+  # Dashboard. (githubactions has no in-cluster CI backend, so it adds none.)
+  iap_backend_namespaces+=("${J2026_ARGOWF_NAMESPACE}")
 fi
 if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
   iap_backend_namespaces+=("${J2026_GRAFANA_OSS_NAMESPACE}")
@@ -474,7 +548,7 @@ for ns in "${iap_backend_namespaces[@]}"; do
   fi
 done
 
-if [[ "${J2026_CI_ENGINE}" != "tekton" ]]; then
+if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
   cat >"${GENERATED_DIR}/gcpbackendpolicy-jenkins.yaml" <<EOT
 apiVersion: networking.gke.io/v1
 kind: GCPBackendPolicy
@@ -554,6 +628,27 @@ spec:
 EOT
 fi
 
+if [[ "${J2026_CI_ENGINE}" == "argoworkflows" ]]; then
+  cat >"${GENERATED_DIR}/gcpbackendpolicy-argoworkflows.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: ${J2026_GATEWAY_IAP_POLICY_ARGOWF}
+  namespace: ${J2026_ARGOWF_NAMESPACE}
+spec:
+  targetRef:
+    group: ""
+    kind: Service
+    name: ${J2026_ARGOWF_SERVER_SERVICE}
+  default:
+    iap:
+      enabled: true
+      clientID: "${iap_client_id[${J2026_ARGOWF_NAMESPACE}]}"
+      oauth2ClientSecret:
+        name: ${J2026_GATEWAY_IAP_SECRET}-client-secret
+EOT
+fi
+
 if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
   cat >"${GENERATED_DIR}/gcpbackendpolicy-grafana.yaml" <<EOT
 apiVersion: networking.gke.io/v1
@@ -580,7 +675,7 @@ log_step "Applying Gateway resources"
 kubectl apply -f "${GENERATED_DIR}/"
 
 log_info "Gateway ready."
-if [[ "${J2026_CI_ENGINE}" != "tekton" ]]; then
+if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
   log_info "  Jenkins:           https://${J2026_GATEWAY_JENKINS_HOST}"
 fi
 log_info "  ArgoCD:            https://${J2026_GATEWAY_ARGOCD_HOST}"
@@ -592,6 +687,10 @@ log_info "  Headlamp:          https://${J2026_GATEWAY_HEADLAMP_HOST}"
 log_info "  pgAdmin:           https://${J2026_GATEWAY_PGADMIN_HOST}"
 if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
   log_info "  Tekton Dashboard:  https://${J2026_GATEWAY_TEKTON_HOST} (IAP-protected)"
+fi
+if [[ "${J2026_CI_ENGINE}" == "argoworkflows" ]]; then
+  log_info "  Argo Workflows UI: https://${J2026_GATEWAY_ARGOWF_HOST} (IAP-protected)"
+  log_info "  Argo Events hook:  https://${J2026_GATEWAY_ARGOEVENTS_HOST} (public, HMAC)"
 fi
 if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
   log_info "  Grafana:           https://${J2026_GATEWAY_GRAFANA_HOST} (IAP-protected)"

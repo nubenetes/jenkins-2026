@@ -1,0 +1,1135 @@
+# Argo Workflows port of vars/MicroservicesPipeline.groovy and the Tekton
+# microservices-pipeline (tekton/pipelines/microservices-pipeline.yaml). One
+# WorkflowTemplate whose `templates:` list holds one container template per stage
+# (the Tekton Tasks) plus a `dag` entrypoint that sequences them (the Tekton
+# `runAfter` chain) - matching the Jenkins stage order: checkout -> Semgrep ->
+# CodeQL -> Trivy IaC -> build/test -> build & push image -> Trivy image ->
+# GitOps deploy -> smoke -> k6. All steps share one RWO 'source' PVC
+# (volumeClaimTemplates) - the Argo analogue of the Tekton 'source' workspace.
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: microservices-pipeline
+  namespace: argo-ci
+spec:
+  serviceAccountName: argoworkflows-ci
+  entrypoint: main
+  # One shared RWO workspace across all steps (the Tekton 'source' workspace). A
+  # volumeClaimTemplate gives each Workflow its own PVC, mounted at /workspace.
+  volumeClaimTemplates:
+    - metadata:
+        name: source
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 4Gi
+  # GC succeeded pods after the run (parity with the Tekton pruner) so finished
+  # Workflows don't pile up pods on the node.
+  podGC:
+    strategy: OnWorkflowSuccess
+  # Every param has a valid default (the 'gateway' service happy-path) so the
+  # Workflow runs end-to-end with ZERO params from the Argo Server UI / a minimal
+  # Workflow (workflowTemplateRef only). Override service-name + its related params
+  # together to build a different service (see jenkins/pipelines/seed/services.yaml).
+  # 06-argoworkflows-pipelines.sh / the Sensor pass the full per-service set.
+  arguments:
+    parameters:
+      - name: service-name
+        value: gateway
+      - name: service-type
+        value: java
+      - name: git-repo-url
+        value: https://github.com/nubenetes/jhipster-sample-app-gateway.git
+      - name: git-branch
+        value: main
+      - name: module-path
+        value: ""
+      - name: target-namespace
+        value: microservices
+      - name: env-name
+        value: stable
+      - name: port
+        value: "8080"
+      - name: health-path
+        value: /management/health
+      - name: image
+        value: ghcr.io/nubenetes/jenkins-2026-microservices/gateway:main
+      - name: registry-host
+        value: ghcr.io
+      - name: self-repo-url
+        value: https://github.com/nubenetes/jenkins-2026.git
+      - name: self-repo-branch
+        value: main
+      - name: otlp-endpoint
+        value: "http://otel-collector-gateway.observability.svc.cluster.local:4317"
+  templates:
+    # ---- DAG entrypoint: the Tekton Pipeline runAfter chain ----
+    - name: main
+      dag:
+        tasks:
+          - name: fetch-source
+            template: fetch-source
+            arguments:
+              parameters:
+                - { name: git-repo-url, value: "{{workflow.parameters.git-repo-url}}" }
+                - { name: git-branch, value: "{{workflow.parameters.git-branch}}" }
+                - { name: service-name, value: "{{workflow.parameters.service-name}}" }
+                - { name: self-repo-url, value: "{{workflow.parameters.self-repo-url}}" }
+                - { name: self-repo-branch, value: "{{workflow.parameters.self-repo-branch}}" }
+          - name: semgrep
+            template: semgrep-scan
+            dependencies: [fetch-source]
+            arguments:
+              parameters:
+                - { name: self-repo-url, value: "{{workflow.parameters.self-repo-url}}" }
+                - { name: self-repo-branch, value: "{{workflow.parameters.self-repo-branch}}" }
+          - name: codeql
+            template: codeql-analyze
+            dependencies: [semgrep]
+            arguments:
+              parameters:
+                - { name: self-repo-url, value: "{{workflow.parameters.self-repo-url}}" }
+                - { name: self-repo-branch, value: "{{workflow.parameters.self-repo-branch}}" }
+          - name: trivy-iac
+            template: trivy-iac
+            dependencies: [codeql]
+            arguments:
+              parameters:
+                - { name: env-name, value: "{{workflow.parameters.env-name}}" }
+          - name: build-test
+            template: maven-build-test
+            dependencies: [trivy-iac]
+            arguments:
+              parameters:
+                - { name: service-type, value: "{{workflow.parameters.service-type}}" }
+                - { name: module-path, value: "{{workflow.parameters.module-path}}" }
+          - name: build-push-image
+            template: build-push-image
+            dependencies: [build-test]
+            arguments:
+              parameters:
+                - { name: service-type, value: "{{workflow.parameters.service-type}}" }
+                - { name: module-path, value: "{{workflow.parameters.module-path}}" }
+                # P3 immutable tag: append the Workflow name so the tag is unique per
+                # run (e.g. develop-<wf-name>) - matches the gitops image-tag below
+                # (both = <git-branch>-{{workflow.name}}), so build-push, scans and the
+                # gitops bump all reference the SAME immutable image. Mirrors the
+                # Jenkins <branch>-<build#> tag (the Tekton port uses <branch>-<run-name>).
+                - { name: image, value: "{{workflow.parameters.image}}-{{workflow.name}}" }
+          - name: trivy-image
+            template: trivy-image
+            dependencies: [build-push-image]
+            arguments:
+              parameters:
+                - { name: image, value: "{{workflow.parameters.image}}-{{workflow.name}}" }
+          - name: gitops-deploy
+            template: gitops-deploy
+            dependencies: [trivy-image]
+            arguments:
+              parameters:
+                - { name: service-name, value: "{{workflow.parameters.service-name}}" }
+                - { name: env-name, value: "{{workflow.parameters.env-name}}" }
+                - { name: target-namespace, value: "{{workflow.parameters.target-namespace}}" }
+                # P3 immutable tag: <git-branch>-{{workflow.name}}, matching the build/
+                # trivy `image` tag above so build-pushes, scans and the gitops bump all
+                # reference the SAME immutable image. Mirrors the Jenkins <branch>-<build#>
+                # tag. Assumes the run's `image` tag == git-branch (the standard
+                # runs/Sensor set both from the same branch).
+                - { name: image-tag, value: "{{workflow.parameters.git-branch}}-{{workflow.name}}" }
+          - name: smoke-test
+            template: smoke-test
+            dependencies: [gitops-deploy]
+            arguments:
+              parameters:
+                - { name: service-name, value: "{{workflow.parameters.service-name}}" }
+                - { name: target-namespace, value: "{{workflow.parameters.target-namespace}}" }
+                - { name: port, value: "{{workflow.parameters.port}}" }
+                - { name: health-path, value: "{{workflow.parameters.health-path}}" }
+          - name: k6-smoke
+            template: k6-smoke
+            dependencies: [smoke-test]
+            arguments:
+              parameters:
+                - { name: target-namespace, value: "{{workflow.parameters.target-namespace}}" }
+                - { name: env-name, value: "{{workflow.parameters.env-name}}" }
+                - { name: self-repo-url, value: "{{workflow.parameters.self-repo-url}}" }
+                - { name: self-repo-branch, value: "{{workflow.parameters.self-repo-branch}}" }
+                - { name: otlp-endpoint, value: "{{workflow.parameters.otlp-endpoint}}" }
+
+    # ---- fetch-source (Tekton task: fetch-source) --------------------------------
+    # Stage 1+2 of the Jenkins pipeline: "Checkout Microservices source" (+ gateway
+    # sed-patch) and "Checkout Infra configs". Clones the app source and this infra
+    # repo into the shared workspace and applies the gateway-specific PostgreSQL/
+    # cache patches when building gateway.
+    - name: fetch-source
+      inputs:
+        parameters:
+          - name: git-repo-url
+          - name: git-branch
+          - name: service-name
+          - name: self-repo-url
+          - name: self-repo-branch
+      volumes: []
+      script:
+        image: alpine/git:2.54.0
+        volumeMounts:
+          - { name: source, mountPath: /workspace }
+        env:
+          - { name: HOME, value: /tmp }
+        command: [sh]
+        source: |
+          set -eux
+          git config --global --add safe.directory '*' || true
+          cd /workspace
+          rm -rf microservices-src
+          # Skip Git LFS smudge (avoid pulling large media); matches the Jenkins
+          # checkout. -c filter.lfs.* bypasses the LFS filter without needing git-lfs
+          # installed in the alpine/git image.
+          GIT_LFS_SKIP_SMUDGE=1 git \
+            -c filter.lfs.smudge= -c filter.lfs.process= -c filter.lfs.required=false \
+            clone --depth 1 --branch "{{inputs.parameters.git-branch}}" \
+            "{{inputs.parameters.git-repo-url}}" microservices-src
+          rm -rf jenkins-2026-infra
+          GIT_LFS_SKIP_SMUDGE=1 git \
+            -c filter.lfs.smudge= -c filter.lfs.process= -c filter.lfs.required=false \
+            clone --depth 1 --branch "{{inputs.parameters.self-repo-branch}}" \
+            "{{inputs.parameters.self-repo-url}}" jenkins-2026-infra
+          if [ "{{inputs.parameters.service-name}}" != "gateway" ]; then
+            echo "Not gateway - skipping JHipster gateway patches."
+            exit 0
+          fi
+          cd /workspace/microservices-src
+          echo "Patching gateway to use PostgreSQL and a NoOp cache (matches the Jenkins pipeline)..."
+          if [ -f src/main/java/io/github/jhipster/sample/domain/User.java ]; then
+            sed -i '/org.hibernate.annotations.Cache/d' src/main/java/io/github/jhipster/sample/domain/User.java
+            sed -i '/@Cache(usage = CacheConcurrencyStrategy/d' src/main/java/io/github/jhipster/sample/domain/User.java
+          fi
+          if [ -f src/main/java/io/github/jhipster/sample/repository/UserRepository.java ]; then
+            sed -i '/public interface UserRepository/a \    String USERS_BY_LOGIN_CACHE = "usersByLogin";\n    String USERS_BY_EMAIL_CACHE = "usersByEmail";' src/main/java/io/github/jhipster/sample/repository/UserRepository.java
+          fi
+          if [ -f pom.xml ]; then
+            sed -i 's|<groupId>com.mysql</groupId>|<groupId>org.postgresql</groupId>|g' pom.xml
+            sed -i 's|<artifactId>mysql-connector-j</artifactId>|<artifactId>postgresql</artifactId>|g' pom.xml
+            sed -i 's|<groupId>io.asyncer</groupId>|<groupId>org.postgresql</groupId>|g' pom.xml
+            sed -i 's|<artifactId>r2dbc-mysql</artifactId>|<artifactId>r2dbc-postgresql</artifactId>|g' pom.xml
+            sed -i 's|<artifactId>mysql</artifactId>|<artifactId>postgresql</artifactId>|g' pom.xml
+            sed -i 's|<liquibase-plugin.driver>com.mysql.cj.jdbc.Driver</liquibase-plugin.driver>|<liquibase-plugin.driver>org.postgresql.Driver</liquibase-plugin.driver>|g' pom.xml
+            sed -i 's|<liquibase-plugin.hibernate-dialect>org.hibernate.dialect.MySQL8Dialect</liquibase-plugin.hibernate-dialect>|<liquibase-plugin.hibernate-dialect>org.hibernate.dialect.PostgreSQLDialect</liquibase-plugin.hibernate-dialect>|g' pom.xml
+            sed -i 's|jdbc:mysql://localhost:3306/jhipsterSampleGateway|jdbc:postgresql://localhost:5432/jhipsterSampleGateway|g' pom.xml
+          fi
+          if [ -f src/main/resources/config/application-prod.yml ]; then
+            sed -i 's|jdbc:mysql://localhost:3306/jhipsterSampleGateway.*|jdbc:postgresql://localhost:5432/jhipsterSampleGateway|g' src/main/resources/config/application-prod.yml
+            sed -i 's|r2dbc:mysql://localhost:3306/jhipsterSampleGateway.*|r2dbc:postgresql://localhost:5432/jhipsterSampleGateway|g' src/main/resources/config/application-prod.yml
+          fi
+          mkdir -p src/main/java/io/github/jhipster/sample/config
+          # Written with printf (not a heredoc) so YAML literal-block indentation
+          # can't break a heredoc terminator.
+          printf '%s\n' \
+            'package io.github.jhipster.sample.config;' \
+            '' \
+            'import org.springframework.cache.CacheManager;' \
+            'import org.springframework.cache.annotation.EnableCaching;' \
+            'import org.springframework.cache.support.NoOpCacheManager;' \
+            'import org.springframework.context.annotation.Bean;' \
+            'import org.springframework.context.annotation.Configuration;' \
+            '' \
+            '@Configuration' \
+            '@EnableCaching' \
+            'public class CacheConfiguration {' \
+            '    @Bean' \
+            '    public CacheManager cacheManager() {' \
+            '        return new NoOpCacheManager();' \
+            '    }' \
+            '}' \
+            > src/main/java/io/github/jhipster/sample/config/CacheConfiguration.java
+          echo "Gateway patches applied."
+
+    # ---- semgrep-scan (Tekton task: semgrep-scan) --------------------------------
+    # Stage "Semgrep SAST": runs Semgrep over the app source and uploads the SARIF
+    # report to GitHub Code Scanning (best-effort, non-fatal). Two steps -> two
+    # containers chained via a steps: sub-template (scan -> upload-sarif).
+    - name: semgrep-scan
+      inputs:
+        parameters:
+          - name: self-repo-url
+          - name: self-repo-branch
+      steps:
+        - - name: scan
+            template: semgrep-scan-run
+        - - name: upload-sarif
+            template: semgrep-upload-sarif
+            arguments:
+              parameters:
+                - { name: self-repo-url, value: "{{inputs.parameters.self-repo-url}}" }
+                - { name: self-repo-branch, value: "{{inputs.parameters.self-repo-branch}}" }
+    - name: semgrep-scan-run
+      script:
+        image: semgrep/semgrep:1.79.0
+        volumeMounts:
+          - { name: source, mountPath: /workspace }
+        command: [sh]
+        source: |
+          set -eu
+          git config --global --add safe.directory '*' || true
+          cd /workspace/microservices-src
+          semgrep scan \
+            --config=p/security-audit \
+            --config=p/owasp-top-ten \
+            --config="/workspace/jenkins-2026-infra/.semgrep/semgrep.yml" \
+            --sarif --sarif-output=semgrep-results.sarif . || true
+    - name: semgrep-upload-sarif
+      inputs:
+        parameters:
+          - name: self-repo-url
+          - name: self-repo-branch
+      script:
+        image: alpine/k8s:1.31.3
+        volumeMounts:
+          - { name: source, mountPath: /workspace }
+        env:
+          - name: GIT_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: argoworkflows-git
+                key: password
+                optional: true
+        command: [bash]
+        source: |
+          # best-effort, non-fatal: a SARIF upload hiccup must never fail CI, so this
+          # step uses `set -u` (not -e) and always exits 0.
+          set -u
+          cd /workspace/microservices-src
+          [ -f semgrep-results.sarif ] || { echo "No SARIF produced - skipping upload."; exit 0; }
+          if [ -z "${GIT_TOKEN:-}" ]; then echo "GIT_TOKEN unset - skipping SARIF upload."; exit 0; fi
+          git config --global --add safe.directory '*' || true
+          COMMIT_SHA=$(git -C "/workspace/jenkins-2026-infra" rev-parse HEAD | tr -d '\n')
+          REF="refs/heads/{{inputs.parameters.self-repo-branch}}"
+          REPO_PATH=$(echo "{{inputs.parameters.self-repo-url}}" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\.git$||')
+          # Pass the gzip+base64 SARIF to jq via --rawfile (a FILE), not --arg: a large
+          # SARIF as a CLI argument overflows ARG_MAX ('jq: Argument list too long').
+          gzip -c semgrep-results.sarif | base64 -w0 > semgrep-results.sarif.b64
+          if ! jq -n --arg c "$COMMIT_SHA" --arg r "$REF" --rawfile s semgrep-results.sarif.b64 \
+               '{commit_sha:$c, ref:$r, sarif:$s}' > semgrep-payload.json; then
+            echo "Failed to build SARIF payload - skipping upload (non-fatal)."
+            rm -f semgrep-payload.json semgrep-results.sarif.b64; exit 0
+          fi
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+            -H "Authorization: token ${GIT_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${REPO_PATH}/code-scanning/sarifs" \
+            -d @semgrep-payload.json || echo "000")
+          echo "GitHub Code Scanning upload (Semgrep): HTTP ${CODE}"
+          rm -f semgrep-payload.json semgrep-results.sarif.b64
+          exit 0
+
+    # ---- codeql-analyze (Tekton task: codeql-analyze) ----------------------------
+    # Stage "CodeQL Analysis": builds a CodeQL database for the app source and
+    # uploads the SARIF to GitHub Code Scanning (best-effort). Two steps -> two
+    # containers chained via a steps: sub-template (analyze -> upload-sarif).
+    - name: codeql-analyze
+      inputs:
+        parameters:
+          - name: self-repo-url
+          - name: self-repo-branch
+      steps:
+        - - name: analyze
+            template: codeql-analyze-run
+        - - name: upload-sarif
+            template: codeql-upload-sarif
+            arguments:
+              parameters:
+                - { name: self-repo-url, value: "{{inputs.parameters.self-repo-url}}" }
+                - { name: self-repo-branch, value: "{{inputs.parameters.self-repo-branch}}" }
+    - name: codeql-analyze-run
+      script:
+        image: mcr.microsoft.com/cstsectools/codeql-container:c6f3f8cbd3e0ebc36d9ad6dfe6a4c166ba940166
+        volumeMounts:
+          - { name: source, mountPath: /workspace }
+        # The shared workspace is created by the root-running fetch-source/semgrep
+        # steps, but this image defaults to a non-root user -> can't write codeql-db
+        # / the node install ('Permission denied'). argo-ci is not PodSecurity-
+        # restricted, so run this step as root to match the other steps.
+        securityContext:
+          runAsUser: 0
+        resources:
+          requests:
+            cpu: 500m
+            memory: 512Mi
+          limits:
+            cpu: "4"
+            memory: 4Gi
+        command: [bash]
+        source: |
+          set -eu
+          git config --global --add safe.directory '*' || true
+          cd /workspace/microservices-src
+          export DEBIAN_FRONTEND=noninteractive
+          (apt-get update && apt-get install -y curl tar xz-utils) || true
+          (curl -sL https://nodejs.org/dist/v20.11.1/node-v20.11.1-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1) || true
+          node --version || true
+          codeql database create codeql-db --language=javascript --source-root=. --threads=0 --ram=3500 \
+            --codescanning-config="/workspace/jenkins-2026-infra/.github/codeql/codeql-config.yml"
+          codeql database analyze codeql-db --format=sarif-latest --output=codeql-results.sarif --threads=0 --ram=3500 || true
+    - name: codeql-upload-sarif
+      inputs:
+        parameters:
+          - name: self-repo-url
+          - name: self-repo-branch
+      script:
+        image: alpine/k8s:1.31.3
+        volumeMounts:
+          - { name: source, mountPath: /workspace }
+        env:
+          - name: GIT_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: argoworkflows-git
+                key: password
+                optional: true
+        command: [bash]
+        source: |
+          # best-effort, non-fatal: a SARIF upload hiccup must never fail CI.
+          set -u
+          cd /workspace/microservices-src
+          [ -f codeql-results.sarif ] || { echo "No SARIF produced - skipping upload."; exit 0; }
+          if [ -z "${GIT_TOKEN:-}" ]; then echo "GIT_TOKEN unset - skipping SARIF upload."; exit 0; fi
+          git config --global --add safe.directory '*' || true
+          COMMIT_SHA=$(git -C "/workspace/jenkins-2026-infra" rev-parse HEAD | tr -d '\n')
+          REF="refs/heads/{{inputs.parameters.self-repo-branch}}"
+          REPO_PATH=$(echo "{{inputs.parameters.self-repo-url}}" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\.git$||')
+          # --rawfile (a FILE), not --arg: a large SARIF as a CLI arg overflows ARG_MAX.
+          gzip -c codeql-results.sarif | base64 -w0 > codeql-results.sarif.b64
+          if ! jq -n --arg c "$COMMIT_SHA" --arg r "$REF" --rawfile s codeql-results.sarif.b64 \
+               '{commit_sha:$c, ref:$r, sarif:$s}' > codeql-payload.json; then
+            echo "Failed to build SARIF payload - skipping upload (non-fatal)."
+            rm -f codeql-payload.json codeql-results.sarif.b64; exit 0
+          fi
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+            -H "Authorization: token ${GIT_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${REPO_PATH}/code-scanning/sarifs" \
+            -d @codeql-payload.json || echo "000")
+          echo "GitHub Code Scanning upload (CodeQL): HTTP ${CODE}"
+          rm -f codeql-payload.json codeql-results.sarif.b64
+          exit 0
+
+    # ---- trivy-iac (Tekton task: trivy-iac) --------------------------------------
+    # Stage "Trivy IaC Scan": clones the gitops-config repo and runs Trivy config
+    # scans over the app source and the microservices Helm chart (exit-code 0 =
+    # report only, never fails the build). Two steps -> clone-gitops -> trivy-config.
+    - name: trivy-iac
+      inputs:
+        parameters:
+          - name: env-name
+          - name: gitops-repo-url
+            value: https://github.com/nubenetes/jenkins-2026-gitops-config.git
+      steps:
+        - - name: clone-gitops
+            template: trivy-iac-clone
+            arguments:
+              parameters:
+                - { name: env-name, value: "{{inputs.parameters.env-name}}" }
+                - { name: gitops-repo-url, value: "{{inputs.parameters.gitops-repo-url}}" }
+        - - name: trivy-config
+            template: trivy-iac-config
+    - name: trivy-iac-clone
+      inputs:
+        parameters:
+          - name: env-name
+          - name: gitops-repo-url
+      script:
+        image: alpine/git:2.54.0
+        volumeMounts:
+          - { name: source, mountPath: /workspace }
+        env:
+          - { name: HOME, value: /tmp }
+          - name: GIT_USER
+            valueFrom:
+              secretKeyRef:
+                name: argoworkflows-git
+                key: username
+                optional: true
+          - name: GIT_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: argoworkflows-git
+                key: password
+                optional: true
+        command: [sh]
+        source: |
+          set -eu
+          git config --global --add safe.directory '*' || true
+          cd /workspace
+          rm -rf gitops-config-src
+          BRANCH=main
+          [ "{{inputs.parameters.env-name}}" = "develop" ] && BRANCH=develop
+          REPO_CLEAN=$(echo "{{inputs.parameters.gitops-repo-url}}" | sed 's|https://||')
+          GIT_LFS_SKIP_SMUDGE=1 git \
+            -c filter.lfs.smudge= -c filter.lfs.process= -c filter.lfs.required=false \
+            clone --depth 1 --branch "${BRANCH}" \
+            "https://${GIT_USER:-git}:${GIT_TOKEN:-}@${REPO_CLEAN}" gitops-config-src
+    - name: trivy-iac-config
+      script:
+        image: aquasec/trivy:0.52.2
+        volumeMounts:
+          - { name: source, mountPath: /workspace }
+        env:
+          - { name: TRIVY_CACHE_DIR, value: /tmp/trivy-cache }
+        command: [sh]
+        source: |
+          set -eu
+          CFG="/workspace/jenkins-2026-infra/trivy.yaml"
+          trivy config --config "${CFG}" --exit-code 0 "/workspace/microservices-src"
+          trivy config --config "${CFG}" --exit-code 0 "/workspace/gitops-config-src/helm/microservices"
+
+    # ---- maven-build-test (Tekton task: maven-build-test) ------------------------
+    # Stage "Build & Test" (vars/microservicesBuild.groovy): compiles and unit-tests
+    # the service. java -> mvnw clean verify; angular -> npm.
+    - name: maven-build-test
+      inputs:
+        parameters:
+          - name: service-type
+          - name: module-path
+            value: ""
+      script:
+        image: maven:3.9.9-eclipse-temurin-21
+        volumeMounts:
+          - { name: source, mountPath: /workspace }
+          # Node-local Maven/npm caches (hostPath, like the Jenkins agent pods) so deps
+          # aren't re-downloaded on every Workflow - the main build-speed gap vs Jenkins.
+          # Node-local (not a PVC) avoids RWX/concurrency cost; mirrors
+          # vars/MicroservicesPipeline.groovy's /tmp/jenkins-*-cache hostPaths.
+          - { name: maven-cache, mountPath: /root/.m2 }
+          - { name: npm-cache, mountPath: /root/.npm }
+        resources:
+          requests:
+            cpu: "1"
+            memory: 2Gi
+          limits:
+            cpu: "4"
+            memory: 4Gi
+        command: [bash]
+        source: |
+          set -eux
+          SETTINGS="/workspace/jenkins-2026-infra/jenkins/maven-settings.xml"
+          cd /workspace/microservices-src
+          unset MAVEN_CONFIG
+          export MAVEN_OPTS="-Xmx2048m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError"
+          export NODE_OPTIONS="--max-old-space-size=3072"
+          MOD="{{inputs.parameters.module-path}}"
+          if [ -n "${MOD}" ] && [ -f "${MOD}/mvnw" ]; then
+            cd "${MOD}"
+            ./mvnw -B -ntp -T 4 -s "${SETTINGS}" -DskipITs -Dmaven.compiler.maxmem=1024m -DargLine="-Xmx1536m" clean verify
+          elif [ -n "${MOD}" ]; then
+            ./mvnw -B -ntp -T 4 -s "${SETTINGS}" -pl "${MOD}" -am -DskipITs -Dmaven.compiler.maxmem=1024m -DargLine="-Xmx1536m" clean verify
+          else
+            ./mvnw -B -ntp -T 4 -s "${SETTINGS}" -DskipITs -Dmaven.compiler.maxmem=1024m -DargLine="-Xmx1536m" clean verify
+          fi
+      volumes:
+        - name: maven-cache
+          hostPath: { path: /tmp/argoworkflows-maven-cache, type: DirectoryOrCreate }
+        - name: npm-cache
+          hostPath: { path: /tmp/argoworkflows-npm-cache, type: DirectoryOrCreate }
+
+    # ---- build-push-image (Tekton task: build-push-image) ------------------------
+    # Stage "Build & Push Image" (vars/microservicesImage.groovy), daemonless (no
+    # privileged docker-in-docker). java -> Jib; angular -> Kaniko. Registry auth
+    # comes from the argoworkflows-registry dockerconfigjson Secret mounted at
+    # $DOCKER_CONFIG (Argo has no 'dockerconfig' workspace concept), which both Jib
+    # and Kaniko read. P3 immutable tag: `image` already carries -{{workflow.name}}.
+    - name: build-push-image
+      inputs:
+        parameters:
+          - name: service-type
+          - name: module-path
+            value: ""
+          - name: image
+      steps:
+        - - name: build-jib
+            template: build-jib
+            arguments:
+              parameters:
+                - { name: service-type, value: "{{inputs.parameters.service-type}}" }
+                - { name: module-path, value: "{{inputs.parameters.module-path}}" }
+                - { name: image, value: "{{inputs.parameters.image}}" }
+        - - name: build-kaniko
+            template: build-kaniko
+            arguments:
+              parameters:
+                - { name: service-type, value: "{{inputs.parameters.service-type}}" }
+                - { name: image, value: "{{inputs.parameters.image}}" }
+    - name: build-jib
+      inputs:
+        parameters:
+          - name: service-type
+          - name: module-path
+          - name: image
+      script:
+        image: maven:3.9.9-eclipse-temurin-21
+        volumeMounts:
+          - { name: source, mountPath: /workspace }
+          # Node-local Maven cache (hostPath, like the Jenkins agents) so Jib reuses the
+          # downloaded deps across Workflows instead of re-fetching every build.
+          - { name: maven-cache, mountPath: /root/.m2 }
+          # argoworkflows-registry dockerconfigjson mounted at DOCKER_CONFIG (Jib reads it).
+          - { name: dockerconfig, mountPath: /dockerconfig }
+        env:
+          - { name: DOCKER_CONFIG, value: /dockerconfig }
+        resources:
+          requests:
+            cpu: "1"
+            memory: 2Gi
+          limits:
+            cpu: "4"
+            memory: 4Gi
+        command: [bash]
+        source: |
+          set -eux
+          if [ "{{inputs.parameters.service-type}}" != "java" ]; then
+            echo "service-type != java - skipping Jib (handled by Kaniko)."; exit 0
+          fi
+          cd /workspace/microservices-src
+          MOD="{{inputs.parameters.module-path}}"
+          if [ -n "${MOD}" ] && [ -f "${MOD}/mvnw" ]; then cd "${MOD}"; fi
+          unset MAVEN_CONFIG
+          # G1 (not SerialGC - poor on the multi-core build pod) + fail-fast on OOM,
+          # mirroring the Jenkins build/image steps and the runtime tuning (docs/303).
+          export MAVEN_OPTS="-Xmx1024m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError"
+          if grep -q "jib-maven-plugin" pom.xml; then
+            ./mvnw -B -Pprod -DskipTests -Dmaven.compiler.maxmem=512m jib:build \
+              -Djib.to.image="{{inputs.parameters.image}}" -Djib.serialize=true
+          else
+            echo "ERROR: {{inputs.parameters.service-type}} service has no jib-maven-plugin; the Argo Workflows path requires Jib for daemonless java image builds."
+            exit 1
+          fi
+      volumes:
+        - name: maven-cache
+          hostPath: { path: /tmp/argoworkflows-maven-cache, type: DirectoryOrCreate }
+        - name: dockerconfig
+          secret:
+            secretName: argoworkflows-registry
+            items:
+              - { key: .dockerconfigjson, path: config.json }
+    - name: build-kaniko
+      inputs:
+        parameters:
+          - name: service-type
+          - name: image
+      script:
+        image: gcr.io/kaniko-project/executor:v1.23.2-debug
+        volumeMounts:
+          - { name: source, mountPath: /workspace }
+          - { name: dockerconfig, mountPath: /dockerconfig }
+        env:
+          - { name: DOCKER_CONFIG, value: /dockerconfig }
+        command: ["/busybox/sh"]
+        source: |
+          set -eu
+          if [ "{{inputs.parameters.service-type}}" != "angular" ]; then
+            echo "service-type != angular - skipping Kaniko (handled by Jib)."; exit 0
+          fi
+          # PLACEHOLDER: no 'angular' service is registered yet (both services in
+          # jenkins/pipelines/seed/services.yaml are type=java -> Jib), so this branch
+          # never runs. Before adding the first angular service, set --dockerfile to a
+          # Dockerfile that the app (or infra) repo actually ships and scope --context
+          # to that app's source dir (not the shared workspace root, which holds
+          # several clones). Kept here for engine parity with the Jenkins path.
+          /kaniko/executor \
+            --context="/workspace" \
+            --dockerfile="/workspace/jenkins-2026-infra/resources/angular/Dockerfile" \
+            --destination="{{inputs.parameters.image}}"
+      volumes:
+        - name: dockerconfig
+          secret:
+            secretName: argoworkflows-registry
+            items:
+              - { key: .dockerconfigjson, path: config.json }
+
+    # ---- trivy-image (Tekton task: trivy-image) ----------------------------------
+    # Stage "Trivy Image Scan": scans the pushed image for CRITICAL/HIGH OS+library
+    # vulnerabilities (exit-code 0 = report only). Trivy reads registry creds from
+    # the argoworkflows-registry docker config to pull the private image.
+    - name: trivy-image
+      inputs:
+        parameters:
+          - name: image
+      script:
+        image: aquasec/trivy:0.52.2
+        volumeMounts:
+          - { name: source, mountPath: /workspace }
+          - { name: dockerconfig, mountPath: /dockerconfig }
+        env:
+          - { name: TRIVY_CACHE_DIR, value: /tmp/trivy-cache }
+          # Trivy reads registry creds from the docker config to pull private images.
+          - { name: DOCKER_CONFIG, value: /dockerconfig }
+        command: [sh]
+        source: |
+          set -eu
+          trivy image --scanners vuln \
+            --config "/workspace/jenkins-2026-infra/trivy.yaml" \
+            --exit-code 0 --severity CRITICAL,HIGH "{{inputs.parameters.image}}"
+      volumes:
+        - name: dockerconfig
+          secret:
+            secretName: argoworkflows-registry
+            items:
+              - { key: .dockerconfigjson, path: config.json }
+
+    # ---- gitops-deploy (Tekton task: gitops-deploy) ------------------------------
+    # Stage "Deploy to Kubernetes" (vars/microservicesDeploy.groovy): GitOps deploy -
+    # bump the image tag in the gitops-config repo, push, trigger an ArgoCD sync/wait,
+    # then self-heal the OTel auto-instrumentation injection race. Three steps ->
+    # bump-and-push -> argocd-sync -> otel-injection-selfheal.
+    - name: gitops-deploy
+      inputs:
+        parameters:
+          - name: service-name
+          - name: env-name
+          - name: target-namespace
+          - name: image-tag
+          - name: gitops-repo-url
+            value: https://github.com/nubenetes/jenkins-2026-gitops-config.git
+          - name: argocd-server
+            value: argocd-server.argocd.svc.cluster.local
+          - name: argocd-version
+            value: v2.11.0
+      steps:
+        - - name: bump-and-push
+            template: gitops-bump-and-push
+            arguments:
+              parameters:
+                - { name: service-name, value: "{{inputs.parameters.service-name}}" }
+                - { name: env-name, value: "{{inputs.parameters.env-name}}" }
+                - { name: image-tag, value: "{{inputs.parameters.image-tag}}" }
+                - { name: gitops-repo-url, value: "{{inputs.parameters.gitops-repo-url}}" }
+        - - name: argocd-sync
+            template: gitops-argocd-sync
+            arguments:
+              parameters:
+                - { name: env-name, value: "{{inputs.parameters.env-name}}" }
+                - { name: argocd-server, value: "{{inputs.parameters.argocd-server}}" }
+                - { name: argocd-version, value: "{{inputs.parameters.argocd-version}}" }
+        - - name: otel-injection-selfheal
+            template: gitops-otel-selfheal
+            arguments:
+              parameters:
+                - { name: service-name, value: "{{inputs.parameters.service-name}}" }
+                - { name: target-namespace, value: "{{inputs.parameters.target-namespace}}" }
+    - name: gitops-bump-and-push
+      inputs:
+        parameters:
+          - name: service-name
+          - name: env-name
+          - name: image-tag
+          - name: gitops-repo-url
+      script:
+        image: alpine/k8s:1.31.3
+        volumeMounts:
+          - { name: source, mountPath: /workspace }
+        env:
+          - { name: HOME, value: /tmp }
+          - name: GIT_USER
+            valueFrom:
+              secretKeyRef: { name: argoworkflows-git, key: username, optional: true }
+          - name: GIT_TOKEN
+            valueFrom:
+              secretKeyRef: { name: argoworkflows-git, key: password, optional: true }
+        command: [bash]
+        source: |
+          set -eux
+          case "{{inputs.parameters.env-name}}" in
+            stable|develop) ;;
+            *) echo "unsupported env-name '{{inputs.parameters.env-name}}'"; exit 1 ;;
+          esac
+          BRANCH=main; [ "{{inputs.parameters.env-name}}" = "develop" ] && BRANCH=develop
+          VALUES="helm/microservices/values-{{inputs.parameters.env-name}}.yaml"
+          cd /workspace
+          rm -rf gitops-deploy-src
+          git config --global --add safe.directory '*' || true
+          git config --global user.email "argoworkflows@nubenetes.com"
+          git config --global user.name "Argo Workflows CI"
+          REPO_CLEAN=$(echo "{{inputs.parameters.gitops-repo-url}}" | sed 's|https://||')
+          GIT_LFS_SKIP_SMUDGE=1 git \
+            -c filter.lfs.smudge= -c filter.lfs.process= -c filter.lfs.required=false \
+            clone --depth 1 --branch "${BRANCH}" \
+            "https://${GIT_USER:-git}:${GIT_TOKEN:-}@${REPO_CLEAN}" gitops-deploy-src
+          cd gitops-deploy-src
+          yq eval -i ".services.{{inputs.parameters.service-name}}.image.tag = \"{{inputs.parameters.image-tag}}\"" "${VALUES}"
+          git add "${VALUES}"
+          git commit -m "chore(ops): update {{inputs.parameters.service-name}} image tag to {{inputs.parameters.image-tag}} [{{inputs.parameters.env-name}}]" || echo "No changes to commit"
+          git push origin "${BRANCH}"
+    - name: gitops-argocd-sync
+      inputs:
+        parameters:
+          - name: env-name
+          - name: argocd-server
+          - name: argocd-version
+      script:
+        image: alpine/k8s:1.31.3
+        volumeMounts:
+          - { name: source, mountPath: /workspace }
+        env:
+          - { name: HOME, value: /tmp }
+          - { name: ARGOCD_SERVER, value: "{{inputs.parameters.argocd-server}}" }
+          - name: ARGOCD_AUTH_TOKEN
+            valueFrom:
+              secretKeyRef: { name: argoworkflows-argocd, key: token, optional: true }
+        command: [bash]
+        source: |
+          set -eux
+          ARGOCD=/tmp/argocd-cli
+          if [ ! -x "${ARGOCD}" ]; then
+            curl -sSL -o "${ARGOCD}" "https://github.com/argoproj/argo-cd/releases/download/{{inputs.parameters.argocd-version}}/argocd-linux-amd64"
+            chmod +x "${ARGOCD}"
+          fi
+          server="${ARGOCD_SERVER}"; flags="--grpc-web --insecure"
+          case "${server}" in
+            *:*) ;;
+            *) server="${server}:80"; flags="${flags} --plaintext" ;;
+          esac
+          APP="microservices-{{inputs.parameters.env-name}}"
+          # The app has automated selfHeal: pushing the new image tag (the GitOps Update
+          # step before this) makes ArgoCD auto-sync it, which can be MID-FLIGHT when this
+          # explicit sync runs -> "FailedPrecondition: another operation is already in
+          # progress". That's benign (the auto-sync deploys the same commit), so retry the
+          # explicit sync a few times and, if a concurrent op keeps winning, fall through -
+          # the `app wait --sync` below confirms the app reaches the pushed revision either
+          # way. Don't let -e abort on the retried sync.
+          synced=0
+          for attempt in 1 2 3 4 5 6; do
+            if "${ARGOCD}" app sync "${APP}" --server "${server}" --auth-token "${ARGOCD_AUTH_TOKEN:-}" ${flags}; then
+              synced=1; break
+            fi
+            echo "app sync attempt ${attempt} failed (likely a concurrent auto-sync); retrying in 10s..."
+            sleep 10
+          done
+          [ "${synced}" = 1 ] || echo "Proceeding without an explicit sync - verifying convergence via 'app wait' (auto-sync handles the deploy)."
+          "${ARGOCD}" app wait "${APP}" --sync --health --timeout 300 --server "${server}" --auth-token "${ARGOCD_AUTH_TOKEN:-}" ${flags}
+    - name: gitops-otel-selfheal
+      inputs:
+        parameters:
+          - name: service-name
+          - name: target-namespace
+      script:
+        image: alpine/k8s:1.31.3
+        command: [bash]
+        source: |
+          set -eu
+          NS="{{inputs.parameters.target-namespace}}"; DEPLOY="{{inputs.parameters.service-name}}"
+          kubectl -n "${NS}" rollout status deploy/"${DEPLOY}" --timeout=120s || true
+          POD=$(kubectl -n "${NS}" get pods -l "app.kubernetes.io/name=${DEPLOY}" \
+                --field-selector=status.phase=Running -o name 2>/dev/null | head -1)
+          if [ -z "${POD}" ]; then echo "No running pod for ${DEPLOY} - skipping OTel check"; exit 0; fi
+          JTO=$(kubectl -n "${NS}" get "${POD}" -o jsonpath='{range .spec.containers[*]}{.env[?(@.name=="JAVA_TOOL_OPTIONS")].value}{end}' 2>/dev/null || true)
+          if echo "${JTO}" | grep -q -- '-javaagent'; then
+            echo "OTel agent already injected in ${DEPLOY}"
+          else
+            echo "OTel agent NOT injected (race) - rolling restart ${DEPLOY}"
+            kubectl -n "${NS}" rollout restart deploy/"${DEPLOY}"
+            kubectl -n "${NS}" rollout status deploy/"${DEPLOY}" --timeout=120s || true
+          fi
+
+    # ---- smoke-test (Tekton task: smoke-test) ------------------------------------
+    # Stage "Smoke Test" (vars/microservicesSmokeTest.groovy): curls the in-cluster
+    # Service health endpoint, retrying while endpoints settle.
+    - name: smoke-test
+      inputs:
+        parameters:
+          - name: service-name
+          - name: target-namespace
+          - name: port
+          - name: health-path
+      script:
+        image: curlimages/curl:8.10.1
+        command: [sh]
+        source: |
+          set -eux
+          curl -sf --connect-timeout 5 --max-time 60 \
+            --retry 5 --retry-delay 3 --retry-all-errors \
+            "http://{{inputs.parameters.service-name}}.{{inputs.parameters.target-namespace}}.svc.cluster.local:{{inputs.parameters.port}}{{inputs.parameters.health-path}}"
+
+    # ---- k6-smoke (Tekton task: k6-smoke) ----------------------------------------
+    # Stage "Integration k6 Smoke Test" (vars/MicroservicesK6SmokePipeline.groovy):
+    # runs the k6 script from the infra repo against the deployed microservices.
+    # Three steps -> checkout-infra -> resolve-preset -> run-k6. OTLP export goes to
+    # the otlp-endpoint arg (otel-collector-gateway.observability:4317).
+    - name: k6-smoke
+      inputs:
+        parameters:
+          - name: preset
+            value: none
+          - name: target-namespace
+          - name: env-name
+            value: stable
+          - name: target-url
+            value: ""
+          - name: self-repo-url
+            value: https://github.com/nubenetes/jenkins-2026.git
+          - name: self-repo-branch
+            value: main
+          - name: profile
+            value: smoke
+          - name: vus
+            value: ""
+          - name: iterations
+            value: ""
+          - name: duration
+            value: ""
+          - name: stages
+            value: ""
+          - name: rps
+            value: ""
+          - name: sleep
+            value: ""
+          - name: scenarios
+            value: ""
+          - name: p95-ms
+            value: ""
+          - name: error-rate
+            value: ""
+          - name: debug
+            value: "false"
+          - name: otlp-endpoint
+            value: ""
+      steps:
+        - - name: checkout-infra
+            template: k6-checkout-infra
+            arguments:
+              parameters:
+                - { name: self-repo-url, value: "{{inputs.parameters.self-repo-url}}" }
+                - { name: self-repo-branch, value: "{{inputs.parameters.self-repo-branch}}" }
+        - - name: resolve-preset
+            template: k6-resolve-preset
+            arguments:
+              parameters:
+                - { name: preset, value: "{{inputs.parameters.preset}}" }
+        - - name: run-k6
+            template: k6-run
+            arguments:
+              parameters:
+                - { name: target-namespace, value: "{{inputs.parameters.target-namespace}}" }
+                - { name: target-url, value: "{{inputs.parameters.target-url}}" }
+                - { name: env-name, value: "{{inputs.parameters.env-name}}" }
+                - { name: profile, value: "{{inputs.parameters.profile}}" }
+                - { name: vus, value: "{{inputs.parameters.vus}}" }
+                - { name: iterations, value: "{{inputs.parameters.iterations}}" }
+                - { name: duration, value: "{{inputs.parameters.duration}}" }
+                - { name: stages, value: "{{inputs.parameters.stages}}" }
+                - { name: rps, value: "{{inputs.parameters.rps}}" }
+                - { name: sleep, value: "{{inputs.parameters.sleep}}" }
+                - { name: scenarios, value: "{{inputs.parameters.scenarios}}" }
+                - { name: p95-ms, value: "{{inputs.parameters.p95-ms}}" }
+                - { name: error-rate, value: "{{inputs.parameters.error-rate}}" }
+                - { name: debug, value: "{{inputs.parameters.debug}}" }
+                - { name: otlp-endpoint, value: "{{inputs.parameters.otlp-endpoint}}" }
+    - name: k6-checkout-infra
+      inputs:
+        parameters:
+          - name: self-repo-url
+          - name: self-repo-branch
+      script:
+        image: alpine/git:2.54.0
+        volumeMounts:
+          - { name: source, mountPath: /workspace }
+        env:
+          - { name: HOME, value: /tmp }
+        command: [sh]
+        source: |
+          set -eu
+          git config --global --add safe.directory '*' || true
+          cd /workspace
+          rm -rf k6-infra
+          GIT_LFS_SKIP_SMUDGE=1 git \
+            -c filter.lfs.smudge= -c filter.lfs.process= -c filter.lfs.required=false \
+            clone --depth 1 --branch "{{inputs.parameters.self-repo-branch}}" \
+            "{{inputs.parameters.self-repo-url}}" k6-infra
+          # This (root) step owns the workspace; the next step (resolve-preset) runs the
+          # mikefarah/yq image as uid 1000 (non-root) and cannot create a file in this
+          # root-owned dir. Pre-create the preset env file world-writable here so
+          # resolve-preset can fill it WITHOUT itself running as root (least privilege).
+          : > "/workspace/k6sim-preset.env"
+          chmod 0666 "/workspace/k6sim-preset.env"
+          # Same reasoning for the k6 summary: run-k6 (grafana/k6 image) is non-root and
+          # k6's handleSummary() writes k6-summary.json to the workspace root (K6_SUMMARY_OUT),
+          # which this root step owns - so pre-create it world-writable too, else k6 logs
+          # "could not open '.../k6-summary.json': permission denied" and drops the summary.
+          : > "/workspace/k6-summary.json"
+          chmod 0666 "/workspace/k6-summary.json"
+    - name: k6-resolve-preset
+      # Reads the selected committed preset (jenkins/pipelines/k6/presets/<name>.yaml)
+      # and writes its values to k6sim-preset.env in the workspace; run-k6 then uses
+      # them for any param left empty (param > preset > script default). yq image is
+      # used because the cluster has no pod egress to download tooling at runtime.
+      inputs:
+        parameters:
+          - name: preset
+      script:
+        image: mikefarah/yq:4.53.3
+        volumeMounts:
+          - { name: source, mountPath: /workspace }
+        # mikefarah/yq runs as uid 1000 (non-root). The root-owned workspace would block
+        # it from creating k6sim-preset.env, so the root checkout-infra step above
+        # pre-creates that file world-writable (0666) - this step stays non-root and just
+        # fills it (least privilege; run-k6 reads it next).
+        command: [sh]
+        source: |
+          set -eu
+          OUT="/workspace/k6sim-preset.env"
+          : > "$OUT"
+          PRESET="{{inputs.parameters.preset}}"
+          PF="/workspace/k6-infra/jenkins/pipelines/k6/presets/${PRESET}.yaml"
+          if [ "${PRESET}" = "none" ]; then
+            echo "No preset selected (preset=none)."
+            exit 0
+          fi
+          if [ ! -f "${PF}" ]; then
+            echo "WARNING: preset '${PRESET}' not found at ${PF} - continuing with params only."
+            exit 0
+          fi
+          echo "Resolving k6 preset '${PRESET}' from ${PF}"
+          get() { yq ".params.$1 // \"\"" "${PF}"; }
+          {
+            echo "PRESET_PROFILE=$(get profile)"
+            echo "PRESET_VUS=$(get vus)"
+            echo "PRESET_ITERATIONS=$(get iterations)"
+            echo "PRESET_DURATION=$(get duration)"
+            echo "PRESET_STAGES=$(get stages)"
+            echo "PRESET_RPS=$(get rps)"
+            echo "PRESET_SLEEP=$(get sleep)"
+            echo "PRESET_SCENARIOS=$(get scenarios)"
+            echo "PRESET_P95_MS=$(get p95Ms)"
+            echo "PRESET_ERROR_RATE=$(get errorRate)"
+            echo "PRESET_DEBUG=$(get debug)"
+            echo "PRESET_ENV_NAME=$(get envName)"
+            echo "PRESET_TARGET_NAMESPACE=$(get targetNamespace)"
+            echo "PRESET_TARGET_URL=$(get targetUrl)"
+          } > "${OUT}"
+          echo "Wrote ${OUT}:"; cat "${OUT}"
+    - name: k6-run
+      inputs:
+        parameters:
+          - name: target-namespace
+          - name: target-url
+          - name: env-name
+          - name: profile
+          - name: vus
+          - name: iterations
+          - name: duration
+          - name: stages
+          - name: rps
+          - name: sleep
+          - name: scenarios
+          - name: p95-ms
+          - name: error-rate
+          - name: debug
+          - name: otlp-endpoint
+      script:
+        image: grafana/k6:2.0.0
+        volumeMounts:
+          - { name: source, mountPath: /workspace }
+        env:
+          - { name: TARGET_NAMESPACE, value: "{{inputs.parameters.target-namespace}}" }
+          - { name: TARGET_URL, value: "{{inputs.parameters.target-url}}" }
+          - { name: ENV_NAME, value: "{{inputs.parameters.env-name}}" }
+          # Workload contract (K6SIM_*). k6 reserves K6_VUS/K6_DURATION/etc as its
+          # own option env vars, which clash with the script's `scenarios` block -
+          # hence the K6SIM_ prefix. Empty -> the script default.
+          - { name: K6SIM_PROFILE, value: "{{inputs.parameters.profile}}" }
+          - { name: K6SIM_VUS, value: "{{inputs.parameters.vus}}" }
+          - { name: K6SIM_ITERATIONS, value: "{{inputs.parameters.iterations}}" }
+          - { name: K6SIM_DURATION, value: "{{inputs.parameters.duration}}" }
+          - { name: K6SIM_STAGES, value: "{{inputs.parameters.stages}}" }
+          - { name: K6SIM_RPS, value: "{{inputs.parameters.rps}}" }
+          - { name: K6SIM_SLEEP, value: "{{inputs.parameters.sleep}}" }
+          - { name: K6SIM_SCENARIOS, value: "{{inputs.parameters.scenarios}}" }
+          - { name: K6SIM_P95_MS, value: "{{inputs.parameters.p95-ms}}" }
+          - { name: K6SIM_ERROR_RATE, value: "{{inputs.parameters.error-rate}}" }
+          - { name: K6SIM_DEBUG, value: "{{inputs.parameters.debug}}" }
+          # OTLP output (k6 2.x schema, same as the Jenkins job + the GitHub k6
+          # workflow): gRPC to the in-cluster collector, which forwards to the backend.
+          - { name: K6_OTEL_SERVICE_NAME, value: k6-microservices-smoke }
+          - { name: K6_OTEL_GRPC_EXPORTER_INSECURE, value: "true" }
+          # OTEL_RESOURCE_ATTRIBUTES is built in the script from the RESOLVED ENV_NAME
+          # (a preset may override env-name), so it is not a static env var here.
+          # Push every 2s so short tests (~12s) get several export windows instead
+          # of just one at t=10s (the 10s default), reducing the blast radius of a
+          # transient memory_limiter rejection in the OTel gateway collector.
+          - { name: K6_OTEL_EXPORT_INTERVAL, value: 2s }
+          - { name: OTLP_ENDPOINT_RAW, value: "{{inputs.parameters.otlp-endpoint}}" }
+          # Optional Grafana Cloud k6 (the k6-app) streaming. All from the optional
+          # 'k6-cloud' Secret (created by 01-namespaces.sh); empty -> cloud out skipped.
+          - name: K6_CLOUD_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: k6-cloud
+                key: token
+                optional: true
+          - name: K6_CLOUD_PROJECT_ID
+            valueFrom:
+              secretKeyRef:
+                name: k6-cloud
+                key: project-id
+                optional: true
+          - name: K6_GRAFANA_BASE_URL
+            valueFrom:
+              secretKeyRef:
+                name: k6-cloud
+                key: grafana-base-url
+                optional: true
+        command: [sh]
+        source: |
+          set -eux
+          # Merge the resolved preset (k6sim-preset.env) under the params: a param
+          # left empty falls back to the preset value; the preset's profile/env/target
+          # win when set (param > preset > script default).
+          PRESETF="/workspace/k6sim-preset.env"
+          if [ -f "${PRESETF}" ]; then . "${PRESETF}"; fi
+          : "${K6SIM_VUS:=${PRESET_VUS:-}}"
+          : "${K6SIM_ITERATIONS:=${PRESET_ITERATIONS:-}}"
+          : "${K6SIM_DURATION:=${PRESET_DURATION:-}}"
+          : "${K6SIM_STAGES:=${PRESET_STAGES:-}}"
+          : "${K6SIM_RPS:=${PRESET_RPS:-}}"
+          : "${K6SIM_SLEEP:=${PRESET_SLEEP:-}}"
+          : "${K6SIM_SCENARIOS:=${PRESET_SCENARIOS:-}}"
+          : "${K6SIM_P95_MS:=${PRESET_P95_MS:-}}"
+          : "${K6SIM_ERROR_RATE:=${PRESET_ERROR_RATE:-}}"
+          [ -n "${PRESET_PROFILE:-}" ] && K6SIM_PROFILE="${PRESET_PROFILE}"
+          [ -n "${PRESET_DEBUG:-}" ] && [ "${K6SIM_DEBUG}" = "false" ] && K6SIM_DEBUG="${PRESET_DEBUG}"
+          [ -n "${PRESET_ENV_NAME:-}" ] && ENV_NAME="${PRESET_ENV_NAME}"
+          [ -n "${PRESET_TARGET_NAMESPACE:-}" ] && TARGET_NAMESPACE="${PRESET_TARGET_NAMESPACE}"
+          if [ -z "${TARGET_URL:-}" ] && [ -n "${PRESET_TARGET_URL:-}" ]; then TARGET_URL="${PRESET_TARGET_URL}"; fi
+          export K6SIM_PROFILE K6SIM_VUS K6SIM_ITERATIONS K6SIM_DURATION K6SIM_STAGES \
+                 K6SIM_RPS K6SIM_SLEEP K6SIM_SCENARIOS K6SIM_P95_MS K6SIM_ERROR_RATE \
+                 K6SIM_DEBUG ENV_NAME TARGET_NAMESPACE TARGET_URL
+          export OTEL_RESOURCE_ATTRIBUTES="service.name=k6-microservices-smoke,service.namespace=jenkins-2026,deployment.environment=${ENV_NAME}"
+          cd /workspace/k6-infra
+          # Build outputs: OTLP (when an endpoint is configured) AND Grafana Cloud k6
+          # (when a token + project id are set) - both can run at once.
+          OTEL_OUT=""
+          if [ -n "${OTLP_ENDPOINT_RAW:-}" ]; then
+            export K6_OTEL_GRPC_EXPORTER_ENDPOINT="$(printf '%s' "${OTLP_ENDPOINT_RAW}" | sed -E 's#^[a-z]+://##')"
+            OTEL_OUT="-o opentelemetry"
+          fi
+          CLOUD_OUT=""
+          if [ -n "${K6_CLOUD_TOKEN:-}" ] && [ -n "${K6_CLOUD_PROJECT_ID:-}" ]; then
+            CLOUD_OUT="--out cloud"
+          fi
+          # Execution shape (VUs/iterations/duration/stages/rps) comes entirely from
+          # the K6SIM_* env above via the script's `scenarios` block - do NOT pass
+          # --vus/--iterations here (k6 forbids mixing CLI execution shortcuts with
+          # a scenarios-based script).
+          # k6-summary.json is written by the script's handleSummary() to the path
+          # in K6_SUMMARY_OUT (the workspace root, one level above this CWD), NOT
+          # --summary-export - k6 2.0's --summary-export emits a flattened schema
+          # that broke the .values.* parsers. See microservices-smoke.js.
+          export K6_SUMMARY_OUT="/workspace/k6-summary.json"
+          # ci_runner/k6_profile as k6 --tag (metric labels), not resource attrs - see
+          # the Jenkins/GHA runners: Grafana Cloud only promotes a fixed set of resource
+          # attrs to labels, so custom ones must be metric tags for the dashboard filters.
+          k6 run ${OTEL_OUT} ${CLOUD_OUT} \
+            --tag ci_runner=argoworkflows --tag "k6_profile=${K6SIM_PROFILE}" \
+            jenkins/pipelines/k6/microservices-smoke.js
+          if [ -n "${CLOUD_OUT}" ] && [ -n "${K6_GRAFANA_BASE_URL:-}" ]; then
+            echo "k6 results streamed to Grafana Cloud k6: ${K6_GRAFANA_BASE_URL}/a/k6-app/projects/${K6_CLOUD_PROJECT_ID}"
+          fi

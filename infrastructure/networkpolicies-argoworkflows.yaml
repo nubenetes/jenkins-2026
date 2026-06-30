@@ -1,0 +1,34 @@
+# Argo Workflows-namespace NetworkPolicies - applied by 01-namespaces.sh ONLY when
+# ci.engine=argoworkflows (the argo-ci namespace doesn't exist otherwise).
+#
+# Baseline ingress-hardening for the pipeline-execution namespace (zero-trust):
+# the ephemeral Workflow pods are OUTBOUND-ONLY (clone, build, push, scan, sync)
+# and need no inbound at all, so denying ingress to them closes their surface with
+# zero functional impact. Egress is left open (the workflow pods legitimately reach
+# git (GitHub :443), registries (GHCR :443), scanner DBs, the K8s API
+# (kube-apiserver :443), ArgoCD, the microservices for smoke tests, and the OTel
+# collector (otel-collector-gateway.observability :4317)).
+#
+# NOTE: the Argo Workflows CONTROL-PLANE namespace (argo) and the Argo Events
+# namespace (argo-events) are intentionally NOT hardened here — they host
+# admission/webhook + the EventSource webhook receiver the API server / GitHub
+# call, which a deny-ingress policy would block unless the GKE control-plane CIDR
+# is allowed (cluster-specific and fragile). Left open by design.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: argoworkflows-ci-baseline
+  namespace: argo-ci
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Intra-namespace (controller/executor interactions within the run namespace).
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: argo-ci
+  egress:
+  - {}

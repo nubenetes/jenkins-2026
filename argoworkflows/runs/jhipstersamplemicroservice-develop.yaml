@@ -1,0 +1,47 @@
+# Ready-to-run Workflow for the `jhipstersamplemicroservice` service on the DEVELOP
+# tier - the Argo Workflows equivalent of the Jenkins `jhipstersamplemicroservice-develop`
+# seed job (and the Tekton tekton/runs/jhipstersamplemicroservice-develop.yaml). Mirrors
+# jhipstersamplemicroservice.yaml but builds the app's `develop` branch into the
+# `microservices-develop` namespace (env=develop).
+#
+# OPTIONAL / GATED: only seeded when the develop track is enabled (config.yaml
+# microservices.developTrackEnabled=true, or JENKINS2026_DEVELOP_TRACK_ENABLED=true).
+# scripts/06-argoworkflows-pipelines.sh skips runs labelled jenkins2026.io/env=develop
+# when the flag is off. Run by hand:
+#   kubectl create -f argoworkflows/runs/jhipstersamplemicroservice-develop.yaml
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: jhipstersamplemicroservice-develop-
+  namespace: argo-ci
+  labels:
+    jenkins2026.io/service: jhipstersamplemicroservice
+    jenkins2026.io/env: develop
+spec:
+  serviceAccountName: argoworkflows-ci
+  workflowTemplateRef:
+    name: microservices-pipeline
+  arguments:
+    parameters:
+      - name: service-name
+        value: jhipstersamplemicroservice
+      - name: service-type
+        value: java
+      - name: git-repo-url
+        value: https://github.com/nubenetes/jhipster-sample-app-microservice.git
+      - name: git-branch
+        value: develop
+      - name: module-path
+        value: ""
+      - name: target-namespace
+        value: microservices-develop
+      - name: env-name
+        value: develop
+      - name: port
+        value: "8081"
+      - name: health-path
+        value: /management/health
+      - name: image
+        value: ghcr.io/nubenetes/jenkins-2026-microservices/jhipstersamplemicroservice:develop
+      - name: registry-host
+        value: ghcr.io

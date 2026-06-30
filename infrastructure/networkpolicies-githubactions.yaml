@@ -1,0 +1,33 @@
+# GitHub Actions / ARC NetworkPolicies — applied by 01-namespaces.sh ONLY when
+# ci.engine=githubactions (the arc-runners namespace doesn't exist otherwise).
+#
+# Baseline ingress-hardening for the runner-execution namespace (zero-trust): the
+# ephemeral runner pods are OUTBOUND-ONLY (register with GitHub, clone, build, push to
+# GHCR, scan, gitops bump, argocd sync, smoke) and receive no inbound — ARC dispatches
+# jobs by long-polling the GitHub App (the listener opens the connection), there is no
+# inbound webhook receiver (unlike Tekton's EventListener). So denying ingress closes
+# their surface with zero functional impact. Egress is left open (the runner pods
+# legitimately reach github.com/api.github.com/ghcr.io (443), the K8s API + ArgoCD (443),
+# the microservices for smoke tests, and the OTel collector on 4317).
+#
+# NOTE: the ARC CONTROL-PLANE namespace (arc-systems) is intentionally NOT hardened here —
+# it hosts the controller's admission webhook the API server calls, which a deny-ingress
+# policy would block unless the GKE control-plane CIDR is allowlisted (fragile). Open by design.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: arc-runners-baseline
+  namespace: arc-runners
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Intra-namespace only (listener ↔ ephemeral runner coordination).
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: arc-runners
+  egress:
+  - {}

@@ -1,0 +1,58 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argoworkflows-controller
+  namespace: argocd
+  annotations:
+    # Argo Workflows' CRDs (workflows/workflowtemplates/cronworkflows) have large
+    # OpenAPI schemas - compute the diff server-side so automated sync doesn't fire
+    # on phantom drift.
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+    # Wave 0: the CRDs + controller + server must exist before the Argo Events
+    # controllers and the pipelines-as-code (WorkflowTemplates/Sensor) that
+    # reference them.
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL | quote }}
+    targetRevision: {{ .Values.targetRevision | quote }}
+    path: argocd/argoworkflows/components/workflows
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.namespace.controlPlane | quote }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    # Self-heal the first-sync race on a fresh cluster: ArgoCD may sync the Argo
+    # Workflows objects before the controller's serving cert / webhook is ready.
+    # Automated retry with backoff makes the sync converge on its own once the
+    # control plane is up - no manual restart needed.
+    retry:
+      limit: 8
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
+    syncOptions:
+      - CreateNamespace=true
+      # The large Argo Workflows CRDs blow the client-side last-applied annotation
+      # limit; ServerSideApply (+ ServerSideDiff above) reconciles them without
+      # that annotation - so Replace=true is NOT needed for the CRDs.
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+  ignoreDifferences:
+    # The run-pod placement (workflowDefaults: nodeSelector/tolerations) is driven
+    # by the argoworkflows.runNodePool flag and patched into the
+    # workflow-controller-configmap by scripts/06-argoworkflows-pipelines.sh, so
+    # ArgoCD must not revert it (the kustomize patch deliberately omits this
+    # field). See docs/405.
+    - kind: ConfigMap
+      name: workflow-controller-configmap
+      namespace: {{ .Values.namespace.controlPlane }}
+      jqPathExpressions:
+        - .data.workflowDefaults
+        - .data.config

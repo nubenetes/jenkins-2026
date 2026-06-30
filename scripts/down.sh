@@ -88,6 +88,22 @@ if kubectl get application tekton -n "${J2026_ARGOCD_NAMESPACE}" >/dev/null 2>&1
   kubectl delete application tekton -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false || true
 fi
 
+# GitHub Actions / ARC (ci.engine=githubactions) is a GitOps-managed app-of-apps. Delete
+# the parent while ArgoCD is alive so it cascade-prunes the controller + the runner scale
+# set (which de-registers the runners from GitHub). Engine-agnostic: no-op when absent.
+if kubectl get application githubactions -n "${J2026_ARGOCD_NAMESPACE}" >/dev/null 2>&1; then
+  log_step "Removing githubactions ArgoCD app-of-apps (ARC controller + runner scale set)"
+  kubectl delete application githubactions -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false || true
+fi
+
+# Argo Workflows (ci.engine=argoworkflows) is a GitOps-managed app-of-apps. Delete the
+# parent while ArgoCD is alive so it cascade-prunes the Workflows/Events controllers +
+# the WorkflowTemplates/EventSource/Sensor. Engine-agnostic: no-op when absent.
+if kubectl get application argoworkflows -n "${J2026_ARGOCD_NAMESPACE}" >/dev/null 2>&1; then
+  log_step "Removing argoworkflows ArgoCD app-of-apps (Workflows + Events controllers)"
+  kubectl delete application argoworkflows -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false || true
+fi
+
 # Jenkins (ci.engine=jenkins) is a GitOps-managed single Application. Delete it
 # while ArgoCD is alive so it cascade-prunes the chart. Engine-agnostic: no-op
 # when absent. (The helm_uninstall below is a legacy fallback for pre-ArgoCD
@@ -161,6 +177,7 @@ if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
   kubectl delete gcpbackendpolicy "${J2026_GATEWAY_IAP_POLICY_PGADMIN}" -n "${J2026_PGADMIN_NAMESPACE}" --ignore-not-found --timeout=5m
   # Tekton Dashboard route/policy (only present when ci.engine=tekton; ignored otherwise).
   kubectl delete gcpbackendpolicy "${J2026_GATEWAY_IAP_POLICY_TEKTON}" -n "${J2026_TEKTON_NAMESPACE}" --ignore-not-found --timeout=5m
+  kubectl delete gcpbackendpolicy "${J2026_GATEWAY_IAP_POLICY_ARGOWF}" -n "${J2026_ARGOWF_NAMESPACE}" --ignore-not-found --timeout=5m
   kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_JENKINS}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found --timeout=5m
   kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_MICROSERVICES}" -n "${J2026_MICROSERVICES_NS_STABLE}" --ignore-not-found --timeout=5m
   # Develop tier route (only present when microservices.developTrackEnabled; ignored otherwise).
@@ -169,6 +186,8 @@ if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
   kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_PGADMIN}" -n "${J2026_PGADMIN_NAMESPACE}" --ignore-not-found --timeout=5m
   kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_TEKTON}" -n "${J2026_TEKTON_NAMESPACE}" --ignore-not-found --timeout=5m
   kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_PAC}" -n pipelines-as-code --ignore-not-found --timeout=5m
+  kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_ARGOWF}" -n "${J2026_ARGOWF_NAMESPACE}" --ignore-not-found --timeout=5m
+  kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_ARGOEVENTS}" -n "${J2026_ARGOWF_EVENTS_NAMESPACE}" --ignore-not-found --timeout=5m
   kubectl delete gateway "${J2026_GATEWAY_NAME}" -n "${J2026_GATEWAY_NAMESPACE}" --ignore-not-found --timeout=5m
 fi
 
@@ -179,6 +198,14 @@ fi
 if kubectl get namespace "${J2026_TEKTON_NAMESPACE}" >/dev/null 2>&1; then
   log_step "Removing Tekton (PipelineRuns, control plane, CI namespace)"
   kubectl delete pipelinerun --all -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" --ignore-not-found --wait=false 2>/dev/null || true
+fi
+
+# Argo Workflows: delete any in-flight Workflows in the execution namespace before the
+# namespace teardown below (the app-of-apps prune above removes the controllers).
+# Best-effort + idempotent (no-op when argoworkflows isn't installed).
+if kubectl get namespace "${J2026_ARGOWF_RUN_NAMESPACE}" >/dev/null 2>&1; then
+  log_step "Removing Argo Workflows (Workflows, control plane, CI namespace)"
+  kubectl delete workflow --all -n "${J2026_ARGOWF_RUN_NAMESPACE}" --ignore-not-found --wait=false 2>/dev/null || true
 fi
 
 # drain_namespace <ns>
@@ -276,7 +303,7 @@ drain_namespace() {
 
 if [[ "${J2026_DELETE_NAMESPACES:-false}" == "true" ]]; then
   log_step "Deleting namespaces (J2026_DELETE_NAMESPACES=true)"
-  for ns in "${J2026_GATEWAY_NAMESPACE}" "${J2026_JENKINS_NAMESPACE}" "${J2026_TEKTON_NAMESPACE}" "${J2026_TEKTON_PIPELINE_NAMESPACE}" pipelines-as-code tekton-chains "${J2026_OBS_NAMESPACE}" "${J2026_GRAFANA_OSS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" "${J2026_ARGOCD_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}"; do
+  for ns in "${J2026_GATEWAY_NAMESPACE}" "${J2026_JENKINS_NAMESPACE}" "${J2026_TEKTON_NAMESPACE}" "${J2026_TEKTON_PIPELINE_NAMESPACE}" pipelines-as-code tekton-chains "${J2026_GHA_NAMESPACE}" "${J2026_GHA_RUNNER_NAMESPACE}" "${J2026_ARGOWF_NAMESPACE}" "${J2026_ARGOWF_EVENTS_NAMESPACE}" "${J2026_ARGOWF_RUN_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_GRAFANA_OSS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_MICROSERVICES_NS_STABLE}" "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" "${J2026_ARGOCD_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}"; do
     # microservices-develop only exists when the develop track was enabled;
     # drain_namespace no-ops on an absent namespace, so listing it is always safe.
     # First reclaim PVCs gracefully (CSI deletes the PDs → no orphaned disks),

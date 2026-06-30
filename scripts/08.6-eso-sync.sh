@@ -303,6 +303,29 @@ if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
   es_extract      "pac-webhook"                     "${tns}" "pac-webhook"
 fi
 
+# --- emit: GitHub Actions / ARC pipeline secrets (only when ci.engine=githubactions) ---
+# arc-github-app holds the GitHub App creds (or a github_token PAT); arc-registry is the
+# ghcr.io imagePullSecret (dockerconfigjson). 01-namespaces.sh pushes both (+ k6-cloud) to
+# Secret Manager via provision_secret; these ExternalSecrets project them into arc-runners.
+if [[ "${J2026_CI_ENGINE}" == "githubactions" ]]; then
+  gns="${J2026_GHA_RUNNER_NAMESPACE}"
+  es_extract      "${J2026_GHA_APP_SECRET}"      "${gns}" "${J2026_GHA_APP_SECRET}"
+  es_dockerconfig "${J2026_GHA_REGISTRY_SECRET}" "${gns}" "${J2026_GHA_REGISTRY_SECRET}"
+  es_extract      "k6-cloud"                     "${gns}" "k6-cloud"
+fi
+
+# --- emit: Argo Workflows pipeline secrets (only when ci.engine=argoworkflows) ---
+# registry (dockerconfigjson) + git (basic-auth keys, plain Opaque — Argo reads them via
+# secretKeyRef, no tekton.dev/git-0 initializer) + k6-cloud land in the run ns (argo-ci);
+# the GitHub HMAC lands in the events ns (argo-events) where the EventSource consumes it.
+if [[ "${J2026_CI_ENGINE}" == "argoworkflows" ]]; then
+  ans="${J2026_ARGOWF_RUN_NAMESPACE}"
+  es_dockerconfig "${J2026_ARGOWF_REGISTRY_SECRET}" "${ans}" "${J2026_ARGOWF_REGISTRY_SECRET}"
+  es_extract      "${J2026_ARGOWF_GIT_SECRET}"      "${ans}" "${J2026_ARGOWF_GIT_SECRET}"
+  es_extract      "k6-cloud"                        "${ans}" "k6-cloud"
+  es_extract      "argoworkflows-github-webhook"    "${J2026_ARGOWF_EVENTS_NAMESPACE}" "argoworkflows-github-webhook"
+fi
+
 # --- emit: Jenkins credentials (only when ci.engine=jenkins) ------------------
 # Merge (not Owner): 01-namespaces seeds the create-time/sensitive keys to SM (with a
 # STABLE admin-password) and creates an empty base Secret; the URL keys (01) and the

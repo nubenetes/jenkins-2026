@@ -69,3 +69,4 @@ terraform/aws-managed-grafana/backend_override.tf
 # Grafana Cloud GCP integration SA key (minted out-of-band, uploaded in the UI)
 terraform/grafana-cloud-gcp/*.json
 grafana-cloud-gcp-key.json
+__pycache__/

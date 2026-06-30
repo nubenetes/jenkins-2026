@@ -1,0 +1,55 @@
+{{- /*
+GitHub Actions / ARC engine RBAC (was scripts/01-namespaces.sh). Unlike Tekton (whose
+stable 'edit' binding ships in tekton/rbac), ARC has no GitOps rbac dir, so BOTH the
+stable and (optional) develop 'edit' RoleBindings + the OTel-instrumentation editor are
+declared here. The runner pods run as the ARC chart-derived ServiceAccount
+(.Values.runnerServiceAccount in .Values.namespaces.arcRunner); the microservices-ci
+workflow does `argocd app sync` + a `kubectl rollout restart` OTel self-heal against the
+target tier, so that SA needs 'edit' there + Instrumentation CRUD. Only when
+ci.engine=githubactions.
+*/ -}}
+{{- if eq .Values.ciEngine "githubactions" }}
+{{- $runnerNs := .Values.namespaces.arcRunner }}
+{{- $sa := .Values.runnerServiceAccount }}
+{{- $msNamespaces := list .Values.namespaces.microservicesStable }}
+{{- if eq (.Values.developTrackEnabled | toString) "true" }}{{- $msNamespaces = append $msNamespaces .Values.namespaces.microservicesDevelop }}{{- end }}
+{{- range $ns := $msNamespaces }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: arc-runner-edit
+  namespace: {{ $ns }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: edit
+subjects:
+  - kind: ServiceAccount
+    name: {{ $sa }}
+    namespace: {{ $runnerNs }}
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: arc-runner-otel-instrumentation-editor
+rules:
+  - apiGroups: ["opentelemetry.io"]
+    resources: ["instrumentations"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: arc-runner-otel-instrumentation-editor
+  namespace: {{ .Values.namespaces.microservicesStable }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: arc-runner-otel-instrumentation-editor
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.runnerServiceAccount }}
+    namespace: {{ .Values.namespaces.arcRunner }}
+{{- end }}

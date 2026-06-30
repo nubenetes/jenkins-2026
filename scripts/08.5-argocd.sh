@@ -156,12 +156,13 @@ fi
 
 # 2.5 Configure the CI engine's ArgoCD account (CLI/API access) - the pipeline
 # 'Deploy' stage uses this token to `argocd app sync`. Account name follows the
-# active CI engine (ci.engine): 'jenkins' or 'tekton'.
-if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
-  CI_ARGOCD_ACCOUNT="tekton"
-else
-  CI_ARGOCD_ACCOUNT="jenkins"
-fi
+# active CI engine (ci.engine): 'jenkins', 'tekton' or 'githubactions'.
+case "${J2026_CI_ENGINE}" in
+  tekton)        CI_ARGOCD_ACCOUNT="tekton" ;;
+  githubactions) CI_ARGOCD_ACCOUNT="githubactions" ;;
+  argoworkflows) CI_ARGOCD_ACCOUNT="argoworkflows" ;;
+  *)             CI_ARGOCD_ACCOUNT="jenkins" ;;
+esac
 log_step "Configuring '${CI_ARGOCD_ACCOUNT}' account in ArgoCD"
 kubectl patch configmap argocd-cm -n "${J2026_ARGOCD_NAMESPACE}" --type merge -p "{\"data\": {\"accounts.${CI_ARGOCD_ACCOUNT}\": \"apiKey\"}}"
 
@@ -260,6 +261,24 @@ if [[ ${EXIT_CODE} -eq 0 && -n "${TOKEN}" ]]; then
     log_info "Storing ArgoCD token in 'tekton-argocd' Secret (${J2026_TEKTON_PIPELINE_NAMESPACE})"
     kubectl create secret generic tekton-argocd \
       -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
+      --from-literal=token="${TOKEN}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+  elif [[ "${J2026_CI_ENGINE}" == "githubactions" ]]; then
+    # GitHub Actions / ARC: store the token where the microservices-ci workflow's
+    # GitOps-bump step reads it (ARGOCD_AUTH_TOKEN), in the runner namespace — read
+    # in-cluster by the runner SA, never a fork secret (the cluster API token must
+    # never leave the cluster).
+    log_info "Storing ArgoCD token in 'arc-argocd' Secret (${J2026_GHA_RUNNER_NAMESPACE})"
+    kubectl create secret generic arc-argocd \
+      -n "${J2026_GHA_RUNNER_NAMESPACE}" \
+      --from-literal=token="${TOKEN}" \
+      --dry-run=client -o yaml | kubectl apply -f -
+  elif [[ "${J2026_CI_ENGINE}" == "argoworkflows" ]]; then
+    # Argo Workflows: store the token where the gitops-deploy WorkflowTemplate step reads
+    # it (ARGOCD_AUTH_TOKEN, via secretKeyRef argoworkflows-argocd), in the execution namespace.
+    log_info "Storing ArgoCD token in 'argoworkflows-argocd' Secret (${J2026_ARGOWF_RUN_NAMESPACE})"
+    kubectl create secret generic argoworkflows-argocd \
+      -n "${J2026_ARGOWF_RUN_NAMESPACE}" \
       --from-literal=token="${TOKEN}" \
       --dry-run=client -o yaml | kubectl apply -f -
   else

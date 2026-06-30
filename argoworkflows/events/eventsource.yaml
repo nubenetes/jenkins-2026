@@ -1,0 +1,42 @@
+# Argo Events EventSource: a GitHub webhook receiver. This is the Argo Events
+# analogue of the Tekton Triggers EventListener's GitHub interceptor. Argo Events
+# provisions a Service (github-eventsource-svc) that the Gateway routes
+# argo-events.<domain> to (NO IAP - GitHub must reach it; protected instead by the
+# GitHub HMAC shared secret). The github EventSource validates the X-Hub-Signature
+# against the 'argoworkflows-github-webhook' Secret (key 'secret', created by
+# scripts/01-namespaces.sh from ARGOWORKFLOWS_GITHUB_WEBHOOK_SECRET/PAC_WEBHOOK_SECRET).
+#
+# NOTE: the upstream JHipster app repos are not owned by this project, so GitHub
+# push webhooks can't be wired to them - the primary trigger is the seed script
+# (06-argoworkflows-pipelines.sh). This EventSource exists for parity / git-push /
+# CI re-runs on the owned forks. The 06 script reconciles the public webhook URL
+# (https://argo-events.<domain>/push) on each owned fork.
+apiVersion: argoproj.io/v1alpha1
+kind: EventSource
+metadata:
+  name: github
+  namespace: argo-events
+spec:
+  service:
+    ports:
+      - port: 12000
+        targetPort: 12000
+  github:
+    microservices:
+      # repositories: [] => the Sensor filters on body.repository.name instead of a
+      # static owned-repo list; the GitHub webhook itself (wired by 06) is the
+      # activation. (The upstream jhipster/* repos aren't owned - same caveat as the
+      # Tekton PaC Repository CRs.)
+      repositories: []
+      webhook:
+        endpoint: /push
+        port: "12000"
+        method: POST
+      events:
+        - push
+        - pull_request
+      webhookSecret:
+        name: argoworkflows-github-webhook
+        key: secret
+      contentType: json
+      insecure: false

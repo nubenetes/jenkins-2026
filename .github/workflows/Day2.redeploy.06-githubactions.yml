@@ -1,0 +1,212 @@
+name: "Day2.redeploy.06 GitHub Actions (ARC)"
+
+# Manually-triggered: re-applies the GitHub Actions CI engine (scripts/04-
+# githubactions.sh = the ARC app-of-apps: gha-runner-scale-set-controller +
+# AutoscalingRunnerSet, and scripts/06-githubactions-pipelines.sh = render the
+# microservices-ci.yml workflow into each fork + activate the runners) against
+# the cluster from the last "Day1.cluster.01 GKE provision" run that was
+# provisioned with ci_engine=githubactions, without touching terraform/gke or any
+# other component.
+#
+# Use this to apply a GitHub-Actions-only change (an ARC version bump, a
+# microservices-ci.yml workflow edit, a runner-placement flip) without rerunning
+# the whole provision lifecycle. The ARC analogue of "Day2.redeploy.03 Tekton".
+# Requires the namespaces/secrets created by scripts/01-namespaces.sh +
+# scripts/08.5-argocd.sh during a githubactions "Day1.cluster.01 GKE" run to still
+# exist on the cluster. See docs/404-GITHUB_ACTIONS.md.
+on:
+  workflow_dispatch:
+    inputs:
+      secrets_backend:
+        description: "Secrets backend the cluster runs (must match the live cluster): imperative | eso"
+        required: true
+        default: "imperative"
+        type: choice
+        options:
+          - imperative
+          - eso
+      develop_track:
+        description: "Re-apply the optional lean 'develop' microservices tier alongside 'stable' (OFF by default): the develop namespace/netpol/RBAC (01-namespaces) and the develop workflow runs (06-githubactions-pipelines). The develop ArgoCD app is owned by Day1.cluster.01."
+        required: false
+        default: false
+        type: boolean
+      git_ref:
+        description: "Git branch, tag, or SHA to check out (leave empty to use the branch/tag selected in 'Use workflow from' above)"
+        required: false
+        default: ""
+        type: string
+      run_node_pool:
+        description: "Where ARC ephemeral runner pods run (githubactions.runNodePool). 'config' = use config.yaml (default ci-spot — the NAP Spot scale-to-zero showcase: each runner is a single ephemeral pod, so a preemption loses at most one re-queued job). 'static' = opt out to the long-lived jenkins-2026-pool. 'ci-spot' = explicit Spot ComputeClass. See docs/404."
+        required: false
+        default: "config"
+        type: choice
+        options:
+          - config
+          - static
+          - ci-spot
+      log_level:
+        description: "Script/Terraform verbosity: info (default) or debug (adds [DEBUG] script lines + TF_LOG=DEBUG). For runner-level tracing use GitHub's ACTIONS_STEP_DEBUG."
+        required: false
+        default: "info"
+        type: choice
+        options:
+          - info
+          - debug
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: jenkins-2026-gke
+  cancel-in-progress: false
+
+env:
+  JENKINS2026_LOG_LEVEL: ${{ inputs.log_level || 'info' }}
+  TF_LOG: ${{ inputs.log_level == 'debug' && 'DEBUG' || '' }}
+  TF_VERSION: "1.15.6"
+  # Selects the GitHub Actions / ARC path in scripts/lib/config.sh (and the 04/06 scripts).
+  JENKINS2026_CI_ENGINE: githubactions
+  JENKINS2026_SECRETS_BACKEND: ${{ inputs.secrets_backend }}
+  # Run-pod placement override (empty = fall back to config.yaml githubactions.runNodePool, default ci-spot).
+  JENKINS2026_GITHUBACTIONS_RUN_NODE_POOL: ${{ inputs.run_node_pool != 'config' && inputs.run_node_pool || '' }}
+  # Optional lean develop tier (off by default) — 01-namespaces provisions its
+  # namespace/netpol/RBAC and 06-githubactions-pipelines renders its develop workflow.
+  JENKINS2026_DEVELOP_TRACK_ENABLED: ${{ inputs.develop_track }}
+
+jobs:
+  redeploy-githubactions:
+    runs-on: ubuntu-latest
+    # Manual approval gate (GitHub Environment required reviewers) - modifies a real
+    # billed cluster, same posture as Day1/Decom and the other Day2.* workflows.
+    environment: gke-production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ inputs.git_ref || github.ref }}
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Install gke-gcloud-auth-plugin
+        run: gcloud components install gke-gcloud-auth-plugin --quiet
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d # v5.1.0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+
+      - name: Install yq
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/yq \
+            https://github.com/mikefarah/yq/releases/download/v4.53.3/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Configure GCS backend (terraform/gke)
+        run: |
+          cat > terraform/gke/backend_override.tf <<EOF
+          terraform {
+            backend "gcs" {
+              bucket = "${{ secrets.TF_STATE_BUCKET }}"
+              prefix = "jenkins-2026/gke"
+            }
+          }
+          EOF
+
+      - name: Terraform init
+        working-directory: terraform/gke
+        run: |
+          for i in {1..3}; do
+            terraform init -input=false && break || {
+              if [ $i -lt 3 ]; then
+                echo "Terraform init failed, retrying in 10s..."
+                sleep 10
+              else
+                exit 1
+              fi
+            }
+          done
+
+      - name: Fetch kubeconfig credentials
+        working-directory: terraform/gke
+        run: |
+          gcloud container clusters get-credentials \
+            "$(terraform output -raw cluster_name)" \
+            --zone "$(terraform output -raw location)" \
+            --project "${{ secrets.GCP_PROJECT_ID }}"
+
+      - name: Check prereqs & add Helm repos (scripts/00-check-prereqs.sh)
+        run: ./scripts/00-check-prereqs.sh
+
+      - name: Refresh ARC namespaces/credentials (scripts/01-namespaces.sh)
+        run: ./scripts/01-namespaces.sh
+        env:
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+          GIT_USERNAME: ${{ secrets.GIT_USERNAME }}
+          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
+          IAP_OAUTH_CLIENT_ID: ${{ secrets.IAP_OAUTH_CLIENT_ID }}
+          IAP_OAUTH_CLIENT_SECRET: ${{ secrets.IAP_OAUTH_CLIENT_SECRET }}
+          # GitHub App credentials for ARC runner registration (arc-github-app);
+          # empty unless set, in which case ARC registers via the App (else GIT_TOKEN PAT).
+          ARC_GITHUB_APP_ID: ${{ secrets.ARC_GITHUB_APP_ID }}
+          ARC_GITHUB_APP_INSTALLATION_ID: ${{ secrets.ARC_GITHUB_APP_INSTALLATION_ID }}
+          ARC_GITHUB_APP_PRIVATE_KEY: ${{ secrets.ARC_GITHUB_APP_PRIVATE_KEY }}
+          # Optional Grafana Cloud k6 (k6-app) streaming for the k6 smoke step.
+          K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
+          K6_CLOUD_PROJECT_ID: ${{ secrets.K6_CLOUD_PROJECT_ID }}
+
+      - name: Redeploy ARC controller + runner scale set (scripts/04-githubactions.sh)
+        run: ./scripts/04-githubactions.sh
+
+      - name: Render the microservices-ci workflow into the forks + activate runners (scripts/06-githubactions-pipelines.sh)
+        run: ./scripts/06-githubactions-pipelines.sh
+        env:
+          # Pushes .github/workflows/microservices-ci.yml to the owned forks (the
+          # GIT_TOKEN must carry the `workflow` scope) and optionally `gh workflow run`s
+          # each fork on Day1 (githubactions.seedRuns).
+          GIT_USERNAME: ${{ secrets.GIT_USERNAME }}
+          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
+
+      - name: Sync External Secrets (scripts/08.6-eso-sync.sh, eso mode only)
+        # No-op when secrets.backend=imperative. In eso mode, re-applies the
+        # ClusterSecretStore + ExternalSecrets (incl. arc-github-app/arc-registry) and
+        # waits for the IAP Secret before 09-gateway wires the GCPBackendPolicy to it.
+        run: ./scripts/08.6-eso-sync.sh
+
+      # Idempotent: (re)creates the engine-neutral public Gateway routes
+      # (microservices, headlamp, pgadmin, argocd, faro, grafana-if-oss). ARC has NO
+      # in-cluster CI dashboard (runs live in GitHub's Actions tab), so NO CI route or
+      # IAP backend policy is emitted for it — the explicit ==jenkins guards in
+      # 09-gateway.sh ensure githubactions adds neither a jenkins nor a tekton route.
+      - name: Re-apply Gateway routes (scripts/09-gateway.sh)
+        run: ./scripts/09-gateway.sh
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### GitHub Actions (ARC) redeployed"
+            echo
+            echo "Re-applied the ARC control plane (gha-runner-scale-set-controller +"
+            echo "AutoscalingRunnerSet, scripts/04-githubactions.sh) and rendered the"
+            echo "microservices-ci.yml workflow into the forks + activated the ephemeral"
+            echo "Spot runners (scripts/06-githubactions-pipelines.sh) against the cluster"
+            echo "from the last **Day1.cluster.01 GKE** run provisioned with"
+            echo "ci_engine=githubactions. Runs are viewed in each fork's GitHub Actions tab"
+            echo "(ARC has no in-cluster UI). See docs/404-GITHUB_ACTIONS.md."
+          } >> "${GITHUB_STEP_SUMMARY}"

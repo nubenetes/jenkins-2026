@@ -1,0 +1,43 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argoworkflows-pipeline-as-code
+  namespace: argocd
+  annotations:
+    # Wave 2: the WorkflowTemplates (Workflows CRDs, wave 0) and the
+    # EventSource/Sensor (Events CRDs, wave 1) must exist before these custom
+    # resources apply.
+    argocd.argoproj.io/sync-wave: "2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: {{ .Values.repoURL | quote }}
+    targetRevision: {{ .Values.targetRevision | quote }}
+    # The Argo Workflows pipelines-as-code (WorkflowTemplates/EventSource/Sensor/
+    # RBAC + run ServiceAccount) live at the repo-root argoworkflows/ dir, the port
+    # of the Jenkins shared library in vars/. README.md is ignored (ArgoCD reads
+    # only manifests).
+    path: argoworkflows
+    directory:
+      recurse: true
+      # Exclude argoworkflows/runs/ - those are ready-to-run Workflow manifests with
+      # generateName, meant for manual `kubectl create` / Server UI one-click (and
+      # the opt-in argoworkflows.seedRuns Day1 seeding). ArgoCD cannot manage
+      # generateName objects (no stable name to diff), so syncing them leaves the
+      # app permanently OutOfSync.
+      exclude: 'runs/*'
+  destination:
+    server: https://kubernetes.default.svc
+    # Namespace-less resources (WorkflowTemplates, EventSource, Sensor,
+    # ServiceAccounts) land here; the cross-namespace RoleBinding into the
+    # microservices namespace and the cluster-scoped bindings carry their own
+    # metadata.namespace/scope.
+    namespace: {{ .Values.namespace.run | quote }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

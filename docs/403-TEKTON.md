@@ -4,12 +4,23 @@
 
 # 403. Tekton (alternative CI engine)
 
-This project ships **two interchangeable CI engines**. Jenkins is the default;
-**Tekton** is the alternative, selected by a single feature flag. When Tekton is
+This project ships **four interchangeable CI engines**. Jenkins is the default;
+**Tekton** is the Kubernetes-native alternative described here, selected by a single
+feature flag. When Tekton is
 chosen the platform installs Tekton Pipelines + Triggers + the official Tekton
 Dashboard, exposes the Dashboard on the internet behind **Google IAP** (exactly
 like Headlamp), and runs the **same microservices pipeline** ported to Tekton
 Tasks/Pipelines under [`tekton/`](../tekton/).
+
+> **See also — the other alternative engines.** [404. GitHub Actions / ARC](./404-GITHUB_ACTIONS.md)
+> is the third CI engine (`ci.engine=githubactions`): GitHub Actions
+> self-hosted runners via the Actions Runner Controller — ephemeral Spot runners on
+> the `ci-spot` NAP ComputeClass, native GitHub webhooks, and **no** in-cluster
+> Dashboard/IAP route (runs are viewed in GitHub's Actions tab).
+> [405. Argo Workflows](./405-ARGO_WORKFLOWS.md) is the fourth (`ci.engine=argoworkflows`):
+> the other Kubernetes-native alternative — Argo Workflows + Argo Events, with an
+> IAP-protected **Argo Workflows Server UI** (`argo.<domain>`, like this Dashboard)
+> plus a public, HMAC-protected **Argo Events webhook receiver** (`argo-events.<domain>`).
 
 ## Understanding Tekton (newcomers → specialists)
 

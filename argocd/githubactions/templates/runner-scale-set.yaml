@@ -1,0 +1,73 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: arc-runner-scale-set
+  namespace: argocd
+  annotations:
+    # Wave 1: the AutoscalingRunnerSet CRD (from wave 0) must exist first.
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: ghcr.io/actions/actions-runner-controller-charts
+    chart: gha-runner-scale-set
+    targetRevision: '{{ .Values.versions.arc }}'
+    helm:
+      # Pin the release name to the scale-set name so the runner ServiceAccount/labels are
+      # deterministic (and the AutoscalingRunnerSet CR is named jenkins-2026-runners).
+      releaseName: '{{ .Values.runnerScaleSetName }}'
+      valuesObject:
+        githubConfigUrl: '{{ .Values.githubConfigUrl }}'
+        githubConfigSecret: '{{ .Values.githubConfigSecret }}'
+        runnerScaleSetName: '{{ .Values.runnerScaleSetName }}'
+        minRunners: {{ .Values.minRunners }}
+        maxRunners: {{ .Values.maxRunners }}
+        containerMode:
+          type: '{{ .Values.containerMode }}'
+        template:
+          spec:
+            imagePullSecrets:
+              - name: '{{ .Values.registryCredentialsSecretName }}'
+            {{- if and (eq .Values.runNodePool "ci-spot") .Values.nodeAutoProvisioningEnabled }}
+            # ci-spot: NAP provisions a Spot node per ephemeral runner (scale-to-zero). GKE
+            # auto-applies label+taint cloud.google.com/compute-class=ci-spot:NoSchedule.
+            nodeSelector:
+              cloud.google.com/compute-class: ci-spot
+            tolerations:
+              - { key: cloud.google.com/compute-class, operator: Equal, value: ci-spot, effect: NoSchedule }
+              - { key: cloud.google.com/gke-spot, operator: Equal, value: "true", effect: NoSchedule }
+            {{- else }}
+            # static: the long-lived jenkins-2026-pool. (06-githubactions-pipelines.sh can
+            # also patch this at runtime; that one field is in ignoreDifferences below.)
+            nodeSelector:
+              app: jenkins-2026
+            {{- end }}
+            containers:
+              - name: runner
+                image: ghcr.io/actions/actions-runner:latest
+                command: ["/home/runner/run.sh"]
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: '{{ .Values.namespace.runners }}'
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 8
+      backoff:
+        duration: 15s
+        factor: 2
+        maxDuration: 5m
+  # The runner pod-template nodeSelector is the only field 06-githubactions-pipelines.sh may
+  # patch at runtime (the static opt-out); ignore it so selfHeal doesn't fight that patch.
+  ignoreDifferences:
+    - group: actions.github.com
+      kind: AutoscalingRunnerSet
+      jqPathExpressions:
+        - .spec.template.spec.nodeSelector

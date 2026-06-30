@@ -25,6 +25,8 @@ navigation:
 - [`401-JENKINS.md`](docs/401-JENKINS.md) — Jenkins UI, plugins, JCasC, MCP
 - [`402-PIPELINES_AS_CODE.md`](docs/402-PIPELINES_AS_CODE.md) — seed job, pipeline stages, develop tier
 - [`403-TEKTON.md`](docs/403-TEKTON.md) — Tekton as the alternative CI engine (`ci.engine` flag), Pipelines/Triggers/Dashboard, IAP-protected Dashboard, the pipeline ported to `tekton/`
+- [`404-GITHUB_ACTIONS.md`](docs/404-GITHUB_ACTIONS.md) — GitHub Actions / ARC (Actions Runner Controller) as the **third** `ci.engine` (`githubactions`): ephemeral Spot runners on the `ci-spot` NAP ComputeClass (the scale-to-zero showcase), native GitHub webhooks via a GitHub App, **no** in-cluster UI/Gateway route (runs in GitHub's Actions tab), the `argocd/githubactions` app-of-apps, and the same `services.yaml` / GHCR / GitOps / OTel contract as the other engines
+- [`405-ARGO_WORKFLOWS.md`](docs/405-ARGO_WORKFLOWS.md) — Argo Workflows + Argo Events (argoproj) as the **fourth** `ci.engine` (`argoworkflows`): a DAG/steps WorkflowTemplate port of the pipeline, an IAP-protected **Argo Workflows Server UI** (`argo.<domain>`, like the Tekton Dashboard) **plus** a public, no-IAP **Argo Events webhook receiver** (`argo-events.<domain>`, HMAC-protected), the `argocd/argoworkflows` app-of-apps (Argo Workflows controller+server wave 0 + Argo Events wave 1 + pipeline-as-code wave 2, **vendored** upstream release YAMLs), and the same `services.yaml` / GHCR / GitOps / OTel contract as the other engines
 - [`501-PLATFORM_OPERATIONS.md`](docs/501-PLATFORM_OPERATIONS.md) — ArgoCD, Headlamp, Gateway API + IAP, chaos/QA
 - [`502-MICROSERVICES_GITOPS.md`](docs/502-MICROSERVICES_GITOPS.md) — Helm vs Kustomize, resource lifecycle design decisions
 - [`503-NETWORKING.md`](docs/503-NETWORKING.md) — network architecture, landing zone & topology (single-VPC, not hub-spoke + rationale), VPC/subnet + pod/service CIDR plan, north-south ingress/egress, east-west (VPC-native + Dataplane V2 + WireGuard), NetworkPolicy segmentation
@@ -60,7 +62,7 @@ Legacy stubs ([`docs/architecture.md`](docs/architecture.md), [`docs/observabili
   `gateway-iap-oauth`. See [`docs/201`](docs/201-ARCHITECTURE.md#secrets-backend-imperative--eso).
 - [`config/config.yaml`](config/config.yaml) - single source of truth: target platform
   (gke), observability mode (grafana-cloud/oss/managed-azure/managed-aws),
-  CI engine (`ci.engine`: jenkins default | tekton),
+  CI engine (`ci.engine`: jenkins default | tekton | githubactions | argoworkflows),
   Jenkins/Microservices namespaces, branches, registry, service list.
 - [`helm/jenkins/`](helm/jenkins/), `helm/microservices/` - Helm values overlays.
 - [`jenkins/casc/`](jenkins/casc/) - JCasC YAML (seed jobs, shared library, OTel plugin
@@ -68,8 +70,11 @@ Legacy stubs ([`docs/architecture.md`](docs/architecture.md), [`docs/observabili
 - [`jenkins/pipelines/`](jenkins/pipelines/) - `Jenkinsfile.microservices`, seed job DSL
   (`seed_jobs.groovy`), `services.yaml` (the shared service registry both CI
   engines read).
-- [`tekton/`](tekton/) - Tekton pipelines-as-code, used when `ci.engine=tekton` (the
-  alternative to Jenkins; Jenkins is the default). Tasks/Pipelines/Triggers/RBAC
+- [`tekton/`](tekton/) - Tekton pipelines-as-code, used when `ci.engine=tekton` (one
+  of three alternatives to the default Jenkins; the others are `githubactions`/ARC — see
+  [`docs/404`](docs/404-GITHUB_ACTIONS.md) — and `argoworkflows` — the `argoworkflows/`
+  Argo port dir, analogous to `tekton/`, see [`docs/405`](docs/405-ARGO_WORKFLOWS.md)).
+  Tasks/Pipelines/Triggers/RBAC
   porting the Jenkins shared library in [`vars/`](vars/), plus `pac/` (Pipelines-as-Code
   Repository CRs) and `runs/` (ready-to-run PipelineRun manifests — the
   one-click/`kubectl create -f` equivalent of the Jenkins seed job; the opt-in
@@ -101,7 +106,19 @@ Legacy stubs ([`docs/architecture.md`](docs/architecture.md), [`docs/observabili
   `tekton/` (with `components/*/` holding the **vendored** pinned upstream Tekton
   release YAMLs — Tekton ships recent releases only as GitHub assets, not GCS, and
   a github.com URL is git-misclassified by kustomize — plus the `tekton/`
-  pipelines-as-code), applied by `04-tekton.sh` when `ci.engine=tekton`. Because of
+  pipelines-as-code), applied by `04-tekton.sh` when `ci.engine=tekton`. The
+  `githubactions/` app-of-apps (applied by `04-githubactions.sh` when
+  `ci.engine=githubactions`) installs **ARC** via two OCI Helm child apps —
+  `gha-runner-scale-set-controller` (wave 0) + `gha-runner-scale-set` /
+  `AutoscalingRunnerSet` (wave 1); OCI charts, so **no vendoring**. The
+  `argoworkflows/` app-of-apps (applied by `04-argoworkflows.sh` when
+  `ci.engine=argoworkflows`) installs **Argo Workflows + Argo Events** via three child
+  apps — `argoworkflows-controller` (wave 0, the Argo Workflows controller + server) +
+  `argo-events` (wave 1, the Events controller-manager + EventBus) +
+  `argoworkflows-pipeline-as-code` (wave 2, the WorkflowTemplates/EventSource/Sensor under
+  [`argoworkflows/`](argoworkflows/)); the upstream release YAMLs are **vendored** under
+  `argocd/argoworkflows/components/{workflows,events}/release.yaml` (like Tekton — not OCI
+  charts). Because of
   this, [`scripts/up.sh`](scripts/up.sh) installs ArgoCD (`08.5`) **before** observability
   (`03`), and `03-observability.sh` (oss) applies the app-of-apps + its
   script-managed companion objects (`grafana-jenkins-ds` Secret,

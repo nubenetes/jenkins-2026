@@ -1,0 +1,33 @@
+# Ready-to-run Workflow for the k6 traffic test (the `microservices-k6-smoke`
+# WorkflowTemplate). All params default (profile=smoke, target-namespace=microservices,
+# env=stable -> 4 VUs x 12 shared iterations), and it needs only the `source` workspace
+# (provided by the WorkflowTemplate's volumeClaimTemplate) - no registry secret.
+# Run: kubectl create -f argoworkflows/runs/k6-smoke.yaml
+# (or `argo submit` it, or use the UI "Resubmit"). Requires the microservices to be
+# deployed and reachable.
+#
+# To re-shape a run, uncomment the `arguments.parameters:` block below (or edit it in
+# the Argo Workflows UI "Submit" form). See docs/302-K6_LOAD_TESTING.md for the full
+# parameter reference and argoworkflows/runs/k6-load.yaml for an advanced example.
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: microservices-k6-smoke-stable-
+  namespace: argo-ci
+  labels:
+    jenkins2026.io/service: microservices-k6-smoke
+    jenkins2026.io/env: stable
+spec:
+  serviceAccountName: argoworkflows-ci
+  workflowTemplateRef:
+    name: microservices-k6-smoke
+  # arguments:
+  #   parameters:
+  #     - { name: preset, value: load-baseline } # load a committed preset (presets/index.yaml)
+  #     - { name: profile, value: smoke }      # smoke|load|stress|soak|spike|breakpoint (overrides preset)
+  #     - { name: env-name, value: stable }    # stable | develop
+  #     - { name: target-namespace, value: microservices }
+  #     - { name: vus, value: "" }             # empty -> preset / profile default
+  #     - { name: duration, value: "" }        # e.g. 5m
+  #     - { name: scenarios, value: all }
+  #     - { name: p95-ms, value: "" }          # empty -> preset / 3000

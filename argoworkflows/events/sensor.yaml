@@ -1,0 +1,70 @@
+# Argo Events Sensor: on a GitHub push event delivered by the 'github' EventSource,
+# submit one Workflow from the microservices-pipeline WorkflowTemplate (the Argo
+# Workflows analogue of the Tekton Triggers TriggerTemplate emitting a PipelineRun).
+# The Sensor's own pod runs as 'operate-workflow-sa' (sensor-rbac.yaml) which has
+# create/get/list on Workflows in argo-ci; the submitted Workflow runs as
+# 'argoworkflows-ci' (the run SA with the git/registry creds + microservices edit).
+#
+# Parity / git-push trigger path. The PRIMARY trigger remains the seed script
+# (06-argoworkflows-pipelines.sh) on the owned forks; this fires for git pushes once
+# the GitHub webhook is wired by that script.
+apiVersion: argoproj.io/v1alpha1
+kind: Sensor
+metadata:
+  name: microservices
+  namespace: argo-events
+spec:
+  template:
+    serviceAccountName: operate-workflow-sa
+  dependencies:
+    - name: github-dep
+      eventSourceName: github
+      eventName: microservices
+  triggers:
+    - template:
+        name: submit-workflow
+        k8s:
+          operation: create
+          source:
+            resource:
+              apiVersion: argoproj.io/v1alpha1
+              kind: Workflow
+              metadata:
+                generateName: microservices-
+                namespace: argo-ci
+                labels:
+                  jenkins2026.io/service: gateway
+                  jenkins2026.io/env: stable
+              spec:
+                serviceAccountName: argoworkflows-ci
+                workflowTemplateRef:
+                  name: microservices-pipeline
+                # The parameter list here must match the WorkflowTemplate's argument
+                # order so the index-based parameter overrides below land on the
+                # right slots (0=service-name, 1=service-type, 2=git-repo-url,
+                # 3=git-branch). Values are happy-path defaults overwritten per-event.
+                arguments:
+                  parameters:
+                    - name: service-name
+                      value: gateway
+                    - name: service-type
+                      value: java
+                    - name: git-repo-url
+                      value: https://github.com/nubenetes/jhipster-sample-app-gateway.git
+                    - name: git-branch
+                      value: main
+          parameters:
+            # Map the GitHub webhook JSON body onto the Workflow params (the Argo
+            # Events analogue of the Tekton TriggerBinding). clone_url -> git-repo-url.
+            - src:
+                dependencyName: github-dep
+                dataKey: body.repository.clone_url
+              dest: spec.arguments.parameters.2.value
+            # body.ref is "refs/heads/<branch>"; strip the refs/heads/ prefix so
+            # git-branch is the bare branch name (parity with the Tekton/Jenkins
+            # <branch> semantics).
+            - src:
+                dependencyName: github-dep
+                dataKey: body.ref
+                dataTemplate: "{{ .Input.body.ref | trimPrefix \"refs/heads/\" }}"
+              dest: spec.arguments.parameters.3.value

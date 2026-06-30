@@ -1,0 +1,17 @@
+# The default EventBus for the argo-events namespace. EventSources publish events
+# to it and Sensors subscribe; every EventSource/Sensor in this namespace uses the
+# bus named "default" unless told otherwise. Native NATS (JetStream-less classic
+# NATS streaming) is the self-contained, no-external-dependency option — Argo Events
+# provisions and manages the NATS StatefulSet for us. 3 replicas for HA (a quorum
+# survives a single-node drain/preemption); auth token enabled so only in-cluster
+# EventSources/Sensors can connect.
+apiVersion: argoproj.io/v1alpha1
+kind: EventBus
+metadata:
+  name: default
+  namespace: argo-events
+spec:
+  nats:
+    native:
+      replicas: 3
+      auth: token

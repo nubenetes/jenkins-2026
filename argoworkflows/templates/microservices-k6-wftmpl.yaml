@@ -1,0 +1,313 @@
+# Standalone k6 smoke WorkflowTemplate - the Argo Workflows analogue of the
+# Tekton microservices-k6-smoke Pipeline (tekton/pipelines/microservices-k6-smoke.yaml)
+# and the separate Jenkins 'microservices-k6-smoke' job
+# (vars/MicroservicesK6SmokePipeline.groovy). Can be run on its own (Argo Server UI /
+# kubectl create -f a Workflow with workflowTemplateRef) or wired into a Sensor.
+# It is self-contained: the k6 stage's three steps (checkout-infra -> resolve-preset
+# -> run-k6) are defined inline here, sharing one RWO 'source' PVC.
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: microservices-k6-smoke
+  namespace: argo-ci
+spec:
+  serviceAccountName: argoworkflows-ci
+  entrypoint: main
+  # One shared RWO workspace across the k6 steps (the Tekton 'source' workspace).
+  volumeClaimTemplates:
+    - metadata:
+        name: source
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 4Gi
+  podGC:
+    strategy: OnWorkflowSuccess
+  arguments:
+    parameters:
+      # ---- Preset (loads a committed config; the params below override it) ----
+      - name: preset
+        value: none
+      # ---- Target ----
+      - name: target-namespace
+        value: microservices
+      - name: env-name
+        value: stable
+      - name: target-url
+        value: ""
+      - name: self-repo-url
+        value: https://github.com/nubenetes/jenkins-2026.git
+      - name: self-repo-branch
+        value: main
+      # ---- Workload (empty -> the k6 script default; see microservices-smoke.js) ----
+      - name: profile
+        value: smoke           # smoke | load | stress | soak | spike | breakpoint
+      - name: vus
+        value: ""
+      - name: iterations
+        value: ""
+      - name: duration
+        value: ""
+      - name: stages
+        value: ""              # "30s:10,2m:50,30s:0"
+      - name: rps
+        value: ""
+      - name: sleep
+        value: ""
+      - name: scenarios
+        value: ""              # "all" | "gateway-ui,gateway-health,..."
+      # ---- Thresholds ----
+      - name: p95-ms
+        value: ""
+      - name: error-rate
+        value: ""
+      - name: debug
+        value: "false"
+      - name: otlp-endpoint
+        value: ""
+  templates:
+    # ---- entrypoint: the single k6-smoke Task (checkout-infra -> resolve-preset -> run-k6) ----
+    - name: main
+      steps:
+        - - name: checkout-infra
+            template: k6-checkout-infra
+            arguments:
+              parameters:
+                - { name: self-repo-url, value: "{{workflow.parameters.self-repo-url}}" }
+                - { name: self-repo-branch, value: "{{workflow.parameters.self-repo-branch}}" }
+        - - name: resolve-preset
+            template: k6-resolve-preset
+            arguments:
+              parameters:
+                - { name: preset, value: "{{workflow.parameters.preset}}" }
+        - - name: run-k6
+            template: k6-run
+            arguments:
+              parameters:
+                - { name: target-namespace, value: "{{workflow.parameters.target-namespace}}" }
+                - { name: target-url, value: "{{workflow.parameters.target-url}}" }
+                - { name: env-name, value: "{{workflow.parameters.env-name}}" }
+                - { name: profile, value: "{{workflow.parameters.profile}}" }
+                - { name: vus, value: "{{workflow.parameters.vus}}" }
+                - { name: iterations, value: "{{workflow.parameters.iterations}}" }
+                - { name: duration, value: "{{workflow.parameters.duration}}" }
+                - { name: stages, value: "{{workflow.parameters.stages}}" }
+                - { name: rps, value: "{{workflow.parameters.rps}}" }
+                - { name: sleep, value: "{{workflow.parameters.sleep}}" }
+                - { name: scenarios, value: "{{workflow.parameters.scenarios}}" }
+                - { name: p95-ms, value: "{{workflow.parameters.p95-ms}}" }
+                - { name: error-rate, value: "{{workflow.parameters.error-rate}}" }
+                - { name: debug, value: "{{workflow.parameters.debug}}" }
+                - { name: otlp-endpoint, value: "{{workflow.parameters.otlp-endpoint}}" }
+
+    - name: k6-checkout-infra
+      inputs:
+        parameters:
+          - name: self-repo-url
+          - name: self-repo-branch
+      script:
+        image: alpine/git:2.54.0
+        volumeMounts:
+          - { name: source, mountPath: /workspace }
+        env:
+          - { name: HOME, value: /tmp }
+        command: [sh]
+        source: |
+          set -eu
+          git config --global --add safe.directory '*' || true
+          cd /workspace
+          rm -rf k6-infra
+          GIT_LFS_SKIP_SMUDGE=1 git \
+            -c filter.lfs.smudge= -c filter.lfs.process= -c filter.lfs.required=false \
+            clone --depth 1 --branch "{{inputs.parameters.self-repo-branch}}" \
+            "{{inputs.parameters.self-repo-url}}" k6-infra
+          # This (root) step owns the workspace; the next step (resolve-preset) runs the
+          # mikefarah/yq image as uid 1000 (non-root) and cannot create a file in this
+          # root-owned dir. Pre-create the preset env file world-writable here so
+          # resolve-preset can fill it WITHOUT itself running as root (least privilege).
+          : > "/workspace/k6sim-preset.env"
+          chmod 0666 "/workspace/k6sim-preset.env"
+          # Same reasoning for the k6 summary: run-k6 (grafana/k6 image) is non-root and
+          # k6's handleSummary() writes k6-summary.json to the workspace root (K6_SUMMARY_OUT),
+          # which this root step owns - so pre-create it world-writable too, else k6 logs
+          # "could not open '.../k6-summary.json': permission denied" and drops the summary.
+          : > "/workspace/k6-summary.json"
+          chmod 0666 "/workspace/k6-summary.json"
+    - name: k6-resolve-preset
+      # Reads the selected committed preset (jenkins/pipelines/k6/presets/<name>.yaml)
+      # and writes its values to k6sim-preset.env in the workspace; run-k6 then uses
+      # them for any param left empty (param > preset > script default). yq image is
+      # used because the cluster has no pod egress to download tooling at runtime.
+      inputs:
+        parameters:
+          - name: preset
+      script:
+        image: mikefarah/yq:4.53.3
+        volumeMounts:
+          - { name: source, mountPath: /workspace }
+        # mikefarah/yq runs as uid 1000 (non-root). The root-owned workspace would block
+        # it from creating k6sim-preset.env, so the root checkout-infra step above
+        # pre-creates that file world-writable (0666) - this step stays non-root and just
+        # fills it (least privilege; run-k6 reads it next).
+        command: [sh]
+        source: |
+          set -eu
+          OUT="/workspace/k6sim-preset.env"
+          : > "$OUT"
+          PRESET="{{inputs.parameters.preset}}"
+          PF="/workspace/k6-infra/jenkins/pipelines/k6/presets/${PRESET}.yaml"
+          if [ "${PRESET}" = "none" ]; then
+            echo "No preset selected (preset=none)."
+            exit 0
+          fi
+          if [ ! -f "${PF}" ]; then
+            echo "WARNING: preset '${PRESET}' not found at ${PF} - continuing with params only."
+            exit 0
+          fi
+          echo "Resolving k6 preset '${PRESET}' from ${PF}"
+          get() { yq ".params.$1 // \"\"" "${PF}"; }
+          {
+            echo "PRESET_PROFILE=$(get profile)"
+            echo "PRESET_VUS=$(get vus)"
+            echo "PRESET_ITERATIONS=$(get iterations)"
+            echo "PRESET_DURATION=$(get duration)"
+            echo "PRESET_STAGES=$(get stages)"
+            echo "PRESET_RPS=$(get rps)"
+            echo "PRESET_SLEEP=$(get sleep)"
+            echo "PRESET_SCENARIOS=$(get scenarios)"
+            echo "PRESET_P95_MS=$(get p95Ms)"
+            echo "PRESET_ERROR_RATE=$(get errorRate)"
+            echo "PRESET_DEBUG=$(get debug)"
+            echo "PRESET_ENV_NAME=$(get envName)"
+            echo "PRESET_TARGET_NAMESPACE=$(get targetNamespace)"
+            echo "PRESET_TARGET_URL=$(get targetUrl)"
+          } > "${OUT}"
+          echo "Wrote ${OUT}:"; cat "${OUT}"
+    - name: k6-run
+      inputs:
+        parameters:
+          - name: target-namespace
+          - name: target-url
+          - name: env-name
+          - name: profile
+          - name: vus
+          - name: iterations
+          - name: duration
+          - name: stages
+          - name: rps
+          - name: sleep
+          - name: scenarios
+          - name: p95-ms
+          - name: error-rate
+          - name: debug
+          - name: otlp-endpoint
+      script:
+        image: grafana/k6:2.0.0
+        volumeMounts:
+          - { name: source, mountPath: /workspace }
+        env:
+          - { name: TARGET_NAMESPACE, value: "{{inputs.parameters.target-namespace}}" }
+          - { name: TARGET_URL, value: "{{inputs.parameters.target-url}}" }
+          - { name: ENV_NAME, value: "{{inputs.parameters.env-name}}" }
+          # Workload contract (K6SIM_*). k6 reserves K6_VUS/K6_DURATION/etc as its
+          # own option env vars, which clash with the script's `scenarios` block -
+          # hence the K6SIM_ prefix. Empty -> the script default.
+          - { name: K6SIM_PROFILE, value: "{{inputs.parameters.profile}}" }
+          - { name: K6SIM_VUS, value: "{{inputs.parameters.vus}}" }
+          - { name: K6SIM_ITERATIONS, value: "{{inputs.parameters.iterations}}" }
+          - { name: K6SIM_DURATION, value: "{{inputs.parameters.duration}}" }
+          - { name: K6SIM_STAGES, value: "{{inputs.parameters.stages}}" }
+          - { name: K6SIM_RPS, value: "{{inputs.parameters.rps}}" }
+          - { name: K6SIM_SLEEP, value: "{{inputs.parameters.sleep}}" }
+          - { name: K6SIM_SCENARIOS, value: "{{inputs.parameters.scenarios}}" }
+          - { name: K6SIM_P95_MS, value: "{{inputs.parameters.p95-ms}}" }
+          - { name: K6SIM_ERROR_RATE, value: "{{inputs.parameters.error-rate}}" }
+          - { name: K6SIM_DEBUG, value: "{{inputs.parameters.debug}}" }
+          # OTLP output (k6 2.x schema, same as the Jenkins job + the GitHub k6
+          # workflow): gRPC to the in-cluster collector, which forwards to the backend.
+          - { name: K6_OTEL_SERVICE_NAME, value: k6-microservices-smoke }
+          - { name: K6_OTEL_GRPC_EXPORTER_INSECURE, value: "true" }
+          # OTEL_RESOURCE_ATTRIBUTES is built in the script from the RESOLVED ENV_NAME
+          # (a preset may override env-name), so it is not a static env var here.
+          # Push every 2s so short tests (~12s) get several export windows instead
+          # of just one at t=10s (the 10s default), reducing the blast radius of a
+          # transient memory_limiter rejection in the OTel gateway collector.
+          - { name: K6_OTEL_EXPORT_INTERVAL, value: 2s }
+          - { name: OTLP_ENDPOINT_RAW, value: "{{inputs.parameters.otlp-endpoint}}" }
+          # Optional Grafana Cloud k6 (the k6-app) streaming. All from the optional
+          # 'k6-cloud' Secret (created by 01-namespaces.sh); empty -> cloud out skipped.
+          - name: K6_CLOUD_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: k6-cloud
+                key: token
+                optional: true
+          - name: K6_CLOUD_PROJECT_ID
+            valueFrom:
+              secretKeyRef:
+                name: k6-cloud
+                key: project-id
+                optional: true
+          - name: K6_GRAFANA_BASE_URL
+            valueFrom:
+              secretKeyRef:
+                name: k6-cloud
+                key: grafana-base-url
+                optional: true
+        command: [sh]
+        source: |
+          set -eux
+          # Merge the resolved preset (k6sim-preset.env) under the params: a param
+          # left empty falls back to the preset value; the preset's profile/env/target
+          # win when set (param > preset > script default).
+          PRESETF="/workspace/k6sim-preset.env"
+          if [ -f "${PRESETF}" ]; then . "${PRESETF}"; fi
+          : "${K6SIM_VUS:=${PRESET_VUS:-}}"
+          : "${K6SIM_ITERATIONS:=${PRESET_ITERATIONS:-}}"
+          : "${K6SIM_DURATION:=${PRESET_DURATION:-}}"
+          : "${K6SIM_STAGES:=${PRESET_STAGES:-}}"
+          : "${K6SIM_RPS:=${PRESET_RPS:-}}"
+          : "${K6SIM_SLEEP:=${PRESET_SLEEP:-}}"
+          : "${K6SIM_SCENARIOS:=${PRESET_SCENARIOS:-}}"
+          : "${K6SIM_P95_MS:=${PRESET_P95_MS:-}}"
+          : "${K6SIM_ERROR_RATE:=${PRESET_ERROR_RATE:-}}"
+          [ -n "${PRESET_PROFILE:-}" ] && K6SIM_PROFILE="${PRESET_PROFILE}"
+          [ -n "${PRESET_DEBUG:-}" ] && [ "${K6SIM_DEBUG}" = "false" ] && K6SIM_DEBUG="${PRESET_DEBUG}"
+          [ -n "${PRESET_ENV_NAME:-}" ] && ENV_NAME="${PRESET_ENV_NAME}"
+          [ -n "${PRESET_TARGET_NAMESPACE:-}" ] && TARGET_NAMESPACE="${PRESET_TARGET_NAMESPACE}"
+          if [ -z "${TARGET_URL:-}" ] && [ -n "${PRESET_TARGET_URL:-}" ]; then TARGET_URL="${PRESET_TARGET_URL}"; fi
+          export K6SIM_PROFILE K6SIM_VUS K6SIM_ITERATIONS K6SIM_DURATION K6SIM_STAGES \
+                 K6SIM_RPS K6SIM_SLEEP K6SIM_SCENARIOS K6SIM_P95_MS K6SIM_ERROR_RATE \
+                 K6SIM_DEBUG ENV_NAME TARGET_NAMESPACE TARGET_URL
+          export OTEL_RESOURCE_ATTRIBUTES="service.name=k6-microservices-smoke,service.namespace=jenkins-2026,deployment.environment=${ENV_NAME}"
+          cd /workspace/k6-infra
+          # Build outputs: OTLP (when an endpoint is configured) AND Grafana Cloud k6
+          # (when a token + project id are set) - both can run at once.
+          OTEL_OUT=""
+          if [ -n "${OTLP_ENDPOINT_RAW:-}" ]; then
+            export K6_OTEL_GRPC_EXPORTER_ENDPOINT="$(printf '%s' "${OTLP_ENDPOINT_RAW}" | sed -E 's#^[a-z]+://##')"
+            OTEL_OUT="-o opentelemetry"
+          fi
+          CLOUD_OUT=""
+          if [ -n "${K6_CLOUD_TOKEN:-}" ] && [ -n "${K6_CLOUD_PROJECT_ID:-}" ]; then
+            CLOUD_OUT="--out cloud"
+          fi
+          # Execution shape (VUs/iterations/duration/stages/rps) comes entirely from
+          # the K6SIM_* env above via the script's `scenarios` block - do NOT pass
+          # --vus/--iterations here (k6 forbids mixing CLI execution shortcuts with
+          # a scenarios-based script).
+          # k6-summary.json is written by the script's handleSummary() to the path
+          # in K6_SUMMARY_OUT (the workspace root, one level above this CWD), NOT
+          # --summary-export - k6 2.0's --summary-export emits a flattened schema
+          # that broke the .values.* parsers. See microservices-smoke.js.
+          export K6_SUMMARY_OUT="/workspace/k6-summary.json"
+          # ci_runner/k6_profile as k6 --tag (metric labels), not resource attrs - see
+          # the Jenkins/GHA runners: Grafana Cloud only promotes a fixed set of resource
+          # attrs to labels, so custom ones must be metric tags for the dashboard filters.
+          k6 run ${OTEL_OUT} ${CLOUD_OUT} \
+            --tag ci_runner=argoworkflows --tag "k6_profile=${K6SIM_PROFILE}" \
+            jenkins/pipelines/k6/microservices-smoke.js
+          if [ -n "${CLOUD_OUT}" ] && [ -n "${K6_GRAFANA_BASE_URL:-}" ]; then
+            echo "k6 results streamed to Grafana Cloud k6: ${K6_GRAFANA_BASE_URL}/a/k6-app/projects/${K6_CLOUD_PROJECT_ID}"
+          fi
