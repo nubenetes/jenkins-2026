@@ -255,6 +255,94 @@ Secret in `arc-runners`).
 > app forks, **`GIT_TOKEN` must additionally carry the `workflow` scope** to push
 > workflow files.
 
+### Registering the ARC GitHub App — step by step
+
+ARC's runner **listener** needs an org-admin-level credential to mint *runner
+registration tokens* for the org-level scale set (`githubConfigUrl:
+https://github.com/nubenetes`). With `githubactions.authMode: app` (the default in
+[`config/config.yaml`](../config/config.yaml)), that credential is a **GitHub App**
+you register **once** on the org. If the App secrets are absent, `01-namespaces.sh`
+falls back to the `GIT_TOKEN` PAT — which usually lacks the runner-admin permission,
+so the controller can't register and logs:
+
+```
+github api error: StatusCode 403 ... "You must be an org admin or have the
+runners and runner groups fine-grained permission."
+```
+
+Register the App once:
+
+**1 — Create the App.** Open **`https://github.com/organizations/nubenetes/settings/apps/new`**
+(Org → Settings → Developer settings → GitHub Apps → *New GitHub App*) and set:
+- **GitHub App name** — any globally-unique name, e.g. `nubenetes-arc-runners`.
+- **Homepage URL** — anything (e.g. `https://github.com/nubenetes/jenkins-2026`).
+- **Webhook → Active** — **uncheck it.** The `gha-runner-scale-set` listener is
+  *pull-based* (it long-polls the GitHub Actions service), so **no webhook is needed**.
+  Leave the Webhook URL blank.
+- **Permissions → Organization permissions → Self-hosted runners → Read and write.**
+  This is the **only** permission an *org-level* scale set needs — it is exactly the
+  "runners and runner groups" permission the 403 above asks for. (Repository →
+  *Metadata: Read-only* is added automatically; no other repository permission is
+  required for org-level runners.)
+- **Where can this GitHub App be installed?** → **Only on this account.**
+- Click **Create GitHub App**.
+
+**2 — App ID.** On the App's **General** page, copy the **App ID** (a number) →
+`ARC_GITHUB_APP_ID`.
+
+**3 — Private key.** Still on **General**, under **Private keys**, click **Generate a
+private key**. A `.pem` downloads; its **full contents** (including the
+`-----BEGIN/END … PRIVATE KEY-----` lines) → `ARC_GITHUB_APP_PRIVATE_KEY`. Treat it
+like any signing key — never commit it.
+
+**4 — Install the App + read the installation ID.** In the App's left sidebar click
+**Install App**, install it on the **`nubenetes`** org, and choose **All repositories**
+(or just the microservices forks + `jenkins-2026`). After installing, the browser URL
+is `https://github.com/organizations/nubenetes/settings/installations/<NUMBER>` — that
+`<NUMBER>` → `ARC_GITHUB_APP_INSTALLATION_ID`. CLI alternative:
+`gh api /orgs/nubenetes/installations --jq '.installations[] | {id, app_slug}'`.
+
+**5 — Store the three secrets** on `nubenetes/jenkins-2026`:
+```bash
+gh secret set ARC_GITHUB_APP_ID              --repo nubenetes/jenkins-2026 --body "<app-id>"
+gh secret set ARC_GITHUB_APP_INSTALLATION_ID --repo nubenetes/jenkins-2026 --body "<installation-id>"
+gh secret set ARC_GITHUB_APP_PRIVATE_KEY     --repo nubenetes/jenkins-2026 < ~/Downloads/<app>.private-key.pem
+```
+(Or repo → *Settings → Secrets and variables → Actions → New repository secret*.)
+
+**6 — Re-deploy.** `authMode: app` is already the default, so **no config change is
+needed**. Re-run `Day1.cluster.01-gke` (or `Day2.redeploy.06-githubactions`):
+`01-namespaces.sh` now finds the three secrets and builds the `arc-github-app` Secret
+with `github_app_id` / `github_app_installation_id` / `github_app_private_key` (instead
+of `github_token`). The controller mints a registration token, the **AutoscalingListener**
+pod starts in `arc-systems`, and the `jenkins-2026-runners` scale set registers —
+`test/smoke-test.sh`'s *"AutoscalingRunnerSet registered"* check then passes.
+
+### Troubleshooting: the runner scale set never registers
+
+Two **distinct** failure modes (both surfaced live the first time `ci.engine=githubactions`
+ran — they happen in this order):
+
+1. **No `AutoscalingRunnerSet` is created at all**, and `kubectl -n argocd get application
+   arc-runner-scale-set` shows **sync = `Unknown`** with
+   `ComparisonError: ... No gha-rs-controller deployment found using label
+   (app.kubernetes.io/part-of=gha-rs-controller)`. The `gha-runner-scale-set` chart
+   auto-discovers the controller's ServiceAccount with a Helm `lookup`, which ArgoCD's
+   `helm template` render **cannot** do (no live cluster), so the whole render fails and
+   no manifest is produced. Fixed by setting `controllerServiceAccount.{namespace,name}`
+   explicitly in
+   [`argocd/githubactions/templates/runner-scale-set.yaml`](../argocd/githubactions/templates/runner-scale-set.yaml).
+   Verify: the app should be `Synced` and `kubectl get autoscalingrunnerset -A` should
+   list `jenkins-2026-runners`.
+
+2. **The `AutoscalingRunnerSet` exists but no listener pod starts**, and
+   `kubectl -n arc-systems logs deploy/arc-gha-rs-controller | grep -i 403` shows
+   **`403 … "You must be an org admin or have the runners and runner groups fine-grained
+   permission."`** That's *this* section — the credential lacks the org runner-admin
+   permission. Register the GitHub App above, **or** grant the `GIT_TOKEN` PAT the
+   **Organization → Self-hosted runners → Read and write** fine-grained permission (classic
+   scope: `admin:org`) and set `githubactions.authMode: pat`.
+
 ---
 
 ## 9.6. Argo Workflows CI Engine (`ci.engine: argoworkflows`)
