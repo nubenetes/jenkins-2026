@@ -302,10 +302,26 @@ like any signing key — never commit it.
 
 **4 — Install the App + read the installation ID.** In the App's left sidebar click
 **Install App**, install it on the **`nubenetes`** org, and choose **All repositories**
-(or just the microservices forks + `jenkins-2026`). After installing, the browser URL
-is `https://github.com/organizations/nubenetes/settings/installations/<NUMBER>` — that
-`<NUMBER>` → `ARC_GITHUB_APP_INSTALLATION_ID`. CLI alternative:
-`gh api /orgs/nubenetes/installations --jq '.installations[] | {id, app_slug}'`.
+(or just the microservices forks + `jenkins-2026`).
+
+Now read the **installation ID** — note it is **not** the App ID, and it lives on the
+*installation* page, not the App's settings page (the post-install redirect often
+doesn't leave you there, which makes it easy to miss). The reliable way is the API
+(you must be an org owner):
+
+```bash
+gh api orgs/nubenetes/installations \
+  --jq '.installations[] | "\(.app_slug): app_id=\(.app_id) installation_id=\(.id)"'
+# -> nubenetes-arc-runners: app_id=4184316 installation_id=143564289
+```
+
+> **Git Bash on Windows:** omit the leading slash — `orgs/...`, **not** `/orgs/...` —
+> or MSYS rewrites the path to `C:/Program Files/Git/orgs/...` and `gh` rejects it.
+
+In the UI instead: **Org → Settings → Third-party Access → GitHub Apps → `Configure`**
+next to your App; the browser URL is then
+`https://github.com/organizations/nubenetes/settings/installations/<NUMBER>`, and that
+trailing `<NUMBER>` is the installation ID → `ARC_GITHUB_APP_INSTALLATION_ID`.
 
 **5 — Store the three secrets** on `nubenetes/jenkins-2026`:
 ```bash
