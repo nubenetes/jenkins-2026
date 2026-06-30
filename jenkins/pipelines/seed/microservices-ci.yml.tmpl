@@ -56,6 +56,19 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      # The minimal ARC runner also lacks yq (the GitOps tag bump below runs it under
+      # `set -eu`) and the argocd CLI (the sync step). Install both, pinned: yq to the repo
+      # standard (v4.53.3, same as Day1), argocd to the running server (v3.4.4) so
+      # `app sync`/`app wait` speak the same API. User-dir install + $GITHUB_PATH — the
+      # actions-runner user has no passwordless sudo, so /usr/local/bin isn't writable.
+      - name: Install CI tools (yq + argocd)
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL https://github.com/mikefarah/yq/releases/download/v4.53.3/yq_linux_amd64 -o "$HOME/.local/bin/yq"
+          curl -fsSL https://github.com/argoproj/argo-cd/releases/download/v3.4.4/argocd-linux-amd64 -o "$HOME/.local/bin/argocd"
+          chmod +x "$HOME/.local/bin/yq" "$HOME/.local/bin/argocd"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - name: Semgrep (SAST) → SARIF
         run: |
           docker run --rm -v "${{ github.workspace }}/microservices-src:/src" \
