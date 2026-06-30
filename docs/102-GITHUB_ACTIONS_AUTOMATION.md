@@ -68,7 +68,7 @@ The point of the split: tearing the cluster down (to stop billing) must **not** 
 
 - **Keyless auth (WIF).** A workflow requests a GitHub-signed OIDC JWT (`sub = repo:<owner>/<repo>:environment:<env>`), presents it to Google STS at the Workload Identity **provider**, and — if the provider's **attribute condition** matches this repo — receives a short-lived federated token to impersonate the CI service account (`jenkins-2026-ci@…`). No secret is stored; the trust is scoped to the repo (and optionally branch/environment) by that condition. The only repo secrets are four **non-secret identifiers** (`GCP_PROJECT_ID`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT`, `TF_STATE_BUCKET`).
 - **Remote state is mandatory, not a nicety.** `Day1.cluster.01` and `Decom.cluster.01` are **separate workflow runs on fresh runners**, so Terraform state must live in the **GCS bucket** (each module under its own prefix) — that is how a teardown run finds what a provision run created. Local state would be lost between runs.
-- **Five approval gates.** `gke-production` gates the cluster lifecycle + every `Day2.*`; one gate **per persistent Day0 resource** (`gateway-bootstrap`, `grafana-cloud-bootstrap`, `azure-bootstrap`, `aws-bootstrap`) is declared on the reusable workflow itself, so every entry point (standalone dispatch, the `Day1` preflight via `workflow_call`, the `Decom.infra.00` umbrella) inherits the same single approval.
+- **Five approval gates.** `gke-production` gates the cluster lifecycle + every `Day2.*`; one gate **per persistent Day0 resource** (`gateway-bootstrap`, `grafana-cloud-bootstrap`, `azure-bootstrap`, `aws-bootstrap`) is declared on the reusable workflow itself, so every entry point (standalone dispatch, the `Day1` preflight via `workflow_call`, the `Decom.infra.00-all` umbrella) inherits the same single approval.
 
 </details>
 
@@ -177,7 +177,7 @@ graph TD
 > `azure-bootstrap`, `aws-bootstrap`); `gke-production` gates the cluster and all
 > Day2 cluster-ops. See [Environment Protection and Manual Approvals](#environment-protection-and-manual-approvals).
 
-> The four persistent teardowns (`Decom.infra.01..04`) are independent — for a **targeted** teardown run **only** the one(s) you actually provisioned (with the `oss` default, often none), after `Decom.cluster.01`. For a **full** teardown, the opt-in **`Decom.infra.00` ("Everything")** umbrella tears down the cluster **and** every persistent backend in one dispatch (reuses each per-resource Decom via `workflow_call`; type `destroy` to confirm; cluster first, then backends in parallel; backends default on, Gateway IP default off). See [101 § Decom: independent per backend, plus an opt-in umbrella](./101-GITHUB_ACTIONS_WORKFLOWS.md#decom-independent-per-backend-plus-an-opt-in-everything-umbrella).
+> The four persistent teardowns (`Decom.infra.01..04`) are independent — for a **targeted** teardown run **only** the one(s) you actually provisioned (with the `oss` default, often none), after `Decom.cluster.01`. For a **full** teardown, the opt-in **`Decom.infra.00-all` ("Everything")** umbrella tears down the cluster **and** every persistent backend in one dispatch (reuses each per-resource Decom via `workflow_call`; type `destroy` to confirm; cluster first, then backends in parallel; backends default on, Gateway IP default off). See [101 § Decom: independent per backend, plus an opt-in umbrella](./101-GITHUB_ACTIONS_WORKFLOWS.md#decom-independent-per-backend-plus-an-opt-in-everything-umbrella).
 
 > **What `Day1.cluster.01` bootstraps automatically — and what it does not.**
 > `Day1` runs the matching **observability backend** bootstrap as a preflight job
@@ -195,7 +195,7 @@ graph TD
 >
 > **Why the asymmetry:** the Gateway IP/cert are meant to **survive cluster
 > rebuilds** (so DNS never has to re-propagate). That is exactly why the
-> `Decom.infra.00` umbrella leaves the Gateway in place by default (`gateway:false`)
+> `Decom.infra.00-all` umbrella leaves the Gateway in place by default (`gateway:false`)
 > — so the normal "everything decommissioned" state still has the Gateway, and a
 > later `Day1` simply re-binds the in-cluster objects to the existing IP. You only
 > need to (re-)run `Day0.infra.01` **before** `Day1` if you destroyed the Gateway
@@ -204,10 +204,10 @@ graph TD
 > Gateway entirely.
 
 > **One-click from scratch.** To avoid having to remember the Gateway prerequisite,
-> the **`Day1.cluster.00` ("Everything up")** umbrella does both steps in one
+> the **`Day1.cluster.00-all` ("Everything up")** umbrella does both steps in one
 > dispatch — `Day0.infra.01` (Gateway bootstrap) **then** `Day1.cluster.01` (cluster
 > + full stack + the chosen backend bootstrap). It is the symmetric counterpart of
-> the `Decom.infra.00` ("Everything") teardown: **one click up, one click down**,
+> the `Decom.infra.00-all` ("Everything") teardown: **one click up, one click down**,
 > both idempotent. See [101 § Provision umbrella](./101-GITHUB_ACTIONS_WORKFLOWS.md#provision-per-step-workflows-plus-an-opt-in-everything-up-umbrella).
 
 ### Detailed Workflow Reference and Lifecycle Management
@@ -344,7 +344,7 @@ flowchart LR
 
 </details>
 
-**Reading it —** **one gate = one concern**: approving "destroy the Grafana Cloud stack" is logged as exactly that, never as a change to the production cluster. Each per-resource gate is declared on the **reusable** `Day0.infra.0N` / `Decom.infra.0N` workflow itself, so every entry point that `uses:` it — the standalone dispatch, the `Day1` bootstrap preflight (`workflow_call`), and the `Decom.infra.00` "Everything" umbrella — inherits the **same** single approval, with no second, divergent place to configure it.
+**Reading it —** **one gate = one concern**: approving "destroy the Grafana Cloud stack" is logged as exactly that, never as a change to the production cluster. Each per-resource gate is declared on the **reusable** `Day0.infra.0N` / `Decom.infra.0N` workflow itself, so every entry point that `uses:` it — the standalone dispatch, the `Day1` bootstrap preflight (`workflow_call`), and the `Decom.infra.00-all` "Everything" umbrella — inherits the **same** single approval, with no second, divergent place to configure it.
 
 #### Why one environment per resource (design rationale)
 
@@ -365,7 +365,7 @@ Splitting it into one environment **per persistent Day0 resource** (plus
    `Day0.infra.0N` / `Decom.infra.0N` declares its `environment:` on the job
    itself. So **every** entry point that `uses:` it inherits the same single gate:
    the standalone dispatch, the `Day1` bootstrap *preflight* (`Day0.infra.0N` via
-   `workflow_call`), and the **`Decom.infra.00` "Everything" umbrella**. There is
+   `workflow_call`), and the **`Decom.infra.00-all` "Everything" umbrella**. There is
    never a second, divergent place to configure approval.
 
 > **Decommissioning the Gateway — which workflow?** Either path runs the **same**
@@ -373,7 +373,7 @@ Splitting it into one environment **per persistent Day0 resource** (plus
 > identical regardless of how you start it:
 > - **Standalone**: dispatch **`Decom.infra.01 Gateway decommission`** directly —
 >   the normal way to retire just the Gateway.
-> - **Umbrella**: **`Decom.infra.00` ("Everything")** *can* destroy the Gateway,
+> - **Umbrella**: **`Decom.infra.00-all` ("Everything")** *can* destroy the Gateway,
 >   but its `gateway` input **defaults to `false`** (destroying the Gateway loses
 >   the static IP and forces DNS re-propagation). The umbrella tears down the
 >   cluster + observability backends by default and only touches the Gateway when

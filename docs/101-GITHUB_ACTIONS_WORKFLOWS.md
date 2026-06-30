@@ -66,7 +66,7 @@ The punchline: **GitHub sorts the Actions sidebar by each workflow's `name:`, ev
 
 - **Controlled `tier` vocabulary**: `infra` (persistent Day0/Decom) · `cluster` (the GKE cluster) · `redeploy` (re-apply one component) · `publish` (push dashboards/alerts) · `traffic` (k6) · `scale` (pause/resume the node pools to park the cluster at ~zero cost) — deep-dive + the PDB/autoRepair gotchas in [501 § Pausing & resuming](./501-PLATFORM_OPERATIONS.md#pausing--resuming-the-cluster-cost-saving) · `registry` (prune old container image versions from ghcr). The tier-then-`ZZ` order is a real dependency chain in **Create** (`Day0.infra` before `Day1.cluster`) and **Decom** (`cluster` before `infra`), but in **Day2** the tiers are independent *categories*, not stages — nothing chains them.
 - **GKE serialization**: every cluster-touching leaf workflow (`Day1.cluster.01`, `Decom.cluster.01`, and the `Day2.*` that act on the cluster) shares `concurrency: group: jenkins-2026-gke`, so GitHub **queues** them instead of letting two runs race the same Terraform state.
-- **Reusable workflows + umbrellas**: `Day1.cluster.01` `workflow_call`s the matching `Day0.infra.0{2,3,4}` backend bootstrap as a preflight; the two opt-in umbrellas (`Day1.cluster.00` "Everything up" / `Decom.infra.00` "Everything") orchestrate the leaves via `workflow_call` with **no `concurrency:` of their own** (or they would deadlock holding the group their own child job needs).
+- **Reusable workflows + umbrellas**: `Day1.cluster.01` `workflow_call`s the matching `Day0.infra.0{2,3,4}` backend bootstrap as a preflight; the two opt-in umbrellas (`Day1.cluster.00-all` "Everything up" / `Decom.infra.00-all` "Everything") orchestrate the leaves via `workflow_call` with **no `concurrency:` of their own** (or they would deadlock holding the group their own child job needs).
 - **Per-resource approval gates**: each persistent Day0 resource has its own required-reviewer GitHub Environment (`gateway-bootstrap`, `grafana-cloud-bootstrap`, `azure-bootstrap`, `aws-bootstrap`); the cluster + the **provisioning/teardown** Day2 use `gke-production`. The gate travels with the reusable workflow, so every entry point inherits the same single approval. **Exceptions (no gate):** `Day2.traffic.01-k6` and `Day2.traffic.02-rum` drive only read-only HTTP traffic against the already-running public endpoints (provision/destroy nothing, all secrets repo-level), and `Day2.registry.01-image-retention` only prunes old ghcr image versions (cluster-independent, its own `jenkins-2026-image-retention` concurrency group) — so their gates were removed to unblock automation/scheduling. Note the `Day2.scale.*` pause/resume workflows **are** `gke-production`-gated (they reconfigure node pools on the live cluster). See [102 § Environment Protection](./102-GITHUB_ACTIONS_AUTOMATION.md#environment-protection-and-manual-approvals).
 - **Cross-cutting `log_level` input**: every dispatchable workflow exposes a `log_level` dropdown (`info` default | `debug`); reusable workflows mirror it as a `workflow_call` input and the umbrellas/preflights pass it down. It exports `JENKINS2026_LOG_LEVEL` (drives `log_debug` in the scripts) and `TF_LOG=DEBUG` for the Terraform steps (only at `debug`). There is **no `trace`/`set -x` level** by design — bash xtrace would leak script-derived secret values GitHub doesn't mask; use the native `ACTIONS_STEP_DEBUG` for runner-level tracing. Durable default lives in `config.yaml` (`logging.level`).
   - **Don't confuse it with the observability volume knobs** on the same workflows (`Day1.cluster.01-gke` + the `Day1.cluster.00-all` umbrella, and the lighter `Day2.redeploy.01-argocd` / `Day2.publish.01-oss-grafana`): **`grafana_cloud_tier`** (`free` default | `paid`) is a profile that sets the free-tier-fitting defaults, and **`log_min_severity`** (`auto` default → derives from tier; or force a level) is the `otel-collector-logs` `filter` that trims **Grafana's logs panels** (app + platform). Both are unrelated to the CI run's chattiness. The tier governs **metrics** (`leanMetrics`) **and logs** (`logMinSeverity`) today (not traces yet). Durable defaults in `config.yaml` `observability.{grafanaCloudTier,leanMetrics,logMinSeverity}`; see [301 § Log Levels](./301-OBSERVABILITY.md#log-levels).
@@ -165,12 +165,12 @@ The GitHub Actions sidebar sorts by each workflow's `name:` field, and every `na
 
 > **CI engine choice.** `Day1.cluster.01-gke` has a `ci_engine` input (`jenkins` default | `tekton`) that flows to [`scripts/up.sh`](../scripts/up.sh) as `JENKINS2026_CI_ENGINE`, selecting which CI engine the provision installs. The `redeploy` tier therefore holds `01` ArgoCD, `02` Jenkins, `03` Tekton, `04` Headlamp — `02` and `03` are mutually-exclusive engines. See [403. Tekton](./403-TEKTON.md) for the deep-dive.
 
-> **Full-teardown umbrella.** `Decom.infra.00` ("Everything") is an opt-in convenience workflow that tears down the GKE cluster **and** every persistent observability backend in one dispatch — so switching `observability.mode` around never leaves a forgotten, billed backend (e.g. an orphaned Grafana Cloud stack from before you moved to managed-azure). It reuses each per-resource Decom workflow via `workflow_call` (no teardown logic is duplicated); type `destroy` to confirm. The cluster runs first (its decom also destroys the ephemeral `grafana-cloud-token` that references the Grafana Cloud stack), then the backends in parallel. The three backend checkboxes default **on**; the Gateway static IP defaults **off** (keeping it avoids losing the IP and re-propagating DNS). Untick any to spare it.
+> **Full-teardown umbrella.** `Decom.infra.00-all` ("Everything") is an opt-in convenience workflow that tears down the GKE cluster **and** every persistent observability backend in one dispatch — so switching `observability.mode` around never leaves a forgotten, billed backend (e.g. an orphaned Grafana Cloud stack from before you moved to managed-azure). It reuses each per-resource Decom workflow via `workflow_call` (no teardown logic is duplicated); type `destroy` to confirm. The cluster runs first (its decom also destroys the ephemeral `grafana-cloud-token` that references the Grafana Cloud stack), then the backends in parallel. The three backend checkboxes default **on**; the Gateway static IP defaults **off** (keeping it avoids losing the IP and re-propagating DNS). Untick any to spare it.
 
 Both umbrellas are thin orchestrators — they own no teardown/provision logic, they only `workflow_call` the per-resource workflows. The graph below shows the *job-level* fan-out the two prose notes above describe: the **up** umbrella is a **two-level nest** (its `provision` job *is* `Day1.cluster.01-gke`, which itself fans out to the per-backend `Day0.infra.0N` preflight — a workflow reusing a workflow reusing a workflow), and the **down** umbrella is `guard → cluster-first → parallel backends` with concrete default-checkbox states. It also pins down *why* the umbrellas carry **no** concurrency group while the leaf cluster workflows do — a group on the umbrella would deadlock against its own child in the same `jenkins-2026-gke` group.
 
 <details>
-<summary>📊 Umbrella fan-out — how Day1.cluster.00 / Decom.infra.00 reuse the per-resource workflows (workflow_call) + where gke serialization attaches</summary>
+<summary>📊 Umbrella fan-out — how Day1.cluster.00-all / Decom.infra.00-all reuse the per-resource workflows (workflow_call) + where gke serialization attaches</summary>
 
 ```mermaid
 flowchart TD
@@ -335,8 +335,8 @@ flowchart TD
         P9_1 -->|"cluster gone<br/>no dangling references"| P9_2
     end
 
-    UP["🟢 Day1.cluster.00 — Everything up<br/>(one-click umbrella: Gateway + cluster + backend)"]:::umbrella
-    DOWN["🔴 Decom.infra.00 — Everything<br/>(one-click umbrella: cluster + all backends)"]:::umbrella
+    UP["🟢 Day1.cluster.00-all — Everything up<br/>(one-click umbrella: Gateway + cluster + backend)"]:::umbrella
+    DOWN["🔴 Decom.infra.00-all — Everything<br/>(one-click umbrella: cluster + all backends)"]:::umbrella
     UP -.->|"orchestrates"| PHASE0
     DOWN -.->|"orchestrates"| PHASE9
 
@@ -408,7 +408,7 @@ flowchart TD
     day1 -.->|workflow_call: Decom.infra.02/03/04<br/>tear down NON-selected backends| bk
     decom -.->|persistent kept<br/>backends + root survive| gw
     nocc["Day2.registry.01-image-retention<br/>no cluster — separate group (jenkins-2026-image-retention)"]:::nocc
-    umb["umbrellas Day1.cluster.00 / Decom.infra.00<br/>no concurrency — orchestrate via workflow_call"]:::umb
+    umb["umbrellas Day1.cluster.00-all / Decom.infra.00-all<br/>no concurrency — orchestrate via workflow_call"]:::umb
     umb -.-> day1
     umb -.-> decom
     classDef root fill:#ffd,stroke:#aa0,stroke-width:2px;
@@ -513,7 +513,7 @@ flowchart TD
 
     subgraph D1["Day1 — cluster provision (once per session)"]
         direction LR
-        w0200["Day1.cluster.00<br/>Everything up (umbrella)"]
+        w0200["Day1.cluster.00-all<br/>Everything up (umbrella)"]
         w0201["Day1.cluster.01<br/>GKE provision<br/>(runs scripts/up.sh in full)"]
         w0200 -->|"orchestrates"| w0201
     end
@@ -549,7 +549,7 @@ flowchart TD
 
     subgraph DECOM["Decom (reverse order)"]
         direction LR
-        w9000["Decom.infra.00<br/>Everything teardown (umbrella)"]
+        w9000["Decom.infra.00-all<br/>Everything teardown (umbrella)"]
         w9101["Decom.cluster.01<br/>GKE decommission"]
         w9201["Decom.infra.01<br/>Gateway IP (default OFF)"]
         w92xx["Decom.infra.02–04<br/>Persistent backends<br/>(grafana-cloud / azure / aws)"]
@@ -628,7 +628,7 @@ A new session (reprovision after full teardown) only needs **Day1** — Day0 out
 
 All 27 workflows in a single numbered table (rows 1–25 in filename/execution order; **rows 26–27** are the two opt-in **umbrellas** — full-teardown and full-provision — which orchestrate the others and sit outside the linear runbook). The filename's three components (`DayN`, `tier`, `ZZ`) are broken out separately so the meaning of every part is visible at a glance. Click the code to open the workflow's **Run workflow** page directly in GitHub Actions.
 
-> **Reading the sequence**: rows are ordered by filename (= correct execution order). `Day0`/`Day1` before `Day2` before `Decom`; within `Decom`, the cluster (row 21) before the persistent backends (rows 22–25). This ordering is **enforced by the `name:` prefixes** — opening the GitHub Actions sidebar and reading top-to-bottom gives the correct runbook. Row 26 (`Decom.infra.00`) is an opt-in umbrella that orchestrates a full teardown (it runs rows 21–25 for you, cluster first) and is therefore outside the linear order. Row 27 (`Day1.cluster.00`) is its symmetric **provision** umbrella — one click runs the Gateway bootstrap (row 1) then the cluster provision (row 5), which itself bootstraps the chosen backend — and is likewise outside the linear order (its filename sorts at position 5, before `Day1.cluster.01`). Row 20 (`Day2.registry.01-image-retention`) is a Day2-only ops workflow (ghcr image prune) with no Day0/Decom counterpart.
+> **Reading the sequence**: rows are ordered by filename (= correct execution order). `Day0`/`Day1` before `Day2` before `Decom`; within `Decom`, the cluster (row 21) before the persistent backends (rows 22–25). This ordering is **enforced by the `name:` prefixes** — opening the GitHub Actions sidebar and reading top-to-bottom gives the correct runbook. Row 26 (`Decom.infra.00-all`) is an opt-in umbrella that orchestrates a full teardown (it runs rows 21–25 for you, cluster first) and is therefore outside the linear order. Row 27 (`Day1.cluster.00-all`) is its symmetric **provision** umbrella — one click runs the Gateway bootstrap (row 1) then the cluster provision (row 5), which itself bootstraps the chosen backend — and is likewise outside the linear order (its filename sorts at position 5, before `Day1.cluster.01`). Row 20 (`Day2.registry.01-image-retention`) is a Day2-only ops workflow (ghcr image prune) with no Day0/Decom counterpart.
 
 | # | `DayN` — Phase | `tier` — group | `ZZ` resource | Code → GitHub Actions | Description | Prerequisites | Frequency |
 |:---:|---|---|---|---|---|---|---|
@@ -671,25 +671,25 @@ the chosen backend as a preflight). The one structural gap is the **Gateway**:
 `Day1` references the static IP/cert by name but does **not** create them, so a
 truly-from-zero account needs `Day0.infra.01` first.
 
-**`Day1.cluster.00` ("Everything up")** closes that gap in **one click**: it
+**`Day1.cluster.00-all` ("Everything up")** closes that gap in **one click**: it
 `workflow_call`s `Day0.infra.01` (Gateway bootstrap) then `Day1.cluster.01`
 (cluster + full stack + the selected backend bootstrap), in order (`needs`, with
 `always() && !failure()` so a *skipped* gateway step — `bootstrap_gateway:false` —
 doesn't skip provision). Every called workflow is idempotent, so this is safe from
 absolute zero (it allocates the static IP — follow the job summary to point DNS at
-it) **or** from the usual decommissioned state (where `Decom.infra.00` left the
+it) **or** from the usual decommissioned state (where `Decom.infra.00-all` left the
 Gateway in place, so the IP is unchanged and no DNS change is needed). Approvals
 are the natural per-resource set: `gateway-bootstrap` + the selected backend's env
 (via Day1's preflight) + `gke-production`. No provisioning logic is duplicated — the
 umbrella only orchestrates the existing reusable workflows.
 
-> **Umbrellas carry NO `concurrency:` block** (both `Day1.cluster.00` and
-> `Decom.infra.00`). The GKE serialization lives on the leaf workflows that actually
+> **Umbrellas carry NO `concurrency:` block** (both `Day1.cluster.00-all` and
+> `Decom.infra.00-all`). The GKE serialization lives on the leaf workflows that actually
 > touch the cluster (`Day1.cluster.01` / `Decom.cluster.01`, group `jenkins-2026-gke`).
 > If an umbrella *also* declared that group it would **hold** it while waiting for its
 > own `provision`/`cluster` job — which needs the same group — deadlocking the reusable
 > call; GitHub then fails the run before that job starts (this happened once on
-> `Day1.cluster.00` and was fixed by removing its `concurrency`). The
+> `Day1.cluster.00-all` and was fixed by removing its `concurrency`). The
 > `Day0.infra.0N` bootstraps have no concurrency group, so nesting them under the
 > cluster workflow never deadlocks either.
 
@@ -697,7 +697,7 @@ umbrella only orchestrates the existing reusable workflows.
 
 The persistent backends (Gateway IP/cert, Grafana Cloud, Azure, AWS) each have their **own** `Decom.infra.0{1..4}` workflow — one `terraform destroy` per module. They are independent and persistent: you normally use only one per cluster (and with the `oss` default, often none at all). For a **targeted** teardown, run **only** the per-backend workflow(s) for what you actually provisioned, after `Decom.cluster.01-gke`.
 
-For a **full** teardown there is also an opt-in umbrella, **`Decom.infra.00` ("Everything")**, that tears down the cluster **and** every persistent backend in one dispatch — so switching `observability.mode` around never leaves a forgotten, billed backend (e.g. an orphaned Grafana Cloud stack from before you moved to managed-azure). It reuses each per-resource Decom via `workflow_call` (no teardown logic is duplicated); type `destroy` to confirm. Order is enforced with `needs`: the **cluster runs first** (its decom also destroys the ephemeral `grafana-cloud-token`, which references the Grafana Cloud stack), then the backends destroy in parallel. The three backend checkboxes default **on** (the point is destroy-all); the Gateway static IP defaults **off** (keeping it avoids losing the IP and re-propagating DNS). Untick any to spare it. This is the one place a cascade is intentional — gated behind the explicit `destroy` confirmation and per-backend opt-out.
+For a **full** teardown there is also an opt-in umbrella, **`Decom.infra.00-all` ("Everything")**, that tears down the cluster **and** every persistent backend in one dispatch — so switching `observability.mode` around never leaves a forgotten, billed backend (e.g. an orphaned Grafana Cloud stack from before you moved to managed-azure). It reuses each per-resource Decom via `workflow_call` (no teardown logic is duplicated); type `destroy` to confirm. Order is enforced with `needs`: the **cluster runs first** (its decom also destroys the ephemeral `grafana-cloud-token`, which references the Grafana Cloud stack), then the backends destroy in parallel. The three backend checkboxes default **on** (the point is destroy-all); the Gateway static IP defaults **off** (keeping it avoids losing the IP and re-propagating DNS). Untick any to spare it. This is the one place a cascade is intentional — gated behind the explicit `destroy` confirmation and per-backend opt-out.
 
 ## Day2 ordering: tiers are categories, not stages
 

@@ -68,7 +68,7 @@ kubectl -n argocd patch statefulset argocd-application-controller --type merge \
 
 ## Decommission stalls (`terraform destroy` hangs for hours on `DELETE_NODE_POOL`)
 
-**Symptom**: a teardown (`Decom.cluster.01`, or the `Decom.infra.00` umbrella) runs
+**Symptom**: a teardown (`Decom.cluster.01`, or the `Decom.infra.00-all` umbrella) runs
 for hours and never finishes. `gcloud container operations list --filter='status!=DONE'`
 shows a **`DELETE_NODE_POOL` stuck `RUNNING`**; the cluster is `RECONCILING` with its
 nodes still alive; `kubectl get pods -A` shows CNPG `postgres-*-N` pods stuck
