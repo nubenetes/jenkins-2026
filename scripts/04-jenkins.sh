@@ -136,6 +136,7 @@ kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_N
     --arg genai "${J2026_MICROSERVICES_GENAI_SERVICE_ENABLED}" \
     --arg dev "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" \
     --arg cc "${gke_compute_class}" \
+    --arg rnp "${J2026_JENKINS_RUN_NODE_POOL}" \
     '{stringData:{
         "grafana-base-url":$gbu,
         "grafana-k8s-app-link":$gk8s,
@@ -146,17 +147,18 @@ kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_N
         "repo-branch":$br,
         "genai-enabled":$genai,
         "develop-enabled":$dev,
-        "gke-compute-class":$cc
+        "gke-compute-class":$cc,
+        "run-node-pool":$rnp
     }}')"
 
 # Rolls the controller whenever the Secret-backed banner/behaviour values change
 # (ArgoCD won't roll on an out-of-band Secret edit otherwise) - passed as the
 # controller.podAnnotations.bannerLinksChecksum helm parameter below.
-banner_links_checksum="$(printf '%s|%s|%s|%s|%s|%s|%s|%s' \
+banner_links_checksum="$(printf '%s|%s|%s|%s|%s|%s|%s|%s|%s' \
   "${grafana_base_url}" "${grafana_k8s_app_link}" "${microservices_url}" \
   "${microservices_develop_url}" \
   "${jenkins_public_url}" "${J2026_SELF_REPO_BRANCH}" "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" \
-  "${gke_compute_class}" \
+  "${gke_compute_class}" "${J2026_JENKINS_RUN_NODE_POOL}" \
   | sha256sum | cut -c1-16)"
 
 # --- JCasC ConfigMaps (single source: jenkins/casc/*) ------------------------
