@@ -18,6 +18,49 @@ so running the app pipeline as GHA closes the loop with **native GitHub webhooks
 (no separate trigger component) and **no in-cluster UI** (runs are viewed in
 GitHub's Actions tab).
 
+## ⭐ Where do I see the pipelines? (there is **no in-cluster UI**)
+
+This is the one thing that surprises everyone arriving from the other three engines.
+Jenkins, Tekton and Argo Workflows each ship an **in-cluster dashboard** (behind Google
+IAP); **GitHub Actions does not — by design.** GitHub.com *is* the UI: it stores the
+workflow, queues the jobs and shows the logs. ARC's only job is to supply the **runners**.
+So there is nothing to port-forward and no `…jenkins2026.nubenetes.com` URL for CI — you
+watch builds on github.com.
+
+| CI engine (`ci.engine`) | Where you watch a pipeline run |
+| --- | --- |
+| `jenkins` (default) | Jenkins UI — `https://jenkins.<domain>` (in-cluster, IAP) |
+| `tekton` | Tekton Dashboard — `https://tekton.<domain>` (in-cluster, IAP) |
+| `argoworkflows` | Argo Workflows UI — `https://argo.<domain>` (in-cluster, IAP) |
+| **`githubactions`** | **Each microservices fork's _Actions_ tab on github.com** — *no in-cluster URL* |
+
+When `ci.engine=githubactions`, the "pipelines" are the **`microservices-ci.yml` GitHub
+Actions workflows** that [`scripts/06-githubactions-pipelines.sh`](../scripts/06-githubactions-pipelines.sh)
+renders into each microservices fork (from the shared
+[`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml) — the same
+registry Jenkins and Tekton read). You watch them at:
+
+- **<https://github.com/nubenetes/jhipster-sample-app-gateway/actions>**
+- **<https://github.com/nubenetes/jhipster-sample-app-microservice/actions>**
+
+The `Day1.cluster.01-gke` **Access URLs** step prints these exact per-fork links for the run
+(generated from `services.yaml`, so they track whatever forks are configured). The runner
+pods that execute the jobs *are* in-cluster (`arc-runners` namespace, `ci-spot` Spot nodes,
+one ephemeral pod per job, `minRunners: 0` scale-to-zero) — but you never look at the cluster
+to follow a build; you look at GitHub.
+
+> **⚠️ First-run gotcha — a run stuck on "Waiting for a runner".** A workflow run that was
+> queued *before* the `AutoscalingRunnerSet` finished registering with GitHub stays `queued`
+> **forever**: GitHub does **not** retroactively hand a pre-existing queued job to a freshly
+> registered scale set. This is GitHub behaviour, not a cluster bug. The fix is to
+> **re-trigger** (any new `push`/PR to the fork) once the listener is up —
+> `kubectl -n arc-systems get pods | grep listener` shows a **Running** `…-listener` pod when
+> registration succeeded. (`workflow_dispatch` is intentionally not wired, so a fresh push/PR
+> is how you re-trigger.) If registration itself is failing, see the §9.5 troubleshooting in
+> [`103-GITHUB_SECRETS_INVENTORY.md`](./103-GITHUB_SECRETS_INVENTORY.md) (the GitHub App needs
+> org **Self-hosted runners: Read & write**, and the controller must be rolled to re-read a
+> changed `arc-github-app` Secret).
+
 ## Understanding ARC (newcomers → specialists)
 
 ARC is **GitHub Actions, but the runners live in your cluster**. There is no

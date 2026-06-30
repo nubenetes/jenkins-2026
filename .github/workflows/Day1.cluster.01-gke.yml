@@ -675,7 +675,21 @@ jobs:
             ci_iap="    Tekton Dashboard:      https://tekton.${dom}"
             ci_open=$'\n''    Tekton PaC webhook:    https://pac.'"${dom}"'  (GitHub -> Pipelines-as-Code, HMAC, no IAP)'
           elif [[ "${engine}" == "githubactions" ]]; then
-            ci_iap="    CI (GitHub Actions):   https://github.com/nubenetes  (runs in the Actions tab; ARC ephemeral Spot runners, no in-cluster UI)"
+            # GitHub Actions has NO in-cluster UI (unlike the Jenkins UI / Tekton Dashboard /
+            # Argo UI). GitHub.com is the control plane — it stores the workflow, queues the
+            # jobs and shows the logs; ARC only supplies the in-cluster ephemeral Spot runners.
+            # So the "pipelines" are the microservices-ci.yml workflows in each microservices
+            # fork, watched in that fork's Actions tab. List them from the SAME services.yaml the
+            # seed renders from (06-githubactions-pipelines.sh), so the URLs are always accurate.
+            ci_iap="    CI (GitHub Actions):   no in-cluster UI — pipelines run in each fork's Actions tab:"
+            svc_file="jenkins/pipelines/seed/services.yaml"
+            if command -v yq >/dev/null 2>&1 && [[ -f "${svc_file}" ]]; then
+              while IFS= read -r u; do
+                [[ -z "${u}" || "${u}" == "null" ]] && continue
+                ci_iap+=$'\n'"      ${u%.git}/actions"
+              done < <(yq -r '.services[].repoUrl' "${svc_file}" 2>/dev/null | sort -u)
+            fi
+            ci_iap+=$'\n'"      (ARC ephemeral Spot runners execute these — GitHub hosts the UI; see docs/404)"
             ci_open=""
           elif [[ "${engine}" == "argoworkflows" ]]; then
             ci_iap="    Argo Workflows UI:     https://argo.${dom}"
@@ -741,7 +755,15 @@ jobs:
               if [[ "${engine}" == "tekton" ]]; then
                 echo "- **Tekton Dashboard**: [https://tekton.${dom}](https://tekton.${dom})"
               elif [[ "${engine}" == "githubactions" ]]; then
-                echo "- **CI (GitHub Actions)**: [github.com/nubenetes](https://github.com/nubenetes) — runs in the Actions tab (ARC ephemeral Spot runners, no in-cluster UI)"
+                # No in-cluster UI: one clickable Actions-tab link per microservices fork.
+                echo "- **CI (GitHub Actions)** — no in-cluster UI; pipelines run in each fork's Actions tab (ARC ephemeral Spot runners):"
+                svc_file="jenkins/pipelines/seed/services.yaml"
+                if command -v yq >/dev/null 2>&1 && [[ -f "${svc_file}" ]]; then
+                  while IFS= read -r u; do
+                    [[ -z "${u}" || "${u}" == "null" ]] && continue
+                    base="${u%.git}"; echo "  - [${base##*/}](${base}/actions)"
+                  done < <(yq -r '.services[].repoUrl' "${svc_file}" 2>/dev/null | sort -u)
+                fi
               elif [[ "${engine}" == "argoworkflows" ]]; then
                 echo "- **Argo Workflows UI**: [https://argo.${dom}](https://argo.${dom})"
               else
