@@ -253,6 +253,69 @@ The repository has been refactored to serve as a **Golden Path Internal Develope
 > and read the `SSD_TOTAL_GB` quota ceiling + cold-start behaviour) see the
 > [NAP → Spot CI nodes runbook](./runbooks/nap-spot-provisioning.md).
 
+#### The `SSD_TOTAL_GB` quota — how it's computed, what it costs, and the increase request
+
+> **TL;DR** — `SSD_TOTAL_GB` is a **regional GCP quota** (currently **500 GB** in `europe-southwest1`) that caps the *total* SSD-backed disk in the region. It counts **every** `pd-ssd` **and** `pd-balanced` disk — node boot disks *and* PVs — so it is the **binding capacity ceiling** for the cluster, and the reason `ci-spot` elasticity is bounded. It is **only meaningfully consumed at scale by `ci-spot`**; the `static` default needs no extra headroom.
+
+**How the quota is computed — every SSD disk sums against the 500 GB ceiling:**
+
+```mermaid
+flowchart LR
+    PV["① Persistent PVs — survive pause<br/>CNPG Postgres HA (data+WAL × instances × services)<br/>+ ArgoCD / Jenkins / Tekton workspace PVCs<br/>≈ 102 GB · 54 disks (measured, paused)"]
+    STATIC["② Static pool boot disks<br/>2–4 × e2-standard-8 × 50 GB<br/>= 100–200 GB"]
+    SPOT["③ ci-spot NAP node boot disks<br/>N × 50 GB — elastic, one per concurrent build node<br/>(0 when no CI running)"]
+
+    PV --> SUM{{"Σ must stay ≤ 500 GB<br/>(SSD_TOTAL_GB, region-wide)"}}
+    STATIC --> SUM
+    SPOT --> SUM
+    SUM -->|"within budget"| OK["✅ disks provision · nodes come up"]
+    SUM -->|"exceeds 500"| BAD["❌ GCE refuses the disk<br/>agent Pod stuck Pending<br/>ScaleUpFailed … Quota 'SSD_TOTAL_GB' exceeded"]
+
+    classDef ok fill:#0b6,stroke:#063,color:#fff;
+    classDef bad fill:#c50,stroke:#720,color:#fff;
+    class OK ok;
+    class BAD bad;
+```
+
+①+② are **fixed** (the platform + databases); only **③ grows** with `ci-spot` concurrency. So the usable Spot budget is roughly `500 − (PVs) − (static disks)` ÷ 50 GB ≈ **3–4 concurrent Spot CI nodes** before the ceiling bites.
+
+**Usage these days (measured, limit = 500 GB):**
+
+| Cluster state | SSD used | % of 500 | What's on disk |
+|---|---|---|---|
+| **Paused** (`Day2.scale.01`, nodes → 0) | **102 GB** | **~20 %** | only ① — the 54 persistent PVs (DBs + platform); node disks are deleted |
+| **Running, idle CI** | ~200 GB | ~40 % | ① + 2 static node disks |
+| **Running, CI under load (peak observed)** | ~492 GB | **~98 %** | ① + up to 4 static + several `ci-spot` Spot nodes — *this is where builds wedged* |
+
+**Cost** (approximate GCP list prices for `europe-southwest1`; verify in the [pricing calculator](https://cloud.google.com/products/calculator)):
+
+| Item | ≈ Rate | Note |
+|---|---|---|
+| `pd-balanced` disk | ~$0.10 / GB·month | node boot disks + CNPG data PVs |
+| `pd-ssd` disk | ~$0.17 / GB·month | CNPG WAL + small PVCs |
+| **Disk while *paused*** | **≈ $13 / month** | the 102 GB of PVs persist (+ the static IP ~$7) — this is the floor you pay when paused |
+| `e2-standard-8` static node | ~$0.22 / hour ≈ $160 / month each (24×7) | the compute; **Spot is ~60–80 % cheaper** (see [docs/201 § FinOps](../docs/201-ARCHITECTURE.md#finops--cost-analysis)) |
+| `ci-spot` Spot node | per-minute, **scale-to-zero** | billed only while a build runs; $0 at rest |
+| **Quota increase request** | **$0** | the quota itself is free — you only pay for disks you actually create |
+
+> 💡 The quota does **not** cost anything — raising it to 2000 does **not** raise the bill. You only ever pay for the disks you actually provision. The quota is purely a *safety ceiling*; the cost lever is **Pause** (drops compute to ~$13/mo) or **Decom** (drops to ~$0).
+
+**The increase request to Google (500 → 2000):**
+- A consumer-quota **override** caps at the self-service max, which for `SSD_TOTAL_GB` **equals the current limit (500)** → higher returns `COMMON_QUOTA_CONSUMER_OVERRIDE_TOO_HIGH`. **Not Terraform-able** (an override to 2000 would fail the apply).
+- Going above 500 needs an **approved increase request**, submitted via the **Cloud Quotas API** as a `QuotaPreference` (`cloudquotas.googleapis.com`, quotaId `SSD-TOTAL-GB-per-project-region`, region `europe-southwest1`).
+- **Status:** a request to **2000** was filed (`QuotaPreference ssd-total-gb-esw1`); it currently shows `preferredValue: 2000`, `grantedValue: 500`, i.e. **pending Google's approval** (small bumps auto-approve, a 4× may go to human review — minutes to days). Re-`GET` the preference (or Console → *IAM & Admin → Quotas*) and watch `grantedValue` catch up.
+
+**Roadmap / decision guide:**
+
+| Goal | Action |
+|---|---|
+| **Default / now** — robust CI, no quota pressure | `{jenkins,tekton}.runNodePool: static` (no per-build disk). 500 GB is plenty. |
+| **Cut idle cost** | **Pause** (`Day2.scale.01`) → ~$13/mo · or **Decom** → ~$0 |
+| **Enable Spot CI at concurrency** | Wait for the 500 → 2000 grant, **then** flip **Jenkins** to `runNodePool: ci-spot` (best Spot fit). Tekton stays `static`. |
+| **More DB headroom without more quota** | reduce the HA Postgres footprint (3 → 1 instance on the develop tier) — fewer PVs |
+
+See the live-validation steps + the exact API call in [`docs/runbooks/nap-spot-provisioning.md`](runbooks/nap-spot-provisioning.md).
+
 #### Jenkins vs Tekton on Spot (`ci-spot`) — why the placement flag is *per engine*
 
 Both CI engines can target the `ci-spot` ComputeClass, but they have **fundamentally different pod-scheduling shapes**, so the same Spot node behaves very differently under each. This is why placement is a **separate flag per engine** ([`jenkins.runNodePool`](../config/config.yaml) / [`tekton.runNodePool`](../config/config.yaml)) rather than one shared knob — you want to make the engine-appropriate choice, and the engines are mutually exclusive anyway (`ci.engine`) so a shared flag would only ever describe the active one.
