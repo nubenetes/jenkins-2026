@@ -9,6 +9,12 @@ on:
     branches: [{{branches}}]      # 'main' (+ 'develop' when the develop track is enabled)
   pull_request:
     branches: [main]
+  # Manual 1-click run from the fork's Actions tab ("Run workflow"). This is a BRANCH-BASED
+  # tier model — the branch you pick in "Use workflow from" IS the environment selector:
+  # ENV_NAME / TARGET_NS below derive from github.ref_name, so Run workflow -> develop
+  # builds+deploys the DEVELOP tier (ns {{nsDevelop}}), -> main the STABLE tier (ns {{nsStable}}).
+  # Same trigger the seed uses for githubactions.seedRuns (gh workflow run). See docs/404.
+  workflow_dispatch:
 permissions:
   contents: read
   security-events: write          # native SARIF upload (Semgrep + CodeQL)
