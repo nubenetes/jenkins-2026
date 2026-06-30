@@ -312,7 +312,7 @@ doesn't leave you there, which makes it easy to miss). The reliable way is the A
 ```bash
 gh api orgs/nubenetes/installations \
   --jq '.installations[] | "\(.app_slug): app_id=\(.app_id) installation_id=\(.id)"'
-# -> nubenetes-arc-runners: app_id=4184316 installation_id=143564289
+# -> nubenetes-arc-runners: app_id=<APP_ID> installation_id=<INSTALLATION_ID>
 ```
 
 > **Git Bash on Windows:** omit the leading slash — `orgs/...`, **not** `/orgs/...` —
