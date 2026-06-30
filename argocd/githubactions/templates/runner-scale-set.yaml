@@ -24,6 +24,17 @@ spec:
         runnerScaleSetName: '{{ .Values.runnerScaleSetName }}'
         minRunners: {{ .Values.minRunners }}
         maxRunners: {{ .Values.maxRunners }}
+        # The gha-runner-scale-set chart auto-discovers the controller's ServiceAccount
+        # via a Helm `lookup` (by the app.kubernetes.io/part-of=gha-rs-controller label) to
+        # build the manager RoleBinding. ArgoCD renders with `helm template` — which has NO
+        # live-cluster access for `lookup` — so the discovery returns nothing and the whole
+        # render fails ("No gha-rs-controller deployment found ... Consider setting
+        # controllerServiceAccount.name"), leaving the AutoscalingRunnerSet uncreated. Set it
+        # explicitly so the render is hermetic. controller.yaml pins releaseName: arc, so the
+        # controller SA is deterministically arc-gha-rs-controller in the controlPlane ns.
+        controllerServiceAccount:
+          namespace: '{{ .Values.namespace.controlPlane }}'
+          name: arc-gha-rs-controller
         containerMode:
           type: '{{ .Values.containerMode }}'
         template:
