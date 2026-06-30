@@ -788,7 +788,7 @@ See [docs/102 § Optional secrets](102-GITHUB_ACTIONS_AUTOMATION.md#step-4-add-g
 
 ## k6 Observability Smoke Test
 
-> **Full reference:** this section covers the *default* smoke test that feeds Grafana. For the complete, parametrizable k6 story — load/stress/soak/spike/breakpoint **profiles**, the `K6SIM_*` contract, all three runners (Jenkins/Tekton/GitHub Actions), `stable`-vs-`develop` targeting, and the layered result analysis — see **[302 · k6 Traffic, Load & Observability Testing](./302-K6_LOAD_TESTING.md)**.
+> **Full reference:** this section covers the *default* smoke test that feeds Grafana. For the complete, parametrizable k6 story — load/stress/soak/spike/breakpoint **profiles**, the `K6SIM_*` contract, all four runners (Jenkins/Tekton/GitHub Actions/Argo Workflows), `stable`-vs-`develop` targeting, and the layered result analysis — see **[302 · k6 Traffic, Load & Observability Testing](./302-K6_LOAD_TESTING.md)**.
 
 `microservices-k6-smoke` runs [`jenkins/pipelines/k6/microservices-smoke.js`](../jenkins/pipelines/k6/microservices-smoke.js) via [`vars/microservicesK6Smoke.groovy`](../vars/microservicesK6Smoke.groovy). This is **not a load/stress test** — it's an on-demand way to give Grafana a fresh, fully-correlated trace/metric/log example across the whole app:
 

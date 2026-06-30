@@ -26,7 +26,7 @@
 - **One script, one contract.** A single [`jenkins/pipelines/k6/microservices-smoke.js`](jenkins/pipelines/k6/microservices-smoke.js) driven by **one `K6SIM_*` variable contract** — backward-compatible, so *no parameters* = the original lightweight smoke test.
 - **Six workload profiles.** From a 12-iteration **smoke** test to real **load · stress · soak · spike · breakpoint** runs, each a sensible preset shape you can still fine-tune (VUs, duration, ramping stages, arrival rate, thresholds).
 - **Committed presets, pick-from-a-menu.** Whole named configs live as **YAML files in git** ([`presets/`](./jenkins/pipelines/k6/presets/)) and are **selectable from a dropdown**; any field you type by hand overrides the preset (**manual > preset > default**).
-- **The same test from all three runners.** **Jenkins**, **Tekton** and **GitHub Actions** run the identical script and contract, against **both the `stable` and `develop` tiers**.
+- **The same test from all four runners.** **Jenkins**, **Tekton**, **GitHub Actions** and **Argo Workflows** run the identical script and contract, against **both the `stable` and `develop` tiers**.
 - **One Grafana, layered analysis.** Every run exports OTLP into the **same Grafana** (correlated with the app's own telemetry) and prints a **basic→expert result analysis** inline (latency percentiles, throughput, threshold pass/fail + verdict).
 
 <details>
@@ -282,7 +282,7 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 - [The parameter contract (`K6SIM_*`)](./docs/302-K6_LOAD_TESTING.md#the-parameter-contract-k6sim_)
 - [Workload profiles](./docs/302-K6_LOAD_TESTING.md#workload-profiles)
 - [Config presets (committed test configs) + inventory matrix & per-preset diagrams](./docs/302-K6_LOAD_TESTING.md#config-presets-committed-test-configs)
-- [Running it — the three engines](./docs/302-K6_LOAD_TESTING.md#running-it--the-three-engines) ([Jenkins](./docs/302-K6_LOAD_TESTING.md#jenkins) · [Tekton](./docs/302-K6_LOAD_TESTING.md#tekton) · [GitHub Actions](./docs/302-K6_LOAD_TESTING.md#github-actions))
+- [Running it — the four engines](./docs/302-K6_LOAD_TESTING.md#running-it--the-four-engines) ([Jenkins](./docs/302-K6_LOAD_TESTING.md#jenkins) · [Tekton](./docs/302-K6_LOAD_TESTING.md#tekton) · [GitHub Actions](./docs/302-K6_LOAD_TESTING.md#github-actions) · [Argo Workflows](./docs/302-K6_LOAD_TESTING.md#argo-workflows))
 - [Tutorials (basic & advanced)](./docs/302-K6_LOAD_TESTING.md#tutorials)
 - [Reading the results — basic & expert](./docs/302-K6_LOAD_TESTING.md#reading-the-results--basic--expert)
 - [stable vs develop — compatibility matrix](./docs/302-K6_LOAD_TESTING.md#stable-vs-develop--compatibility-matrix)
