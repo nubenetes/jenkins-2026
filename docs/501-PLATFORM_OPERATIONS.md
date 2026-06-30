@@ -257,6 +257,26 @@ The repository has been refactored to serve as a **Golden Path Internal Develope
 
 Both CI engines can target the `ci-spot` ComputeClass, but they have **fundamentally different pod-scheduling shapes**, so the same Spot node behaves very differently under each. This is why placement is a **separate flag per engine** ([`jenkins.runNodePool`](../config/config.yaml) / [`tekton.runNodePool`](../config/config.yaml)) rather than one shared knob — you want to make the engine-appropriate choice, and the engines are mutually exclusive anyway (`ci.engine`) so a shared flag would only ever describe the active one.
 
+```mermaid
+flowchart TD
+    flag{"runNodePool (per engine)"}
+    flag -->|"static (default)"| sp["jenkins-2026-pool · e2-standard-8<br/>always on — no NAP/Spot/quota dependency"]
+    flag -->|"ci-spot (opt-in)"| nap["GKE NAP → Spot ComputeClass node<br/>scale-to-zero · cheaper · SSD_TOTAL_GB-bound"]
+
+    sp --> jok["Jenkins ✅ robust"]
+    sp --> tok["Tekton ✅ robust — recommended"]
+    nap --> jspot["Jenkins: build = 1 agent pod<br/>preemption → that 1 build re-runs<br/>✅ good Spot fit (recommended opt-in)"]
+    nap --> tspot["Tekton: affinity assistant pins<br/>ALL TaskRuns (shared RWO PVC) to one node<br/>preemption → whole PipelineRun dies<br/>⚠ poor Spot fit — keep static"]
+
+    classDef good fill:#0b6,stroke:#063,color:#fff;
+    classDef warn fill:#c50,stroke:#720,color:#fff;
+    classDef pool fill:#2563eb,stroke:#1e3a8a,color:#fff;
+    class jok,tok,jspot good;
+    class tspot warn;
+    class sp,nap pool;
+```
+
+
 | Dimension | **Jenkins** | **Tekton** |
 |---|---|---|
 | **Build = how many pods?** | **One** ephemeral multi-container agent pod (maven/node/dind/… containers share it) | **Many** TaskRun pods (clone → build → scan → push → deploy), one pod per Task |
