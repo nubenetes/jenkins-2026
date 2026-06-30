@@ -247,7 +247,17 @@ flowchart TB
 
 </details>
 
-The overview reads **top-down as seven lifecycle/plane layers**: **L0** Day0 root-of-trust (human-run, never destroyed) → **L1** Terraform/IaC → **L2** GCP edge (DNS → L7 LB → IAP → Gateway) → **L3** control plane (ArgoCD + CI engine + operators + the imperative *push* lane) → **L4** data/runtime plane (gateway + microservice + CNPG) on the static-vs-NAP node substrate → **L5** the OpenTelemetry pipeline → **L6** the one active backend store. **Fill colour encodes the component _type_** (external · Day0/IaC · edge · control · data · observability · nodes · imperative-push · pluggable) — see the in-diagram **Legend**. The two pluggable axes (`ci.engine`: Jenkins xor Tekton; `observability.mode`: one of four) are mutually exclusive — exactly one each. The [Component Diagram](#component-diagram) below drills into the Jenkins / microservices / observability namespace internals.
+The overview reads **top-down as seven lifecycle/plane layers**:
+
+- **L0 · Day0 root-of-trust** — human-run, never destroyed.
+- **L1 · Provisioning / IaC** — Terraform.
+- **L2 · GCP edge** — DNS → L7 LB → IAP → Gateway.
+- **L3 · Control plane** — ArgoCD + CI engine + operators + the imperative *push* lane.
+- **L4 · Data / runtime plane** — gateway + microservice + CNPG, on the static-vs-NAP node substrate.
+- **L5 · Observability pipeline** — the OpenTelemetry collectors.
+- **L6 · Backend store** — the one active backend.
+
+**Fill colour encodes the component _type_** (external · Day0/IaC · edge · control · data · observability · nodes · imperative-push · pluggable) — see the in-diagram **Legend**. The two pluggable axes (`ci.engine`: Jenkins xor Tekton; `observability.mode`: one of four) are mutually exclusive — exactly one each. The [Component Diagram](#component-diagram) below drills into the Jenkins / microservices / observability namespace internals.
 
 ## Component Diagram
 
