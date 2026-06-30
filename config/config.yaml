@@ -263,7 +263,7 @@ argoworkflows:
   # Pinned component versions. The EFFECTIVE manifests are VENDORED at
   # argocd/argoworkflows/components/*/ (release.yaml) - keep in sync when bumping; docs/602.
   versions:
-    workflows: v3.6.4    # argo-workflows install.yaml (controller + server)
+    workflows: v3.7.15   # argo-workflows install.yaml (controller + server)
     events: v1.9.4       # argo-events install.yaml (unified controller-manager) + EventBus
   server:
     serviceName: argo-server     # the argo-server Service the Gateway/IAP HTTPRoute targets
