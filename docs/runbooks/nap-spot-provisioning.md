@@ -142,6 +142,40 @@ host but keep **no persistent data**, so 50 GB is ample — and halving the boot
 > request an `SSD_TOTAL_GB` increase in the region — that is a **GCP project quota**, unrelated
 > to the code; the disk right-sizing only stretches the existing budget.
 
+### Raising `SSD_TOTAL_GB` — it is NOT a Terraform/self-service one-liner
+
+A consumer-quota **override** (`google_service_usage_consumer_quota_override`, or the Service Usage
+`consumerOverrides` API) can only set a value **within Google's self-service maximum**, and for
+`SSD_TOTAL_GB` that maximum **equals the current limit** (500). Anything higher returns:
+
+```
+FAILED_PRECONDITION: The consumer override value can only be set between 0 to 500.
+reason: COMMON_QUOTA_CONSUMER_OVERRIDE_TOO_HIGH  metadata.max: 500
+```
+
+So putting `2000` in Terraform would **fail the apply** — there is deliberately no quota resource in
+[`terraform/gke`](../../terraform/gke/main.tf) (only an explanatory note). Raising above 500 needs an
+**approved increase request**, submitted one of two ways:
+
+- **Cloud Quotas API** (`cloudquotas.googleapis.com`) — create a `QuotaPreference`:
+  ```bash
+  gcloud services enable cloudquotas.googleapis.com --project="$PROJECT"
+  curl -s -X POST \
+    "https://cloudquotas.googleapis.com/v1/projects/${PROJECT}/locations/global/quotaPreferences?quotaPreferenceId=ssd-total-gb-esw1" \
+    -H "Authorization: Bearer $(gcloud auth print-access-token)" -H "Content-Type: application/json" \
+    -d '{"service":"compute.googleapis.com","quotaId":"SSD-TOTAL-GB-per-project-region",
+         "quotaConfig":{"preferredValue":"2000"},"dimensions":{"region":"europe-southwest1"},
+         "contactEmail":"you@example.com"}'
+  ```
+  The response shows `preferredValue: 2000`, `grantedValue: 500`, `reconciling: true` — the request is
+  **submitted, pending Google's reconciliation/approval** (re-`GET` the same URL to watch `grantedValue`
+  catch up). Small bumps can auto-approve; larger ones go to review.
+- **Console** — *IAM & Admin → Quotas → filter `SSD_TOTAL_GB` → Edit/Request increase*.
+
+> This self-service ceiling is exactly **why `{jenkins,tekton}.runNodePool` defaults to `static`**:
+> static agents use no per-build PD, so CI never pushes against `SSD_TOTAL_GB`. Only `ci-spot` opt-in
+> needs the headroom — so raise the quota *before* flipping an engine to `ci-spot` for heavy concurrency.
+
 **Important nuance — the fix is not retroactive.** `terraform apply` updates the NAP *defaults*;
 nodes already created keep their old 100 GB disk. On an existing cluster, a `Pending` third
 agent unblocks the moment one of the running builds finishes (its Spot node frees up and the

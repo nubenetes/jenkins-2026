@@ -32,6 +32,15 @@ on:
         required: false
         default: ""
         type: string
+      run_node_pool:
+        description: "Where PipelineRun/TaskRun pods run (tekton.runNodePool). 'config' = use config.yaml (default static). 'static' = the jenkins-2026-pool — RECOMMENDED for Tekton (the affinity assistant pins a whole RWO-workspace run to one node, so Spot preemption kills the entire run). 'ci-spot' = NAP Spot ComputeClass (opt-in; needs NAP + SSD quota headroom). See docs/403."
+        required: false
+        default: "config"
+        type: choice
+        options:
+          - config
+          - static
+          - ci-spot
       log_level:
         description: "Script/Terraform verbosity: info (default) or debug (adds [DEBUG] script lines + TF_LOG=DEBUG). For runner-level tracing use GitHub's ACTIONS_STEP_DEBUG."
         required: false
@@ -56,6 +65,8 @@ env:
   # Selects the Tekton path in scripts/lib/config.sh (and the 04/06 scripts).
   JENKINS2026_CI_ENGINE: tekton
   JENKINS2026_SECRETS_BACKEND: ${{ inputs.secrets_backend }}
+  # Run-pod placement override (empty = fall back to config.yaml tekton.runNodePool).
+  JENKINS2026_TEKTON_RUN_NODE_POOL: ${{ inputs.run_node_pool != 'config' && inputs.run_node_pool || '' }}
   # Optional lean develop tier (off by default) — 01-namespaces provisions its
   # namespace/netpol/RBAC and 06-tekton-pipelines seeds its runs.
   JENKINS2026_DEVELOP_TRACK_ENABLED: ${{ inputs.develop_track }}

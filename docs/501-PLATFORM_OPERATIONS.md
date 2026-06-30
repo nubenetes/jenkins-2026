@@ -239,18 +239,65 @@ The repository has been refactored to serve as a **Golden Path Internal Develope
 ### 2. Elastic Node Auto-Provisioning (Spot ComputeClass)
 * **Cluster-level NAP**: [`terraform/gke`](../terraform/gke/) enables a `cluster_autoscaling` block (`resource_limits` for cpu/memory + `auto_provisioning_defaults`: the dedicated node SA `jenkins-2026-nodes`, COS_CONTAINERD, Shielded VMs, auto-repair/upgrade, `pd-balanced`, `OPTIMIZE_UTILIZATION` profile), gated by the `enable_node_autoprovisioning` variable (default true).
 * **Custom ComputeClass `ci-spot`**: [`infrastructure/compute-classes/ci-spot.yaml`](../infrastructure/compute-classes/ci-spot.yaml) sets `nodePoolAutoCreation.enabled: true` with `priorities` preferring **Spot** across families (`c3`, `n2`, `c2`, `e2`) then falling back to on-demand `e2`, `whenUnsatisfiable: ScaleUpAnyway`. GKE auto-applies the `compute-class=ci-spot` / `gke-spot=true` `NoSchedule` taints so only build agents (which carry the matching nodeSelector + tolerations) land on the elastic Spot pools.
+* **Per-engine placement — `{jenkins,tekton}.runNodePool: static | ci-spot` (default `static`).** Whether build pods target the **static pool** (robust, no NAP/Spot/quota dependency) or the **`ci-spot` ComputeClass** (elastic Spot) is a feature flag *per CI engine* (override `JENKINS2026_{JENKINS,TEKTON}_RUN_NODE_POOL`), because the engines differ in Spot-suitability: a **Jenkins** build is a single agent pod, so a preemption just restarts that one build (a fine Spot citizen → ci-spot opt-in is low-risk); a **Tekton** PipelineRun pins *all* its tasks to one node via the affinity assistant (shared RWO PVC), so a preemption kills the whole run and a too-small/full node hangs it (→ `static` strongly recommended). Both default to `static`, so **CI doesn't push against the `SSD_TOTAL_GB` quota** (no per-build PD) out of the box; flip an engine to `ci-spot` to opt into Spot. Jenkins reads the flag in [`vars/MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy) (via JCasC `RUN_NODE_POOL`); Tekton applies it as the `default-pod-template` (see [`docs/403`](403-TEKTON.md)).
 * **Autoscaler Isolation**: The static `jenkins-2026-pool` (long-lived platform) and the NAP-auto-created Spot pools are strictly isolated, so a NAP issue never blocks the core provision.
 * **Spot preemption — trade-off & resilience (read before relying on it).** Spot VMs can be reclaimed by GCE with **~30s notice**, so a node running a CI agent can disappear *mid-build*. This is a deliberate, acceptable trade-off here because **CI is exactly the right workload for Spot**: builds are **ephemeral and idempotent** (re-running produces the same artifact) and **nothing on the critical platform path runs on Spot** — ArgoCD, Jenkins/Tekton controllers, observability and CNPG all stay on the static pool. The resilience design is layered:
   * **On-demand fallback** — the `ci-spot` ComputeClass falls back to on-demand `e2` (`whenUnsatisfiable: ScaleUpAnyway`), so a Spot **stock-out** never leaves a build Pending; it just runs on a regular node.
   * **Preemption ≠ stuck** — if a Spot node *is* reclaimed, GKE reschedules the agent Pod and NAP provisions a fresh node (Spot, or on-demand on stock-out); the affected build fails fast and is simply re-run (no manual cleanup).
-  * **Escape hatch** — for a run where you want **guaranteed, non-preemptible completion** (e.g. a release build), flip the single flag: set `nodeAutoProvisioning.enabled: false` (or `JENKINS2026_NODE_AUTOPROVISIONING_ENABLED=false`) and the agents schedule on the static pool instead. One toggle, no manifest edits — see [`config/config.yaml`](../config/config.yaml).
+  * **Escape hatch** — for **guaranteed, non-preemptible completion**, keep (or set) the engine's `runNodePool: static` (the default) so its agents schedule on the static pool — finer-grained than disabling NAP, and it's already the default. To remove NAP cluster-wide instead, set `nodeAutoProvisioning.enabled: false` (or `JENKINS2026_NODE_AUTOPROVISIONING_ENABLED=false`). One toggle, no manifest edits — see [`config/config.yaml`](../config/config.yaml).
   * **Watch it** — the **CI-CD / Node Auto-Provisioning (Spot)** Grafana dashboard ([`observability/grafana/dashboards/node-autoprovisioning.json`](../observability/grafana/dashboards/node-autoprovisioning.json)) shows Spot vs static node counts over time, so you can see scale-up on a build and consolidation back toward zero after it.
-  * **The real ceiling is the regional `SSD_TOTAL_GB` quota, not NAP.** Each node's `pd-balanced` boot disk counts against that quota, so the number of *concurrent* Spot CI nodes is bounded by `SSD_TOTAL_GB` ÷ disk-size (plus the static-pool disks and the CNPG Postgres PVs). Symptom when you hit it: the agent Pod stays `Pending` and `kubectl get events` shows `cluster-autoscaler … ScaleUpFailed … Quota 'SSD_TOTAL_GB' exceeded` (NAP keeps retrying across machine families — it's doing the right thing, GCE is refusing the disk). The NAP node disk is kept at `var.disk_size_gb` (50 GB, same as the static pool) precisely to stretch this quota; for more headroom, request an `SSD_TOTAL_GB` increase in the region (a GCP project quota, unrelated to the code).
+  * **The real ceiling is the regional `SSD_TOTAL_GB` quota, not NAP.** Each node's `pd-balanced` boot disk counts against that quota, so the number of *concurrent* Spot CI nodes is bounded by `SSD_TOTAL_GB` ÷ disk-size (plus the static-pool disks and the CNPG Postgres PVs). Symptom when you hit it: the agent Pod stays `Pending` and `kubectl get events` shows `cluster-autoscaler … ScaleUpFailed … Quota 'SSD_TOTAL_GB' exceeded` (NAP keeps retrying across machine families — it's doing the right thing, GCE is refusing the disk). The NAP node disk is kept at `var.disk_size_gb` (50 GB, same as the static pool) precisely to stretch this quota. **Raising the quota is NOT self-service-instant**: a consumer-quota *override* caps at Google's self-service maximum, which for `SSD_TOTAL_GB` equals the current limit (500) — higher values return `COMMON_QUOTA_CONSUMER_OVERRIDE_TOO_HIGH` (so it can't be set in Terraform either). Above 500 needs an **approved increase request** — submit a Cloud Quotas `QuotaPreference` (`cloudquotas.googleapis.com`, quotaId `SSD-TOTAL-GB-per-project-region`) or Console → *IAM & Admin → Quotas*; it reconciles to `grantedValue` after Google approves. This is also **why `runNodePool` defaults to `static`** — CI then needs no extra SSD headroom. See [`docs/runbooks/nap-spot-provisioning.md`](runbooks/nap-spot-provisioning.md).
 
 > **Runbook**: for a step-by-step live validation (get cluster access despite the
 > auth-plugin/stale-IP gotchas, trigger a build, watch NAP bring up a Spot `ci-spot` node,
 > and read the `SSD_TOTAL_GB` quota ceiling + cold-start behaviour) see the
 > [NAP → Spot CI nodes runbook](./runbooks/nap-spot-provisioning.md).
+
+#### Jenkins vs Tekton on Spot (`ci-spot`) — why the placement flag is *per engine*
+
+Both CI engines can target the `ci-spot` ComputeClass, but they have **fundamentally different pod-scheduling shapes**, so the same Spot node behaves very differently under each. This is why placement is a **separate flag per engine** ([`jenkins.runNodePool`](../config/config.yaml) / [`tekton.runNodePool`](../config/config.yaml)) rather than one shared knob — you want to make the engine-appropriate choice, and the engines are mutually exclusive anyway (`ci.engine`) so a shared flag would only ever describe the active one.
+
+```mermaid
+flowchart TD
+    flag{"runNodePool (per engine)"}
+    flag -->|"static (default)"| sp["jenkins-2026-pool · e2-standard-8<br/>always on — no NAP/Spot/quota dependency"]
+    flag -->|"ci-spot (opt-in)"| nap["GKE NAP → Spot ComputeClass node<br/>scale-to-zero · cheaper · SSD_TOTAL_GB-bound"]
+
+    sp --> jok["Jenkins ✅ robust"]
+    sp --> tok["Tekton ✅ robust — recommended"]
+    nap --> jspot["Jenkins: build = 1 agent pod<br/>preemption → that 1 build re-runs<br/>✅ good Spot fit (recommended opt-in)"]
+    nap --> tspot["Tekton: affinity assistant pins<br/>ALL TaskRuns (shared RWO PVC) to one node<br/>preemption → whole PipelineRun dies<br/>⚠ poor Spot fit — keep static"]
+
+    classDef good fill:#0b6,stroke:#063,color:#fff;
+    classDef warn fill:#c50,stroke:#720,color:#fff;
+    classDef pool fill:#2563eb,stroke:#1e3a8a,color:#fff;
+    class jok,tok,jspot good;
+    class tspot warn;
+    class sp,nap pool;
+```
+
+
+| Dimension | **Jenkins** | **Tekton** |
+|---|---|---|
+| **Build = how many pods?** | **One** ephemeral multi-container agent pod (maven/node/dind/… containers share it) | **Many** TaskRun pods (clone → build → scan → push → deploy), one pod per Task |
+| **Inter-pod coupling** | None — the whole build *is* one pod | The Tasks share **one RWO `source` workspace PVC** (cloned once, reused), so Tekton's **affinity assistant** co-schedules **all** of a PipelineRun's pods onto **one node** (the only way to mount an RWO PVC across pods) |
+| **Spot preemption blast radius** | **One build** — the agent pod dies, GKE reschedules it, NAP brings a fresh node, the build is simply **re-run** (idempotent). Minimal. | **The entire PipelineRun** — every Task rides the same node; lose it and *all* in-flight Tasks die together (the RWO PVC was on that node). Much larger. |
+| **"Node too small/full" failure** | Rare — a single pod either fits the (4-vCPU+) Spot node or NAP scales another | **Real hazard** — if the assistant lands on a small NAP node (e.g. `e2-standard-2`), a later/retried Task (`codeql`, 500m) may not fit, and an affinity-pinned pod **can't move or trigger a useful scale-up** → the run hangs in `ExceededNodeResources` (the v0.28.53 bug) |
+| **Spot fit** | **Good citizen** — single, idempotent, short-lived pod is the textbook Spot workload | **Poor fit as-is** — a long, multi-Task run pinned to one preemptible node is exactly what Spot is *bad* at |
+| **Recommended `runNodePool`** | `static` by default; **`ci-spot` is the recommended opt-in** (most cost upside, least risk) | **`static`** (strongly) — keep Spot off unless you re-architect the workspace (RWX/Filestore + disable the affinity assistant, or per-Task `emptyDir` + artifact passing) |
+
+**So: is `static` still the right *default* even though Jenkins is the better Spot citizen?** Yes — for two independent reasons:
+1. **Robustness with zero preconditions.** `static` needs no NAP, no Spot capacity, and **no `SSD_TOTAL_GB` headroom** — it just works on a fresh cluster for everyone. `ci-spot` needs all three.
+2. **The quota ceiling is currently binding.** Each `ci-spot` node's boot disk counts against the regional `SSD_TOTAL_GB` quota, which **caps at 500 self-service** (raising it needs an approved request — see above). At 500, a couple of concurrent `ci-spot` agents can wedge in `Pending`. We observed exactly this on a real Day1 (the `gateway` agent stuck on `ScaleUpFailed … Quota 'SSD_TOTAL_GB' exceeded`).
+
+**Recommended rollout (sequenced):**
+
+| Phase | Jenkins | Tekton |
+|---|---|---|
+| **Now** (quota = 500) | `static` | `static` |
+| **After the `SSD_TOTAL_GB` increase is granted** | **`ci-spot`** — best cost/elasticity, lowest risk | `static` (the affinity-assistant hazard is independent of quota; only an RWX-workspace redesign would make Tekton-on-Spot safe) |
+
+Flip per engine with the config flag (durable) or the **`run_node_pool` input** on `Day2.redeploy.02-jenkins` / `Day2.redeploy.03-tekton` (per-run, no commit). See the Tekton-specific mechanics and the RWX/affinity-assistant alternatives in [`docs/403`](403-TEKTON.md).
 
 ### 3. Zero-Trust Security & Workload Identity
 * **Workload Identity Federation**: All static JSON Service Account keys are removed. Both external CI engines (GitHub Actions) and in-cluster workloads assume GCP IAM Roles dynamically via OIDC.

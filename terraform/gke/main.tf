@@ -31,6 +31,18 @@ resource "google_project_service" "apis" {
   disable_on_destroy = false
 }
 
+# NOTE on the regional SSD_TOTAL_GB quota (the binding capacity ceiling — every
+# pd-balanced/pd-ssd disk counts: node boot disks + HA CNPG Postgres PVs (data+WAL ×
+# services) + Tekton workspace PVCs + concurrent ci-spot NAP nodes). It is NOT raised here:
+# a consumer-quota override (google_service_usage_consumer_quota_override) can only set
+# values WITHIN Google's self-service maximum, which for SSD_TOTAL_GB equals the current
+# limit (500) — anything higher returns COMMON_QUOTA_CONSUMER_OVERRIDE_TOO_HIGH and would
+# fail the apply. Raising it above 500 requires a Google-approved quota-increase REQUEST
+# (Console → IAM & Admin → Quotas → SSD_TOTAL_GB → Edit/Request increase, or the Quota
+# Adjuster), which is not Terraform-able. This is WHY {jenkins,tekton}.runNodePool defaults
+# to `static` (no per-build PD, so CI doesn't push against this ceiling); ci-spot is the
+# quota-hungry opt-in. See docs/runbooks/nap-spot-provisioning.md § SSD quota.
+
 resource "google_compute_network" "vpc" {
   project                 = var.project_id
   name                    = local.network_name

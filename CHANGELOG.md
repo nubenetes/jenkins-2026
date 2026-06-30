@@ -2,6 +2,39 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.54] - 2026-06-30
+
+### Added
+- **Per-engine CI run-pod placement flag — `{jenkins,tekton}.runNodePool: static | ci-spot`
+  (default `static`).** Choose, without touching code, whether build pods run on the long-lived
+  **static pool** (robust, no NAP/Spot/quota dependency) or the **`ci-spot` NAP Spot ComputeClass**
+  (elastic/cheaper, opt-in). Separate per engine because they differ in Spot-suitability: a Jenkins
+  build is a single agent pod (a preemption restarts one build → ci-spot is low-risk), whereas a
+  Tekton PipelineRun pins all its tasks to one node via the affinity assistant (a preemption kills
+  the whole run → `static` recommended). Durable defaults in [`config/config.yaml`](config/config.yaml);
+  ephemeral overrides `JENKINS2026_{JENKINS,TEKTON}_RUN_NODE_POOL`. Jenkins surfaces it via JCasC
+  (`RUN_NODE_POOL`) and reads it in [`vars/MicroservicesPipeline.groovy`](vars/MicroservicesPipeline.groovy)
+  / [`MicroservicesK6SmokePipeline.groovy`](vars/MicroservicesK6SmokePipeline.groovy); Tekton applies it
+  as the `default-pod-template` in `config-defaults` via [`scripts/06-tekton-pipelines.sh`](scripts/06-tekton-pipelines.sh),
+  with an `ignoreDifferences` on the `tekton-pipelines` app so ArgoCD doesn't revert it. This makes the
+  previous fixed static-pool pin (v0.28.53) the *default* while leaving Spot a one-flag opt-in. Docs in
+  `docs/403` + `docs/501`.
+- **Day2 redeploy workflows honour the flag (and expose a per-run override).** `Day2.redeploy.02-jenkins`
+  (runs `04-jenkins.sh`) and `Day2.redeploy.03-tekton` (runs `06-tekton-pipelines.sh`) already converge
+  placement from `config.yaml`; both now also take a **`run_node_pool` workflow input** (`config` |
+  `static` | `ci-spot`, default `config` = use the file) so you can flip placement for a single redeploy
+  without a commit (maps to `JENKINS2026_{JENKINS,TEKTON}_RUN_NODE_POOL`).
+
+### Changed
+- **`SSD_TOTAL_GB` quota cannot be raised in Terraform — documented, not coded.** A consumer-quota
+  override caps at Google's self-service maximum, which for `SSD_TOTAL_GB` equals the current limit
+  (500); higher returns `COMMON_QUOTA_CONSUMER_OVERRIDE_TOO_HIGH`, so a Terraform override would fail
+  the apply. [`terraform/gke`](terraform/gke/main.tf) therefore carries only an explanatory note;
+  raising above 500 requires an approved increase **request** (Cloud Quotas `QuotaPreference` or the
+  Console). Full how-to (with the exact `quotaId` + API call) added to
+  [`docs/runbooks/nap-spot-provisioning.md`](docs/runbooks/nap-spot-provisioning.md); reinforces why
+  `runNodePool` defaults to `static` (no per-build PD → no quota pressure).
+
 ## [v0.28.53] - 2026-06-30
 
 ### Fixed

@@ -200,6 +200,15 @@ controller:
           name: jenkins-credentials
           key: gke-compute-class
           optional: true
+    # Build-agent node placement (jenkins.runNodePool: static|ci-spot). Patched into the
+    # Secret by scripts/04-jenkins.sh; surfaced to builds as RUN_NODE_POOL via JCasC and read
+    # in vars/MicroservicesPipeline.groovy / MicroservicesK6SmokePipeline.groovy.
+    - name: JENKINS2026_RUN_NODE_POOL
+      valueFrom:
+        secretKeyRef:
+          name: jenkins-credentials
+          key: run-node-pool
+          optional: true
     - name: GRAFANA_BASE_URL
       valueFrom:
         secretKeyRef:

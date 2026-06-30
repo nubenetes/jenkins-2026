@@ -61,6 +61,47 @@ if (( ${#pr_ann_pairs[@]} > 0 )); then
   pr_ann_meta=$'\n  annotations:'"${pr_ann_yaml}"
 fi
 
+# --- run-pod node placement (tekton.runNodePool: static|ci-spot) ----------------
+# Patch config-defaults.default-pod-template so EVERY PipelineRun (seeded, PaC-triggered,
+# or Dashboard-created) places its pods — and the affinity assistant they're co-scheduled
+# around — predictably. ArgoCD ignores this field (ignoreDifferences in
+# argocd/tekton/templates/pipelines.yaml), so this imperative patch isn't reverted.
+#   static  (default): the long-lived jenkins-2026-pool (app=jenkins-2026, e2-standard-8) —
+#           robust, no NAP/Spot/quota dependency. RECOMMENDED: the affinity assistant pins a
+#           whole RWO-workspace run to one node, so a small/full node hangs it and a Spot
+#           preemption would kill the whole run.
+#   ci-spot: the NAP Spot ComputeClass (needs nodeAutoProvisioning.enabled) — cheaper but
+#           Spot/quota-dependent (opt-in). See docs/403.
+if [[ "${J2026_TEKTON_RUN_NODE_POOL}" == "ci-spot" && "${J2026_NODE_AUTOPROVISIONING_ENABLED}" == "true" ]]; then
+  _cc="${J2026_NODE_AUTOPROVISIONING_COMPUTE_CLASS}"
+  tekton_pod_template="$(cat <<EOF
+nodeSelector:
+  cloud.google.com/compute-class: ${_cc}
+tolerations:
+  - key: cloud.google.com/compute-class
+    operator: Equal
+    value: ${_cc}
+    effect: NoSchedule
+  - key: cloud.google.com/gke-spot
+    operator: Equal
+    value: "true"
+    effect: NoSchedule
+EOF
+)"
+  _placement="ci-spot ComputeClass (${_cc})"
+else
+  tekton_pod_template=$'nodeSelector:\n  app: jenkins-2026\n'
+  _placement="static pool (app=jenkins-2026)"
+fi
+log_step "Setting Tekton run-pod placement -> ${_placement}"
+if kubectl -n "${J2026_TEKTON_NAMESPACE}" get configmap config-defaults >/dev/null 2>&1; then
+  kubectl -n "${J2026_TEKTON_NAMESPACE}" patch configmap config-defaults --type merge \
+    -p "$(jq -nc --arg pt "${tekton_pod_template}" '{data:{"default-pod-template":$pt}}')" >/dev/null
+  log_info "config-defaults.default-pod-template set (${_placement})."
+else
+  log_warn "config-defaults not present yet — skipping placement patch (re-run to converge)."
+fi
+
 # Wait for ArgoCD to have synced the Pipeline + the pipeline ServiceAccount.
 log_step "Waiting for ArgoCD to sync the Tekton pipelines-as-code into ${PIPELINE_NS}"
 timeout 600 bash -c '

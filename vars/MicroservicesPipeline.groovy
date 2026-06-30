@@ -8,14 +8,18 @@
  * Declarative shared library wrapper for the standard Microservices build/deploy pipeline.
  */
 def call(Map cfg) {
-    // GKE Node Auto-Provisioning: when the controller is configured with a Custom
-    // ComputeClass (env.GKE_COMPUTE_CLASS, set by JCasC from the nodeAutoProvisioning
-    // flag), pin the build agent onto it so GKE auto-provisions a Spot, scale-to-zero
-    // node and bin-packs the pod there (GKE auto-taints those pools with the class name,
-    // hence the matching tolerations). Empty → no nodeSelector, so the agent schedules on
-    // the static pool. See infrastructure/compute-classes/ + docs/201.
+    // Build-agent node placement — config flag jenkins.runNodePool, surfaced via JCasC as
+    // env.RUN_NODE_POOL (static | ci-spot; default static):
+    //   static  -> the long-lived jenkins-2026-pool (nodeSelector app=jenkins-2026): robust,
+    //              always present, no NAP/Spot/quota dependency.
+    //   ci-spot -> the NAP Spot ComputeClass (env.GKE_COMPUTE_CLASS): ephemeral, scale-to-zero;
+    //              GKE auto-taints those pools, hence the tolerations. A Spot preemption just
+    //              restarts this build (fine for Jenkins's single agent pod).
+    // ci-spot needs nodeAutoProvisioning enabled (GKE_COMPUTE_CLASS set); if it's empty we fall
+    // back to static. See infrastructure/compute-classes/ + docs/201 + docs/501.
+    String runPool = (env.RUN_NODE_POOL ?: 'static').trim()
     String computeClass = (env.GKE_COMPUTE_CLASS ?: '').trim()
-    String agentNodeScheduling = computeClass ? """
+    String agentNodeScheduling = (runPool == 'ci-spot' && computeClass) ? """
   nodeSelector:
     cloud.google.com/compute-class: ${computeClass}
   tolerations:
@@ -26,7 +30,9 @@ def call(Map cfg) {
     - key: cloud.google.com/gke-spot
       operator: Equal
       value: "true"
-      effect: NoSchedule""" : ''
+      effect: NoSchedule""" : """
+  nodeSelector:
+    app: jenkins-2026"""
     pipeline {
         agent {
             kubernetes {
