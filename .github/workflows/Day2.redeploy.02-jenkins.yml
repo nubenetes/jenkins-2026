@@ -29,6 +29,15 @@ on:
         required: false
         default: ""
         type: string
+      run_node_pool:
+        description: "Where build-agent pods run (jenkins.runNodePool). 'config' = use config.yaml (default static). 'static' = the long-lived jenkins-2026-pool (robust). 'ci-spot' = the NAP Spot ComputeClass (needs nodeAutoProvisioning + SSD_TOTAL_GB headroom). Jenkins tolerates Spot well, but ci-spot can stall on the 500 GB quota — see docs/501."
+        required: false
+        default: "config"
+        type: choice
+        options:
+          - config
+          - static
+          - ci-spot
       log_level:
         description: "Script/Terraform verbosity: info (default) or debug (adds [DEBUG] script lines + TF_LOG=DEBUG). For runner-level tracing use GitHub's ACTIONS_STEP_DEBUG."
         required: false
@@ -53,6 +62,8 @@ env:
   # Honour the develop tier in 04-jenkins (writes develop-enabled into jenkins-credentials)
   # and the re-seed (generates the -develop jobs). Off by default.
   JENKINS2026_DEVELOP_TRACK_ENABLED: ${{ inputs.develop_track }}
+  # Build-agent placement override (empty = fall back to config.yaml jenkins.runNodePool).
+  JENKINS2026_JENKINS_RUN_NODE_POOL: ${{ inputs.run_node_pool != 'config' && inputs.run_node_pool || '' }}
 
 jobs:
   redeploy-jenkins:

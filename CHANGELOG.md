@@ -19,6 +19,11 @@ All notable changes to this project will be documented in this file.
   with an `ignoreDifferences` on the `tekton-pipelines` app so ArgoCD doesn't revert it. This makes the
   previous fixed static-pool pin (v0.28.53) the *default* while leaving Spot a one-flag opt-in. Docs in
   `docs/403` + `docs/501`.
+- **Day2 redeploy workflows honour the flag (and expose a per-run override).** `Day2.redeploy.02-jenkins`
+  (runs `04-jenkins.sh`) and `Day2.redeploy.03-tekton` (runs `06-tekton-pipelines.sh`) already converge
+  placement from `config.yaml`; both now also take a **`run_node_pool` workflow input** (`config` |
+  `static` | `ci-spot`, default `config` = use the file) so you can flip placement for a single redeploy
+  without a commit (maps to `JENKINS2026_{JENKINS,TEKTON}_RUN_NODE_POOL`).
 
 ### Changed
 - **`SSD_TOTAL_GB` quota cannot be raised in Terraform — documented, not coded.** A consumer-quota
