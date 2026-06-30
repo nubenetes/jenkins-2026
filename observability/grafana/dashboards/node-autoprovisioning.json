@@ -1,125 +1,378 @@
 {
-  "annotations": {
-    "list": [
+   "annotations" : {
+      "list" : [
+         {
+            "builtIn" : 1,
+            "datasource" : {
+               "type" : "grafana",
+               "uid" : "-- Grafana --"
+            },
+            "enable" : true,
+            "hide" : true,
+            "iconColor" : "rgba(0, 211, 255, 1)",
+            "name" : "Annotations & Alerts",
+            "type" : "dashboard"
+         }
+      ]
+   },
+   "description" : "GKE Node Auto-Provisioning (NAP) — the GA, Google-native Karpenter equivalent. Visualizes the elastic, Spot, scale-to-zero capacity that the ci-spot Custom ComputeClass provisions for bursty CI agents, alongside the static platform pool. Node membership (Spot / ci-spot) is read from the node TAINTS via kube-state-metrics (kube_node_info / kube_node_spec_taint), which scripts/03-observability.sh keeps even in the lean/free Grafana Cloud profile (a tiny node-inventory allow-list), so this board works in all observability modes.",
+   "editable" : true,
+   "fiscalYearStartMonth" : 0,
+   "graphTooltip" : 1,
+   "id" : null,
+   "liveNow" : false,
+   "panels" : [
       {
-        "builtIn": 1,
-        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
-        "enable": true,
-        "hide": true,
-        "iconColor": "rgba(0, 211, 255, 1)",
-        "name": "Annotations & Alerts",
-        "type": "dashboard"
-      }
-    ]
-  },
-  "description": "GKE Node Auto-Provisioning (NAP) — the GA, Google-native Karpenter equivalent. Visualizes the elastic, Spot, scale-to-zero capacity that the ci-spot Custom ComputeClass provisions for bursty CI agents, alongside the static platform pool. Node membership (Spot / ci-spot) is read from the node TAINTS via kube-state-metrics (kube_node_info / kube_node_spec_taint), which scripts/03-observability.sh keeps even in the lean/free Grafana Cloud profile (a tiny node-inventory allow-list), so this board works in all observability modes.",
-  "editable": true,
-  "fiscalYearStartMonth": 0,
-  "graphTooltip": 1,
-  "liveNow": false,
-  "panels": [
-    {
-      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 0 },
-      "id": 1,
-      "type": "text",
-      "options": {
-        "mode": "markdown",
-        "content": "## Node Auto-Provisioning (NAP) — elastic Spot CI nodes\nGKE **Node Auto-Provisioning** is the GA, Google-native equivalent of Karpenter. The `ci-spot` **Custom ComputeClass** ([`infrastructure/compute-classes/ci-spot.yaml`](../infrastructure/compute-classes/ci-spot.yaml)) makes NAP auto-create **Spot, scale-to-zero** node pools for bursty CI build agents (Spot-first c3/n2/c2/e2 → on-demand fallback). The long-lived platform stays on the **static** `jenkins-2026-pool`. See [`docs/201`](../docs/201-ARCHITECTURE.md) and [`docs/501`](../docs/501-PLATFORM_OPERATIONS.md).\n\n**How to read it:** watch **Spot nodes** rise when a pipeline build starts and fall back toward **0** a few minutes after it finishes (consolidation) — that is the scale-to-zero cost profile. The **Static pool** line should stay flat (the platform). *No data?* It reads node taints from kube-state-metrics (`kube_node_spec_taint`); `03-observability.sh` keeps that tiny node-inventory slice even in lean/free-tier mode, so check KSM is up (`kube-state-metrics` pod) and that a build has actually triggered a Spot node."
-      }
-    },
-    {
-      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 7 },
-      "id": 2,
-      "type": "stat",
-      "title": "Total nodes",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }, "unit": "none" }, "overrides": [] },
-      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "editorMode": "code", "expr": "count(kube_node_info)", "legendFormat": "nodes", "range": true, "refId": "A" }
-      ]
-    },
-    {
-      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 7 },
-      "id": 3,
-      "type": "stat",
-      "title": "Spot CI nodes (NAP)",
-      "description": "Nodes labelled cloud.google.com/gke-spot=true — the ephemeral capacity NAP provisions for the ci-spot ComputeClass.",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "orange" }, "unit": "none" }, "overrides": [] },
-      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "editorMode": "code", "expr": "count(kube_node_spec_taint{key=\"cloud.google.com/gke-spot\"}) or vector(0)", "legendFormat": "spot", "range": true, "refId": "A" }
-      ]
-    },
-    {
-      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 7 },
-      "id": 4,
-      "type": "stat",
-      "title": "ci-spot ComputeClass nodes",
-      "description": "Nodes auto-created for the ci-spot Custom ComputeClass (GKE auto-labels them cloud.google.com/compute-class=ci-spot).",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "purple" }, "unit": "none" }, "overrides": [] },
-      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "editorMode": "code", "expr": "count(kube_node_spec_taint{key=\"cloud.google.com/compute-class\",value=\"ci-spot\"}) or vector(0)", "legendFormat": "ci-spot", "range": true, "refId": "A" }
-      ]
-    },
-    {
-      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 7 },
-      "id": 5,
-      "type": "stat",
-      "title": "Static platform nodes",
-      "description": "Non-Spot nodes — the long-lived jenkins-2026-pool hosting ArgoCD/Jenkins/observability/CNPG.",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "green" }, "unit": "none" }, "overrides": [] },
-      "options": { "colorMode": "value", "graphMode": "area", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
-      "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "editorMode": "code", "expr": "count(kube_node_info) - (count(kube_node_spec_taint{key=\"cloud.google.com/gke-spot\"}) or vector(0))", "legendFormat": "static", "range": true, "refId": "A" }
-      ]
-    },
-    {
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 13 },
-      "id": 6,
-      "type": "timeseries",
-      "title": "Node count over time — Spot (NAP) vs static pool",
-      "description": "The elasticity signal: Spot nodes scale up during CI builds and consolidate back toward 0 between them; the static pool stays flat.",
-      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "drawStyle": "line", "fillOpacity": 20, "lineInterpolation": "stepAfter", "lineWidth": 2, "showPoints": "never", "stacking": { "group": "A", "mode": "none" } }, "unit": "none", "min": 0 }, "overrides": [] },
-      "options": { "legend": { "calcs": ["min", "max", "lastNotNull"], "displayMode": "table", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "targets": [
-        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "editorMode": "code", "expr": "count(kube_node_spec_taint{key=\"cloud.google.com/gke-spot\"}) or vector(0)", "legendFormat": "Spot (NAP)", "range": true, "refId": "A" },
-        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "editorMode": "code", "expr": "count(kube_node_info) - (count(kube_node_spec_taint{key=\"cloud.google.com/gke-spot\"}) or vector(0))", "legendFormat": "Static pool", "range": true, "refId": "B" },
-        { "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" }, "editorMode": "code", "expr": "count(kube_node_info)", "legendFormat": "Total", "range": true, "refId": "C" }
-      ]
-    }
-  ],
-  "refresh": "30s",
-  "schemaVersion": 42,
-  "tags": ["jenkins-2026", "platform", "nap", "autoscaling"],
-  "templating": {
-    "list": [
+         "gridPos" : {
+            "h" : 7,
+            "w" : 24,
+            "x" : 0,
+            "y" : 0
+         },
+         "id" : 1,
+         "options" : {
+            "content" : "## Node Auto-Provisioning (NAP) — elastic Spot CI nodes\nGKE **Node Auto-Provisioning** is the GA, Google-native equivalent of Karpenter. The `ci-spot` **Custom ComputeClass** ([`infrastructure/compute-classes/ci-spot.yaml`](../infrastructure/compute-classes/ci-spot.yaml)) makes NAP auto-create **Spot, scale-to-zero** node pools for bursty CI build agents (Spot-first c3/n2/c2/e2 → on-demand fallback). The long-lived platform stays on the **static** `jenkins-2026-pool`. See [`docs/201`](../docs/201-ARCHITECTURE.md) and [`docs/501`](../docs/501-PLATFORM_OPERATIONS.md).\n\n**How to read it:** watch **Spot nodes** rise when a pipeline build starts and fall back toward **0** a few minutes after it finishes (consolidation) — that is the scale-to-zero cost profile. The **Static pool** line should stay flat (the platform). *No data?* It reads node taints from kube-state-metrics (`kube_node_spec_taint`); `03-observability.sh` keeps that tiny node-inventory slice even in lean/free-tier mode, so check KSM is up (`kube-state-metrics` pod) and that a build has actually triggered a Spot node.",
+            "mode" : "markdown"
+         },
+         "type" : "text"
+      },
       {
-        "allowCustomValue": true,
-        "current": { "text": "", "value": "" },
-        "hide": 0,
-        "includeAll": false,
-        "label": "Prometheus / Mimir",
-        "multi": false,
-        "name": "DS_PROMETHEUS",
-        "options": [],
-        "query": "prometheus",
-        "refresh": 1,
-        "regex": "",
-        "skipUrlSync": false,
-        "type": "datasource"
+         "datasource" : {
+            "type" : "prometheus",
+            "uid" : "${DS_PROMETHEUS}"
+         },
+         "fieldConfig" : {
+            "defaults" : {
+               "color" : {
+                  "mode" : "thresholds"
+               },
+               "thresholds" : {
+                  "mode" : "absolute",
+                  "steps" : [
+                     {
+                        "color" : "green",
+                        "value" : null
+                     }
+                  ]
+               },
+               "unit" : "none"
+            },
+            "overrides" : []
+         },
+         "gridPos" : {
+            "h" : 6,
+            "w" : 6,
+            "x" : 0,
+            "y" : 7
+         },
+         "id" : 2,
+         "options" : {
+            "colorMode" : "value",
+            "graphMode" : "area",
+            "reduceOptions" : {
+               "calcs" : [
+                  "lastNotNull"
+               ],
+               "fields" : "",
+               "values" : false
+            },
+            "textMode" : "auto"
+         },
+         "targets" : [
+            {
+               "datasource" : {
+                  "type" : "prometheus",
+                  "uid" : "${DS_PROMETHEUS}"
+               },
+               "editorMode" : "code",
+               "expr" : "count(kube_node_info)",
+               "legendFormat" : "nodes",
+               "range" : true,
+               "refId" : "A"
+            }
+         ],
+         "title" : "Total nodes",
+         "type" : "stat"
+      },
+      {
+         "datasource" : {
+            "type" : "prometheus",
+            "uid" : "${DS_PROMETHEUS}"
+         },
+         "description" : "Nodes labelled cloud.google.com/gke-spot=true — the ephemeral capacity NAP provisions for the ci-spot ComputeClass.",
+         "fieldConfig" : {
+            "defaults" : {
+               "color" : {
+                  "fixedColor" : "orange",
+                  "mode" : "fixed"
+               },
+               "unit" : "none"
+            },
+            "overrides" : []
+         },
+         "gridPos" : {
+            "h" : 6,
+            "w" : 6,
+            "x" : 6,
+            "y" : 7
+         },
+         "id" : 3,
+         "options" : {
+            "colorMode" : "value",
+            "graphMode" : "area",
+            "reduceOptions" : {
+               "calcs" : [
+                  "lastNotNull"
+               ],
+               "fields" : "",
+               "values" : false
+            },
+            "textMode" : "auto"
+         },
+         "targets" : [
+            {
+               "datasource" : {
+                  "type" : "prometheus",
+                  "uid" : "${DS_PROMETHEUS}"
+               },
+               "editorMode" : "code",
+               "expr" : "count(kube_node_spec_taint{key=\"cloud.google.com/gke-spot\"}) or vector(0)",
+               "legendFormat" : "spot",
+               "range" : true,
+               "refId" : "A"
+            }
+         ],
+         "title" : "Spot CI nodes (NAP)",
+         "type" : "stat"
+      },
+      {
+         "datasource" : {
+            "type" : "prometheus",
+            "uid" : "${DS_PROMETHEUS}"
+         },
+         "description" : "Nodes auto-created for the ci-spot Custom ComputeClass (GKE auto-labels them cloud.google.com/compute-class=ci-spot).",
+         "fieldConfig" : {
+            "defaults" : {
+               "color" : {
+                  "fixedColor" : "purple",
+                  "mode" : "fixed"
+               },
+               "unit" : "none"
+            },
+            "overrides" : []
+         },
+         "gridPos" : {
+            "h" : 6,
+            "w" : 6,
+            "x" : 12,
+            "y" : 7
+         },
+         "id" : 4,
+         "options" : {
+            "colorMode" : "value",
+            "graphMode" : "area",
+            "reduceOptions" : {
+               "calcs" : [
+                  "lastNotNull"
+               ],
+               "fields" : "",
+               "values" : false
+            },
+            "textMode" : "auto"
+         },
+         "targets" : [
+            {
+               "datasource" : {
+                  "type" : "prometheus",
+                  "uid" : "${DS_PROMETHEUS}"
+               },
+               "editorMode" : "code",
+               "expr" : "count(kube_node_spec_taint{key=\"cloud.google.com/compute-class\",value=\"ci-spot\"}) or vector(0)",
+               "legendFormat" : "ci-spot",
+               "range" : true,
+               "refId" : "A"
+            }
+         ],
+         "title" : "ci-spot ComputeClass nodes",
+         "type" : "stat"
+      },
+      {
+         "datasource" : {
+            "type" : "prometheus",
+            "uid" : "${DS_PROMETHEUS}"
+         },
+         "description" : "Non-Spot nodes — the long-lived jenkins-2026-pool hosting ArgoCD/Jenkins/observability/CNPG.",
+         "fieldConfig" : {
+            "defaults" : {
+               "color" : {
+                  "fixedColor" : "green",
+                  "mode" : "fixed"
+               },
+               "unit" : "none"
+            },
+            "overrides" : []
+         },
+         "gridPos" : {
+            "h" : 6,
+            "w" : 6,
+            "x" : 18,
+            "y" : 7
+         },
+         "id" : 5,
+         "options" : {
+            "colorMode" : "value",
+            "graphMode" : "area",
+            "reduceOptions" : {
+               "calcs" : [
+                  "lastNotNull"
+               ],
+               "fields" : "",
+               "values" : false
+            },
+            "textMode" : "auto"
+         },
+         "targets" : [
+            {
+               "datasource" : {
+                  "type" : "prometheus",
+                  "uid" : "${DS_PROMETHEUS}"
+               },
+               "editorMode" : "code",
+               "expr" : "count(kube_node_info) - (count(kube_node_spec_taint{key=\"cloud.google.com/gke-spot\"}) or vector(0))",
+               "legendFormat" : "static",
+               "range" : true,
+               "refId" : "A"
+            }
+         ],
+         "title" : "Static platform nodes",
+         "type" : "stat"
+      },
+      {
+         "datasource" : {
+            "type" : "prometheus",
+            "uid" : "${DS_PROMETHEUS}"
+         },
+         "description" : "The elasticity signal: Spot nodes scale up during CI builds and consolidate back toward 0 between them; the static pool stays flat.",
+         "fieldConfig" : {
+            "defaults" : {
+               "color" : {
+                  "mode" : "palette-classic"
+               },
+               "custom" : {
+                  "drawStyle" : "line",
+                  "fillOpacity" : 20,
+                  "lineInterpolation" : "stepAfter",
+                  "lineWidth" : 2,
+                  "showPoints" : "never",
+                  "stacking" : {
+                     "group" : "A",
+                     "mode" : "none"
+                  }
+               },
+               "min" : 0,
+               "unit" : "none"
+            },
+            "overrides" : []
+         },
+         "gridPos" : {
+            "h" : 10,
+            "w" : 24,
+            "x" : 0,
+            "y" : 13
+         },
+         "id" : 6,
+         "options" : {
+            "legend" : {
+               "calcs" : [
+                  "min",
+                  "max",
+                  "lastNotNull"
+               ],
+               "displayMode" : "table",
+               "placement" : "bottom",
+               "showLegend" : true
+            },
+            "tooltip" : {
+               "mode" : "multi",
+               "sort" : "desc"
+            }
+         },
+         "targets" : [
+            {
+               "datasource" : {
+                  "type" : "prometheus",
+                  "uid" : "${DS_PROMETHEUS}"
+               },
+               "editorMode" : "code",
+               "expr" : "count(kube_node_spec_taint{key=\"cloud.google.com/gke-spot\"}) or vector(0)",
+               "legendFormat" : "Spot (NAP)",
+               "range" : true,
+               "refId" : "A"
+            },
+            {
+               "datasource" : {
+                  "type" : "prometheus",
+                  "uid" : "${DS_PROMETHEUS}"
+               },
+               "editorMode" : "code",
+               "expr" : "count(kube_node_info) - (count(kube_node_spec_taint{key=\"cloud.google.com/gke-spot\"}) or vector(0))",
+               "legendFormat" : "Static pool",
+               "range" : true,
+               "refId" : "B"
+            },
+            {
+               "datasource" : {
+                  "type" : "prometheus",
+                  "uid" : "${DS_PROMETHEUS}"
+               },
+               "editorMode" : "code",
+               "expr" : "count(kube_node_info)",
+               "legendFormat" : "Total",
+               "range" : true,
+               "refId" : "C"
+            }
+         ],
+         "title" : "Node count over time — Spot (NAP) vs static pool",
+         "type" : "timeseries"
       }
-    ]
-  },
-  "time": { "from": "now-3h", "to": "now" },
-  "timezone": "browser",
-  "title": "CI-CD / Node Auto-Provisioning (Spot)",
-  "uid": "jenkins2026-node-autoprovisioning",
-  "version": 1,
-  "weekStart": ""
+   ],
+   "refresh" : "30s",
+   "schemaVersion" : 42,
+   "tags" : [
+      "jenkins-2026",
+      "platform",
+      "nap",
+      "autoscaling"
+   ],
+   "templating" : {
+      "list" : [
+         {
+            "allowCustomValue" : true,
+            "current" : {
+               "text" : "",
+               "value" : ""
+            },
+            "hide" : 0,
+            "includeAll" : false,
+            "label" : "Prometheus / Mimir",
+            "multi" : false,
+            "name" : "DS_PROMETHEUS",
+            "options" : [],
+            "query" : "prometheus",
+            "refresh" : 1,
+            "regex" : "",
+            "skipUrlSync" : false,
+            "type" : "datasource"
+         }
+      ]
+   },
+   "time" : {
+      "from" : "now-3h",
+      "to" : "now"
+   },
+   "timezone" : "browser",
+   "title" : "CI-CD / Node Auto-Provisioning (Spot)",
+   "uid" : "jenkins2026-node-autoprovisioning",
+   "version" : 5,
+   "weekStart" : ""
 }

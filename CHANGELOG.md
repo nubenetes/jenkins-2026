@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
+## [v0.28.49] - 2026-06-30
+
+### Changed
+- **Publish the redesigned Node Auto-Provisioning + Tekton dashboards from IaC.** The two
+  Grafana-Cloud-redesigned dashboards are now the ones the publish flow ships
+  (`observability/grafana/dashboards/`), replacing the previous `node-autoprovisioning.json`
+  and the **obsolete** `tekton-overview.json` (now "CI-CD / Tekton CI Observability", a
+  significant upgrade). Because the publish API (`POST /api/dashboards/db` in
+  `07-grafana-dashboards.sh`) wants the **classic** model but the exports are **v2** schema,
+  the classic model was pulled from Grafana via `GET /api/dashboards/uid/<uid>` and normalized
+  to the repo convention: `id: null`, Prometheus via the `${DS_PROMETHEUS}` template variable
+  (unchanged), and Loki/Tempo concrete uids (`grafanacloud-logs`/`-traces`) mapped back to the
+  `loki`/`tempo` placeholders the publish walk + azure/aws variant generators expect. Same
+  filenames + uids (`jenkins2026-{node-autoprovisioning,tekton-overview}`), so the CI-engine
+  gating and off-engine cleanup keep working unchanged. The verbatim v2 backups in
+  `dashboards-cloud-export/` were **not** touched.
+
 ## [v0.28.48] - 2026-06-30
 
 ### Added
