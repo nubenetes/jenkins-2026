@@ -275,6 +275,11 @@ Register the App once:
 **1 — Create the App.** Open **`https://github.com/organizations/nubenetes/settings/apps/new`**
 (Org → Settings → Developer settings → GitHub Apps → *New GitHub App*) and set:
 - **GitHub App name** — any globally-unique name, e.g. `nubenetes-arc-runners`.
+- **Description** — *optional and cosmetic* (shown only to people viewing the App in the
+  org settings; it does **not** affect ARC). A useful value, so future-you knows what it
+  is: *"Actions Runner Controller (ARC) — registers and autoscales the in-cluster
+  self-hosted runners for the nubenetes microservices CI (jenkins-2026 GKE cluster,
+  `ci.engine=githubactions`)."*
 - **Homepage URL** — anything (e.g. `https://github.com/nubenetes/jenkins-2026`).
 - **Webhook → Active** — **uncheck it.** The `gha-runner-scale-set` listener is
   *pull-based* (it long-polls the GitHub Actions service), so **no webhook is needed**.
