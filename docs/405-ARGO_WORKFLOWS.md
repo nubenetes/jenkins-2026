@@ -1,4 +1,4 @@
-[← Previous: 403. Tekton](./403-TEKTON.md) | [🏠 Home](../README.md) | [→ Next: 501. Platform Operations](./501-PLATFORM_OPERATIONS.md)
+[← Previous: 404. GitHub Actions / ARC](./404-GITHUB_ACTIONS.md) | [🏠 Home](../README.md) | [→ Next: 501. Platform Operations](./501-PLATFORM_OPERATIONS.md)
 
 ---
 
@@ -265,14 +265,16 @@ which `up.sh`/`down.sh` and the numbered steps branch on:
 | Teardown (`down.sh`) | Helm uninstall | engine-agnostic (removes all) | engine-agnostic (removes all) |
 
 **The engines are mutually exclusive.** A clean install only deploys the selected
-engine ([`up.sh`](../scripts/up.sh) branches on `ci.engine`, so Jenkins is never
-installed in argoworkflows mode). Switching engines on a *running* cluster
-**decommissions the other one**: [`scripts/04-argoworkflows.sh`](../scripts/04-argoworkflows.sh)
-retires Jenkins if present (Helm uninstall + removes the Jenkins gateway
-route/IAP/health-check) and prunes a Tekton app-of-apps if present; the other
-engines' installers reciprocate. The shared microservices are GitOps-managed by
-ArgoCD, so they survive the switch — only the CI engine itself (and its public
-routing) changes.
+one of the four (Jenkins · Tekton · GitHub Actions/ARC · Argo Workflows);
+[`up.sh`](../scripts/up.sh) branches on `ci.engine`, so no other engine is
+installed in argoworkflows mode. Switching engines on a *running* cluster
+**retires the other three**: [`scripts/04-argoworkflows.sh`](../scripts/04-argoworkflows.sh)
+calls the shared `retire_ci_engine` helper in
+[`scripts/lib/common.sh`](../scripts/lib/common.sh) for `jenkins`, `tekton` and
+`githubactions` (deletes every ArgoCD app they own + all children + their
+namespaces + clears any stuck GKE NEG finalizer), and each engine's installer
+reciprocates. The shared microservices are GitOps-managed by ArgoCD, so they
+survive the switch — only the CI engine itself (and its public routing) changes.
 
 ### Namespace layout
 
@@ -576,7 +578,7 @@ alongside everything else, exported to
 `http://otel-collector-gateway.observability.svc.cluster.local:4317`. Controller
 metrics (`argo_workflows_*` from the `workflow-controller-metrics` Service `:9090`)
 are scraped into Prometheus and drive the *Argo Workflows CI* Grafana dashboard
-(`uid: jenkins2026-argoworkflows`); step pod logs land in Loki
+(`uid: jenkins2026-argo-workflows-ci`); step pod logs land in Loki
 (`k8s_namespace_name=argo-ci`). See [301. Observability](./301-OBSERVABILITY.md).
 
 ## Build speed
@@ -596,12 +598,12 @@ capacity). As with Tekton:
 
 ## The `ci.engine` contract
 
-Argo Workflows satisfies the same six-point `ci.engine` contract Jenkins and Tekton
-do (see [403 § the contract](./403-TEKTON.md#beyond-jenkins--tekton--the-ciengine-contract--candidate-engines-roadmap)),
+Argo Workflows satisfies the same six-point `ci.engine` contract Jenkins, Tekton and
+GitHub Actions/ARC do (see [403 § the contract](./403-TEKTON.md#beyond-the-four-engines--the-ciengine-contract--further-candidates-roadmap)),
 which is exactly why the port drops in without touching the microservices, ArgoCD, or
 observability layers:
 
-1. **Build & test** each service from [`services.yaml`](../jenkins/pipelines/seed/services.yaml) (JHipster Maven build, gateway MySQL→Postgres hot-patch).
+1. **Build & test** each service from [`services.yaml`](../jenkins/pipelines/seed/services.yaml) (JHipster Maven build; the gateway MySQL→Postgres + Hazelcast-cache→NoOp-cache build-time patch applied by the shared [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) all four engines call).
 2. **DevSecOps scans** — Semgrep / CodeQL / Trivy, non-blocking, results surfaced ([601. DevSecOps](./601-DEVSECOPS.md)).
 3. **Build & push** the image to GHCR (Jib / Kaniko), with the immutable per-run tag.
 4. **GitOps update** — bump the image tag in the gitops-config repo and `git push origin main`; ArgoCD takes it from there.
@@ -615,7 +617,7 @@ targeting — only the engine wrapper differs.
 
 ---
 
-[← Previous: 403. Tekton](./403-TEKTON.md) | [🏠 Home](../README.md) | [→ Next: 501. Platform Operations](./501-PLATFORM_OPERATIONS.md)
+[← Previous: 404. GitHub Actions / ARC](./404-GITHUB_ACTIONS.md) | [🏠 Home](../README.md) | [→ Next: 501. Platform Operations](./501-PLATFORM_OPERATIONS.md)
 
 ---
 

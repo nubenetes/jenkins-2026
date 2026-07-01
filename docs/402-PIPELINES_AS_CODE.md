@@ -6,6 +6,8 @@
 
 Everything Jenkins-side is defined in this repository — security, the global shared library, the OpenTelemetry exporter, and the Microservices pipelines — and applied via **Configuration as Code (JCasC)** + the **Job DSL** plugin. Nothing is configured by hand in the Jenkins UI. This page is the *pipeline* view; the *controller/platform* view is [401. Jenkins](./401-JENKINS.md).
 
+> **Jenkins is the default of four mutually-exclusive CI engines** (selected by `ci.engine`): **Jenkins** · **Tekton** · **GitHub Actions (ARC)** · **Argo Workflows**. This page details the **Jenkins** engine; the sibling engines are covered in [403. Tekton](./403-TEKTON.md), [404. GitHub Actions](./404-GITHUB_ACTIONS.md), and [405. Argo Workflows](./405-ARGO_WORKFLOWS.md). All four honour the **same ~10-stage pipeline contract** and share the [`services.yaml`](../jenkins/pipelines/seed/services.yaml) registry + the [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) gateway MySQL→Postgres + NoOp-cache build-time patch (see *§ Shared app-source patch* below).
+
 ## Understanding pipelines-as-code (newcomers → specialists)
 
 The whole CI definition is a chain of generators: a **cron seed job** reads a small YAML registry and **writes the per-service jobs**, each of which calls **one shared-library entry point** that runs the same 11-stage build in a **multi-container agent pod**. Read this once and every later section is "which file holds which stage".
@@ -71,7 +73,7 @@ So the loop is: *seed job reads `services.yaml` → generates `gateway`/`jhipste
 
 **GitOps deploy (`microservicesDeploy`):** clone the GitOps repo (`jenkins-2026-gitops-config`, branch `main`=stable / `develop`=develop) → `yq eval -i '.services.<svc>.image.tag = "<tag>"' helm/microservices/values-<env>.yaml` → commit `chore(ops): update <svc> image tag…` → `git push origin <branch>` → `argocd app sync microservices-<env>` + `app wait` (in-cluster gRPC, `ARGOCD_AUTH_TOKEN`) → **OTel self-heal** (if the running pod lacks `-javaagent` in `JAVA_TOOL_OPTIONS`, `kubectl rollout restart` it). This direct `git push origin main` is why the GitOps repo's `main` is **direct-push** (see [502](./502-MICROSERVICES_GITOPS.md) and the [branch-policy note in CLAUDE.md](../CLAUDE.md)).
 
-**Triggers:** only `seed-jobs` is on a timer (`H/30`). The generated build jobs carry **no SCM/push trigger** — they are started manually (UI), via downstream `build job`, or externally. The upstream JHipster app repos aren't owned here, so push-webhooks aren't wired (contrast PaC in the [Tekton engine](./403-TEKTON.md)).
+**Triggers:** only `seed-jobs` is on a timer (`H/30`). The generated build jobs carry **no SCM/push trigger** — they are started manually (UI), via downstream `build job`, or externally. The nubenetes app forks *are* owned here, but the Jenkins engine doesn't wire push-webhooks (contrast the git-push PaC of the other three engines — [Tekton](./403-TEKTON.md), [GitHub Actions](./404-GITHUB_ACTIONS.md), and [Argo Workflows](./405-ARGO_WORKFLOWS.md)).
 
 **Signals:** every run/stage/step is an OTel span (`OTEL_SERVICE_NAME=jenkins-pipeline-<svc>`); k6 exports OTLP metrics tagged `service.namespace=jenkins-2026, deployment.environment=<env>`. See [301](./301-OBSERVABILITY.md).
 
@@ -242,7 +244,7 @@ A second `develop` deployment tier is available behind a feature flag, **disable
 * It differs from stable only in **target namespace** (`microservices-develop`), its **own `values-develop.yaml`** (tracked on the GitOps repo's **`develop` branch**), and a **lean Postgres** profile.
 * **Observability is a single shared stack** — the develop tier reports into the *same* Grafana/Loki/Tempo/Prometheus, distinguished by namespace/labels (`deployment_environment=develop`).
 
-**Engine-neutral.** The tier works the same under **Jenkins** *and* **Tekton**: the deploy target is an engine-neutral ArgoCD `microservices-develop` Application; only the *generation* of the `-develop` CI jobs differs (Jenkins seed job vs Tekton seeded `PipelineRun`s).
+**Engine-neutral.** The tier works the same under all four CI engines — **Jenkins** (default), **Tekton**, **GitHub Actions (ARC)**, and **Argo Workflows**: the deploy target is an engine-neutral ArgoCD `microservices-develop` Application; only the *generation* of the `-develop` CI jobs differs (Jenkins seed job · Tekton seeded `PipelineRun`s · GitHub Actions `workflow_dispatch` runs · Argo Workflows submitted `Workflow`s).
 
 **Lean by design (resources you need, not more).** The Helm chart parameterizes the CNPG HA knobs — `global.postgresInstances` / `global.poolerInstances` (default `3`) and `global.postgresBackupEnabled` (default `true`). `values-develop.yaml` overrides them to **`1` / `1` / `false`**: a single Postgres instance (no standbys), a single PgBouncer pooler, and no Barman/ScheduledBackup (develop data is disposable). So per service develop runs **1 CNPG + 1 pooler** instead of stable's **3 + 3** — the whole tier is ~4 Postgres-related pods vs stable's ~12. On the 2× `e2-standard-8` cluster this fits with ample headroom.
 
@@ -282,7 +284,7 @@ microservices:
 export JENKINS2026_DEVELOP_TRACK_ENABLED=true
 ```
 
-In CI, the **`develop_track`** boolean input (**off by default**) on `Day1.cluster.01-gke` (and the `Day1.cluster.00-all` umbrella, plus `Day2.redeploy.02-jenkins` / `Day2.redeploy.03-tekton`) maps to `JENKINS2026_DEVELOP_TRACK_ENABLED` — tick it to provision the tier for that run.
+In CI, the **`develop_track`** boolean input (**off by default**) on `Day1.cluster.01-gke` (and the `Day1.cluster.00-all` umbrella, plus the per-engine redeploy workflows `Day2.redeploy.02-jenkins` / `03-tekton` / `06-githubactions` / `07-argoworkflows`) maps to `JENKINS2026_DEVELOP_TRACK_ENABLED` — tick it to provision the tier for that run.
 
 > **Prerequisite**: the GitOps repo `jenkins-2026-gitops-config` must have a `develop` branch containing `helm/microservices/values-develop.yaml` (with the lean `global.postgres*` overrides), otherwise the `microservices-develop` ArgoCD app will fail to sync.
 
@@ -297,6 +299,8 @@ flowchart TB
   up --> ciedge{ci.engine?}
   ciedge -->|jenkins| jen["04-jenkins + seed_jobs.groovy<br/>generate -develop jobs"]
   ciedge -->|tekton| tek["06-tekton-pipelines.sh<br/>seed develop PipelineRuns"]
+  ciedge -->|githubactions| gha["06-githubactions-pipelines.sh<br/>develop workflow_dispatch runs"]
+  ciedge -->|argoworkflows| aw["06-argoworkflows-pipelines.sh<br/>submit develop Workflows"]
   as --> app["ArgoCD: microservices-develop<br/>values-develop.yaml @ gitops develop"]
   app --> lean[("lean CNPG<br/>1 instance · 1 pooler · no backups")]:::store
   ns -.->|netpol + secrets land in the ns| app
@@ -306,7 +310,7 @@ flowchart TB
 
 </details>
 
-**Reading it —** one flag drives three engine-neutral things through `up.sh`: **01-namespaces** provisions the `microservices-develop` namespace with the same platform plumbing stable gets (the additive CNPG NetworkPolicy, the `ghcr-credentials` pull secret, and an `edit` RoleBinding for the active engine's SA — Jenkins or `tekton-ci`); **08.5** appends a `develop` generator to the microservices ApplicationSet so ArgoCD creates the `microservices-develop` app from the lean `values-develop.yaml`; and the active CI engine generates the `-develop` jobs/runs. The OTLP-ingress and pgAdmin-egress NetworkPolicies already list `microservices-develop` statically (harmless when absent), and the non-OSS collectors add it to the CNPG metrics scrape — so telemetry flows with no extra wiring.
+**Reading it —** one flag drives three engine-neutral things through `up.sh`: **01-namespaces** provisions the `microservices-develop` namespace with the same platform plumbing stable gets (the additive CNPG NetworkPolicy, the `ghcr-credentials` pull secret, and an `edit` RoleBinding for the active engine's SA — `jenkins` · `tekton-ci` · the ARC runner SA · `argoworkflows-ci`); **08.5** appends a `develop` generator to the microservices ApplicationSet so ArgoCD creates the `microservices-develop` app from the lean `values-develop.yaml`; and the active CI engine generates the `-develop` jobs/runs. The OTLP-ingress and pgAdmin-egress NetworkPolicies already list `microservices-develop` statically (harmless when absent), and the non-OSS collectors add it to the CNPG metrics scrape — so telemetry flows with no extra wiring.
 
 ## The service registry model
 
@@ -390,7 +394,7 @@ All four engines also run **Build & Test with `-DskipITs`** — the heavy DB **I
 
 Defined in [`MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy), this pipeline manages the complete CI/CD lifecycle for each individual microservice across **11 stages**:
 
-*   **Checkout Microservices source** — Clones the microservice repository. If the target is `gateway`, runs automated hot-patching scripts to migrate from MySQL to PostgreSQL.
+*   **Checkout Microservices source** — Clones the microservice repository, then runs the shared [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) (via `libraryResource`). For `gateway` it migrates the source from MySQL to PostgreSQL + a NoOp cache; a no-op for every other service. (This is the *same* script all four CI engines run — see *§ Shared app-source patch*.)
 *   **Checkout Infra configs** — Clones the deployed active branch of this infrastructure repository.
 *   **Semgrep SAST** — Runs static security scan using `semgrep` with `p/security-audit`, `p/owasp-top-ten`, and custom rules. Generates and archives `semgrep-results.sarif`, then uploads it to the GitHub Code Scanning API.
 *   **CodeQL Analysis** — Builds a local CodeQL database and scans JavaScript/TypeScript files. Uploads `codeql-results.sarif` to the GitHub Code Scanning API.

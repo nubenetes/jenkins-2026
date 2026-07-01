@@ -6,7 +6,7 @@
 
 Jenkins (via the `opentelemetry` plugin), every Java microservice (via OTel Operator auto-instrumentation), and the Angular UI (via a small RUM snippet) export OTLP to an in-cluster collector, which forwards to one of four backends selected by `observability.mode`: an in-cluster OSS **Prometheus+Loki+Tempo+Grafana** stack (`oss`), **Grafana Cloud**, **Azure Managed Grafana** + Azure Monitor (`managed-azure`), or **Amazon Managed Grafana** + AMP/X-Ray/CloudWatch (`managed-aws`).
 
-> **Exactly one backend is active per cluster, and the choice is deterministic & idempotent** — exactly like `ci.engine` (jenkins ↔ tekton). Re-running `Day1.cluster.01` (or [`scripts/03-observability.sh`](../scripts/03-observability.sh)) with a *different* `observability.mode` **auto-retires the previously-deployed backend's in-cluster footprint** (the OTel collectors are reconfigured for the new backend; the other modes' agents — `pdc-agent`/`k8s-monitoring` for grafana-cloud, the OSS `observability-oss` app-of-apps, `kube-state-metrics`/`prometheus-node-exporter` for managed-*— are uninstalled) and provisions the chosen one, so you never end up with two Grafanas. Defaults: the `Day1.cluster.01` form defaults to **`oss`** (needs no external backend); `config/config.yaml`'s durable default is `grafana-cloud`. The persistent managed backends *themselves* (the Grafana Cloud stack / Azure Managed Grafana / Amazon Managed Grafana, created by `Day0.infra.0{2,3,4}`) are decoupled from the cluster and, **by default, are not** destroyed by a mode switch (the switch only retires the in-cluster footprint; use their `Decom.infra.*` workflows to remove the external backend). To enforce a **true single backend** — also `terraform destroy` the persistent stacks of the *non-selected* modes on the same Day1 — set the opt-in **`destroy_unused_backends`** input on `Day1.cluster.01` (it reuses the per-backend `Decom.infra.0{2,3,4}` workflows via `workflow_call`). ⚠ **Irreversible**: it wipes that backend's history/dashboards, and re-selecting the mode later recreates it empty; it also needs that backend's credentials/identifiers configured. Off by default.
+> **Exactly one backend is active per cluster, and the choice is deterministic & idempotent** — exactly like `ci.engine` (jenkins · tekton · githubactions · argoworkflows, mutually exclusive). Re-running `Day1.cluster.01` (or [`scripts/03-observability.sh`](../scripts/03-observability.sh)) with a *different* `observability.mode` **auto-retires the previously-deployed backend's in-cluster footprint** (the OTel collectors are reconfigured for the new backend; the other modes' agents — `pdc-agent`/`k8s-monitoring` for grafana-cloud, the OSS `observability-oss` app-of-apps, `kube-state-metrics`/`prometheus-node-exporter` for managed-*— are uninstalled) and provisions the chosen one, so you never end up with two Grafanas. Defaults: the `Day1.cluster.01` form defaults to **`oss`** (needs no external backend); `config/config.yaml`'s durable default is `grafana-cloud`. The persistent managed backends *themselves* (the Grafana Cloud stack / Azure Managed Grafana / Amazon Managed Grafana, created by `Day0.infra.0{2,3,4}`) are decoupled from the cluster and, **by default, are not** destroyed by a mode switch (the switch only retires the in-cluster footprint; use their `Decom.infra.*` workflows to remove the external backend). To enforce a **true single backend** — also `terraform destroy` the persistent stacks of the *non-selected* modes on the same Day1 — set the opt-in **`destroy_unused_backends`** input on `Day1.cluster.01` (it reuses the per-backend `Decom.infra.0{2,3,4}` workflows via `workflow_call`). ⚠ **Irreversible**: it wipes that backend's history/dashboards, and re-selecting the mode later recreates it empty; it also needs that backend's credentials/identifiers configured. Off by default.
 
 Every component — Jenkins, the Spring Boot microservices, and the Angular UI — exports OpenTelemetry **traces**, **metrics**, and **logs**, correlated by `trace_id`/`span_id` and common resource attributes (`service.name`, `service.namespace=jenkins-2026`, `deployment.environment=stable`).
 
@@ -271,7 +271,7 @@ Two `opentelemetry-collector-contrib` releases (the **contrib** distro — neede
 
 The `opentelemetry` plugin exports one span per pipeline run / stage / step as `service.name=jenkins` to the same gateway — so a Microservices deploy's **CI trace and the resulting application traces share the same backend**.
 
-> **Tekton CI (`ci.engine=tekton`).** When the alternative CI engine is selected, the k6 smoke Task ships its own traces/metrics to the same in-cluster OTel gateway as `service.name=k6-microservices-smoke` (`K6_OTEL_SERVICE_NAME` + `OTEL_RESOURCE_ATTRIBUTES` in [`tekton/tasks/k6-smoke.yaml`](../tekton/tasks/k6-smoke.yaml)), so the load-test telemetry lands in Tempo/Loki/Prometheus alongside the application traces. Native Tekton **PipelineRun/TaskRun** tracing (patching the controller's `config-tracing`) is a deferred follow-up — not wired today. See [403. Tekton](./403-TEKTON.md).
+> **Non-Jenkins engines (`ci.engine=tekton` / `githubactions` / `argoworkflows`).** The `opentelemetry` plugin is Jenkins-specific; on the other three engines the k6 smoke step is what carries CI telemetry into the same in-cluster OTel gateway as `service.name=k6-microservices-smoke` (`K6_OTEL_SERVICE_NAME` + `OTEL_RESOURCE_ATTRIBUTES` in e.g. [`tekton/tasks/k6-smoke.yaml`](../tekton/tasks/k6-smoke.yaml) and [`argoworkflows/templates/microservices-k6-wftmpl.yaml`](../argoworkflows/templates/microservices-k6-wftmpl.yaml)), so the load-test telemetry lands in Tempo/Loki/Prometheus alongside the application traces. Native controller-level **run/step** tracing (e.g. Tekton's `config-tracing`) is a deferred follow-up — not wired today. See [403. Tekton](./403-TEKTON.md), [404. GitHub Actions](./404-GITHUB_ACTIONS.md), [405. Argo Workflows](./405-ARGO_WORKFLOWS.md).
 
 ## Telemetry Architecture and Signal Flow
 
@@ -438,7 +438,7 @@ Each observability mode has its **own independent set of dashboards** published 
 
 #### Source of truth: canonical dashboards
 
-The canonical JSON files live in [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) and are the **single source of truth** for content. Panels reference datasources by their fixed names (`grafanacloud-logs` / `grafanacloud-traces`; Prometheus is the stack default), **not** via `${DS_LOKI}`/`${DS_TEMPO}` template variables — the stack has **no default Loki or Tempo datasource**, so those vars wouldn't resolve (see the No-Data gotcha below); the aws/azure variant generators rewrite the Loki/Tempo references to CloudWatch/X-Ray by datasource type. The generators also **neutralize Loki/Tempo _query-type_ template variables** (e.g. the redesigned Tekton board's `log_namespace` filter, whose dropdown options are *queried from Loki*): in the aws/azure variants they become a static `custom` variable keeping the all-value, since a LogQL/TraceQL options query has no Azure/CloudWatch equivalent. The **Shipped** column shows which dashboards are always present versus the two CI-overview dashboards that are mutually exclusive — only the one for the active `ci.engine` is shipped (see [CI-engine-aware publishing](#ci-engine-aware-publishing)):
+The canonical JSON files live in [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) and are the **single source of truth** for content. Panels reference datasources by their fixed names (`grafanacloud-logs` / `grafanacloud-traces`; Prometheus is the stack default), **not** via `${DS_LOKI}`/`${DS_TEMPO}` template variables — the stack has **no default Loki or Tempo datasource**, so those vars wouldn't resolve (see the No-Data gotcha below); the aws/azure variant generators rewrite the Loki/Tempo references to CloudWatch/X-Ray by datasource type. The generators also **neutralize Loki/Tempo _query-type_ template variables** (e.g. the redesigned Tekton board's `log_namespace` filter, whose dropdown options are *queried from Loki*): in the aws/azure variants they become a static `custom` variable keeping the all-value, since a LogQL/TraceQL options query has no Azure/CloudWatch equivalent. The **Shipped** column shows which dashboards are always present versus the four CI-overview dashboards that are mutually exclusive — only the one for the active `ci.engine` (jenkins · tekton · githubactions · argoworkflows) is shipped (see [CI-engine-aware publishing](#ci-engine-aware-publishing)):
 
 | Dashboard (uid) | What it shows | Shipped |
 |---|---|---|
@@ -450,6 +450,8 @@ The canonical JSON files live in [`observability/grafana/dashboards/`](../observ
 | `node-autoprovisioning` | **Node Auto-Provisioning (Spot)**: Spot vs static node counts over time — watch NAP scale up CI build nodes and consolidate back toward zero. Reads node **taints** via kube-state-metrics (`kube_node_info`/`kube_node_spec_taint`); the lean profile keeps that tiny node-inventory slice, so it works in **all** modes (see the leanMetrics note above) | always |
 | `jenkins-overview` | Jenkins CI: active runs, queue, executors, pipeline results, build traces, pod logs | only `ci.engine=jenkins` |
 | `tekton-overview` | **Tekton CI Observability** (redesigned in Grafana Cloud): PipelineRun/TaskRun durations & results, running/queued runs, per-task failures, build traces, and pipeline pod logs filtered by a `log_namespace` variable | only `ci.engine=tekton` |
+| `github-actions-ci` | **GitHub Actions (ARC) CI Observability**: ephemeral runner-pod counts/phases, controller reconciles, runner failure/success rate, active pods vs Spot CI nodes, plus runner logs + traces (kube-state-metrics driven) | only `ci.engine=githubactions` |
+| `argo-workflows-ci` | **Argo Workflows CI Observability**: Workflow/pod counts & results, running/queued Workflows, per-template failures, build traces, and workflow pod logs | only `ci.engine=argoworkflows` |
 
 > **`node-autoprovisioning` and `tekton-overview` are the Grafana-Cloud-redesigned boards.**
 > They were authored/optimized in Grafana Cloud, exported in the v2 schema (kept verbatim in
@@ -460,7 +462,7 @@ The canonical JSON files live in [`observability/grafana/dashboards/`](../observ
 > four** backends. (The Tekton board replaced the previous, obsolete one — same uid/filename, so
 > the CI-engine gating is unchanged.)
 
-> Adding a dashboard = drop a `<name>.json` into [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) and run the variant generators (below). In `oss` mode the Helm-chart ConfigMap picks it up automatically (it globs `*.json`); for the other modes [`scripts/07-grafana-dashboards.sh`](../scripts/07-grafana-dashboards.sh) publishes every `*.json`. Only `jenkins-overview` / `tekton-overview` are CI-engine-gated; everything else ships in all modes.
+> Adding a dashboard = drop a `<name>.json` into [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) and run the variant generators (below). In `oss` mode the Helm-chart ConfigMap picks it up automatically (it globs `*.json`); for the other modes [`scripts/07-grafana-dashboards.sh`](../scripts/07-grafana-dashboards.sh) publishes every `*.json`. Only the four CI overviews (`jenkins-overview` / `tekton-overview` / `github-actions-ci` / `argo-workflows-ci`) are CI-engine-gated; everything else ships in all modes.
 
 #### Dashboard inventory — what each one offers
 
@@ -476,6 +478,8 @@ questions it answers; the per-dashboard detail follows.
 | **rum-frontend** | Angular **Real User Monitoring** (Faro) | Loki · Tempo | the browser SPA | `service_name` (app) · `deployment_environment` | Are Core Web Vitals (LCP/INP/CLS) good? JS errors? sessions? full browser→backend trace? | [202](202-MICROSERVICES-APP-ARCHITECTURE.md) |
 | **jenkins-overview** | Jenkins CI engine (when active) | Prom · Tempo · Loki | the Jenkins controller | `ci_pipeline_id` *(single cluster-wide CI — no per-env)* | Build success/duration trend? queue/executors? failing pipeline? | [101](101-GITHUB_ACTIONS_WORKFLOWS.md) / [401](401-JENKINS.md) |
 | **tekton-overview** | Tekton CI engine (when active) | Prom · Tempo · Loki | the Tekton controller | — | PipelineRun durations/results? task failures? | [403](403-TEKTON.md) |
+| **github-actions-ci** | GitHub Actions / ARC engine (when active) | Prom · Tempo · Loki | the ARC runner pods + controller | — | Runner pod throughput/failures? active pods vs Spot CI nodes? | [404](404-GITHUB_ACTIONS.md) |
+| **argo-workflows-ci** | Argo Workflows engine (when active) | Prom · Tempo · Loki | the Argo Workflows controller | — | Workflow durations/results? template failures? | [405](405-ARGO_WORKFLOWS.md) |
 
 > **Label-model gotcha.** Backend **app** metrics (HTTP, traces, logs) carry
 > `deployment_environment` (stable/develop). **JVM** metrics and **RUM** signals do
@@ -522,10 +526,12 @@ browser→gateway→microservice **end-to-end traces**. *Answers:* is the UI fas
 users? are there client-side errors? *Populates once the SPA is instrumented with the
 Faro Web SDK — the receiver + pipeline are already live; see the [RUM roadmap in 202](202-MICROSERVICES-APP-ARCHITECTURE.md).*
 
-**`jenkins-overview`** / **`tekton-overview`** — the CI-engine board (only the active
+**`jenkins-overview`** / **`tekton-overview`** / **`github-actions-ci`** /
+**`argo-workflows-ci`** — the CI-engine board (one per engine, only the active
 engine's is published). *Key panels:* run/build counts, durations, success/failure
-trend, queue/executors (Jenkins), build traces + CI pod logs. Jenkins is a single
-cluster-wide controller, so it filters by `ci_pipeline_id`, not by environment.
+trend, queue/executors (Jenkins) or runner/pod counts (ARC/Argo), build traces + CI
+pod logs. Jenkins is a single cluster-wide controller, so it filters by
+`ci_pipeline_id`, not by environment.
 
 </details>
 
@@ -546,7 +552,7 @@ These cost real debugging time; record them so they don't recur:
 
 **All of _our_ content — every dashboard above _and_ all five [alert rules](#alert-rules) — lives in a single flat folder named `CI-CD Observability`** (engine-neutral; folder uid `jenkins-2026`), in **every** backend. So no matter which Grafana you open:
 
-- **Dashboards** → the *Dashboards* browser → open the **`CI-CD Observability`** folder. The visible titles are engine-neutral too: `CI-CD / Microservices Overview`, `CI-CD / k6 Observability Smoke Test`, `CI-CD / PostgreSQL (CloudNativePG)`, and the active CI-overview (`CI-CD / Jenkins CI Overview` **or** `CI-CD / Tekton CI Observability`). (Dashboard **uids** stay `jenkins2026-*` internally — stable identifiers, not shown in the UI.)
+- **Dashboards** → the *Dashboards* browser → open the **`CI-CD Observability`** folder. The visible titles are engine-neutral too: `CI-CD / Microservices Overview`, `CI-CD / k6 Observability`, `CI-CD / PostgreSQL (CloudNativePG)`, and the active CI-overview (`CI-CD / Jenkins Controller`, `CI-CD / Tekton CI Observability`, `CI-CD / GitHub Actions (ARC) CI Observability`, **or** `CI-CD / Argo Workflows CI Observability`). (Dashboard **uids** are stable internal identifiers, not shown in the UI — mostly `jenkins2026-*`, though a few Grafana-Cloud-authored boards keep their short generated uids, e.g. `rum-frontend`=`in7bmb6`, `jvm-internals`=`innrq4f`.)
 - **Alert rules** → *Alerting → Alert rules* → the **same** `CI-CD Observability` folder (a Grafana folder holds dashboards **and** rules together). The email contact point + routing are under *Alerting → Contact points / Notification policies*.
 
 > Folder names are deliberately **slash-free** (`CI-CD`, not `CI/CD`): a `/` makes Grafana's alerting provisioning treat the title as a nested-folder path (`CI/CD Alerts` → a `CI` folder with a `CD Alerts` child).
@@ -573,7 +579,7 @@ Each managed backend requires adapted datasources (AMP instead of Prometheus, Cl
 
 ### Frontend RUM (Grafana Faro) per backend — native on Grafana Cloud & OSS
 
-The **`CI-CD Frontend RUM (Angular / Faro)`** dashboard (`jenkins2026-rum-frontend`) is the browser-side
+The **`CI-CD Frontend RUM (Angular / Faro)`** dashboard (uid `in7bmb6`) is the browser-side
 counterpart to the JVM/backend boards. Its data is **[Grafana Faro](https://grafana.com/oss/faro/)** —
 the Angular SPA's Web SDK beacons Web-Vitals / JS errors / sessions / browser spans to the collector's
 **`faro` receiver**, which exports them as OTLP **logs + traces**. Faro is a **Grafana-native** signal:
@@ -608,32 +614,34 @@ Key implication: **if a panel shows "No data" in one Grafana, that does not mean
 
 #### CI-engine-aware publishing
 
-Only the dashboard for the **active CI engine** is published; the off-engine one is deleted if it exists:
+Only the dashboard for the **active CI engine** is published; the three off-engine ones are deleted if they exist:
 
 | `ci.engine` | Published | Deleted if present |
 |---|---|---|
-| `jenkins` (default) | `jenkins-overview` (all variants) | `tekton-overview` |
-| `tekton` | `tekton-overview` (all variants) | `jenkins-overview` |
+| `jenkins` (default) | `jenkins-overview` (all variants) | `tekton-overview` · `github-actions-ci` · `argo-workflows-ci` |
+| `tekton` | `tekton-overview` (all variants) | `jenkins-overview` · `github-actions-ci` · `argo-workflows-ci` |
+| `githubactions` | `github-actions-ci` (all variants) | `jenkins-overview` · `tekton-overview` · `argo-workflows-ci` |
+| `argoworkflows` | `argo-workflows-ci` (all variants) | `jenkins-overview` · `tekton-overview` · `github-actions-ci` |
 
 This applies to all backends. Crucially, the **active engine is resolved per path**, never from `config/config.yaml`'s `ci.engine` (which is just the repo default — `jenkins` — and need not match what a cluster was actually deployed with):
 
 | Path | How the active engine is resolved |
 |---|---|
 | **oss** (in-cluster Grafana) | The dashboards Helm chart gates on the `ciEngine` value, set by the `observability-oss` app-of-apps from [`scripts/03-observability.sh`](../scripts/03-observability.sh) (`{{ciEngine}}` ← `J2026_CI_ENGINE`). `Day2.publish.01-oss` re-applies the parent app with the engine detected from the cluster. See [OSS dashboards: GitOps-managed by ArgoCD](#oss-dashboards-gitops-managed-by-argocd). |
-| **grafana-cloud** / any cluster-connected `07-grafana-dashboards.sh` run | `07` resolves it via the shared `j2026_active_ci_engine` helper ([`scripts/lib/common.sh`](../scripts/lib/common.sh)): explicit `JENKINS2026_CI_ENGINE` override → **live-cluster detection** (Jenkins StatefulSet = jenkins, Tekton controller = tekton) → config default. |
+| **grafana-cloud** / any cluster-connected `07-grafana-dashboards.sh` run | `07` resolves it via the shared `j2026_active_ci_engine` helper ([`scripts/lib/common.sh`](../scripts/lib/common.sh)): explicit `JENKINS2026_CI_ENGINE` override → **live-cluster detection** (Jenkins StatefulSet = jenkins, Tekton controller = tekton, the `gha-rs-controller` Deployment = githubactions) → config default (argoworkflows). |
 | **managed-azure** / **managed-aws** (`Day2.publish.03` / `.04`) | These publish from the repo to external Grafana **with no cluster access by design**, so they can't detect via kubectl. Day1 records the deployed engine to a durable GCS object (`gs://<TF_STATE_BUCKET>/jenkins-2026/active-ci-engine`); the publishers read it (falling back to the manual `ci_engine` input only if the record is absent). |
 
 So once a cluster is deployed, every dashboard publisher — cluster-connected or not — gates on the **actually-deployed** engine without anyone selecting it by hand.
 
 #### OSS dashboards: GitOps-managed by ArgoCD
 
-For `observability.mode=oss` the dashboards are **not** script-managed. [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) doubles as a small Helm chart ([`Chart.yaml`](../observability/grafana/dashboards/Chart.yaml) + [`templates/configmap.yaml`](../observability/grafana/dashboards/templates/configmap.yaml)): the canonical `*.json` files are read via `.Files.Glob` and rendered into the `jenkins-2026-grafana-dashboards` ConfigMap (mounted by Grafana via `dashboardsConfigMaps` in [`values-oss.yaml`](../observability/grafana/values-oss.yaml)), **dropping the off-engine CI overview** based on the `ciEngine` value.
+For `observability.mode=oss` the dashboards are **not** script-managed. [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) doubles as a small Helm chart ([`Chart.yaml`](../observability/grafana/dashboards/Chart.yaml) + [`templates/configmap.yaml`](../observability/grafana/dashboards/templates/configmap.yaml)): the canonical `*.json` files are read via `.Files.Glob` and rendered into the `jenkins-2026-grafana-dashboards` ConfigMap (mounted by Grafana via `dashboardsConfigMaps` in [`values-oss.yaml`](../observability/grafana/values-oss.yaml)), **dropping the three off-engine CI overviews** based on the `ciEngine` value (one of jenkins · tekton · githubactions · argoworkflows).
 
 The [`observability-oss`](../argocd/observability-oss/) app-of-apps emits an `oss-grafana-dashboards` child Application ([`templates/grafana-dashboards.yaml`](../argocd/observability-oss/templates/grafana-dashboards.yaml)) pointing at that chart, with `ciEngine` flowing app-of-apps → parent Application parameter → [`scripts/03-observability.sh`](../scripts/03-observability.sh) (`{{ciEngine}}` substituted from `J2026_CI_ENGINE`). It carries `sync-wave: -1` so the ConfigMap exists before Grafana mounts it.
 
 Consequences:
 - **Editing a canonical dashboard and committing is enough** — ArgoCD auto-syncs it; no `Day2.publish.01-oss-grafana` run is required (that workflow now only nudges a re-sync).
-- The off-engine gating is correct by construction: a tekton cluster never shows an empty Jenkins CI dashboard (and vice-versa), because the chart drops it at render time using the deploy-time engine — not `config/config.yaml`'s default.
+- The off-engine gating is correct by construction: e.g. a tekton cluster never shows an empty Jenkins/ARC/Argo CI dashboard, because the chart keeps only the active engine's overview at render time using the deploy-time engine — not `config/config.yaml`'s default.
 - The `*.json` files are still the source for `generate.py` (AWS/Azure variants) and the cloud/azure/aws API publish; those glob `*.json` and ignore the chart's `Chart.yaml` / `values.yaml` / `templates/`.
 
 #### Regenerating the AWS and Azure variants

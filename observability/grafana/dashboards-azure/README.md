@@ -2,11 +2,14 @@
 
 Two kinds, by design:
 
-- **Custom** (`*-azure.json`, this dir): the project-specific views - Jenkins
-  CI, per-microservice RED, the k6 smoke test, and the Azure logs/traces panels.
-  No public dashboard knows about these (the OTel `service_name`/
-  `deployment_environment` labels, `ci_pipeline_run_*` metrics, App Insights
-  classic schema), so they're hand-maintained here.
+- **Custom** (`*-azure.json`, this dir): the project-specific views - the
+  active CI engine's overview (one of **Jenkins** / **Tekton** /
+  **GitHub Actions (ARC)** / **Argo Workflows**, selected by `ci.engine`;
+  `07-grafana-dashboards.sh` publishes only that engine's board), the
+  `CI-CD / k6 Observability` view, per-microservice RED, and the Azure
+  logs/traces panels. No public dashboard knows about these (the OTel
+  `service_name`/ `deployment_environment` labels, `ci_pipeline_run_*` metrics,
+  App Insights classic schema), so they're hand-maintained here.
 - **Built-in infra** (nothing in this repo): generic Kubernetes/node infra is
   served by **Azure Managed Grafana's own built-in dashboards** (Compute
   Resources / Kubelet / Node Exporter / USE Method), auto-provisioned from the

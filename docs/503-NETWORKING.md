@@ -75,7 +75,7 @@ Traffic **in** (north-south): a user hits `app.jenkins2026.nubenetes.com`, DNS p
 - **Encryption:** `in_transit_encryption_config = IN_TRANSIT_ENCRYPTION_INTER_NODE_TRANSPARENT` — WireGuard, **inter-node only** (same-node pod traffic never hits the wire). Transport encryption, **not** per-workload mTLS identity.
 - **Egress:** **no Cloud NAT / router and no custom firewall** are defined — nodes egress via the default internet gateway under the default VPC firewall rules; Workload-Identity pods reach the node-local metadata server at `169.254.169.254:80/:988`.
 - **Ingress:** a **global external L7** GKE **Gateway** (`gatewayClassName: gke-l7-global-external-managed`) in `platform-ingress`, fronted by the static IP `jenkins-2026-gateway-ip` + the Google-managed wildcard cert (`jenkins-2026-cert-map`), one `HTTPRoute` per app, **container-native NEG** load balancing (to pod `targetPort`), and **IAP** via `GCPBackendPolicy` for the admin UIs.
-- **Segmentation:** namespaces are classed as **default-deny** (observability, microservices(+develop), pgadmin, jenkins), **deny-ingress baseline** (argocd, headlamp, tekton-ci — outbound-only / entry-port-only), or **open by design** (operator namespaces that host admission webhooks). Engine-gated files add the jenkins/tekton namespace policies. See the [501 NetworkPolicy matrix](./501-PLATFORM_OPERATIONS.md#networkpolicy-matrix).
+- **Segmentation:** namespaces are classed as **default-deny** (observability, microservices(+develop), pgadmin, jenkins), **deny-ingress baseline** (argocd, headlamp, and the active CI engine's execution namespace — tekton-ci · arc-runners · argo-ci — outbound-only / entry-port-only), or **open by design** (operator namespaces that host admission webhooks). Engine-gated files add the per-engine namespace policies (one of `-jenkins` · `-tekton` · `-githubactions` · `-argoworkflows`, selected by `ci.engine`). See the [501 NetworkPolicy matrix](./501-PLATFORM_OPERATIONS.md#networkpolicy-matrix).
 
 </details>
 
@@ -185,11 +185,11 @@ sequenceDiagram
   U->>DNS: resolve app.jenkins2026.nubenetes.com
   DNS-->>U: wildcard A record → the static IP
   U->>LB: HTTPS (one Google-managed wildcard cert)
-  alt IAP-protected (jenkins / tekton / headlamp / pgadmin / grafana-oss)
+  alt IAP-protected (jenkins / tekton / argo-workflows UI / headlamp / pgadmin / grafana-oss)
     LB->>IAP: is the Google account in the admin allowlist?
     IAP-->>LB: allow / deny (403)
-  else open (microservices · argocd · pac)
-    note over LB: no IAP — pac is protected by an HMAC webhook secret instead
+  else open (microservices · argocd · pac · argo-events)
+    note over LB: no IAP — pac / argo-events are protected by an HMAC webhook secret instead
   end
   LB->>GW: HTTPRoute match by hostname
   GW->>NEG: route to the Service's NEG
@@ -204,6 +204,7 @@ sequenceDiagram
 |---|---|---|---|
 | Jenkins *(jenkins mode)* | `jenkins.<domain>` | `8080` | **yes** |
 | Tekton Dashboard *(tekton mode)* | `tekton.<domain>` | `9097` | **yes** |
+| Argo Workflows UI *(argoworkflows mode)* | `argo.<domain>` | `2746` | **yes** |
 | Headlamp | `headlamp.<domain>` | `4466` | **yes** |
 | pgAdmin | `pgadmin.<domain>` | `80` | **yes** |
 | Grafana *(oss mode)* | `grafana.<domain>` | `80` | **yes** |
@@ -211,6 +212,9 @@ sequenceDiagram
 | Microservices | `microservices.<domain>` | `8080` (gateway) | no (public demo) |
 | Microservices *(develop tier)* | `microservices-develop.<domain>` | `8080` (gateway) | no (public demo; only when `microservices.developTrackEnabled`) |
 | PaC webhook *(tekton)* | `pac.<domain>` | `8080` | no (**HMAC**) |
+| Argo Events webhook *(argoworkflows)* | `argo-events.<domain>` | `12000` | no (**HMAC**) |
+
+> **GitHub Actions (ARC)** mode adds **no in-cluster Gateway route** — runs live in GitHub's own Actions tab, so there is no dashboard to expose. Only three of the four CI engines (Jenkins · Tekton · Argo Workflows) have an IAP-protected in-cluster UI.
 
 > Public access is **opt-in** (`gateway.baseDomain`; `""` disables the whole Gateway). The static IP + cert + DNS zone are **persistent Day0** resources that survive cluster rebuilds (see [501 § Public access](./501-PLATFORM_OPERATIONS.md) and [100](./100-BOOTSTRAP.md)).
 
@@ -301,10 +305,10 @@ flowchart TB
   subgraph db["② deny-ingress baseline (entry port only · outbound-only)"]
     arg["argocd · in :8080"]
     hl["headlamp · in :4466"]
-    tci["tekton-ci (tekton mode)<br/>EventListener :8080/:9000"]
+    ci["active CI engine's exec ns (per ci.engine)<br/>tekton-ci · arc-runners · argo-ci"]
   end
   subgraph op["③ open by design (host admission webhooks the API server calls)"]
-    sys["tekton-pipelines · cnpg-system · external-secrets · pipelines-as-code"]
+    sys["tekton-pipelines · cnpg-system · external-secrets · pipelines-as-code<br/>argo · argo-events · arc-systems"]
   end
 
   lb --> arg & hl
@@ -319,7 +323,7 @@ flowchart TB
 
 </details>
 
-- **Files:** [`infrastructure/networkpolicies.yaml`](../infrastructure/networkpolicies.yaml) (always) + [`-jenkins.yaml`](../infrastructure/networkpolicies-jenkins.yaml) / [`-tekton.yaml`](../infrastructure/networkpolicies-tekton.yaml) (applied per `ci.engine` by `01-namespaces.sh`). The app-chart's own policies (gateway/microservice/postgres) ship from the **gitops-config** repo, namespace-templated.
+- **Files:** [`infrastructure/networkpolicies.yaml`](../infrastructure/networkpolicies.yaml) (always) + one engine-gated file per `ci.engine` — [`-jenkins.yaml`](../infrastructure/networkpolicies-jenkins.yaml) / [`-tekton.yaml`](../infrastructure/networkpolicies-tekton.yaml) / [`-githubactions.yaml`](../infrastructure/networkpolicies-githubactions.yaml) / [`-argoworkflows.yaml`](../infrastructure/networkpolicies-argoworkflows.yaml) — applied by `01-namespaces.sh`. The app-chart's own policies (gateway/microservice/postgres) ship from the **gitops-config** repo, namespace-templated.
 - **Develop tier:** when on, `01-namespaces.sh` replicates the additive `microservices-cnpg-platform` policy into `microservices-develop`, and the observability/pgadmin allowlists already list it statically (see [402 § Optional develop Tier](./402-PIPELINES_AS_CODE.md)).
 - **Gotchas under enforcement** (target the *pod* port not the Service port; allow the L7 health-check ranges; match CNPG pods by `cnpg.io/cluster`; agents/smoke pods must live where egress is open) are catalogued in [501](./501-PLATFORM_OPERATIONS.md) and [902 § Dataplane V2](./902-TROUBLESHOOTING.md).
 

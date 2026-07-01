@@ -46,7 +46,7 @@ mindmap
 | **IaC** | Trivy config | Helm charts + Kubernetes manifests for misconfigurations |
 | **Image** | Trivy image | the built container (OS packages + app dependencies) for known CVEs |
 
-Semgrep and CodeQL write **SARIF** files that land in **GitHub Code Scanning** (click a finding → jump to the code line) and in the Jenkins build UI via the **warnings-ng** plugin. Trivy prints to the build log. None of these **fail** the build by default — they surface findings without blocking the deploy.
+Semgrep and CodeQL write **SARIF** files that land in **GitHub Code Scanning** (click a finding → jump to the code line) and, under Jenkins, in the build UI via the **warnings-ng** plugin. Trivy prints to the build log. None of these **fail** the build by default — they surface findings without blocking the deploy. These four scans are part of the **one ~10-stage pipeline contract shared by all four CI engines** ([Jenkins](./401-JENKINS.md) default · [Tekton](./403-TEKTON.md) · [GitHub Actions / ARC](./404-GITHUB_ACTIONS.md) · [Argo Workflows](./405-ARGO_WORKFLOWS.md), selected by `ci.engine`), so the same Semgrep → CodeQL → Trivy-IaC → Trivy-image sequence runs whichever engine is active.
 </details>
 
 <details>
@@ -56,7 +56,7 @@ Semgrep and CodeQL write **SARIF** files that land in **GitHub Code Scanning** (
 - **Non-blocking by design**: Trivy runs with `--exit-code 0` (filtered to `CRITICAL,HIGH`) and the SAST steps tolerate findings (`|| true`), so the deploy is never halted — findings are *reported*, not *gated*. To gate the image scan, flip its `--exit-code` to `1`.
 - **SARIF upload**: only Semgrep + CodeQL emit SARIF; the pipeline gzip+base64-encodes each `*.sarif` and POSTs it to the GitHub code-scanning API (`/code-scanning/sarifs`). Trivy is `format: table` (console only — no SARIF upload).
 - **In-Jenkins view**: the `post { always { recordIssues(...) } }` block parses both SARIFs with the `warnings-ng` plugin → "Semgrep Warnings" / "CodeQL Warnings" trends.
-- **Tekton parity**: under `ci.engine=tekton` the same scans run as Tasks (`trivy-iac.yaml` / `trivy-image.yaml`, etc.), and **Tekton Chains** additionally signs the pushed image and records SLSA provenance (see [403](./403-TEKTON.md)).
+- **Cross-engine parity**: the same four scans run under every engine selected by `ci.engine` — as Jenkins stages in [`vars/MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy), as Tekton Tasks (`trivy-iac.yaml` / `trivy-image.yaml`, etc.), as Argo Workflows templates in [`argoworkflows/templates/microservices-wftmpl.yaml`](../argoworkflows/templates/microservices-wftmpl.yaml) (same `checkout → Semgrep → CodeQL → Trivy-IaC → build → Trivy-image` order), and inside the fork's own workflow on GitHub Actions / ARC runners (see [404](./404-GITHUB_ACTIONS.md)). Under `ci.engine=tekton`, **Tekton Chains** additionally signs the pushed image and records SLSA provenance (see [403](./403-TEKTON.md)).
 </details>
 
 #### Security scan data flow
@@ -88,9 +88,11 @@ flowchart LR
 
 </details>
 
-**Reading it —** three input artifacts on the left (source, IaC, image) fan into four scanners. The two SAST tools converge on **SARIF** (→ GitHub Code Scanning + the warnings-ng Jenkins view), while both Trivy scans report to the **build log only**. The split is the key insight: SARIF findings are browsable and trend-tracked over time; Trivy's are console-only and, like the SAST steps, **non-blocking** by default — so security is *visible* without *gating* the deploy (flip Trivy's `--exit-code` to `1` to gate).
+**Reading it —** three input artifacts on the left (source, IaC, image) fan into four scanners (the diagram shows the Jenkins path; the other three engines run the identical scans). The two SAST tools converge on **SARIF** (→ GitHub Code Scanning + the warnings-ng Jenkins view), while both Trivy scans report to the **build log only**. The split is the key insight: SARIF findings are browsable and trend-tracked over time; Trivy's are console-only and, like the SAST steps, **non-blocking** by default — so security is *visible* without *gating* the deploy (flip Trivy's `--exit-code` to `1` to gate).
 
 ## Pipeline Lifecycle
+
+The diagram below traces the Jenkins path; the same scan sequence runs under Tekton, GitHub Actions / ARC, and Argo Workflows (whichever `ci.engine` selects).
 
 <details>
 <summary>🔍 Click to expand Pipeline Lifecycle Diagram</summary>
