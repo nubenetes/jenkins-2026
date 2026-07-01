@@ -125,7 +125,8 @@ def printK6Summary() {
   echo '--- k6-summary.json ---'
   echo readFile('k6-summary.json')
 
-  def metrics = readJSON(file: 'k6-summary.json').metrics ?: [:]
+  def summary = readJSON(file: 'k6-summary.json')
+  def metrics = summary.metrics ?: [:]
 
   // ---- 1. SUMMARY (basic, at-a-glance) -------------------------------------
   def lines = ['', '========== k6 run analysis ==========', '--- SUMMARY ---']
@@ -136,6 +137,22 @@ def printK6Summary() {
     def fails = numOf(checks.values.fails)
     def rate = numOf(checks.values.rate)
     lines << "checks:            ${passes as int}/${(passes + fails) as int} passed (${pct(rate)})${fails > 0 ? '  <-- ' + (fails as int) + ' FAILED' : ''}"
+    // Name the failing checks (which flow broke) — the aggregate above says how
+    // many, not which. Pulled from root_group.checks so the analysis is
+    // self-contained without re-reading k6-summary.json by hand. Wrapped
+    // defensively: a hiccup here must never crash printK6Summary and turn an
+    // UNSTABLE threshold breach into a hard FAILURE that hides the real cause.
+    if (fails > 0) {
+      try {
+        collectFailedChecks(summary.root_group ?: [:]).each { c ->
+          def cFails = numOf(c.fails)
+          def cTotal = numOf(c.passes) + cFails
+          lines << "                     [FAIL] ${c.name}: ${numOf(c.passes) as int}/${cTotal as int}  (${cFails as int} failed)"
+        }
+      } catch (ignored) {
+        lines << '                     (per-check breakdown unavailable - see k6-summary.json)'
+      }
+    }
   }
 
   def httpReqFailed = metrics.http_req_failed
@@ -240,6 +257,19 @@ def connDetail(Map metrics) {
   if (conn?.values != null) parts << "connect avg=${ms(conn.values.avg)}"
   if (tls?.values != null && numOf(tls.values.avg) > 0) parts << "tls avg=${ms(tls.values.avg)}"
   return parts ? "  (${parts.join(', ')})" : ''
+}
+
+/**
+ * Recursively collect the checks that have at least one failure from a k6
+ * summary root_group (checks live under root_group.checks, and nested
+ * groups[].checks). Returns the raw check maps ({name, passes, fails}) so the
+ * caller can name exactly which flow broke.
+ */
+def collectFailedChecks(group) {
+  def out = []
+  (group?.checks ?: []).each { c -> if (numOf(c.fails) > 0) { out << c } }
+  (group?.groups ?: []).each { g -> out.addAll(collectFailedChecks(g)) }
+  return out
 }
 
 /**
