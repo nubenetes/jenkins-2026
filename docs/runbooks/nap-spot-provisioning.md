@@ -1,10 +1,13 @@
 # Runbook: validate GKE Node Auto-Provisioning → Spot CI nodes (and read the `SSD_TOTAL_GB` ceiling)
 
 Validates, end-to-end on a live cluster, that **GKE Node Auto-Provisioning (NAP)** + the
-**`ci-spot` Custom ComputeClass** provision **Spot, scale-to-zero** nodes for Jenkins/Tekton
-build agents on demand — and teaches how to read the one limit that actually bounds it in
-practice: the **regional `SSD_TOTAL_GB` quota**. Written from a real Day1 + builds run; the
-node listings and events below are verbatim from that run.
+**`ci-spot` Custom ComputeClass** provision **Spot, scale-to-zero** nodes for CI build agents
+on demand — and teaches how to read the one limit that actually bounds it in
+practice: the **regional `SSD_TOTAL_GB` quota**. All four CI engines selected by `ci.engine`
+(**Jenkins** default · **Tekton** · **GitHub Actions (ARC)** · **Argo Workflows**) can target
+`ci-spot` via their per-engine `runNodePool` flag (GitHub Actions/ARC defaults to it; the
+others default to `static`). Written from a real Day1 + Jenkins builds run; the node listings
+and events below are verbatim from that run.
 
 > Conceptual background lives in [201. Architecture](../201-ARCHITECTURE.md) (the static-pool
 > vs NAP split) and [501. Platform Operations](../501-PLATFORM_OPERATIONS.md) §"Elastic Node
@@ -23,10 +26,13 @@ node listings and events below are verbatim from that run.
   `cloud.google.com/compute-class=ci-spot:NoSchedule` (+ `cloud.google.com/gke-spot=true:NoSchedule`
   for Spot).
 - The CI build agents target the class via `nodeSelector: cloud.google.com/compute-class: ci-spot`
-  + matching tolerations, emitted **only when** the controller env `GKE_COMPUTE_CLASS` is set
-  (surfaced through `jenkins-credentials` → JCasC from the `nodeAutoProvisioning.enabled` flag).
-  The **static** `jenkins-2026-pool` keeps the long-lived platform; no platform Pod targets the
-  class, so NAP is never on the provision's critical path.
+  + matching tolerations, emitted **only when** the engine's `runNodePool` resolves to `ci-spot`.
+  For **Jenkins** (the worked example below) this surfaces through the controller env
+  `GKE_COMPUTE_CLASS` (`jenkins-credentials` → JCasC, gated by `nodeAutoProvisioning.enabled`);
+  Tekton, GitHub Actions/ARC, and Argo Workflows each apply the same nodeSelector+tolerations to
+  their run pods when their `runNodePool: ci-spot`. The **static** `jenkins-2026-pool` keeps the
+  long-lived platform; no platform Pod targets the class, so NAP is never on the provision's
+  critical path.
 
 **Expected lifecycle of one build:** agent Pod created → unschedulable on the static pool
 (nodeSelector) → NAP creates a Spot node group (0→1) → node joins → agent lands and runs →
@@ -172,9 +178,11 @@ So putting `2000` in Terraform would **fail the apply** — there is deliberatel
   catch up). Small bumps can auto-approve; larger ones go to review.
 - **Console** — *IAM & Admin → Quotas → filter `SSD_TOTAL_GB` → Edit/Request increase*.
 
-> This self-service ceiling is exactly **why `{jenkins,tekton}.runNodePool` defaults to `static`**:
-> static agents use no per-build PD, so CI never pushes against `SSD_TOTAL_GB`. Only `ci-spot` opt-in
-> needs the headroom — so raise the quota *before* flipping an engine to `ci-spot` for heavy concurrency.
+> This self-service ceiling is exactly **why `{jenkins,tekton,argoworkflows}.runNodePool` defaults to
+> `static`** (GitHub Actions/ARC is the one engine that defaults to `ci-spot`, since each runner is a
+> single ephemeral pod that loses at most one job to a Spot preemption): static agents use no per-build
+> PD, so CI never pushes against `SSD_TOTAL_GB`. Only `ci-spot` needs the headroom — so raise the quota
+> *before* flipping an engine to `ci-spot` for heavy concurrency.
 
 **Important nuance — the fix is not retroactive.** `terraform apply` updates the NAP *defaults*;
 nodes already created keep their old 100 GB disk. On an existing cluster, a `Pending` third

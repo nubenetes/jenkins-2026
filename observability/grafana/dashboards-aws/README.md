@@ -2,9 +2,12 @@
 
 Two kinds, by design:
 
-- **Custom** (`*-aws.json`, this dir): the project-specific views - Jenkins CI,
-  per-microservice RED, the k6 smoke test, and the AWS logs/traces panels. No
-  public dashboard knows about these (the OTel `service_name`/
+- **Custom** (`*-aws.json`, this dir): the project-specific views - the active
+  CI engine's overview (one of `jenkins-overview` · `tekton-overview` ·
+  `github-actions-ci` · `argo-workflows-ci`, gated by `ci.engine`),
+  per-microservice RED, the k6 (`CI-CD / k6 Observability`) dashboard, and the
+  AWS logs/traces panels. No public dashboard knows about these (the OTel
+  `service_name`/
   `deployment_environment` labels, `ci_pipeline_run_*` metrics, the X-Ray /
   CloudWatch Logs schema), so they're generated and maintained here.
 - **Kubernetes/node infra**: the collector scrapes cadvisor + kubelet +

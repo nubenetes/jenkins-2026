@@ -4,12 +4,19 @@
 
 # 401. Jenkins
 
-Jenkins is this project's **default CI engine** (Tekton is the
-[alternative](./403-TEKTON.md)). It runs as a single Helm-chart controller on
-Kubernetes, is configured **entirely from this repo** via Configuration-as-Code
-(JCasC) + Job DSL — nothing is clicked in the UI — and spawns **ephemeral
-build-agent pods** on demand. This page is the controller-and-platform view; the
-pipelines that run *on* it live in [402. Pipelines as Code](./402-PIPELINES_AS_CODE.md).
+Jenkins is this project's **default CI engine** — one of four mutually-exclusive
+engines selected by [`config/config.yaml`](../config/config.yaml) `ci.engine`:
+**Jenkins** (default) · [**Tekton**](./403-TEKTON.md) ·
+[**GitHub Actions (ARC)**](./404-GITHUB_ACTIONS.md) ·
+[**Argo Workflows**](./405-ARGO_WORKFLOWS.md). All four run the same ~10-stage
+pipeline contract off the shared [`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml)
+registry and the shared [`resources/patch-app-source.sh`](../resources/patch-app-source.sh)
+(the gateway MySQL→Postgres + NoOp-cache build-time patch). Jenkins runs as a
+single Helm-chart controller on Kubernetes, is configured **entirely from this
+repo** via Configuration-as-Code (JCasC) + Job DSL — nothing is clicked in the UI
+— and spawns **ephemeral build-agent pods** on demand. This page is the
+controller-and-platform view; the pipelines that run *on* it live in
+[402. Pipelines as Code](./402-PIPELINES_AS_CODE.md).
 
 ## Understanding Jenkins on Kubernetes (newcomers → specialists)
 
@@ -429,7 +436,9 @@ See [402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) for the pipeline stages
 
 ## GitOps: Jenkins as an ArgoCD Application
 
-Like the alternative [Tekton engine](./403-TEKTON.md), Jenkins is **GitOps-managed
+Like the other CI engines ([Tekton](./403-TEKTON.md),
+[GitHub Actions/ARC](./404-GITHUB_ACTIONS.md),
+[Argo Workflows](./405-ARGO_WORKFLOWS.md)), Jenkins is **GitOps-managed
 by ArgoCD**. It is a **single `Application`** ([`argocd/jenkins-app.yaml`](../argocd/jenkins-app.yaml)),
 **not an app-of-apps** — Jenkins is one Helm chart, not a family of correlated
 components (unlike `platform-postgres`/`observability-oss`/`tekton`), so wrapping
@@ -492,7 +501,7 @@ sequenceDiagram
   participant J as Jenkins controller
   participant R as config-reload sidecar
 
-  S->>S: retire Tekton if present (engine switch)
+  S->>S: retire the other 3 engines if present (engine switch)
   S->>S: compute Grafana/banner links + checksum
   S->>J: patch jenkins-credentials Secret (dynamic values)
   S->>R: create 3 JCasC ConfigMaps (label jenkins-jenkins-config=true)
@@ -507,12 +516,13 @@ sequenceDiagram
 
 </details>
 
-**Reading it —** this is what one `04-jenkins.sh` run does, in order: retire the other engine if you're switching, compute the dynamic banner links + their checksum, push those into the Secret, lay down the JCasC ConfigMaps, then hand the chart to ArgoCD. The controller comes up, the sidecar merges the three JCasC fragments, and the `seed-jobs` cron materialises the per-service jobs. The closing note is the operational rule from [CLAUDE.md](../CLAUDE.md): this is **idempotent** — to pick up a change you *re-run it*; you never Decom first.
+**Reading it —** this is what one `04-jenkins.sh` run does, in order: retire the other three engines (Tekton · GitHub Actions/ARC · Argo Workflows) if you're switching — via the shared `retire_ci_engine` helper in [`scripts/lib/common.sh`](../scripts/lib/common.sh), which deletes each retired engine's ArgoCD apps + children + namespaces and clears stuck GKE NEG finalizers — compute the dynamic banner links + their checksum, push those into the Secret, lay down the JCasC ConfigMaps, then hand the chart to ArgoCD. The controller comes up, the sidecar merges the three JCasC fragments, and the `seed-jobs` cron materialises the per-service jobs. The closing note is the operational rule from [CLAUDE.md](../CLAUDE.md): this is **idempotent** — to pick up a change you *re-run it*; you never Decom first.
 
 The credential **secrets themselves stay script-created** ([`01-namespaces.sh`](../scripts/01-namespaces.sh)) —
 env-sourced values shouldn't live in git; ArgoCD owns the chart, not the Secret.
 Teardown deletes the Application (cascade-prune) in [`down.sh`](../scripts/down.sh); switching to
-`ci.engine=tekton` removes it via [`04-tekton.sh`](../scripts/04-tekton.sh).
+any other `ci.engine` (`tekton`/`githubactions`/`argoworkflows`) removes it via
+that engine's `04-<engine>.sh` calling `retire_ci_engine jenkins`.
 
 > **Optional further step:** model `jenkins-credentials` as an `ExternalSecret`
 > (the operator is already deployed) so even the credential Secret is declarative.

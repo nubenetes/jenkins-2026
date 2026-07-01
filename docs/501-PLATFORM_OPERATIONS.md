@@ -1,4 +1,4 @@
-[← Previous: 403. Tekton](./403-TEKTON.md) | [🏠 Home](../README.md) | [→ Next: 502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md)
+[← Previous: 405. Argo Workflows](./405-ARGO_WORKFLOWS.md) | [🏠 Home](../README.md) | [→ Next: 502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md)
 
 ---
 
@@ -59,7 +59,7 @@ So a deploy is: *CI writes a tag → ArgoCD syncs → the new pod comes up behin
 <details>
 <summary>🔴 For specialists — how each plane is wired here</summary>
 
-- **Delivery:** ArgoCD (auto-tracking the latest **3.4.x** via a daily CronJob watcher) runs single `Application`s (microservices `ApplicationSet`→`microservices-stable`, `headlamp`, `pgadmin`, `cnpg-operator`, `external-secrets`, `jenkins`, `argo-rollouts`) plus three **app-of-apps** (`platform-postgres`, `observability-oss`, `tekton`). A scoped `jenkins` ArgoCD account + API token lets the pipeline `argocd app sync --wait`. All apps `selfHeal: true` + `prune: true`.
+- **Delivery:** ArgoCD (auto-tracking the latest **3.4.x** via a daily CronJob watcher) runs single `Application`s (microservices `ApplicationSet`→`microservices-stable`, `headlamp`, `pgadmin`, `cnpg-operator`, `external-secrets`, `jenkins`, `argo-rollouts`) plus **app-of-apps** (`platform-postgres`, `observability-oss`, and the active CI engine's — `tekton` / `githubactions` / `argoworkflows`). The four CI engines (`ci.engine`: **Jenkins** default · **Tekton** · **GitHub Actions (ARC)** · **Argo Workflows**) are mutually exclusive; a scoped ArgoCD account + API token lets the pipeline `argocd app sync --wait`. All apps `selfHeal: true` + `prune: true`.
 - **Ingress:** one `Gateway` (`gatewayClassName: gke-l7-global-external-managed`) = one global external HTTPS LB + one Google-managed wildcard cert + one `HTTPRoute` per app; `BackendTLSPolicy` encrypts the LB→pod hop. Opt-in via `gateway.baseDomain` (empty disables it; `09-gateway.sh` no-ops off-GKE).
 - **Edge identity:** IAP gates `jenkins`/`headlamp`/`pgadmin`/`grafana(oss)`; access = the emails granted `roles/iap.httpsResourceAccessor` (reuses `HEADLAMP_ADMIN_EMAILS`). The `microservices` host is intentionally public.
 - **Security inside:** Dataplane V2 (`datapath_provider = ADVANCED_DATAPATH`) is what makes NetworkPolicies *enforce*; sensitive namespaces are `default-deny` + curated allowlists (see the matrix below). `in_transit_encryption_config` adds transparent WireGuard inter-node pod encryption (transport, not mTLS identity). Workload Identity Federation removes all static SA JSON keys; ESO syncs Secret Manager → namespaced Secrets. Dataplane V2 + WireGuard are **immutable** cluster fields (changing them recreates the cluster).
@@ -85,7 +85,9 @@ The deployment lifecycle is managed by **ArgoCD**. Application manifests are sto
 | `jenkins` | `Application` | `jenkins` chart (pinned 5.9.29) | `https://charts.jenkins.io` | `jenkins` | Healthy *(when `ci.engine=jenkins`)* |
 | `argo-rollouts` | `Application` | `argo-rollouts` chart (2.37.7) | `https://argoproj.github.io/argo-helm` | `argo-rollouts` | Healthy |
 
-> Plus three **app-of-apps** (`platform-postgres`, `observability-oss` when `observability.mode=oss`, and `tekton` when `ci.engine=tekton`), each a small Helm chart whose children carry the actual workloads. See [`argocd/README.md`](../argocd/README.md).
+> Plus the **app-of-apps** (`platform-postgres`, `observability-oss` when `observability.mode=oss`, and the active CI engine's — `tekton` / `githubactions` / `argoworkflows`, one per `ci.engine`; Jenkins uses the single `jenkins` `Application` above), each a small Helm chart whose children carry the actual workloads. See [`argocd/README.md`](../argocd/README.md).
+>
+> **Switching engines is exclusive:** each `scripts/04-<engine>.sh` retires the *other three* via the shared `retire_ci_engine` helper in [`scripts/lib/common.sh`](../scripts/lib/common.sh) — it deletes their ArgoCD `Application`s (parent app-of-apps + every child), then their namespaces (clearing any stuck GKE NEG finalizer so termination isn't blocked), so only one CI engine ever exists at a time.
 >
 > Not an `Application`, but applied alongside them: [`argocd/argocd-version-patch-watcher.yaml`](../argocd/argocd-version-patch-watcher.yaml) — a daily `CronJob` in the `argocd` namespace that keeps ArgoCD auto-tracking the latest **3.4.x** patch (see [602 § version pinning](./602-VERSION_PINNING.md)).
 
@@ -113,23 +115,25 @@ flowchart TB
     pp["platform-postgres"] --> ppc["CNPG operator<br/>+ pgAdmin"]
     oss["observability-oss<br/>(mode=oss)"] --> ossc["kube-prometheus-stack<br/>Loki · Tempo · dashboards"]
     tk["tekton<br/>(ci.engine=tekton)"] --> tkc["pipelines · triggers · dashboard<br/>pruner · chains · pac"]
+    gha["githubactions<br/>(ci.engine=githubactions)"] --> ghac["ARC controller<br/>+ runner scale set"]
+    awf["argoworkflows<br/>(ci.engine=argoworkflows)"] --> awfc["Workflows controller+server<br/>· Argo Events · pac"]
   end
 
   argocd --> appset & headlamp & pgadmin & cnpg & eso & jenkins & rollouts
-  argocd --> pp & oss & tk
+  argocd --> pp & oss & tk & gha & awf
   watcher[[daily CronJob<br/>auto-track 3.4.x]] -.-> argocd
   classDef root fill:#eef,stroke:#66c;
 ```
 
 </details>
 
-**Reading it —** ArgoCD owns two kinds of children. **Single `Application`s** map one chart/path to one namespace (the `microservices` `ApplicationSet` is the exception — it *generates* `microservices-stable`, and a `microservices-develop` when the develop track is on). **App-of-apps** are small Helm charts whose only job is to render a *family* of correlated children, so repo/branch/version flow down in one place — used where components must move together (Postgres operator+UI, the OSS stack, the Tekton control plane). The dashed watcher keeps ArgoCD itself on the latest 3.4.x patch. Engine/mode flags gate three of them (`jenkins`, `observability-oss`, `tekton`).
+**Reading it —** ArgoCD owns two kinds of children. **Single `Application`s** map one chart/path to one namespace (the `microservices` `ApplicationSet` is the exception — it *generates* `microservices-stable`, and a `microservices-develop` when the develop track is on). **App-of-apps** are small Helm charts whose only job is to render a *family* of correlated children, so repo/branch/version flow down in one place — used where components must move together (Postgres operator+UI, the OSS stack, and each CI engine's control plane). The dashed watcher keeps ArgoCD itself on the latest 3.4.x patch. Engine/mode flags gate the rest: `observability-oss` on `observability.mode=oss`, and exactly one CI engine on `ci.engine` — `jenkins` (single `Application`) / `tekton` / `githubactions` / `argoworkflows` (app-of-apps).
 
 ### Security & Integration
 
-- **Jenkins Integration**: A dedicated `jenkins` account is created in ArgoCD with a scoped **API Token**. This token is stored in the `jenkins-credentials` Secret and used by the `argocd` CLI inside pipeline agents to trigger `argocd app sync --wait`.
+- **CI Integration**: A dedicated ArgoCD account with a scoped **API Token** is created for the active CI engine (stored in that engine's credentials Secret — `jenkins-credentials`, `tekton-argocd`, `arc-argocd`, or `argoworkflows-argocd`) and used by the `argocd` CLI inside pipeline agents to trigger `argocd app sync --wait`.
 - **Auto-Sync**: All Applications are configured with `selfHeal: true` and `prune: true`.
-- **Rollout Waiting**: After pushing a new tag to the gitops-config repo, the Jenkins pipeline calls `argocd app wait --health --timeout 300` before running smoke tests.
+- **Rollout Waiting**: After pushing a new tag to the gitops-config repo, the pipeline (whichever engine) calls `argocd app wait --health --timeout 300` before running smoke tests.
 
 ## Telemetry Verification & Simulation
 
@@ -239,12 +243,12 @@ The repository has been refactored to serve as a **Golden Path Internal Develope
 ### 2. Elastic Node Auto-Provisioning (Spot ComputeClass)
 * **Cluster-level NAP**: [`terraform/gke`](../terraform/gke/) enables a `cluster_autoscaling` block (`resource_limits` for cpu/memory + `auto_provisioning_defaults`: the dedicated node SA `jenkins-2026-nodes`, COS_CONTAINERD, Shielded VMs, auto-repair/upgrade, `pd-balanced`, `OPTIMIZE_UTILIZATION` profile), gated by the `enable_node_autoprovisioning` variable (default true).
 * **Custom ComputeClass `ci-spot`**: [`infrastructure/compute-classes/ci-spot.yaml`](../infrastructure/compute-classes/ci-spot.yaml) sets `nodePoolAutoCreation.enabled: true` with `priorities` preferring **Spot** across families (`c3`, `n2`, `c2`, `e2`) then falling back to on-demand `e2`, `whenUnsatisfiable: ScaleUpAnyway`. GKE auto-applies the `compute-class=ci-spot` / `gke-spot=true` `NoSchedule` taints so only build agents (which carry the matching nodeSelector + tolerations) land on the elastic Spot pools.
-* **Per-engine placement — `{jenkins,tekton}.runNodePool: static | ci-spot` (default `static`).** Whether build pods target the **static pool** (robust, no NAP/Spot/quota dependency) or the **`ci-spot` ComputeClass** (elastic Spot) is a feature flag *per CI engine* (override `JENKINS2026_{JENKINS,TEKTON}_RUN_NODE_POOL`), because the engines differ in Spot-suitability: a **Jenkins** build is a single agent pod, so a preemption just restarts that one build (a fine Spot citizen → ci-spot opt-in is low-risk); a **Tekton** PipelineRun pins *all* its tasks to one node via the affinity assistant (shared RWO PVC), so a preemption kills the whole run and a too-small/full node hangs it (→ `static` strongly recommended). Both default to `static`, so **CI doesn't push against the `SSD_TOTAL_GB` quota** (no per-build PD) out of the box; flip an engine to `ci-spot` to opt into Spot. Jenkins reads the flag in [`vars/MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy) (via JCasC `RUN_NODE_POOL`); Tekton applies it as the `default-pod-template` (see [`docs/403`](403-TEKTON.md)).
+* **Per-engine placement — `<engine>.runNodePool: static | ci-spot`.** Whether build pods target the **static pool** (robust, no NAP/Spot/quota dependency) or the **`ci-spot` ComputeClass** (elastic Spot) is a feature flag *per CI engine* (each of the four — Jenkins, Tekton, GitHub Actions/ARC, Argo Workflows — has its own knob, override `JENKINS2026_<ENGINE>_RUN_NODE_POOL`), because the engines differ in Spot-suitability, so their **defaults differ**: a **Jenkins** build is a single agent pod, so a preemption just restarts that one build (a fine Spot citizen → `ci-spot` opt-in is low-risk) — defaults `static`; a **GitHub Actions/ARC** runner is a single ephemeral pod that runs exactly one job then terminates, the textbook Spot workload → it **defaults `ci-spot`** (this engine is the NAP-Spot showcase); a **Tekton** PipelineRun (and likewise an **Argo Workflows** run) pins *all* its tasks/steps to one node via the shared RWO workspace PVC (Tekton's affinity assistant), so a preemption kills the whole run and a too-small/full node hangs it (→ `static`, both default there). Except for GitHub Actions/ARC, the defaults keep **CI off the `SSD_TOTAL_GB` quota** (no per-build PD) out of the box; flip an engine to `ci-spot` to opt into Spot. Jenkins reads the flag in [`vars/MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy) (via JCasC `RUN_NODE_POOL`); Tekton applies it as the `default-pod-template` (see [`docs/403`](403-TEKTON.md)); ARC/Argo Workflows set it on the runner/Workflow pod spec (see [`docs/404`](404-GITHUB_ACTIONS.md) / [`docs/405`](405-ARGO_WORKFLOWS.md)).
 * **Autoscaler Isolation**: The static `jenkins-2026-pool` (long-lived platform) and the NAP-auto-created Spot pools are strictly isolated, so a NAP issue never blocks the core provision.
-* **Spot preemption — trade-off & resilience (read before relying on it).** Spot VMs can be reclaimed by GCE with **~30s notice**, so a node running a CI agent can disappear *mid-build*. This is a deliberate, acceptable trade-off here because **CI is exactly the right workload for Spot**: builds are **ephemeral and idempotent** (re-running produces the same artifact) and **nothing on the critical platform path runs on Spot** — ArgoCD, Jenkins/Tekton controllers, observability and CNPG all stay on the static pool. The resilience design is layered:
+* **Spot preemption — trade-off & resilience (read before relying on it).** Spot VMs can be reclaimed by GCE with **~30s notice**, so a node running a CI agent can disappear *mid-build*. This is a deliberate, acceptable trade-off here because **CI is exactly the right workload for Spot**: builds are **ephemeral and idempotent** (re-running produces the same artifact) and **nothing on the critical platform path runs on Spot** — ArgoCD, the active CI engine's controllers (Jenkins / Tekton / ARC / Argo Workflows), observability and CNPG all stay on the static pool. The resilience design is layered:
   * **On-demand fallback** — the `ci-spot` ComputeClass falls back to on-demand `e2` (`whenUnsatisfiable: ScaleUpAnyway`), so a Spot **stock-out** never leaves a build Pending; it just runs on a regular node.
   * **Preemption ≠ stuck** — if a Spot node *is* reclaimed, GKE reschedules the agent Pod and NAP provisions a fresh node (Spot, or on-demand on stock-out); the affected build fails fast and is simply re-run (no manual cleanup).
-  * **Escape hatch** — for **guaranteed, non-preemptible completion**, keep (or set) the engine's `runNodePool: static` (the default) so its agents schedule on the static pool — finer-grained than disabling NAP, and it's already the default. To remove NAP cluster-wide instead, set `nodeAutoProvisioning.enabled: false` (or `JENKINS2026_NODE_AUTOPROVISIONING_ENABLED=false`). One toggle, no manifest edits — see [`config/config.yaml`](../config/config.yaml).
+  * **Escape hatch** — for **guaranteed, non-preemptible completion**, set the engine's `runNodePool: static` (the default for Jenkins/Tekton/Argo Workflows; GitHub Actions/ARC defaults to `ci-spot`, so flip it explicitly) so its agents schedule on the static pool — finer-grained than disabling NAP. To remove NAP cluster-wide instead, set `nodeAutoProvisioning.enabled: false` (or `JENKINS2026_NODE_AUTOPROVISIONING_ENABLED=false`). One toggle, no manifest edits — see [`config/config.yaml`](../config/config.yaml).
   * **Watch it** — the **CI-CD / Node Auto-Provisioning (Spot)** Grafana dashboard ([`observability/grafana/dashboards/node-autoprovisioning.json`](../observability/grafana/dashboards/node-autoprovisioning.json)) shows Spot vs static node counts over time, so you can see scale-up on a build and consolidation back toward zero after it.
   * **The real ceiling is the regional `SSD_TOTAL_GB` quota, not NAP.** Each node's `pd-balanced` boot disk counts against that quota, so the number of *concurrent* Spot CI nodes is bounded by `SSD_TOTAL_GB` ÷ disk-size (plus the static-pool disks and the CNPG Postgres PVs). Symptom when you hit it: the agent Pod stays `Pending` and `kubectl get events` shows `cluster-autoscaler … ScaleUpFailed … Quota 'SSD_TOTAL_GB' exceeded` (NAP keeps retrying across machine families — it's doing the right thing, GCE is refusing the disk). The NAP node disk is kept at `var.disk_size_gb` (50 GB, same as the static pool) precisely to stretch this quota. **Raising the quota is NOT self-service-instant**: a consumer-quota *override* caps at Google's self-service maximum, which for `SSD_TOTAL_GB` equals the current limit (500) — higher values return `COMMON_QUOTA_CONSUMER_OVERRIDE_TOO_HIGH` (so it can't be set in Terraform either). Above 500 needs an **approved increase request** — submit a Cloud Quotas `QuotaPreference` (`cloudquotas.googleapis.com`, quotaId `SSD-TOTAL-GB-per-project-region`) or Console → *IAM & Admin → Quotas*; it reconciles to `grantedValue` after Google approves. This is also **why `runNodePool` defaults to `static`** — CI then needs no extra SSD headroom. See [`docs/runbooks/nap-spot-provisioning.md`](runbooks/nap-spot-provisioning.md).
 
@@ -461,16 +465,16 @@ scripts/sweep-orphaned-pds.sh
 
 | Goal | Action |
 |---|---|
-| **Default / now** — robust CI, no quota pressure | `{jenkins,tekton}.runNodePool: static` (no per-build disk). 500 GB is plenty. |
+| **Default / now** — robust CI, no quota pressure | `runNodePool: static` for Jenkins/Tekton/Argo Workflows (no per-build disk). 500 GB is plenty. (GitHub Actions/ARC defaults to `ci-spot` — its single-job runners are the Spot showcase; flip to `static` if quota-constrained.) |
 | **Cut idle cost** | **Pause** (`Day2.scale.01`) → ~$13/mo · or **Decom** → ~$0 |
-| **Enable Spot CI at concurrency** | Wait for the 500 → 2000 grant, **then** flip **Jenkins** to `runNodePool: ci-spot` (best Spot fit). Tekton stays `static`. |
+| **Enable Spot CI at concurrency** | Wait for the 500 → 2000 grant, **then** flip **Jenkins** (single-pod, best Spot fit) — or use **GitHub Actions/ARC**, already Spot by default — to `runNodePool: ci-spot`. Tekton / Argo Workflows stay `static` (shared-workspace runs). |
 | **More DB headroom without more quota** | reduce the HA Postgres footprint (3 → 1 instance on the develop tier) — fewer PVs |
 
 See the live-validation steps + the exact API call in [`docs/runbooks/nap-spot-provisioning.md`](runbooks/nap-spot-provisioning.md).
 
-#### Jenkins vs Tekton on Spot (`ci-spot`) — why the placement flag is *per engine*
+#### The engines on Spot (`ci-spot`) — why the placement flag is *per engine*
 
-Both CI engines can target the `ci-spot` ComputeClass, but they have **fundamentally different pod-scheduling shapes**, so the same Spot node behaves very differently under each. This is why placement is a **separate flag per engine** ([`jenkins.runNodePool`](../config/config.yaml) / [`tekton.runNodePool`](../config/config.yaml)) rather than one shared knob — you want to make the engine-appropriate choice, and the engines are mutually exclusive anyway (`ci.engine`) so a shared flag would only ever describe the active one.
+All four CI engines can target the `ci-spot` ComputeClass, but they fall into **two fundamentally different pod-scheduling shapes**, so the same Spot node behaves very differently under each. **Single-pod, one-job engines** (**Jenkins** agents, **GitHub Actions/ARC** runners) are textbook Spot workloads — a preemption loses one idempotent build/job that just re-runs. **Shared-workspace, multi-pod runs** (**Tekton** PipelineRuns via the affinity assistant, **Argo Workflows** runs sharing one RWO workspace PVC) pin every task/step to one node, so a preemption kills the whole run. This is why placement is a **separate flag per engine** (`<engine>.runNodePool`) rather than one shared knob — you want to make the engine-appropriate choice, and the engines are mutually exclusive anyway (`ci.engine`) so a shared flag would only ever describe the active one. The comparison below uses Jenkins vs Tekton as the two archetypes (ARC follows Jenkins; Argo Workflows follows Tekton).
 
 ```mermaid
 flowchart TD
@@ -480,8 +484,8 @@ flowchart TD
 
     sp --> jok["Jenkins ✅ robust"]
     sp --> tok["Tekton ✅ robust — recommended"]
-    nap --> jspot["Jenkins: build = 1 agent pod<br/>preemption → that 1 build re-runs<br/>✅ good Spot fit (recommended opt-in)"]
-    nap --> tspot["Tekton: affinity assistant pins<br/>ALL TaskRuns (shared RWO PVC) to one node<br/>preemption → whole PipelineRun dies<br/>⚠ poor Spot fit — keep static"]
+    nap --> jspot["Jenkins / GitHub Actions (ARC): 1 pod per build/job<br/>preemption → that 1 build re-runs<br/>✅ good Spot fit (ARC defaults here)"]
+    nap --> tspot["Tekton / Argo Workflows: shared RWO workspace PVC<br/>pins ALL tasks/steps to one node<br/>preemption → whole run dies<br/>⚠ poor Spot fit — keep static"]
 
     classDef good fill:#0b6,stroke:#063,color:#fff;
     classDef warn fill:#c50,stroke:#720,color:#fff;
@@ -505,24 +509,24 @@ flowchart TD
 1. **Robustness with zero preconditions.** `static` needs no NAP, no Spot capacity, and **no `SSD_TOTAL_GB` headroom** — it just works on a fresh cluster for everyone. `ci-spot` needs all three.
 2. **The quota ceiling is currently binding.** Each `ci-spot` node's boot disk counts against the regional `SSD_TOTAL_GB` quota, which **caps at 500 self-service** (raising it needs an approved request — see above). At 500, a couple of concurrent `ci-spot` agents can wedge in `Pending`. We observed exactly this on a real Day1 (the `gateway` agent stuck on `ScaleUpFailed … Quota 'SSD_TOTAL_GB' exceeded`).
 
-**Recommended rollout (sequenced):**
+**Recommended rollout (sequenced)** — by shape (ARC follows the Jenkins column, Argo Workflows follows the Tekton column):
 
-| Phase | Jenkins | Tekton |
+| Phase | Jenkins (· ARC) | Tekton (· Argo Workflows) |
 |---|---|---|
-| **Now** (quota = 500) | `static` | `static` |
-| **After the `SSD_TOTAL_GB` increase is granted** | **`ci-spot`** — best cost/elasticity, lowest risk | `static` (the affinity-assistant hazard is independent of quota; only an RWX-workspace redesign would make Tekton-on-Spot safe) |
+| **Now** (quota = 500) | `static` (ARC ships `ci-spot` by default — its runners are single-job, low-risk) | `static` |
+| **After the `SSD_TOTAL_GB` increase is granted** | **`ci-spot`** — best cost/elasticity, lowest risk (ARC already there) | `static` (the affinity-assistant / shared-workspace hazard is independent of quota; only an RWX-workspace redesign would make these engines Spot-safe) |
 
-Flip per engine with the config flag (durable) or the **`run_node_pool` input** on `Day2.redeploy.02-jenkins` / `Day2.redeploy.03-tekton` (per-run, no commit). See the Tekton-specific mechanics and the RWX/affinity-assistant alternatives in [`docs/403`](403-TEKTON.md).
+Flip per engine with the config flag (durable) or the **`run_node_pool` input** on that engine's redeploy workflow — `Day2.redeploy.02-jenkins` / `Day2.redeploy.03-tekton` / `Day2.redeploy.06-githubactions` / `Day2.redeploy.07-argoworkflows` (per-run, no commit). See the Tekton-specific mechanics and the RWX/affinity-assistant alternatives in [`docs/403`](403-TEKTON.md) (and the ARC / Argo Workflows equivalents in [`docs/404`](404-GITHUB_ACTIONS.md) / [`docs/405`](405-ARGO_WORKFLOWS.md)).
 
 ### 3. Zero-Trust Security & Workload Identity
-* **Workload Identity Federation**: All static JSON Service Account keys are removed. Both external CI engines (GitHub Actions) and in-cluster workloads assume GCP IAM Roles dynamically via OIDC.
+* **Workload Identity Federation**: All static JSON Service Account keys are removed. External CI (the GitHub Actions infra workflows) and in-cluster workloads assume GCP IAM Roles dynamically via OIDC.
 * **GKE Gateway API + BackendTLSPolicy**: Traffic between the Gateway load balancer and backend pods (Jenkins/Headlamp) is encrypted and validated using `BackendTLSPolicy` targets.
 * **GKE Dataplane V2 (Cilium/eBPF) — NetworkPolicy *enforcement***: the cluster runs Dataplane V2 (`datapath_provider = ADVANCED_DATAPATH` in [`terraform/gke`](../terraform/gke/main.tf)). This is what makes the policies below *actually enforce* — without it (and without the legacy Calico addon, mutually exclusive with it) GKE accepts `NetworkPolicy` objects but silently ignores them.
 * **Zero-Trust Network Policies** ([`infrastructure/networkpolicies*.yaml`](../infrastructure/)): every namespace egresses to CoreDNS by default-deny. Sensitive namespaces (**observability, microservices, postgres, pgadmin**, and **jenkins** in jenkins mode) run `default-deny` + curated allowlists. Workload UI/CI namespaces (**argocd, headlamp, tekton-ci**) get a **deny-ingress / allow-egress baseline**: each namespace's entry port stays reachable (Gateway, CI sync, port-forward, CLI) while internal components are intra-namespace only; the outbound-only pipeline pods get no ingress. Admission-webhook operator namespaces (**tekton-pipelines, cnpg-system, external-secrets, pipelines-as-code**) are intentionally left open — a `deny-ingress` there would block the API server's webhook calls unless the GKE control-plane CIDR is allowlisted (fragile, cluster-specific). The observability policy also allows the GKE L7 health-check/proxy ranges (`130.211.0.0/22`, `35.191.0.0/16`) so the Grafana backend stays healthy under enforcement.
 * **Pod-to-pod WireGuard encryption**: `in_transit_encryption_config = IN_TRANSIT_ENCRYPTION_INTER_NODE_TRANSPARENT` has Dataplane V2's managed Cilium transparently encrypt **inter-node** pod traffic (sidecar-free, no service mesh, no app changes). This is *transport* encryption, not identity-based mutual auth (no per-workload mTLS identity/authZ like Istio/Linkerd) — it closes the plaintext-on-the-wire gap lightly. Same-node pod traffic never hits the wire, so it is not encrypted.
 * **Secret Management via External Secrets Operator (ESO)**: Connects GKE Workload Identity with Google Secret Manager. ESO automatically pulls and syncs secret structures to namespaced secrets dynamically.
 
-> ⚠️ Dataplane V2 + the WireGuard config are **immutable** cluster fields — applied by recreating the cluster (`Decom.cluster.01` → `Day1.cluster.01`), not an in-place re-run. Enabling enforcement activates the NetworkPolicies for the first time, so validate connectivity (OSS stack, CNPG metrics, microservices, gateway, ArgoCD sync, Tekton triggers) on the fresh cluster.
+> ⚠️ Dataplane V2 + the WireGuard config are **immutable** cluster fields — applied by recreating the cluster (`Decom.cluster.01` → `Day1.cluster.01`), not an in-place re-run. Enabling enforcement activates the NetworkPolicies for the first time, so validate connectivity (OSS stack, CNPG metrics, microservices, gateway, ArgoCD sync, and the active CI engine's build/trigger path) on the fresh cluster.
 
 <details>
 <summary>NetworkPolicy under enforcement — the gotchas that bite on the first Dataplane V2 cluster</summary>
@@ -547,11 +551,11 @@ The first recreate with enforcement surfaced several latent rules that had silen
 > NEG) & egress, east-west (VPC-native · Dataplane V2 · WireGuard), and this
 > segmentation model explained end to end — see **[503. Networking](./503-NETWORKING.md)**.
 
-Every policy is in [`infrastructure/networkpolicies*.yaml`](../infrastructure/) (engine-neutral always-on, plus `-jenkins`/`-tekton` files applied per `ci.engine`). `*` = "from/to any source" (the rule lists ports but no peer). Every `default-deny` namespace also egresses to CoreDNS (`kube-system:53`), omitted from the table.
+Every policy is in [`infrastructure/networkpolicies*.yaml`](../infrastructure/) (engine-neutral always-on, plus one per-engine file — `-jenkins` / `-tekton` / `-githubactions` / `-argoworkflows` — applied for the active `ci.engine`). `*` = "from/to any source" (the rule lists ports but no peer). Every `default-deny` namespace also egresses to CoreDNS (`kube-system:53`), omitted from the table.
 
 | Namespace | Mode | Policy / pods | Ingress allowed | Egress allowed |
 |---|---|---|---|---|
-| `observability` | always | `observability-policy` (all) | intra-ns mesh; `jenkins`+`microservices`+`tekton-ci`+`tekton-pipelines` → **4317/4318** (OTLP); GKE LB `130.211.0.0/22`+`35.191.0.0/16` (Grafana health/traffic); **9443*** (API-server → OTel operator webhooks) | all |
+| `observability` | always | `observability-policy` (all) | intra-ns mesh; CI namespaces (`jenkins`, `tekton-ci`+`tekton-pipelines`, `arc-runners`, `argo-ci`) + `microservices`(+`-develop`) → **4317/4318** (OTLP); GKE LB `130.211.0.0/22`+`35.191.0.0/16` (Grafana health/traffic); **9443*** (API-server → OTel operator webhooks) | all |
 | `microservices` | always | `microservices-cnpg-platform` (all) | `observability` → **9187** (CNPG metrics) | pods `cnpg.io/cluster` → **5432**; **443*** (K8s API — Hazelcast discovery) |
 | `microservices` | always (GitOps repo) | `gateway`/`microservice`/`postgres-policy` | Gateway → app port; intra-app | app chart's own allows (Postgres, OTLP) — *durable CNPG/9187/API fixes belong here* |
 | `pgadmin` | always | `pgadmin-policy` (pgadmin) | **80*** (Gateway UI) | **443***; `microservices` → **5432** |
@@ -559,7 +563,9 @@ Every policy is in [`infrastructure/networkpolicies*.yaml`](../infrastructure/) 
 | `headlamp` | always | `headlamp-baseline` (all) | intra-ns mesh; **4466*** (headlamp pod port: Gateway) | all |
 | `tekton-ci` | `tekton` | `tekton-ci-baseline` (all) | intra-ns; EventListener **8080/9000*** (event/metrics). Pipeline pods get **no ingress** (outbound-only) | all |
 | `jenkins` | `jenkins` | `jenkins-policy` (controller) + `jenkins-agent-policy` (`jenkins=slave`) | **controller:** **8080*** (UI/Gateway **+ build-agent WebSocket**), **50000** (legacy JNLP, unused) from intra-ns agents, `observability` → **8080**. **agents:** none (outbound-only) | **controller:** all. **agents:** all (reach controller **8080** via WebSocket + git/registry/ArgoCD) |
-| `tekton-pipelines`, `cnpg-system`, `external-secrets`, `pipelines-as-code` | per mode | *(none — open by design)* | all (hosts admission webhooks the API server calls) | all |
+| `arc-runners` | `githubactions` | `arc-runners-baseline` (all) | intra-ns only (listener ↔ ephemeral runner). Runner pods get **no ingress** (outbound-only; ARC long-polls GitHub — no inbound webhook) | all |
+| `argo-ci` | `argoworkflows` | `argoworkflows-ci-baseline` (all) | intra-ns only (controller/executor). Workflow pods get **no ingress** (outbound-only) | all |
+| `tekton-pipelines`, `arc-systems`, `argo`, `argo-events`, `cnpg-system`, `external-secrets`, `pipelines-as-code` | per mode | *(none — open by design)* | all (hosts admission/webhook receivers the API server or GitHub call) | all |
 
 #### NetworkPolicy flow diagram
 
@@ -583,20 +589,20 @@ flowchart LR
     pg[(CNPG Postgres<br/>cnpg.io/cluster)]
   end
   msd[microservices-develop<br/>optional develop tier · own lean CNPG]:::infra
-  subgraph ci[CI engine]
-    cieng[jenkins :8080 WebSocket agents<br/>· tekton-ci EL :8080/:9000]
+  subgraph ci["active CI engine (one of four · ci.engine)"]
+    cieng["jenkins :8080 WebSocket agents<br/>· tekton-ci EL :8080/:9000<br/>· arc-runners (ARC, outbound-only)<br/>· argo-ci (Argo Workflows)"]
   end
   argocd[argocd-server :8080]:::ui
   headlamp[headlamp :4466]:::ui
   pgadmin[pgAdmin :80]:::ui
-  tkdash[tekton-dashboard]:::ui
+  ciui["CI UI (tekton-dashboard / argo-server)<br/>— Tekton &amp; Argo Workflows only; ARC/GHA has none"]:::ui
 
   lb -->|:8080| gw
   lb -->|health+traffic| graf
   lb -->|:8080| argocd
   lb -->|:4466| headlamp
   lb -->|:80| pgadmin
-  lb --> tkdash
+  lb -->|when engine has a UI| ciui
 
   api -.->|:9443 webhooks| obs
   cieng -->|OTLP :4317/4318| obs
@@ -639,7 +645,7 @@ Canary / blue-green delivery, **sidecar-free**, reusing the existing GKE Gateway
 |---|---|---|
 | **B2** | this repo — [`scripts/09-gateway.sh`](../scripts/09-gateway.sh) | microservices HTTPRoute gets two `backendRefs` (`gateway` weight 100 + `gateway-canary` weight 0). **Land WITH B3** — adding the canary backendRef before its Service exists causes `BackendNotFound`. |
 | **B3** | **microservices GitOps repo** (`helm/microservices`, external) | convert the `gateway` `Deployment` → `Rollout` (canary strategy + steps + the `gatewayAPI` plugin referencing the `microservices` HTTPRoute) and add the `gateway-canary` `Service`. |
-| **B4** | this repo — [`tekton/tasks/gitops-deploy.yaml`](../tekton/tasks/gitops-deploy.yaml) | after the ArgoCD sync, wait on the Rollout (`kubectl argo rollouts status gateway -n microservices`) instead of `kubectl rollout status`. |
+| **B4** | this repo — the active engine's gitops-deploy step (e.g. [`tekton/tasks/gitops-deploy.yaml`](../tekton/tasks/gitops-deploy.yaml); the Jenkins / ARC / Argo Workflows equivalents mirror it) | after the ArgoCD sync, wait on the Rollout (`kubectl argo rollouts status gateway -n microservices`) instead of `kubectl rollout status`. |
 
 Activation order: merge the controller → `Day1` → apply B3 in the GitOps repo → land B2 + B4 here (coordinated with B3). A push to `gateway` then rolls out as a weighted canary visible in the Rollouts dashboard.
 
@@ -793,16 +799,22 @@ Copy the token, select **Token** login in Headlamp, paste, and click **Sign In**
 
 ## Public Access (GKE Gateway API + IAP)
 
-Jenkins, Microservices, Headlamp, and pgAdmin can all be exposed on the public internet through a single **GKE Gateway** (`gatewayClassName: gke-l7-global-external-managed`) — one global external HTTPS load balancer, one Google-managed wildcard certificate, and one `HTTPRoute` per app:
+The active CI engine's UI, Microservices, Headlamp, and pgAdmin can all be exposed on the public internet through a single **GKE Gateway** (`gatewayClassName: gke-l7-global-external-managed`) — one global external HTTPS load balancer, one Google-managed wildcard certificate, and one `HTTPRoute` per app:
 
 | App | URL | Identity-Aware Proxy |
 |---|---|---|
-| Jenkins | `https://jenkins.<baseDomain>` | yes |
+| Jenkins | `https://jenkins.<baseDomain>` | yes (only when `ci.engine=jenkins`) |
+| Tekton Dashboard | `https://tekton.<baseDomain>` | yes (only when `ci.engine=tekton`) |
+| Tekton PaC webhook | `https://pac.<baseDomain>` | no (GitHub webhook receiver; HMAC-protected) |
+| Argo Workflows UI | `https://argo.<baseDomain>` | yes (only when `ci.engine=argoworkflows`) |
+| Argo Events webhook | `https://argo-events.<baseDomain>` | no (GitHub webhook receiver; HMAC-protected) |
 | Microservices | `https://microservices.<baseDomain>` | no (public demo app) |
 | Microservices (develop) | `https://microservices-develop.<baseDomain>` | no (public demo app; only when `microservices.developTrackEnabled`) |
 | Headlamp | `https://headlamp.<baseDomain>` | yes |
 | pgAdmin | `https://pgadmin.<baseDomain>` | yes |
 | Grafana | `https://grafana.<baseDomain>` | yes (only when `observability.mode=oss`) |
+
+> **GitHub Actions/ARC has no in-cluster UI route** — its runners are outbound-only (ARC long-polls GitHub), so nothing is exposed through the Gateway for that engine; you observe runs in GitHub's own Actions UI.
 
 `<baseDomain>` is `gateway.baseDomain` in [`config/config.yaml`](../config/config.yaml) — `jenkins2026.nubenetes.com` by default.
 
@@ -821,14 +833,14 @@ sequenceDiagram
   participant Pod as Backend pod
 
   U->>GFE: HTTPS app.baseDomain (wildcard cert)
-  alt host is IAP-gated (jenkins / headlamp / pgadmin / grafana-oss)
+  alt host is IAP-gated (CI UI: jenkins/tekton/argo · headlamp/pgadmin · grafana-oss)
     GFE->>IAP: check session
     IAP-->>U: redirect to Google sign-in (if no session)
     U->>IAP: Google OAuth
     IAP->>IAP: email has roles/iap.httpsResourceAccessor?
     IAP-->>U: 403 if not allowed
     IAP->>HR: forward (+ X-Goog-Authenticated-User-Email)
-  else microservices host (public demo, no IAP)
+  else public host (microservices demo · CI webhook receivers pac/argo-events, HMAC-protected)
     GFE->>HR: forward directly
   end
   HR->>Pod: route to pod targetPort (jenkins 8080 / headlamp 4466)
@@ -844,7 +856,8 @@ sequenceDiagram
 
 | Application | Edge-Level Authentication (GCP IAP) | App-Level Authentication | Authorization |
 |---|---|---|---|
-| **Jenkins** | Yes (Google IAP OAuth) | Google OIDC **or** local `admin` basic auth | RBAS: Default Google login = read-only; Admin email = full admin |
+| **Jenkins** *(ci.engine=jenkins)* | Yes (Google IAP OAuth) | Google OIDC **or** local `admin` basic auth | RBAS: Default Google login = read-only; Admin email = full admin |
+| **Tekton Dashboard / Argo Workflows UI** *(the other in-cluster CI engines)* | Yes (Google IAP OAuth) | IAP header is the auth (read-only viewer UI) | IAP allowlist = access (GitHub Actions/ARC has no in-cluster UI) |
 | **ArgoCD** | Yes (Google IAP OAuth) | Google OIDC (via Dex) **or** local `admin` secret | ArgoCD RBAC: Default OIDC = readonly; Admin email = role:admin |
 | **Headlamp** | Yes (Google IAP OAuth) | Token Login (GKE OAuth access token or ServiceAccount token) | Kubernetes RBAC via GCP Identity mapping |
 | **pgAdmin** | Yes (Google IAP OAuth) | Webserver Auth (trusts `X-Goog-Authenticated-User-Email` header) | Automated `.pgpass` injection for zero-password database login |
@@ -1003,7 +1016,7 @@ Related lifecycle: [`Day1.cluster.01-gke`](../.github/workflows/Day1.cluster.01-
 
 ---
 
-[← Previous: 403. Tekton](./403-TEKTON.md) | [🏠 Home](../README.md) | [→ Next: 502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md)
+[← Previous: 405. Argo Workflows](./405-ARGO_WORKFLOWS.md) | [🏠 Home](../README.md) | [→ Next: 502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md)
 
 ---
 

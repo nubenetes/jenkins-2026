@@ -1,4 +1,4 @@
-[← Previous: 402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) | [🏠 Home](../README.md) | [→ Next: 501. Platform Operations](./501-PLATFORM_OPERATIONS.md)
+[← Previous: 402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) | [🏠 Home](../README.md) | [→ Next: 404. GitHub Actions / ARC](./404-GITHUB_ACTIONS.md)
 
 ---
 
@@ -263,7 +263,7 @@ durable-default + override pattern as `observability.mode` / `JENKINS2026_OBS_MO
 ```yaml
 # config/config.yaml
 ci:
-  engine: jenkins      # jenkins (default) | tekton
+  engine: jenkins      # jenkins (default) | tekton | githubactions | argoworkflows
 ```
 
 ```bash
@@ -272,37 +272,45 @@ JENKINS2026_CI_ENGINE=tekton scripts/up.sh
 ```
 
 In CI, the **[`Day1.cluster.01-gke`](../.github/workflows/Day1.cluster.01-gke.yml)**
-workflow exposes a `ci_engine` choice input (`jenkins` default, or `tekton`)
-that flows to [`scripts/up.sh`](../scripts/up.sh) as `JENKINS2026_CI_ENGINE`. The two engines are
-mutually exclusive on a given cluster.
+workflow exposes a `ci_engine` choice input (`jenkins` default, or `tekton` /
+`githubactions` / `argoworkflows`) that flows to [`scripts/up.sh`](../scripts/up.sh)
+as `JENKINS2026_CI_ENGINE`. The four engines are mutually exclusive on a given cluster.
 
-[`scripts/lib/config.sh`](../scripts/lib/config.sh) validates the value (`jenkins|tekton`) and exports
-`J2026_CI_ENGINE`, which `up.sh`/`down.sh` and the numbered steps branch on:
+[`scripts/lib/config.sh`](../scripts/lib/config.sh) validates the value
+(`jenkins|tekton|githubactions|argoworkflows`) and exports `J2026_CI_ENGINE`,
+which `up.sh`/`down.sh` and the numbered steps branch on:
 
-| Step | `ci.engine=jenkins` | `ci.engine=tekton` |
-|---|---|---|
-| Install CI engine (`up.sh`) | [`scripts/04-jenkins.sh`](../scripts/04-jenkins.sh) | [`scripts/04-tekton.sh`](../scripts/04-tekton.sh) |
-| Seed pipelines (`up.sh`) | [`scripts/06-seed-pipelines.sh`](../scripts/06-seed-pipelines.sh) | [`scripts/06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh) |
-| Day2 redeploy | `Day2.redeploy.02-jenkins` | [`Day2.redeploy.03-tekton`](../.github/workflows/Day2.redeploy.03-tekton.yml) |
-| Teardown (`down.sh`) | Helm uninstall | engine-agnostic (removes both) |
+| Step | `jenkins` | `tekton` | `githubactions` | `argoworkflows` |
+|---|---|---|---|---|
+| Install CI engine (`up.sh`) | [`04-jenkins.sh`](../scripts/04-jenkins.sh) | [`04-tekton.sh`](../scripts/04-tekton.sh) | [`04-githubactions.sh`](../scripts/04-githubactions.sh) | [`04-argoworkflows.sh`](../scripts/04-argoworkflows.sh) |
+| Seed pipelines (`up.sh`) | [`06-seed-pipelines.sh`](../scripts/06-seed-pipelines.sh) | [`06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh) | [`06-githubactions-pipelines.sh`](../scripts/06-githubactions-pipelines.sh) | [`06-argoworkflows-pipelines.sh`](../scripts/06-argoworkflows-pipelines.sh) |
+| Day2 redeploy | `Day2.redeploy.02-jenkins` | [`Day2.redeploy.03-tekton`](../.github/workflows/Day2.redeploy.03-tekton.yml) | `Day2.redeploy.06-githubactions` | `Day2.redeploy.07-argoworkflows` |
+| Teardown (`down.sh`) | Helm uninstall | engine-agnostic (removes all engines) | engine-agnostic | engine-agnostic |
 
-**The two engines are mutually exclusive.** A clean install only deploys the
-selected engine ([`up.sh`](../scripts/up.sh) branches on `ci.engine`, so Jenkins is never installed
-in tekton mode). Switching engines on a *running* cluster **decommissions the
-other one**: [`scripts/04-tekton.sh`](../scripts/04-tekton.sh) retires Jenkins if present (Helm uninstall +
-removes the Jenkins gateway route/IAP/health-check), and [`scripts/04-jenkins.sh`](../scripts/04-jenkins.sh)
-retires Tekton if present (control-plane + pipeline namespaces + Tekton gateway
-route/IAP). This runs on both `up.sh` and the `Day2.redeploy.*` paths. The
-shared microservices are GitOps-managed by ArgoCD, so they survive the switch —
-only the CI engine itself (and its public routing) changes.
+**The four engines are mutually exclusive.** A clean install only deploys the
+selected engine ([`up.sh`](../scripts/up.sh) branches on `ci.engine`, so the other
+three are never installed). Switching engines on a *running* cluster
+**decommissions the other three in the same run**: each `scripts/04-<engine>.sh`
+calls the shared **`retire_ci_engine`** helper ([`scripts/lib/common.sh`](../scripts/lib/common.sh))
+once per sibling engine — deleting that engine's ArgoCD Applications (parent
+app-of-apps + every child), clearing stuck GKE NEG finalizers, and deleting the
+namespaces it owns (so its Gateway routes / IAP / Services go with them). This runs
+on both `up.sh` and the `Day2.redeploy.*` paths. The shared microservices are
+GitOps-managed by ArgoCD, so they survive the switch — only the CI engine itself
+(and its public routing) changes.
 
 ### Switching engines on a running cluster — what's removed vs kept
 
-Re-running `Day1.cluster.01-gke` (or the matching `Day2.redeploy.*`) with the
-*other* engine **decommissions the current one in the same run** — you never need
-a separate Decom. The retirement is **best-effort + idempotent**, and the two
-directions are **not symmetric** (Tekton has dedicated namespaces that are reaped;
-Jenkins shares the `jenkins` namespace, which is left intact).
+Re-running `Day1.cluster.01-gke` (or the matching `Day2.redeploy.*`) with a
+*different* engine **decommissions the previously-deployed one(s) in the same run**
+— you never need a separate Decom. Each `04-<engine>.sh` calls the shared
+`retire_ci_engine` helper for **every** sibling engine, so switching to Tekton
+retires Jenkins **and** GitHub Actions/ARC **and** Argo Workflows if any is present.
+The retirement is **best-effort + idempotent**, and the directions are **not
+symmetric** (Tekton/GHA/Argo have dedicated namespaces that are reaped; Jenkins
+shares the `jenkins` namespace, which is left intact). The jenkins↔tekton pair
+below is the representative example; the GHA (`arc-systems`/`arc-runners`) and
+Argo Workflows (`argo`/`argo-events`/`argo-ci`) engines retire the same way.
 
 <details>
 <summary>🔁 Switching engines — what's removed vs kept</summary>
@@ -375,11 +383,17 @@ deleting an engine's namespace, therefore **never touches the ingress**.
 | `tekton-ci` | `ci.engine=tekton` | PipelineRuns, Tasks, the `tekton-ci` SA + its Secrets |
 | `pipelines-as-code` | `ci.engine=tekton` | PaC controller |
 | `tekton-chains` | `ci.engine=tekton` | Chains controller (cosign signing) |
+| `arc-systems` | `ci.engine=githubactions` | ARC controller + CRDs |
+| `arc-runners` | `ci.engine=githubactions` | AutoscalingRunnerSet + ephemeral runner pods + creds |
+| `argo` | `ci.engine=argoworkflows` | Argo Workflows control plane (controller + Server UI) |
+| `argo-events` | `ci.engine=argoworkflows` | Argo Events controller-manager + EventBus |
+| `argo-ci` | `ci.engine=argoworkflows` | where Workflows execute (SA, creds, RBAC, the `argoworkflows/` pac) |
 | `observability`, `headlamp`, `microservices`, `argocd`, `platform-postgres`/pgAdmin | always | engine-neutral platform |
 
-**Why this layout:** the engines are mutually exclusive, so each owns self-named
+**Why this layout:** the four engines are mutually exclusive, so each owns self-named
 namespaces created only when selected (`jenkins` truly jenkins-only; `tekton-*`
-only in tekton mode). Shared platform infra — above all the **Gateway** — lives in
+only in tekton mode; `arc-*` only for GitHub Actions/ARC; `argo`/`argo-events`/`argo-ci`
+only for Argo Workflows). Shared platform infra — above all the **Gateway** — lives in
 neutral always-on namespaces (`platform-ingress`, `observability`, `argocd`…) so it
 survives engine switches and can't be taken down by deleting an engine's namespace.
 The Tekton control-plane namespace can't be renamed — the upstream release YAMLs
@@ -478,8 +492,10 @@ https://tekton.<baseDomain>   →  Google IAP login  →  Tekton Dashboard
 
 The full Jenkins microservices pipeline ([`vars/MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy))
 is ported to Tekton under [`tekton/`](../tekton/) — **one Task per stage**, wired
-into `microservices-pipeline`. Both engines read **the same service registry**
-([`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml)).
+into `microservices-pipeline`. All four engines read **the same service registry**
+([`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml))
+and share the same gateway build-time patch
+([`resources/patch-app-source.sh`](../resources/patch-app-source.sh)).
 
 | Jenkins stage | Tekton Task | Notable difference |
 |---|---|---|
@@ -1109,15 +1125,15 @@ if [[ "${run_env}" == "develop" && "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}
 
 ---
 
-## Beyond Jenkins & Tekton — the `ci.engine` contract & candidate engines (roadmap)
+## Beyond the four engines — the `ci.engine` contract & further candidates (roadmap)
 
-> **Status: roadmap / analysis only.** Today `ci.engine` is **`jenkins | tekton`** (see [Selecting the engine](#selecting-the-engine)). Nothing below is implemented — this section captures *which other engines would fit, and why*, so a future flag value is a deliberate choice rather than a guess. Adding an engine is tractable precisely because both current engines already read one shared service registry ([`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml)) and follow the same contract.
+> **Status.** Today `ci.engine` has **four implemented values — `jenkins | tekton | githubactions | argoworkflows`** (see [Selecting the engine](#selecting-the-engine)): Jenkins (default), Tekton, **GitHub Actions / ARC** ([404](./404-GITHUB_ACTIONS.md)) and **Argo Workflows** ([405](./405-ARGO_WORKFLOWS.md)). The engines **below** (Woodpecker/Drone, Concourse, Dagger, GitLab) are **not** implemented — this section captures *which further engines would fit, and why*, so a future flag value is a deliberate choice rather than a guess. Adding an engine is tractable precisely because all four current engines already read one shared service registry ([`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml)) + the shared build-time patch ([`resources/patch-app-source.sh`](../resources/patch-app-source.sh)) and follow the same contract.
 
 ### The `ci.engine` contract (what any engine must provide)
 
-Whatever runs the build, it has to deliver the same outcomes Jenkins ([`vars/`](../vars/)) and Tekton ([`tekton/`](../tekton/)) already do, so the rest of the platform doesn't notice the swap:
+Whatever runs the build, it has to deliver the same outcomes the four implemented engines (Jenkins [`vars/`](../vars/), Tekton [`tekton/`](../tekton/), GitHub Actions/ARC, Argo Workflows [`argoworkflows/`](../argoworkflows/)) already do, so the rest of the platform doesn't notice the swap:
 
-1. **Build & test** each service from [`services.yaml`](../jenkins/pipelines/seed/services.yaml) (JHipster Maven build, gateway MySQL→Postgres hot-patch).
+1. **Build & test** each service from [`services.yaml`](../jenkins/pipelines/seed/services.yaml) (JHipster Maven build, plus the shared gateway build-time patch [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) — MySQL→PostgreSQL + swap the Hazelcast 2nd-level cache for a **NoOp cache** — called by all four engines).
 2. **DevSecOps scans** — Semgrep / CodeQL / Trivy, non-blocking, results surfaced (see [601. DevSecOps](./601-DEVSECOPS.md)).
 3. **Build & push** the image to GHCR (Jib / Spring-Boot build-image / docker).
 4. **GitOps update** — bump the image tag in the gitops-config repo and `git push origin main` (the machine-managed deploy; cf. [`vars/microservicesDeploy.groovy`](../vars/microservicesDeploy.groovy)). ArgoCD takes it from there.
@@ -1126,12 +1142,17 @@ Whatever runs the build, it has to deliver the same outcomes Jenkins ([`vars/`](
 
 A new engine that satisfies those six points drops in without touching the microservices, ArgoCD, or observability layers.
 
-### Candidate engines (ranked by fit *for this project*)
+### Already implemented (the four `ci.engine` values)
+
+| Engine | Status | Where |
+|---|---|---|
+| **GitHub Actions self-hosted — ARC** (Actions Runner Controller) | ✅ **shipped** (`ci.engine=githubactions`) | Native GitHub webhooks (no separate trigger component); ArgoCD app (`gha-runner-scale-set-controller` + `RunnerScaleSet`); ephemeral runner Pods on the [`ci-spot` ComputeClass](../infrastructure/compute-classes/ci-spot.yaml) (the best NAP Spot showcase). See [404. GitHub Actions / ARC](./404-GITHUB_ACTIONS.md). |
+| **Argo Workflows** (+ Argo Events) | ✅ **shipped** (`ci.engine=argoworkflows`) | Completes the **Argo trifecta** (ArgoCD + Argo Rollouts). K8s-native DAG pipelines; **Argo Events** is the Tekton-Triggers equivalent (webhook→workflow); the shared library ports to reusable `WorkflowTemplate`s. See [405. Argo Workflows](./405-ARGO_WORKFLOWS.md). |
+
+### Further candidate engines (roadmap, ranked by fit *for this project*)
 
 | Engine | Fit | Why (for **this** GitHub-centric, Argo-on-GKE stack) |
 |---|---|---|
-| **GitHub Actions self-hosted — ARC** (Actions Runner Controller) | 🥇 best | Closes the loop: the Day0/Day1 lifecycle is *already* GitHub Actions, so running the microservices pipeline as GHA with in-cluster **ephemeral runners** is the natural third engine. Native GitHub webhooks (no separate trigger component). Installs as an ArgoCD app (`gha-runner-scale-set-controller` + `RunnerScaleSet`). **Best showcase for NAP:** ephemeral runner Pods are exactly the bursty workload the [`ci-spot` ComputeClass](../infrastructure/compute-classes/ci-spot.yaml) provisions Spot, scale-to-zero nodes for. |
-| **Argo Workflows** (+ Argo Events) | 🥇 strong | Completes the **Argo trifecta** already present (ArgoCD + Argo Rollouts). CNCF, K8s-native DAG pipelines; **Argo Events** is the Tekton-Triggers equivalent (webhook→workflow). The shared library ports to reusable `WorkflowTemplate`s, just as it ported to Tekton Tasks. |
 | **Woodpecker CI / Drone** | 🥈 good | Container-native and **ultra-light** (every step is a container) — a deliberate footprint contrast to Jenkins. Woodpecker (the live OSS Drone fork) is the better-maintained pick. |
 | **Concourse CI** | 🥈 niche | Strongly **opinionated** pipelines-as-code ("everything is a container + typed resources"). Architecturally instructive, but a heavier, more idiosyncratic model with its own learning curve. |
 | **Dagger** | 🧩 adjacent | Not a CI *server* but a **portable pipeline engine** (pipeline-as-code in containers, runs inside any CI). Fits better as a shared *build layer* than as a standalone `ci.engine`, but would let "the same build" run under any host. |
@@ -1149,15 +1170,15 @@ Points in its favour, for completeness:
 - **DevSecOps built in** — GitLab ships SAST/DAST/dependency/container scanning, which could *replace* the Semgrep/CodeQL/Trivy trio — but that's the opposite philosophy (all-in-one forge vs. decoupled components).
 - The pipeline model (`stages` / `needs:` DAG, `include:` / **CI/CD components** as the shared-library equivalent) ports cleanly; the GitOps-update stage is just a job that pushes to the gitops repo.
 
-**Verdict:** as a peer `ci.engine` to Jenkins/Tekton, GitLab ranks **below ARC and Argo Workflows here** because of the second-forge cost. Where it *would* shine is a different feature entirely — not "another CI engine" but **"GitLab as an alternative platform"** (the Golden Path told with GitLab + its integrated DevSecOps as a counterpoint to the GitHub+components stack). That's a sibling project, not one more flag value.
+**Verdict:** as a peer `ci.engine` to the four implemented engines, GitLab ranks **below ARC and Argo Workflows** (both now shipped) because of the second-forge cost. Where it *would* shine is a different feature entirely — not "another CI engine" but **"GitLab as an alternative platform"** (the Golden Path told with GitLab + its integrated DevSecOps as a counterpoint to the GitHub+components stack). That's a sibling project, not one more flag value.
 
-### Recommendation
+### Recommendation — realized
 
-If one engine is added, **GitHub Actions + ARC** — maximum fit with the GitHub-centric setup, native triggers, and the best demonstration of the NAP Spot nodes (ephemeral runners = exactly what `ci-spot` was built for). If two, **ARC + Argo Workflows** gives a full spread: heavyweight-extensible (Jenkins), K8s-declarative (Tekton), GitHub-native (GHA/ARC), and Argo-native (Workflows).
+The original recommendation (add **GitHub Actions + ARC** first, then **Argo Workflows** for a full spread) has been **realized**: `ci.engine` now offers all four — heavyweight-extensible (Jenkins), K8s-declarative (Tekton), GitHub-native (GHA/ARC, [404](./404-GITHUB_ACTIONS.md)), and Argo-native (Workflows, [405](./405-ARGO_WORKFLOWS.md)). Any *further* engine would come from the roadmap candidates above (Woodpecker/Drone, Concourse, Dagger).
 
 ---
 
-[← Previous: 402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) | [🏠 Home](../README.md) | [→ Next: 501. Platform Operations](./501-PLATFORM_OPERATIONS.md)
+[← Previous: 402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) | [🏠 Home](../README.md) | [→ Next: 404. GitHub Actions / ARC](./404-GITHUB_ACTIONS.md)
 
 ---
 

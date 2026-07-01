@@ -151,10 +151,10 @@ The GitHub Actions sidebar sorts by each workflow's `name:` field, and every `na
 | `01` | GKE cluster | [`Day1.cluster.01-gke`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) | — | [`Decom.cluster.01-gke`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml) |
 | `01` | ArgoCD (CD engine) | *(by [`Day1.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml))* | [`Day2.redeploy.01-argocd`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.01-argocd.yml) | *(by [`Decom.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml))* |
 | `02` | Jenkins | *(by [`Day1.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml))* | [`Day2.redeploy.02-jenkins`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.02-jenkins.yml) | *(by [`Decom.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml))* |
-| `03` | Tekton (CI engine, alt to Jenkins) | *(by [`Day1.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) with ci_engine=tekton)* | [`Day2.redeploy.03-tekton`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.03-tekton.yml) | *(by [`Decom.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml))* |
+| `03` | Tekton (CI engine, 1 of 4) | *(by [`Day1.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) with ci_engine=tekton)* | [`Day2.redeploy.03-tekton`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.03-tekton.yml) | *(by [`Decom.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml))* |
 | `04` | Headlamp | *(by [`Day1.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml))* | [`Day2.redeploy.04-headlamp`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.04-headlamp.yml) | *(by [`Decom.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml))* |
-| `06` | GitHub Actions / ARC (CI engine, alt to Jenkins/Tekton) | *(by [`Day1.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) with ci_engine=githubactions)* | [`Day2.redeploy.06-githubactions`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.06-githubactions.yml) | *(by [`Decom.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml))* |
-| `07` | Argo Workflows (CI engine, alt to Jenkins/Tekton/GitHub Actions) | *(by [`Day1.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) with ci_engine=argoworkflows)* | [`Day2.redeploy.07-argoworkflows`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.07-argoworkflows.yml) | *(by [`Decom.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml))* |
+| `06` | GitHub Actions / ARC (CI engine, 1 of 4) | *(by [`Day1.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) with ci_engine=githubactions)* | [`Day2.redeploy.06-githubactions`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.06-githubactions.yml) | *(by [`Decom.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml))* |
+| `07` | Argo Workflows (CI engine, 1 of 4) | *(by [`Day1.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) with ci_engine=argoworkflows)* | [`Day2.redeploy.07-argoworkflows`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.07-argoworkflows.yml) | *(by [`Decom.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml))* |
 | `01` | OSS Grafana stack | *(by [`Day1.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) via ArgoCD)* | [`Day2.publish.01-oss-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.01-oss-grafana.yml) | *(by [`Decom.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml))* |
 | `05` | Grafana alerts | *(by [`Day1.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml))* | [`Day2.publish.05-alerts`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.05-alerts.yml) | — |
 | `01` | k6 traffic | — | [`Day2.traffic.01-k6`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml) | — |
@@ -237,10 +237,10 @@ Rows = resources · Columns = lifecycle phases · Cell = filename (link) or — 
 | **GKE cluster** | [Day1.cluster.01-gke](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) | — | [Decom.cluster.01-gke](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml) |
 | **ArgoCD** (CD engine) | *(provisioned by Day1.cluster.01)* | [Day2.redeploy.01-argocd](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.01-argocd.yml) | *(destroyed by Decom.cluster.01)* |
 | **Jenkins** | *(provisioned by Day1.cluster.01)* | [Day2.redeploy.02-jenkins](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.02-jenkins.yml) | *(destroyed by Decom.cluster.01)* |
-| **Tekton** (CI engine, alt to Jenkins) | *(provisioned by Day1.cluster.01 when ci_engine=tekton)* | [Day2.redeploy.03-tekton](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.03-tekton.yml) | *(destroyed by Decom.cluster.01)* |
+| **Tekton** (CI engine, 1 of 4) | *(provisioned by Day1.cluster.01 when ci_engine=tekton)* | [Day2.redeploy.03-tekton](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.03-tekton.yml) | *(destroyed by Decom.cluster.01)* |
 | **Headlamp** | *(provisioned by Day1.cluster.01)* | [Day2.redeploy.04-headlamp](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.04-headlamp.yml) | *(destroyed by Decom.cluster.01)* |
-| **GitHub Actions / ARC** (CI engine, alt to Jenkins/Tekton) | *(provisioned by Day1.cluster.01 when ci_engine=githubactions)* | [Day2.redeploy.06-githubactions](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.06-githubactions.yml) | *(destroyed by Decom.cluster.01)* |
-| **Argo Workflows** (CI engine, alt to Jenkins/Tekton/GitHub Actions) | *(provisioned by Day1.cluster.01 when ci_engine=argoworkflows)* | [Day2.redeploy.07-argoworkflows](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.07-argoworkflows.yml) | *(destroyed by Decom.cluster.01)* |
+| **GitHub Actions / ARC** (CI engine, 1 of 4) | *(provisioned by Day1.cluster.01 when ci_engine=githubactions)* | [Day2.redeploy.06-githubactions](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.06-githubactions.yml) | *(destroyed by Decom.cluster.01)* |
+| **Argo Workflows** (CI engine, 1 of 4) | *(provisioned by Day1.cluster.01 when ci_engine=argoworkflows)* | [Day2.redeploy.07-argoworkflows](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.07-argoworkflows.yml) | *(destroyed by Decom.cluster.01)* |
 | **OSS Grafana stack** (ArgoCD) | *(provisioned by Day1.cluster.01)* | [Day2.publish.01-oss-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.01-oss-grafana.yml) | *(destroyed by Decom.cluster.01)* |
 | **Grafana alerts** | *(provisioned by Day1.cluster.01)* | [Day2.publish.05-alerts](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.05-alerts.yml) | — |
 | **k6 traffic** | — | [Day2.traffic.01-k6](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml) | — |
@@ -609,7 +609,7 @@ sequenceDiagram
     GH->>Env: provision job requests review (gke-production)
     Env-->>GH: approved
     GH->>GCP: terraform apply (GKE) then up.sh in full
-    Note right of GCP: 01 ns+secrets to 08.5 ArgoCD to 03 obs to<br/>04+06 (jenkins OR tekton) to 07/07.5 to 08 to 09 to smoke
+    Note right of GCP: 01 ns+secrets to 08.5 ArgoCD to 03 obs to<br/>04+06 (the selected ci.engine: jenkins/tekton/githubactions/argoworkflows) to 07/07.5 to 08 to 09 to smoke
 
     Note over Op,GCP: Day2 — independent, idempotent ops (any order, re-runnable)
     loop each change, dispatched by hand
@@ -707,7 +707,7 @@ umbrella only orchestrates the existing reusable workflows.
 
 ## Decom: independent per backend, plus an opt-in "Everything" umbrella
 
-The persistent backends (Gateway IP/cert, Grafana Cloud, Azure, AWS) each have their **own** `Decom.infra.0{1..4}` workflow — one `terraform destroy` per module. They are independent and persistent: you normally use only one per cluster (and with the `oss` default, often none at all). For a **targeted** teardown, run **only** the per-backend workflow(s) for what you actually provisioned, after `Decom.cluster.01-gke`.
+The persistent backends (Gateway IP/cert, Grafana Cloud, Azure, AWS) each have their **own** `Decom.infra.0{1..4}` workflow — one `terraform destroy` per module. They are independent and persistent: you normally use only one per cluster (the default `grafana-cloud` mode needs `Day0.infra.02`; in `oss` mode, none at all — its stack is in-cluster). For a **targeted** teardown, run **only** the per-backend workflow(s) for what you actually provisioned, after `Decom.cluster.01-gke`.
 
 For a **full** teardown there is also an opt-in umbrella, **`Decom.infra.00-all` ("Everything")**, that tears down the cluster **and** every persistent backend in one dispatch — so switching `observability.mode` around never leaves a forgotten, billed backend (e.g. an orphaned Grafana Cloud stack from before you moved to managed-azure). It reuses each per-resource Decom via `workflow_call` (no teardown logic is duplicated); type `destroy` to confirm. Order is enforced with `needs`: the **cluster runs first** (its decom also destroys the ephemeral `grafana-cloud-token`, which references the Grafana Cloud stack), then the backends destroy in parallel. The three backend checkboxes default **on** (the point is destroy-all); the Gateway static IP defaults **off** (keeping it avoids losing the IP and re-propagating DNS). Untick any to spare it. This is the one place a cascade is intentional — gated behind the explicit `destroy` confirmation and per-backend opt-out.
 
@@ -728,7 +728,7 @@ So in Day2 the `tier` is a **classification of what kind of operation a workflow
 |---|---|---|
 | [`redeploy.01-argocd`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.01-argocd.yml) → [`publish.01-oss-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.01-oss-grafana.yml) | **No** | `publish.01` nudges the `observability-oss` ArgoCD app to re-sync, but ArgoCD already exists from `Day1`. `redeploy.01` is only run if you **changed** ArgoCD config; `publish.01` works fine having never run it. |
 | [`redeploy.02-jenkins`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.02-jenkins.yml) → [`traffic.01-k6`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml) | **No** | k6 hits the gateway/microservices endpoints (deployed by `Day1` + the ArgoCD AppSet). Jenkins is CI — it doesn't serve the runtime traffic k6 targets. |
-| [`redeploy.02-jenkins`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.02-jenkins.yml) ↔ [`redeploy.03-tekton`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.03-tekton.yml) | **No (mutually exclusive, not ordered)** | They redeploy the two alternative CI engines selected by `ci.engine` (Jenkins default \| Tekton). Only the active engine is provisioned by `Day1`; you run whichever one matches your cluster's `ci.engine`. Not an ordering dependency. |
+| [`redeploy.02-jenkins`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.02-jenkins.yml) ↔ [`redeploy.03-tekton`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.03-tekton.yml) / [`06-githubactions`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.06-githubactions.yml) / [`07-argoworkflows`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.07-argoworkflows.yml) | **No (mutually exclusive, not ordered)** | They redeploy the four mutually-exclusive CI engines selected by `ci.engine` (Jenkins default \| Tekton \| GitHub Actions / ARC \| Argo Workflows). Only the active engine is provisioned by `Day1`; you run whichever one matches your cluster's `ci.engine`. Not an ordering dependency. |
 | [`publish.05-alerts`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.05-alerts.yml) ↔ [`publish.01-oss-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.01-oss-grafana.yml) | **No (they overlap, they don't order)** | Both publish alert rules; they are idempotent and last-writer-wins. Running either one alone leaves the correct state. |
 | any `publish.*` → needs a live Grafana | **Yes, but backwards to `Day1`/`Day0`** | The Grafana instance is provided by [`Day1.cluster.01`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml) (oss mode) or by a `Day0.infra.0{3,4}` backend (Azure/AWS) — never by a sibling Day2 workflow. |
 
@@ -760,7 +760,7 @@ See [102. GitHub Actions Automation](./102-GITHUB_ACTIONS_AUTOMATION.md) for the
 
 ## Reading the `Day1.cluster.01` run graph: jobs vs in-job branches
 
-A common question when dispatching `Day1.cluster.01-gke`: the run graph shows **three bootstrap boxes** (one per observability backend) feeding a single **`provision`** box (plus, only when the opt-in `destroy_unused_backends` flag is set, three independent `destroy-*` boxes) — but **no boxes for `jenkins` vs `tekton`**, nor for the different observability modes beyond the bootstrap. Why isn't every combination drawn?
+A common question when dispatching `Day1.cluster.01-gke`: the run graph shows **three bootstrap boxes** (one per observability backend) feeding a single **`provision`** box (plus, only when the opt-in `destroy_unused_backends` flag is set, three independent `destroy-*` boxes) — but **no boxes for the four CI engines** (`jenkins` / `tekton` / `githubactions` / `argoworkflows`), nor for the different observability modes beyond the bootstrap. Why isn't every combination drawn?
 
 **Because GitHub Actions only renders the _job graph_ — the `jobs:` and their `needs:` edges. It cannot show logic that happens _inside_ a job** (a step's `if:`, a script's branching). So the rule is simple:
 
@@ -787,15 +787,16 @@ provision:
 
 (You see all three even though only the one matching your `observability_mode` runs — the others are *skipped*, and `provision` runs `if: always() && !failure()`.) When the opt-in, destructive `destroy_unused_backends` input is set, the graph also shows up to **three `destroy-*` boxes** (reusing `Decom.infra.0{2,3,4}` via `workflow_call`) that terraform-destroy the *non-selected* backends; these run in parallel but are deliberately **not** in `provision`'s `needs:`, so a destroy of a never-provisioned backend can't block the cluster.
 
-The **CI engine** (`jenkins` | `tekton`) and the rest of the observability wiring are **not** separate jobs — they are a **runtime branch inside the single `provision` job**, decided by the `ci.engine` feature flag inside `scripts/up.sh`:
+The **CI engine** (`jenkins` | `tekton` | `githubactions` | `argoworkflows`) and the rest of the observability wiring are **not** separate jobs — they are a **runtime branch inside the single `provision` job**, decided by the `ci.engine` feature flag inside `scripts/up.sh`. Each `04-<engine>.sh` also calls the shared `retire_ci_engine` helper (`scripts/lib/common.sh`) to fully remove the OTHER three engines (their ArgoCD apps + children + namespaces + stuck GKE NEG finalizers), so it's a clean switch, not a toggle:
 
 ```bash
 # scripts/up.sh — runs as a step inside the provision job
-if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
-  04-tekton.sh ; 06-tekton-pipelines.sh     # Tekton path
-else
-  04-jenkins.sh ; 06-seed-pipelines.sh      # Jenkins path (default)
-fi
+case "${J2026_CI_ENGINE}" in
+  tekton)        04-tekton.sh        ; 06-tekton-pipelines.sh ;;         # Tekton
+  githubactions) 04-githubactions.sh ; 06-githubactions-pipelines.sh ;;  # GitHub Actions / ARC
+  argoworkflows) 04-argoworkflows.sh ; 06-argoworkflows-pipelines.sh ;;  # Argo Workflows + Events
+  *)             04-jenkins.sh       ; 06-seed-pipelines.sh ;;           # Jenkins (default)
+esac
 ```
 
 GitHub has no way to draw that — it's a `bash if`, not a job — so `provision` is one box.
@@ -832,16 +833,22 @@ flowchart TD
         PD["sweep-orphaned-PDs<br/>(reclaim unattached pvc-* CSI disks)"]
         NS["01 namespaces + secrets<br/>(imperative kubectl, or push to<br/>Secret Manager when secrets.backend=eso)<br/>then 02 otel-operator"]
         CD["08.5 ArgoCD -> 08.6 ESO sync (eso only) -> 03 observability"]
-        UP{"up.sh branches on<br/>JENKINS2026_CI_ENGINE"}
+        UP{"up.sh branches on<br/>JENKINS2026_CI_ENGINE<br/>(each 04-&lt;engine&gt;.sh retires the other 3<br/>via retire_ci_engine)"}
         JEN["04-jenkins + 06-seed-pipelines"]
         TEK["04-tekton + 06-tekton-pipelines (PaC)"]
+        GHA["04-githubactions + 06-githubactions-pipelines (ARC)"]
+        AWF["04-argoworkflows + 06-argoworkflows-pipelines (Events)"]
         REST["07/07.5 dashboards+alerts<br/>08 headlamp · 09 gateway/IAP"]
         SMOKE["smoke-test"]
         TF --> PD --> NS --> CD --> UP
         UP -->|jenkins default| JEN
         UP -->|tekton| TEK
+        UP -->|githubactions| GHA
+        UP -->|argoworkflows| AWF
         JEN --> REST
         TEK --> REST
+        GHA --> REST
+        AWF --> REST
         REST --> SMOKE
     end
 
@@ -864,7 +871,7 @@ flowchart TD
 | Choice | Modelled as | Why |
 |---|---|---|
 | Observability **backend** (grafana-cloud / azure / aws) | **Separate jobs** (`workflow_call`) | They are **persistent Day0 resources**, independently runnable on their own (`Day0.infra.0{2,3,4}`), and must run as a **preflight** so `provision` can read their Terraform outputs to build the in-cluster credentials Secret. Reusing them via `workflow_call` yields the graph nodes for free. |
-| **CI engine** (jenkins / tekton) | **In-job branch** (`ci.engine` flag in `up.sh`) | Splitting `provision` into `provision-jenkins` / `provision-tekton` jobs would **duplicate the entire heavy preamble** (GCP auth, Terraform, kubeconfig, namespaces, ArgoCD, observability) for a one-line divergence. The feature-flag branch is the repo-wide pattern (same as `observability.mode`): one path, parameterised by config. |
+| **CI engine** (jenkins / tekton / githubactions / argoworkflows) | **In-job branch** (`ci.engine` flag in `up.sh`) | Splitting `provision` into per-engine jobs would **duplicate the entire heavy preamble** (GCP auth, Terraform, kubeconfig, namespaces, ArgoCD, observability) for a one-line divergence. The feature-flag branch is the repo-wide pattern (same as `observability.mode`): one path, parameterised by config. |
 | Observability **mode** wiring (beyond bootstrap) | **In-job** (`JENKINS2026_OBS_MODE` in `up.sh` + per-mode `values-*.yaml`) | Same reason — a config branch, not a structural one. |
 
 So the run graph deliberately shows only the **structural** fan-in (the preflight backends) and folds every **configuration** choice into the single `provision` job. If you ever *wanted* the engine choice as boxes, you'd split `provision` into a shared-preamble job plus `if: ci_engine == …` deploy jobs (passing kubeconfig as an artifact) — possible, but a lot of duplication for a PoC, and it would break the "one idempotent provision" model described below.
@@ -881,8 +888,8 @@ This is the only diagram organized by `observability.mode` rather than by lifecy
 ```mermaid
 flowchart LR
     O["observability.mode<br/>(config.yaml / Day1 input)"]:::pick
-    O --> GC["grafana-cloud"]:::mode
-    O --> OSS["oss (default)"]:::mode
+    O --> GC["grafana-cloud (default)"]:::mode
+    O --> OSS["oss"]:::mode
     O --> AZ["managed-azure"]:::mode
     O --> AW["managed-aws"]:::mode
 

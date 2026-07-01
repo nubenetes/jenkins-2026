@@ -263,27 +263,32 @@ When executing the **Day1.cluster.01 GKE provision** workflow manually, you are 
    - **Default**: `oss` (needs no external backend; [`config/config.yaml`](../config/config.yaml)'s durable default is still `grafana-cloud` for local `up.sh`).
    - Overrides the `observability.mode` setting in [`config/config.yaml`](../config/config.yaml) for this execution lifecycle. Exactly **one** backend is active per cluster and the choice is **deterministic/idempotent** (like `ci_engine`): a rerun with a different mode auto-retires the previously-deployed backend's in-cluster footprint and provisions the chosen one. See [301 § observability backends](301-OBSERVABILITY.md).
 
-3. **secrets_backend (Dropdown - Choice)**:
+3. **ci_engine (Dropdown - Choice)**:
+   - **Type**: Choice (`jenkins` | `tekton` | `githubactions` | `argoworkflows`).
+   - **Default**: `jenkins`.
+   - Selects which of the **four mutually-exclusive** CI engines the platform deploys and runs the microservices pipelines-as-code on: **Jenkins** (Helm chart + JCasC + Job-DSL seed), **Tekton** (Pipelines/Triggers/Dashboard, IAP-protected), **GitHub Actions (ARC)** (self-hosted ephemeral Spot runners, native GitHub webhooks, **no in-cluster UI**), or **Argo Workflows** (Argo Workflows + Argo Events, IAP-protected Server UI). All four share the same ~10-stage pipeline contract, the shared `resources/patch-app-source.sh` (gateway MySQL→Postgres + NoOp-cache build-time patch) and the `jenkins/pipelines/seed/services.yaml` registry. Overrides `ci.engine` in [`config/config.yaml`](../config/config.yaml). **Deterministic/idempotent** (like `observability_mode`): a rerun with a different engine auto-retires the other three engines' in-cluster footprint (their ArgoCD apps + children + namespaces) via `retire_ci_engine` and deploys the chosen one. See [403 Tekton](./403-TEKTON.md), 404 GitHub Actions, 405 Argo Workflows.
+
+4. **secrets_backend (Dropdown - Choice)**:
    - **Type**: Choice (`imperative` | `eso`).
    - **Default**: `imperative` (behaviour unchanged — `kubectl create secret` from the GitHub secrets).
    - Overrides `secrets.backend`. `eso` pushes the secret values to **GCP Secret Manager** and the **External Secrets Operator** syncs them into the cluster via Workload Identity (keyless, versioned, audited). The whole `up.sh` lifecycle honours it. See [201 § Secrets backend](201-ARCHITECTURE.md#secrets-backend-imperative--eso).
 
-4. **destroy_unused_backends (Checkbox - Boolean) — DESTRUCTIVE, opt-in**:
+5. **destroy_unused_backends (Checkbox - Boolean) — DESTRUCTIVE, opt-in**:
    - **Default**: `false`.
    - When `true`, also `terraform destroy` the **persistent** backend (Grafana Cloud stack / Azure / AWS Managed Grafana) of every mode you did **not** select, so only the chosen backend exists. Reuses the `Decom.infra.0{2,3,4}` workflows via `workflow_call`; independent of the cluster provision (a destroy of a never-provisioned backend can't block it).
    - ⚠ **Irreversible**: wipes that backend's history/dashboards; re-selecting the mode later recreates it empty. Needs the non-selected backends' credentials/identifiers configured.
 
-5. **enable_gateway (Checkbox - Boolean)**:
+6. **enable_gateway (Checkbox - Boolean)**:
    - **Default**: `true`.
    - Determines whether the public GKE Gateway L7 load balancer should be provisioned.
    - **Prerequisites**: Requires `Day0.infra.01 Gateway bootstrap` applied, wildcard DNS records, and IAP OAuth client credentials.
 
-6. **develop_track (Checkbox - Boolean)**:
+7. **develop_track (Checkbox - Boolean)**:
    - **Default**: `false`.
-   - Deploys the optional **lean `develop` microservices tier** alongside `stable`: a `microservices-develop` namespace + ArgoCD app from `values-develop.yaml` on the GitOps repo's `develop` branch (a single non-HA CNPG instance, single pooler, no backups), plus `-develop` CI jobs/runs. Engine-neutral (Jenkins or Tekton). Overrides `microservices.developTrackEnabled` via `JENKINS2026_DEVELOP_TRACK_ENABLED`.
+   - Deploys the optional **lean `develop` microservices tier** alongside `stable`: a `microservices-develop` namespace + ArgoCD app from `values-develop.yaml` on the GitOps repo's `develop` branch (a single non-HA CNPG instance, single pooler, no backups), plus `-develop` CI jobs/runs. Engine-neutral (any of the four CI engines — Jenkins, Tekton, GitHub Actions, Argo Workflows). Overrides `microservices.developTrackEnabled` via `JENKINS2026_DEVELOP_TRACK_ENABLED`.
    - **Prerequisite**: the `jenkins-2026-gitops-config` repo must have a `develop` branch with `helm/microservices/values-develop.yaml`. See [402 § Optional develop Tier](./402-PIPELINES_AS_CODE.md).
 
-7. **git_ref (Text Box - String)**:
+8. **git_ref (Text Box - String)**:
    - **Default**: `""` (empty).
    - Leave empty to use the **"Use workflow from"** dropdown selection.
    - Provide a branch name, tag, or SHA to override.

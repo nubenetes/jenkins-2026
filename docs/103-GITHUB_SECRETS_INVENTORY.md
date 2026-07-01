@@ -473,12 +473,15 @@ token/settings page (or a stack access policy token scoped to k6). Empty by defa
 
 **`K6_CLOUD_PROJECT_ID`**
 The project under which runs appear in the k6 app. Both flow into the cluster via
-[`scripts/01-namespaces.sh`](../scripts/01-namespaces.sh) — the `k6-cloud` Secret in the Tekton pipeline namespace
-(read by [`tekton/tasks/k6-smoke.yaml`](../tekton/tasks/k6-smoke.yaml)) and the `jenkins-credentials` Secret keys
-`k6-cloud-token`/`k6-cloud-project-id` (surfaced to `microservicesK6Smoke.groovy`
-via [`helm/jenkins/values-common.yaml`](../helm/jenkins/values-common.yaml) `containerEnv`). Consumed by
-`Day1.cluster.01-gke` and `Day2.redeploy.03-tekton`. The runner/agent needs HTTPS
-egress to Grafana Cloud k6's ingest. Works for **either** CI engine.
+[`scripts/01-namespaces.sh`](../scripts/01-namespaces.sh) — a `k6-cloud` Secret in each
+active engine's pipeline namespace (the Tekton pipeline ns read by
+[`tekton/tasks/k6-smoke.yaml`](../tekton/tasks/k6-smoke.yaml), plus the `arc-runners`
+and `argo-ci` equivalents for the GitHub Actions/ARC and Argo Workflows engines) and the
+`jenkins-credentials` Secret keys `k6-cloud-token`/`k6-cloud-project-id` (surfaced to
+`microservicesK6Smoke.groovy` via [`helm/jenkins/values-common.yaml`](../helm/jenkins/values-common.yaml)
+`containerEnv`). Consumed by `Day1.cluster.01-gke` and the per-engine
+`Day2.redeploy.*` workflow. The runner/agent needs HTTPS egress to Grafana Cloud k6's
+ingest. Works for **all four** CI engines.
 
 ---
 

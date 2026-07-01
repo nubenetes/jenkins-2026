@@ -48,7 +48,7 @@ It is the cure for the post-rebuild **`Unable to connect to the server: dial tcp
 ./scripts/bootstrap.sh up
 
 # 1. Review/edit config/config.yaml - observability.mode (grafana-cloud|oss|managed-azure|managed-aws),
-#    ci.engine (jenkins|tekton), secrets.backend (imperative|eso).
+#    ci.engine (jenkins|tekton|githubactions|argoworkflows), secrets.backend (imperative|eso).
 #    Default: grafana-cloud + jenkins + imperative.
 
 # 2. (grafana-cloud mode only) create the OTLP credentials secret:
@@ -75,7 +75,7 @@ export GIT_USERNAME=<github-username>      GIT_TOKEN=<github-token>
 ./scripts/down.sh
 ```
 
-[`scripts/up.sh`](../scripts/up.sh) runs, in order: prereq/repo checks → namespaces, secrets & NetworkPolicies → the OpenTelemetry Operator → **ArgoCD** (`08.5`, installed *before* observability because the OSS stack is GitOps-managed by ArgoCD) → External Secrets sync (`08.6`, only when `secrets.backend=eso`) → the observability backend (`03`) → the selected CI engine and its pipelines (`04`/`06` — Jenkins+seed, or Tekton+pipelines per `ci.engine`) → Grafana dashboards (`07`) → Grafana alerts (`07.5`) → Headlamp (`08`) → Gateway + routes/IAP (`09`) → wait for the microservices Deployments, then the OTel injection self-heal guard. Every step is idempotent (`helm upgrade --install` / `kubectl apply`), so re-running `up.sh` after a partial failure is safe. Each step also runs standalone: `./scripts/0N-*.sh`.
+[`scripts/up.sh`](../scripts/up.sh) runs, in order: prereq/repo checks → namespaces, secrets & NetworkPolicies → the OpenTelemetry Operator → **ArgoCD** (`08.5`, installed *before* observability because the OSS stack is GitOps-managed by ArgoCD) → External Secrets sync (`08.6`, only when `secrets.backend=eso`) → the observability backend (`03`) → the selected CI engine and its pipelines (`04`/`06` — one of Jenkins+seed, Tekton+pipelines, GitHub Actions/ARC, or Argo Workflows per `ci.engine`; the chosen engine's `04-<engine>.sh` retires the other three) → Grafana dashboards (`07`) → Grafana alerts (`07.5`) → Headlamp (`08`) → Gateway + routes/IAP (`09`) → wait for the microservices Deployments, then the OTel injection self-heal guard. Every step is idempotent (`helm upgrade --install` / `kubectl apply`), so re-running `up.sh` after a partial failure is safe. Each step also runs standalone: `./scripts/0N-*.sh`.
 
 ## Step-by-Step Deployment Guide (For Other People)
 
@@ -176,6 +176,8 @@ Once deployed:
 4. In the Jenkins dashboard, run the seeded pipelines (`gateway` and `jhipstersamplemicroservice`) to build and push their first Docker images.
 5. Trigger the `microservices-k6-smoke` pipeline in Jenkins to generate synthetic traffic and verify telemetry in Grafana.
 
+All four engines run the **same ~10-stage pipeline contract** off the shared [`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml) registry and the shared [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) build-time patch — only the trigger and the by-hand run differ:
+
 **With `ci.engine=tekton`:** the normal trigger is a `git push` to a microservices fork (Pipelines-as-Code). To run one by hand, use the ready-made manifests — no hand-config needed:
 ```bash
 kubectl create -f tekton/runs/gateway.yaml                    # build the gateway
@@ -183,6 +185,16 @@ kubectl create -f tekton/runs/jhipstersamplemicroservice.yaml # build the other 
 kubectl create -f tekton/runs/k6-smoke.yaml                   # synthetic traffic
 ```
 Or paste one into the Tekton Dashboard's *Create PipelineRun* (YAML mode) once, then click **Rerun** for true one-click reruns. See [403 § Running a pipeline by hand](./403-TEKTON.md#running-a-pipeline-by-hand-dashboard--kubectl--tkn).
+
+**With `ci.engine=githubactions`:** the pipeline is a `.github/workflows` file rendered into each fork, executed by the ARC self-hosted runners; the normal trigger is a `git push` (or `gh workflow run`). Runs appear in **GitHub's Actions tab** — there is no in-cluster UI. See [404. GitHub Actions](./404-GITHUB_ACTIONS.md).
+
+**With `ci.engine=argoworkflows`:** an Argo Events EventSource+Sensor turns a fork `git push` into one Workflow per push. To run one by hand, submit a ready-made manifest or use the Argo Workflows Server UI (behind IAP, like the Tekton Dashboard):
+```bash
+kubectl create -f argoworkflows/runs/gateway.yaml
+kubectl create -f argoworkflows/runs/jhipstersamplemicroservice.yaml
+kubectl create -f argoworkflows/runs/k6-smoke.yaml
+```
+See [405. Argo Workflows](./405-ARGO_WORKFLOWS.md).
 
 ## Automated End-to-End Test (Provisioning + Decommissioning)
 
@@ -192,7 +204,7 @@ Or paste one into the Tekton Dashboard's *Create PipelineRun* (YAML mode) once, 
 2. **`gcloud container clusters get-credentials`** — points `kubectl`/`helm` at the new cluster.
 3. **[`scripts/00-check-prereqs.sh`](../scripts/00-check-prereqs.sh) + [`scripts/01-namespaces.sh`](../scripts/01-namespaces.sh)**.
 4. **[`scripts/up.sh`](../scripts/up.sh)** — the full stack, exactly as in Quick start.
-5. **[`test/smoke-test.sh`](../test/smoke-test.sh)** — CI-engine-aware: verifies the active CI engine is up (Jenkins controller `Running` + seed pipelines, or the Tekton stack + PaC Repository CRs/PipelineRuns), OTel Operator/collectors are running, and the **stable** Microservices namespace has all `Deployment`s (the `develop` tier is off by default).
+5. **[`test/smoke-test.sh`](../test/smoke-test.sh)** — CI-engine-aware: verifies the active CI engine is up (Jenkins controller `Running` + seed pipelines · the Tekton stack + PaC Repository CRs/PipelineRuns · the ARC controller + AutoscalingRunnerSet/listener · or the Argo Workflows control plane + Argo Events EventSource/Sensor), OTel Operator/collectors are running, and the **stable** Microservices namespace has all `Deployment`s (the `develop` tier is off by default).
 6. **[`scripts/down.sh`](../scripts/down.sh)** (with `J2026_DELETE_NAMESPACES=true`) then **`terraform -chdir=terraform/gke destroy`** — decommissions everything.
 
 Step 6 runs **unconditionally** via an `EXIT` trap, even if steps 1-5 fail partway through, so a failed run still leaves the GCP project clean.
@@ -217,7 +229,7 @@ gcloud auth application-default login
 
 ### Resource Quotas & QoS (Cost Control)
 
-All namespace `ResourceQuota` objects are strictly configured to prevent GKE auto-scaling:
+Cost is controlled at two levels: **per-pod** requests/limits (set by each workload's Helm values / CNPG spec, with a namespace `LimitRange` supplying defaults) and **per-namespace** `ResourceQuota` hard caps (below). Representative per-workload pod sizing:
 
 | Namespace | Workload | CPU Requests | CPU Limits | Memory Requests | Memory Limits |
 |---|---|---|---|---|---|
@@ -229,11 +241,14 @@ All namespace `ResourceQuota` objects are strictly configured to prevent GKE aut
 | **headlamp** | `headlamp` | `50m` | `200m` | `64Mi` | `128Mi` |
 | **pgadmin** | `pgadmin-pgadmin4` | `100m` | `500m` | `256Mi` | `512Mi` |
 
-Namespace-level `ResourceQuota` hard limits:
-- `jenkins`: Requests max `3.0` CPU / `8.0Gi` memory.
-- `microservices`: Requests max `1.5` CPU / `3.0Gi` memory.
-- `observability`: Requests max `3.0` CPU / `6.0Gi` memory.
+Namespace-level `ResourceQuota` hard limits (applied by [`scripts/01-namespaces.sh`](../scripts/01-namespaces.sh)):
+- `jenkins`: Requests max `16.0` CPU / `32.0Gi` memory, Limits max `60.0` CPU / `64.0Gi` (only when `ci.engine=jenkins` — no `jenkins` namespace otherwise).
+- `observability`: Requests max `3.0` CPU / `6.0Gi` memory (`6.0` CPU / `12.0Gi` in `observability.mode=oss`, which runs the whole Prometheus/Loki/Tempo/Grafana stack in-cluster).
+- `headlamp`: Requests max `200m` CPU / `256Mi` memory.
 - `argocd`: Requests max `1.5` CPU / `3.0Gi` memory.
+- `pgadmin`: Requests max `300m` CPU / `512Mi` memory.
+
+The **`microservices` namespace has no `ResourceQuota`** — its pods are sized by their own Deployment requests/limits (plus the namespace `LimitRange` default). The per-engine CI-run namespaces (`tekton-ci`, `arc-runners`, `argo-ci`) are likewise unquota'd so build agents can burst.
 
 ### Terraform Version & Stacks
 

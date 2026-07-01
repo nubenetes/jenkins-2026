@@ -82,8 +82,10 @@ Logs only get a `trace_id` when emitted **inside a request span**, so idle
 services produce nothing to correlate.
 
 ```bash
-# Preferred: the in-cluster Jenkins k6 job (hits the gateway via service DNS):
-#   Jenkins → run job  microservices-k6-smoke
+# Preferred: the in-cluster k6 smoke run of whichever CI engine (ci.engine) is
+# deployed — Jenkins (job microservices-k6-smoke) · Tekton / Argo Workflows
+# (the microservices-k6-smoke PipelineRun/Workflow) · GitHub Actions
+# (Day2.traffic.01-k6). All hit the gateway via service DNS.
 # Or port-forward + curl a business endpoint the AOP LoggingAspect wraps:
 kubectl -n "$NS" port-forward svc/gateway 8080:8080 >/dev/null 2>&1 &
 curl -s localhost:8080/management/health

@@ -38,12 +38,13 @@ Re-running `Day1` (or [`scripts/03-observability.sh`](../scripts/03-observabilit
 
 - **`k8s-monitoring` install fails: "A Node Exporter already appears to be running ... host port conflict" (9100)** — switching `oss` → `grafana-cloud`/`managed-*` left the OSS `kube-prometheus-stack` node-exporter DaemonSet (hostPort 9100, via ArgoCD) running while the new mode installed its own. ArgoCD's cascade-prune is async, so it raced the install. `remove_oss_observability_app` now **waits** for that DaemonSet to disappear (with a direct-delete backstop) before the new exporter is installed. If you ever hit it manually: `kubectl delete application observability-oss -n argocd --wait=false; kubectl delete ds -n observability -l app.kubernetes.io/name=prometheus-node-exporter`.
 
-- **Wrong CI-overview dashboard lingers (e.g. "Jenkins CI Overview" on a `ci.engine=tekton` cluster)** — Grafana Cloud / Azure Managed Grafana stacks are **persistent**, and `gcx push` / `POST /api/dashboards/db` only upsert, so a previously-published off-engine dashboard survived an engine switch. [`scripts/07-grafana-dashboards.sh`](../scripts/07-grafana-dashboards.sh) now **deletes the inactive engine's overview by UID** in every mode (grafana-cloud, managed-azure, managed-aws; oss drops it at render time). To remove a stale one by hand: `curl -X DELETE "$GRAFANA_BASE_URL/api/dashboards/uid/jenkins2026-jenkins-overview" -H "Authorization: Bearer $GRAFANA_API_KEY"`.
+- **Wrong CI-overview dashboard lingers (e.g. "Jenkins CI Overview" on a `ci.engine=tekton` cluster)** — there are four mutually-exclusive CI-overview dashboards, one per engine (`jenkins-overview` · `tekton-overview` · `github-actions-ci` · `argo-workflows-ci`), and only the active engine's is published. Grafana Cloud / Azure Managed Grafana stacks are **persistent**, and `gcx push` / `POST /api/dashboards/db` only upsert, so a previously-published off-engine dashboard survived an engine switch. [`scripts/07-grafana-dashboards.sh`](../scripts/07-grafana-dashboards.sh) now **deletes the three inactive engines' overviews by UID** in every mode (grafana-cloud, managed-azure, managed-aws; oss drops them at render time). To remove a stale one by hand: `curl -X DELETE "$GRAFANA_BASE_URL/api/dashboards/uid/jenkins2026-jenkins-overview" -H "Authorization: Bearer $GRAFANA_API_KEY"`.
 
 ## ArgoCD application-controller OOM (Day1 hangs at "Deploy the stack")
 
 **Symptom**: a `Day1` run stalls in [`scripts/up.sh`](../scripts/up.sh) (often when switching
-`ci.engine=jenkins` → `tekton` **with** `observability.mode=oss`); `kubectl get pods
+`ci.engine` to a heavy app-of-apps engine — e.g. `jenkins` → `tekton` (or `argoworkflows`) —
+**with** `observability.mode=oss`); `kubectl get pods
 -n argocd` shows `argocd-application-controller-0` in `CrashLoopBackOff`, and
 `kubectl get applications -n argocd` shows `tekton-pipelines` (and others) stuck
 with an empty/`OutOfSync` status. The controller's last state is

@@ -4,9 +4,9 @@
 
 # 302. k6 Traffic, Load & Observability Testing
 
-One k6 script, **one parameter contract**, three ways to run it. This page is the single home for the k6 work that the other docs only touch in passing — [301 · Observability](./301-OBSERVABILITY.md#k6-observability-smoke-test) (where the telemetry lands), [402 · Pipelines as Code](./402-PIPELINES_AS_CODE.md#2-k6-integration-smoke-test-pipeline) (the Jenkins job) and [501 · Platform Operations](./501-PLATFORM_OPERATIONS.md#telemetry-verification--simulation) (continuous simulation). Read this once and every k6 knob — from a 12-iteration smoke test to a multi-stage breakpoint run against the `develop` tier — is "set one variable".
+One k6 script, **one parameter contract**, four ways to run it. This page is the single home for the k6 work that the other docs only touch in passing — [301 · Observability](./301-OBSERVABILITY.md#k6-observability-smoke-test) (where the telemetry lands), [402 · Pipelines as Code](./402-PIPELINES_AS_CODE.md#2-k6-integration-smoke-test-pipeline) (the Jenkins job) and [501 · Platform Operations](./501-PLATFORM_OPERATIONS.md#telemetry-verification--simulation) (continuous simulation). Read this once and every k6 knob — from a 12-iteration smoke test to a multi-stage breakpoint run against the `develop` tier — is "set one variable".
 
-> **TL;DR.** The same [`jenkins/pipelines/k6/microservices-smoke.js`](../jenkins/pipelines/k6/microservices-smoke.js) runs from **Jenkins**, **Tekton** and **GitHub Actions**. With **no parameters** it is the original lightweight **smoke** test (4 VUs × 12 iterations). Set `K6SIM_PROFILE=load|stress|soak|spike|breakpoint` (or override VUs / duration / stages / RPS / thresholds) and it becomes a real load test — **against either the `stable` or the `develop` tier**. Don't want to type knobs? **Pick a committed [preset](#config-presets-committed-test-configs)** from a dropdown and it loads a whole named config.
+> **TL;DR.** The same [`jenkins/pipelines/k6/microservices-smoke.js`](../jenkins/pipelines/k6/microservices-smoke.js) runs from all four CI engines (`ci.engine`) — **Jenkins**, **Tekton**, **GitHub Actions (ARC)** and **Argo Workflows**. With **no parameters** it is the original lightweight **smoke** test (4 VUs × 12 iterations). Set `K6SIM_PROFILE=load|stress|soak|spike|breakpoint` (or override VUs / duration / stages / RPS / thresholds) and it becomes a real load test — **against either the `stable` or the `develop` tier**. Don't want to type knobs? **Pick a committed [preset](#config-presets-committed-test-configs)** from a dropdown and it loads a whole named config.
 
 ## Understanding k6 here (newcomers → specialists)
 
@@ -39,6 +39,7 @@ mindmap
       Jenkins job + form
       Tekton Pipeline/Run
       GitHub Actions dispatch
+      Argo Workflow submit
     Output
       OTLP to collector
       Grafana dashboard
@@ -68,7 +69,7 @@ flowchart LR
   k6 -.->|summary.json + verdict| you([you / CI log])
 ```
 
-You do **not** need to edit any code to run it — pick the profile and press **Build** (Jenkins), **Create PipelineRun** (Tekton), or **Run workflow** (GitHub Actions).
+You do **not** need to edit any code to run it — pick the profile and press **Build** (Jenkins), **Create PipelineRun** (Tekton), **Run workflow** (GitHub Actions), or **Submit** the Workflow (Argo Workflows).
 
 </details>
 
@@ -79,7 +80,7 @@ You do **not** need to edit any code to run it — pick the profile and press **
 
 The knobs are **`K6SIM_`-prefixed on purpose**: k6 reserves `K6_VUS`/`K6_DURATION`/`K6_ITERATIONS`/`K6_STAGES`/`K6_RPS` as its *own* execution-option env vars, and k6 **forbids mixing** those (or the `--vus`/`--duration` CLI shortcuts) with a script that defines `scenarios`. So every runner passes execution shape **only** via `K6SIM_*` env — never CLI flags. k6's `--include-system-env-vars` (default on) surfaces them to `__ENV`.
 
-OTLP export (`-o opentelemetry`, k6 2.x schema) is configured by the **runner**, not the script: gRPC to the in-cluster `otel-collector-gateway` (Jenkins/Tekton, and GitHub Actions in oss/managed modes via port-forward) or HTTP/protobuf straight to Grafana Cloud's gateway (grafana-cloud mode). `OTEL_RESOURCE_ATTRIBUTES` carries `deployment.environment=<ENV_NAME>` so the dashboard variable scopes per tier.
+OTLP export (`-o opentelemetry`, k6 2.x schema) is configured by the **runner**, not the script: gRPC to the in-cluster `otel-collector-gateway` (Jenkins/Tekton/Argo Workflows, and GitHub Actions in oss/managed modes via port-forward) or HTTP/protobuf straight to Grafana Cloud's gateway (grafana-cloud mode). `OTEL_RESOURCE_ATTRIBUTES` carries `deployment.environment=<ENV_NAME>` so the dashboard variable scopes per tier.
 
 </details>
 
@@ -497,7 +498,7 @@ k6 also runs inline as the *k6 Smoke* stage of the build pipeline ([`argoworkflo
 
 ### Filtering results by Runner / Profile / Preset
 
-Every k6 run is tagged so the **`CI-CD / k6 Observability Smoke Test`** dashboard can slice
+Every k6 run is tagged so the **`CI-CD / k6 Observability`** dashboard can slice
 by **who ran it and what shape it was** — three k6 **`--tag`** values become Prometheus
 labels on every k6 metric series:
 
@@ -535,7 +536,7 @@ under *All*, and selecting a value narrows once tagged runs land.
 
 1. **Jenkins:** `microservices-k6-smoke` → Build (no params). **GitHub Actions:** Run workflow, all defaults. **Tekton:** `kubectl create -f tekton/runs/k6-smoke.yaml`. **Argo Workflows:** `kubectl create -f argoworkflows/runs/k6-smoke.yaml`.
 2. Watch the console — the **k6 run analysis** prints a SUMMARY + VERDICT (see below).
-3. Open the **`CI-CD / k6 Observability Smoke Test`** dashboard (the run log prints a deep-link scoped to the run's `deployment_environment` and time window).
+3. Open the **`CI-CD / k6 Observability`** dashboard (the run log prints a deep-link scoped to the run's `deployment_environment` and time window).
 
 ### Basic — point it at the develop tier
 
@@ -627,6 +628,7 @@ The original motivation for this work: the k6 jobs used to be **stable-only** in
 | **Jenkins** | ✅ | ✅ | Dedicated `microservices-k6-smoke-develop` job (seed-generated when the tier is on); the build pipeline triggers the **tier-matched** job. |
 | **Tekton** | ✅ | ✅ | `env-name`/`target-namespace` params ([`tekton/runs/k6-load.yaml`](../tekton/runs/k6-load.yaml) shows develop). |
 | **GitHub Actions** | ✅ | ✅ | `env_name=develop` input → the public `microservices-develop.<baseDomain>` host (same external targeting as `stable`). |
+| **Argo Workflows** | ✅ | ✅ | `env-name`/`target-namespace` params ([`argoworkflows/runs/k6-load.yaml`](../argoworkflows/runs/k6-load.yaml) shows develop). |
 
 > The develop tier is **opt-in** (`microservices.developTrackEnabled` / `JENKINS2026_DEVELOP_TRACK_ENABLED`) and reports into the **same** Grafana, distinguished by `deployment.environment=develop` and namespace/labels — not a separate stack. See [402 · Optional develop Tier](./402-PIPELINES_AS_CODE.md#optional-develop-tier-feature-flag-off-by-default).
 

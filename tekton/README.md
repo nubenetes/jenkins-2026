@@ -11,7 +11,7 @@ Dashboard + RBAC) and applied by
 [`scripts/06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh) (these
 manifests + one PipelineRun per service from
 [`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml),
-the shared service registry both engines read).
+the shared service registry all four CI engines read — jenkins · tekton · githubactions · argoworkflows).
 
 ```
 tekton/

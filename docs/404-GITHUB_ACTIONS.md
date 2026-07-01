@@ -1,4 +1,4 @@
-[← Previous: 403. Tekton](./403-TEKTON.md) | [🏠 Home](../README.md) | [→ Next: 501. Platform Operations](./501-PLATFORM_OPERATIONS.md)
+[← Previous: 403. Tekton](./403-TEKTON.md) | [🏠 Home](../README.md) | [→ Next: 405. Argo Workflows](./405-ARGO_WORKFLOWS.md)
 
 ---
 
@@ -207,7 +207,7 @@ pipeline.
 
 | Object | What it is | Jenkins / Tekton analogy |
 |---|---|---|
-| **Workflow** (`.github/workflows/microservices-ci.yml`) | The pipeline-as-code, **in the app fork**. GitHub runs it on push/PR. | The `Jenkinsfile` / the Tekton `Pipeline` |
+| **Workflow** (`.github/workflows/microservices-ci.yml`) | The pipeline-as-code, **in the app fork**. GitHub runs it on push (+ manual dispatch; no `pull_request` — see § Security). | The shared-library `MicroservicesPipeline` / the Tekton `Pipeline` |
 | **Job** | One run of the workflow's `build-deploy` job, dispatched to a runner. | A Jenkins build / a `PipelineRun` |
 | **AutoscalingRunnerSet** | A CRD declaring a pool of self-hosted runners (min/max, pod template, which GitHub org/repo). | The Jenkins Kubernetes cloud / Tekton's run namespace |
 | **EphemeralRunner** | One **runner Pod that runs exactly one job, then is deleted**. | A Jenkins agent pod / a `TaskRun` Pod |
@@ -280,7 +280,7 @@ left, one execution (the runtime pods) on the right:
 
 ```mermaid
 flowchart TB
-  push([git push / PR to nubenetes fork]):::ext --> gh[GitHub Actions<br/>queues the job]
+  push([git push to nubenetes fork]):::ext --> gh[GitHub Actions<br/>queues the job]
   wf[.github/workflows/microservices-ci.yml<br/>rendered into the fork] -. defines the job .-> gh
 
   subgraph cp["Control plane — ns arc-systems (GitOps)"]
@@ -325,7 +325,7 @@ ephemeral, Spot) and the trigger (native GitHub, no in-cluster receiver) differ.
 ```mermaid
 stateDiagram-v2
   [*] --> Idle: AutoscalingRunnerSet, minRunners 0 (no pods)
-  Idle --> Queued: push/PR → GitHub queues a job
+  Idle --> Queued: push → GitHub queues a job
   Queued --> Provisioning: listener scales up → controller creates EphemeralRunner Pod
   Provisioning --> NodeUp: NAP provisions a ci-spot Spot node
   NodeUp --> Running: runner registers, runs the one job
@@ -352,7 +352,7 @@ durable-default + override pattern as `observability.mode` / `JENKINS2026_OBS_MO
 ```yaml
 # config/config.yaml
 ci:
-  engine: jenkins      # jenkins (default) | tekton | githubactions
+  engine: jenkins      # jenkins (default) | tekton | githubactions | argoworkflows
 ```
 
 ```bash
@@ -370,24 +370,28 @@ cluster.
 (`jenkins|tekton|githubactions|argoworkflows`) and exports `J2026_CI_ENGINE`, which
 `up.sh`/`down.sh` and the numbered steps branch on:
 
-| Step | `ci.engine=jenkins` | `ci.engine=tekton` | `ci.engine=githubactions` |
-|---|---|---|---|
-| Install CI engine (`up.sh`) | [`04-jenkins.sh`](../scripts/04-jenkins.sh) | [`04-tekton.sh`](../scripts/04-tekton.sh) | [`04-githubactions.sh`](../scripts/04-githubactions.sh) |
-| Seed pipelines (`up.sh`) | [`06-seed-pipelines.sh`](../scripts/06-seed-pipelines.sh) | [`06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh) | [`06-githubactions-pipelines.sh`](../scripts/06-githubactions-pipelines.sh) |
-| Day2 redeploy | `Day2.redeploy.02-jenkins` | [`Day2.redeploy.03-tekton`](../.github/workflows/Day2.redeploy.03-tekton.yml) | `Day2.redeploy.06-githubactions` |
-| Web UI / route | Jenkins UI behind IAP | Tekton Dashboard behind IAP | **none** — GitHub Actions tab |
-| Teardown (`down.sh`) | Helm uninstall | engine-agnostic | engine-agnostic (App cascade-prune) |
+| Step | `ci.engine=jenkins` | `ci.engine=tekton` | `ci.engine=githubactions` | `ci.engine=argoworkflows` |
+|---|---|---|---|---|
+| Install CI engine (`up.sh`) | [`04-jenkins.sh`](../scripts/04-jenkins.sh) | [`04-tekton.sh`](../scripts/04-tekton.sh) | [`04-githubactions.sh`](../scripts/04-githubactions.sh) | [`04-argoworkflows.sh`](../scripts/04-argoworkflows.sh) |
+| Seed pipelines (`up.sh`) | [`06-seed-pipelines.sh`](../scripts/06-seed-pipelines.sh) | [`06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh) | [`06-githubactions-pipelines.sh`](../scripts/06-githubactions-pipelines.sh) | [`06-argoworkflows-pipelines.sh`](../scripts/06-argoworkflows-pipelines.sh) |
+| Day2 redeploy | `Day2.redeploy.02-jenkins` | [`Day2.redeploy.03-tekton`](../.github/workflows/Day2.redeploy.03-tekton.yml) | `Day2.redeploy.06-githubactions` | [`Day2.redeploy.07-argoworkflows`](../.github/workflows/Day2.redeploy.07-argoworkflows.yml) |
+| Web UI / route | Jenkins UI behind IAP | Tekton Dashboard behind IAP | **none** — GitHub Actions tab | Argo Workflows UI behind IAP |
+| Teardown (`down.sh`) | Helm uninstall | engine-agnostic | engine-agnostic (App cascade-prune) | engine-agnostic (App cascade-prune) |
 
 **The four engines are mutually exclusive.** A clean install only deploys the
 selected engine ([`up.sh`](../scripts/up.sh) branches on `ci.engine`, with
 `jenkins` the `*` default). Switching to `githubactions` on a *running* cluster
-**decommissions the other engine in the same run**:
-[`04-githubactions.sh`](../scripts/04-githubactions.sh) retires **both** siblings
-(it deletes the `jenkins` *and* `tekton` ArgoCD apps, Helm-uninstalls a legacy
-Jenkins release, and drops the jenkins/tekton CI Gateway routes + IAP policies) —
-unlike `04-tekton.sh`/`04-jenkins.sh`, which each retire only the one other
-engine. The shared microservices are GitOps-managed by ArgoCD, so they survive
-the switch — only the CI engine itself (and its public routing) changes.
+**decommissions the other three engines in the same run**:
+[`04-githubactions.sh`](../scripts/04-githubactions.sh) calls the shared
+`retire_ci_engine` helper (in [`scripts/lib/common.sh`](../scripts/lib/common.sh))
+once each for `jenkins`, `tekton`, and `argoworkflows` — deleting **every** ArgoCD
+app the engine owns (parent app-of-apps + all children), its namespaces (which
+takes the jenkins/tekton/argo dashboard routes + IAP policies with them),
+clearing any stuck GKE NEG finalizer that would deadlock the namespace delete, and
+Helm-uninstalling a legacy pre-ArgoCD Jenkins release. Every `04-<engine>.sh`
+retires the other three the same way — it is not a jenkins↔tekton toggle. The
+shared microservices are GitOps-managed by ArgoCD, so they survive the switch —
+only the CI engine itself (and its public routing) changes.
 
 ### Namespace layout
 
@@ -410,8 +414,9 @@ alive), exactly like the Tekton block.
 
 ## The ci-spot / NAP showcase (why this engine defaults to Spot)
 
-This is the deliberate differentiator. The other two engines default
-`runNodePool: static`; **`githubactions` defaults `ci-spot`**.
+This is the deliberate differentiator. The other three engines
+(Jenkins/Tekton/Argo Workflows) default `runNodePool: static`; **`githubactions`
+defaults `ci-spot`**.
 
 `infrastructure/compute-classes/ci-spot.yaml` defines a GKE Custom ComputeClass
 (the GA Karpenter equivalent): Spot-first across c3/n2/c2/e2 families, on-demand
@@ -421,10 +426,12 @@ auto-applies the label + taint `cloud.google.com/compute-class=ci-spot:NoSchedul
 gated solely on `nodeAutoProvisioning.enabled` and engine-neutral — ARC just
 *selects* the class.)
 
-- **Jenkins/Tekton default `static`** because their build is one long-lived pod
-  (Jenkins) or an affinity-assistant-pinned multi-task `PipelineRun` on one RWO
-  PVC (Tekton) — a Spot preemption restarts/kills the **whole** thing. (See
-  [403 § run-node-pool](./403-TEKTON.md) for the full Tekton-on-Spot hazard.)
+- **Jenkins/Tekton/Argo Workflows default `static`** because their build is one
+  long-lived pod (Jenkins), an affinity-assistant-pinned multi-task `PipelineRun`
+  on one RWO PVC (Tekton), or a single multi-step `Workflow` pod graph (Argo
+  Workflows) — a Spot preemption restarts/kills the **whole** thing. (See
+  [403 § run-node-pool](./403-TEKTON.md) for the full Tekton-on-Spot hazard, and
+  [405](./405-ARGO_WORKFLOWS.md) for Argo Workflows.)
 - **ARC defaults `ci-spot`** because each runner is an **`EphemeralRunner` pod
   that runs exactly one job, then is deleted**. A Spot reclaim loses **at most
   one in-flight job**, which **GitHub automatically re-queues** onto a freshly
@@ -500,7 +507,8 @@ The four engines trigger CI differently:
 | **GitHub Actions / ARC** | **native GitHub webhooks via the GitHub App** | **none** — the AutoscalingListener long-polls GitHub's job queue |
 | **Argo Workflows** | Argo Events EventSource + Sensor (HMAC-signed webhook POST) | **yes** — the `github-eventsource-svc` pod in `argo-events`, exposed at `argo-events.<domain>` |
 
-Because GitHub is the control plane, a push/PR to a fork queues the job at
+Because GitHub is the control plane, a push to a fork (or a manual *Run workflow*)
+queues the job at
 GitHub.com; the in-cluster **AutoscalingListener** long-polls that queue over the
 GitHub App and scales the runner set. There is **no in-cluster webhook endpoint to
 secure or route** (no PaC controller, no EventListener, no `pac.<domain>` host) —
@@ -573,10 +581,12 @@ The full microservices pipeline runs as a **single `.github/workflows/microservi
 rendered into each app fork from
 [`jenkins/pipelines/seed/microservices-ci.yml.tmpl`](../jenkins/pipelines/seed/microservices-ci.yml.tmpl)
 by [`scripts/06-githubactions-pipelines.sh`](../scripts/06-githubactions-pipelines.sh)
-— the **seed-job analogue**. Both other engines read the **same service
+— the **seed-job analogue**. All four engines read the **same service
 registry** ([`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml));
 ARC reads it verbatim too (the `06` script `yq`-iterates it and `sed`-substitutes
-the template's `{{...}}` placeholders per service).
+the template's `{{...}}` placeholders per service), and every engine runs the same
+shared build-time patch [`resources/patch-app-source.sh`](../resources/patch-app-source.sh)
+(gateway MySQL→Postgres + NoOp-cache).
 
 `06-githubactions-pipelines.sh` is materially **simpler** than the Tekton seed
 (no webhook-create loop — the GitHub App handles dispatch): it waits for the
@@ -614,7 +624,9 @@ Key derivations in the workflow `env`:
 | `runs-on` | `{{runnerLabel}}` = `githubactions.runnerScaleSetName` (`jenkins-2026-runners`) | the ARC equivalent of Jenkins' `agent { kubernetes }` / Tekton's `serviceAccountName: tekton-ci` |
 
 `on:` is `push` to `[main]` (+ `develop` when the develop track is enabled — the
-renderer drops `develop` otherwise) and `pull_request` to `[main]`.
+renderer drops `develop` otherwise) plus the manual `workflow_dispatch`. There is
+**deliberately no `pull_request` trigger** (§ *Security: why no `pull_request`
+trigger*) — a fork PR would otherwise run untrusted code on the in-cluster runners.
 
 ### GHCR push (Jib, same registry + tag)
 
@@ -724,8 +736,11 @@ the same `validate_run_node_pool` helper Jenkins/Tekton use.
 
 - [403. Tekton](./403-TEKTON.md) — the second engine + the `ci.engine` contract
   and the candidate-engines roadmap that ranks ARC first.
+- [405. Argo Workflows](./405-ARGO_WORKFLOWS.md) — the fourth engine (Argo Events
+  trigger + Argo Workflows UI behind IAP), the other Kubernetes-native alternative.
 - [402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) — the Jenkins pipeline this
-  ports, and the shared `services.yaml` registry.
+  ports (the `MicroservicesPipeline` shared-library `vars/`), and the shared
+  `services.yaml` registry.
 - [202. Microservices App Architecture](./202-MICROSERVICES-APP-ARCHITECTURE.md) § *Why JHipster* —
   what these pipelines build (the forked JHipster gateway + microservice), why that demo app, and
   why the app repos are **forks** in the `nubenetes` org (you commit CI into repos you own).
@@ -738,7 +753,7 @@ the same `validate_run_node_pool` helper Jenkins/Tekton use.
 
 ---
 
-[← Previous: 403. Tekton](./403-TEKTON.md) | [🏠 Home](../README.md) | [→ Next: 501. Platform Operations](./501-PLATFORM_OPERATIONS.md)
+[← Previous: 403. Tekton](./403-TEKTON.md) | [🏠 Home](../README.md) | [→ Next: 405. Argo Workflows](./405-ARGO_WORKFLOWS.md)
 
 ---
 

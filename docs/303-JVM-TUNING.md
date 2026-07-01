@@ -171,13 +171,13 @@ If we want to kill the cold start *without* losing the OTel agent, **CRaC ([crac
 3. Set the container **restore entrypoint** (`java -XX:CRaCRestoreFrom=…`).
 4. Add **CRaC `Resource` hooks** to close Hazelcast + DB pools before checkpoint and re-open `afterRestore`.
 5. **Validate the OTel agent** restores cleanly (spans/metrics resume).
-6. Rebuild via the Jenkins/Tekton pipeline; deploy; **measure restore time + telemetry** in the JVM dashboard below.
+6. Rebuild via whichever CI engine is active (Jenkins · Tekton · GitHub Actions/ARC · Argo Workflows — all four share the one ~10-stage pipeline); deploy; **measure restore time + telemetry** in the JVM dashboard below.
 
 Open risks to spike first: **Hazelcast + CRaC** and **agent + CRaC**. Until validated, HotSpot + G1 (+ optionally the **AOT cache**, a zero-friction, fully agent-compatible startup win on the current JDK 25) remains the safe default.
 
 ## Analyzing JVM performance in Grafana
 
-The **`CI-CD JVM internals (all Java services + Jenkins)`** dashboard (uid `jenkins2026-jvm-internals`, tags `jvm`/`jenkins`) exposes everything inside the JVMs — both microservices **and the Jenkins controller** (it's a Java app too; filter by `service_name`). **Label model:** JVM metrics filter by **`k8s_namespace_name`** (`microservices`=stable, `microservices-develop`=develop) **+ `service_name`** — **not** `deployment_environment` (the OTel agent's JVM metrics don't carry it; only `target_info`/spanmetrics/traces/logs do). The `namespace` variable uses `allValue='.*'` so the **Jenkins** controller series — which carry no `k8s_namespace_name` — appear under *All*.
+The **`CI-CD JVM internals (all Java services + Jenkins)`** dashboard (uid `innrq4f`, tags `jvm`/`jenkins`) exposes everything inside the JVMs — both microservices **and the Jenkins controller** (it's a Java app too; filter by `service_name`). **Label model:** JVM metrics filter by **`k8s_namespace_name`** (`microservices`=stable, `microservices-develop`=develop) **+ `service_name`** — **not** `deployment_environment` (the OTel agent's JVM metrics don't carry it; only `target_info`/spanmetrics/traces/logs do). The `namespace` variable uses `allValue='.*'` so the **Jenkins** controller series — which carry no `k8s_namespace_name` — appear under *All*.
 
 Rows: **Heap** (used-by-pool, used vs committed vs max, live-set after GC) · **Non-heap** (Metaspace / code cache / compressed class) · **Garbage Collection** (time rate, frequency, pause p95/p99 by `jvm_gc_name`) · **Threads & classes** · **CPU** · **HTTP response times**.
 
