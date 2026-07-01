@@ -190,6 +190,43 @@ Apply with a **Day1 re-run** (Terraform creates the GSA + bindings; ArgoCD re-re
 the AppSet). Verify: `kubectl get cluster -n microservices` shows
 `ContinuousArchiving=True` and objects appear under `gs://<project>-jenkins-2026-postgres-backups/<svc>/`.
 
+## CNPG WAL archiving fails after a rebuild (`Expected empty archive`)
+
+**Symptom:** after a **Decom + Day1 rebuild** (not the first-ever provision), the
+CNPG `Cluster` reports `ContinuousArchiving=False`, `Backup` objects sit in phase
+`walArchivingFailing`, `cnpg_collector_last_available_backup_timestamp` stays `0`
+(the Postgres dashboard's *Time since last successful backup* reads
+**"no backups configured"** even though `barmanObjectStore` *is* set), and the
+instance logs show `barman-cloud-check-wal-archive … ERROR: WAL archive check
+failed for server <cluster>: **Expected empty archive**`. Postgres itself is
+healthy. *(Distinct from the auth-side `ContinuousArchiving=False` above.)*
+
+**Cause:** every Day1 bootstraps the clusters via **fresh `initdb`** (a new
+PostgreSQL system id) into a **fixed** barman path (`gs://<bucket>/<service>`,
+`serverName` defaults to the cluster name), but the backups bucket is **persistent**
+(created by `terraform/bootstrap`, survives Decom). A prior incarnation's WALs are
+still in that path, so CNPG's `barman-cloud-check-wal-archive` — a safety check
+that refuses to mix two clusters' WAL streams — fails with *Expected empty archive*
+and archiving/backups never start. First-ever provision works (empty path); the
+break appears only after the **first rebuild**.
+
+**Fix:** [`scripts/08.5-argocd.sh`](../scripts/08.5-argocd.sh) clears the stale
+archive on a **fresh provision only** — guarded so it runs before the
+ApplicationSet creates the clusters and *only when no live CNPG `Cluster` exists*,
+so a re-run against a running cluster never touches its backups. Applied by any
+**Day1**. For an **already-broken running cluster**, empty the path by hand
+(the CI SA has `roles/storage.admin` on the bucket):
+
+```bash
+# destroys the orphaned WALs of the PRIOR incarnation (useless for the current
+# cluster — different system id); archiving recovers on CNPG's next ~30s retry.
+gsutil -m rm -r "gs://<project>-jenkins-2026-postgres-backups/<service>/**"
+kubectl cnpg backup <cluster> -n microservices   # optional: first recoverability point now
+```
+
+Verify: `kubectl get cluster -n microservices` → `ContinuousArchiving=True`, and
+*Time since last successful backup* shows a real value once a backup completes.
+
 ## ArgoCD OIDC Issues
 
 **ArgoCD OIDC Login fails with `redirect_uri_mismatch` or `Invalid redirect URL`**:

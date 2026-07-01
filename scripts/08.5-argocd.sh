@@ -514,6 +514,26 @@ if [[ "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" == "true" ]]; then
   }]' "${APPSET_FILE}"
 fi
 
+# --- Rebuild-safe WAL archive (fresh initdb into a persistent barman bucket) ----
+# Every Day1 bootstraps the CNPG clusters via `initdb` (a fresh cluster, new
+# system id) whose barman path is FIXED (gs://<bucket>/<service>), but the backups
+# bucket is persistent (terraform/bootstrap, survives Decom). If a PRIOR
+# incarnation's WALs still sit there, CNPG's `barman-cloud-check-wal-archive`
+# fails with "Expected empty archive" and WAL archiving + backups break for good.
+# So on a FRESH provision only — checked right before the ApplicationSet that
+# creates the clusters, so no live CNPG Cluster exists yet — clear the stale
+# archive. A re-run against an already-provisioned cluster is skipped, so a
+# running cluster's backups are never touched. (All-or-nothing: the tiers are
+# always provisioned together.) See docs/902 "WAL archiving fails after a rebuild".
+BACKUPS_BUCKET="${PROJECT_ID}-jenkins-2026-postgres-backups"
+if kubectl get clusters.postgresql.cnpg.io -A -o name 2>/dev/null | grep -q .; then
+  log_info "CNPG cluster(s) already present - leaving gs://${BACKUPS_BUCKET} untouched (protects a running cluster's WAL archive/backups)."
+elif gsutil ls "gs://${BACKUPS_BUCKET}/**" >/dev/null 2>&1; then
+  log_step "Fresh provision: clearing stale WAL archive in gs://${BACKUPS_BUCKET} (persistent bucket holds a prior incarnation's WALs) so barman-cloud-check-wal-archive passes"
+  gsutil -m rm -r "gs://${BACKUPS_BUCKET}/**" >/dev/null 2>&1 \
+    || log_warn "Could not clear gs://${BACKUPS_BUCKET} (the CI SA needs storage.objectAdmin on it) - new-cluster WAL archiving may stay broken until the bucket is emptied by hand."
+fi
+
 kubectl apply -f "${APPSET_FILE}"
 rm "${APPSET_FILE}"
 
