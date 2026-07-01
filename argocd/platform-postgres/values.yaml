@@ -11,4 +11,8 @@ namespace:
 
 cnpg:
   repoURL: https://cloudnative-pg.github.io/charts
-  version: "0.28.3"
+  # Chart version (NOT the operator version) — the `cloudnative-pg` chart lags:
+  # chart 0.29.0 == operator v1.30.0. Bumped off 0.28.3/v1.29.1 for the
+  # v1.30.0 security fix (CVE-2026-55765, operator-side SCRAM-SHA-256 password
+  # encoding). See docs/602. Map chart->appVersion via the repo's index.yaml.
+  version: "0.29.0"
