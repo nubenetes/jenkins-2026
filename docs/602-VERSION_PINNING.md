@@ -47,7 +47,7 @@ This isn't theoretical — **every floating version here has bitten us at least 
 | **grafana/pdc-agent** | `0.2.0` | `03-observability.sh` (`--version`) | grafana-cloud mode only |
 | **Headlamp** chart | `0.43.0` | `config.yaml` `headlamp.chart.version` + [`headlamp-app.yaml`](../argocd/headlamp-app.yaml) | ArgoCD `targetRevision` |
 | **kube-prometheus-stack / Loki / Tempo** | `87.0.1 / 7.0.0 / 1.24.4` | [`argocd/observability-oss/values.yaml`](../argocd/observability-oss/values.yaml) | ArgoCD `targetRevision` |
-| **CloudNativePG** chart (operator) | `0.28.3` | [`argocd/platform-postgres/values.yaml`](../argocd/platform-postgres/values.yaml) | ArgoCD `targetRevision` |
+| **CloudNativePG** chart (operator) | `0.29.0` *(= operator `v1.30.0`; chart version lags the operator)* | [`argocd/platform-postgres/values.yaml`](../argocd/platform-postgres/values.yaml) | ArgoCD `targetRevision` |
 | **PostgreSQL** (CNPG database image) | `18.3-system-trixie` | gitops `helm/microservices` `spec.imageName` (`global.postgresImage`) | image tag |
 | **Argo Rollouts** | `2.37.7` | [`argo-rollouts-app.yaml`](../argocd/argo-rollouts-app.yaml) | ArgoCD `targetRevision` |
 | **External Secrets** | `0.12.1` | [`external-secrets-app.yaml`](../argocd/external-secrets-app.yaml) | ArgoCD `targetRevision` |
