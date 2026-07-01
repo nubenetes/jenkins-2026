@@ -1509,7 +1509,7 @@ spec:
                       editorMode: code
                       expr: >-
                         sum by (pod)
-                        (rate(cnpg_pg_stat_database_xact_commit_total{namespace="$namespace",
+                        (rate(cnpg_pg_stat_database_xact_commit{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval]))
                       instant: false
                       legendFormat: commit {{pod}}
@@ -1528,7 +1528,7 @@ spec:
                       editorMode: code
                       expr: >-
                         -sum by (pod)
-                        (rate(cnpg_pg_stat_database_xact_rollback_total{namespace="$namespace",
+                        (rate(cnpg_pg_stat_database_xact_rollback{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval]))
                       instant: false
                       legendFormat: rollback {{pod}}
@@ -1627,11 +1627,11 @@ spec:
                       app: grafana-assistant-app
                       expr: >-
                         (100 *
-                        sum(rate(cnpg_pg_stat_database_xact_rollback_total{namespace="$namespace",
+                        sum(rate(cnpg_pg_stat_database_xact_rollback{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval])) /
-                        (sum(rate(cnpg_pg_stat_database_xact_commit_total{namespace="$namespace",
+                        (sum(rate(cnpg_pg_stat_database_xact_commit{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval])) +
-                        sum(rate(cnpg_pg_stat_database_xact_rollback_total{namespace="$namespace",
+                        sum(rate(cnpg_pg_stat_database_xact_rollback{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval])) > 0)) or vector(0)
                       instant: false
                       legendFormat: rollback %
@@ -1731,7 +1731,7 @@ spec:
                     spec:
                       editorMode: code
                       expr: >-
-                        sum(rate(cnpg_pg_stat_database_tup_inserted_total{namespace="$namespace",
+                        sum(rate(cnpg_pg_stat_database_tup_inserted{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval]))
                       instant: false
                       legendFormat: inserted
@@ -1749,7 +1749,7 @@ spec:
                     spec:
                       editorMode: code
                       expr: >-
-                        sum(rate(cnpg_pg_stat_database_tup_updated_total{namespace="$namespace",
+                        sum(rate(cnpg_pg_stat_database_tup_updated{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval]))
                       instant: false
                       legendFormat: updated
@@ -1767,7 +1767,7 @@ spec:
                     spec:
                       editorMode: code
                       expr: >-
-                        sum(rate(cnpg_pg_stat_database_tup_deleted_total{namespace="$namespace",
+                        sum(rate(cnpg_pg_stat_database_tup_deleted{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval]))
                       instant: false
                       legendFormat: deleted
@@ -1785,7 +1785,7 @@ spec:
                     spec:
                       editorMode: code
                       expr: >-
-                        sum(rate(cnpg_pg_stat_database_tup_fetched_total{namespace="$namespace",
+                        sum(rate(cnpg_pg_stat_database_tup_fetched{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval]))
                       instant: false
                       legendFormat: fetched
@@ -1803,7 +1803,7 @@ spec:
                     spec:
                       editorMode: code
                       expr: >-
-                        sum(rate(cnpg_pg_stat_database_tup_returned_total{namespace="$namespace",
+                        sum(rate(cnpg_pg_stat_database_tup_returned{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval]))
                       instant: false
                       legendFormat: returned
@@ -1899,7 +1899,7 @@ spec:
                     spec:
                       editorMode: code
                       expr: >-
-                        sum(rate(cnpg_pg_stat_database_temp_files_total{namespace="$namespace",
+                        sum(rate(cnpg_pg_stat_database_temp_files{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval]))
                       instant: false
                       legendFormat: temp files /s
@@ -1917,7 +1917,7 @@ spec:
                     spec:
                       editorMode: code
                       expr: >-
-                        sum(rate(cnpg_pg_stat_database_temp_bytes_total{namespace="$namespace",
+                        sum(rate(cnpg_pg_stat_database_temp_bytes{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval]))
                       instant: false
                       legendFormat: temp bytes /s
@@ -2016,7 +2016,7 @@ spec:
                       editorMode: code
                       expr: >-
                         sum by (pod)
-                        (rate(cnpg_pg_stat_database_deadlocks_total{namespace="$namespace",
+                        (rate(cnpg_pg_stat_database_deadlocks{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval]))
                       instant: false
                       legendFormat: deadlocks {{pod}}
@@ -2035,7 +2035,7 @@ spec:
                       editorMode: code
                       expr: >-
                         sum by (pod)
-                        (rate(cnpg_pg_stat_database_conflicts_total{namespace="$namespace",
+                        (rate(cnpg_pg_stat_database_conflicts{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval]))
                       instant: false
                       legendFormat: conflicts {{pod}}
@@ -2132,11 +2132,11 @@ spec:
                       app: grafana-assistant-app
                       expr: >-
                         (100 *
-                        sum(rate(cnpg_pg_stat_database_blks_hit_total{namespace="$namespace",
+                        sum(rate(cnpg_pg_stat_database_blks_hit{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval])) /
-                        (sum(rate(cnpg_pg_stat_database_blks_hit_total{namespace="$namespace",
+                        (sum(rate(cnpg_pg_stat_database_blks_hit{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval])) +
-                        sum(rate(cnpg_pg_stat_database_blks_read_total{namespace="$namespace",
+                        sum(rate(cnpg_pg_stat_database_blks_read{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval])) > 0)) or vector(0)
                       instant: false
                       legendFormat: ''
@@ -2208,13 +2208,13 @@ spec:
                       app: grafana-assistant-app
                       expr: >-
                         (100 * sum by (datname)
-                        (rate(cnpg_pg_stat_database_blks_hit_total{namespace="$namespace",
+                        (rate(cnpg_pg_stat_database_blks_hit{namespace="$namespace",
                         datname=~"$datname"}[$__rate_interval])) / (sum by
                         (datname)
-                        (rate(cnpg_pg_stat_database_blks_hit_total{namespace="$namespace",
+                        (rate(cnpg_pg_stat_database_blks_hit{namespace="$namespace",
                         datname=~"$datname"}[$__rate_interval])) + sum by
                         (datname)
-                        (rate(cnpg_pg_stat_database_blks_read_total{namespace="$namespace",
+                        (rate(cnpg_pg_stat_database_blks_read{namespace="$namespace",
                         datname=~"$datname"}[$__rate_interval])) > 0)) or
                         vector(0)
                       instant: false
@@ -2317,7 +2317,7 @@ spec:
                     spec:
                       editorMode: code
                       expr: >-
-                        sum(rate(cnpg_pg_stat_database_blk_read_time_total{namespace="$namespace",
+                        sum(rate(cnpg_pg_stat_database_blk_read_time{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval]))
                       instant: false
                       legendFormat: read
@@ -2335,7 +2335,7 @@ spec:
                     spec:
                       editorMode: code
                       expr: >-
-                        sum(rate(cnpg_pg_stat_database_blk_write_time_total{namespace="$namespace",
+                        sum(rate(cnpg_pg_stat_database_blk_write_time{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval]))
                       instant: false
                       legendFormat: write
@@ -2746,7 +2746,7 @@ spec:
                     spec:
                       editorMode: code
                       expr: >-
-                        sum(rate(cnpg_pg_stat_checkpointer_checkpoints_timed_total{namespace="$namespace",
+                        sum(rate(cnpg_pg_stat_checkpointer_checkpoints_timed{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval]))
                       instant: false
                       legendFormat: timed
@@ -2764,7 +2764,7 @@ spec:
                     spec:
                       editorMode: code
                       expr: >-
-                        sum(rate(cnpg_pg_stat_checkpointer_checkpoints_req_total{namespace="$namespace",
+                        sum(rate(cnpg_pg_stat_checkpointer_checkpoints_req{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval]))
                       instant: false
                       legendFormat: requested
@@ -2862,7 +2862,7 @@ spec:
                     spec:
                       editorMode: code
                       expr: >-
-                        sum(rate(cnpg_pg_stat_checkpointer_write_time_total{namespace="$namespace",
+                        sum(rate(cnpg_pg_stat_checkpointer_write_time{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval]))
                       instant: false
                       legendFormat: write
@@ -2880,7 +2880,7 @@ spec:
                     spec:
                       editorMode: code
                       expr: >-
-                        sum(rate(cnpg_pg_stat_checkpointer_sync_time_total{namespace="$namespace",
+                        sum(rate(cnpg_pg_stat_checkpointer_sync_time{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval]))
                       instant: false
                       legendFormat: sync
@@ -4253,7 +4253,7 @@ spec:
                     spec:
                       editorMode: code
                       expr: >-
-                        sum(rate(cnpg_pg_stat_archiver_archived_count_total{namespace="$namespace",
+                        sum(rate(cnpg_pg_stat_archiver_archived_count{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval]))
                       instant: false
                       legendFormat: archived /s
@@ -4271,7 +4271,7 @@ spec:
                     spec:
                       editorMode: code
                       expr: >-
-                        sum(rate(cnpg_pg_stat_archiver_failed_count_total{namespace="$namespace",
+                        sum(rate(cnpg_pg_stat_archiver_failed_count{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval]))
                       instant: false
                       legendFormat: failed /s
@@ -4466,7 +4466,7 @@ spec:
                     spec:
                       editorMode: code
                       expr: >-
-                        sum(rate(cnpg_pg_stat_bgwriter_buffers_clean_total{namespace="$namespace",
+                        sum(rate(cnpg_pg_stat_bgwriter_buffers_clean{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval]))
                       instant: false
                       legendFormat: clean
@@ -4484,7 +4484,7 @@ spec:
                     spec:
                       editorMode: code
                       expr: >-
-                        sum(rate(cnpg_pg_stat_bgwriter_buffers_alloc_total{namespace="$namespace",
+                        sum(rate(cnpg_pg_stat_bgwriter_buffers_alloc{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval]))
                       instant: false
                       legendFormat: allocated
@@ -4502,7 +4502,7 @@ spec:
                     spec:
                       editorMode: code
                       expr: >-
-                        sum(rate(cnpg_pg_stat_checkpointer_buffers_written_total{namespace="$namespace",
+                        sum(rate(cnpg_pg_stat_checkpointer_buffers_written{namespace="$namespace",
                         pod=~"$pod"}[$__rate_interval]))
                       instant: false
                       legendFormat: checkpointer written
