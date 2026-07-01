@@ -354,7 +354,7 @@ spec:
                         sum(increase(http_reqs_total{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__range]))
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__range]))
                       instant: true
                       legendFormat: ''
                       range: false
@@ -418,7 +418,7 @@ spec:
                         sum(rate(http_reqs_total{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__range]))
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__range]))
                       instant: true
                       legendFormat: ''
                       range: false
@@ -564,11 +564,11 @@ spec:
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
                         k6_preset=~"$k6_preset",
-                        condition="nonzero"}[$__range])) or vector(0)) /
+                        condition="nonzero", warmup!="true"}[$__range])) or vector(0)) /
                         clamp_min(sum(increase(http_req_failed_total{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__range])),1)
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__range])),1)
                       instant: true
                       legendFormat: ''
                       range: false
@@ -641,7 +641,7 @@ spec:
                         (rate(http_req_duration_milliseconds_bucket{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__range])))
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__range])))
                       instant: true
                       legendFormat: ''
                       range: false
@@ -712,7 +712,7 @@ spec:
                         (rate(http_req_duration_milliseconds_bucket{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__range])))
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__range])))
                       instant: true
                       legendFormat: ''
                       range: false
@@ -783,7 +783,7 @@ spec:
                         (rate(http_req_duration_milliseconds_bucket{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__range])))
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__range])))
                       instant: true
                       legendFormat: ''
                       range: false
@@ -915,7 +915,7 @@ spec:
                         sum(increase(data_received_bytes_total{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__range]))
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__range]))
                       instant: true
                       legendFormat: ''
                       range: false
@@ -978,7 +978,7 @@ spec:
                         sum(increase(data_sent_bytes_total{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__range]))
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__range]))
                       instant: true
                       legendFormat: ''
                       range: false
@@ -1044,7 +1044,7 @@ spec:
                         (rate(http_reqs_total{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval]))
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval]))
                       instant: false
                       legendFormat: '{{name}} · {{status}}'
                       range: true
@@ -1491,7 +1491,7 @@ spec:
                         (rate(http_req_duration_milliseconds_bucket{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval])))
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval])))
                       instant: false
                       legendFormat: p50
                       range: true
@@ -1512,7 +1512,7 @@ spec:
                         (rate(http_req_duration_milliseconds_bucket{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval])))
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval])))
                       instant: false
                       legendFormat: p95
                       range: true
@@ -1533,7 +1533,7 @@ spec:
                         (rate(http_req_duration_milliseconds_bucket{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval])))
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval])))
                       instant: false
                       legendFormat: p99
                       range: true
@@ -1635,7 +1635,7 @@ spec:
                         (rate(http_req_duration_milliseconds_bucket{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval])))
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval])))
                       instant: false
                       legendFormat: '{{name}}'
                       range: true
@@ -1737,7 +1737,7 @@ spec:
                         (rate(http_req_duration_milliseconds_bucket{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval])))
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval])))
                       instant: false
                       legendFormat: '{{name}}'
                       range: true
@@ -1839,12 +1839,12 @@ spec:
                         (rate(http_req_duration_milliseconds_sum{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval])) /
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval])) /
                         clamp_min(sum by (name)
                         (rate(http_req_duration_milliseconds_count{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval])),1)
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval])),1)
                       instant: false
                       legendFormat: '{{name}}'
                       range: true
@@ -1946,7 +1946,7 @@ spec:
                         (rate(http_req_waiting_milliseconds_bucket{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval])))
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval])))
                       instant: false
                       legendFormat: waiting (TTFB)
                       range: true
@@ -1967,7 +1967,7 @@ spec:
                         (rate(http_req_duration_milliseconds_bucket{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval])))
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval])))
                       instant: false
                       legendFormat: total
                       range: true
@@ -2069,7 +2069,7 @@ spec:
                         (rate(http_req_blocked_milliseconds_bucket{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval])))
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval])))
                       instant: false
                       legendFormat: blocked
                       range: true
@@ -2090,7 +2090,7 @@ spec:
                         (rate(http_req_connecting_milliseconds_bucket{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval])))
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval])))
                       instant: false
                       legendFormat: connecting
                       range: true
@@ -2111,7 +2111,7 @@ spec:
                         (rate(http_req_tls_handshaking_milliseconds_bucket{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval])))
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval])))
                       instant: false
                       legendFormat: tls
                       range: true
@@ -2213,7 +2213,7 @@ spec:
                         (rate(http_req_sending_milliseconds_bucket{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval])))
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval])))
                       instant: false
                       legendFormat: sending
                       range: true
@@ -2234,7 +2234,7 @@ spec:
                         (rate(http_req_receiving_milliseconds_bucket{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval])))
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval])))
                       instant: false
                       legendFormat: receiving
                       range: true
@@ -2337,10 +2337,10 @@ spec:
                         sum(rate(http_req_blocked_milliseconds_sum{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval]))/clamp_min(sum(rate(http_req_blocked_milliseconds_count{service_name="k6-microservices-smoke",
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval]))/clamp_min(sum(rate(http_req_blocked_milliseconds_count{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval])),1)
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval])),1)
                       instant: false
                       legendFormat: blocked
                       range: true
@@ -2360,10 +2360,10 @@ spec:
                         sum(rate(http_req_connecting_milliseconds_sum{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval]))/clamp_min(sum(rate(http_req_connecting_milliseconds_count{service_name="k6-microservices-smoke",
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval]))/clamp_min(sum(rate(http_req_connecting_milliseconds_count{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval])),1)
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval])),1)
                       instant: false
                       legendFormat: connecting
                       range: true
@@ -2383,10 +2383,10 @@ spec:
                         sum(rate(http_req_tls_handshaking_milliseconds_sum{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval]))/clamp_min(sum(rate(http_req_tls_handshaking_milliseconds_count{service_name="k6-microservices-smoke",
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval]))/clamp_min(sum(rate(http_req_tls_handshaking_milliseconds_count{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval])),1)
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval])),1)
                       instant: false
                       legendFormat: tls
                       range: true
@@ -2406,10 +2406,10 @@ spec:
                         sum(rate(http_req_sending_milliseconds_sum{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval]))/clamp_min(sum(rate(http_req_sending_milliseconds_count{service_name="k6-microservices-smoke",
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval]))/clamp_min(sum(rate(http_req_sending_milliseconds_count{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval])),1)
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval])),1)
                       instant: false
                       legendFormat: sending
                       range: true
@@ -2429,10 +2429,10 @@ spec:
                         sum(rate(http_req_waiting_milliseconds_sum{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval]))/clamp_min(sum(rate(http_req_waiting_milliseconds_count{service_name="k6-microservices-smoke",
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval]))/clamp_min(sum(rate(http_req_waiting_milliseconds_count{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval])),1)
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval])),1)
                       instant: false
                       legendFormat: waiting
                       range: true
@@ -2452,10 +2452,10 @@ spec:
                         sum(rate(http_req_receiving_milliseconds_sum{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval]))/clamp_min(sum(rate(http_req_receiving_milliseconds_count{service_name="k6-microservices-smoke",
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval]))/clamp_min(sum(rate(http_req_receiving_milliseconds_count{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval])),1)
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval])),1)
                       instant: false
                       legendFormat: receiving
                       range: true
@@ -2557,7 +2557,7 @@ spec:
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
                         k6_preset=~"$k6_preset",
-                        condition="nonzero"}[$__rate_interval])) or vector(0))
+                        condition="nonzero", warmup!="true"}[$__rate_interval])) or vector(0))
                       instant: false
                       legendFormat: failed/s
                       range: true
@@ -2856,7 +2856,7 @@ spec:
                         sum(rate(data_received_bytes_total{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval]))
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval]))
                       instant: false
                       legendFormat: received/s
                       range: true
@@ -2954,7 +2954,7 @@ spec:
                         sum(rate(data_sent_bytes_total{service_name="k6-microservices-smoke",
                         deployment_environment="$deployment_environment",
                         ci_runner=~"$ci_runner", k6_profile=~"$k6_profile",
-                        k6_preset=~"$k6_preset"}[$__rate_interval]))
+                        k6_preset=~"$k6_preset", warmup!="true"}[$__rate_interval]))
                       instant: false
                       legendFormat: sent/s
                       range: true
