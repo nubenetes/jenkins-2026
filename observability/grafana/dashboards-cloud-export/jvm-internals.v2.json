@@ -325,7 +325,7 @@
                         "name": "${DS_PROMETHEUS}"
                       },
                       "spec": {
-                        "expr": "target_info{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"}",
+                        "expr": "target_info{k8s_namespace_name=~\"$namespace\", job=~\".*/${service_name}$\"}",
                         "format": "table",
                         "instant": true
                       }
