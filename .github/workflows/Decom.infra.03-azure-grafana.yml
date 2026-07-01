@@ -1,5 +1,14 @@
 name: "Decom.infra.03 Azure managed-grafana"
 
+# Rebuild-safety: serialize the paired Day0/Decom.infra.03 azure runs on the ONE shared
+# azure-managed-grafana Terraform state prefix so two same-module runs never contend for
+# its state lock. cancel-in-progress:false -> never cancel an in-flight
+# apply/destroy (a cancelled run would strand the lock).
+concurrency:
+  group: jenkins-2026-tfstate-azure-managed-grafana
+  cancel-in-progress: false
+
+
 # Manually-triggered setup teardown: destroys terraform/azure-managed-grafana,
 # removing the persistent Azure backend (Azure Managed Grafana, Azure Monitor
 # workspace + DCE/DCR, Application Insights + Log Analytics, the collector's

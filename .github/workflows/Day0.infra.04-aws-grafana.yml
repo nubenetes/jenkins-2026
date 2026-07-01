@@ -1,5 +1,14 @@
 name: "Day0.infra.04 AWS managed-grafana"
 
+# Rebuild-safety: serialize the paired Day0/Decom.infra.04 aws runs on the ONE shared
+# aws-managed-grafana Terraform state prefix so two same-module runs never contend for
+# its state lock. cancel-in-progress:false -> never cancel an in-flight
+# apply/destroy (a cancelled run would strand the lock).
+concurrency:
+  group: jenkins-2026-tfstate-aws-managed-grafana
+  cancel-in-progress: false
+
+
 # Manually-triggered, one-time setup step: applies terraform/aws-managed-grafana
 # to create (or, on re-runs, confirm) the persistent AWS backend that
 # observability_mode: managed-aws sends OpenTelemetry data to - Amazon Managed
