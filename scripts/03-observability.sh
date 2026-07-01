@@ -35,8 +35,12 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 # Safe no-op when ArgoCD/the app is absent.
 remove_oss_observability_app() {
   if kubectl get application observability-oss -n argocd >/dev/null 2>&1; then
-    log_info "Removing observability-oss ArgoCD app (cascade-prunes the in-cluster OSS stack)"
-    kubectl delete application observability-oss -n argocd --ignore-not-found --wait=false
+    log_info "Removing the observability-oss app-of-apps + its children (cascade-prune is unreliable for an app-of-apps — a child can be left orphaned, as seen on the CI-engine apps; see lib/common.sh retire_ci_engine)"
+    # Delete the parent AND every child Application explicitly (not just the parent),
+    # so switching observability.mode away from oss can't leave an orphaned oss-* app.
+    for app in observability-oss oss-kube-prometheus-stack oss-loki oss-tempo oss-grafana-dashboards; do
+      kubectl delete application "$app" -n argocd --ignore-not-found --wait=false 2>/dev/null || true
+    done
   fi
   # The cascade-prune above is asynchronous. The OSS kube-prometheus-stack ships a
   # node-exporter DaemonSet on hostPort 9100 (hostNetwork); k8s-monitoring (grafana
