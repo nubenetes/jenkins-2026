@@ -124,9 +124,12 @@ Every runner threads the **same variables** into the script. They are all **opti
 |---|---|---|
 | `K6SIM_P95_MS` | `3000` | `http_req_duration` p(95) budget in ms. |
 | `K6SIM_ERROR_RATE` | `0.05` | `http_req_failed` max rate (0..1). |
+| `K6SIM_WARMUP_TIMEOUT` | `60` | Readiness-gate budget in seconds (`0` = off). Before the measured run, `setup()` polls the gateway (and, when the direct `microservice-health` flow is on, the microservice) health until it serves — so a **cold start** (a just-deployed pod with no Service endpoints yet) doesn't blow the thresholds with ~20 s dial-timeout samples. |
 | `K6SIM_DEBUG` | `false` | Per-iteration console logging (trace ids + resolved config) for debugging a run. |
 
 > **Override precedence** (highest first): `K6SIM_STAGES` → `K6SIM_RPS` → `K6SIM_PROFILE` preset, with `K6SIM_VUS` / `K6SIM_DURATION` / `K6SIM_ITERATIONS` fine-tuning whichever is chosen.
+
+> **Cold-start immunity.** The two thresholds are scoped to the measured scenario (`http_req_failed{scenario:microservices}` / `http_req_duration{scenario:microservices}`) and the `setup()` readiness gate runs first, so a fresh deploy that isn't warm yet no longer flips the smoke to a **false UNSTABLE** — the warm-up's own probe traffic is a different scenario tag and is excluded from those thresholds. If a target genuinely never comes up, the gate still yields after `K6SIM_WARMUP_TIMEOUT` and the run proceeds so the real failure surfaces in the checks.
 
 ---
 

@@ -40,6 +40,7 @@
 //     K6SIM_ERROR_RATE  http_req_failed max rate (0..1)        (default 0.05)
 //
 //   Misc
+//     K6SIM_WARMUP_TIMEOUT readiness-gate budget, seconds; 0=off  (default 60)
 //     K6SIM_DEBUG       true → per-iteration console logging    (default false)
 //
 //   [*] ENV_NAME is surfaced as the deployment.environment OTel resource
@@ -95,6 +96,11 @@ const flow = (name) => FLOWS.includes(name);
 // ---- thresholds -------------------------------------------------------------
 const P95_MS = envNum('K6SIM_P95_MS', 3000);
 const ERR_RATE = envNum('K6SIM_ERROR_RATE', 0.05);
+// Readiness-gate budget (seconds). setup() polls the targets' health until they
+// serve BEFORE the measured scenario starts, so a cold target (pod not Ready,
+// no Service endpoints yet → the ~20s dial i/o timeout that flips a fresh
+// develop deploy to UNSTABLE) doesn't blow the thresholds. 0 disables it.
+const WARMUP_S = envNum('K6SIM_WARMUP_TIMEOUT', 60);
 
 // ---- workload profile -------------------------------------------------------
 const PROFILE = envStr('K6SIM_PROFILE', 'smoke').toLowerCase();
@@ -202,12 +208,26 @@ function buildScenario() {
 // only *flags* a breach (k6 exits 99) so the run still feeds Grafana.
 const abortOnFail = PROFILE === 'breakpoint';
 
+// The one measured scenario. Named so the thresholds can be scoped to it —
+// setup()'s warm-up traffic is NOT tagged scenario:<SCENARIO> (verified against
+// a live run), so scoping excludes it and the cold-start probe never trips a
+// threshold. Keep this name in sync with the summary readers (the Jenkins
+// printK6Summary + this file's handleSummary prefer the scenario:<SCENARIO>
+// sub-metric for the headline latency/error numbers).
+const SCENARIO = 'microservices';
+
 export const options = {
-  scenarios: { microservices: buildScenario() },
+  scenarios: { [SCENARIO]: buildScenario() },
   thresholds: {
-    http_req_failed: [{ threshold: `rate<${ERR_RATE}`, abortOnFail }],
-    http_req_duration: [{ threshold: `p(95)<${P95_MS}`, abortOnFail }],
+    // Scoped to the measured scenario (see SCENARIO above) so the setup()
+    // readiness gate's requests are excluded — otherwise a cold-start dial
+    // timeout during warm-up would breach these and falsely mark UNSTABLE.
+    [`http_req_failed{scenario:${SCENARIO}}`]: [{ threshold: `rate<${ERR_RATE}`, abortOnFail }],
+    [`http_req_duration{scenario:${SCENARIO}}`]: [{ threshold: `p(95)<${P95_MS}`, abortOnFail }],
   },
+  // setup() may poll up to WARMUP_S seconds; give it headroom over k6's 60s
+  // default setupTimeout so a long cold start doesn't abort the whole run.
+  setupTimeout: `${WARMUP_S + 30}s`,
   // Populate every percentile the CI summaries render (GHA jq + Jenkins parser
   // both print p99); k6's default trend stats omit p(99), so without this it
   // always showed p99=0.
@@ -242,6 +262,44 @@ if (DEBUG) {
     `[k6-sim] profile=${PROFILE} env=${ENV_NAME} target=${TARGET_URL || `in-cluster/${NAMESPACE}`} ` +
     `flows=${FLOWS.join('|')} p95<${P95_MS}ms err<${ERR_RATE}`
   );
+}
+
+// ---- readiness gate (runs ONCE before the measured scenario) ----------------
+// Absorbs cold start: a just-deployed target whose pod isn't Ready has no
+// Service endpoints, so the first requests hang until the ~20s dial i/o timeout
+// — exactly what flips a fresh develop deploy to UNSTABLE. Poll each target's
+// health with a short per-attempt timeout until it serves (2xx/3xx) or the
+// shared WARMUP_S budget runs out. setup() traffic is excluded from the
+// scenario-scoped thresholds, so these probes never count toward pass/fail.
+// Bounded on purpose: if a target never comes up we STILL run the test, so the
+// smoke surfaces the failure via checks instead of hanging the build.
+export function setup() {
+  if (WARMUP_S <= 0) return;
+  const targets = [];
+  if (TARGET_URL) {
+    // External runs hit the public gateway for every flow.
+    targets.push({ name: 'target', url: `${TARGET_URL}/management/health` });
+  } else {
+    if (flow('gateway-ui') || flow('gateway-health') || flow('gateway-proxy')) {
+      targets.push({ name: 'gateway', url: `${API_GATEWAY}/management/health` });
+    }
+    if (flow('microservice-health')) {
+      // Readiness (not full health): the lightweight "pod is serving" signal
+      // that clears the dial timeout; proven reachable (the gateway-proxy flow
+      // hits this same path via the gateway).
+      targets.push({ name: 'microservice', url: `${MICROSERVICE}/management/health/readiness` });
+    }
+  }
+  const deadline = Date.now() + WARMUP_S * 1000;
+  for (const t of targets) {
+    let ready = false;
+    while (Date.now() < deadline) {
+      const r = http.get(t.url, { timeout: '2s', tags: { warmup: 'true' } });
+      if (r.status >= 200 && r.status < 400) { ready = true; break; }
+      sleep(2);
+    }
+    console.log(`[k6-warmup] ${t.name}: ${ready ? 'ready' : `NOT ready after ${WARMUP_S}s — running anyway`} (${t.url})`);
+  }
 }
 
 export default function () {
@@ -297,6 +355,12 @@ export function handleSummary(data) {
       return 0;
     }
   };
+  // Prefer the scenario-scoped sub-metric for the headline latency/error numbers
+  // so the setup() warm-up traffic doesn't skew what's shown (it's excluded from
+  // the thresholds, so the display should match); fall back to the top-level
+  // metric for older summaries / when scoping is absent.
+  const SCEN = `{scenario:${SCENARIO}}`;
+  const primary = (name) => (m[name + SCEN] && m[name + SCEN].values) ? name + SCEN : name;
   const thr = [];
   for (const [name, metric] of Object.entries(m)) {
     for (const [expr, res] of Object.entries(metric.thresholds || {})) {
@@ -334,8 +398,8 @@ export function handleSummary(data) {
       '',
       '========== k6 run summary ==========',
       `checks:   ${passed}/${passed + val('checks', 'fails')} passed`,
-      `requests: ${val('http_reqs', 'count')} total, ${(val('http_req_failed', 'rate') * 100).toFixed(2)}% failed`,
-      `latency:  avg=${Math.round(val('http_req_duration', 'avg'))}ms p95=${Math.round(val('http_req_duration', 'p(95)'))}ms`,
+      `requests: ${val('http_reqs', 'count')} total, ${(val(primary('http_req_failed'), 'rate') * 100).toFixed(2)}% failed`,
+      `latency:  avg=${Math.round(val(primary('http_req_duration'), 'avg'))}ms p95=${Math.round(val(primary('http_req_duration'), 'p(95)'))}ms`,
       `volume:   ${val('iterations', 'count')} iters, peak ${val('vus_max', 'value')} VUs`,
       '--- checks (per flow) ---',
       ...(checks.length ? checks : ['  (none)']),
