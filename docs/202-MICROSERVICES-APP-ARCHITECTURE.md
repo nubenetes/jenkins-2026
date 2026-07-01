@@ -204,6 +204,32 @@ The Faro ingest URL (`https://faro.<baseDomain>`) is surfaced like every other e
 | How they're deployed (GitOps/Helm) | [502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md) |
 | Generator / framework | [JHipster](https://www.jhipster.tech/) · [Spring Cloud Gateway](https://spring.io/projects/spring-cloud-gateway) · [Angular](https://angular.dev/) |
 
+### Why JHipster (why this demo app)
+
+The platform needs a **realistic, multi-service Java workload** to make its CI/CD, JVM-tuning
+and observability stories actually *land* — a toy "hello-world" would exercise none of them.
+[JHipster](https://www.jhipster.tech/) is a standard, widely-used scaffolder whose official
+sample apps are **production-shaped out of the box**, which is exactly what this project needs:
+
+- **A real microservices topology** — a *gateway* (Spring Cloud Gateway + JWT) in front of a
+  backend *microservice*, **database-per-service** (CloudNativePG), and a 2nd-level cache — not a
+  single monolith. This is what the GitOps/Helm deploy ([502](./502-MICROSERVICES_GITOPS.md)) and
+  the NetworkPolicy segmentation ([503](./503-NETWORKING.md)) stories operate on.
+- **Java / Spring on the JVM** — so the **JVM-internals** narrative (container-default trap, G1/heap,
+  **CRaC** — [303](./303-JVM-TUNING.md)) and the **OTel Java agent** ([301](./301-OBSERVABILITY.md))
+  have real heap/GC/thread telemetry to show; a Node/Go toy would have none of it.
+- **An Angular SPA served by the gateway** — which is what makes the **frontend RUM** (Grafana Faro,
+  below) story possible: full-stack **browser → JVM** observability, not just backend.
+- **A representative CI/CD surface** — real Maven build + tests, SAST/DAST scans, image build (Jib)
+  and GitOps deploy — the same shape an enterprise pipeline has, so all four CI engines have
+  something *substantial* to build (not a stub).
+- **Canonical, open-source, reproducible** — the official JHipster samples (Apache-2.0), so anyone
+  can regenerate/verify them and they're recognisable to the wider Spring community.
+
+In short: JHipster is the **smallest thing that is still representative** — it forces the platform
+to solve the real problems (multi-service routing, per-service DBs, JVM behaviour, frontend +
+backend telemetry) instead of demoing them on a stub.
+
 ### Origin & why these repos are forks
 
 Both service repos are **GitHub forks of the official JHipster sample apps** —

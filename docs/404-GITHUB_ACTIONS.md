@@ -691,6 +691,9 @@ the same `validate_run_node_pool` helper Jenkins/Tekton use.
   and the candidate-engines roadmap that ranks ARC first.
 - [402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) — the Jenkins pipeline this
   ports, and the shared `services.yaml` registry.
+- [202. Microservices App Architecture](./202-MICROSERVICES-APP-ARCHITECTURE.md) § *Why JHipster* —
+  what these pipelines build (the forked JHipster gateway + microservice), why that demo app, and
+  why the app repos are **forks** in the `nubenetes` org (you commit CI into repos you own).
 - [501. Platform Operations](./501-PLATFORM_OPERATIONS.md) § Elastic Node
   Auto-Provisioning — the NAP/Spot comparison across all four engines.
 - [502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md) — why the
