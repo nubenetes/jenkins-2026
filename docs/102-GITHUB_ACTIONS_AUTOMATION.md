@@ -138,7 +138,7 @@ graph TD
 
     subgraph GKE_Lifecycle ["Day-1 → Day-2 → Decommission · GKE Cluster Lifecycle"]
         F & E & B --> G["Day1.cluster.01 GKE provision<br>tf/gke + scripts/up.sh<br>🔒 gke-production"]
-        G --> H["GKE Cluster Active<br>Jenkins / ArgoCD / services"]
+        G --> H["GKE Cluster Active<br>active CI engine (jenkins/tekton/githubactions/argoworkflows)<br>/ ArgoCD / services"]
         H --> I["Day2.redeploy.02 Redeploy Jenkins"]
         H --> J["Day2.redeploy.04 Redeploy Headlamp"]
         B --> L2["Day2.publish.04 Publish AWS dashboards<br>(no cluster needed)"]

@@ -317,14 +317,14 @@ Argo Workflows (`argo`/`argo-events`/`argo-ci`) engines retire the same way.
 
 ```mermaid
 flowchart TD
-    subgraph TT["Select tekton → 04-tekton.sh retires Jenkins"]
+    subgraph TT["Select tekton → 04-tekton.sh calls retire_ci_engine for the other three<br/>(Jenkins · GitHub Actions/ARC · Argo Workflows) — Jenkins branch shown"]
       direction TB
       A1["DELETE ArgoCD Application 'jenkins'<br/>(cascade-prune the official chart)"]
       A2["helm uninstall (legacy) +<br/>DELETE Jenkins gateway route / IAP / healthcheck"]
       A3["KEEP namespace 'jenkins'<br/>+ jenkins-credentials Secret + JCasC ConfigMaps"]
       A1 --> A2 --> A3
     end
-    subgraph TJ["Select jenkins → 04-jenkins.sh retires Tekton"]
+    subgraph TJ["Select jenkins → 04-jenkins.sh calls retire_ci_engine for the other three<br/>(Tekton · GitHub Actions/ARC · Argo Workflows) — Tekton branch shown"]
       direction TB
       B1["DELETE ArgoCD Application 'tekton'<br/>(cascade-prune all 7 children)"]
       B2["DELETE Tekton gateway routes<br/>(Dashboard IAP + PaC)"]
@@ -944,7 +944,8 @@ flowchart TB
   runs -. "excluded: runs/*" .-> sync
   owned -. "EventListener/PaC create runs at push time" .-> pr
   pr -. "inherit app tracking label → SHOWN in the tree (not owned)" .-> argo
-  classDef ex fill:#fee,stroke:#c00; class runs,pr ex
+  classDef ex fill:#fee,stroke:#c00;
+  class runs,pr ex
 ```
 </details>
 
@@ -1041,8 +1042,10 @@ flowchart TD
   Q3 --> D["DaemonSet: 0/2 ready"]
   D --> E["describe → FailedCreate: restricted PSS"]
   E --> F["✅ add securityContext → 2/2 ready → Healthy"]
-  classDef bad fill:#fee,stroke:#c00; class W,X bad
-  classDef good fill:#efe,stroke:#0a0; class F good
+  classDef bad fill:#fee,stroke:#c00;
+  class W,X bad
+  classDef good fill:#efe,stroke:#0a0;
+  class F good
 ```
 </details>
 

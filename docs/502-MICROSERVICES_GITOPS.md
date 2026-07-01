@@ -155,7 +155,7 @@ Using Kustomize would require running `kustomize edit set image` on specific ove
 ```mermaid
 sequenceDiagram
   autonumber
-  participant J as Jenkins (microservicesDeploy)
+  participant J as Active CI engine (GitOps Update stage)
   participant GO as gitops-config repo (main)
   participant AC as ArgoCD
   participant MS as microservices ns
@@ -172,7 +172,7 @@ sequenceDiagram
 
 </details>
 
-**Reading it —** the deploy is a *commit*, not an apply. The CI engine (Jenkins shown; Tekton, GitHub Actions/ARC and Argo Workflows run the identical stage) mutates exactly one line — the image tag — in the GitOps repo's `values-{env}.yaml` and pushes it straight to `main` (which is why that branch must accept direct pushes). ArgoCD's auto-sync is the actual deployer; the engine then blocks on `argocd app wait --health` so the pipeline only reports success once the cluster has converged. Adding a service is the same flow with a new row.
+**Reading it —** the deploy is a *commit*, not an apply. Whichever CI engine `ci.engine` selects (Jenkins default, Tekton, GitHub Actions/ARC or Argo Workflows — all run the identical *GitOps Update* stage) mutates exactly one line — the image tag — in the GitOps repo's `values-{env}.yaml` and pushes it straight to `main` (which is why that branch must accept direct pushes). ArgoCD's auto-sync is the actual deployer; the engine then blocks on `argocd app wait --health` so the pipeline only reports success once the cluster has converged. Adding a service is the same flow with a new row.
 
 ## Design Decision: Resource Lifecycle & Decommission Orchestration
 
