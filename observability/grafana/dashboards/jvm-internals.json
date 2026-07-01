@@ -15,26 +15,32 @@
       }
     ]
   },
+  "description": "Deep-dive JVM telemetry for all Java microservices and the Jenkins controller, instrumented via the OpenTelemetry Java agent (zero-code). Use this board to diagnose CPU saturation, heap pressure, GC overhead, thread contention, and HTTP latency degradation — with thresholds and legends pre-tuned for on-call triage.",
   "editable": true,
   "fiscalYearStartMonth": 0,
-  "folderUID": "jenkins-2026",
   "graphTooltip": 1,
-  "links": [],
   "liveNow": false,
   "panels": [
     {
       "gridPos": {
-        "h": 11,
+        "h": 13,
         "w": 24,
         "x": 0,
         "y": 0
       },
-      "id": 1030,
+      "id": 1031,
       "options": {
-        "content": "## CI-CD JVM Internals \u2014 what this board shows & how to read it\nDeep-dive JVM telemetry for all Java microservices and the Jenkins controller, exported via the **OpenTelemetry Java agent** (zero-code instrumentation). All metrics follow the [OpenTelemetry JVM Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/runtime/jvm-metrics/).\n\n| Section | What it answers |\n|---|---|\n| **Overview** | CPU utilization, heap used %, live threads, and GC overhead at a glance |\n| **Garbage Collection** | GC time/s, collection frequency, and pause p95/p99 per collector (SerialGC vs G1) |\n| **Heap & Non-Heap** | Used vs committed vs max for heap; metaspace + code-cache for non-heap |\n| **Memory Pools** | Per-pool breakdown (Eden / Survivor / Tenured / Metaspace / CodeHeap) |\n| **Buffers & advanced** | Direct/mapped NIO buffer pools; experimental runtime telemetry |\n| **HTTP response times** | Server-side latency p50/p95/p99 and request rate \u2014 correlate with GC pauses above |\n| **Logs & Traces** | Error/warn log stream and recent traces for the selected service |\n\n> **Tip:** Correlate a GC pause spike (*GC Pause p95/p99*) with a latency spike (*HTTP latency p50/p95/p99*) \u2014 they often land at the same timestamp.",
+        "code": {
+          "language": "plaintext",
+          "showLineNumbers": false,
+          "showMiniMap": false
+        },
+        "content": "## CI-CD JVM Internals — how to read & use this board\n\nDeep-dive JVM telemetry for all Java microservices and the Jenkins controller, exported via the **OpenTelemetry Java agent** (zero-code instrumentation). All metrics follow the [OpenTelemetry JVM Semantic Conventions](https://opentelemetry.io/docs/specs/semconv/runtime/jvm-metrics/).\n\n---\n\n### What each section answers\n\n| Section | Key question |\n|---|---|\n| **Overview** | Is anything in the red right now? CPU, heap %, live threads, and GC overhead at a glance |\n| **Garbage Collection** | How much time is the JVM spending in GC? Are pauses bounded? Which collector (SerialGC vs G1) is running? |\n| **Heap & Non-Heap** | How close is heap to its maximum? Is Metaspace or CodeHeap growing without bound? |\n| **Memory Pools** | Which pool is filling — Eden, Tenured, or Metaspace? Is the live set **after GC** growing (leak indicator)? |\n| **Buffers & advanced** | Are direct/mapped NIO buffers accumulating off-heap? (Requires experimental OTel telemetry.) |\n| **HTTP response times** | Is GC pressure causing latency spikes? Which status codes drive the error rate? |\n| **Logs & Traces** | What errors are firing, and what do recent traces look like for the selected service? |\n\n---\n\n### On-call triage flow\n\n1. **Overview row** — scan the 6 KPI cards. Anything red? Start there.\n2. **Heap Used % > 80 %** → open *JVM Heap* and *Memory Pool — live set after GC*. A rising Tenured/Old-gen floor between collections = slow memory leak.\n3. **GC Time /s > 0.1** → check *GC Used Time* and *GC Pause p95/p99*. Pauses > 200 ms will show as latency spikes in the HTTP section.\n4. **Latency spike** → align *HTTP latency p50/p95/p99* and *GC Pause p95/p99* timestamps. If they coincide, GC is the root cause; consider tuning heap size or switching to G1.\n5. **High thread count or blocked threads** → *JVM Thread State* (stacked view). A growing `blocked` band = lock contention; a growing `waiting` band = thread-pool or queue starvation.\n6. **5xx rate > 1 %** → jump to *Errors & Warnings* (Loki) and *Traces* (Tempo) for the affected service.\n\n---\n\n### Threshold reference\n\nThreshold lines are drawn directly on the relevant charts — yellow = warning, red = critical.\n\n| Signal | ⚠️ Yellow | 🔴 Red |\n|---|---|---|\n| CPU utilization (process & system) | 70 % | 90 % |\n| GC Used Time | 0.1 s/s | 0.3 s/s |\n| GC Pause p95/p99 | 200 ms | 500 ms |\n| HTTP latency | 500 ms | 1 000 ms |\n| Heap Used % (gauge) | 80 % | 92 % |\n| HTTP 5xx error rate | 1 % | 5 % |\n| Live Threads (stat) | 200 | 500 |\n\n> **Note:** Heap Used (bytes) and Total Memory thresholds are rough defaults (512 MB / 1.5 GB and 1 GB / 2.5 GB). Adjust them to your actual `-Xmx` and container memory limits for accurate alerting.",
         "mode": "markdown"
       },
-      "transparent": true,
+      "pluginVersion": "13.2.0-28156739792",
+      "targets": [],
+      "title": "",
       "type": "text"
     },
     {
@@ -43,10 +49,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 11
+        "y": 13
       },
-      "id": 1001,
-      "panels": [],
+      "id": 1032,
       "title": "Overview",
       "type": "row"
     },
@@ -61,12 +66,14 @@
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
+          "max": 1,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": 0
               },
               {
                 "color": "yellow",
@@ -79,14 +86,13 @@
             ]
           },
           "unit": "percentunit"
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 4,
         "w": 4,
         "x": 0,
-        "y": 12
+        "y": 14
       },
       "id": 2,
       "options": {
@@ -94,6 +100,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -101,9 +108,11 @@
           "fields": "",
           "values": false
         },
+        "showPercentChange": false,
         "textMode": "auto",
         "wideLayout": true
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
@@ -123,22 +132,37 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Total live heap across selected services.",
+      "description": "Total heap used across selected services. **Yellow ≥ 512 MB · Red ≥ 1.5 GB** — adjust to your -Xmx. Use *Heap Used %* for a relative view that normalises across services with different heap configs.",
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "mode": "thresholds"
           },
-          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 536870912
+              },
+              {
+                "color": "red",
+                "value": 1610612736
+              }
+            ]
+          },
           "unit": "bytes"
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 4,
         "w": 4,
         "x": 4,
-        "y": 12
+        "y": 14
       },
       "id": 3,
       "options": {
@@ -146,6 +170,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -153,9 +178,11 @@
           "fields": "",
           "values": false
         },
+        "showPercentChange": false,
         "textMode": "auto",
         "wideLayout": true
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
@@ -175,22 +202,37 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Heap + non-heap used.",
+      "description": "Heap + non-heap (Metaspace, CodeHeap, Compressed Class, direct buffers). **Yellow ≥ 1 GB · Red ≥ 2.5 GB** — tune to your container memory limit. Divergence from heap alone = growing off-heap usage.",
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "mode": "thresholds"
           },
-          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 1073741824
+              },
+              {
+                "color": "red",
+                "value": 2684354560
+              }
+            ]
+          },
           "unit": "bytes"
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 4,
         "w": 4,
         "x": 8,
-        "y": 12
+        "y": 14
       },
       "id": 4,
       "options": {
@@ -198,6 +240,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -205,9 +248,11 @@
           "fields": "",
           "values": false
         },
+        "showPercentChange": false,
         "textMode": "auto",
         "wideLayout": true
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
@@ -233,12 +278,14 @@
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
+          "max": 1,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": 0
               },
               {
                 "color": "yellow",
@@ -251,20 +298,29 @@
             ]
           },
           "unit": "percentunit"
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 4,
         "w": 4,
         "x": 12,
-        "y": 12
+        "y": 14
       },
       "id": 5,
       "options": {
+        "barShape": "flat",
+        "barWidthFactor": 0.5,
         "colorMode": "value",
+        "effects": {
+          "barGlow": false,
+          "centerGlow": false,
+          "gradient": true
+        },
+        "endpointMarker": "point",
         "graphMode": "area",
         "justifyMode": "auto",
+        "minVizHeight": 75,
+        "minVizWidth": 75,
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
@@ -273,9 +329,17 @@
           "fields": "",
           "values": false
         },
+        "segmentCount": 1,
+        "segmentSpacing": 0.3,
+        "shape": "gauge",
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "sizing": "auto",
+        "sparkline": true,
         "textMode": "auto",
         "wideLayout": true
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
@@ -295,22 +359,37 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Current JVM thread count.",
+      "description": "Live JVM thread count across selected services. **Yellow ≥ 200 · Red ≥ 500**. Sustained growth without a load increase = thread leak. See *JVM Thread State* for composition.",
       "fieldConfig": {
         "defaults": {
           "color": {
-            "mode": "palette-classic"
+            "mode": "thresholds"
           },
-          "mappings": [],
-          "unit": "short"
-        },
-        "overrides": []
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 200
+              },
+              {
+                "color": "red",
+                "value": 500
+              }
+            ]
+          },
+          "unit": "none"
+        }
       },
       "gridPos": {
         "h": 4,
         "w": 4,
         "x": 16,
-        "y": 12
+        "y": 14
       },
       "id": 6,
       "options": {
@@ -318,6 +397,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -325,9 +405,11 @@
           "fields": "",
           "values": false
         },
+        "showPercentChange": false,
         "textMode": "auto",
         "wideLayout": true
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
@@ -347,18 +429,18 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Seconds in GC per second (\u21921 = GC-bound).",
+      "description": "Seconds spent in GC per second — a rate. Approaches 1.0 when the JVM is nearly GC-bound. Correlates directly with latency degradation and CPU steal visible in the CPU panels.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": 0
               },
               {
                 "color": "yellow",
@@ -371,14 +453,13 @@
             ]
           },
           "unit": "s"
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 4,
         "w": 4,
         "x": 20,
-        "y": 12
+        "y": 14
       },
       "id": 7,
       "options": {
@@ -386,6 +467,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -393,9 +475,11 @@
           "fields": "",
           "values": false
         },
+        "showPercentChange": false,
         "textMode": "auto",
         "wideLayout": true
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
@@ -422,28 +506,80 @@
             "mode": "palette-classic"
           },
           "custom": {
-            "fillOpacity": 15
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
           },
           "unit": "short"
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 16
+        "y": 18
       },
       "id": 8,
       "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
         "legend": {
+          "calcs": [
+            "last"
+          ],
           "displayMode": "list",
-          "placement": "bottom"
+          "enableFacetedFilter": false,
+          "overflow": "ellipsis",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "multi"
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
         }
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
@@ -481,35 +617,88 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Live threads split by daemon vs non-daemon.",
+      "description": "Live thread count split by daemon vs non-daemon over time. Legend shows **Last** and **Max**. Daemon threads are typically framework/GC threads; non-daemon threads control JVM shutdown.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
           "custom": {
-            "fillOpacity": 15
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
           },
           "unit": "short"
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 16
+        "y": 18
       },
       "id": 9,
       "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
         "legend": {
+          "calcs": [
+            "last",
+            "max"
+          ],
           "displayMode": "list",
-          "placement": "bottom"
+          "enableFacetedFilter": false,
+          "overflow": "ellipsis",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "multi"
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
         }
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
@@ -529,35 +718,88 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Threads by state (runnable/waiting/blocked/timed_waiting). Rising blocked = contention.",
+      "description": "Thread states stacked over time — runnable / waiting / timed_waiting / blocked. A growing **blocked** band = lock contention; a growing **waiting** band = thread-pool or queue starvation.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
           "custom": {
-            "fillOpacity": 15
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
           },
           "unit": "short"
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 7,
         "w": 12,
         "x": 0,
-        "y": 23
+        "y": 25
       },
       "id": 10,
       "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
         "legend": {
+          "calcs": [
+            "last",
+            "max"
+          ],
           "displayMode": "list",
-          "placement": "bottom"
+          "enableFacetedFilter": false,
+          "overflow": "ellipsis",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "multi"
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
         }
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
@@ -577,35 +819,96 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Process CPU utilization (ratio) + CPU-seconds/s (effective cores).",
+      "description": "Process CPU utilization ratio over time. **Threshold lines at 70 % (yellow) and 90 % (red)**. Sustained > 70 % warrants tuning; > 90 % = CPU-bound, consider scaling or profiling.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
           "custom": {
-            "fillOpacity": 15
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 0.7
+              },
+              {
+                "color": "red",
+                "value": 0.9
+              }
+            ]
           },
           "unit": "percentunit"
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 7,
         "w": 12,
         "x": 12,
-        "y": 23
+        "y": 25
       },
       "id": 11,
       "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
         "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
           "displayMode": "list",
-          "placement": "bottom"
+          "enableFacetedFilter": false,
+          "overflow": "ellipsis",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "multi"
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
         }
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
@@ -635,10 +938,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 30
+        "y": 32
       },
-      "id": 1012,
-      "panels": [],
+      "id": 1033,
       "title": "Garbage Collection",
       "type": "row"
     },
@@ -647,35 +949,97 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Seconds in GC/s by collector (SerialGC Copy/MarkSweepCompact \u2192 G1 Young/Old).",
+      "description": "GC time consumed per second by collector (SerialGC Copy/MarkSweep vs G1 Young/Old). **Threshold lines at 0.1 s/s (yellow) and 0.3 s/s (red)**. Approaching 1.0 s/s = GC-bound; increase heap or switch to G1/ZGC.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
           "custom": {
-            "fillOpacity": 15
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 0.1
+              },
+              {
+                "color": "red",
+                "value": 0.3
+              }
+            ]
           },
           "unit": "s"
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 31
+        "y": 33
       },
       "id": 13,
       "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
         "legend": {
+          "calcs": [
+            "mean",
+            "max",
+            "last"
+          ],
           "displayMode": "list",
-          "placement": "bottom"
+          "enableFacetedFilter": false,
+          "overflow": "ellipsis",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "multi"
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
         }
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
@@ -702,28 +1066,81 @@
             "mode": "palette-classic"
           },
           "custom": {
-            "fillOpacity": 15
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
           },
           "unit": "ops"
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 31
+        "y": 33
       },
       "id": 14,
       "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
         "legend": {
+          "calcs": [
+            "last",
+            "max"
+          ],
           "displayMode": "list",
-          "placement": "bottom"
+          "enableFacetedFilter": false,
+          "overflow": "ellipsis",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "multi"
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
         }
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
@@ -743,35 +1160,97 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Stop-the-world pause quantiles. G1 keeps these bounded vs SerialGC.",
+      "description": "Stop-the-world pause distribution (p95 / p99) in **ms**. **Yellow ≥ 200 ms · Red ≥ 500 ms**. G1 keeps pauses bounded vs SerialGC. Correlate spikes with the *HTTP latency* panel — they will appear at the same timestamp.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
           "custom": {
-            "fillOpacity": 15
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "line"
+            }
           },
-          "unit": "s"
-        },
-        "overrides": []
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 200
+              },
+              {
+                "color": "red",
+                "value": 500
+              }
+            ]
+          },
+          "unit": "ms"
+        }
       },
       "gridPos": {
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 31
+        "y": 33
       },
       "id": 15,
       "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
         "legend": {
+          "calcs": [
+            "mean",
+            "max",
+            "last"
+          ],
           "displayMode": "list",
-          "placement": "bottom"
+          "enableFacetedFilter": false,
+          "overflow": "ellipsis",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "multi"
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
         }
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
@@ -801,10 +1280,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 39
+        "y": 41
       },
-      "id": 1016,
-      "panels": [],
+      "id": 1034,
       "title": "Heap & Non-Heap",
       "type": "row"
     },
@@ -813,35 +1291,88 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "used vs committed vs max (heap).",
+      "description": "Heap memory over time: used vs committed vs max. The gap between committed and max is headroom before OOM. A used line approaching max without GC relief = heap exhaustion risk.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
           "custom": {
-            "fillOpacity": 15
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
           },
           "unit": "bytes"
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 40
+        "y": 42
       },
       "id": 17,
       "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
         "legend": {
+          "calcs": [
+            "last",
+            "max"
+          ],
           "displayMode": "list",
-          "placement": "bottom"
+          "enableFacetedFilter": false,
+          "overflow": "ellipsis",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "multi"
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
         }
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
@@ -886,28 +1417,81 @@
             "mode": "palette-classic"
           },
           "custom": {
-            "fillOpacity": 15
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
           },
           "unit": "bytes"
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 40
+        "y": 42
       },
       "id": 18,
       "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
         "legend": {
+          "calcs": [
+            "last",
+            "max"
+          ],
           "displayMode": "list",
-          "placement": "bottom"
+          "enableFacetedFilter": false,
+          "overflow": "ellipsis",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "multi"
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
         }
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
@@ -937,10 +1521,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 48
+        "y": 50
       },
-      "id": 1019,
-      "panels": [],
+      "id": 1035,
       "title": "Memory Pools",
       "type": "row"
     },
@@ -956,39 +1539,89 @@
             "mode": "palette-classic"
           },
           "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
             "fillOpacity": 15,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
             "stacking": {
+              "group": "A",
               "mode": "normal"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
             }
           },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
           "unit": "bytes"
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 49
+        "y": 51
       },
       "id": 20,
       "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
         "legend": {
+          "calcs": [
+            "last",
+            "max"
+          ],
           "displayMode": "list",
-          "placement": "bottom"
+          "enableFacetedFilter": false,
+          "overflow": "ellipsis",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "multi"
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
         }
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (jvm_memory_pool_name)(jvm_memory_used_bytes{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"})",
-          "legendFormat": "{{jvm_memory_pool_name}}",
+          "expr": "sum by (service_name, jvm_memory_pool_name)(jvm_memory_used_bytes{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"})",
+          "legendFormat": "{{service_name}} {{jvm_memory_pool_name}}",
           "refId": "A"
         }
       ],
@@ -1000,47 +1633,100 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Per-pool heap still used right after a collection. Rising Tenured floor = leak.",
+      "description": "Heap used per pool **immediately after a GC collection** — the true live set. A rising Tenured / Old-gen floor between GC cycles = objects are being promoted faster than they are collected = memory leak.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
           "custom": {
-            "fillOpacity": 15
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
           },
           "unit": "bytes"
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 49
+        "y": 51
       },
       "id": 21,
       "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
         "legend": {
+          "calcs": [
+            "last",
+            "max"
+          ],
           "displayMode": "list",
-          "placement": "bottom"
+          "enableFacetedFilter": false,
+          "overflow": "ellipsis",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "multi"
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
         }
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "sum by (jvm_memory_pool_name)(jvm_memory_used_after_last_gc_bytes{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"})",
-          "legendFormat": "{{jvm_memory_pool_name}}",
+          "expr": "sum by (service_name, jvm_memory_pool_name)(jvm_memory_used_after_last_gc_bytes{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"})",
+          "legendFormat": "{{service_name}} {{jvm_memory_pool_name}}",
           "refId": "A"
         }
       ],
-      "title": "JVM Memory Pool \u2014 live set after GC",
+      "title": "JVM Memory Pool — live set after GC",
       "type": "timeseries"
     },
     {
@@ -1049,10 +1735,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 57
+        "y": 59
       },
-      "id": 1022,
-      "panels": [],
+      "id": 1036,
       "title": "Buffers & advanced (experimental OTel runtime telemetry)",
       "type": "row"
     },
@@ -1061,35 +1746,88 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Direct/mapped NIO buffer pools (off-heap). Needs the agent's experimental telemetry.",
+      "description": "Off-heap direct and mapped NIO buffer pools (bytes in use). Needs the OTel agent’s experimental telemetry flag. Growing direct memory without a matching load increase = buffer leak (common in Netty-based services).",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
           "custom": {
-            "fillOpacity": 15
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
           },
           "unit": "bytes"
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 8,
         "w": 8,
         "x": 0,
-        "y": 58
+        "y": 60
       },
       "id": 23,
       "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
         "legend": {
+          "calcs": [
+            "last",
+            "max"
+          ],
           "displayMode": "list",
-          "placement": "bottom"
+          "enableFacetedFilter": false,
+          "overflow": "ellipsis",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "multi"
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
         }
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
@@ -1101,7 +1839,7 @@
           "refId": "A"
         }
       ],
-      "title": "Buffer Pools \u2014 memory used",
+      "title": "Buffer Pools — memory used",
       "type": "timeseries"
     },
     {
@@ -1116,28 +1854,80 @@
             "mode": "palette-classic"
           },
           "custom": {
-            "fillOpacity": 15
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
           },
-          "unit": "short"
-        },
-        "overrides": []
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "none"
+        }
       },
       "gridPos": {
         "h": 8,
         "w": 8,
         "x": 8,
-        "y": 58
+        "y": 60
       },
       "id": 24,
       "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
         "legend": {
+          "calcs": [
+            "last"
+          ],
           "displayMode": "list",
-          "placement": "bottom"
+          "enableFacetedFilter": false,
+          "overflow": "ellipsis",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "multi"
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
         }
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
@@ -1149,7 +1939,7 @@
           "refId": "A"
         }
       ],
-      "title": "Buffer Pools \u2014 count",
+      "title": "Buffer Pools — count",
       "type": "timeseries"
     },
     {
@@ -1157,35 +1947,118 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Heap allocation B/s + host system CPU utilization (experimental).",
+      "description": "Process CPU ratio + system CPU ratio + system load average 1 m. **Threshold lines at 70 % and 90 %** apply to the 0–1 ratio series. Load avg can exceed 1 on a busy multi-core host — compare to CPU count for saturation signal.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
           "custom": {
-            "fillOpacity": 15
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "line"
+            }
           },
-          "unit": "Bps"
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 0.7
+              },
+              {
+                "color": "red",
+                "value": 0.9
+              }
+            ]
+          },
+          "unit": "percentunit"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "C"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "load avg (1m)"
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 8,
         "w": 8,
         "x": 16,
-        "y": 58
+        "y": 60
       },
       "id": 25,
       "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
         "legend": {
+          "calcs": [
+            "mean",
+            "max"
+          ],
           "displayMode": "list",
-          "placement": "bottom"
+          "enableFacetedFilter": false,
+          "overflow": "ellipsis",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "multi"
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
         }
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
@@ -1215,7 +2088,7 @@
           "refId": "C"
         }
       ],
-      "title": "CPU \u2014 process / system utilization + load avg",
+      "title": "CPU — process / system utilization + load avg",
       "type": "timeseries"
     },
     {
@@ -1224,10 +2097,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 66
+        "y": 68
       },
-      "id": 1026,
-      "panels": [],
+      "id": 1037,
       "title": "HTTP response times",
       "type": "row"
     },
@@ -1236,35 +2108,97 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Server-side request latency. Correlate spikes with GC pause panel.",
+      "description": "Server-side request latency in **ms** (p50 / p95 / p99). **Threshold lines at 500 ms (yellow) and 1 000 ms (red)**. Correlate spikes with *GC Pause p95/p99* — co-located spikes = GC-induced latency.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
           "custom": {
-            "fillOpacity": 15
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "line"
+            }
           },
-          "unit": "s"
-        },
-        "overrides": []
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 500
+              },
+              {
+                "color": "red",
+                "value": 1000
+              }
+            ]
+          },
+          "unit": "ms"
+        }
       },
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 67
+        "y": 69
       },
       "id": 27,
       "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
         "legend": {
+          "calcs": [
+            "mean",
+            "max",
+            "last"
+          ],
           "displayMode": "list",
-          "placement": "bottom"
+          "enableFacetedFilter": false,
+          "overflow": "ellipsis",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "multi"
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
         }
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
@@ -1302,35 +2236,88 @@
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
       },
-      "description": "Throughput split by HTTP status code.",
+      "description": "Throughput stacked by HTTP status code (2xx / 4xx / 5xx). The stacked view shows composition at a glance — a growing 5xx band means errors are rising relative to total traffic.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
           "custom": {
-            "fillOpacity": 15
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "showValues": false,
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "normal"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              }
+            ]
           },
           "unit": "reqps"
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 8,
         "w": 6,
         "x": 12,
-        "y": 67
+        "y": 69
       },
       "id": 28,
       "options": {
+        "annotations": {
+          "clustering": -1,
+          "multiLane": false
+        },
         "legend": {
+          "calcs": [
+            "last",
+            "max"
+          ],
           "displayMode": "list",
-          "placement": "bottom"
+          "enableFacetedFilter": false,
+          "overflow": "ellipsis",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "multi"
+          "hideZeros": false,
+          "mode": "multi",
+          "sort": "none"
         }
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
@@ -1356,12 +2343,14 @@
           "color": {
             "mode": "thresholds"
           },
-          "mappings": [],
+          "max": 100,
+          "min": 0,
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green"
+                "color": "green",
+                "value": 0
               },
               {
                 "color": "yellow",
@@ -1374,14 +2363,13 @@
             ]
           },
           "unit": "percent"
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 8,
         "w": 6,
         "x": 18,
-        "y": 67
+        "y": 69
       },
       "id": 29,
       "options": {
@@ -1389,6 +2377,7 @@
         "graphMode": "area",
         "justifyMode": "auto",
         "orientation": "auto",
+        "percentChangeColorMode": "standard",
         "reduceOptions": {
           "calcs": [
             "lastNotNull"
@@ -1396,16 +2385,18 @@
           "fields": "",
           "values": false
         },
+        "showPercentChange": false,
         "textMode": "auto",
         "wideLayout": true
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * (sum(rate(http_server_request_duration_seconds_count{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\", http_response_status_code=~\"5..\"}[$__rate_interval])) or vector(0)) / sum(rate(http_server_request_duration_seconds_count{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval]))",
+          "expr": "100 * sum(rate(http_server_request_duration_seconds_count{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\", http_response_status_code=~\"5..\"}[$__rate_interval])) / (sum(rate(http_server_request_duration_seconds_count{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"}[$__rate_interval])) > 0)",
           "legendFormat": "HTTP 5xx error rate",
           "refId": "A"
         }
@@ -1422,35 +2413,56 @@
       "fieldConfig": {
         "defaults": {
           "custom": {
-            "filterable": true
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true,
+            "footer": {
+              "reducers": []
+            },
+            "inspect": false
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
           }
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 75
+        "y": 77
       },
-      "id": 1031,
+      "id": 1030,
       "options": {
         "cellHeight": "sm",
         "showHeader": true
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "target_info{k8s_namespace_name=~\"$namespace\", k8s_container_name=~\"$service_name\"}",
+          "expr": "target_info{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"}",
           "format": "table",
           "instant": true,
           "refId": "A"
         }
       ],
-      "title": "JVM / runtime context (name \u00b7 implementation \u00b7 version \u00b7 OTel agent)",
+      "title": "JVM / runtime context (name · implementation · version · OTel agent)",
       "transformations": [
         {
           "id": "labelsToFields",
@@ -1494,10 +2506,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 82
+        "y": 84
       },
-      "id": 1027,
-      "panels": [],
+      "id": 1038,
       "title": "Logs & Traces",
       "type": "row"
     },
@@ -1506,34 +2517,42 @@
         "type": "loki",
         "uid": "loki"
       },
-      "description": "App logs for $service_name filtered by $level (default error|warn). Click a line's trace_id to jump to the trace (logs\u2192traces via the Loki datasource's derived fields).",
+      "description": "App logs for $service_name filtered by $level (default error|warn). Click a line's trace_id to jump to the trace (logs→traces via the Loki datasource's derived fields).",
       "gridPos": {
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 83
+        "y": 85
       },
       "id": 1028,
       "options": {
         "dedupStrategy": "none",
+        "enableInfiniteScrolling": false,
         "enableLogDetails": true,
         "prettifyLogMessage": false,
+        "showControls": false,
+        "showFieldSelector": false,
         "showLabels": false,
+        "showLevel": true,
+        "showLogAttributes": true,
         "showTime": true,
         "sortOrder": "Descending",
+        "timestampResolution": "ms",
+        "unwrappedColumns": false,
         "wrapLogMessage": true
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"} | detected_level=~\"$level\" | json | line_format \"{{ if .message }}{{ .message }}{{ else if .msg }}{{ .msg }}{{ else }}{{ __line__ }}{{ end }}\"",
+          "expr": "{k8s_namespace_name=~\"$namespace\", service_name=~\"$service_name\"} | detected_level=~\"${level:pipe}\" | json | line_format \"{{ if .message }}{{ .message }}{{ else if .msg }}{{ .msg }}{{ else }}{{ __line__ }}{{ end }}\"",
           "refId": "A"
         }
       ],
-      "title": "Errors & Warnings \u2014 selected service",
+      "title": "Errors & Warnings — selected service",
       "type": "logs"
     },
     {
@@ -1541,28 +2560,46 @@
         "type": "tempo",
         "uid": "tempo"
       },
-      "description": "Recent traces for $service_name. Click a Trace ID \u2192 trace view, which links to logs (tracesToLogs) and metrics (tracesToMetrics) via the Tempo datasource config.",
+      "description": "Recent traces for $service_name. Click a Trace ID → trace view, which links to logs (tracesToLogs) and metrics (tracesToMetrics) via the Tempo datasource config.",
       "fieldConfig": {
         "defaults": {
           "custom": {
             "align": "auto",
             "cellOptions": {
               "type": "auto"
-            }
+            },
+            "footer": {
+              "reducers": []
+            },
+            "inspect": false
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
           }
-        },
-        "overrides": []
+        }
       },
       "gridPos": {
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 83
+        "y": 85
       },
       "id": 1029,
       "options": {
+        "cellHeight": "sm",
         "showHeader": true
       },
+      "pluginVersion": "13.2.0-28156739792",
       "targets": [
         {
           "datasource": {
@@ -1570,16 +2607,17 @@
             "uid": "tempo"
           },
           "limit": 20,
-          "query": "{ resource.service.name =~ \"$service_name\" }",
+          "query": "{ resource.service.name =~ \"$service_name\" && resource.k8s.namespace.name =~ \"$namespace\" }",
           "queryType": "traceql",
           "refId": "A",
           "tableType": "traces"
         }
       ],
-      "title": "Traces \u2014 selected service",
+      "title": "Traces — selected service",
       "type": "table"
     }
   ],
+  "preload": false,
   "refresh": "30s",
   "schemaVersion": 42,
   "tags": [
@@ -1591,7 +2629,11 @@
   "templating": {
     "list": [
       {
-        "current": {},
+        "allowCustomValue": true,
+        "current": {
+          "text": "",
+          "value": ""
+        },
         "hide": 0,
         "includeAll": false,
         "label": "Prometheus / Mimir",
@@ -1599,14 +2641,17 @@
         "name": "DS_PROMETHEUS",
         "options": [],
         "query": "prometheus",
-        "queryValue": "",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
         "type": "datasource"
       },
       {
-        "current": {},
+        "allowCustomValue": true,
+        "current": {
+          "text": "",
+          "value": ""
+        },
         "hide": 0,
         "includeAll": false,
         "label": "Loki",
@@ -1614,14 +2659,17 @@
         "name": "DS_LOKI",
         "options": [],
         "query": "loki",
-        "queryValue": "",
         "refresh": 1,
         "regex": "/^(?!.*alert-state-history|.*usage-insights).*$/",
         "skipUrlSync": false,
         "type": "datasource"
       },
       {
-        "current": {},
+        "allowCustomValue": true,
+        "current": {
+          "text": "",
+          "value": ""
+        },
         "hide": 0,
         "includeAll": false,
         "label": "Tempo",
@@ -1629,7 +2677,6 @@
         "name": "DS_TEMPO",
         "options": [],
         "query": "tempo",
-        "queryValue": "",
         "refresh": 1,
         "regex": "",
         "skipUrlSync": false,
@@ -1637,6 +2684,7 @@
       },
       {
         "allValue": ".*",
+        "allowCustomValue": true,
         "current": {
           "text": "All",
           "value": "$__all"
@@ -1659,12 +2707,14 @@
         },
         "refresh": 2,
         "regex": "",
+        "regexApplyTo": "value",
         "skipUrlSync": false,
         "sort": 1,
         "type": "query"
       },
       {
         "allValue": ".+",
+        "allowCustomValue": true,
         "current": {
           "text": "All",
           "value": "$__all"
@@ -1686,14 +2736,15 @@
         },
         "refresh": 2,
         "regex": "",
+        "regexApplyTo": "value",
         "skipUrlSync": false,
         "sort": 1,
         "type": "query"
       },
       {
         "allValue": ".+",
+        "allowCustomValue": true,
         "current": {
-          "selected": true,
           "text": [
             "error",
             "warn"
@@ -1748,7 +2799,8 @@
         ],
         "query": "error,warn,info,debug,trace,unknown",
         "skipUrlSync": false,
-        "type": "custom"
+        "type": "custom",
+        "valuesFormat": "csv"
       }
     ]
   },
@@ -1756,9 +2808,23 @@
     "from": "now-6h",
     "to": "now"
   },
-  "timepicker": {},
-  "timezone": "",
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m",
+      "15m",
+      "30m",
+      "1h",
+      "2h",
+      "1d"
+    ]
+  },
+  "timezone": "browser",
   "title": "CI-CD JVM internals (all Java services + Jenkins)",
-  "uid": "jenkins2026-jvm-internals",
-  "weekStart": ""
+  "version": 0,
+  "uid": "innrq4f",
+  "id": null
 }
