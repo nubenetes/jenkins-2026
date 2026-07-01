@@ -75,6 +75,12 @@ jobs:
           }
           EOF
 
+      - name: Clear stale Terraform state lock
+        uses: ./.github/actions/tf-remove-stale-lock
+        with:
+          bucket: ${{ secrets.TF_STATE_BUCKET }}
+          prefix: jenkins-2026/gateway-bootstrap
+
       - name: Terraform init
         working-directory: terraform/gateway-bootstrap
         run: |
