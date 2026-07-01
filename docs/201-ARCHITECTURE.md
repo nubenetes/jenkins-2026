@@ -91,169 +91,151 @@ mindmap
 Two pluggable choices, both deterministic & idempotent: the **CI engine** (`ci.engine`: one of four — **Jenkins** default / **Tekton** / **GitHub Actions (ARC)** / **Argo Workflows**, all sharing one 10-stage contract) and the **observability backend** (`observability.mode`: one of oss / grafana-cloud / managed-azure / managed-aws). ArgoCD is always the CD/GitOps engine. This is the same overview as [README § 3](../README.md#3-architecture-overview); the [Component Diagram](#component-diagram) below drills into the Jenkins/microservices/observability internals.
 
 ```mermaid
+---
+config:
+  layout: elk
+  flowchart:
+    nodeSpacing: 25
+    rankSpacing: 45
+---
 flowchart TB
-    subgraph BAND1[" "]
-      direction LR
-      subgraph EXT["External actors (github.com · browser · registry)"]
+      subgraph EXT["External (github.com · browser · registry)"]
         direction TB
-        users(["users<br/>browser SPA (public)"]):::ext
-        ghaIac(["gha-iac · GitHub Actions IaC driver<br/>github.com-hosted · OIDC→WIF · NOT a CI engine"]):::ext
-        gitops(["gitops-repo · jenkins-2026-gitops-config<br/>CI-driven · direct-push main"]):::ext
-        ghcr(["ghcr · ghcr.io/nubenetes<br/>…-microservices (GHCR)"]):::ext
+        users(["users · browser SPA (public)"]):::ext
+        ghaIac(["gha-iac · GitHub Actions IaC driver<br/>OIDC→WIF · NOT a CI engine"]):::ext
+        gitops(["gitops-repo · direct-push main"]):::ext
+        ghcr(["ghcr.io/nubenetes · images"]):::ext
       end
       subgraph L0["L0 · Day0 root-of-trust (human-run · NEVER torn down)"]
         direction TB
-        BOOT["L0-BOOT · terraform/bootstrap<br/>bootstrap.sh up/down · state local→GCS"]:::prov
-        WIF["L0-WIF · OIDC→WIP jenkins-2026-github<br/>provider github-actions · repo-scoped"]:::prov
-        CISA["L0-CISA · CI SA jenkins-2026-ci<br/>container/net/LB/dns/secret/cert admin"]:::prov
-        STATE[("L0-STATE · GCS state bucket<br/>versioned · per-module prefixes")]:::prov
-        DNSZONE["L0-DNSZONE · zone jenkins-2026-public-zone<br/>one-time parent NS delegation"]:::prov
-        PGBK[("L0-PGBK · postgres-backups bucket<br/>Nearline 3d / delete 7d")]:::prov
+        BOOT["BOOT · terraform/bootstrap<br/>state local→GCS"]:::prov
+        WIF["WIF · OIDC→WIP · repo-scoped"]:::prov
+        CISA["CI SA jenkins-2026-ci<br/>container/net/dns/secret/cert admin"]:::prov
+        STATE[("GCS state bucket<br/>versioned · per-module prefixes")]:::prov
+        DNSZONE["DNS zone jenkins-2026-public-zone<br/>one-time parent NS delegation"]:::prov
+        PGBK[("postgres-backups bucket")]:::prov
       end
-      subgraph L1["L1 · Provisioning / IaC (one bucket · per-module prefixes)"]
+      subgraph L1["L1 · Provisioning / IaC (one bucket · prefixes)"]
         direction TB
-        GWB["L1-GWB · gateway-bootstrap (PERSISTENT)<br/>static IP · wildcard cert · A/CNAME"]:::iac
-        GKETF["L1-GKETF · terraform/gke (throwaway)<br/>VPC-native · Dataplane V2+WireGuard · immutable"]:::iac
-        OBSTF["L1-OBSTF · obs-backend modules (ephemeral)<br/>gc-stack(slug)/gc-token · azure · aws"]:::iac
+        GWB["gateway-bootstrap (PERSISTENT)<br/>static IP · wildcard cert · A/CNAME"]:::iac
+        GKETF["terraform/gke (throwaway)<br/>Dataplane V2 + WireGuard · immutable"]:::iac
+        OBSTF["obs-backend modules (ephemeral)<br/>gcloud · azure · aws"]:::iac
       end
-      subgraph L2["L2 · GCP edge (DNS→LB→IAP→Gateway)"]
+      subgraph L2["L2 · GCP edge"]
         direction TB
-        DNS["L2-DNS · Cloud DNS wildcard<br/>*.base_domain → static IP"]:::edge
-        LB["L2-LB · L7 LB global-external-managed<br/>wildcard TLS · BackendTLSPolicy re-encrypt"]:::edge
-        IAPN["L2-IAP · Identity-Aware Proxy (admin allowlist)<br/>jenkins·tekton·argo-server·headlamp·pgadmin·grafana"]:::edge
-        GW["L2-GW · Gateway jenkins-2026-gateway<br/>ns platform-ingress · HTTPRoutes · GCPBackendPolicy"]:::edge
+        DNS["Cloud DNS wildcard → IP"]:::edge
+        LB["L7 LB · wildcard TLS · re-encrypt"]:::edge
+        IAPN["Identity-Aware Proxy<br/>admin allowlist"]:::edge
+        GW["Gateway (ns platform-ingress)<br/>HTTPRoutes · GCPBackendPolicy"]:::edge
       end
-    end
 
-    subgraph BAND2[" "]
-      direction LR
       subgraph CP["L3 · Control plane (GKE)"]
         direction TB
-        ACD["L3-ACD · ArgoCD 3.4.x + patch-watcher<br/>1 AppSet · app-of-apps postgres/oss/tekton/gha/argowf · single apps"]:::ctrl
-        subgraph CIENG["CIENG · pick EXACTLY ONE (ci.engine) — 4 engines"]
+        ACD["ArgoCD 3.4.x (always the CD engine)<br/>1 AppSet · app-of-apps · single apps"]:::ctrl
+        subgraph CIENG["CIENG · pick EXACTLY ONE (ci.engine)"]
           direction TB
-          CONTRACT["10-stage-contract (shared by all 4)<br/>+ patch-app-source.sh · + services.yaml registry"]:::contract
-          JEN["JEN · jenkins (default *)<br/>chart 5.9.29 · JCasC · seed · IAP UI · ns jenkins"]:::eng1
-          TEK["TEK · tekton<br/>CRDs · single-PVC · IAP Dash · PaC HMAC · ns tekton-*"]:::eng2
-          GHAARC["GHA-ARC · GitHub Actions / ARC (in-cluster CI)<br/>arc-systems+arc-runners · ci-spot · min0 · NO UI/route"]:::eng3
-          ARGOWF["ARGOWF · argoworkflows<br/>WF v3.7.15 (argo) + Events v1.9.4 · run argo-ci · IAP UI"]:::eng4
+          CONTRACT["shared 10-stage contract<br/>patch-app-source.sh · services.yaml"]:::contract
+          subgraph CIR1[" "]
+            direction LR
+            JEN["JEN · jenkins (default *)<br/>chart · JCasC · IAP UI"]:::eng1
+            TEK["TEK · tekton<br/>CRDs · IAP Dash · PaC"]:::eng2
+          end
+          subgraph CIR2[" "]
+            direction LR
+            GHAARC["GHA-ARC · GitHub Actions/ARC<br/>ephemeral · ci-spot · NO in-cluster UI"]:::eng3
+            ARGOWF["ARGOWF · argoworkflows<br/>WF v3.7.15 + Events · IAP UI"]:::eng4
+          end
         end
-        OPS["OPS · Operators (capability)<br/>ESO · OTel · CNPG · Argo Rollouts"]:::ctrl
-        PUSH["PUSH · imperative lane (scripts/0N-*.sh)<br/>JCasC/ds/creds · arc-github-app · NetPol · Quotas"]:::push
+        OPS["OPS · Operators<br/>ESO · OTel · CNPG · Argo Rollouts"]:::ctrl
+        PUSH["PUSH · imperative lane (0N-*.sh)<br/>creds · NetPol · Quotas"]:::push
       end
       subgraph DP["L4 · Data / runtime plane (ns microservices)"]
         direction TB
-        GWAPP["GWAPP · JHipster gateway :8080<br/>serves Angular SPA · MySQL→PG+NoOp patch"]:::data
-        MSVC["MSVC · jhipstersamplemicroservice<br/>Spring Boot REST :8081"]:::data
-        POOL["POOL · PgBouncer Poolers (session)<br/>JDBC+R2DBC target"]:::data
-        PG[("PG · CNPG Cluster per svc<br/>3-replica HA · WAL+data PVCs")]:::data
-        DEVTIER["DEV-TIER · develop tier (optional · off)<br/>ns microservices-develop · 1-click · non-HA"]:::dev
+        GWAPP["gateway :8080<br/>serves Angular SPA · MySQL→PG patch"]:::data
+        MSVC["jhipstersamplemicroservice :8081"]:::data
+        POOL["PgBouncer Poolers (session)"]:::data
+        PG[("CNPG per svc · 3-replica HA")]:::data
+        DEVTIER["develop tier (optional · off)<br/>ns -develop · 1-click · non-HA"]:::dev
       end
       subgraph NODES["Node substrate"]
         direction TB
-        STATICP["STATICP · static pool jenkins-2026-pool<br/>e2-standard-8 · 2–4 · platform"]:::node
-        NAP["NAP · NAP → ci-spot ComputeClass<br/>Spot c3&gt;n2&gt;c2&gt;e2 · scale-to-zero (ARC default)"]:::node
-        QUOTA["QUOTA · SSD_TOTAL_GB=500 ceiling<br/>not TF-raisable → static default"]:::node
+        STATICP["static pool (e2-standard-8 · 2–4)"]:::node
+        NAP["NAP → ci-spot ComputeClass<br/>Spot · scale-to-zero"]:::node
+        QUOTA["SSD_TOTAL_GB=500 ceiling"]:::node
       end
-    end
 
-    subgraph BAND3[" "]
-      direction LR
-      subgraph OBSP["L5 · Observability pipeline (sources → 2 collectors)"]
+      subgraph OBSP["L5 · Observability pipeline"]
         direction TB
-        SRCS["SRCS · sources (4)<br/>Java agent · CI plugin · k6 · Angular Faro RUM (public)"]:::obs
-        COLG["COLG · otel-collector-gateway (Deploy)<br/>OTLP 4317/18 + faro:8027 · span/service connectors"]:::obs
-        COLL["COLL · otel-collector-logs (DaemonSet)<br/>filelog tail → severity"]:::obs
+        SRCS["sources (4): Java agent · CI · k6 · Faro RUM"]:::obs
+        COLG["otel-collector-gateway (Deploy)<br/>OTLP + faro · span/service connectors"]:::obs
+        COLL["otel-collector-logs (DaemonSet)"]:::obs
       end
-      subgraph BK["BK · pick EXACTLY ONE (observability.mode) — 4 backends"]
+      subgraph BK["BK · pick EXACTLY ONE (observability.mode)"]
         direction TB
-        OSS["OSS · oss in-cluster (ArgoCD)<br/>Prometheus·Loki·Tempo·Grafana(IAP)"]:::bk1
-        GCLOUD["GCLOUD · grafana-cloud<br/>Mimir/Tempo/Loki OTLP · Alloy"]:::bk2
-        AZ["AZ · managed-azure<br/>azuremonitor+remote-write · keyless Entra"]:::bk3
-        AWS["AWS · managed-aws<br/>xray+cloudwatch+sigv4 · keyless OIDC"]:::bk4
+        subgraph BKR1[" "]
+          direction LR
+          OSS["OSS in-cluster<br/>Prom·Loki·Tempo·Grafana"]:::bk1
+          GCLOUD["grafana-cloud<br/>Mimir/Tempo/Loki · Alloy"]:::bk2
+        end
+        subgraph BKR2[" "]
+          direction LR
+          AZ["managed-azure<br/>azuremonitor · keyless Entra"]:::bk3
+          AWS["managed-aws<br/>xray+cloudwatch · keyless OIDC"]:::bk4
+        end
       end
       subgraph AEDGE["Public CI webhooks (HMAC · NO IAP)"]
         direction TB
-        ARGOEV["ARGOWF-EVENTS · argo-events.&lt;dom&gt;<br/>EventSource → Sensor → 1 Workflow/push"]:::eng4
-        PACWH["PaC EventListener · pac.&lt;dom&gt;<br/>tekton HMAC webhook receiver"]:::eng2
+        ARGOEV["Argo Events · argo-events.&lt;dom&gt;<br/>Sensor → 1 Workflow/push"]:::eng4
+        PACWH["Tekton PaC EventListener · pac.&lt;dom&gt;"]:::eng2
       end
-      SM["SM · GCP Secret Manager (secrets.backend=eso)<br/>ClusterSecretStore + ExternalSecret · keyless WIF"]:::sm
-    end
+      SM["GCP Secret Manager (secrets.backend=eso)<br/>ClusterSecretStore · keyless WIF"]:::sm
 
-    subgraph KEY["Legend · fill = component TYPE"]
-      direction LR
-      kext["external"]:::ext
-      kprov["Day0 root-of-trust"]:::prov
-      kiac["L1 IaC / Terraform"]:::iac
-      kedge["GCP edge"]:::edge
-      kctrl["control plane"]:::ctrl
-      kdata["data · runtime"]:::data
-      kdev["develop tier"]:::dev
-      knode["node substrate"]:::node
-      kpush["imperative PUSH"]:::push
-      kobs["observability"]:::obs
-      kcon["shared CI contract"]:::contract
-      keng["CI engine hues → jen·tek·ARC·argowf"]:::eng1
-      kbk["obs backend hues → oss·gc·azure·aws"]:::bk1
-      ksm["Secret Manager"]:::sm
-    end
 
-    %% ---- trust + provisioning ----
-    ghaIac -->|"OIDC (repo-scoped)"| WIF
+    ghaIac -->|"OIDC"| WIF
     WIF -->|"impersonate (keyless)"| CISA
     BOOT --> WIF & CISA & STATE & DNSZONE & PGBK
     CISA -->|"terraform apply"| L1
-    STATE -.->|"state reads"| L1
     GWB --> L2
-    GWB -. "records by fixed name" .-> DNSZONE
+    GWB -. "records" .-> DNSZONE
     GKETF -->|"creates cluster"| CP
-    GKETF -. "reads obs outputs → Secrets" .-> OBSTF
+    GKETF -. "obs outputs → Secrets" .-> OBSTF
     DNSZONE --> DNS
 
-    %% ---- edge chain ----
     users --> DNS --> LB --> IAPN --> GW
-    GW -->|"IAP UI: jenkins·tekton·argo"| CIENG
+    GW -->|"IAP UI"| CIENG
     GW -->|"open: microservices·faro·argocd"| GWAPP & SRCS & ACD
-    GW -->|"HMAC public (no IAP)"| ARGOEV & PACWH
+    GW -->|"HMAC public"| ARGOEV & PACWH
 
-    %% ---- control plane wiring ----
-    CISA -->|"up.sh ordered 00→09"| CP
+    CISA -->|"up.sh 00→09"| CP
     ACD -->|"installs / syncs"| CIENG & OPS & DP
-    PUSH -. "companions ArgoCD won't own" .-> CIENG & DP
-    OPS -. "OTel inject · ESO+CNPG via WIF" .-> DP
+    PUSH -. "companions" .-> CIENG & DP
+    OPS -. "OTel inject · ESO/CNPG WIF" .-> DP
     CONTRACT --- JEN & TEK & GHAARC & ARGOWF
     TEK -. "webhook" .-> PACWH
     ARGOWF -. "webhook" .-> ARGOEV
 
-    %% ---- CI contract + GitOps handoff ----
-    CIENG -->|"build & push image"| ghcr
+    CIENG -->|"build & push"| ghcr
     CIENG -. "image-tag bump" .-> gitops
-    gitops -->|"ArgoCD source (AppSet)"| ACD
-    DEVTIER -. "1-click per engine" .- CIENG
+    gitops -->|"ArgoCD source"| ACD
+    DEVTIER -. "1-click" .- CIENG
 
-    %% ---- data plane wiring ----
     GWAPP -->|"/services/**"| MSVC
     GWAPP --> POOL
     MSVC --> POOL
     POOL --> PG
-    PG -. "Barman WAL backup (WIF)" .-> PGBK
-    CIENG -. "agents land on" .-> NAP
-    ACD -. "platform pods on" .-> STATICP
-    NAP -. "competes for" .-> QUOTA
+    CIENG -. "agents on" .-> NAP
+    ACD -. "platform on" .-> STATICP
+    NAP -. "competes" .-> QUOTA
 
-    %% ---- observability ----
-    DP -->|"OTLP (agent injected)"| SRCS
+    DP -->|"OTLP"| SRCS
     CIENG -->|OTLP| SRCS
     SRCS --> COLG
-    DP -. "pod stdout" .-> COLL
-    COLG -->|"exactly ONE backend active"| OSS & GCLOUD & AZ & AWS
+    DP -. "stdout" .-> COLL
+    COLG -->|"exactly ONE active"| OSS & GCLOUD & AZ & AWS
     COLL --> OSS & GCLOUD & AZ & AWS
 
-    %% ---- secrets ----
-    OPS -->|"ESO ClusterSecretStore · keyless WIF"| SM
+    OPS -->|"ESO · keyless WIF"| SM
 
-    BAND1 ~~~ BAND2
-    BAND2 ~~~ BAND3
 
     classDef ext fill:#fde3f1,stroke:#c0398a,color:#000;
     classDef prov fill:#fdeccb,stroke:#c98a12,color:#000;
@@ -276,9 +258,10 @@ flowchart TB
     classDef bk3 fill:#d9e8fb,stroke:#2a6fd0,color:#000;
     classDef bk4 fill:#fdf0d0,stroke:#c99a1a,color:#000;
 
-    style BAND1 fill:none,stroke:none;
-    style BAND2 fill:none,stroke:none;
-    style BAND3 fill:none,stroke:none;
+    style CIR1 fill:none,stroke:none;
+    style CIR2 fill:none,stroke:none;
+    style BKR1 fill:none,stroke:none;
+    style BKR2 fill:none,stroke:none;
     style EXT fill:#fef2f8,stroke:#c0398a,color:#000;
     style L0 fill:#fff8ec,stroke:#c98a12,color:#000;
     style L1 fill:#fdf3ea,stroke:#c26a1a,color:#000;
@@ -290,7 +273,6 @@ flowchart TB
     style AEDGE fill:#fdeee4,stroke:#c07030,color:#000;
     style OBSP fill:#f3ecff,stroke:#7a52c0,color:#000;
     style BK fill:#f0fbf7,stroke:#1f9e86,color:#000;
-    style KEY fill:#f7f7f7,stroke:#888,color:#000;
 ```
 
 </details>
@@ -307,7 +289,7 @@ flowchart TB
 
 **Colours & pluggable choices:**
 
-- **Fill colour = component *type*** — see the **Legend** box (external · Day0 root-of-trust · L1 IaC · edge · control plane · data/runtime · develop tier · node substrate · imperative-push · observability · shared CI contract · Secret Manager), **plus** the **four CI-engine hues** (Jenkins · Tekton · GHA/ARC · Argo Workflows) and **four obs-backend hues** (oss · grafana-cloud · azure · aws). Every subgraph container also carries its own tint, so no two boxes share the default yellow.
+- **Fill colour = component *type*** — each node & subgraph is tinted by type: external · Day0 root-of-trust · L1 IaC · edge · control plane · data/runtime · develop tier · node substrate · imperative-push · observability · shared CI contract · Secret Manager, **plus** the **four CI-engine hues** (Jenkins · Tekton · GHA/ARC · Argo Workflows, shown as a **2×2**) and **four obs-backend hues** (oss · grafana-cloud · azure · aws, also **2×2**). Every subgraph carries its own tint, so no two containers share one colour (the old diagram's flaw).
 - **CI engine** (one of **four** — Jenkins default · Tekton · **GitHub Actions (ARC)** · **Argo Workflows**; all share the same **10-stage contract** + the shared **`resources/patch-app-source.sh`** + `services.yaml` registry) and **observability backend** (oss / grafana-cloud / managed-azure / managed-aws) are *mutually exclusive* — exactly one of each per cluster, set in `config/config.yaml` (or the `Day1.cluster.01` inputs), switched deterministically. **GitHub Actions/ARC has no in-cluster UI** (github.com is the UI) and triggers **branch-based** on a push to the fork's `main`/`develop`; Jenkins / Tekton / Argo Workflows each expose an in-cluster UI behind IAP. The three external obs backends are decoupled, persistent, **keyless** (WIF/OIDC) Day0 resources.
 - **Secrets** — `imperative` by default, or pushed to **GCP Secret Manager** + synced by the **External Secrets Operator** (`secrets.backend=eso`, keyless WIF).
 - **Lean `develop` tier** — optional (`microservices.developTrackEnabled`, **off by default**): a non-HA `microservices-develop` namespace alongside `stable`, folded into the **L4** label, into the same observability stack.
