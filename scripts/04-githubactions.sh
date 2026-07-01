@@ -11,21 +11,14 @@ source "${SCRIPT_DIR}/lib/config.sh"
 [[ "${J2026_CI_ENGINE}" != "githubactions" ]] && { log_info "ci.engine='${J2026_CI_ENGINE}' - skipping ARC (04-githubactions)."; exit 0; }
 
 # --- retire the sibling CI engines (githubactions has THREE: jenkins, tekton, argoworkflows) ---
-log_step "Retiring sibling CI engines if present (ci.engine=githubactions)"
-kubectl delete application jenkins       -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false 2>/dev/null || true
-kubectl delete application tekton        -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false 2>/dev/null || true
-kubectl delete application argoworkflows -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false 2>/dev/null || true
-helm_uninstall_if_present "${J2026_JENKINS_RELEASE}" "${J2026_JENKINS_NAMESPACE}" 2>/dev/null || true
-# Argo Workflows leaves the argo + argo-events namespaces (controller/server/EventBus) running;
-# delete them once its app-of-apps is pruned so the Argo workloads actually stop.
-kubectl delete namespace "${J2026_ARGOWF_NAMESPACE}" "${J2026_ARGOWF_EVENTS_NAMESPACE}" --ignore-not-found --wait=false 2>/dev/null || true
-if [[ -n "${J2026_GATEWAY_BASE_DOMAIN:-}" ]]; then
-  # Drop the jenkins/tekton CI dashboard routes + IAP policies (githubactions has no UI route).
-  kubectl delete gcpbackendpolicy "${J2026_GATEWAY_IAP_POLICY_JENKINS:-jenkins-iap}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found 2>/dev/null || true
-  kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_JENKINS:-jenkins-route}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found 2>/dev/null || true
-  kubectl delete gcpbackendpolicy "${J2026_GATEWAY_IAP_POLICY_TEKTON:-tekton-iap}" -n "${J2026_TEKTON_NAMESPACE}" --ignore-not-found 2>/dev/null || true
-  kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_TEKTON:-tekton-route}" -n "${J2026_TEKTON_NAMESPACE}" --ignore-not-found 2>/dev/null || true
-fi
+# Fully remove each — every ArgoCD app they own, their namespaces (incl. the
+# jenkins/tekton dashboard routes + IAP policies that live in those namespaces),
+# and any stuck GKE NEG finalizer — via the shared, deadlock-proof helper in
+# lib/common.sh. githubactions itself has no in-cluster UI route. Idempotent.
+retire_ci_engine jenkins
+helm_uninstall_if_present "${J2026_JENKINS_RELEASE}" "${J2026_JENKINS_NAMESPACE}" 2>/dev/null || true  # legacy pre-ArgoCD Jenkins fallback
+retire_ci_engine tekton
+retire_ci_engine argoworkflows
 
 # --- apply the ARC app-of-apps via ArgoCD ------------------------------------
 log_step "Applying ARC app-of-apps via ArgoCD (argocd/githubactions-app.yaml)"

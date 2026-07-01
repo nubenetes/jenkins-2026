@@ -250,3 +250,60 @@ j2026_active_secrets_backend() {
   fi
   echo "${J2026_SECRETS_BACKEND:-imperative}"
 }
+
+# --- CI-engine retirement (mutual exclusivity) -------------------------------
+# The four CI engines (jenkins · tekton · githubactions · argoworkflows) are
+# mutually exclusive, so selecting one must FULLY retire the other three. Each
+# alternative engine is an ArgoCD *app-of-apps*: a parent Application renders
+# several CHILD Applications (with different names) into a few namespaces
+# (control-plane + a CI-run ns). A naive "delete the parent app" is NOT enough:
+#   - the parent's cascade-prune is unreliable — child apps can be left orphaned
+#     (observed: argoworkflows-controller with no deletionTimestamp);
+#   - a GKE **NEG finalizer** (networking.gke.io/neg-finalizer) on a UI Service's
+#     ServiceNetworkEndpointGroup stalls namespace termination, which stalls the
+#     parent app's cascade → deadlock (namespace stuck Terminating, apps OutOfSync).
+# retire_ci_engine deletes EVERY app the engine owns, clears stuck NEG finalizers,
+# then deletes EVERY namespace it owns (incl. the CI-run ns). Idempotent /
+# best-effort. Keep these lists in sync with argocd/<engine>/templates/.
+_j2026_engine_apps() {
+  case "$1" in
+    jenkins)       echo "jenkins" ;;
+    tekton)        echo "tekton tekton-pipelines tekton-triggers tekton-dashboard tekton-chains tekton-pruner tekton-pac tekton-pipeline-as-code" ;;
+    githubactions) echo "githubactions arc-controller arc-runner-scale-set" ;;
+    argoworkflows) echo "argoworkflows argoworkflows-controller argoworkflows-pipeline-as-code argo-events" ;;
+  esac
+}
+_j2026_engine_namespaces() {
+  case "$1" in
+    jenkins)       echo "${J2026_JENKINS_NAMESPACE:-jenkins}" ;;
+    tekton)        echo "${J2026_TEKTON_NAMESPACE:-tekton-pipelines} ${J2026_TEKTON_PIPELINE_NAMESPACE:-tekton-ci} tekton-chains pipelines-as-code" ;;
+    githubactions) echo "${J2026_GHA_NAMESPACE:-arc-systems} ${J2026_GHA_RUNNER_NAMESPACE:-arc-runners}" ;;
+    argoworkflows) echo "${J2026_ARGOWF_NAMESPACE:-argo} ${J2026_ARGOWF_EVENTS_NAMESPACE:-argo-events} ${J2026_ARGOWF_RUN_NAMESPACE:-argo-ci}" ;;
+  esac
+}
+
+# retire_ci_engine <engine> — fully remove a sibling CI engine. Idempotent.
+retire_ci_engine() {
+  local eng="$1" acd="${J2026_ARGOCD_NAMESPACE:-argocd}" app ns neg
+  local apps namespaces present=0 a n
+  apps="$(_j2026_engine_apps "$eng")"; namespaces="$(_j2026_engine_namespaces "$eng")"
+  [[ -n "${apps}" ]] || { log_warn "retire_ci_engine: unknown engine '${eng}'"; return 0; }
+  for a in ${apps};       do kubectl get application "$a" -n "$acd" >/dev/null 2>&1 && { present=1; break; }; done
+  for n in ${namespaces}; do [[ $present -eq 1 ]] && break; kubectl get namespace "$n" >/dev/null 2>&1 && present=1; done
+  [[ $present -eq 1 ]] || return 0
+  log_step "Retiring CI engine '${eng}' (apps + namespaces + stuck NEG finalizers)"
+  # 1. delete ALL its ArgoCD Applications (parent app-of-apps + every child)
+  for app in ${apps}; do
+    kubectl delete application "$app" -n "$acd" --ignore-not-found --wait=false 2>/dev/null || true
+  done
+  # 2. per namespace: clear any stuck GKE NEG finalizer (it blocks ns termination),
+  #    then delete the namespace so its routes / services / NEGs / quotas go with it.
+  for ns in ${namespaces}; do
+    kubectl get namespace "$ns" >/dev/null 2>&1 || continue
+    for neg in $(kubectl get svcneg -n "$ns" -o name 2>/dev/null || true); do
+      kubectl patch "$neg" -n "$ns" --type=merge -p '{"metadata":{"finalizers":[]}}' 2>/dev/null \
+        && log_info "  cleared stuck NEG finalizer on ${ns}/${neg}" || true
+    done
+    kubectl delete namespace "$ns" --ignore-not-found --wait=false 2>/dev/null || true
+  done
+}

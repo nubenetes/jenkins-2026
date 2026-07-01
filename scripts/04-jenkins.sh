@@ -17,35 +17,15 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 
-# Engines are mutually exclusive (config ci.engine). Selecting Jenkins retires
-# Tekton if it is present (switching back on a running cluster, or a stale
-# leftover). The symmetric counterpart of 04-tekton.sh retiring Jenkins. The
-# shared microservices are GitOps-managed (ArgoCD), so they survive; only the
-# Tekton control plane / Dashboard / pipeline namespace + its gateway routing
-# are removed. Idempotent / best-effort - the cluster-scoped Tekton CRDs are
-# left dormant (a later switch back to tekton re-applies the controllers).
-if [[ "${J2026_CI_ENGINE}" != "tekton" ]] && \
-   { kubectl get application tekton -n "${J2026_ARGOCD_NAMESPACE}" >/dev/null 2>&1 \
-     || kubectl get namespace "${J2026_TEKTON_NAMESPACE}" >/dev/null 2>&1; }; then
-  log_step "Retiring Tekton if present (ci.engine=jenkins)"
-  # Delete the ArgoCD app-of-apps FIRST so ArgoCD cascade-prunes the Tekton
-  # components and does not re-sync them back. --wait=false keeps teardown moving.
-  kubectl delete application tekton -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false || true
-  if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
-    kubectl delete gcpbackendpolicy "${J2026_GATEWAY_IAP_POLICY_TEKTON}" -n "${J2026_TEKTON_NAMESPACE}" --ignore-not-found
-    kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_TEKTON}" -n "${J2026_TEKTON_NAMESPACE}" --ignore-not-found
-  fi
-  kubectl delete namespace "${J2026_TEKTON_PIPELINE_NAMESPACE}" --ignore-not-found --timeout=3m || true
-  kubectl delete namespace "${J2026_TEKTON_NAMESPACE}" --ignore-not-found --timeout=3m || true
-fi
-
-# Retire the GitHub Actions / ARC and Argo Workflows engines too (the other two alternatives).
-# Delete each app-of-apps so ArgoCD cascade-prunes its controllers, then drop the namespaces.
-log_step "Retiring GitHub Actions / ARC + Argo Workflows if present (ci.engine=jenkins)"
-kubectl delete application githubactions -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false || true
-kubectl delete namespace "${J2026_GHA_NAMESPACE}" "${J2026_GHA_RUNNER_NAMESPACE}" --ignore-not-found --wait=false || true
-kubectl delete application argoworkflows -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found --wait=false || true
-kubectl delete namespace "${J2026_ARGOWF_NAMESPACE}" "${J2026_ARGOWF_EVENTS_NAMESPACE}" --ignore-not-found --wait=false || true
+# Engines are mutually exclusive (config ci.engine). Selecting Jenkins fully
+# retires the other three (Tekton · GitHub Actions/ARC · Argo Workflows) — every
+# ArgoCD app they own (parent app-of-apps + all children), their namespaces, and
+# any stuck GKE NEG finalizer — via the shared, deadlock-proof helper in
+# lib/common.sh. The GitOps-managed microservices are untouched; only the retired
+# engines' control planes / dashboards / CI-run namespaces go. Idempotent.
+retire_ci_engine tekton
+retire_ci_engine githubactions
+retire_ci_engine argoworkflows
 
 # --- compute dynamic banner values and patch them into the Secret ------------
 # Grafana base URL surfaced in the systemMessage banner (jcasc-base.yaml) and
