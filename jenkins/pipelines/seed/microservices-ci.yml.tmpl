@@ -7,8 +7,14 @@ name: microservices-ci
 on:
   push:
     branches: [{{branches}}]      # 'main' (+ 'develop' when the develop track is enabled)
-  pull_request:
-    branches: [main]
+  # SECURITY: there is deliberately NO `pull_request:` trigger. These forks build on
+  # self-hosted ARC runners *inside the cluster*, so a fork PR's `pull_request` run would
+  # execute untrusted PR code (`./mvnw verify`, build plugins, tests) on those in-cluster
+  # runners — a code-execution vector. Dropping the trigger closes it (only `push` by someone
+  # with write access, and the manual `workflow_dispatch` below, can run this). The deploy
+  # steps are ALSO guarded with `github.event_name != 'pull_request'` (defense-in-depth: if a
+  # build-only `pull_request` trigger is ever re-added, it can validate but never deploy).
+  # See docs/404 § "Security: why no pull_request trigger + branch protection".
   # Manual 1-click run from the fork's Actions tab ("Run workflow"). This is a BRANCH-BASED
   # tier model — the branch you pick in "Use workflow from" IS the environment selector:
   # ENV_NAME / TARGET_NS below derive from github.ref_name, so Run workflow -> develop
@@ -127,7 +133,7 @@ jobs:
           fi
 
       - name: Image build & push to GHCR (Jib)
-        if: env.SERVICE_TYPE == 'java'
+        if: env.SERVICE_TYPE == 'java' && github.event_name != 'pull_request'
         run: |
           cd microservices-src; [ -n "$MODULE" ] && [ -f "$MODULE/mvnw" ] && cd "$MODULE"
           export MAVEN_OPTS="-Xmx1024m -XX:+UseG1GC -XX:+ExitOnOutOfMemoryError"
@@ -137,10 +143,11 @@ jobs:
             -Djib.to.auth.password="${{ secrets.REGISTRY_PASSWORD }}" -Djib.serialize=true
 
       - name: Trivy image scan
-        if: env.SERVICE_TYPE == 'java'
+        if: env.SERVICE_TYPE == 'java' && github.event_name != 'pull_request'
         run: docker run --rm aquasec/trivy image --exit-code 0 "$REGISTRY/$SERVICE:$IMAGE_TAG" || true
 
       - name: GitOps image-tag bump (direct push)
+        if: github.event_name != 'pull_request'
         env: { GIT_USER: "${{ secrets.GIT_USERNAME }}", GIT_TOKEN: "${{ secrets.GIT_TOKEN }}" }
         run: |
           set -eu
@@ -157,12 +164,14 @@ jobs:
           git push origin "$BRANCH"    # DIRECT push to main — that repo's main is direct-push by design (see CLAUDE.md)
 
       - name: ArgoCD sync + wait
+        if: github.event_name != 'pull_request'
         run: |
           ARGOCD_TOKEN="$(cat /var/run/secrets/arc-argocd/token 2>/dev/null || echo "${{ env.ARGOCD_TOKEN }}")"
           argocd app sync  "microservices-$ENV_NAME" --auth-token "$ARGOCD_TOKEN" --server argocd-server.{{argocdNamespace}}.svc.cluster.local --insecure || true
           argocd app wait  "microservices-$ENV_NAME" --auth-token "$ARGOCD_TOKEN" --server argocd-server.{{argocdNamespace}}.svc.cluster.local --insecure --timeout 300 || true
 
       - name: Smoke test
+        if: github.event_name != 'pull_request'
         run: |
           curl -fsS --retry 10 --retry-delay 6 --retry-all-errors \
             "http://{{svcName}}.${TARGET_NS}.svc.cluster.local:{{svcPort}}{{svcHealth}}" || echo "smoke retry exhausted (non-fatal)"
