@@ -119,6 +119,41 @@ The develop tier also needs its **cluster side**: the `microservices-develop` na
 provisioned by `Day1.cluster.01-gke` / `Day2.redeploy.06-githubactions` when the develop track
 is on (`develop_track: true`).
 
+## Security: why no `pull_request` trigger + branch protection
+
+ARC runs the build on **self-hosted runners inside your cluster**, which changes the threat
+model versus GitHub-hosted runners. Two controls harden it:
+
+1. **No `pull_request` trigger.** The rendered `microservices-ci.yml` fires only on **`push`**
+   (main/develop) and the manual **`workflow_dispatch`** — never `pull_request`. A fork PR's
+   `pull_request` run would execute **untrusted PR code** (`./mvnw verify`, build plugins,
+   tests) on your in-cluster runners; dropping the trigger closes that vector, so only someone
+   with **write access** (a push, or the 1-click *Run workflow*) can start a run. As
+   defense-in-depth the deploy steps (image push, GitOps bump, ArgoCD sync, smoke) are *also*
+   guarded with `github.event_name != 'pull_request'` — so re-adding a **build-only**
+   `pull_request` trigger later could validate a PR but never deploy it.
+
+2. **Light branch protection on the forks' `main` + `develop`** (both microservices forks):
+   **force-push blocked, deletion blocked**, but **no require-PR and no push restriction.**
+   This is deliberate and mirrors `jenkins-2026-gitops-config`: the seed
+   ([`scripts/06-githubactions-pipelines.sh`](../scripts/06-githubactions-pipelines.sh))
+   **direct-pushes** the rendered workflow to `main` and `develop`, so *require-PR would reject
+   that push and wedge the render* (the `GIT_TOKEN` PAT doesn't bypass). History integrity is
+   protected without breaking the automation.
+
+**Two org-level controls to verify** (GitHub UI — not in this repo):
+
+- **Require approval for all outside collaborators** (*Org → Settings → Actions*) — so a fork PR
+  from a non-member can never auto-run on your runners, even if a `pull_request` trigger is ever
+  re-added.
+- **Runner group → Repository access** scoped to just the two forks (not *All repositories*),
+  since **Allow public repositories** is enabled for them (see the stuck-queued gotcha above).
+
+> **Not yet applied — push restriction.** Restricting *who* may push to `main`/`develop` would add
+> governance, but GitHub branch push-restrictions must allowlist the exact `GIT_TOKEN` account the
+> seed pushes as — otherwise the render is rejected. Low value for a solo maintainer; revisit if the
+> org gains multiple writers.
+
 ## Understanding ARC (newcomers → specialists)
 
 ARC is **GitHub Actions, but the runners live in your cluster**. There is no
