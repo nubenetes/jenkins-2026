@@ -1,125 +1,57 @@
 # Grafana Cloud dashboard exports (optimized) — backup / source of truth
 
-This folder holds the **platform dashboards exported from Grafana Cloud after the Grafana
-Cloud AI assistant optimized them** (layout, queries, panel options, in-panel docs) — the
-backup / source of truth. **Two dashboard schemas live here side by side:**
+This folder is the **backup / source of truth** for the platform dashboards **after the Grafana
+Cloud AI assistant optimized them** (layout, queries, panel options, in-panel docs). For **each of
+the 10 dashboards** it keeps **three files**:
 
-- **v2 schema** — `apiVersion: dashboard.grafana.app/v2`, `kind: Dashboard` (`elements` +
-  `layout`). The AI-optimized exports, the **full set of 10 dashboards**, in **both
-  serializations** (`*.yaml` + `*.json`, identical content). **File name:
-  `dashboard-<epoch>.{json,yaml}`.**
-- **v1 classic model** — `schemaVersion: 42`, `panels[]` + `gridPos`. A classic-model export
-  of **three** dashboards (Argo Workflows CI, GitHub Actions (ARC) CI, Node Auto-Provisioning
-  (Spot)) — the exact model the auto-deployed [`../dashboards/`](../dashboards/) copies use.
-  **File name: `CI-CD _ <Title>-<epoch>.json`.**
-
-> **The file-name prefix tells you the format:** `dashboard-…` = **v2**; `CI-CD _ …` = **v1
-> classic**.
-
-Why keep both: the v2 export is the richest form the AI produces, but **v2 cannot be
-auto-provisioned reliably today** (see [*Format: v1 vs v2, and why auto-import is limited*](#format-v1-vs-v2-and-why-auto-import-is-limited)
-below). So the three dashboards that back a deployed copy *also* carry the v1 classic model —
-what the publish flow actually pushes — while all 10 keep the v2 export for the future gcx/v2
-migration.
-
-## Where they came from
-
-1. The original dashboards (classic-model JSON in [`../dashboards/`](../dashboards/)) were
-   published to Grafana Cloud by [`scripts/07-grafana-dashboards.sh`](../../../scripts/07-grafana-dashboards.sh)
-   via the classic **`POST /api/dashboards/db`** HTTP import.
-2. They were then **deleted in Grafana Cloud, re-imported into a clean Grafana, and optimized +
-   error-corrected by the Grafana Cloud AI assistant** (layout, queries, panel options and the
-   in-panel documentation text).
-3. The optimized result was **exported in the v2 schema (YAML + JSON)** — these files. The first
-   **six** were exported on 2026-06-28 from stack namespace `stacks-1705996`. **Node
-   Auto-Provisioning (Spot)** and **Tekton CI** were redesigned + exported on 2026-06-29, and
-   **Argo Workflows CI** and **GitHub Actions (ARC) CI** on 2026-06-30 — all from `stacks-1707745`
-   (a later stack incarnation; the Terraform-generated slug changes on each rebuild, so a fresh
-   export session lands in a new `stacks-*` namespace).
-4. For the **three** dashboards whose deployed copy was refreshed from the optimized version
-   (Argo Workflows CI, GitHub Actions (ARC) CI, Node Auto-Provisioning), a **v1 classic-model
-   JSON** was *also* exported (`CI-CD _ … .json`) — the source the [`../dashboards/`](../dashboards/)
-   copies are refreshed from.
-
-They are **based on the previous dashboards but substantially more optimized.**
-
-## Format note (why this folder is separate)
-
-| | This folder (`dashboards-cloud-export/`) | [`../dashboards/`](../dashboards/) |
+| Suffix | Schema | What it is |
 |---|---|---|
-| Schema | **v2** (all 10) **+ v1 classic** (3, the `CI-CD _ …` files) | **v1 classic model** (`panels[]` + `gridPos`) |
-| Form | Grafana **resource** (metadata + spec) for v2; dashboard model for the v1 exports | dashboard model, JSON |
-| Role | **immutable backup** of the AI-optimized exports, *as exported* | the dashboards the publish flow renders/pushes |
+| **`.v2.yaml`** | **v2** (`dashboard.grafana.app/v2`, `kind: Dashboard` — `elements` + `layout`) | the AI-optimized export, YAML serialization |
+| **`.v2.json`** | **v2** (same resource) | the AI-optimized export, JSON serialization (identical content to the YAML) |
+| **`.v1.json`** | **v1 classic model** (`schemaVersion: 42`, `panels[]` + `gridPos`) | the same dashboard re-exported in the classic model — the form the deployed copy uses |
 
-The v2 exports' `metadata.name`/`uid` is the dashboard uid — the first six carry the **random ids
-Grafana assigned on re-import** (e.g. `inwtd8q`), while the four newest keep their stable
-`jenkins2026-*` names (`jenkins2026-node-autoprovisioning`, `jenkins2026-tekton-overview`,
-`jenkins2026-argo-workflows-ci`, `jenkins2026-github-actions-ci`). `metadata.namespace` is the
-source stack — i.e. these are *stack-specific snapshots* (spanning `stacks-1705996` and
-`stacks-1707745`), kept verbatim for provenance. They are **not edited**.
+**File naming: `<slug>.<version>.<ext>`**, where `<slug>` is the **same slug as the deployed
+[`../dashboards/<slug>.json`](../dashboards/)** — so all three exports of a dashboard sort together
+and line up 1:1 with the operational copy (e.g. `jenkins-overview.*` ↔ `../dashboards/jenkins-overview.json`).
+The files were canonicalized from Grafana's raw export names (`dashboard-<epoch>.{json,yaml}` for v2,
+`CI-CD _ <Title>-<epoch>.json` for v1); the export epochs live in git history (see [*Provenance*](#provenance)).
 
-## Mapping (title ← file)
+Why keep all three: the **v2** export is the richest form the AI produces, but **v2 can't be
+auto-provisioned reliably today** (see [*Format: v1 vs v2*](#format-v1-vs-v2-and-why-auto-import-is-limited)).
+So the **v1 classic** is what the publish flow actually pushes — kept here as the source the deployed
+copies are refreshed from — while the **v2** is retained for the future gcx/v2 migration.
 
-### v2 exports — all 10 (`dashboard-<epoch>.{json,yaml}`)
+## Inventory — 10 dashboards × 3 formats
 
-| Dashboard | YAML | JSON |
-|---|---|---|
-| CI-CD / Jenkins Controller | [`dashboard-1782669023549.yaml`](dashboard-1782669023549.yaml) | [`dashboard-1782669732187.json`](dashboard-1782669732187.json) |
-| CI-CD / k6 Observability | [`dashboard-1782669069528.yaml`](dashboard-1782669069528.yaml) | [`dashboard-1782669744836.json`](dashboard-1782669744836.json) |
-| CI-CD / Microservices Overview | [`dashboard-1782669097484.yaml`](dashboard-1782669097484.yaml) | [`dashboard-1782669755436.json`](dashboard-1782669755436.json) |
-| CI-CD / PostgreSQL (CloudNativePG) | [`dashboard-1782669127927.yaml`](dashboard-1782669127927.yaml) | [`dashboard-1782669765865.json`](dashboard-1782669765865.json) |
-| CI-CD Frontend RUM (Angular / Faro) | [`dashboard-1782669148583.yaml`](dashboard-1782669148583.yaml) | [`dashboard-1782669775397.json`](dashboard-1782669775397.json) |
-| CI-CD JVM internals (all Java services + Jenkins) | [`dashboard-1782669169211.yaml`](dashboard-1782669169211.yaml) | [`dashboard-1782669785795.json`](dashboard-1782669785795.json) |
-| CI-CD / Node Auto-Provisioning (Spot) | [`dashboard-1782770236821.yaml`](dashboard-1782770236821.yaml) | [`dashboard-1782770232037.json`](dashboard-1782770232037.json) |
-| CI-CD / Tekton CI Observability | [`dashboard-1782777203013.yaml`](dashboard-1782777203013.yaml) | [`dashboard-1782777199433.json`](dashboard-1782777199433.json) |
-| CI-CD / Argo Workflows CI Observability | [`dashboard-1782833394988.yaml`](dashboard-1782833394988.yaml) | [`dashboard-1782833386563.json`](dashboard-1782833386563.json) |
-| CI-CD / GitHub Actions (ARC) CI Observability | [`dashboard-1782848857222.yaml`](dashboard-1782848857222.yaml) | [`dashboard-1782848852874.json`](dashboard-1782848852874.json) |
+Each row is one dashboard; the three columns are its three exports. The deployed (operational) copy is
+[`../dashboards/<slug>.json`](../dashboards/) — same `<slug>` as the file names below.
 
-> Rows 7–8 (`jenkins2026-node-autoprovisioning` / `jenkins2026-tekton-overview`) are the
-> 2026-06-29 exports and rows 9–10 (`jenkins2026-argo-workflows-ci` /
-> `jenkins2026-github-actions-ci`) the 2026-06-30 exports — all from `stacks-1707745`; the
-> first six are the 2026-06-28 set from `stacks-1705996`.
+| Dashboard | uid | v2 YAML | v2 JSON | v1 classic JSON |
+|---|---|---|---|---|
+| CI-CD / Jenkins Controller | `inwtd8q` | [`jenkins-overview.v2.yaml`](jenkins-overview.v2.yaml) | [`jenkins-overview.v2.json`](jenkins-overview.v2.json) | [`jenkins-overview.v1.json`](jenkins-overview.v1.json) |
+| CI-CD / k6 Observability | `inwc64t` | [`k6-smoke-overview.v2.yaml`](k6-smoke-overview.v2.yaml) | [`k6-smoke-overview.v2.json`](k6-smoke-overview.v2.json) | [`k6-smoke-overview.v1.json`](k6-smoke-overview.v1.json) |
+| CI-CD / Microservices Overview | `inwfvww` | [`microservices-overview.v2.yaml`](microservices-overview.v2.yaml) | [`microservices-overview.v2.json`](microservices-overview.v2.json) | [`microservices-overview.v1.json`](microservices-overview.v1.json) |
+| CI-CD / PostgreSQL (CloudNativePG) | `inllvhz` | [`postgres-overview.v2.yaml`](postgres-overview.v2.yaml) | [`postgres-overview.v2.json`](postgres-overview.v2.json) | [`postgres-overview.v1.json`](postgres-overview.v1.json) |
+| CI-CD Frontend RUM (Angular / Faro) | `in7bmb6` | [`rum-frontend.v2.yaml`](rum-frontend.v2.yaml) | [`rum-frontend.v2.json`](rum-frontend.v2.json) | [`rum-frontend.v1.json`](rum-frontend.v1.json) |
+| CI-CD JVM internals (all Java services + Jenkins) | `innrq4f` | [`jvm-internals.v2.yaml`](jvm-internals.v2.yaml) | [`jvm-internals.v2.json`](jvm-internals.v2.json) | [`jvm-internals.v1.json`](jvm-internals.v1.json) |
+| CI-CD / Node Auto-Provisioning (Spot) | `jenkins2026-node-autoprovisioning` | [`node-autoprovisioning.v2.yaml`](node-autoprovisioning.v2.yaml) | [`node-autoprovisioning.v2.json`](node-autoprovisioning.v2.json) | [`node-autoprovisioning.v1.json`](node-autoprovisioning.v1.json) |
+| CI-CD / Tekton CI Observability | `jenkins2026-tekton-overview` | [`tekton-overview.v2.yaml`](tekton-overview.v2.yaml) | [`tekton-overview.v2.json`](tekton-overview.v2.json) | [`tekton-overview.v1.json`](tekton-overview.v1.json) |
+| CI-CD / Argo Workflows CI Observability | `jenkins2026-argo-workflows-ci` | [`argo-workflows-ci.v2.yaml`](argo-workflows-ci.v2.yaml) | [`argo-workflows-ci.v2.json`](argo-workflows-ci.v2.json) | [`argo-workflows-ci.v1.json`](argo-workflows-ci.v1.json) |
+| CI-CD / GitHub Actions (ARC) CI Observability | `jenkins2026-github-actions-ci` | [`github-actions-ci.v2.yaml`](github-actions-ci.v2.yaml) | [`github-actions-ci.v2.json`](github-actions-ci.v2.json) | [`github-actions-ci.v1.json`](github-actions-ci.v1.json) |
 
-### v1 classic-model exports — 3 (`CI-CD _ <Title>-<epoch>.json`)
-
-The **three** dashboards whose deployed [`../dashboards/`](../dashboards/) copy was refreshed from
-the optimized version also ship the **v1 classic model** (`schemaVersion: 42`, `panels[]` +
-`gridPos`) — the exact model the publish flow pushes:
-
-| Dashboard | v1 classic JSON |
-|---|---|
-| CI-CD / Argo Workflows CI Observability | [`CI-CD _ Argo Workflows CI Observability-1782833412678_v1.json`](CI-CD%20_%20Argo%20Workflows%20CI%20Observability-1782833412678_v1.json) |
-| CI-CD / GitHub Actions (ARC) CI Observability | [`CI-CD _ GitHub Actions (ARC) CI Observability-1782848871744.json`](CI-CD%20_%20GitHub%20Actions%20%28ARC%29%20CI%20Observability-1782848871744.json) |
-| CI-CD / Node Auto-Provisioning (Spot) | [`CI-CD _ Node Auto-Provisioning (Spot)-1782897433407.json`](CI-CD%20_%20Node%20Auto-Provisioning%20%28Spot%29-1782897433407.json) |
-
-These are the source for the AI-optimized [`../dashboards/argo-workflows-ci.json`](../dashboards/argo-workflows-ci.json),
-[`../dashboards/github-actions-ci.json`](../dashboards/github-actions-ci.json) and
-[`../dashboards/node-autoprovisioning.json`](../dashboards/node-autoprovisioning.json) refresh. The
-only adaptation needed to make the committed copy portable: rewrite the Grafana Cloud datasource
-uids (`grafanacloud-logs` / `grafanacloud-traces` → the repo's `loki` / `tempo`; a hardcoded
-`grafanacloud-prom` → the `${DS_PROMETHEUS}` template var), then regenerate the `dashboards-azure/`
-/ `dashboards-aws/` variants with their `generate.py`.
-
-> **How a deployed copy is refreshed from an AI-optimized dashboard** (the NAP example, the general
-> recipe): its deployed [`../dashboards/node-autoprovisioning.json`](../dashboards/node-autoprovisioning.json)
-> had lagged behind the AI-optimized v2 export (`dashboard-1782770232037.json`) — still the earlier
-> "lean free-tier slice" (6 panels), missing *Peak Spot nodes*, *Node readiness* and *Node Detail
-> Inventory*. Because the publish flow upserts by `uid` with `overwrite:true`, a manually imported
-> v2 copy gets clobbered on the next publish. Fixed by **round-tripping the live dashboard through
-> the legacy `GET /api/dashboards/uid/…` endpoint** (which returns the classic model even for a v2
-> dashboard), re-portabilizing its datasource ref, and regenerating the azure/aws variants — so the
-> auto-deployed copy now *is* the 9-panel optimized dashboard. The v1 classic JSON in the table above
-> is that same dashboard exported straight from Grafana.
+> The v2 YAML and v2 JSON of a row are the **same v2 resource**, two serializations — pick whichever
+> the tooling prefers. The v1 classic JSON is the **source the deployed `../dashboards/<slug>.json`
+> is refreshed from**.
 
 ## Format: v1 vs v2, and why auto-import is limited
 
-**Which dashboards are which format**
+**Which is which**
 
 | Set | Schema | Files | Auto-provisioned? |
 |---|---|---|---|
-| The 10 AI-optimized exports | **v2** (`dashboard.grafana.app/v2`) | `dashboard-<epoch>.{json,yaml}` (here) | **No** — kept for the future gcx/v2 migration |
-| 3 of them, re-exported classic | **v1 classic** (`schemaVersion 42`) | `CI-CD _ <Title>-<epoch>.json` (here) | Indirectly — they seed [`../dashboards/`](../dashboards/) |
-| The **deployed** dashboards | **v1 classic** | [`../dashboards/*.json`](../dashboards/) | **Yes** — this is what actually ships |
+| The 10 AI-optimized exports | **v2** (`dashboard.grafana.app/v2`) | `<slug>.v2.{yaml,json}` (here) | **No** — kept for the future gcx/v2 migration |
+| The same 10, re-exported classic | **v1 classic** (`schemaVersion 42`) | `<slug>.v1.json` (here) | Indirectly — they seed [`../dashboards/`](../dashboards/) |
+| The **deployed** dashboards | **v1 classic** | [`../dashboards/<slug>.json`](../dashboards/) | **Yes** — this is what actually ships |
 
 **The compatibility problem (today).** There are two ways to push a dashboard to Grafana Cloud, and
 they do **not** accept the same schema:
@@ -147,32 +79,54 @@ API)** is Grafana's strategic direction (declarative, GitOps-style, the format G
 Once `gcx resources push` performs a proper server-side **apply/upsert** for `dashboard.grafana.app/v2`
 (idempotent re-runs, no `409`, correct `resourceVersion` handling), the plan is to **switch the
 `grafana-cloud` branch of `07-grafana-dashboards.sh` back to `gcx login` + `gcx resources push`** of
-these v2 resources and drop the `POST /api/dashboards/db` loop — which is **exactly why the v2 exports
-are kept here verbatim.** Full rationale + migration steps:
+the `.v2.*` resources and drop the `POST /api/dashboards/db` loop — which is **exactly why the v2
+exports are kept here.** Full rationale + migration steps:
 [`docs/301-OBSERVABILITY.md` → *Grafana Cloud dashboard provisioning: HTTP API today, gcx + v2 tomorrow*](../../../docs/301-OBSERVABILITY.md).
-
-> **Node Auto-Provisioning (Spot)** got the same treatment retroactively. Its deployed
-> [`../dashboards/node-autoprovisioning.json`](../dashboards/node-autoprovisioning.json) had lagged
-> behind the AI-optimized v2 export (`dashboard-1782770232037.json`) — it was still the earlier
-> "lean free-tier slice" (6 panels), missing *Peak Spot nodes*, *Node readiness* and *Node Detail
-> Inventory*. Because `07-grafana-dashboards.sh` upserts by uid with `overwrite:true`, a manually
-> imported v2 copy would be clobbered on the next publish. Fixed by **round-tripping the live
-> dashboard through the legacy `GET /api/dashboards/uid/…` endpoint** (which returns the classic
-> model), re-portabilizing its one hardcoded `grafanacloud-prom` datasource ref back to
-> `${DS_PROMETHEUS}`, and regenerating the azure/aws variants — so the auto-deployed copy now *is*
-> the 9-panel optimized dashboard.
 
 ## How these get provisioned
 
-**Today (accurate as of this repo):** [`scripts/07-grafana-dashboards.sh`](../../../scripts/07-grafana-dashboards.sh)
-publishes the classic-model [`../dashboards/*.json`](../dashboards/) — **not** these v2 exports — to
-Grafana Cloud via **`POST /api/dashboards/db`** (`overwrite:true`, keyed by `uid`, into the *CI-CD
-Observability* folder), using the static `GRAFANA_API_KEY`; the `loki`/`tempo` datasource uids are
-rewritten to the Grafana Cloud built-ins at import time. It **does not use `gcx`** (see *Format: v1 vs
-v2* above for why). managed-azure / managed-aws publish their own `-azure`/`-aws` variants through the
-equivalent data-plane API.
+**Today:** [`scripts/07-grafana-dashboards.sh`](../../../scripts/07-grafana-dashboards.sh) publishes the
+classic-model [`../dashboards/*.json`](../dashboards/) — **not** the exports in this folder — to Grafana
+Cloud via **`POST /api/dashboards/db`** (`overwrite:true`, keyed by `uid`, into the *CI-CD Observability*
+folder), using the static `GRAFANA_API_KEY`; the `loki`/`tempo` datasource uids are rewritten to the
+Grafana Cloud built-ins at import time. It **does not use `gcx`** (see *Format: v1 vs v2* above for why).
+managed-azure / managed-aws publish their own `-azure`/`-aws` variants through the equivalent data-plane
+API.
 
-**These files' role:** verbatim backup + the source the deployed copies are refreshed from. Do not
-hand-edit Grafana and expect it to persist — round-trip through git: optimize in Grafana → export
-(v2 here; plus the v1 classic for anything that backs a deployed copy) → refresh
-[`../dashboards/`](../dashboards/) → regenerate the azure/aws variants.
+**These files' role** is backup + the source the deployed copies are refreshed from. To refresh a
+deployed copy from an AI-optimized dashboard (the general recipe, e.g. the NAP/Spot dashboard, which had
+lagged behind at a "lean free-tier slice"): **round-trip the live dashboard through the legacy
+`GET /api/dashboards/uid/<uid>` endpoint** (which returns the classic model even for a v2 dashboard) →
+re-portabilize its datasource uids (`grafanacloud-logs`/`grafanacloud-traces` → `loki`/`tempo`; a
+hardcoded `grafanacloud-prom` → the `${DS_PROMETHEUS}` template var) → save as `../dashboards/<slug>.json`
+→ regenerate the `dashboards-azure/`/`dashboards-aws/` variants with their `generate.py`. Do **not**
+hand-edit Grafana and expect it to persist — round-trip through git.
+
+## Where they came from
+
+1. The original dashboards (classic-model JSON in [`../dashboards/`](../dashboards/)) were published to
+   Grafana Cloud by [`scripts/07-grafana-dashboards.sh`](../../../scripts/07-grafana-dashboards.sh) via the
+   classic `POST /api/dashboards/db` import.
+2. They were then **deleted in Grafana Cloud, re-imported into a clean Grafana, and optimized +
+   error-corrected by the Grafana Cloud AI assistant** (layout, queries, panel options, in-panel docs).
+3. The optimized result was **exported in the v2 schema** (`.v2.yaml` + `.v2.json`) and later **re-exported
+   in the v1 classic model** (`.v1.json`) so the deployed copies can be refreshed from the same optimized
+   source.
+
+They are **based on the previous dashboards but substantially more optimized.**
+
+## Provenance
+
+- **v2 exports (AI-optimized snapshots):** Jenkins / k6 / Microservices / PostgreSQL / RUM / JVM were
+  exported **2026-06-28** from stack `stacks-1705996` — these carry the **random uids Grafana assigned on
+  re-import** (`inwtd8q`, `inwc64t`, `inwfvww`, `inllvhz`, `in7bmb6`, `innrq4f`). Node Auto-Provisioning +
+  Tekton were exported **2026-06-29**, and Argo Workflows + GitHub Actions **2026-06-30**, both from
+  `stacks-1707745` — these keep the stable `jenkins2026-*` uids. (The Terraform-generated stack slug changes
+  on each rebuild, so a fresh export session lands in a new `stacks-*` namespace.)
+- **v1 classic exports:** Argo + GitHub Actions **2026-06-30**; Node Auto-Provisioning + the other seven
+  **2026-07-01**.
+- These are **stack-specific snapshots kept verbatim** — the Grafana Cloud `grafanacloud-*` datasource uids
+  are left intact (the deployed [`../dashboards/`](../dashboards/) copies are the portabilized versions,
+  using `loki`/`tempo`/`${DS_PROMETHEUS}`). Filenames were canonicalized to `<slug>.<version>.<ext>`; the
+  original Grafana export names and their epochs remain in git history. Do not hand-edit these — re-export
+  from Grafana and round-trip through git.
