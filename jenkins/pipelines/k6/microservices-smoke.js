@@ -304,6 +304,30 @@ export function handleSummary(data) {
       thr.push(`  [${ok === false ? 'FAIL' : 'PASS'}] ${name}: ${expr}`);
     }
   }
+  // Per-check pass/fail tree. Defining handleSummary SUPPRESSES k6's own
+  // end-of-test summary — which is exactly what prints the ✓/✗ breakdown per
+  // named check. Without reproducing it here the CI log shows only the aggregate
+  // "44/48 passed" and NOT which flow broke, so you'd have to crack open
+  // k6-summary.json to find it. Walk root_group (+ nested groups) and mark each
+  // named check; this text then shows up in every engine's log (all four run
+  // this same script and echo its stdout).
+  const checkLines = (group, indent) => {
+    const lines = [];
+    for (const c of group.checks || []) {
+      const fails = c.fails || 0;
+      const total = (c.passes || 0) + fails;
+      lines.push(
+        `  ${indent}[${fails === 0 ? 'PASS' : 'FAIL'}] ${c.name}: ${c.passes || 0}/${total}` +
+        (fails ? `  <-- ${fails} failed` : '')
+      );
+    }
+    for (const g of group.groups || []) {
+      if (g.name) lines.push(`  ${indent}# ${g.name}`);
+      lines.push(...checkLines(g, indent + '  '));
+    }
+    return lines;
+  };
+  const checks = checkLines(data.root_group || {}, '');
   const passed = val('checks', 'passes');
   const stdout =
     [
@@ -313,6 +337,8 @@ export function handleSummary(data) {
       `requests: ${val('http_reqs', 'count')} total, ${(val('http_req_failed', 'rate') * 100).toFixed(2)}% failed`,
       `latency:  avg=${Math.round(val('http_req_duration', 'avg'))}ms p95=${Math.round(val('http_req_duration', 'p(95)'))}ms`,
       `volume:   ${val('iterations', 'count')} iters, peak ${val('vus_max', 'value')} VUs`,
+      '--- checks (per flow) ---',
+      ...(checks.length ? checks : ['  (none)']),
       '--- thresholds ---',
       ...(thr.length ? thr : ['  (none)']),
       '====================================',
