@@ -79,6 +79,12 @@ jobs:
           }
           EOF
 
+      - name: Clear stale Terraform state lock
+        uses: ./.github/actions/tf-remove-stale-lock
+        with:
+          bucket: ${{ secrets.TF_STATE_BUCKET }}
+          prefix: jenkins-2026/grafana-cloud-stack
+
       - name: Terraform init
         working-directory: terraform/grafana-cloud-stack
         run: |
@@ -92,6 +98,23 @@ jobs:
               fi
             }
           done
+
+      - name: Guard — grafana-cloud-token must be destroyed first
+        run: |
+          # Ordering / rebuild-safety guard for the STANDALONE dispatch. The separate
+          # terraform/grafana-cloud-token state holds cluster-scoped resources whose
+          # state embeds THIS stack's numeric ID (looked up by slug). It is destroyed by
+          # Decom.cluster.01-gke, which MUST run before this stack. Destroying the stack
+          # while that token state still references it leaves a dangling policy; a later
+          # Day0.infra.02 then mints a fresh stack (new slug) and Day1's token apply
+          # reconciles against the deleted stack's IDs → collision. The umbrella
+          # Decom.infra.00-all enforces this via `needs: cluster`; this guards a manual run.
+          TOKEN_STATE="gs://${{ secrets.TF_STATE_BUCKET }}/jenkins-2026/grafana-cloud-token/default.tfstate"
+          if gsutil cat "${TOKEN_STATE}" 2>/dev/null | jq -e '(.resources // []) | length > 0' >/dev/null 2>&1; then
+            echo "::error::grafana-cloud-token state still holds resources — it references THIS stack. Run Decom.cluster.01-gke first (it destroys the token), then re-run Decom.infra.02. Aborting to avoid a dangling-token / stale-stack-ID collision."
+            exit 1
+          fi
+          echo "grafana-cloud-token state is empty or absent — safe to destroy the stack."
 
       - name: Terraform destroy (disable delete protection, then destroy)
         working-directory: terraform/grafana-cloud-stack

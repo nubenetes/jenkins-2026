@@ -1,0 +1,27 @@
+name: "Remove stale Terraform state lock"
+description: >
+  Deletes a stale GCS-backend `.tflock` object left behind by a cancelled,
+  killed, or timed-out run, so the next `terraform apply`/`destroy` can acquire
+  the lock instead of wedging on "Error acquiring the state lock" until a human
+  force-unlocks. Idempotent; removes ONLY the lock object, never the state file.
+  Run after gcloud auth is configured and before the terraform apply/destroy step.
+  Pairs with the per-state-prefix `concurrency` groups (which prevent two live
+  runs contending) to fully close the lock-wedge path across every state module.
+inputs:
+  bucket:
+    description: "GCS Terraform-state bucket name (no gs:// prefix)."
+    required: true
+  prefix:
+    description: "Terraform state prefix, e.g. jenkins-2026/grafana-cloud-stack."
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        lock="gs://${{ inputs.bucket }}/${{ inputs.prefix }}/default.tflock"
+        if gsutil rm -f "${lock}" 2>/dev/null; then
+          echo "Removed a stale state lock: ${lock}"
+        else
+          echo "No stale state lock at ${lock} (ok)."
+        fi

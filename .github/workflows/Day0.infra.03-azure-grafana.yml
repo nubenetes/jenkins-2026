@@ -101,6 +101,12 @@ jobs:
           json="$(jq -nc --arg ids "${ADMIN_OBJECT_IDS}" '$ids | split(",") | map(gsub("^\\s+|\\s+$";"")) | map(select(length > 0))')"
           echo "json=${json}" >> "${GITHUB_OUTPUT}"
 
+      - name: Clear stale Terraform state lock
+        uses: ./.github/actions/tf-remove-stale-lock
+        with:
+          bucket: ${{ secrets.TF_STATE_BUCKET }}
+          prefix: jenkins-2026/azure-managed-grafana
+
       - name: Terraform init
         working-directory: terraform/azure-managed-grafana
         run: |
