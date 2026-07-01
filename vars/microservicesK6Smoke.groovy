@@ -128,6 +128,16 @@ def printK6Summary() {
   def summary = readJSON(file: 'k6-summary.json')
   def metrics = summary.metrics ?: [:]
 
+  // Prefer the scenario-scoped sub-metric for the headline error/latency numbers
+  // (the setup() readiness-gate warm-up is excluded from it, matching the
+  // scoped thresholds), falling back to the top-level metric for older
+  // summaries. The scoped metric also carries the threshold, so thresholdStatus
+  // reports PASS/FAIL correctly off it.
+  def scen = { String name ->
+    def k = "${name}{scenario:microservices}"
+    metrics[k]?.values != null ? metrics[k] : metrics[name]
+  }
+
   // ---- 1. SUMMARY (basic, at-a-glance) -------------------------------------
   def lines = ['', '========== k6 run analysis ==========', '--- SUMMARY ---']
 
@@ -155,7 +165,7 @@ def printK6Summary() {
     }
   }
 
-  def httpReqFailed = metrics.http_req_failed
+  def httpReqFailed = scen('http_req_failed')
   if (httpReqFailed?.values != null) {
     lines << "http_req_failed:   ${pct(numOf(httpReqFailed.values.rate))} failed   [${thresholdStatus(httpReqFailed)}]"
   }
@@ -166,7 +176,7 @@ def printK6Summary() {
   }
 
   // ---- 2. LATENCY (expert: full percentile spread) -------------------------
-  def dur = metrics.http_req_duration
+  def dur = scen('http_req_duration')
   if (dur?.values != null) {
     lines << ''
     lines << '--- LATENCY (http_req_duration, ms)  [' + thresholdStatus(dur) + '] ---'
