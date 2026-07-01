@@ -691,17 +691,31 @@ flowchart TB
 - **L0 · Day0 root-of-trust** — human-run, *never* torn down: WIF/OIDC keyless trust · the GCS Terraform-state bucket · the permanent DNS zone.
 - **L1 · Provisioning / IaC** — Terraform (one state bucket, per-module prefixes).
 - **L2 · GCP edge** — DNS → L7 LB → **IAP** → Gateway.
-- **L3 · Control plane** — ArgoCD (always the CD engine) + the chosen CI engine (**1 of 4**: Jenkins · Tekton · GitHub Actions/ARC · Argo Workflows) + operators + the imperative *push* lane ArgoCD doesn't own.
+- **L3 · Control plane** —
+  - **ArgoCD** — always the CD/GitOps engine.
+  - the **chosen CI engine** — 1 of 4 (Jenkins · Tekton · GitHub Actions/ARC · Argo Workflows); see *Pluggable choices* below.
+  - **operators** — External Secrets · OTel · CNPG · Argo Rollouts.
+  - the imperative **push** lane ArgoCD doesn't own.
 - **L4 · Data / runtime plane** — the JHipster gateway + microservice + CloudNative-PG, on the static-vs-NAP node substrate.
 - **L5 · Observability pipeline** — the OpenTelemetry collectors.
 - **L6 · Backend store** — the one active backend.
 
-**Colours & pluggable choices:**
+**Colours:**
 
-- **Fill colour = component *type*** — each node & subgraph is tinted by type: external · Day0 root-of-trust · L1 IaC · edge · control plane · data/runtime · develop tier · node substrate · imperative-push · observability · shared CI contract · Secret Manager, **plus** the **four CI-engine hues** (Jenkins · Tekton · GHA/ARC · Argo Workflows) grouped in the **pick-ONE** `CIENG` box, and **four obs-backend hues** (oss · grafana-cloud · azure · aws) grouped in the **pick-ONE** `BK` box. Every subgraph carries its own tint, so no two containers share one colour (the old diagram's flaw).
-- **CI engine** (one of **four** — Jenkins default · Tekton · **GitHub Actions (ARC)** · **Argo Workflows**; all share the same **10-stage contract** + the shared **`resources/patch-app-source.sh`** + `services.yaml` registry) and **observability backend** (oss / grafana-cloud / managed-azure / managed-aws) are *mutually exclusive* — exactly one of each per cluster, set in `config/config.yaml` (or the `Day1.cluster.01` inputs), switched deterministically. **GitHub Actions/ARC has no in-cluster UI** (github.com is the UI) and triggers **branch-based** on a push to the fork's `main`/`develop`; Jenkins / Tekton / Argo Workflows each expose an in-cluster UI behind IAP. The three external obs backends are decoupled, persistent, **keyless** (WIF/OIDC) Day0 resources.
-- **Secrets** — `imperative` by default, or pushed to **GCP Secret Manager** + synced by the **External Secrets Operator** (`secrets.backend=eso`, keyless WIF).
-- **Lean `develop` tier** — optional (`microservices.developTrackEnabled`, **off by default**): a non-HA `microservices-develop` namespace alongside `stable`, folded into the **L4** label, into the same observability stack.
+- **Fill colour = component *type*.** Each node & subgraph is tinted by type — external · Day0 root-of-trust · L1 IaC · edge · control plane · data/runtime · develop tier · node substrate · imperative-push · observability · shared CI contract · Secret Manager. Every subgraph carries its own tint, so no two containers share one colour (the old diagram's flaw).
+  - The **four CI engines** each get a distinct hue, grouped in the pick-ONE `CIENG` box.
+  - The **four observability backends** each get a distinct hue, grouped in the pick-ONE `BK` box.
+
+**Pluggable choices** — each deterministic & idempotent, exactly **one value per cluster**, set in `config/config.yaml` (or the `Day1.cluster.01` inputs) and switched on a re-run. (**ArgoCD is always the CD/GitOps engine** — not pluggable.)
+
+1. **CI engine** (`ci.engine`) — **one of four**, mutually exclusive; all four share the same **10-stage contract** + the shared **`resources/patch-app-source.sh`** + the `services.yaml` registry:
+   - **Jenkins** *(default)* — in-cluster UI behind IAP.
+   - **Tekton** — in-cluster Dashboard behind IAP.
+   - **GitHub Actions (ARC)** — **no in-cluster UI** (github.com is the UI); triggers **branch-based** on a push to the fork's `main` / `develop`.
+   - **Argo Workflows** — in-cluster Argo Server UI behind IAP.
+2. **Observability backend** (`observability.mode`) — **one of four**: `oss` (in-cluster) · `grafana-cloud` · `managed-azure` · `managed-aws`. The three external ones are decoupled, persistent, **keyless** (WIF/OIDC) Day0 resources.
+3. **Secrets backend** (`secrets.backend`) — `imperative` *(default)*, or `eso` → pushed to **GCP Secret Manager** + synced by the **External Secrets Operator** (keyless WIF).
+4. **Lean `develop` tier** (`microservices.developTrackEnabled`, **off by default**) — a non-HA `microservices-develop` namespace alongside `stable`, folded into **L4**, sharing the same observability stack.
 
 For the full component diagram, microservices database architecture (CloudNative-PG HA), and CI/CD flow see [201. Architecture](./docs/201-ARCHITECTURE.md). For the Grafana Cloud Observability apps (App Observability, Synthetic Monitoring, Profiles — grafana-cloud only) see [301. Observability](./docs/301-OBSERVABILITY.md#grafana-cloud-observability-apps--status--recommendation).
 
