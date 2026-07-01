@@ -311,8 +311,10 @@ flowchart LR
 
   EXP -->|grafana-cloud| GC["Grafana Cloud<br/>Mimir · Tempo · Loki"]
   EXP -->|oss| OSS["in-cluster<br/>Prometheus · Tempo · Loki"]
+  EXP -->|managed-azure| AZ["Azure Monitor<br/>App Insights · Log Analytics"]
+  EXP -->|managed-aws| AWS["AMP · X-Ray · CloudWatch"]
 
-  GC & OSS --> GRA["Grafana<br/>dashboards + Explore"]
+  GC & OSS & AZ & AWS --> GRA["Grafana<br/>dashboards + Explore"]
 ```
 
 </details>

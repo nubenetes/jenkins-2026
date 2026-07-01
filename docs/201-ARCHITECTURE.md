@@ -297,17 +297,17 @@ The [Component Diagram](#component-diagram) below drills into the Jenkins / micr
 ## Component Diagram
 
 <details>
-<summary>📊 Component diagram — Jenkins / microservices / observability namespaces</summary>
+<summary>📊 Component diagram — CI engine / microservices / observability namespaces</summary>
 
 ```mermaid
 flowchart TD
-    repo["github.com/nubenetes/jenkins-2026<br/>JCasC, Jenkinsfile, shared library,<br/>Helm charts, seed/services.yaml"]
+    repo["github.com/nubenetes/jenkins-2026<br/>vars/ shared library + MicroservicesPipeline.groovy,<br/>seed/services.yaml, resources/patch-app-source.sh,<br/>Helm charts, tekton/ + argoworkflows/ + .github pipelines"]
 
-    subgraph jenkins_ns["namespace: jenkins"]
-        jenkins["Jenkins controller (jenkinsci/helm-charts + JCasC)<br/>- security, global shared library, OTel exporter, seed jobs<br/>- seed jobs (Job DSL) generate stable pipeline jobs at the root:<br/>  (gateway, jhipstersamplemicroservice, microservices-k6-smoke)<br/>- each run uses a Kubernetes pod agent<br/>  (maven / node / docker:dind / helm+kubectl / k6 containers)"]
+    subgraph ci_ns["namespace: the active CI engine (ci.engine)<br/>jenkins · tekton-* · arc-systems/arc-runners · argo/argo-events/argo-ci"]
+        ci["CI engine — one of four (mutually exclusive)<br/>Jenkins (default) · Tekton · GitHub Actions/ARC · Argo Workflows<br/>- shared 10-stage contract + services.yaml + patch-app-source.sh<br/>- builds gateway / jhipstersamplemicroservice, runs microservices-k6-smoke<br/>- each run uses a pod agent<br/>  (maven / node / docker:dind / helm+kubectl / k6 containers)"]
     end
 
-    repo -->|"global pipeline library +<br/>seed job (checkout scm)"| jenkins
+    repo -->|"shared library + pipeline-as-code<br/>(checkout scm)"| ci
 
     subgraph microservices_ns["namespace: microservices (stable, tracks main)"]
         microservices["gateway (Spring Boot + Angular UI),<br/>jhipstersamplemicroservice (Spring Boot backend)"]
@@ -317,8 +317,8 @@ flowchart TD
         microservices_dev["same services · deployment.environment=develop<br/>lean CNPG: 1 instance · no backups"]
     end
 
-    jenkins -->|"helm upgrade --install<br/>(per-service image tag)"| microservices
-    jenkins -. "develop track on (optional)" .-> microservices_dev
+    ci -->|"image-tag bump → ArgoCD syncs<br/>(per-service, via gitops-config)"| microservices
+    ci -. "develop track on (optional)" .-> microservices_dev
     classDef optTier stroke-dasharray:5 5;
     class microservices_dev_ns,microservices_dev optTier;
 
@@ -327,17 +327,20 @@ flowchart TD
         k8s_mon["k8s-monitoring (Grafana Alloy Operator & StatefulSet)<br/>- Scrapes cluster metrics (kube-state-metrics)<br/>- Scrapes host metrics (node-exporter)<br/>- Collects cluster events"]
     end
 
-    jenkins -->|OTLP| otel
+    ci -->|OTLP| otel
     microservices -->|"OTLP (traces / metrics / logs)"| otel
 
     gke["GKE Cluster Infrastructure<br/>(Nodes, Kubelet, Events)"] --> k8s_mon
 
-    grafana_cloud["Grafana Cloud<br/>OTLP gateway -> Mimir, Loki, Tempo + Grafana"]
-    oss["In-cluster: kube-prometheus-stack<br/>(Prometheus + Grafana) + Loki + Tempo"]
+    subgraph backends["observability.mode — one of four (mutually exclusive)"]
+        oss["oss<br/>In-cluster kube-prometheus-stack<br/>(Prometheus + Grafana) + Loki + Tempo"]
+        grafana_cloud["grafana-cloud<br/>OTLP gateway -> Mimir, Loki, Tempo + Grafana"]
+        azure["managed-azure<br/>Azure Monitor / App Insights + Managed Grafana"]
+        aws["managed-aws<br/>X-Ray + CloudWatch + Amazon Managed Prometheus/Grafana"]
+    end
 
-    otel -->|"observability.mode:<br/>grafana-cloud"| grafana_cloud
-    otel -->|"observability.mode:<br/>oss"| oss
-    k8s_mon -->|"OTLP/HTTP"| grafana_cloud
+    otel -->|"exactly ONE active"| oss & grafana_cloud & azure & aws
+    k8s_mon -->|"OTLP/HTTP (grafana-cloud mode only)"| grafana_cloud
 ```
 
 </details>
@@ -421,12 +424,13 @@ The CloudNative-PG Operator automatically provisions a basic-auth secret `postgr
 sequenceDiagram
     participant Dev as Developer
     participant GH_Infra as GitHub (Infra Repo)
-    participant J as Jenkins (CI)
+    participant J as CI engine (one of four)
     participant GH_GitOps as GitHub (GitOps Config Repo)
     participant ACD as ArgoCD (CD)
     participant K8s as Kubernetes (GKE)
     participant Obs as Observability (Grafana)
 
+    Note over J: Jenkins · Tekton · GitHub Actions/ARC · Argo Workflows<br/>same 10-stage contract + services.yaml + patch-app-source.sh
     Dev->>GH_Infra: Push Code / Change
     J->>J: Build & Test
     J->>J: Push Image to GHCR
@@ -594,7 +598,7 @@ flowchart TD
     subgraph PULL["GitOps plane (ArgoCD reconciles — pull, self-heal, prune)"]
         CHARTS["charts: Jenkins · ESO · Headlamp · Rollouts"]
         FLEET["AppSet: microservices (per tier)"]
-        AOA["app-of-apps: postgres · observability-oss · tekton"]
+        AOA["app-of-apps: postgres · observability-oss<br/>+ active CI engine (tekton / githubactions / argoworkflows)"]
         PCFG["platform-config: static RBAC"]
     end
     subgraph RUNTIME["Imperative, AFTER ArgoCD is up (runtime-derived)"]
