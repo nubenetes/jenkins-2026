@@ -1,5 +1,14 @@
 name: "Decom.infra.00 Everything (cluster + all backends, umbrella)"
 
+# Rebuild-safety: only one Everything-umbrella teardown at a time. The child
+# per-module Decom.infra.0N runs carry their own state-prefix concurrency
+# groups, so a standalone dispatch of a child still serializes against this
+# umbrella's call of it. cancel-in-progress:false -> never cancel mid-destroy.
+concurrency:
+  group: jenkins-2026-decom-umbrella
+  cancel-in-progress: false
+
+
 # Opt-in convenience umbrella: tears down EVERYTHING in one dispatch — the GKE
 # cluster AND every persistent observability backend — so a PoC never leaves a
 # forgotten, billed backend behind after switching observability.mode around

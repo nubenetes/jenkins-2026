@@ -1,5 +1,14 @@
 name: "Decom.infra.02 Grafana Cloud"
 
+# Rebuild-safety: serialize the paired Day0/Decom.infra.02 grafana-cloud runs on the ONE shared
+# grafana-cloud-stack Terraform state prefix so two same-module runs never contend for
+# its state lock. cancel-in-progress:false -> never cancel an in-flight
+# apply/destroy (a cancelled run would strand the lock).
+concurrency:
+  group: jenkins-2026-tfstate-grafana-cloud-stack
+  cancel-in-progress: false
+
+
 # Manually-triggered teardown: destroys terraform/grafana-cloud-stack to remove
 # the Grafana Cloud stack (the org/free tier is untouched). The slug is read from
 # state. The provider defaults delete_protection to true, so a stack must have

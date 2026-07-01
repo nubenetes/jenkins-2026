@@ -224,11 +224,16 @@ ${agentNodeScheduling}
 
         environment {
             REGISTRY      = "${env.MICROSERVICES_REGISTRY ?: 'ghcr.io/nubenetes/jenkins-2026-microservices'}"
-            // Immutable, traceable tag: <branch>-<build#> (e.g. develop-42) instead of a
-            // mutable branch tag that every build overwrites. Each build publishes a unique
-            // tag, GitOps Update pins values-<env>.yaml to it, and ArgoCD deploys that exact
-            // build — so a deploy is reproducible and rollback = repoint to a prior tag.
-            // BUILD_NUMBER is available at pipeline start (no checkout needed).
+            // Immutable, traceable tag: <branch>-<build#>-<app-sha> (e.g.
+            // develop-42-a1b2c3d4). The initial value here is <branch>-<build#>
+            // (BUILD_NUMBER is available at pipeline start); the Checkout stage appends
+            // the app-source commit SHA (git plugin's GIT_COMMIT) once it is known.
+            // REBUILD-SAFETY: Jenkins home is an ephemeral PVC, so BUILD_NUMBER resets to
+            // 1 on a rebuild — <branch>-<build#> alone would re-mint tags that already
+            // exist in the persistent ghcr from a prior incarnation and mutably overwrite
+            // them, breaking reproducible rollback. The SHA suffix makes the tag globally
+            // unique across incarnations. (Tekton is already immune via a random run
+            // suffix.) GitOps Update pins values-<env>.yaml to the final tag.
             IMAGE_TAG     = "${cfg.gitBranch}-${env.BUILD_NUMBER}"
             IMAGE         = "${env.REGISTRY}/${cfg.serviceName}:${env.IMAGE_TAG}"
             OTEL_SERVICE_NAME = "jenkins-pipeline-${cfg.serviceName}"
@@ -254,6 +259,15 @@ ${agentNodeScheduling}
                             ],
                         ])
                         script {
+                            // Rebuild-safety (see IMAGE_TAG comment): append the app-source
+                            // commit SHA so the tag is unique across Jenkins incarnations even
+                            // after BUILD_NUMBER resets. GIT_COMMIT is set by the git plugin from
+                            // the checkout above; fall back to <branch>-<build#> if absent.
+                            if (env.GIT_COMMIT?.trim()) {
+                                env.IMAGE_TAG = "${cfg.gitBranch}-${env.BUILD_NUMBER}-${env.GIT_COMMIT.take(8)}"
+                                env.IMAGE = "${env.REGISTRY}/${cfg.serviceName}:${env.IMAGE_TAG}"
+                                echo "Image tag (rebuild-safe): ${env.IMAGE_TAG}"
+                            }
                             if (cfg.serviceName == 'gateway') {
                                 // SINGLE SOURCE OF TRUTH: the shared per-app source patch
                                 // (resources/patch-app-source.sh) converts the gateway from

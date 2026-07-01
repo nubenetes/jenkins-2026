@@ -75,6 +75,11 @@ resource "google_service_account" "nodes" {
   project      = var.project_id
   account_id   = "${var.cluster_name}-nodes"
   display_name = "jenkins-2026 GKE node service account"
+  # Rebuild-safety: a GSA deleted by `terraform destroy` is soft-deleted
+  # (tombstoned) ~30 days; a Decom+Day1 within that window recreates the SAME
+  # account_id. Adopt the tombstone (provider auto-undelete) instead of 409-ing
+  # "already exists" on a partial/manual prior delete. See docs/902.
+  create_ignore_already_exists = true
 }
 
 resource "google_project_iam_member" "nodes_roles" {
@@ -103,6 +108,9 @@ resource "google_service_account" "eso" {
   project      = var.project_id
   account_id   = "eso-secret-reader"
   display_name = "jenkins-2026 External Secrets Operator (Secret Manager reader)"
+  # Rebuild-safety: adopt the ~30-day soft-delete tombstone on a Decom+Day1
+  # within the window instead of 409-ing on the fixed account_id. See docs/902.
+  create_ignore_already_exists = true
 }
 
 resource "google_project_iam_member" "eso_secret_accessor" {
@@ -361,6 +369,9 @@ resource "google_service_account" "pg_backups" {
   project      = var.project_id
   account_id   = "${var.cluster_name}-pg-backups"
   display_name = "jenkins-2026 CNPG Postgres backups (GCS writer)"
+  # Rebuild-safety: adopt the ~30-day soft-delete tombstone on a Decom+Day1
+  # within the window instead of 409-ing on the fixed account_id. See docs/902.
+  create_ignore_already_exists = true
 }
 
 # storage.admin (bucket-scoped), NOT objectAdmin: barman-cloud-check-wal-archive does a

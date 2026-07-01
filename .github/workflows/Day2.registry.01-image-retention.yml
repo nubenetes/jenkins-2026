@@ -49,8 +49,15 @@ jobs:
           owner: nubenetes
           package-name: "jenkins-2026-microservices/${{ matrix.service }}"
           package-type: container
-          # Keep the N most-recent versions; delete older tagged + untagged ones.
+          # REBUILD-SAFETY: only prune UNTAGGED (dangling) manifests — NEVER a tagged
+          # version. A fresh Day1 deploys the image tag pinned in the persistent
+          # jenkins-2026-gitops-config repo WITHOUT rebuilding (the seed only creates
+          # jobs), so that tag must still exist in ghcr; an age/count prune of a
+          # still-pinned tag → ImagePullBackOff on rebuild. Tags therefore never expire
+          # here (ghcr is free for public packages). If bounded growth is ever needed,
+          # replace this with a deployment-aware allowlist of the pins in
+          # values-{stable,develop}.yaml rather than an age/count sweep of tags.
+          delete-only-untagged-versions: true
+          # Bounds how many untagged/dangling manifests (left by overwrites/retags) survive.
           min-versions-to-keep: ${{ inputs.keep || '30' }}
-          # Also sweep untagged (orphaned) layers that overwrites/retags leave behind.
-          delete-only-untagged-versions: false
           dry-run: ${{ inputs.dry_run || false }}

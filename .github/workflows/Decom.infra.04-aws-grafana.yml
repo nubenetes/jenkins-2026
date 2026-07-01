@@ -1,5 +1,14 @@
 name: "Decom.infra.04 AWS managed-grafana"
 
+# Rebuild-safety: serialize the paired Day0/Decom.infra.04 aws runs on the ONE shared
+# aws-managed-grafana Terraform state prefix so two same-module runs never contend for
+# its state lock. cancel-in-progress:false -> never cancel an in-flight
+# apply/destroy (a cancelled run would strand the lock).
+concurrency:
+  group: jenkins-2026-tfstate-aws-managed-grafana
+  cancel-in-progress: false
+
+
 # Manually-triggered setup teardown: destroys terraform/aws-managed-grafana,
 # removing the persistent AWS backend (Amazon Managed Grafana, Amazon Managed
 # Service for Prometheus, the CloudWatch log group, the GKE->AWS OIDC provider

@@ -1,5 +1,14 @@
 name: "Day0.infra.02 Grafana Cloud"
 
+# Rebuild-safety: serialize the paired Day0/Decom.infra.02 grafana-cloud runs on the ONE shared
+# grafana-cloud-stack Terraform state prefix so two same-module runs never contend for
+# its state lock. cancel-in-progress:false -> never cancel an in-flight
+# apply/destroy (a cancelled run would strand the lock).
+concurrency:
+  group: jenkins-2026-tfstate-grafana-cloud-stack
+  cancel-in-progress: false
+
+
 # Applies terraform/grafana-cloud-stack to create the Grafana Cloud stack that
 # observability_mode: grafana-cloud sends OpenTelemetry data to. The stack slug
 # is GENERATED (random suffix, persisted in state), so re-applying is a no-op and

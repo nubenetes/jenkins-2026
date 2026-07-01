@@ -1,5 +1,14 @@
 name: "Day0.infra.01 Gateway"
 
+# Rebuild-safety: serialize the paired Day0/Decom.infra.01 gateway runs on the ONE shared
+# gateway-bootstrap Terraform state prefix so two same-module runs never contend for
+# its state lock. cancel-in-progress:false -> never cancel an in-flight
+# apply/destroy (a cancelled run would strand the lock).
+concurrency:
+  group: jenkins-2026-tfstate-gateway-bootstrap
+  cancel-in-progress: false
+
+
 # Manually-triggered, one-time setup step: applies terraform/gateway-bootstrap
 # to create (or, on re-runs, confirm) the persistent GCP resources that public
 # access to Jenkins/Microservices/Headlamp depends on - a global static IP and a
