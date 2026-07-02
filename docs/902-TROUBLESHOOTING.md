@@ -358,6 +358,37 @@ testing. Apply with a **Day1 re-run** or an ArgoCD hard-refresh of the `oss-loki
 Application; the fix is config-only (no schema/data migration, single-binary
 Loki restarts with the new limit).
 
+## `Day2.scale.01 Pause` hangs on the node-pool resize (CNPG PDB blocks it)
+
+**Symptom:** the Pause workflow disables autoscaling/autoRepair/autoUpgrade and
+force-drains fine, but the final `gcloud container clusters resize --num-nodes 0`
+step runs for ~15 min and then **fails with exit 1** (`Operation ... is still
+running`), while server-side the `SET_NODE_POOL_SIZE` operation stays `RUNNING`
+far longer, the MIG `targetSize` never drops, and `kubectl get pods -o wide`
+shows CNPG Postgres pods still `Running` on a node that was **not** in the
+original node list. (The `gcloud` client gives up at its own ~15 min timeout; the
+GKE operation itself keeps going — GKE's resize drain honours PDBs for up to ~1h
+before forcing through, so it is a long stall, not a true infinite hang.)
+
+**Cause:** the resize's OWN internal node drain (unlike the workflow's earlier
+`--disable-eviction` force-drain) **respects PodDisruptionBudgets**. CNPG creates
+`postgres-*` / `postgres-*-primary` PDBs with `ALLOWED DISRUPTIONS: 0`. The
+workflow force-drained a one-shot `kubectl get nodes` snapshot, but a node can
+appear **after** that snapshot — e.g. an auto-repair already in flight when the
+workflow disabled autoRepair is **not cancelled** ([GKE docs](https://docs.cloud.google.com/kubernetes-engine/docs/how-to/node-auto-repair))
+and completes on its own, re-creating a node onto which CNPG pods reschedule. That
+node was never force-drained, so the resize's PDB-respecting drain stalls on it.
+This is the exact bug `scripts/down.sh` already fixed for Decom (a stuck CNPG pod
+kept a `DELETE_NODE_POOL` op `RUNNING` for hours, run 28202019543).
+
+**Fix:** `Day2.scale.01-pause.yml` now **deletes every PodDisruptionBudget up
+front** (right after `get-credentials`), mirroring `scripts/down.sh` — with no
+0-disruption PDB to honour, the resize's internal drain can never stall, no matter
+when or why a node appears. Safe: PDBs gate only *voluntary* disruptions (pods and
+their PVs are untouched), and CNPG recreates them on `Day2.scale.02 Resume`.
+To unstick a **live** run already hanging: `kubectl delete pdb -A --all` — the
+in-flight `SET_NODE_POOL_SIZE` operation then completes on its own within a minute.
+
 ---
 
 [← Previous: 901. Local Development](./901-LOCAL_DEVELOPMENT.md) | [🏠 Home](../README.md)
