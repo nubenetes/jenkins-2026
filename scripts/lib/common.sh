@@ -335,13 +335,27 @@ retire_ci_engine() {
   for app in ${apps}; do
     kubectl delete application "$app" -n "$acd" --ignore-not-found --wait=false 2>/dev/null || true
   done
-  # 2. per namespace: clear any stuck GKE NEG finalizer (it blocks ns termination),
-  #    then delete the namespace so its routes / services / NEGs / quotas go with it.
+  # 2. per namespace: clear stuck finalizers that would deadlock ns termination (GKE NEG,
+  #    and Argo Events CRs), then delete the namespace so its routes / services / NEGs /
+  #    quotas go with it.
   for ns in ${namespaces}; do
     kubectl get namespace "$ns" >/dev/null 2>&1 || continue
     for neg in $(kubectl get svcneg -n "$ns" -o name 2>/dev/null || true); do
       kubectl patch "$neg" -n "$ns" --type=merge -p '{"metadata":{"finalizers":[]}}' 2>/dev/null \
         && log_info "  cleared stuck NEG finalizer on ${ns}/${neg}" || true
+    done
+    # Argo Events (argoworkflows engine): strip finalizers on sensor/eventsource/eventbus CRs.
+    # Their unified controller-manager is deleted alongside this namespace, so the finalizers
+    # would deadlock ns termination — and the eventbus-controller finalizer even REFUSES to
+    # complete while an EventSource is still connected ("can not delete an EventBus with N
+    # EventSources connected"), a live-observed 30h stuck-Terminating on an engine switch.
+    # No-op for engines whose CRDs aren't installed (the `get` errors → continue).
+    for _res in sensor eventsource eventbus; do
+      kubectl get "$_res" -n "$ns" >/dev/null 2>&1 || continue
+      for _obj in $(kubectl get "$_res" -n "$ns" -o name 2>/dev/null || true); do
+        kubectl patch "$_obj" -n "$ns" --type=merge -p '{"metadata":{"finalizers":null}}' 2>/dev/null \
+          && log_info "  cleared finalizer on ${ns}/${_obj}" || true
+      done
     done
     kubectl delete namespace "$ns" --ignore-not-found --wait=false 2>/dev/null || true
   done
