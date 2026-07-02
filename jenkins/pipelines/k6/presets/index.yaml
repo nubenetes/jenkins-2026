@@ -53,6 +53,9 @@ presets:
 #   to populate the Frontend RUM dashboard. It runs a DIFFERENT k6 script
 #   (faro-rum.js, not microservices-smoke.js) and only on observability.mode =
 #   oss / grafana-cloud. Wired into GitHub Actions only (Day2.traffic.01-k6,
-#   preset=rum-faro / profile=rum); excluded here so `run_all` and the
-#   Jenkins/Tekton k6 jobs (which run the HTTP load script) don't pick it up.
+#   preset=rum-faro / profile=rum); excluded from this shared index so the
+#   Jenkins/Tekton k6 jobs (which run the HTTP load script) never pick it up.
+#   NOTE: the GitHub Actions `run_all` DOES run it — Day2.traffic.01-k6's matrix
+#   builder appends "rum-faro" on top of this list, and the k6 job's backend
+#   guard self-skips it (exit 0) on managed-azure/aws.
 #   See jenkins/pipelines/k6/presets/rum-faro.yaml + docs/302.

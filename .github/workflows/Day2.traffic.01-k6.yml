@@ -105,8 +105,14 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ inputs.run_all_presets }}" = "true" ]; then
+            # run_all iterates presets/index.yaml (the shared, engine-neutral list). rum-faro
+            # is deliberately EXCLUDED from that index (it runs faro-rum.js, GitHub-Actions-only,
+            # so Jenkins/Tekton must not pick it up) — but for THIS GitHub Actions run_all we do
+            # want it, so append it here only. The k6 job's own backend guard skips rum-faro
+            # cleanly (exit 0) on observability.mode=managed-azure/managed-aws (Faro is oss /
+            # grafana-cloud only), so it self-skips where unsupported. See docs/302.
             names=$(awk '/^[[:space:]]*-[[:space:]]*name:/{print $3}' \
-                      jenkins/pipelines/k6/presets/index.yaml | jq -R . | jq -cs .)
+                      jenkins/pipelines/k6/presets/index.yaml | jq -R . | jq -cs '. + ["rum-faro"]')
           else
             names=$(printf '%s' '${{ inputs.preset || 'none' }}' | jq -R . | jq -cs .)
           fi
