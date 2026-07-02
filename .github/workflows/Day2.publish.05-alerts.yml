@@ -157,8 +157,12 @@ jobs:
               url="$(kubectl get secret grafana-cloud-credentials -n "${NS}" \
                 -o jsonpath='{.data.GRAFANA_BASE_URL}' 2>/dev/null | base64 -d || true)" ;;
             oss)
-              domain="$(yq '.platform.baseDomain' config/config.yaml 2>/dev/null || true)"
-              [[ -n "${domain}" ]] && url="https://grafana.${domain}" ;;
+              # NOTE: the correct key is .gateway.baseDomain — a .platform.baseDomain
+              # typo here made yq print the literal string "null" (a missing key, not
+              # empty), which passed the `-n` check and produced a broken
+              # https://grafana.null link.
+              domain="$(yq '.gateway.baseDomain' config/config.yaml 2>/dev/null || true)"
+              [[ -n "${domain}" && "${domain}" != "null" ]] && url="https://grafana.${domain}" ;;
           esac
           [[ -n "${url}" ]] && echo "GRAFANA_BASE_URL=${url}" >> "${GITHUB_ENV}"
           [[ -n "${url}" ]] && echo "Grafana: ${url}"

@@ -174,9 +174,13 @@ jobs:
       - name: Summary
         if: always()
         run: |
-          domain="$(yq '.platform.baseDomain' config/config.yaml 2>/dev/null || true)"
+          # NOTE: the correct key is .gateway.baseDomain — a .platform.baseDomain
+          # typo here made yq print the literal string "null" (a missing key, not
+          # empty), which passed the `-n` check and produced a broken
+          # https://grafana.null link.
+          domain="$(yq '.gateway.baseDomain' config/config.yaml 2>/dev/null || true)"
           grafana_url=""
-          [[ -n "${domain}" ]] && grafana_url="https://grafana.${domain}"
+          [[ -n "${domain}" && "${domain}" != "null" ]] && grafana_url="https://grafana.${domain}"
           {
             echo "### OSS Grafana refreshed"
             echo

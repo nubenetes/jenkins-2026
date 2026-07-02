@@ -357,8 +357,13 @@ jobs:
                 GRAFANA_URL="$(kubectl get secret azure-monitor-credentials -n "${NS}" \
                   -o jsonpath='{.data.GRAFANA_BASE_URL}' 2>/dev/null | base64 -d || true)" ;;
               oss)
-                DOMAIN="$(yq '.platform.baseDomain' config/config.yaml 2>/dev/null || true)"
-                [[ -n "${DOMAIN}" ]] && GRAFANA_URL="https://grafana.${DOMAIN}" ;;
+                # NOTE: the correct key is .gateway.baseDomain (same as the
+                # TARGET_URL resolution below) — a prior .platform.baseDomain typo
+                # here made yq print the literal string "null" (yq prints "null"
+                # for a missing key, not empty), which passed the `-n` check and
+                # produced the broken link https://grafana.null.
+                DOMAIN="$(yq '.gateway.baseDomain' config/config.yaml 2>/dev/null || true)"
+                [[ -n "${DOMAIN}" && "${DOMAIN}" != "null" ]] && GRAFANA_URL="https://grafana.${DOMAIN}" ;;
             esac
           fi
 
