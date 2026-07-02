@@ -25,6 +25,18 @@ loki:
         index:
           prefix: index_
           period: 24h
+  # Loki's default max_query_series (500) is far too low for the "CI-CD Frontend
+  # RUM (Angular / Faro)" dashboard's Sessions / Sessions over time panels, whose
+  # LogQL (count(count by (session_id)(count_over_time(... | logfmt | session_id!=""
+  # [range])))) materialises one query-time series per distinct session_id (every
+  # extracted logfmt field becomes part of the per-line label set feeding the
+  # range-vector aggregation, not just session_id). Repeated synthetic RUM load
+  # (Day2.traffic.01-k6 rum-faro preset / Day2.traffic.02-rum) easily accumulates
+  # 500+ distinct sessions within a few hours, so the query errors with "maximum
+  # number of series (500) reached" - which Grafana renders as "No data" - even
+  # though the underlying log data is present and well-formed. See docs/902.
+  limits_config:
+    max_query_series: 10000
 
 singleBinary:
   replicas: 1
