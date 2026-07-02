@@ -1,4 +1,4 @@
-[← Previous: 102. GitHub Actions Automation](./102-GITHUB_ACTIONS_AUTOMATION.md) | [🏠 Home](../README.md) | [→ Next: 201. Architecture](./201-ARCHITECTURE.md)
+[← Previous: 102. GitHub Actions Automation](./102-GITHUB_ACTIONS_AUTOMATION.md) | [🏠 Home](../README.md) | [→ Next: 104. Rebuild-Safety](./104-REBUILD_SAFETY.md)
 
 ---
 
@@ -532,7 +532,7 @@ ingest. Works for **all four** CI engines.
 
 ---
 
-[← Previous: 102. GitHub Actions Automation](./102-GITHUB_ACTIONS_AUTOMATION.md) | [🏠 Home](../README.md) | [→ Next: 201. Architecture](./201-ARCHITECTURE.md)
+[← Previous: 102. GitHub Actions Automation](./102-GITHUB_ACTIONS_AUTOMATION.md) | [🏠 Home](../README.md) | [→ Next: 104. Rebuild-Safety](./104-REBUILD_SAFETY.md)
 
 ---
 

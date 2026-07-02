@@ -1,4 +1,4 @@
-[← Previous: 103. Secrets Inventory](./103-GITHUB_SECRETS_INVENTORY.md) | [🏠 Home](../README.md) | [→ Next: 202. Microservices App Architecture](./202-MICROSERVICES-APP-ARCHITECTURE.md)
+[← Previous: 104. Rebuild-Safety](./104-REBUILD_SAFETY.md) | [🏠 Home](../README.md) | [→ Next: 202. Microservices App Architecture](./202-MICROSERVICES-APP-ARCHITECTURE.md)
 
 ---
 
@@ -1105,7 +1105,7 @@ Running Jenkins, ArgoCD, pgAdmin, two Postgres HA clusters (CNPG), OpenTelemetry
 
 ---
 
-[← Previous: 103. Secrets Inventory](./103-GITHUB_SECRETS_INVENTORY.md) | [🏠 Home](../README.md) | [→ Next: 202. Microservices App Architecture](./202-MICROSERVICES-APP-ARCHITECTURE.md)
+[← Previous: 104. Rebuild-Safety](./104-REBUILD_SAFETY.md) | [🏠 Home](../README.md) | [→ Next: 202. Microservices App Architecture](./202-MICROSERVICES-APP-ARCHITECTURE.md)
 
 ---
 
