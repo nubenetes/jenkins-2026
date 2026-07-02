@@ -63,6 +63,26 @@ jobs:
           gcloud components install gke-gcloud-auth-plugin --quiet
           gcloud container clusters get-credentials "${CLUSTER}" --location "${ZONE}" --project "${{ secrets.GCP_PROJECT_ID }}"
 
+          # Delete ALL PodDisruptionBudgets up front. A PDB with ALLOWED DISRUPTIONS: 0
+          # (CNPG's postgres-* / postgres-*-primary) forbids voluntary eviction, which
+          # blocks the node-pool resize's OWN internal drain: when GKE removes a node it
+          # runs a graceful drain that RESPECTS PDBs — unlike the `--disable-eviction`
+          # force-drain below, which bypasses them only for OUR drain. If a node ever
+          # appears AFTER our one-shot drain snapshot (e.g. an in-flight auto-repair that
+          # the management-disable below cannot cancel re-creates one, and CNPG pods land
+          # on it), the resize then hangs on that node's PDB for up to ~1h. Deleting the
+          # PDBs removes the block entirely, so the resize can never stall regardless of
+          # that race. Safe: PDBs gate only VOLUNTARY disruptions (the pods/data on the
+          # PVs are untouched by the delete) and CNPG recreates them on "Day2.scale.02
+          # Resume". Mirrors scripts/down.sh, which fixed the identical
+          # DELETE_NODE_POOL-hangs-for-hours bug for Decom (run 28202019543). See docs/902.
+          echo "::group::Remove all PodDisruptionBudgets (unblock the node-pool resize drain)"
+          kubectl get pdb -A --no-headers 2>/dev/null | awk '{print $1, $2}' \
+            | while read -r _ns _name; do
+                [[ -n "${_name}" ]] && kubectl delete pdb "${_name}" -n "${_ns}" --ignore-not-found 2>/dev/null || true
+              done
+          echo "::endgroup::"
+
           mapfile -t POOLS < <(gcloud container node-pools list --cluster "${CLUSTER}" --location "${ZONE}" --format='value(name)')
 
           # Helper to wait for any RUNNING GKE operations in the zone
