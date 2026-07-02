@@ -65,7 +65,7 @@ The audit surfaced a small, **reusable set of mechanisms** that make a resource 
 | **Entropy in build tags** | App-source SHA appended so a reset `BUILD_NUMBER` can't re-mint an existing tag | Jenkins `IMAGE_TAG` ([#488](https://github.com/nubenetes/jenkins-2026/pull/488)); Tekton random run suffix |
 | **Concurrency + stale-lock cleanup** | Per-state-prefix concurrency group + pre-`init` `.tflock` removal | all state workflows ([#488](https://github.com/nubenetes/jenkins-2026/pull/488)/[#489](https://github.com/nubenetes/jenkins-2026/pull/489)) |
 | **Cluster-alive teardown ordering** | Release cloud LB/NEG chains **while the cluster is still up**, before the VPC delete | `down.sh` |
-| **Force-finalize** | Strip finalizers / force-unlock etcd-only objects stuck `Terminating` | `drain_namespace`, `retire_ci_engine` |
+| **Force-finalize** | Strip finalizers (namespace, NEG, **ArgoCD app `resources-finalizer`**) / force-unlock etcd-only objects stuck `Terminating` | `drain_namespace`, `retire_ci_engine`, `remove_oss_observability_app` |
 
 ---
 
@@ -131,7 +131,7 @@ Every persistent/external resource, its tier, and the **exact mechanism** that m
 | **CSI PV disks** | ✅ *(cost only)* | Labeled-disk sweep with detach-race retry (cost residue only — never blocks a rebuild). |
 | **Namespaces stuck `Terminating`** | ✅ | `drain_namespace` force-finalizes etcd-only objects; app-of-apps deleted first while ArgoCD is alive (cascade-prune). |
 | **CNPG PDBs** (0 disruptions) | ✅ | Deleted up-front + post-cascade + scale-to-zero so a node-pool drain never blocks; 60m delete timeout. |
-| **CI-engine switch residue** | ✅ | `retire_ci_engine` deletes the sibling engine's parent+child apps, clears NEG finalizers, deletes owned namespaces; idempotent no-op when the engine is absent. |
+| **CI-engine / obs-mode switch residue** | ✅ | `retire_ci_engine` (and `remove_oss_observability_app` for `observability.mode`) delete the sibling's parent+child ArgoCD apps, clear stuck **NEG *and* ArgoCD `resources-finalizer`s**, and — for shared-namespace stacks like OSS — **force-prune workloads by Helm `instance` label** (never the shared `name` label, so a managed-mode standalone node-exporter survives) (#518). So a switch converges with **no manual cleanup**, even from a mixed state where ArgoCD cascade-prune stalled; idempotent no-op when the sibling is absent. |
 | **ArgoCD control-plane state** | ✅ | In-cluster only → clean on rebuild; `08.5` is idempotent (pending-release recovery, pre-delete CMs to dodge SSA conflicts, a fresh CI token each run). |
 
 ### 4.7 Registry / GitOps / CI
