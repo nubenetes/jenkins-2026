@@ -701,7 +701,7 @@ is a deliberate, documented exception above.
 | `argoworkflows-github-webhook` | `argo-events` *(argoworkflows-mode)* | GitHub webhook HMAC token | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | Argo Events GitHub EventSource |
 | `ghcr-credentials` | `microservices` (+ `-develop`) | `dockerconfigjson` imagePullSecret | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | microservices pods (image pull) |
 | `grafana-jenkins-ds` | `grafana-oss` *(oss + jenkins-mode)* | `apiToken` (mirror of Jenkins admin password) | No | [`03-observability.sh`](../scripts/03-observability.sh) *(gated to jenkins-mode)* | Grafana → Jenkins datasource |
-| `grafana-cloud-credentials` / `azure-monitor-credentials` / `aws-managed-credentials` | `observability` | backend endpoint + token/SP/role per `observability.mode` | No | Day1 workflow / scripts | otel-collector exporter |
+| `grafana-cloud-credentials` / `azure-monitor-credentials` / `aws-managed-credentials` | `observability` | backend endpoint + token/SP/role per `observability.mode`. **Single-active-mode invariant:** only the active mode's Secret exists — [`03-observability.sh`](../scripts/03-observability.sh) retires the other two on provision, so a mode switch leaves no stale Secret to mislead `Day2.traffic.01-k6`'s secret-presence mode auto-detection (a leftover once produced a dead "VIEW IN GRAFANA" link — see [104](104-REBUILD_SAFETY.md) / [902](902-TROUBLESHOOTING.md)). | No | Day1 workflow / scripts | otel-collector exporter |
 
 ### Diagram 1 — Namespace & Secret topology
 
