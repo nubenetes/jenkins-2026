@@ -232,7 +232,7 @@ without needing a browser.
 | **Target** | the **faro receiver** (`otel-collector-gateway:8027`), **not** the app URL |
 | **Knobs** | `K6SIM_VUS` (concurrent browsers, 5) · `K6SIM_ITERATIONS` (sessions, 40) · `K6SIM_DURATION` (→ continuous instead of a fixed count) · `K6SIM_ERROR_RATE` (JS-error fraction) · `env_name` (`develop`/`stable` → `deployment.environment`) |
 | **Backends** | ✅ **oss** · ✅ **grafana-cloud** — Faro is stored natively in Loki/Tempo. ❌ **managed-azure / managed-aws** — Faro degrades to generic App Insights / CloudWatch ([301](./301-OBSERVABILITY.md#frontend-rum-grafana-faro-per-backend--native-on-grafana-cloud--oss)), so the runner **skips it with a clear message** there. |
-| **Runner** | **GitHub Actions only** ([`Day2.traffic.01-k6`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml), `preset=rum-faro` or `profile=rum`). Intentionally **not** in `presets/index.yaml`, so `run_all` and the Jenkins/Tekton k6 jobs (HTTP load script) don't pick it up. |
+| **Runner** | **GitHub Actions only** ([`Day2.traffic.01-k6`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml), `preset=rum-faro` or `profile=rum`). **Not** in `presets/index.yaml` — so the Jenkins/Tekton k6 jobs (HTTP load script) never pick it up — but the GitHub Actions **`run_all` DOES include it** (its matrix builder appends `rum-faro`; the backend guard self-skips it on managed-azure/aws). |
 
 **Run it:** GitHub Actions → *Day2.traffic.01 k6* → `preset = rum-faro`, `env_name = develop` (or `stable`) → Run. In ~30s the Frontend RUM dashboard (filter `app=angular-gateway`, `env=<tier>`) lights up. (Equivalent to the older [`Day2.traffic.02-rum`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.02-rum.yml) bash emitter, now as a first-class k6 test type.)
 
@@ -456,11 +456,14 @@ It detects the active observability mode from in-cluster secrets and routes OTLP
 #### Run ALL presets in one click (`run_all_presets`)
 
 Set **`run_all_presets=true`** and the workflow runs **every** preset in
-[`presets/index.yaml`](../jenkins/pipelines/k6/presets/index.yaml) as a **parallel GitHub
-Actions matrix** — a tiny `prepare` job emits the preset list (`fromJson`), then one
-`k6: <preset>` job runs per preset (`fail-fast: false`, `max-parallel: 4` so a full sweep
-doesn't crush the lean app with 9 simultaneous profiles). One click → every use case lands
-in the dashboard, filterable by Runner/Profile/Preset.
+[`presets/index.yaml`](../jenkins/pipelines/k6/presets/index.yaml) **plus the `rum-faro`
+RUM test** as a **parallel GitHub Actions matrix** — a tiny `prepare` job emits the preset
+list (`fromJson`; the GitHub Actions matrix builder appends `rum-faro` on top of the shared
+index, which itself excludes it), then one `k6: <preset>` job runs per preset
+(`fail-fast: false`, `max-parallel: 4` so a full sweep doesn't crush the lean app). The
+`rum-faro` job runs on **oss / grafana-cloud** and self-skips cleanly (green) on
+managed-azure/aws. One click → every use case lands in the dashboard, filterable by
+Runner/Profile/Preset.
 
 - **`run_all_duration`** (optional) — cap **every** preset to one short duration (e.g.
   `30s`), clearing each preset's stages/rps/iterations, for a quick comprehensive pass
