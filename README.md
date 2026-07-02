@@ -12,16 +12,37 @@
 [![Docs](https://img.shields.io/badge/docs-22%20guides-blue?logo=readthedocs&logoColor=white)](docs/)
 [![Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735?logo=keepachangelog&logoColor=white)](CHANGELOG.md)
 
-**Stack:**
-![GKE](https://img.shields.io/badge/GKE-Kubernetes-326CE5?logo=googlecloud&logoColor=white)
-![Terraform](https://img.shields.io/badge/IaC-Terraform-7B42BC?logo=terraform&logoColor=white)
-![Argo CD](https://img.shields.io/badge/GitOps-Argo%20CD-EF7B4D?logo=argo&logoColor=white)
-![OpenTelemetry](https://img.shields.io/badge/o11y-OpenTelemetry-000000?logo=opentelemetry&logoColor=white)
-![Grafana](https://img.shields.io/badge/dashboards-Grafana-F46800?logo=grafana&logoColor=white)
-![Jenkins](https://img.shields.io/badge/CI-Jenkins-D24939?logo=jenkins&logoColor=white)
-![Tekton](https://img.shields.io/badge/CI-Tekton-FD495C?logo=tekton&logoColor=white)
-![Helm](https://img.shields.io/badge/packaging-Helm-0F1689?logo=helm&logoColor=white)
-![k6](https://img.shields.io/badge/load-k6-7D64FF?logo=k6&logoColor=white)
+<!-- STACK-BADGES:START -->
+**Stack** — everything the platform wires together (feature-flagged axes marked):
+
+**Cloud & platform**  
+![Google Cloud](https://img.shields.io/badge/Google%20Cloud-4285F4?style=flat-square&logo=googlecloud&logoColor=white) ![GKE Kubernetes](https://img.shields.io/badge/GKE%20Kubernetes-326CE5?style=flat-square&logo=kubernetes&logoColor=white) ![Dataplane V2 Cilium](https://img.shields.io/badge/Dataplane%20V2%20Cilium-F8C517?style=flat-square&logo=cilium&logoColor=white) ![WireGuard](https://img.shields.io/badge/WireGuard-88171A?style=flat-square&logo=wireguard&logoColor=white) ![Gateway API](https://img.shields.io/badge/Gateway%20API-326CE5?style=flat-square&logo=kubernetes&logoColor=white) ![Google IAP](https://img.shields.io/badge/Google%20IAP-4285F4?style=flat-square&logo=googlecloud&logoColor=white) ![Spot Autoprovisioning](https://img.shields.io/badge/Spot%20Autoprovisioning-1A73E8?style=flat-square&logo=googlecloud&logoColor=white)
+
+**CI engine** — `ci.engine`, one of four  
+![Jenkins](https://img.shields.io/badge/Jenkins-D24939?style=flat-square&logo=jenkins&logoColor=white) ![Tekton](https://img.shields.io/badge/Tekton-FD495C?style=flat-square&logo=tekton&logoColor=white) ![GitHub Actions ARC](https://img.shields.io/badge/GitHub%20Actions%20ARC-2088FF?style=flat-square&logo=githubactions&logoColor=white) ![Argo Workflows](https://img.shields.io/badge/Argo%20Workflows-EF7B4D?style=flat-square&logo=argo&logoColor=white)
+
+**GitOps & delivery**  
+![Argo CD](https://img.shields.io/badge/Argo%20CD-EF7B4D?style=flat-square&logo=argo&logoColor=white) ![Argo Rollouts](https://img.shields.io/badge/Argo%20Rollouts-EF7B4D?style=flat-square&logo=argo&logoColor=white) ![Argo Events](https://img.shields.io/badge/Argo%20Events-EF7B4D?style=flat-square&logo=argo&logoColor=white) ![Helm](https://img.shields.io/badge/Helm-0F1689?style=flat-square&logo=helm&logoColor=white) ![Kustomize](https://img.shields.io/badge/Kustomize-326CE5?style=flat-square&logo=kubernetes&logoColor=white)
+
+**Observability** — `observability.mode`, one of four + OpenTelemetry  
+![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-425CC7?style=flat-square&logo=opentelemetry&logoColor=white) ![Grafana](https://img.shields.io/badge/Grafana-F46800?style=flat-square&logo=grafana&logoColor=white) ![Prometheus](https://img.shields.io/badge/Prometheus-E6522C?style=flat-square&logo=prometheus&logoColor=white) ![Loki](https://img.shields.io/badge/Loki-F46800?style=flat-square&logo=grafana&logoColor=white) ![Tempo](https://img.shields.io/badge/Tempo-F46800?style=flat-square&logo=grafana&logoColor=white) ![Grafana Cloud](https://img.shields.io/badge/Grafana%20Cloud-F46800?style=flat-square&logo=grafana&logoColor=white) ![Azure Monitor](https://img.shields.io/badge/Azure%20Monitor-0078D4?style=flat-square&logo=microsoftazure&logoColor=white) ![Amazon Managed Grafana](https://img.shields.io/badge/Amazon%20Managed%20Grafana-FF9900?style=flat-square&logo=amazonwebservices&logoColor=white) ![Grafana Faro RUM](https://img.shields.io/badge/Grafana%20Faro%20RUM-F46800?style=flat-square&logo=grafana&logoColor=white)
+
+**Data**  
+![CloudNativePG](https://img.shields.io/badge/CloudNativePG-336791?style=flat-square&logo=postgresql&logoColor=white) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) ![pgAdmin](https://img.shields.io/badge/pgAdmin-326690?style=flat-square&logo=postgresql&logoColor=white) ![pgBouncer](https://img.shields.io/badge/pgBouncer-1F3B4D?style=flat-square)
+
+**Secrets** — `secrets.backend`  
+![External Secrets Operator](https://img.shields.io/badge/External%20Secrets%20Operator-5B4EE9?style=flat-square) ![GCP Secret Manager](https://img.shields.io/badge/GCP%20Secret%20Manager-4285F4?style=flat-square&logo=googlecloud&logoColor=white)
+
+**IaC & tooling**  
+![Terraform](https://img.shields.io/badge/Terraform-7B42BC?style=flat-square&logo=terraform&logoColor=white) ![Bash](https://img.shields.io/badge/Bash-4EAA25?style=flat-square&logo=gnubash&logoColor=white) ![yq](https://img.shields.io/badge/yq-4B5563?style=flat-square) ![GitHub Container Registry](https://img.shields.io/badge/GitHub%20Container%20Registry-181717?style=flat-square&logo=github&logoColor=white)
+
+**App & build**  
+![JHipster](https://img.shields.io/badge/JHipster-3E8ACC?style=flat-square&logo=jhipster&logoColor=white) ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-6DB33F?style=flat-square&logo=springboot&logoColor=white) ![Angular](https://img.shields.io/badge/Angular-DD0031?style=flat-square&logo=angular&logoColor=white) ![Java](https://img.shields.io/badge/Java-ED8B00?style=flat-square&logo=openjdk&logoColor=white) ![Maven](https://img.shields.io/badge/Maven-C71A36?style=flat-square&logo=apachemaven&logoColor=white) ![Jib](https://img.shields.io/badge/Jib-4285F4?style=flat-square&logo=google&logoColor=white) ![Kaniko](https://img.shields.io/badge/Kaniko-FC6D26?style=flat-square)
+
+**Test & DevSecOps**  
+![k6](https://img.shields.io/badge/k6-7D64FF?style=flat-square&logo=k6&logoColor=white) ![Semgrep](https://img.shields.io/badge/Semgrep-1E90FF?style=flat-square&logo=semgrep&logoColor=white) ![CodeQL](https://img.shields.io/badge/CodeQL-2088FF?style=flat-square&logo=github&logoColor=white) ![Trivy](https://img.shields.io/badge/Trivy-1904DA?style=flat-square&logo=trivy&logoColor=white)
+
+<!-- STACK-BADGES:END -->
 
 > **Two-repo GitOps setup.** This is the **infra repo** (cluster bootstrap, the CI engine — **Jenkins** / **Tekton** / **GitHub Actions** / **Argo Workflows**, one selected by `ci.engine` — plus ArgoCD & observability). Image tags and ArgoCD manifests live in the companion **[`nubenetes/jenkins-2026-gitops-config`](https://github.com/nubenetes/jenkins-2026-gitops-config)** repo.
 
