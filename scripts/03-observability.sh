@@ -34,32 +34,36 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 # from every NON-oss branch so a mode switch away from oss retires the stack.
 # Safe no-op when ArgoCD/the app is absent.
 remove_oss_observability_app() {
-  if kubectl get application observability-oss -n argocd >/dev/null 2>&1; then
-    log_info "Removing the observability-oss app-of-apps + its children (cascade-prune is unreliable for an app-of-apps — a child can be left orphaned, as seen on the CI-engine apps; see lib/common.sh retire_ci_engine)"
+  local acd="${J2026_ARGOCD_NAMESPACE:-argocd}" ns="${J2026_OBS_NAMESPACE}"
+  if kubectl get application observability-oss -n "$acd" >/dev/null 2>&1; then
+    log_info "Retiring the observability-oss app-of-apps + children (robust: delete + force-prune by instance label + finalizer-strip — cascade-prune stalls on the resources-finalizer)"
     # Delete the parent AND every child Application explicitly (not just the parent),
     # so switching observability.mode away from oss can't leave an orphaned oss-* app.
     for app in observability-oss oss-kube-prometheus-stack oss-loki oss-tempo oss-grafana-dashboards; do
-      kubectl delete application "$app" -n argocd --ignore-not-found --wait=false 2>/dev/null || true
+      kubectl delete application "$app" -n "$acd" --ignore-not-found --wait=false 2>/dev/null || true
     done
+    # ArgoCD cascade-prune is unreliable for an app-of-apps and STALLS on the
+    # resources-finalizer (apps stuck Terminating, workloads never pruned — a live-observed
+    # deadlock). The OSS workloads live in the SHARED observability namespace (so we can't just
+    # delete the ns), so force-prune them by their Helm INSTANCE label, then strip the
+    # resources-finalizer on any app still stuck Terminating. (Helpers in lib/common.sh.)
+    _j2026_force_prune_by_instance "$ns" oss-kube-prometheus-stack oss-loki oss-tempo
+    _j2026_strip_stuck_argocd_apps "$acd" observability-oss oss-kube-prometheus-stack oss-loki oss-tempo oss-grafana-dashboards
   fi
-  # The cascade-prune above is asynchronous. The OSS kube-prometheus-stack ships a
-  # node-exporter DaemonSet on hostPort 9100 (hostNetwork); k8s-monitoring (grafana
-  # -cloud) and the managed-* infra agents run their OWN node-exporter on the same
-  # port and FAIL a pre-install validation if the OSS one is still present
-  # ("A Node Exporter already appears to be running ... host port conflict"). So on
-  # an in-place mode switch we must wait for it to disappear before the caller
-  # installs its exporter. Selected by the chart's stable label (robust to the
-  # release-name prefix, e.g. oss-kube-prometheus-stack-prometheus-node-exporter).
-  local sel="app.kubernetes.io/name=prometheus-node-exporter"
-  if [ -n "$(kubectl get ds -n "${J2026_OBS_NAMESPACE}" -l "${sel}" -o name 2>/dev/null)" ]; then
+  # Ensure the OSS node-exporter DaemonSet (hostPort 9100, hostNetwork) is actually gone before a
+  # later k8s-monitoring / managed-* exporter install (they FAIL a pre-install host-port check if
+  # it lingers). ⚠️ Scope by the OSS release's INSTANCE label, NOT the shared name label:
+  # managed-azure/aws run their OWN standalone prometheus-node-exporter (same name label,
+  # instance=prometheus-node-exporter) that MUST survive an idempotent re-run — deleting by the
+  # name label would kill it.
+  local sel="app.kubernetes.io/instance=oss-kube-prometheus-stack,app.kubernetes.io/name=prometheus-node-exporter"
+  if [ -n "$(kubectl get ds -n "$ns" -l "${sel}" -o name 2>/dev/null)" ]; then
     log_info "Waiting for the OSS node-exporter DaemonSet (hostPort 9100) to be pruned"
     local i=0
-    until [ -z "$(kubectl get ds -n "${J2026_OBS_NAMESPACE}" -l "${sel}" -o name 2>/dev/null)" ]; do
-      i=$((i + 1)); [ "${i}" -ge 36 ] && break; sleep 5   # up to ~3 min
+    until [ -z "$(kubectl get ds -n "$ns" -l "${sel}" -o name 2>/dev/null)" ]; do
+      i=$((i + 1)); [ "${i}" -ge 12 ] && break; sleep 5   # up to ~1 min (force-prune already deleted it)
     done
-    # Backstop: if ArgoCD hasn't finished pruning yet (parent app already deleted,
-    # so the child won't recreate it), remove the conflicting DaemonSet directly.
-    kubectl delete ds -n "${J2026_OBS_NAMESPACE}" -l "${sel}" --ignore-not-found >/dev/null 2>&1 || true
+    kubectl delete ds -n "$ns" -l "${sel}" --ignore-not-found >/dev/null 2>&1 || true
   fi
 }
 
