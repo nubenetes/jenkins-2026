@@ -1424,7 +1424,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "100 * sum by (service_name) (rate(http_server_request_duration_seconds_count{deployment_environment=\"$deployment_environment\", service_name=~\"$service_name\", http_response_status_code=~\"[45]..\"}[$__rate_interval])) / clamp_min(sum by (service_name) (rate(http_server_request_duration_seconds_count{deployment_environment=\"$deployment_environment\", service_name=~\"$service_name\"}[$__rate_interval])),1)",
+          "expr": "100 * (sum by (service_name) (rate(http_server_request_duration_seconds_count{deployment_environment=\"$deployment_environment\", service_name=~\"$service_name\", http_response_status_code=~\"[45]..\"}[$__rate_interval])) or (sum by (service_name) (rate(http_server_request_duration_seconds_count{deployment_environment=\"$deployment_environment\", service_name=~\"$service_name\"}[$__rate_interval])) * 0)) / clamp_min(sum by (service_name) (rate(http_server_request_duration_seconds_count{deployment_environment=\"$deployment_environment\", service_name=~\"$service_name\"}[$__rate_interval])),1)",
           "instant": false,
           "legendFormat": "{{service_name}}",
           "range": true,
