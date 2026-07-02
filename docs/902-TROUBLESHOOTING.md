@@ -328,6 +328,36 @@ kubectl delete secret grafana-cloud-credentials -n observability --ignore-not-fo
 # a Day1 re-run reconciles this automatically; the next k6 run then detects oss -> grafana.<baseDomain>
 ```
 
+## RUM dashboard "Sessions" / "Sessions over time" panels show "No data" after repeated k6 RUM testing
+
+**Symptom:** the "CI-CD Frontend RUM (Angular / Faro)" dashboard's **Sessions**
+(stat) and **Sessions over time** (timeseries) panels show **No data**, even
+though other RUM panels (Web Vitals, page views, errors) are populated and
+`observability.mode=oss` Loki genuinely holds the Faro session logs.
+
+**Cause:** both panels count distinct sessions with the LogQL idiom
+`count(count by (session_id)(count_over_time({service_name="$app",
+deployment_environment="$deployment_environment"} | logfmt | session_id!=""
+[range])))`. After a `| logfmt` parser stage, **every extracted field** (not just
+`session_id` — also `page_url`, `browser_name`, per-request timestamps, Web
+Vitals values, …) becomes part of each log line's label set for the purposes of
+the range-vector aggregation, so `count_over_time(...)` materialises **one
+query-time series per log line**, not one per distinct session. Loki's default
+`limits_config.max_query_series` is **500**; repeated synthetic RUM runs
+(`Day2.traffic.01-k6` `rum-faro` preset, `Day2.traffic.02-rum`) accumulate far
+more than 500 distinct sessions within a few hours, so the query errors with
+*"maximum number of series (500) reached for a single query"* — which Grafana
+renders as **No data** instead of surfacing the underlying error. Confirmed live:
+730 distinct `session_id` values existed within a 6h window for a single
+environment.
+
+**Fix:** [`observability/grafana/values-oss-loki.yaml`](../observability/grafana/values-oss-loki.yaml)
+now sets `loki.limits_config.max_query_series: 10000`, giving the dashboard's
+session-counting queries headroom appropriate for demo/PoC-scale repeated RUM
+testing. Apply with a **Day1 re-run** or an ArgoCD hard-refresh of the `oss-loki`
+Application; the fix is config-only (no schema/data migration, single-binary
+Loki restarts with the new limit).
+
 ---
 
 [← Previous: 901. Local Development](./901-LOCAL_DEVELOPMENT.md) | [🏠 Home](../README.md)
