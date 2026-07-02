@@ -21,7 +21,7 @@
       "relativeTimeRange": { "from": 300, "to": 0 },
       "datasourceUid": "grafanacloud-prom",
       "model": {
-        "expr": "(max by (pod) (container_memory_working_set_bytes{namespace=\"observability\",pod=~\"otel-collector-gateway.*\",image!=\"\"}) / max by (pod) (container_spec_memory_limit_bytes{namespace=\"observability\",pod=~\"otel-collector-gateway.*\",image!=\"\"})) > 0.7",
+        "expr": "(max by (pod) (container_memory_working_set_bytes{namespace=\"observability\",pod=~\"otel-collector-gateway.*\"}) / max by (pod) (container_spec_memory_limit_bytes{namespace=\"observability\",pod=~\"otel-collector-gateway.*\"})) > 0.7",
         "refId": "query",
         "instant": true
       }
