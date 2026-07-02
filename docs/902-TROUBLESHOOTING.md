@@ -389,6 +389,46 @@ their PVs are untouched), and CNPG recreates them on `Day2.scale.02 Resume`.
 To unstick a **live** run already hanging: `kubectl delete pdb -A --all` — the
 in-flight `SET_NODE_POOL_SIZE` operation then completes on its own within a minute.
 
+## Managed-mode collector shows "No data" on infra panels (Container CPU)
+
+**Symptom:** on `observability.mode=managed-azure` (or `managed-aws`), the Kubernetes
+infra panels — **Container CPU (cores)** and any other cAdvisor / kube-state panel —
+show **"No data"** in Azure Managed Grafana / Amazon Managed Grafana, while the app and
+CNPG panels are fine. Nothing is shown as an error on the dashboard.
+
+**Cause:** unlike `oss`/`grafana-cloud` (where kube-prometheus-stack / Grafana Alloy
+scrape the infra in a **separate** component), the **managed-mode gateway collector
+scrapes all the in-cluster infra itself** (cAdvisor + kubelet + kube-state + node-exporter,
+via its `prometheus` receiver) and remote-writes it to the managed Prometheus. cAdvisor is
+high-cardinality; if the collector's memory limit is too low it sits above the
+`memory_limiter` soft limit (`limit_percentage: 80`) and the processor **refuses** the
+scraped data **before** it reaches the exporter — a **silent** drop (no export error,
+nothing arrives at the backend). The signature is only in the collector logs:
+
+```bash
+kubectl logs -n observability deploy/otel-collector-gateway | grep "data refused"
+# error  Scrape commit failed  ... "scrape_pool": "cadvisor"  "err": "data refused due to high memory usage"
+```
+
+Not RBAC (the `nodes/proxy` rule is present) and not a metric-name issue.
+
+**Fix:** size the gateway collector to *what it scrapes* — **1Gi** when it self-scrapes
+cAdvisor/kube-state (managed-azure/aws), **512Mi** otherwise (oss/grafana-cloud, which
+delegate infra scraping). `managed-aws` already carried this; `managed-azure` was raised to
+match in [`values-managed-azure.yaml`](../observability/otel-collector/values-managed-azure.yaml).
+Do **not** bump oss/grafana-cloud — their collector doesn't scrape cAdvisor, so 512Mi is
+right-sized (full rationale + matrix in
+[301 § Per-mode metrics collection & collector sizing](301-OBSERVABILITY.md#per-mode-metrics-collection--collector-sizing)).
+Apply durably with a **Day1 re-run** (helm upgrade); unstick a **live** collector now:
+
+```bash
+kubectl -n observability set resources deploy/otel-collector-gateway \
+  --limits=memory=1Gi --requests=memory=512Mi   # restarts the pod; cAdvisor flows in ~2 min
+```
+
+Because the drop is silent, an **alert** on `otelcol_processor_refused_metric_points` is
+the durable systemic guard (see the sizing note in 301).
+
 ---
 
 [← Previous: 901. Local Development](./901-LOCAL_DEVELOPMENT.md) | [🏠 Home](../README.md)

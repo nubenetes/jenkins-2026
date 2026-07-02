@@ -267,6 +267,29 @@ Two `opentelemetry-collector-contrib` releases (the **contrib** distro — neede
 - **`otel-collector-gateway`** (Deployment) — receives OTLP/gRPC (4317) and OTLP/HTTP (4318, with permissive CORS for the browser RUM beacon), **plus a `faro` receiver on `:8027`** (CORS-enabled) wired into the **traces + logs** pipelines. The Faro receiver accepts the Grafana **Faro Web SDK**'s browser RUM payload (Web Vitals measurements, JS exceptions, session/page logs, and browser spans) and converts it to OTLP, so frontend RUM rides the same collector→backend path as the Java services' telemetry. The `faro` receiver is wired into **all four** backend collector configs (`values-grafana-cloud` / `-oss` / `-managed-azure` / `-managed-aws`), so RUM works on every observability backend — not just grafana-cloud (OSS gets fully-functional RUM, its in-cluster Loki/Tempo matching the dashboard uids). Populated for real once the Angular SPA ships the Faro SDK (see [202](202-MICROSERVICES-APP-ARCHITECTURE.md)); `Day2.traffic.02` can POST synthetic beacons to it meanwhile.
 - **`otel-collector-logs`** (DaemonSet) — tails `/var/log/pods/*/*/*.log` on every node via the `filelog` receiver and forwards log records to the same backend.
 
+#### Per-mode metrics collection & collector sizing
+
+**Who scrapes the Kubernetes infra metrics (cAdvisor / kube-state-metrics / node-exporter) differs by `observability.mode`, and that is what drives how much memory the gateway collector needs.** It is deliberately **not** a uniform "give every collector the same resources" — the collector is right-sized to what it actually does:
+
+| `observability.mode` | Collector scrapes cAdvisor / kube-state itself? | Who scrapes the k8s infra | Gateway collector memory (limit) |
+|---|---|---|---|
+| **oss** | ❌ no | **kube-prometheus-stack** (its own Prometheus, separate pod) | **512Mi** |
+| **grafana-cloud** | ❌ no | **Grafana Alloy / k8s-monitoring** (separate; further trimmed by [`leanMetrics`](#free-tier-active-series-cap--observabilityleanmetrics) on the free tier) | **512Mi** |
+| **managed-azure** | ✅ **yes** — cAdvisor + kubelet + kube-state + node-exporter, via the collector's `prometheus` receiver over the kube-apiserver proxy | **the gateway collector itself** | **1Gi** |
+| **managed-aws** | ✅ **yes** (same) | **the gateway collector itself** | **1Gi** |
+
+**Why the two managed modes need 1Gi and the other two do not.** In `oss` / `grafana-cloud`, a *dedicated* component (kube-prometheus-stack's Prometheus, or Grafana Alloy) scrapes the high-cardinality infra metrics, so the OTel gateway only handles OTLP (app traces/metrics/logs) plus a couple of **low-cardinality** Prometheus scrapes (CNPG, Tekton/Argo) — 512Mi is comfortable. In `managed-azure` / `managed-aws` there is **no such component**: the gateway collector scrapes **all** the in-cluster infra itself *and* remote-writes it to the managed Prometheus (AMP / Azure Monitor). **cAdvisor is high-cardinality**, so 512Mi is not enough — hence 1Gi. Bumping `oss` / `grafana-cloud` to 1Gi would only **over-provision** ~500Mi each with no benefit on a resource-constrained PoC cluster.
+
+**The failure mode is SILENT — the important thing to internalise.** When the collector runs short of memory, the `memory_limiter` processor (`limit_percentage: 80`) *refuses* incoming data rather than OOM-killing the pod. Scraped metrics are then dropped **before** they reach the exporter, with **no export error** — they simply never arrive at the backend, and the affected dashboard panels (e.g. *Container CPU (cores)*, and any other cAdvisor/kube-state panel) show **"No data"**. The tell-tale sign is only in the collector logs:
+
+```
+error  Scrape commit failed  ... "scrape_pool": "cadvisor"  "err": "data refused due to high memory usage"
+```
+
+This is exactly why `managed-azure` had to be raised to match `managed-aws` — both self-scrape the infra so both need 1Gi, but `managed-azure` had been left at the 512Mi copied from the other modes (which do *not* self-scrape). See the [troubleshooting entry](902-TROUBLESHOOTING.md#managed-mode-collector-shows-no-data-on-infra-panels-container-cpu).
+
+**Sizing rule of thumb.** Size the gateway collector to *what it scrapes*, not uniformly: **collector self-scrapes cAdvisor/kube-state → 1Gi; an external component does it → 512Mi**. Memory need also grows with cluster size (more nodes → more cAdvisor cardinality), so a much larger cluster may need more even in the managed modes. Because the drop is silent, the robust systemic guard is **not** blanket over-provisioning but an **alert on collector memory pressure** (`otelcol_processor_refused_metric_points` climbing, or collector RSS near its limit) so any future occurrence — in any mode — surfaces loudly instead of as mystery "No data".
+
 ### Jenkins Plugin
 
 The `opentelemetry` plugin exports one span per pipeline run / stage / step as `service.name=jenkins` to the same gateway — so a Microservices deploy's **CI trace and the resulting application traces share the same backend**.
@@ -549,6 +572,8 @@ These cost real debugging time; record them so they don't recur:
 | **Tempo "Browser traces" panel empty** | Panel used `queryType=traceqlSearch` (expects structured filters) with a raw TraceQL string | Set `queryType=traceql` |
 | **Web-Vitals "FID" panel empty** | Faro emits **INP** (FID is deprecated and removed from the web-vitals lib) | Drop the FID target; chart INP |
 | **`microservices-overview` JVM / `postgres-overview` panels empty for a tier** | JVM/CNPG metrics carry `k8s_namespace_name`/`service_name`, **not** `deployment_environment` | Filter those panels by namespace (env→namespace via `target_info`) |
+| **`Container CPU` / any cAdvisor·kube-state panel empty on `managed-azure`/`managed-aws`** | Those modes' gateway collector **self-scrapes** the high-cardinality infra; an under-sized memory limit (512Mi) tripped the `memory_limiter`, which **refused** the cAdvisor data (`data refused due to high memory usage`) **before** export — silent, no export error, nothing reached the backend | Size the collector to *what it scrapes*: **1Gi** when it self-scrapes cAdvisor/kube-state (managed-azure/aws), 512Mi otherwise (oss/grafana-cloud). See [Per-mode metrics collection & collector sizing](#per-mode-metrics-collection--collector-sizing) |
+| **CNPG counter panels empty on grafana-cloud but fine on OSS** | OSS scrapes CNPG directly → keeps the bare name; grafana-cloud's OTLP→Prometheus (Mimir) ingestion **appends `_total`** to counters (`cnpg_pg_stat_*_total`), so a dashboard querying the bare name finds nothing | Query backend-agnostically: `rate({__name__=~"cnpg_pg_stat_<x>(_total)?", …}[…])` — matches with-or-without `_total` |
 
 #### Where everything lives in Grafana (folders)
 
