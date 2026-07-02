@@ -1,0 +1,48 @@
+{
+  "uid": "j2026-otel-collector-memory",
+  "title": "OTel Collector Memory Above 70%",
+  "ruleGroup": "jenkins-2026",
+  "folderUID": "jenkins-2026",
+  "condition": "threshold",
+  "for": "5m",
+  "noDataState": "OK",
+  "execErrState": "Error",
+  "labels": {
+    "severity": "warning",
+    "project": "jenkins-2026"
+  },
+  "annotations": {
+    "summary": "OTel gateway collector memory above 70% of its limit",
+    "description": "otel-collector-gateway is using >70% of its memory limit for 5+ minutes. At 80% the memory_limiter processor starts silently REFUSING scraped data (log: 'data refused due to high memory usage') → 'No data' on Container CPU / CNPG / infra panels with no export error. Raise resources.limits.memory in observability/otel-collector/values-<mode>.yaml (managed-azure/aws self-scrape cAdvisor → 1Gi; oss/grafana-cloud delegate → 512Mi — see docs/301 § Per-mode metrics collection & collector sizing) or cut scrape cardinality. NoData is mapped to OK: grafana-cloud free tier drops cAdvisor by design, and this is a warning, not a liveness probe."
+  },
+  "data": [
+    {
+      "refId": "query",
+      "relativeTimeRange": { "from": 300, "to": 0 },
+      "datasourceUid": "grafanacloud-prom",
+      "model": {
+        "expr": "(max by (pod) (container_memory_working_set_bytes{namespace=\"observability\",pod=~\"otel-collector-gateway.*\",container=\"opentelemetry-collector\"}) / max by (pod) (container_spec_memory_limit_bytes{namespace=\"observability\",pod=~\"otel-collector-gateway.*\",container=\"opentelemetry-collector\"})) > 0.7",
+        "refId": "query",
+        "instant": true
+      }
+    },
+    {
+      "refId": "threshold",
+      "relativeTimeRange": { "from": 0, "to": 0 },
+      "datasourceUid": "-100",
+      "model": {
+        "conditions": [
+          {
+            "evaluator": { "params": [0], "type": "gt" },
+            "operator": { "type": "and" },
+            "query": { "params": ["query"] },
+            "reducer": { "params": [], "type": "last" },
+            "type": "query"
+          }
+        ],
+        "refId": "threshold",
+        "type": "classic_conditions"
+      }
+    }
+  ]
+}

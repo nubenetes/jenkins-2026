@@ -288,7 +288,7 @@ error  Scrape commit failed  ... "scrape_pool": "cadvisor"  "err": "data refused
 
 This is exactly why `managed-azure` had to be raised to match `managed-aws` — both self-scrape the infra so both need 1Gi, but `managed-azure` had been left at the 512Mi copied from the other modes (which do *not* self-scrape). See the [troubleshooting entry](902-TROUBLESHOOTING.md#managed-mode-collector-shows-no-data-on-infra-panels-container-cpu).
 
-**Sizing rule of thumb.** Size the gateway collector to *what it scrapes*, not uniformly: **collector self-scrapes cAdvisor/kube-state → 1Gi; an external component does it → 512Mi**. Memory need also grows with cluster size (more nodes → more cAdvisor cardinality), so a much larger cluster may need more even in the managed modes. Because the drop is silent, the robust systemic guard is **not** blanket over-provisioning but an **alert on collector memory pressure** (`otelcol_processor_refused_metric_points` climbing, or collector RSS near its limit) so any future occurrence — in any mode — surfaces loudly instead of as mystery "No data".
+**Sizing rule of thumb.** Size the gateway collector to *what it scrapes*, not uniformly: **collector self-scrapes cAdvisor/kube-state → 1Gi; an external component does it → 512Mi**. Memory need also grows with cluster size (more nodes → more cAdvisor cardinality), so a much larger cluster may need more even in the managed modes. Because the drop is silent, the robust systemic guard is **not** blanket over-provisioning but an **alert on collector memory pressure** so any future occurrence — in any mode — surfaces loudly instead of as mystery "No data". That guard ships as [`06-otel-collector-memory.json`](../observability/grafana/alerting/rules/06-otel-collector-memory.json) (see [Alert rules](#alert-rules)): it fires at **collector RSS > 70 % of its limit**, i.e. *before* the 80 % `memory_limiter` refuse threshold, using the backend-agnostic cAdvisor gauges `container_memory_working_set_bytes / container_spec_memory_limit_bytes` (a ratio of two gauges — immune to the counter `_total` OTLP-suffixing quirk, and needing no collector-config change). A deeper drop-counter alert on `otelcol_processor_refused_metric_points` is possible but would first require exporting the collector's own `otelcol_*` self-telemetry (a `localhost:8888` self-scrape), which we deliberately skip — the memory-pressure ratio warns *earlier* (before data is lost) and more simply.
 
 ### Jenkins Plugin
 
@@ -577,7 +577,7 @@ These cost real debugging time; record them so they don't recur:
 
 #### Where everything lives in Grafana (folders)
 
-**All of _our_ content — every dashboard above _and_ all five [alert rules](#alert-rules) — lives in a single flat folder named `CI-CD Observability`** (engine-neutral; folder uid `jenkins-2026`), in **every** backend. So no matter which Grafana you open:
+**All of _our_ content — every dashboard above _and_ all six [alert rules](#alert-rules) — lives in a single flat folder named `CI-CD Observability`** (engine-neutral; folder uid `jenkins-2026`), in **every** backend. So no matter which Grafana you open:
 
 - **Dashboards** → the *Dashboards* browser → open the **`CI-CD Observability`** folder. The visible titles are engine-neutral too: `CI-CD / Microservices Overview`, `CI-CD / k6 Observability`, `CI-CD / PostgreSQL (CloudNativePG)`, and the active CI-overview (`CI-CD / Jenkins Controller`, `CI-CD / Tekton CI Observability`, `CI-CD / GitHub Actions (ARC) CI Observability`, **or** `CI-CD / Argo Workflows CI Observability`). (Dashboard **uids** are stable internal identifiers, not shown in the UI — mostly `jenkins2026-*`, though a few Grafana-Cloud-authored boards keep their short generated uids, e.g. `rum-frontend`=`in7bmb6`, `jvm-internals`=`innrq4f`.)
 - **Alert rules** → *Alerting → Alert rules* → the **same** `CI-CD Observability` folder (a Grafana folder holds dashboards **and** rules together). The email contact point + routing are under *Alerting → Contact points / Notification policies*.
@@ -783,7 +783,7 @@ Only set the secrets that differ from your OIDC admin email. For most setups onl
 
 ### Alert Rules
 
-Five rules live in [`observability/grafana/alerting/rules/`](../observability/grafana/alerting/rules/), all filed under the `jenkins-2026` rule group in the **same `CI-CD Observability` Grafana folder as the dashboards** (folder UID `jenkins-2026`). One flat, engine-neutral folder holds both dashboards and alert rules — simplest and most intuitive, and it avoids a separate alerts folder appearing **empty** in the Dashboards browser:
+Six rules live in [`observability/grafana/alerting/rules/`](../observability/grafana/alerting/rules/), all filed under the `jenkins-2026` rule group in the **same `CI-CD Observability` Grafana folder as the dashboards** (folder UID `jenkins-2026`). One flat, engine-neutral folder holds both dashboards and alert rules — simplest and most intuitive, and it avoids a separate alerts folder appearing **empty** in the Dashboards browser:
 
 | File | Severity | `for` | What fires |
 |---|---|---|---|
@@ -792,6 +792,7 @@ Five rules live in [`observability/grafana/alerting/rules/`](../observability/gr
 | [`03-cnpg-degraded.json`](../observability/grafana/alerting/rules/03-cnpg-degraded.json) | critical | 2m | Any `postgres-*` pod in `microservices` stays NotReady |
 | [`04-http-5xx-rate.json`](../observability/grafana/alerting/rules/04-http-5xx-rate.json) | warning | 3m | HTTP 5xx rate > 0.05 req/s for any service |
 | [`05-jvm-heap-high.json`](../observability/grafana/alerting/rules/05-jvm-heap-high.json) | warning | 5m | JVM heap ratio > 85% for any service |
+| [`06-otel-collector-memory.json`](../observability/grafana/alerting/rules/06-otel-collector-memory.json) | warning | 5m | Gateway collector memory > 70% of its limit (approaching the 80% `memory_limiter` silent-drop threshold — see [collector sizing](#per-mode-metrics-collection--collector-sizing)) |
 
 > **Scope — stable only; the `develop` tier never pages.** Every rule filters on
 > `namespace="microservices"` (the **stable** tier), so the optional lean `develop`
