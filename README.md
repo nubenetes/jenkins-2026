@@ -1,5 +1,22 @@
 # jenkins-2026
 
+[![Release](https://img.shields.io/github/v/release/nubenetes/jenkins-2026?sort=semver&display_name=tag&logo=github&label=release&color=2ea44f)](https://github.com/nubenetes/jenkins-2026/releases/latest)
+[![Gitflow Guard](https://github.com/nubenetes/jenkins-2026/actions/workflows/gitflow-guard.yml/badge.svg?branch=main)](https://github.com/nubenetes/jenkins-2026/actions/workflows/gitflow-guard.yml)
+[![Terraform validate](https://github.com/nubenetes/jenkins-2026/actions/workflows/terraform-validate.yml/badge.svg?branch=main)](https://github.com/nubenetes/jenkins-2026/actions/workflows/terraform-validate.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735?logo=keepachangelog&logoColor=white)](CHANGELOG.md)
+
+**Stack:**
+![GKE](https://img.shields.io/badge/GKE-Kubernetes-326CE5?logo=googlecloud&logoColor=white)
+![Terraform](https://img.shields.io/badge/IaC-Terraform-7B42BC?logo=terraform&logoColor=white)
+![Argo CD](https://img.shields.io/badge/GitOps-Argo%20CD-EF7B4D?logo=argo&logoColor=white)
+![OpenTelemetry](https://img.shields.io/badge/o11y-OpenTelemetry-000000?logo=opentelemetry&logoColor=white)
+![Grafana](https://img.shields.io/badge/dashboards-Grafana-F46800?logo=grafana&logoColor=white)
+![Jenkins](https://img.shields.io/badge/CI-Jenkins-D24939?logo=jenkins&logoColor=white)
+![Tekton](https://img.shields.io/badge/CI-Tekton-FD495C?logo=tekton&logoColor=white)
+![Helm](https://img.shields.io/badge/packaging-Helm-0F1689?logo=helm&logoColor=white)
+![k6](https://img.shields.io/badge/load-k6-7D64FF?logo=k6&logoColor=white)
+
 > **Two-repo GitOps setup.** This is the **infra repo** (cluster bootstrap, Jenkins, ArgoCD, observability). Image tags and ArgoCD manifests live in the companion **[`nubenetes/jenkins-2026-gitops-config`](https://github.com/nubenetes/jenkins-2026-gitops-config)** repo.
 
 **At a glance.** A self-contained, **two-repo GitOps** proof-of-concept platform that stands up a complete **build → scan → ship → observe → load-test** pipeline on **Google Kubernetes Engine**, configured **entirely as code** — *nothing is clicked in a UI* — and provisioned/torn down on demand from **GitHub Actions**. It takes the JHipster microservices reference app from a `git push` all the way to a running, fully-observed, traffic-tested deployment, and can do the whole round trip (create the cluster, deploy everything, exercise it, destroy it) in one lifecycle.
