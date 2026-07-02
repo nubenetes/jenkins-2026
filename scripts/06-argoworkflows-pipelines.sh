@@ -149,7 +149,10 @@ repo_path_from_url() { echo "$1" | sed -E 's#^https?://github.com/##; s#\.git$##
 if [[ "${WEBHOOK_ENABLED}" == "true" ]]; then
   [[ -z "${GIT_TOKEN:-}" ]] && { log_error "GIT_TOKEN unset - cannot create webhooks for the Argo Events EventSource."; exit 1; }
   webhook_secret="$(ensure_github_webhook_secret)"
-  webhook_url="https://${J2026_GATEWAY_ARGOEVENTS_HOST}"
+  # The github EventSource serves its handler at /push (spec.github.*.webhook.endpoint) and the
+  # argo-events Gateway route forwards the full path, so the hook URL MUST include /push — a hook
+  # to the bare host lands on '/', which the EventSource 404s.
+  webhook_url="https://${J2026_GATEWAY_ARGOEVENTS_HOST}/push"
   log_step "Activating git-push webhooks on the forks (webhook -> ${webhook_url})"
 
   for i in $(seq 0 $((svc_count - 1))); do
@@ -157,11 +160,27 @@ if [[ "${WEBHOOK_ENABLED}" == "true" ]]; then
     repo="$(yq eval ".services[${i}].repoUrl" "${SERVICES_YAML}")"
     repo_path="$(repo_path_from_url "${repo}")"
 
-    # Ensure the GitHub webhook (idempotent: skip if one already targets webhook_url).
-    existing="$(curl -fsS -H "Authorization: token ${GIT_TOKEN}" \
-      "https://api.github.com/repos/${repo_path}/hooks" 2>/dev/null \
-      | yq -p=json -o=tsv '.[].config.url' 2>/dev/null | grep -Fx "${webhook_url}" || true)"
-    if [[ -z "${existing}" ]]; then
+    # Reconcile the fork's hooks. GitHub allows many, and a CI-engine switch leaves the previous
+    # engine's hook behind (e.g. Tekton's pac.<domain>) 404ing forever, while an older run may
+    # have left a /push-less argo-events hook. Prune any hook pointing at THIS project's base
+    # domain that isn't the desired URL, then ensure the desired one exists (hooks to unrelated
+    # hosts are left untouched). Makes an engine switch self-heal on the fork side too.
+    hooks_json="$(curl -fsS -H "Authorization: token ${GIT_TOKEN}" \
+      "https://api.github.com/repos/${repo_path}/hooks" 2>/dev/null || echo '[]')"
+    have_desired=false
+    while IFS=$'\t' read -r hid hurl; do
+      [[ -z "${hid}" ]] && continue
+      if [[ "${hurl}" == "${webhook_url}" ]]; then have_desired=true; continue; fi
+      if [[ "${hurl}" == *".${J2026_GATEWAY_BASE_DOMAIN}"* ]]; then
+        curl -fsS -X DELETE -H "Authorization: token ${GIT_TOKEN}" \
+          "https://api.github.com/repos/${repo_path}/hooks/${hid}" >/dev/null 2>&1 \
+          && log_info "  pruned stale webhook on ${repo_path} (${hurl})" || true
+      fi
+    done < <(printf '%s' "${hooks_json}" | jq -r '.[] | "\(.id)\t\(.config.url)"' 2>/dev/null)
+
+    if [[ "${have_desired}" == "true" ]]; then
+      log_info "  webhook already present on ${repo_path}"
+    else
       # Build the JSON with jq so a secret/URL containing special characters is escaped
       # correctly. A printf-built body produces invalid JSON when the value has a quote/
       # backslash/newline -> GitHub rejects it with HTTP 400 ("Problems parsing JSON"),
@@ -179,8 +198,6 @@ if [[ "${WEBHOOK_ENABLED}" == "true" ]]; then
         hook_msg="$(printf '%s' "${hook_body}" | jq -r '.message // empty' 2>/dev/null || true)"
         log_warn "  could not create webhook on ${repo_path} (HTTP ${hook_code}: ${hook_msg:-see GitHub}). The Argo Events Sensor still runs IF a webhook to ${webhook_url} already exists; otherwise add one in the fork's Settings -> Webhooks (content-type=json, events: push + pull_request, secret = the argoworkflows-github-webhook value)."
       fi
-    else
-      log_info "  webhook already present on ${repo_path}"
     fi
   done
   log_info "Git-push webhooks activated. Pushes/PRs to the forks now fire the github EventSource; the microservices Sensor submits a Workflow from microservices-pipeline; watch the Argo Workflows UI."

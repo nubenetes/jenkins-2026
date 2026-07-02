@@ -396,6 +396,27 @@ spec:
         - name: github-eventsource-svc
           port: 12000
 EOT
+
+  # The github EventSource only answers POST at /push, so the default HTTP-GET-/ health
+  # probe marks the backend unhealthy and the public endpoint 503s (the same failure mode
+  # as the faro receiver above). Use a TCP health check on 12000 so health == "port open".
+  cat >"${GENERATED_DIR}/healthcheckpolicy-argoevents.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: ${J2026_GATEWAY_HTTPROUTE_ARGOEVENTS}
+  namespace: ${J2026_ARGOWF_EVENTS_NAMESPACE}
+spec:
+  default:
+    config:
+      type: TCP
+      tcpHealthCheck:
+        port: 12000
+  targetRef:
+    group: ""
+    kind: Service
+    name: github-eventsource-svc
+EOT
 fi
 
 # Grafana is only deployed in-cluster (and thus exposable) in
@@ -707,7 +728,7 @@ if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
 fi
 if [[ "${J2026_CI_ENGINE}" == "argoworkflows" ]]; then
   log_info "  Argo Workflows UI: https://${J2026_GATEWAY_ARGOWF_HOST} (IAP-protected)"
-  log_info "  Argo Events hook:  https://${J2026_GATEWAY_ARGOEVENTS_HOST} (public, HMAC)"
+  log_info "  Argo Events hook:  https://${J2026_GATEWAY_ARGOEVENTS_HOST}/push (public, HMAC)"
 fi
 if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
   log_info "  Grafana:           https://${J2026_GATEWAY_GRAFANA_HOST} (IAP-protected)"
