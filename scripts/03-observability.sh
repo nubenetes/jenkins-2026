@@ -96,6 +96,22 @@ otel_logs_values_with_filter() {
   printf '%s' "${dst}"
 }
 
+# Obs mode is single-active: retire the OTHER modes' credential Secrets so a mode
+# switch (e.g. grafana-cloud -> oss) leaves no stale secret behind. A leftover
+# would (a) make Day2.traffic.01-k6's secret-presence mode auto-detection pick the
+# wrong (dead) backend and emit a broken "VIEW IN GRAFANA" link (Cloudflare Error
+# 1016 on a destroyed stack), and (b) mislead anything that keys off "which
+# credential secret exists". Only the active mode's secret is (re)created by the
+# branch below. Analogous to retire_ci_engine / remove_oss_observability_app.
+for _obs_pair in "grafana-cloud:${J2026_GRAFANA_CLOUD_SECRET}" \
+                 "managed-azure:${J2026_AZURE_MONITOR_SECRET}" \
+                 "managed-aws:${J2026_AWS_MANAGED_SECRET}"; do
+  if [[ "${J2026_OBS_MODE}" != "${_obs_pair%%:*}" ]]; then
+    kubectl delete secret "${_obs_pair#*:}" -n "${J2026_OBS_NAMESPACE}" \
+      --ignore-not-found >/dev/null 2>&1 || true
+  fi
+done
+
 case "${J2026_OBS_MODE}" in
   grafana-cloud)
     log_step "Observability mode: grafana-cloud"
