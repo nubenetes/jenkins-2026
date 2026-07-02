@@ -282,6 +282,45 @@ _j2026_engine_namespaces() {
   esac
 }
 
+# _j2026_strip_stuck_argocd_apps <argocd-ns> <app...> — after ArgoCD Applications are issued
+# for deletion, poll (~90s) and strip resources-finalizer.argocd.argoproj.io on any still stuck
+# Terminating (its cascade-prune stalled — the app-of-apps deadlock) so the CR actually clears.
+# Best-effort/idempotent. The caller MUST prune the app's workloads by other means first
+# (namespace deletion, or _j2026_force_prune_by_instance for shared-namespace workloads), else
+# stripping the finalizer orphans them.
+_j2026_strip_stuck_argocd_apps() {
+  local acd="$1"; shift
+  local app left i=0
+  while [ "$i" -lt 18 ]; do
+    left=""
+    for app in "$@"; do kubectl get application "$app" -n "$acd" >/dev/null 2>&1 && left="${left} ${app}"; done
+    [ -z "${left# }" ] && return 0
+    i=$((i + 1)); sleep 5
+  done
+  for app in ${left}; do
+    log_warn "  ArgoCD app '${app}' stuck Terminating (resources-finalizer cascade stalled) — stripping finalizer"
+    kubectl patch application "$app" -n "$acd" --type=merge -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
+  done
+}
+
+# _j2026_force_prune_by_instance <ns> <helm-instance...> — force-delete every namespaced +
+# cluster-scoped resource labelled app.kubernetes.io/instance=<helm-instance>. For workloads in a
+# SHARED namespace (so the ns can't just be deleted) when ArgoCD cascade-prune stalled.
+# ⚠️ Prunes ONLY by the INSTANCE label — NEVER app.kubernetes.io/name — because managed-azure/aws
+# run their OWN standalone kube-state-metrics + prometheus-node-exporter that SHARE the chart NAME
+# label (they carry instance=kube-state-metrics / =prometheus-node-exporter); the instance label is
+# unique per Helm release, so this cannot touch the managed-mode exporters.
+_j2026_force_prune_by_instance() {
+  local ns="$1"; shift
+  local inst lbl
+  for inst in "$@"; do
+    lbl="app.kubernetes.io/instance=${inst}"
+    kubectl delete prometheus,alertmanager,servicemonitor,podmonitor,prometheusrule -n "$ns" -l "$lbl" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+    kubectl delete all,cm,secret,sa,role,rolebinding,pvc -n "$ns" -l "$lbl" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+    kubectl delete clusterrole,clusterrolebinding,mutatingwebhookconfiguration,validatingwebhookconfiguration -l "$lbl" --ignore-not-found >/dev/null 2>&1 || true
+  done
+}
+
 # retire_ci_engine <engine> — fully remove a sibling CI engine. Idempotent.
 retire_ci_engine() {
   local eng="$1" acd="${J2026_ARGOCD_NAMESPACE:-argocd}" app ns neg
@@ -306,4 +345,8 @@ retire_ci_engine() {
     done
     kubectl delete namespace "$ns" --ignore-not-found --wait=false 2>/dev/null || true
   done
+  # 3. Any Application still Terminating on the resources-finalizer (cascade-prune stalled) —
+  #    strip it so the CR clears. The engine's workloads live in the namespaces deleted above,
+  #    so no separate force-prune is needed here (unlike the shared-ns OSS stack).
+  _j2026_strip_stuck_argocd_apps "$acd" ${apps}
 }
