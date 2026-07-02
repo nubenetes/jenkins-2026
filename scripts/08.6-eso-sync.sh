@@ -280,10 +280,18 @@ EOF
 if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
   iap_namespaces=("${J2026_HEADLAMP_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}")
   [[ "${J2026_OBS_MODE}" == "oss" ]] && iap_namespaces+=("${J2026_GRAFANA_OSS_NAMESPACE}")
+  # Match 09-gateway.sh's iap_backend_namespaces exactly: the IAP-protected CI
+  # dashboard is Tekton's (tekton) / Jenkins' (jenkins) / the Argo Workflows Server
+  # (argoworkflows). githubactions has NO in-cluster CI dashboard, so it adds none —
+  # an explicit elif chain, NOT else→jenkins (which mis-synced the IAP secret to the
+  # absent jenkins ns and starved the argo/argoworkflows one, leaving its
+  # GCPBackendPolicy Invalid → no IAP + the 3600s SSE timeout never applied).
   if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
     iap_namespaces+=("${J2026_TEKTON_NAMESPACE}")
-  else
+  elif [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
     iap_namespaces+=("${J2026_JENKINS_NAMESPACE}")
+  elif [[ "${J2026_CI_ENGINE}" == "argoworkflows" ]]; then
+    iap_namespaces+=("${J2026_ARGOWF_NAMESPACE}")
   fi
   for ns in "${iap_namespaces[@]}"; do
     es_extract  "${J2026_GATEWAY_IAP_SECRET}" "${ns}" "${J2026_GATEWAY_IAP_SECRET}"
