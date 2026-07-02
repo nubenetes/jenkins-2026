@@ -1911,7 +1911,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum by (pod) (rate({__name__=~\"cnpg_pg_stat_database_xact_commit(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
+                        "expr": "sum by (pod) ((rate(cnpg_pg_stat_database_xact_commit{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_database_xact_commit_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "commit {{pod}}",
                         "range": true
@@ -1933,7 +1933,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "-sum by (pod) (rate({__name__=~\"cnpg_pg_stat_database_xact_rollback(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
+                        "expr": "-sum by (pod) ((rate(cnpg_pg_stat_database_xact_rollback{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_database_xact_rollback_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "rollback {{pod}}",
                         "range": true
@@ -2059,7 +2059,7 @@
                       },
                       "spec": {
                         "app": "grafana-assistant-app",
-                        "expr": "(100 * sum(rate({__name__=~\"cnpg_pg_stat_database_xact_rollback(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])) / (sum(rate({__name__=~\"cnpg_pg_stat_database_xact_commit(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])) + sum(rate({__name__=~\"cnpg_pg_stat_database_xact_rollback(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])) > 0)) or vector(0)",
+                        "expr": "(100 * sum((rate(cnpg_pg_stat_database_xact_rollback{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_database_xact_rollback_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))) / (sum((rate(cnpg_pg_stat_database_xact_commit{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_database_xact_commit_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))) + sum((rate(cnpg_pg_stat_database_xact_rollback{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_database_xact_rollback_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))) > 0)) or vector(0)",
                         "instant": false,
                         "legendFormat": "rollback %",
                         "queryType": "range",
@@ -2191,7 +2191,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum(rate({__name__=~\"cnpg_pg_stat_database_tup_inserted(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
+                        "expr": "sum((rate(cnpg_pg_stat_database_tup_inserted{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_database_tup_inserted_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "inserted",
                         "range": true
@@ -2213,7 +2213,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum(rate({__name__=~\"cnpg_pg_stat_database_tup_updated(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
+                        "expr": "sum((rate(cnpg_pg_stat_database_tup_updated{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_database_tup_updated_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "updated",
                         "range": true
@@ -2235,7 +2235,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum(rate({__name__=~\"cnpg_pg_stat_database_tup_deleted(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
+                        "expr": "sum((rate(cnpg_pg_stat_database_tup_deleted{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_database_tup_deleted_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "deleted",
                         "range": true
@@ -2257,7 +2257,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum(rate({__name__=~\"cnpg_pg_stat_database_tup_fetched(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
+                        "expr": "sum((rate(cnpg_pg_stat_database_tup_fetched{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_database_tup_fetched_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "fetched",
                         "range": true
@@ -2279,7 +2279,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum(rate({__name__=~\"cnpg_pg_stat_database_tup_returned(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
+                        "expr": "sum((rate(cnpg_pg_stat_database_tup_returned{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_database_tup_returned_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "returned",
                         "range": true
@@ -2405,7 +2405,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum(rate({__name__=~\"cnpg_pg_stat_database_temp_files(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
+                        "expr": "sum((rate(cnpg_pg_stat_database_temp_files{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_database_temp_files_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "temp files /s",
                         "range": true
@@ -2427,7 +2427,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum(rate({__name__=~\"cnpg_pg_stat_database_temp_bytes(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
+                        "expr": "sum((rate(cnpg_pg_stat_database_temp_bytes{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_database_temp_bytes_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "temp bytes /s",
                         "range": true
@@ -2553,7 +2553,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum by (pod) (rate({__name__=~\"cnpg_pg_stat_database_deadlocks(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
+                        "expr": "sum by (pod) ((rate(cnpg_pg_stat_database_deadlocks{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_database_deadlocks_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "deadlocks {{pod}}",
                         "range": true
@@ -2575,7 +2575,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum by (pod) (rate({__name__=~\"cnpg_pg_stat_database_conflicts(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
+                        "expr": "sum by (pod) ((rate(cnpg_pg_stat_database_conflicts{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_database_conflicts_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "conflicts {{pod}}",
                         "range": true
@@ -2701,7 +2701,7 @@
                       },
                       "spec": {
                         "app": "grafana-assistant-app",
-                        "expr": "(100 * sum(rate({__name__=~\"cnpg_pg_stat_database_blks_hit(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])) / (sum(rate({__name__=~\"cnpg_pg_stat_database_blks_hit(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])) + sum(rate({__name__=~\"cnpg_pg_stat_database_blks_read(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])) > 0)) or vector(0)",
+                        "expr": "(100 * sum((rate(cnpg_pg_stat_database_blks_hit{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_database_blks_hit_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))) / (sum((rate(cnpg_pg_stat_database_blks_hit{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_database_blks_hit_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))) + sum((rate(cnpg_pg_stat_database_blks_read{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_database_blks_read_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))) > 0)) or vector(0)",
                         "instant": false,
                         "legendFormat": "",
                         "queryType": "range",
@@ -2795,7 +2795,7 @@
                       },
                       "spec": {
                         "app": "grafana-assistant-app",
-                        "expr": "(100 * sum by (datname) (rate({__name__=~\"cnpg_pg_stat_database_blks_hit(_total)?\", namespace=\"$namespace\", datname=~\"$datname\"}[$__rate_interval])) / (sum by (datname) (rate({__name__=~\"cnpg_pg_stat_database_blks_hit(_total)?\", namespace=\"$namespace\", datname=~\"$datname\"}[$__rate_interval])) + sum by (datname) (rate({__name__=~\"cnpg_pg_stat_database_blks_read(_total)?\", namespace=\"$namespace\", datname=~\"$datname\"}[$__rate_interval])) > 0)) or vector(0)",
+                        "expr": "(100 * sum by (datname) ((rate(cnpg_pg_stat_database_blks_hit{namespace=\"$namespace\", datname=~\"$datname\"}[$__rate_interval]) or rate(cnpg_pg_stat_database_blks_hit_total{namespace=\"$namespace\", datname=~\"$datname\"}[$__rate_interval]))) / (sum by (datname) ((rate(cnpg_pg_stat_database_blks_hit{namespace=\"$namespace\", datname=~\"$datname\"}[$__rate_interval]) or rate(cnpg_pg_stat_database_blks_hit_total{namespace=\"$namespace\", datname=~\"$datname\"}[$__rate_interval]))) + sum by (datname) ((rate(cnpg_pg_stat_database_blks_read{namespace=\"$namespace\", datname=~\"$datname\"}[$__rate_interval]) or rate(cnpg_pg_stat_database_blks_read_total{namespace=\"$namespace\", datname=~\"$datname\"}[$__rate_interval]))) > 0)) or vector(0)",
                         "instant": false,
                         "legendFormat": "{{datname}}",
                         "queryType": "range",
@@ -2927,7 +2927,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum(rate({__name__=~\"cnpg_pg_stat_database_blk_read_time(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
+                        "expr": "sum((rate(cnpg_pg_stat_database_blk_read_time{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_database_blk_read_time_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "read",
                         "range": true
@@ -2949,7 +2949,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum(rate({__name__=~\"cnpg_pg_stat_database_blk_write_time(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
+                        "expr": "sum((rate(cnpg_pg_stat_database_blk_write_time{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_database_blk_write_time_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "write",
                         "range": true
@@ -3479,7 +3479,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum(rate({__name__=~\"cnpg_pg_stat_checkpointer_checkpoints_timed(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
+                        "expr": "sum((rate(cnpg_pg_stat_checkpointer_checkpoints_timed{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_checkpointer_checkpoints_timed_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "timed",
                         "range": true
@@ -3501,7 +3501,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum(rate({__name__=~\"cnpg_pg_stat_checkpointer_checkpoints_req(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
+                        "expr": "sum((rate(cnpg_pg_stat_checkpointer_checkpoints_req{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_checkpointer_checkpoints_req_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "requested",
                         "range": true
@@ -3627,7 +3627,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum(rate({__name__=~\"cnpg_pg_stat_checkpointer_write_time(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
+                        "expr": "sum((rate(cnpg_pg_stat_checkpointer_write_time{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_checkpointer_write_time_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "write",
                         "range": true
@@ -3649,7 +3649,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum(rate({__name__=~\"cnpg_pg_stat_checkpointer_sync_time(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
+                        "expr": "sum((rate(cnpg_pg_stat_checkpointer_sync_time{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_checkpointer_sync_time_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "sync",
                         "range": true
@@ -5430,7 +5430,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum(rate({__name__=~\"cnpg_pg_stat_archiver_archived_count(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
+                        "expr": "sum((rate(cnpg_pg_stat_archiver_archived_count{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_archiver_archived_count_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "archived /s",
                         "range": true
@@ -5452,7 +5452,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum(rate({__name__=~\"cnpg_pg_stat_archiver_failed_count(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
+                        "expr": "sum((rate(cnpg_pg_stat_archiver_failed_count{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_archiver_failed_count_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "failed /s",
                         "range": true
@@ -5704,7 +5704,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum(rate({__name__=~\"cnpg_pg_stat_bgwriter_buffers_clean(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
+                        "expr": "sum((rate(cnpg_pg_stat_bgwriter_buffers_clean{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_bgwriter_buffers_clean_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "clean",
                         "range": true
@@ -5726,7 +5726,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum(rate({__name__=~\"cnpg_pg_stat_bgwriter_buffers_alloc(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
+                        "expr": "sum((rate(cnpg_pg_stat_bgwriter_buffers_alloc{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_bgwriter_buffers_alloc_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "allocated",
                         "range": true
@@ -5748,7 +5748,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum(rate({__name__=~\"cnpg_pg_stat_checkpointer_buffers_written(_total)?\", namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]))",
+                        "expr": "sum((rate(cnpg_pg_stat_checkpointer_buffers_written{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval]) or rate(cnpg_pg_stat_checkpointer_buffers_written_total{namespace=\"$namespace\", pod=~\"$pod\"}[$__rate_interval])))",
                         "instant": false,
                         "legendFormat": "checkpointer written",
                         "range": true
