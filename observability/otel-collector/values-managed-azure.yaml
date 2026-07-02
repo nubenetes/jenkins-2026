@@ -32,11 +32,19 @@ image:
 
 resources:
   requests:
-    cpu: 100m
-    memory: 256Mi
-  limits:
-    cpu: 500m
+    cpu: 200m
     memory: 512Mi
+  limits:
+    cpu: "1"
+    # cadvisor + kubelet scraping is high-cardinality; 512Mi kept the collector
+    # constantly above the memory_limiter soft limit (limit_percentage: 80), so it
+    # refused/dropped scraped metrics before they reached Azure Monitor managed
+    # Prometheus ("Scrape commit failed ... data refused due to high memory usage"
+    # for the cadvisor/cnpg pools; nothing arrived → e.g. the Container CPU panel
+    # showed No data). 1Gi gives the memory_limiter real headroom — matches the
+    # managed-aws collector, which scrapes the same in-cluster infra itself
+    # (unlike oss/grafana-cloud, where kube-prometheus / Alloy scrape it separately).
+    memory: 1Gi
 
 # Exposes the Azure Monitor connection string, the managed-Prometheus
 # remote-write endpoint, and the Entra service-principal credentials as env
