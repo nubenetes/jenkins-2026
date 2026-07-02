@@ -110,6 +110,7 @@ Every persistent/external resource, its tier, and the **exact mechanism** that m
 | **ClusterSecretStore + ExternalSecrets** (ESO) | ✅ | Die with the cluster (no cross-rebuild residue); idempotent re-apply; the retire path sets `deletionPolicy=Retain` + strips ownerRefs. |
 | **GKE GSAs** (`*-nodes`, `eso-secret-reader`, `*-pg-backups`) | ✅ *(fixed [#488](https://github.com/nubenetes/jenkins-2026/pull/488))* | Fixed `account_id` destroyed+recreated by Decom/Day1, and a deleted GSA is **tombstoned ~30 days** — `create_ignore_already_exists = true` **adopts** the tombstone instead of 409-ing. |
 | **GitHub Actions secrets/vars** | ✅ | Pure inputs — no cluster-lifecycle writeback. |
+| **Obs-mode credential Secrets** (`grafana-cloud-credentials` / `azure-monitor-credentials` / `aws-managed-credentials`) | ✅ *(fixed [#492](https://github.com/nubenetes/jenkins-2026/pull/492))* | **Single-active-mode invariant**: `03-observability.sh` retires the OTHER modes' Secrets on provision, so a mode switch leaves none stale. `Day2.traffic.01-k6` auto-detects the mode by Secret presence — a leftover once pointed it at a **destroyed** Grafana Cloud stack → a dead "VIEW IN GRAFANA" link (Cloudflare Error 1016). |
 
 ### 4.5 Observability backends (persistent Day0 — idempotent no-op re-apply)
 

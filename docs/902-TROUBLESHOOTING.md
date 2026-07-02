@@ -303,6 +303,31 @@ error TS2307: Cannot find module 'path'.     (@opentelemetry/instrumentation, vi
 
 **Fix.** Add `"skipLibCheck": true` to the gateway `tsconfig.json` `compilerOptions` (it only skips type-checking `node_modules` `.d.ts`, not your code). Applied on the gateway **develop** branch alongside the Faro instrumentation.
 
+## `Day2.traffic.01-k6` "VIEW IN GRAFANA" link is dead (Cloudflare `Error 1016`)
+
+**Symptom:** the k6 traffic workflow's summary prints a Grafana Cloud URL
+(`https://jenkins2026obs<slug>.grafana.net/...`) that fails with **Cloudflare
+`Error 1016 — Origin DNS error`**, even though the cluster runs
+`observability.mode=oss` (its Grafana is the in-cluster `grafana.<baseDomain>`).
+
+**Cause:** the workflow **auto-detects the active obs mode from in-cluster
+credential-Secret presence** (`aws-managed-credentials` → `azure-monitor-credentials`
+→ `grafana-cloud-credentials` → else `oss`). A **stale `grafana-cloud-credentials`
+Secret** left in the `observability` namespace by an earlier `grafana-cloud`
+provisioning (before switching to `oss`) makes detection pick `grafana-cloud` and
+read the **destroyed** stack's URL from it → the dead link. A mode-switch
+**residue** issue (see [104](104-REBUILD_SAFETY.md)).
+
+**Fix** (PR #492): [`scripts/03-observability.sh`](../scripts/03-observability.sh)
+now deletes the OTHER modes' credential Secrets before provisioning the active one,
+enforcing the single-active-mode invariant. To unstick a **live** cluster now:
+
+```bash
+# delete whichever inactive-mode credential Secret is stale (here: grafana-cloud on an oss cluster)
+kubectl delete secret grafana-cloud-credentials -n observability --ignore-not-found
+# a Day1 re-run reconciles this automatically; the next k6 run then detects oss -> grafana.<baseDomain>
+```
+
 ---
 
 [← Previous: 901. Local Development](./901-LOCAL_DEVELOPMENT.md) | [🏠 Home](../README.md)
