@@ -19,7 +19,32 @@ All notable changes to **jenkins-2026** are documented here, following
 
 ## [Unreleased]
 
-_Nothing yet — add entries here as PRs merge._
+_Post-1.0 observability & idempotency fixups — an **Azure Managed Grafana** bring-up pass that
+uncovered several managed-mode (OTLP → Azure/AWS managed-Prometheus) query incompatibilities,
+plus a robust-retire hardening for feature-flag switches._
+
+### Added
+- **README header + Stack badges (#500–#502).** Status badges (release, CI, license) and a full **46-badge Stack inventory** grouped by feature-flag axis; fixed a stale Jenkins-only blurb (this runs four CI engines).
+- **Collector memory-pressure alert — `06-otel-collector-memory` (#510).** Warns at gateway-collector RSS > 70 % of its limit, *before* the 80 % `memory_limiter` silent-drop threshold, so a future dropped-scrape "No data" surfaces loudly instead of silently.
+- **`rum-faro` in the k6 GitHub Actions `run_all` matrix (#503).**
+
+### Changed
+- **Container CPU panel shows millicores (#517)** instead of fractional cores — readable for small pods.
+- **managed-azure OTel collector memory 512Mi → 1Gi (#508).** The gateway self-scrapes high-cardinality cAdvisor there; the smaller limit tripped the `memory_limiter`, silently dropping infra metrics.
+- **The `pod & container infra` dashboard row is backend-neutral (#513).** The "free tier / leanMetrics" caveat is Grafana-Cloud-only; the row populates normally on OSS/Azure/AWS.
+- **Mode/engine switches are now robustly idempotent (#518).** `remove_oss_observability_app` + `retire_ci_engine` force-prune workloads by Helm `instance` label and strip a stuck ArgoCD `resources-finalizer`, so a switch converges with **no manual `kubectl`** even from a mixed state — and no longer risks deleting a managed-mode standalone node-exporter via a shared label.
+
+### Fixed
+- **Container CPU / memory now correct on managed-azure/aws (#511 → #514 → #519).** The OTLP round-trip to managed-Prometheus drops the cAdvisor `container` label **and the per-app-container series entirely** (only the pod-level cgroup + pause survive), so both `container!=""` and `image!=""` read ≈0. Final fix takes the pod-level total via **`max by (pod)`**; live-verified against `kubectl top`.
+- **Azure-safe dashboard queries (#512, #506).** Azure Managed Prometheus rejects `__name__=~` regex (`501 Not Implemented`), so all such selectors now use exact names unioned with `or` — which also fixes the CNPG counter `_total` OTLP-suffix divergence (#506).
+- **Collector-memory alert corrected for managed modes (#516).** It filtered `image!=""` (same trap as the panels — on Azure that matched only the ~0 pause container); now `max by (pod)` on the collector pod.
+- **`Error rate by service (4xx+5xx)` showed "No data" instead of 0 (#505)** when all traffic was 2xx — added a per-service zero fallback.
+- **`Day2.publish.03` no longer re-publishes off-engine CI dashboards (#515).** Its CI-dashboard gating was a stale jenkins/tekton binary that kept re-creating the github-actions + argo-workflows boards on a Jenkins cluster; now the full 4-engine keep/delete gating, matching Day1 and `07`.
+- **Day1 `grafana-cloud-token` teardown order on a `destroy_unused_backends` switch (#507).**
+
+### Documentation
+- **Per-mode OTel collector metrics-collection & memory sizing (#509).** A matrix (which component scrapes the infra per mode, collector memory per mode) + the silent `memory_limiter` drop signature and the managed-mode query gotchas (dropped `container` label / per-app-container series, `__name__=~` 501, counter `_total`), in `docs/301` + `docs/902`.
+- **`run_all` now includes `rum-faro` (#504)** in `docs/302`.
 
 <!--
 Template — keep only the sections you use, in this order:
