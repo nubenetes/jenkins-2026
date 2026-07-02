@@ -3290,7 +3290,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"$namespace\", image!=\"\"})",
+          "expr": "max by (pod) (container_memory_working_set_bytes{namespace=\"$namespace\"})",
           "instant": false,
           "legendFormat": "{{pod}}",
           "range": true,
@@ -3395,7 +3395,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", image!=\"\"}[$__rate_interval])) * 1000",
+          "expr": "max by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\"}[$__rate_interval])) * 1000",
           "instant": false,
           "legendFormat": "{{pod}}",
           "range": true,
