@@ -6,14 +6,16 @@ All notable changes to **jenkins-2026** are documented here, following
 
 - **`Unreleased`** — changes accumulate under the section below as PRs merge; cutting
   a release renames it to a dated `## [vX.Y.Z]` section and starts a fresh `Unreleased`.
-- **Versioning** — each release is a **minor** bump (`v0.Y.0`) cut at a milestone (a
-  coherent batch of work). Patch releases (`v0.Y.Z`) are reserved for hotfixes on an
-  already-released line. Every version here is a git **tag** *and* a GitHub **release**,
-  one-to-one, cut from its section by [`scripts/cut-release.sh`](scripts/cut-release.sh).
-  See [`RELEASING.md`](RELEASING.md) for the full flow.
-- **Older history** — versions **v0.1.0 – v0.28.56** are preserved in
-  [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) (kept out of this file so it stays
-  scannable). The [release index](#release-index) below links every milestone.
+- **Versioning** — **`v1.0.0` is the stable baseline.** From 1.0 on: **minor** (`v1.Y.0`)
+  at a feature milestone, **patch** (`v1.Y.Z`) for hotfixes, **major** (`v2.0.0`) for
+  breaking changes. Every version is a git **tag** *and* a GitHub **release**, one-to-one,
+  cut from its section by [`scripts/cut-release.sh`](scripts/cut-release.sh). See
+  [`RELEASING.md`](RELEASING.md) for the full flow.
+- **Pre-1.0 history** — the **`v0.x` line (v0.1.0 – v0.29.0)** was rapid pre-release
+  development; those releases are a **frozen historical record** (never renumbered — that
+  would break version immutability). Versions **≤ v0.28.56** live verbatim in
+  [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md) to keep this file scannable; the
+  [release index](#release-index) links every milestone.
 
 ## [Unreleased]
 
@@ -29,6 +31,24 @@ Template — keep only the sections you use, in this order:
 ### Security     — vulnerability fixes
 ### Documentation — docs-only changes
 -->
+
+## [v1.0.0] - 2026-07-02
+
+_First stable release._ Promotes **jenkins-2026** from its `v0.x` rapid-development line (v0.1.0–v0.29.0, now a frozen historical record — its last increment consolidated in [v0.29.0](#v0290---2026-07-02)) to a stable **1.0** baseline. No functional change versus v0.29.0; this release declares the reference PoC feature-complete and adopts the 1.0 versioning policy in [`RELEASING.md`](RELEASING.md) (from here: minor = features, patch = fixes, major = breaking).
+
+### What v1.0.0 delivers
+
+The complete, working reference platform — a Jenkins-on-Kubernetes CI/CD PoC with full OpenTelemetry observability, pluggable along three axes:
+
+- **CI engine** (`ci.engine`) — **four interchangeable engines** running the same 10-stage pipeline from one `jenkins/pipelines/services.yaml`: **Jenkins** (default), **Tekton**, **GitHub Actions/ARC**, **Argo Workflows**. Switching engines fully retires the previous one.
+- **Observability backend** (`observability.mode`) — **four backends** with correlated traces/metrics/logs, dashboards + alerts provisioned as code, and synthetic Faro RUM: in-cluster **OSS** (Grafana/Loki/Tempo/Prometheus), **Grafana Cloud**, **Azure Managed Grafana**, **Amazon Managed Grafana**.
+- **Secrets backend** (`secrets.backend`) — `imperative` (default) or `eso` (GCP Secret Manager + External Secrets Operator, keyless WIF).
+- **Platform** — GitOps via **ArgoCD** (app-of-apps), **HA CloudNative-PG** Postgres, **Gateway API + Google IAP** ingress, **Dataplane V2 + WireGuard** networking, elastic **Spot Node Auto-Provisioning**.
+- **Lifecycle** — a clean, idempotent **Day0 → Day1 → Day2 → Decom** flow; one-command bootstrap; **rebuild-safe** by design (`docs/104-REBUILD_SAFETY.md`).
+- **Docs & release process** — ~20 numbered deep-dive docs, plus this scannable changelog + [`RELEASING.md`](RELEASING.md) convention with [`scripts/cut-release.sh`](scripts/cut-release.sh).
+
+### Changed
+- **Adopted a stable `v1.0.0` baseline and 1.0 versioning semantics.** The `v0.x` line is frozen as pre-release history (not renumbered — preserving version immutability); [`RELEASING.md`](RELEASING.md) now documents minor/patch/major from 1.0 on.
 
 ## [v0.29.0] - 2026-07-02
 
@@ -74,7 +94,8 @@ Every milestone release (git tag + GitHub release), newest first. Full detail fo
 
 | Version | Date | Theme |
 |---|---|---|
-| [v0.29.0](#v0290---2026-07-02) | 2026-07-02 | rebuild-safety & observability hardening |
+| [v1.0.0](#v100---2026-07-02) | 2026-07-02 | **first stable release** — reference platform baseline |
+| [v0.29.0](#v0290---2026-07-02) | 2026-07-02 | rebuild-safety & observability hardening (last v0.x) |
 | [v0.28.56](CHANGELOG-ARCHIVE.md) | 2026-06-30 | two new CI engines — GitHub Actions/ARC + Argo Workflows |
 | [v0.28.54](CHANGELOG-ARCHIVE.md) | 2026-06-30 | elastic CI — GKE Node Auto-Provisioning (Spot) + per-engine runNodePool |
 | [v0.28.0](CHANGELOG-ARCHIVE.md) | 2026-06-28 | Faro RUM, JVM tuning everywhere, build speed, immutable tags |
@@ -96,5 +117,7 @@ Every milestone release (git tag + GitHub release), newest first. Full detail fo
 | [v0.5.0](CHANGELOG-ARCHIVE.md) | 2026-06-14 | smart-polling deploys, JCasC hardening |
 | [v0.1.0](CHANGELOG-ARCHIVE.md) | 2026-06-13 | initial PoC |
 
-_Interim patch versions (e.g. the `v0.28.x` series) are consolidated under their
-milestone in the archive; from v0.29.0 onward the changelog uses milestone minors._
+_The `v0.x` line (v0.1.0 – v0.29.0) was pre-1.0 rapid development — its interim patch
+versions (e.g. the `v0.28.x` series) are consolidated under their milestone in the
+archive. **v1.0.0 is the stable baseline**; from here the changelog uses 1.0 semantics
+(minor = features, patch = fixes, major = breaking)._
