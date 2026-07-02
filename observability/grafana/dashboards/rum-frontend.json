@@ -2851,8 +2851,8 @@
       {
         "allowCustomValue": true,
         "current": {
-          "text": "develop",
-          "value": "develop"
+          "text": "stable",
+          "value": "stable"
         },
         "hide": 0,
         "includeAll": false,
@@ -2861,12 +2861,12 @@
         "name": "deployment_environment",
         "options": [
           {
-            "selected": false,
+            "selected": true,
             "text": "stable",
             "value": "stable"
           },
           {
-            "selected": true,
+            "selected": false,
             "text": "develop",
             "value": "develop"
           }

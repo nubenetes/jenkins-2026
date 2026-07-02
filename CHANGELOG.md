@@ -42,6 +42,7 @@ plus a robust-retire hardening for feature-flag switches._
 - **`Error rate by service (4xx+5xx)` showed "No data" instead of 0 (#505)** when all traffic was 2xx — added a per-service zero fallback.
 - **`Day2.publish.03` no longer re-publishes off-engine CI dashboards (#515).** Its CI-dashboard gating was a stale jenkins/tekton binary that kept re-creating the github-actions + argo-workflows boards on a Jenkins cluster; now the full 4-engine keep/delete gating, matching Day1 and `07`.
 - **Day1 `grafana-cloud-token` teardown order on a `destroy_unused_backends` switch (#507).**
+- **Faro/RUM dashboard defaulted to the empty `develop` tier.** RUM beacons are tagged `deployment_environment=stable` (the SPA-serving gateway and the `rum-faro` synthetic test run in the **stable** tier; `develop` is the lean optional tier with no RUM), but `rum-frontend` defaulted its `deployment_environment` variable to `develop` → "No data". Now defaults to `stable`, consistent with `microservices-overview` / `k6-smoke-overview`.
 
 ### Documentation
 - **Per-mode OTel collector metrics-collection & memory sizing (#509).** A matrix (which component scrapes the infra per mode, collector memory per mode) + the silent `memory_limiter` drop signature and the managed-mode query gotchas (dropped `container` label / per-app-container series, `__name__=~` 501, counter `_total`), in `docs/301` + `docs/902`.

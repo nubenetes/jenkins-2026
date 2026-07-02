@@ -3968,17 +3968,17 @@
           "name": "deployment_environment",
           "query": "stable,develop",
           "current": {
-            "text": "develop",
-            "value": "develop"
+            "text": "stable",
+            "value": "stable"
           },
           "options": [
             {
-              "selected": false,
+              "selected": true,
               "text": "stable",
               "value": "stable"
             },
             {
-              "selected": true,
+              "selected": false,
               "text": "develop",
               "value": "develop"
             }
