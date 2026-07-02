@@ -70,7 +70,7 @@
                   "showLineNumbers": false,
                   "showMiniMap": false
                 },
-                "content": "## CI-CD / Microservices Overview — read me first\n\nPick the tier in **`deployment_environment`** (stable | develop) and narrow with **`service_name`**.\n\n| | **stable** | **develop** |\n|---|---|---|\n| Source | `main` branch → `microservices` ns | `develop` branch → `microservices-develop` ns |\n| Topology | full (HA DBs) | lean (single-instance DBs) |\n\n### Signals on this board\n- **HTTP RED** (`http_server_*`) — **R**ate, **E**rrors (4xx/5xx), **D**uration (p50/p95/p99), per service & route.\n- **Span-metrics RED** (`traces_spanmetrics_*`) — RED derived from traces, per service / operation / span-kind.\n- **Service dependency graph** (`traces_service_graph_*`) — service→service edges (rate / failed / latency). ⚠️ This metric has **no `deployment_environment` label**, so its panels show **all tiers combined**.\n- **JVM & runtime** — heap / GC / threads / CPU summary; full depth in the **CI-CD JVM internals** dashboard.\n\n### Dashboard sections at a glance\n\n| Section | What it answers |\n|---|---|\n| **Overview** | What are the headline throughput, error, and latency numbers right now? |\n| **HTTP traffic** | Which services and routes are busy, slow, or erroring? |\n| **Span metrics (OTel traces)** | What does trace-derived RED look like per service and span kind? |\n| **Service dependency graph** | Which service-to-service edges have failures or high latency? |\n| **JVM summary** | Is memory or CPU pressure emerging across the fleet? |\n| **Kubernetes pod & container infra** | Are pods restarting? Is capacity sufficient? (paid tier only) |\n| **Logs & traces** | Per-request drill-down via logs and distributed traces. |\n\n### Why a panel may show no data\n- 🟢 **`0` = healthy** — error rates and GC pauses sit at 0 when nothing is wrong or the service is idle.\n- 📈 **Needs traffic** — every RED panel is rate-based; an idle service draws a flat 0 line. Generate load with the **`Day2.traffic.01-k6`** workflow.\n- 🌐 **Service graph = all tiers** — `traces_service_graph_*` has no `deployment_environment` label, so that section is **not** filtered by the tier picker.\n\n### ⚠️ Free tier — the *Kubernetes pod & container infra* section is empty by design\n`config.yaml → observability.grafanaCloudTier` defaults to **`free`**, which enables **`leanMetrics`**: the collector drops cluster-infra metrics (kube-state-metrics + cAdvisor: `kube_pod_*`, `kube_deployment_*`, `container_cpu_*`, `container_memory_*`) to stay under the free-tier 15k active-series cap. Everything else — `http_server_*`, `traces_*`, `jvm_*` — is always shipped. To enable the infra section, set `grafanaCloudTier: paid` and re-run `Day1.cluster.01-gke`.",
+                "content": "## CI-CD / Microservices Overview — read me first\n\nPick the tier in **`deployment_environment`** (stable | develop) and narrow with **`service_name`**.\n\n| | **stable** | **develop** |\n|---|---|---|\n| Source | `main` branch → `microservices` ns | `develop` branch → `microservices-develop` ns |\n| Topology | full (HA DBs) | lean (single-instance DBs) |\n\n### Signals on this board\n- **HTTP RED** (`http_server_*`) — **R**ate, **E**rrors (4xx/5xx), **D**uration (p50/p95/p99), per service & route.\n- **Span-metrics RED** (`traces_spanmetrics_*`) — RED derived from traces, per service / operation / span-kind.\n- **Service dependency graph** (`traces_service_graph_*`) — service→service edges (rate / failed / latency). ⚠️ This metric has **no `deployment_environment` label**, so its panels show **all tiers combined**.\n- **JVM & runtime** — heap / GC / threads / CPU summary; full depth in the **CI-CD JVM internals** dashboard.\n\n### Dashboard sections at a glance\n\n| Section | What it answers |\n|---|---|\n| **Overview** | What are the headline throughput, error, and latency numbers right now? |\n| **HTTP traffic** | Which services and routes are busy, slow, or erroring? |\n| **Span metrics (OTel traces)** | What does trace-derived RED look like per service and span kind? |\n| **Service dependency graph** | Which service-to-service edges have failures or high latency? |\n| **JVM summary** | Is memory or CPU pressure emerging across the fleet? |\n| **Kubernetes pod & container infra** | Are pods restarting? Is capacity sufficient? (empty only on Grafana Cloud free tier) |\n| **Logs & traces** | Per-request drill-down via logs and distributed traces. |\n\n### Why a panel may show no data\n- 🟢 **`0` = healthy** — error rates and GC pauses sit at 0 when nothing is wrong or the service is idle.\n- 📈 **Needs traffic** — every RED panel is rate-based; an idle service draws a flat 0 line. Generate load with the **`Day2.traffic.01-k6`** workflow.\n- 🌐 **Service graph = all tiers** — `traces_service_graph_*` has no `deployment_environment` label, so that section is **not** filtered by the tier picker.\n\n### ⚠️ Grafana Cloud free tier only — the *Kubernetes pod & container infra* section is empty there (on OSS/Azure/AWS the collector self-scrapes cAdvisor, so it populates)\n`config.yaml → observability.grafanaCloudTier` defaults to **`free`**, which enables **`leanMetrics`**: the collector drops cluster-infra metrics (kube-state-metrics + cAdvisor: `kube_pod_*`, `kube_deployment_*`, `container_cpu_*`, `container_memory_*`) to stay under the free-tier 15k active-series cap. Everything else — `http_server_*`, `traces_*`, `jvm_*` — is always shipped. To enable the infra section, set `grafanaCloudTier: paid` and re-run `Day1.cluster.01-gke`.",
                 "mode": "markdown"
               },
               "fieldConfig": {
@@ -3591,7 +3591,7 @@
         "spec": {
           "id": 140,
           "title": "Pod restarts (rate)",
-          "description": "Requires kube-state-metrics + cAdvisor, which leanMetrics drops on the free tier. Populates when grafanaCloudTier=paid / leanMetrics=false.",
+          "description": "Requires kube-state-metrics + cAdvisor. Populated on OSS, Azure and AWS (the collector self-scrapes these) and on Grafana Cloud paid; empty only on Grafana Cloud free tier, where leanMetrics drops these series (set grafanaCloudTier=paid).",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -3717,7 +3717,7 @@
         "spec": {
           "id": 141,
           "title": "Container memory (working set)",
-          "description": "Requires kube-state-metrics + cAdvisor, which leanMetrics drops on the free tier. Populates when grafanaCloudTier=paid / leanMetrics=false.",
+          "description": "Requires kube-state-metrics + cAdvisor. Populated on OSS, Azure and AWS (the collector self-scrapes these) and on Grafana Cloud paid; empty only on Grafana Cloud free tier, where leanMetrics drops these series (set grafanaCloudTier=paid).",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -3839,7 +3839,7 @@
         "spec": {
           "id": 142,
           "title": "Container CPU (cores)",
-          "description": "Requires kube-state-metrics + cAdvisor, which leanMetrics drops on the free tier. Populates when grafanaCloudTier=paid / leanMetrics=false.",
+          "description": "Requires kube-state-metrics + cAdvisor. Populated on OSS, Azure and AWS (the collector self-scrapes these) and on Grafana Cloud paid; empty only on Grafana Cloud free tier, where leanMetrics drops these series (set grafanaCloudTier=paid).",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -3961,7 +3961,7 @@
         "spec": {
           "id": 143,
           "title": "Deployment replicas (desired vs available)",
-          "description": "Requires kube-state-metrics + cAdvisor, which leanMetrics drops on the free tier. Populates when grafanaCloudTier=paid / leanMetrics=false.",
+          "description": "Requires kube-state-metrics + cAdvisor. Populated on OSS, Azure and AWS (the collector self-scrapes these) and on Grafana Cloud paid; empty only on Grafana Cloud free tier, where leanMetrics drops these series (set grafanaCloudTier=paid).",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -4105,7 +4105,7 @@
         "spec": {
           "id": 144,
           "title": "Pods by phase",
-          "description": "Requires kube-state-metrics + cAdvisor, which leanMetrics drops on the free tier. Populates when grafanaCloudTier=paid / leanMetrics=false.",
+          "description": "Requires kube-state-metrics + cAdvisor. Populated on OSS, Azure and AWS (the collector self-scrapes these) and on Grafana Cloud paid; empty only on Grafana Cloud free tier, where leanMetrics drops these series (set grafanaCloudTier=paid).",
           "links": [],
           "data": {
             "kind": "QueryGroup",
@@ -4886,7 +4886,7 @@
           {
             "kind": "RowsLayoutRow",
             "spec": {
-              "title": "Kubernetes pod & container infra — EMPTY on free tier (needs leanMetrics=false / paid)",
+              "title": "Kubernetes pod & container infra",
               "collapse": false,
               "layout": {
                 "kind": "GridLayout",
