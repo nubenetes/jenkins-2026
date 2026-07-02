@@ -33,6 +33,7 @@ plus a robust-retire hardening for feature-flag switches._
 - **managed-azure OTel collector memory 512Mi → 1Gi (#508).** The gateway self-scrapes high-cardinality cAdvisor there; the smaller limit tripped the `memory_limiter`, silently dropping infra metrics.
 - **The `pod & container infra` dashboard row is backend-neutral (#513).** The "free tier / leanMetrics" caveat is Grafana-Cloud-only; the row populates normally on OSS/Azure/AWS.
 - **Mode/engine switches are now robustly idempotent (#518).** `remove_oss_observability_app` + `retire_ci_engine` force-prune workloads by Helm `instance` label and strip a stuck ArgoCD `resources-finalizer`, so a switch converges with **no manual `kubectl`** even from a mixed state — and no longer risks deleting a managed-mode standalone node-exporter via a shared label.
+- **Jenkins plugin pins bumped to latest available (7 plugins).** `apache-httpcomponents-client-5-api`, `caffeine-api`, `jackson2-api`, `jackson3-api`, `pipeline-graph-view`, `workflow-cps` (Pipeline: Groovy), `pipeline-input-step` — in [`helm/jenkins/values-common.yaml`](helm/jenkins/values-common.yaml). Applied on the next Jenkins (re)deploy.
 
 ### Fixed
 - **Container CPU / memory now correct on managed-azure/aws (#511 → #514 → #519).** The OTLP round-trip to managed-Prometheus drops the cAdvisor `container` label **and the per-app-container series entirely** (only the pod-level cgroup + pause survive), so both `container!=""` and `image!=""` read ≈0. Final fix takes the pod-level total via **`max by (pod)`**; live-verified against `kubectl top`.
