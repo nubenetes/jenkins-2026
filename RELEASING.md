@@ -25,10 +25,20 @@ a faithful map of the history.
    under `## [Unreleased]` in `CHANGELOG.md` in the right group (`### Added`,
    `Changed`, `Deprecated`, `Removed`, `Fixed`, `Security`, `Documentation`), citing
    the `(#NNN)`. No version decision per PR.
-2. **Version = milestone minor.** Cut a release as a **minor** bump (`v0.Y.0`) when a
-   coherent batch of work is ready. **Patch** (`v0.Y.Z`) is only for a hotfix on an
-   already-released line. This is why there is no `vX.Y.1…56` churn from v0.29.0 on —
-   the pre-v0.29.0 `v0.28.x` patch series in the archive predates this convention.
+2. **Version — `v1.0.0` is the stable baseline.** From 1.0 on: **minor** (`v1.Y.0`) at a
+   feature milestone, **patch** (`v1.Y.Z`) for a hotfix on a released line, **major**
+   (`v2.0.0`) for a breaking change. Cut at a coherent milestone, not per PR — that is why
+   there is no `vX.Y.1…56` churn.
+
+   > **Version history & the 1.0 baseline.** The `v0.x` line (v0.1.0 – v0.29.0) was rapid
+   > **pre-1.0 development**: fast iteration, inconsistent numbering (gaps + a long
+   > `v0.28.x` patch series), releases cut at ad-hoc points. Those releases are a **frozen
+   > historical record** — they are **never renumbered**, because rewriting a shipped
+   > version breaks version immutability (a SemVer/Keep-a-Changelog anti-pattern) and
+   > erases the real chronology. `v1.0.0` draws a clean line: it declares the reference PoC
+   > feature-complete and starts the disciplined milestone cadence above. Detail for
+   > **≤ v0.28.56** lives in [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md); v0.29.0 (the
+   > last v0.x) and v1.0.0 onward are in [`CHANGELOG.md`](CHANGELOG.md).
 3. **Keep `CHANGELOG.md` lean.** It holds `[Unreleased]`, the current release(s), and
    the index. When it grows, move the oldest full sections into
    `CHANGELOG-ARCHIVE.md` and leave their index row pointing there (verbatim — never
