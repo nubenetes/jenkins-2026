@@ -3185,7 +3185,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (pod) (rate(kube_pod_container_status_restarts_total{namespace=\"$namespace\"}[$__rate_interval]))",
+          "expr": "sum by (pod) (rate({__name__=~\"kube_pod_container_status_restarts_total(_total)?\", namespace=\"$namespace\"}[$__rate_interval]))",
           "instant": false,
           "legendFormat": "{{pod}}",
           "range": true,
@@ -3395,7 +3395,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", container!=\"\", container!=\"POD\"}[$__rate_interval]))",
+          "expr": "sum by (pod) (rate({__name__=~\"container_cpu_usage_seconds_total(_total)?\", namespace=\"$namespace\", container!=\"\", container!=\"POD\"}[$__rate_interval]))",
           "instant": false,
           "legendFormat": "{{pod}}",
           "range": true,
