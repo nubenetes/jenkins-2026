@@ -233,6 +233,16 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 
 ---
 
+**[104 · Rebuild-Safety (`Decom` + `Day1`)](./docs/104-REBUILD_SAFETY.md)**
+- [Why it matters — the lifecycle & persistence tiers](./docs/104-REBUILD_SAFETY.md#1-why-this-matters--the-lifecycle)
+- [The bug class: collision vs residue (+ the Postgres exemplar)](./docs/104-REBUILD_SAFETY.md#2-the-bug-class--two-failure-modes)
+- [Rebuild-safety design patterns (the toolbox)](./docs/104-REBUILD_SAFETY.md#3-the-rebuild-safety-design-patterns-the-toolbox)
+- [**The rebuild-safety matrix (safe-by-design)**](./docs/104-REBUILD_SAFETY.md#4-the-rebuild-safety-matrix-safe-by-design) — state/buckets · GKE · DNS/gateway · identity/secrets · obs backends · teardown residue · registry/GitOps/CI
+- [The 7 closed gaps (#487–#489)](./docs/104-REBUILD_SAFETY.md#5-the-gaps-that-were-closed)
+- [Live-verification checklist](./docs/104-REBUILD_SAFETY.md#6-live-verification-checklist) · [Adding a new persistent resource](./docs/104-REBUILD_SAFETY.md#7-adding-a-new-persistent-or-external-resource--the-checklist)
+
+---
+
 **[201 · Architecture](./docs/201-ARCHITECTURE.md)**
 - [Overview](./docs/201-ARCHITECTURE.md#overview)
 - [System Architecture](./docs/201-ARCHITECTURE.md#system-architecture)
