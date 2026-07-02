@@ -454,7 +454,20 @@ jobs:
           echo "=============================================================================="
           echo "K6 TRAFFIC SIMULATION SUMMARY  (mode: ${OBS_MODE:-unknown})"
           echo "=============================================================================="
-          if [ -f k6-summary.json ]; then
+          if [ -f k6-summary.json ] && [ "$(jq -r '.test // empty' k6-summary.json)" = "faro-rum" ]; then
+            # The rum-faro preset runs faro-rum.js, whose handleSummary emits a
+            # BESPOKE summary (no standard .metrics block) — print ITS fields
+            # rather than the HTTP-load schema (which would read all-zeros and, on
+            # the THRESHOLDS line, crash jq with `null | to_entries` -> exit 5).
+            jq -r '
+              "--- FARO RUM (synthetic beacons) ---",
+              "  beacons sent:    \(.beacons_sent // 0)  (failed: \(.beacons_failed // 0))",
+              "  JS exceptions:   \(.exceptions_sent // 0)",
+              "  beacon POST p95: \(.beacon_post_p95_ms // 0) ms",
+              "  web vitals p95:  LCP \(.web_vitals_p95.lcp // 0)ms  INP \(.web_vitals_p95.inp // 0)ms",
+              "  env=\(.env // "?")  ->  \(.faro_url // "?")"
+            ' k6-summary.json
+          elif [ -f k6-summary.json ]; then
             jq -r '
               .metrics as $m
               | "--- SUMMARY ---",
@@ -473,7 +486,7 @@ jobs:
                 "  data recv:     \((($m.data_received.values.count // 0)/1024)|floor) KB   sent: \((($m.data_sent.values.count // 0)/1024)|floor) KB",
                 "",
                 "--- THRESHOLDS ---",
-                ( [ $m | to_entries[] as $e | ($e.value.thresholds // {}) | to_entries[]
+                ( [ ($m // {}) | to_entries[] as $e | ($e.value.thresholds // {}) | to_entries[]
                     | (.value | if type=="object" then .ok else . end) as $ok
                     | "  [\(if $ok==false then "FAIL" else "PASS" end)] \($e.key): \(.key)" ]
                   | if length==0 then "  (none configured)" else .[] end )
