@@ -201,8 +201,11 @@ spec:
           fi
           # Apply the SHARED per-app source patch (the single source of truth used by
           # all CI engines): converts gateway MySQL -> PostgreSQL + a NoOp cache.
-          # Idempotent; a no-op for any service that needs no patching.
-          bash "/workspace/jenkins-2026-infra/resources/patch-app-source.sh" \
+          # Idempotent; a no-op for any service that needs no patching. NB: invoked with
+          # `sh`, NOT `bash` - the alpine/git image is busybox-only (no bash); the script
+          # is POSIX-sh-compatible (the other engines run it with bash in bash-having
+          # images). Keep patch-app-source.sh free of bash-isms so this `sh` call holds.
+          sh "/workspace/jenkins-2026-infra/resources/patch-app-source.sh" \
             "{{inputs.parameters.service-name}}" "/workspace/microservices-src"
 
     # ---- semgrep-scan (Tekton task: semgrep-scan) --------------------------------
