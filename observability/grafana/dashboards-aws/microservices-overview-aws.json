@@ -3354,7 +3354,7 @@
               }
             ]
           },
-          "unit": "cores"
+          "unit": "mcores"
         }
       },
       "gridPos": {
@@ -3395,14 +3395,14 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", image!=\"\"}[$__rate_interval]))",
+          "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", image!=\"\"}[$__rate_interval])) * 1000",
           "instant": false,
           "legendFormat": "{{pod}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Container CPU (cores)",
+      "title": "Container CPU (millicores)",
       "type": "timeseries"
     },
     {
