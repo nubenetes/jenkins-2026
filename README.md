@@ -795,7 +795,11 @@ See [901. Local Development](./docs/901-LOCAL_DEVELOPMENT.md) for the complete p
 
 ## Changelog
 
-See [`CHANGELOG.md`](CHANGELOG.md) for the complete, versioned release history.
+See [`CHANGELOG.md`](CHANGELOG.md) for the current changelog + the milestone
+[release index](CHANGELOG.md#release-index) (older history in
+[`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md)), and [`RELEASING.md`](RELEASING.md)
+for the versioning + release-cut convention (`Unreleased` → milestone minor →
+tag + GitHub release, 1:1, via [`scripts/cut-release.sh`](scripts/cut-release.sh)).
 
 ---
 
