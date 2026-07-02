@@ -23,11 +23,16 @@ spec:
         targetPort: 12000
   github:
     microservices:
-      # repositories: [] => the Sensor filters on body.repository.name instead of a
-      # static owned-repo list; the GitHub webhook itself (wired by 06) is the
-      # activation. (The upstream jhipster/* repos aren't owned - same caveat as the
-      # Tekton PaC Repository CRs.)
-      repositories: []
+      # organizations: [nubenetes] satisfies Argo Events v1.9.4's github EventSource
+      # validation ("either repositories or organizations is required" — a hard check in
+      # recent releases that an empty `repositories: []` fails, leaving the EventSource
+      # unreconciled). We keep it org-level rather than a static per-repo `repositories:`
+      # list: there is NO `apiToken` here, so the EventSource does NOT auto-register
+      # webhooks via the GitHub API (06 wires them manually), and the Sensor filters on
+      # body.repository.name. (The upstream jhipster/* repos aren't owned - same caveat as
+      # the Tekton PaC Repository CRs.)
+      organizations:
+        - nubenetes
       webhook:
         endpoint: /push
         port: "12000"
