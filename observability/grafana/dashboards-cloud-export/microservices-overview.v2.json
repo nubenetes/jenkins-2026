@@ -3735,7 +3735,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"$namespace\", container!=\"\", container!=\"POD\"})",
+                        "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"$namespace\", image!=\"\"})",
                         "instant": false,
                         "legendFormat": "{{pod}}",
                         "range": true
@@ -3857,7 +3857,7 @@
                       },
                       "spec": {
                         "editorMode": "code",
-                        "expr": "sum by (pod) ((rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", container!=\"\", container!=\"POD\"}[$__rate_interval]) or rate(container_cpu_usage_seconds_total_total{namespace=\"$namespace\", container!=\"\", container!=\"POD\"}[$__rate_interval])))",
+                        "expr": "sum by (pod) (rate(container_cpu_usage_seconds_total{namespace=\"$namespace\", image!=\"\"}[$__rate_interval]))",
                         "instant": false,
                         "legendFormat": "{{pod}}",
                         "range": true
