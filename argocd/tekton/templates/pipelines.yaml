@@ -69,4 +69,8 @@ spec:
       name: config-defaults
       namespace: tekton-pipelines
       jqPathExpressions:
-        - .data.default-pod-template
+        # Bracket/quote the hyphenated key: bare `.data.default-pod-template` is parsed by
+        # ArgoCD's gojq as subtraction (`.data.default - pod - template`) → the app fails
+        # with `failed to create diff normalizer: function not defined: template/0`, so it
+        # never syncs and the tekton-pipelines-controller is never created.
+        - .data["default-pod-template"]
