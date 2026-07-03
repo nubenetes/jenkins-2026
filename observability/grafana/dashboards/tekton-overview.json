@@ -2353,10 +2353,6 @@
       "list" : [
          {
             "allowCustomValue" : true,
-            "current" : {
-               "text" : "grafanacloud-jenkins2026obsy4pwj88m-prom",
-               "value" : "grafanacloud-prom"
-            },
             "hide" : 0,
             "includeAll" : false,
             "label" : "Prometheus / Mimir",
@@ -2421,7 +2417,7 @@
             },
             "datasource" : {
                "type" : "prometheus",
-               "uid" : "grafanacloud-prom"
+               "uid" : "${DS_PROMETHEUS}"
             },
             "hide" : 0,
             "includeAll" : true,
@@ -2483,16 +2479,26 @@
                "text" : "microservices",
                "value" : "microservices"
             },
+            "datasource" : {
+               "type" : "prometheus",
+               "uid" : "${DS_PROMETHEUS}"
+            },
+            "definition" : "label_values(target_info,k8s_namespace_name)",
             "hide" : 0,
             "includeAll" : false,
             "label" : "Trace Namespace",
             "multi" : false,
             "name" : "trace_namespace",
             "options" : [],
-            "query" : "microservices",
-            "skipUrlSync" : false,
-            "type" : "custom",
-            "valuesFormat" : "csv"
+            "query" : {
+               "qryType" : 1,
+               "query" : "label_values(target_info,k8s_namespace_name)",
+               "refId" : "PrometheusVariableQueryEditor-VariableQuery"
+            },
+            "refresh" : 1,
+            "regex" : "",
+            "sort" : 1,
+            "type" : "query"
          }
       ]
    },

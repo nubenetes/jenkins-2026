@@ -2644,16 +2644,26 @@
           "text": "microservices",
           "value": "microservices"
         },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "${DS_PROMETHEUS}"
+        },
+        "definition": "label_values(target_info,k8s_namespace_name)",
         "hide": 2,
         "includeAll": false,
         "label": "Trace Namespace",
         "multi": false,
         "name": "trace_namespace",
         "options": [],
-        "query": "microservices",
-        "skipUrlSync": false,
-        "type": "custom",
-        "valuesFormat": "csv"
+        "query": {
+          "qryType": 1,
+          "query": "label_values(target_info,k8s_namespace_name)",
+          "refId": "PrometheusVariableQueryEditor-VariableQuery"
+        },
+        "refresh": 1,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
       }
     ]
   },
