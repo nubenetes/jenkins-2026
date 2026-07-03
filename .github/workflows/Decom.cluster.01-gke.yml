@@ -180,8 +180,13 @@ jobs:
             fi
           fi
 
+      # Run ALWAYS, not only when THIS run's `terraform output cluster_name` resolved.
+      # Disks orphaned by a PRIOR teardown (whose cluster is already out of tf state, so
+      # the output is empty) would otherwise never be swept — the exact gap that left 31
+      # orphaned PDs (~58 GB) billing after a re-run. The filter is label-scoped, so this
+      # is a cheap no-op when there is nothing to reclaim.
       - name: Sweep orphaned PersistentVolume disks (CSI PDs terraform leaves behind)
-        if: ${{ env.CLUSTER_NAME != '' }}
+        if: always()
         run: |
           # Dynamically-provisioned PV disks (pd.csi.storage.gke.io — e.g. the CNPG
           # Postgres volumes) are created by the in-cluster CSI driver, NOT terraform,
@@ -189,8 +194,8 @@ jobs:
           # driver reclaim them when down.sh deletes the PVCs; but a forced / non-
           # graceful teardown (stuck pods, force-deleted cluster) can orphan them,
           # leaving small pd-ssd disks billing indefinitely. They keep the cluster's
-          # GKE labels, so any disk still tagged with our (now-deleted) cluster name
-          # is a safe orphan to remove. Best-effort; never fail the teardown on it.
+          # GKE labels, so any disk still tagged with our cluster name is a safe orphan
+          # to remove. Best-effort; never fail the teardown on it.
           #
           # Disks DETACH ASYNCHRONOUSLY after terraform destroy removes the nodes, so a
           # single pass right after destroy RACES the detachment (the -users:* filter
@@ -198,6 +203,9 @@ jobs:
           # leaves them billing. Retry until every labeled disk is unattached + deleted,
           # or a 5-min cap.
           PROJECT="${{ secrets.GCP_PROJECT_ID }}"
+          # Fall back to the terraform/gke var.cluster_name DEFAULT when the output was
+          # empty (cluster already gone), so a prior run's orphans are still matched.
+          CLUSTER_NAME="${CLUSTER_NAME:-jenkins-2026}"
           deadline=$(( SECONDS + 300 ))
           while :; do
             gcloud compute disks list --project "${PROJECT}" \
