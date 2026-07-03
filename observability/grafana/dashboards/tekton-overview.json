@@ -2425,6 +2425,7 @@
             },
             "hide" : 0,
             "includeAll" : true,
+            "allValue" : ".*",
             "label" : "Pipeline",
             "multi" : true,
             "name" : "pipeline",
