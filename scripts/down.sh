@@ -60,6 +60,36 @@ if kubectl version >/dev/null 2>&1 && [[ "$(j2026_active_secrets_backend)" == "e
   fi
 fi
 
+# Optional FULL purge of the eso-mode Secret Manager secrets (opt-in via
+# J2026_PURGE_SECRETS=true — the "Decom Everything" umbrella sets it). Unlike the
+# targeted gateway-IAP delete above (always run, cheaply re-derived from a GitHub
+# secret), this sweeps EVERY secret provision_secret ever pushed — labelled
+# managed-by=jenkins-2026 (see lib/secrets.sh) — across all four CI engines plus
+# the shared platform secrets. Kept opt-in + default-OFF on purpose: sm_keep_or_generate
+# relies on these SURVIVING a plain cluster Decom so generated passwords (e.g. the
+# Jenkins admin password) stay STABLE across rebuilds; only a total teardown wants
+# them gone. Label-scoped + cluster-independent (works even if the cluster is
+# already destroyed); a no-op in imperative mode (no labelled secrets) and safe if
+# gcloud lacks the project (best-effort, never blocks teardown).
+if [[ "${J2026_PURGE_SECRETS:-false}" == "true" ]]; then
+  log_step "Purging ALL jenkins-2026 Secret Manager secrets (J2026_PURGE_SECRETS=true)"
+  mapfile -t _sm_secrets < <(gcloud secrets list \
+    --filter="labels.managed-by=jenkins-2026" \
+    --format="value(name.basename())" 2>/dev/null || true)
+  if [[ "${#_sm_secrets[@]}" -eq 0 ]]; then
+    log_info "No labelled Secret Manager secrets found — nothing to purge."
+  else
+    for _s in "${_sm_secrets[@]}"; do
+      [[ -z "${_s}" ]] && continue
+      if gcloud secrets delete "${_s}" --quiet >/dev/null 2>&1; then
+        log_info "Deleted Secret Manager secret '${_s}'."
+      else
+        log_warn "Could not delete Secret Manager secret '${_s}' (already gone / perms?)."
+      fi
+    done
+  fi
+fi
+
 # In oss mode the in-cluster stack (kube-prometheus-stack/Loki/Tempo) is managed
 # by the observability-oss ArgoCD app-of-apps. Delete it FIRST, while ArgoCD is
 # still running, so the controller cascade-prunes those charts via the resources

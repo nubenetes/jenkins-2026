@@ -429,6 +429,46 @@ kubectl -n observability set resources deploy/otel-collector-gateway \
 Because the drop is silent, an **alert** on `otelcol_processor_refused_metric_points` is
 the durable systemic guard (see the sizing note in 301).
 
+## GCP Secret Manager secrets remain after a Decom (`secrets.backend=eso`)
+
+**Symptom:** you ran a `Decom` (even the `Decom.infra.00 Everything` umbrella) and the
+cluster/backends are gone, but the GCP **Secret Manager** page for the project still lists
+secrets — `jenkins-credentials`, `tekton-*`, `argoworkflows-*`, `arc-*`, `ghcr-credentials`,
+`headlamp-credentials`, `k6-cloud`, `pac-webhook`, … (often the **union of every CI engine**
+you ran, since engine switches don't sweep them either).
+
+**Cause — mostly by design, plus one gap.** In `eso` mode, GCP Secret Manager is the
+**persistent source of truth**, deliberately **outside the cluster lifecycle** (ESO syncs it
+*into* the cluster). A Decom tears down the *cluster*; the in-cluster `ExternalSecret`/Secrets
+die with the namespaces, but the **upstream Secret Manager entries persist**. This is partly
+intentional — `sm_keep_or_generate` ([`lib/secrets.sh`](../scripts/lib/secrets.sh)) relies on
+generated secrets (e.g. the **Jenkins admin password**) surviving a cluster Decom so they stay
+**stable across rebuilds**. Historically [`down.sh`](../scripts/down.sh) deleted **only** the
+`gateway-iap-oauth` secret (cheaply re-derived from a GitHub secret); everything else was left.
+(The persistent **bootstrap** tier — WIF, state bucket, DNS zone, backups bucket — likewise
+survives on purpose; only [`scripts/bootstrap.sh`](../scripts/bootstrap.sh) `down` removes it.)
+
+**Fix / how to purge them (#544).** `provision_secret` now **labels** every pushed secret
+`managed-by=jenkins-2026`, and `down.sh` has an **opt-in** full sweep:
+
+- **`Decom.infra.00 Everything`** now defaults its **`purge_secrets` checkbox ON** — a full
+  teardown deletes them all. Untick it to keep them.
+- **`Decom.cluster.01-gke`** keeps `purge_secrets` **OFF** (a plain cluster teardown preserves
+  the stable-password secrets for a rebuild); tick it for a full clean.
+- Locally: `J2026_PURGE_SECRETS=true ./scripts/down.sh`.
+
+To clean a project **by hand** right now (label-scoped, safe — touches only our secrets;
+purged secrets are re-pushed/regenerated on the next Day1):
+
+```bash
+gcloud secrets list --project "$PROJECT" --filter="labels.managed-by=jenkins-2026" \
+  --format="value(name.basename())" \
+| while read -r S; do gcloud secrets delete "$S" --project "$PROJECT" --quiet; done
+```
+
+(Secrets created *before* this labelling won't carry the label — a Day1 re-run re-labels them,
+or delete those by name.)
+
 ## GitHub Actions (ARC) CI run hangs on a vanished runner (node DiskPressure eviction)
 
 **Symptom:** on `ci.engine=githubactions`, a fork's CI run (e.g. the gateway

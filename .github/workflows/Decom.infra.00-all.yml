@@ -47,6 +47,10 @@ on:
         description: "Also destroy the Gateway static IP + cert (Decom.infra.01) — ⚠ loses the IP, forces DNS re-propagation"
         type: boolean
         default: false
+      purge_secrets:
+        description: "Purge the eso-mode GCP Secret Manager secrets too (labelled managed-by=jenkins-2026). Default ON — 'Everything' means everything. Untick to keep them (e.g. a stable Jenkins admin password for a later rebuild)."
+        type: boolean
+        default: true
       log_level:
         description: "Script/Terraform verbosity: info (default) or debug (adds [DEBUG] script lines + TF_LOG=DEBUG). For runner-level tracing use GitHub's ACTIONS_STEP_DEBUG."
         required: false
@@ -82,6 +86,7 @@ jobs:
     uses: ./.github/workflows/Decom.cluster.01-gke.yml
     with:
       log_level: ${{ inputs.log_level || 'info' }}
+      purge_secrets: ${{ inputs.purge_secrets }}
     secrets: inherit
 
   grafana-cloud:
