@@ -156,11 +156,27 @@ if [[ "${PAC_ENABLED}" == "true" ]]; then
     health="$(yq eval ".services[${i}].healthPath" "${SERVICES_YAML}")"
     repo_path="$(repo_path_from_url "${repo}")"
 
-    # 1) Ensure the GitHub webhook (idempotent: skip if one already targets pac_url).
-    existing="$(curl -fsS -H "Authorization: token ${GIT_TOKEN}" \
-      "https://api.github.com/repos/${repo_path}/hooks" 2>/dev/null \
-      | yq -p=json -o=tsv '.[].config.url' 2>/dev/null | grep -Fx "${pac_url}" || true)"
-    if [[ -z "${existing}" ]]; then
+    # 1) Reconcile the fork's hooks. GitHub allows many, and a CI-engine switch leaves the
+    #    previous engine's hook behind (e.g. argo-events' argo-events.<domain>/push) 404ing
+    #    forever. Prune any hook pointing at THIS project's base domain that isn't the desired
+    #    PaC URL, then ensure the desired one exists (hooks to unrelated hosts are left
+    #    untouched). Makes an engine switch self-heal on the fork side too.
+    hooks_json="$(curl -fsS -H "Authorization: token ${GIT_TOKEN}" \
+      "https://api.github.com/repos/${repo_path}/hooks" 2>/dev/null || echo '[]')"
+    have_desired=false
+    while IFS=$'\t' read -r hid hurl; do
+      [[ -z "${hid}" ]] && continue
+      if [[ "${hurl}" == "${pac_url}" ]]; then have_desired=true; continue; fi
+      if [[ "${hurl}" == *".${J2026_GATEWAY_BASE_DOMAIN}"* ]]; then
+        curl -fsS -X DELETE -H "Authorization: token ${GIT_TOKEN}" \
+          "https://api.github.com/repos/${repo_path}/hooks/${hid}" >/dev/null 2>&1 \
+          && log_info "  pruned stale webhook on ${repo_path} (${hurl})" || true
+      fi
+    done < <(printf '%s' "${hooks_json}" | jq -r '.[] | "\(.id)\t\(.config.url)"' 2>/dev/null)
+
+    if [[ "${have_desired}" == "true" ]]; then
+      log_info "  webhook already present on ${repo_path}"
+    else
       # Build the JSON with yq env() so a secret/URL containing special characters
       # is escaped correctly. A printf-built body produces invalid JSON when the
       # value has a quote/backslash/newline -> GitHub rejects it with HTTP 400
@@ -178,8 +194,6 @@ if [[ "${PAC_ENABLED}" == "true" ]]; then
         hook_msg="$(printf '%s' "${hook_body}" | jq -r '.message // empty' 2>/dev/null || true)"
         log_warn "  could not create webhook on ${repo_path} (HTTP ${hook_code}: ${hook_msg:-see GitHub}). PaC still runs via the committed .tekton/${name}.yaml IF a webhook to ${pac_url} already exists; otherwise add one in the fork's Settings -> Webhooks (content-type=json, events: push + pull_request, secret = the pac-webhook value)."
       fi
-    else
-      log_info "  webhook already present on ${repo_path}"
     fi
 
     # 2) Push .tekton/<name>.yaml to the fork (triggers the first PaC run).
