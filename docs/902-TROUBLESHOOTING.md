@@ -429,6 +429,46 @@ kubectl -n observability set resources deploy/otel-collector-gateway \
 Because the drop is silent, an **alert** on `otelcol_processor_refused_metric_points` is
 the durable systemic guard (see the sizing note in 301).
 
+## GitHub Actions (ARC) CI run hangs on a vanished runner (node DiskPressure eviction)
+
+**Symptom:** on `ci.engine=githubactions`, a fork's CI run (e.g. the gateway
+`microservices-ci.yml`) sits **`in_progress` forever** on GitHub even though every
+real step — build, Trivy scan, GHCR push, GitOps tag bump, ArgoCD sync, smoke —
+already **succeeded** in the logs; you **can't cancel** it (`Cannot cancel a
+workflow run that is completed`). In the cluster the runner pod is **gone**:
+
+```bash
+# from Windows without the auth plugin — see the kubectl-cluster-access memory
+kubectl -n arc-runners get pods                     # the run's runner pod is absent
+kubectl -n arc-runners get pod <runner> -o jsonpath='{.status.reason} {.status.message}'
+#   Evicted  The node was low on resource: ephemeral-storage. ...
+kubectl get node <node> -o jsonpath='{range .status.conditions[?(@.type=="DiskPressure")]}{.status}{end}'
+#   True
+```
+
+**Cause:** the ephemeral ARC runner pods run on the **50 GB `ci-spot` nodes**
+(`terraform/gke` `var.disk_size_gb`, kept small for `SSD_TOTAL_GB` quota headroom).
+The gateway build fills the **node's ephemeral disk** — Angular `node_modules`,
+Maven `target/` + `~/.m2` repo, the Jib build cache, then Trivy re-pulling the
+image — past the kubelet `DiskPressure` threshold, and the kubelet **evicts the
+runner pod mid-run**. Unlike a **Spot reclaim** (graceful — the runner deregisters
+and GitHub re-queues the one job), a `DiskPressure` eviction kills the runner
+**abruptly**, so GitHub keeps the job assigned to a runner it still believes exists
+and the run hangs. **Only the `githubactions` engine is affected** — Tekton/Argo
+pipeline pods keep their build tree on a **PVC workspace**, not the node's ephemeral
+disk.
+
+**Fix (#541):** a best-effort **"Reclaim disk before image scan"** step in the
+rendered workflow ([`jenkins/pipelines/seed/microservices-ci.yml.tmpl`](../jenkins/pipelines/seed/microservices-ci.yml.tmpl)),
+right after the Jib build — the image is already in GHCR so the build tree is dead
+weight. It `rm -rf`s `node_modules`/`target`/`~/.m2/repository`/the Jib cache and
+`docker image prune -af`s, all `|| true` (never fails the build). This is a
+**template**, not the fork's live `.github/workflows/microservices-ci.yml`, so it
+takes effect only after a **re-seed** — the next **Day1** or a
+[`06-githubactions-pipelines.sh`](../scripts/06-githubactions-pipelines.sh) re-run
+(equivalently `Day2.redeploy.06-githubactions`). See
+[404 § The ci-spot / NAP showcase](./404-GITHUB_ACTIONS.md#the-ci-spot--nap-showcase-why-this-engine-defaults-to-spot).
+
 ---
 
 [← Previous: 901. Local Development](./901-LOCAL_DEVELOPMENT.md) | [🏠 Home](../README.md)

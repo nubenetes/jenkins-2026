@@ -330,8 +330,10 @@ stateDiagram-v2
   Provisioning --> NodeUp: NAP provisions a ci-spot Spot node
   NodeUp --> Running: runner registers, runs the one job
   Running --> Deleted: job done → pod deleted (single-use)
-  Running --> Preempted: Spot reclaim
+  Running --> Preempted: Spot reclaim (graceful)
   Preempted --> Queued: GitHub re-queues the one lost job
+  Running --> Evicted: node DiskPressure (build tree fills the 50 GB node)
+  Evicted --> Hung: job stuck on the vanished runner (mitigated by the reclaim-disk step)
   Deleted --> Idle: scale back toward minRunners 0
 ```
 
@@ -342,6 +344,15 @@ stateDiagram-v2
 toward `minRunners: 0`. If a **Spot reclaim** preempts a runner mid-job, only
 **that one job** is lost, and GitHub **automatically re-queues** it onto a freshly
 provisioned runner — which is exactly why this engine can safely default to Spot.
+
+> **Spot reclaim ≠ `DiskPressure` eviction — the two tails differ.** A Spot
+> preemption is a **graceful** node shutdown: the runner deregisters, GitHub sees
+> it go offline and re-queues the one job. A **kubelet `DiskPressure` eviction**
+> is **abrupt** — the runner process is killed without deregistering, so GitHub
+> keeps the job assigned to a runner it still believes exists and the run **hangs
+> `in_progress` on a vanished runner** (it is *not* auto-re-queued). That's why the
+> build tree is reclaimed before the image scan (§ The rendered workflow) — see
+> [902 § GitHub Actions runner evicted by DiskPressure](./902-TROUBLESHOOTING.md#github-actions-arc-ci-run-hangs-on-a-vanished-runner-node-diskpressure-eviction).
 
 ## Selecting the engine
 
@@ -608,6 +619,7 @@ tab is populated from Day1.
 | Trivy IaC scan | `docker run aquasec/trivy config` | — |
 | Build & Test | `./mvnw … clean verify` (java) / `npm ci && npm run build` (angular) | replicates `microservicesBuild.groovy` (`MAVEN_OPTS=-Xmx2048m -XX:+UseG1GC …`, `-s infra/jenkins/maven-settings.xml`) |
 | Build & Push image | `./mvnw … jib:build -Djib.to.image=$REGISTRY/$SERVICE:$IMAGE_TAG` (java) | Jib, daemonless; `-Djib.to.auth.*` from `REGISTRY_USERNAME/PASSWORD` |
+| **Reclaim disk before image scan** | `rm -rf` the now-dead build tree (`node_modules` · Maven `target/` + `~/.m2/repository` · the Jib cache) + `docker image prune -af` | **best-effort** (`\|\| true`); the image is already in GHCR, so freeing the build tree here keeps the **50 GB `ci-spot` node** off the kubelet's `DiskPressure` threshold — otherwise it evicts the ephemeral runner mid-run (§ The ci-spot / NAP showcase) |
 | Trivy image scan | `docker run aquasec/trivy image` | — |
 | Deploy (GitOps + ArgoCD + OTel self-heal) | GitOps bump → `argocd app sync/wait` | **byte-identical** to `microservicesDeploy.groovy` (see below) |
 | Smoke test | `curl --retry … $svc.$TARGET_NS.svc:$port$health` | — |
