@@ -10,7 +10,11 @@ spec:
     - name: service-name
     - name: env-name
     - name: target-namespace
-    - name: image-tag
+    # The FULL built image (ghcr.io/.../<svc>:<tag>) — the bump-and-push step extracts
+    # the tag portion (everything after the last ':') so the bumped gitops tag is
+    # byte-identical to what build-push actually pushed. Single source of truth: no
+    # separately-computed image tag that can drift from the built one.
+    - name: image
     - name: gitops-repo-url
       default: https://github.com/nubenetes/jenkins-2026-gitops-config.git
     - name: argocd-server
@@ -25,6 +29,10 @@ spec:
       env:
         - name: HOME
           value: /tmp
+        # Bind the full built image ref to a shell var so ${IMAGE##*:} can extract the
+        # tag safely (the ref contains ':'); avoids inlining it into the shell text.
+        - name: IMAGE
+          value: $(params.image)
         - name: GIT_USER
           valueFrom:
             secretKeyRef: { name: tekton-git, key: username, optional: true }
@@ -40,6 +48,13 @@ spec:
         esac
         BRANCH=main; [ "$(params.env-name)" = "develop" ] && BRANCH=develop
         VALUES="helm/microservices/values-$(params.env-name).yaml"
+        # Extract the tag from the FULL image the build actually pushed (strip the
+        # registry/repo up to and including the last ':'). This is the single source of
+        # truth for the deployed tag — exactly what build-push/trivy used — so the gitops
+        # bump can never reference a tag that was not built. (Guards the invariant that
+        # previously broke: a PaC push whose `image` base was the commit SHA must bump
+        # ':<sha>-<run>', the tag that exists, not ':<branch>-<run>'.)
+        IMAGE_TAG="${IMAGE##*:}"
         cd "$(workspaces.source.path)"
         rm -rf gitops-deploy-src
         git config --global --add safe.directory '*' || true
@@ -51,9 +66,9 @@ spec:
           clone --depth 1 --branch "${BRANCH}" \
           "https://${GIT_USER:-git}:${GIT_TOKEN:-}@${REPO_CLEAN}" gitops-deploy-src
         cd gitops-deploy-src
-        yq eval -i ".services.$(params.service-name).image.tag = \"$(params.image-tag)\"" "${VALUES}"
+        yq eval -i ".services.$(params.service-name).image.tag = \"${IMAGE_TAG}\"" "${VALUES}"
         git add "${VALUES}"
-        git commit -m "chore(ops): update $(params.service-name) image tag to $(params.image-tag) [$(params.env-name)]" || echo "No changes to commit"
+        git commit -m "chore(ops): update $(params.service-name) image tag to ${IMAGE_TAG} [$(params.env-name)]" || echo "No changes to commit"
         git push origin "${BRANCH}"
     - name: argocd-sync
       image: alpine/k8s:1.31.3
