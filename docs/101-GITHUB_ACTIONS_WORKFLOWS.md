@@ -369,9 +369,13 @@ stateDiagram-v2
     Day0 --> Day1: Day1.cluster.01 (cluster + full stack)
     Root --> Day1: Day1.cluster.00-all (one-click "Everything up": Day0 + Day1)
     Day1 --> Day2: cluster running
-    Day2 --> Day2: re-runnable ops — publish / redeploy / registry / scale / traffic
+    Day2 --> Day2
+    note left of Day2
+      re-runnable ops — publish /
+      redeploy / registry / scale / traffic
+    end note
     Day2 --> DecomCluster: Decom.cluster.01
-    DecomCluster --> Day0: cluster gone; backends + root kept
+    DecomCluster --> Day0: cluster gone — backends + root kept
     DecomCluster --> DecomInfra: Decom.infra.0N (per-backend / gateway, permanent)
     Day2 --> DecomInfra: Decom.infra.00-all ("Everything" teardown: cluster + backends)
     DecomInfra --> RootTeardown: bootstrap.sh down (rare)
@@ -403,7 +407,7 @@ flowchart TD
     boot --> gw
     boot --> bk
     gw --> day1
-    bk -.->|workflow_call preflight<br/>bootstrap selected backend| day1
+    bk <-.->|"workflow_call: preflight-bootstrap the selected backend<br/>tear down the non-selected ones"| day1
     subgraph cc["concurrency: jenkins-2026-gke — queued, not raced"]
         day1["Day1.cluster.01<br/>cluster + up.sh in full<br/>(env: gke-production)"]
         d2["Day2.* cluster ops<br/>redeploy.* / publish.01-05 / scale.* / traffic.*<br/>(redeploy/publish/scale gated by gke-production)"]
@@ -411,7 +415,6 @@ flowchart TD
     end
     day1 --> d2
     day1 --> decom
-    day1 -.->|workflow_call: Decom.infra.02/03/04<br/>tear down NON-selected backends| bk
     decom -.->|persistent kept<br/>backends + root survive| gw
     nocc["Day2.registry.01-image-retention<br/>no cluster — separate group (jenkins-2026-image-retention)"]:::nocc
     umb["umbrellas Day1.cluster.00-all / Decom.infra.00-all<br/>no concurrency — orchestrate via workflow_call"]:::umb

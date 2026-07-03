@@ -317,14 +317,14 @@ Argo Workflows (`argo`/`argo-events`/`argo-ci`) engines retire the same way.
 
 ```mermaid
 flowchart TD
-    subgraph TT["Select tekton → 04-tekton.sh calls retire_ci_engine for the other three<br/>(Jenkins · GitHub Actions/ARC · Argo Workflows) — Jenkins branch shown"]
+    subgraph TT["Select tekton → 04-tekton.sh retires the other three (Jenkins branch shown)"]
       direction TB
       A1["DELETE ArgoCD Application 'jenkins'<br/>(cascade-prune the official chart)"]
       A2["helm uninstall (legacy) +<br/>DELETE Jenkins gateway route / IAP / healthcheck"]
       A3["KEEP namespace 'jenkins'<br/>+ jenkins-credentials Secret + JCasC ConfigMaps"]
       A1 --> A2 --> A3
     end
-    subgraph TJ["Select jenkins → 04-jenkins.sh calls retire_ci_engine for the other three<br/>(Tekton · GitHub Actions/ARC · Argo Workflows) — Tekton branch shown"]
+    subgraph TJ["Select jenkins → 04-jenkins.sh retires the other three (Tekton branch shown)"]
       direction TB
       B1["DELETE ArgoCD Application 'tekton'<br/>(cascade-prune all 7 children)"]
       B2["DELETE Tekton gateway routes<br/>(Dashboard IAP + PaC)"]
@@ -560,7 +560,7 @@ sequenceDiagram
   Pod-->>Ctl: results flow between Tasks
   Pod->>GO: gitops-deploy → argocd app sync
   Ctl-->>GH: commit status (success / failure)
-  Note over Dev,GH: git is the trigger — runs are rarely created by hand
+  Note over Dev,GH: git is the trigger —<br/>runs are rarely created by hand
 ```
 
 </details>

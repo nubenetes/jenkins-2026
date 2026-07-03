@@ -95,6 +95,10 @@ The deployment lifecycle is managed by **ArgoCD**. Application manifests are sto
 <summary>📊 ArgoCD application inventory & app-of-apps tree</summary>
 
 ```mermaid
+---
+config:
+  layout: elk
+---
 flowchart TB
   argocd[ArgoCD]:::root
 

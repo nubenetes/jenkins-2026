@@ -87,7 +87,7 @@ The project is structured logically as follows:
 
 ## 🚀 Key Pipelines and Execution Flows
 
-The project is built around a **Unified Pipeline Model**. One of **four mutually-exclusive CI engines** — selected by `ci.engine` in `config/config.yaml`: **Jenkins** (default) · **Tekton** · **GitHub Actions (ARC)** · **Argo Workflows** — runs the SAME ~10-stage pipeline contract against the SAME `jenkins/pipelines/seed/services.yaml` service registry and the SAME `resources/patch-app-source.sh` build-time gateway patch:
+The project is built around a **Unified Pipeline Model**. One of **four mutually-exclusive CI engines** — selected by `ci.engine` in `config/config.yaml`: **Jenkins** (default) · **Tekton** · **GitHub Actions (ARC)** · **Argo Workflows** — runs the SAME ~11-stage pipeline contract against the SAME `jenkins/pipelines/seed/services.yaml` service registry and the SAME `resources/patch-app-source.sh` build-time gateway patch:
 1. **Dynamic Configuration**: the pipeline dynamically fetches configuration from this infra repo's active branch.
 2. **Stable / develop tiers**: the stable tier deploys to the `microservices` namespace, building the app forks' `main` branch. An optional `develop` tier (`microservices.developTrackEnabled`, OFF by default) builds the forks' real `develop` branch into a separate `microservices-develop` namespace.
 3. **Gateway source patch (MySQL→PostgreSQL + NoOp cache)**: the JHipster gateway fork is generated for MySQL, but this platform runs PostgreSQL (CloudNativePG). The shared `resources/patch-app-source.sh` — materialised via `libraryResource('patch-app-source.sh')` in `vars/MicroservicesPipeline.groovy` and called identically by all four engines — converts the gateway to PostgreSQL and swaps the JHipster Hazelcast 2nd-level cache for a NoOp cache (a `CacheConfiguration` returning a `NoOpCacheManager`) at build time, right after checkout.
@@ -171,7 +171,7 @@ Check the rollout status of all services:
   shared-library pipeline, and `seed/services.yaml` (the shared service registry all
   four CI engines read).
 - [`vars/`](vars/) - the Jenkins shared library: `MicroservicesPipeline.groovy` (the
-  ~10-stage microservices pipeline) + its build/image/deploy/smoke-test helpers. The
+  ~11-stage microservices pipeline) + its build/image/deploy/smoke-test helpers. The
   other three engines port the same stages.
 - [`resources/patch-app-source.sh`](resources/patch-app-source.sh) - the single source of
   truth for the build-time gateway patch (MySQL→PostgreSQL + NoOp cache), called
