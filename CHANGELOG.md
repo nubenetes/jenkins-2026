@@ -19,6 +19,10 @@ All notable changes to **jenkins-2026** are documented here, following
 
 ## [Unreleased]
 
+_Nothing yet — add entries here as PRs merge._
+
+## [v1.1.1] - 2026-07-03
+
 _Teardown hygiene: a full Decom now purges the eso-mode Secret Manager secrets and reliably sweeps orphaned PV disks._
 
 ### Fixed
@@ -151,6 +155,7 @@ Every milestone release (git tag + GitHub release), newest first. Full detail fo
 
 | Version | Date | Theme |
 |---|---|---|
+| [v1.1.1](#v111---2026-07-03) | 2026-07-03 | **teardown hygiene** — a full Decom purges the eso Secret Manager secrets (#544) + reliably sweeps orphaned PV disks incl. prior-run orphans (#545) |
 | [v1.1.0](#v110---2026-07-03) | 2026-07-03 | **multi-engine CI & managed-observability hardening** — Tekton/Argo/GHA live-validated, Azure/AWS managed-Prometheus query fixes, idempotent switches |
 | [v1.0.0](#v100---2026-07-02) | 2026-07-02 | **first stable release** — reference platform baseline |
 | [v0.29.0](#v0290---2026-07-02) | 2026-07-02 | rebuild-safety & observability hardening (last v0.x) |
