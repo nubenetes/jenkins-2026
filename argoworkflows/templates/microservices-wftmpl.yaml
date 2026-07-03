@@ -112,10 +112,12 @@ spec:
                 - { name: service-type, value: "{{workflow.parameters.service-type}}" }
                 - { name: module-path, value: "{{workflow.parameters.module-path}}" }
                 # P3 immutable tag: append the Workflow name so the tag is unique per
-                # run (e.g. develop-<wf-name>) - matches the gitops image-tag below
-                # (both = <git-branch>-{{workflow.name}}), so build-push, scans and the
-                # gitops bump all reference the SAME immutable image. Mirrors the
-                # Jenkins <branch>-<build#> tag (the Tekton port uses <branch>-<run-name>).
+                # run (e.g. main-<wf-name>). This exact `image` value is the SINGLE SOURCE
+                # of the deployed tag: trivy-image scans it and gitops-deploy extracts its
+                # tag ({{image}}-{{workflow.name}}, everything after the last ':') for the
+                # gitops bump, so build-push, scans and the deploy always reference the
+                # identical image. Mirrors the Jenkins <branch>-<build#> tag (Tekton port
+                # uses <branch>-<run-name>).
                 - { name: image, value: "{{workflow.parameters.image}}-{{workflow.name}}" }
           - name: trivy-image
             template: trivy-image
@@ -131,12 +133,17 @@ spec:
                 - { name: service-name, value: "{{workflow.parameters.service-name}}" }
                 - { name: env-name, value: "{{workflow.parameters.env-name}}" }
                 - { name: target-namespace, value: "{{workflow.parameters.target-namespace}}" }
-                # P3 immutable tag: <git-branch>-{{workflow.name}}, matching the build/
-                # trivy `image` tag above so build-pushes, scans and the gitops bump all
-                # reference the SAME immutable image. Mirrors the Jenkins <branch>-<build#>
-                # tag. Assumes the run's `image` tag == git-branch (the standard
-                # runs/Sensor set both from the same branch).
-                - { name: image-tag, value: "{{workflow.parameters.git-branch}}-{{workflow.name}}" }
+                # P3 immutable tag: derive the gitops bump tag from the SAME `image`
+                # param the build/trivy steps use ({{image}}-{{workflow.name}}), so
+                # build-push, scans and the gitops bump ALWAYS reference the identical
+                # immutable image - even if a trigger sets git-branch to something the
+                # `image` tag base doesn't match (e.g. a develop push whose `image`
+                # defaulted to the :main base). Passing the full `image` (with the
+                # workflow-name suffix already appended by build-push) lets gitops-deploy
+                # extract the tag portion itself - a single source of truth, not two
+                # independently-computed strings that can drift. Mirrors the Jenkins
+                # <branch>-<build#> tag (base always == the built image's tag).
+                - { name: image, value: "{{workflow.parameters.image}}-{{workflow.name}}" }
           - name: smoke-test
             template: smoke-test
             dependencies: [gitops-deploy]
@@ -650,7 +657,11 @@ spec:
           - name: service-name
           - name: env-name
           - name: target-namespace
-          - name: image-tag
+          # The FULL built image (ghcr.io/.../<svc>:<tag>) - gitops-bump-and-push
+          # extracts the tag portion (everything after the last ':') so the bumped
+          # gitops tag is byte-identical to what build-push actually pushed. Single
+          # source of truth: no separately-computed image-tag that can drift.
+          - name: image
           - name: gitops-repo-url
             value: https://github.com/nubenetes/jenkins-2026-gitops-config.git
           - name: argocd-server
@@ -664,7 +675,7 @@ spec:
               parameters:
                 - { name: service-name, value: "{{inputs.parameters.service-name}}" }
                 - { name: env-name, value: "{{inputs.parameters.env-name}}" }
-                - { name: image-tag, value: "{{inputs.parameters.image-tag}}" }
+                - { name: image, value: "{{inputs.parameters.image}}" }
                 - { name: gitops-repo-url, value: "{{inputs.parameters.gitops-repo-url}}" }
         - - name: argocd-sync
             template: gitops-argocd-sync
@@ -684,7 +695,7 @@ spec:
         parameters:
           - name: service-name
           - name: env-name
-          - name: image-tag
+          - name: image
           - name: gitops-repo-url
       script:
         image: alpine/k8s:1.31.3
@@ -692,6 +703,9 @@ spec:
           - { name: source, mountPath: /workspace }
         env:
           - { name: HOME, value: /tmp }
+          # Bind the full built image ref to a shell var so ${IMAGE##*:} can extract the
+          # tag safely (the ref contains ':'); avoids inlining it into the shell text.
+          - { name: IMAGE, value: "{{inputs.parameters.image}}" }
           - name: GIT_USER
             valueFrom:
               secretKeyRef: { name: argoworkflows-git, key: username, optional: true }
@@ -707,6 +721,13 @@ spec:
           esac
           BRANCH=main; [ "{{inputs.parameters.env-name}}" = "develop" ] && BRANCH=develop
           VALUES="helm/microservices/values-{{inputs.parameters.env-name}}.yaml"
+          # Extract the tag from the FULL image the build actually pushed (strip the
+          # registry/repo up to and including the last ':'). This is the single source
+          # of truth for the deployed tag - it is exactly what build-push/trivy used, so
+          # the gitops bump can never reference a tag that was not built. (Guards the
+          # invariant that previously broke: a develop push whose `image` base was still
+          # ':main' must bump ':main-<wf>', the tag that exists, not ':develop-<wf>'.)
+          IMAGE_TAG="${IMAGE##*:}"
           cd /workspace
           rm -rf gitops-deploy-src
           git config --global --add safe.directory '*' || true
@@ -718,9 +739,9 @@ spec:
             clone --depth 1 --branch "${BRANCH}" \
             "https://${GIT_USER:-git}:${GIT_TOKEN:-}@${REPO_CLEAN}" gitops-deploy-src
           cd gitops-deploy-src
-          yq eval -i ".services.{{inputs.parameters.service-name}}.image.tag = \"{{inputs.parameters.image-tag}}\"" "${VALUES}"
+          yq eval -i ".services.{{inputs.parameters.service-name}}.image.tag = \"${IMAGE_TAG}\"" "${VALUES}"
           git add "${VALUES}"
-          git commit -m "chore(ops): update {{inputs.parameters.service-name}} image tag to {{inputs.parameters.image-tag}} [{{inputs.parameters.env-name}}]" || echo "No changes to commit"
+          git commit -m "chore(ops): update {{inputs.parameters.service-name}} image tag to ${IMAGE_TAG} [{{inputs.parameters.env-name}}]" || echo "No changes to commit"
           git push origin "${BRANCH}"
     - name: gitops-argocd-sync
       inputs:

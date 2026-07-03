@@ -20,6 +20,25 @@ spec:
     - name: github-dep
       eventSourceName: github
       eventName: microservices
+      # Branch gate (parity with the seed script's developTrackEnabled gating and the
+      # Jenkins seed, which only generate *-develop jobs when the develop track is on).
+      # This Sensor is hardwired to the STABLE tier only: it hardcodes env=stable /
+      # target-namespace=microservices and leaves the `image` tag base at ':main', so it
+      # is coherent ONLY for pushes to the app's `main` branch. A push to any other branch
+      # (e.g. `develop`) would keep the :main image base while git-branch flips to develop
+      # -> the build pushes :main-<wf> but the run is otherwise "develop", and (before this
+      # gate) the gitops bump wrote a tag that was never built -> ImagePullBackOff. Since
+      # the develop deploy tier is NOT provisioned on this cluster (no microservices-develop
+      # ArgoCD app), a develop push must NOT deploy anywhere. Fire ONLY on refs/heads/main.
+      # If/when the develop track is enabled, add a second dependency+trigger (or a data
+      # filter branch) that routes refs/heads/develop to env=develop/microservices-develop
+      # with an :develop image base - mirroring runs/gateway-develop.yaml.
+      filters:
+        data:
+          - path: body.ref
+            type: string
+            value:
+              - "refs/heads/main"
   triggers:
     - template:
         name: submit-workflow
