@@ -142,6 +142,24 @@ jobs:
             -Djib.to.auth.username="${{ secrets.REGISTRY_USERNAME }}" \
             -Djib.to.auth.password="${{ secrets.REGISTRY_PASSWORD }}" -Djib.serialize=true
 
+      # Reclaim disk before the image scan. The app image is now in GHCR, so the build
+      # tree (Angular node_modules, Maven target/ + ~/.m2 repo, the Jib build cache) is
+      # dead weight — nothing after this needs it (Trivy re-pulls the image from GHCR;
+      # the deploy steps touch only gitops). On the 50 GB `ci-spot` runner nodes
+      # (terraform/gke var.disk_size_gb, kept small for SSD_TOTAL_GB headroom) this
+      # accumulation tips the node into DiskPressure, and the kubelet answers by EVICTING
+      # the ephemeral ARC runner mid-run — the GitHub job then hangs on a vanished runner.
+      # Best-effort; never fails the build.
+      - name: Reclaim disk before image scan
+        if: always()
+        run: |
+          df -h / | tail -1 || true
+          rm -rf microservices-src/node_modules microservices-src/*/node_modules \
+                 microservices-src/target microservices-src/*/target \
+                 "$HOME/.m2/repository" "$HOME/.cache/google-cloud-tools-java" 2>/dev/null || true
+          docker image prune -af >/dev/null 2>&1 || true
+          df -h / | tail -1 || true
+
       - name: Trivy image scan
         if: env.SERVICE_TYPE == 'java' && github.event_name != 'pull_request'
         run: docker run --rm aquasec/trivy image --exit-code 0 "$REGISTRY/$SERVICE:$IMAGE_TAG" || true
