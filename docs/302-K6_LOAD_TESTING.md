@@ -262,9 +262,15 @@ flowchart LR
 Ramp to 20 VUs, hold 5 minutes, ramp down — the first real load step. Tight budgets (p95 < 2s, err < 2%) make it a regression gate under normal traffic.
 
 ```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#4a55c0"
+---
 xychart-beta
     title "load-baseline — VUs over time"
-    x-axis "time" [0s, 30s, "hold 5m", 30s]
+    x-axis "time" [0s, "ramp 30s", "hold 5m", "down 30s"]
     y-axis "VUs" 0 --> 25
     line [0, 20, 20, 0]
 ```
@@ -307,9 +313,15 @@ flowchart TB
 Ramp to a base (50) then 2× (100), hold, ramp down, with **looser** budgets — a breach here is informative. Watch p99/max and `http_req_failed` in the analysis.
 
 ```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#4a55c0"
+---
 xychart-beta
     title "stress-peak — VUs over time"
-    x-axis "time" [0s, "1m", "2m", "hold 2m", "1m"]
+    x-axis "time" [0s, "ramp 1m", "ramp 2m", "hold 2m", "down 1m"]
     y-axis "VUs" 0 --> 110
     line [0, 50, 100, 100, 0]
 ```
@@ -322,9 +334,15 @@ xychart-beta
 A sudden burst to 100 VUs, a short hold, then a sharp drop — tests how the platform absorbs the spike (autoscaling, queueing) and how fast it settles afterwards.
 
 ```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#4a55c0"
+---
 xychart-beta
     title "spike-recovery — VUs over time"
-    x-axis "time" [0s, "10s", "hold 1m", "10s", "after"]
+    x-axis "time" [0s, "spike 10s", "hold 1m", "drop 10s", "after"]
     y-axis "VUs" 0 --> 110
     line [0, 100, 100, 0, 0]
 ```
@@ -337,6 +355,12 @@ xychart-beta
 Moderate, constant load held for a long time (1h, extend to 8h) to surface leaks, pool exhaustion and GC drift that only appear over time. Pair with Grafana memory/GC panels across the whole window.
 
 ```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#4a55c0"
+---
 xychart-beta
     title "soak-endurance — VUs over time"
     x-axis "time" [0s, "5m", "30m", "1h"]
@@ -373,6 +397,12 @@ sequenceDiagram
 Arrival rate ramps toward 400 req/s; the moment the p(95) budget (1500ms) breaks, the run **aborts** (`abortOnFail`). The last sustained rate before the abort is the capacity ceiling. The only profile that fails fast by design.
 
 ```mermaid
+---
+config:
+  themeVariables:
+    xyChart:
+      plotColorPalette: "#4a55c0"
+---
 xychart-beta
     title "breakpoint-capacity — req/s until knee"
     x-axis "time" [0s, "2m", "4m", "6m", "knee ✂"]

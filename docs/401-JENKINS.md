@@ -8,7 +8,7 @@ Jenkins is this project's **default CI engine** — one of four mutually-exclusi
 engines selected by [`config/config.yaml`](../config/config.yaml) `ci.engine`:
 **Jenkins** (default) · [**Tekton**](./403-TEKTON.md) ·
 [**GitHub Actions (ARC)**](./404-GITHUB_ACTIONS.md) ·
-[**Argo Workflows**](./405-ARGO_WORKFLOWS.md). All four run the same ~10-stage
+[**Argo Workflows**](./405-ARGO_WORKFLOWS.md). All four run the same ~11-stage
 pipeline contract off the shared [`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml)
 registry and the shared [`resources/patch-app-source.sh`](../resources/patch-app-source.sh)
 (the gateway MySQL→Postgres + NoOp-cache build-time patch). Jenkins runs as a
@@ -103,6 +103,10 @@ How the repo's declarations on the left become a running build on the right — 
 <summary>🔀 Jenkins object model & run flow</summary>
 
 ```mermaid
+---
+config:
+  layout: elk
+---
 flowchart TB
   subgraph defs["Definitions — JCasC + Job DSL, rebuilt from git on every boot"]
     direction TB
@@ -226,7 +230,7 @@ sequenceDiagram
   else any other Google account
     R-->>J: role developer (read + Job/Build + Run/Replay)
   end
-  Note over U,J: escape-hatch admin (JENKINS_ADMIN_ID)<br/>bypasses Google entirely → group escape-hatch-admin → admin
+  Note over U,J: escape-hatch admin (JENKINS_ADMIN_ID)<br/>bypasses Google entirely →<br/>group escape-hatch-admin → admin
 ```
 
 </details>
@@ -384,17 +388,26 @@ sequenceDiagram
 <summary>🕸️ Why WebSocket, not the JNLP4 tunnel (flowchart)</summary>
 
 ```mermaid
+---
+config:
+  layout: elk
+---
 flowchart TB
   start([agent pod scheduled]) --> where{same node as<br/>controller?}
   subgraph jnlp["❌ JNLP4 tunnel :50000 (jenkinsTunnel)"]
-    where -->|different node| wg[traffic crosses WireGuard link<br/>MTU lowered]
-    wg --> bh["TLS handshake black-holes<br/>TCP accepted, channel never up"]
-    bh --> abort[build ABORTED / git checkout fails]
+    wg[traffic crosses WireGuard link<br/>MTU lowered]
+    bh["TLS handshake black-holes<br/>TCP accepted, channel never up"]
+    abort[build ABORTED / git checkout fails]
   end
   subgraph ws["✅ WebSocket :8080 (websocket: true)"]
-    where2([any node]) --> http[rides the same HTTP path as UI/API]
-    http --> ok[channel established<br/>node placement irrelevant]
+    http[rides the same HTTP path as UI/API]
+    ok[channel established<br/>node placement irrelevant]
   end
+  where -->|different node| wg
+  wg --> bh
+  bh --> abort
+  where -->|any node| http
+  http --> ok
   note["jenkinsTunnel OMITTED → agent gets -webSocket only<br/>(both -tunnel + -webSocket conflict → exit 0 → ABORTED)"]:::n
   classDef n fill:#ffd,stroke:#cc3;
 ```

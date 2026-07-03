@@ -378,7 +378,6 @@ flowchart LR
       B --> M["write backend_override.tf<br/>terraform init -migrate-state"]
       M --> R[("state now lives IN the bucket<br/>prefix: jenkins-2026/bootstrap")]
     end
-    Phase1 --> Phase2
 ```
 
 </details>

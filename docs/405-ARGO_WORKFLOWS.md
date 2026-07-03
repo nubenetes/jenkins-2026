@@ -476,7 +476,7 @@ sequenceDiagram
   Ctl->>Pod: one Pod per leaf step (shared source PVC)
   Pod-->>Ctl: outputs/params flow between steps
   Pod->>GO: gitops-deploy → argocd app sync
-  Note over Dev,GH: git is the trigger — runs are rarely created by hand
+  Note over Dev,GH: git is the trigger —<br/>runs are rarely created by hand
 ```
 
 </details>

@@ -176,7 +176,7 @@ Once deployed:
 4. In the Jenkins dashboard, run the seeded pipelines (`gateway` and `jhipstersamplemicroservice`) to build and push their first Docker images.
 5. Trigger the `microservices-k6-smoke` pipeline in Jenkins to generate synthetic traffic and verify telemetry in Grafana.
 
-All four engines run the **same ~10-stage pipeline contract** off the shared [`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml) registry and the shared [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) build-time patch — only the trigger and the by-hand run differ:
+All four engines run the **same ~11-stage pipeline contract** off the shared [`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml) registry and the shared [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) build-time patch — only the trigger and the by-hand run differ:
 
 **With `ci.engine=tekton`:** the normal trigger is a `git push` to a microservices fork (Pipelines-as-Code). To run one by hand, use the ready-made manifests — no hand-config needed:
 ```bash

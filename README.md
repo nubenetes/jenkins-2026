@@ -602,6 +602,7 @@ flowchart TB
         direction TB
         users(["users · browser SPA (public)"]):::ext
         ghaIac(["gha-iac · GitHub Actions IaC driver<br/>OIDC→WIF · NOT a CI engine"]):::ext
+        forks(["app forks · gateway + msvc<br/>(source · CI checkout & webhooks)"]):::ext
         gitops(["gitops-repo · direct-push main"]):::ext
         ghcr(["ghcr.io/nubenetes · images"]):::ext
       end
@@ -612,7 +613,7 @@ flowchart TB
         CISA["CI SA jenkins-2026-ci<br/>container/net/dns/secret/cert admin"]:::prov
         STATE[("GCS state bucket<br/>versioned · per-module prefixes")]:::prov
         DNSZONE["DNS zone jenkins-2026-public-zone<br/>one-time parent NS delegation"]:::prov
-        PGBK[("postgres-backups bucket")]:::prov
+        PGBK[("postgres-backups bucket<br/>← CNPG WAL archive (L4)")]:::prov
       end
       subgraph L1["L1 · Provisioning / IaC (one bucket · prefixes)"]
         direction TB
@@ -640,6 +641,7 @@ flowchart TB
             ARGOWF["ARGOWF · argoworkflows<br/>WF v3.7.15 + Events · IAP UI"]:::eng4
         end
         OPS["OPS · Operators<br/>ESO · OTel · CNPG · Argo Rollouts"]:::ctrl
+        PUIS["PUIS · platform web UIs (IAP)<br/>Headlamp · pgAdmin · Grafana (oss)"]:::ctrl
         PUSH["PUSH · imperative lane (0N-*.sh)<br/>creds · NetPol · Quotas"]:::push
       end
       subgraph DP["L4 · Data / runtime plane (ns microservices)"]
@@ -690,8 +692,10 @@ flowchart TB
 
     users --> DNS --> LB --> IAPN --> GW
     GW -->|"IAP UI: jenkins·tekton·argo"| JEN & TEK & ARGOWF
+    GW -->|"IAP UI: headlamp·pgadmin·grafana"| PUIS
     GW -->|"open: microservices·faro·argocd"| GWAPP & SRCS & ACD
     GW -->|"HMAC public"| ARGOEV & PACWH
+    forks -. "push webhooks" .-> PACWH & ARGOEV
 
     CISA -->|"up.sh 00→09"| ACD
     ACD -->|"installs / syncs"| CONTRACT & OPS & GWAPP
@@ -701,6 +705,7 @@ flowchart TB
     TEK -. "webhook" .-> PACWH
     ARGOWF -. "webhook" .-> ARGOEV
 
+    forks -->|"checkout source"| CONTRACT
     CONTRACT -->|"build & push"| ghcr
     CONTRACT -. "image-tag bump" .-> gitops
     gitops -->|"ArgoCD source"| ACD
@@ -721,6 +726,7 @@ flowchart TB
     COLG -->|"exactly ONE active"| OSS & GCLOUD & AZ & AWS
     COLL --> OSS & GCLOUD & AZ & AWS
 
+    PUSH -. "seed values (eso)" .-> SM
     OPS -->|"ESO · keyless WIF"| SM
 
 
@@ -762,13 +768,14 @@ flowchart TB
 
 **How to read it — top-down, by layer:**
 
-- **L0 · Day0 root-of-trust** — human-run, *never* torn down: WIF/OIDC keyless trust · the GCS Terraform-state bucket · the permanent DNS zone.
+- **L0 · Day0 root-of-trust** — human-run, *never* torn down: WIF/OIDC keyless trust · the GCS Terraform-state bucket · the permanent DNS zone · the Postgres-backups bucket (the CNPG WAL archive).
 - **L1 · Provisioning / IaC** — Terraform (one state bucket, per-module prefixes).
 - **L2 · GCP edge** — DNS → L7 LB → **IAP** → Gateway.
 - **L3 · Control plane** —
   - **ArgoCD** — always the CD/GitOps engine.
   - the **chosen CI engine** — 1 of 4 (Jenkins · Tekton · GitHub Actions/ARC · Argo Workflows); see *Pluggable choices* below.
   - **operators** — External Secrets · OTel · CNPG · Argo Rollouts.
+  - the IAP-protected **platform web UIs** — Headlamp · pgAdmin · Grafana (oss mode).
   - the imperative **push** lane ArgoCD doesn't own.
 - **L4 · Data / runtime plane** — the JHipster gateway + microservice + CloudNative-PG, on the static-vs-NAP node substrate.
 - **L5 · Observability pipeline** — the OpenTelemetry collectors.

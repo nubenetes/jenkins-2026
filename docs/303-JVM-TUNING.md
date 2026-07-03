@@ -171,7 +171,7 @@ If we want to kill the cold start *without* losing the OTel agent, **CRaC ([crac
 3. Set the container **restore entrypoint** (`java -XX:CRaCRestoreFrom=…`).
 4. Add **CRaC `Resource` hooks** to close Hazelcast + DB pools before checkpoint and re-open `afterRestore`.
 5. **Validate the OTel agent** restores cleanly (spans/metrics resume).
-6. Rebuild via whichever CI engine is active (Jenkins · Tekton · GitHub Actions/ARC · Argo Workflows — all four share the one ~10-stage pipeline); deploy; **measure restore time + telemetry** in the JVM dashboard below.
+6. Rebuild via whichever CI engine is active (Jenkins · Tekton · GitHub Actions/ARC · Argo Workflows — all four share the one ~11-stage pipeline); deploy; **measure restore time + telemetry** in the JVM dashboard below.
 
 Open risks to spike first: **Hazelcast + CRaC** and **agent + CRaC**. Until validated, HotSpot + G1 (+ optionally the **AOT cache**, a zero-friction, fully agent-compatible startup win on the current JDK 25) remains the safe default.
 

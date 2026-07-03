@@ -75,7 +75,7 @@ mindmap
 <summary>🔴 For specialists — how the pieces are wired</summary>
 
 - **Two-repo GitOps**: this **infra repo** (bootstrap, the chosen CI engine, ArgoCD, observability) vs the **gitops-config repo** (microservices Helm + CNPG manifests + image tags). CI writes tags into the latter; ArgoCD reconciles from it.
-- **`ci.engine` — one of four** (Jenkins default · Tekton · GitHub Actions/ARC · Argo Workflows), mutually exclusive and **engine-gated**: each engine's namespaces exist only in its mode — `jenkins`, the `tekton-*` set, `arc-systems`/`arc-runners` (ARC), or `argo`/`argo-events`/`argo-ci`. All four share the same 10-stage contract + `services.yaml` + `resources/patch-app-source.sh`. Switching engines retires the other three (the shared `retire_ci_engine` helper). The public ingress is engine-neutral (`platform-ingress`).
+- **`ci.engine` — one of four** (Jenkins default · Tekton · GitHub Actions/ARC · Argo Workflows), mutually exclusive and **engine-gated**: each engine's namespaces exist only in its mode — `jenkins`, the `tekton-*` set, `arc-systems`/`arc-runners` (ARC), or `argo`/`argo-events`/`argo-ci`. All four share the same ~11-stage contract + `services.yaml` + `resources/patch-app-source.sh`. Switching engines retires the other three (the shared `retire_ci_engine` helper). The public ingress is engine-neutral (`platform-ingress`).
 - **`observability.mode` — four backends**, the OTel collector reconfigured per mode; each branch retires the others' agents on a switch.
 - **`secrets.backend` — `imperative` (default) vs `eso`**: ESO syncs from **GCP Secret Manager** over **keyless Workload Identity**; groups 1–3 are wired, group 4 (in-cluster/Terraform-minted) stays imperative.
 - **Platform**: one GKE **Gateway** + **Google IAP**, **Dataplane V2** (Cilium/eBPF NetworkPolicy enforcement) + **WireGuard** inter-node encryption, **Node Auto-Provisioning** (GKE-native, GA) Spot CI-agent nodes via a Custom **ComputeClass**, and the IAP OAuth secret **replicated** per backend namespace (a GKE constraint, not a smell).
@@ -88,7 +88,7 @@ mindmap
 <details>
 <summary>🔍 Click to expand System Architecture Diagram</summary>
 
-Two pluggable choices, both deterministic & idempotent: the **CI engine** (`ci.engine`: one of four — **Jenkins** default / **Tekton** / **GitHub Actions (ARC)** / **Argo Workflows**, all sharing one 10-stage contract) and the **observability backend** (`observability.mode`: one of oss / grafana-cloud / managed-azure / managed-aws). ArgoCD is always the CD/GitOps engine. This is the same overview as [README § 3](../README.md#3-architecture-overview); the [Component Diagram](#component-diagram) below drills into the Jenkins/microservices/observability internals.
+Two pluggable choices, both deterministic & idempotent: the **CI engine** (`ci.engine`: one of four — **Jenkins** default / **Tekton** / **GitHub Actions (ARC)** / **Argo Workflows**, all sharing one ~11-stage contract) and the **observability backend** (`observability.mode`: one of oss / grafana-cloud / managed-azure / managed-aws). ArgoCD is always the CD/GitOps engine. This is the same overview as [README § 3](../README.md#3-architecture-overview); the [Component Diagram](#component-diagram) below drills into the Jenkins/microservices/observability internals.
 
 ```mermaid
 ---
@@ -103,6 +103,7 @@ flowchart TB
         direction TB
         users(["users · browser SPA (public)"]):::ext
         ghaIac(["gha-iac · GitHub Actions IaC driver<br/>OIDC→WIF · NOT a CI engine"]):::ext
+        forks(["app forks · gateway + msvc<br/>(source · CI checkout & webhooks)"]):::ext
         gitops(["gitops-repo · direct-push main"]):::ext
         ghcr(["ghcr.io/nubenetes · images"]):::ext
       end
@@ -113,7 +114,7 @@ flowchart TB
         CISA["CI SA jenkins-2026-ci<br/>container/net/dns/secret/cert admin"]:::prov
         STATE[("GCS state bucket<br/>versioned · per-module prefixes")]:::prov
         DNSZONE["DNS zone jenkins-2026-public-zone<br/>one-time parent NS delegation"]:::prov
-        PGBK[("postgres-backups bucket")]:::prov
+        PGBK[("postgres-backups bucket<br/>← CNPG WAL archive (L4)")]:::prov
       end
       subgraph L1["L1 · Provisioning / IaC (one bucket · prefixes)"]
         direction TB
@@ -134,13 +135,14 @@ flowchart TB
         ACD["ArgoCD 3.4.x (always the CD engine)<br/>1 AppSet · app-of-apps · single apps"]:::ctrl
         subgraph CIENG["CIENG · pick EXACTLY ONE (ci.engine)"]
           direction TB
-          CONTRACT["shared 10-stage contract<br/>patch-app-source.sh · services.yaml"]:::contract
+          CONTRACT["shared ~11-stage contract<br/>patch-app-source.sh · services.yaml"]:::contract
             JEN["JEN · jenkins (default *)<br/>chart · JCasC · IAP UI"]:::eng1
             TEK["TEK · tekton<br/>CRDs · IAP Dash · PaC"]:::eng2
             GHAARC["GHA-ARC · GitHub Actions/ARC<br/>ephemeral · ci-spot · NO in-cluster UI"]:::eng3
             ARGOWF["ARGOWF · argoworkflows<br/>WF v3.7.15 + Events · IAP UI"]:::eng4
         end
         OPS["OPS · Operators<br/>ESO · OTel · CNPG · Argo Rollouts"]:::ctrl
+        PUIS["PUIS · platform web UIs (IAP)<br/>Headlamp · pgAdmin · Grafana (oss)"]:::ctrl
         PUSH["PUSH · imperative lane (0N-*.sh)<br/>creds · NetPol · Quotas"]:::push
       end
       subgraph DP["L4 · Data / runtime plane (ns microservices)"]
@@ -191,8 +193,10 @@ flowchart TB
 
     users --> DNS --> LB --> IAPN --> GW
     GW -->|"IAP UI: jenkins·tekton·argo"| JEN & TEK & ARGOWF
+    GW -->|"IAP UI: headlamp·pgadmin·grafana"| PUIS
     GW -->|"open: microservices·faro·argocd"| GWAPP & SRCS & ACD
     GW -->|"HMAC public"| ARGOEV & PACWH
+    forks -. "push webhooks" .-> PACWH & ARGOEV
 
     CISA -->|"up.sh 00→09"| ACD
     ACD -->|"installs / syncs"| CONTRACT & OPS & GWAPP
@@ -202,6 +206,7 @@ flowchart TB
     TEK -. "webhook" .-> PACWH
     ARGOWF -. "webhook" .-> ARGOEV
 
+    forks -->|"checkout source"| CONTRACT
     CONTRACT -->|"build & push"| ghcr
     CONTRACT -. "image-tag bump" .-> gitops
     gitops -->|"ArgoCD source"| ACD
@@ -222,6 +227,7 @@ flowchart TB
     COLG -->|"exactly ONE active"| OSS & GCLOUD & AZ & AWS
     COLL --> OSS & GCLOUD & AZ & AWS
 
+    PUSH -. "seed values (eso)" .-> SM
     OPS -->|"ESO · keyless WIF"| SM
 
 
@@ -263,13 +269,14 @@ flowchart TB
 
 **How to read it — top-down, by layer:**
 
-- **L0 · Day0 root-of-trust** — human-run, *never* torn down: WIF/OIDC keyless trust · the GCS Terraform-state bucket · the permanent DNS zone.
+- **L0 · Day0 root-of-trust** — human-run, *never* torn down: WIF/OIDC keyless trust · the GCS Terraform-state bucket · the permanent DNS zone · the Postgres-backups bucket (the CNPG WAL archive).
 - **L1 · Provisioning / IaC** — Terraform (one state bucket, per-module prefixes).
 - **L2 · GCP edge** — DNS → L7 LB → **IAP** → Gateway.
 - **L3 · Control plane** —
   - **ArgoCD** — always the CD/GitOps engine.
   - the **chosen CI engine** — 1 of 4 (Jenkins · Tekton · GitHub Actions/ARC · Argo Workflows); see *Pluggable choices* below.
   - **operators** — External Secrets · OTel · CNPG · Argo Rollouts.
+  - the IAP-protected **platform web UIs** — Headlamp · pgAdmin · Grafana (oss mode).
   - the imperative **push** lane ArgoCD doesn't own.
 - **L4 · Data / runtime plane** — the JHipster gateway + microservice + CloudNative-PG, on the static-vs-NAP node substrate.
 - **L5 · Observability pipeline** — the OpenTelemetry collectors.
@@ -283,7 +290,7 @@ flowchart TB
 
 **Pluggable choices** — each deterministic & idempotent, exactly **one value per cluster**, set in `config/config.yaml` (or the `Day1.cluster.01` inputs) and switched on a re-run. (**ArgoCD is always the CD/GitOps engine** — not pluggable.)
 
-1. **CI engine** (`ci.engine`) — **one of four**, mutually exclusive; all four share the same **10-stage contract** + the shared **`resources/patch-app-source.sh`** + the `services.yaml` registry:
+1. **CI engine** (`ci.engine`) — **one of four**, mutually exclusive; all four share the same **~11-stage contract** + the shared **`resources/patch-app-source.sh`** + the `services.yaml` registry:
    - **Jenkins** *(default)* — in-cluster UI behind IAP.
    - **Tekton** — in-cluster Dashboard behind IAP.
    - **GitHub Actions (ARC)** — **no in-cluster UI** (github.com is the UI); triggers **branch-based** on a push to the fork's `main` / `develop`.
@@ -303,8 +310,8 @@ The [Component Diagram](#component-diagram) below drills into the Jenkins / micr
 flowchart TD
     repo["github.com/nubenetes/jenkins-2026<br/>vars/ shared library + MicroservicesPipeline.groovy,<br/>seed/services.yaml, resources/patch-app-source.sh,<br/>Helm charts, tekton/ + argoworkflows/ + .github pipelines"]
 
-    subgraph ci_ns["namespace: the active CI engine (ci.engine)<br/>jenkins · tekton-* · arc-systems/arc-runners · argo/argo-events/argo-ci"]
-        ci["CI engine — one of four (mutually exclusive)<br/>Jenkins (default) · Tekton · GitHub Actions/ARC · Argo Workflows<br/>- shared 10-stage contract + services.yaml + patch-app-source.sh<br/>- builds gateway / jhipstersamplemicroservice, runs microservices-k6-smoke<br/>- each run uses a pod agent<br/>  (maven / node / docker:dind / helm+kubectl / k6 containers)"]
+    subgraph ci_ns["namespaces: the active CI engine (ci.engine)"]
+        ci["CI engine — one of four (mutually exclusive)<br/>Jenkins (default) · Tekton · GitHub Actions/ARC · Argo Workflows<br/>ns: jenkins · tekton-* · arc-systems/arc-runners · argo/argo-events/argo-ci<br/>- shared ~11-stage contract + services.yaml + patch-app-source.sh<br/>- builds gateway / jhipstersamplemicroservice, runs microservices-k6-smoke<br/>- each run uses a pod agent<br/>  (maven / node / docker:dind / helm+kubectl / k6 containers)"]
     end
 
     repo -->|"shared library + pipeline-as-code<br/>(checkout scm)"| ci
@@ -430,7 +437,7 @@ sequenceDiagram
     participant K8s as Kubernetes (GKE)
     participant Obs as Observability (Grafana)
 
-    Note over J: Jenkins · Tekton · GitHub Actions/ARC · Argo Workflows<br/>same 10-stage contract + services.yaml + patch-app-source.sh
+    Note over J: Jenkins · Tekton · GitHub Actions/ARC · Argo Workflows<br/>same ~11-stage contract + services.yaml + patch-app-source.sh
     Dev->>GH_Infra: Push Code / Change
     J->>J: Build & Test
     J->>J: Push Image to GHCR
@@ -468,7 +475,7 @@ The `ci.engine` flag (`jenkins` default, override `JENKINS2026_CI_ENGINE`) selec
 - **GitHub Actions (ARC)** — [`04-githubactions.sh`](../scripts/04-githubactions.sh) applies the `argocd/githubactions` app-of-apps (Actions Runner Controller + the ephemeral runner scale set); the pipeline is a `.github/workflows` file rendered into each fork. **No in-cluster UI** (github.com is the UI). See [404. GitHub Actions](./404-GITHUB_ACTIONS.md).
 - **Argo Workflows** — [`04-argoworkflows.sh`](../scripts/04-argoworkflows.sh) applies the `argocd/argoworkflows` app-of-apps (Argo Workflows controller+Server + Argo Events + the WorkflowTemplates/EventSource/Sensor under `argoworkflows/`); the Server UI is IAP-protected like the Tekton Dashboard. See [405. Argo Workflows](./405-ARGO_WORKFLOWS.md).
 
-All four share the same ~10-stage pipeline contract, the [`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml) registry, and the [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) build-time app patch (Tekton/ARC/Argo Workflows are GitOps-managed via ArgoCD, unlike Jenkins which is `helm install`-ed directly).
+All four share the same ~11-stage pipeline contract, the [`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml) registry, and the [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) build-time app patch (Tekton/ARC/Argo Workflows are GitOps-managed via ArgoCD, unlike Jenkins which is `helm install`-ed directly).
 
 ## Repository Layout
 
@@ -733,8 +740,8 @@ graph TD
     subgraph MS["microservices (always)"]
         GHCR["ghcr-credentials"]
     end
-    subgraph MSD["microservices-develop (develop track only)"]
-        GHCRD["ghcr-credentials"]
+    subgraph MSD["microservices-develop (opt-in)"]
+        GHCRD["ghcr-credentials<br/>(develop-tier copy)"]
     end
     subgraph JN["jenkins (jenkins-mode only)"]
         JC["jenkins-credentials"]

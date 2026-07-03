@@ -6,7 +6,7 @@
 
 Everything Jenkins-side is defined in this repository — security, the global shared library, the OpenTelemetry exporter, and the Microservices pipelines — and applied via **Configuration as Code (JCasC)** + the **Job DSL** plugin. Nothing is configured by hand in the Jenkins UI. This page is the *pipeline* view; the *controller/platform* view is [401. Jenkins](./401-JENKINS.md).
 
-> **Jenkins is the default of four mutually-exclusive CI engines** (selected by `ci.engine`): **Jenkins** · **Tekton** · **GitHub Actions (ARC)** · **Argo Workflows**. This page details the **Jenkins** engine; the sibling engines are covered in [403. Tekton](./403-TEKTON.md), [404. GitHub Actions](./404-GITHUB_ACTIONS.md), and [405. Argo Workflows](./405-ARGO_WORKFLOWS.md). All four honour the **same ~10-stage pipeline contract** and share the [`services.yaml`](../jenkins/pipelines/seed/services.yaml) registry + the [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) gateway MySQL→Postgres + NoOp-cache build-time patch (see *§ Shared app-source patch* below).
+> **Jenkins is the default of four mutually-exclusive CI engines** (selected by `ci.engine`): **Jenkins** · **Tekton** · **GitHub Actions (ARC)** · **Argo Workflows**. This page details the **Jenkins** engine; the sibling engines are covered in [403. Tekton](./403-TEKTON.md), [404. GitHub Actions](./404-GITHUB_ACTIONS.md), and [405. Argo Workflows](./405-ARGO_WORKFLOWS.md). All four honour the **same ~11-stage pipeline contract** and share the [`services.yaml`](../jenkins/pipelines/seed/services.yaml) registry + the [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) gateway MySQL→Postgres + NoOp-cache build-time patch (see *§ Shared app-source patch* below).
 
 ## Understanding pipelines-as-code (newcomers → specialists)
 
@@ -87,6 +87,10 @@ Generation (left, runs on the seed-job cron) vs one execution (right, an ephemer
 <summary>🔀 Seed-to-run object model & flow</summary>
 
 ```mermaid
+---
+config:
+  layout: elk
+---
 flowchart TB
   subgraph gen["Generation — seed-jobs (cron H/30), idempotent"]
     direction TB
@@ -367,7 +371,7 @@ The microservices forks are deliberately kept as **clean, unmodified upstream JH
 The patch logic used to be **copied inline into all four engines**. That is exactly the kind of duplication that rots: the copies **had already drifted** — a `DatabaseTestcontainer` fix (needed since JHipster v9.1.0 so the test sources test-compile against Postgres) existed in **only one** engine's copy. Centralising removes that whole failure mode:
 
 - **Single source of truth → no drift.** One file changes once; all four engines pick it up. No "fixed in Jenkins but not in GitHub Actions" skew.
-- **It extends a layer the engines already share.** The four engines already read the same [`services.yaml`](../jenkins/pipelines/seed/services.yaml); folding the patch into that same shared layer keeps them **truly interchangeable** — all four honour the same 10-stage contract, so a build means the same thing regardless of engine.
+- **It extends a layer the engines already share.** The four engines already read the same [`services.yaml`](../jenkins/pipelines/seed/services.yaml); folding the patch into that same shared layer keeps them **truly interchangeable** — all four honour the same ~11-stage contract, so a build means the same thing regardless of engine.
 - **One place to maintain.** When the next app/DB mismatch appears (a new service, a new upstream bump), there is exactly one script to edit instead of four.
 
 The alternatives are both worse:
@@ -563,6 +567,10 @@ The build runs in a single multi-container agent pod; all containers follow a le
 <summary>🔒 Pipeline container security (agent pod)</summary>
 
 ```mermaid
+---
+config:
+  layout: elk
+---
 flowchart TB
   subgraph pod["MicroservicesPipeline agent pod (ns jenkins, SA jenkins, toleration jenkins-agent)"]
     direction LR
