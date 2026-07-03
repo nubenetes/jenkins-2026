@@ -2468,8 +2468,8 @@
       {
         "allowCustomValue": true,
         "current": {
-          "text": "jenkins-2026",
-          "value": "jenkins-2026"
+          "text": "microservices",
+          "value": "microservices"
         },
         "hide": 0,
         "includeAll": false,
@@ -2477,7 +2477,7 @@
         "multi": false,
         "name": "trace_namespace",
         "options": [],
-        "query": "jenkins-2026",
+        "query": "microservices",
         "skipUrlSync": false,
         "type": "custom",
         "valuesFormat": "csv"

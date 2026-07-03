@@ -3253,10 +3253,10 @@
         "kind": "CustomVariable",
         "spec": {
           "name": "trace_namespace",
-          "query": "jenkins-2026",
+          "query": "microservices",
           "current": {
-            "text": "jenkins-2026",
-            "value": "jenkins-2026"
+            "text": "microservices",
+            "value": "microservices"
           },
           "options": [],
           "multi": false,
