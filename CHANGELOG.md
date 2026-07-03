@@ -19,7 +19,10 @@ All notable changes to **jenkins-2026** are documented here, following
 
 ## [Unreleased]
 
-_Nothing yet — add entries here as PRs merge._
+_Teardown hygiene: a full Decom now purges the eso-mode Secret Manager secrets._
+
+### Fixed
+- **A full `Decom` left every eso-mode Secret Manager secret behind — only the gateway-IAP one was cleaned (#544).** In `secrets.backend=eso`, [`lib/secrets.sh`](scripts/lib/secrets.sh) `provision_secret` pushes each platform/CI secret to GCP Secret Manager as the persistent source of truth, but [`down.sh`](scripts/down.sh) deleted **only** `gateway-iap-oauth` on teardown — so after a "Decom Everything" the project kept the **union of every engine's secrets** (`jenkins-credentials`, `tekton-*`, `argoworkflows-*`, `arc-*`, `ghcr-credentials`, `headlamp-credentials`, `k6-cloud`, `pac-webhook`, …): stale, still-live credentials. Now `provision_secret` **labels** each secret `managed-by=jenkins-2026`, and `down.sh` gained an **opt-in** full sweep (`J2026_PURGE_SECRETS=true`; label-scoped, cluster-independent, a no-op in imperative mode) that the **`Decom.infra.00 Everything`** umbrella turns **ON** by default (a new `purge_secrets` checkbox — tick-to-keep). The standalone `Decom.cluster.01-gke` keeps it **OFF**, so a plain cluster teardown still preserves the secrets `sm_keep_or_generate` reuses to keep generated passwords (e.g. the Jenkins admin password) **stable across rebuilds**. Purged secrets are re-pushed / regenerated on the next Day1.
 
 ## [v1.1.0] - 2026-07-03
 

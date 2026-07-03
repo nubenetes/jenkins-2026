@@ -90,10 +90,16 @@ PY
 
   # Create the Secret Manager secret if it doesn't exist yet (project = the
   # active gcloud project; ESO's ClusterSecretStore omits projectID so it reads
-  # from the hosting project too).
+  # from the hosting project too). The managed-by=jenkins-2026 label lets a full
+  # teardown (down.sh, J2026_PURGE_SECRETS=true) sweep every secret we ever pushed
+  # by label — no name hard-coding — regardless of which CI engine created it.
+  # Ensure the label on pre-existing (unlabeled) secrets too, so the sweep is
+  # complete after a Day1 re-run even for secrets created before this labelling.
   if ! gcloud secrets describe "${name}" >/dev/null 2>&1; then
-    gcloud secrets create "${name}" --replication-policy=automatic >/dev/null
+    gcloud secrets create "${name}" --replication-policy=automatic --labels=managed-by=jenkins-2026 >/dev/null
     log_info "Secret Manager secret '${name}' created — $(gcp_console_secret_url "${name}")"
+  else
+    gcloud secrets update "${name}" --update-labels=managed-by=jenkins-2026 >/dev/null 2>&1 || true
   fi
 
   # Only add a new version when the payload actually changed (avoids version churn

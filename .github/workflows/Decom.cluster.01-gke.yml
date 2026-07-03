@@ -21,6 +21,11 @@ on:
         options:
           - info
           - debug
+      purge_secrets:
+        description: "Also delete the eso-mode GCP Secret Manager secrets (labelled managed-by=jenkins-2026). Default OFF: keeping them lets a future Day1 rebuild reuse stable generated passwords (e.g. the Jenkins admin password). The Decom.infra.00 'Everything' umbrella turns this ON."
+        required: false
+        default: false
+        type: boolean
   # Reused by the Decom.infra.00 "Everything" umbrella so the full teardown
   # (cluster + all persistent backends) runs from one dispatch without duplicating
   # the decommission logic here.
@@ -35,6 +40,11 @@ on:
         required: false
         default: "info"
         type: string
+      purge_secrets:
+        description: "Delete the eso-mode Secret Manager secrets too (the umbrella sets this)."
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -49,6 +59,9 @@ env:
   TF_LOG: ${{ inputs.log_level == 'debug' && 'DEBUG' || '' }}
   TF_VERSION: "1.15.6"
   J2026_DELETE_NAMESPACES: "true"
+  # Passed to down.sh: purge the eso-mode Secret Manager secrets only when asked
+  # (standalone default OFF; the Everything umbrella sets it ON).
+  J2026_PURGE_SECRETS: ${{ inputs.purge_secrets && 'true' || 'false' }}
 
 jobs:
   decommission:
