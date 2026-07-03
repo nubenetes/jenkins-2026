@@ -113,13 +113,15 @@ spec:
         - { name: service-name, value: $(params.service-name) }
         - { name: env-name, value: $(params.env-name) }
         - { name: target-namespace, value: $(params.target-namespace) }
-        # P3 immutable tag: append the PipelineRun name so the tag is unique per run
-        # (e.g. develop-<runname>) — matches the build/trivy `image` tag above (both
-        # = <git-branch>-$(context.pipelineRun.name)), so build-pushes, scans and the
-        # gitops bump all reference the SAME immutable image. Mirrors the Jenkins
-        # <branch>-<build#> tag. Assumes the run's `image` tag == git-branch (the
-        # standard runs/PaC set both from the same branch).
-        - { name: image-tag, value: "$(params.git-branch)-$(context.pipelineRun.name)" }
+        # P3 immutable tag: pass the SAME full built `image` that build-push-image and
+        # trivy-image use ("$(params.image)-$(context.pipelineRun.name)"); gitops-deploy
+        # extracts its tag (everything after the last ':') for the bump, so build-push,
+        # scans and the gitops bump ALWAYS reference the identical immutable image — even
+        # when a trigger sets git-branch to something the `image` tag base doesn't match
+        # (e.g. a PaC push whose `image` base is the commit SHA while git-branch is the
+        # branch name). Single source of truth: no separately-computed tag that can drift.
+        # Mirrors the Jenkins <branch>-<build#> tag.
+        - { name: image, value: "$(params.image)-$(context.pipelineRun.name)" }
     - name: smoke-test
       runAfter: [gitops-deploy]
       taskRef: { name: smoke-test }
