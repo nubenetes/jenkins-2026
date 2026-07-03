@@ -7,6 +7,12 @@ version: 2
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
+    # Target develop, NOT the default branch (main): this repo enforces strict
+    # GitFlow — main is reachable only via a develop->main PR (the gitflow-guard
+    # required check + enforce_admins), so a Dependabot PR opened against main is
+    # always BLOCKED. Landing bumps on develop lets them flow to main through the
+    # normal promotion PR instead of needing an --admin bypass every week.
+    target-branch: "develop"
     schedule:
       interval: "weekly"
     commit-message:
