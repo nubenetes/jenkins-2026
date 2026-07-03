@@ -185,4 +185,8 @@ Before adding anything that **outlives a cluster** (a bucket, a fixed-name cloud
 
 ---
 
+[← Previous: 103. Secrets Inventory](./103-GITHUB_SECRETS_INVENTORY.md) | [🏠 Home](../README.md) | [→ Next: 201. Architecture](./201-ARCHITECTURE.md)
+
+---
+
 *104. Rebuild-Safety — jenkins-2026*
