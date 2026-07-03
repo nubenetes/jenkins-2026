@@ -123,6 +123,14 @@ gcloud compute disks list --project "$PROJECT" \
 | while read -r DISK ZONE; do gcloud compute disks delete "$DISK" --zone "$ZONE" --quiet; done
 ```
 
+> **The sweep also catches *prior-run* orphans (#545).** It used to gate on `CLUSTER_NAME`
+> from **this** run's `terraform output` — so disks left by an **earlier** teardown (whose
+> cluster is already out of state → empty output) were never swept, orphaning them
+> indefinitely (found live: **31 disks / ~58 GB** billing after a rebuild). The step now runs
+> `if: always()` and falls back to the `terraform/gke` `var.cluster_name` default
+> (`jenkins-2026`) when the output is empty. To purge a project **by hand** right now, run the
+> command above (it's label-scoped and safe — the disks are detached once the cluster is gone).
+
 ### Container-native LB NEGs block the VPC delete (a NEG-delete timeout is normal)
 
 The Gateway uses **container-native load balancing**: each backing Service gets a **NEG**
