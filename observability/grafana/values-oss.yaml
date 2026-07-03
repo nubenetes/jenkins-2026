@@ -56,10 +56,12 @@ prometheus:
     enableFeatures:
       - exemplar-storage
     retention: 7d
-    # Scrape Tekton controller metrics (tekton_pipelines_controller_*) so the
-    # Tekton CI dashboard works in oss mode. The prometheus-operator's own RBAC
-    # covers the endpoints discovery.
+    # Scrape the active CI engine's controller metrics so its CI dashboard works in
+    # oss mode (the prometheus-operator's own RBAC covers endpoints + pod discovery).
+    # Each job has no targets when its engine isn't deployed, so both can coexist.
     additionalScrapeConfigs:
+      # Tekton controller metrics (tekton_pipelines_controller_*) when ci.engine=tekton.
+      # The controller Service exposes them on the http-metrics port (plain HTTP).
       - job_name: tekton-pipelines-controller
         kubernetes_sd_configs:
           - role: endpoints
@@ -71,6 +73,26 @@ prometheus:
             action: keep
           - source_labels: [__meta_kubernetes_endpoint_port_name]
             regex: http-metrics
+            action: keep
+      # Argo Workflows controller metrics (argo_workflows_*) when ci.engine=argoworkflows.
+      # Argo v3.6+ serves /metrics over HTTPS (self-signed) on the controller pod's :9090
+      # and there is NO metrics Service, so discover the pod directly and skip TLS verify
+      # (mirrors the managed-mode collector scrape in values-managed-*.yaml). The CI
+      # dashboard does not filter by a cluster label, so - like the tekton job - none is set.
+      - job_name: argo-workflows-controller
+        scheme: https
+        tls_config:
+          insecure_skip_verify: true
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: [argo]
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            regex: workflow-controller
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_container_port_name]
+            regex: metrics
             action: keep
     resources:
       requests:
