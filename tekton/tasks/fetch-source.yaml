@@ -63,4 +63,7 @@ spec:
         fi
         # Single source of truth for the MySQL->PostgreSQL + NoOp-cache patch,
         # shared with the other CI engines (idempotent, no-op for non-gateway).
-        bash "$(workspaces.source.path)/jenkins-2026-infra/resources/patch-app-source.sh" "$(params.service-name)" "$(workspaces.source.path)/microservices-src"
+        # Run with `sh`, NOT `bash`: the alpine/git image is busybox-only (no bash);
+        # patch-app-source.sh is POSIX-sh-compatible (same fix as the argoworkflows
+        # engine's fetch-source, #525). Keep the script bash-ism-free so this holds.
+        sh "$(workspaces.source.path)/jenkins-2026-infra/resources/patch-app-source.sh" "$(params.service-name)" "$(workspaces.source.path)/microservices-src"
