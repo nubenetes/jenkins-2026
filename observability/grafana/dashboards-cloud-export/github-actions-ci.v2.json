@@ -160,7 +160,7 @@
                       "spec": {
                         "filters": [],
                         "limit": 50,
-                        "query": "{ resource.service.namespace = \"${trace_namespace}\" }",
+                        "query": "{ resource.k8s.namespace.name = \"${trace_namespace}\" }",
                         "queryType": "traceql",
                         "tableType": "traces"
                       }
