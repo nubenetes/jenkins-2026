@@ -159,7 +159,7 @@ flowchart TB
 
 </details>
 
-> **Why a breach is `UNSTABLE`, not a failure.** Except for `breakpoint`, crossing a threshold makes k6 exit **99** — the run completed and **still delivered telemetry**, it just missed a budget. Jenkins marks the build **UNSTABLE**; CI does not hard-fail. A non-99 non-zero exit (script/runtime error) **does** fail.
+> **Why a breach is `UNSTABLE`, not a failure.** Except for `breakpoint`, crossing a threshold makes k6 exit **99** — the run completed and **still delivered telemetry**, it just missed a budget. All four engines honour this: **Jenkins** marks the build **UNSTABLE** ([`vars/microservicesK6Smoke.groovy`](../vars/microservicesK6Smoke.groovy)), **GitHub Actions** maps 99 to success ([`Day2.traffic.01-k6.yml`](../.github/workflows/Day2.traffic.01-k6.yml)), and **Tekton** / **Argo Workflows** log `thresholds breached (exit 99) — run completed, telemetry delivered` and let the TaskRun/Workflow succeed ([`tekton/tasks/k6-smoke.yaml`](../tekton/tasks/k6-smoke.yaml), [`argoworkflows/templates/microservices-k6-wftmpl.yaml`](../argoworkflows/templates/microservices-k6-wftmpl.yaml)). CI does not hard-fail on a budget miss; a non-99 non-zero exit (script/runtime error) **does** fail on every engine.
 
 ---
 
@@ -454,7 +454,7 @@ The seed job ([`jenkins/pipelines/seed/seed_jobs.groovy`](../jenkins/pipelines/s
 
 ### Tekton
 
-[`tekton/pipelines/microservices-k6-smoke.yaml`](../tekton/pipelines/microservices-k6-smoke.yaml) (→ [`tekton/tasks/k6-smoke.yaml`](../tekton/tasks/k6-smoke.yaml)) exposes the same knobs as Pipeline **params**, including a **`preset`** param (a `resolve-preset` step `yq`-loads the committed file; any param you set overrides it). Ready-to-run examples live in [`tekton/runs/`](../tekton/runs/):
+[`tekton/pipelines/microservices-k6-smoke.yaml`](../tekton/pipelines/microservices-k6-smoke.yaml) (→ [`tekton/tasks/k6-smoke.yaml`](../tekton/tasks/k6-smoke.yaml)) exposes the same knobs as Pipeline **params**, including a **`preset`** param (a `resolve-preset` step `yq`-loads the committed file; any param you set overrides it). The contract matches the other engines: **`otlp-endpoint` defaults to the in-cluster collector** (`http://otel-collector-gateway.observability.svc.cluster.local:4317`), so a standalone run exports k6 metrics to Grafana with no extra params (set it to `""` to skip OTLP), and a **threshold breach (k6 exit 99) does not fail the TaskRun** — it's logged and tolerated, like Jenkins' UNSTABLE (any other non-zero exit still fails). Ready-to-run examples live in [`tekton/runs/`](../tekton/runs/):
 
 - [`tekton/runs/k6-smoke.yaml`](../tekton/runs/k6-smoke.yaml) — defaults (stable smoke); a commented `params:` block shows how to override (incl. `preset`).
 - [`tekton/runs/k6-load.yaml`](../tekton/runs/k6-load.yaml) — an **advanced** example: `profile=load`, `vus=30`, `duration=5m`, scoped to the **develop** tier with a tighter `p95-ms=1500`.
@@ -513,7 +513,7 @@ gh workflow run "Day2.traffic.01-k6.yml" --ref develop \
 
 ### Argo Workflows
 
-[`argoworkflows/templates/microservices-k6-wftmpl.yaml`](../argoworkflows/templates/microservices-k6-wftmpl.yaml) is the standalone k6 `WorkflowTemplate` (`microservices-k6-smoke`, the Argo port of the Tekton k6 Pipeline), exposing the same knobs as Workflow **parameters** — including a **`preset`** param (a `resolve-preset` step `yq`-loads the committed file; any param you set overrides it). Ready-to-run Workflows live in [`argoworkflows/runs/`](../argoworkflows/runs/):
+[`argoworkflows/templates/microservices-k6-wftmpl.yaml`](../argoworkflows/templates/microservices-k6-wftmpl.yaml) is the standalone k6 `WorkflowTemplate` (`microservices-k6-smoke`, the Argo port of the Tekton k6 Pipeline), exposing the same knobs as Workflow **parameters** — including a **`preset`** param (a `resolve-preset` step `yq`-loads the committed file; any param you set overrides it). The contract matches the other engines: **`otlp-endpoint` defaults to the in-cluster collector** (`http://otel-collector-gateway.observability.svc.cluster.local:4317`), so a standalone run exports k6 metrics to Grafana with no extra parameters (set it to `""` to skip OTLP), and a **threshold breach (k6 exit 99) does not fail the Workflow** — it's logged and tolerated, like Jenkins' UNSTABLE (any other non-zero exit still fails). Ready-to-run Workflows live in [`argoworkflows/runs/`](../argoworkflows/runs/):
 
 - [`argoworkflows/runs/k6-smoke.yaml`](../argoworkflows/runs/k6-smoke.yaml) — defaults (stable smoke); a commented `parameters:` block shows how to override (incl. `preset`).
 - [`argoworkflows/runs/k6-load.yaml`](../argoworkflows/runs/k6-load.yaml) — an **advanced** example: `profile=load`, `vus=30`, `duration=5m`, scoped to the **develop** tier with a tighter `p95-ms=1500`.
