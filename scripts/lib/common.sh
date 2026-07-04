@@ -190,16 +190,18 @@ otel_agent_injected() {
 
 # --- active CI engine resolution --------------------------------------------
 #
-# j2026_active_ci_engine - echoes the ACTIVE CI engine ("jenkins" or "tekton"),
-# resolved with this precedence:
+# j2026_active_ci_engine - echoes the ACTIVE CI engine ("jenkins", "tekton",
+# "githubactions" or "argoworkflows"), resolved with this precedence:
 #   1. An explicit JENKINS2026_CI_ENGINE override (Day1 matrix sets it on every
 #      cluster-touching step, so this branch wins during provisioning and avoids
 #      any "is the engine deployed yet?" race).
-#   2. Detection from the live cluster: the Jenkins StatefulSet exists only in
-#      jenkins mode (04-tekton.sh retires it), and the Tekton controller exists
-#      only in tekton mode. This is what makes a STANDALONE Day2.publish run
-#      correct regardless of config.yaml's ci.engine default (which is just the
-#      repo default and may not match what the cluster was deployed with).
+#   2. Detection from the live cluster: each engine's controller workload exists
+#      only when that engine is deployed (retire_ci_engine removes the losing
+#      engine's apps + namespaces on a switch) — the Jenkins StatefulSet, the
+#      Tekton controller, the ARC controller (by label), or the Argo Workflows
+#      controller. This is what makes a STANDALONE Day2.publish run correct
+#      regardless of config.yaml's ci.engine default (which is just the repo
+#      default and may not match what the cluster was deployed with).
 #   3. The config.yaml value (J2026_CI_ENGINE) when no cluster is reachable.
 j2026_active_ci_engine() {
   if [[ -n "${JENKINS2026_CI_ENGINE:-}" ]]; then
@@ -219,6 +221,10 @@ j2026_active_ci_engine() {
   if [[ -n "$(kubectl get deployment -n "${J2026_GHA_NAMESPACE:-arc-systems}" \
        -l app.kubernetes.io/part-of=gha-rs-controller -o name 2>/dev/null)" ]]; then
     echo "githubactions"
+    return
+  fi
+  if kubectl get deployment workflow-controller -n "${J2026_ARGOWF_NAMESPACE:-argo}" >/dev/null 2>&1; then
+    echo "argoworkflows"
     return
   fi
   echo "${J2026_CI_ENGINE}"

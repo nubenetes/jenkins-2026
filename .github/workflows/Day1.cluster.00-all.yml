@@ -33,13 +33,15 @@ on:
           - managed-azure
           - managed-aws
       ci_engine:
-        description: "CI engine to deploy (jenkins default | tekton)."
+        description: "CI engine to deploy (jenkins default | tekton | githubactions | argoworkflows). Passed straight to Day1.cluster.01 — see its input for the full per-engine details."
         required: true
         default: "jenkins"
         type: choice
         options:
           - jenkins
           - tekton
+          - githubactions
+          - argoworkflows
       secrets_backend:
         description: "Secrets backend: imperative (default) | eso (GCP Secret Manager + External Secrets Operator)."
         required: true

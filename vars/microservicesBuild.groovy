@@ -2,8 +2,8 @@
  * microservicesBuild(type: 'java'|'angular', module: '<maven-module-or-empty>')
  *
  * Compiles and unit-tests the Microservices service. Runs inside the
- * 'maven' or 'node' container of the pod template defined in
- * jenkins/pipelines/Jenkinsfile.microservices.
+ * 'maven' or 'node' container of the pod template declared inline in
+ * vars/MicroservicesPipeline.groovy.
  */
 def call(Map cfg) {
   if (cfg.type == 'java') {

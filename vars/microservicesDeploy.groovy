@@ -78,7 +78,7 @@ def call(Map cfg) {
       container('helm') {
         sh """
           set -eux
-          # Download argocd CLI to /tmp — helm container runs as UID 1001
+          # Download argocd CLI to /tmp — helm container runs as UID 1000
           # (non-root) so /usr/local/bin is not writable.
           ARGOCD=/tmp/argocd-cli
           if [ ! -x "\${ARGOCD}" ]; then
@@ -104,7 +104,7 @@ def call(Map cfg) {
             \${local_flags}
 
           \${ARGOCD} app wait "microservices-${cfg.envName}" \
-            --sync --timeout 300 \
+            --sync --health --timeout 300 \
             --server "\${local_server}" \
             --auth-token "\${ARGOCD_AUTH_TOKEN:-}" \
             \${local_flags}

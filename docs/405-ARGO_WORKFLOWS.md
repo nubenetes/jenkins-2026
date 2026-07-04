@@ -501,6 +501,9 @@ runs `microservices-pipeline` on every push/PR, and
 > `otlp-endpoint` for in-cluster runs is
 > `http://otel-collector-gateway.observability.svc.cluster.local:4317` (k6/pipeline
 > metrics → the collector → your backend; the k6 script emits `service.namespace=jenkins-2026`).
+> The standalone `microservices-k6-smoke` WorkflowTemplate already **defaults to it**;
+> `microservices-pipeline` gets it injected by `06-argoworkflows-pipelines.sh` / the
+> Sensor. Set it to `""` to skip OTLP.
 
 ### Option A — Argo Workflows Server UI (GUI, behind IAP)
 

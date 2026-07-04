@@ -44,8 +44,12 @@ spec:
       default: ""              # http_req_failed max rate 0..1 (default 0.05)
     - name: debug
       default: "false"
+    # In-cluster OTel gateway collector (gRPC) — the same endpoint
+    # 06-tekton-pipelines.sh injects for the build pipeline's k6 stage. Defaulted
+    # here too so the committed standalone runs (tekton/runs/k6-*.yaml) export k6
+    # metrics to Grafana out of the box; "" skips the -o opentelemetry output.
     - name: otlp-endpoint
-      default: ""
+      default: http://otel-collector-gateway.observability.svc.cluster.local:4317
   workspaces:
     - name: source
   steps:
@@ -239,9 +243,19 @@ spec:
         # ci_runner/k6_profile as k6 --tag (metric labels), not resource attrs — see
         # the Jenkins/GHA runners: Grafana Cloud only promotes a fixed set of resource
         # attrs to labels, so custom ones must be metric tags for the dashboard filters.
+        # A threshold breach makes k6 exit 99 — the cross-engine contract (docs/302)
+        # treats that as UNSTABLE, not a CI failure (Jenkins marks the build UNSTABLE,
+        # GitHub Actions maps 99 to success): the run completed and delivered
+        # telemetry. Tolerate 99 here too; any other non-zero exit stays fatal.
+        K6_EXIT=0
         k6 run ${OTEL_OUT} ${CLOUD_OUT} \
           --tag ci_runner=tekton --tag "k6_profile=${K6SIM_PROFILE}" \
-          jenkins/pipelines/k6/microservices-smoke.js
+          jenkins/pipelines/k6/microservices-smoke.js || K6_EXIT=$?
+        if [ "${K6_EXIT}" -eq 99 ]; then
+          echo "k6 thresholds breached (exit 99) — run completed, telemetry delivered; not failing the TaskRun"
+        elif [ "${K6_EXIT}" -ne 0 ]; then
+          exit "${K6_EXIT}"
+        fi
         if [ -n "${CLOUD_OUT}" ] && [ -n "${K6_GRAFANA_BASE_URL:-}" ]; then
           echo "k6 results streamed to Grafana Cloud k6: ${K6_GRAFANA_BASE_URL}/a/k6-app/projects/${K6_CLOUD_PROJECT_ID}"
         fi

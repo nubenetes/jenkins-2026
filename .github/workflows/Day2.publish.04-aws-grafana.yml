@@ -16,13 +16,15 @@ on:
   workflow_dispatch:
     inputs:
       ci_engine:
-        description: "Fallback CI engine if the GCS active-ci-engine record is missing (Day1 records it). jenkins | tekton"
+        description: "Fallback CI engine if the GCS active-ci-engine record is missing (Day1 records it). jenkins | tekton | githubactions | argoworkflows"
         required: true
         default: "jenkins"
         type: choice
         options:
           - jenkins
           - tekton
+          - githubactions
+          - argoworkflows
       git_ref:
         description: "Git branch, tag, or SHA to check out (leave empty to use the branch/tag selected in 'Use workflow from' above)"
         required: false

@@ -91,7 +91,7 @@ jobs:
       - name: Semgrep (SAST) → SARIF
         run: |
           docker run --rm -v "${{ github.workspace }}/microservices-src:/src" \
-            returntocorp/semgrep semgrep --config=auto --sarif --output=/src/semgrep.sarif /src || true
+            semgrep/semgrep:1.79.0 semgrep --config=auto --sarif --output=/src/semgrep.sarif /src || true
       - name: Upload Semgrep SARIF
         uses: github/codeql-action/upload-sarif@v3
         with: { sarif_file: microservices-src/semgrep.sarif, category: semgrep }
@@ -186,7 +186,7 @@ jobs:
         run: |
           ARGOCD_TOKEN="$(cat /var/run/secrets/arc-argocd/token 2>/dev/null || echo "${{ env.ARGOCD_TOKEN }}")"
           argocd app sync  "microservices-$ENV_NAME" --auth-token "$ARGOCD_TOKEN" --server argocd-server.{{argocdNamespace}}.svc.cluster.local --insecure || true
-          argocd app wait  "microservices-$ENV_NAME" --auth-token "$ARGOCD_TOKEN" --server argocd-server.{{argocdNamespace}}.svc.cluster.local --insecure --timeout 300 || true
+          argocd app wait  "microservices-$ENV_NAME" --auth-token "$ARGOCD_TOKEN" --server argocd-server.{{argocdNamespace}}.svc.cluster.local --insecure --sync --health --timeout 300 || true
 
       - name: Smoke test
         if: github.event_name != 'pull_request'

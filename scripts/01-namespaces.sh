@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Creates the namespaces used by this PoC, the "jenkins-credentials" Secret
-# consumed by helm/jenkins/values-common.yaml, the "headlamp-credentials"
-# Secret consumed by helm/headlamp/values.yaml (see scripts/08-headlamp.sh),
-# and grants the Jenkins controller's ServiceAccount "edit" access in both
-# microservices namespaces so pipelines can `helm upgrade`/`kubectl apply` their
-# deployments. Idempotent.
+# consumed by helm/jenkins/values-common.yaml, and the "headlamp-credentials"
+# Secret consumed by helm/headlamp/values.yaml (see scripts/08-headlamp.sh).
+# The Jenkins ServiceAccount's "edit" RoleBindings in the microservices
+# namespaces are GitOps-managed by the platform-config app
+# (argocd/platform-config/templates/rbac-jenkins.yaml). Idempotent.
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
