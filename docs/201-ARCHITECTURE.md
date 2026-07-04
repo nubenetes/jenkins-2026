@@ -125,7 +125,7 @@ flowchart TB
       subgraph L2["L2 · GCP edge"]
         direction TB
         DNS["Cloud DNS wildcard → IP"]:::edge
-        LB["L7 LB · wildcard TLS · re-encrypt"]:::edge
+        LB["L7 LB · wildcard TLS · edge-terminated"]:::edge
         IAPN["Identity-Aware Proxy<br/>admin allowlist"]:::edge
         GW["Gateway (ns platform-ingress)<br/>HTTPRoutes · GCPBackendPolicy"]:::edge
       end
@@ -1061,7 +1061,6 @@ graph TD
 
     subgraph Cluster ["GKE Cluster (release channel: REGULAR)"]
         GatewayAPI["GKE Gateway API<br/>gke-l7-global-external-managed"]
-        BackendTLS["BackendTLSPolicy<br/>Secure TLS to pods"]
         WI["Workload Identity Federation"]
     end
 
@@ -1079,9 +1078,8 @@ graph TD
     StaticIP --> CertMap
     CertMap --> WildcardTLS
     WildcardTLS -->|"terminates TLS"| GatewayAPI
-    GatewayAPI -->|"routes via BackendTLSPolicy"| BackendTLS
-    BackendTLS -->|"zero-trust HTTPS"| StaticPool
-    BackendTLS -->|"zero-trust HTTPS"| NAPSpotPool
+    GatewayAPI -->|"plain HTTP over the VPC"| StaticPool
+    GatewayAPI -->|"plain HTTP over the VPC"| NAPSpotPool
 ```
 
 </details>

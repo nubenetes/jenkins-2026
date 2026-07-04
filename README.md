@@ -624,7 +624,7 @@ flowchart TB
       subgraph L2["L2 · GCP edge"]
         direction TB
         DNS["Cloud DNS wildcard → IP"]:::edge
-        LB["L7 LB · wildcard TLS · re-encrypt"]:::edge
+        LB["L7 LB · wildcard TLS · edge-terminated"]:::edge
         IAPN["Identity-Aware Proxy<br/>admin allowlist"]:::edge
         GW["Gateway (ns platform-ingress)<br/>HTTPRoutes · GCPBackendPolicy"]:::edge
       end
