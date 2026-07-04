@@ -57,7 +57,8 @@ spec:
             {{- end }}
             containers:
               - name: runner
-                image: ghcr.io/actions/actions-runner:latest
+                # Pinned (was :latest) — tracks actions/runner releases; bump via versions.runnerImage.
+                image: 'ghcr.io/actions/actions-runner:{{ .Values.versions.runnerImage }}'
                 command: ["/home/runner/run.sh"]
                 volumeMounts:
                   - name: arc-argocd

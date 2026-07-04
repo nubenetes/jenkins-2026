@@ -104,7 +104,7 @@ def call(Map cfg) {
             \${local_flags}
 
           \${ARGOCD} app wait "microservices-${cfg.envName}" \
-            --sync --timeout 300 \
+            --sync --health --timeout 300 \
             --server "\${local_server}" \
             --auth-token "\${ARGOCD_AUTH_TOKEN:-}" \
             \${local_flags}
