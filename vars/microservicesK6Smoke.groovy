@@ -10,7 +10,7 @@
  *                   targetUrl: '<external base URL>')
  *
  * Runs jenkins/pipelines/k6/microservices-smoke.js from the 'k6' container of the
- * pod template defined in jenkins/pipelines/Jenkinsfile.microservices-k6-smoke -
+ * pod template declared inline in vars/MicroservicesK6SmokePipeline.groovy -
  * synthetic traffic against the Microservices Services in `namespace`, to give
  * Grafana fresh traces/metrics/logs to correlate.
  *
@@ -107,7 +107,8 @@ def call(Map cfg) {
 
 /**
  * Prints the raw k6-summary.json (also archived as a build artifact by
- * Jenkinsfile.microservices-k6-smoke) plus a layered human-readable analysis:
+ * MicroservicesK6SmokePipeline.groovy's post block) plus a layered
+ * human-readable analysis:
  *
  *   1. SUMMARY  - the at-a-glance pass/fail line anyone can read.
  *   2. LATENCY  - full percentile spread (avg/min/med/p90/p95/p99/max) so an
