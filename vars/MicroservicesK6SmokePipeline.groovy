@@ -113,7 +113,7 @@ spec:
             string(name: 'STAGES', defaultValue: (cfg.stages ?: '') as String,
                    description: 'Custom ramping stages "dur:target,..." e.g. 30s:10,2m:50,30s:0. Overrides the profile.')
             string(name: 'RPS', defaultValue: (cfg.rps ?: '') as String,
-                   description: 'Constant arrival rate (requests/sec). Overrides the profile with a constant-arrival-rate executor.')
+                   description: 'Constant arrival rate (requests/sec). Overrides the profile with a constant-arrival-rate executor (exception: breakpoint uses it as the ramp target instead).')
             string(name: 'SLEEP', defaultValue: (cfg.sleep ?: '') as String,
                    description: 'Think-time seconds between requests. Empty → 0.3.')
             string(name: 'SCENARIOS', defaultValue: (cfg.scenarios ?: '') as String,

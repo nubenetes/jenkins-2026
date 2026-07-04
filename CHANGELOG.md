@@ -19,7 +19,8 @@ All notable changes to **jenkins-2026** are documented here, following
 
 ## [Unreleased]
 
-_Nothing yet — add entries here as PRs merge._
+### Fixed
+- **`PROFILE=breakpoint` with `K6SIM_RPS` set ran a flat constant-arrival-rate instead of the "find the knee" ramp (#549).** `buildScenario()` in [`jenkins/pipelines/k6/microservices-smoke.js`](jenkins/pipelines/k6/microservices-smoke.js) honoured the `K6SIM_RPS` override *before* the profile switch, so the committed `breakpoint-capacity` preset (`rps: 400`, `duration: 8m`) blasted a constant 400 req/s — the documented 1→400 `ramping-arrival-rate` only happened with RPS unset (hard-coded target 200), making the preset's capacity-ceiling reading meaningless. `breakpoint` now consumes `K6SIM_RPS` as its ramp target; the `STAGES > RPS > profile` precedence is unchanged for every other profile, and docs/302 + the Jenkins/GitHub-Actions `rps` input descriptions spell out the exception. Also fixed two stale comments in passing: the script header's runner list (missing Argo Workflows) and [`presets/rum-faro.yaml`](jenkins/pipelines/k6/presets/rum-faro.yaml)'s claim that `run_all` does **not** include it (the GHA matrix builder appends it on top of `presets/index.yaml`).
 
 ## [v1.1.1] - 2026-07-03
 
