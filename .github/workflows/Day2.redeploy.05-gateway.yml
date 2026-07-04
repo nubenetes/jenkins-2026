@@ -15,13 +15,15 @@ on:
   workflow_dispatch:
     inputs:
       ci_engine:
-        description: "CI engine the cluster runs (must match the live cluster): jenkins | tekton"
+        description: "CI engine the cluster runs (must match the live cluster): jenkins | tekton | githubactions | argoworkflows"
         required: true
         default: "jenkins"
         type: choice
         options:
           - jenkins
           - tekton
+          - githubactions
+          - argoworkflows
       observability_mode:
         description: "observability.mode of the cluster (only affects the oss Grafana route/IAP)"
         required: true
