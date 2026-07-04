@@ -12,6 +12,7 @@ namespace:
 
 versions:
   arc: "0.12.1"               # gha-runner-scale-set-controller + gha-runner-scale-set (must match); see docs/602
+  runnerImage: "2.335.1"      # ghcr.io/actions/actions-runner tag (tracks actions/runner releases); see docs/602
 
 # The `runs-on:` label the forks' microservices-ci.yml workflow targets.
 runnerScaleSetName: jenkins-2026-runners

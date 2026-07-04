@@ -109,7 +109,7 @@ Every runner threads the **same variables** into the script. They are all **opti
 | `K6SIM_ITERATIONS` | *(profile)* | Shared iteration budget (**smoke** profile only). Empty → 12. | **basic** |
 | `K6SIM_DURATION` | *(profile)* | Hold duration (`30s`, `5m`, `1h`). Overrides the iteration budget; sets the hold phase of ramping profiles. | **basic** |
 | `K6SIM_STAGES` | *(empty)* | Fully custom ramp: `"dur:target,..."` e.g. `30s:10,2m:50,30s:0`. **Overrides the profile** with a `ramping-vus` executor. | advanced |
-| `K6SIM_RPS` | *(empty)* | Constant arrival rate (requests/sec). **Overrides the profile** with a `constant-arrival-rate` executor (open model). | advanced |
+| `K6SIM_RPS` | *(empty)* | Constant arrival rate (requests/sec). **Overrides the profile** with a `constant-arrival-rate` executor (open model) — except with `breakpoint`, where it sets the **ramp target** (the 1→RPS ramp) instead of flattening it. | advanced |
 | `K6SIM_SLEEP` | `0.3` | Think-time (seconds) between requests within an iteration. | advanced |
 
 ### Scenarios — *which request flows* run
@@ -127,7 +127,7 @@ Every runner threads the **same variables** into the script. They are all **opti
 | `K6SIM_WARMUP_TIMEOUT` | `60` | Readiness-gate budget in seconds (`0` = off). Before the measured run, `setup()` polls the gateway (and, when the direct `microservice-health` flow is on, the microservice) health until it serves — so a **cold start** (a just-deployed pod with no Service endpoints yet) doesn't blow the thresholds with ~20 s dial-timeout samples. |
 | `K6SIM_DEBUG` | `false` | Per-iteration console logging (trace ids + resolved config) for debugging a run. |
 
-> **Override precedence** (highest first): `K6SIM_STAGES` → `K6SIM_RPS` → `K6SIM_PROFILE` preset, with `K6SIM_VUS` / `K6SIM_DURATION` / `K6SIM_ITERATIONS` fine-tuning whichever is chosen.
+> **Override precedence** (highest first): `K6SIM_STAGES` → `K6SIM_RPS` → `K6SIM_PROFILE` preset, with `K6SIM_VUS` / `K6SIM_DURATION` / `K6SIM_ITERATIONS` fine-tuning whichever is chosen. One exception: `profile=breakpoint` *consumes* `K6SIM_RPS` as its ramp target (that profile **is** an RPS ramp), so only `K6SIM_STAGES` overrides it.
 
 > **Cold-start immunity.** The two thresholds are scoped to the measured scenario (`http_req_failed{scenario:microservices}` / `http_req_duration{scenario:microservices}`) and the `setup()` readiness gate runs first, so a fresh deploy that isn't warm yet no longer flips the smoke to a **false UNSTABLE** — the warm-up's own probe traffic is a different scenario tag and is excluded from those thresholds. If a target genuinely never comes up, the gate still yields after `K6SIM_WARMUP_TIMEOUT` and the run proceeds so the real failure surfaces in the checks.
 
@@ -144,7 +144,7 @@ Each profile maps to a k6 **executor** and a **shape**. Defaults shown; every on
 | **`stress`** | `ramping-vus` | →50 (1m), →100 (2m), hold 2m, →0 (1m) | Push past normal to find where it degrades. |
 | **`soak`** | `constant-vus` | 10 VUs for 1h | Catch leaks / drift over a long, flat run. |
 | **`spike`** | `ramping-vus` | 0→100 (10s), hold 1m, →0 (10s) | Sudden burst — test autoscaling + recovery. |
-| **`breakpoint`** | `ramping-arrival-rate` | 1→200 req/s over 5m, **aborts on breach** | Find the capacity knee; stops when p(95) budget breaks. |
+| **`breakpoint`** | `ramping-arrival-rate` | 1→200 req/s over 5m (ramp target = `K6SIM_RPS` when set), **aborts on breach** | Find the capacity knee; stops when p(95) budget breaks. |
 
 <details>
 <summary>📈 Diagram — profile shapes (VUs over time)</summary>
