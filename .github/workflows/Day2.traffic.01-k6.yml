@@ -50,7 +50,7 @@ on:
         default: ""
         required: false
       rps:
-        description: "Constant arrival rate (req/s; overrides profile)"
+        description: "Constant arrival rate (req/s; overrides profile — except breakpoint, which uses it as the ramp target)"
         default: ""
         required: false
       scenarios:
