@@ -19,7 +19,8 @@ All notable changes to **jenkins-2026** are documented here, following
 
 ## [Unreleased]
 
-_Nothing yet — add entries here as PRs merge._
+### Fixed
+- **Standalone k6 runs on Tekton/Argo Workflows diverged from the cross-engine contract — a threshold breach hard-failed the run, and no k6 metrics reached Grafana (#550).** [docs/302](docs/302-K6_LOAD_TESTING.md)'s contract treats k6 **exit 99** (threshold breached) as a soft-pass — the run completed and delivered telemetry (Jenkins → `UNSTABLE`, GitHub Actions → success) — but the Tekton [`k6-smoke` Task](tekton/tasks/k6-smoke.yaml) and both Argo Workflows k6 invocations ran `k6` under `set -e` and hard-failed the TaskRun/Workflow. They now log `thresholds breached (exit 99) — run completed, telemetry delivered` and succeed; any other non-zero exit stays fatal. Separately, the standalone k6 Pipeline/WorkflowTemplate defaulted `otlp-endpoint` to `""`, so the committed run manifests (`tekton/runs/k6-*.yaml`, `argoworkflows/runs/k6-*.yaml`) skipped `-o opentelemetry` entirely; it now defaults to the in-cluster collector (`http://otel-collector-gateway.observability.svc.cluster.local:4317`) — the same value the `06-*-pipelines.sh` seeds inject for the build pipelines. Docs 302 (per-engine UNSTABLE semantics) + the 403/405 `otlp-endpoint` callouts updated.
 
 ## [v1.1.1] - 2026-07-03
 
