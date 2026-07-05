@@ -19,7 +19,8 @@ All notable changes to **jenkins-2026** are documented here, following
 
 ## [Unreleased]
 
-_Nothing yet — add entries here as PRs merge._
+### Docs
+- **README stack badges: added the cert-manager + backend-TLS row.** The "Secrets" badge group is now "**Secrets & PKI**" and carries **cert-manager** and a **Backend TLS · opt-in** badge alongside External Secrets Operator / GCP Secret Manager, reflecting the v1.2.0 opt-in backend-TLS feature ([docs/504](docs/504-BACKEND_TLS.md)). The companion **[gitops-config](https://github.com/nubenetes/jenkins-2026-gitops-config)** repo README gained a full badge block of its own (GitOps source-of-truth / CI-writable-main / ArgoCD·Helm·CNPG·OTel·Gateway-API·deployed-app).
 
 ## [v1.2.0] - 2026-07-05
 

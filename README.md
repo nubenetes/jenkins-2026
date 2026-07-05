@@ -30,8 +30,8 @@
 **Data**  
 ![CloudNativePG](https://img.shields.io/badge/CloudNativePG-336791?style=flat-square&logo=postgresql&logoColor=white) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) ![pgAdmin](https://img.shields.io/badge/pgAdmin-326690?style=flat-square&logo=postgresql&logoColor=white) ![pgBouncer](https://img.shields.io/badge/pgBouncer-1F3B4D?style=flat-square)
 
-**Secrets** — `secrets.backend`  
-![External Secrets Operator](https://img.shields.io/badge/External%20Secrets%20Operator-5B4EE9?style=flat-square) ![GCP Secret Manager](https://img.shields.io/badge/GCP%20Secret%20Manager-4285F4?style=flat-square&logo=googlecloud&logoColor=white)
+**Secrets & PKI** — `secrets.backend` · opt-in backend TLS  
+![External Secrets Operator](https://img.shields.io/badge/External%20Secrets%20Operator-5B4EE9?style=flat-square) ![GCP Secret Manager](https://img.shields.io/badge/GCP%20Secret%20Manager-4285F4?style=flat-square&logo=googlecloud&logoColor=white) ![cert-manager](https://img.shields.io/badge/cert--manager-2E4B8F?style=flat-square) ![Backend TLS opt-in](https://img.shields.io/badge/Backend%20TLS-opt--in-64748B?style=flat-square)
 
 **IaC & tooling**  
 ![Terraform](https://img.shields.io/badge/Terraform-7B42BC?style=flat-square&logo=terraform&logoColor=white) ![Bash](https://img.shields.io/badge/Bash-4EAA25?style=flat-square&logo=gnubash&logoColor=white) ![yq](https://img.shields.io/badge/yq-4B5563?style=flat-square) ![GitHub Container Registry](https://img.shields.io/badge/GitHub%20Container%20Registry-181717?style=flat-square&logo=github&logoColor=white)
