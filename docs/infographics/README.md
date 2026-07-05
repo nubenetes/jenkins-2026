@@ -1,10 +1,10 @@
 # Complete Technical Inventory of English Infographics (35 Files)
 
-This document serves as an architectural inventory and catalog of the 35 English infographics. Each filename in the table is a clickable link to open the corresponding PNG file directly. Below the table, you will find collapsible visual previews for each infographic.
+This document serves as an architectural inventory and catalog of the 35 English infographics. Each filename in the index is a clickable link to open the corresponding PNG file directly. Below the index, you will find collapsible visual previews for each infographic.
 
 ---
 
-## Infographics Matrix Catalog
+## Infographics Catalog Index
 
 <details>
 <summary>📋 Click to view the full detailed index list (35 entries)</summary>
@@ -735,4 +735,4 @@ Browse the infographics visually using the collapsible previews below. Click any
 ---
 
 > [!TIP]
-> Each infographic is named systematically to guarantee they stay sorted. Click any of the files in the **Infographic File (Clickable Link)** column to navigate directly to it.
+> Each infographic is named systematically to guarantee they stay sorted. Click any of the links in the catalog index to view or download the corresponding PNG file.
