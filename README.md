@@ -9,7 +9,7 @@
 [![Commit activity](https://img.shields.io/github/commit-activity/m/nubenetes/jenkins-2026?logo=github)](https://github.com/nubenetes/jenkins-2026/pulse)
 ![Top language](https://img.shields.io/github/languages/top/nubenetes/jenkins-2026?logo=gnubash&logoColor=white)
 ![Code size](https://img.shields.io/github/languages/code-size/nubenetes/jenkins-2026)
-[![Docs](https://img.shields.io/badge/docs-22%20guides-blue?logo=readthedocs&logoColor=white)](docs/)
+[![Docs](https://img.shields.io/badge/docs-24%20guides-blue?logo=readthedocs&logoColor=white)](docs/)
 [![Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735?logo=keepachangelog&logoColor=white)](CHANGELOG.md)
 
 <!-- STACK-BADGES:START -->
@@ -188,20 +188,21 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 
 | Capability | Flag | Default | Optional |
 |---|---|---|---|
-| **CI engine** | `ci.engine` | **`jenkins`** — official Helm chart + JCasC + Job-DSL seed | **`tekton`** — Tekton Pipelines / Triggers / Dashboard (IAP-protected) + **Pipelines-as-Code**, the same pipeline ported to [`tekton/`](tekton/) ([403](docs/403-TEKTON.md)) · **`githubactions`** — GitHub Actions self-hosted runners via **ARC** (Actions Runner Controller): ephemeral **Spot** runners on the `ci-spot` NAP ComputeClass, native GitHub webhooks, **no** in-cluster UI/route (runs in GitHub's Actions tab) ([404](docs/404-GITHUB_ACTIONS.md)) · **`argoworkflows`** — Argo Workflows + Argo Events: the pipeline as a WorkflowTemplate, an **IAP-protected Argo Workflows Server UI** (`argo.<domain>`, like the Tekton Dashboard) plus a public, HMAC-protected **Argo Events webhook receiver** (`argo-events.<domain>`) ([405](docs/405-ARGO_WORKFLOWS.md)). The four engines are mutually exclusive; switching retires the others. |
-| **Tekton seed runs** | `tekton.seedRuns` | **`true`** — `Day1` seeds one **PipelineRun per service** (from [`tekton/runs/`](tekton/runs/)) so the Tekton **Dashboard is pre-populated** with runnable entries (click *Rerun*) from the first provision, at the cost of one build per service per Day1 | **`false`** — rely solely on **Pipelines-as-Code**'s git-push trigger (no seed builds). Only meaningful when `ci.engine=tekton`. Per-run override `JENKINS2026_TEKTON_SEED_RUNS`. |
+| **CI engine** | `ci.engine` | **`jenkins`** — official Helm chart + JCasC + Job-DSL seed | **`tekton`** — Tekton Pipelines / Triggers / Dashboard (IAP-protected) + **Pipelines-as-Code**, the same pipeline ported to [`tekton/`](tekton/) ([403](docs/403-TEKTON.md)) · **`githubactions`** — GitHub Actions self-hosted runners via **ARC** (Actions Runner Controller): ephemeral **Spot** runners on the `ci-spot` NAP ComputeClass, native GitHub webhooks, **no** in-cluster UI/route (runs in GitHub's Actions tab) ([404](docs/404-GITHUB_ACTIONS.md)) · **`argoworkflows`** — Argo Workflows + Argo Events: the pipeline ported to [`argoworkflows/`](argoworkflows/) as a WorkflowTemplate, an **IAP-protected Argo Workflows Server UI** (`argo.<domain>`, like the Tekton Dashboard) plus a public, HMAC-protected **Argo Events webhook receiver** (`argo-events.<domain>`) ([405](docs/405-ARGO_WORKFLOWS.md)). The four engines are mutually exclusive; switching retires the others. |
+| **CI seed runs** | `<engine>.seedRuns` | **`true`** for `tekton` / `githubactions` / `argoworkflows` — `Day1` seeds **one run per service** (Tekton `PipelineRun`s from [`tekton/runs/`](tekton/runs/) · a dispatched workflow run per fork · one Argo `Workflow` per service) so the engine's **UI/history is pre-populated** from the first provision, at the cost of one build per service per Day1 | **`false`** — rely solely on the git-push trigger (no seed builds). Not applicable to `jenkins` (its Job-DSL seed job always generates the jobs; builds start on demand). Per-run overrides `JENKINS2026_{TEKTON,GITHUBACTIONS,ARGOWORKFLOWS}_SEED_RUNS`. |
 | **CI build-pod placement** | `<engine>.runNodePool` | **`static`** for `jenkins` / `tekton` / `argoworkflows` — the long-lived `jenkins-2026-pool` (robust, no NAP/Spot/quota dependency); **`githubactions` ships `ci-spot`** (single-job ARC runners are ideal Spot workloads) | **`ci-spot`** — the NAP **Spot** ComputeClass (elastic, cheaper; needs `nodeAutoProvisioning` + `SSD_TOTAL_GB` headroom). **Per engine** by pod-scheduling shape: single-pod engines (**Jenkins**, **GitHub Actions/ARC**) are good Spot fits (a preemption just re-runs one idempotent build); shared-workspace engines (**Tekton**, **Argo Workflows**) pin a whole run to one node, so keep them `static`. Per-run overrides `JENKINS2026_{JENKINS,TEKTON,GITHUBACTIONS,ARGOWORKFLOWS}_RUN_NODE_POOL` + a `run_node_pool` input on the four `Day2.redeploy` workflows. See [docs/501](docs/501-PLATFORM_OPERATIONS.md#the-engines-on-spot-ci-spot--why-the-placement-flag-is-per-engine). |
 | **Observability backend** | `observability.mode` | **`grafana-cloud`** *(the GitHub Actions `Day1` input defaults to **`oss`**)* | **`oss`** (in-cluster Grafana / Loki / Tempo / kube-prometheus) · **`managed-azure`** · **`managed-aws`** — exactly one active per cluster; a rerun deterministically switches. |
 | **Secrets backend** | `secrets.backend` | **`imperative`** — `kubectl create secret` from GitHub secrets | **`eso`** — push values to **GCP Secret Manager** + sync via the **External Secrets Operator** over Workload Identity (keyless, versioned, audited). |
 | **Develop tier** | `microservices.developTrackEnabled` | **`false`** | **`true`** — an optional **lean, non-HA** second deploy tier (`microservices-develop`: CNPG single instance, single pooler, no backups), engine-neutral, into the same observability stack. |
 | **Public access** | `gateway.baseDomain` | **set** → one global **GKE Gateway** + Google **IAP** + a wildcard cert front every UI | **`""`** to disable (reach services via `kubectl port-forward`). |
-| **Backend TLS (LB→pod)** | `gateway.backendTls.enabled` | **`false`** — TLS terminates at the LB; the LB→pod hop is plain HTTP over Google's VPC (network-layer encrypted in transit) | **`true`** — install **cert-manager** + a cluster-internal CA; TLS-ready backends (stage 1: **Headlamp**) serve HTTPS themselves and a GKE **`BackendTLSPolicy`** makes the LB re-encrypt **and validate** the hop against that CA. Per-run override `JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED`; GHA `backend_tls` input on `Day1` + the gateway-touching `Day2.redeploy.*`. See [docs/504](docs/504-BACKEND_TLS.md). |
 | **Grafana Cloud tier** | `observability.grafanaCloudTier` | **`free`** | **`paid`** — a profile that sets the volume-control defaults so the free tier fits its limits. `free` → `leanMetrics` on + `logMinSeverity=warn`; `paid` → full metrics + ship all logs. Per-run override `JENKINS2026_GRAFANA_CLOUD_TIER`; GHA `grafana_cloud_tier` dropdown. Only meaningful in grafana-cloud mode. |
 | **Lean metrics** | `observability.leanMetrics` | **`auto`** | `true`/`false` — `auto` derives from `grafanaCloudTier` (free→on, paid→off). When on (grafana-cloud), drops the k8s-monitoring **cluster infra metrics** (cadvisor/kube-state/node-exporter) the custom dashboards don't use, to stay under the **free-tier 15k active-series** cap. Force with a literal value or `JENKINS2026_OBS_LEAN_METRICS`. |
 | **Log verbosity** | `logging.level` | **`info`** | **`debug`** — additionally emit `[DEBUG]` script lines (`log_debug`) and `TF_LOG=DEBUG` for the Terraform steps. Per-run override `JENKINS2026_LOG_LEVEL`; the GitHub Actions workflows expose it as a `log_level` dropdown. No `trace`/`set -x` level by design (would leak script-derived secrets); use `ACTIONS_STEP_DEBUG` for runner tracing. |
 | **Grafana log severity** | `observability.logMinSeverity` | **`auto`** | `trace` (keep all) · `debug` · `info` · `warn` · `error` — minimum severity shipped to the backend, applied as a `filter` in the `otel-collector-logs` DaemonSet (parses level→severity), trimming **every** Grafana logs panel (microservices + platform) in all modes. `auto` derives from `grafanaCloudTier` (free→`warn`, paid→`trace`; non-cloud→`info`). Plain-text lines (no level token) are never dropped. Per-run override `JENKINS2026_LOG_MIN_SEVERITY`; GHA `log_min_severity` dropdown. See [docs/301 § Log Levels](docs/301-OBSERVABILITY.md#log-levels). |
+| **Node Auto-Provisioning (Spot CI nodes)** | `nodeAutoProvisioning.enabled` | **`true`** — GKE **NAP** + the Custom **ComputeClass** (`ci-spot`) provisions **Spot, scale-to-zero** CI-agent nodes on demand | **`false`** — CI builds run on the static pool only. Per-run override `JENKINS2026_NODE_AUTOPROVISIONING_ENABLED`; pairs with the per-engine `runNodePool` placement flag above. |
+| **Deploy branch (self-repo)** | `jenkins.selfRepoBranch` | **`main`** — the branch of **this repo** the platform deploys from (shared library · seed job · the Tekton/GHA/Argo pipeline definitions); in CI it **auto-tracks the dispatched branch** (`GITHUB_REF_NAME`), so a `Day1` from `develop` validates develop's library/seed before the promotion PR | Per-run override `JENKINS2026_SELF_REPO_BRANCH`. |
 
-**Always on (no flag):** **ArgoCD** (the GitOps CD engine) · **CloudNativePG** HA Postgres + **pgAdmin** · **Headlamp** (cluster UI) · the **OpenTelemetry** operator + collector · **Argo Rollouts** (sidecar-free canary / blue-green via the Gateway API) · **Dataplane V2** (Cilium/eBPF) **enforced NetworkPolicies** + **WireGuard** inter-node pod encryption · **DevSecOps** scanning in every build · **GKE Node Auto-Provisioning** (Spot, scale-to-zero CI nodes via a Custom ComputeClass) · and **pinned versions** throughout.
+**Always on (no flag):** **ArgoCD** (the GitOps CD engine) · **CloudNativePG** HA Postgres + **pgAdmin** · **Headlamp** (cluster UI) · the **OpenTelemetry** operator + collector · **Argo Rollouts** (sidecar-free canary / blue-green via the Gateway API) · **Dataplane V2** (Cilium/eBPF) **enforced NetworkPolicies** + **WireGuard** inter-node pod encryption · **DevSecOps** scanning in every build · and **pinned versions** throughout.
 
 #### What's inside, by area
 
@@ -237,11 +238,11 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 
 **[101 · GitHub Actions Workflows](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md)**
 - [Naming convention: `DayN.tier.ZZ-resource`](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#naming-convention-dayntierzz-resource)
-  - [Day × workflow matrix](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#day--workflow-matrix)
   - [Resource identifier (ZZ): stable across all phases](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#resource-identifier-zz-stable-across-all-phases)
 - [Full workflow matrix](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#full-workflow-matrix)
 - [Lifecycle diagram](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#lifecycle-diagram)
 - [Day-0 / Day-1 / Day-2 operations](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#day-0--day-1--day-2-operations)
+  - [Day × workflow matrix](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#day--workflow-matrix)
 - [Complete workflow inventory — matrix table](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#complete-workflow-inventory--matrix-table)
 - [Day2 ordering: tiers are categories, not stages](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#day2-ordering-tiers-are-categories-not-stages)
 - [Are workflows auto-chained? Why not?](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#are-workflows-auto-chained-why-not)
@@ -272,8 +273,10 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 - [Jenkins OIDC / Google Sign-In](./docs/103-GITHUB_SECRETS_INVENTORY.md#6-jenkins-oidc--google-sign-in)
 - [Headlamp & IAP](./docs/103-GITHUB_SECRETS_INVENTORY.md#7-headlamp--identity-aware-proxy)
 - [Private Registry & Git](./docs/103-GITHUB_SECRETS_INVENTORY.md#8-private-registry--git)
+- [Tekton CI engine](./docs/103-GITHUB_SECRETS_INVENTORY.md#9-tekton-ci-engine-ciengine-tekton) — `TEKTON_GITHUB_WEBHOOK_SECRET` / `PAC_WEBHOOK_SECRET` (optional webhook HMACs)
 - [GitHub Actions / ARC CI engine](./docs/103-GITHUB_SECRETS_INVENTORY.md#95-github-actions--arc-ci-engine-ciengine-githubactions) — `ARC_GITHUB_APP_ID` / `ARC_GITHUB_APP_INSTALLATION_ID` / `ARC_GITHUB_APP_PRIVATE_KEY` (or `GIT_TOKEN` PAT fallback)
 - [Argo Workflows CI engine](./docs/103-GITHUB_SECRETS_INVENTORY.md#96-argo-workflows-ci-engine-ciengine-argoworkflows) — `ARGOWORKFLOWS_GITHUB_WEBHOOK_SECRET` (optional Argo Events webhook HMAC; `PAC_WEBHOOK_SECRET` fallback)
+- [Grafana Cloud k6 (optional)](./docs/103-GITHUB_SECRETS_INVENTORY.md#10-grafana-cloud-k6-the-k6-app--optional)
 - [Summary table](./docs/103-GITHUB_SECRETS_INVENTORY.md#summary-table)
 
 ---
@@ -295,8 +298,9 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 - [Microservices & Database Architecture](./docs/201-ARCHITECTURE.md#microservices--database-architecture)
   - [Database Injection & Secrets](./docs/201-ARCHITECTURE.md#database-injection--secrets)
   - [CI/CD Flow (GitOps)](./docs/201-ARCHITECTURE.md#cicd-flow-gitops)
-- [Configuration (`config/config.yaml`)](./docs/201-ARCHITECTURE.md#configuration-configconfigyaml)
 - [Repository Layout](./docs/201-ARCHITECTURE.md#repository-layout)
+- [Imperative (push) vs GitOps (pull): the provisioning split](./docs/201-ARCHITECTURE.md#imperative-push-vs-gitops-pull-the-provisioning-split)
+- [Namespaces & in-cluster Secrets](./docs/201-ARCHITECTURE.md#namespaces--in-cluster-secrets)
 - [GKE Cluster Topology & Sizing](./docs/201-ARCHITECTURE.md#gke-cluster-topology--sizing)
   - [Sizing Rationale](./docs/201-ARCHITECTURE.md#sizing-rationale)
   - [FinOps & Cost Analysis](./docs/201-ARCHITECTURE.md#finops--cost-analysis)
@@ -308,7 +312,7 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 - [Components](./docs/202-MICROSERVICES-APP-ARCHITECTURE.md#components)
 - [Java vs Angular — where each runs](./docs/202-MICROSERVICES-APP-ARCHITECTURE.md#java-vs-angular--where-each-actually-runs)
 - [How a request flows](./docs/202-MICROSERVICES-APP-ARCHITECTURE.md#how-a-request-flows)
-- [Frontend observability roadmap — Angular RUM](./docs/202-MICROSERVICES-APP-ARCHITECTURE.md#frontend-observability-roadmap--instrumenting-angular-with-rum)
+- [Frontend observability — Angular RUM with Grafana Faro](./docs/202-MICROSERVICES-APP-ARCHITECTURE.md#frontend-observability--angular-rum-with-grafana-faro-implemented)
 - [Why JHipster (why this demo app)](./docs/202-MICROSERVICES-APP-ARCHITECTURE.md#why-jhipster-why-this-demo-app)
 
 ---
@@ -371,7 +375,7 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 - [Pipeline Branch & Environment Mapping](./docs/402-PIPELINES_AS_CODE.md#pipeline-branch--environment-mapping)
   - [Why the GitOps Repo Uses Only the `main` Branch](./docs/402-PIPELINES_AS_CODE.md#why-the-gitops-repo-uses-only-the-main-branch)
   - [Optional `develop` Tier (Feature Flag, Off by Default)](./docs/402-PIPELINES_AS_CODE.md#optional-develop-tier-feature-flag-off-by-default)
-- [Architecture Diagram](./docs/402-PIPELINES_AS_CODE.md#architecture-diagram)
+- [High-level architecture](./docs/402-PIPELINES_AS_CODE.md#high-level-architecture)
 - [Detailed Pipeline Execution Stages](./docs/402-PIPELINES_AS_CODE.md#detailed-pipeline-execution-stages)
   - [1. Microservices Build & Deploy Pipeline](./docs/402-PIPELINES_AS_CODE.md#1-microservices-build--deploy-pipeline)
   - [2. k6 Integration Smoke Test Pipeline](./docs/402-PIPELINES_AS_CODE.md#2-k6-integration-smoke-test-pipeline)
@@ -421,6 +425,7 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
   - [3. Zero-Trust Security & Workload Identity](./docs/501-PLATFORM_OPERATIONS.md#3-zero-trust-security--workload-identity)
   - [4. GitOps Separation of Concerns](./docs/501-PLATFORM_OPERATIONS.md#4-gitops-separation-of-concerns)
   - [5. Build Performance & High Availability Caching](./docs/501-PLATFORM_OPERATIONS.md#5-build-performance--high-availability-caching)
+  - [6. Progressive Delivery (Argo Rollouts + Gateway API)](./docs/501-PLATFORM_OPERATIONS.md#6-progressive-delivery-argo-rollouts--gateway-api)
 - [Headlamp (Cluster Management UI)](./docs/501-PLATFORM_OPERATIONS.md#headlamp-cluster-management-ui)
   - [One-time Setup: Google OAuth Client](./docs/501-PLATFORM_OPERATIONS.md#one-time-setup-google-oauth-client)
   - [Adding Your Identity](./docs/501-PLATFORM_OPERATIONS.md#adding-your-identity)
@@ -429,6 +434,7 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
   - [Authentication & Authorization Matrix](./docs/501-PLATFORM_OPERATIONS.md#authentication--authorization-matrix)
   - [One-time Setup](./docs/501-PLATFORM_OPERATIONS.md#one-time-setup)
   - [Troubleshooting: Load Balancer Propagation Delay](./docs/501-PLATFORM_OPERATIONS.md#troubleshooting-load-balancer-propagation-delay)
+- [Pausing & resuming the cluster (cost saving)](./docs/501-PLATFORM_OPERATIONS.md#pausing--resuming-the-cluster-cost-saving)
 
 **[502 · Microservices GitOps](./docs/502-MICROSERVICES_GITOPS.md)**
 - [GitOps Design Decision: Helm vs. Kustomize](./docs/502-MICROSERVICES_GITOPS.md#gitops-design-decision-helm-vs-kustomize)
@@ -450,6 +456,15 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 - [North-south: ingress (Gateway + IAP + NEG)](./docs/503-NETWORKING.md#north-south-how-traffic-gets-in-ingress) · [egress (no Cloud NAT)](./docs/503-NETWORKING.md#north-south-how-traffic-gets-out-egress)
 - [East-west: pod & service networking (VPC-native · Dataplane V2 · WireGuard)](./docs/503-NETWORKING.md#east-west-pod--service-networking)
 - [Segmentation: NetworkPolicies inside GKE](./docs/503-NETWORKING.md#segmentation-networkpolicies-inside-gke)
+
+---
+
+**[504 · Backend TLS (LB→pod re-encryption)](./docs/504-BACKEND_TLS.md)**
+- [Why (and why opt-in)](./docs/504-BACKEND_TLS.md#why-and-why-opt-in) · [The flag](./docs/504-BACKEND_TLS.md#the-flag)
+- [How it works](./docs/504-BACKEND_TLS.md#how-it-works) · [The GKE mechanics](./docs/504-BACKEND_TLS.md#the-gke-mechanics-what-the-policies-actually-do)
+- [Stage 1: why Headlamp](./docs/504-BACKEND_TLS.md#stage-1-why-headlamp) · [Converting the next backend](./docs/504-BACKEND_TLS.md#converting-the-next-backend-roadmap--checklist)
+- [Does `secrets.backend=eso` change anything?](./docs/504-BACKEND_TLS.md#does-secretsbackendeso-change-anything) · [**Why not a service mesh?**](./docs/504-BACKEND_TLS.md#why-not-a-service-mesh) (Istio / Cloud Service Mesh comparison)
+- [Lifecycle](./docs/504-BACKEND_TLS.md#lifecycle) · [Verifying it](./docs/504-BACKEND_TLS.md#verifying-it)
 
 ---
 
@@ -478,11 +493,12 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 - [Step-by-Step Deployment Guide](./docs/901-LOCAL_DEVELOPMENT.md#step-by-step-deployment-guide-for-other-people)
   - [Step 1: Fork and Clone the Repositories](./docs/901-LOCAL_DEVELOPMENT.md#step-1-fork-and-clone-the-repositories)
   - [Step 2: Configure Repository Targets](./docs/901-LOCAL_DEVELOPMENT.md#step-2-configure-repository-targets)
-  - [Step 3: Configure GKE / OAuth Credentials](./docs/901-LOCAL_DEVELOPMENT.md#step-3-configure-gke--oauth-credentials-optional)
-  - [Step 4: Add GitHub Repository Secrets](./docs/901-LOCAL_DEVELOPMENT.md#step-4-add-github-repository-secrets)
-  - [Step 5: Set Up Grafana Cloud Stack](./docs/901-LOCAL_DEVELOPMENT.md#step-5-optional-set-up-grafana-cloud-stack)
-  - [Step 6: Deploy the Stack](./docs/901-LOCAL_DEVELOPMENT.md#step-6-deploy-the-stack)
-  - [Step 7: Run Pipelines & Verify](./docs/901-LOCAL_DEVELOPMENT.md#step-7-run-pipelines--verify)
+  - [Step 3: Bootstrap — Root of Trust + Public DNS Zone](./docs/901-LOCAL_DEVELOPMENT.md#step-3-bootstrap--root-of-trust--public-dns-zone)
+  - [Step 4: Configure GKE / OAuth Credentials (Optional)](./docs/901-LOCAL_DEVELOPMENT.md#step-4-configure-gke--oauth-credentials-optional)
+  - [Step 5: Add Remaining GitHub Repository Secrets](./docs/901-LOCAL_DEVELOPMENT.md#step-5-add-remaining-github-repository-secrets)
+  - [Step 6: (Optional) Set Up Grafana Cloud Stack](./docs/901-LOCAL_DEVELOPMENT.md#step-6-optional-set-up-grafana-cloud-stack)
+  - [Step 7: Deploy the Stack](./docs/901-LOCAL_DEVELOPMENT.md#step-7-deploy-the-stack)
+  - [Step 8: Run Pipelines & Verify](./docs/901-LOCAL_DEVELOPMENT.md#step-8-run-pipelines--verify)
 - [Automated End-to-End Test](./docs/901-LOCAL_DEVELOPMENT.md#automated-end-to-end-test-provisioning--decommissioning)
   - [Running It](./docs/901-LOCAL_DEVELOPMENT.md#running-it)
   - [Prerequisites for e2e](./docs/901-LOCAL_DEVELOPMENT.md#prerequisites-for-e2e)
@@ -496,6 +512,15 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 - [Jenkins & GitOps Push Issues](./docs/902-TROUBLESHOOTING.md#jenkins--gitops-push-issues)
 
 ---
+
+**[903 · Glossary](./docs/903-GLOSSARY.md)**
+- [Lifecycle vocabulary](./docs/903-GLOSSARY.md#lifecycle-vocabulary)
+- [Platform acronyms](./docs/903-GLOSSARY.md#platform-acronyms)
+- [Repo-specific terms of art](./docs/903-GLOSSARY.md#repo-specific-terms-of-art)
+
+---
+
+**[docs/ — documentation index & reading map](./docs/README.md)** — the docs/ folder README with the numbering taxonomy, role-based reading paths, and authoring conventions.
 
 **[Runbooks](./docs/runbooks/)**
 - [Log Correlation Validation](./docs/runbooks/log-correlation-validation.md) — step-by-step procedure to validate logs ↔ metrics ↔ traces correlation end-to-end (enable DEBUG logging, restart pods, generate traffic, verify in Grafana)
@@ -512,10 +537,22 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 - [NAP → Spot CI nodes](./docs/runbooks/nap-spot-provisioning.md) — live validation that GKE Node Auto-Provisioning + the `ci-spot` ComputeClass bring up Spot, scale-to-zero nodes for CI build agents, and how to read the `SSD_TOTAL_GB` quota ceiling that actually bounds it
   - [Background — what should happen](./docs/runbooks/nap-spot-provisioning.md#background--what-should-happen)
   - [0. Get cluster access (the gotchas)](./docs/runbooks/nap-spot-provisioning.md#0-get-cluster-access-the-gotchas-in-order)
+  - [1. Confirm the flag reached Jenkins (no build needed)](./docs/runbooks/nap-spot-provisioning.md#1-confirm-the-flag-reached-jenkins-no-build-needed)
   - [2. Trigger a build and watch the agent + node](./docs/runbooks/nap-spot-provisioning.md#2-trigger-a-build-and-watch-the-agent--node)
   - [3. The real ceiling: `SSD_TOTAL_GB` quota](./docs/runbooks/nap-spot-provisioning.md#3-the-real-ceiling-ssd_total_gb-quota-the-part-everyone-trips-on)
   - [4. Cold-start caveat (first build on a fresh Spot node)](./docs/runbooks/nap-spot-provisioning.md#4-cold-start-caveat--the-first-build-on-a-fresh-spot-node-is-slow)
   - [Troubleshooting — agent stuck Pending](./docs/runbooks/nap-spot-provisioning.md#troubleshooting--agent-stuck-pending)
+- [CNPG Restore from Backup](./docs/runbooks/cnpg-restore-from-backup.md) — recover a microservices Postgres database from the barman GCS backups (base backup + WAL / point-in-time recovery): when to restore vs when a rebuild is *meant* to start empty, the concrete CNPG `bootstrap.recovery` manifest, PITR target selection, and the `Expected empty archive` cutover gotcha
+  - [Background — what is backed up, and where](./docs/runbooks/cnpg-restore-from-backup.md#background--what-is-backed-up-and-where)
+  - [0. Get cluster access](./docs/runbooks/cnpg-restore-from-backup.md#0-get-cluster-access-the-windowssdk-gotchas)
+  - [1. Decide: do you actually want to restore? (When NOT to)](./docs/runbooks/cnpg-restore-from-backup.md#1-decide-do-you-actually-want-to-restore-when-not-to)
+  - [2. Confirm the backups exist and are usable](./docs/runbooks/cnpg-restore-from-backup.md#2-confirm-the-backups-youre-about-to-restore-from-exist-and-are-usable)
+  - [3. Restore — CNPG `bootstrap.recovery` from the object store](./docs/runbooks/cnpg-restore-from-backup.md#3-restore--cnpg-bootstraprecovery-from-the-object-store)
+  - [4. Choosing the PITR target](./docs/runbooks/cnpg-restore-from-backup.md#4-choosing-the-pitr-target)
+  - [5. Cut over and re-enable GitOps](./docs/runbooks/cnpg-restore-from-backup.md#5-cut-over-and-re-enable-gitops)
+  - [6. Verify the restore](./docs/runbooks/cnpg-restore-from-backup.md#6-verify-the-restore)
+  - [6b. The serverName / system-id gotcha (Expected empty archive)](./docs/runbooks/cnpg-restore-from-backup.md#6b-the-servername--system-id-gotcha-expected-empty-archive)
+  - [Troubleshooting](./docs/runbooks/cnpg-restore-from-backup.md#troubleshooting)
 
 
 ## 1. Document Inventory
@@ -526,10 +563,11 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 | **101** | CI/CD Workflows | [GitHub Actions Workflows](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md) | `DayN.tier.ZZ-resource` **naming scheme**, **lifecycle phases**, the per-`ZZ` lifecycle matrix, **full workflow matrix** with clickable GitHub Actions links, lifecycle **Mermaid diagram**, complete numbered inventory (incl. the opt-in **`Decom.infra.00-all` teardown umbrella**) |
 | **102** | CI/CD Workflows | [GitHub Actions Automation](./docs/102-GITHUB_ACTIONS_AUTOMATION.md) | **WIF setup**, GitHub secrets reference, **bootstrapping architecture** (**persistent vs. short-lived** resources), `git_ref` parameter, **environment protection / manual approvals** |
 | **103** | CI/CD Workflows | [GitHub Secrets & Variables Inventory](./docs/103-GITHUB_SECRETS_INVENTORY.md) | **Every GitHub Actions secret and repository variable** used across the workflows — purpose, **required vs. optional**, source, which subsystem; incl. the **keyless WIF/OIDC** identifiers and the `AWS_REGION` repo variable |
+| **104** | CI/CD Workflows | [Rebuild-Safety (`Decom` + `Day1`)](./docs/104-REBUILD_SAFETY.md) | Why **destroy → recreate** must always converge: the **collision vs residue** bug class (+ the Postgres WAL exemplar), the **rebuild-safety design patterns** toolbox, the **safe-by-design matrix** (state/buckets · GKE · DNS/gateway · identity/secrets · obs backends · teardown residue · registry/GitOps/CI), the closed gaps, and the **live-verification checklist** |
 | **201** | Architecture | [Architecture](./docs/201-ARCHITECTURE.md) | **System architecture** + component diagram, **microservices & database architecture (CNPG)**, **CI/CD flow**, the **imperative (push) vs GitOps (pull)** provisioning inventory, **namespaces & in-cluster secrets**, configuration ([`config/config.yaml`](config/config.yaml)), repository layout, **GKE cluster topology**, **FinOps** & cost analysis |
-| **202** | Architecture | [Microservices App Architecture](./docs/202-MICROSERVICES-APP-ARCHITECTURE.md) | The **demo application** — and **why JHipster** (a production-shaped demo, not a toy) + **why the repos are forks**: the JHipster **gateway (Java, not Angular)** + the **Angular SPA** it serves + the backend microservice, **request flow**, **database-per-service**, and the **Angular-RUM** (frontend observability via Grafana Faro) roadmap |
+| **202** | Architecture | [Microservices App Architecture](./docs/202-MICROSERVICES-APP-ARCHITECTURE.md) | The **demo application** — and **why JHipster** (a production-shaped demo, not a toy) + **why the repos are forks**: the JHipster **gateway (Java, not Angular)** + the **Angular SPA** it serves + the backend microservice, **request flow**, **database-per-service**, and the **implemented Angular-RUM frontend observability** (Grafana Faro) |
 | **301** | Observability | [Observability](./docs/301-OBSERVABILITY.md) | **OTel components** (Operator, Java agent, Angular RUM, Collector), telemetry architecture, **signal correlation** (metrics↔traces↔logs), structured logging, dashboards, **alert rules**, k6 smoke test, **all four observability modes** |
-| **302** | Observability | [k6 Traffic, Load & Observability Testing](./docs/302-K6_LOAD_TESTING.md) | The **parametrizable k6 engine**: the unified **`K6SIM_*` contract**, **profiles** (smoke/load/stress/soak/spike/breakpoint), **committed config presets** (dropdown-selectable) with an **inventory matrix + per-preset diagrams**, the same script run from **Jenkins/Tekton/GitHub Actions**, **`stable`-vs-`develop`** targeting, **basic & advanced tutorials**, and the **layered (basic→expert) result analysis** |
+| **302** | Observability | [k6 Traffic, Load & Observability Testing](./docs/302-K6_LOAD_TESTING.md) | The **parametrizable k6 engine**: the unified **`K6SIM_*` contract**, **profiles** (smoke/load/stress/soak/spike/breakpoint), **committed config presets** (dropdown-selectable) with an **inventory matrix + per-preset diagrams**, the same script run from **Jenkins/Tekton/GitHub Actions/Argo Workflows**, **`stable`-vs-`develop`** targeting, **basic & advanced tutorials**, and the **layered (basic→expert) result analysis** |
 | **303** | Performance | [JVM Tuning & Runtime Strategy](./docs/303-JVM-TUNING.md) | JVM tuning for the Java microservices: the **container-default trap** (SerialGC + 25% heap) and the **G1/heap fix**, **GC-algorithm + runtime-option matrices** (HotSpot+G1 · AOT cache · **CRaC** · GraalVM Native · OpenJ9), **OTel instrumentation modes** (agent vs Spring starter vs eBPF), why **CRaC** is the chosen advanced direction, and how to read the **JVM-internals dashboard** |
 | **401** | Jenkins | [Jenkins](./docs/401-JENKINS.md) | Accessing the UI & **admin password**, **Google OIDC** login, **plugins & JCasC** fragments, global **shared library**, **MCP server** |
 | **402** | Pipelines | [Pipelines as Code](./docs/402-PIPELINES_AS_CODE.md) | **Seed job**, **branch & environment mapping** (incl. the optional lean **`develop` tier** + its stable-vs-develop rationale), **pipeline execution stages** (Semgrep/CodeQL/Trivy/Build/Deploy/Smoke), **container security**, reliability fixes |
@@ -539,11 +577,14 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 | **501** | Platform | [Platform Operations](./docs/501-PLATFORM_OPERATIONS.md) | **ArgoCD inventory**, telemetry simulation, **platform QA & chaos** scenarios, **Golden Path IDP** modernizations (**Node Auto-Provisioning** + modern scheduling), **Headlamp** cluster UI, **GKE Gateway API + IAP** public access, **Argo Rollouts** progressive delivery |
 | **502** | Microservices | [Microservices GitOps](./docs/502-MICROSERVICES_GITOPS.md) | **Helm vs. Kustomize** design decision, **resource lifecycle & decommission** orchestration (**NEG synchronization barrier**), **parameterized CNPG HA** (stable vs lean develop), **pgAdmin** & database administration |
 | **503** | Networking | [Networking](./docs/503-NETWORKING.md) | Network architecture, **landing zone & topology** (single-VPC, *not* hub-spoke — with rationale + growth path), VPC/subnet + pod/service **CIDR plan**, north-south **ingress** (Gateway + IAP + container-native NEG) & **egress** (no Cloud NAT, the four observability backends), east-west (VPC-native + **Dataplane V2** + **WireGuard**), **NetworkPolicy segmentation** inside GKE, defense-in-depth |
-| **504** | Networking | [Backend TLS](./docs/504-BACKEND_TLS.md) | **Opt-in LB→pod TLS re-encryption** (`gateway.backendTls.enabled`, default off): **cert-manager** (pinned, GitOps) + a **cluster-internal CA**, TLS-serving backends (stage 1: **Headlamp**), the GKE **`BackendTLSPolicy`** + HTTPS `HealthCheckPolicy` mechanics, consistent degradation on pre-GA clusters, and the **per-backend rollout roadmap** (ArgoCD/Jenkins/pgAdmin/…) |
+| **504** | Platform ops | [Backend TLS (LB→pod re-encryption)](./docs/504-BACKEND_TLS.md) | The **opt-in** `gateway.backendTls.enabled` hardening — **cert-manager** in-cluster CA + per-backend TLS + Gateway API **`BackendTLSPolicy`** so the LB validates the backend cert; the **GKE mechanics**, the staged per-backend rollout, why it's **not** a service mesh (Istio / Cloud Service Mesh comparison), and why ESO doesn't touch it |
 | **601** | Security | [DevSecOps](./docs/601-DEVSECOPS.md) | **Semgrep** SAST, **CodeQL** deep SAST, **Trivy** IaC + image scanning, **`warnings-ng`** plugin SARIF dashboards in Jenkins |
 | **602** | Security | [Version Pinning](./docs/602-VERSION_PINNING.md) | **Version-pinning policy + matrix** (charts, images, `yq`, GitHub Actions SHAs, Terraform lockfiles), pros/cons, the deliberate **ArgoCD 3.4.x auto-tracking exception** (off the buggy 3.5.0-rc), how to bump a pin |
 | **901** | Reference | [Local Development](./docs/901-LOCAL_DEVELOPMENT.md) | **Prerequisites**, **quick start**, step-by-step deployment guide, automated **e2e test** ([`test/e2e.sh`](test/e2e.sh)), **resource quotas & QoS**, Terraform version |
 | **902** | Reference | [Troubleshooting](./docs/902-TROUBLESHOOTING.md) | **Common issues**, ArgoCD OIDC, Terraform & CI, **Jenkins & GitOps push authentication failures** |
+| **903** | Reference | [Glossary](./docs/903-GLOSSARY.md) | Single-lookup **glossary** of the vocabulary recurring across every guide: **lifecycle** (Day0/Day1/Day2/Decom, `DayN.tier.ZZ`, tier, ZZ, the two teardown umbrellas, `stable`/`develop` tiers), **platform acronyms** (WIF · OIDC · IAP · NEG · NAP · ComputeClass · ARC · PaC · JCasC · ESO · CNPG · Dataplane V2 · app-of-apps · AppSet · JHipster · OTel/OTLP), and **repo terms of art** (seed job, shared library `vars/`, `retire_ci_engine`, imperative-vs-GitOps planes, self-hosted state, the bootstrap paradox, the `K6SIM_*` contract) — each one line + a link to its owning doc |
+
+> **New here?** [`docs/README.md`](./docs/README.md) is a reading map over this table — the numbering scheme, role-based reading paths (newcomer / operator / SRE / platform engineer / security reviewer), the runbooks, and the doc-authoring conventions.
 
 ---
 
@@ -628,7 +669,7 @@ flowchart TB
         DNS["Cloud DNS wildcard → IP"]:::edge
         LB["L7 LB · wildcard TLS · edge-terminated"]:::edge
         IAPN["Identity-Aware Proxy<br/>admin allowlist"]:::edge
-        GW["Gateway (ns platform-ingress)<br/>HTTPRoutes · GCPBackendPolicy<br/>+ BackendTLSPolicy (opt-in backendTls)"]:::edge
+        GW["Gateway (ns platform-ingress)<br/>HTTPRoutes · GCPBackendPolicy"]:::edge
       end
 
       subgraph CP["L3 · Control plane (GKE)"]
@@ -642,7 +683,7 @@ flowchart TB
             GHAARC["GHA-ARC · GitHub Actions/ARC<br/>ephemeral · ci-spot · NO in-cluster UI"]:::eng3
             ARGOWF["ARGOWF · argoworkflows<br/>WF v3.7.15 + Events · IAP UI"]:::eng4
         end
-        OPS["OPS · Operators<br/>ESO · OTel · CNPG · Argo Rollouts<br/>+ cert-manager (opt-in backendTls)"]:::ctrl
+        OPS["OPS · Operators<br/>ESO · OTel · CNPG · Argo Rollouts"]:::ctrl
         PUIS["PUIS · platform web UIs (IAP)<br/>Headlamp · pgAdmin · Grafana (oss)"]:::ctrl
         PUSH["PUSH · imperative lane (0N-*.sh)<br/>creds · NetPol · Quotas"]:::push
       end
@@ -806,7 +847,7 @@ For the full component diagram, microservices database architecture (CloudNative
 
 ## 4. GitHub Actions Workflows
 
-All 29 workflows live in [`.github/workflows/`](.github/workflows/) following the `DayN.tier.ZZ-resource` naming convention — **alphabetical sort order = correct execution order** for the **Create** (`Day0`→`Day1`) and **Decom** phases. Within **Day2** the tiers (`redeploy`/`publish`/`traffic`/`registry`/`scale`) are independent **categories**, not an ordered sequence — each workflow is idempotent and dispatched on its own ([why](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#day2-ordering-tiers-are-categories-not-stages)). See [101. GitHub Actions Workflows](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md) for the full inventory with clickable GitHub Actions links.
+All **29 lifecycle workflows** live in [`.github/workflows/`](.github/workflows/) following the `DayN.tier.ZZ-resource` naming convention (the two repo-hygiene checks — [`gitflow-guard.yml`](.github/workflows/gitflow-guard.yml), [`terraform-validate.yml`](.github/workflows/terraform-validate.yml) — sit outside the scheme) — **alphabetical sort order = correct execution order** for the **Create** (`Day0`→`Day1`) and **Decom** phases. Within **Day2** the tiers (`redeploy`/`publish`/`traffic`/`registry`/`scale`) are independent **categories**, not an ordered sequence — each workflow is idempotent and dispatched on its own ([why](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#day2-ordering-tiers-are-categories-not-stages)). See [101. GitHub Actions Workflows](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md) for the full inventory with clickable GitHub Actions links.
 
 | Phase | tier | Resource | Workflow |
 |---|---|---|---|
@@ -853,6 +894,16 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the current changelog + the milestone
 [`CHANGELOG-ARCHIVE.md`](CHANGELOG-ARCHIVE.md)), and [`RELEASING.md`](RELEASING.md)
 for the versioning + release-cut convention (`Unreleased` → milestone minor →
 tag + GitHub release, 1:1, via [`scripts/cut-release.sh`](scripts/cut-release.sh)).
+
+---
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the contribution workflow — the
+strict `develop → main` GitFlow (enforced by the `gitflow-guard` required
+check), the idempotency contract, the `config.yaml` + `JENKINS2026_*`
+feature-flag pattern, secrets hygiene, the Terraform `fmt`/`validate` gate, and
+how to run the PR checks locally.
 
 ---
 

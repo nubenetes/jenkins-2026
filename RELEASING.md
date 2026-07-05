@@ -52,15 +52,15 @@ Two phases, following the repo's `develop → main` GitFlow, both driven by
 ### 1. Prepare (on `develop`)
 
 ```bash
-scripts/cut-release.sh v0.30.0          # or: v0.30.0 2026-07-15 to pin the date
+scripts/cut-release.sh v1.2.0          # or: v1.2.0 2026-07-15 to pin the date
 ```
 
-This renames `## [Unreleased]` → `## [v0.30.0] - <today>`, opens a fresh empty
+This renames `## [Unreleased]` → `## [v1.2.0] - <today>`, opens a fresh empty
 `## [Unreleased]`, and inserts a Release-index row (edit its `_set me_` theme). Then:
 
 ```bash
 git add CHANGELOG.md
-git commit -m "release: v0.30.0"
+git commit -m "release: v1.2.0"
 # open + merge a PR from develop to main (gitflow-guard required check)
 ```
 
@@ -70,7 +70,7 @@ It refuses to run if `[Unreleased]` has no entries, or if the tag already exists
 
 ```bash
 git checkout main && git pull
-scripts/cut-release.sh v0.30.0 --publish
+scripts/cut-release.sh v1.2.0 --publish
 ```
 
 This tags `main` at HEAD and runs `gh release create`, using the version's
@@ -79,7 +79,7 @@ as the title suffix. It refuses if the tag or GitHub release already exists.
 
 ## Hotfix on a released line
 
-Land the fix on `develop` under `[Unreleased]`, then cut `v0.Y.(Z+1)` the same way.
+Land the fix on `develop` under `[Unreleased]`, then cut `vX.Y.(Z+1)` the same way.
 (There is no long-lived release branch in this PoC — `main` is the single released
 line.)
 

@@ -51,8 +51,8 @@ mindmap
       argo-server
       Server UI via IAP
     Housekeeping
-      podGC
-      workflow TTL
+      podGC on success
+      manual workflow prune
 ```
 
 </details>
@@ -85,9 +85,10 @@ Workflows Server UI** (behind IAP). You **rarely create runs by hand** — a
 `git push` does it (see *Git-driven CI* below).
 
 In this repo the pipeline is the JHipster microservices build ported 1:1 from the
-Jenkins shared library (and from Tekton) — DAG tasks
-`fetch-source → semgrep-scan → codeql-analyze → trivy-iac → build-test →
-build-push-image → trivy-image → gitops-deploy → smoke-test → k6-smoke`, all
+Jenkins shared library (and from Tekton) — templates
+`fetch-source → semgrep-scan → codeql-analyze → trivy-iac → maven-build-test →
+build-push-image → trivy-image → gitops-deploy → smoke-test → k6-smoke` (the DAG
+task names shorten a few of these: `semgrep`, `codeql`, `build-test`), all
 sharing the one `source` PVC
 ([`argoworkflows/templates/microservices-wftmpl.yaml`](../argoworkflows/templates/microservices-wftmpl.yaml)).
 </details>
@@ -118,10 +119,12 @@ PaC equivalent.
   HMAC is validated against the `argoworkflows-github-webhook` Secret (key
   `secret`).
 - **`Sensor`** ([`argoworkflows/events/sensor.yaml`](../argoworkflows/events/sensor.yaml))
-  subscribes to the EventSource and, on a `push`/`pull_request`, **submits a
-  `Workflow`** from `microservices-pipeline` — mapping the webhook JSON (repo
-  clone URL, ref) onto the Workflow params (the TriggerBinding analogue). It runs
-  as the `operate-workflow-sa` ServiceAccount (create Workflows in `argo-ci`).
+  subscribes to the EventSource and, on a **push to `main`** (a `body.ref ==
+  refs/heads/main` data filter — the Sensor is hardwired to the stable tier, so
+  PR events and non-`main` pushes are dropped), **submits a `Workflow`** from
+  `microservices-pipeline` — mapping the webhook JSON (repo clone URL, ref) onto
+  the Workflow params (the TriggerBinding analogue). It runs as the
+  `operate-workflow-sa` ServiceAccount (create Workflows in `argo-ci`).
 
 **Execution namespace `argo-ci`:** `Workflow`s + their ephemeral step Pods run
 here (outbound-only; hardened with a deny-ingress baseline NetworkPolicy,
@@ -141,12 +144,17 @@ workspace). Because the PVC is RWO, all of a `Workflow`'s steps co-schedule onto
 hence the same `static`-recommended `runNodePool` guidance below. Steps pass small
 values via Argo **outputs/parameters**.
 
-**Housekeeping:** `podGC` reclaims completed step pods, and a Workflow TTL/history
-limit GCs old `Workflow`s (the Argo analogue of Jenkins `buildDiscarder` / the
-Tekton Pruner) — keeping pod/image accumulation off the nodes.
+**Housekeeping:** `podGC: OnWorkflowSuccess` reclaims a run's step pods once the
+`Workflow` succeeds — keeping pod accumulation off the nodes. Completed `Workflow`
+CRs themselves are **not** TTL-pruned (no `ttlStrategy`/`retentionPolicy` is
+configured — the Argo analogue of Jenkins `buildDiscarder` / the Tekton Pruner is
+deliberately absent); prune by hand with `argo delete` / `kubectl delete workflow
+-n argo-ci` if they accumulate.
 
-**Observability:** the `workflow-controller-metrics` Service (`:9090`, Prometheus
-`argo_workflows_*` series) is scraped into Prometheus and drives the *Argo
+**Observability:** the workflow-controller's metrics endpoint (pod port `:9090`,
+HTTPS with a self-signed cert — Argo v3.6+ ships **no** metrics Service, so the OSS
+Prometheus `argo-workflows-controller` job discovers the pod directly with
+`insecure_skip_verify`) exposes the `argo_workflows_*` series that drive the *Argo
 Workflows CI* Grafana dashboard; step pod logs land in Loki
 (`k8s_namespace_name=argo-ci`). See [§ Observability](#observability).
 </details>
@@ -262,7 +270,7 @@ which `up.sh`/`down.sh` and the numbered steps branch on:
 | Install CI engine (`up.sh`) | [`scripts/04-jenkins.sh`](../scripts/04-jenkins.sh) | [`scripts/04-tekton.sh`](../scripts/04-tekton.sh) | [`scripts/04-argoworkflows.sh`](../scripts/04-argoworkflows.sh) |
 | Seed pipelines (`up.sh`) | [`scripts/06-seed-pipelines.sh`](../scripts/06-seed-pipelines.sh) | [`scripts/06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh) | [`scripts/06-argoworkflows-pipelines.sh`](../scripts/06-argoworkflows-pipelines.sh) |
 | Day2 redeploy | `Day2.redeploy.02-jenkins` | [`Day2.redeploy.03-tekton`](../.github/workflows/Day2.redeploy.03-tekton.yml) | [`Day2.redeploy.07-argoworkflows`](../.github/workflows/Day2.redeploy.07-argoworkflows.yml) |
-| Teardown (`down.sh`) | Helm uninstall | engine-agnostic (removes all) | engine-agnostic (removes all) |
+| Teardown (`down.sh`) | engine-agnostic (deletes the `jenkins` ArgoCD Application; legacy Helm uninstall as fallback) | engine-agnostic (removes all) | engine-agnostic (removes all) |
 
 **The engines are mutually exclusive.** A clean install only deploys the selected
 one of the four (Jenkins · Tekton · GitHub Actions/ARC · Argo Workflows);
@@ -315,21 +323,22 @@ child Applications:
 | `argo-events` | [`argocd/argoworkflows/components/events`](../argocd/argoworkflows/components/events) (vendored `install.yaml` + `EventBus`) | 1 | the Argo Events controllers + the native-NATS EventBus |
 | `argoworkflows-pipeline-as-code` | [`argoworkflows/`](../argoworkflows/) (WorkflowTemplates / EventSource / Sensor / RBAC + the `argoworkflows-ci` SA) | 2 | the ported pipeline; lands in the `argo-ci` namespace (`exclude: runs/*`) |
 
-The component manifests are **vendored** under `argocd/argoworkflows/components/*/`
-(`release*.yaml`) — argoproj ships Argo Workflows / Argo Events only as **GitHub
-release assets** (`install.yaml`, not on the GCS bucket), and a `github.com` URL
-would be misclassified by kustomize as a git repo, so vendoring is the reliable,
-auditable choice (the **identical** rationale as the Tekton components, see
-[403 § What gets installed](./403-TEKTON.md)). Versions are kept in sync with
-`argoworkflows.versions` in [`config/config.yaml`](../config/config.yaml). The large
-Argo CRDs are handled with `ServerSideApply=true` + `ServerSideDiff=true` +
-`RespectIgnoreDifferences=true` + an auto-retry `syncPolicy` (same client-side
-last-applied-annotation overflow as Tekton's CRDs). The credential Secrets are
-**not** GitOps-managed (they hold env-sourced secrets) —
-[`01-namespaces.sh`](../scripts/01-namespaces.sh) /
-[`08.5-argocd.sh`](../scripts/08.5-argocd.sh) create them imperatively. ArgoCD
-requires [`08.5-argocd.sh`](../scripts/08.5-argocd.sh) to run first (it already does
-in [`up.sh`](../scripts/up.sh)).
+- **Vendored components** — the manifests live under `argocd/argoworkflows/components/*/`
+  (`release*.yaml`): argoproj ships Argo Workflows / Argo Events only as **GitHub
+  release assets** (`install.yaml`, not on a GCS bucket), and a `github.com` URL would
+  be misclassified by kustomize as a git repo, so vendoring is the reliable, auditable
+  choice (the **identical** rationale as the Tekton components, see
+  [403 § What gets installed](./403-TEKTON.md)).
+- **Version pinning** — kept in sync with `argoworkflows.versions` in
+  [`config/config.yaml`](../config/config.yaml).
+- **Large CRDs** — handled with `ServerSideApply=true` + `ServerSideDiff=true` +
+  `RespectIgnoreDifferences=true` + an auto-retry `syncPolicy` (the same client-side
+  last-applied-annotation overflow as Tekton's CRDs).
+- **Credential Secrets are *not* GitOps-managed** (they hold env-sourced secrets) —
+  [`01-namespaces.sh`](../scripts/01-namespaces.sh) /
+  [`08.5-argocd.sh`](../scripts/08.5-argocd.sh) create them imperatively.
+- **Ordering** — ArgoCD requires [`08.5-argocd.sh`](../scripts/08.5-argocd.sh) to run
+  first (it already does in [`up.sh`](../scripts/up.sh)).
 
 > The `argoworkflows-pipeline-as-code` app **explicitly excludes `runs/*`** (the
 > ready-to-run `Workflow` manifests under [`argoworkflows/runs/`](../argoworkflows/runs/)),
@@ -342,12 +351,16 @@ in [`up.sh`](../scripts/up.sh)).
 The Argo Workflows **Server UI** has **no built-in authentication** in the mode we
 run it (`--auth-mode=server`, TLS terminated at the Gateway with `--secure=false`).
 This project gates it at the edge with Google IAP, the identical model used for the
-Tekton Dashboard and Headlamp: [`scripts/09-gateway.sh`](../scripts/09-gateway.sh)
-emits an `HTTPRoute` (`argo.<baseDomain>` → `argo-server:2746`) and a
-`GCPBackendPolicy` (`argoworkflows-iap`) that reuses the existing `gateway-iap-oauth`
-secret and the project-level `roles/iap.httpsResourceAccessor` already granted to the
-admin emails by `terraform/gke` — so **no new OAuth client and no Terraform change**
-are needed. Access is restricted to the same Google accounts as Headlamp/Jenkins/Tekton.
+Tekton Dashboard and Headlamp. [`scripts/09-gateway.sh`](../scripts/09-gateway.sh)
+emits:
+
+- an `HTTPRoute` — `argo.<baseDomain>` → `argo-server:2746`;
+- a `GCPBackendPolicy` (`argoworkflows-iap`) enabling IAP, reusing the existing
+  `gateway-iap-oauth` secret and the project-level `roles/iap.httpsResourceAccessor`
+  already granted to the admin emails by `terraform/gke` — so **no new OAuth client and
+  no Terraform change** are needed.
+
+Access is restricted to the same Google accounts as Headlamp/Jenkins/Tekton.
 
 ```
 https://argo.<baseDomain>          →  Google IAP login  →  Argo Workflows Server UI
@@ -370,6 +383,8 @@ its Tekton port — is ported to Argo Workflows under
 `runAfter` chain). All engines read **the same service registry**
 ([`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml)).
 
+See [`argoworkflows/README.md`](../argoworkflows/README.md) for the directory map, credentials, and how runs are created.
+
 | Jenkins stage | Tekton Task | Argo Workflows template | Notable difference |
 |---|---|---|---|
 | Checkout (+ gateway patch) / infra | `fetch-source` | `fetch-source` | — |
@@ -390,15 +405,21 @@ Tekton `<branch>-<pipelineRunName>`. The image pushed to GHCR is immutable per r
 and `gitops-deploy` bumps the gitops-config `values-<env>.yaml` to exactly that tag.
 
 [`scripts/06-argoworkflows-pipelines.sh`](../scripts/06-argoworkflows-pipelines.sh)
-is the **seed-job analogue**: it applies the WorkflowTemplates / EventSource /
-Sensor and generates one `Workflow` per service per environment (stable always;
-develop when `JENKINS2026_DEVELOP_TRACK_ENABLED=true`), kicking them asynchronously.
+is the **seed-job analogue** — the imperative activation ArgoCD can't do (the
+WorkflowTemplates / EventSource / Sensor are GitOps-applied by the app-of-apps; the
+script only waits for that sync): in webhook mode it reconciles the per-fork webhooks
+(and, with `argoworkflows.seedRuns`, seeds runs from
+[`argoworkflows/runs/`](../argoworkflows/runs/)); without a gateway it falls back to
+generating one `Workflow` per service per environment (stable always; develop when
+`JENKINS2026_DEVELOP_TRACK_ENABLED=true`), kicking them asynchronously.
 
 ### Credentials & RBAC
 
 Created by [`scripts/01-namespaces.sh`](../scripts/01-namespaces.sh) /
-[`scripts/08.5-argocd.sh`](../scripts/08.5-argocd.sh) in the `argo-ci` namespace,
-from the same `REGISTRY_*` / `GIT_*` env the Jenkins/Tekton paths consume:
+[`scripts/08.5-argocd.sh`](../scripts/08.5-argocd.sh) from the same `REGISTRY_*` /
+`GIT_*` env the Jenkins/Tekton paths consume — the first three in the `argo-ci` run
+namespace, the webhook HMAC in `argo-events` (the EventSource reads `webhookSecret`
+from its own namespace):
 
 - `argoworkflows-registry` — ghcr.io dockerconfigjson (Jib/Kaniko/Trivy via `DOCKER_CONFIG`)
 - `argoworkflows-git` — git basic-auth (`username`/`password`) for clone/push + SARIF upload (Argo doesn't use Tekton's `tekton.dev/git-0` credential-initializer — the clone reads creds from env in `fetch-source`/`gitops-deploy`, so a plain generic Secret suffices)
@@ -437,15 +458,18 @@ only):
 
 | Model | Active when | How a run starts |
 |---|---|---|
-| **Git-webhook (Argo Events)** — *primary* | gateway enabled + the EventSource Service up (the default GKE deploy) | A **push or PR** to a `nubenetes/*` app fork → the fork's GitHub **webhook** → the `argo-events.<domain>` EventSource → the `Sensor` submits a `Workflow` of `microservices-pipeline` in `argo-ci`, with params mapped from the payload. **Git is the trigger.** |
+| **Git-webhook (Argo Events)** — *primary* | gateway enabled + the EventSource Service up (the default GKE deploy) | A **push to `main`** on a `nubenetes/*` app fork → the fork's GitHub **webhook** → the `argo-events.<domain>` EventSource → the `Sensor` (gated on `body.ref == refs/heads/main` — PR and non-`main` push events are delivered but filtered out, since the develop tier isn't webhook-deployed) submits a `Workflow` of `microservices-pipeline` in `argo-ci`, with params mapped from the payload. **Git is the trigger.** |
 | **Seed** — *fallback* | no gateway/Events (e.g. local `up.sh`) | `06-argoworkflows-pipelines.sh` kicks **one `Workflow` per service per env** directly (`kubectl create`/`argo submit`) — the Argo analogue of the Jenkins seed job. |
 
 So the normal loop is **commit to the app fork → CI runs itself** (the same model
 as Jenkins multibranch and Tekton PaC).
 [`scripts/06-argoworkflows-pipelines.sh`](../scripts/06-argoworkflows-pipelines.sh)
-runs **once per deploy** only to wire it up: in webhook mode it creates the per-fork
-webhooks (pointing at `argo-events.<domain>`, HMAC via `argoworkflows-github-webhook`)
-and patches the EventSource `repositories`; in fallback mode it seeds the runs. After
+runs **once per deploy** only to wire it up: in webhook mode it reconciles the per-fork
+webhooks (pointing at `https://argo-events.<domain>/push` — the EventSource's
+`endpoint`; a hook to the bare host lands on `/` and 404s — HMAC via
+`argoworkflows-github-webhook`), pruning any stale same-domain hook a previous
+engine/run left behind; in fallback mode it seeds the runs. (The EventSource itself is
+org-scoped — `organizations: [nubenetes]` — so no per-repo patching is needed.) After
 that, you don't touch it.
 
 > **Why a Sensor instead of Tekton PaC.** Argo Events has **no per-repo committed
@@ -484,9 +508,10 @@ sequenceDiagram
 **The k6 smoke** has two forms: `microservices-pipeline` runs a quick `k6-smoke`
 step at the end of every per-push run; the **standalone `microservices-k6-smoke`
 WorkflowTemplate** (analogue of the separate Jenkins k6 job / Tekton k6 Pipeline) is
-*not* auto-triggered — run it on demand (below) or via
-[`Day2.traffic.01-k6`](../.github/workflows/Day2.traffic.01-k6.yml) for a longer load
-simulation.
+*not* auto-triggered — run it on demand (below); for a longer load simulation use
+[`Day2.traffic.01-k6`](../.github/workflows/Day2.traffic.01-k6.yml), which runs the
+same k6 script from the GitHub runner against the public endpoints (it does not go
+through the WorkflowTemplate).
 
 ## Running a Workflow by hand (Server UI / kubectl / argo)
 
@@ -501,9 +526,10 @@ runs `microservices-pipeline` on every push/PR, and
 > `otlp-endpoint` for in-cluster runs is
 > `http://otel-collector-gateway.observability.svc.cluster.local:4317` (k6/pipeline
 > metrics → the collector → your backend; the k6 script emits `service.namespace=jenkins-2026`).
-> The standalone `microservices-k6-smoke` WorkflowTemplate already **defaults to it**;
-> `microservices-pipeline` gets it injected by `06-argoworkflows-pipelines.sh` / the
-> Sensor. Set it to `""` to skip OTLP.
+> **Both** WorkflowTemplates already **default to it** in their `arguments.parameters`;
+> `06-argoworkflows-pipelines.sh` additionally passes it explicitly on its
+> fallback-generated runs, while the Sensor and the `runs/` manifests simply inherit the
+> template default. Set it to `""` to skip OTLP.
 
 ### Option A — Argo Workflows Server UI (GUI, behind IAP)
 
@@ -516,11 +542,12 @@ equivalent to the Jenkins one-click build).
 > **Pre-populate the UI from the first Day1** — `argoworkflows.seedRuns` (or
 > `JENKINS2026_ARGOWORKFLOWS_SEED_RUNS`) is **`true` by default**.
 > [`scripts/06-argoworkflows-pipelines.sh`](../scripts/06-argoworkflows-pipelines.sh)
-> submits one `Workflow` per service from [`argoworkflows/runs/`](../argoworkflows/runs/)
-> during provisioning, so the UI lists runnable entries you can **Resubmit** with one
-> click immediately. Parity with `tekton.seedRuns`. The trade-off: it runs **one build
-> per service per Day1**; set it `false` to skip (the git-push trigger is the normal way
-> to start runs).
+> submits every stable-tier run manifest from [`argoworkflows/runs/`](../argoworkflows/runs/)
+> during provisioning (the two service builds plus the k6 smoke; the `*-develop` and
+> k6-load runs join only when the develop track is on), so the UI lists runnable entries
+> you can **Resubmit** with one click immediately. Parity with `tekton.seedRuns`. The
+> trade-off: it runs **one build per service (plus a k6 smoke) per Day1**; set it `false`
+> to skip (the git-push trigger is the normal way to start runs).
 
 ### Option B — `kubectl create` / `argo submit`
 
@@ -579,10 +606,12 @@ the same `service.name` + `service.namespace=jenkins-2026` in
 `OTEL_RESOURCE_ATTRIBUTES`) so its load-test telemetry lands in Tempo/Loki/Prometheus
 alongside everything else, exported to
 `http://otel-collector-gateway.observability.svc.cluster.local:4317`. Controller
-metrics (`argo_workflows_*` from the `workflow-controller-metrics` Service `:9090`)
-are scraped into Prometheus and drive the *Argo Workflows CI* Grafana dashboard
-(`uid: jenkins2026-argo-workflows-ci`); step pod logs land in Loki
-(`k8s_namespace_name=argo-ci`). See [301. Observability](./301-OBSERVABILITY.md).
+metrics (`argo_workflows_*`, scraped from the workflow-controller pod's `:9090` HTTPS
+endpoint — Argo v3.6+ ships no metrics Service, so the Prometheus
+`argo-workflows-controller` job uses pod discovery with `insecure_skip_verify`, see
+[`values-oss.yaml`](../observability/grafana/values-oss.yaml)) drive the *Argo
+Workflows CI* Grafana dashboard (`uid: jenkins2026-argo-workflows-ci`); step pod logs
+land in Loki (`k8s_namespace_name=argo-ci`). See [301. Observability](./301-OBSERVABILITY.md).
 
 ## Build speed
 

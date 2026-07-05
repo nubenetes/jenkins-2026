@@ -75,7 +75,21 @@ export GIT_USERNAME=<github-username>      GIT_TOKEN=<github-token>
 ./scripts/down.sh
 ```
 
-[`scripts/up.sh`](../scripts/up.sh) runs, in order: prereq/repo checks → namespaces, secrets & NetworkPolicies → the OpenTelemetry Operator → **ArgoCD** (`08.5`, installed *before* observability because the OSS stack is GitOps-managed by ArgoCD) → External Secrets sync (`08.6`, only when `secrets.backend=eso`) → the observability backend (`03`) → the selected CI engine and its pipelines (`04`/`06` — one of Jenkins+seed, Tekton+pipelines, GitHub Actions/ARC, or Argo Workflows per `ci.engine`; the chosen engine's `04-<engine>.sh` retires the other three) → Grafana dashboards (`07`) → Grafana alerts (`07.5`) → Headlamp (`08`) → Gateway + routes/IAP (`09`) → wait for the microservices Deployments, then the OTel injection self-heal guard. Every step is idempotent (`helm upgrade --install` / `kubectl apply`), so re-running `up.sh` after a partial failure is safe. Each step also runs standalone: `./scripts/0N-*.sh`.
+[`scripts/up.sh`](../scripts/up.sh) runs, in order:
+
+1. `00` prereq/repo checks, then the **orphaned-PD sweep** (`sweep-orphaned-pds.sh`, reclaims a prior incarnation's leaked CSI disks; non-fatal);
+2. `01` namespaces, secrets & NetworkPolicies;
+3. `02` the OpenTelemetry Operator;
+4. `08.5` **ArgoCD** (installed *before* observability because the OSS stack is GitOps-managed by ArgoCD);
+5. `08.6` External Secrets sync (only when `secrets.backend=eso`);
+6. `03` the observability backend;
+7. `04`/`06` the selected CI engine and its pipelines — one of Jenkins+seed, Tekton+pipelines, GitHub Actions/ARC, or Argo Workflows per `ci.engine`; the chosen engine's `04-<engine>.sh` retires the other three;
+8. `07` Grafana dashboards and `07.5` Grafana alerts;
+9. `08` Headlamp;
+10. `09` Gateway + routes/IAP;
+11. wait for the microservices Deployments, then the OTel injection self-heal guard.
+
+Every step is idempotent (`helm upgrade --install` / `kubectl apply`), so re-running `up.sh` after a partial failure is safe. Each step also runs standalone: `./scripts/0N-*.sh`.
 
 ## Step-by-Step Deployment Guide (For Other People)
 
@@ -144,16 +158,20 @@ The bootstrap already set the 4 GCP secrets. Add the remaining application-layer
 - `JENKINS_OIDC_CLIENT_ID` / `JENKINS_OIDC_CLIENT_SECRET`: Google OAuth client credentials for Jenkins Google login.
 - `JENKINS_OIDC_ADMIN_EMAIL`: Your Google email address — granted Admin roles in both Jenkins and ArgoCD.
 - `HEADLAMP_ADMIN_EMAILS`: Comma-separated list of Google emails granted GCP IAP access.
+- `IAP_OAUTH_CLIENT_ID` / `IAP_OAUTH_CLIENT_SECRET`: the Backend-type OAuth client for the Identity-Aware Proxy gating the Gateway-exposed UIs (created in Step 4).
+- `HEADLAMP_OIDC_CLIENT_ID` / `HEADLAMP_OIDC_CLIENT_SECRET`: Google OAuth client for Headlamp's "Sign in with Google".
 
-See [102. GitHub Actions Automation](./102-GITHUB_ACTIONS_AUTOMATION.md) for the complete secrets reference.
+See [103. GitHub Secrets Inventory](./103-GITHUB_SECRETS_INVENTORY.md) for the complete inventory of every secret and variable, and [102. GitHub Actions Automation](./102-GITHUB_ACTIONS_AUTOMATION.md) for the step-by-step setup walkthrough.
 
 ### Step 6: (Optional) Set Up Grafana Cloud Stack
 
 If using the default `observability.mode: grafana-cloud`:
 1. Log into your [Grafana Cloud Portal](https://grafana.com/) and copy your OTLP endpoint and Access Policy token.
 2. Manually install the **`grafana-jenkins-datasource`** plugin inside your Grafana Cloud stack.
-3. Locally create `observability/otel-collector/secret.yaml`:
+3. Locally create `observability/otel-collector/secret.yaml` and apply it:
    ```bash
+   cp observability/otel-collector/secret.example.yaml observability/otel-collector/secret.yaml
+   # edit secret.yaml: your OTLP endpoint + base64(instanceID:apiKey)
    kubectl create namespace observability --dry-run=client -o yaml | kubectl apply -f -
    kubectl apply -f observability/otel-collector/secret.yaml
    ```
@@ -248,7 +266,7 @@ Namespace-level `ResourceQuota` hard limits (applied by [`scripts/01-namespaces.
 - `argocd`: Requests max `1.5` CPU / `3.0Gi` memory.
 - `pgadmin`: Requests max `300m` CPU / `512Mi` memory.
 
-The **`microservices` namespace has no `ResourceQuota`** — its pods are sized by their own Deployment requests/limits (plus the namespace `LimitRange` default). The per-engine CI-run namespaces (`tekton-ci`, `arc-runners`, `argo-ci`) are likewise unquota'd so build agents can burst.
+The **`microservices` namespace's `ResourceQuota` is GitOps-managed**, not script-applied: the gitops-config chart's `helm/microservices/templates/resourcequota.yaml` applies `microservices-quota` (Requests max `4.0` CPU / `6.0Gi` memory, Limits max `10` CPU / `12.0Gi`) per tier namespace, and the same chart's `LimitRange` supplies the container defaults. The per-engine CI-run namespaces (`tekton-ci`, `arc-runners`, `argo-ci`) are unquota'd so build agents can burst.
 
 ### Terraform Version & Stacks
 

@@ -139,6 +139,66 @@ Known per-backend state:
 | **microservices gateway (JHipster)** | Spring Boot `server.ssl.*` + cert-manager `keystores.pkcs12` | **cross-repo** — the deploy chart lives in `jenkins-2026-gitops-config`; also interacts with Argo Rollouts canary routes and every engine's smoke test URL |
 | **faro receiver (otel-collector)** | OTLP/faro receiver `tls` block + mounted cert | health check is already TCP (protocol-agnostic); config threads through `03-observability.sh`'s collector values |
 
+## Does `secrets.backend=eso` change anything?
+
+**No — deliberately.** The ESO backend ([docs/201](./201-ARCHITECTURE.md#secrets-backend-imperative--eso))
+externalizes secrets whose **source of truth is outside the cluster** (the
+GitHub-sourced credentials, groups 1–3). cert-manager certificates are the
+opposite case: **minted, rotated and consumed entirely in-cluster**, with the
+in-cluster CA as their source of truth — the same rationale that keeps group 4
+(in-cluster / Terraform-minted secrets) imperative even in `eso` mode.
+Round-tripping short-lived, auto-rotated private keys through GCP Secret Manager
+would add an external copy of every key and rotation churn in the external
+store, with no recoverability benefit — a rebuild regenerates the whole PKI
+anyway (the CA is ephemeral per cluster; see Lifecycle).
+
+The one *legitimate* ESO interaction is **optional CA persistence**: if you ever
+wanted the CA **keypair** to survive rebuilds (so backend certs chain to a stable
+root across `Decom`+`Day1`), you could store the CA Secret in Secret Manager and
+have ESO restore it on provision — the same `sm_keep_or_generate` pattern the
+platform uses for stable Postgres passwords ([docs/104](./104-REBUILD_SAFETY.md)).
+With an **LB-only trust model** (no external client ever pins these certs; only
+the LB validates them, and its trust anchor is regenerated in the same run) this
+buys nothing, so it is **documented here and not implemented**.
+
+## Why not a service mesh?
+
+Backend TLS closes exactly one gap — application-layer TLS + server
+authentication on the LB→pod hop. A service mesh (Istio, or GKE's managed **Cloud
+Service Mesh**) also closes it, but by re-making platform decisions this repo
+made deliberately: **sidecar-free** progressive delivery (Argo Rollouts + the
+Gateway API traffic-router plugin — [docs/501 § Progressive Delivery](./501-PLATFORM_OPERATIONS.md)),
+WireGuard transport encryption, and enforced Dataplane V2 NetworkPolicies. The
+three options, in *this platform's* context (a two-microservice PoC that already
+has those three):
+
+| | **cert-manager + `BackendTLSPolicy`** (chosen) | **Istio (self-managed)** | **Cloud Service Mesh (GCP managed)** |
+|---|---|---|---|
+| **What it closes** | App-layer TLS on the LB→pod hop (+ the internal hop later) | mTLS with per-workload **identity** on **all** hops + L7 authZ | Same as Istio, managed control plane |
+| **New moving parts** | cert-manager + one policy per host + cert Secrets in the apps | Control plane (istiod) + a sidecar per pod (or ambient ztunnel/waypoint) | Managed control plane; data-plane proxies still run in your pods |
+| **Operational cost** | Low — cert-manager auto-rotates; no new plane to upgrade | High — control-plane upgrades, proxy version skew, debugging through sidecars | Medium — Google runs the control plane, **but requires GKE Enterprise** (licensing cost) |
+| **Identity / authZ** | None (one-way TLS, no workload identity) | SPIFFE identities + `AuthorizationPolicy` L7 rules | Same, plus a managed mesh CA |
+| **Redundancy with what's built** | None — composes with WireGuard / NetPols / Rollouts | **Triple overlap**: traffic-shifting (vs Rollouts + Gateway plugin), transport encryption (vs WireGuard + Google in-transit), L3/4 authZ (vs enforced Cilium NetworkPolicies) | Same overlaps, slightly attenuated by the Gateway API integration |
+| **Interaction risk** | Health checks must switch to HTTPS (handled) | Dataplane V2 (managed Cilium/eBPF) + Istio is a *supported but delicate* two-layer combo | Same class of constraint, better documented by Google |
+| **Fit for a 2-service PoC** | Right-sized | Overkill | Overkill + license |
+| **Cost** | $0 | $0 licence, high toil | GKE Enterprise subscription |
+
+**Why the meshes lost here** — not because meshes are wrong, but because this
+platform already made the calls a mesh would re-make: Argo Rollouts + the Gateway
+API plugin were chosen *specifically* to get canary/blue-green **without
+sidecars**; WireGuard already closes plaintext-on-the-wire; enforced
+NetworkPolicies already do L3/4 segmentation. A mesh would duplicate all three,
+add a second networking layer beside Dataplane V2's managed Cilium, and (for
+Cloud Service Mesh) couple the PoC to GKE Enterprise — while the **only** missing
+property was app-layer TLS on one hop.
+
+**When to revisit** — tens of services, a compliance mandate for **identity-based
+mTLS to the pod**, fine-grained L7 authorization between workloads, or
+multi-cluster. At that point prefer **Cloud Service Mesh over self-managed
+Istio** (the operational delta is what you'd be buying) and retire this flag's
+machinery in favour of the mesh CA. Until then, backend TLS is the minimal,
+composable increment.
+
 ## Lifecycle
 
 - **Enable**: set the flag — durable (`config.yaml`), per-run env

@@ -109,7 +109,7 @@ The flags above fix GC; they don't change the JVM's ~20–30 s **cold start** (S
 | **HotSpot + G1** *(current)* | ~20–30 s | medium | **high (C2 JIT)** | ✅ yes | none (Jib) | maximal |
 | **AOT cache / AppCDS** (Project Leyden, JDK 25) | **~30–50 % faster** | same | high | ✅ yes | low — bake `.jsa`/AOT cache into the image | GA in JDK 25 |
 | **CRaC** (Coordinated Restore at Checkpoint) | **~50–200 ms** | same / lower | high (already warm) | ✅ **yes** | medium — CRaC JDK + checkpoint stage | production-used (Azul/BellSoft) |
-| **GraalVM Native Image** | **~50–100 ms** | **~80 MB** | a bit lower (no PGO) | ❌ **no** (closed-world AOT, no JVMTI) | high — AOT + reachability hints | good (Spring 3+) but Hazelcast/Liquibase aristas |
+| **GraalVM Native Image** | **~50–100 ms** | **~80 MB** | a bit lower (no PGO) | ❌ **no** (closed-world AOT, no JVMTI) | high — AOT + reachability hints | good (Spring 3+) but Hazelcast/Liquibase rough edges |
 | **GraalVM JIT** | ~HotSpot | ≥ HotSpot | sometimes higher | ✅ yes | normal | being upstreamed (Galahad) |
 | **OpenJ9 / Semeru** | faster than HotSpot | **lower** | medium | ✅ yes | normal | mature, smaller ecosystem |
 
@@ -132,7 +132,7 @@ OTel is **not** all-or-nothing tied to the agent — there are three modes, and 
 
 | Mode | How | Runtime | Auto-coverage | Native-compatible |
 |---|---|---|---|---|
-| **Java agent** *(current)* | runtime, JVMTI bytecode weaving | HotSpot only | **maximal** (libs, DB, HTTP, method-level) | ❌ |
+| **Java agent** *(current)* | runtime, JVMTI bytecode weaving | any JVMTI JVM (HotSpot, OpenJ9, GraalVM JIT — not Native) | **maximal** (libs, DB, HTTP, method-level) | ❌ |
 | **OTel Spring Boot Starter** | build-time deps + Micrometer bridge | HotSpot **and GraalVM Native** | medium (what Spring/Micrometer cover) | ✅ |
 | **OTel eBPF / Grafana Beyla** | kernel (eBPF), zero code/agent | any binary (HotSpot, Native, …) | network-level (HTTP/gRPC/SQL spans) | ✅ |
 
@@ -177,9 +177,13 @@ Open risks to spike first: **Hazelcast + CRaC** and **agent + CRaC**. Until vali
 
 ## Analyzing JVM performance in Grafana
 
-The **`CI-CD JVM internals (all Java services + Jenkins)`** dashboard (uid `innrq4f`, tags `jvm`/`jenkins`) exposes everything inside the JVMs — both microservices **and the Jenkins controller** (it's a Java app too; filter by `service_name`). **Label model:** JVM metrics filter by **`k8s_namespace_name`** (`microservices`=stable, `microservices-develop`=develop) **+ `service_name`** — **not** `deployment_environment` (the OTel agent's JVM metrics don't carry it; only `target_info`/spanmetrics/traces/logs do). The `namespace` variable uses `allValue='.*'` so the **Jenkins** controller series — which carry no `k8s_namespace_name` — appear under *All*.
+The **`CI-CD JVM internals (all Java services + Jenkins)`** dashboard (uid `innrq4f`, tags `jvm`/`jenkins`) exposes everything inside the JVMs:
 
-Rows: **Heap** (used-by-pool, used vs committed vs max, live-set after GC) · **Non-heap** (Metaspace / code cache / compressed class) · **Garbage Collection** (time rate, frequency, pause p95/p99 by `jvm_gc_name`) · **Threads & classes** · **CPU** · **HTTP response times**.
+- **Scope** — both microservices **and the Jenkins controller** (it's a Java app too; filter by `service_name`).
+- **Label model** — JVM metrics filter by **`k8s_namespace_name`** (`microservices`=stable, `microservices-develop`=develop) **+ `service_name`** — **not** `deployment_environment` (the OTel agent's JVM metrics don't carry it; only `target_info`/spanmetrics/traces/logs do).
+- **The `namespace` variable** uses `allValue='.*'` so the **Jenkins** controller series — which carry no `k8s_namespace_name` — appear under *All*.
+
+Rows: **Overview** (KPI stats: CPU load, heap used/%, live threads, GC time/s + class loading, threads & thread state) · **Garbage Collection** (GC Used Time per collector, GC Active frequency, GC Pause p95/p99 — by `jvm_gc_name`) · **Heap & Non-Heap** (used vs committed vs max; Metaspace / code cache / compressed class) · **Memory Pools** (used by pool, live-set after GC) · **Buffers & advanced** (direct/mapped NIO buffer pools + process/system CPU — needs the experimental OTel runtime telemetry the Instrumentation CR enables) · **HTTP response times** (latency p50/p95/p99, request rate by status, 5xx rate, JVM/runtime context) · **Logs & Traces** (errors & warnings + traces for the selected service).
 
 ### Troubleshooting matrix
 
@@ -187,7 +191,7 @@ Rows: **Heap** (used-by-pool, used vs committed vs max, live-set after GC) · **
 |---|---|---|---|
 | **Memory leak** | *Live-set after GC* (`jvm_memory_used_after_last_gc_bytes`) trending **up** over time | Old-gen growth / unbounded cache | Heap dump; audit Hazelcast/caches; check for retained refs |
 | **GC latency** | *GC pause p95/p99* + *GC time rate* | Heap too small / frequent collections | Raise `MaxRAMPercentage`; confirm `jvm_gc_name` shows **G1** not Copy/MarkSweepCompact |
-| **CPU bottleneck** | *CPU utilization ratio* near 100 % | CPU-starved (cgroup throttling) | Raise CPU **limit**; check noisy neighbours |
+| **CPU bottleneck** | *CPU — process / system utilization + load avg* (Buffers & advanced row) near 100 % | CPU-starved (cgroup throttling) | Raise CPU **limit**; check noisy neighbours |
 | **Thread exhaustion** | *Thread count* climbing unbounded | Thread/connection-pool leak | Audit executors, Hikari/R2DBC pool sizes |
 | **Slow responses** | *HTTP p95/p99 latency* correlated with GC/CPU | GC pauses or CPU throttling | Cross-read the GC + CPU panels at the same timestamp |
 | **Metaspace growth** | *Non-heap → Metaspace* climbing | Classloader leak / dynamic proxies | Check for repeated context reloads / proxy churn |

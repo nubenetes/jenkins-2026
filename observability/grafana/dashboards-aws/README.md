@@ -72,15 +72,16 @@ publishes these to Amazon Managed Grafana via its Grafana HTTP API when
 ## Idempotency across the lifecycle
 
 Everything `scripts/07` does is get-or-create / overwrite, so re-running it
-(e.g. after a `02.99` GKE decommission + `02.01` re-provision, with the AMG
-backend left standing) converges without duplicates:
+(e.g. after a `Decom.cluster.01-gke` decommission + `Day1.cluster.01-gke`
+re-provision, with the AMG backend left standing) converges without duplicates:
 
 - the `jenkins-2026-dashboard-publisher` service account is reused by name;
 - its token is uniquely named, short-lived, and deleted on exit;
-- the AMP/CloudWatch/X-Ray datasources are matched by name and reused;
+- the AMP/CloudWatch/X-Ray datasources are matched by **type** and reused (one is
+  created only if the workspace has none of that type);
 - dashboards are overwritten in place by stable uid.
 
-A full backend teardown (`01.96`) + re-bootstrap (`01.04`) starts clean in a
-fresh workspace - just as idempotent.
+A full backend teardown (`Decom.infra.04-aws-grafana`) + re-bootstrap
+(`Day0.infra.04-aws-grafana`) starts clean in a fresh workspace - just as idempotent.
 
-See [`docs/observability.md`](../../../docs/observability.md#managed-aws).
+See [`docs/301-OBSERVABILITY.md`](../../../docs/301-OBSERVABILITY.md#observability-modes).

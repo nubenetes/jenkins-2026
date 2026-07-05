@@ -65,9 +65,22 @@ So the loop is: *seed job reads `services.yaml` → generates `gateway`/`jhipste
 <details>
 <summary>🔴 For specialists — the moving parts and how they're wired here</summary>
 
-**Generation (self-bootstrapping):** [`jcasc-seed-job.yaml`](../jenkins/casc/jcasc-seed-job.yaml) defines `seed-jobs` (a `cpsScm` pipeline tracking `JENKINS2026_REPO_BRANCH`, cron `H/30 * * * *`). It runs [`Jenkinsfile.seed`](../jenkins/pipelines/seed/) → `jobDsl` (`sandbox: false`, so it may `org.yaml.snakeyaml.Yaml`-parse the registry) against [`seed_jobs.groovy`](../jenkins/pipelines/seed/seed_jobs.groovy). For the **stable** env always (+ **develop** when `JENKINS2026_DEVELOP_TRACK_ENABLED=true`), it emits per service a `cps` job whose script is `@Library("microservices-shared-library@<infraBranch>") _` + `MicroservicesPipeline(...)`, a `microservices-k6-smoke[-develop]` job calling `MicroservicesK6SmokePipeline(targetNamespace, envName, genaiEnabled, profile:'smoke', presetChoices:[…])` (the VUs/iterations are no longer hard-coded — the smoke defaults live in `MicroservicesK6SmokePipeline.groovy`, and a **Build with Parameters** form exposes the full profile/VUs/duration/threshold knobs — see [302 · k6 Traffic & Load Testing](./302-K6_LOAD_TESTING.md)), and a `microservices[-develop]` ListView. `buildDiscarder numToKeep(20)` (seed itself keeps 10). It prunes the legacy `pac-dev` folder and the develop view when the track is off.
+**Generation (self-bootstrapping):**
+- [`jcasc-seed-job.yaml`](../jenkins/casc/jcasc-seed-job.yaml) defines `seed-jobs` — a `cpsScm` pipeline tracking `JENKINS2026_REPO_BRANCH`, cron `H/30 * * * *`.
+- It runs [`Jenkinsfile.seed`](../jenkins/pipelines/seed/) → `jobDsl` (`sandbox: false`, so it may `org.yaml.snakeyaml.Yaml`-parse the registry) against [`seed_jobs.groovy`](../jenkins/pipelines/seed/seed_jobs.groovy).
+- For the **stable** env always (+ **develop** when `JENKINS2026_DEVELOP_TRACK_ENABLED=true`), it emits:
+  - per service, a `cps` job whose script is `@Library("microservices-shared-library@<infraBranch>") _` + `MicroservicesPipeline(...)`;
+  - a `microservices-k6-smoke[-develop]` job calling `MicroservicesK6SmokePipeline(targetNamespace, envName, genaiEnabled, profile:'smoke', presetChoices:[…])` — the VUs/iterations are no longer hard-coded: empty parameters fall through the `K6SIM_*` contract to the smoke defaults (**4 VUs × 12 shared iterations**) in [`microservices-smoke.js`](../jenkins/pipelines/k6/microservices-smoke.js), and a **Build with Parameters** form exposes the full profile/VUs/duration/threshold knobs (see [302 · k6 Traffic & Load Testing](./302-K6_LOAD_TESTING.md));
+  - a `microservices[-develop]` ListView.
+- Retention: generated jobs keep 20 builds (`buildDiscarder numToKeep(20)`); the seed itself keeps 10.
+- It prunes the legacy `pac-dev` folder, and the develop view when the track is off.
 
-**Execution agent:** `MicroservicesPipeline` declares a **9-container** pod (SA `jenkins`; when `nodeAutoProvisioning` is enabled the agent targets the `ci-spot` Custom ComputeClass via `nodeSelector cloud.google.com/compute-class: ci-spot` + tolerations for the compute-class/gke-spot taints, so GKE NAP provisions a Spot node for it — empty flag → static pool): `maven` (`maven:3.9.9-eclipse-temurin-21`), `node` (`node:20-bookworm`), `docker` (`docker:26-dind`, privileged), `helm` (`alpine/k8s:1.31.3` — kubectl/helm/argocd/yq), `git` (`alpine/git:2.54.0`), `semgrep`, `trivy`, `codeql` (digest-pinned), `jnlp`. Host-path caches (`/tmp/jenkins-{maven,npm,trivy,codeql}-cache`) speed re-runs. `disableConcurrentBuilds()`, `buildDiscarder(20)`. `IMAGE = <MICROSERVICES_REGISTRY>/<service>:<gitBranch>`.
+**Execution agent:** `MicroservicesPipeline` declares a **9-container** pod (SA `jenkins`):
+- **Node placement** — `jenkins.runNodePool` (JCasC env `RUN_NODE_POOL`, default `static`): `static` → the long-lived pool (`nodeSelector app: jenkins-2026`); `ci-spot` + non-empty `GKE_COMPUTE_CLASS` → the NAP `ci-spot` Custom ComputeClass via `nodeSelector cloud.google.com/compute-class: ci-spot` + tolerations for the compute-class/gke-spot taints (GKE NAP provisions a Spot node).
+- **Containers** — `maven` (`maven:3.9.9-eclipse-temurin-21`) · `node` (`node:20-bookworm`) · `docker` (`docker:26-dind`, privileged) · `helm` (`alpine/k8s:1.31.3` — kubectl/helm/argocd/yq) · `git` (`alpine/git:2.54.0`) · `semgrep` · `trivy` · `codeql` (SHA-tag-pinned) · `jnlp`.
+- **Caches** — host-path `/tmp/jenkins-{maven,npm,trivy,codeql}-cache` speed re-runs.
+- **Options** — `disableConcurrentBuilds()`, `buildDiscarder(20)`, `idleMinutes 5` (a warm pod is reused by the next build instead of cold-starting).
+- **Image** — `IMAGE = <MICROSERVICES_REGISTRY>/<service>:<gitBranch>-<build#>-<sha8>` (SHA appended after checkout; rebuild-safe across `BUILD_NUMBER` resets).
 
 **The 11 stages** (verbatim): Checkout Microservices source (gateway gets a MySQL→Postgres hot-patch) · Checkout Infra configs · Semgrep SAST (+SARIF upload) · CodeQL Analysis (+SARIF upload) · Trivy IaC Scan · Build & Test (`microservicesBuild`) · Build & Push Image (`microservicesImage` — Jib for java, else Spring-Boot build-image via DinD; `docker build` for angular) · Trivy Image Scan · Deploy to Kubernetes (`microservicesDeploy`) · Smoke Test (`microservicesSmokeTest`) · Integration k6 Smoke Test (downstream `build job` wait). Post: `junit` + `recordIssues` (SARIF).
 
@@ -314,7 +327,7 @@ flowchart TB
 
 </details>
 
-**Reading it —** one flag drives three engine-neutral things through `up.sh`: **01-namespaces** provisions the `microservices-develop` namespace with the same platform plumbing stable gets (the additive CNPG NetworkPolicy, the `ghcr-credentials` pull secret, and an `edit` RoleBinding for the active engine's SA — `jenkins` · `tekton-ci` · the ARC runner SA · `argoworkflows-ci`); **08.5** appends a `develop` generator to the microservices ApplicationSet so ArgoCD creates the `microservices-develop` app from the lean `values-develop.yaml`; and the active CI engine generates the `-develop` jobs/runs. The OTLP-ingress and pgAdmin-egress NetworkPolicies already list `microservices-develop` statically (harmless when absent), and the non-OSS collectors add it to the CNPG metrics scrape — so telemetry flows with no extra wiring.
+**Reading it —** one flag drives three engine-neutral things through `up.sh`: **01-namespaces** provisions the `microservices-develop` namespace with the same script-applied plumbing stable gets (the additive CNPG NetworkPolicy and the `ghcr-credentials` pull secret); the `edit` RoleBinding for the active engine's SA — `jenkins` · `tekton-ci` · the ARC runner SA · `argoworkflows-ci` — lands via the GitOps **`platform-config`** app (`argocd/platform-config/templates/rbac-*.yaml`, gated on `ciEngine` + `developTrackEnabled`); **08.5** appends a `develop` generator to the microservices ApplicationSet so ArgoCD creates the `microservices-develop` app from the lean `values-develop.yaml`; and the active CI engine generates the `-develop` jobs/runs. The OTLP-ingress and pgAdmin-egress NetworkPolicies already list `microservices-develop` statically (harmless when absent), and the non-OSS collectors add it to the CNPG metrics scrape — so telemetry flows with no extra wiring.
 
 ## The service registry model
 
@@ -406,7 +419,7 @@ Defined in [`MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy
 *   **Build & Test** — Delegates to [`microservicesBuild.groovy`](../vars/microservicesBuild.groovy), using fast host-path Maven/npm caches.
 *   **Build & Push Image** — Delegates Docker packaging to [`microservicesImage.groovy`](../vars/microservicesImage.groovy), leveraging Jib (java w/ Jib plugin), Spring-Boot `build-image` via DinD, or `docker build` (angular), pushing to GHCR.
 *   **Trivy Image Scan** — Runs `trivy image` against the published container image.
-*   **Deploy to Kubernetes** — Delegates to [`microservicesDeploy.groovy`](../vars/microservicesDeploy.groovy). Checks out the GitOps repository, modifies the service's image tag using `yq`, pushes to the `main` branch, and runs the `argocd` CLI to trigger and wait for a synchronized healthy cluster rollout (then the OTel self-heal).
+*   **Deploy to Kubernetes** — Delegates to [`microservicesDeploy.groovy`](../vars/microservicesDeploy.groovy). Checks out the GitOps repository, modifies the service's image tag using `yq`, pushes to the tier's GitOps branch (`main` for stable, `develop` for the develop tier), and runs the `argocd` CLI to trigger and wait for a synchronized healthy cluster rollout (then the OTel self-heal).
 *   **Smoke Test** — Delegates to [`microservicesSmokeTest.groovy`](../vars/microservicesSmokeTest.groovy) for HTTP health check validation. The throwaway curl pod runs in the **agent's `jenkins` namespace** labelled `jenkins=slave` (so `jenkins-agent-policy` grants it egress), targeting the microservices Service FQDN — **not** in the `microservices` namespace, which is default-deny egress under NetworkPolicy enforcement and would time out (`curl exit 28`). See [501 § NetworkPolicy matrix](./501-PLATFORM_OPERATIONS.md#networkpolicy-matrix).
 *   **Integration k6 Smoke Test** — Triggers the downstream `microservices-k6-smoke` pipeline (`build job`, waits for completion).
 *   **Post Action Handler** — Saves unit test results via `junit` plugin and records static analysis warnings using `warnings-ng` plugin (`recordIssues` over the two SARIFs).
@@ -572,7 +585,7 @@ config:
   layout: elk
 ---
 flowchart TB
-  subgraph pod["MicroservicesPipeline agent pod (ns jenkins, SA jenkins, toleration jenkins-agent)"]
+  subgraph pod["MicroservicesPipeline agent pod (ns jenkins, SA jenkins, nodeSelector app=jenkins-2026 — or ci-spot ComputeClass + Spot tolerations)"]
     direction LR
     jnlp["jnlp<br/>UID 1000"]
     maven["maven<br/>root"]
@@ -591,7 +604,7 @@ flowchart TB
 
 </details>
 
-**Reading it —** one pod, nine containers, one least-privilege rule each. The takeaway: only `docker` (DinD) is **privileged / root-required**; `git` and `helm` are *forced* down to UID 1000 via the Kubernetes `securityContext` (overriding their image default, with `HOME=/tmp` so non-root tooling works); the rest run as their image's user with `allowPrivilegeEscalation:false`. The host-path caches (dashed) are mounted only where they pay off (Maven/npm/Trivy/CodeQL) to make re-runs fast. The table below restates the same model with exact images and UIDs.
+**Reading it —** one pod, nine containers, one least-privilege rule each. The takeaway: only `docker` (DinD) is **privileged**; `docker` and `codeql` are the two **root-required** containers (DinD needs root + privileged; codeql apt-installs Node.js at pipeline time); `git` and `helm` are *forced* down to UID 1000 via the Kubernetes `securityContext` (overriding their image default, with `HOME=/tmp` so non-root tooling works); the rest run as their image's user with `allowPrivilegeEscalation:false`. The host-path caches (dashed) are mounted only where they pay off (Maven/npm/Trivy/CodeQL) to make re-runs fast. The table below restates the same model with exact images and UIDs.
 
 | Container | Image | Effective UID | `allowPrivilegeEscalation` | Notes |
 |-----------|-------|:---:|:---:|-------|
@@ -603,7 +616,7 @@ flowchart TB
 | `semgrep` | `semgrep/semgrep:1.79.0` | 0 (image default) | false | No filesystem writes requiring root |
 | `trivy` | `aquasec/trivy:0.52.2` | 0 (image default) | false | No filesystem writes requiring root |
 | `docker` | `docker:26-dind` | **0 (required)** | true (privileged) | Docker-in-Docker daemon requires root and a privileged context |
-| `codeql` | `mcr.microsoft.com/cstsectools/codeql-container@…ba940166` (digest-pinned) | **0 (required)** | — | Runs `apt-get` + Node.js installer at pipeline time |
+| `codeql` | `mcr.microsoft.com/cstsectools/codeql-container:c6f3…ba940166` (SHA-tag-pinned) | **0 (required)** | — | Runs `apt-get` + Node.js installer at pipeline time |
 
 **Key implementation notes:**
 - `runAsUser: 1000` on `alpine/git` and `alpine/k8s` is applied via Kubernetes `securityContext` — it overrides the image's default UID at runtime without modifying the image itself.
