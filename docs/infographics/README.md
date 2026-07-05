@@ -7,46 +7,54 @@ This document serves as an architectural inventory and catalog of the 35 English
 ## Infographics Matrix Catalog
 
 <details>
-<summary>📋 Click to view the full detailed inventory table (35 entries)</summary>
+<summary>📋 Click to view the full detailed index list (35 entries)</summary>
 <br>
 
-| Code | Category | Infographic (Clickable Link) |
-| :--- | :--- | :--- |
-| **001** | `000: Platform Overview` | [End to End Golden Path Platform and Developer Workflow Overview](001_End_to_End_Golden_Path_Platform_and_Developer_Workflow_Overview.png) |
-| **002** | `000: Platform Overview` | [High Level Design and Multi Repository Platform Architecture](002_High_Level_Design_and_Multi_Repository_Platform_Architecture.png) |
-| **101** | `100: Landing Zone` | [GCP Keyless Landing Zone and WIF Federation](101_GCP_Keyless_Landing_Zone_and_WIF_Federation.png) |
-| **102** | `100: Landing Zone` | [GKE Golden Path JHipster Microservice Architecture](102_GKE_Golden_Path_JHipster_Microservice_Architecture.png) |
-| **103** | `100: Landing Zone` | [Argo Workflows and Argo Events on GKE](103_Argo_Workflows_and_Argo_Events_on_GKE.png) |
-| **104** | `100: Landing Zone` | [GKE Zero Trust Ingress North South Traffic Lifecycle with BackendTLS](104_GKE_Zero_Trust_Ingress_North_South_Traffic_Lifecycle_with_BackendTLS.png) |
-| **105** | `100: Landing Zone` | [GKE Golden Path High Availability PostgreSQL with CloudNativePG](105_GKE_Golden_Path_High_Availability_PostgreSQL_with_CloudNativePG.png) |
-| **201** | `200: Node Provisioning` | [GKE Cluster Topology and Karpenter Native Node Auto Provisioning](201_GKE_Cluster_Topology_and_Karpenter_Native_Node_Auto_Provisioning.png) |
-| **202** | `200: Node Provisioning` | [GitHub Actions on GKE ARC and Spot Runners](202_GitHub_Actions_on_GKE_ARC_and_Spot_Runners.png) |
-| **203** | `200: Node Provisioning` | [Jenkins 2026 GitHub Actions Workflow Catalog Map](203_Jenkins_2026_GitHub_Actions_Workflow_Catalog_Map.png) |
-| **301** | `300: Dataplane Security` | [GKE Dataplane V2 eBPF Zero Trust Isolation Matrix](301_GKE_Dataplane_V2_eBPF_Zero_Trust_Isolation_Matrix.png) |
-| **302** | `300: Dataplane Security` | [GKE Dataplane V2 Zero Trust Networking Architecture](302_GKE_Dataplane_V2_Zero_Trust_Networking_Architecture.png) |
-| **303** | `300: Dataplane Security` | [JHipster Gateway Architecture and Observability Map](303_JHipster_Gateway_Architecture_and_Observability_Map.png) |
-| **304** | `300: Dataplane Security` | [GKE Golden Path IDP Runtime Traffic and Data Integration](304_GKE_Golden_Path_IDP_Runtime_Traffic_and_Data_Integration.png) |
-| **305** | `300: Dataplane Security` | [GKE Platform Networking Blueprint Zero Trust North South Ingress](305_GKE_Platform_Networking_Blueprint_Zero_Trust_North_South_Ingress.png) |
-| **401** | `400: Secrets & DevSecOps` | [Zero Trust Keyless Secrets Lifecycle via ESO and WIF](401_Zero_Trust_Keyless_Secrets_Lifecycle_via_ESO_and_WIF.png) |
-| **402** | `400: Secrets & DevSecOps` | [DevSecOps Multilayer Scanning and SARIF Flow](402_DevSecOps_Multilayer_Scanning_and_SARIF_Flow.png) |
-| **501** | `500: CI Engines` | [Jenkins 2026 Automated CI Engine Architecture](501_Jenkins_2026_Automated_CI_Engine_Architecture.png) |
-| **502** | `500: CI Engines` | [Tekton CI Engine Architecture with Pipelines as Code and SLSA](502_Tekton_CI_Engine_Architecture_with_Pipelines_as_Code_and_SLSA.png) |
-| **601** | `600: Deployment & GitOps` | [Two Repo GitOps State Machine with ArgoCD and CI Workflow](601_Two_Repo_GitOps_State_Machine_with_ArgoCD_and_CI_Workflow.png) |
-| **602** | `600: Deployment & GitOps` | [Terraform IaC Idempotency and Day 1 State Flow](602_Terraform_IaC_Idempotency_and_Day_1_State_Flow.png) |
-| **603** | `600: Deployment & GitOps` | [Sidecar Free Progressive Delivery with Argo Rollouts and GKE Gateway API](603_Sidecar_Free_Progressive_Delivery_with_Argo_Rollouts_and_GKE_Gateway_API.png) |
-| **604** | `600: Deployment & GitOps` | [Sidecar Free Zero Trust BackendTLS and GitOps Workflow](604_Sidecar_Free_Zero_Trust_BackendTLS_and_GitOps_Workflow.png) |
-| **701** | `700: Tool Comparisons` | [Advanced CI Architecture Jenkins vs Tekton on GKE](701_Advanced_CI_Architecture_Jenkins_vs_Tekton_on_GKE.png) |
-| **702** | `700: Tool Comparisons` | [Spot Instance Resiliency Jenkins vs GitHub Actions ARC](702_Spot_Instance_Resiliency_Jenkins_vs_GitHub_Actions_ARC.png) |
-| **703** | `700: Tool Comparisons` | [CI Battle Jenkins Groovy vs Argo Workflows DAG and UI Strategy](703_CI_Battle_Jenkins_Groovy_vs_Argo_Workflows_DAG_and_UI_Strategy.png) |
-| **704** | `700: Tool Comparisons` | [CI Grand Master Battlecard 4 Way GKE Matrix](704_CI_Grand_Master_Battlecard_4_Way_GKE_Matrix.png) |
-| **705** | `700: Tool Comparisons` | [Jenkins Dominance Pluggable CI 4 Way Matrix and Classic UI Transition](705_Jenkins_Dominance_Pluggable_CI_4_Way_Matrix_and_Classic_UI_Transition.png) |
-| **706** | `700: Tool Comparisons` | [Why Jenkins Wins Battlecard and UI Security Strategy](706_Why_Jenkins_Wins_Battlecard_and_UI_Security_Strategy.png) |
-| **801** | `800: Observability` | [Grafana OSS Self Hosted OTel Signal Flow](801_Grafana_OSS_Self_Hosted_OTel_Signal_Flow.png) |
-| **802** | `800: Observability` | [Optimized OTel Data Flow and Grafana Cloud Free Tier](802_Optimized_OTel_Data_Flow_and_Grafana_Cloud_Free_Tier.png) |
-| **803** | `800: Observability` | [JVM Tuning and Hotspot Runtime Strategy](803_JVM_Tuning_and_Hotspot_Runtime_Strategy.png) |
-| **804** | `800: Observability` | [End to End Frontend Observability RUM with Grafana Faro and OTel](804_End_to_End_Frontend_Observability_RUM_with_Grafana_Faro_and_OTel.png) |
-| **901** | `900: Load & Lifecycle` | [k6 Traffic Simulation Unified Workload Profiles](901_k6_Traffic_Simulation_Unified_Workload_Profiles.png) |
-| **902** | `900: Load & Lifecycle` | [GKE Golden Path IDP Platform Lifecycle and Rebuild Safety Matrix](902_GKE_Golden_Path_IDP_Platform_Lifecycle_and_Rebuild_Safety_Matrix.png) |
+1. **000: Platform Overview**
+   - [[001]](#001---end-to-end-golden-path-platform-and-developer-workflow-overview) - [End to End Golden Path Platform and Developer Workflow Overview](001_End_to_End_Golden_Path_Platform_and_Developer_Workflow_Overview.png)
+   - [[002]](#002---high-level-design-and-multi-repository-platform-architecture) - [High Level Design and Multi Repository Platform Architecture](002_High_Level_Design_and_Multi_Repository_Platform_Architecture.png)
+2. **100: Landing Zone**
+   - [[101]](#101---gcp-keyless-landing-zone-and-wif-federation) - [GCP Keyless Landing Zone and WIF Federation](101_GCP_Keyless_Landing_Zone_and_WIF_Federation.png)
+   - [[102]](#102---gke-golden-path-jhipster-microservice-architecture) - [GKE Golden Path JHipster Microservice Architecture](102_GKE_Golden_Path_JHipster_Microservice_Architecture.png)
+   - [[103]](#103---argo-workflows-and-argo-events-on-gke) - [Argo Workflows and Argo Events on GKE](103_Argo_Workflows_and_Argo_Events_on_GKE.png)
+   - [[104]](#104---gke-zero-trust-ingress-north-south-traffic-lifecycle-with-backendtls) - [GKE Zero Trust Ingress North South Traffic Lifecycle with BackendTLS](104_GKE_Zero_Trust_Ingress_North_South_Traffic_Lifecycle_with_BackendTLS.png)
+   - [[105]](#105---gke-golden-path-high-availability-postgresql-with-cloudnativepg) - [GKE Golden Path High Availability PostgreSQL with CloudNativePG](105_GKE_Golden_Path_High_Availability_PostgreSQL_with_CloudNativePG.png)
+3. **200: Node Provisioning**
+   - [[201]](#201---gke-cluster-topology-and-karpenter-native-node-auto-provisioning) - [GKE Cluster Topology and Karpenter Native Node Auto Provisioning](201_GKE_Cluster_Topology_and_Karpenter_Native_Node_Auto_Provisioning.png)
+   - [[202]](#202---github-actions-on-gke-arc-and-spot-runners) - [GitHub Actions on GKE ARC and Spot Runners](202_GitHub_Actions_on_GKE_ARC_and_Spot_Runners.png)
+   - [[203]](#203---jenkins-2026-github-actions-workflow-catalog-map) - [Jenkins 2026 GitHub Actions Workflow Catalog Map](203_Jenkins_2026_GitHub_Actions_Workflow_Catalog_Map.png)
+4. **300: Dataplane Security**
+   - [[301]](#301---gke-dataplane-v2-ebpf-zero-trust-isolation-matrix) - [GKE Dataplane V2 eBPF Zero Trust Isolation Matrix](301_GKE_Dataplane_V2_eBPF_Zero_Trust_Isolation_Matrix.png)
+   - [[302]](#302---gke-dataplane-v2-zero-trust-networking-architecture) - [GKE Dataplane V2 Zero Trust Networking Architecture](302_GKE_Dataplane_V2_Zero_Trust_Networking_Architecture.png)
+   - [[303]](#303---jhipster-gateway-architecture-and-observability-map) - [JHipster Gateway Architecture and Observability Map](303_JHipster_Gateway_Architecture_and_Observability_Map.png)
+   - [[304]](#304---gke-golden-path-idp-runtime-traffic-and-data-integration) - [GKE Golden Path IDP Runtime Traffic and Data Integration](304_GKE_Golden_Path_IDP_Runtime_Traffic_and_Data_Integration.png)
+   - [[305]](#305---gke-platform-networking-blueprint-zero-trust-north-south-ingress) - [GKE Platform Networking Blueprint Zero Trust North South Ingress](305_GKE_Platform_Networking_Blueprint_Zero_Trust_North_South_Ingress.png)
+5. **400: Secrets & DevSecOps**
+   - [[401]](#401---zero-trust-keyless-secrets-lifecycle-via-eso-and-wif) - [Zero Trust Keyless Secrets Lifecycle via ESO and WIF](401_Zero_Trust_Keyless_Secrets_Lifecycle_via_ESO_and_WIF.png)
+   - [[402]](#402---devsecops-multilayer-scanning-and-sarif-flow) - [DevSecOps Multilayer Scanning and SARIF Flow](402_DevSecOps_Multilayer_Scanning_and_SARIF_Flow.png)
+6. **500: CI Engines**
+   - [[501]](#501---jenkins-2026-automated-ci-engine-architecture) - [Jenkins 2026 Automated CI Engine Architecture](501_Jenkins_2026_Automated_CI_Engine_Architecture.png)
+   - [[502]](#502---tekton-ci-engine-architecture-with-pipelines-as-code-and-slsa) - [Tekton CI Engine Architecture with Pipelines as Code and SLSA](502_Tekton_CI_Engine_Architecture_with_Pipelines_as_Code_and_SLSA.png)
+7. **600: Deployment & GitOps**
+   - [[601]](#601---two-repo-gitops-state-machine-with-argocd-and-ci-workflow) - [Two Repo GitOps State Machine with ArgoCD and CI Workflow](601_Two_Repo_GitOps_State_Machine_with_ArgoCD_and_CI_Workflow.png)
+   - [[602]](#602---terraform-iac-idempotency-and-day-1-state-flow) - [Terraform IaC Idempotency and Day 1 State Flow](602_Terraform_IaC_Idempotency_and_Day_1_State_Flow.png)
+   - [[603]](#603---sidecar-free-progressive-delivery-with-argo-rollouts-and-gke-gateway-api) - [Sidecar Free Progressive Delivery with Argo Rollouts and GKE Gateway API](603_Sidecar_Free_Progressive_Delivery_with_Argo_Rollouts_and_GKE_Gateway_API.png)
+   - [[604]](#604---sidecar-free-zero-trust-backendtls-and-gitops-workflow) - [Sidecar Free Zero Trust BackendTLS and GitOps Workflow](604_Sidecar_Free_Zero_Trust_BackendTLS_and_GitOps_Workflow.png)
+8. **700: Tool Comparisons**
+   - [[701]](#701---advanced-ci-architecture-jenkins-vs-tekton-on-gke) - [Advanced CI Architecture Jenkins vs Tekton on GKE](701_Advanced_CI_Architecture_Jenkins_vs_Tekton_on_GKE.png)
+   - [[702]](#702---spot-instance-resiliency-jenkins-vs-github-actions-arc) - [Spot Instance Resiliency Jenkins vs GitHub Actions ARC](702_Spot_Instance_Resiliency_Jenkins_vs_GitHub_Actions_ARC.png)
+   - [[703]](#703---ci-battle-jenkins-groovy-vs-argo-workflows-dag-and-ui-strategy) - [CI Battle Jenkins Groovy vs Argo Workflows DAG and UI Strategy](703_CI_Battle_Jenkins_Groovy_vs_Argo_Workflows_DAG_and_UI_Strategy.png)
+   - [[704]](#704---ci-grand-master-battlecard-4-way-gke-matrix) - [CI Grand Master Battlecard 4 Way GKE Matrix](704_CI_Grand_Master_Battlecard_4_Way_GKE_Matrix.png)
+   - [[705]](#705---jenkins-dominance-pluggable-ci-4-way-matrix-and-classic-ui-transition) - [Jenkins Dominance Pluggable CI 4 Way Matrix and Classic UI Transition](705_Jenkins_Dominance_Pluggable_CI_4_Way_Matrix_and_Classic_UI_Transition.png)
+   - [[706]](#706---why-jenkins-wins-battlecard-and-ui-security-strategy) - [Why Jenkins Wins Battlecard and UI Security Strategy](706_Why_Jenkins_Wins_Battlecard_and_UI_Security_Strategy.png)
+9. **800: Observability**
+   - [[801]](#801---grafana-oss-self-hosted-otel-signal-flow) - [Grafana OSS Self Hosted OTel Signal Flow](801_Grafana_OSS_Self_Hosted_OTel_Signal_Flow.png)
+   - [[802]](#802---optimized-otel-data-flow-and-grafana-cloud-free-tier) - [Optimized OTel Data Flow and Grafana Cloud Free Tier](802_Optimized_OTel_Data_Flow_and_Grafana_Cloud_Free_Tier.png)
+   - [[803]](#803---jvm-tuning-and-hotspot-runtime-strategy) - [JVM Tuning and Hotspot Runtime Strategy](803_JVM_Tuning_and_Hotspot_Runtime_Strategy.png)
+   - [[804]](#804---end-to-end-frontend-observability-rum-with-grafana-faro-and-otel) - [End to End Frontend Observability RUM with Grafana Faro and OTel](804_End_to_End_Frontend_Observability_RUM_with_Grafana_Faro_and_OTel.png)
+10. **900: Load & Lifecycle**
+   - [[901]](#901---k6-traffic-simulation-unified-workload-profiles) - [k6 Traffic Simulation Unified Workload Profiles](901_k6_Traffic_Simulation_Unified_Workload_Profiles.png)
+   - [[902]](#902---gke-golden-path-idp-platform-lifecycle-and-rebuild-safety-matrix) - [GKE Golden Path IDP Platform Lifecycle and Rebuild Safety Matrix](902_GKE_Golden_Path_IDP_Platform_Lifecycle_and_Rebuild_Safety_Matrix.png)
 
 </details>
 
