@@ -77,36 +77,50 @@
 <summary>🧠 Mental model — the whole platform in one map</summary>
 
 ```mermaid
-mindmap
-  root((jenkins-2026))
-    CI engine
-      Jenkins default
-      Tekton
-      GitHub Actions ARC
-      Argo Workflows
-    GitOps CD
-      ArgoCD always
-      app-of-apps
-    Workloads
-      JHipster microservices
-      CloudNativePG
-      develop tier optional
-    Observability
-      OpenTelemetry
-      four Grafana backends
-    Load testing
-      k6 traffic engine
-      profiles + presets
-      all four CI engines
-    Platform
-      GKE Dataplane V2
-      WireGuard + IAP
-      keyless WIF
-    Lifecycle
-      Day0 bootstrap
-      Day1 cluster
-      Day2 ops
-      Decom teardown
+flowchart LR
+    Root((jenkins-2026)):::root
+    
+    %% Branches
+    Root --- CI["CI Engine"]:::branch
+    Root --- CD["GitOps CD"]:::branch
+    Root --- WL["Workloads"]:::branch
+    Root --- OBS["Observability"]:::branch
+    Root --- LT["Load Testing"]:::branch
+    Root --- PL["Platform"]:::branch
+    Root --- LC["Lifecycle"]:::branch
+
+    %% Leaves
+    CI --- CI1("Jenkins (default)"):::leaf
+    CI --- CI2("Tekton"):::leaf
+    CI --- CI3("GitHub Actions ARC"):::leaf
+    CI --- CI4("Argo Workflows"):::leaf
+
+    CD --- CD1("ArgoCD (always)"):::leaf
+    CD --- CD2("app-of-apps"):::leaf
+
+    WL --- WL1("JHipster microservices"):::leaf
+    WL --- WL2("CloudNativePG"):::leaf
+    WL --- WL3("develop tier (optional)"):::leaf
+
+    OBS --- OBS1("OpenTelemetry"):::leaf
+    OBS --- OBS2("four Grafana backends"):::leaf
+
+    LT --- LT1("k6 traffic engine"):::leaf
+    LT --- LT2("profiles + presets"):::leaf
+    LT --- LT3("all four CI engines"):::leaf
+
+    PL --- PL1("GKE Dataplane V2"):::leaf
+    PL --- PL2("WireGuard + IAP"):::leaf
+    PL --- PL3("keyless WIF"):::leaf
+
+    LC --- LC1("Day0 bootstrap"):::leaf
+    LC --- LC2("Day1 cluster"):::leaf
+    LC --- LC3("Day2 ops"):::leaf
+    LC --- LC4("Decom teardown"):::leaf
+
+    classDef root fill:#1f7ab0,stroke:#104e73,color:#fff,font-weight:bold,stroke-width:2px;
+    classDef branch fill:#eef8ff,stroke:#1f7ab0,color:#000,font-weight:bold;
+    classDef leaf fill:#fff,stroke:#d1d5db,color:#374151;
 ```
 
 </details>
