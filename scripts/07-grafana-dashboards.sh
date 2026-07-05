@@ -55,6 +55,21 @@ is_offengine_dashboard() {
   return 1
 }
 
+# Echo the uid(s) a CI overview may be published under, for deletion. A dashboard is
+# published under whatever uid its canonical JSON carries — NOT necessarily
+# "jenkins2026-<basename>" (jenkins-overview was round-tripped through Grafana Cloud
+# and now carries a generated uid), and the -azure/-aws variants preserve the
+# canonical uid (generate.py), so the canonical file is authoritative for every
+# backend. Also echo the legacy "jenkins2026-<basename>" uid when it differs: a
+# persistent stack may still hold a copy published under it. $1=dashboard basename.
+offengine_uids() {
+  local d="$1" canon
+  canon="$(jq -r '.uid // empty' "${DASHBOARDS_DIR}/${d}.json" 2>/dev/null || true)"
+  [[ -n "${canon}" ]] && printf '%s\n' "${canon}"
+  [[ "${canon}" != "jenkins2026-${d}" ]] && printf '%s\n' "jenkins2026-${d}"
+  return 0
+}
+
 # Delete the INACTIVE engines' overview dashboards by UID via the legacy HTTP API
 # (Bearer auth). Skipping the off-engine dashboard at publish time is not enough on
 # a PERSISTENT stack (Grafana Cloud / Azure Managed Grafana): gcx push and
@@ -65,14 +80,15 @@ delete_offengine_dashboard() {
   local base="${1%/}" key="$2" d off_uid
   for d in ${ALL_CI_DASHBOARDS}; do
     [[ "${d}" == "${KEEP_CI_DASHBOARD}" ]] && continue
-    off_uid="jenkins2026-${d}"
-    if curl -fsS "${base}/api/dashboards/uid/${off_uid}" -H "Authorization: Bearer ${key}" >/dev/null 2>&1; then
-      if curl -fsS -X DELETE "${base}/api/dashboards/uid/${off_uid}" -H "Authorization: Bearer ${key}" >/dev/null 2>&1; then
-        log_info "Deleted off-engine dashboard ${off_uid} (ci.engine=${ACTIVE_CI_ENGINE})."
-      else
-        log_warn "Could not delete off-engine dashboard ${off_uid}."
+    for off_uid in $(offengine_uids "${d}"); do
+      if curl -fsS "${base}/api/dashboards/uid/${off_uid}" -H "Authorization: Bearer ${key}" >/dev/null 2>&1; then
+        if curl -fsS -X DELETE "${base}/api/dashboards/uid/${off_uid}" -H "Authorization: Bearer ${key}" >/dev/null 2>&1; then
+          log_info "Deleted off-engine dashboard ${d} (uid ${off_uid}, ci.engine=${ACTIVE_CI_ENGINE})."
+        else
+          log_warn "Could not delete off-engine dashboard ${d} (uid ${off_uid})."
+        fi
       fi
-    fi
+    done
   done
 }
 
@@ -342,16 +358,18 @@ case "${J2026_OBS_MODE}" in
     # Delete the INACTIVE engines' CI overviews so stale dashboards don't persist
     # across engine switches (all four CI engines are mutually exclusive). Mirrors the
     # delete_offengine_dashboard() helper, but via this branch's AMG `api` wrapper.
+    # (The -aws variants preserve the canonical uid, so offengine_uids applies here.)
     for d in ${ALL_CI_DASHBOARDS}; do
       [[ "${d}" == "${KEEP_CI_DASHBOARD}" ]] && continue
-      delete_uid="jenkins2026-${d}"
-      if api GET "/api/dashboards/uid/${delete_uid}" >/dev/null 2>&1; then
-        if api DELETE "/api/dashboards/uid/${delete_uid}" >/dev/null 2>&1; then
-          log_info "Deleted off-engine dashboard ${delete_uid}."
-        else
-          log_warn "Could not delete off-engine dashboard ${delete_uid} (may not exist)."
+      for delete_uid in $(offengine_uids "${d}"); do
+        if api GET "/api/dashboards/uid/${delete_uid}" >/dev/null 2>&1; then
+          if api DELETE "/api/dashboards/uid/${delete_uid}" >/dev/null 2>&1; then
+            log_info "Deleted off-engine dashboard ${d} (uid ${delete_uid})."
+          else
+            log_warn "Could not delete off-engine dashboard ${d} (uid ${delete_uid})."
+          fi
         fi
-      fi
+      done
     done
     ;;
 
