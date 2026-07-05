@@ -64,7 +64,8 @@ to follow a build; you look at GitHub.
 >
 > Two rarer causes of the same "stuck queued" symptom: **(a)** the run was queued *before* the
 > `AutoscalingRunnerSet` finished registering — GitHub won't retro-assign it, so **re-trigger**
-> with a fresh `push`/PR (`workflow_dispatch` is intentionally not wired); **(b)** registration
+> with a fresh `push` or a 1-click *Run workflow* (`workflow_dispatch`) — a PR won't trigger
+> anything (there is deliberately no `pull_request` trigger; § Security); **(b)** registration
 > itself is failing — there is **no** Running `…-listener` pod
 > (`kubectl -n arc-systems get pods | grep listener`); see the §9.5 troubleshooting in
 > [`103-GITHUB_SECRETS_INVENTORY.md`](./103-GITHUB_SECRETS_INVENTORY.md) (the GitHub App needs
@@ -395,14 +396,18 @@ selected engine ([`up.sh`](../scripts/up.sh) branches on `ci.engine`, with
 **decommissions the other three engines in the same run**:
 [`04-githubactions.sh`](../scripts/04-githubactions.sh) calls the shared
 `retire_ci_engine` helper (in [`scripts/lib/common.sh`](../scripts/lib/common.sh))
-once each for `jenkins`, `tekton`, and `argoworkflows` — deleting **every** ArgoCD
-app the engine owns (parent app-of-apps + all children), its namespaces (which
-takes the jenkins/tekton/argo dashboard routes + IAP policies with them),
-clearing any stuck GKE NEG finalizer that would deadlock the namespace delete, and
-Helm-uninstalling a legacy pre-ArgoCD Jenkins release. Every `04-<engine>.sh`
-retires the other three the same way — it is not a jenkins↔tekton toggle. The
-shared microservices are GitOps-managed by ArgoCD, so they survive the switch —
-only the CI engine itself (and its public routing) changes.
+once each for `jenkins`, `tekton`, and `argoworkflows`, which per engine:
+
+- deletes **every** ArgoCD app the engine owns (parent app-of-apps + all children);
+- deletes its namespaces — taking the jenkins/tekton/argo dashboard routes + IAP
+  policies with them;
+- clears any stuck GKE NEG finalizer that would deadlock the namespace delete;
+
+plus a one-off `helm uninstall` of a legacy pre-ArgoCD Jenkins release. Every
+`04-<engine>.sh` retires the other three the same way — it is not a
+jenkins↔tekton toggle. The shared microservices are GitOps-managed by ArgoCD, so
+they survive the switch — only the CI engine itself (and its public routing)
+changes.
 
 ### Namespace layout
 
@@ -564,14 +569,16 @@ steps:
 
 | Mode | What it adds | Why |
 |---|---|---|
-| `dind` (default) | a **privileged Docker sidecar** on each runner pod | parity with the `docker` dind container in the Jenkins 8-container agent pod; required for the **angular / `spring-boot:build-image` buildpacks** path and the `docker run …` scanner steps (Semgrep/Trivy) in the workflow |
+| `dind` (default) | a **privileged Docker sidecar** on each runner pod | parity with the `docker` dind container in the Jenkins 9-container agent pod; required for the **angular / `spring-boot:build-image` buildpacks** path and the `docker run …` scanner steps (Semgrep/Trivy) in the workflow |
 | `kubernetes` | rootless, runs `container:`/`services:` jobs via the K8s API | no privileged sidecar — but can't run docker-in-docker steps |
 
 `dind` is the default because the rendered workflow uses `docker run` for the
 Semgrep/Trivy scanners and the angular buildpacks path needs a Docker daemon.
 **Java/Jib needs no daemon** (Jib builds + pushes the image straight to GHCR over
-the registry API), so a Java-only deployment could run `kubernetes` mode — but
-`dind` keeps every step working out of the box.
+the registry API) — but the Semgrep/Trivy steps still `docker run` for every
+service type, so `kubernetes` mode would break the scans even in a Java-only
+deployment. `dind` keeps every step working out of the box; moving the scanners to
+native binaries/actions is what would unlock `kubernetes` mode.
 
 ## RBAC
 
@@ -582,9 +589,10 @@ the registry API), so a Java-only deployment could run `kubernetes` mode — but
 needs — mirroring `rbac-jenkins.yaml`/`rbac-tekton.yaml`:
 
 - `edit` in each microservices namespace (stable, +develop when the develop track
-  is on) so the gitops-deploy OTel self-heal (`rollout restart`) works.
+  is on) — granted for the gitops-deploy OTel self-heal (`rollout restart`), which
+  the rendered workflow does not yet invoke.
 - an OTel-instrumentation editor binding (manage `opentelemetry.io`
-  `Instrumentation` CRs) for the OTel-injection self-heal.
+  `Instrumentation` CRs) for the same (not-yet-ported) OTel-injection self-heal.
 
 ## The pipeline, rendered into each fork
 
@@ -600,14 +608,19 @@ shared build-time patch [`resources/patch-app-source.sh`](../resources/patch-app
 (gateway MySQL→Postgres + NoOp-cache).
 
 `06-githubactions-pipelines.sh` is materially **simpler** than the Tekton seed
-(no webhook-create loop — the GitHub App handles dispatch): it waits for the
-`AutoscalingRunnerSet` to register, applies the `static` opt-out patch if
-configured, then for each service clones the fork, renders the workflow, and
-**diff-then-pushes** it (idempotent) to the fork's `main` — and, when the develop track is
-on, to its **`develop`** branch too, so push-to-develop / Run-workflow-from-develop runs the
-**develop tier** (see *[Triggering a build](#triggering-a-build--the-branch-based-tier-model-stable-vs-develop)* above). With `githubactions.seedRuns: true`
-(default, parity with `tekton.seedRuns`) it also `gh workflow run`s each fork so the Actions
-tab is populated from Day1.
+(no webhook-create loop — the GitHub App handles dispatch). It:
+
+- **waits** for the `AutoscalingRunnerSet` to register, and applies the `static`
+  opt-out patch if configured;
+- per service, **clones the fork, renders the workflow, and diff-then-pushes** it
+  (idempotent) to the fork's `main` — and, when the develop track is on, to its
+  **`develop`** branch too, so push-to-develop / Run-workflow-from-develop runs the
+  **develop tier** (see *[Triggering a build](#triggering-a-build--the-branch-based-tier-model-stable-vs-develop)* above);
+- **seeds the fork's repo secrets** the rendered workflow needs (`gh secret set
+  GIT_USERNAME`/`GIT_TOKEN`/`REGISTRY_USERNAME`/`REGISTRY_PASSWORD`) — a workflow
+  only sees its own repo's secrets, and GitHub never exposes them to fork-PR runs;
+- with `githubactions.seedRuns: true` (default, parity with `tekton.seedRuns`),
+  `gh workflow run`s each fork so the Actions tab is populated from Day1.
 
 ### The rendered workflow
 
@@ -623,7 +636,7 @@ tab is populated from Day1.
 | Trivy image scan | `docker run aquasec/trivy image` | — |
 | Deploy (GitOps + ArgoCD + OTel self-heal) | GitOps bump → `argocd app sync/wait` | **byte-identical** to `microservicesDeploy.groovy` (see below) |
 | Smoke test | `curl --retry … $svc.$TARGET_NS.svc:$port$health` | — |
-| Integration k6 | — no inline k6 stage; [`Day2.traffic.01-k6`](../.github/workflows/Day2.traffic.01-k6.yml) covers this engine (`--tag ci_runner=gha`, [docs/302](./302-K6_LOAD_TESTING.md)) | the closing *Export pipeline OTel trace* step is a placeholder that surfaces the job's OTel resource contract (§ [OTel export](#otel-export-same-collector-matching-attributes)) |
+| Integration k6 | **Export pipeline OTel trace** — currently a placeholder (prints the OTLP endpoint; no k6 run / span export yet) | k6 parity (`--tag ci_runner=githubactions`, as the other engines already emit) is the intended follow-up; the `k6-cloud` Secret is pre-provisioned in `arc-runners` |
 
 Key derivations in the workflow `env`:
 
@@ -633,7 +646,6 @@ Key derivations in the workflow `env`:
 | `ENV_NAME` | `develop` if `ref_name==develop` else `stable` | the deploy tier |
 | `TARGET_NS` | `<nsDevelop>` if `develop` else `<nsStable>` | `microservices-develop` / `microservices` |
 | `OTLP_ENDPOINT` | `http://otel-collector-gateway.<obs-ns>.svc.cluster.local:4317` | the in-cluster collector (runner pods reach it directly) |
-| `OTEL_SERVICE_NAME` + `OTEL_RESOURCE_ATTRIBUTES` | `githubactions-pipeline-<svc>` + `service.namespace=jenkins-2026,deployment.environment=<stable\|develop>` | the cross-engine OTel resource contract for any OTel-aware step — mirrors Jenkins' `jenkins-pipeline-<svc>` ([docs/402](./402-PIPELINES_AS_CODE.md)) and the k6 attributes ([docs/301](./301-OBSERVABILITY.md)) |
 | `runs-on` | `{{runnerLabel}}` = `githubactions.runnerScaleSetName` (`jenkins-2026-runners`) | the ARC equivalent of Jenkins' `agent { kubernetes }` / Tekton's `serviceAccountName: tekton-ci` |
 
 `on:` is `push` to `[main]` (+ `develop` when the develop track is enabled — the
@@ -645,10 +657,14 @@ trigger*) — a fork PR would otherwise run untrusted code on the in-cluster run
 
 The fork's native `GITHUB_TOKEN` is scoped to the **fork**, but the image target
 is the **separate** `nubenetes/jenkins-2026-microservices` package — so Jib
-authenticates with `-Djib.to.auth.username/password` from the
-`REGISTRY_USERNAME`/`REGISTRY_PASSWORD` secrets (the same GitHub secrets Day1
-already plumbs), exactly the Jenkins/Tekton credential model. The tag is
-`$REGISTRY/$SERVICE:$IMAGE_TAG` (`<branch>-<run#>`).
+authenticates with `-Djib.to.auth.username/password` from the fork's **own**
+`REGISTRY_USERNAME`/`REGISTRY_PASSWORD` repo secrets. A workflow only sees its own
+repo's secrets, so the seed ([`06-githubactions-pipelines.sh`](../scripts/06-githubactions-pipelines.sh))
+`gh secret set`s them (plus `GIT_USERNAME`/`GIT_TOKEN`) onto each fork from the
+same values Day1 already plumbs. GitHub never exposes secrets to fork-PR runs, so
+seeding the (public) forks is the standard self-hosted-CI model — exactly the
+Jenkins/Tekton credential model. The tag is `$REGISTRY/$SERVICE:$IMAGE_TAG`
+(`<branch>-<run#>`).
 
 ### GitOps bump — byte-identical to `microservicesDeploy.groovy`
 
@@ -660,34 +676,31 @@ The deploy step preserves every parity point with the Jenkins/Tekton GitOps stag
 - a **direct `git push origin main`** — that repo's `main` is **direct-push by
   design** (a PR gate would reject the machine push and wedge every deploy; see
   [`docs/502`](./502-MICROSERVICES_GITOPS.md) and CLAUDE.md);
-- then `argocd app sync/wait microservices-<env>` using the in-cluster
-  **`arc-argocd`** token (read from the mounted Secret, never a fork secret) +
-  the OTel-injection self-heal.
+- then a best-effort `argocd app sync/wait microservices-<env>` using the
+  in-cluster **`arc-argocd`** token (read from the mounted Secret, never a fork
+  secret). The OTel-injection self-heal (`kubectl rollout restart`) from
+  `microservicesDeploy.groovy` is **not yet ported** to the rendered workflow —
+  the RBAC for it is already in place ([`rbac-githubactions.yaml`](../argocd/platform-config/templates/rbac-githubactions.yaml)).
 
 ### OTel export (same collector, matching attributes)
 
-Runner pods are in-cluster, so they reach
-`otel-collector-gateway.observability.svc.cluster.local:4317` (gRPC) directly. The
-workflow `env` pins the cross-engine resource contract —
-`OTEL_SERVICE_NAME=githubactions-pipeline-<svc>` (mirroring Jenkins'
-`jenkins-pipeline-<svc>`) plus `OTEL_RESOURCE_ATTRIBUTES` with
-`service.namespace=jenkins-2026` and `deployment.environment=<stable|develop>` —
-so anything OTel-aware in the job exports into the **same** Grafana views as
-Jenkins/Tekton. Native run/step span export is a **deferred follow-up** shared with
-Tekton/Argo (see [docs/301](./301-OBSERVABILITY.md) § Jenkins Plugin) — the
-workflow's closing *Export pipeline OTel trace* step is today a placeholder that
-surfaces this contract. The
-[CI dashboard](../observability/grafana/dashboards/github-actions-ci.json) does
-**not** depend on it: its panels correlate runner telemetry by **k8s namespace**
-(`kube_pod_*` / ARC controller metrics, Loki `k8s_namespace_name`, TraceQL
-`resource.k8s.namespace.name` — stamped by the collector's `k8sattributes`
-processor on anything emitted from `arc-runners`). k6 for this engine runs from
-[`Day2.traffic.01-k6`](../.github/workflows/Day2.traffic.01-k6.yml) with
-`--tag ci_runner=gha` ([docs/302](./302-K6_LOAD_TESTING.md)), so the existing k6
-dashboards filter it out of the box. App runtime telemetry (the OTel Java agent
-via the `Instrumentation` CR) is unchanged. The `arc-runners` NetworkPolicy must
-allow egress to the observability namespace on `4317` or exported spans silently
-drop.
+Runner pods are in-cluster, so they can reach
+`otel-collector-gateway.observability.svc.cluster.local:4317` (gRPC) directly.
+Current state:
+
+- the workflow `env` pins `OTLP_ENDPOINT` (the in-cluster collector) and
+  `OTEL_SERVICE_NAME=githubactions-pipeline-<service>` for every step;
+- the final **Export pipeline OTel trace** step is a **placeholder** today — it
+  prints the endpoint/attributes but emits no spans yet. Build/k6 span export with
+  `--tag ci_runner=githubactions` (matching the Tekton k6 `K6_OTEL_*` contract) is
+  the intended follow-up; the `k6-cloud` Secret is already provisioned into
+  `arc-runners` for it ([`01-namespaces.sh`](../scripts/01-namespaces.sh));
+- engine observability instead comes from the **`github-actions-ci` dashboard**,
+  driven by runner-pod metrics/logs/traces scoped to `arc-runners`/`arc-systems`;
+- app **runtime** telemetry (the OTel Java agent via the `Instrumentation` CR) is
+  unchanged;
+- the `arc-runners` NetworkPolicy ([`networkpolicies-githubactions.yaml`](../infrastructure/networkpolicies-githubactions.yaml))
+  leaves egress open, so collector egress on `4317` works out of the box.
 
 ## Install / redeploy lifecycle
 
@@ -712,10 +725,11 @@ re-syncs the OCI charts from git.
 
 ARC has **no dashboard**, so `09-gateway.sh` creates **no `HTTPRoute`,
 `HealthCheckPolicy`, or `GCPBackendPolicy`** for it. The gateway/namespace logic
-guards on `== jenkins` / `== tekton` explicitly (rather than a 2-way
-`tekton`-else-`jenkins`), so a third value falls through to **neither** branch —
-otherwise githubactions would be mis-routed into the jenkins path (creating a
-jenkins route/IAP for a namespace that doesn't exist). Net effect in
+guards on `== jenkins` / `== tekton` / `== argoworkflows` explicitly (rather than a
+2-way `tekton`-else-`jenkins`), so an unmatched value (`githubactions`) falls
+through to **none** of them — otherwise githubactions would be mis-routed into the
+jenkins path (creating a jenkins route/IAP for a namespace that doesn't exist).
+Net effect in
 githubactions mode: `09-gateway` emits the engine-neutral routes (microservices,
 headlamp, pgadmin, argocd, faro, grafana-if-oss) and **no CI route** — correct
 for ARC. Runs are viewed at `https://github.com/nubenetes/<repo>/actions`.
@@ -759,8 +773,10 @@ the same `validate_run_node_pool` helper Jenkins/Tekton use.
 
 ## See also
 
-- [403. Tekton](./403-TEKTON.md) — the second engine + the `ci.engine` contract
-  and the candidate-engines roadmap that ranks ARC first.
+- [403. Tekton](./403-TEKTON.md) — the second engine + the `ci.engine` contract;
+  its roadmap section now lists ARC under *Already implemented* (it was the
+  top-ranked candidate before it shipped) and ranks the remaining candidates
+  (Woodpecker/Drone, Concourse, Dagger).
 - [405. Argo Workflows](./405-ARGO_WORKFLOWS.md) — the fourth engine (Argo Events
   trigger + Argo Workflows UI behind IAP), the other Kubernetes-native alternative.
 - [402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) — the Jenkins pipeline this

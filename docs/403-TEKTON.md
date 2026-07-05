@@ -83,7 +83,7 @@ In this repo the pipeline is the JHipster microservices build ported 1:1 from th
 - **`tekton-pipelines-webhook`** — admission (validation/defaulting) **and** conversion webhooks (`config.webhook.pipeline.tekton.dev` etc.). It self-generates its serving cert and injects the `caBundle` into its webhook configs; ArgoCD must **not** blank that caBundle — we set `ignoreDifferences` on `.clientConfig.caBundle` + `RespectIgnoreDifferences=true`, and crucially the app does **not** use `Replace=true` (which would `kubectl replace` the webhook config + ConfigMaps on every sync, re-triggering the webhook and blanking the caBundle; `ServerSideApply` only touches changed fields). On a fresh cluster ArgoCD's first sync can still race the cert (`x509` / `tls: unrecognized name`), which **self-heals** via the app's `syncPolicy.retry` (auto-retry with backoff) once the webhook is up — no script/manual restart. See [902 § Dataplane V2 enforcement](./902-TROUBLESHOOTING.md).
 - **Remote resolvers**: `pipelineRef`/`taskRef` can be resolved from git, hub, bundles, or the **cluster** resolver. PaC `.tekton/` files here use the **cluster resolver** to reference the in-cluster `microservices-pipeline` (a github.com URL would be git-misclassified by kustomize, and a git resolver would re-fetch).
 
-**Triggers (event → run):** [`tekton/triggers/eventlistener.yaml`](../tekton/triggers/eventlistener.yaml) runs an **EventListener** pod (`el-microservices`, ports 8080 event / 9000 metrics). A webhook POST flows: **interceptors** (GitHub signature check + CEL filtering) → **TriggerBinding** (extracts fields from the payload: repo, branch, sha…) → **TriggerTemplate** (renders a `PipelineRun` from those fields) → the controller runs it. RBAC: the `tekton-triggers-sa` may create PipelineRuns ([`tekton/rbac/triggers-rbac.yaml`](../tekton/rbac/triggers-rbac.yaml)).
+**Triggers (event → run):** [`tekton/triggers/eventlistener.yaml`](../tekton/triggers/eventlistener.yaml) runs an **EventListener** pod (`el-microservices`, ports 8080 event / 9000 metrics). A webhook POST flows: **interceptors** (the GitHub interceptor: HMAC signature check + `eventTypes` filtering) → **TriggerBinding** (extracts fields from the payload: repo, branch, sha…) → **TriggerTemplate** (renders a `PipelineRun` from those fields) → the controller runs it. RBAC: the `tekton-triggers-sa` may create PipelineRuns ([`tekton/rbac/triggers-rbac.yaml`](../tekton/rbac/triggers-rbac.yaml)).
 
 **Pipelines-as-Code (PaC, the normal path):** the **PaC controller** (namespace `pipelines-as-code`, exposed at `pac.<domain>`) receives GitHub events directly and runs the `PipelineRun` declared in the repo's **`.tekton/`** directory, gated by annotations (`on-event`, `on-target-branch`). A **`Repository` CR** ([`tekton/pac/repositories.yaml`](../tekton/pac/repositories.yaml)) links each forked GitHub repo to this cluster. PaC supersedes the raw EventListener for the app repos; the EventListener remains for the webhook-method path. See [§ Pipelines-as-Code](#pipelines-as-code-pac-git-driven-ci).
 
@@ -328,7 +328,7 @@ flowchart TD
       direction TB
       B1["DELETE ArgoCD Application 'tekton'<br/>(cascade-prune all 7 children)"]
       B2["DELETE Tekton gateway routes<br/>(Dashboard IAP + PaC)"]
-      B3["DELETE namespaces tekton-ci + tekton-pipelines<br/>(PipelineRun history + Secrets gone)"]
+      B3["DELETE namespaces tekton-ci + tekton-pipelines<br/>+ pipelines-as-code + tekton-chains<br/>(PipelineRun history + Secrets gone)"]
       B4["KEEP cluster-scoped Tekton CRDs (dormant)"]
       B1 --> B2 --> B3 --> B4
     end
@@ -346,13 +346,14 @@ flowchart TD
 | Delete the outgoing engine's ArgoCD app | ✅ `tekton` (app-of-apps, 7 children) | ✅ `jenkins` (single Application) |
 | Delete its public Gateway routing | ✅ Dashboard IAP **+ PaC** route | ✅ Jenkins IAP route **+ HealthCheckPolicy** |
 | Legacy Helm uninstall | — (Tekton is kustomize/vendored) | ✅ `helm uninstall` fallback |
-| **Delete the outgoing namespace(s)** | ✅ **`tekton-ci` + `tekton-pipelines`** (history + Secrets removed) | ❌ **keeps `jenkins`** ns + `jenkins-credentials` + JCasC CMs |
+| **Delete the outgoing namespace(s)** | ✅ **`tekton-ci` + `tekton-pipelines` + `pipelines-as-code` + `tekton-chains`** (history + Secrets removed) | ❌ **keeps `jenkins`** ns + `jenkins-credentials` + JCasC CMs |
 | Cluster-scoped CRDs | Tekton CRDs left **dormant** (fast re-enable) | n/a (Jenkins ships none) |
 | Shared microservices (GitOps) | **survive** | **survive** |
 | Reversible | ✅ switch back re-applies | ✅ switch back re-applies |
 | External residue | — | PaC **webhooks + `.tekton/`** on the `nubenetes/*` forks remain (point at a now-gone `pac.<domain>`; harmless, re-activate on switch-back) |
 
-**Why asymmetric:** Tekton owns dedicated namespaces (`tekton-ci`, `tekton-pipelines`)
+**Why asymmetric:** Tekton owns dedicated namespaces (`tekton-ci`, `tekton-pipelines`,
+`pipelines-as-code`, `tekton-chains`)
 that can be fully reaped without collateral, so they are deleted (you lose the
 PipelineRun history and the `tekton-*`/`k6-cloud`/`pac-webhook` Secrets — all
 recreated on switch-back). Jenkins lives in the shared `jenkins` namespace that
@@ -423,16 +424,23 @@ exactly like the other app-of-apps), which renders seven child Applications:
 | `tekton-pac` | [`argocd/tekton/components/pac`](../argocd/tekton/components/pac) (vendored `v0.48.0`) | 1 | Pipelines-as-Code controller; own `pipelines-as-code` ns; webhook receiver exposed at `pac.<baseDomain>` |
 | `tekton-pipeline-as-code` | [`tekton/`](../tekton/) (Tasks/Pipelines/Triggers/RBAC + the `tekton-ci` SA) | 2 | the ported pipeline; lands in the `tekton-ci` namespace |
 
-The component manifests are **vendored** under `argocd/tekton/components/*/`
-(`release*.yaml`) — Tekton now ships these only as GitHub release assets (not on
-the GCS bucket), and a `github.com` URL would be misclassified by kustomize as a
-git repo, so vendoring is the reliable, auditable choice. Versions are kept in
-sync with `ci.tekton.versions` in [`config/config.yaml`](../config/config.yaml). The large Tekton CRDs are
-handled the same way as the CNPG operator (`ServerSideApply=true` + `Replace=true`
-+ `ServerSideDiff=true`). The credential Secrets are **not** GitOps-managed (they
-hold env-sourced secrets) — [`01-namespaces.sh`](../scripts/01-namespaces.sh) / [`08.5-argocd.sh`](../scripts/08.5-argocd.sh) create them
-imperatively; an SA may reference Secrets that don't exist yet, so ordering is
-fine. ArgoCD requires [`08.5-argocd.sh`](../scripts/08.5-argocd.sh) to run first (it already does in [`up.sh`](../scripts/up.sh)).
+Operational notes on the app-of-apps:
+
+- **Vendored components** — the manifests live in-tree under `argocd/tekton/components/*/`
+  (`release*.yaml`): Tekton now ships these only as GitHub release assets (not on
+  the GCS bucket), and a `github.com` URL would be misclassified by kustomize as a
+  git repo, so vendoring is the reliable, auditable choice.
+- **Version pinning** — keep the vendored files in sync with `tekton.versions` in
+  [`config/config.yaml`](../config/config.yaml) when bumping.
+- **Large CRDs** — reconciled with `ServerSideApply=true` + `ServerSideDiff=true`
+  (like the CNPG operator), deliberately **without** `Replace=true` (removed:
+  `kubectl replace` re-triggered the Tekton webhook and blanked its self-managed
+  `caBundle` on every sync — see [`pipelines.yaml`](../argocd/tekton/templates/pipelines.yaml)).
+- **Credential Secrets stay imperative** — they hold env-sourced values, so
+  [`01-namespaces.sh`](../scripts/01-namespaces.sh) / [`08.5-argocd.sh`](../scripts/08.5-argocd.sh)
+  create them; an SA may reference Secrets that don't exist yet, so ordering is fine.
+- **Ordering** — ArgoCD must exist first: [`08.5-argocd.sh`](../scripts/08.5-argocd.sh)
+  runs before this step in [`up.sh`](../scripts/up.sh).
 
 ## Tooling: kustomize vs Helm (and why both)
 
@@ -466,7 +474,7 @@ environment. Helm values do this in one line; kustomize would need clunky
 
 Because the component manifests are vendored files (not Helm-templated), the
 **versions are pinned by the vendored `argocd/tekton/components/*/release*.yaml`**,
-not flowed from `config.yaml`. `ci.tekton.versions` documents the intended
+not flowed from `config.yaml`. `tekton.versions` documents the intended
 versions; keep the two in sync when bumping (re-download the release file). (An optional future refinement is to turn the
 [`tekton/`](../tekton/) pipelines-as-code into a small Helm chart to inject the observability
 namespace and tool-image versions — but the *component* versions would still
@@ -511,9 +519,13 @@ and share the same gateway build-time patch
 | Integration k6 | `k6-smoke` (+ standalone `microservices-k6-smoke` Pipeline) | — |
 
 [`scripts/06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh) is the
-**seed-job analogue**: it applies the Tasks/Pipelines/Triggers and generates one
-`PipelineRun` per service per environment (stable always; develop when
-`JENKINS2026_DEVELOP_TRACK_ENABLED=true`), kicking them asynchronously.
+**seed-job analogue**. The Tasks/Pipelines/Triggers themselves are GitOps-synced
+by the `tekton-pipeline-as-code` ArgoCD app (the script just waits for that sync);
+it then does the imperative activation ArgoCD can't: in PaC mode it creates the
+fork webhooks + pushes `.tekton/<svc>.yaml` (and seeds `tekton/runs/` when
+`tekton.seedRuns=true`); without a gateway it generates and kicks one `PipelineRun`
+per service per environment (stable always; develop when
+`JENKINS2026_DEVELOP_TRACK_ENABLED=true`), asynchronously.
 
 ### Credentials & RBAC
 
@@ -572,7 +584,7 @@ sequenceDiagram
 - **Tekton Chains** signs the pushed image + records SLSA provenance on every successful run (cosign key in `tekton-chains`).
 - Watch runs in the **Dashboard** (`tekton.<baseDomain>`, behind IAP) or with `tkn pr list -n tekton-ci`.
 
-**The k6 smoke** has two forms: `microservices-pipeline` runs a quick `k6-smoke` task at the end of every per-push run; the **standalone `microservices-k6-smoke` Pipeline** (analogue of the separate Jenkins k6 job) is *not* auto-triggered — run it on demand (below) or via [`Day2.traffic.01-k6`](../.github/workflows/Day2.traffic.01-k6.yml) for a longer load simulation.
+**The k6 smoke** has two forms: `microservices-pipeline` runs a quick `k6-smoke` task at the end of every per-push run; the **standalone `microservices-k6-smoke` Pipeline** (analogue of the separate Jenkins k6 job) is never git-triggered — PaC only runs `microservices-pipeline`. One seeded run does fire per Day1 via `tekton.seedRuns` ([`tekton/runs/k6-smoke.yaml`](../tekton/runs/k6-smoke.yaml)); beyond that, run it on demand (below) or via [`Day2.traffic.01-k6`](../.github/workflows/Day2.traffic.01-k6.yml) for a longer load simulation.
 
 ## Running a pipeline by hand (Dashboard / kubectl / tkn)
 
@@ -614,7 +626,7 @@ Open `https://tekton.<baseDomain>` (Google IAP login, [§ Dashboard](#dashboard-
 
 There is **no** hand-fill path in the *visual* form that succeeds for this pipeline (no workspace field — see the limitation above), so for `microservices-pipeline` the supported manual options are: the **YAML mode** of the Create dialog (paste a `tekton/runs/*.yaml`), **Rerun** of an existing/seeded run, or `kubectl create` (Option B). All three carry the `source`/`dockerconfig` bindings the visual form cannot.
 
-> **Pre-populate the Dashboard from the first Day1** — `tekton.seedRuns` (or `JENKINS2026_TEKTON_SEED_RUNS`) is **`true` by default**. [`scripts/06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh) seeds one PipelineRun per service from [`tekton/runs/`](../tekton/runs/) during provisioning, so the Dashboard lists runnable entries you can **Rerun** with one click immediately — no first paste/`kubectl create` needed. The trade-off: it runs **one build per service per Day1**; set it `false` to skip (PaC's git-push trigger is the normal way to start runs). This is a CI-engine convenience only — it does not change how PaC works.
+> **Pre-populate the Dashboard from the first Day1** — `tekton.seedRuns` (or `JENKINS2026_TEKTON_SEED_RUNS`) is **`true` by default**. [`scripts/06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh) seeds every run manifest in [`tekton/runs/`](../tekton/runs/) during provisioning — the two service builds + the standalone k6 smoke (develop-labelled runs — the `*-develop.yaml` builds and `k6-load.yaml` — only when the develop track is on), so the Dashboard lists runnable entries you can **Rerun** with one click immediately — no first paste/`kubectl create` needed. The trade-off: it runs **one build per service (plus one k6 smoke) per Day1**; set it `false` to skip (PaC's git-push trigger is the normal way to start runs). This is a CI-engine convenience only — it does not change how PaC works.
 
 > **Access URLs on every run (the Tekton parity for the Jenkins banner)** — Tekton's
 > upstream Dashboard has no system-message banner, so [`scripts/06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh)
@@ -815,12 +827,17 @@ acceptable for this PoC.
 - **PaC controller exposed publicly** via an `HTTPRoute` (`pac.<baseDomain>` →
   `pipelines-as-code-controller:8080`) — **without IAP** (GitHub must reach it;
   it is protected by the webhook **HMAC secret** instead).
-- A PaC **`Repository` CR** per fork (in the pipeline namespace) referencing a
-  Secret with the **PAT** (`github.token`, reusing `GIT_TOKEN`, `repo` scope —
-  used to clone and to post commit statuses) and the **webhook secret**.
-- A **webhook on each fork**, created via `gh api repos/nubenetes/<repo>/hooks`
-  (URL = the PaC controller route, `secret` = the webhook secret, events =
-  `push`, `pull_request`). The `gh`/`GIT_TOKEN` `repo` scope
+- A PaC **`Repository` CR** per fork (in the pipeline namespace) referencing the
+  **PAT** via the `tekton-git` Secret (key `password`, reusing `GIT_TOKEN`, `repo`
+  scope — used to clone and to post commit statuses) and the **webhook secret**
+  (`pac-webhook`, key `webhook.secret`).
+- A **webhook on each fork**, created via the GitHub REST API
+  (`POST /repos/nubenetes/<repo>/hooks`; `curl` in
+  [`06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh); URL = the PaC
+  controller route, `secret` = the webhook secret, events = `push`,
+  `pull_request`). The script first **prunes any stale hook** pointing at this
+  project's base domain (a previously-selected engine's receiver), so an engine
+  switch self-heals on the fork side too. The `GIT_TOKEN` `repo` scope
   already covers webhook management on org-owned repos — so this needs **no
   manual GitHub UI**.
 - **`.tekton/<svc>.yaml`** in each fork: a `PipelineRun` annotated
@@ -905,7 +922,7 @@ TaskRun controller tracing is a deferred follow-up — not wired today.) See
 
 Tekton's checkout is already shallow (`--depth 1` in every clone task — `fetch-source`, `gitops-deploy`, `k6-smoke`, `trivy-iac`), and there is no "agent scheduling / containerCap" concept (each `TaskRun` **is** a Pod; parallelism = node capacity). The two gaps vs the Jenkins agents, now closed:
 
-- **Node-local Maven/npm caches** — `maven-build-test` and `build-push-image` mount hostPath caches (`/tmp/tekton-maven-cache` → `/root/.m2`, `/tmp/tekton-npm-cache` → `/root/.npm`), mirroring the Jenkins agents' `/tmp/jenkins-*-cache`. Node-local (not a PVC) → no RWX/concurrency cost; deps survive across PipelineRuns instead of being re-downloaded every build.
+- **Node-local Maven/npm caches** — `maven-build-test` mounts both hostPath caches (`/tmp/tekton-maven-cache` → `/root/.m2`, `/tmp/tekton-npm-cache` → `/root/.npm`); `build-push-image` mounts the Maven cache (Jib) — mirroring the Jenkins agents' `/tmp/jenkins-*-cache`. Node-local (not a PVC) → no RWX/concurrency cost; deps survive across PipelineRuns instead of being re-downloaded every build.
 - **Task image pre-pull** — [`tekton/agent-image-prepull.yaml`](../tekton/agent-image-prepull.yaml) (DaemonSet in `tekton-pipelines`, applied by [`04-tekton.sh`](../scripts/04-tekton.sh)) pre-pulls the task images (maven · kaniko · **codeql** · semgrep · trivy · k6 · …) so a `TaskRun` starts without a cold pull — the analogue of the Jenkins prepull DaemonSet.
 
 ## ArgoCD ⇄ Tekton: how GitOps drives an ephemeral CI engine (deep dive + gotchas)

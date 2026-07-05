@@ -6,7 +6,7 @@
 
 Complete reference for every GitHub Actions secret and repository variable used across [`.github/workflows/`](../.github/workflows). Grouped by subsystem. **Required** = the workflow fails or silently skips its purpose without it. **Optional** = graceful degradation.
 
-> **Quick setup**: see [102 § Setup walkthrough](102-GITHUB_ACTIONS_AUTOMATION.md) for the step-by-step `gh secret set` commands that create these in order.
+> **Quick setup**: see [102 § One-time Setup (Bootstrapping)](102-GITHUB_ACTIONS_AUTOMATION.md#one-time-setup-bootstrapping) for the step-by-step `gh secret set` commands that create these in order.
 
 > **In-cluster Secrets**: these GitHub secrets are the *source* values. For how they
 > are materialised into Kubernetes `Secret`s, which namespace each lands in, and why
@@ -23,7 +23,7 @@ Complete reference for every GitHub Actions secret and repository variable used 
 
 ## 1. GCP / Core Infrastructure
 
-These four secrets are **required by every GCP-touching workflow**. They are produced in one shot by `terraform apply` inside [`terraform/bootstrap/`](../terraform/bootstrap) (one-time, local state, human-run — see [102 § Bootstrap](102-GITHUB_ACTIONS_AUTOMATION.md)).
+These four secrets are **required by every GCP-touching workflow**. They are produced in one shot by [`scripts/bootstrap.sh up`](../scripts/bootstrap.sh), which runs the `terraform apply` inside [`terraform/bootstrap/`](../terraform/bootstrap) and then `gh secret set`s all four automatically (one-time, local state, human-run — see [102 § One-time Setup (Bootstrapping)](102-GITHUB_ACTIONS_AUTOMATION.md#one-time-setup-bootstrapping)).
 
 | Secret | Type | Required | Source |
 |--------|------|----------|--------|
@@ -39,16 +39,23 @@ The GCP project that hosts the GKE cluster, GCS state bucket, and the Workload I
 Full resource name of the Workload Identity Federation provider, e.g. `projects/123/locations/global/workloadIdentityPools/pool/providers/github`. Used by `google-github-actions/auth` to exchange the OIDC token for a GCP access token — **no service account key ever stored**.
 
 **`GCP_SERVICE_ACCOUNT`**
-Email of the CI service account impersonated via WIF, e.g. `ci@my-project.iam.gserviceaccount.com`. Its project roles are granted by [`terraform/bootstrap`](../terraform/bootstrap/main.tf) (the authoritative source): `container.admin`, `compute.networkAdmin`, `compute.loadBalancerAdmin`, `iam.serviceAccountAdmin`, `iam.serviceAccountUser`, `resourcemanager.projectIamAdmin`, `serviceusage.serviceUsageAdmin`, **`certificatemanager.owner`** (owner — *not* editor; editor lacks the `.delete` permissions, so the Gateway cert map couldn't be torn down — see [902](./902-TROUBLESHOOTING.md)), **`dns.admin`** (manage the delegated public DNS zone's records in `gateway-bootstrap`), **`secretmanager.admin`** (push secret values to Secret Manager when `secrets.backend=eso`), plus `storage.objectAdmin` on the state bucket and `iam.workloadIdentityUser` for the GitHub WIF binding.
+Email of the CI service account impersonated via WIF, e.g. `ci@my-project.iam.gserviceaccount.com`. Its roles are granted by [`terraform/bootstrap`](../terraform/bootstrap/main.tf) (the authoritative source):
+
+- **Project roles**: `container.admin`, `compute.networkAdmin`, `compute.loadBalancerAdmin`, `iam.serviceAccountAdmin`, `iam.serviceAccountUser`, `resourcemanager.projectIamAdmin`, `serviceusage.serviceUsageAdmin`
+- **`certificatemanager.owner`** — owner, *not* editor; editor lacks the `.delete` permissions, so the Gateway cert map couldn't be torn down (see [902](./902-TROUBLESHOOTING.md))
+- **`dns.admin`** — manage the delegated public DNS zone's records in `gateway-bootstrap`
+- **`secretmanager.admin`** — push secret values to Secret Manager when `secrets.backend=eso`
+- **Bucket-scoped**: `storage.objectAdmin` on the state bucket, plus `storage.admin` on the Postgres-backups bucket (`terraform/gke` needs `storage.buckets.get/setIamPolicy` there to manage the node SA's binding)
+- **`iam.workloadIdentityUser`** on the SA itself — the GitHub WIF binding
 
 **`TF_STATE_BUCKET`**
-Name of the GCS bucket used for Terraform remote state by [`terraform/gke`](../terraform/gke), [`terraform/grafana-cloud-token`](../terraform/grafana-cloud-token), [`terraform/azure-managed-grafana`](../terraform/azure-managed-grafana), and [`terraform/aws-managed-grafana`](../terraform/aws-managed-grafana). Written into `backend_override.tf` at workflow runtime; never committed. Also holds the durable **`jenkins-2026/active-ci-engine`** object: `Day1.cluster.01-gke` writes the deployed CI engine there, and the cluster-decoupled dashboard publishers `Day2.publish.03-azure-grafana` / `Day2.publish.04-aws-grafana` read it (via read-only GCP auth) to gate the off-engine CI overview without needing cluster access.
+Name of the GCS bucket used for Terraform remote state by [`terraform/gke`](../terraform/gke), [`terraform/gateway-bootstrap`](../terraform/gateway-bootstrap), [`terraform/grafana-cloud-stack`](../terraform/grafana-cloud-stack), [`terraform/grafana-cloud-token`](../terraform/grafana-cloud-token), [`terraform/azure-managed-grafana`](../terraform/azure-managed-grafana), and [`terraform/aws-managed-grafana`](../terraform/aws-managed-grafana). Written into `backend_override.tf` at workflow runtime; never committed. Also holds the durable **`jenkins-2026/active-ci-engine`** object: `Day1.cluster.01-gke` writes the deployed CI engine there, and the cluster-decoupled dashboard publishers `Day2.publish.03-azure-grafana` / `Day2.publish.04-aws-grafana` read it (via read-only GCP auth) to gate the off-engine CI overview without needing cluster access.
 
 ---
 
 ## 2. Grafana Cloud
 
-Used by `observability.mode: grafana-cloud`. The lifecycle workflows (`Day1.cluster.01`, `Decom.cluster.01`) manage the Terraform-provisioned Grafana Cloud stack (data sources, service-account tokens, OTLP credentials); `Day2.publish.05` and `Day2.traffic.01` use these values at runtime.
+Used by `observability.mode: grafana-cloud`. The persistent-bootstrap workflows (`Day0.infra.02`, `Decom.infra.02`) create/destroy the Terraform-provisioned Grafana Cloud **stack**; the cluster lifecycle workflows (`Day1.cluster.01`, `Decom.cluster.01`) manage the per-deployment **token** module (service-account token + OTLP credentials). All four consume `GRAFANA_CLOUD_API_TOKEN`. The day-2 workflows (`Day2.publish.02`, `Day2.publish.05`, `Day2.traffic.01`) never read these GitHub secrets — they take the derived credentials from the in-cluster `grafana-cloud-credentials` Secret.
 
 | Secret / Variable | Type | Required | Scope |
 |-------------------|------|----------|-------|
@@ -71,7 +78,7 @@ The full Grafana Logs Explore URL used for the "View logs in Grafana" link from 
 
 ## 3. Grafana Alert Email
 
-Used by `Day2.publish.05-alerts` and [`scripts/07.5-grafana-alerts.sh`](../scripts/07.5-grafana-alerts.sh). The script resolves the contact-point email with this priority chain (highest → lowest):
+Used by `Day1.cluster.01-gke` and `Day2.publish.05-alerts` — both run [`scripts/07.5-grafana-alerts.sh`](../scripts/07.5-grafana-alerts.sh), which resolves the contact-point email with this priority chain (highest → lowest):
 
 ```
 GRAFANA_ALERT_EMAIL_<MODE>        ← per-mode secret (grafana-cloud, oss, …)
@@ -116,18 +123,18 @@ Used by `Day0.infra.03-azure-grafana`, `Day1.cluster.01-gke`, `Day2.publish.03-a
 | `AZURE_GRAFANA_ADMIN_OBJECT_IDS` | **yes** (managed-azure) | Comma-separated Entra object IDs granted the Grafana Admin role on Azure Managed Grafana |
 
 **`AZURE_CLIENT_ID`**
-The `appId` of the Entra app created during the one-time azure-bootstrap step (`Day0.infra.03`). The app has a federated credential configured to trust tokens from this repo's `azure-bootstrap` environment. Used by `azure/login@v2` to exchange the OIDC token for an Azure access token — no `AZURE_CLIENT_SECRET` needed.
+The `appId` of the Entra app created during the one-time azure-bootstrap step (`Day0.infra.03`). The app has a federated credential configured to trust tokens from this repo's `azure-bootstrap` environment. Used by `azure/login@v3` to exchange the OIDC token for an Azure access token — no `AZURE_CLIENT_SECRET` needed.
 
 **`AZURE_GRAFANA_ADMIN_OBJECT_IDS`**
 Your own Entra object ID (`az ad signed-in-user show --query id -o tsv`) so you can log into Azure Managed Grafana. Can be a comma-separated list for multiple admins.
 
-See [102 § Azure backend setup](102-GITHUB_ACTIONS_AUTOMATION.md) for the `az` commands that produce all four values.
+See [102 § One-time Setup, step 6 (Azure backend)](102-GITHUB_ACTIONS_AUTOMATION.md#one-time-setup-bootstrapping) for the `az` commands that produce all four values.
 
 ---
 
 ## 5. AWS Managed Grafana (`managed-aws` mode)
 
-Used by `Day0.infra.04-aws-grafana`, `Day1.cluster.01-gke`, `Day2.publish.04-aws-grafana`, `Day2.publish.05-alerts`, `Decom.infra.04-aws-grafana`. All three are **identifiers only** — authentication is via OIDC `AssumeRoleWithWebIdentity`; no access keys stored.
+Used by `Day0.infra.04-aws-grafana`, `Day1.cluster.01-gke`, `Day2.publish.04-aws-grafana`, `Day2.publish.05-alerts`, `Decom.infra.04-aws-grafana`. All five are **identifiers only** — authentication is via OIDC `AssumeRoleWithWebIdentity`; no access keys stored.
 
 | Secret | Required | Description |
 |--------|----------|-------------|
@@ -147,13 +154,13 @@ Comma-separated list of email addresses of IAM Identity Center users to grant Gr
 The OIDC issuer URL of the GKE cluster, e.g. `https://container.googleapis.com/v1/projects/…`. Used by [`terraform/aws-managed-grafana`](../terraform/aws-managed-grafana) to create the OIDC provider that lets the in-cluster OTel collector assume its IAM role via web-identity token projection.
 
 **`AWS_DASHBOARD_PUBLISH_ROLE_ARN`**
-IAM role with scoped permissions for `aws grafana create-workspace-api-key` and Grafana API calls. Assumed in CI by `Day2.publish.04` (dashboard publishing) and `Day2.publish.05` (alert provisioning) for day-2 operations without re-running the full provision.
+IAM role with scoped permissions for `aws grafana create-workspace-api-key` and Grafana API calls. Assumed in CI by `Day1.cluster.01-gke` (managed-aws runs publish dashboards + alerts in-workflow, since `up.sh` on the runner has no AWS credentials), `Day2.publish.04` (dashboard publishing) and `Day2.publish.05` (alert provisioning) — the day-2 pair reuse it without re-running the full provision.
 
 ---
 
 ## 6. Jenkins OIDC / Google Sign-In
 
-Used by `Day1.cluster.01-gke` (Jenkins JCasC OIDC sign-in). `JENKINS_OIDC_ADMIN_EMAIL` is additionally reused as an admin/notification identity by `Day2.redeploy.01-argocd`, `Day2.redeploy.04-headlamp`, `Day2.redeploy.05-gateway` and `Day2.publish.05-alerts`. Optional — without them Jenkins falls back to the local `admin` account (escape hatch).
+Used by `Day1.cluster.01-gke` (Jenkins JCasC OIDC sign-in), `Day2.redeploy.04-headlamp` and `Day2.redeploy.05-gateway` (both re-supply the OAuth-client env to the scripts they re-run). `JENKINS_OIDC_ADMIN_EMAIL` is additionally reused as an admin identity by `Day2.redeploy.01-argocd`; `Day2.publish.05-alerts` never reads the GitHub secret — it picks the same address up from the in-cluster `jenkins-credentials` `oidc-admin-email` key (the lowest-priority fallback in § 3). Optional — without them Jenkins falls back to the local `admin` account (escape hatch).
 
 | Secret | Required | Description |
 |--------|----------|-------------|
@@ -170,7 +177,7 @@ Create these in **Google Cloud Console → APIs & Services → OAuth 2.0 Client 
 
 ## 7. Headlamp & Identity-Aware Proxy
 
-Used by `Day1.cluster.01-gke` and `Day2.redeploy.04-headlamp`. Required only if the Gateway / IAP feature is enabled (`config/config.yaml → gateway.baseDomain`).
+Used by `Day1.cluster.01-gke`, `Day2.redeploy.04-headlamp` and `Day2.redeploy.05-gateway`; the IAP pair is additionally consumed by the engine redeploys whose UI sits behind IAP (`Day2.redeploy.03-tekton`, `Day2.redeploy.06-githubactions`, `Day2.redeploy.07-argoworkflows`), and `HEADLAMP_ADMIN_EMAILS` also by `Decom.cluster.01-gke` (so `down.sh` can delete the per-email ClusterRoleBindings). Required only if the Gateway / IAP feature is enabled (`config/config.yaml → gateway.baseDomain`).
 
 | Secret | Required | Description |
 |--------|----------|-------------|
@@ -181,7 +188,7 @@ Used by `Day1.cluster.01-gke` and `Day2.redeploy.04-headlamp`. Required only if 
 | `IAP_OAUTH_CLIENT_SECRET` | optional | OAuth client secret for IAP |
 
 **`HEADLAMP_ADMIN_EMAILS`**
-Written into the `headlamp-admin-emails` key of `jenkins-credentials` and used both by the Headlamp RBAC ClusterRoleBinding (granting `cluster-admin`) and by the IAP backend-service IAM binding (granting `IAP-secured Web App User`). **Never commit** — set via this secret.
+Never materialised into a k8s Secret — it flows as env only: `Day1.cluster.01-gke` passes it to Terraform as `TF_VAR_admin_emails` ([`terraform/gke`](../terraform/gke/main.tf) grants each email `roles/iap.httpsResourceAccessor` — the "IAP-secured Web App User" binding — plus `container.clusterViewer`), and exports it as `JENKINS2026_HEADLAMP_ADMIN_EMAILS` to [`scripts/08-headlamp.sh`](../scripts/08-headlamp.sh), which creates one `cluster-admin` ClusterRoleBinding per email ([`scripts/down.sh`](../scripts/down.sh) deletes them on teardown — which is why `Decom.cluster.01-gke` also consumes this secret). **Never commit** — set via this secret.
 
 **`IAP_OAUTH_CLIENT_ID` / `IAP_OAUTH_CLIENT_SECRET`**
 A separate OAuth client (Backend type) used by GKE's IAP integration. Different from the Headlamp and Jenkins OIDC clients. Created in **Google Cloud Console → Security → Identity-Aware Proxy**.
@@ -190,7 +197,7 @@ A separate OAuth client (Backend type) used by GKE's IAP integration. Different 
 
 ## 8. Private Registry & Git
 
-Used by `Day1.cluster.01-gke` and `Day2.redeploy.04-headlamp`. Needed only if microservice images are pulled from a private registry or the Microservices source repo is private.
+Used by `Day1.cluster.01-gke` and every redeploy workflow that re-runs the secret-provisioning scripts: `Day2.redeploy.03-tekton`, `Day2.redeploy.04-headlamp`, `Day2.redeploy.05-gateway`, `Day2.redeploy.06-githubactions`, `Day2.redeploy.07-argoworkflows` (`Day2.redeploy.02-jenkins` is the exception — it consumes no engine secrets and relies on the Day1-provisioned `jenkins-credentials`). Needed only if microservice images are pulled from a private registry or the Microservices source repo is private.
 
 | Secret | Required | Description |
 |--------|----------|-------------|
@@ -199,7 +206,7 @@ Used by `Day1.cluster.01-gke` and `Day2.redeploy.04-headlamp`. Needed only if mi
 | `GIT_USERNAME` | optional | GitHub username for cloning a private Microservices fork |
 | `GIT_TOKEN` | optional | GitHub PAT with `repo` scope for the private Microservices fork |
 
-If left unset, the image pull and git clone steps proceed unauthenticated (works for public repos / public images).
+If left unset, image pull and git **clone** proceed unauthenticated (works for public repos / public images) — but `GIT_TOKEN` is still required for anything that **writes**: the pipeline's *GitOps Update* push to `jenkins-2026-gitops-config`, SARIF upload, webhook creation ([`scripts/06-argoworkflows-pipelines.sh`](../scripts/06-argoworkflows-pipelines.sh) hard-fails without it), and the ARC PAT fallback (§ 9.5).
 
 ---
 
@@ -216,7 +223,7 @@ Used by `Day1.cluster.01-gke` and `Day2.redeploy.03-tekton` when the Tekton CI e
 A shared-secret HMAC token GitHub signs webhook deliveries with, validated by the Tekton Triggers `EventListener`. Optional — empty by default; only needed if you expose the EventListener webhook so GitHub can trigger PipelineRuns. You generate it yourself (e.g. `openssl rand -hex 20`) and set it as a GitHub Actions secret **and** in the GitHub repo's webhook config. Consumed by `Day1.cluster.01-gke` and `Day2.redeploy.03-tekton`.
 
 **`PAC_WEBHOOK_SECRET`**
-The equivalent HMAC token for **Pipelines-as-Code** (the git-driven CI path, the default for the app repos). [`scripts/01-namespaces.sh`](../scripts/01-namespaces.sh) writes it into the `pac-webhook` Secret (key `webhook.secret`, referenced by [`tekton/pac/repositories.yaml`](../tekton/pac/repositories.yaml)); empty by default, so PaC works unauthenticated until you set it and configure the matching GitHub webhook secret. Generate with `openssl rand -hex 20`. Consumed by `Day1.cluster.01-gke` and `Day2.redeploy.03-tekton`.
+The equivalent HMAC token for **Pipelines-as-Code** (the git-driven CI path, the default for the app repos). [`scripts/01-namespaces.sh`](../scripts/01-namespaces.sh) writes it into the `pac-webhook` Secret (key `webhook.secret`, referenced by [`tekton/pac/repositories.yaml`](../tekton/pac/repositories.yaml)); empty by default, so PaC works unauthenticated until you set it and configure the matching GitHub webhook secret. Generate with `openssl rand -hex 20`. Consumed by `Day1.cluster.01-gke`, `Day2.redeploy.03-tekton`, and `Day2.redeploy.07-argoworkflows` (as the fallback value for the Argo Events webhook HMAC — see § 9.6).
 
 ---
 
@@ -356,8 +363,9 @@ Enable it once, on the runner group that owns the scale set:
 
 - Open **`https://github.com/organizations/nubenetes/settings/actions/runner-groups`**
   (Org → Settings → Actions → *Runner groups*).
-- Open the group that owns `jenkins-2026-runners` — the **Default** group, unless you set
-  `githubactions.runnerGroup`.
+- Open the group that owns `jenkins-2026-runners` (the scale set does not set the
+  gha-runner-scale-set chart's `runnerGroup` value, so it always registers in the org's
+  **Default** runner group).
 - Tick **Allow public repositories**.
 - Under **Repository access**, choose **All repositories** (or add the microservices forks
   explicitly).
@@ -417,7 +425,8 @@ code on your runners. The nubenetes microservices forks (`jhipster-sample-app-ga
 `jhipster-sample-app-microservice`) are **public**, so this bites on first use. **Fix (org
 admin — a one-time UI toggle; there is no secret or API field for it):** *Organization →
 Settings → Actions → Runner groups →* open the group that holds `jenkins-2026-runners` (the
-**Default** group, unless you set `githubactions.runnerGroup`) *→* enable **"Allow public
+scale set does not set the gha-runner-scale-set chart's `runnerGroup` value, so it always
+registers in the org's **Default** runner group) *→* enable **"Allow public
 repositories"**, and make sure *Repository access* is **All repositories** (or explicitly
 lists the forks). The queued jobs are picked up within ~1 minute — an ephemeral runner pod
 appears in `arc-runners` and the run flips to *in_progress*. (Making the forks private is the
@@ -445,11 +454,12 @@ Events GitHub **EventSource** (the public, no-IAP receiver at `argo-events.<doma
 **Low/medium sensitivity** — a shared HMAC, not a private key. Optional: you generate it
 yourself (e.g. `openssl rand -hex 20`) and set it as a GitHub Actions secret **and** in
 the GitHub repo's webhook config. [`scripts/01-namespaces.sh`](../scripts/01-namespaces.sh) seeds it into the
-`argoworkflows-github-webhook` Secret in the `argo-events` namespace (ESO-synced in
-`secrets.backend=eso` mode via [`scripts/08.6-eso-sync.sh`](../scripts/08.6-eso-sync.sh)); if absent,
-[`scripts/06-argoworkflows-pipelines.sh`](../scripts/06-argoworkflows-pipelines.sh) generates one (falling back to
-`PAC_WEBHOOK_SECRET`). Consumed by `Day1.cluster.01-gke` and
-`Day2.redeploy.07-argoworkflows`.
+`argoworkflows-github-webhook` Secret in the `argo-events` namespace, falling back to
+`PAC_WEBHOOK_SECRET` when unset (ESO-synced in `secrets.backend=eso` mode via
+[`scripts/08.6-eso-sync.sh`](../scripts/08.6-eso-sync.sh)); if both are absent (the Secret is seeded empty),
+[`scripts/06-argoworkflows-pipelines.sh`](../scripts/06-argoworkflows-pipelines.sh) generates a random one
+(`openssl rand -hex 20`) and shares it with the GitHub webhooks it creates. Consumed by
+`Day1.cluster.01-gke` and `Day2.redeploy.07-argoworkflows`.
 
 ---
 
@@ -473,15 +483,16 @@ token/settings page (or a stack access policy token scoped to k6). Empty by defa
 
 **`K6_CLOUD_PROJECT_ID`**
 The project under which runs appear in the k6 app. Both flow into the cluster via
-[`scripts/01-namespaces.sh`](../scripts/01-namespaces.sh) — a `k6-cloud` Secret in each
-active engine's pipeline namespace (the Tekton pipeline ns read by
-[`tekton/tasks/k6-smoke.yaml`](../tekton/tasks/k6-smoke.yaml), plus the `arc-runners`
-and `argo-ci` equivalents for the GitHub Actions/ARC and Argo Workflows engines) and the
-`jenkins-credentials` Secret keys `k6-cloud-token`/`k6-cloud-project-id` (surfaced to
-`microservicesK6Smoke.groovy` via [`helm/jenkins/values-common.yaml`](../helm/jenkins/values-common.yaml)
-`containerEnv`). Consumed by `Day1.cluster.01-gke` and the per-engine
-`Day2.redeploy.*` workflow. The runner/agent needs HTTPS egress to Grafana Cloud k6's
-ingest. Works for **all four** CI engines.
+[`scripts/01-namespaces.sh`](../scripts/01-namespaces.sh):
+
+- a `k6-cloud` Secret (keys `token` / `project-id`) in each active engine's pipeline namespace — the Tekton pipeline ns read by [`tekton/tasks/k6-smoke.yaml`](../tekton/tasks/k6-smoke.yaml), plus the `arc-runners` and `argo-ci` equivalents for the GitHub Actions/ARC and Argo Workflows engines;
+- the `jenkins-credentials` Secret keys `k6-cloud-token` / `k6-cloud-project-id`, surfaced to `microservicesK6Smoke.groovy` via [`helm/jenkins/values-common.yaml`](../helm/jenkins/values-common.yaml) `containerEnv`.
+
+Consumed by `Day1.cluster.01-gke`, the engine redeploys that re-provision the Secret
+(`Day2.redeploy.03-tekton`, `Day2.redeploy.06-githubactions`, `Day2.redeploy.07-argoworkflows`
+— `Day2.redeploy.02-jenkins` consumes none and relies on the Day1-provisioned
+`jenkins-credentials`), and `Day2.traffic.01-k6` (which adds `--out cloud` to its own k6 run).
+The runner/agent needs HTTPS egress to Grafana Cloud k6's ingest. Works for **all four** CI engines.
 
 ---
 
@@ -510,7 +521,8 @@ ingest. Works for **all four** CI engines.
 | `AWS_BOOTSTRAP_ROLE_ARN` | no | managed-aws bootstrap | manual (IAM console) |
 | `AWS_REGION` (repo **Variable**, not a Secret) | no | managed-aws | manual |
 | `GKE_OIDC_ISSUER_URL` | no | managed-aws bootstrap | GKE cluster details |
-| `AWS_DASHBOARD_PUBLISH_ROLE_ARN` | no | managed-aws day-2 ops | [`terraform/aws-managed-grafana`](../terraform/aws-managed-grafana) output |
+| `AWS_GRAFANA_ADMIN_SSO_EMAILS` | no | managed-aws bootstrap (optional) | manual — IAM Identity Center user emails |
+| `AWS_DASHBOARD_PUBLISH_ROLE_ARN` | no | managed-aws dashboards/alerts (Day1 + day-2) | [`terraform/aws-managed-grafana`](../terraform/aws-managed-grafana) output |
 | `JENKINS_OIDC_CLIENT_ID` | no | Jenkins Google login | Google Cloud Console |
 | `JENKINS_OIDC_CLIENT_SECRET` | **yes** | Jenkins Google login | Google Cloud Console |
 | `JENKINS_OIDC_ADMIN_EMAIL` | no | Jenkins admin + alert default | manual — **never commit** |

@@ -17,6 +17,7 @@ navigation:
 - [`101-GITHUB_ACTIONS_WORKFLOWS.md`](docs/101-GITHUB_ACTIONS_WORKFLOWS.md) — CI/CD workflow naming (`DayN.tier.ZZ-resource`), lifecycle matrix, clickable workflow inventory
 - [`102-GITHUB_ACTIONS_AUTOMATION.md`](docs/102-GITHUB_ACTIONS_AUTOMATION.md) — WIF setup, GitHub secrets, bootstrapping architecture
 - [`103-GITHUB_SECRETS_INVENTORY.md`](docs/103-GITHUB_SECRETS_INVENTORY.md) — complete inventory of every GitHub secret and variable: purpose, sensitivity, source, which workflows use each
+- [`104-REBUILD_SAFETY.md`](docs/104-REBUILD_SAFETY.md) — **rebuild-safety** (`Decom`+`Day1` as a routine op): the collision/residue bug class, the master matrix of which persistent/external resource is rebuild-safe by which mechanism, the 7 closed gaps (PRs #487–#489), and the checklist for adding a new persistent resource
 - [`201-ARCHITECTURE.md`](docs/201-ARCHITECTURE.md) — system architecture, config, repository layout, the **imperative (push) vs GitOps (pull) provisioning split** (full inventory + the six reasons a resource stays imperative), namespaces & in-cluster secrets
 - [`202-MICROSERVICES-APP-ARCHITECTURE.md`](docs/202-MICROSERVICES-APP-ARCHITECTURE.md) — the **demo application** architecture: the JHipster **gateway (Java, not Angular)** + the Angular SPA it serves + the backend microservice, request flow, database-per-service, and the Angular-RUM (frontend observability) roadmap
 - [`301-OBSERVABILITY.md`](docs/301-OBSERVABILITY.md) — OTel components, signal correlation, dashboards, all four obs modes
@@ -51,7 +52,7 @@ The project is structured logically as follows:
 │   │   ├── common.sh             # Helper functions (logging, wait_for_deployment, etc.)
 │   │   └── config.sh             # Sourced by other scripts; parses config.yaml into J2026_* environment variables
 │   ├── 00-check-prereqs.sh
-│   ├── 01-namespaces.sh          # Creates namespaces (observability, argocd, pgadmin, microservices + the active CI engine's namespaces)
+│   ├── 01-namespaces.sh          # Creates namespaces (platform-ingress, observability, headlamp, argocd, pgadmin, microservices + the active CI engine's namespaces)
 │   ├── 02-otel-operator.sh
 │   ├── 03-observability.sh
 │   ├── 04-jenkins.sh             # Installs the active CI engine (one of four, per ci.engine); each 04-<engine>.sh retires the other three
@@ -71,12 +72,13 @@ The project is structured logically as follows:
 │   │       ├── seed_jobs.groovy  # Job DSL script generating pipelines-as-code (invokes vars/MicroservicesPipeline.groovy)
 │   │       └── services.yaml     # Shared service registry (repo URLs, types, ports) read by all four CI engines
 ├── vars/
-│   ├── MicroservicesPipeline.groovy       # Declarative shared library wrapper for JHipster microservices
+│   ├── MicroservicesPipeline.groovy        # Declarative shared library wrapper for JHipster microservices
 │   ├── MicroservicesK6SmokePipeline.groovy # Pipeline for triggering k6 integration smoke tests
-│   ├── microservicesBuild.groovy          # Maven/Node build execution helper
-│   ├── microservicesImage.groovy          # Docker build & push helper via DinD (Docker-in-Docker)
-│   ├── microservicesDeploy.groovy         # Triggers gitops config repo updates
-│   └── microservicesSmokeTest.groovy      # Validates deployed services (Spring Actuator check)
+│   ├── microservicesBuild.groovy           # Maven/Node build execution helper
+│   ├── microservicesImage.groovy           # Image build & push helper (Jib direct-push preferred; docker build/push via the DinD sidecar as fallback and for the Angular image)
+│   ├── microservicesDeploy.groovy          # Triggers gitops config repo updates
+│   ├── microservicesK6Smoke.groovy         # k6 smoke/load run helper
+│   └── microservicesSmokeTest.groovy       # Validates deployed services (Spring Actuator check)
 └── observability/
     ├── otel-collector/           # OTel collector Gateway and Logs agent values
     └── grafana/
@@ -106,12 +108,21 @@ Check the rollout status of all services:
 
 ### 2. Full Up / Provision Stack
 ```bash
+./scripts/up.sh   # preferred: runs every step in the correct order
+```
+Step-by-step equivalent (ArgoCD before observability; each engine's 06-* seed step after its 04-*):
+```bash
 ./scripts/00-check-prereqs.sh
 ./scripts/01-namespaces.sh
 ./scripts/02-otel-operator.sh
+./scripts/08.5-argocd.sh          # CD engine first: 03 (oss) and every 04-<engine>.sh apply ArgoCD Applications
+./scripts/08.6-eso-sync.sh        # eso mode only (no-op in imperative mode)
 ./scripts/03-observability.sh
-./scripts/08.5-argocd.sh
-./scripts/04-jenkins.sh          # or 04-tekton.sh / 04-githubactions.sh / 04-argoworkflows.sh, per ci.engine (each retires the other three)
+./scripts/04-jenkins.sh           # or 04-tekton.sh / 04-githubactions.sh / 04-argoworkflows.sh, per ci.engine (each retires the other three)
+./scripts/06-seed-pipelines.sh    # or the matching 06-<engine>-pipelines.sh
+./scripts/07-grafana-dashboards.sh
+./scripts/07.5-grafana-alerts.sh
+./scripts/08-headlamp.sh
 ./scripts/09-gateway.sh
 ```
 
@@ -126,7 +137,7 @@ Check the rollout status of all services:
 
 1. **Jib/Maven Daemon Issues**: Ensure you run clean compiles with Docker-in-Docker. The shared library handles DinD mounting automatically.
 2. **ArgoCD App Synchronization**: The ApplicationSet ([`argocd/microservices-appset.yaml`](argocd/microservices-appset.yaml)) points to the `jenkins-2026-gitops-config` repository. AppSync triggers automatically when the active CI engine's pipeline commits and pushes updated image tags to the gitops repo.
-3. **Observability Logs**: All application logs are forwarded by Loki logs agent to Grafana Cloud. Log-to-trace correlation is established via `trace_id` annotations parsed from standard SLF4J MDC logs.
+3. **Observability Logs**: All application logs are collected by the `otel-collector-logs` DaemonSet and exported to the active backend (OTLP to Grafana Cloud in grafana-cloud mode; in-cluster Loki in oss; Log Analytics / CloudWatch in the managed modes). Log-to-trace correlation is established via `trace_id` parsed from standard SLF4J MDC logs.
 4. **GKE Concurrency & Lock Serialization**: GKE allows only one concurrent mutating operation per cluster/zone. Sequential `gcloud` CLI updates (such as changing autoscaling, auto-repair, or resizing node pools) without waiting will fail due to API locks. Always use the `wait_for_gke_operations` helper function inside workflows/scripts to serialize mutations.
 5. **Pod Disruption Budgets (PDBs) Eviction Blocks**: When scaling node pools to 0 or performing manual drains on GKE, single-instance CloudNative-PG Postgres pods with strict PDBs (`minAvailable=1`) will block eviction indefinitely. Bypassing this requires draining nodes via `kubectl drain --disable-eviction`, which forces deletion via the DELETE API rather than the Eviction API.
 6. **OTel Agent Webhook Injection Race**: The OTel operator's pod mutation webhook (`mpod.kb.io`) runs with `failurePolicy: Ignore`. If microservices pods start before the Instrumentation CR or webhook is ready, they start without the Java agent and emit no metrics/traces. Run [`scripts/ensure-otel-injection.sh`](scripts/ensure-otel-injection.sh) (or trigger `kubectl rollout restart` on the deployments) to force re-injection.
@@ -156,14 +167,19 @@ Check the rollout status of all services:
   `eso` (push to GCP Secret Manager; the External Secrets Operator syncs it in
   via Workload Identity). [`scripts/08.6-eso-sync.sh`](scripts/08.6-eso-sync.sh) applies the
   ClusterSecretStore + ExternalSecrets (+ waits) in eso mode; reference manifests
-  in [`infrastructure/secrets/eso-bootstrap.yaml`](infrastructure/secrets/eso-bootstrap.yaml). Stage 1 covers
-  `gateway-iap-oauth`. See [`docs/201`](docs/201-ARCHITECTURE.md#secrets-backend-imperative--eso).
+  in [`infrastructure/secrets/eso-bootstrap.yaml`](infrastructure/secrets/eso-bootstrap.yaml). Coverage spans
+  `gateway-iap-oauth` (every IAP namespace), the active engine's pipeline
+  secrets (registry/git/webhook + `k6-cloud`), `jenkins-credentials` (Merge) +
+  the oss `grafana-jenkins-ds`, `headlamp-credentials`, and the microservices
+  `ghcr-credentials` pull secret. See [`docs/201`](docs/201-ARCHITECTURE.md#secrets-backend-imperative--eso).
 - [`config/config.yaml`](config/config.yaml) - single source of truth: target platform
   (gke), observability mode (grafana-cloud default/oss/managed-azure/managed-aws),
   CI engine (`ci.engine`: jenkins default | tekton | githubactions | argoworkflows —
   mutually exclusive),
   Jenkins/Microservices namespaces, branches, registry, service list.
-- [`helm/jenkins/`](helm/jenkins/), `helm/microservices/` - Helm values overlays.
+- [`helm/jenkins/`](helm/jenkins/), `helm/headlamp/`, `helm/pgadmin/` + `helm/argocd-values.yaml` - Helm
+  values overlays (the microservices Helm chart + values live in the
+  `jenkins-2026-gitops-config` repo, deployed by the ArgoCD ApplicationSet).
 - [`jenkins/casc/`](jenkins/casc/) - JCasC YAML (seed jobs, shared library, OTel plugin
   config, RBAC).
 - [`jenkins/pipelines/`](jenkins/pipelines/) - the seed job DSL
@@ -208,36 +224,42 @@ Check the rollout status of all services:
     [`docs/405-ARGO_WORKFLOWS.md`](docs/405-ARGO_WORKFLOWS.md).
 - [`observability/`](observability/) - otel-operator, otel-collector, and Grafana (OSS +
   dashboards) Helm values + the `grafana-cloud-credentials` secret template.
-- [`argocd/`](argocd/) - ArgoCD `Application`/`ApplicationSet` manifests (the GitOps
-  layer): single `Application`s for External Secrets, Headlamp, **Jenkins**
-  (`jenkins-app.yaml`, the official chart, when `ci.engine=jenkins`),
-  **Argo Rollouts** (`argo-rollouts-app.yaml`, controller + Gateway API
-  traffic-router plugin for sidecar-free canary/blue-green — see
-  [`docs/501`](docs/501-PLATFORM_OPERATIONS.md) § Progressive Delivery), and
-  **`platform-config`** (`platform-config-app.yaml` → the local [`argocd/platform-config/`](argocd/platform-config/)
-  Helm chart: the static, engine-aware platform **RBAC** — the active CI engine's SA `edit`
-  bindings, pgAdmin secret-reader, the OTel-instrumentation `ClusterRole` — that
-  `01-namespaces.sh`/`02-otel-operator.sh` used to apply imperatively; NetworkPolicies
-  and ResourceQuotas/LimitRanges deliberately stay script-applied, they must land
-  before workloads for Dataplane V2 timing), the
-  microservices AppSet, one single `Application` per CI engine (`jenkins-app.yaml`,
-  `tekton-app.yaml`, `githubactions-app.yaml`, `argoworkflows-app.yaml` — only the one
-  for the active `ci.engine` is applied), plus the **app-of-apps** (each a small Helm chart so
-  repo/branch/version flow down to its children): `platform-postgres/` (the CNPG operator +
-  pgAdmin that administers it), `observability-oss/`, which deploys the in-cluster OSS
-  stack (kube-prometheus-stack/Loki/Tempo) when `observability.mode=oss`, and the per-engine
-  pipelines-as-code app-of-apps `tekton/` · `githubactions/` · `argoworkflows/` (Tekton's
-  `components/*/` holds the **vendored** pinned upstream release YAMLs — Tekton ships recent
-  releases only as GitHub assets, not GCS, and a github.com URL is git-misclassified by
-  kustomize; Argo Workflows vendors the same way), applied by the matching `04-<engine>.sh`.
-  Because of this, [`scripts/up.sh`](scripts/up.sh) installs ArgoCD (`08.5`) **before** observability
-  (`03`), and `03-observability.sh` (oss) applies the app-of-apps + its
-  script-managed companion objects (`grafana-jenkins-ds` Secret,
-  `grafana-runtime-config` ConfigMap) rather than `helm install`-ing the charts
-  directly. The Grafana dashboards ConfigMap is GitOps-managed by the
-  `oss-grafana-dashboards` child app (rendered from [`observability/grafana/dashboards/`](observability/grafana/dashboards/),
-  a small Helm chart, CI-engine-gated via `ciEngine`). See
-  [`argocd/README.md`](argocd/README.md).
+- [`argocd/`](argocd/) - ArgoCD `Application`/`ApplicationSet` manifests (the GitOps layer):
+  - **Single `Application`s** — External Secrets, Headlamp, **Argo Rollouts**
+    (`argo-rollouts-app.yaml`, controller + Gateway API traffic-router plugin for
+    sidecar-free canary/blue-green — see
+    [`docs/501`](docs/501-PLATFORM_OPERATIONS.md) § Progressive Delivery), and
+    **`platform-config`** (`platform-config-app.yaml` → the local
+    [`argocd/platform-config/`](argocd/platform-config/) Helm chart: the static,
+    engine-aware platform **RBAC** — the active CI engine's SA `edit` bindings,
+    pgAdmin secret-reader, the OTel-instrumentation `ClusterRole` — that
+    `01-namespaces.sh`/`02-otel-operator.sh` used to apply imperatively;
+    NetworkPolicies and ResourceQuotas/LimitRanges deliberately stay
+    script-applied, they must land before workloads for Dataplane V2 timing).
+  - **One single `Application` per CI engine** — `jenkins-app.yaml` (the official
+    chart), `tekton-app.yaml`, `githubactions-app.yaml`, `argoworkflows-app.yaml`;
+    only the one for the active `ci.engine` is applied.
+  - The **microservices AppSet**.
+  - **Five app-of-apps** (each a small Helm chart so repo/branch/version flow down
+    to its children):
+    - `platform-postgres/` — the CNPG operator + pgAdmin that administers it.
+    - `observability-oss/` — the in-cluster OSS stack
+      (kube-prometheus-stack/Loki/Tempo) when `observability.mode=oss`.
+    - The per-engine pipelines-as-code app-of-apps `tekton/` · `githubactions/` ·
+      `argoworkflows/`, applied by the matching `04-<engine>.sh` (Tekton's
+      `components/*/` holds the **vendored** pinned upstream release YAMLs —
+      Tekton ships recent releases only as GitHub assets, not GCS, and a
+      github.com URL is git-misclassified by kustomize; Argo Workflows vendors
+      the same way).
+  - **Ordering consequence**: [`scripts/up.sh`](scripts/up.sh) installs ArgoCD
+    (`08.5`) **before** observability (`03`), and `03-observability.sh` (oss)
+    applies the app-of-apps + its script-managed companion objects
+    (`grafana-jenkins-ds` Secret, `grafana-runtime-config` ConfigMap) rather than
+    `helm install`-ing the charts directly. The Grafana dashboards ConfigMap is
+    GitOps-managed by the `oss-grafana-dashboards` child app (rendered from
+    [`observability/grafana/dashboards/`](observability/grafana/dashboards/), a
+    small Helm chart, CI-engine-gated via `ciEngine`). See
+    [`argocd/README.md`](argocd/README.md).
 - [`terraform/`](terraform/):
   - `bootstrap/` - the **root of trust** (Day0 "phase 0"), run by hand via
     [`scripts/bootstrap.sh`](scripts/bootstrap.sh) (`up`/`down`). Creates the GCS
@@ -326,7 +348,7 @@ Check the rollout status of all services:
   lifecycle phase, self-documenting: `Day0` (persistent bootstrap) · `Day1`
   (cluster) · `Day2` (running-cluster ops) · `Decom` (teardown). **tier** = a
   brief semantic word from a controlled vocabulary (`infra`, `cluster`, `redeploy`,
-  `publish`, `traffic`). **ZZ** = a per-resource id, stable for the same resource
+  `publish`, `traffic`, `scale`, `registry`). **ZZ** = a per-resource id, stable for the same resource
   across all phases (e.g. ZZ=03 is always Azure: `Day0.infra.03-azure-grafana` →
   `Day2.publish.03-azure-grafana` → `Decom.infra.03-azure-grafana`). **-resource**
   identifies the resource only — no action verb, since the `DayN` prefix already
@@ -378,7 +400,7 @@ Check the rollout status of all services:
   `Day2.redeploy.02-jenkins` / `.03-tekton` / `.06-githubactions` / `.07-argoworkflows`,
   which also run `09-gateway`); ArgoCD-only manifest changes can be pulled with
   `kubectl annotate application <app> -n argocd argocd.argoproj.io/refresh=hard
-  --overwrite`. `Decom.cluster.01-gke` is for **tearing the clúster down when
+  --overwrite`. `Decom.cluster.01-gke` is for **tearing the cluster down when
   done** (to stop charges), not a prerequisite for changes - but do remember to
   Decom an idle cluster.
 - [`terraform/bootstrap`](terraform/bootstrap) is a one-time, human-run step with local gitignored
@@ -390,6 +412,6 @@ Check the rollout status of all services:
 - When editing Terraform, run `terraform fmt -recursive` and
   `terraform validate` (after `terraform init -backend=false` if no backend
   is configured yet) before considering the change done.
-- Required GitHub repo secrets are documented in README.md "GitHub Actions
-  automation" - keep that table in sync with any new secrets a workflow
-  starts consuming.
+- Required GitHub repo secrets and variables are inventoried in
+  [`docs/103-GITHUB_SECRETS_INVENTORY.md`](docs/103-GITHUB_SECRETS_INVENTORY.md) -
+  keep that inventory in sync with any new secrets a workflow starts consuming.

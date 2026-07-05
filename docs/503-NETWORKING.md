@@ -1,4 +1,4 @@
-[← Previous: 502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md) | [🏠 Home](../README.md) | [→ Next: 504. Backend TLS](./504-BACKEND_TLS.md)
+[← Previous: 502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md) | [🏠 Home](../README.md) | [→ Next: 601. DevSecOps](./601-DEVSECOPS.md)
 
 ---
 
@@ -73,7 +73,7 @@ Traffic **in** (north-south): a user hits `app.jenkins2026.nubenetes.com`, DNS p
 - **VPC-native (alias IPs):** `networking_mode = VPC_NATIVE`; `ip_allocation_policy` maps `cluster_secondary_range_name = pods` (`10.20.0.0/16`) and `services_secondary_range_name = services` (`10.30.0.0/20`); subnet primary `10.10.0.0/20` is node IPs.
 - **Dataplane V2:** `datapath_provider = ADVANCED_DATAPATH` (Cilium/eBPF, replaces kube-proxy/iptables) — this is what makes NetworkPolicies **actually enforce**. `gateway_api_config.channel = CHANNEL_STANDARD`; release channel `REGULAR`; `GKE_METADATA` node metadata (Workload Identity).
 - **Encryption:** `in_transit_encryption_config = IN_TRANSIT_ENCRYPTION_INTER_NODE_TRANSPARENT` — WireGuard, **inter-node only** (same-node pod traffic never hits the wire). Transport encryption, **not** per-workload mTLS identity.
-- **Egress:** **no Cloud NAT / router and no custom firewall** are defined — nodes egress via the default internet gateway under the default VPC firewall rules; Workload-Identity pods reach the node-local metadata server at `169.254.169.254:80/:988`.
+- **Egress:** **no Cloud NAT / router and no custom firewall** are defined — nodes egress via the default internet gateway under the VPC's **implied** firewall rules (egress allowed by default — the custom-mode VPC has no pre-populated `default-allow-*` rules) plus the GKE-auto-created `gke-*` rules; Workload-Identity pods reach the node-local metadata server at `169.254.169.254:80/:988`.
 - **Ingress:** a **global external L7** GKE **Gateway** (`gatewayClassName: gke-l7-global-external-managed`) in `platform-ingress`, fronted by the static IP `jenkins-2026-gateway-ip` + the Google-managed wildcard cert (`jenkins-2026-cert-map`), one `HTTPRoute` per app, **container-native NEG** load balancing (to pod `targetPort`), and **IAP** via `GCPBackendPolicy` for the admin UIs.
 - **Segmentation:** namespaces are classed as **default-deny** (observability, microservices(+develop), pgadmin, jenkins), **deny-ingress baseline** (argocd, headlamp, and the active CI engine's execution namespace — tekton-ci · arc-runners · argo-ci — outbound-only / entry-port-only), or **open by design** (operator namespaces that host admission webhooks). Engine-gated files add the per-engine namespace policies (one of `-jenkins` · `-tekton` · `-githubactions` · `-argoworkflows`, selected by `ci.engine`). See the [501 NetworkPolicy matrix](./501-PLATFORM_OPERATIONS.md#networkpolicy-matrix).
 
@@ -121,7 +121,13 @@ flowchart TB
 
 #### How it would extend to hub-spoke (if needed)
 
-The Day0/Day1 split + per-resource Terraform modules map cleanly onto a hub-spoke evolution: promote the **persistent** tier (DNS, egress IP) into a **hub VPC** with **Cloud NAT** (so nodes become **private**), central **firewall/Cloud IDS**, and **Cloud DNS** forwarding; turn each environment's cluster into a **spoke VPC** (VPC peering or **NCC**), optionally under a **Shared VPC** host/service-project model; and keep the Kubernetes NetworkPolicies as the *inner* ring of defense-in-depth. None of the in-cluster design (namespaces, policies, Gateway, IAP) changes.
+The Day0/Day1 split + per-resource Terraform modules map cleanly onto a hub-spoke evolution:
+
+- **Hub VPC** — promote the **persistent** tier (DNS, egress IP) into it, with **Cloud NAT** (so nodes become **private**), central **firewall/Cloud IDS**, and **Cloud DNS** forwarding.
+- **Spoke VPCs** — one per environment's cluster (VPC peering or **NCC**), optionally under a **Shared VPC** host/service-project model.
+- **Inner ring** — keep the Kubernetes NetworkPolicies as the *inner* ring of defense-in-depth.
+
+None of the in-cluster design (namespaces, policies, Gateway, IAP) changes.
 
 </details>
 
@@ -164,7 +170,7 @@ flowchart TB
 | Secondary | **`services`** | **`10.30.0.0/20`** (`services_cidr`) | Service `ClusterIP`s | `ip_allocation_policy` |
 | Region / zone | — | `europe-southwest1` / `-a` | cluster location | [`terraform/gke/variables.tf`](../terraform/gke/variables.tf) |
 
-> All three are **variables** with the defaults above — change them in one place before `Day1`. The ranges are disjoint and sized for a single PoC cluster (the `/16` pod range is GKE's generous default).
+> All three are **variables** with the defaults above — change them in one place before `Day1`. The ranges are disjoint and sized for a single PoC cluster (the `/16` pod range — ≈65 k pod IPs — is this repo's deliberately generous `pods_cidr` default).
 
 ## North-south: how traffic gets in (ingress)
 
@@ -188,13 +194,12 @@ sequenceDiagram
   alt IAP-protected (jenkins / tekton / argo-workflows UI / headlamp / pgadmin / grafana-oss)
     LB->>IAP: is the Google account in the admin allowlist?
     IAP-->>LB: allow / deny (403)
-  else open (microservices · argocd · pac · argo-events)
-    note over LB: no IAP — pac / argo-events are protected by an HMAC webhook secret instead
+  else open (microservices · argocd · faro · pac · argo-events)
+    note over LB: no IAP — pac / argo-events are protected by an HMAC webhook secret; faro is the browser-facing RUM beacon
   end
   LB->>GW: HTTPRoute match by hostname
   GW->>NEG: route to the Service's NEG
   NEG->>P: send to the POD targetPort (8080 / 4466 / 9097 / 80) — not the Service port
-  Note over GW,P: LB→pod hop is plain HTTP by default (VPC-internal)<br/>opt-in re-encryption + CA validation:<br/>gateway.backendTls (BackendTLSPolicy — docs/504)
 ```
 
 **Reading it —** one global static IP + one wildcard cert front **every** app; the per-app `HTTPRoute` (host-based) and `GCPBackendPolicy` (IAP) live beside each Service. The crucial GKE detail: container-native **NEG** load balancing delivers to the **pod port**, not the Service port — which is why NetworkPolicies must allow the real container port (e.g. argocd-server `8080`, headlamp `4466`). The L7 LB health checks come from `130.211.0.0/22` + `35.191.0.0/16`.
@@ -208,10 +213,11 @@ sequenceDiagram
 | Argo Workflows UI *(argoworkflows mode)* | `argo.<domain>` | `2746` | **yes** |
 | Headlamp | `headlamp.<domain>` | `4466` | **yes** |
 | pgAdmin | `pgadmin.<domain>` | `80` | **yes** |
-| Grafana *(oss mode)* | `grafana.<domain>` | `80` | **yes** |
+| Grafana *(oss mode)* | `grafana.<domain>` | `3000` | **yes** |
 | ArgoCD | `argocd.<domain>` | `8080` | no |
 | Microservices | `microservices.<domain>` | `8080` (gateway) | no (public demo) |
 | Microservices *(develop tier)* | `microservices-develop.<domain>` | `8080` (gateway) | no (public demo; only when `microservices.developTrackEnabled`) |
+| Faro RUM beacon | `faro.<domain>` | `8027` (otel-collector-gateway) | no (public browser beacon; CORS-open receiver) |
 | PaC webhook *(tekton)* | `pac.<domain>` | `8080` | no (**HMAC**) |
 | Argo Events webhook *(argoworkflows)* | `argo-events.<domain>` | `12000` | no (**HMAC**) |
 
@@ -235,13 +241,13 @@ flowchart LR
   col -->|"OTLP / remote-write / SigV4"| back["Grafana Cloud · Azure Monitor<br/>AWS X-Ray / AMP / CloudWatch"]:::ext
   wi -. "169.254.169.254 :80/:988" .-> md["GKE metadata server<br/>→ Workload Identity tokens"]:::infra
   apps -. ":443 kube-apiserver (Hazelcast discovery)" .-> api["control plane"]:::infra
-  note["No Cloud NAT/router or custom firewall defined →<br/>nodes egress via the default internet gateway,<br/>default VPC firewall rules"]:::n
+  note["No Cloud NAT/router or custom firewall defined →<br/>nodes egress via the default internet gateway,<br/>VPC implied rules (no default-allow-* on custom-mode)"]:::n
   classDef ext fill:#fde,stroke:#c39;
   classDef infra fill:#eef,stroke:#66c;
   classDef n fill:#ffd,stroke:#cc3;
 ```
 
-**Reading it —** there is **no Cloud NAT** and **no custom firewall**: nodes have public egress via the default internet gateway. Pods that use **Workload Identity** (External Secrets, the CNPG backup uploaders) get GCP tokens from the node-local metadata endpoint `169.254.169.254` — which is why the `microservices` default-deny policy explicitly allows egress to it. The OTel collector is the one component with heavy outbound: it ships telemetry to whichever backend `observability.mode` selects.
+**Reading it —** there is **no Cloud NAT** and **no custom firewall**: nodes have public egress via the default internet gateway. Pods that use **Workload Identity** (External Secrets, the CNPG backup uploaders) get GCP tokens from the node-local metadata endpoint `169.254.169.254` — which is why the additive `microservices-cnpg-platform` policy explicitly allows egress to it under the namespace's default-deny. The OTel collector is the one component with heavy outbound: it ships telemetry to whichever backend `observability.mode` selects.
 
 </details>
 
@@ -254,7 +260,7 @@ flowchart LR
 | **`managed-azure`** | Azure Monitor / App Insights | Azure Managed Prometheus (remote-write) | Azure Monitor | Entra OAuth2 (`oauth2client`) |
 | **`managed-aws`** | AWS **X-Ray** | Amazon **AMP** (remote-write) | **CloudWatch** Logs | SigV4 (`AssumeRoleWithWebIdentity`, projected SA token) |
 
-> The three external backends are reached **keylessly** where the cloud allows it (AWS web-identity, Azure OAuth SP); Grafana Cloud uses an access-policy token. All egress is plain outbound from the collector pod. See [301](./301-OBSERVABILITY.md).
+> Only the AWS backend is reached **keylessly** (SigV4 via `AssumeRoleWithWebIdentity`, projected SA token — no stored key); Azure authenticates with an Entra service-principal **client secret** (held only in the in-cluster `azure-monitor-credentials` Secret, never a GitHub secret); Grafana Cloud uses an access-policy token. All egress is plain outbound from the collector pod. See [301](./301-OBSERVABILITY.md).
 
 ## East-west: pod & service networking
 
@@ -297,7 +303,7 @@ flowchart TB
   lb([GKE L7 LB · 130.211.0.0/22 · 35.191.0.0/16]):::ext
   api([kube-apiserver]):::i
 
-  subgraph dd["① default-deny (egress capped at DNS + curated allows)"]
+  subgraph dd["① default-deny baseline (ingress denied; egress DNS-only unless a policy re-opens it)"]
     obs["observability<br/>+OTLP 4317/4318 · +LB health · +9443 webhook"]
     msn["microservices (+ -develop)<br/>egress: CNPG 5432 · API 443 · metadata"]
     pga["pgadmin<br/>in 80 · out 443 + 5432"]
@@ -309,7 +315,7 @@ flowchart TB
     ci["active CI engine's exec ns (per ci.engine)<br/>tekton-ci · arc-runners · argo-ci"]
   end
   subgraph op["③ open by design (host admission webhooks the API server calls)"]
-    sys["tekton-pipelines · cnpg-system · external-secrets · pipelines-as-code<br/>argo · argo-events · arc-systems · cert-manager (backendTls)"]
+    sys["tekton-pipelines · cnpg-system · external-secrets · pipelines-as-code<br/>argo · argo-events · arc-systems"]
   end
 
   lb --> arg & hl
@@ -320,7 +326,7 @@ flowchart TB
   classDef ext fill:#fde,stroke:#c39;
 ```
 
-**Reading it —** ① the sensitive namespaces are **default-deny** with curated allowlists (DNS always; plus the specific OTLP/CNPG/API/metadata paths each one needs). ② the workload-UI/CI namespaces get a **deny-ingress baseline** — only their entry port is reachable (Gateway/CLI/port-forward), internals are intra-namespace, and pipeline pods are outbound-only. ③ operator namespaces are left **open** on purpose, because a `deny-ingress` there would block the API server's own admission-webhook calls (fragile to allowlist the control-plane CIDR). The exact selectors/ports are in the **[501 NetworkPolicy matrix](./501-PLATFORM_OPERATIONS.md#networkpolicy-matrix)**.
+**Reading it —** ① the sensitive namespaces are **default-deny** with curated allowlists (DNS always; plus the specific OTLP/CNPG/API/metadata paths each one needs) — egress stays capped for `pgadmin`/`microservices`, while the observability collector and the Jenkins controller/agents are deliberately re-opened (`egress: {}`) to reach the telemetry backends / git / registries. ② the workload-UI/CI namespaces get a **deny-ingress baseline** — only their entry port is reachable (Gateway/CLI/port-forward), internals are intra-namespace, and pipeline pods are outbound-only. ③ operator namespaces are left **open** on purpose, because a `deny-ingress` there would block the API server's own admission-webhook calls (fragile to allowlist the control-plane CIDR). The exact selectors/ports are in the **[501 NetworkPolicy matrix](./501-PLATFORM_OPERATIONS.md#networkpolicy-matrix)**.
 
 </details>
 
@@ -336,7 +342,7 @@ flowchart TB
 ```mermaid
 flowchart LR
   a["① Edge<br/>Google IAP + wildcard TLS<br/>(admin-email allowlist)"] -->
-  b["② L7 Gateway<br/>host-routed HTTPRoutes<br/>container-native NEG<br/>+ opt-in backend TLS re-encrypt"] -->
+  b["② L7 Gateway<br/>host-routed HTTPRoutes<br/>container-native NEG"] -->
   c["③ Cluster L3/L4<br/>Dataplane V2 enforced<br/>NetworkPolicies (default-deny)"] -->
   d["④ Transport<br/>WireGuard inter-node<br/>pod encryption"] -->
   e["⑤ Identity<br/>keyless WIF/OIDC<br/>(no static keys)"]
@@ -350,7 +356,7 @@ flowchart LR
 
 ---
 
-[← Previous: 502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md) | [🏠 Home](../README.md) | [→ Next: 504. Backend TLS](./504-BACKEND_TLS.md)
+[← Previous: 502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md) | [🏠 Home](../README.md) | [→ Next: 601. DevSecOps](./601-DEVSECOPS.md)
 
 ---
 

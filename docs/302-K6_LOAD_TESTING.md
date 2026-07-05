@@ -88,7 +88,7 @@ OTLP export (`-o opentelemetry`, k6 2.x schema) is configured by the **runner**,
 
 ## The parameter contract (`K6SIM_*`)
 
-Every runner threads the **same variables** into the script. They are all **optional** — an empty value means "use the script default", so you only ever set what you want to change. The script reads them in [`jenkins/pipelines/k6/microservices-smoke.js`](../jenkins/pipelines/k6/microservices-smoke.js).
+Every runner threads the same contract into the script. They are all **optional** — an empty value means "use the script default", so you only ever set what you want to change. A few niche knobs are **script-env-only** and not surfaced as runner form fields (`K6SIM_WARMUP_TIMEOUT`, `K6SIM_GATEWAY_PORT`, `K6SIM_MICROSERVICE_PORT`); GitHub Actions additionally has no manual `iterations`/`sleep` inputs (a preset can still set them). The script reads them all in [`jenkins/pipelines/k6/microservices-smoke.js`](../jenkins/pipelines/k6/microservices-smoke.js).
 
 ### Target — *where* the traffic goes
 
@@ -129,7 +129,7 @@ Every runner threads the **same variables** into the script. They are all **opti
 
 > **Override precedence** (highest first): `K6SIM_STAGES` → `K6SIM_RPS` → `K6SIM_PROFILE` preset, with `K6SIM_VUS` / `K6SIM_DURATION` / `K6SIM_ITERATIONS` fine-tuning whichever is chosen. One exception: `profile=breakpoint` *consumes* `K6SIM_RPS` as its ramp target (that profile **is** an RPS ramp), so only `K6SIM_STAGES` overrides it.
 
-> **Cold-start immunity.** The two thresholds are scoped to the measured scenario (`http_req_failed{scenario:microservices}` / `http_req_duration{scenario:microservices}`) and the `setup()` readiness gate runs first, so a fresh deploy that isn't warm yet no longer flips the smoke to a **false UNSTABLE** — the warm-up's own probe traffic is a different scenario tag and is excluded from those thresholds. If a target genuinely never comes up, the gate still yields after `K6SIM_WARMUP_TIMEOUT` and the run proceeds so the real failure surfaces in the checks.
+> **Cold-start immunity.** The two thresholds are scoped to the measured scenario (`http_req_failed{scenario:microservices}` / `http_req_duration{scenario:microservices}`) and the `setup()` readiness gate runs first, so a fresh deploy that isn't warm yet no longer flips the smoke to a **false UNSTABLE** — the warm-up's own probe traffic carries **no scenario tag** (it is tagged `warmup:true` instead), so the scenario-scoped thresholds exclude it. If a target genuinely never comes up, the gate still yields after `K6SIM_WARMUP_TIMEOUT` and the run proceeds so the real failure surfaces in the checks.
 
 ---
 
@@ -167,7 +167,7 @@ flowchart TB
 
 Typing the full `K6SIM_*` set every time is tedious and error-prone. **Presets** solve this: each is a small **committed YAML file** under [`jenkins/pipelines/k6/presets/`](../jenkins/pipelines/k6/presets/) that bundles a complete, named configuration (profile + VUs/duration/stages/rps + scenarios + thresholds + optional target). You **pick one from a dropdown** and the runner loads its parameters; anything you still type by hand **overrides** the preset.
 
-**Precedence (highest first):** manual field (non-empty) → **preset** value → script default. Selecting `none` = pure manual inputs / defaults (the historical behaviour).
+**Precedence (highest first):** manual field (non-empty) → **preset** value → script default — with one deliberate exception: fields that **always** carry a value (`PROFILE`, and a preset-pinned `envName` / `targetNamespace`) are taken **from the preset** whenever one is selected, because an always-populated selector can't signal "left untouched". Selecting `none` = pure manual inputs / defaults (the historical behaviour).
 
 > **Format = YAML, by design.** The repo standardises on YAML + `yq` everywhere ([`config/config.yaml`](../config/config.yaml), Helm values, JCasC, Tekton). TOML would add a second config language and new tooling for zero benefit, so presets are YAML and read with the same `yq` already in the runners.
 
@@ -178,6 +178,7 @@ Typing the full `K6SIM_*` set every time is tedious and error-prone. **Presets**
 | **Jenkins** | `PRESET` **choice** in *Build with Parameters* (seeded from [`presets/index.yaml`](../jenkins/pipelines/k6/presets/index.yaml)) | `readYaml` in the pipeline merges preset + manual | The job's tier still sets the default namespace/env unless the preset pins them. |
 | **GitHub Actions** | `preset` **dropdown** input | a *Resolve k6 parameters* step (`yq`) writes the merged `K6SIM_*` to `$GITHUB_ENV` | Options are listed in the workflow — keep in sync with `index.yaml`. |
 | **Tekton** | `preset` **param** | a `resolve-preset` step (`yq`) writes `k6sim-preset.env`; `run-k6` fills any empty param from it | Idiomatic param; `tekton/runs/*.yaml` can hard-set it. |
+| **Argo Workflows** | `preset` **param** | a `resolve-preset` step (`yq`) writes `k6sim-preset.env`; `run-k6` fills any empty param from it | Same mechanism as Tekton; `argoworkflows/runs/*.yaml` can hard-set it. |
 
 <details>
 <summary>🔄 Diagram — preset resolution & precedence (flowchart)</summary>
@@ -216,12 +217,14 @@ Every committed preset, what it does, and when to reach for it. **Shape** is the
 ### Special test type — RUM (Faro) beacons (`rum-faro` · profile `rum`)
 
 ⭐ **This is not a microservices load test.** It runs a **different k6 script**
-([`faro-rum.js`](../jenkins/pipelines/k6/faro-rum.js), not [`microservices-smoke.js`](../jenkins/pipelines/k6/microservices-smoke.js)):
-each iteration is one synthetic browser **session** that POSTs a **Grafana Faro**
-beacon — a page-load log + **Core Web Vitals** (LCP/FCP/TTFB/INP/CLS) + a browser
-`documentLoad` span; a configurable fraction (`K6SIM_ERROR_RATE`, default 0.2) also
-POST a JS exception — to the otel-collector's **faro receiver** (`:8027`). The
-collector converts them to OTLP logs+traces and ships them to Loki/Tempo, **populating
+([`faro-rum.js`](../jenkins/pipelines/k6/faro-rum.js), not [`microservices-smoke.js`](../jenkins/pipelines/k6/microservices-smoke.js)).
+Each iteration is one synthetic browser **session** that POSTs a **Grafana Faro**
+beacon to the otel-collector's **faro receiver** (`:8027`):
+
+- a page-load log + **Core Web Vitals** (LCP/FCP/TTFB/INP/CLS) + a browser `documentLoad` span;
+- a configurable fraction (`K6SIM_ERROR_RATE`, default 0.2) also POSTs a JS exception.
+
+The collector converts the beacons to OTLP logs+traces and ships them to Loki/Tempo, **populating
 the [`CI-CD Frontend RUM (Angular / Faro)`](./301-OBSERVABILITY.md) dashboard** — the
 same path a real browser running the Angular Faro Web SDK uses ([docs/202](./202-MICROSERVICES-APP-ARCHITECTURE.md#frontend-observability--angular-rum-with-grafana-faro-implemented)),
 without needing a browser.
@@ -296,7 +299,7 @@ flowchart LR
 <details>
 <summary>🟢 <code>develop-smoke</code> — smoke against the develop tier (targeting graph)</summary>
 
-The smoke test pinned to the lean **develop** tier (`microservices-develop` namespace, `deployment.environment=develop`), regardless of which job launched it. Requires `microservices.developTrackEnabled`. In-cluster runners (Jenkins/Tekton) reach it by namespace DNS as drawn below; the external GitHub Actions runner targets the tier's public `microservices-develop.<baseDomain>` host instead.
+The smoke test pinned to the lean **develop** tier (`microservices-develop` namespace, `deployment.environment=develop`), regardless of which job launched it. Requires `microservices.developTrackEnabled`. In-cluster runners (Jenkins/Tekton/Argo Workflows) reach it by namespace DNS as drawn below; the external GitHub Actions runner targets the tier's public `microservices-develop.<baseDomain>` host instead.
 
 ```mermaid
 flowchart TB
@@ -414,11 +417,11 @@ xychart-beta
 
 ### Adding a preset
 
-1. Drop a `jenkins/pipelines/k6/presets/<name>.yaml` (copy an existing one; fill `params:` with any subset of the `K6SIM_*` knobs in camelCase — `profile`, `vus`, `duration`, `stages`, `rps`, `scenarios`, `p95Ms`, `errorRate`, `envName`, `targetNamespace`, `targetUrl`, …).
+1. Drop a `jenkins/pipelines/k6/presets/<name>.yaml` (copy an existing one; fill `params:` with any subset of the loader-supported keys in camelCase — `profile`, `vus`, `iterations`, `duration`, `stages`, `rps`, `sleep`, `scenarios`, `p95Ms`, `errorRate`, `debug`, `envName`, `targetNamespace`, `targetUrl` — exactly this set: the port and warm-up-timeout knobs are script-env-only and can't be loaded from a preset).
 2. Add it to `presets/index.yaml` (name + level + description) — this drives the **Jenkins** dropdown and the docs.
 3. Add the name to the **GitHub Actions** workflow `preset` input `options:` (kept in sync manually, like the secrets inventory).
 
-Tekton needs no list — it resolves whatever `preset` name you pass against the file in git.
+Tekton and Argo Workflows need no list — both resolve whatever `preset` name you pass against the committed file at run time.
 
 ---
 
@@ -445,16 +448,20 @@ flowchart LR
 
 ### Jenkins
 
-The seed job ([`jenkins/pipelines/seed/seed_jobs.groovy`](../jenkins/pipelines/seed/seed_jobs.groovy)) generates **one k6 job per tier**: `microservices-k6-smoke` (stable) and, when the develop tier is on (`JENKINS2026_DEVELOP_TRACK_ENABLED=true`), `microservices-k6-smoke-develop`. Each is a **`MicroservicesK6SmokePipeline`** ([`vars/MicroservicesK6SmokePipeline.groovy`](../vars/MicroservicesK6SmokePipeline.groovy)) with a full **"Build with Parameters"** form — a **`PRESET`** dropdown (seeded from [`presets/index.yaml`](../jenkins/pipelines/k6/presets/index.yaml)) plus `PROFILE`, `VUS`, `DURATION`, `STAGES`, `RPS`, `SCENARIOS`, `P95_MS`, `ERROR_RATE`, `TARGET_URL`, `DEBUG`. The build/deploy pipeline ([`vars/MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy)) triggers the **tier-matched** k6 job as its *Integration k6 Smoke Test* stage.
+The seed job ([`jenkins/pipelines/seed/seed_jobs.groovy`](../jenkins/pipelines/seed/seed_jobs.groovy)) generates **one k6 job per tier**, each a **`MicroservicesK6SmokePipeline`** ([`vars/MicroservicesK6SmokePipeline.groovy`](../vars/MicroservicesK6SmokePipeline.groovy)):
+
+- **Jobs:** `microservices-k6-smoke` (stable); `microservices-k6-smoke-develop` when the develop tier is on (`JENKINS2026_DEVELOP_TRACK_ENABLED=true`).
+- **Form:** a full *Build with Parameters* form — a **`PRESET`** dropdown (seeded from [`presets/index.yaml`](../jenkins/pipelines/k6/presets/index.yaml)) plus `TARGET_NAMESPACE`, `ENV_NAME`, `TARGET_URL`, `PROFILE`, `VUS`, `ITERATIONS`, `DURATION`, `STAGES`, `RPS`, `SLEEP`, `SCENARIOS`, `P95_MS`, `ERROR_RATE`, `DEBUG`.
+- **Trigger:** the build/deploy pipeline ([`vars/MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy)) runs the **tier-matched** k6 job as its *Integration k6 Smoke Test* stage.
 
 - **Easiest:** pick a `PRESET` (e.g. `load-baseline`) → **Build**. The preset's config loads; leave the rest untouched.
 - **Basic:** open `microservices-k6-smoke` → **Build with Parameters** → leave defaults (`PRESET=none`) → **Build** (the smoke test).
-- **Advanced:** set `PROFILE=load`, `VUS=30`, `DURATION=5m` → a real load test, same job. (Manual fields override a chosen preset.)
+- **Advanced:** set `PROFILE=load`, `VUS=30`, `DURATION=5m` → a real load test, same job. (An empty field falls back to a chosen preset; `PROFILE` and a preset-pinned `ENV_NAME`/`TARGET_NAMESPACE` are taken from the preset when one is selected.)
 - **develop:** open `microservices-k6-smoke-develop` (targets `microservices-develop`, `ENV_NAME=develop`), or pick the `develop-smoke` preset from any job.
 
 ### Tekton
 
-[`tekton/pipelines/microservices-k6-smoke.yaml`](../tekton/pipelines/microservices-k6-smoke.yaml) (→ [`tekton/tasks/k6-smoke.yaml`](../tekton/tasks/k6-smoke.yaml)) exposes the same knobs as Pipeline **params**, including a **`preset`** param (a `resolve-preset` step `yq`-loads the committed file; any param you set overrides it). The contract matches the other engines: **`otlp-endpoint` defaults to the in-cluster collector** (`http://otel-collector-gateway.observability.svc.cluster.local:4317`), so a standalone run exports k6 metrics to Grafana with no extra params (set it to `""` to skip OTLP), and a **threshold breach (k6 exit 99) does not fail the TaskRun** — it's logged and tolerated, like Jenkins' UNSTABLE (any other non-zero exit still fails). Ready-to-run examples live in [`tekton/runs/`](../tekton/runs/):
+[`tekton/pipelines/microservices-k6-smoke.yaml`](../tekton/pipelines/microservices-k6-smoke.yaml) (→ [`tekton/tasks/k6-smoke.yaml`](../tekton/tasks/k6-smoke.yaml)) exposes the same knobs as Pipeline **params**, including a **`preset`** param (a `resolve-preset` step `yq`-loads the committed file; any *empty* param falls back to the preset, while the preset's `profile` / `env-name` / `target-namespace` win when set). The contract matches the other engines: **`otlp-endpoint` defaults to the in-cluster collector** (`http://otel-collector-gateway.observability.svc.cluster.local:4317`), so a standalone run exports k6 metrics to Grafana with no extra params (set it to `""` to skip OTLP), and a **threshold breach (k6 exit 99) does not fail the TaskRun** — it's logged and tolerated, like Jenkins' UNSTABLE (any other non-zero exit still fails). Ready-to-run examples live in [`tekton/runs/`](../tekton/runs/):
 
 - [`tekton/runs/k6-smoke.yaml`](../tekton/runs/k6-smoke.yaml) — defaults (stable smoke); a commented `params:` block shows how to override (incl. `preset`).
 - [`tekton/runs/k6-load.yaml`](../tekton/runs/k6-load.yaml) — an **advanced** example: `profile=load`, `vus=30`, `duration=5m`, scoped to the **develop** tier with a tighter `p95-ms=1500`.
@@ -464,14 +471,26 @@ The seed job ([`jenkins/pipelines/seed/seed_jobs.groovy`](../jenkins/pipelines/s
 kubectl create -f tekton/runs/k6-smoke.yaml
 # advanced (load against develop)
 kubectl create -f tekton/runs/k6-load.yaml
-# pick a committed preset
+# pick a committed preset (feed the RWO workspace a volumeClaimTemplate on stdin)
 tkn pipeline start microservices-k6-smoke -n tekton-ci \
-  -w name=source,volumeClaimTemplateFile=/dev/stdin -p preset=stress-peak
+  --serviceaccount tekton-ci -p preset=stress-peak \
+  -w name=source,volumeClaimTemplateFile=/dev/stdin <<'EOF'
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources: {requests: {storage: 1Gi}}
+EOF
 # ad-hoc override
 tkn pipeline start microservices-k6-smoke -n tekton-ci \
-  -w name=source,volumeClaimTemplateFile=/dev/stdin \
-  -p profile=stress -p vus=50 -p duration=3m -p env-name=stable
+  --serviceaccount tekton-ci \
+  -p profile=stress -p vus=50 -p duration=3m -p env-name=stable \
+  -w name=source,volumeClaimTemplateFile=/dev/stdin <<'EOF'
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources: {requests: {storage: 1Gi}}
+EOF
 ```
+
+k6 also runs inline as the final `k6-smoke` task of the Tekton build pipeline ([`tekton/pipelines/microservices-pipeline.yaml`](../tekton/pipelines/microservices-pipeline.yaml)), with `otlp-endpoint` wired in by `06-tekton-pipelines.sh` — same parity as the Jenkins *Integration k6 Smoke Test* stage.
 
 ### GitHub Actions
 
@@ -480,6 +499,8 @@ tkn pipeline start microservices-k6-smoke -n tekton-ci \
 - **`env_name=stable`** → the public `microservices.<baseDomain>` host from `config/config.yaml`.
 - **`env_name=develop`** → the public **`microservices-develop.<baseDomain>`** host (`gateway.hosts.microservicesDevelop`) — the develop tier now has its own public route (see [402 · develop tier](./402-PIPELINES_AS_CODE.md#optional-develop-tier-feature-flag-off-by-default)), so the runner targets it directly over the internet exactly like `stable`.
 - **`target_url`** input → overrides both.
+
+> **All-defaults = a 15-minute run, not the 12-iteration smoke.** With no preset and no explicit shape (`duration` / `stages` / `rps` all empty) the workflow defaults `K6SIM_DURATION=15m` — it is the *continuous simulation* workflow, so an all-defaults dispatch is a 15-minute constant-VUs smoke (4 VUs held for 15m), not the script's 4 VUs × 12 iterations.
 
 It detects the active observability mode from in-cluster secrets and routes OTLP accordingly (Grafana Cloud HTTP/protobuf, or gRPC via a collector port-forward for oss/managed). Run it from **Actions → Day2.traffic.01 → Run workflow** (no approval gate — it only drives read-only HTTP traffic, so automation/scheduling isn't blocked; the heavier Day2.* workflows keep their gate).
 
@@ -513,7 +534,7 @@ gh workflow run "Day2.traffic.01-k6.yml" --ref develop \
 
 ### Argo Workflows
 
-[`argoworkflows/templates/microservices-k6-wftmpl.yaml`](../argoworkflows/templates/microservices-k6-wftmpl.yaml) is the standalone k6 `WorkflowTemplate` (`microservices-k6-smoke`, the Argo port of the Tekton k6 Pipeline), exposing the same knobs as Workflow **parameters** — including a **`preset`** param (a `resolve-preset` step `yq`-loads the committed file; any param you set overrides it). The contract matches the other engines: **`otlp-endpoint` defaults to the in-cluster collector** (`http://otel-collector-gateway.observability.svc.cluster.local:4317`), so a standalone run exports k6 metrics to Grafana with no extra parameters (set it to `""` to skip OTLP), and a **threshold breach (k6 exit 99) does not fail the Workflow** — it's logged and tolerated, like Jenkins' UNSTABLE (any other non-zero exit still fails). Ready-to-run Workflows live in [`argoworkflows/runs/`](../argoworkflows/runs/):
+[`argoworkflows/templates/microservices-k6-wftmpl.yaml`](../argoworkflows/templates/microservices-k6-wftmpl.yaml) is the standalone k6 `WorkflowTemplate` (`microservices-k6-smoke`, the Argo port of the Tekton k6 Pipeline), exposing the same knobs as Workflow **parameters** — including a **`preset`** param (a `resolve-preset` step `yq`-loads the committed file; any *empty* param falls back to the preset, while the preset's `profile` / `env-name` / `target-namespace` win when set). The contract matches the other engines: **`otlp-endpoint` defaults to the in-cluster collector** (`http://otel-collector-gateway.observability.svc.cluster.local:4317`), so a standalone run exports k6 metrics to Grafana with no extra parameters (set it to `""` to skip OTLP), and a **threshold breach (k6 exit 99) does not fail the Workflow** — it's logged and tolerated, like Jenkins' UNSTABLE (any other non-zero exit still fails). Ready-to-run Workflows live in [`argoworkflows/runs/`](../argoworkflows/runs/):
 
 - [`argoworkflows/runs/k6-smoke.yaml`](../argoworkflows/runs/k6-smoke.yaml) — defaults (stable smoke); a commented `parameters:` block shows how to override (incl. `preset`).
 - [`argoworkflows/runs/k6-load.yaml`](../argoworkflows/runs/k6-load.yaml) — an **advanced** example: `profile=load`, `vus=30`, `duration=5m`, scoped to the **develop** tier with a tighter `p95-ms=1500`.
@@ -535,16 +556,17 @@ k6 also runs inline as the *k6 Smoke* stage of the build pipeline ([`argoworkflo
 ### Filtering results by Runner / Profile / Preset
 
 Every k6 run is tagged so the **`CI-CD / k6 Observability`** dashboard can slice
-by **who ran it and what shape it was** — three k6 **`--tag`** values become Prometheus
+by **who ran it and what shape it was** — two k6 **`--tag`** values on every engine
+(`ci_runner`, `k6_profile`), plus `k6_preset` on GitHub Actions runs, become Prometheus
 labels on every k6 metric series:
 
 | Tag → label | Values | Set by |
 |---|---|---|
 | `ci_runner`  | `gha` · `jenkins` · `tekton` · `argoworkflows` | the runner (literal per engine) |
 | `k6_profile` | `smoke` · `load` · `stress` · `soak` · `spike` · `breakpoint` | `${K6SIM_PROFILE}` |
-| `k6_preset`  | the preset name (e.g. `breakpoint-capacity`), or `none` for ad-hoc | the selected preset |
+| `k6_preset`  | the preset name (e.g. `breakpoint-capacity`), or `none` for ad-hoc | **GitHub Actions runner only** (`Day2.traffic.01-k6`); Jenkins/Tekton/Argo Workflows runs carry no `k6_preset` label and show under *All* in the Preset filter |
 
-The dashboard exposes **Runner** and **Profile** template variables (plus the existing
+The dashboard exposes **Runner**, **Profile** and **Preset** template variables (plus the existing
 **Environment**); `allValue='.*'` + includeAll means pre-existing untagged runs still show
 under *All*, and selecting a value narrows once tagged runs land.
 
@@ -571,8 +593,8 @@ under *All*, and selecting a value narrows once tagged runs land.
 ### Basic — a smoke test that lights up Grafana
 
 1. **Jenkins:** `microservices-k6-smoke` → Build (no params). **GitHub Actions:** Run workflow, all defaults. **Tekton:** `kubectl create -f tekton/runs/k6-smoke.yaml`. **Argo Workflows:** `kubectl create -f argoworkflows/runs/k6-smoke.yaml`.
-2. Watch the console — the **k6 run analysis** prints a SUMMARY + VERDICT (see below).
-3. Open the **`CI-CD / k6 Observability`** dashboard (the run log prints a deep-link scoped to the run's `deployment_environment` and time window).
+2. Watch the console — Jenkins and GitHub Actions print the layered **k6 run analysis** (SUMMARY + VERDICT, see below); Tekton and Argo Workflows echo the script's own `k6 run summary` block (checks + thresholds) from `handleSummary()`.
+3. Open the **`CI-CD / k6 Observability`** dashboard — the Jenkins/GitHub Actions run log prints a deep-link scoped to the run's `deployment_environment` and time window (Tekton/Argo Workflows: open it from Grafana directly).
 
 ### Basic — point it at the develop tier
 
@@ -604,11 +626,12 @@ Jenkins: set those fields. Tekton / Argo Workflows: `-p stages=... -p p95-ms=150
 
 > **How `k6-summary.json` is produced.** The script defines a **`handleSummary()`** that
 > writes the end-of-test summary itself, rather than relying on k6's `--summary-export`.
-> k6 2.0's `--summary-export` emits a *flattened* schema (`metrics.<m>.<stat>`), but all
-> four engines parse the nested `metrics.<m>.values.<stat>` (+ `.thresholds[expr].ok`)
-> shape — so `--summary-export` silently made every summary read **all-zeros / `[FAIL]`**
-> even on a passing run. `handleSummary()`'s `data` object keeps the stable `.values.*`
-> schema, fixing GHA, Jenkins, Tekton and Argo Workflows from one place. The output path is the CWD
+> k6 2.0's `--summary-export` emits a *flattened* schema (`metrics.<m>.<stat>`), but the
+> summary consumers read the nested `metrics.<m>.values.<stat>` (+ `.thresholds[expr].ok`)
+> shape — the Jenkins `readJSON` parser, the GitHub Actions `jq` step, and the script's own
+> `handleSummary()` stdout that all four engines echo — so `--summary-export` silently made
+> every summary read **all-zeros / `[FAIL]`** even on a passing run. `handleSummary()`'s `data`
+> object keeps the stable `.values.*` schema, fixing them all from one place. The output path is the CWD
 > `k6-summary.json` by default, overridable via **`K6_SUMMARY_OUT`** (Tekton runs k6 from a
 > sub-dir and writes to the workspace root). `summaryTrendStats` includes `p(99)` so the
 > percentile spread below is complete (k6's defaults omit p99).

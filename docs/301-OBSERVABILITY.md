@@ -6,7 +6,12 @@
 
 Jenkins (via the `opentelemetry` plugin), every Java microservice (via OTel Operator auto-instrumentation), and the Angular UI (via a small RUM snippet) export OTLP to an in-cluster collector, which forwards to one of four backends selected by `observability.mode`: an in-cluster OSS **Prometheus+Loki+Tempo+Grafana** stack (`oss`), **Grafana Cloud**, **Azure Managed Grafana** + Azure Monitor (`managed-azure`), or **Amazon Managed Grafana** + AMP/X-Ray/CloudWatch (`managed-aws`).
 
-> **Exactly one backend is active per cluster, and the choice is deterministic & idempotent** — exactly like `ci.engine` (jenkins · tekton · githubactions · argoworkflows, mutually exclusive). Re-running `Day1.cluster.01` (or [`scripts/03-observability.sh`](../scripts/03-observability.sh)) with a *different* `observability.mode` **auto-retires the previously-deployed backend's in-cluster footprint** (the OTel collectors are reconfigured for the new backend; the other modes' agents — `pdc-agent`/`k8s-monitoring` for grafana-cloud, the OSS `observability-oss` app-of-apps, `kube-state-metrics`/`prometheus-node-exporter` for managed-*— are uninstalled) and provisions the chosen one, so you never end up with two Grafanas. Defaults: the `Day1.cluster.01` form defaults to **`oss`** (needs no external backend); `config/config.yaml`'s durable default is `grafana-cloud`. The persistent managed backends *themselves* (the Grafana Cloud stack / Azure Managed Grafana / Amazon Managed Grafana, created by `Day0.infra.0{2,3,4}`) are decoupled from the cluster and, **by default, are not** destroyed by a mode switch (the switch only retires the in-cluster footprint; use their `Decom.infra.*` workflows to remove the external backend). To enforce a **true single backend** — also `terraform destroy` the persistent stacks of the *non-selected* modes on the same Day1 — set the opt-in **`destroy_unused_backends`** input on `Day1.cluster.01` (it reuses the per-backend `Decom.infra.0{2,3,4}` workflows via `workflow_call`). ⚠ **Irreversible**: it wipes that backend's history/dashboards, and re-selecting the mode later recreates it empty; it also needs that backend's credentials/identifiers configured. Off by default.
+> **Exactly one backend is active per cluster, and the choice is deterministic & idempotent** — exactly like `ci.engine` (jenkins · tekton · githubactions · argoworkflows, mutually exclusive).
+>
+> - **Mode switch = auto-retire + provision.** Re-running `Day1.cluster.01` (or [`scripts/03-observability.sh`](../scripts/03-observability.sh)) with a *different* `observability.mode` retires the previous backend's in-cluster footprint (the OTel collectors are reconfigured; the other modes' agents — `pdc-agent`/`k8s-monitoring` for grafana-cloud, the OSS `observability-oss` app-of-apps, `kube-state-metrics`/`prometheus-node-exporter` for managed-*— are uninstalled) and provisions the chosen one, so you never end up with two Grafanas.
+> - **Defaults**: the `Day1.cluster.01` form defaults to **`oss`** (needs no external backend); `config/config.yaml`'s durable default is `grafana-cloud`.
+> - **Persistent managed backends survive a switch.** The Grafana Cloud stack / Azure Managed Grafana / Amazon Managed Grafana (created by `Day0.infra.0{2,3,4}`) are decoupled from the cluster and, **by default, are not** destroyed by a mode switch — use their `Decom.infra.*` workflows to remove an external backend.
+> - **True single backend (opt-in, ⚠ irreversible)**: the **`destroy_unused_backends`** input on `Day1.cluster.01` also `terraform destroy`s the persistent stacks of the *non-selected* modes on the same run (reusing the per-backend `Decom.infra.0{2,3,4}` workflows via `workflow_call`). It wipes that backend's history/dashboards — re-selecting the mode later recreates it empty — and needs that backend's credentials/identifiers configured. Off by default.
 
 Every component — Jenkins, the Spring Boot microservices, and the Angular UI — exports OpenTelemetry **traces**, **metrics**, and **logs**, correlated by `trace_id`/`span_id` and common resource attributes (`service.name`, `service.namespace=jenkins-2026`, `deployment.environment=stable`).
 
@@ -64,6 +69,7 @@ mindmap
 - **Per-mode export.** The collectors' **exporters** are the only backend-specific part: grafana-cloud → Mimir/Tempo/Loki; oss → in-cluster Prometheus/Tempo/Loki; managed-azure → Azure Monitor/App Insights; managed-aws → AMP/X-Ray/CloudWatch. Deterministic & idempotent — re-running with a different mode retires the previous footprint.
 - **Correlation.** `exemplarTraceIdDestinations` (metrics→traces), Tempo `tracesToLogs`/`tracesToMetrics`+`serviceMap` (traces→logs/metrics), Loki `derivedFields` regex (logs→traces). The hardest link (logs→traces) needs ECS-JSON logs + reactive context propagation — see [Structured Logging](#structured-logging-deep-dive).
 - **Dashboards & alerts** live in one engine-neutral `CI-CD Observability` folder; canonical JSON in [`observability/grafana/dashboards/`](../observability/grafana/dashboards/), with per-backend variants generated for Azure/AWS.
+- **Backend infra as code.** Each managed backend is a Terraform module with an in-tree README (inputs/outputs, state prefix, which workflow applies vs reads it): [`grafana-cloud-stack`](../terraform/grafana-cloud-stack/README.md) + [`grafana-cloud-token`](../terraform/grafana-cloud-token/README.md), [`azure-managed-grafana`](../terraform/azure-managed-grafana/README.md), [`aws-managed-grafana`](../terraform/aws-managed-grafana/README.md).
 
 </details>
 
@@ -145,8 +151,9 @@ plan when you want full cluster-infra metrics back.
 > Auto-Provisioning (Spot)** dashboard needs: it derives Spot / ComputeClass membership from
 > the node **taints** (`kube_node_spec_taint{key="cloud.google.com/gke-spot"}` /
 > `…/compute-class`), which KSM exposes **by default** — *not* from node labels
-> (`kube_node_labels`), whose `label_*` dimensions would require a KSM
-> `--metric-labels-allowlist` we deliberately don't enable. So this one dashboard populates
+> (`kube_node_labels`), which are kept only for the machine-type panel via the
+> instance-type-scoped allow-list described above (no broader `--metric-labels-allowlist`
+> is enabled). So this one dashboard populates
 > in **every** mode (oss, paid, and lean/free); the expensive cadvisor/kubelet/node-exporter
 > series stay off. See the [NAP → Spot CI nodes runbook](./runbooks/nap-spot-provisioning.md).
 
@@ -246,7 +253,7 @@ managed-azure/-aws have no equivalent.
 
 ### Java Auto-Instrumentation
 
-The `helm/microservices` chart creates an `Instrumentation` CR (`microservices-java`) per namespace, pointing at `otel-collector-gateway.observability.svc.cluster.local:4317`. Each `java`-typed service's Deployment gets the pod annotation `instrumentation.opentelemetry.io/inject-java: "true"`, so the operator's mutating webhook **injects the OTel Java agent automatically — no code changes** to Microservices.
+The **GitOps repo's** `helm/microservices` chart ([jenkins-2026-gitops-config](https://github.com/nubenetes/jenkins-2026-gitops-config)) creates an `Instrumentation` CR (`microservices-java`) per namespace, pointing at `otel-collector-gateway.observability.svc.cluster.local:4317`. Each `java`-typed service's Deployment gets the pod annotation `instrumentation.opentelemetry.io/inject-java: "true"`, so the operator's mutating webhook **injects the OTel Java agent automatically — no code changes** to Microservices.
 
 Key settings on the `Instrumentation` CR:
 - `OTEL_INSTRUMENTATION_LOGBACK_APPENDER_ENABLED=true` — injects `trace_id`/`span_id` into every log line's MDC.
@@ -259,12 +266,12 @@ Key settings on the `Instrumentation` CR:
 
 ### Angular RUM
 
-A small (~100 line) vanilla-JS OTel Web shim, injected into the Angular app's `index.html` via an nginx `sub_filter`. It emits a "page load" span using the Navigation Timing API and patches `window.fetch` to add a W3C `traceparent` header to every call to `/api/*`.
+The Angular SPA is instrumented with the **Grafana Faro Web SDK** (`@grafana/faro-web-sdk` + `@grafana/faro-web-tracing`), initialized in the app source (`src/main/webapp/app/core/faro/faro.ts`, called from `main.ts`) on both tiers. It beacons Web Vitals, JS errors, sessions and browser spans to the public `faro.<baseDomain>` endpoint → the collector's **faro receiver** (`:8027`), which converts them to OTLP traces+logs. See [202 § Frontend observability](202-MICROSERVICES-APP-ARCHITECTURE.md#frontend-observability--angular-rum-with-grafana-faro-implemented).
 
 ### OTel Collector
 
 Two `opentelemetry-collector-contrib` releases (the **contrib** distro — needed for the `faro` receiver):
-- **`otel-collector-gateway`** (Deployment) — receives OTLP/gRPC (4317) and OTLP/HTTP (4318, with permissive CORS for the browser RUM beacon), **plus a `faro` receiver on `:8027`** (CORS-enabled) wired into the **traces + logs** pipelines. The Faro receiver accepts the Grafana **Faro Web SDK**'s browser RUM payload (Web Vitals measurements, JS exceptions, session/page logs, and browser spans) and converts it to OTLP, so frontend RUM rides the same collector→backend path as the Java services' telemetry. The `faro` receiver is wired into **all four** backend collector configs (`values-grafana-cloud` / `-oss` / `-managed-azure` / `-managed-aws`), so RUM works on every observability backend — not just grafana-cloud (OSS gets fully-functional RUM, its in-cluster Loki/Tempo matching the dashboard uids). Populated for real once the Angular SPA ships the Faro SDK (see [202](202-MICROSERVICES-APP-ARCHITECTURE.md)); `Day2.traffic.02` can POST synthetic beacons to it meanwhile.
+- **`otel-collector-gateway`** (Deployment) — receives OTLP/gRPC (4317) and OTLP/HTTP (4318, with permissive CORS for the browser RUM beacon), **plus a `faro` receiver on `:8027`** (CORS-enabled) wired into the **traces + logs** pipelines. The Faro receiver accepts the Grafana **Faro Web SDK**'s browser RUM payload (Web Vitals measurements, JS exceptions, session/page logs, and browser spans) and converts it to OTLP, so frontend RUM rides the same collector→backend path as the Java services' telemetry. The `faro` receiver is wired into **all four** backend collector configs (`values-grafana-cloud` / `-oss` / `-managed-azure` / `-managed-aws`), so RUM works on every observability backend — not just grafana-cloud (OSS gets fully-functional RUM, its in-cluster Loki/Tempo matching the dashboard uids). Populated by the Angular SPA's Faro Web SDK (shipped on both tiers — see [202](202-MICROSERVICES-APP-ARCHITECTURE.md#frontend-observability--angular-rum-with-grafana-faro-implemented)); `Day2.traffic.02` can additionally POST synthetic beacons.
 - **`otel-collector-logs`** (DaemonSet) — tails `/var/log/pods/*/*/*.log` on every node via the `filelog` receiver and forwards log records to the same backend.
 
 #### Per-mode metrics collection & collector sizing
@@ -405,7 +412,7 @@ flowchart LR
 
 ### Log Levels
 
-There are **two independent levers**, at two different points in the pipeline:
+There are **two independent levers**, at two different points in the pipeline — plus a third, non-destructive **per-panel filter** on top (3):
 
 **1. Source-side (microservices only) — the `microservices-logback` ConfigMap.** This is the authority on what each microservice *emits*. It lives in the **GitOps repo** and *replaces* JHipster's own `logback-spring.xml`:
 
@@ -431,14 +438,18 @@ This is **mode-independent** — applies unchanged across all four observability
 # running cluster without a full Day1 — Day2.redeploy.01-argocd / Day2.publish.01-oss-grafana.
 observability:
   grafanaCloudTier: free   # free (default) | paid — the volume profile (see below)
-  logMinSeverity: auto     # auto=from tier (free→warn, paid→trace) · or force trace/debug/info/warn/error
+  logMinSeverity: auto     # auto=from tier in grafana-cloud (free→warn, paid→trace); other modes→info · or force trace/debug/info/warn/error
 ```
 
 > **The `grafanaCloudTier` profile.** `logMinSeverity` (logs) and `leanMetrics` (metrics) default to `auto`, deriving from the tier so the **free** tier fits its limits in one switch: `free` → `leanMetrics` on + `logMinSeverity=warn`; `paid` → full metrics + ship all logs (`trace`). It governs **metrics and logs** — an explicit value (or the `JENKINS2026_*` env / GHA dropdowns) overrides the tier.
 >
 > **Traces are deliberately NOT sampled on either tier (100% shipped).** Two reasons: (1) in this low-traffic PoC the trace volume comfortably fits the Grafana Cloud free tier, so sampling buys nothing; (2) sampling would **break correlation** — a `trace_id` embedded in a log line (or a metric exemplar) could point at a trace that was dropped, turning the log→trace / metric→trace jumps into dead ends. If traffic ever grows enough to need it, add a `probabilistic_sampler` (or tail-sampling) to the collector's traces pipeline gated on the tier — accepting that correlation-from-logs becomes best-effort.
 
-How it works: a `regex_parser` in the `otel-collector-logs` filelog receiver extracts the level token from **structured** lines — JSON `"level":"<lvl>"` (covers the microservices' ECS nested `"log":{"level":…}`, CNPG's flat `"level":…`) and logfmt `level=<lvl>` (ArgoCD), case-insensitively — and **sets the OTLP record severity** from it (plain-text lines get `level=unknown`). The `filter/severity` processor then drops by `severity_number` (`!= UNSPECIFIED and < <threshold>`), so anything whose level couldn't be parsed is **never dropped** (no accidental blackout). `trace` disables the filter entirely (ship everything). The two levers compose: e.g. keep the logback `<root>` at `INFO` but set `logMinSeverity: warn` for a quiet dashboard, then dial back when debugging.
+How it works:
+- A `regex_parser` in the `otel-collector-logs` filelog receiver extracts the level token from **structured** lines — JSON `"level":"<lvl>"` (covers the microservices' ECS nested `"log":{"level":…}` and CNPG's flat `"level":…`) and logfmt `level=<lvl>` (ArgoCD), case-insensitively — and **sets the OTLP record severity** from it; plain-text lines get `level=unknown`.
+- The `filter/severity` processor then drops by `severity_number` (`!= UNSPECIFIED and < <threshold>`), so anything whose level couldn't be parsed is **never dropped** (no accidental blackout).
+- `trace` disables the filter entirely (ship everything).
+- The two levers compose: e.g. keep the logback `<root>` at `INFO` but set `logMinSeverity: warn` for a quiet dashboard, then dial back when debugging.
 
 **3. Interactive per-panel filter — the `$level` dashboard variable.** Because the collector now stamps every record with a severity, Loki derives a `detected_level` on **100%** of log lines (`unknown` for plain text). Every logs panel carries a multi-select **`Log level`** variable (`error/warn/info/debug/trace/unknown`, default **All**) wired as `… | detected_level=~"$level"` — so you can slice the panel by level live, non-destructively, on top of whatever the collector floor (`logMinSeverity`) already let through. `All` (`.+`) includes everything, plain text included.
 
@@ -463,9 +474,9 @@ Each observability mode has its **own independent set of dashboards** published 
 
 #### Source of truth: canonical dashboards
 
-The canonical JSON files live in [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) and are the **single source of truth** for content. Panels reference datasources by their fixed names (`grafanacloud-logs` / `grafanacloud-traces`; Prometheus is the stack default), **not** via `${DS_LOKI}`/`${DS_TEMPO}` template variables — the stack has **no default Loki or Tempo datasource**, so those vars wouldn't resolve (see the No-Data gotcha below); the aws/azure variant generators rewrite the Loki/Tempo references to CloudWatch/X-Ray by datasource type. The generators also **neutralize Loki/Tempo _query-type_ template variables** (e.g. the redesigned Tekton board's `log_namespace` filter, whose dropdown options are *queried from Loki*): in the aws/azure variants they become a static `custom` variable keeping the all-value, since a LogQL/TraceQL options query has no Azure/CloudWatch equivalent. The **Shipped** column shows which dashboards are always present versus the four CI-overview dashboards that are mutually exclusive — only the one for the active `ci.engine` (jenkins · tekton · githubactions · argoworkflows) is shipped (see [CI-engine-aware publishing](#ci-engine-aware-publishing)):
+The canonical JSON files live in [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) and are the **single source of truth** for content. Panels reference Prometheus via the `${DS_PROMETHEUS}` datasource template variable and Loki/Tempo by the fixed neutral uids `loki`/`tempo` (matching the in-cluster OSS Grafana) — **not** via `${DS_LOKI}`/`${DS_TEMPO}` template variables, which wouldn't resolve since the stack has **no default Loki or Tempo datasource** (see the No-Data gotcha below). At publish time `07-grafana-dashboards.sh` rewrites `loki`/`tempo` to `grafanacloud-logs`/`grafanacloud-traces` for grafana-cloud; the aws/azure variant generators rewrite the Loki/Tempo references to CloudWatch/X-Ray by datasource type. The generators also **neutralize Loki/Tempo _query-type_ template variables** (e.g. the redesigned Tekton board's `log_namespace` filter, whose dropdown options are *queried from Loki*): in the aws/azure variants they become a static `custom` variable keeping the all-value, since a LogQL/TraceQL options query has no Azure/CloudWatch equivalent. The **Shipped** column shows which dashboards are always present versus the four CI-overview dashboards that are mutually exclusive — only the one for the active `ci.engine` (jenkins · tekton · githubactions · argoworkflows) is shipped (see [CI-engine-aware publishing](#ci-engine-aware-publishing)):
 
-| Dashboard (uid) | What it shows | Shipped |
+| Dashboard (canonical file) | What it shows | Shipped |
 |---|---|---|
 | `microservices-overview` | Per-service HTTP RED, JVM/GC, restarts, traces table, pod logs | always |
 | `jvm-internals` | Deep JVM diagnostics for **all Java services + the Jenkins controller**: heap by pool + live-set-after-GC, non-heap, GC time/freq/pause-quantiles by collector, threads (count/state/daemon), CPU (process+system+load), classes, buffer pools, JVM/runtime context | always |
@@ -487,7 +498,9 @@ The canonical JSON files live in [`observability/grafana/dashboards/`](../observ
 > four** backends. (The Tekton board replaced the previous, obsolete one — same uid/filename, so
 > the CI-engine gating is unchanged.)
 
-> Adding a dashboard = drop a `<name>.json` into [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) and run the variant generators (below). In `oss` mode the Helm-chart ConfigMap picks it up automatically (it globs `*.json`); for the other modes [`scripts/07-grafana-dashboards.sh`](../scripts/07-grafana-dashboards.sh) publishes every `*.json`. Only the four CI overviews (`jenkins-overview` / `tekton-overview` / `github-actions-ci` / `argo-workflows-ci`) are CI-engine-gated; everything else ships in all modes.
+> Adding a dashboard = drop a `<name>.json` into [`observability/grafana/dashboards/`](../observability/grafana/dashboards/) and run the variant generators (below). In `oss` mode the Helm-chart ConfigMap picks it up automatically (it globs `*.json`); grafana-cloud and managed-aws are published by [`scripts/07-grafana-dashboards.sh`](../scripts/07-grafana-dashboards.sh), and managed-azure by the dedicated post-`azure/login` step in `Day1.cluster.01-gke` / `Day2.publish.03` (07 is a deliberate no-op there — AMG has no static API key). Only the four CI overviews (`jenkins-overview` / `tekton-overview` / `github-actions-ci` / `argo-workflows-ci`) are CI-engine-gated; everything else ships in all modes.
+
+> In-tree editing guide: [`observability/grafana/dashboards/README.md`](../observability/grafana/dashboards/README.md) is the pointer README for the canonical dashboards directory — the add/change workflow, the OSS-chart vs cloud-publish split, and the hand-edit-clobber gotcha.
 
 #### Dashboard inventory — what each one offers
 
@@ -548,8 +561,9 @@ through the otel-collector **faro receiver** → Loki/Tempo). *Key panels:* **Co
 Vitals** (LCP/INP/CLS/TTFB/FCP with Google's good/needs-improvement/poor thresholds),
 JS error rate + recent exceptions, sessions over time, browser/OS breakdown, and
 browser→gateway→microservice **end-to-end traces**. *Answers:* is the UI fast for real
-users? are there client-side errors? *Populates once the SPA is instrumented with the
-Faro Web SDK — the receiver + pipeline are already live; see the [RUM roadmap in 202](202-MICROSERVICES-APP-ARCHITECTURE.md).*
+users? are there client-side errors? *Fed by the SPA's Faro Web SDK (implemented on
+both tiers); without a browser, `Day2.traffic.02` generates synthetic beacons — see
+[202](202-MICROSERVICES-APP-ARCHITECTURE.md#frontend-observability--angular-rum-with-grafana-faro-implemented).*
 
 **`jenkins-overview`** / **`tekton-overview`** / **`github-actions-ci`** /
 **`argo-workflows-ci`** — the CI-engine board (one per engine, only the active
@@ -657,7 +671,7 @@ This applies to all backends. Crucially, the **active engine is resolved per pat
 | Path | How the active engine is resolved |
 |---|---|
 | **oss** (in-cluster Grafana) | The dashboards Helm chart gates on the `ciEngine` value, set by the `observability-oss` app-of-apps from [`scripts/03-observability.sh`](../scripts/03-observability.sh) (`{{ciEngine}}` ← `J2026_CI_ENGINE`). `Day2.publish.01-oss` re-applies the parent app with the engine detected from the cluster. See [OSS dashboards: GitOps-managed by ArgoCD](#oss-dashboards-gitops-managed-by-argocd). |
-| **grafana-cloud** / any cluster-connected `07-grafana-dashboards.sh` run | `07` resolves it via the shared `j2026_active_ci_engine` helper ([`scripts/lib/common.sh`](../scripts/lib/common.sh)): explicit `JENKINS2026_CI_ENGINE` override → **live-cluster detection** (Jenkins StatefulSet = jenkins, Tekton controller = tekton, the `gha-rs-controller` Deployment = githubactions) → config default (argoworkflows). |
+| **grafana-cloud** / any cluster-connected `07-grafana-dashboards.sh` run | `07` resolves it via the shared `j2026_active_ci_engine` helper ([`scripts/lib/common.sh`](../scripts/lib/common.sh)): explicit `JENKINS2026_CI_ENGINE` override → **live-cluster detection** (Jenkins StatefulSet = jenkins, Tekton controller = tekton, the `gha-rs-controller`-labelled Deployment = githubactions, the `workflow-controller` Deployment = argoworkflows) → config default (`ci.engine`, repo default `jenkins`). |
 | **managed-azure** / **managed-aws** (`Day2.publish.03` / `.04`) | These publish from the repo to external Grafana **with no cluster access by design**, so they can't detect via kubectl. Day1 records the deployed engine to a durable GCS object (`gs://<TF_STATE_BUCKET>/jenkins-2026/active-ci-engine`); the publishers read it (falling back to the manual `ci_engine` input only if the record is absent). |
 
 So once a cluster is deployed, every dashboard publisher — cluster-connected or not — gates on the **actually-deployed** engine without anyone selecting it by hand.
@@ -702,7 +716,7 @@ flowchart TD
   SRC --> GEN_AZ --> AZ["dashboards-azure/*.json"]
   SRC --> GEN_AWS --> AWS["dashboards-aws/*.json"]
 
-  AZ -->|"managed-azure\n07 → az grafana dashboard create"| AMG_AZ["Azure Managed Grafana"]
+  AZ -->|"managed-azure\nDay1 / Day2.publish.03 → AMG data-plane API\n(POST /api/dashboards/db, ${appinsights} substituted)"| AMG_AZ["Azure Managed Grafana"]
   AWS -->|"managed-aws\n07 → AMG HTTP API\n(DS_CW_UID / DS_XRAY_UID substituted)"| AMG_AWS["Amazon Managed Grafana"]
 ```
 
@@ -710,9 +724,9 @@ flowchart TD
 
 ### Engineering decisions baked into the canonical JSON
 
-- **Portable datasources**: panels reference `${DS_PROMETHEUS}` / `${DS_LOKI}` / `${DS_TEMPO}` template variables — the same JSON works unchanged in OSS and Grafana Cloud modes.
-- **Environment-scoped logs**: a hidden `namespace` variable resolves the real namespace per environment via `label_values(jvm_memory_used_bytes{deployment_environment="$deployment_environment"}, k8s_namespace_name)`. If no microservices metrics are in the backend yet, this variable is empty and log/trace panels that depend on it will show "No data".
-- **Fixed rate window for sparse metrics**: `[15m]` rate window on JVM GC Pause Time p99 to prevent `NaN` on idle JVMs at short zoom levels.
+- **Portable datasources**: Prometheus panels bind through the `${DS_PROMETHEUS}` datasource template variable; Loki/Tempo panels use the fixed neutral uids `loki`/`tempo`, rewritten per backend at publish/generate time (`grafanacloud-logs`/`grafanacloud-traces` on Grafana Cloud; CloudWatch/X-Ray/Azure Monitor in the variants) — the same JSON works unchanged in OSS and is rewritten mechanically everywhere else.
+- **Environment-scoped logs**: a `namespace` variable resolves the real namespace per environment via `label_values(http_server_request_duration_seconds_count{deployment_environment="$deployment_environment"}, k8s_namespace_name)` (an app metric that *does* carry `deployment_environment` — JVM metrics don't). If no microservices metrics are in the backend yet, this variable is empty and log/trace panels that depend on it will show "No data".
+- **`$__rate_interval` rate windows**: GC/latency rate queries use Grafana's `$__rate_interval` (never a fixed short window), so sparse metrics from idle JVMs don't collapse to `NaN` at short zoom levels.
 
 ### Grafana Cloud dashboard provisioning: HTTP API today, gcx + v2 tomorrow
 
@@ -796,11 +810,12 @@ Six rules live in [`observability/grafana/alerting/rules/`](../observability/gra
 | [`05-jvm-heap-high.json`](../observability/grafana/alerting/rules/05-jvm-heap-high.json) | warning | 5m | JVM heap ratio > 85% for any service |
 | [`06-otel-collector-memory.json`](../observability/grafana/alerting/rules/06-otel-collector-memory.json) | warning | 5m | Gateway collector memory > 70% of its limit (approaching the 80% `memory_limiter` silent-drop threshold — see [collector sizing](#per-mode-metrics-collection--collector-sizing)) |
 
-> **Scope — stable only; the `develop` tier never pages.** Every rule filters on
-> `namespace="microservices"` (the **stable** tier), so the optional lean `develop`
-> tier (`microservices-develop` — see [402 § Optional develop Tier](./402-PIPELINES_AS_CODE.md))
-> is **deliberately excluded** from alerting: a disposable validation tier shouldn't
-> trigger pages. Its telemetry is still fully visible in the (env-aware) dashboards
+> **Scope — stable only; the `develop` tier never pages.** Every workload rule
+> (01 / 03 / 04 / 05) filters on `namespace="microservices"` (the **stable** tier) —
+> 02 watches the `argocd` namespace and 06 the `observability` collector — so the
+> optional lean `develop` tier (`microservices-develop` — see
+> [402 § Optional develop Tier](./402-PIPELINES_AS_CODE.md)) is **deliberately
+> excluded** from alerting: a disposable validation tier shouldn't trigger pages. Its telemetry is still fully visible in the (env-aware) dashboards
 > via the `deployment_environment=develop` variable — just not alerted on. To alert
 > on develop too, add rules scoped to `namespace="microservices-develop"` with their
 > own (ideally non-paging) contact point.
@@ -820,9 +835,9 @@ Drop a `.json` file into [`observability/grafana/alerting/rules/`](../observabil
 | `grafana-cloud` | ✅ Grafana HTTP provisioning API — Bearer token from `grafana-cloud-credentials` Secret |
 | `oss` | ✅ **Declarative file provisioning** — `07.5` builds a `grafana_alert`-labelled ConfigMap (rules + contact point + policy, `datasourceUid` → `prometheus`) that the kube-prometheus-stack alerts sidecar loads on every Grafana boot, so alerting **survives pod restarts** (Grafana's DB is ephemeral here). No port-forward / API / admin password. **Email delivery also requires `grafana.ini.smtp.*` in [`values-oss.yaml`](../observability/grafana/values-oss.yaml)** |
 | `managed-azure` | ✅ Azure Managed Grafana HTTP API — Azure AD token via `az account get-access-token` (GitHub OIDC → Azure in CI) |
-| `managed-aws` | ✅ Amazon Managed Grafana HTTP API — AMG service-account token minted via `aws grafana create-workspace-api-key` (GitHub OIDC → `AWS_DASHBOARD_PUBLISH_ROLE_ARN` in CI) |
+| `managed-aws` | ✅ Amazon Managed Grafana HTTP API — short-lived workspace **service-account token** minted via `aws grafana create-workspace-service-account-token` (workspace API keys are deprecated; GitHub OIDC → `AWS_DASHBOARD_PUBLISH_ROLE_ARN` in CI) |
 
-See [docs/102 § Optional secrets](102-GITHUB_ACTIONS_AUTOMATION.md#step-4-add-github-repository-secrets) for the full secret reference and `gh secret set` commands.
+See [docs/103 § 3 — Grafana Alert Email](103-GITHUB_SECRETS_INVENTORY.md#3-grafana-alert-email) (and [docs/102 § One-time Setup](102-GITHUB_ACTIONS_AUTOMATION.md#one-time-setup-bootstrapping)) for the full secret reference and `gh secret set` commands.
 
 ## k6 Observability Smoke Test
 
@@ -859,8 +874,8 @@ sequenceDiagram
 </details>
 
 - **One trace per iteration**: every request in an iteration carries the same generated `traceparent` — one k6 iteration = one Tempo trace spanning the gateway and downstream microservices.
-- **Job parameters**: `TARGET_NAMESPACE`/`ENV_NAME` (`microservices`/`stable`), `K6_VUS` (default 4), `K6_ITERATIONS` (default 12).
-- **Thresholds, not a hard gate**: `http_req_failed: rate<0.05` and `http_req_duration: p(95)<3000`. k6 exits `99` if a threshold is crossed but the run otherwise completed → `UNSTABLE` in Jenkins (not `FAILURE`).
+- **Job parameters**: `TARGET_NAMESPACE`/`ENV_NAME` (`microservices`/`stable`) plus the `K6SIM_*` contract's `PRESET`/`PROFILE`/`VUS`/`ITERATIONS`/… (empty = smoke-profile defaults: **4 VUs, 12 iterations** — see [302](302-K6_LOAD_TESTING.md)).
+- **Thresholds, not a hard gate**: `http_req_failed{scenario:<profile>}: rate<0.05` and `http_req_duration{scenario:<profile>}: p(95)<3000` (scenario-scoped so setup/warm-up traffic can't trip them). k6 exits `99` if a threshold is crossed but the run otherwise completed → `UNSTABLE` in Jenkins (not `FAILURE`).
 - **Build output**: raw `k6-summary.json` (archived as build artifact), pass/fail breakdown, and a direct link to the [`k6-smoke-overview.json`](../observability/grafana/dashboards/k6-smoke-overview.json) Grafana dashboard scoped to this run's time window.
 - **Automated Pipeline Integration**: Automatically triggered at the end of every microservice build and deploy pipeline.
 
@@ -870,7 +885,7 @@ sequenceDiagram
 
 `observability.mode: oss` runs the **entire** stack in-cluster — useful for air-gapped demos or avoiding SaaS cost/quota.
 
-> **GitOps-managed.** The in-cluster stack (kube-prometheus-stack = Prometheus + Grafana, Loki, Tempo) is deployed by the **`observability-oss` ArgoCD app-of-apps** ([`argocd/observability-oss/`](../argocd/observability-oss)), not by raw `helm` — which is why [`scripts/up.sh`](../scripts/up.sh) installs ArgoCD (`08.5`) *before* observability (`03`). [`scripts/03-observability.sh`](../scripts/03-observability.sh) (oss) creates the namespace, the companion inputs the chart consumes — the `jenkins-2026-grafana-dashboards` ConfigMap (sidecar), the `grafana-jenkins-ds` Secret (`$JENKINS_API_TOKEN` for the Jenkins datasource) and, when the gateway is enabled, the `grafana-runtime-config` ConfigMap (`GF_SERVER_ROOT_URL`) — then applies the app-of-apps; the OTel collectors stay `helm`-managed (shared across all four modes). Dashboard/alert/value changes can be re-applied to a running cluster with the [`Day2.publish.01-oss-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.01-oss-grafana.yml) workflow (no reprovision). Switching to a non-oss mode deletes the app-of-apps (ArgoCD cascade-prunes the charts).
+> **GitOps-managed.** The in-cluster stack (kube-prometheus-stack = Prometheus + Grafana, Loki, Tempo) is deployed by the **`observability-oss` ArgoCD app-of-apps** ([`argocd/observability-oss/`](../argocd/observability-oss)), not by raw `helm` — which is why [`scripts/up.sh`](../scripts/up.sh) installs ArgoCD (`08.5`) *before* observability (`03`). [`scripts/03-observability.sh`](../scripts/03-observability.sh) (oss) creates the namespace and the companion inputs the chart consumes — the `grafana-jenkins-ds` Secret (the Jenkins-datasource token) and, when the gateway is enabled, the `grafana-runtime-config` ConfigMap (`root_url`) — then applies the app-of-apps; the `jenkins-2026-grafana-dashboards` ConfigMap itself is GitOps-managed by the `oss-grafana-dashboards` child app (see [OSS dashboards](#oss-dashboards-gitops-managed-by-argocd)). The OTel collectors stay `helm`-managed (shared across all four modes). Dashboard/alert/value changes can be re-applied to a running cluster with the [`Day2.publish.01-oss-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.01-oss-grafana.yml) workflow (no reprovision). Switching to a non-oss mode deletes the app-of-apps (ArgoCD cascade-prunes the charts).
 
 > **Grafana version (OSS only).** The in-cluster Grafana image is pinned in [`values-oss.yaml`](../observability/grafana/values-oss.yaml) (`image.tag`, currently **`13.1.0`** — the latest GA, 2026-06-23 — overriding the kube-prometheus-stack subchart default). Bump that tag to upgrade; it is the **only** Grafana we version-pin. The three managed backends are **versioned by their providers** and cannot be set to an arbitrary OSS release: **Grafana Cloud** auto-updates (Grafana Labs), **Azure Managed Grafana** and **Amazon Managed Grafana** offer a provider-curated set of supported versions (typically behind OSS). When bumping across a Grafana **minor** (e.g. 13.0→13.1) skim the [What's new](https://grafana.com/docs/grafana/latest/whatsnew/) / upgrade notes; patch bumps are safe.
 
