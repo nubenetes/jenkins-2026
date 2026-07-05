@@ -835,7 +835,7 @@ flowchart TD
         TF["terraform apply (GKE cluster) + fetch kubeconfig"]
         PD["sweep-orphaned-PDs<br/>(reclaim unattached pvc-* CSI disks)"]
         NS["01 namespaces + secrets<br/>(imperative kubectl, or push to<br/>Secret Manager when secrets.backend=eso)<br/>then 02 otel-operator"]
-        CD["08.5 ArgoCD -> 08.6 ESO sync (eso only) -> 03 observability"]
+        CD["08.5 ArgoCD -> 08.6 ESO sync (eso only)<br/>-> 08.7 backend-TLS (opt-in) -> 03 observability"]
         UP{"up.sh branches on<br/>JENKINS2026_CI_ENGINE<br/>(each 04-&lt;engine&gt;.sh retires the other 3<br/>via retire_ci_engine)"}
         JEN["04-jenkins + 06-seed-pipelines"]
         TEK["04-tekton + 06-tekton-pipelines (PaC)"]
@@ -967,7 +967,7 @@ Verdicts: **Idempotent** = converges to desired state, safe to re-run · **One-s
 | [`Day2.redeploy.02-jenkins`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.02-jenkins.yml) | **Idempotent** | `04-jenkins.sh` (`helm upgrade --install`, JCasC ConfigMaps via `--dry-run\|apply`) + `06-seed-pipelines.sh`. |
 | [`Day2.redeploy.03-tekton`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.03-tekton.yml) | **Idempotent** | `01`/`04-tekton`/`06-tekton-pipelines`/`09-gateway` — all `kubectl apply` / `--dry-run\|apply`; PaC webhook creation skips if one already targets the controller. |
 | [`Day2.redeploy.04-headlamp`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.04-headlamp.yml) | **Idempotent** | `01-namespaces.sh` + `08-headlamp.sh` (`helm upgrade --install`). |
-| [`Day2.redeploy.05-gateway`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.05-gateway.yml) | **Idempotent** | `01-namespaces.sh` (namespaces + IAP Secrets) + `09-gateway.sh` (Gateway/HTTPRoutes/GCPBackendPolicies, all `kubectl apply`). |
+| [`Day2.redeploy.05-gateway`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.05-gateway.yml) | **Idempotent** | `01-namespaces.sh` (namespaces + IAP Secrets) + `08.6-eso-sync.sh` (eso mode) + `08.7-backend-tls.sh` (opt-in `gateway.backendTls` certs — flag *flips* still need Day1, see [docs/504](504-BACKEND_TLS.md)) + `09-gateway.sh` (Gateway/HTTPRoutes/GCPBackendPolicies, all `kubectl apply`). |
 | [`Day2.publish.01-oss-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.01-oss-grafana.yml) | **Idempotent** | Nudges the `observability-oss` app re-sync (`kubectl annotate --overwrite`), which reconciles the GitOps-managed dashboards child app + republishes alerts. |
 | [`Day2.publish.03-azure-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.03-azure-grafana.yml) | **One-shot but safe** | `az grafana dashboard create --overwrite` re-publishes; no error/dup on re-run. |
 | [`Day2.publish.04-aws-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.04-aws-grafana.yml) | **One-shot but safe** | `07-grafana-dashboards.sh` re-publishes to AMG; no accumulation. |

@@ -628,7 +628,7 @@ flowchart TB
         DNS["Cloud DNS wildcard → IP"]:::edge
         LB["L7 LB · wildcard TLS · edge-terminated"]:::edge
         IAPN["Identity-Aware Proxy<br/>admin allowlist"]:::edge
-        GW["Gateway (ns platform-ingress)<br/>HTTPRoutes · GCPBackendPolicy"]:::edge
+        GW["Gateway (ns platform-ingress)<br/>HTTPRoutes · GCPBackendPolicy<br/>+ BackendTLSPolicy (opt-in backendTls)"]:::edge
       end
 
       subgraph CP["L3 · Control plane (GKE)"]
@@ -642,7 +642,7 @@ flowchart TB
             GHAARC["GHA-ARC · GitHub Actions/ARC<br/>ephemeral · ci-spot · NO in-cluster UI"]:::eng3
             ARGOWF["ARGOWF · argoworkflows<br/>WF v3.7.15 + Events · IAP UI"]:::eng4
         end
-        OPS["OPS · Operators<br/>ESO · OTel · CNPG · Argo Rollouts"]:::ctrl
+        OPS["OPS · Operators<br/>ESO · OTel · CNPG · Argo Rollouts<br/>+ cert-manager (opt-in backendTls)"]:::ctrl
         PUIS["PUIS · platform web UIs (IAP)<br/>Headlamp · pgAdmin · Grafana (oss)"]:::ctrl
         PUSH["PUSH · imperative lane (0N-*.sh)<br/>creds · NetPol · Quotas"]:::push
       end

@@ -142,9 +142,13 @@ Known per-backend state:
 ## Lifecycle
 
 - **Enable**: set the flag (or export the env var) and **re-run `Day1`**
-  ([applying changes = re-run, not Decom+Day1](../CLAUDE.md)). Note the
-  per-engine `Day2.redeploy.*` workflows do *not* run `08.5`/`08.7`, so a flag
-  flip needs the full `Day1` (or running `08.5` + `08.7` + `09` locally).
+  ([applying changes = re-run, not Decom+Day1](../CLAUDE.md)).
+  `Day2.redeploy.05-gateway` runs `08.7` + `09`, so it **converges the cert and
+  policy halves when the flag state is unchanged** — but a flag *flip* still
+  needs the full `Day1` (or `08.5` + `08.7` + `09` locally): the Headlamp TLS
+  values overlay is rendered by `08.5-argocd.sh`, which no `Day2.redeploy.*`
+  workflow runs, and until ArgoCD re-syncs it the pod and the LB disagree on
+  the protocol.
 - **Disable**: flip the flag off and re-run `Day1`. `08.5` re-renders Headlamp
   without the overlay (ArgoCD self-heals it back to HTTP), `08.7` retires the
   certs/trust bundles and cascade-deletes cert-manager, `09` deletes the

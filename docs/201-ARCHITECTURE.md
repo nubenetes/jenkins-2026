@@ -127,7 +127,7 @@ flowchart TB
         DNS["Cloud DNS wildcard → IP"]:::edge
         LB["L7 LB · wildcard TLS · edge-terminated"]:::edge
         IAPN["Identity-Aware Proxy<br/>admin allowlist"]:::edge
-        GW["Gateway (ns platform-ingress)<br/>HTTPRoutes · GCPBackendPolicy"]:::edge
+        GW["Gateway (ns platform-ingress)<br/>HTTPRoutes · GCPBackendPolicy<br/>+ BackendTLSPolicy (opt-in backendTls)"]:::edge
       end
 
       subgraph CP["L3 · Control plane (GKE)"]
@@ -141,7 +141,7 @@ flowchart TB
             GHAARC["GHA-ARC · GitHub Actions/ARC<br/>ephemeral · ci-spot · NO in-cluster UI"]:::eng3
             ARGOWF["ARGOWF · argoworkflows<br/>WF v3.7.15 + Events · IAP UI"]:::eng4
         end
-        OPS["OPS · Operators<br/>ESO · OTel · CNPG · Argo Rollouts"]:::ctrl
+        OPS["OPS · Operators<br/>ESO · OTel · CNPG · Argo Rollouts<br/>+ cert-manager (opt-in backendTls)"]:::ctrl
         PUIS["PUIS · platform web UIs (IAP)<br/>Headlamp · pgAdmin · Grafana (oss)"]:::ctrl
         PUSH["PUSH · imperative lane (0N-*.sh)<br/>creds · NetPol · Quotas"]:::push
       end
@@ -601,16 +601,17 @@ flowchart TD
         ARGO["08.5: helm install ArgoCD<br/>+ patch OIDC/RBAC"]
     end
     subgraph PLANT["Hand-off — scripts plant the root Applications"]
-        APPS["08.5/03: kubectl apply argocd/*-app.yaml<br/>(sed-substituted repo/branch/engine)"]
+        APPS["08.5/03/08.7: kubectl apply argocd/*-app.yaml<br/>(sed-substituted repo/branch/engine)"]
     end
     subgraph PULL["GitOps plane (ArgoCD reconciles — pull, self-heal, prune)"]
-        CHARTS["charts: Jenkins · ESO · Headlamp · Rollouts"]
+        CHARTS["charts: Jenkins · ESO · Headlamp · Rollouts<br/>+ cert-manager (backendTls opt-in)"]
         FLEET["AppSet: microservices (per tier)"]
         AOA["app-of-apps: postgres · observability-oss<br/>+ active CI engine (tekton / githubactions / argoworkflows)"]
         PCFG["platform-config: static RBAC"]
     end
     subgraph RUNTIME["Imperative, AFTER ArgoCD is up (runtime-derived)"]
-        GW["09: Gateway/HTTPRoutes/IAP (.generated/)"]
+        GW["09: Gateway/HTTPRoutes/IAP<br/>+ BackendTLS/HealthCheck policies (.generated/)"]
+        BTLS["08.7: internal CA + backend certs<br/>+ ca.crt trust bundles (backendTls opt-in)"]
         JCASC["04: JCasC ConfigMaps (live-reload)"]
         SIDE["06: Tekton PaC push/webhooks/seed"]
     end
@@ -622,7 +623,7 @@ flowchart TD
 
     classDef imp fill:#fde,stroke:#c39;
     classDef git fill:#eef,stroke:#66c;
-    class NS,SEC,NP,OP,ARGO,APPS,GW,JCASC,SIDE imp;
+    class NS,SEC,NP,OP,ARGO,APPS,GW,BTLS,JCASC,SIDE imp;
     class CHARTS,FLEET,AOA,PCFG git;
 ```
 
@@ -1079,8 +1080,8 @@ graph TD
     StaticIP --> CertMap
     CertMap --> WildcardTLS
     WildcardTLS -->|"terminates TLS"| GatewayAPI
-    GatewayAPI -->|"plain HTTP over the VPC"| StaticPool
-    GatewayAPI -->|"plain HTTP over the VPC"| NAPSpotPool
+    GatewayAPI -->|"plain HTTP over the VPC (default;<br/>opt-in TLS: gateway.backendTls)"| StaticPool
+    GatewayAPI -->|"plain HTTP over the VPC (default;<br/>opt-in TLS: gateway.backendTls)"| NAPSpotPool
 ```
 
 </details>
