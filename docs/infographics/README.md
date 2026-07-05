@@ -6,6 +6,10 @@ This document serves as an architectural inventory and catalog of the 35 English
 
 ## Infographics Matrix Catalog
 
+<details>
+<summary>📋 Click to view the full detailed inventory table (35 entries)</summary>
+<br>
+
 | Code | Chapter / Category | Infographic File (Clickable Link) | Key Technologies & Components | Detailed Architectural Description (English) |
 | :--- | :--- | :--- | :--- | :--- |
 | **001** | `000: Platform Overview` | [001_End_to_End_Golden_Path_Platform_and_Developer_Workflow_Overview.png](001_End_to_End_Golden_Path_Platform_and_Developer_Workflow_Overview.png) | IDP, Day 0/Day 1, Dev Workflow | High-level overview of the end-to-end developer journey within the Internal Developer Platform (IDP). Details the separation between Day 0 (core infrastructure bootstrap) and Day 1 (application deployment) workflows. |
@@ -43,6 +47,8 @@ This document serves as an architectural inventory and catalog of the 35 English
 | **804** | `800: Observability` | [804_End_to_End_Frontend_Observability_RUM_with_Grafana_Faro_and_OTel.png](804_End_to_End_Frontend_Observability_RUM_with_Grafana_Faro_and_OTel.png) | Grafana Faro, RUM, Trace Propagation | Traces client-side Real User Monitoring (RUM) beacon propagation. Demonstrates traceparent header injection from the browser into backend APIs using OpenTelemetry. |
 | **901** | `900: Load & Lifecycle` | [901_k6_Traffic_Simulation_Unified_Workload_Profiles.png](901_k6_Traffic_Simulation_Unified_Workload_Profiles.png) | k6, Traffic Simulation, Load Tests | Explains the k6 workload profile setup, including environment variable injection (`k6sim_*`) and automated load test scenarios mimicking user concurrency peaks. |
 | **902** | `900: Load & Lifecycle` | [902_GKE_Golden_Path_IDP_Platform_Lifecycle_and_Rebuild_Safety_Matrix.png](902_GKE_Golden_Path_IDP_Platform_Lifecycle_and_Rebuild_Safety_Matrix.png) | Platform Lifecycle, Backups, Recovery | Outlines the platform rebuild-safety matrix, defining backup strategies, disaster recovery runbooks, and recovery point objectives (RPO) for cluster states. |
+
+</details>
 
 ---
 
