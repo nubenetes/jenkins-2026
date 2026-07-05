@@ -379,6 +379,40 @@ export J2026_GATEWAY_STATIC_IP_NAME="$(yq_get '.gateway.staticIPName' 'jenkins-2
 export J2026_GATEWAY_CERTMAP_NAME="$(yq_get '.gateway.certMapName' 'jenkins-2026-cert-map')"
 export J2026_GATEWAY_IAP_SECRET="$(yq_get '.gateway.iapCredentialsSecretName' 'gateway-iap-oauth')"
 
+# FEATURE FLAG: JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED overrides
+# gateway.backendTls.enabled from config.yaml for a single run - same
+# durable-default/ephemeral-override pattern as JENKINS2026_BASE_DOMAIN above.
+# When true, 08.7-backend-tls.sh installs cert-manager + the cluster-internal
+# CA and mints the per-backend server certs, 08.5-argocd.sh layers the TLS
+# overlay onto the TLS-ready backends (stage 1: Headlamp), and 09-gateway.sh
+# attaches the BackendTLSPolicy + HTTPS HealthCheckPolicy so the L7 LB
+# re-encrypts AND validates the LB→pod hop. Consumers never read this raw -
+# they gate on j2026_backend_tls_active (lib/common.sh: this flag AND the
+# BackendTLSPolicy CRD being served). See docs/504-BACKEND_TLS.md.
+J2026_GATEWAY_BACKEND_TLS_ENABLED="${JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED:-$(yq_get '.gateway.backendTls.enabled' 'false')}"
+export J2026_GATEWAY_BACKEND_TLS_ENABLED
+case "${J2026_GATEWAY_BACKEND_TLS_ENABLED}" in
+  true|false) ;;
+  *)
+    log_error "Invalid gateway.backendTls.enabled '${J2026_GATEWAY_BACKEND_TLS_ENABLED}' (expected true|false)."
+    log_error "Set gateway.backendTls.enabled in ${J2026_CONFIG_FILE} or export JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED."
+    exit 1
+    ;;
+esac
+
+# Fixed names of the backend-TLS resources created by scripts/08.7-backend-tls.sh
+# and scripts/09-gateway.sh. Shared with scripts/down.sh for the same reason as
+# the Gateway names below (Decom deletes by fixed name from a fresh checkout).
+export J2026_BACKEND_TLS_CERT_MANAGER_NAMESPACE="cert-manager"
+export J2026_BACKEND_TLS_SELFSIGNED_ISSUER="jenkins-2026-selfsigned"
+# The CA ClusterIssuer; its CA Certificate + Secret (in the cert-manager
+# namespace) deliberately share this name.
+export J2026_BACKEND_TLS_CA_ISSUER="jenkins-2026-internal-ca"
+# Per-backend-namespace CA trust bundle ConfigMap (key ca.crt) that the
+# BackendTLSPolicies' caCertificateRefs validate against.
+export J2026_BACKEND_TLS_CA_CONFIGMAP="jenkins-2026-backend-tls-ca"
+export J2026_BACKEND_TLS_POLICY_HEADLAMP="headlamp-backend-tls"
+
 # Fixed names of the Gateway/HTTPRoute/GCPBackendPolicy resources created by
 # scripts/09-gateway.sh. Shared with scripts/down.sh so the two stay in sync:
 # down.sh deletes these by name/namespace from a fresh checkout in

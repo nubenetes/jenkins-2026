@@ -623,7 +623,7 @@ tab is populated from Day1.
 | Trivy image scan | `docker run aquasec/trivy image` | — |
 | Deploy (GitOps + ArgoCD + OTel self-heal) | GitOps bump → `argocd app sync/wait` | **byte-identical** to `microservicesDeploy.groovy` (see below) |
 | Smoke test | `curl --retry … $svc.$TARGET_NS.svc:$port$health` | — |
-| Integration k6 | OTel/k6 export step, `--tag ci_runner=githubactions` | tags the new engine so existing k6 dashboards filter it out of the box |
+| Integration k6 | — no inline k6 stage; [`Day2.traffic.01-k6`](../.github/workflows/Day2.traffic.01-k6.yml) covers this engine (`--tag ci_runner=gha`, [docs/302](./302-K6_LOAD_TESTING.md)) | the closing *Export pipeline OTel trace* step is a placeholder that surfaces the job's OTel resource contract (§ [OTel export](#otel-export-same-collector-matching-attributes)) |
 
 Key derivations in the workflow `env`:
 
@@ -633,6 +633,7 @@ Key derivations in the workflow `env`:
 | `ENV_NAME` | `develop` if `ref_name==develop` else `stable` | the deploy tier |
 | `TARGET_NS` | `<nsDevelop>` if `develop` else `<nsStable>` | `microservices-develop` / `microservices` |
 | `OTLP_ENDPOINT` | `http://otel-collector-gateway.<obs-ns>.svc.cluster.local:4317` | the in-cluster collector (runner pods reach it directly) |
+| `OTEL_SERVICE_NAME` + `OTEL_RESOURCE_ATTRIBUTES` | `githubactions-pipeline-<svc>` + `service.namespace=jenkins-2026,deployment.environment=<stable\|develop>` | the cross-engine OTel resource contract for any OTel-aware step — mirrors Jenkins' `jenkins-pipeline-<svc>` ([docs/402](./402-PIPELINES_AS_CODE.md)) and the k6 attributes ([docs/301](./301-OBSERVABILITY.md)) |
 | `runs-on` | `{{runnerLabel}}` = `githubactions.runnerScaleSetName` (`jenkins-2026-runners`) | the ARC equivalent of Jenkins' `agent { kubernetes }` / Tekton's `serviceAccountName: tekton-ci` |
 
 `on:` is `push` to `[main]` (+ `develop` when the develop track is enabled — the
@@ -666,14 +667,26 @@ The deploy step preserves every parity point with the Jenkins/Tekton GitOps stag
 ### OTel export (same collector, matching attributes)
 
 Runner pods are in-cluster, so they reach
-`otel-collector-gateway.observability.svc.cluster.local:4317` (gRPC) directly:
-build/pipeline traces export with `service.name=githubactions`,
-`service.namespace=jenkins-2026` (so spans land in the **same** Grafana views as
-Jenkins/Tekton), and the k6 step carries `--tag ci_runner=githubactions` — the
-only delta from the Tekton k6 `K6_OTEL_*` contract — so the existing k6 dashboards
-filter the new engine out of the box. App runtime telemetry (the OTel Java agent
+`otel-collector-gateway.observability.svc.cluster.local:4317` (gRPC) directly. The
+workflow `env` pins the cross-engine resource contract —
+`OTEL_SERVICE_NAME=githubactions-pipeline-<svc>` (mirroring Jenkins'
+`jenkins-pipeline-<svc>`) plus `OTEL_RESOURCE_ATTRIBUTES` with
+`service.namespace=jenkins-2026` and `deployment.environment=<stable|develop>` —
+so anything OTel-aware in the job exports into the **same** Grafana views as
+Jenkins/Tekton. Native run/step span export is a **deferred follow-up** shared with
+Tekton/Argo (see [docs/301](./301-OBSERVABILITY.md) § Jenkins Plugin) — the
+workflow's closing *Export pipeline OTel trace* step is today a placeholder that
+surfaces this contract. The
+[CI dashboard](../observability/grafana/dashboards/github-actions-ci.json) does
+**not** depend on it: its panels correlate runner telemetry by **k8s namespace**
+(`kube_pod_*` / ARC controller metrics, Loki `k8s_namespace_name`, TraceQL
+`resource.k8s.namespace.name` — stamped by the collector's `k8sattributes`
+processor on anything emitted from `arc-runners`). k6 for this engine runs from
+[`Day2.traffic.01-k6`](../.github/workflows/Day2.traffic.01-k6.yml) with
+`--tag ci_runner=gha` ([docs/302](./302-K6_LOAD_TESTING.md)), so the existing k6
+dashboards filter it out of the box. App runtime telemetry (the OTel Java agent
 via the `Instrumentation` CR) is unchanged. The `arc-runners` NetworkPolicy must
-allow egress to the observability namespace on `4317` or build/k6 spans silently
+allow egress to the observability namespace on `4317` or exported spans silently
 drop.
 
 ## Install / redeploy lifecycle

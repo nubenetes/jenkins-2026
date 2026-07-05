@@ -1,4 +1,4 @@
-[← Previous: 502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md) | [🏠 Home](../README.md) | [→ Next: 601. DevSecOps](./601-DEVSECOPS.md)
+[← Previous: 502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md) | [🏠 Home](../README.md) | [→ Next: 504. Backend TLS](./504-BACKEND_TLS.md)
 
 ---
 
@@ -194,6 +194,7 @@ sequenceDiagram
   LB->>GW: HTTPRoute match by hostname
   GW->>NEG: route to the Service's NEG
   NEG->>P: send to the POD targetPort (8080 / 4466 / 9097 / 80) — not the Service port
+  Note over GW,P: LB→pod hop is plain HTTP by default (VPC-internal)<br/>opt-in re-encryption + CA validation:<br/>gateway.backendTls (BackendTLSPolicy — docs/504)
 ```
 
 **Reading it —** one global static IP + one wildcard cert front **every** app; the per-app `HTTPRoute` (host-based) and `GCPBackendPolicy` (IAP) live beside each Service. The crucial GKE detail: container-native **NEG** load balancing delivers to the **pod port**, not the Service port — which is why NetworkPolicies must allow the real container port (e.g. argocd-server `8080`, headlamp `4466`). The L7 LB health checks come from `130.211.0.0/22` + `35.191.0.0/16`.
@@ -308,7 +309,7 @@ flowchart TB
     ci["active CI engine's exec ns (per ci.engine)<br/>tekton-ci · arc-runners · argo-ci"]
   end
   subgraph op["③ open by design (host admission webhooks the API server calls)"]
-    sys["tekton-pipelines · cnpg-system · external-secrets · pipelines-as-code<br/>argo · argo-events · arc-systems"]
+    sys["tekton-pipelines · cnpg-system · external-secrets · pipelines-as-code<br/>argo · argo-events · arc-systems · cert-manager (backendTls)"]
   end
 
   lb --> arg & hl
@@ -335,7 +336,7 @@ flowchart TB
 ```mermaid
 flowchart LR
   a["① Edge<br/>Google IAP + wildcard TLS<br/>(admin-email allowlist)"] -->
-  b["② L7 Gateway<br/>host-routed HTTPRoutes<br/>container-native NEG"] -->
+  b["② L7 Gateway<br/>host-routed HTTPRoutes<br/>container-native NEG<br/>+ opt-in backend TLS re-encrypt"] -->
   c["③ Cluster L3/L4<br/>Dataplane V2 enforced<br/>NetworkPolicies (default-deny)"] -->
   d["④ Transport<br/>WireGuard inter-node<br/>pod encryption"] -->
   e["⑤ Identity<br/>keyless WIF/OIDC<br/>(no static keys)"]
@@ -349,7 +350,7 @@ flowchart LR
 
 ---
 
-[← Previous: 502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md) | [🏠 Home](../README.md) | [→ Next: 601. DevSecOps](./601-DEVSECOPS.md)
+[← Previous: 502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md) | [🏠 Home](../README.md) | [→ Next: 504. Backend TLS](./504-BACKEND_TLS.md)
 
 ---
 

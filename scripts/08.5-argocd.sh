@@ -470,9 +470,26 @@ log_step "Configuring Headlamp via ArgoCD"
 # Inject values into the Headlamp Application manifest
 HEADLAMP_APP_FILE=$(mktemp)
 REPO_URL="${J2026_SELF_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
-sed "s@{{repoUrl}}@${REPO_URL}@g; 
+sed "s@{{repoUrl}}@${REPO_URL}@g;
      s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g" \
     "${J2026_ROOT_DIR}/argocd/headlamp-app.yaml" > "${HEADLAMP_APP_FILE}"
+# Backend TLS (gateway.backendTls.enabled, docs/504): layer the TLS overlay on
+# top of the base values file so headlamp-server terminates TLS itself on 4466
+# with the cert-manager-minted headlamp-tls Secret (08.7-backend-tls.sh) and
+# its kubelet probes flip to HTTPS - the backend half of the BackendTLSPolicy
+# 09-gateway.sh attaches. Gated on j2026_backend_tls_active (flag AND the
+# BackendTLSPolicy CRD), never the raw flag, so the pod is never flipped to a
+# TLS the LB can't speak. Idempotent flag-off convergence for free: the app
+# file is re-rendered from the template every run, so disabling the flag
+# re-applies it WITHOUT the overlay and ArgoCD self-heals Headlamp back to
+# plain HTTP (same regenerate-then-apply pattern as the microservices AppSet
+# develop generator below).
+if [[ "$(j2026_backend_tls_active)" == "true" ]]; then
+  log_info "Backend TLS active - adding the Headlamp TLS values overlay to the headlamp app"
+  yq eval -i \
+    '(.spec.sources[] | select(.chart == "headlamp") | .helm.valueFiles) += ["$values/helm/headlamp/values-backend-tls.yaml"]' \
+    "${HEADLAMP_APP_FILE}"
+fi
 kubectl apply -f "${HEADLAMP_APP_FILE}"
 rm "${HEADLAMP_APP_FILE}"
 

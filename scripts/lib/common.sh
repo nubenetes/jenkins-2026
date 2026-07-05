@@ -257,6 +257,34 @@ j2026_active_secrets_backend() {
   echo "${J2026_SECRETS_BACKEND:-imperative}"
 }
 
+# --- backend TLS (LB→pod re-encryption) activation ----------------------------
+#
+# j2026_backend_tls_active - echoes "true" when the OPT-IN backend-TLS feature
+# (gateway.backendTls.enabled / JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED,
+# resolved into J2026_GATEWAY_BACKEND_TLS_ENABLED by lib/config.sh) is ON *and*
+# the cluster actually serves the BackendTLSPolicy CRD (GKE Gateway backend TLS
+# is GA 2026-05 on gke-l7-global-external-managed; older clusters lack the
+# CRD). EVERY consumer - 08.5-argocd.sh's Headlamp TLS values overlay,
+# 08.7-backend-tls.sh's cert-manager/CA/cert install, 09-gateway.sh's
+# BackendTLSPolicy + HTTPS HealthCheckPolicy - gates on THIS, never on the raw
+# flag: if only some of them acted on a CRD-less cluster, the pod would serve
+# TLS the LB still speaks plain HTTP to (or vice versa) → instant 502 at that
+# host. Gating all of them on the same probe degrades consistently to plain
+# HTTP with a warning instead. The warning goes to stderr because callers
+# invoke this in command substitution. See docs/504-BACKEND_TLS.md.
+j2026_backend_tls_active() {
+  if [[ "${J2026_GATEWAY_BACKEND_TLS_ENABLED:-false}" != "true" ]]; then
+    echo "false"
+    return
+  fi
+  if kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+    echo "true"
+  else
+    log_warn "gateway.backendTls.enabled=true but this cluster does not serve the BackendTLSPolicy CRD (GKE Gateway backend TLS, GA 2026-05) - staying on plain HTTP." >&2
+    echo "false"
+  fi
+}
+
 # --- CI-engine retirement (mutual exclusivity) -------------------------------
 # The four CI engines (jenkins · tekton · githubactions · argoworkflows) are
 # mutually exclusive, so selecting one must FULLY retire the other three. Each
