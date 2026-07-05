@@ -463,6 +463,7 @@ Single source of truth, loaded by every script via [`scripts/lib/config.sh`](../
 | `observability.mode` | `grafana-cloud` | edit `config.yaml` | `grafana-cloud`\|`oss`\|`managed-azure`\|`managed-aws` — where traces/metrics/logs go |
 | `ci.engine` | `jenkins` | `JENKINS2026_CI_ENGINE` | `jenkins`\|`tekton`\|`githubactions`\|`argoworkflows` — one of four mutually-exclusive engines running the pipelines-as-code (Jenkins default). See [403. Tekton](./403-TEKTON.md), [404. GitHub Actions](./404-GITHUB_ACTIONS.md), [405. Argo Workflows](./405-ARGO_WORKFLOWS.md) |
 | `microservices.developTrackEnabled` | `false` | `JENKINS2026_DEVELOP_TRACK_ENABLED` | Optional second microservices tier (`microservices-develop` namespace, GitOps `develop` branch) |
+| `gateway.backendTls.enabled` | `false` | `JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED` | Opt-in **LB→pod TLS re-encryption**: cert-manager + a cluster-internal CA, TLS-serving backends (stage 1: Headlamp) + a GKE `BackendTLSPolicy` validating against that CA. See [504. Backend TLS](./504-BACKEND_TLS.md) |
 
 Other notable sections: `jenkins.*` (chart coordinates, namespace, this repo's own URL/branch), `observability.*` (operator/collector chart coordinates, release names, Secret name), `microservices.*` (namespaces, git org/repos/branches, target registry, list of 2 services seeded into Jenkins).
 
@@ -492,7 +493,7 @@ resources/                   patch-app-source.sh — the shared build-time app p
 tekton/                      Tekton pipelines-as-code (ci.engine=tekton): Tasks/Pipelines/Triggers/RBAC + port of the Jenkins shared library (vars/)
 argoworkflows/               Argo Workflows pipelines-as-code (ci.engine=argoworkflows): WorkflowTemplates + EventSource/Sensor (the GitHub Actions/ARC pipeline is a .github/workflows file rendered into each fork)
 observability/               OTel Operator/Collector + Grafana/Loki/Tempo/Prometheus values + dashboards
-argocd/                      ArgoCD Applications/ApplicationSets + app-of-apps (platform-postgres, observability-oss, tekton, githubactions, argoworkflows) + argo-rollouts-app.yaml
+argocd/                      ArgoCD Applications/ApplicationSets + app-of-apps (platform-postgres, observability-oss, tekton, githubactions, argoworkflows) + argo-rollouts-app.yaml + cert-manager-app.yaml (opt-in backendTls, docs/504)
 infrastructure/              engine-neutral platform manifests applied by 01-namespaces / 08.5-argocd: NetworkPolicies (default + per-engine: -jenkins/-tekton/-githubactions/-argoworkflows), Gateway, Node Auto-Provisioning ComputeClasses (compute-classes/), scheduling, Argo Rollouts Gateway-API RBAC, secrets
 scripts/                     00-09 numbered steps + up.sh / down.sh / status.sh
 terraform/gke/               throwaway GKE cluster for test/e2e.sh

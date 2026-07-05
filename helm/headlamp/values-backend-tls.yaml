@@ -1,0 +1,33 @@
+# Headlamp backend-TLS overlay - layered ON TOP of values.yaml (later
+# valueFiles win) by scripts/08.5-argocd.sh ONLY when the opt-in backend-TLS
+# feature is active (gateway.backendTls.enabled + the BackendTLSPolicy CRD -
+# see docs/504-BACKEND_TLS.md). NOT referenced when the flag is off, so the
+# default posture (plain-HTTP headlamp-server) is untouched.
+#
+# Makes headlamp-server terminate TLS itself on its pod port (4466) using the
+# cert-manager-minted `headlamp-tls` Secret (scripts/08.7-backend-tls.sh; SAN =
+# headlamp.headlamp.svc.cluster.local, the hostname the BackendTLSPolicy that
+# scripts/09-gateway.sh generates sends as SNI and validates). The Google L7 LB
+# then re-encrypts the LB→pod hop. Chart 0.43.0+ supports all three knobs
+# (config.tlsCertPath/tlsKeyPath -> -tls-cert-path/-tls-key-path flags;
+# probes.scheme flips the kubelet probes to HTTPS alongside the server).
+config:
+  tlsCertPath: /headlamp-tls/tls.crt
+  tlsKeyPath: /headlamp-tls/tls.key
+
+# The kubelet liveness/readiness probes must speak HTTPS once the server does,
+# or the pod never turns Ready.
+probes:
+  scheme: HTTPS
+
+volumes:
+  - name: headlamp-tls
+    secret:
+      # Minted by the Certificate CR in scripts/08.7-backend-tls.sh - keep the
+      # two names in sync.
+      secretName: headlamp-tls
+
+volumeMounts:
+  - name: headlamp-tls
+    mountPath: /headlamp-tls
+    readOnly: true

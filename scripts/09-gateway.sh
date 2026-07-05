@@ -25,6 +25,11 @@ fi
 GENERATED_DIR="${J2026_ROOT_DIR}/.generated/gateway"
 mkdir -p "${GENERATED_DIR}"
 
+# Backend TLS (LB→pod re-encryption, docs/504) - resolved ONCE: flag AND the
+# BackendTLSPolicy CRD (j2026_backend_tls_active, lib/common.sh). Drives the
+# per-TLS-ready-backend BackendTLSPolicy + HTTPS HealthCheckPolicy blocks below.
+BACKEND_TLS_ACTIVE="$(j2026_backend_tls_active)"
+
 # Fixed names
 J2026_GATEWAY_HOST_ARGOCD="argocd"
 export J2026_GATEWAY_ARGOCD_HOST="${J2026_GATEWAY_HOST_ARGOCD}.${J2026_GATEWAY_BASE_DOMAIN}"
@@ -251,6 +256,78 @@ spec:
         - name: ${J2026_HEADLAMP_RELEASE}
           port: 80
 EOT
+
+# Backend TLS for Headlamp (stage-1 TLS-ready backend; opt-in via
+# gateway.backendTls.enabled - docs/504). When active, headlamp-server itself
+# terminates TLS on its pod port 4466 (values-backend-tls.yaml overlay added by
+# 08.5-argocd.sh; cert + CA trust ConfigMap minted by 08.7-backend-tls.sh), and
+# two policies flip the LB side:
+#   - BackendTLSPolicy: the LB re-encrypts LB→pod AND validates the backend
+#     cert against the internal CA (caCertificateRefs -> ConfigMap key ca.crt,
+#     same namespace). validation.hostname is BOTH the SNI sent and the SAN
+#     validated, so it must match the cert 08.7 mints (the Service FQDN).
+#   - HealthCheckPolicy type HTTPS: the default LB health check follows the
+#     Service appProtocol (unset here = HTTP) - it would keep probing plain
+#     HTTP against the now-TLS pod, mark the backend unhealthy, and the host
+#     would 502 (same failure family as the faro/argo-events GET-vs-POST
+#     probes above). No port override: it probes the serving (pod) port.
+# The HTTPRoute and the IAP GCPBackendPolicy are UNCHANGED - the route still
+# targets Service port 80 (targetPort 4466), and IAP composes with backend TLS.
+if [[ "${BACKEND_TLS_ACTIVE}" == "true" ]]; then
+  log_step "Generating BackendTLSPolicy + HTTPS HealthCheckPolicy (headlamp, backendTls enabled)"
+  cat >"${GENERATED_DIR}/backendtlspolicy-headlamp.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: ${J2026_BACKEND_TLS_POLICY_HEADLAMP}
+  namespace: ${J2026_HEADLAMP_NAMESPACE}
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: ${J2026_HEADLAMP_RELEASE}
+  validation:
+    hostname: ${J2026_HEADLAMP_RELEASE}.${J2026_HEADLAMP_NAMESPACE}.svc.cluster.local
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: ${J2026_BACKEND_TLS_CA_CONFIGMAP}
+EOT
+
+  cat >"${GENERATED_DIR}/healthcheckpolicy-headlamp.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: ${J2026_HEADLAMP_RELEASE}
+  namespace: ${J2026_HEADLAMP_NAMESPACE}
+spec:
+  default:
+    config:
+      type: HTTPS
+      httpsHealthCheck:
+        requestPath: /
+  targetRef:
+    group: ""
+    kind: Service
+    name: ${J2026_HEADLAMP_RELEASE}
+EOT
+else
+  # Backend TLS inactive - retire any policies left by a previous enabled run
+  # on this (persistent) cluster, and drop stale generated manifests so the
+  # apply below can't re-create them (same deterministic flag-off cleanup as
+  # the develop-tier/grafana blocks). The CRD guard matters: `kubectl delete
+  # backendtlspolicy` on a cluster that never served the CRD is a hard error,
+  # not a not-found.
+  rm -f "${GENERATED_DIR}/backendtlspolicy-headlamp.yaml" \
+        "${GENERATED_DIR}/healthcheckpolicy-headlamp.yaml"
+  if kubectl get namespace "${J2026_HEADLAMP_NAMESPACE}" >/dev/null 2>&1; then
+    log_step "Removing any leftover headlamp BackendTLSPolicy/HealthCheckPolicy (backendTls inactive)"
+    if kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+      kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_HEADLAMP}" -n "${J2026_HEADLAMP_NAMESPACE}" --ignore-not-found
+    fi
+    kubectl delete healthcheckpolicy "${J2026_HEADLAMP_RELEASE}" -n "${J2026_HEADLAMP_NAMESPACE}" --ignore-not-found
+  fi
+fi
 
 cat >"${GENERATED_DIR}/httproute-pgadmin.yaml" <<EOT
 apiVersion: gateway.networking.k8s.io/v1
@@ -732,4 +809,7 @@ if [[ "${J2026_CI_ENGINE}" == "argoworkflows" ]]; then
 fi
 if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
   log_info "  Grafana:           https://${J2026_GATEWAY_GRAFANA_HOST} (IAP-protected)"
+fi
+if [[ "${BACKEND_TLS_ACTIVE}" == "true" ]]; then
+  log_info "  Backend TLS:       LB→pod re-encrypted + CA-validated for: headlamp (docs/504)"
 fi
