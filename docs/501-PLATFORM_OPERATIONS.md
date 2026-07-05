@@ -59,8 +59,8 @@ So a deploy is: *CI writes a tag → ArgoCD syncs → the new pod comes up behin
 <details>
 <summary>🔴 For specialists — how each plane is wired here</summary>
 
-- **Delivery:** ArgoCD (auto-tracking the latest **3.4.x** via a daily CronJob watcher) runs single `Application`s (microservices `ApplicationSet`→`microservices-stable`, `headlamp`, `pgadmin`, `cnpg-operator`, `external-secrets`, `jenkins`, `argo-rollouts`, plus `cert-manager` only when `gateway.backendTls.enabled` — [docs/504](./504-BACKEND_TLS.md)) plus **app-of-apps** (`platform-postgres`, `observability-oss`, and the active CI engine's — `tekton` / `githubactions` / `argoworkflows`). The four CI engines (`ci.engine`: **Jenkins** default · **Tekton** · **GitHub Actions (ARC)** · **Argo Workflows**) are mutually exclusive; a scoped ArgoCD account + API token lets the pipeline `argocd app sync --wait`. All apps `selfHeal: true` + `prune: true`.
-- **Ingress:** one `Gateway` (`gatewayClassName: gke-l7-global-external-managed`) = one global external HTTPS LB + one Google-managed wildcard cert + one `HTTPRoute` per app; TLS terminates at the LB — the LB→pod hop is plain HTTP by default (backend re-encryption is the opt-in `gateway.backendTls.enabled`; see §3 Zero-Trust + [docs/504](./504-BACKEND_TLS.md)). Opt-in via `gateway.baseDomain` (empty disables it; `09-gateway.sh` no-ops off-GKE).
+- **Delivery:** ArgoCD (auto-tracking the latest **3.4.x** via a daily CronJob watcher) runs single `Application`s (microservices `ApplicationSet`→`microservices-stable`, `headlamp`, `external-secrets`, `jenkins`, `argo-rollouts`, and `platform-config` — the engine-aware static platform RBAC) plus **app-of-apps** (`platform-postgres` → CNPG operator + pgAdmin, `observability-oss`, and the active CI engine's — `tekton` / `githubactions` / `argoworkflows`). The four CI engines (`ci.engine`: **Jenkins** default · **Tekton** · **GitHub Actions (ARC)** · **Argo Workflows**) are mutually exclusive; a scoped ArgoCD account + API token lets the pipeline `argocd app sync --wait`. All apps `selfHeal: true` + `prune: true`.
+- **Ingress:** one `Gateway` (`gatewayClassName: gke-l7-global-external-managed`) = one global external HTTPS LB + one Google-managed wildcard cert + one `HTTPRoute` per app; TLS terminates at the LB — the LB→pod hop is plain HTTP (no backend re-encryption; see §3 Zero-Trust). Opt-in via `gateway.baseDomain` (empty disables it; `09-gateway.sh` no-ops off-GKE).
 - **Edge identity:** IAP gates `jenkins`/`headlamp`/`pgadmin`/`grafana(oss)`; access = the emails granted `roles/iap.httpsResourceAccessor` (reuses `HEADLAMP_ADMIN_EMAILS`). The `microservices` host is intentionally public.
 - **Security inside:** Dataplane V2 (`datapath_provider = ADVANCED_DATAPATH`) is what makes NetworkPolicies *enforce*; sensitive namespaces are `default-deny` + curated allowlists (see the matrix below). `in_transit_encryption_config` adds transparent WireGuard inter-node pod encryption (transport, not mTLS identity). Workload Identity Federation removes all static SA JSON keys; ESO syncs Secret Manager → namespaced Secrets. Dataplane V2 + WireGuard are **immutable** cluster fields (changing them recreates the cluster).
 - **Progressive delivery:** the `argo-rollouts` controller + the `argoproj-labs/gatewayAPI` traffic-router plugin patch `HTTPRoute` `backendRefs[].weight` between the stable and `*-canary` Services — sidecar-free, no mesh. An `AnalysisRun` can gate promotion on Prometheus span-metrics (5xx / p95) and auto-rollback.
@@ -69,7 +69,7 @@ So a deploy is: *CI writes a tag → ArgoCD syncs → the new pod comes up behin
 
 ## ArgoCD Inventory (GitOps)
 
-The deployment lifecycle is managed by **ArgoCD**. Application manifests are stored in [`nubenetes/jenkins-2026-gitops-config/argocd/`](https://github.com/nubenetes/jenkins-2026-gitops-config/tree/main/argocd) and applied to the cluster by [`scripts/08.5-argocd.sh`](../scripts/08.5-argocd.sh). Jenkins CI writes image tags into that repo; ArgoCD detects the change and reconciles the cluster.
+The deployment lifecycle is managed by **ArgoCD**. Application manifests are stored in this repo's [`argocd/`](../argocd/) directory and applied to the cluster by [`scripts/08.5-argocd.sh`](../scripts/08.5-argocd.sh); the [`nubenetes/jenkins-2026-gitops-config`](https://github.com/nubenetes/jenkins-2026-gitops-config) repo holds the microservices Helm chart (`helm/microservices/`) that the `ApplicationSet` deploys. Jenkins CI writes image tags into that repo; ArgoCD detects the change and reconciles the cluster.
 
 ### Projects & Applications
 
@@ -78,17 +78,19 @@ The deployment lifecycle is managed by **ArgoCD**. Application manifests are sto
 | `microservices` | `AppProject` | — | — | `microservices` | — |
 | `microservices` | `ApplicationSet` | `jenkins-2026-gitops-config` | `helm/microservices/` | (generates one App) | — |
 | `microservices-stable` | `Application` | `jenkins-2026-gitops-config` | `helm/microservices/` + `values-stable.yaml` | `microservices` | Synced |
-| `headlamp` | `Application` | `jenkins-2026-gitops-config` | `helm/headlamp/values.yaml` | `headlamp` | Healthy |
-| `pgadmin` | `Application` | `jenkins-2026-gitops-config` | `helm/pgadmin/` | `pgadmin` | Healthy |
-| `cnpg-operator` | `Application` | `cloudnative-pg` chart | `https://cloudnative-pg.github.io/charts` | `cnpg-system` | Healthy |
+| `headlamp` | `Application` | official `headlamp` chart 0.43.0 + `$values` from `jenkins-2026` | `helm/headlamp/values.yaml` | `headlamp` | Healthy |
+| `pgadmin` *(child of the `platform-postgres` app-of-apps)* | `Application` | `jenkins-2026` | `helm/pgadmin/` | `pgadmin` | Healthy |
+| `cnpg-operator` *(child of the `platform-postgres` app-of-apps)* | `Application` | `cloudnative-pg` chart | `https://cloudnative-pg.github.io/charts` | `cnpg-system` | Healthy |
 | `external-secrets` | `Application` | `external-secrets` chart | `https://charts.external-secrets.io` | `external-secrets` | Healthy |
 | `jenkins` | `Application` | `jenkins` chart (pinned 5.9.29) | `https://charts.jenkins.io` | `jenkins` | Healthy *(when `ci.engine=jenkins`)* |
 | `argo-rollouts` | `Application` | `argo-rollouts` chart (2.37.7) | `https://argoproj.github.io/argo-helm` | `argo-rollouts` | Healthy |
-| `cert-manager` | `Application` | `cert-manager` chart (v1.20.3) | `https://charts.jetstack.io` | `cert-manager` | Healthy *(only when `gateway.backendTls.enabled` — [docs/504](./504-BACKEND_TLS.md))* |
+| `platform-config` | `Application` | `jenkins-2026` | `argocd/platform-config/` (local Helm chart) | `argocd` | Healthy |
 
 > Plus the **app-of-apps** (`platform-postgres`, `observability-oss` when `observability.mode=oss`, and the active CI engine's — `tekton` / `githubactions` / `argoworkflows`, one per `ci.engine`; Jenkins uses the single `jenkins` `Application` above), each a small Helm chart whose children carry the actual workloads. See [`argocd/README.md`](../argocd/README.md).
 >
 > **Switching engines is exclusive:** each `scripts/04-<engine>.sh` retires the *other three* via the shared `retire_ci_engine` helper in [`scripts/lib/common.sh`](../scripts/lib/common.sh) — it deletes their ArgoCD `Application`s (parent app-of-apps + every child), then their namespaces (clearing any stuck GKE NEG finalizer so termination isn't blocked), so only one CI engine ever exists at a time.
+>
+> `platform-config` renders the local [`argocd/platform-config/`](../argocd/platform-config/) Helm chart — the engine-aware static platform **RBAC** (CI-engine SA `edit` bindings, pgAdmin secret-reader, the OTel-instrumentation `ClusterRole`), GitOps-owned since it moved out of `01-namespaces.sh` / `02-otel-operator.sh`; `ciEngine` / `developTrackEnabled` are substituted by `08.5-argocd.sh` so only the active engine's RBAC renders. NetworkPolicies + quotas deliberately stay script-applied (Dataplane V2 timing).
 >
 > Not an `Application`, but applied alongside them: [`argocd/argocd-version-patch-watcher.yaml`](../argocd/argocd-version-patch-watcher.yaml) — a daily `CronJob` in the `argocd` namespace that keeps ArgoCD auto-tracking the latest **3.4.x** patch (see [602 § version pinning](./602-VERSION_PINNING.md)).
 
@@ -108,12 +110,10 @@ flowchart TB
     appset["microservices<br/>ApplicationSet"] --> msstable[microservices-stable]
     appset -. "develop track on (optional)" .-> msdev["microservices-develop<br/>(lean tier)"]
     headlamp[headlamp]
-    pgadmin[pgadmin]
-    cnpg[cnpg-operator]
     eso[external-secrets]
     jenkins["jenkins<br/>(ci.engine=jenkins)"]
     rollouts[argo-rollouts]
-    certmgr["cert-manager<br/>(gateway.backendTls on)"]
+    pcfg["platform-config<br/>(engine-aware RBAC)"]
   end
 
   subgraph aoa["App-of-apps (each a small Helm chart)"]
@@ -125,7 +125,7 @@ flowchart TB
     awf["argoworkflows<br/>(ci.engine=argoworkflows)"] --> awfc["Workflows controller+server<br/>· Argo Events · pac"]
   end
 
-  argocd --> appset & headlamp & pgadmin & cnpg & eso & jenkins & rollouts & certmgr
+  argocd --> appset & headlamp & eso & jenkins & rollouts & pcfg
   argocd --> pp & oss & tk & gha & awf
   watcher[[daily CronJob<br/>auto-track 3.4.x]] -.-> argocd
   classDef root fill:#eef,stroke:#66c;
@@ -139,7 +139,7 @@ flowchart TB
 
 - **CI Integration**: A dedicated ArgoCD account with a scoped **API Token** is created for the active CI engine (stored in that engine's credentials Secret — `jenkins-credentials`, `tekton-argocd`, `arc-argocd`, or `argoworkflows-argocd`) and used by the `argocd` CLI inside pipeline agents to trigger `argocd app sync --wait`.
 - **Auto-Sync**: All Applications are configured with `selfHeal: true` and `prune: true`.
-- **Rollout Waiting**: After pushing a new tag to the gitops-config repo, the pipeline (whichever engine) calls `argocd app wait --health --timeout 300` before running smoke tests.
+- **Rollout Waiting**: After pushing a new tag to the gitops-config repo, the pipeline waits for the app to converge with `argocd app wait microservices-<env> --sync --health --timeout 300` before running smoke tests (Jenkins and Tekton block on it; the GHA workflow waits best-effort with a trailing `|| true`).
 
 ## Telemetry Verification & Simulation
 
@@ -152,10 +152,14 @@ Use the **[`Day2.traffic.01 Continuous k6 simulation`](https://github.com/nubene
 - **Tier**: `env_name` input — `stable` (public `microservices.<domain>` host) or `develop` (public `microservices-develop.<domain>` host).
 - **Purpose**: Simulates real-world user traffic from outside the cluster, hitting the GKE Gateway and triggering end-to-end traces.
 
-The simulation reads the OTLP endpoint, auth and Grafana URL straight from the
-in-cluster `grafana-cloud-credentials` Secret (provisioned by `Day1.cluster.01`), so no
-extra GitHub secrets are needed — just run it against a live grafana-cloud
-deployment.
+The simulation auto-detects the active observability mode from whichever in-cluster
+credentials Secret exists (`grafana-cloud-credentials` / `azure-monitor-credentials` /
+`aws-managed-credentials`, provisioned by `Day1.cluster.01`) and routes k6's OTLP
+accordingly — straight to the Grafana Cloud gateway in grafana-cloud mode, via the
+in-cluster `otel-collector-gateway` in oss/managed modes — so no extra GitHub secrets are
+needed and it works on any live deployment. A `preset` input (plus `run_all_presets` for a
+one-click pass over every committed preset) loads configs from
+[`jenkins/pipelines/k6/presets/`](../jenkins/pipelines/k6/presets/).
 
 ### 2. On-Demand Smoke Test (Jenkins)
 
@@ -185,7 +189,7 @@ This script lints and dry-runs all platform resources (WIF, Node Auto-Provisioni
 Prove that dynamic build agents scale up their container resources dynamically without terminating or changing the Pod UID.
 
 1. **Trigger Workload**: Run a dynamic microservice build job in Jenkins.
-2. **Retrieve the Pod ID**: `kubectl get pods -n jenkins -l role=jenkins-agent`
+2. **Retrieve the Pod ID**: `kubectl get pods -n jenkins -l jenkins=slave` (the Kubernetes-plugin label the real ephemeral agents carry; `role=jenkins-agent` only exists in the unused `jcasc-modern-agents.yaml` worked example).
 3. **Trigger Resource Upscale**:
    ```bash
    kubectl patch pod <agent-pod-name> -n jenkins --type=json -p='[
@@ -195,29 +199,31 @@ Prove that dynamic build agents scale up their container resources dynamically w
    ```
 4. **Monitor the Resize Lifecycle**:
    ```bash
-   kubectl get pod <agent-pod-name> -n jenkins -w -o jsonpath='{.status.resize}{"\t"}{.status.containerStatuses[0].resources}{"\n"}'
+   kubectl get pod <agent-pod-name> -n jenkins -w -o jsonpath='{.status.conditions[?(@.type=="PodResizeInProgress")]}{"\t"}{.status.containerStatuses[0].resources}{"\n"}'
    ```
-   Status transitions: `Resize: Proposed` → `Resize: InProgress` → `Resize: Succeeded` without the pod restarting.
+   Watch the `PodResizePending` → `PodResizeInProgress` conditions clear and `containerStatuses[0].resources` reflect the new limits — without the pod restarting. (K8s ≥1.33 GA moved resize status from the beta `.status.resize` field to these pod conditions, so on this 1.35 cluster the old `.status.resize` jsonpath prints nothing.)
 
 #### Scenario B: Node Auto-Provisioning Elasticity & Spot Provisioning
 
-1. **Deploy a Burst Load**: Schedule 50 parallel sleep pods onto the `ci-spot` ComputeClass.
+1. **Deploy a Burst Load**: `kubectl create deployment burst-sleep -n jenkins --image=busybox --replicas=50 -- sleep 3600`, then patch its pod template with `nodeSelector: {cloud.google.com/compute-class: ci-spot}` plus the matching `ci-spot` / `gke-spot` `NoSchedule` tolerations so the 50 pods land on the `ci-spot` ComputeClass.
 2. **Watch Node Allocation**: `kubectl get nodes -l cloud.google.com/compute-class=ci-spot -o custom-columns=NAME:.metadata.name,SPOT:.metadata.labels.cloud\.google\.com/gke-spot -w`
-3. **Trigger Scale Down**: `kubectl scale deployment k6-burst-test -n jenkins --replicas=0`
+3. **Trigger Scale Down**: `kubectl scale deployment burst-sleep -n jenkins --replicas=0`
 4. **Verify Consolidation**: `kubectl get events --field-selector reason=ScaleDown -n kube-system`
 
-#### Scenario C: Constrained Impersonation (Zero-Trust RBAC)
+#### Scenario C: Constrained Impersonation (Zero-Trust RBAC) — *reference design*
+
+> The `ImpersonationPolicy` + `developer-group` RoleBindings behind this scenario are a **reference design** — [`infrastructure/headlamp/ImpersonationPolicy.yaml`](../infrastructure/headlamp/ImpersonationPolicy.yaml) is schema-validated by `test/validation_gate.sh` but **not applied by Day1**, and no RoleBinding anywhere grants `developer-group` create-deployments in `microservices`. To reproduce on a real cluster, first `kubectl apply -f infrastructure/headlamp/ImpersonationPolicy.yaml` (fixing its subject to the chart-created SA `headlamp`) **plus** a RoleBinding granting `developer-group` `edit` in `microservices`.
 
 ```bash
 # Test Developer Impersonation (Allowed)
 kubectl auth can-i create deployments -n microservices \
-  --as=system:serviceaccount:headlamp:headlamp-service-account \
+  --as=system:serviceaccount:headlamp:headlamp \
   --as-group=developer-group
 # Output: yes
 
 # Test Cluster-wide Escalation (Denied)
 kubectl auth can-i get secrets --all-namespaces \
-  --as=system:serviceaccount:headlamp:headlamp-service-account \
+  --as=system:serviceaccount:headlamp:headlamp \
   --as-group=developer-group
 # Output: no
 ```
@@ -241,10 +247,12 @@ kubectl auth can-i get secrets --all-namespaces \
 The repository has been refactored to serve as a **Golden Path Internal Developer Platform (IDP)** utilizing modern Kubernetes scheduling features, GKE Node Auto-Provisioning, zero-trust security, and decoupled GitOps patterns.
 
 ### 1. Modern Scheduling Compliance
-* **In-Place Pod Vertical Scaling**: Jenkins ephemeral agent pod templates are defined with explicit `resizePolicy` parameters (`NotRequired` for CPU and Memory), allowing active Maven or Node build containers to scale resource requests/limits dynamically without restarting the pod.
-* **Safe JVM Resource Resizing Floors**: Configured `VerticalPodAutoscaler` (VPA) rules for JVM microservices to enforce `minAllowed` memory thresholds (`512Mi`).
-* **Workload-Aware / Gang Scheduling**: Integrated `PodGroup` scheduling resources (`parallel-smoke-tests`) to prevent resource starvation deadlocks during heavy concurrent microservice testing workflows.
-* **UI/UX Constrained Impersonation**: Implemented `ConstrainedImpersonation` policies in Headlamp UI roles. This allows the Headlamp UI ServiceAccount to impersonate specific target user groups without requiring global cluster-admin role escalation permissions.
+* **In-Place Pod Vertical Scaling** *(live)*: Jenkins ephemeral agent pod templates are defined with explicit `resizePolicy` parameters (`NotRequired` for CPU and Memory) in [`vars/MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy), allowing active Maven or Node build containers to scale resource requests/limits dynamically without restarting the pod.
+* **Safe JVM Resource Resizing Floors** *(reference manifest — not applied by Day1)*: [`infrastructure/scheduling/VPA.yaml`](../infrastructure/scheduling/VPA.yaml) defines `VerticalPodAutoscaler` (VPA) rules for JVM microservices with `minAllowed` memory floors (`512Mi`).
+* **Workload-Aware / Gang Scheduling** *(reference manifest — not applied by Day1)*: [`infrastructure/scheduling/PodGroup.yaml`](../infrastructure/scheduling/PodGroup.yaml) defines `PodGroup` scheduling resources (`parallel-smoke-tests`) to prevent resource starvation deadlocks during heavy concurrent microservice testing workflows.
+* **UI/UX Constrained Impersonation** *(reference manifest — not applied by Day1)*: [`infrastructure/headlamp/ImpersonationPolicy.yaml`](../infrastructure/headlamp/ImpersonationPolicy.yaml) defines `ConstrainedImpersonation` policies for Headlamp UI roles, letting the Headlamp UI ServiceAccount impersonate specific target user groups without global cluster-admin escalation.
+
+> The three reference manifests above are schema-validated by [`test/validation_gate.sh`](../test/validation_gate.sh) but must be applied by hand — only the first (`resizePolicy`) bullet is live in the provision.
 
 ### 2. Elastic Node Auto-Provisioning (Spot ComputeClass)
 * **Cluster-level NAP**: [`terraform/gke`](../terraform/gke/) enables a `cluster_autoscaling` block (`resource_limits` for cpu/memory + `auto_provisioning_defaults`: the dedicated node SA `jenkins-2026-nodes`, COS_CONTAINERD, Shielded VMs, auto-repair/upgrade, `pd-balanced`, `OPTIMIZE_UTILIZATION` profile), gated by the `enable_node_autoprovisioning` variable (default true).
@@ -256,7 +264,7 @@ The repository has been refactored to serve as a **Golden Path Internal Develope
   * **Preemption ≠ stuck** — if a Spot node *is* reclaimed, GKE reschedules the agent Pod and NAP provisions a fresh node (Spot, or on-demand on stock-out); the affected build fails fast and is simply re-run (no manual cleanup).
   * **Escape hatch** — for **guaranteed, non-preemptible completion**, set the engine's `runNodePool: static` (the default for Jenkins/Tekton/Argo Workflows; GitHub Actions/ARC defaults to `ci-spot`, so flip it explicitly) so its agents schedule on the static pool — finer-grained than disabling NAP. To remove NAP cluster-wide instead, set `nodeAutoProvisioning.enabled: false` (or `JENKINS2026_NODE_AUTOPROVISIONING_ENABLED=false`). One toggle, no manifest edits — see [`config/config.yaml`](../config/config.yaml).
   * **Watch it** — the **CI-CD / Node Auto-Provisioning (Spot)** Grafana dashboard ([`observability/grafana/dashboards/node-autoprovisioning.json`](../observability/grafana/dashboards/node-autoprovisioning.json)) shows Spot vs static node counts over time, so you can see scale-up on a build and consolidation back toward zero after it.
-  * **The real ceiling is the regional `SSD_TOTAL_GB` quota, not NAP.** Each node's `pd-balanced` boot disk counts against that quota, so the number of *concurrent* Spot CI nodes is bounded by `SSD_TOTAL_GB` ÷ disk-size (plus the static-pool disks and the CNPG Postgres PVs). Symptom when you hit it: the agent Pod stays `Pending` and `kubectl get events` shows `cluster-autoscaler … ScaleUpFailed … Quota 'SSD_TOTAL_GB' exceeded` (NAP keeps retrying across machine families — it's doing the right thing, GCE is refusing the disk). The NAP node disk is kept at `var.disk_size_gb` (50 GB, same as the static pool) precisely to stretch this quota. **Raising the quota is NOT self-service-instant**: a consumer-quota *override* caps at Google's self-service maximum, which for `SSD_TOTAL_GB` equals the current limit (500) — higher values return `COMMON_QUOTA_CONSUMER_OVERRIDE_TOO_HIGH` (so it can't be set in Terraform either). Above 500 needs an **approved increase request** — submit a Cloud Quotas `QuotaPreference` (`cloudquotas.googleapis.com`, quotaId `SSD-TOTAL-GB-per-project-region`) or Console → *IAM & Admin → Quotas*; it reconciles to `grantedValue` after Google approves. This is also **why `runNodePool` defaults to `static`** — CI then needs no extra SSD headroom. See [`docs/runbooks/nap-spot-provisioning.md`](runbooks/nap-spot-provisioning.md).
+  * **The real ceiling is the regional `SSD_TOTAL_GB` quota, not NAP.** Each `ci-spot` node's `pd-balanced` boot disk counts against that quota, so the number of *concurrent* Spot CI nodes is bounded by `SSD_TOTAL_GB` ÷ disk-size (plus the CNPG Postgres PVs; the static pool's `pd-standard` boot disks are exempt — they charge `DISKS_TOTAL_GB`). Symptom when you hit it: the agent Pod stays `Pending` and `kubectl get events` shows `cluster-autoscaler … ScaleUpFailed … Quota 'SSD_TOTAL_GB' exceeded` (NAP keeps retrying across machine families — it's doing the right thing, GCE is refusing the disk). The NAP node disk is kept at `var.disk_size_gb` (50 GB, same as the static pool) precisely to stretch this quota. **Raising the quota is NOT self-service-instant**: a consumer-quota *override* caps at Google's self-service maximum, which for `SSD_TOTAL_GB` equals the current limit (500) — higher values return `COMMON_QUOTA_CONSUMER_OVERRIDE_TOO_HIGH` (so it can't be set in Terraform either). Above 500 needs an **approved increase request** — submit a Cloud Quotas `QuotaPreference` (`cloudquotas.googleapis.com`, quotaId `SSD-TOTAL-GB-per-project-region`) or Console → *IAM & Admin → Quotas*; it reconciles to `grantedValue` after Google approves. This is also **why `runNodePool` defaults to `static`** — CI then needs no extra SSD headroom. See [`docs/runbooks/nap-spot-provisioning.md`](runbooks/nap-spot-provisioning.md).
 
 > **Runbook**: for a step-by-step live validation (get cluster access despite the
 > auth-plugin/stale-IP gotchas, trigger a build, watch NAP bring up a Spot `ci-spot` node,
@@ -265,12 +273,12 @@ The repository has been refactored to serve as a **Golden Path Internal Develope
 
 #### The `SSD_TOTAL_GB` quota — how it's computed, what it costs, and the increase request
 
-> **TL;DR** — `SSD_TOTAL_GB` is a **regional GCP quota** (currently **500 GB** in `europe-southwest1`) that caps the *total* SSD-backed disk in the region. It counts **every** `pd-ssd` **and** `pd-balanced` disk — node boot disks *and* PVs — so it is the **binding capacity ceiling** for the cluster, and the reason `ci-spot` elasticity is bounded. It is **only meaningfully consumed at scale by `ci-spot`**; the `static` default needs no extra headroom.
+> **TL;DR** — `SSD_TOTAL_GB` is a **regional GCP quota** (currently **500 GB** in `europe-southwest1`) that caps the *total* SSD-backed disk in the region. It counts **every** `pd-ssd` **and** `pd-balanced` disk — the CNPG/observability PVs *and* the `ci-spot` Spot node boot disks — so it is the **binding capacity ceiling** for the cluster, and the reason `ci-spot` elasticity is bounded. (The always-on static pool's boot disks are `pd-standard`, charging the separate `DISKS_TOTAL_GB` quota, so they're **exempt**.) It is **only meaningfully consumed at scale by `ci-spot`**; the `static` default needs no extra headroom.
 
 <details>
 <summary>🧠 <b>Mental model</b> — the whole picture in one map (read this first)</summary>
 
-**Basic version (one paragraph):** GCP limits how much fast disk (SSD) you can have in the region to **500 GB**. *Everything* with a disk counts: the databases, the monitoring stack, **and every VM's boot disk**. When CI runs on cheap **Spot** nodes, each new node adds a 50 GB boot disk — pile up enough at once and you hit the 500 GB wall, so the next build can't get a node and waits. The wall isn't a money limit (the quota is free); it's a **safety ceiling**. You pay only for disks that actually exist — which is why **pausing** the cluster (deletes the VM disks) drops the bill to almost nothing.
+**Basic version (one paragraph):** GCP limits how much fast disk (SSD) you can have in the region to **500 GB**. The `pd-ssd`/`pd-balanced` disks count: the databases, the monitoring stack, **and the Spot CI nodes' boot disks** (the always-on static pool's boot disks are `pd-standard`, so they charge a *different*, effectively-unlimited quota and don't count here). When CI runs on cheap **Spot** nodes, each new node adds a 50 GB `pd-balanced` boot disk — pile up enough at once and you hit the 500 GB wall, so the next build can't get a node and waits. The wall isn't a money limit (the quota is free); it's a **safety ceiling**. You pay only for disks that actually exist — which is why **pausing** the cluster (deletes the VM disks) drops the bill to almost nothing.
 
 **Advanced version (the model):**
 
@@ -287,8 +295,8 @@ mindmap
         CNPG pd-ssd 1GB data+WAL
         Observability pd-balanced 10GB
         Tekton workspaces RWO
-      Static node disks 100-200 GB
-      Spot ci-spot disks N x 50
+      Static boot = pd-standard (quota-exempt)
+      Spot ci-spot disks N x 50 pd-balanced
       Orphans ~32 GB reclaimable
     Cost drivers
       Quota itself = 0 dollars
@@ -311,17 +319,17 @@ mindmap
 
 </details>
 
-**How the quota is computed — every SSD disk sums against the 500 GB ceiling:**
+**How the quota is computed — every `pd-ssd`/`pd-balanced` disk sums against the 500 GB ceiling (the static pool's `pd-standard` boot disks are exempt):**
 
 ```mermaid
 flowchart LR
     PV["① Persistent PVs — survive pause<br/>CNPG Postgres HA (data+WAL × instances × services)<br/>+ ArgoCD / Jenkins / Tekton workspace PVCs<br/>≈ 102 GB · 54 disks (measured, paused)"]
-    STATIC["② Static pool boot disks<br/>2–4 × e2-standard-8 × 50 GB<br/>= 100–200 GB"]
-    SPOT["③ ci-spot NAP node boot disks<br/>N × 50 GB — elastic, one per concurrent build node<br/>(0 when no CI running)"]
+    STATIC["② Static pool boot disks<br/>2–4 × e2-standard-8 × 50 GB<br/><b>pd-standard → charges DISKS_TOTAL_GB, NOT this quota</b>"]
+    SPOT["③ ci-spot NAP node boot disks<br/>N × 50 GB pd-balanced — elastic, one per concurrent build node<br/>(0 when no CI running)"]
 
     PV --> SUM{{"Σ must stay ≤ 500 GB<br/>(SSD_TOTAL_GB, region-wide)"}}
-    STATIC --> SUM
     SPOT --> SUM
+    STATIC -. "exempt (pd-standard)" .-> SUM
     SUM -->|"within budget"| OK["✅ disks provision · nodes come up"]
     SUM -->|"exceeds 500"| BAD["❌ GCE refuses the disk<br/>agent Pod stuck Pending<br/>ScaleUpFailed … Quota 'SSD_TOTAL_GB' exceeded"]
 
@@ -331,7 +339,7 @@ flowchart LR
     class BAD bad;
 ```
 
-①+② are **fixed** (the platform + databases); only **③ grows** with `ci-spot` concurrency. So the usable Spot budget is roughly `500 − (PVs) − (static disks)` ÷ 50 GB ≈ **3–4 concurrent Spot CI nodes** before the ceiling bites.
+Only **① Persistent PVs** and **③ ci-spot Spot boot disks** count against `SSD_TOTAL_GB` — **② the static pool's boot disks are `pd-standard`, so they charge the separate `DISKS_TOTAL_GB` quota (4 TB, ~empty) and are exempt from this cap**. ① is fixed (the platform + databases); only ③ grows with `ci-spot` concurrency. So the usable Spot budget is roughly `(500 − ~70 GB PVs)` ÷ 50 GB ≈ **8 concurrent Spot CI nodes** before the ceiling bites.
 
 **Detailed disk inventory — ① the persistent PVs** (measured live; the architectural footprint, paused state):
 
@@ -393,13 +401,14 @@ scripts/sweep-orphaned-pds.sh
 | Disk class | Workloads | Rationale | ≈ Cost |
 |---|---|---|---|
 | **`pd-ssd`** | CNPG Postgres data + WAL | DB needs low-latency random I/O + fast WAL fsync (commit latency) | ~$0.17 / GB·mo |
-| **`pd-balanced`** | node boot disks · Prometheus/Loki/Tempo · pgAdmin · Tekton workspaces | general-purpose SSD; ample for OS/boot, append-mostly TSDB, and scratch | ~$0.10 / GB·mo |
+| **`pd-balanced`** | `ci-spot` NAP node boot disks · Prometheus/Loki/Tempo · pgAdmin · Tekton workspaces | general-purpose SSD; ample for append-mostly TSDB and scratch — **counts against `SSD_TOTAL_GB`** | ~$0.10 / GB·mo |
+| **`pd-standard`** | **static `jenkins-2026-pool` node boot disks** | boot disks (OS + image cache + emptyDir) don't need SSD IOPS; **charges `DISKS_TOTAL_GB` (4 TB), exempt from `SSD_TOTAL_GB`** | ~$0.04 / GB·mo |
 
 **② + ③ — node boot disks (static vs Spot) and the workload each serves:**
 
 | Disk | Node pool | Class · size | Lifecycle | Workload it carries | Quota impact |
 |---|---|---|---|---|---|
-| **Static node boot** | `jenkins-2026-pool` | `pd-balanced` · 50 GB | always-on (0 only when **Paused**) | platform (ArgoCD/Jenkins/observability/CNPG) **+ CI build pods by default** (`runNodePool: static`) | **fixed** — 2–4 nodes = 100–200 GB |
+| **Static node boot** | `jenkins-2026-pool` | `pd-standard` · 50 GB | always-on (0 only when **Paused**) | platform (ArgoCD/Jenkins/observability/CNPG) **+ CI build pods by default** (`runNodePool: static`) | **none** — charges `DISKS_TOTAL_GB` (4 TB, ~empty), **exempt from `SSD_TOTAL_GB`** |
 | **Spot node boot** | NAP `ci-spot` (auto-created) | `pd-balanced` · 50 GB | **per-build, scale-to-zero** | CI build pods **only when** `runNodePool: ci-spot` | **elastic** — N × 50 GB, 0 at rest |
 | **Persistent PV** | — (CSI PD, not node-bound) | `pd-ssd`/`pd-balanced` · 1–10 GB | survives Pause; deleted only with the PVC | databases · observability · Tekton workspaces | **fixed** — ~70 GB live |
 
@@ -408,8 +417,8 @@ scripts/sweep-orphaned-pds.sh
 | Cluster state | SSD used | % of 500 | What's on disk |
 |---|---|---|---|
 | **Paused** (`Day2.scale.01`, nodes → 0) | **102 GB** | **~20 %** | only ① — the 54 persistent PVs (DBs + platform); node disks are deleted |
-| **Running, idle CI** | ~200 GB | ~40 % | ① + 2 static node disks |
-| **Running, CI under load (peak observed)** | ~492 GB | **~98 %** | ① + up to 4 static + several `ci-spot` Spot nodes — *this is where builds wedged* |
+| **Running, idle CI** | ~102 GB | ~20 % | ① only — static boot disks are `pd-standard` and don't count |
+| **Running, CI under load (peak observed)** | ~492 GB | **~98 %** | ① + several `ci-spot` Spot node boot disks (`pd-balanced`) — *this is where builds wedged; the static pool's pd-standard disks stay exempt* |
 
 **FinOps — cost breakdown** (approximate GCP list prices for `europe-southwest1`; verify in the [pricing calculator](https://cloud.google.com/products/calculator)).
 
@@ -526,9 +535,10 @@ Flip per engine with the config flag (durable) or the **`run_node_pool` input** 
 
 ### 3. Zero-Trust Security & Workload Identity
 * **Workload Identity Federation**: All static JSON Service Account keys are removed. External CI (the GitHub Actions infra workflows) and in-cluster workloads assume GCP IAM Roles dynamically via OIDC.
-* **Edge TLS (GKE Gateway API)**: TLS terminates at the global L7 LB (the Google-managed wildcard cert). By default the LB→pod hop is **plain HTTP** — it never leaves Google's VPC fabric and rides Google's default network-layer encryption in transit; pod-to-pod traffic is covered by the WireGuard bullet below. **Opt-in backend re-encryption** — `gateway.backendTls.enabled` (default `false`, override `JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED`) — installs **cert-manager + a cluster-internal CA** ([`08.7-backend-tls.sh`](../scripts/08.7-backend-tls.sh)), has the TLS-ready backends serve HTTPS themselves (stage 1: **Headlamp**, native TLS on its 4466 pod port), and attaches a GKE **`BackendTLSPolicy`** so the LB re-encrypts **and validates** the hop against the internal CA (plus an HTTPS `HealthCheckPolicy` — the default health check does not follow). Full design, GKE mechanics and the per-backend rollout roadmap: **[504. Backend TLS](./504-BACKEND_TLS.md)**.
+  * Note: the standalone [`terraform/workload-identity`](../terraform/workload-identity/README.md) module is a manual/auxiliary reference helper (its own pool `github-actions-pool-2026` + SA `jenkins-2026-ci-agent`) and is **not** the CI trust the lifecycle uses — that lives in [`terraform/bootstrap`](../terraform/bootstrap/README.md) (pool `jenkins-2026-github`, SA `jenkins-2026-ci`).
+* **Edge TLS (GKE Gateway API)**: TLS terminates at the global L7 LB (the Google-managed wildcard cert). The LB→pod hop is **plain HTTP** — every routed backend (Jenkins :8080, Headlamp, ArgoCD, …) serves plain HTTP, so no `BackendTLSPolicy` backend re-encryption is configured (it would need an internal PKI plus TLS-serving backends — a possible future hardening). That hop never leaves Google's VPC fabric and rides Google's default network-layer encryption in transit; pod-to-pod traffic is covered by the WireGuard bullet below.
 * **GKE Dataplane V2 (Cilium/eBPF) — NetworkPolicy *enforcement***: the cluster runs Dataplane V2 (`datapath_provider = ADVANCED_DATAPATH` in [`terraform/gke`](../terraform/gke/main.tf)). This is what makes the policies below *actually enforce* — without it (and without the legacy Calico addon, mutually exclusive with it) GKE accepts `NetworkPolicy` objects but silently ignores them.
-* **Zero-Trust Network Policies** ([`infrastructure/networkpolicies*.yaml`](../infrastructure/)): every namespace egresses to CoreDNS by default-deny. Sensitive namespaces (**observability, microservices, postgres, pgadmin**, and **jenkins** in jenkins mode) run `default-deny` + curated allowlists. Workload UI/CI namespaces (**argocd, headlamp, tekton-ci**) get a **deny-ingress / allow-egress baseline**: each namespace's entry port stays reachable (Gateway, CI sync, port-forward, CLI) while internal components are intra-namespace only; the outbound-only pipeline pods get no ingress. Admission-webhook operator namespaces (**tekton-pipelines, cnpg-system, external-secrets, pipelines-as-code**, and **cert-manager** when `gateway.backendTls` is on) are intentionally left open — a `deny-ingress` there would block the API server's webhook calls unless the GKE control-plane CIDR is allowlisted (fragile, cluster-specific). The observability policy also allows the GKE L7 health-check/proxy ranges (`130.211.0.0/22`, `35.191.0.0/16`) so the Grafana backend stays healthy under enforcement.
+* **Zero-Trust Network Policies** ([`infrastructure/networkpolicies*.yaml`](../infrastructure/)): every namespace egresses to CoreDNS by default-deny. Sensitive namespaces (**observability, microservices**(+`-develop`)**, pgadmin**, and **jenkins** in jenkins mode) run `default-deny` + curated allowlists (see the matrix below). Workload UI/CI namespaces (**argocd, headlamp**, plus the active engine's run namespace — **tekton-ci / arc-runners / argo-ci**) get a **deny-ingress / allow-egress baseline**: each namespace's entry port stays reachable (Gateway, CI sync, port-forward, CLI) while internal components are intra-namespace only; the outbound-only pipeline pods get no ingress. Admission-webhook/controller namespaces (**tekton-pipelines, arc-systems, argo, argo-events, cnpg-system, external-secrets, pipelines-as-code**) are intentionally left open — a `deny-ingress` there would block the API server's (or GitHub's) webhook calls unless the GKE control-plane CIDR is allowlisted (fragile, cluster-specific). The observability policy also allows the GKE L7 health-check/proxy ranges (`130.211.0.0/22`, `35.191.0.0/16`) so the Grafana backend stays healthy under enforcement.
 * **Pod-to-pod WireGuard encryption**: `in_transit_encryption_config = IN_TRANSIT_ENCRYPTION_INTER_NODE_TRANSPARENT` has Dataplane V2's managed Cilium transparently encrypt **inter-node** pod traffic (sidecar-free, no service mesh, no app changes). This is *transport* encryption, not identity-based mutual auth (no per-workload mTLS identity/authZ like Istio/Linkerd) — it closes the plaintext-on-the-wire gap lightly. Same-node pod traffic never hits the wire, so it is not encrypted.
 * **Secret Management via External Secrets Operator (ESO)**: Connects GKE Workload Identity with Google Secret Manager. ESO automatically pulls and syncs secret structures to namespaced secrets dynamically.
 
@@ -545,7 +555,7 @@ The first recreate with enforcement surfaced several latent rules that had silen
 - **Match CNPG pods by `cnpg.io/cluster`, not `app.kubernetes.io/name`.** CNPG labels its pods `app.kubernetes.io/name=postgresql`; an egress allow targeting `app.kubernetes.io/name: postgres-*[-pooler]` matches nothing → apps time out on Liquibase. (Carried by the additive `microservices-cnpg-platform` policy, plus `9187` ingress for metrics scraping.)
 - **K8s-API egress for app discovery.** The JHipster microservice uses Hazelcast Kubernetes member discovery (queries the API server on `443`); without egress to `443` it never goes Ready. Apps that talk to the API need explicit egress.
 - **Jenkins build agents need their OWN egress allow.** The `jenkins` `default-deny` caps every pod's egress at DNS, and `jenkins-policy`'s open egress only matches the controller (`app.kubernetes.io/name=jenkins`). The ephemeral Kubernetes-plugin agent pods (label `jenkins=slave`) matched neither, so they couldn't reach the controller's `8080` tcpSlaveAgentListener / `50000` JNLP — every build hung at "Waiting for agent to connect" and the **seed job timed out**. The separate `jenkins-agent-policy` (in [`networkpolicies-jenkins.yaml`](../infrastructure/networkpolicies-jenkins.yaml)) grants `jenkins=slave` pods open egress (no ingress — they're outbound-only, like the tekton-ci pipeline pods).
-- **CI smoke tests must run where egress *and* ingress are allowed.** The post-deploy health check (`<svc>:8081/management/health`, or the gateway on `8080`) crosses into the locked-down `microservices` namespace. Two policies must both permit it: (a) the microservice's own ingress — `microservice-policy` (in the **gitops-config** repo, `helm/microservices/networkpolicies.yaml`) allows the app port from the `gateway` pod **and** the `tekton-ci` / `jenkins` namespaces; and (b) the smoke pod's **egress**. Tekton satisfies (b) naturally — its smoke runs as a pipeline pod in `tekton-ci` (open egress). Jenkins' `microservicesSmokeTest` originally did `kubectl -n microservices run`, putting the curl pod **in the microservices namespace** (default-deny egress = DNS only) → it could never connect → **curl exit 28**. Fixed by creating the pod in the **agent's `jenkins` namespace** labelled `jenkins=slave` (open egress via `jenkins-agent-policy`), targeting the microservices Service FQDN. Rule of thumb: a CI health-check pod must live in a namespace whose egress is open *and* that the target's ingress allows — never in the target's own locked-down namespace.
+- **CI smoke tests must run where egress *and* ingress are allowed.** The post-deploy health check (`<svc>:8081/management/health`, or the gateway on `8080`) crosses into the locked-down `microservices` namespace. Two policies must both permit it: (a) the microservice's own ingress — `microservice-policy` (in the **gitops-config** repo, `helm/microservices/networkpolicies.yaml`) allows the app port from the `gateway` pod **and** every CI-engine run namespace (`jenkins` / `tekton-ci` / `arc-runners` / `argo-ci`); and (b) the smoke pod's **egress**. Tekton satisfies (b) naturally — its smoke runs as a pipeline pod in `tekton-ci` (open egress). Jenkins' `microservicesSmokeTest` originally did `kubectl -n microservices run`, putting the curl pod **in the microservices namespace** (default-deny egress = DNS only) → it could never connect → **curl exit 28**. Fixed by creating the pod in the **agent's `jenkins` namespace** labelled `jenkins=slave` (open egress via `jenkins-agent-policy`), targeting the microservices Service FQDN. Rule of thumb: a CI health-check pod must live in a namespace whose egress is open *and* that the target's ingress allows — never in the target's own locked-down namespace.
 - **Additive vs owned.** A separate NetworkPolicy that no ArgoCD app owns (e.g. `microservices-cnpg-platform`) is **not reverted on sync** and survives recreates (it's in git, applied by `01-namespaces.sh`) — the clean way to add platform allows on top of app-chart policies you don't control.
 </details>
 
@@ -562,7 +572,7 @@ Every policy is in [`infrastructure/networkpolicies*.yaml`](../infrastructure/) 
 | Namespace | Mode | Policy / pods | Ingress allowed | Egress allowed |
 |---|---|---|---|---|
 | `observability` | always | `observability-policy` (all) | intra-ns mesh; CI namespaces (`jenkins`, `tekton-ci`+`tekton-pipelines`, `arc-runners`, `argo-ci`) + `microservices`(+`-develop`) → **4317/4318** (OTLP); GKE LB `130.211.0.0/22`+`35.191.0.0/16` (Grafana health/traffic); **9443*** (API-server → OTel operator webhooks) | all |
-| `microservices` | always | `microservices-cnpg-platform` (all) | `observability` → **9187** (CNPG metrics) | pods `cnpg.io/cluster` → **5432**; **443*** (K8s API — Hazelcast discovery) |
+| `microservices` | always | `microservices-cnpg-platform` (all) | `observability` → **9187** (CNPG metrics); `cnpg-system` → **8000** (operator instance-status) | pods `cnpg.io/cluster` → **5432**; **443*** (K8s API — Hazelcast discovery); `169.254.169.254`:**80/988** (WI metadata — barman GCS backups) |
 | `microservices` | always (GitOps repo) | `gateway`/`microservice`/`postgres-policy` | Gateway → app port; intra-app | app chart's own allows (Postgres, OTLP) — *durable CNPG/9187/API fixes belong here* |
 | `pgadmin` | always | `pgadmin-policy` (pgadmin) | **80*** (Gateway UI) | **443***; `microservices` → **5432** |
 | `argocd` | always | `argocd-baseline` (all) | intra-ns mesh; **8080*** (argocd-server pod port: Gateway, CI sync, CLI, port-forward) | all |
@@ -571,7 +581,7 @@ Every policy is in [`infrastructure/networkpolicies*.yaml`](../infrastructure/) 
 | `jenkins` | `jenkins` | `jenkins-policy` (controller) + `jenkins-agent-policy` (`jenkins=slave`) | **controller:** **8080*** (UI/Gateway **+ build-agent WebSocket**), **50000** (legacy JNLP, unused) from intra-ns agents, `observability` → **8080**. **agents:** none (outbound-only) | **controller:** all. **agents:** all (reach controller **8080** via WebSocket + git/registry/ArgoCD) |
 | `arc-runners` | `githubactions` | `arc-runners-baseline` (all) | intra-ns only (listener ↔ ephemeral runner). Runner pods get **no ingress** (outbound-only; ARC long-polls GitHub — no inbound webhook) | all |
 | `argo-ci` | `argoworkflows` | `argoworkflows-ci-baseline` (all) | intra-ns only (controller/executor). Workflow pods get **no ingress** (outbound-only) | all |
-| `tekton-pipelines`, `arc-systems`, `argo`, `argo-events`, `cnpg-system`, `external-secrets`, `pipelines-as-code`, `cert-manager` *(backendTls)* | per mode | *(none — open by design)* | all (hosts admission/webhook receivers the API server or GitHub call) | all |
+| `tekton-pipelines`, `arc-systems`, `argo`, `argo-events`, `cnpg-system`, `external-secrets`, `pipelines-as-code` | per mode | *(none — open by design)* | all (hosts admission/webhook receivers the API server or GitHub call) | all |
 
 #### NetworkPolicy flow diagram
 
@@ -805,7 +815,7 @@ Copy the token, select **Token** login in Headlamp, paste, and click **Sign In**
 
 ## Public Access (GKE Gateway API + IAP)
 
-The active CI engine's UI, Microservices, Headlamp, and pgAdmin can all be exposed on the public internet through a single **GKE Gateway** (`gatewayClassName: gke-l7-global-external-managed`) — one global external HTTPS load balancer, one Google-managed wildcard certificate, and one `HTTPRoute` per app:
+The active CI engine's UI, Microservices, ArgoCD, Headlamp, and pgAdmin can all be exposed on the public internet through a single **GKE Gateway** (`gatewayClassName: gke-l7-global-external-managed`) — one global external HTTPS load balancer, one Google-managed wildcard certificate, and one `HTTPRoute` per app:
 
 | App | URL | Identity-Aware Proxy |
 |---|---|---|
@@ -816,6 +826,8 @@ The active CI engine's UI, Microservices, Headlamp, and pgAdmin can all be expos
 | Argo Events webhook | `https://argo-events.<baseDomain>` | no (GitHub webhook receiver; HMAC-protected) |
 | Microservices | `https://microservices.<baseDomain>` | no (public demo app) |
 | Microservices (develop) | `https://microservices-develop.<baseDomain>` | no (public demo app; only when `microservices.developTrackEnabled`) |
+| ArgoCD | `https://argocd.<baseDomain>` | **no** (public route — ArgoCD's own Google-OIDC/dex login + RBAC is the auth) |
+| Faro RUM beacon | `https://faro.<baseDomain>` | no (browser-facing otel-collector Faro receiver :8027; CORS-open, HMAC-less, always routed) |
 | Headlamp | `https://headlamp.<baseDomain>` | yes |
 | pgAdmin | `https://pgadmin.<baseDomain>` | yes |
 | Grafana | `https://grafana.<baseDomain>` | yes (only when `observability.mode=oss`) |
@@ -846,25 +858,25 @@ sequenceDiagram
     IAP->>IAP: email has roles/iap.httpsResourceAccessor?
     IAP-->>U: 403 if not allowed
     IAP->>HR: forward (+ X-Goog-Authenticated-User-Email)
-  else public host (microservices demo · CI webhook receivers pac/argo-events, HMAC-protected)
+  else public host (microservices demo · argocd (own SSO) · faro RUM beacon · CI webhook receivers pac/argo-events, HMAC-protected)
     GFE->>HR: forward directly
   end
   HR->>Pod: route to pod targetPort (jenkins 8080 / headlamp 4466)
-  Note over GFE,Pod: TLS terminates at the LB — the LB→pod hop is plain HTTP by default<br/>(VPC-internal · Google network-layer encryption in transit)<br/>(opt-in re-encryption: gateway.backendTls — docs/504)
+  Note over GFE,Pod: TLS terminates at the LB — the LB→pod hop is plain HTTP<br/>(VPC-internal · Google network-layer encryption in transit)
   Pod-->>U: response
 ```
 
 </details>
 
-**Reading it —** one global external HTTPS LB terminates the wildcard cert, and a *per-host* decision follows: IAP-gated hosts must pass a Google sign-in **and** an allowlist check (`roles/iap.httpsResourceAccessor`, the same emails as `HEADLAMP_ADMIN_EMAILS`) before any traffic reaches the app — so the app's own auth (Jenkins OIDC, pgAdmin's trusted header, …) is a *second* layer, not the only one. The `microservices` host is deliberately public. Two gotchas live here: the `HTTPRoute` must target the **pod `targetPort`** (8080/4466), not the Service port, or the GKE health check fails; and TLS ends at the LB — the LB→pod hop is plain HTTP by default (`BackendTLSPolicy` re-encryption is the opt-in `gateway.backendTls.enabled`, which also makes the converted backends actually serve TLS — [docs/504](./504-BACKEND_TLS.md)).
+**Reading it —** one global external HTTPS LB terminates the wildcard cert, and a *per-host* decision follows: IAP-gated hosts must pass a Google sign-in **and** an allowlist check (`roles/iap.httpsResourceAccessor`, the same emails as `HEADLAMP_ADMIN_EMAILS`) before any traffic reaches the app — so the app's own auth (Jenkins OIDC, pgAdmin's trusted header, …) is a *second* layer, not the only one. The `microservices` host is deliberately public. Two gotchas live here: the **NetworkPolicy** ingress allow must target the pod `targetPort` (8080/4466), not the Service port the `HTTPRoute` references (80), or the GKE health check is dropped and the backend goes UNHEALTHY; and TLS ends at the LB — the LB→pod hop is plain HTTP (no `BackendTLSPolicy` re-encryption; the backends don't serve TLS).
 
 ### Authentication & Authorization Matrix
 
 | Application | Edge-Level Authentication (GCP IAP) | App-Level Authentication | Authorization |
 |---|---|---|---|
 | **Jenkins** *(ci.engine=jenkins)* | Yes (Google IAP OAuth) | Google OIDC **or** local `admin` basic auth | RBAS: Default Google login = read-only; Admin email = full admin |
-| **Tekton Dashboard / Argo Workflows UI** *(the other in-cluster CI engines)* | Yes (Google IAP OAuth) | IAP header is the auth (read-only viewer UI) | IAP allowlist = access (GitHub Actions/ARC has no in-cluster UI) |
-| **ArgoCD** | Yes (Google IAP OAuth) | Google OIDC (via Dex) **or** local `admin` secret | ArgoCD RBAC: Default OIDC = readonly; Admin email = role:admin |
+| **Tekton Dashboard / Argo Workflows UI** *(the other in-cluster CI engines)* | Yes (Google IAP OAuth) | IAP header is the auth — behind it both UIs are **read-write** (Tekton Dashboard deployed in `full` mode can start/cancel runs; the Argo Workflows Server runs `--auth-mode=server`, acting as its ServiceAccount) | IAP allowlist = the entire access control (GitHub Actions/ARC has no in-cluster UI) |
+| **ArgoCD** | **No** (public `HTTPRoute` at `argocd.<baseDomain>`; no GCPBackendPolicy/IAP — ArgoCD's own SSO is the gate) | Google OIDC (via Dex, reusing the IAP OAuth client) **or** local `admin` secret | ArgoCD RBAC: Default OIDC = readonly; Admin email = role:admin |
 | **Headlamp** | Yes (Google IAP OAuth) | Token Login (GKE OAuth access token or ServiceAccount token) | Kubernetes RBAC via GCP Identity mapping |
 | **pgAdmin** | Yes (Google IAP OAuth) | Webserver Auth (trusts `X-Goog-Authenticated-User-Email` header) | Automated `.pgpass` injection for zero-password database login |
 | **Microservices** | No (Public Demo App) | JWT Token verification | Spring Security Roles (`ROLE_USER`, `ROLE_ADMIN`) |
@@ -937,16 +949,17 @@ A plain `gcloud container clusters resize --num-nodes 0` **stalls forever / boun
 1. **CNPG Postgres PodDisruptionBudgets block the graceful drain.** Each Postgres pod has a PDB `minAvailable=1`; single-instance tiers (the `develop` tier, and any primary once it is down to one) → **ALLOWED DISRUPTIONS = 0**. The resize drains via the **eviction API**, which honours PDBs → it waits indefinitely, the `gcloud` client times out (~20 min) and the GitHub step fails while the **server-side operation stays RUNNING and wedged** (and it cannot be cancelled — only node-upgrade ops can).
 2. **node-pool `autoRepair` recreates the drained nodes.** With `management.autoRepair: true`, GKE flags cordoned/drained nodes as unhealthy and **recreates** them.
 3. **node-pool `autoUpgrade` surge-creates replacement nodes.** A version auto-upgrade does a surge (new nodes before draining old), re-adding nodes mid-pause.
-4. **Cluster-level Node Auto-Provisioning (NAP) re-provisions nodes for the Pending pods.** ⚠️ *This is the subtle one.* NAP (`autoscaling.enableNodeAutoprovisioning`) is a **cluster** setting, **separate from a node pool's autoscaling**: for any Pending pod it can't place it spins up **brand-new nodes/pools** — so even with the node pool's own autoscaling off, NAP brings the cluster **straight back up** (node count seen bouncing to 3-4). [`terraform/gke`](../terraform/gke/) does **not** manage NAP, so it was an out-of-band setting; the pause now turns it off and leaves it off (IaC-consistent — the node pool's own min/max autoscaling, restored by Resume, is enough).
+4. **Cluster-level Node Auto-Provisioning (NAP) re-provisions nodes for the Pending pods.** ⚠️ *This is the subtle one.* NAP (`autoscaling.enableNodeAutoprovisioning`) is a **cluster** setting, **separate from a node pool's autoscaling**: for any Pending pod it can't place it spins up **brand-new nodes/pools** — so even with the node pool's own autoscaling off, NAP brings the cluster **straight back up** (node count seen bouncing to 3-4). NAP **is** Terraform-managed ([`terraform/gke`](../terraform/gke/) `enable_node_autoprovisioning`, driven by `nodeAutoProvisioning.enabled`, default true) — the pause turns it off imperatively and Resume deliberately leaves it off; like the rest of the pause's gcloud changes this is benign state drift that the next `Day1.cluster.01-gke` re-apply reconciles back on (the node pool's own min/max autoscaling, restored by Resume, carries normal operation meanwhile).
 
 **The fix (now in the pause workflow) — disable ALL FOUR forces, then drain + resize:**
 
+- **Delete every PodDisruptionBudget up front** — the node-pool resize runs GKE's *own* graceful drain, which respects PDBs regardless of our force-drain; if a node slips in after the drain snapshot (e.g. an in-flight auto-repair) a CNPG PDB can hang the resize for ~1h. Safe: PDBs gate only voluntary disruptions and CNPG recreates them on Resume.
 - **Disable cluster NAP** (`gcloud container clusters update --no-enable-autoprovisioning`) — *first*, the root cause of the bounce-back.
 - **Disable the node pool's autoscaling, autoRepair AND autoUpgrade** using specific node pool commands (`gcloud container node-pools update --no-enable-autoscaling` and `--no-enable-autorepair --no-enable-autoupgrade`) to prevent API lock conflicts.
 - **Serialize GKE mutations** via the new `wait_for_gke_operations` helper function. Since GKE allows only one mutating operation at a time, the workflow blocks and waits until each in-progress operation finishes before starting the next.
 - **Force-drain** every node: `kubectl drain --disable-eviction --force --delete-emptydir-data --ignore-daemonsets`. `--disable-eviction` deletes pods via the **DELETE API instead of the eviction API**, so it **bypasses PDBs entirely** — safe because the data lives on the PVs, not the pod.
 - Then `gcloud container clusters resize ... --num-nodes 0` — nodes are already empty and nothing can re-add them → it completes and **stays** at 0.
-- **Resume re-enables autoscaling + autoRepair + autoUpgrade** (with similar serialization and specific node-pool updates; NAP is intentionally left off — see gotcha 4).
+- **Resume re-enables autoscaling + autoRepair + autoUpgrade** (with similar serialization and specific node-pool updates; NAP is deliberately left off — this is benign drift the next `Day1` re-apply reconciles back on, see gotcha 4).
 
 <details><summary>🔁 Pause / resume sequence (Mermaid)</summary>
 
@@ -959,7 +972,7 @@ flowchart TD
     P4 --> P5["Nodes 0 - STAYS 0<br/>(all 4 recreate-forces off)<br/>workloads Pending"]
   end
   subgraph Resume["▶️ Day2.scale.02 Resume"]
-    R1[Resize each pool to N] --> R2["Re-enable autoscaling +<br/>autoRepair + autoUpgrade<br/>(NAP left off — IaC-consistent)"]
+    R1[Resize each pool to N] --> R2["Re-enable autoscaling +<br/>autoRepair + autoUpgrade<br/>(NAP left off — drift; next Day1 re-adds)"]
     R2 --> R3[Pods reschedule]
     R3 --> R4[ArgoCD reconciles - CNPG recreates PDBs]
     R4 --> R5["Post-resume recovery<br/>re-clone stuck CNPG replicas<br/>+ restart dex if connector init raced DNS"]

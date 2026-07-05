@@ -6,6 +6,10 @@ This document lists the core scripting workflows and capabilities (or "skills") 
 
 ## 🛠️ System Orchestration Skills
 
+Skills 1–7 follow the real dependency order [`scripts/up.sh`](scripts/up.sh) runs the steps in
+(00 → 01 → 02 → 08.5 → 08.6 → 03 → 04-`<engine>` → 06-`<engine>` → 07 → 07.5 → 08 → 09) —
+in particular ArgoCD (Skill 4) must precede observability (Skill 5) and the CI engine (Skill 6).
+
 ### Skill 1: Validate Prerequisites & Register Helm Repositories
 Use this to ensure all required CLI tools are present and configure Helm charts before deployment.
 *   **Command:**
@@ -20,7 +24,7 @@ Deploys namespaces and bootstrap credentials.
     ```bash
     ./scripts/01-namespaces.sh
     ```
-*   **Implications:** Deploys namespaces `jenkins`, `observability`, `argocd`, `pgadmin`, `headlamp`, `microservices` (+ the gateway namespace; `tekton`/`tekton-pipelines`/`pipelines-as-code` when `ci.engine=tekton`). Sets up IAP OAuth secrets.
+*   **Implications:** Deploys the engine-neutral namespaces `platform-ingress` (gateway), `observability`, `headlamp`, `microservices`, `argocd`, `pgadmin` (+ `microservices-develop` when the develop track is on), plus the active CI engine's namespaces: `jenkins` (ci.engine=jenkins) · `tekton-pipelines`/`tekton-ci`/`pipelines-as-code` (tekton) · `arc-systems`/`arc-runners` (githubactions) · `argo`/`argo-events`/`argo-ci` (argoworkflows). Sets up IAP OAuth secrets.
 
 ### Skill 3: Deploy the OpenTelemetry Operator
 Ensures the mutating webhook and CRDs are running before deployment of microservices or observability.
@@ -29,25 +33,25 @@ Ensures the mutating webhook and CRDs are running before deployment of microserv
     ./scripts/02-otel-operator.sh
     ```
 
-### Skill 4: Provision Grafana Cloud Observability Gateway
-Deploys the OTel collector and agents, and logs collectors.
+### Skill 4: Provision ArgoCD
+Deploys and configures ArgoCD to reconcile the GitOps repo. Must run BEFORE `03-observability.sh` (oss mode applies the `observability-oss` ArgoCD app-of-apps) and before any `04-<engine>.sh` (each applies an ArgoCD `Application`).
+*   **Command:**
+    ```bash
+    ./scripts/08.5-argocd.sh
+    ```
+
+### Skill 5: Provision the Observability Backend
+Deploys the OTel collector gateway + logs DaemonSet for the active `observability.mode` (grafana-cloud | oss | managed-azure | managed-aws); in oss mode it applies the `observability-oss` ArgoCD app-of-apps (requires ArgoCD, Skill 4, to have run first).
 *   **Command:**
     ```bash
     ./scripts/03-observability.sh
     ```
 
-### Skill 5: Deploys Jenkins with JCasC configuration
-Deploys the Jenkins Helm chart. Jenkins is configured with JCasC ([`jenkins/casc/jcasc-base.yaml`](jenkins/casc/jcasc-base.yaml)) to set up credentials, shared libraries, and seed jobs.
+### Skill 6: Deploy the Active CI Engine (Jenkins default)
+Applies the Jenkins ArgoCD `Application` ([`argocd/jenkins-app.yaml`](argocd/jenkins-app.yaml), the official chart) configured with JCasC ([`jenkins/casc/jcasc-base.yaml`](jenkins/casc/jcasc-base.yaml)) to set up credentials, shared libraries, and seed jobs — requires ArgoCD (Skill 4) to be provisioned first. When `ci.engine` is tekton/githubactions/argoworkflows, run `04-tekton.sh` / `04-githubactions.sh` / `04-argoworkflows.sh` instead (each retires the other three engines).
 *   **Command:**
     ```bash
     ./scripts/04-jenkins.sh
-    ```
-
-### Skill 6: Provision ArgoCD
-Deploys and configures ArgoCD to reconcile the GitOps repo.
-*   **Command:**
-    ```bash
-    ./scripts/08.5-argocd.sh
     ```
 
 ### Skill 7: Deploy API Gateway Routing

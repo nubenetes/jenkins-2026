@@ -4,7 +4,7 @@
 
 # 601. DevSecOps Security Pipeline
 
-The jenkins-2026 platform implements a **multi-layered security pipeline (DevSecOps)** following modern **Cloud Native Security and Zero-Trust** principles. This setup natively integrates three security layers: static code analysis, semantic SAST, infrastructure misconfiguration audits, and container image vulnerability scans.
+The jenkins-2026 platform implements a **multi-layered security pipeline (DevSecOps)** following modern **Cloud Native Security and Zero-Trust** principles. This setup natively integrates four security layers: static code analysis (Semgrep), semantic SAST (CodeQL), infrastructure misconfiguration audits (Trivy config), and container image vulnerability scans (Trivy image).
 
 ## Understanding the security pipeline (newcomers → specialists)
 
@@ -54,9 +54,15 @@ Semgrep and CodeQL write **SARIF** files that land in **GitHub Code Scanning** (
 
 - **Pipeline placement**: Semgrep, CodeQL and Trivy-IaC run on the checked-out source *before* the image build; Trivy-image runs on the freshly built image before the GitOps tag bump. Each runs in its own pipeline container.
 - **Non-blocking by design**: Trivy runs with `--exit-code 0` (filtered to `CRITICAL,HIGH`) and the SAST steps tolerate findings (`|| true`), so the deploy is never halted — findings are *reported*, not *gated*. To gate the image scan, flip its `--exit-code` to `1`.
-- **SARIF upload**: only Semgrep + CodeQL emit SARIF; the pipeline gzip+base64-encodes each `*.sarif` and POSTs it to the GitHub code-scanning API (`/code-scanning/sarifs`). Trivy is `format: table` (console only — no SARIF upload).
+- **SARIF upload**: only Semgrep + CodeQL emit SARIF. Under Jenkins, Tekton and Argo Workflows the pipeline gzip+base64-encodes each `*.sarif` and POSTs it to the GitHub code-scanning API (`/code-scanning/sarifs`) against the infra repo; under GitHub Actions / ARC the fork's workflow uses the native `github/codeql-action/upload-sarif` / `codeql-action/analyze` upload instead (same Code Scanning destination, but in the fork repo). Trivy is `format: table` (console only — no SARIF upload).
 - **In-Jenkins view**: the `post { always { recordIssues(...) } }` block parses both SARIFs with the `warnings-ng` plugin → "Semgrep Warnings" / "CodeQL Warnings" trends.
-- **Cross-engine parity**: the same four scans run under every engine selected by `ci.engine` — as Jenkins stages in [`vars/MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy), as Tekton Tasks (`trivy-iac.yaml` / `trivy-image.yaml`, etc.), as Argo Workflows templates in [`argoworkflows/templates/microservices-wftmpl.yaml`](../argoworkflows/templates/microservices-wftmpl.yaml) (same `checkout → Semgrep → CodeQL → Trivy-IaC → build → Trivy-image` order), and inside the fork's own workflow on GitHub Actions / ARC runners (see [404](./404-GITHUB_ACTIONS.md)). Under `ci.engine=tekton`, **Tekton Chains** additionally signs the pushed image and records SLSA provenance (see [403](./403-TEKTON.md)).
+- **Cross-engine parity**: the same four scans run under every engine selected by `ci.engine`:
+  - **Jenkins** (default) — stages in [`vars/MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy);
+  - **Tekton** — Tasks in `tekton/tasks/` (`semgrep-scan.yaml`, `codeql-analyze.yaml`, `trivy-iac.yaml`, `trivy-image.yaml`);
+  - **Argo Workflows** — templates in [`argoworkflows/templates/microservices-wftmpl.yaml`](../argoworkflows/templates/microservices-wftmpl.yaml) (same `checkout → Semgrep → CodeQL → Trivy-IaC → build → Trivy-image` order);
+  - **GitHub Actions / ARC** — steps inside the fork's own workflow (see [404](./404-GITHUB_ACTIONS.md)).
+
+  Under `ci.engine=tekton`, **Tekton Chains** additionally signs the pushed image and records SLSA provenance (see [403](./403-TEKTON.md)).
 </details>
 
 #### Security scan data flow
@@ -113,8 +119,7 @@ graph TD
         F --> H
         G --> H
         H --> I["Trivy Image Scan (High/Critical CVEs)"]
-        I -->|Pass| J["Update GitOps Manifest Tag"]
-        I -->|Fail| K["Fail Build & Alert"]
+        I -->|"Report findings (non-blocking, --exit-code 0)"| J["Update GitOps Manifest Tag"]
     end
 
     subgraph Artifact_Registry ["Container Registry"]
@@ -152,9 +157,9 @@ graph TD
 ### 3. Trivy (Vulnerability and Misconfiguration Scanning)
 
 - **Dual Responsibility**:
-  - **IaC Scan**: Evaluates Helm charts and GKE resources before building (warning-only/non-blocking).
-  - **Image Scan**: Scans the final container image (OS packages + app dependencies) before pushing or updating the GitOps repo.
-- **Configuration**: Defined in [`trivy.yaml`](../trivy.yaml).
+  - **IaC Scan**: Evaluates the checked-out app source tree and the gitops-config repo's `helm/microservices` chart (cloned at the tier's branch — `main` for stable, `develop` for develop) before the image build (warning-only/non-blocking).
+  - **Image Scan**: Scans the final container image (OS packages + app dependencies) after it is pushed to the registry and before the GitOps tag bump / deploy.
+- **Configuration**: Defined in [`trivy.yaml`](../trivy.yaml) (severity `HIGH,CRITICAL`, `format: table`), passed via `--config` by the Jenkins, Tekton and Argo Workflows engines; the GitHub Actions engine's Trivy steps run without the config file (all severities reported, still `--exit-code 0`).
 - **Failure Policy**: both scans are **report-only / non-blocking** — they run with `--exit-code 0` (filtered to `CRITICAL,HIGH` severity) so findings are surfaced in the build log but never halt the build or deploy stage. Trivy runs with `format: table` (console output only — it does **not** upload SARIF to GitHub Code Scanning; only Semgrep + CodeQL produce/upload SARIF). See [`tekton/tasks/trivy-image.yaml`](../tekton/tasks/trivy-image.yaml) and [`trivy-iac.yaml`](../tekton/tasks/trivy-iac.yaml). To make the image scan gating, change its `--exit-code` to `1`.
 
 ### 4. Jenkins `warnings-ng` Plugin Integration (SARIF Visualizer)

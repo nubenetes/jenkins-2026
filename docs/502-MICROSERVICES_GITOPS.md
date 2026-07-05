@@ -6,7 +6,7 @@
 
 > ## ⚠️ The GitOps repo's `main` is CI-writable by design (no PR required)
 >
-> The pipeline's **GitOps Update** stage ([`vars/microservicesDeploy.groovy`](../vars/microservicesDeploy.groovy)) deploys by `git push origin main` **directly** to the **[`jenkins-2026-gitops-config`](https://github.com/nubenetes/jenkins-2026-gitops-config)** repo — it bumps the image tag in `helm/microservices/values-<env>.yaml` and ArgoCD reconciles it. So that repo's `main` branch must **accept the CI's direct push**: it is protected only against force-pushes/deletions, **not** with *require-a-pull-request*. Turning on require-PR there (the GitHub default for a "protected" branch) makes the PAT-authenticated push get rejected (an admin PAT does not bypass branch protection), so **every deploy's GitOps Update fails** with no commit ever landing and the image tags frozen.
+> The pipeline's **GitOps Update** stage ([`vars/microservicesDeploy.groovy`](../vars/microservicesDeploy.groovy)) deploys by pushing **directly** to the env's gitops branch (`main` for stable, `develop` for the develop tier) in the **[`jenkins-2026-gitops-config`](https://github.com/nubenetes/jenkins-2026-gitops-config)** repo — it bumps the image tag in `helm/microservices/values-<env>.yaml` and ArgoCD reconciles it. So that repo's `main` branch must **accept the CI's direct push**: it is protected only against force-pushes/deletions, **not** with *require-a-pull-request*. Turning on require-PR there (the GitHub default for a "protected" branch) makes the PAT-authenticated push get rejected (an admin PAT does not bypass branch protection), so **every deploy's GitOps Update fails** with no commit ever landing and the image tags frozen.
 >
 > This is the **opposite** of the infra repo (**this** repo, `jenkins-2026`), whose `main` *is* strict-GitFlow-protected (PR-from-`develop`-only, `gitflow-guard` check, `enforce_admins`). The asymmetry is intentional: the **infra repo is human-reviewed**, the **GitOps repo is machine-managed** (image-tag bumps are not human-reviewed changes). Do not "harmonize" them. See [`CLAUDE.md` § Conventions](../CLAUDE.md) and the GitOps repo's README.
 
@@ -44,7 +44,7 @@ mindmap
 
 In **GitOps**, the cluster's desired state lives in **git** and a controller (**ArgoCD**) continuously makes the cluster match it. Here, each microservice is just a **row** in a Helm values file (`values-stable.yaml` / `values-develop.yaml`) in the separate **`jenkins-2026-gitops-config`** repo.
 
-To ship a new build, the CI engine (Jenkins by default; equally Tekton, GitHub Actions/ARC, or Argo Workflows — whichever `ci.engine` selects) does **not** `kubectl apply` anything — it edits one line (the image tag) with `yq`, `git push`es it to that repo's `main`, and ArgoCD notices and rolls it out. Adding a whole new service is **one new row**. The only sharp edge is at **teardown**: deleting Services/Gateways leaves GCP load-balancer plumbing (NEGs) being cleaned up in the background, and tearing the cluster down too fast orphans them — so a "synchronization barrier" waits for them first.
+To ship a new build, the CI engine (Jenkins by default; equally Tekton, GitHub Actions/ARC, or Argo Workflows — whichever `ci.engine` selects) does **not** `kubectl apply` anything — it edits one line (the image tag) with `yq`, `git push`es it to that repo's env branch (`main` for stable, `develop` for the develop tier), and ArgoCD notices and rolls it out. Adding a whole new service is **one new row**. The only sharp edge is at **teardown**: deleting Services/Gateways leaves GCP load-balancer plumbing (NEGs) being cleaned up in the background, and tearing the cluster down too fast orphans them — so a "synchronization barrier" waits for them first.
 
 </details>
 
@@ -53,10 +53,29 @@ To ship a new build, the CI engine (Jenkins by default; equally Tekton, GitHub A
 
 - **One Helm chart, N services.** `helm/microservices` templates a `range .Values.services` loop that renders, per entry, a `Deployment` + `Service` + CNPG `Cluster` + PgBouncer `Pooler` + `ScheduledBackup`. DRY beats Kustomize overlays here; a `global.platform` branch switches securityContext/ingress without parallel overlays.
 - **Parameterized Postgres HA (stable vs lean develop).** The CNPG `Cluster.instances`, `Pooler.instances` and the Barman backup + `ScheduledBackup` are driven by `global.postgresInstances` / `global.poolerInstances` (default `3`) and `global.postgresBackupEnabled` (default `true`) — so **stable** keeps full HA (3 instances + 3-replica pooler + daily GCS backups). The optional **`develop` tier** (`values-develop.yaml`) overrides them to **`1` / `1` / `false`**: a single non-HA instance, single pooler, no backups (disposable data) — ~4 Postgres pods vs stable's ~12. See [402 § Optional develop Tier](./402-PIPELINES_AS_CODE.md).
-- **CI writes `main` directly.** The active CI engine's *GitOps Update* stage runs `yq -i '.services.<svc>.image.tag=…'` then `git push origin main` to the GitOps repo — same contract across all four engines (Jenkins [`vars/microservicesDeploy.groovy`](../vars/microservicesDeploy.groovy), Tekton, GitHub Actions/ARC, Argo Workflows). That repo's `main` is therefore **direct-push** (force-push-blocked only) — *not* require-PR — the deliberate opposite of this infra repo's strict GitFlow. Require-PR there would reject the PAT push and wedge **every** deploy.
+- **CI writes the gitops branch directly.** The active CI engine's *GitOps Update* stage runs `yq -i '.services.<svc>.image.tag=…'` then `git push origin <branch>` — `main` for the stable tier, `develop` for the develop tier — same contract across all four engines (Jenkins [`vars/microservicesDeploy.groovy`](../vars/microservicesDeploy.groovy), Tekton, GitHub Actions/ARC, Argo Workflows). That repo's `main` is therefore **direct-push** (force-push-blocked only) — *not* require-PR — the deliberate opposite of this infra repo's strict GitFlow. Require-PR there would reject the PAT push and wedge **every** stable deploy.
 - **Decommission ordering.** `Service`/`Gateway` deletion returns instantly, but GKE's NEG controller deletes the backing GCP NEGs **asynchronously**; `terraform destroy` racing ahead kills the masters mid-cleanup → orphaned NEGs → VPC delete fails. [`scripts/down.sh`](../scripts/down.sh) adds a synchronization barrier that polls `gcloud compute network-endpoint-groups list` (≤10 min) and force-deletes stragglers before Terraform proceeds.
 
 </details>
+
+## Repointing the GitOps repo (forks): `gitops.repoUrl`
+
+The companion repo's URL is **not** hardcoded anywhere the deploy paths read it from — it is a single config knob, following the repo's standard feature-flag pattern:
+
+- **Durable default**: `gitops.repoUrl` in [`config/config.yaml`](../config/config.yaml) (`https://github.com/nubenetes/jenkins-2026-gitops-config.git`).
+- **Ephemeral override**: `JENKINS2026_GITOPS_REPO_URL` env var, exported by [`scripts/lib/config.sh`](../scripts/lib/config.sh) as `J2026_GITOPS_REPO_URL` (same pattern as `ci.engine` / `observability.mode`).
+
+A fork points it at its own gitops-config fork (which `GIT_USERNAME`/`GIT_TOKEN` must be able to push to) and re-runs Day1 — no script or manifest edits. The value is threaded to every consumer:
+
+| Consumer | Threading mechanism |
+| :--- | :--- |
+| **ArgoCD** microservices ApplicationSet | [`scripts/08.5-argocd.sh`](../scripts/08.5-argocd.sh) templates it into `argocd/microservices-appset.yaml` (`{{repoUrl}}`) |
+| **Jenkins** (`vars/microservicesDeploy.groovy`, `vars/MicroservicesPipeline.groovy`) | [`scripts/04-jenkins.sh`](../scripts/04-jenkins.sh) patches the `gitops-repo-url` key into the `jenkins-credentials` Secret → controller env `JENKINS2026_GITOPS_REPO_URL` ([`helm/jenkins/values-common.yaml`](../helm/jenkins/values-common.yaml)) → JCasC global env ([`jenkins/casc/jcasc-base.yaml`](../jenkins/casc/jcasc-base.yaml)) → pipeline `env` |
+| **Tekton** (`tekton/tasks/gitops-deploy.yaml`, `trivy-iac.yaml`) | [`scripts/06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh) publishes the `jenkins-2026-gitops` ConfigMap (key `repo-url`) into `tekton.pipelineNamespace`; the Tasks read it as an optional env override (the Task manifests are GitOps-applied verbatim, so a param can't carry a runtime value) |
+| **GitHub Actions / ARC** | [`scripts/06-githubactions-pipelines.sh`](../scripts/06-githubactions-pipelines.sh) renders `{{gitopsRepoUrl}}` into each fork's `microservices-ci.yml` at seed time |
+| **Argo Workflows** (`argoworkflows/templates/microservices-wftmpl.yaml`) | [`scripts/06-argoworkflows-pipelines.sh`](../scripts/06-argoworkflows-pipelines.sh) publishes the same `jenkins-2026-gitops` ConfigMap into `argoworkflows.runNamespace`; the `trivy-iac-clone` / `gitops-bump-and-push` steps read it as an optional env override |
+
+Precedence at run time (Tekton/Argo): the ConfigMap value (when present) wins over the `gitops-repo-url` param/parameter default, which remains the hardcoded nubenetes fallback so everything still works before the 06 script has run. The Jenkins JCasC default and the Groovy `?:` fallbacks serve the same last-resort role.
 
 ## GitOps Design Decision: Helm vs. Kustomize
 
@@ -161,18 +180,18 @@ sequenceDiagram
   participant MS as microservices ns
   J->>GO: clone helm/microservices/values-{env}.yaml
   J->>J: yq -i .services.{svc}.image.tag = {tag}
-  J->>GO: commit + git push origin main (direct, no PR)
+  J->>GO: commit + git push origin main|develop (direct, no PR)
   AC->>GO: detect change (auto-sync)
   AC->>MS: app sync — apply rendered manifests
   MS-->>AC: Deployment rolls the new image
-  J->>AC: argocd app wait --health --timeout 300
+  J->>AC: argocd app wait --sync --health --timeout 300
   AC-->>J: Synced + Healthy
   J->>J: proceed to smoke test
 ```
 
 </details>
 
-**Reading it —** the deploy is a *commit*, not an apply. Whichever CI engine `ci.engine` selects (Jenkins default, Tekton, GitHub Actions/ARC or Argo Workflows — all run the identical *GitOps Update* stage) mutates exactly one line — the image tag — in the GitOps repo's `values-{env}.yaml` and pushes it straight to `main` (which is why that branch must accept direct pushes). ArgoCD's auto-sync is the actual deployer; the engine then blocks on `argocd app wait --health` so the pipeline only reports success once the cluster has converged. Adding a service is the same flow with a new row.
+**Reading it —** the deploy is a *commit*, not an apply. Whichever CI engine `ci.engine` selects (Jenkins default, Tekton, GitHub Actions/ARC or Argo Workflows — all run the identical *GitOps Update* stage) mutates exactly one line — the image tag — in the GitOps repo's `values-{env}.yaml` and pushes it straight to `main` (which is why that branch must accept direct pushes). ArgoCD's auto-sync is the actual deployer; the engine then blocks on `argocd app wait --sync --health --timeout 300` (identical across Jenkins, Tekton and Argo Workflows; the GitHub Actions workflow runs the same wait but deliberately non-fatal, `|| true`) so the pipeline only reports success once ArgoCD has converged on the pushed revision. Adding a service is the same flow with a new row.
 
 ## Design Decision: Resource Lifecycle & Decommission Orchestration
 
@@ -446,12 +465,18 @@ the old pod first. (`SHOW POOLS` on the pooler during the incident showed
 
 ## pgAdmin & Database Administration
 
-A total of **2 Postgres databases** are provisioned in the cluster (both in the `microservices` namespace). They can be administered via **pgAdmin 4**:
+**2 Postgres databases per tier** are provisioned — the default stable tier's two live in the `microservices` namespace (the optional develop tier adds two more in `microservices-develop`, which are not registered in pgAdmin). They can be administered via **pgAdmin 4**:
 
 *   **URL:** `https://pgadmin.jenkins2026.nubenetes.com` (gated behind GKE Gateway + Google IAP).
-*   **Auto-Login (Google ID):** pgAdmin is configured with Webserver Authentication (`AUTHENTICATION_SOURCES = ['webserver']`) to trust the `X-Goog-Authenticated-User-Email` header injected by Google IAP. A custom Python WSGI middleware automatically strips the `accounts.google.com:` namespace prefix from the header.
+*   **Auto-Login (Google ID):** pgAdmin is configured with Webserver Authentication (`AUTHENTICATION_SOURCES = ['webserver', 'internal']` — IAP-header auth first, pgAdmin's internal login as fallback) to trust the `X-Goog-Authenticated-User-Email` header injected by Google IAP. A custom Python WSGI middleware automatically strips the `accounts.google.com:` namespace prefix from the header.
 *   **Pre-populated Connections:** Both database connections (Gateway and JHipster Microservice backend) are automatically preconfigured on startup as shared connections.
-*   **Automated Database Authentication (Zero-Password Login):** An init container (`setup-pgpass`) dynamically retrieves passwords from secrets and writes them with secure `0600` permissions to `/var/lib/pgadmin/pgpass`. The pgAdmin pod reads those secrets via a dedicated ServiceAccount (`pgadmin`) bound to the `pgadmin-secret-reader` Role; both the init container's `:443` API-server call and the runtime `:5432` egress depend on the `pgadmin-policy` NetworkPolicy selecting the pod (`app.kubernetes.io/name: pgadmin4`). If connections time out, see [902 § pgAdmin connections time out](./902-TROUBLESHOOTING.md) — it's a network/policy issue, not the password.
+*   **Automated Database Authentication (Zero-Password Login):**
+    *   An init container (`setup-pgpass`) retrieves the CNPG app-user passwords from the `postgres-*-app` Secrets and writes them with `0600` permissions to `/var/lib/pgadmin/pgpass`.
+    *   It reads those Secrets via a dedicated ServiceAccount (`pgadmin`) bound to the `pgadmin-secret-reader` Role in each microservices namespace.
+    *   Both the init container's `:443` API-server call and the runtime `:5432` egress depend on the `pgadmin-policy` NetworkPolicy selecting the pod (`app.kubernetes.io/name: pgadmin4`).
+    *   If connections time out, see [902 § pgAdmin connections time out](./902-TROUBLESHOOTING.md) — it's a network/policy issue, not the password.
+
+*   **Restoring a database from backup:** the CNPG WAL + base backups these clusters stream to GCS are recovered via [Runbook: CNPG Restore from Backup](./runbooks/cnpg-restore-from-backup.md) — when to restore vs when a rebuild is meant to start empty, the `bootstrap.recovery` manifest, and PITR target selection.
 
 ### Retrieving the application-user passwords (the pgAdmin connections)
 
@@ -478,12 +503,9 @@ kubectl exec -it postgres-gateway-1 -n microservices -c postgres -- psql -U post
 kubectl exec -it postgres-jhipstersamplemicroservice-1 -n microservices -c postgres -- psql -U postgres -d jhipstersamplemicroservice
 ```
 
-#### Option B: Retrieve the Superuser password from GKE Secrets
-```bash
-kubectl get secret postgres-gateway-superuser -n microservices -o jsonpath='{.data.password}' | base64 -d; echo
-kubectl port-forward svc/postgres-gateway-rw -n microservices 5432:5432
-psql -h localhost -U postgres -d gateway
-```
+#### Option B: Superuser password via Secret — requires enabling superuser access first
+
+CNPG ships with `enableSuperuserAccess: false` (the default), the chart does not enable it, and nothing provisions the `postgres-<svc>-superuser` Secret the `Cluster` spec references — so that Secret does not exist and password login as `postgres` is disabled (the clusters' `pg_hba` also ends in `host all all all reject`, with no rule admitting a TCP `postgres` login). Use **Option A** (in-pod `psql` over the local Unix socket, allowed by `local all all peer`). To make this path work, set `enableSuperuserAccess: true` on the CNPG `Cluster` (and either drop `superuserSecret` so CNPG generates `postgres-<svc>-superuser`, or create the referenced Secret) in the gitops repo's `helm/microservices/templates/postgres.yaml`.
 
 ## Image tags: immutable + retention
 
@@ -491,12 +513,17 @@ Built images are tagged **immutably** — one tag per build — instead of a mut
 
 | Engine | Tag | Where |
 |---|---|---|
-| Jenkins (default) | `<branch>-<BUILD_NUMBER>` (e.g. `develop-42`) | [`vars/MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy) |
+| Jenkins (default) | `<branch>-<build#>-<app-sha8>` (e.g. `develop-42-a1b2c3d4`; the SHA suffix keeps tags globally unique across Jenkins rebuilds, where `BUILD_NUMBER` resets on the ephemeral PVC) | [`vars/MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy) |
 | Tekton | `<branch>-<pipelineRunName>` | `$(context.pipelineRun.name)` appended to the build/trivy `image` **and** the gitops `image-tag` (so they match) in [`tekton/pipelines/microservices-pipeline.yaml`](../tekton/pipelines/microservices-pipeline.yaml) |
 | GitHub Actions (ARC) | `<branch>-<run#>` (`${{ github.ref_name }}-${{ github.run_number }}`) | the fork workflow rendered from [`jenkins/pipelines/seed/microservices-ci.yml.tmpl`](../jenkins/pipelines/seed/microservices-ci.yml.tmpl) |
-| Argo Workflows | `<branch>-<workflow.name>` (`{{workflow.parameters.git-branch}}-{{workflow.name}}`) | [`argoworkflows/templates/microservices-wftmpl.yaml`](../argoworkflows/templates/microservices-wftmpl.yaml) |
+| Argo Workflows | `<branch>-<workflow.name>` (`{{workflow.parameters.image}}-{{workflow.name}}` — the workflow name is appended to the full `image` param shared by build/trivy/gitops-deploy, and the bump extracts the tag with `IMAGE_TAG="${IMAGE##*:}"`, so the built tag and the gitops bump can never drift) | [`argoworkflows/templates/microservices-wftmpl.yaml`](../argoworkflows/templates/microservices-wftmpl.yaml) |
 
-Why: **reproducible deploys** (a tag pins one build), **rollback** (repoint `values-<env>.yaml` to a prior tag), and reliable **ArgoCD change-detection** — with a static `:main` tag the gitops values never changed between builds, so ArgoCD saw no diff and leaned on a forced `app sync` + `imagePullPolicy: Always`; an immutable tag changes the values each build, the GitOps-correct trigger. Accumulation is bounded by **`Day2.registry.01 Image retention`** (keeps the most-recent N per service, sweeps untagged) — and ghcr storage is free for public packages, with Docker layer dedup adding only the changed app layer per tag.
+Why:
+
+- **Reproducible deploys** — a tag pins exactly one build.
+- **Rollback** — repoint `values-<env>.yaml` to a prior tag.
+- **Reliable ArgoCD change-detection** — with a static `:main` tag the gitops values never changed between builds, so ArgoCD saw no diff and leaned on a forced `app sync` + `imagePullPolicy: Always`; an immutable tag changes the values each build, the GitOps-correct trigger.
+- **Bounded accumulation** — **`Day2.registry.01 Image retention`** prunes only untagged/dangling manifests (keeping at least N); tagged versions are never deleted, since a rebuilt cluster redeploys the tag pinned in the gitops repo without rebuilding it. ghcr storage is free for public packages, and Docker layer dedup adds only the changed app layer per tag.
 
 ## Branch model: app-source vs gitops vs deploy branch
 
@@ -508,7 +535,12 @@ Three **distinct** branch axes — conflating them is the classic confusion here
 | **GitOps** branch the **develop** ArgoCD app tracks | `config.yaml` `microservices.branches.develop` | — | `develop` (always) |
 | **GitOps** branch the **stable** ArgoCD app tracks | the **deploy branch** `J2026_SELF_REPO_BRANCH` (auto-tracks the dispatched branch) | the branch Day1 ran from | — |
 
-A Day1 from `main` (production) → stable tracks gitops `main`, develop tracks gitops `develop`. A Day1 from `develop` puts the **stable tier's gitops on develop too** — deliberate, so you validate the whole platform end-to-end before the promotion PR. `config.yaml microservices.branches.stable` is **not** the ArgoCD stable branch; it feeds the **Tekton and Argo Workflows** stable *app-source* branch (Jenkins reads it from `services.yaml`; the GitHub Actions/ARC fork workflow derives its branch from `github.ref_name` at run time). The nubenetes app forks now carry a real `develop` branch (off `main`), so the develop tier builds genuinely different app code (true branch-based promotion), not a re-deploy of the `main` image.
+The mechanics: [`scripts/08.5-argocd.sh`](../scripts/08.5-argocd.sh) renders [`argocd/microservices-appset.yaml`](../argocd/microservices-appset.yaml) (the infra repo's copy is the one applied), substituting `{{branchStable}}` with `J2026_SELF_REPO_BRANCH`, and appends the `develop` generator element (branch = `microservices.branches.develop`) only when `microservices.developTrackEnabled=true`.
+
+- A Day1 from `main` (production) → stable tracks gitops `main`, develop tracks gitops `develop`.
+- A Day1 from `develop` puts the **stable tier's gitops on develop too** — deliberate, so you validate the whole platform end-to-end before the promotion PR.
+- `config.yaml microservices.branches.stable` is **not** the ArgoCD stable branch; it feeds the **Tekton and Argo Workflows** stable *app-source* branch (Jenkins reads it from `services.yaml`; the GitHub Actions/ARC fork workflow derives its branch from `github.ref_name` at run time).
+- The nubenetes app forks carry a real `develop` branch (off `main`), so the develop tier builds genuinely different app code (true branch-based promotion) on the engines that read the develop app-source branch: the Jenkins seed job (`services.yaml` `branches.develop`), webhook-triggered Tekton PaC runs and the GitHub Actions workflow (both use the pushed branch). The script-generated Tekton/Argo Workflows develop runs currently hardcode `main` as the app source ([`scripts/06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh) / [`scripts/06-argoworkflows-pipelines.sh`](../scripts/06-argoworkflows-pipelines.sh)).
 
 ---
 

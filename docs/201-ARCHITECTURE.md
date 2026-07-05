@@ -8,10 +8,10 @@
 
 `jenkins-2026` deploys a self-contained CI/CD + observability proof-of-concept on top of an **existing** GKE cluster:
 
-- **Jenkins** (jenkinsci/helm-charts), configured entirely via Configuration-as-Code (JCasC) — no manual clicking required.
+- **Jenkins** (jenkinsci/helm-charts), configured entirely via Configuration-as-Code (JCasC) — no manual clicking required. Jenkins is the **default of four pluggable CI engines** (`ci.engine`: Jenkins · Tekton · GitHub Actions/ARC · Argo Workflows — see below).
 - **Pipelines as code**: a Job DSL "seed job" generates stable Jenkins Pipeline jobs (`gateway`, `jhipstersamplemicroservice`, `microservices-k6-smoke`) targeting the `microservices` namespace.
 - **Spring Microservices + Angular UI**, deployed by those pipelines via a single parameterized Helm chart.
-- **OpenTelemetry** end to end: Jenkins, the Java services (OTel Operator auto-instrumentation), and the Angular UI (RUM snippet) all export traces/metrics/logs to an in-cluster OTel Collector, forwarding to **Grafana Cloud** (default) or an in-cluster OSS stack.
+- **OpenTelemetry** end to end: Jenkins, the Java services (OTel Operator auto-instrumentation), and the Angular UI (RUM snippet) all export traces/metrics/logs to an in-cluster OTel Collector, forwarding to **one of four backends** (`observability.mode`): **Grafana Cloud** (default), the in-cluster OSS stack, **Azure Managed Grafana**, or **Amazon Managed Grafana**.
 - **ArgoCD (GitOps)**: The entire Microservices stack is managed declaratively by ArgoCD, integrated with Google OIDC for SSO.
 - **CloudNative-PG (CNPG)**: HA **PostgreSQL 18.3** clusters (3 instances: 1 primary + 2 replicas; the image is **pinned** via the chart's `spec.imageName`) provisioned via CNPG CRDs, with PgBouncer connection pooling. *(The chart + `Cluster`/`Pooler` CRs live in the [gitops-config repo](https://github.com/nubenetes/jenkins-2026-gitops-config), not this one.)*
 
@@ -127,7 +127,7 @@ flowchart TB
         DNS["Cloud DNS wildcard → IP"]:::edge
         LB["L7 LB · wildcard TLS · edge-terminated"]:::edge
         IAPN["Identity-Aware Proxy<br/>admin allowlist"]:::edge
-        GW["Gateway (ns platform-ingress)<br/>HTTPRoutes · GCPBackendPolicy<br/>+ BackendTLSPolicy (opt-in backendTls)"]:::edge
+        GW["Gateway (ns platform-ingress)<br/>HTTPRoutes · GCPBackendPolicy"]:::edge
       end
 
       subgraph CP["L3 · Control plane (GKE)"]
@@ -141,7 +141,7 @@ flowchart TB
             GHAARC["GHA-ARC · GitHub Actions/ARC<br/>ephemeral · ci-spot · NO in-cluster UI"]:::eng3
             ARGOWF["ARGOWF · argoworkflows<br/>WF v3.7.15 + Events · IAP UI"]:::eng4
         end
-        OPS["OPS · Operators<br/>ESO · OTel · CNPG · Argo Rollouts<br/>+ cert-manager (opt-in backendTls)"]:::ctrl
+        OPS["OPS · Operators<br/>ESO · OTel · CNPG · Argo Rollouts"]:::ctrl
         PUIS["PUIS · platform web UIs (IAP)<br/>Headlamp · pgAdmin · Grafana (oss)"]:::ctrl
         PUSH["PUSH · imperative lane (0N-*.sh)<br/>creds · NetPol · Quotas"]:::push
       end
@@ -170,7 +170,7 @@ flowchart TB
         direction TB
           OSS["OSS in-cluster<br/>Prom·Loki·Tempo·Grafana"]:::bk1
           GCLOUD["grafana-cloud<br/>Mimir/Tempo/Loki · Alloy"]:::bk2
-          AZ["managed-azure<br/>azuremonitor · keyless Entra"]:::bk3
+          AZ["managed-azure<br/>azuremonitor · Entra SP (oauth2client)"]:::bk3
           AWS["managed-aws<br/>xray+cloudwatch · keyless OIDC"]:::bk4
       end
       subgraph AEDGE["Public CI webhooks (HMAC · NO IAP)"]
@@ -295,7 +295,7 @@ flowchart TB
    - **Tekton** — in-cluster Dashboard behind IAP.
    - **GitHub Actions (ARC)** — **no in-cluster UI** (github.com is the UI); triggers **branch-based** on a push to the fork's `main` / `develop`.
    - **Argo Workflows** — in-cluster Argo Server UI behind IAP.
-2. **Observability backend** (`observability.mode`) — **one of four**: `oss` (in-cluster) · `grafana-cloud` · `managed-azure` · `managed-aws`. The three external ones are decoupled, persistent, **keyless** (WIF/OIDC) Day0 resources.
+2. **Observability backend** (`observability.mode`) — **one of four**: `oss` (in-cluster) · `grafana-cloud` · `managed-azure` · `managed-aws`. The three external ones are decoupled, persistent Day0 resources — keyless where the provider supports it: the Azure/AWS Day0 workflows authenticate via GitHub OIDC, and the AWS collector is keyless at runtime too (`AssumeRoleWithWebIdentity`); the Azure collector uses an Entra SP client secret and Grafana Cloud scoped API tokens (`GRAFANA_CLOUD_API_TOKEN` at Day0, `instanceID:apiKey` at runtime) — none of the runtime creds become GitHub secrets.
 3. **Secrets backend** (`secrets.backend`) — `imperative` *(default)*, or `eso` → pushed to **GCP Secret Manager** + synced by the **External Secrets Operator** (keyless WIF).
 4. **Lean `develop` tier** (`microservices.developTrackEnabled`, **off by default**) — a non-HA `microservices-develop` namespace alongside `stable`, folded into **L4**, sharing the same observability stack.
 
@@ -460,10 +460,10 @@ Single source of truth, loaded by every script via [`scripts/lib/config.sh`](../
 
 | Key | Default | Override | Meaning |
 |---|---|---|---|
-| `observability.mode` | `grafana-cloud` | edit `config.yaml` | `grafana-cloud`\|`oss`\|`managed-azure`\|`managed-aws` — where traces/metrics/logs go |
+| `observability.mode` | `grafana-cloud` | `JENKINS2026_OBS_MODE` | `grafana-cloud`\|`oss`\|`managed-azure`\|`managed-aws` — where traces/metrics/logs go |
 | `ci.engine` | `jenkins` | `JENKINS2026_CI_ENGINE` | `jenkins`\|`tekton`\|`githubactions`\|`argoworkflows` — one of four mutually-exclusive engines running the pipelines-as-code (Jenkins default). See [403. Tekton](./403-TEKTON.md), [404. GitHub Actions](./404-GITHUB_ACTIONS.md), [405. Argo Workflows](./405-ARGO_WORKFLOWS.md) |
 | `microservices.developTrackEnabled` | `false` | `JENKINS2026_DEVELOP_TRACK_ENABLED` | Optional second microservices tier (`microservices-develop` namespace, GitOps `develop` branch) |
-| `gateway.backendTls.enabled` | `false` | `JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED` (GHA: `backend_tls` input) | Opt-in **LB→pod TLS re-encryption**: cert-manager + a cluster-internal CA, TLS-serving backends (stage 1: Headlamp) + a GKE `BackendTLSPolicy` validating against that CA. See [504. Backend TLS](./504-BACKEND_TLS.md) |
+| `secrets.backend` | `imperative` | `JENKINS2026_SECRETS_BACKEND` | `imperative`\|`eso` — how in-cluster Secrets are materialised (`eso` = GCP Secret Manager + External Secrets Operator, keyless WIF). See [Secrets backend](#secrets-backend-imperative--eso) |
 
 Other notable sections: `jenkins.*` (chart coordinates, namespace, this repo's own URL/branch), `observability.*` (operator/collector chart coordinates, release names, Secret name), `microservices.*` (namespaces, git org/repos/branches, target registry, list of 2 services seeded into Jenkins).
 
@@ -471,12 +471,12 @@ Other notable sections: `jenkins.*` (chart coordinates, namespace, this repo's o
 
 The `ci.engine` flag (`jenkins` default, override `JENKINS2026_CI_ENGINE`) selects which of **four mutually-exclusive** CI engines runs the pipelines-as-code — same durable-default/ephemeral-override pattern as `observability.mode`. Each engine has its own `scripts/04-<engine>.sh` + `scripts/06-<engine>-pipelines.sh` pair that takes the place of [`scripts/04-jenkins.sh`](../scripts/04-jenkins.sh) / [`scripts/06-seed-pipelines.sh`](../scripts/06-seed-pipelines.sh), and each begins by **retiring the other three** via the shared [`retire_ci_engine`](../scripts/lib/common.sh) helper (deletes their ArgoCD apps + all children + namespaces, and clears stuck GKE NEG finalizers) — so a switch never leaves orphans:
 
-- **Jenkins** *(default)* — `helm install`-ed directly (chart + JCasC); its Job-DSL seed generates the pipeline jobs.
+- **Jenkins** *(default)* — GitOps-managed too: [`04-jenkins.sh`](../scripts/04-jenkins.sh) plants the single **`jenkins` ArgoCD Application** ([`argocd/jenkins-app.yaml`](../argocd/jenkins-app.yaml), the official chart) and delivers JCasC out-of-band as live-reload ConfigMaps; its Job-DSL seed generates the pipeline jobs.
 - **Tekton** — [`04-tekton.sh`](../scripts/04-tekton.sh) applies the **`argocd/tekton` app-of-apps** (ArgoCD installs Pipelines/Triggers/Dashboard + the pipelines-as-code under `tekton/`), then [`06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh) waits for the sync and seeds one PipelineRun per service. See [403. Tekton](./403-TEKTON.md).
 - **GitHub Actions (ARC)** — [`04-githubactions.sh`](../scripts/04-githubactions.sh) applies the `argocd/githubactions` app-of-apps (Actions Runner Controller + the ephemeral runner scale set); the pipeline is a `.github/workflows` file rendered into each fork. **No in-cluster UI** (github.com is the UI). See [404. GitHub Actions](./404-GITHUB_ACTIONS.md).
 - **Argo Workflows** — [`04-argoworkflows.sh`](../scripts/04-argoworkflows.sh) applies the `argocd/argoworkflows` app-of-apps (Argo Workflows controller+Server + Argo Events + the WorkflowTemplates/EventSource/Sensor under `argoworkflows/`); the Server UI is IAP-protected like the Tekton Dashboard. See [405. Argo Workflows](./405-ARGO_WORKFLOWS.md).
 
-All four share the same ~11-stage pipeline contract, the [`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml) registry, and the [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) build-time app patch (Tekton/ARC/Argo Workflows are GitOps-managed via ArgoCD, unlike Jenkins which is `helm install`-ed directly).
+All four share the same ~11-stage pipeline contract, the [`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml) registry, and the [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) build-time app patch (all four engines are ArgoCD-managed — Jenkins as a single Application, the other three as app-of-apps).
 
 ## Repository Layout
 
@@ -493,7 +493,7 @@ resources/                   patch-app-source.sh — the shared build-time app p
 tekton/                      Tekton pipelines-as-code (ci.engine=tekton): Tasks/Pipelines/Triggers/RBAC + port of the Jenkins shared library (vars/)
 argoworkflows/               Argo Workflows pipelines-as-code (ci.engine=argoworkflows): WorkflowTemplates + EventSource/Sensor (the GitHub Actions/ARC pipeline is a .github/workflows file rendered into each fork)
 observability/               OTel Operator/Collector + Grafana/Loki/Tempo/Prometheus values + dashboards
-argocd/                      ArgoCD Applications/ApplicationSets + app-of-apps (platform-postgres, observability-oss, tekton, githubactions, argoworkflows) + argo-rollouts-app.yaml + cert-manager-app.yaml (opt-in backendTls, docs/504)
+argocd/                      ArgoCD Applications/ApplicationSets + app-of-apps (platform-postgres, observability-oss, tekton, githubactions, argoworkflows) + platform-config/ (static platform-RBAC chart) + argo-rollouts-app.yaml
 infrastructure/              engine-neutral platform manifests applied by 01-namespaces / 08.5-argocd: NetworkPolicies (default + per-engine: -jenkins/-tekton/-githubactions/-argoworkflows), Gateway, Node Auto-Provisioning ComputeClasses (compute-classes/), scheduling, Argo Rollouts Gateway-API RBAC, secrets
 scripts/                     00-09 numbered steps + up.sh / down.sh / status.sh
 terraform/gke/               throwaway GKE cluster for test/e2e.sh
@@ -504,6 +504,8 @@ test/                        e2e.sh (provision → up.sh → smoke-test.sh → d
 .github/workflows/           DayN.tier.ZZ-resource.yml — see 101. GitHub Actions Workflows
 docs/                        numbered docs (this file and siblings)
 ```
+
+Every `terraform/<module>/` now carries a short in-tree `README.md` (purpose, lifecycle owner, state prefix, key inputs/outputs, owning doc): [`bootstrap`](../terraform/bootstrap/README.md), [`gke`](../terraform/gke/README.md), [`gateway-bootstrap`](../terraform/gateway-bootstrap/README.md), [`workload-identity`](../terraform/workload-identity/README.md) (manual/auxiliary), [`grafana-cloud-stack`](../terraform/grafana-cloud-stack/README.md), [`grafana-cloud-token`](../terraform/grafana-cloud-token/README.md), [`azure-managed-grafana`](../terraform/azure-managed-grafana/README.md), [`aws-managed-grafana`](../terraform/aws-managed-grafana/README.md), [`grafana-cloud-gcp`](../terraform/grafana-cloud-gcp/README.md), [`grafana-cloud-synthetics`](../terraform/grafana-cloud-synthetics/README.md).
 
 ## Imperative (push) vs GitOps (pull): the provisioning split
 
@@ -572,7 +574,7 @@ one of these (each is a hard constraint, not a preference):
 | Jenkins, External-Secrets, Headlamp, Argo-Rollouts charts | **GitOps** | `argocd/*-app.yaml` (single Applications) | One chart each; declarative, versioned, self-healed. |
 | Microservices (per service, per tier) | **GitOps** | [`argocd/microservices-appset.yaml`](../argocd/microservices-appset.yaml) (ApplicationSet) | Homogeneous fleet from the service registry; CI bumps image tags in the gitops-config repo, ArgoCD syncs. |
 | CNPG+pgAdmin · OSS Prometheus/Loki/Tempo/Grafana · Tekton stack · **ARC** (GitHub Actions runners) · **Argo Workflows + Argo Events** | **GitOps** | `platform-postgres` / `observability-oss` / `tekton` / `githubactions` / `argoworkflows` app-of-apps | Heterogeneous, ordered (sync-waves), per-child sync options. The `githubactions` app-of-apps (when `ci.engine=githubactions`) syncs the ARC controller (wave 0) + the runner scale set / `AutoscalingRunnerSet` (wave 1) as two **OCI Helm** child apps. The `argoworkflows` app-of-apps (when `ci.engine=argoworkflows`) syncs three children — the Argo Workflows controller+server (wave 0) + Argo Events controller-manager + EventBus (wave 1) + the pipeline-as-code WorkflowTemplates/EventSource/Sensor (wave 2) — from **vendored** upstream release YAMLs (`argocd/argoworkflows/components/{workflows,events}/release.yaml`, like Tekton). |
-| **Static platform RBAC** (Jenkins/Tekton SA `edit`, pgAdmin secret-reader, OTel-instrumentation `ClusterRole`) | **GitOps** | [`argocd/platform-config/`](../argocd/platform-config/) (new) — planted by `08.5` | Timing-insensitive (consumers run long after sync); textbook GitOps. *Migrated here from `01`/`02` — see [argocd/README](../argocd/README.md).* |
+| **Static platform RBAC** (per-engine CI-SA `edit` bindings — Jenkins / Tekton / ARC runners / Argo Workflows — pgAdmin secret-reader, the per-engine OTel-instrumentation `ClusterRole`s) | **GitOps** | [`argocd/platform-config/`](../argocd/platform-config/) — planted by `08.5` | Timing-insensitive (consumers run long after sync); textbook GitOps. *Migrated here from `01`/`02` — see [argocd/README](../argocd/README.md).* |
 | ArgoCD itself · OTel Operator · otel-collector | **Imperative** | `08.5` / `02` / `03` `helm upgrade --install` | Bootstrap paradox (#1); the collector is also runtime-config-coupled (#4). |
 | The ArgoCD `Application`/`AppSet`/`AppProject`/app-of-apps manifests (incl. [`argocd/microservices-project.yaml`](../argocd/microservices-project.yaml)) | **Imperative→GitOps** | `08.5` / `03` `kubectl apply` (sed-substituted) | *Planting* the root apps **is** how GitOps starts (the app-of-apps bootstrap). |
 | ArgoCD version patch-watcher ([`argocd/argocd-version-patch-watcher.yaml`](../argocd/argocd-version-patch-watcher.yaml) — CronJob + RBAC) | **Imperative** | `08.5` `kubectl apply` | Daily watcher that tracks the latest ArgoCD `3.4.x` patch within the pinned minor (see [602](./602-VERSION_PINNING.md)); a cluster-side CronJob, not a GitOps app. |
@@ -601,17 +603,16 @@ flowchart TD
         ARGO["08.5: helm install ArgoCD<br/>+ patch OIDC/RBAC"]
     end
     subgraph PLANT["Hand-off — scripts plant the root Applications"]
-        APPS["08.5/03/08.7: kubectl apply argocd/*-app.yaml<br/>(sed-substituted repo/branch/engine)"]
+        APPS["08.5/03: kubectl apply argocd/*-app.yaml<br/>(sed-substituted repo/branch/engine)"]
     end
     subgraph PULL["GitOps plane (ArgoCD reconciles — pull, self-heal, prune)"]
-        CHARTS["charts: Jenkins · ESO · Headlamp · Rollouts<br/>+ cert-manager (backendTls opt-in)"]
+        CHARTS["charts: Jenkins · ESO · Headlamp · Rollouts"]
         FLEET["AppSet: microservices (per tier)"]
         AOA["app-of-apps: postgres · observability-oss<br/>+ active CI engine (tekton / githubactions / argoworkflows)"]
         PCFG["platform-config: static RBAC"]
     end
     subgraph RUNTIME["Imperative, AFTER ArgoCD is up (runtime-derived)"]
-        GW["09: Gateway/HTTPRoutes/IAP<br/>+ BackendTLS/HealthCheck policies (.generated/)"]
-        BTLS["08.7: internal CA + backend certs<br/>+ ca.crt trust bundles (backendTls opt-in)"]
+        GW["09: Gateway/HTTPRoutes/IAP (.generated/)"]
         JCASC["04: JCasC ConfigMaps (live-reload)"]
         SIDE["06: Tekton PaC push/webhooks/seed"]
     end
@@ -623,7 +624,7 @@ flowchart TD
 
     classDef imp fill:#fde,stroke:#c39;
     classDef git fill:#eef,stroke:#66c;
-    class NS,SEC,NP,OP,ARGO,APPS,GW,BTLS,JCASC,SIDE imp;
+    class NS,SEC,NP,OP,ARGO,APPS,GW,JCASC,SIDE imp;
     class CHARTS,FLEET,AOA,PCFG git;
 ```
 
@@ -632,13 +633,14 @@ flowchart TD
 ### The irreducible imperative core
 
 Even with maximal GitOps adoption, five things can **never** move to the pull loop:
-(1) **ArgoCD itself + its self-config** — the engine can't bootstrap the engine;
-(2) **secret source values** — they originate outside git, ESO only changes
-*delivery*; (3) **external side-effects** — pushing to GitHub forks, creating
-webhooks; (4) **live-reload single-source companions** — JCasC + Grafana inputs,
-migrating them regresses the hot-reload design; (5) **reconciliation race-fixes** —
-the CNPG `caBundle` patch and the token mint. Everything else is GitOps-managed, or
-is a deliberate, documented exception above.
+
+1. **ArgoCD itself + its self-config** — the engine can't bootstrap the engine.
+2. **Secret source values** — they originate outside git; ESO only changes *delivery*.
+3. **External side-effects** — pushing to GitHub forks, creating webhooks.
+4. **Live-reload single-source companions** — JCasC + Grafana inputs; migrating them regresses the hot-reload design.
+5. **Reconciliation race-fixes** — the CNPG `caBundle` patch and the token mint.
+
+Everything else is GitOps-managed, or is a deliberate, documented exception above.
 
 ## Namespaces & in-cluster Secrets
 
@@ -681,13 +683,14 @@ is a deliberate, documented exception above.
 | `headlamp` | always | Headlamp UI + its OIDC secret + an IAP secret copy |
 | `pgadmin` / `platform-postgres` | always | pgAdmin + CNPG operator + an IAP secret copy |
 | `argocd` | always | ArgoCD (GitOps control plane) |
-| `microservices` (+ `microservices-develop`) | always | the JHipster workloads + `ghcr-credentials` |
+| `external-secrets` | always | External Secrets Operator (installed in both secret modes via the `external-secrets` ArgoCD app; actively syncing only in `eso` mode via the `gcp-store` ClusterSecretStore) |
+| `microservices` (+ `microservices-develop`) | always (`-develop`: only when `microservices.developTrackEnabled=true`) | the JHipster workloads + `ghcr-credentials` |
 | `jenkins` | **only `ci.engine=jenkins`** | Jenkins controller + agents + `jenkins-credentials` + an IAP secret copy |
 | `tekton-pipelines` | **only `ci.engine=tekton`** | Tekton Pipelines/Triggers/Dashboard control plane + an IAP secret copy |
-| `tekton-ci` | **only `ci.engine=tekton`** | PipelineRuns + their credentials (`tekton-registry`/`tekton-git`/`k6-cloud`) |
-| `pipelines-as-code` | **only `ci.engine=tekton`** | PaC controller + `pac-webhook` |
+| `tekton-ci` | **only `ci.engine=tekton`** | PipelineRuns + their credentials (`tekton-registry`/`tekton-git`/`tekton-argocd`/`tekton-github-webhook-secret`/`pac-webhook`/`k6-cloud`) |
+| `pipelines-as-code` | **only `ci.engine=tekton`** | PaC controller (its `pac-webhook` HMAC Secret lives in `tekton-ci`, next to the Repository CRs) |
 | `arc-systems` | **only `ci.engine=githubactions`** | ARC controller (`gha-runner-scale-set-controller`) |
-| `arc-runners` | **only `ci.engine=githubactions`** | ephemeral GitHub Actions runner pods + their creds (`arc-github-app`, `arc-registry`) |
+| `arc-runners` | **only `ci.engine=githubactions`** | ephemeral GitHub Actions runner pods + their creds (`arc-github-app`, `arc-registry`, `arc-argocd`, `k6-cloud`) |
 | `argo` | **only `ci.engine=argoworkflows`** | Argo Workflows control plane (controller + Server UI) + an IAP secret copy |
 | `argo-events` | **only `ci.engine=argoworkflows`** | Argo Events controller-manager + EventBus + `argoworkflows-github-webhook` |
 | `argo-ci` | **only `ci.engine=argoworkflows`** | Workflow execution: the `argoworkflows-ci` SA + its creds (`argoworkflows-registry`/`argoworkflows-git`/`argoworkflows-argocd`/`k6-cloud`) |
@@ -697,19 +700,21 @@ is a deliberate, documented exception above.
 | Secret | Namespace(s) | Contents | Shared / replicated? | Created by | Consumed by |
 |---|---|---|---|---|---|
 | **`jenkins-credentials`** | `jenkins` *(jenkins-mode)* | admin-password · registry user/pass · git user/token · oidc-client-id/secret · **oidc-admin-email** · microservices URLs · k6-cloud token/project | No — Jenkins config bundle | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | Jenkins controller (JCasC) |
-| **`gateway-iap-oauth`** | `headlamp`, `pgadmin` (+ `grafana-oss` / `tekton-pipelines` / `jenkins` per mode) | IAP OAuth `client_id` / `client_secret` | **YES — replicated** (GKE constraint) | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | each ns's `GCPBackendPolicy` (IAP); `08.5` reads it (**from `headlamp`**) for ArgoCD's Google OIDC |
+| **`gateway-iap-oauth`** | `headlamp`, `pgadmin` (+ `observability` in `oss` mode for the in-cluster Grafana; + the engine-UI ns per `ci.engine`: `jenkins` / `tekton-pipelines` / `argo` — githubactions has no UI, so no copy) | IAP OAuth `client_id` / `client_secret` | **YES — replicated** (GKE constraint) | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | each ns's `GCPBackendPolicy` (IAP); `08.5` reads it (**from `headlamp`**) for ArgoCD's Google OIDC |
 | `headlamp-credentials` | `headlamp` | OIDC client id/secret (+ issuer/scopes/callback) | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | Headlamp deployment |
 | `tekton-registry` | `tekton-ci` *(tekton-mode)* | `dockerconfigjson` (ghcr.io push/pull, Jib auth) | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | PipelineRuns (build-push-image) |
 | `tekton-git` | `tekton-ci` *(tekton-mode)* | git basic-auth, annotated for `github.com` | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | clone / gitops-deploy tasks |
-| `tekton-github-webhook-secret` · `pac-webhook` | `tekton-ci` · `pipelines-as-code` *(tekton-mode)* | webhook HMAC token | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | Triggers EventListener / PaC |
-| `k6-cloud` | `tekton-ci` *(tekton-mode; same keys also in `jenkins-credentials`)* | `K6_CLOUD_TOKEN` / `K6_CLOUD_PROJECT_ID` | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | k6 tasks (`--out cloud`, the k6-app) |
-| `arc-github-app` | `arc-runners` *(githubactions-mode)* | GitHub App `app_id` / `installation_id` / `private_key` (or `github_token` PAT fallback) | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | ARC controller (runner registration) |
+| `tekton-github-webhook-secret` · `pac-webhook` | `tekton-ci` *(tekton-mode)* | webhook HMAC token | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | Triggers EventListener / PaC Repository CRs |
+| `k6-cloud` | `tekton-ci` / `arc-runners` / `argo-ci` *(per engine; same values in `jenkins-credentials` as `k6-cloud-token`/`k6-cloud-project-id`)* | `token` / `project-id` / `grafana-base-url` | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | k6 steps (`--out cloud`, the k6-app) |
+| `arc-github-app` | `arc-runners` *(githubactions-mode)* | GitHub App `github_app_id` / `github_app_installation_id` / `github_app_private_key` (or `github_token` PAT fallback) | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | ARC controller (runner registration) |
 | `arc-registry` | `arc-runners` *(githubactions-mode)* | `dockerconfigjson` (ghcr.io) imagePullSecret | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | runner pods (image pull) |
 | `argoworkflows-registry` · `argoworkflows-git` | `argo-ci` *(argoworkflows-mode)* | `dockerconfigjson` (ghcr.io push/pull) · git basic-auth | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | Workflow steps (build-push-image / clone / gitops-deploy) |
+| `tekton-argocd` | `tekton-ci` *(tekton-mode)* | ArgoCD API token | No | [`08.5-argocd.sh`](../scripts/08.5-argocd.sh) | gitops-deploy task (`argocd app sync`) |
+| `arc-argocd` | `arc-runners` *(githubactions-mode)* | ArgoCD API token | No | [`08.5-argocd.sh`](../scripts/08.5-argocd.sh) | workflow `argocd app sync` step |
 | `argoworkflows-argocd` | `argo-ci` *(argoworkflows-mode)* | ArgoCD API token (account `argoworkflows`) | No | [`08.5-argocd.sh`](../scripts/08.5-argocd.sh) | Workflow `argocd app sync` step |
 | `argoworkflows-github-webhook` | `argo-events` *(argoworkflows-mode)* | GitHub webhook HMAC token | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | Argo Events GitHub EventSource |
 | `ghcr-credentials` | `microservices` (+ `-develop`) | `dockerconfigjson` imagePullSecret | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | microservices pods (image pull) |
-| `grafana-jenkins-ds` | `grafana-oss` *(oss + jenkins-mode)* | `apiToken` (mirror of Jenkins admin password) | No | [`03-observability.sh`](../scripts/03-observability.sh) *(gated to jenkins-mode)* | Grafana → Jenkins datasource |
+| `grafana-jenkins-ds` | `observability` *(the `observability.grafana.ossNamespace`; oss + jenkins-mode)* | `apiToken` (mirror of Jenkins admin password) | No | [`03-observability.sh`](../scripts/03-observability.sh) *(gated to jenkins-mode)* | Grafana → Jenkins datasource |
 | `grafana-cloud-credentials` / `azure-monitor-credentials` / `aws-managed-credentials` | `observability` | backend endpoint + token/SP/role per `observability.mode` — **[group 4](#secrets-backend-imperative--eso) (Terraform outputs)**, so these stay **imperative even under `secrets.backend=eso`** (nothing to sync *from* — the value is a Day1 Terraform output, never pre-placed in Secret Manager). **Single-active-mode invariant:** only the active mode's Secret exists — [`03-observability.sh`](../scripts/03-observability.sh) retires the other two on provision, so a mode switch leaves no stale Secret to mislead `Day2.traffic.01-k6`'s secret-presence mode auto-detection (a leftover once produced a dead "VIEW IN GRAFANA" link — see [104](104-REBUILD_SAFETY.md) / [902](902-TROUBLESHOOTING.md)). | No | Day1 workflow / scripts | otel-collector exporter |
 
 ### Diagram 1 — Namespace & Secret topology
@@ -811,7 +816,7 @@ flowchart LR
 > `observability.mode` select their dimensions. The **whole lifecycle** honours it
 > and is idempotent: [`up.sh`](../scripts/up.sh) ([`01-namespaces.sh`](../scripts/01-namespaces.sh) push → [`08.6-eso-sync.sh`](../scripts/08.6-eso-sync.sh) sync), and
 > the **Day2 redeploys that re-run [`01-namespaces.sh`](../scripts/01-namespaces.sh)** — `Day2.redeploy.03-tekton`,
-> `.04-headlamp`, `.05-gateway` — carry the same `secrets_backend` input (so a Day2 on
+> `.04-headlamp`, `.05-gateway`, `.06-githubactions`, `.07-argoworkflows` — carry the same `secrets_backend` input (so a Day2 on
 > an `eso` cluster never recreates the Secret imperatively). Decom needs nothing extra:
 > `down.sh` deletes the namespaces (and with them the ExternalSecrets/Secrets), the
 > cluster teardown removes the `ClusterSecretStore`, and the Secret Manager entries
@@ -822,9 +827,10 @@ flowchart LR
 | **`imperative`** | [`01-namespaces.sh`](../scripts/01-namespaces.sh) runs `kubectl create secret` from the GitHub-secret env vars (Diagram 2 above) | GitHub Actions secrets | none in-cluster | ✅ |
 | **`eso`** | values pushed to **GCP Secret Manager**; the **External Secrets Operator** syncs them into namespaces via **Workload Identity (keyless)** | GCP Secret Manager (versioned) | **Cloud Audit Logs** + SM versions | |
 
-In `eso` mode the flow becomes (now wired for the gateway IAP secret, the Tekton
-pipeline credentials, and `ghcr-credentials`; the rest follows the same pattern —
-staged rollout below):
+In `eso` mode the flow becomes (wired for **all group 1–3 secrets below, across all
+four engines** — IAP OAuth, registry/git creds, webhook HMACs, `ghcr-credentials`,
+`k6-cloud`, and the generated `jenkins-credentials`/`headlamp-credentials`/`pac-webhook`/`grafana-jenkins-ds`;
+only group 4 stays imperative):
 
 <details>
 <summary>📊 ESO sync flow (secrets.backend=eso) — Secret Manager → Workload Identity → k8s Secret</summary>
@@ -856,10 +862,10 @@ only group 4 imperative:
 
 | Group | Secrets | ESO fit | In `eso` mode |
 | :--- | :--- | :--- | :--- |
-| **1 — clean** *(value is an external, static input)* | `gateway-iap-oauth` (+ its `-client-secret`), `tekton-github-webhook-secret`, `k6-cloud` | ✅ **Native** — `dataFrom.extract` / single `property` | ✅ **wired** |
-| **2 — templated** *(typed Secret built from external inputs)* | `ghcr-credentials` + `tekton`-registry (`dockerconfigjson`), `tekton`-git (`basic-auth` + `tekton.dev/git-0`) | ✅ via `target.template` — rebuilds the typed payload from `username`/`password`/`registry` keys | ✅ **wired** |
+| **1 — clean** *(value is an external, static input)* | `gateway-iap-oauth` (+ its `-client-secret`), `tekton-github-webhook-secret`, `arc-github-app`, `argoworkflows-github-webhook`, `k6-cloud` | ✅ **Native** — `dataFrom.extract` / single `property` | ✅ **wired** |
+| **2 — templated** *(typed Secret built from external inputs)* | `ghcr-credentials` + `tekton`-registry + `arc`-registry + `argoworkflows`-registry (`dockerconfigjson`), `tekton`-git (`basic-auth` + `tekton.dev/git-0`) + `argoworkflows`-git (`basic-auth`) | ✅ via `target.template` — rebuilds the typed payload from `username`/`password`/`registry` keys | ✅ **wired** |
 | **3 — generated / multi-writer** | `jenkins-credentials` (admin pw generated at create; URL + `argocd-token` keys patched by later steps), `headlamp-credentials`, `pac-webhook` (`openssl rand`), `grafana-jenkins-ds` (mirrors the Jenkins pw) | ✅ **seed-then-project** — the generated value is seeded **stable** into SM (`sm_keep_or_generate`), and `jenkins-credentials` uses **`creationPolicy: Merge`** so the imperatively-patched keys survive | ✅ **wired** |
-| **4 — no upstream value** | `tekton-argocd` (token **minted in-cluster** by ArgoCD at deploy time), per-mode `grafana-cloud` / `azure-monitor` / `aws-managed` creds (**Terraform outputs**) | ❌ Nothing to sync *from* — the value is produced in-cluster / by Terraform, never pre-placed in SM | ❌ imperative |
+| **4 — no upstream value** | `tekton-argocd` / `arc-argocd` / `argoworkflows-argocd` (tokens **minted in-cluster** by ArgoCD at deploy time), per-mode `grafana-cloud` / `azure-monitor` / `aws-managed` creds (**Terraform outputs**) | ❌ Nothing to sync *from* — the value is produced in-cluster / by Terraform, never pre-placed in SM | ❌ imperative |
 
 *(Validation: groups 1–2 confirmed live on a real Day1 — ExternalSecrets `SecretSynced`,
 correct types, consumers working; group 3 is newly wired and should be re-validated on a
@@ -931,10 +937,14 @@ still owns it). Day1 always sets the override explicitly, so provisioning is
 unaffected; the `secrets_backend` workflow input is therefore an *optional override*
 of the detection, not a requirement.
 
-**Teardown.** In eso mode the Secret Manager secret is the one piece that outlives
-the cluster (it's project-level). `down.sh` deletes it on teardown (detected from
-the still-running cluster, so the Decom workflows need no `secrets_backend` input);
-best-effort, and a future Day1 re-pushes it from the GitHub secret.
+**Teardown.** In eso mode the Secret Manager secrets outlive the cluster (they're
+project-level) — **by design**: `sm_keep_or_generate` relies on them surviving a plain
+cluster Decom so generated values (the Jenkins admin password, the PaC HMAC) stay stable
+across rebuilds. `down.sh` deletes only `gateway-iap-oauth` (cheaply re-derived from the
+GitHub secret; the backend is detected from the still-running cluster, so the Decom workflows
+need no `secrets_backend` input). A **full sweep is opt-in**: `J2026_PURGE_SECRETS=true`
+(default **on** in the `Decom.infra.00-all` Everything umbrella, **off** on the cluster Decom)
+deletes every secret labelled `managed-by=jenkins-2026`.
 
 ### Feature-flag convergence — idempotency vs in-place switching
 
@@ -971,8 +981,9 @@ without a Decom; the cluster retires the old mode rather than leaving orphans. T
   start) it stays valid across flips. It only changes on the very first `imperative→eso`
   migration of a cluster whose Jenkins **predates** the seeded password — there, delete the
   `jenkins-0` pod once so JCasC adopts the Secret's value (see [902](./902-TROUBLESHOOTING.md)).
-  The Secret Manager secrets are left intact across flips (reused on switch-back; `down.sh`
-  removes them on teardown).
+  The Secret Manager secrets are left intact across flips (reused on switch-back and across a
+  plain cluster Decom; only `gateway-iap-oauth` is deleted by `down.sh`, and the opt-in
+  `J2026_PURGE_SECRETS` sweep removes the rest on a total teardown).
 
 ### Why the `gateway-iap-oauth` Secret is replicated
 
@@ -1080,8 +1091,8 @@ graph TD
     StaticIP --> CertMap
     CertMap --> WildcardTLS
     WildcardTLS -->|"terminates TLS"| GatewayAPI
-    GatewayAPI -->|"plain HTTP over the VPC (default;<br/>opt-in TLS: gateway.backendTls)"| StaticPool
-    GatewayAPI -->|"plain HTTP over the VPC (default;<br/>opt-in TLS: gateway.backendTls)"| NAPSpotPool
+    GatewayAPI -->|"plain HTTP over the VPC"| StaticPool
+    GatewayAPI -->|"plain HTTP over the VPC"| NAPSpotPool
 ```
 
 </details>
@@ -1094,7 +1105,7 @@ graph TD
 | **Static node pool** | `jenkins-2026-pool` | `e2-standard-8`, min 2 / max 4. Hosts the long-lived platform (ArgoCD/Jenkins/observability/CNPG) **and the CI build pods by default** (`jenkins` / `tekton` / `argoworkflows` default `runNodePool: static` — robust, no NAP/Spot/quota dependency; `githubactions` defaults `ci-spot`). |
 | **NAP Spot pools** | ComputeClass `ci-spot` | GKE Node Auto-Provisioning auto-creates Spot pools (`c3`, `n2`, `c2`, `e2` families), scale-to-zero. Used for CI build pods **only when an engine opts in** with `runNodePool: ci-spot` (single-pod engines — Jenkins, GitHub Actions/ARC — are the good Spot fits, and ARC ships `ci-spot` by default; shared-workspace engines — Tekton, Argo Workflows — stay `static` — see [docs/501](501-PLATFORM_OPERATIONS.md#the-engines-on-spot-ci-spot--why-the-placement-flag-is-per-engine)). |
 | **Node SA** | `jenkins-2026-nodes` | Minimal-privilege: `roles/logging.logWriter`, `roles/monitoring.metricWriter`, `roles/artifactregistry.reader`. |
-| **CI Agent SA** | `jenkins-2026-ci-agent` | GitHub Actions OIDC WIF — no static JSON keys. |
+| **CI SA (Day0)** | `jenkins-2026-ci` | GitHub Actions OIDC → WIF impersonation, no static JSON keys — created by [`terraform/bootstrap`](../terraform/bootstrap/), not `terraform/gke`. (A separate `jenkins-2026-ci-agent` GSA exists in the standalone [`terraform/workload-identity`](../terraform/workload-identity/) helper — manual/auxiliary, not wired into the per-cluster lifecycle.) |
 
 ### Sizing Rationale
 

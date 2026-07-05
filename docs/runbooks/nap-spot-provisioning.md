@@ -192,8 +192,8 @@ applies to nodes NAP creates **after** the next Day1.
 
 ## 4. Cold-start caveat — the first build on a fresh Spot node is slow
 
-The agent-image **prepull DaemonSet** that warms the ~9 agent container images
-(maven/node/dind/helm/git/semgrep/codeql/trivy/jnlp) runs on the **static pool**, and does
+The agent-image **prepull DaemonSet** that warms the 9 agent container images
+(maven/node/dind/k8s (kubectl+helm)/git/semgrep/trivy/k6/codeql) runs on the **static pool**, and does
 **not** tolerate the `compute-class`/`gke-spot` taints — so it does **not** warm the Spot
 nodes. The first build on a freshly auto-provisioned Spot node therefore pays: NAP node
 creation (~1–3 min) + node join + a **cold pull of every agent image** (several minutes). Budget
@@ -240,11 +240,11 @@ kubectl get events -A --sort-by=.lastTimestamp | grep -iE "scale|quota|FailedSch
 
 | Event / symptom | Cause | Fix |
 |---|---|---|
-| `ScaleUpFailed … Quota 'SSD_TOTAL_GB' exceeded` | regional SSD disk quota full (§3) | wait for a running build to free a node; right-size NAP disk (this PR); request `SSD_TOTAL_GB` increase |
+| `ScaleUpFailed … Quota 'SSD_TOTAL_GB' exceeded` | regional SSD disk quota full (§3) | wait for a running build to free a node; NAP disk already right-sized to 50 GB ([PR #405](https://github.com/nubenetes/jenkins-2026/pull/405)); request an `SSD_TOTAL_GB` increase |
 | `FailedScheduling … didn't match Pod's node affinity/selector` **and** no `TriggeredScaleUp` | NAP can't satisfy the ComputeClass (e.g. no priority matches) or NAP disabled | check `enable_node_autoprovisioning` + the ComputeClass priorities; `kubectl get computeclass ci-spot -o yaml` |
 | agent has **no** `nodeSelector` for `compute-class` | `GKE_COMPUTE_CLASS` empty → flag off, or the JCasC chain didn't propagate | §1; confirm `nodeAutoProvisioning.enabled: true` and re-run `04-jenkins.sh` (`Day2.redeploy.02-jenkins`) |
 | Pod `Pending` for minutes on a **new** Spot node, image pulls | cold-start (§4), not a fault | wait; it's the first-build tax |
-| `gateway` etc. `ImagePullBackOff` after deploy | the service image isn't built yet (first run) | run the build; see the README "First run note" |
+| `gateway` etc. `ImagePullBackOff` after deploy | the service image isn't built yet (first run) | run the build; see [`902-TROUBLESHOOTING.md`](../902-TROUBLESHOOTING.md) ("Microservices pods stuck in `ImagePullBackOff`") |
 
 ## Cost / cleanup
 

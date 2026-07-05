@@ -6,7 +6,8 @@
 
 Every external dependency this project pulls — Helm charts, container images, CLI
 tools, GitHub Actions, Terraform providers — is **pinned to an exact version**, with
-**one deliberate exception (ArgoCD)**. The goal: a re-run of `Day1.cluster.01` (or
+**one deliberate exception (ArgoCD)** and a short list of known residuals (see
+[Known residuals](#known-residuals)). The goal: a re-run of `Day1.cluster.01` (or
 `scripts/up.sh` locally) deploys the *same* bits every time, so behaviour is
 reproducible and a moving upstream tag can never silently break or change the stack.
 
@@ -51,11 +52,10 @@ This isn't theoretical — **every floating version here has bitten us at least 
 | **PostgreSQL** (CNPG database image) | `18.3-system-trixie` | gitops `helm/microservices` `spec.imageName` (`global.postgresImage`) | image tag |
 | **Argo Rollouts** | `2.37.7` | [`argo-rollouts-app.yaml`](../argocd/argo-rollouts-app.yaml) | ArgoCD `targetRevision` |
 | **External Secrets** | `0.12.1` | [`external-secrets-app.yaml`](../argocd/external-secrets-app.yaml) | ArgoCD `targetRevision` |
-| **cert-manager** *(only when `gateway.backendTls.enabled` — [docs/504](./504-BACKEND_TLS.md))* | `v1.20.3` | [`cert-manager-app.yaml`](../argocd/cert-manager-app.yaml) | ArgoCD `targetRevision`, applied by [`08.7-backend-tls.sh`](../scripts/08.7-backend-tls.sh) |
 | **Tekton** pipelines/triggers/dashboard/… | `v1.13.1` / `v0.36.0` / `v0.69.0` / … | `config.yaml` `tekton.versions` + **vendored** [`argocd/tekton/components/`](../argocd/tekton/) | pinned release YAML, applied by `04-tekton.sh` |
-| **ARC** (`gha-runner-scale-set-controller` + `gha-runner-scale-set` OCI charts — **must match**) | `0.12.1` | `config.yaml` `githubactions.versions.arc` | ArgoCD `targetRevision` on both OCI Helm child apps ([`argocd/githubactions-app.yaml`](../argocd/githubactions-app.yaml)), applied by `04-githubactions.sh` when `ci.engine=githubactions` |
+| **ARC** (`gha-runner-scale-set-controller` + `gha-runner-scale-set` OCI charts — **must match**) | `0.12.1` | [`argocd/githubactions/values.yaml`](../argocd/githubactions/values.yaml) `versions.arc` (reference copy in `config.yaml` `githubactions.versions.arc` — keep in sync) | ArgoCD `targetRevision` on both OCI Helm child apps (templates in [`argocd/githubactions/`](../argocd/githubactions/), applied via [`argocd/githubactions-app.yaml`](../argocd/githubactions-app.yaml) by `04-githubactions.sh` when `ci.engine=githubactions`) |
 | **Argo Workflows + Argo Events** (vendored release YAMLs — **bump both together**) | `v3.7.15` (workflows) / `v1.9.4` (events) | `config.yaml` `argoworkflows.versions.{workflows,events}` + **vendored** [`argocd/argoworkflows/components/`](../argocd/argoworkflows/) | pinned release YAML, applied by `04-argoworkflows.sh` when `ci.engine=argoworkflows`. Stays on the **3.7.x** line: Argo Workflows 4.0 ships full-schema CRDs >1.5 MB that exceed GKE's ~1.5 MB etcd object limit |
-| **CI agent images** (shared across all four engines — Jenkins pod templates · Tekton tasks · ARC · Argo Workflows) | maven `3.9.9`, node `20-bookworm`, docker `26-dind`, alpine/k8s `1.31.3`, semgrep `1.79.0`, trivy `0.52.2`, k6 `2.0.0`, `alpine/git:2.54.0`, `codeql-container@c6f3f8cb…` | [`vars/MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy) · [`tekton/tasks/*.yaml`](../tekton/tasks/) · [`argoworkflows/`](../argoworkflows/) | image tag/digest (all four engines share the same git + codeql pins) |
+| **CI agent images** (shared across three engines — Jenkins pod templates · Tekton tasks · Argo Workflows; the **ARC engine builds runner-native** instead: `actions/setup-java` Temurin 21 for JDK parity, `docker run` semgrep/trivy, CodeQL via `github/codeql-action` — see [404. GitHub Actions](./404-GITHUB_ACTIONS.md) and Known residuals) | maven `3.9.9`, node `20-bookworm`, docker `26-dind`, alpine/k8s `1.31.3`, semgrep `1.79.0`, trivy `0.52.2`, k6 `2.0.0`, `alpine/git:2.54.0`, `codeql-container@c6f3f8cb…` | [`vars/MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy) · [`tekton/tasks/*.yaml`](../tekton/tasks/) · [`argoworkflows/`](../argoworkflows/) | image tag/digest (the three engines share the same git + codeql pins) |
 | **`yq`** (CI) | `v4.53.3` | `.github/workflows/*` | release-download URL |
 | **GitHub Actions** | full commit SHA (`@<sha> # vX`) | `.github/workflows/*` | SHA pin + [`dependabot.yml`](../.github/dependabot.yml) |
 | **Terraform providers** | exact (per lockfile) | `terraform/*/.terraform.lock.hcl` | committed lockfiles + `~> X.0` in `versions.tf` |
@@ -101,18 +101,23 @@ Three mechanisms keep the **image** current within 3.4.x, all reading the same c
    running image differs. The constraint is **templated from config** by `08.5-argocd.sh`
    (`__ARGOCD_CONSTRAINT__`), so Day1, Day2 and the watcher never drift.
 
-> **⚠️ Moving to 3.5.x (ONLY when `3.5.0` is GA):** bump `argocd.version_constraint` →
-> `"3.5.x"`, `argocd.version` → the GA tag, **and** `argocd.chartVersion` → the matching
-> `9.6+`/`10.x` chart **together** (chart + binary must move together). Then **re-verify
-> the features that were disabled to dodge the rc1 bugs**: re-confirm the
-> kube-prometheus-stack `admissionWebhooks` (re-enabled in
-> `observability/grafana/values-oss.yaml`) sync cleanly and the CNPG `Cluster` health
-> check still computes. Do NOT move while 3.5 is still rc.
+> **⚠️ Moving to 3.5.x (ONLY when `3.5.0` is GA — do NOT move while 3.5 is still rc):**
+> bump all three knobs **together** (chart + binary must move together):
+>
+> - `argocd.version_constraint` → `"3.5.x"`
+> - `argocd.version` → the GA tag
+> - `argocd.chartVersion` → the matching `9.6+`/`10.x` chart
+>
+> Then **re-verify the features that were disabled to dodge the rc1 bugs**:
+>
+> - the kube-prometheus-stack `admissionWebhooks` (re-enabled in
+>   `observability/grafana/values-oss.yaml`) sync cleanly;
+> - the CNPG `Cluster` health check still computes.
 
 ## GitHub Actions: SHA pins + Dependabot
 
 Every `uses:` is pinned to a **full 40-char commit SHA** with a trailing `# vX`
-comment (e.g. `actions/checkout@34e1148… # v4`). A moved major-version tag (the usual
+comment (e.g. `actions/checkout@9c091bb2… # v7.0.0`). A moved major-version tag (the usual
 `@v4`) can no longer change what runs in CI. [`.github/dependabot.yml`](../.github/dependabot.yml)
 runs the `github-actions` ecosystem weekly (grouped into one PR) and bumps the SHA +
 the `# vX` comment together — so we keep immutability **and** timely updates without
@@ -130,7 +135,7 @@ init` honours the lockfile, so every run uses identical providers. Bump with
 | Type | How |
 |---|---|
 | Helm chart in `config.yaml` | edit the `…chart.version`, re-run Day1 (or the matching `Day2.redeploy`) |
-| Jenkins plugin | edit its version in `values-common.yaml` `controller.installPlugins`, re-run `Day2.redeploy.02-jenkins`. Manage Jenkins → *Manage Jenkins* surfaces available updates **and security advisories** — pinned plugins don't self-update, so apply advisory fixes here (bump interdependent security plugins together). A wholesale refresh = re-run the `jenkins-plugin-cli` recipe in the `installPlugins` comment against `controller.image.tag` |
+| Jenkins plugin | edit its version in `values-common.yaml` `controller.installPlugins`, re-run `Day2.redeploy.02-jenkins`. *Manage Jenkins → Plugins → Updates* surfaces available updates **and security advisories** — pinned plugins don't self-update, so apply advisory fixes here (bump interdependent security plugins together). A wholesale refresh = re-run the `jenkins-plugin-cli` recipe in the `installPlugins` comment against `controller.image.tag` |
 | ArgoCD-app chart (`argocd/*`) | edit `targetRevision` / the app-of-apps `values.yaml`, sync |
 | Tekton component | bump `config.yaml` `tekton.versions` **and** re-vendor `argocd/tekton/components/*` |
 | Argo Workflows / Argo Events | bump `config.yaml` `argoworkflows.versions.{workflows,events}` **and** re-vendor `argocd/argoworkflows/components/{workflows,events}/release.yaml` (bump both together) |
@@ -139,12 +144,17 @@ init` honours the lockfile, so every run uses identical providers. Bump with
 | Terraform provider | `terraform init -upgrade` + commit `.terraform.lock.hcl` |
 | ArgoCD line | edit `argocd.version_constraint` (tracks automatically thereafter) |
 
-## Known residual
+## Known residuals
 
-`az extension add -n amg / resource-graph` (in the Azure dashboard workflows) is **not
-version-pinned** — Azure CLI extensions auto-update and `--version` pinning is brittle.
-Risk is low now that the Azure publish path uses the Grafana **data-plane API** rather
-than the fragile `az grafana` ARM subcommands (see [301. Observability](./301-OBSERVABILITY.md)).
+- **`az extension add -n amg / resource-graph`** (in the Azure dashboard workflows) is **not
+  version-pinned** — Azure CLI extensions auto-update and `--version` pinning is brittle.
+  Risk is low now that the Azure publish path uses the Grafana **data-plane API** rather
+  than the fragile `az grafana` ARM subcommands (see [301. Observability](./301-OBSERVABILITY.md)).
+- The **fork-rendered ARC workflow**
+  ([`jenkins/pipelines/seed/microservices-ci.yml.tmpl`](../jenkins/pipelines/seed/microservices-ci.yml.tmpl))
+  tag-pins its `uses:` actions (`@v4`/`@v3`, not SHAs — this repo's Dependabot never sees the
+  rendered copies living in the app forks) and runs the **untagged** `aquasec/trivy` image
+  for the IaC + image scans. (Its semgrep image *is* pinned — `semgrep/semgrep:1.79.0`.)
 
 ---
 

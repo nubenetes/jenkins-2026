@@ -42,8 +42,8 @@ GCP project:
    runs — provision in the morning, destroy at night — share the same state).
 
 The **bootstrap** is the one-time step that **creates those two things** (plus a
-backups bucket). It is the *root of trust*: the seed that makes the whole automated
-lifecycle possible.
+backups bucket and the permanent public DNS zone). It is the *root of trust*: the
+seed that makes the whole automated lifecycle possible.
 
 <details>
 <summary>🧠 Mental model — the root of trust (mindmap)</summary>
@@ -88,9 +88,17 @@ Nothing in CI can create these for itself — it would need them to already exis
 <details>
 <summary>🔴 For specialists — what the seed provisions and how its own state is bootstrapped</summary>
 
-[`terraform/bootstrap`](../terraform/bootstrap) provisions: a **WIF pool + provider** federating `token.actions.githubusercontent.com` to a **CI service account** (`jenkins-2026-ci@…`) via `google_service_account_iam_member.github_wif` (scoped to *this* repo), the SA's project roles, the **GCS state bucket** (`<project>-jenkins-2026-tfstate`, versioned), a **Postgres-backups bucket**, and the **permanent public DNS zone**.
+[`terraform/bootstrap`](../terraform/bootstrap) provisions:
+
+- a **WIF pool + provider** federating `token.actions.githubusercontent.com` to a **CI service account** (`jenkins-2026-ci@…`) via `google_service_account_iam_member.github_wif` (scoped to *this* repo),
+- the SA's project roles,
+- the **GCS state bucket** (`<project>-jenkins-2026-tfstate`, versioned),
+- a **Postgres-backups bucket**, and
+- the **permanent public DNS zone**.
 
 State is handled in **two phases** — the first `apply` runs on **local** state (the bucket doesn't exist yet), then the script writes `backend_override.tf` and `terraform init -migrate-state` moves state **into** the bucket (prefix `jenkins-2026/bootstrap`), so steady-state is fully remote. Re-runs are idempotent: `reconcile_imports` existence-checks each named singleton and `terraform import`s any that already exist in GCP (self-healing the `409 already exists` you'd otherwise hit on a fresh checkout, since `backend_override.tf` is gitignored). Finally it sets the **4 repo secrets** (`GCP_PROJECT_ID`, `TF_STATE_BUCKET`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT`) the GCP workflows consume.
+
+See [`terraform/bootstrap/README.md`](../terraform/bootstrap/README.md) for the module's inputs/outputs, the local-seed-then-GCS-migrated state model, and the blind-re-apply danger note.
 </details>
 
 <details>
@@ -186,8 +194,8 @@ stateDiagram-v2
 **Reading it —** the root has essentially one steady state, **Active**, reached after the two-phase seed (local apply → migrate state into the bucket → set the 4 secrets) and then held across every cluster build/teardown; re-running `up` just self-converges (`reconcile_imports`). The only way out is the deliberate `down`, which must migrate state **back** to local first (a bucket can't delete itself while holding its own state) before destroying everything and removing the secrets. A normal `Decom.infra.00-all` never leaves **Active** — which is exactly why the root is created first and destroyed last, if ever.
 
 The root is created **first** and destroyed **last** (if ever). A normal Decom leaves
-the root in place — it **costs almost nothing** (two empty-ish buckets) and saves you
-re-seeding every time.
+the root in place — it **costs almost nothing** (two empty-ish buckets + a
+~$0.20/month DNS zone) and saves you re-seeding every time.
 
 ---
 
@@ -240,8 +248,9 @@ sequenceDiagram
 
 </details>
 
-**Non-interactive** (CI-less automation or scripting): pass the inputs as env vars so
-nothing is prompted:
+**Non-interactive inputs** (scripting): pass the inputs as env vars so no *input* is
+prompted — Terraform still shows its plan and asks for the usual `yes` approval (the
+script deliberately never passes `-auto-approve`):
 
 ```bash
 PROJECT_ID=my-gcp-project \
@@ -261,7 +270,7 @@ on a second run it detects the remote state and just re-applies.
 | :--- | :--- | :--- |
 | **GCS state bucket** `<project>-jenkins-2026-tfstate` | `google_storage_bucket.tf_state` | remote Terraform state for **every** other module (versioned) |
 | **CI service account** `jenkins-2026-ci@…` | `google_service_account.ci` | the identity GitHub Actions impersonates |
-| **CI roles** | `google_project_iam_member.ci_roles` | what that SA may do (see [103](./103-GITHUB_SECRETS_INVENTORY.md#gcp_service_account)) |
+| **CI roles** | `google_project_iam_member.ci_roles` | what that SA may do (see [103](./103-GITHUB_SECRETS_INVENTORY.md#1-gcp--core-infrastructure)) |
 | **WIF pool + provider** | `google_iam_workload_identity_pool*` | keyless GitHub→GCP trust |
 | **WIF binding** | `google_service_account_iam_member.github_wif` | lets *this repo* impersonate the SA |
 | **Postgres backups bucket** | `google_storage_bucket.postgres_backups` | survives cluster rebuilds |
@@ -271,7 +280,10 @@ on a second run it detects the remote state and just re-applies.
 > from your parent domain (Squarespace) **once** before the public URLs work. The full
 > step-by-step is just below: [Delegate the DNS subdomain](#delegate-the-dns-subdomain-one-time).
 
-…and then sets these **4 GitHub repo secrets** (the only ones the GCP workflows need):
+…and then sets these **4 GitHub repo secrets** (the four **every** GCP-touching
+workflow requires to authenticate and find its state; the rest of the per-feature
+secret inventory — IAP OAuth, registry/Git, Grafana, CI-engine secrets — is in
+[103](./103-GITHUB_SECRETS_INVENTORY.md)):
 
 | Secret | From Terraform output |
 | :--- | :--- |
@@ -279,6 +291,10 @@ on a second run it detects the remote state and just re-applies.
 | `TF_STATE_BUCKET` | `state_bucket` |
 | `GCP_WORKLOAD_IDENTITY_PROVIDER` | `workload_identity_provider` |
 | `GCP_SERVICE_ACCOUNT` | `ci_service_account_email` |
+
+How the workflows **consume** these — the keyless WIF token exchange (GitHub OIDC →
+Google STS → CI-SA impersonation) and the per-workflow secret usage — is detailed in
+[102](./102-GITHUB_ACTIONS_AUTOMATION.md).
 
 ---
 
@@ -308,16 +324,18 @@ flowchart LR
 ### Step 1 — get the zone's four nameservers
 
 ```bash
-terraform -chdir=terraform/bootstrap output -raw dns_zone_name_servers
+terraform -chdir=terraform/bootstrap output dns_zone_name_servers
 ```
 
 You'll get four Google nameservers, e.g.:
 
 ```
-ns-cloud-b1.googledomains.com.
-ns-cloud-b2.googledomains.com.
-ns-cloud-b3.googledomains.com.
-ns-cloud-b4.googledomains.com.
+tolist([
+  "ns-cloud-b1.googledomains.com.",
+  "ns-cloud-b2.googledomains.com.",
+  "ns-cloud-b3.googledomains.com.",
+  "ns-cloud-b4.googledomains.com.",
+])
 ```
 
 ### Step 2 — delegate at the parent domain (Squarespace)
@@ -395,8 +413,10 @@ there is no precious local file to lose.
 
 > ⚠️ **Rarely needed.** A normal teardown (`Decom.infra.00-all`) leaves the root in place.
 > Only destroy the root if you are **abandoning the project entirely**. It removes the
-> WIF trust, the CI service account, **and the state bucket** — after which **no GitHub
-> Actions workflow can touch GCP** until you run `up` again.
+> WIF trust, the CI service account, the Postgres-backups bucket (your backup data),
+> the public DNS zone (a rebuild then needs a fresh `NS` delegation), **and the state
+> bucket** — after which **no GitHub Actions workflow can touch GCP** until you run
+> `up` again.
 
 **Run it only after a full Decom** (clusters + all backends already destroyed):
 

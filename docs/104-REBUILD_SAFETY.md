@@ -4,7 +4,7 @@
 
 # 104. Rebuild-Safety — surviving `Decom` + `Day1`
 
-> **TL;DR** — In this PoC, **`Decom` (teardown) + `Day1` (fresh provision) is a routine, repeated operation, not a one-off.** A resource is *rebuild-safe* when a **fresh incarnation never collides with a prior incarnation's leftover state**, and **teardown never leaves residue that blocks the next build**. The vast majority of the platform is rebuild-safe **by design** — the [master matrix](#4-the-rebuild-safety-matrix-safe-by-design) below names the exact mechanism for each persistent/external resource. A system-wide audit found a handful of gaps of the *"works until the first rebuild"* kind; all are [closed](#5-the-gaps-that-were-closed) (PRs [#487](https://github.com/nubenetes/jenkins-2026/pull/487)–[#489](https://github.com/nubenetes/jenkins-2026/pull/489)).
+> **TL;DR** — In this PoC, **`Decom` (teardown) + `Day1` (fresh provision) is a routine, repeated operation, not a one-off.** A resource is *rebuild-safe* when a **fresh incarnation never collides with a prior incarnation's leftover state**, and **teardown never leaves residue that blocks the next build**. The vast majority of the platform is rebuild-safe **by design** — the [master matrix](#4-the-rebuild-safety-matrix-safe-by-design) below names the exact mechanism for each persistent/external resource. A system-wide audit found a handful of gaps of the *"works until the first rebuild"* kind; all are [closed](#5-the-gaps-that-were-closed) (PRs [#487](https://github.com/nubenetes/jenkins-2026/pull/487)–[#489](https://github.com/nubenetes/jenkins-2026/pull/489), later joined by [#492](https://github.com/nubenetes/jenkins-2026/pull/492), [#518](https://github.com/nubenetes/jenkins-2026/pull/518), [#544](https://github.com/nubenetes/jenkins-2026/pull/544) and [#545](https://github.com/nubenetes/jenkins-2026/pull/545)).
 
 ---
 
@@ -12,7 +12,7 @@
 
 The GKE cluster is **throwaway**: `Decom.cluster.01-gke` tears it (VPC, node pool, workloads) down to stop charges, and `Day1.cluster.01-gke` stands a **fresh** one up. Both are idempotent and run repeatedly (see [101](./101-GITHUB_ACTIONS_WORKFLOWS.md)). Some immutable cluster fields (Dataplane V2, WireGuard) even force a **destroy+recreate within a single `Day1`**. So every resource must tolerate *"the cluster/workload it belonged to was destroyed and a brand-new one took its place."*
 
-Not everything dies with the cluster. Three **persistence tiers** coexist:
+Not everything dies with the cluster. Four **lifecycle tiers** coexist — three of them persistent, plus the ephemeral cluster-scoped tier they must never collide with:
 
 | Tier | Survives `Decom.cluster`? | Created / destroyed by | Examples |
 |---|---|---|---|
@@ -56,7 +56,7 @@ The audit surfaced a small, **reusable set of mechanisms** that make a resource 
 | **Random-suffix name** | A `random_string` (no `keepers`) baked into the name/slug — stable on re-apply, *fresh* only on destroy+recreate → dodges reserved-name **cooldowns** | Grafana Cloud stack **slug** |
 | **Globally-unique name** | Project-prefixed name → never collides in a shared global namespace (409) | TF state bucket, backups bucket |
 | **`ignore_changes` on ForceNew** | Stops a drifting field (autoscaler node count) from destroy/recreating a resource on an idempotent re-run | GKE static node pool `initial_node_count` ([#429](https://github.com/nubenetes/jenkins-2026/pull/429)) |
-| **Deterministic-from-inputs** | The value is a pure function of fixed inputs → identical across incarnations, so re-apply is a no-op | AWS/Azure OIDC **issuer URL** (from project/location/cluster-name), cert-validation CNAME (from `base_domain`) |
+| **Deterministic-from-inputs** | The value is a pure function of fixed inputs → identical across incarnations, so re-apply is a no-op | AWS `GKE→AWS` OIDC **issuer URL** (from project/location/cluster-name), cert-validation CNAME (from `base_domain`) |
 | **Reconcile-to-current** | Persistent record is idempotently repointed at the new incarnation's value | wildcard-A record → current gateway IP |
 | **Idempotent describe-then-create** | Check-then-create; adopt what exists | `provision_secret` (Secret Manager), ArgoCD apply |
 | **Guarded fresh-provision cleanup** | Clear the persistent path **only** when no live consumer exists | Postgres WAL clear ([#487](https://github.com/nubenetes/jenkins-2026/pull/487)) |
@@ -81,7 +81,7 @@ Every persistent/external resource, its tier, and the **exact mechanism** that m
 | **Per-module state prefixes** (`gke`, `gateway-bootstrap`, `grafana-cloud-*`, `azure-`, `aws-`) | ✅ | One **unique prefix per module** → no cross-module clobber; clean re-init per prefix. |
 | **`backend_override.tf`** (CI-written) | ✅ | **Gitignored** + written at runtime from `TF_STATE_BUCKET` with the module's unique prefix → never a committed/foreign-bucket pin. |
 | **Postgres backups bucket** (`terraform/bootstrap`) | ✅ *(fixed [#487](https://github.com/nubenetes/jenkins-2026/pull/487))* | Persistent + fixed name, but the barman WAL path is **cleared on fresh provision** (guarded) so `barman-cloud-check-wal-archive` sees an empty archive. See [§2](#the-exemplar-mode-a--cnpg-postgres-wal-archive). |
-| **State lock** (`default.tflock`) | ✅ *(fixed [#489](https://github.com/nubenetes/jenkins-2026/pull/489))* | Shared [`tf-remove-stale-lock`](../.github/actions/tf-remove-stale-lock/action.yml) composite action removes a lock left by a cancelled run **before `init`** in every state workflow; per-prefix **concurrency** prevents two live runs contending. |
+| **State lock** (`default.tflock`) | ✅ *(fixed [#489](https://github.com/nubenetes/jenkins-2026/pull/489))* | Shared [`tf-remove-stale-lock`](../.github/actions/tf-remove-stale-lock/action.yml) composite action removes a lock left by a cancelled run **before `init`** in every `Day0.infra`/`Decom.infra` state workflow (plus the `grafana-cloud-token` prefix in `Day1.cluster.01`); the `gke` prefix is cleared inline by `Decom.cluster.01-gke` (`gsutil rm` + a force-unlock retry). Per-prefix **concurrency** (the cluster workflows share `jenkins-2026-gke`) prevents two live runs contending. |
 
 ### 4.2 GKE cluster (single self-contained state — destroy→recreate leaves no trace)
 
@@ -106,7 +106,7 @@ Every persistent/external resource, its tier, and the **exact mechanism** that m
 | Resource | Rebuild-safe? | Mechanism |
 |---|---|---|
 | **IAP OAuth brand + client** | ✅ | A manual, one-time **Console singleton** — never created/deleted by any code; a rebuild only re-injects the same GitHub secret values. |
-| **GCP Secret Manager** secrets | ✅ | `provision_secret` is **describe-then-create idempotent**; Secret Manager has **NO tombstone** (immediately re-creatable); generated values are kept stable across rebuilds. |
+| **GCP Secret Manager** secrets | ✅ *(hardened [#544](https://github.com/nubenetes/jenkins-2026/pull/544))* | `provision_secret` is **describe-then-create idempotent**; Secret Manager has **NO tombstone** (immediately re-creatable); generated values are kept stable across rebuilds (`sm_keep_or_generate`) because the secrets deliberately **survive a cluster Decom** as the persistent source of truth. Every pushed secret is labelled `managed-by=jenkins-2026`, so a *total* teardown can sweep them via the opt-in `J2026_PURGE_SECRETS=true` (default OFF on `Decom.cluster`, ON in `Decom.infra.00-all`). |
 | **ClusterSecretStore + ExternalSecrets** (ESO) | ✅ | Die with the cluster (no cross-rebuild residue); idempotent re-apply; the retire path sets `deletionPolicy=Retain` + strips ownerRefs. |
 | **GKE GSAs** (`*-nodes`, `eso-secret-reader`, `*-pg-backups`) | ✅ *(fixed [#488](https://github.com/nubenetes/jenkins-2026/pull/488))* | Fixed `account_id` destroyed+recreated by Decom/Day1, and a deleted GSA is **tombstoned ~30 days** — `create_ignore_already_exists = true` **adopts** the tombstone instead of 409-ing. |
 | **GitHub Actions secrets/vars** | ✅ | Pure inputs — no cluster-lifecycle writeback. |
@@ -128,10 +128,10 @@ Every persistent/external resource, its tier, and the **exact mechanism** that m
 |---|---|---|
 | **NEGs** (`neg-finalizer` on svcneg) | ✅ | **3-layer teardown**: finalizer-wait (L1) + async-poll (L2) + dependency-ordered force-delete (L3) — all **before** the VPC destroy. |
 | **External L7 LB chain** | ✅ | Fixed-name deletes + finalizer-wait release the GCP LB; L3 dependency-ordered backstop; works from a fresh CI checkout. |
-| **CSI PV disks** | ✅ *(cost only)* | Labeled-disk sweep with detach-race retry (cost residue only — never blocks a rebuild). |
+| **CSI PV disks** | ✅ *(cost only, hardened [#545](https://github.com/nubenetes/jenkins-2026/pull/545))* | Three layers: `down.sh` reclaims PVCs **gracefully** (`reclaim_namespace_pvcs` — CSI deletes the PDs while the driver is alive); the `Decom` labeled-disk sweep with detach-race retry now runs `if: always()` with a `var.cluster_name` fallback, so a **prior** run's orphans (cluster already out of tf state) are still swept; and every `up.sh` re-runs [`sweep-orphaned-pds.sh`](../scripts/sweep-orphaned-pds.sh) (unattached `pvc-*` disks not referenced by a live PV; aborts if the cluster is unreachable). Cost residue only — never blocks a rebuild. |
 | **Namespaces stuck `Terminating`** | ✅ | `drain_namespace` force-finalizes etcd-only objects; app-of-apps deleted first while ArgoCD is alive (cascade-prune). |
 | **CNPG PDBs** (0 disruptions) | ✅ | Deleted up-front + post-cascade + scale-to-zero so a node-pool drain never blocks; 60m delete timeout. |
-| **CI-engine / obs-mode switch residue** | ✅ | `retire_ci_engine` (and `remove_oss_observability_app` for `observability.mode`) delete the sibling's parent+child ArgoCD apps, clear stuck **NEG *and* ArgoCD `resources-finalizer`s**, and — for shared-namespace stacks like OSS — **force-prune workloads by Helm `instance` label** (never the shared `name` label, so a managed-mode standalone node-exporter survives) (#518). So a switch converges with **no manual cleanup**, even from a mixed state where ArgoCD cascade-prune stalled; idempotent no-op when the sibling is absent. |
+| **CI-engine / obs-mode switch residue** | ✅ | `retire_ci_engine` (and `remove_oss_observability_app` for `observability.mode`) converge a switch with **no manual cleanup**, even from a mixed state where ArgoCD cascade-prune stalled; idempotent no-op when the sibling is absent ([#518](https://github.com/nubenetes/jenkins-2026/pull/518)):<br>• delete the sibling's parent **and every child** ArgoCD app;<br>• clear stuck **NEG** *and* ArgoCD **`resources-finalizer`**s;<br>• for shared-namespace stacks (OSS) force-prune workloads by Helm **`instance`** label — never the shared `name` label, so a managed-mode standalone node-exporter survives. |
 | **ArgoCD control-plane state** | ✅ | In-cluster only → clean on rebuild; `08.5` is idempotent (pending-release recovery, pre-delete CMs to dodge SSA conflicts, a fresh CI token each run). |
 
 ### 4.7 Registry / GitOps / CI
@@ -146,7 +146,7 @@ Every persistent/external resource, its tier, and the **exact mechanism** that m
 
 ## 5. The gaps that were closed
 
-The audit filed most of the system as safe-by-design and found **7 real gaps** of the collision/residue class. All are on `main`:
+The original audit filed most of the system as safe-by-design and found **7 real gaps** of the collision/residue class (rows 1–7); later switch-testing and a live post-Decom GCP audit closed **4 more** (rows 8–11). All are on `main`:
 
 | # | Subsystem | Failure (the collision/residue) | Fix | PR |
 |---|---|---|---|---|
@@ -157,6 +157,10 @@ The audit filed most of the system as safe-by-design and found **7 real gaps** o
 | 5 | State | No concurrency guard → two same-module runs contend the one state lock | per-state-prefix `concurrency` (cancel-in-progress:false) | [#488](https://github.com/nubenetes/jenkins-2026/pull/488) |
 | 6 | State | Only `Decom.cluster` cleaned a stale `.tflock` → other modules wedge | shared [`tf-remove-stale-lock`](../.github/actions/tf-remove-stale-lock/action.yml) action, wired before `init` | [#489](https://github.com/nubenetes/jenkins-2026/pull/489) |
 | 7 | Obs | Standalone `Decom.infra.02` destroyed the stack out-of-order vs its token | abort-guard forcing `Decom.cluster`-first | [#489](https://github.com/nubenetes/jenkins-2026/pull/489) |
+| 8 | Obs | A leftover other-mode credential Secret misled `Day2.traffic.01-k6`'s mode auto-detection → dead "VIEW IN GRAFANA" link to a destroyed stack | single-active-mode Secret retirement in `03-observability.sh` | [#492](https://github.com/nubenetes/jenkins-2026/pull/492) |
+| 9 | CD | OSS obs-stack switch residue in the shared namespace — ArgoCD cascade-prune stalled; a blanket `name`-label prune would hit the managed-mode exporters | ArgoCD `resources-finalizer` strip + Helm **instance**-label force-prune | [#518](https://github.com/nubenetes/jenkins-2026/pull/518) |
+| 10 | Secrets | eso-mode Secret Manager secrets survive Decom **by design** (stable generated passwords) but a *total* teardown had no symmetric purge | `managed-by=jenkins-2026` label + opt-in `J2026_PURGE_SECRETS` sweep (`Decom.infra.00-all` defaults ON) | [#544](https://github.com/nubenetes/jenkins-2026/pull/544) |
+| 11 | Storage | PV-disk sweep gated on the current run's `terraform output cluster_name` → a **prior** run's orphans (cluster already out of state) were never swept (31 disks / ~58 GB billing) | `if: always()` + `var.cluster_name` fallback on the Decom sweep | [#545](https://github.com/nubenetes/jenkins-2026/pull/545) |
 
 ---
 

@@ -68,7 +68,7 @@ The point of the split: tearing the cluster down (to stop billing) must **not** 
 
 - **Keyless auth (WIF).** A workflow requests a GitHub-signed OIDC JWT (`sub = repo:<owner>/<repo>:environment:<env>`), presents it to Google STS at the Workload Identity **provider**, and — if the provider's **attribute condition** matches this repo — receives a short-lived federated token to impersonate the CI service account (`jenkins-2026-ci@…`). No secret is stored; the trust is scoped to the repo (and optionally branch/environment) by that condition. The only repo secrets are four **non-secret identifiers** (`GCP_PROJECT_ID`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT`, `TF_STATE_BUCKET`).
 - **Remote state is mandatory, not a nicety.** `Day1.cluster.01` and `Decom.cluster.01` are **separate workflow runs on fresh runners**, so Terraform state must live in the **GCS bucket** (each module under its own prefix) — that is how a teardown run finds what a provision run created. Local state would be lost between runs.
-- **Five approval gates.** `gke-production` gates the cluster lifecycle + every `Day2.*`; one gate **per persistent Day0 resource** (`gateway-bootstrap`, `grafana-cloud-bootstrap`, `azure-bootstrap`, `aws-bootstrap`) is declared on the reusable workflow itself, so every entry point (standalone dispatch, the `Day1` preflight via `workflow_call`, the `Decom.infra.00-all` umbrella) inherits the same single approval.
+- **Five approval gates.** `gke-production` gates the cluster lifecycle + the `Day2.*` redeploy/publish/scale tiers (traffic/registry are ungated); one gate **per persistent Day0 resource** (`gateway-bootstrap`, `grafana-cloud-bootstrap`, `azure-bootstrap`, `aws-bootstrap`) is declared on the reusable workflow itself, so every entry point (standalone dispatch, the `Day1` preflight via `workflow_call`, the `Decom.infra.00-all` umbrella) inherits the same single approval.
 
 </details>
 
@@ -177,7 +177,13 @@ graph TD
 > `azure-bootstrap`, `aws-bootstrap`); `gke-production` gates the cluster and all
 > Day2 cluster-ops. See [Environment Protection and Manual Approvals](#environment-protection-and-manual-approvals).
 
-> The four persistent teardowns (`Decom.infra.01..04`) are independent — for a **targeted** teardown run **only** the one(s) you actually provisioned (with the `oss` default, often none), after `Decom.cluster.01`. For a **full** teardown, the opt-in **`Decom.infra.00-all` ("Everything")** umbrella tears down the cluster **and** every persistent backend in one dispatch (reuses each per-resource Decom via `workflow_call`; type `destroy` to confirm; cluster first, then backends in parallel; backends default on, Gateway IP default off). See [101 § Decom: independent per backend, plus an opt-in umbrella](./101-GITHUB_ACTIONS_WORKFLOWS.md#decom-independent-per-backend-plus-an-opt-in-everything-umbrella).
+> The four persistent teardowns (`Decom.infra.01..04`) are independent:
+> - **Targeted teardown** — after `Decom.cluster.01`, run **only** the one(s) you actually provisioned (with the `oss` default, often none).
+> - **Full teardown** — the opt-in **`Decom.infra.00-all` ("Everything")** umbrella tears down the cluster **and** every persistent backend in one dispatch:
+>   - reuses each per-resource Decom via `workflow_call` (no duplicated teardown logic);
+>   - type `destroy` to confirm; the cluster goes first, then the backends destroy in parallel;
+>   - the backend checkboxes default **on**; the Gateway IP defaults **off**.
+> See [101 § Decom: independent per backend, plus an opt-in umbrella](./101-GITHUB_ACTIONS_WORKFLOWS.md#decom-independent-per-backend-plus-an-opt-in-everything-umbrella).
 
 > **What `Day1.cluster.01` bootstraps automatically — and what it does not.**
 > `Day1` runs the matching **observability backend** bootstrap as a preflight job
@@ -215,8 +221,8 @@ graph TD
 > Each workflow is tagged with its **Day-0 / Day-1 / Day-2 / Decommission** lifecycle
 > position (SRE taxonomy). See [101. Workflows → Day-0 / Day-1 / Day-2 operations](./101-GITHUB_ACTIONS_WORKFLOWS.md#day-0--day-1--day-2-operations)
 > for the full definition and the per-workflow table. In short: **Day-0** = persistent
-> bootstrap (`0.1.xx`), **Day-1** = GKE provision (`Day1.cluster.01`), **Day-2** = operations on
-> the running cluster (`5.x`), **Decommission** = teardown (`9.x`).
+> bootstrap (`Day0.infra.0N`), **Day-1** = GKE provision (`Day1.cluster.01`), **Day-2** = operations on
+> the running cluster (`Day2.*`), **Decommission** = teardown (`Decom.*`).
 
 #### 1. Persistent Bootstrap Workflows (Day-0)
 - **`Day0.infra.01 Gateway bootstrap`**: Provisions account-level GCP networking assets using [`terraform/gateway-bootstrap`](../terraform/gateway-bootstrap). This includes a reserved external IP (`jenkins-2026-gateway-ip`), DNS authorizations, and a Google-managed wildcard SSL certificate map. Keeping this IP and SSL certificate persistent avoids losing the reserved IP during a GKE rebuild, eliminating the need to update wildcard DNS records at your domain registrar and wait for DNS propagation.
@@ -235,20 +241,14 @@ When you want to tear down the entire project permanently, you must run the deco
 
 To support deterministic deployments and clean, error-free environment destruction, all GKE lifecycle workflows support custom Git reference checking:
 
-* **Workflows Supported**:
-  * [Day1.cluster.01 GKE provision](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml)
-  * [Day2.redeploy.02 Redeploy Jenkins](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.02-jenkins.yml)
-  * [Day2.redeploy.04 Redeploy Headlamp](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.redeploy.04-headlamp.yml)
-  * [Day2.publish.04 Publish AWS dashboards](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.04-aws-grafana.yml)
-  * [Day2.publish.03 Publish Azure dashboards](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.03-azure-grafana.yml)
-  * [Decom.cluster.01 GKE decommission](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml)
+* **Workflows Supported** — every cluster-lifecycle workflow: the two umbrella/provision entries ([`Day1.cluster.00-all`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.00-all.yml), [`Day1.cluster.01-gke`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml)), all seven `Day2.redeploy.*` (ArgoCD, Jenkins, Tekton, Headlamp, Gateway, GitHub Actions (ARC), Argo Workflows), all five `Day2.publish.*` (OSS, Grafana Cloud, Azure, AWS, alerts) and [`Decom.cluster.01-gke`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml). (The Day0/Decom.infra bootstraps and the traffic/scale/registry workflows take no `git_ref`.)
 
 ### The `git_ref` Parameter
 
 Each of these workflows includes a manual trigger input `git_ref` (which defaults to `""` / empty).
 
 * **Leave Empty (Recommended)**: The checkout action automatically defaults to the branch or tag selected in the native **"Use workflow from"** dropdown menu.
-* **Provide Value**: You can type in any valid branch name, tag (e.g. `v0.9.1`), or commit SHA. If specified, this custom reference will override the dropdown selection.
+* **Provide Value**: You can type in any valid branch name, tag (e.g. `v1.1.1`), or commit SHA. If specified, this custom reference will override the dropdown selection.
 
 ### Form Fields Reference (Day1.cluster.01 GKE Provision)
 
@@ -263,20 +263,26 @@ When executing the **Day1.cluster.01 GKE provision** workflow manually, you are 
    - **Default**: `oss` (needs no external backend; [`config/config.yaml`](../config/config.yaml)'s durable default is still `grafana-cloud` for local `up.sh`).
    - Overrides the `observability.mode` setting in [`config/config.yaml`](../config/config.yaml) for this execution lifecycle. Exactly **one** backend is active per cluster and the choice is **deterministic/idempotent** (like `ci_engine`): a rerun with a different mode auto-retires the previously-deployed backend's in-cluster footprint and provisions the chosen one. See [301 § observability backends](301-OBSERVABILITY.md).
 
-3. **ci_engine (Dropdown - Choice)**:
-   - **Type**: Choice (`jenkins` | `tekton` | `githubactions` | `argoworkflows`).
-   - **Default**: `jenkins`.
-   - Selects which of the **four mutually-exclusive** CI engines the platform deploys and runs the microservices pipelines-as-code on: **Jenkins** (Helm chart + JCasC + Job-DSL seed), **Tekton** (Pipelines/Triggers/Dashboard, IAP-protected), **GitHub Actions (ARC)** (self-hosted ephemeral Spot runners, native GitHub webhooks, **no in-cluster UI**), or **Argo Workflows** (Argo Workflows + Argo Events, IAP-protected Server UI). All four share the same ~11-stage pipeline contract, the shared `resources/patch-app-source.sh` (gateway MySQL→Postgres + NoOp-cache build-time patch) and the `jenkins/pipelines/seed/services.yaml` registry. Overrides `ci.engine` in [`config/config.yaml`](../config/config.yaml). **Deterministic/idempotent** (like `observability_mode`): a rerun with a different engine auto-retires the other three engines' in-cluster footprint (their ArgoCD apps + children + namespaces) via `retire_ci_engine` and deploys the chosen one. See [403 Tekton](./403-TEKTON.md), 404 GitHub Actions, 405 Argo Workflows.
-
-4. **secrets_backend (Dropdown - Choice)**:
-   - **Type**: Choice (`imperative` | `eso`).
-   - **Default**: `imperative` (behaviour unchanged — `kubectl create secret` from the GitHub secrets).
-   - Overrides `secrets.backend`. `eso` pushes the secret values to **GCP Secret Manager** and the **External Secrets Operator** syncs them into the cluster via Workload Identity (keyless, versioned, audited). The whole `up.sh` lifecycle honours it. See [201 § Secrets backend](201-ARCHITECTURE.md#secrets-backend-imperative--eso).
-
-5. **destroy_unused_backends (Checkbox - Boolean) — DESTRUCTIVE, opt-in**:
+3. **destroy_unused_backends (Checkbox - Boolean) — DESTRUCTIVE, opt-in**:
    - **Default**: `false`.
    - When `true`, also `terraform destroy` the **persistent** backend (Grafana Cloud stack / Azure / AWS Managed Grafana) of every mode you did **not** select, so only the chosen backend exists. Reuses the `Decom.infra.0{2,3,4}` workflows via `workflow_call`; independent of the cluster provision (a destroy of a never-provisioned backend can't block it).
    - ⚠ **Irreversible**: wipes that backend's history/dashboards; re-selecting the mode later recreates it empty. Needs the non-selected backends' credentials/identifiers configured.
+
+4. **ci_engine (Dropdown - Choice)**:
+   - **Type**: Choice (`jenkins` | `tekton` | `githubactions` | `argoworkflows`).
+   - **Default**: `jenkins`.
+   - Selects which of the **four mutually-exclusive** CI engines the platform deploys and runs the microservices pipelines-as-code on:
+     - **Jenkins** — Helm chart + JCasC + Job-DSL seed ([401](./401-JENKINS.md))
+     - **Tekton** — Pipelines/Triggers/Dashboard, IAP-protected ([403](./403-TEKTON.md))
+     - **GitHub Actions (ARC)** — self-hosted ephemeral Spot runners, native GitHub webhooks, **no in-cluster UI** ([404](./404-GITHUB_ACTIONS.md))
+     - **Argo Workflows** — Argo Workflows + Argo Events, IAP-protected Server UI ([405](./405-ARGO_WORKFLOWS.md))
+   - All four share the same ~11-stage pipeline contract, the shared `resources/patch-app-source.sh` (gateway MySQL→Postgres + NoOp-cache build-time patch) and the `jenkins/pipelines/seed/services.yaml` registry.
+   - Overrides `ci.engine` in [`config/config.yaml`](../config/config.yaml). **Deterministic/idempotent** (like `observability_mode`): a rerun with a different engine auto-retires the other three engines' in-cluster footprint (their ArgoCD apps + children + namespaces) via `retire_ci_engine` and deploys the chosen one.
+
+5. **secrets_backend (Dropdown - Choice)**:
+   - **Type**: Choice (`imperative` | `eso`).
+   - **Default**: `imperative` (behaviour unchanged — `kubectl create secret` from the GitHub secrets).
+   - Overrides `secrets.backend`. `eso` pushes the secret values to **GCP Secret Manager** and the **External Secrets Operator** syncs them into the cluster via Workload Identity (keyless, versioned, audited). The whole `up.sh` lifecycle honours it. See [201 § Secrets backend](201-ARCHITECTURE.md#secrets-backend-imperative--eso).
 
 6. **enable_gateway (Checkbox - Boolean)**:
    - **Default**: `true`.
@@ -293,7 +299,22 @@ When executing the **Day1.cluster.01 GKE provision** workflow manually, you are 
    - Leave empty to use the **"Use workflow from"** dropdown selection.
    - Provide a branch name, tag, or SHA to override.
 
-### ⚠️ The Danger of Divergent References
+9. **log_level (Dropdown - Choice)**:
+   - **Type**: Choice (`info` | `debug`).
+   - **Default**: `info`.
+   - Script/Terraform verbosity — `debug` adds `[DEBUG]` script lines + `TF_LOG=DEBUG` (for runner-level tracing use GitHub's `ACTIONS_STEP_DEBUG`).
+
+10. **grafana_cloud_tier (Dropdown - Choice)**:
+    - **Type**: Choice (`free` | `paid`).
+    - **Default**: `free`.
+    - grafana-cloud mode only — `free` enables leanMetrics + `logMinSeverity=warn` to fit the free-tier limits; `paid` ships full metrics + all logs. Traces are never sampled on either tier (100% shipped, preserving trace↔log/metric correlation).
+
+11. **log_min_severity (Dropdown - Choice)**:
+    - **Type**: Choice (`auto` | `trace` | `debug` | `info` | `warn` | `error`).
+    - **Default**: `auto` (derived from `grafana_cloud_tier`).
+    - Overrides the minimum log severity the collector ships to Grafana.
+
+### The Danger of Divergent References
 
 Mixing different tags, branches, or SHAs during the lifecycle of a single GKE cluster will cause deployment and state management failures:
 
@@ -303,8 +324,8 @@ Mixing different tags, branches, or SHAs during the lifecycle of a single GKE cl
 
 > [!IMPORTANT]
 > **Rule of lockstep alignment**:
-> 1. Always ensure that the `git_ref` used for provisioning (`Day1.cluster.01`) matches the `git_ref` used for decommissioning (`Decom.cluster.01`) and redeployments (`Day2.redeploy.02` / `Day2.redeploy.04`).
-> 2. For stable releases, tag both repositories in lockstep (e.g. `v0.9.0` tag in both `jenkins-2026` and `jenkins-2026-gitops-config`) and use that tag name in the `git_ref` parameter.
+> 1. Always ensure that the `git_ref` used for provisioning (`Day1.cluster.01`) matches the `git_ref` used for decommissioning (`Decom.cluster.01`) and redeployments (any `Day2.redeploy.*` / `Day2.publish.*`).
+> 2. For stable releases, pin `git_ref` to this repo's release tag (e.g. `v1.1.1`). The GitOps repo (`jenkins-2026-gitops-config`) is deliberately versioned **independently** (its own `v0.9.x` line) and ArgoCD tracks it by **branch**, not tag — its `main` is machine-pushed image-tag bumps, so no matching tag is required (or possible to keep in lockstep) there.
 
 ## Environment Protection and Manual Approvals
 
@@ -314,12 +335,15 @@ There are **five** required-reviewer environments, so each approval maps to one
 concern (and a Day1 run that touches a backend isn't double-prompted on the
 cluster gate):
 
-* **`gke-production`** — the cluster lifecycle plus every `Day2.*` operation:
+* **`gke-production`** — the cluster lifecycle plus the cluster-touching `Day2.*` tiers:
   - `Day1.cluster.01 GKE provision`
   - `Decom.cluster.01 GKE decommission`
-  - all `Day2.*` (redeploy / publish / traffic). Most act on the running cluster;
-    the two managed-Grafana publishes (`Day2.publish.03/04`) need no cluster but
-    share this gate for approval symmetry.
+  - every `Day2.redeploy.*`, `Day2.publish.*` and `Day2.scale.*`. Most act on the
+    running cluster; the two managed-Grafana publishes (`Day2.publish.03/04`) need
+    no cluster but share this gate for approval symmetry.
+  - Ungated: the traffic simulators (`Day2.traffic.01/.02`) and the ghcr prune
+    (`Day2.registry.01`) carry no required-reviewer gate — they change no
+    infrastructure.
 * **One environment per persistent Day0 resource** — used by **both** the
   bootstrap (`Day0.infra.0N`) and the decommission (`Decom.infra.0N`) of that
   resource, so its approval is independent of the cluster gate:
@@ -340,7 +364,7 @@ flowchart LR
     g4[azure-bootstrap]
     g5[aws-bootstrap]
   end
-  g1 --> w1["Day1.cluster.01 · Decom.cluster.01<br/>+ all Day2.* (redeploy / publish / traffic)"]
+  g1 --> w1["Day1.cluster.01 · Decom.cluster.01<br/>+ Day2.* redeploy / publish / scale"]
   g2 --> w2["Day0.infra.01 · Decom.infra.01<br/>Gateway"]
   g3 --> w3["Day0.infra.02 · Decom.infra.02<br/>Grafana Cloud"]
   g4 --> w4["Day0.infra.03 · Decom.infra.03<br/>Azure"]
@@ -481,7 +505,9 @@ EOF
    gh secret set TF_STATE_BUCKET               --body "$(terraform output -raw state_bucket)"
    ```
 
-4. **Optional secrets**, only needed if you use the corresponding feature:
+4. **Optional secrets**, only needed if you use the corresponding feature. This is
+   a summary — [103. Secrets Inventory](./103-GITHUB_SECRETS_INVENTORY.md) is the
+   complete, authoritative inventory:
 
    | Secret | Needed for |
    |---|---|
@@ -501,6 +527,10 @@ EOF
    | `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` / `AZURE_GRAFANA_ADMIN_OBJECT_IDS` | `observability_mode: managed-azure` — identifiers only, no secret values |
    | `AWS_BOOTSTRAP_ROLE_ARN` / `AWS_REGION` (repo **Variable**) / `GKE_OIDC_ISSUER_URL` | `observability_mode: managed-aws` — identifiers only, no secret values. `AWS_REGION` is a GitHub Actions **Variable** (not a Secret) so its value isn't masked inside the Amazon Managed Grafana URL; workflows read `vars.AWS_REGION` with a `secrets.AWS_REGION` fallback. |
    | `AWS_DASHBOARD_PUBLISH_ROLE_ARN` | `observability_mode: managed-aws` — least-privilege IAM role for dashboard publishing |
+   | `TEKTON_GITHUB_WEBHOOK_SECRET` / `PAC_WEBHOOK_SECRET` | `ci_engine: tekton` — GitHub HMAC tokens for the Tekton Triggers EventListener and the Pipelines-as-Code controller |
+   | `ARC_GITHUB_APP_ID` / `ARC_GITHUB_APP_INSTALLATION_ID` / `ARC_GITHUB_APP_PRIVATE_KEY` | `ci_engine: githubactions` — GitHub App credentials for ARC runner registration (omit to fall back to the `GIT_TOKEN` PAT) |
+   | `ARGOWORKFLOWS_GITHUB_WEBHOOK_SECRET` | `ci_engine: argoworkflows` — GitHub HMAC for the Argo Events EventSource (falls back to `PAC_WEBHOOK_SECRET`, else auto-generated) |
+   | `K6_CLOUD_TOKEN` / `K6_CLOUD_PROJECT_ID` | optional Grafana Cloud k6 streaming for the k6 smoke pipeline (`--out cloud`) |
 
 5. **(Optional) Full Grafana Cloud lifecycle automation** — for `observability_mode: grafana-cloud`:
 
@@ -515,8 +545,8 @@ EOF
       gh secret set GRAFANA_CLOUD_API_TOKEN --body "<token from step a>"
       ```
 
-   c. **Run the "Day0.infra.02 Grafana Cloud bootstrap" workflow** (Actions tab →
-      **Day0.infra.02 Grafana Cloud bootstrap** → **Run workflow**).
+   c. **Run the "Day0.infra.02 Grafana Cloud" workflow** (Actions tab →
+      **Day0.infra.02 Grafana Cloud** → **Run workflow**).
 
 6. **(Optional) Azure backend** for `observability_mode: managed-azure`:
 
@@ -539,11 +569,11 @@ EOF
       gh secret set AZURE_GRAFANA_ADMIN_OBJECT_IDS --body "$(az ad signed-in-user show --query id -o tsv)"
       ```
 
-   c. **Run the "Day0.infra.03 Azure managed-grafana bootstrap" workflow**.
+   c. **Run the "Day0.infra.03 Azure managed-grafana" workflow**.
 
 ## Running the GKE Workflows
 
-1. Go to the repo's **Actions** tab → **Day1.cluster.01 GKE provision** → **Run
+1. Go to the repo's **Actions** tab → **Day1.cluster.01 GKE** → **Run
    workflow**. Pick `observability_mode`. `enable_gateway` defaults to **checked**
    — this project's intended public access path. **Uncheck it only** for a fresh
    environment where the one-time **Day0.infra.01 Gateway bootstrap** + DNS records +
@@ -551,13 +581,14 @@ EOF
 2. Wait ~15-20 minutes. The job summary prints the cluster name/zone and a
    reminder to decommission when done.
 3. To redeploy only Jenkins between provision/decommission cycles, use
-   **Actions** → **Day2.redeploy.02 Redeploy Jenkins** → **Run workflow**.
-4. When finished, use **Actions** → **Decom.cluster.01 GKE decommission** → **Run workflow**.
+   **Actions** → **Day2.redeploy.02 Jenkins** → **Run workflow**.
+4. When finished, use **Actions** → **Decom.cluster.01 GKE** → **Run workflow**.
 
-These three workflows share a `concurrency: group: jenkins-2026-gke`, so
-GitHub Actions queues them rather than letting them race on the same
-Terraform state. **Always run decommission when you're done** — an
-abandoned cluster keeps billing.
+All GKE-touching workflows — including the three above, every other
+`Day2.redeploy.*`/`Day2.publish.*`/`Day2.scale.*` and the RUM simulator —
+share `concurrency: group: jenkins-2026-gke`, so GitHub Actions queues them
+rather than letting them race on the same cluster/Terraform state. **Always
+run decommission when you're done** — an abandoned cluster keeps billing.
 
 ---
 

@@ -5,7 +5,8 @@ Two kinds, by design:
 - **Custom** (`*-azure.json`, this dir): the project-specific views - the
   active CI engine's overview (one of **Jenkins** / **Tekton** /
   **GitHub Actions (ARC)** / **Argo Workflows**, selected by `ci.engine`;
-  `07-grafana-dashboards.sh` publishes only that engine's board), the
+  the workflow publish step ships only that engine's board (mirroring
+  `07-grafana-dashboards.sh`'s `KEEP_CI_DASHBOARD` gating)), the
   `CI-CD / k6 Observability` view, per-microservice RED, and the Azure
   logs/traces panels. No public dashboard knows about these (the OTel
   `service_name`/ `deployment_environment` labels, `ci_pipeline_run_*` metrics,
@@ -39,17 +40,23 @@ dashboards:
 python3 observability/grafana/dashboards-azure/generate.py
 ```
 
-[`scripts/07-grafana-dashboards.sh`](../../../scripts/07-grafana-dashboards.sh)
-publishes these to Azure Managed Grafana via its HTTP API when
-`observability.mode=managed-azure`.
+When `observability.mode=managed-azure` these are published to Azure Managed Grafana over
+its Grafana **data-plane API** by the dedicated *Publish dashboards to Azure Managed Grafana*
+step of [`Day1.cluster.01-gke.yml`](../../../.github/workflows/Day1.cluster.01-gke.yml)
+(standalone re-publish: [`Day2.publish.03-azure-grafana.yml`](../../../.github/workflows/Day2.publish.03-azure-grafana.yml))
+— **not** by [`scripts/07-grafana-dashboards.sh`](../../../scripts/07-grafana-dashboards.sh),
+which is a documented no-op in this mode (AMG has no static API key; the workflow mints an
+Entra data-plane token post `azure/login`).
 
 ## Account-agnostic & secure by design
 
-- **No subscription / resource / tenant IDs** are baked into the JSON. The
-  Application Insights resource is chosen at runtime via the `${appinsights}`
-  template variable - an **Azure Resource Graph** query
-  (`resources | where type =~ 'microsoft.insights/components'`) that lists
-  whatever the datasource's managed identity can see.
+- **No subscription / resource / tenant IDs** are baked into the **committed** JSON:
+  panels reference the `${appinsights}` placeholder, which the publish step resolves
+  via an **Azure Resource Graph** query
+  (`az graph query -q "resources | where type =~ 'microsoft.insights/components'"`)
+  and substitutes at publish time; the `${appinsights}` template variable (same ARG
+  query, run by the datasource's managed identity) is kept in the dashboard as an
+  account-agnostic fallback/resource picker.
 - **No secrets** in the dashboards: the Azure Monitor datasource authenticates
   with Azure Managed Grafana's managed identity.
 
@@ -61,4 +68,4 @@ datasource, so they use the **classic** App Insights schema (`traces`,
 - **not** the workspace `App*` schema (`AppTraces`/...), which only resolves when
 you query the Log Analytics workspace resource. These queries were verified
 through Grafana's own query engine against the live data. See
-[`docs/observability.md`](../../../docs/observability.md#managed-azure).
+[`docs/301-OBSERVABILITY.md`](../../../docs/301-OBSERVABILITY.md#observability-modes).
