@@ -112,6 +112,14 @@ jenkins:
             value: "1"
           - key: "GRAFANA_BASE_URL"
             value: "${GRAFANA_BASE_URL:-}"
+          # Dashboard uid for the k6 smoke-test Grafana deep link that
+          # microservicesK6Smoke.printGrafanaLink() echoes at the end of a run.
+          # scripts/04-jenkins.sh derives it from the canonical dashboard JSON and
+          # surfaces it on the controller via the chart's containerEnv (#560); it is
+          # propagated here so build agents inherit it too. Empty -> the pipeline
+          # falls back to the legacy jenkins2026-k6-smoke-overview uid.
+          - key: "GRAFANA_DASH_UID_K6_SMOKE_OVERVIEW"
+            value: "${GRAFANA_DASH_UID_K6_SMOKE_OVERVIEW:-}"
           - key: "JENKINS2026_REPO_URL"
             value: "${JENKINS2026_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
           - key: "JENKINS2026_REPO_BRANCH"
