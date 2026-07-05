@@ -1018,9 +1018,19 @@ For a full standalone catalog with visual previews, see the [Technical Infograph
 
 ### 3.2. Project Media & External Resources
 
-All heavy multimedia assets (including video walkthroughs, system recordings, large presentation sheets, and extra raw diagram sheets) are hosted on Google Drive to keep the git repository history light and responsive:
+To keep this Git repository lightweight, fast to clone, and responsive, all heavy multimedia assets and demonstration walkthroughs are housed in a dedicated external library:
 
-*   📂 **[Google Drive Media Folder](https://drive.google.com/drive/folders/15JQNRSIW8mxaIjQ2AVyua-jzLNjDsZ10?usp=sharing)** — Contains subfolders for all architectural diagrams, load testing demo runs, and Jenkins CI/CD pipeline videos.
+> [!IMPORTANT]
+> ### 📁 Platform Media & Resources Library (Google Drive)
+>
+> All high-resolution drawings, vector diagrams, and video walkthroughs are available in the public shared folder:
+>
+> 🔗 **[Access the Google Drive Shared Folder](https://drive.google.com/drive/folders/15JQNRSIW8mxaIjQ2AVyua-jzLNjDsZ10?usp=sharing)**
+>
+> **What you will find inside:**
+> *   **🎬 Video Walkthroughs** — Live screen recordings of the `bootstrap.sh` execution, Karpenter autoscaling demos, and Jenkins/Tekton CI pipeline rollouts.
+> *   **📊 High-Resolution Diagrams** — Raw architecture mockups, zero-trust network blueprint vectors, and GKE landing zone charts.
+> *   **📝 Presentation Sheets** — Interactive slideshows and architectural design sheets explaining the 4-way CI engine comparison.
 
 ---
 
