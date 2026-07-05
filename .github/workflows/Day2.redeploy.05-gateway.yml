@@ -3,6 +3,7 @@ name: "Day2.redeploy.05 Gateway"
 # Manually-triggered: re-applies the public-ingress layer ONLY - the shared GKE
 # Gateway (in the platform-ingress namespace) + every app HTTPRoute + the IAP
 # GCPBackendPolicies (scripts/01-namespaces.sh for the namespaces/IAP Secrets +
+# scripts/08.7-backend-tls.sh for the opt-in backend-TLS certs (docs/504) +
 # scripts/09-gateway.sh for the Gateway/routes/policies). Use it to apply a
 # gateway/route/IAP change (e.g. a new host, an IAP tweak, or recovering a deleted
 # Gateway) WITHOUT rerunning the whole Day1.cluster.01 provision. Idempotent;
@@ -159,6 +160,15 @@ jobs:
         # ClusterSecretStore + ExternalSecrets and waits for the IAP Secret to
         # materialise before 09-gateway wires the GCPBackendPolicy to it.
         run: ./scripts/08.6-eso-sync.sh
+
+      - name: Backend TLS (scripts/08.7-backend-tls.sh, opt-in)
+        # No-op (with deterministic retire) when gateway.backendTls.enabled=false,
+        # the default. When on, re-asserts cert-manager + the cluster-internal CA
+        # + the per-backend certs/trust bundles BEFORE 09 re-attaches the
+        # BackendTLSPolicies. NOTE: FLIPPING the flag still needs a full Day1 —
+        # the Headlamp TLS values overlay is rendered by 08.5-argocd.sh, which
+        # this workflow deliberately does not run. See docs/504 § Lifecycle.
+        run: ./scripts/08.7-backend-tls.sh
 
       - name: Re-apply Gateway + HTTPRoutes + IAP (scripts/09-gateway.sh)
         run: ./scripts/09-gateway.sh

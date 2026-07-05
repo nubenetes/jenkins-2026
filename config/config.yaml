@@ -500,6 +500,29 @@ gateway:
   # commit real client ID/secret values - see README.md "Public access".
   iapCredentialsSecretName: gateway-iap-oauth
 
+  # ---------------------------------------------------------------------------
+  # Backend TLS - LB→pod re-encryption (OPT-IN, default false)
+  # ---------------------------------------------------------------------------
+  # By default TLS terminates at the L7 LB and the LB→pod hop is plain HTTP
+  # (VPC-internal, riding Google's default network-layer encryption - see
+  # docs/501 §3 Zero-Trust). When true, scripts/08.7-backend-tls.sh installs
+  # cert-manager (pinned chart, GitOps via argocd/cert-manager-app.yaml) plus a
+  # cluster-internal CA (selfsigned root -> CA ClusterIssuer) and mints
+  # per-backend server certificates; the TLS-READY backends then serve HTTPS
+  # themselves (stage 1: Headlamp, via helm/headlamp/values-backend-tls.yaml),
+  # and scripts/09-gateway.sh attaches a BackendTLSPolicy (the LB re-encrypts
+  # AND validates against the internal CA) + an HTTPS HealthCheckPolicy per
+  # converted backend. Requires the BackendTLSPolicy CRD (GKE Gateway backend
+  # TLS, GA 2026-05); on clusters without it every consumer gates on
+  # j2026_backend_tls_active (lib/common.sh) and stays consistently on plain
+  # HTTP with a warning. Disabling the flag (or down.sh) retires the policies,
+  # certs and cert-manager symmetrically. See docs/504-BACKEND_TLS.md.
+  # FEATURE FLAG: override for a single run with
+  # JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED (config.yaml is the durable
+  # default; the env var is the ephemeral override - same pattern as ci.engine).
+  backendTls:
+    enabled: false
+
 # -----------------------------------------------------------------------------
 # Microservices (Modernized stack), GitFlow pipelines-as-code
 # -----------------------------------------------------------------------------

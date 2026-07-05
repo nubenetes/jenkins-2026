@@ -1,0 +1,50 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager
+  namespace: argocd
+  annotations:
+    # cert-manager ships large CRD schemas (Certificate/CertificateRequest/...);
+    # client-side diff writes the manifest into the last-applied-configuration
+    # annotation and blows the 256KB limit, leaving the app permanently
+    # OutOfSync. ServerSideDiff is the companion to ServerSideApply below -
+    # same pairing as argo-rollouts / kube-prometheus-stack / tekton.
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  # cert-manager backs the OPT-IN backend-TLS feature (gateway.backendTls.enabled,
+  # default false - see docs/504-BACKEND_TLS.md): it issues the cluster-internal
+  # CA and the per-backend server certificates the BackendTLSPolicies validate
+  # against. Applied by scripts/08.7-backend-tls.sh ONLY when the flag is on
+  # (and deleted by it when off) - GitOps-managed like the other operators
+  # (external-secrets / argo-rollouts). Pinned per docs/602: v1.20.3 is the
+  # latest stable as of 2026-07-05 (2026-06-25 security release).
+  source:
+    repoURL: https://charts.jetstack.io
+    chart: cert-manager
+    targetRevision: "v1.20.3"
+    helm:
+      values: |
+        # v1.15+ CRD management (replaces the deprecated installCRDs flag).
+        # keep=false so deleting this Application (flag flipped off, or down.sh)
+        # also removes the CRDs - garbage-collecting every Certificate /
+        # ClusterIssuer with them for a residue-free retire (docs/104). The
+        # issued cert Secrets are plain Secrets and are deleted explicitly by
+        # 08.7-backend-tls.sh's retire path.
+        crds:
+          enabled: true
+          keep: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cert-manager
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # Large CRDs; avoids the 256KB last-applied-configuration annotation
+      # limit (see the compare-options annotation above).
+      - ServerSideApply=true
