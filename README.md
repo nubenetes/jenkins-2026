@@ -226,6 +226,7 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 - [1. Document Inventory](#1-document-inventory)
 - [2. Quick Start](#2-quick-start)
 - [3. Architecture Overview](#3-architecture-overview)
+  - [3.1. Technical Infographics Catalog](#31-technical-infographics-catalog)
 - [4. GitHub Actions Workflows](#4-github-actions-workflows)
 - [5. Prerequisites](#5-prerequisites)
 
