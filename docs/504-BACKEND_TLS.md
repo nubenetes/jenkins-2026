@@ -141,14 +141,17 @@ Known per-backend state:
 
 ## Lifecycle
 
-- **Enable**: set the flag (or export the env var) and **re-run `Day1`**
-  ([applying changes = re-run, not Decom+Day1](../CLAUDE.md)).
-  `Day2.redeploy.05-gateway` runs `08.7` + `09`, so it **converges the cert and
-  policy halves when the flag state is unchanged** — but a flag *flip* still
-  needs the full `Day1` (or `08.5` + `08.7` + `09` locally): the Headlamp TLS
-  values overlay is rendered by `08.5-argocd.sh`, which no `Day2.redeploy.*`
-  workflow runs, and until ArgoCD re-syncs it the pod and the LB disagree on
-  the protocol.
+- **Enable**: set the flag — durable (`config.yaml`), per-run env
+  (`JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED`), or the **`backend_tls` input**
+  on the `Day1.cluster.00/01` GHA workflows — and **re-run `Day1`**
+  ([applying changes = re-run, not Decom+Day1](../CLAUDE.md)): it is the only
+  path that runs all three consumers (`08.5` + `08.7` + `09`) in one
+  converging pass. The same `backend_tls` input exists on every
+  `Day2.redeploy.*` workflow that runs a consumer (`.01-argocd` → `08.5` ·
+  `.05-gateway` → `08.7`+`09` · the engine redeploys `.03/.06/.07` → `09`) —
+  there it must **match the live cluster**: a flag *flip* through any single
+  Day2 workflow leaves the pod and the LB disagreeing on the protocol
+  (headlamp 502) until the other half runs.
 - **Disable**: flip the flag off and re-run `Day1`. `08.5` re-renders Headlamp
   without the overlay (ArgoCD self-heals it back to HTTP), `08.7` retires the
   certs/trust bundles and cascade-deletes cert-manager, `09` deletes the
