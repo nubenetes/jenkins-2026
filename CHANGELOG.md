@@ -19,7 +19,8 @@ All notable changes to **jenkins-2026** are documented here, following
 
 ## [Unreleased]
 
-_Nothing yet — add entries here as PRs merge._
+### Fixed
+- **Switching `ci.engine` away from `jenkins` left the stale "CI-CD / Jenkins Controller" dashboard on persistent Grafana stacks (#559).** The engine-switch cleanup (Grafana Cloud / Azure Managed Grafana / Amazon Managed Grafana) deleted the inactive engines' CI overviews by the **hardcoded** uid `jenkins2026-<basename>`, but `jenkins-overview.json` was round-tripped through Grafana Cloud and now carries a **generated uid** (`inwtd8q`) — so the delete missed it and the off-engine Jenkins dashboard survived every switch. All four delete sites ([`07-grafana-dashboards.sh`](scripts/07-grafana-dashboards.sh) grafana-cloud helper + managed-aws loop, the `Day1.cluster.01-gke` Azure publish step, `Day2.publish.03-azure-grafana`) now **derive the uid from each canonical dashboard JSON** (`jq -r .uid`; the `-azure`/`-aws` variants preserve it, and the file is in the checkout so the no-cluster publishers keep working), and additionally delete the legacy `jenkins2026-<basename>` uid when it differs, so stacks holding a copy published under the old uid converge too.
 
 ## [v1.1.1] - 2026-07-03
 
