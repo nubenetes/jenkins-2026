@@ -103,6 +103,24 @@ if [[ -n "${microservices_develop_url}" ]]; then
   microservices_develop_link="<li>Microservices (develop): <a href=\"${microservices_develop_url}\" style=\"color: #0052cc; text-decoration: underline;\">${microservices_develop_url}</a></li>"
 fi
 
+# Grafana dashboard uids for the banner's deep links, derived from the canonical
+# dashboard JSONs at deploy time. The published uid is whatever the JSON carries -
+# NOT always jenkins2026-<name> (jenkins-overview/rum-frontend/jvm-internals were
+# round-tripped through Grafana Cloud and carry generated uids), so a uid
+# hardcoded in jcasc-base.yaml 404s whenever the canonical file changes (the same
+# class as the off-engine delete sites fixed in 07-grafana-dashboards.sh). Falls
+# back to the legacy jenkins2026-<name> scheme if the JSON is unreadable.
+dash_uid() {
+  local uid
+  uid="$(jq -r '.uid // empty' "${J2026_ROOT_DIR}/observability/grafana/dashboards/$1.json" 2>/dev/null || true)"
+  printf '%s' "${uid:-jenkins2026-$1}"
+}
+dash_uid_jenkins="$(dash_uid jenkins-overview)"
+dash_uid_microservices="$(dash_uid microservices-overview)"
+dash_uid_k6="$(dash_uid k6-smoke-overview)"
+dash_uid_rum="$(dash_uid rum-frontend)"
+dash_uid_jvm="$(dash_uid jvm-internals)"
+
 log_step "Patching dynamic values into ${J2026_JENKINS_CREDENTIALS_SECRET}"
 # GKE Node Auto-Provisioning: the ComputeClass the build agents target so NAP spins up
 # Spot, scale-to-zero nodes for them. Empty when NAP is disabled, so agents fall back to
@@ -125,9 +143,19 @@ kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_N
     --arg dev "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" \
     --arg cc "${gke_compute_class}" \
     --arg rnp "${J2026_JENKINS_RUN_NODE_POOL}" \
+    --arg duj "${dash_uid_jenkins}" \
+    --arg dum "${dash_uid_microservices}" \
+    --arg duk "${dash_uid_k6}" \
+    --arg dur "${dash_uid_rum}" \
+    --arg duv "${dash_uid_jvm}" \
     '{stringData:{
         "grafana-base-url":$gbu,
         "grafana-k8s-app-link":$gk8s,
+        "grafana-dash-uid-jenkins-overview":$duj,
+        "grafana-dash-uid-microservices-overview":$dum,
+        "grafana-dash-uid-k6-smoke-overview":$duk,
+        "grafana-dash-uid-rum-frontend":$dur,
+        "grafana-dash-uid-jvm-internals":$duv,
         "microservices-url":$msu,
         "microservices-develop-url":$msdu,
         "microservices-develop-link":$msdl,
@@ -142,11 +170,12 @@ kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_N
 # Rolls the controller whenever the Secret-backed banner/behaviour values change
 # (ArgoCD won't roll on an out-of-band Secret edit otherwise) - passed as the
 # controller.podAnnotations.bannerLinksChecksum helm parameter below.
-banner_links_checksum="$(printf '%s|%s|%s|%s|%s|%s|%s|%s|%s' \
+banner_links_checksum="$(printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' \
   "${grafana_base_url}" "${grafana_k8s_app_link}" "${microservices_url}" \
   "${microservices_develop_url}" \
   "${jenkins_public_url}" "${J2026_SELF_REPO_BRANCH}" "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" \
   "${gke_compute_class}" "${J2026_JENKINS_RUN_NODE_POOL}" \
+  "${dash_uid_jenkins}|${dash_uid_microservices}|${dash_uid_k6}|${dash_uid_rum}|${dash_uid_jvm}" \
   | sha256sum | cut -c1-16)"
 
 # --- JCasC ConfigMaps (single source: jenkins/casc/*) ------------------------

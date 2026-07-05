@@ -958,11 +958,20 @@ jobs:
               echo "::warning::failed to publish $(basename "${f}")"
             fi
           done
-          # Delete the inactive engines' overview dashboards by uid (data-plane; no-op if absent).
+          # Delete the inactive engines' overview dashboards by uid (data-plane; no-op if
+          # absent). The published uid is whatever the canonical JSON carries — NOT always
+          # jenkins2026-<name> (jenkins-overview has a Grafana-generated uid; the -azure
+          # variants preserve the canonical uid) — so derive it with jq. Also try the
+          # legacy jenkins2026-<name> uid: a persistent stack may still hold a copy
+          # published under it.
           for d in ${all_ci_dash}; do
             [[ "${d}" == "${keep_dash}" ]] && continue
-            gapi DELETE "/api/dashboards/uid/jenkins2026-${d}" >/dev/null 2>&1 \
-              && echo "deleted off-engine dashboard jenkins2026-${d}" || true
+            canon_uid="$(jq -r '.uid // empty' "observability/grafana/dashboards/${d}.json" 2>/dev/null || true)"
+            [[ "${canon_uid}" == "jenkins2026-${d}" ]] && canon_uid=""
+            for off_uid in ${canon_uid} "jenkins2026-${d}"; do
+              gapi DELETE "/api/dashboards/uid/${off_uid}" >/dev/null 2>&1 \
+                && echo "deleted off-engine dashboard ${d} (uid ${off_uid})" || true
+            done
           done
           # Generic Kubernetes/node infra is covered by Azure Managed Grafana's
           # built-in dashboards (Compute Resources / Kubelet / Node Exporter /

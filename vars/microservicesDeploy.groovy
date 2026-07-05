@@ -4,7 +4,8 @@
  *                  tag: '<image-tag>')
  *
  * GitOps Version: Updates the image tag in helm/microservices/values-<env>.yaml
- * in the INFRA repo (this one) and pushes to Git. ArgoCD handles the deploy.
+ * in the jenkins-2026-gitops-config repo (cloned separately, not this one) and
+ * pushes to Git. ArgoCD handles the deploy.
  */
 def call(Map cfg) {
   // Only 'stable' and the optional 'develop' tier are deployable. Reject anything
