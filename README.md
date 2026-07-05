@@ -843,6 +843,127 @@ flowchart TB
 
 For the full component diagram, microservices database architecture (CloudNative-PG HA), and CI/CD flow see [201. Architecture](./docs/201-ARCHITECTURE.md). For the Grafana Cloud Observability apps (App Observability, Synthetic Monitoring, Profiles — grafana-cloud only) see [301. Observability](./docs/301-OBSERVABILITY.md#grafana-cloud-observability-apps--status--recommendation).
 
+### 3.1. Technical Infographics Catalog
+
+To help visualize the system architecture, landing zones, workflows, and CI engine comparisons, a comprehensive catalog of 35 technical infographics is organized below. The infographics are categorized by system domain and folded by default. Click on any category to expand it and explore the files, key components, and detailed architectural descriptions.
+
+For a full standalone catalog with visual previews, see the [Technical Infographics README](./docs/infographics/README.md).
+
+<details>
+<summary>📂 000: Platform Overview (2 Infographics)</summary>
+
+| Code | Infographic | Key Technologies & Components | Detailed Architectural Description |
+| :--- | :--- | :--- | :--- |
+| **001** | [001_End_to_End_Golden_Path_Platform_and_Developer_Workflow_Overview.png](./docs/infographics/001_End_to_End_Golden_Path_Platform_and_Developer_Workflow_Overview.png) | IDP, Day 0/Day 1, Dev Workflow | High-level overview of the end-to-end developer journey within the Internal Developer Platform (IDP). Details the separation between Day 0 (core infrastructure bootstrap) and Day 1 (application deployment) workflows. |
+| **002** | [002_High_Level_Design_and_Multi_Repository_Platform_Architecture.png](./docs/infographics/002_High_Level_Design_and_Multi_Repository_Platform_Architecture.png) | Git Multi-Repo, Terraform, Jenkins | Illustrates the multi-repository structure decoupling the platform infrastructure configuration (in the Jenkins-2026 repository) from individual application source code repositories, using remote GCS buckets for state storage. |
+
+</details>
+
+<details>
+<summary>📂 100: Landing Zone (5 Infographics)</summary>
+
+| Code | Infographic | Key Technologies & Components | Detailed Architectural Description |
+| :--- | :--- | :--- | :--- |
+| **101** | [101_GCP_Keyless_Landing_Zone_and_WIF_Federation.png](./docs/infographics/101_GCP_Keyless_Landing_Zone_and_WIF_Federation.png) | GCP, GitHub Actions, OIDC, WIF | Documents the keyless authentication workflow using Google Workload Identity Federation (WIF). Replaces persistent JSON service account keys with short-lived OAuth2 access tokens exchanged via GitHub OIDC. |
+| **102** | [102_GKE_Golden_Path_JHipster_Microservice_Architecture.png](./docs/infographics/102_GKE_Golden_Path_JHipster_Microservice_Architecture.png) | GKE, JHipster, Dataplane V2, eBPF | Maps the internal microservice design deployed within the GKE Golden-Path. Focuses on default-deny network postures enforced by GKE Dataplane V2 and inter-service container communication. |
+| **103** | [103_Argo_Workflows_and_Argo_Events_on_GKE.png](./docs/infographics/103_Argo_Workflows_and_Argo_Events_on_GKE.png) | Argo Events, Argo Workflows, GKE | Represents the event-driven CI/CD control plane on GKE. Details the Argo Events webhook listener architecture, GKE Gateway API ingress routing, and the 10-stage execution pipeline contract. |
+| **104** | [104_GKE_Zero_Trust_Ingress_North_South_Traffic_Lifecycle_with_BackendTLS.png](./docs/infographics/104_GKE_Zero_Trust_Ingress_North_South_Traffic_Lifecycle_with_BackendTLS.png) | BackendTLSPolicy, Gateway API, Google IAP | Traces the zero-trust lifecycle of North-South ingress traffic. Details SSL termination at the global L7 Load Balancer, Google IAP context-aware authorization, HTTPRoute definition, BackendTLSPolicy enforcement, and direct NEG routing to pods with 100% continuous transit encryption. |
+| **105** | [105_GKE_Golden_Path_High_Availability_PostgreSQL_with_CloudNativePG.png](./docs/infographics/105_GKE_Golden_Path_High_Availability_PostgreSQL_with_CloudNativePG.png) | PostgreSQL, CloudNativePG, PgBouncer | Illustrates the database clustering setup using CloudNativePG on GKE. Explains high-availability replication across multiple zones, read/write splitting, and pgBouncer pooled connection proxying. |
+
+</details>
+
+<details>
+<summary>📂 200: Node Provisioning (3 Infographics)</summary>
+
+| Code | Infographic | Key Technologies & Components | Detailed Architectural Description |
+| :--- | :--- | :--- | :--- |
+| **201** | [201_GKE_Cluster_Topology_and_Karpenter_Native_Node_Auto_Provisioning.png](./docs/infographics/201_GKE_Cluster_Topology_and_Karpenter_Native_Node_Auto_Provisioning.png) | GKE NAP, Karpenter-native, quotas | Details GKE node auto-provisioning (NAP) behaving similarly to Karpenter. Explains quota ceilings, hard technical limits for SSD/disks, and the lifecycle of pending pods triggering dynamic node spin-up. |
+| **202** | [202_GitHub_Actions_on_GKE_ARC_and_Spot_Runners.png](./docs/infographics/202_GitHub_Actions_on_GKE_ARC_and_Spot_Runners.png) | GitHub ARC, Spot Instances, WIF | Analyzes GitHub Actions Runner Controller (ARC) deployments on GKE. Shows how ephemeral runners are scheduled dynamically on cost-effective GCP Spot VMs, with WIF providing secure identity mappings. |
+| **203** | [203_Jenkins_2026_GitHub_Actions_Workflow_Catalog_Map.png](./docs/infographics/203_Jenkins_2026_GitHub_Actions_Workflow_Catalog_Map.png) | GitHub Actions, Git Workflows, GKE | Provides a comprehensive directory of the 29 GitHub Actions workflows managing the GKE Golden-Path platform, detailing naming patterns, push/PR triggers, and operational dependencies. |
+
+</details>
+
+<details>
+<summary>📂 300: Dataplane Security (5 Infographics)</summary>
+
+| Code | Infographic | Key Technologies & Components | Detailed Architectural Description |
+| :--- | :--- | :--- | :--- |
+| **301** | [301_GKE_Dataplane_V2_eBPF_Zero_Trust_Isolation_Matrix.png](./docs/infographics/301_GKE_Dataplane_V2_eBPF_Zero_Trust_Isolation_Matrix.png) | Dataplane V2, eBPF, NetworkPolicies | Maps the default-deny matrix for the microservices namespace. Explains how Cilium/eBPF enforces network isolation at the kernel level, blocking all non-whitelisted cross-pod interactions. |
+| **302** | [302_GKE_Dataplane_V2_Zero_Trust_Networking_Architecture.png](./docs/infographics/302_GKE_Dataplane_V2_Zero_Trust_Networking_Architecture.png) | Linux Kernel, Cilium, BPF filters | Explains the low-level network packet flow inside the Linux Kernel using eBPF JIT-compiled programs, TC (Traffic Control) network hooks, and secure socket redirections bypass. |
+| **303** | [303_JHipster_Gateway_Architecture_and_Observability_Map.png](./docs/infographics/303_JHipster_Gateway_Architecture_and_Observability_Map.png) | JHipster Gateway, Webpack, Faro | Details the Gateway layer of the application, contrasting dev (Webpack reload) vs prod profiles, route proxying to downstream microservices, and OpenTelemetry instrumentation hooks. |
+| **304** | [304_GKE_Golden_Path_IDP_Runtime_Traffic_and_Data_Integration.png](./docs/infographics/304_GKE_Golden_Path_IDP_Runtime_Traffic_and_Data_Integration.png) | Ingress Routing, Egress Policies, IDP | Represents an expert guide for handling data integration and security. Covers ingress-to-pod mappings, egress whitelist policies, and OTel collector ingestion paths for tracing. |
+| **305** | [305_GKE_Platform_Networking_Blueprint_Zero_Trust_North_South_Ingress.png](./docs/infographics/305_GKE_Platform_Networking_Blueprint_Zero_Trust_North_South_Ingress.png) | GKE Gateway API, Google IAP, BackendTLSPolicy, NEGs | Outlines the zero-trust landing zone network blueprint for GKE North-South ingress. Focuses on edge TLS termination, Google IAP user authorization, and secondary handshakes to container-native NEGs with certificates from GKE-managed CAs. |
+
+</details>
+
+<details>
+<summary>📂 400: Secrets & DevSecOps (2 Infographics)</summary>
+
+| Code | Infographic | Key Technologies & Components | Detailed Architectural Description |
+| :--- | :--- | :--- | :--- |
+| **401** | [401_Zero_Trust_Keyless_Secrets_Lifecycle_via_ESO_and_WIF.png](./docs/infographics/401_Zero_Trust_Keyless_Secrets_Lifecycle_via_ESO_and_WIF.png) | Secret Manager, ESO, GKE Secrets | Outlines the keyless replication of secrets from Google Secret Manager to Kubernetes Secrets using the External Secrets Operator (ESO) and GCP Workload Identity. |
+| **402** | [402_DevSecOps_Multilayer_Scanning_and_SARIF_Flow.png](./docs/infographics/402_DevSecOps_Multilayer_Scanning_and_SARIF_Flow.png) | Semgrep, CodeQL, Trivy, SARIF | Displays the pluggable 4-layer security scanning pipeline (lightweight SAST, deep SAST, dependency check, and container scan) consolidating vulnerabilities into standard SARIF files. |
+
+</details>
+
+<details>
+<summary>📂 500: CI Engines (2 Infographics)</summary>
+
+| Code | Infographic | Key Technologies & Components | Detailed Architectural Description |
+| :--- | :--- | :--- | :--- |
+| **501** | [501_Jenkins_2026_Automated_CI_Engine_Architecture.png](./docs/infographics/501_Jenkins_2026_Automated_CI_Engine_Architecture.png) | Jenkins, JCasC, Helm, GKE Agents | Details the fully GitOps-managed Jenkins engine. Features declarative Configuration-as-Code (JCasC), Helm-managed state, and dynamic on-demand agent scaling on GKE. |
+| **502** | [502_Tekton_CI_Engine_Architecture_with_Pipelines_as_Code_and_SLSA.png](./docs/infographics/502_Tekton_CI_Engine_Architecture_with_Pipelines_as_Code_and_SLSA.png) | Tekton, SLSA, Pipelines-as-Code | Showcases the cloud-native Tekton CI model. Describes event-based triggers, Git pipelines-as-code controllers, and SLSA provenance attestation generators for builds. |
+
+</details>
+
+<details>
+<summary>📂 600: Deployment & GitOps (4 Infographics)</summary>
+
+| Code | Infographic | Key Technologies & Components | Detailed Architectural Description |
+| :--- | :--- | :--- | :--- |
+| **601** | [601_Two_Repo_GitOps_State_Machine_with_ArgoCD_and_CI_Workflow.png](./docs/infographics/601_Two_Repo_GitOps_State_Machine_with_ArgoCD_and_CI_Workflow.png) | GitOps, ArgoCD Sync, Multi-Engine CI | Maps the two-repo GitOps decoupling. Explains how CI processes push container tags to the app repository, and how ArgoCD reconciles the cluster to match the Git state. |
+| **602** | [602_Terraform_IaC_Idempotency_and_Day_1_State_Flow.png](./docs/infographics/602_Terraform_IaC_Idempotency_and_Day_1_State_Flow.png) | Terraform, State Locking, GCS | Traces the execution flow of Terraform infrastructure code. Illustrates safe state locking in GCP GCS buckets and the transition from Day 0 setup to Day 1 updates. |
+| **603** | [603_Sidecar_Free_Progressive_Delivery_with_Argo_Rollouts_and_GKE_Gateway_API.png](./docs/infographics/603_Sidecar_Free_Progressive_Delivery_with_Argo_Rollouts_and_GKE_Gateway_API.png) | Argo Rollouts, GKE Gateway, Canary | Illustrates a progressive delivery architecture. Argo Rollouts manages canary traffic splitting directly through GKE Gateway routing, bypassing the need for sidecar-heavy service meshes like Istio. |
+| **604** | [604_Sidecar_Free_Zero_Trust_BackendTLS_and_GitOps_Workflow.png](./docs/infographics/604_Sidecar_Free_Zero_Trust_BackendTLS_and_GitOps_Workflow.png) | ArgoCD, GKE Gateway, BackendTLSPolicy, GKE CA | Maps the GitOps reconciliation flow of zero-trust components in GKE. Details how ArgoCD syncs Gateway and BackendTLSPolicy manifests, terminating TLS at target microservices by validating pod certificates against GKE-managed CAs. |
+
+</details>
+
+<details>
+<summary>📂 700: Tool Comparisons (6 Infographics)</summary>
+
+| Code | Infographic | Key Technologies & Components | Detailed Architectural Description |
+| :--- | :--- | :--- | :--- |
+| **701** | [701_Advanced_CI_Architecture_Jenkins_vs_Tekton_on_GKE.png](./docs/infographics/701_Advanced_CI_Architecture_Jenkins_vs_Tekton_on_GKE.png) | Jenkins, Tekton, GKE scheduler | Compares structural architecture of Jenkins vs Tekton. Focuses on persistent master controllers vs serverless CRD-driven pods, and the impact on resource scheduling. |
+| **702** | [702_Spot_Instance_Resiliency_Jenkins_vs_GitHub_Actions_ARC.png](./docs/infographics/702_Spot_Instance_Resiliency_Jenkins_vs_GitHub_Actions_ARC.png) | Spot Nodes, Evictions, ARC, Jenkins | Benchmarks Spot instance node evictions. Compares Jenkins master-agent connection drops with GitHub Actions ARC runner rescheduling and recovery metrics. |
+| **703** | [703_CI_Battle_Jenkins_Groovy_vs_Argo_Workflows_DAG_and_UI_Strategy.png](./docs/infographics/703_CI_Battle_Jenkins_Groovy_vs_Argo_Workflows_DAG_and_UI_Strategy.png) | Groovy script, YAML DAG, Jenkins, Argo | Compares the imperative scripting style of Jenkins Groovy pipelines against the declarative YAML DAG model of Argo Workflows on GKE. Details the Jenkins UI strategy, explicitly replacing deprecated Blue Ocean with Classic UI and warnings-ng. |
+| **704** | [704_CI_Grand_Master_Battlecard_4_Way_GKE_Matrix.png](./docs/infographics/704_CI_Grand_Master_Battlecard_4_Way_GKE_Matrix.png) | CI Matrix, Jenkins, Tekton, Argo, GHA | Provides a 4-way architectural comparison battlecard evaluating the performance, scaling latency, and storage overhead of Jenkins, Tekton, Argo, and GHA. |
+| **705** | [705_Jenkins_Dominance_Pluggable_CI_4_Way_Matrix_and_Classic_UI_Transition.png](./docs/infographics/705_Jenkins_Dominance_Pluggable_CI_4_Way_Matrix_and_Classic_UI_Transition.png) | Jenkins, CI Matrix, GKE | Features the Pluggable CI 4-Way comprehensive matrix, detailing resource footprint and scheduling, and noting the deprecation/replacement of Blue Ocean with Classic UI + warnings-ng. |
+| **706** | [706_Why_Jenkins_Wins_Battlecard_and_UI_Security_Strategy.png](./docs/infographics/706_Why_Jenkins_Wins_Battlecard_and_UI_Security_Strategy.png) | Jenkins, DevSecOps, Pluggable CI | Explains the technical benefits of Jenkins in a pluggable CI platform, detailing usability, native security integrations, and the UI security strategy mitigating deprecated Blue Ocean CVE risks. |
+
+</details>
+
+<details>
+<summary>📂 800: Observability (4 Infographics)</summary>
+
+| Code | Infographic | Key Technologies & Components | Detailed Architectural Description |
+| :--- | :--- | :--- | :--- |
+| **801** | [801_Grafana_OSS_Self_Hosted_OTel_Signal_Flow.png](./docs/infographics/801_Grafana_OSS_Self_Hosted_OTel_Signal_Flow.png) | Grafana OSS, OTel Collector, Faro | Illustrates the self-hosted observability signal flow. Shows how Java/JVM apps send logs, metrics, and traces to OpenTelemetry collectors, which correlate data for Grafana. |
+| **802** | [802_Optimized_OTel_Data_Flow_and_Grafana_Cloud_Free_Tier.png](./docs/infographics/802_Optimized_OTel_Data_Flow_and_Grafana_Cloud_Free_Tier.png) | OTel Gateway, Grafana Cloud, Free Tier | Guides developers on configuring custom metric filtering, span dropping, and lean telemetry rules in the OTel Gateway to fit within Grafana Cloud free tier quotas. |
+| **803** | [803_JVM_Tuning_and_Hotspot_Runtime_Strategy.png](./docs/infographics/803_JVM_Tuning_and_Hotspot_Runtime_Strategy.png) | JVM Tuning, Hotspot GC, Limits | Resolves the "container-default trap" (where JVM limits default to 25% heap). Optimizes memory allocations and Garbage Collector flags (G1GC) for Docker containers. |
+| **804** | [804_End_to_End_Frontend_Observability_RUM_with_Grafana_Faro_and_OTel.png](./docs/infographics/804_End_to_End_Frontend_Observability_RUM_with_Grafana_Faro_and_OTel.png) | Grafana Faro, RUM, Trace Propagation | Traces client-side Real User Monitoring (RUM) beacon propagation. Demonstrates traceparent header injection from the browser into backend APIs using OpenTelemetry. |
+
+</details>
+
+<details>
+<summary>📂 900: Load & Lifecycle (2 Infographics)</summary>
+
+| Code | Infographic | Key Technologies & Components | Detailed Architectural Description |
+| :--- | :--- | :--- | :--- |
+| **901** | [901_k6_Traffic_Simulation_Unified_Workload_Profiles.png](./docs/infographics/901_k6_Traffic_Simulation_Unified_Workload_Profiles.png) | k6, Traffic Simulation, Load Tests | Explains the k6 workload profile setup, including environment variable injection (`k6sim_*`) and automated load test scenarios mimicking user concurrency peaks. |
+| **902** | [902_GKE_Golden_Path_IDP_Platform_Lifecycle_and_Rebuild_Safety_Matrix.png](./docs/infographics/902_GKE_Golden_Path_IDP_Platform_Lifecycle_and_Rebuild_Safety_Matrix.png) | Platform Lifecycle, Backups, Recovery | Outlines the platform rebuild-safety matrix, defining backup strategies, disaster recovery runbooks, and recovery point objectives (RPO) for cluster states. |
+
+</details>
+
 ---
 
 ## 4. GitHub Actions Workflows
