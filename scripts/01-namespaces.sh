@@ -79,13 +79,22 @@ log_step "Ensuring '${J2026_JENKINS_CREDENTIALS_SECRET}' Secret in ${J2026_JENKI
 if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
   # eso → seed the create-time/sensitive keys into Secret Manager. admin-password is
   # kept STABLE across runs (sm_keep_or_generate) so Jenkins + grafana-jenkins-ds agree
-  # on it. ESO projects these with creationPolicy: Merge (08.6), so the URL keys patched
-  # below + the argocd-token patched by 08.5 survive. Merge needs the Secret to exist, so
+  # on it. ESO projects these with creationPolicy: Merge (08.6), so the *04-patched* keys
+  # (grafana-base-url, the dashboard uids, k8s-app-link, microservices-url, …) + the
+  # argocd-token patched by 08.5 survive — because ESO's Merge only touches the keys it
+  # extracts from SM, leaving 04-only keys intact. Merge needs the Secret to exist, so
   # ensure an (empty) base for the merge-patches + ESO to target.
+  #
+  # grafana-base-url is DELIBERATELY not seeded here (nor in the imperative create below):
+  # it is a *derived* URL that 04-jenkins.sh computes per observability.mode and patches
+  # into the live Secret. Seeding it into SM would put an EMPTY value there in oss/managed
+  # modes (GRAFANA_BASE_URL is only set for grafana-cloud) — and ESO's hourly Merge re-sync
+  # would then clobber 04's real URL back to empty, collapsing every Grafana banner
+  # deep-link to the Jenkins host (/d/<uid> resolves against the current page). Letting 04
+  # be the sole owner is exactly how the other derived URL keys already work.
   admin_password="$(sm_keep_or_generate "${J2026_JENKINS_CREDENTIALS_SECRET}" admin-password "${ADMIN_PASSWORD:-$(openssl rand -base64 24 | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c20)}")"
   provision_secret "${J2026_JENKINS_NAMESPACE}" "${J2026_JENKINS_CREDENTIALS_SECRET}" \
     "admin-password=${admin_password}" \
-    "grafana-base-url=${GRAFANA_BASE_URL:-}" \
     "registry-username=${REGISTRY_USERNAME:-}" \
     "registry-password=${REGISTRY_PASSWORD:-}" \
     "git-username=${GIT_USERNAME:-}" \
@@ -113,10 +122,11 @@ else
     log_warn "escape-hatch admin login (above) still works. See README.md \"Jenkins\"."
   fi
 
+  # grafana-base-url is intentionally omitted — 04-jenkins.sh is its sole owner
+  # (derived per observability.mode). See the eso branch above for the full why.
   kubectl create secret generic "${J2026_JENKINS_CREDENTIALS_SECRET}" \
     -n "${J2026_JENKINS_NAMESPACE}" \
     --from-literal=admin-password="${admin_password}" \
-    --from-literal=grafana-base-url="${GRAFANA_BASE_URL:-}" \
     --from-literal=registry-username="${REGISTRY_USERNAME:-}" \
     --from-literal=registry-password="${REGISTRY_PASSWORD:-}" \
     --from-literal=git-username="${GIT_USERNAME:-}" \
