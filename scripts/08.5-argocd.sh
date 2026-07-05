@@ -5,6 +5,21 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 
+# Wait for an argocd-server rollout to finish - UNLESS backend TLS is active for
+# argocd. A TLS argocd-server pod carries a GKE NEG readiness gate that only clears
+# once 09-gateway.sh flips the LB HealthCheckPolicy to HTTPS (this script runs long
+# before 09; until then the HTTP LB health check 3xx-redirects against the TLS pod
+# and the NEG never goes healthy). `kubectl rollout status` blocks on that gate, so
+# waiting here deadlocks the whole Day1. The container itself is Ready; the old
+# replica terminates once 09 makes the NEG healthy. See docs/504 § argocd.
+wait_argocd_server_rollout() {
+  if [[ "$(j2026_argocd_backend_tls_active)" == "true" ]]; then
+    log_info "Backend TLS active - skipping the argocd-server rollout wait (NEG readiness gate clears at 09-gateway.sh)."
+    return 0
+  fi
+  kubectl rollout status deployment "${J2026_ARGOCD_RELEASE}-server" -n "${J2026_ARGOCD_NAMESPACE}" --timeout=5m
+}
+
 resolve_argocd_version() {
   local constraint="$1"
   local baseline="$2"
@@ -161,7 +176,13 @@ EOF
   kubectl rollout restart deployment "${J2026_ARGOCD_RELEASE}-dex-server" -n "${J2026_ARGOCD_NAMESPACE}"
   
   log_info "Waiting for ArgoCD server and dex rollouts to complete to release resource quota..."
-  kubectl rollout status deployment "${J2026_ARGOCD_RELEASE}-server" -n "${J2026_ARGOCD_NAMESPACE}" --timeout=5m
+  # Backend TLS: the TLS argocd-server pod carries a GKE NEG readiness gate that only
+  # clears once 09-gateway.sh flips the LB HealthCheckPolicy to HTTPS (until then the
+  # HTTP LB health check 3xx-redirects against the now-TLS pod, so the NEG never goes
+  # healthy). `rollout status` blocks on that gate and would DEADLOCK the Day1 here
+  # (08.5 runs long before 09). Skip it for argocd-server when TLS is active - its
+  # container is Ready; the old replica terminates once 09 makes the NEG healthy.
+  wait_argocd_server_rollout
   kubectl rollout status deployment "${J2026_ARGOCD_RELEASE}-dex-server" -n "${J2026_ARGOCD_NAMESPACE}" --timeout=5m
 else
   log_warn "OIDC credentials not found. ArgoCD will use local admin password."
@@ -196,7 +217,7 @@ kubectl patch configmap argocd-rbac-cm -n "${J2026_ARGOCD_NAMESPACE}" --type mer
 if [[ -z "${CLIENT_ID}" || -z "${CLIENT_SECRET}" ]]; then
   log_info "Restarting ArgoCD server to pick up local account config"
   kubectl rollout restart deployment "${J2026_ARGOCD_RELEASE}-server" -n "${J2026_ARGOCD_NAMESPACE}"
-  kubectl rollout status deployment "${J2026_ARGOCD_RELEASE}-server" -n "${J2026_ARGOCD_NAMESPACE}" --timeout=5m
+  wait_argocd_server_rollout  # skipped under backend TLS (NEG gate clears at 09) - see note above
 fi
 
 log_info "Generating ArgoCD API token for the '${CI_ARGOCD_ACCOUNT}' account"

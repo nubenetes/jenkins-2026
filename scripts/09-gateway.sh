@@ -875,6 +875,17 @@ fi
 log_step "Applying Gateway resources"
 kubectl apply -f "${GENERATED_DIR}/"
 
+# Backend TLS: the argocd-server HTTPS HealthCheckPolicy is now applied, so the
+# NEG can finally go healthy (08.5 deliberately SKIPPED argocd-server's rollout
+# wait - its readiness gate was blocked on this policy). Converge it here so the
+# Day1 finishes with a Ready argocd. Non-fatal: a slow LB health-check reconcile
+# shouldn't fail an otherwise-good run (the pod converges shortly after).
+if [[ "${ARGOCD_TLS_ACTIVE}" == "true" ]]; then
+  log_step "Waiting for argocd-server to become NEG-healthy under the new HTTPS health check"
+  kubectl rollout status deployment argocd-server -n "${J2026_ARGOCD_NAMESPACE}" --timeout=6m || \
+    log_warn "argocd-server rollout not confirmed within 6m - the LB HTTPS health-check reconcile may still be in flight; check 'kubectl -n ${J2026_ARGOCD_NAMESPACE} get pods' and the GCP backend health."
+fi
+
 log_info "Gateway ready."
 if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
   log_info "  Jenkins:           https://${J2026_GATEWAY_JENKINS_HOST}"
