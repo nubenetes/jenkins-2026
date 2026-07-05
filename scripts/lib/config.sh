@@ -412,6 +412,12 @@ export J2026_BACKEND_TLS_CA_ISSUER="jenkins-2026-internal-ca"
 # BackendTLSPolicies' caCertificateRefs validate against.
 export J2026_BACKEND_TLS_CA_CONFIGMAP="jenkins-2026-backend-tls-ca"
 export J2026_BACKEND_TLS_POLICY_HEADLAMP="headlamp-backend-tls"
+# Stage-2 TLS backend: the otel-collector faro (RUM) receiver. Server-cert Secret
+# 08.7 mints (must match secretName in observability/otel-collector/
+# values-backend-tls.yaml) + the BackendTLSPolicy 09-gateway.sh attaches. The
+# collector Service is otel-collector-gateway (fullnameOverride, every obs mode).
+export J2026_BACKEND_TLS_SECRET_FARO="faro-tls"
+export J2026_BACKEND_TLS_POLICY_FARO="faro-backend-tls"
 
 # Fixed names of the Gateway/HTTPRoute/GCPBackendPolicy resources created by
 # scripts/09-gateway.sh. Shared with scripts/down.sh so the two stay in sync:

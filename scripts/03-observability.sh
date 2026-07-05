@@ -116,6 +116,18 @@ for _obs_pair in "grafana-cloud:${J2026_GRAFANA_CLOUD_SECRET}" \
   fi
 done
 
+# Backend TLS (opt-in, docs/504): when active, layer values-backend-tls.yaml onto
+# EVERY mode's otel-collector-gateway release so the faro (RUM) receiver serves TLS
+# on 8027 from the cert 08.7 minted (which runs before this script). Empty array =
+# no-op (safe `"${arr[@]}"` expansion under set -u on bash 4.4+). Same gate as
+# 09-gateway.sh's BackendTLSPolicy, so the pod-side TLS and the LB-side policy flip
+# together — a half-flip would 502 the faro host.
+faro_tls_helm_args=()
+if [[ "$(j2026_backend_tls_active)" == "true" ]]; then
+  log_info "Backend TLS active - layering the faro TLS overlay onto the otel-collector-gateway release"
+  faro_tls_helm_args=(-f "${J2026_ROOT_DIR}/observability/otel-collector/values-backend-tls.yaml")
+fi
+
 case "${J2026_OBS_MODE}" in
   grafana-cloud)
     log_step "Observability mode: grafana-cloud"
@@ -150,7 +162,8 @@ case "${J2026_OBS_MODE}" in
     helm upgrade --install "${J2026_OTEL_GATEWAY_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
       ${J2026_OTEL_COLLECTOR_CHART_VERSION:+--version=${J2026_OTEL_COLLECTOR_CHART_VERSION}} \
       --namespace "${J2026_OBS_NAMESPACE}" \
-      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-grafana-cloud.yaml"
+      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-grafana-cloud.yaml" \
+      "${faro_tls_helm_args[@]}"
 
     log_step "Installing ${J2026_OTEL_LOGS_RELEASE} (node log DaemonSet -> Grafana Cloud)"
     helm upgrade --install "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
@@ -397,7 +410,8 @@ EOT
     helm upgrade --install "${J2026_OTEL_GATEWAY_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
       ${J2026_OTEL_COLLECTOR_CHART_VERSION:+--version=${J2026_OTEL_COLLECTOR_CHART_VERSION}} \
       --namespace "${J2026_OBS_NAMESPACE}" \
-      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-oss.yaml"
+      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-oss.yaml" \
+      "${faro_tls_helm_args[@]}"
 
     log_step "Installing ${J2026_OTEL_LOGS_RELEASE} (node log DaemonSet -> Loki)"
     helm upgrade --install "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
@@ -505,7 +519,8 @@ EOT
     helm upgrade --install "${J2026_OTEL_GATEWAY_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
       ${J2026_OTEL_COLLECTOR_CHART_VERSION:+--version=${J2026_OTEL_COLLECTOR_CHART_VERSION}} \
       --namespace "${J2026_OBS_NAMESPACE}" \
-      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-managed-azure.yaml"
+      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-managed-azure.yaml" \
+      "${faro_tls_helm_args[@]}"
 
     log_step "Installing ${J2026_OTEL_LOGS_RELEASE} (node log DaemonSet -> Azure Monitor)"
     helm upgrade --install "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
@@ -565,7 +580,8 @@ EOT
     helm upgrade --install "${J2026_OTEL_GATEWAY_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
       ${J2026_OTEL_COLLECTOR_CHART_VERSION:+--version=${J2026_OTEL_COLLECTOR_CHART_VERSION}} \
       --namespace "${J2026_OBS_NAMESPACE}" \
-      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-managed-aws.yaml"
+      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-managed-aws.yaml" \
+      "${faro_tls_helm_args[@]}"
 
     log_step "Installing ${J2026_OTEL_LOGS_RELEASE} (node log DaemonSet -> CloudWatch Logs)"
     helm upgrade --install "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \

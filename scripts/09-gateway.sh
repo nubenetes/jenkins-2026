@@ -177,6 +177,46 @@ spec:
     name: otel-collector-gateway
 EOT
 
+# Backend TLS for the faro (RUM) receiver (stage-2 TLS-ready backend; opt-in via
+# gateway.backendTls.enabled - docs/504). When active, the otel-collector faro
+# receiver serves TLS on 8027 (values-backend-tls.yaml overlay added by
+# 03-observability.sh; cert + CA trust ConfigMap minted by 08.7-backend-tls.sh).
+# Only the BackendTLSPolicy flips here - the faro HealthCheckPolicy above stays
+# TCP (protocol-agnostic, so it survives the plain->TLS switch, unlike headlamp's
+# HTTP probe which had to become HTTPS). The HTTPRoute is unchanged (still targets
+# Service port 8027). Same j2026_backend_tls_active gate as the collector overlay.
+if [[ "${BACKEND_TLS_ACTIVE}" == "true" ]]; then
+  log_step "Generating BackendTLSPolicy (faro receiver, backendTls enabled)"
+  cat >"${GENERATED_DIR}/backendtlspolicy-faro.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: ${J2026_BACKEND_TLS_POLICY_FARO}
+  namespace: ${J2026_OBS_NAMESPACE}
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: otel-collector-gateway
+  validation:
+    hostname: otel-collector-gateway.${J2026_OBS_NAMESPACE}.svc.cluster.local
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: ${J2026_BACKEND_TLS_CA_CONFIGMAP}
+EOT
+else
+  # Inactive - retire any faro BackendTLSPolicy from a previous enabled run and
+  # drop the stale manifest so the directory-apply can't re-create it (CRD-guarded
+  # delete, same as the headlamp block).
+  rm -f "${GENERATED_DIR}/backendtlspolicy-faro.yaml"
+  if kubectl get namespace "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1 \
+     && kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+    log_step "Removing any leftover faro BackendTLSPolicy (backendTls inactive)"
+    kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_FARO}" -n "${J2026_OBS_NAMESPACE}" --ignore-not-found
+  fi
+fi
+
 # Optional lean develop tier - only routed when microservices.developTrackEnabled
 # (the namespace itself is created by 01-namespaces.sh under the same flag). Public,
 # NO IAP - same edge posture as the stable microservices host. Mirrors the grafana

@@ -1,0 +1,21 @@
+# Backend TLS overlay for the otel-collector faro (RUM) receiver — OPT-IN via
+# gateway.backendTls.enabled (docs/504-BACKEND_TLS.md). 03-observability.sh
+# appends this file with `helm -f` to the otel-collector-gateway release ONLY
+# when backend TLS is active, on top of the per-mode values-<mode>.yaml.
+#
+# It adds ONLY config.receivers.faro.tls — a deep MAP merge, so it composes with
+# every mode's values without disturbing the faro endpoint/cors or any other
+# receiver. The cert itself is mounted by the `faro-tls` volume that lives in
+# each values-<mode>.yaml (optional: true there, so a flag-OFF run — no overlay,
+# no minted Secret — still starts the collector with an empty, ignored mount).
+#
+# The cert is minted by 08.7-backend-tls.sh (Secret faro-tls in the
+# observability namespace, SAN otel-collector-gateway.<ns>.svc.cluster.local),
+# which runs BEFORE 03-observability.sh in up.sh — so the Secret already exists
+# when the collector rolls with this overlay.
+config:
+  receivers:
+    faro:
+      tls:
+        cert_file: /faro-tls/tls.crt
+        key_file: /faro-tls/tls.key

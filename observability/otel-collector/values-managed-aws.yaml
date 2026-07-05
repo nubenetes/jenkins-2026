@@ -59,9 +59,20 @@ extraVolumes:
             path: token
             audience: sts.amazonaws.com
             expirationSeconds: 3600
+  # Backend TLS (opt-in, docs/504): the cert-manager-minted faro server cert, so
+  # the faro receiver can serve TLS on 8027 once values-backend-tls.yaml is
+  # layered (03-observability.sh, backend TLS active). optional:true keeps a
+  # flag-OFF collector starting — the Secret only exists when the feature is on.
+  - name: faro-tls
+    secret:
+      secretName: faro-tls
+      optional: true
 extraVolumeMounts:
   - name: aws-token
     mountPath: /var/run/secrets/aws-token
+    readOnly: true
+  - name: faro-tls
+    mountPath: /faro-tls
     readOnly: true
 
 # RBAC for the prometheus receiver's Kubernetes service discovery (cadvisor /

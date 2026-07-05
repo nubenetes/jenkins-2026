@@ -12,8 +12,9 @@ documents). Setting **`gateway.backendTls.enabled: true`** (override
 **application-layer TLS on that hop** for the TLS-ready backends: cert-manager +
 a cluster-internal CA are installed, the backend serves HTTPS itself, and a GKE
 `BackendTLSPolicy` makes the LB **re-encrypt *and* validate** the connection
-against the internal CA. Stage 1 converts **Headlamp**; the roadmap below stages
-the rest. Default **`false`** — zero impact until you opt in.
+against the internal CA. Stages 1–2 convert **Headlamp** and the **faro RUM
+receiver**; the roadmap below stages the rest. Default **`false`** — zero impact
+until you opt in.
 
 ## Why (and why opt-in)
 
@@ -153,7 +154,7 @@ Known per-backend state:
 | **Jenkins** | chart `controller.httpsKeyStore.*` + cert-manager `keystores.jks` (JKS + password Secret) | probes move to the plain-HTTP `httpPort` (8081); the WebSocket build agents dial the controller Service — they must trust the internal CA or stay on an internal plain port; highest blast radius |
 | **Grafana (OSS)** | `grafana.ini` `server.protocol=https` + mounted cert | oss-mode-only (doubly conditional); values thread through the `observability-oss` app-of-apps |
 | **microservices gateway (JHipster)** | Spring Boot `server.ssl.*` + cert-manager `keystores.pkcs12` | **cross-repo** — the deploy chart lives in `jenkins-2026-gitops-config`; also interacts with Argo Rollouts canary routes and every engine's smoke test URL |
-| **faro receiver (otel-collector)** | OTLP/faro receiver `tls` block + mounted cert | health check is already TCP (protocol-agnostic); config threads through `03-observability.sh`'s collector values |
+| **faro receiver (otel-collector)** | faro receiver `tls` block + mounted cert | ✅ **done (stage 2)** — the `faro-tls` overlay ([`values-backend-tls.yaml`](../observability/otel-collector/values-backend-tls.yaml)) is layered by `03-observability.sh` onto every mode's collector release; the `faro-tls` volume is declared `optional: true` in each `values-<mode>.yaml` so a flag-off collector still starts. Its HealthCheckPolicy stays **TCP** (protocol-agnostic), so only the `BackendTLSPolicy` flips — no health-check change |
 
 ## Does `secrets.backend=eso` change anything?
 
@@ -253,12 +254,17 @@ composable increment.
 kubectl get application cert-manager -n argocd                  # Synced/Healthy
 kubectl get clusterissuer                                       # both Ready
 kubectl get certificate -A                                      # CA + headlamp-tls Ready
-kubectl get backendtlspolicy,healthcheckpolicy -n headlamp      # policy pair present
+kubectl get backendtlspolicy,healthcheckpolicy -n headlamp      # headlamp policy pair present
+kubectl get backendtlspolicy faro-backend-tls -n observability  # faro policy (health check stays TCP)
+kubectl get certificate faro-tls -n observability               # faro-tls Ready
 kubectl -n headlamp get cm jenkins-2026-backend-tls-ca -o jsonpath='{.data.ca\.crt}' | head -1
 # The pod side: headlamp now speaks TLS on 4466
 kubectl -n headlamp exec deploy/headlamp -- wget -q --no-check-certificate -O- https://localhost:4466/ >/dev/null && echo TLS-OK
-# The LB side: the public host must still answer (IAP first, then the re-encrypted hop)
+# faro: the collector serves TLS on 8027 (SNI = the Service FQDN, validated vs the CA)
+kubectl -n observability get svc otel-collector-gateway -o jsonpath='{.spec.ports[?(@.name=="faro")].port}'
+# The LB side: the public hosts must still answer (IAP first for headlamp; faro is public)
 curl -sSI https://headlamp.<baseDomain> | head -3
+curl -sSI https://faro.<baseDomain>     | head -3
 ```
 
 If the host 502s after enabling, check `kubectl describe backendtlspolicy -n
