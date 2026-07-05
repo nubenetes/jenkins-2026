@@ -24,6 +24,7 @@ All notable changes to **jenkins-2026** are documented here, following
   - **Collapsible visual index**: Created [docs/infographics/README.md](./docs/infographics/README.md) containing a structured catalog matrix table at the top and 35 individual collapsible visual previews below, enabling visual expansion in the browser with 1 click.
   - **Main README integration**: Added section `3.1. Technical Infographics Catalog` in the main `README.md` containing 10 category-based collapsible tables with semantic details (Code, link, key technologies, and detailed descriptions) and updated the main Table of Contents.
   - **Git LFS tracking**: Initialized Git LFS in the repository and configured it to track all infographics PNG files, keeping the Git history light. Excluded heavy multimedia files from the `media/` subfolder.
+  - **Google Drive Media integration**: Linked the heavy media assets folder (videos, execution recordings, large presentation sheets) directly in the main `README.md` via an interactive Google Drive badge and a dedicated `3.2. Project Media & External Resources` section, keeping the git repository clean and light.
 
 ### Fixed
 - **Mermaid mindmap text overlap.** Fixed text/component overlaps in the "Mental model" mindmap diagram of the main `README.md` by applying explicit node shapes (circles, rounded rectangles, and rectangles) to help the Mermaid layout engine calculate boundaries and spacing correctly.
