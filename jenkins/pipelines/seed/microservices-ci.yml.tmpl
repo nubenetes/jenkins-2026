@@ -42,7 +42,13 @@ jobs:
       TARGET_NS: ${{ github.ref_name == 'develop' && '{{nsDevelop}}' || '{{nsStable}}' }}
       INFRA_BRANCH: "{{selfRepoBranch}}"
       OTLP_ENDPOINT: "http://otel-collector-gateway.{{obsNamespace}}.svc.cluster.local:4317"
+      # Cross-engine OTel resource contract, inherited by any OTel-aware step: the service
+      # name mirrors Jenkins' jenkins-pipeline-<svc>; service.namespace/deployment.environment
+      # match the k6 convention (docs/301). The github-actions-ci dashboard itself correlates
+      # runner telemetry by k8s namespace (resource.k8s.namespace.name via the collector's
+      # k8sattributes), so its panels do not depend on these attributes.
       OTEL_SERVICE_NAME: "githubactions-pipeline-{{svcName}}"
+      OTEL_RESOURCE_ATTRIBUTES: service.namespace=jenkins-2026,deployment.environment=${{ github.ref_name == 'develop' && 'develop' || 'stable' }}
     steps:
       - name: Checkout app (microservices fork)
         uses: actions/checkout@v4
@@ -197,6 +203,7 @@ jobs:
       - name: Export pipeline OTel trace
         if: always()
         run: |
-          # k6/build spans -> the in-cluster collector; k6 tags ci_runner=githubactions so the
-          # existing k6 Grafana dashboards filter the new engine out of the box.
-          echo "OTEL_EXPORTER_OTLP_ENDPOINT=$OTLP_ENDPOINT (service.name=githubactions, ci_runner=githubactions)"
+          # Placeholder — native run/step span export is a deferred follow-up (docs/301
+          # § Jenkins Plugin); this surfaces the contract the job env pins for any
+          # OTel-aware step. k6 for this engine runs via Day2.traffic.01-k6 (--tag ci_runner=gha).
+          echo "OTEL_EXPORTER_OTLP_ENDPOINT=$OTLP_ENDPOINT service.name=$OTEL_SERVICE_NAME $OTEL_RESOURCE_ATTRIBUTES"
