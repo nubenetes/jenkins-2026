@@ -449,6 +449,7 @@ export J2026_GATEWAY_HTTPROUTE_TEKTON="tekton"
 # PaC controller webhook endpoint (ci.engine=tekton; public, no IAP).
 export J2026_GATEWAY_HTTPROUTE_PAC="pac"
 export J2026_GATEWAY_IAP_POLICY_JENKINS="jenkins-iap"
+export J2026_GATEWAY_IAP_POLICY_ARGOCD="argocd-iap"
 export J2026_GATEWAY_IAP_POLICY_HEADLAMP="headlamp-iap"
 export J2026_GATEWAY_IAP_POLICY_PGADMIN="pgadmin-iap"
 export J2026_GATEWAY_IAP_POLICY_GRAFANA="grafana-iap"

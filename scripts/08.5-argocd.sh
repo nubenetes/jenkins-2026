@@ -125,47 +125,48 @@ CLIENT_ID="$(kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${J2026_HEADLA
 CLIENT_SECRET="$(kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${J2026_HEADLAMP_NAMESPACE}" -o jsonpath='{.data.client_secret}' 2>/dev/null | base64 -d || true)"
 
 if [[ -n "${CLIENT_ID}" && -n "${CLIENT_SECRET}" ]]; then
-  log_info "Wiring Google OIDC for ArgoCD at ${ARGOCD_URL}"
-  
+  log_info "Wiring IAP authproxy SSO for ArgoCD at ${ARGOCD_URL}"
+
   PATCH_FILE=$(mktemp)
+  # Dex authproxy connector: ArgoCD trusts the identity Google IAP injects at the edge
+  # (the X-Goog-Authenticated-User-Email header), so IAP performs the ONE Google login
+  # and ArgoCD runs NO second OAuth flow — single sign-on (docs/501). This replaces the
+  # former Google `oidc` connector, whose redirect caused a second login on top of IAP.
+  # The header value is prefixed `accounts.google.com:`, so the RBAC bindings below carry
+  # that prefix. SECURITY: authproxy trusts the header WITHOUT verifying IAP's signed JWT,
+  # so argocd-server must be reachable ONLY behind IAP — the argocd-baseline NetworkPolicy
+  # (infrastructure/networkpolicies.yaml) restricts pod :8080 ingress to the GKE LB + CI
+  # namespaces so no arbitrary in-cluster pod can forge the header (header-spoof mitigation).
   cat <<EOF > "${PATCH_FILE}"
 data:
   url: ${ARGOCD_URL}
   dex.config: |
     connectors:
-      - type: oidc
-        id: google
-        name: Google
+      - type: authproxy
+        id: iap
+        name: Google IAP
         config:
-          issuer: https://accounts.google.com
-          clientID: ${CLIENT_ID}
-          clientSecret: ${CLIENT_SECRET}
-          redirectURI: ${ARGOCD_URL}/api/dex/callback
-          scopes:
-            - openid
-            - profile
-            - email
-          userIDKey: email
-          userNameKey: email
+          userHeader: "X-Goog-Authenticated-User-Email"
 EOF
   kubectl patch configmap argocd-cm -n ${J2026_ARGOCD_NAMESPACE} --patch-file "${PATCH_FILE}"
   rm "${PATCH_FILE}"
 
   PATCH_FILE_RBAC=$(mktemp)
-  # scopes MUST include 'email': Google OIDC returns no 'groups' claim, so RBAC
-  # subjects are matched against the email claim (the human admin is bound by email
-  # below / in the CI-account section). With the default '[groups]' nothing matches
-  # and OIDC users fall to policy.default. (policy.csv here is overwritten by the
-  # CI-account patch further down; the binding that matters is set there.)
+  # scopes = '[email]': IAP forwards no 'groups' claim (nor did the old Google OIDC),
+  # so RBAC subjects are matched by email only. The IAP authproxy identity is the raw
+  # header value, which IAP prefixes with 'accounts.google.com:' — so the human admin
+  # binding carries that prefix (below / in the CI-account section). (policy.csv here
+  # is overwritten by the CI-account patch further down; the binding that matters is
+  # set there.)
   cat <<EOF > "${PATCH_FILE_RBAC}"
 data:
-  scopes: '[groups, email]'
+  scopes: '[email]'
   policy.default: role:readonly
   policy.csv: |
     g, authenticated, role:admin
 EOF
   if [[ -n "${J2026_JENKINS_OIDC_ADMIN_EMAIL}" ]]; then
-    echo "    g, ${J2026_JENKINS_OIDC_ADMIN_EMAIL}, role:admin" >> "${PATCH_FILE_RBAC}"
+    echo "    g, accounts.google.com:${J2026_JENKINS_OIDC_ADMIN_EMAIL}, role:admin" >> "${PATCH_FILE_RBAC}"
   fi
   kubectl patch configmap argocd-rbac-cm -n ${J2026_ARGOCD_NAMESPACE} --patch-file "${PATCH_FILE_RBAC}"
   rm "${PATCH_FILE_RBAC}"
@@ -200,15 +201,18 @@ esac
 log_step "Configuring '${CI_ARGOCD_ACCOUNT}' account in ArgoCD"
 kubectl patch configmap argocd-cm -n "${J2026_ARGOCD_NAMESPACE}" --type merge -p "{\"data\": {\"accounts.${CI_ARGOCD_ACCOUNT}\": \"apiKey\"}}"
 
+# The CI account is a LOCAL argocd apiKey account (not header-derived), so its RBAC
+# subject is the bare account name — NO accounts.google.com: prefix (unlike the human).
 policy_csv="g, ${CI_ARGOCD_ACCOUNT}, role:admin"
 if [[ -n "${CLIENT_ID}" && -n "${CLIENT_SECRET}" ]]; then
-  # Grant the human admin via their Google email claim (scopes include 'email'
-  # above). ArgoCD has NO built-in "authenticated" group - that subject is a
-  # no-op - so bind the specific admin email instead.
+  # Grant the human admin by the identity the IAP authproxy connector reports — the
+  # IAP header value, which IAP prefixes with 'accounts.google.com:'. Bind the specific
+  # admin email (ArgoCD has no built-in "authenticated" group; that subject is a no-op).
+  # ⚠️ The prefix is load-bearing: a bare email would silently drop the admin to readonly.
   if [[ -n "${J2026_JENKINS_OIDC_ADMIN_EMAIL}" ]]; then
-    policy_csv="g, ${J2026_JENKINS_OIDC_ADMIN_EMAIL}, role:admin\n${policy_csv}"
+    policy_csv="g, accounts.google.com:${J2026_JENKINS_OIDC_ADMIN_EMAIL}, role:admin\n${policy_csv}"
   else
-    log_warn "JENKINS_OIDC_ADMIN_EMAIL unset - no human will get ArgoCD admin via OIDC (only the '${CI_ARGOCD_ACCOUNT}' API account). Set the GitHub secret to your Google login email, else ArgoCD shows an empty app list to SSO users."
+    log_warn "JENKINS_OIDC_ADMIN_EMAIL unset - no human will get ArgoCD admin via IAP SSO (only the '${CI_ARGOCD_ACCOUNT}' API account). Set the GitHub secret to your Google login email, else ArgoCD shows an empty app list to SSO users."
   fi
 fi
 kubectl patch configmap argocd-rbac-cm -n "${J2026_ARGOCD_NAMESPACE}" --type merge -p "{\"data\": {\"policy.csv\": \"${policy_csv}\"}}"

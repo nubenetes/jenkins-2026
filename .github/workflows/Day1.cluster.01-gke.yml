@@ -813,7 +813,7 @@ jobs:
             echo "════════════════════════════════════════════════════════════════════════"
             if [[ "${{ inputs.enable_gateway }}" == "true" ]]; then
               echo "  Behind Google IAP — sign in with an authorized Google account:"
-              echo "    ArgoCD:                https://argocd.${dom}"
+              echo "    ArgoCD:                https://argocd.${dom}  (single sign-on: IAP + Dex authproxy; admin email = role:admin, else readonly)"
               echo "${ci_iap}"
               echo "    Headlamp:              https://headlamp.${dom}"
               echo "    pgAdmin:               https://pgadmin.${dom}"

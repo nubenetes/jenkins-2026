@@ -218,7 +218,9 @@ else
   # the same client ID/secret must exist in each backend's namespace. The OSS
   # Grafana (observability.mode=oss) is IAP-protected too, so its namespace
   # needs the secret as well - only in oss mode, where Grafana runs in-cluster.
-  iap_namespaces=("${J2026_HEADLAMP_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}")
+  # ArgoCD is IAP-fronted too (defense-in-depth; its Dex authproxy connector trusts
+  # the IAP identity header — docs/504/501), and is always deployed, so unconditional.
+  iap_namespaces=("${J2026_HEADLAMP_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}" "${J2026_ARGOCD_NAMESPACE}")
   if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
     iap_namespaces+=("${J2026_GRAFANA_OSS_NAMESPACE}")
   fi

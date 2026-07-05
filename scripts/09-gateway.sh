@@ -697,12 +697,12 @@ spec:
     name: gateway
 EOT
 
-log_step "Generating GCPBackendPolicies (IAP for jenkins, headlamp, pgadmin)"
+log_step "Generating GCPBackendPolicies (IAP for jenkins, argocd, headlamp, pgadmin)"
 declare -A iap_client_id
 # The OSS Grafana (observability.mode=oss) is IAP-protected too - same edge
 # pattern as Jenkins/Headlamp. Its namespace only needs the per-namespace
 # client secret in that mode.
-iap_backend_namespaces=("${J2026_HEADLAMP_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}")
+iap_backend_namespaces=("${J2026_HEADLAMP_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}" "${J2026_ARGOCD_NAMESPACE}")
 # Jenkins is an IAP backend only when it is the CI engine (no Jenkins Service in
 # the other modes); the Tekton Dashboard is the IAP backend instead when
 # ci.engine=tekton. ci.engine=githubactions has NO in-cluster CI dashboard (runs
@@ -773,6 +773,30 @@ spec:
     iap:
       enabled: true
       clientID: "${iap_client_id[${J2026_HEADLAMP_NAMESPACE}]}"
+      oauth2ClientSecret:
+        name: ${J2026_GATEWAY_IAP_SECRET}-client-secret
+EOT
+
+# ArgoCD IAP (defense-in-depth, docs/501): edge-block the argocd UI like the other
+# admin UIs. ArgoCD's Dex authproxy connector (08.5-argocd.sh) trusts the IAP-injected
+# X-Goog-Authenticated-User-Email header for single-sign-on + per-user RBAC. Composes
+# with the argocd BackendTLSPolicy (both target the same Service, like headlamp). The
+# header-spoof mitigation is the tightened argocd-baseline NetworkPolicy.
+cat >"${GENERATED_DIR}/gcpbackendpolicy-argocd.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: ${J2026_GATEWAY_IAP_POLICY_ARGOCD}
+  namespace: ${J2026_ARGOCD_NAMESPACE}
+spec:
+  targetRef:
+    group: ""
+    kind: Service
+    name: argocd-server
+  default:
+    iap:
+      enabled: true
+      clientID: "${iap_client_id[${J2026_ARGOCD_NAMESPACE}]}"
       oauth2ClientSecret:
         name: ${J2026_GATEWAY_IAP_SECRET}-client-secret
 EOT

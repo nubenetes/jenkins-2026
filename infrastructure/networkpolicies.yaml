@@ -180,14 +180,29 @@ spec:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: argocd
-  # argocd-server reachable from ANY source — covers the GKE Gateway + health
-  # checks, the Tekton/Jenkins gitops-deploy syncs, the CI token bootstrap
-  # (kubectl port-forward) and the argocd CLI. NOTE: this is the POD port (8080,
-  # the argocd-server containerPort that both Service ports 80 and 443 target) —
-  # the GKE container-native LB (NEG) sends to the pod's targetPort, NOT the
-  # Service port, so allowing 80/443 here left the backend UNHEALTHY. Only
-  # argocd-server listens on 8080, so the internal components stay closed.
-  - ports:
+  # argocd-server pod port 8080 (the containerPort both Service ports 80/443 target;
+  # the GKE container-native LB/NEG sends to the pod's targetPort, so this MUST be
+  # 8080, not 80/443, or the backend goes UNHEALTHY). RESTRICTED (was "from ANY"):
+  # once ArgoCD is IAP-fronted with the Dex authproxy connector, argocd-server trusts
+  # the X-Goog-Authenticated-User-Email header WITHOUT verifying IAP's signed JWT — so
+  # any pod that can reach :8080 could forge that header and take over ArgoCD as admin
+  # (docs/501 § header-spoof). Allow ONLY: the GKE global-LB + health-check IP ranges
+  # (browser-via-IAP data path + NEG probes both originate here) and the CI
+  # deploy-caller namespaces (they token-auth `argocd app sync`; token auth is
+  # independent of the header). Non-existent namespaces simply don't match. Human
+  # break-glass uses `argocd login --core` (talks to the k8s API, no network hop to
+  # the pod), so tightening this does NOT remove the recovery path.
+  - from:
+    - ipBlock:
+        cidr: 130.211.0.0/22
+    - ipBlock:
+        cidr: 35.191.0.0/16
+    - namespaceSelector:
+        matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values: [jenkins, tekton-pipelines, argo, argo-ci, arc-runners]
+    ports:
     - protocol: TCP
       port: 8080
   egress:
