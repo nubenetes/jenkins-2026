@@ -19,6 +19,15 @@ All notable changes to **jenkins-2026** are documented here, following
 
 ## [Unreleased]
 
+### Added
+- **Technical Infographics Catalog.** Integrated a comprehensive catalog of 35 technical infographics from `notebookLM-completo` into the repository under [docs/infographics/](./docs/infographics/).
+  - **Collapsible visual index**: Created [docs/infographics/README.md](./docs/infographics/README.md) containing a structured catalog matrix table at the top and 35 individual collapsible visual previews below, enabling visual expansion in the browser with 1 click.
+  - **Main README integration**: Added section `3.1. Technical Infographics Catalog` in the main `README.md` containing 10 category-based collapsible tables with semantic details (Code, link, key technologies, and detailed descriptions) and updated the main Table of Contents.
+  - **Git LFS tracking**: Initialized Git LFS in the repository and configured it to track all infographics PNG files, keeping the Git history light. Excluded heavy multimedia files from the `media/` subfolder.
+
+### Fixed
+- **Mermaid mindmap text overlap.** Fixed text/component overlaps in the "Mental model" mindmap diagram of the main `README.md` by applying explicit node shapes (circles, rounded rectangles, and rectangles) to help the Mermaid layout engine calculate boundaries and spacing correctly.
+
 ### Docs
 - **README stack badges: added the cert-manager + backend-TLS row.** The "Secrets" badge group is now "**Secrets & PKI**" and carries **cert-manager** and a **Backend TLS · opt-in** badge alongside External Secrets Operator / GCP Secret Manager, reflecting the v1.2.0 opt-in backend-TLS feature ([docs/504](docs/504-BACKEND_TLS.md)). The companion **[gitops-config](https://github.com/nubenetes/jenkins-2026-gitops-config)** repo README gained a full badge block of its own (GitOps source-of-truth / CI-writable-main / ArgoCD·Helm·CNPG·OTel·Gateway-API·deployed-app).
 
