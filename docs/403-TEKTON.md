@@ -591,7 +591,9 @@ Start them manually for ad-hoc runs, debugging, or to fire the k6 smoke on deman
 
 > `otlp-endpoint` for in-cluster runs is
 > `http://otel-collector-gateway.observability.svc.cluster.local:4317` (k6/pipeline
-> metrics → the collector → your backend). Leave it empty to skip OTLP.
+> metrics → the collector → your backend). The standalone `microservices-k6-smoke`
+> Pipeline/Task already **default to it**; `microservices-pipeline` gets it injected
+> by `06-tekton-pipelines.sh` / the trigger. Set it to `""` to skip OTLP.
 
 ### Option A — Tekton Dashboard (GUI, behind IAP)
 

@@ -2,9 +2,10 @@
 // "seed-jobs" pipeline (created by jenkins/casc/jcasc-seed-job.yaml).
 //
 // Checks out this repo, then runs the Job DSL script seed_jobs.groovy which
-// reads services.yaml and creates/updates the 9 stable Microservices pipeline
-// jobs at the root (one per service). Idempotent - safe to re-run any time
-// services.yaml or the Jenkinsfile changes.
+// reads services.yaml and creates/updates the stable Microservices pipeline
+// jobs at the root (3 per environment: one per service plus the k6 smoke job;
+// the optional develop tier adds a '-develop' set). Idempotent - safe to
+// re-run any time services.yaml or the shared library changes.
 // =============================================================================
 
 pipeline {

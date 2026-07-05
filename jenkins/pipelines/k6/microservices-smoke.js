@@ -11,10 +11,11 @@
 // endpoint ports, scenario (request-flow) selection and debug logging.
 //
 // CONTRACT (all optional; the same variables are wired through the Jenkins,
-// Tekton and GitHub Actions runners). The workload knobs use a K6SIM_ prefix on
-// purpose: k6 reserves K6_VUS / K6_DURATION / K6_ITERATIONS / K6_STAGES / K6_RPS
-// as its own execution-option env vars, which would clash with the `scenarios`
-// block below. See docs/302-K6_LOAD_TESTING.md for the full reference.
+// Tekton, GitHub Actions and Argo Workflows runners). The workload knobs use a
+// K6SIM_ prefix on purpose: k6 reserves K6_VUS / K6_DURATION / K6_ITERATIONS /
+// K6_STAGES / K6_RPS as its own execution-option env vars, which would clash
+// with the `scenarios` block below. See docs/302-K6_LOAD_TESTING.md for the
+// full reference.
 //
 //   Target
 //     TARGET_NAMESPACE        in-cluster DNS namespace      (default microservices)
@@ -29,7 +30,8 @@
 //     K6SIM_ITERATIONS shared iterations (smoke only)          (0 = profile default)
 //     K6SIM_DURATION  hold duration, e.g. 30s / 2m / 1h        (overrides profile)
 //     K6SIM_STAGES    ramping stages "30s:10,1m:50,30s:0"      (overrides profile)
-//     K6SIM_RPS       constant arrival rate (req/s)            (overrides profile)
+//     K6SIM_RPS       constant arrival rate (req/s)            (overrides profile;
+//                       breakpoint: sets the ramp target instead)
 //     K6SIM_SLEEP     think-time seconds between requests      (default 0.3)
 //
 //   Scenarios (request flows; comma list or "all")
@@ -123,11 +125,15 @@ function parseStages(raw) {
 
 // Build the single k6 scenario. Explicit overrides (STAGES, RPS) win over the
 // profile preset; within a preset, VUS / DURATION / ITERATIONS fine-tune it.
+// Exception: profile=breakpoint consumes RPS itself — it IS an RPS ramp, and
+// RPS sets the ramp's target (see the breakpoint case below). Letting the flat
+// constant-arrival-rate override swallow RPS here would replace the 1→RPS
+// "find the knee" ramp with a constant blast at the target rate.
 function buildScenario() {
   if (STAGES_RAW) {
     return { executor: 'ramping-vus', startVUs: 0, stages: parseStages(STAGES_RAW), gracefulRampDown: '10s' };
   }
-  if (RPS > 0) {
+  if (RPS > 0 && PROFILE !== 'breakpoint') {
     const pre = VUS || Math.max(10, Math.ceil(RPS));
     return {
       executor: 'constant-arrival-rate',

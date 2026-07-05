@@ -57,8 +57,26 @@ spec:
             {{- end }}
             containers:
               - name: runner
-                image: ghcr.io/actions/actions-runner:latest
+                # Pinned (was :latest) — tracks actions/runner releases; bump via versions.runnerImage.
+                image: 'ghcr.io/actions/actions-runner:{{ .Values.versions.runnerImage }}'
                 command: ["/home/runner/run.sh"]
+                volumeMounts:
+                  - name: arc-argocd
+                    mountPath: /var/run/secrets/arc-argocd
+                    readOnly: true
+            # The ArgoCD deploy token: Secret `arc-argocd` (key `token`), created
+            # imperatively by 08.5-argocd.sh in the runners namespace (before this app is
+            # applied by 04-githubactions.sh). The rendered microservices-ci.yml "ArgoCD
+            # sync + wait" step reads /var/run/secrets/arc-argocd/token — in-cluster only,
+            # never a fork secret (docs/404 § Security). The chart appends these to the
+            # dind volumes it injects for containerMode=dind. `optional` so runner pods
+            # still schedule if the Secret is absent (engine switch, partial Day1) — the
+            # workflow step is best-effort by design and tolerates an empty token.
+            volumes:
+              - name: arc-argocd
+                secret:
+                  secretName: arc-argocd
+                  optional: true
   destination:
     server: https://kubernetes.default.svc
     namespace: '{{ .Values.namespace.runners }}'

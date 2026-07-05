@@ -8,6 +8,8 @@
 #   02 otel-operator    (sequential - CRDs needed by 05's Instrumentation CR)
 #   08.5-argocd.sh      (sequential - CD engine for GitOps; before 03 so oss
 #                        mode can apply the observability-oss app-of-apps)
+#   08.7-backend-tls    (opt-in gateway.backendTls: cert-manager + internal CA
+#                        + per-backend server certs; no-op/retire when off)
 #   03 observability    (sequential - oss mode deploys via ArgoCD)
 #   04 jenkins          (sequential to prevent API pressure)
 #   06 seed-pipelines   (sequential - needs 04 ready)
@@ -45,6 +47,16 @@ log_step "Installing 08.5-argocd (CD Engine)"
 # installed by 08.5 and before the secret consumers (03/04/08/09).
 log_step "Syncing External Secrets (08.6, eso mode only)"
 "${SCRIPT_DIR}/08.6-eso-sync.sh"
+
+# Backend TLS (OPT-IN via gateway.backendTls.enabled, default false - docs/504):
+# cert-manager + the cluster-internal CA + the per-backend server certs. Must
+# run after ArgoCD (08.5 installs the cert-manager Application) and before the
+# TLS-ready backends' wait steps (08-headlamp needs the headlamp-tls Secret to
+# exist for the pod to start) and the gateway (09 attaches the
+# BackendTLSPolicies). When the flag is off this retires any leftovers and
+# no-ops - zero impact on the default posture.
+log_step "Configuring backend TLS (08.7, opt-in)"
+"${SCRIPT_DIR}/08.7-backend-tls.sh"
 
 log_step "Installing 03-observability (sequential to prevent API pressure)"
 "${SCRIPT_DIR}/03-observability.sh"

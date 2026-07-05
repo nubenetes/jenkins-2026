@@ -33,13 +33,15 @@ on:
           - managed-azure
           - managed-aws
       ci_engine:
-        description: "CI engine to deploy (jenkins default | tekton)."
+        description: "CI engine to deploy (jenkins default | tekton | githubactions | argoworkflows). Passed straight to Day1.cluster.01 — see its input for the full per-engine details."
         required: true
         default: "jenkins"
         type: choice
         options:
           - jenkins
           - tekton
+          - githubactions
+          - argoworkflows
       secrets_backend:
         description: "Secrets backend: imperative (default) | eso (GCP Secret Manager + External Secrets Operator)."
         required: true
@@ -60,6 +62,11 @@ on:
         type: boolean
       develop_track:
         description: "Deploy the optional lean 'develop' microservices tier alongside 'stable' (OFF by default). Passed straight to Day1.cluster.01."
+        required: false
+        default: false
+        type: boolean
+      backend_tls:
+        description: "Opt-in LB→pod TLS re-encryption (gateway.backendTls — docs/504): cert-manager + internal CA + TLS-serving Headlamp + BackendTLSPolicy. OFF by default. Passed straight to Day1.cluster.01 (where enabling/disabling converges)."
         required: false
         default: false
         type: boolean
@@ -139,5 +146,6 @@ jobs:
       destroy_unused_backends: ${{ inputs.destroy_unused_backends }}
       enable_gateway: true
       develop_track: ${{ inputs.develop_track }}
+      backend_tls: ${{ inputs.backend_tls }}
       git_ref: ${{ inputs.git_ref }}
     secrets: inherit

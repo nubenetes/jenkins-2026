@@ -195,6 +195,7 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 | **Secrets backend** | `secrets.backend` | **`imperative`** — `kubectl create secret` from GitHub secrets | **`eso`** — push values to **GCP Secret Manager** + sync via the **External Secrets Operator** over Workload Identity (keyless, versioned, audited). |
 | **Develop tier** | `microservices.developTrackEnabled` | **`false`** | **`true`** — an optional **lean, non-HA** second deploy tier (`microservices-develop`: CNPG single instance, single pooler, no backups), engine-neutral, into the same observability stack. |
 | **Public access** | `gateway.baseDomain` | **set** → one global **GKE Gateway** + Google **IAP** + a wildcard cert front every UI | **`""`** to disable (reach services via `kubectl port-forward`). |
+| **Backend TLS (LB→pod)** | `gateway.backendTls.enabled` | **`false`** — TLS terminates at the LB; the LB→pod hop is plain HTTP over Google's VPC (network-layer encrypted in transit) | **`true`** — install **cert-manager** + a cluster-internal CA; TLS-ready backends (stage 1: **Headlamp**) serve HTTPS themselves and a GKE **`BackendTLSPolicy`** makes the LB re-encrypt **and validate** the hop against that CA. Per-run override `JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED`; GHA `backend_tls` input on `Day1` + the gateway-touching `Day2.redeploy.*`. See [docs/504](docs/504-BACKEND_TLS.md). |
 | **Grafana Cloud tier** | `observability.grafanaCloudTier` | **`free`** | **`paid`** — a profile that sets the volume-control defaults so the free tier fits its limits. `free` → `leanMetrics` on + `logMinSeverity=warn`; `paid` → full metrics + ship all logs. Per-run override `JENKINS2026_GRAFANA_CLOUD_TIER`; GHA `grafana_cloud_tier` dropdown. Only meaningful in grafana-cloud mode. |
 | **Lean metrics** | `observability.leanMetrics` | **`auto`** | `true`/`false` — `auto` derives from `grafanaCloudTier` (free→on, paid→off). When on (grafana-cloud), drops the k8s-monitoring **cluster infra metrics** (cadvisor/kube-state/node-exporter) the custom dashboards don't use, to stay under the **free-tier 15k active-series** cap. Force with a literal value or `JENKINS2026_OBS_LEAN_METRICS`. |
 | **Log verbosity** | `logging.level` | **`info`** | **`debug`** — additionally emit `[DEBUG]` script lines (`log_debug`) and `TF_LOG=DEBUG` for the Terraform steps. Per-run override `JENKINS2026_LOG_LEVEL`; the GitHub Actions workflows expose it as a `log_level` dropdown. No `trace`/`set -x` level by design (would leak script-derived secrets); use `ACTIONS_STEP_DEBUG` for runner tracing. |
@@ -538,6 +539,7 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 | **501** | Platform | [Platform Operations](./docs/501-PLATFORM_OPERATIONS.md) | **ArgoCD inventory**, telemetry simulation, **platform QA & chaos** scenarios, **Golden Path IDP** modernizations (**Node Auto-Provisioning** + modern scheduling), **Headlamp** cluster UI, **GKE Gateway API + IAP** public access, **Argo Rollouts** progressive delivery |
 | **502** | Microservices | [Microservices GitOps](./docs/502-MICROSERVICES_GITOPS.md) | **Helm vs. Kustomize** design decision, **resource lifecycle & decommission** orchestration (**NEG synchronization barrier**), **parameterized CNPG HA** (stable vs lean develop), **pgAdmin** & database administration |
 | **503** | Networking | [Networking](./docs/503-NETWORKING.md) | Network architecture, **landing zone & topology** (single-VPC, *not* hub-spoke — with rationale + growth path), VPC/subnet + pod/service **CIDR plan**, north-south **ingress** (Gateway + IAP + container-native NEG) & **egress** (no Cloud NAT, the four observability backends), east-west (VPC-native + **Dataplane V2** + **WireGuard**), **NetworkPolicy segmentation** inside GKE, defense-in-depth |
+| **504** | Networking | [Backend TLS](./docs/504-BACKEND_TLS.md) | **Opt-in LB→pod TLS re-encryption** (`gateway.backendTls.enabled`, default off): **cert-manager** (pinned, GitOps) + a **cluster-internal CA**, TLS-serving backends (stage 1: **Headlamp**), the GKE **`BackendTLSPolicy`** + HTTPS `HealthCheckPolicy` mechanics, consistent degradation on pre-GA clusters, and the **per-backend rollout roadmap** (ArgoCD/Jenkins/pgAdmin/…) |
 | **601** | Security | [DevSecOps](./docs/601-DEVSECOPS.md) | **Semgrep** SAST, **CodeQL** deep SAST, **Trivy** IaC + image scanning, **`warnings-ng`** plugin SARIF dashboards in Jenkins |
 | **602** | Security | [Version Pinning](./docs/602-VERSION_PINNING.md) | **Version-pinning policy + matrix** (charts, images, `yq`, GitHub Actions SHAs, Terraform lockfiles), pros/cons, the deliberate **ArgoCD 3.4.x auto-tracking exception** (off the buggy 3.5.0-rc), how to bump a pin |
 | **901** | Reference | [Local Development](./docs/901-LOCAL_DEVELOPMENT.md) | **Prerequisites**, **quick start**, step-by-step deployment guide, automated **e2e test** ([`test/e2e.sh`](test/e2e.sh)), **resource quotas & QoS**, Terraform version |
@@ -624,9 +626,9 @@ flowchart TB
       subgraph L2["L2 · GCP edge"]
         direction TB
         DNS["Cloud DNS wildcard → IP"]:::edge
-        LB["L7 LB · wildcard TLS · re-encrypt"]:::edge
+        LB["L7 LB · wildcard TLS · edge-terminated"]:::edge
         IAPN["Identity-Aware Proxy<br/>admin allowlist"]:::edge
-        GW["Gateway (ns platform-ingress)<br/>HTTPRoutes · GCPBackendPolicy"]:::edge
+        GW["Gateway (ns platform-ingress)<br/>HTTPRoutes · GCPBackendPolicy<br/>+ BackendTLSPolicy (opt-in backendTls)"]:::edge
       end
 
       subgraph CP["L3 · Control plane (GKE)"]
@@ -640,7 +642,7 @@ flowchart TB
             GHAARC["GHA-ARC · GitHub Actions/ARC<br/>ephemeral · ci-spot · NO in-cluster UI"]:::eng3
             ARGOWF["ARGOWF · argoworkflows<br/>WF v3.7.15 + Events · IAP UI"]:::eng4
         end
-        OPS["OPS · Operators<br/>ESO · OTel · CNPG · Argo Rollouts"]:::ctrl
+        OPS["OPS · Operators<br/>ESO · OTel · CNPG · Argo Rollouts<br/>+ cert-manager (opt-in backendTls)"]:::ctrl
         PUIS["PUIS · platform web UIs (IAP)<br/>Headlamp · pgAdmin · Grafana (oss)"]:::ctrl
         PUSH["PUSH · imperative lane (0N-*.sh)<br/>creds · NetPol · Quotas"]:::push
       end

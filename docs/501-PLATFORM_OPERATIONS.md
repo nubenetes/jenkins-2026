@@ -59,8 +59,8 @@ So a deploy is: *CI writes a tag → ArgoCD syncs → the new pod comes up behin
 <details>
 <summary>🔴 For specialists — how each plane is wired here</summary>
 
-- **Delivery:** ArgoCD (auto-tracking the latest **3.4.x** via a daily CronJob watcher) runs single `Application`s (microservices `ApplicationSet`→`microservices-stable`, `headlamp`, `pgadmin`, `cnpg-operator`, `external-secrets`, `jenkins`, `argo-rollouts`) plus **app-of-apps** (`platform-postgres`, `observability-oss`, and the active CI engine's — `tekton` / `githubactions` / `argoworkflows`). The four CI engines (`ci.engine`: **Jenkins** default · **Tekton** · **GitHub Actions (ARC)** · **Argo Workflows**) are mutually exclusive; a scoped ArgoCD account + API token lets the pipeline `argocd app sync --wait`. All apps `selfHeal: true` + `prune: true`.
-- **Ingress:** one `Gateway` (`gatewayClassName: gke-l7-global-external-managed`) = one global external HTTPS LB + one Google-managed wildcard cert + one `HTTPRoute` per app; `BackendTLSPolicy` encrypts the LB→pod hop. Opt-in via `gateway.baseDomain` (empty disables it; `09-gateway.sh` no-ops off-GKE).
+- **Delivery:** ArgoCD (auto-tracking the latest **3.4.x** via a daily CronJob watcher) runs single `Application`s (microservices `ApplicationSet`→`microservices-stable`, `headlamp`, `pgadmin`, `cnpg-operator`, `external-secrets`, `jenkins`, `argo-rollouts`, plus `cert-manager` only when `gateway.backendTls.enabled` — [docs/504](./504-BACKEND_TLS.md)) plus **app-of-apps** (`platform-postgres`, `observability-oss`, and the active CI engine's — `tekton` / `githubactions` / `argoworkflows`). The four CI engines (`ci.engine`: **Jenkins** default · **Tekton** · **GitHub Actions (ARC)** · **Argo Workflows**) are mutually exclusive; a scoped ArgoCD account + API token lets the pipeline `argocd app sync --wait`. All apps `selfHeal: true` + `prune: true`.
+- **Ingress:** one `Gateway` (`gatewayClassName: gke-l7-global-external-managed`) = one global external HTTPS LB + one Google-managed wildcard cert + one `HTTPRoute` per app; TLS terminates at the LB — the LB→pod hop is plain HTTP by default (backend re-encryption is the opt-in `gateway.backendTls.enabled`; see §3 Zero-Trust + [docs/504](./504-BACKEND_TLS.md)). Opt-in via `gateway.baseDomain` (empty disables it; `09-gateway.sh` no-ops off-GKE).
 - **Edge identity:** IAP gates `jenkins`/`headlamp`/`pgadmin`/`grafana(oss)`; access = the emails granted `roles/iap.httpsResourceAccessor` (reuses `HEADLAMP_ADMIN_EMAILS`). The `microservices` host is intentionally public.
 - **Security inside:** Dataplane V2 (`datapath_provider = ADVANCED_DATAPATH`) is what makes NetworkPolicies *enforce*; sensitive namespaces are `default-deny` + curated allowlists (see the matrix below). `in_transit_encryption_config` adds transparent WireGuard inter-node pod encryption (transport, not mTLS identity). Workload Identity Federation removes all static SA JSON keys; ESO syncs Secret Manager → namespaced Secrets. Dataplane V2 + WireGuard are **immutable** cluster fields (changing them recreates the cluster).
 - **Progressive delivery:** the `argo-rollouts` controller + the `argoproj-labs/gatewayAPI` traffic-router plugin patch `HTTPRoute` `backendRefs[].weight` between the stable and `*-canary` Services — sidecar-free, no mesh. An `AnalysisRun` can gate promotion on Prometheus span-metrics (5xx / p95) and auto-rollback.
@@ -84,6 +84,7 @@ The deployment lifecycle is managed by **ArgoCD**. Application manifests are sto
 | `external-secrets` | `Application` | `external-secrets` chart | `https://charts.external-secrets.io` | `external-secrets` | Healthy |
 | `jenkins` | `Application` | `jenkins` chart (pinned 5.9.29) | `https://charts.jenkins.io` | `jenkins` | Healthy *(when `ci.engine=jenkins`)* |
 | `argo-rollouts` | `Application` | `argo-rollouts` chart (2.37.7) | `https://argoproj.github.io/argo-helm` | `argo-rollouts` | Healthy |
+| `cert-manager` | `Application` | `cert-manager` chart (v1.20.3) | `https://charts.jetstack.io` | `cert-manager` | Healthy *(only when `gateway.backendTls.enabled` — [docs/504](./504-BACKEND_TLS.md))* |
 
 > Plus the **app-of-apps** (`platform-postgres`, `observability-oss` when `observability.mode=oss`, and the active CI engine's — `tekton` / `githubactions` / `argoworkflows`, one per `ci.engine`; Jenkins uses the single `jenkins` `Application` above), each a small Helm chart whose children carry the actual workloads. See [`argocd/README.md`](../argocd/README.md).
 >
@@ -112,6 +113,7 @@ flowchart TB
     eso[external-secrets]
     jenkins["jenkins<br/>(ci.engine=jenkins)"]
     rollouts[argo-rollouts]
+    certmgr["cert-manager<br/>(gateway.backendTls on)"]
   end
 
   subgraph aoa["App-of-apps (each a small Helm chart)"]
@@ -123,7 +125,7 @@ flowchart TB
     awf["argoworkflows<br/>(ci.engine=argoworkflows)"] --> awfc["Workflows controller+server<br/>· Argo Events · pac"]
   end
 
-  argocd --> appset & headlamp & pgadmin & cnpg & eso & jenkins & rollouts
+  argocd --> appset & headlamp & pgadmin & cnpg & eso & jenkins & rollouts & certmgr
   argocd --> pp & oss & tk & gha & awf
   watcher[[daily CronJob<br/>auto-track 3.4.x]] -.-> argocd
   classDef root fill:#eef,stroke:#66c;
@@ -524,9 +526,9 @@ Flip per engine with the config flag (durable) or the **`run_node_pool` input** 
 
 ### 3. Zero-Trust Security & Workload Identity
 * **Workload Identity Federation**: All static JSON Service Account keys are removed. External CI (the GitHub Actions infra workflows) and in-cluster workloads assume GCP IAM Roles dynamically via OIDC.
-* **GKE Gateway API + BackendTLSPolicy**: Traffic between the Gateway load balancer and backend pods (Jenkins/Headlamp) is encrypted and validated using `BackendTLSPolicy` targets.
+* **Edge TLS (GKE Gateway API)**: TLS terminates at the global L7 LB (the Google-managed wildcard cert). By default the LB→pod hop is **plain HTTP** — it never leaves Google's VPC fabric and rides Google's default network-layer encryption in transit; pod-to-pod traffic is covered by the WireGuard bullet below. **Opt-in backend re-encryption** — `gateway.backendTls.enabled` (default `false`, override `JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED`) — installs **cert-manager + a cluster-internal CA** ([`08.7-backend-tls.sh`](../scripts/08.7-backend-tls.sh)), has the TLS-ready backends serve HTTPS themselves (stage 1: **Headlamp**, native TLS on its 4466 pod port), and attaches a GKE **`BackendTLSPolicy`** so the LB re-encrypts **and validates** the hop against the internal CA (plus an HTTPS `HealthCheckPolicy` — the default health check does not follow). Full design, GKE mechanics and the per-backend rollout roadmap: **[504. Backend TLS](./504-BACKEND_TLS.md)**.
 * **GKE Dataplane V2 (Cilium/eBPF) — NetworkPolicy *enforcement***: the cluster runs Dataplane V2 (`datapath_provider = ADVANCED_DATAPATH` in [`terraform/gke`](../terraform/gke/main.tf)). This is what makes the policies below *actually enforce* — without it (and without the legacy Calico addon, mutually exclusive with it) GKE accepts `NetworkPolicy` objects but silently ignores them.
-* **Zero-Trust Network Policies** ([`infrastructure/networkpolicies*.yaml`](../infrastructure/)): every namespace egresses to CoreDNS by default-deny. Sensitive namespaces (**observability, microservices, postgres, pgadmin**, and **jenkins** in jenkins mode) run `default-deny` + curated allowlists. Workload UI/CI namespaces (**argocd, headlamp, tekton-ci**) get a **deny-ingress / allow-egress baseline**: each namespace's entry port stays reachable (Gateway, CI sync, port-forward, CLI) while internal components are intra-namespace only; the outbound-only pipeline pods get no ingress. Admission-webhook operator namespaces (**tekton-pipelines, cnpg-system, external-secrets, pipelines-as-code**) are intentionally left open — a `deny-ingress` there would block the API server's webhook calls unless the GKE control-plane CIDR is allowlisted (fragile, cluster-specific). The observability policy also allows the GKE L7 health-check/proxy ranges (`130.211.0.0/22`, `35.191.0.0/16`) so the Grafana backend stays healthy under enforcement.
+* **Zero-Trust Network Policies** ([`infrastructure/networkpolicies*.yaml`](../infrastructure/)): every namespace egresses to CoreDNS by default-deny. Sensitive namespaces (**observability, microservices, postgres, pgadmin**, and **jenkins** in jenkins mode) run `default-deny` + curated allowlists. Workload UI/CI namespaces (**argocd, headlamp, tekton-ci**) get a **deny-ingress / allow-egress baseline**: each namespace's entry port stays reachable (Gateway, CI sync, port-forward, CLI) while internal components are intra-namespace only; the outbound-only pipeline pods get no ingress. Admission-webhook operator namespaces (**tekton-pipelines, cnpg-system, external-secrets, pipelines-as-code**, and **cert-manager** when `gateway.backendTls` is on) are intentionally left open — a `deny-ingress` there would block the API server's webhook calls unless the GKE control-plane CIDR is allowlisted (fragile, cluster-specific). The observability policy also allows the GKE L7 health-check/proxy ranges (`130.211.0.0/22`, `35.191.0.0/16`) so the Grafana backend stays healthy under enforcement.
 * **Pod-to-pod WireGuard encryption**: `in_transit_encryption_config = IN_TRANSIT_ENCRYPTION_INTER_NODE_TRANSPARENT` has Dataplane V2's managed Cilium transparently encrypt **inter-node** pod traffic (sidecar-free, no service mesh, no app changes). This is *transport* encryption, not identity-based mutual auth (no per-workload mTLS identity/authZ like Istio/Linkerd) — it closes the plaintext-on-the-wire gap lightly. Same-node pod traffic never hits the wire, so it is not encrypted.
 * **Secret Management via External Secrets Operator (ESO)**: Connects GKE Workload Identity with Google Secret Manager. ESO automatically pulls and syncs secret structures to namespaced secrets dynamically.
 
@@ -569,7 +571,7 @@ Every policy is in [`infrastructure/networkpolicies*.yaml`](../infrastructure/) 
 | `jenkins` | `jenkins` | `jenkins-policy` (controller) + `jenkins-agent-policy` (`jenkins=slave`) | **controller:** **8080*** (UI/Gateway **+ build-agent WebSocket**), **50000** (legacy JNLP, unused) from intra-ns agents, `observability` → **8080**. **agents:** none (outbound-only) | **controller:** all. **agents:** all (reach controller **8080** via WebSocket + git/registry/ArgoCD) |
 | `arc-runners` | `githubactions` | `arc-runners-baseline` (all) | intra-ns only (listener ↔ ephemeral runner). Runner pods get **no ingress** (outbound-only; ARC long-polls GitHub — no inbound webhook) | all |
 | `argo-ci` | `argoworkflows` | `argoworkflows-ci-baseline` (all) | intra-ns only (controller/executor). Workflow pods get **no ingress** (outbound-only) | all |
-| `tekton-pipelines`, `arc-systems`, `argo`, `argo-events`, `cnpg-system`, `external-secrets`, `pipelines-as-code` | per mode | *(none — open by design)* | all (hosts admission/webhook receivers the API server or GitHub call) | all |
+| `tekton-pipelines`, `arc-systems`, `argo`, `argo-events`, `cnpg-system`, `external-secrets`, `pipelines-as-code`, `cert-manager` *(backendTls)* | per mode | *(none — open by design)* | all (hosts admission/webhook receivers the API server or GitHub call) | all |
 
 #### NetworkPolicy flow diagram
 
@@ -630,7 +632,7 @@ flowchart LR
 </details>
 
 ### 4. GitOps Separation of Concerns
-All infrastructural manifests ([`compute-classes/`](../infrastructure/compute-classes/), [`gateway/`](../infrastructure/gateway/), [`headlamp/`](../infrastructure/headlamp/), [`scheduling/`](../infrastructure/scheduling/)) are decoupled from CI pipeline definitions and placed inside the [`infrastructure/`](../infrastructure/) directory for full reconciliation via Argo CD.
+All infrastructural manifests ([`compute-classes/`](../infrastructure/compute-classes/), [`gateway/`](../infrastructure/gateway/), [`headlamp/`](../infrastructure/headlamp/), [`scheduling/`](../infrastructure/scheduling/), the `networkpolicies*.yaml`) are decoupled from CI pipeline definitions and placed inside the [`infrastructure/`](../infrastructure/) directory. They belong to the **imperative (push) lane, not Argo CD**: [`01-namespaces.sh`](../scripts/01-namespaces.sh) applies the NetworkPolicies + the `ci-spot` ComputeClass (they must land before workloads), [`08.5-argocd.sh`](../scripts/08.5-argocd.sh) the Argo Rollouts RBAC; `gateway/` (and `headlamp/`, `scheduling/`) are reviewable static references — the live objects come from [`09-gateway.sh`](../scripts/09-gateway.sh) / the Helm charts. See the full imperative-vs-GitOps inventory in [`docs/201`](201-ARCHITECTURE.md).
 
 ### 5. Build Performance & High Availability Caching
 * **Jenkins Agent Caching**: Java (Maven `/root/.m2`) and Node (npm `/root/.npm`) containers in pipeline agent templates mount hostPath volumes (`/tmp/jenkins-maven-cache` and `/tmp/jenkins-npm-cache`). Sharing a fast local node directory avoids ReadWriteOnce volume mounting locks while reducing typical compilation times from 5-10 minutes to under 1 minute.
@@ -848,13 +850,13 @@ sequenceDiagram
     GFE->>HR: forward directly
   end
   HR->>Pod: route to pod targetPort (jenkins 8080 / headlamp 4466)
-  Note over GFE,Pod: BackendTLSPolicy encrypts + validates the LB→pod hop
+  Note over GFE,Pod: TLS terminates at the LB — the LB→pod hop is plain HTTP by default<br/>(VPC-internal · Google network-layer encryption in transit)<br/>(opt-in re-encryption: gateway.backendTls — docs/504)
   Pod-->>U: response
 ```
 
 </details>
 
-**Reading it —** one global external HTTPS LB terminates the wildcard cert, and a *per-host* decision follows: IAP-gated hosts must pass a Google sign-in **and** an allowlist check (`roles/iap.httpsResourceAccessor`, the same emails as `HEADLAMP_ADMIN_EMAILS`) before any traffic reaches the app — so the app's own auth (Jenkins OIDC, pgAdmin's trusted header, …) is a *second* layer, not the only one. The `microservices` host is deliberately public. Two gotchas live here: the `HTTPRoute` must target the **pod `targetPort`** (8080/4466), not the Service port, or the GKE health check fails; and `BackendTLSPolicy` secures the LB→pod hop.
+**Reading it —** one global external HTTPS LB terminates the wildcard cert, and a *per-host* decision follows: IAP-gated hosts must pass a Google sign-in **and** an allowlist check (`roles/iap.httpsResourceAccessor`, the same emails as `HEADLAMP_ADMIN_EMAILS`) before any traffic reaches the app — so the app's own auth (Jenkins OIDC, pgAdmin's trusted header, …) is a *second* layer, not the only one. The `microservices` host is deliberately public. Two gotchas live here: the `HTTPRoute` must target the **pod `targetPort`** (8080/4466), not the Service port, or the GKE health check fails; and TLS ends at the LB — the LB→pod hop is plain HTTP by default (`BackendTLSPolicy` re-encryption is the opt-in `gateway.backendTls.enabled`, which also makes the converted backends actually serve TLS — [docs/504](./504-BACKEND_TLS.md)).
 
 ### Authentication & Authorization Matrix
 

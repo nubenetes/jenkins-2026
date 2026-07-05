@@ -62,6 +62,11 @@ on:
         required: false
         default: false
         type: boolean
+      backend_tls:
+        description: "Opt-in LB→pod TLS re-encryption (gateway.backendTls — docs/504): install cert-manager + a cluster-internal CA, Headlamp serves HTTPS itself, and a BackendTLSPolicy makes the LB re-encrypt AND validate the hop. OFF by default. Enabling/disabling CONVERGES on this run (Day1 runs 08.5 + 08.7 + 09 together); on the Day2.redeploy.* workflows the same input must instead MATCH the live cluster."
+        required: false
+        default: false
+        type: boolean
       git_ref:
         description: "Git branch, tag, or SHA to check out (leave empty to use the branch/tag selected in 'Use workflow from' above)"
         required: false
@@ -123,6 +128,10 @@ on:
         required: false
         default: false
         type: boolean
+      backend_tls:
+        required: false
+        default: false
+        type: boolean
       git_ref:
         required: false
         default: ""
@@ -153,6 +162,11 @@ env:
   TF_LOG: ${{ inputs.log_level == 'debug' && 'DEBUG' || '' }}
   JENKINS2026_GRAFANA_CLOUD_TIER: ${{ inputs.grafana_cloud_tier || 'free' }}
   JENKINS2026_LOG_MIN_SEVERITY: ${{ inputs.log_min_severity || 'auto' }}
+  # Opt-in backend TLS (gateway.backendTls, docs/504). Consumed inside up.sh by
+  # 08.5 (Headlamp TLS values overlay) + 08.7 (cert-manager/CA/certs) + 09
+  # (BackendTLSPolicy + HTTPS HealthCheckPolicy) — all gate on
+  # j2026_backend_tls_active (this flag AND the BackendTLSPolicy CRD).
+  JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED: ${{ inputs.backend_tls }}
   TF_VERSION: "1.15.6"
   # Surfaced as env so the managed-aws dashboard-publish steps can skip cleanly
   # (secrets can't be used in `if:`) when the role hasn't been set up yet.
@@ -719,6 +733,7 @@ jobs:
             echo "- Zone: \`$(terraform output -raw location)\`"
             echo "- Observability mode: \`${{ inputs.observability_mode }}\`"
             echo "- Gateway/IAP enabled: \`${{ inputs.enable_gateway }}\`"
+            echo "- Backend TLS (LB→pod, docs/504): \`${{ inputs.backend_tls }}\`"
             echo
             echo "See the **Access URLs** step (end of the job log, and below) for"
             echo "every service URL — IAP-protected and open — for this run's CI"

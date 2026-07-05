@@ -11,9 +11,11 @@
 # so the GitHub Actions runner SKIPS this preset there. See docs/302 / docs/301.
 #
 # Runner: GitHub Actions only (it runs jenkins/pipelines/k6/faro-rum.js when
-# profile=rum). Intentionally NOT in presets/index.yaml — the Jenkins/Tekton k6
-# jobs and `run_all` use the HTTP load script (microservices-smoke.js), not the
-# Faro emitter.
+# profile=rum). Intentionally NOT in presets/index.yaml so the Jenkins/Tekton k6
+# jobs (which run the HTTP load script, microservices-smoke.js) never pick it
+# up. The GitHub Actions `run_all` DOES include it though — Day2.traffic.01-k6's
+# matrix builder appends "rum-faro" on top of the index list, and the k6 job's
+# backend guard self-skips it (exit 0) on managed-azure/aws.
 name: rum-faro
 level: basic
 description: Synthetic Grafana Faro RUM beacons (Web Vitals + JS errors) → Frontend RUM dashboard. OSS / Grafana-Cloud only.

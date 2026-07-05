@@ -125,9 +125,9 @@ flowchart TB
       subgraph L2["L2 · GCP edge"]
         direction TB
         DNS["Cloud DNS wildcard → IP"]:::edge
-        LB["L7 LB · wildcard TLS · re-encrypt"]:::edge
+        LB["L7 LB · wildcard TLS · edge-terminated"]:::edge
         IAPN["Identity-Aware Proxy<br/>admin allowlist"]:::edge
-        GW["Gateway (ns platform-ingress)<br/>HTTPRoutes · GCPBackendPolicy"]:::edge
+        GW["Gateway (ns platform-ingress)<br/>HTTPRoutes · GCPBackendPolicy<br/>+ BackendTLSPolicy (opt-in backendTls)"]:::edge
       end
 
       subgraph CP["L3 · Control plane (GKE)"]
@@ -141,7 +141,7 @@ flowchart TB
             GHAARC["GHA-ARC · GitHub Actions/ARC<br/>ephemeral · ci-spot · NO in-cluster UI"]:::eng3
             ARGOWF["ARGOWF · argoworkflows<br/>WF v3.7.15 + Events · IAP UI"]:::eng4
         end
-        OPS["OPS · Operators<br/>ESO · OTel · CNPG · Argo Rollouts"]:::ctrl
+        OPS["OPS · Operators<br/>ESO · OTel · CNPG · Argo Rollouts<br/>+ cert-manager (opt-in backendTls)"]:::ctrl
         PUIS["PUIS · platform web UIs (IAP)<br/>Headlamp · pgAdmin · Grafana (oss)"]:::ctrl
         PUSH["PUSH · imperative lane (0N-*.sh)<br/>creds · NetPol · Quotas"]:::push
       end
@@ -463,6 +463,7 @@ Single source of truth, loaded by every script via [`scripts/lib/config.sh`](../
 | `observability.mode` | `grafana-cloud` | edit `config.yaml` | `grafana-cloud`\|`oss`\|`managed-azure`\|`managed-aws` — where traces/metrics/logs go |
 | `ci.engine` | `jenkins` | `JENKINS2026_CI_ENGINE` | `jenkins`\|`tekton`\|`githubactions`\|`argoworkflows` — one of four mutually-exclusive engines running the pipelines-as-code (Jenkins default). See [403. Tekton](./403-TEKTON.md), [404. GitHub Actions](./404-GITHUB_ACTIONS.md), [405. Argo Workflows](./405-ARGO_WORKFLOWS.md) |
 | `microservices.developTrackEnabled` | `false` | `JENKINS2026_DEVELOP_TRACK_ENABLED` | Optional second microservices tier (`microservices-develop` namespace, GitOps `develop` branch) |
+| `gateway.backendTls.enabled` | `false` | `JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED` (GHA: `backend_tls` input) | Opt-in **LB→pod TLS re-encryption**: cert-manager + a cluster-internal CA, TLS-serving backends (stage 1: Headlamp) + a GKE `BackendTLSPolicy` validating against that CA. See [504. Backend TLS](./504-BACKEND_TLS.md) |
 
 Other notable sections: `jenkins.*` (chart coordinates, namespace, this repo's own URL/branch), `observability.*` (operator/collector chart coordinates, release names, Secret name), `microservices.*` (namespaces, git org/repos/branches, target registry, list of 2 services seeded into Jenkins).
 
@@ -492,7 +493,7 @@ resources/                   patch-app-source.sh — the shared build-time app p
 tekton/                      Tekton pipelines-as-code (ci.engine=tekton): Tasks/Pipelines/Triggers/RBAC + port of the Jenkins shared library (vars/)
 argoworkflows/               Argo Workflows pipelines-as-code (ci.engine=argoworkflows): WorkflowTemplates + EventSource/Sensor (the GitHub Actions/ARC pipeline is a .github/workflows file rendered into each fork)
 observability/               OTel Operator/Collector + Grafana/Loki/Tempo/Prometheus values + dashboards
-argocd/                      ArgoCD Applications/ApplicationSets + app-of-apps (platform-postgres, observability-oss, tekton, githubactions, argoworkflows) + argo-rollouts-app.yaml
+argocd/                      ArgoCD Applications/ApplicationSets + app-of-apps (platform-postgres, observability-oss, tekton, githubactions, argoworkflows) + argo-rollouts-app.yaml + cert-manager-app.yaml (opt-in backendTls, docs/504)
 infrastructure/              engine-neutral platform manifests applied by 01-namespaces / 08.5-argocd: NetworkPolicies (default + per-engine: -jenkins/-tekton/-githubactions/-argoworkflows), Gateway, Node Auto-Provisioning ComputeClasses (compute-classes/), scheduling, Argo Rollouts Gateway-API RBAC, secrets
 scripts/                     00-09 numbered steps + up.sh / down.sh / status.sh
 terraform/gke/               throwaway GKE cluster for test/e2e.sh
@@ -600,16 +601,17 @@ flowchart TD
         ARGO["08.5: helm install ArgoCD<br/>+ patch OIDC/RBAC"]
     end
     subgraph PLANT["Hand-off — scripts plant the root Applications"]
-        APPS["08.5/03: kubectl apply argocd/*-app.yaml<br/>(sed-substituted repo/branch/engine)"]
+        APPS["08.5/03/08.7: kubectl apply argocd/*-app.yaml<br/>(sed-substituted repo/branch/engine)"]
     end
     subgraph PULL["GitOps plane (ArgoCD reconciles — pull, self-heal, prune)"]
-        CHARTS["charts: Jenkins · ESO · Headlamp · Rollouts"]
+        CHARTS["charts: Jenkins · ESO · Headlamp · Rollouts<br/>+ cert-manager (backendTls opt-in)"]
         FLEET["AppSet: microservices (per tier)"]
         AOA["app-of-apps: postgres · observability-oss<br/>+ active CI engine (tekton / githubactions / argoworkflows)"]
         PCFG["platform-config: static RBAC"]
     end
     subgraph RUNTIME["Imperative, AFTER ArgoCD is up (runtime-derived)"]
-        GW["09: Gateway/HTTPRoutes/IAP (.generated/)"]
+        GW["09: Gateway/HTTPRoutes/IAP<br/>+ BackendTLS/HealthCheck policies (.generated/)"]
+        BTLS["08.7: internal CA + backend certs<br/>+ ca.crt trust bundles (backendTls opt-in)"]
         JCASC["04: JCasC ConfigMaps (live-reload)"]
         SIDE["06: Tekton PaC push/webhooks/seed"]
     end
@@ -621,7 +623,7 @@ flowchart TD
 
     classDef imp fill:#fde,stroke:#c39;
     classDef git fill:#eef,stroke:#66c;
-    class NS,SEC,NP,OP,ARGO,APPS,GW,JCASC,SIDE imp;
+    class NS,SEC,NP,OP,ARGO,APPS,GW,BTLS,JCASC,SIDE imp;
     class CHARTS,FLEET,AOA,PCFG git;
 ```
 
@@ -1061,7 +1063,6 @@ graph TD
 
     subgraph Cluster ["GKE Cluster (release channel: REGULAR)"]
         GatewayAPI["GKE Gateway API<br/>gke-l7-global-external-managed"]
-        BackendTLS["BackendTLSPolicy<br/>Secure TLS to pods"]
         WI["Workload Identity Federation"]
     end
 
@@ -1079,9 +1080,8 @@ graph TD
     StaticIP --> CertMap
     CertMap --> WildcardTLS
     WildcardTLS -->|"terminates TLS"| GatewayAPI
-    GatewayAPI -->|"routes via BackendTLSPolicy"| BackendTLS
-    BackendTLS -->|"zero-trust HTTPS"| StaticPool
-    BackendTLS -->|"zero-trust HTTPS"| NAPSpotPool
+    GatewayAPI -->|"plain HTTP over the VPC (default;<br/>opt-in TLS: gateway.backendTls)"| StaticPool
+    GatewayAPI -->|"plain HTTP over the VPC (default;<br/>opt-in TLS: gateway.backendTls)"| NAPSpotPool
 ```
 
 </details>

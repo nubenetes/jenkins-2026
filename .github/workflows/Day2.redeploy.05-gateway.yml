@@ -3,6 +3,7 @@ name: "Day2.redeploy.05 Gateway"
 # Manually-triggered: re-applies the public-ingress layer ONLY - the shared GKE
 # Gateway (in the platform-ingress namespace) + every app HTTPRoute + the IAP
 # GCPBackendPolicies (scripts/01-namespaces.sh for the namespaces/IAP Secrets +
+# scripts/08.7-backend-tls.sh for the opt-in backend-TLS certs (docs/504) +
 # scripts/09-gateway.sh for the Gateway/routes/policies). Use it to apply a
 # gateway/route/IAP change (e.g. a new host, an IAP tweak, or recovering a deleted
 # Gateway) WITHOUT rerunning the whole Day1.cluster.01 provision. Idempotent;
@@ -15,13 +16,15 @@ on:
   workflow_dispatch:
     inputs:
       ci_engine:
-        description: "CI engine the cluster runs (must match the live cluster): jenkins | tekton"
+        description: "CI engine the cluster runs (must match the live cluster): jenkins | tekton | githubactions | argoworkflows"
         required: true
         default: "jenkins"
         type: choice
         options:
           - jenkins
           - tekton
+          - githubactions
+          - argoworkflows
       observability_mode:
         description: "observability.mode of the cluster (only affects the oss Grafana route/IAP)"
         required: true
@@ -53,6 +56,16 @@ on:
         options:
           - info
           - debug
+      develop_track:
+        description: "Optional lean 'develop' microservices tier (docs/402). MUST MATCH how the cluster was provisioned: 09 generates the develop host's HTTPRoute + HealthCheckPolicy when true and RETIRES them when false (the deliberate disable-cleanup path) — so develop_track=false against a develop-enabled cluster tears down the develop host's route; 01-namespaces likewise blanks the develop URL in jenkins-credentials. Tier provisioning is owned by Day1.cluster.01."
+        required: false
+        default: false
+        type: boolean
+      backend_tls:
+        description: "Opt-in backend TLS (gateway.backendTls — docs/504). MUST MATCH how the cluster was provisioned: 08.7 re-asserts cert-manager/CA/certs and 09 the BackendTLSPolicy + HTTPS HealthCheckPolicy — the wrong value retires (or half-applies) them while Headlamp still serves the other protocol → 502. Flag FLIPS need Day1 (only it also re-renders the Headlamp overlay via 08.5)."
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -69,6 +82,11 @@ env:
   JENKINS2026_CI_ENGINE: ${{ inputs.ci_engine }}
   JENKINS2026_OBS_MODE: ${{ inputs.observability_mode }}
   JENKINS2026_SECRETS_BACKEND: ${{ inputs.secrets_backend }}
+  # Develop tier (docs/402) — must match the live cluster: 09 retires the develop
+  # HTTPRoute/HealthCheckPolicy when false (see the input).
+  JENKINS2026_DEVELOP_TRACK_ENABLED: ${{ inputs.develop_track }}
+  # Opt-in backend TLS (docs/504) — must match the live cluster (see the input).
+  JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED: ${{ inputs.backend_tls }}
 
 jobs:
   redeploy-gateway:
@@ -157,6 +175,15 @@ jobs:
         # ClusterSecretStore + ExternalSecrets and waits for the IAP Secret to
         # materialise before 09-gateway wires the GCPBackendPolicy to it.
         run: ./scripts/08.6-eso-sync.sh
+
+      - name: Backend TLS (scripts/08.7-backend-tls.sh, opt-in)
+        # No-op (with deterministic retire) when gateway.backendTls.enabled=false,
+        # the default. When on, re-asserts cert-manager + the cluster-internal CA
+        # + the per-backend certs/trust bundles BEFORE 09 re-attaches the
+        # BackendTLSPolicies. NOTE: FLIPPING the flag still needs a full Day1 —
+        # the Headlamp TLS values overlay is rendered by 08.5-argocd.sh, which
+        # this workflow deliberately does not run. See docs/504 § Lifecycle.
+        run: ./scripts/08.7-backend-tls.sh
 
       - name: Re-apply Gateway + HTTPRoutes + IAP (scripts/09-gateway.sh)
         run: ./scripts/09-gateway.sh

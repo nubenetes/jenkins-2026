@@ -45,8 +45,12 @@ spec:
       default: ""
     - name: debug
       default: "false"
+    # In-cluster OTel gateway collector (gRPC), defaulted so the committed
+    # standalone runs (tekton/runs/k6-*.yaml) export k6 metrics to Grafana out of
+    # the box — the build pipeline gets the same value injected by
+    # 06-tekton-pipelines.sh. "" skips the -o opentelemetry output.
     - name: otlp-endpoint
-      default: ""
+      default: http://otel-collector-gateway.observability.svc.cluster.local:4317
   workspaces:
     - name: source
   tasks:
