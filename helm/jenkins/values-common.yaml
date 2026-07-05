@@ -215,6 +215,41 @@ controller:
           name: jenkins-credentials
           key: grafana-base-url
           optional: true
+    # Dashboard uids for the systemMessage banner's Grafana deep links, derived
+    # from the canonical observability/grafana/dashboards/<name>.json by
+    # scripts/04-jenkins.sh. The published uid is whatever the JSON carries -
+    # NOT always jenkins2026-<name> (some dashboards were round-tripped through
+    # Grafana Cloud and carry generated uids), so it must never be hardcoded.
+    - name: GRAFANA_DASH_UID_JENKINS_OVERVIEW
+      valueFrom:
+        secretKeyRef:
+          name: jenkins-credentials
+          key: grafana-dash-uid-jenkins-overview
+          optional: true
+    - name: GRAFANA_DASH_UID_MICROSERVICES_OVERVIEW
+      valueFrom:
+        secretKeyRef:
+          name: jenkins-credentials
+          key: grafana-dash-uid-microservices-overview
+          optional: true
+    - name: GRAFANA_DASH_UID_K6_SMOKE_OVERVIEW
+      valueFrom:
+        secretKeyRef:
+          name: jenkins-credentials
+          key: grafana-dash-uid-k6-smoke-overview
+          optional: true
+    - name: GRAFANA_DASH_UID_RUM_FRONTEND
+      valueFrom:
+        secretKeyRef:
+          name: jenkins-credentials
+          key: grafana-dash-uid-rum-frontend
+          optional: true
+    - name: GRAFANA_DASH_UID_JVM_INTERNALS
+      valueFrom:
+        secretKeyRef:
+          name: jenkins-credentials
+          key: grafana-dash-uid-jvm-internals
+          optional: true
     # Per-observability-mode "Kubernetes Infrastructure" banner links, computed
     # and patched into the Secret by scripts/04-jenkins.sh.
     - name: GRAFANA_K8S_APP_LINK
