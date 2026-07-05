@@ -14,6 +14,21 @@ name: "Day2.redeploy.04 Headlamp"
 on:
   workflow_dispatch:
     inputs:
+      ci_engine:
+        description: "CI engine the cluster runs (must match the live cluster): jenkins | tekton | githubactions | argoworkflows"
+        required: true
+        default: "jenkins"
+        type: choice
+        options:
+          - jenkins
+          - tekton
+          - githubactions
+          - argoworkflows
+      develop_track:
+        description: "Optional lean 'develop' microservices tier (docs/402). MUST MATCH how the cluster was provisioned: 01-namespaces refreshes the Microservices URLs in jenkins-credentials on every run, and develop_track=false against a develop-enabled cluster blanks microservices-develop-url (the Jenkins banner link + the -develop k6 job's target). Tier provisioning is owned by Day1.cluster.01."
+        required: false
+        default: false
+        type: boolean
       secrets_backend:
         description: "Secrets backend the cluster runs (must match the live cluster): imperative | eso"
         required: true
@@ -48,6 +63,13 @@ env:
   JENKINS2026_LOG_LEVEL: ${{ inputs.log_level || 'info' }}
   TF_LOG: ${{ inputs.log_level == 'debug' && 'DEBUG' || '' }}
   TF_VERSION: "1.15.6"
+  # Selects which engine's namespaces/secrets 01-namespaces refreshes — must match
+  # the live cluster, else it provisions the config-default engine's (jenkins)
+  # namespace + credentials on a cluster running another engine.
+  JENKINS2026_CI_ENGINE: ${{ inputs.ci_engine }}
+  # Develop tier (docs/402) — must match the live cluster: 01-namespaces blanks the
+  # microservices-develop-url credential when false (see the input).
+  JENKINS2026_DEVELOP_TRACK_ENABLED: ${{ inputs.develop_track }}
   JENKINS2026_SECRETS_BACKEND: ${{ inputs.secrets_backend }}
 
 jobs:

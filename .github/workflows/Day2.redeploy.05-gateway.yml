@@ -56,6 +56,11 @@ on:
         options:
           - info
           - debug
+      develop_track:
+        description: "Optional lean 'develop' microservices tier (docs/402). MUST MATCH how the cluster was provisioned: 09 generates the develop host's HTTPRoute + HealthCheckPolicy when true and RETIRES them when false (the deliberate disable-cleanup path) — so develop_track=false against a develop-enabled cluster tears down the develop host's route; 01-namespaces likewise blanks the develop URL in jenkins-credentials. Tier provisioning is owned by Day1.cluster.01."
+        required: false
+        default: false
+        type: boolean
       backend_tls:
         description: "Opt-in backend TLS (gateway.backendTls — docs/504). MUST MATCH how the cluster was provisioned: 08.7 re-asserts cert-manager/CA/certs and 09 the BackendTLSPolicy + HTTPS HealthCheckPolicy — the wrong value retires (or half-applies) them while Headlamp still serves the other protocol → 502. Flag FLIPS need Day1 (only it also re-renders the Headlamp overlay via 08.5)."
         required: false
@@ -77,6 +82,9 @@ env:
   JENKINS2026_CI_ENGINE: ${{ inputs.ci_engine }}
   JENKINS2026_OBS_MODE: ${{ inputs.observability_mode }}
   JENKINS2026_SECRETS_BACKEND: ${{ inputs.secrets_backend }}
+  # Develop tier (docs/402) — must match the live cluster: 09 retires the develop
+  # HTTPRoute/HealthCheckPolicy when false (see the input).
+  JENKINS2026_DEVELOP_TRACK_ENABLED: ${{ inputs.develop_track }}
   # Opt-in backend TLS (docs/504) — must match the live cluster (see the input).
   JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED: ${{ inputs.backend_tls }}
 
