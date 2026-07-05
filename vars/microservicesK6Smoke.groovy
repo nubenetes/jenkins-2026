@@ -297,10 +297,14 @@ def thresholdStatus(metric) {
 
 /**
  * Prints a link to the "jenkins-2026 / k6 Observability Smoke Test" Grafana
- * dashboard (uid jenkins2026-k6-smoke-overview), scoped to this run's
- * deployment_environment and padded +/-5m around the build's time window so
- * the dashboard's rate()/histogram_quantile() panels have enough lookback to
- * render this run's data points.
+ * dashboard, scoped to this run's deployment_environment and padded +/-5m around
+ * the build's time window so the dashboard's rate()/histogram_quantile() panels
+ * have enough lookback to render this run's data points. The dashboard uid comes
+ * from env.GRAFANA_DASH_UID_K6_SMOKE_OVERVIEW - derived from the canonical
+ * dashboard JSON by scripts/04-jenkins.sh and propagated to agents via JCasC
+ * globalNodeProperties - falling back to the legacy jenkins2026-k6-smoke-overview
+ * uid when unset, so the link survives the dashboard being round-tripped through
+ * Grafana Cloud and given a generated uid.
  */
 def printGrafanaLink(String envName) {
   def baseUrl = env.GRAFANA_BASE_URL
@@ -313,7 +317,8 @@ def printGrafanaLink(String envName) {
   def from = currentBuild.startTimeInMillis - padMillis
   def to = System.currentTimeMillis() + padMillis
 
-  def url = "${baseUrl}/d/jenkins2026-k6-smoke-overview/jenkins-2026-k6-observability-smoke-test" +
+  def dashUid = env.GRAFANA_DASH_UID_K6_SMOKE_OVERVIEW?.trim() ?: 'jenkins2026-k6-smoke-overview'
+  def url = "${baseUrl}/d/${dashUid}" +
     "?orgId=1&var-deployment_environment=${envName}&from=${from}&to=${to}"
 
   echo "View this run in Grafana: ${url}"

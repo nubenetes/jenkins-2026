@@ -523,7 +523,12 @@ jobs:
           fi
 
           BASE="${GRAFANA_BASE_URL:-}"
-          DASH="jenkins2026-k6-smoke-overview/jenkins-2026-k6-observability-smoke-test"
+          # Derive the dashboard uid from the canonical JSON instead of hardcoding it:
+          # some dashboards were round-tripped through Grafana Cloud and now carry a
+          # generated uid (not jenkins2026-<name>), so a hardcoded /d/<uid> link 404s.
+          # Same derivation scripts/04-jenkins.sh uses for the Jenkins banner links.
+          DASH_UID="$(jq -r '.uid // empty' observability/grafana/dashboards/k6-smoke-overview.json 2>/dev/null || true)"
+          [[ -z "${DASH_UID}" ]] && DASH_UID="jenkins2026-k6-smoke-overview"
           PARAMS="orgId=1&var-deployment_environment=${ENV_NAME:-stable}"
           [[ -n "${DS_PROM}" ]]     && PARAMS="${PARAMS}&var-DS_PROMETHEUS=${DS_PROM}"
           [[ -n "${DS_LOKI}" ]]     && PARAMS="${PARAMS}&var-DS_LOKI=${DS_LOKI}"
@@ -531,7 +536,7 @@ jobs:
           [[ -n "${GRAFANA_FROM}" ]] && PARAMS="${PARAMS}&from=${GRAFANA_FROM}&to=${GRAFANA_TO}"
 
           if [[ -n "${BASE}" ]]; then
-            echo "${BASE}/d/${DASH}?${PARAMS}"
+            echo "${BASE}/d/${DASH_UID}?${PARAMS}"
           else
             echo "(Grafana URL not resolved — open the dashboard manually)"
           fi
