@@ -35,7 +35,7 @@ part that carries meaning:
 | **2xx** | **Architecture** | System architecture + the imperative-vs-GitOps split ([201](./201-ARCHITECTURE.md)) and the demo microservices app ([202](./202-MICROSERVICES-APP-ARCHITECTURE.md)) |
 | **3xx** | **Observability & performance** | OTel components + the four obs backends ([301](./301-OBSERVABILITY.md)), the k6 traffic/load engine ([302](./302-K6_LOAD_TESTING.md)), and JVM tuning ([303](./303-JVM-TUNING.md)) |
 | **4xx** | **CI engines** — one doc per engine | The four interchangeable `ci.engine` choices: Jenkins ([401](./401-JENKINS.md) UI/JCasC + [402](./402-PIPELINES_AS_CODE.md) pipelines-as-code), Tekton ([403](./403-TEKTON.md)), GitHub Actions / ARC ([404](./404-GITHUB_ACTIONS.md)), and Argo Workflows ([405](./405-ARGO_WORKFLOWS.md)) |
-| **5xx** | **Platform ops & GitOps** | Platform operations — ArgoCD, Headlamp, Gateway/IAP, chaos/QA, progressive delivery ([501](./501-PLATFORM_OPERATIONS.md)); the microservices GitOps model ([502](./502-MICROSERVICES_GITOPS.md)); networking ([503](./503-NETWORKING.md)) |
+| **5xx** | **Platform ops & GitOps** | Platform operations — ArgoCD, Headlamp, Gateway/IAP, chaos/QA, progressive delivery ([501](./501-PLATFORM_OPERATIONS.md)); the microservices GitOps model ([502](./502-MICROSERVICES_GITOPS.md)); networking ([503](./503-NETWORKING.md)); opt-in backend TLS re-encryption ([504](./504-BACKEND_TLS.md)) |
 | **6xx** | **Security & pinning** | DevSecOps scanning ([601](./601-DEVSECOPS.md)) and the version-pinning policy ([602](./602-VERSION_PINNING.md)) |
 | **9xx** | **Reference** | Local development / quick start ([901](./901-LOCAL_DEVELOPMENT.md)), troubleshooting ([902](./902-TROUBLESHOOTING.md)), and the glossary ([903](./903-GLOSSARY.md)) |
 
@@ -213,7 +213,7 @@ README to confirm):
    entry with its sub-heading anchors (the block starting near
    [`README.md` line 234](../README.md)).
 3. **The `docs — N guides` badge** ([`README.md` line 12](../README.md)) — bump
-   the count. It reads **23 guides** today; a 24th guide makes it 24.
+   the count to the number of numbered `docs/NNN-*.md` guides.
 
 Update **this page's** [band table](#the-numbering-scheme) and, if the doc opens a
 new subsystem, the relevant [reading path](#reading-paths--start-here-depending-on-who-you-are).

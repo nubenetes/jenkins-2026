@@ -9,7 +9,7 @@
 [![Commit activity](https://img.shields.io/github/commit-activity/m/nubenetes/jenkins-2026?logo=github)](https://github.com/nubenetes/jenkins-2026/pulse)
 ![Top language](https://img.shields.io/github/languages/top/nubenetes/jenkins-2026?logo=gnubash&logoColor=white)
 ![Code size](https://img.shields.io/github/languages/code-size/nubenetes/jenkins-2026)
-[![Docs](https://img.shields.io/badge/docs-23%20guides-blue?logo=readthedocs&logoColor=white)](docs/)
+[![Docs](https://img.shields.io/badge/docs-24%20guides-blue?logo=readthedocs&logoColor=white)](docs/)
 [![Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735?logo=keepachangelog&logoColor=white)](CHANGELOG.md)
 
 <!-- STACK-BADGES:START -->
@@ -459,6 +459,14 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 
 ---
 
+**[504 · Backend TLS (LB→pod re-encryption)](./docs/504-BACKEND_TLS.md)**
+- [Why (and why opt-in)](./docs/504-BACKEND_TLS.md#why-and-why-opt-in) · [The flag](./docs/504-BACKEND_TLS.md#the-flag)
+- [How it works](./docs/504-BACKEND_TLS.md#how-it-works) · [The GKE mechanics](./docs/504-BACKEND_TLS.md#the-gke-mechanics-what-the-policies-actually-do)
+- [Stage 1: why Headlamp](./docs/504-BACKEND_TLS.md#stage-1-why-headlamp) · [Converting the next backend](./docs/504-BACKEND_TLS.md#converting-the-next-backend-roadmap--checklist)
+- [Lifecycle](./docs/504-BACKEND_TLS.md#lifecycle) · [Verifying it](./docs/504-BACKEND_TLS.md#verifying-it)
+
+---
+
 **[601 · DevSecOps](./docs/601-DEVSECOPS.md)**
 - [Pipeline Lifecycle](./docs/601-DEVSECOPS.md#pipeline-lifecycle)
 - [Integrated Security Tools](./docs/601-DEVSECOPS.md#integrated-security-tools)
@@ -568,6 +576,7 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 | **501** | Platform | [Platform Operations](./docs/501-PLATFORM_OPERATIONS.md) | **ArgoCD inventory**, telemetry simulation, **platform QA & chaos** scenarios, **Golden Path IDP** modernizations (**Node Auto-Provisioning** + modern scheduling), **Headlamp** cluster UI, **GKE Gateway API + IAP** public access, **Argo Rollouts** progressive delivery |
 | **502** | Microservices | [Microservices GitOps](./docs/502-MICROSERVICES_GITOPS.md) | **Helm vs. Kustomize** design decision, **resource lifecycle & decommission** orchestration (**NEG synchronization barrier**), **parameterized CNPG HA** (stable vs lean develop), **pgAdmin** & database administration |
 | **503** | Networking | [Networking](./docs/503-NETWORKING.md) | Network architecture, **landing zone & topology** (single-VPC, *not* hub-spoke — with rationale + growth path), VPC/subnet + pod/service **CIDR plan**, north-south **ingress** (Gateway + IAP + container-native NEG) & **egress** (no Cloud NAT, the four observability backends), east-west (VPC-native + **Dataplane V2** + **WireGuard**), **NetworkPolicy segmentation** inside GKE, defense-in-depth |
+| **504** | Platform ops | [Backend TLS (LB→pod re-encryption)](./docs/504-BACKEND_TLS.md) | The **opt-in** `gateway.backendTls.enabled` hardening — **cert-manager** in-cluster CA + per-backend TLS + Gateway API **`BackendTLSPolicy`** so the LB validates the backend cert; the **GKE mechanics**, the staged per-backend rollout, why it's **not** a service mesh (Istio / Cloud Service Mesh comparison), and why ESO doesn't touch it |
 | **601** | Security | [DevSecOps](./docs/601-DEVSECOPS.md) | **Semgrep** SAST, **CodeQL** deep SAST, **Trivy** IaC + image scanning, **`warnings-ng`** plugin SARIF dashboards in Jenkins |
 | **602** | Security | [Version Pinning](./docs/602-VERSION_PINNING.md) | **Version-pinning policy + matrix** (charts, images, `yq`, GitHub Actions SHAs, Terraform lockfiles), pros/cons, the deliberate **ArgoCD 3.4.x auto-tracking exception** (off the buggy 3.5.0-rc), how to bump a pin |
 | **901** | Reference | [Local Development](./docs/901-LOCAL_DEVELOPMENT.md) | **Prerequisites**, **quick start**, step-by-step deployment guide, automated **e2e test** ([`test/e2e.sh`](test/e2e.sh)), **resource quotas & QoS**, Terraform version |

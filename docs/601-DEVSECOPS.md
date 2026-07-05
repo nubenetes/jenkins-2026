@@ -1,4 +1,4 @@
-[← Previous: 503. Networking](./503-NETWORKING.md) | [🏠 Home](../README.md) | [→ Next: 602. Version Pinning](./602-VERSION_PINNING.md)
+[← Previous: 504. Backend TLS](./504-BACKEND_TLS.md) | [🏠 Home](../README.md) | [→ Next: 602. Version Pinning](./602-VERSION_PINNING.md)
 
 ---
 
@@ -196,7 +196,7 @@ post {
 
 ---
 
-[← Previous: 503. Networking](./503-NETWORKING.md) | [🏠 Home](../README.md) | [→ Next: 602. Version Pinning](./602-VERSION_PINNING.md)
+[← Previous: 504. Backend TLS](./504-BACKEND_TLS.md) | [🏠 Home](../README.md) | [→ Next: 602. Version Pinning](./602-VERSION_PINNING.md)
 
 ---
 
