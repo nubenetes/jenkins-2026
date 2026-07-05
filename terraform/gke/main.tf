@@ -21,6 +21,15 @@ resource "google_project_service" "apis" {
     # unconditionally — harmless/unused in the default imperative mode, and
     # re-enabling APIs is slow so it's left on. See docs/201 § Secrets Management.
     "secretmanager.googleapis.com",
+    # Backs gateway.backendTls.enabled (opt-in, docs/504-BACKEND_TLS.md): the
+    # GKE Gateway controller compiles a BackendTLSPolicy into a load-balancer
+    # server TLS policy, which it can only create when this API is enabled -
+    # otherwise the ENTIRE shared Gateway fails to program (every host, not
+    # just the TLS-enabled backend), since gceSync errors out project-wide.
+    # Enabled unconditionally like secretmanager above, for the same reason:
+    # harmless/unused with the flag off, and re-enabling APIs on demand is too
+    # slow for an opt-in flag flipped on an already-running cluster.
+    "networksecurity.googleapis.com",
   ])
 
   project = var.project_id

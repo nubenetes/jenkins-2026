@@ -111,6 +111,22 @@ spec:
   `targetPort` 4466), the IAP `GCPBackendPolicy` (IAP composes with backend
   TLS), and the NetworkPolicy (Headlamp's baseline already allows pod port
   4466, which now speaks TLS on the same port).
+- **Requires the Network Security API project-wide.** The GKE Gateway
+  controller compiles a `BackendTLSPolicy` into a load-balancer *server TLS
+  policy*, which needs `networksecurity.googleapis.com` enabled on the GCP
+  project — not just on the CRD/cluster side. `terraform/gke` enables it
+  unconditionally (same treatment as `secretmanager.googleapis.com`), so a
+  `Day1` from a clean project is covered. If the API was disabled when the
+  flag first flipped true on an **already-provisioned** cluster (e.g. a bare
+  `gcloud services enable networksecurity.googleapis.com` was skipped because
+  the Terraform apply that would have enabled it hadn't run yet), `gceSync`
+  fails with `NetworkSecurity API is not enabled, but server_tls_policies are
+  present in the load balancer` — and because the Gateway is a **single
+  shared resource**, this blocks `Programmed` for *every* hostname (Jenkins,
+  ArgoCD, Grafana, microservices, …), not just Headlamp. Fix: enable the API
+  (`gcloud services enable networksecurity.googleapis.com` or re-apply
+  `terraform/gke`) and wait for the controller's next resync — no Gateway/HTTPRoute
+  edit needed.
 
 ## Stage 1: why Headlamp
 
