@@ -463,6 +463,7 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 - [Why (and why opt-in)](./docs/504-BACKEND_TLS.md#why-and-why-opt-in) · [The flag](./docs/504-BACKEND_TLS.md#the-flag)
 - [How it works](./docs/504-BACKEND_TLS.md#how-it-works) · [The GKE mechanics](./docs/504-BACKEND_TLS.md#the-gke-mechanics-what-the-policies-actually-do)
 - [Stage 1: why Headlamp](./docs/504-BACKEND_TLS.md#stage-1-why-headlamp) · [Converting the next backend](./docs/504-BACKEND_TLS.md#converting-the-next-backend-roadmap--checklist)
+- [Does `secrets.backend=eso` change anything?](./docs/504-BACKEND_TLS.md#does-secretsbackendeso-change-anything) · [**Why not a service mesh?**](./docs/504-BACKEND_TLS.md#why-not-a-service-mesh) (Istio / Cloud Service Mesh comparison)
 - [Lifecycle](./docs/504-BACKEND_TLS.md#lifecycle) · [Verifying it](./docs/504-BACKEND_TLS.md#verifying-it)
 
 ---
