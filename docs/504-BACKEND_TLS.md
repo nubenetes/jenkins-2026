@@ -12,10 +12,11 @@ documents). Setting **`gateway.backendTls.enabled: true`** (override
 **application-layer TLS on that hop** for the TLS-ready backends: cert-manager +
 a cluster-internal CA are installed, the backend serves HTTPS itself, and a GKE
 `BackendTLSPolicy` makes the LB **re-encrypt *and* validate** the connection
-against the internal CA. Stages 1–4 convert **Headlamp**, the **faro RUM
+against the internal CA. Stages 1–5 convert **Headlamp**, the **faro RUM
 receiver**, **ArgoCD** (the third only for the jenkins/githubactions CI
-engines — see the roadmap), and **pgAdmin**; the roadmap below stages the rest.
-Default **`false`** — zero impact until you opt in.
+engines — see the roadmap), **pgAdmin**, and the in-cluster **OSS Grafana**
+(the fifth only in `observability.mode=oss` — doubly conditional); the roadmap
+below stages the rest. Default **`false`** — zero impact until you opt in.
 
 ## Why (and why opt-in)
 
@@ -40,7 +41,7 @@ override via env var — the standard pattern:
 
 | Key | Default | Override | Consumers |
 |---|---|---|---|
-| `gateway.backendTls.enabled` | `false` | `JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED` | [`08.5-argocd.sh`](../scripts/08.5-argocd.sh) (Headlamp TLS values overlay + the `backendTls` param it threads to the pgAdmin app-of-apps) · [`08.7-backend-tls.sh`](../scripts/08.7-backend-tls.sh) (cert-manager + CA + certs) · [`09-gateway.sh`](../scripts/09-gateway.sh) (`BackendTLSPolicy` + HTTPS `HealthCheckPolicy`) |
+| `gateway.backendTls.enabled` | `false` | `JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED` | [`08.5-argocd.sh`](../scripts/08.5-argocd.sh) (Headlamp TLS values overlay + the `backendTls` param it threads to the pgAdmin app-of-apps) · [`08.7-backend-tls.sh`](../scripts/08.7-backend-tls.sh) (cert-manager + CA + certs) · [`03-observability.sh`](../scripts/03-observability.sh) (faro TLS overlay + the `backendTls` param it threads to the observability-oss app-of-apps for OSS Grafana) · [`09-gateway.sh`](../scripts/09-gateway.sh) (`BackendTLSPolicy` + HTTPS `HealthCheckPolicy`) |
 
 **No consumer reads the raw flag.** They all gate on
 [`j2026_backend_tls_active`](../scripts/lib/common.sh) = *flag AND the cluster
@@ -140,6 +141,37 @@ spec:
 | In-repo manifests | ✅ ArgoCD app + values live here (unlike the microservices, whose deploy chart lives in the gitops-config repo) |
 | Blast radius | ✅ an admin UI behind IAP; no other platform component consumes its Service |
 
+## Stage 5: the doubly-conditional one (OSS Grafana)
+
+Grafana is the first backend that is **doubly conditional**: it exists in-cluster
+*only* in `observability.mode=oss` (the Grafana Cloud / Azure / AWS backends live
+off-cluster), so the conversion is gated on **the flag AND oss mode**, not the flag
+alone. Two consequences shaped the implementation:
+
+- **All three consumers stay oss-aware.** `08.7` mints `grafana-tls` only in oss
+  mode (and retires it if the mode later switches away with the flag still on);
+  `03-observability.sh` only *reaches* the overlay-threading code in its oss branch
+  (the `observability-oss` app-of-apps it feeds the `backendTls` param to is applied
+  nowhere else); `09-gateway.sh`'s grafana block is already inside `if oss`, and the
+  BackendTLSPolicy/HTTPS-health-check pair is nested under the backend-TLS gate
+  within it. In every non-oss mode the whole feature is a no-op for Grafana — no
+  cert, no policy, no overlay — exactly as before.
+- **The Grafana chart has no probe-scheme knob.** Unlike Headlamp (a first-class
+  `probes.scheme` value) or pgAdmin (probe scheme derived from `service.portName`),
+  the kube-prometheus-stack Grafana subchart (**Helm chart 12.4.x**, bundled in
+  kube-prometheus-stack 87.0.1 — distinct from the Grafana **app** image, tag
+  `13.1.0`, pinned in `values-oss.yaml`) renders `readinessProbe`/`livenessProbe`
+  **verbatim** from values with no automatic HTTP→HTTPS switch when
+  `server.protocol=https`. So the overlay must set `scheme: HTTPS` on both probes
+  explicitly (copying the chart's default timings) — omit it and the kubelet keeps
+  probing plain HTTP against the now-TLS listener and the pod never goes Ready. This
+  is the reusable lesson for any future backend whose chart lacks a scheme knob.
+
+Otherwise it is a standard increment: the cert-manager `grafana-tls` cert (SAN =
+the `oss-kube-prometheus-stack-grafana` Service FQDN), the CA trust ConfigMap already
+present in the observability namespace (projected there for faro), and the same
+BackendTLSPolicy + HTTPS `HealthCheckPolicy` (`/api/health`) pair the other stages use.
+
 ## Converting the next backend (roadmap + checklist)
 
 Each backend is an independent increment: make it serve TLS from a
@@ -153,7 +185,7 @@ Known per-backend state:
 | **ArgoCD** | native — argocd-server watches the `argocd-server-tls` Secret and serves TLS when not `--insecure` | 🟡 **done for `jenkins` + `githubactions`** (stage 3). The blocker is that the deploy caller must speak TLS *atomically* with the server flip, and it is **engine-gated** on [`j2026_argocd_backend_tls_active`](../scripts/lib/common.sh): `08.5` drops `--insecure`, `08.7` mints `argocd-server-tls` + restarts the server, `09` attaches the policy + an HTTPS health check — but **only when the engine's caller can do TLS**. Jenkins: `04-jenkins.sh` sets `ARGOCD_SERVER` to the `:443` form so [`vars/microservicesDeploy.groovy`](../vars/microservicesDeploy.groovy) drops `--plaintext`. GitHub Actions: its caller already uses `--server <host> --insecure` (TLS). **`tekton` + `argoworkflows` are NOT converted** — their PaC-triggered runs render `:80 --plaintext` from static YAML that can't read this Day1 flag, so argocd stays plain HTTP there (Headlamp + faro TLS still apply). Migrating those two (a flag the caller reads from a cluster ConfigMap, or 06-rendered params) is the next step |
 | **pgAdmin** | container env `PGADMIN_ENABLE_TLS` + `PGADMIN_LISTEN_PORT=8443`, certs mounted as `/certs/server.cert`/`server.key` | ✅ **done (stage 4)** — the [`values-backend-tls.yaml`](../helm/pgadmin/values-backend-tls.yaml) overlay flips the runix subchart to serve HTTPS on **8443** (non-privileged, the pod runs as UID 5050), remapping the cert-manager `tls.crt`/`tls.key` to pgAdmin's `server.cert`/`server.key` via `extraSecretMounts` subPath (with `defaultMode: 0644`, since subPath mounts don't get the pod's fsGroup). `service.portName: https` flips the chart probes to HTTPS; `09-gateway.sh` adds the `BackendTLSPolicy` + an HTTPS `HealthCheckPolicy` (`/misc/ping`). The overlay threads through the `platform-postgres` app-of-apps: `08.5` passes a `backendTls` helm param that makes the pgAdmin child app layer the overlay only when active |
 | **Jenkins** | chart `controller.httpsKeyStore.*` + cert-manager `keystores.jks` (JKS + password Secret) | probes move to the plain-HTTP `httpPort` (8081); the WebSocket build agents dial the controller Service — they must trust the internal CA or stay on an internal plain port; highest blast radius |
-| **Grafana (OSS)** | `grafana.ini` `server.protocol=https` + mounted cert | oss-mode-only (doubly conditional); values thread through the `observability-oss` app-of-apps |
+| **Grafana (OSS)** | `grafana.ini` `server.protocol=https` + mounted cert | ✅ **done (stage 5)** — the [`values-oss-backend-tls.yaml`](../observability/grafana/values-oss-backend-tls.yaml) overlay flips the kube-prometheus-stack Grafana subchart to serve HTTPS on pod port **3000** (`grafana.ini` `server.protocol=https` + `cert_file`/`cert_key` from the mounted cert-manager `grafana-tls` Secret at `/etc/grafana/certs`). **Doubly conditional** — in-cluster Grafana exists only in `observability.mode=oss`, so both `08.7` (cert mint) and `09` (policies) are oss-gated, and the overlay threads through the `observability-oss` app-of-apps: `03-observability.sh` passes a `backendTls` helm param that makes the `oss-kube-prometheus-stack` child layer the overlay only when active. The Grafana chart renders probes verbatim (no auto-scheme from `protocol`), so the overlay sets `readinessProbe`/`livenessProbe` `scheme: HTTPS` explicitly; `09-gateway.sh` adds the `BackendTLSPolicy` + an HTTPS `HealthCheckPolicy` (`/api/health`). IAP (auth.proxy header trust) composes unchanged |
 | **microservices gateway (JHipster)** | Spring Boot `server.ssl.*` + cert-manager `keystores.pkcs12` | **cross-repo** — the deploy chart lives in `jenkins-2026-gitops-config`; also interacts with Argo Rollouts canary routes and every engine's smoke test URL |
 | **faro receiver (otel-collector)** | faro receiver `tls` block + mounted cert | ✅ **done (stage 2)** — the `faro-tls` overlay ([`values-backend-tls.yaml`](../observability/otel-collector/values-backend-tls.yaml)) is layered by `03-observability.sh` onto every mode's collector release; the `faro-tls` volume is declared `optional: true` in each `values-<mode>.yaml` so a flag-off collector still starts. Its HealthCheckPolicy stays **TCP** (protocol-agnostic), so only the `BackendTLSPolicy` flips — no health-check change |
 
@@ -260,6 +292,9 @@ kubectl get backendtlspolicy faro-backend-tls -n observability  # faro policy (h
 kubectl get certificate faro-tls -n observability               # faro-tls Ready
 kubectl get backendtlspolicy,healthcheckpolicy -n pgadmin       # pgadmin policy pair present
 kubectl get certificate pgadmin-tls -n pgadmin                  # pgadmin-tls Ready
+# Grafana (observability.mode=oss ONLY): cert + policy pair in the observability namespace
+kubectl get certificate grafana-tls -n observability            # grafana-tls Ready
+kubectl get backendtlspolicy,healthcheckpolicy oss-kube-prometheus-stack-grafana -n observability 2>/dev/null; kubectl get backendtlspolicy grafana-backend-tls -n observability
 kubectl -n headlamp get cm jenkins-2026-backend-tls-ca -o jsonpath='{.data.ca\.crt}' | head -1
 # The pod side: headlamp now speaks TLS on 4466
 kubectl -n headlamp exec deploy/headlamp -- wget -q --no-check-certificate -O- https://localhost:4466/ >/dev/null && echo TLS-OK
@@ -268,10 +303,13 @@ kubectl -n observability get svc otel-collector-gateway -o jsonpath='{.spec.port
 # pgAdmin: the pod now serves TLS on 8443 (Service port 80 -> targetPort 8443)
 kubectl -n pgadmin get svc pgadmin-pgadmin4 -o jsonpath='{.spec.ports[0].targetPort}'; echo
 kubectl -n pgadmin exec deploy/pgadmin-pgadmin4 -- wget -q --no-check-certificate -O- https://localhost:8443/misc/ping >/dev/null && echo TLS-OK
+# Grafana (oss): the pod now serves TLS on 3000 (grafana.ini server.protocol=https)
+kubectl -n observability exec deploy/oss-kube-prometheus-stack-grafana -c grafana -- wget -q --no-check-certificate -O- https://localhost:3000/api/health >/dev/null && echo TLS-OK
 # The LB side: the public hosts must still answer (IAP first for the admin UIs; faro is public)
 curl -sSI https://headlamp.<baseDomain> | head -3
 curl -sSI https://faro.<baseDomain>     | head -3
 curl -sSI https://pgadmin.<baseDomain>  | head -3
+curl -sSI https://grafana.<baseDomain>  | head -3   # observability.mode=oss only
 ```
 
 If the host 502s after enabling, check `kubectl describe backendtlspolicy -n

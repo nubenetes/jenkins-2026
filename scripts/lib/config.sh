@@ -431,6 +431,15 @@ export J2026_BACKEND_TLS_POLICY_ARGOCD="argocd-backend-tls"
 # is ${J2026_PGADMIN_RELEASE}-pgadmin4 (runix chart fullname).
 export J2026_BACKEND_TLS_SECRET_PGADMIN="pgadmin-tls"
 export J2026_BACKEND_TLS_POLICY_PGADMIN="pgadmin-backend-tls"
+# Stage-5 TLS backend: the in-cluster OSS Grafana (observability.mode=oss ONLY —
+# doubly conditional: the flag AND oss mode; the managed backends live off-cluster).
+# Server-cert Secret 08.7-backend-tls.sh mints (must match the secretName in
+# observability/grafana/values-oss-backend-tls.yaml, layered by the observability-oss
+# app-of-apps) + the BackendTLSPolicy 09-gateway.sh attaches. Grafana serves TLS on its
+# pod port (named `grafana`, 3000) via grafana.ini server.protocol=https; the Service is
+# oss-kube-prometheus-stack-grafana (the kube-prometheus-stack subchart fullname).
+export J2026_BACKEND_TLS_SECRET_GRAFANA="grafana-tls"
+export J2026_BACKEND_TLS_POLICY_GRAFANA="grafana-backend-tls"
 
 # Fixed names of the Gateway/HTTPRoute/GCPBackendPolicy resources created by
 # scripts/09-gateway.sh. Shared with scripts/down.sh so the two stay in sync:

@@ -396,9 +396,16 @@ EOT
     log_step "Applying observability-oss ArgoCD app-of-apps"
     OSS_APP_FILE="$(mktemp)"
     REPO_URL="${J2026_SELF_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
+    # Backend TLS (docs/504): when active, the kube-prometheus-stack child layers the
+    # Grafana TLS values overlay (grafana serves HTTPS on 3000). Gated on
+    # j2026_backend_tls_active (flag AND the BackendTLSPolicy CRD), so a cluster too
+    # old to serve the CRD stays plain HTTP even with the flag on. The grafana-tls
+    # cert is already minted — 08.7-backend-tls.sh runs BEFORE this script in up.sh.
+    OSS_BACKEND_TLS="$(j2026_backend_tls_active)"
     sed "s@{{repoUrl}}@${REPO_URL}@g;
          s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g;
-         s@{{ciEngine}}@${J2026_CI_ENGINE}@g" \
+         s@{{ciEngine}}@${J2026_CI_ENGINE}@g;
+         s@{{backendTls}}@${OSS_BACKEND_TLS}@g" \
         "${J2026_ROOT_DIR}/argocd/observability-oss-app.yaml" > "${OSS_APP_FILE}"
     kubectl apply -f "${OSS_APP_FILE}"
     rm "${OSS_APP_FILE}"

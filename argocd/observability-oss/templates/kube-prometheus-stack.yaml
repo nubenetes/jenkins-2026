@@ -27,6 +27,12 @@ spec:
       helm:
         valueFiles:
           - $values/observability/grafana/values-oss.yaml
+          {{- if eq (.Values.backendTls | toString) "true" }}
+          # Backend TLS active (docs/504): layer the Grafana TLS overlay so it serves
+          # HTTPS on 3000 with the cert-manager-minted grafana-tls Secret (08.7). Later
+          # valueFiles win, so this merges over values-oss.yaml.
+          - $values/observability/grafana/values-oss-backend-tls.yaml
+          {{- end }}
     # This repo, for the values file above (referenced via $values).
     - repoURL: {{ .Values.repoURL | quote }}
       targetRevision: {{ .Values.targetRevision | quote }}

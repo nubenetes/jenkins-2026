@@ -634,7 +634,69 @@ spec:
           port: 80
 EOT
 
-  cat >"${GENERATED_DIR}/healthcheckpolicy-grafana.yaml" <<EOT
+  # Backend TLS for OSS Grafana (stage-5 TLS-ready backend, doubly conditional:
+  # oss mode AND gateway.backendTls.enabled - docs/504). When active, Grafana
+  # terminates TLS on its pod port 3000 (grafana.ini server.protocol=https, via the
+  # values-oss-backend-tls.yaml overlay the observability-oss app-of-apps layers; cert
+  # + CA trust ConfigMap minted by 08.7-backend-tls.sh), and two policies flip the LB
+  # side - identical shape to the headlamp/pgadmin pairs:
+  #   - BackendTLSPolicy: the LB re-encrypts LB->pod AND validates the backend cert
+  #     against the internal CA. validation.hostname (SNI + SAN) = the Grafana Service
+  #     FQDN, matching the cert 08.7 mints.
+  #   - HealthCheckPolicy type HTTPS: the default LB health check follows the Service
+  #     appProtocol (unset = HTTP) and would keep probing plain HTTP against the now-TLS
+  #     pod -> 502. requestPath /api/health is Grafana's unauthenticated health endpoint.
+  # The HTTPRoute (Service port 80 -> targetPort 3000) and the IAP GCPBackendPolicy are
+  # UNCHANGED - IAP composes with backend TLS.
+  if [[ "${BACKEND_TLS_ACTIVE}" == "true" ]]; then
+    log_step "Generating BackendTLSPolicy + HTTPS HealthCheckPolicy (grafana, backendTls enabled)"
+    cat >"${GENERATED_DIR}/backendtlspolicy-grafana.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: ${J2026_BACKEND_TLS_POLICY_GRAFANA}
+  namespace: ${J2026_GRAFANA_OSS_NAMESPACE}
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: oss-kube-prometheus-stack-grafana
+  validation:
+    hostname: oss-kube-prometheus-stack-grafana.${J2026_GRAFANA_OSS_NAMESPACE}.svc.cluster.local
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: ${J2026_BACKEND_TLS_CA_CONFIGMAP}
+EOT
+
+    cat >"${GENERATED_DIR}/healthcheckpolicy-grafana.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: oss-kube-prometheus-stack-grafana
+  namespace: ${J2026_GRAFANA_OSS_NAMESPACE}
+spec:
+  default:
+    config:
+      type: HTTPS
+      httpsHealthCheck:
+        requestPath: /api/health
+  targetRef:
+    group: ""
+    kind: Service
+    name: oss-kube-prometheus-stack-grafana
+EOT
+  else
+    # Backend TLS inactive (or the CRD is absent): plain-HTTP health check (default
+    # posture), and retire any grafana BackendTLSPolicy left by a prior enabled run on
+    # this (persistent) cluster + drop its stale generated manifest so the apply below
+    # can't re-create it. CRD-guarded: deleting a backendtlspolicy on a cluster that
+    # never served the CRD is a hard error, not a not-found.
+    rm -f "${GENERATED_DIR}/backendtlspolicy-grafana.yaml"
+    if kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+      kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_GRAFANA}" -n "${J2026_GRAFANA_OSS_NAMESPACE}" --ignore-not-found
+    fi
+    cat >"${GENERATED_DIR}/healthcheckpolicy-grafana.yaml" <<EOT
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
 metadata:
@@ -651,15 +713,23 @@ spec:
     kind: Service
     name: oss-kube-prometheus-stack-grafana
 EOT
+  fi
 else
   # Non-oss modes have no in-cluster Grafana. Delete any grafana HTTPRoute /
-  # HealthCheckPolicy left over from a previous oss run on this (persistent) cluster
-  # — otherwise it dangles pointing at the now-deleted oss-kube-prometheus-stack-grafana
-  # Service (BackendNotFound events + a 502 at the grafana host). Deterministic
-  # mode-switch cleanup, mirroring 03-observability retiring foreign backends. Idempotent.
+  # HealthCheckPolicy / BackendTLSPolicy left over from a previous oss run on this
+  # (persistent) cluster — otherwise it dangles pointing at the now-deleted
+  # oss-kube-prometheus-stack-grafana Service (BackendNotFound events + a 502 at the
+  # grafana host). Deterministic mode-switch cleanup, mirroring 03-observability
+  # retiring foreign backends. Idempotent.
   log_step "Removing any leftover grafana HTTPRoute/HealthCheckPolicy (observability.mode=${J2026_OBS_MODE}, not oss)"
+  rm -f "${GENERATED_DIR}/httproute-grafana.yaml" \
+        "${GENERATED_DIR}/healthcheckpolicy-grafana.yaml" \
+        "${GENERATED_DIR}/backendtlspolicy-grafana.yaml"
   kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_GRAFANA}" -n "${J2026_GRAFANA_OSS_NAMESPACE}" --ignore-not-found
   kubectl delete healthcheckpolicy oss-kube-prometheus-stack-grafana -n "${J2026_GRAFANA_OSS_NAMESPACE}" --ignore-not-found
+  if kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+    kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_GRAFANA}" -n "${J2026_GRAFANA_OSS_NAMESPACE}" --ignore-not-found
+  fi
 fi
 
 

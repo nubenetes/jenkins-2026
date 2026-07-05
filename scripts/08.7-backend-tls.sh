@@ -62,6 +62,15 @@ if [[ "${ARGOCD_TLS_ACTIVE}" == "true" ]]; then
   tls_backend_namespaces+=("${J2026_ARGOCD_NAMESPACE}")
 fi
 
+# Grafana (stage 5) is a TLS backend ONLY in observability.mode=oss (in-cluster
+# Grafana; the managed backends live off-cluster). Its namespace defaults to the
+# observability namespace (already listed above), so add it only when configured
+# separately — that keeps the CA trust ConfigMap where the grafana BackendTLSPolicy
+# (09) expects it without projecting a duplicate into the shared obs namespace.
+if [[ "${J2026_OBS_MODE}" == "oss" && "${J2026_GRAFANA_OSS_NAMESPACE}" != "${J2026_OBS_NAMESPACE}" ]]; then
+  tls_backend_namespaces+=("${J2026_GRAFANA_OSS_NAMESPACE}")
+fi
+
 if [[ "$(j2026_backend_tls_active)" != "true" ]]; then
   # --- retire: deterministic cleanup of a previous enabled run ---------------
   # (Flag off - the default - or the CRD is absent. A cluster that never had
@@ -90,6 +99,9 @@ if [[ "$(j2026_backend_tls_active)" != "true" ]]; then
   fi
   if kubectl get namespace "${J2026_PGADMIN_NAMESPACE}" >/dev/null 2>&1; then
     kubectl delete secret "${J2026_BACKEND_TLS_SECRET_PGADMIN}" -n "${J2026_PGADMIN_NAMESPACE}" --ignore-not-found
+  fi
+  if kubectl get namespace "${J2026_GRAFANA_OSS_NAMESPACE}" >/dev/null 2>&1; then
+    kubectl delete secret "${J2026_BACKEND_TLS_SECRET_GRAFANA}" -n "${J2026_GRAFANA_OSS_NAMESPACE}" --ignore-not-found
   fi
   # argocd trust bundle + server cert (its namespace is not in the projection list
   # when inactive, so clean it explicitly). 08.5 re-renders argocd-server --insecure.
@@ -253,6 +265,21 @@ mint_server_cert "${J2026_BACKEND_TLS_SECRET_FARO}" "${J2026_OBS_NAMESPACE}" \
 # pod port 8443. Always active with the global flag (engine- and obs-mode-neutral).
 mint_server_cert "${J2026_BACKEND_TLS_SECRET_PGADMIN}" "${J2026_PGADMIN_NAMESPACE}" \
   "${J2026_PGADMIN_RELEASE}-pgadmin4.${J2026_PGADMIN_NAMESPACE}.svc.cluster.local"
+# Stage 5: the in-cluster OSS Grafana, ONLY in observability.mode=oss (doubly
+# conditional — the managed backends live off-cluster). One cert for the
+# kube-prometheus-stack Grafana Service (oss-kube-prometheus-stack-grafana); the
+# observability-oss app-of-apps layers observability/grafana/values-oss-backend-tls.yaml
+# (threaded by 03-observability.sh) so Grafana serves it on pod port 3000. 08.7 runs
+# BEFORE 03 in up.sh, so the Secret exists before ArgoCD rolls Grafana with the overlay.
+if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
+  mint_server_cert "${J2026_BACKEND_TLS_SECRET_GRAFANA}" "${J2026_GRAFANA_OSS_NAMESPACE}" \
+    "oss-kube-prometheus-stack-grafana.${J2026_GRAFANA_OSS_NAMESPACE}.svc.cluster.local"
+elif kubectl get namespace "${J2026_GRAFANA_OSS_NAMESPACE}" >/dev/null 2>&1; then
+  # backend TLS globally on but obs mode isn't oss: retire any grafana cert left by a
+  # prior oss run so nothing stale lingers (09 drops the BackendTLSPolicy; the non-oss
+  # Grafana backend is off-cluster and never served this cert).
+  kubectl delete secret "${J2026_BACKEND_TLS_SECRET_GRAFANA}" -n "${J2026_GRAFANA_OSS_NAMESPACE}" --ignore-not-found
+fi
 # Stage 3: argocd-server, ONLY for engines whose deploy caller speaks TLS
 # (jenkins/githubactions). argocd-server watches the argocd-server-tls Secret.
 if [[ "${ARGOCD_TLS_ACTIVE}" == "true" ]]; then
@@ -291,6 +318,6 @@ for ns in "${tls_backend_namespaces[@]}"; do
     --from-literal=ca.crt="${ca_pem}" --dry-run=client -o yaml | kubectl apply -f -
 done
 
-log_info "Backend TLS ready: cert-manager installed, internal CA bootstrapped, headlamp + faro + pgadmin certs minted."
-log_info "  (08.5-argocd.sh layers the Headlamp + pgAdmin TLS overlays; 03-observability.sh layers the faro overlay;"
+log_info "Backend TLS ready: cert-manager installed, internal CA bootstrapped, headlamp + faro + pgadmin$([[ "${J2026_OBS_MODE}" == "oss" ]] && echo " + grafana") certs minted."
+log_info "  (08.5-argocd.sh layers the Headlamp + pgAdmin TLS overlays; 03-observability.sh layers the faro + oss-Grafana overlays;"
 log_info "   09-gateway.sh attaches the BackendTLSPolicies.)"
