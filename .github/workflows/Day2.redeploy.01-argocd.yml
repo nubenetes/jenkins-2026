@@ -62,6 +62,11 @@ on:
           - info
           - warn
           - error
+      develop_track:
+        description: "Optional lean 'develop' microservices tier (docs/402). MUST MATCH how the cluster was provisioned: 08.5 regenerates the microservices ApplicationSet, and develop_track=false against a develop-enabled cluster strips its 'develop' generator element — ArgoCD then PRUNES the microservices-develop Application. Tier provisioning (namespace/netpol/RBAC + CI runs) is owned by Day1.cluster.01."
+        required: false
+        default: false
+        type: boolean
       backend_tls:
         description: "Opt-in backend TLS (gateway.backendTls — docs/504). MUST MATCH how the cluster was provisioned: 08.5 re-renders the Headlamp Application, and the wrong value strips/adds the TLS overlay the LB's BackendTLSPolicy expects → 502 at headlamp. Flag FLIPS need Day1 (only it runs 08.5 + 08.7 + 09 together)."
         required: false
@@ -87,6 +92,10 @@ env:
   # vs the tekton-argocd Secret (tekton-ci ns). Must match the live cluster, else
   # 08.5 fails on the absent jenkins namespace in tekton mode.
   JENKINS2026_CI_ENGINE: ${{ inputs.ci_engine }}
+  # Develop tier (docs/402) — must match the live cluster: 08.5 appends the AppSet's
+  # 'develop' generator only when true, so false against a develop-enabled cluster
+  # prunes the microservices-develop Application (see the input).
+  JENKINS2026_DEVELOP_TRACK_ENABLED: ${{ inputs.develop_track }}
   # Opt-in backend TLS (docs/504) — must match the live cluster (see the input).
   JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED: ${{ inputs.backend_tls }}
 
