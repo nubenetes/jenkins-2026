@@ -19,6 +19,12 @@ All notable changes to **jenkins-2026** are documented here, following
 
 ## [Unreleased]
 
+_Nothing yet — add entries here as PRs merge._
+
+## [v1.2.0] - 2026-07-05
+
+_Opt-in backend TLS (LB->pod re-encryption via cert-manager + BackendTLSPolicy, stage 1 Headlamp), four-engine workflow input parity, canonical-JSON dashboard-uid derivation, and an exhaustive docs-vs-code audit (342 fixes + 14 new docs)._
+
 ### Added
 - **Opt-in backend TLS — the LB→pod hop can now be re-encrypted AND CA-validated ([docs/504](docs/504-BACKEND_TLS.md)).** New feature flag `gateway.backendTls.enabled` (default **false** — zero impact until enabled; per-run override `JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED`). When on, the new [`scripts/08.7-backend-tls.sh`](scripts/08.7-backend-tls.sh) installs **cert-manager** (pinned `v1.20.3`, GitOps via [`argocd/cert-manager-app.yaml`](argocd/cert-manager-app.yaml) with `crds.enabled+keep=false`) and bootstraps a cluster-internal CA (selfsigned root → CA `ClusterIssuer`); the stage-1 backend **Headlamp** serves HTTPS natively from a cert-manager-minted cert ([`helm/headlamp/values-backend-tls.yaml`](helm/headlamp/values-backend-tls.yaml), layered onto the app by `08.5`), and [`09-gateway.sh`](scripts/09-gateway.sh) attaches the GKE **`BackendTLSPolicy`** (re-encrypt + validate against the internal CA via the projected `ca.crt` trust ConfigMap; GKE Gateway backend TLS is GA 2026-05) plus the **HTTPS `HealthCheckPolicy`** the default health check won't provide. Every consumer gates on the shared `j2026_backend_tls_active` helper (flag **and** the `BackendTLSPolicy` CRD), so pre-GA clusters degrade consistently to plain HTTP instead of 502ing; flipping the flag off (or `down.sh`) retires the policies, certs and cert-manager symmetrically. Replaces docs/501 §3's "possible future hardening" note; the ArgoCD (`--plaintext` CLI callers), Jenkins (JKS/agent trust), pgAdmin, OSS-Grafana and microservices conversions are documented follow-ups in the docs/504 roadmap.
 - **`backend_tls` input on every gateway-touching GHA workflow.** `Day1.cluster.00/01` (where enabling/disabling **converges** — Day1 runs `08.5`+`08.7`+`09` together) and `Day2.redeploy.01-argocd`/`.03-tekton`/`.05-gateway`/`.06-githubactions`/`.07-argoworkflows` (where the value must **match the live cluster** — the wrong one strips the Headlamp TLS overlay or retires the policies mid-flight → 502 at headlamp). Same input-parity doctrine as `ci_engine`/`develop_track` (the #552 lesson: a flag without its input on *every* consumer workflow becomes a dispatch-time foot-gun).
@@ -177,6 +183,7 @@ Every milestone release (git tag + GitHub release), newest first. Full detail fo
 
 | Version | Date | Theme |
 |---|---|---|
+| [v1.2.0](#v120---2026-07-05) | 2026-07-05 | **opt-in backend TLS & docs overhaul** — LB->pod re-encryption via cert-manager + BackendTLSPolicy (#554, docs/504), four-engine workflow input parity, canonical-JSON dashboard-uid derivation (#559-#561), and an exhaustive docs-vs-code audit (342 fixes + 14 new docs) |
 | [v1.1.1](#v111---2026-07-03) | 2026-07-03 | **teardown hygiene** — a full Decom purges the eso Secret Manager secrets (#544) + reliably sweeps orphaned PV disks incl. prior-run orphans (#545) |
 | [v1.1.0](#v110---2026-07-03) | 2026-07-03 | **multi-engine CI & managed-observability hardening** — Tekton/Argo/GHA live-validated, Azure/AWS managed-Prometheus query fixes, idempotent switches |
 | [v1.0.0](#v100---2026-07-02) | 2026-07-02 | **first stable release** — reference platform baseline |
