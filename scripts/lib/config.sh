@@ -423,6 +423,14 @@ export J2026_BACKEND_TLS_POLICY_FARO="faro-backend-tls"
 # under j2026_argocd_backend_tls_active). 09-gateway.sh attaches the BackendTLSPolicy.
 export J2026_BACKEND_TLS_SECRET_ARGOCD="argocd-server-tls"
 export J2026_BACKEND_TLS_POLICY_ARGOCD="argocd-backend-tls"
+# Stage-4 TLS backend: pgAdmin (the platform-postgres admin UI). Server-cert Secret
+# 08.7 mints (must match the secretName the pgadmin-tls extraSecretMounts reference
+# in helm/pgadmin/values-backend-tls.yaml) + the BackendTLSPolicy 09-gateway.sh
+# attaches. pgAdmin serves TLS on its pod port 8443 (PGADMIN_ENABLE_TLS +
+# PGADMIN_LISTEN_PORT, non-privileged since the pod runs as UID 5050); the Service
+# is ${J2026_PGADMIN_RELEASE}-pgadmin4 (runix chart fullname).
+export J2026_BACKEND_TLS_SECRET_PGADMIN="pgadmin-tls"
+export J2026_BACKEND_TLS_POLICY_PGADMIN="pgadmin-backend-tls"
 
 # Fixed names of the Gateway/HTTPRoute/GCPBackendPolicy resources created by
 # scripts/09-gateway.sh. Shared with scripts/down.sh so the two stay in sync:

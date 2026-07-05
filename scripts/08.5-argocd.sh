@@ -388,8 +388,13 @@ log_step "Configuring platform-postgres app-of-apps (CNPG operator + pgAdmin) vi
 # child's git source tracks the active branch.
 PG_APP_FILE=$(mktemp)
 REPO_URL="${J2026_SELF_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
+# backend TLS (docs/504): when active, the pgAdmin child layers its TLS values
+# overlay. Gated on j2026_backend_tls_active (flag AND the BackendTLSPolicy CRD),
+# so a cluster too old to serve the CRD stays plain HTTP even with the flag on.
+PG_BACKEND_TLS="$(j2026_backend_tls_active)"
 sed "s@{{repoUrl}}@${REPO_URL}@g;
-     s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g" \
+     s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g;
+     s@{{backendTls}}@${PG_BACKEND_TLS}@g" \
     "${J2026_ROOT_DIR}/argocd/platform-postgres-app.yaml" > "${PG_APP_FILE}"
 kubectl apply -f "${PG_APP_FILE}"
 rm "${PG_APP_FILE}"

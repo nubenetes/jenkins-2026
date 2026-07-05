@@ -392,6 +392,76 @@ spec:
           port: 80
 EOT
 
+# Backend TLS for pgAdmin (stage-4 TLS-ready backend; opt-in via
+# gateway.backendTls.enabled - docs/504). When active, pgAdmin terminates TLS on
+# its pod port 8443 (values-backend-tls.yaml overlay threaded by the
+# platform-postgres app-of-apps; cert + CA trust ConfigMap minted by
+# 08.7-backend-tls.sh), and two policies flip the LB side - identical shape to
+# the headlamp pair above:
+#   - BackendTLSPolicy: the LB re-encrypts LB->pod AND validates the backend cert
+#     against the internal CA. validation.hostname (SNI + SAN) = the runix-chart
+#     Service FQDN, matching the cert 08.7 mints.
+#   - HealthCheckPolicy type HTTPS: the default LB health check follows the
+#     Service appProtocol (unset = HTTP) and would keep probing plain HTTP against
+#     the now-TLS pod -> 502. requestPath /misc/ping is pgAdmin's own liveness
+#     endpoint (a plain 200, unlike / which 302-redirects to /login).
+# The HTTPRoute (Service port 80 -> targetPort 8443) and the IAP GCPBackendPolicy
+# are UNCHANGED - IAP composes with backend TLS.
+if [[ "${BACKEND_TLS_ACTIVE}" == "true" ]]; then
+  log_step "Generating BackendTLSPolicy + HTTPS HealthCheckPolicy (pgAdmin, backendTls enabled)"
+  cat >"${GENERATED_DIR}/backendtlspolicy-pgadmin.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: ${J2026_BACKEND_TLS_POLICY_PGADMIN}
+  namespace: ${J2026_PGADMIN_NAMESPACE}
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: ${J2026_PGADMIN_RELEASE}-pgadmin4
+  validation:
+    hostname: ${J2026_PGADMIN_RELEASE}-pgadmin4.${J2026_PGADMIN_NAMESPACE}.svc.cluster.local
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: ${J2026_BACKEND_TLS_CA_CONFIGMAP}
+EOT
+
+  cat >"${GENERATED_DIR}/healthcheckpolicy-pgadmin.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: ${J2026_PGADMIN_RELEASE}-pgadmin4
+  namespace: ${J2026_PGADMIN_NAMESPACE}
+spec:
+  default:
+    config:
+      type: HTTPS
+      httpsHealthCheck:
+        requestPath: /misc/ping
+  targetRef:
+    group: ""
+    kind: Service
+    name: ${J2026_PGADMIN_RELEASE}-pgadmin4
+EOT
+else
+  # Backend TLS inactive - retire any policies left by a previous enabled run on
+  # this (persistent) cluster, and drop stale generated manifests so the apply
+  # below can't re-create them (same deterministic flag-off cleanup as headlamp).
+  # The CRD guard matters: `kubectl delete backendtlspolicy` on a cluster that
+  # never served the CRD is a hard error, not a not-found.
+  rm -f "${GENERATED_DIR}/backendtlspolicy-pgadmin.yaml" \
+        "${GENERATED_DIR}/healthcheckpolicy-pgadmin.yaml"
+  if kubectl get namespace "${J2026_PGADMIN_NAMESPACE}" >/dev/null 2>&1; then
+    log_step "Removing any leftover pgAdmin BackendTLSPolicy/HealthCheckPolicy (backendTls inactive)"
+    if kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+      kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_PGADMIN}" -n "${J2026_PGADMIN_NAMESPACE}" --ignore-not-found
+    fi
+    kubectl delete healthcheckpolicy "${J2026_PGADMIN_RELEASE}-pgadmin4" -n "${J2026_PGADMIN_NAMESPACE}" --ignore-not-found
+  fi
+fi
+
 # Tekton Dashboard is only deployed when ci.engine=tekton.
 if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
   log_step "Generating HTTPRoute + HealthCheckPolicy (tekton dashboard, ci.engine=tekton)"

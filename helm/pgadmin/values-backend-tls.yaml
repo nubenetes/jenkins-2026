@@ -1,0 +1,69 @@
+# pgAdmin backend-TLS overlay - layered ON TOP of values.yaml (later valueFiles
+# win) by the platform-postgres app-of-apps ONLY when the opt-in backend-TLS
+# feature is active (gateway.backendTls.enabled + the BackendTLSPolicy CRD - see
+# docs/504-BACKEND_TLS.md). The pgadmin child Application's valueFiles gain this
+# file only when argocd/platform-postgres/templates/pgadmin.yaml sees
+# backendTls=true (threaded down as a helm parameter by scripts/08.5-argocd.sh
+# from j2026_backend_tls_active). NOT referenced when the flag is off, so the
+# default posture (plain-HTTP pgAdmin on port 80) is untouched.
+#
+# Makes pgAdmin terminate TLS itself using the cert-manager-minted `pgadmin-tls`
+# Secret (scripts/08.7-backend-tls.sh; SAN = pgadmin-pgadmin4.pgadmin.svc.cluster
+# .local, the hostname the BackendTLSPolicy scripts/09-gateway.sh generates sends
+# as SNI and validates). The Google L7 LB then re-encrypts the LB->pod hop.
+#
+# All keys nest under `pgadmin4:` (the runix subchart) and merge over the base
+# values.yaml. Every list here (env.variables, extraSecretMounts) is one the base
+# does NOT set, so Helm's list-REPLACE merge can't clobber the base's own lists
+# (envVarsExtra, extraVolumes/extraVolumeMounts for config_local.py, the pgpass
+# init container).
+pgadmin4:
+  env:
+    # pgAdmin's entrypoint serves HTTPS (expecting /certs/server.cert +
+    # /certs/server.key) when PGADMIN_ENABLE_TLS is set. Bind a NON-privileged
+    # port: the pod runs as UID 5050 (chart securityContext), so it can't bind
+    # 443 - PGADMIN_LISTEN_PORT moves the TLS listener to 8443.
+    variables:
+      - name: PGADMIN_ENABLE_TLS
+        value: "True"
+      - name: PGADMIN_LISTEN_PORT
+        value: "8443"
+
+  # The container now listens on 8443 (TLS). The port is NAMED `https` (via
+  # service.portName below), which flips the chart's kubelet probes to
+  # scheme: HTTPS - the runix chart derives BOTH the probe scheme and the probe
+  # port name from service.portName (upper-cased), so this must stay in sync.
+  containerPorts:
+    http: 8443
+
+  service:
+    # Keep the Service PORT 80 so the HTTPRoute backendRef (port: 80) in
+    # 09-gateway.sh is unchanged; only the targetPort moves to the pod's TLS
+    # port. portName https drives the HTTPS probe scheme (see above); it does
+    # NOT set the Service appProtocol, so 09-gateway.sh still needs the explicit
+    # HTTPS HealthCheckPolicy to stop the LB probing plain HTTP.
+    port: 80
+    targetPort: 8443
+    portName: https
+
+  # Project the cert-manager `pgadmin-tls` Secret to the paths pgAdmin expects.
+  # cert-manager writes tls.crt/tls.key; pgAdmin wants server.cert/server.key -
+  # subPath remaps each key. Two entries (distinct volume names, same Secret) so
+  # the chart's volumes loop doesn't emit a duplicate volume name.
+  # defaultMode 0644: subPath mounts do NOT receive the pod's fsGroup (5050)
+  # ownership (a documented Kubernetes limitation), so the files stay root:root -
+  # 0644 lets UID 5050 read them via the "other" bits (the standard k8s Secret
+  # default; gunicorn/OpenSSL don't enforce key-file permissions).
+  extraSecretMounts:
+    - name: pgadmin-tls-cert
+      secret: pgadmin-tls
+      subPath: tls.crt
+      mountPath: /certs/server.cert
+      readOnly: true
+      defaultMode: 0644
+    - name: pgadmin-tls-key
+      secret: pgadmin-tls
+      subPath: tls.key
+      mountPath: /certs/server.key
+      readOnly: true
+      defaultMode: 0644

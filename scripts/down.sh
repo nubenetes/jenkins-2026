@@ -223,6 +223,7 @@ if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
   # not-found) on clusters that never served the BackendTLSPolicy CRD.
   if kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
     kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_HEADLAMP}" -n "${J2026_HEADLAMP_NAMESPACE}" --ignore-not-found --timeout=5m
+    kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_PGADMIN}" -n "${J2026_PGADMIN_NAMESPACE}" --ignore-not-found --timeout=5m
   fi
   kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_JENKINS}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found --timeout=5m
   kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_MICROSERVICES}" -n "${J2026_MICROSERVICES_NS_STABLE}" --ignore-not-found --timeout=5m

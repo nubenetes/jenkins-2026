@@ -9,6 +9,13 @@ namespace:
   cnpg: cnpg-system
   pgadmin: pgadmin
 
+# Opt-in backend TLS (gateway.backendTls, docs/504). Overridden to "true" by the
+# parent Application's helm.parameters (set by scripts/08.5-argocd.sh from
+# j2026_backend_tls_active); when "true" the pgAdmin child layers
+# helm/pgadmin/values-backend-tls.yaml so pgAdmin serves HTTPS on 8443. Passed as
+# a STRING via helm.parameters, so the template compares eq (... | toString) "true".
+backendTls: false
+
 cnpg:
   repoURL: https://cloudnative-pg.github.io/charts
   # Chart version (NOT the operator version) — the `cloudnative-pg` chart lags:

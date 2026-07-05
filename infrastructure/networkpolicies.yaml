@@ -35,9 +35,18 @@ spec:
   - Ingress
   - Egress
   ingress:
+  # Plain HTTP (default posture) on 80, and the TLS pod port 8443 when the opt-in
+  # backend-TLS feature is active (gateway.backendTls, docs/504) — pgAdmin then
+  # serves HTTPS on 8443 (targetPort). Both listed unconditionally: this policy is
+  # static (applied always by 01-namespaces.sh, not flag-aware) and NetworkPolicy
+  # ingress ports are additive, so the unused port is harmless in either mode. The
+  # LB/health-check ranges reach the serving port from Google's fabric (no `from`
+  # selector = all sources), like the headlamp-baseline pod-port allow.
   - ports:
     - protocol: TCP
       port: 80
+    - protocol: TCP
+      port: 8443
   egress:
   - ports:
     - protocol: TCP

@@ -47,10 +47,10 @@ GENERATED_DIR="${J2026_ROOT_DIR}/.generated/backend-tls"
 HEADLAMP_TLS_SECRET="headlamp-tls"
 
 # Namespaces holding a TLS-READY backend (stage 1: Headlamp; stage 2: the
-# otel-collector faro receiver in the observability namespace). Each entry gets
-# the CA trust ConfigMap when active, and both artifacts retired when not.
-# Deduplicated in case two backends ever share a namespace.
-tls_backend_namespaces=("${J2026_HEADLAMP_NAMESPACE}" "${J2026_OBS_NAMESPACE}")
+# otel-collector faro receiver in the observability namespace; stage 4: pgAdmin).
+# Each entry gets the CA trust ConfigMap when active, and both artifacts retired
+# when not. Deduplicated in case two backends ever share a namespace.
+tls_backend_namespaces=("${J2026_HEADLAMP_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}")
 
 # argocd-server (stage 3) is TLS-ready only for engines whose deploy caller speaks
 # TLS (jenkins/githubactions - see j2026_argocd_backend_tls_active). Tracked
@@ -87,6 +87,9 @@ if [[ "$(j2026_backend_tls_active)" != "true" ]]; then
   fi
   if kubectl get namespace "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1; then
     kubectl delete secret "${J2026_BACKEND_TLS_SECRET_FARO}" -n "${J2026_OBS_NAMESPACE}" --ignore-not-found
+  fi
+  if kubectl get namespace "${J2026_PGADMIN_NAMESPACE}" >/dev/null 2>&1; then
+    kubectl delete secret "${J2026_BACKEND_TLS_SECRET_PGADMIN}" -n "${J2026_PGADMIN_NAMESPACE}" --ignore-not-found
   fi
   # argocd trust bundle + server cert (its namespace is not in the projection list
   # when inactive, so clean it explicitly). 08.5 re-renders argocd-server --insecure.
@@ -244,6 +247,12 @@ mint_server_cert "${HEADLAMP_TLS_SECRET}" "${J2026_HEADLAMP_NAMESPACE}" \
 # it on port 8027.
 mint_server_cert "${J2026_BACKEND_TLS_SECRET_FARO}" "${J2026_OBS_NAMESPACE}" \
   "otel-collector-gateway.${J2026_OBS_NAMESPACE}.svc.cluster.local"
+# Stage 4: pgAdmin (the platform-postgres admin UI). One cert for its runix-chart
+# Service (${J2026_PGADMIN_RELEASE}-pgadmin4); the pgadmin child app layers
+# helm/pgadmin/values-backend-tls.yaml (threaded by 08.5) so pgAdmin serves it on
+# pod port 8443. Always active with the global flag (engine- and obs-mode-neutral).
+mint_server_cert "${J2026_BACKEND_TLS_SECRET_PGADMIN}" "${J2026_PGADMIN_NAMESPACE}" \
+  "${J2026_PGADMIN_RELEASE}-pgadmin4.${J2026_PGADMIN_NAMESPACE}.svc.cluster.local"
 # Stage 3: argocd-server, ONLY for engines whose deploy caller speaks TLS
 # (jenkins/githubactions). argocd-server watches the argocd-server-tls Secret.
 if [[ "${ARGOCD_TLS_ACTIVE}" == "true" ]]; then
@@ -282,6 +291,6 @@ for ns in "${tls_backend_namespaces[@]}"; do
     --from-literal=ca.crt="${ca_pem}" --dry-run=client -o yaml | kubectl apply -f -
 done
 
-log_info "Backend TLS ready: cert-manager installed, internal CA bootstrapped, headlamp + faro certs minted."
-log_info "  (08.5-argocd.sh layers the Headlamp TLS overlay; 03-observability.sh layers the faro overlay;"
+log_info "Backend TLS ready: cert-manager installed, internal CA bootstrapped, headlamp + faro + pgadmin certs minted."
+log_info "  (08.5-argocd.sh layers the Headlamp + pgAdmin TLS overlays; 03-observability.sh layers the faro overlay;"
 log_info "   09-gateway.sh attaches the BackendTLSPolicies.)"

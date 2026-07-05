@@ -9,9 +9,10 @@ spec:
   project: default
   # App-of-apps: renders the local Helm chart argocd/platform-postgres/, which
   # emits the cnpg-operator + pgadmin child Applications. The
-  # {{repoUrl}}/{{branchStable}} placeholders are substituted by
+  # {{repoUrl}}/{{branchStable}}/{{backendTls}} placeholders are substituted by
   # scripts/08.5-argocd.sh at apply time and passed down as helm parameters so
-  # the pgAdmin child's git source tracks the active branch.
+  # the pgAdmin child's git source tracks the active branch and (when backend TLS
+  # is active) layers the pgAdmin TLS values overlay.
   source:
     repoURL: '{{repoUrl}}'
     targetRevision: '{{branchStable}}'
@@ -22,6 +23,11 @@ spec:
           value: '{{repoUrl}}'
         - name: targetRevision
           value: '{{branchStable}}'
+        # "true"/"false" from j2026_backend_tls_active (docs/504). Re-rendered
+        # every run, so flipping the flag off re-emits the pgAdmin child without
+        # the overlay and ArgoCD self-heals pgAdmin back to plain HTTP.
+        - name: backendTls
+          value: '{{backendTls}}'
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
