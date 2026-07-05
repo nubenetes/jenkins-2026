@@ -10,7 +10,7 @@
 ![Top language](https://img.shields.io/github/languages/top/nubenetes/jenkins-2026?logo=gnubash&logoColor=white)
 ![Code size](https://img.shields.io/github/languages/code-size/nubenetes/jenkins-2026)
 [![Docs](https://img.shields.io/badge/docs-24%20guides-blue?logo=readthedocs&logoColor=white)](docs/)
-[![Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735?logo=keepachangelog&logoColor=white)](CHANGELOG.md)
+[![Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735?logo=keepachangelog&logoColor=white)](CHANGELOG.md) [![Google Drive Media](https://img.shields.io/badge/Google%20Drive-Media%20%26%20Resources-4285F4?logo=googledrive&logoColor=white)](https://drive.google.com/drive/folders/15JQNRSIW8mxaIjQ2AVyua-jzLNjDsZ10?usp=sharing)
 
 <!-- STACK-BADGES:START -->
 **Stack** — everything the platform wires together (feature-flagged axes marked):
@@ -227,6 +227,7 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 - [2. Quick Start](#2-quick-start)
 - [3. Architecture Overview](#3-architecture-overview)
   - [3.1. Technical Infographics Catalog](#31-technical-infographics-catalog)
+  - [3.2. Project Media & External Resources](#32-project-media--external-resources)
 - [4. GitHub Actions Workflows](#4-github-actions-workflows)
 - [5. Prerequisites](#5-prerequisites)
 
@@ -1014,6 +1015,12 @@ For a full standalone catalog with visual previews, see the [Technical Infograph
   - *Description*: Outlines the platform rebuild-safety matrix, defining backup strategies, disaster recovery runbooks, and recovery point objectives (RPO) for cluster states.
 
 </details>
+
+### 3.2. Project Media & External Resources
+
+All heavy multimedia assets (including video walkthroughs, system recordings, large presentation sheets, and extra raw diagram sheets) are hosted on Google Drive to keep the git repository history light and responsive:
+
+*   📂 **[Google Drive Media Folder](https://drive.google.com/drive/folders/15JQNRSIW8mxaIjQ2AVyua-jzLNjDsZ10?usp=sharing)** — Contains subfolders for all architectural diagrams, load testing demo runs, and Jenkins CI/CD pipeline videos.
 
 ---
 
