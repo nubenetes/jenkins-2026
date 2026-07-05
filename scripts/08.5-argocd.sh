@@ -339,7 +339,18 @@ fi
 
 # 3. Wait for Server
 log_step "Waiting for ArgoCD Server to be ready"
-wait_for_deployment "${J2026_ARGOCD_RELEASE}-server" "${J2026_ARGOCD_NAMESPACE}" "5m"
+# Under backend TLS, the argocd-server pod's GKE NEG readiness gate stays open until
+# 09-gateway.sh flips the LB health check to HTTPS (verified live: argocd serves 200
+# on HTTPS /healthz but 307 on HTTP, so the HTTP LB probe marks the NEG UNHEALTHY).
+# wait_for_deployment would not only time out but SELF-HEAL by rolling argocd-server -
+# and every restart resets the NEG, so it can never converge here. 09 converges it
+# (its own non-fatal rollout wait, once the HTTPS HealthCheckPolicy + BackendTLSPolicy
+# land). Same rationale as wait_argocd_server_rollout above; see docs/504 § argocd.
+if [[ "$(j2026_argocd_backend_tls_active)" == "true" ]]; then
+  log_info "Backend TLS active - skipping the argocd-server readiness wait (NEG gate clears at 09-gateway.sh)."
+else
+  wait_for_deployment "${J2026_ARGOCD_RELEASE}-server" "${J2026_ARGOCD_NAMESPACE}" "5m"
+fi
 
 # 4. Configure GitOps Project and AppSet
 log_step "Configuring ArgoCD Microservices GitOps Project"
