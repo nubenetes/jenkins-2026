@@ -52,6 +52,11 @@ on:
         options:
           - info
           - debug
+      backend_tls:
+        description: "Opt-in backend TLS (gateway.backendTls — docs/504). MUST MATCH how the cluster was provisioned: this workflow re-runs 09-gateway, which generates (true) or retires (false) the headlamp BackendTLSPolicy + HTTPS HealthCheckPolicy — the wrong value makes the LB and the pod disagree on the protocol → 502 at headlamp. Flag FLIPS need Day1."
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -73,6 +78,8 @@ env:
   # Optional lean develop tier (off by default) — 01-namespaces provisions its
   # namespace/netpol/RBAC and 06-githubactions-pipelines renders its develop workflow.
   JENKINS2026_DEVELOP_TRACK_ENABLED: ${{ inputs.develop_track }}
+  # Opt-in backend TLS (docs/504) — must match the live cluster (see the input).
+  JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED: ${{ inputs.backend_tls }}
 
 jobs:
   redeploy-githubactions:

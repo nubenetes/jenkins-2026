@@ -463,7 +463,7 @@ Single source of truth, loaded by every script via [`scripts/lib/config.sh`](../
 | `observability.mode` | `grafana-cloud` | edit `config.yaml` | `grafana-cloud`\|`oss`\|`managed-azure`\|`managed-aws` — where traces/metrics/logs go |
 | `ci.engine` | `jenkins` | `JENKINS2026_CI_ENGINE` | `jenkins`\|`tekton`\|`githubactions`\|`argoworkflows` — one of four mutually-exclusive engines running the pipelines-as-code (Jenkins default). See [403. Tekton](./403-TEKTON.md), [404. GitHub Actions](./404-GITHUB_ACTIONS.md), [405. Argo Workflows](./405-ARGO_WORKFLOWS.md) |
 | `microservices.developTrackEnabled` | `false` | `JENKINS2026_DEVELOP_TRACK_ENABLED` | Optional second microservices tier (`microservices-develop` namespace, GitOps `develop` branch) |
-| `gateway.backendTls.enabled` | `false` | `JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED` | Opt-in **LB→pod TLS re-encryption**: cert-manager + a cluster-internal CA, TLS-serving backends (stage 1: Headlamp) + a GKE `BackendTLSPolicy` validating against that CA. See [504. Backend TLS](./504-BACKEND_TLS.md) |
+| `gateway.backendTls.enabled` | `false` | `JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED` (GHA: `backend_tls` input) | Opt-in **LB→pod TLS re-encryption**: cert-manager + a cluster-internal CA, TLS-serving backends (stage 1: Headlamp) + a GKE `BackendTLSPolicy` validating against that CA. See [504. Backend TLS](./504-BACKEND_TLS.md) |
 
 Other notable sections: `jenkins.*` (chart coordinates, namespace, this repo's own URL/branch), `observability.*` (operator/collector chart coordinates, release names, Secret name), `microservices.*` (namespaces, git org/repos/branches, target registry, list of 2 services seeded into Jenkins).
 
