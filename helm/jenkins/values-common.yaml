@@ -168,8 +168,17 @@ controller:
       value: "ghcr.io/nubenetes/jenkins-2026-microservices"
     - name: OTEL_EXPORTER_OTLP_ENDPOINT
       value: "http://otel-collector-gateway.observability.svc.cluster.local:4317"
+    # Sourced from the Secret so 04-jenkins.sh can append ':443' when backend TLS is
+    # active (docs/504) - argocd-server then serves TLS and microservicesDeploy.groovy
+    # drops --plaintext for the ':443' form. Optional + the groovy's
+    # ${ARGOCD_SERVER:-argocd-server.argocd.svc.cluster.local} fallback keep the
+    # plaintext default when the key is absent/empty.
     - name: ARGOCD_SERVER
-      value: "argocd-server.argocd.svc.cluster.local"
+      valueFrom:
+        secretKeyRef:
+          name: jenkins-credentials
+          key: argocd-server
+          optional: true
     # Active branch (main|develop) - patched into the Secret by scripts/04-jenkins.sh.
     - name: JENKINS2026_REPO_BRANCH
       valueFrom:

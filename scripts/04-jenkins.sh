@@ -130,9 +130,19 @@ if [[ "${J2026_NODE_AUTOPROVISIONING_ENABLED}" == "true" ]]; then
   gke_compute_class="${J2026_NODE_AUTOPROVISIONING_COMPUTE_CLASS}"
 fi
 
+# ArgoCD server address the pipeline's Deploy stage (microservicesDeploy.groovy)
+# targets. With backend TLS active (docs/504) argocd-server serves TLS, so append
+# ':443' - the groovy then keeps --grpc-web --insecure and DROPS --plaintext for a
+# ':<non-80-port>' address. Port-less otherwise, so the groovy adds :80 + --plaintext.
+argocd_server_addr="argocd-server.${J2026_ARGOCD_NAMESPACE}.svc.cluster.local"
+if [[ "$(j2026_argocd_backend_tls_active)" == "true" ]]; then
+  argocd_server_addr="${argocd_server_addr}:443"
+fi
+
 kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \
   --type=merge -p "$(jq -nc \
     --arg gbu "${grafana_base_url}" \
+    --arg argocdsrv "${argocd_server_addr}" \
     --arg gk8s "${grafana_k8s_app_link}" \
     --arg msu "${microservices_url}" \
     --arg msdu "${microservices_develop_url}" \
@@ -164,18 +174,20 @@ kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_N
         "genai-enabled":$genai,
         "develop-enabled":$dev,
         "gke-compute-class":$cc,
-        "run-node-pool":$rnp
+        "run-node-pool":$rnp,
+        "argocd-server":$argocdsrv
     }}')"
 
 # Rolls the controller whenever the Secret-backed banner/behaviour values change
 # (ArgoCD won't roll on an out-of-band Secret edit otherwise) - passed as the
 # controller.podAnnotations.bannerLinksChecksum helm parameter below.
-banner_links_checksum="$(printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' \
+banner_links_checksum="$(printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' \
   "${grafana_base_url}" "${grafana_k8s_app_link}" "${microservices_url}" \
   "${microservices_develop_url}" \
   "${jenkins_public_url}" "${J2026_SELF_REPO_BRANCH}" "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" \
   "${gke_compute_class}" "${J2026_JENKINS_RUN_NODE_POOL}" \
   "${dash_uid_jenkins}|${dash_uid_microservices}|${dash_uid_k6}|${dash_uid_rum}|${dash_uid_jvm}" \
+  "${argocd_server_addr}" \
   | sha256sum | cut -c1-16)"
 
 # --- JCasC ConfigMaps (single source: jenkins/casc/*) ------------------------

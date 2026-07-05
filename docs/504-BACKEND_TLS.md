@@ -12,9 +12,10 @@ documents). Setting **`gateway.backendTls.enabled: true`** (override
 **application-layer TLS on that hop** for the TLS-ready backends: cert-manager +
 a cluster-internal CA are installed, the backend serves HTTPS itself, and a GKE
 `BackendTLSPolicy` makes the LB **re-encrypt *and* validate** the connection
-against the internal CA. Stages 1–2 convert **Headlamp** and the **faro RUM
-receiver**; the roadmap below stages the rest. Default **`false`** — zero impact
-until you opt in.
+against the internal CA. Stages 1–3 convert **Headlamp**, the **faro RUM
+receiver**, and **ArgoCD** (the last only for the jenkins/githubactions CI
+engines — see the roadmap); the roadmap below stages the rest. Default
+**`false`** — zero impact until you opt in.
 
 ## Why (and why opt-in)
 
@@ -149,7 +150,7 @@ Known per-backend state:
 | Backend | TLS mechanism | Blocker / note |
 |---|---|---|
 | **Headlamp** | native flags | ✅ **done (stage 1)** |
-| **ArgoCD** | native — argocd-server watches the `argocd-server-tls` Secret and serves TLS when not `--insecure` | ⚠️ **all four CI engines'** deploy stages call the `argocd` CLI with `--plaintext` on `:80` ([`vars/microservicesDeploy.groovy`](../vars/microservicesDeploy.groovy), [`tekton/tasks/gitops-deploy.yaml`](../tekton/tasks/gitops-deploy.yaml), the Argo `WorkflowTemplate`, the rendered GHA workflow) — every caller must move to TLS (+ CA trust or `--insecure`) *first*, atomically with the server flip |
+| **ArgoCD** | native — argocd-server watches the `argocd-server-tls` Secret and serves TLS when not `--insecure` | 🟡 **done for `jenkins` + `githubactions`** (stage 3). The blocker is that the deploy caller must speak TLS *atomically* with the server flip, and it is **engine-gated** on [`j2026_argocd_backend_tls_active`](../scripts/lib/common.sh): `08.5` drops `--insecure`, `08.7` mints `argocd-server-tls` + restarts the server, `09` attaches the policy + an HTTPS health check — but **only when the engine's caller can do TLS**. Jenkins: `04-jenkins.sh` sets `ARGOCD_SERVER` to the `:443` form so [`vars/microservicesDeploy.groovy`](../vars/microservicesDeploy.groovy) drops `--plaintext`. GitHub Actions: its caller already uses `--server <host> --insecure` (TLS). **`tekton` + `argoworkflows` are NOT converted** — their PaC-triggered runs render `:80 --plaintext` from static YAML that can't read this Day1 flag, so argocd stays plain HTTP there (Headlamp + faro TLS still apply). Migrating those two (a flag the caller reads from a cluster ConfigMap, or 06-rendered params) is the next step |
 | **pgAdmin** | container env `PGADMIN_ENABLE_TLS` + certs mounted as `/certs/server.cert`/`server.key` | key names differ from cert-manager's (subPath remap); probe scheme + `service.targetPort` wiring through the runix subchart; values must thread through the `platform-postgres` app-of-apps |
 | **Jenkins** | chart `controller.httpsKeyStore.*` + cert-manager `keystores.jks` (JKS + password Secret) | probes move to the plain-HTTP `httpPort` (8081); the WebSocket build agents dial the controller Service — they must trust the internal CA or stay on an internal plain port; highest blast radius |
 | **Grafana (OSS)** | `grafana.ini` `server.protocol=https` + mounted cert | oss-mode-only (doubly conditional); values thread through the `observability-oss` app-of-apps |

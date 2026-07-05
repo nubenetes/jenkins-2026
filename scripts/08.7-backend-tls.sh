@@ -52,6 +52,16 @@ HEADLAMP_TLS_SECRET="headlamp-tls"
 # Deduplicated in case two backends ever share a namespace.
 tls_backend_namespaces=("${J2026_HEADLAMP_NAMESPACE}" "${J2026_OBS_NAMESPACE}")
 
+# argocd-server (stage 3) is TLS-ready only for engines whose deploy caller speaks
+# TLS (jenkins/githubactions - see j2026_argocd_backend_tls_active). Tracked
+# separately so the retire paths clean its cert/trust even when the global flag
+# stays on but the engine changed (tekton/argo), and appended to the projection
+# list only when active.
+ARGOCD_TLS_ACTIVE="$(j2026_argocd_backend_tls_active)"
+if [[ "${ARGOCD_TLS_ACTIVE}" == "true" ]]; then
+  tls_backend_namespaces+=("${J2026_ARGOCD_NAMESPACE}")
+fi
+
 if [[ "$(j2026_backend_tls_active)" != "true" ]]; then
   # --- retire: deterministic cleanup of a previous enabled run ---------------
   # (Flag off - the default - or the CRD is absent. A cluster that never had
@@ -77,6 +87,12 @@ if [[ "$(j2026_backend_tls_active)" != "true" ]]; then
   fi
   if kubectl get namespace "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1; then
     kubectl delete secret "${J2026_BACKEND_TLS_SECRET_FARO}" -n "${J2026_OBS_NAMESPACE}" --ignore-not-found
+  fi
+  # argocd trust bundle + server cert (its namespace is not in the projection list
+  # when inactive, so clean it explicitly). 08.5 re-renders argocd-server --insecure.
+  if kubectl get namespace "${J2026_ARGOCD_NAMESPACE}" >/dev/null 2>&1; then
+    kubectl delete secret "${J2026_BACKEND_TLS_SECRET_ARGOCD}" -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found
+    kubectl delete configmap "${J2026_BACKEND_TLS_CA_CONFIGMAP}" -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found
   fi
   log_info "Backend TLS is off (gateway.backendTls.enabled=false is the default) - nothing more to do."
   exit 0
@@ -228,6 +244,27 @@ mint_server_cert "${HEADLAMP_TLS_SECRET}" "${J2026_HEADLAMP_NAMESPACE}" \
 # it on port 8027.
 mint_server_cert "${J2026_BACKEND_TLS_SECRET_FARO}" "${J2026_OBS_NAMESPACE}" \
   "otel-collector-gateway.${J2026_OBS_NAMESPACE}.svc.cluster.local"
+# Stage 3: argocd-server, ONLY for engines whose deploy caller speaks TLS
+# (jenkins/githubactions). argocd-server watches the argocd-server-tls Secret.
+if [[ "${ARGOCD_TLS_ACTIVE}" == "true" ]]; then
+  mint_server_cert "${J2026_BACKEND_TLS_SECRET_ARGOCD}" "${J2026_ARGOCD_NAMESPACE}" \
+    "argocd-server.${J2026_ARGOCD_NAMESPACE}.svc.cluster.local"
+  # argocd-server hot-reloads the TLS Secret, but 08.5 (which drops --insecure) runs
+  # BEFORE this script, so the server may have come up with a self-signed cert before
+  # argocd-server-tls existed. Restart it so it deterministically serves the
+  # cert-manager cert the LB (09) validates against.
+  if kubectl get deployment argocd-server -n "${J2026_ARGOCD_NAMESPACE}" >/dev/null 2>&1; then
+    log_step "Restarting argocd-server to load the cert-manager server certificate"
+    kubectl rollout restart deployment argocd-server -n "${J2026_ARGOCD_NAMESPACE}" || \
+      log_warn "Could not restart argocd-server - it should hot-reload argocd-server-tls on its own."
+  fi
+elif kubectl get namespace "${J2026_ARGOCD_NAMESPACE}" >/dev/null 2>&1; then
+  # backend TLS on globally but argocd's engine gate is off (tekton/argo): retire any
+  # argocd cert/trust from a prior jenkins/gha run so 09 drops the BackendTLSPolicy and
+  # argocd-server (re-rendered --insecure by 08.5) stays plaintext for those callers.
+  kubectl delete secret "${J2026_BACKEND_TLS_SECRET_ARGOCD}" -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found
+  kubectl delete configmap "${J2026_BACKEND_TLS_CA_CONFIGMAP}" -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found
+fi
 
 log_step "Projecting the CA trust bundle into the TLS-ready backend namespaces"
 # tls.crt of the (self-signed) CA Secret IS the trust anchor the LB validates

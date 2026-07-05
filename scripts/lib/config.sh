@@ -418,6 +418,11 @@ export J2026_BACKEND_TLS_POLICY_HEADLAMP="headlamp-backend-tls"
 # collector Service is otel-collector-gateway (fullnameOverride, every obs mode).
 export J2026_BACKEND_TLS_SECRET_FARO="faro-tls"
 export J2026_BACKEND_TLS_POLICY_FARO="faro-backend-tls"
+# Stage-3 TLS backend: argocd-server (the ArgoCD UI). argocd-server watches the
+# argocd-server-tls Secret and serves it when not --insecure (08.5 drops --insecure
+# under j2026_argocd_backend_tls_active). 09-gateway.sh attaches the BackendTLSPolicy.
+export J2026_BACKEND_TLS_SECRET_ARGOCD="argocd-server-tls"
+export J2026_BACKEND_TLS_POLICY_ARGOCD="argocd-backend-tls"
 
 # Fixed names of the Gateway/HTTPRoute/GCPBackendPolicy resources created by
 # scripts/09-gateway.sh. Shared with scripts/down.sh so the two stay in sync:

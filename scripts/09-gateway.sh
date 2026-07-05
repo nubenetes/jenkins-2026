@@ -29,6 +29,10 @@ mkdir -p "${GENERATED_DIR}"
 # BackendTLSPolicy CRD (j2026_backend_tls_active, lib/common.sh). Drives the
 # per-TLS-ready-backend BackendTLSPolicy + HTTPS HealthCheckPolicy blocks below.
 BACKEND_TLS_ACTIVE="$(j2026_backend_tls_active)"
+# argocd-server has a SECOND gate: its deploy caller must speak TLS (jenkins/
+# githubactions only). Drives the argocd BackendTLSPolicy + HTTPS-vs-HTTP health
+# check below, so tekton/argo clusters keep a plaintext argocd + HTTP probe.
+ARGOCD_TLS_ACTIVE="$(j2026_argocd_backend_tls_active)"
 
 # Fixed names
 J2026_GATEWAY_HOST_ARGOCD="argocd"
@@ -615,6 +619,14 @@ spec:
 EOT
 fi
 
+# argocd health check: HTTPS once argocd-server serves TLS (ARGOCD_TLS_ACTIVE), else
+# HTTP. The default probe follows the Service appProtocol (unset = HTTP); leaving it
+# HTTP against a now-TLS argocd-server marks the backend unhealthy -> 502 on the UI.
+if [[ "${ARGOCD_TLS_ACTIVE}" == "true" ]]; then
+  argocd_hc_type="HTTPS"; argocd_hc_key="httpsHealthCheck"
+else
+  argocd_hc_type="HTTP"; argocd_hc_key="httpHealthCheck"
+fi
 cat >"${GENERATED_DIR}/healthcheckpolicy-argocd.yaml" <<EOT
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
@@ -624,14 +636,48 @@ metadata:
 spec:
   default:
     config:
-      type: HTTP
-      httpHealthCheck:
+      type: ${argocd_hc_type}
+      ${argocd_hc_key}:
         requestPath: /healthz
   targetRef:
     group: ""
     kind: Service
     name: argocd-server
 EOT
+
+# Backend TLS for argocd-server (stage-3; opt-in + engine-gated, docs/504). When
+# ARGOCD_TLS_ACTIVE the LB re-encrypts + validates the ArgoCD UI hop against the
+# internal CA (the health check above is already HTTPS). Retired (CRD-guarded) when
+# off - covering BOTH flag-off and the engine-switch case (backend TLS on, but the
+# tekton/argo caller can't do TLS), so a stale policy never 502s a plaintext argocd.
+if [[ "${ARGOCD_TLS_ACTIVE}" == "true" ]]; then
+  log_step "Generating BackendTLSPolicy (argocd-server, backendTls enabled)"
+  cat >"${GENERATED_DIR}/backendtlspolicy-argocd.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: ${J2026_BACKEND_TLS_POLICY_ARGOCD}
+  namespace: ${J2026_ARGOCD_NAMESPACE}
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: argocd-server
+  validation:
+    hostname: argocd-server.${J2026_ARGOCD_NAMESPACE}.svc.cluster.local
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: ${J2026_BACKEND_TLS_CA_CONFIGMAP}
+EOT
+else
+  rm -f "${GENERATED_DIR}/backendtlspolicy-argocd.yaml"
+  if kubectl get namespace "${J2026_ARGOCD_NAMESPACE}" >/dev/null 2>&1 \
+     && kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+    log_step "Removing any leftover argocd BackendTLSPolicy (backendTls inactive or engine-gated off)"
+    kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_ARGOCD}" -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found
+  fi
+fi
 
 cat >"${GENERATED_DIR}/healthcheckpolicy-microservices.yaml" <<EOT
 apiVersion: networking.gke.io/v1

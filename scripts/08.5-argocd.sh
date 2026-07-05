@@ -77,11 +77,24 @@ log_step "Running Helm upgrade"
 # Delete existing patched configmaps to prevent Helm Server-Side Apply / ownership conflict failures on subsequent runs
 kubectl delete configmap argocd-cm argocd-rbac-cm -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found=true || true
 
+# Backend TLS (opt-in, docs/504): serve argocd-server over TLS by dropping the
+# `--insecure` extraArg from helm/argocd-values.yaml, so the LB re-encrypts the UI
+# hop (BackendTLSPolicy in 09-gateway.sh) against the cert-manager argocd-server-tls
+# cert 08.7 mints. Gated on j2026_argocd_backend_tls_active (flag AND an engine whose
+# deploy caller speaks TLS: jenkins/githubactions), so tekton/argo clusters keep the
+# plaintext argocd their `:80 --plaintext` callers need. Empty array = no-op.
+argocd_tls_helm_args=()
+if [[ "$(j2026_argocd_backend_tls_active)" == "true" ]]; then
+  log_info "Backend TLS active (ci.engine=${J2026_CI_ENGINE}) - serving argocd-server over TLS (dropping --insecure)"
+  argocd_tls_helm_args=(-f "${J2026_ROOT_DIR}/helm/argocd-values-backend-tls.yaml")
+fi
+
 helm upgrade --install "${J2026_ARGOCD_RELEASE}" argo/argo-cd \
   --namespace "${J2026_ARGOCD_NAMESPACE}" \
   --version "${J2026_ARGOCD_CHART_VERSION}" \
   -f "${J2026_ROOT_DIR}/helm/argocd-values.yaml" \
   --set global.image.tag="${RESOLVED_ARGOCD_VERSION}" \
+  "${argocd_tls_helm_args[@]}" \
   --timeout 10m
 
 # 2. Configure OIDC/RBAC
