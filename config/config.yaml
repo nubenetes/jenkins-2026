@@ -293,7 +293,8 @@ observability:
   #                   secret-managed-azure.example.yaml + docs/301-OBSERVABILITY.md.
   #   managed-aws   - export to Amazon Managed Service for Prometheus +
   #                   X-Ray/CloudWatch; visualize in Amazon Managed Grafana.
-  mode: grafana-cloud
+  mode: oss
+
 
   # Grafana Cloud subscription tier — a PROFILE that governs the volume-control defaults
   # below so the free tier stays under its limits (15k active series + log volume). Only
