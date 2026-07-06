@@ -12,9 +12,9 @@ name: "Day1.cluster.00 Everything up"
 #
 # Everything below is idempotent and re-runnable, so this is safe whether you are
 # starting from absolute zero or from the usual "decommissioned" state (where the
-# Decom.infra.00 umbrella left the Gateway in place by default). Approvals are the
-# natural per-resource set: gateway-bootstrap (+ the selected backend's env, via
-# Day1's preflight) + gke-production (the cluster).
+# Decom.infra.00 umbrella left the Gateway in place by default).
+# Approvals are consolidated under the single gke-production environment,
+# requiring a single manual approval for the entire workflow run.
 #
 # NOTE: from ABSOLUTE zero (Gateway never bootstrapped), step 1 allocates a NEW
 # static IP - follow its job summary to point your DNS A-records at it. On a
@@ -120,8 +120,8 @@ env:
   TF_LOG: ${{ inputs.log_level == 'debug' && 'DEBUG' || '' }}
 
 jobs:
-  # 1. Persistent Gateway (static IP + cert map). Idempotent; gated by the
-  #    gateway-bootstrap environment. Skipped if bootstrap_gateway=false.
+  # 1. Persistent Gateway (static IP + cert map). Idempotent; runs under the
+  #    gke-production environment. Skipped if bootstrap_gateway=false.
   gateway-bootstrap:
     if: ${{ inputs.bootstrap_gateway }}
     uses: ./.github/workflows/Day0.infra.01-gateway.yml
