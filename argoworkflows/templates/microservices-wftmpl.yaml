@@ -825,13 +825,19 @@ spec:
           - name: port
           - name: health-path
       script:
-        image: curlimages/curl:8.10.1
+        image: alpine/k8s:1.31.3
         command: [sh]
         source: |
           set -eux
+          protocol="http"
+          curl_opts=""
+          if [ "{{inputs.parameters.service-name}}" = "gateway" ] && kubectl -n "{{inputs.parameters.target-namespace}}" get secret gateway-tls >/dev/null 2>&1; then
+            protocol="https"
+            curl_opts="-k"
+          fi
           curl -sf --connect-timeout 5 --max-time 60 \
-            --retry 5 --retry-delay 3 --retry-all-errors \
-            "http://{{inputs.parameters.service-name}}.{{inputs.parameters.target-namespace}}.svc.cluster.local:{{inputs.parameters.port}}{{inputs.parameters.health-path}}"
+            --retry 5 --retry-delay 3 --retry-all-errors $curl_opts \
+            "$protocol://{{inputs.parameters.service-name}}.{{inputs.parameters.target-namespace}}.svc.cluster.local:{{inputs.parameters.port}}{{inputs.parameters.health-path}}"
 
     # ---- k6-smoke (Tekton task: k6-smoke) ----------------------------------------
     # Stage "Integration k6 Smoke Test" (vars/MicroservicesK6SmokePipeline.groovy):

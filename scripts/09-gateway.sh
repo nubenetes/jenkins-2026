@@ -251,7 +251,45 @@ spec:
           port: 8080
 EOT
 
-  cat >"${GENERATED_DIR}/healthcheckpolicy-microservices-develop.yaml" <<EOT
+  if [[ "$(j2026_backend_tls_active)" == "true" ]]; then
+    log_step "Generating BackendTLSPolicy + HTTPS HealthCheckPolicy (microservices develop, backendTls enabled)"
+    cat >"${GENERATED_DIR}/backendtlspolicy-microservices-develop.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: ${J2026_BACKEND_TLS_POLICY_MICROSERVICES}
+  namespace: ${J2026_MICROSERVICES_DEVELOP_NAMESPACE}
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: gateway
+  validation:
+    hostname: gateway.${J2026_MICROSERVICES_DEVELOP_NAMESPACE}.svc.cluster.local
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: ${J2026_BACKEND_TLS_CA_CONFIGMAP}
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: gateway
+  namespace: ${J2026_MICROSERVICES_DEVELOP_NAMESPACE}
+spec:
+  default:
+    config:
+      type: HTTPS
+      httpHealthCheck:
+        requestPath: /management/health
+  targetRef:
+    group: ""
+    kind: Service
+    name: gateway
+EOT
+  else
+    log_step "Generating HTTP HealthCheckPolicy (microservices develop, backendTls disabled)"
+    cat >"${GENERATED_DIR}/healthcheckpolicy-microservices-develop.yaml" <<EOT
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
 metadata:
@@ -268,17 +306,28 @@ spec:
     kind: Service
     name: gateway
 EOT
+    rm -f "${GENERATED_DIR}/backendtlspolicy-microservices-develop.yaml"
+    if kubectl get namespace "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" >/dev/null 2>&1 \
+       && kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+      log_step "Removing any leftover microservices develop BackendTLSPolicy (backendTls inactive)"
+      kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_MICROSERVICES}" -n "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" --ignore-not-found
+    fi
+  fi
 else
   # Develop tier disabled - retire any route/policy left over from a previous
   # develop_track run on this (persistent) cluster, but only when the namespace
   # still exists (--ignore-not-found doesn't cover a missing namespace). Also drop
   # any stale generated manifests so the apply below can't re-create the route.
   rm -f "${GENERATED_DIR}/httproute-microservices-develop.yaml" \
-        "${GENERATED_DIR}/healthcheckpolicy-microservices-develop.yaml"
+        "${GENERATED_DIR}/healthcheckpolicy-microservices-develop.yaml" \
+        "${GENERATED_DIR}/backendtlspolicy-microservices-develop.yaml"
   if kubectl get namespace "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" >/dev/null 2>&1; then
-    log_step "Removing any leftover microservices-develop HTTPRoute/HealthCheckPolicy (developTrackEnabled=false)"
+    log_step "Removing any leftover microservices-develop HTTPRoute/HealthCheckPolicy/BackendTLSPolicy (developTrackEnabled=false)"
     kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_MICROSERVICES_DEVELOP}" -n "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" --ignore-not-found
     kubectl delete healthcheckpolicy gateway -n "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" --ignore-not-found
+    if kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+      kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_MICROSERVICES}" -n "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" --ignore-not-found
+    fi
   fi
 fi
 
@@ -865,7 +914,45 @@ else
   fi
 fi
 
-cat >"${GENERATED_DIR}/healthcheckpolicy-microservices.yaml" <<EOT
+if [[ "$(j2026_backend_tls_active)" == "true" ]]; then
+  log_step "Generating BackendTLSPolicy + HTTPS HealthCheckPolicy (microservices stable, backendTls enabled)"
+  cat >"${GENERATED_DIR}/backendtlspolicy-microservices.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: ${J2026_BACKEND_TLS_POLICY_MICROSERVICES}
+  namespace: ${J2026_MICROSERVICES_NS_STABLE}
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: gateway
+  validation:
+    hostname: gateway.${J2026_MICROSERVICES_NS_STABLE}.svc.cluster.local
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: ${J2026_BACKEND_TLS_CA_CONFIGMAP}
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: gateway
+  namespace: ${J2026_MICROSERVICES_NS_STABLE}
+spec:
+  default:
+    config:
+      type: HTTPS
+      httpHealthCheck:
+        requestPath: /management/health
+  targetRef:
+    group: ""
+    kind: Service
+    name: gateway
+EOT
+else
+  log_step "Generating HTTP HealthCheckPolicy (microservices stable, backendTls disabled)"
+  cat >"${GENERATED_DIR}/healthcheckpolicy-microservices.yaml" <<EOT
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
 metadata:
@@ -882,6 +969,13 @@ spec:
     kind: Service
     name: gateway
 EOT
+  rm -f "${GENERATED_DIR}/backendtlspolicy-microservices.yaml"
+  if kubectl get namespace "${J2026_MICROSERVICES_NS_STABLE}" >/dev/null 2>&1 \
+     && kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+    log_step "Removing any leftover microservices stable BackendTLSPolicy (backendTls inactive)"
+    kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_MICROSERVICES}" -n "${J2026_MICROSERVICES_NS_STABLE}" --ignore-not-found
+  fi
+fi
 
 log_step "Generating GCPBackendPolicies (IAP for jenkins, argocd, headlamp, pgadmin)"
 declare -A iap_client_id

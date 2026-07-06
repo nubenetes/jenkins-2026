@@ -455,6 +455,10 @@ export J2026_BACKEND_TLS_POLICY_GRAFANA="grafana-backend-tls"
 export J2026_BACKEND_TLS_SECRET_JENKINS="jenkins-tls"
 export J2026_BACKEND_TLS_JENKINS_JKS_PASSWORD_SECRET="jenkins-https-jks-password"
 export J2026_BACKEND_TLS_POLICY_JENKINS="jenkins-backend-tls"
+# Stage-7 TLS backend: microservices gateway.
+export J2026_BACKEND_TLS_SECRET_MICROSERVICES="gateway-tls"
+export J2026_BACKEND_TLS_MICROSERVICES_PASSWORD_SECRET="gateway-tls-password"
+export J2026_BACKEND_TLS_POLICY_MICROSERVICES="microservices-gateway-backend-tls"
 
 # Fixed names of the Gateway/HTTPRoute/GCPBackendPolicy resources created by
 # scripts/09-gateway.sh. Shared with scripts/down.sh so the two stay in sync:

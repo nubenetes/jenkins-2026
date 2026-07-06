@@ -52,6 +52,12 @@ HEADLAMP_TLS_SECRET="headlamp-tls"
 # when not. Deduplicated in case two backends ever share a namespace.
 tls_backend_namespaces=("${J2026_HEADLAMP_NAMESPACE}" "${J2026_OBS_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}")
 
+# Stage 7: Java Hipster microservices (stable and optionally develop)
+tls_backend_namespaces+=("${J2026_MICROSERVICES_NS_STABLE}")
+if [[ "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" == "true" ]]; then
+  tls_backend_namespaces+=("${J2026_MICROSERVICES_DEVELOP_NAMESPACE}")
+fi
+
 # argocd-server (stage 3) is TLS-ready only for engines whose deploy caller speaks
 # TLS (jenkins/githubactions - see j2026_argocd_backend_tls_active). Tracked
 # separately so the retire paths clean its cert/trust even when the global flag
@@ -116,6 +122,12 @@ if [[ "$(j2026_backend_tls_active)" != "true" ]]; then
   if kubectl get namespace "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
     kubectl delete secret "${J2026_BACKEND_TLS_SECRET_JENKINS}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found
     kubectl delete secret "${J2026_BACKEND_TLS_JENKINS_JKS_PASSWORD_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found
+  fi
+  if kubectl get namespace "${J2026_MICROSERVICES_NS_STABLE}" >/dev/null 2>&1; then
+    kubectl delete secret "${J2026_BACKEND_TLS_SECRET_MICROSERVICES}" "${J2026_BACKEND_TLS_MICROSERVICES_PASSWORD_SECRET}" -n "${J2026_MICROSERVICES_NS_STABLE}" --ignore-not-found
+  fi
+  if kubectl get namespace "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" >/dev/null 2>&1; then
+    kubectl delete secret "${J2026_BACKEND_TLS_SECRET_MICROSERVICES}" "${J2026_BACKEND_TLS_MICROSERVICES_PASSWORD_SECRET}" -n "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" --ignore-not-found
   fi
   # argocd trust bundle + server cert (its namespace is not in the projection list
   # when inactive, so clean it explicitly). 08.5 re-renders argocd-server --insecure.
@@ -232,7 +244,7 @@ kubectl wait certificate "${J2026_BACKEND_TLS_CA_ISSUER}" \
 # generates sends exactly that hostname as SNI and validates the cert against it
 # - keep the two in sync. Also emits the short `.svc` form as a convenience SAN.
 mint_server_cert() {
-  local secret="$1" ns="$2" fqdn="$3" jks_password_secret="${4:-}"
+  local secret="$1" ns="$2" fqdn="$3" jks_password_secret="${4:-}" pkcs12_password_secret="${5:-}"
   local short="${fqdn%.cluster.local}" # e.g. headlamp.headlamp.svc
   # 01-namespaces.sh creates these namespaces on Day1; ensure they exist for a
   # standalone run of this script.
@@ -272,6 +284,18 @@ EOT
       create: true
       passwordSecretRef:
         name: ${jks_password_secret}
+        key: password
+EOT
+  fi
+  # Microservices gateway only (stage 7): also emit a PKCS12 keystore into the same
+  # Secret (key keystore.p12), encrypted with the password in pkcs12_password_secret.
+  if [[ -n "${pkcs12_password_secret}" ]]; then
+    cat >>"${GENERATED_DIR}/certificate-${secret}.yaml" <<EOT
+  keystores:
+    pkcs12:
+      create: true
+      passwordSecretRef:
+        name: ${pkcs12_password_secret}
         key: password
 EOT
   fi
@@ -355,6 +379,31 @@ elif kubectl get namespace "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
   # engine never starts from a stale keystore.
   kubectl delete secret "${J2026_BACKEND_TLS_SECRET_JENKINS}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found
   kubectl delete secret "${J2026_BACKEND_TLS_JENKINS_JKS_PASSWORD_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found
+fi
+
+# Stage 7: Java Hipster microservices gateway.
+# Stable tier
+stable_ns="${J2026_MICROSERVICES_NS_STABLE}"
+kubectl get namespace "${stable_ns}" >/dev/null 2>&1 || kubectl create namespace "${stable_ns}"
+if ! kubectl get secret "${J2026_BACKEND_TLS_MICROSERVICES_PASSWORD_SECRET}" -n "${stable_ns}" >/dev/null 2>&1; then
+  log_step "Generating the microservices gateway HTTPS keystore password (one-time, stable)"
+  kubectl create secret generic "${J2026_BACKEND_TLS_MICROSERVICES_PASSWORD_SECRET}" -n "${stable_ns}" \
+    --from-literal=password="$(openssl rand -base64 24)"
+fi
+mint_server_cert "${J2026_BACKEND_TLS_SECRET_MICROSERVICES}" "${stable_ns}" \
+  "gateway.${stable_ns}.svc.cluster.local" "" "${J2026_BACKEND_TLS_MICROSERVICES_PASSWORD_SECRET}"
+
+# Develop tier
+if [[ "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" == "true" ]]; then
+  dev_ns="${J2026_MICROSERVICES_DEVELOP_NAMESPACE}"
+  kubectl get namespace "${dev_ns}" >/dev/null 2>&1 || kubectl create namespace "${dev_ns}"
+  if ! kubectl get secret "${J2026_BACKEND_TLS_MICROSERVICES_PASSWORD_SECRET}" -n "${dev_ns}" >/dev/null 2>&1; then
+    log_step "Generating the microservices gateway HTTPS keystore password (one-time, develop)"
+    kubectl create secret generic "${J2026_BACKEND_TLS_MICROSERVICES_PASSWORD_SECRET}" -n "${dev_ns}" \
+      --from-literal=password="$(openssl rand -base64 24)"
+  fi
+  mint_server_cert "${J2026_BACKEND_TLS_SECRET_MICROSERVICES}" "${dev_ns}" \
+    "gateway.${dev_ns}.svc.cluster.local" "" "${J2026_BACKEND_TLS_MICROSERVICES_PASSWORD_SECRET}"
 fi
 
 log_step "Projecting the CA trust bundle into the TLS-ready backend namespaces"

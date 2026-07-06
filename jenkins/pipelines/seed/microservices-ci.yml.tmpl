@@ -197,8 +197,14 @@ jobs:
       - name: Smoke test
         if: github.event_name != 'pull_request'
         run: |
-          curl -fsS --retry 10 --retry-delay 6 --retry-all-errors \
-            "http://{{svcName}}.${TARGET_NS}.svc.cluster.local:{{svcPort}}{{svcHealth}}" || echo "smoke retry exhausted (non-fatal)"
+          protocol="http"
+          curl_opts=""
+          if [ "{{svcName}}" = "gateway" ] && command -v kubectl >/dev/null 2>&1 && kubectl -n "${TARGET_NS}" get secret gateway-tls >/dev/null 2>&1; then
+            protocol="https"
+            curl_opts="-k"
+          fi
+          curl -fsS $curl_opts --retry 10 --retry-delay 6 --retry-all-errors \
+            "$protocol://{{svcName}}.${TARGET_NS}.svc.cluster.local:{{svcPort}}{{svcHealth}}" || echo "smoke retry exhausted (non-fatal)"
 
       - name: Export pipeline OTel trace
         if: always()

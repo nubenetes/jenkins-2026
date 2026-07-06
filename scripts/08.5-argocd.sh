@@ -565,6 +565,7 @@ sed "s@{{repoUrl}}@${GITOPS_REPO_URL}@g;
      s@{{platform}}@${J2026_PLATFORM}@g;
      s@{{gcpProject}}@${PROJECT_ID}@g;
      s@{{gcpServiceAccount}}@jenkins-2026-pg-backups@g;
+     s@{{backendTlsEnabled}}@$(j2026_backend_tls_active)@g;
      s@{{gcsBackupBucket}}@${PROJECT_ID}-jenkins-2026-postgres-backups@g" \
     "${J2026_ROOT_DIR}/argocd/microservices-appset.yaml" > "${APPSET_FILE}"
 
