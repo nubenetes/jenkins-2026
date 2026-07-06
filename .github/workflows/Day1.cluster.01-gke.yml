@@ -221,7 +221,7 @@ jobs:
   destroy-grafana-cloud-token:
     if: ${{ inputs.destroy_unused_backends && inputs.observability_mode != 'grafana-cloud' }}
     runs-on: ubuntu-latest
-    environment: grafana-cloud-bootstrap
+    environment: gke-production
     permissions:
       contents: read
       id-token: write

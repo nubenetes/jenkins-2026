@@ -75,9 +75,8 @@ jobs:
     needs: guard
     runs-on: ubuntu-latest
     # Matches the Entra federated credential subject
-    # repo:<owner>/<repo>:environment:azure-bootstrap (auth only — no
-    # required-reviewer protection; the `confirm` guard above replaces it).
-    environment: azure-bootstrap
+    # repo:<owner>/<repo>:environment:gke-production on the Entra app.
+    environment: gke-production
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

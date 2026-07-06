@@ -77,10 +77,8 @@ jobs:
     needs: guard
     runs-on: ubuntu-latest
     # Must match the AWS IAM role trust policy condition
-    # token.actions.githubusercontent.com:sub = repo:<owner>/<repo>:environment:aws-bootstrap
-    # (auth only — no required-reviewer protection; the `confirm` guard above
-    # replaces it).
-    environment: aws-bootstrap
+    # token.actions.githubusercontent.com:sub = repo:<owner>/<repo>:environment:gke-production
+    environment: gke-production
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

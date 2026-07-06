@@ -327,87 +327,45 @@ Mixing different tags, branches, or SHAs during the lifecycle of a single GKE cl
 > [!IMPORTANT]
 > **Rule of lockstep alignment**:
 > 1. Always ensure that the `git_ref` used for provisioning (`Day1.cluster.01`) matches the `git_ref` used for decommissioning (`Decom.cluster.01`) and redeployments (any `Day2.redeploy.*` / `Day2.publish.*`).
-> 2. For stable releases, pin `git_ref` to this repo's release tag (e.g. `v1.1.1`). The GitOps repo (`jenkins-2026-gitops-config`) is deliberately versioned **independently** (its own `v0.9.x` line) and ArgoCD tracks it by **branch**, not tag — its `main` is machine-pushed image-tag bumps, so no matching tag is required (or possible to keep in lockstep) there.
+> 2. For stable releases, pin `git_ref` to this repo's release tag (e.g. `v1.1.1`). The GitOps repo (`jenkins-2026-gitops-config`) is deliberately versioned **independently** (its own `v0.9.x` ## Environment Protection and Manual Approvals
 
-## Environment Protection and Manual Approvals
+To enforce cost control (FinOps), auditability, and guard against accidental destruction of active resources, critical workflows are tied to a GitHub Actions **environment**. 
 
-To enforce cost control (FinOps), auditability, and guard against accidental destruction of active resources, critical workflows are tied to a GitHub Actions **environment**. There are still **five** environments — one gate per concern — but they now split into two different gate *mechanisms*:
+All workflows and resources have been consolidated under a single GitHub Environment: **`gke-production`**.
 
-* **`gke-production`** — the only environment with a **required-reviewer**
-  approval, protecting the running production cluster and its cluster-touching
-  `Day2.*` tiers:
-  - `Day1.cluster.01 GKE provision`
-  - `Decom.cluster.01 GKE decommission`
-  - every `Day2.redeploy.*`, `Day2.publish.*` and `Day2.scale.*`. Most act on the
-    running cluster; the two managed-Grafana publishes (`Day2.publish.03/04`) need
-    no cluster but share this gate for approval symmetry.
-  - Ungated: the traffic simulators (`Day2.traffic.01/.02`) and the ghcr prune
-    (`Day2.registry.01`) carry no gate — they change no infrastructure.
-* **One environment per persistent Day0 resource** — `gateway-bootstrap`,
-  `grafana-cloud-bootstrap`, `azure-bootstrap`, `aws-bootstrap` — used by **both**
-  the bootstrap (`Day0.infra.0N`) and the decommission (`Decom.infra.0N`) of that
-  resource (their `environment:` also carries the GCP/Azure/AWS OIDC identity, so
-  it stays on the job either way). These **no longer have a required reviewer**.
-  Instead each `Day0.infra.0N` / `Decom.infra.0N` has its own typed `confirm`
-  input (`"apply"` / `"destroy"`), validated by a `guard` job before anything runs.
+This consolidation eliminates sequential approval fatigue. In GitHub Actions, approvals are granted per environment per workflow run. By using a single environment (`gke-production`) for all jobs (GKE cluster, Gateway, Grafana Cloud, Azure Monitor, AWS Managed Grafana):
+1.  **Single Approval Gate**: When launching a multi-job workflow (such as the `Day1` preflight or the `Decom.infra.00-all` "Everything" umbrella), you are prompted to approve the run **only once** at the beginning of the execution.
+2.  **No Downstream Stalls**: All subsequent jobs targeting the same environment will run automatically without further human intervention once the initial approval is granted.
 
+### Safety Guards
+In addition to the environment-level reviewer gate, destructive workflows (e.g. `Decom.infra.0N`) use a **typed `confirm` input** (`"destroy"`), validated by a `guard` job before any real terraform or setup commands run. This provides two-factor verification for high-risk actions.
 
 <details>
-<summary>📊 The five gates — mechanism + which workflows each protects</summary>
+<summary>📊 The unified environment protection scheme</summary>
 
 ```mermaid
 flowchart LR
-  subgraph reviewed["required-reviewer (self-approval click)"]
+  subgraph reviewed["gke-production environment (Required Reviewers)"]
     g1[gke-production]
   end
-  subgraph typed["typed confirm (apply / destroy)"]
-    g2[gateway-bootstrap]
-    g3[grafana-cloud-bootstrap]
-    g4[azure-bootstrap]
-    g5[aws-bootstrap]
-  end
   g1 --> w1["Day1.cluster.01 · Decom.cluster.01<br/>+ Day2.* redeploy / publish / scale"]
-  g2 --> w2["Day0.infra.01 · Decom.infra.01<br/>Gateway"]
-  g3 --> w3["Day0.infra.02 · Decom.infra.02<br/>Grafana Cloud"]
-  g4 --> w4["Day0.infra.03 · Decom.infra.03<br/>Azure"]
-  g5 --> w5["Day0.infra.04 · Decom.infra.04<br/>AWS"]
+  g1 --> w2["Day0.infra.01 · Decom.infra.01<br/>Gateway"]
+  g1 --> w3["Day0.infra.02 · Decom.infra.02<br/>Grafana Cloud"]
+  g1 --> w4["Day0.infra.03 · Decom.infra.03<br/>Azure"]
+  g1 --> w5["Day0.infra.04 · Decom.infra.04<br/>AWS"]
 ```
 
 </details>
 
-**Reading it —** **one gate = one concern**, same as before: approving/confirming "destroy the Grafana Cloud stack" is never conflated with a change to the production cluster. Each per-resource gate is declared on the **reusable** `Day0.infra.0N` / `Decom.infra.0N` workflow itself, so every entry point that `uses:` it — the standalone dispatch, the `Day1` bootstrap preflight (`workflow_call`), and the `Decom.infra.00-all` "Everything" umbrella — inherits the **same** single gate, with no second, divergent place to configure it.
-
-#### Why the four per-resource gates moved off required-reviewers (design rationale)
-
-Originally all five environments used a required-reviewer approval, including the four per-resource ones. In practice their **only reviewer was always the same GitHub account that dispatched the run** — a self-approval click that adds no second-person check, but does force you to physically come back and click **Review deployments** mid-run. That bit hardest on the **`Decom.infra.00-all` "Everything" umbrella**: `cluster` (`gke-production`) runs first and takes up to ~1h, and only *after* it finishes do `grafana-cloud-bootstrap` / `azure-bootstrap` / `aws-bootstrap` (and, if `gateway:true`, `gateway-bootstrap`) become pending — so a run you'd already confirmed with `confirm: destroy` on the initial dispatch form stalls an hour later, waiting for you to notice and click through a second time.
-
-The fix: replace the self-approval click on those four environments with a **typed `confirm` input** declared directly on `Day0.infra.0N` / `Decom.infra.0N`'s own `workflow_dispatch` (`"apply"` to provision, `"destroy"` to tear down), checked by a `guard` job that fails the run if it doesn't match. This is validated the moment you submit the dispatch form — no live click required later — and is at least as deliberate as a self-approval, since typing the exact word is harder to fat-finger than clicking a button.
-
-Reusable callers that have **already** gated the action themselves don't get asked again, because `confirm` is simply absent from their `workflow_call` inputs (the `guard` step treats a missing/empty `confirm` as "the caller already decided"):
-- The `Decom.infra.00-all` "Everything" umbrella has its own top-level `guard` job requiring `confirm: destroy` on **its** dispatch before any child job starts.
-- `Day1.cluster.01`'s `destroy_unused_backends` checkbox (itself an explicit, labeled-DESTRUCTIVE opt-in) forwards `confirm: "destroy"` to the backend(s) it destroys, so ticking that box is the confirmation.
-- The `Day0.infra.0N` bootstrap preflights that `Day1.cluster.01` / `Day1.cluster.00-all` run automatically (to provision the selected `observability_mode`'s backend) pass no `confirm` at all — selecting the mode is itself the deliberate, routine, idempotent action; nothing extra to confirm.
-
-`gke-production` deliberately keeps its required-reviewer approval as-is: it also gates routine `Day2.*` production operations (redeploy Jenkins, publish dashboards) well beyond the scope of a teardown, so swapping its mechanism would need the same `confirm`-input treatment threaded through every one of those workflows — a larger change than the friction it was actually causing (that gate is approved once, immediately at dispatch, not after an unattended wait).
-
-> **Decommissioning the Gateway — which workflow?** Either path runs the **same**
-> reusable `Decom.infra.01-gateway.yml`, so the **`gateway-bootstrap`** identity and
-> `confirm` gate are identical regardless of how you start it:
-> - **Standalone**: dispatch **`Decom.infra.01 Gateway decommission`** directly —
->   the normal way to retire just the Gateway.
-> - **Umbrella**: **`Decom.infra.00-all` ("Everything")** *can* destroy the Gateway,
->   but its `gateway` input **defaults to `false`** (destroying the Gateway loses
->   the static IP and forces DNS re-propagation). The umbrella tears down the
->   cluster + observability backends by default and only touches the Gateway when
->   you explicitly set `gateway: true`.
->
-> In other words: a routine full teardown leaves the persistent Gateway IP/cert in
-> place; you destroy the Gateway **deliberately**, via `Decom.infra.01` (or the
-> umbrella's opt-in toggle), and typing `destroy` confirms it either way.
+#### Cloud Authentication Scoping (OIDC WIF)
+Because the environment name has been consolidated, the OIDC federated credentials and Workload Identity Provider conditions configured in AWS, Azure, and GCP must all be scoped to `gke-production` in their subject:
+- **Azure Entra ID subject**: `repo:<owner>/<repo>:environment:gke-production`
+- **AWS IAM Role Trust Condition**: `token.actions.githubusercontent.com:sub = repo:<owner>/<repo>:environment:gke-production`
+- **GCP IAM Workload Identity Pool**: Consolidated under the repository repository claim, matching GCP service account impersonation.
 
 ### Setting up Environment Rules
 
-**`gke-production`** is the only environment that still needs a required-reviewer rule:
+**`gke-production`** is the only environment that needs to be configured in GitHub:
 
 **Option A: Manual Setup (GitHub Web UI)**
 1. Navigate to **Settings** -> **Environments** on your GitHub repository.
@@ -436,15 +394,7 @@ gh api --method PUT repos/nubenetes/jenkins-2026/environments/gke-production \
 }
 EOF
 ```
-
-**The four per-resource environments** (`gateway-bootstrap`, `grafana-cloud-bootstrap`,
-`azure-bootstrap`, `aws-bootstrap`) still need to **exist** — the OIDC federated
-credentials for Azure/AWS are scoped to `environment:<name>` in their subject —
-but should have **no** required-reviewer rule; `Day0.infra.0N` / `Decom.infra.0N`'s
-own `confirm` input is the gate now. Create them with no reviewers, or clear an
-existing rule:
-```bash
-for env in gateway-bootstrap grafana-cloud-bootstrap azure-bootstrap aws-bootstrap; do
+ud-bootstrap azure-bootstrap aws-bootstrap; do
   gh api --method PUT "repos/nubenetes/jenkins-2026/environments/${env}" \
     --header "Accept: application/vnd.github+json" \
     --input - <<< '{"reviewers": []}'

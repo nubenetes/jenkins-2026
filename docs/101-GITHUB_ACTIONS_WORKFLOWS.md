@@ -64,7 +64,7 @@ The punchline: **GitHub sorts the Actions sidebar by each workflow's `name:`, ev
 - **Controlled `tier` vocabulary**: `infra` (persistent Day0/Decom) · `cluster` (the GKE cluster) · `redeploy` (re-apply one component) · `publish` (push dashboards/alerts) · `traffic` (k6) · `scale` (pause/resume the node pools to park the cluster at ~zero cost) — deep-dive + the PDB/autoRepair gotchas in [501 § Pausing & resuming](./501-PLATFORM_OPERATIONS.md#pausing--resuming-the-cluster-cost-saving) · `registry` (prune old container image versions from ghcr). The tier-then-`ZZ` order is a real dependency chain in **Create** (`Day0.infra` before `Day1.cluster`) and **Decom** (`cluster` before `infra`), but in **Day2** the tiers are independent *categories*, not stages — nothing chains them.
 - **GKE serialization**: every cluster-touching leaf workflow (`Day1.cluster.01`, `Decom.cluster.01`, and the `Day2.*` that act on the cluster) shares `concurrency: group: jenkins-2026-gke`, so GitHub **queues** them instead of letting two runs race the same Terraform state.
 - **Reusable workflows + umbrellas**: `Day1.cluster.01` `workflow_call`s the matching `Day0.infra.0{2,3,4}` backend bootstrap as a preflight; the two opt-in umbrellas (`Day1.cluster.00-all` "Everything up" / `Decom.infra.00-all` "Everything") orchestrate the leaves via `workflow_call` and **never share the leaves' `jenkins-2026-gke` group** (holding a child's own group would deadlock it): the up-umbrella carries no `concurrency:` at all, the Decom umbrella only its own `jenkins-2026-decom-umbrella` group so full teardowns serialize.
-- **Per-resource approval gates**: each persistent Day0 resource has its own GitHub Environment (`gateway-bootstrap`, `grafana-cloud-bootstrap`, `azure-bootstrap`, `aws-bootstrap`), gated by a **typed `confirm` input** (`"apply"`/`"destroy"`) on the workflow itself rather than a required reviewer; the cluster + the **provisioning/teardown** Day2 use `gke-production`, which keeps a required-reviewer approval. The gate travels with the reusable workflow, so every entry point inherits the same single gate. **Exceptions (no gate):** `Day2.traffic.01-k6` and `Day2.traffic.02-rum` drive only read-only HTTP traffic against the already-running public endpoints (provision/destroy nothing, all secrets repo-level), and `Day2.registry.01-image-retention` only prunes old ghcr image versions (cluster-independent, its own `jenkins-2026-image-retention` concurrency group) — so their gates were removed to unblock automation/scheduling. Note the `Day2.scale.*` pause/resume workflows **are** `gke-production`-gated (they reconfigure node pools on the live cluster). See [102 § Environment Protection](./102-GITHUB_ACTIONS_AUTOMATION.md#environment-protection-and-manual-approvals).
+- **Consolidated approval gate**: all workflows and resource jobs are consolidated under a single GitHub Environment (`gke-production`), gated by a required-reviewer approval. This avoids approval fatigue by requesting a single approval per workflow run, even for multi-job deployments and teardowns. As an additional guard, destructive workflows declare a **typed `confirm` input** (`"destroy"`) validated by a `guard` job. **Exceptions (no gate):** `Day2.traffic.01-k6` and `Day2.traffic.02-rum` drive only read-only HTTP traffic against the already-running public endpoints, and `Day2.registry.01-image-retention` only prunes old ghcr image versions — so their gates were removed to unblock automation/scheduling. Note the `Day2.scale.*` pause/resume workflows **are** `gke-production`-gated. See [102 § Environment Protection](./102-GITHUB_ACTIONS_AUTOMATION.md#environment-protection-and-manual-approvals).
 - **Cross-cutting `log_level` input**: every dispatchable workflow that runs the repo's scripts/Terraform exposes a `log_level` dropdown (`info` default | `debug`) — the three that touch neither (`Day2.scale.01`/`02`, pure `gcloud`, and `Day2.registry.01`, pure GitHub API) have none; reusable workflows mirror it as a `workflow_call` input and the umbrellas/preflights pass it down. It exports `JENKINS2026_LOG_LEVEL` (drives `log_debug` in the scripts) and `TF_LOG=DEBUG` for the Terraform steps (only at `debug`). There is **no `trace`/`set -x` level** by design — bash xtrace would leak script-derived secret values GitHub doesn't mask; use the native `ACTIONS_STEP_DEBUG` for runner-level tracing. Durable default lives in `config.yaml` (`logging.level`).
   - **Don't confuse it with the observability volume knobs** on the same workflows (`Day1.cluster.01-gke` + the `Day1.cluster.00-all` umbrella, the lighter `Day2.redeploy.01-argocd` — both knobs — and `Day2.publish.01-oss-grafana`, which exposes `log_min_severity` only): **`grafana_cloud_tier`** (`free` default | `paid`) is a profile that sets the free-tier-fitting defaults, and **`log_min_severity`** (`auto` default → derives from tier; or force a level) is the `otel-collector-logs` `filter` that trims **Grafana's logs panels** (app + platform). Both are unrelated to the CI run's chattiness. The tier governs **metrics** (`leanMetrics`) **and logs** (`logMinSeverity`) today (not traces yet). Durable defaults in `config.yaml` `observability.{grafanaCloudTier,leanMetrics,logMinSeverity}`; see [301 § Log Levels](./301-OBSERVABILITY.md#log-levels).
 - **No auto-chaining**: no workflow ever triggers another (`workflow_run:` is never used) and every lifecycle workflow is human-dispatched — the sole non-manual trigger is `Day2.registry.01`'s weekly cron, which touches only ghcr, never the cluster or Terraform state — so a human reviews each phase, critical for `Decom`, where an automatic trigger on a failed cluster teardown could cascade into destroying persistent backends.
@@ -175,7 +175,7 @@ Both umbrellas are thin orchestrators — they own no teardown/provision logic, 
 flowchart TD
     subgraph UP["🟢 Day1.cluster.00-all &quot;Everything up&quot; (no concurrency of its own)"]
         direction TB
-        u_gw["job: gateway-bootstrap<br/>if bootstrap_gateway<br/>uses Day0.infra.01-gateway<br/>🔒 gateway-bootstrap"]
+        u_gw["job: gateway-bootstrap<br/>if bootstrap_gateway<br/>uses Day0.infra.01-gateway<br/>🔒 gke-production"]
         u_prov["job: provision<br/>needs gateway-bootstrap<br/>if always() &amp;&amp; !failure()<br/>uses Day1.cluster.01-gke"]
         u_gw --> u_prov
     end
@@ -183,9 +183,9 @@ flowchart TD
     subgraph NEST["Day1.cluster.01-gke — its OWN preflight fan-out (nested workflow_call)"]
         direction TB
         n_pick{"observability_mode"}
-        n_gc["grafana-cloud-bootstrap<br/>uses Day0.infra.02<br/>🔒 grafana-cloud-bootstrap"]
-        n_az["azure-bootstrap<br/>uses Day0.infra.03<br/>🔒 azure-bootstrap"]
-        n_aws["aws-bootstrap<br/>uses Day0.infra.04<br/>🔒 aws-bootstrap"]
+        n_gc["grafana-cloud-bootstrap<br/>uses Day0.infra.02<br/>🔒 gke-production"]
+        n_az["azure-bootstrap<br/>uses Day0.infra.03<br/>🔒 gke-production"]
+        n_aws["aws-bootstrap<br/>uses Day0.infra.04<br/>🔒 gke-production"]
         n_dc["decom of the NON-selected backends<br/>uses Decom.infra.02 / 03 / 04<br/>(never leaves a billed backend)"]
         n_prov["provision: scripts/up.sh in full<br/>needs the 3 bootstraps<br/>🔒 gke-production"]
         n_pick --> n_gc --> n_prov
@@ -819,15 +819,15 @@ GitHub has no way to draw that — it's a `bash if`, not a job — so `provision
 flowchart TD
     subgraph JOBS["GitHub Actions job graph (what the workflow_dispatch UI shows)"]
         direction TB
-        B1["grafana-cloud-bootstrap<br/>if mode=grafana-cloud<br/>uses Day0.infra.02<br/>env: grafana-cloud-bootstrap"]
-        B2["azure-bootstrap<br/>if mode=managed-azure<br/>uses Day0.infra.03<br/>env: azure-bootstrap"]
-        B3["aws-bootstrap<br/>if mode=managed-aws<br/>uses Day0.infra.04<br/>env: aws-bootstrap"]
+        B1["grafana-cloud-bootstrap<br/>if mode=grafana-cloud<br/>uses Day0.infra.02<br/>env: gke-production"]
+        B2["azure-bootstrap<br/>if mode=managed-azure<br/>uses Day0.infra.03<br/>env: gke-production"]
+        B3["aws-bootstrap<br/>if mode=managed-aws<br/>uses Day0.infra.04<br/>env: gke-production"]
         P["provision<br/>needs: the 3 bootstraps<br/>🔒 env: gke-production"]
         B1 --> P
         B2 --> P
         B3 --> P
 
-        DT["destroy-grafana-cloud-token<br/>revoke per-cluster GC token FIRST<br/>🔒 env: grafana-cloud-bootstrap"]
+        DT["destroy-grafana-cloud-token<br/>revoke per-cluster GC token FIRST<br/>🔒 env: gke-production"]
         D1["destroy-grafana-cloud<br/>needs: destroy-grafana-cloud-token<br/>uses Decom.infra.02"]
         D2["destroy-azure<br/>uses Decom.infra.03"]
         D3["destroy-aws<br/>uses Decom.infra.04"]
@@ -868,17 +868,13 @@ flowchart TD
 
 </details>
 
-> **Approval gates (🔒).** Only `provision` is protected, by the required-reviewer
-> `gke-production` GitHub Environment. Each backend bootstrap runs under its own
-> `grafana-cloud-bootstrap` / `azure-bootstrap` / `aws-bootstrap` environment (for
-> the OIDC identity) but has **no** required-reviewer rule and is not asked to
-> `confirm` here — selecting `observability_mode` and dispatching this workflow is
-> itself the deliberate action for this routine, idempotent preflight. The matching
-> `Decom.infra.0{2,3,4}` teardown workflows reuse the same per-backend environments
-> and add a typed `confirm: "destroy"` gate of their own (skipped on this preflight
-> path; only enforced on a direct dispatch of the Decom workflow). (Before the
-> per-resource split, Grafana Cloud borrowed `gke-production`, which got it
-> approved twice in one Day1 run.) See [102 § Environment Protection and Manual Approvals](./102-GITHUB_ACTIONS_AUTOMATION.md#environment-protection-and-manual-approvals).
+> **Approval gates (🔒).** All jobs run under the consolidated **`gke-production`**
+> GitHub Environment, which requires manual reviewer approval. Approvals are
+> granted per environment per workflow run, meaning a user approves the workflow
+> **exactly once** at the beginning, and all subsequent jobs (bootstraps, GKE
+> provision, and token cleanups) proceed automatically without further human
+> intervention. See [102 § Environment Protection and Manual Approvals](./102-GITHUB_ACTIONS_AUTOMATION.md#environment-protection-and-manual-approvals).
+
 
 ### Why it's modelled this way (not as per-engine jobs)
 

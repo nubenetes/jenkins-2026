@@ -73,7 +73,7 @@ jobs:
     # not conflated with the cluster's gke-production identity. No
     # required-reviewer protection — the `confirm` guard above is the
     # deliberate-action gate instead.
-    environment: grafana-cloud-bootstrap
+    environment: gke-production
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
