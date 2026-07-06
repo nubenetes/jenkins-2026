@@ -16,14 +16,26 @@ name: "Day2.redeploy.02 Jenkins"
 # dashboards"). Running scripts/07 here would assume config.yaml's default
 # observability.mode (grafana-cloud) regardless of the live cluster's mode, and
 # the grafana-cloud branch hard-fails when its credentials secret is absent.
+# 09-gateway.sh (below) IS obs_mode-sensitive though (it generates/retires the
+# oss Grafana HTTPRoute+HealthCheckPolicy), hence the observability_mode input.
 on:
   workflow_dispatch:
     inputs:
       develop_track:
-        description: "Regenerate the optional lean 'develop' microservices Jenkins jobs alongside 'stable' (OFF by default). Note: the develop ArgoCD app/namespace is owned by Day1.cluster.01 — run that with develop_track=true first to provision the tier."
+        description: "Regenerate the optional lean 'develop' microservices Jenkins jobs alongside 'stable' (OFF by default). MUST MATCH how the cluster was provisioned: 09-gateway.sh generates the develop host's HTTPRoute + HealthCheckPolicy when true and RETIRES them when false (the deliberate disable-cleanup path) — so develop_track=false against a develop-enabled cluster tears down the develop host's route. The develop ArgoCD app/namespace itself is owned by Day1.cluster.01 — run that with develop_track=true first to provision the tier."
         required: false
         default: false
         type: boolean
+      observability_mode:
+        description: "observability.mode of the cluster (must match the live cluster). Only affects the in-cluster oss Grafana route: 09-gateway.sh generates its HTTPRoute+HealthCheckPolicy(+BackendTLSPolicy) when oss and RETIRES them for any other value — the deliberate mode-switch cleanup path. Passing the wrong value against an oss cluster tears down the Grafana route."
+        required: false
+        default: "grafana-cloud"
+        type: choice
+        options:
+          - grafana-cloud
+          - oss
+          - managed-azure
+          - managed-aws
       git_ref:
         description: "Git branch, tag, or SHA to check out (leave empty to use the branch/tag selected in 'Use workflow from' above)"
         required: false
@@ -69,6 +81,9 @@ env:
   JENKINS2026_DEVELOP_TRACK_ENABLED: ${{ inputs.develop_track }}
   # Build-agent placement override (empty = fall back to config.yaml jenkins.runNodePool).
   JENKINS2026_JENKINS_RUN_NODE_POOL: ${{ inputs.run_node_pool != 'config' && inputs.run_node_pool || '' }}
+  # Must match the live cluster - see the input (only affects 09-gateway.sh's oss
+  # Grafana route/policies).
+  JENKINS2026_OBS_MODE: ${{ inputs.observability_mode }}
   # Opt-in backend TLS (docs/504) — must match the live cluster (see the input).
   JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED: ${{ inputs.backend_tls }}
 
