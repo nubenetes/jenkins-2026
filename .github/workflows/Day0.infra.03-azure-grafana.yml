@@ -33,6 +33,10 @@ concurrency:
 on:
   workflow_dispatch:
     inputs:
+      confirm:
+        description: 'Type "apply" to confirm provisioning this persistent, billed resource'
+        required: true
+        type: string
       log_level:
         description: "Script/Terraform verbosity: info (default) or debug (adds [DEBUG] script lines + TF_LOG=DEBUG). For runner-level tracing use GitHub's ACTIONS_STEP_DEBUG."
         required: false
@@ -58,10 +62,26 @@ env:
   TF_VERSION: "1.15.6"
 
 jobs:
+  # Only enforced on a direct dispatch: when reused via `workflow_call`
+  # (Day1.cluster.01's observability_mode=managed-azure preflight), `confirm` is
+  # not part of the caller's input schema, so this is a no-op — selecting the
+  # mode is itself the deliberate action for routine, idempotent provisioning.
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate confirmation
+        run: |
+          if [ -n "${{ inputs.confirm }}" ] && [ "${{ inputs.confirm }}" != "apply" ]; then
+            echo "::error::You must type 'apply' in the confirm box to proceed."; exit 1
+          fi
+
   bootstrap:
+    needs: guard
     runs-on: ubuntu-latest
     # Must match the federated credential subject
-    # repo:<owner>/<repo>:environment:azure-bootstrap on the Entra app.
+    # repo:<owner>/<repo>:environment:azure-bootstrap on the Entra app (auth
+    # only — no required-reviewer protection; the `confirm` guard above
+    # replaces it).
     environment: azure-bootstrap
     steps:
       - name: Checkout

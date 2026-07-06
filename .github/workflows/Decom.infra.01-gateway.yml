@@ -14,6 +14,10 @@ concurrency:
 on:
   workflow_dispatch:
     inputs:
+      confirm:
+        description: 'Type "destroy" to confirm this teardown (IRREVERSIBLE — loses the static IP)'
+        required: true
+        type: string
       log_level:
         description: "Script/Terraform verbosity: info (default) or debug (adds [DEBUG] script lines + TF_LOG=DEBUG). For runner-level tracing use GitHub's ACTIONS_STEP_DEBUG."
         required: false
@@ -40,10 +44,25 @@ env:
   TF_VERSION: "1.15.6"
 
 jobs:
-  decommission:
+  # Only enforced on a direct dispatch: when reused via `workflow_call` (the
+  # Decom.infra.00 "Everything" umbrella), `confirm` is not part of the caller's
+  # input schema, so this is a no-op — the caller already validated its own
+  # confirmation before invoking this workflow.
+  guard:
     runs-on: ubuntu-latest
-    # Dedicated gateway-bootstrap gate (one per persistent Day0 resource, like the
-    # grafana-cloud/azure/aws bootstraps), independent of the cluster gate.
+    steps:
+      - name: Validate confirmation
+        run: |
+          if [ -n "${{ inputs.confirm }}" ] && [ "${{ inputs.confirm }}" != "destroy" ]; then
+            echo "::error::You must type 'destroy' in the confirm box to proceed."; exit 1
+          fi
+
+  decommission:
+    needs: guard
+    runs-on: ubuntu-latest
+    # Dedicated gateway-bootstrap identity (needed for the GCP OIDC subject),
+    # independent of the cluster gate. No required-reviewer protection — the
+    # `confirm` guard above is the deliberate-action gate instead.
     environment: gateway-bootstrap
     steps:
       - name: Checkout
