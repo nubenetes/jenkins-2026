@@ -51,7 +51,7 @@ on:
           - info
           - debug
       backend_tls:
-        description: "Opt-in backend TLS (gateway.backendTls — docs/504). MUST MATCH how the cluster was provisioned: this workflow re-runs 09-gateway, which generates (true) or retires (false) the headlamp BackendTLSPolicy + HTTPS HealthCheckPolicy — the wrong value makes the LB and the pod disagree on the protocol → 502 at headlamp. Flag FLIPS need Day1."
+        description: "Opt-in backend TLS (gateway.backendTls — docs/504). MUST MATCH how the cluster was provisioned: this workflow re-runs 09-gateway, which generates (true) or retires (false) the argo-server BackendTLSPolicy + HTTPS HealthCheckPolicy — the wrong value makes the LB and the pod disagree on the protocol → 502 at Argo Server. Flag FLIPS need Day1."
         required: false
         default: false
         type: boolean
