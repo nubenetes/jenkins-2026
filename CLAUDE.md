@@ -270,6 +270,8 @@ Legacy stubs ([`docs/architecture.md`](docs/architecture.md), [`docs/observabili
   any new config knobs rather than adding new flags ad hoc.
 - Shell scripts: `bash`, `set -euo pipefail` via `lib/common.sh`, `yq` for
   YAML. Don't introduce other YAML tooling.
+- **Shell Quoting inside Windows/WSL commands**: When executing commands in WSL from a Windows host shell (e.g., `wsl bash -c ...`), avoid nested double quotes to prevent PowerShell parsing errors (like `unexpected EOF`). Instead, wrap the outer command in single quotes `'` and use double quotes `"` internally, or write complex commands into a script in `scratch/` and run the script file inside WSL.
+
 - **Contributor process** (human-facing summary of these conventions):
   [`CONTRIBUTING.md`](CONTRIBUTING.md) — branch model, idempotency contract,
   feature-flag pattern, secrets hygiene, Terraform gate, local checks.
