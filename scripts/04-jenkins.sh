@@ -27,6 +27,18 @@ retire_ci_engine tekton
 retire_ci_engine githubactions
 retire_ci_engine argoworkflows
 
+# --- ensure the jenkins-namespace NetworkPolicies are current ----------------
+# 01-namespaces.sh applies these on Day1, but the Jenkins-only redeploy
+# (Day2.redeploy.02-jenkins) deliberately does NOT run 01-namespaces - so a
+# change to the jenkins NetworkPolicy (notably the backend-TLS 8081 ingress
+# rule, docs/504) would never reach the cluster on a redeploy, and build agents
+# would hang "Waiting for agent to connect" (the LB→pod hop moves to the plain
+# 8081 the policy must allow). Re-apply here too - idempotent, same file +
+# ci.engine=jenkins guard as 01-namespaces - so a redeploy is self-sufficient.
+# The jenkins namespace already exists (Day1's 01-namespaces created it; this
+# script only runs after that), so the apply never races namespace creation.
+kubectl apply -f "${J2026_ROOT_DIR}/infrastructure/networkpolicies-jenkins.yaml"
+
 # --- compute dynamic banner values and patch them into the Secret ------------
 # Grafana base URL surfaced in the systemMessage banner (jcasc-base.yaml) and
 # the OTel plugin's "View in Grafana" links (jcasc-otel.yaml). Resolved per
