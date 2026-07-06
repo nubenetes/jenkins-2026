@@ -160,10 +160,11 @@ fi
 # see that file). So agents dial the SERVICE port 8082. Empty when TLS is
 # inactive, so jcasc-base.yaml's ${JENKINS_AGENT_PORT:-8080} default (the plain
 # servicePort) applies unchanged.
-jenkins_agent_port=""
+jenkins_agent_port="8080"
 if [[ "$(j2026_backend_tls_active)" == "true" ]]; then
   jenkins_agent_port="8082"
 fi
+
 
 kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \
   --type=merge -p "$(jq -nc \
