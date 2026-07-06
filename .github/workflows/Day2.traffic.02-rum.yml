@@ -87,6 +87,28 @@ jobs:
           kubectl -n observability port-forward deploy/otel-collector-gateway 8027:8027 >/tmp/pf.log 2>&1 &
           PF=$!; trap 'kill $PF 2>/dev/null || true' EXIT
           sleep 5
+          # Auto-detect backend TLS (docs/504) from the LIVE cluster instead of a
+          # manual input that could drift from how the cluster was actually
+          # provisioned (the #552/#556 input-parity lesson - a flag the operator
+          # has to remember is a flag they eventually forget). The faro-backend-tls
+          # BackendTLSPolicy only exists when 08.7-backend-tls.sh + 09-gateway.sh
+          # activated it - the exact same ground-truth signal those scripts use.
+          # When active the faro receiver serves HTTPS-only on 8027 (no plain-HTTP
+          # fallback port, unlike Jenkins's split-port design), so this port-forwarded
+          # curl must speak HTTPS too or every beacon POST fails silently (curl gets a
+          # protocol mismatch, not an HTTP error - the job would report "0/N
+          # accepted" while still going green). -k skips cert verification (the
+          # runner doesn't carry the in-cluster CA) - fine here since this POSTs
+          # straight to the port-forwarded pod, not through the LB/BackendTLSPolicy
+          # validation path.
+          if kubectl get backendtlspolicy faro-backend-tls -n observability >/dev/null 2>&1; then
+            echo "Backend TLS detected (faro-backend-tls BackendTLSPolicy present) - using HTTPS."
+            FARO_URL="https://localhost:8027/"
+            CURL_TLS_FLAGS="-k"
+          else
+            FARO_URL="http://localhost:8027/"
+            CURL_TLS_FLAGS=""
+          fi
           BROWSERS=("Chrome:126:Windows" "Chrome:126:macOS" "Firefox:128:Linux" "Safari:17:iOS:true" "Edge:126:Windows")
           ok=0
           for i in $(seq 1 "${SESSIONS}"); do
@@ -109,7 +131,7 @@ jobs:
           "traces":{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"angular-gateway"}},{"key":"deployment.environment","value":{"stringValue":"${ENV_NAME}"}}]},"scopeSpans":[{"scope":{"name":"@grafana/faro-web-tracing"},"spans":[{"traceId":"${TID}","spanId":"${SID}","name":"documentLoad","kind":1,"startTimeUnixNano":"${STN}","endTimeUnixNano":"${ENDN}"}]}]}]}}
           JSON
           )"
-            code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -X POST -H 'Content-Type: application/json' --data "${BODY}" http://localhost:8027/ || echo 000)"
+            code="$(curl -s ${CURL_TLS_FLAGS} -o /dev/null -w '%{http_code}' --max-time 10 -X POST -H 'Content-Type: application/json' --data "${BODY}" "${FARO_URL}" || echo 000)"
             [[ "$code" == "202" || "$code" == "200" ]] && ok=$((ok+1))
             # Some sessions also throw a JS exception
             if awk "BEGIN{exit !($RANDOM/32767 < ${ERROR_RATE})}"; then
@@ -118,7 +140,7 @@ jobs:
           "exceptions":[{"type":"TypeError","value":"Cannot read properties of undefined (reading 'data')","timestamp":"${TS}","stacktrace":{"frames":[{"filename":"main.js","function":"render","lineno":$((RANDOM%500))}]}}]}
           JSON
           )"
-              curl -s -o /dev/null --max-time 10 -X POST -H 'Content-Type: application/json' --data "${ERR}" http://localhost:8027/ || true
+              curl -s ${CURL_TLS_FLAGS} -o /dev/null --max-time 10 -X POST -H 'Content-Type: application/json' --data "${ERR}" "${FARO_URL}" || true
             fi
           done
           echo "Emitted ${ok}/${SESSIONS} session beacons (HTTP 202) to the faro receiver."
