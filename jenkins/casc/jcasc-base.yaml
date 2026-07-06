@@ -54,9 +54,10 @@ jenkins:
         serverUrl: "https://kubernetes.default.svc.cluster.local"
         namespace: "${JENKINS_NAMESPACE:-jenkins}"
         jenkinsUrl: "http://jenkins.${JENKINS_NAMESPACE:-jenkins}.svc.cluster.local:${JENKINS_AGENT_PORT:-8080}"
-        # Inbound agents connect over the HTTP port (jenkinsUrl, 8080 - or 8081 when
-        # backend TLS (docs/504) is active and 8080 becomes HTTPS-only, see
-        # JENKINS_AGENT_PORT) via a WebSocket upgrade. The cluster encrypts
+        # Inbound agents connect over the HTTP port (jenkinsUrl, 8080 - or the
+        # plain-HTTP Service port 8082 when backend TLS (docs/504) is active and
+        # 8080 becomes HTTPS-only; JENKINS_AGENT_PORT, Service 8082 -> pod 8081)
+        # via a WebSocket upgrade. The cluster encrypts
         # INTER-NODE pod traffic with WireGuard
         # (in_transit_encryption_config), which lowers the effective MTU; the raw JNLP4
         # TLS handshake on the TCP agent port (:50000) then black-holes whenever a

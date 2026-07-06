@@ -180,12 +180,14 @@ controller:
           key: argocd-server
           optional: true
     # Internal Service port build agents dial over WebSocket
-    # (jenkins/casc/jcasc-base.yaml jenkinsUrl). Patched to "8081" by
+    # (jenkins/casc/jcasc-base.yaml jenkinsUrl). Patched to "8082" by
     # scripts/04-jenkins.sh only when backend TLS is active (docs/504) - the
-    # controller's main port (8080) becomes HTTPS-only then, and the plain-HTTP
-    # listener moves to httpsKeyStore.httpPort (values-backend-tls.yaml). Optional
-    # + the JCasC ${JENKINS_AGENT_PORT:-8080} fallback keep the plain-8080 default
-    # when the key is absent/empty.
+    # controller's main port (8080) becomes HTTPS-only then, the plain-HTTP
+    # listener moves to the pod's httpsKeyStore.httpPort (8081), and the Service
+    # re-exposes it as port 8082 (values-backend-tls.yaml controller.extraPorts;
+    # 8082 not 8081 to dodge a containerPort collision). Optional + the JCasC
+    # ${JENKINS_AGENT_PORT:-8080} fallback keep the plain-8080 default when the
+    # key is absent/empty.
     - name: JENKINS_AGENT_PORT
       valueFrom:
         secretKeyRef:

@@ -142,13 +142,15 @@ fi
 # Internal Service port build agents dial over WebSocket (jcasc-base.yaml
 # jenkinsUrl). Plain HTTP always: when backend TLS (docs/504) is active, the
 # controller's main port (8080) becomes HTTPS-only and the plain-HTTP listener
-# moves to httpsKeyStore.httpPort (8081, values-backend-tls.yaml), exposed on
-# the Service via controller.extraPorts. Empty when TLS is inactive, so
-# jcasc-base.yaml's ${JENKINS_AGENT_PORT:-8080} default (the plain servicePort)
-# applies unchanged.
+# moves to the pod's httpsKeyStore.httpPort (8081), exposed on the Service as
+# port 8082 -> targetPort 8081 (controller.extraPorts, values-backend-tls.yaml;
+# the Service port must differ from 8081 to avoid a containerPort collision -
+# see that file). So agents dial the SERVICE port 8082. Empty when TLS is
+# inactive, so jcasc-base.yaml's ${JENKINS_AGENT_PORT:-8080} default (the plain
+# servicePort) applies unchanged.
 jenkins_agent_port=""
 if [[ "$(j2026_backend_tls_active)" == "true" ]]; then
-  jenkins_agent_port="8081"
+  jenkins_agent_port="8082"
 fi
 
 kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \

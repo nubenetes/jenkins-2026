@@ -33,13 +33,24 @@ controller:
     jenkinsHttpsJksSecretKey: keystore.jks
     jenkinsHttpsJksPasswordSecretName: jenkins-https-jks-password
     jenkinsHttpsJksPasswordSecretKey: password
-    # HTTP port for probes + in-cluster plain-HTTP callers (build agents) once
-    # httpsKeyStore.enable moves controller.targetPort (8080) to HTTPS-only.
+    # POD plain-HTTP port for probes + in-cluster plain-HTTP callers (build agents)
+    # once httpsKeyStore.enable moves controller.targetPort (8080) to HTTPS-only.
+    # The chart declares this as the `http` containerPort in httpsKeyStore mode.
     httpPort: 8081
 
-  # Exposes the plain-HTTP port (8081) on the Service too - httpsKeyStore alone
-  # only wires it into the pod/probes, not the Service, which by default only
-  # forwards controller.servicePort/targetPort (now HTTPS).
+  # Expose the pod's plain-HTTP port (8081) on the Service so build agents can
+  # reach it (httpsKeyStore alone wires 8081 into the pod/probes only, not the
+  # Service — which by default forwards just servicePort/targetPort 8080, now
+  # HTTPS). The Service port MUST differ from httpPort (8081): the chart's
+  # extraPorts range emits BOTH a Service port AND a containerPort per entry, and
+  # a containerPort 8081 would COLLIDE with the `http` containerPort httpsKeyStore
+  # already declares at 8081 → ArgoCD ComparisonError ("duplicate entries for key
+  # containerPort=8081") → the whole overlay silently fails to sync. So expose it
+  # as Service port 8082 → targetPort 8081 (targetPort routes to the real plain
+  # pod port; the extra containerPort 8082 the range also emits is inert — nothing
+  # binds it, kube-proxy DNATs Service:8082 → pod:8081). scripts/04-jenkins.sh
+  # patches JENKINS_AGENT_PORT=8082 (the Service port agents dial) to match.
   extraPorts:
-    - name: http-internal
-      port: 8081
+    - name: agent-http
+      port: 8082
+      targetPort: 8081

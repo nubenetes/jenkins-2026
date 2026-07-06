@@ -446,7 +446,8 @@ export J2026_BACKEND_TLS_POLICY_GRAFANA="grafana-backend-tls"
 # HTTP, so the chart's native controller.httpsKeyStore feature is used instead of
 # a plain cert (see helm/jenkins/values-backend-tls.yaml) - it moves the pod's
 # plain-HTTP listener + probes to httpPort 8081 while the Service's existing port
-# (8080) becomes HTTPS, and controller.extraPorts exposes 8081 on the Service too
+# (8080) becomes HTTPS, and controller.extraPorts re-exposes the plain port on the
+# Service as 8082 (->pod 8081; a distinct number to avoid a containerPort collision)
 # so in-cluster callers (agents) keep dialing plain HTTP on a different port than
 # the LB. The JKS keystore needs a password Secret cert-manager reads via
 # passwordSecretRef (it doesn't create one) - 08.7-backend-tls.sh generates it
