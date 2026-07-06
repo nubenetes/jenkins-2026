@@ -323,7 +323,7 @@ EOT
     helm repo update >/dev/null 2>&1 || true
 
     helm upgrade --install k8s-monitoring grafana/k8s-monitoring \
-      --version=4.1.6 \
+      --version=4.2.0 \
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${GENERATED_OBS_DIR}/k8s-monitoring-values.yaml"
 
