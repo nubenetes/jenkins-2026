@@ -352,6 +352,20 @@ composable increment.
   pod restart — `08-headlamp.sh` already restarts it on every Day1 re-run,
   which in practice covers this PoC's cluster lifetimes.
 
+### GKE Gateway NEG & ServiceNetworkEndpointGroup Finalizer Self-Healing
+
+When operating Backend TLS in GKE, you will hit a known GKE NEG controller lifecycle limitation on cluster redeployments or Helm upgrades. Because GKE Gateway uses container-native load balancing via Network Endpoint Groups (NEGs), it manages a custom resource in the cluster named `ServiceNetworkEndpointGroup` (`svcneg` in `networking.gke.io/v1beta1`).
+
+This architecture creates two potential deadlocks that this project automatically self-heals:
+
+#### 1. Bootstrapping Deadlock (HTTPS Probe Mismatch)
+* **The Problem**: When Backend TLS is enabled, the backend pods serve HTTPS. However, GKE's default health checking uses HTTP. The matching HTTPS `HealthCheckPolicy` and `BackendTLSPolicy` are traditionally applied at the very end of the provisioning pipeline (`09-gateway.sh`). During a fresh cluster bootstrap, if the workload rollout scripts (`03-observability.sh` or `08-headlamp.sh`) wait for the deployment rollout to complete before proceeding, the pods remain unhealthy in the GCP Load Balancer (due to the HTTP/HTTPS probe mismatch). GKE keeps the NEG readiness gate (`cloud.google.com/load-balancer-neg-ready`) as `False`, permanently wedging the rollout and preventing the pipeline from ever reaching the gateway step that would apply the fixing policy.
+* **The Self-Healing Fix**: The setup scripts for Grafana (`03-observability.sh`) and Headlamp (`08-headlamp.sh`) proactively generate and apply their respective `BackendTLSPolicy` and `HealthCheckPolicy` (HTTPS) **before** calling `wait_for_deployment`. This immediately configures the GCP Load Balancer to send HTTPS probes, satisfying the NEG readiness gate and allowing the rollout to proceed.
+
+#### 2. Deterministic NEG Finalizer Deadlock (Stuck "Terminating" resources)
+* **The Problem**: When a Service is deleted and recreated (e.g., during a Helm upgrade/redeploy or namespace reset), its UID changes. The GKE NEG controller attempts to delete the old `ServiceNetworkEndpointGroup` (`svcneg`) resource, which holds a finalizer (`networking.gke.io/neg-finalizer`). Because the new Service immediately registers itself with the *same* name, it reuses the same underlying Google Cloud NEG resource. The GKE NEG controller detects the GCP NEG is still in use and refuses to delete it, permanently wedging the old `ServiceNetworkEndpointGroup` object in `Terminating` status. ArgoCD sees this terminating resource and gets stuck in an infinite `Syncing` loop.
+* **The Self-Healing Fix**: A proactive cleanup loop is embedded at the end of `scripts/01-namespaces.sh`. If it runs on GKE, it queries the API server for any `svcneg` resources containing a `deletionTimestamp` (meaning they are stuck in Terminating). It automatically patches them to clear their finalizers (`finalizers: null`). Once deleted, GKE's NEG controller automatically regenerates a fresh, clean `svcneg` object for the active Service, immediately resolving the ArgoCD sync loop and returning the application to a `Synced` and `Healthy` state.
+
 ## Verifying it
 
 ```bash
