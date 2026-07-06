@@ -168,8 +168,13 @@ else
   check "${JENKINS_POD} pod is Running" \
     bash -c "kubectl -n '${JENKINS_NS}' get pod '${JENKINS_POD}' -o jsonpath='{.status.phase}' | grep -qx Running"
 
+  jenkins_url="http://localhost:8080"
+  if [[ "${JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED}" == "true" ]]; then
+    jenkins_url="http://localhost:8081"
+  fi
+
   check "Jenkins login page responds (HTTP 200)" \
-    bash -c "[[ \$(kubectl exec -n '${JENKINS_NS}' '${JENKINS_POD}' -c jenkins -- curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/login) == 200 ]]"
+    bash -c "[[ \$(kubectl exec -n '${JENKINS_NS}' '${JENKINS_POD}' -c jenkins -- curl -s -o /dev/null -w '%{http_code}' ${jenkins_url}/login) == 200 ]]"
 
   log_step "Seed job / pipelines-as-code"
   ADMIN_PASSWORD="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${JENKINS_NS}" -o jsonpath='{.data.admin-password}' | base64 -d)"
@@ -177,7 +182,7 @@ else
 
   EXPECTED_JOBS=$(( NUM_SERVICES + 2 )) # 1 stable pipeline/service + seed-jobs + microservices-k6-smoke
 
-  JOB_COUNT="$(jenkins_exec curl -sg -u "${AUTH}" 'http://localhost:8080/api/json?tree=jobs[name]' \
+  JOB_COUNT="$(jenkins_exec curl -sg -u "${AUTH}" "${jenkins_url}/api/json?tree=jobs[name]" \
     | python3 -c 'import sys,json; print(len(json.load(sys.stdin)["jobs"]))' 2>/dev/null || echo 0)"
 
   if [[ "${JOB_COUNT}" -ge "${EXPECTED_JOBS}" ]]; then
