@@ -319,7 +319,16 @@ EOT
         key: password
 EOT
   fi
-  kubectl apply -f "${GENERATED_DIR}/certificate-${secret}.yaml"
+  # The webhook can still reject the very first Certificate applies while warming up
+  local deadline=$(( SECONDS + 120 ))
+  until kubectl apply -f "${GENERATED_DIR}/certificate-${secret}.yaml" >/dev/null 2>&1; do
+    if [[ $SECONDS -ge $deadline ]]; then
+      kubectl apply -f "${GENERATED_DIR}/certificate-${secret}.yaml" || true # surface the real error
+      exit 1
+    fi
+    log_info "  ... waiting for cert-manager webhook to admit the certificate..."
+    sleep 3
+  done
   kubectl wait certificate "${secret}" -n "${ns}" --for=condition=Ready --timeout=180s
 }
 
