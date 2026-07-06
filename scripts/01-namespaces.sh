@@ -588,10 +588,10 @@ metadata:
   name: headlamp-quota
 spec:
   hard:
-    requests.cpu: "200m"
-    requests.memory: 256Mi
-    limits.cpu: "500m"
-    limits.memory: 512Mi
+    requests.cpu: "500m"
+    requests.memory: 512Mi
+    limits.cpu: "1.0"
+    limits.memory: 1.0Gi
 EOF
 
 # 4. ArgoCD Namespace Quota
