@@ -232,7 +232,9 @@ metadata:
   namespace: ${ns}
 spec:
   secretName: ${secret}
-  commonName: ${fqdn}
+  # No commonName: X.509 caps it at 64 bytes and some FQDNs (e.g. the OSS
+  # kube-prometheus-stack Grafana Service name + namespace) exceed that; SAN
+  # (dnsNames) is what SNI/BackendTLSPolicy validation actually checks.
   dnsNames:
     - ${fqdn}
     - ${short}
