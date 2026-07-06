@@ -694,5 +694,20 @@ if [[ "${J2026_PLATFORM}" == "gke" && "${J2026_NODE_AUTOPROVISIONING_ENABLED}" =
   fi
 fi
 
+# GKE NEG finalizer self-heal: GKE's NEG controller has a known issue where if a Service
+# is deleted and recreated (or updated) with the same name, the old ServiceNetworkEndpointGroup
+# (svcneg) gets stuck in "Terminating" (Pending deletion) because the finalizer is blocked.
+# Clean up any stuck terminating svcnegs by removing their finalizers.
+if [[ "${J2026_PLATFORM}" == "gke" ]] && kubectl get crd servicenetworkendpointgroups.networking.gke.io >/dev/null 2>&1; then
+  log_step "Self-heal: cleaning up stuck terminating GKE ServiceNetworkEndpointGroups"
+  stuck_negs=$(kubectl get svcneg -A -o jsonpath="{range .items[?(@.metadata.deletionTimestamp)]}{.metadata.namespace}/{.metadata.name}{' '}{end}")
+  for neg in ${stuck_negs}; do
+    ns="${neg%/*}"
+    name="${neg#*/}"
+    log_warn "Clearing finalizer from stuck GKE svcneg: ${ns}/${name}"
+    kubectl patch svcneg "${name}" -n "${ns}" --type=merge -p '{"metadata":{"finalizers":null}}' || true
+  done
+fi
+
 log_info "Namespaces ready."
 
