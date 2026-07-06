@@ -170,7 +170,7 @@ export J2026_SELF_REPO_URL="$(yq_get '.jenkins.selfRepoUrl' 'https://github.com/
 #      PR, instead of always pulling the pinned default. (GitHub Actions sets this in
 #      every step; it is unset locally, so local runs fall through to the config value.)
 #   3. jenkins.selfRepoBranch in config.yaml (default 'main') — the local/fallback default.
-export J2026_SELF_REPO_BRANCH="${JENKINS2026_SELF_REPO_BRANCH:-${GITHUB_REF_NAME:-$(yq_get '.jenkins.selfRepoBranch' 'main')}}"
+export J2026_SELF_REPO_BRANCH="${JENKINS2026_SELF_REPO_BRANCH:-${GITHUB_REF_NAME:-$(git branch --show-current 2>/dev/null || yq_get '.jenkins.selfRepoBranch' 'main')}}"
 
 export J2026_JENKINS_OIDC_ADMIN_EMAIL="${JENKINS_OIDC_ADMIN_EMAIL:-}"
 if [[ -z "${J2026_JENKINS_OIDC_ADMIN_EMAIL}" ]]; then
