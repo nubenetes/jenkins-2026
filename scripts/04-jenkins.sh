@@ -260,6 +260,18 @@ fi
 kubectl apply -f "${JENKINS_APP_FILE}"
 rm -f "${JENKINS_APP_FILE}"
 
+# Force ArgoCD to re-read git NOW rather than waiting for its ~3-min poll. The
+# app's helm values live in the $values git source (helm/jenkins/values-*.yaml),
+# so when their CONTENT changes (e.g. the backend-TLS overlay) a bare re-apply of
+# the Application spec doesn't make ArgoCD re-render from the new commit - it
+# renders from its cached revision, and the wait below can return against the
+# still-old StatefulSet. A hard refresh makes the convergence deterministic
+# (safe on every run: it just re-syncs from git, the source of truth). Ignore
+# failure - the auto-poll is the fallback.
+# App name is the literal "jenkins" in argocd/jenkins-app.yaml (not templated).
+kubectl annotate application jenkins -n "${J2026_ARGOCD_NAMESPACE}" \
+  argocd.argoproj.io/refresh=hard --overwrite >/dev/null 2>&1 || true
+
 # ArgoCD syncs the chart asynchronously. Wait for the StatefulSet to come up.
 if ! wait_for_resource "statefulset" "${J2026_JENKINS_RELEASE}" "${J2026_JENKINS_NAMESPACE}" "15m"; then
   log_error "Jenkins rollout did not complete - check 'kubectl -n ${J2026_ARGOCD_NAMESPACE} get application jenkins' and the controller pod events."
