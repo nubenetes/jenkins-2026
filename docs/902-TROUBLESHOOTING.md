@@ -526,6 +526,67 @@ takes effect only after a **re-seed** — the next **Day1** or a
 (equivalently `Day2.redeploy.06-githubactions`). See
 [404 § The ci-spot / NAP showcase](./404-GITHUB_ACTIONS.md#the-ci-spot--nap-showcase-why-this-engine-defaults-to-spot).
 
+## OSS Grafana shows "No data" everywhere with zero datasources configured (`/api/datasources` returns `[]`)
+
+**Symptom:** on `observability.mode=oss`, every dashboard panel shows **"No data"**
+across the board (not one dashboard, ALL of them) even though Prometheus/Loki/Tempo
+are demonstrably healthy and ingesting (`up{}` returns fresh samples, targets are
+up). Grafana's own API confirms it has no datasources at all:
+
+```bash
+kubectl -n observability exec deploy/oss-kube-prometheus-stack-grafana -c grafana -- \
+  curl -sk -u "admin:$(kubectl -n observability get secret oss-kube-prometheus-stack-grafana -o jsonpath='{.data.admin-password}' | base64 -d)" \
+  https://localhost:3000/api/datasources
+# []
+```
+
+The provisioning ConfigMap (`oss-kube-prometheus-stack-grafana-datasource`, labelled
+`grafana_datasource=1`) is present and correct — all four datasources (Prometheus,
+Loki, Tempo, Jenkins) are in there — and the `grafana-sc-datasources` sidecar
+container is running normally (`"Loading incluster config..."` every minute, no
+errors). Nothing in the Grafana container logs mentions an error either; there's
+simply no `logger=provisioning.datasources` "starting/finished" pair the way there
+is for `provisioning.dashboard`/`provisioning.alerting`.
+
+**Cause:** a boot-time race in the `kiwigrid/k8s-sidecar` container (the chart's
+default `sidecar.datasources` mechanism, `watchMethod: WATCH`). At pod start the
+sidecar copies the labelled ConfigMap into the shared `/etc/grafana/provisioning/datasources`
+volume and fires **one** `POST /api/admin/provisioning/datasources/reload` to tell
+Grafana to load it. If that first call lands **before** Grafana's own HTTP API is
+actually ready to serve it, the call is dropped — and because the sidecar only
+reacts to **ConfigMap change events**, not on a timer, it never retries: the
+ConfigMap never changes again, so the reload never fires again, and the datasources
+stay empty **until something manually POSTs the reload endpoint** (which immediately
+succeeds and populates everything — confirming the config was always valid,
+it just never got applied). Unrelated to `gateway.backendTls.enabled` (docs/504)
+or anything else touched in this repo — pure upstream chart timing, live-diagnosed
+2026-07-06 against a pod that had been running for 3 hours with the race already
+latched.
+
+**Fix (self-healing, not just a live reload):**
+[`observability/grafana/values-oss.yaml`](../observability/grafana/values-oss.yaml)
+`grafana.sidecar.datasources` now sets `initDatasources: true` + `skipReload: true`
+— the chart's own documented mechanism for exactly this failure mode. This runs the
+datasources sidecar as an **init container** instead of a long-running watcher: it
+copies the file into place and exits *before* the Grafana container ever starts, so
+Grafana's native boot-time provisioning loader (which runs on every single restart,
+independent of any HTTP call succeeding) picks it up deterministically — no more
+race, no more manual reload needed on any future pod restart. Trade-off: a future
+edit to `additionalDataSources` needs a pod restart to take effect (no more live
+sidecar to auto-detect the ConfigMap change) — acceptable here because nothing in
+this repo pushes a *live* datasource change (unlike dashboards, which the
+`grafana_dashboard` sidecar - unaffected, untouched - keeps live for the
+publish-workflow use case).
+
+**Unstick a live cluster without waiting for a redeploy:**
+
+```bash
+kubectl -n observability exec deploy/oss-kube-prometheus-stack-grafana -c grafana -- \
+  curl -sk -u "admin:<admin-password>" -X POST \
+  https://localhost:3000/api/admin/provisioning/datasources/reload
+# {"message":"Datasources config reloaded"}
+```
+
 ---
 
 [← Previous: 901. Local Development](./901-LOCAL_DEVELOPMENT.md) | [🏠 Home](../README.md) | [→ Next: 903. Glossary](./903-GLOSSARY.md)

@@ -227,6 +227,31 @@ grafana:
       # per organization can be marked as default", see
       # prometheus-community/helm-charts#482). Disable the chart's copy.
       defaultDatasourceEnabled: false
+      # Self-healing fix for a race that left ALL FOUR datasources (Prometheus,
+      # Loki, Tempo, Jenkins) missing after a normal pod start - live-diagnosed
+      # 2026-07-06 (docs/902): the long-running WATCH sidecar's FIRST reload
+      # attempt (right after copying the labelled ConfigMap into the shared
+      # volume at boot) can race Grafana's own HTTP API not being ready yet;
+      # unlike a poll loop, the sidecar only re-fires on the NEXT ConfigMap
+      # change, so if that first call is dropped the datasources stay empty
+      # until something touches the ConfigMap (or someone manually POSTs
+      # /api/admin/provisioning/datasources/reload). initDatasources:true
+      # (chart's own documented fix for exactly this - values.yaml sidecar.
+      # datasources comment) runs the sidecar as an INIT CONTAINER instead: it
+      # copies the file into place and Grafana's native boot-time provisioning
+      # loader (which every restart already runs, independent of any HTTP call)
+      # picks it up deterministically before the container is ever marked
+      # Ready. skipReload:true then disables the now-redundant live-reload
+      # sidecar. Trade-off (acceptable here): a future edit to
+      # additionalDataSources below needs a Grafana pod restart to take effect
+      # (`kubectl -n observability rollout restart deploy
+      # oss-kube-prometheus-stack-grafana`, or any Day1/redeploy that recreates
+      # the pod) - unlike dashboards (grafana_dashboard sidecar, unaffected),
+      # nothing in this repo pushes a LIVE datasource change (grep confirms
+      # additionalDataSources is only ever set here, statically), so nothing
+      # depends on the live-reload path this trades away.
+      initDatasources: true
+      skipReload: true
     # File-based alerting provisioning. Grafana's DB is ephemeral here
     # (persistence.enabled: false above), so alert rules pushed via the HTTP
     # provisioning API would be lost on every Grafana pod restart (e.g. an
