@@ -35,6 +35,30 @@ kube-state-metrics:
   metricLabelsAllowlist:
     - nodes=[node.kubernetes.io/instance-type,beta.kubernetes.io/instance-type]
 
+# The node-exporter DaemonSet otherwise schedules one pod per node, including
+# any NAP-auto-provisioned node (generic overflow, not just the ci-spot
+# ComputeClass) - but those are small (e2-standard-2, ~2 vCPU) and end up
+# hosting the bulk of the ArgoCD-managed platform (argocd/cert-manager/
+# external-secrets/cnpg-operator/otel-operator/pgadmin), so they have no
+# CPU headroom left for one more DaemonSet pod. That leaves node-exporter's
+# 3rd replica permanently Pending, which keeps this whole ArgoCD Application
+# stuck "Progressing" (waiting for the DaemonSet to go healthy) even though
+# every real workload is fine. Pin node-exporter to the static, fixed-name
+# "<cluster_name>-pool" (terraform/gke main.tf) instead of excluding NAP by
+# name - NAP pool names carry a random suffix that changes every time it
+# reprovisions, so a NotIn wouldn't survive a rebuild. Losing host-level
+# metrics for a small, ephemeral overflow node isn't a meaningful loss.
+prometheus-node-exporter:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: cloud.google.com/gke-nodepool
+                operator: In
+                values:
+                  - jenkins-2026-pool
+
 prometheus:
   prometheusSpec:
     # Required for the otel-collector "gateway" release's
