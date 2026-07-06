@@ -2,6 +2,10 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../dashboard
+configMapGenerator:
+  - name: tekton-dashboard-nginx-conf
+    files:
+      - nginx.conf
 patches:
   - patch: |-
       apiVersion: apps/v1
@@ -22,12 +26,29 @@ patches:
                   - --logout-url=
                   - --namespaces=
                   - --pipelines-namespace=tekton-pipelines
-                  - --port=9097
+                  - --port=8080
                   - --read-only=false
                   - --stream-logs=true
                   - --triggers-namespace=tekton-pipelines
-                  - --tls-cert=/etc/tekton-dashboard-tls/tls.crt
-                  - --tls-key=/etc/tekton-dashboard-tls/tls.key
+                ports:
+                  - containerPort: 8080
+                    name: http
+                readinessProbe:
+                  httpGet:
+                    path: /readiness
+                    port: 8080
+                    scheme: HTTP
+                livenessProbe:
+                  httpGet:
+                    path: /health
+                    port: 8080
+                    scheme: HTTP
+                volumeMounts: []
+              - name: nginx-tls-proxy
+                image: nginxinc/nginx-unprivileged:alpine
+                ports:
+                  - containerPort: 9097
+                    name: https
                 readinessProbe:
                   httpGet:
                     path: /readiness
@@ -38,11 +59,26 @@ patches:
                     path: /health
                     port: 9097
                     scheme: HTTPS
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop:
+                      - ALL
+                  runAsNonRoot: true
+                  seccompProfile:
+                    type: RuntimeDefault
                 volumeMounts:
                   - name: tekton-dashboard-tls
                     mountPath: /etc/tekton-dashboard-tls
+                    readOnly: true
+                  - name: nginx-conf
+                    mountPath: /etc/nginx/nginx.conf
+                    subPath: nginx.conf
                     readOnly: true
             volumes:
               - name: tekton-dashboard-tls
                 secret:
                   secretName: tekton-dashboard-tls
+              - name: nginx-conf
+                configMap:
+                  name: tekton-dashboard-nginx-conf
