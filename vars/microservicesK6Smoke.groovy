@@ -40,12 +40,22 @@
  * deployment_environment and time window.
  */
 def call(Map cfg) {
+  def gatewayScheme = "http"
+  container('helm') {
+    def exitCode = sh(script: "kubectl get secret gateway-tls -n ${cfg.namespace} >/dev/null 2>&1", returnStatus: true)
+    if (exitCode == 0) {
+      gatewayScheme = "https"
+    }
+  }
+
   container('k6') {
     withEnv([
       "TARGET_NAMESPACE=${cfg.namespace}",
       "TARGET_URL=${cfg.targetUrl ?: ''}",
       "ENV_NAME=${cfg.envName}",
       "GENAI_SERVICE_ENABLED=${cfg.genaiEnabled}",
+      "K6SIM_GATEWAY_SCHEME=${gatewayScheme}",
+
       // Workload contract (K6SIM_*). Empty string → the k6 script's own default,
       // so callers only override what they care about. See microservices-smoke.js.
       "K6SIM_PROFILE=${cfg.profile ?: 'smoke'}",

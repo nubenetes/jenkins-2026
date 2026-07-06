@@ -81,11 +81,13 @@ function svcUrl(name, port, path = '') {
   if (TARGET_URL) {
     return `${TARGET_URL}${path}`;
   }
-  return `http://${name}.${NAMESPACE}.svc.cluster.local:${port}${path}`;
+  const scheme = envStr(`K6SIM_${name.toUpperCase()}_SCHEME`, 'http');
+  return `${scheme}://${name}.${NAMESPACE}.svc.cluster.local:${port}${path}`;
 }
 
 const API_GATEWAY = svcUrl('gateway', GATEWAY_PORT);
 const MICROSERVICE = svcUrl('jhipstersamplemicroservice', MICROSERVICE_PORT);
+
 
 // ---- scenario (request-flow) selection --------------------------------------
 const ALL_FLOWS = ['gateway-ui', 'gateway-health', 'microservice-health', 'gateway-proxy'];
@@ -223,6 +225,7 @@ const abortOnFail = PROFILE === 'breakpoint';
 const SCENARIO = 'microservices';
 
 export const options = {
+  insecureSkipTLSVerify: true,
   scenarios: { [SCENARIO]: buildScenario() },
   thresholds: {
     // Scoped to the measured scenario (see SCENARIO above) so the setup()
@@ -239,6 +242,7 @@ export const options = {
   // always showed p99=0.
   summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
 };
+
 
 // ---- traceparent generation (so every iteration is one correlated trace) ----
 function hex(len) {

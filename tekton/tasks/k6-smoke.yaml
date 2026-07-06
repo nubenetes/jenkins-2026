@@ -240,6 +240,14 @@ spec:
         # --summary-export — k6 2.0's --summary-export emits a flattened schema
         # that broke the .values.* parsers. See microservices-smoke.js.
         export K6_SUMMARY_OUT="$(workspaces.source.path)/k6-summary.json"
+        
+        # Detect gateway scheme from presence of gateway-tls secret
+        GATEWAY_SCHEME="http"
+        if kubectl get secret gateway-tls -n "${TARGET_NAMESPACE}" >/dev/null 2>&1; then
+          GATEWAY_SCHEME="https"
+        fi
+        export K6SIM_GATEWAY_SCHEME="${GATEWAY_SCHEME}"
+
         # ci_runner/k6_profile as k6 --tag (metric labels), not resource attrs — see
         # the Jenkins/GHA runners: Grafana Cloud only promotes a fixed set of resource
         # attrs to labels, so custom ones must be metric tags for the dashboard filters.
