@@ -565,7 +565,7 @@ latched.
 
 **Fix (self-healing, not just a live reload):**
 [`observability/grafana/values-oss.yaml`](../observability/grafana/values-oss.yaml)
-`grafana.sidecar.datasources` now sets `initDatasources: true` + `skipReload: true`
+`grafana.sidecar.datasources` sets `initDatasources: true` + `skipReload: true`
 — the chart's own documented mechanism for exactly this failure mode. This runs the
 datasources sidecar as an **init container** instead of a long-running watcher: it
 copies the file into place and exits *before* the Grafana container ever starts, so
@@ -577,6 +577,21 @@ sidecar to auto-detect the ConfigMap change) — acceptable here because nothing
 this repo pushes a *live* datasource change (unlike dashboards, which the
 `grafana_dashboard` sidecar - unaffected, untouched - keeps live for the
 publish-workflow use case).
+
+> ⚠️ **Also required: `watchMethod: LIST`.** The chart's init-container template
+> reuses the *same* `sidecar.datasources.watchMethod` value verbatim on the init
+> container (`METHOD: {{ .Values.sidecar.datasources.watchMethod }}`) — it does
+> **not** default to a one-shot mode just because `initDatasources` is true. The
+> chart's own default (`watchMethod: WATCH`) makes `kiwigrid/k8s-sidecar`
+> continuously watch and **never exit** — as an init container that hangs the pod
+> in `Init:0/1` forever (confirmed live: Grafana's main container never started).
+> `METHOD=LIST` ("list config-maps/secrets and exit", per
+> [kiwigrid/k8s-sidecar's own README](https://github.com/kiwigrid/k8s-sidecar))
+> is the one mode that actually terminates. If you ever see a Grafana rollout
+> stuck at `Init:0/1`, this is almost certainly why — check
+> `kubectl -n observability describe pod <new-grafana-pod>` for an
+> `Init:0/1` / never-`Ready` init container, and confirm `watchMethod: LIST` is
+> set alongside `initDatasources: true`.
 
 **Unstick a live cluster without waiting for a redeploy:**
 

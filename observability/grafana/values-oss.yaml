@@ -252,6 +252,17 @@ grafana:
       # depends on the live-reload path this trades away.
       initDatasources: true
       skipReload: true
+      # CRITICAL: the initContainer reuses this same watchMethod (chart's _pod.tpl
+      # sets METHOD: {{ .Values.sidecar.datasources.watchMethod }} verbatim on the
+      # init container - it does NOT default to a one-shot mode just because
+      # initDatasources is true). The chart's own watchMethod default is "WATCH",
+      # which per kiwigrid/k8s-sidecar's own docs "continuously watches for
+      # changes" and NEVER EXITS - as an init container that means the pod hangs
+      # in Init:0/1 forever, Grafana's main container never starts. "LIST" is the
+      # one documented method that "will just list config-maps/secrets and exit" -
+      # the only value that makes sense for a one-shot init container. Confirmed
+      # against kiwigrid/k8s-sidecar's own README, not assumed.
+      watchMethod: LIST
     # File-based alerting provisioning. Grafana's DB is ephemeral here
     # (persistence.enabled: false above), so alert rules pushed via the HTTP
     # provisioning API would be lost on every Grafana pod restart (e.g. an
