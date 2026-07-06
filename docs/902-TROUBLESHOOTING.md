@@ -604,19 +604,21 @@ kubectl -n observability exec deploy/oss-kube-prometheus-stack-grafana -c grafan
 
 ## GKE Gateway NEG & ServiceNetworkEndpointGroup Finalizer Deadlocks (Backend TLS)
 
-**Symptom**: During a redeployment or rollout, a pod (like Grafana, Headlamp, or pgAdmin) is fully `Running` and its main containers are ready, but the pod's `Ready` status is `False` because GKE's NEG readiness gate is not passing:
-```
-the status of pod readiness gate "cloud.google.com/load-balancer-neg-ready" is not "True"
-```
-And/or, the ArgoCD application (like `oss-kube-prometheus-stack` or `pgadmin`) is stuck in a permanent `Syncing` loop. Checking `kubectl get svcneg -A` shows a resource stuck in `Terminating` state with a `deletionTimestamp` set hours ago.
+**Symptom**: During a redeployment, CI engine switch, or rollout, a pod is fully `Running` and its main containers are ready, but:
+1. The GKE Ingress Gateway remains in `PROGRAMMED: False` state, and visiting any public URL (like `https://tekton.jenkins2026.nubenetes.com`) fails.
+2. Describing the Gateway shows errors like:
+   `no-error-isolation: no zones found in ServiceNetworkEndpointGroup ...`
+3. The ArgoCD application is stuck in a permanent `Syncing` loop. Checking `kubectl get svcneg -A` shows a resource stuck in `Terminating` state, or running `kubectl get svcneg <neg-name> -n <namespace> -o yaml` shows `status.lastSyncTime: null` and no networkEndpointGroups status populated, even though the NEG exists in Google Cloud.
 
-**Cause**: This consists of two separate, compounding GKE Gateway and Network Endpoint Group (NEG) lifecycle issues:
-1. **Bootstrapping Deadlock**: When Backend TLS is enabled, the backend pods serve HTTPS. However, GKE's default health checking uses HTTP. The matching HTTPS `HealthCheckPolicy` and `BackendTLSPolicy` are applied at the very end in `09-gateway.sh`. If the rollout scripts (`03-observability.sh` or `08-headlamp.sh`) wait for the deployment rollout to complete before proceeding, the pods remain unhealthy in the GCP Load Balancer (due to the HTTP/HTTPS probe mismatch). GKE keeps the readiness gate `False`, blocking the rollout and causing a deadlock because the script times out and aborts before `09-gateway.sh` can run to apply the policy.
-2. **Deterministic NEG Finalizer Deadlock**: When a Service is deleted and recreated (e.g., during a Helm upgrade/redeploy or namespace reset), its UID changes. The GKE NEG controller attempts to delete the old `ServiceNetworkEndpointGroup` (svcneg) resource, which holds a finalizer (`networking.gke.io/neg-finalizer`). Because the new Service immediately registers itself with the *same* name, it reuses the same underlying Google Cloud NEG resource. The GKE NEG controller detects the GCP NEG is still in use and refuses to delete it, permanently wedging the old `ServiceNetworkEndpointGroup` object in `Terminating` status. ArgoCD sees this terminating resource and gets stuck in an infinite `Syncing` loop.
+**Cause**: This consists of three separate, compounding GKE Gateway and Network Endpoint Group (NEG) lifecycle issues:
+1. **Bootstrapping Deadlock**: When Backend TLS is enabled, the backend pods serve HTTPS. However, GKE's default health checking uses HTTP. The matching HTTPS `HealthCheckPolicy` and `BackendTLSPolicy` are applied at the very end in `09-gateway.sh`. If the rollout scripts (`03-observability.sh` or `08-headlamp.sh`) wait for the deployment rollout to complete before proceeding, the pods remain unhealthy in the GCP Load Balancer (due to the HTTP/HTTPS probe mismatch). GKE keeps the readiness gate `False`, blocking the rollout and causing a deadlock.
+2. **Deterministic NEG Finalizer Deadlock**: When a Service is deleted and recreated (e.g., during a Helm upgrade/redeploy or namespace reset), its UID changes. The GKE NEG controller attempts to delete the old `svcneg` resource, which holds a finalizer (`networking.gke.io/neg-finalizer`). Because the new Service immediately registers itself with the *same* name, it reuses the same underlying GCP NEG resource. GKE's NEG controller detects the GCP NEG is still in use and refuses to delete it, permanently wedging the old resource in `Terminating` status.
+3. **Unsynced NEG Status Deadlock**: During CI engine switches or redeployments, GKE's NEG controller cache can get wedged. The `svcneg` resource is created, but GKE fails to write back the sync status. Since GKE Gateway relies on this CR status to translate HTTPRoutes, it fails the translation with `no zones found` and keeps the Gateway `PROGRAMMED: False`.
 
 **Fix (Self-Healing)**:
-1. **Deadlock Break**: We modified `scripts/03-observability.sh` and `scripts/08-headlamp.sh` to generate and apply the `BackendTLSPolicy` and `HealthCheckPolicy` (HTTPS) **before** waiting for their respective deployment rollouts. This breaks the boot deadlock by aligning GKE's health checks to HTTPS immediately.
-2. **Finalizer Cleanup Loop**: We added a self-healing routine to `scripts/01-namespaces.sh` that detects GKE environments, scans for any stuck `svcneg` resources with a `deletionTimestamp`, and automatically patches them to clear their finalizers (`finalizers: null`). Once deleted, GKE's NEG controller automatically regenerates a fresh, clean `svcneg` object for the active Service.
+1. **Deadlock Break**: We modified `scripts/03-observability.sh` and `scripts/08-headlamp.sh` to apply their policies **before** waiting for rollouts.
+2. **Finalizer Cleanup Loop**: We added a self-healing routine to `scripts/01-namespaces.sh` that patches stuck `Terminating` svcnegs to clear their finalizers.
+3. **Cache Sync Self-Healing**: We extended `scripts/01-namespaces.sh` to automatically detect any `svcneg` resources with `lastSyncTime: null` after a 15-second grace period. It automatically self-heals them by backing up the service NEG annotation, removing the annotation to trigger a controller cache flush, purging the stuck CR, and then restoring the NEG annotation to force a clean, healthy sync.
 
 **Unstick a live cluster manually**:
 If a `svcneg` is currently stuck in `Terminating`, clear its finalizer with:
@@ -625,6 +627,18 @@ kubectl patch svcneg <stuck-neg-name> -n <namespace> --type=merge -p '{"metadata
 # Force GKE NEG controller to reconcile the service:
 kubectl annotate service <service-name> -n <namespace> reconcile-neg=true --overwrite
 ```
+If a `svcneg` is created but its status remains empty/null, clear and restore its annotation to force a cache flush:
+```bash
+# Get the current NEG configuration:
+neg_val=$(kubectl get svc <service-name> -n <namespace> -o jsonpath='{.metadata.annotations.cloud\.google\.com/neg}')
+# Remove it:
+kubectl annotate service <service-name> -n <namespace> cloud.google.com/neg-
+# Delete the unsynced svcneg CR:
+kubectl delete svcneg <svcneg-name> -n <namespace>
+# Restore the annotation:
+kubectl annotate service <service-name> -n <namespace> cloud.google.com/neg="$neg_val" --overwrite
+```
+
 
 ---
 
