@@ -257,7 +257,7 @@ Known per-backend state:
 | **Jenkins** | chart `controller.httpsKeyStore.*` + cert-manager `keystores.jks` (JKS + password Secret) | ✅ **done (stage 6, `ci.engine=jenkins` only)** — highest blast radius of the six stages: build agents dial the controller **Service** directly in plain HTTP, so instead of requiring every in-cluster caller to trust the internal CA, [`values-backend-tls.yaml`](../helm/jenkins/values-backend-tls.yaml) uses the chart's **native** `controller.httpsKeyStore` feature: it moves the pod's plain-HTTP listener + kubelet probes to `httpsKeyStore.httpPort` (**8081**) while the Service's existing port (8080) becomes HTTPS, and `controller.extraPorts` re-exposes that plain pod port on the Service as **8082** (`port: 8082 → targetPort: 8081`). `08.7-backend-tls.sh` mints a JKS keystore (`keystore.jks`), encrypted with a password from `jenkins-https-jks-password` Secret. `04-jenkins.sh` patches `JENKINS_AGENT_PORT=8082` into `jenkins-credentials` only when active. |
 | **Grafana-Jenkins Datasource** | Helm parameters | ✅ **done (stage 6a, `observability.mode=oss` only)** — Overridden dynamically in `argocd/observability-oss/templates/kube-prometheus-stack.yaml` to target `https://jenkins...:8080` and set `tlsSkipVerify: true` in the Grafana configuration when Backend TLS is active, resolving panel errors without configuration drift. |
 | **microservices gateway (JHipster)** | Spring Boot `server.ssl.*` + cert-manager `keystores.pkcs12` | **cross-repo** — the deploy chart lives in `jenkins-2026-gitops-config`; also interacts with Argo Rollouts canary routes and every engine's smoke test URL |
-| **Tekton Dashboard** | native arguments (`--tls-cert`/`--tls-key`) + mounted cert | ✅ **done (stage 8, `ci.engine=tekton` only)** — The `dashboard-tls` overlay is conditionally selected by the parent Application when `backendTls` is active, mounting the `tekton-dashboard-tls` secret, configuring `--tls-cert` and `--tls-key` arguments, and setting `HTTPS` scheme for both liveness and readiness probes. `09-gateway.sh` adds the matching `BackendTLSPolicy` and HTTPS `HealthCheckPolicy` (`/readiness`). |
+| **Tekton Dashboard** | unprivileged Nginx sidecar proxy for TLS termination | ✅ **done (stage 8, `ci.engine=tekton` only)** — Because the Tekton Dashboard binary (`/ko-app/dashboard`) lacks native TLS options, the `dashboard-tls` overlay adds an `nginx-tls-proxy` sidecar container running `nginxinc/nginx-unprivileged:alpine` (conforming to GKE's strict security context guidelines). The sidecar mounts the `tekton-dashboard-tls` secret and a ConfigMap-generated `nginx.conf`, listens on port `9097` (HTTPS), and proxies decrypted traffic locally to the main dashboard container running on port `8080` (HTTP). `09-gateway.sh` adds the matching `BackendTLSPolicy` and HTTPS `HealthCheckPolicy` (`/readiness`). |
 | **Argo Workflows Server** | native arguments + mounted cert | ✅ **done (stage 9, `ci.engine=argoworkflows` only)** — The `workflows-tls` overlay is conditionally selected by the parent Application when `backendTls` is active, mounting the `argo-server-tls` secret and changing `readinessProbe` to HTTPS scheme. `09-gateway.sh` attaches the matching `BackendTLSPolicy` and HTTPS `HealthCheckPolicy` (`/`). |
 
 ## Does `secrets.backend=eso` change anything?
@@ -365,6 +365,37 @@ This architecture creates two potential deadlocks that this project automaticall
 #### 2. Deterministic NEG Finalizer Deadlock (Stuck "Terminating" resources)
 * **The Problem**: When a Service is deleted and recreated (e.g., during a Helm upgrade/redeploy or namespace reset), its UID changes. The GKE NEG controller attempts to delete the old `ServiceNetworkEndpointGroup` (`svcneg`) resource, which holds a finalizer (`networking.gke.io/neg-finalizer`). Because the new Service immediately registers itself with the *same* name, it reuses the same underlying Google Cloud NEG resource. The GKE NEG controller detects the GCP NEG is still in use and refuses to delete it, permanently wedging the old `ServiceNetworkEndpointGroup` object in `Terminating` status. ArgoCD sees this terminating resource and gets stuck in an infinite `Syncing` loop.
 * **The Self-Healing Fix**: A proactive cleanup loop is embedded at the end of `scripts/01-namespaces.sh`. If it runs on GKE, it queries the API server for any `svcneg` resources containing a `deletionTimestamp` (meaning they are stuck in Terminating). It automatically patches them to clear their finalizers (`finalizers: null`). Once deleted, GKE's NEG controller automatically regenerates a fresh, clean `svcneg` object for the active Service, immediately resolving the ArgoCD sync loop and returning the application to a `Synced` and `Healthy` state.
+
+### Tekton Dashboard TLS Proxy Sidecar Architecture
+
+Unlike other components in this project (like Headlamp, pgAdmin, or Jenkins), the official Tekton Dashboard container binary (`/ko-app/dashboard`) does not have native CLI arguments or configuration settings to load TLS certificates and serve HTTPS directly. It is designed by the Tekton community to only listen on plain HTTP (default port `9097` or `8080`).
+
+To integrate Tekton Dashboard with GKE's Backend TLS (which strictly requires the target pod to present a valid certificate signed by the internal CA), we employ a **GitOps-native TLS Proxy Sidecar pattern** via the `dashboard-tls` Kustomize overlay.
+
+#### The Architecture
+The patched `tekton-dashboard` pod contains two containers sharing the same pod network namespace (`localhost` loopback):
+
+1. **`nginx-tls-proxy` (Sidecar)**: Runs an official, unprivileged Nginx image (`nginxinc/nginx-unprivileged:alpine`) that complies with GKE's strict security context standards (runs as non-root). It mounts the cert-manager-minted `tekton-dashboard-tls` secret and a ConfigMap containing a custom `nginx.conf`. It listens on port `9097` (HTTPS) to terminate TLS and proxies decrypted traffic locally to `http://127.0.0.1:8080`. It also supports WebSockets to ensure live log streaming continues to work.
+2. **`tekton-dashboard` (Main App)**: Set to listen on port `8080` (HTTP). It has no direct access to the certs and does not need to support SSL, keeping the application container simple.
+
+#### Data Flow & Probe Routing
+```mermaid
+graph TD
+    Client[Browser / IAP] -->|HTTPS| Edge[Google L7 Load Balancer]
+    Edge -->|HTTPS:9097\nBackendTLSPolicy| Proxy[nginx-tls-proxy Container\nPort 9097]
+    Proxy -->|HTTP:8080\nLocal Loopback| Dash[tekton-dashboard Container\nPort 8080]
+    
+    subgraph Pod [tekton-dashboard-pod]
+        Proxy
+        Dash
+        Secret[Secret: tekton-dashboard-tls] -.->|mounts key/cert| Proxy
+        Config[ConfigMap: nginx-conf] -.->|mounts nginx.conf| Proxy
+    end
+```
+
+#### Health Probes Configuration
+* **Kubernetes Pod Probes**: Pointed to the main dashboard container on `http://localhost:8080` (HTTP), allowing Kubernetes to check the application's actual health directly without cert verification overhead.
+* **GKE NEG / Load Balancer Probes**: Pointed to the proxy sidecar on `https://pod:9097/readiness` (HTTPS). This satisfies GKE Gateway's `HealthCheckPolicy` and guarantees the load balancer only routes public traffic once the TLS termination sidecar is fully initialized and serving certificates.
 
 ## Verifying it
 
