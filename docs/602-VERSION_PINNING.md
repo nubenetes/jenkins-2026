@@ -26,8 +26,8 @@ This isn't theoretical — **every floating version here has bitten us at least 
 
 - **Jenkins chart was `""` (latest)** → it silently moved to 5.9.x, which split
   `authorizationStrategy`/`securityRealm` into their own ConfigMaps and crashed JCasC
-  at boot (`Single entry map expected … found multiple entries`). Pinned to `5.9.29`.
-  See [401. Jenkins](./401-JENKINS.md).
+  at boot (`Single entry map expected … found multiple entries`). Pinned (originally
+  `5.9.29`, now `5.9.32` — see the matrix). See [401. Jenkins](./401-JENKINS.md).
 - **`az` CLI extension (unpinned)** started sending a retired ARM api-version
   (`InvalidApiVersionParameter`) and broke the Azure dashboard publish.
 - **`yq` from `releases/latest/download`** could change behaviour between two runs of
