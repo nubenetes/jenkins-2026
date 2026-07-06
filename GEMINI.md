@@ -11,13 +11,15 @@ Grafana Cloud, an in-cluster OSS Grafana/Loki/Tempo/Prometheus stack, Azure
 Managed Grafana, or Amazon Managed Grafana. See
 [`README.md`](README.md) for the index and quick start. Deep-dive docs live
 in [`docs/`](docs/) — all numbered `NNN-TITLE.md` with header/footer
-navigation:
+navigation. The [`docs/README.md`](docs/README.md) index page documents the
+numbering taxonomy, role-based reading paths, and the doc-authoring/nav
+conventions:
 
 - [`100-BOOTSTRAP.md`](docs/100-BOOTSTRAP.md) — the root of trust (Day0 "phase 0"): the one-command, human-run `scripts/bootstrap.sh up`/`down` that creates/destroys the WIF trust + state bucket + CI SA, the bootstrap paradox, the self-hosted-state model
 - [`101-GITHUB_ACTIONS_WORKFLOWS.md`](docs/101-GITHUB_ACTIONS_WORKFLOWS.md) — CI/CD workflow naming (`DayN.tier.ZZ-resource`), lifecycle matrix, clickable workflow inventory
 - [`102-GITHUB_ACTIONS_AUTOMATION.md`](docs/102-GITHUB_ACTIONS_AUTOMATION.md) — WIF setup, GitHub secrets, bootstrapping architecture
 - [`103-GITHUB_SECRETS_INVENTORY.md`](docs/103-GITHUB_SECRETS_INVENTORY.md) — complete inventory of every GitHub secret and variable: purpose, sensitivity, source, which workflows use each
-- [`104-REBUILD_SAFETY.md`](docs/104-REBUILD_SAFETY.md) — **rebuild-safety** (`Decom`+`Day1` as a routine op): the collision/residue bug class, the master matrix of which persistent/external resource is rebuild-safe by which mechanism, the 7 closed gaps (PRs #487–#489), and the checklist for adding a new persistent resource
+- [`104-REBUILD_SAFETY.md`](docs/104-REBUILD_SAFETY.md) — **rebuild-safety** (`Decom`+`Day1` as a routine op): the *"persistent/external state with a fixed identity collides with a fresh rebuild"* (collision) and *"teardown leaves residue that blocks the next rebuild"* (residue) bug class, the **master matrix** of which persistent/external resource is rebuild-safe by which **mechanism** (random-suffix slug · `ignore_changes` · tombstone-adoption · guarded fresh-provision cleanup · delete-only-untagged · reconcile-to-current · concurrency+stale-lock-cleanup · cluster-alive teardown ordering), the **7 closed gaps** (PRs #487–#489), and the checklist for adding a new persistent resource. The Postgres WAL break is the canonical exemplar.
 - [`201-ARCHITECTURE.md`](docs/201-ARCHITECTURE.md) — system architecture, config, repository layout, the **imperative (push) vs GitOps (pull) provisioning split** (full inventory + the six reasons a resource stays imperative), namespaces & in-cluster secrets
 - [`202-MICROSERVICES-APP-ARCHITECTURE.md`](docs/202-MICROSERVICES-APP-ARCHITECTURE.md) — the **demo application** architecture: the JHipster **gateway (Java, not Angular)** + the Angular SPA it serves + the backend microservice, request flow, database-per-service, and the Angular-RUM (frontend observability) roadmap
 - [`301-OBSERVABILITY.md`](docs/301-OBSERVABILITY.md) — OTel components, signal correlation, dashboards, all four obs modes
@@ -25,9 +27,9 @@ navigation:
 - [`303-JVM-TUNING.md`](docs/303-JVM-TUNING.md) — JVM tuning & runtime strategy for the Java microservices: the container-default trap (SerialGC + 25% heap) and the G1/heap fix, GC-algorithm + runtime-option matrices (HotSpot+G1 · AOT cache · **CRaC** · GraalVM Native · OpenJ9), OTel instrumentation modes (agent vs Spring starter vs eBPF), why **CRaC** is the chosen advanced direction (keeps the OTel agent, unlike GraalVM Native), and how to read the JVM-internals dashboard to find GC/heap/CPU/thread bottlenecks
 - [`401-JENKINS.md`](docs/401-JENKINS.md) — Jenkins UI, plugins, JCasC, MCP
 - [`402-PIPELINES_AS_CODE.md`](docs/402-PIPELINES_AS_CODE.md) — seed job, pipeline stages, develop tier
-- [`403-TEKTON.md`](docs/403-TEKTON.md) — Tekton as an alternative CI engine (`ci.engine` flag), Pipelines/Triggers/Dashboard, IAP-protected Dashboard, the pipeline ported to `tekton/`
-- [`404-GITHUB_ACTIONS.md`](docs/404-GITHUB_ACTIONS.md) — GitHub Actions self-hosted runners via ARC (Actions Runner Controller) as an alternative CI engine (`ci.engine=githubactions`), ephemeral runner pods on the ci-spot Spot ComputeClass, no in-cluster UI
-- [`405-ARGO_WORKFLOWS.md`](docs/405-ARGO_WORKFLOWS.md) — Argo Workflows + Argo Events as an alternative CI engine (`ci.engine=argoworkflows`), the pipeline ported to a WorkflowTemplate, the EventSource+Sensor git-push trigger, the IAP-protected Argo Server UI
+- [`403-TEKTON.md`](docs/403-TEKTON.md) — Tekton as one of the three alternative CI engines to the default Jenkins (`ci.engine=tekton`), Pipelines/Triggers/Dashboard, IAP-protected Dashboard, the pipeline ported to `tekton/`
+- [`404-GITHUB_ACTIONS.md`](docs/404-GITHUB_ACTIONS.md) — GitHub Actions / ARC (Actions Runner Controller) as the **third** `ci.engine` (`githubactions`): ephemeral Spot runners on the `ci-spot` NAP ComputeClass (the scale-to-zero showcase), native GitHub webhooks via a GitHub App, **no** in-cluster UI/Gateway route (runs in GitHub's Actions tab), the `argocd/githubactions` app-of-apps, and the same `services.yaml` / GHCR / GitOps / OTel contract as the other engines
+- [`405-ARGO_WORKFLOWS.md`](docs/405-ARGO_WORKFLOWS.md) — Argo Workflows + Argo Events (argoproj) as the **fourth** `ci.engine` (`argoworkflows`): a DAG/steps WorkflowTemplate port of the pipeline, an IAP-protected **Argo Workflows Server UI** (`argo.<domain>`, like the Tekton Dashboard) **plus** a public, no-IAP **Argo Events webhook receiver** (`argo-events.<domain>`, HMAC-protected), the `argocd/argoworkflows` app-of-apps (Argo Workflows controller+server wave 0 + Argo Events wave 1 + pipeline-as-code wave 2, **vendored** upstream release YAMLs), and the same `services.yaml` / GHCR / GitOps / OTel contract as the other engines
 - [`501-PLATFORM_OPERATIONS.md`](docs/501-PLATFORM_OPERATIONS.md) — ArgoCD, Headlamp, Gateway API + IAP, chaos/QA
 - [`502-MICROSERVICES_GITOPS.md`](docs/502-MICROSERVICES_GITOPS.md) — Helm vs Kustomize, resource lifecycle design decisions
 - [`503-NETWORKING.md`](docs/503-NETWORKING.md) — network architecture, landing zone & topology (single-VPC, not hub-spoke + rationale), VPC/subnet + pod/service CIDR plan, north-south ingress/egress, east-west (VPC-native + Dataplane V2 + WireGuard), NetworkPolicy segmentation
@@ -35,118 +37,11 @@ navigation:
 - [`602-VERSION_PINNING.md`](docs/602-VERSION_PINNING.md) — version-pinning policy + matrix (charts/images/actions/Terraform), pros/cons, the deliberate ArgoCD 3.4.x auto-tracking exception (pinned off the buggy 3.5.0-rc until 3.5 GA), how to bump a pin
 - [`901-LOCAL_DEVELOPMENT.md`](docs/901-LOCAL_DEVELOPMENT.md) — prerequisites, quick start, e2e test
 - [`902-TROUBLESHOOTING.md`](docs/902-TROUBLESHOOTING.md) — common issues
+- [`903-GLOSSARY.md`](docs/903-GLOSSARY.md) — single-lookup glossary of the vocabulary recurring across all guides: lifecycle (Day0/Day1/Day2/Decom, `DayN.tier.ZZ`, `stable`/`develop` tiers), platform acronyms (WIF · OIDC · IAP · NEG · NAP · ARC · PaC · JCasC · ESO · CNPG · Dataplane V2 · app-of-apps · AppSet · JHipster · OTel/OTLP), and repo terms of art (seed job, shared library `vars/`, `retire_ci_engine`, imperative-vs-GitOps planes, self-hosted state, the bootstrap paradox, the `K6SIM_*` contract)
 
-Legacy stubs (`docs/architecture.md`, `docs/observability.md`, `docs/pipelines-as-code.md`) redirect to the numbered equivalents.
+Legacy stubs ([`docs/architecture.md`](docs/architecture.md), [`docs/observability.md`](docs/observability.md), [`docs/pipelines-as-code.md`](docs/pipelines-as-code.md)) redirect to the numbered equivalents.
 
----
-
-## 🏗️ Repository Architecture
-
-The project is structured logically as follows:
-
-```
-├── config/
-│   └── config.yaml               # Central configuration file (targets, namespaces, releases)
-├── scripts/
-│   ├── lib/
-│   │   ├── common.sh             # Helper functions (logging, wait_for_deployment, etc.)
-│   │   └── config.sh             # Sourced by other scripts; parses config.yaml into J2026_* environment variables
-│   ├── 00-check-prereqs.sh
-│   ├── 01-namespaces.sh          # Creates namespaces (platform-ingress, observability, headlamp, argocd, pgadmin, microservices + the active CI engine's namespaces)
-│   ├── 02-otel-operator.sh
-│   ├── 03-observability.sh
-│   ├── 04-jenkins.sh             # Installs the active CI engine (one of four, per ci.engine); each 04-<engine>.sh retires the other three
-│   ├── 04-tekton.sh
-│   ├── 04-githubactions.sh
-│   ├── 04-argoworkflows.sh
-│   ├── 08.5-argocd.sh
-│   ├── 09-gateway.sh
-│   └── down.sh                   # Safely tears down all helm releases and resources
-├── resources/
-│   └── patch-app-source.sh       # Shared build-time gateway patch (MySQL→PostgreSQL + NoOp cache); called by ALL four engines
-├── jenkins/
-│   ├── casc/
-│   │   └── jcasc-base.yaml       # Jenkins Configuration as Code (plugins, global configs, library configs)
-│   └── pipelines/
-│   │   └── seed/
-│   │       ├── seed_jobs.groovy  # Job DSL script generating pipelines-as-code (invokes vars/MicroservicesPipeline.groovy)
-│   │       └── services.yaml     # Shared service registry (repo URLs, types, ports) read by all four CI engines
-├── vars/
-│   ├── MicroservicesPipeline.groovy        # Declarative shared library wrapper for JHipster microservices
-│   ├── MicroservicesK6SmokePipeline.groovy # Pipeline for triggering k6 integration smoke tests
-│   ├── microservicesBuild.groovy           # Maven/Node build execution helper
-│   ├── microservicesImage.groovy           # Image build & push helper (Jib direct-push preferred; docker build/push via the DinD sidecar as fallback and for the Angular image)
-│   ├── microservicesDeploy.groovy          # Triggers gitops config repo updates
-│   ├── microservicesK6Smoke.groovy         # k6 smoke/load run helper
-│   └── microservicesSmokeTest.groovy       # Validates deployed services (Spring Actuator check)
-└── observability/
-    ├── otel-collector/           # OTel collector Gateway and Logs agent values
-    └── grafana/
-        └── dashboards/           # Provisioned Grafana dashboards (per-engine CI overview, k6, microservices, JVM, RUM, ...)
-```
-
----
-
-## 🚀 Key Pipelines and Execution Flows
-
-The project is built around a **Unified Pipeline Model**. One of **four mutually-exclusive CI engines** — selected by `ci.engine` in `config/config.yaml`: **Jenkins** (default) · **Tekton** · **GitHub Actions (ARC)** · **Argo Workflows** — runs the SAME ~11-stage pipeline contract against the SAME `jenkins/pipelines/seed/services.yaml` service registry and the SAME `resources/patch-app-source.sh` build-time gateway patch:
-1. **Dynamic Configuration**: the pipeline dynamically fetches configuration from this infra repo's active branch.
-2. **Stable / develop tiers**: the stable tier deploys to the `microservices` namespace, building the app forks' `main` branch. An optional `develop` tier (`microservices.developTrackEnabled`, OFF by default) builds the forks' real `develop` branch into a separate `microservices-develop` namespace.
-3. **Gateway source patch (MySQL→PostgreSQL + NoOp cache)**: the JHipster gateway fork is generated for MySQL, but this platform runs PostgreSQL (CloudNativePG). The shared `resources/patch-app-source.sh` — materialised via `libraryResource('patch-app-source.sh')` in `vars/MicroservicesPipeline.groovy` and called identically by all four engines — converts the gateway to PostgreSQL and swaps the JHipster Hazelcast 2nd-level cache for a NoOp cache (a `CacheConfiguration` returning a `NoOpCacheManager`) at build time, right after checkout.
-
----
-
-## 🛠️ Operational Tasks & Run Commands
-
-As an AI assistant, follow these standard commands for maintenance:
-
-### 1. Verification & Status Check
-Check the rollout status of all services:
-```bash
-./scripts/status.sh
-```
-
-### 2. Full Up / Provision Stack
-```bash
-./scripts/up.sh   # preferred: runs every step in the correct order
-```
-Step-by-step equivalent (ArgoCD before observability; each engine's 06-* seed step after its 04-*):
-```bash
-./scripts/00-check-prereqs.sh
-./scripts/01-namespaces.sh
-./scripts/02-otel-operator.sh
-./scripts/08.5-argocd.sh          # CD engine first: 03 (oss) and every 04-<engine>.sh apply ArgoCD Applications
-./scripts/08.6-eso-sync.sh        # eso mode only (no-op in imperative mode)
-./scripts/03-observability.sh
-./scripts/04-jenkins.sh           # or 04-tekton.sh / 04-githubactions.sh / 04-argoworkflows.sh, per ci.engine (each retires the other three)
-./scripts/06-seed-pipelines.sh    # or the matching 06-<engine>-pipelines.sh
-./scripts/07-grafana-dashboards.sh
-./scripts/07.5-grafana-alerts.sh
-./scripts/08-headlamp.sh
-./scripts/09-gateway.sh
-```
-
-### 3. Teardown
-```bash
-./scripts/down.sh
-```
-
----
-
-## 💡 Troubleshooting and Optimization Tips
-
-1. **Jib/Maven Daemon Issues**: Ensure you run clean compiles with Docker-in-Docker. The shared library handles DinD mounting automatically.
-2. **ArgoCD App Synchronization**: The ApplicationSet ([`argocd/microservices-appset.yaml`](argocd/microservices-appset.yaml)) points to the `jenkins-2026-gitops-config` repository. AppSync triggers automatically when the active CI engine's pipeline commits and pushes updated image tags to the gitops repo.
-3. **Observability Logs**: All application logs are collected by the `otel-collector-logs` DaemonSet and exported to the active backend (OTLP to Grafana Cloud in grafana-cloud mode; in-cluster Loki in oss; Log Analytics / CloudWatch in the managed modes). Log-to-trace correlation is established via `trace_id` parsed from standard SLF4J MDC logs.
-4. **GKE Concurrency & Lock Serialization**: GKE allows only one concurrent mutating operation per cluster/zone. Sequential `gcloud` CLI updates (such as changing autoscaling, auto-repair, or resizing node pools) without waiting will fail due to API locks. Always use the `wait_for_gke_operations` helper function inside workflows/scripts to serialize mutations.
-5. **Pod Disruption Budgets (PDBs) Eviction Blocks**: When scaling node pools to 0 or performing manual drains on GKE, single-instance CloudNative-PG Postgres pods with strict PDBs (`minAvailable=1`) will block eviction indefinitely. Bypassing this requires draining nodes via `kubectl drain --disable-eviction`, which forces deletion via the DELETE API rather than the Eviction API.
-6. **OTel Agent Webhook Injection Race**: The OTel operator's pod mutation webhook (`mpod.kb.io`) runs with `failurePolicy: Ignore`. If microservices pods start before the Instrumentation CR or webhook is ready, they start without the Java agent and emit no metrics/traces. Run [`scripts/ensure-otel-injection.sh`](scripts/ensure-otel-injection.sh) (or trigger `kubectl rollout restart` on the deployments) to force re-injection.
-7. **WebSocket Agent Upgrades & MTU/WireGuard**: The inbound agent JNLP handshake over TCP port 50000 black-holes when an agent lands on a different node than the controller because inter-node pod traffic is WireGuard-encrypted (lower MTU). Ensure `websocket: true` is configured in JCasC (and `jenkinsTunnel` is omitted) to route agent connections over HTTP port 8080.
-8. **Git LFS Skip Smudge**: Set `GIT_LFS_SKIP_SMUDGE=1` globally on agents to prevent checkout failures due to GitHub LFS bandwidth exhaustion (403 errors on documentation image pulls during SCM checkout).
-
----
-
-## Repo layout details
+## Repo layout
 
 - `scripts/0N-*.sh` - numbered, idempotent setup steps run in order by
   [`scripts/up.sh`](scripts/up.sh) (and torn down in reverse by [`scripts/down.sh`](scripts/down.sh)). Every
@@ -173,9 +68,8 @@ Step-by-step equivalent (ArgoCD before observability; each engine's 06-* seed st
   the oss `grafana-jenkins-ds`, `headlamp-credentials`, and the microservices
   `ghcr-credentials` pull secret. See [`docs/201`](docs/201-ARCHITECTURE.md#secrets-backend-imperative--eso).
 - [`config/config.yaml`](config/config.yaml) - single source of truth: target platform
-  (gke), observability mode (grafana-cloud default/oss/managed-azure/managed-aws),
-  CI engine (`ci.engine`: jenkins default | tekton | githubactions | argoworkflows —
-  mutually exclusive),
+  (gke), observability mode (grafana-cloud/oss/managed-azure/managed-aws),
+  CI engine (`ci.engine`: jenkins default | tekton | githubactions | argoworkflows),
   Jenkins/Microservices namespaces, branches, registry, service list.
 - [`helm/jenkins/`](helm/jenkins/), `helm/headlamp/`, `helm/pgadmin/` + `helm/argocd-values.yaml` - Helm
   values overlays (the microservices Helm chart + values live in the
@@ -183,74 +77,68 @@ Step-by-step equivalent (ArgoCD before observability; each engine's 06-* seed st
 - [`jenkins/casc/`](jenkins/casc/) - JCasC YAML (seed jobs, shared library, OTel plugin
   config, RBAC).
 - [`jenkins/pipelines/`](jenkins/pipelines/) - the seed job DSL
-  (`seed/seed_jobs.groovy`), which invokes the `vars/MicroservicesPipeline.groovy`
-  shared-library pipeline, and `seed/services.yaml` (the shared service registry all
-  four CI engines read).
-- [`vars/`](vars/) - the Jenkins shared library: `MicroservicesPipeline.groovy` (the
-  ~11-stage microservices pipeline) + its build/image/deploy/smoke-test helpers. The
-  other three engines port the same stages.
-- [`resources/patch-app-source.sh`](resources/patch-app-source.sh) - the single source of
-  truth for the build-time gateway patch (MySQL→PostgreSQL + NoOp cache), called
-  identically by all four CI engines.
-- **CI engines** - the `ci.engine` flag selects ONE of four mutually-exclusive engines
-  (Jenkins default · Tekton · GitHub Actions/ARC · Argo Workflows), each installed by its
-  own `scripts/04-<engine>.sh` + `scripts/06-<engine>-pipelines.sh` (the Jenkins pair is
-  [`04-jenkins.sh`](scripts/04-jenkins.sh) / [`06-seed-pipelines.sh`](scripts/06-seed-pipelines.sh)).
-  Switching engines is NOT a jenkins↔tekton toggle: each `04-<engine>.sh` **retires the
-  OTHER THREE** via the shared [`retire_ci_engine`](scripts/lib/common.sh) helper in
-  `scripts/lib/common.sh` (deletes their ArgoCD apps + all children + namespaces and clears
-  stuck GKE NEG finalizers). Every engine is GitOps-managed by ArgoCD via its own
-  app-of-apps and reuses `jenkins/pipelines/seed/services.yaml` + `resources/patch-app-source.sh`.
-  - [`tekton/`](tekton/) - Tekton pipelines-as-code (`ci.engine=tekton`).
-    Tasks/Pipelines/Triggers/RBAC porting the [`vars/`](vars/) library, plus `pac/`
-    (Pipelines-as-Code Repository CRs) and `runs/` (ready-to-run PipelineRun manifests — the
-    one-click/`kubectl create -f` equivalent of the Jenkins seed job; the opt-in
-    `tekton.seedRuns` flag makes Day1 seed these so the Dashboard is pre-populated). The
-    Tekton Dashboard is exposed behind Google IAP like Headlamp. See
-    [`docs/403-TEKTON.md`](docs/403-TEKTON.md).
-  - `githubactions` (`ci.engine=githubactions`) - GitHub Actions self-hosted runners via ARC
-    (Actions Runner Controller): ephemeral runner pods (default on the ci-spot Spot
-    ComputeClass) in the `arc-systems`/`arc-runners` namespaces, the pipeline rendered into
-    each fork as a `.github/workflows` file. NO in-cluster UI → no Gateway/IAP route. Installed
-    by [`scripts/04-githubactions.sh`](scripts/04-githubactions.sh) +
-    [`scripts/06-githubactions-pipelines.sh`](scripts/06-githubactions-pipelines.sh). See
-    [`docs/404-GITHUB_ACTIONS.md`](docs/404-GITHUB_ACTIONS.md).
-  - [`argoworkflows/`](argoworkflows/) (`ci.engine=argoworkflows`) - Argo Workflows + Argo
-    Events: the pipeline ported to a WorkflowTemplate, an EventSource+Sensor (GitHub webhook →
-    one Workflow per push) in the `argo`/`argo-events`/`argo-ci` namespaces, the Argo Workflows
-    Server UI behind Google IAP like the Tekton Dashboard. Installed by
-    [`scripts/04-argoworkflows.sh`](scripts/04-argoworkflows.sh) +
-    [`scripts/06-argoworkflows-pipelines.sh`](scripts/06-argoworkflows-pipelines.sh). See
-    [`docs/405-ARGO_WORKFLOWS.md`](docs/405-ARGO_WORKFLOWS.md).
+  (`seed/seed_jobs.groovy`, which invokes the `vars/MicroservicesPipeline.groovy`
+  shared library — there is no `Jenkinsfile.microservices`), `seed/services.yaml`
+  (the shared service registry ALL FOUR CI engines read), the rendered-workflow
+  template `seed/microservices-ci.yml.tmpl`, and the k6 scripts under `k6/`.
+- [`resources/patch-app-source.sh`](resources/patch-app-source.sh) - the single
+  source of truth for the gateway build-time patch (JHipster MySQL→Postgres +
+  swap the Hazelcast 2nd-level cache for a NoOp cache), called by ALL FOUR
+  engines (Jenkins `vars/MicroservicesPipeline.groovy`, `tekton/`,
+  `argoworkflows/`, and the GitHub Actions `microservices-ci.yml`).
+- [`tekton/`](tekton/) - Tekton pipelines-as-code, used when `ci.engine=tekton` (one
+  of three alternatives to the default Jenkins; the others are `githubactions`/ARC — see
+  [`docs/404`](docs/404-GITHUB_ACTIONS.md) — and `argoworkflows` — the `argoworkflows/`
+  Argo port dir, analogous to `tekton/`, see [`docs/405`](docs/405-ARGO_WORKFLOWS.md)).
+  Tasks/Pipelines/Triggers/RBAC
+  porting the Jenkins shared library in [`vars/`](vars/), plus `pac/` (Pipelines-as-Code
+  Repository CRs) and `runs/` (ready-to-run PipelineRun manifests — the
+  one-click/`kubectl create -f` equivalent of the Jenkins seed job; the opt-in
+  `tekton.seedRuns` flag makes Day1 seed these so the Dashboard is pre-populated).
+  Installed by
+  [`scripts/04-tekton.sh`](scripts/04-tekton.sh) + [`scripts/06-tekton-pipelines.sh`](scripts/06-tekton-pipelines.sh) (the Tekton
+  equivalents of [`04-jenkins.sh`](scripts/04-jenkins.sh) / [`06-seed-pipelines.sh`](scripts/06-seed-pipelines.sh)). Tekton is
+  GitOps-managed by ArgoCD via the [`argocd/tekton`](argocd/tekton) app-of-apps (see below); the
+  Tekton Dashboard is exposed behind Google IAP like Headlamp. See
+  [`docs/403-TEKTON.md`](docs/403-TEKTON.md).
 - [`observability/`](observability/) - otel-operator, otel-collector, and Grafana (OSS +
   dashboards) Helm values + the `grafana-cloud-credentials` secret template.
 - [`argocd/`](argocd/) - ArgoCD `Application`/`ApplicationSet` manifests (the GitOps layer):
-  - **Single `Application`s** — External Secrets, Headlamp, **Argo Rollouts**
-    (`argo-rollouts-app.yaml`, controller + Gateway API traffic-router plugin for
-    sidecar-free canary/blue-green — see
+  - **Single `Application`s** — External Secrets, Headlamp, **Jenkins**
+    (`jenkins-app.yaml`, the official chart, when `ci.engine=jenkins`),
+    **Argo Rollouts** (`argo-rollouts-app.yaml`, controller + Gateway API
+    traffic-router plugin for sidecar-free canary/blue-green — see
     [`docs/501`](docs/501-PLATFORM_OPERATIONS.md) § Progressive Delivery), and
     **`platform-config`** (`platform-config-app.yaml` → the local
     [`argocd/platform-config/`](argocd/platform-config/) Helm chart: the static,
-    engine-aware platform **RBAC** — the active CI engine's SA `edit` bindings,
-    pgAdmin secret-reader, the OTel-instrumentation `ClusterRole` — that
+    engine-aware platform **RBAC** — Jenkins/Tekton SA `edit` bindings, pgAdmin
+    secret-reader, the OTel-instrumentation `ClusterRole` — that
     `01-namespaces.sh`/`02-otel-operator.sh` used to apply imperatively;
     NetworkPolicies and ResourceQuotas/LimitRanges deliberately stay
     script-applied, they must land before workloads for Dataplane V2 timing).
-  - **One single `Application` per CI engine** — `jenkins-app.yaml` (the official
-    chart), `tekton-app.yaml`, `githubactions-app.yaml`, `argoworkflows-app.yaml`;
-    only the one for the active `ci.engine` is applied.
   - The **microservices AppSet**.
   - **Five app-of-apps** (each a small Helm chart so repo/branch/version flow down
     to its children):
     - `platform-postgres/` — the CNPG operator + pgAdmin that administers it.
     - `observability-oss/` — the in-cluster OSS stack
       (kube-prometheus-stack/Loki/Tempo) when `observability.mode=oss`.
-    - The per-engine pipelines-as-code app-of-apps `tekton/` · `githubactions/` ·
-      `argoworkflows/`, applied by the matching `04-<engine>.sh` (Tekton's
-      `components/*/` holds the **vendored** pinned upstream release YAMLs —
-      Tekton ships recent releases only as GitHub assets, not GCS, and a
-      github.com URL is git-misclassified by kustomize; Argo Workflows vendors
-      the same way).
+    - `tekton/` — `components/*/` holds the **vendored** pinned upstream Tekton
+      release YAMLs (Tekton ships recent releases only as GitHub assets, not GCS,
+      and a github.com URL is git-misclassified by kustomize) + the `tekton/`
+      pipelines-as-code; applied by `04-tekton.sh` when `ci.engine=tekton`.
+    - `githubactions/` — applied by `04-githubactions.sh` when
+      `ci.engine=githubactions`; installs **ARC** via two OCI Helm child apps —
+      `gha-runner-scale-set-controller` (wave 0) + `gha-runner-scale-set` /
+      `AutoscalingRunnerSet` (wave 1); OCI charts, so **no vendoring**.
+    - `argoworkflows/` — applied by `04-argoworkflows.sh` when
+      `ci.engine=argoworkflows`; installs **Argo Workflows + Argo Events** via
+      three child apps — `argoworkflows-controller` (wave 0, the Argo Workflows
+      controller + server) + `argo-events` (wave 1, the Events controller-manager
+      + EventBus) + `argoworkflows-pipeline-as-code` (wave 2, the
+      WorkflowTemplates/EventSource/Sensor under
+      [`argoworkflows/`](argoworkflows/)); the upstream release YAMLs are
+      **vendored** under `argocd/argoworkflows/components/{workflows,events}/release.yaml`
+      (like Tekton — not OCI charts).
   - **Ordering consequence**: [`scripts/up.sh`](scripts/up.sh) installs ArgoCD
     (`08.5`) **before** observability (`03`), and `03-observability.sh` (oss)
     applies the app-of-apps + its script-managed companion objects
@@ -368,6 +256,7 @@ Step-by-step equivalent (ArgoCD before observability; each engine's 06-* seed st
 - **⚠️ The two repos have DELIBERATELY OPPOSITE `main` branch-protection policies — do not "fix" one to match the other:**
   - **`jenkins-2026`** (this infra repo, human-driven) — **strict GitFlow**: `main` is protected with *require-PR* + the **`gitflow-guard`** required status check ([`.github/workflows/gitflow-guard.yml`](.github/workflows/gitflow-guard.yml)) + `enforce_admins=true`, so `main` is reachable **only via a PR from `develop`** (no direct pushes, no feature/hotfix→main, no admin bypass). Every change lands on `develop` first.
   - **`jenkins-2026-gitops-config`** (the GitOps config repo, **CI-driven**) — `main` is **direct-push** (require-PR removed; force-push still blocked). The Microservices pipeline's *GitOps Update* stage ([`vars/microservicesDeploy.groovy`](vars/microservicesDeploy.groovy)) does `git push origin main` to bump image tags; require-PR there would reject the push (the PAT doesn't bypass) and **wedge every deploy**. Image-tag bumps are machine-managed, not human-reviewed, so `main` must accept the CI's direct push. See [`docs/502`](docs/502-MICROSERVICES_GITOPS.md) and that repo's README.
+  - **`jhipster-sample-app-gateway` / `jhipster-sample-app-microservice`** (the app **forks**, **CI-driven** like gitops-config) — `main` + `develop` carry **light protection: force-push + deletion blocked, but NO require-PR and NO push restriction.** The GitHub Actions seed ([`scripts/06-githubactions-pipelines.sh`](scripts/06-githubactions-pipelines.sh)) **direct-pushes** the rendered `microservices-ci.yml` to both branches — require-PR would reject it (the `GIT_TOKEN` PAT doesn't bypass) and wedge the render (same reason gitops-config is direct-push). The rendered workflow deliberately has **no `pull_request` trigger** (a fork PR would run untrusted code on the in-cluster ARC runners). See [`docs/404`](docs/404-GITHUB_ACTIONS.md) § Security.
 - **Secrets never committed**: `observability/otel-collector/secret.yaml`,
   `**/secret.local.yaml`, `*.env`, all `*.tfstate*`, `**/.terraform/`,
   `terraform/*/terraform.tfvars`, and the CI-written `backend_override.tf`
@@ -381,14 +270,16 @@ Step-by-step equivalent (ArgoCD before observability; each engine's 06-* seed st
   any new config knobs rather than adding new flags ad hoc.
 - Shell scripts: `bash`, `set -euo pipefail` via `lib/common.sh`, `yq` for
   YAML. Don't introduce other YAML tooling.
+- **Contributor process** (human-facing summary of these conventions):
+  [`CONTRIBUTING.md`](CONTRIBUTING.md) — branch model, idempotency contract,
+  feature-flag pattern, secrets hygiene, Terraform gate, local checks.
 
 ## Working on this repo
 
 - Don't run `test/e2e.sh` or trigger `Day1.cluster.01-gke`/`Decom.cluster.01-gke`
-  (or the per-engine redeploy workflows `Day2.redeploy.02-jenkins` /
-  `Day2.redeploy.03-tekton` / `Day2.redeploy.06-githubactions` /
-  `Day2.redeploy.07-argoworkflows` against a real cluster, or the
-  `Decom.infra.00-all` "Everything" umbrella, which tears down the
+  (or any per-engine `Day2.redeploy.*` — `.02-jenkins` / `.03-tekton` /
+  `.06-githubactions` / `.07-argoworkflows` — against a real
+  cluster, or the `Decom.infra.00-all` "Everything" umbrella, which tears down the
   cluster **and** every persistent backend at once) workflows without explicit
   confirmation - they create/modify/destroy real, billed GCP (and optionally
   Grafana Cloud / Azure / AWS) resources.
@@ -396,8 +287,8 @@ Step-by-step equivalent (ArgoCD before observability; each engine's 06-* seed st
   idempotent and converges in place on an existing cluster (`terraform apply`
   no-ops when the cluster is already in state; `up.sh` re-applies every step;
   ArgoCD re-syncs from git). To pick up a change, **re-run `Day1`** (or, for a
-  CI-engine-only change, the active engine's redeploy workflow —
-  `Day2.redeploy.02-jenkins` / `.03-tekton` / `.06-githubactions` / `.07-argoworkflows`,
+  CI-engine-only change, the matching per-engine `Day2.redeploy.*` —
+  `.02-jenkins` / `.03-tekton` / `.06-githubactions` / `.07-argoworkflows` —
   which also run `09-gateway`); ArgoCD-only manifest changes can be pulled with
   `kubectl annotate application <app> -n argocd argocd.argoproj.io/refresh=hard
   --overwrite`. `Decom.cluster.01-gke` is for **tearing the cluster down when

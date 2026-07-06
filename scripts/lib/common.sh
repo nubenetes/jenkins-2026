@@ -285,24 +285,14 @@ j2026_backend_tls_active() {
   fi
 }
 
-# Backend TLS for argocd-server (the ArgoCD UI hop) is additionally gated on the
-# CI engine. Flipping argocd-server to TLS breaks any deploy caller that still
-# talks plain HTTP to it, so only engines whose caller speaks TLS qualify:
-#   - jenkins:       vars/microservicesDeploy.groovy uses argocd-server:443 (TLS)
-#                    when 04-jenkins.sh sets ARGOCD_SERVER to the :443 form.
-#   - githubactions: its caller already uses `--server <host> --insecure` (TLS,
-#                    no --plaintext), so it works against a TLS argocd-server.
-# tekton + argoworkflows callers still use `:80 --plaintext` (their PaC-triggered
-# runs render from static YAML that can't read this Day1 flag), so argocd stays
-# plain HTTP for those engines - Headlamp + faro backend TLS still apply. Migrating
-# those two callers is the documented next step (docs/504). Echoes true/false.
+# Backend TLS for argocd-server (the ArgoCD UI hop) is now active for all
+# engines. Callers (Jenkins, GitHub Actions, Tekton, and Argo Workflows) have
+# been updated to dynamically detect the secret and connect using port 443
+# and TLS or port 80 and plaintext. Echoes true/false.
 j2026_argocd_backend_tls_active() {
-  [[ "$(j2026_backend_tls_active)" == "true" ]] || { echo "false"; return; }
-  case "${J2026_CI_ENGINE}" in
-    jenkins | githubactions) echo "true" ;;
-    *) echo "false" ;;
-  esac
+  j2026_backend_tls_active
 }
+
 
 # --- CI-engine retirement (mutual exclusivity) -------------------------------
 # The four CI engines (jenkins · tekton · githubactions · argoworkflows) are

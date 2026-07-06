@@ -7,8 +7,8 @@ This document lists the core scripting workflows and capabilities (or "skills") 
 ## 🛠️ System Orchestration Skills
 
 Skills 1–7 follow the real dependency order [`scripts/up.sh`](scripts/up.sh) runs the steps in
-(00 → 01 → 02 → 08.5 → 08.6 → 03 → 04-`<engine>` → 06-`<engine>` → 07 → 07.5 → 08 → 09) —
-in particular ArgoCD (Skill 4) must precede observability (Skill 5) and the CI engine (Skill 6).
+(00 → 01 → 02 → 08.5 → 08.6 → 08.7 → 03 → 04-`<engine>` → 06-`<engine>` → 07 → 07.5 → 08 → 09) —
+in particular ArgoCD (Skill 4) must precede Backend TLS (Skill 4a), observability (Skill 5), and the CI engine (Skill 6).
 
 ### Skill 1: Validate Prerequisites & Register Helm Repositories
 Use this to ensure all required CLI tools are present and configure Helm charts before deployment.
@@ -39,6 +39,14 @@ Deploys and configures ArgoCD to reconcile the GitOps repo. Must run BEFORE `03-
     ```bash
     ./scripts/08.5-argocd.sh
     ```
+
+### Skill 4a: Configure Backend TLS (Opt-in)
+Installs cert-manager, CA issuers, and generates internal certificates. Projects CA certificate trust bundles into backend namespaces.
+*   **Command:**
+    ```bash
+    ./scripts/08.7-backend-tls.sh
+    ```
+
 
 ### Skill 5: Provision the Observability Backend
 Deploys the OTel collector gateway + logs DaemonSet for the active `observability.mode` (grafana-cloud | oss | managed-azure | managed-aws); in oss mode it applies the `observability-oss` ArgoCD app-of-apps (requires ArgoCD, Skill 4, to have run first).

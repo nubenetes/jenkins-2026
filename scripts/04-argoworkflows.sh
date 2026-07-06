@@ -49,7 +49,8 @@ log_step "Applying Argo Workflows app-of-apps via ArgoCD (argocd/argoworkflows-a
 ARGOWF_APP_FILE="$(mktemp)"
 REPO_URL="${J2026_SELF_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
 sed "s@{{repoUrl}}@${REPO_URL}@g;
-     s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g" \
+     s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g;
+     s@{{backendTlsEnabled}}@$(j2026_backend_tls_active)@g" \
     "${J2026_ROOT_DIR}/argocd/argoworkflows-app.yaml" > "${ARGOWF_APP_FILE}"
 kubectl apply -f "${ARGOWF_APP_FILE}"
 rm -f "${ARGOWF_APP_FILE}"

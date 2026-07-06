@@ -89,10 +89,14 @@ spec:
           chmod +x "${ARGOCD}"
         fi
         server="${ARGOCD_SERVER}"; flags="--grpc-web --insecure"
-        case "${server}" in
-          *:*) ;;
-          *) server="${server}:80"; flags="${flags} --plaintext" ;;
-        esac
+        # Auto-detect if Backend TLS is active by checking the gateway-tls secret in target namespace
+        if kubectl get secret gateway-tls -n "$(params.target-namespace)" >/dev/null 2>&1; then
+          server="${server}:443"
+        else
+          server="${server}:80"
+          flags="${flags} --plaintext"
+        fi
+
         APP="microservices-$(params.env-name)"
         # The app has automated selfHeal: pushing the new image tag (the GitOps Update
         # step before this) makes ArgoCD auto-sync it, which can be MID-FLIGHT when this

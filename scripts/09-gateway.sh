@@ -513,7 +513,7 @@ fi
 
 # Tekton Dashboard is only deployed when ci.engine=tekton.
 if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
-  log_step "Generating HTTPRoute + HealthCheckPolicy (tekton dashboard, ci.engine=tekton)"
+  log_step "Generating HTTPRoute (tekton dashboard, ci.engine=tekton)"
   cat >"${GENERATED_DIR}/httproute-tekton.yaml" <<EOT
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -533,7 +533,52 @@ spec:
           port: ${J2026_TEKTON_DASHBOARD_PORT}
 EOT
 
-  cat >"${GENERATED_DIR}/healthcheckpolicy-tekton.yaml" <<EOT
+  if [[ "${BACKEND_TLS_ACTIVE}" == "true" ]]; then
+    log_step "Generating BackendTLSPolicy + HTTPS HealthCheckPolicy (tekton dashboard, backendTls enabled)"
+    cat >"${GENERATED_DIR}/backendtlspolicy-tekton.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: ${J2026_BACKEND_TLS_POLICY_TEKTON}
+  namespace: ${J2026_TEKTON_NAMESPACE}
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: ${J2026_TEKTON_DASHBOARD_SERVICE}
+  validation:
+    hostname: ${J2026_TEKTON_DASHBOARD_SERVICE}.${J2026_TEKTON_NAMESPACE}.svc.cluster.local
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: ${J2026_BACKEND_TLS_CA_CONFIGMAP}
+EOT
+
+    cat >"${GENERATED_DIR}/healthcheckpolicy-tekton.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: ${J2026_TEKTON_DASHBOARD_SERVICE}
+  namespace: ${J2026_TEKTON_NAMESPACE}
+spec:
+  default:
+    config:
+      type: HTTPS
+      httpsHealthCheck:
+        requestPath: /readiness
+  targetRef:
+    group: ""
+    kind: Service
+    name: ${J2026_TEKTON_DASHBOARD_SERVICE}
+EOT
+  else
+    rm -f "${GENERATED_DIR}/backendtlspolicy-tekton.yaml"
+    if kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+      log_step "Removing any leftover tekton BackendTLSPolicy (backendTls inactive)"
+      kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_TEKTON}" -n "${J2026_TEKTON_NAMESPACE}" --ignore-not-found
+    fi
+
+    cat >"${GENERATED_DIR}/healthcheckpolicy-tekton.yaml" <<EOT
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
 metadata:
@@ -550,6 +595,8 @@ spec:
     kind: Service
     name: ${J2026_TEKTON_DASHBOARD_SERVICE}
 EOT
+  fi
+
 
   # Pipelines-as-Code controller (webhook receiver) - public, NO IAP (GitHub must
   # reach it; the webhook HMAC secret authenticates requests).
@@ -577,7 +624,7 @@ fi
 # with --auth-mode=server --secure=false (plain HTTP), so it is IAP-protected at the
 # Gateway (GCPBackendPolicy below), exactly like the no-native-auth Tekton Dashboard.
 if [[ "${J2026_CI_ENGINE}" == "argoworkflows" ]]; then
-  log_step "Generating HTTPRoute + HealthCheckPolicy (Argo Workflows Server, ci.engine=argoworkflows)"
+  log_step "Generating HTTPRoute (Argo Workflows Server, ci.engine=argoworkflows)"
   cat >"${GENERATED_DIR}/httproute-argoworkflows.yaml" <<EOT
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -597,7 +644,52 @@ spec:
           port: ${J2026_ARGOWF_SERVER_PORT}
 EOT
 
-  cat >"${GENERATED_DIR}/healthcheckpolicy-argoworkflows.yaml" <<EOT
+  if [[ "${BACKEND_TLS_ACTIVE}" == "true" ]]; then
+    log_step "Generating BackendTLSPolicy + HTTPS HealthCheckPolicy (Argo Workflows Server, backendTls enabled)"
+    cat >"${GENERATED_DIR}/backendtlspolicy-argoworkflows.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: ${J2026_BACKEND_TLS_POLICY_ARGOWF}
+  namespace: ${J2026_ARGOWF_NAMESPACE}
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: ${J2026_ARGOWF_SERVER_SERVICE}
+  validation:
+    hostname: ${J2026_ARGOWF_SERVER_SERVICE}.${J2026_ARGOWF_NAMESPACE}.svc.cluster.local
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: ${J2026_BACKEND_TLS_CA_CONFIGMAP}
+EOT
+
+    cat >"${GENERATED_DIR}/healthcheckpolicy-argoworkflows.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: ${J2026_ARGOWF_SERVER_SERVICE}
+  namespace: ${J2026_ARGOWF_NAMESPACE}
+spec:
+  default:
+    config:
+      type: HTTPS
+      httpsHealthCheck:
+        requestPath: /
+  targetRef:
+    group: ""
+    kind: Service
+    name: ${J2026_ARGOWF_SERVER_SERVICE}
+EOT
+  else
+    rm -f "${GENERATED_DIR}/backendtlspolicy-argoworkflows.yaml"
+    if kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+      log_step "Removing any leftover argoworkflows BackendTLSPolicy (backendTls inactive)"
+      kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_ARGOWF}" -n "${J2026_ARGOWF_NAMESPACE}" --ignore-not-found
+    fi
+
+    cat >"${GENERATED_DIR}/healthcheckpolicy-argoworkflows.yaml" <<EOT
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
 metadata:
@@ -614,6 +706,8 @@ spec:
     kind: Service
     name: ${J2026_ARGOWF_SERVER_SERVICE}
 EOT
+  fi
+
 
   # Argo Events EventSource (webhook receiver) - public, NO IAP (GitHub must reach it;
   # the argoworkflows-github-webhook HMAC secret authenticates requests). The github

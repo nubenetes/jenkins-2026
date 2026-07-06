@@ -87,6 +87,19 @@ if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
   tls_backend_namespaces+=("${J2026_JENKINS_NAMESPACE}")
 fi
 
+TEKTON_TLS_ACTIVE="false"
+if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
+  TEKTON_TLS_ACTIVE="true"
+  tls_backend_namespaces+=("${J2026_TEKTON_NAMESPACE}")
+fi
+
+ARGOWF_TLS_ACTIVE="false"
+if [[ "${J2026_CI_ENGINE}" == "argoworkflows" ]]; then
+  ARGOWF_TLS_ACTIVE="true"
+  tls_backend_namespaces+=("${J2026_ARGOWF_NAMESPACE}")
+fi
+
+
 if [[ "$(j2026_backend_tls_active)" != "true" ]]; then
   # --- retire: deterministic cleanup of a previous enabled run ---------------
   # (Flag off - the default - or the CRD is absent. A cluster that never had
@@ -129,6 +142,13 @@ if [[ "$(j2026_backend_tls_active)" != "true" ]]; then
   if kubectl get namespace "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" >/dev/null 2>&1; then
     kubectl delete secret "${J2026_BACKEND_TLS_SECRET_MICROSERVICES}" "${J2026_BACKEND_TLS_MICROSERVICES_PASSWORD_SECRET}" -n "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" --ignore-not-found
   fi
+  if kubectl get namespace "${J2026_TEKTON_NAMESPACE}" >/dev/null 2>&1; then
+    kubectl delete secret "${J2026_BACKEND_TLS_SECRET_TEKTON}" -n "${J2026_TEKTON_NAMESPACE}" --ignore-not-found
+  fi
+  if kubectl get namespace "${J2026_ARGOWF_NAMESPACE}" >/dev/null 2>&1; then
+    kubectl delete secret "${J2026_BACKEND_TLS_SECRET_ARGOWF}" -n "${J2026_ARGOWF_NAMESPACE}" --ignore-not-found
+  fi
+
   # argocd trust bundle + server cert (its namespace is not in the projection list
   # when inactive, so clean it explicitly). 08.5 re-renders argocd-server --insecure.
   if kubectl get namespace "${J2026_ARGOCD_NAMESPACE}" >/dev/null 2>&1; then
@@ -381,7 +401,28 @@ elif kubectl get namespace "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
   kubectl delete secret "${J2026_BACKEND_TLS_JENKINS_JKS_PASSWORD_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found
 fi
 
+# Stage 6.1: Tekton Dashboard, ONLY when it's the active CI engine.
+if [[ "${TEKTON_TLS_ACTIVE}" == "true" ]]; then
+  kubectl get namespace "${J2026_TEKTON_NAMESPACE}" >/dev/null 2>&1 || kubectl create namespace "${J2026_TEKTON_NAMESPACE}"
+  mint_server_cert "${J2026_BACKEND_TLS_SECRET_TEKTON}" "${J2026_TEKTON_NAMESPACE}" \
+    "${J2026_TEKTON_DASHBOARD_SERVICE}.${J2026_TEKTON_NAMESPACE}.svc.cluster.local"
+elif kubectl get namespace "${J2026_TEKTON_NAMESPACE}" >/dev/null 2>&1; then
+  # retire leftover certs
+  kubectl delete secret "${J2026_BACKEND_TLS_SECRET_TEKTON}" -n "${J2026_TEKTON_NAMESPACE}" --ignore-not-found
+fi
+
+# Stage 6.2: Argo Workflows Server, ONLY when it's the active CI engine.
+if [[ "${ARGOWF_TLS_ACTIVE}" == "true" ]]; then
+  kubectl get namespace "${J2026_ARGOWF_NAMESPACE}" >/dev/null 2>&1 || kubectl create namespace "${J2026_ARGOWF_NAMESPACE}"
+  mint_server_cert "${J2026_BACKEND_TLS_SECRET_ARGOWF}" "${J2026_ARGOWF_NAMESPACE}" \
+    "${J2026_ARGOWF_SERVER_SERVICE}.${J2026_ARGOWF_NAMESPACE}.svc.cluster.local"
+elif kubectl get namespace "${J2026_ARGOWF_NAMESPACE}" >/dev/null 2>&1; then
+  # retire leftover certs
+  kubectl delete secret "${J2026_BACKEND_TLS_SECRET_ARGOWF}" -n "${J2026_ARGOWF_NAMESPACE}" --ignore-not-found
+fi
+
 # Stage 7: Java Hipster microservices gateway.
+
 # Stable tier
 stable_ns="${J2026_MICROSERVICES_NS_STABLE}"
 kubectl get namespace "${stable_ns}" >/dev/null 2>&1 || kubectl create namespace "${stable_ns}"

@@ -6,6 +6,8 @@
 # upstream release YAMLs).
 repoURL: https://github.com/nubenetes/jenkins-2026.git
 targetRevision: main
+backendTls: false
+
 
 namespace:
   # Argo Workflows control plane (workflow-controller + argo-server) - argoproj default.

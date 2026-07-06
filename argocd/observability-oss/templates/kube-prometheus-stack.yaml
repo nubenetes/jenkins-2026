@@ -33,6 +33,14 @@ spec:
           # valueFiles win, so this merges over values-oss.yaml.
           - $values/observability/grafana/values-oss-backend-tls.yaml
           {{- end }}
+        {{- if eq (.Values.backendTls | toString) "true" }}
+        parameters:
+          - name: grafana.additionalDataSources[3].url
+            value: "https://jenkins.jenkins.svc.cluster.local:8080"
+          - name: grafana.additionalDataSources[3].jsonData.tlsSkipVerify
+            value: "true"
+        {{- end }}
+
     # This repo, for the values file above (referenced via $values).
     - repoURL: {{ .Values.repoURL | quote }}
       targetRevision: {{ .Values.targetRevision | quote }}

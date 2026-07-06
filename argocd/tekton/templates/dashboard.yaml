@@ -17,7 +17,7 @@ spec:
   source:
     repoURL: {{ .Values.repoURL | quote }}
     targetRevision: {{ .Values.targetRevision | quote }}
-    path: argocd/tekton/components/dashboard
+    path: argocd/tekton/components/dashboard{{ if eq (toString .Values.backendTls) "true" }}-tls{{ end }}
   destination:
     server: https://kubernetes.default.svc
     namespace: {{ .Values.namespace.controlPlane | quote }}
