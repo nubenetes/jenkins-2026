@@ -35,6 +35,73 @@ That is defense-in-depth, not a gap fix — hence a feature flag, not a default:
   blockers — see the roadmap), and
 - it depends on a recent GKE Gateway capability (below).
 
+## Should you enable it? (decision guide)
+
+This section is deliberately non-technical — read it before touching the flag.
+
+**What you already have with the flag OFF (`false`, the default) — nothing to
+add, nothing missing that handles sensitive data in the clear:**
+
+- **Every external client (browser, IAP) always gets full TLS.** The flag only
+  ever touches the *internal* LB→pod hop; it never weakens or changes the
+  Google-managed edge TLS a user's browser sees. This is true with the flag on
+  *or* off.
+- **The "plain HTTP" LB→pod hop is not "unencrypted on the wire" in the naive
+  sense.** It never leaves Google's private VPC fabric (not internet-routable,
+  no public IP involved), Google encrypts it at the network layer in transit,
+  and Dataplane V2's WireGuard config separately encrypts inter-node pod
+  traffic. Three independent layers already sit under this hop before backend
+  TLS enters the picture.
+- **No credential or secret crosses this hop in the clear because of the flag
+  being off.** Authentication (IAP, OIDC, Jenkins basic-auth, ArgoCD tokens)
+  happens at a layer above this one and is unaffected either way.
+
+**What turning the flag ON actually adds — and it is real, just narrow:**
+
+- **Application-layer encryption + server authentication on that one hop.**
+  With the flag on, the LB cryptographically verifies it is talking to *the*
+  specific backend that holds a certificate signed by this cluster's internal
+  CA — not merely to whatever process happens to answer on that Service's IP
+  and port.
+- **The threat this closes**: something *already inside* the cluster/VPC
+  intercepting or impersonating a backend Service between the LB and the pod
+  (e.g. a compromised workload spoofing the `jenkins` Service to harvest
+  traffic). It does **not** close a hole reachable from the public internet —
+  that hop was never internet-reachable to begin with.
+- In short: it is genuine **defense-in-depth against an already-compromised
+  cluster**, not a fix for a hole in the current, internet-facing security
+  boundary.
+
+**The cost of turning it on — also real, seen firsthand in this project:**
+
+- An in-cluster PKI to operate (cert-manager + a CA whose lifecycle now
+  matters, even if ephemeral-by-design — see Lifecycle below).
+- Meaningfully more moving parts and blast radius. The first live enablement
+  of the Jenkins stage in this repo surfaced **four separate bugs** before it
+  worked end-to-end (a Helm chart port collision, an ArgoCD sync race, a
+  missing NetworkPolicy rule, and an internal script talking to the wrong
+  port) — none of them security bugs, all of them the direct cost of the added
+  complexity. That is the realistic price of enabling this, not a hypothetical
+  one.
+- Some backends have a documented, permanent gap even when enabled (e.g. the
+  ArgoCD↔tekton/argoworkflows caller mismatch, the oss-mode Jenkins Grafana
+  datasource — see the roadmap table), so "enabled" is not uniformly "every
+  hop re-encrypted."
+
+**A simple recommendation:**
+
+| Situation | Recommendation |
+|---|---|
+| Single-tenant demo/PoC cluster, no other tenants sharing the VPC, no untrusted workloads that could plausibly spoof a Service (this repo's default posture) | **Leave it off.** The marginal security gain is real but narrow (see threat model above), and the default posture is already reasonably defended (VPC-only + network-layer encryption + WireGuard). Optimizing for reliability over an extra defense-in-depth layer is a defensible choice here. |
+| You want to *demonstrate* or *exercise* zero-trust intra-cluster patterns, or you're hardening this toward a multi-tenant / production-like posture | **Enable it.** That is exactly the scenario this feature is for, and it is fully additive (default off, opt-in, `Day1`/`Day2.redeploy.*` accept the flag). |
+| You're not sure | **Leave it off** until you have a concrete reason to turn it on — it costs nothing to stay on the default, and you can always enable it later per the Lifecycle section. |
+
+Whatever you choose, the flag is **additive and reversible**: default `false`,
+zero impact until opted in, and every consumer gates on
+[`j2026_backend_tls_active`](../scripts/lib/common.sh) so a partial/older
+cluster degrades consistently to the existing plain-HTTP posture instead of
+502ing.
+
 ## The flag
 
 Durable default in [`config/config.yaml`](../config/config.yaml), ephemeral
