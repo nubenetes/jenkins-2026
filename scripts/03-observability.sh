@@ -435,6 +435,58 @@ EOT
         sleep 5
       done
     "; then
+      # GKE Gateway NEG health check deadlock fix (docs/504): GKE container-native load
+      # balancing (NEG) requires the pod to be HEALTHY in the GCP Load Balancer to satisfy
+      # the pod's `cloud.google.com/load-balancer-neg-ready` readiness gate during a rollout.
+      # But when Backend TLS is active, the pod serves HTTPS while the GCP LB defaults to
+      # HTTP probes (causing TLS handshake errors / connection refused), creating a deadlock.
+      # Applying the BackendTLSPolicy and HealthCheckPolicy (HTTPS) BEFORE waiting for the
+      # deployment rollout breaks this deadlock and lets the pods go healthy.
+      if [[ "$(j2026_backend_tls_active)" == "true" ]]; then
+        log_step "Applying Grafana BackendTLSPolicy + HTTPS HealthCheckPolicy to prevent rollout deadlock"
+        mkdir -p "${J2026_ROOT_DIR}/.generated/observability"
+        
+        cat >"${J2026_ROOT_DIR}/.generated/observability/backendtlspolicy-grafana.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: ${J2026_BACKEND_TLS_POLICY_GRAFANA}
+  namespace: ${J2026_GRAFANA_OSS_NAMESPACE}
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: oss-kube-prometheus-stack-grafana
+  validation:
+    hostname: oss-kube-prometheus-stack-grafana.${J2026_GRAFANA_OSS_NAMESPACE}.svc.cluster.local
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: ${J2026_BACKEND_TLS_CA_CONFIGMAP}
+EOT
+
+        cat >"${J2026_ROOT_DIR}/.generated/observability/healthcheckpolicy-grafana.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: oss-kube-prometheus-stack-grafana
+  namespace: ${J2026_GRAFANA_OSS_NAMESPACE}
+spec:
+  default:
+    config:
+      type: HTTPS
+      httpsHealthCheck:
+        requestPath: /login
+  targetRef:
+    group: ""
+    kind: Service
+    name: oss-kube-prometheus-stack-grafana
+EOT
+
+        kubectl apply -f "${J2026_ROOT_DIR}/.generated/observability/backendtlspolicy-grafana.yaml"
+        kubectl apply -f "${J2026_ROOT_DIR}/.generated/observability/healthcheckpolicy-grafana.yaml"
+      fi
+
       wait_for_deployment "oss-kube-prometheus-stack-grafana" "${J2026_GRAFANA_OSS_NAMESPACE}"
     else
       log_warn "oss-kube-prometheus-stack-grafana did not appear within 5m — check 'kubectl -n argocd get applications' (observability-oss / oss-kube-prometheus-stack)."
