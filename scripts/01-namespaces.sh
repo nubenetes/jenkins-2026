@@ -707,6 +707,32 @@ if [[ "${J2026_PLATFORM}" == "gke" ]] && kubectl get crd servicenetworkendpointg
     log_warn "Clearing finalizer from stuck GKE svcneg: ${ns}/${name}"
     kubectl patch svcneg "${name}" -n "${ns}" --type=merge -p '{"metadata":{"finalizers":null}}' || true
   done
+
+  log_step "Self-heal: detecting and fixing unsynced GKE ServiceNetworkEndpointGroups"
+  unsynced_negs=$(kubectl get svcneg -A -o json | jq -r '.items[] | select(.status.lastSyncTime == null or .status.networkEndpointGroups == null) | "\(.metadata.namespace)/\(.metadata.name)"' 2>/dev/null || true)
+  if [[ -n "${unsynced_negs}" ]]; then
+    log_info "Detected unsynced GKE svcneg resources. Waiting 15s grace period..."
+    sleep 15
+    still_unsynced=$(kubectl get svcneg -A -o json | jq -r '.items[] | select(.status.lastSyncTime == null or .status.networkEndpointGroups == null) | "\(.metadata.namespace)/\(.metadata.name)"' 2>/dev/null || true)
+    for neg in ${still_unsynced}; do
+      ns="${neg%/*}"
+      name="${neg#*/}"
+      svc_name=$(kubectl get svcneg "${name}" -n "${ns}" -o jsonpath='{.metadata.labels.networking\.gke\.io/service-name}' 2>/dev/null || true)
+      if [[ -z "${svc_name}" ]]; then
+        continue
+      fi
+      neg_config=$(kubectl get svc "${svc_name}" -n "${ns}" -o jsonpath='{.metadata.annotations.cloud\.google\.com/neg}' 2>/dev/null || true)
+      if [[ -z "${neg_config}" ]]; then
+        continue
+      fi
+      log_warn "Self-healing stuck GKE NEG cache for service: ${ns}/${svc_name}"
+      kubectl annotate service "${svc_name}" -n "${ns}" cloud.google.com/neg- --overwrite >/dev/null 2>&1 || true
+      sleep 3
+      kubectl patch svcneg "${name}" -n "${ns}" --type=merge -p '{"metadata":{"finalizers":null}}' >/dev/null 2>&1 || true
+      sleep 2
+      kubectl annotate service "${svc_name}" -n "${ns}" cloud.google.com/neg="${neg_config}" --overwrite >/dev/null 2>&1 || true
+    done
+  fi
 fi
 
 log_info "Namespaces ready."
