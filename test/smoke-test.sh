@@ -43,7 +43,11 @@ if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
   # Forbidden -> no HTTP code -> false FAIL). Hit /readiness (the dashboard's own
   # readiness endpoint, guaranteed 200 when the pod is Ready). Use run->wait->logs
   # rather than 'run -i' (the interactive attach raced a fast-completing pod).
-  dash_url="http://${J2026_TEKTON_DASHBOARD_SERVICE}.${TEKTON_NS}.svc.cluster.local:${J2026_TEKTON_DASHBOARD_PORT}/readiness"
+  dash_scheme="http"
+  if [[ "${JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED}" == "true" ]]; then
+    dash_scheme="https"
+  fi
+  dash_url="${dash_scheme}://${J2026_TEKTON_DASHBOARD_SERVICE}.${TEKTON_NS}.svc.cluster.local:${J2026_TEKTON_DASHBOARD_PORT}/readiness"
   kubectl -n "${TEKTON_NS}" delete pod smoke-tkn-dash --ignore-not-found >/dev/null 2>&1 || true
   kubectl -n "${TEKTON_NS}" run smoke-tkn-dash --restart=Never --image=curlimages/curl:8.10.1 \
     --overrides='{
@@ -52,7 +56,7 @@ if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
         "containers": [{
           "name": "smoke-tkn-dash",
           "image": "curlimages/curl:8.10.1",
-          "command": ["curl","-s","-o","/dev/null","-w","%{http_code}","--max-time","20","'"${dash_url}"'"],
+          "command": ["curl","-sk","-o","/dev/null","-w","%{http_code}","--max-time","20","'"${dash_url}"'"],
           "securityContext": {
             "allowPrivilegeEscalation": false, "runAsNonRoot": true, "runAsUser": 100,
             "capabilities": {"drop": ["ALL"]}, "seccompProfile": {"type": "RuntimeDefault"}
