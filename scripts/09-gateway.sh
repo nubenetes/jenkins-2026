@@ -280,7 +280,7 @@ spec:
   default:
     config:
       type: HTTPS
-      httpHealthCheck:
+      httpsHealthCheck:
         requestPath: /management/health
   targetRef:
     group: ""
@@ -943,7 +943,7 @@ spec:
   default:
     config:
       type: HTTPS
-      httpHealthCheck:
+      httpsHealthCheck:
         requestPath: /management/health
   targetRef:
     group: ""
