@@ -739,7 +739,17 @@ log_step "Generating HealthCheckPolicies (argocd, microservices; jenkins only wh
 # check, not != tekton: != tekton wrongly emitted healthcheckpolicy-jenkins.yaml in
 # githubactions/argoworkflows mode and `kubectl apply` failed with `namespaces "jenkins"
 # not found` (the jenkins ns doesn't exist there).
+# Jenkins health check: HTTPS once the controller serves TLS on its main port
+# (BACKEND_TLS_ACTIVE, stage 6 - docs/504), else HTTP. Same pattern as argocd
+# below: the default probe follows the Service appProtocol (unset = HTTP);
+# leaving it HTTP against a now-TLS controller marks the backend unhealthy ->
+# 502 at Jenkins. Path stays /login either way (httpsKeyStore doesn't change it).
 if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
+  if [[ "${BACKEND_TLS_ACTIVE}" == "true" ]]; then
+    jenkins_hc_type="HTTPS"; jenkins_hc_key="httpsHealthCheck"
+  else
+    jenkins_hc_type="HTTP"; jenkins_hc_key="httpHealthCheck"
+  fi
   cat >"${GENERATED_DIR}/healthcheckpolicy-jenkins.yaml" <<EOT
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
@@ -749,8 +759,8 @@ metadata:
 spec:
   default:
     config:
-      type: HTTP
-      httpHealthCheck:
+      type: ${jenkins_hc_type}
+      ${jenkins_hc_key}:
         requestPath: /login
   targetRef:
     group: ""
@@ -816,6 +826,42 @@ else
      && kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
     log_step "Removing any leftover argocd BackendTLSPolicy (backendTls inactive or engine-gated off)"
     kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_ARGOCD}" -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found
+  fi
+fi
+
+# Backend TLS for Jenkins (stage-6; opt-in + engine-gated, docs/504). Only when
+# ci.engine=jenkins (the controller Service doesn't exist otherwise). The LB
+# re-encrypts + validates the Jenkins UI hop against the internal CA (the health
+# check above is already HTTPS); hostname matches the SAN 08.7-backend-tls.sh
+# mints (the controller Service FQDN). Retired (CRD-guarded) when off - covering
+# BOTH flag-off and the engine-switch case, so a stale policy never 502s a
+# plaintext Jenkins after switching away from ci.engine=jenkins.
+if [[ "${BACKEND_TLS_ACTIVE}" == "true" && "${J2026_CI_ENGINE}" == "jenkins" ]]; then
+  log_step "Generating BackendTLSPolicy (Jenkins, backendTls enabled)"
+  cat >"${GENERATED_DIR}/backendtlspolicy-jenkins.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: ${J2026_BACKEND_TLS_POLICY_JENKINS}
+  namespace: ${J2026_JENKINS_NAMESPACE}
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: ${J2026_JENKINS_RELEASE}
+  validation:
+    hostname: ${J2026_JENKINS_RELEASE}.${J2026_JENKINS_NAMESPACE}.svc.cluster.local
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: ${J2026_BACKEND_TLS_CA_CONFIGMAP}
+EOT
+else
+  rm -f "${GENERATED_DIR}/backendtlspolicy-jenkins.yaml"
+  if kubectl get namespace "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1 \
+     && kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+    log_step "Removing any leftover Jenkins BackendTLSPolicy (backendTls inactive or engine-gated off)"
+    kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_JENKINS}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found
   fi
 fi
 

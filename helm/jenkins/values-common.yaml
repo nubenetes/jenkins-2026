@@ -179,6 +179,19 @@ controller:
           name: jenkins-credentials
           key: argocd-server
           optional: true
+    # Internal Service port build agents dial over WebSocket
+    # (jenkins/casc/jcasc-base.yaml jenkinsUrl). Patched to "8081" by
+    # scripts/04-jenkins.sh only when backend TLS is active (docs/504) - the
+    # controller's main port (8080) becomes HTTPS-only then, and the plain-HTTP
+    # listener moves to httpsKeyStore.httpPort (values-backend-tls.yaml). Optional
+    # + the JCasC ${JENKINS_AGENT_PORT:-8080} fallback keep the plain-8080 default
+    # when the key is absent/empty.
+    - name: JENKINS_AGENT_PORT
+      valueFrom:
+        secretKeyRef:
+          name: jenkins-credentials
+          key: jenkins-agent-port
+          optional: true
     # Active branch (main|develop) - patched into the Secret by scripts/04-jenkins.sh.
     - name: JENKINS2026_REPO_BRANCH
       valueFrom:

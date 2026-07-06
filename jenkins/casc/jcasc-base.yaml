@@ -53,9 +53,11 @@ jenkins:
         name: "kubernetes"
         serverUrl: "https://kubernetes.default.svc.cluster.local"
         namespace: "${JENKINS_NAMESPACE:-jenkins}"
-        jenkinsUrl: "http://jenkins.${JENKINS_NAMESPACE:-jenkins}.svc.cluster.local:8080"
-        # Inbound agents connect over the HTTP port (jenkinsUrl, 8080) via a WebSocket
-        # upgrade. The cluster encrypts INTER-NODE pod traffic with WireGuard
+        jenkinsUrl: "http://jenkins.${JENKINS_NAMESPACE:-jenkins}.svc.cluster.local:${JENKINS_AGENT_PORT:-8080}"
+        # Inbound agents connect over the HTTP port (jenkinsUrl, 8080 - or 8081 when
+        # backend TLS (docs/504) is active and 8080 becomes HTTPS-only, see
+        # JENKINS_AGENT_PORT) via a WebSocket upgrade. The cluster encrypts
+        # INTER-NODE pod traffic with WireGuard
         # (in_transit_encryption_config), which lowers the effective MTU; the raw JNLP4
         # TLS handshake on the TCP agent port (:50000) then black-holes whenever a
         # build agent lands on a DIFFERENT node from the controller — the connection is
@@ -136,6 +138,20 @@ jenkins:
           # ci-spot (NAP Spot ComputeClass). Read in vars/*.groovy. Default static.
           - key: "RUN_NODE_POOL"
             value: "${JENKINS2026_RUN_NODE_POOL:-static}"
+          # ArgoCD server address the deploy stage's argocd CLI targets
+          # (vars/microservicesDeploy.groovy reads env.ARGOCD_SERVER). Patched by
+          # scripts/04-jenkins.sh into the ":443" form when backend TLS (docs/504)
+          # is active, so the groovy drops --plaintext for that ':<non-80-port>'
+          # form. NOTE: this key was missing from globalNodeProperties until fixed -
+          # controller.containerEnv (values-common.yaml) only sets the CONTROLLER
+          # JVM's OS env, which pipeline `env.X` does NOT read automatically; only
+          # a globalNodeProperties entry populates the pipeline env object. Without
+          # this, env.ARGOCD_SERVER was always null and the groovy silently fell
+          # back to its plaintext default even with backend TLS active -> argocd
+          # CLI got a TLS cert error ("x509: certificate signed by unknown
+          # authority") and the GitOps Update stage failed.
+          - key: "ARGOCD_SERVER"
+            value: "${ARGOCD_SERVER:-}"
 
   securityRealm:
     oic:

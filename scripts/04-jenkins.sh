@@ -139,6 +139,18 @@ if [[ "$(j2026_argocd_backend_tls_active)" == "true" ]]; then
   argocd_server_addr="${argocd_server_addr}:443"
 fi
 
+# Internal Service port build agents dial over WebSocket (jcasc-base.yaml
+# jenkinsUrl). Plain HTTP always: when backend TLS (docs/504) is active, the
+# controller's main port (8080) becomes HTTPS-only and the plain-HTTP listener
+# moves to httpsKeyStore.httpPort (8081, values-backend-tls.yaml), exposed on
+# the Service via controller.extraPorts. Empty when TLS is inactive, so
+# jcasc-base.yaml's ${JENKINS_AGENT_PORT:-8080} default (the plain servicePort)
+# applies unchanged.
+jenkins_agent_port=""
+if [[ "$(j2026_backend_tls_active)" == "true" ]]; then
+  jenkins_agent_port="8081"
+fi
+
 kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \
   --type=merge -p "$(jq -nc \
     --arg gbu "${grafana_base_url}" \
@@ -148,6 +160,7 @@ kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_N
     --arg msdu "${microservices_develop_url}" \
     --arg msdl "${microservices_develop_link}" \
     --arg jpu "${jenkins_public_url}" \
+    --arg jap "${jenkins_agent_port}" \
     --arg br "${J2026_SELF_REPO_BRANCH}" \
     --arg genai "${J2026_MICROSERVICES_GENAI_SERVICE_ENABLED}" \
     --arg dev "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" \
@@ -170,6 +183,7 @@ kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_N
         "microservices-develop-url":$msdu,
         "microservices-develop-link":$msdl,
         "jenkins-public-url":$jpu,
+        "jenkins-agent-port":$jap,
         "repo-branch":$br,
         "genai-enabled":$genai,
         "develop-enabled":$dev,
@@ -181,13 +195,14 @@ kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_N
 # Rolls the controller whenever the Secret-backed banner/behaviour values change
 # (ArgoCD won't roll on an out-of-band Secret edit otherwise) - passed as the
 # controller.podAnnotations.bannerLinksChecksum helm parameter below.
-banner_links_checksum="$(printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' \
+banner_links_checksum="$(printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' \
   "${grafana_base_url}" "${grafana_k8s_app_link}" "${microservices_url}" \
   "${microservices_develop_url}" \
   "${jenkins_public_url}" "${J2026_SELF_REPO_BRANCH}" "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" \
   "${gke_compute_class}" "${J2026_JENKINS_RUN_NODE_POOL}" \
   "${dash_uid_jenkins}|${dash_uid_microservices}|${dash_uid_k6}|${dash_uid_rum}|${dash_uid_jvm}" \
   "${argocd_server_addr}" \
+  "${jenkins_agent_port}" \
   | sha256sum | cut -c1-16)"
 
 # --- JCasC ConfigMaps (single source: jenkins/casc/*) ------------------------
@@ -227,6 +242,19 @@ sed "s@{{repoUrl}}@${REPO_URL}@g;
      s@{{jenkinsUrl}}@${J2026_JENKINS_URL}@g;
      s@{{bannerChecksum}}@${banner_links_checksum}@g" \
     "${J2026_ROOT_DIR}/argocd/jenkins-app.yaml" > "${JENKINS_APP_FILE}"
+# Backend TLS (gateway.backendTls.enabled, docs/504): layer the TLS overlay so the
+# controller serves HTTPS via a cert-manager-minted JKS keystore
+# (08.7-backend-tls.sh) and the LB re-encrypts + validates the hop
+# (09-gateway.sh). Gated on j2026_backend_tls_active (flag AND the
+# BackendTLSPolicy CRD), never the raw flag, so the pod is never flipped to a
+# TLS the LB can't speak. The app file is re-rendered from the template every
+# run, so a flag-off run converges Jenkins back to plain HTTP with no overlay.
+if [[ "$(j2026_backend_tls_active)" == "true" ]]; then
+  log_info "Backend TLS active - adding the Jenkins TLS values overlay to the jenkins app"
+  yq eval -i \
+    '(.spec.sources[] | select(.chart == "jenkins") | .helm.valueFiles) += ["$values/helm/jenkins/values-backend-tls.yaml"]' \
+    "${JENKINS_APP_FILE}"
+fi
 kubectl apply -f "${JENKINS_APP_FILE}"
 rm -f "${JENKINS_APP_FILE}"
 

@@ -1,0 +1,45 @@
+# Jenkins backend-TLS overlay - layered ON TOP of values-common.yaml/values-gke.yaml
+# by scripts/04-jenkins.sh ONLY when the opt-in backend-TLS feature is active
+# (gateway.backendTls.enabled + ci.engine=jenkins + the BackendTLSPolicy CRD -
+# see docs/504-BACKEND_TLS.md). NOT referenced when inactive, so the default
+# posture (plain-HTTP controller on 8080) is untouched.
+#
+# Highest blast radius of the six backend-TLS stages: build agents (the
+# Kubernetes-plugin WebSocket connection) and, in observability.mode=oss,
+# Grafana's Jenkins datasource plugin dial the controller Service directly in
+# plain HTTP. Rather than requiring every in-cluster caller to trust the
+# internal CA, this overlay uses the chart's NATIVE controller.httpsKeyStore
+# feature: it moves the pod's plain-HTTP listener (and the kubelet probes,
+# which target the named `http` container port) to httpsKeyStore.httpPort
+# (8081), while the Service's EXISTING port (controller.targetPort, unchanged
+# at 8080) switches to HTTPS - so the LB gets HTTPS on the port it already
+# uses, and controller.extraPorts exposes 8081 on the same Service for
+# in-cluster callers to keep dialing plain HTTP on a different port.
+# scripts/04-jenkins.sh patches JENKINS_AGENT_PORT=8081 into jenkins-credentials
+# so jcasc-base.yaml's cloud jenkinsUrl follows (see jenkins/casc/jcasc-base.yaml).
+#
+# The JKS keystore + password Secrets are minted by scripts/08.7-backend-tls.sh:
+#   - jenkins-tls (cert-manager Certificate, key `keystore.jks`, SAN = the
+#     controller Service FQDN - matches the BackendTLSPolicy hostname
+#     scripts/09-gateway.sh generates)
+#   - jenkins-https-jks-password (a small dedicated Secret; cert-manager reads
+#     an EXISTING Secret for the keystore password via passwordSecretRef, it
+#     doesn't create one, and the chart needs the same value via secretKeyRef
+#     to open the keystore - one Secret, referenced by both)
+controller:
+  httpsKeyStore:
+    enable: true
+    jenkinsHttpsJksSecretName: jenkins-tls
+    jenkinsHttpsJksSecretKey: keystore.jks
+    jenkinsHttpsJksPasswordSecretName: jenkins-https-jks-password
+    jenkinsHttpsJksPasswordSecretKey: password
+    # HTTP port for probes + in-cluster plain-HTTP callers (build agents) once
+    # httpsKeyStore.enable moves controller.targetPort (8080) to HTTPS-only.
+    httpPort: 8081
+
+  # Exposes the plain-HTTP port (8081) on the Service too - httpsKeyStore alone
+  # only wires it into the pod/probes, not the Service, which by default only
+  # forwards controller.servicePort/targetPort (now HTTPS).
+  extraPorts:
+    - name: http-internal
+      port: 8081

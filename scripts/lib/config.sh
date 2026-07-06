@@ -440,6 +440,20 @@ export J2026_BACKEND_TLS_POLICY_PGADMIN="pgadmin-backend-tls"
 # oss-kube-prometheus-stack-grafana (the kube-prometheus-stack subchart fullname).
 export J2026_BACKEND_TLS_SECRET_GRAFANA="grafana-tls"
 export J2026_BACKEND_TLS_POLICY_GRAFANA="grafana-backend-tls"
+# Stage-6 TLS backend: Jenkins (ci.engine=jenkins ONLY - the controller Service
+# doesn't exist otherwise). Highest blast radius of the six stages: build agents
+# and (oss mode) Grafana's Jenkins datasource dial the Service directly in plain
+# HTTP, so the chart's native controller.httpsKeyStore feature is used instead of
+# a plain cert (see helm/jenkins/values-backend-tls.yaml) - it moves the pod's
+# plain-HTTP listener + probes to httpPort 8081 while the Service's existing port
+# (8080) becomes HTTPS, and controller.extraPorts exposes 8081 on the Service too
+# so in-cluster callers (agents) keep dialing plain HTTP on a different port than
+# the LB. The JKS keystore needs a password Secret cert-manager reads via
+# passwordSecretRef (it doesn't create one) - 08.7-backend-tls.sh generates it
+# once (create-if-absent).
+export J2026_BACKEND_TLS_SECRET_JENKINS="jenkins-tls"
+export J2026_BACKEND_TLS_JENKINS_JKS_PASSWORD_SECRET="jenkins-https-jks-password"
+export J2026_BACKEND_TLS_POLICY_JENKINS="jenkins-backend-tls"
 
 # Fixed names of the Gateway/HTTPRoute/GCPBackendPolicy resources created by
 # scripts/09-gateway.sh. Shared with scripts/down.sh so the two stay in sync:

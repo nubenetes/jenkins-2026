@@ -39,7 +39,7 @@ This isn't theoretical — **every floating version here has bitten us at least 
 
 | Component | Pinned to | Source of truth | Mechanism |
 |---|---|---|---|
-| **Jenkins** chart | `5.9.29` | `config/config.yaml` `jenkins.chart.version` | ArgoCD `targetRevision` ([`jenkins-app.yaml`](../argocd/jenkins-app.yaml)) |
+| **Jenkins** chart | `5.9.32` | `config/config.yaml` `jenkins.chart.version` | ArgoCD `targetRevision` ([`jenkins-app.yaml`](../argocd/jenkins-app.yaml)) |
 | **Jenkins plugins** (full set, exact) | per [`helm/jenkins/values-common.yaml`](../helm/jenkins/values-common.yaml) `controller.installPlugins` | same file | `jenkins-plugin-cli`-resolved against `controller.image.tag`; **bump deliberately** — incl. for security advisories (see below) |
 | **ArgoCD** *(policy)* | **latest stable `3.4.x`** + chart `9.5.22` | `config/config.yaml` `argocd.version_constraint` + `chartVersion` | runtime resolve + daily watcher — see below |
 | **OTel operator** chart | `0.117.0` | `config.yaml` `observability.otelOperator.chart.version` | `helm --version` in [`02-otel-operator.sh`](../scripts/02-otel-operator.sh) |

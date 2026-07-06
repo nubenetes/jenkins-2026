@@ -37,9 +37,18 @@ spec:
   # 8080: the controller HTTP port — serves the GKE Gateway/LB + health checks AND
   # the build agents' WebSocket connection (websocket: true in jcasc-base.yaml).
   # Open (no `from`) so both the LB and any in-cluster agent pod can reach it.
+  # 8081: the controller's plain-HTTP port once the opt-in backend-TLS feature
+  # (gateway.backendTls, docs/504) is active — 8080 then serves HTTPS for the LB,
+  # and build agents/probes move to 8081 (controller.httpsKeyStore.httpPort,
+  # helm/jenkins/values-backend-tls.yaml; controller.extraPorts exposes it on the
+  # Service). Listed unconditionally like 8080: this policy is static (applied
+  # always by 01-namespaces.sh, not flag-aware), and NetworkPolicy ingress ports
+  # are additive, so the unused port is harmless when the flag is off.
   - ports:
     - protocol: TCP
       port: 8080
+    - protocol: TCP
+      port: 8081
   # 50000: the legacy direct-JNLP tcpSlaveAgentListener. Unused while agents connect
   # over WebSocket (above), but kept as a harmless fallback for intra-ns agents.
   - from:

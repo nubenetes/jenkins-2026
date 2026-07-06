@@ -227,6 +227,9 @@ if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
     # Grafana BackendTLSPolicy (only present when observability.mode=oss + backendTls; a
     # no-op --ignore-not-found otherwise).
     kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_GRAFANA}" -n "${J2026_GRAFANA_OSS_NAMESPACE}" --ignore-not-found --timeout=5m
+    # Jenkins BackendTLSPolicy (only present when ci.engine=jenkins + backendTls; a
+    # no-op --ignore-not-found otherwise).
+    kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_JENKINS}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found --timeout=5m
   fi
   kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_JENKINS}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found --timeout=5m
   kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_MICROSERVICES}" -n "${J2026_MICROSERVICES_NS_STABLE}" --ignore-not-found --timeout=5m

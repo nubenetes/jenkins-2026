@@ -46,6 +46,11 @@ on:
         options:
           - info
           - debug
+      backend_tls:
+        description: "Opt-in backend TLS (gateway.backendTls — docs/504). Unlike the other Day2.redeploy workflows, a flip HERE fully converges end-to-end (no Day1 needed): this workflow runs 08.7-backend-tls.sh (mints the Jenkins JKS keystore), 04-jenkins.sh (the sole renderer of the Jenkins TLS values overlay - no app-of-apps threading involved), and 09-gateway.sh (BackendTLSPolicy + HTTPS HealthCheckPolicy)."
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -64,6 +69,8 @@ env:
   JENKINS2026_DEVELOP_TRACK_ENABLED: ${{ inputs.develop_track }}
   # Build-agent placement override (empty = fall back to config.yaml jenkins.runNodePool).
   JENKINS2026_JENKINS_RUN_NODE_POOL: ${{ inputs.run_node_pool != 'config' && inputs.run_node_pool || '' }}
+  # Opt-in backend TLS (docs/504) — must match the live cluster (see the input).
+  JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED: ${{ inputs.backend_tls }}
 
 jobs:
   redeploy-jenkins:
@@ -143,11 +150,26 @@ jobs:
       - name: Check prereqs & add Helm repos (scripts/00-check-prereqs.sh)
         run: ./scripts/00-check-prereqs.sh
 
+      - name: Backend TLS (scripts/08.7-backend-tls.sh, opt-in)
+        # No-op (with deterministic retire) when gateway.backendTls.enabled=false,
+        # the default. When on, mints/re-asserts the Jenkins JKS keystore + CA
+        # trust bundle BEFORE 04-jenkins.sh renders the TLS values overlay, so the
+        # controller pod never starts pointing at a cert Secret that doesn't exist
+        # yet (docs/504).
+        run: ./scripts/08.7-backend-tls.sh
+
       - name: Redeploy Jenkins (scripts/04-jenkins.sh)
         run: ./scripts/04-jenkins.sh
 
       - name: Re-seed Microservices pipelines (scripts/06-seed-pipelines.sh)
         run: ./scripts/06-seed-pipelines.sh
+
+      - name: Re-apply Gateway routes (scripts/09-gateway.sh)
+        # Idempotent: attaches/retires the Jenkins BackendTLSPolicy + HTTPS
+        # HealthCheckPolicy to match the controller's current protocol (set by
+        # 04-jenkins.sh above), so a backend_tls flip on this workflow converges
+        # end-to-end without a full Day1.
+        run: ./scripts/09-gateway.sh
 
       - name: Summary
         if: always()

@@ -71,6 +71,16 @@ if [[ "${J2026_OBS_MODE}" == "oss" && "${J2026_GRAFANA_OSS_NAMESPACE}" != "${J20
   tls_backend_namespaces+=("${J2026_GRAFANA_OSS_NAMESPACE}")
 fi
 
+# Jenkins (stage 6) is a TLS backend ONLY when it's the active CI engine (the
+# controller namespace/Service don't exist otherwise). Tracked like argocd above:
+# the retire path below cleans its cert/password Secret unconditionally (covers
+# both flag-off and an engine switch away from jenkins), independent of this flag.
+JENKINS_TLS_ACTIVE="false"
+if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
+  JENKINS_TLS_ACTIVE="true"
+  tls_backend_namespaces+=("${J2026_JENKINS_NAMESPACE}")
+fi
+
 if [[ "$(j2026_backend_tls_active)" != "true" ]]; then
   # --- retire: deterministic cleanup of a previous enabled run ---------------
   # (Flag off - the default - or the CRD is absent. A cluster that never had
@@ -102,6 +112,10 @@ if [[ "$(j2026_backend_tls_active)" != "true" ]]; then
   fi
   if kubectl get namespace "${J2026_GRAFANA_OSS_NAMESPACE}" >/dev/null 2>&1; then
     kubectl delete secret "${J2026_BACKEND_TLS_SECRET_GRAFANA}" -n "${J2026_GRAFANA_OSS_NAMESPACE}" --ignore-not-found
+  fi
+  if kubectl get namespace "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
+    kubectl delete secret "${J2026_BACKEND_TLS_SECRET_JENKINS}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found
+    kubectl delete secret "${J2026_BACKEND_TLS_JENKINS_JKS_PASSWORD_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found
   fi
   # argocd trust bundle + server cert (its namespace is not in the projection list
   # when inactive, so clean it explicitly). 08.5 re-renders argocd-server --insecure.
@@ -218,7 +232,7 @@ kubectl wait certificate "${J2026_BACKEND_TLS_CA_ISSUER}" \
 # generates sends exactly that hostname as SNI and validates the cert against it
 # - keep the two in sync. Also emits the short `.svc` form as a convenience SAN.
 mint_server_cert() {
-  local secret="$1" ns="$2" fqdn="$3"
+  local secret="$1" ns="$2" fqdn="$3" jks_password_secret="${4:-}"
   local short="${fqdn%.cluster.local}" # e.g. headlamp.headlamp.svc
   # 01-namespaces.sh creates these namespaces on Day1; ensure they exist for a
   # standalone run of this script.
@@ -247,6 +261,20 @@ spec:
     kind: ClusterIssuer
     group: cert-manager.io
 EOT
+  # Jenkins only (stage 6): also emit a JKS keystore into the same Secret
+  # (key keystore.jks), encrypted with the password in jks_password_secret - the
+  # chart's controller.httpsKeyStore.jenkinsHttpsJksSecretName/PasswordSecretName
+  # (values-backend-tls.yaml) read the same two Secrets.
+  if [[ -n "${jks_password_secret}" ]]; then
+    cat >>"${GENERATED_DIR}/certificate-${secret}.yaml" <<EOT
+  keystores:
+    jks:
+      create: true
+      passwordSecretRef:
+        name: ${jks_password_secret}
+        key: password
+EOT
+  fi
   kubectl apply -f "${GENERATED_DIR}/certificate-${secret}.yaml"
   kubectl wait certificate "${secret}" -n "${ns}" --for=condition=Ready --timeout=180s
 }
@@ -303,6 +331,31 @@ elif kubectl get namespace "${J2026_ARGOCD_NAMESPACE}" >/dev/null 2>&1; then
   kubectl delete secret "${J2026_BACKEND_TLS_SECRET_ARGOCD}" -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found
   kubectl delete configmap "${J2026_BACKEND_TLS_CA_CONFIGMAP}" -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found
 fi
+# Stage 6: Jenkins, ONLY when it's the active CI engine (the controller
+# namespace/Service don't exist otherwise). Unlike every other stage, the
+# controller needs a JKS keystore (chart controller.httpsKeyStore), not a plain
+# PEM cert - cert-manager encrypts it with a password from an existing Secret
+# (passwordSecretRef; it does not create one), so mint that Secret first,
+# once (create-if-absent: the password only protects a keystore that already
+# lives inside an RBAC-protected, in-cluster-only, ephemeral-per-cluster Secret -
+# regenerating it on every run would force a needless keystore re-issue).
+if [[ "${JENKINS_TLS_ACTIVE}" == "true" ]]; then
+  kubectl get namespace "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1 || kubectl create namespace "${J2026_JENKINS_NAMESPACE}"
+  if ! kubectl get secret "${J2026_BACKEND_TLS_JENKINS_JKS_PASSWORD_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
+    log_step "Generating the Jenkins HTTPS keystore password (one-time, in-cluster only)"
+    kubectl create secret generic "${J2026_BACKEND_TLS_JENKINS_JKS_PASSWORD_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \
+      --from-literal=password="$(openssl rand -base64 24)"
+  fi
+  mint_server_cert "${J2026_BACKEND_TLS_SECRET_JENKINS}" "${J2026_JENKINS_NAMESPACE}" \
+    "${J2026_JENKINS_RELEASE}.${J2026_JENKINS_NAMESPACE}.svc.cluster.local" \
+    "${J2026_BACKEND_TLS_JENKINS_JKS_PASSWORD_SECRET}"
+elif kubectl get namespace "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
+  # backend TLS on globally but ci.engine isn't jenkins: retire any jenkins cert/password
+  # left by a prior jenkins run so 09 drops the BackendTLSPolicy and a re-enabled jenkins
+  # engine never starts from a stale keystore.
+  kubectl delete secret "${J2026_BACKEND_TLS_SECRET_JENKINS}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found
+  kubectl delete secret "${J2026_BACKEND_TLS_JENKINS_JKS_PASSWORD_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found
+fi
 
 log_step "Projecting the CA trust bundle into the TLS-ready backend namespaces"
 # tls.crt of the (self-signed) CA Secret IS the trust anchor the LB validates
@@ -320,6 +373,6 @@ for ns in "${tls_backend_namespaces[@]}"; do
     --from-literal=ca.crt="${ca_pem}" --dry-run=client -o yaml | kubectl apply -f -
 done
 
-log_info "Backend TLS ready: cert-manager installed, internal CA bootstrapped, headlamp + faro + pgadmin$([[ "${J2026_OBS_MODE}" == "oss" ]] && echo " + grafana") certs minted."
+log_info "Backend TLS ready: cert-manager installed, internal CA bootstrapped, headlamp + faro + pgadmin$([[ "${J2026_OBS_MODE}" == "oss" ]] && echo " + grafana")$([[ "${JENKINS_TLS_ACTIVE}" == "true" ]] && echo " + jenkins") certs minted."
 log_info "  (08.5-argocd.sh layers the Headlamp + pgAdmin TLS overlays; 03-observability.sh layers the faro + oss-Grafana overlays;"
-log_info "   09-gateway.sh attaches the BackendTLSPolicies.)"
+log_info "   04-jenkins.sh layers the Jenkins TLS overlay; 09-gateway.sh attaches the BackendTLSPolicies.)"
