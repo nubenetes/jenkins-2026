@@ -199,6 +199,104 @@ spec:
   `terraform/gke`) and wait for the controller's next resync — no Gateway/HTTPRoute
   edit needed.
 
+## Why each backend serves HTTPS differently — the decision matrix
+
+Backend TLS imposes **one universal requirement** on every backend: the pod must
+**serve HTTPS with the cert-manager-minted cert** (signed by the internal CA
+`jenkins-2026-internal-ca`, whose public cert the LB trusts via the
+`jenkins-2026-backend-tls-ca` ConfigMap that each `BackendTLSPolicy` references).
+*How* a backend meets that requirement is **not a free choice** — it falls out of
+three properties of the app itself. This section is the decision logic *behind*
+the per-backend status table in
+[Converting the next backend](#converting-the-next-backend-roadmap--checklist).
+
+### Decision 1 — does the app serve TLS natively? (native vs sidecar)
+
+The only real fork, with exactly one exception:
+
+- **Native HTTPS — every backend but one.** The app terminates TLS itself on its
+  own pod port, reading the cert-manager cert. Always preferred: no extra
+  container, image, or config to run and secure; the app owns its own listener.
+- **TLS-terminating sidecar — the Tekton Dashboard, and *only* it.** The upstream
+  Tekton Dashboard binary (`/ko-app/dashboard`) has **no TLS flags at all** — it
+  can only serve plain HTTP. So its `dashboard-tls` overlay bolts on an
+  `nginx-unprivileged` sidecar that terminates TLS on `9097` and proxies to the
+  dashboard on `localhost:8080`. The sidecar exists **because** the app can't
+  serve HTTPS — not as a design preference. This is why "just add a sidecar" is
+  the wrong instinct for any *other* backend.
+
+### Decision 2 — what cert format does the app consume? (PEM vs keystore)
+
+Among the native backends, the app's **runtime** decides whether cert-manager
+writes a raw PEM Secret or *also* mints a Java keystore into it:
+
+| Cert format | Backends | Why | What cert-manager mints |
+|---|---|---|---|
+| **Raw PEM** (`tls.crt`/`tls.key`) | Headlamp, OSS Grafana, ArgoCD, pgAdmin, faro receiver, **Argo Workflows** | the app reads PEM files (or auto-loads the Secret by name) directly | a plain `Certificate` → Secret with `tls.crt`/`tls.key` |
+| **JKS keystore** | **Jenkins** (embedded Winstone/Jetty servlet container) | the JVM servlet container consumes a Java keystore, not PEM | `Certificate` + `keystores.jks` + a password Secret (`jenkins-https-jks-password`) → adds `keystore.jks` |
+| **PKCS12 keystore** | **microservices gateway** (Spring Boot embedded server) | Spring Boot's `server.ssl.key-store` consumes a keystore | `Certificate` + `keystores.pkcs12` + a password Secret (`gateway-tls-password`) → adds `keystore.p12` |
+
+The two **Java** backends (Jenkins, JHipster gateway) are the only ones whose cert
+Secret carries a keystore — a property of the JVM, not a choice.
+
+### Decision 3 — how the flag flips it on
+
+`gateway.backendTls.enabled` (gated as `j2026_backend_tls_active` = the flag **AND**
+the cluster serves the `BackendTLSPolicy` CRD) layers a per-app overlay only when
+active. What that overlay *does* varies:
+
+- **Sets a config value/path** (the app defaults to plain HTTP): Headlamp
+  `config.tlsCertPath`/`tlsKeyPath`; Grafana `grafana.ini` `server.protocol=https`;
+  Jenkins `controller.httpsKeyStore.enable`; pgAdmin env `PGADMIN_ENABLE_TLS=True`;
+  the faro receiver's `tls` block; the microservices gateway's Spring `server.ssl.*`.
+- **Removes a plaintext downgrade** (the app defaults to *TLS*, and the base
+  explicitly turns it *off*): **ArgoCD** drops `--insecure`; **Argo Workflows**
+  drops `--secure=false`. For these two, "enabling backend TLS" is literally
+  *un-disabling* the app's own TLS — the server then auto-loads its
+  conventionally-named Secret (`argocd-server-tls` / `argo-server-tls`).
+- **Adds a sidecar**: Tekton's overlay injects the nginx container + its
+  `nginx.conf` ConfigMap.
+
+### Decision 4 — exposure and the health-check twist
+
+Two axes shape the LB-side pair (`BackendTLSPolicy` + `HealthCheckPolicy`) that
+`09-gateway.sh` emits:
+
+- **Exposure.** Most backends are **IAP-protected admin/CI UIs** (Headlamp, OSS
+  Grafana, ArgoCD, pgAdmin, Jenkins, Tekton Dashboard, Argo Workflows Server) —
+  IAP sits at the LB edge and **composes with** backend TLS unchanged (auth at the
+  edge, re-encryption on the LB→pod hop). Two backends are **public, no IAP**: the
+  microservices gateway (the demo app) and the faro receiver (a browser beacon
+  endpoint).
+- **The health check almost always flips HTTP→HTTPS**, each with its own path
+  (Headlamp `/`, Grafana `/api/health`, ArgoCD `/healthz`, pgAdmin `/misc/ping`,
+  Jenkins `/login`, Tekton `/readiness`, Argo `/`, microservices
+  `/management/health`) — a stale HTTP probe against the now-TLS pod would mark the
+  backend unhealthy and 502. **The one exception is the faro receiver**, whose
+  `HealthCheckPolicy` stays **TCP**: it's a POST-only receiver, so any GET probe
+  (HTTP *or* HTTPS) fails — only its `BackendTLSPolicy` flips.
+- **Port moves only where the app forces it**: pgAdmin serves on 8443 (its UID
+  5050 can't bind 443); Jenkins turns its main 8080 HTTPS-only and re-exposes plain
+  HTTP on Service port 8082 (for the plain-HTTP build agents); Tekton's sidecar
+  owns 9097 while the dashboard moves to 8080. The rest keep the same port and just
+  change protocol (Argo 2746, Grafana 3000, Headlamp 4466, faro 8027).
+
+### Argo Workflows vs Tekton — same shape, opposite answer
+
+The two most-similar backends — IAP-protected CI-engine web UIs behind the Gateway
+— landed on **opposite** mechanisms, purely because of Decision 1:
+
+| | Tekton Dashboard (stage 8) | Argo Workflows Server (stage 9) |
+|---|---|---|
+| Native TLS? | ❌ binary has no TLS flags | ✅ `--secure` (default on) + auto-loads `argo-server-tls` |
+| Mechanism | nginx TLS-terminating **sidecar** (9097 → 8080) | **native** — overlay just drops `--secure=false` + flips the probe to HTTPS on 2746 |
+| Extra moving parts | sidecar container + `nginx.conf` ConfigMap | none |
+| Cert format | PEM (nginx `ssl_certificate`) | PEM (Secret-name convention) |
+
+So the answer to "is a sidecar necessary?" is: **only when the app can't serve
+HTTPS itself.** Argo can, so it doesn't — which is why Argo's stage 9 is *simpler*
+than Tekton's stage 8, not more work.
+
 ## Stage 1: why Headlamp
 
 | Criterion | Headlamp |
