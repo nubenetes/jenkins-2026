@@ -1306,5 +1306,16 @@ if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
   log_info "  Grafana:           https://${J2026_GATEWAY_GRAFANA_HOST} (IAP-protected)"
 fi
 if [[ "${BACKEND_TLS_ACTIVE}" == "true" ]]; then
-  log_info "  Backend TLS:       LB→pod re-encrypted + CA-validated for: headlamp (docs/504)"
+  # List the backends actually re-encrypted this run rather than a static string
+  # (this line used to hardcode just "headlamp" and was never updated past stage
+  # 1). Each backend writes backendtlspolicy-<name>.yaml when its TLS is active
+  # and rm's it when not, so the generated files applied above are the source of
+  # truth for what was re-encrypted.
+  backend_tls_applied=""
+  for _bt in "${GENERATED_DIR}"/backendtlspolicy-*.yaml; do
+    [[ -e "${_bt}" ]] || continue
+    _name="$(basename "${_bt}" .yaml)"; _name="${_name#backendtlspolicy-}"
+    backend_tls_applied+="${backend_tls_applied:+, }${_name}"
+  done
+  log_info "  Backend TLS:       LB→pod re-encrypted + CA-validated for: ${backend_tls_applied:-none} (docs/504)"
 fi
