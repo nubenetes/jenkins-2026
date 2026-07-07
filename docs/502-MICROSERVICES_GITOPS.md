@@ -184,14 +184,14 @@ sequenceDiagram
   AC->>GO: detect change (auto-sync)
   AC->>MS: app sync — apply rendered manifests
   MS-->>AC: Deployment rolls the new image
-  J->>AC: argocd app wait --sync --health --timeout 300
+  J->>AC: argocd app wait --sync --health --timeout 900
   AC-->>J: Synced + Healthy
   J->>J: proceed to smoke test
 ```
 
 </details>
 
-**Reading it —** the deploy is a *commit*, not an apply. Whichever CI engine `ci.engine` selects (Jenkins default, Tekton, GitHub Actions/ARC or Argo Workflows — all run the identical *GitOps Update* stage) mutates exactly one line — the image tag — in the GitOps repo's `values-{env}.yaml` and pushes it straight to `main` (which is why that branch must accept direct pushes). ArgoCD's auto-sync is the actual deployer; the engine then blocks on `argocd app wait --sync --health --timeout 300` (identical across Jenkins, Tekton and Argo Workflows; the GitHub Actions workflow runs the same wait but deliberately non-fatal, `|| true`) so the pipeline only reports success once ArgoCD has converged on the pushed revision. Adding a service is the same flow with a new row.
+**Reading it —** the deploy is a *commit*, not an apply. Whichever CI engine `ci.engine` selects (Jenkins default, Tekton, GitHub Actions/ARC or Argo Workflows — all run the identical *GitOps Update* stage) mutates exactly one line — the image tag — in the GitOps repo's `values-{env}.yaml` and pushes it straight to `main` (which is why that branch must accept direct pushes). ArgoCD's auto-sync is the actual deployer; the engine then blocks on `argocd app wait --sync --health --timeout 900` (identical across Jenkins, Tekton and Argo Workflows; the GitHub Actions workflow runs the same wait but deliberately non-fatal, `|| true`) so the pipeline only reports success once ArgoCD has converged on the pushed revision. Adding a service is the same flow with a new row.
 
 ## Design Decision: Resource Lifecycle & Decommission Orchestration
 
