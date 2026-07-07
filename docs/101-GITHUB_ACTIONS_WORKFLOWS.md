@@ -591,13 +591,13 @@ The flowchart above is the static *topology* of the phases; the sequence below i
 sequenceDiagram
     actor Op as Operator / CI
     participant GH as GitHub Actions<br/>(queue: jenkins-2026-gke)
-    participant Env as Approval gates<br/>(5 Environments)
+    participant Env as Approval gates<br/>(2 Environments)
     participant GCS as GCS Terraform state
     participant GCP as GCP — cluster + backends
 
     Note over Op,GCP: Day0 — one-time persistent bootstrap (run once, months apart)
     Op->>GH: dispatch Day0.infra.01-gateway
-    GH->>Env: request review (gateway-bootstrap)
+    GH->>Env: request review (gke-production)
     Env-->>GH: approved
     GH->>GCP: terraform apply (static IP + cert + DNS auth)
     GH->>GCS: write gateway-bootstrap state
