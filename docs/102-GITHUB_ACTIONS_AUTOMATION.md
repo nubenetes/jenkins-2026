@@ -613,6 +613,44 @@ EOF
 
    c. **Run the "Day0.infra.03 Azure managed-grafana" workflow.** Its Terraform creates App B and grants it Grafana Admin + Reader; the run's **job summary** prints a ready-to-paste `gh secret set AZURE_PUBLISH_CLIENT_ID …` — run it so `Day1` / `Day2.publish.*` can authenticate as App B.
 
+7. **(Optional) AWS backend** for `observability_mode: managed-aws`. Symmetric to
+   Azure (§6): a hand-created high-privilege **bootstrap** role
+   (`AWS_BOOTSTRAP_ROLE_ARN`, `AdministratorAccess`) that runs the one-time Terraform,
+   and a low-privilege **dashboard-publisher** role (`AWS_DASHBOARD_PUBLISH_ROLE_ARN`,
+   **created by Terraform** — the App-B analog).
+
+   a. **Create the BOOTSTRAP role by hand** — an IAM role with `AdministratorAccess`
+      trusting the GitHub Actions OIDC provider (`token.actions.githubusercontent.com`;
+      create it once per account if it doesn't exist), scoped to the **dedicated
+      `aws-bootstrap` environment** (keep this pinned — **never** `gke-production`, see
+      the ⚠️ security note above):
+      ```bash
+      # once per account (skip if the provider already exists):
+      aws iam create-open-id-connect-provider \
+        --url https://token.actions.githubusercontent.com --client-id-list sts.amazonaws.com
+      # create the role — trust condition:
+      #   token.actions.githubusercontent.com:sub = repo:<owner>/<repo>:environment:aws-bootstrap
+      aws iam create-role --role-name jenkins-2026-github-bootstrap \
+        --assume-role-policy-document file://trust.json     # Federated=the provider ARN + the sub condition
+      aws iam attach-role-policy --role-name jenkins-2026-github-bootstrap \
+        --policy-arn arn:aws:iam::aws:policy/AdministratorAccess
+      ```
+
+   b. **Set the AWS identifiers** (no keys; `AWS_REGION` is a repo **Variable** so it
+      isn't masked inside the Grafana workspace URL):
+      ```bash
+      gh secret   set AWS_BOOTSTRAP_ROLE_ARN --body "<the admin role ARN from step a>"
+      gh variable set AWS_REGION             --body "eu-west-1"
+      gh secret   set GKE_OIDC_ISSUER_URL    --body "<the GKE cluster's OIDC issuer URL>"   # see 103 § AWS
+      # optional: gh secret set AWS_GRAFANA_ADMIN_SSO_EMAILS --body "you@example.com"
+      ```
+
+   c. **Run the "Day0.infra.04 AWS managed-grafana" workflow.** Its Terraform creates
+      AMP/AMG/CloudWatch + the GKE→AWS OIDC provider + the least-privilege
+      **dashboard-publisher** role; set that role's ARN (the `dashboard_publisher_role_arn`
+      output) as the `AWS_DASHBOARD_PUBLISH_ROLE_ARN` secret so `Day1` / `Day2.publish.04/05`
+      can publish. (Terraform-created, like Azure's App B — nothing to create by hand.)
+
 ## Running the GKE Workflows
 
 1. Go to the repo's **Actions** tab → **Day1.cluster.01 GKE** → **Run
