@@ -68,8 +68,16 @@ EOT
   kubectl apply -f "${J2026_ROOT_DIR}/.generated/headlamp/healthcheckpolicy-headlamp.yaml"
 fi
 
-log_step "Waiting for Headlamp deployment to be ready"
-wait_for_deployment "${J2026_HEADLAMP_RELEASE}" "${J2026_HEADLAMP_NAMESPACE}" "5m"
+# Headlamp is a GKE NEG backend fronted by the Gateway/IAP, so its rollout wait can
+# deadlock on a HealthCheckPolicy protocol mismatch until 09-gateway.sh reconciles it -
+# and 09 runs AFTER this script. The bite is the DISABLE (backend_tls true->off) switch:
+# the unconditional restart above brings up a plain-HTTP headlamp, but the HTTPS-HC
+# reorder above is gated on backend TLS being ACTIVE, so a STALE HTTPS HealthCheckPolicy
+# from the prior enabled run lingers and fails the NEG health check until 09 deletes it.
+# wait_for_deployment would hard-fail AND self-heal by restarting (resetting the NEG,
+# thrashing the rollout). Use the non-fatal, no-restart NEG-aware wait; 09 makes the pod
+# NEG-healthy. Same class as the argocd-server fix (docs/504 § backend-TLS idempotency).
+wait_neg_backend_rollout "${J2026_HEADLAMP_RELEASE}" "${J2026_HEADLAMP_NAMESPACE}" "5m"
 
 log_step "Granting cluster-admin to Headlamp admin emails"
 if [[ -z "${J2026_HEADLAMP_ADMIN_EMAILS}" ]]; then
