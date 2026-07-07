@@ -251,9 +251,15 @@ active. What that overlay *does* varies:
   the faro receiver's `tls` block; the microservices gateway's Spring `server.ssl.*`.
 - **Removes a plaintext downgrade** (the app defaults to *TLS*, and the base
   explicitly turns it *off*): **ArgoCD** drops `--insecure`; **Argo Workflows**
-  drops `--secure=false`. For these two, "enabling backend TLS" is literally
-  *un-disabling* the app's own TLS — the server then auto-loads its
-  conventionally-named Secret (`argocd-server-tls` / `argo-server-tls`).
+  drops `--secure=false`. For these two, "enabling backend TLS" is largely
+  *un-disabling* the app's own TLS. **ArgoCD** then auto-loads its conventional
+  `argocd-server-tls` Secret. **Argo Workflows** does **not** auto-load — argo-server
+  keeps generating a **self-signed** cert unless you also pass
+  `--tls-certificate-secret-name=argo-server-tls` (the flag that makes it read the
+  cert-manager `argo-server-tls` Secret by name), so the overlay sets both. (Omitting
+  that flag is exactly what made only the argo host 502 with "upstream connect error
+  … local connection failure" on the first live run: argo self-signed, and the LB's
+  CA-validating `BackendTLSPolicy` rejected the handshake.)
 - **Adds a sidecar**: Tekton's overlay injects the nginx container + its
   `nginx.conf` ConfigMap.
 
@@ -288,8 +294,8 @@ The two most-similar backends — IAP-protected CI-engine web UIs behind the Gat
 
 | | Tekton Dashboard (stage 8) | Argo Workflows Server (stage 9) |
 |---|---|---|
-| Native TLS? | ❌ binary has no TLS flags | ✅ `--secure` (default on) + auto-loads `argo-server-tls` |
-| Mechanism | nginx TLS-terminating **sidecar** (9097 → 8080) | **native** — overlay just drops `--secure=false` + flips the probe to HTTPS on 2746 |
+| Native TLS? | ❌ binary has no TLS flags | ✅ `--secure` (default on) + `--tls-certificate-secret-name=argo-server-tls` loads the cert-manager cert |
+| Mechanism | nginx TLS-terminating **sidecar** (9097 → 8080) | **native** — overlay drops `--secure=false`, sets `--tls-certificate-secret-name`, + flips the probe to HTTPS on 2746 |
 | Extra moving parts | sidecar container + `nginx.conf` ConfigMap | none |
 | Cert format | PEM (nginx `ssl_certificate`) | PEM (Secret-name convention) |
 
@@ -356,7 +362,7 @@ Known per-backend state:
 | **Grafana-Jenkins Datasource** | Helm parameters | ✅ **done (stage 6a, `observability.mode=oss` only)** — Overridden dynamically in `argocd/observability-oss/templates/kube-prometheus-stack.yaml` to target `https://jenkins...:8080` and set `tlsSkipVerify: true` in the Grafana configuration when Backend TLS is active, resolving panel errors without configuration drift. |
 | **microservices gateway (JHipster)** | Spring Boot `server.ssl.*` + cert-manager `keystores.pkcs12` | **cross-repo** — the deploy chart lives in `jenkins-2026-gitops-config`; also interacts with Argo Rollouts canary routes and every engine's smoke test URL |
 | **Tekton Dashboard** | unprivileged Nginx sidecar proxy for TLS termination | ✅ **done (stage 8, `ci.engine=tekton` only)** — Because the Tekton Dashboard binary (`/ko-app/dashboard`) lacks native TLS options, the `dashboard-tls` overlay adds an `nginx-tls-proxy` sidecar container running `nginxinc/nginx-unprivileged:alpine` (conforming to GKE's strict security context guidelines). The sidecar mounts the `tekton-dashboard-tls` secret and a ConfigMap-generated `nginx.conf`, listens on port `9097` (HTTPS), and proxies decrypted traffic locally to the main dashboard container running on port `8080` (HTTP). `09-gateway.sh` adds the matching `BackendTLSPolicy` and HTTPS `HealthCheckPolicy` (`/readiness`). |
-| **Argo Workflows Server** | native arguments + mounted cert | ✅ **done (stage 9, `ci.engine=argoworkflows` only)** — The `workflows-tls` overlay is conditionally selected by the parent Application when `backendTls` is active, mounting the `argo-server-tls` secret and changing `readinessProbe` to HTTPS scheme. `09-gateway.sh` attaches the matching `BackendTLSPolicy` and HTTPS `HealthCheckPolicy` (`/`). |
+| **Argo Workflows Server** | native `--tls-certificate-secret-name` flag | ✅ **done (stage 9, `ci.engine=argoworkflows` only)** — The `workflows-tls` overlay (selected by the parent Application when `backendTls` is active) sets `--tls-certificate-secret-name=argo-server-tls` so argo-server loads the cert-manager cert by name (**without this flag it self-signs and the LB CA-validation 502s** — the bug the first live run surfaced; `--secure` defaults on) and flips `readinessProbe` to HTTPS. `09-gateway.sh` attaches the matching `BackendTLSPolicy` and HTTPS `HealthCheckPolicy` (`/`). |
 
 ## Does `secrets.backend=eso` change anything?
 

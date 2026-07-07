@@ -14,9 +14,17 @@ patches:
           spec:
             containers:
               - name: argo-server
+                # --tls-certificate-secret-name is the LOAD-BEARING flag: without it,
+                # argo-server (even with --secure) GENERATES A SELF-SIGNED cert, so the
+                # GKE LB's BackendTLSPolicy CA-validation rejects the handshake and the
+                # browser gets "upstream connect error ... local connection failure".
+                # With it, argo-server loads the cert-manager cert from the
+                # argo-server-tls Secret BY NAME via the k8s API (GetServerTLSConfigFromSecret) —
+                # so the volumeMount below is belt-and-suspenders, not how it reads the cert.
                 args:
                   - server
                   - --auth-mode=server
+                  - --tls-certificate-secret-name=argo-server-tls
                 readinessProbe:
                   httpGet:
                     path: /
