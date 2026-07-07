@@ -768,10 +768,14 @@ spec:
             chmod +x "${ARGOCD}"
           fi
           server="${ARGOCD_SERVER}"; flags="--grpc-web --insecure"
-          case "${server}" in
-            *:*) ;;
-            *) server="${server}:80"; flags="${flags} --plaintext" ;;
-          esac
+          # Auto-detect if Backend TLS is active by checking the gateway-tls secret in target namespace
+          if kubectl get secret gateway-tls -n "{{inputs.parameters.target-namespace}}" >/dev/null 2>&1; then
+            server="${server}:443"
+          else
+            server="${server}:80"
+            flags="${flags} --plaintext"
+          fi
+
           APP="microservices-{{inputs.parameters.env-name}}"
           # The app has automated selfHeal: pushing the new image tag (the GitOps Update
           # step before this) makes ArgoCD auto-sync it, which can be MID-FLIGHT when this
@@ -825,13 +829,19 @@ spec:
           - name: port
           - name: health-path
       script:
-        image: curlimages/curl:8.10.1
+        image: alpine/k8s:1.31.3
         command: [sh]
         source: |
           set -eux
+          protocol="http"
+          curl_opts=""
+          if [ "{{inputs.parameters.service-name}}" = "gateway" ] && kubectl -n "{{inputs.parameters.target-namespace}}" get secret gateway-tls >/dev/null 2>&1; then
+            protocol="https"
+            curl_opts="-k"
+          fi
           curl -sf --connect-timeout 5 --max-time 60 \
-            --retry 5 --retry-delay 3 --retry-all-errors \
-            "http://{{inputs.parameters.service-name}}.{{inputs.parameters.target-namespace}}.svc.cluster.local:{{inputs.parameters.port}}{{inputs.parameters.health-path}}"
+            --retry 5 --retry-delay 3 --retry-all-errors $curl_opts \
+            "$protocol://{{inputs.parameters.service-name}}.{{inputs.parameters.target-namespace}}.svc.cluster.local:{{inputs.parameters.port}}{{inputs.parameters.health-path}}"
 
     # ---- k6-smoke (Tekton task: k6-smoke) ----------------------------------------
     # Stage "Integration k6 Smoke Test" (vars/MicroservicesK6SmokePipeline.groovy):
@@ -1108,6 +1118,14 @@ spec:
           # --summary-export - k6 2.0's --summary-export emits a flattened schema
           # that broke the .values.* parsers. See microservices-smoke.js.
           export K6_SUMMARY_OUT="/workspace/k6-summary.json"
+
+          # Detect gateway scheme from presence of gateway-tls secret
+          GATEWAY_SCHEME="http"
+          if kubectl get secret gateway-tls -n "${TARGET_NAMESPACE}" >/dev/null 2>&1; then
+            GATEWAY_SCHEME="https"
+          fi
+          export K6SIM_GATEWAY_SCHEME="${GATEWAY_SCHEME}"
+
           # ci_runner/k6_profile as k6 --tag (metric labels), not resource attrs - see
           # the Jenkins/GHA runners: Grafana Cloud only promotes a fixed set of resource
           # attrs to labels, so custom ones must be metric tags for the dashboard filters.

@@ -270,6 +270,9 @@ Legacy stubs ([`docs/architecture.md`](docs/architecture.md), [`docs/observabili
   any new config knobs rather than adding new flags ad hoc.
 - Shell scripts: `bash`, `set -euo pipefail` via `lib/common.sh`, `yq` for
   YAML. Don't introduce other YAML tooling.
+- **Shell Quoting inside Windows/WSL commands**: When executing commands in WSL from a Windows host shell (e.g., `wsl bash -c ...`), avoid nested double quotes to prevent PowerShell parsing errors (like `unexpected EOF`). Instead, wrap the outer command in single quotes `'` and use double quotes `"` internally, or write complex commands into a script in `scratch/` and run the script file inside WSL.
+- **Interactive local run confirmation & feature flag querying**: Whenever the agent plans to execute a setup or deployment script locally (e.g., `scripts/up.sh`, `scripts/09-gateway.sh`, `scripts/04-jenkins.sh`, etc.), the agent **MUST NOT** launch it immediately. The agent **MUST** explicitly ask the user for confirmation first, presenting the option to override or activate feature flags (e.g., `JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED` for BackendTLS, `JENKINS2026_OBS_MODE` for observability mode, or `JENKINS2026_CI_ENGINE` for the CI engine).
+
 - **Contributor process** (human-facing summary of these conventions):
   [`CONTRIBUTING.md`](CONTRIBUTING.md) — branch model, idempotency contract,
   feature-flag pattern, secrets hygiene, Terraform gate, local checks.

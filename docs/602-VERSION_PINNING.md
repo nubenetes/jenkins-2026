@@ -26,8 +26,8 @@ This isn't theoretical — **every floating version here has bitten us at least 
 
 - **Jenkins chart was `""` (latest)** → it silently moved to 5.9.x, which split
   `authorizationStrategy`/`securityRealm` into their own ConfigMaps and crashed JCasC
-  at boot (`Single entry map expected … found multiple entries`). Pinned to `5.9.29`.
-  See [401. Jenkins](./401-JENKINS.md).
+  at boot (`Single entry map expected … found multiple entries`). Pinned (originally
+  `5.9.29`, now `5.9.32` — see the matrix). See [401. Jenkins](./401-JENKINS.md).
 - **`az` CLI extension (unpinned)** started sending a retired ARM api-version
   (`InvalidApiVersionParameter`) and broke the Azure dashboard publish.
 - **`yq` from `releases/latest/download`** could change behaviour between two runs of
@@ -39,12 +39,12 @@ This isn't theoretical — **every floating version here has bitten us at least 
 
 | Component | Pinned to | Source of truth | Mechanism |
 |---|---|---|---|
-| **Jenkins** chart | `5.9.29` | `config/config.yaml` `jenkins.chart.version` | ArgoCD `targetRevision` ([`jenkins-app.yaml`](../argocd/jenkins-app.yaml)) |
+| **Jenkins** chart | `5.9.32` | `config/config.yaml` `jenkins.chart.version` | ArgoCD `targetRevision` ([`jenkins-app.yaml`](../argocd/jenkins-app.yaml)) |
 | **Jenkins plugins** (full set, exact) | per [`helm/jenkins/values-common.yaml`](../helm/jenkins/values-common.yaml) `controller.installPlugins` | same file | `jenkins-plugin-cli`-resolved against `controller.image.tag`; **bump deliberately** — incl. for security advisories (see below) |
 | **ArgoCD** *(policy)* | **latest stable `3.4.x`** + chart `9.5.22` | `config/config.yaml` `argocd.version_constraint` + `chartVersion` | runtime resolve + daily watcher — see below |
 | **OTel operator** chart | `0.117.0` | `config.yaml` `observability.otelOperator.chart.version` | `helm --version` in [`02-otel-operator.sh`](../scripts/02-otel-operator.sh) |
 | **OTel collector** chart | `0.159.0` | `config.yaml` `observability.otelCollector.chart.version` | `helm --version` in [`03-observability.sh`](../scripts/03-observability.sh) |
-| **grafana/k8s-monitoring** | `4.1.6` | `03-observability.sh` (`--version`) | grafana-cloud mode only |
+| **grafana/k8s-monitoring** | `4.2.0` | `03-observability.sh` (`--version`) | grafana-cloud mode only |
 | **grafana/pdc-agent** | `0.2.0` | `03-observability.sh` (`--version`) | grafana-cloud mode only |
 | **Headlamp** chart | `0.43.0` | `config.yaml` `headlamp.chart.version` + [`headlamp-app.yaml`](../argocd/headlamp-app.yaml) | ArgoCD `targetRevision` |
 | **kube-prometheus-stack / Loki / Tempo** | `87.0.1 / 7.0.0 / 1.24.4` | [`argocd/observability-oss/values.yaml`](../argocd/observability-oss/values.yaml) | ArgoCD `targetRevision` |

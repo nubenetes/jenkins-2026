@@ -41,7 +41,8 @@ log_step "Applying Tekton app-of-apps via ArgoCD (argocd/tekton-app.yaml)"
 TEKTON_APP_FILE="$(mktemp)"
 REPO_URL="${J2026_SELF_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
 sed "s@{{repoUrl}}@${REPO_URL}@g;
-     s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g" \
+     s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g;
+     s@{{backendTlsEnabled}}@$(j2026_backend_tls_active)@g" \
     "${J2026_ROOT_DIR}/argocd/tekton-app.yaml" > "${TEKTON_APP_FILE}"
 kubectl apply -f "${TEKTON_APP_FILE}"
 rm -f "${TEKTON_APP_FILE}"

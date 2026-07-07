@@ -285,6 +285,15 @@ j2026_backend_tls_active() {
   fi
 }
 
+# Backend TLS for argocd-server (the ArgoCD UI hop) is now active for all
+# engines. Callers (Jenkins, GitHub Actions, Tekton, and Argo Workflows) have
+# been updated to dynamically detect the secret and connect using port 443
+# and TLS or port 80 and plaintext. Echoes true/false.
+j2026_argocd_backend_tls_active() {
+  j2026_backend_tls_active
+}
+
+
 # --- CI-engine retirement (mutual exclusivity) -------------------------------
 # The four CI engines (jenkins · tekton · githubactions · argoworkflows) are
 # mutually exclusive, so selecting one must FULLY retire the other three. Each

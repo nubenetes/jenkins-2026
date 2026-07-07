@@ -21,6 +21,22 @@ kubectl rollout status "statefulset/${RELEASE}" -n "${NS}" --timeout=10m
 ADMIN_PASSWORD="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${NS}" -o jsonpath='{.data.admin-password}' | base64 -d)"
 AUTH="${J2026_JENKINS_ADMIN_USER}:${ADMIN_PASSWORD}"
 
+# Local REST API base for the in-pod curls below. With backend TLS active
+# (docs/504) the controller serves HTTPS on 8080 and plain HTTP on the pod's
+# httpsKeyStore.httpPort (8081); these calls run INSIDE the pod (localhost), so
+# target the plain-HTTP port to avoid speaking HTTP to the HTTPS listener (which
+# returns an empty/garbage reply and hangs the crumb fetch). Plain 8080
+# otherwise. JENKINS_FWD_SVC_PORT is the matching plain SERVICE port for the
+# port-forward hint at the end (8082 → pod 8081 under TLS; see
+# helm/jenkins/values-backend-tls.yaml).
+if [[ "$(j2026_backend_tls_active)" == "true" ]]; then
+  JENKINS_LOCAL_URL="http://localhost:8081"
+  JENKINS_FWD_SVC_PORT=8082
+else
+  JENKINS_LOCAL_URL="http://localhost:8080"
+  JENKINS_FWD_SVC_PORT=8080
+fi
+
 jenkins_exec() {
   kubectl exec -n "${NS}" "${POD}" -c jenkins -- "$@"
 }
@@ -51,7 +67,7 @@ fetch_crumb() {
   local deadline=$(( SECONDS + 300 )) crumb_json
   while [[ $SECONDS -lt $deadline ]]; do
     crumb_json="$(jenkins_exec curl -s --max-time 10 -c /tmp/seed-cookies.txt -u "${AUTH}" \
-        'http://localhost:8080/crumbIssuer/api/json' 2>/dev/null || true)"
+        "${JENKINS_LOCAL_URL}/crumbIssuer/api/json" 2>/dev/null || true)"
     CRUMB="$(printf '%s' "${crumb_json}" \
       | python3 -c 'import sys,json; print(json.load(sys.stdin)["crumb"])' 2>/dev/null || true)"
     [[ -n "${CRUMB}" ]] && break
@@ -67,7 +83,7 @@ run_seed_build() {
   local trig http queue build result deadline
   # -i includes response headers so we can read the Location header for the queue item ID
   trig="$(jenkins_exec curl -si -b /tmp/seed-cookies.txt -u "${AUTH}" \
-    -H "Jenkins-Crumb: ${CRUMB}" -X POST 'http://localhost:8080/job/seed-jobs/build')"
+    -H "Jenkins-Crumb: ${CRUMB}" -X POST "${JENKINS_LOCAL_URL}/job/seed-jobs/build")"
   http="$(printf '%s' "${trig}" | head -1 | tr -d '\r\n' | awk '{print $2}')"
   # Location is always .../queue/item/<id>/ regardless of the configured Jenkins root URL
   queue="$(printf '%s' "${trig}" | grep -i '^Location:' | tr -d '\r' | grep -oE '[0-9]+/?$' | tr -d '/')"
@@ -78,7 +94,7 @@ run_seed_build() {
   build=""; deadline=$(( SECONDS + 120 ))
   while [[ $SECONDS -lt $deadline ]]; do
     build="$(jenkins_exec curl -sg -u "${AUTH}" \
-        "http://localhost:8080/queue/item/${queue}/api/json" \
+        "${JENKINS_LOCAL_URL}/queue/item/${queue}/api/json" \
       | python3 -c 'import sys,json; d=json.load(sys.stdin); exe=d.get("executable"); print(exe["number"] if exe else "")' \
       2>/dev/null || true)"
     [[ -n "${build}" ]] && break
@@ -91,7 +107,7 @@ run_seed_build() {
   result=""; deadline=$(( SECONDS + 360 ))
   while [[ $SECONDS -lt $deadline ]]; do
     result="$(jenkins_exec curl -sg -u "${AUTH}" \
-        "http://localhost:8080/job/seed-jobs/${build}/api/json" \
+        "${JENKINS_LOCAL_URL}/job/seed-jobs/${build}/api/json" \
       | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d.get("result") or "")' \
       2>/dev/null || true)"
     [[ -n "${result}" ]] && break
@@ -127,7 +143,7 @@ done
 # +2: seed-jobs itself + microservices-k6-smoke (matches smoke-test.sh EXPECTED_JOBS)
 min_jobs=$((expected + 2))
 
-count="$(jenkins_exec curl -sg -u "${AUTH}" 'http://localhost:8080/api/json?tree=jobs[name]' \
+count="$(jenkins_exec curl -sg -u "${AUTH}" "${JENKINS_LOCAL_URL}/api/json?tree=jobs[name]" \
   | python3 -c 'import sys,json; print(len(json.load(sys.stdin)["jobs"]))')"
 if [[ "${count}" -lt "${min_jobs}" ]]; then
   log_error "Expected >= ${min_jobs} jobs after seed run, found only ${count}"
@@ -135,5 +151,5 @@ if [[ "${count}" -lt "${min_jobs}" ]]; then
 fi
 log_info "Found ${count} jobs (>= ${min_jobs}: ${expected} Microservices pipelines + seed-jobs + k6-smoke)"
 
-log_info "Seed pipeline triggered. Browse http://localhost:8080/view/microservices/ (after port-forwarding)"
-log_info "  kubectl -n ${NS} port-forward svc/${RELEASE} 8080:8080"
+log_info "Seed pipeline triggered. Browse ${JENKINS_LOCAL_URL}/view/microservices/ (after port-forwarding)"
+log_info "  kubectl -n ${NS} port-forward svc/${RELEASE} ${JENKINS_LOCAL_URL##*:}:${JENKINS_FWD_SVC_PORT}"

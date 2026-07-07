@@ -221,7 +221,7 @@ jobs:
   destroy-grafana-cloud-token:
     if: ${{ inputs.destroy_unused_backends && inputs.observability_mode != 'grafana-cloud' }}
     runs-on: ubuntu-latest
-    environment: grafana-cloud-bootstrap
+    environment: gke-production
     permissions:
       contents: read
       id-token: write
@@ -301,12 +301,16 @@ jobs:
           TF_VAR_jenkins_admin_password: "destroy-placeholder"
         run: terraform destroy -auto-approve -input=false
 
+  # `confirm: 'destroy'` mirrors the explicit `destroy_unused_backends` checkbox
+  # back into the reusable workflow's own guard — these jobs only run when that
+  # checkbox is true (see `if:` above), so the checkbox IS the confirmation.
   destroy-grafana-cloud:
     # Runs AFTER the token is retired (above) so Decom.infra.02's token-ordering guard passes.
     needs: [destroy-grafana-cloud-token]
     if: ${{ inputs.destroy_unused_backends && inputs.observability_mode != 'grafana-cloud' }}
     uses: ./.github/workflows/Decom.infra.02-grafana-cloud.yml
     with:
+      confirm: "destroy"
       log_level: ${{ inputs.log_level || 'info' }}
     secrets: inherit
 
@@ -314,6 +318,7 @@ jobs:
     if: ${{ inputs.destroy_unused_backends && inputs.observability_mode != 'managed-azure' }}
     uses: ./.github/workflows/Decom.infra.03-azure-grafana.yml
     with:
+      confirm: "destroy"
       log_level: ${{ inputs.log_level || 'info' }}
     secrets: inherit
 
@@ -321,6 +326,7 @@ jobs:
     if: ${{ inputs.destroy_unused_backends && inputs.observability_mode != 'managed-aws' }}
     uses: ./.github/workflows/Decom.infra.04-aws-grafana.yml
     with:
+      confirm: "destroy"
       log_level: ${{ inputs.log_level || 'info' }}
     secrets: inherit
 
@@ -813,7 +819,7 @@ jobs:
             echo "════════════════════════════════════════════════════════════════════════"
             if [[ "${{ inputs.enable_gateway }}" == "true" ]]; then
               echo "  Behind Google IAP — sign in with an authorized Google account:"
-              echo "    ArgoCD:                https://argocd.${dom}"
+              echo "    ArgoCD:                https://argocd.${dom}  (single sign-on: IAP + Dex authproxy; admin email = role:admin, else readonly)"
               echo "${ci_iap}"
               echo "    Headlamp:              https://headlamp.${dom}"
               echo "    pgAdmin:               https://pgadmin.${dom}"

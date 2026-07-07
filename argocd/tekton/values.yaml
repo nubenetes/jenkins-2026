@@ -5,6 +5,8 @@
 # argocd/tekton/components/*/kustomization.yaml (kustomize remote resources).
 repoURL: https://github.com/nubenetes/jenkins-2026.git
 targetRevision: main
+backendTls: false
+
 
 namespace:
   # Tekton control plane (Pipelines/Triggers/Dashboard) - upstream default.

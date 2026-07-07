@@ -1,0 +1,72 @@
+# Grafana backend-TLS overlay (kube-prometheus-stack values) — layered ON TOP of
+# values-oss.yaml (later valueFiles win) by the observability-oss app-of-apps ONLY
+# when the opt-in backend-TLS feature is active (gateway.backendTls.enabled + the
+# BackendTLSPolicy CRD — see docs/504-BACKEND_TLS.md). The oss-kube-prometheus-stack
+# child Application's valueFiles gain this file only when
+# argocd/observability-oss/templates/kube-prometheus-stack.yaml sees backendTls=true
+# (threaded down as a helm parameter by scripts/03-observability.sh from
+# j2026_backend_tls_active). NOT referenced when the flag is off, so the default
+# posture (plain-HTTP Grafana on port 80 → pod 3000) is untouched.
+#
+# This is the ONLY doubly-conditional backend-TLS stage: in-cluster Grafana exists
+# only in observability.mode=oss (the managed backends live off-cluster), so the
+# whole overlay is reachable only in oss mode — the observability-oss app-of-apps
+# that layers it is applied by 03-observability.sh's oss branch alone.
+#
+# Makes Grafana terminate TLS itself using the cert-manager-minted `grafana-tls`
+# Secret (scripts/08.7-backend-tls.sh; SAN =
+# oss-kube-prometheus-stack-grafana.<obs-ns>.svc.cluster.local, the hostname the
+# BackendTLSPolicy scripts/09-gateway.sh generates sends as SNI and validates). The
+# Google L7 LB then re-encrypts the LB→pod hop.
+#
+# All keys nest under `grafana:` (the kube-prometheus-stack Grafana subchart) and
+# deep-MERGE over the base values-oss.yaml — grafana.ini.server gains three keys
+# beside the base's root_url (map merge), and extraSecretMounts / the probes are
+# lists/maps the base does NOT set, so Helm's list-REPLACE merge can't clobber
+# anything the base configures.
+grafana:
+  # Terminate TLS in Grafana itself. cert_file/cert_key point at the mounted
+  # grafana-tls Secret below; %(protocol)s in the base root_url becomes https, but
+  # the public root_url is overridden by GF_SERVER_ROOT_URL (grafana-runtime-config)
+  # to https://grafana.<baseDomain> regardless, so this only tightens the in-cluster
+  # default. server.protocol=https is what flips Grafana's listener to HTTPS on 3000.
+  grafana.ini:
+    server:
+      protocol: https
+      cert_file: /etc/grafana/certs/tls.crt
+      cert_key: /etc/grafana/certs/tls.key
+
+  # Mount the cert-manager `grafana-tls` Secret (tls.crt/tls.key, exactly the keys
+  # cert-manager writes) at /etc/grafana/certs. NOT a subPath mount, so the files
+  # inherit the pod's fsGroup (472) — defaultMode 0440 (owner+group read) lets the
+  # Grafana process (UID/GID 472) read them via the group bit while staying tighter
+  # than world-readable.
+  extraSecretMounts:
+    - name: grafana-tls
+      secretName: grafana-tls
+      mountPath: /etc/grafana/certs
+      readOnly: true
+      defaultMode: 0440
+
+  # The kube-prometheus-stack Grafana subchart renders livenessProbe/readinessProbe
+  # VERBATIM from these values with NO automatic scheme detection from
+  # server.protocol — so the probes must be given scheme: HTTPS explicitly, or the
+  # kubelet keeps probing plain HTTP against the now-TLS listener and the pod never
+  # goes Ready. This is CHART behaviour (grafana Helm chart 12.4.x, bundled in
+  # kube-prometheus-stack 87.0.1) and is independent of the Grafana APP version
+  # (image tag 13.1.0, pinned in values-oss.yaml). `port: grafana` is the chart's
+  # named container port (= service.targetPort, 3000); timings mirror the chart
+  # defaults so this only adds the scheme.
+  readinessProbe:
+    httpGet:
+      path: /api/health
+      port: grafana
+      scheme: HTTPS
+  livenessProbe:
+    httpGet:
+      path: /api/health
+      port: grafana
+      scheme: HTTPS
+    initialDelaySeconds: 60
+    timeoutSeconds: 30
+    failureThreshold: 10

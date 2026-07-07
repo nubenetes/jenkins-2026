@@ -22,12 +22,18 @@ def call(Map cfg) {
       # Service endpoints/kube-proxy/CNI can also lag a just-finished rollout, so a
       # fresh pod's first connection can time out even when Pods are Ready - retry.
       ns="\$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace)"
+      protocol="http"
+      curl_opts=""
+      if [ "${cfg.serviceName}" = "gateway" ] && kubectl -n "${cfg.namespace}" get secret gateway-tls >/dev/null 2>&1; then
+        protocol="https"
+        curl_opts="-k"
+      fi
       kubectl -n "\$ns" run smoke-${cfg.serviceName}-${env.BUILD_NUMBER} \
         --rm -i --restart=Never --image=curlimages/curl:8.10.1 \
         --labels=jenkins=slave \
         --command -- curl -sf --connect-timeout 5 --max-time 60 \
-        --retry 5 --retry-delay 3 --retry-all-errors \
-        http://${cfg.serviceName}.${cfg.namespace}.svc.cluster.local:${cfg.port}${cfg.healthPath}
+        --retry 5 --retry-delay 3 --retry-all-errors \$curl_opts \
+        \$protocol://${cfg.serviceName}.${cfg.namespace}.svc.cluster.local:${cfg.port}${cfg.healthPath}
     """
   }
 }

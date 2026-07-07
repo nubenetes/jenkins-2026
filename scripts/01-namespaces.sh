@@ -79,13 +79,22 @@ log_step "Ensuring '${J2026_JENKINS_CREDENTIALS_SECRET}' Secret in ${J2026_JENKI
 if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
   # eso → seed the create-time/sensitive keys into Secret Manager. admin-password is
   # kept STABLE across runs (sm_keep_or_generate) so Jenkins + grafana-jenkins-ds agree
-  # on it. ESO projects these with creationPolicy: Merge (08.6), so the URL keys patched
-  # below + the argocd-token patched by 08.5 survive. Merge needs the Secret to exist, so
+  # on it. ESO projects these with creationPolicy: Merge (08.6), so the *04-patched* keys
+  # (grafana-base-url, the dashboard uids, k8s-app-link, microservices-url, …) + the
+  # argocd-token patched by 08.5 survive — because ESO's Merge only touches the keys it
+  # extracts from SM, leaving 04-only keys intact. Merge needs the Secret to exist, so
   # ensure an (empty) base for the merge-patches + ESO to target.
+  #
+  # grafana-base-url is DELIBERATELY not seeded here (nor in the imperative create below):
+  # it is a *derived* URL that 04-jenkins.sh computes per observability.mode and patches
+  # into the live Secret. Seeding it into SM would put an EMPTY value there in oss/managed
+  # modes (GRAFANA_BASE_URL is only set for grafana-cloud) — and ESO's hourly Merge re-sync
+  # would then clobber 04's real URL back to empty, collapsing every Grafana banner
+  # deep-link to the Jenkins host (/d/<uid> resolves against the current page). Letting 04
+  # be the sole owner is exactly how the other derived URL keys already work.
   admin_password="$(sm_keep_or_generate "${J2026_JENKINS_CREDENTIALS_SECRET}" admin-password "${ADMIN_PASSWORD:-$(openssl rand -base64 24 | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c20)}")"
   provision_secret "${J2026_JENKINS_NAMESPACE}" "${J2026_JENKINS_CREDENTIALS_SECRET}" \
     "admin-password=${admin_password}" \
-    "grafana-base-url=${GRAFANA_BASE_URL:-}" \
     "registry-username=${REGISTRY_USERNAME:-}" \
     "registry-password=${REGISTRY_PASSWORD:-}" \
     "git-username=${GIT_USERNAME:-}" \
@@ -113,10 +122,11 @@ else
     log_warn "escape-hatch admin login (above) still works. See README.md \"Jenkins\"."
   fi
 
+  # grafana-base-url is intentionally omitted — 04-jenkins.sh is its sole owner
+  # (derived per observability.mode). See the eso branch above for the full why.
   kubectl create secret generic "${J2026_JENKINS_CREDENTIALS_SECRET}" \
     -n "${J2026_JENKINS_NAMESPACE}" \
     --from-literal=admin-password="${admin_password}" \
-    --from-literal=grafana-base-url="${GRAFANA_BASE_URL:-}" \
     --from-literal=registry-username="${REGISTRY_USERNAME:-}" \
     --from-literal=registry-password="${REGISTRY_PASSWORD:-}" \
     --from-literal=git-username="${GIT_USERNAME:-}" \
@@ -208,7 +218,9 @@ else
   # the same client ID/secret must exist in each backend's namespace. The OSS
   # Grafana (observability.mode=oss) is IAP-protected too, so its namespace
   # needs the secret as well - only in oss mode, where Grafana runs in-cluster.
-  iap_namespaces=("${J2026_HEADLAMP_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}")
+  # ArgoCD is IAP-fronted too (defense-in-depth; its Dex authproxy connector trusts
+  # the IAP identity header — docs/504/501), and is always deployed, so unconditional.
+  iap_namespaces=("${J2026_HEADLAMP_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}" "${J2026_ARGOCD_NAMESPACE}")
   if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
     iap_namespaces+=("${J2026_GRAFANA_OSS_NAMESPACE}")
   fi
@@ -576,10 +588,10 @@ metadata:
   name: headlamp-quota
 spec:
   hard:
-    requests.cpu: "200m"
-    requests.memory: 256Mi
-    limits.cpu: "500m"
-    limits.memory: 512Mi
+    requests.cpu: "500m"
+    requests.memory: 512Mi
+    limits.cpu: "1.0"
+    limits.memory: 1.0Gi
 EOF
 
 # 4. ArgoCD Namespace Quota
@@ -679,6 +691,47 @@ if [[ "${J2026_PLATFORM}" == "gke" && "${J2026_NODE_AUTOPROVISIONING_ENABLED}" =
     log_info "ComputeClass '${J2026_NODE_AUTOPROVISIONING_COMPUTE_CLASS}' applied — CI agents will provision Spot nodes on demand."
   else
     log_warn "ComputeClass apply failed (NAP may not be ready yet). Continuing — this is non-fatal; re-run Day1 to converge."
+  fi
+fi
+
+# GKE NEG finalizer self-heal: GKE's NEG controller has a known issue where if a Service
+# is deleted and recreated (or updated) with the same name, the old ServiceNetworkEndpointGroup
+# (svcneg) gets stuck in "Terminating" (Pending deletion) because the finalizer is blocked.
+# Clean up any stuck terminating svcnegs by removing their finalizers.
+if [[ "${J2026_PLATFORM}" == "gke" ]] && kubectl get crd servicenetworkendpointgroups.networking.gke.io >/dev/null 2>&1; then
+  log_step "Self-heal: cleaning up stuck terminating GKE ServiceNetworkEndpointGroups"
+  stuck_negs=$(kubectl get svcneg -A -o jsonpath="{range .items[?(@.metadata.deletionTimestamp)]}{.metadata.namespace}/{.metadata.name}{' '}{end}")
+  for neg in ${stuck_negs}; do
+    ns="${neg%/*}"
+    name="${neg#*/}"
+    log_warn "Clearing finalizer from stuck GKE svcneg: ${ns}/${name}"
+    kubectl patch svcneg "${name}" -n "${ns}" --type=merge -p '{"metadata":{"finalizers":null}}' || true
+  done
+
+  log_step "Self-heal: detecting and fixing unsynced GKE ServiceNetworkEndpointGroups"
+  unsynced_negs=$(kubectl get svcneg -A -o json | jq -r '.items[] | select(.status.lastSyncTime == null or .status.networkEndpointGroups == null) | "\(.metadata.namespace)/\(.metadata.name)"' 2>/dev/null || true)
+  if [[ -n "${unsynced_negs}" ]]; then
+    log_info "Detected unsynced GKE svcneg resources. Waiting 15s grace period..."
+    sleep 15
+    still_unsynced=$(kubectl get svcneg -A -o json | jq -r '.items[] | select(.status.lastSyncTime == null or .status.networkEndpointGroups == null) | "\(.metadata.namespace)/\(.metadata.name)"' 2>/dev/null || true)
+    for neg in ${still_unsynced}; do
+      ns="${neg%/*}"
+      name="${neg#*/}"
+      svc_name=$(kubectl get svcneg "${name}" -n "${ns}" -o jsonpath='{.metadata.labels.networking\.gke\.io/service-name}' 2>/dev/null || true)
+      if [[ -z "${svc_name}" ]]; then
+        continue
+      fi
+      neg_config=$(kubectl get svc "${svc_name}" -n "${ns}" -o jsonpath='{.metadata.annotations.cloud\.google\.com/neg}' 2>/dev/null || true)
+      if [[ -z "${neg_config}" ]]; then
+        continue
+      fi
+      log_warn "Self-healing stuck GKE NEG cache for service: ${ns}/${svc_name}"
+      kubectl annotate service "${svc_name}" -n "${ns}" cloud.google.com/neg- --overwrite >/dev/null 2>&1 || true
+      sleep 3
+      kubectl patch svcneg "${name}" -n "${ns}" --type=merge -p '{"metadata":{"finalizers":null}}' >/dev/null 2>&1 || true
+      sleep 2
+      kubectl annotate service "${svc_name}" -n "${ns}" cloud.google.com/neg="${neg_config}" --overwrite >/dev/null 2>&1 || true
+    done
   fi
 fi
 

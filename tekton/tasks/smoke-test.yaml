@@ -12,10 +12,16 @@ spec:
     - name: health-path
   steps:
     - name: curl-health
-      image: curlimages/curl:8.10.1
+      image: alpine/k8s:1.31.3
       script: |
         #!/bin/sh
         set -eux
+        protocol="http"
+        curl_opts=""
+        if [ "$(params.service-name)" = "gateway" ] && kubectl -n "$(params.target-namespace)" get secret gateway-tls >/dev/null 2>&1; then
+          protocol="https"
+          curl_opts="-k"
+        fi
         curl -sf --connect-timeout 5 --max-time 60 \
-          --retry 5 --retry-delay 3 --retry-all-errors \
-          "http://$(params.service-name).$(params.target-namespace).svc.cluster.local:$(params.port)$(params.health-path)"
+          --retry 5 --retry-delay 3 --retry-all-errors $curl_opts \
+          "$protocol://$(params.service-name).$(params.target-namespace).svc.cluster.local:$(params.port)$(params.health-path)"

@@ -191,14 +191,31 @@ jobs:
         if: github.event_name != 'pull_request'
         run: |
           ARGOCD_TOKEN="$(cat /var/run/secrets/arc-argocd/token 2>/dev/null || echo "${{ env.ARGOCD_TOKEN }}")"
-          argocd app sync  "microservices-$ENV_NAME" --auth-token "$ARGOCD_TOKEN" --server argocd-server.{{argocdNamespace}}.svc.cluster.local --insecure || true
-          argocd app wait  "microservices-$ENV_NAME" --auth-token "$ARGOCD_TOKEN" --server argocd-server.{{argocdNamespace}}.svc.cluster.local --insecure --sync --health --timeout 300 || true
+          server="argocd-server.{{argocdNamespace}}.svc.cluster.local"
+          flags="--grpc-web --insecure"
+          # Auto-detect if Backend TLS is active by checking the gateway-tls secret in target namespace
+          TARGET_NS="microservices-$ENV_NAME"
+          if command -v kubectl >/dev/null 2>&1 && kubectl -n "${TARGET_NS}" get secret gateway-tls >/dev/null 2>&1; then
+            server="${server}:443"
+          else
+            server="${server}:80"
+            flags="${flags} --plaintext"
+          fi
+          argocd app sync  "microservices-$ENV_NAME" --auth-token "$ARGOCD_TOKEN" --server "${server}" ${flags} || true
+          argocd app wait  "microservices-$ENV_NAME" --auth-token "$ARGOCD_TOKEN" --server "${server}" ${flags} --sync --health --timeout 300 || true
+
 
       - name: Smoke test
         if: github.event_name != 'pull_request'
         run: |
-          curl -fsS --retry 10 --retry-delay 6 --retry-all-errors \
-            "http://{{svcName}}.${TARGET_NS}.svc.cluster.local:{{svcPort}}{{svcHealth}}" || echo "smoke retry exhausted (non-fatal)"
+          protocol="http"
+          curl_opts=""
+          if [ "{{svcName}}" = "gateway" ] && command -v kubectl >/dev/null 2>&1 && kubectl -n "${TARGET_NS}" get secret gateway-tls >/dev/null 2>&1; then
+            protocol="https"
+            curl_opts="-k"
+          fi
+          curl -fsS $curl_opts --retry 10 --retry-delay 6 --retry-all-errors \
+            "$protocol://{{svcName}}.${TARGET_NS}.svc.cluster.local:{{svcPort}}{{svcHealth}}" || echo "smoke retry exhausted (non-fatal)"
 
       - name: Export pipeline OTel trace
         if: always()

@@ -17,11 +17,16 @@ concurrency:
 # integration permanently.
 #
 # Same auth as Day0.infra.03-azure-grafana.yml: GitHub OIDC -> Azure (no stored
-# client secret) + GitHub WIF -> GCP for the GCS state backend. Gated behind
-# the azure-bootstrap Environment's required reviewer.
+# client secret) + GitHub WIF -> GCP for the GCS state backend. Gated behind a
+# typed "destroy" confirmation on a direct dispatch (skipped when reused via
+# workflow_call, e.g. the Decom.infra.00 "Everything" umbrella).
 on:
   workflow_dispatch:
     inputs:
+      confirm:
+        description: 'Type "destroy" to confirm this teardown (IRREVERSIBLE)'
+        required: true
+        type: string
       log_level:
         description: "Script/Terraform verbosity: info (default) or debug (adds [DEBUG] script lines + TF_LOG=DEBUG). For runner-level tracing use GitHub's ACTIONS_STEP_DEBUG."
         required: false
@@ -32,6 +37,11 @@ on:
           - debug
   workflow_call: # reused by Day1.cluster.01 when destroy_unused_backends=true
     inputs:
+      confirm:
+        description: "Set to 'destroy' when the caller already gated this destructive action (e.g. Day1's destroy_unused_backends checkbox); left empty by the Decom.infra.00 umbrella, whose own guard already validated"
+        required: false
+        default: ""
+        type: string
       log_level:
         required: false
         default: "info"
@@ -47,11 +57,26 @@ env:
   TF_VERSION: "1.15.6"
 
 jobs:
-  decommission:
+  # Only enforced on a direct dispatch: when reused via `workflow_call` (the
+  # Decom.infra.00 "Everything" umbrella, or Day1.cluster.01's
+  # destroy_unused_backends preflight), `confirm` is not part of the caller's
+  # input schema, so this is a no-op — the caller already validated its own
+  # confirmation before invoking this workflow.
+  guard:
     runs-on: ubuntu-latest
-    # Required-reviewer gate + matches the Entra federated credential subject
-    # repo:<owner>/<repo>:environment:azure-bootstrap.
-    environment: azure-bootstrap
+    steps:
+      - name: Validate confirmation
+        run: |
+          if [ -n "${{ inputs.confirm }}" ] && [ "${{ inputs.confirm }}" != "destroy" ]; then
+            echo "::error::You must type 'destroy' in the confirm box to proceed."; exit 1
+          fi
+
+  decommission:
+    needs: guard
+    runs-on: ubuntu-latest
+    # Matches the Entra federated credential subject
+    # repo:<owner>/<repo>:environment:gke-production on the Entra app.
+    environment: gke-production
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0

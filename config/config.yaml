@@ -125,9 +125,12 @@ jenkins:
     repoUrl: https://charts.jenkins.io
     chartName: jenkins/jenkins
     # Pinned for reproducibility (empty = latest, which silently moved to 5.9.x and
-    # reintroduced the JCasC authz/securityRealm double-entry crash). 5.9.29 is the
-    # latest as of 2026-06-25 (appVersion 2.555.3, matching controller.image.tag).
-    version: "5.9.29"
+    # reintroduced the JCasC authz/securityRealm double-entry crash). 5.9.32 is the
+    # latest as of 2026-07-06 (appVersion still 2.555.3, matching controller.image.tag -
+    # 5.9.30-5.9.32 only bump agent.image/k8s-sidecar defaults + add an opt-in
+    # addMasterProxyEnvVars flag, neither of which we consume: our JCasC k8s cloud
+    # config pins its own inbound-agent image, and agent.enabled/image aren't set here).
+    version: "5.9.32"
   adminUser: admin
   # Name of the k8s Secret (created by scripts/01-namespaces.sh) holding the
   # admin password and other pipeline credentials (registry, git, Grafana).
@@ -290,7 +293,8 @@ observability:
   #                   secret-managed-azure.example.yaml + docs/301-OBSERVABILITY.md.
   #   managed-aws   - export to Amazon Managed Service for Prometheus +
   #                   X-Ray/CloudWatch; visualize in Amazon Managed Grafana.
-  mode: grafana-cloud
+  mode: oss
+
 
   # Grafana Cloud subscription tier — a PROFILE that governs the volume-control defaults
   # below so the free tier stays under its limits (15k active series + log volume). Only

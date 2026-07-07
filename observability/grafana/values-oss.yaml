@@ -35,6 +35,30 @@ kube-state-metrics:
   metricLabelsAllowlist:
     - nodes=[node.kubernetes.io/instance-type,beta.kubernetes.io/instance-type]
 
+# The node-exporter DaemonSet otherwise schedules one pod per node, including
+# any NAP-auto-provisioned node (generic overflow, not just the ci-spot
+# ComputeClass) - but those are small (e2-standard-2, ~2 vCPU) and end up
+# hosting the bulk of the ArgoCD-managed platform (argocd/cert-manager/
+# external-secrets/cnpg-operator/otel-operator/pgadmin), so they have no
+# CPU headroom left for one more DaemonSet pod. That leaves node-exporter's
+# 3rd replica permanently Pending, which keeps this whole ArgoCD Application
+# stuck "Progressing" (waiting for the DaemonSet to go healthy) even though
+# every real workload is fine. Pin node-exporter to the static, fixed-name
+# "<cluster_name>-pool" (terraform/gke main.tf) instead of excluding NAP by
+# name - NAP pool names carry a random suffix that changes every time it
+# reprovisions, so a NotIn wouldn't survive a rebuild. Losing host-level
+# metrics for a small, ephemeral overflow node isn't a meaningful loss.
+prometheus-node-exporter:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: cloud.google.com/gke-nodepool
+                operator: In
+                values:
+                  - jenkins-2026-pool
+
 prometheus:
   prometheusSpec:
     # Required for the otel-collector "gateway" release's
@@ -203,6 +227,42 @@ grafana:
       # per organization can be marked as default", see
       # prometheus-community/helm-charts#482). Disable the chart's copy.
       defaultDatasourceEnabled: false
+      # Self-healing fix for a race that left ALL FOUR datasources (Prometheus,
+      # Loki, Tempo, Jenkins) missing after a normal pod start - live-diagnosed
+      # 2026-07-06 (docs/902): the long-running WATCH sidecar's FIRST reload
+      # attempt (right after copying the labelled ConfigMap into the shared
+      # volume at boot) can race Grafana's own HTTP API not being ready yet;
+      # unlike a poll loop, the sidecar only re-fires on the NEXT ConfigMap
+      # change, so if that first call is dropped the datasources stay empty
+      # until something touches the ConfigMap (or someone manually POSTs
+      # /api/admin/provisioning/datasources/reload). initDatasources:true
+      # (chart's own documented fix for exactly this - values.yaml sidecar.
+      # datasources comment) runs the sidecar as an INIT CONTAINER instead: it
+      # copies the file into place and Grafana's native boot-time provisioning
+      # loader (which every restart already runs, independent of any HTTP call)
+      # picks it up deterministically before the container is ever marked
+      # Ready. skipReload:true then disables the now-redundant live-reload
+      # sidecar. Trade-off (acceptable here): a future edit to
+      # additionalDataSources below needs a Grafana pod restart to take effect
+      # (`kubectl -n observability rollout restart deploy
+      # oss-kube-prometheus-stack-grafana`, or any Day1/redeploy that recreates
+      # the pod) - unlike dashboards (grafana_dashboard sidecar, unaffected),
+      # nothing in this repo pushes a LIVE datasource change (grep confirms
+      # additionalDataSources is only ever set here, statically), so nothing
+      # depends on the live-reload path this trades away.
+      initDatasources: true
+      skipReload: true
+      # CRITICAL: the initContainer reuses this same watchMethod (chart's _pod.tpl
+      # sets METHOD: {{ .Values.sidecar.datasources.watchMethod }} verbatim on the
+      # init container - it does NOT default to a one-shot mode just because
+      # initDatasources is true). The chart's own watchMethod default is "WATCH",
+      # which per kiwigrid/k8s-sidecar's own docs "continuously watches for
+      # changes" and NEVER EXITS - as an init container that means the pod hangs
+      # in Init:0/1 forever, Grafana's main container never starts. "LIST" is the
+      # one documented method that "will just list config-maps/secrets and exit" -
+      # the only value that makes sense for a one-shot init container. Confirmed
+      # against kiwigrid/k8s-sidecar's own README, not assumed.
+      watchMethod: LIST
     # File-based alerting provisioning. Grafana's DB is ephemeral here
     # (persistence.enabled: false above), so alert rules pushed via the HTTP
     # provisioning API would be lost on every Grafana pod restart (e.g. an

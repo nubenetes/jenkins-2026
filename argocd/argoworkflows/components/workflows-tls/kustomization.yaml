@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../workflows
+patches:
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: argo-server
+        namespace: argo
+      spec:
+        template:
+          spec:
+            containers:
+              - name: argo-server
+                args:
+                  - server
+                  - --auth-mode=server
+                readinessProbe:
+                  httpGet:
+                    path: /
+                    port: 2746
+                    scheme: HTTPS
+                volumeMounts:
+                  - name: argo-server-tls
+                    mountPath: /etc/argo/argo-server-tls
+                    readOnly: true
+            volumes:
+              - name: argo-server-tls
+                secret:
+                  secretName: argo-server-tls

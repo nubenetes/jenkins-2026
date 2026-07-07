@@ -9,10 +9,12 @@ spec:
   project: default
   # App-of-apps: this Application renders the local Helm chart at
   # argocd/observability-oss/, which emits the child Applications for
-  # kube-prometheus-stack / Loki / Tempo. The {{repoUrl}}/{{branchStable}}
-  # placeholders are substituted by scripts/03-observability.sh (oss mode) at
-  # apply time, and passed down as helm parameters so the children's $values
-  # source points back at this repo/branch.
+  # kube-prometheus-stack / Loki / Tempo. The
+  # {{repoUrl}}/{{branchStable}}/{{ciEngine}}/{{backendTls}} placeholders are
+  # substituted by scripts/03-observability.sh (oss mode) at apply time, and passed
+  # down as helm parameters so the children's $values source points back at this
+  # repo/branch and (when backend TLS is active) the kube-prometheus-stack child
+  # layers the Grafana TLS values overlay.
   source:
     repoURL: '{{repoUrl}}'
     targetRevision: '{{branchStable}}'
@@ -25,6 +27,11 @@ spec:
           value: '{{branchStable}}'
         - name: ciEngine
           value: '{{ciEngine}}'
+        # "true"/"false" from j2026_backend_tls_active (docs/504). Re-rendered every
+        # run, so flipping the flag off re-emits the kube-prometheus-stack child
+        # without the overlay and ArgoCD self-heals Grafana back to plain HTTP.
+        - name: backendTls
+          value: '{{backendTls}}'
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

@@ -116,6 +116,18 @@ for _obs_pair in "grafana-cloud:${J2026_GRAFANA_CLOUD_SECRET}" \
   fi
 done
 
+# Backend TLS (opt-in, docs/504): when active, layer values-backend-tls.yaml onto
+# EVERY mode's otel-collector-gateway release so the faro (RUM) receiver serves TLS
+# on 8027 from the cert 08.7 minted (which runs before this script). Empty array =
+# no-op (safe `"${arr[@]}"` expansion under set -u on bash 4.4+). Same gate as
+# 09-gateway.sh's BackendTLSPolicy, so the pod-side TLS and the LB-side policy flip
+# together — a half-flip would 502 the faro host.
+faro_tls_helm_args=()
+if [[ "$(j2026_backend_tls_active)" == "true" ]]; then
+  log_info "Backend TLS active - layering the faro TLS overlay onto the otel-collector-gateway release"
+  faro_tls_helm_args=(-f "${J2026_ROOT_DIR}/observability/otel-collector/values-backend-tls.yaml")
+fi
+
 case "${J2026_OBS_MODE}" in
   grafana-cloud)
     log_step "Observability mode: grafana-cloud"
@@ -150,7 +162,8 @@ case "${J2026_OBS_MODE}" in
     helm upgrade --install "${J2026_OTEL_GATEWAY_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
       ${J2026_OTEL_COLLECTOR_CHART_VERSION:+--version=${J2026_OTEL_COLLECTOR_CHART_VERSION}} \
       --namespace "${J2026_OBS_NAMESPACE}" \
-      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-grafana-cloud.yaml"
+      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-grafana-cloud.yaml" \
+      "${faro_tls_helm_args[@]}"
 
     log_step "Installing ${J2026_OTEL_LOGS_RELEASE} (node log DaemonSet -> Grafana Cloud)"
     helm upgrade --install "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
@@ -310,7 +323,7 @@ EOT
     helm repo update >/dev/null 2>&1 || true
 
     helm upgrade --install k8s-monitoring grafana/k8s-monitoring \
-      --version=4.1.6 \
+      --version=4.2.0 \
       --namespace "${J2026_OBS_NAMESPACE}" \
       -f "${GENERATED_OBS_DIR}/k8s-monitoring-values.yaml"
 
@@ -383,9 +396,16 @@ EOT
     log_step "Applying observability-oss ArgoCD app-of-apps"
     OSS_APP_FILE="$(mktemp)"
     REPO_URL="${J2026_SELF_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
+    # Backend TLS (docs/504): when active, the kube-prometheus-stack child layers the
+    # Grafana TLS values overlay (grafana serves HTTPS on 3000). Gated on
+    # j2026_backend_tls_active (flag AND the BackendTLSPolicy CRD), so a cluster too
+    # old to serve the CRD stays plain HTTP even with the flag on. The grafana-tls
+    # cert is already minted — 08.7-backend-tls.sh runs BEFORE this script in up.sh.
+    OSS_BACKEND_TLS="$(j2026_backend_tls_active)"
     sed "s@{{repoUrl}}@${REPO_URL}@g;
          s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g;
-         s@{{ciEngine}}@${J2026_CI_ENGINE}@g" \
+         s@{{ciEngine}}@${J2026_CI_ENGINE}@g;
+         s@{{backendTls}}@${OSS_BACKEND_TLS}@g" \
         "${J2026_ROOT_DIR}/argocd/observability-oss-app.yaml" > "${OSS_APP_FILE}"
     kubectl apply -f "${OSS_APP_FILE}"
     rm "${OSS_APP_FILE}"
@@ -397,7 +417,8 @@ EOT
     helm upgrade --install "${J2026_OTEL_GATEWAY_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
       ${J2026_OTEL_COLLECTOR_CHART_VERSION:+--version=${J2026_OTEL_COLLECTOR_CHART_VERSION}} \
       --namespace "${J2026_OBS_NAMESPACE}" \
-      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-oss.yaml"
+      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-oss.yaml" \
+      "${faro_tls_helm_args[@]}"
 
     log_step "Installing ${J2026_OTEL_LOGS_RELEASE} (node log DaemonSet -> Loki)"
     helm upgrade --install "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
@@ -414,6 +435,58 @@ EOT
         sleep 5
       done
     "; then
+      # GKE Gateway NEG health check deadlock fix (docs/504): GKE container-native load
+      # balancing (NEG) requires the pod to be HEALTHY in the GCP Load Balancer to satisfy
+      # the pod's `cloud.google.com/load-balancer-neg-ready` readiness gate during a rollout.
+      # But when Backend TLS is active, the pod serves HTTPS while the GCP LB defaults to
+      # HTTP probes (causing TLS handshake errors / connection refused), creating a deadlock.
+      # Applying the BackendTLSPolicy and HealthCheckPolicy (HTTPS) BEFORE waiting for the
+      # deployment rollout breaks this deadlock and lets the pods go healthy.
+      if [[ "$(j2026_backend_tls_active)" == "true" ]]; then
+        log_step "Applying Grafana BackendTLSPolicy + HTTPS HealthCheckPolicy to prevent rollout deadlock"
+        mkdir -p "${J2026_ROOT_DIR}/.generated/observability"
+        
+        cat >"${J2026_ROOT_DIR}/.generated/observability/backendtlspolicy-grafana.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: ${J2026_BACKEND_TLS_POLICY_GRAFANA}
+  namespace: ${J2026_GRAFANA_OSS_NAMESPACE}
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: oss-kube-prometheus-stack-grafana
+  validation:
+    hostname: oss-kube-prometheus-stack-grafana.${J2026_GRAFANA_OSS_NAMESPACE}.svc.cluster.local
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: ${J2026_BACKEND_TLS_CA_CONFIGMAP}
+EOT
+
+        cat >"${J2026_ROOT_DIR}/.generated/observability/healthcheckpolicy-grafana.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: oss-kube-prometheus-stack-grafana
+  namespace: ${J2026_GRAFANA_OSS_NAMESPACE}
+spec:
+  default:
+    config:
+      type: HTTPS
+      httpsHealthCheck:
+        requestPath: /login
+  targetRef:
+    group: ""
+    kind: Service
+    name: oss-kube-prometheus-stack-grafana
+EOT
+
+        kubectl apply -f "${J2026_ROOT_DIR}/.generated/observability/backendtlspolicy-grafana.yaml"
+        kubectl apply -f "${J2026_ROOT_DIR}/.generated/observability/healthcheckpolicy-grafana.yaml"
+      fi
+
       wait_for_deployment "oss-kube-prometheus-stack-grafana" "${J2026_GRAFANA_OSS_NAMESPACE}"
     else
       log_warn "oss-kube-prometheus-stack-grafana did not appear within 5m — check 'kubectl -n argocd get applications' (observability-oss / oss-kube-prometheus-stack)."
@@ -505,7 +578,8 @@ EOT
     helm upgrade --install "${J2026_OTEL_GATEWAY_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
       ${J2026_OTEL_COLLECTOR_CHART_VERSION:+--version=${J2026_OTEL_COLLECTOR_CHART_VERSION}} \
       --namespace "${J2026_OBS_NAMESPACE}" \
-      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-managed-azure.yaml"
+      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-managed-azure.yaml" \
+      "${faro_tls_helm_args[@]}"
 
     log_step "Installing ${J2026_OTEL_LOGS_RELEASE} (node log DaemonSet -> Azure Monitor)"
     helm upgrade --install "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
@@ -565,7 +639,8 @@ EOT
     helm upgrade --install "${J2026_OTEL_GATEWAY_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \
       ${J2026_OTEL_COLLECTOR_CHART_VERSION:+--version=${J2026_OTEL_COLLECTOR_CHART_VERSION}} \
       --namespace "${J2026_OBS_NAMESPACE}" \
-      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-managed-aws.yaml"
+      -f "${J2026_ROOT_DIR}/observability/otel-collector/values-managed-aws.yaml" \
+      "${faro_tls_helm_args[@]}"
 
     log_step "Installing ${J2026_OTEL_LOGS_RELEASE} (node log DaemonSet -> CloudWatch Logs)"
     helm upgrade --install "${J2026_OTEL_LOGS_RELEASE}" "${J2026_OTEL_COLLECTOR_CHART}" \

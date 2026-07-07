@@ -30,6 +30,8 @@ spec:
           parameters:
             - name: global.platform
               value: '{{platform}}'
+            - name: global.backendTls.enabled
+              value: '{{backendTlsEnabled}}'
             # Postgres WAL/base backups (CNPG barman -> GCS via Workload Identity).
             # These override the chart's placeholder defaults
             # (jenkins-2026-sa@jenkins-2026 / jenkins-2026-postgres-backups) with the

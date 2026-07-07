@@ -1,0 +1,11 @@
+# Backend TLS overlay for argocd-server — OPT-IN + engine-gated (docs/504).
+# 08.5-argocd.sh layers this with `helm -f` on top of argocd-values.yaml ONLY when
+# j2026_argocd_backend_tls_active (backend TLS on AND ci.engine ∈ {jenkins,
+# githubactions}). It REPLACES server.extraArgs (helm list-merge = last file wins),
+# dropping `--insecure` so argocd-server serves TLS from the cert-manager-minted
+# argocd-server-tls Secret (08.7-backend-tls.sh) — the LB then re-encrypts +
+# validates the UI hop (BackendTLSPolicy in 09-gateway.sh). Flag off / tekton-argo:
+# this overlay is not applied, so argocd-values.yaml's `--insecure` stands and
+# argocd-server stays plain HTTP (what those engines' `:80 --plaintext` callers need).
+server:
+  extraArgs: []

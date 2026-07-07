@@ -123,7 +123,7 @@ Used by `Day0.infra.03-azure-grafana`, `Day1.cluster.01-gke`, `Day2.publish.03-a
 | `AZURE_GRAFANA_ADMIN_OBJECT_IDS` | **yes** (managed-azure) | Comma-separated Entra object IDs granted the Grafana Admin role on Azure Managed Grafana |
 
 **`AZURE_CLIENT_ID`**
-The `appId` of the Entra app created during the one-time azure-bootstrap step (`Day0.infra.03`). The app has a federated credential configured to trust tokens from this repo's `azure-bootstrap` environment. Used by `azure/login@v3` to exchange the OIDC token for an Azure access token — no `AZURE_CLIENT_SECRET` needed.
+The `appId` of the Entra app created during the one-time azure-bootstrap step (`Day0.infra.03`). The app has a federated credential configured to trust tokens from this repo's consolidated `gke-production` environment. Used by `azure/login@v3` to exchange the OIDC token for an Azure access token — no `AZURE_CLIENT_SECRET` needed.
 
 **`AZURE_GRAFANA_ADMIN_OBJECT_IDS`**
 Your own Entra object ID (`az ad signed-in-user show --query id -o tsv`) so you can log into Azure Managed Grafana. Can be a comma-separated list for multiple admins.

@@ -526,6 +526,120 @@ takes effect only after a **re-seed** — the next **Day1** or a
 (equivalently `Day2.redeploy.06-githubactions`). See
 [404 § The ci-spot / NAP showcase](./404-GITHUB_ACTIONS.md#the-ci-spot--nap-showcase-why-this-engine-defaults-to-spot).
 
+## OSS Grafana shows "No data" everywhere with zero datasources configured (`/api/datasources` returns `[]`)
+
+**Symptom:** on `observability.mode=oss`, every dashboard panel shows **"No data"**
+across the board (not one dashboard, ALL of them) even though Prometheus/Loki/Tempo
+are demonstrably healthy and ingesting (`up{}` returns fresh samples, targets are
+up). Grafana's own API confirms it has no datasources at all:
+
+```bash
+kubectl -n observability exec deploy/oss-kube-prometheus-stack-grafana -c grafana -- \
+  curl -sk -u "admin:$(kubectl -n observability get secret oss-kube-prometheus-stack-grafana -o jsonpath='{.data.admin-password}' | base64 -d)" \
+  https://localhost:3000/api/datasources
+# []
+```
+
+The provisioning ConfigMap (`oss-kube-prometheus-stack-grafana-datasource`, labelled
+`grafana_datasource=1`) is present and correct — all four datasources (Prometheus,
+Loki, Tempo, Jenkins) are in there — and the `grafana-sc-datasources` sidecar
+container is running normally (`"Loading incluster config..."` every minute, no
+errors). Nothing in the Grafana container logs mentions an error either; there's
+simply no `logger=provisioning.datasources` "starting/finished" pair the way there
+is for `provisioning.dashboard`/`provisioning.alerting`.
+
+**Cause:** a boot-time race in the `kiwigrid/k8s-sidecar` container (the chart's
+default `sidecar.datasources` mechanism, `watchMethod: WATCH`). At pod start the
+sidecar copies the labelled ConfigMap into the shared `/etc/grafana/provisioning/datasources`
+volume and fires **one** `POST /api/admin/provisioning/datasources/reload` to tell
+Grafana to load it. If that first call lands **before** Grafana's own HTTP API is
+actually ready to serve it, the call is dropped — and because the sidecar only
+reacts to **ConfigMap change events**, not on a timer, it never retries: the
+ConfigMap never changes again, so the reload never fires again, and the datasources
+stay empty **until something manually POSTs the reload endpoint** (which immediately
+succeeds and populates everything — confirming the config was always valid,
+it just never got applied). Unrelated to `gateway.backendTls.enabled` (docs/504)
+or anything else touched in this repo — pure upstream chart timing, live-diagnosed
+2026-07-06 against a pod that had been running for 3 hours with the race already
+latched.
+
+**Fix (self-healing, not just a live reload):**
+[`observability/grafana/values-oss.yaml`](../observability/grafana/values-oss.yaml)
+`grafana.sidecar.datasources` sets `initDatasources: true` + `skipReload: true`
+— the chart's own documented mechanism for exactly this failure mode. This runs the
+datasources sidecar as an **init container** instead of a long-running watcher: it
+copies the file into place and exits *before* the Grafana container ever starts, so
+Grafana's native boot-time provisioning loader (which runs on every single restart,
+independent of any HTTP call succeeding) picks it up deterministically — no more
+race, no more manual reload needed on any future pod restart. Trade-off: a future
+edit to `additionalDataSources` needs a pod restart to take effect (no more live
+sidecar to auto-detect the ConfigMap change) — acceptable here because nothing in
+this repo pushes a *live* datasource change (unlike dashboards, which the
+`grafana_dashboard` sidecar - unaffected, untouched - keeps live for the
+publish-workflow use case).
+
+> ⚠️ **Also required: `watchMethod: LIST`.** The chart's init-container template
+> reuses the *same* `sidecar.datasources.watchMethod` value verbatim on the init
+> container (`METHOD: {{ .Values.sidecar.datasources.watchMethod }}`) — it does
+> **not** default to a one-shot mode just because `initDatasources` is true. The
+> chart's own default (`watchMethod: WATCH`) makes `kiwigrid/k8s-sidecar`
+> continuously watch and **never exit** — as an init container that hangs the pod
+> in `Init:0/1` forever (confirmed live: Grafana's main container never started).
+> `METHOD=LIST` ("list config-maps/secrets and exit", per
+> [kiwigrid/k8s-sidecar's own README](https://github.com/kiwigrid/k8s-sidecar))
+> is the one mode that actually terminates. If you ever see a Grafana rollout
+> stuck at `Init:0/1`, this is almost certainly why — check
+> `kubectl -n observability describe pod <new-grafana-pod>` for an
+> `Init:0/1` / never-`Ready` init container, and confirm `watchMethod: LIST` is
+> set alongside `initDatasources: true`.
+
+**Unstick a live cluster without waiting for a redeploy:**
+
+```bash
+kubectl -n observability exec deploy/oss-kube-prometheus-stack-grafana -c grafana -- \
+  curl -sk -u "admin:<admin-password>" -X POST \
+  https://localhost:3000/api/admin/provisioning/datasources/reload
+# {"message":"Datasources config reloaded"}
+```
+
+## GKE Gateway NEG & ServiceNetworkEndpointGroup Finalizer Deadlocks (Backend TLS)
+
+**Symptom**: During a redeployment, CI engine switch, or rollout, a pod is fully `Running` and its main containers are ready, but:
+1. The GKE Ingress Gateway remains in `PROGRAMMED: False` state, and visiting any public URL (like `https://tekton.jenkins2026.nubenetes.com`) fails.
+2. Describing the Gateway shows errors like:
+   `no-error-isolation: no zones found in ServiceNetworkEndpointGroup ...`
+3. The ArgoCD application is stuck in a permanent `Syncing` loop. Checking `kubectl get svcneg -A` shows a resource stuck in `Terminating` state, or running `kubectl get svcneg <neg-name> -n <namespace> -o yaml` shows `status.lastSyncTime: null` and no networkEndpointGroups status populated, even though the NEG exists in Google Cloud.
+
+**Cause**: This consists of three separate, compounding GKE Gateway and Network Endpoint Group (NEG) lifecycle issues:
+1. **Bootstrapping Deadlock**: When Backend TLS is enabled, the backend pods serve HTTPS. However, GKE's default health checking uses HTTP. The matching HTTPS `HealthCheckPolicy` and `BackendTLSPolicy` are applied at the very end in `09-gateway.sh`. If the rollout scripts (`03-observability.sh` or `08-headlamp.sh`) wait for the deployment rollout to complete before proceeding, the pods remain unhealthy in the GCP Load Balancer (due to the HTTP/HTTPS probe mismatch). GKE keeps the readiness gate `False`, blocking the rollout and causing a deadlock.
+2. **Deterministic NEG Finalizer Deadlock**: When a Service is deleted and recreated (e.g., during a Helm upgrade/redeploy or namespace reset), its UID changes. The GKE NEG controller attempts to delete the old `svcneg` resource, which holds a finalizer (`networking.gke.io/neg-finalizer`). Because the new Service immediately registers itself with the *same* name, it reuses the same underlying GCP NEG resource. GKE's NEG controller detects the GCP NEG is still in use and refuses to delete it, permanently wedging the old resource in `Terminating` status.
+3. **Unsynced NEG Status Deadlock**: During CI engine switches or redeployments, GKE's NEG controller cache can get wedged. The `svcneg` resource is created, but GKE fails to write back the sync status. Since GKE Gateway relies on this CR status to translate HTTPRoutes, it fails the translation with `no zones found` and keeps the Gateway `PROGRAMMED: False`.
+
+**Fix (Self-Healing)**:
+1. **Deadlock Break**: We modified `scripts/03-observability.sh` and `scripts/08-headlamp.sh` to apply their policies **before** waiting for rollouts.
+2. **Finalizer Cleanup Loop**: We added a self-healing routine to `scripts/01-namespaces.sh` that patches stuck `Terminating` svcnegs to clear their finalizers.
+3. **Cache Sync Self-Healing**: We extended `scripts/01-namespaces.sh` to automatically detect any `svcneg` resources with `lastSyncTime: null` after a 15-second grace period. It automatically self-heals them by backing up the service NEG annotation, removing the annotation to trigger a controller cache flush, purging the stuck CR, and then restoring the NEG annotation to force a clean, healthy sync.
+
+**Unstick a live cluster manually**:
+If a `svcneg` is currently stuck in `Terminating`, clear its finalizer with:
+```bash
+kubectl patch svcneg <stuck-neg-name> -n <namespace> --type=merge -p '{"metadata":{"finalizers":null}}'
+# Force GKE NEG controller to reconcile the service:
+kubectl annotate service <service-name> -n <namespace> reconcile-neg=true --overwrite
+```
+If a `svcneg` is created but its status remains empty/null, clear and restore its annotation to force a cache flush:
+```bash
+# Get the current NEG configuration:
+neg_val=$(kubectl get svc <service-name> -n <namespace> -o jsonpath='{.metadata.annotations.cloud\.google\.com/neg}')
+# Remove it:
+kubectl annotate service <service-name> -n <namespace> cloud.google.com/neg-
+# Delete the unsynced svcneg CR:
+kubectl delete svcneg <svcneg-name> -n <namespace>
+# Restore the annotation:
+kubectl annotate service <service-name> -n <namespace> cloud.google.com/neg="$neg_val" --overwrite
+```
+
+
 ---
 
 [← Previous: 901. Local Development](./901-LOCAL_DEVELOPMENT.md) | [🏠 Home](../README.md) | [→ Next: 903. Glossary](./903-GLOSSARY.md)

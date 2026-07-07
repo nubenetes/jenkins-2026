@@ -19,7 +19,7 @@ spec:
   source:
     repoURL: {{ .Values.repoURL | quote }}
     targetRevision: {{ .Values.targetRevision | quote }}
-    path: argocd/argoworkflows/components/workflows
+    path: argocd/argoworkflows/components/workflows{{ if eq (toString .Values.backendTls) "true" }}-tls{{ end }}
   destination:
     server: https://kubernetes.default.svc
     namespace: {{ .Values.namespace.controlPlane | quote }}

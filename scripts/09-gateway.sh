@@ -29,6 +29,10 @@ mkdir -p "${GENERATED_DIR}"
 # BackendTLSPolicy CRD (j2026_backend_tls_active, lib/common.sh). Drives the
 # per-TLS-ready-backend BackendTLSPolicy + HTTPS HealthCheckPolicy blocks below.
 BACKEND_TLS_ACTIVE="$(j2026_backend_tls_active)"
+# argocd-server has a SECOND gate: its deploy caller must speak TLS (jenkins/
+# githubactions only). Drives the argocd BackendTLSPolicy + HTTPS-vs-HTTP health
+# check below, so tekton/argo clusters keep a plaintext argocd + HTTP probe.
+ARGOCD_TLS_ACTIVE="$(j2026_argocd_backend_tls_active)"
 
 # Fixed names
 J2026_GATEWAY_HOST_ARGOCD="argocd"
@@ -177,6 +181,46 @@ spec:
     name: otel-collector-gateway
 EOT
 
+# Backend TLS for the faro (RUM) receiver (stage-2 TLS-ready backend; opt-in via
+# gateway.backendTls.enabled - docs/504). When active, the otel-collector faro
+# receiver serves TLS on 8027 (values-backend-tls.yaml overlay added by
+# 03-observability.sh; cert + CA trust ConfigMap minted by 08.7-backend-tls.sh).
+# Only the BackendTLSPolicy flips here - the faro HealthCheckPolicy above stays
+# TCP (protocol-agnostic, so it survives the plain->TLS switch, unlike headlamp's
+# HTTP probe which had to become HTTPS). The HTTPRoute is unchanged (still targets
+# Service port 8027). Same j2026_backend_tls_active gate as the collector overlay.
+if [[ "${BACKEND_TLS_ACTIVE}" == "true" ]]; then
+  log_step "Generating BackendTLSPolicy (faro receiver, backendTls enabled)"
+  cat >"${GENERATED_DIR}/backendtlspolicy-faro.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: ${J2026_BACKEND_TLS_POLICY_FARO}
+  namespace: ${J2026_OBS_NAMESPACE}
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: otel-collector-gateway
+  validation:
+    hostname: otel-collector-gateway.${J2026_OBS_NAMESPACE}.svc.cluster.local
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: ${J2026_BACKEND_TLS_CA_CONFIGMAP}
+EOT
+else
+  # Inactive - retire any faro BackendTLSPolicy from a previous enabled run and
+  # drop the stale manifest so the directory-apply can't re-create it (CRD-guarded
+  # delete, same as the headlamp block).
+  rm -f "${GENERATED_DIR}/backendtlspolicy-faro.yaml"
+  if kubectl get namespace "${J2026_OBS_NAMESPACE}" >/dev/null 2>&1 \
+     && kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+    log_step "Removing any leftover faro BackendTLSPolicy (backendTls inactive)"
+    kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_FARO}" -n "${J2026_OBS_NAMESPACE}" --ignore-not-found
+  fi
+fi
+
 # Optional lean develop tier - only routed when microservices.developTrackEnabled
 # (the namespace itself is created by 01-namespaces.sh under the same flag). Public,
 # NO IAP - same edge posture as the stable microservices host. Mirrors the grafana
@@ -207,7 +251,45 @@ spec:
           port: 8080
 EOT
 
-  cat >"${GENERATED_DIR}/healthcheckpolicy-microservices-develop.yaml" <<EOT
+  if [[ "$(j2026_backend_tls_active)" == "true" ]]; then
+    log_step "Generating BackendTLSPolicy + HTTPS HealthCheckPolicy (microservices develop, backendTls enabled)"
+    cat >"${GENERATED_DIR}/backendtlspolicy-microservices-develop.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: ${J2026_BACKEND_TLS_POLICY_MICROSERVICES}
+  namespace: ${J2026_MICROSERVICES_DEVELOP_NAMESPACE}
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: gateway
+  validation:
+    hostname: gateway.${J2026_MICROSERVICES_DEVELOP_NAMESPACE}.svc.cluster.local
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: ${J2026_BACKEND_TLS_CA_CONFIGMAP}
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: gateway
+  namespace: ${J2026_MICROSERVICES_DEVELOP_NAMESPACE}
+spec:
+  default:
+    config:
+      type: HTTPS
+      httpsHealthCheck:
+        requestPath: /management/health
+  targetRef:
+    group: ""
+    kind: Service
+    name: gateway
+EOT
+  else
+    log_step "Generating HTTP HealthCheckPolicy (microservices develop, backendTls disabled)"
+    cat >"${GENERATED_DIR}/healthcheckpolicy-microservices-develop.yaml" <<EOT
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
 metadata:
@@ -224,17 +306,28 @@ spec:
     kind: Service
     name: gateway
 EOT
+    rm -f "${GENERATED_DIR}/backendtlspolicy-microservices-develop.yaml"
+    if kubectl get namespace "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" >/dev/null 2>&1 \
+       && kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+      log_step "Removing any leftover microservices develop BackendTLSPolicy (backendTls inactive)"
+      kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_MICROSERVICES}" -n "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" --ignore-not-found
+    fi
+  fi
 else
   # Develop tier disabled - retire any route/policy left over from a previous
   # develop_track run on this (persistent) cluster, but only when the namespace
   # still exists (--ignore-not-found doesn't cover a missing namespace). Also drop
   # any stale generated manifests so the apply below can't re-create the route.
   rm -f "${GENERATED_DIR}/httproute-microservices-develop.yaml" \
-        "${GENERATED_DIR}/healthcheckpolicy-microservices-develop.yaml"
+        "${GENERATED_DIR}/healthcheckpolicy-microservices-develop.yaml" \
+        "${GENERATED_DIR}/backendtlspolicy-microservices-develop.yaml"
   if kubectl get namespace "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" >/dev/null 2>&1; then
-    log_step "Removing any leftover microservices-develop HTTPRoute/HealthCheckPolicy (developTrackEnabled=false)"
+    log_step "Removing any leftover microservices-develop HTTPRoute/HealthCheckPolicy/BackendTLSPolicy (developTrackEnabled=false)"
     kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_MICROSERVICES_DEVELOP}" -n "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" --ignore-not-found
     kubectl delete healthcheckpolicy gateway -n "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" --ignore-not-found
+    if kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+      kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_MICROSERVICES}" -n "${J2026_MICROSERVICES_DEVELOP_NAMESPACE}" --ignore-not-found
+    fi
   fi
 fi
 
@@ -348,9 +441,79 @@ spec:
           port: 80
 EOT
 
+# Backend TLS for pgAdmin (stage-4 TLS-ready backend; opt-in via
+# gateway.backendTls.enabled - docs/504). When active, pgAdmin terminates TLS on
+# its pod port 8443 (values-backend-tls.yaml overlay threaded by the
+# platform-postgres app-of-apps; cert + CA trust ConfigMap minted by
+# 08.7-backend-tls.sh), and two policies flip the LB side - identical shape to
+# the headlamp pair above:
+#   - BackendTLSPolicy: the LB re-encrypts LB->pod AND validates the backend cert
+#     against the internal CA. validation.hostname (SNI + SAN) = the runix-chart
+#     Service FQDN, matching the cert 08.7 mints.
+#   - HealthCheckPolicy type HTTPS: the default LB health check follows the
+#     Service appProtocol (unset = HTTP) and would keep probing plain HTTP against
+#     the now-TLS pod -> 502. requestPath /misc/ping is pgAdmin's own liveness
+#     endpoint (a plain 200, unlike / which 302-redirects to /login).
+# The HTTPRoute (Service port 80 -> targetPort 8443) and the IAP GCPBackendPolicy
+# are UNCHANGED - IAP composes with backend TLS.
+if [[ "${BACKEND_TLS_ACTIVE}" == "true" ]]; then
+  log_step "Generating BackendTLSPolicy + HTTPS HealthCheckPolicy (pgAdmin, backendTls enabled)"
+  cat >"${GENERATED_DIR}/backendtlspolicy-pgadmin.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: ${J2026_BACKEND_TLS_POLICY_PGADMIN}
+  namespace: ${J2026_PGADMIN_NAMESPACE}
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: ${J2026_PGADMIN_RELEASE}-pgadmin4
+  validation:
+    hostname: ${J2026_PGADMIN_RELEASE}-pgadmin4.${J2026_PGADMIN_NAMESPACE}.svc.cluster.local
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: ${J2026_BACKEND_TLS_CA_CONFIGMAP}
+EOT
+
+  cat >"${GENERATED_DIR}/healthcheckpolicy-pgadmin.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: ${J2026_PGADMIN_RELEASE}-pgadmin4
+  namespace: ${J2026_PGADMIN_NAMESPACE}
+spec:
+  default:
+    config:
+      type: HTTPS
+      httpsHealthCheck:
+        requestPath: /misc/ping
+  targetRef:
+    group: ""
+    kind: Service
+    name: ${J2026_PGADMIN_RELEASE}-pgadmin4
+EOT
+else
+  # Backend TLS inactive - retire any policies left by a previous enabled run on
+  # this (persistent) cluster, and drop stale generated manifests so the apply
+  # below can't re-create them (same deterministic flag-off cleanup as headlamp).
+  # The CRD guard matters: `kubectl delete backendtlspolicy` on a cluster that
+  # never served the CRD is a hard error, not a not-found.
+  rm -f "${GENERATED_DIR}/backendtlspolicy-pgadmin.yaml" \
+        "${GENERATED_DIR}/healthcheckpolicy-pgadmin.yaml"
+  if kubectl get namespace "${J2026_PGADMIN_NAMESPACE}" >/dev/null 2>&1; then
+    log_step "Removing any leftover pgAdmin BackendTLSPolicy/HealthCheckPolicy (backendTls inactive)"
+    if kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+      kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_PGADMIN}" -n "${J2026_PGADMIN_NAMESPACE}" --ignore-not-found
+    fi
+    kubectl delete healthcheckpolicy "${J2026_PGADMIN_RELEASE}-pgadmin4" -n "${J2026_PGADMIN_NAMESPACE}" --ignore-not-found
+  fi
+fi
+
 # Tekton Dashboard is only deployed when ci.engine=tekton.
 if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
-  log_step "Generating HTTPRoute + HealthCheckPolicy (tekton dashboard, ci.engine=tekton)"
+  log_step "Generating HTTPRoute (tekton dashboard, ci.engine=tekton)"
   cat >"${GENERATED_DIR}/httproute-tekton.yaml" <<EOT
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -370,7 +533,52 @@ spec:
           port: ${J2026_TEKTON_DASHBOARD_PORT}
 EOT
 
-  cat >"${GENERATED_DIR}/healthcheckpolicy-tekton.yaml" <<EOT
+  if [[ "${BACKEND_TLS_ACTIVE}" == "true" ]]; then
+    log_step "Generating BackendTLSPolicy + HTTPS HealthCheckPolicy (tekton dashboard, backendTls enabled)"
+    cat >"${GENERATED_DIR}/backendtlspolicy-tekton.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: ${J2026_BACKEND_TLS_POLICY_TEKTON}
+  namespace: ${J2026_TEKTON_NAMESPACE}
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: ${J2026_TEKTON_DASHBOARD_SERVICE}
+  validation:
+    hostname: ${J2026_TEKTON_DASHBOARD_SERVICE}.${J2026_TEKTON_NAMESPACE}.svc.cluster.local
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: ${J2026_BACKEND_TLS_CA_CONFIGMAP}
+EOT
+
+    cat >"${GENERATED_DIR}/healthcheckpolicy-tekton.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: ${J2026_TEKTON_DASHBOARD_SERVICE}
+  namespace: ${J2026_TEKTON_NAMESPACE}
+spec:
+  default:
+    config:
+      type: HTTPS
+      httpsHealthCheck:
+        requestPath: /readiness
+  targetRef:
+    group: ""
+    kind: Service
+    name: ${J2026_TEKTON_DASHBOARD_SERVICE}
+EOT
+  else
+    rm -f "${GENERATED_DIR}/backendtlspolicy-tekton.yaml"
+    if kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+      log_step "Removing any leftover tekton BackendTLSPolicy (backendTls inactive)"
+      kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_TEKTON}" -n "${J2026_TEKTON_NAMESPACE}" --ignore-not-found
+    fi
+
+    cat >"${GENERATED_DIR}/healthcheckpolicy-tekton.yaml" <<EOT
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
 metadata:
@@ -387,6 +595,8 @@ spec:
     kind: Service
     name: ${J2026_TEKTON_DASHBOARD_SERVICE}
 EOT
+  fi
+
 
   # Pipelines-as-Code controller (webhook receiver) - public, NO IAP (GitHub must
   # reach it; the webhook HMAC secret authenticates requests).
@@ -414,7 +624,7 @@ fi
 # with --auth-mode=server --secure=false (plain HTTP), so it is IAP-protected at the
 # Gateway (GCPBackendPolicy below), exactly like the no-native-auth Tekton Dashboard.
 if [[ "${J2026_CI_ENGINE}" == "argoworkflows" ]]; then
-  log_step "Generating HTTPRoute + HealthCheckPolicy (Argo Workflows Server, ci.engine=argoworkflows)"
+  log_step "Generating HTTPRoute (Argo Workflows Server, ci.engine=argoworkflows)"
   cat >"${GENERATED_DIR}/httproute-argoworkflows.yaml" <<EOT
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -434,7 +644,52 @@ spec:
           port: ${J2026_ARGOWF_SERVER_PORT}
 EOT
 
-  cat >"${GENERATED_DIR}/healthcheckpolicy-argoworkflows.yaml" <<EOT
+  if [[ "${BACKEND_TLS_ACTIVE}" == "true" ]]; then
+    log_step "Generating BackendTLSPolicy + HTTPS HealthCheckPolicy (Argo Workflows Server, backendTls enabled)"
+    cat >"${GENERATED_DIR}/backendtlspolicy-argoworkflows.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: ${J2026_BACKEND_TLS_POLICY_ARGOWF}
+  namespace: ${J2026_ARGOWF_NAMESPACE}
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: ${J2026_ARGOWF_SERVER_SERVICE}
+  validation:
+    hostname: ${J2026_ARGOWF_SERVER_SERVICE}.${J2026_ARGOWF_NAMESPACE}.svc.cluster.local
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: ${J2026_BACKEND_TLS_CA_CONFIGMAP}
+EOT
+
+    cat >"${GENERATED_DIR}/healthcheckpolicy-argoworkflows.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: ${J2026_ARGOWF_SERVER_SERVICE}
+  namespace: ${J2026_ARGOWF_NAMESPACE}
+spec:
+  default:
+    config:
+      type: HTTPS
+      httpsHealthCheck:
+        requestPath: /
+  targetRef:
+    group: ""
+    kind: Service
+    name: ${J2026_ARGOWF_SERVER_SERVICE}
+EOT
+  else
+    rm -f "${GENERATED_DIR}/backendtlspolicy-argoworkflows.yaml"
+    if kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+      log_step "Removing any leftover argoworkflows BackendTLSPolicy (backendTls inactive)"
+      kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_ARGOWF}" -n "${J2026_ARGOWF_NAMESPACE}" --ignore-not-found
+    fi
+
+    cat >"${GENERATED_DIR}/healthcheckpolicy-argoworkflows.yaml" <<EOT
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
 metadata:
@@ -451,6 +706,8 @@ spec:
     kind: Service
     name: ${J2026_ARGOWF_SERVER_SERVICE}
 EOT
+  fi
+
 
   # Argo Events EventSource (webhook receiver) - public, NO IAP (GitHub must reach it;
   # the argoworkflows-github-webhook HMAC secret authenticates requests). The github
@@ -520,7 +777,69 @@ spec:
           port: 80
 EOT
 
-  cat >"${GENERATED_DIR}/healthcheckpolicy-grafana.yaml" <<EOT
+  # Backend TLS for OSS Grafana (stage-5 TLS-ready backend, doubly conditional:
+  # oss mode AND gateway.backendTls.enabled - docs/504). When active, Grafana
+  # terminates TLS on its pod port 3000 (grafana.ini server.protocol=https, via the
+  # values-oss-backend-tls.yaml overlay the observability-oss app-of-apps layers; cert
+  # + CA trust ConfigMap minted by 08.7-backend-tls.sh), and two policies flip the LB
+  # side - identical shape to the headlamp/pgadmin pairs:
+  #   - BackendTLSPolicy: the LB re-encrypts LB->pod AND validates the backend cert
+  #     against the internal CA. validation.hostname (SNI + SAN) = the Grafana Service
+  #     FQDN, matching the cert 08.7 mints.
+  #   - HealthCheckPolicy type HTTPS: the default LB health check follows the Service
+  #     appProtocol (unset = HTTP) and would keep probing plain HTTP against the now-TLS
+  #     pod -> 502. requestPath /api/health is Grafana's unauthenticated health endpoint.
+  # The HTTPRoute (Service port 80 -> targetPort 3000) and the IAP GCPBackendPolicy are
+  # UNCHANGED - IAP composes with backend TLS.
+  if [[ "${BACKEND_TLS_ACTIVE}" == "true" ]]; then
+    log_step "Generating BackendTLSPolicy + HTTPS HealthCheckPolicy (grafana, backendTls enabled)"
+    cat >"${GENERATED_DIR}/backendtlspolicy-grafana.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: ${J2026_BACKEND_TLS_POLICY_GRAFANA}
+  namespace: ${J2026_GRAFANA_OSS_NAMESPACE}
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: oss-kube-prometheus-stack-grafana
+  validation:
+    hostname: oss-kube-prometheus-stack-grafana.${J2026_GRAFANA_OSS_NAMESPACE}.svc.cluster.local
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: ${J2026_BACKEND_TLS_CA_CONFIGMAP}
+EOT
+
+    cat >"${GENERATED_DIR}/healthcheckpolicy-grafana.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: oss-kube-prometheus-stack-grafana
+  namespace: ${J2026_GRAFANA_OSS_NAMESPACE}
+spec:
+  default:
+    config:
+      type: HTTPS
+      httpsHealthCheck:
+        requestPath: /api/health
+  targetRef:
+    group: ""
+    kind: Service
+    name: oss-kube-prometheus-stack-grafana
+EOT
+  else
+    # Backend TLS inactive (or the CRD is absent): plain-HTTP health check (default
+    # posture), and retire any grafana BackendTLSPolicy left by a prior enabled run on
+    # this (persistent) cluster + drop its stale generated manifest so the apply below
+    # can't re-create it. CRD-guarded: deleting a backendtlspolicy on a cluster that
+    # never served the CRD is a hard error, not a not-found.
+    rm -f "${GENERATED_DIR}/backendtlspolicy-grafana.yaml"
+    if kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+      kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_GRAFANA}" -n "${J2026_GRAFANA_OSS_NAMESPACE}" --ignore-not-found
+    fi
+    cat >"${GENERATED_DIR}/healthcheckpolicy-grafana.yaml" <<EOT
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
 metadata:
@@ -537,15 +856,23 @@ spec:
     kind: Service
     name: oss-kube-prometheus-stack-grafana
 EOT
+  fi
 else
   # Non-oss modes have no in-cluster Grafana. Delete any grafana HTTPRoute /
-  # HealthCheckPolicy left over from a previous oss run on this (persistent) cluster
-  # — otherwise it dangles pointing at the now-deleted oss-kube-prometheus-stack-grafana
-  # Service (BackendNotFound events + a 502 at the grafana host). Deterministic
-  # mode-switch cleanup, mirroring 03-observability retiring foreign backends. Idempotent.
+  # HealthCheckPolicy / BackendTLSPolicy left over from a previous oss run on this
+  # (persistent) cluster — otherwise it dangles pointing at the now-deleted
+  # oss-kube-prometheus-stack-grafana Service (BackendNotFound events + a 502 at the
+  # grafana host). Deterministic mode-switch cleanup, mirroring 03-observability
+  # retiring foreign backends. Idempotent.
   log_step "Removing any leftover grafana HTTPRoute/HealthCheckPolicy (observability.mode=${J2026_OBS_MODE}, not oss)"
+  rm -f "${GENERATED_DIR}/httproute-grafana.yaml" \
+        "${GENERATED_DIR}/healthcheckpolicy-grafana.yaml" \
+        "${GENERATED_DIR}/backendtlspolicy-grafana.yaml"
   kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_GRAFANA}" -n "${J2026_GRAFANA_OSS_NAMESPACE}" --ignore-not-found
   kubectl delete healthcheckpolicy oss-kube-prometheus-stack-grafana -n "${J2026_GRAFANA_OSS_NAMESPACE}" --ignore-not-found
+  if kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+    kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_GRAFANA}" -n "${J2026_GRAFANA_OSS_NAMESPACE}" --ignore-not-found
+  fi
 fi
 
 
@@ -555,7 +882,17 @@ log_step "Generating HealthCheckPolicies (argocd, microservices; jenkins only wh
 # check, not != tekton: != tekton wrongly emitted healthcheckpolicy-jenkins.yaml in
 # githubactions/argoworkflows mode and `kubectl apply` failed with `namespaces "jenkins"
 # not found` (the jenkins ns doesn't exist there).
+# Jenkins health check: HTTPS once the controller serves TLS on its main port
+# (BACKEND_TLS_ACTIVE, stage 6 - docs/504), else HTTP. Same pattern as argocd
+# below: the default probe follows the Service appProtocol (unset = HTTP);
+# leaving it HTTP against a now-TLS controller marks the backend unhealthy ->
+# 502 at Jenkins. Path stays /login either way (httpsKeyStore doesn't change it).
 if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
+  if [[ "${BACKEND_TLS_ACTIVE}" == "true" ]]; then
+    jenkins_hc_type="HTTPS"; jenkins_hc_key="httpsHealthCheck"
+  else
+    jenkins_hc_type="HTTP"; jenkins_hc_key="httpHealthCheck"
+  fi
   cat >"${GENERATED_DIR}/healthcheckpolicy-jenkins.yaml" <<EOT
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
@@ -565,8 +902,8 @@ metadata:
 spec:
   default:
     config:
-      type: HTTP
-      httpHealthCheck:
+      type: ${jenkins_hc_type}
+      ${jenkins_hc_key}:
         requestPath: /login
   targetRef:
     group: ""
@@ -575,6 +912,14 @@ spec:
 EOT
 fi
 
+# argocd health check: HTTPS once argocd-server serves TLS (ARGOCD_TLS_ACTIVE), else
+# HTTP. The default probe follows the Service appProtocol (unset = HTTP); leaving it
+# HTTP against a now-TLS argocd-server marks the backend unhealthy -> 502 on the UI.
+if [[ "${ARGOCD_TLS_ACTIVE}" == "true" ]]; then
+  argocd_hc_type="HTTPS"; argocd_hc_key="httpsHealthCheck"
+else
+  argocd_hc_type="HTTP"; argocd_hc_key="httpHealthCheck"
+fi
 cat >"${GENERATED_DIR}/healthcheckpolicy-argocd.yaml" <<EOT
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
@@ -584,8 +929,8 @@ metadata:
 spec:
   default:
     config:
-      type: HTTP
-      httpHealthCheck:
+      type: ${argocd_hc_type}
+      ${argocd_hc_key}:
         requestPath: /healthz
   targetRef:
     group: ""
@@ -593,7 +938,115 @@ spec:
     name: argocd-server
 EOT
 
-cat >"${GENERATED_DIR}/healthcheckpolicy-microservices.yaml" <<EOT
+# Backend TLS for argocd-server (stage-3; opt-in + engine-gated, docs/504). When
+# ARGOCD_TLS_ACTIVE the LB re-encrypts + validates the ArgoCD UI hop against the
+# internal CA (the health check above is already HTTPS). Retired (CRD-guarded) when
+# off - covering BOTH flag-off and the engine-switch case (backend TLS on, but the
+# tekton/argo caller can't do TLS), so a stale policy never 502s a plaintext argocd.
+if [[ "${ARGOCD_TLS_ACTIVE}" == "true" ]]; then
+  log_step "Generating BackendTLSPolicy (argocd-server, backendTls enabled)"
+  cat >"${GENERATED_DIR}/backendtlspolicy-argocd.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: ${J2026_BACKEND_TLS_POLICY_ARGOCD}
+  namespace: ${J2026_ARGOCD_NAMESPACE}
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: argocd-server
+  validation:
+    hostname: argocd-server.${J2026_ARGOCD_NAMESPACE}.svc.cluster.local
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: ${J2026_BACKEND_TLS_CA_CONFIGMAP}
+EOT
+else
+  rm -f "${GENERATED_DIR}/backendtlspolicy-argocd.yaml"
+  if kubectl get namespace "${J2026_ARGOCD_NAMESPACE}" >/dev/null 2>&1 \
+     && kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+    log_step "Removing any leftover argocd BackendTLSPolicy (backendTls inactive or engine-gated off)"
+    kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_ARGOCD}" -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found
+  fi
+fi
+
+# Backend TLS for Jenkins (stage-6; opt-in + engine-gated, docs/504). Only when
+# ci.engine=jenkins (the controller Service doesn't exist otherwise). The LB
+# re-encrypts + validates the Jenkins UI hop against the internal CA (the health
+# check above is already HTTPS); hostname matches the SAN 08.7-backend-tls.sh
+# mints (the controller Service FQDN). Retired (CRD-guarded) when off - covering
+# BOTH flag-off and the engine-switch case, so a stale policy never 502s a
+# plaintext Jenkins after switching away from ci.engine=jenkins.
+if [[ "${BACKEND_TLS_ACTIVE}" == "true" && "${J2026_CI_ENGINE}" == "jenkins" ]]; then
+  log_step "Generating BackendTLSPolicy (Jenkins, backendTls enabled)"
+  cat >"${GENERATED_DIR}/backendtlspolicy-jenkins.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: ${J2026_BACKEND_TLS_POLICY_JENKINS}
+  namespace: ${J2026_JENKINS_NAMESPACE}
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: ${J2026_JENKINS_RELEASE}
+  validation:
+    hostname: ${J2026_JENKINS_RELEASE}.${J2026_JENKINS_NAMESPACE}.svc.cluster.local
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: ${J2026_BACKEND_TLS_CA_CONFIGMAP}
+EOT
+else
+  rm -f "${GENERATED_DIR}/backendtlspolicy-jenkins.yaml"
+  if kubectl get namespace "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1 \
+     && kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+    log_step "Removing any leftover Jenkins BackendTLSPolicy (backendTls inactive or engine-gated off)"
+    kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_JENKINS}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found
+  fi
+fi
+
+if [[ "$(j2026_backend_tls_active)" == "true" ]]; then
+  log_step "Generating BackendTLSPolicy + HTTPS HealthCheckPolicy (microservices stable, backendTls enabled)"
+  cat >"${GENERATED_DIR}/backendtlspolicy-microservices.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: ${J2026_BACKEND_TLS_POLICY_MICROSERVICES}
+  namespace: ${J2026_MICROSERVICES_NS_STABLE}
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: gateway
+  validation:
+    hostname: gateway.${J2026_MICROSERVICES_NS_STABLE}.svc.cluster.local
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: ${J2026_BACKEND_TLS_CA_CONFIGMAP}
+---
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: gateway
+  namespace: ${J2026_MICROSERVICES_NS_STABLE}
+spec:
+  default:
+    config:
+      type: HTTPS
+      httpsHealthCheck:
+        requestPath: /management/health
+  targetRef:
+    group: ""
+    kind: Service
+    name: gateway
+EOT
+else
+  log_step "Generating HTTP HealthCheckPolicy (microservices stable, backendTls disabled)"
+  cat >"${GENERATED_DIR}/healthcheckpolicy-microservices.yaml" <<EOT
 apiVersion: networking.gke.io/v1
 kind: HealthCheckPolicy
 metadata:
@@ -610,13 +1063,20 @@ spec:
     kind: Service
     name: gateway
 EOT
+  rm -f "${GENERATED_DIR}/backendtlspolicy-microservices.yaml"
+  if kubectl get namespace "${J2026_MICROSERVICES_NS_STABLE}" >/dev/null 2>&1 \
+     && kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+    log_step "Removing any leftover microservices stable BackendTLSPolicy (backendTls inactive)"
+    kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_MICROSERVICES}" -n "${J2026_MICROSERVICES_NS_STABLE}" --ignore-not-found
+  fi
+fi
 
-log_step "Generating GCPBackendPolicies (IAP for jenkins, headlamp, pgadmin)"
+log_step "Generating GCPBackendPolicies (IAP for jenkins, argocd, headlamp, pgadmin)"
 declare -A iap_client_id
 # The OSS Grafana (observability.mode=oss) is IAP-protected too - same edge
 # pattern as Jenkins/Headlamp. Its namespace only needs the per-namespace
 # client secret in that mode.
-iap_backend_namespaces=("${J2026_HEADLAMP_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}")
+iap_backend_namespaces=("${J2026_HEADLAMP_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}" "${J2026_ARGOCD_NAMESPACE}")
 # Jenkins is an IAP backend only when it is the CI engine (no Jenkins Service in
 # the other modes); the Tekton Dashboard is the IAP backend instead when
 # ci.engine=tekton. ci.engine=githubactions has NO in-cluster CI dashboard (runs
@@ -687,6 +1147,30 @@ spec:
     iap:
       enabled: true
       clientID: "${iap_client_id[${J2026_HEADLAMP_NAMESPACE}]}"
+      oauth2ClientSecret:
+        name: ${J2026_GATEWAY_IAP_SECRET}-client-secret
+EOT
+
+# ArgoCD IAP (defense-in-depth, docs/501): edge-block the argocd UI like the other
+# admin UIs. ArgoCD's Dex authproxy connector (08.5-argocd.sh) trusts the IAP-injected
+# X-Goog-Authenticated-User-Email header for single-sign-on + per-user RBAC. Composes
+# with the argocd BackendTLSPolicy (both target the same Service, like headlamp). The
+# header-spoof mitigation is the tightened argocd-baseline NetworkPolicy.
+cat >"${GENERATED_DIR}/gcpbackendpolicy-argocd.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: ${J2026_GATEWAY_IAP_POLICY_ARGOCD}
+  namespace: ${J2026_ARGOCD_NAMESPACE}
+spec:
+  targetRef:
+    group: ""
+    kind: Service
+    name: argocd-server
+  default:
+    iap:
+      enabled: true
+      clientID: "${iap_client_id[${J2026_ARGOCD_NAMESPACE}]}"
       oauth2ClientSecret:
         name: ${J2026_GATEWAY_IAP_SECRET}-client-secret
 EOT
@@ -788,6 +1272,17 @@ fi
 
 log_step "Applying Gateway resources"
 kubectl apply -f "${GENERATED_DIR}/"
+
+# Backend TLS: the argocd-server HTTPS HealthCheckPolicy is now applied, so the
+# NEG can finally go healthy (08.5 deliberately SKIPPED argocd-server's rollout
+# wait - its readiness gate was blocked on this policy). Converge it here so the
+# Day1 finishes with a Ready argocd. Non-fatal: a slow LB health-check reconcile
+# shouldn't fail an otherwise-good run (the pod converges shortly after).
+if [[ "${ARGOCD_TLS_ACTIVE}" == "true" ]]; then
+  log_step "Waiting for argocd-server to become NEG-healthy under the new HTTPS health check"
+  kubectl rollout status deployment argocd-server -n "${J2026_ARGOCD_NAMESPACE}" --timeout=6m || \
+    log_warn "argocd-server rollout not confirmed within 6m - the LB HTTPS health-check reconcile may still be in flight; check 'kubectl -n ${J2026_ARGOCD_NAMESPACE} get pods' and the GCP backend health."
+fi
 
 log_info "Gateway ready."
 if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then

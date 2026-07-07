@@ -223,7 +223,19 @@ if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
   # not-found) on clusters that never served the BackendTLSPolicy CRD.
   if kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
     kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_HEADLAMP}" -n "${J2026_HEADLAMP_NAMESPACE}" --ignore-not-found --timeout=5m
+    kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_PGADMIN}" -n "${J2026_PGADMIN_NAMESPACE}" --ignore-not-found --timeout=5m
+    # Grafana BackendTLSPolicy (only present when observability.mode=oss + backendTls; a
+    # no-op --ignore-not-found otherwise).
+    kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_GRAFANA}" -n "${J2026_GRAFANA_OSS_NAMESPACE}" --ignore-not-found --timeout=5m
+    # Jenkins BackendTLSPolicy (only present when ci.engine=jenkins + backendTls; a
+    # no-op --ignore-not-found otherwise).
+    kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_JENKINS}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found --timeout=5m
+    # Tekton Dashboard BackendTLSPolicy
+    kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_TEKTON}" -n "${J2026_TEKTON_NAMESPACE}" --ignore-not-found --timeout=5m
+    # Argo Workflows Server BackendTLSPolicy
+    kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_ARGOWF}" -n "${J2026_ARGOWF_NAMESPACE}" --ignore-not-found --timeout=5m
   fi
+
   kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_JENKINS}" -n "${J2026_JENKINS_NAMESPACE}" --ignore-not-found --timeout=5m
   kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_MICROSERVICES}" -n "${J2026_MICROSERVICES_NS_STABLE}" --ignore-not-found --timeout=5m
   # Develop tier route (only present when microservices.developTrackEnabled; ignored otherwise).
@@ -448,9 +460,9 @@ if command -v gcloud &>/dev/null; then
         || log_warn "  NEG '${name}' still won't delete (a backend may remain) — re-run down.sh (idempotent) or inspect the LB chain; terraform destroy of the VPC may fail until it's gone."
     }
 
-    # --- L2: bounded adaptive wait (up to 10m) for the controller's async GC ---
+    # --- L2: bounded adaptive wait (up to 2m) for the controller's async GC ---
     log_step "Releasing container-native LB NEGs for VPC '${vpc_name}' (await GKE GC, then dependency-safe force-delete)"
-    _neg_deadline=$(( SECONDS + 600 ))
+    _neg_deadline=$(( SECONDS + 120 ))
     while :; do
       negs=$(gcloud compute network-endpoint-groups list --filter="network:${vpc_name}" --project="${gcp_project}" --format="value(name)" 2>/dev/null || true)
       if [[ -z "${negs}" ]]; then
@@ -458,7 +470,7 @@ if command -v gcloud &>/dev/null; then
         break
       fi
       if [[ ${SECONDS} -ge ${_neg_deadline} ]]; then
-        log_warn "L2: NEGs still present after 10m of async GC — switching to dependency-ordered force-delete (L3)."
+        log_warn "L2: NEGs still present after 2m of async GC — switching to dependency-ordered force-delete (L3)."
         break
       fi
       log_info "  L2: waiting for the GKE controller to release $(echo ${negs} | wc -w) NEG(s) ($(( _neg_deadline - SECONDS ))s left)"

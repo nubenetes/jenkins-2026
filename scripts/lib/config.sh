@@ -170,7 +170,7 @@ export J2026_SELF_REPO_URL="$(yq_get '.jenkins.selfRepoUrl' 'https://github.com/
 #      PR, instead of always pulling the pinned default. (GitHub Actions sets this in
 #      every step; it is unset locally, so local runs fall through to the config value.)
 #   3. jenkins.selfRepoBranch in config.yaml (default 'main') — the local/fallback default.
-export J2026_SELF_REPO_BRANCH="${JENKINS2026_SELF_REPO_BRANCH:-${GITHUB_REF_NAME:-$(yq_get '.jenkins.selfRepoBranch' 'main')}}"
+export J2026_SELF_REPO_BRANCH="${JENKINS2026_SELF_REPO_BRANCH:-${GITHUB_REF_NAME:-$(git branch --show-current 2>/dev/null || yq_get '.jenkins.selfRepoBranch' 'main')}}"
 
 export J2026_JENKINS_OIDC_ADMIN_EMAIL="${JENKINS_OIDC_ADMIN_EMAIL:-}"
 if [[ -z "${J2026_JENKINS_OIDC_ADMIN_EMAIL}" ]]; then
@@ -412,6 +412,60 @@ export J2026_BACKEND_TLS_CA_ISSUER="jenkins-2026-internal-ca"
 # BackendTLSPolicies' caCertificateRefs validate against.
 export J2026_BACKEND_TLS_CA_CONFIGMAP="jenkins-2026-backend-tls-ca"
 export J2026_BACKEND_TLS_POLICY_HEADLAMP="headlamp-backend-tls"
+# Stage-2 TLS backend: the otel-collector faro (RUM) receiver. Server-cert Secret
+# 08.7 mints (must match secretName in observability/otel-collector/
+# values-backend-tls.yaml) + the BackendTLSPolicy 09-gateway.sh attaches. The
+# collector Service is otel-collector-gateway (fullnameOverride, every obs mode).
+export J2026_BACKEND_TLS_SECRET_FARO="faro-tls"
+export J2026_BACKEND_TLS_POLICY_FARO="faro-backend-tls"
+# Stage-3 TLS backend: argocd-server (the ArgoCD UI). argocd-server watches the
+# argocd-server-tls Secret and serves it when not --insecure (08.5 drops --insecure
+# under j2026_argocd_backend_tls_active). 09-gateway.sh attaches the BackendTLSPolicy.
+export J2026_BACKEND_TLS_SECRET_ARGOCD="argocd-server-tls"
+export J2026_BACKEND_TLS_POLICY_ARGOCD="argocd-backend-tls"
+# Stage-4 TLS backend: pgAdmin (the platform-postgres admin UI). Server-cert Secret
+# 08.7 mints (must match the secretName the pgadmin-tls extraSecretMounts reference
+# in helm/pgadmin/values-backend-tls.yaml) + the BackendTLSPolicy 09-gateway.sh
+# attaches. pgAdmin serves TLS on its pod port 8443 (PGADMIN_ENABLE_TLS +
+# PGADMIN_LISTEN_PORT, non-privileged since the pod runs as UID 5050); the Service
+# is ${J2026_PGADMIN_RELEASE}-pgadmin4 (runix chart fullname).
+export J2026_BACKEND_TLS_SECRET_PGADMIN="pgadmin-tls"
+export J2026_BACKEND_TLS_POLICY_PGADMIN="pgadmin-backend-tls"
+# Stage-5 TLS backend: the in-cluster OSS Grafana (observability.mode=oss ONLY —
+# doubly conditional: the flag AND oss mode; the managed backends live off-cluster).
+# Server-cert Secret 08.7-backend-tls.sh mints (must match the secretName in
+# observability/grafana/values-oss-backend-tls.yaml, layered by the observability-oss
+# app-of-apps) + the BackendTLSPolicy 09-gateway.sh attaches. Grafana serves TLS on its
+# pod port (named `grafana`, 3000) via grafana.ini server.protocol=https; the Service is
+# oss-kube-prometheus-stack-grafana (the kube-prometheus-stack subchart fullname).
+export J2026_BACKEND_TLS_SECRET_GRAFANA="grafana-tls"
+export J2026_BACKEND_TLS_POLICY_GRAFANA="grafana-backend-tls"
+# Stage-6 TLS backend: Jenkins (ci.engine=jenkins ONLY - the controller Service
+# doesn't exist otherwise). Highest blast radius of the six stages: build agents
+# and (oss mode) Grafana's Jenkins datasource dial the Service directly in plain
+# HTTP, so the chart's native controller.httpsKeyStore feature is used instead of
+# a plain cert (see helm/jenkins/values-backend-tls.yaml) - it moves the pod's
+# plain-HTTP listener + probes to httpPort 8081 while the Service's existing port
+# (8080) becomes HTTPS, and controller.extraPorts re-exposes the plain port on the
+# Service as 8082 (->pod 8081; a distinct number to avoid a containerPort collision)
+# so in-cluster callers (agents) keep dialing plain HTTP on a different port than
+# the LB. The JKS keystore needs a password Secret cert-manager reads via
+# passwordSecretRef (it doesn't create one) - 08.7-backend-tls.sh generates it
+# once (create-if-absent).
+export J2026_BACKEND_TLS_SECRET_JENKINS="jenkins-tls"
+export J2026_BACKEND_TLS_JENKINS_JKS_PASSWORD_SECRET="jenkins-https-jks-password"
+export J2026_BACKEND_TLS_POLICY_JENKINS="jenkins-backend-tls"
+# Tekton Dashboard Backend TLS
+export J2026_BACKEND_TLS_SECRET_TEKTON="tekton-dashboard-tls"
+export J2026_BACKEND_TLS_POLICY_TEKTON="tekton-dashboard-backend-tls"
+# Argo Workflows Server Backend TLS
+export J2026_BACKEND_TLS_SECRET_ARGOWF="argo-server-tls"
+export J2026_BACKEND_TLS_POLICY_ARGOWF="argo-server-backend-tls"
+# Stage-7 TLS backend: microservices gateway.
+export J2026_BACKEND_TLS_SECRET_MICROSERVICES="gateway-tls"
+export J2026_BACKEND_TLS_MICROSERVICES_PASSWORD_SECRET="gateway-tls-password"
+export J2026_BACKEND_TLS_POLICY_MICROSERVICES="microservices-gateway-backend-tls"
+
 
 # Fixed names of the Gateway/HTTPRoute/GCPBackendPolicy resources created by
 # scripts/09-gateway.sh. Shared with scripts/down.sh so the two stay in sync:
@@ -438,6 +492,7 @@ export J2026_GATEWAY_HTTPROUTE_TEKTON="tekton"
 # PaC controller webhook endpoint (ci.engine=tekton; public, no IAP).
 export J2026_GATEWAY_HTTPROUTE_PAC="pac"
 export J2026_GATEWAY_IAP_POLICY_JENKINS="jenkins-iap"
+export J2026_GATEWAY_IAP_POLICY_ARGOCD="argocd-iap"
 export J2026_GATEWAY_IAP_POLICY_HEADLAMP="headlamp-iap"
 export J2026_GATEWAY_IAP_POLICY_PGADMIN="pgadmin-iap"
 export J2026_GATEWAY_IAP_POLICY_GRAFANA="grafana-iap"

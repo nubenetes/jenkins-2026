@@ -11,6 +11,15 @@ spec:
     repoURL: {{ .Values.repoURL | quote }}
     targetRevision: {{ .Values.targetRevision | quote }}
     path: helm/pgadmin
+    {{- if eq (.Values.backendTls | toString) "true" }}
+    # Backend TLS active (docs/504): layer the TLS overlay so pgAdmin serves
+    # HTTPS on 8443 with the cert-manager-minted pgadmin-tls Secret. Later
+    # valueFiles win; values.yaml must be listed explicitly once valueFiles is set.
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-backend-tls.yaml
+    {{- end }}
   destination:
     server: https://kubernetes.default.svc
     namespace: {{ .Values.namespace.pgadmin | quote }}

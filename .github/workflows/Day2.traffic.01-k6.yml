@@ -419,15 +419,32 @@ jobs:
           # script at it; beacons flow collector → Loki/Tempo. (k6's own metrics still
           # go out via -o opentelemetry, tagged k6_profile=rum, so the k6 board shows it.)
           FARO_PF_PID=""
+          K6_TLS_FLAGS=""
           if [[ "${K6SIM_PROFILE}" == "rum" ]]; then
             kubectl port-forward svc/otel-collector-gateway -n "${NS}" 8027:8027 >/tmp/faro-pf.log 2>&1 &
             FARO_PF_PID=$!; sleep 4
-            export FARO_URL="http://localhost:8027/"
+            # Auto-detect backend TLS (docs/504) from the LIVE cluster instead of a
+            # manual input that could drift from how the cluster was actually
+            # provisioned (the #552/#556 input-parity lesson). The faro-backend-tls
+            # BackendTLSPolicy only exists when 08.7-backend-tls.sh + 09-gateway.sh
+            # activated it. When active the faro receiver serves HTTPS-only on 8027
+            # (no plain-HTTP fallback), so both FARO_URL and the k6 run itself must
+            # speak/accept TLS or every beacon fails silently (k6 reports a
+            # connection/TLS error per request, not an HTTP error).
+            # --insecure-skip-tls-verify: the runner doesn't carry the in-cluster CA -
+            # fine here, this POSTs straight to the port-forwarded pod, not through
+            # the LB/BackendTLSPolicy validation path.
+            if kubectl get backendtlspolicy faro-backend-tls -n "${NS}" >/dev/null 2>&1; then
+              export FARO_URL="https://localhost:8027/"
+              K6_TLS_FLAGS="--insecure-skip-tls-verify"
+            else
+              export FARO_URL="http://localhost:8027/"
+            fi
             echo "RUM: Faro beacons → ${FARO_URL} (collector faro receiver)"
           fi
           k6 run "${K6_SCRIPT}" \
             --tag ci_runner=gha --tag "k6_profile=${K6SIM_PROFILE}" --tag "k6_preset=${{ matrix.preset }}" \
-            -o opentelemetry ${CLOUD_OUT}
+            ${K6_TLS_FLAGS} -o opentelemetry ${CLOUD_OUT}
           EXIT_CODE=$?
           set -e
 

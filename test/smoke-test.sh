@@ -43,7 +43,11 @@ if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
   # Forbidden -> no HTTP code -> false FAIL). Hit /readiness (the dashboard's own
   # readiness endpoint, guaranteed 200 when the pod is Ready). Use run->wait->logs
   # rather than 'run -i' (the interactive attach raced a fast-completing pod).
-  dash_url="http://${J2026_TEKTON_DASHBOARD_SERVICE}.${TEKTON_NS}.svc.cluster.local:${J2026_TEKTON_DASHBOARD_PORT}/readiness"
+  dash_scheme="http"
+  if [[ "${JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED}" == "true" ]]; then
+    dash_scheme="https"
+  fi
+  dash_url="${dash_scheme}://${J2026_TEKTON_DASHBOARD_SERVICE}.${TEKTON_NS}.svc.cluster.local:${J2026_TEKTON_DASHBOARD_PORT}/readiness"
   kubectl -n "${TEKTON_NS}" delete pod smoke-tkn-dash --ignore-not-found >/dev/null 2>&1 || true
   kubectl -n "${TEKTON_NS}" run smoke-tkn-dash --restart=Never --image=curlimages/curl:8.10.1 \
     --overrides='{
@@ -52,7 +56,7 @@ if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
         "containers": [{
           "name": "smoke-tkn-dash",
           "image": "curlimages/curl:8.10.1",
-          "command": ["curl","-s","-o","/dev/null","-w","%{http_code}","--max-time","20","'"${dash_url}"'"],
+          "command": ["curl","-sk","-o","/dev/null","-w","%{http_code}","--max-time","20","'"${dash_url}"'"],
           "securityContext": {
             "allowPrivilegeEscalation": false, "runAsNonRoot": true, "runAsUser": 100,
             "capabilities": {"drop": ["ALL"]}, "seccompProfile": {"type": "RuntimeDefault"}
@@ -168,8 +172,13 @@ else
   check "${JENKINS_POD} pod is Running" \
     bash -c "kubectl -n '${JENKINS_NS}' get pod '${JENKINS_POD}' -o jsonpath='{.status.phase}' | grep -qx Running"
 
+  jenkins_url="http://localhost:8080"
+  if [[ "${JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED}" == "true" ]]; then
+    jenkins_url="http://localhost:8081"
+  fi
+
   check "Jenkins login page responds (HTTP 200)" \
-    bash -c "[[ \$(kubectl exec -n '${JENKINS_NS}' '${JENKINS_POD}' -c jenkins -- curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/login) == 200 ]]"
+    bash -c "[[ \$(kubectl exec -n '${JENKINS_NS}' '${JENKINS_POD}' -c jenkins -- curl -s -o /dev/null -w '%{http_code}' ${jenkins_url}/login) == 200 ]]"
 
   log_step "Seed job / pipelines-as-code"
   ADMIN_PASSWORD="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${JENKINS_NS}" -o jsonpath='{.data.admin-password}' | base64 -d)"
@@ -177,7 +186,7 @@ else
 
   EXPECTED_JOBS=$(( NUM_SERVICES + 2 )) # 1 stable pipeline/service + seed-jobs + microservices-k6-smoke
 
-  JOB_COUNT="$(jenkins_exec curl -sg -u "${AUTH}" 'http://localhost:8080/api/json?tree=jobs[name]' \
+  JOB_COUNT="$(jenkins_exec curl -sg -u "${AUTH}" "${jenkins_url}/api/json?tree=jobs[name]" \
     | python3 -c 'import sys,json; print(len(json.load(sys.stdin)["jobs"]))' 2>/dev/null || echo 0)"
 
   if [[ "${JOB_COUNT}" -ge "${EXPECTED_JOBS}" ]]; then

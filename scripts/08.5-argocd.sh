@@ -5,6 +5,21 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 
+# Wait for an argocd-server rollout to finish - UNLESS backend TLS is active for
+# argocd. A TLS argocd-server pod carries a GKE NEG readiness gate that only clears
+# once 09-gateway.sh flips the LB HealthCheckPolicy to HTTPS (this script runs long
+# before 09; until then the HTTP LB health check 3xx-redirects against the TLS pod
+# and the NEG never goes healthy). `kubectl rollout status` blocks on that gate, so
+# waiting here deadlocks the whole Day1. The container itself is Ready; the old
+# replica terminates once 09 makes the NEG healthy. See docs/504 § argocd.
+wait_argocd_server_rollout() {
+  if [[ "$(j2026_argocd_backend_tls_active)" == "true" ]]; then
+    log_info "Backend TLS active - skipping the argocd-server rollout wait (NEG readiness gate clears at 09-gateway.sh)."
+    return 0
+  fi
+  kubectl rollout status deployment "${J2026_ARGOCD_RELEASE}-server" -n "${J2026_ARGOCD_NAMESPACE}" --timeout=5m
+}
+
 resolve_argocd_version() {
   local constraint="$1"
   local baseline="$2"
@@ -77,11 +92,24 @@ log_step "Running Helm upgrade"
 # Delete existing patched configmaps to prevent Helm Server-Side Apply / ownership conflict failures on subsequent runs
 kubectl delete configmap argocd-cm argocd-rbac-cm -n "${J2026_ARGOCD_NAMESPACE}" --ignore-not-found=true || true
 
+# Backend TLS (opt-in, docs/504): serve argocd-server over TLS by dropping the
+# `--insecure` extraArg from helm/argocd-values.yaml, so the LB re-encrypts the UI
+# hop (BackendTLSPolicy in 09-gateway.sh) against the cert-manager argocd-server-tls
+# cert 08.7 mints. Gated on j2026_argocd_backend_tls_active (flag AND an engine whose
+# deploy caller speaks TLS: jenkins/githubactions), so tekton/argo clusters keep the
+# plaintext argocd their `:80 --plaintext` callers need. Empty array = no-op.
+argocd_tls_helm_args=()
+if [[ "$(j2026_argocd_backend_tls_active)" == "true" ]]; then
+  log_info "Backend TLS active (ci.engine=${J2026_CI_ENGINE}) - serving argocd-server over TLS (dropping --insecure)"
+  argocd_tls_helm_args=(-f "${J2026_ROOT_DIR}/helm/argocd-values-backend-tls.yaml")
+fi
+
 helm upgrade --install "${J2026_ARGOCD_RELEASE}" argo/argo-cd \
   --namespace "${J2026_ARGOCD_NAMESPACE}" \
   --version "${J2026_ARGOCD_CHART_VERSION}" \
   -f "${J2026_ROOT_DIR}/helm/argocd-values.yaml" \
   --set global.image.tag="${RESOLVED_ARGOCD_VERSION}" \
+  "${argocd_tls_helm_args[@]}" \
   --timeout 10m
 
 # 2. Configure OIDC/RBAC
@@ -97,47 +125,48 @@ CLIENT_ID="$(kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${J2026_HEADLA
 CLIENT_SECRET="$(kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${J2026_HEADLAMP_NAMESPACE}" -o jsonpath='{.data.client_secret}' 2>/dev/null | base64 -d || true)"
 
 if [[ -n "${CLIENT_ID}" && -n "${CLIENT_SECRET}" ]]; then
-  log_info "Wiring Google OIDC for ArgoCD at ${ARGOCD_URL}"
-  
+  log_info "Wiring IAP authproxy SSO for ArgoCD at ${ARGOCD_URL}"
+
   PATCH_FILE=$(mktemp)
+  # Dex authproxy connector: ArgoCD trusts the identity Google IAP injects at the edge
+  # (the X-Goog-Authenticated-User-Email header), so IAP performs the ONE Google login
+  # and ArgoCD runs NO second OAuth flow — single sign-on (docs/501). This replaces the
+  # former Google `oidc` connector, whose redirect caused a second login on top of IAP.
+  # The header value is prefixed `accounts.google.com:`, so the RBAC bindings below carry
+  # that prefix. SECURITY: authproxy trusts the header WITHOUT verifying IAP's signed JWT,
+  # so argocd-server must be reachable ONLY behind IAP — the argocd-baseline NetworkPolicy
+  # (infrastructure/networkpolicies.yaml) restricts pod :8080 ingress to the GKE LB + CI
+  # namespaces so no arbitrary in-cluster pod can forge the header (header-spoof mitigation).
   cat <<EOF > "${PATCH_FILE}"
 data:
   url: ${ARGOCD_URL}
   dex.config: |
     connectors:
-      - type: oidc
-        id: google
-        name: Google
+      - type: authproxy
+        id: iap
+        name: Google IAP
         config:
-          issuer: https://accounts.google.com
-          clientID: ${CLIENT_ID}
-          clientSecret: ${CLIENT_SECRET}
-          redirectURI: ${ARGOCD_URL}/api/dex/callback
-          scopes:
-            - openid
-            - profile
-            - email
-          userIDKey: email
-          userNameKey: email
+          userHeader: "X-Goog-Authenticated-User-Email"
 EOF
   kubectl patch configmap argocd-cm -n ${J2026_ARGOCD_NAMESPACE} --patch-file "${PATCH_FILE}"
   rm "${PATCH_FILE}"
 
   PATCH_FILE_RBAC=$(mktemp)
-  # scopes MUST include 'email': Google OIDC returns no 'groups' claim, so RBAC
-  # subjects are matched against the email claim (the human admin is bound by email
-  # below / in the CI-account section). With the default '[groups]' nothing matches
-  # and OIDC users fall to policy.default. (policy.csv here is overwritten by the
-  # CI-account patch further down; the binding that matters is set there.)
+  # scopes = '[email]': IAP forwards no 'groups' claim (nor did the old Google OIDC),
+  # so RBAC subjects are matched by email only. The IAP authproxy identity is the raw
+  # header value, which IAP prefixes with 'accounts.google.com:' — so the human admin
+  # binding carries that prefix (below / in the CI-account section). (policy.csv here
+  # is overwritten by the CI-account patch further down; the binding that matters is
+  # set there.)
   cat <<EOF > "${PATCH_FILE_RBAC}"
 data:
-  scopes: '[groups, email]'
+  scopes: '[email]'
   policy.default: role:readonly
   policy.csv: |
     g, authenticated, role:admin
 EOF
   if [[ -n "${J2026_JENKINS_OIDC_ADMIN_EMAIL}" ]]; then
-    echo "    g, ${J2026_JENKINS_OIDC_ADMIN_EMAIL}, role:admin" >> "${PATCH_FILE_RBAC}"
+    echo "    g, accounts.google.com:${J2026_JENKINS_OIDC_ADMIN_EMAIL}, role:admin" >> "${PATCH_FILE_RBAC}"
   fi
   kubectl patch configmap argocd-rbac-cm -n ${J2026_ARGOCD_NAMESPACE} --patch-file "${PATCH_FILE_RBAC}"
   rm "${PATCH_FILE_RBAC}"
@@ -148,7 +177,13 @@ EOF
   kubectl rollout restart deployment "${J2026_ARGOCD_RELEASE}-dex-server" -n "${J2026_ARGOCD_NAMESPACE}"
   
   log_info "Waiting for ArgoCD server and dex rollouts to complete to release resource quota..."
-  kubectl rollout status deployment "${J2026_ARGOCD_RELEASE}-server" -n "${J2026_ARGOCD_NAMESPACE}" --timeout=5m
+  # Backend TLS: the TLS argocd-server pod carries a GKE NEG readiness gate that only
+  # clears once 09-gateway.sh flips the LB HealthCheckPolicy to HTTPS (until then the
+  # HTTP LB health check 3xx-redirects against the now-TLS pod, so the NEG never goes
+  # healthy). `rollout status` blocks on that gate and would DEADLOCK the Day1 here
+  # (08.5 runs long before 09). Skip it for argocd-server when TLS is active - its
+  # container is Ready; the old replica terminates once 09 makes the NEG healthy.
+  wait_argocd_server_rollout
   kubectl rollout status deployment "${J2026_ARGOCD_RELEASE}-dex-server" -n "${J2026_ARGOCD_NAMESPACE}" --timeout=5m
 else
   log_warn "OIDC credentials not found. ArgoCD will use local admin password."
@@ -166,15 +201,18 @@ esac
 log_step "Configuring '${CI_ARGOCD_ACCOUNT}' account in ArgoCD"
 kubectl patch configmap argocd-cm -n "${J2026_ARGOCD_NAMESPACE}" --type merge -p "{\"data\": {\"accounts.${CI_ARGOCD_ACCOUNT}\": \"apiKey\"}}"
 
+# The CI account is a LOCAL argocd apiKey account (not header-derived), so its RBAC
+# subject is the bare account name — NO accounts.google.com: prefix (unlike the human).
 policy_csv="g, ${CI_ARGOCD_ACCOUNT}, role:admin"
 if [[ -n "${CLIENT_ID}" && -n "${CLIENT_SECRET}" ]]; then
-  # Grant the human admin via their Google email claim (scopes include 'email'
-  # above). ArgoCD has NO built-in "authenticated" group - that subject is a
-  # no-op - so bind the specific admin email instead.
+  # Grant the human admin by the identity the IAP authproxy connector reports — the
+  # IAP header value, which IAP prefixes with 'accounts.google.com:'. Bind the specific
+  # admin email (ArgoCD has no built-in "authenticated" group; that subject is a no-op).
+  # ⚠️ The prefix is load-bearing: a bare email would silently drop the admin to readonly.
   if [[ -n "${J2026_JENKINS_OIDC_ADMIN_EMAIL}" ]]; then
-    policy_csv="g, ${J2026_JENKINS_OIDC_ADMIN_EMAIL}, role:admin\n${policy_csv}"
+    policy_csv="g, accounts.google.com:${J2026_JENKINS_OIDC_ADMIN_EMAIL}, role:admin\n${policy_csv}"
   else
-    log_warn "JENKINS_OIDC_ADMIN_EMAIL unset - no human will get ArgoCD admin via OIDC (only the '${CI_ARGOCD_ACCOUNT}' API account). Set the GitHub secret to your Google login email, else ArgoCD shows an empty app list to SSO users."
+    log_warn "JENKINS_OIDC_ADMIN_EMAIL unset - no human will get ArgoCD admin via IAP SSO (only the '${CI_ARGOCD_ACCOUNT}' API account). Set the GitHub secret to your Google login email, else ArgoCD shows an empty app list to SSO users."
   fi
 fi
 kubectl patch configmap argocd-rbac-cm -n "${J2026_ARGOCD_NAMESPACE}" --type merge -p "{\"data\": {\"policy.csv\": \"${policy_csv}\"}}"
@@ -183,7 +221,7 @@ kubectl patch configmap argocd-rbac-cm -n "${J2026_ARGOCD_NAMESPACE}" --type mer
 if [[ -z "${CLIENT_ID}" || -z "${CLIENT_SECRET}" ]]; then
   log_info "Restarting ArgoCD server to pick up local account config"
   kubectl rollout restart deployment "${J2026_ARGOCD_RELEASE}-server" -n "${J2026_ARGOCD_NAMESPACE}"
-  kubectl rollout status deployment "${J2026_ARGOCD_RELEASE}-server" -n "${J2026_ARGOCD_NAMESPACE}" --timeout=5m
+  wait_argocd_server_rollout  # skipped under backend TLS (NEG gate clears at 09) - see note above
 fi
 
 log_info "Generating ArgoCD API token for the '${CI_ARGOCD_ACCOUNT}' account"
@@ -305,7 +343,18 @@ fi
 
 # 3. Wait for Server
 log_step "Waiting for ArgoCD Server to be ready"
-wait_for_deployment "${J2026_ARGOCD_RELEASE}-server" "${J2026_ARGOCD_NAMESPACE}" "5m"
+# Under backend TLS, the argocd-server pod's GKE NEG readiness gate stays open until
+# 09-gateway.sh flips the LB health check to HTTPS (verified live: argocd serves 200
+# on HTTPS /healthz but 307 on HTTP, so the HTTP LB probe marks the NEG UNHEALTHY).
+# wait_for_deployment would not only time out but SELF-HEAL by rolling argocd-server -
+# and every restart resets the NEG, so it can never converge here. 09 converges it
+# (its own non-fatal rollout wait, once the HTTPS HealthCheckPolicy + BackendTLSPolicy
+# land). Same rationale as wait_argocd_server_rollout above; see docs/504 § argocd.
+if [[ "$(j2026_argocd_backend_tls_active)" == "true" ]]; then
+  log_info "Backend TLS active - skipping the argocd-server readiness wait (NEG gate clears at 09-gateway.sh)."
+else
+  wait_for_deployment "${J2026_ARGOCD_RELEASE}-server" "${J2026_ARGOCD_NAMESPACE}" "5m"
+fi
 
 # 4. Configure GitOps Project and AppSet
 log_step "Configuring ArgoCD Microservices GitOps Project"
@@ -339,8 +388,13 @@ log_step "Configuring platform-postgres app-of-apps (CNPG operator + pgAdmin) vi
 # child's git source tracks the active branch.
 PG_APP_FILE=$(mktemp)
 REPO_URL="${J2026_SELF_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
+# backend TLS (docs/504): when active, the pgAdmin child layers its TLS values
+# overlay. Gated on j2026_backend_tls_active (flag AND the BackendTLSPolicy CRD),
+# so a cluster too old to serve the CRD stays plain HTTP even with the flag on.
+PG_BACKEND_TLS="$(j2026_backend_tls_active)"
 sed "s@{{repoUrl}}@${REPO_URL}@g;
-     s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g" \
+     s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g;
+     s@{{backendTls}}@${PG_BACKEND_TLS}@g" \
     "${J2026_ROOT_DIR}/argocd/platform-postgres-app.yaml" > "${PG_APP_FILE}"
 kubectl apply -f "${PG_APP_FILE}"
 rm "${PG_APP_FILE}"
@@ -511,6 +565,7 @@ sed "s@{{repoUrl}}@${GITOPS_REPO_URL}@g;
      s@{{platform}}@${J2026_PLATFORM}@g;
      s@{{gcpProject}}@${PROJECT_ID}@g;
      s@{{gcpServiceAccount}}@jenkins-2026-pg-backups@g;
+     s@{{backendTlsEnabled}}@$(j2026_backend_tls_active)@g;
      s@{{gcsBackupBucket}}@${PROJECT_ID}-jenkins-2026-postgres-backups@g" \
     "${J2026_ROOT_DIR}/argocd/microservices-appset.yaml" > "${APPSET_FILE}"
 

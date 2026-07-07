@@ -16,6 +16,58 @@ if kubectl get deployment/"${J2026_HEADLAMP_RELEASE}" -n "${J2026_HEADLAMP_NAMES
   kubectl rollout restart deployment/"${J2026_HEADLAMP_RELEASE}" -n "${J2026_HEADLAMP_NAMESPACE}"
 fi
 
+# GKE Gateway NEG health check deadlock fix (docs/504): GKE container-native load
+# balancing (NEG) requires the pod to be HEALTHY in the GCP Load Balancer to satisfy
+# the pod's `cloud.google.com/load-balancer-neg-ready` readiness gate during a rollout.
+# But when Backend TLS is active, the pod serves HTTPS while the GCP LB defaults to
+# HTTP probes (causing TLS handshake errors / connection refused), creating a deadlock.
+# Applying the BackendTLSPolicy and HealthCheckPolicy (HTTPS) BEFORE waiting for the
+# deployment rollout breaks this deadlock and lets the pods go healthy.
+if [[ "$(j2026_backend_tls_active)" == "true" ]]; then
+  log_step "Applying headlamp BackendTLSPolicy + HTTPS HealthCheckPolicy to prevent rollout deadlock"
+  mkdir -p "${J2026_ROOT_DIR}/.generated/headlamp"
+  
+  cat >"${J2026_ROOT_DIR}/.generated/headlamp/backendtlspolicy-headlamp.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: ${J2026_BACKEND_TLS_POLICY_HEADLAMP}
+  namespace: ${J2026_HEADLAMP_NAMESPACE}
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: ${J2026_HEADLAMP_RELEASE}
+  validation:
+    hostname: ${J2026_HEADLAMP_RELEASE}.${J2026_HEADLAMP_NAMESPACE}.svc.cluster.local
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: ${J2026_BACKEND_TLS_CA_CONFIGMAP}
+EOT
+
+  cat >"${J2026_ROOT_DIR}/.generated/headlamp/healthcheckpolicy-headlamp.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: ${J2026_HEADLAMP_RELEASE}
+  namespace: ${J2026_HEADLAMP_NAMESPACE}
+spec:
+  default:
+    config:
+      type: HTTPS
+      httpsHealthCheck:
+        requestPath: /
+  targetRef:
+    group: ""
+    kind: Service
+    name: ${J2026_HEADLAMP_RELEASE}
+EOT
+
+  kubectl apply -f "${J2026_ROOT_DIR}/.generated/headlamp/backendtlspolicy-headlamp.yaml"
+  kubectl apply -f "${J2026_ROOT_DIR}/.generated/headlamp/healthcheckpolicy-headlamp.yaml"
+fi
+
 log_step "Waiting for Headlamp deployment to be ready"
 wait_for_deployment "${J2026_HEADLAMP_RELEASE}" "${J2026_HEADLAMP_NAMESPACE}" "5m"
 

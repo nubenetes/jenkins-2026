@@ -278,7 +278,9 @@ EOF
 # --- emit: gateway IAP secrets (only when the gateway is enabled) -------------
 # Namespace membership must match 01-namespaces.sh / 09-gateway.sh.
 if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
-  iap_namespaces=("${J2026_HEADLAMP_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}")
+  # ArgoCD is IAP-fronted too (its Dex authproxy connector trusts the IAP identity
+  # header — docs/501); always deployed, so unconditional like headlamp/pgadmin.
+  iap_namespaces=("${J2026_HEADLAMP_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}" "${J2026_ARGOCD_NAMESPACE}")
   [[ "${J2026_OBS_MODE}" == "oss" ]] && iap_namespaces+=("${J2026_GRAFANA_OSS_NAMESPACE}")
   # Match 09-gateway.sh's iap_backend_namespaces exactly: the IAP-protected CI
   # dashboard is Tekton's (tekton) / Jenkins' (jenkins) / the Argo Workflows Server

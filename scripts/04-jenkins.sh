@@ -27,6 +27,18 @@ retire_ci_engine tekton
 retire_ci_engine githubactions
 retire_ci_engine argoworkflows
 
+# --- ensure the jenkins-namespace NetworkPolicies are current ----------------
+# 01-namespaces.sh applies these on Day1, but the Jenkins-only redeploy
+# (Day2.redeploy.02-jenkins) deliberately does NOT run 01-namespaces - so a
+# change to the jenkins NetworkPolicy (notably the backend-TLS 8081 ingress
+# rule, docs/504) would never reach the cluster on a redeploy, and build agents
+# would hang "Waiting for agent to connect" (the LB→pod hop moves to the plain
+# 8081 the policy must allow). Re-apply here too - idempotent, same file +
+# ci.engine=jenkins guard as 01-namespaces - so a redeploy is self-sufficient.
+# The jenkins namespace already exists (Day1's 01-namespaces created it; this
+# script only runs after that), so the apply never races namespace creation.
+kubectl apply -f "${J2026_ROOT_DIR}/infrastructure/networkpolicies-jenkins.yaml"
+
 # --- compute dynamic banner values and patch them into the Secret ------------
 # Grafana base URL surfaced in the systemMessage banner (jcasc-base.yaml) and
 # the OTel plugin's "View in Grafana" links (jcasc-otel.yaml). Resolved per
@@ -130,14 +142,40 @@ if [[ "${J2026_NODE_AUTOPROVISIONING_ENABLED}" == "true" ]]; then
   gke_compute_class="${J2026_NODE_AUTOPROVISIONING_COMPUTE_CLASS}"
 fi
 
+# ArgoCD server address the pipeline's Deploy stage (microservicesDeploy.groovy)
+# targets. With backend TLS active (docs/504) argocd-server serves TLS, so append
+# ':443' - the groovy then keeps --grpc-web --insecure and DROPS --plaintext for a
+# ':<non-80-port>' address. Port-less otherwise, so the groovy adds :80 + --plaintext.
+argocd_server_addr="argocd-server.${J2026_ARGOCD_NAMESPACE}.svc.cluster.local"
+if [[ "$(j2026_argocd_backend_tls_active)" == "true" ]]; then
+  argocd_server_addr="${argocd_server_addr}:443"
+fi
+
+# Internal Service port build agents dial over WebSocket (jcasc-base.yaml
+# jenkinsUrl). Plain HTTP always: when backend TLS (docs/504) is active, the
+# controller's main port (8080) becomes HTTPS-only and the plain-HTTP listener
+# moves to the pod's httpsKeyStore.httpPort (8081), exposed on the Service as
+# port 8082 -> targetPort 8081 (controller.extraPorts, values-backend-tls.yaml;
+# the Service port must differ from 8081 to avoid a containerPort collision -
+# see that file). So agents dial the SERVICE port 8082. Empty when TLS is
+# inactive, so jcasc-base.yaml's ${JENKINS_AGENT_PORT:-8080} default (the plain
+# servicePort) applies unchanged.
+jenkins_agent_port="8080"
+if [[ "$(j2026_backend_tls_active)" == "true" ]]; then
+  jenkins_agent_port="8082"
+fi
+
+
 kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" \
   --type=merge -p "$(jq -nc \
     --arg gbu "${grafana_base_url}" \
+    --arg argocdsrv "${argocd_server_addr}" \
     --arg gk8s "${grafana_k8s_app_link}" \
     --arg msu "${microservices_url}" \
     --arg msdu "${microservices_develop_url}" \
     --arg msdl "${microservices_develop_link}" \
     --arg jpu "${jenkins_public_url}" \
+    --arg jap "${jenkins_agent_port}" \
     --arg br "${J2026_SELF_REPO_BRANCH}" \
     --arg genai "${J2026_MICROSERVICES_GENAI_SERVICE_ENABLED}" \
     --arg dev "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" \
@@ -160,22 +198,26 @@ kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_N
         "microservices-develop-url":$msdu,
         "microservices-develop-link":$msdl,
         "jenkins-public-url":$jpu,
+        "jenkins-agent-port":$jap,
         "repo-branch":$br,
         "genai-enabled":$genai,
         "develop-enabled":$dev,
         "gke-compute-class":$cc,
-        "run-node-pool":$rnp
+        "run-node-pool":$rnp,
+        "argocd-server":$argocdsrv
     }}')"
 
 # Rolls the controller whenever the Secret-backed banner/behaviour values change
 # (ArgoCD won't roll on an out-of-band Secret edit otherwise) - passed as the
 # controller.podAnnotations.bannerLinksChecksum helm parameter below.
-banner_links_checksum="$(printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' \
+banner_links_checksum="$(printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' \
   "${grafana_base_url}" "${grafana_k8s_app_link}" "${microservices_url}" \
   "${microservices_develop_url}" \
   "${jenkins_public_url}" "${J2026_SELF_REPO_BRANCH}" "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" \
   "${gke_compute_class}" "${J2026_JENKINS_RUN_NODE_POOL}" \
   "${dash_uid_jenkins}|${dash_uid_microservices}|${dash_uid_k6}|${dash_uid_rum}|${dash_uid_jvm}" \
+  "${argocd_server_addr}" \
+  "${jenkins_agent_port}" \
   | sha256sum | cut -c1-16)"
 
 # --- JCasC ConfigMaps (single source: jenkins/casc/*) ------------------------
@@ -215,8 +257,33 @@ sed "s@{{repoUrl}}@${REPO_URL}@g;
      s@{{jenkinsUrl}}@${J2026_JENKINS_URL}@g;
      s@{{bannerChecksum}}@${banner_links_checksum}@g" \
     "${J2026_ROOT_DIR}/argocd/jenkins-app.yaml" > "${JENKINS_APP_FILE}"
+# Backend TLS (gateway.backendTls.enabled, docs/504): layer the TLS overlay so the
+# controller serves HTTPS via a cert-manager-minted JKS keystore
+# (08.7-backend-tls.sh) and the LB re-encrypts + validates the hop
+# (09-gateway.sh). Gated on j2026_backend_tls_active (flag AND the
+# BackendTLSPolicy CRD), never the raw flag, so the pod is never flipped to a
+# TLS the LB can't speak. The app file is re-rendered from the template every
+# run, so a flag-off run converges Jenkins back to plain HTTP with no overlay.
+if [[ "$(j2026_backend_tls_active)" == "true" ]]; then
+  log_info "Backend TLS active - adding the Jenkins TLS values overlay to the jenkins app"
+  yq eval -i \
+    '(.spec.sources[] | select(.chart == "jenkins") | .helm.valueFiles) += ["$values/helm/jenkins/values-backend-tls.yaml"]' \
+    "${JENKINS_APP_FILE}"
+fi
 kubectl apply -f "${JENKINS_APP_FILE}"
 rm -f "${JENKINS_APP_FILE}"
+
+# Force ArgoCD to re-read git NOW rather than waiting for its ~3-min poll. The
+# app's helm values live in the $values git source (helm/jenkins/values-*.yaml),
+# so when their CONTENT changes (e.g. the backend-TLS overlay) a bare re-apply of
+# the Application spec doesn't make ArgoCD re-render from the new commit - it
+# renders from its cached revision, and the wait below can return against the
+# still-old StatefulSet. A hard refresh makes the convergence deterministic
+# (safe on every run: it just re-syncs from git, the source of truth). Ignore
+# failure - the auto-poll is the fallback.
+# App name is the literal "jenkins" in argocd/jenkins-app.yaml (not templated).
+kubectl annotate application jenkins -n "${J2026_ARGOCD_NAMESPACE}" \
+  argocd.argoproj.io/refresh=hard --overwrite >/dev/null 2>&1 || true
 
 # ArgoCD syncs the chart asynchronously. Wait for the StatefulSet to come up.
 if ! wait_for_resource "statefulset" "${J2026_JENKINS_RELEASE}" "${J2026_JENKINS_NAMESPACE}" "15m"; then

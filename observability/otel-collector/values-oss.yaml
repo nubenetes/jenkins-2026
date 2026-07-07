@@ -67,6 +67,20 @@ ports:
     servicePort: 8027
     protocol: TCP
 
+# Backend TLS (opt-in, docs/504): the cert-manager-minted faro server cert, so the
+# faro receiver can serve TLS on 8027 once values-backend-tls.yaml is layered
+# (03-observability.sh, backend TLS active). optional:true keeps a flag-OFF
+# collector starting — the Secret only exists when the feature is on.
+extraVolumes:
+  - name: faro-tls
+    secret:
+      secretName: faro-tls
+      optional: true
+extraVolumeMounts:
+  - name: faro-tls
+    mountPath: /faro-tls
+    readOnly: true
+
 config:
   receivers:
     otlp:
