@@ -1319,3 +1319,21 @@ if [[ "${BACKEND_TLS_ACTIVE}" == "true" ]]; then
   done
   log_info "  Backend TLS:       LB→pod re-encrypted + CA-validated for: ${backend_tls_applied:-none} (docs/504)"
 fi
+
+# The workflow is green, but the public endpoints above are NOT reachable yet — the
+# GKE Gateway compiles into a Google global external load balancer that takes a few
+# minutes to (1) finish programming its forwarding rules/HTTPRoutes and (2) mark each
+# backend's NEG endpoints HEALTHY via the LB health checks before it routes to them
+# (with backend TLS on, that health check must converge to HTTPS first). Until then a
+# browser hit returns 502 / SSL errors / "upstream connect error ... local connection
+# failure" — the LB has no healthy backend yet, NOT a failed run. Spell this out so a
+# green finish isn't mistaken for "the URLs should work now".
+log_info ""
+log_warn "The URLs above are NOT reachable the instant this workflow turns green — this is EXPECTED, not a failure."
+log_info "      The GKE Gateway compiles into a Google global external load balancer that then needs ~2-5 min to"
+log_info "      (1) finish programming its forwarding rules + HTTPRoutes, and (2) mark each backend's NEG endpoints"
+log_info "      HEALTHY via the LB health checks before it will route to them — and with backend TLS on, that"
+log_info "      health check must converge to HTTPS first. IAP/OAuth on the admin UIs also settles in this window."
+log_info "      So a browser hit right now can return 502, an SSL error, or 'upstream connect error ... reset"
+log_info "      reason: local connection failure' — that is the LB with no healthy backend yet, not a broken run."
+log_info "      Nothing to do: wait a few minutes and refresh. (See docs/504 § GKE NEG self-healing for the details.)"
