@@ -26,8 +26,11 @@ wait_argocd_server_rollout() {
     log_info "Backend TLS active - skipping the argocd-server rollout wait (NEG readiness gate clears at 09-gateway.sh)."
     return 0
   fi
-  kubectl rollout status deployment "${J2026_ARGOCD_RELEASE}-server" -n "${J2026_ARGOCD_NAMESPACE}" --timeout=5m || \
-    log_warn "argocd-server rollout not confirmed within 5m - likely a stale HTTPS HealthCheckPolicy from a prior backend_tls=true run (the NEG can't go healthy until 09-gateway.sh reconciles it back to HTTP). Continuing; the surged old replica drains once the new pod is NEG-healthy."
+  # Delegate to the shared NEG-aware best-effort helper (lib/common.sh) - same wait used
+  # by headlamp and the other Gateway-fronted backends, so the mode-switch idempotency
+  # logic lives in ONE place. (This TLS-active early-skip stays here because when TLS is
+  # ON the HTTP-vs-HTTPS miss is guaranteed until 09, so there is no point waiting 5m.)
+  wait_neg_backend_rollout "${J2026_ARGOCD_RELEASE}-server" "${J2026_ARGOCD_NAMESPACE}" "5m"
 }
 
 resolve_argocd_version() {
