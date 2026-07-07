@@ -720,6 +720,10 @@ jobs:
           # (jenkins) and runs Jenkins checks even on a tekton cluster - mirror the
           # engine the cluster was provisioned with (same override as the up.sh step).
           JENKINS2026_CI_ENGINE: ${{ inputs.ci_engine }}
+          # Same reason for observability: without it the smoke test sees config.yaml's
+          # default obs mode (oss) and runs the OSS-Grafana pod check even on a
+          # grafana-cloud/managed cluster (no in-cluster Grafana) -> false FAIL.
+          JENKINS2026_OBS_MODE: ${{ inputs.observability_mode }}
         run: ./test/smoke-test.sh
 
       # Summary and Access URLs run BEFORE the AWS/Azure login steps so that

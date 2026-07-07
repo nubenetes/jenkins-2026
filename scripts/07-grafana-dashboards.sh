@@ -48,7 +48,8 @@ ALL_CI_DASHBOARDS="jenkins-overview tekton-overview github-actions-ci argo-workf
 # return 0 (skip) when the basename (sans -azure/-aws suffix) is a CI overview for an
 # INACTIVE engine.
 is_offengine_dashboard() {
-  local base="${1%-azure}"; base="${base%-aws}" d
+  local base="${1%-azure}" d
+  base="${base%-aws}"
   for d in ${ALL_CI_DASHBOARDS}; do
     [[ "${base}" == "${d}" && "${base}" != "${KEEP_CI_DASHBOARD}" ]] && return 0
   done
