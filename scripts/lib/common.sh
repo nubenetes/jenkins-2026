@@ -147,10 +147,11 @@ wait_for_resource() {
   return 1
 }
 
-# wait_neg_backend_rollout <deployment> <namespace> [timeout]
-# Best-effort rollout wait for a GKE NEG-backed (Gateway-fronted) Deployment - use this
-# INSTEAD OF wait_for_deployment for any backend exposed through the Gateway (argocd,
-# headlamp, pgAdmin, grafana-oss, jenkins, the CI-engine UIs, the microservices gateway).
+# wait_neg_backend_rollout <name> <namespace> [timeout] [kind]
+# Best-effort rollout wait for a GKE NEG-backed (Gateway-fronted) workload - use this
+# INSTEAD OF wait_for_deployment/wait_for_resource for any backend exposed through the
+# Gateway (argocd, headlamp, pgAdmin, grafana-oss, jenkins, the CI-engine UIs, the
+# microservices gateway). [kind] defaults to "deployment"; pass "statefulset" for jenkins.
 # Rationale (backend-TLS mode-switch idempotency, docs/504): a NEG-backed pod carries a
 # cloud.google.com/load-balancer-neg-ready readiness gate that `kubectl rollout status`
 # BLOCKS on; that gate only clears once 09-gateway.sh reconciles the LB HealthCheckPolicy
@@ -164,13 +165,13 @@ wait_for_resource() {
 # restart: the old replica keeps serving and 09 makes the new pod NEG-healthy + drains the
 # old one. Idempotent in BOTH switch directions and on a same-mode re-run.
 wait_neg_backend_rollout() {
-  local name="$1" ns="$2" timeout="${3:-5m}"
-  log_step "Waiting (best-effort) for NEG-backed deployment/${name} in ${ns} (timeout: ${timeout})"
-  if kubectl rollout status "deployment/${name}" -n "${ns}" --timeout="${timeout}"; then
-    log_info "OK: deployment/${name} is ready."
+  local name="$1" ns="$2" timeout="${3:-5m}" kind="${4:-deployment}"
+  log_step "Waiting (best-effort) for NEG-backed ${kind}/${name} in ${ns} (timeout: ${timeout})"
+  if kubectl rollout status "${kind}/${name}" -n "${ns}" --timeout="${timeout}"; then
+    log_info "OK: ${kind}/${name} is ready."
     return 0
   fi
-  log_warn "deployment/${name}: rollout not confirmed within ${timeout}. If a HealthCheckPolicy protocol mismatch is holding the GKE NEG readiness gate open (e.g. a stale HTTPS policy from a prior backend_tls=true run against a now-HTTP pod), 09-gateway.sh reconciles it and the NEG then goes healthy. Continuing WITHOUT a self-heal restart (a restart would only reset the NEG)."
+  log_warn "${kind}/${name}: rollout not confirmed within ${timeout}. If a HealthCheckPolicy protocol mismatch is holding the GKE NEG readiness gate open (e.g. a stale HTTPS policy from a prior backend_tls=true run against a now-HTTP pod), 09-gateway.sh reconciles it and the NEG then goes healthy. Continuing WITHOUT a self-heal restart (a restart would only reset the NEG)."
   return 0
 }
 

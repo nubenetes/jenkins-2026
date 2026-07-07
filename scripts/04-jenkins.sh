@@ -286,10 +286,15 @@ kubectl annotate application jenkins -n "${J2026_ARGOCD_NAMESPACE}" \
   argocd.argoproj.io/refresh=hard --overwrite >/dev/null 2>&1 || true
 
 # ArgoCD syncs the chart asynchronously. Wait for the StatefulSet to come up.
-if ! wait_for_resource "statefulset" "${J2026_JENKINS_RELEASE}" "${J2026_JENKINS_NAMESPACE}" "15m"; then
-  log_error "Jenkins rollout did not complete - check 'kubectl -n ${J2026_ARGOCD_NAMESPACE} get application jenkins' and the controller pod events."
-  exit 1
-fi
+# Jenkins is a GKE NEG backend when ci.engine=jenkins, so a hard/self-healing wait here
+# deadlocks + thrashes on a HealthCheckPolicy protocol mismatch until 09-gateway.sh
+# reconciles it - notably on a backend_tls true->false switch, where a STALE HTTPS jenkins
+# HealthCheckPolicy from the prior enabled run fails against the now plain-HTTP controller
+# (and 09 runs long after this). Use the best-effort, no-restart NEG-aware wait: the
+# controller container becomes Ready (JCasC loaded) regardless of the LB readiness gate,
+# 06-seed-pipelines.sh then validates the Jenkins API directly (its crumbIssuer poll is
+# the real gate), and 09 makes the NEG healthy. See docs/504 § backend-TLS idempotency.
+wait_neg_backend_rollout "${J2026_JENKINS_RELEASE}" "${J2026_JENKINS_NAMESPACE}" "15m" "statefulset"
 
 # Warm the agent image caches on every node so build pods start fast (a build pod
 # only goes Running once ALL its container images are present; the microservices
