@@ -925,6 +925,29 @@ In `oss` mode, Grafana is exposed at `https://grafana.<baseDomain>` behind Googl
 | `managed-azure` | Azure Monitor (Managed Prometheus) | Azure Application Insights | Azure Log Analytics | Azure Managed Grafana |
 | `managed-aws` | Amazon Managed Service for Prometheus | AWS X-Ray | CloudWatch Logs | Amazon Managed Grafana |
 
+### Logging in to Azure Managed Grafana (managed-azure)
+
+Azure Managed Grafana authenticates via **Microsoft Entra ID** (Azure AD) — no separate SSO directory and **no invitation flow**. Access is managed via Terraform: add each person's Entra **object ID** once to the `AZURE_GRAFANA_ADMIN_OBJECT_IDS` GitHub secret and `Day0.infra.03-azure-grafana` grants them the workspace **Grafana Admin** role.
+
+#### One-time setup per person
+
+1. **Get the Entra object ID** (the role assignment needs the object ID, **not** the email):
+   ```bash
+   az ad user show --id alice@example.com --query id -o tsv    # or, for yourself: az ad signed-in-user show --query id -o tsv
+   ```
+
+2. **Add it to `AZURE_GRAFANA_ADMIN_OBJECT_IDS`** (GitHub secret, comma-separated), then re-run **[Day0.infra.03 Azure managed-grafana bootstrap](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day0.infra.03-azure-grafana.yml)** — Terraform assigns each object ID the **Grafana Admin** role on the workspace.
+
+3. **Sign in** — open the workspace URL (`terraform output grafana_endpoint`, or the Azure portal → the Managed Grafana resource) and authenticate with your normal Microsoft account. No invitation to accept: anyone in the tenant with a role assignment is let straight in.
+
+#### Troubleshooting access
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| "You do not have access to this Managed Grafana" | Object ID not yet assigned in Terraform | Re-run `Day0.infra.03` with the ID added to `AZURE_GRAFANA_ADMIN_OBJECT_IDS` |
+| Added the **email** instead of the object ID | AMG role assignment needs the Entra **object ID** | Replace it with `az ad user show --id <email> --query id -o tsv` and re-run |
+| Signed in but read-only | Assigned Viewer, not Admin | The Terraform path grants **Admin**; re-run `Day0.infra.03` to reconcile |
+
 ### Logging in to Amazon Managed Grafana (managed-aws)
 
 Amazon Managed Grafana (AMG) authenticates **only** via **AWS IAM Identity Center** (the workspace's `AWS_SSO` mode) or **SAML 2.0**. User assignment is managed via Terraform — add emails once to the `AWS_GRAFANA_ADMIN_SSO_EMAILS` GitHub secret and `Day0.infra.04-aws-grafana` handles the rest.
