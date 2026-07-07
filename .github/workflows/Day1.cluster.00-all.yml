@@ -13,11 +13,15 @@ name: "Day1.cluster.00 Everything up"
 # Everything below is idempotent and re-runnable, so this is safe whether you are
 # starting from absolute zero or from the usual "decommissioned" state (where the
 # Decom.infra.00 umbrella left the Gateway in place by default).
-# Approvals are consolidated under the single gke-production environment,
-# requiring a single manual approval for the entire workflow run (the AWS
-# backend's Day0.infra.04 runs on the dedicated aws-bootstrap environment, which
-# carries the SAME reviewer and is grouped into the same Review-deployments
-# prompt — it is a separate environment only to isolate the admin OIDC trust).
+# Approval note: the gke-production reviewer gates this run, but it is NOT yet a
+# single prompt end-to-end. `gateway-bootstrap` (Day0.infra.01) runs first, then
+# `provision` (Day1.cluster.01) `needs` it, so their gates land in separate waves
+# → typically TWO prompts (gateway, then the cluster), or three in managed modes
+# (the persistent-backend bootstrap adds one). Collapsing the umbrella to a single
+# prompt is a follow-up: thread a `preapproved` bypass through Day0.infra.01 +
+# Day1.cluster.01 plus one top-level `approve` job. (The AWS backend's
+# Day0.infra.04 runs on the dedicated aws-bootstrap environment — same reviewer,
+# separate only to isolate the admin OIDC trust.)
 #
 # NOTE: from ABSOLUTE zero (Gateway never bootstrapped), step 1 allocates a NEW
 # static IP - follow its job summary to point your DNS A-records at it. On a
