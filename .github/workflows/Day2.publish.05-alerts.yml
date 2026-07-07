@@ -52,7 +52,7 @@ env:
   TF_VERSION: "1.15.6"
   # Surfaced as env so conditional steps can test presence without secrets context.
   AWS_DASHBOARD_PUBLISH_ROLE_ARN: ${{ secrets.AWS_DASHBOARD_PUBLISH_ROLE_ARN }}
-  AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  AZURE_PUBLISH_CLIENT_ID: ${{ secrets.AZURE_PUBLISH_CLIENT_ID }}
   AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
   AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
@@ -212,10 +212,10 @@ jobs:
           aws-region: ${{ vars.AWS_REGION || secrets.AWS_REGION }}
 
       - name: Azure login (managed-azure)
-        if: ${{ steps.detect-mode.outputs.mode == 'managed-azure' && env.AZURE_CLIENT_ID != '' }}
+        if: ${{ steps.detect-mode.outputs.mode == 'managed-azure' && env.AZURE_PUBLISH_CLIENT_ID != '' }}
         uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-id: ${{ secrets.AZURE_PUBLISH_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 

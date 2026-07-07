@@ -41,9 +41,10 @@ mindmap
       Day2 ops
       Decom teardown
     Approval gates
-      one required reviewer, two environments
+      one required reviewer, three environments
       gke-production most jobs
-      aws-bootstrap same reviewer, isolated OIDC subject
+      aws-bootstrap AWS admin, isolated OIDC
+      azure-bootstrap Azure bootstrap app, isolated OIDC
 ```
 
 </details>
@@ -69,7 +70,7 @@ The point of the split: tearing the cluster down (to stop billing) must **not** 
 
 - **Keyless auth (WIF).** A workflow requests a GitHub-signed OIDC JWT (`sub = repo:<owner>/<repo>:environment:<env>`), presents it to Google STS at the Workload Identity **provider**, and — if the provider's **attribute condition** matches this repo — receives a short-lived federated token to impersonate the CI service account (`jenkins-2026-ci@…`). No secret is stored; the trust is scoped to the repo (and optionally branch/environment) by that condition. The only repo secrets are four **non-secret identifiers** (`GCP_PROJECT_ID`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT`, `TF_STATE_BUCKET`).
 - **Remote state is mandatory, not a nicety.** `Day1.cluster.01` and `Decom.cluster.01` are **separate workflow runs on fresh runners**, so Terraform state must live in the **GCS bucket** (each module under its own prefix) — that is how a teardown run finds what a provision run created. Local state would be lost between runs.
-- **Two gate mechanisms.** `gke-production` (required-reviewer) gates the cluster lifecycle, the `Day2.*` redeploy/publish/scale tiers (traffic/registry are ungated), **and** the Day0/Decom Gateway + Grafana-Cloud + Azure backends. The **AWS** bootstrap/decommission pair (`Day0.infra.04`/`Decom.infra.04`) runs on a dedicated **`aws-bootstrap`** environment that carries the **same required reviewer** as `gke-production` — a separate environment purely to isolate the OIDC trust of its `AdministratorAccess` role (see [Environment Protection](#environment-protection-and-manual-approvals)); in the `Decom.infra.00-all` umbrella GitHub groups both environments into one Review-deployments prompt, so AWS is approved together with the rest. Every destructive/persistent workflow additionally declares a typed `confirm` input (`"apply"`/`"destroy"`) on the reusable workflow itself, so each entry point (standalone dispatch, the `Day1` preflight via `workflow_call`, the `Decom.infra.00-all` umbrella) inherits it.
+- **Two gate mechanisms, three environments.** `gke-production` (required-reviewer) gates the cluster lifecycle, the `Day2.*` redeploy/publish/scale tiers (traffic/registry are ungated), **and** the Day0/Decom Gateway + Grafana-Cloud backends. The two high-privilege **cloud bootstraps run on their own dedicated environments** instead: **AWS** (`Day0.infra.04`/`Decom.infra.04`) on `aws-bootstrap`, and **Azure**'s bootstrap app (`Day0.infra.03`/`Decom.infra.03`) on `azure-bootstrap` — each isolating that credential's OIDC trust from `gke-production` (see [Environment Protection](#environment-protection-and-manual-approvals)). All three environments carry the **same required reviewer**, and in the `Decom.infra.00-all` umbrella GitHub groups them into one Review-deployments prompt, so they are approved together. Every destructive/persistent workflow additionally declares a typed `confirm` input (`"apply"`/`"destroy"`) on the reusable workflow itself, so each entry point (standalone dispatch, the `Day1` preflight via `workflow_call`, the `Decom.infra.00-all` umbrella) inherits it.
 
 </details>
 
@@ -131,7 +132,7 @@ graph TD
         A["terraform/bootstrap<br>Owner/Admin roles"] -->|"WIF + GCS bucket<br>+ permanent DNS zone"| B["Workload Identity<br>+ Remote State<br>+ DNS zone"]
         B --> C["Day0.infra.01 Gateway<br>bootstrap<br>🔒 gke-production"]
         B --> D["Day0.infra.02 Grafana Cloud<br>bootstrap<br>🔒 gke-production"]
-        B --> C2["Day0.infra.03 Azure<br>bootstrap<br>🔒 gke-production"]
+        B --> C2["Day0.infra.03 Azure<br>bootstrap (App A)<br>🔒 azure-bootstrap"]
         B --> C3["Day0.infra.04 AWS<br>bootstrap<br>🔒 aws-bootstrap"]
         C -->|"static IP + cert<br>+ DNS records in the zone"| F[("Gateway<br>+ Cert Map<br>+ A/CNAME records")]
         D -->|"stack ID + token"| E[("Grafana Cloud")]
@@ -158,7 +159,7 @@ graph TD
     subgraph Persistent_Teardown ["Decommission · Phase 9 Destroy (persistent, one-time)"]
         K --> P1["Decom.infra.01 Gateway<br>decommission<br>🔒 gke-production"]
         K --> P2["Decom.infra.02 Grafana Cloud<br>decommission<br>🔒 gke-production"]
-        K --> P3["Decom.infra.03 Azure<br>decommission<br>🔒 gke-production"]
+        K --> P3["Decom.infra.03 Azure<br>decommission (App A)<br>🔒 azure-bootstrap"]
         K --> P4["Decom.infra.04 AWS<br>decommission<br>🔒 aws-bootstrap"]
         P1 & P2 & P3 & P4 -->|"all resources removed"| N["Clean Slate"]
     end
@@ -173,12 +174,13 @@ graph TD
 
 </details>
 
-> 🔒 = a required-reviewer GitHub **Environment** gate. Two environments carry
-> the same reviewer: `gke-production` (the cluster, all Day2 cluster-ops, and the
-> Gateway/Grafana-Cloud/Azure Day0 backends) and `aws-bootstrap` (the **AWS** pair
-> — a separate environment only to isolate its `AdministratorAccess` OIDC trust;
-> the umbrella groups both into one approval prompt). ✍️ = a typed `confirm` input
-> on the workflow itself (`"apply"`/`"destroy"`). See [Environment Protection and Manual Approvals](#environment-protection-and-manual-approvals).
+> 🔒 = a required-reviewer GitHub **Environment** gate. **Three** environments carry
+> the same reviewer: `gke-production` (the cluster, all Day2 cluster-ops, the
+> Gateway/Grafana-Cloud Day0 backends, and Azure **publish**), `aws-bootstrap` (the
+> **AWS** admin pair), and `azure-bootstrap` (Azure's **bootstrap** app) — each
+> dedicated env exists only to isolate a high-privilege OIDC trust; the umbrella
+> groups all three into one approval prompt. ✍️ = a typed `confirm` input on the
+> workflow itself (`"apply"`/`"destroy"`). See [Environment Protection and Manual Approvals](#environment-protection-and-manual-approvals).
 
 > The four persistent teardowns (`Decom.infra.01..04`) are independent:
 > - **Targeted teardown** — after `Decom.cluster.01`, run **only** the one(s) you actually provisioned (with the `oss` default, often none).
@@ -336,14 +338,14 @@ To enforce cost control (FinOps), auditability, and guard against accidental des
 
 Nearly all workflows and resource jobs run under a single GitHub Environment, **`gke-production`**, with **one deliberate exception**: the AWS bootstrap/decommission pair (`Day0.infra.04` / `Decom.infra.04`) runs under a dedicated **`aws-bootstrap`** environment (see the ⚠️ security note below).
 
-Consolidating onto `gke-production` eliminates sequential approval fatigue. In GitHub Actions, approvals are granted per environment per workflow run. By sharing one environment across the cluster and every backend that authenticates to GCP (repository-scoped WIF) or Azure (a cross-lifecycle service principal):
+Consolidating onto `gke-production` eliminates sequential approval fatigue. In GitHub Actions, approvals are granted per environment per workflow run. By sharing the reviewer across `gke-production` and the two dedicated bootstrap environments (`aws-bootstrap`, `azure-bootstrap`) — GitHub groups all pending environments into one prompt:
 1.  **Single Approval Gate**: When launching a multi-job workflow (such as the `Day1` preflight or the `Decom.infra.00-all` "Everything" umbrella), you are prompted to approve the run **only once** at the beginning of the execution.
 2.  **No Downstream Stalls**: All subsequent jobs targeting the same environment run automatically without further human intervention once the initial approval is granted.
 
 ### Safety Guards
 In addition to the environment-level reviewer gate, destructive workflows (e.g. `Decom.infra.0N`) use a **typed `confirm` input** (`"destroy"`), validated by a `guard` job before any real terraform or setup commands run. This provides two-factor verification for high-risk actions.
 
-> **⚠️ Security note — why `aws-bootstrap` is NOT consolidated.** The GitHub Environment name is embedded in the OIDC token's `sub` claim (`repo:<owner>/<repo>:environment:<name>`), and each cloud's trust policy matches on that `sub`. The `AWS_BOOTSTRAP_ROLE_ARN` role carries **`AdministratorAccess`** and is hand-created (a root of trust, **not** Terraform-managed), so its trust is scoped to a **dedicated environment used by no other job** — `aws-bootstrap` — ensuring only `Day0.infra.04`/`Decom.infra.04` can assume it. Folding it into the shared `gke-production` would let *any* of the ~25 jobs on that environment assume an admin role, and — as a live failure showed — silently breaks `AssumeRoleWithWebIdentity` until the role's hand-written trust is also repointed. `aws-bootstrap` carries the **same required reviewer** as `gke-production`, so AWS is approved exactly like every other job — in the `Decom.infra.00-all` umbrella GitHub groups the two environments into a single **Review deployments** prompt (one approval covering both). The dedicated environment exists purely for OIDC isolation, not to change the approval UX. Azure is *not* isolated this way because the same service principal is reused across `Day0`/`Day1`/`Day2.publish`/`Decom`, so a shared subject is unavoidable short of splitting app registrations.
+> **⚠️ Security note — why `aws-bootstrap` is NOT consolidated.** The GitHub Environment name is embedded in the OIDC token's `sub` claim (`repo:<owner>/<repo>:environment:<name>`), and each cloud's trust policy matches on that `sub`. The `AWS_BOOTSTRAP_ROLE_ARN` role carries **`AdministratorAccess`** and is hand-created (a root of trust, **not** Terraform-managed), so its trust is scoped to a **dedicated environment used by no other job** — `aws-bootstrap` — ensuring only `Day0.infra.04`/`Decom.infra.04` can assume it. Folding it into the shared `gke-production` would let *any* of the ~25 jobs on that environment assume an admin role, and — as a live failure showed — silently breaks `AssumeRoleWithWebIdentity` until the role's hand-written trust is also repointed. `aws-bootstrap` carries the **same required reviewer** as `gke-production`, so AWS is approved exactly like every other job — in the `Decom.infra.00-all` umbrella GitHub groups the two environments into a single **Review deployments** prompt (one approval covering both). The dedicated environment exists purely for OIDC isolation, not to change the approval UX. Azure achieves the same isolation by **splitting its Entra app in two** — a bootstrap app (Contributor + UAA) on a dedicated `azure-bootstrap` environment, and a low-privilege publish app (Grafana Admin + Reader) on `gke-production` — see the asymmetry note below.
 
 <details>
 <summary>📊 The environment protection scheme</summary>
@@ -353,14 +355,15 @@ flowchart LR
   subgraph reviewed["gke-production environment (Required Reviewers)"]
     g1[gke-production]
   end
-  subgraph isolated["aws-bootstrap environment (same reviewer · OIDC isolation)"]
+  subgraph isolated["dedicated OIDC-isolation environments (same reviewer)"]
     g5[aws-bootstrap]
+    g6[azure-bootstrap]
   end
-  g1 --> w1["Day1.cluster.01 · Decom.cluster.01<br/>+ Day2.* redeploy / publish / scale"]
+  g1 --> w1["Day1.cluster.01 · Decom.cluster.01<br/>+ Day2.* redeploy / publish / scale<br/>(incl. Azure publish, App B)"]
   g1 --> w2["Day0.infra.01 · Decom.infra.01<br/>Gateway"]
   g1 --> w3["Day0.infra.02 · Decom.infra.02<br/>Grafana Cloud"]
-  g1 --> w4["Day0.infra.03 · Decom.infra.03<br/>Azure"]
   g5 --> w5["Day0.infra.04 · Decom.infra.04<br/>AWS (AdministratorAccess)"]
+  g6 --> w4["Day0.infra.03 · Decom.infra.03<br/>Azure bootstrap app (Contributor+UAA)"]
 ```
 
 </details>
@@ -368,36 +371,40 @@ flowchart LR
 #### Cloud Authentication Scoping (OIDC WIF)
 Each cloud's OIDC trust matches on the token `sub`, which embeds the environment name. Scope them as follows:
 - **AWS IAM Role Trust Condition** (`AWS_BOOTSTRAP_ROLE_ARN`, `AdministratorAccess`): `token.actions.githubusercontent.com:sub = repo:<owner>/<repo>:environment:aws-bootstrap` — the dedicated, isolated environment. **Do not** repoint this to `gke-production`.
-- **Azure Entra ID subject**: `repo:<owner>/<repo>:environment:gke-production`
+- **Azure Entra ID subjects** — **two** apps (see the asymmetry note below):
+  - **App A** (bootstrap, `AZURE_CLIENT_ID`, Contributor + UAA): `repo:<owner>/<repo>:environment:azure-bootstrap`
+  - **App B** (publish, `AZURE_PUBLISH_CLIENT_ID`, Grafana Admin + Reader): `repo:<owner>/<repo>:environment:gke-production`
 - **GCP IAM Workload Identity Pool**: scoped to the `repository` claim (`assertion.repository == <owner>/<repo>`), **independent of environment** — so consolidating environments never affects GCP.
 
-#### Why the per-cloud asymmetry (and Azure's accepted residual risk)
+#### Why the per-cloud OIDC-isolation asymmetry
 
 A dedicated GitHub Environment isolates a cloud credential's OIDC trust **only when both** of these hold — otherwise it adds complexity for no isolation:
 
 1. the credential is **high-privilege** (worth isolating), **and**
 2. it is used by a **small, separate** set of workflows that do **not** already share the consolidated `gke-production` environment.
 
-Applying that test is why only AWS gets a dedicated environment:
+Applying that test:
 
-| Cloud | High-priv credential | Used by | Isolatable? | Final state |
-|---|---|---|---|---|
-| **AWS** | `AWS_BOOTSTRAP_ROLE_ARN` (`AdministratorAccess`) — a **separate** role from the scoped `AWS_DASHBOARD_PUBLISH_ROLE_ARN` | only `Day0.infra.04` + `Decom.infra.04` (the publish role is used by `Day1` / `Day2.publish.04/05`) | **Yes** — the admin role is a distinct credential never used on `gke-production` | Dedicated **`aws-bootstrap`** env (isolated); publish role stays on `gke-production` |
-| **Azure** | one Entra app (`AZURE_CLIENT_ID`) holding **Contributor + User Access Administrator + Grafana Admin** | `Day0.infra.03`, `Day1.cluster.01`, `Day2.publish.03/05`, `Decom.infra.03` — spread across the whole lifecycle, most on `gke-production` | **No** — the same SP is already assumable from `gke-production` (via Day1/Day2), so a dedicated bootstrap env wouldn't reduce its exposure | Consolidated on **`gke-production`** (residual-risk note below) |
-| **GCP** | CI service account via WIF | every workflow (Terraform state backend) | **N/A** — the WIF provider conditions on `assertion.repository`, **not** the environment name | Environment-independent; the old `gateway-bootstrap` / `grafana-cloud-bootstrap` envs were cosmetic and were **deleted** |
+| Cloud | High-priv credential | Isolatable? | Final state |
+|---|---|---|---|
+| **AWS** | `AWS_BOOTSTRAP_ROLE_ARN` (`AdministratorAccess`) — a **separate** role from the scoped `AWS_DASHBOARD_PUBLISH_ROLE_ARN` (used by `Day1` / `Day2.publish.04/05`) | **Yes, natively** — the admin role is used by only `Day0.infra.04` + `Decom.infra.04`, never on `gke-production` | Dedicated **`aws-bootstrap`** env (isolated); publish role stays on `gke-production` |
+| **Azure** | originally **one** Entra app (Contributor + UAA + Grafana Admin) reused across `Day0` / `Day1` / `Day2.publish` / `Decom` | **Only after splitting** — a single app is reachable from `gke-production` via the publish jobs, so it was **split into two** | **App A** (bootstrap, Contributor+UAA) on **`azure-bootstrap`**; **App B** (publish, Grafana Admin+Reader) on `gke-production` |
+| **GCP** | CI service account via WIF | **N/A** — the WIF provider conditions on `assertion.repository`, **not** the environment name | Environment-independent; the old `gateway-bootstrap` / `grafana-cloud-bootstrap` envs were cosmetic and were **deleted** |
 
-**AWS — why it works and was free.** AWS already separates privilege into two roles. The crown jewel (`AdministratorAccess`) is a distinct, hand-created role assumed by exactly two workflows and never by anything on `gke-production`, so pinning its trust to a dedicated `aws-bootstrap` environment shrinks its blast radius from "the ~25 jobs on `gke-production`" to "those two" — at **zero cost**, because the role's trust already expected `aws-bootstrap` (the fix was reverting the workflow's `environment:`, no cloud-side change). See the ⚠️ note above.
+**AWS — isolated for free.** AWS already separates privilege into two roles. The crown jewel (`AdministratorAccess`) is a distinct, hand-created role assumed by exactly two workflows and never by anything on `gke-production`, so pinning its trust to a dedicated `aws-bootstrap` environment shrinks its blast radius from "the ~25 jobs on `gke-production`" to "those two" — at **zero cost**, because the role's trust already expected `aws-bootstrap` (the fix was reverting the workflow's `environment:`, no cloud-side change). See the ⚠️ note above.
 
-**Azure — why it's consolidated, and the accepted residual risk.** Azure uses a **single** Entra app registration for the entire lifecycle: it bootstraps the backend (`Day0.infra.03`, needing Contributor + User Access Administrator) **and** publishes dashboards/alerts (`Day1`, `Day2.publish.03/05`, needing Grafana Admin — granted by [`terraform/azure-managed-grafana` `grafana_ci_deployer`](../terraform/azure-managed-grafana/main.tf) to whichever principal runs the apply). Because the publish jobs run on `gke-production`, that app's federated credential **must** trust `gke-production` — so the app is already assumable by any job on that environment. Moving only `Day0.infra.03` / `Decom.infra.03` onto a dedicated `azure-bootstrap` environment would isolate **nothing**: the same over-privileged SP stays reachable from `gke-production` via the publish jobs.
+**Azure — isolated by splitting the app in two.** Azure originally used a **single** Entra app for the whole lifecycle: it bootstrapped the backend (`Day0.infra.03`, Contributor + UAA) **and** published dashboards/alerts (`Day1`, `Day2.publish.03/05`, Grafana Admin). Because the publish jobs run on `gke-production`, that one app's federated credential had to trust `gke-production` — so the Contributor+UAA identity was assumable by any job there. Moving only `Day0.infra.03` / `Decom.infra.03` to a dedicated env would have isolated nothing (the same SP stayed reachable via the publish jobs), so Azure was made symmetric with AWS by **splitting the identity into two apps**:
 
-- **Residual risk (accepted).** The Azure SP (Contributor + User Access Administrator on the subscription, plus Grafana Admin) is assumable by any job that runs on `gke-production` with `id-token: write`. All such jobs are **first-party, manually-dispatched** workflows in this branch-protected repo (and gated by the required reviewer), so this is a defense-in-depth gap against a *compromised/malicious first-party workflow change*, not an externally-reachable hole. For a PoC that trade-off is **accepted** rather than paying for the split below.
-- **Full isolation (deferred).** Making Azure symmetric with AWS requires **splitting the one app into two**: a bootstrap-admin app (Contributor + UAA, federated to a dedicated `azure-bootstrap` env, used by `Day0.infra.03` / `Decom.infra.03`) and a low-privilege publish app (Grafana Admin + Reader only, federated to `gke-production`, used by `Day1` / `Day2.publish.03/05`) — plus a `grafana_ci_deployer` change to grant Grafana Admin to the publish app instead of the apply principal, a new `AZURE_PUBLISH_CLIENT_ID` secret, and recreating the `azure-bootstrap` environment. This is a hand-run Azure identity change with a transition window, so it is deliberately **not** done: it buys a small marginal isolation for real ongoing complexity (two app registrations, more secrets).
+- **App A — bootstrap** (`AZURE_CLIENT_ID`): **Contributor + User Access Administrator**. Federated credential trusts **`azure-bootstrap`**. Used by `Day0.infra.03` / `Decom.infra.03` only — the high-privilege identity is now assumable by exactly two workflows, never on `gke-production`.
+- **App B — publish** (`AZURE_PUBLISH_CLIENT_ID`): **Grafana Admin + subscription Reader only**. Federated credential trusts `gke-production`. Used by `Day1` / `Day2.publish.03/05`. App B is **created and role-assigned entirely by [`terraform/azure-managed-grafana`](../terraform/azure-managed-grafana/main.tf)** (the app registration, its `gke-production` federated credential, subscription Reader for `az grafana list` / `az graph query`, and Grafana Admin) — just like the collector app, so there is nothing to create by hand and it is torn down with the backend on Decom. Its client id is a Terraform output you set as the `AZURE_PUBLISH_CLIENT_ID` secret. The identity reachable from `gke-production` can now do nothing but publish dashboards.
 
-**Rule of thumb for a new cloud/credential:** consolidate on `gke-production` by default; carve out a dedicated environment **only** for a high-privilege credential used by a small, dedicated set of workflows that is *not* otherwise reachable from `gke-production` (like the AWS admin role). If the same identity is reused across the lifecycle (like Azure's SP), a dedicated environment is theatre — split the identity instead, or accept and document the residual risk.
+Result: the Contributor+UAA identity is no longer reachable from `gke-production` — the same posture as AWS. See [Setting up Environment Rules](#setting-up-environment-rules) for the environments and [103 § Azure](./103-GITHUB_SECRETS_INVENTORY.md#4-azure-managed-grafana-managed-azure-mode) for the secrets.
+
+**Rule of thumb for a new cloud/credential:** consolidate on `gke-production` by default; carve out a dedicated environment for a high-privilege credential **only** if it is used by a small, dedicated set of workflows and is *not* otherwise reachable from `gke-production` (like the AWS admin role). If the same identity is reused across the lifecycle (like Azure's original app), a dedicated environment is theatre — **split the identity** so the high-privilege half gets its own environment and the low-privilege half stays consolidated (what Azure now does).
 
 ### Setting up Environment Rules
 
-Two environments need to exist in GitHub:
+Three environments need to exist in GitHub (all share the same required reviewer):
 
 **`gke-production`** — the required-reviewer approval gate:
 
@@ -432,6 +439,20 @@ EOF
 **`aws-bootstrap`** — a second environment that isolates the AWS admin role's OIDC trust. Give it the **same required reviewer** as `gke-production` (so AWS is approved alongside everything else; the umbrella groups both into one prompt) — substitute the reviewer's numeric id:
 ```bash
 gh api --method PUT repos/nubenetes/jenkins-2026/environments/aws-bootstrap \
+  --header "Accept: application/vnd.github+json" \
+  --input - <<EOF
+{
+  "prevent_self_review": false,
+  "reviewers": [
+    { "type": "User", "id": <USER_ID> }
+  ]
+}
+EOF
+```
+
+**`azure-bootstrap`** — a third environment that isolates the **Azure bootstrap app (App A, Contributor + UAA)**'s OIDC trust, so only `Day0.infra.03` / `Decom.infra.03` can assume it (Azure **publish** stays on `gke-production` as the low-privilege App B). Same reviewer as the others:
+```bash
+gh api --method PUT repos/nubenetes/jenkins-2026/environments/azure-bootstrap \
   --header "Accept: application/vnd.github+json" \
   --input - <<EOF
 {
@@ -545,28 +566,36 @@ EOF
    c. **Run the "Day0.infra.02 Grafana Cloud" workflow** (Actions tab →
       **Day0.infra.02 Grafana Cloud** → **Run workflow**).
 
-6. **(Optional) Azure backend** for `observability_mode: managed-azure`:
+6. **(Optional) Azure backend** for `observability_mode: managed-azure`. Uses **two**
+   Entra apps — a high-privilege bootstrap app (**App A**, created by hand) and a
+   low-privilege publish app (**App B**, **created by Terraform**, so you don't
+   manage it); see [§ Why the per-cloud OIDC-isolation asymmetry](#why-the-per-cloud-oidc-isolation-asymmetry).
 
-   a. **Create the GitHub-OIDC Entra app** (one-time manual step):
+   a. **`az login`** as an admin who can create app registrations and assign
+      subscription roles (Application Administrator + Owner/UAA). Then create the
+      **BOOTSTRAP app (App A — Contributor + UAA)**, federated to the dedicated
+      `azure-bootstrap` environment:
       ```bash
+      az login
       SUB="<your-subscription-id>"; REPO="<owner>/<repo>"
-      APP_ID=$(az ad app create --display-name "jenkins-2026-github-oidc" --query appId -o tsv)
+      APP_ID=$(az ad app create --display-name "jenkins-2026-github-bootstrap" --query appId -o tsv)
       az ad sp create --id "$APP_ID"
       az ad app federated-credential create --id "$APP_ID" --parameters \
-        "{\"name\":\"github-gke-production\",\"issuer\":\"https://token.actions.githubusercontent.com\",\"subject\":\"repo:${REPO}:environment:gke-production\",\"audiences\":[\"api://AzureADTokenExchange\"]}"
+        "{\"name\":\"github-azure-bootstrap\",\"issuer\":\"https://token.actions.githubusercontent.com\",\"subject\":\"repo:${REPO}:environment:azure-bootstrap\",\"audiences\":[\"api://AzureADTokenExchange\"]}"
       az role assignment create --assignee "$APP_ID" --role "Contributor"               --scope "/subscriptions/${SUB}"
       az role assignment create --assignee "$APP_ID" --role "User Access Administrator" --scope "/subscriptions/${SUB}"
       ```
+      *(App B — the publish app — is **not** created here: `Day0.infra.03`'s Terraform creates it and assigns its Grafana Admin + Reader roles.)*
 
-   b. **Set the identifier secrets** (no secret values — just IDs):
+   b. **Set the App A + shared identifier secrets** (no secret values — just IDs):
       ```bash
-      gh secret set AZURE_CLIENT_ID                --body "$APP_ID"
+      gh secret set AZURE_CLIENT_ID                --body "$APP_ID"   # App A (bootstrap)
       gh secret set AZURE_TENANT_ID               --body "$(az account show --query tenantId -o tsv)"
       gh secret set AZURE_SUBSCRIPTION_ID         --body "$SUB"
       gh secret set AZURE_GRAFANA_ADMIN_OBJECT_IDS --body "$(az ad signed-in-user show --query id -o tsv)"
       ```
 
-   c. **Run the "Day0.infra.03 Azure managed-grafana" workflow**.
+   c. **Run the "Day0.infra.03 Azure managed-grafana" workflow.** Its Terraform creates App B and grants it Grafana Admin + Reader; the run's **job summary** prints a ready-to-paste `gh secret set AZURE_PUBLISH_CLIENT_ID …` — run it so `Day1` / `Day2.publish.*` can authenticate as App B.
 
 ## Running the GKE Workflows
 

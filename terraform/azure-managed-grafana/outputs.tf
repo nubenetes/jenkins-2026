@@ -51,3 +51,8 @@ output "grafana_identity_principal_id" {
   description = "Azure Managed Grafana system-assigned identity principal ID (for any additional role assignments)."
   value       = azurerm_dashboard_grafana.this.identity[0].principal_id
 }
+
+output "publish_app_client_id" {
+  description = "Client (app) ID of the Terraform-created low-privilege PUBLISH app (App B). Set it as the AZURE_PUBLISH_CLIENT_ID GitHub secret so Day1 / Day2.publish.* authenticate as this scoped identity (Grafana Admin + Reader only)."
+  value       = azuread_application.publish.client_id
+}

@@ -18,14 +18,17 @@ concurrency:
 # "jenkins-2026/azure-managed-grafana", same bucket as terraform/gke), so this
 # is safe to re-run - it's a no-op once the resources exist.
 #
-# Auth: GitHub OIDC -> Azure (no stored client secret; the federated credential
-# trusts environment:gke-production), and GitHub WIF -> GCP for the GCS state
+# Auth: GitHub OIDC -> Azure as the BOOTSTRAP app (App A — Contributor + UAA; its
+# federated credential trusts environment:azure-bootstrap), and GitHub WIF -> GCP
+# for the GCS state
 # backend. All sensitive inputs are GitHub secrets injected as TF_VAR_* / ARM_*
 # here - nothing sensitive lives in the repo.
 #
-# Required secrets: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID,
-# AZURE_GRAFANA_ADMIN_OBJECT_IDS (comma-separated Entra object IDs granted
-# Grafana Admin), plus the GCP_*/TF_STATE_BUCKET state-backend secrets.
+# Required secrets: AZURE_CLIENT_ID (bootstrap app A), AZURE_TENANT_ID,
+# AZURE_SUBSCRIPTION_ID, AZURE_GRAFANA_ADMIN_OBJECT_IDS (comma-separated Entra
+# object IDs granted Grafana Admin), plus the GCP_*/TF_STATE_BUCKET state-backend
+# secrets. This workflow CREATES the low-priv publish app (App B) and prints its
+# client id in the job summary -> set it as the AZURE_PUBLISH_CLIENT_ID secret.
 #
 # Day1.cluster.01-gke.yml calls this via workflow_call when
 # observability_mode=managed-azure so the persistent Azure backend is always
@@ -78,9 +81,11 @@ jobs:
   bootstrap:
     needs: guard
     runs-on: ubuntu-latest
-    # Must match the federated credential subject
-    # repo:<owner>/<repo>:environment:gke-production on the Entra app.
-    environment: gke-production
+    # Bootstrap app (App A — Contributor + UAA) on its dedicated environment,
+    # which isolates its OIDC trust from gke-production (docs/102 § Why the
+    # per-cloud asymmetry). Must match App A's federated credential subject
+    # repo:<owner>/<repo>:environment:azure-bootstrap.
+    environment: azure-bootstrap
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -150,6 +155,9 @@ jobs:
           TF_VAR_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           TF_VAR_tenant_id: ${{ secrets.AZURE_TENANT_ID }}
           TF_VAR_grafana_admin_object_ids: ${{ steps.admins.outputs.json }}
+          # This module CREATES the low-priv publish app (App B); its federated
+          # credential subject needs the repo slug.
+          TF_VAR_github_repo: ${{ github.repository }}
         run: terraform apply -auto-approve -input=false
 
       - name: Summary
@@ -161,6 +169,15 @@ jobs:
             echo
             echo "- Grafana endpoint: \`$(terraform output -raw grafana_endpoint 2>/dev/null || echo 'n/a')\`"
             echo
+            pub="$(terraform output -raw publish_app_client_id 2>/dev/null || echo '')"
+            if [ -n "${pub}" ]; then
+              echo "**Set the publish-app secret** (App B — Day1 / Day2.publish.* authenticate as it):"
+              echo
+              echo "\`\`\`bash"
+              echo "gh secret set AZURE_PUBLISH_CLIENT_ID --body ${pub}"
+              echo "\`\`\`"
+              echo
+            fi
             echo "Day1.cluster.01 GKE (observability_mode: managed-azure) reads this module's"
             echo "outputs from the GCS state to build the azure-monitor-credentials Secret."
           } >> "${GITHUB_STEP_SUMMARY}"
