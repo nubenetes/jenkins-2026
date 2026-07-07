@@ -147,6 +147,33 @@ wait_for_resource() {
   return 1
 }
 
+# wait_neg_backend_rollout <deployment> <namespace> [timeout]
+# Best-effort rollout wait for a GKE NEG-backed (Gateway-fronted) Deployment - use this
+# INSTEAD OF wait_for_deployment for any backend exposed through the Gateway (argocd,
+# headlamp, pgAdmin, grafana-oss, jenkins, the CI-engine UIs, the microservices gateway).
+# Rationale (backend-TLS mode-switch idempotency, docs/504): a NEG-backed pod carries a
+# cloud.google.com/load-balancer-neg-ready readiness gate that `kubectl rollout status`
+# BLOCKS on; that gate only clears once 09-gateway.sh reconciles the LB HealthCheckPolicy
+# PROTOCOL to match what the pod serves (HTTPS when backend TLS is on, HTTP when off) -
+# and 09 runs LAST in up.sh. So any per-backend restart+wait earlier in up.sh can hit a
+# transient protocol mismatch that CANNOT clear here: on ENABLE a stale HTTP policy vs a
+# new HTTPS pod; on DISABLE a stale HTTPS policy (from the prior backend_tls=true run) vs
+# a now-HTTP pod. A hard wait DEADLOCKS Day1 before 09 can heal it, and wait_for_deployment
+# is worse still - its self-heal RESTART resets the NEG (gate back to 0/1) and thrashes the
+# rollout across replicasets (observed live: Day1 #176). So warn-and-continue, with NO
+# restart: the old replica keeps serving and 09 makes the new pod NEG-healthy + drains the
+# old one. Idempotent in BOTH switch directions and on a same-mode re-run.
+wait_neg_backend_rollout() {
+  local name="$1" ns="$2" timeout="${3:-5m}"
+  log_step "Waiting (best-effort) for NEG-backed deployment/${name} in ${ns} (timeout: ${timeout})"
+  if kubectl rollout status "deployment/${name}" -n "${ns}" --timeout="${timeout}"; then
+    log_info "OK: deployment/${name} is ready."
+    return 0
+  fi
+  log_warn "deployment/${name}: rollout not confirmed within ${timeout}. If a HealthCheckPolicy protocol mismatch is holding the GKE NEG readiness gate open (e.g. a stale HTTPS policy from a prior backend_tls=true run against a now-HTTP pod), 09-gateway.sh reconciles it and the NEG then goes healthy. Continuing WITHOUT a self-heal restart (a restart would only reset the NEG)."
+  return 0
+}
+
 # wait_for_deployment <name> <namespace> [timeout]
 wait_for_deployment() {
   wait_for_resource "deployment" "$1" "$2" "${3:-5m}"
