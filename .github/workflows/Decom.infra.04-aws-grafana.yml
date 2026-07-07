@@ -73,9 +73,14 @@ jobs:
   decommission:
     needs: guard
     runs-on: ubuntu-latest
-    # Matches the aws-bootstrap role's manually-configured trust condition
-    # token.actions.githubusercontent.com:sub = repo:<owner>/<repo>:environment:gke-production
-    environment: gke-production
+    # Dedicated environment — do NOT consolidate into gke-production. The
+    # AWS_BOOTSTRAP_ROLE_ARN role has AdministratorAccess and is hand-created
+    # (root of trust, not Terraform-managed); its trust policy pins the OIDC
+    # subject to repo:<owner>/<repo>:environment:aws-bootstrap so ONLY this
+    # workflow (and Day0.infra.04) can assume it. Renaming the environment
+    # changes the token's `sub` claim and breaks AssumeRoleWithWebIdentity.
+    # No required reviewer (auth-only scoping); the `confirm` guard above gates.
+    environment: aws-bootstrap
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
