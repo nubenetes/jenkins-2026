@@ -36,6 +36,16 @@ on:
         options:
           - info
           - debug
+      observability_mode:
+        description: "observability.mode of the cluster (MUST MATCH how it was provisioned): 07.5-grafana-alerts provisions the Grafana alert rules to THAT backend. The wrong value silently provisions nothing (e.g. writes an OSS alerts-sidecar ConfigMap on a grafana-cloud/managed cluster) while the run reports success. Authoritative over config.yaml (which in CI is always the committed default 'oss')."
+        required: true
+        default: "grafana-cloud"
+        type: choice
+        options:
+          - grafana-cloud
+          - oss
+          - managed-azure
+          - managed-aws
 
 permissions:
   contents: read
@@ -50,6 +60,9 @@ env:
   JENKINS2026_LOG_LEVEL: ${{ inputs.log_level || 'info' }}
   TF_LOG: ${{ inputs.log_level == 'debug' && 'DEBUG' || '' }}
   TF_VERSION: "1.15.6"
+  # observability.mode of the cluster (must match how it was provisioned) — config.sh
+  # reads this (so 07.5 targets the right backend) and the detect-mode step prefers it.
+  JENKINS2026_OBS_MODE: ${{ inputs.observability_mode }}
   # Surfaced as env so conditional steps can test presence without secrets context.
   AWS_DASHBOARD_PUBLISH_ROLE_ARN: ${{ secrets.AWS_DASHBOARD_PUBLISH_ROLE_ARN }}
   AZURE_PUBLISH_CLIENT_ID: ${{ secrets.AZURE_PUBLISH_CLIENT_ID }}
@@ -93,13 +106,15 @@ jobs:
             https://github.com/mikefarah/yq/releases/download/v4.53.3/yq_linux_amd64
           sudo chmod +x /usr/local/bin/yq
 
-      # Always read the mode from config/config.yaml — single source of truth.
-      # JENKINS2026_OBS_MODE env var (set in the job env block) can still
-      # override for one-off runs without changing the file.
-      - name: Detect observability mode from config/config.yaml
+      # The observability_mode INPUT is authoritative (threaded to JENKINS2026_OBS_MODE
+      # in the job env, which config.sh also reads for 07.5). Fall back to
+      # config/config.yaml only when unset (local runs): in CI the file is always the
+      # committed default (oss), so relying on it silently mis-targets the alerts backend
+      # on grafana-cloud/managed clusters.
+      - name: Detect observability mode
         id: detect-mode
         run: |
-          MODE="$(yq '.observability.mode' config/config.yaml)"
+          MODE="${JENKINS2026_OBS_MODE:-$(yq '.observability.mode' config/config.yaml)}"
           echo "mode=${MODE}" >> "${GITHUB_OUTPUT}"
           echo "Observability mode: ${MODE}"
 

@@ -54,6 +54,16 @@ on:
         required: false
         default: false
         type: boolean
+      observability_mode:
+        description: "observability.mode of the cluster (MUST MATCH how it was provisioned): 09-gateway creates the OSS Grafana HTTPRoute + HealthCheckPolicy when 'oss' and RETIRES them otherwise, and 01-namespaces gates the grafana IAP secret + obs ResourceQuota on it — the wrong value leaves a broken grafana route or a stale IAP secret. Flag CHANGES need Day1."
+        required: true
+        default: "grafana-cloud"
+        type: choice
+        options:
+          - grafana-cloud
+          - oss
+          - managed-azure
+          - managed-aws
 
 permissions:
   contents: read
@@ -77,6 +87,9 @@ env:
   JENKINS2026_DEVELOP_TRACK_ENABLED: ${{ inputs.develop_track }}
   # Opt-in backend TLS (docs/504) — must match the live cluster (see the input).
   JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED: ${{ inputs.backend_tls }}
+  # observability.mode (docs/504/301) — must match the live cluster: 09-gateway
+  # creates/retires the OSS Grafana route + 01-namespaces the grafana IAP secret/quota.
+  JENKINS2026_OBS_MODE: ${{ inputs.observability_mode }}
 
 jobs:
   redeploy-tekton:

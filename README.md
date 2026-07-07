@@ -683,7 +683,7 @@ flowchart TB
             JEN["JEN · jenkins (default *)<br/>chart · JCasC · IAP UI"]:::eng1
             TEK["TEK · tekton<br/>CRDs · IAP Dash · PaC"]:::eng2
             GHAARC["GHA-ARC · GitHub Actions/ARC<br/>ephemeral · ci-spot · NO in-cluster UI"]:::eng3
-            ARGOWF["ARGOWF · argoworkflows<br/>WF v3.7.15 + Events · IAP UI"]:::eng4
+            ARGOWF["ARGOWF · argoworkflows<br/>WF v3.7.16 + Events · IAP UI"]:::eng4
         end
         OPS["OPS · Operators<br/>ESO · OTel · CNPG · Argo Rollouts"]:::ctrl
         PUIS["PUIS · platform web UIs (IAP)<br/>Headlamp · pgAdmin · Grafana (oss)"]:::ctrl
