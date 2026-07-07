@@ -202,7 +202,7 @@ jobs:
             flags="${flags} --plaintext"
           fi
           argocd app sync  "microservices-$ENV_NAME" --auth-token "$ARGOCD_TOKEN" --server "${server}" ${flags} || true
-          argocd app wait  "microservices-$ENV_NAME" --auth-token "$ARGOCD_TOKEN" --server "${server}" ${flags} --sync --health --timeout 300 || true
+          argocd app wait  "microservices-$ENV_NAME" --auth-token "$ARGOCD_TOKEN" --server "${server}" ${flags} --sync --health --timeout 900 || true
 
 
       - name: Smoke test
