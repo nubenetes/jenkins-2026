@@ -41,9 +41,9 @@ mindmap
       Day2 ops
       Decom teardown
     Approval gates
-      five environments
+      two active gates
       gke-production required reviewer
-      four Day0 resources typed confirm
+      aws-bootstrap typed confirm no reviewer
 ```
 
 </details>
@@ -104,7 +104,7 @@ sequenceDiagram
   participant SA as CI service account
   participant TF as Terraform + GCS state bucket
   W->>GH: request OIDC token (permissions id-token write)
-  GH-->>W: signed JWT, sub = repo owner/repo environment gke-production
+  GH-->>W: signed JWT, sub = repo owner/repo environment gke-production or aws-bootstrap
   W->>STS: exchange JWT at the Workload Identity provider
   STS->>STS: verify issuer + attribute condition (repo matches)
   STS-->>W: short-lived federated access token
@@ -522,7 +522,7 @@ gh api --method PUT repos/nubenetes/jenkins-2026/environments/aws-bootstrap \
       APP_ID=$(az ad app create --display-name "jenkins-2026-github-oidc" --query appId -o tsv)
       az ad sp create --id "$APP_ID"
       az ad app federated-credential create --id "$APP_ID" --parameters \
-        "{\"name\":\"github-azure-bootstrap\",\"issuer\":\"https://token.actions.githubusercontent.com\",\"subject\":\"repo:${REPO}:environment:azure-bootstrap\",\"audiences\":[\"api://AzureADTokenExchange\"]}"
+        "{\"name\":\"github-gke-production\",\"issuer\":\"https://token.actions.githubusercontent.com\",\"subject\":\"repo:${REPO}:environment:gke-production\",\"audiences\":[\"api://AzureADTokenExchange\"]}"
       az role assignment create --assignee "$APP_ID" --role "Contributor"               --scope "/subscriptions/${SUB}"
       az role assignment create --assignee "$APP_ID" --role "User Access Administrator" --scope "/subscriptions/${SUB}"
       ```

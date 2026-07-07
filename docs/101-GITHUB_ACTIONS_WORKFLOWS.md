@@ -37,9 +37,9 @@ mindmap
       umbrella down Decom.infra.00-all
       Day2 no intra-phase order
     Approval gates
-      five environments
+      two active gates
       gke-production required reviewer
-      four Day0 resources typed confirm
+      aws-bootstrap typed confirm no reviewer
 ```
 
 </details>
@@ -399,8 +399,8 @@ What actually depends on what, and how the shared **`jenkins-2026-gke` concurren
 ```mermaid
 flowchart TD
     boot["bootstrap.sh up<br/>WIF + GCS state (root of trust)"]:::root
-    gw["Day0.infra.01<br/>Gateway IP/cert<br/>(env: gateway-bootstrap)"]
-    bk["Day0.infra.02/03/04<br/>observability backend<br/>(env: grafana-cloud/azure/aws-bootstrap)"]
+    gw["Day0.infra.01<br/>Gateway IP/cert<br/>(env: gke-production)"]
+    bk["Day0.infra.02/03/04<br/>observability backend<br/>(env: gke-production · AWS on aws-bootstrap)"]
     boot --> gw
     boot --> bk
     gw --> day1
@@ -690,7 +690,7 @@ truly-from-zero account needs `Day0.infra.01` first.
 - It `workflow_call`s `Day0.infra.01` (Gateway bootstrap) then `Day1.cluster.01` (cluster + full stack + the selected backend bootstrap), ordered by `needs`.
 - The provision job runs `if: always() && !failure() && !cancelled()` — a *skipped* gateway job (`bootstrap_gateway: false`) doesn't skip provision, while a real gateway failure (or a cancel) still blocks it.
 - Every called workflow is idempotent: safe from absolute zero (it allocates the static IP — follow the job summary to point DNS at it) **or** from the usual decommissioned state (where `Decom.infra.00-all` left the Gateway in place, so the IP is unchanged and no DNS change is needed).
-- Approvals are the natural per-resource set: `gateway-bootstrap` + the selected backend's env (via Day1's preflight) + `gke-production`.
+- Approvals collapse to a **single `gke-production` review** — the Gateway bootstrap, the selected backend bootstrap, and the cluster provision all share it; only a `managed-aws` backend's `Day0.infra.04` runs on the separate no-reviewer `aws-bootstrap` env (so it never adds a prompt).
 - No provisioning logic is duplicated — the umbrella only orchestrates the existing reusable workflows.
 
 > **Umbrellas never share the `jenkins-2026-gke` group.** The GKE serialization lives on
@@ -821,7 +821,7 @@ flowchart TD
         direction TB
         B1["grafana-cloud-bootstrap<br/>if mode=grafana-cloud<br/>uses Day0.infra.02<br/>env: gke-production"]
         B2["azure-bootstrap<br/>if mode=managed-azure<br/>uses Day0.infra.03<br/>env: gke-production"]
-        B3["aws-bootstrap<br/>if mode=managed-aws<br/>uses Day0.infra.04<br/>env: gke-production"]
+        B3["aws-bootstrap<br/>if mode=managed-aws<br/>uses Day0.infra.04<br/>env: aws-bootstrap"]
         P["provision<br/>needs: the 3 bootstraps<br/>🔒 env: gke-production"]
         B1 --> P
         B2 --> P
@@ -868,12 +868,15 @@ flowchart TD
 
 </details>
 
-> **Approval gates (🔒).** All jobs run under the consolidated **`gke-production`**
+> **Approval gates (🔒).** Almost all jobs run under the **`gke-production`**
 > GitHub Environment, which requires manual reviewer approval. Approvals are
-> granted per environment per workflow run, meaning a user approves the workflow
+> granted per environment per workflow run, so a user approves the workflow
 > **exactly once** at the beginning, and all subsequent jobs (bootstraps, GKE
 > provision, and token cleanups) proceed automatically without further human
-> intervention. See [102 § Environment Protection and Manual Approvals](./102-GITHUB_ACTIONS_AUTOMATION.md#environment-protection-and-manual-approvals).
+> intervention. The one exception is the AWS backend's `Day0.infra.04` /
+> `Decom.infra.04`, which run on the dedicated **no-reviewer `aws-bootstrap`**
+> environment (OIDC isolation for its `AdministratorAccess` role — they never
+> prompt for approval). See [102 § Environment Protection and Manual Approvals](./102-GITHUB_ACTIONS_AUTOMATION.md#environment-protection-and-manual-approvals).
 
 
 ### Why it's modelled this way (not as per-engine jobs)
