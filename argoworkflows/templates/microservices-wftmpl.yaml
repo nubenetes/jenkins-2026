@@ -682,6 +682,10 @@ spec:
             arguments:
               parameters:
                 - { name: env-name, value: "{{inputs.parameters.env-name}}" }
+                # target-namespace feeds gitops-argocd-sync's backend-TLS auto-detect
+                # (kubectl get secret gateway-tls -n <ns>). Without passing it, Argo
+                # rejects the whole spec at submit time — regardless of TLS on/off.
+                - { name: target-namespace, value: "{{inputs.parameters.target-namespace}}" }
                 - { name: argocd-server, value: "{{inputs.parameters.argocd-server}}" }
                 - { name: argocd-version, value: "{{inputs.parameters.argocd-version}}" }
         - - name: otel-injection-selfheal
@@ -747,6 +751,10 @@ spec:
       inputs:
         parameters:
           - name: env-name
+          # Required by the backend-TLS auto-detect below (gateway-tls secret lookup);
+          # must be declared here AND passed by the argocd-sync step, or Argo fails to
+          # resolve {{inputs.parameters.target-namespace}} and rejects the spec.
+          - name: target-namespace
           - name: argocd-server
           - name: argocd-version
       script:
