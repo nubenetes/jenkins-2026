@@ -30,7 +30,7 @@ on:
           - managed-azure
           - managed-aws
       reapply_backend:
-        description: "Re-apply the persistent managed-observability backend (Day0.infra.02/03/04) as a Day1 pre-flight. Default false: the backend is created ONCE by its Day0 workflow and read from GCS state, so a routine run/rebuild skips the re-apply and Day1 shows ONE approval (gke-production) at t=0. Set true only to heal manual drift in the backend (adds a second, later approval for that run)."
+        description: "FORCE re-apply of the persistent managed-observability backend (Day0.infra.02/03/04) even if it already exists. Default false: an ungated pre-check auto-detects the backend from GCS state and bootstraps it ONLY when MISSING (first-ever setup), skipping it on a routine run → ONE gke-production approval. Set true to heal manual drift in an already-provisioned backend (adds a second, later approval that run)."
         required: false
         default: false
         type: boolean
@@ -182,30 +182,87 @@ env:
   AWS_DASHBOARD_PUBLISH_ROLE_ARN: ${{ secrets.AWS_DASHBOARD_PUBLISH_ROLE_ARN }}
 
 jobs:
-  # ── Bootstrap pre-flight jobs ───────────────────────────────────────────────
-  # Each runs only for its matching observability mode (skipped = success for
-  # the purposes of the `needs` below). This ensures the persistent cloud
-  # backend is always applied (idempotent tf apply) before `provision` reads
-  # its terraform outputs to build in-cluster credentials Secrets.
-  # oss mode has no external backend - all three jobs are skipped and
-  # provision starts immediately.
+  # ── Persistent-backend existence probe (UNGATED — adds ZERO approval prompts) ─
+  # Reads each managed-observability backend's GCS Terraform state so the
+  # Day0.infra.02/03/04 bootstrap jobs below auto-run ONLY when the backend is
+  # MISSING (first-ever setup) and SKIP on a routine run — one gke-production
+  # approval in steady state, and "Day1 self-provisions the backend if absent" on
+  # a fresh one, with no flag to remember. GCP WIF only: `terraform output` reads
+  # the state file and never authenticates the Azure/AWS provider (as provision's
+  # own state reads prove). The ABSENCE of `environment:` here is LOAD-BEARING —
+  # any environment would add an approval prompt and defeat the single-gate design.
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      grafana_missing: ${{ steps.probe.outputs.grafana_missing }}
+      azure_missing: ${{ steps.probe.outputs.azure_missing }}
+      aws_missing: ${{ steps.probe.outputs.aws_missing }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ inputs.git_ref || github.ref }}
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - name: Probe persistent-backend state (does it already exist?)
+        id: probe
+        run: |
+          set -uo pipefail
+          # $1 = terraform dir basename (== the GCS state prefix suffix);
+          # $2 = a stable output that only exists once the module was applied.
+          # Echoes its value ('' on a never-applied / empty state → treat as MISSING).
+          probe() {
+            printf 'terraform {\n  backend "gcs" {\n    bucket = "%s"\n    prefix = "jenkins-2026/%s"\n  }\n}\n' \
+              "${{ secrets.TF_STATE_BUCKET }}" "$1" > "terraform/$1/backend_override.tf"
+            for i in 1 2 3; do
+              terraform -chdir="terraform/$1" init -input=false >/dev/null 2>&1 && break \
+                || { [ "$i" -lt 3 ] && sleep 10 || true; }
+            done
+            terraform -chdir="terraform/$1" output -raw "$2" 2>/dev/null || true
+          }
+          gm=false; am=false; wm=false
+          case "${{ inputs.observability_mode }}" in
+            grafana-cloud) [[ -z "$(probe grafana-cloud-stack   stack_slug)"       ]] && gm=true ;;
+            managed-azure) [[ -z "$(probe azure-managed-grafana grafana_endpoint)" ]] && am=true ;;
+            managed-aws)   [[ -z "$(probe aws-managed-grafana   aws_region)"       ]] && wm=true ;;
+          esac
+          echo "grafana_missing=${gm}" >> "${GITHUB_OUTPUT}"
+          echo "azure_missing=${am}"   >> "${GITHUB_OUTPUT}"
+          echo "aws_missing=${wm}"     >> "${GITHUB_OUTPUT}"
+          echo "Backend presence (mode=${{ inputs.observability_mode }}): grafana_missing=${gm} azure_missing=${am} aws_missing=${wm} — bootstrap runs only where missing (or reapply_backend=true)."
+
+  # ── Bootstrap pre-flight jobs (auto-run ONLY when the backend is MISSING) ────
+  # Each runs for its mode when the precheck found no existing backend, OR when
+  # reapply_backend forces it. Skipped = success for the `needs` below. oss mode
+  # has no external backend → all three skip and provision starts immediately.
 
   grafana-cloud-bootstrap:
-    if: ${{ inputs.reapply_backend && inputs.observability_mode == 'grafana-cloud' }}
+    needs: precheck
+    if: ${{ inputs.observability_mode == 'grafana-cloud' && (inputs.reapply_backend || needs.precheck.outputs.grafana_missing == 'true') }}
     uses: ./.github/workflows/Day0.infra.02-grafana-cloud.yml
     with:
       log_level: ${{ inputs.log_level || 'info' }}
     secrets: inherit
 
   azure-bootstrap:
-    if: ${{ inputs.reapply_backend && inputs.observability_mode == 'managed-azure' }}
+    needs: precheck
+    if: ${{ inputs.observability_mode == 'managed-azure' && (inputs.reapply_backend || needs.precheck.outputs.azure_missing == 'true') }}
     uses: ./.github/workflows/Day0.infra.03-azure-grafana.yml
     with:
       log_level: ${{ inputs.log_level || 'info' }}
     secrets: inherit
 
   aws-bootstrap:
-    if: ${{ inputs.reapply_backend && inputs.observability_mode == 'managed-aws' }}
+    needs: precheck
+    if: ${{ inputs.observability_mode == 'managed-aws' && (inputs.reapply_backend || needs.precheck.outputs.aws_missing == 'true') }}
     uses: ./.github/workflows/Day0.infra.04-aws-grafana.yml
     with:
       log_level: ${{ inputs.log_level || 'info' }}
@@ -347,7 +404,7 @@ jobs:
     # mode (one gated job → one prompt structurally, no dependence on GitHub's
     # simultaneous-wait grouping). With reapply_backend=true, provision correctly
     # waits for the fresh bootstrap outputs (the accepted 2nd, later prompt then).
-    needs: [grafana-cloud-bootstrap, azure-bootstrap, aws-bootstrap]
+    needs: [precheck, grafana-cloud-bootstrap, azure-bootstrap, aws-bootstrap]
     # always()+!failure()+!cancelled(): skipped bootstraps must not skip provision,
     # but a real (opted-in) bootstrap failure still blocks it. A REJECTED approval
     # skips provision directly now that provision itself owns the environment.
