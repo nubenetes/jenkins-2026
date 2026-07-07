@@ -33,6 +33,10 @@ if kubectl version >/dev/null 2>&1; then
         [[ -n "${_name}" ]] && kubectl delete pdb "${_name}" -n "${_ns}" --ignore-not-found 2>/dev/null || true
       done
 
+  log_step "Removing all Mutating and Validating Webhook Configurations (prevent webhook deadlocks during namespace deletion)"
+  kubectl delete mutatingwebhookconfiguration --all --timeout=15s --ignore-not-found 2>/dev/null || true
+  kubectl delete validatingwebhookconfiguration --all --timeout=15s --ignore-not-found 2>/dev/null || true
+
   # Node Auto-Provisioning: drop the Custom ComputeClass first so NAP stops provisioning
   # new Spot nodes for any still-pending CI agent mid-teardown (its auto-created pools go
   # away with the cluster on terraform destroy; emptying them as workloads scale to 0

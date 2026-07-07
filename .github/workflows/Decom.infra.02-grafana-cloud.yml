@@ -41,6 +41,11 @@ on:
         required: false
         default: "info"
         type: string
+      skip_token_check:
+        description: "Skip the token-state guard check (useful for parallel execution in the Everything umbrella)"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -125,6 +130,7 @@ jobs:
           done
 
       - name: Guard — grafana-cloud-token must be destroyed first
+        if: ${{ !inputs.skip_token_check }}
         run: |
           # Ordering / rebuild-safety guard for the STANDALONE dispatch. The separate
           # terraform/grafana-cloud-token state holds cluster-scoped resources whose

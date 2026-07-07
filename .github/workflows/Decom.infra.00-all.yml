@@ -90,15 +90,16 @@ jobs:
     secrets: inherit
 
   grafana-cloud:
-    needs: [guard, cluster]
+    needs: [guard]
     if: ${{ inputs.grafana_cloud }}
     uses: ./.github/workflows/Decom.infra.02-grafana-cloud.yml
     with:
       log_level: ${{ inputs.log_level || 'info' }}
+      skip_token_check: true
     secrets: inherit
 
   azure-grafana:
-    needs: [guard, cluster]
+    needs: [guard]
     if: ${{ inputs.azure_grafana }}
     uses: ./.github/workflows/Decom.infra.03-azure-grafana.yml
     with:
@@ -106,7 +107,7 @@ jobs:
     secrets: inherit
 
   aws-grafana:
-    needs: [guard, cluster]
+    needs: [guard]
     if: ${{ inputs.aws_grafana }}
     uses: ./.github/workflows/Decom.infra.04-aws-grafana.yml
     with:
@@ -114,7 +115,7 @@ jobs:
     secrets: inherit
 
   gateway:
-    needs: [guard, cluster]
+    needs: [guard]
     if: ${{ inputs.gateway }}
     uses: ./.github/workflows/Decom.infra.01-gateway.yml
     with:

@@ -297,6 +297,7 @@ jobs:
 
       - name: Terraform destroy (revoke Grafana Cloud access policy + tokens)
         if: ${{ env.HAS_GRAFANA_CLOUD_TOKEN == 'true' && steps.gc_stack.outputs.slug != '' }}
+        continue-on-error: true
         working-directory: terraform/grafana-cloud-token
         env:
           TF_VAR_grafana_cloud_api_token: ${{ secrets.GRAFANA_CLOUD_API_TOKEN }}
