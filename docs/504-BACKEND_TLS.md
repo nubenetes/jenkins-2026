@@ -433,7 +433,8 @@ composable increment.
   path that runs all three consumers (`08.5` + `08.7` + `09`) in one
   converging pass. The same `backend_tls` input exists on every
   `Day2.redeploy.*` workflow that runs a consumer (`.01-argocd` → `08.5` ·
-  `.05-gateway` → `08.7`+`09` · the engine redeploys `.03/.06/.07` → `09`) —
+  `.04-headlamp` → `08-headlamp` · `.05-gateway` → `08.7`+`09` · the engine
+  redeploys `.03/.06/.07` → `09`) —
   there it must **match the live cluster**: a flag *flip* through any single
   Day2 workflow leaves the pod and the LB disagreeing on the protocol
   (headlamp 502) until the other half runs.

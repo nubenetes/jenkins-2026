@@ -559,7 +559,7 @@ flowchart TB
   clone --> tag["yq eval -i '.services.&lt;svc&gt;.image.tag = tag'<br/>values-&lt;env&gt;.yaml"]
   tag --> push["git commit + push origin &lt;branch&gt;<br/>(direct-push — no PR)"]
   push --> sync["argocd app sync microservices-&lt;env&gt;<br/>(gRPC, ARGOCD_AUTH_TOKEN)"]
-  sync --> wait["argocd app wait --sync --timeout 300"]
+  sync --> wait["argocd app wait --sync --timeout 900"]
   wait --> check{pod has -javaagent<br/>in JAVA_TOOL_OPTIONS?}
   check -->|yes| ok[OTel already injected ✓]
   check -->|no| restart["kubectl rollout restart deploy/&lt;svc&gt;<br/>(webhook failurePolicy:Ignore missed it)"]

@@ -147,11 +147,10 @@ jobs:
         run: |
           source scripts/lib/common.sh
           source scripts/lib/config.sh
-          if kubectl get statefulset "${J2026_JENKINS_RELEASE}" -n "${J2026_JENKINS_NAMESPACE}" >/dev/null 2>&1; then
-            ENGINE=jenkins
-          else
-            ENGINE=tekton
-          fi
+          # 4-way detection (honors an explicit JENKINS2026_CI_ENGINE, else probes all
+          # four engine controllers) — a binary jenkins/tekton probe mis-resolved
+          # githubactions/argoworkflows OSS clusters to tekton and kept the wrong CI dashboard.
+          ENGINE="$(j2026_active_ci_engine)"
           echo "Detected CI engine: ${ENGINE}"
           REPO_URL="${J2026_SELF_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
           OSS_APP_FILE="$(mktemp)"

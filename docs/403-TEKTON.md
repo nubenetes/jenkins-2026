@@ -1115,7 +1115,7 @@ for attempt in 1 2 3 4 5 6; do
   if "${ARGOCD}" app sync "${APP}" … ; then break; fi
   echo "sync attempt ${attempt} lost the race with auto-sync; retrying…"; sleep 10
 done
-"${ARGOCD}" app wait "${APP}" --sync --health --timeout 300 …   # confirms the pushed revision is live + healthy
+"${ARGOCD}" app wait "${APP}" --sync --health --timeout 900 …   # confirms the pushed revision is live + healthy
 ```
 
 ### Gotcha 5 — develop-tier pipelines: gating parity with Jenkins

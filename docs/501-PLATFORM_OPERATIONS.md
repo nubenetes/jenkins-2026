@@ -139,7 +139,7 @@ flowchart TB
 
 - **CI Integration**: A dedicated ArgoCD account with a scoped **API Token** is created for the active CI engine (stored in that engine's credentials Secret — `jenkins-credentials`, `tekton-argocd`, `arc-argocd`, or `argoworkflows-argocd`) and used by the `argocd` CLI inside pipeline agents to trigger `argocd app sync --wait`.
 - **Auto-Sync**: All Applications are configured with `selfHeal: true` and `prune: true`.
-- **Rollout Waiting**: After pushing a new tag to the gitops-config repo, the pipeline waits for the app to converge with `argocd app wait microservices-<env> --sync --health --timeout 300` before running smoke tests (Jenkins and Tekton block on it; the GHA workflow waits best-effort with a trailing `|| true`).
+- **Rollout Waiting**: After pushing a new tag to the gitops-config repo, the pipeline waits for the app to converge with `argocd app wait microservices-<env> --sync --health --timeout 900` before running smoke tests (Jenkins and Tekton block on it; the GHA workflow waits best-effort with a trailing `|| true`).
 
 ## Telemetry Verification & Simulation
 
