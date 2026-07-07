@@ -115,7 +115,7 @@ jobs:
     secrets: inherit
 
   gateway:
-    needs: [guard]
+    needs: [guard, cluster]
     if: ${{ inputs.gateway }}
     uses: ./.github/workflows/Decom.infra.01-gateway.yml
     with:
