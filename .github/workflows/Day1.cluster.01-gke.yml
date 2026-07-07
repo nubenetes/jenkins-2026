@@ -29,6 +29,11 @@ on:
           - grafana-cloud
           - managed-azure
           - managed-aws
+      reapply_backend:
+        description: "Re-apply the persistent managed-observability backend (Day0.infra.02/03/04) as a Day1 pre-flight. Default false: the backend is created ONCE by its Day0 workflow and read from GCS state, so a routine run/rebuild skips the re-apply and Day1 shows ONE approval (gke-production) at t=0. Set true only to heal manual drift in the backend (adds a second, later approval for that run)."
+        required: false
+        default: false
+        type: boolean
       destroy_unused_backends:
         description: "DESTRUCTIVE / opt-in. Also terraform-destroy the PERSISTENT backend (Grafana Cloud stack / Azure / AWS Managed Grafana) of every observability mode you did NOT select, so only the chosen backend exists. ⚠ Irreversible: wipes that backend's history/dashboards; re-selecting the mode recreates it empty. Needs that backend's credentials/identifiers set. Default false (mode switch only retires the in-cluster footprint)."
         required: false
@@ -108,6 +113,10 @@ on:
         required: false
         default: "oss"
         type: string
+      reapply_backend:
+        required: false
+        default: false
+        type: boolean
       destroy_unused_backends:
         required: false
         default: false
@@ -182,21 +191,21 @@ jobs:
   # provision starts immediately.
 
   grafana-cloud-bootstrap:
-    if: ${{ inputs.observability_mode == 'grafana-cloud' }}
+    if: ${{ inputs.reapply_backend && inputs.observability_mode == 'grafana-cloud' }}
     uses: ./.github/workflows/Day0.infra.02-grafana-cloud.yml
     with:
       log_level: ${{ inputs.log_level || 'info' }}
     secrets: inherit
 
   azure-bootstrap:
-    if: ${{ inputs.observability_mode == 'managed-azure' }}
+    if: ${{ inputs.reapply_backend && inputs.observability_mode == 'managed-azure' }}
     uses: ./.github/workflows/Day0.infra.03-azure-grafana.yml
     with:
       log_level: ${{ inputs.log_level || 'info' }}
     secrets: inherit
 
   aws-bootstrap:
-    if: ${{ inputs.observability_mode == 'managed-aws' }}
+    if: ${{ inputs.reapply_backend && inputs.observability_mode == 'managed-aws' }}
     uses: ./.github/workflows/Day0.infra.04-aws-grafana.yml
     with:
       log_level: ${{ inputs.log_level || 'info' }}
@@ -330,38 +339,27 @@ jobs:
       log_level: ${{ inputs.log_level || 'info' }}
     secrets: inherit
 
-  # ── Single upfront approval gate ────────────────────────────────────────────
-  # A no-op job carrying the gke-production reviewer gate. With NO `needs`, its
-  # gate enters "waiting" at t=0 alongside the bootstrap jobs' gates, so GitHub
-  # batches them into ONE "Review deployments" prompt (the same simultaneous-wait
-  # grouping Decom.infra.00-all relies on). This replaces gating `provision`
-  # directly, whose gate could only pend AFTER the ~2-min bootstrap finished →
-  # a second, separate prompt. (Grouping is a live snapshot of currently-waiting
-  # environments; in practice one prompt, since human approval latency far exceeds
-  # the few seconds before the bootstrap gate joins the wave.)
-  approve:
-    runs-on: ubuntu-latest
-    environment: gke-production
-    steps:
-      - run: echo "Provisioning approved."
-
-  # ── Main provision job ──────────────────────────────────────────────────────
+  # ── Main provision job (the SOLE gke-production approval gate) ───────────────
   provision:
-    needs: [approve, grafana-cloud-bootstrap, azure-bootstrap, aws-bootstrap]
-    # always() prevents skipped bootstrap jobs from silently skipping provision;
-    # !failure() still blocks provision if a bootstrap actually failed; and
-    # needs.approve.result == 'success' keeps the gate airtight — a REJECTED
-    # approval skips provision no matter how GitHub classifies the rejection.
-    if: ${{ always() && !failure() && !cancelled() && needs.approve.result == 'success' }}
+    # The bootstrap jobs are opt-in (reapply_backend, default false) → on a routine
+    # run they skip and resolve instantly, so provision's OWN gke-production gate
+    # enters "waiting" at t=0 as the single "Review deployments" prompt in EVERY
+    # mode (one gated job → one prompt structurally, no dependence on GitHub's
+    # simultaneous-wait grouping). With reapply_backend=true, provision correctly
+    # waits for the fresh bootstrap outputs (the accepted 2nd, later prompt then).
+    needs: [grafana-cloud-bootstrap, azure-bootstrap, aws-bootstrap]
+    # always()+!failure()+!cancelled(): skipped bootstraps must not skip provision,
+    # but a real (opted-in) bootstrap failure still blocks it. A REJECTED approval
+    # skips provision directly now that provision itself owns the environment.
+    if: ${{ always() && !failure() && !cancelled() }}
     runs-on: ubuntu-latest
-    # provision itself runs the managed-cloud publish logins (azure/login with
-    # App B + AWS configure-aws-credentials), whose federated-credential trusts
-    # are pinned to environment:gke-production — so KEEP the environment in
-    # managed modes or the OIDC `sub` changes and those logins fail. grafana-cloud
-    # and oss perform NO environment-pinned cloud login (GCP WIF is repo-scoped),
-    # so provision is ungated there and the single `approve` gate is the only
-    # prompt. (docs/504 / gha-env-oidc-sub-trust coupling.)
-    environment: ${{ (inputs.observability_mode == 'managed-azure' || inputs.observability_mode == 'managed-aws') && 'gke-production' || '' }}
+    # Constant gke-production for EVERY mode. Managed: REQUIRED — provision's own
+    # azure/login (App B) + AWS configure-aws-credentials OIDC subs are pinned to
+    # environment:gke-production. oss/grafana-cloud: harmless (GCP WIF is repo-
+    # scoped, so the env name doesn't change the matched sub) AND load-bearing —
+    # keeps their single approval now the `approve` job is gone (do NOT blank it,
+    # or a billed GKE cluster would provision with ZERO approvals).
+    environment: gke-production
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -625,6 +623,13 @@ jobs:
           terraform -chdir=terraform/azure-managed-grafana init -input=false
           tf() { terraform -chdir=terraform/azure-managed-grafana output -raw "$1"; }
           conn="$(tf azure_monitor_connection_string)"
+          # Fail loud if the Azure backend was never bootstrapped (empty state
+          # outputs) instead of silently building an empty azure-monitor-credentials
+          # Secret. Run Day0.infra.03 once, or re-run Day1 with reapply_backend=true.
+          if [[ -z "${conn}" ]]; then
+            echo "::error::terraform/azure-managed-grafana outputs are empty — the Azure backend was never bootstrapped. Run Day0.infra.03 once (it also prints the AZURE_PUBLISH_CLIENT_ID secret to set), or re-run Day1 with reapply_backend=true."
+            exit 1
+          fi
           prom="$(tf azure_monitor_prometheus_endpoint)"
           tenant="$(tf azure_tenant_id)"
           client="$(tf azure_client_id)"
