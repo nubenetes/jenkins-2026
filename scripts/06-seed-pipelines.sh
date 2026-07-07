@@ -16,7 +16,11 @@ RELEASE="${J2026_JENKINS_RELEASE}"
 POD="${RELEASE}-0"
 
 log_step "Waiting for ${POD} to be ready"
-kubectl rollout status "statefulset/${RELEASE}" -n "${NS}" --timeout=10m
+# NEG-aware best-effort wait (lib/common.sh): when ci.engine=jenkins the controller is a
+# Gateway/NEG backend, so a hard rollout wait deadlocks on a HealthCheckPolicy protocol
+# mismatch until 09-gateway.sh reconciles it (backend_tls mode switch). The crumbIssuer
+# poll below is the real readiness gate; 09 makes the NEG healthy. See docs/504 § argocd.
+wait_neg_backend_rollout "${RELEASE}" "${NS}" "10m" "statefulset"
 
 ADMIN_PASSWORD="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${NS}" -o jsonpath='{.data.admin-password}' | base64 -d)"
 AUTH="${J2026_JENKINS_ADMIN_USER}:${ADMIN_PASSWORD}"
