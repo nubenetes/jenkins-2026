@@ -461,7 +461,7 @@ These terms come from the SRE / platform-engineering world and describe **when i
 | 14 | [Day2.publish.02-grafana-cloud](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.02-grafana-cloud.yml) | **Day2** | yes ² | yes | When dashboard/alert JSON changes |
 | 15 | [Day2.publish.03-azure-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.03-azure-grafana.yml) | **Day2** | **no** ¹ | yes | When dashboard JSON changes |
 | 16 | [Day2.publish.04-aws-grafana](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.04-aws-grafana.yml) | **Day2** | **no** ¹ | yes | When dashboard JSON changes |
-| 17 | [Day2.publish.05-alerts](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.05-alerts.yml) | **Day2** | yes ² | yes | When alert rules change |
+| 17 | [Day2.publish.05-alerts](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.05-alerts.yml) | **Day2** | yes ² | yes | When alert rules change. Input `observability_mode` **must match the live cluster** — it targets the alerts backend (previously read from `config.yaml`, always `oss` in CI) |
 | 18 | [Day2.traffic.01-k6](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.01-k6.yml) | **Day2** | yes | n/a | On demand / regular cadence |
 | 19 | [Day2.traffic.02-rum](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.traffic.02-rum.yml) | **Day2** | yes | n/a | To populate/demo/validate the RUM dashboard (synthetic Faro beacons) |
 | 20 | [Day2.scale.01-pause](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.scale.01-pause.yml) | **Day2** | yes | yes | To park the cluster at ~zero cost for a few days |
