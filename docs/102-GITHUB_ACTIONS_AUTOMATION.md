@@ -69,7 +69,7 @@ The point of the split: tearing the cluster down (to stop billing) must **not** 
 
 - **Keyless auth (WIF).** A workflow requests a GitHub-signed OIDC JWT (`sub = repo:<owner>/<repo>:environment:<env>`), presents it to Google STS at the Workload Identity **provider**, and — if the provider's **attribute condition** matches this repo — receives a short-lived federated token to impersonate the CI service account (`jenkins-2026-ci@…`). No secret is stored; the trust is scoped to the repo (and optionally branch/environment) by that condition. The only repo secrets are four **non-secret identifiers** (`GCP_PROJECT_ID`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_SERVICE_ACCOUNT`, `TF_STATE_BUCKET`).
 - **Remote state is mandatory, not a nicety.** `Day1.cluster.01` and `Decom.cluster.01` are **separate workflow runs on fresh runners**, so Terraform state must live in the **GCS bucket** (each module under its own prefix) — that is how a teardown run finds what a provision run created. Local state would be lost between runs.
-- **Five approval gates, two mechanisms.** `gke-production` (required-reviewer) gates the cluster lifecycle + the `Day2.*` redeploy/publish/scale tiers (traffic/registry are ungated); one gate **per persistent Day0 resource** (`gateway-bootstrap`, `grafana-cloud-bootstrap`, `azure-bootstrap`, `aws-bootstrap`) is a typed `confirm` input (`"apply"`/`"destroy"`) declared on the reusable workflow itself, so every entry point (standalone dispatch, the `Day1` preflight via `workflow_call`, the `Decom.infra.00-all` umbrella) inherits the same single gate.
+- **Two gate mechanisms.** `gke-production` (required-reviewer) gates the cluster lifecycle, the `Day2.*` redeploy/publish/scale tiers (traffic/registry are ungated), **and** the Day0/Decom Gateway + Grafana-Cloud + Azure backends. The **AWS** bootstrap/decommission pair (`Day0.infra.04`/`Decom.infra.04`) instead runs on a dedicated **`aws-bootstrap`** environment — no reviewer, purely to isolate the OIDC trust of its `AdministratorAccess` role (see [Environment Protection](#environment-protection-and-manual-approvals)). Every destructive/persistent workflow additionally declares a typed `confirm` input (`"apply"`/`"destroy"`) on the reusable workflow itself, so each entry point (standalone dispatch, the `Day1` preflight via `workflow_call`, the `Decom.infra.00-all` umbrella) inherits it.
 
 </details>
 
@@ -129,9 +129,9 @@ The following diagram illustrates how the persistent infrastructure bootstrap wo
 graph TD
     subgraph Bootstrapping ["Day-0 · Phase 0 Create (persistent, one-time)"]
         A["terraform/bootstrap<br>Owner/Admin roles"] -->|"WIF + GCS bucket<br>+ permanent DNS zone"| B["Workload Identity<br>+ Remote State<br>+ DNS zone"]
-        B --> C["Day0.infra.01 Gateway<br>bootstrap<br>✍️ gateway-bootstrap"]
-        B --> D["Day0.infra.02 Grafana Cloud<br>bootstrap<br>✍️ grafana-cloud-bootstrap"]
-        B --> C2["Day0.infra.03 Azure<br>bootstrap<br>✍️ azure-bootstrap"]
+        B --> C["Day0.infra.01 Gateway<br>bootstrap<br>🔒 gke-production"]
+        B --> D["Day0.infra.02 Grafana Cloud<br>bootstrap<br>🔒 gke-production"]
+        B --> C2["Day0.infra.03 Azure<br>bootstrap<br>🔒 gke-production"]
         B --> C3["Day0.infra.04 AWS<br>bootstrap<br>✍️ aws-bootstrap"]
         C -->|"static IP + cert<br>+ DNS records in the zone"| F[("Gateway<br>+ Cert Map<br>+ A/CNAME records")]
         D -->|"stack ID + token"| E[("Grafana Cloud")]
@@ -156,9 +156,9 @@ graph TD
     end
 
     subgraph Persistent_Teardown ["Decommission · Phase 9 Destroy (persistent, one-time)"]
-        K --> P1["Decom.infra.01 Gateway<br>decommission<br>✍️ gateway-bootstrap"]
-        K --> P2["Decom.infra.02 Grafana Cloud<br>decommission<br>✍️ grafana-cloud-bootstrap"]
-        K --> P3["Decom.infra.03 Azure<br>decommission<br>✍️ azure-bootstrap"]
+        K --> P1["Decom.infra.01 Gateway<br>decommission<br>🔒 gke-production"]
+        K --> P2["Decom.infra.02 Grafana Cloud<br>decommission<br>🔒 gke-production"]
+        K --> P3["Decom.infra.03 Azure<br>decommission<br>🔒 gke-production"]
         K --> P4["Decom.infra.04 AWS<br>decommission<br>✍️ aws-bootstrap"]
         P1 & P2 & P3 & P4 -->|"all resources removed"| N["Clean Slate"]
     end
@@ -173,11 +173,12 @@ graph TD
 
 </details>
 
-> 🔒 = a required-reviewer GitHub **Environment** gate (`gke-production`, the
-> cluster + all Day2 cluster-ops). ✍️ = a typed `confirm` input on the workflow
-> itself (`"apply"`/`"destroy"`) — one per persistent Day0 resource
-> (`gateway-bootstrap`, `grafana-cloud-bootstrap`, `azure-bootstrap`,
-> `aws-bootstrap`). See [Environment Protection and Manual Approvals](#environment-protection-and-manual-approvals).
+> 🔒 = a required-reviewer GitHub **Environment** gate (`gke-production` — the
+> cluster, all Day2 cluster-ops, and the Gateway/Grafana-Cloud/Azure Day0
+> backends). ✍️ = a typed `confirm` input on the workflow itself
+> (`"apply"`/`"destroy"`); the **AWS** pair additionally runs on the dedicated
+> no-reviewer **`aws-bootstrap`** environment that isolates its
+> `AdministratorAccess` OIDC trust. See [Environment Protection and Manual Approvals](#environment-protection-and-manual-approvals).
 
 > The four persistent teardowns (`Decom.infra.01..04`) are independent:
 > - **Targeted teardown** — after `Decom.cluster.01`, run **only** the one(s) you actually provisioned (with the `oss` default, often none).
@@ -327,45 +328,54 @@ Mixing different tags, branches, or SHAs during the lifecycle of a single GKE cl
 > [!IMPORTANT]
 > **Rule of lockstep alignment**:
 > 1. Always ensure that the `git_ref` used for provisioning (`Day1.cluster.01`) matches the `git_ref` used for decommissioning (`Decom.cluster.01`) and redeployments (any `Day2.redeploy.*` / `Day2.publish.*`).
-> 2. For stable releases, pin `git_ref` to this repo's release tag (e.g. `v1.1.1`). The GitOps repo (`jenkins-2026-gitops-config`) is deliberately versioned **independently** (its own `v0.9.x` ## Environment Protection and Manual Approvals
+> 2. For stable releases, pin `git_ref` to this repo's release tag (e.g. `v1.1.1`). The GitOps repo (`jenkins-2026-gitops-config`) is deliberately versioned **independently** (its own `v0.9.x` line) and ArgoCD tracks it by **branch**, not tag — its `main` is machine-pushed image-tag bumps, so no matching tag is required (or possible to keep in lockstep) there.
 
-To enforce cost control (FinOps), auditability, and guard against accidental destruction of active resources, critical workflows are tied to a GitHub Actions **environment**. 
+## Environment Protection and Manual Approvals
 
-All workflows and resources have been consolidated under a single GitHub Environment: **`gke-production`**.
+To enforce cost control (FinOps), auditability, and guard against accidental destruction of active resources, critical workflows are tied to a GitHub Actions **environment**.
 
-This consolidation eliminates sequential approval fatigue. In GitHub Actions, approvals are granted per environment per workflow run. By using a single environment (`gke-production`) for all jobs (GKE cluster, Gateway, Grafana Cloud, Azure Monitor, AWS Managed Grafana):
+Nearly all workflows and resource jobs run under a single GitHub Environment, **`gke-production`**, with **one deliberate exception**: the AWS bootstrap/decommission pair (`Day0.infra.04` / `Decom.infra.04`) runs under a dedicated **`aws-bootstrap`** environment (see the ⚠️ security note below).
+
+Consolidating onto `gke-production` eliminates sequential approval fatigue. In GitHub Actions, approvals are granted per environment per workflow run. By sharing one environment across the cluster and every backend that authenticates to GCP (repository-scoped WIF) or Azure (a cross-lifecycle service principal):
 1.  **Single Approval Gate**: When launching a multi-job workflow (such as the `Day1` preflight or the `Decom.infra.00-all` "Everything" umbrella), you are prompted to approve the run **only once** at the beginning of the execution.
-2.  **No Downstream Stalls**: All subsequent jobs targeting the same environment will run automatically without further human intervention once the initial approval is granted.
+2.  **No Downstream Stalls**: All subsequent jobs targeting the same environment run automatically without further human intervention once the initial approval is granted.
 
 ### Safety Guards
 In addition to the environment-level reviewer gate, destructive workflows (e.g. `Decom.infra.0N`) use a **typed `confirm` input** (`"destroy"`), validated by a `guard` job before any real terraform or setup commands run. This provides two-factor verification for high-risk actions.
 
+> **⚠️ Security note — why `aws-bootstrap` is NOT consolidated.** The GitHub Environment name is embedded in the OIDC token's `sub` claim (`repo:<owner>/<repo>:environment:<name>`), and each cloud's trust policy matches on that `sub`. The `AWS_BOOTSTRAP_ROLE_ARN` role carries **`AdministratorAccess`** and is hand-created (a root of trust, **not** Terraform-managed), so its trust is scoped to a **dedicated environment used by no other job** — `aws-bootstrap` — ensuring only `Day0.infra.04`/`Decom.infra.04` can assume it. Folding it into the shared `gke-production` would let *any* of the ~25 jobs on that environment assume an admin role, and — as a live failure showed — silently breaks `AssumeRoleWithWebIdentity` until the role's hand-written trust is also repointed. `aws-bootstrap` carries **no required reviewer** (the typed `confirm` guard gates it), so keeping it separate costs zero extra approvals. Azure is *not* isolated this way because the same service principal is reused across `Day0`/`Day1`/`Day2.publish`/`Decom`, so a shared subject is unavoidable short of splitting app registrations.
+
 <details>
-<summary>📊 The unified environment protection scheme</summary>
+<summary>📊 The environment protection scheme</summary>
 
 ```mermaid
 flowchart LR
   subgraph reviewed["gke-production environment (Required Reviewers)"]
     g1[gke-production]
   end
+  subgraph isolated["aws-bootstrap environment (no reviewer · OIDC isolation)"]
+    g5[aws-bootstrap]
+  end
   g1 --> w1["Day1.cluster.01 · Decom.cluster.01<br/>+ Day2.* redeploy / publish / scale"]
   g1 --> w2["Day0.infra.01 · Decom.infra.01<br/>Gateway"]
   g1 --> w3["Day0.infra.02 · Decom.infra.02<br/>Grafana Cloud"]
   g1 --> w4["Day0.infra.03 · Decom.infra.03<br/>Azure"]
-  g1 --> w5["Day0.infra.04 · Decom.infra.04<br/>AWS"]
+  g5 --> w5["Day0.infra.04 · Decom.infra.04<br/>AWS (AdministratorAccess)"]
 ```
 
 </details>
 
 #### Cloud Authentication Scoping (OIDC WIF)
-Because the environment name has been consolidated, the OIDC federated credentials and Workload Identity Provider conditions configured in AWS, Azure, and GCP must all be scoped to `gke-production` in their subject:
+Each cloud's OIDC trust matches on the token `sub`, which embeds the environment name. Scope them as follows:
+- **AWS IAM Role Trust Condition** (`AWS_BOOTSTRAP_ROLE_ARN`, `AdministratorAccess`): `token.actions.githubusercontent.com:sub = repo:<owner>/<repo>:environment:aws-bootstrap` — the dedicated, isolated environment. **Do not** repoint this to `gke-production`.
 - **Azure Entra ID subject**: `repo:<owner>/<repo>:environment:gke-production`
-- **AWS IAM Role Trust Condition**: `token.actions.githubusercontent.com:sub = repo:<owner>/<repo>:environment:gke-production`
-- **GCP IAM Workload Identity Pool**: Consolidated under the repository repository claim, matching GCP service account impersonation.
+- **GCP IAM Workload Identity Pool**: scoped to the `repository` claim (`assertion.repository == <owner>/<repo>`), **independent of environment** — so consolidating environments never affects GCP.
 
 ### Setting up Environment Rules
 
-**`gke-production`** is the only environment that needs to be configured in GitHub:
+Two environments need to exist in GitHub:
+
+**`gke-production`** — the required-reviewer approval gate:
 
 **Option A: Manual Setup (GitHub Web UI)**
 1. Navigate to **Settings** -> **Environments** on your GitHub repository.
@@ -394,11 +404,12 @@ gh api --method PUT repos/nubenetes/jenkins-2026/environments/gke-production \
 }
 EOF
 ```
-ud-bootstrap azure-bootstrap aws-bootstrap; do
-  gh api --method PUT "repos/nubenetes/jenkins-2026/environments/${env}" \
-    --header "Accept: application/vnd.github+json" \
-    --input - <<< '{"reviewers": []}'
-done
+
+**`aws-bootstrap`** — the OIDC-isolation environment for the AWS admin role. It needs **no reviewer** (the typed `confirm` guard is its gate); create it empty:
+```bash
+gh api --method PUT repos/nubenetes/jenkins-2026/environments/aws-bootstrap \
+  --header "Accept: application/vnd.github+json" \
+  --input - <<< '{"reviewers": []}'
 ```
 
 ## One-time Setup (Bootstrapping)
