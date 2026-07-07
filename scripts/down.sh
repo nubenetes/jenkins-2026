@@ -460,9 +460,9 @@ if command -v gcloud &>/dev/null; then
         || log_warn "  NEG '${name}' still won't delete (a backend may remain) — re-run down.sh (idempotent) or inspect the LB chain; terraform destroy of the VPC may fail until it's gone."
     }
 
-    # --- L2: bounded adaptive wait (up to 10m) for the controller's async GC ---
+    # --- L2: bounded adaptive wait (up to 2m) for the controller's async GC ---
     log_step "Releasing container-native LB NEGs for VPC '${vpc_name}' (await GKE GC, then dependency-safe force-delete)"
-    _neg_deadline=$(( SECONDS + 600 ))
+    _neg_deadline=$(( SECONDS + 120 ))
     while :; do
       negs=$(gcloud compute network-endpoint-groups list --filter="network:${vpc_name}" --project="${gcp_project}" --format="value(name)" 2>/dev/null || true)
       if [[ -z "${negs}" ]]; then
@@ -470,7 +470,7 @@ if command -v gcloud &>/dev/null; then
         break
       fi
       if [[ ${SECONDS} -ge ${_neg_deadline} ]]; then
-        log_warn "L2: NEGs still present after 10m of async GC — switching to dependency-ordered force-delete (L3)."
+        log_warn "L2: NEGs still present after 2m of async GC — switching to dependency-ordered force-delete (L3)."
         break
       fi
       log_info "  L2: waiting for the GKE controller to release $(echo ${negs} | wc -w) NEG(s) ($(( _neg_deadline - SECONDS ))s left)"
