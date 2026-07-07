@@ -79,7 +79,10 @@ jobs:
     # subject to repo:<owner>/<repo>:environment:aws-bootstrap so ONLY this
     # workflow (and Day0.infra.04) can assume it. Renaming the environment
     # changes the token's `sub` claim and breaks AssumeRoleWithWebIdentity.
-    # No required reviewer (auth-only scoping); the `confirm` guard above gates.
+    # Carries the SAME required reviewer as gke-production (approval parity — the
+    # umbrella groups both into one Review-deployments prompt); the `confirm`
+    # guard above is the second gate. The dedicated environment exists ONLY to
+    # isolate this admin role's OIDC subject, not to change the approval UX.
     environment: aws-bootstrap
     steps:
       - name: Checkout
