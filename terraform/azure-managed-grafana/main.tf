@@ -5,11 +5,16 @@
 # observability.mode == "managed-azure", plus the Azure Managed Grafana that
 # visualizes it.
 #
-# Run it once by hand (local state in terraform/azure-managed-grafana/
-# terraform.tfstate, gitignored) - it is NOT wired into CI, exactly like
-# terraform/bootstrap and terraform/grafana-cloud-stack. Its outputs feed the
-# AZURE_* / GRAFANA_* GitHub Actions secrets that 02.01-gke-provision.yml uses
-# to create the in-cluster "azure-monitor-credentials" Secret.
+# Applied one-time by Day0.infra.03-azure-grafana.yml (GCS remote state via a
+# CI-written backend_override.tf, GitHub-OIDC -> Azure auth, no stored client
+# secret), exactly like terraform/grafana-cloud-stack and
+# terraform/aws-managed-grafana. Day1.cluster.01-gke (managed-azure) reads its
+# outputs straight from the GCS state to build the in-cluster
+# "azure-monitor-credentials" Secret — those backend credentials never become
+# GitHub secrets. The GitHub-OIDC app that runs this apply is a SINGLE Entra app
+# reused across Day0/Day1/Day2/Decom (Contributor + UAA + Grafana Admin); see
+# docs/102 "Why the per-cloud asymmetry" for why it stays on the shared
+# gke-production environment rather than a dedicated one (and the residual risk).
 #
 # Architecture (Azure Managed Grafana is a frontend only - it does not ingest
 # OTLP, so telemetry goes to Azure Monitor backends and Grafana reads them):

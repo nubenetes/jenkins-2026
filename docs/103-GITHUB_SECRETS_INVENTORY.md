@@ -123,7 +123,7 @@ Used by `Day0.infra.03-azure-grafana`, `Day1.cluster.01-gke`, `Day2.publish.03-a
 | `AZURE_GRAFANA_ADMIN_OBJECT_IDS` | **yes** (managed-azure) | Comma-separated Entra object IDs granted the Grafana Admin role on Azure Managed Grafana |
 
 **`AZURE_CLIENT_ID`**
-The `appId` of the Entra app created during the one-time azure-bootstrap step (`Day0.infra.03`). The app has a federated credential configured to trust tokens from this repo's consolidated `gke-production` environment. Used by `azure/login@v3` to exchange the OIDC token for an Azure access token — no `AZURE_CLIENT_SECRET` needed.
+The `appId` of the Entra app created during the one-time azure-bootstrap step (`Day0.infra.03`). The app has a federated credential configured to trust tokens from this repo's consolidated `gke-production` environment. Used by `azure/login@v3` to exchange the OIDC token for an Azure access token — no `AZURE_CLIENT_SECRET` needed. This **one** app spans both bootstrap (Contributor + User Access Administrator) and publish (Grafana Admin) across the whole lifecycle; see [102 § Why the per-cloud asymmetry](102-GITHUB_ACTIONS_AUTOMATION.md#why-the-per-cloud-asymmetry-and-azures-accepted-residual-risk) for why it stays on the shared environment rather than a dedicated one like AWS — and the accepted residual risk.
 
 **`AZURE_GRAFANA_ADMIN_OBJECT_IDS`**
 Your own Entra object ID (`az ad signed-in-user show --query id -o tsv`) so you can log into Azure Managed Grafana. Can be a comma-separated list for multiple admins.
@@ -145,7 +145,7 @@ Used by `Day0.infra.04-aws-grafana`, `Day1.cluster.01-gke`, `Day2.publish.04-aws
 | `AWS_DASHBOARD_PUBLISH_ROLE_ARN` | **yes** (managed-aws publishing) | Least-privilege IAM role for dashboard publishing and alert provisioning |
 
 **`AWS_BOOTSTRAP_ROLE_ARN`**
-The IAM role with `AdministratorAccess` (or equivalent) created manually before running `Day0.infra.04`. GitHub Actions assumes it via OIDC to run the one-time Terraform that creates AMP, AMG, and the collector's IAM role. Only used by `Day0.infra.04` and `Decom.infra.04`.
+The IAM role with `AdministratorAccess` (or equivalent) created manually before running `Day0.infra.04`. GitHub Actions assumes it via OIDC to run the one-time Terraform that creates AMP, AMG, and the collector's IAM role. Only used by `Day0.infra.04` and `Decom.infra.04`. Its trust is pinned to the dedicated **`aws-bootstrap`** GitHub Environment (**not** `gke-production`) so this admin role stays assumable only by those two workflows — see [102 § Why the per-cloud asymmetry](102-GITHUB_ACTIONS_AUTOMATION.md#why-the-per-cloud-asymmetry-and-azures-accepted-residual-risk) (and keep the manually-configured trust condition on `environment:aws-bootstrap`).
 
 **`AWS_GRAFANA_ADMIN_SSO_EMAILS`**
 Comma-separated list of email addresses of IAM Identity Center users to grant Grafana Admin on the AMG workspace (e.g. `alice@example.com,bob@example.com`). Passed as `TF_VAR_grafana_admin_sso_emails` in `Day0.infra.04`; Terraform looks up each user in the Identity Store and calls `aws_grafana_role_association`. Optional — leave empty to manage access manually via the console. Users must already exist in IAM Identity Center before the bootstrap runs.

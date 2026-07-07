@@ -371,6 +371,30 @@ Each cloud's OIDC trust matches on the token `sub`, which embeds the environment
 - **Azure Entra ID subject**: `repo:<owner>/<repo>:environment:gke-production`
 - **GCP IAM Workload Identity Pool**: scoped to the `repository` claim (`assertion.repository == <owner>/<repo>`), **independent of environment** — so consolidating environments never affects GCP.
 
+#### Why the per-cloud asymmetry (and Azure's accepted residual risk)
+
+A dedicated GitHub Environment isolates a cloud credential's OIDC trust **only when both** of these hold — otherwise it adds complexity for no isolation:
+
+1. the credential is **high-privilege** (worth isolating), **and**
+2. it is used by a **small, separate** set of workflows that do **not** already share the consolidated `gke-production` environment.
+
+Applying that test is why only AWS gets a dedicated environment:
+
+| Cloud | High-priv credential | Used by | Isolatable? | Final state |
+|---|---|---|---|---|
+| **AWS** | `AWS_BOOTSTRAP_ROLE_ARN` (`AdministratorAccess`) — a **separate** role from the scoped `AWS_DASHBOARD_PUBLISH_ROLE_ARN` | only `Day0.infra.04` + `Decom.infra.04` (the publish role is used by `Day1` / `Day2.publish.04/05`) | **Yes** — the admin role is a distinct credential never used on `gke-production` | Dedicated **`aws-bootstrap`** env (isolated); publish role stays on `gke-production` |
+| **Azure** | one Entra app (`AZURE_CLIENT_ID`) holding **Contributor + User Access Administrator + Grafana Admin** | `Day0.infra.03`, `Day1.cluster.01`, `Day2.publish.03/05`, `Decom.infra.03` — spread across the whole lifecycle, most on `gke-production` | **No** — the same SP is already assumable from `gke-production` (via Day1/Day2), so a dedicated bootstrap env wouldn't reduce its exposure | Consolidated on **`gke-production`** (residual-risk note below) |
+| **GCP** | CI service account via WIF | every workflow (Terraform state backend) | **N/A** — the WIF provider conditions on `assertion.repository`, **not** the environment name | Environment-independent; the old `gateway-bootstrap` / `grafana-cloud-bootstrap` envs were cosmetic and were **deleted** |
+
+**AWS — why it works and was free.** AWS already separates privilege into two roles. The crown jewel (`AdministratorAccess`) is a distinct, hand-created role assumed by exactly two workflows and never by anything on `gke-production`, so pinning its trust to a dedicated `aws-bootstrap` environment shrinks its blast radius from "the ~25 jobs on `gke-production`" to "those two" — at **zero cost**, because the role's trust already expected `aws-bootstrap` (the fix was reverting the workflow's `environment:`, no cloud-side change). See the ⚠️ note above.
+
+**Azure — why it's consolidated, and the accepted residual risk.** Azure uses a **single** Entra app registration for the entire lifecycle: it bootstraps the backend (`Day0.infra.03`, needing Contributor + User Access Administrator) **and** publishes dashboards/alerts (`Day1`, `Day2.publish.03/05`, needing Grafana Admin — granted by [`terraform/azure-managed-grafana` `grafana_ci_deployer`](../terraform/azure-managed-grafana/main.tf) to whichever principal runs the apply). Because the publish jobs run on `gke-production`, that app's federated credential **must** trust `gke-production` — so the app is already assumable by any job on that environment. Moving only `Day0.infra.03` / `Decom.infra.03` onto a dedicated `azure-bootstrap` environment would isolate **nothing**: the same over-privileged SP stays reachable from `gke-production` via the publish jobs.
+
+- **Residual risk (accepted).** The Azure SP (Contributor + User Access Administrator on the subscription, plus Grafana Admin) is assumable by any job that runs on `gke-production` with `id-token: write`. All such jobs are **first-party, manually-dispatched** workflows in this branch-protected repo (and gated by the required reviewer), so this is a defense-in-depth gap against a *compromised/malicious first-party workflow change*, not an externally-reachable hole. For a PoC that trade-off is **accepted** rather than paying for the split below.
+- **Full isolation (deferred).** Making Azure symmetric with AWS requires **splitting the one app into two**: a bootstrap-admin app (Contributor + UAA, federated to a dedicated `azure-bootstrap` env, used by `Day0.infra.03` / `Decom.infra.03`) and a low-privilege publish app (Grafana Admin + Reader only, federated to `gke-production`, used by `Day1` / `Day2.publish.03/05`) — plus a `grafana_ci_deployer` change to grant Grafana Admin to the publish app instead of the apply principal, a new `AZURE_PUBLISH_CLIENT_ID` secret, and recreating the `azure-bootstrap` environment. This is a hand-run Azure identity change with a transition window, so it is deliberately **not** done: it buys a small marginal isolation for real ongoing complexity (two app registrations, more secrets).
+
+**Rule of thumb for a new cloud/credential:** consolidate on `gke-production` by default; carve out a dedicated environment **only** for a high-privilege credential used by a small, dedicated set of workflows that is *not* otherwise reachable from `gke-production` (like the AWS admin role). If the same identity is reused across the lifecycle (like Azure's SP), a dedicated environment is theatre — split the identity instead, or accept and document the residual risk.
+
 ### Setting up Environment Rules
 
 Two environments need to exist in GitHub:
