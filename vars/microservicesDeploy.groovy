@@ -104,6 +104,8 @@ def call(Map cfg) {
             --auth-token "\${ARGOCD_AUTH_TOKEN:-}" \
             \${local_flags}
 
+          # app wait uses --timeout 900 (raised from 300): it waits on the WHOLE ArgoCD Application, so the
+          # gateway's ~600s startupProbe cold-start gates every service's run in the batch - don't lower (see CHANGELOG).
           \${ARGOCD} app wait "microservices-${cfg.envName}" \
             --sync --health --timeout 900 \
             --server "\${local_server}" \

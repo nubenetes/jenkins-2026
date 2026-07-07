@@ -202,6 +202,8 @@ jobs:
             flags="${flags} --plaintext"
           fi
           argocd app sync  "microservices-$ENV_NAME" --auth-token "$ARGOCD_TOKEN" --server "${server}" ${flags} || true
+          # app wait uses --timeout 900 (raised from 300): it waits on the WHOLE ArgoCD Application, so the
+          # gateway's ~600s startupProbe cold-start gates every service's run in the batch - don't lower (see CHANGELOG).
           argocd app wait  "microservices-$ENV_NAME" --auth-token "$ARGOCD_TOKEN" --server "${server}" ${flags} --sync --health --timeout 900 || true
 
 
