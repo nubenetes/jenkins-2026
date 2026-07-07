@@ -330,14 +330,38 @@ jobs:
       log_level: ${{ inputs.log_level || 'info' }}
     secrets: inherit
 
-  # ── Main provision job ──────────────────────────────────────────────────────
-  provision:
-    needs: [grafana-cloud-bootstrap, azure-bootstrap, aws-bootstrap]
-    # always() prevents skipped bootstrap jobs from silently skipping provision.
-    # !failure() still blocks provision if a bootstrap actually failed.
-    if: ${{ always() && !failure() && !cancelled() }}
+  # ── Single upfront approval gate ────────────────────────────────────────────
+  # A no-op job carrying the gke-production reviewer gate. With NO `needs`, its
+  # gate enters "waiting" at t=0 alongside the bootstrap jobs' gates, so GitHub
+  # batches them into ONE "Review deployments" prompt (the same simultaneous-wait
+  # grouping Decom.infra.00-all relies on). This replaces gating `provision`
+  # directly, whose gate could only pend AFTER the ~2-min bootstrap finished →
+  # a second, separate prompt. (Grouping is a live snapshot of currently-waiting
+  # environments; in practice one prompt, since human approval latency far exceeds
+  # the few seconds before the bootstrap gate joins the wave.)
+  approve:
     runs-on: ubuntu-latest
     environment: gke-production
+    steps:
+      - run: echo "Provisioning approved."
+
+  # ── Main provision job ──────────────────────────────────────────────────────
+  provision:
+    needs: [approve, grafana-cloud-bootstrap, azure-bootstrap, aws-bootstrap]
+    # always() prevents skipped bootstrap jobs from silently skipping provision;
+    # !failure() still blocks provision if a bootstrap actually failed; and
+    # needs.approve.result == 'success' keeps the gate airtight — a REJECTED
+    # approval skips provision no matter how GitHub classifies the rejection.
+    if: ${{ always() && !failure() && !cancelled() && needs.approve.result == 'success' }}
+    runs-on: ubuntu-latest
+    # provision itself runs the managed-cloud publish logins (azure/login with
+    # App B + AWS configure-aws-credentials), whose federated-credential trusts
+    # are pinned to environment:gke-production — so KEEP the environment in
+    # managed modes or the OIDC `sub` changes and those logins fail. grafana-cloud
+    # and oss perform NO environment-pinned cloud login (GCP WIF is repo-scoped),
+    # so provision is ungated there and the single `approve` gate is the only
+    # prompt. (docs/504 / gha-env-oidc-sub-trust coupling.)
+    environment: ${{ (inputs.observability_mode == 'managed-azure' || inputs.observability_mode == 'managed-aws') && 'gke-production' || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
