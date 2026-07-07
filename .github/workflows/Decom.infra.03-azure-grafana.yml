@@ -169,8 +169,8 @@ jobs:
           TF_VAR_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           TF_VAR_tenant_id: ${{ secrets.AZURE_TENANT_ID }}
           TF_VAR_grafana_admin_object_ids: ${{ steps.admins.outputs.json }}
-          # Must match the apply so destroy plans the App B Grafana Admin grant.
-          TF_VAR_publish_app_client_id: ${{ secrets.AZURE_PUBLISH_CLIENT_ID }}
+          # Must match the apply so destroy plans App B (the publish app) too.
+          TF_VAR_github_repo: ${{ github.repository }}
         run: terraform destroy -auto-approve -input=false
 
       - name: Summary

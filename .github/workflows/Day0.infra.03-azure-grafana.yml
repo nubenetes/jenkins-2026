@@ -26,9 +26,9 @@ concurrency:
 #
 # Required secrets: AZURE_CLIENT_ID (bootstrap app A), AZURE_TENANT_ID,
 # AZURE_SUBSCRIPTION_ID, AZURE_GRAFANA_ADMIN_OBJECT_IDS (comma-separated Entra
-# object IDs granted Grafana Admin), AZURE_PUBLISH_CLIENT_ID (low-priv publish
-# app B — this module grants it Grafana Admin), plus the GCP_*/TF_STATE_BUCKET
-# state-backend secrets.
+# object IDs granted Grafana Admin), plus the GCP_*/TF_STATE_BUCKET state-backend
+# secrets. This workflow CREATES the low-priv publish app (App B) and prints its
+# client id in the job summary -> set it as the AZURE_PUBLISH_CLIENT_ID secret.
 #
 # Day1.cluster.01-gke.yml calls this via workflow_call when
 # observability_mode=managed-azure so the persistent Azure backend is always
@@ -155,9 +155,9 @@ jobs:
           TF_VAR_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           TF_VAR_tenant_id: ${{ secrets.AZURE_TENANT_ID }}
           TF_VAR_grafana_admin_object_ids: ${{ steps.admins.outputs.json }}
-          # Split-app mode: grant Grafana Admin to the low-priv publish app (App B)
-          # so Day1 / Day2.publish.* publish as it. Empty -> single-app fallback.
-          TF_VAR_publish_app_client_id: ${{ secrets.AZURE_PUBLISH_CLIENT_ID }}
+          # This module CREATES the low-priv publish app (App B); its federated
+          # credential subject needs the repo slug.
+          TF_VAR_github_repo: ${{ github.repository }}
         run: terraform apply -auto-approve -input=false
 
       - name: Summary
@@ -169,6 +169,15 @@ jobs:
             echo
             echo "- Grafana endpoint: \`$(terraform output -raw grafana_endpoint 2>/dev/null || echo 'n/a')\`"
             echo
+            pub="$(terraform output -raw publish_app_client_id 2>/dev/null || echo '')"
+            if [ -n "${pub}" ]; then
+              echo "**Set the publish-app secret** (App B — Day1 / Day2.publish.* authenticate as it):"
+              echo
+              echo "\`\`\`bash"
+              echo "gh secret set AZURE_PUBLISH_CLIENT_ID --body ${pub}"
+              echo "\`\`\`"
+              echo
+            fi
             echo "Day1.cluster.01 GKE (observability_mode: managed-azure) reads this module's"
             echo "outputs from the GCS state to build the azure-monitor-credentials Secret."
           } >> "${GITHUB_STEP_SUMMARY}"

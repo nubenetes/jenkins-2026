@@ -396,9 +396,9 @@ Applying that test:
 **Azure — isolated by splitting the app in two.** Azure originally used a **single** Entra app for the whole lifecycle: it bootstrapped the backend (`Day0.infra.03`, Contributor + UAA) **and** published dashboards/alerts (`Day1`, `Day2.publish.03/05`, Grafana Admin). Because the publish jobs run on `gke-production`, that one app's federated credential had to trust `gke-production` — so the Contributor+UAA identity was assumable by any job there. Moving only `Day0.infra.03` / `Decom.infra.03` to a dedicated env would have isolated nothing (the same SP stayed reachable via the publish jobs), so Azure was made symmetric with AWS by **splitting the identity into two apps**:
 
 - **App A — bootstrap** (`AZURE_CLIENT_ID`): **Contributor + User Access Administrator**. Federated credential trusts **`azure-bootstrap`**. Used by `Day0.infra.03` / `Decom.infra.03` only — the high-privilege identity is now assumable by exactly two workflows, never on `gke-production`.
-- **App B — publish** (`AZURE_PUBLISH_CLIENT_ID`): **Grafana Admin + subscription Reader only**. Federated credential trusts `gke-production`. Used by `Day1` / `Day2.publish.03/05`. Grafana Admin is granted to App B by [`terraform/azure-managed-grafana`](../terraform/azure-managed-grafana/main.tf) (`grafana_publish_deployer`, keyed on `var.publish_app_client_id`); subscription Reader (for `az grafana list` / `az graph query`) is assigned out-of-band. The identity reachable from `gke-production` can now do nothing but publish dashboards.
+- **App B — publish** (`AZURE_PUBLISH_CLIENT_ID`): **Grafana Admin + subscription Reader only**. Federated credential trusts `gke-production`. Used by `Day1` / `Day2.publish.03/05`. App B is **created and role-assigned entirely by [`terraform/azure-managed-grafana`](../terraform/azure-managed-grafana/main.tf)** (the app registration, its `gke-production` federated credential, subscription Reader for `az grafana list` / `az graph query`, and Grafana Admin) — just like the collector app, so there is nothing to create by hand and it is torn down with the backend on Decom. Its client id is a Terraform output you set as the `AZURE_PUBLISH_CLIENT_ID` secret. The identity reachable from `gke-production` can now do nothing but publish dashboards.
 
-Result: the Contributor+UAA identity is no longer reachable from `gke-production` — the same posture as AWS. The Terraform module **falls back to single-app mode** when `var.publish_app_client_id` is empty (`grafana_ci_deployer` grants Grafana Admin to the apply principal), so an environment set up without App B still works. See [Setting up Environment Rules](#setting-up-environment-rules) for the two-app setup and [103 § Azure](./103-GITHUB_SECRETS_INVENTORY.md#4-azure-managed-grafana-managed-azure-mode) for the secrets.
+Result: the Contributor+UAA identity is no longer reachable from `gke-production` — the same posture as AWS. See [Setting up Environment Rules](#setting-up-environment-rules) for the environments and [103 § Azure](./103-GITHUB_SECRETS_INVENTORY.md#4-azure-managed-grafana-managed-azure-mode) for the secrets.
 
 **Rule of thumb for a new cloud/credential:** consolidate on `gke-production` by default; carve out a dedicated environment for a high-privilege credential **only** if it is used by a small, dedicated set of workflows and is *not* otherwise reachable from `gke-production` (like the AWS admin role). If the same identity is reused across the lifecycle (like Azure's original app), a dedicated environment is theatre — **split the identity** so the high-privilege half gets its own environment and the low-privilege half stays consolidated (what Azure now does).
 
@@ -567,11 +567,16 @@ EOF
       **Day0.infra.02 Grafana Cloud** → **Run workflow**).
 
 6. **(Optional) Azure backend** for `observability_mode: managed-azure`. Uses **two**
-   Entra apps — a high-privilege bootstrap app and a low-privilege publish app (see
-   [§ Why the per-cloud OIDC-isolation asymmetry](#why-the-per-cloud-oidc-isolation-asymmetry)):
+   Entra apps — a high-privilege bootstrap app (**App A**, created by hand) and a
+   low-privilege publish app (**App B**, **created by Terraform**, so you don't
+   manage it); see [§ Why the per-cloud OIDC-isolation asymmetry](#why-the-per-cloud-oidc-isolation-asymmetry).
 
-   a. **Create the BOOTSTRAP app (App A — Contributor + UAA)**, federated to the dedicated `azure-bootstrap` environment:
+   a. **`az login`** as an admin who can create app registrations and assign
+      subscription roles (Application Administrator + Owner/UAA). Then create the
+      **BOOTSTRAP app (App A — Contributor + UAA)**, federated to the dedicated
+      `azure-bootstrap` environment:
       ```bash
+      az login
       SUB="<your-subscription-id>"; REPO="<owner>/<repo>"
       APP_ID=$(az ad app create --display-name "jenkins-2026-github-bootstrap" --query appId -o tsv)
       az ad sp create --id "$APP_ID"
@@ -580,26 +585,17 @@ EOF
       az role assignment create --assignee "$APP_ID" --role "Contributor"               --scope "/subscriptions/${SUB}"
       az role assignment create --assignee "$APP_ID" --role "User Access Administrator" --scope "/subscriptions/${SUB}"
       ```
+      *(App B — the publish app — is **not** created here: `Day0.infra.03`'s Terraform creates it and assigns its Grafana Admin + Reader roles.)*
 
-   b. **Create the PUBLISH app (App B — low-privilege)**, federated to `gke-production` with only **Reader** here (Terraform grants it Grafana Admin on apply):
-      ```bash
-      PUB_ID=$(az ad app create --display-name "jenkins-2026-github-publish" --query appId -o tsv)
-      az ad sp create --id "$PUB_ID"
-      az ad app federated-credential create --id "$PUB_ID" --parameters \
-        "{\"name\":\"github-gke-production\",\"issuer\":\"https://token.actions.githubusercontent.com\",\"subject\":\"repo:${REPO}:environment:gke-production\",\"audiences\":[\"api://AzureADTokenExchange\"]}"
-      az role assignment create --assignee "$PUB_ID" --role "Reader" --scope "/subscriptions/${SUB}"
-      ```
-
-   c. **Set the identifier secrets** (no secret values — just IDs):
+   b. **Set the App A + shared identifier secrets** (no secret values — just IDs):
       ```bash
       gh secret set AZURE_CLIENT_ID                --body "$APP_ID"   # App A (bootstrap)
-      gh secret set AZURE_PUBLISH_CLIENT_ID        --body "$PUB_ID"   # App B (publish)
       gh secret set AZURE_TENANT_ID               --body "$(az account show --query tenantId -o tsv)"
       gh secret set AZURE_SUBSCRIPTION_ID         --body "$SUB"
       gh secret set AZURE_GRAFANA_ADMIN_OBJECT_IDS --body "$(az ad signed-in-user show --query id -o tsv)"
       ```
 
-   d. **Run the "Day0.infra.03 Azure managed-grafana" workflow** — its Terraform grants App B Grafana Admin (via `TF_VAR_publish_app_client_id`).
+   c. **Run the "Day0.infra.03 Azure managed-grafana" workflow.** Its Terraform creates App B and grants it Grafana Admin + Reader; the run's **job summary** prints a ready-to-paste `gh secret set AZURE_PUBLISH_CLIENT_ID …` — run it so `Day1` / `Day2.publish.*` can authenticate as App B.
 
 ## Running the GKE Workflows
 

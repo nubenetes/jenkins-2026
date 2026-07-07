@@ -38,8 +38,8 @@ variable "grafana_admin_object_ids" {
   description = "Entra object IDs (users/groups) granted Grafana Admin on the Azure Managed Grafana instance. Empty = only the deployer keeps portal-level access."
 }
 
-variable "publish_app_client_id" {
+variable "github_repo" {
   type        = string
   default     = ""
-  description = "Client (app) ID of the dedicated low-privilege PUBLISH app registration (the AZURE_PUBLISH_CLIENT_ID GitHub secret). When set, this module also grants Grafana Admin to that app's service principal so Day1 / Day2.publish.* can publish dashboards/alerts as a scoped identity (Grafana Admin + Reader only) instead of the Contributor+UAA bootstrap app. Empty = single-app mode (only the apply principal keeps Grafana Admin). See docs/102 § Why the per-cloud asymmetry."
+  description = "owner/repo of this GitHub repository (e.g. nubenetes/jenkins-2026). Used as the subject of the low-privilege PUBLISH app's (App B) federated credential: repo:<github_repo>:environment:gke-production. Day0.infra.03 passes TF_VAR_github_repo=$GITHUB_REPOSITORY."
 }
