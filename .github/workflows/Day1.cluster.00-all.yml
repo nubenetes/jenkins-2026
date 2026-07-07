@@ -14,7 +14,10 @@ name: "Day1.cluster.00 Everything up"
 # starting from absolute zero or from the usual "decommissioned" state (where the
 # Decom.infra.00 umbrella left the Gateway in place by default).
 # Approvals are consolidated under the single gke-production environment,
-# requiring a single manual approval for the entire workflow run.
+# requiring a single manual approval for the entire workflow run (the AWS
+# backend's Day0.infra.04 runs on the dedicated aws-bootstrap environment, which
+# carries the SAME reviewer and is grouped into the same Review-deployments
+# prompt — it is a separate environment only to isolate the admin OIDC trust).
 #
 # NOTE: from ABSOLUTE zero (Gateway never bootstrapped), step 1 allocates a NEW
 # static IP - follow its job summary to point your DNS A-records at it. On a

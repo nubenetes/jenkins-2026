@@ -37,3 +37,9 @@ variable "grafana_admin_object_ids" {
   default     = []
   description = "Entra object IDs (users/groups) granted Grafana Admin on the Azure Managed Grafana instance. Empty = only the deployer keeps portal-level access."
 }
+
+variable "github_repo" {
+  type        = string
+  default     = ""
+  description = "owner/repo of this GitHub repository (e.g. nubenetes/jenkins-2026). Used as the subject of the low-privilege PUBLISH app's (App B) federated credential: repo:<github_repo>:environment:gke-production. Day0.infra.03 passes TF_VAR_github_repo=$GITHUB_REPOSITORY."
+}

@@ -5,11 +5,18 @@
 # observability.mode == "managed-azure", plus the Azure Managed Grafana that
 # visualizes it.
 #
-# Run it once by hand (local state in terraform/azure-managed-grafana/
-# terraform.tfstate, gitignored) - it is NOT wired into CI, exactly like
-# terraform/bootstrap and terraform/grafana-cloud-stack. Its outputs feed the
-# AZURE_* / GRAFANA_* GitHub Actions secrets that 02.01-gke-provision.yml uses
-# to create the in-cluster "azure-monitor-credentials" Secret.
+# Applied one-time by Day0.infra.03-azure-grafana.yml (GCS remote state via a
+# CI-written backend_override.tf, GitHub-OIDC -> Azure auth, no stored client
+# secret), exactly like terraform/grafana-cloud-stack and
+# terraform/aws-managed-grafana. Day1.cluster.01-gke (managed-azure) reads its
+# outputs straight from the GCS state to build the in-cluster
+# "azure-monitor-credentials" Secret — those backend credentials never become
+# GitHub secrets. GitHub Actions authenticates with TWO Entra apps (docs/102
+# § Why the per-cloud asymmetry): a bootstrap app (App A — Contributor + UAA,
+# runs this apply on the dedicated azure-bootstrap environment) and a
+# low-privilege publish app (App B — Grafana Admin + Reader only, on
+# gke-production, used by Day1 / Day2.publish.*). This module CREATES App B and
+# grants its roles (below); its client id is an output -> AZURE_PUBLISH_CLIENT_ID.
 #
 # Architecture (Azure Managed Grafana is a frontend only - it does not ingest
 # OTLP, so telemetry goes to Azure Monitor backends and Grafana reads them):
@@ -144,12 +151,51 @@ resource "azurerm_role_assignment" "grafana_rg_reader" {
 }
 
 # Grant the CI/bootstrap principal (whoever runs this apply — the GitHub Actions
-# OIDC SP that also runs Day1.cluster.01-gke) Grafana Admin so it can publish
-# dashboards via `az grafana dashboard create` without storing any token.
+# OIDC bootstrap SP, App A) Grafana Admin. Kept for single-app mode and so the
+# apply principal always retains portal access; when the split below is active,
+# the publish app (App B) is the one the workflows actually use.
 resource "azurerm_role_assignment" "grafana_ci_deployer" {
   scope                = azurerm_dashboard_grafana.this.id
   role_definition_name = "Grafana Admin"
   principal_id         = data.azurerm_client_config.current.object_id
+}
+
+# App B — the dedicated low-privilege PUBLISH identity, fully Terraform-managed
+# (like the collector app above), so no manual `az ad app create` is needed and
+# it is torn down with the backend on Decom. Day1 / Day2.publish.* authenticate
+# as this app; it holds ONLY Grafana Admin + subscription Reader — never
+# Contributor/UAA. Its client id is an output -> the AZURE_PUBLISH_CLIENT_ID
+# secret. See docs/102 § Why the per-cloud OIDC-isolation asymmetry.
+resource "azuread_application" "publish" {
+  display_name = "${var.name_prefix}-github-publish"
+}
+
+resource "azuread_service_principal" "publish" {
+  client_id = azuread_application.publish.client_id
+}
+
+# Federated credential: GitHub Actions OIDC on the shared gke-production
+# environment (where the publish jobs run). Keyless — no client secret.
+resource "azuread_application_federated_identity_credential" "publish" {
+  application_id = azuread_application.publish.id
+  display_name   = "github-gke-production"
+  issuer         = "https://token.actions.githubusercontent.com"
+  subject        = "repo:${var.github_repo}:environment:gke-production"
+  audiences      = ["api://AzureADTokenExchange"]
+}
+
+# App B needs subscription Reader (for `az grafana list` / `az graph query`)...
+resource "azurerm_role_assignment" "publish_reader" {
+  scope                = "/subscriptions/${var.subscription_id}"
+  role_definition_name = "Reader"
+  principal_id         = azuread_service_principal.publish.object_id
+}
+
+# ...and Grafana Admin on the AMG instance to publish dashboards/alerts.
+resource "azurerm_role_assignment" "grafana_publish_deployer" {
+  scope                = azurerm_dashboard_grafana.this.id
+  role_definition_name = "Grafana Admin"
+  principal_id         = azuread_service_principal.publish.object_id
 }
 
 # Grant the named users/groups Grafana Admin on the instance.

@@ -74,9 +74,11 @@ jobs:
   decommission:
     needs: guard
     runs-on: ubuntu-latest
-    # Matches the Entra federated credential subject
-    # repo:<owner>/<repo>:environment:gke-production on the Entra app.
-    environment: gke-production
+    # Bootstrap app (App A — Contributor + UAA) on its dedicated environment,
+    # which isolates its OIDC trust from gke-production (docs/102 § Why the
+    # per-cloud asymmetry). Matches App A's federated credential subject
+    # repo:<owner>/<repo>:environment:azure-bootstrap.
+    environment: azure-bootstrap
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -167,6 +169,8 @@ jobs:
           TF_VAR_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           TF_VAR_tenant_id: ${{ secrets.AZURE_TENANT_ID }}
           TF_VAR_grafana_admin_object_ids: ${{ steps.admins.outputs.json }}
+          # Must match the apply so destroy plans App B (the publish app) too.
+          TF_VAR_github_repo: ${{ github.repository }}
         run: terraform destroy -auto-approve -input=false
 
       - name: Summary
