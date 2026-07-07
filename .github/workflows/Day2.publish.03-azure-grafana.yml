@@ -52,7 +52,7 @@ env:
   TF_LOG: ${{ inputs.log_level == 'debug' && 'DEBUG' || '' }}
   # Surfaced as env so steps can skip cleanly (secrets can't be used in `if:`)
   # when the OIDC SP hasn't been set up yet (re-run Day0.infra.03 + set the secrets).
-  AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  AZURE_PUBLISH_CLIENT_ID: ${{ secrets.AZURE_PUBLISH_CLIENT_ID }}
 
 jobs:
   publish-azure-dashboards:
@@ -68,10 +68,10 @@ jobs:
       # Azure Managed Grafana instance by terraform/azure-managed-grafana (Day0.infra.03).
       # No access keys stored anywhere.
       - name: Azure login
-        if: ${{ env.AZURE_CLIENT_ID != '' }}
+        if: ${{ env.AZURE_PUBLISH_CLIENT_ID != '' }}
         uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-id: ${{ secrets.AZURE_PUBLISH_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
@@ -100,7 +100,7 @@ jobs:
 
       - name: Publish dashboards to Azure Managed Grafana
         id: publish_azure
-        if: ${{ env.AZURE_CLIENT_ID != '' }}
+        if: ${{ env.AZURE_PUBLISH_CLIENT_ID != '' }}
         run: |
           az extension add -n amg --only-show-errors || true
           az extension add -n resource-graph --only-show-errors || true
@@ -173,10 +173,10 @@ jobs:
             done
           done
 
-      - name: Skipped (no AZURE_CLIENT_ID)
-        if: ${{ env.AZURE_CLIENT_ID == '' }}
+      - name: Skipped (no AZURE_PUBLISH_CLIENT_ID)
+        if: ${{ env.AZURE_PUBLISH_CLIENT_ID == '' }}
         run: |
-          echo "::warning::AZURE_CLIENT_ID not set - skipping. Re-run 'Day0.infra.03 Azure managed-grafana' and set the AZURE_CLIENT_ID/AZURE_TENANT_ID/AZURE_SUBSCRIPTION_ID secrets first (see README \"GitHub Actions automation\")."
+          echo "::warning::AZURE_PUBLISH_CLIENT_ID not set - skipping. Create the low-privilege publish app (App B) and set AZURE_PUBLISH_CLIENT_ID (see docs/102 § Environment Protection → Setting up Environment Rules)."
 
       - name: Summary
         if: always()

@@ -11,10 +11,12 @@
 # terraform/aws-managed-grafana. Day1.cluster.01-gke (managed-azure) reads its
 # outputs straight from the GCS state to build the in-cluster
 # "azure-monitor-credentials" Secret — those backend credentials never become
-# GitHub secrets. The GitHub-OIDC app that runs this apply is a SINGLE Entra app
-# reused across Day0/Day1/Day2/Decom (Contributor + UAA + Grafana Admin); see
-# docs/102 "Why the per-cloud asymmetry" for why it stays on the shared
-# gke-production environment rather than a dedicated one (and the residual risk).
+# GitHub secrets. GitHub Actions authenticates with TWO Entra apps (docs/102
+# § Why the per-cloud asymmetry): a bootstrap app (App A — Contributor + UAA,
+# runs this apply on the dedicated azure-bootstrap environment) and a
+# low-privilege publish app (App B — Grafana Admin + Reader only, on
+# gke-production, used by Day1 / Day2.publish.* — granted Grafana Admin by
+# var.publish_app_client_id below).
 #
 # Architecture (Azure Managed Grafana is a frontend only - it does not ingest
 # OTLP, so telemetry goes to Azure Monitor backends and Grafana reads them):
@@ -149,12 +151,31 @@ resource "azurerm_role_assignment" "grafana_rg_reader" {
 }
 
 # Grant the CI/bootstrap principal (whoever runs this apply — the GitHub Actions
-# OIDC SP that also runs Day1.cluster.01-gke) Grafana Admin so it can publish
-# dashboards via `az grafana dashboard create` without storing any token.
+# OIDC bootstrap SP, App A) Grafana Admin. Kept for single-app mode and so the
+# apply principal always retains portal access; when the split below is active,
+# the publish app (App B) is the one the workflows actually use.
 resource "azurerm_role_assignment" "grafana_ci_deployer" {
   scope                = azurerm_dashboard_grafana.this.id
   role_definition_name = "Grafana Admin"
   principal_id         = data.azurerm_client_config.current.object_id
+}
+
+# Split-app mode (docs/102 § Why the per-cloud asymmetry): also grant Grafana
+# Admin to the dedicated low-privilege PUBLISH app (App B). Day1 / Day2.publish.*
+# authenticate as this app, which holds ONLY Grafana Admin (here) + subscription
+# Reader (assigned out-of-band) — never Contributor/UAA. Looked up by client id
+# so no extra object-id secret is needed. var.publish_app_client_id left empty
+# -> single-app mode (grafana_ci_deployer above is the only Grafana Admin grant).
+data "azuread_service_principal" "publish" {
+  count     = var.publish_app_client_id != "" ? 1 : 0
+  client_id = var.publish_app_client_id
+}
+
+resource "azurerm_role_assignment" "grafana_publish_deployer" {
+  count                = var.publish_app_client_id != "" ? 1 : 0
+  scope                = azurerm_dashboard_grafana.this.id
+  role_definition_name = "Grafana Admin"
+  principal_id         = data.azuread_service_principal.publish[0].object_id
 }
 
 # Grant the named users/groups Grafana Admin on the instance.

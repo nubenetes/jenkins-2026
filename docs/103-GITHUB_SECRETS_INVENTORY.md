@@ -117,13 +117,17 @@ Used by `Day0.infra.03-azure-grafana`, `Day1.cluster.01-gke`, `Day2.publish.03-a
 
 | Secret | Required | Description |
 |--------|----------|-------------|
-| `AZURE_CLIENT_ID` | **yes** (managed-azure) | Entra application (client) ID for the GitHub OIDC federated credential |
+| `AZURE_CLIENT_ID` | **yes** (managed-azure) | Entra app (client) ID of the **bootstrap** app (App A — Contributor + UAA) — its OIDC federated credential trusts the `azure-bootstrap` environment |
+| `AZURE_PUBLISH_CLIENT_ID` | **yes** (managed-azure) | Entra app (client) ID of the low-privilege **publish** app (App B — Grafana Admin + Reader) used by Day1/Day2.publish.*; trusts `gke-production`. Unset = single-app fallback |
 | `AZURE_TENANT_ID` | **yes** (managed-azure) | Azure Active Directory tenant ID |
 | `AZURE_SUBSCRIPTION_ID` | **yes** (managed-azure) | Azure subscription ID |
 | `AZURE_GRAFANA_ADMIN_OBJECT_IDS` | **yes** (managed-azure) | Comma-separated Entra object IDs granted the Grafana Admin role on Azure Managed Grafana |
 
 **`AZURE_CLIENT_ID`**
-The `appId` of the Entra app created during the one-time azure-bootstrap step (`Day0.infra.03`). The app has a federated credential configured to trust tokens from this repo's consolidated `gke-production` environment. Used by `azure/login@v3` to exchange the OIDC token for an Azure access token — no `AZURE_CLIENT_SECRET` needed. This **one** app spans both bootstrap (Contributor + User Access Administrator) and publish (Grafana Admin) across the whole lifecycle; see [102 § Why the per-cloud asymmetry](102-GITHUB_ACTIONS_AUTOMATION.md#why-the-per-cloud-asymmetry-and-azures-accepted-residual-risk) for why it stays on the shared environment rather than a dedicated one like AWS — and the accepted residual risk.
+The `appId` of the **bootstrap** Entra app (App A — **Contributor + User Access Administrator**), used by `Day0.infra.03` / `Decom.infra.03` to run the Azure Terraform (via `ARM_CLIENT_ID`). Its federated credential trusts the **dedicated `azure-bootstrap` environment**, so this high-privilege identity is assumable by only those two workflows. No `AZURE_CLIENT_SECRET` needed. Dashboard/alert **publishing** uses a separate low-privilege app (`AZURE_PUBLISH_CLIENT_ID`, below) — see [102 § Why the per-cloud OIDC-isolation asymmetry](102-GITHUB_ACTIONS_AUTOMATION.md#why-the-per-cloud-oidc-isolation-asymmetry) for the split.
+
+**`AZURE_PUBLISH_CLIENT_ID`**
+The `appId` of the **publish** Entra app (App B — **Grafana Admin + subscription Reader only**, never Contributor/UAA), used by `Day1.cluster.01`, `Day2.publish.03` and `Day2.publish.05` to publish dashboards/alerts to Azure Managed Grafana. Its federated credential trusts `gke-production` (where those jobs run). Grafana Admin is granted to it by [`terraform/azure-managed-grafana`](../terraform/azure-managed-grafana/main.tf) when `Day0.infra.03` passes it as `TF_VAR_publish_app_client_id`; subscription Reader (for `az grafana list` / `az graph query`) is assigned out-of-band. Splitting this out of `AZURE_CLIENT_ID` keeps the Contributor+UAA identity off `gke-production` (matching the AWS posture — see the § link above). Optional: leave unset to fall back to single-app mode (the bootstrap app keeps Grafana Admin).
 
 **`AZURE_GRAFANA_ADMIN_OBJECT_IDS`**
 Your own Entra object ID (`az ad signed-in-user show --query id -o tsv`) so you can log into Azure Managed Grafana. Can be a comma-separated list for multiple admins.
@@ -145,7 +149,7 @@ Used by `Day0.infra.04-aws-grafana`, `Day1.cluster.01-gke`, `Day2.publish.04-aws
 | `AWS_DASHBOARD_PUBLISH_ROLE_ARN` | **yes** (managed-aws publishing) | Least-privilege IAM role for dashboard publishing and alert provisioning |
 
 **`AWS_BOOTSTRAP_ROLE_ARN`**
-The IAM role with `AdministratorAccess` (or equivalent) created manually before running `Day0.infra.04`. GitHub Actions assumes it via OIDC to run the one-time Terraform that creates AMP, AMG, and the collector's IAM role. Only used by `Day0.infra.04` and `Decom.infra.04`. Its trust is pinned to the dedicated **`aws-bootstrap`** GitHub Environment (**not** `gke-production`) so this admin role stays assumable only by those two workflows — see [102 § Why the per-cloud asymmetry](102-GITHUB_ACTIONS_AUTOMATION.md#why-the-per-cloud-asymmetry-and-azures-accepted-residual-risk) (and keep the manually-configured trust condition on `environment:aws-bootstrap`).
+The IAM role with `AdministratorAccess` (or equivalent) created manually before running `Day0.infra.04`. GitHub Actions assumes it via OIDC to run the one-time Terraform that creates AMP, AMG, and the collector's IAM role. Only used by `Day0.infra.04` and `Decom.infra.04`. Its trust is pinned to the dedicated **`aws-bootstrap`** GitHub Environment (**not** `gke-production`) so this admin role stays assumable only by those two workflows — see [102 § Why the per-cloud asymmetry](102-GITHUB_ACTIONS_AUTOMATION.md#why-the-per-cloud-oidc-isolation-asymmetry) (and keep the manually-configured trust condition on `environment:aws-bootstrap`).
 
 **`AWS_GRAFANA_ADMIN_SSO_EMAILS`**
 Comma-separated list of email addresses of IAM Identity Center users to grant Grafana Admin on the AMG workspace (e.g. `alice@example.com,bob@example.com`). Passed as `TF_VAR_grafana_admin_sso_emails` in `Day0.infra.04`; Terraform looks up each user in the Identity Store and calls `aws_grafana_role_association`. Optional — leave empty to manage access manually via the console. Users must already exist in IAM Identity Center before the bootstrap runs.
@@ -514,7 +518,8 @@ The runner/agent needs HTTPS egress to Grafana Cloud k6's ingest. Works for **al
 | `GRAFANA_ALERT_EMAIL` | no | all-mode alert fallback | manual |
 | `K6_CLOUD_TOKEN` | **yes** | optional Grafana Cloud k6 (k6-app) streaming | Grafana Cloud k6 app |
 | `K6_CLOUD_PROJECT_ID` | no | optional Grafana Cloud k6 (k6-app) streaming | Grafana Cloud k6 app |
-| `AZURE_CLIENT_ID` | no | managed-azure | `az ad app create` |
+| `AZURE_CLIENT_ID` | no | managed-azure | `az ad app create` (bootstrap App A) |
+| `AZURE_PUBLISH_CLIENT_ID` | no | managed-azure | `az ad app create` (publish App B) |
 | `AZURE_TENANT_ID` | no | managed-azure | `az account show` |
 | `AZURE_SUBSCRIPTION_ID` | no | managed-azure | `az account show` |
 | `AZURE_GRAFANA_ADMIN_OBJECT_IDS` | no | managed-azure | `az ad signed-in-user show` |
