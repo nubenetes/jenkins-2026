@@ -925,6 +925,23 @@ In `oss` mode, Grafana is exposed at `https://grafana.<baseDomain>` behind Googl
 | `managed-azure` | Azure Monitor (Managed Prometheus) | Azure Application Insights | Azure Log Analytics | Azure Managed Grafana |
 | `managed-aws` | Amazon Managed Service for Prometheus | AWS X-Ray | CloudWatch Logs | Amazon Managed Grafana |
 
+Each mode's Grafana UI has its **own** login path — the four are genuinely different (SaaS account · in-cluster IAP · Entra ID · IAM Identity Center):
+
+### Logging in to Grafana Cloud (grafana-cloud)
+
+Grafana Cloud is a hosted **SaaS** — you sign in with a **Grafana Cloud account**, not cloud-IAM federation, so (unlike the managed backends) there is **no Terraform / GitHub-secret path for human logins**. The org + stack are created once by hand on the free tier; this project's Terraform manages only the stack *resources* and API tokens, never the people.
+
+1. **Find the stack URL** — the slug is Terraform-generated (`<prefix><random>`, so it is **not** a fixed hostname). Open it from [grafana.com](https://grafana.com) → your stack, or read it from state:
+   ```bash
+   terraform -chdir=terraform/grafana-cloud-stack output -raw stack_slug   # → https://<slug>.grafana.net
+   ```
+2. **Sign in** with your Grafana Cloud credentials (the account that owns the org, or any user invited to it).
+3. **Add teammates** through Grafana Cloud's own user management (**Administration → Users and access → Users → Invite**). Reminder: alert contact-point emails must be **org members**, so use an invited address for `GRAFANA_ALERT_EMAIL_GRAFANA_CLOUD` (see the Grafana Cloud alert-email note above).
+
+### Logging in to the in-cluster Grafana (oss)
+
+The `oss` backend's Grafana runs **in-cluster behind Google IAP** at `https://grafana.<baseDomain>` (published only when `observability.mode=oss`). There is **no separate Grafana password**: IAP authenticates you with your **Google account** (which must be on the IAP allowlist — the same gate as Jenkins / Headlamp / ArgoCD) and forwards your identity in the `X-Goog-Authenticated-User-Email` header; Grafana's `auth.proxy` trusts that header and auto-creates / -signs-in the user. So "logging in" here just means **being on the IAP allowlist** — IAP wiring + allowlist management live in [`docs/501`](501-PLATFORM_OPERATIONS.md).
+
 ### Logging in to Azure Managed Grafana (managed-azure)
 
 Azure Managed Grafana authenticates via **Microsoft Entra ID** (Azure AD) — no separate SSO directory and **no invitation flow**. Access is managed via Terraform: add each person's Entra **object ID** once to the `AZURE_GRAFANA_ADMIN_OBJECT_IDS` GitHub secret and `Day0.infra.03-azure-grafana` grants them the workspace **Grafana Admin** role.
