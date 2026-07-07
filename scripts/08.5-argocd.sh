@@ -5,19 +5,29 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/config.sh"
 
-# Wait for an argocd-server rollout to finish - UNLESS backend TLS is active for
-# argocd. A TLS argocd-server pod carries a GKE NEG readiness gate that only clears
-# once 09-gateway.sh flips the LB HealthCheckPolicy to HTTPS (this script runs long
-# before 09; until then the HTTP LB health check 3xx-redirects against the TLS pod
-# and the NEG never goes healthy). `kubectl rollout status` blocks on that gate, so
-# waiting here deadlocks the whole Day1. The container itself is Ready; the old
-# replica terminates once 09 makes the NEG healthy. See docs/504 § argocd.
+# Wait (best-effort) for an argocd-server rollout to finish. argocd-server is a GKE
+# NEG backend, so `kubectl rollout status` blocks on the load-balancer readiness gate
+# (cloud.google.com/load-balancer-neg-ready), which only clears once the LB
+# HealthCheckPolicy protocol matches what the pod serves. 09-gateway.sh reconciles
+# that policy (HTTP when backend TLS is off, HTTPS when on) - but 09 runs long AFTER
+# this script, so at this point the policy can MISMATCH the pod in either direction:
+#   - backend TLS active now: pod serves HTTPS, the leftover policy is still HTTP;
+#   - backend TLS off now but a PRIOR backend_tls=true run left a stale HTTPS policy:
+#     the HTTPS probe fails against this plain-HTTP pod.
+# Either way the NEG never goes healthy until 09 flips the policy, so a HARD wait here
+# DEADLOCKS the whole Day1 before 09 can heal it (observed: run #176 timed out 5m on
+# "1 old replicas are pending termination" after a true->false backend_tls switch).
+# The container itself is Ready and the old replica keeps serving, so warn-and-continue:
+# 09 makes the new pod NEG-healthy and drains the old one. TLS-active is still skipped
+# outright (no point waiting 5m for a guaranteed miss). Mirrors 09-gateway.sh's own
+# non-fatal post-HealthCheckPolicy wait. See docs/504 § argocd.
 wait_argocd_server_rollout() {
   if [[ "$(j2026_argocd_backend_tls_active)" == "true" ]]; then
     log_info "Backend TLS active - skipping the argocd-server rollout wait (NEG readiness gate clears at 09-gateway.sh)."
     return 0
   fi
-  kubectl rollout status deployment "${J2026_ARGOCD_RELEASE}-server" -n "${J2026_ARGOCD_NAMESPACE}" --timeout=5m
+  kubectl rollout status deployment "${J2026_ARGOCD_RELEASE}-server" -n "${J2026_ARGOCD_NAMESPACE}" --timeout=5m || \
+    log_warn "argocd-server rollout not confirmed within 5m - likely a stale HTTPS HealthCheckPolicy from a prior backend_tls=true run (the NEG can't go healthy until 09-gateway.sh reconciles it back to HTTP). Continuing; the surged old replica drains once the new pod is NEG-healthy."
 }
 
 resolve_argocd_version() {
