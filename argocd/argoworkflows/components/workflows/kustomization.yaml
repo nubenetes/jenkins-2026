@@ -5,9 +5,10 @@
 # bucket, and a github.com URL is misclassified by kustomize as a git repo, so a
 # remote resource isn't viable. Vendoring is reliable (local file) and auditable.
 #
-# Source: https://github.com/argoproj/argo-workflows/releases/download/v3.7.15/install.yaml
-# (v3.7.15 = pinned; stays on the 3.7.x line — Argo Workflows 4.0 ships full-schema
-# CRDs >1.5 MB that exceed GKE's etcd object limit and can't be applied). To bump:
+# Source: https://github.com/argoproj/argo-workflows/releases/download/v3.7.16/install.yaml
+# (v3.7.16 = pinned; stays on the 3.7.x line — Argo Workflows 4.0 ships full-schema
+# CRDs — the Workflow CRD alone is ~2.6 MB — that exceed GKE's ~1.5 MB etcd object
+# limit and can't be applied; revisit when 4.1.x ships the CRD-size fix). To bump:
 # re-download install.yaml from the matching tag into release.yaml and update
 # config/config.yaml argoworkflows.versions.workflows.
 apiVersion: kustomize.config.k8s.io/v1beta1
