@@ -177,9 +177,19 @@ graph TD
 > 🔒 = a required-reviewer GitHub **Environment** gate. **Three** environments carry
 > the same reviewer: `gke-production` (the cluster, all Day2 cluster-ops, the
 > Gateway/Grafana-Cloud Day0 backends, and Azure **publish**), `aws-bootstrap` (the
-> **AWS** admin pair), and `azure-bootstrap` (Azure's **bootstrap** app) — each
-> dedicated env exists only to isolate a high-privilege OIDC trust; the umbrella
-> groups all three into one approval prompt. ✍️ = a typed `confirm` input on the
+> **AWS** admin pair), and `azure-bootstrap` (Azure's **bootstrap** app). The rule for
+> a *dedicated* env is precise: it exists **iff that cloud identity has an OIDC
+> federated credential/trust pinned to the environment name** (`sub =
+> repo:<owner>/<repo>:environment:<env>`). The hand-created AWS admin role and Azure's
+> App A do, so renaming/removing their env would break `AssumeRoleWithWebIdentity` /
+> `azure/login`. **Grafana Cloud is deliberately NOT dedicated** (though it is also
+> privileged — it creates/destroys the stack): it authenticates with a plain **secret
+> token** (`GRAFANA_CLOUD_API_TOKEN`, an org-level access-policy token), *not* an
+> environment-pinned OIDC credential, so a dedicated env would isolate **nothing**
+> (purely cosmetic). It therefore stays on `gke-production` — as does the Gateway
+> (GCP WIF is repo-scoped, not env-scoped). The criterion is the OIDC pinning, **not**
+> the privilege level. All three envs share the reviewer, so `Decom.infra.00-all`
+> groups them into one approval prompt. ✍️ = a typed `confirm` input on the
 > workflow itself (`"apply"`/`"destroy"`). See [Environment Protection and Manual Approvals](#environment-protection-and-manual-approvals).
 
 > The four persistent teardowns (`Decom.infra.01..04`) are independent:
@@ -191,10 +201,16 @@ graph TD
 > See [101 § Decom: independent per backend, plus an opt-in umbrella](./101-GITHUB_ACTIONS_WORKFLOWS.md#decom-independent-per-backend-plus-an-opt-in-everything-umbrella).
 
 > **What `Day1.cluster.01` bootstraps automatically — and what it does not.**
-> `Day1` runs the matching **observability backend** bootstrap as a preflight job
-> (`Day0.infra.0{2,3,4}` via `workflow_call`, gated by `if: observability_mode==…`),
-> so the selected backend is created for you. It does **not** bootstrap the
-> **Gateway**: `Day0.infra.01` is a one-time Day0 step that creates the
+> `Day1` runs the matching **observability backend** bootstrap (`Day0.infra.0{2,3,4}`
+> via `workflow_call`) as a preflight, but **only when the backend is missing**: an
+> ungated `precheck` job reads the backend's Terraform state (GCP WIF only → adds no
+> approval prompt) and the bootstrap runs iff the backend doesn't exist yet **or** you
+> set `reapply_backend=true` to force it. So a first-ever run self-provisions the
+> backend for you (one extra approval that once); a routine rebuild finds it in state
+> and skips straight to a single `gke-production` approval — no flag to remember.
+> (The `Day1.cluster.00-all` umbrella's `gateway-bootstrap` uses the same
+> skip-if-exists probe against the persistent Gateway's static IP.) It does **not**
+> bootstrap the **Gateway** from `Day1.cluster.01` itself: `Day0.infra.01` is a one-time Day0 step that creates the
 > persistent resources (static IP, wildcard cert map) **and the wildcard-A +
 > cert-validation records inside the permanent delegated DNS zone** (the zone
 > itself lives in [`terraform/bootstrap`](../terraform/bootstrap) — see [100](./100-BOOTSTRAP.md)). So DNS is
