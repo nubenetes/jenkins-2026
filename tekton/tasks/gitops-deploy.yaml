@@ -114,7 +114,7 @@ spec:
           sleep 10
         done
         [ "${synced}" = 1 ] || echo "Proceeding without an explicit sync — verifying convergence via 'app wait' (auto-sync handles the deploy)."
-        "${ARGOCD}" app wait "${APP}" --sync --health --timeout 300 --server "${server}" --auth-token "${ARGOCD_AUTH_TOKEN:-}" ${flags}
+        "${ARGOCD}" app wait "${APP}" --sync --health --timeout 900 --server "${server}" --auth-token "${ARGOCD_AUTH_TOKEN:-}" ${flags}
     - name: otel-injection-selfheal
       image: alpine/k8s:1.31.3
       script: |
