@@ -353,18 +353,21 @@ fi
 
 # 3. Wait for Server
 log_step "Waiting for ArgoCD Server to be ready"
-# Under backend TLS, the argocd-server pod's GKE NEG readiness gate stays open until
-# 09-gateway.sh flips the LB health check to HTTPS (verified live: argocd serves 200
-# on HTTPS /healthz but 307 on HTTP, so the HTTP LB probe marks the NEG UNHEALTHY).
-# wait_for_deployment would not only time out but SELF-HEAL by rolling argocd-server -
-# and every restart resets the NEG, so it can never converge here. 09 converges it
-# (its own non-fatal rollout wait, once the HTTPS HealthCheckPolicy + BackendTLSPolicy
-# land). Same rationale as wait_argocd_server_rollout above; see docs/504 § argocd.
-if [[ "$(j2026_argocd_backend_tls_active)" == "true" ]]; then
-  log_info "Backend TLS active - skipping the argocd-server readiness wait (NEG gate clears at 09-gateway.sh)."
-else
-  wait_for_deployment "${J2026_ARGOCD_RELEASE}-server" "${J2026_ARGOCD_NAMESPACE}" "5m"
-fi
+# argocd-server is a GKE NEG backend, so its readiness gate stays open until
+# 09-gateway.sh reconciles the LB HealthCheckPolicy protocol to match what the pod
+# serves (HTTPS when backend TLS is on, HTTP when off) - and 09 runs long after this.
+# The mismatch bites in BOTH directions: TLS-on leaves an HTTP policy vs an HTTPS pod;
+# a prior-TLS-on-then-off run leaves a STALE HTTPS policy vs a now-HTTP pod (observed
+# live: Day1 #176 deadlocked HERE on a backend_tls true->false switch, AFTER the
+# resource-quota wait above was already made non-fatal). Do NOT use wait_for_deployment
+# here: besides hard-failing, it SELF-HEALS by RESTARTING argocd-server, and every
+# restart RESETS the NEG (new pod, gate back to 0/1), so the rollout can never converge
+# and the deployment thrashes across replicasets. Reuse the shared best-effort helper
+# (non-fatal, and crucially NO restart): the old replica keeps serving the ArgoCD API
+# for the GitOps-project/AppSet applies below, and 09 makes the new pod NEG-healthy and
+# drains the old one. It also early-skips outright when backend TLS is active (a
+# guaranteed miss until 09). See docs/504 § argocd.
+wait_argocd_server_rollout
 
 # 4. Configure GitOps Project and AppSet
 log_step "Configuring ArgoCD Microservices GitOps Project"
