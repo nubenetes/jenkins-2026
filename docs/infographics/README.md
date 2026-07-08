@@ -1,13 +1,13 @@
-# Complete Technical Inventory of English Infographics (35 Files)
+# Complete Technical Inventory of English Infographics (36 Files)
 
-This document serves as an architectural inventory and catalog of the 35 English infographics. Each filename in the index is a clickable link to open the corresponding PNG file directly. Below the index, you will find collapsible visual previews for each infographic.
+This document serves as an architectural inventory and catalog of the 36 English infographics. Each filename in the index is a clickable link to open the corresponding PNG file directly. Below the index, you will find collapsible visual previews for each infographic.
 
 ---
 
 ## Infographics Catalog Index
 
 <details>
-<summary>📋 Click to view the full detailed index list (35 entries)</summary>
+<summary>📋 Click to view the full detailed index list (36 entries)</summary>
 <br>
 
 1. **000: Platform Overview**
@@ -19,6 +19,7 @@ This document serves as an architectural inventory and catalog of the 35 English
    - [[103]](#103---argo-workflows-and-argo-events-on-gke) - [Argo Workflows and Argo Events on GKE](103_Argo_Workflows_and_Argo_Events_on_GKE.png)
    - [[104]](#104---gke-zero-trust-ingress-north-south-traffic-lifecycle-with-backendtls) - [GKE Zero Trust Ingress North South Traffic Lifecycle with BackendTLS](104_GKE_Zero_Trust_Ingress_North_South_Traffic_Lifecycle_with_BackendTLS.png)
    - [[105]](#105---gke-golden-path-high-availability-postgresql-with-cloudnativepg) - [GKE Golden Path High Availability PostgreSQL with CloudNativePG](105_GKE_Golden_Path_High_Availability_PostgreSQL_with_CloudNativePG.png)
+   - [[106]](#106---gke-backend-tls-zero-trust-edge-to-pod-journey) - [GKE Backend TLS Zero Trust Edge to Pod Journey](106_GKE_Backend_TLS_Zero_Trust_Edge_to_Pod_Journey.png)
 3. **200: Node Provisioning**
    - [[201]](#201---gke-cluster-topology-and-karpenter-native-node-auto-provisioning) - [GKE Cluster Topology and Karpenter Native Node Auto Provisioning](201_GKE_Cluster_Topology_and_Karpenter_Native_Node_Auto_Provisioning.png)
    - [[202]](#202---github-actions-on-gke-arc-and-spot-runners) - [GitHub Actions on GKE ARC and Spot Runners](202_GitHub_Actions_on_GKE_ARC_and_Spot_Runners.png)
@@ -65,7 +66,7 @@ This document serves as an architectural inventory and catalog of the 35 English
 Browse the infographics visually using the collapsible previews below. Click any preview header to reveal the full high-resolution diagram.
 
 <details>
-<summary>⚡ Click here to expand ALL 35 Infographics at once (for sequential scrolling) ⚡</summary>
+<summary>⚡ Click here to expand ALL 36 Infographics at once (for sequential scrolling) ⚡</summary>
 <br>
 
 ### 001 - End to End Golden Path Platform and Developer Workflow Overview
@@ -100,6 +101,11 @@ Browse the infographics visually using the collapsible previews below. Click any
 
 ### 105 - GKE Golden Path High Availability PostgreSQL with CloudNativePG
 ![105 - CloudNativePG](./105_GKE_Golden_Path_High_Availability_PostgreSQL_with_CloudNativePG.png)
+
+---
+
+### 106 - GKE Backend TLS Zero Trust Edge to Pod Journey
+![106 - Backend TLS Zero Trust](./106_GKE_Backend_TLS_Zero_Trust_Edge_to_Pod_Journey.png)
 
 ---
 
@@ -337,6 +343,20 @@ Browse the infographics visually using the collapsible previews below. Click any
 <summary>🔍 Expand infographic preview (105)</summary>
 
 ![105 - CloudNativePG](./105_GKE_Golden_Path_High_Availability_PostgreSQL_with_CloudNativePG.png)
+
+</details>
+
+---
+
+### 106 - GKE Backend TLS Zero Trust Edge to Pod Journey
+* **Category**: `100: Landing Zone`
+* **Key Technologies & Components**: BackendTLSPolicy, Gateway API, IAP, Cilium eBPF, WireGuard
+* **Description**: Maps the GKE Backend TLS Zero-Trust Edge-to-Pod packet journey. Visualizes the four phases from public edge ingress (L7 Load Balancer) and identity verification (IAP) to GKE Gateway API routing and secondary TLS handshakes directly with target pods (Jenkins, Spring Cloud Gateway, Headlamp UI) without sidecar proxies.
+
+<details>
+<summary>🔍 Expand infographic preview (106)</summary>
+
+![106 - Backend TLS Zero Trust](./106_GKE_Backend_TLS_Zero_Trust_Edge_to_Pod_Journey.png)
 
 </details>
 

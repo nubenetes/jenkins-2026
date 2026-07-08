@@ -21,6 +21,11 @@ All notable changes to **jenkins-2026** are documented here, following
 
 _Nothing yet — add entries here as PRs merge._
 
+## [v1.3.1] - 2026-07-08
+
+### Documentation
+- **Technical Infographics Catalog Update.** Added infographic `106_GKE_Backend_TLS_Zero_Trust_Edge_to_Pod_Journey.png` mapping GKE Backend TLS Zero-Trust Edge-to-Pod packet journey, updating the inventory catalog in both the main `README.md` and `docs/infographics/README.md`.
+
 ## [v1.3.0] - 2026-07-08
 
 _Backend TLS Stages 2-6 & microservices gateway re-encryption, Google IAP + Dex SSO integration, automated GKE NEG status self-healing, Tekton Dashboard WebSocket fixes, and GHA decommission parallelization & webhook deadlock prevention._
@@ -244,6 +249,7 @@ Every milestone release (git tag + GitHub release), newest first. Full detail fo
 
 | Version | Date | Theme |
 |---|---|---|
+| [v1.3.1](#v131---2026-07-08) | 2026-07-08 | **GKE Backend TLS Zero-Trust Journey Infographic** — added infographic 106 mapping the Zero-Trust Edge-to-Pod packet journey and updated corresponding inventory docs |
 | [v1.3.0](#v130---2026-07-08) | 2026-07-08 | **Backend TLS Stages 2-6, ArgoCD SSO, GKE NEG Self-Healing & Teardown Optimizations** — complete internal encryption, Google IAP + Dex authentication, automated GKE NEG troubleshooting, and parallelized GHA decommission |
 | [v1.2.0](#v120---2026-07-05) | 2026-07-05 | **opt-in backend TLS & docs overhaul** — LB->pod re-encryption via cert-manager + BackendTLSPolicy (#554, docs/504), four-engine workflow input parity, canonical-JSON dashboard-uid derivation (#559-#561), and an exhaustive docs-vs-code audit (342 fixes + 14 new docs) |
 | [v1.1.1](#v111---2026-07-03) | 2026-07-03 | **teardown hygiene** — a full Decom purges the eso Secret Manager secrets (#544) + reliably sweeps orphaned PV disks incl. prior-run orphans (#545) |

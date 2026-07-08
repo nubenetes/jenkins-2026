@@ -854,7 +854,7 @@ For the full component diagram, microservices database architecture (CloudNative
 
 ### 3.1. Technical Infographics Catalog
 
-To help visualize the system architecture, landing zones, workflows, and CI engine comparisons, a comprehensive catalog of 35 technical infographics is organized below. The infographics are categorized by system domain and folded by default. Click on any category to expand it and explore the files, key components, and detailed architectural descriptions.
+To help visualize the system architecture, landing zones, workflows, and CI engine comparisons, a comprehensive catalog of 36 technical infographics is organized below. The infographics are categorized by system domain and folded by default. Click on any category to expand it and explore the files, key components, and detailed architectural descriptions.
 
 For a full standalone catalog with visual previews, see the [Technical Infographics README](./docs/infographics/README.md).
 
@@ -871,7 +871,7 @@ For a full standalone catalog with visual previews, see the [Technical Infograph
 </details>
 
 <details>
-<summary>📂 100: Landing Zone (5 Infographics)</summary>
+<summary>📂 100: Landing Zone (6 Infographics)</summary>
 
 - **[101]** - **[GCP Keyless Landing Zone and WIF Federation](./docs/infographics/101_GCP_Keyless_Landing_Zone_and_WIF_Federation.png)**
   - *Key Technologies*: GCP, GitHub Actions, OIDC, WIF
@@ -888,6 +888,9 @@ For a full standalone catalog with visual previews, see the [Technical Infograph
 - **[105]** - **[GKE Golden Path High Availability PostgreSQL with CloudNativePG](./docs/infographics/105_GKE_Golden_Path_High_Availability_PostgreSQL_with_CloudNativePG.png)**
   - *Key Technologies*: PostgreSQL, CloudNativePG, PgBouncer
   - *Description*: Illustrates the database clustering setup using CloudNativePG on GKE. Explains high-availability replication across multiple zones, read/write splitting, and pgBouncer pooled connection proxying.
+- **[106]** - **[GKE Backend TLS Zero Trust Edge to Pod Journey](./docs/infographics/106_GKE_Backend_TLS_Zero_Trust_Edge_to_Pod_Journey.png)**
+  - *Key Technologies*: BackendTLSPolicy, Gateway API, IAP, Cilium eBPF, WireGuard
+  - *Description*: Maps the GKE Backend TLS Zero-Trust Edge-to-Pod packet journey. Visualizes the four phases from public edge ingress (L7 Load Balancer) and identity verification (IAP) to GKE Gateway API routing and secondary TLS handshakes directly with target pods (Jenkins, Spring Cloud Gateway, Headlamp UI) without sidecar proxies.
 
 </details>
 
