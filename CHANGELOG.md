@@ -19,7 +19,8 @@ All notable changes to **jenkins-2026** are documented here, following
 
 ## [Unreleased]
 
-_Nothing yet — add entries here as PRs merge._
+### Added
+- **GKE Gateway Convergence note in Day1 Access URLs report (`.github/workflows/Day1.cluster.01-gke.yml`).** Added a clear warning message in the Access URLs step explaining GKE's external load balancer and health check warm-up behavior (2-5 min delay, potential 502/SSL/reset errors), aligning GHA summary logs with the script-level logs in `09-gateway.sh`.
 
 ## [v1.3.2] - 2026-07-08
 

@@ -927,6 +927,15 @@ jobs:
               echo "    Grafana:               ${grafana}"
               echo
               echo "  (IAP URLs need the one-time Day0.infra.01 Gateway + DNS + IAP OAuth client.)"
+              echo
+              echo "  ⚠️  NOTE on GKE Gateway Convergence:"
+              echo "       The GKE Gateway compiles into a Google global external load balancer that then needs ~2-5 min to"
+              echo "       (1) finish programming its forwarding rules + HTTPRoutes, and (2) mark each backend's NEG endpoints"
+              echo "       HEALTHY via the LB health checks before it will route to them — and with backend TLS on, that"
+              echo "       health check must converge to HTTPS first. IAP/OAuth on the admin UIs also settles in this window."
+              echo "       So a browser hit right now can return 502, an SSL error, or 'upstream connect error ... reset"
+              echo "       reason: local connection failure' — that is the LB with no healthy backend yet, not a broken run."
+              echo "       Nothing to do: wait a few minutes and refresh. (See docs/504 § GKE NEG self-healing for the details.)"
             else
               echo "  Gateway/IAP disabled for this run (enable_gateway=false) — no public URLs."
               echo "  Reach services via 'kubectl port-forward' (see README 'Accessing the UI')."
