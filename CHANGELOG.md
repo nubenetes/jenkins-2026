@@ -19,6 +19,12 @@ All notable changes to **jenkins-2026** are documented here, following
 
 ## [Unreleased]
 
+_Nothing yet — add entries here as PRs merge._
+
+## [v1.3.3] - 2026-07-08
+
+_GKE Gateway load balancer convergence warnings in Day1 summary logs, and robust retry-and-fall-through loops in the Jenkins GitOps deploy phase to prevent transient ArgoCD sync race crashes._
+
 ### Added
 - **GKE Gateway Convergence note in Day1 Access URLs report (`.github/workflows/Day1.cluster.01-gke.yml`).** Added a clear warning message in the Access URLs step explaining GKE's external load balancer and health check warm-up behavior (2-5 min delay, potential 502/SSL/reset errors), aligning GHA summary logs with the script-level logs in `09-gateway.sh`.
 
@@ -259,6 +265,7 @@ Every milestone release (git tag + GitHub release), newest first. Full detail fo
 
 | Version | Date | Theme |
 |---|---|---|
+| [v1.3.3](#v133---2026-07-08) | 2026-07-08 | **GKE Gateway Warnings & Jenkins GitOps Deploy Robustness** — GKE load balancer warm-up note in GHA summary, and concurrent sync retry loop in Jenkins to align with Tekton and Argo |
 | [v1.3.2](#v132---2026-07-08) | 2026-07-08 | **Infographic 106 Correction** — replaced the GKE Backend TLS Zero-Trust Edge-to-Pod packet journey infographic with a corrected and more detailed version |
 | [v1.3.1](#v131---2026-07-08) | 2026-07-08 | **GKE Backend TLS Zero-Trust Journey Infographic** — added infographic 106 mapping the Zero-Trust Edge-to-Pod packet journey and updated corresponding inventory docs |
 | [v1.3.0](#v130---2026-07-08) | 2026-07-08 | **Backend TLS Stages 2-6, ArgoCD SSO, GKE NEG Self-Healing & Teardown Optimizations** — complete internal encryption, Google IAP + Dex authentication, automated GKE NEG troubleshooting, and parallelized GHA decommission |
