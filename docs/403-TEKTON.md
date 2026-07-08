@@ -1109,7 +1109,7 @@ rpc error: code = FailedPrecondition desc = another operation is already in prog
 ```
 **Root cause.** The microservices apps have **`automated.selfHeal: true`**. The deploy's *GitOps Update* step pushes the new image tag → ArgoCD **auto-syncs** it → that auto-sync is **mid-flight** when the task's *explicit* `argocd app sync` runs. Two syncs race; the explicit one loses. The deploy actually **succeeded** (the auto-sync applied the same commit) — only the command errored.
 
-**Fix.** Make the explicit sync **retry + non-fatal**, then rely on `app wait` to confirm convergence (whoever won):
+**Fix.** Make the explicit sync **retry + non-fatal** (this logic is implemented identically across Tekton, Argo Workflows, and Jenkins), then rely on `app wait` to confirm convergence (whoever won):
 ```bash
 for attempt in 1 2 3 4 5 6; do
   if "${ARGOCD}" app sync "${APP}" … ; then break; fi

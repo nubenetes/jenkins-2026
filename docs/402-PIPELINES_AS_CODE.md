@@ -633,6 +633,7 @@ flowchart TB
 | **curl not found (exit 127)** | Semgrep/CodeQL stage FAILURE | `alpine/git` UID 1000 cannot `apk add curl` | Moved SARIF upload to `container('helm')` which has curl pre-installed |
 | **Missing env vars in agents** | Pipeline references `env.JENKINS2026_REPO_BRANCH` as empty | `globalNodeProperties` not configured in JCasC | Added `globalNodeProperties` with all `JENKINS2026_*` vars in `jcasc-base.yaml` |
 | **Agent pods not schedulable** | Builds queue indefinitely | NAP auto-applies `cloud.google.com/compute-class=ci-spot:NoSchedule` + `cloud.google.com/gke-spot=true:NoSchedule` taints to the auto-created Spot pools without matching tolerations | Added the `ci-spot` ComputeClass nodeSelector + both tolerations to the agent pod spec in `MicroservicesPipeline.groovy` |
+| **ArgoCD Sync Race (exit 20)** | Deploy stage fails with `another operation is already in progress` | GitOps tag push triggers ArgoCD auto-sync, which races with the pipeline's explicit `argocd app sync` | Implemented a 6-attempt retry-and-fall-through loop in `vars/microservicesDeploy.groovy` to align with Tekton and Argo |
 
 ---
 
