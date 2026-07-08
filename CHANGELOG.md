@@ -24,6 +24,7 @@ All notable changes to **jenkins-2026** are documented here, following
 
 ### Fixed
 - **Jenkins GitOps Deploy ArgoCD Sync Race Condition (`vars/microservicesDeploy.groovy`).** Added a retry-and-fall-through loop to the `argocd app sync` command in the Jenkins pipeline's deploy stage. This mirrors the existing Tekton task logic, preventing transient `FailedPrecondition` errors (caused by racing with ArgoCD's background auto-sync on Git push) from crashing the whole build pipeline.
+- **ArgoCD Sync Race Documentation Alignment (`docs/402-PIPELINES_AS_CODE.md` & `docs/403-TEKTON.md`).** Updated the Jenkins and Tekton documentation to log this gotcha and document that it is now resolved identically across Tekton, Argo Workflows, and Jenkins.
 
 ## [v1.3.2] - 2026-07-08
 
