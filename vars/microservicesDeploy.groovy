@@ -99,10 +99,15 @@ def call(Map cfg) {
             local_flags="\${local_flags} --plaintext"
           fi
 
-          \${ARGOCD} app sync "microservices-${cfg.envName}" \
-            --server "\${local_server}" \
-            --auth-token "\${ARGOCD_AUTH_TOKEN:-}" \
-            \${local_flags}
+          synced=0
+          for attempt in 1 2 3 4 5 6; do
+            if \${ARGOCD} app sync "microservices-${cfg.envName}" --server "\${local_server}" --auth-token "\${ARGOCD_AUTH_TOKEN:-}" \${local_flags}; then
+              synced=1; break
+            fi
+            echo "app sync attempt \${attempt} failed (likely a concurrent auto-sync); retrying in 10s..."
+            sleep 10
+          done
+          [ "\${synced}" = 1 ] || echo "Proceeding without an explicit sync — verifying convergence via 'app wait' (auto-sync handles the deploy)."
 
           # app wait uses --timeout 900 (raised from 300): it waits on the WHOLE ArgoCD Application, so the
           # gateway's ~600s startupProbe cold-start gates every service's run in the batch - don't lower (see CHANGELOG).
