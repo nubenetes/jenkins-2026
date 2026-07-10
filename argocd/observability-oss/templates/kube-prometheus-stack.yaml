@@ -41,14 +41,6 @@ spec:
           # ArgoCD self-heals Grafana back to the plugin-free posture.
           - $values/observability/grafana/values-oss-llm.yaml
           {{- end }}
-          {{- if eq (.Values.graftEnabled | toString) "true" }}
-          # Grafana Graft chat active (observability.graft.enabled, requires the
-          # LLM app above): layer the fail-open plugin-installer init container +
-          # allow_loading_unsigned_plugins so Grafana gets the vikshana-graft-app
-          # chat sidebar. Dropped when off → ArgoCD self-heals the init/plugin
-          # away. The auto-update CronJob is script-managed (08.9-grafana-graft.sh).
-          - $values/observability/grafana/values-oss-graft.yaml
-          {{- end }}
         {{- if eq (.Values.backendTls | toString) "true" }}
         parameters:
           - name: grafana.additionalDataSources[3].url

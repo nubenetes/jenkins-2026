@@ -386,39 +386,6 @@ export TF_VAR_grafana_llm_gsa_account_id="${J2026_OBS_LLM_GSA}"
 export TF_VAR_grafana_llm_ksa_namespace="${J2026_OBS_NAMESPACE}"
 export TF_VAR_grafana_llm_ksa_name="${J2026_OBS_LLM_KSA}"
 
-# --- grafana Graft chat (feature flag, oss mode only, REQUIRES the LLM app) ----
-# FEATURE FLAG: JENKINS2026_OBS_GRAFT_ENABLED overrides observability.graft.enabled.
-# Graft (community vikshana-graft-app) is the natural-language CHAT sidebar layered
-# over grafana-llm-app; oss-only, and it needs the LLM app as its model backend.
-# Consumed by 03-observability.sh (the graft values overlay) and
-# scripts/08.9-grafana-graft.sh (auto-update CronJob + RBAC). No GCP resources
-# (unlike the LLM app), so no TF_VAR - it is purely in-cluster.
-J2026_OBS_GRAFT_ENABLED="${JENKINS2026_OBS_GRAFT_ENABLED:-$(yq_get '.observability.graft.enabled' 'false')}"
-export J2026_OBS_GRAFT_ENABLED
-case "${J2026_OBS_GRAFT_ENABLED}" in
-  true|false) ;;
-  *)
-    log_error "Invalid observability.graft.enabled '${J2026_OBS_GRAFT_ENABLED}' (expected true|false)."
-    log_error "Set observability.graft.enabled in ${J2026_CONFIG_FILE} or export JENKINS2026_OBS_GRAFT_ENABLED."
-    exit 1
-    ;;
-esac
-# Graft uses grafana-llm-app as its model backend, so enabling Graft AUTO-ENABLES
-# the LLM app (rather than erroring). Re-export the gating TF_VAR too so terraform
-# (the grafana-llm GSA + WI binding) is provisioned even when ONLY Graft was set -
-# the LLM block above already exported it from the old value. In CI the Day1
-# workflow ORs the two inputs so this is a no-op there; this covers local runs /
-# a config.yaml where graft.enabled=true but llm.enabled=false.
-if [[ "${J2026_OBS_GRAFT_ENABLED}" == "true" && "${J2026_OBS_LLM_ENABLED}" != "true" ]]; then
-  log_warn "observability.graft.enabled=true auto-enables the LLM app (grafana-llm-app is Graft's model backend) - provisioning it too."
-  J2026_OBS_LLM_ENABLED=true
-  export J2026_OBS_LLM_ENABLED
-  export TF_VAR_observability_llm_enabled="true"
-fi
-export J2026_OBS_GRAFT_PLUGIN_ID="$(yq_get '.observability.graft.pluginId' 'vikshana-graft-app')"
-export J2026_OBS_GRAFT_GITHUB_REPO="$(yq_get '.observability.graft.githubRepo' 'vikshana/vikshana-graft-app')"
-export J2026_OBS_GRAFT_AUTOUPDATE_SCHEDULE="$(yq_get '.observability.graft.autoUpdateSchedule' '0 */6 * * *')"
-
 # --- headlamp ----------------------------------------------------------------
 
 export J2026_HEADLAMP_NAMESPACE="$(yq_get '.headlamp.namespace' 'headlamp')"

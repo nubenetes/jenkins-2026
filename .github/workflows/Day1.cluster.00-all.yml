@@ -82,11 +82,6 @@ on:
         required: false
         default: false
         type: boolean
-      graft_enabled:
-        description: "Opt-in Grafana Graft chat (observability.graft.enabled — docs/301): the community vikshana-graft-app AI chat sidebar over the LLM app. oss mode ONLY; AUTO-ENABLES llm_enabled (its model backend) if you didn't set it. OFF by default. Passed straight to Day1.cluster.01."
-        required: false
-        default: false
-        type: boolean
       git_ref:
         description: "Git branch, tag, or SHA to check out (empty = the ref selected in 'Use workflow from')."
         required: false
@@ -203,6 +198,5 @@ jobs:
       develop_track: ${{ inputs.develop_track }}
       backend_tls: ${{ inputs.backend_tls }}
       llm_enabled: ${{ inputs.llm_enabled }}
-      graft_enabled: ${{ inputs.graft_enabled }}
       git_ref: ${{ inputs.git_ref }}
     secrets: inherit
