@@ -18,13 +18,20 @@
 # are lists the base does NOT set, so Helm's list-REPLACE merge can't clobber
 # anything the base configures.
 grafana:
-  # Installed by the chart's init container from the Grafana plugin catalog at pod
-  # start (the observability namespace has open egress). Pinned per docs/602:
-  # 1.0.8 is the latest in the catalog as of 2026-07-09 (the plugin's GitHub
-  # releases page lags the catalog - the grafana.com plugin API is authoritative).
-  # The "<id> <version>" form is Grafana's GF_INSTALL_PLUGINS pin syntax.
+  # Preinstalled by Grafana's in-binary plugin preinstaller at pod start
+  # (GF_PLUGINS_PREINSTALL_SYNC, fed from the chart's `plugins` list; the
+  # observability namespace has open egress to the grafana.com catalog). Pinned
+  # per docs/602: 1.0.8 is the latest in the catalog as of 2026-07-09 (the
+  # plugin's GitHub releases page lags the catalog - the grafana.com plugin API
+  # is authoritative).
+  # MUST use the `<id>@<version>` form. Grafana 13's synchronous preinstaller
+  # (NOT the old grafana-cli `<id> <version>` space form the docs still show)
+  # splits the list on whitespace, so a SPACE makes it read the version as a
+  # second plugin id ("1.0.8") and fail with "404: Plugin not found" - and
+  # GF_PLUGINS_PREINSTALL_SYNC makes a failed preinstall FATAL, crash-looping the
+  # Grafana pod (→ oss-kube-prometheus-stack Degraded). See grafana/grafana#103724.
   plugins:
-    - grafana-llm-app 1.0.8
+    - grafana-llm-app@1.0.8
 
   # Plugin provisioning file (apps provisioner). The grafana-llm-provisioning
   # ConfigMap is a script-managed companion object (scripts/08.8-grafana-llm.sh,
