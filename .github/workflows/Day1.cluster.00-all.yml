@@ -83,7 +83,7 @@ on:
         default: false
         type: boolean
       assistant_enabled:
-        description: "Opt-in official Grafana Assistant chat (observability.assistant.enabled — docs/301): signed grafana-assistant-app connected to your Grafana Cloud stack (SaaS-hybrid, NOT keyless). oss mode ONLY; needs the GRAFANA_CLOUD_ASSISTANT_* secrets. OFF by default. Passed straight to Day1.cluster.01."
+        description: "Opt-in official Grafana Assistant chat (observability.assistant.enabled — docs/301): signed grafana-assistant-app. Data stays in GKE (free); only the FREE-tier Grafana Cloud Assistant AI is used (SaaS-hybrid, NOT keyless). oss mode ONLY. For a durable connection set the GRAFANA_CLOUD_ASSISTANT_* secrets; without them it installs but stays PENDING (reminder logged). OFF by default. Passed straight to Day1.cluster.01."
         required: false
         default: false
         type: boolean
