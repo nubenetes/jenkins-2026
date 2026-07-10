@@ -64,6 +64,15 @@ export TF_VAR_cluster_name="${GCP_CLUSTER_NAME:-jenkins-2026}"
 # ComputeClass wiring. config.sh is sourced AFTER terraform apply here, so derive it now
 # (honouring the per-run JENKINS2026_* override, same precedence as config.sh).
 export TF_VAR_enable_node_autoprovisioning="${JENKINS2026_NODE_AUTOPROVISIONING_ENABLED:-$(yq '.nodeAutoProvisioning.enabled // true' "${ROOT_DIR}/config/config.yaml")}"
+# Grafana LLM app toggle: same single-source pattern as NAP above — the flag also
+# drives the grafana-llm GSA + Workload Identity binding in terraform/gke, so the
+# cloud IAM can't desync from the in-cluster wiring (scripts/08.8-grafana-llm.sh).
+export TF_VAR_observability_llm_enabled="${JENKINS2026_OBS_LLM_ENABLED:-$(yq '.observability.llm.enabled // false' "${ROOT_DIR}/config/config.yaml")}"
+# The GSA/KSA identity names + namespace flow in too (the WI binding is keyed on
+# them), so a rename in config.yaml can never silently break the binding.
+export TF_VAR_grafana_llm_gsa_account_id="$(yq '.observability.llm.gcp.googleServiceAccount // "grafana-llm-gsa"' "${ROOT_DIR}/config/config.yaml")"
+export TF_VAR_grafana_llm_ksa_namespace="$(yq '.observability.namespace // "observability"' "${ROOT_DIR}/config/config.yaml")"
+export TF_VAR_grafana_llm_ksa_name="$(yq '.observability.llm.gcp.kubernetesServiceAccount // "grafana-llm-sa"' "${ROOT_DIR}/config/config.yaml")"
 
 # The cluster is about to be destroyed wholesale, so also clean up
 # in-cluster namespaces during scripts/down.sh unless the caller overrides.

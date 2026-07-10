@@ -103,6 +103,42 @@ variable "services_cidr" {
   default     = "10.30.0.0/20"
 }
 
+variable "observability_llm_enabled" {
+  type        = bool
+  description = <<-EOT
+    Create the keyless Vertex AI trust chain for the Grafana LLM app (AI
+    assistant) used in observability.mode=oss: the grafana-llm GSA with
+    roles/aiplatform.user plus the Workload Identity binding that lets the
+    in-cluster LiteLLM gateway's KSA impersonate it. No static API key anywhere.
+
+    NOTE: do not set this directly in CI — it is DRIVEN from the single config
+    flag `observability.llm.enabled` in config/config.yaml. scripts/lib/config.sh,
+    test/e2e.sh and the Day1 workflow all export TF_VAR_observability_llm_enabled
+    from that flag, so the cloud IAM and the in-cluster wiring
+    (scripts/08.8-grafana-llm.sh) can never desync — same single-source-of-truth
+    pattern as enable_node_autoprovisioning above.
+  EOT
+  default     = false
+}
+
+variable "grafana_llm_gsa_account_id" {
+  type        = string
+  description = "account_id of the Grafana LLM GSA (the Workload Identity target of the LiteLLM pod). Must match observability.llm.gcp.googleServiceAccount in config/config.yaml."
+  default     = "grafana-llm-gsa"
+}
+
+variable "grafana_llm_ksa_namespace" {
+  type        = string
+  description = "Namespace of the LiteLLM KSA bound to the Grafana LLM GSA (the observability namespace)."
+  default     = "observability"
+}
+
+variable "grafana_llm_ksa_name" {
+  type        = string
+  description = "Name of the LiteLLM KSA bound to the Grafana LLM GSA. Must match observability.llm.gcp.kubernetesServiceAccount in config/config.yaml."
+  default     = "grafana-llm-sa"
+}
+
 variable "admin_emails" {
   type        = list(string)
   description = "Google account emails granted roles/iap.httpsResourceAccessor, gating access through Identity-Aware Proxy to Jenkins and Headlamp. Also granted roles/container.clusterViewer for Headlamp's in-app per-user OIDC->GKE-API auth, which doesn't work today (see README.md \"Headlamp\") - kept for if/when upstream fixes that. Never commit real emails - set via TF_VAR_admin_emails."

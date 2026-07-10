@@ -402,10 +402,16 @@ EOT
     # old to serve the CRD stays plain HTTP even with the flag on. The grafana-tls
     # cert is already minted — 08.7-backend-tls.sh runs BEFORE this script in up.sh.
     OSS_BACKEND_TLS="$(j2026_backend_tls_active)"
+    # Grafana LLM app (observability.llm.enabled): when true, the
+    # kube-prometheus-stack child layers the grafana-llm-app overlay
+    # (values-oss-llm.yaml); the LiteLLM gateway + provisioning ConfigMap the
+    # plugin talks to are applied later by 08.8-grafana-llm.sh (the overlay's
+    # ConfigMap mount is optional=true, so ordering can't deadlock).
     sed "s@{{repoUrl}}@${REPO_URL}@g;
          s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g;
          s@{{ciEngine}}@${J2026_CI_ENGINE}@g;
-         s@{{backendTls}}@${OSS_BACKEND_TLS}@g" \
+         s@{{backendTls}}@${OSS_BACKEND_TLS}@g;
+         s@{{llmEnabled}}@${J2026_OBS_LLM_ENABLED}@g" \
         "${J2026_ROOT_DIR}/argocd/observability-oss-app.yaml" > "${OSS_APP_FILE}"
     kubectl apply -f "${OSS_APP_FILE}"
     rm "${OSS_APP_FILE}"

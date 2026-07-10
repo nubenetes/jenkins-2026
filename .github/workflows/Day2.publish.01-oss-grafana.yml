@@ -153,10 +153,23 @@ jobs:
           ENGINE="$(j2026_active_ci_engine)"
           echo "Detected CI engine: ${ENGINE}"
           REPO_URL="${J2026_SELF_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
+          # Substitute ALL of the app file's placeholders, exactly as
+          # 03-observability.sh does at Day1 — leaving a literal '{{backendTls}}'
+          # or '{{llmEnabled}}' in the applied Application resolves those helm
+          # parameters to a non-"true" string, which drops the backend-TLS / LLM
+          # values overlays from the kube-prometheus-stack child, and ArgoCD
+          # (selfHeal) then strips those features from a LIVE cluster on a
+          # routine dashboard republish. Both derive the same way 03 derives
+          # them (j2026_backend_tls_active = flag AND CRD; J2026_OBS_LLM_ENABLED
+          # from config.sh, already sourced above).
+          BACKEND_TLS="$(j2026_backend_tls_active)"
+          echo "backendTls=${BACKEND_TLS} llmEnabled=${J2026_OBS_LLM_ENABLED}"
           OSS_APP_FILE="$(mktemp)"
           sed "s@{{repoUrl}}@${REPO_URL}@g;
                s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g;
-               s@{{ciEngine}}@${ENGINE}@g" \
+               s@{{ciEngine}}@${ENGINE}@g;
+               s@{{backendTls}}@${BACKEND_TLS}@g;
+               s@{{llmEnabled}}@${J2026_OBS_LLM_ENABLED}@g" \
               argocd/observability-oss-app.yaml > "${OSS_APP_FILE}"
           kubectl apply -f "${OSS_APP_FILE}"
           rm -f "${OSS_APP_FILE}"

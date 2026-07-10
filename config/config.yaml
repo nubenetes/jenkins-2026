@@ -367,6 +367,76 @@ observability:
       # Planned - Amazon Managed Service for Prometheus + X-Ray/CloudWatch.
       credentialsSecretName: aws-managed-credentials
 
+  # ---------------------------------------------------------------------------
+  # Grafana LLM app (AI assistant in Grafana) - OPT-IN, default false, KEYLESS,
+  # oss mode ONLY
+  # ---------------------------------------------------------------------------
+  # When true (and observability.mode=oss), the grafana-llm-app plugin is
+  # installed + provisioned in the in-cluster Grafana, wired to Google Vertex AI
+  # (Gemini) through a stateless in-cluster LiteLLM gateway (OpenAI-compatible
+  # proxy) that authenticates via GKE Workload Identity (KSA
+  # observability/grafana-llm-sa -> GSA grafana-llm-gsa with
+  # roles/aiplatform.user; ADC - NO static API key anywhere, and NO new public
+  # surface: Grafana->LiteLLM is ClusterIP-internal, LiteLLM->Vertex is
+  # egress-only). terraform/gke creates the GSA + WI binding when
+  # TF_VAR_observability_llm_enabled=true (exported from this flag).
+  #
+  # Other modes:
+  #   grafana-cloud -> NO-OP: its AI assistant is native on the SaaS plane.
+  #   managed-*     -> NO-OP by DECISION (2026-07-10): the plugin cannot
+  #                    authenticate keylessly to Azure OpenAI (no managed-
+  #                    identity support) nor talk to Amazon Bedrock (no
+  #                    provider), with no roadmap commitment upstream, and the
+  #                    only workaround (a public LLM proxy endpoint) was
+  #                    rejected. The managed trust chains were implemented and
+  #                    deliberately removed (recover from git history). See
+  #                    docs/301 § Grafana LLM app.
+  #
+  # Rebuild-safe by design: the GCP resources are Terraform-conditional (count
+  # on the flag) so true->false->true converges cleanly; the in-cluster LiteLLM
+  # deployment is applied/retired symmetrically by scripts/08.8-grafana-llm.sh.
+  # FEATURE FLAG: override for a single run with JENKINS2026_OBS_LLM_ENABLED
+  # (config.yaml is the durable default; the env var is the ephemeral override -
+  # same pattern as observability.mode / JENKINS2026_OBS_MODE).
+  llm:
+    enabled: false
+
+    # --- oss mode: Vertex AI via LiteLLM ---------------------------------------
+    gcp:
+      # GSA (created by terraform/gke when the flag is on) + the KSA the LiteLLM
+      # pod runs as. The WI binding is keyed on these exact names - change both
+      # here AND terraform/gke/variables.tf defaults if you ever rename them.
+      googleServiceAccount: grafana-llm-gsa
+      kubernetesServiceAccount: grafana-llm-sa
+      # Vertex AI location for Gemini inference. 'global' (the documented
+      # global endpoint) rather than a pinned region: Gemini 2.5 single-region
+      # EU coverage is patchy and shifts per model, while global always serves
+      # the current lineup. Pin an EU region/multi-region only if data
+      # residency requires it (and re-verify the model's regional availability).
+      vertexLocation: global
+      # Vertex model IDs surfaced to the plugin as its 'base'/'large' tiers.
+      # Current lineup, verified 2026-07-10: Flash tier tops out at
+      # gemini-3.5-flash (GA at I/O, 2026-05-19; LiteLLM day-0 support, global
+      # location only); Pro tier at gemini-3.1-pro-preview (the -preview id is
+      # what Vertex/LiteLLM register; 3.5 Pro not yet released). Older series
+      # are dead or dying on Vertex: 1.5 retired 2025-09-24 (404s on new
+      # projects), 2.5 deprecated with retirement no earlier than 2026-10-16.
+      models:
+        base: gemini-3.5-flash
+        large: gemini-3.1-pro-preview
+
+    # LiteLLM gateway (oss mode only): stateless single-pod OpenAI-compatible
+    # proxy in the observability namespace; Grafana talks OpenAI to it, it talks
+    # ADC/WIF to Vertex. Pinned for reproducibility (docs/602) - 'main' would
+    # float. Bump deliberately. (LiteLLM retired the old '-stable' tag suffix in
+    # 2025; releases are plain vX.Y.Z now - v1.91.1 manifest verified on ghcr
+    # 2026-07-09.)
+    litellm:
+      image: ghcr.io/berriai/litellm
+      version: "v1.91.1"
+      serviceName: litellm-service
+      servicePort: 4000
+
 # -----------------------------------------------------------------------------
 # Headlamp (cluster management UI) - see README.md "Headlamp"
 # -----------------------------------------------------------------------------

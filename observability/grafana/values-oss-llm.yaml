@@ -1,0 +1,47 @@
+# Grafana LLM-app overlay (kube-prometheus-stack values) — layered ON TOP of
+# values-oss.yaml (later valueFiles win) by the observability-oss app-of-apps ONLY
+# when the opt-in observability.llm.enabled feature is on. The
+# oss-kube-prometheus-stack child Application's valueFiles gain this file only when
+# argocd/observability-oss/templates/kube-prometheus-stack.yaml sees llmEnabled=true
+# (threaded down as a helm parameter by scripts/03-observability.sh from
+# J2026_OBS_LLM_ENABLED). NOT referenced when the flag is off, so the default
+# posture (no plugin, no mounts) is untouched — flipping the flag off re-renders
+# the child without this overlay and ArgoCD self-heals Grafana back.
+#
+# Same doubly-conditional situation as values-oss-backend-tls.yaml: the in-cluster
+# Grafana exists only in observability.mode=oss, so this overlay is reachable only
+# in oss mode. The managed backends get the plugin via the Grafana HTTP API instead
+# (scripts/08.8-grafana-llm.sh), since their Grafana lives off-cluster.
+#
+# All keys nest under `grafana:` (the kube-prometheus-stack Grafana subchart) and
+# deep-MERGE over the base values-oss.yaml — `plugins` and `extraConfigmapMounts`
+# are lists the base does NOT set, so Helm's list-REPLACE merge can't clobber
+# anything the base configures.
+grafana:
+  # Installed by the chart's init container from the Grafana plugin catalog at pod
+  # start (the observability namespace has open egress). Pinned per docs/602:
+  # 1.0.8 is the latest in the catalog as of 2026-07-09 (the plugin's GitHub
+  # releases page lags the catalog - the grafana.com plugin API is authoritative).
+  # The "<id> <version>" form is Grafana's GF_INSTALL_PLUGINS pin syntax.
+  plugins:
+    - grafana-llm-app 1.0.8
+
+  # Plugin provisioning file (apps provisioner). The grafana-llm-provisioning
+  # ConfigMap is a script-managed companion object (scripts/08.8-grafana-llm.sh,
+  # same pattern as grafana-runtime-config in 03-observability.sh): it points the
+  # plugin at the in-cluster LiteLLM gateway with a DUMMY key (LiteLLM ignores it;
+  # real auth is Workload Identity → Vertex AI). File-provisioned, NOT pushed via
+  # the HTTP API: Grafana persistence is off (values-oss.yaml), so API-pushed
+  # settings would vanish on every pod restart. `optional: true` breaks the
+  # ordering deadlock — ArgoCD may roll Grafana before 08.8 has created the
+  # ConfigMap; 08.8 restarts Grafana after (re)writing it. Deliberately a whole-
+  # DIRECTORY mount (no subPath): a subPath of a still-missing optional ConfigMap
+  # wedges container start (kubelet can't prepare the subPath), while a directory
+  # mount just yields an empty dir until the ConfigMap appears — and the image
+  # ships nothing under provisioning/plugins, so shadowing the dir loses nothing.
+  extraConfigmapMounts:
+    - name: grafana-llm-provisioning
+      configMap: grafana-llm-provisioning
+      mountPath: /etc/grafana/provisioning/plugins
+      optional: true
+      readOnly: true

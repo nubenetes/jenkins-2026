@@ -91,6 +91,16 @@ esac
 
 "${SCRIPT_DIR}/07-grafana-dashboards.sh"
 "${SCRIPT_DIR}/07.5-grafana-alerts.sh" || log_warn "Grafana alert provisioning reported an issue (see above) — non-fatal"
+
+# Grafana LLM app (OPT-IN via observability.llm.enabled, default false, oss
+# mode ONLY - docs/301): the keyless AI assistant. Runs after 03 (which threads
+# llmEnabled into the oss app-of-apps so ArgoCD installs/retires the plugin)
+# and after Grafana is Ready; deploys the LiteLLM gateway + plugin provisioning
+# ConfigMap. Retires leftovers and no-ops when the flag is off or the mode is
+# not oss. Non-fatal: an optional feature never wedges a provision.
+log_step "Configuring the Grafana LLM app (08.8, opt-in, oss only)"
+"${SCRIPT_DIR}/08.8-grafana-llm.sh" || log_warn "Grafana LLM app provisioning reported an issue (see above) — non-fatal"
+
 "${SCRIPT_DIR}/08-headlamp.sh"
 "${SCRIPT_DIR}/09-gateway.sh"
 
