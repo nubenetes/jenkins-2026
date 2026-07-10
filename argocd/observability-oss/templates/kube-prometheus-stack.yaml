@@ -41,6 +41,15 @@ spec:
           # ArgoCD self-heals Grafana back to the plugin-free posture.
           - $values/observability/grafana/values-oss-llm.yaml
           {{- end }}
+          {{- if eq (.Values.assistantEnabled | toString) "true" }}
+          # Grafana Assistant active (observability.assistant.enabled): install the
+          # official signed grafana-assistant-app plugin and wire its Grafana Cloud
+          # connection from the grafana-assistant-credentials Secret
+          # (scripts/08.9-grafana-assistant.sh). Layered AFTER the LLM overlay, so
+          # if both are on this plugins list wins (see the overlay's both-on note).
+          # Dropped when off → ArgoCD self-heals the plugin away.
+          - $values/observability/grafana/values-oss-assistant.yaml
+          {{- end }}
         {{- if eq (.Values.backendTls | toString) "true" }}
         parameters:
           - name: grafana.additionalDataSources[3].url

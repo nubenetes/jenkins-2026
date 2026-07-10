@@ -411,7 +411,8 @@ EOT
          s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g;
          s@{{ciEngine}}@${J2026_CI_ENGINE}@g;
          s@{{backendTls}}@${OSS_BACKEND_TLS}@g;
-         s@{{llmEnabled}}@${J2026_OBS_LLM_ENABLED}@g" \
+         s@{{llmEnabled}}@${J2026_OBS_LLM_ENABLED}@g;
+         s@{{assistantEnabled}}@${J2026_OBS_ASSISTANT_ENABLED}@g" \
         "${J2026_ROOT_DIR}/argocd/observability-oss-app.yaml" > "${OSS_APP_FILE}"
     kubectl apply -f "${OSS_APP_FILE}"
     rm "${OSS_APP_FILE}"

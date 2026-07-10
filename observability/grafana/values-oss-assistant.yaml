@@ -1,0 +1,50 @@
+# Grafana Assistant overlay (kube-prometheus-stack values) - layered ON TOP of
+# values-oss.yaml (later valueFiles win) by the observability-oss app-of-apps ONLY
+# when the opt-in observability.assistant.enabled feature is on (oss mode).
+#
+# What it adds: the OFFICIAL, signed `grafana-assistant-app` plugin - Grafana's
+# product-grade conversational "open and ask" chat - plus its connection to a
+# Grafana Cloud stack, read from the script-managed grafana-assistant-credentials
+# Secret (08.9-grafana-assistant.sh) via ENV (no file mount, so it never collides
+# with the LLM app's provisioning mount even when both flags are on).
+#
+# SaaS-HYBRID: unlike the keyless LLM app, the Assistant sends prompts to the
+# connected Grafana Cloud backend for processing - it is NOT keyless/in-cluster.
+# See docs/301 § Grafana Assistant.
+#
+# NOTE (both-on caveat): `grafana.plugins` is a Helm LIST (list-merge = replace),
+# and the LLM app overlay also sets it. If BOTH observability.assistant.enabled
+# and observability.llm.enabled are true, the later overlay (this one) wins and
+# only grafana-assistant-app installs - config.sh warns about this. They are
+# meant as ALTERNATIVE chat approaches; enable one. The keyless LLM backend and
+# the SaaS Assistant are different trade-offs (docs/301).
+grafana:
+  # Signed catalog plugin, installed by Grafana's in-binary preinstaller using the
+  # `<id>@<version>` form (the same lesson learned from the LLM app - NEVER the
+  # space form, which crash-looped Grafana). No unsigned allowance needed.
+  plugins:
+    - grafana-assistant-app@2.0.31
+
+  # Connection from the grafana-assistant-credentials Secret (deep-merges with the
+  # base values-oss.yaml envValueFrom map). optional:true - a missing Secret just
+  # leaves the plugin unconfigured until 08.9 creates it, so ordering can't wedge
+  # the pod. The accessToken carries the documented "<instanceId>:<rawToken>"
+  # value (08.9 assembles it). The exact GF_ASSISTANT_* names are the one thing to
+  # confirm on the FIRST live enable (this plugin is Cloud-first; the OSS env-var
+  # config is community-derived) - see docs/301.
+  envValueFrom:
+    GF_ASSISTANT_BACKEND_URL:
+      secretKeyRef:
+        name: grafana-assistant-credentials
+        key: backendUrl
+        optional: true
+    GF_ASSISTANT_INSTANCE_ID:
+      secretKeyRef:
+        name: grafana-assistant-credentials
+        key: instanceId
+        optional: true
+    GF_ASSISTANT_ACCESS_TOKEN:
+      secretKeyRef:
+        name: grafana-assistant-credentials
+        key: accessToken
+        optional: true

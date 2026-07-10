@@ -437,6 +437,33 @@ observability:
       serviceName: litellm-service
       servicePort: 4000
 
+  # ---------------------------------------------------------------------------
+  # Grafana Assistant (official conversational chat) - OPT-IN, default false,
+  # oss mode ONLY, SaaS-HYBRID (connects to a Grafana Cloud stack)
+  # ---------------------------------------------------------------------------
+  # When true (and observability.mode=oss), installs the official, signed
+  # grafana-assistant-app plugin and provisions its connection to a Grafana Cloud
+  # stack. This is the MATURE "open and ask" chat (unlike the keyless LLM app or
+  # the reverted Graft) - the trade-off is that it is SaaS-HYBRID: the chat UI
+  # runs in-cluster but PROMPTS ARE PROCESSED BY GRAFANA CLOUD (the connected
+  # stack's backend), so it is NOT keyless/in-cluster. See docs/301 § Grafana
+  # Assistant, and the "chat sidebar options" note there.
+  #
+  # The connection (Backend URL + Instance ID + a Grafana Cloud service-account
+  # token, all from YOUR Grafana Cloud stack) is supplied via GitHub secrets
+  # GRAFANA_CLOUD_ASSISTANT_{BACKEND_URL,INSTANCE_ID,TOKEN} (never committed);
+  # 08.9-grafana-assistant.sh materialises the in-cluster
+  # grafana-assistant-credentials Secret from them and the plugin reads it. The
+  # Grafana Cloud identity that owns the stack is INDEPENDENT of the Google/IAP
+  # account used to log into this OSS Grafana. Retire-symmetric.
+  # FEATURE FLAG: override for a single run with JENKINS2026_OBS_ASSISTANT_ENABLED.
+  assistant:
+    enabled: false
+    # Official catalog plugin (signed). Pinned per docs/602 - 2.0.31 is the
+    # latest verified on the grafana.com catalog 2026-07-10.
+    pluginId: grafana-assistant-app
+    pluginVersion: "2.0.31"
+
 # -----------------------------------------------------------------------------
 # Headlamp (cluster management UI) - see README.md "Headlamp"
 # -----------------------------------------------------------------------------
