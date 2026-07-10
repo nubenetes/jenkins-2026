@@ -1,4 +1,4 @@
-[← Previous: 404. GitHub Actions / ARC](./404-GITHUB_ACTIONS.md) | [🏠 Home](../README.md) | [→ Next: 501. Platform Operations](./501-PLATFORM_OPERATIONS.md)
+[← Previous: 404. GitHub Actions / ARC](./404-GITHUB_ACTIONS.md) | [🏠 Home](../README.md) | [→ Next: 406. Declarative vs Scripted](./406-DECLARATIVE_VS_SCRIPTED.md)
 
 ---
 
@@ -649,7 +649,7 @@ targeting — only the engine wrapper differs.
 
 ---
 
-[← Previous: 404. GitHub Actions / ARC](./404-GITHUB_ACTIONS.md) | [🏠 Home](../README.md) | [→ Next: 501. Platform Operations](./501-PLATFORM_OPERATIONS.md)
+[← Previous: 404. GitHub Actions / ARC](./404-GITHUB_ACTIONS.md) | [🏠 Home](../README.md) | [→ Next: 406. Declarative vs Scripted](./406-DECLARATIVE_VS_SCRIPTED.md)
 
 ---
 

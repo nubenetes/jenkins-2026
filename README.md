@@ -9,7 +9,7 @@
 [![Commit activity](https://img.shields.io/github/commit-activity/m/nubenetes/jenkins-2026?logo=github)](https://github.com/nubenetes/jenkins-2026/pulse)
 ![Top language](https://img.shields.io/github/languages/top/nubenetes/jenkins-2026?logo=gnubash&logoColor=white)
 ![Code size](https://img.shields.io/github/languages/code-size/nubenetes/jenkins-2026)
-[![Docs](https://img.shields.io/badge/docs-24%20guides-blue?logo=readthedocs&logoColor=white)](docs/)
+[![Docs](https://img.shields.io/badge/docs-25%20guides-blue?logo=readthedocs&logoColor=white)](docs/)
 [![Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735?logo=keepachangelog&logoColor=white)](CHANGELOG.md) [![Google Drive Media](https://img.shields.io/badge/Google%20Drive-Media%20%26%20Resources-4285F4?logo=googledrive&logoColor=white)](https://drive.google.com/drive/folders/15JQNRSIW8mxaIjQ2AVyua-jzLNjDsZ10?usp=sharing)
 
 <!-- STACK-BADGES:START -->
@@ -411,6 +411,17 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 - [The pipeline, ported](./docs/405-ARGO_WORKFLOWS.md#the-pipeline-ported)
 - [Triggers (Argo Events)](./docs/405-ARGO_WORKFLOWS.md#triggers-argo-events)
 
+**[406 · Declarative vs Scripted (Jenkins authoring)](./docs/406-DECLARATIVE_VS_SCRIPTED.md)**
+- [The two dialects in sixty seconds](./docs/406-DECLARATIVE_VS_SCRIPTED.md#1-the-two-dialects-in-sixty-seconds)
+- [What each dialect actually is](./docs/406-DECLARATIVE_VS_SCRIPTED.md#2-what-each-dialect-actually-is)
+- [The comparison matrix](./docs/406-DECLARATIVE_VS_SCRIPTED.md#4-the-comparison-matrix)
+- [When Jenkins recommends which](./docs/406-DECLARATIVE_VS_SCRIPTED.md#6-when-jenkins-officially-recommends-which)
+- [This repo's three-layer hybrid](./docs/406-DECLARATIVE_VS_SCRIPTED.md#7-this-repos-architecture-the-three-layer-hybrid)
+- [Counterexamples (all-one-way)](./docs/406-DECLARATIVE_VS_SCRIPTED.md#9-counterexamples-what-breaks-if-you-go-all-one-way)
+- [Recognising Declarative vs Scripted at a glance](./docs/406-DECLARATIVE_VS_SCRIPTED.md#12-recognising-declarative-vs-scripted-at-a-glance)
+- [Job DSL & seed jobs — advanced tutorial](./docs/406-DECLARATIVE_VS_SCRIPTED.md#13-job-dsl-and-seed-jobs-an-advanced-tutorial)
+- [The Scripted-god-library anti-pattern](./docs/406-DECLARATIVE_VS_SCRIPTED.md#14-the-common-anti-pattern-a-scripted-god-library-with-thin-jenkinsfiles)
+
 ---
 
 **[501 · Platform Operations](./docs/501-PLATFORM_OPERATIONS.md)**
@@ -579,6 +590,7 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 | **403** | Tekton | [Tekton](./docs/403-TEKTON.md) | **Alternative CI engine** (`ci.engine` flag) — Tekton **Pipelines/Triggers/Dashboard** + **Pipelines-as-Code**, IAP-protected Dashboard, the microservices pipeline ported to [`tekton/`](tekton/), **credentials & observability parity** |
 | **404** | GitHub Actions / ARC | [GitHub Actions / ARC](./docs/404-GITHUB_ACTIONS.md) | **Third CI engine** (`ci.engine=githubactions`) — GitHub Actions self-hosted runners via **ARC** (Actions Runner Controller): ephemeral **Spot** runners on the `ci-spot` NAP ComputeClass, native **GitHub webhooks** (GitHub App), **no** in-cluster UI/Gateway route, the `argocd/githubactions` app-of-apps, same `services.yaml`/GHCR/GitOps/OTel contract |
 | **405** | Argo Workflows | [Argo Workflows](./docs/405-ARGO_WORKFLOWS.md) | **Fourth CI engine** (`ci.engine=argoworkflows`) — **Argo Workflows + Argo Events** (argoproj): the pipeline as a WorkflowTemplate, an **IAP-protected Argo Workflows Server UI** (`argo.<domain>`) **plus** a public, HMAC-protected **Argo Events webhook receiver** (`argo-events.<domain>`), the `argocd/argoworkflows` app-of-apps (controller+server / Events+EventBus / pipeline-as-code, **vendored** release YAMLs), same `services.yaml`/GHCR/GitOps/OTel contract |
+| **406** | Jenkins | [Declarative vs Scripted](./docs/406-DECLARATIVE_VS_SCRIPTED.md) | **Declarative-vs-Scripted tutorial + the repo's three-layer hybrid**: the two Groovy dialects (**Declarative is a DSL over Scripted CPS**), the **comparison matrix** + full advantages/disadvantages, **when Jenkins recommends which**, how the repo splits **Job DSL seed (generation) → Declarative pipeline shells → Scripted `vars/` steps**, the **per-file classification map**, **counterexamples** (what breaks all-scripted / all-declarative), and **mermaid diagrams** |
 | **501** | Platform | [Platform Operations](./docs/501-PLATFORM_OPERATIONS.md) | **ArgoCD inventory**, telemetry simulation, **platform QA & chaos** scenarios, **Golden Path IDP** modernizations (**Node Auto-Provisioning** + modern scheduling), **Headlamp** cluster UI, **GKE Gateway API + IAP** public access, **Argo Rollouts** progressive delivery |
 | **502** | Microservices | [Microservices GitOps](./docs/502-MICROSERVICES_GITOPS.md) | **Helm vs. Kustomize** design decision, **resource lifecycle & decommission** orchestration (**NEG synchronization barrier**), **parameterized CNPG HA** (stable vs lean develop), **pgAdmin** & database administration |
 | **503** | Networking | [Networking](./docs/503-NETWORKING.md) | Network architecture, **landing zone & topology** (single-VPC, *not* hub-spoke — with rationale + growth path), VPC/subnet + pod/service **CIDR plan**, north-south **ingress** (Gateway + IAP + container-native NEG) & **egress** (no Cloud NAT, the four observability backends), east-west (VPC-native + **Dataplane V2** + **WireGuard**), **NetworkPolicy segmentation** inside GKE, defense-in-depth |

@@ -1,4 +1,4 @@
-[← Previous: 405. Argo Workflows](./405-ARGO_WORKFLOWS.md) | [🏠 Home](../README.md) | [→ Next: 502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md)
+[← Previous: 406. Declarative vs Scripted](./406-DECLARATIVE_VS_SCRIPTED.md) | [🏠 Home](../README.md) | [→ Next: 502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md)
 
 ---
 
@@ -1035,7 +1035,7 @@ Related lifecycle: [`Day1.cluster.01-gke`](../.github/workflows/Day1.cluster.01-
 
 ---
 
-[← Previous: 405. Argo Workflows](./405-ARGO_WORKFLOWS.md) | [🏠 Home](../README.md) | [→ Next: 502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md)
+[← Previous: 406. Declarative vs Scripted](./406-DECLARATIVE_VS_SCRIPTED.md) | [🏠 Home](../README.md) | [→ Next: 502. Microservices GitOps](./502-MICROSERVICES_GITOPS.md)
 
 ---
 
