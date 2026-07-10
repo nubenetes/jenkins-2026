@@ -78,7 +78,7 @@ on:
         default: false
         type: boolean
       assistant_enabled:
-        description: "Opt-in official Grafana Assistant chat (observability.assistant.enabled — docs/301): installs the signed grafana-assistant-app plugin and connects it to YOUR Grafana Cloud stack. The MATURE 'open and ask' chat, but SaaS-HYBRID — prompts are processed by Grafana Cloud (NOT keyless/in-cluster like the LLM app). oss mode ONLY. Needs the GRAFANA_CLOUD_ASSISTANT_{BACKEND_URL,INSTANCE_ID,TOKEN} GitHub secrets (docs/103). OFF by default. Overrides config.yaml for this run."
+        description: "Opt-in official Grafana Assistant chat (observability.assistant.enabled — docs/301): installs the signed grafana-assistant-app plugin. COST MODEL — your observability DATA stays in GKE (free, in-cluster; zero Grafana Cloud data ingestion) and ONLY the Grafana Cloud AI Assistant is used, which is FREE on the Grafana Cloud free tier (3 AI users/mo, 40M tokens/user, no card). SaaS-HYBRID: prompts go to Grafana Cloud (NOT keyless like the LLM app). oss mode ONLY. For a DURABLE connection set the GRAFANA_CLOUD_ASSISTANT_{BACKEND_URL,INSTANCE_ID,TOKEN} GitHub secrets (docs/103); WITHOUT them the plugin still installs but stays PENDING (a reminder is logged + shown in the run summary) — you then set the secrets or click Connect in the UI. OFF by default."
         required: false
         default: false
         type: boolean

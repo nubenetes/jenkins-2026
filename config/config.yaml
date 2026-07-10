@@ -456,6 +456,18 @@ observability:
   # grafana-assistant-credentials Secret from them and the plugin reads it. The
   # Grafana Cloud identity that owns the stack is INDEPENDENT of the Google/IAP
   # account used to log into this OSS Grafana. Retire-symmetric.
+  #
+  # COST MODEL: your observability DATA stays in GKE (in-cluster, free - no Grafana
+  # Cloud data ingestion) and ONLY the Grafana Cloud AI Assistant is used, which is
+  # FREE on the Grafana Cloud free tier (3 AI users/mo, 40M tokens/user, no card;
+  # token cap = hard limit, no charge). So: free data + free AI, needing only a
+  # Grafana Cloud account (not spend). See docs/301 § Grafana Assistant.
+  #
+  # DUMMY/PENDING: enabling this WITHOUT the connection secrets is a valid,
+  # first-class state (e.g. you have no Grafana Cloud account yet): the plugin
+  # still installs and 08.9 logs a prominent reminder (+ a "pending" block in the
+  # Day1 run summary) of what's left. The Grafana Cloud side is deliberately NOT
+  # automated in oss - you finish it with the secrets (durable) or a UI click.
   # FEATURE FLAG: override for a single run with JENKINS2026_OBS_ASSISTANT_ENABLED.
   assistant:
     enabled: false

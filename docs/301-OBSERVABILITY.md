@@ -988,6 +988,25 @@ flowchart LR
   APP -->|"prompts + context<br/>(accessToken = instanceId:token)"| CLOUD["Grafana Cloud stack<br/>(Assistant backend — SaaS)"]
 ```
 
+### The cost model — data in GKE (free) + a free-tier Assistant
+
+This is why the Assistant can make sense even for a cost-conscious oss deployment: it **decouples where your data lives from where the AI runs**.
+
+- **Your data stays in GKE.** In `oss` mode the datasources (Prometheus/Loki/Tempo) are in-cluster; **nothing is ingested into Grafana Cloud**, so there is **no Grafana-Cloud data-volume cost** (the usual reason Grafana Cloud bills add up). The Assistant queries your in-cluster datasources; only **prompts + query context** reach the Grafana Cloud backend.
+- **Only the AI Assistant uses Grafana Cloud — and it's free.** Grafana Assistant is included in the **Grafana Cloud forever-free tier**: **3 active AI users/month, 40M tokens/user, 25M tokens/mo for service accounts, no credit card**. Free-tier token limits are **hard caps** — the Assistant blocks further use until the monthly reset, so you **don't get charged**, you just hit a cap. Self-managed usage is metered against the paired stack. See [Grafana Assistant pricing](https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing/).
+
+Net: **free data (in-cluster) + free AI (Assistant free tier)** — the only requirement is a Grafana Cloud *account*, not spend. (Exactly what travels as "context" is per Grafana's Assistant implementation; the data *volume* stays local.)
+
+### The "pending" state — enabling it without a Grafana Cloud account
+
+You can turn the flag **on without the connection secrets** (e.g. you don't have a Grafana Cloud account yet). This is a first-class **"dummy" state, not an error**:
+
+- The plugin **still installs** (the overlay preinstalls it).
+- `08.9-grafana-assistant.sh` sees no connection, **skips it, and logs a prominent reminder** — and, in CI, writes a **"connection pending" block into the Day1 run summary** — so it never silently looks done.
+- Grafana stays healthy; the chat is simply **unconfigured** until you either set the three secrets (durable) or click *Connect to Grafana Cloud* in the UI (quick, but lost on the next pod restart — Grafana persistence is off in this oss stack, so UI-made settings don't survive; that is why everything else here is provisioned declaratively).
+
+So a pure-oss operator with no Grafana Cloud can enable the flag to *stage* the plugin and be **reminded exactly what is left to do**; the Grafana-Cloud side is deliberately **not automated** in oss.
+
 ### The connection (and the account question)
 
 The Assistant connects to a **Grafana Cloud stack** using a **Grafana Cloud credential**, **not** a Google identity. Three values from *your* stack drive it, supplied as GitHub secrets (never committed) — see [103. Secrets Inventory](./103-GITHUB_SECRETS_INVENTORY.md):

@@ -65,8 +65,37 @@ RAW_TOKEN="${GRAFANA_CLOUD_ASSISTANT_TOKEN:-}"
 # operator who flipped the flag before creating the GitHub secrets sees a clear
 # message rather than a broken chat.
 if [[ -z "${INSTANCE_ID}" || -z "${RAW_TOKEN}" ]]; then
-  log_warn "Grafana Assistant is enabled but its connection secrets are missing (GRAFANA_CLOUD_ASSISTANT_INSTANCE_ID / _TOKEN)."
-  log_warn "The plugin will install but stay UNCONFIGURED. Set the GRAFANA_CLOUD_ASSISTANT_{BACKEND_URL,INSTANCE_ID,TOKEN} GitHub secrets from your Grafana Cloud stack (docs/103, docs/301) and re-run."
+  log_warn "──────────────────────────────────────────────────────────────────────────"
+  log_warn "Grafana Assistant: PLUGIN INSTALLED, CONNECTION PENDING (a manual step)."
+  log_warn ""
+  log_warn "This is EXPECTED and by design in oss mode: the repo does NOT automate the"
+  log_warn "Grafana Cloud side. Your observability DATA stays in GKE (Prometheus/Loki/"
+  log_warn "Tempo in-cluster) - zero Grafana Cloud data ingestion, zero data cost - and"
+  log_warn "ONLY the Grafana Cloud AI *Assistant* is used, which is FREE on the Grafana"
+  log_warn "Cloud free tier (3 AI users/mo, 40M tokens/user; token cap = hard limit, no"
+  log_warn "charge). See docs/301 § Grafana Assistant."
+  log_warn ""
+  log_warn "TO FINISH THE CONNECTION - two ways:"
+  log_warn "  (A) DURABLE (recommended): set the three GitHub secrets"
+  log_warn "      GRAFANA_CLOUD_ASSISTANT_{BACKEND_URL,INSTANCE_ID,TOKEN} from a Grafana"
+  log_warn "      Cloud stack (docs/103) and re-run Day1. Survives pod restarts."
+  log_warn "  (B) QUICK: open /plugins/grafana-assistant-app and click 'Connect to"
+  log_warn "      Grafana Cloud'. But Grafana persistence is OFF here, so this is LOST"
+  log_warn "      on the next pod restart (ArgoCD sync / Day1 / eviction)."
+  log_warn "──────────────────────────────────────────────────────────────────────────"
+  if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
+    {
+      echo "### ⚠️ Grafana Assistant — installed, connection PENDING (manual)"
+      echo
+      echo "The \`grafana-assistant-app\` plugin is installed, but its Grafana Cloud connection is **not configured** (the \`GRAFANA_CLOUD_ASSISTANT_*\` secrets were not set)."
+      echo
+      echo "**By design in \`oss\`:** your observability **data stays in GKE** (in-cluster, free — zero Grafana Cloud data ingestion) and only the Grafana Cloud AI **Assistant** is used — **free** on the [free tier](https://grafana.com/docs/grafana-cloud/machine-learning/assistant/pricing/) (3 AI users/mo, 40M tokens/user, no card; token cap, no charge)."
+      echo
+      echo "**To finish:**"
+      echo "- **Durable (recommended):** set \`GRAFANA_CLOUD_ASSISTANT_{BACKEND_URL,INSTANCE_ID,TOKEN}\` from a Grafana Cloud stack (docs/103) and re-run Day1."
+      echo "- **Quick:** click *Connect to Grafana Cloud* in the plugin UI — but it is lost on the next pod restart (Grafana persistence is off)."
+    } >> "${GITHUB_STEP_SUMMARY}"
+  fi
   retire_assistant
   exit 0
 fi
