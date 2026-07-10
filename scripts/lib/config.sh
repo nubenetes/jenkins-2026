@@ -403,12 +403,17 @@ case "${J2026_OBS_GRAFT_ENABLED}" in
     exit 1
     ;;
 esac
-# Graft uses grafana-llm-app as its model backend - reject the impossible combo
-# early with a clear message instead of a broken plugin at runtime.
+# Graft uses grafana-llm-app as its model backend, so enabling Graft AUTO-ENABLES
+# the LLM app (rather than erroring). Re-export the gating TF_VAR too so terraform
+# (the grafana-llm GSA + WI binding) is provisioned even when ONLY Graft was set -
+# the LLM block above already exported it from the old value. In CI the Day1
+# workflow ORs the two inputs so this is a no-op there; this covers local runs /
+# a config.yaml where graft.enabled=true but llm.enabled=false.
 if [[ "${J2026_OBS_GRAFT_ENABLED}" == "true" && "${J2026_OBS_LLM_ENABLED}" != "true" ]]; then
-  log_error "observability.graft.enabled=true requires observability.llm.enabled=true (Graft uses grafana-llm-app as its model backend)."
-  log_error "Enable the LLM app too, or turn Graft off."
-  exit 1
+  log_warn "observability.graft.enabled=true auto-enables the LLM app (grafana-llm-app is Graft's model backend) - provisioning it too."
+  J2026_OBS_LLM_ENABLED=true
+  export J2026_OBS_LLM_ENABLED
+  export TF_VAR_observability_llm_enabled="true"
 fi
 export J2026_OBS_GRAFT_PLUGIN_ID="$(yq_get '.observability.graft.pluginId' 'vikshana-graft-app')"
 export J2026_OBS_GRAFT_GITHUB_REPO="$(yq_get '.observability.graft.githubRepo' 'vikshana/vikshana-graft-app')"
