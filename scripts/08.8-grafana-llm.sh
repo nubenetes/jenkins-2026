@@ -233,10 +233,14 @@ spec:
           resources:
             requests:
               cpu: 100m
-              memory: 256Mi
+              # LiteLLM v1.91.x needs >1Gi just to boot: it OOMKilled at a 1Gi
+              # limit (exit 137, before ever opening the port) - the proxy loads
+              # a heavy Python stack at startup. 512Mi request / 2Gi limit gives
+              # the headroom to start cleanly.
+              memory: 512Mi
             limits:
               cpu: "1"
-              memory: 1Gi
+              memory: 2Gi
           securityContext:
             allowPrivilegeEscalation: false
       volumes:
