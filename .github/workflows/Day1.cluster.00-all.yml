@@ -77,6 +77,11 @@ on:
         required: false
         default: false
         type: boolean
+      llm_enabled:
+        description: "Opt-in keyless Grafana LLM app (observability.llm.enabled — docs/301): grafana-llm-app plugin wired to Vertex AI via an in-cluster LiteLLM gateway + Workload Identity. oss mode ONLY (no-op on grafana-cloud/managed-*). OFF by default. Passed straight to Day1.cluster.01 (where enabling/disabling converges)."
+        required: false
+        default: false
+        type: boolean
       git_ref:
         description: "Git branch, tag, or SHA to check out (empty = the ref selected in 'Use workflow from')."
         required: false
@@ -192,5 +197,6 @@ jobs:
       enable_gateway: true
       develop_track: ${{ inputs.develop_track }}
       backend_tls: ${{ inputs.backend_tls }}
+      llm_enabled: ${{ inputs.llm_enabled }}
       git_ref: ${{ inputs.git_ref }}
     secrets: inherit
