@@ -437,46 +437,6 @@ observability:
       serviceName: litellm-service
       servicePort: 4000
 
-  # ---------------------------------------------------------------------------
-  # Grafana Graft chat (open-source AI chat sidebar) - OPT-IN, default false,
-  # oss mode ONLY, AUTO-ENABLES observability.llm.enabled (its model backend)
-  # ---------------------------------------------------------------------------
-  # When true (and observability.mode=oss - it AUTO-ENABLES observability.llm
-  # .enabled if you left it false, since grafana-llm-app is its model backend),
-  # installs the community `vikshana-graft-app` plugin: a natural-language CHAT
-  # sidebar ("open and ask") over your dashboards/metrics/logs/traces/alerts.
-  # It is the visible conversational UI the bare grafana-llm-app plugin does NOT
-  # provide - Graft just REUSES grafana-llm-app (hence the llm.enabled
-  # requirement) as its model backend, so it stays 100% keyless / in-cluster
-  # (LiteLLM -> Vertex AI). This is the closest oss equivalent to Grafana
-  # Cloud's Grafana Assistant. See docs/301 § Grafana Graft chat.
-  #
-  # Trade-offs (accepted, documented in docs/301): Graft is a COMMUNITY,
-  # AGPL-3.0, UNSIGNED plugin (single maintainer), NOT in the Grafana catalog -
-  # so it is installed by a FAIL-OPEN init container that pulls the latest GitHub
-  # release into the Grafana plugins volume (NOT via the fatal
-  # GF_PLUGINS_PREINSTALL_SYNC path that broke Grafana in #628), and Grafana
-  # loads it unsigned. If the download fails, Grafana STILL STARTS without Graft.
-  #
-  # Rebuild-safe + retire-symmetric: scripts/08.9-grafana-graft.sh applies the
-  # auto-update CronJob + RBAC and cleans them up when the flag is off or the
-  # mode is not oss; the plugin self-heals away when 03 re-renders the oss
-  # app-of-apps without the graft overlay.
-  # FEATURE FLAG: override for a single run with JENKINS2026_OBS_GRAFT_ENABLED.
-  graft:
-    enabled: false
-    # Community plugin id + its GitHub repo (the release source). Pinned by ID,
-    # NOT by version: per the "always the latest stable release" choice, the init
-    # container resolves the newest release at deploy time and the CronJob below
-    # auto-updates on new releases. DELIBERATE exception to the version-pinning
-    # policy (docs/602 documents it).
-    pluginId: vikshana-graft-app
-    githubRepo: vikshana/vikshana-graft-app
-    # Auto-update polling: a CronJob checks the GitHub releases API on this
-    # schedule and rolls Grafana (re-pulling the latest release) when a newer tag
-    # appears. Default every 6h.
-    autoUpdateSchedule: "0 */6 * * *"
-
 # -----------------------------------------------------------------------------
 # Headlamp (cluster management UI) - see README.md "Headlamp"
 # -----------------------------------------------------------------------------

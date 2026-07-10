@@ -960,40 +960,21 @@ Operational notes: the plugin settings are **file-provisioned** (Grafana persist
 
 No new GitHub secrets, no committed credentials: the only "key" in the chain is the literal dummy string `keyless-vertex-ai` the plugin requires as non-empty and LiteLLM ignores.
 
-## Grafana Graft chat (the "open and ask" sidebar) — opt-in, oss only
+## Grafana chat sidebar in oss — the options (Graft evaluated, Assistant adopted)
 
-The `grafana-llm-app` plugin above is **backend infrastructure**: it has *no chat UI of its own* — it only powers AI features other plugins call (see [the LLM-app-vs-Assistant table](#grafana-llm-app-ai-assistant--opt-in-keyless-oss-only)). To get a real **conversational "open and ask" sidebar** in oss — the closest equivalent to Grafana Cloud's Grafana Assistant — this repo offers a **second, separate** opt-in flag: **`observability.graft.enabled`** (default **false**, per-run override `JENKINS2026_OBS_GRAFT_ENABLED`).
+The `grafana-llm-app` above is **backend infrastructure** with *no chat UI of its own* (see [the LLM-app-vs-Assistant table](#grafana-llm-app-ai-assistant--opt-in-keyless-oss-only)). Getting a real conversational **"open and ask" sidebar** in oss was investigated; here is the outcome, because the trade-offs are instructive.
 
-It installs **[Graft](https://github.com/vikshana/vikshana-graft-app)** (`vikshana-graft-app`), a community AI-assistant plugin that adds a natural-language chat sidebar over dashboards/metrics/logs/traces/alerts. **Graft reuses `grafana-llm-app` as its model backend**, so it inherits the exact same **keyless, in-cluster** chain (LiteLLM → Vertex AI) — nothing new leaves the cluster. Because of that dependency, enabling Graft **auto-enables `observability.llm.enabled`** for you: `config.sh` (and the Day1 form, which ORs the two inputs *before* Terraform so the keyless GSA/WI backend is provisioned too) turn the LLM app on — so Graft always has a working backend and you never have to remember to check both. Turning the LLM app on alone still gives you the backend without Graft's chat.
+### Graft — evaluated end-to-end, then reverted (future option)
 
-```mermaid
-%%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%
-flowchart LR
-  USER(("User"))
-  subgraph CL["GKE — observability namespace"]
-    GRAFT["Graft chat sidebar<br/>(vikshana-graft-app, unsigned)"]
-    LLMAPP["grafana-llm-app 1.0.8<br/>(model backend)"]
-    LITELLM["LiteLLM → Vertex AI<br/>(keyless, in-cluster)"]
-  end
-  USER -->|"HTTPS + IAP, ask in natural language"| GRAFT
-  GRAFT -->|"@grafana/llm API"| LLMAPP
-  LLMAPP --> LITELLM
-```
+A community keyless sidebar was prototyped using **[Graft](https://github.com/vikshana/vikshana-graft-app)** (`vikshana-graft-app`), which reuses `grafana-llm-app` as its model backend, keeping the whole chain **keyless / in-cluster** (LiteLLM → Vertex AI). The full opt-in flag + a **fail-open** plugin-installer init container + an auto-update CronJob were built and **validated live** (Grafana stayed healthy throughout — the fail-open init worked), then **reverted** for one blocking reason:
 
-**How the pieces land** (opt-in, oss-only, gated on the flag):
+- **Upstream ships no built plugin release.** Only `v0.1.0`/`v0.2.0` carry a packaged `.zip`; every release since (`v0.3.0` → latest) is **source-only** (a Go backend + React frontend that must be compiled), so "install the latest release" has nothing installable to fetch. Graft is also a single-maintainer, **AGPL-3.0, unsigned** plugin (not in the Grafana catalog).
 
-| Piece | Owner | Mechanism |
-|---|---|---|
-| `vikshana-graft-app` plugin install | [`values-oss-graft.yaml`](../observability/grafana/values-oss-graft.yaml) overlay (layered by the `observability-oss` app-of-apps when `03-observability.sh` passes `graftEnabled=true`) | A **fail-open init container** pulls the **latest GitHub release** into the Grafana plugins volume; `grafana.ini` `allow_loading_unsigned_plugins` lets Grafana load it |
-| Auto-update to new releases | [`scripts/08.9-grafana-graft.sh`](../scripts/08.9-grafana-graft.sh) | A **CronJob** (schedule `observability.graft.autoUpdateSchedule`, default every 6h) polls the GitHub releases API and rolls Grafana — re-pulling the latest — when a newer tag appears (+ its RBAC + a state ConfigMap). Retired symmetrically on flag-off / mode switch |
+**Future option.** If upstream resumes publishing built releases (or lands in the Grafana catalog), the reverted implementation — the `observability.graft.enabled` flag, the `values-oss-graft.yaml` fail-open init-container overlay, and the `08.9-grafana-graft.sh` auto-update CronJob — is **recoverable from git history** (feature PR #630, auto-enable #631, reverted afterwards). At that point re-adding it is mostly restoring those files.
 
-Three design points that matter (all requested deliberately):
+### Grafana Assistant — the adopted chat (its own opt-in flag)
 
-- **Always the latest stable release.** Graft is not version-pinned — the init container fetches the newest GitHub release at pod start and the CronJob auto-updates on new releases. This is a **deliberate exception to the version-pinning policy** — see [602. Version Pinning](./602-VERSION_PINNING.md).
-- **Resilient — Grafana works without Graft.** Graft is installed as a plain **filesystem plugin via a fail-open init container**, *not* via the fatal `GF_PLUGINS_PREINSTALL_SYNC` path (that crash-looped Grafana in an earlier LLM-app bug). Every failure path in the init container `exit 0`s, so a GitHub outage / rate-limit / missing asset just means Grafana **starts without the chat** rather than crash-looping.
-- **Trade-offs (accepted).** Graft is a **community, AGPL-3.0, unsigned** plugin (single maintainer), **not in the Grafana catalog** — hence the init-container install + `allow_loading_unsigned_plugins`. It adds a trust/supply-chain surface and needs egress to GitHub (the observability namespace already has open egress). It is opt-in and off by default.
-
-> **Why not Grafana Assistant self-managed (the "Option A" that was considered and dropped).** Since April 2026 the official **Grafana Assistant** (`grafana-assistant-app`) *can* run in self-managed Grafana — but it is **deliberately not offered here**. It requires a **Grafana Cloud account** and an outbound connection to the Grafana Cloud SaaS plane, which **breaks the whole point of `oss` mode** (in-cluster, no SaaS dependency, keyless); and its setup ends in an **interactive one-click "Connect to Grafana Cloud" OAuth flow that cannot be scripted**, so it could never fully converge in a Day1 run the way every other flag does. If you *want* the official Assistant, run `observability.mode=grafana-cloud` (where it is native on the SaaS plane) or connect a self-managed instance to Grafana Cloud by hand per [Grafana's docs](https://grafana.com/docs/grafana-cloud/machine-learning/assistant/get-started/self-managed/) — that is out of scope for the in-cluster oss stack by design.
+For an actually-mature "open and ask" experience, the official **Grafana Assistant** (`grafana-assistant-app`) is offered instead as a **separate opt-in flag** (`observability.assistant.enabled`, added in its own section of this doc). Unlike Graft it is signed, catalog-installed, and product-grade — the trade-off is that it is **SaaS-hybrid**: prompts are processed by a connected **Grafana Cloud** stack, so it is *not* keyless/in-cluster the way the LLM app is. It is opt-in and off by default; the always-keyless posture remains the [LLM app](#grafana-llm-app-ai-assistant--opt-in-keyless-oss-only) backend alone.
 
 ## Observability Modes
 

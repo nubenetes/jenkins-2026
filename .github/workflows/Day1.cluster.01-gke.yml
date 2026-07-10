@@ -77,11 +77,6 @@ on:
         required: false
         default: false
         type: boolean
-      graft_enabled:
-        description: "Opt-in Grafana Graft chat (observability.graft.enabled — docs/301): installs the community vikshana-graft-app AI CHAT sidebar over the LLM app — the visible 'open and ask' UI the bare LLM plugin lacks. oss mode ONLY. AUTO-ENABLES the LLM app backend (grafana-llm-app + LiteLLM→Vertex, incl. its GSA/WI) if you didn't also check llm_enabled — Graft needs it as its model backend. UNSIGNED community plugin, installed fail-open (Grafana still starts if the download fails) and auto-updated to the latest release by a CronJob. OFF by default. Overrides config.yaml for this run."
-        required: false
-        default: false
-        type: boolean
       git_ref:
         description: "Git branch, tag, or SHA to check out (leave empty to use the branch/tag selected in 'Use workflow from' above)"
         required: false
@@ -155,10 +150,6 @@ on:
         required: false
         default: false
         type: boolean
-      graft_enabled:
-        required: false
-        default: false
-        type: boolean
       git_ref:
         required: false
         default: ""
@@ -201,15 +192,7 @@ env:
   # Like backend_tls, this boolean input is ALWAYS set (true/false), so in CI the
   # form is authoritative and config.yaml's durable default is the LOCAL fallback
   # (test/e2e.sh, where the env is unset → config.sh reads config.yaml).
-  # graft_enabled ORs in here so enabling Graft AUTO-ENABLES the LLM app (its
-  # model backend) BEFORE terraform runs — provisioning the grafana-llm GSA + WI
-  # binding too. So checking only graft still yields a working keyless backend
-  # and never wastes a cluster on a "graft without llm" abort.
-  JENKINS2026_OBS_LLM_ENABLED: ${{ inputs.llm_enabled || inputs.graft_enabled }}
-  # Opt-in Grafana Graft chat (observability.graft.enabled, oss; auto-enables the
-  # LLM app above — docs/301). Inherited by config.sh in the up.sh step (03 overlay
-  # + 08.9 auto-update CronJob); no GCP resources of its own, so no TF_VAR.
-  JENKINS2026_OBS_GRAFT_ENABLED: ${{ inputs.graft_enabled }}
+  JENKINS2026_OBS_LLM_ENABLED: ${{ inputs.llm_enabled }}
   TF_VERSION: "1.15.6"
   # Surfaced as env so the managed-aws dashboard-publish steps can skip cleanly
   # (secrets can't be used in `if:`) when the role hasn't been set up yet.
