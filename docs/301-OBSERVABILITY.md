@@ -922,6 +922,15 @@ In `oss` mode, Grafana is exposed at `https://grafana.<baseDomain>` behind Googl
 
 > **LLM app ≠ Grafana Assistant.** The plugin enables Grafana's built-in AI features (explain flame graphs, panel title/description generation, and the `@grafana/llm` API other plugins consume). The polished conversational **Grafana Assistant** is **Grafana Cloud-only** (SaaS plane) — which is exactly why `grafana-cloud` mode is a deliberate no-op for this flag.
 
+| | `grafana-llm-app` (this repo, oss) | Grafana Assistant (Cloud) |
+|---|---|---|
+| What it is | A backend/API plugin — infrastructure, not an app | An agentic, user-facing application built **on top of** that infrastructure |
+| Interface | No chat UI of its own; surfaces only where a panel/plugin calls the `@grafana/llm` package (e.g. "✨ Explain" buttons, Sift incident summaries, flame-graph AI) | A copilot integrated into the Grafana chrome — natural-language Q&A, query generation/refinement, telemetry-gap guidance |
+| How it's reached here | `provider: openai` pointed at the in-cluster LiteLLM proxy, which is the only way to reach Vertex AI: the plugin's own provider list is limited to `openai` / `azureOpenAI` (no native Vertex/Gemini provider), so a Vertex backend must speak back as an OpenAI-compatible endpoint | Native on the Grafana Cloud SaaS plane; also reachable from a self-managed instance via a one-click connection to Cloud |
+| Availability in this repo | oss only (this section) | Not deployed by this repo — Cloud-native; a `grafana-cloud`-mode cluster gets it for free from the SaaS plane, hence the no-op |
+
+References: [LLM plugin for Grafana](https://grafana.com/grafana/plugins/grafana-llm-app/) · [Enable LLM features](https://grafana.com/docs/plugins/grafana-ml-app/latest/llm/llm-setup/) · [Introduction to Grafana AI](https://grafana.com/docs/plugins/grafana-ml-app/latest/intro/) · [Grafana Assistant](https://grafana.com/products/cloud/ai-observability/)
+
 ```mermaid
 %%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%
 flowchart LR
@@ -950,6 +959,41 @@ Operational notes: the plugin settings are **file-provisioned** (Grafana persist
 > **Why oss only (decision, 2026-07-10).** The managed backends were fully implemented — Azure OpenAI account (key-auth disabled, custom subdomain, gpt-5.4 deployments) + `Cognitive Services OpenAI User` for the AMG managed identity, and an invoke-only Bedrock policy (Claude) on the Amazon Managed Grafana workspace role — and then **deliberately removed**: verification against the plugin source showed `grafana-llm-app` has **no managed-identity auth for Azure** and **no Bedrock provider at all**, with **no roadmap commitment** upstream (Bedrock request [grafana-llm-app#827](https://github.com/grafana/grafana-llm-app/issues/827) unanswered; no Azure MI issue exists; native Vertex is [#952](https://github.com/grafana/grafana-llm-app/issues/952)). The only workaround — a **public, Gateway-exposed LiteLLM endpoint** the SaaS Grafanas could reach — was rejected to avoid new internet-facing surface. Keeping dead "staged" cloud config whose model pins rot was worse than removing it: recover the implementation from git history if the plugin ever gains native keyless support (at which point Azure/AWS become a config-only re-add). If #952 lands, even the oss LiteLLM hop can be retired.
 
 No new GitHub secrets, no committed credentials: the only "key" in the chain is the literal dummy string `keyless-vertex-ai` the plugin requires as non-empty and LiteLLM ignores.
+
+## Grafana Graft chat (the "open and ask" sidebar) — opt-in, oss only
+
+The `grafana-llm-app` plugin above is **backend infrastructure**: it has *no chat UI of its own* — it only powers AI features other plugins call (see [the LLM-app-vs-Assistant table](#grafana-llm-app-ai-assistant--opt-in-keyless-oss-only)). To get a real **conversational "open and ask" sidebar** in oss — the closest equivalent to Grafana Cloud's Grafana Assistant — this repo offers a **second, separate** opt-in flag: **`observability.graft.enabled`** (default **false**, per-run override `JENKINS2026_OBS_GRAFT_ENABLED`).
+
+It installs **[Graft](https://github.com/vikshana/vikshana-graft-app)** (`vikshana-graft-app`), a community AI-assistant plugin that adds a natural-language chat sidebar over dashboards/metrics/logs/traces/alerts. **Graft reuses `grafana-llm-app` as its model backend**, so it inherits the exact same **keyless, in-cluster** chain (LiteLLM → Vertex AI) — nothing new leaves the cluster. Because of that dependency the flag **requires `observability.llm.enabled=true`** (`config.sh` fails fast with a clear message if Graft is on but the LLM app is off).
+
+```mermaid
+%%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%
+flowchart LR
+  USER(("User"))
+  subgraph CL["GKE — observability namespace"]
+    GRAFT["Graft chat sidebar<br/>(vikshana-graft-app, unsigned)"]
+    LLMAPP["grafana-llm-app 1.0.8<br/>(model backend)"]
+    LITELLM["LiteLLM → Vertex AI<br/>(keyless, in-cluster)"]
+  end
+  USER -->|"HTTPS + IAP, ask in natural language"| GRAFT
+  GRAFT -->|"@grafana/llm API"| LLMAPP
+  LLMAPP --> LITELLM
+```
+
+**How the pieces land** (opt-in, oss-only, gated on the flag):
+
+| Piece | Owner | Mechanism |
+|---|---|---|
+| `vikshana-graft-app` plugin install | [`values-oss-graft.yaml`](../observability/grafana/values-oss-graft.yaml) overlay (layered by the `observability-oss` app-of-apps when `03-observability.sh` passes `graftEnabled=true`) | A **fail-open init container** pulls the **latest GitHub release** into the Grafana plugins volume; `grafana.ini` `allow_loading_unsigned_plugins` lets Grafana load it |
+| Auto-update to new releases | [`scripts/08.9-grafana-graft.sh`](../scripts/08.9-grafana-graft.sh) | A **CronJob** (schedule `observability.graft.autoUpdateSchedule`, default every 6h) polls the GitHub releases API and rolls Grafana — re-pulling the latest — when a newer tag appears (+ its RBAC + a state ConfigMap). Retired symmetrically on flag-off / mode switch |
+
+Three design points that matter (all requested deliberately):
+
+- **Always the latest stable release.** Graft is not version-pinned — the init container fetches the newest GitHub release at pod start and the CronJob auto-updates on new releases. This is a **deliberate exception to the version-pinning policy** — see [602. Version Pinning](./602-VERSION_PINNING.md).
+- **Resilient — Grafana works without Graft.** Graft is installed as a plain **filesystem plugin via a fail-open init container**, *not* via the fatal `GF_PLUGINS_PREINSTALL_SYNC` path (that crash-looped Grafana in an earlier LLM-app bug). Every failure path in the init container `exit 0`s, so a GitHub outage / rate-limit / missing asset just means Grafana **starts without the chat** rather than crash-looping.
+- **Trade-offs (accepted).** Graft is a **community, AGPL-3.0, unsigned** plugin (single maintainer), **not in the Grafana catalog** — hence the init-container install + `allow_loading_unsigned_plugins`. It adds a trust/supply-chain surface and needs egress to GitHub (the observability namespace already has open egress). It is opt-in and off by default.
+
+> **Why not Grafana Assistant self-managed (the "Option A" that was considered and dropped).** Since April 2026 the official **Grafana Assistant** (`grafana-assistant-app`) *can* run in self-managed Grafana — but it is **deliberately not offered here**. It requires a **Grafana Cloud account** and an outbound connection to the Grafana Cloud SaaS plane, which **breaks the whole point of `oss` mode** (in-cluster, no SaaS dependency, keyless); and its setup ends in an **interactive one-click "Connect to Grafana Cloud" OAuth flow that cannot be scripted**, so it could never fully converge in a Day1 run the way every other flag does. If you *want* the official Assistant, run `observability.mode=grafana-cloud` (where it is native on the SaaS plane) or connect a self-managed instance to Grafana Cloud by hand per [Grafana's docs](https://grafana.com/docs/grafana-cloud/machine-learning/assistant/get-started/self-managed/) — that is out of scope for the in-cluster oss stack by design.
 
 ## Observability Modes
 

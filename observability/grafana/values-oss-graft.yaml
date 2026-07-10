@@ -1,0 +1,88 @@
+# Grafana Graft chat overlay (kube-prometheus-stack values) - layered ON TOP of
+# values-oss.yaml (later valueFiles win) by the observability-oss app-of-apps ONLY
+# when the opt-in observability.graft.enabled feature is on (AND observability.llm
+# .enabled, enforced by config.sh - Graft uses grafana-llm-app as its backend).
+#
+# What it adds: the community `vikshana-graft-app` plugin - a natural-language CHAT
+# sidebar over your observability data (the visible "open and ask" UI the bare
+# grafana-llm-app plugin doesn't ship). See docs/301 § Grafana Graft chat.
+#
+# WHY an init container and NOT the `plugins:` preinstall list (like the LLM app):
+#   1. Graft is NOT in the Grafana catalog, so GF_PLUGINS_PREINSTALL can't fetch
+#      it - it's distributed only as a GitHub release archive.
+#   2. GF_PLUGINS_PREINSTALL_SYNC is FATAL on failure (it crash-looped Grafana in
+#      #628). Installing Graft as a plain filesystem plugin via a FAIL-OPEN init
+#      container means a download failure just logs and Grafana STILL STARTS
+#      without Graft - the resilience requirement.
+#   3. "Always the latest stable release": the init resolves the newest GitHub
+#      release at pod start (a deliberate exception to the docs/602 pinning
+#      policy); scripts/08.9-grafana-graft.sh's CronJob rolls Grafana when a newer
+#      release appears so it auto-updates.
+#
+# Graft is UNSIGNED (community, AGPL-3.0), so Grafana must be told to load it.
+grafana:
+  # Deep-merges over values-oss.yaml's grafana.ini (maps merge; only the new
+  # `plugins` key is added - server/auth.proxy/users are untouched).
+  grafana.ini:
+    plugins:
+      allow_loading_unsigned_plugins: vikshana-graft-app
+
+  # Runs BEFORE the Grafana container, writing the plugin into the SAME `storage`
+  # volume Grafana uses for /var/lib/grafana (persistence is off - it's an
+  # emptyDir), so Graft lands in /var/lib/grafana/plugins alongside the
+  # grafana-llm-app the main container preinstalls there. Root (uid 0) only for
+  # `apk add`; it writes world-readable plugin files the grafana uid (472) reads.
+  # FAIL-OPEN by design: every failure path `exit 0` so Grafana starts even when
+  # GitHub is unreachable/rate-limited - Grafana is resilient without Graft.
+  extraInitContainers:
+    - name: graft-installer
+      image: alpine:3.20
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          set -u
+          PLUGIN_ID="vikshana-graft-app"
+          REPO="vikshana/vikshana-graft-app"
+          DEST="/var/lib/grafana/plugins"
+          API="https://api.github.com/repos/${REPO}/releases/latest"
+          echo "[graft-installer] installing latest ${PLUGIN_ID} (fail-open)…"
+          apk add --no-cache curl jq unzip >/dev/null 2>&1 \
+            || { echo "[graft-installer] apk failed — Grafana will start WITHOUT Graft"; exit 0; }
+          META="$(curl -fsSL --max-time 30 "${API}" 2>/dev/null)" \
+            || { echo "[graft-installer] release API unreachable — skipping"; exit 0; }
+          TAG="$(printf '%s' "${META}" | jq -r '.tag_name // empty')"
+          URL="$(printf '%s' "${META}" | jq -r '[.assets[]?.browser_download_url | select(test("\\.zip$"))][0] // empty')"
+          if [ -z "${URL}" ]; then echo "[graft-installer] no .zip asset in latest release — skipping"; exit 0; fi
+          mkdir -p "${DEST}"
+          echo "[graft-installer] downloading ${TAG} from ${URL}"
+          curl -fsSL --max-time 120 -o /tmp/graft.zip "${URL}" \
+            || { echo "[graft-installer] download failed — skipping"; exit 0; }
+          rm -rf "${DEST}/${PLUGIN_ID}"
+          unzip -oq /tmp/graft.zip -d "${DEST}" \
+            || { echo "[graft-installer] unzip failed — skipping"; exit 0; }
+          # Some releases wrap the plugin in a top-level dir; normalise so the
+          # plugin ends up at plugins/<id>/plugin.json.
+          if [ ! -f "${DEST}/${PLUGIN_ID}/plugin.json" ]; then
+            SRC="$(find "${DEST}" -maxdepth 3 -name plugin.json 2>/dev/null | xargs -r -n1 dirname | grep "${PLUGIN_ID}" | head -1)"
+            if [ -n "${SRC}" ] && [ "${SRC}" != "${DEST}/${PLUGIN_ID}" ]; then
+              rm -rf "${DEST}/${PLUGIN_ID}"; cp -r "${SRC}" "${DEST}/${PLUGIN_ID}" 2>/dev/null || true
+            fi
+          fi
+          if [ -f "${DEST}/${PLUGIN_ID}/plugin.json" ]; then
+            echo "[graft-installer] installed Graft ${TAG} → ${DEST}/${PLUGIN_ID}"
+          else
+            echo "[graft-installer] plugin.json not found after extract — Grafana starts WITHOUT Graft"
+          fi
+          exit 0
+      securityContext:
+        # Root only for the in-init apk; the container is ephemeral (init) and
+        # writes read-only plugin files. Overrides the pod's non-root default.
+        runAsNonRoot: false
+        runAsUser: 0
+        allowPrivilegeEscalation: false
+      volumeMounts:
+        # The grafana subchart's volume for /var/lib/grafana is named `storage`
+        # (emptyDir when persistence.enabled=false). Sharing it lets the init
+        # pre-seed plugins/ before the main container's own preinstall runs.
+        - name: storage
+          mountPath: /var/lib/grafana

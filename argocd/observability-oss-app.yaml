@@ -37,6 +37,12 @@ spec:
         # overlay (values-oss-llm.yaml); flipping it off self-heals the plugin away.
         - name: llmEnabled
           value: '{{llmEnabled}}'
+        # "true"/"false" from J2026_OBS_GRAFT_ENABLED (observability.graft.enabled).
+        # When true the kube-prometheus-stack child layers the Graft overlay
+        # (values-oss-graft.yaml: fail-open plugin-installer init container +
+        # allow_loading_unsigned_plugins); flipping it off self-heals it away.
+        - name: graftEnabled
+          value: '{{graftEnabled}}'
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

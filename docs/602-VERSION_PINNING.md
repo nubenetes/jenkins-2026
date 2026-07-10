@@ -6,7 +6,7 @@
 
 Every external dependency this project pulls — Helm charts, container images, CLI
 tools, GitHub Actions, Terraform providers — is **pinned to an exact version**, with
-**one deliberate exception (ArgoCD)** and a short list of known residuals (see
+**two deliberate exceptions (ArgoCD, and the opt-in Graft chat plugin)** and a short list of known residuals (see
 [Known residuals](#known-residuals)). The goal: a re-run of `Day1.cluster.01` (or
 `scripts/up.sh` locally) deploys the *same* bits every time, so behaviour is
 reproducible and a moving upstream tag can never silently break or change the stack.
@@ -42,6 +42,7 @@ This isn't theoretical — **every floating version here has bitten us at least 
 | **Jenkins** chart | `5.9.32` | `config/config.yaml` `jenkins.chart.version` | ArgoCD `targetRevision` ([`jenkins-app.yaml`](../argocd/jenkins-app.yaml)) |
 | **Jenkins plugins** (full set, exact) | per [`helm/jenkins/values-common.yaml`](../helm/jenkins/values-common.yaml) `controller.installPlugins` | same file | `jenkins-plugin-cli`-resolved against `controller.image.tag`; **bump deliberately** — incl. for security advisories (see below) |
 | **ArgoCD** *(policy)* | **latest stable `3.4.x`** + chart `9.5.22` | `config/config.yaml` `argocd.version_constraint` + `chartVersion` | runtime resolve + daily watcher — see below |
+| **Graft chat plugin** *(exception)* | **latest GitHub release — NOT pinned** | opt-in `config.yaml` `observability.graft.enabled` (off by default) | Fail-open init container fetches the newest release at pod start + `08.9` auto-update CronJob. **Deliberate exception**, requested behaviour, oss-only — see [301. Observability](./301-OBSERVABILITY.md) § Grafana Graft chat |
 | **OTel operator** chart | `0.117.0` | `config.yaml` `observability.otelOperator.chart.version` | `helm --version` in [`02-otel-operator.sh`](../scripts/02-otel-operator.sh) |
 | **OTel collector** chart | `0.159.0` | `config.yaml` `observability.otelCollector.chart.version` | `helm --version` in [`03-observability.sh`](../scripts/03-observability.sh) |
 | **grafana/k8s-monitoring** | `4.2.0` | `03-observability.sh` (`--version`) | grafana-cloud mode only |

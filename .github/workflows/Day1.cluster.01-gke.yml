@@ -77,6 +77,11 @@ on:
         required: false
         default: false
         type: boolean
+      graft_enabled:
+        description: "Opt-in Grafana Graft chat (observability.graft.enabled — docs/301): installs the community vikshana-graft-app AI CHAT sidebar over the LLM app — the visible 'open and ask' UI the bare LLM plugin lacks. oss mode ONLY and REQUIRES llm_enabled=true (Graft uses grafana-llm-app as its model backend; the run FAILS fast if graft is on but llm is off). UNSIGNED community plugin, installed fail-open (Grafana still starts if the download fails) and auto-updated to the latest release by a CronJob. OFF by default. Overrides config.yaml for this run."
+        required: false
+        default: false
+        type: boolean
       git_ref:
         description: "Git branch, tag, or SHA to check out (leave empty to use the branch/tag selected in 'Use workflow from' above)"
         required: false
@@ -150,6 +155,10 @@ on:
         required: false
         default: false
         type: boolean
+      graft_enabled:
+        required: false
+        default: false
+        type: boolean
       git_ref:
         required: false
         default: ""
@@ -193,6 +202,11 @@ env:
   # form is authoritative and config.yaml's durable default is the LOCAL fallback
   # (test/e2e.sh, where the env is unset → config.sh reads config.yaml).
   JENKINS2026_OBS_LLM_ENABLED: ${{ inputs.llm_enabled }}
+  # Opt-in Grafana Graft chat (observability.graft.enabled, oss + requires the LLM
+  # app — docs/301). Inherited by config.sh in the up.sh step (03 overlay +
+  # 08.9 auto-update CronJob); no GCP resources, so no TF_VAR. Always set
+  # (true/false) so in CI the form is authoritative, like llm_enabled/backend_tls.
+  JENKINS2026_OBS_GRAFT_ENABLED: ${{ inputs.graft_enabled }}
   TF_VERSION: "1.15.6"
   # Surfaced as env so the managed-aws dashboard-publish steps can skip cleanly
   # (secrets can't be used in `if:`) when the role hasn't been set up yet.
