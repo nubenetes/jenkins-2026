@@ -1017,6 +1017,8 @@ The Assistant connects to a **Grafana Cloud stack** using a **Grafana Cloud cred
 | `GRAFANA_CLOUD_ASSISTANT_INSTANCE_ID` | Your stack's numeric instance ID | same panel |
 | `GRAFANA_CLOUD_ASSISTANT_TOKEN` | A **service-account token** | Grafana Cloud → *Administration → Users and access → Service accounts → Add token* |
 
+**Copy-paste procedure** (the exact `gh secret set` commands — bash *and* PowerShell — plus how to grab each value): **[103. Secrets Inventory § Grafana Cloud](./103-GITHUB_SECRETS_INVENTORY.md)**. You don't need dummy values — leaving them unset is the valid "pending" state and never fails the run.
+
 **The Google-identity question, answered:** the account you use to log into this **OSS Grafana (via IAP)** is *irrelevant* to the Assistant connection — different planes. It is fine that your **Grafana Cloud** account is a *different* Google identity: you log into grafana.com with whatever owns the Cloud stack, mint a service-account token there, and feed the three values above. The OSS Grafana's users don't have to match. **Reuse your existing Grafana Cloud stack** (e.g. the one from `observability.mode=grafana-cloud`).
 
 ### How the pieces land (opt-in, oss-only)
