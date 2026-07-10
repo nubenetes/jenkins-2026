@@ -101,6 +101,15 @@ esac
 log_step "Configuring the Grafana LLM app (08.8, opt-in, oss only)"
 "${SCRIPT_DIR}/08.8-grafana-llm.sh" || log_warn "Grafana LLM app provisioning reported an issue (see above) — non-fatal"
 
+# Grafana Graft chat (OPT-IN via observability.graft.enabled, default false, oss
+# only, requires the LLM app - docs/301): the community vikshana-graft-app chat
+# sidebar. The plugin install rides the oss app-of-apps overlay (03 above); this
+# applies its auto-update CronJob + RBAC. Retires leftovers and no-ops when the
+# flag is off or the mode is not oss. Non-fatal: an optional feature never wedges
+# a provision, and Grafana stays resilient without Graft (fail-open init container).
+log_step "Configuring the Grafana Graft chat (08.9, opt-in, oss only)"
+"${SCRIPT_DIR}/08.9-grafana-graft.sh" || log_warn "Grafana Graft chat provisioning reported an issue (see above) — non-fatal"
+
 "${SCRIPT_DIR}/08-headlamp.sh"
 "${SCRIPT_DIR}/09-gateway.sh"
 

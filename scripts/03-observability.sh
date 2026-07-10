@@ -407,11 +407,15 @@ EOT
     # (values-oss-llm.yaml); the LiteLLM gateway + provisioning ConfigMap the
     # plugin talks to are applied later by 08.8-grafana-llm.sh (the overlay's
     # ConfigMap mount is optional=true, so ordering can't deadlock).
+    # Grafana Graft chat (observability.graft.enabled, requires the LLM app):
+    # when true, layers values-oss-graft.yaml (fail-open plugin-installer init
+    # container); the auto-update CronJob is applied later by 08.9-grafana-graft.sh.
     sed "s@{{repoUrl}}@${REPO_URL}@g;
          s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g;
          s@{{ciEngine}}@${J2026_CI_ENGINE}@g;
          s@{{backendTls}}@${OSS_BACKEND_TLS}@g;
-         s@{{llmEnabled}}@${J2026_OBS_LLM_ENABLED}@g" \
+         s@{{llmEnabled}}@${J2026_OBS_LLM_ENABLED}@g;
+         s@{{graftEnabled}}@${J2026_OBS_GRAFT_ENABLED}@g" \
         "${J2026_ROOT_DIR}/argocd/observability-oss-app.yaml" > "${OSS_APP_FILE}"
     kubectl apply -f "${OSS_APP_FILE}"
     rm "${OSS_APP_FILE}"
