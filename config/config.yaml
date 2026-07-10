@@ -439,9 +439,10 @@ observability:
 
   # ---------------------------------------------------------------------------
   # Grafana Graft chat (open-source AI chat sidebar) - OPT-IN, default false,
-  # oss mode ONLY, REQUIRES observability.llm.enabled
+  # oss mode ONLY, AUTO-ENABLES observability.llm.enabled (its model backend)
   # ---------------------------------------------------------------------------
-  # When true (and observability.mode=oss AND observability.llm.enabled=true),
+  # When true (and observability.mode=oss - it AUTO-ENABLES observability.llm
+  # .enabled if you left it false, since grafana-llm-app is its model backend),
   # installs the community `vikshana-graft-app` plugin: a natural-language CHAT
   # sidebar ("open and ask") over your dashboards/metrics/logs/traces/alerts.
   # It is the visible conversational UI the bare grafana-llm-app plugin does NOT

@@ -1,7 +1,8 @@
 # Grafana Graft chat overlay (kube-prometheus-stack values) - layered ON TOP of
 # values-oss.yaml (later valueFiles win) by the observability-oss app-of-apps ONLY
-# when the opt-in observability.graft.enabled feature is on (AND observability.llm
-# .enabled, enforced by config.sh - Graft uses grafana-llm-app as its backend).
+# when the opt-in observability.graft.enabled feature is on (observability.llm
+# .enabled is AUTO-ENABLED by config.sh when Graft is on - Graft uses
+# grafana-llm-app as its model backend).
 #
 # What it adds: the community `vikshana-graft-app` plugin - a natural-language CHAT
 # sidebar over your observability data (the visible "open and ask" UI the bare
