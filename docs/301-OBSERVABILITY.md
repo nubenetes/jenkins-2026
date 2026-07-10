@@ -916,6 +916,41 @@ flowchart LR
 
 In `oss` mode, Grafana is exposed at `https://grafana.<baseDomain>` behind Google IAP — using the **same** OAuth client as the other apps. IAP authenticates the user and forwards their identity in `X-Goog-Authenticated-User-Email`; Grafana's `auth.proxy` trusts that header, auto-creates the user, and grants Admin.
 
+## Grafana LLM app (AI assistant) — opt-in, keyless, oss only
+
+`observability.llm.enabled` (default **false**, per-run override `JENKINS2026_OBS_LLM_ENABLED`) turns on Grafana's AI features in **`observability.mode=oss`**: the official **[`grafana-llm-app`](https://grafana.com/grafana/plugins/grafana-llm-app/)** plugin (pinned `1.0.8`), backed by **Google Vertex AI Gemini** through an in-cluster **LiteLLM** proxy — with **no static API key anywhere** and **no new public surface**.
+
+> **LLM app ≠ Grafana Assistant.** The plugin enables Grafana's built-in AI features (explain flame graphs, panel title/description generation, and the `@grafana/llm` API other plugins consume). The polished conversational **Grafana Assistant** is **Grafana Cloud-only** (SaaS plane) — which is exactly why `grafana-cloud` mode is a deliberate no-op for this flag.
+
+```mermaid
+%%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%
+flowchart LR
+  USER(("User"))
+  subgraph CL["GKE — observability namespace (default-deny NetworkPolicy)"]
+    GRAF["Grafana OSS<br/>plugin grafana-llm-app 1.0.8<br/>(values-oss-llm.yaml overlay)"]
+    LLM["LiteLLM proxy<br/>litellm-service:4000<br/>KSA grafana-llm-sa"]
+  end
+  VERTEX["Vertex AI<br/>gemini-3.5-flash (base)<br/>gemini-3.1-pro-preview (large)"]
+
+  USER -->|"HTTPS + IAP"| GRAF
+  GRAF -->|"OpenAI protocol, ClusterIP<br/>(never leaves the cluster;<br/>dummy key, ignored)"| LLM
+  LLM -->|"Workload Identity → GSA grafana-llm-gsa<br/>roles/aiplatform.user — egress only, NO key"| VERTEX
+```
+
+**How the pieces land** (all gated on the one flag — the docs/104 single-source pattern):
+
+| Piece | Owner | Mechanism |
+|---|---|---|
+| GSA `grafana-llm-gsa` + `roles/aiplatform.user` + WI binding to `observability/grafana-llm-sa` | [`terraform/gke`](../terraform/gke) | `count`-gated on `TF_VAR_observability_llm_enabled` (exported from the flag by `config.sh`/`test/e2e.sh`/Day1, names included so a rename can't desync the binding) |
+| `grafana-llm-app 1.0.8` plugin install + provisioning-ConfigMap mount | [`values-oss-llm.yaml`](../observability/grafana/values-oss-llm.yaml) overlay | Layered by the `observability-oss` app-of-apps only when `03-observability.sh` passes `llmEnabled=true`; flag off → ArgoCD self-heals the plugin away |
+| LiteLLM Deployment/Service/SA + `grafana-llm-provisioning` ConfigMap | [`scripts/08.8-grafana-llm.sh`](../scripts/08.8-grafana-llm.sh) | Script-managed companions (same pattern as `grafana-runtime-config`); symmetric retire on flag-off **and** on any mode switch |
+
+Operational notes: the plugin settings are **file-provisioned** (Grafana persistence is off in oss — API-pushed settings would vanish on restart); the ConfigMap is mounted as a whole **directory** with `optional: true` (a `subPath` of a not-yet-created optional ConfigMap wedges pod start); `08.8` restarts Grafana only when the provisioning content actually changed (hash-gated). LiteLLM maps the plugin's OpenAI model names (`gpt-3.5-turbo`/`gpt-4o-mini` → base, `gpt-4`/`gpt-4o` → large) onto the Vertex models in `config.yaml` (`observability.llm.gcp.models`, `vertexLocation: global` — the only location serving the whole current Gemini lineup). Bumping a model is a config-only change; **verify the model is live first** (the Gemini 1.5/2.5 series are retired/deprecating — pins in this repo carry a `verified <date>` comment).
+
+> **Why oss only (decision, 2026-07-10).** The managed backends were fully implemented — Azure OpenAI account (key-auth disabled, custom subdomain, gpt-5.4 deployments) + `Cognitive Services OpenAI User` for the AMG managed identity, and an invoke-only Bedrock policy (Claude) on the Amazon Managed Grafana workspace role — and then **deliberately removed**: verification against the plugin source showed `grafana-llm-app` has **no managed-identity auth for Azure** and **no Bedrock provider at all**, with **no roadmap commitment** upstream (Bedrock request [grafana-llm-app#827](https://github.com/grafana/grafana-llm-app/issues/827) unanswered; no Azure MI issue exists; native Vertex is [#952](https://github.com/grafana/grafana-llm-app/issues/952)). The only workaround — a **public, Gateway-exposed LiteLLM endpoint** the SaaS Grafanas could reach — was rejected to avoid new internet-facing surface. Keeping dead "staged" cloud config whose model pins rot was worse than removing it: recover the implementation from git history if the plugin ever gains native keyless support (at which point Azure/AWS become a config-only re-add). If #952 lands, even the oss LiteLLM hop can be retired.
+
+No new GitHub secrets, no committed credentials: the only "key" in the chain is the literal dummy string `keyless-vertex-ai` the plugin requires as non-empty and LiteLLM ignores.
+
 ## Observability Modes
 
 | Mode | Metrics | Traces | Logs | Grafana UI |

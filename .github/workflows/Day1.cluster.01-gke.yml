@@ -489,6 +489,15 @@ jobs:
           # (nodeAutoProvisioning.enabled), derived here so cluster-level NAP can never
           # desync from the in-cluster ComputeClass wiring that up.sh applies later.
           export TF_VAR_enable_node_autoprovisioning="$(yq '.nodeAutoProvisioning.enabled // true' ../../config/config.yaml)"
+          # Grafana LLM app toggle (observability.llm.enabled): same single-source
+          # pattern — also drives the grafana-llm GSA + Workload Identity binding, so
+          # the cloud IAM can't desync from the in-cluster wiring (08.8-grafana-llm.sh).
+          export TF_VAR_observability_llm_enabled="$(yq '.observability.llm.enabled // false' ../../config/config.yaml)"
+          # The GSA/KSA identity names + namespace flow in too (the WI binding is
+          # keyed on them), so a config.yaml rename can't silently break the binding.
+          export TF_VAR_grafana_llm_gsa_account_id="$(yq '.observability.llm.gcp.googleServiceAccount // "grafana-llm-gsa"' ../../config/config.yaml)"
+          export TF_VAR_grafana_llm_ksa_namespace="$(yq '.observability.namespace // "observability"' ../../config/config.yaml)"
+          export TF_VAR_grafana_llm_ksa_name="$(yq '.observability.llm.gcp.kubernetesServiceAccount // "grafana-llm-sa"' ../../config/config.yaml)"
           terraform apply -auto-approve -input=false
 
       - name: Fetch kubeconfig credentials

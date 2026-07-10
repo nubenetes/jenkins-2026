@@ -32,6 +32,11 @@ spec:
         # without the overlay and ArgoCD self-heals Grafana back to plain HTTP.
         - name: backendTls
           value: '{{backendTls}}'
+        # "true"/"false" from J2026_OBS_LLM_ENABLED (observability.llm.enabled).
+        # When true the kube-prometheus-stack child layers the grafana-llm-app
+        # overlay (values-oss-llm.yaml); flipping it off self-heals the plugin away.
+        - name: llmEnabled
+          value: '{{llmEnabled}}'
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

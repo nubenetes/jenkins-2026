@@ -47,6 +47,7 @@ mindmap
       OpenTelemetry
       oss · grafana-cloud
       managed-azure · managed-aws
+      AI assistant opt-in (oss)
     Platform
       Gateway API + IAP
       Dataplane V2 + WireGuard
@@ -172,6 +173,7 @@ flowchart TB
           GCLOUD["grafana-cloud<br/>Mimir/Tempo/Loki · Alloy"]:::bk2
           AZ["managed-azure<br/>azuremonitor · Entra SP (oauth2client)"]:::bk3
           AWS["managed-aws<br/>xray+cloudwatch · keyless OIDC"]:::bk4
+          LLMAI["Grafana LLM app (opt-in · off)<br/>LiteLLM → Vertex Gemini · WIF keyless"]:::dev
       end
       subgraph AEDGE["Public CI webhooks (HMAC · NO IAP)"]
         direction TB
@@ -226,6 +228,7 @@ flowchart TB
     GWAPP -. "stdout" .-> COLL
     COLG -->|"exactly ONE active"| OSS & GCLOUD & AZ & AWS
     COLL --> OSS & GCLOUD & AZ & AWS
+    OSS -. "AI assistant (llm.enabled · oss only)" .-> LLMAI
 
     PUSH -. "seed values (eso)" .-> SM
     OPS -->|"ESO · keyless WIF"| SM

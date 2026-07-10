@@ -33,6 +33,14 @@ spec:
           # valueFiles win, so this merges over values-oss.yaml.
           - $values/observability/grafana/values-oss-backend-tls.yaml
           {{- end }}
+          {{- if eq (.Values.llmEnabled | toString) "true" }}
+          # Grafana LLM app active (observability.llm.enabled): install the
+          # grafana-llm-app plugin and mount the script-managed provisioning
+          # ConfigMap that points it at the in-cluster LiteLLM gateway
+          # (scripts/08.8-grafana-llm.sh). Dropped when the flag is off, so
+          # ArgoCD self-heals Grafana back to the plugin-free posture.
+          - $values/observability/grafana/values-oss-llm.yaml
+          {{- end }}
         {{- if eq (.Values.backendTls | toString) "true" }}
         parameters:
           - name: grafana.additionalDataSources[3].url

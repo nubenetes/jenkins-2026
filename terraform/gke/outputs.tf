@@ -23,3 +23,8 @@ output "endpoint" {
   value       = google_container_cluster.this.endpoint
   sensitive   = true
 }
+
+output "grafana_llm_gsa_email" {
+  description = "Email of the Grafana LLM GSA the LiteLLM KSA is annotated with (iam.gke.io/gcp-service-account). Empty when observability.llm.enabled is off."
+  value       = var.observability_llm_enabled ? google_service_account.grafana_llm[0].email : ""
+}

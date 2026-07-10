@@ -340,6 +340,52 @@ export J2026_GRAFANA_OSS_NAMESPACE="$(yq_get '.observability.grafana.ossNamespac
 export J2026_AZURE_MONITOR_SECRET="$(yq_get '.observability.managed.azure.credentialsSecretName' 'azure-monitor-credentials')"
 export J2026_AWS_MANAGED_SECRET="$(yq_get '.observability.managed.aws.credentialsSecretName' 'aws-managed-credentials')"
 
+# --- grafana LLM app (feature flag, oss mode only) ----------------------------
+# FEATURE FLAG: JENKINS2026_OBS_LLM_ENABLED overrides observability.llm.enabled
+# for a single run - same durable-default/ephemeral-override pattern as
+# JENKINS2026_OBS_MODE. When true (and observability.mode=oss), the
+# grafana-llm-app plugin is provisioned in the in-cluster Grafana, wired to
+# Vertex AI via the LiteLLM gateway + Workload Identity (keyless, no new public
+# surface). grafana-cloud -> no-op (native assistant); managed-* -> no-op by
+# decision (docs/301 § Grafana LLM app - the plugin has no keyless path to the
+# managed clouds). Consumed by scripts/08.8-grafana-llm.sh (apply/retire),
+# 03-observability.sh, and exported to Terraform below.
+J2026_OBS_LLM_ENABLED="${JENKINS2026_OBS_LLM_ENABLED:-$(yq_get '.observability.llm.enabled' 'false')}"
+export J2026_OBS_LLM_ENABLED
+case "${J2026_OBS_LLM_ENABLED}" in
+  true|false) ;;
+  *)
+    log_error "Invalid observability.llm.enabled '${J2026_OBS_LLM_ENABLED}' (expected true|false)."
+    log_error "Set observability.llm.enabled in ${J2026_CONFIG_FILE} or export JENKINS2026_OBS_LLM_ENABLED."
+    exit 1
+    ;;
+esac
+
+# Single source of truth for the cloud-side trust chain: the SAME flag drives
+# the Terraform toggle (terraform/gke grafana-llm GSA + WI binding), so the
+# in-cluster wiring and the cloud IAM can never desync - same pattern as
+# TF_VAR_enable_node_autoprovisioning.
+export TF_VAR_observability_llm_enabled="${J2026_OBS_LLM_ENABLED}"
+
+# oss mode (Vertex AI via LiteLLM). The GSA/KSA names are the WI-binding key -
+# keep in sync with terraform/gke/variables.tf if renamed.
+export J2026_OBS_LLM_GSA="$(yq_get '.observability.llm.gcp.googleServiceAccount' 'grafana-llm-gsa')"
+export J2026_OBS_LLM_KSA="$(yq_get '.observability.llm.gcp.kubernetesServiceAccount' 'grafana-llm-sa')"
+export J2026_OBS_LLM_VERTEX_LOCATION="$(yq_get '.observability.llm.gcp.vertexLocation' 'global')"
+export J2026_OBS_LLM_MODEL_BASE="$(yq_get '.observability.llm.gcp.models.base' 'gemini-3.5-flash')"
+export J2026_OBS_LLM_MODEL_LARGE="$(yq_get '.observability.llm.gcp.models.large' 'gemini-3.1-pro-preview')"
+export J2026_OBS_LLM_LITELLM_IMAGE="$(yq_get '.observability.llm.litellm.image' 'ghcr.io/berriai/litellm')"
+export J2026_OBS_LLM_LITELLM_VERSION="$(yq_get '.observability.llm.litellm.version' 'v1.91.1')"
+export J2026_OBS_LLM_LITELLM_SERVICE="$(yq_get '.observability.llm.litellm.serviceName' 'litellm-service')"
+export J2026_OBS_LLM_LITELLM_PORT="$(yq_get '.observability.llm.litellm.servicePort' '4000')"
+# The GSA/KSA identity names + namespace also flow into terraform/gke (the
+# Workload Identity binding is keyed on them), so a rename in config.yaml can
+# never silently diverge from the cloud-side binding - same single-source
+# doctrine as TF_VAR_observability_llm_enabled above.
+export TF_VAR_grafana_llm_gsa_account_id="${J2026_OBS_LLM_GSA}"
+export TF_VAR_grafana_llm_ksa_namespace="${J2026_OBS_NAMESPACE}"
+export TF_VAR_grafana_llm_ksa_name="${J2026_OBS_LLM_KSA}"
+
 # --- headlamp ----------------------------------------------------------------
 
 export J2026_HEADLAMP_NAMESPACE="$(yq_get '.headlamp.namespace' 'headlamp')"

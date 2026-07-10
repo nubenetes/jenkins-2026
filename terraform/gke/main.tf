@@ -12,7 +12,7 @@ locals {
 }
 
 resource "google_project_service" "apis" {
-  for_each = toset([
+  for_each = toset(concat([
     "container.googleapis.com",
     "compute.googleapis.com",
     # Secret Manager backs secrets.backend=eso: up.sh's provision_secret pushes
@@ -30,7 +30,14 @@ resource "google_project_service" "apis" {
     # harmless/unused with the flag off, and re-enabling APIs on demand is too
     # slow for an opt-in flag flipped on an already-running cluster.
     "networksecurity.googleapis.com",
-  ])
+    ],
+    # Vertex AI backs observability.llm.enabled in oss mode (the LiteLLM
+    # gateway calls Gemini serverlessly). Conditional, unlike the two above:
+    # the flag also gates the GSA/WI resources below, and flipping it on
+    # re-runs Day1/terraform anyway, so the slow-enable concern doesn't apply.
+    # disable_on_destroy=false still leaves it enabled on flag-off (harmless).
+    var.observability_llm_enabled ? ["aiplatform.googleapis.com"] : [],
+  ))
 
   project = var.project_id
   service = each.value
@@ -134,6 +141,47 @@ resource "google_service_account_iam_member" "eso_wi" {
   service_account_id = google_service_account.eso.name
   role               = "roles/iam.workloadIdentityUser"
   member             = "serviceAccount:${var.project_id}.svc.id.goog[external-secrets/external-secrets]"
+}
+
+# --- Grafana LLM app identity (observability.llm.enabled, oss mode) -----------
+# Keyless Vertex AI access for the Grafana AI assistant: the in-cluster LiteLLM
+# gateway pod (scripts/08.8-grafana-llm.sh) runs as the KSA below and
+# impersonates this GSA via Workload Identity, so Application Default
+# Credentials reach Gemini with NO static API key. roles/aiplatform.user is the
+# least-privilege serverless-inference role (online predictions only - no
+# tuning/admin). Conditional on the observability.llm.enabled config flag
+# (TF_VAR_observability_llm_enabled, exported by scripts/lib/config.sh) so
+# true->false->true converges cleanly with no orphaned IAM. Unlike the ESO GSA
+# above this is NOT created unconditionally: it grants model inference, which
+# should not exist at all while the feature is off.
+resource "google_service_account" "grafana_llm" {
+  count = var.observability_llm_enabled ? 1 : 0
+
+  project      = var.project_id
+  account_id   = var.grafana_llm_gsa_account_id
+  display_name = "jenkins-2026 Grafana LLM app (Vertex AI via LiteLLM)"
+  # Rebuild-safety: adopt the ~30-day soft-delete tombstone on a Decom+Day1
+  # within the window instead of 409-ing on the fixed account_id. See docs/902.
+  create_ignore_already_exists = true
+}
+
+resource "google_project_iam_member" "grafana_llm_aiplatform" {
+  count = var.observability_llm_enabled ? 1 : 0
+
+  project = var.project_id
+  role    = "roles/aiplatform.user"
+  member  = "serviceAccount:${google_service_account.grafana_llm[0].email}"
+}
+
+# Let the LiteLLM pod's KSA (observability/grafana-llm-sa, created by
+# scripts/08.8-grafana-llm.sh with the matching iam.gke.io/gcp-service-account
+# annotation) impersonate the GSA above.
+resource "google_service_account_iam_member" "grafana_llm_wi" {
+  count = var.observability_llm_enabled ? 1 : 0
+
+  service_account_id = google_service_account.grafana_llm[0].name
+  role               = "roles/iam.workloadIdentityUser"
+  member             = "serviceAccount:${var.project_id}.svc.id.goog[${var.grafana_llm_ksa_namespace}/${var.grafana_llm_ksa_name}]"
 }
 
 # IAM for Headlamp's per-user OIDC->GKE-API access-token passthrough (see

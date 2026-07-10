@@ -18,6 +18,13 @@ ciEngine: jenkins
 # from the cert-manager-minted grafana-tls Secret (08.7). Default false.
 backendTls: false
 
+# Grafana LLM app (opt-in, keyless — observability.llm.enabled): "true"/"false"
+# from J2026_OBS_LLM_ENABLED, passed down from scripts/03-observability.sh via the
+# parent Application's helm parameters. When "true", the oss-kube-prometheus-stack
+# child app layers observability/grafana/values-oss-llm.yaml (grafana-llm-app
+# plugin + the LiteLLM provisioning ConfigMap mount). Default false.
+llmEnabled: false
+
 namespace:
   # Loki + Tempo (and the OTel collectors, which stay script-managed).
   observability: observability

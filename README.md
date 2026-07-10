@@ -94,6 +94,7 @@ mindmap
     (Observability)
       [OpenTelemetry]
       [four Grafana backends]
+      [AI assistant opt-in · oss]
     (Load Testing)
       [k6 traffic engine]
       [profiles + presets]
@@ -170,6 +171,7 @@ flowchart TB
   subgraph OBS["Observability plane — pick one (observability.mode)"]
     op["OTel operator<br/>auto-instrument"] --> col["OTel collector"]
     col --> back[("Grafana: Cloud · OSS · Azure · AWS")]
+    back -. "AI assistant" .-> llmp["grafana-llm-app + LiteLLM → Vertex AI<br/>optional · observability.llm.enabled · oss only"]:::opt
   end
   sec["Zero-trust: Dataplane V2 netpols + WireGuard · Google IAP · keyless WIF/OIDC"]
 
@@ -193,6 +195,7 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 | **CI build-pod placement** | `<engine>.runNodePool` | **`static`** for `jenkins` / `tekton` / `argoworkflows` — the long-lived `jenkins-2026-pool` (robust, no NAP/Spot/quota dependency); **`githubactions` ships `ci-spot`** (single-job ARC runners are ideal Spot workloads) | **`ci-spot`** — the NAP **Spot** ComputeClass (elastic, cheaper; needs `nodeAutoProvisioning` + `SSD_TOTAL_GB` headroom). **Per engine** by pod-scheduling shape: single-pod engines (**Jenkins**, **GitHub Actions/ARC**) are good Spot fits (a preemption just re-runs one idempotent build); shared-workspace engines (**Tekton**, **Argo Workflows**) pin a whole run to one node, so keep them `static`. Per-run overrides `JENKINS2026_{JENKINS,TEKTON,GITHUBACTIONS,ARGOWORKFLOWS}_RUN_NODE_POOL` + a `run_node_pool` input on the four `Day2.redeploy` workflows. See [docs/501](docs/501-PLATFORM_OPERATIONS.md#the-engines-on-spot-ci-spot--why-the-placement-flag-is-per-engine). |
 | **Observability backend** | `observability.mode` | **`grafana-cloud`** *(the GitHub Actions `Day1` input defaults to **`oss`**)* | **`oss`** (in-cluster Grafana / Loki / Tempo / kube-prometheus) · **`managed-azure`** · **`managed-aws`** — exactly one active per cluster; a rerun deterministically switches. The two **managed** backends need a one-time backend setup ([docs/102 § One-time Setup](./docs/102-GITHUB_ACTIONS_AUTOMATION.md#one-time-setup-bootstrapping)) before Day1. |
 | **Secrets backend** | `secrets.backend` | **`imperative`** — `kubectl create secret` from GitHub secrets | **`eso`** — push values to **GCP Secret Manager** + sync via the **External Secrets Operator** over Workload Identity (keyless, versioned, audited). |
+| **AI assistant (Grafana LLM app)** | `observability.llm.enabled` | **`false`** | **`true`** — the official **`grafana-llm-app`** plugin (Grafana's AI features), backed by **Vertex AI Gemini** through an in-cluster **LiteLLM** proxy over keyless **Workload Identity** — no API keys, no new public surface (ClusterIP-internal). **`oss` mode only**: `grafana-cloud`'s assistant is native, and the managed Grafanas have **no keyless path** (deliberate decision — see [docs/301 § Grafana LLM app](docs/301-OBSERVABILITY.md#grafana-llm-app-ai-assistant--opt-in-keyless-oss-only)). Per-run override `JENKINS2026_OBS_LLM_ENABLED`. |
 | **Develop tier** | `microservices.developTrackEnabled` | **`false`** | **`true`** — an optional **lean, non-HA** second deploy tier (`microservices-develop`: CNPG single instance, single pooler, no backups), engine-neutral, into the same observability stack. |
 | **Public access** | `gateway.baseDomain` | **set** → one global **GKE Gateway** + Google **IAP** + a wildcard cert front every UI | **`""`** to disable (reach services via `kubectl port-forward`). |
 | **Grafana Cloud tier** | `observability.grafanaCloudTier` | **`free`** | **`paid`** — a profile that sets the volume-control defaults so the free tier fits its limits. `free` → `leanMetrics` on + `logMinSeverity=warn`; `paid` → full metrics + ship all logs. Per-run override `JENKINS2026_GRAFANA_CLOUD_TIER`; GHA `grafana_cloud_tier` dropdown. Only meaningful in grafana-cloud mode. |
@@ -721,8 +724,9 @@ flowchart TB
         direction TB
           OSS["OSS in-cluster<br/>Prom·Loki·Tempo·Grafana"]:::bk1
           GCLOUD["grafana-cloud<br/>Mimir/Tempo/Loki · Alloy"]:::bk2
-          AZ["managed-azure<br/>azuremonitor · keyless Entra"]:::bk3
+          AZ["managed-azure<br/>azuremonitor · Entra SP (oauth2client)"]:::bk3
           AWS["managed-aws<br/>xray+cloudwatch · keyless OIDC"]:::bk4
+          LLMAI["Grafana LLM app (opt-in · off)<br/>LiteLLM → Vertex Gemini · WIF keyless"]:::dev
       end
       subgraph AEDGE["Public CI webhooks (HMAC · NO IAP)"]
         direction TB
@@ -777,6 +781,7 @@ flowchart TB
     GWAPP -. "stdout" .-> COLL
     COLG -->|"exactly ONE active"| OSS & GCLOUD & AZ & AWS
     COLL --> OSS & GCLOUD & AZ & AWS
+    OSS -. "AI assistant (llm.enabled · oss only)" .-> LLMAI
 
     PUSH -. "seed values (eso)" .-> SM
     OPS -->|"ESO · keyless WIF"| SM
