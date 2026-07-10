@@ -101,6 +101,16 @@ esac
 log_step "Configuring the Grafana LLM app (08.8, opt-in, oss only)"
 "${SCRIPT_DIR}/08.8-grafana-llm.sh" || log_warn "Grafana LLM app provisioning reported an issue (see above) — non-fatal"
 
+# Grafana Assistant (OPT-IN via observability.assistant.enabled, default false,
+# oss only, SaaS-hybrid - docs/301): the official grafana-assistant-app chat. The
+# plugin install rides the oss app-of-apps overlay (03 above); this materialises
+# its Grafana Cloud connection Secret from the GRAFANA_CLOUD_ASSISTANT_* GitHub
+# secrets. Retires it and no-ops when the flag is off or the mode is not oss.
+# Non-fatal: an optional feature never wedges a provision, and Grafana runs fine
+# without it (the overlay's env refs are optional).
+log_step "Configuring the Grafana Assistant (08.9, opt-in, oss only)"
+"${SCRIPT_DIR}/08.9-grafana-assistant.sh" || log_warn "Grafana Assistant provisioning reported an issue (see above) — non-fatal"
+
 "${SCRIPT_DIR}/08-headlamp.sh"
 "${SCRIPT_DIR}/09-gateway.sh"
 

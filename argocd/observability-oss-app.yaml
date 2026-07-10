@@ -37,6 +37,13 @@ spec:
         # overlay (values-oss-llm.yaml); flipping it off self-heals the plugin away.
         - name: llmEnabled
           value: '{{llmEnabled}}'
+        # "true"/"false" from J2026_OBS_ASSISTANT_ENABLED (observability.assistant
+        # .enabled). When true the kube-prometheus-stack child layers the Grafana
+        # Assistant overlay (values-oss-assistant.yaml: the signed
+        # grafana-assistant-app plugin + its Grafana Cloud connection from a
+        # Secret); flipping it off self-heals the plugin away.
+        - name: assistantEnabled
+          value: '{{assistantEnabled}}'
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

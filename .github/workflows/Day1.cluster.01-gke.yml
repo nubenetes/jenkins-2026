@@ -77,6 +77,11 @@ on:
         required: false
         default: false
         type: boolean
+      assistant_enabled:
+        description: "Opt-in official Grafana Assistant chat (observability.assistant.enabled — docs/301): installs the signed grafana-assistant-app plugin and connects it to YOUR Grafana Cloud stack. The MATURE 'open and ask' chat, but SaaS-HYBRID — prompts are processed by Grafana Cloud (NOT keyless/in-cluster like the LLM app). oss mode ONLY. Needs the GRAFANA_CLOUD_ASSISTANT_{BACKEND_URL,INSTANCE_ID,TOKEN} GitHub secrets (docs/103). OFF by default. Overrides config.yaml for this run."
+        required: false
+        default: false
+        type: boolean
       git_ref:
         description: "Git branch, tag, or SHA to check out (leave empty to use the branch/tag selected in 'Use workflow from' above)"
         required: false
@@ -150,6 +155,10 @@ on:
         required: false
         default: false
         type: boolean
+      assistant_enabled:
+        required: false
+        default: false
+        type: boolean
       git_ref:
         required: false
         default: ""
@@ -193,6 +202,10 @@ env:
   # form is authoritative and config.yaml's durable default is the LOCAL fallback
   # (test/e2e.sh, where the env is unset → config.sh reads config.yaml).
   JENKINS2026_OBS_LLM_ENABLED: ${{ inputs.llm_enabled }}
+  # Opt-in official Grafana Assistant (observability.assistant.enabled, oss,
+  # SaaS-hybrid — docs/301). Inherited by config.sh in the up.sh step (03 plugin
+  # overlay + 08.9 connection Secret); no GCP resources, so no TF_VAR.
+  JENKINS2026_OBS_ASSISTANT_ENABLED: ${{ inputs.assistant_enabled }}
   TF_VERSION: "1.15.6"
   # Surfaced as env so the managed-aws dashboard-publish steps can skip cleanly
   # (secrets can't be used in `if:`) when the role hasn't been set up yet.
@@ -782,6 +795,12 @@ jobs:
           # -develop jobs) and 06-tekton-pipelines (Tekton develop runs).
           JENKINS2026_DEVELOP_TRACK_ENABLED: ${{ inputs.develop_track }}
           JENKINS2026_HEADLAMP_ADMIN_EMAILS: ${{ secrets.HEADLAMP_ADMIN_EMAILS }}
+          # Grafana Assistant (observability.assistant.enabled) connection to your
+          # Grafana Cloud stack — consumed by 08.9-grafana-assistant.sh. Empty when
+          # the secrets aren't set (the plugin then installs but stays unconfigured).
+          GRAFANA_CLOUD_ASSISTANT_BACKEND_URL: ${{ secrets.GRAFANA_CLOUD_ASSISTANT_BACKEND_URL }}
+          GRAFANA_CLOUD_ASSISTANT_INSTANCE_ID: ${{ secrets.GRAFANA_CLOUD_ASSISTANT_INSTANCE_ID }}
+          GRAFANA_CLOUD_ASSISTANT_TOKEN: ${{ secrets.GRAFANA_CLOUD_ASSISTANT_TOKEN }}
           REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
           REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
           GIT_USERNAME: ${{ secrets.GIT_USERNAME }}

@@ -386,6 +386,33 @@ export TF_VAR_grafana_llm_gsa_account_id="${J2026_OBS_LLM_GSA}"
 export TF_VAR_grafana_llm_ksa_namespace="${J2026_OBS_NAMESPACE}"
 export TF_VAR_grafana_llm_ksa_name="${J2026_OBS_LLM_KSA}"
 
+# --- grafana Assistant (feature flag, oss mode only, SaaS-hybrid) -------------
+# FEATURE FLAG: JENKINS2026_OBS_ASSISTANT_ENABLED overrides
+# observability.assistant.enabled. The official grafana-assistant-app chat;
+# oss-only, connects to a Grafana Cloud stack (SaaS-hybrid - prompts leave the
+# cluster, unlike the keyless LLM app). No GCP resources. Consumed by
+# 03-observability.sh (plugin overlay) + 08.9-grafana-assistant.sh (the
+# grafana-assistant-credentials Secret built from the connection GitHub secrets).
+J2026_OBS_ASSISTANT_ENABLED="${JENKINS2026_OBS_ASSISTANT_ENABLED:-$(yq_get '.observability.assistant.enabled' 'false')}"
+export J2026_OBS_ASSISTANT_ENABLED
+case "${J2026_OBS_ASSISTANT_ENABLED}" in
+  true|false) ;;
+  *)
+    log_error "Invalid observability.assistant.enabled '${J2026_OBS_ASSISTANT_ENABLED}' (expected true|false)."
+    log_error "Set observability.assistant.enabled in ${J2026_CONFIG_FILE} or export JENKINS2026_OBS_ASSISTANT_ENABLED."
+    exit 1
+    ;;
+esac
+export J2026_OBS_ASSISTANT_PLUGIN_ID="$(yq_get '.observability.assistant.pluginId' 'grafana-assistant-app')"
+export J2026_OBS_ASSISTANT_PLUGIN_VERSION="$(yq_get '.observability.assistant.pluginVersion' '2.0.31')"
+# Both-on caveat: the Assistant and LLM-app overlays both set grafana.plugins (a
+# Helm list = replace-on-merge), so enabling BOTH installs only the Assistant
+# plugin. They are alternative chat approaches (SaaS Assistant vs keyless LLM app)
+# - warn rather than fail, since the rest of each feature is independent.
+if [[ "${J2026_OBS_ASSISTANT_ENABLED}" == "true" && "${J2026_OBS_LLM_ENABLED}" == "true" ]]; then
+  log_warn "Both observability.assistant.enabled and observability.llm.enabled are true: their grafana.plugins overlays don't merge, so only grafana-assistant-app installs (the LLM app's ✨-features plugin is dropped). Enable one chat approach - see docs/301."
+fi
+
 # --- headlamp ----------------------------------------------------------------
 
 export J2026_HEADLAMP_NAMESPACE="$(yq_get '.headlamp.namespace' 'headlamp')"

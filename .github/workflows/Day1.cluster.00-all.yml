@@ -82,6 +82,11 @@ on:
         required: false
         default: false
         type: boolean
+      assistant_enabled:
+        description: "Opt-in official Grafana Assistant chat (observability.assistant.enabled — docs/301): signed grafana-assistant-app connected to your Grafana Cloud stack (SaaS-hybrid, NOT keyless). oss mode ONLY; needs the GRAFANA_CLOUD_ASSISTANT_* secrets. OFF by default. Passed straight to Day1.cluster.01."
+        required: false
+        default: false
+        type: boolean
       git_ref:
         description: "Git branch, tag, or SHA to check out (empty = the ref selected in 'Use workflow from')."
         required: false
@@ -198,5 +203,6 @@ jobs:
       develop_track: ${{ inputs.develop_track }}
       backend_tls: ${{ inputs.backend_tls }}
       llm_enabled: ${{ inputs.llm_enabled }}
+      assistant_enabled: ${{ inputs.assistant_enabled }}
       git_ref: ${{ inputs.git_ref }}
     secrets: inherit

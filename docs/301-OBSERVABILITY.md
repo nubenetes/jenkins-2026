@@ -976,6 +976,43 @@ A community keyless sidebar was prototyped using **[Graft](https://github.com/vi
 
 For an actually-mature "open and ask" experience, the official **Grafana Assistant** (`grafana-assistant-app`) is offered instead as a **separate opt-in flag** (`observability.assistant.enabled`, added in its own section of this doc). Unlike Graft it is signed, catalog-installed, and product-grade — the trade-off is that it is **SaaS-hybrid**: prompts are processed by a connected **Grafana Cloud** stack, so it is *not* keyless/in-cluster the way the LLM app is. It is opt-in and off by default; the always-keyless posture remains the [LLM app](#grafana-llm-app-ai-assistant--opt-in-keyless-oss-only) backend alone.
 
+## Grafana Assistant — official chat in oss, opt-in (SaaS-hybrid)
+
+**`observability.assistant.enabled`** (default **false**, per-run override `JENKINS2026_OBS_ASSISTANT_ENABLED`) installs the official, **signed** **`grafana-assistant-app`** plugin (catalog, pinned `2.0.31`) and provisions its connection to a **Grafana Cloud** stack — giving the in-cluster oss Grafana the **product-grade conversational "open and ask" chat** (the mature alternative to the reverted Graft).
+
+**The trade-off — SaaS-hybrid, *not* keyless.** The chat UI runs in your cluster, but the **prompts are processed by the connected Grafana Cloud backend** (Grafana deliberately keeps the polished Assistant on its Cloud plane). So, unlike the [LLM app](#grafana-llm-app-ai-assistant--opt-in-keyless-oss-only), this is **not** in-cluster/keyless — it introduces an outbound dependency on Grafana Cloud. That is the conscious cost of the mature chat; the flag is opt-in and off by default.
+
+```mermaid
+flowchart LR
+  USER(("User")) -->|"HTTPS + IAP, ask"| APP["grafana-assistant-app<br/>(chat UI, in-cluster, signed)"]
+  APP -->|"prompts + context<br/>(accessToken = instanceId:token)"| CLOUD["Grafana Cloud stack<br/>(Assistant backend — SaaS)"]
+```
+
+### The connection (and the account question)
+
+The Assistant connects to a **Grafana Cloud stack** using a **Grafana Cloud credential**, **not** a Google identity. Three values from *your* stack drive it, supplied as GitHub secrets (never committed) — see [103. Secrets Inventory](./103-GITHUB_SECRETS_INVENTORY.md):
+
+| GitHub secret | What it is | Where to get it |
+|---|---|---|
+| `GRAFANA_CLOUD_ASSISTANT_BACKEND_URL` | The Assistant backend URL of your stack | Grafana Cloud → the Assistant plugin → **Connection → Manual configuration** |
+| `GRAFANA_CLOUD_ASSISTANT_INSTANCE_ID` | Your stack's numeric instance ID | same panel |
+| `GRAFANA_CLOUD_ASSISTANT_TOKEN` | A **service-account token** | Grafana Cloud → *Administration → Users and access → Service accounts → Add token* |
+
+**The Google-identity question, answered:** the account you use to log into this **OSS Grafana (via IAP)** is *irrelevant* to the Assistant connection — different planes. It is fine that your **Grafana Cloud** account is a *different* Google identity: you log into grafana.com with whatever owns the Cloud stack, mint a service-account token there, and feed the three values above. The OSS Grafana's users don't have to match. **Reuse your existing Grafana Cloud stack** (e.g. the one from `observability.mode=grafana-cloud`).
+
+### How the pieces land (opt-in, oss-only)
+
+| Piece | Owner | Mechanism |
+|---|---|---|
+| `grafana-assistant-app@2.0.31` plugin install | [`values-oss-assistant.yaml`](../observability/grafana/values-oss-assistant.yaml) overlay (layered by the `observability-oss` app-of-apps when `03-observability.sh` passes `assistantEnabled=true`) | Signed catalog plugin via Grafana's in-binary preinstaller (`id@version` form); connection read from a Secret via `GF_ASSISTANT_*` env |
+| `grafana-assistant-credentials` Secret | [`scripts/08.9-grafana-assistant.sh`](../scripts/08.9-grafana-assistant.sh) | Built from the three `GRAFANA_CLOUD_ASSISTANT_*` secrets (`accessToken = "<instanceId>:<token>"`); restarts Grafana on change. Retired symmetrically on flag-off / mode switch |
+
+**Where you see it:** once connected, the Assistant appears as a chat panel/sidebar in the Grafana UI (and its config at `/plugins/grafana-assistant-app`).
+
+**Two notes:**
+- **First-enable validation.** `grafana-assistant-app` is a Cloud-first plugin; its exact OSS env-var names (`GF_ASSISTANT_BACKEND_URL` / `_INSTANCE_ID` / `_ACCESS_TOKEN`) and the accessToken form are **confirmed on the first live enable** with real credentials (community-derived, per the [Grafana forum](https://community.grafana.com/t/oss-how-to-configure-grafana-assistant-via-yaml-provisioning/163046)). The overlay's env refs are `optional`, so a wrong name never breaks Grafana — the chat just stays unconfigured until corrected.
+- **Assistant vs LLM app.** They set the same `grafana.plugins` Helm list (list-merge = replace), so enabling **both** installs only the Assistant plugin (`config.sh` warns). They are **alternative** chat approaches — the SaaS Assistant vs the keyless LLM-app backend. Pick one.
+
 ## Observability Modes
 
 | Mode | Metrics | Traces | Logs | Grafana UI |
