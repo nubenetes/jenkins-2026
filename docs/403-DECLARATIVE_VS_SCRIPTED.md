@@ -249,10 +249,11 @@ flowchart TD
 
 **The load-bearing takeaway:** Declarative gives you **guardrails and tooling**
 (up-front validation, a mandatory `post {}` block that runs even on failure/abort,
-restart-from-stage, the Blue Ocean visual editor, a uniform readable shape) at the
-cost of **grammatical rigidity** — you cannot write arbitrary Groovy at the top
-level of a `stage`. Scripted gives you **the whole language** at the cost of those
-guardrails. That tension is the entire reason this repo uses each where it fits.
+restart-from-stage, a stable stage graph in Pipeline Graph View, a uniform readable
+shape) at the cost of **grammatical rigidity** — you cannot write arbitrary Groovy
+at the top level of a `stage`. Scripted gives you **the whole language** at the cost
+of those guardrails. That tension is the entire reason this repo uses each where it
+fits.
 
 ### 2.3 The CPS execution model in practice (and `@NonCPS`)
 
@@ -445,7 +446,7 @@ The dimensions that actually drive the choice. Read "✅ / ⚠️ / ❌" as
 | **Control flow** | ⚠️ Structured only: `when`, `parallel`, `matrix`; arbitrary logic needs `script {}` | ✅ Full Groovy: `if`/`for`/`try`/closures/recursion/methods anywhere |
 | **Post/cleanup semantics** | ✅ First-class `post { always/success/failure/unstable/aborted/cleanup }` — runs even on failure/abort | ⚠️ Do it yourself with `try/finally`; easy to forget a path |
 | **Restart from a stage** | ✅ "Restart from Stage" (re-run only the failed stage) | ❌ Not supported — restart re-runs the whole script |
-| **Visual editing / Blue Ocean** | ✅ Round-trips through the visual editor | ❌ Not editable visually |
+| **Stage visualization** (Pipeline Graph View — installed here, [401](./401-JENKINS.md)) | ✅ The validated structure renders a stable, predictable stage graph | ⚠️ Renders too, but the graph is only as regular as your control flow — dynamic stages shift run to run |
 | **Stage-level `agent` / `when` / `environment`** | ✅ Per-stage directives, declarative and readable | ⚠️ Achievable, but hand-rolled |
 | **Learning curve** | ✅ Low — reads like a config file; safe for many contributors | ❌ Higher — needs Groovy + CPS awareness |
 | **Ceiling / flexibility** | ❌ Hits a wall on genuinely dynamic logic | ✅ Effectively unlimited — it's a programming language |
@@ -476,8 +477,13 @@ is an argument for using **both**, not for picking a winner.
   a stage without understanding CPS or Groovy closures.
 - **First-class `parallel`, `matrix`, `when`, `options`, `environment`, `parameters`**
   as directives — no boilerplate.
-- **Tooling.** Blue Ocean visual editor, the Declarative linter (`jenkins-cli
-  declarative-linter`), IDE schema support.
+- **Tooling.** **Pipeline Graph View** (the stage-graph UI this controller
+  actually installs — [401](./401-JENKINS.md)), the Declarative linter
+  (`jenkins-cli declarative-linter`), IDE schema support. (**Blue Ocean** — the
+  old visual editor whose round-trip editing was Declarative-only — is
+  **discontinued upstream**: maintenance/security fixes only, no new features.
+  This repo never installs it; Pipeline Graph View is its maintained successor,
+  and the classic UI + `warnings-ng` cover the rest.)
 
 ### Declarative — disadvantages
 
@@ -505,7 +511,8 @@ is an argument for using **both**, not for picking a winner.
 - **No up-front validation.** A typo eight stages deep fails eight stages deep.
 - **No free `post`.** You must remember the `try/finally` on every path — the exact
   bug Declarative's `post {}` was invented to prevent.
-- **No restart-from-stage, no visual editor.**
+- **No restart-from-stage**, and the Pipeline Graph View graph is only as stable
+  as your control flow keeps it.
 - **CPS foot-guns.** Non-serializable locals and `@NonCPS` subtleties bite newcomers.
 - **Higher review cost.** Freedom means every author can invent a different shape;
   across many services that becomes drift.
@@ -518,7 +525,8 @@ Jenkins' own documentation is unambiguous about the default:
 
 - **Declarative Pipeline is the recommended starting point for most users.** It is
   described as offering "a more modern, opinionated syntax" and is the syntax the
-  official *Getting Started* guide, the Blue Ocean editor, and most examples use.
+  official *Getting Started* guide and most examples use (it was also the only
+  syntax the now-discontinued Blue Ocean editor could generate).
 - **Scripted Pipeline is positioned as the advanced/flexible option** — "a general
   purpose DSL built with Groovy" that "offers a tremendous amount of flexibility and
   extensibility," for cases where Declarative's structure is too limiting.
@@ -742,7 +750,8 @@ What breaks or regresses:
 - **`post` becomes a manual `try/finally`** replicated in every job; miss it once and
   a *failed* build silently publishes no test results — the precise bug Declarative
   eliminates.
-- **No restart-from-stage**, no Blue Ocean, no per-stage `when`/`agent` directives.
+- **No restart-from-stage**, no per-stage `when`/`agent` directives, and a
+  Pipeline Graph View graph only as regular as each job's code keeps it.
 - **Shape drift.** With full freedom, each service's job can diverge; the "review it
   the same way every time" property evaporates across the fleet.
 
@@ -815,8 +824,8 @@ services and four engines):
     contributor can make without deep Groovy/CPS knowledge.
 11. **Depth available when needed.** The hard logic is quarantined in named steps a
     specialist owns — newcomers don't have to read it to add a stage.
-12. **Tooling.** Blue Ocean, the Declarative linter, and IDE schema support all work
-    on the shells.
+12. **Tooling.** Pipeline Graph View, the Declarative linter, and IDE schema
+    support all work on the shells.
 
 ---
 
@@ -1160,7 +1169,7 @@ not generated).
   load time.
 - **No guaranteed `post {}`** — cleanup / test-publishing / notifications are hand-rolled
   `try/finally`; miss a path and failures publish nothing.
-- **No restart-from-stage, no Blue Ocean, no per-stage `when`/`agent`.**
+- **No restart-from-stage, no per-stage `when`/`agent`, no predictable stage graph.**
 - **The library becomes a god-object** — everything imperative in one place: hard to
   test, one owner, huge blast radius on every edit.
 - **Per-repo Jenkinsfile drift** — twenty repos, twenty slightly-different copies; no
