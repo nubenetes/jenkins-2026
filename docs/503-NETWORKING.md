@@ -191,11 +191,11 @@ sequenceDiagram
   U->>DNS: resolve app.jenkins2026.nubenetes.com
   DNS-->>U: wildcard A record → the static IP
   U->>LB: HTTPS (one Google-managed wildcard cert)
-  alt IAP-protected (jenkins / tekton / argo-workflows UI / headlamp / pgadmin / grafana-oss)
+  alt IAP-protected (jenkins / tekton / argo-workflows UI / headlamp / pgadmin / backstage / argocd / grafana-oss)
     LB->>IAP: is the Google account in the admin allowlist?
     IAP-->>LB: allow / deny (403)
-  else open (microservices · argocd · faro · pac · argo-events)
-    note over LB: no IAP — pac / argo-events are protected by an HMAC webhook secret; faro is the browser-facing RUM beacon
+  else open (microservices · faro · pac · argo-events)
+    note over LB: no IAP — pac / argo-events are protected by an HMAC webhook secret · faro is the browser-facing RUM beacon
   end
   LB->>GW: HTTPRoute match by hostname
   GW->>NEG: route to the Service's NEG
@@ -213,8 +213,9 @@ sequenceDiagram
 | Argo Workflows UI *(argoworkflows mode)* | `argo.<domain>` | `2746` | **yes** |
 | Headlamp | `headlamp.<domain>` | `4466` | **yes** |
 | pgAdmin | `pgadmin.<domain>` | `80` | **yes** |
+| Backstage *(backstage.enabled, default on)* | `backstage.<domain>` | `7007` | **yes** (+ in-app `gcpIap` JWT verification — [505](./505-BACKSTAGE.md)) |
 | Grafana *(oss mode)* | `grafana.<domain>` | `3000` | **yes** |
-| ArgoCD | `argocd.<domain>` | `8080` | no |
+| ArgoCD | `argocd.<domain>` | `8080` | **yes** (IAP + Dex `authproxy` SSO — [501](./501-PLATFORM_OPERATIONS.md)) |
 | Microservices | `microservices.<domain>` | `8080` (gateway) | no (public demo) |
 | Microservices *(develop tier)* | `microservices-develop.<domain>` | `8080` (gateway) | no (public demo; only when `microservices.developTrackEnabled`) |
 | Faro RUM beacon | `faro.<domain>` | `8027` (otel-collector-gateway) | no (public browser beacon; CORS-open receiver) |
