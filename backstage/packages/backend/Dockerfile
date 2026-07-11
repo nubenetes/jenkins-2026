@@ -30,7 +30,12 @@ ENV PATH="/opt/mkdocs/bin:${PATH}"
 # yarn 4.8.1 via corepack (reads packageManager from package.json).
 RUN corepack enable
 
-USER node
+# NUMERIC uid (node = 1000 in the official images), not `USER node`: the chart
+# runs with securityContext runAsNonRoot, and kubelet cannot verify a
+# NON-NUMERIC image user is non-root -> CreateContainerConfigError (found on
+# the first live rollout). A numeric USER satisfies the check with no chart
+# override.
+USER 1000
 WORKDIR /app
 
 # 1) the monorepo skeleton (all package.json files) + the lockfile the CI's own
