@@ -19,20 +19,14 @@
 > the trade-off matrices, what breaks if you go all-one-way, and exactly which file
 > in this repo is which and *why*.
 
-**Who should read what.** Newcomers can stop after [§1](#1-the-two-dialects-in-sixty-seconds)
-and [§2](#2-what-each-dialect-actually-is) and have the whole shape. Specialists
-extending the pipeline want [§7](#7-this-repos-architecture-the-three-layer-hybrid)
-(the per-file map), [§8](#8-why-this-split-the-design-rationale) (the rationale),
-and [§9](#9-counterexamples-what-breaks-if-you-go-all-one-way) (what *not* to do).
-Need to *identify* a file's dialect at a glance, learn **Job DSL** pipeline
-generation, or understand the widespread Scripted-god-library **anti-pattern**? Jump
-to [§12](#12-recognising-declarative-vs-scripted-at-a-glance),
-[§13](#13-job-dsl-and-seed-jobs-an-advanced-tutorial), and
-[§14](#14-the-common-anti-pattern-a-scripted-god-library-with-thin-jenkinsfiles).
-For the surrounding context see **[401. Jenkins](./401-JENKINS.md)** (the controller,
-JCasC, the shared-library declaration) and **[402. Pipelines as Code](./402-PIPELINES_AS_CODE.md)**
-(the seed job, the 11 stages, the deploy loop). This doc is the *why-it's-shaped-this-way*
-companion to 402's *what-it-does*.
+> **See also.** [401. Jenkins](./401-JENKINS.md) — the controller, JCasC and the
+> `microservices-shared-library` declaration these layers plug into;
+> [402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) — the seed job and the ~11
+> stages themselves (**402 is the *what-it-does*; this doc is the
+> *why-it's-shaped-this-way***). The same pipeline logic, ported to the three
+> YAML-based engines: [404. Tekton](./404-TEKTON.md) ·
+> [405. GitHub Actions / ARC](./405-GITHUB_ACTIONS.md) ·
+> [406. Argo Workflows](./406-ARGO_WORKFLOWS.md).
 
 ---
 
@@ -114,7 +108,9 @@ will feel familiar.
   restarts); non-serializable locals break it, and hot loops crawl — the escape is
   **`@NonCPS`** ([§2.3](#23-the-cps-execution-model-in-practice-and-noncps)), used
   in this repo for JSON parsing in
-  [`microservicesK6Smoke`](../vars/microservicesK6Smoke.groovy).
+  [`microservicesK6Smoke`](../vars/microservicesK6Smoke.groovy). The recurring
+  runtime errors these mechanics produce are catalogued as a symptom→cause→fix
+  field guide in [§2.6](#26-the-failure-modes-youll-actually-hit-symptom--cause--fix).
 - **The sandbox** (`script-security`) intercepts every call in both dialects;
   library code in `vars/` runs sandboxed too, and approvals are the admin-visible
   cost of exotic Groovy ([§2.4](#24-script-security-the-groovy-sandbox)).
@@ -321,11 +317,16 @@ which is why the seed sets `sandbox(true)` on the jobs it generates (visible in 
 ### 2.5 Declarative's structured directives (with examples)
 
 Declarative's power is not just `stages`/`steps` — the directives express
-concurrency, conditionals, and lifecycle without hand-rolled Groovy. The ones worth
-knowing (this repo uses `options` today; the rest are the shell's latent capacity):
+concurrency, conditionals, credentials, and lifecycle without hand-rolled Groovy.
+The ones worth knowing (this repo uses `options`, `environment` and `parameters`
+today; the rest are the shell's latent capacity):
 
 ```groovy
 options { timeout(time: 30, unit: 'MINUTES'); retry(2); disableConcurrentBuilds() }
+
+// Bind a Jenkins credential as env; the value is MASKED in the console log, and a
+// username/password credential auto-splits into GITOPS_USR / GITOPS_PSW:
+environment { GITOPS = credentials('git-credentials') }
 
 // Run independent stages concurrently — no Scripted parallel-map boilerplate:
 stage('Scan') {
@@ -351,6 +352,28 @@ matrix {
 Each of these would be a hand-written closure/loop in Scripted; Declarative makes
 them declarative *directives* the linter can validate. That is exactly the
 "guardrails for the shape" argument that puts the pipeline skeleton in Declarative.
+
+### 2.6 The failure modes you'll actually hit (symptom → cause → fix)
+
+Everything in §2.3–§2.4 eventually surfaces as one of a handful of recurring
+runtime errors. This is the field guide — the left column is what the console
+log shows you:
+
+| Symptom (console log) | Cause | Fix |
+| :--- | :--- | :--- |
+| `java.io.NotSerializableException: java.util.regex.Matcher` (or a JDBC/HTTP client class) — often *at the next step*, or on resume after a restart | A **non-serializable object parked in a local** that is still in scope when a step boundary snapshots the program (§2.3). `=~` returning a `Matcher` is the classic. | *Use and discard* in one expression (extract the `String` immediately: `(log =~ /v(\d+)/)[0][1]`), or do the whole computation in a **pure `@NonCPS` helper** that returns serializable data. |
+| `expected to call X but wound up catching Y` warning, or a `CpsCallableInvocation` leaking into a result | **CPS-transformed code invoked from a non-CPS context**: a `@NonCPS` method calling a regular (CPS) method or closure; steps called from constructors, `toString()` overrides, or comparators. | Keep `@NonCPS` methods **pure and self-contained**: no Pipeline steps, no calls back into CPS-transformed code. Orchestrate steps outside; hand `@NonCPS` only plain data. |
+| `RejectedAccessException: Scripts not permitted to use method …` and a pending entry in *Manage Jenkins → In-process Script Approval* | The **sandboxed** job body (or a non-global library) touched a non-whitelisted API (§2.4). | Don't blanket-approve from the UI (that's config drift a rebuild loses). Move the logic into the **trusted global library** (`vars/`, JCasC-declared → runs unsandboxed), or — for seed-class scripts — run them trusted like the Job DSL seed does. |
+| `MissingPropertyException: No such property: x` in a *later* stage, though you set `x` earlier | A `def`/`script {}` **local doesn't outlive its block**; only strings survive via `env.*`, and `environment {}` values are always strings. | Export it (`env.IMAGE_TAG = …` — exactly what the shells' `script {}` islands do), compute it in the **Scripted preamble** above `pipeline {}` (§3), or pass files between stages with `stash`/`unstash`. |
+| "My new `parameters {}` entry doesn't show on *Build with Parameters*" | Declarative registers parameter definitions **when a run executes** — the first build after the change still shows the *old* form. | Run the job once (it picks up the new definitions), then the form is current. Seed-generated jobs get this "free" via the seed's next run. |
+| *Restart from Stage* is missing on a build | The run wasn't a **Declarative** pipeline (Scripted never offers it), or the stage graph changed since that run. | Keep the shells Declarative (§8); restart is per-run — re-run the job if the definition changed. |
+| `unable to resolve class …` / `No such DSL method 'microservicesBuild'` at job start | The shared library didn't load: wrong branch in `@Library("…@branch")`, or the library isn't declared (JCasC). | The seed pins `@${pipelineRepoBranch}` to the **deployed infra branch** (auto-track — [402](./402-PIPELINES_AS_CODE.md)); check which branch Day1 ran from, and the JCasC `globalLibraries` block ([401](./401-JENKINS.md)). |
+| Folklore: "you can't use `.each {}` in a pipeline — rewrite as a C-style `for`" | **Outdated** — real before `workflow-cps` 2.47 (2018), long since fixed. What *still* bites is the §2.3 closure-capture trap (non-serializable state inside the closure across a step). | Use `.each`/`.collect` freely for pure data work; when the loop body *calls steps and* carries risky locals, prefer a plain loop or a `@NonCPS` pre-computation. |
+
+Two habits prevent nearly all of these: **keep `script {}` islands tiny** (logic
+goes to `vars/` steps, §3) and **let steps return plain data** (`readJSON` → `Map`,
+`sh(returnStdout:)` → `String`) instead of holding library/client objects across
+step boundaries.
 
 ---
 
