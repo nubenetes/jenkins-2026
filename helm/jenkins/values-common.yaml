@@ -443,7 +443,7 @@ controller:
     - pipeline-graph-view:963.v2a_b_019810b_e1
     - opentelemetry:3.1589.ve81b_b_fa_927d5
     - credentials-binding:728.v902a_273b_8947
-    - role-strategy:867.vd09254229f9b_
+    - role-strategy:878.v6f1d3b_3a_0769
     - matrix-auth:3.2.10
     - antisamy-markup-formatter:173.v680e3a_b_69ff3
     - timestamper:1.30
@@ -536,7 +536,7 @@ controller:
     - workflow-basic-steps:1098.v808b_fd7f8cf4
     - workflow-cps:4350.vcc65d4958821
     - workflow-durable-task-step:1479.v56e587f413a_7
-    - workflow-job:1571.1580.v18e46842c125
+    - workflow-job:1581.ve4b_d0db_fcb_b_b_
     - workflow-multibranch:821.vc3b_4ea_780798
     - workflow-scm-step:466.va_d69e602552b_
     - workflow-step-api:724.v538c2362b_dfb_
