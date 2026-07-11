@@ -143,7 +143,7 @@ flowchart TB
             ARGOWF["ARGOWF · argoworkflows<br/>WF v3.7.16 + Events · IAP UI"]:::eng4
         end
         OPS["OPS · Operators<br/>ESO · OTel · CNPG · Argo Rollouts"]:::ctrl
-        PUIS["PUIS · platform web UIs (IAP)<br/>Headlamp · pgAdmin · Grafana (oss)"]:::ctrl
+        PUIS["PUIS · platform web UIs (IAP)<br/>Headlamp · pgAdmin · Backstage · Grafana (oss)"]:::ctrl
         PUSH["PUSH · imperative lane (0N-*.sh)<br/>creds · NetPol · Quotas"]:::push
       end
       subgraph DP["L4 · Data / runtime plane (ns microservices)"]
@@ -279,7 +279,7 @@ flowchart TB
   - **ArgoCD** — always the CD/GitOps engine.
   - the **chosen CI engine** — 1 of 4 (Jenkins · Tekton · GitHub Actions/ARC · Argo Workflows); see *Pluggable choices* below.
   - **operators** — External Secrets · OTel · CNPG · Argo Rollouts.
-  - the IAP-protected **platform web UIs** — Headlamp · pgAdmin · Grafana (oss mode).
+  - the IAP-protected **platform web UIs** — Headlamp · pgAdmin · Backstage (the developer portal, [505](./505-BACKSTAGE.md)) · Grafana (oss mode).
   - the imperative **push** lane ArgoCD doesn't own.
 - **L4 · Data / runtime plane** — the JHipster gateway + microservice + CloudNative-PG, on the static-vs-NAP node substrate.
 - **L5 · Observability pipeline** — the OpenTelemetry collectors.
@@ -576,6 +576,7 @@ one of these (each is a hard constraint, not a preference):
 |---|---|---|---|
 | Jenkins, External-Secrets, Headlamp, Argo-Rollouts charts | **GitOps** | `argocd/*-app.yaml` (single Applications) | One chart each; declarative, versioned, self-healed. |
 | Microservices (per service, per tier) | **GitOps** | [`argocd/microservices-appset.yaml`](../argocd/microservices-appset.yaml) (ApplicationSet) | Homogeneous fleet from the service registry; CI bumps image tags in the gitops-config repo, ArgoCD syncs. |
+| **Backstage** (developer portal: the CNPG `backstage-db` Cluster + the official chart with the `helm/backstage/` overlays) | **GitOps** | `argocd/backstage` app-of-apps — planted by [`08.95-backstage.sh`](../scripts/08.95-backstage.sh) when `backstage.enabled` | Ordered (db wave 0 → chart wave 1); the parent's helm params thread branch/backend-TLS/image-tag down, so flag flips + branch auto-track converge declaratively. The runtime-derived halves (the `backstage-runtime-config` ConfigMap, the IAP JWT audience, the ArgoCD creds patch) stay imperative — see below. [505](./505-BACKSTAGE.md). |
 | CNPG+pgAdmin · OSS Prometheus/Loki/Tempo/Grafana · Tekton stack · **ARC** (GitHub Actions runners) · **Argo Workflows + Argo Events** | **GitOps** | `platform-postgres` / `observability-oss` / `tekton` / `githubactions` / `argoworkflows` app-of-apps | Heterogeneous, ordered (sync-waves), per-child sync options. The `githubactions` app-of-apps (when `ci.engine=githubactions`) syncs the ARC controller (wave 0) + the runner scale set / `AutoscalingRunnerSet` (wave 1) as two **OCI Helm** child apps. The `argoworkflows` app-of-apps (when `ci.engine=argoworkflows`) syncs three children — the Argo Workflows controller+server (wave 0) + Argo Events controller-manager + EventBus (wave 1) + the pipeline-as-code WorkflowTemplates/EventSource/Sensor (wave 2) — from **vendored** upstream release YAMLs (`argocd/argoworkflows/components/{workflows,events}/release.yaml`, like Tekton). |
 | **Static platform RBAC** (per-engine CI-SA `edit` bindings — Jenkins / Tekton / ARC runners / Argo Workflows — pgAdmin secret-reader, the per-engine OTel-instrumentation `ClusterRole`s) | **GitOps** | [`argocd/platform-config/`](../argocd/platform-config/) — planted by `08.5` | Timing-insensitive (consumers run long after sync); textbook GitOps. *Migrated here from `01`/`02` — see [argocd/README](../argocd/README.md).* |
 | ArgoCD itself · OTel Operator · otel-collector | **Imperative** | `08.5` / `02` / `03` `helm upgrade --install` | Bootstrap paradox (#1); the collector is also runtime-config-coupled (#4). |
@@ -585,7 +586,7 @@ one of these (each is a hard constraint, not a preference):
 | All in-cluster `Secret`s (jenkins/headlamp/IAP/tekton/**arc-github-app**/**arc-registry**/**argoworkflows-registry**/**argoworkflows-git**/**argoworkflows-github-webhook**/**argoworkflows-argocd**/ghcr/grafana-ds…) | **Imperative** *(or ESO)* | `01` / `03` / `08.5`; `08.6` in `eso` mode | Secret values never in git (#2). `eso` makes *delivery* GitOps-style. The ARC GitHub App creds (`arc-github-app`) + ghcr imagePullSecret (`arc-registry`) follow the same rule as the Tekton `tekton-registry`/`tekton-git` Secrets — built by `01-namespaces.sh` in `arc-runners` (ESO parity wired in `08.6`). The Argo Workflows engine follows the same rule: `argoworkflows-registry` (ghcr) + `argoworkflows-git` (basic-auth) + `k6-cloud` in `argo-ci` and `argoworkflows-github-webhook` (HMAC) in `argo-events` are built by `01-namespaces.sh`, and `argoworkflows-argocd` (ArgoCD API token) in `argo-ci` by `08.5-argocd.sh` (ESO parity in `08.6`). |
 | Gateway · HTTPRoutes · HealthCheckPolicies · GCPBackendPolicies (IAP) | **Imperative** | [`09-gateway.sh`](../scripts/09-gateway.sh) → `.generated/` | Generated per-run with the live domain/IP/IAP-client-id (#3). |
 | Runtime patches into `jenkins-credentials`/`headlamp-credentials` (URLs, tokens, banner links) | **Imperative** | `01` / `04` / `08.5` `kubectl patch` | Values discovered at run time (#3). |
-| JCasC ConfigMaps · `grafana-jenkins-ds` · `grafana-runtime-config` | **Imperative** | `04` / `03` | Live-reload single-source companions (#4). |
+| JCasC ConfigMaps · `grafana-jenkins-ds` · `grafana-runtime-config` · `backstage-runtime-config` (+ the Backstage IAP JWT **audience** patch and the `ARGOCD_*` creds patch into `backstage-secrets`) | **Imperative** | `04` / `03` / `08.95` / `09` | Live-reload single-source companions (#4); the Backstage audience is an LB backend-service ID that only exists after `09` programs the route (#3), and the ArgoCD creds are minted in-cluster (#5). |
 | Tekton PaC push/webhooks/seed · ArgoCD token mint · CNPG `caBundle` patch | **Imperative** | `06` / `08.5` | External / in-cluster side-effects (#5). |
 | **NetworkPolicies** · **ResourceQuotas/LimitRanges** | **Imperative** | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | Must land **before** workloads for Dataplane V2 enforcement timing (#6). |
 | Namespace creation + labels | **Imperative** | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | The floor everything else lands in; must exist before any apply/sync. |
@@ -611,7 +612,7 @@ flowchart TD
     subgraph PULL["GitOps plane (ArgoCD reconciles — pull, self-heal, prune)"]
         CHARTS["charts: Jenkins · ESO · Headlamp · Rollouts"]
         FLEET["AppSet: microservices (per tier)"]
-        AOA["app-of-apps: postgres · observability-oss<br/>+ active CI engine (tekton / githubactions / argoworkflows)"]
+        AOA["app-of-apps: postgres · backstage · observability-oss<br/>+ active CI engine (tekton / githubactions / argoworkflows)"]
         PCFG["platform-config: static RBAC"]
     end
     subgraph RUNTIME["Imperative, AFTER ArgoCD is up (runtime-derived)"]
@@ -697,6 +698,7 @@ Everything else is GitOps-managed, or is a deliberate, documented exception abov
 | `argo` | **only `ci.engine=argoworkflows`** | Argo Workflows control plane (controller + Server UI) + an IAP secret copy |
 | `argo-events` | **only `ci.engine=argoworkflows`** | Argo Events controller-manager + EventBus + `argoworkflows-github-webhook` |
 | `argo-ci` | **only `ci.engine=argoworkflows`** | Workflow execution: the `argoworkflows-ci` SA + its creds (`argoworkflows-registry`/`argoworkflows-git`/`argoworkflows-argocd`/`k6-cloud`) |
+| `backstage` | **only `backstage.enabled=true`** (default true, engine-neutral) | the Backstage portal + the CNPG `backstage-db` Cluster + `backstage-secrets` + `backstage-runtime-config` + `ghcr-credentials` + an IAP secret copy ([505](./505-BACKSTAGE.md)) |
 
 ### In-cluster Secret inventory (the matrix)
 
@@ -716,7 +718,9 @@ Everything else is GitOps-managed, or is a deliberate, documented exception abov
 | `arc-argocd` | `arc-runners` *(githubactions-mode)* | ArgoCD API token | No | [`08.5-argocd.sh`](../scripts/08.5-argocd.sh) | workflow `argocd app sync` step |
 | `argoworkflows-argocd` | `argo-ci` *(argoworkflows-mode)* | ArgoCD API token (account `argoworkflows`) | No | [`08.5-argocd.sh`](../scripts/08.5-argocd.sh) | Workflow `argocd app sync` step |
 | `argoworkflows-github-webhook` | `argo-events` *(argoworkflows-mode)* | GitHub webhook HMAC token | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | Argo Events GitHub EventSource |
-| `ghcr-credentials` | `microservices` (+ `-develop`) | `dockerconfigjson` imagePullSecret | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | microservices pods (image pull) |
+| `ghcr-credentials` | `microservices` (+ `-develop`; + `backstage` when the portal is enabled) | `dockerconfigjson` imagePullSecret | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | microservices pods + the Backstage pod (image pull) |
+| `backstage-secrets` | `backstage` *(backstage.enabled)* | `BACKEND_SECRET` (stable-generated) · `GITHUB_TOKEN` · `JENKINS_API_USER`/`_KEY` (jenkins-mode) · `AUTH_GITHUB_CLIENT_ID`/`_SECRET` (optional OAuth App) · `ARGOCD_USERNAME`/`PASSWORD` (patched by `08.95` — ESO projects with **Merge** so the patch survives) | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) + [`08.95-backstage.sh`](../scripts/08.95-backstage.sh) | the Backstage backend (app-config `${ENV}` refs — [505](./505-BACKSTAGE.md)) |
+| `backstage-db-app` | `backstage` *(backstage.enabled)* | Postgres host/port/username/password (CNPG-generated) | No | CNPG operator (from the `backstage-db` Cluster CR) | the Backstage backend (`POSTGRES_*` env) |
 | `grafana-jenkins-ds` | `observability` *(the `observability.grafana.ossNamespace`; oss + jenkins-mode)* | `apiToken` (mirror of Jenkins admin password) | No | [`03-observability.sh`](../scripts/03-observability.sh) *(gated to jenkins-mode)* | Grafana → Jenkins datasource |
 | `grafana-cloud-credentials` / `azure-monitor-credentials` / `aws-managed-credentials` | `observability` | backend endpoint + token/SP/role per `observability.mode` — **[group 4](#secrets-backend-imperative--eso) (Terraform outputs)**, so these stay **imperative even under `secrets.backend=eso`** (nothing to sync *from* — the value is a Day1 Terraform output, never pre-placed in Secret Manager). **Single-active-mode invariant:** only the active mode's Secret exists — [`03-observability.sh`](../scripts/03-observability.sh) retires the other two on provision, so a mode switch leaves no stale Secret to mislead `Day2.traffic.01-k6`'s secret-presence mode auto-detection (a leftover once produced a dead "VIEW IN GRAFANA" link — see [104](104-REBUILD_SAFETY.md) / [902](902-TROUBLESHOOTING.md)). | No | Day1 workflow / scripts | otel-collector exporter |
 

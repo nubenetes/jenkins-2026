@@ -1,4 +1,4 @@
-[← Previous: 504. Backend TLS](./504-BACKEND_TLS.md) | [🏠 Home](../README.md) | [→ Next: 602. Version Pinning](./602-VERSION_PINNING.md)
+[← Previous: 505. Backstage](./505-BACKSTAGE.md) | [🏠 Home](../README.md) | [→ Next: 602. Version Pinning](./602-VERSION_PINNING.md)
 
 ---
 
@@ -196,7 +196,7 @@ post {
 
 ---
 
-[← Previous: 504. Backend TLS](./504-BACKEND_TLS.md) | [🏠 Home](../README.md) | [→ Next: 602. Version Pinning](./602-VERSION_PINNING.md)
+[← Previous: 505. Backstage](./505-BACKSTAGE.md) | [🏠 Home](../README.md) | [→ Next: 602. Version Pinning](./602-VERSION_PINNING.md)
 
 ---
 

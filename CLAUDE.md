@@ -33,6 +33,8 @@ conventions:
 - [`501-PLATFORM_OPERATIONS.md`](docs/501-PLATFORM_OPERATIONS.md) — ArgoCD, Headlamp, Gateway API + IAP, chaos/QA
 - [`502-MICROSERVICES_GITOPS.md`](docs/502-MICROSERVICES_GITOPS.md) — Helm vs Kustomize, resource lifecycle design decisions
 - [`503-NETWORKING.md`](docs/503-NETWORKING.md) — network architecture, landing zone & topology (single-VPC, not hub-spoke + rationale), VPC/subnet + pod/service CIDR plan, north-south ingress/egress, east-west (VPC-native + Dataplane V2 + WireGuard), NetworkPolicy segmentation
+- [`504-BACKEND_TLS.md`](docs/504-BACKEND_TLS.md) — the **opt-in** `gateway.backendTls.enabled` LB→pod re-encryption: cert-manager in-cluster CA, per-backend server certs, Gateway API `BackendTLSPolicy` + HTTPS `HealthCheckPolicy`, the staged per-backend rollout (stages 1–10) + the `j2026_backend_tls_active` gate, why it's not a service mesh
+- [`505-BACKSTAGE.md`](docs/505-BACKSTAGE.md) — **Backstage developer portal** (`backstage.enabled`, default true): Backstage v1.52.1 via the official chart 2.8.2 as the `argocd/backstage` app-of-apps (CNPG `backstage-db` wave 0 + chart wave 1), a **custom app image** (`backstage/` — one image ships the Jenkins/GitHub Actions/Tekton/ArgoCD/Kubernetes plugins; the ACTIVE engine's CI/CD tab is picked at **runtime** from the `backstage-runtime-config` ConfigMap written by `scripts/08.95-backstage.sh`), IAP-protected at `backstage.<domain>` with in-app JWT-verified `gcpIap` sign-in (audience resolved+patched by `09-gateway.sh`), TechDocs over this repo's docs/ (root `mkdocs.yml`), backend TLS **stage 10**, and the **one-time image bootstrap** (`Day2.publish.06-backstage` — the GHCR image persists across rebuilds)
 - [`601-DEVSECOPS.md`](docs/601-DEVSECOPS.md) — Semgrep, CodeQL, Trivy, warnings-ng
 - [`602-VERSION_PINNING.md`](docs/602-VERSION_PINNING.md) — version-pinning policy + matrix (charts/images/actions/Terraform), pros/cons, the deliberate ArgoCD 3.4.x auto-tracking exception (pinned off the buggy 3.5.0-rc until 3.5 GA), how to bump a pin
 - [`901-LOCAL_DEVELOPMENT.md`](docs/901-LOCAL_DEVELOPMENT.md) — prerequisites, quick start, e2e test
@@ -71,9 +73,17 @@ Legacy stubs ([`docs/architecture.md`](docs/architecture.md), [`docs/observabili
   (gke), observability mode (grafana-cloud/oss/managed-azure/managed-aws),
   CI engine (`ci.engine`: jenkins default | tekton | githubactions | argoworkflows),
   Jenkins/Microservices namespaces, branches, registry, service list.
-- [`helm/jenkins/`](helm/jenkins/), `helm/headlamp/`, `helm/pgadmin/` + `helm/argocd-values.yaml` - Helm
+- [`helm/jenkins/`](helm/jenkins/), `helm/headlamp/`, `helm/pgadmin/`, `helm/backstage/` + `helm/argocd-values.yaml` - Helm
   values overlays (the microservices Helm chart + values live in the
   `jenkins-2026-gitops-config` repo, deployed by the ArgoCD ApplicationSet).
+- [`backstage/`](backstage/) - the custom Backstage app (developer portal,
+  `backstage.enabled` - see [`docs/505`](docs/505-BACKSTAGE.md)): yarn 4
+  workspace pinned to Backstage 1.52.1, ONE image with all four CI engines'
+  plugins (the active engine's tab is chosen at runtime), the in-repo catalog
+  under `backstage/catalog/`, and the image Dockerfile
+  (`packages/backend/Dockerfile`) built/pushed by `Day2.publish.06-backstage`
+  (one-time bootstrap per branch; GHCR image persists across rebuilds). The
+  repo-root [`mkdocs.yml`](mkdocs.yml) feeds its TechDocs from `docs/`.
 - [`jenkins/casc/`](jenkins/casc/) - JCasC YAML (seed jobs, shared library, OTel plugin
   config, RBAC).
 - [`jenkins/pipelines/`](jenkins/pipelines/) - the seed job DSL
@@ -117,9 +127,15 @@ Legacy stubs ([`docs/architecture.md`](docs/architecture.md), [`docs/observabili
     NetworkPolicies and ResourceQuotas/LimitRanges deliberately stay
     script-applied, they must land before workloads for Dataplane V2 timing).
   - The **microservices AppSet**.
-  - **Five app-of-apps** (each a small Helm chart so repo/branch/version flow down
+  - **Six app-of-apps** (each a small Helm chart so repo/branch/version flow down
     to its children):
     - `platform-postgres/` — the CNPG operator + pgAdmin that administers it.
+    - `backstage/` — applied by `08.95-backstage.sh` when `backstage.enabled`
+      (default true): the CNPG `backstage-db` Cluster (wave 0, throwaway) + the
+      official backstage/charts chart (wave 1, multi-source with the
+      `helm/backstage/` values overlays + a conditional backend-TLS overlay)
+      running the custom app image from [`backstage/`](backstage/). See
+      [`docs/505`](docs/505-BACKSTAGE.md).
     - `observability-oss/` — the in-cluster OSS stack
       (kube-prometheus-stack/Loki/Tempo) when `observability.mode=oss`.
     - `tekton/` — `components/*/` holds the **vendored** pinned upstream Tekton

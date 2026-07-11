@@ -1,0 +1,39 @@
+# Copy to app-config.local.yaml (gitignored) for LOCAL development
+# (`yarn install && yarn dev`). The in-cluster deployment never reads this file.
+#
+# Local dev needs a Postgres (no sqlite in this app - pg only):
+#   docker run -d --name backstage-pg -e POSTGRES_PASSWORD=backstage -p 5432:5432 postgres:17
+# and a auth provider that works without IAP: temporarily add
+#   @backstage/plugin-auth-backend-module-guest-provider
+# to packages/backend (backend.add(...)) - it is deliberately NOT in the
+# production image.
+app:
+  baseUrl: http://localhost:3000
+
+backend:
+  baseUrl: http://localhost:7007
+  listen: ':7007'
+  database:
+    client: pg
+    connection:
+      host: localhost
+      port: 5432
+      user: postgres
+      password: backstage
+  auth:
+    keys:
+      - secret: local-dev-not-a-secret
+
+auth:
+  environment: development
+  providers:
+    guest: {}
+
+integrations:
+  github:
+    - host: github.com
+      token: ${GITHUB_TOKEN}
+
+jenkins2026:
+  ciEngine: jenkins
+  baseDomain: jenkins2026.nubenetes.com

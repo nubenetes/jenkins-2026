@@ -1,0 +1,48 @@
+# TechDocs build of this repo's docs/ tree, consumed by the Backstage portal
+# (backstage/catalog/platform.yaml -> Component jenkins-2026-infra ->
+# backstage.io/techdocs-ref) via mkdocs-techdocs-core (pinned in
+# backstage/packages/backend/Dockerfile). Mermaid blocks render CLIENT-SIDE via
+# the TechDocs Mermaid addon in packages/app - no mkdocs mermaid plugin needed.
+# docs_dir defaults to docs/ (exactly where the guides live); docs/README.md is
+# the site index.
+site_name: jenkins-2026
+site_description: Jenkins-on-Kubernetes PoC - four CI engines, GitOps, full OTel observability
+
+plugins:
+  - techdocs-core
+
+nav:
+  - Overview: README.md
+  - 1xx Bootstrap & CI/CD lifecycle:
+      - 100 Bootstrap (root of trust): 100-BOOTSTRAP.md
+      - 101 GitHub Actions workflows: 101-GITHUB_ACTIONS_WORKFLOWS.md
+      - 102 GitHub Actions automation (WIF): 102-GITHUB_ACTIONS_AUTOMATION.md
+      - 103 GitHub secrets inventory: 103-GITHUB_SECRETS_INVENTORY.md
+      - 104 Rebuild safety: 104-REBUILD_SAFETY.md
+  - 2xx Architecture:
+      - 201 Architecture: 201-ARCHITECTURE.md
+      - 202 Microservices app architecture: 202-MICROSERVICES-APP-ARCHITECTURE.md
+  - 3xx Observability & performance:
+      - 301 Observability: 301-OBSERVABILITY.md
+      - 302 k6 load testing: 302-K6_LOAD_TESTING.md
+      - 303 JVM tuning: 303-JVM-TUNING.md
+  - 4xx CI engines:
+      - 401 Jenkins: 401-JENKINS.md
+      - 402 Pipelines as code: 402-PIPELINES_AS_CODE.md
+      - 403 Tekton: 403-TEKTON.md
+      - 404 GitHub Actions / ARC: 404-GITHUB_ACTIONS.md
+      - 405 Argo Workflows: 405-ARGO_WORKFLOWS.md
+      - 406 Declarative vs scripted: 406-DECLARATIVE_VS_SCRIPTED.md
+  - 5xx Platform ops & GitOps:
+      - 501 Platform operations: 501-PLATFORM_OPERATIONS.md
+      - 502 Microservices GitOps: 502-MICROSERVICES_GITOPS.md
+      - 503 Networking: 503-NETWORKING.md
+      - 504 Backend TLS: 504-BACKEND_TLS.md
+      - 505 Backstage: 505-BACKSTAGE.md
+  - 6xx Security & pinning:
+      - 601 DevSecOps: 601-DEVSECOPS.md
+      - 602 Version pinning: 602-VERSION_PINNING.md
+  - 9xx Reference:
+      - 901 Local development: 901-LOCAL_DEVELOPMENT.md
+      - 902 Troubleshooting: 902-TROUBLESHOOTING.md
+      - 903 Glossary: 903-GLOSSARY.md

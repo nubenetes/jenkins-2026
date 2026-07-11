@@ -392,7 +392,8 @@ REPO_URL="${J2026_SELF_REPO_URL:-https://github.com/nubenetes/jenkins-2026.git}"
 sed "s@{{repoUrl}}@${REPO_URL}@g;
      s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g;
      s@{{ciEngine}}@${J2026_CI_ENGINE}@g;
-     s@{{developTrackEnabled}}@${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}@g" \
+     s@{{developTrackEnabled}}@${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}@g;
+     s@{{backstageEnabled}}@${J2026_BACKSTAGE_ENABLED}@g" \
     "${J2026_ROOT_DIR}/argocd/platform-config-app.yaml" > "${PLATFORM_CONFIG_APP_FILE}"
 kubectl apply -f "${PLATFORM_CONFIG_APP_FILE}"
 rm "${PLATFORM_CONFIG_APP_FILE}"

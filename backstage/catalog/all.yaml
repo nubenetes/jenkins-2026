@@ -1,0 +1,13 @@
+# Catalog root - registered by backstage/app-config.yaml catalog.locations
+# (tracked from the DEPLOY branch via ${CATALOG_BRANCH}). One Location pulls in
+# the org, the platform model and the microservices. See docs/505 § The catalog.
+apiVersion: backstage.io/v1alpha1
+kind: Location
+metadata:
+  name: jenkins-2026-catalog
+  description: Root location for the jenkins-2026 platform catalog
+spec:
+  targets:
+    - ./org.yaml
+    - ./platform.yaml
+    - ./services.yaml

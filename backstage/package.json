@@ -1,0 +1,30 @@
+{
+  "name": "jenkins-2026-backstage",
+  "description": "Backstage developer portal for the jenkins-2026 platform (docs/505-BACKSTAGE.md). Pinned to the Backstage 1.52.1 release manifest (verified 2026-07-11).",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": "22 || 24"
+  },
+  "packageManager": "yarn@4.8.1",
+  "workspaces": {
+    "packages": [
+      "packages/*"
+    ]
+  },
+  "scripts": {
+    "dev": "yarn workspaces foreach -A --include backend --include app --parallel --jobs unlimited -v -i run start",
+    "start": "yarn workspace app start",
+    "start-backend": "yarn workspace backend start",
+    "build:backend": "yarn workspace backend build",
+    "build:all": "backstage-cli repo build --all",
+    "tsc": "tsc",
+    "tsc:full": "tsc --skipLibCheck false --incremental false",
+    "clean": "backstage-cli repo clean",
+    "lint": "backstage-cli repo lint"
+  },
+  "devDependencies": {
+    "@backstage/cli": "0.36.3",
+    "typescript": "5.8.3"
+  }
+}

@@ -1,0 +1,175 @@
+# Values overlay for the OFFICIAL Backstage Helm chart (backstage/charts,
+# pinned in config.yaml backstage.chart.version), consumed by the `backstage`
+# child Application of the argocd/backstage app-of-apps via the $values git ref
+# (same two-source pattern as argocd/headlamp-app.yaml). See
+# docs/505-BACKSTAGE.md.
+#
+# Design notes:
+#   - The IMAGE is the custom app under backstage/ (built + pushed by
+#     .github/workflows/Day2.publish.06-backstage.yml). The chart's default
+#     ghcr.io/backstage/backstage image is a DEMO app ("probably not suitable
+#     for production" per upstream) with none of our plugins - never fall back
+#     to it. image.tag is overridden per-deploy by the parent app's
+#     helm.parameters (imageTag, auto-tracking the deploy branch).
+#   - ALL runtime-variable values (active CI engine, public URLs, IAP JWT
+#     audience) arrive as env vars from the script-owned ConfigMap
+#     backstage-runtime-config (scripts/08.95-backstage.sh + 09-gateway.sh) and
+#     the Secret backstage-secrets (scripts/01-namespaces.sh) - this file stays
+#     static and committed. backstage/app-config.yaml (baked into the image)
+#     references them with ${ENV} substitution.
+#   - The database is the CNPG Cluster `backstage-db` rendered by the same
+#     app-of-apps (wave 0). CNPG auto-generates the `backstage-db-app` Secret
+#     (host/port/username/password keys) - mapped to the POSTGRES_* env the
+#     app-config expects. The chart's bundled bitnami postgresql subchart stays
+#     OFF: it has been frozen on the unmaintained docker.io/bitnamilegacy image
+#     since the Aug 2025 Bitnami catalog lockdown (upstream workaround for
+#     bitnami/charts#35164), so an external Postgres is the supported path.
+
+fullnameOverride: backstage
+
+backstage:
+  image:
+    registry: ghcr.io
+    repository: nubenetes/jenkins-2026-backstage
+    # Placeholder - the parent Application overrides this with helm.parameters
+    # (backstage.image.tag = <deploy branch> or the pinned/override tag). Branch
+    # tags are MOVING tags (republished by Day2.publish.06-backstage), so pull
+    # on every restart to pick up the latest build.
+    tag: main
+    pullPolicy: Always
+    pullSecrets:
+      - ghcr-credentials   # 01-namespaces.sh; the GHCR package is private by default
+
+  # The image bakes exactly ONE config file. The chart's default args also load
+  # app-config.production.yaml, which this image deliberately does not ship -
+  # override, or the backend exits with "file not found". The appConfig overlay
+  # (values-backend-tls.yaml) appends its own --config automatically.
+  command: ["node", "packages/backend"]
+  args: ["--config", "app-config.yaml"]
+
+  containerPorts:
+    backend: 7007
+
+  # Runtime contract (docs/505 § Credentials & RBAC):
+  #   backstage-runtime-config (ConfigMap, script-owned, optional so the pod can
+  #   start on a half-provisioned cluster and converge later):
+  #     APP_BASE_URL / CI_ENGINE / CATALOG_BRANCH / JENKINS_BASE_URL /
+  #     ARGOCD_BASE_URL / IAP_AUDIENCE / BASE_DOMAIN
+  #   backstage-db-app (Secret, CNPG-generated): host/port/username/password -
+  #   required (a missing DB secret should hold the container at
+  #   CreateContainerConfigError rather than crash-loop the app).
+  extraEnvVars:
+    - name: APP_BASE_URL
+      valueFrom:
+        configMapKeyRef: { name: backstage-runtime-config, key: APP_BASE_URL, optional: true }
+    - name: CI_ENGINE
+      valueFrom:
+        configMapKeyRef: { name: backstage-runtime-config, key: CI_ENGINE, optional: true }
+    - name: CATALOG_BRANCH
+      valueFrom:
+        configMapKeyRef: { name: backstage-runtime-config, key: CATALOG_BRANCH, optional: true }
+    - name: JENKINS_BASE_URL
+      valueFrom:
+        configMapKeyRef: { name: backstage-runtime-config, key: JENKINS_BASE_URL, optional: true }
+    - name: ARGOCD_BASE_URL
+      valueFrom:
+        configMapKeyRef: { name: backstage-runtime-config, key: ARGOCD_BASE_URL, optional: true }
+    - name: IAP_AUDIENCE
+      valueFrom:
+        configMapKeyRef: { name: backstage-runtime-config, key: IAP_AUDIENCE, optional: true }
+    - name: BASE_DOMAIN
+      valueFrom:
+        configMapKeyRef: { name: backstage-runtime-config, key: BASE_DOMAIN, optional: true }
+    - name: POSTGRES_HOST
+      valueFrom:
+        secretKeyRef: { name: backstage-db-app, key: host }
+    - name: POSTGRES_PORT
+      valueFrom:
+        secretKeyRef: { name: backstage-db-app, key: port }
+    - name: POSTGRES_USER
+      valueFrom:
+        secretKeyRef: { name: backstage-db-app, key: username }
+    - name: POSTGRES_PASSWORD
+      valueFrom:
+        secretKeyRef: { name: backstage-db-app, key: password }
+    # Trust the cluster-internal CA (gateway.backendTls, docs/504) for the
+    # plugins' outbound calls to HTTPS-serving backends (e.g. ArgoCD in stage 3).
+    # Node ignores a missing file with a warning, and the ConfigMap volume below
+    # is optional - so this is harmless in the default plain-HTTP posture.
+    - name: NODE_EXTRA_CA_CERTS
+      value: /etc/jenkins-2026-ca/ca.crt
+
+  # BACKEND_SECRET / GITHUB_TOKEN / JENKINS_API_* / AUTH_GITHUB_* / ARGOCD_*
+  # (01-namespaces.sh + the ARGOCD_* patch from 08.95-backstage.sh).
+  extraEnvVarsSecrets:
+    - backstage-secrets
+
+  # NOTE: lists don't merge across Helm value files - values-backend-tls.yaml
+  # REPEATS this volume when it adds the TLS one. Keep the two in sync.
+  extraVolumes:
+    - name: internal-ca
+      configMap:
+        name: jenkins-2026-backend-tls-ca
+        optional: true   # only exists while gateway.backendTls is active
+  extraVolumeMounts:
+    - name: internal-ca
+      mountPath: /etc/jenkins-2026-ca
+      readOnly: true
+
+  # backend-defaults built-in health endpoints. Explicit rather than chart
+  # defaults so the backend-TLS overlay only has to flip httpGet.scheme (maps
+  # DO deep-merge across value files).
+  readinessProbe:
+    httpGet:
+      path: /.backstage/health/v1/readiness
+      port: backend
+      scheme: HTTP
+    initialDelaySeconds: 20
+    periodSeconds: 10
+    timeoutSeconds: 4
+    failureThreshold: 6
+  livenessProbe:
+    httpGet:
+      path: /.backstage/health/v1/liveness
+      port: backend
+      scheme: HTTP
+    initialDelaySeconds: 60
+    periodSeconds: 20
+    timeoutSeconds: 4
+    failureThreshold: 3
+
+  resources:
+    requests:
+      cpu: 250m
+      memory: 768Mi
+    limits:
+      cpu: "1"
+      memory: 1.5Gi
+
+  podSecurityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: ["ALL"]
+    readOnlyRootFilesystem: false   # TechDocs local builder writes tmp files
+
+service:
+  type: ClusterIP
+  ports:
+    backend: 7007
+
+# The KSA the Kubernetes plugin authenticates as (in-cluster serviceAccount
+# auth). Its read-only ClusterRole/Binding is GitOps-managed by platform-config
+# (argocd/platform-config/templates/rbac-backstage.yaml) - keep the name in sync.
+serviceAccount:
+  create: true
+  name: backstage
+
+ingress:
+  enabled: false   # exposure is the shared GKE Gateway + IAP (09-gateway.sh)
+
+postgresql:
+  enabled: false   # external CNPG - see the header note

@@ -1,0 +1,9 @@
+# Host-build pattern (docs/505): the CI builds yarn install/tsc/build:backend on
+# the runner, so the image only needs the dist tarballs + config - never the
+# host node_modules (they are rebuilt production-only inside the image).
+.git
+node_modules
+packages/*/node_modules
+dist-types
+coverage
+site

@@ -1,0 +1,24 @@
+# Node / Backstage build output. yarn.lock is deliberately NOT ignored: it does
+# not exist yet (Day2.publish.06-backstage resolves fresh from the exact pins in
+# package.json); commit the CI-generated lockfile later for fully immutable
+# installs (docs/505 § Roadmap).
+node_modules/
+dist/
+dist-types/
+coverage/
+.eslintcache
+
+# Yarn 4 (berry) local state
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# Local-only config (secrets) - see app-config.local.example.yaml
+*.local.yaml
+.env
+.env.local
+
+# TechDocs / mkdocs local build output
+site/

@@ -10,6 +10,9 @@ ciEngine: jenkins            # jenkins | tekton | githubactions | argoworkflows
 # arrives as the STRING "true"/"false" via helm.parameters, so templates compare
 # it as a string ({{ if eq (... | toString) "true" }}), never as a bare bool.
 developTrackEnabled: false
+# backstage.enabled — gates the Backstage Kubernetes-plugin read-only ClusterRole
+# (rbac-backstage.yaml). Same STRING "true"/"false" caveat as developTrackEnabled.
+backstageEnabled: true
 
 namespaces:
   jenkins: jenkins
@@ -19,6 +22,7 @@ namespaces:
   argoworkflowsRun: argo-ci         # ci.engine=argoworkflows: where the Workflow pods + SA live
   microservicesStable: microservices
   microservicesDevelop: microservices-develop
+  backstage: backstage              # backstage.enabled: where the portal + its KSA live
 
 # ci.engine=githubactions: the ARC chart-derived runner ServiceAccount the runner pods run as
 # (gha-runner-scale-set chart names it <scaleSet>-gha-rs-no-permission). Verify against the

@@ -1,0 +1,13 @@
+apiVersion: v2
+name: backstage
+description: >-
+  App-of-apps for the Backstage developer portal (docs/505-BACKSTAGE.md): the
+  CNPG PostgreSQL Cluster it persists into (wave 0, throwaway by design - the
+  catalog/search/TechDocs state rebuilds from git) and the official
+  backstage/charts Helm chart (wave 1) running the custom jenkins-2026 app
+  image. repoURL/targetRevision/backendTls/image coordinates flow down from the
+  parent Application's helm.parameters (set by scripts/08.95-backstage.sh) so
+  the child tracks the active branch and the image tag auto-tracks the deploy
+  branch.
+type: application
+version: 0.1.0

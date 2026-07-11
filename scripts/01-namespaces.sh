@@ -69,6 +69,14 @@ if [[ "${J2026_CI_ENGINE}" == "argoworkflows" ]]; then
   done
 fi
 
+# Backstage developer portal namespace (backstage.enabled, engine-NEUTRAL - the
+# portal fronts whichever CI engine is active). Created up-front so the IAP +
+# app Secrets below land in it before 08.95-backstage.sh applies the
+# app-of-apps (whose CNPG Cluster + chart deploy into it). No-op if it exists.
+if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
+  kubectl_apply_namespace "${J2026_BACKSTAGE_NAMESPACE}"
+fi
+
 # Jenkins namespace + jenkins-credentials Secret ONLY when ci.engine=jenkins (the
 # Jenkins controller is the sole consumer; the shared Gateway now lives in its own
 # ${J2026_GATEWAY_NAMESPACE} namespace, so a tekton cluster gets NO jenkins namespace
@@ -223,6 +231,11 @@ else
   iap_namespaces=("${J2026_HEADLAMP_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}" "${J2026_ARGOCD_NAMESPACE}")
   if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
     iap_namespaces+=("${J2026_GRAFANA_OSS_NAMESPACE}")
+  fi
+  # Backstage is IAP-fronted too (backstage.<baseDomain>); its GCPBackendPolicy
+  # (09-gateway.sh) references this secret from the backstage namespace.
+  if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
+    iap_namespaces+=("${J2026_BACKSTAGE_NAMESPACE}")
   fi
   # The IAP-protected CI backend is engine-specific: the Tekton Dashboard
   # (ci.engine=tekton) or Jenkins (ci.engine=jenkins) - its GCPBackendPolicy lives
@@ -488,6 +501,85 @@ if [[ "${J2026_CI_ENGINE}" == "argoworkflows" ]]; then
     "grafana-base-url=${GRAFANA_BASE_URL:-}"
 fi
 
+# Backstage portal credentials (backstage.enabled). backstage-secrets feeds the
+# env references in backstage/app-config.yaml (see docs/505-BACKSTAGE.md):
+#   BACKEND_SECRET               Backstage service-to-service auth key - generated
+#                                once and kept STABLE across re-runs
+#   GITHUB_TOKEN                 catalog locations + GitHub integration (= GIT_TOKEN)
+#   JENKINS_API_USER/_API_KEY    Jenkins REST creds for the Jenkins plugin
+#                                (ci.engine=jenkins only: admin + the admin password
+#                                from jenkins-credentials; empty otherwise - the
+#                                CI/CD tab shows the active engine anyway)
+#   AUTH_GITHUB_CLIENT_ID/_SECRET  OPTIONAL GitHub OAuth App for the GitHub Actions
+#                                tab's per-user popup (BACKSTAGE_GITHUB_OAUTH_*
+#                                GitHub secrets). 'unset' placeholders keep the
+#                                auth provider config valid until real creds exist.
+#   ARGOCD_USERNAME/PASSWORD     deliberately NOT seeded here: 08.95-backstage.sh
+#                                patches them from argocd-initial-admin-secret
+#                                (minted in-cluster by 08.5). The eso ExternalSecret
+#                                therefore projects with creationPolicy Merge, so
+#                                the patched keys survive the hourly re-sync - the
+#                                jenkins-credentials/argocd-token pattern.
+if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
+  log_step "Ensuring '${J2026_BACKSTAGE_SECRETS_NAME}' Secret in ${J2026_BACKSTAGE_NAMESPACE}"
+  bs_jenkins_user=""
+  bs_jenkins_key=""
+  if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
+    # The Jenkins plugin authenticates with HTTP basic auth; the admin password
+    # works as the apiKey. Read it back from where this script just put it.
+    bs_jenkins_user="${J2026_JENKINS_ADMIN_USER}"
+    if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
+      bs_jenkins_key="$(sm_keep_or_generate "${J2026_JENKINS_CREDENTIALS_SECRET}" admin-password "")"
+    else
+      bs_jenkins_key="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" -o jsonpath='{.data.admin-password}' 2>/dev/null | base64 -d || true)"
+    fi
+  fi
+  if [[ -z "${BACKSTAGE_GITHUB_OAUTH_CLIENT_ID:-}" || -z "${BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET:-}" ]]; then
+    log_warn "BACKSTAGE_GITHUB_OAUTH_CLIENT_ID/SECRET not set - Backstage deploys, but the GitHub"
+    log_warn "Actions tab's per-user GitHub sign-in won't work until configured (placeholders keep"
+    log_warn "the app booting). See docs/505-BACKSTAGE.md § CI-engine integration."
+  fi
+  if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
+    # eso → BACKEND_SECRET is generated-if-absent and kept STABLE in Secret
+    # Manager; ESO projects the blob with creationPolicy Merge (08.6), which
+    # needs the target Secret to exist - ensure an (empty) base for the merge.
+    bs_backend_secret="$(sm_keep_or_generate "${J2026_BACKSTAGE_SECRETS_NAME}" BACKEND_SECRET "$(openssl rand -base64 24 | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c32)")"
+    provision_secret "${J2026_BACKSTAGE_NAMESPACE}" "${J2026_BACKSTAGE_SECRETS_NAME}" \
+      "BACKEND_SECRET=${bs_backend_secret}" \
+      "GITHUB_TOKEN=${GIT_TOKEN:-}" \
+      "JENKINS_API_USER=${bs_jenkins_user}" \
+      "JENKINS_API_KEY=${bs_jenkins_key}" \
+      "AUTH_GITHUB_CLIENT_ID=${BACKSTAGE_GITHUB_OAUTH_CLIENT_ID:-unset}" \
+      "AUTH_GITHUB_CLIENT_SECRET=${BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET:-unset}"
+    kubectl create secret generic "${J2026_BACKSTAGE_SECRETS_NAME}" -n "${J2026_BACKSTAGE_NAMESPACE}" \
+      --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+    log_info "Seeded ${J2026_BACKSTAGE_SECRETS_NAME} into Secret Manager (BACKEND_SECRET stable) — ESO will Merge it."
+  elif kubectl get secret "${J2026_BACKSTAGE_SECRETS_NAME}" -n "${J2026_BACKSTAGE_NAMESPACE}" >/dev/null 2>&1; then
+    log_info "Secret already exists - keeping BACKEND_SECRET stable, refreshing the derived keys."
+    kubectl patch secret "${J2026_BACKSTAGE_SECRETS_NAME}" -n "${J2026_BACKSTAGE_NAMESPACE}" \
+      --type=merge -p "$(cat <<EOF
+{"stringData":{
+  "GITHUB_TOKEN":"${GIT_TOKEN:-}",
+  "JENKINS_API_USER":"${bs_jenkins_user}",
+  "JENKINS_API_KEY":"${bs_jenkins_key}",
+  "AUTH_GITHUB_CLIENT_ID":"${BACKSTAGE_GITHUB_OAUTH_CLIENT_ID:-unset}",
+  "AUTH_GITHUB_CLIENT_SECRET":"${BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET:-unset}"
+}}
+EOF
+)"
+  else
+    kubectl create secret generic "${J2026_BACKSTAGE_SECRETS_NAME}" \
+      -n "${J2026_BACKSTAGE_NAMESPACE}" \
+      --from-literal=BACKEND_SECRET="$(openssl rand -base64 24 | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c32)" \
+      --from-literal=GITHUB_TOKEN="${GIT_TOKEN:-}" \
+      --from-literal=JENKINS_API_USER="${bs_jenkins_user}" \
+      --from-literal=JENKINS_API_KEY="${bs_jenkins_key}" \
+      --from-literal=AUTH_GITHUB_CLIENT_ID="${BACKSTAGE_GITHUB_OAUTH_CLIENT_ID:-unset}" \
+      --from-literal=AUTH_GITHUB_CLIENT_SECRET="${BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET:-unset}"
+    log_info "Created."
+  fi
+fi
+
 # Static platform RBAC (Jenkins/Tekton SA 'edit' bindings + the pgAdmin
 # secret-reader Role/binding) is now GitOps-owned by the ArgoCD `platform-config`
 # app (argocd/platform-config/, planted by 08.5-argocd.sh) — it's timing-insensitive
@@ -521,7 +613,13 @@ if [[ -n "${REGISTRY_USERNAME:-}" && -n "${REGISTRY_PASSWORD:-}" ]]; then
 else
   dockerconfigjson='{"auths":{}}'
 fi
-for ns in "${MS_NAMESPACES[@]}"; do
+# Backstage pulls its (private-by-default) GHCR app image with the same pull
+# secret - its namespace joins the loop when the portal is enabled.
+GHCR_PULL_NAMESPACES=("${MS_NAMESPACES[@]}")
+if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
+  GHCR_PULL_NAMESPACES+=("${J2026_BACKSTAGE_NAMESPACE}")
+fi
+for ns in "${GHCR_PULL_NAMESPACES[@]}"; do
   if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
     # eso → store the raw creds in Secret Manager; the ExternalSecret (08.6)
     # rebuilds the dockerconfigjson via its target.template from these keys.
@@ -622,12 +720,30 @@ spec:
     limits.memory: 1.0Gi
 EOF
 
+# 6. Backstage Namespace Quota (backstage.enabled): the Node.js backend + the
+# CNPG single-instance postgres + the transient CNPG initdb Job.
+if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
+kubectl apply -f - -n "${J2026_BACKSTAGE_NAMESPACE}" <<EOF
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: backstage-quota
+spec:
+  hard:
+    requests.cpu: "1.0"
+    requests.memory: 2.0Gi
+    limits.cpu: "3.0"
+    limits.memory: 4.0Gi
+EOF
+fi
+
 
 
 log_step "Applying LimitRanges to supply default requests/limits"
 
 limitrange_ns=("${J2026_OBS_NAMESPACE}" "${J2026_HEADLAMP_NAMESPACE}" "${J2026_ARGOCD_NAMESPACE}" "${J2026_PGADMIN_NAMESPACE}")
 [[ "${J2026_CI_ENGINE}" == "jenkins" ]] && limitrange_ns+=("${J2026_JENKINS_NAMESPACE}")
+[[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]] && limitrange_ns+=("${J2026_BACKSTAGE_NAMESPACE}")
 for ns in "${limitrange_ns[@]}"; do
   kubectl apply -f - -n "${ns}" <<EOF
 apiVersion: v1
@@ -676,6 +792,14 @@ fi
 # Egress to GitHub/GHCR, the OTel collector (4317), the API server, and microservices.
 if [[ "${J2026_CI_ENGINE}" == "argoworkflows" ]]; then
   kubectl apply -f "${J2026_ROOT_DIR}/infrastructure/networkpolicies-argoworkflows.yaml"
+fi
+# Backstage-namespace baseline only when backstage.enabled (no backstage ns
+# otherwise - applying into an absent namespace is a hard error). Ingress locked
+# to the LB/health-check ranges (IAP header-spoof defense, like argocd-baseline);
+# egress to DNS, 443 (GitHub/API server/Google JWKS), the in-namespace CNPG
+# postgres, and the Jenkins/ArgoCD Services its plugins consult.
+if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
+  kubectl apply -f "${J2026_ROOT_DIR}/infrastructure/networkpolicies-backstage.yaml"
 fi
 
 # Node Auto-Provisioning (NAP): apply the Custom ComputeClass that backs Spot,

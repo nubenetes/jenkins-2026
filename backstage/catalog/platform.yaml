@@ -1,0 +1,85 @@
+# The platform model: one Domain, the demo-app System, the CI/CD-platform
+# System, and the platform-level Resources. Links use the committed default
+# domain (config.yaml gateway.baseDomain) - adjust for forks.
+apiVersion: backstage.io/v1alpha1
+kind: Domain
+metadata:
+  name: jenkins-2026
+  description: Jenkins-on-Kubernetes PoC - CI/CD platform + demo microservices
+  links:
+    - url: https://github.com/nubenetes/jenkins-2026
+      title: Platform repo (infra, pipelines, docs)
+      icon: github
+spec:
+  owner: platform-team
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: microservices
+  description: The JHipster demo application (gateway + backend microservice)
+  links:
+    - url: https://microservices.jenkins2026.nubenetes.com
+      title: Live app (stable tier)
+spec:
+  owner: platform-team
+  domain: jenkins-2026
+---
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: ci-platform
+  description: >-
+    The CI/CD + GitOps platform itself: four interchangeable CI engines
+    (Jenkins / Tekton / GitHub Actions / Argo Workflows), ArgoCD, the
+    observability stack and this portal.
+  links:
+    - url: https://argocd.jenkins2026.nubenetes.com
+      title: ArgoCD (IAP)
+    - url: https://headlamp.jenkins2026.nubenetes.com
+      title: Headlamp (IAP)
+    - url: https://grafana.jenkins2026.nubenetes.com
+      title: Grafana (oss mode, IAP)
+spec:
+  owner: platform-team
+  domain: jenkins-2026
+---
+# The infra repo as a Component: its TechDocs render this repo's docs/ tree
+# (repo-root mkdocs.yml; mermaid via the TechDocs addon).
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: jenkins-2026-infra
+  description: Platform-as-code - scripts, Terraform, ArgoCD apps, pipelines, docs
+  annotations:
+    github.com/project-slug: nubenetes/jenkins-2026
+    backstage.io/techdocs-ref: url:https://github.com/nubenetes/jenkins-2026/tree/main
+  links:
+    - url: https://github.com/nubenetes/jenkins-2026/actions
+      title: Platform lifecycle workflows (DayN.tier.ZZ)
+      icon: github
+spec:
+  type: infrastructure
+  lifecycle: production
+  owner: platform-team
+  system: ci-platform
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: gke-cluster
+  description: The throwaway GKE cluster (terraform/gke; Dataplane V2 + WireGuard)
+spec:
+  type: kubernetes-cluster
+  owner: platform-team
+  system: ci-platform
+---
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: backstage-db
+  description: CNPG PostgreSQL backing this portal (throwaway by design - docs/104)
+spec:
+  type: database
+  owner: platform-team
+  system: ci-platform

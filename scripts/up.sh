@@ -16,6 +16,8 @@
 #   07 grafana-dashboards (sequential - needs 03's credentials/configmap)
 #   07.5 grafana-alerts  (sequential - provisions contact point + alert rules)
 #   08 headlamp         (sequential - cluster management UI)
+#   08.95 backstage     (opt-out backstage.enabled: developer portal via the
+#                        argocd/backstage app-of-apps; retires when off)
 #   09 gateway          (sequential - public access via GKE Gateway API + IAP)
 #
 # Each step is idempotent; re-running up.sh after a partial failure is safe.
@@ -112,6 +114,15 @@ log_step "Configuring the Grafana Assistant (08.9, opt-in, oss only)"
 "${SCRIPT_DIR}/08.9-grafana-assistant.sh" || log_warn "Grafana Assistant provisioning reported an issue (see above) — non-fatal"
 
 "${SCRIPT_DIR}/08-headlamp.sh"
+
+# Backstage developer portal (backstage.enabled, default true - docs/505):
+# needs ArgoCD (08.5, which also waits for the CNPG operator), the eso sync
+# (08.6) and the backend-TLS certs (08.7) - all done above - and must run
+# BEFORE 09 so the gateway can attach IAP/health policies to a live backend
+# and resolve the IAP JWT audience. Retires itself when the flag is off.
+log_step "Configuring Backstage (08.95, developer portal)"
+"${SCRIPT_DIR}/08.95-backstage.sh"
+
 "${SCRIPT_DIR}/09-gateway.sh"
 
 # On a re-run the microservices are already up — check OTel injection immediately.

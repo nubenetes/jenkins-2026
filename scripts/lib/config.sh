@@ -437,6 +437,45 @@ export J2026_HEADLAMP_ADMIN_EMAILS="${JENKINS2026_HEADLAMP_ADMIN_EMAILS:-$(yq_ge
 export J2026_PGADMIN_NAMESPACE="$(yq_get '.pgadmin.namespace' 'pgadmin')"
 export J2026_PGADMIN_RELEASE="$(yq_get '.pgadmin.releaseName' 'pgadmin')"
 
+# --- backstage (developer portal / IDP) ---------------------------------------
+# FEATURE FLAG: JENKINS2026_BACKSTAGE_ENABLED overrides backstage.enabled from
+# config.yaml for a single run - same durable-default/ephemeral-override pattern
+# as ci.engine / observability.mode. When true, 01-namespaces.sh provisions the
+# namespace + backstage-secrets, 08.95-backstage.sh writes the runtime ConfigMap
+# and applies the argocd/backstage app-of-apps (CNPG db + official chart), and
+# 09-gateway.sh exposes it behind IAP at backstage.<baseDomain> (+ resolves the
+# IAP JWT audience). When false, 08.95 retires the Application symmetrically.
+# See docs/505-BACKSTAGE.md.
+J2026_BACKSTAGE_ENABLED="${JENKINS2026_BACKSTAGE_ENABLED:-$(yq_get '.backstage.enabled' 'true')}"
+export J2026_BACKSTAGE_ENABLED
+case "${J2026_BACKSTAGE_ENABLED}" in
+  true|false) ;;
+  *)
+    log_error "Invalid backstage.enabled '${J2026_BACKSTAGE_ENABLED}' (expected true|false)."
+    log_error "Set backstage.enabled in ${J2026_CONFIG_FILE} or export JENKINS2026_BACKSTAGE_ENABLED."
+    exit 1
+    ;;
+esac
+export J2026_BACKSTAGE_NAMESPACE="$(yq_get '.backstage.namespace' 'backstage')"
+export J2026_BACKSTAGE_CHART_REPO_URL="$(yq_get '.backstage.chart.repoUrl' 'https://backstage.github.io/charts')"
+export J2026_BACKSTAGE_CHART_NAME="$(yq_get '.backstage.chart.chartName' 'backstage')"
+export J2026_BACKSTAGE_CHART_VERSION="$(yq_get '.backstage.chart.version' '2.8.2')"
+export J2026_BACKSTAGE_IMAGE_REPO="$(yq_get '.backstage.image.repository' 'ghcr.io/nubenetes/jenkins-2026-backstage')"
+# Image tag: explicit override > config pin > auto-track the DEPLOY branch
+# (J2026_SELF_REPO_BRANCH: main|develop) - so a Day1 from develop validates
+# develop's Backstage image before the promotion PR, exactly like the Jenkins
+# shared library / seed auto-track. Day2.publish.06-backstage pushes one tag
+# per branch (+ sha-<sha> pins).
+_backstage_tag_cfg="$(yq_get '.backstage.image.tag' '')"
+export J2026_BACKSTAGE_IMAGE_TAG="${JENKINS2026_BACKSTAGE_IMAGE_TAG:-${_backstage_tag_cfg:-${J2026_SELF_REPO_BRANCH}}}"
+export J2026_BACKSTAGE_DB_CLUSTER="$(yq_get '.backstage.db.clusterName' 'backstage-db')"
+export J2026_BACKSTAGE_SECRETS_NAME="$(yq_get '.backstage.credentialsSecretName' 'backstage-secrets')"
+# Script-owned runtime config (CI engine, URLs, IAP audience) consumed by the
+# pod as env - a ConfigMap, NOT part of backstage-secrets, so the eso-mode
+# ExternalSecret can never clobber the derived keys (the grafana-base-url
+# lesson - see docs/505 § eso).
+export J2026_BACKSTAGE_RUNTIME_CONFIGMAP="backstage-runtime-config"
+
 # --- gateway (public access via GKE Gateway API + IAP) -----------------------
 
 
@@ -538,6 +577,14 @@ export J2026_BACKEND_TLS_POLICY_ARGOWF="argo-server-backend-tls"
 export J2026_BACKEND_TLS_SECRET_MICROSERVICES="gateway-tls"
 export J2026_BACKEND_TLS_MICROSERVICES_PASSWORD_SECRET="gateway-tls-password"
 export J2026_BACKEND_TLS_POLICY_MICROSERVICES="microservices-gateway-backend-tls"
+# Stage-10 TLS backend: Backstage (backstage.enabled ONLY - doubly conditional,
+# like Grafana's oss gate). Server-cert Secret 08.7-backend-tls.sh mints (must
+# match the secretName mounted by helm/backstage/values-backend-tls.yaml) + the
+# BackendTLSPolicy 09-gateway.sh attaches. The Node.js backend serves TLS
+# natively on its pod port 7007 via app-config backend.https ($file refs to the
+# mounted cert) - Decision-1 "native" per docs/504.
+export J2026_BACKEND_TLS_SECRET_BACKSTAGE="backstage-tls"
+export J2026_BACKEND_TLS_POLICY_BACKSTAGE="backstage-backend-tls"
 
 
 # Fixed names of the Gateway/HTTPRoute/GCPBackendPolicy resources created by
@@ -570,6 +617,9 @@ export J2026_GATEWAY_IAP_POLICY_HEADLAMP="headlamp-iap"
 export J2026_GATEWAY_IAP_POLICY_PGADMIN="pgadmin-iap"
 export J2026_GATEWAY_IAP_POLICY_GRAFANA="grafana-iap"
 export J2026_GATEWAY_IAP_POLICY_TEKTON="tekton-iap"
+# Backstage developer portal (backstage.enabled, IAP-protected).
+export J2026_GATEWAY_HTTPROUTE_BACKSTAGE="backstage"
+export J2026_GATEWAY_IAP_POLICY_BACKSTAGE="backstage-iap"
 
 J2026_GATEWAY_HOST_JENKINS="$(yq_get '.gateway.hosts.jenkins' 'jenkins')"
 J2026_GATEWAY_HOST_MICROSERVICES="$(yq_get '.gateway.hosts.microservices' 'microservices')"
@@ -580,6 +630,7 @@ J2026_GATEWAY_HOST_FARO="$(yq_get '.gateway.hosts.faro' 'faro')"
 J2026_GATEWAY_HOST_GRAFANA="$(yq_get '.gateway.hosts.grafana' 'grafana')"
 J2026_GATEWAY_HOST_TEKTON="$(yq_get '.gateway.hosts.tekton' 'tekton')"
 J2026_GATEWAY_HOST_PAC="$(yq_get '.gateway.hosts.pac' 'pac')"
+J2026_GATEWAY_HOST_BACKSTAGE="$(yq_get '.gateway.hosts.backstage' 'backstage')"
 export J2026_GATEWAY_JENKINS_HOST="${J2026_GATEWAY_HOST_JENKINS}.${J2026_GATEWAY_BASE_DOMAIN}"
 export J2026_GATEWAY_MICROSERVICES_HOST="${J2026_GATEWAY_HOST_MICROSERVICES}.${J2026_GATEWAY_BASE_DOMAIN}"
 export J2026_GATEWAY_MICROSERVICES_DEVELOP_HOST="${J2026_GATEWAY_HOST_MICROSERVICES_DEVELOP}.${J2026_GATEWAY_BASE_DOMAIN}"
@@ -589,6 +640,7 @@ export J2026_GATEWAY_FARO_HOST="${J2026_GATEWAY_HOST_FARO}.${J2026_GATEWAY_BASE_
 export J2026_GATEWAY_GRAFANA_HOST="${J2026_GATEWAY_HOST_GRAFANA}.${J2026_GATEWAY_BASE_DOMAIN}"
 export J2026_GATEWAY_TEKTON_HOST="${J2026_GATEWAY_HOST_TEKTON}.${J2026_GATEWAY_BASE_DOMAIN}"
 export J2026_GATEWAY_PAC_HOST="${J2026_GATEWAY_HOST_PAC}.${J2026_GATEWAY_BASE_DOMAIN}"
+export J2026_GATEWAY_BACKSTAGE_HOST="${J2026_GATEWAY_HOST_BACKSTAGE}.${J2026_GATEWAY_BASE_DOMAIN}"
 
 # Argo Workflows Server UI (IAP-protected) + Argo Events webhook receiver (public, no
 # IAP) — only used when ci.engine=argoworkflows.

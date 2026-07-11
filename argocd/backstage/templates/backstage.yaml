@@ -1,0 +1,48 @@
+# The Backstage chart itself - wave 1, created once the CNPG Cluster (wave 0)
+# reports Healthy (ArgoCD's CNPG Lua health check in helm/argocd-values.yaml).
+# Two-source pattern like argocd/headlamp-app.yaml: the OFFICIAL chart + the
+# $values git ref into this repo's helm/backstage/ overlays.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: backstage
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    - repoURL: {{ .Values.chart.repoURL | quote }}
+      chart: {{ .Values.chart.name | quote }}
+      targetRevision: {{ .Values.chart.version | quote }}
+      helm:
+        # The image coordinates ride helm.parameters (not a values file) so the
+        # tag can auto-track the deploy branch per run - see the parent app.
+        parameters:
+          - name: backstage.image.registry
+            value: {{ .Values.image.registry | quote }}
+          - name: backstage.image.repository
+            value: {{ .Values.image.repository | quote }}
+          - name: backstage.image.tag
+            value: {{ .Values.image.tag | quote }}
+        valueFiles:
+          - $values/helm/backstage/values.yaml
+          {{- if eq (.Values.backendTls | toString) "true" }}
+          # Backend TLS active (docs/504 stage 8): native Node HTTPS on 7007 +
+          # HTTPS probes + the backstage-tls cert mount. Later valueFiles win.
+          - $values/helm/backstage/values-backend-tls.yaml
+          {{- end }}
+    - repoURL: {{ .Values.repoURL | quote }}
+      targetRevision: {{ .Values.targetRevision | quote }}
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.namespace | quote }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

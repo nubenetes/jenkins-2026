@@ -295,6 +295,11 @@ if [[ -n "${J2026_GATEWAY_BASE_DOMAIN}" ]]; then
   elif [[ "${J2026_CI_ENGINE}" == "argoworkflows" ]]; then
     iap_namespaces+=("${J2026_ARGOWF_NAMESPACE}")
   fi
+  # Backstage is IAP-fronted too (backstage.enabled) - engine-independent, like
+  # headlamp/pgadmin/argocd.
+  if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
+    iap_namespaces+=("${J2026_BACKSTAGE_NAMESPACE}")
+  fi
   for ns in "${iap_namespaces[@]}"; do
     es_extract  "${J2026_GATEWAY_IAP_SECRET}" "${ns}" "${J2026_GATEWAY_IAP_SECRET}"
     # the GCPBackendPolicy oauth2ClientSecret ref wants a single-key Secret.
@@ -353,6 +358,20 @@ fi
 # --- emit: Headlamp OIDC credentials (always; Headlamp is always deployed) ----
 es_extract "${J2026_HEADLAMP_CREDENTIALS_SECRET}" "${J2026_HEADLAMP_NAMESPACE}" \
   "${J2026_HEADLAMP_CREDENTIALS_SECRET}"
+
+# --- emit: Backstage portal secrets (backstage.enabled) ------------------------
+# Merge (not Owner): 01-namespaces seeds the SM blob (BACKEND_SECRET stable,
+# GITHUB_TOKEN, JENKINS_API_*, AUTH_GITHUB_*) + an empty base Secret, and
+# 08.95-backstage.sh patches ARGOCD_USERNAME/ARGOCD_PASSWORD (minted in-cluster
+# by ArgoCD) onto the live Secret - ESO must merge its keys in without owning /
+# clobbering those, exactly like jenkins-credentials/argocd-token. The image
+# pull secret rides the same ghcr-credentials dockerconfig template as the
+# microservices namespaces.
+if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
+  es_extract "${J2026_BACKSTAGE_SECRETS_NAME}" "${J2026_BACKSTAGE_NAMESPACE}" \
+    "${J2026_BACKSTAGE_SECRETS_NAME}" "Merge"
+  es_dockerconfig "ghcr-credentials" "${J2026_BACKSTAGE_NAMESPACE}" "ghcr-credentials"
+fi
 
 # --- emit: microservices image pull secret (always) --------------------------
 es_dockerconfig "ghcr-credentials" "${J2026_MICROSERVICES_NS_STABLE}" "ghcr-credentials"

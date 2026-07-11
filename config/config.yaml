@@ -518,6 +518,66 @@ headlamp:
   adminEmails: ""
 
 # -----------------------------------------------------------------------------
+# Backstage (developer portal / IDP) - see docs/505-BACKSTAGE.md
+# -----------------------------------------------------------------------------
+# The open-source Backstage.io developer portal, deployed via the OFFICIAL Helm
+# chart (backstage/charts) as an ArgoCD app-of-apps (argocd/backstage/): a CNPG
+# PostgreSQL Cluster (wave 0, throwaway - the catalog rebuilds from git) + the
+# Backstage chart (wave 1). The app itself is a CUSTOM build (backstage/ dir in
+# this repo) because CI-engine plugins are compile-time: ONE image ships the
+# Jenkins + GitHub Actions + Tekton + Argo Workflows + ArgoCD + Kubernetes
+# plugins, and the ACTIVE engine's tab is selected at RUNTIME per ci.engine (the
+# backstage-runtime-config ConfigMap, written by scripts/08.95-backstage.sh).
+# Exposed on the internet behind Google IAP (backstage.<baseDomain>) with the
+# same OAuth client + admin emails as Jenkins/Headlamp/Grafana; sign-in uses the
+# native gcpIap auth provider (the IAP JWT is verified in-app - no second
+# login). Backend TLS (gateway.backendTls) covers it as stage 8 (native Node.js
+# HTTPS via app-config backend.https).
+#
+# ⚠ ONE-TIME BOOTSTRAP: the image must exist in GHCR before the first enabled
+# Day1 - run the Day2.publish.06-backstage workflow once (the image PERSISTS
+# across cluster rebuilds, like the microservices images). Until then 08.95
+# degrades gracefully (warns + skips the rollout wait; Day1 stays green).
+# FEATURE FLAG: override for a single run with JENKINS2026_BACKSTAGE_ENABLED
+# (config.yaml is the durable default; the env var is the ephemeral override -
+# same pattern as ci.engine / observability.mode).
+backstage:
+  enabled: true
+  namespace: backstage
+  # Official Helm chart (backstage/charts). Pinned per docs/602 - 2.8.2 is the
+  # latest as of 2026-07-11 (released 2026-06-17). The chart's bundled bitnami
+  # postgresql subchart stays DISABLED (it is frozen on the unmaintained
+  # docker.io/bitnamilegacy image since the Aug 2025 Bitnami catalog lockdown);
+  # the database is an external CNPG Cluster instead - see argocd/backstage/.
+  chart:
+    repoUrl: https://backstage.github.io/charts
+    chartName: backstage
+    version: "2.8.2"
+  # The custom app image (built from backstage/ by Day2.publish.06-backstage,
+  # pushed as <branch> + sha-<sha> tags). Backstage core pinned at v1.52.1
+  # (latest stable line, released 2026-06-26) via backstage/backstage.json +
+  # the release-manifest pins in backstage/package.json.
+  image:
+    repository: ghcr.io/nubenetes/jenkins-2026-backstage
+    # Empty = auto-track the DEPLOY branch (J2026_SELF_REPO_BRANCH: main|develop),
+    # so a Day1 from develop validates develop's Backstage image before the
+    # promotion PR - same auto-track pattern as the Jenkins shared library. Set a
+    # sha-<sha> tag to pin. Ephemeral override: JENKINS2026_BACKSTAGE_IMAGE_TAG.
+    tag: ""
+  # CNPG PostgreSQL Cluster (argocd/backstage/templates/db.yaml): single
+  # instance, no backups - deliberately THROWAWAY (docs/104: the catalog is
+  # rebuilt from git/GitHub on every fresh provision; TechDocs/search re-index).
+  # No imageName pin: the operator's bundled default PostgreSQL image is already
+  # pinned transitively by the cnpg chart pin (platform-postgres, docs/602), and
+  # Backstage supports the last 5 PostgreSQL majors.
+  db:
+    clusterName: backstage-db
+  # k8s Secret (created by scripts/01-namespaces.sh) holding the Backstage
+  # backend auth key + the GitHub/Jenkins/ArgoCD integration credentials the
+  # app-config references. Never commit real values.
+  credentialsSecretName: backstage-secrets
+
+# -----------------------------------------------------------------------------
 # ArgoCD (GitOps continuous delivery)
 # -----------------------------------------------------------------------------
 argocd:
@@ -607,6 +667,8 @@ gateway:
     # Only used when observability.mode=oss (in-cluster Grafana). Ignored in
     # grafana-cloud mode, where Grafana is reached at its *.grafana.net URL.
     grafana: "grafana"
+    # Backstage developer portal (backstage.enabled=true, IAP-protected).
+    backstage: "backstage"
   # k8s Secret (per-namespace, created by scripts/01-namespaces.sh) holding
   # the IAP OAuth client ID/secret consumed by the GCPBackendPolicy resources
   # that put Identity-Aware Proxy in front of Jenkins and Headlamp. Never
