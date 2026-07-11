@@ -38,7 +38,7 @@ controller:
     # latest LTS as of 2026-06-13 (https://www.jenkins.io/changelog-stable/).
     # installPlugins below is pinned against this exact tag - bump both
     # together (see the regeneration recipe in the installPlugins comment).
-    tag: "2.555.3-lts-jdk21"
+    tag: "2.568.1-lts-jdk21"
     # Chart default is "Always" (controller.image.pullPolicy, NOT the
     # similarly-named top-level controller.imagePullPolicy, which this chart
     # doesn't read) - pin to IfNotPresent since our tag is a fixed version,
@@ -427,11 +427,11 @@ controller:
   # comments; everything else is "transitive dependencies", sorted).
   installPlugins:
     # --- top-level (curated) ---
-    - kubernetes:4423.vb_59f230b_ce53
+    - kubernetes:4437.v3a_18554d3f32
     - workflow-aggregator:608.v67378e9d3db_1
     - git:5.10.1
     - github-branch-source:1967.1970.vd86979736546
-    - configuration-as-code:2095.vef6db_3a_b_5b_9c
+    - configuration-as-code:2100.vb_fd699d2a_09c
     - job-dsl:3654.vdf58f53e2d15
     # Provides folder support.
     - cloudbees-folder:6.1100.ve9eed61d16c4
@@ -440,15 +440,15 @@ controller:
     # Modern, lightweight pipeline visualization (pan/zoom stage graph) -
     # the maintained successor to the discontinued Blue Ocean. Adds a
     # "Pipeline Graph" tab to every build page, no extra config needed.
-    - pipeline-graph-view:957.v404a_2b_4f9b_6f
+    - pipeline-graph-view:963.v2a_b_019810b_e1
     - opentelemetry:3.1589.ve81b_b_fa_927d5
-    - credentials-binding:725.ve52b_2328a_fde
+    - credentials-binding:728.v902a_273b_8947
     - role-strategy:867.vd09254229f9b_
     - matrix-auth:3.2.10
     - antisamy-markup-formatter:173.v680e3a_b_69ff3
     - timestamper:1.30
     - ws-cleanup:0.49
-    - durable-task:671.v340ff7959010
+    - durable-task:686.v80ff80875b_82
     # Native dark mode - see appearance.themeManager in
     # jenkins/casc/jcasc-base.yaml.
     - dark-theme:652.vea_da_dfea_e769
@@ -485,7 +485,7 @@ controller:
     - instance-identity:203.v15e81a_1b_7a_38
     - ionicons-api:94.vcc3065403257
     - jackson2-api:2.22.0-439.vb_b_43658d6176
-    - jackson3-api:3.2.0-89.v014d02108ea_7
+    - jackson3-api:3.2.1-92.vd25c2e23c180
     - jackson-annotations2-api:2.22-19.v10a_a_582ea_26e
     - jakarta-activation-api:2.1.4-1
     - jakarta-mail-api:2.1.5-1
