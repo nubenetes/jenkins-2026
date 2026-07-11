@@ -92,6 +92,7 @@ jenkins:
 # in-cluster admin credentials 08.95 patches in; URL flips to https + the
 # internal CA (NODE_EXTRA_CA_CERTS) when backend TLS is active.
 argocd:
+  baseUrl: https://argocd.${BASE_DOMAIN}
   username: ${ARGOCD_USERNAME}
   password: ${ARGOCD_PASSWORD}
   appLocatorMethods:
