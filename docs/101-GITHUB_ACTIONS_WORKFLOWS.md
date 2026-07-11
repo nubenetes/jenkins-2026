@@ -269,7 +269,7 @@ flowchart TD
     Q_FIRST -->|"no, cluster exists"| Q_INTENT{"What's my intent?"}
 
     Q_INTENT -->|"change one component"| Q_WHAT{"Which component?"}
-    Q_WHAT -->|"ArgoCD / Jenkins / Tekton / GitHub Actions /<br/>Argo Workflows / Headlamp / Gateway-IAP"| REDEPLOY["Day2.redeploy.01-argocd ·<br/>02-jenkins · 03-tekton ·<br/>04-headlamp · 05-gateway ·<br/>06-githubactions · 07-argoworkflows<br/>(pick the one you changed)"]
+    Q_WHAT -->|"ArgoCD / Jenkins / Tekton / GitHub Actions /<br/>Argo Workflows / Headlamp / Gateway-IAP / Backstage"| REDEPLOY["Day2.redeploy.01-argocd ·<br/>02-jenkins · 03-tekton ·<br/>04-headlamp · 05-gateway ·<br/>06-githubactions · 07-argoworkflows ·<br/>08-backstage<br/>(pick the one you changed)"]
     Q_WHAT -->|"any other change<br/>(scripts, Helm, Terraform)"| RERUN["re-run Day1.cluster.01-gke<br/>(idempotent, converges in place)"]
 
     Q_INTENT -->|"publish dashboards / alerts"| Q_BACKEND{"Which backend?"}
@@ -277,6 +277,8 @@ flowchart TD
     Q_BACKEND -->|"grafana-cloud"| PGC["Day2.publish.02-grafana-cloud"]
     Q_BACKEND -->|"managed-azure / managed-aws"| PMAN["Day2.publish.03-azure-grafana /<br/>04-aws-grafana"]
     Q_BACKEND -->|"alerts only"| PALERT["Day2.publish.05-alerts"]
+
+    Q_INTENT -->|"(re)build the Backstage app image"| PBST["Day2.publish.06-backstage<br/>(one-time bootstrap · no cluster needed)"]
 
     Q_INTENT -->|"run load / traffic"| TRAFFIC["Day2.traffic.01-k6 (load) ·<br/>02-rum (synthetic RUM beacons)"]
     Q_INTENT -->|"prune old ghcr images"| REG["Day2.registry.01-image-retention<br/>(no cluster needed)"]
@@ -321,6 +323,7 @@ flowchart TD
         P5_1a["Day2.publish.03 Azure dashboards"]
         P5_1b["Day2.publish.04 AWS dashboards"]
         P5_1c["Day2.publish.05 Grafana alerts"]
+        P5_1d["Day2.publish.06 Backstage app image"]
         P5_2z["Day2.redeploy.01 ArgoCD"]
         P5_2a["Day2.redeploy.02 Jenkins"]
         P5_2t["Day2.redeploy.03 Tekton"]
@@ -328,6 +331,7 @@ flowchart TD
         P5_2g["Day2.redeploy.05 Gateway"]
         P5_2gha["Day2.redeploy.06 GitHub Actions"]
         P5_2aw["Day2.redeploy.07 Argo Workflows"]
+        P5_2bs["Day2.redeploy.08 Backstage"]
         P5_reg["Day2.registry.01 Image retention"]
         P5_9["Day2.traffic.01 k6"]
         P5_9r["Day2.traffic.02 Synthetic RUM"]

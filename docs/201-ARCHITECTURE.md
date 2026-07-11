@@ -39,6 +39,10 @@ mindmap
       ArgoCD
       gitops-config repo
       app-of-apps
+    Developer portal
+      Backstage · IAP + JWT
+      engine-aware CI tab
+      TechDocs of these docs
     Workloads
       gateway + jhipster
       CNPG Postgres HA
@@ -56,7 +60,7 @@ mindmap
 
 </details>
 
-**Reading it —** the six branches are the planes the rest of this doc details: a single **source of truth** (`config.yaml` → `J2026_*` env via [`scripts/lib/config.sh`](../scripts/lib/config.sh)), a pick-one **CI engine**, **ArgoCD** as the always-on GitOps CD, the **workloads** (the two JHipster services + their HA CNPG Postgres), **OpenTelemetry** flowing to one of four backends, and the **platform** layer (ingress/IAP, Dataplane V2, pluggable secrets). The three feature flags — `ci.engine`, `observability.mode`, `secrets.backend` — are the only knobs that change the shape.
+**Reading it —** the seven branches are the planes the rest of this doc details: a single **source of truth** (`config.yaml` → `J2026_*` env via [`scripts/lib/config.sh`](../scripts/lib/config.sh)), a pick-one **CI engine**, **ArgoCD** as the always-on GitOps CD, the **developer portal** (Backstage — the engine-aware single pane of glass, [505](./505-BACKSTAGE.md)), the **workloads** (the two JHipster services + their HA CNPG Postgres), **OpenTelemetry** flowing to one of four backends, and the **platform** layer (ingress/IAP, Dataplane V2, pluggable secrets). The three feature flags — `ci.engine`, `observability.mode`, `secrets.backend` — are the knobs that change the shape (plus the on-by-default `backstage.enabled`).
 
 <details>
 <summary>🟢 For newcomers — what this deploys</summary>
@@ -66,6 +70,7 @@ mindmap
 | **Single source of truth** | `config/config.yaml` holds every setting; scripts load it as `J2026_*` env vars. Change config, re-run — no hand-editing manifests. |
 | **CI** | One of four engines — **Jenkins** (default), **Tekton**, **GitHub Actions (ARC)**, or **Argo Workflows** — builds each service, pushes the image to GHCR, then **commits the new image tag** to the GitOps repo. |
 | **CD (GitOps)** | **ArgoCD** watches the GitOps repo and reconciles the cluster to match it. CI never `kubectl apply`s the apps. |
+| **Developer portal** | **Backstage** — one page per service: the active engine's builds, ArgoCD deployments, running pods and these docs, behind the same Google login ([505](./505-BACKSTAGE.md)). |
 | **Apps** | Two JHipster services — `gateway` (Spring Boot + Angular UI) and `jhipstersamplemicroservice` — each with a 3-node **HA Postgres** (CloudNative-PG) behind a PgBouncer pooler. |
 | **Observability** | Everything emits **OpenTelemetry** (traces/metrics/logs) to an in-cluster collector, which forwards to one of four backends. |
 | **Three switches** | `ci.engine` (jenkins\|tekton\|githubactions\|argoworkflows), `observability.mode` (grafana-cloud\|oss\|managed-azure\|managed-aws), `secrets.backend` (imperative\|eso) — each deterministic & idempotent. |
@@ -195,13 +200,14 @@ flowchart TB
 
     users --> DNS --> LB --> IAPN --> GW
     GW -->|"IAP UI: jenkins·tekton·argo"| JEN & TEK & ARGOWF
-    GW -->|"IAP UI: headlamp·pgadmin·grafana"| PUIS
+    GW -->|"IAP UI: headlamp·pgadmin·backstage·grafana"| PUIS
     GW -->|"open: microservices·faro·argocd"| GWAPP & SRCS & ACD
     GW -->|"HMAC public"| ARGOEV & PACWH
     forks -. "push webhooks" .-> PACWH & ARGOEV
 
     CISA -->|"up.sh 00→09"| ACD
-    ACD -->|"installs / syncs"| CONTRACT & OPS & GWAPP
+    ACD -->|"installs / syncs"| CONTRACT & OPS & GWAPP & PUIS
+    PUIS -. "Backstage: live views of engines · ArgoCD · k8s" .-> ACD
     PUSH -. "companions" .-> CONTRACT & GWAPP
     OPS -. "OTel inject · ESO/CNPG WIF" .-> GWAPP
     CONTRACT --- JEN & TEK & GHAARC & ARGOWF
@@ -1009,18 +1015,25 @@ graph TD
     GHS["GitHub secret<br/>IAP_OAUTH_CLIENT_ID/SECRET"] --> NS["01-namespaces.sh<br/>replicate to each IAP backend ns"]
     NS --> H["headlamp/<br/>gateway-iap-oauth"]
     NS --> P["pgadmin/<br/>gateway-iap-oauth"]
+    NS --> A["argocd/<br/>gateway-iap-oauth"]
+    NS --> B["backstage/<br/>gateway-iap-oauth<br/>(backstage.enabled)"]
     NS --> J["engine ns with an IAP UI/<br/>gateway-iap-oauth<br/>jenkins · tekton-pipelines · argo<br/>(per ci.engine; ARC has NO UI → no copy)"]
     H --> HP["GCPBackendPolicy → Headlamp Service"]
     P --> PP["GCPBackendPolicy → pgAdmin Service"]
+    A --> AP["GCPBackendPolicy → argocd-server<br/>(+ Dex authproxy SSO)"]
+    B --> BP["GCPBackendPolicy → Backstage Service<br/>(+ in-app gcpIap JWT verification)"]
     J --> JP["GCPBackendPolicy → Jenkins / Tekton Dashboard / Argo Server"]
-    H -. "ArgoCD (no IAP, uses OIDC) reads<br/>the client from headlamp" .-> ACD["argocd/ ArgoCD server"]
+    H -. "08.5 also reads the client from headlamp<br/>for ArgoCD's Dex config" .-> A
 ```
 
 </details>
 
-> ArgoCD is **not** IAP-gated (it has its own Google OIDC login), but it reuses the
-> *same* OAuth client. It therefore reads `gateway-iap-oauth` from the always-present
-> `headlamp` namespace rather than minting a second client.
+> ArgoCD **is IAP-gated too** (defense-in-depth): its Dex `authproxy` connector
+> trusts the IAP-injected identity header for single sign-on ([501](./501-PLATFORM_OPERATIONS.md)),
+> so the `argocd` namespace gets its own copy of the client. `08.5-argocd.sh`
+> additionally reads the same client from the always-present `headlamp` namespace
+> when wiring Dex, rather than minting a second OAuth client. Backstage goes one
+> step further and **verifies the signed IAP JWT in-app** ([505](./505-BACKSTAGE.md)).
 
 ### The `platform-ingress` decoupling
 

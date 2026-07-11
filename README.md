@@ -88,6 +88,10 @@ mindmap
     (GitOps CD)
       [ArgoCD always]
       [app-of-apps]
+    (Dev Portal)
+      [Backstage v1.52]
+      [engine-aware CI tabs]
+      [TechDocs + catalog]
     (Workloads)
       [JHipster microservices]
       [CloudNativePG]
@@ -120,6 +124,7 @@ Think of it as a **build-and-ship factory for apps, described entirely in code**
 
 - A **CI engine** (one of four — Jenkins by default, Tekton, GitHub Actions/ARC, or Argo Workflows) builds, scans, and packages the demo microservices.
 - **ArgoCD** (GitOps) deploys them — the CI never runs `kubectl`; it just commits a new image tag that ArgoCD reconciles onto the cluster.
+- **Backstage** is the one-stop **portal** over all of it: the service catalog, the active engine's builds, deployments, running workloads and these docs — behind the same Google login.
 - **OpenTelemetry** ships traces/metrics/logs to one of four Grafana backends, all correlated.
 - **k6** generates traffic — from a tiny smoke test to full load/stress/soak runs — using **ready-made configs (presets) you pick from a menu**, so the dashboards always have something real to show.
 - **GitHub Actions** drives everything and logs into Google Cloud **with no stored key** (Workload Identity), provisioning/tearing down the cluster on demand (Day0 → Day1 → Day2 → Decom).
@@ -774,13 +779,14 @@ flowchart TB
 
     users --> DNS --> LB --> IAPN --> GW
     GW -->|"IAP UI: jenkins·tekton·argo"| JEN & TEK & ARGOWF
-    GW -->|"IAP UI: headlamp·pgadmin·grafana"| PUIS
+    GW -->|"IAP UI: headlamp·pgadmin·backstage·grafana"| PUIS
     GW -->|"open: microservices·faro·argocd"| GWAPP & SRCS & ACD
     GW -->|"HMAC public"| ARGOEV & PACWH
     forks -. "push webhooks" .-> PACWH & ARGOEV
 
     CISA -->|"up.sh 00→09"| ACD
-    ACD -->|"installs / syncs"| CONTRACT & OPS & GWAPP
+    ACD -->|"installs / syncs"| CONTRACT & OPS & GWAPP & PUIS
+    PUIS -. "Backstage: live views of engines · ArgoCD · k8s" .-> ACD
     PUSH -. "companions" .-> CONTRACT & GWAPP
     OPS -. "OTel inject · ESO/CNPG WIF" .-> GWAPP
     CONTRACT --- JEN & TEK & GHAARC & ARGOWF
