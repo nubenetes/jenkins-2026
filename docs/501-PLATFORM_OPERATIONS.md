@@ -49,7 +49,7 @@ The platform splits into five concerns, each run by its own controller — you r
 |---|---|---|
 | **Delivery** | Turns Git into running workloads. You bump an image tag in the GitOps repo; ArgoCD notices and reconciles the cluster. | ArgoCD (`selfHeal` + `prune`) |
 | **Ingress** | Puts apps on the public internet — **one** global HTTPS load balancer, **one** wildcard cert, one `HTTPRoute` per app. | GKE Gateway API |
-| **Identity at the edge** | Before a request reaches Jenkins/Headlamp/pgAdmin, **Google IAP** checks you're an allowed account. (The demo `microservices` host is public — no IAP.) | Identity-Aware Proxy |
+| **Identity at the edge** | Before a request reaches Jenkins/Headlamp/pgAdmin/Backstage, **Google IAP** checks you're an allowed account. (The demo `microservices` host is public — no IAP.) | Identity-Aware Proxy |
 | **Security inside** | Every namespace is default-deny; only listed traffic flows. Pod-to-pod traffic between nodes is encrypted. No static cloud keys anywhere. | Dataplane V2 NetworkPolicies + WireGuard + Workload Identity |
 | **Safe releases** | Ship a new version to 20% of users first, watch it, widen only if healthy. | Argo Rollouts (canary) |
 
@@ -59,9 +59,9 @@ So a deploy is: *CI writes a tag → ArgoCD syncs → the new pod comes up behin
 <details>
 <summary>🔴 For specialists — how each plane is wired here</summary>
 
-- **Delivery:** ArgoCD (auto-tracking the latest **3.4.x** via a daily CronJob watcher) runs single `Application`s (microservices `ApplicationSet`→`microservices-stable`, `headlamp`, `external-secrets`, `jenkins`, `argo-rollouts`, and `platform-config` — the engine-aware static platform RBAC) plus **app-of-apps** (`platform-postgres` → CNPG operator + pgAdmin, `observability-oss`, and the active CI engine's — `tekton` / `githubactions` / `argoworkflows`). The four CI engines (`ci.engine`: **Jenkins** default · **Tekton** · **GitHub Actions (ARC)** · **Argo Workflows**) are mutually exclusive; a scoped ArgoCD account + API token lets the pipeline `argocd app sync --wait`. All apps `selfHeal: true` + `prune: true`.
+- **Delivery:** ArgoCD (auto-tracking the latest **3.4.x** via a daily CronJob watcher) runs single `Application`s (microservices `ApplicationSet`→`microservices-stable`, `headlamp`, `external-secrets`, `jenkins`, `argo-rollouts`, and `platform-config` — the engine-aware static platform RBAC) plus **app-of-apps** (`platform-postgres` → CNPG operator + pgAdmin, `backstage` → the portal's CNPG db + chart ([505](./505-BACKSTAGE.md)), `observability-oss`, and the active CI engine's — `tekton` / `githubactions` / `argoworkflows`). The four CI engines (`ci.engine`: **Jenkins** default · **Tekton** · **GitHub Actions (ARC)** · **Argo Workflows**) are mutually exclusive; a scoped ArgoCD account + API token lets the pipeline `argocd app sync --wait`. All apps `selfHeal: true` + `prune: true`.
 - **Ingress:** one `Gateway` (`gatewayClassName: gke-l7-global-external-managed`) = one global external HTTPS LB + one Google-managed wildcard cert + one `HTTPRoute` per app; TLS terminates at the LB — the LB→pod hop is plain HTTP (no backend re-encryption; see §3 Zero-Trust). Opt-in via `gateway.baseDomain` (empty disables it; `09-gateway.sh` no-ops off-GKE).
-- **Edge identity:** IAP gates `jenkins`/`argocd`/`headlamp`/`pgadmin`/`grafana(oss)`; access = the emails granted `roles/iap.httpsResourceAccessor` (reuses `HEADLAMP_ADMIN_EMAILS`). The `microservices` host is intentionally public. ArgoCD is IAP-fronted via a **Dex `authproxy`** connector that trusts IAP's `X-Goog-Authenticated-User-Email` header — single sign-on (no double login) with per-user email RBAC; because authproxy trusts that header un-verified, the `argocd-baseline` NetworkPolicy restricts argocd-server `:8080` to the LB + CI namespaces (header-spoof mitigation).
+- **Edge identity:** IAP gates `jenkins`/`argocd`/`headlamp`/`pgadmin`/`backstage`/`grafana(oss)`; access = the emails granted `roles/iap.httpsResourceAccessor` (reuses `HEADLAMP_ADMIN_EMAILS`). Backstage goes one step further than the header-trusting authproxy pattern: its `gcpIap` provider **verifies the signed IAP JWT** in-app ([505](./505-BACKSTAGE.md)). The `microservices` host is intentionally public. ArgoCD is IAP-fronted via a **Dex `authproxy`** connector that trusts IAP's `X-Goog-Authenticated-User-Email` header — single sign-on (no double login) with per-user email RBAC; because authproxy trusts that header un-verified, the `argocd-baseline` NetworkPolicy restricts argocd-server `:8080` to the LB + CI namespaces (header-spoof mitigation).
 - **Security inside:** Dataplane V2 (`datapath_provider = ADVANCED_DATAPATH`) is what makes NetworkPolicies *enforce*; sensitive namespaces are `default-deny` + curated allowlists (see the matrix below). `in_transit_encryption_config` adds transparent WireGuard inter-node pod encryption (transport, not mTLS identity). Workload Identity Federation removes all static SA JSON keys; ESO syncs Secret Manager → namespaced Secrets. Dataplane V2 + WireGuard are **immutable** cluster fields (changing them recreates the cluster).
 - **Progressive delivery:** the `argo-rollouts` controller + the `argoproj-labs/gatewayAPI` traffic-router plugin patch `HTTPRoute` `backendRefs[].weight` between the stable and `*-canary` Services — sidecar-free, no mesh. An `AnalysisRun` can gate promotion on Prometheus span-metrics (5xx / p95) and auto-rollback.
 - **Resilience:** CNPG HA promotes a standby on primary loss; GKE Node Auto-Provisioning auto-creates Spot pools (ComputeClass `ci-spot`, taints `cloud.google.com/compute-class=ci-spot:NoSchedule` + `cloud.google.com/gke-spot=true:NoSchedule`) that scale to zero; in-place vertical resize grows agent containers without pod restarts.
@@ -815,7 +815,7 @@ Copy the token, select **Token** login in Headlamp, paste, and click **Sign In**
 
 ## Public Access (GKE Gateway API + IAP)
 
-The active CI engine's UI, Microservices, ArgoCD, Headlamp, and pgAdmin can all be exposed on the public internet through a single **GKE Gateway** (`gatewayClassName: gke-l7-global-external-managed`) — one global external HTTPS load balancer, one Google-managed wildcard certificate, and one `HTTPRoute` per app:
+The active CI engine's UI, Microservices, ArgoCD, Headlamp, pgAdmin, and Backstage can all be exposed on the public internet through a single **GKE Gateway** (`gatewayClassName: gke-l7-global-external-managed`) — one global external HTTPS load balancer, one Google-managed wildcard certificate, and one `HTTPRoute` per app:
 
 | App | URL | Identity-Aware Proxy |
 |---|---|---|
@@ -830,6 +830,7 @@ The active CI engine's UI, Microservices, ArgoCD, Headlamp, and pgAdmin can all 
 | Faro RUM beacon | `https://faro.<baseDomain>` | no (browser-facing otel-collector Faro receiver :8027; CORS-open, HMAC-less, always routed) |
 | Headlamp | `https://headlamp.<baseDomain>` | yes |
 | pgAdmin | `https://pgadmin.<baseDomain>` | yes |
+| Backstage | `https://backstage.<baseDomain>` | **yes** (when `backstage.enabled`, default on — and the portal additionally **verifies the signed IAP JWT in-app** via the `gcpIap` provider, stronger than header trust; [505](./505-BACKSTAGE.md)) |
 | Grafana | `https://grafana.<baseDomain>` | yes (only when `observability.mode=oss`) |
 
 > **GitHub Actions/ARC has no in-cluster UI route** — its runners are outbound-only (ARC long-polls GitHub), so nothing is exposed through the Gateway for that engine; you observe runs in GitHub's own Actions UI.

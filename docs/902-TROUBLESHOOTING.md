@@ -244,6 +244,22 @@ Verify: `kubectl get cluster -n microservices` → `ContinuousArchiving=True`, a
 
 > The same `Expected empty archive` check can bite during a **restore** if you recover into a non-empty archive prefix — see [Runbook: CNPG Restore from Backup § 6b](./runbooks/cnpg-restore-from-backup.md#6b-the-servername--system-id-gotcha-expected-empty-archive).
 
+## Backstage pod stuck `ImagePullBackOff` right after enabling it
+
+**Symptom**: `backstage.enabled=true`, `Day1` finished green (with a prominent warning from `08.95`), but the `backstage` pod sits in `ImagePullBackOff` on `ghcr.io/nubenetes/jenkins-2026-backstage:<branch>`.
+
+**Cause**: the portal runs a **custom app image** that must exist in ghcr **before** the first Backstage-enabled provision — a deliberate one-time bootstrap ([505 § Enabling it](./505-BACKSTAGE.md#enabling-it-the-feature-flag)). `08.95-backstage.sh` degrades gracefully (warns + skips the rollout wait) instead of failing the Day1.
+
+**Fix**: run [`Day2.publish.06-backstage`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.06-backstage.yml) once **from the same branch you deployed** (the image tag auto-tracks the deploy branch), then re-run `Day2.redeploy.08-backstage` (or just wait — `pullPolicy: Always` + the next pod restart picks it up). The image **persists across cluster rebuilds**, so this never repeats.
+
+## Backstage sign-in fails (audience/JWT error) though IAP let you in
+
+**Symptom**: IAP authenticates you, but the portal shows an auth error; `kubectl -n backstage get configmap backstage-runtime-config -o jsonpath='{.data.IAP_AUDIENCE}'` prints `pending`.
+
+**Cause**: the `gcpIap` provider **verifies the IAP-signed JWT** against the LB backend-service audience — an ID the GKE Gateway controller only mints minutes **after** the HTTPRoute is programmed. On a first-ever provision, `09-gateway.sh`'s bounded (3 min) resolution can expire before the LB finishes.
+
+**Fix**: re-run any `09-gateway` path (`Day1`, `Day2.redeploy.05-gateway` or `Day2.redeploy.08-backstage`) — it resolves the backend-service ID, patches `IAP_AUDIENCE` and restarts the deployment. Full matrix: [505 § Troubleshooting](./505-BACKSTAGE.md#troubleshooting).
+
 ## ArgoCD OIDC Issues
 
 **ArgoCD OIDC Login fails with `redirect_uri_mismatch` or `Invalid redirect URL`**:

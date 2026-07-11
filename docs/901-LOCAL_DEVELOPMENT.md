@@ -86,8 +86,9 @@ export GIT_USERNAME=<github-username>      GIT_TOKEN=<github-token>
 7. `04`/`06` the selected CI engine and its pipelines — one of Jenkins+seed, Tekton+pipelines, GitHub Actions/ARC, or Argo Workflows per `ci.engine`; the chosen engine's `04-<engine>.sh` retires the other three;
 8. `07` Grafana dashboards and `07.5` Grafana alerts;
 9. `08` Headlamp;
-10. `09` Gateway + routes/IAP;
-11. wait for the microservices Deployments, then the OTel injection self-heal guard.
+10. `08.95` **Backstage** (`backstage.enabled`, default on — the developer-portal app-of-apps; needs the **one-time app-image publish** via `Day2.publish.06-backstage` or the pod waits in `ImagePullBackOff`, non-fatally; retires itself when off — [505](./505-BACKSTAGE.md));
+11. `09` Gateway + routes/IAP (+ the Backstage IAP JWT audience resolution);
+12. wait for the microservices Deployments, then the OTel injection self-heal guard.
 
 Every step is idempotent (`helm upgrade --install` / `kubectl apply`), so re-running `up.sh` after a partial failure is safe. Each step also runs standalone: `./scripts/0N-*.sh`.
 
