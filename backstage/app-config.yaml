@@ -24,7 +24,9 @@ organization:
 
 backend:
   baseUrl: ${APP_BASE_URL}
-  listen: ':7007'
+  listen:
+    port: 7007
+    host: 0.0.0.0
   cors:
     origin: ${APP_BASE_URL}
     methods: [GET, HEAD, PATCH, POST, PUT, DELETE]

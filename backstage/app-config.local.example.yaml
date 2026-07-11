@@ -12,7 +12,9 @@ app:
 
 backend:
   baseUrl: http://localhost:7007
-  listen: ':7007'
+  listen:
+    port: 7007
+    host: 0.0.0.0
   database:
     client: pg
     connection:
