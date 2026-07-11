@@ -32,6 +32,10 @@ spec:
   lifecycle: production
   owner: platform-team
   system: microservices
+  providesApis:
+    - gateway-api
+  consumesApis:
+    - microservice-api
   dependsOn:
     - component:default/jhipstersamplemicroservice
 ---
@@ -56,3 +60,5 @@ spec:
   lifecycle: production
   owner: platform-team
   system: microservices
+  providesApis:
+    - microservice-api

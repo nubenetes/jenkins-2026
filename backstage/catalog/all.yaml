@@ -11,3 +11,4 @@ spec:
     - ./org.yaml
     - ./platform.yaml
     - ./services.yaml
+    - ./apis.yaml
