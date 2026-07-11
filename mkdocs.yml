@@ -11,6 +11,9 @@ site_description: Jenkins-on-Kubernetes PoC - four CI engines, GitOps, full OTel
 plugins:
   - techdocs-core
 
+extra_css:
+  - stylesheets/extra.css
+
 nav:
   - Overview: README.md
   - 1xx Bootstrap & CI/CD lifecycle:
