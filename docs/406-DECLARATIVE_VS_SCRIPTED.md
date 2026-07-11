@@ -36,8 +36,107 @@ companion to 402's *what-it-does*.
 
 ---
 
+## Understanding the two dialects (newcomers → specialists)
+
+Before the tutorial proper, the whole document in one picture: **one engine, two
+syntaxes, three layers in this repo**. Read this section once and everything
+below is just detail and evidence.
+
+<details>
+<summary>🧠 Mental model — Declarative vs Scripted (mindmap)</summary>
+
+```mermaid
+mindmap
+  root((One engine, two dialects))
+    Shared engine
+      workflow-cps plugin
+      durable CPS execution
+      survives controller restarts
+      Groovy sandbox
+    Declarative
+      pipeline block
+      validated grammar
+      post and when directives
+      restart from stage
+      script escape hatch
+    Scripted
+      node and stage blocks
+      full Groovy control flow
+      try catch finally
+      loops closures helpers
+    This repo in three layers
+      Job DSL seed generates jobs
+      Declarative shells orchestrate
+      Scripted vars steps do the work
+    Anti-pattern to avoid
+      Scripted god library
+      thin Jenkinsfiles
+```
+
+</details>
+
+**Reading it —** the two middle branches are the dialects themselves; the
+**Shared engine** branch is the fact that dissolves most internet debates (both
+compile onto the same durable CPS interpreter — neither is built on the other);
+**This repo in three layers** is the architecture the rest of the document
+justifies (generation → orchestration → logic, [§7](#7-this-repos-architecture-the-three-layer-hybrid));
+and the **Anti-pattern** branch is the popular shortcut this repo deliberately
+avoids ([§14](#14-the-common-anti-pattern-a-scripted-god-library-with-thin-jenkinsfiles)).
+
+<details>
+<summary>🟢 For newcomers — the mental model in 6 concepts</summary>
+
+| Concept | What it is | Everyday analogy |
+|---|---|---|
+| **Declarative pipeline** | A fixed skeleton of directives (`pipeline`/`agent`/`stages`/`post`) that Jenkins **validates before running** | A tax form: fixed boxes, rejected up-front if you fill it in wrong |
+| **Scripted pipeline** | A free-form **Groovy program** (`node { … }`) with loops, `try/finally`, helpers — mistakes surface only as it runs | A blank essay: write anything, errors show up when it's read |
+| **CPS engine** (`workflow-cps`) | The interpreter **both** dialects run on; it checkpoints program state so a controller restart resumes the build | A videogame savegame — quit mid-level, resume exactly there |
+| **`script {}`** | The escape hatch that embeds Scripted code inside a Declarative pipeline | A "free-text remarks" field inside the tax form |
+| **Job DSL seed** | A Groovy script that **generates job definitions** from data ([`services.yaml`](../jenkins/pipelines/seed/services.yaml)) — code that writes jobs, not a job that builds code | A mail-merge: one template + a list → many letters |
+| **Shared-library `vars/` step** | A custom verb (`microservicesBuild(…)`) either dialect can call, versioned in git | A toolbox of power tools next to the form/essay |
+
+So this repo's build is literally: *the **seed** (Job DSL) mail-merges one
+job per service → each job runs a small **Declarative shell**
+([`MicroservicesPipeline`](../vars/MicroservicesPipeline.groovy)) → every stage's
+real work is a **Scripted `vars/` step**.* If you remember only that, [§7](#7-this-repos-architecture-the-three-layer-hybrid)
+will feel familiar.
+</details>
+
+<details>
+<summary>🔴 For specialists — the load-bearing internals</summary>
+
+- **One engine, really.** Declarative is the `pipeline-model-definition` plugin:
+  it parses/validates the `pipeline {}` model, then drives the **same**
+  CPS-transformed Groovy execution as Scripted (`workflow-cps`). "Declarative is
+  built on Scripted" is folklore — they are **sibling front-ends** ([§2](#2-what-each-dialect-actually-is)).
+- **CPS mechanics you will eventually hit:** continuation-passing style rewrites
+  every call so program state serializes between steps (that's how builds survive
+  restarts); non-serializable locals break it, and hot loops crawl — the escape is
+  **`@NonCPS`** ([§2.3](#23-the-cps-execution-model-in-practice-and-noncps)), used
+  in this repo for JSON parsing in
+  [`microservicesK6Smoke`](../vars/microservicesK6Smoke.groovy).
+- **The sandbox** (`script-security`) intercepts every call in both dialects;
+  library code in `vars/` runs sandboxed too, and approvals are the admin-visible
+  cost of exotic Groovy ([§2.4](#24-script-security-the-groovy-sandbox)).
+- **The three layers, by file:** the seed
+  [`seed_jobs.groovy`](../jenkins/pipelines/seed/seed_jobs.groovy) (Job DSL,
+  *generative*, [§13](#13-job-dsl-and-seed-jobs-an-advanced-tutorial)) → the
+  Declarative shells [`MicroservicesPipeline`](../vars/MicroservicesPipeline.groovy) /
+  [`MicroservicesK6SmokePipeline`](../vars/MicroservicesK6SmokePipeline.groovy)
+  (a `pipeline {}` *inside* a library step — pipeline templating) → the Scripted
+  steps `microservicesBuild`/`…Image`/`…Deploy`/`…SmokeTest`/`…K6Smoke`
+  ([§7.4](#74-the-per-file-classification-map) is the full classification map).
+- **Choosing on sight:** the decision guide is [§11](#11-decision-guide-cheat-sheet),
+  the failure modes of going all-one-way are [§9](#9-counterexamples-what-breaks-if-you-go-all-one-way),
+  and the god-library anti-pattern (and when it's actually fine) is
+  [§14](#14-the-common-anti-pattern-a-scripted-god-library-with-thin-jenkinsfiles).
+</details>
+
+---
+
 ## Table of contents
 
+0. [Understanding the two dialects (newcomers → specialists)](#understanding-the-two-dialects-newcomers--specialists)
 1. [The two dialects in sixty seconds](#1-the-two-dialects-in-sixty-seconds)
 2. [What each dialect actually is](#2-what-each-dialect-actually-is)
 3. [How they interoperate: the `script {}` escape hatch and the nesting rule](#3-how-they-interoperate-the-script--escape-hatch-and-the-nesting-rule)
@@ -548,7 +647,7 @@ sequenceDiagram
     Decl->>Lib: steps { microservicesImage(...) }
     Decl->>Lib: steps { microservicesDeploy(...) }
     Decl->>Lib: steps { microservicesSmokeTest(...) }
-    Decl->>Decl: post { always { junit; recordIssues } }
+    Decl->>Decl: post { always { junit + recordIssues } }
 ```
 
 ---
