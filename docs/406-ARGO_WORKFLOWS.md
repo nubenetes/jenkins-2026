@@ -394,7 +394,7 @@ See [`argoworkflows/README.md`](../argoworkflows/README.md) for the directory ma
 | Build & Test | `maven-build-test` | `maven-build-test` | — |
 | Build & Push image | `build-push-image` | `build-push-image` | **daemonless**: Jib (java) / Kaniko (angular); registry auth from the `argoworkflows-registry` Secret mounted at `$DOCKER_CONFIG`. ⚠ Kaniko is **latent** (both services build with Jib) and **upstream-archived 2025-06** — see the note in [404](./404-TEKTON.md#the-pipeline-ported) |
 | Trivy image scan | `trivy-image` | `trivy-image` | — |
-| GitOps Update + OTel Self-Heal (two Jenkins stages, one template here) | `gitops-deploy` | `gitops-deploy` | ported verbatim (bump tag → direct `git push origin main` → `argocd app sync` retry → OTel self-heal) |
+| GitOps Update + OTel Self-Heal (two Jenkins stages, one template here) | `gitops-deploy` | `gitops-deploy` | ported verbatim (bump tag → direct push to the deploy branch (`main` in prod) → `argocd app sync` retry → OTel self-heal) |
 | Smoke test | `smoke-test` | `smoke-test` | — |
 | Integration k6 | `k6-smoke` | `k6-smoke` (+ standalone `microservices-k6-smoke` WorkflowTemplate) | — |
 
@@ -638,7 +638,7 @@ observability layers:
 1. **Build & test** each service from [`services.yaml`](../jenkins/pipelines/seed/services.yaml) (JHipster Maven build; the gateway MySQL→Postgres + Hazelcast-cache→NoOp-cache build-time patch applied by the shared [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) all four engines call).
 2. **DevSecOps scans** — Semgrep / CodeQL / Trivy, non-blocking, results surfaced ([601. DevSecOps](./601-DEVSECOPS.md)).
 3. **Build & push** the image to GHCR (Jib / Kaniko), with the immutable per-run tag.
-4. **GitOps update** — bump the image tag in the gitops-config repo and `git push origin main`; ArgoCD takes it from there.
+4. **GitOps update** — bump the image tag in the gitops-config repo and `git push` it to the **deploy branch** (`main` in prod); ArgoCD takes it from there.
 5. **OTel** — emit traces/metrics for the build itself to the shared collector.
 6. **Platform integration** — install via an [`argocd/`](../argocd/) Application (GitOps), a numbered installer (`04-argoworkflows.sh` + `06-argoworkflows-pipelines.sh`), its own namespaces + RBAC, gated behind `ci.engine` in [`config/config.yaml`](../config/config.yaml).
 

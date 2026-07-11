@@ -81,7 +81,7 @@ So a CI run is literally: *the seed job generates per-service jobs → a job is 
 <details>
 <summary>🔴 For specialists — the moving parts and how they're wired here</summary>
 
-**Controller (ns `jenkins`, GitOps-installed):** the official `jenkinsci/jenkins` chart (pinned `5.9.32`, appVersion `2.555.3`, image `jenkins:2.555.3-lts-jdk21`) deployed as a **single ArgoCD `Application`** (multi-source: chart from `charts.jenkins.io` + this repo's `helm/jenkins/values-*.yaml` via a `$values` source). `numExecutors: 0` (all work on agents), controller resources `500m`/`1536Mi` → `1.5`/`3072Mi`, `fsGroup: 1000`, `EXCLUSIVE` executor mode.
+**Controller (ns `jenkins`, GitOps-installed):** the official `jenkinsci/jenkins` chart (pinned `5.9.32`, chart appVersion `2.555.3`; `controller.image.tag` deliberately overrides it to the newer LTS `2.568.1-lts-jdk21`) deployed as a **single ArgoCD `Application`** (multi-source: chart from `charts.jenkins.io` + this repo's `helm/jenkins/values-*.yaml` via a `$values` source). `numExecutors: 0` (all work on agents), controller resources `500m`/`1536Mi` → `1.5`/`3072Mi`, `fsGroup: 1000`, `EXCLUSIVE` executor mode.
 
 **JCasC (the single source of config):** the chart runs with `JCasC.defaultConfig: false` and **`authorizationStrategy: ""` + `securityRealm: ""`** so the chart emits *neither* (a silent 5.9.x chart bump split those into independent ConfigMaps that collided with ours and crashed boot — see the Plugins section). The real config is three ConfigMaps labeled `jenkins-jenkins-config=true` (so the config-reload sidecar auto-merges them): `jenkins-2026-casc-base` (realm + authz + cloud + library + credentials + `globalNodeProperties`), `jenkins-2026-casc-otel` (the OTel exporter), `jenkins-2026-casc-seed-job` (the `seed-jobs` job). [`04-jenkins.sh`](../scripts/04-jenkins.sh) (re)creates them from `jenkins/casc/*`; ArgoCD owns the chart, not the CMs.
 
@@ -255,9 +255,9 @@ sequenceDiagram
 
 ## Plugins & JCasC Fragments
 
-[`helm/jenkins/values-common.yaml`](../helm/jenkins/values-common.yaml) tracks the latest Jenkins LTS (`controller.image.tag: 2.555.3-lts-jdk21`) and pins **every** plugin — 22 curated top-level plugins plus 79 transitive dependencies — to the exact version resolved against that core by `jenkins-plugin-cli`. This means a routine controller pod restart always installs the **identical plugin set**.
+[`helm/jenkins/values-common.yaml`](../helm/jenkins/values-common.yaml) tracks the latest Jenkins LTS (`controller.image.tag: 2.568.1-lts-jdk21`) and pins **every** plugin — 22 curated top-level plugins plus 79 transitive dependencies — to the exact version resolved against that core by `jenkins-plugin-cli`. This means a routine controller pod restart always installs the **identical plugin set**.
 
-**Chart version (pinned).** The Helm chart is pinned in [`config/config.yaml`](../config/config.yaml) → `jenkins.chart.version: "5.9.32"` (the latest as of 2026-07-06; appVersion still `2.555.3`, matching `controller.image.tag` — 5.9.30-5.9.32 only bump `agent.image`/`k8s-sidecar` defaults and add an opt-in `addMasterProxyEnvVars` flag, neither of which this repo consumes); ArgoCD installs exactly this version via [`argocd/jenkins-app.yaml`](../argocd/jenkins-app.yaml)'s `targetRevision`. Why pinned:
+**Chart version (pinned).** The Helm chart is pinned in [`config/config.yaml`](../config/config.yaml) → `jenkins.chart.version: "5.9.32"` (the latest as of 2026-07-06; appVersion still `2.555.3`, while `controller.image.tag` deliberately overrides it to the newer `2.568.1` LTS — 5.9.30-5.9.32 only bump `agent.image`/`k8s-sidecar` defaults and add an opt-in `addMasterProxyEnvVars` flag, neither of which this repo consumes); ArgoCD installs exactly this version via [`argocd/jenkins-app.yaml`](../argocd/jenkins-app.yaml)'s `targetRevision`. Why pinned:
 
 - **It was previously `""` (always-latest)** — a silent chart bump onto the 5.9.x line **split `authorizationStrategy` and `securityRealm` into their own ConfigMaps** that render independently of `controller.JCasC.defaultConfig: false`.
 - **The collision:** the chart's defaults (`loggedInUsersCanDoAnything` + a local admin) landed next to the same keys in our [`jcasc-base.yaml`](../jenkins/casc/jcasc-base.yaml) and the controller crashed at boot (`Single entry map expected to configure a … AuthorizationStrategy but found multiple entries`).
@@ -525,7 +525,7 @@ sequenceDiagram
   S->>R: create 3 JCasC ConfigMaps (label jenkins-jenkins-config=true)
   S->>A: kubectl apply jenkins-app.yaml (repo/branch/version/url/checksum)
   A->>H: render chart + this repo's values
-  H->>J: StatefulSet up (image 2.555.3-lts-jdk21)
+  H->>J: StatefulSet up (image 2.568.1-lts-jdk21)
   R->>J: load + merge JCasC (base + otel + seed-job)
   J->>J: realm + authz + cloud + library ready
   J->>J: seed-jobs (cron) generates per-service jobs

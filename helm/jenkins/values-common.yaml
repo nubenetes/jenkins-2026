@@ -13,7 +13,8 @@
 #
 # Chart origin: https://github.com/jenkinsci/helm-charts (charts/jenkins),
 # published at https://charts.jenkins.io as jenkins/jenkins.
-# config/config.yaml jenkins.chart.version is pinned to 5.9.29 / appVersion 2.555.3
+# config/config.yaml jenkins.chart.version is pinned to 5.9.32 (chart appVersion
+# 2.555.3; controller.image.tag below deliberately overrides it to a newer LTS)
 # (was "" = latest, which silently moved chart versions and broke JCasC). Default
 # values.yaml for comparison:
 # https://github.com/jenkinsci/helm-charts/blob/main/charts/jenkins/values.yaml
@@ -34,8 +35,8 @@
 controller:
   image:
     # jdk17 controller images stopped being published after the 2.479.x
-    # line - current LTS ships as <version>-lts-jdk21. 2.555.3 is the
-    # latest LTS as of 2026-06-13 (https://www.jenkins.io/changelog-stable/).
+    # line - current LTS ships as <version>-lts-jdk21. 2.568.1 is the
+    # latest LTS as of 2026-07-11 (https://www.jenkins.io/changelog-stable/).
     # installPlugins below is pinned against this exact tag - bump both
     # together (see the regeneration recipe in the installPlugins comment).
     tag: "2.568.1-lts-jdk21"

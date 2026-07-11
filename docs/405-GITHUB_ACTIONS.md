@@ -89,7 +89,7 @@ TARGET_NS: ${{ github.ref_name == 'develop' && 'microservices-develop' || 'micro
 | Code built | the app's `main` | the app's `develop` (true branch-based promotion) |
 | `ENV_NAME` | `stable` | `develop` |
 | Deploy namespace (`TARGET_NS`) | `microservices` | `microservices-develop` |
-| GitOps values bumped | `values-stable.yaml` on gitops-config `main` | `values-develop.yaml` on gitops-config `develop` |
+| GitOps values bumped | `values-stable.yaml` on gitops-config's **deploy branch** (`main` in prod — rendered as `{{selfRepoBranch}}`; [502 § Branch model](./502-MICROSERVICES_GITOPS.md#branch-model-app-source-vs-gitops-vs-deploy-branch)) | `values-develop.yaml` on gitops-config `develop` |
 | Public URL | `microservices.<domain>` | `microservices-develop.<domain>` |
 
 So **the branch *is* the environment selector.** There are **two equivalent ways** to launch a
@@ -672,8 +672,8 @@ The deploy step preserves every parity point with the Jenkins/Tekton GitOps stag
 
 - same repo `nubenetes/jenkins-2026-gitops-config`, same file
   `helm/microservices/values-<env>.yaml`, same `yq` selector
-  `.services.<svc>.image.tag`, same `main`/`develop` branch map;
-- a **direct `git push origin main`** — that repo's `main` is **direct-push by
+  `.services.<svc>.image.tag`, same branch map (the **deploy branch** for stable — `main` in prod — and `develop` for the develop tier);
+- a **direct push** (`git push origin main` in prod) — that repo's `main` is **direct-push by
   design** (a PR gate would reject the machine push and wedge every deploy; see
   [`docs/502`](./502-MICROSERVICES_GITOPS.md) and CLAUDE.md);
 - then a best-effort `argocd app sync/wait microservices-<env>` using the

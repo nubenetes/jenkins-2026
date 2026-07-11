@@ -1158,7 +1158,7 @@ Whatever runs the build, it has to deliver the same outcomes the four implemente
 1. **Build & test** each service from [`services.yaml`](../jenkins/pipelines/seed/services.yaml) (JHipster Maven build, plus the shared gateway build-time patch [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) — MySQL→PostgreSQL + swap the Hazelcast 2nd-level cache for a **NoOp cache** — called by all four engines).
 2. **DevSecOps scans** — Semgrep / CodeQL / Trivy, non-blocking, results surfaced (see [601. DevSecOps](./601-DEVSECOPS.md)).
 3. **Build & push** the image to GHCR (Jib / Spring-Boot build-image / docker).
-4. **GitOps update** — bump the image tag in the gitops-config repo and `git push origin main` (the machine-managed deploy; cf. [`vars/microservicesDeploy.groovy`](../vars/microservicesDeploy.groovy)). ArgoCD takes it from there.
+4. **GitOps update** — bump the image tag in the gitops-config repo and `git push` it to the **deploy branch** (`main` in prod — [502 § Branch model](./502-MICROSERVICES_GITOPS.md#branch-model-app-source-vs-gitops-vs-deploy-branch); the machine-managed deploy; cf. [`vars/microservicesDeploy.groovy`](../vars/microservicesDeploy.groovy)). ArgoCD takes it from there.
 5. **OTel** — emit traces/metrics for the build itself (see [Observability](#observability)).
 6. **Platform integration** — install via an [`argocd/`](../argocd/) Application (GitOps), a numbered installer (`04-<engine>.sh` + `06-…` like [`scripts/04-tekton.sh`](../scripts/04-tekton.sh) / [`scripts/06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh)), its own namespace + RBAC, and gate everything behind `ci.engine` in [`config/config.yaml`](../config/config.yaml).
 
