@@ -650,9 +650,10 @@ spec:
               - { key: .dockerconfigjson, path: config.json }
 
     # ---- gitops-deploy (Tekton task: gitops-deploy) ------------------------------
-    # Stage "Deploy to Kubernetes" (vars/microservicesDeploy.groovy): GitOps deploy -
-    # bump the image tag in the gitops-config repo, push, trigger an ArgoCD sync/wait,
-    # then self-heal the OTel auto-instrumentation injection race. Three steps ->
+    # Jenkins stages "GitOps Update" + "OTel Self-Heal" (vars/microservicesDeploy.groovy
+    # + vars/microservicesOtelSelfHeal.groovy) as one template: bump the image tag in
+    # the gitops-config repo, push, trigger an ArgoCD sync/wait, then self-heal the
+    # OTel auto-instrumentation injection race. Three steps ->
     # bump-and-push -> argocd-sync -> otel-injection-selfheal.
     - name: gitops-deploy
       inputs:

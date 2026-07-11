@@ -21,7 +21,7 @@
 
 > **See also.** [401. Jenkins](./401-JENKINS.md) — the controller, JCasC and the
 > `microservices-shared-library` declaration these layers plug into;
-> [402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) — the seed job and the 12
+> [402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) — the seed job and the 13
 > stages themselves (**402 is the *what-it-does*; this doc is the
 > *why-it's-shaped-this-way***). The same pipeline logic, ported to the three
 > YAML-based engines: [404. Tekton](./404-TEKTON.md) ·
@@ -570,7 +570,8 @@ flowchart TD
         SC["microservicesSemgrepScan ·<br/>CodeqlScan · TrivyIacScan<br/>→ shared microservicesSarifUpload"]
         B["microservicesBuild"]
         I["microservicesImage"]
-        D["microservicesDeploy"]
+        D["microservicesDeploy<br/>(GitOps Update)"]
+        SH["microservicesOtelSelfHeal"]
         S["microservicesSmokeTest"]
         K6R["microservicesK6Run<br/>(preset merge)"]
         K["microservicesK6Smoke"]
@@ -582,6 +583,7 @@ flowchart TD
     MP -->|"steps { microservicesBuild(...) }"| B
     MP --> I
     MP --> D
+    MP --> SH
     MP --> S
     MP -->|"build job: microservices-k6-smoke"| K6P
     K6P --> K6R
@@ -627,9 +629,10 @@ data and builds structure at runtime, which is exactly what Declarative cannot d
 The two `PascalCase` files are **Declarative** `pipeline { }` shells:
 
 - [`MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy) — the
-  build→scan→image→deploy→smoke pipeline (12 stages; the three scanners are
+  build→scan→image→deploy→smoke pipeline (13 stages; the three scanners are
   **parallel branches** of *Static Analysis*, the gateway patch is a
-  **`when`-gated** stage). It owns the **shape**: the 9-container agent pod
+  **`when`-gated** stage, and *GitOps Update* / *OTel Self-Heal* are first-class
+  Declarative stages). It owns the **shape**: the 9-container agent pod
   (`agent { kubernetes { yaml …; retries 2 } }` — official pod-loss auto-retry for
   the Spot `ci-spot` mode), `options` (`timeout`, `durabilityHint
   ('PERFORMANCE_OPTIMIZED')`, `disableConcurrentBuilds`, …), `environment` (the
@@ -650,7 +653,7 @@ it now lives in the `microservicesK6Run` custom step — see §7.6.)
 
 ### 7.3 Layer 3 — Logic: the Scripted `vars/` steps
 
-The ten `camelCase` files are **Scripted** `def call(Map cfg) { … }` steps — the
+The eleven `camelCase` files are **Scripted** `def call(Map cfg) { … }` steps — the
 Global Pipeline Library convention where each `vars/<name>.groovy` is invocable as a
 step named `<name>`. They hold the logic that would bloat or break a Declarative
 block:
@@ -659,7 +662,8 @@ block:
 - [`microservicesSarifUpload`](../vars/microservicesSarifUpload.groovy) — the **shared** SARIF → GitHub Code Scanning upload used by the Semgrep and CodeQL steps (one parameterised implementation instead of two copy-pasted 45-line `sh` blobs).
 - [`microservicesBuild`](../vars/microservicesBuild.groovy) — `if (type=='java') … else if (type=='angular') …`, container-scoped `sh`.
 - [`microservicesImage`](../vars/microservicesImage.groovy) — Jib-vs-buildpacks branch, conditional `docker push` driven by a sentinel file.
-- [`microservicesDeploy`](../vars/microservicesDeploy.groovy) — clone gitops repo, `yq` the image tag, push, `argocd app sync/wait` with a retry loop, plus an OTel-injection self-heal.
+- [`microservicesDeploy`](../vars/microservicesDeploy.groovy) — the *GitOps Update* stage body: clone gitops repo, `yq` the image tag, push, `argocd app sync/wait` with a retry loop.
+- [`microservicesOtelSelfHeal`](../vars/microservicesOtelSelfHeal.groovy) — the *OTel Self-Heal* stage body: `-javaagent` injection check + conditional `rollout restart` (the operator webhook's `failurePolicy: Ignore` race).
 - [`microservicesSmokeTest`](../vars/microservicesSmokeTest.groovy) — a throwaway curl pod with NetworkPolicy-aware placement.
 - [`microservicesK6Run`](../vars/microservicesK6Run.groovy) — the k6 **precedence merge** (manual param > committed preset > seed-baked cfg > script default): closures (`has`, `pick`), `readYaml`, null-safe coalescing.
 - [`microservicesK6Smoke`](../vars/microservicesK6Smoke.groovy) — **the exemplar**: helper methods (`numOf`, `pct`, `fmtBytes`), **recursion** over the k6 result tree (`collectFailedChecks`), closures, `try/catch`, `readJSON` parsing, a layered report. This is *categorically impossible* in pure Declarative.
@@ -681,7 +685,8 @@ classes; `src/` would be the next tool if that changed (see §11).
 | [`microservicesSarifUpload.groovy`](../vars/microservicesSarifUpload.groovy) | Library step | **Scripted** | No | Shared, parameterised SARIF→GitHub upload (DRY) |
 | [`microservicesBuild.groovy`](../vars/microservicesBuild.groovy) | Library step | **Scripted** | No | `if/else` on service type |
 | [`microservicesImage.groovy`](../vars/microservicesImage.groovy) | Library step | **Scripted** | No | Jib-vs-buildpacks branch, conditional push |
-| [`microservicesDeploy.groovy`](../vars/microservicesDeploy.groovy) | Library step | **Scripted** | No | Clone/yq/push + retry loop + self-heal |
+| [`microservicesDeploy.groovy`](../vars/microservicesDeploy.groovy) | Library step | **Scripted** | No | Clone/yq/push + argocd retry loop (*GitOps Update* body) |
+| [`microservicesOtelSelfHeal.groovy`](../vars/microservicesOtelSelfHeal.groovy) | Library step | **Scripted** | No | Injection check + conditional rollout restart (*OTel Self-Heal* body) |
 | [`microservicesSmokeTest.groovy`](../vars/microservicesSmokeTest.groovy) | Library step | **Scripted** | No | Small imperative curl-pod routine |
 | [`microservicesK6Run.groovy`](../vars/microservicesK6Run.groovy) | Library step | **Scripted** | No | Preset precedence merge (closures, `readYaml`) |
 | [`microservicesK6Smoke.groovy`](../vars/microservicesK6Smoke.groovy) | Library step | **Scripted** | No | Helpers + recursion + closures + JSON parse |
@@ -707,7 +712,8 @@ sequenceDiagram
     Decl->>Lib: parallel { SemgrepScan + CodeqlScan + TrivyIacScan }
     Decl->>Lib: steps { microservicesBuild(...) }
     Decl->>Lib: steps { microservicesImage(...) }
-    Decl->>Lib: steps { microservicesDeploy(...) }
+    Decl->>Lib: steps { microservicesDeploy(...) } — GitOps Update
+    Decl->>Lib: steps { microservicesOtelSelfHeal(...) }
     Decl->>Lib: steps { microservicesSmokeTest(...) }
     Decl->>Decl: post { always { junit + recordIssues } }
 ```
@@ -742,21 +748,100 @@ live against jenkins.io, plugins.jenkins.io and the plugin READMEs — not assum
 | No global hang protection | **`options { timeout(…) }`** (120 min build / 12 h k6 — sized above the documented 8 h overnight soak) | A wedged `argocd wait` or stuck pull can no longer hold the agent + `disableConcurrentBuilds` queue forever. |
 | Default (`MAX_SURVIVABILITY`) durability | **`options { durabilityHint('PERFORMANCE_OPTIMIZED') }`** | The jenkins.io *Scaling Pipelines* recommendation for re-runnable build/test pipelines (~2-6× less controller disk I/O); crash-resume loss is acceptable because every stage is idempotent and pod-loss is covered by `retries`. |
 | Seed job double-clone | **`options { skipDefaultCheckout() }`** | The `cpsScm` job re-checked-out implicitly *and* explicitly (LFS-skipping); now one clone per seed run. |
+| Scripted `stage('GitOps Update')` **nested inside** the deploy step (a Scripted stage across a step boundary — worked, but the shell no longer declared its own structure) | **Hoisted**: *GitOps Update* is now a first-class **Declarative stage** in the shell, and the OTel injection check it used to hide became its own ***OTel Self-Heal* stage** (new [`microservicesOtelSelfHeal`](../vars/microservicesOtelSelfHeal.groovy) step) | Purity **and** vocabulary: the cross-engine phase name ([502](./502-MICROSERVICES_GITOPS.md), the [902](./902-TROUBLESHOOTING.md) runbooks) is now literally a stage the shell declares — and the previously invisible self-heal behaviour shows in the build UI. The stage graph is now defined **only** by `stages {}`. |
 
-**What deliberately stays Scripted** (each with its "no declarative alternative"
-justification — the CloudBees bar for Scripted):
+#### The residual imperative inventory — case by case
 
-| Kept construct | Justification |
+Everything still Scripted/imperative after the audit, each with the *specific*
+reason Declarative cannot express it. This list is the contract: if a review finds
+imperative code not covered by one of these cases, it should be converted (see the
+guardrails below).
+
+**Case 1 — the single `script {}` island: the rebuild-safe `IMAGE_TAG` mutation**
+([`MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy), *Checkout* stage).
+`IMAGE_TAG` must gain the app-source commit SHA — a value that **only exists after
+the checkout step has run** — and every later stage (image build/push, deploy)
+must see the mutated value. Declarative has no construct for this, *by design*:
+- `environment {}` at pipeline level is evaluated **before** the first stage — the
+  SHA doesn't exist yet.
+- `environment {}` at stage level is evaluated at *that* stage's entry and is
+  **scoped to that stage only** — later stages would still see the old value.
+- There is deliberately **no cross-stage mutable binding** in the grammar; that
+  staticness is what makes Declarative validatable up front.
+
+Alternatives weighed and rejected: recomputing the tag in every consuming stage
+(repetition + drift risk), stashing it in a file (still needs an imperative read,
+plus workspace coupling), a `params` default (compile-time — the SHA is runtime).
+Mutating `env` in a minimal `script {}` is the documented residual use — the
+escape hatch doing exactly the job it exists for.
+
+**Case 2 — the Scripted preamble above `pipeline {}`** (the `agentNodeScheduling`
+ternary and `k6JobName`). The `agent { kubernetes { yaml … } }` directive takes a
+*string*; there is no conditional syntax **inside** the agent directive (`when {}`
+gates stages, not agent config), so the static-vs-Spot pod scheduling block has to
+be composed *before* the pipeline is declared. This is not a workaround: the
+jenkins.io shared-library documentation's "Defining Declarative Pipelines" pattern
+explicitly runs code ahead of `pipeline {}` at definition time. The rule: the
+preamble may **compute configuration** (strings, names), never **do work** (no
+`sh`, no side effects).
+
+**Case 3 — the eleven `vars/` logic steps.** Not a concession — the **recommended
+home for logic** (CloudBees #3/#5: a `script {}` in the shell is the warning sign;
+a named library step is the fix). Per step, the concrete feature Declarative's
+grammar cannot express:
+
+| Step | The impossible-in-Declarative construct it needs |
 | :--- | :--- |
-| One `script {}` island: the rebuild-safe `IMAGE_TAG` env mutation | The value (`GIT_COMMIT`) only exists *after* checkout, and must mutate `env` for **all later stages**; `environment {}` is stage-entry-scoped and has no cross-stage mutation form. This is the textbook residual `script {}`. |
-| The ten `vars/` logic steps | Not a deviation — **this is the recommended pattern** (CloudBees #3/#5): recursion, closures, retry loops, `readJSON`/`readYaml` parsing live in library steps by design. |
-| Job DSL generation (Layer 1) | Inherently generative (loops over `services.yaml`); Declarative cannot emit jobs. |
-| The nested Scripted `stage('GitOps Update')` inside `microservicesDeploy` | A knowing deviation kept for **cross-engine vocabulary**: "the GitOps Update stage" names the same logical phase in all four engines, a dozen docs and runbooks ([902](./902-TROUBLESHOOTING.md), [502](./502-MICROSERVICES_GITOPS.md), …) key on it, and the nested stage keeps it visible in the build UI across the step boundary. Hoisting it would purify the syntax and break the shared language. |
-| `sh`+`curl` SARIF upload (not the `http_request` plugin) | The payload is a file-streamed multi-MB gzip+base64 body; `curl -d @file` streams it from disk in the container that already has the file. `httpRequest` would buffer it through controller memory *and* add a plugin dependency for zero gain. |
+| `microservicesBuild` | `if/else` branching on service type, composing different `sh` per branch |
+| `microservicesImage` | Jib-vs-buildpacks branch + a **sentinel-file conditional** (`fileExists`) deciding whether to `docker push` |
+| `microservicesDeploy` | a **retry loop with sleep and fall-through** around `argocd app sync` (racing auto-sync), then `app wait` |
+| `microservicesOtelSelfHeal` | conditional flow: inspect a live pod → maybe `rollout restart` → re-inspect → warn |
+| `microservicesSmokeTest` | runtime protocol detection (TLS secret probe) composing the curl command |
+| `microservicesSemgrepScan` / `CodeqlScan` / `TrivyIacScan` | container-scoped multi-line `sh` composition off `env`/`cfg` (and keeping ~180 lines of shell out of the shell) |
+| `microservicesSarifUpload` | **parameterised deduplication**: one implementation, string-built per tool (name, file, banner) |
+| `microservicesK6Run` | closures (`has`, `pick`) implementing a four-level precedence merge over `readYaml` output |
+| `microservicesK6Smoke` | **recursion** (`collectFailedChecks`), helper methods, `try/catch`, `readJSON` tree parsing, report building |
 
-Net effect: the Declarative shells contain **one** `script {}` block across both
-pipelines, every piece of logic is a named library step, and the only Scripted
-Groovy left is the kind the official guidance sends to Scripted on purpose.
+Declarative excludes loops, recursion, closures and method definitions *on
+purpose* — that's what makes a Jenkinsfile statically checkable. The official
+architecture is exactly this split: a declarative skeleton invoking named steps.
+
+**Case 4 — Job DSL (Layer 1, `seed_jobs.groovy`).** A *generative* program: it
+loops over `services.yaml` and **emits job definitions**. Declarative describes
+*one* pipeline; it cannot create jobs at all. (Note the seed's own
+[`Jenkinsfile.seed`](../jenkins/pipelines/seed/Jenkinsfile.seed) *is* Declarative —
+only the generator payload it runs is imperative, as it must be.)
+
+**Case 5 — `sh`+`curl` for the SARIF upload instead of the `http_request`
+plugin.** "Use official plugins, don't reinvent" has a boundary: the payload is a
+multi-MB gzip+base64 body that `curl -d @file` **streams from disk** in the
+container that already holds the file; `httpRequest` would buffer it in memory and
+add a plugin dependency for zero functional gain. Using the POSIX tool already in
+the `helm` container *is* the not-reinventing choice here.
+
+#### Guardrails: how a change keeps the purity
+
+The review checklist for any pipeline change (this is the §11 decision guide,
+specialised to this repo's end-state):
+
+1. **New phase?** → a new Declarative `stage` in the shell, named with the
+   cross-engine vocabulary (compare [404](./404-TEKTON.md)/[405](./405-GITHUB_ACTIONS.md)/[406](./406-ARGO_WORKFLOWS.md) task names).
+2. **Any logic beyond one step call?** → a new `vars/` step (camelCase), never a
+   `script {}` in the shell.
+3. **Conditional execution?** → `when {}` on the stage (visible skip), not an `if`.
+4. **Independent work?** → `parallel {}` branches (or `matrix` if it's a real
+   axis product), not sequential stages or shell loops.
+5. **Infra-failure handling?** → `options { retry/timeout }` or the agent's
+   `retries` — never `try/catch` in the shell.
+6. **Tempted by `script {}` anyway?** It must be the Case-1 class (mutating global
+   `env` from a runtime-born value). Document it inline *and* add it to the
+   inventory above — the inventory is the allowlist.
+
+Net effect: the stage graph is defined **only** by `stages {}` (no Scripted
+`stage()` calls anywhere), the shells contain **one** `script {}` block between
+them, every piece of logic is a named library step, and the only imperative Groovy
+left is the kind the official guidance sends to Scripted on purpose — each instance
+enumerated above with the directive that *cannot* replace it.
 
 ---
 
@@ -770,7 +855,7 @@ Each layer is in its dialect for concrete, repo-specific reasons:
   fixed skeleton enforces that uniformity for free.
 - **The `post { always { junit …; recordIssues … } }` guarantee.** Test results and
   SARIF issues (Semgrep/CodeQL — see [601](./601-DEVSECOPS.md)) must publish even when
-  a stage fails. Declarative guarantees it; a Scripted `try/finally` around 12 stages
+  a stage fails. Declarative guarantees it; a Scripted `try/finally` around 13 stages
   is easy to get wrong.
 - **The agent pod belongs in one declarative place.** The 9-container pod template is
   an `agent { kubernetes { yaml … } }` directive — one obvious location, validated.
@@ -1301,7 +1386,7 @@ Scripted steps.
 
 **In this repo**
 - [401. Jenkins](./401-JENKINS.md) — the controller, JCasC, the `microservices-shared-library` declaration (`implicit: true`, modernSCM retriever), agents, OTel.
-- [402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) — the seed job, the 12 stages (parallel Static Analysis), the GitOps deploy loop, container security.
+- [402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) — the seed job, the 13 stages (parallel Static Analysis, GitOps Update, OTel Self-Heal), the GitOps deploy loop, container security.
 - [302. k6 Load Testing](./302-K6_LOAD_TESTING.md) — the `K6SIM_*` contract the k6 pipeline's `parameters {}` feed.
 - [601. DevSecOps](./601-DEVSECOPS.md) — the Semgrep/CodeQL/Trivy gates whose results the Declarative `post {}` publishes.
 - The source of truth: [`vars/`](../vars/) (the shared library) and [`jenkins/pipelines/seed/`](../jenkins/pipelines/seed/) (the Job DSL seed + `services.yaml`).

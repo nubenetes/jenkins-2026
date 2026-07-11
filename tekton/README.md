@@ -43,7 +43,7 @@ tekton/
 | Build & Test | `maven-build-test` |
 | Build & Push Image | `build-push-image` (Jib for java, Kaniko for angular — daemonless) |
 | Trivy Image Scan | `trivy-image` |
-| Deploy to Kubernetes (GitOps + ArgoCD + OTel self-heal) | `gitops-deploy` |
+| GitOps Update + OTel Self-Heal (GitOps + ArgoCD; two Jenkins stages, one task here) | `gitops-deploy` |
 | Smoke Test | `smoke-test` |
 | Integration k6 | `k6-smoke` (also a standalone `microservices-k6-smoke` Pipeline) |
 

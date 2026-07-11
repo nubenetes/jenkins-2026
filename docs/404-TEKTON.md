@@ -514,7 +514,7 @@ and share the same gateway build-time patch
 | Build & Test | `maven-build-test` | — |
 | Build & Push image | `build-push-image` | **daemonless**: Jib (java) / Kaniko (angular) — no privileged DinD. ⚠ The Kaniko half is **latent** today (both services are `java` → Jib) **and upstream kaniko was archived 2025-06** (Google ended maintenance; Chainguard keeps a security-fix fork) — if an `angular`-type service ever activates this path, migrate the step to rootless **BuildKit** (or the fork) first |
 | Trivy image scan | `trivy-image` | — |
-| Deploy (GitOps + ArgoCD + OTel self-heal) | `gitops-deploy` | ported verbatim |
+| GitOps Update + OTel Self-Heal (two Jenkins stages, one task here) | `gitops-deploy` | ported verbatim |
 | Smoke test | `smoke-test` | — |
 | Integration k6 | `k6-smoke` (+ standalone `microservices-k6-smoke` Pipeline) | — |
 

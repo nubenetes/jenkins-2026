@@ -65,7 +65,7 @@ stage. The full three-column table (with the notable per-engine differences) liv
 | Build & Test | `maven-build-test` |
 | Build & Push Image | `build-push-image` (Jib for java, Kaniko for angular — daemonless) |
 | Trivy Image Scan | `trivy-image` |
-| Deploy to Kubernetes (GitOps + ArgoCD + OTel self-heal) | `gitops-deploy` |
+| GitOps Update + OTel Self-Heal (GitOps + ArgoCD; two Jenkins stages, one template here) | `gitops-deploy` |
 | Smoke Test | `smoke-test` |
 | Integration k6 | `k6-smoke` (also the standalone `microservices-k6-smoke` WorkflowTemplate) |
 

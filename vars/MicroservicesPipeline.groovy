@@ -407,14 +407,32 @@ ${agentNodeScheduling}
                 }
             }
 
-            stage('Deploy to Kubernetes') {
+            stage('GitOps Update') {
+                // The cross-engine deploy phase (docs/502), named identically in
+                // all four engines' docs and runbooks: bump the image tag in the
+                // gitops repo, push, then argocd sync + wait. This engine deploys
+                // VIA ArgoCD — the GitOps update IS the deploy — so the phase is
+                // a first-class Declarative stage here (it used to be a Scripted
+                // stage() nested inside the step; hoisted for purity, docs/403 §7.6).
                 steps {
                     microservicesDeploy(
                         serviceName: cfg.serviceName,
                         envName: cfg.envName,
-                        namespace: cfg.targetNamespace,
-                        platform: cfg.platform,
                         tag: env.IMAGE_TAG
+                    )
+                }
+            }
+
+            stage('OTel Self-Heal') {
+                // Heal the OTel auto-instrumentation injection race: the operator's
+                // pod-mutation webhook is failurePolicy: Ignore, so a pod admitted
+                // before the Instrumentation CR was ready starts WITHOUT the Java
+                // agent (dashboards look empty). Its own stage so the check — and
+                // any rollout restart it triggers — is visible in the build UI.
+                steps {
+                    microservicesOtelSelfHeal(
+                        serviceName: cfg.serviceName,
+                        namespace: cfg.targetNamespace
                     )
                 }
             }

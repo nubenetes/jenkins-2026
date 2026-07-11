@@ -1,5 +1,6 @@
-# Stage "Deploy to Kubernetes" of the Jenkins pipeline (vars/microservicesDeploy.groovy):
-# GitOps deploy - bump the image tag in the gitops-config repo, push, trigger an
+# Stages "GitOps Update" + "OTel Self-Heal" of the Jenkins pipeline
+# (vars/microservicesDeploy.groovy + vars/microservicesOtelSelfHeal.groovy), as
+# ONE Tekton task: bump the image tag in the gitops-config repo, push, trigger an
 # ArgoCD sync/wait, then self-heal the OTel auto-instrumentation injection race.
 apiVersion: tekton.dev/v1
 kind: Task
