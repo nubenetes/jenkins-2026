@@ -10,7 +10,7 @@ Everything Jenkins-side is defined in this repository — security, the global s
 
 ## Understanding pipelines-as-code (newcomers → specialists)
 
-The whole CI definition is a chain of generators: a **cron seed job** reads a small YAML registry and **writes the per-service jobs**, each of which calls **one shared-library entry point** that runs the same 11-stage build in a **multi-container agent pod**. Read this once and every later section is "which file holds which stage".
+The whole CI definition is a chain of generators: a **cron seed job** reads a small YAML registry and **writes the per-service jobs**, each of which calls **one shared-library entry point** that runs the same 12-stage build (the three scanners fan out in parallel) in a **multi-container agent pod**. Read this once and every later section is "which file holds which stage".
 
 <details>
 <summary>🧠 Mental model — pipelines as code (mindmap)</summary>
@@ -54,8 +54,8 @@ mindmap
 | **Service registry** | A tiny YAML listing the services to build (name, type, repo, port, health path) + the stable/develop namespaces & branches. | [`services.yaml`](../jenkins/pipelines/seed/services.yaml) |
 | **Seed job** | A cron job (`H/30`) that reads the registry and **generates the per-service Jenkins jobs** via Job DSL. Re-runnable & idempotent. | [`Jenkinsfile.seed`](../jenkins/pipelines/seed/) + [`seed_jobs.groovy`](../jenkins/pipelines/seed/seed_jobs.groovy) |
 | **Per-service job** | One generated job per service (`gateway`, `jhipstersamplemicroservice`) + `microservices-k6-smoke`. Each is a one-line call to a shared-library entry point. | generated, grouped in the `microservices` view |
-| **Pipeline (entry point)** | The actual build definition: an 11-stage CI/CD lifecycle (scan → build → image → deploy → smoke). | [`MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy) |
-| **Shared-library steps** | Reusable building blocks the pipeline delegates to: `microservicesBuild`/`Image`/`Deploy`/`SmokeTest`/`K6Smoke`. | [`vars/`](../vars/) |
+| **Pipeline (entry point)** | The actual build definition: a 12-stage CI/CD lifecycle (parallel scans → build → image → deploy → smoke). | [`MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy) |
+| **Shared-library steps** | Reusable building blocks the pipeline delegates to: `microservicesBuild`/`Image`/`Deploy`/`SmokeTest`/`K6Smoke`/`K6Run` + the scan steps (`SemgrepScan`/`CodeqlScan`/`TrivyIacScan`/`SarifUpload`). | [`vars/`](../vars/) |
 | **Agent pod** | The throwaway multi-container pod each build runs in — one container per tool (maven, docker, trivy, …). | provisioned by the kubernetes cloud |
 
 So the loop is: *seed job reads `services.yaml` → generates `gateway`/`jhipster…`/`k6-smoke` jobs → a job runs `MicroservicesPipeline` → stages execute across the agent pod's tool containers → the deploy stage bumps an image tag in the GitOps repo → ArgoCD rolls it out*. The seed job is the only thing on a timer; the build jobs are started manually, from the UI, or downstream.
@@ -79,10 +79,10 @@ So the loop is: *seed job reads `services.yaml` → generates `gateway`/`jhipste
 - **Node placement** — `jenkins.runNodePool` (JCasC env `RUN_NODE_POOL`, default `static`): `static` → the long-lived pool (`nodeSelector app: jenkins-2026`); `ci-spot` + non-empty `GKE_COMPUTE_CLASS` → the NAP `ci-spot` Custom ComputeClass via `nodeSelector cloud.google.com/compute-class: ci-spot` + tolerations for the compute-class/gke-spot taints (GKE NAP provisions a Spot node).
 - **Containers** — `maven` (`maven:3.9.9-eclipse-temurin-21`) · `node` (`node:20-bookworm`) · `docker` (`docker:26-dind`, privileged) · `helm` (`alpine/k8s:1.31.3` — kubectl/helm/argocd/yq) · `git` (`alpine/git:2.54.0`) · `semgrep` · `trivy` · `codeql` (SHA-tag-pinned) · `jnlp`.
 - **Caches** — host-path `/tmp/jenkins-{maven,npm,trivy,codeql}-cache` speed re-runs.
-- **Options** — `disableConcurrentBuilds()`, `buildDiscarder(20)`, `idleMinutes 5` (a warm pod is reused by the next build instead of cold-starting).
+- **Options** — `disableConcurrentBuilds()`, `buildDiscarder(20)`, `timeout(120 min)` (hang safety net), `durabilityHint('PERFORMANCE_OPTIMIZED')` (jenkins.io *Scaling Pipelines*: ~2-6× less controller I/O), `idleMinutes 5` (a warm pod is reused by the next build instead of cold-starting) + `retries 2` on the kubernetes agent (official pod-loss auto-retry: a `ci-spot` Spot preemption re-runs the build on a fresh pod; compile/test failures are **not** retried).
 - **Image** — `IMAGE = <MICROSERVICES_REGISTRY>/<service>:<gitBranch>-<build#>-<sha8>` (SHA appended after checkout; rebuild-safe across `BUILD_NUMBER` resets).
 
-**The 11 stages** (verbatim): Checkout Microservices source (gateway gets a MySQL→Postgres hot-patch) · Checkout Infra configs · Semgrep SAST (+SARIF upload) · CodeQL Analysis (+SARIF upload) · Trivy IaC Scan · Build & Test (`microservicesBuild`) · Build & Push Image (`microservicesImage` — Jib for java, else Spring-Boot build-image via DinD; `docker build` for angular) · Trivy Image Scan · Deploy to Kubernetes (`microservicesDeploy`) · Smoke Test (`microservicesSmokeTest`) · Integration k6 Smoke Test (downstream `build job` wait). Post: `junit` + `recordIssues` (SARIF).
+**The 12 stages** (verbatim): Checkout Microservices source · Patch App Source (`when`-gated, gateway-only MySQL→Postgres hot-patch) · Checkout Infra configs · **Static Analysis — three parallel branches**: Semgrep SAST (+SARIF upload) ∥ CodeQL Analysis (+SARIF upload) ∥ Trivy IaC Scan · Build & Test (`microservicesBuild`) · Build & Push Image (`microservicesImage` — Jib for java, else Spring-Boot build-image via DinD; `docker build` for angular) · Trivy Image Scan · Deploy to Kubernetes (`microservicesDeploy`) · Smoke Test (`microservicesSmokeTest`) · Integration k6 Smoke Test (downstream `build job` wait). Post: `junit` + `recordIssues` (SARIF).
 
 **GitOps deploy (`microservicesDeploy`):** clone the GitOps repo (`jenkins-2026-gitops-config`, branch `main`=stable / `develop`=develop) → `yq eval -i '.services.<svc>.image.tag = "<tag>"' helm/microservices/values-<env>.yaml` → commit `chore(ops): update <svc> image tag…` → `git push origin <branch>` → `argocd app sync microservices-<env>` + `app wait` (in-cluster gRPC, `ARGOCD_AUTH_TOKEN`) → **OTel self-heal** (if the running pod lacks `-javaagent` in `JAVA_TOOL_OPTIONS`, `kubectl rollout restart` it). This direct `git push origin main` is why the GitOps repo's `main` is **direct-push** (see [502](./502-MICROSERVICES_GITOPS.md) and the [branch-policy note in CLAUDE.md](../CLAUDE.md)).
 
@@ -409,13 +409,15 @@ All four engines also run **Build & Test with `-DskipITs`** — the heavy DB **I
 
 ### 1. Microservices Build & Deploy Pipeline
 
-Defined in [`MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy), this pipeline manages the complete CI/CD lifecycle for each individual microservice across **11 stages**:
+Defined in [`MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy), this pipeline manages the complete CI/CD lifecycle for each individual microservice across **12 stages** (the three scanners run as **parallel branches** of a *Static Analysis* stage; the gateway-only patch is a **`when`-gated** stage that shows as *skipped* for every other service):
 
-*   **Checkout Microservices source** — Clones the microservice repository, then runs the shared [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) (via `libraryResource`). For `gateway` it migrates the source from MySQL to PostgreSQL + a NoOp cache; a no-op for every other service. (This is the *same* script all four CI engines run — see *§ Shared app-source patch*.)
+*   **Checkout Microservices source** — Clones the microservice repository (shallow, single-branch, no-tags) and appends the commit SHA to the rebuild-safe image tag.
+*   **Patch App Source** — `when { expression { serviceName == 'gateway' } }`: runs the shared [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) (via `libraryResource`), migrating the gateway source from MySQL to PostgreSQL + a NoOp cache; skipped for every other service. (This is the *same* script all four CI engines run — see *§ Shared app-source patch*.)
 *   **Checkout Infra configs** — Clones the deployed active branch of this infrastructure repository.
-*   **Semgrep SAST** — Runs static security scan using `semgrep` with `p/security-audit`, `p/owasp-top-ten`, and custom rules. Generates and archives `semgrep-results.sarif`, then uploads it to the GitHub Code Scanning API.
-*   **CodeQL Analysis** — Builds a local CodeQL database and scans JavaScript/TypeScript files. Uploads `codeql-results.sarif` to the GitHub Code Scanning API.
-*   **Trivy IaC Scan** — Clones the GitOps config repository and runs `trivy config` on the codebase and Helm manifests.
+*   **Static Analysis** — a declarative `parallel {}` fan-out of the three independent read-only scanners (CodeQL, the long pole, no longer serialises the other two; each branch delegates to its `vars/` custom step):
+    *   **Semgrep SAST** ([`microservicesSemgrepScan`](../vars/microservicesSemgrepScan.groovy)) — static security scan using `semgrep` with `p/security-audit`, `p/owasp-top-ten`, and custom rules. Generates and archives `semgrep-results.sarif`, then uploads it via the shared [`microservicesSarifUpload`](../vars/microservicesSarifUpload.groovy) step.
+    *   **CodeQL Analysis** ([`microservicesCodeqlScan`](../vars/microservicesCodeqlScan.groovy)) — builds a local CodeQL database and scans JavaScript/TypeScript files. Uploads `codeql-results.sarif` via the same shared SARIF-upload step.
+    *   **Trivy IaC Scan** ([`microservicesTrivyIacScan`](../vars/microservicesTrivyIacScan.groovy)) — clones the GitOps config repository and runs `trivy config` on the codebase and Helm manifests.
 *   **Build & Test** — Delegates to [`microservicesBuild.groovy`](../vars/microservicesBuild.groovy), using fast host-path Maven/npm caches.
 *   **Build & Push Image** — Delegates Docker packaging to [`microservicesImage.groovy`](../vars/microservicesImage.groovy), leveraging Jib (java w/ Jib plugin), Spring-Boot `build-image` via DinD, or `docker build` (angular), pushing to GHCR.
 *   **Trivy Image Scan** — Runs `trivy image` against the published container image.
@@ -444,7 +446,7 @@ sequenceDiagram
 
   App->>Git: clone source (+ gateway MySQL→PG patch)
   Git->>Git: clone infra + gitops configs
-  SG->>HX: Semgrep + CodeQL + Trivy IaC → SARIF upload
+  SG->>HX: Semgrep + CodeQL + Trivy IaC (3 parallel branches) → SARIF upload
   MB->>MB: Build & Test (mvnw verify / npm build)
   MB->>DK: Build & Push image (Jib / build-image / docker build)
   DK->>SG: Trivy image scan (CRITICAL,HIGH)
@@ -469,7 +471,7 @@ sequenceDiagram
 stateDiagram-v2
   [*] --> Checkout
   Checkout --> Scan: source + infra cloned
-  Scan --> Build: Semgrep/CodeQL/Trivy IaC (non-blocking)
+  Scan --> Build: Semgrep ∥ CodeQL ∥ Trivy IaC (parallel, non-blocking)
   Build --> Image: mvn/npm OK
   Build --> Failed: compile/test error
   Image --> ImageScan: pushed to GHCR

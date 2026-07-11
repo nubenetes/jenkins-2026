@@ -2,10 +2,13 @@
 # microservices-pipeline (tekton/pipelines/microservices-pipeline.yaml). One
 # WorkflowTemplate whose `templates:` list holds one container template per stage
 # (the Tekton Tasks) plus a `dag` entrypoint that sequences them (the Tekton
-# `runAfter` chain) - matching the Jenkins stage order: checkout -> Semgrep ->
-# CodeQL -> Trivy IaC -> build/test -> build & push image -> Trivy image ->
-# GitOps deploy -> smoke -> k6. All steps share one RWO 'source' PVC
-# (volumeClaimTemplates) - the Argo analogue of the Tekton 'source' workspace.
+# `runAfter` chain): checkout -> Semgrep -> CodeQL -> Trivy IaC -> build/test ->
+# build & push image -> Trivy image -> GitOps deploy -> smoke -> k6. All steps
+# share one RWO 'source' PVC (volumeClaimTemplates) - the Argo analogue of the
+# Tekton 'source' workspace. NOTE: Jenkins runs the three scanners in PARALLEL
+# inside its single multi-container agent pod ('Static Analysis' stage); the RWO
+# PVC serialises them here, like Tekton - same logical ~11-stage contract,
+# different intra-engine scheduling.
 apiVersion: argoproj.io/v1alpha1
 kind: WorkflowTemplate
 metadata:

@@ -51,6 +51,12 @@ def call(Map cfg) {
             kubernetes {
                 // Keep the agent warm ~5 min so a re-run reuses the pod (no cold start).
                 idleMinutes 5
+                // Official pod-loss auto-retry (kubernetes plugin): re-run once on a
+                // fresh pod if the agent dies for an infra reason (ci-spot Spot
+                // preemption, node drain) — k6 traffic generation is stateless, so a
+                // clean re-run is always safe. Threshold breaches (exit 99/UNSTABLE)
+                // are NOT retried: only qualifying agent-loss failures are.
+                retries 2
                 yaml """
 apiVersion: v1
 kind: Pod
@@ -131,6 +137,14 @@ spec:
             timestamps()
             buildDiscarder(logRotator(numToKeepStr: '20'))
             disableConcurrentBuilds()
+            // Safety net against a wedged run holding the agent + queue slot.
+            // Sized for the LONGEST documented legit run: the soak preset advertises
+            // "raise duration to 4h/8h for an overnight soak" (docs/302), so the cap
+            // sits above 8h + overhead and only ever fires on genuine hangs.
+            timeout(time: 12, unit: 'HOURS')
+            // jenkins.io "Scaling Pipelines" recommendation (re-runnable pipeline,
+            // ~2-6x less controller disk I/O); pod-loss covered by `retries 2`.
+            durabilityHint('PERFORMANCE_OPTIMIZED')
         }
 
         environment {
@@ -161,48 +175,11 @@ spec:
             }
             stage('Run k6 Traffic') {
                 steps {
-                    script {
-                        // Load the selected preset (committed YAML) if any, then merge:
-                        // a non-empty manual field overrides the preset; the preset
-                        // overrides the script default. PROFILE (a choice, always has a
-                        // value) is taken from the preset when one is selected.
-                        def preset = [:]
-                        if (params.PRESET && params.PRESET != 'none') {
-                            def f = "jenkins/pipelines/k6/presets/${params.PRESET}.yaml"
-                            if (fileExists(f)) {
-                                preset = (readYaml(file: f).params ?: [:])
-                                echo "Loaded k6 preset '${params.PRESET}' from ${f}: ${preset}"
-                            } else {
-                                echo "WARNING: preset file ${f} not found - using manual inputs only."
-                            }
-                        }
-                        def usingPreset = !preset.isEmpty()
-                        def has = { v -> v != null && v.toString().trim() != '' }
-                        // manual non-empty wins, else preset value, else '' (script default)
-                        def pick = { manual, key -> has(manual) ? manual.toString() : (preset[key] != null ? preset[key].toString() : '') }
-
-                        // Coalesce preset -> build-param -> seed-baked cfg -> sane default.
-                        // The cfg fallback matters because Jenkins doesn't apply a job's
-                        // default param values on its FIRST build after the seed (re)defines
-                        // it, so params.TARGET_NAMESPACE can be null then (-> "null" namespace).
-                        microservicesK6Smoke(
-                            namespace:    preset.targetNamespace ?: params.TARGET_NAMESPACE ?: cfg.targetNamespace ?: 'microservices',
-                            envName:      preset.envName ?: params.ENV_NAME ?: cfg.envName ?: 'stable',
-                            targetUrl:    pick(params.TARGET_URL, 'targetUrl'),
-                            genaiEnabled: cfg.genaiEnabled,
-                            profile:      usingPreset ? (preset.profile ?: 'smoke') : params.PROFILE,
-                            vus:          pick(params.VUS, 'vus'),
-                            iterations:   pick(params.ITERATIONS, 'iterations'),
-                            duration:     pick(params.DURATION, 'duration'),
-                            stages:       pick(params.STAGES, 'stages'),
-                            rps:          pick(params.RPS, 'rps'),
-                            sleep:        pick(params.SLEEP, 'sleep'),
-                            scenarios:    pick(params.SCENARIOS, 'scenarios'),
-                            p95Ms:        pick(params.P95_MS, 'p95Ms'),
-                            errorRate:    pick(params.ERROR_RATE, 'errorRate'),
-                            debug:        params.DEBUG || (preset.debug?.toString() == 'true')
-                        )
-                    }
+                    // Preset load + precedence merge (manual param > preset > cfg >
+                    // script default) lives in the microservicesK6Run custom step —
+                    // per the Declarative-first rule (docs/403), logic belongs in a
+                    // library step, not a script {} block in the pipeline shell.
+                    microservicesK6Run(cfg)
                 }
             }
         }

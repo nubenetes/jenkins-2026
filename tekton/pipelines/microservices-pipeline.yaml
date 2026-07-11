@@ -1,7 +1,11 @@
 # Tekton port of vars/MicroservicesPipeline.groovy. Tasks run sequentially
-# (runAfter), sharing one 'source' workspace (RWO PVC) - matching the Jenkins
-# stage order: checkout -> Semgrep -> CodeQL -> Trivy IaC -> build/test ->
+# (runAfter), sharing one 'source' workspace (RWO PVC):
+# checkout -> Semgrep -> CodeQL -> Trivy IaC -> build/test ->
 # build & push image -> Trivy image -> GitOps deploy -> smoke -> k6.
+# NOTE: Jenkins runs the three scanners (Semgrep/CodeQL/Trivy IaC) in PARALLEL
+# inside its single multi-container agent pod ('Static Analysis' stage); here
+# the RWO workspace serialises tasks, so the scan order stays sequential by
+# design - same logical ~11-stage contract, different intra-engine scheduling.
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:

@@ -32,6 +32,11 @@ spec:
   options {
     timestamps()
     buildDiscarder(logRotator(numToKeepStr: '10'))
+    // This is a Pipeline-script-from-SCM job (jcasc-seed-job.yaml cpsScm), so
+    // Declarative would otherwise do an IMPLICIT `checkout scm` on the agent
+    // before the stages — duplicating the explicit LFS-skipping checkout below.
+    // Skip the implicit one: one clone instead of two per seed run.
+    skipDefaultCheckout()
   }
 
   stages {
