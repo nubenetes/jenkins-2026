@@ -323,6 +323,13 @@ Legacy stubs ([`docs/architecture.md`](docs/architecture.md), [`docs/observabili
 - When editing Terraform, run `terraform fmt -recursive` and
   `terraform validate` (after `terraform init -backend=false` if no backend
   is configured yet) before considering the change done.
+- When editing or adding **mermaid diagrams** in any `*.md`, run
+  [`scripts/verify-mermaid.sh`](scripts/verify-mermaid.sh) (pass the touched
+  files as args for a quick check; needs `mmdc` — in this environment it lives
+  under `~/.nvm/versions/node/*/bin/`, which the script auto-resolves) before
+  considering the change done. CI enforces the same via the
+  `mermaid-validate.yml` PR guard. Classic silent killer: a bare `;` in
+  sequenceDiagram note/message text.
 - Required GitHub repo secrets and variables are inventoried in
   [`docs/103-GITHUB_SECRETS_INVENTORY.md`](docs/103-GITHUB_SECRETS_INVENTORY.md) -
   keep that inventory in sync with any new secrets a workflow starts consuming.

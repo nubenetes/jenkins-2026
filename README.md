@@ -3,6 +3,7 @@
 [![Release](https://img.shields.io/github/v/release/nubenetes/jenkins-2026?sort=semver&display_name=tag&logo=github&label=release&color=2ea44f)](https://github.com/nubenetes/jenkins-2026/releases/latest)
 [![Gitflow Guard](https://github.com/nubenetes/jenkins-2026/actions/workflows/gitflow-guard.yml/badge.svg?branch=main)](https://github.com/nubenetes/jenkins-2026/actions/workflows/gitflow-guard.yml)
 [![Terraform validate](https://github.com/nubenetes/jenkins-2026/actions/workflows/terraform-validate.yml/badge.svg?branch=main)](https://github.com/nubenetes/jenkins-2026/actions/workflows/terraform-validate.yml)
+[![Mermaid validate](https://github.com/nubenetes/jenkins-2026/actions/workflows/mermaid-validate.yml/badge.svg?branch=main)](https://github.com/nubenetes/jenkins-2026/actions/workflows/mermaid-validate.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 [![Last commit](https://img.shields.io/github/last-commit/nubenetes/jenkins-2026?logo=git&logoColor=white)](https://github.com/nubenetes/jenkins-2026/commits/main)
@@ -1083,7 +1084,7 @@ To keep this Git repository lightweight, fast to clone, and responsive, all heav
 
 ## 4. GitHub Actions Workflows
 
-All **29 lifecycle workflows** live in [`.github/workflows/`](.github/workflows/) following the `DayN.tier.ZZ-resource` naming convention (the two repo-hygiene checks — [`gitflow-guard.yml`](.github/workflows/gitflow-guard.yml), [`terraform-validate.yml`](.github/workflows/terraform-validate.yml) — sit outside the scheme) — **alphabetical sort order = correct execution order** for the **Create** (`Day0`→`Day1`) and **Decom** phases. Within **Day2** the tiers (`redeploy`/`publish`/`traffic`/`registry`/`scale`) are independent **categories**, not an ordered sequence — each workflow is idempotent and dispatched on its own ([why](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#day2-ordering-tiers-are-categories-not-stages)). See [101. GitHub Actions Workflows](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md) for the full inventory with clickable GitHub Actions links.
+All **31 lifecycle workflows** live in [`.github/workflows/`](.github/workflows/) following the `DayN.tier.ZZ-resource` naming convention (the three repo-hygiene checks — [`gitflow-guard.yml`](.github/workflows/gitflow-guard.yml), [`terraform-validate.yml`](.github/workflows/terraform-validate.yml), [`mermaid-validate.yml`](.github/workflows/mermaid-validate.yml) — sit outside the scheme) — **alphabetical sort order = correct execution order** for the **Create** (`Day0`→`Day1`) and **Decom** phases. Within **Day2** the tiers (`redeploy`/`publish`/`traffic`/`registry`/`scale`) are independent **categories**, not an ordered sequence — each workflow is idempotent and dispatched on its own ([why](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#day2-ordering-tiers-are-categories-not-stages)). See [101. GitHub Actions Workflows](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md) for the full inventory with clickable GitHub Actions links.
 
 | Phase | tier | Resource | Workflow |
 |---|---|---|---|

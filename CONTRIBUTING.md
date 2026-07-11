@@ -146,6 +146,17 @@ Existing examples to copy: `platform.target` / `JENKINS2026_PLATFORM`,
   that touches `terraform/**` — a formatting or schema error blocks the PR before
   it ever reaches a real, billed cluster.
 
+### Mermaid diagrams (docs)
+
+- Run **[`scripts/verify-mermaid.sh`](scripts/verify-mermaid.sh)** (needs
+  `mmdc` — `npm install -g @mermaid-js/mermaid-cli`) before considering a
+  diagram change done; pass the touched files as args for a quick check.
+- CI mirrors this: the **Mermaid validate** check
+  ([`.github/workflows/mermaid-validate.yml`](.github/workflows/mermaid-validate.yml))
+  renders **every** ` ```mermaid ` block in the repo on any PR that touches
+  `*.md` — a diagram that would silently fail to render on GitHub (the classic:
+  a bare `;` in sequenceDiagram note/message text) blocks the PR instead.
+
 > ⚠️ [`terraform/bootstrap`](terraform/bootstrap) is a one-time, human-run module
 > with local (then bucket-migrated) state — **never** wire it into CI, and never
 > re-`apply` it without inspecting the existing state first (re-creating it orphans
@@ -156,7 +167,7 @@ Existing examples to copy: `platform.target` / `JENKINS2026_PLATFORM`,
 
 ## 5. Running the checks locally
 
-A PR gets two lightweight, credential-free required checks. You can reproduce both
+A PR gets three lightweight, credential-free checks. You can reproduce them
 before pushing:
 
 ```bash
@@ -167,6 +178,10 @@ find terraform -type f -name '*.tf' -not -path '*/.terraform/*' -printf '%h\n' \
       terraform -chdir="$m" init -backend=false -input=false >/dev/null \
         && terraform -chdir="$m" validate
     done
+
+# Mermaid diagrams (only if you touched *.md): render-verify every ```mermaid block.
+# Needs mermaid-cli: npm install -g @mermaid-js/mermaid-cli
+scripts/verify-mermaid.sh                      # or pass specific files as args
 
 # Gitflow: nothing to run — just make sure your promotion PR's head branch is `develop`.
 ```
