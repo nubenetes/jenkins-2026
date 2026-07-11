@@ -23,8 +23,15 @@ def call(Map cfg) {
   def infraRepoUrl = env.JENKINS2026_GITOPS_REPO_URL ?: "https://github.com/nubenetes/jenkins-2026-gitops-config.git"
   def valuesFile = "helm/microservices/values-${cfg.envName}.yaml"
 
-  // Use the gitops branch that corresponds to the environment.
-  def infraBranch = cfg.envName == 'stable' ? 'main' : 'develop'
+  // The stable tier's gitops branch FOLLOWS THE DEPLOY BRANCH (main on a prod
+  // cluster; develop on a develop-validation cluster), matching the ArgoCD
+  // AppSet whose stable app tracks {{branchStable}} = the deploy branch
+  // (scripts/08.5-argocd.sh) - a develop-launched cluster is self-contained
+  // and never writes to the prod gitops main. Hardcoding 'main' here silently
+  // no-op'd every stable deploy on develop-launched clusters (the app read
+  // develop, the pipeline wrote main - found live 2026-07-11). The develop
+  // TIER always uses the gitops develop branch, on either cluster.
+  def infraBranch = cfg.envName == 'stable' ? (env.JENKINS2026_REPO_BRANCH ?: 'main') : 'develop'
 
   // Use 'jenkins-2026-gitops' (not 'jenkins-2026-infra') to avoid colliding
   // with the infra checkout dir that Checkout Infra configs clones into.

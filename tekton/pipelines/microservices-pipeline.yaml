@@ -117,6 +117,8 @@ spec:
         - { name: service-name, value: $(params.service-name) }
         - { name: env-name, value: $(params.env-name) }
         - { name: target-namespace, value: $(params.target-namespace) }
+        # Stable's gitops branch follows the deploy branch (AppSet auto-track).
+        - { name: self-repo-branch, value: $(params.self-repo-branch) }
         # P3 immutable tag: pass the SAME full built `image` that build-push-image and
         # trivy-image use ("$(params.image)-$(context.pipelineRun.name)"); gitops-deploy
         # extracts its tag (everything after the last ':') for the bump, so build-push,

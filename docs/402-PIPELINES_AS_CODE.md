@@ -84,7 +84,7 @@ So the loop is: *seed job reads `services.yaml` → generates `gateway`/`jhipste
 
 **The 13 stages** (verbatim): Checkout Microservices source · Patch App Source (`when`-gated, gateway-only MySQL→Postgres hot-patch) · Checkout Infra configs · **Static Analysis — three parallel branches**: Semgrep SAST (+SARIF upload) ∥ CodeQL Analysis (+SARIF upload) ∥ Trivy IaC Scan · Build & Test (`microservicesBuild`) · Build & Push Image (`microservicesImage` — Jib for java, else Spring-Boot build-image via DinD; `docker build` for angular) · Trivy Image Scan · GitOps Update (`microservicesDeploy` — the cross-engine deploy phase, docs/502) · OTel Self-Heal (`microservicesOtelSelfHeal`) · Smoke Test (`microservicesSmokeTest`) · Integration k6 Smoke Test (downstream `build job` wait). Post: `junit` + `recordIssues` (SARIF).
 
-**GitOps Update stage (`microservicesDeploy`):** clone the GitOps repo (`jenkins-2026-gitops-config`, branch `main`=stable / `develop`=develop) → `yq eval -i '.services.<svc>.image.tag = "<tag>"' helm/microservices/values-<env>.yaml` → commit `chore(ops): update <svc> image tag…` → `git push origin <branch>` → `argocd app sync microservices-<env>` + `app wait` (in-cluster gRPC, `ARGOCD_AUTH_TOKEN`); then the **OTel Self-Heal stage** (`microservicesOtelSelfHeal`: if the running pod lacks `-javaagent` in `JAVA_TOOL_OPTIONS`, `kubectl rollout restart` it). This direct `git push origin main` is why the GitOps repo's `main` is **direct-push** (see [502](./502-MICROSERVICES_GITOPS.md) and the [branch-policy note in CLAUDE.md](../CLAUDE.md)).
+**GitOps Update stage (`microservicesDeploy`):** clone the GitOps repo (`jenkins-2026-gitops-config`; stable uses the **deploy branch** — `main` in prod, matching the AppSet auto-track ([502 § Branch model](./502-MICROSERVICES_GITOPS.md#branch-model-app-source-vs-gitops-vs-deploy-branch)) — and the develop tier uses `develop`) → `yq eval -i '.services.<svc>.image.tag = "<tag>"' helm/microservices/values-<env>.yaml` → commit `chore(ops): update <svc> image tag…` → `git push origin <branch>` → `argocd app sync microservices-<env>` + `app wait` (in-cluster gRPC, `ARGOCD_AUTH_TOKEN`); then the **OTel Self-Heal stage** (`microservicesOtelSelfHeal`: if the running pod lacks `-javaagent` in `JAVA_TOOL_OPTIONS`, `kubectl rollout restart` it). This direct `git push origin main` is why the GitOps repo's `main` is **direct-push** (see [502](./502-MICROSERVICES_GITOPS.md) and the [branch-policy note in CLAUDE.md](../CLAUDE.md)).
 
 **Triggers:** only `seed-jobs` is on a timer (`H/30`). The generated build jobs carry **no SCM/push trigger** — they are started manually (UI), via downstream `build job`, or externally. The nubenetes app forks *are* owned here, but the Jenkins engine doesn't wire push-webhooks (contrast the git-push PaC of the other three engines — [Tekton](./404-TEKTON.md), [GitHub Actions](./405-GITHUB_ACTIONS.md), and [Argo Workflows](./406-ARGO_WORKFLOWS.md)).
 
@@ -221,7 +221,7 @@ sequenceDiagram
 Instead of separating stable and development pipelines into separate jobs and folders, a single set of root stable pipelines is generated:
 
 *   **Target Namespace:** `microservices`
-*   **Environment Name:** `stable` (modifies `values-stable.yaml` in the GitOps config repository on the `main` branch)
+*   **Environment Name:** `stable` (modifies `values-stable.yaml` in the GitOps config repository on the deploy branch — `main` in prod)
 
 <details>
 <summary>🌳 Branch & environment mapping (stable vs develop)</summary>
@@ -233,7 +233,7 @@ flowchart TB
   sw -->|true| develop
   subgraph stable["stable tier (HA)"]
     sjobs["jobs: gateway, jhipster…<br/>k6-smoke"] --> sns["ns: microservices"]
-    sns --> sval["gitops main → values-stable.yaml<br/>CNPG 3 instances · 3 pooler · backups on"]
+    sns --> sval["gitops deploy-branch → values-stable.yaml<br/>CNPG 3 instances · 3 pooler · backups on"]
   end
   subgraph develop["develop tier (opt-in, LEAN)"]
     djobs["jobs: *-develop"] --> dns["ns: microservices-develop"]

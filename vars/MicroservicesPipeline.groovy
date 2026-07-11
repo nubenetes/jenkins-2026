@@ -265,33 +265,41 @@ ${agentNodeScheduling}
             stage('Checkout Microservices source') {
                 steps {
                     dir('microservices-src') {
-                        // Shallow, single-branch, no-tags clone. The plain `git` step
-                        // fetched ALL history + every branch ref + tags of the (large
-                        // JHipster) app repo — the slow part of "Checkout". depth:1 +
-                        // noTags + single branch is dramatically faster (we only build
-                        // the tip of one branch). Not the agent scheduling (pods are
-                        // warmed by the prepull DaemonSet + idleMinutes reuse).
-                        checkout([
-                            $class: 'GitSCM',
-                            branches: [[name: "*/${cfg.gitBranch}"]],
-                            userRemoteConfigs: [[url: cfg.gitRepoUrl]],
-                            extensions: [
-                                [$class: 'CloneOption', shallow: true, depth: 1, noTags: true, honorRefspec: true],
-                                [$class: 'CheckoutOption', timeout: 20],
-                            ],
-                        ])
                         script {
+                            // Shallow, single-branch, no-tags clone. The plain `git` step
+                            // fetched ALL history + every branch ref + tags of the (large
+                            // JHipster) app repo — the slow part of "Checkout". depth:1 +
+                            // noTags + single branch is dramatically faster (we only build
+                            // the tip of one branch). Not the agent scheduling (pods are
+                            // warmed by the prepull DaemonSet + idleMinutes reuse).
+                            //
                             // Rebuild-safety (see IMAGE_TAG comment): append the app-source
-                            // commit SHA so the tag is unique across Jenkins incarnations even
-                            // after BUILD_NUMBER resets. GIT_COMMIT is set by the git plugin from
-                            // the checkout above; fall back to <branch>-<build#> if absent.
-                            // (Kept as the pipeline's one script {} island: mutating env for
-                            // all later stages from a value only known after checkout has no
-                            // declarative directive equivalent — see docs/403.)
-                            if (env.GIT_COMMIT?.trim()) {
-                                env.IMAGE_TAG = "${cfg.gitBranch}-${env.BUILD_NUMBER}-${env.GIT_COMMIT.take(8)}"
+                            // commit SHA so the tag is unique across Jenkins incarnations
+                            // even after BUILD_NUMBER resets. The SHA comes from checkout's
+                            // RETURN MAP — env.GIT_COMMIT is only auto-populated on
+                            // single-checkout builds, and this build also clones the infra
+                            // + gitops repos, so the env var arrives EMPTY (found live
+                            // 2026-07-11: tags shipped as <branch>-<build#> and re-minted
+                            // main-1 across incarnations, the exact #488 collision).
+                            // (This is the pipeline's one script {} island: mutating env
+                            // for all later stages from a runtime-born value has no
+                            // declarative directive equivalent — docs/403 §7.6 Case 1.)
+                            def scmVars = checkout([
+                                $class: 'GitSCM',
+                                branches: [[name: "*/${cfg.gitBranch}"]],
+                                userRemoteConfigs: [[url: cfg.gitRepoUrl]],
+                                extensions: [
+                                    [$class: 'CloneOption', shallow: true, depth: 1, noTags: true, honorRefspec: true],
+                                    [$class: 'CheckoutOption', timeout: 20],
+                                ],
+                            ])
+                            def appSha = scmVars?.GIT_COMMIT?.trim()
+                            if (appSha) {
+                                env.IMAGE_TAG = "${cfg.gitBranch}-${env.BUILD_NUMBER}-${appSha.take(8)}"
                                 env.IMAGE = "${env.REGISTRY}/${cfg.serviceName}:${env.IMAGE_TAG}"
                                 echo "Image tag (rebuild-safe): ${env.IMAGE_TAG}"
+                            } else {
+                                echo "WARNING: checkout returned no GIT_COMMIT - tag stays ${env.IMAGE_TAG} (NOT rebuild-safe)"
                             }
                         }
                     }

@@ -100,6 +100,7 @@ spec:
             arguments:
               parameters:
                 - { name: env-name, value: "{{workflow.parameters.env-name}}" }
+                - { name: self-repo-branch, value: "{{workflow.parameters.self-repo-branch}}" }
           - name: build-test
             template: maven-build-test
             dependencies: [trivy-iac]
@@ -136,6 +137,8 @@ spec:
                 - { name: service-name, value: "{{workflow.parameters.service-name}}" }
                 - { name: env-name, value: "{{workflow.parameters.env-name}}" }
                 - { name: target-namespace, value: "{{workflow.parameters.target-namespace}}" }
+                # Stable's gitops branch follows the deploy branch (AppSet auto-track).
+                - { name: self-repo-branch, value: "{{workflow.parameters.self-repo-branch}}" }
                 # P3 immutable tag: derive the gitops bump tag from the SAME `image`
                 # param the build/trivy steps use ({{image}}-{{workflow.name}}), so
                 # build-push, scans and the gitops bump ALWAYS reference the identical
@@ -397,6 +400,9 @@ spec:
           - name: env-name
           - name: gitops-repo-url
             value: https://github.com/nubenetes/jenkins-2026-gitops-config.git
+          # Deploy branch (stable's gitops branch follows it - AppSet auto-track).
+          - name: self-repo-branch
+            value: main
       steps:
         - - name: clone-gitops
             template: trivy-iac-clone
@@ -404,6 +410,7 @@ spec:
               parameters:
                 - { name: env-name, value: "{{inputs.parameters.env-name}}" }
                 - { name: gitops-repo-url, value: "{{inputs.parameters.gitops-repo-url}}" }
+                - { name: self-repo-branch, value: "{{inputs.parameters.self-repo-branch}}" }
         - - name: trivy-config
             template: trivy-iac-config
     - name: trivy-iac-clone
@@ -411,6 +418,8 @@ spec:
         parameters:
           - name: env-name
           - name: gitops-repo-url
+          - name: self-repo-branch
+            value: main
       script:
         image: alpine/git:2.54.0
         volumeMounts:
@@ -435,7 +444,8 @@ spec:
           git config --global --add safe.directory '*' || true
           cd /workspace
           rm -rf gitops-config-src
-          BRANCH=main
+          # Stable follows the deploy branch; the develop TIER always uses develop.
+          BRANCH="{{inputs.parameters.self-repo-branch}}"
           [ "{{inputs.parameters.env-name}}" = "develop" ] && BRANCH=develop
           REPO_CLEAN=$(echo "{{inputs.parameters.gitops-repo-url}}" | sed 's|https://||')
           GIT_LFS_SKIP_SMUDGE=1 git \
@@ -668,6 +678,9 @@ spec:
           - name: image
           - name: gitops-repo-url
             value: https://github.com/nubenetes/jenkins-2026-gitops-config.git
+          # Deploy branch (stable's gitops branch follows it - AppSet auto-track).
+          - name: self-repo-branch
+            value: main
           - name: argocd-server
             value: argocd-server.argocd.svc.cluster.local
           - name: argocd-version
@@ -681,6 +694,7 @@ spec:
                 - { name: env-name, value: "{{inputs.parameters.env-name}}" }
                 - { name: image, value: "{{inputs.parameters.image}}" }
                 - { name: gitops-repo-url, value: "{{inputs.parameters.gitops-repo-url}}" }
+                - { name: self-repo-branch, value: "{{inputs.parameters.self-repo-branch}}" }
         - - name: argocd-sync
             template: gitops-argocd-sync
             arguments:
@@ -705,6 +719,8 @@ spec:
           - name: env-name
           - name: image
           - name: gitops-repo-url
+          - name: self-repo-branch
+            value: main
       script:
         image: alpine/k8s:1.31.3
         volumeMounts:
@@ -727,7 +743,8 @@ spec:
             stable|develop) ;;
             *) echo "unsupported env-name '{{inputs.parameters.env-name}}'"; exit 1 ;;
           esac
-          BRANCH=main; [ "{{inputs.parameters.env-name}}" = "develop" ] && BRANCH=develop
+          # Stable follows the deploy branch; the develop TIER always uses develop.
+          BRANCH="{{inputs.parameters.self-repo-branch}}"; [ "{{inputs.parameters.env-name}}" = "develop" ] && BRANCH=develop
           VALUES="helm/microservices/values-{{inputs.parameters.env-name}}.yaml"
           # Extract the tag from the FULL image the build actually pushed (strip the
           # registry/repo up to and including the last ':'). This is the single source
