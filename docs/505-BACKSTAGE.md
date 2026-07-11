@@ -442,6 +442,44 @@ whose credentials come from the **optional** GitHub secrets
 seeds `unset` placeholders and the portal **degrades gracefully** — everything
 else works; only this tab's popup can't complete.
 
+**Enabling it — the one-time OAuth App runbook** (the only Backstage feature
+whose credential cannot be provisioned by the platform: classic OAuth Apps have
+no creation API, and the client secret is human-issued):
+
+1. **Create the OAuth App inside the `nubenetes` org** — org-owned, so it is
+   exempt from any *third-party OAuth access* restriction on the org's repos
+   (a user-owned app would need a separate approval): *github.com → the
+   `nubenetes` org → Settings → Developer settings → OAuth Apps → New OAuth
+   App*, with exactly:
+   - **Application name**: `jenkins-2026 Backstage` (cosmetic — shown on the consent screen)
+   - **Homepage URL**: `https://backstage.jenkins2026.nubenetes.com`
+   - **Authorization callback URL**: `https://backstage.jenkins2026.nubenetes.com/api/auth/github/handler/frame`
+   - *Enable Device Flow*: leave **off** (the popup uses the web flow).
+
+   The host follows `gateway.baseDomain` ([`config/config.yaml`](../config/config.yaml)) —
+   adjust if you run a different domain. After creating, **Generate a new
+   client secret**.
+2. **Set the two repo secrets** (interactive stdin — the values never transit
+   a shell history or a chat):
+
+   ```bash
+   gh secret set BACKSTAGE_GITHUB_OAUTH_CLIENT_ID     -R nubenetes/jenkins-2026
+   gh secret set BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET -R nubenetes/jenkins-2026
+   ```
+3. **Apply**: the next `Day1.cluster.01-gke` picks them up automatically; on an
+   already-running cluster run **`Day2.redeploy.08-backstage`** — its `01`
+   re-seed refreshes `backstage-secrets` (both backends: imperative patch, or
+   Secret Manager + ESO `Merge`) and `08.95` rollout-restarts the pod.
+4. **Verify** — note the tab only renders under **`ci.engine=githubactions`**
+   (the CI/CD tab always shows the *active* engine): entity → *CI/CD* → *Sign
+   in* → the popup authorizes the OAuth App (ScmAuth requests the `repo`
+   scope) → the workflow runs render with **that user's own** GitHub
+   visibility.
+
+**Rotation**: regenerate the client secret on the OAuth App → repeat steps
+2–3. Revoking a single user's grant: the user's GitHub *Settings →
+Applications → Authorized OAuth Apps*.
+
 ### Tekton
 
 No dedicated backend — the Tekton plugin **rides the Kubernetes backend**:
