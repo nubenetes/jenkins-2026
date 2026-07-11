@@ -67,7 +67,17 @@ const ArgoWorkflowsContent = () => {
   );
 };
 
-export const CicdContent = ({ children }: { children?: React.ReactNode }) => {
+export const CicdContent = ({
+  // Deliberately UNUSED (underscore satisfies noUnusedParameters): EntityPage
+  // mounts the three routable CI/CD extensions as children so Backstage's
+  // route collector discovers them in the static element tree (otherwise
+  // their routeRefs are unregistered and deep links crash). Rendering is
+  // still exclusively the switch below - only the ACTIVE engine's content
+  // ever mounts.
+  children: _children,
+}: {
+  children?: React.ReactNode;
+}) => {
   const config = useApi(configApiRef);
   const engine =
     config.getOptionalString('jenkins2026.ciEngine') ?? 'jenkins';

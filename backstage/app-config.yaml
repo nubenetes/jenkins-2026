@@ -91,6 +91,18 @@ jenkins:
 # ArgoCD plugin (engine-independent Deployments tab). Session auth with the
 # in-cluster admin credentials 08.95 patches in; URL flips to https + the
 # internal CA (NODE_EXTRA_CA_CERTS) when backend TLS is active.
+#
+# The instance url MUST stay INTERNAL: the plugin backend calls it for every
+# API read, and the public https://argocd.<domain> sits behind IAP, which
+# 302s any request without a Google identity - a public url here renders the
+# whole tab dataless. Trade-off (upstream gap, plugin 2.9.0): the frontend
+# builds its "open in ArgoCD" deep links from metadata.instance.url (this
+# same value), falling back to argocd.baseUrl ONLY when instance metadata is
+# absent - which the backend always injects, so deep links currently point
+# in-cluster and don't resolve from a browser. baseUrl stays configured (the
+# public UI) so links start working the moment upstream honours it; the
+# argocd-baseline NetworkPolicy allowlists the backstage namespace for the
+# internal call (infrastructure/networkpolicies.yaml).
 argocd:
   baseUrl: https://argocd.${BASE_DOMAIN}
   username: ${ARGOCD_USERNAME}
@@ -99,7 +111,7 @@ argocd:
     - type: config
       instances:
         - name: in-cluster
-          url: https://argocd.${BASE_DOMAIN}
+          url: ${ARGOCD_BASE_URL}
 
 # Kubernetes plugin: in-cluster access as the `backstage` KSA (no
 # serviceAccountToken -> the mounted token + CA are used). Read-only RBAC in
