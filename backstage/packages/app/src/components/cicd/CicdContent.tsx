@@ -67,7 +67,7 @@ const ArgoWorkflowsContent = () => {
   );
 };
 
-export const CicdContent = () => {
+export const CicdContent = ({ children }: { children?: React.ReactNode }) => {
   const config = useApi(configApiRef);
   const engine =
     config.getOptionalString('jenkins2026.ciEngine') ?? 'jenkins';

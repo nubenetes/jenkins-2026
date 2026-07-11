@@ -64,8 +64,17 @@ import {
   RELATION_PROVIDES_API,
 } from '@backstage/catalog-model';
 import { CicdContent } from '../cicd/CicdContent';
+import { EntityJenkinsContent } from '@backstage-community/plugin-jenkins';
+import { EntityGithubActionsContent } from '@backstage-community/plugin-github-actions';
+import { TektonCI } from '@backstage-community/plugin-tekton';
 
-const cicdContent = <CicdContent />;
+const cicdContent = (
+  <CicdContent>
+    <EntityJenkinsContent />
+    <EntityGithubActionsContent />
+    <TektonCI />
+  </CicdContent>
+);
 
 const entityWarningContent = (
   <>

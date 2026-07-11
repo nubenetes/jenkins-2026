@@ -22,10 +22,6 @@ import { entityPage } from './components/catalog/EntityPage';
 import { searchPage } from './components/search/SearchPage';
 import { Root } from './components/Root';
 
-import { EntityJenkinsContent } from '@backstage-community/plugin-jenkins';
-import { EntityGithubActionsContent } from '@backstage-community/plugin-github-actions';
-import { TektonCI } from '@backstage-community/plugin-tekton';
-
 import {
   AlertDisplay,
   OAuthRequestDialog,
@@ -91,10 +87,6 @@ const routes = (
     </Route>
     <Route path="/catalog-graph" element={<CatalogGraphPage />} />
     <Route path="/settings" element={<UserSettingsPage />} />
-    {/* Dummy routes to satisfy Backstage's static routable extension scanner (docs/505) */}
-    <Route path="/jenkins-dummy" element={<EntityJenkinsContent />} />
-    <Route path="/github-actions-dummy" element={<EntityGithubActionsContent />} />
-    <Route path="/tekton-dummy" element={<TektonCI />} />
   </FlatRoutes>
 );
 
