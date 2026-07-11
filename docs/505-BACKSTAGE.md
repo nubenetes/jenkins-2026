@@ -196,14 +196,20 @@ parent Application (ArgoCD cascade-prunes the chart **and** the database) and
 the `backstage-runtime-config` ConfigMap, and `09` stops emitting the
 route/policies — the same retire idiom as the other flag-gated features.
 
-> ⚠️ **One-time image bootstrap.** The custom app image must exist in GHCR
-> **before the first Backstage-enabled `Day1`**: run
-> [`Day2.publish.06-backstage`](../.github/workflows/Day2.publish.06-backstage.yml)
-> once. The image then **persists across cluster rebuilds** (like the
-> microservices images — a Day0-like artifact), so this is once *ever*, not
-> once per cluster. Until it exists, `08.95` **warns and skips the rollout
-> wait** — the pod sits in `ImagePullBackOff` but `Day1` stays green, so an
-> un-bootstrapped image never blocks the platform.
+> ⚠️ **One-time image bootstrap — automated by the umbrella.** The custom app
+> image must exist in GHCR before the first Backstage-enabled `Day1`. The
+> **`Day1.cluster.00-all` umbrella handles this itself**: an ungated pre-check
+> probes `ghcr.io/…-backstage:<branch>` (`docker manifest inspect`) and
+> auto-runs [`Day2.publish.06-backstage`](../.github/workflows/Day2.publish.06-backstage.yml)
+> **only when the image is missing** — the same probe pattern as its
+> `bootstrap_gateway` static-IP check, so "everything up from decommissioned"
+> is one click with no manual prerequisite. The image then **persists across
+> cluster rebuilds** (like the microservices images — a Day0-like artifact),
+> so later rebuilds skip the ~15 min build. `Day2.publish.06` remains the
+> manual path for a bare `Day1.cluster.01` run and the **update path** after
+> changing `backstage/` sources. Until an image exists, `08.95` **warns and
+> skips the rollout wait** — the pod sits in `ImagePullBackOff` but `Day1`
+> stays green, so an un-bootstrapped image never blocks the platform.
 
 ## What gets installed (GitOps via ArgoCD app-of-apps)
 
@@ -684,7 +690,7 @@ explicit, not derived).
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Pod `ImagePullBackOff` | the one-time image bootstrap never ran, or `ghcr-credentials` is missing/stale | run [`Day2.publish.06-backstage`](../.github/workflows/Day2.publish.06-backstage.yml) once; re-run `01` for the pull secret. `08.95` deliberately leaves Day1 green in this state |
+| Pod `ImagePullBackOff` | the one-time image bootstrap never ran (a bare `Day1.cluster.01` without a prior publish — the `00-all` umbrella auto-runs it), or `ghcr-credentials` is missing/stale | run [`Day2.publish.06-backstage`](../.github/workflows/Day2.publish.06-backstage.yml) once; re-run `01` for the pull secret. `08.95` deliberately leaves Day1 green in this state |
 | Sign-in fails / "audience mismatch" in the backend logs | `IAP_AUDIENCE` still the placeholder — `09` ran before the LB finished programming the backend service (typical on the first-ever Day1) | re-run `Day1`, or `Day2.redeploy.05-gateway` / `.08-backstage` (both re-run `09`, which resolves + patches + restarts) |
 | GitHub Actions tab loops on its OAuth popup | `BACKSTAGE_GITHUB_OAUTH_CLIENT_ID/SECRET` unset (`unset` placeholders seeded) | create the GitHub OAuth App (callback `https://backstage.<baseDomain>/api/auth/github/handler/frame`), set the two secrets, re-run `01` + `08.95` |
 | Jenkins tab errors / 401 | the active engine isn't `jenkins` (`JENKINS_API_*` is only seeded then), or the admin password rotated under it | expected off-engine — the tab switches per `CI_ENGINE`; otherwise re-run `01` + `08.95` to refresh the keys |

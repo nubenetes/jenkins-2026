@@ -22,6 +22,15 @@ on:
         required: false
         default: ""
         type: string
+  # Reusable: the Day1.cluster.00-all umbrella auto-calls this when its image
+  # probe finds no ghcr image for the branch (first-ever provision on a fresh
+  # org/branch) - so "everything up from decommissioned" is truly one click.
+  workflow_call:
+    inputs:
+      git_ref:
+        required: false
+        default: ""
+        type: string
   push:
     branches: [main, develop]
     paths:

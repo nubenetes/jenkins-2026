@@ -178,9 +178,11 @@ Both umbrellas are thin orchestrators — they own no teardown/provision logic, 
 flowchart TD
     subgraph UP["🟢 Day1.cluster.00-all &quot;Everything up&quot; (no concurrency of its own)"]
         direction TB
-        u_gw["job: gateway-bootstrap<br/>if bootstrap_gateway<br/>uses Day0.infra.01-gateway<br/>🔒 gke-production"]
-        u_prov["job: provision<br/>needs gateway-bootstrap<br/>if always() &amp;&amp; !failure()<br/>uses Day1.cluster.01-gke"]
+        u_gw["job: gateway-bootstrap<br/>if probe: static IP missing<br/>uses Day0.infra.01-gateway<br/>🔒 gke-production"]
+        u_img["job: backstage-image-bootstrap<br/>if probe: ghcr image missing<br/>uses Day2.publish.06-backstage<br/>(ungated - nothing billed)"]
+        u_prov["job: provision<br/>needs both bootstraps<br/>if always() &amp;&amp; !failure()<br/>uses Day1.cluster.01-gke"]
         u_gw --> u_prov
+        u_img --> u_prov
     end
 
     subgraph NEST["Day1.cluster.01-gke — its OWN preflight fan-out (nested workflow_call)"]
