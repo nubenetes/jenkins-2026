@@ -185,7 +185,7 @@ still experimental and we deliberately skip it. Maturity is GA unless noted.
 | **Cloud provider → GCP** | GA | No (IaC scaffolding in [`terraform/grafana-cloud-gcp`](../terraform/grafana-cloud-gcp/)) | 🤔 Stable, but needs a **long-lived SA key** (the scraper isn't a GCP workload → no WIF), the only non-keyless credential. Optional — see [§ GCP platform metrics](#gcp-platform-metrics--cloud-provider-integration-optional) |
 | **Profiles** (Pyroscope, continuous JVM profiling) | GA (product) | No | ⏸️ **Deferred** — valuable, but every collection path conflicts with our setup: the Java agent fights the OTel-Operator-owned `JAVA_TOOL_OPTIONS`, needs opening external app egress, and the no-app-change alternative (Alloy `pyroscope.java`) is experimental + privileged. See [§ Profiles/Pyroscope: why it's deferred](#profilespyroscope-why-its-deferred) |
 | **Database Observability** (Postgres query perf) | **public preview / experimental** | No | ❌ **Skip for now** — the Alloy `database_observability` component has frequent breaking changes. Revisit when GA |
-| OnCall / Incident / SLO | GA (ops process, not telemetry) | — | As needed for alerting/on-call; not a priority for a throwaway PoC |
+| **IRM** (OnCall + Incident, unified in 2025) / SLO | GA (ops process, not telemetry) | — | As needed for alerting/on-call; not a priority for a throwaway PoC. ⚠ Self-hosted **OnCall OSS is dead** (maintenance-mode 2025-03, repo archived 2026-03) — the on-call story is Cloud **IRM** only (the free tier includes 3 IRM users) |
 
 **What to incorporate (stable + worthwhile):** lead with **Application Observability**
 — it already receives our traces/metrics, so it's the biggest no-risk win (open it,
@@ -834,7 +834,7 @@ Drop a `.json` file into [`observability/grafana/alerting/rules/`](../observabil
 |---|---|
 | `grafana-cloud` | ✅ Grafana HTTP provisioning API — Bearer token from `grafana-cloud-credentials` Secret |
 | `oss` | ✅ **Declarative file provisioning** — `07.5` builds a `grafana_alert`-labelled ConfigMap (rules + contact point + policy, `datasourceUid` → `prometheus`) that the kube-prometheus-stack alerts sidecar loads on every Grafana boot, so alerting **survives pod restarts** (Grafana's DB is ephemeral here). No port-forward / API / admin password. **Email delivery also requires `grafana.ini.smtp.*` in [`values-oss.yaml`](../observability/grafana/values-oss.yaml)** |
-| `managed-azure` | ✅ Azure Managed Grafana HTTP API — Azure AD token via `az account get-access-token` (GitHub OIDC → Azure in CI) |
+| `managed-azure` | ✅ Azure Managed Grafana HTTP API — Entra ID (Azure AD) token via `az account get-access-token` (GitHub OIDC → Azure in CI) |
 | `managed-aws` | ✅ Amazon Managed Grafana HTTP API — short-lived workspace **service-account token** minted via `aws grafana create-workspace-service-account-token` (workspace API keys are deprecated; GitHub OIDC → `AWS_DASHBOARD_PUBLISH_ROLE_ARN` in CI) |
 
 See [docs/103 § 3 — Grafana Alert Email](103-GITHUB_SECRETS_INVENTORY.md#3-grafana-alert-email) (and [docs/102 § One-time Setup](102-GITHUB_ACTIONS_AUTOMATION.md#one-time-setup-bootstrapping)) for the full secret reference and `gh secret set` commands.

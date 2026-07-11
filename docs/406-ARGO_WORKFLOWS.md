@@ -392,7 +392,7 @@ See [`argoworkflows/README.md`](../argoworkflows/README.md) for the directory ma
 | CodeQL Analysis + SARIF upload | `codeql-analyze` | `codeql-analyze` | — |
 | Trivy IaC scan | `trivy-iac` | `trivy-iac` | — |
 | Build & Test | `maven-build-test` | `maven-build-test` | — |
-| Build & Push image | `build-push-image` | `build-push-image` | **daemonless**: Jib (java) / Kaniko (angular); registry auth from the `argoworkflows-registry` Secret mounted at `$DOCKER_CONFIG` |
+| Build & Push image | `build-push-image` | `build-push-image` | **daemonless**: Jib (java) / Kaniko (angular); registry auth from the `argoworkflows-registry` Secret mounted at `$DOCKER_CONFIG`. ⚠ Kaniko is **latent** (both services build with Jib) and **upstream-archived 2025-06** — see the note in [404](./404-TEKTON.md#the-pipeline-ported) |
 | Trivy image scan | `trivy-image` | `trivy-image` | — |
 | Deploy (GitOps + ArgoCD + OTel self-heal) | `gitops-deploy` | `gitops-deploy` | ported verbatim (bump tag → direct `git push origin main` → `argocd app sync` retry → OTel self-heal) |
 | Smoke test | `smoke-test` | `smoke-test` | — |

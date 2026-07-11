@@ -1009,7 +1009,7 @@ For a full standalone catalog with visual previews, see the [Technical Infograph
   - *Description*: Compares structural architecture of Jenkins vs Tekton. Focuses on persistent master controllers vs serverless CRD-driven pods, and the impact on resource scheduling.
 - **[702]** - **[Spot Instance Resiliency Jenkins vs GitHub Actions ARC](./docs/infographics/702_Spot_Instance_Resiliency_Jenkins_vs_GitHub_Actions_ARC.png)**
   - *Key Technologies*: Spot Nodes, Evictions, ARC, Jenkins
-  - *Description*: Benchmarks Spot instance node evictions. Compares Jenkins master-agent connection drops with GitHub Actions ARC runner rescheduling and recovery metrics.
+  - *Description*: Benchmarks Spot instance node evictions. Compares Jenkins controller-agent connection drops with GitHub Actions ARC runner rescheduling and recovery metrics.
 - **[703]** - **[CI Battle Jenkins Groovy vs Argo Workflows DAG and UI Strategy](./docs/infographics/703_CI_Battle_Jenkins_Groovy_vs_Argo_Workflows_DAG_and_UI_Strategy.png)**
   - *Key Technologies*: Groovy script, YAML DAG, Jenkins, Argo
   - *Description*: Compares the imperative scripting style of Jenkins Groovy pipelines against the declarative YAML DAG model of Argo Workflows on GKE. Details the Jenkins UI strategy, explicitly replacing deprecated Blue Ocean with Classic UI and warnings-ng.
