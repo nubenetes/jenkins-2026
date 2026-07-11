@@ -17,6 +17,7 @@ import {
 import { TechDocsAddons } from '@backstage/plugin-techdocs-react';
 import { Mermaid } from 'backstage-plugin-techdocs-addon-mermaid';
 import { UserSettingsPage } from '@backstage/plugin-user-settings';
+import { J2026DocsStyles } from './components/techdocs/J2026DocsStyles';
 import { apis } from './apis';
 import { entityPage } from './components/catalog/EntityPage';
 import { searchPage } from './components/search/SearchPage';
@@ -79,6 +80,9 @@ const routes = (
       <TechDocsAddons>
         {/* Renders the repo docs' ```mermaid blocks client-side. */}
         <Mermaid />
+        {/* GitHub-like overflow: wide tables/code/diagrams scroll themselves
+            instead of widening the page (keeps both sidebars in view). */}
+        <J2026DocsStyles />
       </TechDocsAddons>
     </Route>
     <Route path="/api-docs" element={<ApiExplorerPage />} />

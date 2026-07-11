@@ -48,6 +48,7 @@ import {
 } from '@backstage/plugin-catalog-graph';
 import { TechDocsAddons } from '@backstage/plugin-techdocs-react';
 import { Mermaid } from 'backstage-plugin-techdocs-addon-mermaid';
+import { J2026DocsStyles } from '../techdocs/J2026DocsStyles';
 import {
   ArgocdDeploymentSummary,
   ArgocdDeploymentLifecycle,
@@ -133,6 +134,7 @@ const techdocsContent = (
   <EntityTechdocsContent>
     <TechDocsAddons>
       <Mermaid />
+      <J2026DocsStyles />
     </TechDocsAddons>
   </EntityTechdocsContent>
 );
