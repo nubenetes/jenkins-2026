@@ -250,7 +250,7 @@ org so the project **owns** them. Ownership is required to:
   Tekton EventSources need) — you cannot push CI config to upstream repos you don't control;
 - let **CI build them and report commit status** (all four `ci.engine` engines — Jenkins
   multibranch, Tekton Pipelines-as-Code, GitHub Actions, Argo Workflows) on owned repos —
-  see [403 § "Prerequisite: owning the repos"](./403-TEKTON.md#prerequisite-owning-the-repos-fork-to-nubenetes);
+  see [403 § "Prerequisite: owning the repos"](./404-TEKTON.md#prerequisite-owning-the-repos-fork-to-nubenetes);
 - **pin versions** and host the project-specific changes the demo needs — branch tracking
   and the planned **CRaC** ([303](./303-JVM-TUNING.md)) + **Angular Faro RUM** (above)
   work, none of which belongs upstream.

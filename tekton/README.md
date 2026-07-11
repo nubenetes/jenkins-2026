@@ -4,7 +4,7 @@ Active when `ci.engine: tekton` (config/config.yaml) or
 `JENKINS2026_CI_ENGINE=tekton`. This is the Tekton port of the Jenkins shared
 library in [`vars/`](../vars/) and the seed job in
 [`jenkins/pipelines/seed/`](../jenkins/pipelines/seed/). Jenkins remains the
-default engine; see [`docs/403-TEKTON.md`](../docs/403-TEKTON.md).
+default engine; see [`docs/404-TEKTON.md`](../docs/404-TEKTON.md).
 
 Installed by [`scripts/04-tekton.sh`](../scripts/04-tekton.sh), which applies the
 ArgoCD app-of-apps ([`argocd/tekton-app.yaml`](../argocd/tekton-app.yaml)): the
@@ -43,7 +43,7 @@ tekton/
 | Build & Test | `maven-build-test` |
 | Build & Push Image | `build-push-image` (Jib for java, Kaniko for angular — daemonless) |
 | Trivy Image Scan | `trivy-image` |
-| Deploy to Kubernetes (GitOps + ArgoCD + OTel self-heal) | `gitops-deploy` |
+| GitOps Update + OTel Self-Heal (GitOps + ArgoCD; two Jenkins stages, one task here) | `gitops-deploy` |
 | Smoke Test | `smoke-test` |
 | Integration k6 | `k6-smoke` (also a standalone `microservices-k6-smoke` Pipeline) |
 

@@ -40,7 +40,7 @@ on:
         default: false
         type: boolean
       ci_engine:
-        description: "CI engine to deploy: jenkins (default - Helm + JCasC + Job-DSL seed), tekton (Tekton Pipelines/Triggers/Dashboard, IAP-protected; see docs/403), githubactions (ARC self-hosted ephemeral Spot runners, native GitHub webhooks, no in-cluster UI; see docs/404) or argoworkflows (Argo Workflows + Argo Events, IAP-protected Server UI; see docs/405). Mutually exclusive."
+        description: "CI engine to deploy: jenkins (default - Helm + JCasC + Job-DSL seed), tekton (Tekton Pipelines/Triggers/Dashboard, IAP-protected; see docs/404), githubactions (ARC self-hosted ephemeral Spot runners, native GitHub webhooks, no in-cluster UI; see docs/405) or argoworkflows (Argo Workflows + Argo Events, IAP-protected Server UI; see docs/406). Mutually exclusive."
         required: true
         default: "jenkins"
         type: choice
@@ -71,6 +71,11 @@ on:
         description: "Opt-in LB→pod TLS re-encryption (gateway.backendTls — docs/504): install cert-manager + a cluster-internal CA, Headlamp serves HTTPS itself, and a BackendTLSPolicy makes the LB re-encrypt AND validate the hop. OFF by default. Enabling/disabling CONVERGES on this run (Day1 runs 08.5 + 08.7 + 09 together); on the Day2.redeploy.* workflows the same input must instead MATCH the live cluster."
         required: false
         default: false
+        type: boolean
+      backstage_enabled:
+        description: "Backstage developer portal (backstage.enabled — docs/505): the software catalog + engine-aware CI/CD views at backstage.<domain> (IAP, same Google identity). ON by default. ONE-TIME BOOTSTRAP: the app image must exist in GHCR (run Day2.publish.06 Backstage once per branch; it persists across rebuilds) — until then this converges green with a warning and the portal pod waits on the image. Disabling RETIRES the app-of-apps (incl. its CNPG db) on this run."
+        required: false
+        default: true
         type: boolean
       llm_enabled:
         description: "Opt-in keyless Grafana LLM app (observability.llm.enabled — docs/301): installs the grafana-llm-app plugin wired to Vertex AI via an in-cluster LiteLLM gateway + Workload Identity (no API key, no new public surface). oss mode ONLY — no-op on grafana-cloud (native assistant) and managed-azure/aws (no keyless path). OFF by default. Enabling/disabling CONVERGES on this run (terraform/gke GSA+WI binding, 03 plugin overlay, 08.8 LiteLLM). Overrides config.yaml for this run."
@@ -151,6 +156,10 @@ on:
         required: false
         default: false
         type: boolean
+      backstage_enabled:
+        required: false
+        default: true
+        type: boolean
       llm_enabled:
         required: false
         default: false
@@ -194,6 +203,12 @@ env:
   # (BackendTLSPolicy + HTTPS HealthCheckPolicy) — all gate on
   # j2026_backend_tls_active (this flag AND the BackendTLSPolicy CRD).
   JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED: ${{ inputs.backend_tls }}
+  # Backstage developer portal (backstage.enabled, docs/505). Consumed inside
+  # up.sh by 01 (namespace/secrets), 08.6/08.7 (eso + TLS slices), 08.95 (the
+  # argocd/backstage app-of-apps or its retire) and 09 (route/IAP/audience).
+  # Both the dispatch and workflow_call inputs default true, so the raw
+  # reference is always defined (no `||` fallback — it would clobber false).
+  JENKINS2026_BACKSTAGE_ENABLED: ${{ inputs.backstage_enabled }}
   # Opt-in keyless Grafana LLM app (observability.llm.enabled, oss mode only —
   # docs/301). Consumed by config.sh (J2026_OBS_LLM_ENABLED + TF_VAR_* export),
   # the terraform/gke apply step (GSA + WI binding), 03-observability.sh (plugin
@@ -599,6 +614,12 @@ jobs:
           JENKINS_OIDC_ADMIN_EMAIL: ${{ secrets.JENKINS_OIDC_ADMIN_EMAIL }}
           IAP_OAUTH_CLIENT_ID: ${{ secrets.IAP_OAUTH_CLIENT_ID }}
           IAP_OAUTH_CLIENT_SECRET: ${{ secrets.IAP_OAUTH_CLIENT_SECRET }}
+          # Optional Backstage GitHub-Actions-tab OAuth App (docs/505) — also on
+          # this pre-pass so the very first 01 run seeds the real values (the
+          # up.sh step below re-runs 01 with them anyway; 01's keep-if-present
+          # guard protects them from env-less callers).
+          BACKSTAGE_GITHUB_OAUTH_CLIENT_ID: ${{ secrets.BACKSTAGE_GITHUB_OAUTH_CLIENT_ID }}
+          BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET: ${{ secrets.BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET }}
         run: |
           ./scripts/00-check-prereqs.sh
           if [[ "${{ inputs.observability_mode }}" == "grafana-cloud" ]]; then
@@ -812,6 +833,11 @@ jobs:
           JENKINS_OIDC_ADMIN_EMAIL: ${{ secrets.JENKINS_OIDC_ADMIN_EMAIL }}
           IAP_OAUTH_CLIENT_ID: ${{ secrets.IAP_OAUTH_CLIENT_ID }}
           IAP_OAUTH_CLIENT_SECRET: ${{ secrets.IAP_OAUTH_CLIENT_SECRET }}
+          # Optional GitHub OAuth App for the Backstage GitHub Actions tab's
+          # per-user popup (docs/505); 'unset' placeholders keep it booting
+          # without them.
+          BACKSTAGE_GITHUB_OAUTH_CLIENT_ID: ${{ secrets.BACKSTAGE_GITHUB_OAUTH_CLIENT_ID }}
+          BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET: ${{ secrets.BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET }}
           # Optional GitHub HMAC tokens for the Tekton Triggers EventListener and
           # for Pipelines-as-Code (ci_engine=tekton); empty unless the secrets are set.
           TEKTON_GITHUB_WEBHOOK_SECRET: ${{ secrets.TEKTON_GITHUB_WEBHOOK_SECRET }}
@@ -942,7 +968,7 @@ jobs:
                 ci_iap+=$'\n'"      ${u%.git}/actions"
               done < <(yq -r '.services[].repoUrl' "${svc_file}" 2>/dev/null | sort -u)
             fi
-            ci_iap+=$'\n'"      (ARC ephemeral Spot runners execute these — GitHub hosts the UI; see docs/404)"
+            ci_iap+=$'\n'"      (ARC ephemeral Spot runners execute these — GitHub hosts the UI; see docs/405)"
             ci_open=""
           elif [[ "${engine}" == "argoworkflows" ]]; then
             ci_iap="    Argo Workflows UI:     https://argo.${dom}"
@@ -962,6 +988,9 @@ jobs:
               echo "${ci_iap}"
               echo "    Headlamp:              https://headlamp.${dom}"
               echo "    pgAdmin:               https://pgadmin.${dom}"
+              if [[ "${{ inputs.backstage_enabled }}" == "true" ]]; then
+                echo "    Backstage:             https://backstage.${dom}  (developer portal; image bootstrap = Day2.publish.06 — docs/505)"
+              fi
               [[ "${mode}" == "oss" ]] && echo "    Grafana (OSS):         https://grafana.${dom}"
               echo
               echo "  Open (no IAP):"
@@ -1033,6 +1062,9 @@ jobs:
               fi
               echo "- **Headlamp**: [https://headlamp.${dom}](https://headlamp.${dom})"
               echo "- **pgAdmin**: [https://pgadmin.${dom}](https://pgadmin.${dom})"
+              if [[ "${{ inputs.backstage_enabled }}" == "true" ]]; then
+                echo "- **Backstage**: [https://backstage.${dom}](https://backstage.${dom})"
+              fi
               echo "- **Microservices**: [https://microservices.${dom}](https://microservices.${dom})"
               if [[ "${{ inputs.secrets_backend }}" == "eso" ]]; then
                 echo "- **Secret Manager** (gateway-iap-oauth, secrets.backend=eso): [console](https://console.cloud.google.com/security/secret-manager/secret/gateway-iap-oauth/versions?project=${proj_num:-})"

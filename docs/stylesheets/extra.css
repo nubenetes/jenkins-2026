@@ -1,0 +1,14 @@
+/* 
+ * Fix for Backstage TechDocs overlap with mkdocs-material 9.x
+ * The Backstage Shadow DOM wrapper sometimes conflicts with mkdocs-material 
+ * sidebar positioning, causing the main text to slide underneath the sidebar.
+ */
+
+.md-sidebar {
+    position: relative !important;
+    top: auto !important;
+}
+
+.md-content {
+    overflow: hidden; /* Prevent content from flowing under the sidebar */
+}

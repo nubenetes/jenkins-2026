@@ -1,0 +1,53 @@
+# Backstage backend-TLS overlay (stage 10, docs/504-BACKEND_TLS.md) - layered ON
+# TOP of values.yaml (later valueFiles win) by the argocd/backstage app-of-apps
+# ONLY when the opt-in backend-TLS feature is active (gateway.backendTls.enabled
+# + the BackendTLSPolicy CRD; the parent app passes backendTls=true). NOT
+# referenced when the flag is off, so the default plain-HTTP posture is
+# untouched.
+#
+# Decision-1 "native" (docs/504): the Node.js backend terminates TLS itself on
+# its pod port 7007 via Backstage's first-class backend.https config - the
+# appConfig block below is rendered by the chart into an EXTRA --config file
+# that merges over the image's app-config.yaml. The cert is the cert-manager-
+# minted `backstage-tls` Secret (scripts/08.7-backend-tls.sh; SAN =
+# backstage.backstage.svc.cluster.local, the hostname the BackendTLSPolicy from
+# scripts/09-gateway.sh sends as SNI and validates).
+backstage:
+  appConfig:
+    backend:
+      https:
+        certificate:
+          cert:
+            $file: /backstage-tls/tls.crt
+          key:
+            $file: /backstage-tls/tls.key
+
+  # The kubelet probes must speak HTTPS once the backend does, or the pod never
+  # turns Ready. Maps deep-merge across value files, so only the scheme flips -
+  # path/port/timings come from values.yaml.
+  readinessProbe:
+    httpGet:
+      scheme: HTTPS
+  livenessProbe:
+    httpGet:
+      scheme: HTTPS
+
+  # ⚠ Lists REPLACE across Helm value files (no merge): this list must repeat
+  # values.yaml's internal-ca volume verbatim and add the TLS one.
+  extraVolumes:
+    - name: internal-ca
+      configMap:
+        name: jenkins-2026-backend-tls-ca
+        optional: true
+    - name: backstage-tls
+      secret:
+        # Minted by the Certificate CR in scripts/08.7-backend-tls.sh - keep the
+        # two names in sync (J2026_BACKEND_TLS_SECRET_BACKSTAGE).
+        secretName: backstage-tls
+  extraVolumeMounts:
+    - name: internal-ca
+      mountPath: /etc/jenkins-2026-ca
+      readOnly: true
+    - name: backstage-tls
+      mountPath: /backstage-tls
+      readOnly: true

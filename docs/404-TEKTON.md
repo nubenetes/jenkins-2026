@@ -1,8 +1,8 @@
-[← Previous: 402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) | [🏠 Home](../README.md) | [→ Next: 404. GitHub Actions / ARC](./404-GITHUB_ACTIONS.md)
+[← Previous: 403. Declarative vs Scripted](./403-DECLARATIVE_VS_SCRIPTED.md) | [🏠 Home](../README.md) | [→ Next: 405. GitHub Actions / ARC](./405-GITHUB_ACTIONS.md)
 
 ---
 
-# 403. Tekton (alternative CI engine)
+# 404. Tekton (alternative CI engine)
 
 This project ships **four interchangeable CI engines**. Jenkins is the default;
 **Tekton** is the Kubernetes-native alternative described here, selected by a single
@@ -12,12 +12,12 @@ Dashboard, exposes the Dashboard on the internet behind **Google IAP** (exactly
 like Headlamp), and runs the **same microservices pipeline** ported to Tekton
 Tasks/Pipelines under [`tekton/`](../tekton/).
 
-> **See also — the other alternative engines.** [404. GitHub Actions / ARC](./404-GITHUB_ACTIONS.md)
+> **See also — the other alternative engines.** [405. GitHub Actions / ARC](./405-GITHUB_ACTIONS.md)
 > is the third CI engine (`ci.engine=githubactions`): GitHub Actions
 > self-hosted runners via the Actions Runner Controller — ephemeral Spot runners on
 > the `ci-spot` NAP ComputeClass, native GitHub webhooks, and **no** in-cluster
 > Dashboard/IAP route (runs are viewed in GitHub's Actions tab).
-> [405. Argo Workflows](./405-ARGO_WORKFLOWS.md) is the fourth (`ci.engine=argoworkflows`):
+> [406. Argo Workflows](./406-ARGO_WORKFLOWS.md) is the fourth (`ci.engine=argoworkflows`):
 > the other Kubernetes-native alternative — Argo Workflows + Argo Events, with an
 > IAP-protected **Argo Workflows Server UI** (`argo.<domain>`, like this Dashboard)
 > plus a public, HMAC-protected **Argo Events webhook receiver** (`argo-events.<domain>`).
@@ -512,9 +512,9 @@ and share the same gateway build-time patch
 | CodeQL Analysis + SARIF upload | `codeql-analyze` | — |
 | Trivy IaC scan | `trivy-iac` | — |
 | Build & Test | `maven-build-test` | — |
-| Build & Push image | `build-push-image` | **daemonless**: Jib (java) / Kaniko (angular) — no privileged DinD |
+| Build & Push image | `build-push-image` | **daemonless**: Jib (java) / Kaniko (angular) — no privileged DinD. ⚠ The Kaniko half is **latent** today (both services are `java` → Jib) **and upstream kaniko was archived 2025-06** (Google ended maintenance; Chainguard keeps a security-fix fork) — if an `angular`-type service ever activates this path, migrate the step to rootless **BuildKit** (or the fork) first |
 | Trivy image scan | `trivy-image` | — |
-| Deploy (GitOps + ArgoCD + OTel self-heal) | `gitops-deploy` | ported verbatim |
+| GitOps Update + OTel Self-Heal (two Jenkins stages, one task here) | `gitops-deploy` | ported verbatim |
 | Smoke test | `smoke-test` | — |
 | Integration k6 | `k6-smoke` (+ standalone `microservices-k6-smoke` Pipeline) | — |
 
@@ -1149,7 +1149,7 @@ if [[ "${run_env}" == "develop" && "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}
 
 ## Beyond the four engines — the `ci.engine` contract & further candidates (roadmap)
 
-> **Status.** Today `ci.engine` has **four implemented values — `jenkins | tekton | githubactions | argoworkflows`** (see [Selecting the engine](#selecting-the-engine)): Jenkins (default), Tekton, **GitHub Actions / ARC** ([404](./404-GITHUB_ACTIONS.md)) and **Argo Workflows** ([405](./405-ARGO_WORKFLOWS.md)). The engines **below** (Woodpecker/Drone, Concourse, Dagger, GitLab) are **not** implemented — this section captures *which further engines would fit, and why*, so a future flag value is a deliberate choice rather than a guess. Adding an engine is tractable precisely because all four current engines already read one shared service registry ([`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml)) + the shared build-time patch ([`resources/patch-app-source.sh`](../resources/patch-app-source.sh)) and follow the same contract.
+> **Status.** Today `ci.engine` has **four implemented values — `jenkins | tekton | githubactions | argoworkflows`** (see [Selecting the engine](#selecting-the-engine)): Jenkins (default), Tekton, **GitHub Actions / ARC** ([405](./405-GITHUB_ACTIONS.md)) and **Argo Workflows** ([406](./406-ARGO_WORKFLOWS.md)). The engines **below** (Woodpecker/Drone, Concourse, Dagger, GitLab) are **not** implemented — this section captures *which further engines would fit, and why*, so a future flag value is a deliberate choice rather than a guess. Adding an engine is tractable precisely because all four current engines already read one shared service registry ([`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml)) + the shared build-time patch ([`resources/patch-app-source.sh`](../resources/patch-app-source.sh)) and follow the same contract.
 
 ### The `ci.engine` contract (what any engine must provide)
 
@@ -1158,7 +1158,7 @@ Whatever runs the build, it has to deliver the same outcomes the four implemente
 1. **Build & test** each service from [`services.yaml`](../jenkins/pipelines/seed/services.yaml) (JHipster Maven build, plus the shared gateway build-time patch [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) — MySQL→PostgreSQL + swap the Hazelcast 2nd-level cache for a **NoOp cache** — called by all four engines).
 2. **DevSecOps scans** — Semgrep / CodeQL / Trivy, non-blocking, results surfaced (see [601. DevSecOps](./601-DEVSECOPS.md)).
 3. **Build & push** the image to GHCR (Jib / Spring-Boot build-image / docker).
-4. **GitOps update** — bump the image tag in the gitops-config repo and `git push origin main` (the machine-managed deploy; cf. [`vars/microservicesDeploy.groovy`](../vars/microservicesDeploy.groovy)). ArgoCD takes it from there.
+4. **GitOps update** — bump the image tag in the gitops-config repo and `git push` it to the **deploy branch** (`main` in prod — [502 § Branch model](./502-MICROSERVICES_GITOPS.md#branch-model-app-source-vs-gitops-vs-deploy-branch); the machine-managed deploy; cf. [`vars/microservicesDeploy.groovy`](../vars/microservicesDeploy.groovy)). ArgoCD takes it from there.
 5. **OTel** — emit traces/metrics for the build itself (see [Observability](#observability)).
 6. **Platform integration** — install via an [`argocd/`](../argocd/) Application (GitOps), a numbered installer (`04-<engine>.sh` + `06-…` like [`scripts/04-tekton.sh`](../scripts/04-tekton.sh) / [`scripts/06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh)), its own namespace + RBAC, and gate everything behind `ci.engine` in [`config/config.yaml`](../config/config.yaml).
 
@@ -1168,8 +1168,8 @@ A new engine that satisfies those six points drops in without touching the micro
 
 | Engine | Status | Where |
 |---|---|---|
-| **GitHub Actions self-hosted — ARC** (Actions Runner Controller) | ✅ **shipped** (`ci.engine=githubactions`) | Native GitHub webhooks (no separate trigger component); ArgoCD app (`gha-runner-scale-set-controller` + `RunnerScaleSet`); ephemeral runner Pods on the [`ci-spot` ComputeClass](../infrastructure/compute-classes/ci-spot.yaml) (the best NAP Spot showcase). See [404. GitHub Actions / ARC](./404-GITHUB_ACTIONS.md). |
-| **Argo Workflows** (+ Argo Events) | ✅ **shipped** (`ci.engine=argoworkflows`) | Completes the **Argo trifecta** (ArgoCD + Argo Rollouts). K8s-native DAG pipelines; **Argo Events** is the Tekton-Triggers equivalent (webhook→workflow); the shared library ports to reusable `WorkflowTemplate`s. See [405. Argo Workflows](./405-ARGO_WORKFLOWS.md). |
+| **GitHub Actions self-hosted — ARC** (Actions Runner Controller) | ✅ **shipped** (`ci.engine=githubactions`) | Native GitHub webhooks (no separate trigger component); ArgoCD app (`gha-runner-scale-set-controller` + `RunnerScaleSet`); ephemeral runner Pods on the [`ci-spot` ComputeClass](../infrastructure/compute-classes/ci-spot.yaml) (the best NAP Spot showcase). See [405. GitHub Actions / ARC](./405-GITHUB_ACTIONS.md). |
+| **Argo Workflows** (+ Argo Events) | ✅ **shipped** (`ci.engine=argoworkflows`) | Completes the **Argo trifecta** (ArgoCD + Argo Rollouts). K8s-native DAG pipelines; **Argo Events** is the Tekton-Triggers equivalent (webhook→workflow); the shared library ports to reusable `WorkflowTemplate`s. See [406. Argo Workflows](./406-ARGO_WORKFLOWS.md). |
 
 ### Further candidate engines (roadmap, ranked by fit *for this project*)
 
@@ -1196,12 +1196,12 @@ Points in its favour, for completeness:
 
 ### Recommendation — realized
 
-The original recommendation (add **GitHub Actions + ARC** first, then **Argo Workflows** for a full spread) has been **realized**: `ci.engine` now offers all four — heavyweight-extensible (Jenkins), K8s-declarative (Tekton), GitHub-native (GHA/ARC, [404](./404-GITHUB_ACTIONS.md)), and Argo-native (Workflows, [405](./405-ARGO_WORKFLOWS.md)). Any *further* engine would come from the roadmap candidates above (Woodpecker/Drone, Concourse, Dagger).
+The original recommendation (add **GitHub Actions + ARC** first, then **Argo Workflows** for a full spread) has been **realized**: `ci.engine` now offers all four — heavyweight-extensible (Jenkins), K8s-declarative (Tekton), GitHub-native (GHA/ARC, [405](./405-GITHUB_ACTIONS.md)), and Argo-native (Workflows, [406](./406-ARGO_WORKFLOWS.md)). Any *further* engine would come from the roadmap candidates above (Woodpecker/Drone, Concourse, Dagger).
 
 ---
 
-[← Previous: 402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) | [🏠 Home](../README.md) | [→ Next: 404. GitHub Actions / ARC](./404-GITHUB_ACTIONS.md)
+[← Previous: 403. Declarative vs Scripted](./403-DECLARATIVE_VS_SCRIPTED.md) | [🏠 Home](../README.md) | [→ Next: 405. GitHub Actions / ARC](./405-GITHUB_ACTIONS.md)
 
 ---
 
-*403. Tekton — jenkins-2026*
+*404. Tekton — jenkins-2026*

@@ -1,8 +1,8 @@
-[← Previous: 405. Argo Workflows](./405-ARGO_WORKFLOWS.md) | [🏠 Home](../README.md) | [→ Next: 501. Platform Operations](./501-PLATFORM_OPERATIONS.md)
+[← Previous: 402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) | [🏠 Home](../README.md) | [→ Next: 404. Tekton](./404-TEKTON.md)
 
 ---
 
-# 406. Declarative vs Scripted — Jenkins Pipeline Authoring Architecture
+# 403. Declarative vs Scripted — Jenkins Pipeline Authoring Architecture
 
 > **TL;DR (plain terms).** A Jenkins pipeline can be written in **two Groovy
 > dialects**: **Declarative** (a structured, validated `pipeline { … }` template)
@@ -19,25 +19,120 @@
 > the trade-off matrices, what breaks if you go all-one-way, and exactly which file
 > in this repo is which and *why*.
 
-**Who should read what.** Newcomers can stop after [§1](#1-the-two-dialects-in-sixty-seconds)
-and [§2](#2-what-each-dialect-actually-is) and have the whole shape. Specialists
-extending the pipeline want [§7](#7-this-repos-architecture-the-three-layer-hybrid)
-(the per-file map), [§8](#8-why-this-split-the-design-rationale) (the rationale),
-and [§9](#9-counterexamples-what-breaks-if-you-go-all-one-way) (what *not* to do).
-Need to *identify* a file's dialect at a glance, learn **Job DSL** pipeline
-generation, or understand the widespread Scripted-god-library **anti-pattern**? Jump
-to [§12](#12-recognising-declarative-vs-scripted-at-a-glance),
-[§13](#13-job-dsl-and-seed-jobs-an-advanced-tutorial), and
-[§14](#14-the-common-anti-pattern-a-scripted-god-library-with-thin-jenkinsfiles).
-For the surrounding context see **[401. Jenkins](./401-JENKINS.md)** (the controller,
-JCasC, the shared-library declaration) and **[402. Pipelines as Code](./402-PIPELINES_AS_CODE.md)**
-(the seed job, the 11 stages, the deploy loop). This doc is the *why-it's-shaped-this-way*
-companion to 402's *what-it-does*.
+> **See also.** [401. Jenkins](./401-JENKINS.md) — the controller, JCasC and the
+> `microservices-shared-library` declaration these layers plug into;
+> [402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) — the seed job and the 13
+> stages themselves (**402 is the *what-it-does*; this doc is the
+> *why-it's-shaped-this-way***). The same pipeline logic, ported to the three
+> YAML-based engines: [404. Tekton](./404-TEKTON.md) ·
+> [405. GitHub Actions / ARC](./405-GITHUB_ACTIONS.md) ·
+> [406. Argo Workflows](./406-ARGO_WORKFLOWS.md).
+
+---
+
+## Understanding the two dialects (newcomers → specialists)
+
+Before the tutorial proper, the whole document in one picture: **one engine, two
+syntaxes, three layers in this repo**. Read this section once and everything
+below is just detail and evidence.
+
+<details>
+<summary>🧠 Mental model — Declarative vs Scripted (mindmap)</summary>
+
+```mermaid
+mindmap
+  root((One engine, two dialects))
+    Shared engine
+      workflow-cps plugin
+      durable CPS execution
+      survives controller restarts
+      Groovy sandbox
+    Declarative
+      pipeline block
+      validated grammar
+      post and when directives
+      restart from stage
+      script escape hatch
+    Scripted
+      node and stage blocks
+      full Groovy control flow
+      try catch finally
+      loops closures helpers
+    This repo in three layers
+      Job DSL seed generates jobs
+      Declarative shells orchestrate
+      Scripted vars steps do the work
+    Anti-pattern to avoid
+      Scripted god library
+      thin Jenkinsfiles
+```
+
+</details>
+
+**Reading it —** the two middle branches are the dialects themselves; the
+**Shared engine** branch is the fact that dissolves most internet debates (both
+compile onto the same durable CPS interpreter — neither is built on the other);
+**This repo in three layers** is the architecture the rest of the document
+justifies (generation → orchestration → logic, [§7](#7-this-repos-architecture-the-three-layer-hybrid));
+and the **Anti-pattern** branch is the popular shortcut this repo deliberately
+avoids ([§14](#14-the-common-anti-pattern-a-scripted-god-library-with-thin-jenkinsfiles)).
+
+<details>
+<summary>🟢 For newcomers — the mental model in 6 concepts</summary>
+
+| Concept | What it is | Everyday analogy |
+|---|---|---|
+| **Declarative pipeline** | A fixed skeleton of directives (`pipeline`/`agent`/`stages`/`post`) that Jenkins **validates before running** | A tax form: fixed boxes, rejected up-front if you fill it in wrong |
+| **Scripted pipeline** | A free-form **Groovy program** (`node { … }`) with loops, `try/finally`, helpers — mistakes surface only as it runs | A blank essay: write anything, errors show up when it's read |
+| **CPS engine** (`workflow-cps`) | The interpreter **both** dialects run on; it checkpoints program state so a controller restart resumes the build | A videogame savegame — quit mid-level, resume exactly there |
+| **`script {}`** | The escape hatch that embeds Scripted code inside a Declarative pipeline | A "free-text remarks" field inside the tax form |
+| **Job DSL seed** | A Groovy script that **generates job definitions** from data ([`services.yaml`](../jenkins/pipelines/seed/services.yaml)) — code that writes jobs, not a job that builds code | A mail-merge: one template + a list → many letters |
+| **Shared-library `vars/` step** | A custom verb (`microservicesBuild(…)`) either dialect can call, versioned in git | A toolbox of power tools next to the form/essay |
+
+So this repo's build is literally: *the **seed** (Job DSL) mail-merges one
+job per service → each job runs a small **Declarative shell**
+([`MicroservicesPipeline`](../vars/MicroservicesPipeline.groovy)) → every stage's
+real work is a **Scripted `vars/` step**.* If you remember only that, [§7](#7-this-repos-architecture-the-three-layer-hybrid)
+will feel familiar.
+</details>
+
+<details>
+<summary>🔴 For specialists — the load-bearing internals</summary>
+
+- **One engine, really.** Declarative is the `pipeline-model-definition` plugin:
+  it parses/validates the `pipeline {}` model, then drives the **same**
+  CPS-transformed Groovy execution as Scripted (`workflow-cps`). "Declarative is
+  built on Scripted" is folklore — they are **sibling front-ends** ([§2](#2-what-each-dialect-actually-is)).
+- **CPS mechanics you will eventually hit:** continuation-passing style rewrites
+  every call so program state serializes between steps (that's how builds survive
+  restarts); non-serializable locals break it, and hot loops crawl — the escape is
+  **`@NonCPS`** ([§2.3](#23-the-cps-execution-model-in-practice-and-noncps)), used
+  in this repo for JSON parsing in
+  [`microservicesK6Smoke`](../vars/microservicesK6Smoke.groovy). The recurring
+  runtime errors these mechanics produce are catalogued as a symptom→cause→fix
+  field guide in [§2.6](#26-the-failure-modes-youll-actually-hit-symptom--cause--fix).
+- **The sandbox** (`script-security`) intercepts every call in both dialects;
+  library code in `vars/` runs sandboxed too, and approvals are the admin-visible
+  cost of exotic Groovy ([§2.4](#24-script-security-the-groovy-sandbox)).
+- **The three layers, by file:** the seed
+  [`seed_jobs.groovy`](../jenkins/pipelines/seed/seed_jobs.groovy) (Job DSL,
+  *generative*, [§13](#13-job-dsl-and-seed-jobs-an-advanced-tutorial)) → the
+  Declarative shells [`MicroservicesPipeline`](../vars/MicroservicesPipeline.groovy) /
+  [`MicroservicesK6SmokePipeline`](../vars/MicroservicesK6SmokePipeline.groovy)
+  (a `pipeline {}` *inside* a library step — pipeline templating) → the Scripted
+  steps `microservicesBuild`/`…Image`/`…Deploy`/`…SmokeTest`/`…K6Smoke`
+  ([§7.4](#74-the-per-file-classification-map) is the full classification map).
+- **Choosing on sight:** the decision guide is [§11](#11-decision-guide-cheat-sheet),
+  the failure modes of going all-one-way are [§9](#9-counterexamples-what-breaks-if-you-go-all-one-way),
+  and the god-library anti-pattern (and when it's actually fine) is
+  [§14](#14-the-common-anti-pattern-a-scripted-god-library-with-thin-jenkinsfiles).
+</details>
 
 ---
 
 ## Table of contents
 
+0. [Understanding the two dialects (newcomers → specialists)](#understanding-the-two-dialects-newcomers--specialists)
 1. [The two dialects in sixty seconds](#1-the-two-dialects-in-sixty-seconds)
 2. [What each dialect actually is](#2-what-each-dialect-actually-is)
 3. [How they interoperate: the `script {}` escape hatch and the nesting rule](#3-how-they-interoperate-the-script--escape-hatch-and-the-nesting-rule)
@@ -138,6 +233,9 @@ Crucially, Declarative is **not a different runtime.** The `pipeline {}` block i
 parsed and validated up front, then executed on the same `workflow-cps` engine
 that runs Scripted — the two are **peers on one engine**, not a stack. So:
 
+<details>
+<summary>📊 Two syntaxes, one engine (flowchart)</summary>
+
 ```mermaid
 flowchart TD
     subgraph AUTHOR["What you write"]
@@ -152,12 +250,15 @@ flowchart TD
     CPS  --> DUR["Durable, resumable build<br/>(state serialized between steps)"]
 ```
 
+</details>
+
 **The load-bearing takeaway:** Declarative gives you **guardrails and tooling**
 (up-front validation, a mandatory `post {}` block that runs even on failure/abort,
-restart-from-stage, the Blue Ocean visual editor, a uniform readable shape) at the
-cost of **grammatical rigidity** — you cannot write arbitrary Groovy at the top
-level of a `stage`. Scripted gives you **the whole language** at the cost of those
-guardrails. That tension is the entire reason this repo uses each where it fits.
+restart-from-stage, a stable stage graph in Pipeline Graph View, a uniform readable
+shape) at the cost of **grammatical rigidity** — you cannot write arbitrary Groovy
+at the top level of a `stage`. Scripted gives you **the whole language** at the cost
+of those guardrails. That tension is the entire reason this repo uses each where it
+fits.
 
 ### 2.3 The CPS execution model in practice (and `@NonCPS`)
 
@@ -222,11 +323,16 @@ which is why the seed sets `sandbox(true)` on the jobs it generates (visible in 
 ### 2.5 Declarative's structured directives (with examples)
 
 Declarative's power is not just `stages`/`steps` — the directives express
-concurrency, conditionals, and lifecycle without hand-rolled Groovy. The ones worth
-knowing (this repo uses `options` today; the rest are the shell's latent capacity):
+concurrency, conditionals, credentials, and lifecycle without hand-rolled Groovy.
+The ones worth knowing (this repo uses `options`, `environment` and `parameters`
+today; the rest are the shell's latent capacity):
 
 ```groovy
 options { timeout(time: 30, unit: 'MINUTES'); retry(2); disableConcurrentBuilds() }
+
+// Bind a Jenkins credential as env; the value is MASKED in the console log, and a
+// username/password credential auto-splits into GITOPS_USR / GITOPS_PSW:
+environment { GITOPS = credentials('git-credentials') }
 
 // Run independent stages concurrently — no Scripted parallel-map boilerplate:
 stage('Scan') {
@@ -252,6 +358,28 @@ matrix {
 Each of these would be a hand-written closure/loop in Scripted; Declarative makes
 them declarative *directives* the linter can validate. That is exactly the
 "guardrails for the shape" argument that puts the pipeline skeleton in Declarative.
+
+### 2.6 The failure modes you'll actually hit (symptom → cause → fix)
+
+Everything in §2.3–§2.4 eventually surfaces as one of a handful of recurring
+runtime errors. This is the field guide — the left column is what the console
+log shows you:
+
+| Symptom (console log) | Cause | Fix |
+| :--- | :--- | :--- |
+| `java.io.NotSerializableException: java.util.regex.Matcher` (or a JDBC/HTTP client class) — often *at the next step*, or on resume after a restart | A **non-serializable object parked in a local** that is still in scope when a step boundary snapshots the program (§2.3). `=~` returning a `Matcher` is the classic. | *Use and discard* in one expression (extract the `String` immediately: `(log =~ /v(\d+)/)[0][1]`), or do the whole computation in a **pure `@NonCPS` helper** that returns serializable data. |
+| `expected to call X but wound up catching Y` warning, or a `CpsCallableInvocation` leaking into a result | **CPS-transformed code invoked from a non-CPS context**: a `@NonCPS` method calling a regular (CPS) method or closure; steps called from constructors, `toString()` overrides, or comparators. | Keep `@NonCPS` methods **pure and self-contained**: no Pipeline steps, no calls back into CPS-transformed code. Orchestrate steps outside; hand `@NonCPS` only plain data. |
+| `RejectedAccessException: Scripts not permitted to use method …` and a pending entry in *Manage Jenkins → In-process Script Approval* | The **sandboxed** job body (or a non-global library) touched a non-whitelisted API (§2.4). | Don't blanket-approve from the UI (that's config drift a rebuild loses). Move the logic into the **trusted global library** (`vars/`, JCasC-declared → runs unsandboxed), or — for seed-class scripts — run them trusted like the Job DSL seed does. |
+| `MissingPropertyException: No such property: x` in a *later* stage, though you set `x` earlier | A `def`/`script {}` **local doesn't outlive its block**; only strings survive via `env.*`, and `environment {}` values are always strings. | Export it (`env.IMAGE_TAG = …` — exactly what the shells' `script {}` islands do), compute it in the **Scripted preamble** above `pipeline {}` (§3), or pass files between stages with `stash`/`unstash`. |
+| "My new `parameters {}` entry doesn't show on *Build with Parameters*" | Declarative registers parameter definitions **when a run executes** — the first build after the change still shows the *old* form. | Run the job once (it picks up the new definitions), then the form is current. Seed-generated jobs get this "free" via the seed's next run. |
+| *Restart from Stage* is missing on a build | The run wasn't a **Declarative** pipeline (Scripted never offers it), or the stage graph changed since that run. | Keep the shells Declarative (§8); restart is per-run — re-run the job if the definition changed. |
+| `unable to resolve class …` / `No such DSL method 'microservicesBuild'` at job start | The shared library didn't load: wrong branch in `@Library("…@branch")`, or the library isn't declared (JCasC). | The seed pins `@${pipelineRepoBranch}` to the **deployed infra branch** (auto-track — [402](./402-PIPELINES_AS_CODE.md)); check which branch Day1 ran from, and the JCasC `globalLibraries` block ([401](./401-JENKINS.md)). |
+| Folklore: "you can't use `.each {}` in a pipeline — rewrite as a C-style `for`" | **Outdated** — real before `workflow-cps` 2.47 (2018), long since fixed. What *still* bites is the §2.3 closure-capture trap (non-serializable state inside the closure across a step). | Use `.each`/`.collect` freely for pure data work; when the loop body *calls steps and* carries risky locals, prefer a plain loop or a `@NonCPS` pre-computation. |
+
+Two habits prevent nearly all of these: **keep `script {}` islands tiny** (logic
+goes to `vars/` steps, §3) and **let steps return plain data** (`readJSON` → `Map`,
+`sh(returnStdout:)` → `String`) instead of holding library/client objects across
+step boundaries.
 
 ---
 
@@ -323,7 +451,7 @@ The dimensions that actually drive the choice. Read "✅ / ⚠️ / ❌" as
 | **Control flow** | ⚠️ Structured only: `when`, `parallel`, `matrix`; arbitrary logic needs `script {}` | ✅ Full Groovy: `if`/`for`/`try`/closures/recursion/methods anywhere |
 | **Post/cleanup semantics** | ✅ First-class `post { always/success/failure/unstable/aborted/cleanup }` — runs even on failure/abort | ⚠️ Do it yourself with `try/finally`; easy to forget a path |
 | **Restart from a stage** | ✅ "Restart from Stage" (re-run only the failed stage) | ❌ Not supported — restart re-runs the whole script |
-| **Visual editing / Blue Ocean** | ✅ Round-trips through the visual editor | ❌ Not editable visually |
+| **Stage visualization** (Pipeline Graph View — installed here, [401](./401-JENKINS.md)) | ✅ The validated structure renders a stable, predictable stage graph | ⚠️ Renders too, but the graph is only as regular as your control flow — dynamic stages shift run to run |
 | **Stage-level `agent` / `when` / `environment`** | ✅ Per-stage directives, declarative and readable | ⚠️ Achievable, but hand-rolled |
 | **Learning curve** | ✅ Low — reads like a config file; safe for many contributors | ❌ Higher — needs Groovy + CPS awareness |
 | **Ceiling / flexibility** | ❌ Hits a wall on genuinely dynamic logic | ✅ Effectively unlimited — it's a programming language |
@@ -354,8 +482,13 @@ is an argument for using **both**, not for picking a winner.
   a stage without understanding CPS or Groovy closures.
 - **First-class `parallel`, `matrix`, `when`, `options`, `environment`, `parameters`**
   as directives — no boilerplate.
-- **Tooling.** Blue Ocean visual editor, the Declarative linter (`jenkins-cli
-  declarative-linter`), IDE schema support.
+- **Tooling.** **Pipeline Graph View** (the stage-graph UI this controller
+  actually installs — [401](./401-JENKINS.md)), the Declarative linter
+  (`jenkins-cli declarative-linter`), IDE schema support. (**Blue Ocean** — the
+  old visual editor whose round-trip editing was Declarative-only — is
+  **discontinued upstream**: maintenance/security fixes only, no new features.
+  This repo never installs it; Pipeline Graph View is its maintained successor,
+  and the classic UI + `warnings-ng` cover the rest.)
 
 ### Declarative — disadvantages
 
@@ -383,7 +516,8 @@ is an argument for using **both**, not for picking a winner.
 - **No up-front validation.** A typo eight stages deep fails eight stages deep.
 - **No free `post`.** You must remember the `try/finally` on every path — the exact
   bug Declarative's `post {}` was invented to prevent.
-- **No restart-from-stage, no visual editor.**
+- **No restart-from-stage**, and the Pipeline Graph View graph is only as stable
+  as your control flow keeps it.
 - **CPS foot-guns.** Non-serializable locals and `@NonCPS` subtleties bite newcomers.
 - **Higher review cost.** Freedom means every author can invent a different shape;
   across many services that becomes drift.
@@ -396,7 +530,8 @@ Jenkins' own documentation is unambiguous about the default:
 
 - **Declarative Pipeline is the recommended starting point for most users.** It is
   described as offering "a more modern, opinionated syntax" and is the syntax the
-  official *Getting Started* guide, the Blue Ocean editor, and most examples use.
+  official *Getting Started* guide and most examples use (it was also the only
+  syntax the now-discontinued Blue Ocean editor could generate).
 - **Scripted Pipeline is positioned as the advanced/flexible option** — "a general
   purpose DSL built with Groovy" that "offers a tremendous amount of flexibility and
   extensibility," for cases where Declarative's structure is too limiting.
@@ -418,6 +553,9 @@ mechanical realisation.
 This repo does not "use Declarative" or "use Scripted." It uses **three cooperating
 layers**, each in the dialect that fits it:
 
+<details>
+<summary>📊 The three-layer hybrid — generation → orchestration → logic (flowchart)</summary>
+
 ```mermaid
 flowchart TD
     YAML["services.yaml<br/>(service registry)"]
@@ -429,22 +567,30 @@ flowchart TD
         K6P["MicroservicesK6SmokePipeline.groovy<br/>pipeline { parameters stages post }"]
     end
     subgraph L3["Layer 3 — LOGIC (Scripted vars steps)"]
+        SC["microservicesSemgrepScan ·<br/>CodeqlScan · TrivyIacScan<br/>→ shared microservicesSarifUpload"]
         B["microservicesBuild"]
         I["microservicesImage"]
-        D["microservicesDeploy"]
+        D["microservicesDeploy<br/>(GitOps Update)"]
+        SH["microservicesOtelSelfHeal"]
         S["microservicesSmokeTest"]
+        K6R["microservicesK6Run<br/>(preset merge)"]
         K["microservicesK6Smoke"]
     end
     YAML --> SEED
     SEED -->|"generates job whose body is<br/>@Library + MicroservicesPipeline(...)"| MP
     SEED -->|"generates k6 job"| K6P
+    MP -->|"parallel Static Analysis"| SC
     MP -->|"steps { microservicesBuild(...) }"| B
     MP --> I
     MP --> D
+    MP --> SH
     MP --> S
     MP -->|"build job: microservices-k6-smoke"| K6P
-    K6P --> K
+    K6P --> K6R
+    K6R --> K
 ```
+
+</details>
 
 ### 7.1 Layer 1 — Generation: Job DSL (Scripted, and *generative*)
 
@@ -483,33 +629,43 @@ data and builds structure at runtime, which is exactly what Declarative cannot d
 The two `PascalCase` files are **Declarative** `pipeline { }` shells:
 
 - [`MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy) — the
-  build→scan→image→deploy→smoke pipeline (~11 stages). It owns the **shape**: the
-  9-container agent pod (`agent { kubernetes { yaml … } }`), `options`,
-  `environment` (the rebuild-safe `IMAGE_TAG`), the `stages` list, and the `post {
-  always { junit …; recordIssues … } }` block that publishes results no matter how
-  the build ends.
+  build→scan→image→deploy→smoke pipeline (13 stages; the three scanners are
+  **parallel branches** of *Static Analysis*, the gateway patch is a
+  **`when`-gated** stage, and *GitOps Update* / *OTel Self-Heal* are first-class
+  Declarative stages). It owns the **shape**: the 9-container agent pod
+  (`agent { kubernetes { yaml …; retries 2 } }` — official pod-loss auto-retry for
+  the Spot `ci-spot` mode), `options` (`timeout`, `durabilityHint
+  ('PERFORMANCE_OPTIMIZED')`, `disableConcurrentBuilds`, …), `environment` (the
+  rebuild-safe `IMAGE_TAG`), the `stages` list, and the `post { always { junit …;
+  recordIssues … } }` block that publishes results no matter how the build ends.
 - [`MicroservicesK6SmokePipeline.groovy`](../vars/MicroservicesK6SmokePipeline.groovy)
   — the k6 traffic pipeline. Its Declarative `parameters {}` block *is* the "Build
   with Parameters" form (PROFILE, VUS, DURATION, thresholds, …), which no Scripted
   equivalent expresses as cleanly.
 
-Both are "thin orchestrators": each `stage`'s `steps {}` mostly just **calls a
-Layer-3 step**. They also show the two interop seams from §3 — a Scripted preamble
-above `pipeline {}` (the `agentNodeScheduling` ternary) and `script {}` islands for
-the small imperative bits (the rebuild-safe tag computation; the k6 preset-merge
-coalescing).
+Both are "thin orchestrators": each `stage`'s `steps {}` just **calls a Layer-3
+step**. They also show the two interop seams from §3 — a Scripted preamble above
+`pipeline {}` (the `agentNodeScheduling` ternary, the per-tier `k6JobName`) and
+exactly **one `script {}` island** across both shells: the rebuild-safe tag
+computation, which mutates `env` from a value only known after checkout and has no
+declarative-directive equivalent. (The k6 preset-merge used to be a second island;
+it now lives in the `microservicesK6Run` custom step — see §7.6.)
 
 ### 7.3 Layer 3 — Logic: the Scripted `vars/` steps
 
-The five `camelCase` files are **Scripted** `def call(Map cfg) { … }` steps — the
+The eleven `camelCase` files are **Scripted** `def call(Map cfg) { … }` steps — the
 Global Pipeline Library convention where each `vars/<name>.groovy` is invocable as a
 step named `<name>`. They hold the logic that would bloat or break a Declarative
 block:
 
+- [`microservicesSemgrepScan`](../vars/microservicesSemgrepScan.groovy) / [`microservicesCodeqlScan`](../vars/microservicesCodeqlScan.groovy) / [`microservicesTrivyIacScan`](../vars/microservicesTrivyIacScan.groovy) — the three *Static Analysis* branch bodies: container-scoped scan `sh` + artifact archiving, keeping ~180 lines of shell out of the Declarative shell.
+- [`microservicesSarifUpload`](../vars/microservicesSarifUpload.groovy) — the **shared** SARIF → GitHub Code Scanning upload used by the Semgrep and CodeQL steps (one parameterised implementation instead of two copy-pasted 45-line `sh` blobs).
 - [`microservicesBuild`](../vars/microservicesBuild.groovy) — `if (type=='java') … else if (type=='angular') …`, container-scoped `sh`.
 - [`microservicesImage`](../vars/microservicesImage.groovy) — Jib-vs-buildpacks branch, conditional `docker push` driven by a sentinel file.
-- [`microservicesDeploy`](../vars/microservicesDeploy.groovy) — clone gitops repo, `yq` the image tag, push, `argocd app sync/wait` with a retry loop, plus an OTel-injection self-heal.
+- [`microservicesDeploy`](../vars/microservicesDeploy.groovy) — the *GitOps Update* stage body: clone gitops repo, `yq` the image tag, push, `argocd app sync/wait` with a retry loop.
+- [`microservicesOtelSelfHeal`](../vars/microservicesOtelSelfHeal.groovy) — the *OTel Self-Heal* stage body: `-javaagent` injection check + conditional `rollout restart` (the operator webhook's `failurePolicy: Ignore` race).
 - [`microservicesSmokeTest`](../vars/microservicesSmokeTest.groovy) — a throwaway curl pod with NetworkPolicy-aware placement.
+- [`microservicesK6Run`](../vars/microservicesK6Run.groovy) — the k6 **precedence merge** (manual param > committed preset > seed-baked cfg > script default): closures (`has`, `pick`), `readYaml`, null-safe coalescing.
 - [`microservicesK6Smoke`](../vars/microservicesK6Smoke.groovy) — **the exemplar**: helper methods (`numOf`, `pct`, `fmtBytes`), **recursion** over the k6 result tree (`collectFailedChecks`), closures, `try/catch`, `readJSON` parsing, a layered report. This is *categorically impossible* in pure Declarative.
 
 There is **no `src/` directory** — no namespaced Groovy class tree. All shared logic
@@ -523,13 +679,22 @@ classes; `src/` would be the next tool if that changed (see §11).
 | [`seed_jobs.groovy`](../jenkins/pipelines/seed/seed_jobs.groovy) | Job DSL (seed) | **Scripted / Job DSL** | No | Loops `services.yaml`, *generates* jobs — inherently imperative |
 | [`MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy) | Pipeline shell | **Declarative** (+ Scripted preamble & `script{}`) | ✅ Yes | Uniform shape, `post{}`, agent pod, validation |
 | [`MicroservicesK6SmokePipeline.groovy`](../vars/MicroservicesK6SmokePipeline.groovy) | Pipeline shell | **Declarative** (+ `script{}`) | ✅ Yes | `parameters{}` form, uniform shape, `post{}` |
+| [`microservicesSemgrepScan.groovy`](../vars/microservicesSemgrepScan.groovy) | Library step | **Scripted** | No | Scan `sh` + archive; parallel *Static Analysis* branch body |
+| [`microservicesCodeqlScan.groovy`](../vars/microservicesCodeqlScan.groovy) | Library step | **Scripted** | No | Scan `sh` + archive; parallel *Static Analysis* branch body |
+| [`microservicesTrivyIacScan.groovy`](../vars/microservicesTrivyIacScan.groovy) | Library step | **Scripted** | No | gitops clone + two `trivy config` runs |
+| [`microservicesSarifUpload.groovy`](../vars/microservicesSarifUpload.groovy) | Library step | **Scripted** | No | Shared, parameterised SARIF→GitHub upload (DRY) |
 | [`microservicesBuild.groovy`](../vars/microservicesBuild.groovy) | Library step | **Scripted** | No | `if/else` on service type |
 | [`microservicesImage.groovy`](../vars/microservicesImage.groovy) | Library step | **Scripted** | No | Jib-vs-buildpacks branch, conditional push |
-| [`microservicesDeploy.groovy`](../vars/microservicesDeploy.groovy) | Library step | **Scripted** | No | Clone/yq/push + retry loop + self-heal |
+| [`microservicesDeploy.groovy`](../vars/microservicesDeploy.groovy) | Library step | **Scripted** | No | Clone/yq/push + argocd retry loop (*GitOps Update* body) |
+| [`microservicesOtelSelfHeal.groovy`](../vars/microservicesOtelSelfHeal.groovy) | Library step | **Scripted** | No | Injection check + conditional rollout restart (*OTel Self-Heal* body) |
 | [`microservicesSmokeTest.groovy`](../vars/microservicesSmokeTest.groovy) | Library step | **Scripted** | No | Small imperative curl-pod routine |
+| [`microservicesK6Run.groovy`](../vars/microservicesK6Run.groovy) | Library step | **Scripted** | No | Preset precedence merge (closures, `readYaml`) |
 | [`microservicesK6Smoke.groovy`](../vars/microservicesK6Smoke.groovy) | Library step | **Scripted** | No | Helpers + recursion + closures + JSON parse |
 
 ### 7.5 A build, end to end
+
+<details>
+<summary>📊 A build, end to end (sequence diagram)</summary>
 
 ```mermaid
 sequenceDiagram
@@ -543,13 +708,148 @@ sequenceDiagram
     DSL->>Job: generate pipelineJob per service (from services.yaml)
     Note over Job: body = @Library(...) + MicroservicesPipeline(...)
     Job->>Decl: invoke the Declarative step
-    Decl->>Decl: agent{} pod + options + environment
+    Decl->>Decl: agent{} pod (retries 2) + options + environment
+    Decl->>Lib: parallel { SemgrepScan + CodeqlScan + TrivyIacScan }
     Decl->>Lib: steps { microservicesBuild(...) }
     Decl->>Lib: steps { microservicesImage(...) }
-    Decl->>Lib: steps { microservicesDeploy(...) }
+    Decl->>Lib: steps { microservicesDeploy(...) } — GitOps Update
+    Decl->>Lib: steps { microservicesOtelSelfHeal(...) }
     Decl->>Lib: steps { microservicesSmokeTest(...) }
-    Decl->>Decl: post { always { junit; recordIssues } }
+    Decl->>Decl: post { always { junit + recordIssues } }
 ```
+
+</details>
+
+### 7.6 The July-2026 "maximise Declarative" audit
+
+The whole library was re-audited (July 2026) against one question: **is there
+anything still Scripted that a current, non-deprecated Declarative construct or an
+official stable plugin step could express instead?** Every claim below was verified
+live against jenkins.io, plugins.jenkins.io and the plugin READMEs — not assumed.
+
+**Ecosystem verdict first** (what "current" means in 2026):
+
+| Claim | July-2026 status |
+| :--- | :--- |
+| Declarative is still the recommended authoring syntax | ✅ Unchanged — the [CloudBees Top-10 best practices](https://www.cloudbees.com/blog/top-10-best-practices-jenkins-pipeline-plugin) (updated Sept 2024) and the jenkins.io docs still say *Declarative first; `script {}` is a warning sign; logic → shared-library custom step; Scripted only when that fails*. |
+| Is there a successor DSL (YAML pipelines, "Declarative 2.0")? | ❌ **No.** The only YAML contender, the [`pipeline-as-yaml` plugin](https://plugins.jenkins.io/pipeline-as-yaml/), is officially **incubated** ("breaking changes are plausible"), sits at ~0.25 % of controllers, and is not part of the recommended stack. CloudBees Pipeline Templates are proprietary. Declarative **v1 remains the terminal syntax** — invest there. |
+| Job DSL (Layer 1) still safe? | ✅ v3654 released ~5 months ago; flagged *up for adoption* **but actively co-maintained by Basil Crow and Mark Waite** (Jenkins core maintainers), ~14 % install base. The JCasC + Job DSL + Declarative three-layer model this repo runs **is still the canonical 2026 reference architecture** for reproducible Jenkins. |
+
+**What the audit converted** (Scripted → Declarative / official step):
+
+| Before (Scripted construct) | After (Declarative / official) | Why it's better |
+| :--- | :--- | :--- |
+| `if (serviceName == 'gateway')` patch inside a `script {}` | **`when { expression { … } }`-gated `Patch App Source` stage** | The skip is *visible* (Graph View shows the stage as skipped) instead of buried in Groovy. |
+| Semgrep → CodeQL → Trivy IaC run **sequentially** | **`parallel {}` branches of a `Static Analysis` stage** | The three scanners are independent read-only reporters; CodeQL (the long pole) no longer serialises the other two. (Tekton keeps them sequential — its tasks share an RWO PVC; the Jenkins multi-container pod has no such constraint.) |
+| ~180 lines of inline scan `sh` in the shell (incl. two copy-pasted 45-line SARIF-upload blobs) | **Custom steps** `microservicesSemgrepScan` / `CodeqlScan` / `TrivyIacScan` + one shared `microservicesSarifUpload` | CloudBees rule #3 verbatim: logic in named library steps, the shell stays a readable spec; the upload exists **once**. |
+| k6 preset-merge `script {}` island | **`microservicesK6Run` custom step** | Same rule; the k6 shell's only stage body is now a single step call. |
+| `script {}` around the k6 `build job:` trigger | Preamble-resolved `k6JobName` + plain `steps { build job: … }` | The ternary runs at library-call time (static config); no runtime island needed. |
+| Manual re-run after a Spot preemption killed the agent pod | **`agent { kubernetes { retries 2 } }`** — the kubernetes plugin's official pod-loss retry (`kubernetesAgent()` + `nonresumable()` conditions under the hood) | Infra failures (preemption, node drain) auto-retry on a fresh pod; compile/test failures do **not**. Purpose-built for the `ci-spot` Spot mode. |
+| No global hang protection | **`options { timeout(…) }`** (120 min build / 12 h k6 — sized above the documented 8 h overnight soak) | A wedged `argocd wait` or stuck pull can no longer hold the agent + `disableConcurrentBuilds` queue forever. |
+| Default (`MAX_SURVIVABILITY`) durability | **`options { durabilityHint('PERFORMANCE_OPTIMIZED') }`** | The jenkins.io *Scaling Pipelines* recommendation for re-runnable build/test pipelines (~2-6× less controller disk I/O); crash-resume loss is acceptable because every stage is idempotent and pod-loss is covered by `retries`. |
+| Seed job double-clone | **`options { skipDefaultCheckout() }`** | The `cpsScm` job re-checked-out implicitly *and* explicitly (LFS-skipping); now one clone per seed run. |
+| Scripted `stage('GitOps Update')` **nested inside** the deploy step (a Scripted stage across a step boundary — worked, but the shell no longer declared its own structure) | **Hoisted**: *GitOps Update* is now a first-class **Declarative stage** in the shell, and the OTel injection check it used to hide became its own ***OTel Self-Heal* stage** (new [`microservicesOtelSelfHeal`](../vars/microservicesOtelSelfHeal.groovy) step) | Purity **and** vocabulary: the cross-engine phase name ([502](./502-MICROSERVICES_GITOPS.md), the [902](./902-TROUBLESHOOTING.md) runbooks) is now literally a stage the shell declares — and the previously invisible self-heal behaviour shows in the build UI. The stage graph is now defined **only** by `stages {}`. |
+
+#### The residual imperative inventory — case by case
+
+Everything still Scripted/imperative after the audit, each with the *specific*
+reason Declarative cannot express it. This list is the contract: if a review finds
+imperative code not covered by one of these cases, it should be converted (see the
+guardrails below).
+
+**Case 1 — the single `script {}` island: the rebuild-safe `IMAGE_TAG` mutation**
+([`MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy), *Checkout* stage).
+`IMAGE_TAG` must gain the app-source commit SHA — a value that **only exists after
+the checkout step has run** — and every later stage (image build/push, deploy)
+must see the mutated value. Declarative has no construct for this, *by design*:
+- `environment {}` at pipeline level is evaluated **before** the first stage — the
+  SHA doesn't exist yet.
+- `environment {}` at stage level is evaluated at *that* stage's entry and is
+  **scoped to that stage only** — later stages would still see the old value.
+- There is deliberately **no cross-stage mutable binding** in the grammar; that
+  staticness is what makes Declarative validatable up front.
+
+Alternatives weighed and rejected: recomputing the tag in every consuming stage
+(repetition + drift risk), stashing it in a file (still needs an imperative read,
+plus workspace coupling), a `params` default (compile-time — the SHA is runtime).
+Mutating `env` in a minimal `script {}` is the documented residual use — the
+escape hatch doing exactly the job it exists for.
+
+One sharp edge learned live (2026-07-11): the mutated variables must **not**
+also be declared in `environment {}` — that directive wraps every stage in a
+`withEnv` overlay that *shadows* script-time `env.X = …` mutations, so the
+value the directive computed at pipeline start silently wins in every later
+stage. `IMAGE_TAG`/`IMAGE` are therefore *born* in the script island; the
+directive keeps only the genuinely static keys (`REGISTRY`,
+`OTEL_SERVICE_NAME`).
+
+**Case 2 — the Scripted preamble above `pipeline {}`** (the `agentNodeScheduling`
+ternary and `k6JobName`). The `agent { kubernetes { yaml … } }` directive takes a
+*string*; there is no conditional syntax **inside** the agent directive (`when {}`
+gates stages, not agent config), so the static-vs-Spot pod scheduling block has to
+be composed *before* the pipeline is declared. This is not a workaround: the
+jenkins.io shared-library documentation's "Defining Declarative Pipelines" pattern
+explicitly runs code ahead of `pipeline {}` at definition time. The rule: the
+preamble may **compute configuration** (strings, names), never **do work** (no
+`sh`, no side effects).
+
+**Case 3 — the eleven `vars/` logic steps.** Not a concession — the **recommended
+home for logic** (CloudBees #3/#5: a `script {}` in the shell is the warning sign;
+a named library step is the fix). Per step, the concrete feature Declarative's
+grammar cannot express:
+
+| Step | The impossible-in-Declarative construct it needs |
+| :--- | :--- |
+| `microservicesBuild` | `if/else` branching on service type, composing different `sh` per branch |
+| `microservicesImage` | Jib-vs-buildpacks branch + a **sentinel-file conditional** (`fileExists`) deciding whether to `docker push` |
+| `microservicesDeploy` | a **retry loop with sleep and fall-through** around `argocd app sync` (racing auto-sync), then `app wait` |
+| `microservicesOtelSelfHeal` | conditional flow: inspect a live pod → maybe `rollout restart` → re-inspect → warn |
+| `microservicesSmokeTest` | runtime protocol detection (TLS secret probe) composing the curl command |
+| `microservicesSemgrepScan` / `CodeqlScan` / `TrivyIacScan` | container-scoped multi-line `sh` composition off `env`/`cfg` (and keeping ~180 lines of shell out of the shell) |
+| `microservicesSarifUpload` | **parameterised deduplication**: one implementation, string-built per tool (name, file, banner) |
+| `microservicesK6Run` | closures (`has`, `pick`) implementing a four-level precedence merge over `readYaml` output |
+| `microservicesK6Smoke` | **recursion** (`collectFailedChecks`), helper methods, `try/catch`, `readJSON` tree parsing, report building |
+
+Declarative excludes loops, recursion, closures and method definitions *on
+purpose* — that's what makes a Jenkinsfile statically checkable. The official
+architecture is exactly this split: a declarative skeleton invoking named steps.
+
+**Case 4 — Job DSL (Layer 1, `seed_jobs.groovy`).** A *generative* program: it
+loops over `services.yaml` and **emits job definitions**. Declarative describes
+*one* pipeline; it cannot create jobs at all. (Note the seed's own
+[`Jenkinsfile.seed`](../jenkins/pipelines/seed/Jenkinsfile.seed) *is* Declarative —
+only the generator payload it runs is imperative, as it must be.)
+
+**Case 5 — `sh`+`curl` for the SARIF upload instead of the `http_request`
+plugin.** "Use official plugins, don't reinvent" has a boundary: the payload is a
+multi-MB gzip+base64 body that `curl -d @file` **streams from disk** in the
+container that already holds the file; `httpRequest` would buffer it in memory and
+add a plugin dependency for zero functional gain. Using the POSIX tool already in
+the `helm` container *is* the not-reinventing choice here.
+
+#### Guardrails: how a change keeps the purity
+
+The review checklist for any pipeline change (this is the §11 decision guide,
+specialised to this repo's end-state):
+
+1. **New phase?** → a new Declarative `stage` in the shell, named with the
+   cross-engine vocabulary (compare [404](./404-TEKTON.md)/[405](./405-GITHUB_ACTIONS.md)/[406](./406-ARGO_WORKFLOWS.md) task names).
+2. **Any logic beyond one step call?** → a new `vars/` step (camelCase), never a
+   `script {}` in the shell.
+3. **Conditional execution?** → `when {}` on the stage (visible skip), not an `if`.
+4. **Independent work?** → `parallel {}` branches (or `matrix` if it's a real
+   axis product), not sequential stages or shell loops.
+5. **Infra-failure handling?** → `options { retry/timeout }` or the agent's
+   `retries` — never `try/catch` in the shell.
+6. **Tempted by `script {}` anyway?** It must be the Case-1 class (mutating global
+   `env` from a runtime-born value). Document it inline *and* add it to the
+   inventory above — the inventory is the allowlist.
+
+Net effect: the stage graph is defined **only** by `stages {}` (no Scripted
+`stage()` calls anywhere), the shells contain **one** `script {}` block between
+them, every piece of logic is a named library step, and the only imperative Groovy
+left is the kind the official guidance sends to Scripted on purpose — each instance
+enumerated above with the directive that *cannot* replace it.
 
 ---
 
@@ -563,7 +863,7 @@ Each layer is in its dialect for concrete, repo-specific reasons:
   fixed skeleton enforces that uniformity for free.
 - **The `post { always { junit …; recordIssues … } }` guarantee.** Test results and
   SARIF issues (Semgrep/CodeQL — see [601](./601-DEVSECOPS.md)) must publish even when
-  a stage fails. Declarative guarantees it; a Scripted `try/finally` around 11 stages
+  a stage fails. Declarative guarantees it; a Scripted `try/finally` around 13 stages
   is easy to get wrong.
 - **The agent pod belongs in one declarative place.** The 9-container pod template is
   an `agent { kubernetes { yaml … } }` directive — one obvious location, validated.
@@ -578,7 +878,7 @@ Each layer is in its dialect for concrete, repo-specific reasons:
   Jib-vs-buildpacks; `microservicesDeploy` runs a retry loop and a self-heal. None
   of this fits Declarative's grammar.
 - **Reuse across four CI engines.** The same logic is ported to Tekton, GitHub
-  Actions, and Argo Workflows (see [403](./403-TEKTON.md)/[404](./404-GITHUB_ACTIONS.md)/[405](./405-ARGO_WORKFLOWS.md));
+  Actions, and Argo Workflows (see [404](./404-TEKTON.md)/[405](./405-GITHUB_ACTIONS.md)/[406](./406-ARGO_WORKFLOWS.md));
   factoring it into named steps keeps a single conceptual contract. (The build-time
   gateway patch is shared even more literally, as [`resources/patch-app-source.sh`](../resources/patch-app-source.sh).)
 - **Small, testable units.** A `def call(Map cfg)` step is a function with clear
@@ -620,7 +920,8 @@ What breaks or regresses:
 - **`post` becomes a manual `try/finally`** replicated in every job; miss it once and
   a *failed* build silently publishes no test results — the precise bug Declarative
   eliminates.
-- **No restart-from-stage**, no Blue Ocean, no per-stage `when`/`agent` directives.
+- **No restart-from-stage**, no per-stage `when`/`agent` directives, and a
+  Pipeline Graph View graph only as regular as each job's code keeps it.
 - **Shape drift.** With full freedom, each service's job can diverge; the "review it
   the same way every time" property evaporates across the fleet.
 
@@ -693,14 +994,17 @@ services and four engines):
     contributor can make without deep Groovy/CPS knowledge.
 11. **Depth available when needed.** The hard logic is quarantined in named steps a
     specialist owns — newcomers don't have to read it to add a stage.
-12. **Tooling.** Blue Ocean, the Declarative linter, and IDE schema support all work
-    on the shells.
+12. **Tooling.** Pipeline Graph View, the Declarative linter, and IDE schema
+    support all work on the shells.
 
 ---
 
 ## 11. Decision guide (cheat sheet)
 
 When you extend this repo's Jenkins CI, use this to place new code in the right layer:
+
+<details>
+<summary>📊 Where does new code go? (decision flowchart)</summary>
 
 ```mermaid
 flowchart TD
@@ -711,6 +1015,8 @@ flowchart TD
     Q1 -->|"Cross-step classes / rich types"| A4["Only then introduce src/<br/>(namespaced Groovy classes). Not needed today."]
     A1 --> R["Small imperative bit inside a stage?<br/>Use a SMALL script{} island —<br/>if it grows, move it to a vars/ step."]
 ```
+
+</details>
 
 Rules of thumb:
 - **Default to Declarative for the *shape*, Scripted for the *logic*.**
@@ -752,6 +1058,9 @@ But *what* you're looking at depends on the file's location:
 | **A `src/**/*.groovy` class** | *(neither — plain Groovy classes, called from either)* | *(neither)* |
 | **A seed script** | *(neither — it's Job DSL: `pipelineJob{}` in a loop)* | *(neither)* |
 
+<details>
+<summary>📊 Classify any file in seconds (flowchart)</summary>
+
 ```mermaid
 flowchart TD
     F{"Open the file.<br/>What's the outermost block?"}
@@ -765,6 +1074,8 @@ flowchart TD
     S2 -->|yes| ST["Scripted library step<br/>(microservicesBuild, …)"]
     S2 -->|"no (a Jenkinsfile)"| SJ["Scripted Jenkinsfile<br/>(the generated 2-line body)"]
 ```
+
+</details>
 
 **Worked examples from this repo** — apply the test:
 
@@ -828,6 +1139,9 @@ reproducible: rebuild the controller from scratch and the seed re-creates every 
 
 ### 13.2 The seed pattern
 
+<details>
+<summary>📊 The seed pattern (flowchart)</summary>
+
 ```mermaid
 flowchart LR
     JCASC["JCasC<br/>jcasc-seed-job.yaml"] -->|"defines (cpsScm)"| SEED["seed-jobs<br/>(Declarative pipeline,<br/>from Jenkinsfile.seed)"]
@@ -835,6 +1149,8 @@ flowchart LR
     REG["services.yaml"] -->|"read at seed time"| DSL
     DSL -->|"generates / updates"| JOBS["per-service pipeline jobs<br/>+ k6 job + listView"]
 ```
+
+</details>
 
 Notice the dialects layer even here: the seed job is **Declarative**
 ([`Jenkinsfile.seed`](../jenkins/pipelines/seed/Jenkinsfile.seed) is a `pipeline { }`),
@@ -1038,7 +1354,7 @@ not generated).
   load time.
 - **No guaranteed `post {}`** — cleanup / test-publishing / notifications are hand-rolled
   `try/finally`; miss a path and failures publish nothing.
-- **No restart-from-stage, no Blue Ocean, no per-stage `when`/`agent`.**
+- **No restart-from-stage, no per-stage `when`/`agent`, no predictable stage graph.**
 - **The library becomes a god-object** — everything imperative in one place: hard to
   test, one owner, huge blast radius on every edit.
 - **Per-repo Jenkinsfile drift** — twenty repos, twenty slightly-different copies; no
@@ -1078,7 +1394,7 @@ Scripted steps.
 
 **In this repo**
 - [401. Jenkins](./401-JENKINS.md) — the controller, JCasC, the `microservices-shared-library` declaration (`implicit: true`, modernSCM retriever), agents, OTel.
-- [402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) — the seed job, the ~11 stages, the GitOps deploy loop, container security.
+- [402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) — the seed job, the 13 stages (parallel Static Analysis, GitOps Update, OTel Self-Heal), the GitOps deploy loop, container security.
 - [302. k6 Load Testing](./302-K6_LOAD_TESTING.md) — the `K6SIM_*` contract the k6 pipeline's `parameters {}` feed.
 - [601. DevSecOps](./601-DEVSECOPS.md) — the Semgrep/CodeQL/Trivy gates whose results the Declarative `post {}` publishes.
 - The source of truth: [`vars/`](../vars/) (the shared library) and [`jenkins/pipelines/seed/`](../jenkins/pipelines/seed/) (the Job DSL seed + `services.yaml`).
@@ -1091,11 +1407,15 @@ Scripted steps.
 - *Job DSL plugin* (generative Groovy, `pipelineJob`): <https://plugins.jenkins.io/job-dsl/>
 - *Script Security & the Groovy sandbox / In-process Script Approval*: <https://www.jenkins.io/doc/book/managing/script-approval/>
 - *JenkinsPipelineUnit* (unit-testing shared-library steps): <https://github.com/jenkinsci/JenkinsPipelineUnit>
+- *Scaling Pipelines* (`durabilityHint`, `PERFORMANCE_OPTIMIZED` — the basis of §7.6's durability choice): <https://www.jenkins.io/doc/book/pipeline/scaling-pipeline/>
+- *Kubernetes plugin README* (declarative `agent { kubernetes { retries N } }` pod-loss retry, `kubernetesAgent()`/`nonresumable()` conditions): <https://github.com/jenkinsci/kubernetes-plugin>
+- *CloudBees: Top 10 Best Practices for Jenkins Pipeline* (Declarative-first; `script {}` as a warning sign; custom steps; Scripted last — the rulebook §7.6 audits against): <https://www.cloudbees.com/blog/top-10-best-practices-jenkins-pipeline-plugin>
+- *Pipeline As Yaml plugin* (the would-be YAML dialect — **incubated**, not a successor; see §7.6): <https://plugins.jenkins.io/pipeline-as-yaml/>
 
 ---
 
-[← Previous: 405. Argo Workflows](./405-ARGO_WORKFLOWS.md) | [🏠 Home](../README.md) | [→ Next: 501. Platform Operations](./501-PLATFORM_OPERATIONS.md)
+[← Previous: 402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) | [🏠 Home](../README.md) | [→ Next: 404. Tekton](./404-TEKTON.md)
 
 ---
 
-*406. Declarative vs Scripted — jenkins-2026*
+*403. Declarative vs Scripted — jenkins-2026*

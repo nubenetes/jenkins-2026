@@ -1,11 +1,13 @@
 /**
  * microservicesDeploy(serviceName: '<svc>', envName: 'stable'|'develop',
- *                  namespace: '<ns>', platform: 'gke',
  *                  tag: '<image-tag>')
  *
- * GitOps Version: Updates the image tag in helm/microservices/values-<env>.yaml
- * in the jenkins-2026-gitops-config repo (cloned separately, not this one) and
- * pushes to Git. ArgoCD handles the deploy.
+ * The body of the Declarative 'GitOps Update' stage — the cross-engine deploy
+ * phase (docs/502): updates the image tag in helm/microservices/values-<env>.yaml
+ * in the jenkins-2026-gitops-config repo (cloned separately, not this one),
+ * pushes to Git, then triggers + waits for the ArgoCD sync. ArgoCD performs the
+ * actual Kubernetes rollout. The follow-up OTel injection check is its own stage
+ * (vars/microservicesOtelSelfHeal.groovy).
  */
 def call(Map cfg) {
   // Only 'stable' and the optional 'develop' tier are deployable. Reject anything
@@ -21,150 +23,108 @@ def call(Map cfg) {
   def infraRepoUrl = env.JENKINS2026_GITOPS_REPO_URL ?: "https://github.com/nubenetes/jenkins-2026-gitops-config.git"
   def valuesFile = "helm/microservices/values-${cfg.envName}.yaml"
 
-  // Use the gitops branch that corresponds to the environment.
-  def infraBranch = cfg.envName == 'stable' ? 'main' : 'develop'
+  // The stable tier's gitops branch FOLLOWS THE DEPLOY BRANCH (main on a prod
+  // cluster; develop on a develop-validation cluster), matching the ArgoCD
+  // AppSet whose stable app tracks {{branchStable}} = the deploy branch
+  // (scripts/08.5-argocd.sh) - a develop-launched cluster is self-contained
+  // and never writes to the prod gitops main. Hardcoding 'main' here silently
+  // no-op'd every stable deploy on develop-launched clusters (the app read
+  // develop, the pipeline wrote main - found live 2026-07-11). The develop
+  // TIER always uses the gitops develop branch, on either cluster.
+  def infraBranch = cfg.envName == 'stable' ? (env.JENKINS2026_REPO_BRANCH ?: 'main') : 'develop'
 
   // Use 'jenkins-2026-gitops' (not 'jenkins-2026-infra') to avoid colliding
   // with the infra checkout dir that Checkout Infra configs clones into.
   // Cleanup runs inside container('git') so root can delete root-owned files
   // from previous builds; deleteDir() outside containers fails with EPERM.
   dir('jenkins-2026-gitops') {
-    stage('GitOps Update') {
-      container('git') {
-        withCredentials([usernamePassword(credentialsId: 'microservices-git',
-                                         passwordVariable: 'GIT_TOKEN',
-                                         usernameVariable: 'GIT_USER')]) {
-          sh """
-            set -eux
-            git config --global --add safe.directory '*' || true
-            git config --global user.email "jenkins@nubenetes.com"
-            git config --global user.name "Jenkins CI"
-
-            # Clean any previous clone inside the container that created it (EPERM-safe)
-            find . -mindepth 1 -delete 2>/dev/null || true
-
-            # Construct the remote URL with credentials
-            REPO_URL="${infraRepoUrl}"
-            REPO_CLEAN=\$(echo "\${REPO_URL}" | sed 's|https://||')
-            AUTH_REPO_URL="https://\${GIT_USER:-git}:\${GIT_TOKEN:-}@\${REPO_CLEAN}"
-
-            git clone --depth 1 --branch ${infraBranch} "\${AUTH_REPO_URL}" .
-          """
-        }
-      }
-      
-      container('helm') {
-        sh """
-          # Update the tag using yq (available in alpine/k8s)
-          yq eval -i '.services.${cfg.serviceName}.image.tag = "${cfg.tag}"' ${valuesFile}
-        """
-      }
-
-      container('git') {
-        withCredentials([usernamePassword(credentialsId: 'microservices-git', 
-                                         passwordVariable: 'GIT_TOKEN', 
-                                         usernameVariable: 'GIT_USER')]) {
-          sh """
-            set -eux
-            git config --global --add safe.directory '*'
-            git add ${valuesFile}
-            git commit -m "chore(ops): update ${cfg.serviceName} image tag to ${cfg.tag} [${cfg.envName}]" || echo "No changes to commit"
-            
-            # Push back to the infra branch
-            git push origin ${infraBranch}
-          """
-        }
-      }
-
-      container('helm') {
+    container('git') {
+      withCredentials([usernamePassword(credentialsId: 'microservices-git',
+                                       passwordVariable: 'GIT_TOKEN',
+                                       usernameVariable: 'GIT_USER')]) {
         sh """
           set -eux
-          # Download argocd CLI to /tmp — helm container runs as UID 1000
-          # (non-root) so /usr/local/bin is not writable.
-          ARGOCD=/tmp/argocd-cli
-          if [ ! -x "\${ARGOCD}" ]; then
-            curl -sSL -o "\${ARGOCD}" https://github.com/argoproj/argo-cd/releases/download/\${ARGOCD_VERSION}/argocd-linux-amd64
-            chmod +x "\${ARGOCD}"
-          fi
+          git config --global --add safe.directory '*' || true
+          git config --global user.email "jenkins@nubenetes.com"
+          git config --global user.name "Jenkins CI"
 
-          # Trigger and wait for Sync
-          # Using --grpc-web because we are connecting to the internal service which might not have full HTTP/2 support in all environments
-          # Using --insecure because we are connecting to the internal service via .local DNS
-          local_server="\${ARGOCD_SERVER:-argocd-server.argocd.svc.cluster.local}"
-          local_flags="--grpc-web --insecure"
-          if [[ "\${local_server}" != *":"* || "\${local_server}" == *":80" ]]; then
-            if [[ "\${local_server}" != *":"* ]]; then
-              local_server="\${local_server}:80"
-            fi
-            local_flags="\${local_flags} --plaintext"
-          fi
+          # Clean any previous clone inside the container that created it (EPERM-safe)
+          find . -mindepth 1 -delete 2>/dev/null || true
 
-          synced=0
-          for attempt in 1 2 3 4 5 6; do
-            if \${ARGOCD} app sync "microservices-${cfg.envName}" --server "\${local_server}" --auth-token "\${ARGOCD_AUTH_TOKEN:-}" \${local_flags}; then
-              synced=1; break
-            fi
-            echo "app sync attempt \${attempt} failed (likely a concurrent auto-sync); retrying in 10s..."
-            sleep 10
-          done
-          [ "\${synced}" = 1 ] || echo "Proceeding without an explicit sync — verifying convergence via 'app wait' (auto-sync handles the deploy)."
+          # Construct the remote URL with credentials
+          REPO_URL="${infraRepoUrl}"
+          REPO_CLEAN=\$(echo "\${REPO_URL}" | sed 's|https://||')
+          AUTH_REPO_URL="https://\${GIT_USER:-git}:\${GIT_TOKEN:-}@\${REPO_CLEAN}"
 
-          # app wait uses --timeout 900 (raised from 300): it waits on the WHOLE ArgoCD Application, so the
-          # gateway's ~600s startupProbe cold-start gates every service's run in the batch - don't lower (see CHANGELOG).
-          \${ARGOCD} app wait "microservices-${cfg.envName}" \
-            --sync --health --timeout 900 \
-            --server "\${local_server}" \
-            --auth-token "\${ARGOCD_AUTH_TOKEN:-}" \
-            \${local_flags}
+          git clone --depth 1 --branch ${infraBranch} "\${AUTH_REPO_URL}" .
         """
       }
+    }
 
-      // Self-heal the OTel auto-instrumentation injection race.
-      // The operator's pod-mutation webhook (mpod.kb.io) uses failurePolicy:Ignore,
-      // so a pod admitted before the Instrumentation CR was ready starts WITHOUT
-      // the Java agent and emits no metrics/traces (Grafana dashboards look empty).
-      // After ArgoCD sync, the new pod may have this problem — detect and fix it.
-      container('helm') {
+    container('helm') {
+      sh """
+        # Update the tag using yq (available in alpine/k8s)
+        yq eval -i '.services.${cfg.serviceName}.image.tag = "${cfg.tag}"' ${valuesFile}
+      """
+    }
+
+    container('git') {
+      withCredentials([usernamePassword(credentialsId: 'microservices-git',
+                                       passwordVariable: 'GIT_TOKEN',
+                                       usernameVariable: 'GIT_USER')]) {
         sh """
           set -eux
-          NAMESPACE="${cfg.namespace}"
-          DEPLOY="${cfg.serviceName}"
+          git config --global --add safe.directory '*'
+          git add ${valuesFile}
+          git commit -m "chore(ops): update ${cfg.serviceName} image tag to ${cfg.tag} [${cfg.envName}]" || echo "No changes to commit"
 
-          # Wait for at least one Ready pod before checking injection
-          kubectl -n "\${NAMESPACE}" rollout status deploy/"\${DEPLOY}" --timeout=120s || true
-
-          # Get JAVA_TOOL_OPTIONS from a running pod.
-          # Pods carry app.kubernetes.io/name, not plain app — use that label.
-          POD=\$(kubectl -n "\${NAMESPACE}" get pods \
-                -l "app.kubernetes.io/name=\${DEPLOY}" \
-                --field-selector=status.phase=Running -o name 2>/dev/null | head -1)
-          if [[ -z "\${POD}" ]]; then
-            echo "No running pod for \${DEPLOY} — skipping OTel injection check"
-          else
-            JTO=\$(kubectl -n "\${NAMESPACE}" get "\${POD}" \
-                   -o jsonpath='{range .spec.containers[*]}{.env[?(@.name=="JAVA_TOOL_OPTIONS")].value}{end}' \
-                   2>/dev/null || true)
-            if echo "\${JTO}" | grep -q -- '-javaagent'; then
-              echo "OTel agent already injected in \${DEPLOY} ✓"
-            else
-              echo "OTel agent NOT injected in \${DEPLOY} (race condition) — rolling restart to trigger injection"
-              kubectl -n "\${NAMESPACE}" rollout restart deploy/"\${DEPLOY}"
-              kubectl -n "\${NAMESPACE}" rollout status deploy/"\${DEPLOY}" --timeout=120s
-              POD2=\$(kubectl -n "\${NAMESPACE}" get pods \
-                     -l "app.kubernetes.io/name=\${DEPLOY}" \
-                     --field-selector=status.phase=Running -o name 2>/dev/null | head -1)
-              JTO2=\$(kubectl -n "\${NAMESPACE}" get "\${POD2}" \
-                     -o jsonpath='{range .spec.containers[*]}{.env[?(@.name=="JAVA_TOOL_OPTIONS")].value}{end}' \
-                     2>/dev/null || true)
-              if echo "\${JTO2}" | grep -q -- '-javaagent'; then
-                echo "OTel agent injected after restart ✓"
-              else
-                echo "WARNING: OTel agent still not injected after restart — check OTel Operator webhook"
-              fi
-            fi
-          fi
+          # Push back to the infra branch
+          git push origin ${infraBranch}
         """
       }
+    }
+
+    container('helm') {
+      sh """
+        set -eux
+        # Download argocd CLI to /tmp — helm container runs as UID 1000
+        # (non-root) so /usr/local/bin is not writable.
+        ARGOCD=/tmp/argocd-cli
+        if [ ! -x "\${ARGOCD}" ]; then
+          curl -sSL -o "\${ARGOCD}" https://github.com/argoproj/argo-cd/releases/download/\${ARGOCD_VERSION}/argocd-linux-amd64
+          chmod +x "\${ARGOCD}"
+        fi
+
+        # Trigger and wait for Sync
+        # Using --grpc-web because we are connecting to the internal service which might not have full HTTP/2 support in all environments
+        # Using --insecure because we are connecting to the internal service via .local DNS
+        local_server="\${ARGOCD_SERVER:-argocd-server.argocd.svc.cluster.local}"
+        local_flags="--grpc-web --insecure"
+        if [[ "\${local_server}" != *":"* || "\${local_server}" == *":80" ]]; then
+          if [[ "\${local_server}" != *":"* ]]; then
+            local_server="\${local_server}:80"
+          fi
+          local_flags="\${local_flags} --plaintext"
+        fi
+
+        synced=0
+        for attempt in 1 2 3 4 5 6; do
+          if \${ARGOCD} app sync "microservices-${cfg.envName}" --server "\${local_server}" --auth-token "\${ARGOCD_AUTH_TOKEN:-}" \${local_flags}; then
+            synced=1; break
+          fi
+          echo "app sync attempt \${attempt} failed (likely a concurrent auto-sync); retrying in 10s..."
+          sleep 10
+        done
+        [ "\${synced}" = 1 ] || echo "Proceeding without an explicit sync — verifying convergence via 'app wait' (auto-sync handles the deploy)."
+
+        # app wait uses --timeout 900 (raised from 300): it waits on the WHOLE ArgoCD Application, so the
+        # gateway's ~600s startupProbe cold-start gates every service's run in the batch - don't lower (see CHANGELOG).
+        \${ARGOCD} app wait "microservices-${cfg.envName}" \
+          --sync --health --timeout 900 \
+          --server "\${local_server}" \
+          --auth-token "\${ARGOCD_AUTH_TOKEN:-}" \
+          \${local_flags}
+      """
     }
   }
 }

@@ -11,7 +11,7 @@
 #   - Fallback (gateway disabled / PaC absent, e.g. local): generate + kick one
 #     PipelineRun per service directly (the seed model).
 #
-# Idempotent. See docs/403-TEKTON.md.
+# Idempotent. See docs/404-TEKTON.md.
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
@@ -71,7 +71,7 @@ fi
 #           whole RWO-workspace run to one node, so a small/full node hangs it and a Spot
 #           preemption would kill the whole run.
 #   ci-spot: the NAP Spot ComputeClass (needs nodeAutoProvisioning.enabled) — cheaper but
-#           Spot/quota-dependent (opt-in). See docs/403.
+#           Spot/quota-dependent (opt-in). See docs/404.
 if [[ "${J2026_TEKTON_RUN_NODE_POOL}" == "ci-spot" && "${J2026_NODE_AUTOPROVISIONING_ENABLED}" == "true" ]]; then
   _cc="${J2026_NODE_AUTOPROVISIONING_COMPUTE_CLASS}"
   tekton_pod_template="$(cat <<EOF

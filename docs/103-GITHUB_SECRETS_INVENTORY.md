@@ -206,15 +206,17 @@ Create these in **Google Cloud Console → APIs & Services → OAuth 2.0 Client 
 
 ## 7. Headlamp & Identity-Aware Proxy
 
-Used by `Day1.cluster.01-gke`, `Day2.redeploy.04-headlamp` and `Day2.redeploy.05-gateway`; the IAP pair is additionally consumed by the engine redeploys whose UI sits behind IAP (`Day2.redeploy.03-tekton`, `Day2.redeploy.06-githubactions`, `Day2.redeploy.07-argoworkflows`), and `HEADLAMP_ADMIN_EMAILS` also by `Decom.cluster.01-gke` (so `down.sh` can delete the per-email ClusterRoleBindings). Required only if the Gateway / IAP feature is enabled (`config/config.yaml → gateway.baseDomain`).
+Used by `Day1.cluster.01-gke`, `Day2.redeploy.04-headlamp` and `Day2.redeploy.05-gateway`; the IAP pair is additionally consumed by the engine redeploys whose UI sits behind IAP (`Day2.redeploy.03-tekton`, `Day2.redeploy.06-githubactions`, `Day2.redeploy.07-argoworkflows`) and by `Day2.redeploy.08-backstage` (the portal is IAP-fronted too — **no new OAuth client and no new admin-email secret**: Backstage reuses this same IAP client + `HEADLAMP_ADMIN_EMAILS` project-level accessor grant, docs/505), and `HEADLAMP_ADMIN_EMAILS` also by `Decom.cluster.01-gke` (so `down.sh` can delete the per-email ClusterRoleBindings). Required only if the Gateway / IAP feature is enabled (`config/config.yaml → gateway.baseDomain`).
 
 | Secret | Required | Description |
 |--------|----------|-------------|
 | `HEADLAMP_OIDC_CLIENT_ID` | optional | Google OAuth client ID for Headlamp's "Sign in with Google" |
 | `HEADLAMP_OIDC_CLIENT_SECRET` | optional | Google OAuth client secret for Headlamp |
-| `HEADLAMP_ADMIN_EMAILS` | optional | Comma-separated Google emails granted `cluster-admin` via Headlamp **and** IAP access |
-| `IAP_OAUTH_CLIENT_ID` | optional | OAuth client ID for the Identity-Aware Proxy that gates Jenkins and Headlamp |
+| `HEADLAMP_ADMIN_EMAILS` | optional | Comma-separated Google emails granted `cluster-admin` via Headlamp **and** IAP access (incl. Backstage) |
+| `IAP_OAUTH_CLIENT_ID` | optional | OAuth client ID for the Identity-Aware Proxy that gates Jenkins, Headlamp, Backstage and the other admin UIs |
 | `IAP_OAUTH_CLIENT_SECRET` | optional | OAuth client secret for IAP |
+| `BACKSTAGE_GITHUB_OAUTH_CLIENT_ID` | optional | GitHub **OAuth App** client ID for the Backstage *GitHub Actions* tab's one-time per-user popup (`ci.engine=githubactions` UX; docs/505 § CI-engine integration). Callback URL: `https://backstage.<baseDomain>/api/auth/github/handler/frame` |
+| `BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET` | optional | GitHub OAuth App client secret for the above. Without the pair, Backstage deploys fine (`unset` placeholders) — only that tab's GitHub sign-in fails |
 
 **`HEADLAMP_ADMIN_EMAILS`**
 Never materialised into a k8s Secret — it flows as env only: `Day1.cluster.01-gke` passes it to Terraform as `TF_VAR_admin_emails` ([`terraform/gke`](../terraform/gke/main.tf) grants each email `roles/iap.httpsResourceAccessor` — the "IAP-secured Web App User" binding — plus `container.clusterViewer`), and exports it as `JENKINS2026_HEADLAMP_ADMIN_EMAILS` to [`scripts/08-headlamp.sh`](../scripts/08-headlamp.sh), which creates one `cluster-admin` ClusterRoleBinding per email ([`scripts/down.sh`](../scripts/down.sh) deletes them on teardown — which is why `Decom.cluster.01-gke` also consumes this secret). **Never commit** — set via this secret.
@@ -413,7 +415,7 @@ pod starts in `arc-systems`, and the `jenkins-2026-runners` scale set registers 
 `test/smoke-test.sh`'s *"ARC AutoscalingListener Running"* check then passes. With step 6
 done, a `push`/PR to a fork now spins up an ephemeral runner pod in `arc-runners` and the
 run executes (visible in that fork's Actions tab — there is no in-cluster CI UI; see
-[`404-GITHUB_ACTIONS.md`](./404-GITHUB_ACTIONS.md)).
+[`405-GITHUB_ACTIONS.md`](./405-GITHUB_ACTIONS.md)).
 
 ### Troubleshooting: the runner scale set never registers
 
@@ -561,6 +563,8 @@ The runner/agent needs HTTPS egress to Grafana Cloud k6's ingest. Works for **al
 | `HEADLAMP_ADMIN_EMAILS` | no | Headlamp RBAC + IAP | manual — **never commit** |
 | `IAP_OAUTH_CLIENT_ID` | no | IAP gateway | Google Cloud Console |
 | `IAP_OAUTH_CLIENT_SECRET` | **yes** | IAP gateway | Google Cloud Console |
+| `BACKSTAGE_GITHUB_OAUTH_CLIENT_ID` | no | Backstage GitHub Actions tab (optional, docs/505) | GitHub OAuth App registration |
+| `BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET` | **yes** | Backstage GitHub Actions tab (optional, docs/505) | GitHub OAuth App registration |
 | `REGISTRY_USERNAME` | no | private image pull | manual |
 | `REGISTRY_PASSWORD` | **yes** | private image pull | manual |
 | `GIT_USERNAME` | no | private microservices fork | manual |

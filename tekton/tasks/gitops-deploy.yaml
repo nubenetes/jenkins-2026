@@ -1,5 +1,6 @@
-# Stage "Deploy to Kubernetes" of the Jenkins pipeline (vars/microservicesDeploy.groovy):
-# GitOps deploy - bump the image tag in the gitops-config repo, push, trigger an
+# Stages "GitOps Update" + "OTel Self-Heal" of the Jenkins pipeline
+# (vars/microservicesDeploy.groovy + vars/microservicesOtelSelfHeal.groovy), as
+# ONE Tekton task: bump the image tag in the gitops-config repo, push, trigger an
 # ArgoCD sync/wait, then self-heal the OTel auto-instrumentation injection race.
 apiVersion: tekton.dev/v1
 kind: Task
@@ -17,6 +18,11 @@ spec:
     - name: image
     - name: gitops-repo-url
       default: https://github.com/nubenetes/jenkins-2026-gitops-config.git
+    # The DEPLOY branch (main on a prod cluster, develop on a develop-validation
+    # cluster): the STABLE tier's gitops bump lands on this branch, matching the
+    # ArgoCD AppSet's {{branchStable}} auto-track (scripts/08.5-argocd.sh).
+    - name: self-repo-branch
+      default: main
     - name: argocd-server
       default: argocd-server.argocd.svc.cluster.local
     - name: argocd-version
@@ -46,7 +52,8 @@ spec:
           stable|develop) ;;
           *) echo "unsupported env-name '$(params.env-name)'"; exit 1 ;;
         esac
-        BRANCH=main; [ "$(params.env-name)" = "develop" ] && BRANCH=develop
+        # Stable follows the deploy branch; the develop TIER always uses develop.
+        BRANCH="$(params.self-repo-branch)"; [ "$(params.env-name)" = "develop" ] && BRANCH=develop
         VALUES="helm/microservices/values-$(params.env-name).yaml"
         # Extract the tag from the FULL image the build actually pushed (strip the
         # registry/repo up to and including the last ':'). This is the single source of

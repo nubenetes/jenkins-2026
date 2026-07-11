@@ -1,11 +1,11 @@
-[← Previous: 403. Tekton](./403-TEKTON.md) | [🏠 Home](../README.md) | [→ Next: 405. Argo Workflows](./405-ARGO_WORKFLOWS.md)
+[← Previous: 404. Tekton](./404-TEKTON.md) | [🏠 Home](../README.md) | [→ Next: 406. Argo Workflows](./406-ARGO_WORKFLOWS.md)
 
 ---
 
-# 404. GitHub Actions / ARC (third CI engine)
+# 405. GitHub Actions / ARC (third CI engine)
 
 This project ships **four interchangeable CI engines**. Jenkins is the default,
-**Tekton** ([403](./403-TEKTON.md)) and **Argo Workflows** ([405](./405-ARGO_WORKFLOWS.md))
+**Tekton** ([404](./404-TEKTON.md)) and **Argo Workflows** ([406](./406-ARGO_WORKFLOWS.md))
 are the Kubernetes-native alternatives, and **GitHub Actions self-hosted runners via ARC**
 (Actions Runner Controller) is the third — selected by the single `ci.engine` feature flag. When `githubactions` is
 chosen the platform installs ARC (the `gha-runner-scale-set-controller` + an
@@ -89,7 +89,7 @@ TARGET_NS: ${{ github.ref_name == 'develop' && 'microservices-develop' || 'micro
 | Code built | the app's `main` | the app's `develop` (true branch-based promotion) |
 | `ENV_NAME` | `stable` | `develop` |
 | Deploy namespace (`TARGET_NS`) | `microservices` | `microservices-develop` |
-| GitOps values bumped | `values-stable.yaml` on gitops-config `main` | `values-develop.yaml` on gitops-config `develop` |
+| GitOps values bumped | `values-stable.yaml` on gitops-config's **deploy branch** (`main` in prod — rendered as `{{selfRepoBranch}}`; [502 § Branch model](./502-MICROSERVICES_GITOPS.md#branch-model-app-source-vs-gitops-vs-deploy-branch)) | `values-develop.yaml` on gitops-config `develop` |
 | Public URL | `microservices.<domain>` | `microservices-develop.<domain>` |
 
 So **the branch *is* the environment selector.** There are **two equivalent ways** to launch a
@@ -315,7 +315,7 @@ flowchart TB
 runs the job — build+push the image, bump the GitOps tag, drive ArgoCD — and
 reports status/logs back to GitHub, then is deleted. The data-flow into GHCR /
 gitops-config / ArgoCD is the **same contract** as Jenkins ([402](./402-PIPELINES_AS_CODE.md))
-and Tekton ([403](./403-TEKTON.md)); only the runner lifecycle (single-job,
+and Tekton ([404](./404-TEKTON.md)); only the runner lifecycle (single-job,
 ephemeral, Spot) and the trigger (native GitHub, no in-cluster receiver) differ.
 
 #### Runner lifecycle
@@ -446,8 +446,8 @@ gated solely on `nodeAutoProvisioning.enabled` and engine-neutral — ARC just
   long-lived pod (Jenkins), an affinity-assistant-pinned multi-task `PipelineRun`
   on one RWO PVC (Tekton), or a single multi-step `Workflow` pod graph (Argo
   Workflows) — a Spot preemption restarts/kills the **whole** thing. (See
-  [403 § run-node-pool](./403-TEKTON.md) for the full Tekton-on-Spot hazard, and
-  [405](./405-ARGO_WORKFLOWS.md) for Argo Workflows.)
+  [403 § run-node-pool](./404-TEKTON.md) for the full Tekton-on-Spot hazard, and
+  [406](./406-ARGO_WORKFLOWS.md) for Argo Workflows.)
 - **ARC defaults `ci-spot`** because each runner is an **`EphemeralRunner` pod
   that runs exactly one job, then is deleted**. A Spot reclaim loses **at most
   one in-flight job**, which **GitHub automatically re-queues** onto a freshly
@@ -634,7 +634,7 @@ shared build-time patch [`resources/patch-app-source.sh`](../resources/patch-app
 | Build & Push image | `./mvnw … jib:build -Djib.to.image=$REGISTRY/$SERVICE:$IMAGE_TAG` (java) | Jib, daemonless; `-Djib.to.auth.*` from `REGISTRY_USERNAME/PASSWORD` |
 | **Reclaim disk before image scan** | `rm -rf` the now-dead build tree (`node_modules` · Maven `target/` + `~/.m2/repository` · the Jib cache) + `docker image prune -af` | **best-effort** (`\|\| true`); the image is already in GHCR, so freeing the build tree here keeps the **50 GB `ci-spot` node** off the kubelet's `DiskPressure` threshold — otherwise it evicts the ephemeral runner mid-run (§ The ci-spot / NAP showcase) |
 | Trivy image scan | `docker run aquasec/trivy image` | — |
-| Deploy (GitOps + ArgoCD + OTel self-heal) | GitOps bump → `argocd app sync/wait` | **byte-identical** to `microservicesDeploy.groovy` (see below) |
+| GitOps Update + OTel Self-Heal (two Jenkins stages) | GitOps bump → `argocd app sync/wait` | **byte-identical** to `microservicesDeploy.groovy` + `microservicesOtelSelfHeal.groovy` (see below) |
 | Smoke test | `curl --retry … $svc.$TARGET_NS.svc:$port$health` | — |
 | Integration k6 | **Export pipeline OTel trace** — currently a placeholder (prints the OTLP endpoint; no k6 run / span export yet) | k6 parity (`--tag ci_runner=githubactions`, as the other engines already emit) is the intended follow-up; the `k6-cloud` Secret is pre-provisioned in `arc-runners` |
 
@@ -672,8 +672,8 @@ The deploy step preserves every parity point with the Jenkins/Tekton GitOps stag
 
 - same repo `nubenetes/jenkins-2026-gitops-config`, same file
   `helm/microservices/values-<env>.yaml`, same `yq` selector
-  `.services.<svc>.image.tag`, same `main`/`develop` branch map;
-- a **direct `git push origin main`** — that repo's `main` is **direct-push by
+  `.services.<svc>.image.tag`, same branch map (the **deploy branch** for stable — `main` in prod — and `develop` for the develop tier);
+- a **direct push** (`git push origin main` in prod) — that repo's `main` is **direct-push by
   design** (a PR gate would reject the machine push and wedge every deploy; see
   [`docs/502`](./502-MICROSERVICES_GITOPS.md) and CLAUDE.md);
 - then a best-effort `argocd app sync/wait microservices-<env>` using the
@@ -773,11 +773,11 @@ the same `validate_run_node_pool` helper Jenkins/Tekton use.
 
 ## See also
 
-- [403. Tekton](./403-TEKTON.md) — the second engine + the `ci.engine` contract;
+- [404. Tekton](./404-TEKTON.md) — the second engine + the `ci.engine` contract;
   its roadmap section now lists ARC under *Already implemented* (it was the
   top-ranked candidate before it shipped) and ranks the remaining candidates
   (Woodpecker/Drone, Concourse, Dagger).
-- [405. Argo Workflows](./405-ARGO_WORKFLOWS.md) — the fourth engine (Argo Events
+- [406. Argo Workflows](./406-ARGO_WORKFLOWS.md) — the fourth engine (Argo Events
   trigger + Argo Workflows UI behind IAP), the other Kubernetes-native alternative.
 - [402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) — the Jenkins pipeline this
   ports (the `MicroservicesPipeline` shared-library `vars/`), and the shared
@@ -794,8 +794,8 @@ the same `validate_run_node_pool` helper Jenkins/Tekton use.
 
 ---
 
-[← Previous: 403. Tekton](./403-TEKTON.md) | [🏠 Home](../README.md) | [→ Next: 405. Argo Workflows](./405-ARGO_WORKFLOWS.md)
+[← Previous: 404. Tekton](./404-TEKTON.md) | [🏠 Home](../README.md) | [→ Next: 406. Argo Workflows](./406-ARGO_WORKFLOWS.md)
 
 ---
 
-*404. GitHub Actions / ARC — jenkins-2026*
+*405. GitHub Actions / ARC — jenkins-2026*

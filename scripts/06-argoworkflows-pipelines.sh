@@ -12,7 +12,7 @@
 #   - Fallback (gateway disabled / EventSource absent, e.g. local): generate + kick one
 #     Workflow per service directly (the seed model).
 #
-# Idempotent. See docs/405-ARGO_WORKFLOWS.md.
+# Idempotent. See docs/406-ARGO_WORKFLOWS.md.
 set -euo pipefail
 
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
@@ -73,7 +73,7 @@ fi
 #           RWO 'source' workspace PVC bound to a single node, so a small/full node hangs it
 #           and a Spot preemption would kill the whole run.
 #   ci-spot: the NAP Spot ComputeClass (needs nodeAutoProvisioning.enabled) — cheaper but
-#           Spot/quota-dependent (opt-in). See docs/405.
+#           Spot/quota-dependent (opt-in). See docs/406.
 if [[ "${J2026_ARGOWORKFLOWS_RUN_NODE_POOL}" == "ci-spot" && "${J2026_NODE_AUTOPROVISIONING_ENABLED}" == "true" ]]; then
   _cc="${J2026_NODE_AUTOPROVISIONING_COMPUTE_CLASS}"
   argowf_workflow_defaults="$(cat <<EOF

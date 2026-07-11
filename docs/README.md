@@ -34,8 +34,8 @@ part that carries meaning:
 | **1xx** | **Bootstrap & CI/CD lifecycle** | The Day0 root of trust ([100](./100-BOOTSTRAP.md)) and everything about the GitHub Actions lifecycle: the workflow inventory ([101](./101-GITHUB_ACTIONS_WORKFLOWS.md)), the WIF/automation architecture ([102](./102-GITHUB_ACTIONS_AUTOMATION.md)), the secrets/variables inventory ([103](./103-GITHUB_SECRETS_INVENTORY.md)), and the rebuild-safety model ([104](./104-REBUILD_SAFETY.md)) |
 | **2xx** | **Architecture** | System architecture + the imperative-vs-GitOps split ([201](./201-ARCHITECTURE.md)) and the demo microservices app ([202](./202-MICROSERVICES-APP-ARCHITECTURE.md)) |
 | **3xx** | **Observability & performance** | OTel components + the four obs backends ([301](./301-OBSERVABILITY.md)), the k6 traffic/load engine ([302](./302-K6_LOAD_TESTING.md)), and JVM tuning ([303](./303-JVM-TUNING.md)) |
-| **4xx** | **CI engines** — one doc per engine | The four interchangeable `ci.engine` choices: Jenkins ([401](./401-JENKINS.md) UI/JCasC + [402](./402-PIPELINES_AS_CODE.md) pipelines-as-code + [406](./406-DECLARATIVE_VS_SCRIPTED.md) declarative-vs-scripted authoring), Tekton ([403](./403-TEKTON.md)), GitHub Actions / ARC ([404](./404-GITHUB_ACTIONS.md)), and Argo Workflows ([405](./405-ARGO_WORKFLOWS.md)) |
-| **5xx** | **Platform ops & GitOps** | Platform operations — ArgoCD, Headlamp, Gateway/IAP, chaos/QA, progressive delivery ([501](./501-PLATFORM_OPERATIONS.md)); the microservices GitOps model ([502](./502-MICROSERVICES_GITOPS.md)); networking ([503](./503-NETWORKING.md)); opt-in backend TLS re-encryption ([504](./504-BACKEND_TLS.md)) |
+| **4xx** | **CI engines** — one doc per engine | The four interchangeable `ci.engine` choices: Jenkins ([401](./401-JENKINS.md) UI/JCasC + [402](./402-PIPELINES_AS_CODE.md) pipelines-as-code + [403](./403-DECLARATIVE_VS_SCRIPTED.md) declarative-vs-scripted authoring), Tekton ([404](./404-TEKTON.md)), GitHub Actions / ARC ([405](./405-GITHUB_ACTIONS.md)), and Argo Workflows ([406](./406-ARGO_WORKFLOWS.md)) |
+| **5xx** | **Platform ops & GitOps** | Platform operations — ArgoCD, Headlamp, Gateway/IAP, chaos/QA, progressive delivery ([501](./501-PLATFORM_OPERATIONS.md)); the microservices GitOps model ([502](./502-MICROSERVICES_GITOPS.md)); networking ([503](./503-NETWORKING.md)); opt-in backend TLS re-encryption ([504](./504-BACKEND_TLS.md)); the Backstage developer portal ([505](./505-BACKSTAGE.md)) |
 | **6xx** | **Security & pinning** | DevSecOps scanning ([601](./601-DEVSECOPS.md)) and the version-pinning policy ([602](./602-VERSION_PINNING.md)) |
 | **9xx** | **Reference** | Local development / quick start ([901](./901-LOCAL_DEVELOPMENT.md)), troubleshooting ([902](./902-TROUBLESHOOTING.md)), and the glossary ([903](./903-GLOSSARY.md)) |
 
@@ -47,7 +47,7 @@ renumbering the "start here" (1xx) and "look it up" (9xx) bookends.
 its own doc so the four stay symmetric; the shared ~11-stage contract they all
 implement (`patch-app-source.sh`, `services.yaml`, GHCR, GitOps push, OTel) is
 described once per engine rather than in a shared doc. Jenkins is the default and
-gets three docs (401 = the server/JCasC/MCP, 402 = its pipelines-as-code, 406 =
+gets three docs (401 = the server/JCasC/MCP, 402 = its pipelines-as-code, 403 =
 the Declarative-vs-Scripted authoring model that underpins its shared library)
 because it predates the others and its Groovy authoring model has no analogue in
 the YAML-based engines; Tekton/GitHub Actions/Argo Workflows get one each.
@@ -109,8 +109,8 @@ colliding with leftover state.
 Enter at the owning band and follow its cross-links:
 
 - **CI engine work** → [402](./402-PIPELINES_AS_CODE.md) (the reference pipeline)
-  then the engine you're on ([403](./403-TEKTON.md) / [404](./404-GITHUB_ACTIONS.md)
-  / [405](./405-ARGO_WORKFLOWS.md)); all four share the contract in 402/404's
+  then the engine you're on ([404](./404-TEKTON.md) / [405](./405-GITHUB_ACTIONS.md)
+  / [406](./406-ARGO_WORKFLOWS.md)); all four share the contract in 402/404's
   stage-mapping tables.
 - **Observability** → [301](./301-OBSERVABILITY.md) for signal correlation and
   the four backends, [302](./302-K6_LOAD_TESTING.md) for the load engine,

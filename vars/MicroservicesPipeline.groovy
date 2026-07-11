@@ -13,8 +13,8 @@ def call(Map cfg) {
     //   static  -> the long-lived jenkins-2026-pool (nodeSelector app=jenkins-2026): robust,
     //              always present, no NAP/Spot/quota dependency.
     //   ci-spot -> the NAP Spot ComputeClass (env.GKE_COMPUTE_CLASS): ephemeral, scale-to-zero;
-    //              GKE auto-taints those pools, hence the tolerations. A Spot preemption just
-    //              restarts this build (fine for Jenkins's single agent pod).
+    //              GKE auto-taints those pools, hence the tolerations. A Spot preemption is
+    //              auto-retried on a fresh pod by the agent's `retries 2` below.
     // ci-spot needs nodeAutoProvisioning enabled (GKE_COMPUTE_CLASS set); if it's empty we fall
     // back to static. See infrastructure/compute-classes/ + docs/201 + docs/501.
     String runPool = (env.RUN_NODE_POOL ?: 'static').trim()
@@ -33,6 +33,9 @@ def call(Map cfg) {
       effect: NoSchedule""" : """
   nodeSelector:
     app: jenkins-2026"""
+    // Per-tier k6 handoff target, resolved here (cfg is static config) so the
+    // 'Integration k6 Smoke Test' stage below needs no script {} block.
+    String k6JobName = "microservices-k6-smoke${cfg.envName == 'develop' ? '-develop' : ''}"
     pipeline {
         agent {
             kubernetes {
@@ -40,6 +43,14 @@ def call(Map cfg) {
                 // service's build REUSES it instead of cold-starting a fresh 9-container
                 // pod (pod schedule + multi-image pull + JNLP connect is the slow part).
                 idleMinutes 5
+                // Official pod-loss auto-retry (kubernetes plugin): if the agent pod
+                // dies for an infrastructure reason — the ci-spot Spot preemption,
+                // a node drain/eviction — the whole run is retried once on a fresh
+                // pod. Qualifying failures only (kubernetesAgent + nonresumable
+                // conditions under the hood): a compile/test failure is NOT retried.
+                // Safe: every stage is idempotent (same IMAGE_TAG re-pushed, gitops
+                // bump converges to "No changes to commit", argocd sync re-syncs).
+                retries 2
                 yaml """
 apiVersion: v1
 kind: Pod
@@ -220,22 +231,29 @@ ${agentNodeScheduling}
             timestamps()
             buildDiscarder(logRotator(numToKeepStr: '20'))
             disableConcurrentBuilds()
+            // Safety net: a hung stage (wedged argocd wait, stuck image pull, ...)
+            // must release the agent and the disableConcurrentBuilds queue slot.
+            // Worst honest run (cold caches + gateway ~600s startupProbe + k6
+            // smoke handoff) is well under an hour; 120 min only fires on hangs.
+            timeout(time: 120, unit: 'MINUTES')
+            // jenkins.io "Scaling Pipelines" recommendation for re-runnable
+            // build/test pipelines: ~2-6x less controller disk I/O. Trade-off:
+            // a hard controller crash mid-build cannot resume the run — fine
+            // here (idempotent stages, ephemeral Jenkins home) and pod-loss is
+            // already covered by the agent-level `retries 2` above.
+            durabilityHint('PERFORMANCE_OPTIMIZED')
         }
 
         environment {
             REGISTRY      = "${env.MICROSERVICES_REGISTRY ?: 'ghcr.io/nubenetes/jenkins-2026-microservices'}"
-            // Immutable, traceable tag: <branch>-<build#>-<app-sha> (e.g.
-            // develop-42-a1b2c3d4). The initial value here is <branch>-<build#>
-            // (BUILD_NUMBER is available at pipeline start); the Checkout stage appends
-            // the app-source commit SHA (git plugin's GIT_COMMIT) once it is known.
-            // REBUILD-SAFETY: Jenkins home is an ephemeral PVC, so BUILD_NUMBER resets to
-            // 1 on a rebuild — <branch>-<build#> alone would re-mint tags that already
-            // exist in the persistent ghcr from a prior incarnation and mutably overwrite
-            // them, breaking reproducible rollback. The SHA suffix makes the tag globally
-            // unique across incarnations. (Tekton is already immune via a random run
-            // suffix.) GitOps Update pins values-<env>.yaml to the final tag.
-            IMAGE_TAG     = "${cfg.gitBranch}-${env.BUILD_NUMBER}"
-            IMAGE         = "${env.REGISTRY}/${cfg.serviceName}:${env.IMAGE_TAG}"
+            // IMAGE_TAG / IMAGE are deliberately NOT declared here: variables
+            // from this directive wrap every stage in a withEnv overlay that
+            // SHADOWS any later `env.X = ...` mutation from a script {} block —
+            // so the Checkout stage's rebuild-safe SHA suffix silently never
+            // reached the build/push/deploy stages (found live 2026-07-11; the
+            // shadowing was latent while bug #1, the empty GIT_COMMIT, kept the
+            // mutation path from ever running). Both are set once, in the
+            // Checkout stage's script island, and read as plain env everywhere.
             OTEL_SERVICE_NAME = "jenkins-pipeline-${cfg.serviceName}"
         }
 
@@ -243,41 +261,70 @@ ${agentNodeScheduling}
             stage('Checkout Microservices source') {
                 steps {
                     dir('microservices-src') {
-                        // Shallow, single-branch, no-tags clone. The plain `git` step
-                        // fetched ALL history + every branch ref + tags of the (large
-                        // JHipster) app repo — the slow part of "Checkout". depth:1 +
-                        // noTags + single branch is dramatically faster (we only build
-                        // the tip of one branch). Not the agent scheduling (pods are
-                        // warmed by the prepull DaemonSet + idleMinutes reuse).
-                        checkout([
-                            $class: 'GitSCM',
-                            branches: [[name: "*/${cfg.gitBranch}"]],
-                            userRemoteConfigs: [[url: cfg.gitRepoUrl]],
-                            extensions: [
-                                [$class: 'CloneOption', shallow: true, depth: 1, noTags: true, honorRefspec: true],
-                                [$class: 'CheckoutOption', timeout: 20],
-                            ],
-                        ])
                         script {
+                            // Shallow, single-branch, no-tags clone. The plain `git` step
+                            // fetched ALL history + every branch ref + tags of the (large
+                            // JHipster) app repo — the slow part of "Checkout". depth:1 +
+                            // noTags + single branch is dramatically faster (we only build
+                            // the tip of one branch). Not the agent scheduling (pods are
+                            // warmed by the prepull DaemonSet + idleMinutes reuse).
+                            //
                             // Rebuild-safety (see IMAGE_TAG comment): append the app-source
-                            // commit SHA so the tag is unique across Jenkins incarnations even
-                            // after BUILD_NUMBER resets. GIT_COMMIT is set by the git plugin from
-                            // the checkout above; fall back to <branch>-<build#> if absent.
-                            if (env.GIT_COMMIT?.trim()) {
-                                env.IMAGE_TAG = "${cfg.gitBranch}-${env.BUILD_NUMBER}-${env.GIT_COMMIT.take(8)}"
-                                env.IMAGE = "${env.REGISTRY}/${cfg.serviceName}:${env.IMAGE_TAG}"
-                                echo "Image tag (rebuild-safe): ${env.IMAGE_TAG}"
+                            // commit SHA so the tag is unique across Jenkins incarnations
+                            // even after BUILD_NUMBER resets. The SHA comes from checkout's
+                            // RETURN MAP — env.GIT_COMMIT is only auto-populated on
+                            // single-checkout builds, and this build also clones the infra
+                            // + gitops repos, so the env var arrives EMPTY (found live
+                            // 2026-07-11: tags shipped as <branch>-<build#> and re-minted
+                            // main-1 across incarnations, the exact #488 collision).
+                            // (This is the pipeline's one script {} island: mutating env
+                            // for all later stages from a runtime-born value has no
+                            // declarative directive equivalent — docs/403 §7.6 Case 1.)
+                            def scmVars = checkout([
+                                $class: 'GitSCM',
+                                branches: [[name: "*/${cfg.gitBranch}"]],
+                                userRemoteConfigs: [[url: cfg.gitRepoUrl]],
+                                extensions: [
+                                    [$class: 'CloneOption', shallow: true, depth: 1, noTags: true, honorRefspec: true],
+                                    [$class: 'CheckoutOption', timeout: 20],
+                                ],
+                            ])
+                            // Immutable, traceable tag: <branch>-<build#>-<app-sha8>.
+                            // REBUILD-SAFETY: Jenkins home is an ephemeral PVC, so
+                            // BUILD_NUMBER resets to 1 on a rebuild — <branch>-<build#>
+                            // alone re-mints tags that already exist in the persistent
+                            // ghcr from a prior incarnation and mutably overwrites them.
+                            // The SHA suffix makes the tag globally unique. (Set HERE,
+                            // not in environment{} — see the note on that directive.)
+                            def appSha = scmVars?.GIT_COMMIT?.trim()
+                            if (appSha) {
+                                env.IMAGE_TAG = "${cfg.gitBranch}-${env.BUILD_NUMBER}-${appSha.take(8)}"
+                            } else {
+                                env.IMAGE_TAG = "${cfg.gitBranch}-${env.BUILD_NUMBER}"
+                                echo "WARNING: checkout returned no GIT_COMMIT - tag ${env.IMAGE_TAG} is NOT rebuild-safe"
                             }
-                            if (cfg.serviceName == 'gateway') {
-                                // SINGLE SOURCE OF TRUTH: the shared per-app source patch
-                                // (resources/patch-app-source.sh) converts the gateway from
-                                // MySQL to PostgreSQL + a NoOp cache. libraryResource
-                                // materialises it from this shared library; run it in the app
-                                // source cwd ('.' here, inside dir('microservices-src')).
-                                writeFile file: '.patch-app-source.sh', text: libraryResource('patch-app-source.sh')
-                                sh "bash .patch-app-source.sh '${cfg.serviceName}' ."
-                            }
+                            env.IMAGE = "${env.REGISTRY}/${cfg.serviceName}:${env.IMAGE_TAG}"
+                            echo "Image tag (rebuild-safe): ${env.IMAGE_TAG}"
                         }
+                    }
+                }
+            }
+
+            stage('Patch App Source') {
+                // Gateway-only build-time patch, expressed as a when-gated stage
+                // (skipped-stage visibility in Pipeline Graph View) instead of an
+                // `if` buried in a script {} block. SINGLE SOURCE OF TRUTH: the
+                // shared resources/patch-app-source.sh converts the gateway from
+                // MySQL to PostgreSQL + a NoOp cache; ALL FOUR engines run this
+                // same script. libraryResource materialises it from this shared
+                // library into the app source cwd.
+                when {
+                    expression { cfg.serviceName == 'gateway' }
+                }
+                steps {
+                    dir('microservices-src') {
+                        writeFile file: '.patch-app-source.sh', text: libraryResource('patch-app-source.sh')
+                        sh "bash .patch-app-source.sh '${cfg.serviceName}' ."
                     }
                 }
             }
@@ -306,185 +353,35 @@ ${agentNodeScheduling}
                 }
             }
 
-            stage('Semgrep SAST') {
-                steps {
-                    container('semgrep') {
-                        dir('microservices-src') {
-                            sh """
-                                git config --global --add safe.directory '*' || true
-                                semgrep scan --config=p/security-audit --config=p/owasp-top-ten --config=${env.WORKSPACE}/jenkins-2026-infra/.semgrep/semgrep.yml --sarif --sarif-output=semgrep-results.sarif . || true
-                            """
-                            archiveArtifacts artifacts: 'semgrep-results.sarif', allowEmptyArchive: true
+            // The three scanners are independent read-only reporters (separate
+            // sidecar containers, disjoint outputs: semgrep/codeql write under
+            // microservices-src/, trivy clones gitops-config-src at the workspace
+            // root) — so they run as declarative parallel branches and CodeQL
+            // (the long pole) no longer serialises Semgrep + Trivy behind it.
+            // No failFast: scans are non-blocking by design (docs/601) — every
+            // branch finishes and uploads its SARIF regardless of the others.
+            // The Tekton port keeps these three sequential on purpose: its tasks
+            // share one RWO PVC workspace; this single multi-container pod shares
+            // the workspace natively, so Jenkins can parallelise where Tekton
+            // cannot. Stage bodies live in vars/ custom steps (Declarative-first
+            // rule, docs/403): the shell stays declarative, logic stays in the
+            // library.
+            stage('Static Analysis') {
+                parallel {
+                    stage('Semgrep SAST') {
+                        steps {
+                            microservicesSemgrepScan()
                         }
                     }
-                    // Upload SARIF in container('helm') — alpine/k8s has curl, git,
-                    // gzip, and base64 pre-installed so no package install needed.
-                    // container('git') (alpine/git + runAsUser:1000) cannot install
-                    // packages (apk requires root) and lacks curl.
-                    container('helm') {
-                        dir('microservices-src') {
-                            withCredentials([usernamePassword(credentialsId: 'microservices-git',
-                                                             passwordVariable: 'GIT_TOKEN',
-                                                             usernameVariable: 'GIT_USER')]) {
-                                sh """
-                                    git config --global --add safe.directory '*' || true
-                                    if [ -f semgrep-results.sarif ]; then
-                                        echo "Preparing Semgrep SARIF report payload..."
-                                        gzip -c semgrep-results.sarif | base64 -w0 > semgrep-sarif.b64
-                                        COMMIT_SHA=\$(git -C ${env.WORKSPACE}/jenkins-2026-infra rev-parse HEAD | tr -d '\\n')
-                                        REF="refs/heads/${env.JENKINS2026_REPO_BRANCH ?: 'develop'}"
-                                        REPO_PATH=\$(echo "${env.JENKINS2026_REPO_URL ?: 'https://github.com/nubenetes/jenkins-2026.git'}" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\\.git\$||')
-
-                                        echo -n '{"commit_sha":"' > semgrep-payload.json
-                                        echo -n "\$COMMIT_SHA" >> semgrep-payload.json
-                                        echo -n '","ref":"' >> semgrep-payload.json
-                                        echo -n "\$REF" >> semgrep-payload.json
-                                        echo -n '","sarif":"' >> semgrep-payload.json
-                                        cat semgrep-sarif.b64 >> semgrep-payload.json
-                                        echo -n '"}' >> semgrep-payload.json
-
-                                        echo "Uploading Semgrep SARIF report to GitHub..."
-                                        RESPONSE=\$(curl -s -o /dev/null -w "%{http_code}" -X POST \\
-                                          -H "Authorization: token \$GIT_TOKEN" \\
-                                          -H "Accept: application/vnd.github+json" \\
-                                          https://api.github.com/repos/\${REPO_PATH}/code-scanning/sarifs \\
-                                          -d @semgrep-payload.json)
-                                        echo "GitHub API response for Semgrep upload: \$RESPONSE"
-                                        if [ "\$RESPONSE" = "202" ]; then
-                                             echo "--------------------------------------------------------------------------------"
-                                             echo "SUCCESS: Semgrep SARIF report uploaded to GitHub Code Scanning API!"
-                                             echo ""
-                                             echo "WHAT IS SEMGREP?"
-                                             echo "Semgrep is a fast, open-source static analysis tool for finding bugs,"
-                                             echo "detecting vulnerabilities, and enforcing code standards during development."
-                                             echo "It uses syntax-aware pattern matching without needing a build step."
-                                             echo ""
-                                             echo "WHERE CAN I VIEW THE REPORT?"
-                                             echo "1. GitHub Code Scanning Alerts (Interactive UI with code mappings):"
-                                             echo "   https://github.com/\${REPO_PATH}/security/code-scanning"
-                                             echo "2. Jenkins Local Workspace (Download raw analysis report):"
-                                             echo "   \${BUILD_URL}artifact/microservices-src/semgrep-results.sarif"
-                                             echo "--------------------------------------------------------------------------------"
-                                        else
-                                            echo "WARNING: Semgrep SARIF upload received unexpected status \$RESPONSE"
-                                            echo "If this is a fork, ensure GitHub Advanced Security / Code Scanning is enabled."
-                                        fi
-                                        rm -f semgrep-sarif.b64 semgrep-payload.json
-                                    fi
-                                """
-                            }
+                    stage('CodeQL Analysis') {
+                        steps {
+                            microservicesCodeqlScan()
                         }
                     }
-                }
-            }
-
-            stage('CodeQL Analysis') {
-                steps {
-                    container('codeql') {
-                        dir('microservices-src') {
-                            sh """
-                                git config --global --add safe.directory '*' || true
-                                echo "Upgrading Node.js inside CodeQL container to v20..."
-                                export DEBIAN_FRONTEND=noninteractive
-                                (apt-get update && apt-get install -y curl tar xz-utils) || true
-                                (curl -sL https://nodejs.org/dist/v20.11.1/node-v20.11.1-linux-x64.tar.xz | tar -xJ -C /usr/local --strip-components=1) || true
-                                node --version || true
-                                codeql database create codeql-db --language=javascript --source-root=. --threads=0 --ram=3500 --codescanning-config=${env.WORKSPACE}/jenkins-2026-infra/.github/codeql/codeql-config.yml
-                                codeql database analyze codeql-db --format=sarif-latest --output=codeql-results.sarif --threads=0 --ram=3500 || true
-                            """
-                            archiveArtifacts artifacts: 'codeql-results.sarif', allowEmptyArchive: true
+                    stage('Trivy IaC Scan') {
+                        steps {
+                            microservicesTrivyIacScan(envName: cfg.envName)
                         }
-                    }
-                    // Upload SARIF in container('helm') — alpine/k8s has curl, git,
-                    // gzip, and base64 pre-installed so no package install needed.
-                    // container('git') (alpine/git + runAsUser:1000) cannot run
-                    // apk add as non-root, so curl is unavailable there.
-                    container('helm') {
-                        dir('microservices-src') {
-                            withCredentials([usernamePassword(credentialsId: 'microservices-git',
-                                                             passwordVariable: 'GIT_TOKEN',
-                                                             usernameVariable: 'GIT_USER')]) {
-                                sh """
-                                    git config --global --add safe.directory '*' || true
-                                    if [ -f codeql-results.sarif ]; then
-                                        echo "Preparing CodeQL SARIF report payload..."
-                                        gzip -c codeql-results.sarif | base64 -w0 > codeql-sarif.b64
-                                        COMMIT_SHA=\$(git -C ${env.WORKSPACE}/jenkins-2026-infra rev-parse HEAD | tr -d '\\n')
-                                        REF="refs/heads/${env.JENKINS2026_REPO_BRANCH ?: 'develop'}"
-                                        REPO_PATH=\$(echo "${env.JENKINS2026_REPO_URL ?: 'https://github.com/nubenetes/jenkins-2026.git'}" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\\.git\$||')
-
-                                        echo -n '{"commit_sha":"' > codeql-payload.json
-                                        echo -n "\$COMMIT_SHA" >> codeql-payload.json
-                                        echo -n '","ref":"' >> codeql-payload.json
-                                        echo -n "\$REF" >> codeql-payload.json
-                                        echo -n '","sarif":"' >> codeql-payload.json
-                                        cat codeql-sarif.b64 >> codeql-payload.json
-                                        echo -n '"}' >> codeql-payload.json
-
-                                        echo "Uploading CodeQL SARIF report to GitHub..."
-                                        RESPONSE=\$(curl -s -o /dev/null -w "%{http_code}" -X POST \\
-                                          -H "Authorization: token \$GIT_TOKEN" \\
-                                          -H "Accept: application/vnd.github+json" \\
-                                          https://api.github.com/repos/\${REPO_PATH}/code-scanning/sarifs \\
-                                          -d @codeql-payload.json)
-                                        echo "GitHub API response for CodeQL upload: \$RESPONSE"
-                                        if [ "\$RESPONSE" = "202" ]; then
-                                             echo "--------------------------------------------------------------------------------"
-                                             echo "SUCCESS: CodeQL SARIF report uploaded to GitHub Code Scanning API!"
-                                             echo ""
-                                             echo "WHAT IS CODEQL?"
-                                             echo "CodeQL is GitHub's advanced semantic code analysis engine. By treating"
-                                             echo "code as data, it executes queries to detect security vulnerabilities,"
-                                             echo "data flow anomalies, and structural issues in your application stack."
-                                             echo ""
-                                             echo "WHERE CAN I VIEW THE REPORT?"
-                                             echo "1. GitHub Code Scanning Alerts (Interactive UI with data flow paths):"
-                                             echo "   https://github.com/\${REPO_PATH}/security/code-scanning"
-                                             echo "2. Jenkins Local Workspace (Download raw analysis report):"
-                                             echo "   \${BUILD_URL}artifact/microservices-src/codeql-results.sarif"
-                                             echo "--------------------------------------------------------------------------------"
-                                        else
-                                            echo "WARNING: CodeQL SARIF upload received unexpected status \$RESPONSE"
-                                            echo "If this is a fork, ensure GitHub Advanced Security / Code Scanning is enabled."
-                                        fi
-                                        rm -f codeql-sarif.b64 codeql-payload.json
-                                    fi
-                                """
-                            }
-                        }
-                    }
-                }
-            }
-
-            stage('Trivy IaC Scan') {
-                steps {
-                    container('git') {
-                        // Same JENKINS-30600 fix as Checkout Infra configs: use sh
-                        // so container() is honoured. Credentials embedded in the URL.
-                        withCredentials([usernamePassword(credentialsId: 'microservices-git',
-                                                         passwordVariable: 'GIT_TOKEN',
-                                                         usernameVariable: 'GIT_USER')]) {
-                            sh """
-                                git config --global --add safe.directory '*' || true
-                                rm -rf gitops-config-src
-                                REPO_URL="${env.JENKINS2026_GITOPS_REPO_URL ?: 'https://github.com/nubenetes/jenkins-2026-gitops-config.git'}"
-                                REPO_CLEAN=\$(echo "\${REPO_URL}" | sed 's|https://||')
-                                git clone --depth 1 \
-                                    --branch ${cfg.envName == 'stable' ? 'main' : 'develop'} \
-                                    "https://\${GIT_USER:-git}:\${GIT_TOKEN:-}@\${REPO_CLEAN}" \
-                                    gitops-config-src
-                            """
-                        }
-                    }
-                    container('trivy') {
-                        dir('microservices-src') {
-                            sh """
-                                trivy config --config ${env.WORKSPACE}/jenkins-2026-infra/trivy.yaml --exit-code 0 .
-                            """
-                        }
-                        sh """
-                            trivy config --config ${env.WORKSPACE}/jenkins-2026-infra/trivy.yaml --exit-code 0 ${env.WORKSPACE}/gitops-config-src/helm/microservices
-                        """
                     }
                 }
             }
@@ -522,14 +419,32 @@ ${agentNodeScheduling}
                 }
             }
 
-            stage('Deploy to Kubernetes') {
+            stage('GitOps Update') {
+                // The cross-engine deploy phase (docs/502), named identically in
+                // all four engines' docs and runbooks: bump the image tag in the
+                // gitops repo, push, then argocd sync + wait. This engine deploys
+                // VIA ArgoCD — the GitOps update IS the deploy — so the phase is
+                // a first-class Declarative stage here (it used to be a Scripted
+                // stage() nested inside the step; hoisted for purity, docs/403 §7.6).
                 steps {
                     microservicesDeploy(
                         serviceName: cfg.serviceName,
                         envName: cfg.envName,
-                        namespace: cfg.targetNamespace,
-                        platform: cfg.platform,
                         tag: env.IMAGE_TAG
+                    )
+                }
+            }
+
+            stage('OTel Self-Heal') {
+                // Heal the OTel auto-instrumentation injection race: the operator's
+                // pod-mutation webhook is failurePolicy: Ignore, so a pod admitted
+                // before the Instrumentation CR was ready starts WITHOUT the Java
+                // agent (dashboards look empty). Its own stage so the check — and
+                // any rollout restart it triggers — is visible in the build UI.
+                steps {
+                    microservicesOtelSelfHeal(
+                        serviceName: cfg.serviceName,
+                        namespace: cfg.targetNamespace
                     )
                 }
             }
@@ -547,26 +462,21 @@ ${agentNodeScheduling}
 
             stage('Integration k6 Smoke Test') {
                 steps {
-                    script {
-                        // Trigger the k6 job for THIS tier: 'develop' deploys to the
-                        // microservices-develop namespace, so it must hand off to the
-                        // 'microservices-k6-smoke-develop' job (the seed generates one
-                        // k6 job per environment). Previously hardcoded to the stable
-                        // job, which smoke-tested the wrong namespace on develop runs.
-                        def k6Suffix = cfg.envName == 'develop' ? '-develop' : ''
-                        def k6JobName = "microservices-k6-smoke${k6Suffix}"
-                        echo "Triggering integration k6 smoke test: ${k6JobName} (env=${cfg.envName}, ns=${cfg.targetNamespace})..."
-                        // Pass TARGET_NAMESPACE/ENV_NAME explicitly rather than relying on the
-                        // k6 job's parameter defaults: Jenkins does NOT apply a declarative
-                        // job's default parameter values on its FIRST build after the seed
-                        // (re)defines it, so a default-only trigger sent namespace="null"
-                        // (-> gateway.null.svc, 100% request failures). Explicit params are
-                        // robust on first build, re-seeds and manual runs alike.
-                        build job: k6JobName, wait: true, parameters: [
-                            string(name: 'TARGET_NAMESPACE', value: cfg.targetNamespace),
-                            string(name: 'ENV_NAME', value: cfg.envName)
-                        ]
-                    }
+                    // k6JobName is resolved before pipeline {} (library-call time):
+                    // 'develop' deploys to the microservices-develop namespace, so it
+                    // hands off to 'microservices-k6-smoke-develop' (the seed generates
+                    // one k6 job per environment). Pass TARGET_NAMESPACE/ENV_NAME
+                    // explicitly rather than relying on the k6 job's parameter
+                    // defaults: Jenkins does NOT apply a declarative job's default
+                    // param values on its FIRST build after the seed (re)defines it,
+                    // so a default-only trigger sent namespace="null" (-> gateway.null
+                    // .svc, 100% request failures). Explicit params are robust on
+                    // first build, re-seeds and manual runs alike.
+                    echo "Triggering integration k6 smoke test: ${k6JobName} (env=${cfg.envName}, ns=${cfg.targetNamespace})..."
+                    build job: k6JobName, wait: true, parameters: [
+                        string(name: 'TARGET_NAMESPACE', value: cfg.targetNamespace),
+                        string(name: 'ENV_NAME', value: cfg.envName)
+                    ]
                 }
             }
         }

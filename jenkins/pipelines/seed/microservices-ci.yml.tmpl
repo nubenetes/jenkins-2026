@@ -175,7 +175,12 @@ jobs:
         env: { GIT_USER: "${{ secrets.GIT_USERNAME }}", GIT_TOKEN: "${{ secrets.GIT_TOKEN }}" }
         run: |
           set -eu
-          BRANCH=main; [ "$ENV_NAME" = develop ] && BRANCH=develop
+          # Stable follows the DEPLOY branch ({{selfRepoBranch}} at render time:
+          # main on a prod cluster, develop on a develop-validation cluster) so
+          # the bump lands on the branch the ArgoCD AppSet actually tracks
+          # ({{branchStable}} auto-track, scripts/08.5-argocd.sh). The develop
+          # TIER always bumps gitops develop.
+          BRANCH={{selfRepoBranch}}; [ "$ENV_NAME" = develop ] && BRANCH=develop
           VALUES="helm/microservices/values-$ENV_NAME.yaml"
           git clone --depth 1 --branch "$BRANCH" \
             "https://$GIT_USER:$GIT_TOKEN@github.com/nubenetes/jenkins-2026-gitops-config.git" gitops

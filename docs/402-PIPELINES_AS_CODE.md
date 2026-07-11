@@ -1,4 +1,4 @@
-[← Previous: 401. Jenkins](./401-JENKINS.md) | [🏠 Home](../README.md) | [→ Next: 403. Tekton](./403-TEKTON.md)
+[← Previous: 401. Jenkins](./401-JENKINS.md) | [🏠 Home](../README.md) | [→ Next: 403. Declarative vs Scripted](./403-DECLARATIVE_VS_SCRIPTED.md)
 
 ---
 
@@ -6,11 +6,11 @@
 
 Everything Jenkins-side is defined in this repository — security, the global shared library, the OpenTelemetry exporter, and the Microservices pipelines — and applied via **Configuration as Code (JCasC)** + the **Job DSL** plugin. Nothing is configured by hand in the Jenkins UI. This page is the *pipeline* view; the *controller/platform* view is [401. Jenkins](./401-JENKINS.md).
 
-> **Jenkins is the default of four mutually-exclusive CI engines** (selected by `ci.engine`): **Jenkins** · **Tekton** · **GitHub Actions (ARC)** · **Argo Workflows**. This page details the **Jenkins** engine; the sibling engines are covered in [403. Tekton](./403-TEKTON.md), [404. GitHub Actions](./404-GITHUB_ACTIONS.md), and [405. Argo Workflows](./405-ARGO_WORKFLOWS.md). All four honour the **same ~11-stage pipeline contract** and share the [`services.yaml`](../jenkins/pipelines/seed/services.yaml) registry + the [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) gateway MySQL→Postgres + NoOp-cache build-time patch (see *§ Shared app-source patch* below).
+> **Jenkins is the default of four mutually-exclusive CI engines** (selected by `ci.engine`): **Jenkins** · **Tekton** · **GitHub Actions (ARC)** · **Argo Workflows**. This page details the **Jenkins** engine; the sibling engines are covered in [404. Tekton](./404-TEKTON.md), [405. GitHub Actions](./405-GITHUB_ACTIONS.md), and [406. Argo Workflows](./406-ARGO_WORKFLOWS.md). All four honour the **same ~11-stage pipeline contract** and share the [`services.yaml`](../jenkins/pipelines/seed/services.yaml) registry + the [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) gateway MySQL→Postgres + NoOp-cache build-time patch (see *§ Shared app-source patch* below).
 
 ## Understanding pipelines-as-code (newcomers → specialists)
 
-The whole CI definition is a chain of generators: a **cron seed job** reads a small YAML registry and **writes the per-service jobs**, each of which calls **one shared-library entry point** that runs the same 11-stage build in a **multi-container agent pod**. Read this once and every later section is "which file holds which stage".
+The whole CI definition is a chain of generators: a **cron seed job** reads a small YAML registry and **writes the per-service jobs**, each of which calls **one shared-library entry point** that runs the same 13-stage build (the three scanners fan out in parallel) in a **multi-container agent pod**. Read this once and every later section is "which file holds which stage".
 
 <details>
 <summary>🧠 Mental model — pipelines as code (mindmap)</summary>
@@ -54,8 +54,8 @@ mindmap
 | **Service registry** | A tiny YAML listing the services to build (name, type, repo, port, health path) + the stable/develop namespaces & branches. | [`services.yaml`](../jenkins/pipelines/seed/services.yaml) |
 | **Seed job** | A cron job (`H/30`) that reads the registry and **generates the per-service Jenkins jobs** via Job DSL. Re-runnable & idempotent. | [`Jenkinsfile.seed`](../jenkins/pipelines/seed/) + [`seed_jobs.groovy`](../jenkins/pipelines/seed/seed_jobs.groovy) |
 | **Per-service job** | One generated job per service (`gateway`, `jhipstersamplemicroservice`) + `microservices-k6-smoke`. Each is a one-line call to a shared-library entry point. | generated, grouped in the `microservices` view |
-| **Pipeline (entry point)** | The actual build definition: an 11-stage CI/CD lifecycle (scan → build → image → deploy → smoke). | [`MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy) |
-| **Shared-library steps** | Reusable building blocks the pipeline delegates to: `microservicesBuild`/`Image`/`Deploy`/`SmokeTest`/`K6Smoke`. | [`vars/`](../vars/) |
+| **Pipeline (entry point)** | The actual build definition: a 13-stage CI/CD lifecycle (parallel scans → build → image → GitOps update → self-heal → smoke). | [`MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy) |
+| **Shared-library steps** | Reusable building blocks the pipeline delegates to: `microservicesBuild`/`Image`/`Deploy`/`OtelSelfHeal`/`SmokeTest`/`K6Smoke`/`K6Run` + the scan steps (`SemgrepScan`/`CodeqlScan`/`TrivyIacScan`/`SarifUpload`). | [`vars/`](../vars/) |
 | **Agent pod** | The throwaway multi-container pod each build runs in — one container per tool (maven, docker, trivy, …). | provisioned by the kubernetes cloud |
 
 So the loop is: *seed job reads `services.yaml` → generates `gateway`/`jhipster…`/`k6-smoke` jobs → a job runs `MicroservicesPipeline` → stages execute across the agent pod's tool containers → the deploy stage bumps an image tag in the GitOps repo → ArgoCD rolls it out*. The seed job is the only thing on a timer; the build jobs are started manually, from the UI, or downstream.
@@ -79,14 +79,14 @@ So the loop is: *seed job reads `services.yaml` → generates `gateway`/`jhipste
 - **Node placement** — `jenkins.runNodePool` (JCasC env `RUN_NODE_POOL`, default `static`): `static` → the long-lived pool (`nodeSelector app: jenkins-2026`); `ci-spot` + non-empty `GKE_COMPUTE_CLASS` → the NAP `ci-spot` Custom ComputeClass via `nodeSelector cloud.google.com/compute-class: ci-spot` + tolerations for the compute-class/gke-spot taints (GKE NAP provisions a Spot node).
 - **Containers** — `maven` (`maven:3.9.9-eclipse-temurin-21`) · `node` (`node:20-bookworm`) · `docker` (`docker:26-dind`, privileged) · `helm` (`alpine/k8s:1.31.3` — kubectl/helm/argocd/yq) · `git` (`alpine/git:2.54.0`) · `semgrep` · `trivy` · `codeql` (SHA-tag-pinned) · `jnlp`.
 - **Caches** — host-path `/tmp/jenkins-{maven,npm,trivy,codeql}-cache` speed re-runs.
-- **Options** — `disableConcurrentBuilds()`, `buildDiscarder(20)`, `idleMinutes 5` (a warm pod is reused by the next build instead of cold-starting).
+- **Options** — `disableConcurrentBuilds()`, `buildDiscarder(20)`, `timeout(120 min)` (hang safety net), `durabilityHint('PERFORMANCE_OPTIMIZED')` (jenkins.io *Scaling Pipelines*: ~2-6× less controller I/O), `idleMinutes 5` (a warm pod is reused by the next build instead of cold-starting) + `retries 2` on the kubernetes agent (official pod-loss auto-retry: a `ci-spot` Spot preemption re-runs the build on a fresh pod; compile/test failures are **not** retried).
 - **Image** — `IMAGE = <MICROSERVICES_REGISTRY>/<service>:<gitBranch>-<build#>-<sha8>` (SHA appended after checkout; rebuild-safe across `BUILD_NUMBER` resets).
 
-**The 11 stages** (verbatim): Checkout Microservices source (gateway gets a MySQL→Postgres hot-patch) · Checkout Infra configs · Semgrep SAST (+SARIF upload) · CodeQL Analysis (+SARIF upload) · Trivy IaC Scan · Build & Test (`microservicesBuild`) · Build & Push Image (`microservicesImage` — Jib for java, else Spring-Boot build-image via DinD; `docker build` for angular) · Trivy Image Scan · Deploy to Kubernetes (`microservicesDeploy`) · Smoke Test (`microservicesSmokeTest`) · Integration k6 Smoke Test (downstream `build job` wait). Post: `junit` + `recordIssues` (SARIF).
+**The 13 stages** (verbatim): Checkout Microservices source · Patch App Source (`when`-gated, gateway-only MySQL→Postgres hot-patch) · Checkout Infra configs · **Static Analysis — three parallel branches**: Semgrep SAST (+SARIF upload) ∥ CodeQL Analysis (+SARIF upload) ∥ Trivy IaC Scan · Build & Test (`microservicesBuild`) · Build & Push Image (`microservicesImage` — Jib for java, else Spring-Boot build-image via DinD; `docker build` for angular) · Trivy Image Scan · GitOps Update (`microservicesDeploy` — the cross-engine deploy phase, docs/502) · OTel Self-Heal (`microservicesOtelSelfHeal`) · Smoke Test (`microservicesSmokeTest`) · Integration k6 Smoke Test (downstream `build job` wait). Post: `junit` + `recordIssues` (SARIF).
 
-**GitOps deploy (`microservicesDeploy`):** clone the GitOps repo (`jenkins-2026-gitops-config`, branch `main`=stable / `develop`=develop) → `yq eval -i '.services.<svc>.image.tag = "<tag>"' helm/microservices/values-<env>.yaml` → commit `chore(ops): update <svc> image tag…` → `git push origin <branch>` → `argocd app sync microservices-<env>` + `app wait` (in-cluster gRPC, `ARGOCD_AUTH_TOKEN`) → **OTel self-heal** (if the running pod lacks `-javaagent` in `JAVA_TOOL_OPTIONS`, `kubectl rollout restart` it). This direct `git push origin main` is why the GitOps repo's `main` is **direct-push** (see [502](./502-MICROSERVICES_GITOPS.md) and the [branch-policy note in CLAUDE.md](../CLAUDE.md)).
+**GitOps Update stage (`microservicesDeploy`):** clone the GitOps repo (`jenkins-2026-gitops-config`; stable uses the **deploy branch** — `main` in prod, matching the AppSet auto-track ([502 § Branch model](./502-MICROSERVICES_GITOPS.md#branch-model-app-source-vs-gitops-vs-deploy-branch)) — and the develop tier uses `develop`) → `yq eval -i '.services.<svc>.image.tag = "<tag>"' helm/microservices/values-<env>.yaml` → commit `chore(ops): update <svc> image tag…` → `git push origin <branch>` → `argocd app sync microservices-<env>` + `app wait` (in-cluster gRPC, `ARGOCD_AUTH_TOKEN`); then the **OTel Self-Heal stage** (`microservicesOtelSelfHeal`: if the running pod lacks `-javaagent` in `JAVA_TOOL_OPTIONS`, `kubectl rollout restart` it). This direct `git push origin main` is why the GitOps repo's `main` is **direct-push** (see [502](./502-MICROSERVICES_GITOPS.md) and the [branch-policy note in CLAUDE.md](../CLAUDE.md)).
 
-**Triggers:** only `seed-jobs` is on a timer (`H/30`). The generated build jobs carry **no SCM/push trigger** — they are started manually (UI), via downstream `build job`, or externally. The nubenetes app forks *are* owned here, but the Jenkins engine doesn't wire push-webhooks (contrast the git-push PaC of the other three engines — [Tekton](./403-TEKTON.md), [GitHub Actions](./404-GITHUB_ACTIONS.md), and [Argo Workflows](./405-ARGO_WORKFLOWS.md)).
+**Triggers:** only `seed-jobs` is on a timer (`H/30`). The generated build jobs carry **no SCM/push trigger** — they are started manually (UI), via downstream `build job`, or externally. The nubenetes app forks *are* owned here, but the Jenkins engine doesn't wire push-webhooks (contrast the git-push PaC of the other three engines — [Tekton](./404-TEKTON.md), [GitHub Actions](./405-GITHUB_ACTIONS.md), and [Argo Workflows](./406-ARGO_WORKFLOWS.md)).
 
 **Signals:** every run/stage/step is an OTel span (`OTEL_SERVICE_NAME=jenkins-pipeline-<svc>`); k6 exports OTLP metrics tagged `service.namespace=jenkins-2026, deployment.environment=<env>`. See [301](./301-OBSERVABILITY.md).
 
@@ -221,7 +221,7 @@ sequenceDiagram
 Instead of separating stable and development pipelines into separate jobs and folders, a single set of root stable pipelines is generated:
 
 *   **Target Namespace:** `microservices`
-*   **Environment Name:** `stable` (modifies `values-stable.yaml` in the GitOps config repository on the `main` branch)
+*   **Environment Name:** `stable` (modifies `values-stable.yaml` in the GitOps config repository on the deploy branch — `main` in prod)
 
 <details>
 <summary>🌳 Branch & environment mapping (stable vs develop)</summary>
@@ -233,7 +233,7 @@ flowchart TB
   sw -->|true| develop
   subgraph stable["stable tier (HA)"]
     sjobs["jobs: gateway, jhipster…<br/>k6-smoke"] --> sns["ns: microservices"]
-    sns --> sval["gitops main → values-stable.yaml<br/>CNPG 3 instances · 3 pooler · backups on"]
+    sns --> sval["gitops deploy-branch → values-stable.yaml<br/>CNPG 3 instances · 3 pooler · backups on"]
   end
   subgraph develop["develop tier (opt-in, LEAN)"]
     djobs["jobs: *-develop"] --> dns["ns: microservices-develop"]
@@ -409,17 +409,20 @@ All four engines also run **Build & Test with `-DskipITs`** — the heavy DB **I
 
 ### 1. Microservices Build & Deploy Pipeline
 
-Defined in [`MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy), this pipeline manages the complete CI/CD lifecycle for each individual microservice across **11 stages**:
+Defined in [`MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy), this pipeline manages the complete CI/CD lifecycle for each individual microservice across **13 stages** (the three scanners run as **parallel branches** of a *Static Analysis* stage; the gateway-only patch is a **`when`-gated** stage that shows as *skipped* for every other service):
 
-*   **Checkout Microservices source** — Clones the microservice repository, then runs the shared [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) (via `libraryResource`). For `gateway` it migrates the source from MySQL to PostgreSQL + a NoOp cache; a no-op for every other service. (This is the *same* script all four CI engines run — see *§ Shared app-source patch*.)
+*   **Checkout Microservices source** — Clones the microservice repository (shallow, single-branch, no-tags) and appends the commit SHA to the rebuild-safe image tag.
+*   **Patch App Source** — `when { expression { serviceName == 'gateway' } }`: runs the shared [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) (via `libraryResource`), migrating the gateway source from MySQL to PostgreSQL + a NoOp cache; skipped for every other service. (This is the *same* script all four CI engines run — see *§ Shared app-source patch*.)
 *   **Checkout Infra configs** — Clones the deployed active branch of this infrastructure repository.
-*   **Semgrep SAST** — Runs static security scan using `semgrep` with `p/security-audit`, `p/owasp-top-ten`, and custom rules. Generates and archives `semgrep-results.sarif`, then uploads it to the GitHub Code Scanning API.
-*   **CodeQL Analysis** — Builds a local CodeQL database and scans JavaScript/TypeScript files. Uploads `codeql-results.sarif` to the GitHub Code Scanning API.
-*   **Trivy IaC Scan** — Clones the GitOps config repository and runs `trivy config` on the codebase and Helm manifests.
+*   **Static Analysis** — a declarative `parallel {}` fan-out of the three independent read-only scanners (CodeQL, the long pole, no longer serialises the other two; each branch delegates to its `vars/` custom step):
+    *   **Semgrep SAST** ([`microservicesSemgrepScan`](../vars/microservicesSemgrepScan.groovy)) — static security scan using `semgrep` with `p/security-audit`, `p/owasp-top-ten`, and custom rules. Generates and archives `semgrep-results.sarif`, then uploads it via the shared [`microservicesSarifUpload`](../vars/microservicesSarifUpload.groovy) step.
+    *   **CodeQL Analysis** ([`microservicesCodeqlScan`](../vars/microservicesCodeqlScan.groovy)) — builds a local CodeQL database and scans JavaScript/TypeScript files. Uploads `codeql-results.sarif` via the same shared SARIF-upload step.
+    *   **Trivy IaC Scan** ([`microservicesTrivyIacScan`](../vars/microservicesTrivyIacScan.groovy)) — clones the GitOps config repository and runs `trivy config` on the codebase and Helm manifests.
 *   **Build & Test** — Delegates to [`microservicesBuild.groovy`](../vars/microservicesBuild.groovy), using fast host-path Maven/npm caches.
 *   **Build & Push Image** — Delegates Docker packaging to [`microservicesImage.groovy`](../vars/microservicesImage.groovy), leveraging Jib (java w/ Jib plugin), Spring-Boot `build-image` via DinD, or `docker build` (angular), pushing to GHCR.
 *   **Trivy Image Scan** — Runs `trivy image` against the published container image.
-*   **Deploy to Kubernetes** — Delegates to [`microservicesDeploy.groovy`](../vars/microservicesDeploy.groovy). Checks out the GitOps repository, modifies the service's image tag using `yq`, pushes to the tier's GitOps branch (`main` for stable, `develop` for the develop tier), and runs the `argocd` CLI to trigger and wait for a synchronized healthy cluster rollout (then the OTel self-heal).
+*   **GitOps Update** — Delegates to [`microservicesDeploy.groovy`](../vars/microservicesDeploy.groovy). The cross-engine deploy phase (identical name in all four engines — [502](./502-MICROSERVICES_GITOPS.md)): checks out the GitOps repository, modifies the service's image tag using `yq`, pushes to the tier's GitOps branch (`main` for stable, `develop` for the develop tier), and runs the `argocd` CLI to trigger and wait for a synchronized healthy cluster rollout. This engine deploys *via* ArgoCD — the GitOps update **is** the deploy.
+*   **OTel Self-Heal** — Delegates to [`microservicesOtelSelfHeal.groovy`](../vars/microservicesOtelSelfHeal.groovy). Verifies the freshly rolled pod actually carries the auto-injected OTel Java agent (`-javaagent` in `JAVA_TOOL_OPTIONS`) and repairs the injection race with a single `rollout restart` if it doesn't (the operator's mutating webhook is `failurePolicy: Ignore`). Its own stage so the repair is visible in the build UI.
 *   **Smoke Test** — Delegates to [`microservicesSmokeTest.groovy`](../vars/microservicesSmokeTest.groovy) for HTTP health check validation. The throwaway curl pod runs in the **agent's `jenkins` namespace** labelled `jenkins=slave` (so `jenkins-agent-policy` grants it egress), targeting the microservices Service FQDN — **not** in the `microservices` namespace, which is default-deny egress under NetworkPolicy enforcement and would time out (`curl exit 28`). See [501 § NetworkPolicy matrix](./501-PLATFORM_OPERATIONS.md#networkpolicy-matrix).
 *   **Integration k6 Smoke Test** — Triggers the downstream `microservices-k6-smoke` pipeline (`build job`, waits for completion).
 *   **Post Action Handler** — Saves unit test results via `junit` plugin and records static analysis warnings using `warnings-ng` plugin (`recordIssues` over the two SARIFs).
@@ -444,7 +447,7 @@ sequenceDiagram
 
   App->>Git: clone source (+ gateway MySQL→PG patch)
   Git->>Git: clone infra + gitops configs
-  SG->>HX: Semgrep + CodeQL + Trivy IaC → SARIF upload
+  SG->>HX: Semgrep + CodeQL + Trivy IaC (3 parallel branches) → SARIF upload
   MB->>MB: Build & Test (mvnw verify / npm build)
   MB->>DK: Build & Push image (Jib / build-image / docker build)
   DK->>SG: Trivy image scan (CRITICAL,HIGH)
@@ -469,7 +472,7 @@ sequenceDiagram
 stateDiagram-v2
   [*] --> Checkout
   Checkout --> Scan: source + infra cloned
-  Scan --> Build: Semgrep/CodeQL/Trivy IaC (non-blocking)
+  Scan --> Build: Semgrep ∥ CodeQL ∥ Trivy IaC (parallel, non-blocking)
   Build --> Image: mvn/npm OK
   Build --> Failed: compile/test error
   Image --> ImageScan: pushed to GHCR
@@ -523,7 +526,10 @@ classDiagram
   class microservicesDeploy {
     yq tag bump → git push
     argocd app sync + wait
-    OTel self-heal
+  }
+  class microservicesOtelSelfHeal {
+    -javaagent check
+    rollout restart if missing
   }
   class microservicesSmokeTest {
     curl pod in jenkins ns
@@ -537,6 +543,7 @@ classDiagram
   MicroservicesPipeline ..> microservicesBuild
   MicroservicesPipeline ..> microservicesImage
   MicroservicesPipeline ..> microservicesDeploy
+  MicroservicesPipeline ..> microservicesOtelSelfHeal
   MicroservicesPipeline ..> microservicesSmokeTest
   MicroservicesPipeline ..> MicroservicesK6SmokePipeline : downstream
   MicroservicesK6SmokePipeline ..> microservicesK6Smoke
@@ -544,23 +551,24 @@ classDiagram
 
 </details>
 
-**Reading it —** this is the collaboration model of [`vars/`](../vars/). The two *pipelines* are thin orchestrators; the real work lives in the lower-case *steps* they depend on (dashed `..>` = "uses"). It tells you exactly where to change behaviour: build logic in `microservicesBuild`, packaging strategy (Jib vs build-image vs docker) in `microservicesImage`, the whole GitOps+ArgoCD+OTel dance in `microservicesDeploy`, and the network-policy-aware health check in `microservicesSmokeTest`. `MicroservicesPipeline` triggers `MicroservicesK6SmokePipeline` downstream — which is why k6 is both a *stage* and a *standalone job*.
+**Reading it —** this is the collaboration model of [`vars/`](../vars/). The two *pipelines* are thin orchestrators; the real work lives in the lower-case *steps* they depend on (dashed `..>` = "uses"). It tells you exactly where to change behaviour: build logic in `microservicesBuild`, packaging strategy (Jib vs build-image vs docker) in `microservicesImage`, the GitOps+ArgoCD dance in `microservicesDeploy`, the injection repair in `microservicesOtelSelfHeal`, and the network-policy-aware health check in `microservicesSmokeTest`. `MicroservicesPipeline` triggers `MicroservicesK6SmokePipeline` downstream — which is why k6 is both a *stage* and a *standalone job*.
 
-#### GitOps deploy detail (`microservicesDeploy.groovy`)
+#### GitOps deploy detail (`microservicesDeploy.groovy` + `microservicesOtelSelfHeal.groovy`)
 
-The deploy stage is where Jenkins hands off to GitOps — and why the OTel self-heal exists:
+The *GitOps Update* stage is where Jenkins hands off to GitOps; the *OTel Self-Heal* stage that follows is why observability survives the injection race:
 
 <details>
-<summary>🚢 GitOps deploy detail (microservicesDeploy)</summary>
+<summary>🚢 GitOps deploy detail (GitOps Update + OTel Self-Heal stages)</summary>
 
 ```mermaid
 flowchart TB
-  start([Deploy stage]) --> clone["git clone gitops-config<br/>branch main(stable)/develop"]
+  start([GitOps Update stage]) --> clone["git clone gitops-config<br/>branch main(stable)/develop"]
   clone --> tag["yq eval -i '.services.&lt;svc&gt;.image.tag = tag'<br/>values-&lt;env&gt;.yaml"]
   tag --> push["git commit + push origin &lt;branch&gt;<br/>(direct-push — no PR)"]
   push --> sync["argocd app sync microservices-&lt;env&gt;<br/>(gRPC, ARGOCD_AUTH_TOKEN)"]
   sync --> wait["argocd app wait --sync --timeout 900"]
-  wait --> check{pod has -javaagent<br/>in JAVA_TOOL_OPTIONS?}
+  wait --> heal([OTel Self-Heal stage])
+  heal --> check{pod has -javaagent<br/>in JAVA_TOOL_OPTIONS?}
   check -->|yes| ok[OTel already injected ✓]
   check -->|no| restart["kubectl rollout restart deploy/&lt;svc&gt;<br/>(webhook failurePolicy:Ignore missed it)"]
   restart --> recheck{injected now?}
@@ -570,7 +578,7 @@ flowchart TB
 
 </details>
 
-**Reading it —** the deploy is a *commit*, not a `kubectl apply`: clone the GitOps repo, `yq` the one image tag, push to `main` (this direct push is exactly *why* the GitOps repo's `main` is direct-push, not PR-gated — a required PR would wedge every deploy), then drive ArgoCD over gRPC and block on `app wait`. The branch at the bottom is the subtle part: the OTel operator's mutating webhook is `failurePolicy: Ignore`, so a pod admitted before the `Instrumentation` CR was ready starts *without* the Java agent — the self-heal detects the missing `-javaagent` and does a single `rollout restart` to repair observability without failing the deploy.
+**Reading it —** the deploy is a *commit*, not a `kubectl apply`: clone the GitOps repo, `yq` the one image tag, push to `main` (this direct push is exactly *why* the GitOps repo's `main` is direct-push, not PR-gated — a required PR would wedge every deploy), then drive ArgoCD over gRPC and block on `app wait`. The bottom half runs as its own *OTel Self-Heal* stage ([`microservicesOtelSelfHeal`](../vars/microservicesOtelSelfHeal.groovy)) and is the subtle part: the OTel operator's mutating webhook is `failurePolicy: Ignore`, so a pod admitted before the `Instrumentation` CR was ready starts *without* the Java agent — the self-heal detects the missing `-javaagent` and does a single `rollout restart` to repair observability without failing the deploy.
 
 ## Pipeline Container Security
 
@@ -637,7 +645,7 @@ flowchart TB
 
 ---
 
-[← Previous: 401. Jenkins](./401-JENKINS.md) | [🏠 Home](../README.md) | [→ Next: 403. Tekton](./403-TEKTON.md)
+[← Previous: 401. Jenkins](./401-JENKINS.md) | [🏠 Home](../README.md) | [→ Next: 403. Declarative vs Scripted](./403-DECLARATIVE_VS_SCRIPTED.md)
 
 ---
 

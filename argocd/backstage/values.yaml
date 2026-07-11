@@ -1,0 +1,37 @@
+# Defaults for the backstage app-of-apps. Every value here is overridden by the
+# parent Application's helm.parameters (set by scripts/08.95-backstage.sh from
+# config.yaml + the deploy branch) - these defaults only matter for `helm
+# template` linting and ad-hoc renders.
+repoURL: https://github.com/nubenetes/jenkins-2026.git
+targetRevision: main
+
+# Opt-in backend TLS (gateway.backendTls, docs/504 stage 8). Passed as a STRING
+# via helm.parameters, so templates compare eq (... | toString) "true". When
+# "true" the child layers helm/backstage/values-backend-tls.yaml (native Node
+# HTTPS on 7007 + HTTPS probes + the backstage-tls cert mount).
+backendTls: false
+
+# Namespace everything (the CNPG Cluster + the chart) deploys into. Created by
+# 01-namespaces.sh (with the IAP/app secrets already in place).
+namespace: backstage
+
+# The OFFICIAL Backstage chart (backstage/charts). version is overridden from
+# config.yaml backstage.chart.version (docs/602 pin).
+chart:
+  repoURL: https://backstage.github.io/charts
+  name: backstage
+  version: "2.8.2"
+
+# The custom app image (backstage/ in this repo, published by
+# Day2.publish.06-backstage). tag auto-tracks the deploy branch via the parent.
+image:
+  registry: ghcr.io
+  repository: nubenetes/jenkins-2026-backstage
+  tag: main
+
+# CNPG Cluster shape. Deliberately LEAN and THROWAWAY (docs/104 rebuild-safety:
+# no fixed external identity, no backups - a Decom+Day1 gets a fresh catalog
+# re-ingested from git/GitHub within minutes).
+db:
+  name: backstage-db
+  storageSize: 5Gi

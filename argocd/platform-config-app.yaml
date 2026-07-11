@@ -25,6 +25,10 @@ spec:
           value: '{{ciEngine}}'
         - name: developTrackEnabled
           value: '{{developTrackEnabled}}'
+        # Gates the Backstage Kubernetes-plugin read-only ClusterRole
+        # (rbac-backstage.yaml) - from J2026_BACKSTAGE_ENABLED.
+        - name: backstageEnabled
+          value: '{{backstageEnabled}}'
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

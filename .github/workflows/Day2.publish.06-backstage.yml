@@ -1,0 +1,134 @@
+name: "Day2.publish.06 Backstage image"
+
+# Builds + pushes the custom Backstage app image (backstage/ - docs/505) to
+# GHCR. This is the portal's ONE-TIME BOOTSTRAP (and its update path): the
+# image must exist BEFORE the first backstage.enabled Day1, and it PERSISTS
+# across cluster rebuilds (like the microservices images), so this workflow is
+# cluster-independent - no GCP auth, no approval gate, nothing billed.
+#
+# Host-build pattern (backstage.io/docs/deployment/docker): yarn install/tsc/
+# build:backend run on the runner, then packages/backend/Dockerfile only
+# assembles the dist tarballs into node:24-trixie-slim.
+#
+# Tags: <branch> (main|develop - a MOVING tag; 08.95-backstage.sh deploys the
+# tag matching the deploy branch and restarts with pullPolicy Always) plus
+# sha-<sha12> for pinning (config.yaml backstage.image.tag /
+# JENKINS2026_BACKSTAGE_IMAGE_TAG).
+on:
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: "Git branch, tag, or SHA to check out (leave empty to use the branch selected in 'Use workflow from' above). The <branch> image tag always comes from the selected branch name."
+        required: false
+        default: ""
+        type: string
+  # Reusable: the Day1.cluster.00-all umbrella auto-calls this when its image
+  # probe finds no ghcr image for the branch (first-ever provision on a fresh
+  # org/branch) - so "everything up from decommissioned" is truly one click.
+  workflow_call:
+    inputs:
+      git_ref:
+        required: false
+        default: ""
+        type: string
+  push:
+    branches: [main, develop]
+    paths:
+      - 'backstage/**'
+      - '.github/workflows/Day2.publish.06-backstage.yml'
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: backstage-publish-${{ github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/jenkins-2026-backstage
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ inputs.git_ref || github.ref }}
+
+      - name: Set up Node 24
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 24
+
+      - name: Enable corepack (yarn 4.8.1 via packageManager)
+        run: corepack enable
+
+      - name: Install dependencies (yarn)
+        working-directory: backstage
+        # No committed yarn.lock yet (exact top-level pins in package.json keep
+        # this near-reproducible; committing the CI-generated lockfile is the
+        # hardening roadmap - docs/505). The generated lockfile IS consumed by
+        # the Dockerfile below for the in-image production install.
+        env:
+          YARN_ENABLE_IMMUTABLE_INSTALLS: "false"
+        run: yarn install
+
+      - name: Type check (yarn tsc)
+        working-directory: backstage
+        run: yarn tsc
+
+      - name: Build backend bundle (yarn build:backend)
+        working-directory: backstage
+        env:
+          # @backstage/cli treats rspack WARNINGS as ERRORS when CI is truthy
+          # (cli-module-build bundle.ts: "Treating warnings as errors because
+          # process.env.CI = true", no opt-out knob - verified 2026-07-11). The
+          # ArgoCD community plugin's PatternFly stylesheets emit benign
+          # css-extract "Conflicting order" warnings (namespaced component CSS,
+          # order-irrelevant) that would otherwise kill the build. Types stay
+          # hard-gated by the tsc step above; real compile ERRORS still fail.
+          CI: "false"
+        run: yarn build:backend
+
+      - name: Compute image tags
+        id: tags
+        working-directory: backstage
+        run: |
+          branch="${GITHUB_REF_NAME}"
+          sha="sha-$(git rev-parse --short=12 HEAD)"
+          echo "branch=${branch}" >> "${GITHUB_OUTPUT}"
+          echo "sha=${sha}" >> "${GITHUB_OUTPUT}"
+          echo "Building ${IMAGE}:${branch} + ${IMAGE}:${sha}"
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build image
+        working-directory: backstage
+        run: |
+          docker build \
+            -f packages/backend/Dockerfile \
+            -t "${IMAGE}:${{ steps.tags.outputs.branch }}" \
+            -t "${IMAGE}:${{ steps.tags.outputs.sha }}" \
+            .
+
+      - name: Push image
+        run: |
+          docker push "${IMAGE}:${{ steps.tags.outputs.branch }}"
+          docker push "${IMAGE}:${{ steps.tags.outputs.sha }}"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Backstage image published"
+            echo
+            echo "- \`${IMAGE}:${{ steps.tags.outputs.branch }}\` (moving branch tag)"
+            echo "- \`${IMAGE}:${{ steps.tags.outputs.sha }}\` (pin)"
+            echo
+            echo "Deploy/refresh it on the cluster with **Day2.redeploy.08 Backstage**"
+            echo "(or a full **Day1.cluster.01**) from the same branch - 08.95 restarts"
+            echo "the deployment, and \`pullPolicy: Always\` picks this build up."
+          } >> "${GITHUB_STEP_SUMMARY}"

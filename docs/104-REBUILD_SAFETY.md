@@ -19,7 +19,7 @@ Not everything dies with the cluster. Four **lifecycle tiers** coexist — three
 | **Root of trust** (Day0, human) | ✅ yes — destroyed only by `bootstrap.sh down` | [`terraform/bootstrap`](../terraform/bootstrap/) via [`scripts/bootstrap.sh`](../scripts/bootstrap.sh) | TF **state bucket**, WIF/OIDC trust + CI SA, permanent **DNS zone**, **Postgres backups bucket** |
 | **Persistent backends** (Day0 infra) | ✅ yes — destroyed only by the matching `Decom.infra.0N` | `Day0.infra.01–04` / `Decom.infra.01–04` | gateway static **IP** + wildcard **cert**, **Grafana Cloud stack**, **Azure**/**AWS** managed backends |
 | **Cluster-scoped** (ephemeral) | ❌ no — dies with the cluster | `Day1.cluster.01` / `Decom.cluster.01` | GKE cluster/VPC/node pool, all K8s workloads, `grafana-cloud-token` |
-| **External / out-of-band** | ✅ persists independently | GitHub / SaaS, not fully Terraform-managed | **ghcr** image registry, the **GitOps config repo**, the Grafana Cloud **org/free tier**, the **IAP OAuth brand** |
+| **External / out-of-band** | ✅ persists independently | GitHub / SaaS, not fully Terraform-managed | **ghcr** image registry (the microservices **and Backstage app** images — the latter is the portal's deliberate one-time bootstrap, [505](./505-BACKSTAGE.md)), the **GitOps config repo**, the Grafana Cloud **org/free tier**, the **IAP OAuth brand** |
 
 The rebuild-safety problem lives at the **boundary**: a *cluster-scoped* fresh incarnation talking to a *persistent* or *external* resource that still holds the **previous** incarnation's state.
 

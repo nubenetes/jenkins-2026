@@ -422,6 +422,104 @@ else
   fi
 fi
 
+# Backstage developer portal (backstage.enabled - docs/505-BACKSTAGE.md):
+# IAP-protected admin UI, same edge pattern as Headlamp. The route targets the
+# chart's Service port 7007 (= the pod port; one port whether the backend
+# serves plain HTTP or - under backend TLS, stage 8 - native HTTPS). Flag off →
+# retire the route/policies and drop stale generated manifests so the bulk
+# apply below can't re-create them (the develop-tier cleanup pattern).
+if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
+  cat >"${GENERATED_DIR}/httproute-backstage.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ${J2026_GATEWAY_HTTPROUTE_BACKSTAGE}
+  namespace: ${J2026_BACKSTAGE_NAMESPACE}
+spec:
+  parentRefs:
+    - name: ${J2026_GATEWAY_NAME}
+      namespace: ${J2026_GATEWAY_NAMESPACE}
+      sectionName: https
+  hostnames:
+    - "${J2026_GATEWAY_BACKSTAGE_HOST}"
+  rules:
+    - backendRefs:
+        - name: backstage
+          port: 7007
+EOT
+
+  # Backend TLS for Backstage (stage-10 TLS-ready backend, docs/504): the Node.js
+  # backend terminates TLS itself on 7007 (values-backend-tls.yaml overlay added
+  # by the app-of-apps; cert + CA ConfigMap minted by 08.7-backend-tls.sh). Same
+  # two-policy flip as headlamp; the HTTPS health check must hit the real
+  # readiness path (backstage serves it on the same port).
+  if [[ "${BACKEND_TLS_ACTIVE}" == "true" ]]; then
+    log_step "Generating BackendTLSPolicy + HTTPS HealthCheckPolicy (backstage, backendTls enabled)"
+    cat >"${GENERATED_DIR}/backendtlspolicy-backstage.yaml" <<EOT
+apiVersion: gateway.networking.k8s.io/v1
+kind: BackendTLSPolicy
+metadata:
+  name: ${J2026_BACKEND_TLS_POLICY_BACKSTAGE}
+  namespace: ${J2026_BACKSTAGE_NAMESPACE}
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: backstage
+  validation:
+    hostname: backstage.${J2026_BACKSTAGE_NAMESPACE}.svc.cluster.local
+    caCertificateRefs:
+      - group: ""
+        kind: ConfigMap
+        name: ${J2026_BACKEND_TLS_CA_CONFIGMAP}
+EOT
+
+    cat >"${GENERATED_DIR}/healthcheckpolicy-backstage.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: backstage
+  namespace: ${J2026_BACKSTAGE_NAMESPACE}
+spec:
+  default:
+    config:
+      type: HTTPS
+      httpsHealthCheck:
+        requestPath: /.backstage/health/v1/readiness
+  targetRef:
+    group: ""
+    kind: Service
+    name: backstage
+EOT
+  else
+    # Backend TLS inactive - retire leftovers from a previous enabled run (the
+    # default LB HTTP '/' probe works against the plain-HTTP app-backend, so no
+    # explicit HealthCheckPolicy is needed). CRD guard as usual.
+    rm -f "${GENERATED_DIR}/backendtlspolicy-backstage.yaml" \
+          "${GENERATED_DIR}/healthcheckpolicy-backstage.yaml"
+    log_step "Removing any leftover backstage BackendTLSPolicy/HealthCheckPolicy (backendTls inactive)"
+    if kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+      kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_BACKSTAGE}" -n "${J2026_BACKSTAGE_NAMESPACE}" --ignore-not-found
+    fi
+    kubectl delete healthcheckpolicy backstage -n "${J2026_BACKSTAGE_NAMESPACE}" --ignore-not-found
+  fi
+else
+  # backstage.enabled=false - deterministic retire of the whole edge surface.
+  rm -f "${GENERATED_DIR}/httproute-backstage.yaml" \
+        "${GENERATED_DIR}/gcpbackendpolicy-backstage.yaml" \
+        "${GENERATED_DIR}/backendtlspolicy-backstage.yaml" \
+        "${GENERATED_DIR}/healthcheckpolicy-backstage.yaml"
+  if kubectl get namespace "${J2026_BACKSTAGE_NAMESPACE}" >/dev/null 2>&1; then
+    log_step "Removing any leftover backstage HTTPRoute/GCPBackendPolicy/HealthCheckPolicy (backstage disabled)"
+    kubectl delete httproute "${J2026_GATEWAY_HTTPROUTE_BACKSTAGE}" -n "${J2026_BACKSTAGE_NAMESPACE}" --ignore-not-found
+    kubectl delete gcpbackendpolicy "${J2026_GATEWAY_IAP_POLICY_BACKSTAGE}" -n "${J2026_BACKSTAGE_NAMESPACE}" --ignore-not-found
+    kubectl delete healthcheckpolicy backstage -n "${J2026_BACKSTAGE_NAMESPACE}" --ignore-not-found
+    if kubectl get crd backendtlspolicies.gateway.networking.k8s.io >/dev/null 2>&1; then
+      kubectl delete backendtlspolicy "${J2026_BACKEND_TLS_POLICY_BACKSTAGE}" -n "${J2026_BACKSTAGE_NAMESPACE}" --ignore-not-found
+    fi
+  fi
+fi
+
 cat >"${GENERATED_DIR}/httproute-pgadmin.yaml" <<EOT
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -1094,6 +1192,11 @@ fi
 if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
   iap_backend_namespaces+=("${J2026_GRAFANA_OSS_NAMESPACE}")
 fi
+# Backstage is IAP-fronted too (backstage.enabled; the portal's own gcpIap auth
+# provider then VERIFIES the IAP-signed JWT - docs/505).
+if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
+  iap_backend_namespaces+=("${J2026_BACKSTAGE_NAMESPACE}")
+fi
 for ns in "${iap_backend_namespaces[@]}"; do
   client_id="$(kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" -o jsonpath='{.data.client_id}' 2>/dev/null | base64 -d || true)"
   client_secret="$(kubectl get secret "${J2026_GATEWAY_IAP_SECRET}" -n "${ns}" -o jsonpath='{.data.client_secret}' 2>/dev/null | base64 -d || true)"
@@ -1269,6 +1372,32 @@ spec:
 EOT
 fi
 
+if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
+  cat >"${GENERATED_DIR}/gcpbackendpolicy-backstage.yaml" <<EOT
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: ${J2026_GATEWAY_IAP_POLICY_BACKSTAGE}
+  namespace: ${J2026_BACKSTAGE_NAMESPACE}
+spec:
+  targetRef:
+    group: ""
+    kind: Service
+    name: backstage
+  default:
+    # Backstage keeps long-lived connections open behind IAP (the signals
+    # websocket + on-demand TechDocs builds that can exceed the ALB's default
+    # 30s backend timeout on first render) - same long-timeout rationale as the
+    # Tekton Dashboard / Argo Server policies above.
+    timeoutSec: 3600
+    iap:
+      enabled: true
+      clientID: "${iap_client_id[${J2026_BACKSTAGE_NAMESPACE}]}"
+      oauth2ClientSecret:
+        name: ${J2026_GATEWAY_IAP_SECRET}-client-secret
+EOT
+fi
+
 
 log_step "Applying Gateway resources"
 kubectl apply -f "${GENERATED_DIR}/"
@@ -1284,6 +1413,55 @@ if [[ "${ARGOCD_TLS_ACTIVE}" == "true" ]]; then
     log_warn "argocd-server rollout not confirmed within 6m - the LB HTTPS health-check reconcile may still be in flight; check 'kubectl -n ${J2026_ARGOCD_NAMESPACE} get pods' and the GCP backend health."
 fi
 
+# Backstage IAP JWT audience (docs/505 § IAP): the portal's gcpIap auth provider
+# VERIFIES the IAP-signed JWT, whose audience is
+# /projects/<projectNumber>/global/backendServices/<backend-service-id> - an ID
+# the GKE Gateway controller only mints AFTER the HTTPRoute above compiles into
+# the load balancer (async, minutes on a fresh Gateway). Resolve it here with a
+# bounded retry and patch it into the script-owned runtime ConfigMap (never
+# backstage-secrets - ESO must not own derived keys, the grafana-base-url
+# lesson), restarting the deployment only when the value actually changes. A
+# first-ever Day1 that times out just leaves 'pending' - sign-in starts working
+# after any re-run of this step (Day1 / Day2.redeploy.05 / Day2.redeploy.08).
+if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
+  if command -v gcloud >/dev/null 2>&1; then
+    log_step "Resolving the Backstage IAP JWT audience (LB backend-service ID)"
+    bs_project="$(gcloud config get-value project 2>/dev/null || true)"
+    bs_project_number="$(gcloud projects describe "${bs_project}" --format='value(projectNumber)' 2>/dev/null || true)"
+    bs_backend_id=""
+    _bs_deadline=$(( SECONDS + 180 ))
+    while [[ -z "${bs_backend_id}" && ${SECONDS} -lt ${_bs_deadline} ]]; do
+      # GKE Gateway backend-service naming: gkegw1-<hash>-<namespace>-<service>-<port>-<hash>.
+      bs_backend_id="$(gcloud compute backend-services list --global \
+        --filter="name~gkegw1-.*-${J2026_BACKSTAGE_NAMESPACE}-backstage-7007" \
+        --format='value(id)' 2>/dev/null | head -n1 || true)"
+      [[ -z "${bs_backend_id}" ]] && sleep 15
+    done
+    if [[ -n "${bs_project_number}" && -n "${bs_backend_id}" ]]; then
+      bs_audience="/projects/${bs_project_number}/global/backendServices/${bs_backend_id}"
+      bs_current="$(kubectl get configmap "${J2026_BACKSTAGE_RUNTIME_CONFIGMAP}" \
+        -n "${J2026_BACKSTAGE_NAMESPACE}" -o jsonpath='{.data.IAP_AUDIENCE}' 2>/dev/null || true)"
+      if [[ "${bs_current}" != "${bs_audience}" ]]; then
+        kubectl patch configmap "${J2026_BACKSTAGE_RUNTIME_CONFIGMAP}" -n "${J2026_BACKSTAGE_NAMESPACE}" \
+          --type=merge -p "{\"data\":{\"IAP_AUDIENCE\":\"${bs_audience}\"}}"
+        # Env vars are read at container start - roll the pods to pick it up.
+        if kubectl get deployment backstage -n "${J2026_BACKSTAGE_NAMESPACE}" >/dev/null 2>&1; then
+          kubectl rollout restart deployment/backstage -n "${J2026_BACKSTAGE_NAMESPACE}"
+        fi
+        log_info "IAP audience set: ${bs_audience} (backstage restarted to pick it up)."
+      else
+        log_info "IAP audience already current: ${bs_audience}"
+      fi
+    else
+      log_warn "Could not resolve the Backstage LB backend-service ID within 3m (Gateway still"
+      log_warn "programming?). Backstage sign-in will fail until a re-run of this step patches"
+      log_warn "IAP_AUDIENCE in the ${J2026_BACKSTAGE_RUNTIME_CONFIGMAP} ConfigMap."
+    fi
+  else
+    log_warn "gcloud not available - skipping the Backstage IAP-audience resolution (re-run from an environment with gcloud)."
+  fi
+fi
+
 log_info "Gateway ready."
 if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
   log_info "  Jenkins:           https://${J2026_GATEWAY_JENKINS_HOST}"
@@ -1295,6 +1473,9 @@ if [[ "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" == "true" ]]; then
 fi
 log_info "  Headlamp:          https://${J2026_GATEWAY_HEADLAMP_HOST}"
 log_info "  pgAdmin:           https://${J2026_GATEWAY_PGADMIN_HOST}"
+if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
+  log_info "  Backstage:         https://${J2026_GATEWAY_BACKSTAGE_HOST} (IAP-protected)"
+fi
 if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
   log_info "  Tekton Dashboard:  https://${J2026_GATEWAY_TEKTON_HOST} (IAP-protected)"
 fi

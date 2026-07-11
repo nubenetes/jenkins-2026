@@ -77,6 +77,11 @@ on:
         required: false
         default: false
         type: boolean
+      backstage_enabled:
+        description: "Backstage developer portal (backstage.enabled — docs/505): software catalog + engine-aware CI/CD views at backstage.<domain> (IAP). ON by default; needs the one-time Day2.publish.06 image bootstrap per branch. Passed straight to Day1.cluster.01 (disabling RETIRES the app-of-apps incl. its CNPG db)."
+        required: false
+        default: true
+        type: boolean
       llm_enabled:
         description: "Opt-in keyless Grafana LLM app (observability.llm.enabled — docs/301): grafana-llm-app plugin wired to Vertex AI via an in-cluster LiteLLM gateway + Workload Identity. oss mode ONLY (no-op on grafana-cloud/managed-*). OFF by default. Passed straight to Day1.cluster.01 (where enabling/disabling converges)."
         required: false
@@ -145,6 +150,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       gateway_missing: ${{ steps.probe.outputs.gateway_missing }}
+      backstage_image_missing: ${{ steps.backstage_probe.outputs.backstage_image_missing }}
     steps:
       - name: Checkout
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -173,6 +179,26 @@ jobs:
           echo "gateway_missing=${gw}" >> "${GITHUB_OUTPUT}"
           echo "Gateway probe: static_ip_address=${ip:-<empty>} -> gateway_missing=${gw} (bootstrap runs only if missing)."
 
+      # Same ungated-probe pattern for the Backstage app image (docs/505): the
+      # ghcr image is one-time-per-branch persistent state (like the gateway
+      # IP), so probe it and auto-publish ONLY when missing - a first-ever
+      # provision on a fresh org/branch is then truly one click, and every
+      # rebuild where the image persisted skips the ~15 min build entirely.
+      - name: Probe Backstage image (does ghcr.io/…-backstage:<branch> exist?)
+        id: backstage_probe
+        if: ${{ inputs.backstage_enabled }}
+        run: |
+          set -uo pipefail
+          image="ghcr.io/${{ github.repository_owner }}/jenkins-2026-backstage:${GITHUB_REF_NAME}"
+          # Login enables private-package reads; anonymous still works for
+          # public packages if the registry creds aren't set.
+          echo "${{ secrets.REGISTRY_PASSWORD }}" | docker login ghcr.io \
+            -u "${{ secrets.REGISTRY_USERNAME }}" --password-stdin >/dev/null 2>&1 || true
+          missing=false
+          docker manifest inspect "${image}" >/dev/null 2>&1 || missing=true
+          echo "backstage_image_missing=${missing}" >> "${GITHUB_OUTPUT}"
+          echo "Backstage image probe: ${image} -> missing=${missing} (publish runs only if missing)."
+
   # 1. Persistent Gateway (static IP + cert map). Auto-runs ONLY when the probe
   #    above found no static IP (first-ever setup); skipped on a rebuild where the
   #    Gateway persisted, and skippable entirely via bootstrap_gateway=false.
@@ -184,11 +210,25 @@ jobs:
       log_level: ${{ inputs.log_level || 'info' }}
     secrets: inherit
 
+  # 1b. Backstage app image (one-time per branch; persists across rebuilds in
+  #     ghcr like the microservices images — docs/505). Auto-publishes ONLY when
+  #     the probe found no image for this branch, so a fresh-org/first-branch
+  #     provision needs no manual Day2.publish.06 run; a failed build here
+  #     blocks provision (a default-on portal must not silently deploy broken).
+  backstage-image-bootstrap:
+    needs: precheck
+    if: ${{ inputs.backstage_enabled && needs.precheck.outputs.backstage_image_missing == 'true' }}
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/Day2.publish.06-backstage.yml
+    secrets: inherit
+
   # 2. Cluster + full stack (also bootstraps the chosen observability backend as
-  #    its own preflight). always() && !failure() so a *skipped* gateway step does
-  #    not skip provision, while a real gateway failure still blocks it.
+  #    its own preflight). always() && !failure() so a *skipped* gateway/image
+  #    step does not skip provision, while a real bootstrap failure still blocks it.
   provision:
-    needs: [precheck, gateway-bootstrap]
+    needs: [precheck, gateway-bootstrap, backstage-image-bootstrap]
     if: ${{ always() && !failure() && !cancelled() }}
     uses: ./.github/workflows/Day1.cluster.01-gke.yml
     with:
@@ -202,6 +242,7 @@ jobs:
       enable_gateway: true
       develop_track: ${{ inputs.develop_track }}
       backend_tls: ${{ inputs.backend_tls }}
+      backstage_enabled: ${{ inputs.backstage_enabled }}
       llm_enabled: ${{ inputs.llm_enabled }}
       assistant_enabled: ${{ inputs.assistant_enabled }}
       git_ref: ${{ inputs.git_ref }}

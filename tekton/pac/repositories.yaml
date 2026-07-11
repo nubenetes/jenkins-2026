@@ -6,7 +6,7 @@
 # git_provider.secret = the PAT (tekton-git, created by 01-namespaces.sh) used to
 # clone + post commit statuses. webhook_secret = the HMAC secret (pac-webhook,
 # created by 01-namespaces.sh from PAC_WEBHOOK_SECRET) shared with the GitHub
-# repo webhook (created by scripts/06-tekton-pipelines.sh). See docs/403-TEKTON.md.
+# repo webhook (created by scripts/06-tekton-pipelines.sh). See docs/404-TEKTON.md.
 apiVersion: pipelinesascode.tekton.dev/v1alpha1
 kind: Repository
 metadata:

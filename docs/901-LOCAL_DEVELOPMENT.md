@@ -86,8 +86,9 @@ export GIT_USERNAME=<github-username>      GIT_TOKEN=<github-token>
 7. `04`/`06` the selected CI engine and its pipelines — one of Jenkins+seed, Tekton+pipelines, GitHub Actions/ARC, or Argo Workflows per `ci.engine`; the chosen engine's `04-<engine>.sh` retires the other three;
 8. `07` Grafana dashboards and `07.5` Grafana alerts;
 9. `08` Headlamp;
-10. `09` Gateway + routes/IAP;
-11. wait for the microservices Deployments, then the OTel injection self-heal guard.
+10. `08.95` **Backstage** (`backstage.enabled`, default on — the developer-portal app-of-apps; needs the **one-time app-image publish** via `Day2.publish.06-backstage` or the pod waits in `ImagePullBackOff`, non-fatally; retires itself when off — [505](./505-BACKSTAGE.md));
+11. `09` Gateway + routes/IAP (+ the Backstage IAP JWT audience resolution);
+12. wait for the microservices Deployments, then the OTel injection self-heal guard.
 
 Every step is idempotent (`helm upgrade --install` / `kubectl apply`), so re-running `up.sh` after a partial failure is safe. Each step also runs standalone: `./scripts/0N-*.sh`.
 
@@ -202,9 +203,9 @@ kubectl create -f tekton/runs/gateway.yaml                    # build the gatewa
 kubectl create -f tekton/runs/jhipstersamplemicroservice.yaml # build the other service
 kubectl create -f tekton/runs/k6-smoke.yaml                   # synthetic traffic
 ```
-Or paste one into the Tekton Dashboard's *Create PipelineRun* (YAML mode) once, then click **Rerun** for true one-click reruns. See [403 § Running a pipeline by hand](./403-TEKTON.md#running-a-pipeline-by-hand-dashboard--kubectl--tkn).
+Or paste one into the Tekton Dashboard's *Create PipelineRun* (YAML mode) once, then click **Rerun** for true one-click reruns. See [403 § Running a pipeline by hand](./404-TEKTON.md#running-a-pipeline-by-hand-dashboard--kubectl--tkn).
 
-**With `ci.engine=githubactions`:** the pipeline is a `.github/workflows` file rendered into each fork, executed by the ARC self-hosted runners; the normal trigger is a `git push` (or `gh workflow run`). Runs appear in **GitHub's Actions tab** — there is no in-cluster UI. See [404. GitHub Actions](./404-GITHUB_ACTIONS.md).
+**With `ci.engine=githubactions`:** the pipeline is a `.github/workflows` file rendered into each fork, executed by the ARC self-hosted runners; the normal trigger is a `git push` (or `gh workflow run`). Runs appear in **GitHub's Actions tab** — there is no in-cluster UI. See [405. GitHub Actions](./405-GITHUB_ACTIONS.md).
 
 **With `ci.engine=argoworkflows`:** an Argo Events EventSource+Sensor turns a fork `git push` into one Workflow per push. To run one by hand, submit a ready-made manifest or use the Argo Workflows Server UI (behind IAP, like the Tekton Dashboard):
 ```bash
@@ -212,7 +213,7 @@ kubectl create -f argoworkflows/runs/gateway.yaml
 kubectl create -f argoworkflows/runs/jhipstersamplemicroservice.yaml
 kubectl create -f argoworkflows/runs/k6-smoke.yaml
 ```
-See [405. Argo Workflows](./405-ARGO_WORKFLOWS.md).
+See [406. Argo Workflows](./406-ARGO_WORKFLOWS.md).
 
 ## Automated End-to-End Test (Provisioning + Decommissioning)
 

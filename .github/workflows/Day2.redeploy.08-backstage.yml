@@ -1,0 +1,232 @@
+name: "Day2.redeploy.08 Backstage"
+
+# Manually-triggered: re-applies the Backstage slice of the platform against
+# the cluster from the last "Day1.cluster.01 GKE provision" run, without
+# touching terraform/gke or the other components:
+#   01-namespaces  -> namespace + backstage-secrets + IAP secret + quota/netpol
+#   08.6-eso-sync  -> ESO projections (eso mode only; no-op otherwise)
+#   08.7-backend-tls -> the backstage-tls cert (backend_tls=true only)
+#   08.95-backstage  -> runtime ConfigMap + ArgoCD creds patch + the
+#                       argocd/backstage app-of-apps (or its RETIRE when
+#                       backstage_enabled=false) + restart/wait
+#   09-gateway     -> HTTPRoute + IAP GCPBackendPolicy + (TLS) policies + the
+#                     IAP JWT audience resolution
+#
+# Use this after publishing a new image (Day2.publish.06), after changing
+# helm/backstage values or the runtime wiring, or to flip backstage.enabled on
+# a running cluster. The image itself must already exist in GHCR - see the
+# one-time bootstrap note in docs/505.
+on:
+  workflow_dispatch:
+    inputs:
+      backstage_enabled:
+        description: "backstage.enabled for this run: true re-applies/refreshes the portal; false RETIRES it (app-of-apps cascade-prune incl. the CNPG db, routes/policies, runtime ConfigMap)."
+        required: false
+        default: true
+        type: boolean
+      ci_engine:
+        description: "CI engine the cluster runs (must match the live cluster): the runtime ConfigMap's CI_ENGINE/JENKINS_BASE_URL - the wrong value points the portal's CI/CD tab at the wrong engine."
+        required: true
+        default: "jenkins"
+        type: choice
+        options:
+          - jenkins
+          - tekton
+          - githubactions
+          - argoworkflows
+      develop_track:
+        description: "Optional lean 'develop' microservices tier (docs/402). MUST MATCH how the cluster was provisioned: 01-namespaces refreshes the Microservices URLs in jenkins-credentials on every run, and develop_track=false against a develop-enabled cluster blanks microservices-develop-url."
+        required: false
+        default: false
+        type: boolean
+      secrets_backend:
+        description: "Secrets backend the cluster runs (must match the live cluster): imperative | eso"
+        required: true
+        default: "imperative"
+        type: choice
+        options:
+          - imperative
+          - eso
+      observability_mode:
+        description: "observability.mode of the cluster (MUST MATCH how it was provisioned): 01-namespaces gates the grafana IAP secret + the observability ResourceQuota on it; 09 gates the grafana route."
+        required: true
+        default: "grafana-cloud"
+        type: choice
+        options:
+          - grafana-cloud
+          - oss
+          - managed-azure
+          - managed-aws
+      backend_tls:
+        description: "Opt-in backend TLS (gateway.backendTls - docs/504). MUST MATCH how the cluster was provisioned: 08.7 mints (true) or retires (false) the backstage-tls cert, 08.95 threads the HTTPS values overlay, 09 attaches/retires the BackendTLSPolicy - a mismatch makes the LB and the pod disagree on the protocol → 502."
+        required: false
+        default: false
+        type: boolean
+      git_ref:
+        description: "Git branch, tag, or SHA to check out (leave empty to use the branch/tag selected in 'Use workflow from' above). Also drives the image tag 08.95 deploys (auto-track)."
+        required: false
+        default: ""
+        type: string
+      log_level:
+        description: "Script verbosity: info (default) or debug."
+        required: false
+        default: "info"
+        type: choice
+        options:
+          - info
+          - debug
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: jenkins-2026-gke
+  cancel-in-progress: false
+
+env:
+  JENKINS2026_LOG_LEVEL: ${{ inputs.log_level || 'info' }}
+  TF_LOG: ${{ inputs.log_level == 'debug' && 'DEBUG' || '' }}
+  TF_VERSION: "1.15.6"
+  JENKINS2026_BACKSTAGE_ENABLED: ${{ inputs.backstage_enabled }}
+  JENKINS2026_CI_ENGINE: ${{ inputs.ci_engine }}
+  JENKINS2026_DEVELOP_TRACK_ENABLED: ${{ inputs.develop_track }}
+  JENKINS2026_SECRETS_BACKEND: ${{ inputs.secrets_backend }}
+  JENKINS2026_OBS_MODE: ${{ inputs.observability_mode }}
+  JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED: ${{ inputs.backend_tls }}
+
+jobs:
+  redeploy-backstage:
+    runs-on: ubuntu-latest
+    # Manual approval gate (GitHub Environment required reviewers) - modifies a real
+    # billed cluster, same posture as Day1/Decom and the other Day2.* workflows.
+    environment: gke-production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ inputs.git_ref || github.ref }}
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Install gke-gcloud-auth-plugin
+        run: gcloud components install gke-gcloud-auth-plugin --quiet
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d # v5.1.0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+
+      - name: Install yq
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/yq \
+            https://github.com/mikefarah/yq/releases/download/v4.53.3/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Configure GCS backend (terraform/gke)
+        run: |
+          cat > terraform/gke/backend_override.tf <<EOF
+          terraform {
+            backend "gcs" {
+              bucket = "${{ secrets.TF_STATE_BUCKET }}"
+              prefix = "jenkins-2026/gke"
+            }
+          }
+          EOF
+
+      - name: Terraform init
+        working-directory: terraform/gke
+        run: |
+          for i in {1..3}; do
+            terraform init -input=false && break || {
+              if [ $i -lt 3 ]; then
+                echo "Terraform init failed, retrying in 10s..."
+                sleep 10
+              else
+                exit 1
+              fi
+            }
+          done
+
+      - name: Fetch kubeconfig credentials
+        working-directory: terraform/gke
+        run: |
+          gcloud container clusters get-credentials \
+            "$(terraform output -raw cluster_name)" \
+            --zone "$(terraform output -raw location)" \
+            --project "${{ secrets.GCP_PROJECT_ID }}"
+
+      - name: Check prereqs & add Helm repos (scripts/00-check-prereqs.sh)
+        run: ./scripts/00-check-prereqs.sh
+
+      - name: Refresh namespaces/secrets (scripts/01-namespaces.sh)
+        run: ./scripts/01-namespaces.sh
+        env:
+          # Full secret env like the other redeploys: 01 unconditionally
+          # refreshes the ghcr-credentials pull secrets + the Microservices URL
+          # keys, so omitting these would blank them on the live cluster.
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+          GIT_USERNAME: ${{ secrets.GIT_USERNAME }}
+          GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
+          HEADLAMP_OIDC_CLIENT_ID: ${{ secrets.HEADLAMP_OIDC_CLIENT_ID }}
+          HEADLAMP_OIDC_CLIENT_SECRET: ${{ secrets.HEADLAMP_OIDC_CLIENT_SECRET }}
+          JENKINS_OIDC_CLIENT_ID: ${{ secrets.JENKINS_OIDC_CLIENT_ID }}
+          JENKINS_OIDC_CLIENT_SECRET: ${{ secrets.JENKINS_OIDC_CLIENT_SECRET }}
+          JENKINS_OIDC_ADMIN_EMAIL: ${{ secrets.JENKINS_OIDC_ADMIN_EMAIL }}
+          IAP_OAUTH_CLIENT_ID: ${{ secrets.IAP_OAUTH_CLIENT_ID }}
+          IAP_OAUTH_CLIENT_SECRET: ${{ secrets.IAP_OAUTH_CLIENT_SECRET }}
+          # Optional: the GitHub OAuth App for the portal's GitHub Actions tab
+          # (docs/505 § CI-engine integration). 'unset' placeholders otherwise.
+          BACKSTAGE_GITHUB_OAUTH_CLIENT_ID: ${{ secrets.BACKSTAGE_GITHUB_OAUTH_CLIENT_ID }}
+          BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET: ${{ secrets.BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET }}
+
+      - name: Sync External Secrets (scripts/08.6-eso-sync.sh, eso mode only)
+        run: ./scripts/08.6-eso-sync.sh
+
+      - name: Backend TLS certs (scripts/08.7-backend-tls.sh)
+        # Mints/refreshes the backstage-tls cert when backend_tls=true; retires
+        # leftovers when false. Needed BEFORE 08.95 so the TLS-mode pod can
+        # mount its cert on first rollout.
+        run: ./scripts/08.7-backend-tls.sh
+
+      - name: Redeploy Backstage (scripts/08.95-backstage.sh)
+        run: ./scripts/08.95-backstage.sh
+
+      - name: Reconcile gateway (scripts/09-gateway.sh)
+        # Re-asserts the backstage HTTPRoute + IAP GCPBackendPolicy (+ the TLS
+        # policies) and resolves/patches the IAP JWT audience.
+        run: ./scripts/09-gateway.sh
+        env:
+          JENKINS2026_HEADLAMP_ADMIN_EMAILS: ${{ secrets.HEADLAMP_ADMIN_EMAILS }}
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            if [[ "${{ inputs.backstage_enabled }}" == "true" ]]; then
+              echo "### Backstage redeployed"
+              echo
+              echo "- Portal: \`https://backstage.<baseDomain>\` (IAP-protected, same Google identity as Jenkins/Headlamp)"
+              echo "- Image tag deployed: the \`${{ inputs.git_ref || github.ref_name }}\` branch tag (publish it first via **Day2.publish.06 Backstage image**)"
+              echo "- If sign-in reports an audience error, the LB backend-service was still programming - re-run this workflow (09 patches IAP_AUDIENCE)."
+            else
+              echo "### Backstage RETIRED (backstage_enabled=false)"
+              echo
+              echo "The app-of-apps (portal + CNPG db), routes/policies and the runtime ConfigMap were removed."
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"

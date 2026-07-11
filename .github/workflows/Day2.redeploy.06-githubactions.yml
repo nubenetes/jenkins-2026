@@ -13,7 +13,7 @@ name: "Day2.redeploy.06 GitHub Actions (ARC)"
 # the whole provision lifecycle. The ARC analogue of "Day2.redeploy.03 Tekton".
 # Requires the namespaces/secrets created by scripts/01-namespaces.sh +
 # scripts/08.5-argocd.sh during a githubactions "Day1.cluster.01 GKE" run to still
-# exist on the cluster. See docs/404-GITHUB_ACTIONS.md.
+# exist on the cluster. See docs/405-GITHUB_ACTIONS.md.
 on:
   workflow_dispatch:
     inputs:
@@ -36,7 +36,7 @@ on:
         default: ""
         type: string
       run_node_pool:
-        description: "Where ARC ephemeral runner pods run (githubactions.runNodePool). 'config' = use config.yaml (default ci-spot — the NAP Spot scale-to-zero showcase: each runner is a single ephemeral pod, so a preemption loses at most one re-queued job). 'static' = opt out to the long-lived jenkins-2026-pool. 'ci-spot' = explicit Spot ComputeClass. See docs/404."
+        description: "Where ARC ephemeral runner pods run (githubactions.runNodePool). 'config' = use config.yaml (default ci-spot — the NAP Spot scale-to-zero showcase: each runner is a single ephemeral pod, so a preemption loses at most one re-queued job). 'static' = opt out to the long-lived jenkins-2026-pool. 'ci-spot' = explicit Spot ComputeClass. See docs/405."
         required: false
         default: "config"
         type: choice
@@ -181,6 +181,10 @@ jobs:
           GIT_TOKEN: ${{ secrets.GIT_TOKEN }}
           IAP_OAUTH_CLIENT_ID: ${{ secrets.IAP_OAUTH_CLIENT_ID }}
           IAP_OAUTH_CLIENT_SECRET: ${{ secrets.IAP_OAUTH_CLIENT_SECRET }}
+          # Optional Backstage GitHub-Actions-tab OAuth App (docs/505); 01 keeps
+          # the existing values when these are empty (keep-if-present guard).
+          BACKSTAGE_GITHUB_OAUTH_CLIENT_ID: ${{ secrets.BACKSTAGE_GITHUB_OAUTH_CLIENT_ID }}
+          BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET: ${{ secrets.BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET }}
           # GitHub App credentials for ARC runner registration (arc-github-app);
           # empty unless set, in which case ARC registers via the App (else GIT_TOKEN PAT).
           ARC_GITHUB_APP_ID: ${{ secrets.ARC_GITHUB_APP_ID }}
@@ -231,5 +235,5 @@ jobs:
             echo "Spot runners (scripts/06-githubactions-pipelines.sh) against the cluster"
             echo "from the last **Day1.cluster.01 GKE** run provisioned with"
             echo "ci_engine=githubactions. Runs are viewed in each fork's GitHub Actions tab"
-            echo "(ARC has no in-cluster UI). See docs/404-GITHUB_ACTIONS.md."
+            echo "(ARC has no in-cluster UI). See docs/405-GITHUB_ACTIONS.md."
           } >> "${GITHUB_STEP_SUMMARY}"

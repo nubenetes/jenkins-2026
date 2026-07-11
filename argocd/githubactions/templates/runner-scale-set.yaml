@@ -68,7 +68,7 @@ spec:
             # imperatively by 08.5-argocd.sh in the runners namespace (before this app is
             # applied by 04-githubactions.sh). The rendered microservices-ci.yml "ArgoCD
             # sync + wait" step reads /var/run/secrets/arc-argocd/token — in-cluster only,
-            # never a fork secret (docs/404 § Security). The chart appends these to the
+            # never a fork secret (docs/405 § Security). The chart appends these to the
             # dind volumes it injects for containerMode=dind. `optional` so runner pods
             # still schedule if the Secret is absent (engine switch, partial Day1) — the
             # workflow step is best-effort by design and tolerates an empty token.

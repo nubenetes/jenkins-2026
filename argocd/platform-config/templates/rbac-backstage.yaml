@@ -1,0 +1,77 @@
+{{- /*
+Backstage Kubernetes-plugin RBAC (backstage.enabled - docs/505). The portal's
+backend authenticates to the API server IN-CLUSTER as the `backstage` KSA
+(helm/backstage/values.yaml serviceAccount) and needs cluster-wide READ on the
+workload kinds the Kubernetes tab renders, plus the customResources configured
+in backstage/app-config.yaml: Tekton PipelineRuns/TaskRuns (the Tekton CI/CD tab
+rides the same plugin), Argo Workflows (the argoworkflows engine's fallback
+view) and Argo Rollouts (the ArgoCD plugin's rollout visualisation). pods/log
+powers the Tekton tab's step logs. Read-only by design - Backstage never
+mutates the cluster.
+*/ -}}
+{{- if eq (.Values.backstageEnabled | toString) "true" }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: backstage-kubernetes-reader
+rules:
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log
+      - services
+      - configmaps
+      - limitranges
+      - resourcequotas
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+      - replicasets
+      - statefulsets
+      - daemonsets
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["batch"]
+    resources:
+      - jobs
+      - cronjobs
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["autoscaling"]
+    resources:
+      - horizontalpodautoscalers
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["networking.k8s.io"]
+    resources:
+      - ingresses
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources:
+      - pods
+      - nodes
+    verbs: ["get", "list", "watch"]
+  # customResources in backstage/app-config.yaml - keep the two lists in sync.
+  - apiGroups: ["tekton.dev"]
+    resources:
+      - pipelineruns
+      - taskruns
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["argoproj.io"]
+    resources:
+      - workflows
+      - rollouts
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: backstage-kubernetes-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: backstage-kubernetes-reader
+subjects:
+  - kind: ServiceAccount
+    name: backstage
+    namespace: {{ .Values.namespaces.backstage }}
+{{- end }}

@@ -1,0 +1,71 @@
+# The two demo microservices - mirrors jenkins/pipelines/seed/services.yaml
+# (the registry ALL FOUR CI engines read; keep names in sync).
+#
+# Annotations for EVERY engine coexist on purpose: the EntityPage's CI/CD tab
+# picks the ACTIVE one at runtime (jenkins2026.ciEngine), so the same catalog
+# serves any engine.
+#   jenkins.io/job-full-name            Jenkins tab (root jobs from the seed)
+#   github.com/project-slug             GitHub Actions tab (the nubenetes forks)
+#   tekton.dev/cicd + backstage.io/kubernetes-*   Tekton tab (k8s plugin CRs)
+#   argocd/app-name                     ArgoCD tabs (ONE app deploys both services)
+#   backstage.io/kubernetes-label-selector        Kubernetes tab (workload match)
+#   backstage.io/techdocs-entity        Docs tab = the platform's TechDocs (the
+#                                       forks ship no mkdocs site of their own)
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: gateway
+  description: JHipster gateway - Spring Cloud Gateway serving the Angular SPA
+  annotations:
+    github.com/project-slug: nubenetes/jhipster-sample-app-gateway
+    jenkins.io/job-full-name: gateway
+    tekton.dev/cicd: "true"
+    argocd/app-name: microservices-stable
+    backstage.io/kubernetes-namespace: microservices
+    backstage.io/kubernetes-label-selector: 'app.kubernetes.io/name=gateway'
+    # The app fork ships no mkdocs site - surface the PLATFORM's TechDocs on
+    # this entity's Docs tab + AboutCard instead (shared-docs annotation).
+    backstage.io/techdocs-entity: component:default/jenkins-2026-infra
+  links:
+    - url: https://microservices.jenkins2026.nubenetes.com
+      title: Live app (stable)
+    - url: https://github.com/nubenetes/jhipster-sample-app-gateway
+      title: Source (nubenetes fork)
+      icon: github
+spec:
+  type: service
+  lifecycle: production
+  owner: platform-team
+  system: microservices
+  providesApis:
+    - gateway-api
+  consumesApis:
+    - microservice-api
+  dependsOn:
+    - component:default/jhipstersamplemicroservice
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: jhipstersamplemicroservice
+  description: JHipster backend microservice (database-per-service Postgres)
+  annotations:
+    github.com/project-slug: nubenetes/jhipster-sample-app-microservice
+    jenkins.io/job-full-name: jhipstersamplemicroservice
+    tekton.dev/cicd: "true"
+    argocd/app-name: microservices-stable
+    backstage.io/kubernetes-namespace: microservices
+    backstage.io/kubernetes-label-selector: 'app.kubernetes.io/name=jhipstersamplemicroservice'
+    # Shared docs: the platform's TechDocs on this entity (see gateway note).
+    backstage.io/techdocs-entity: component:default/jenkins-2026-infra
+  links:
+    - url: https://github.com/nubenetes/jhipster-sample-app-microservice
+      title: Source (nubenetes fork)
+      icon: github
+spec:
+  type: service
+  lifecycle: production
+  owner: platform-team
+  system: microservices
+  providesApis:
+    - microservice-api

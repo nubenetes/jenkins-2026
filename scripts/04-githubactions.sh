@@ -2,7 +2,7 @@
 # 04-githubactions.sh — install the GitHub Actions / ARC CI engine (ci.engine=githubactions).
 # The analogue of 04-tekton.sh / 04-jenkins.sh: applies the argocd/githubactions app-of-apps
 # (gha-runner-scale-set-controller + the AutoscalingRunnerSet of ephemeral self-hosted
-# runners), retiring the sibling engines first. Idempotent. See docs/404-GITHUB_ACTIONS.md.
+# runners), retiring the sibling engines first. Idempotent. See docs/405-GITHUB_ACTIONS.md.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/common.sh"

@@ -99,6 +99,16 @@ if [[ "${J2026_CI_ENGINE}" == "argoworkflows" ]]; then
   tls_backend_namespaces+=("${J2026_ARGOWF_NAMESPACE}")
 fi
 
+# Backstage (stage 10) is a TLS backend ONLY when the portal is enabled (doubly
+# conditional, like Grafana's oss gate). Tracked like jenkins/tekton above: the
+# retire paths clean its cert even when the global flag stays on but the portal
+# was disabled.
+BACKSTAGE_TLS_ACTIVE="false"
+if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
+  BACKSTAGE_TLS_ACTIVE="true"
+  tls_backend_namespaces+=("${J2026_BACKSTAGE_NAMESPACE}")
+fi
+
 
 if [[ "$(j2026_backend_tls_active)" != "true" ]]; then
   # --- retire: deterministic cleanup of a previous enabled run ---------------
@@ -147,6 +157,9 @@ if [[ "$(j2026_backend_tls_active)" != "true" ]]; then
   fi
   if kubectl get namespace "${J2026_ARGOWF_NAMESPACE}" >/dev/null 2>&1; then
     kubectl delete secret "${J2026_BACKEND_TLS_SECRET_ARGOWF}" -n "${J2026_ARGOWF_NAMESPACE}" --ignore-not-found
+  fi
+  if kubectl get namespace "${J2026_BACKSTAGE_NAMESPACE}" >/dev/null 2>&1; then
+    kubectl delete secret "${J2026_BACKEND_TLS_SECRET_BACKSTAGE}" -n "${J2026_BACKSTAGE_NAMESPACE}" --ignore-not-found
   fi
 
   # argocd trust bundle + server cert (its namespace is not in the projection list
@@ -430,6 +443,21 @@ elif kubectl get namespace "${J2026_ARGOWF_NAMESPACE}" >/dev/null 2>&1; then
   kubectl delete secret "${J2026_BACKEND_TLS_SECRET_ARGOWF}" -n "${J2026_ARGOWF_NAMESPACE}" --ignore-not-found
 fi
 
+# Stage 10: Backstage, ONLY when the portal is enabled (backstage.enabled). The
+# Node.js backend serves the PEM pair natively via app-config backend.https
+# (helm/backstage/values-backend-tls.yaml, layered by the argocd/backstage
+# app-of-apps when the parent's backendTls param is true - threaded by 08.95).
+# 08.7 runs BEFORE 08.95 in up.sh, so the Secret exists before the pod mounts it.
+if [[ "${BACKSTAGE_TLS_ACTIVE}" == "true" ]]; then
+  kubectl get namespace "${J2026_BACKSTAGE_NAMESPACE}" >/dev/null 2>&1 || kubectl create namespace "${J2026_BACKSTAGE_NAMESPACE}"
+  mint_server_cert "${J2026_BACKEND_TLS_SECRET_BACKSTAGE}" "${J2026_BACKSTAGE_NAMESPACE}" \
+    "backstage.${J2026_BACKSTAGE_NAMESPACE}.svc.cluster.local"
+elif kubectl get namespace "${J2026_BACKSTAGE_NAMESPACE}" >/dev/null 2>&1; then
+  # backend TLS on globally but the portal is disabled: retire any leftover cert
+  # so a re-enabled Backstage never starts from a stale one.
+  kubectl delete secret "${J2026_BACKEND_TLS_SECRET_BACKSTAGE}" -n "${J2026_BACKSTAGE_NAMESPACE}" --ignore-not-found
+fi
+
 # Stage 7: Java Hipster microservices gateway.
 
 # Stable tier
@@ -472,6 +500,6 @@ for ns in "${tls_backend_namespaces[@]}"; do
     --from-literal=ca.crt="${ca_pem}" --dry-run=client -o yaml | kubectl apply -f -
 done
 
-log_info "Backend TLS ready: cert-manager installed, internal CA bootstrapped, headlamp + faro + pgadmin$([[ "${J2026_OBS_MODE}" == "oss" ]] && echo " + grafana")$([[ "${JENKINS_TLS_ACTIVE}" == "true" ]] && echo " + jenkins") certs minted."
+log_info "Backend TLS ready: cert-manager installed, internal CA bootstrapped, headlamp + faro + pgadmin$([[ "${J2026_OBS_MODE}" == "oss" ]] && echo " + grafana")$([[ "${JENKINS_TLS_ACTIVE}" == "true" ]] && echo " + jenkins")$([[ "${BACKSTAGE_TLS_ACTIVE}" == "true" ]] && echo " + backstage") certs minted."
 log_info "  (08.5-argocd.sh layers the Headlamp + pgAdmin TLS overlays; 03-observability.sh layers the faro + oss-Grafana overlays;"
-log_info "   04-jenkins.sh layers the Jenkins TLS overlay; 09-gateway.sh attaches the BackendTLSPolicies.)"
+log_info "   04-jenkins.sh layers the Jenkins TLS overlay; 08.95-backstage.sh threads the Backstage overlay; 09-gateway.sh attaches the BackendTLSPolicies.)"

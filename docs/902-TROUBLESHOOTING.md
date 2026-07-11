@@ -16,7 +16,7 @@
 
 - **Rotating the Jenkins admin password** (`secrets.backend=imperative`): delete the `jenkins-credentials` Secret in the `jenkins` namespace and re-run [`scripts/01-namespaces.sh`](../scripts/01-namespaces.sh) + [`scripts/04-jenkins.sh`](../scripts/04-jenkins.sh). With `secrets.backend=eso` that recipe restores the **old** password (`sm_keep_or_generate` keeps the existing Secret Manager value and ESO re-syncs it) — delete the **Secret Manager** secret first (`gcloud secrets delete jenkins-credentials`), then re-run the two scripts and `kubectl delete pod jenkins-0 -n jenkins`.
 
-- **Tekton CI dashboard panels show "No data" on a fresh cluster**: expected until a `PipelineRun` has actually run. The run-scoped metrics (`tekton_pipelines_controller_pipelinerun_total` / `_duration_seconds` / `taskrun_total` / `taskruns_pod_latency`) are only created by the controller **after** the first run; before that those panels are empty even though the scrape works (`up{job="tekton-pipelines-controller"}` = 1, `tekton_pipelines_controller_running_pipelineruns` = 0). With the default `tekton.seedRuns: true`, `Day1` ([`06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh)) seeds one PipelineRun per service from `tekton/runs/`, so these panels populate once the seeded runs finish. With `tekton.seedRuns=false` (`JENKINS2026_TEKTON_SEED_RUNS`), PaC is set up but no build is triggered — it waits for a `git push` to the microservices fork; trigger one by hand (the Tekton Dashboard's *Create*, or `kubectl create` a PipelineRun — see [403 § Running a pipeline by hand](./403-TEKTON.md#running-a-pipeline-by-hand-dashboard--kubectl--tkn)) and the panels populate. Same applies to the trace/span-metrics panels (they need a run to emit traces).
+- **Tekton CI dashboard panels show "No data" on a fresh cluster**: expected until a `PipelineRun` has actually run. The run-scoped metrics (`tekton_pipelines_controller_pipelinerun_total` / `_duration_seconds` / `taskrun_total` / `taskruns_pod_latency`) are only created by the controller **after** the first run; before that those panels are empty even though the scrape works (`up{job="tekton-pipelines-controller"}` = 1, `tekton_pipelines_controller_running_pipelineruns` = 0). With the default `tekton.seedRuns: true`, `Day1` ([`06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh)) seeds one PipelineRun per service from `tekton/runs/`, so these panels populate once the seeded runs finish. With `tekton.seedRuns=false` (`JENKINS2026_TEKTON_SEED_RUNS`), PaC is set up but no build is triggered — it waits for a `git push` to the microservices fork; trigger one by hand (the Tekton Dashboard's *Create*, or `kubectl create` a PipelineRun — see [403 § Running a pipeline by hand](./404-TEKTON.md#running-a-pipeline-by-hand-dashboard--kubectl--tkn)) and the panels populate. Same applies to the trace/span-metrics panels (they need a run to emit traces).
 
 ## Dataplane V2 enforcement & fresh-cluster stalls
 
@@ -243,6 +243,22 @@ Verify: `kubectl get cluster -n microservices` → `ContinuousArchiving=True`, a
 *Time since last successful backup* shows a real value once a backup completes.
 
 > The same `Expected empty archive` check can bite during a **restore** if you recover into a non-empty archive prefix — see [Runbook: CNPG Restore from Backup § 6b](./runbooks/cnpg-restore-from-backup.md#6b-the-servername--system-id-gotcha-expected-empty-archive).
+
+## Backstage pod stuck `ImagePullBackOff` right after enabling it
+
+**Symptom**: `backstage.enabled=true`, `Day1` finished green (with a prominent warning from `08.95`), but the `backstage` pod sits in `ImagePullBackOff` on `ghcr.io/nubenetes/jenkins-2026-backstage:<branch>`.
+
+**Cause**: the portal runs a **custom app image** that must exist in ghcr **before** the first Backstage-enabled provision — a deliberate one-time bootstrap ([505 § Enabling it](./505-BACKSTAGE.md#enabling-it-the-feature-flag)). `08.95-backstage.sh` degrades gracefully (warns + skips the rollout wait) instead of failing the Day1.
+
+**Fix**: run [`Day2.publish.06-backstage`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.06-backstage.yml) once **from the same branch you deployed** (the image tag auto-tracks the deploy branch), then re-run `Day2.redeploy.08-backstage` (or just wait — `pullPolicy: Always` + the next pod restart picks it up). The image **persists across cluster rebuilds**, so this never repeats.
+
+## Backstage sign-in fails (audience/JWT error) though IAP let you in
+
+**Symptom**: IAP authenticates you, but the portal shows an auth error; `kubectl -n backstage get configmap backstage-runtime-config -o jsonpath='{.data.IAP_AUDIENCE}'` prints `pending`.
+
+**Cause**: the `gcpIap` provider **verifies the IAP-signed JWT** against the LB backend-service audience — an ID the GKE Gateway controller only mints minutes **after** the HTTPRoute is programmed. On a first-ever provision, `09-gateway.sh`'s bounded (3 min) resolution can expire before the LB finishes.
+
+**Fix**: re-run any `09-gateway` path (`Day1`, `Day2.redeploy.05-gateway` or `Day2.redeploy.08-backstage`) — it resolves the backend-service ID, patches `IAP_AUDIENCE` and restarts the deployment. Full matrix: [505 § Troubleshooting](./505-BACKSTAGE.md#troubleshooting).
 
 ## ArgoCD OIDC Issues
 
@@ -524,7 +540,7 @@ weight. It `rm -rf`s `node_modules`/`target`/`~/.m2/repository`/the Jib cache an
 takes effect only after a **re-seed** — the next **Day1** or a
 [`06-githubactions-pipelines.sh`](../scripts/06-githubactions-pipelines.sh) re-run
 (equivalently `Day2.redeploy.06-githubactions`). See
-[404 § The ci-spot / NAP showcase](./404-GITHUB_ACTIONS.md#the-ci-spot--nap-showcase-why-this-engine-defaults-to-spot).
+[404 § The ci-spot / NAP showcase](./405-GITHUB_ACTIONS.md#the-ci-spot--nap-showcase-why-this-engine-defaults-to-spot).
 
 ## OSS Grafana shows "No data" everywhere with zero datasources configured (`/api/datasources` returns `[]`)
 

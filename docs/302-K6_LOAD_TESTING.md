@@ -175,7 +175,7 @@ Typing the full `K6SIM_*` set every time is tedious and error-prone. **Presets**
 
 | Engine | Selector | Loader | Notes |
 |---|---|---|---|
-| **Jenkins** | `PRESET` **choice** in *Build with Parameters* (seeded from [`presets/index.yaml`](../jenkins/pipelines/k6/presets/index.yaml)) | `readYaml` in the pipeline merges preset + manual | The job's tier still sets the default namespace/env unless the preset pins them. |
+| **Jenkins** | `PRESET` **choice** in *Build with Parameters* (seeded from [`presets/index.yaml`](../jenkins/pipelines/k6/presets/index.yaml)) | the [`microservicesK6Run`](../vars/microservicesK6Run.groovy) library step merges preset + manual (`readYaml`) | The job's tier still sets the default namespace/env unless the preset pins them. |
 | **GitHub Actions** | `preset` **dropdown** input | a *Resolve k6 parameters* step (`yq`) writes the merged `K6SIM_*` to `$GITHUB_ENV` | Options are listed in the workflow — keep in sync with `index.yaml`. |
 | **Tekton** | `preset` **param** | a `resolve-preset` step (`yq`) writes `k6sim-preset.env`; `run-k6` fills any empty param from it | Idiomatic param; `tekton/runs/*.yaml` can hard-set it. |
 | **Argo Workflows** | `preset` **param** | a `resolve-preset` step (`yq`) writes `k6sim-preset.env`; `run-k6` fills any empty param from it | Same mechanism as Tekton; `argoworkflows/runs/*.yaml` can hard-set it. |

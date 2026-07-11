@@ -1,0 +1,44 @@
+name: "Mermaid validate (render every diagram)"
+
+# Lightweight PR guard (like gitflow-guard / terraform-validate) — NOT a DayN
+# lifecycle workflow. Render-verifies EVERY ```mermaid block in the repo's
+# markdown with mermaid-cli, so a diagram that would silently fail to render on
+# GitHub (e.g. a bare ';' in sequenceDiagram note/message text — the defect
+# that shipped broken in docs/403 §7.5 and docs/503's ingress sequence) fails
+# the PR instead. Runs entirely offline from the repo's perspective: no cloud
+# credentials — just Node + headless Chromium on the runner.
+#
+# mermaid-cli is pinned (docs/602): 11.16.0 == mermaid v11, the same major
+# GitHub renders with.
+
+on:
+  pull_request:
+    paths:
+      - "**/*.md"
+      - "scripts/verify-mermaid.sh"
+      - ".github/workflows/mermaid-validate.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mermaid-validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render:
+    name: render all mermaid blocks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+
+      - name: Install mermaid-cli (pinned)
+        run: npm install -g @mermaid-js/mermaid-cli@11.16.0
+
+      - name: Render every diagram
+        run: ./scripts/verify-mermaid.sh

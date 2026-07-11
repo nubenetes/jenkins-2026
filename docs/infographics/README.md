@@ -603,7 +603,7 @@ Browse the infographics visually using the collapsible previews below. Click any
 ### 702 - Spot Instance Resiliency Jenkins vs GitHub Actions ARC
 * **Category**: `700: Tool Comparisons`
 * **Key Technologies & Components**: Spot Nodes, Evictions, ARC, Jenkins
-* **Description**: Benchmarks Spot instance node evictions. Compares Jenkins master-agent connection drops with GitHub Actions ARC runner rescheduling and recovery metrics.
+* **Description**: Benchmarks Spot instance node evictions. Compares Jenkins controller-agent connection drops with GitHub Actions ARC runner rescheduling and recovery metrics.
 
 <details>
 <summary>🔍 Expand infographic preview (702)</summary>

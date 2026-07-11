@@ -210,7 +210,7 @@ spec:
         matchExpressions:
         - key: kubernetes.io/metadata.name
           operator: In
-          values: [jenkins, tekton-pipelines, tekton-ci, argo, argo-ci, arc-runners]
+          values: [jenkins, tekton-pipelines, tekton-ci, argo, argo-ci, arc-runners, backstage]
     ports:
     - protocol: TCP
       port: 8080

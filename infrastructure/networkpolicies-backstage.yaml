@@ -1,0 +1,65 @@
+# Backstage-namespace baseline (applied by 01-namespaces.sh ONLY when
+# backstage.enabled=true - the namespace doesn't exist otherwise, and applying
+# into an absent namespace is a hard error, same reason the jenkins/tekton
+# policies live in their own files).
+#
+# Zero-trust ingress-hardening in the headlamp/argocd-baseline style: inbound is
+# limited to (1) the namespace-internal mesh (backstage -> its CNPG postgres on
+# 5432, the CNPG initdb Job), (2) the GKE global-LB + health-check ranges - the
+# ONLY legitimate path for user traffic, which doubles as defense-in-depth
+# against in-cluster pods trying to reach the portal while spoofing IAP identity
+# headers (same rationale as the argocd-baseline :8080 lock-down; Backstage's
+# gcpIap provider additionally VERIFIES the signed IAP JWT, so a spoofed header
+# alone is useless - see docs/505-BACKSTAGE.md), (3) the CNPG operator's status
+# probe and (4) Prometheus' CNPG metrics scrape. Egress stays open (GitHub API +
+# catalog locations, Google's IAP JWKS endpoint, the k8s API server, and the
+# Jenkins/ArgoCD Services the plugins consult) - the headlamp/argocd precedent.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backstage-baseline
+  namespace: backstage
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Intra-namespace mesh: backstage -> backstage-db (5432) and CNPG's own
+  # pod-to-pod chatter (initdb Job, instance manager).
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: backstage
+  # Backstage UI/API from the GKE global external L7 Gateway + health checks
+  # ONLY. POD port 7007 (the container-native LB/NEG dials the pod's targetPort,
+  # not the Service port). The same port serves plain HTTP or native HTTPS
+  # depending on gateway.backendTls (docs/504 stage 10), so one allow covers both.
+  - from:
+    - ipBlock:
+        cidr: 130.211.0.0/22
+    - ipBlock:
+        cidr: 35.191.0.0/16
+    ports:
+    - protocol: TCP
+      port: 7007
+  # Prometheus (observability) -> CNPG metrics on 9187.
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: observability
+    ports:
+    - protocol: TCP
+      port: 9187
+  # The CNPG operator (cnpg-system) -> the instance's status web server on 8000.
+  # Without it the Cluster's Ready condition sticks at False under Dataplane V2
+  # enforcement - same allow as microservices-cnpg-platform (networkpolicies.yaml).
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: cnpg-system
+    ports:
+    - protocol: TCP
+      port: 8000
+  egress:
+  - {}

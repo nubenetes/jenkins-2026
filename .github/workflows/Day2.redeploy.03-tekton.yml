@@ -33,7 +33,7 @@ on:
         default: ""
         type: string
       run_node_pool:
-        description: "Where PipelineRun/TaskRun pods run (tekton.runNodePool). 'config' = use config.yaml (default static). 'static' = the jenkins-2026-pool — RECOMMENDED for Tekton (the affinity assistant pins a whole RWO-workspace run to one node, so Spot preemption kills the entire run). 'ci-spot' = NAP Spot ComputeClass (opt-in; needs NAP + SSD quota headroom). See docs/403."
+        description: "Where PipelineRun/TaskRun pods run (tekton.runNodePool). 'config' = use config.yaml (default static). 'static' = the jenkins-2026-pool — RECOMMENDED for Tekton (the affinity assistant pins a whole RWO-workspace run to one node, so Spot preemption kills the entire run). 'ci-spot' = NAP Spot ComputeClass (opt-in; needs NAP + SSD quota headroom). See docs/404."
         required: false
         default: "config"
         type: choice
@@ -180,6 +180,10 @@ jobs:
           IAP_OAUTH_CLIENT_SECRET: ${{ secrets.IAP_OAUTH_CLIENT_SECRET }}
           TEKTON_GITHUB_WEBHOOK_SECRET: ${{ secrets.TEKTON_GITHUB_WEBHOOK_SECRET }}
           PAC_WEBHOOK_SECRET: ${{ secrets.PAC_WEBHOOK_SECRET }}
+          # Optional Backstage GitHub-Actions-tab OAuth App (docs/505); 01 keeps
+          # the existing values when these are empty (keep-if-present guard).
+          BACKSTAGE_GITHUB_OAUTH_CLIENT_ID: ${{ secrets.BACKSTAGE_GITHUB_OAUTH_CLIENT_ID }}
+          BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET: ${{ secrets.BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET }}
           # Optional Grafana Cloud k6 (k6-app) streaming for the k6 smoke pipeline.
           K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
           K6_CLOUD_PROJECT_ID: ${{ secrets.K6_CLOUD_PROJECT_ID }}

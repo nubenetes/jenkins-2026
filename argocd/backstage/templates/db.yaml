@@ -1,0 +1,39 @@
+# CNPG PostgreSQL for Backstage - wave 0, so the database is Healthy before the
+# chart (wave 1) starts the backend. Requires the CNPG operator, which is
+# ALWAYS installed by the platform-postgres app-of-apps (08.5 waits for its
+# controller before 08.95 applies this chart's parent).
+#
+# THROWAWAY BY DESIGN (docs/104): single instance, no backups, no fixed external
+# state - Backstage's catalog re-ingests from git/GitHub, search re-indexes and
+# TechDocs re-renders on a fresh provision, so a Decom+Day1 loses nothing that
+# matters. The operator auto-generates the `backstage-db-app` Secret
+# (host/port/username/password) that helm/backstage/values.yaml maps to the
+# POSTGRES_* env vars.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .Values.db.name }}
+  namespace: {{ .Values.namespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  instances: 1
+  bootstrap:
+    initdb:
+      # Backstage's database manager creates one database per plugin
+      # (backstage_plugin_catalog, backstage_plugin_search, ...) at startup, so
+      # the app role needs CREATEDB. postInitApplicationSQL runs after initdb
+      # has created the `app` database + owner role.
+      postInitApplicationSQL:
+        - ALTER ROLE app CREATEDB
+  storage:
+    size: {{ .Values.db.storageSize }}
+  # Explicit resources so the namespace LimitRange defaults (200m/256Mi) never
+  # squeeze postgres, and the backstage-quota headroom stays predictable.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi

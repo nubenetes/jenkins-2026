@@ -1,0 +1,173 @@
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: gateway-api
+  description: JHipster Gateway User & Authentication API
+spec:
+  type: openapi
+  lifecycle: production
+  owner: platform-team
+  system: microservices
+  definition: |
+    openapi: "3.0.1"
+    info:
+      title: JHipster Gateway API
+      version: 1.0.0
+      description: Authentication and User management services for the Gateway.
+    components:
+      securitySchemes:
+        jwt:
+          type: http
+          scheme: bearer
+          bearerFormat: JWT
+    security:
+      - jwt: []
+    paths:
+      /api/authenticate:
+        post:
+          summary: Authenticate user and receive JWT token
+          requestBody:
+            required: true
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    username:
+                      type: string
+                    password:
+                      type: string
+                    rememberMe:
+                      type: boolean
+          responses:
+            '200':
+              description: Authentication successful
+              content:
+                application/json:
+                  schema:
+                    type: object
+                    properties:
+                      id_token:
+                        type: string
+      /api/register:
+        post:
+          summary: Register a new user account
+          requestBody:
+            required: true
+            content:
+              application/json:
+                schema:
+                  type: object
+                  properties:
+                    login:
+                      type: string
+                    email:
+                      type: string
+                    password:
+                      type: string
+          responses:
+            '201':
+              description: User registered successfully
+      /api/account:
+        get:
+          summary: Get details of the currently authenticated user
+          responses:
+            '200':
+              description: Current user account details
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: microservice-api
+  description: JHipster Sample Microservice BankAccount CRUD API
+spec:
+  type: openapi
+  lifecycle: production
+  owner: platform-team
+  system: microservices
+  definition: |
+    openapi: "3.0.1"
+    info:
+      title: JHipster Sample Microservice API
+      version: 1.0.0
+      description: Business APIs for managing Bank Accounts.
+    components:
+      securitySchemes:
+        jwt:
+          type: http
+          scheme: bearer
+          bearerFormat: JWT
+      schemas:
+        BankAccount:
+          type: object
+          properties:
+            id:
+              type: integer
+              format: int64
+            name:
+              type: string
+            balance:
+              type: number
+              format: double
+    security:
+      - jwt: []
+    paths:
+      /api/bank-accounts:
+        get:
+          summary: Get all bank accounts
+          responses:
+            '200':
+              description: List of bank accounts
+              content:
+                application/json:
+                  schema:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BankAccount'
+        post:
+          summary: Create a new bank account
+          requestBody:
+            required: true
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/BankAccount'
+          responses:
+            '201':
+              description: Bank account created
+        put:
+          summary: Update an existing bank account
+          requestBody:
+            required: true
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/BankAccount'
+          responses:
+            '200':
+              description: Bank account updated
+      /api/bank-accounts/{id}:
+        get:
+          summary: Get a bank account by ID
+          parameters:
+            - name: id
+              in: path
+              required: true
+              schema:
+                type: integer
+                format: int64
+          responses:
+            '200':
+              description: Bank account details
+        delete:
+          summary: Delete a bank account by ID
+          parameters:
+            - name: id
+              in: path
+              required: true
+              schema:
+                type: integer
+                format: int64
+          responses:
+            '204':
+              description: Bank account deleted

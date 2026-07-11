@@ -1,0 +1,50 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: backstage
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  # App-of-apps: renders the local Helm chart argocd/backstage/, which emits
+  # (wave 0) the CNPG PostgreSQL Cluster `backstage-db` and (wave 1) the
+  # `backstage-chart` child Application (the OFFICIAL backstage/charts chart +
+  # the helm/backstage values overlays; deliberately NOT named `backstage` -
+  # that is THIS app, and a same-name child overwrites its parent). The {{repoUrl}}/{{branchStable}}/
+  # {{backendTls}}/{{chartVersion}}/{{imageRegistry}}/{{imageRepository}}/
+  # {{imageTag}} placeholders are substituted by scripts/08.95-backstage.sh at
+  # apply time (from config.yaml + the deploy branch) and passed down as helm
+  # parameters, so the child's git source tracks the active branch, the image
+  # tag auto-tracks the deploy branch, and (when backend TLS is active) the
+  # child layers the TLS values overlay. See docs/505-BACKSTAGE.md.
+  source:
+    repoURL: '{{repoUrl}}'
+    targetRevision: '{{branchStable}}'
+    path: argocd/backstage
+    helm:
+      parameters:
+        - name: repoURL
+          value: '{{repoUrl}}'
+        - name: targetRevision
+          value: '{{branchStable}}'
+        # "true"/"false" from j2026_backend_tls_active (docs/504). Re-rendered
+        # every run, so flipping the flag off re-emits the child without the
+        # overlay and ArgoCD self-heals Backstage back to plain HTTP.
+        - name: backendTls
+          value: '{{backendTls}}'
+        - name: chart.version
+          value: '{{chartVersion}}'
+        - name: image.registry
+          value: '{{imageRegistry}}'
+        - name: image.repository
+          value: '{{imageRepository}}'
+        - name: image.tag
+          value: '{{imageTag}}'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

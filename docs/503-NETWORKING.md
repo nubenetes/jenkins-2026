@@ -191,11 +191,11 @@ sequenceDiagram
   U->>DNS: resolve app.jenkins2026.nubenetes.com
   DNS-->>U: wildcard A record → the static IP
   U->>LB: HTTPS (one Google-managed wildcard cert)
-  alt IAP-protected (jenkins / tekton / argo-workflows UI / headlamp / pgadmin / grafana-oss)
+  alt IAP-protected (jenkins / tekton / argo-workflows UI / headlamp / pgadmin / backstage / argocd / grafana-oss)
     LB->>IAP: is the Google account in the admin allowlist?
     IAP-->>LB: allow / deny (403)
-  else open (microservices · argocd · faro · pac · argo-events)
-    note over LB: no IAP — pac / argo-events are protected by an HMAC webhook secret; faro is the browser-facing RUM beacon
+  else open (microservices · faro · pac · argo-events)
+    note over LB: no IAP — pac / argo-events are protected by an HMAC webhook secret · faro is the browser-facing RUM beacon
   end
   LB->>GW: HTTPRoute match by hostname
   GW->>NEG: route to the Service's NEG
@@ -213,8 +213,9 @@ sequenceDiagram
 | Argo Workflows UI *(argoworkflows mode)* | `argo.<domain>` | `2746` | **yes** |
 | Headlamp | `headlamp.<domain>` | `4466` | **yes** |
 | pgAdmin | `pgadmin.<domain>` | `80` | **yes** |
+| Backstage *(backstage.enabled, default on)* | `backstage.<domain>` | `7007` | **yes** (+ in-app `gcpIap` JWT verification — [505](./505-BACKSTAGE.md)) |
 | Grafana *(oss mode)* | `grafana.<domain>` | `3000` | **yes** |
-| ArgoCD | `argocd.<domain>` | `8080` | no |
+| ArgoCD | `argocd.<domain>` | `8080` | **yes** (IAP + Dex `authproxy` SSO — [501](./501-PLATFORM_OPERATIONS.md)) |
 | Microservices | `microservices.<domain>` | `8080` (gateway) | no (public demo) |
 | Microservices *(develop tier)* | `microservices-develop.<domain>` | `8080` (gateway) | no (public demo; only when `microservices.developTrackEnabled`) |
 | Faro RUM beacon | `faro.<domain>` | `8027` (otel-collector-gateway) | no (public browser beacon; CORS-open receiver) |
@@ -330,7 +331,7 @@ flowchart TB
 
 </details>
 
-- **Files:** [`infrastructure/networkpolicies.yaml`](../infrastructure/networkpolicies.yaml) (always) + one engine-gated file per `ci.engine` — [`-jenkins.yaml`](../infrastructure/networkpolicies-jenkins.yaml) / [`-tekton.yaml`](../infrastructure/networkpolicies-tekton.yaml) / [`-githubactions.yaml`](../infrastructure/networkpolicies-githubactions.yaml) / [`-argoworkflows.yaml`](../infrastructure/networkpolicies-argoworkflows.yaml) — applied by `01-namespaces.sh`. The app-chart's own policies (gateway/microservice/postgres) ship from the **gitops-config** repo, namespace-templated.
+- **Files:** [`infrastructure/networkpolicies.yaml`](../infrastructure/networkpolicies.yaml) (always) + one engine-gated file per `ci.engine` — [`-jenkins.yaml`](../infrastructure/networkpolicies-jenkins.yaml) / [`-tekton.yaml`](../infrastructure/networkpolicies-tekton.yaml) / [`-githubactions.yaml`](../infrastructure/networkpolicies-githubactions.yaml) / [`-argoworkflows.yaml`](../infrastructure/networkpolicies-argoworkflows.yaml) — plus the portal-gated [`-backstage.yaml`](../infrastructure/networkpolicies-backstage.yaml) (`backstage.enabled`: pod-port `7007` ingress locked to the LB/health-check ranges — the argocd-baseline header-spoof posture — [505](./505-BACKSTAGE.md)) — applied by `01-namespaces.sh`. The app-chart's own policies (gateway/microservice/postgres) ship from the **gitops-config** repo, namespace-templated.
 - **Develop tier:** when on, `01-namespaces.sh` replicates the additive `microservices-cnpg-platform` policy into `microservices-develop`, and the observability/pgadmin allowlists already list it statically (see [402 § Optional develop Tier](./402-PIPELINES_AS_CODE.md)).
 - **Gotchas under enforcement** (target the *pod* port not the Service port; allow the L7 health-check ranges; match CNPG pods by `cnpg.io/cluster`; agents/smoke pods must live where egress is open) are catalogued in [501](./501-PLATFORM_OPERATIONS.md) and [902 § Dataplane V2](./902-TROUBLESHOOTING.md).
 

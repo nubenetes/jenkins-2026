@@ -1,4 +1,4 @@
-[← Previous: 503. Networking](./503-NETWORKING.md) | [🏠 Home](../README.md) | [→ Next: 601. DevSecOps](./601-DEVSECOPS.md)
+[← Previous: 503. Networking](./503-NETWORKING.md) | [🏠 Home](../README.md) | [→ Next: 505. Backstage](./505-BACKSTAGE.md)
 
 ---
 
@@ -12,11 +12,12 @@ documents). Setting **`gateway.backendTls.enabled: true`** (override
 **application-layer TLS on that hop** for the TLS-ready backends: cert-manager +
 a cluster-internal CA are installed, the backend serves HTTPS itself, and a GKE
 `BackendTLSPolicy` makes the LB **re-encrypt *and* validate** the connection
-against the internal CA. Stages 1–8 convert all available web interfaces and backends:
+against the internal CA. Stages 1–10 convert all available web interfaces and backends:
 **Headlamp**, the **faro RUM receiver**, **ArgoCD** (fully active for all four engines),
 **pgAdmin**, the in-cluster **OSS Grafana** (doubly conditional on `observability.mode=oss`),
 **Jenkins** (when `ci.engine=jenkins`), **Tekton Dashboard** (when `ci.engine=tekton`),
-and **Argo Workflows Server** (when `ci.engine=argoworkflows`); the roadmap below has the
+**Argo Workflows Server** (when `ci.engine=argoworkflows`), and **Backstage** (when
+`backstage.enabled` — [docs/505](./505-BACKSTAGE.md)); the roadmap below has the
 per-backend detail. Default **`false`** — zero impact until you opt in.
 
 ## Why (and why opt-in)
@@ -363,6 +364,7 @@ Known per-backend state:
 | **microservices gateway (JHipster)** | Spring Boot `server.ssl.*` + cert-manager `keystores.pkcs12` | **cross-repo** — the deploy chart lives in `jenkins-2026-gitops-config`; also interacts with Argo Rollouts canary routes and every engine's smoke test URL |
 | **Tekton Dashboard** | unprivileged Nginx sidecar proxy for TLS termination | ✅ **done (stage 8, `ci.engine=tekton` only)** — Because the Tekton Dashboard binary (`/ko-app/dashboard`) lacks native TLS options, the `dashboard-tls` overlay adds an `nginx-tls-proxy` sidecar container running `nginxinc/nginx-unprivileged:alpine` (conforming to GKE's strict security context guidelines). The sidecar mounts the `tekton-dashboard-tls` secret and a ConfigMap-generated `nginx.conf`, listens on port `9097` (HTTPS), and proxies decrypted traffic locally to the main dashboard container running on port `8080` (HTTP). `09-gateway.sh` adds the matching `BackendTLSPolicy` and HTTPS `HealthCheckPolicy` (`/readiness`). |
 | **Argo Workflows Server** | native `--tls-certificate-secret-name` flag | ✅ **done (stage 9, `ci.engine=argoworkflows` only)** — The `workflows-tls` overlay (selected by the parent Application when `backendTls` is active) sets `--tls-certificate-secret-name=argo-server-tls` so argo-server loads the cert-manager cert by name (**without this flag it self-signs and the LB CA-validation 502s** — the bug the first live run surfaced; `--secure` defaults on) and flips `readinessProbe` to HTTPS. `09-gateway.sh` attaches the matching `BackendTLSPolicy` and HTTPS `HealthCheckPolicy` (`/`). |
+| **Backstage** | native Node.js HTTPS — Backstage's first-class `backend.https.certificate` config (`$file` refs to the mounted cert) | ✅ **done (stage 10, `backstage.enabled` only — [docs/505](./505-BACKSTAGE.md))** — the [`values-backend-tls.yaml`](../helm/backstage/values-backend-tls.yaml) overlay (threaded through the `argocd/backstage` app-of-apps' `backendTls` param by `08.95-backstage.sh`) renders an EXTRA `--config` file that turns on `backend.https` over the image's `app-config.yaml`, mounts the cert-manager `backstage-tls` Secret and flips the kubelet probes to HTTPS; `08.7` mints the cert (SAN `backstage.backstage.svc.cluster.local`), `09-gateway.sh` attaches the `BackendTLSPolicy` + HTTPS `HealthCheckPolicy` (`/.backstage/health/v1/readiness`). Caller-side flips ride the `backstage-runtime-config` ConfigMap (Jenkins → plain `:8082`, ArgoCD → `https://` + `NODE_EXTRA_CA_CERTS` internal-CA trust). IAP composes unchanged |
 
 ## Does `secrets.backend=eso` change anything?
 
@@ -552,7 +554,7 @@ headlamp` (an unattached/invalid policy is silently ignored — the same
 
 ---
 
-[← Previous: 503. Networking](./503-NETWORKING.md) | [🏠 Home](../README.md) | [→ Next: 601. DevSecOps](./601-DEVSECOPS.md)
+[← Previous: 503. Networking](./503-NETWORKING.md) | [🏠 Home](../README.md) | [→ Next: 505. Backstage](./505-BACKSTAGE.md)
 
 ---
 
