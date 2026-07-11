@@ -180,6 +180,10 @@ jobs:
           IAP_OAUTH_CLIENT_SECRET: ${{ secrets.IAP_OAUTH_CLIENT_SECRET }}
           TEKTON_GITHUB_WEBHOOK_SECRET: ${{ secrets.TEKTON_GITHUB_WEBHOOK_SECRET }}
           PAC_WEBHOOK_SECRET: ${{ secrets.PAC_WEBHOOK_SECRET }}
+          # Optional Backstage GitHub-Actions-tab OAuth App (docs/505); 01 keeps
+          # the existing values when these are empty (keep-if-present guard).
+          BACKSTAGE_GITHUB_OAUTH_CLIENT_ID: ${{ secrets.BACKSTAGE_GITHUB_OAUTH_CLIENT_ID }}
+          BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET: ${{ secrets.BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET }}
           # Optional Grafana Cloud k6 (k6-app) streaming for the k6 smoke pipeline.
           K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
           K6_CLOUD_PROJECT_ID: ${{ secrets.K6_CLOUD_PROJECT_ID }}

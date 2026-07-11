@@ -77,6 +77,11 @@ on:
         required: false
         default: false
         type: boolean
+      backstage_enabled:
+        description: "Backstage developer portal (backstage.enabled — docs/505): software catalog + engine-aware CI/CD views at backstage.<domain> (IAP). ON by default; needs the one-time Day2.publish.06 image bootstrap per branch. Passed straight to Day1.cluster.01 (disabling RETIRES the app-of-apps incl. its CNPG db)."
+        required: false
+        default: true
+        type: boolean
       llm_enabled:
         description: "Opt-in keyless Grafana LLM app (observability.llm.enabled — docs/301): grafana-llm-app plugin wired to Vertex AI via an in-cluster LiteLLM gateway + Workload Identity. oss mode ONLY (no-op on grafana-cloud/managed-*). OFF by default. Passed straight to Day1.cluster.01 (where enabling/disabling converges)."
         required: false
@@ -202,6 +207,7 @@ jobs:
       enable_gateway: true
       develop_track: ${{ inputs.develop_track }}
       backend_tls: ${{ inputs.backend_tls }}
+      backstage_enabled: ${{ inputs.backstage_enabled }}
       llm_enabled: ${{ inputs.llm_enabled }}
       assistant_enabled: ${{ inputs.assistant_enabled }}
       git_ref: ${{ inputs.git_ref }}

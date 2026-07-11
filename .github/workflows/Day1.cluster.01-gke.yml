@@ -614,6 +614,12 @@ jobs:
           JENKINS_OIDC_ADMIN_EMAIL: ${{ secrets.JENKINS_OIDC_ADMIN_EMAIL }}
           IAP_OAUTH_CLIENT_ID: ${{ secrets.IAP_OAUTH_CLIENT_ID }}
           IAP_OAUTH_CLIENT_SECRET: ${{ secrets.IAP_OAUTH_CLIENT_SECRET }}
+          # Optional Backstage GitHub-Actions-tab OAuth App (docs/505) — also on
+          # this pre-pass so the very first 01 run seeds the real values (the
+          # up.sh step below re-runs 01 with them anyway; 01's keep-if-present
+          # guard protects them from env-less callers).
+          BACKSTAGE_GITHUB_OAUTH_CLIENT_ID: ${{ secrets.BACKSTAGE_GITHUB_OAUTH_CLIENT_ID }}
+          BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET: ${{ secrets.BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET }}
         run: |
           ./scripts/00-check-prereqs.sh
           if [[ "${{ inputs.observability_mode }}" == "grafana-cloud" ]]; then

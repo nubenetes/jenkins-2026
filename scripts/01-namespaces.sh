@@ -534,10 +534,32 @@ if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
       bs_jenkins_key="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_NAMESPACE}" -o jsonpath='{.data.admin-password}' 2>/dev/null | base64 -d || true)"
     fi
   fi
-  if [[ -z "${BACKSTAGE_GITHUB_OAUTH_CLIENT_ID:-}" || -z "${BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET:-}" ]]; then
-    log_warn "BACKSTAGE_GITHUB_OAUTH_CLIENT_ID/SECRET not set - Backstage deploys, but the GitHub"
-    log_warn "Actions tab's per-user GitHub sign-in won't work until configured (placeholders keep"
-    log_warn "the app booting). See docs/505-BACKSTAGE.md § CI-engine integration."
+  # KEEP-IF-PRESENT guard (docs/104 "reconcile-to-current"; the ESO
+  # grafana-base-url clobber lesson): the OAuth pair + GITHUB_TOKEN arrive via
+  # OPTIONAL env that only Day1 (via up.sh) and Day2.redeploy.08 pass. Every
+  # other 01 caller (the engine/headlamp/gateway redeploys, a bare local run)
+  # must NOT reset live values back to placeholders — when the env var is
+  # empty, keep whatever the ACTIVE backend already holds (Secret Manager in
+  # eso mode — the k8s Secret is just ESO's projection — else the k8s Secret).
+  # Rotation therefore always goes through a caller that passes non-empty env.
+  bs_existing() { # <key> → current value from the active backend ('' if none)
+    if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
+      sm_keep_or_generate "${J2026_BACKSTAGE_SECRETS_NAME}" "$1" ""
+    else
+      kubectl get secret "${J2026_BACKSTAGE_SECRETS_NAME}" -n "${J2026_BACKSTAGE_NAMESPACE}" \
+        -o jsonpath="{.data.$1}" 2>/dev/null | base64 -d || true
+    fi
+  }
+  bs_gh_oauth_id="${BACKSTAGE_GITHUB_OAUTH_CLIENT_ID:-$(bs_existing AUTH_GITHUB_CLIENT_ID)}"
+  bs_gh_oauth_secret="${BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET:-$(bs_existing AUTH_GITHUB_CLIENT_SECRET)}"
+  bs_github_token="${GIT_TOKEN:-$(bs_existing GITHUB_TOKEN)}"
+  # 'unset' placeholders keep the auth-provider config valid until real creds exist.
+  bs_gh_oauth_id="${bs_gh_oauth_id:-unset}"
+  bs_gh_oauth_secret="${bs_gh_oauth_secret:-unset}"
+  if [[ "${bs_gh_oauth_id}" == "unset" || "${bs_gh_oauth_secret}" == "unset" ]]; then
+    log_warn "BACKSTAGE_GITHUB_OAUTH_CLIENT_ID/SECRET not set (and no prior value) - Backstage deploys,"
+    log_warn "but the GitHub Actions tab's per-user GitHub sign-in won't work until configured"
+    log_warn "(placeholders keep the app booting). See docs/505-BACKSTAGE.md § CI-engine integration."
   fi
   if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
     # eso → BACKEND_SECRET is generated-if-absent and kept STABLE in Secret
@@ -546,11 +568,11 @@ if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
     bs_backend_secret="$(sm_keep_or_generate "${J2026_BACKSTAGE_SECRETS_NAME}" BACKEND_SECRET "$(openssl rand -base64 24 | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c32)")"
     provision_secret "${J2026_BACKSTAGE_NAMESPACE}" "${J2026_BACKSTAGE_SECRETS_NAME}" \
       "BACKEND_SECRET=${bs_backend_secret}" \
-      "GITHUB_TOKEN=${GIT_TOKEN:-}" \
+      "GITHUB_TOKEN=${bs_github_token}" \
       "JENKINS_API_USER=${bs_jenkins_user}" \
       "JENKINS_API_KEY=${bs_jenkins_key}" \
-      "AUTH_GITHUB_CLIENT_ID=${BACKSTAGE_GITHUB_OAUTH_CLIENT_ID:-unset}" \
-      "AUTH_GITHUB_CLIENT_SECRET=${BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET:-unset}"
+      "AUTH_GITHUB_CLIENT_ID=${bs_gh_oauth_id}" \
+      "AUTH_GITHUB_CLIENT_SECRET=${bs_gh_oauth_secret}"
     kubectl create secret generic "${J2026_BACKSTAGE_SECRETS_NAME}" -n "${J2026_BACKSTAGE_NAMESPACE}" \
       --dry-run=client -o yaml | kubectl apply -f - >/dev/null
     log_info "Seeded ${J2026_BACKSTAGE_SECRETS_NAME} into Secret Manager (BACKEND_SECRET stable) — ESO will Merge it."
@@ -559,11 +581,11 @@ if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
     kubectl patch secret "${J2026_BACKSTAGE_SECRETS_NAME}" -n "${J2026_BACKSTAGE_NAMESPACE}" \
       --type=merge -p "$(cat <<EOF
 {"stringData":{
-  "GITHUB_TOKEN":"${GIT_TOKEN:-}",
+  "GITHUB_TOKEN":"${bs_github_token}",
   "JENKINS_API_USER":"${bs_jenkins_user}",
   "JENKINS_API_KEY":"${bs_jenkins_key}",
-  "AUTH_GITHUB_CLIENT_ID":"${BACKSTAGE_GITHUB_OAUTH_CLIENT_ID:-unset}",
-  "AUTH_GITHUB_CLIENT_SECRET":"${BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET:-unset}"
+  "AUTH_GITHUB_CLIENT_ID":"${bs_gh_oauth_id}",
+  "AUTH_GITHUB_CLIENT_SECRET":"${bs_gh_oauth_secret}"
 }}
 EOF
 )"
@@ -571,11 +593,11 @@ EOF
     kubectl create secret generic "${J2026_BACKSTAGE_SECRETS_NAME}" \
       -n "${J2026_BACKSTAGE_NAMESPACE}" \
       --from-literal=BACKEND_SECRET="$(openssl rand -base64 24 | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c32)" \
-      --from-literal=GITHUB_TOKEN="${GIT_TOKEN:-}" \
+      --from-literal=GITHUB_TOKEN="${bs_github_token}" \
       --from-literal=JENKINS_API_USER="${bs_jenkins_user}" \
       --from-literal=JENKINS_API_KEY="${bs_jenkins_key}" \
-      --from-literal=AUTH_GITHUB_CLIENT_ID="${BACKSTAGE_GITHUB_OAUTH_CLIENT_ID:-unset}" \
-      --from-literal=AUTH_GITHUB_CLIENT_SECRET="${BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET:-unset}"
+      --from-literal=AUTH_GITHUB_CLIENT_ID="${bs_gh_oauth_id}" \
+      --from-literal=AUTH_GITHUB_CLIENT_SECRET="${bs_gh_oauth_secret}"
     log_info "Created."
   fi
 fi
