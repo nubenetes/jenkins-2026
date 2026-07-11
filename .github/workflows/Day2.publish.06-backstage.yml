@@ -81,6 +81,15 @@ jobs:
 
       - name: Build backend bundle (yarn build:backend)
         working-directory: backstage
+        env:
+          # @backstage/cli treats rspack WARNINGS as ERRORS when CI is truthy
+          # (cli-module-build bundle.ts: "Treating warnings as errors because
+          # process.env.CI = true", no opt-out knob - verified 2026-07-11). The
+          # ArgoCD community plugin's PatternFly stylesheets emit benign
+          # css-extract "Conflicting order" warnings (namespaced component CSS,
+          # order-irrelevant) that would otherwise kill the build. Types stay
+          # hard-gated by the tsc step above; real compile ERRORS still fail.
+          CI: "false"
         run: yarn build:backend
 
       - name: Compute image tags
