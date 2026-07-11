@@ -9,8 +9,9 @@ spec:
   project: default
   # App-of-apps: renders the local Helm chart argocd/backstage/, which emits
   # (wave 0) the CNPG PostgreSQL Cluster `backstage-db` and (wave 1) the
-  # `backstage` child Application (the OFFICIAL backstage/charts chart + the
-  # helm/backstage values overlays). The {{repoUrl}}/{{branchStable}}/
+  # `backstage-chart` child Application (the OFFICIAL backstage/charts chart +
+  # the helm/backstage values overlays; deliberately NOT named `backstage` -
+  # that is THIS app, and a same-name child overwrites its parent). The {{repoUrl}}/{{branchStable}}/
   # {{backendTls}}/{{chartVersion}}/{{imageRegistry}}/{{imageRepository}}/
   # {{imageTag}} placeholders are substituted by scripts/08.95-backstage.sh at
   # apply time (from config.yaml + the deploy branch) and passed down as helm

@@ -201,7 +201,7 @@ _deadline=$(( SECONDS + 300 ))
 until kubectl get deployment backstage -n "${J2026_BACKSTAGE_NAMESPACE}" >/dev/null 2>&1; do
   if [[ ${SECONDS} -ge ${_deadline} ]]; then
     log_warn "Deployment backstage not created within 5m (ArgoCD still syncing the db/chart?)."
-    log_warn "Non-fatal - check 'kubectl get application backstage backstage-db -n ${J2026_ARGOCD_NAMESPACE}' and re-run."
+    log_warn "Non-fatal - check 'kubectl get application backstage backstage-chart -n ${J2026_ARGOCD_NAMESPACE}' and re-run."
     break
   fi
   sleep 10

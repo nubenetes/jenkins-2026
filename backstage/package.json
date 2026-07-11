@@ -25,6 +25,7 @@
   },
   "devDependencies": {
     "@backstage/cli": "0.36.3",
+    "@types/jest": "30.0.0",
     "typescript": "5.8.3"
   }
 }

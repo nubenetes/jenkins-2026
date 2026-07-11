@@ -2,10 +2,17 @@
 # reports Healthy (ArgoCD's CNPG Lua health check in helm/argocd-values.yaml).
 # Two-source pattern like argocd/headlamp-app.yaml: the OFFICIAL chart + the
 # $values git ref into this repo's helm/backstage/ overlays.
+# NAMED backstage-chart, NOT backstage: the parent app-of-apps already owns
+# that name, and a child Application colliding with its parent kubectl-applies
+# itself OVER the parent - the two specs then fight forever (permanent
+# OutOfSync + a self-referential "waiting for deletion" sync deadlock on the
+# resources-finalizer). Found live on the first Day1; same child-suffix
+# convention as the other app-of-apps (gha-runner-scale-set-controller,
+# argoworkflows-controller, oss-*).
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: backstage
+  name: backstage-chart
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "1"
