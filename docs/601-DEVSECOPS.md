@@ -46,7 +46,7 @@ mindmap
 | **IaC** | Trivy config | Helm charts + Kubernetes manifests for misconfigurations |
 | **Image** | Trivy image | the built container (OS packages + app dependencies) for known CVEs |
 
-Semgrep and CodeQL write **SARIF** files that land in **GitHub Code Scanning** (click a finding → jump to the code line) and, under Jenkins, in the build UI via the **warnings-ng** plugin. Trivy prints to the build log. None of these **fail** the build by default — they surface findings without blocking the deploy. These four scans are part of the **one ~11-stage pipeline contract shared by all four CI engines** ([Jenkins](./401-JENKINS.md) default · [Tekton](./403-TEKTON.md) · [GitHub Actions / ARC](./404-GITHUB_ACTIONS.md) · [Argo Workflows](./405-ARGO_WORKFLOWS.md), selected by `ci.engine`), so the same Semgrep → CodeQL → Trivy-IaC → Trivy-image sequence runs whichever engine is active.
+Semgrep and CodeQL write **SARIF** files that land in **GitHub Code Scanning** (click a finding → jump to the code line) and, under Jenkins, in the build UI via the **warnings-ng** plugin. Trivy prints to the build log. None of these **fail** the build by default — they surface findings without blocking the deploy. These four scans are part of the **one ~11-stage pipeline contract shared by all four CI engines** ([Jenkins](./401-JENKINS.md) default · [Tekton](./404-TEKTON.md) · [GitHub Actions / ARC](./405-GITHUB_ACTIONS.md) · [Argo Workflows](./406-ARGO_WORKFLOWS.md), selected by `ci.engine`), so the same Semgrep → CodeQL → Trivy-IaC → Trivy-image sequence runs whichever engine is active.
 </details>
 
 <details>
@@ -60,9 +60,9 @@ Semgrep and CodeQL write **SARIF** files that land in **GitHub Code Scanning** (
   - **Jenkins** (default) — stages in [`vars/MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy);
   - **Tekton** — Tasks in `tekton/tasks/` (`semgrep-scan.yaml`, `codeql-analyze.yaml`, `trivy-iac.yaml`, `trivy-image.yaml`);
   - **Argo Workflows** — templates in [`argoworkflows/templates/microservices-wftmpl.yaml`](../argoworkflows/templates/microservices-wftmpl.yaml) (same `checkout → Semgrep → CodeQL → Trivy-IaC → build → Trivy-image` order);
-  - **GitHub Actions / ARC** — steps inside the fork's own workflow (see [404](./404-GITHUB_ACTIONS.md)).
+  - **GitHub Actions / ARC** — steps inside the fork's own workflow (see [405](./405-GITHUB_ACTIONS.md)).
 
-  Under `ci.engine=tekton`, **Tekton Chains** additionally signs the pushed image and records SLSA provenance (see [403](./403-TEKTON.md)).
+  Under `ci.engine=tekton`, **Tekton Chains** additionally signs the pushed image and records SLSA provenance (see [404](./404-TEKTON.md)).
 </details>
 
 #### Security scan data flow

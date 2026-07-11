@@ -29,10 +29,10 @@ nav:
   - 4xx CI engines:
       - 401 Jenkins: 401-JENKINS.md
       - 402 Pipelines as code: 402-PIPELINES_AS_CODE.md
-      - 403 Tekton: 403-TEKTON.md
-      - 404 GitHub Actions / ARC: 404-GITHUB_ACTIONS.md
-      - 405 Argo Workflows: 405-ARGO_WORKFLOWS.md
-      - 406 Declarative vs scripted: 406-DECLARATIVE_VS_SCRIPTED.md
+      - 403 Declarative vs scripted: 403-DECLARATIVE_VS_SCRIPTED.md
+      - 404 Tekton: 404-TEKTON.md
+      - 405 GitHub Actions / ARC: 405-GITHUB_ACTIONS.md
+      - 406 Argo Workflows: 406-ARGO_WORKFLOWS.md
   - 5xx Platform ops & GitOps:
       - 501 Platform operations: 501-PLATFORM_OPERATIONS.md
       - 502 Microservices GitOps: 502-MICROSERVICES_GITOPS.md

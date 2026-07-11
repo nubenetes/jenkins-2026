@@ -1,13 +1,13 @@
-[← Previous: 404. GitHub Actions / ARC](./404-GITHUB_ACTIONS.md) | [🏠 Home](../README.md) | [→ Next: 406. Declarative vs Scripted](./406-DECLARATIVE_VS_SCRIPTED.md)
+[← Previous: 405. GitHub Actions / ARC](./405-GITHUB_ACTIONS.md) | [🏠 Home](../README.md) | [→ Next: 501. Platform Operations](./501-PLATFORM_OPERATIONS.md)
 
 ---
 
-# 405. Argo Workflows (alternative CI engine)
+# 406. Argo Workflows (alternative CI engine)
 
 This project ships **interchangeable CI engines**. Jenkins is the default;
 **Argo Workflows** (with **Argo Events**) is one of the alternatives, selected by a
 single feature flag (`ci.engine: argoworkflows`). It is a faithful **1:1 port of
-the Tekton engine** ([403](./403-TEKTON.md)): the same microservices pipeline, the
+the Tekton engine** ([404](./404-TEKTON.md)): the same microservices pipeline, the
 same shared service registry, the same GHCR immutable-tag scheme, the same
 GitOps-bump-and-sync deploy, and the same OTel export endpoint — re-expressed in
 Argo-native objects. When Argo Workflows is chosen the platform installs the Argo
@@ -237,7 +237,7 @@ flowchart LR
 app-of-apps) to create a `Workflow` in the **execution** namespace (ns `argo-ci`);
 its step pods build+push the image, bump the GitOps tag, and drive ArgoCD —
 exactly the Jenkins/Tekton data-flow from [402](./402-PIPELINES_AS_CODE.md) /
-[403](./403-TEKTON.md), with the Server UI fronted by Google IAP like Headlamp.
+[404](./404-TEKTON.md), with the Server UI fronted by Google IAP like Headlamp.
 
 ## Selecting the engine
 
@@ -288,7 +288,7 @@ survive the switch — only the CI engine itself (and its public routing) change
 
 The shared GKE **Gateway** (the single public-ingress entrypoint for *every* app)
 lives in its own engine-neutral namespace `platform-ingress` — **always created**,
-decoupled from any CI engine (same as [403 § Namespace layout](./403-TEKTON.md)).
+decoupled from any CI engine (same as [403 § Namespace layout](./404-TEKTON.md)).
 The Argo Workflows namespaces are engine-gated — created only when
 `ci.engine=argoworkflows`:
 
@@ -328,7 +328,7 @@ child Applications:
   release assets** (`install.yaml`, not on a GCS bucket), and a `github.com` URL would
   be misclassified by kustomize as a git repo, so vendoring is the reliable, auditable
   choice (the **identical** rationale as the Tekton components, see
-  [403 § What gets installed](./403-TEKTON.md)).
+  [403 § What gets installed](./404-TEKTON.md)).
 - **Version pinning** — kept in sync with `argoworkflows.versions` in
   [`config/config.yaml`](../config/config.yaml).
 - **Large CRDs** — handled with `ServerSideApply=true` + `ServerSideDiff=true` +
@@ -447,7 +447,7 @@ by [`scripts/06-argoworkflows-pipelines.sh`](../scripts/06-argoworkflows-pipelin
   `static` unless you specifically want Spot.
 
 This is the **same hazard and the same recommendation** as Tekton — see
-[403 § run node pool](./403-TEKTON.md) for the full Jenkins-vs-Tekton-on-Spot
+[403 § run node pool](./404-TEKTON.md) for the full Jenkins-vs-Tekton-on-Spot
 comparison; the Argo `runNodePool` knob is symmetric.
 
 ## How CI runs in normal operation (you rarely start runs by hand)
@@ -631,7 +631,7 @@ capacity). As with Tekton:
 ## The `ci.engine` contract
 
 Argo Workflows satisfies the same six-point `ci.engine` contract Jenkins, Tekton and
-GitHub Actions/ARC do (see [403 § the contract](./403-TEKTON.md#beyond-the-four-engines--the-ciengine-contract--further-candidates-roadmap)),
+GitHub Actions/ARC do (see [403 § the contract](./404-TEKTON.md#beyond-the-four-engines--the-ciengine-contract--further-candidates-roadmap)),
 which is exactly why the port drops in without touching the microservices, ArgoCD, or
 observability layers:
 
@@ -649,8 +649,8 @@ targeting — only the engine wrapper differs.
 
 ---
 
-[← Previous: 404. GitHub Actions / ARC](./404-GITHUB_ACTIONS.md) | [🏠 Home](../README.md) | [→ Next: 406. Declarative vs Scripted](./406-DECLARATIVE_VS_SCRIPTED.md)
+[← Previous: 405. GitHub Actions / ARC](./405-GITHUB_ACTIONS.md) | [🏠 Home](../README.md) | [→ Next: 501. Platform Operations](./501-PLATFORM_OPERATIONS.md)
 
 ---
 
-*405. Argo Workflows — jenkins-2026*
+*406. Argo Workflows — jenkins-2026*

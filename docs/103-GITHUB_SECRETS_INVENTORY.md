@@ -415,7 +415,7 @@ pod starts in `arc-systems`, and the `jenkins-2026-runners` scale set registers 
 `test/smoke-test.sh`'s *"ARC AutoscalingListener Running"* check then passes. With step 6
 done, a `push`/PR to a fork now spins up an ephemeral runner pod in `arc-runners` and the
 run executes (visible in that fork's Actions tab — there is no in-cluster CI UI; see
-[`404-GITHUB_ACTIONS.md`](./404-GITHUB_ACTIONS.md)).
+[`405-GITHUB_ACTIONS.md`](./405-GITHUB_ACTIONS.md)).
 
 ### Troubleshooting: the runner scale set never registers
 

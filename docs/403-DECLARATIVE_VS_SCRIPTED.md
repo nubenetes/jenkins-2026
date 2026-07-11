@@ -1,8 +1,8 @@
-[← Previous: 405. Argo Workflows](./405-ARGO_WORKFLOWS.md) | [🏠 Home](../README.md) | [→ Next: 501. Platform Operations](./501-PLATFORM_OPERATIONS.md)
+[← Previous: 402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) | [🏠 Home](../README.md) | [→ Next: 404. Tekton](./404-TEKTON.md)
 
 ---
 
-# 406. Declarative vs Scripted — Jenkins Pipeline Authoring Architecture
+# 403. Declarative vs Scripted — Jenkins Pipeline Authoring Architecture
 
 > **TL;DR (plain terms).** A Jenkins pipeline can be written in **two Groovy
 > dialects**: **Declarative** (a structured, validated `pipeline { … }` template)
@@ -677,7 +677,7 @@ Each layer is in its dialect for concrete, repo-specific reasons:
   Jib-vs-buildpacks; `microservicesDeploy` runs a retry loop and a self-heal. None
   of this fits Declarative's grammar.
 - **Reuse across four CI engines.** The same logic is ported to Tekton, GitHub
-  Actions, and Argo Workflows (see [403](./403-TEKTON.md)/[404](./404-GITHUB_ACTIONS.md)/[405](./405-ARGO_WORKFLOWS.md));
+  Actions, and Argo Workflows (see [404](./404-TEKTON.md)/[405](./405-GITHUB_ACTIONS.md)/[406](./406-ARGO_WORKFLOWS.md));
   factoring it into named steps keeps a single conceptual contract. (The build-time
   gateway patch is shared even more literally, as [`resources/patch-app-source.sh`](../resources/patch-app-source.sh).)
 - **Small, testable units.** A `def call(Map cfg)` step is a function with clear
@@ -1193,8 +1193,8 @@ Scripted steps.
 
 ---
 
-[← Previous: 405. Argo Workflows](./405-ARGO_WORKFLOWS.md) | [🏠 Home](../README.md) | [→ Next: 501. Platform Operations](./501-PLATFORM_OPERATIONS.md)
+[← Previous: 402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) | [🏠 Home](../README.md) | [→ Next: 404. Tekton](./404-TEKTON.md)
 
 ---
 
-*406. Declarative vs Scripted — jenkins-2026*
+*403. Declarative vs Scripted — jenkins-2026*

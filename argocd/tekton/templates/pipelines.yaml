@@ -64,7 +64,7 @@ spec:
         - .webhooks[]?.clientConfig.caBundle
     # The run-pod nodeSelector (default-pod-template) is driven by the tekton.runNodePool
     # flag and patched into config-defaults by scripts/06-tekton-pipelines.sh, so ArgoCD must
-    # not revert it (the kustomize patch deliberately omits this field). See docs/403.
+    # not revert it (the kustomize patch deliberately omits this field). See docs/404.
     - kind: ConfigMap
       name: config-defaults
       namespace: tekton-pipelines

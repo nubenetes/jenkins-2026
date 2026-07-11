@@ -6,9 +6,9 @@
 
 Jenkins is this project's **default CI engine** — one of four mutually-exclusive
 engines selected by [`config/config.yaml`](../config/config.yaml) `ci.engine`:
-**Jenkins** (default) · [**Tekton**](./403-TEKTON.md) ·
-[**GitHub Actions (ARC)**](./404-GITHUB_ACTIONS.md) ·
-[**Argo Workflows**](./405-ARGO_WORKFLOWS.md). All four run the same ~11-stage
+**Jenkins** (default) · [**Tekton**](./404-TEKTON.md) ·
+[**GitHub Actions (ARC)**](./405-GITHUB_ACTIONS.md) ·
+[**Argo Workflows**](./406-ARGO_WORKFLOWS.md). All four run the same ~11-stage
 pipeline contract off the shared [`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml)
 registry and the shared [`resources/patch-app-source.sh`](../resources/patch-app-source.sh)
 (the gateway MySQL→Postgres + NoOp-cache build-time patch). Jenkins runs as a
@@ -454,9 +454,9 @@ See [402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) for the pipeline stages
 
 ## GitOps: Jenkins as an ArgoCD Application
 
-Like the other CI engines ([Tekton](./403-TEKTON.md),
-[GitHub Actions/ARC](./404-GITHUB_ACTIONS.md),
-[Argo Workflows](./405-ARGO_WORKFLOWS.md)), Jenkins is **GitOps-managed
+Like the other CI engines ([Tekton](./404-TEKTON.md),
+[GitHub Actions/ARC](./405-GITHUB_ACTIONS.md),
+[Argo Workflows](./406-ARGO_WORKFLOWS.md)), Jenkins is **GitOps-managed
 by ArgoCD**. It is a **single `Application`** ([`argocd/jenkins-app.yaml`](../argocd/jenkins-app.yaml)),
 **not an app-of-apps** — Jenkins is one Helm chart, not a family of correlated
 components (unlike `platform-postgres`/`observability-oss`/`tekton`), so wrapping

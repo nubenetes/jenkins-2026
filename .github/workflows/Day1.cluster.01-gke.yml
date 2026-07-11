@@ -40,7 +40,7 @@ on:
         default: false
         type: boolean
       ci_engine:
-        description: "CI engine to deploy: jenkins (default - Helm + JCasC + Job-DSL seed), tekton (Tekton Pipelines/Triggers/Dashboard, IAP-protected; see docs/403), githubactions (ARC self-hosted ephemeral Spot runners, native GitHub webhooks, no in-cluster UI; see docs/404) or argoworkflows (Argo Workflows + Argo Events, IAP-protected Server UI; see docs/405). Mutually exclusive."
+        description: "CI engine to deploy: jenkins (default - Helm + JCasC + Job-DSL seed), tekton (Tekton Pipelines/Triggers/Dashboard, IAP-protected; see docs/404), githubactions (ARC self-hosted ephemeral Spot runners, native GitHub webhooks, no in-cluster UI; see docs/405) or argoworkflows (Argo Workflows + Argo Events, IAP-protected Server UI; see docs/406). Mutually exclusive."
         required: true
         default: "jenkins"
         type: choice
@@ -962,7 +962,7 @@ jobs:
                 ci_iap+=$'\n'"      ${u%.git}/actions"
               done < <(yq -r '.services[].repoUrl' "${svc_file}" 2>/dev/null | sort -u)
             fi
-            ci_iap+=$'\n'"      (ARC ephemeral Spot runners execute these — GitHub hosts the UI; see docs/404)"
+            ci_iap+=$'\n'"      (ARC ephemeral Spot runners execute these — GitHub hosts the UI; see docs/405)"
             ci_open=""
           elif [[ "${engine}" == "argoworkflows" ]]; then
             ci_iap="    Argo Workflows UI:     https://argo.${dom}"

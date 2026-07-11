@@ -1,11 +1,11 @@
-[← Previous: 403. Tekton](./403-TEKTON.md) | [🏠 Home](../README.md) | [→ Next: 405. Argo Workflows](./405-ARGO_WORKFLOWS.md)
+[← Previous: 404. Tekton](./404-TEKTON.md) | [🏠 Home](../README.md) | [→ Next: 406. Argo Workflows](./406-ARGO_WORKFLOWS.md)
 
 ---
 
-# 404. GitHub Actions / ARC (third CI engine)
+# 405. GitHub Actions / ARC (third CI engine)
 
 This project ships **four interchangeable CI engines**. Jenkins is the default,
-**Tekton** ([403](./403-TEKTON.md)) and **Argo Workflows** ([405](./405-ARGO_WORKFLOWS.md))
+**Tekton** ([404](./404-TEKTON.md)) and **Argo Workflows** ([406](./406-ARGO_WORKFLOWS.md))
 are the Kubernetes-native alternatives, and **GitHub Actions self-hosted runners via ARC**
 (Actions Runner Controller) is the third — selected by the single `ci.engine` feature flag. When `githubactions` is
 chosen the platform installs ARC (the `gha-runner-scale-set-controller` + an
@@ -315,7 +315,7 @@ flowchart TB
 runs the job — build+push the image, bump the GitOps tag, drive ArgoCD — and
 reports status/logs back to GitHub, then is deleted. The data-flow into GHCR /
 gitops-config / ArgoCD is the **same contract** as Jenkins ([402](./402-PIPELINES_AS_CODE.md))
-and Tekton ([403](./403-TEKTON.md)); only the runner lifecycle (single-job,
+and Tekton ([404](./404-TEKTON.md)); only the runner lifecycle (single-job,
 ephemeral, Spot) and the trigger (native GitHub, no in-cluster receiver) differ.
 
 #### Runner lifecycle
@@ -446,8 +446,8 @@ gated solely on `nodeAutoProvisioning.enabled` and engine-neutral — ARC just
   long-lived pod (Jenkins), an affinity-assistant-pinned multi-task `PipelineRun`
   on one RWO PVC (Tekton), or a single multi-step `Workflow` pod graph (Argo
   Workflows) — a Spot preemption restarts/kills the **whole** thing. (See
-  [403 § run-node-pool](./403-TEKTON.md) for the full Tekton-on-Spot hazard, and
-  [405](./405-ARGO_WORKFLOWS.md) for Argo Workflows.)
+  [403 § run-node-pool](./404-TEKTON.md) for the full Tekton-on-Spot hazard, and
+  [406](./406-ARGO_WORKFLOWS.md) for Argo Workflows.)
 - **ARC defaults `ci-spot`** because each runner is an **`EphemeralRunner` pod
   that runs exactly one job, then is deleted**. A Spot reclaim loses **at most
   one in-flight job**, which **GitHub automatically re-queues** onto a freshly
@@ -773,11 +773,11 @@ the same `validate_run_node_pool` helper Jenkins/Tekton use.
 
 ## See also
 
-- [403. Tekton](./403-TEKTON.md) — the second engine + the `ci.engine` contract;
+- [404. Tekton](./404-TEKTON.md) — the second engine + the `ci.engine` contract;
   its roadmap section now lists ARC under *Already implemented* (it was the
   top-ranked candidate before it shipped) and ranks the remaining candidates
   (Woodpecker/Drone, Concourse, Dagger).
-- [405. Argo Workflows](./405-ARGO_WORKFLOWS.md) — the fourth engine (Argo Events
+- [406. Argo Workflows](./406-ARGO_WORKFLOWS.md) — the fourth engine (Argo Events
   trigger + Argo Workflows UI behind IAP), the other Kubernetes-native alternative.
 - [402. Pipelines as Code](./402-PIPELINES_AS_CODE.md) — the Jenkins pipeline this
   ports (the `MicroservicesPipeline` shared-library `vars/`), and the shared
@@ -794,8 +794,8 @@ the same `validate_run_node_pool` helper Jenkins/Tekton use.
 
 ---
 
-[← Previous: 403. Tekton](./403-TEKTON.md) | [🏠 Home](../README.md) | [→ Next: 405. Argo Workflows](./405-ARGO_WORKFLOWS.md)
+[← Previous: 404. Tekton](./404-TEKTON.md) | [🏠 Home](../README.md) | [→ Next: 406. Argo Workflows](./406-ARGO_WORKFLOWS.md)
 
 ---
 
-*404. GitHub Actions / ARC — jenkins-2026*
+*405. GitHub Actions / ARC — jenkins-2026*

@@ -294,9 +294,9 @@ When executing the **Day1.cluster.01 GKE provision** workflow manually, you are 
    - **Default**: `jenkins`.
    - Selects which of the **four mutually-exclusive** CI engines the platform deploys and runs the microservices pipelines-as-code on:
      - **Jenkins** — Helm chart + JCasC + Job-DSL seed ([401](./401-JENKINS.md))
-     - **Tekton** — Pipelines/Triggers/Dashboard, IAP-protected ([403](./403-TEKTON.md))
-     - **GitHub Actions (ARC)** — self-hosted ephemeral Spot runners, native GitHub webhooks, **no in-cluster UI** ([404](./404-GITHUB_ACTIONS.md))
-     - **Argo Workflows** — Argo Workflows + Argo Events, IAP-protected Server UI ([405](./405-ARGO_WORKFLOWS.md))
+     - **Tekton** — Pipelines/Triggers/Dashboard, IAP-protected ([404](./404-TEKTON.md))
+     - **GitHub Actions (ARC)** — self-hosted ephemeral Spot runners, native GitHub webhooks, **no in-cluster UI** ([405](./405-GITHUB_ACTIONS.md))
+     - **Argo Workflows** — Argo Workflows + Argo Events, IAP-protected Server UI ([406](./406-ARGO_WORKFLOWS.md))
    - All four share the same ~11-stage pipeline contract, the shared `resources/patch-app-source.sh` (gateway MySQL→Postgres + NoOp-cache build-time patch) and the `jenkins/pipelines/seed/services.yaml` registry.
    - Overrides `ci.engine` in [`config/config.yaml`](../config/config.yaml). **Deterministic/idempotent** (like `observability_mode`): a rerun with a different engine auto-retires the other three engines' in-cluster footprint (their ArgoCD apps + children + namespaces) via `retire_ci_engine` and deploys the chosen one.
 

@@ -50,7 +50,7 @@
 
 **What it chains together, end to end:**
 
-- **CI engine — build, scan & containerize.** One of **four** mutually-exclusive engines selected by `ci.engine`: **Jenkins** by default (Helm chart + **JCasC** + a Job-DSL seed + a Groovy shared library), **Tekton**, **GitHub Actions (ARC)**, or **Argo Workflows** — all defined as code and sharing one ~11-stage pipeline contract (+ the shared [`resources/patch-app-source.sh`](resources/patch-app-source.sh) build-time patch + the [`services.yaml`](jenkins/pipelines/seed/services.yaml) registry). Pipelines compile, test, build images (Jib/Spring-Boot/Kaniko) and push to the registry. See [401](./docs/401-JENKINS.md) · [402](./docs/402-PIPELINES_AS_CODE.md) · [403](./docs/403-TEKTON.md) · [404](./docs/404-GITHUB_ACTIONS.md) · [405](./docs/405-ARGO_WORKFLOWS.md).
+- **CI engine — build, scan & containerize.** One of **four** mutually-exclusive engines selected by `ci.engine`: **Jenkins** by default (Helm chart + **JCasC** + a Job-DSL seed + a Groovy shared library), **Tekton**, **GitHub Actions (ARC)**, or **Argo Workflows** — all defined as code and sharing one ~11-stage pipeline contract (+ the shared [`resources/patch-app-source.sh`](resources/patch-app-source.sh) build-time patch + the [`services.yaml`](jenkins/pipelines/seed/services.yaml) registry). Pipelines compile, test, build images (Jib/Spring-Boot/Kaniko) and push to the registry. See [401](./docs/401-JENKINS.md) · [402](./docs/402-PIPELINES_AS_CODE.md) · [404](./docs/404-TEKTON.md) · [405](./docs/405-GITHUB_ACTIONS.md) · [406](./docs/406-ARGO_WORKFLOWS.md).
 - **GitOps CD — ship without `kubectl`.** CI never touches the cluster directly; it commits a new image tag to the **gitops-config** repo, and **ArgoCD** reconciles it onto the cluster (single `Application`s + app-of-apps, with **Argo Rollouts** for sidecar-free canary/blue-green). See [501](./docs/501-PLATFORM_OPERATIONS.md) · [502](./docs/502-MICROSERVICES_GITOPS.md).
 - **Observability — see everything, correlated.** End-to-end **OpenTelemetry** (auto-instrumented traces, metrics, logs) flowing into **any of four Grafana backends** — **Grafana Cloud**, in-cluster **OSS** (Prometheus/Loki/Tempo), **Azure Managed Grafana**, or **Amazon Managed Grafana** — all selectable by one flag. See [301](./docs/301-OBSERVABILITY.md).
 - **Load & traffic testing — close the loop.** A first-class, parametrizable **k6 engine** drives real traffic and feeds the same dashboards (detailed in the next paragraph). See [302](./docs/302-K6_LOAD_TESTING.md).
@@ -190,7 +190,7 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 
 | Capability | Flag | Default | Optional |
 |---|---|---|---|
-| **CI engine** | `ci.engine` | **`jenkins`** — official Helm chart + JCasC + Job-DSL seed | **`tekton`** — Tekton Pipelines / Triggers / Dashboard (IAP-protected) + **Pipelines-as-Code**, the same pipeline ported to [`tekton/`](tekton/) ([403](docs/403-TEKTON.md)) · **`githubactions`** — GitHub Actions self-hosted runners via **ARC** (Actions Runner Controller): ephemeral **Spot** runners on the `ci-spot` NAP ComputeClass, native GitHub webhooks, **no** in-cluster UI/route (runs in GitHub's Actions tab) ([404](docs/404-GITHUB_ACTIONS.md)) · **`argoworkflows`** — Argo Workflows + Argo Events: the pipeline ported to [`argoworkflows/`](argoworkflows/) as a WorkflowTemplate, an **IAP-protected Argo Workflows Server UI** (`argo.<domain>`, like the Tekton Dashboard) plus a public, HMAC-protected **Argo Events webhook receiver** (`argo-events.<domain>`) ([405](docs/405-ARGO_WORKFLOWS.md)). The four engines are mutually exclusive; switching retires the others. |
+| **CI engine** | `ci.engine` | **`jenkins`** — official Helm chart + JCasC + Job-DSL seed | **`tekton`** — Tekton Pipelines / Triggers / Dashboard (IAP-protected) + **Pipelines-as-Code**, the same pipeline ported to [`tekton/`](tekton/) ([404](docs/404-TEKTON.md)) · **`githubactions`** — GitHub Actions self-hosted runners via **ARC** (Actions Runner Controller): ephemeral **Spot** runners on the `ci-spot` NAP ComputeClass, native GitHub webhooks, **no** in-cluster UI/route (runs in GitHub's Actions tab) ([405](docs/405-GITHUB_ACTIONS.md)) · **`argoworkflows`** — Argo Workflows + Argo Events: the pipeline ported to [`argoworkflows/`](argoworkflows/) as a WorkflowTemplate, an **IAP-protected Argo Workflows Server UI** (`argo.<domain>`, like the Tekton Dashboard) plus a public, HMAC-protected **Argo Events webhook receiver** (`argo-events.<domain>`) ([406](docs/406-ARGO_WORKFLOWS.md)). The four engines are mutually exclusive; switching retires the others. |
 | **CI seed runs** | `<engine>.seedRuns` | **`true`** for `tekton` / `githubactions` / `argoworkflows` — `Day1` seeds **one run per service** (Tekton `PipelineRun`s from [`tekton/runs/`](tekton/runs/) · a dispatched workflow run per fork · one Argo `Workflow` per service) so the engine's **UI/history is pre-populated** from the first provision, at the cost of one build per service per Day1 | **`false`** — rely solely on the git-push trigger (no seed builds). Not applicable to `jenkins` (its Job-DSL seed job always generates the jobs; builds start on demand). Per-run overrides `JENKINS2026_{TEKTON,GITHUBACTIONS,ARGOWORKFLOWS}_SEED_RUNS`. |
 | **CI build-pod placement** | `<engine>.runNodePool` | **`static`** for `jenkins` / `tekton` / `argoworkflows` — the long-lived `jenkins-2026-pool` (robust, no NAP/Spot/quota dependency); **`githubactions` ships `ci-spot`** (single-job ARC runners are ideal Spot workloads) | **`ci-spot`** — the NAP **Spot** ComputeClass (elastic, cheaper; needs `nodeAutoProvisioning` + `SSD_TOTAL_GB` headroom). **Per engine** by pod-scheduling shape: single-pod engines (**Jenkins**, **GitHub Actions/ARC**) are good Spot fits (a preemption just re-runs one idempotent build); shared-workspace engines (**Tekton**, **Argo Workflows**) pin a whole run to one node, so keep them `static`. Per-run overrides `JENKINS2026_{JENKINS,TEKTON,GITHUBACTIONS,ARGOWORKFLOWS}_RUN_NODE_POOL` + a `run_node_pool` input on the four `Day2.redeploy` workflows. See [docs/501](docs/501-PLATFORM_OPERATIONS.md#the-engines-on-spot-ci-spot--why-the-placement-flag-is-per-engine). |
 | **Observability backend** | `observability.mode` | **`grafana-cloud`** *(the GitHub Actions `Day1` input defaults to **`oss`**)* | **`oss`** (in-cluster Grafana / Loki / Tempo / kube-prometheus) · **`managed-azure`** · **`managed-aws`** — exactly one active per cluster; a rerun deterministically switches. The two **managed** backends need a one-time backend setup ([docs/102 § One-time Setup](./docs/102-GITHUB_ACTIONS_AUTOMATION.md#one-time-setup-bootstrapping)) before Day1. |
@@ -387,41 +387,41 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 - [Pipeline Container Security](./docs/402-PIPELINES_AS_CODE.md#pipeline-container-security)
 - [Pipeline Reliability Fixes](./docs/402-PIPELINES_AS_CODE.md#pipeline-reliability-fixes-v0107v01016)
 
-**[406 · Declarative vs Scripted (Jenkins authoring)](./docs/406-DECLARATIVE_VS_SCRIPTED.md)**
-- [Understanding the two dialects (newcomers → specialists)](./docs/406-DECLARATIVE_VS_SCRIPTED.md#understanding-the-two-dialects-newcomers--specialists)
-- [The two dialects in sixty seconds](./docs/406-DECLARATIVE_VS_SCRIPTED.md#1-the-two-dialects-in-sixty-seconds)
-- [What each dialect actually is](./docs/406-DECLARATIVE_VS_SCRIPTED.md#2-what-each-dialect-actually-is)
-- [The comparison matrix](./docs/406-DECLARATIVE_VS_SCRIPTED.md#4-the-comparison-matrix)
-- [When Jenkins recommends which](./docs/406-DECLARATIVE_VS_SCRIPTED.md#6-when-jenkins-officially-recommends-which)
-- [This repo's three-layer hybrid](./docs/406-DECLARATIVE_VS_SCRIPTED.md#7-this-repos-architecture-the-three-layer-hybrid)
-- [Counterexamples (all-one-way)](./docs/406-DECLARATIVE_VS_SCRIPTED.md#9-counterexamples-what-breaks-if-you-go-all-one-way)
-- [Recognising Declarative vs Scripted at a glance](./docs/406-DECLARATIVE_VS_SCRIPTED.md#12-recognising-declarative-vs-scripted-at-a-glance)
-- [Job DSL & seed jobs — advanced tutorial](./docs/406-DECLARATIVE_VS_SCRIPTED.md#13-job-dsl-and-seed-jobs-an-advanced-tutorial)
-- [The Scripted-god-library anti-pattern](./docs/406-DECLARATIVE_VS_SCRIPTED.md#14-the-common-anti-pattern-a-scripted-god-library-with-thin-jenkinsfiles)
+**[403 · Declarative vs Scripted (Jenkins authoring)](./docs/403-DECLARATIVE_VS_SCRIPTED.md)**
+- [Understanding the two dialects (newcomers → specialists)](./docs/403-DECLARATIVE_VS_SCRIPTED.md#understanding-the-two-dialects-newcomers--specialists)
+- [The two dialects in sixty seconds](./docs/403-DECLARATIVE_VS_SCRIPTED.md#1-the-two-dialects-in-sixty-seconds)
+- [What each dialect actually is](./docs/403-DECLARATIVE_VS_SCRIPTED.md#2-what-each-dialect-actually-is)
+- [The comparison matrix](./docs/403-DECLARATIVE_VS_SCRIPTED.md#4-the-comparison-matrix)
+- [When Jenkins recommends which](./docs/403-DECLARATIVE_VS_SCRIPTED.md#6-when-jenkins-officially-recommends-which)
+- [This repo's three-layer hybrid](./docs/403-DECLARATIVE_VS_SCRIPTED.md#7-this-repos-architecture-the-three-layer-hybrid)
+- [Counterexamples (all-one-way)](./docs/403-DECLARATIVE_VS_SCRIPTED.md#9-counterexamples-what-breaks-if-you-go-all-one-way)
+- [Recognising Declarative vs Scripted at a glance](./docs/403-DECLARATIVE_VS_SCRIPTED.md#12-recognising-declarative-vs-scripted-at-a-glance)
+- [Job DSL & seed jobs — advanced tutorial](./docs/403-DECLARATIVE_VS_SCRIPTED.md#13-job-dsl-and-seed-jobs-an-advanced-tutorial)
+- [The Scripted-god-library anti-pattern](./docs/403-DECLARATIVE_VS_SCRIPTED.md#14-the-common-anti-pattern-a-scripted-god-library-with-thin-jenkinsfiles)
 
-**[403 · Tekton (alternative CI engine)](./docs/403-TEKTON.md)**
-- [Selecting the engine (`ci.engine`)](./docs/403-TEKTON.md#selecting-the-engine)
-- [What gets installed (GitOps via ArgoCD app-of-apps)](./docs/403-TEKTON.md#what-gets-installed-gitops-via-argocd-app-of-apps)
-- [Tooling: kustomize vs Helm (and why both)](./docs/403-TEKTON.md#tooling-kustomize-vs-helm-and-why-both)
-- [Dashboard on the internet, behind Google IAP](./docs/403-TEKTON.md#dashboard-on-the-internet-behind-google-iap)
-- [The pipeline, ported](./docs/403-TEKTON.md#the-pipeline-ported)
-- [Pipelines-as-Code (PaC): Git-driven CI](./docs/403-TEKTON.md#pipelines-as-code-pac-git-driven-ci)
+**[404 · Tekton (alternative CI engine)](./docs/404-TEKTON.md)**
+- [Selecting the engine (`ci.engine`)](./docs/404-TEKTON.md#selecting-the-engine)
+- [What gets installed (GitOps via ArgoCD app-of-apps)](./docs/404-TEKTON.md#what-gets-installed-gitops-via-argocd-app-of-apps)
+- [Tooling: kustomize vs Helm (and why both)](./docs/404-TEKTON.md#tooling-kustomize-vs-helm-and-why-both)
+- [Dashboard on the internet, behind Google IAP](./docs/404-TEKTON.md#dashboard-on-the-internet-behind-google-iap)
+- [The pipeline, ported](./docs/404-TEKTON.md#the-pipeline-ported)
+- [Pipelines-as-Code (PaC): Git-driven CI](./docs/404-TEKTON.md#pipelines-as-code-pac-git-driven-ci)
 
-**[404 · GitHub Actions / ARC (third CI engine)](./docs/404-GITHUB_ACTIONS.md)**
-- [Where do I see the pipelines? (no in-cluster UI)](./docs/404-GITHUB_ACTIONS.md#-where-do-i-see-the-pipelines-there-is-no-in-cluster-ui)
-- [Triggering a build — the branch-based tier model (stable vs develop)](./docs/404-GITHUB_ACTIONS.md#triggering-a-build--the-branch-based-tier-model-stable-vs-develop)
-- [Security: why no `pull_request` trigger + branch protection](./docs/404-GITHUB_ACTIONS.md#security-why-no-pull_request-trigger--branch-protection)
-- [Selecting the engine (`ci.engine`)](./docs/404-GITHUB_ACTIONS.md#selecting-the-engine)
-- [What gets installed (GitOps via ArgoCD app-of-apps)](./docs/404-GITHUB_ACTIONS.md#what-gets-installed-gitops-via-argocd-app-of-apps)
-- [The pipeline, rendered into each fork](./docs/404-GITHUB_ACTIONS.md#the-pipeline-rendered-into-each-fork)
+**[405 · GitHub Actions / ARC (third CI engine)](./docs/405-GITHUB_ACTIONS.md)**
+- [Where do I see the pipelines? (no in-cluster UI)](./docs/405-GITHUB_ACTIONS.md#-where-do-i-see-the-pipelines-there-is-no-in-cluster-ui)
+- [Triggering a build — the branch-based tier model (stable vs develop)](./docs/405-GITHUB_ACTIONS.md#triggering-a-build--the-branch-based-tier-model-stable-vs-develop)
+- [Security: why no `pull_request` trigger + branch protection](./docs/405-GITHUB_ACTIONS.md#security-why-no-pull_request-trigger--branch-protection)
+- [Selecting the engine (`ci.engine`)](./docs/405-GITHUB_ACTIONS.md#selecting-the-engine)
+- [What gets installed (GitOps via ArgoCD app-of-apps)](./docs/405-GITHUB_ACTIONS.md#what-gets-installed-gitops-via-argocd-app-of-apps)
+- [The pipeline, rendered into each fork](./docs/405-GITHUB_ACTIONS.md#the-pipeline-rendered-into-each-fork)
 
-**[405 · Argo Workflows (fourth CI engine)](./docs/405-ARGO_WORKFLOWS.md)**
-- [High-level architecture](./docs/405-ARGO_WORKFLOWS.md#high-level-architecture)
-- [Selecting the engine (`ci.engine`)](./docs/405-ARGO_WORKFLOWS.md#selecting-the-engine)
-- [What gets installed (GitOps via ArgoCD app-of-apps)](./docs/405-ARGO_WORKFLOWS.md#what-gets-installed-gitops-via-argocd-app-of-apps)
-- [Server UI on the internet, behind Google IAP](./docs/405-ARGO_WORKFLOWS.md#server-ui-on-the-internet-behind-google-iap)
-- [The pipeline, ported](./docs/405-ARGO_WORKFLOWS.md#the-pipeline-ported)
-- [Triggers (Argo Events)](./docs/405-ARGO_WORKFLOWS.md#triggers-argo-events)
+**[406 · Argo Workflows (fourth CI engine)](./docs/406-ARGO_WORKFLOWS.md)**
+- [High-level architecture](./docs/406-ARGO_WORKFLOWS.md#high-level-architecture)
+- [Selecting the engine (`ci.engine`)](./docs/406-ARGO_WORKFLOWS.md#selecting-the-engine)
+- [What gets installed (GitOps via ArgoCD app-of-apps)](./docs/406-ARGO_WORKFLOWS.md#what-gets-installed-gitops-via-argocd-app-of-apps)
+- [Server UI on the internet, behind Google IAP](./docs/406-ARGO_WORKFLOWS.md#server-ui-on-the-internet-behind-google-iap)
+- [The pipeline, ported](./docs/406-ARGO_WORKFLOWS.md#the-pipeline-ported)
+- [Triggers (Argo Events)](./docs/406-ARGO_WORKFLOWS.md#triggers-argo-events)
 
 ---
 
@@ -598,10 +598,10 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 | **303** | Performance | [JVM Tuning & Runtime Strategy](./docs/303-JVM-TUNING.md) | JVM tuning for the Java microservices: the **container-default trap** (SerialGC + 25% heap) and the **G1/heap fix**, **GC-algorithm + runtime-option matrices** (HotSpot+G1 · AOT cache · **CRaC** · GraalVM Native · OpenJ9), **OTel instrumentation modes** (agent vs Spring starter vs eBPF), why **CRaC** is the chosen advanced direction, and how to read the **JVM-internals dashboard** |
 | **401** | Jenkins | [Jenkins](./docs/401-JENKINS.md) | Accessing the UI & **admin password**, **Google OIDC** login, **plugins & JCasC** fragments, global **shared library**, **MCP server** |
 | **402** | Jenkins | [Pipelines as Code](./docs/402-PIPELINES_AS_CODE.md) | **Seed job**, **branch & environment mapping** (incl. the optional lean **`develop` tier** + its stable-vs-develop rationale), **pipeline execution stages** (Semgrep/CodeQL/Trivy/Build/Deploy/Smoke), **container security**, reliability fixes |
-| **406** | Jenkins | [Declarative vs Scripted](./docs/406-DECLARATIVE_VS_SCRIPTED.md) | **Declarative-vs-Scripted tutorial + the repo's three-layer hybrid**: the two Groovy dialects (**two syntaxes over the same CPS engine — neither built on the other**), the **comparison matrix** + full advantages/disadvantages, **when Jenkins recommends which**, how the repo splits **Job DSL seed (generation) → Declarative pipeline shells → Scripted `vars/` steps**, the **per-file classification map**, **counterexamples** (what breaks all-scripted / all-declarative), and **mermaid diagrams** |
-| **403** | Tekton | [Tekton](./docs/403-TEKTON.md) | **Alternative CI engine** (`ci.engine` flag) — Tekton **Pipelines/Triggers/Dashboard** + **Pipelines-as-Code**, IAP-protected Dashboard, the microservices pipeline ported to [`tekton/`](tekton/), **credentials & observability parity** |
-| **404** | GitHub Actions / ARC | [GitHub Actions / ARC](./docs/404-GITHUB_ACTIONS.md) | **Third CI engine** (`ci.engine=githubactions`) — GitHub Actions self-hosted runners via **ARC** (Actions Runner Controller): ephemeral **Spot** runners on the `ci-spot` NAP ComputeClass, native **GitHub webhooks** (GitHub App), **no** in-cluster UI/Gateway route, the `argocd/githubactions` app-of-apps, same `services.yaml`/GHCR/GitOps/OTel contract |
-| **405** | Argo Workflows | [Argo Workflows](./docs/405-ARGO_WORKFLOWS.md) | **Fourth CI engine** (`ci.engine=argoworkflows`) — **Argo Workflows + Argo Events** (argoproj): the pipeline as a WorkflowTemplate, an **IAP-protected Argo Workflows Server UI** (`argo.<domain>`) **plus** a public, HMAC-protected **Argo Events webhook receiver** (`argo-events.<domain>`), the `argocd/argoworkflows` app-of-apps (controller+server / Events+EventBus / pipeline-as-code, **vendored** release YAMLs), same `services.yaml`/GHCR/GitOps/OTel contract |
+| **403** | Jenkins | [Declarative vs Scripted](./docs/403-DECLARATIVE_VS_SCRIPTED.md) | **Declarative-vs-Scripted tutorial + the repo's three-layer hybrid**: the two Groovy dialects (**two syntaxes over the same CPS engine — neither built on the other**), the **comparison matrix** + full advantages/disadvantages, **when Jenkins recommends which**, how the repo splits **Job DSL seed (generation) → Declarative pipeline shells → Scripted `vars/` steps**, the **per-file classification map**, **counterexamples** (what breaks all-scripted / all-declarative), and **mermaid diagrams** |
+| **404** | Tekton | [Tekton](./docs/404-TEKTON.md) | **Alternative CI engine** (`ci.engine` flag) — Tekton **Pipelines/Triggers/Dashboard** + **Pipelines-as-Code**, IAP-protected Dashboard, the microservices pipeline ported to [`tekton/`](tekton/), **credentials & observability parity** |
+| **405** | GitHub Actions / ARC | [GitHub Actions / ARC](./docs/405-GITHUB_ACTIONS.md) | **Third CI engine** (`ci.engine=githubactions`) — GitHub Actions self-hosted runners via **ARC** (Actions Runner Controller): ephemeral **Spot** runners on the `ci-spot` NAP ComputeClass, native **GitHub webhooks** (GitHub App), **no** in-cluster UI/Gateway route, the `argocd/githubactions` app-of-apps, same `services.yaml`/GHCR/GitOps/OTel contract |
+| **406** | Argo Workflows | [Argo Workflows](./docs/406-ARGO_WORKFLOWS.md) | **Fourth CI engine** (`ci.engine=argoworkflows`) — **Argo Workflows + Argo Events** (argoproj): the pipeline as a WorkflowTemplate, an **IAP-protected Argo Workflows Server UI** (`argo.<domain>`) **plus** a public, HMAC-protected **Argo Events webhook receiver** (`argo-events.<domain>`), the `argocd/argoworkflows` app-of-apps (controller+server / Events+EventBus / pipeline-as-code, **vendored** release YAMLs), same `services.yaml`/GHCR/GitOps/OTel contract |
 | **501** | Platform | [Platform Operations](./docs/501-PLATFORM_OPERATIONS.md) | **ArgoCD inventory**, telemetry simulation, **platform QA & chaos** scenarios, **Golden Path IDP** modernizations (**Node Auto-Provisioning** + modern scheduling), **Headlamp** cluster UI, **GKE Gateway API + IAP** public access, **Argo Rollouts** progressive delivery |
 | **502** | Microservices | [Microservices GitOps](./docs/502-MICROSERVICES_GITOPS.md) | **Helm vs. Kustomize** design decision, **resource lifecycle & decommission** orchestration (**NEG synchronization barrier**), **parameterized CNPG HA** (stable vs lean develop), **pgAdmin** & database administration |
 | **503** | Networking | [Networking](./docs/503-NETWORKING.md) | Network architecture, **landing zone & topology** (single-VPC, *not* hub-spoke — with rationale + growth path), VPC/subnet + pod/service **CIDR plan**, north-south **ingress** (Gateway + IAP + container-native NEG) & **egress** (no Cloud NAT, the four observability backends), east-west (VPC-native + **Dataplane V2** + **WireGuard**), **NetworkPolicy segmentation** inside GKE, defense-in-depth |

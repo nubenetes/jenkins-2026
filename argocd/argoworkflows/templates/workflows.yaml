@@ -49,7 +49,7 @@ spec:
     # by the argoworkflows.runNodePool flag and patched into the
     # workflow-controller-configmap by scripts/06-argoworkflows-pipelines.sh, so
     # ArgoCD must not revert it (the kustomize patch deliberately omits this
-    # field). See docs/405.
+    # field). See docs/406.
     - kind: ConfigMap
       name: workflow-controller-configmap
       namespace: {{ .Values.namespace.controlPlane }}

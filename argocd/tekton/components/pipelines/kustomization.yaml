@@ -23,14 +23,14 @@ resources:
 # PipelineRun created WITHOUT a serviceAccountName — e.g. from the Tekton
 # Dashboard's "Create PipelineRun" form, which does not default the SA — now runs
 # as tekton-ci instead of the powerless default SA. (Workspaces still must be
-# bound at run time; Tekton has no default workspace binding — see docs/403.)
+# bound at run time; Tekton has no default workspace binding — see docs/404.)
 #
 # `default-pod-template` (the run-pod nodeSelector) is NOT set here — it's driven by the
 # tekton.runNodePool flag (static|ci-spot) and patched into config-defaults at run time by
 # scripts/06-tekton-pipelines.sh, so ArgoCD ignores that one field (see ignoreDifferences in
 # argocd/tekton/templates/pipelines.yaml + RespectIgnoreDifferences). Static by default —
 # the affinity assistant pins a whole RWO-workspace PipelineRun to one node, so a small/Spot
-# node would hang or lose the run; see docs/403.
+# node would hang or lose the run; see docs/404.
 patches:
   - patch: |-
       apiVersion: v1

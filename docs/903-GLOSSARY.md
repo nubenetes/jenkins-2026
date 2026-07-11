@@ -49,7 +49,7 @@ The technology acronyms used across every guide, alphabetical.
 | :--- | :--- | :--- |
 | **app-of-apps** | An ArgoCD **pattern** (not a CRD): a parent `Application` whose source is a Helm chart that renders **hand-authored, heterogeneous** child `Application` manifests (each its own chart/namespace/sync-wave). Distinct from `ApplicationSet`. | [`argocd/README.md`](../argocd/README.md) |
 | **AppSet / `ApplicationSet`** | An ArgoCD **CRD** that **generates** many uniform `Application`s from one template + a generator (list, Git dir, cluster list). The repo has exactly one — the microservices AppSet. | [`argocd/README.md`](../argocd/README.md) |
-| **ARC** | **Actions Runner Controller** — runs GitHub Actions self-hosted runners as ephemeral pods on the `ci-spot` Spot ComputeClass. Active when `ci.engine=githubactions`. | [404](./404-GITHUB_ACTIONS.md) |
+| **ARC** | **Actions Runner Controller** — runs GitHub Actions self-hosted runners as ephemeral pods on the `ci-spot` Spot ComputeClass. Active when `ci.engine=githubactions`. | [405](./405-GITHUB_ACTIONS.md) |
 | **CNPG** | **CloudNativePG** — the operator providing HA Postgres (primary + standbys, failover, WAL archiving to the Day0 backups bucket) for the microservices. | [502](./502-MICROSERVICES_GITOPS.md), [201](./201-ARCHITECTURE.md) |
 | **ComputeClass** | A GKE Custom ComputeClass (here `ci-spot`) that NAP uses to auto-provision right-sized, Spot-first, scale-to-zero node pools for bursty CI agents (`infrastructure/compute-classes/ci-spot.yaml`). | [501](./501-PLATFORM_OPERATIONS.md) |
 | **Dataplane V2** | GKE's Cilium/eBPF data plane (`datapath_provider = ADVANCED_DATAPATH`) — the reason NetworkPolicies actually **enforce**. An immutable cluster field. | [503](./503-NETWORKING.md) |
@@ -64,7 +64,7 @@ The technology acronyms used across every guide, alphabetical.
 | **NEG** | **Network Endpoint Group** — container-native load balancing: the GKE L7 LB sends straight to the pod `targetPort`, not the Service port (a common NetworkPolicy/health-check gotcha). | [503](./503-NETWORKING.md) |
 | **OIDC** | **OpenID Connect** — the token type GitHub Actions presents to GCP/Azure/AWS for keyless auth (the trust half of WIF), and the login protocol for the UIs' Google sign-in. | [102](./102-GITHUB_ACTIONS_AUTOMATION.md) |
 | **OTel / OTLP** | **OpenTelemetry** — the auto-instrumented traces/metrics/logs pipeline (Operator + Java agent + Collector); **OTLP** is the wire protocol the collectors export over to any of the four Grafana backends. | [301](./301-OBSERVABILITY.md) |
-| **PaC** | **Pipelines-as-Code** — Git-push-driven CI (a `git push` on a fork creates the run) via a webhook, rather than creating runs by hand. Used by the Tekton and Argo Workflows engines. | [403](./403-TEKTON.md) |
+| **PaC** | **Pipelines-as-Code** — Git-push-driven CI (a `git push` on a fork creates the run) via a webhook, rather than creating runs by hand. Used by the Tekton and Argo Workflows engines. | [404](./404-TEKTON.md) |
 | **WIF** | **Workload Identity Federation** — keyless GCP auth: every GitHub Actions workflow federates its OIDC token, so **no JSON service-account keys are ever stored**. The root of trust created at Day0. | [102](./102-GITHUB_ACTIONS_AUTOMATION.md), [100](./100-BOOTSTRAP.md) |
 | **WireGuard** | GKE inter-node **pod-traffic encryption** (`in_transit_encryption_config`). Like Dataplane V2, an immutable cluster field — changing it recreates the cluster. | [503](./503-NETWORKING.md) |
 

@@ -5,7 +5,7 @@
 # The patch enables image signing (x509/cosign), in-toto SLSA provenance, OCI
 # storage (signatures pushed alongside the image in ghcr.io) and the public Rekor
 # transparency log. The signing key is NOT vendored - it is generated once into
-# the `signing-secrets` Secret (see docs/403-TEKTON.md):
+# the `signing-secrets` Secret (see docs/404-TEKTON.md):
 #   cosign generate-key-pair k8s://tekton-chains/signing-secrets
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization

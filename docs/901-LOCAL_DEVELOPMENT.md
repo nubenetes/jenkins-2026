@@ -202,9 +202,9 @@ kubectl create -f tekton/runs/gateway.yaml                    # build the gatewa
 kubectl create -f tekton/runs/jhipstersamplemicroservice.yaml # build the other service
 kubectl create -f tekton/runs/k6-smoke.yaml                   # synthetic traffic
 ```
-Or paste one into the Tekton Dashboard's *Create PipelineRun* (YAML mode) once, then click **Rerun** for true one-click reruns. See [403 § Running a pipeline by hand](./403-TEKTON.md#running-a-pipeline-by-hand-dashboard--kubectl--tkn).
+Or paste one into the Tekton Dashboard's *Create PipelineRun* (YAML mode) once, then click **Rerun** for true one-click reruns. See [403 § Running a pipeline by hand](./404-TEKTON.md#running-a-pipeline-by-hand-dashboard--kubectl--tkn).
 
-**With `ci.engine=githubactions`:** the pipeline is a `.github/workflows` file rendered into each fork, executed by the ARC self-hosted runners; the normal trigger is a `git push` (or `gh workflow run`). Runs appear in **GitHub's Actions tab** — there is no in-cluster UI. See [404. GitHub Actions](./404-GITHUB_ACTIONS.md).
+**With `ci.engine=githubactions`:** the pipeline is a `.github/workflows` file rendered into each fork, executed by the ARC self-hosted runners; the normal trigger is a `git push` (or `gh workflow run`). Runs appear in **GitHub's Actions tab** — there is no in-cluster UI. See [405. GitHub Actions](./405-GITHUB_ACTIONS.md).
 
 **With `ci.engine=argoworkflows`:** an Argo Events EventSource+Sensor turns a fork `git push` into one Workflow per push. To run one by hand, submit a ready-made manifest or use the Argo Workflows Server UI (behind IAP, like the Tekton Dashboard):
 ```bash
@@ -212,7 +212,7 @@ kubectl create -f argoworkflows/runs/gateway.yaml
 kubectl create -f argoworkflows/runs/jhipstersamplemicroservice.yaml
 kubectl create -f argoworkflows/runs/k6-smoke.yaml
 ```
-See [405. Argo Workflows](./405-ARGO_WORKFLOWS.md).
+See [406. Argo Workflows](./406-ARGO_WORKFLOWS.md).
 
 ## Automated End-to-End Test (Provisioning + Decommissioning)
 

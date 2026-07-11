@@ -4,7 +4,7 @@ Active when `ci.engine: argoworkflows` (config/config.yaml) or
 `JENKINS2026_CI_ENGINE=argoworkflows`. This is the **fourth** CI engine's port of
 the Jenkins shared library in [`vars/`](../vars/) and the seed job in
 [`jenkins/pipelines/seed/`](../jenkins/pipelines/seed/) — Jenkins remains the
-default; see [`docs/405-ARGO_WORKFLOWS.md`](../docs/405-ARGO_WORKFLOWS.md). The
+default; see [`docs/406-ARGO_WORKFLOWS.md`](../docs/406-ARGO_WORKFLOWS.md). The
 four engines (jenkins · tekton · githubactions · argoworkflows) are mutually
 exclusive: selecting one retires the other three.
 
@@ -54,7 +54,7 @@ Tekton makes for `tekton/runs/`).
 
 Every `microservices-pipeline` template mirrors a Tekton Task, which mirrors a Jenkins
 stage. The full three-column table (with the notable per-engine differences) lives in
-[`docs/405-ARGO_WORKFLOWS.md`](../docs/405-ARGO_WORKFLOWS.md#the-pipeline-ported).
+[`docs/406-ARGO_WORKFLOWS.md`](../docs/406-ARGO_WORKFLOWS.md#the-pipeline-ported).
 
 | Jenkins stage ([`vars/MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy)) | Argo Workflows template |
 |---|---|
@@ -138,6 +138,6 @@ rename them in [`config/config.yaml`](../config/config.yaml)
 update the templates too — the same coupling gotcha
 [`tekton/README.md`](../tekton/README.md) documents for `tekton.*CredentialsSecretName`.
 
-See [`docs/405-ARGO_WORKFLOWS.md`](../docs/405-ARGO_WORKFLOWS.md) for the full engine
+See [`docs/406-ARGO_WORKFLOWS.md`](../docs/406-ARGO_WORKFLOWS.md) for the full engine
 architecture, the IAP-protected Server UI (`argo.<domain>`), Argo Events triggering, and
 the Jenkins → Tekton → Argo stage-mapping table with per-engine differences.

@@ -4,7 +4,7 @@
 # (from jenkins/pipelines/seed/microservices-ci.yml.tmpl) into each owned microservices fork,
 # reading the SAME jenkins/pipelines/seed/services.yaml registry. Simpler than the Tekton
 # version — ARC's GitHub App handles webhook dispatch, so there is no hook-creation loop.
-# Idempotent (diff-then-push). See docs/404-GITHUB_ACTIONS.md.
+# Idempotent (diff-then-push). See docs/405-GITHUB_ACTIONS.md.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/lib/common.sh"

@@ -163,7 +163,7 @@ tekton:
   # ⚠ For Tekton, `static` is strongly recommended: the affinity-assistant pins ALL of a
   # PipelineRun's tasks (sharing one RWO workspace PVC) to a SINGLE node, so a Spot
   # preemption would kill the WHOLE run (not one task), and a too-small/full node hangs the
-  # run. FEATURE FLAG: override with JENKINS2026_TEKTON_RUN_NODE_POOL. See docs/403.
+  # run. FEATURE FLAG: override with JENKINS2026_TEKTON_RUN_NODE_POOL. See docs/404.
   runNodePool: static
   # Control-plane namespace for Pipelines/Triggers/Dashboard (upstream default).
   namespace: tekton-pipelines

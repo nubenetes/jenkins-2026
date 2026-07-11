@@ -33,7 +33,7 @@ on:
         default: ""
         type: string
       run_node_pool:
-        description: "Where PipelineRun/TaskRun pods run (tekton.runNodePool). 'config' = use config.yaml (default static). 'static' = the jenkins-2026-pool — RECOMMENDED for Tekton (the affinity assistant pins a whole RWO-workspace run to one node, so Spot preemption kills the entire run). 'ci-spot' = NAP Spot ComputeClass (opt-in; needs NAP + SSD quota headroom). See docs/403."
+        description: "Where PipelineRun/TaskRun pods run (tekton.runNodePool). 'config' = use config.yaml (default static). 'static' = the jenkins-2026-pool — RECOMMENDED for Tekton (the affinity assistant pins a whole RWO-workspace run to one node, so Spot preemption kills the entire run). 'ci-spot' = NAP Spot ComputeClass (opt-in; needs NAP + SSD quota headroom). See docs/404."
         required: false
         default: "config"
         type: choice

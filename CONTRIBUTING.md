@@ -55,7 +55,7 @@ The two policies are intentional and must not be reconciled to match. See
 `gitops-config` repo's README. The app **forks**
 (`jhipster-sample-app-gateway` / `-microservice`) carry a third, lighter policy
 (force-push/deletion blocked, no require-PR) for the same CI-direct-push reason —
-see [`docs/404-GITHUB_ACTIONS.md`](docs/404-GITHUB_ACTIONS.md) § Security.
+see [`docs/405-GITHUB_ACTIONS.md`](docs/405-GITHUB_ACTIONS.md) § Security.
 </details>
 
 ---

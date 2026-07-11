@@ -10,8 +10,8 @@ platform itself, **CI/CD visibility for whichever of the four CI engines is
 active**, an **ArgoCD deployment view**, a **Kubernetes workloads view**,
 **TechDocs** rendering this repo's `docs/` in-portal, and Postgres-backed
 **search** across all of it. On a platform whose whole point is four
-interchangeable CI engines ([401](./401-JENKINS.md) · [403](./403-TEKTON.md) ·
-[404](./404-GITHUB_ACTIONS.md) · [405](./405-ARGO_WORKFLOWS.md)), the question
+interchangeable CI engines ([401](./401-JENKINS.md) · [404](./404-TEKTON.md) ·
+[405](./405-GITHUB_ACTIONS.md) · [406](./406-ARGO_WORKFLOWS.md)), the question
 *"where do I look?"* has four answers — Backstage gives it **one**:
 `https://backstage.<baseDomain>` always shows the **active** engine's builds,
 the GitOps state, the running workloads, and the docs, per service, on a single
@@ -23,9 +23,9 @@ tab is selected at **runtime** (see [§ The app image](#the-app-image-compile-ti
 Gated by the standard feature-flag pattern (`backstage.enabled`, **default
 `true`**) and fronted by **Google IAP** like every other admin UI here.
 
-> **See also.** [401. Jenkins](./401-JENKINS.md) · [403. Tekton](./403-TEKTON.md) ·
-> [404. GitHub Actions / ARC](./404-GITHUB_ACTIONS.md) ·
-> [405. Argo Workflows](./405-ARGO_WORKFLOWS.md) — the four CI engines the portal
+> **See also.** [401. Jenkins](./401-JENKINS.md) · [404. Tekton](./404-TEKTON.md) ·
+> [405. GitHub Actions / ARC](./405-GITHUB_ACTIONS.md) ·
+> [406. Argo Workflows](./406-ARGO_WORKFLOWS.md) — the four CI engines the portal
 > fronts; [501. Platform Operations](./501-PLATFORM_OPERATIONS.md) — ArgoCD, the
 > Gateway + IAP model (and the header-trust contrast drawn below);
 > [504. Backend TLS](./504-BACKEND_TLS.md) — Backstage is **stage 10** of the
@@ -126,7 +126,7 @@ the portal per-service by hand — you annotate the entity.
   resolves `${ENV_VAR}` references in `app-config.*.yaml` at startup. The chart
   values inject **both** the `backstage-runtime-config` ConfigMap and the
   `backstage-secrets` Secret as pod env, and
-  `backstage/app-config.production.yaml` references them (`${CI_ENGINE}`,
+  `backstage/app-config.yaml` references them (`${CI_ENGINE}`,
   `${APP_BASE_URL}`, `${IAP_AUDIENCE}`, `${JENKINS_API_KEY}`, …). Every
   environment-specific value is therefore a **ConfigMap/Secret patch + rollout
   restart** — the image stays identical across engines, branches, and TLS
@@ -319,9 +319,9 @@ That app lives at the repo root:
 backstage/
 ├── backstage.json                  # Backstage version pin — 1.52.1
 ├── package.json                    # yarn 4.8.1 workspaces; release-manifest pins
-├── app-config.yaml                 # base config (local-dev defaults)
-├── app-config.production.yaml     # in-cluster config — ${ENV} refs resolved from the
+├── app-config.yaml                 # THE in-cluster config — ${ENV} refs resolved from the
 │                                   #   runtime ConfigMap + backstage-secrets at startup
+├── app-config.local.example.yaml   # local-dev overlay template (guest auth, localhost)
 ├── catalog/                        # the software catalog (all.yaml → org / platform / services)
 └── packages/
     ├── app/                        # frontend: EntityPage (the 4 CI tabs) + ProxiedSignInPage(gcpIap)
@@ -460,7 +460,7 @@ chart ([`argocd/platform-config/`](../argocd/platform-config/), file
 the donation PR **backstage/community-plugins#9192** has been open since
 2026-05-21). So the CI/CD tab shows an **InfoCard deep-linking the
 IAP-protected Argo Server UI** (`argo.<baseDomain>`,
-[405](./405-ARGO_WORKFLOWS.md)) — same Google identity, one click — and the
+[406](./406-ARGO_WORKFLOWS.md)) — same Google identity, one click — and the
 **Kubernetes tab** surfaces the `argoproj.io/v1alpha1` `workflows` via
 `customResources`, so run status is still visible in-portal. Adopting the
 community plugin when #9192 ships is a [roadmap](#roadmap) item.

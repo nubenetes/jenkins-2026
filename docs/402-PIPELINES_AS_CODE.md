@@ -1,4 +1,4 @@
-[← Previous: 401. Jenkins](./401-JENKINS.md) | [🏠 Home](../README.md) | [→ Next: 403. Tekton](./403-TEKTON.md)
+[← Previous: 401. Jenkins](./401-JENKINS.md) | [🏠 Home](../README.md) | [→ Next: 403. Declarative vs Scripted](./403-DECLARATIVE_VS_SCRIPTED.md)
 
 ---
 
@@ -6,7 +6,7 @@
 
 Everything Jenkins-side is defined in this repository — security, the global shared library, the OpenTelemetry exporter, and the Microservices pipelines — and applied via **Configuration as Code (JCasC)** + the **Job DSL** plugin. Nothing is configured by hand in the Jenkins UI. This page is the *pipeline* view; the *controller/platform* view is [401. Jenkins](./401-JENKINS.md).
 
-> **Jenkins is the default of four mutually-exclusive CI engines** (selected by `ci.engine`): **Jenkins** · **Tekton** · **GitHub Actions (ARC)** · **Argo Workflows**. This page details the **Jenkins** engine; the sibling engines are covered in [403. Tekton](./403-TEKTON.md), [404. GitHub Actions](./404-GITHUB_ACTIONS.md), and [405. Argo Workflows](./405-ARGO_WORKFLOWS.md). All four honour the **same ~11-stage pipeline contract** and share the [`services.yaml`](../jenkins/pipelines/seed/services.yaml) registry + the [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) gateway MySQL→Postgres + NoOp-cache build-time patch (see *§ Shared app-source patch* below).
+> **Jenkins is the default of four mutually-exclusive CI engines** (selected by `ci.engine`): **Jenkins** · **Tekton** · **GitHub Actions (ARC)** · **Argo Workflows**. This page details the **Jenkins** engine; the sibling engines are covered in [404. Tekton](./404-TEKTON.md), [405. GitHub Actions](./405-GITHUB_ACTIONS.md), and [406. Argo Workflows](./406-ARGO_WORKFLOWS.md). All four honour the **same ~11-stage pipeline contract** and share the [`services.yaml`](../jenkins/pipelines/seed/services.yaml) registry + the [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) gateway MySQL→Postgres + NoOp-cache build-time patch (see *§ Shared app-source patch* below).
 
 ## Understanding pipelines-as-code (newcomers → specialists)
 
@@ -86,7 +86,7 @@ So the loop is: *seed job reads `services.yaml` → generates `gateway`/`jhipste
 
 **GitOps deploy (`microservicesDeploy`):** clone the GitOps repo (`jenkins-2026-gitops-config`, branch `main`=stable / `develop`=develop) → `yq eval -i '.services.<svc>.image.tag = "<tag>"' helm/microservices/values-<env>.yaml` → commit `chore(ops): update <svc> image tag…` → `git push origin <branch>` → `argocd app sync microservices-<env>` + `app wait` (in-cluster gRPC, `ARGOCD_AUTH_TOKEN`) → **OTel self-heal** (if the running pod lacks `-javaagent` in `JAVA_TOOL_OPTIONS`, `kubectl rollout restart` it). This direct `git push origin main` is why the GitOps repo's `main` is **direct-push** (see [502](./502-MICROSERVICES_GITOPS.md) and the [branch-policy note in CLAUDE.md](../CLAUDE.md)).
 
-**Triggers:** only `seed-jobs` is on a timer (`H/30`). The generated build jobs carry **no SCM/push trigger** — they are started manually (UI), via downstream `build job`, or externally. The nubenetes app forks *are* owned here, but the Jenkins engine doesn't wire push-webhooks (contrast the git-push PaC of the other three engines — [Tekton](./403-TEKTON.md), [GitHub Actions](./404-GITHUB_ACTIONS.md), and [Argo Workflows](./405-ARGO_WORKFLOWS.md)).
+**Triggers:** only `seed-jobs` is on a timer (`H/30`). The generated build jobs carry **no SCM/push trigger** — they are started manually (UI), via downstream `build job`, or externally. The nubenetes app forks *are* owned here, but the Jenkins engine doesn't wire push-webhooks (contrast the git-push PaC of the other three engines — [Tekton](./404-TEKTON.md), [GitHub Actions](./405-GITHUB_ACTIONS.md), and [Argo Workflows](./406-ARGO_WORKFLOWS.md)).
 
 **Signals:** every run/stage/step is an OTel span (`OTEL_SERVICE_NAME=jenkins-pipeline-<svc>`); k6 exports OTLP metrics tagged `service.namespace=jenkins-2026, deployment.environment=<env>`. See [301](./301-OBSERVABILITY.md).
 
@@ -637,7 +637,7 @@ flowchart TB
 
 ---
 
-[← Previous: 401. Jenkins](./401-JENKINS.md) | [🏠 Home](../README.md) | [→ Next: 403. Tekton](./403-TEKTON.md)
+[← Previous: 401. Jenkins](./401-JENKINS.md) | [🏠 Home](../README.md) | [→ Next: 403. Declarative vs Scripted](./403-DECLARATIVE_VS_SCRIPTED.md)
 
 ---
 

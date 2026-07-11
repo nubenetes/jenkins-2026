@@ -6,7 +6,7 @@
 #
 # Run: kubectl create -f argoworkflows/runs/k6-load.yaml
 # Requires the develop tier deployed (microservices.developTrackEnabled=true).
-# See docs/302-K6_LOAD_TESTING.md and docs/405-ARGO_WORKFLOWS.md.
+# See docs/302-K6_LOAD_TESTING.md and docs/406-ARGO_WORKFLOWS.md.
 apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
