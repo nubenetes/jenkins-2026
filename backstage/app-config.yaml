@@ -99,7 +99,7 @@ argocd:
     - type: config
       instances:
         - name: in-cluster
-          url: ${ARGOCD_BASE_URL}
+          url: https://argocd.${BASE_DOMAIN}
 
 # Kubernetes plugin: in-cluster access as the `backstage` KSA (no
 # serviceAccountToken -> the mounted token + CA are used). Read-only RBAC in
