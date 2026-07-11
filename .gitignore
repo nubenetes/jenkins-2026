@@ -72,3 +72,7 @@ terraform/aws-managed-grafana/backend_override.tf
 terraform/grafana-cloud-gcp/*.json
 grafana-cloud-gcp-key.json
 __pycache__/
+
+# Throwaway helper scripts written for one-off WSL runs (the CLAUDE.md
+# "complex WSL commands go through scratch/" convention) - never committed
+scratch/
