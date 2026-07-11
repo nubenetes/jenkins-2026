@@ -233,6 +233,9 @@ Crucially, Declarative is **not a different runtime.** The `pipeline {}` block i
 parsed and validated up front, then executed on the same `workflow-cps` engine
 that runs Scripted — the two are **peers on one engine**, not a stack. So:
 
+<details>
+<summary>📊 Two syntaxes, one engine (flowchart)</summary>
+
 ```mermaid
 flowchart TD
     subgraph AUTHOR["What you write"]
@@ -246,6 +249,8 @@ flowchart TD
     SCR  -->|"executed directly"| CPS
     CPS  --> DUR["Durable, resumable build<br/>(state serialized between steps)"]
 ```
+
+</details>
 
 **The load-bearing takeaway:** Declarative gives you **guardrails and tooling**
 (up-front validation, a mandatory `post {}` block that runs even on failure/abort,
@@ -548,6 +553,9 @@ mechanical realisation.
 This repo does not "use Declarative" or "use Scripted." It uses **three cooperating
 layers**, each in the dialect that fits it:
 
+<details>
+<summary>📊 The three-layer hybrid — generation → orchestration → logic (flowchart)</summary>
+
 ```mermaid
 flowchart TD
     YAML["services.yaml<br/>(service registry)"]
@@ -575,6 +583,8 @@ flowchart TD
     MP -->|"build job: microservices-k6-smoke"| K6P
     K6P --> K
 ```
+
+</details>
 
 ### 7.1 Layer 1 — Generation: Job DSL (Scripted, and *generative*)
 
@@ -661,6 +671,9 @@ classes; `src/` would be the next tool if that changed (see §11).
 
 ### 7.5 A build, end to end
 
+<details>
+<summary>📊 A build, end to end (sequence diagram)</summary>
+
 ```mermaid
 sequenceDiagram
     participant Cron as Seed (cron H/30)
@@ -680,6 +693,8 @@ sequenceDiagram
     Decl->>Lib: steps { microservicesSmokeTest(...) }
     Decl->>Decl: post { always { junit + recordIssues } }
 ```
+
+</details>
 
 ---
 
@@ -833,6 +848,9 @@ services and four engines):
 
 When you extend this repo's Jenkins CI, use this to place new code in the right layer:
 
+<details>
+<summary>📊 Where does new code go? (decision flowchart)</summary>
+
 ```mermaid
 flowchart TD
     Q1{"What are you<br/>adding?"}
@@ -842,6 +860,8 @@ flowchart TD
     Q1 -->|"Cross-step classes / rich types"| A4["Only then introduce src/<br/>(namespaced Groovy classes). Not needed today."]
     A1 --> R["Small imperative bit inside a stage?<br/>Use a SMALL script{} island —<br/>if it grows, move it to a vars/ step."]
 ```
+
+</details>
 
 Rules of thumb:
 - **Default to Declarative for the *shape*, Scripted for the *logic*.**
@@ -883,6 +903,9 @@ But *what* you're looking at depends on the file's location:
 | **A `src/**/*.groovy` class** | *(neither — plain Groovy classes, called from either)* | *(neither)* |
 | **A seed script** | *(neither — it's Job DSL: `pipelineJob{}` in a loop)* | *(neither)* |
 
+<details>
+<summary>📊 Classify any file in seconds (flowchart)</summary>
+
 ```mermaid
 flowchart TD
     F{"Open the file.<br/>What's the outermost block?"}
@@ -896,6 +919,8 @@ flowchart TD
     S2 -->|yes| ST["Scripted library step<br/>(microservicesBuild, …)"]
     S2 -->|"no (a Jenkinsfile)"| SJ["Scripted Jenkinsfile<br/>(the generated 2-line body)"]
 ```
+
+</details>
 
 **Worked examples from this repo** — apply the test:
 
@@ -959,6 +984,9 @@ reproducible: rebuild the controller from scratch and the seed re-creates every 
 
 ### 13.2 The seed pattern
 
+<details>
+<summary>📊 The seed pattern (flowchart)</summary>
+
 ```mermaid
 flowchart LR
     JCASC["JCasC<br/>jcasc-seed-job.yaml"] -->|"defines (cpsScm)"| SEED["seed-jobs<br/>(Declarative pipeline,<br/>from Jenkinsfile.seed)"]
@@ -966,6 +994,8 @@ flowchart LR
     REG["services.yaml"] -->|"read at seed time"| DSL
     DSL -->|"generates / updates"| JOBS["per-service pipeline jobs<br/>+ k6 job + listView"]
 ```
+
+</details>
 
 Notice the dialects layer even here: the seed job is **Declarative**
 ([`Jenkinsfile.seed`](../jenkins/pipelines/seed/Jenkinsfile.seed) is a `pipeline { }`),
