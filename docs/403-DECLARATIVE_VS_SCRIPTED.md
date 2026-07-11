@@ -775,6 +775,14 @@ plus workspace coupling), a `params` default (compile-time — the SHA is runtim
 Mutating `env` in a minimal `script {}` is the documented residual use — the
 escape hatch doing exactly the job it exists for.
 
+One sharp edge learned live (2026-07-11): the mutated variables must **not**
+also be declared in `environment {}` — that directive wraps every stage in a
+`withEnv` overlay that *shadows* script-time `env.X = …` mutations, so the
+value the directive computed at pipeline start silently wins in every later
+stage. `IMAGE_TAG`/`IMAGE` are therefore *born* in the script island; the
+directive keeps only the genuinely static keys (`REGISTRY`,
+`OTEL_SERVICE_NAME`).
+
 **Case 2 — the Scripted preamble above `pipeline {}`** (the `agentNodeScheduling`
 ternary and `k6JobName`). The `agent { kubernetes { yaml … } }` directive takes a
 *string*; there is no conditional syntax **inside** the agent directive (`when {}`

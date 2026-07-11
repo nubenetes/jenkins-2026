@@ -25,7 +25,7 @@ def call(Map cfg) {
           REPO_URL="${env.JENKINS2026_GITOPS_REPO_URL ?: 'https://github.com/nubenetes/jenkins-2026-gitops-config.git'}"
           REPO_CLEAN=\$(echo "\${REPO_URL}" | sed 's|https://||')
           git clone --depth 1 \
-              --branch ${cfg.envName == 'stable' ? 'main' : 'develop'} \
+              --branch ${cfg.envName == 'stable' ? (env.JENKINS2026_REPO_BRANCH ?: 'main') : 'develop'} \
               "https://\${GIT_USER:-git}:\${GIT_TOKEN:-}@\${REPO_CLEAN}" \
               gitops-config-src
       """

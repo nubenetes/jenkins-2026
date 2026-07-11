@@ -246,18 +246,14 @@ ${agentNodeScheduling}
 
         environment {
             REGISTRY      = "${env.MICROSERVICES_REGISTRY ?: 'ghcr.io/nubenetes/jenkins-2026-microservices'}"
-            // Immutable, traceable tag: <branch>-<build#>-<app-sha> (e.g.
-            // develop-42-a1b2c3d4). The initial value here is <branch>-<build#>
-            // (BUILD_NUMBER is available at pipeline start); the Checkout stage appends
-            // the app-source commit SHA (git plugin's GIT_COMMIT) once it is known.
-            // REBUILD-SAFETY: Jenkins home is an ephemeral PVC, so BUILD_NUMBER resets to
-            // 1 on a rebuild — <branch>-<build#> alone would re-mint tags that already
-            // exist in the persistent ghcr from a prior incarnation and mutably overwrite
-            // them, breaking reproducible rollback. The SHA suffix makes the tag globally
-            // unique across incarnations. (Tekton is already immune via a random run
-            // suffix.) GitOps Update pins values-<env>.yaml to the final tag.
-            IMAGE_TAG     = "${cfg.gitBranch}-${env.BUILD_NUMBER}"
-            IMAGE         = "${env.REGISTRY}/${cfg.serviceName}:${env.IMAGE_TAG}"
+            // IMAGE_TAG / IMAGE are deliberately NOT declared here: variables
+            // from this directive wrap every stage in a withEnv overlay that
+            // SHADOWS any later `env.X = ...` mutation from a script {} block —
+            // so the Checkout stage's rebuild-safe SHA suffix silently never
+            // reached the build/push/deploy stages (found live 2026-07-11; the
+            // shadowing was latent while bug #1, the empty GIT_COMMIT, kept the
+            // mutation path from ever running). Both are set once, in the
+            // Checkout stage's script island, and read as plain env everywhere.
             OTEL_SERVICE_NAME = "jenkins-pipeline-${cfg.serviceName}"
         }
 
@@ -293,14 +289,22 @@ ${agentNodeScheduling}
                                     [$class: 'CheckoutOption', timeout: 20],
                                 ],
                             ])
+                            // Immutable, traceable tag: <branch>-<build#>-<app-sha8>.
+                            // REBUILD-SAFETY: Jenkins home is an ephemeral PVC, so
+                            // BUILD_NUMBER resets to 1 on a rebuild — <branch>-<build#>
+                            // alone re-mints tags that already exist in the persistent
+                            // ghcr from a prior incarnation and mutably overwrites them.
+                            // The SHA suffix makes the tag globally unique. (Set HERE,
+                            // not in environment{} — see the note on that directive.)
                             def appSha = scmVars?.GIT_COMMIT?.trim()
                             if (appSha) {
                                 env.IMAGE_TAG = "${cfg.gitBranch}-${env.BUILD_NUMBER}-${appSha.take(8)}"
-                                env.IMAGE = "${env.REGISTRY}/${cfg.serviceName}:${env.IMAGE_TAG}"
-                                echo "Image tag (rebuild-safe): ${env.IMAGE_TAG}"
                             } else {
-                                echo "WARNING: checkout returned no GIT_COMMIT - tag stays ${env.IMAGE_TAG} (NOT rebuild-safe)"
+                                env.IMAGE_TAG = "${cfg.gitBranch}-${env.BUILD_NUMBER}"
+                                echo "WARNING: checkout returned no GIT_COMMIT - tag ${env.IMAGE_TAG} is NOT rebuild-safe"
                             }
+                            env.IMAGE = "${env.REGISTRY}/${cfg.serviceName}:${env.IMAGE_TAG}"
+                            echo "Image tag (rebuild-safe): ${env.IMAGE_TAG}"
                         }
                     }
                 }
