@@ -53,7 +53,12 @@ metadata:
   description: Platform-as-code - scripts, Terraform, ArgoCD apps, pipelines, docs
   annotations:
     github.com/project-slug: nubenetes/jenkins-2026
-    backstage.io/techdocs-ref: url:https://github.com/nubenetes/jenkins-2026/tree/main
+    # dir: resolves RELATIVE TO THIS CATALOG FILE's location (backstage/catalog/
+    # on the CATALOG_BRANCH the portal tracks), so ../.. = the repo root where
+    # mkdocs.yml lives - TechDocs auto-tracks the DEPLOY branch (develop on a
+    # develop-validation cluster, main in prod). The previous url:...tree/main
+    # pinned the docs to main even on develop clusters.
+    backstage.io/techdocs-ref: dir:../..
   links:
     - url: https://github.com/nubenetes/jenkins-2026/actions
       title: Platform lifecycle workflows (DayN.tier.ZZ)

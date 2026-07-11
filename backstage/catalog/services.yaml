@@ -9,6 +9,8 @@
 #   tekton.dev/cicd + backstage.io/kubernetes-*   Tekton tab (k8s plugin CRs)
 #   argocd/app-name                     ArgoCD tabs (ONE app deploys both services)
 #   backstage.io/kubernetes-label-selector        Kubernetes tab (workload match)
+#   backstage.io/techdocs-entity        Docs tab = the platform's TechDocs (the
+#                                       forks ship no mkdocs site of their own)
 apiVersion: backstage.io/v1alpha1
 kind: Component
 metadata:
@@ -21,6 +23,9 @@ metadata:
     argocd/app-name: microservices-stable
     backstage.io/kubernetes-namespace: microservices
     backstage.io/kubernetes-label-selector: 'app.kubernetes.io/name=gateway'
+    # The app fork ships no mkdocs site - surface the PLATFORM's TechDocs on
+    # this entity's Docs tab + AboutCard instead (shared-docs annotation).
+    backstage.io/techdocs-entity: component:default/jenkins-2026-infra
   links:
     - url: https://microservices.jenkins2026.nubenetes.com
       title: Live app (stable)
@@ -51,6 +56,8 @@ metadata:
     argocd/app-name: microservices-stable
     backstage.io/kubernetes-namespace: microservices
     backstage.io/kubernetes-label-selector: 'app.kubernetes.io/name=jhipstersamplemicroservice'
+    # Shared docs: the platform's TechDocs on this entity (see gateway note).
+    backstage.io/techdocs-entity: component:default/jenkins-2026-infra
   links:
     - url: https://github.com/nubenetes/jhipster-sample-app-microservice
       title: Source (nubenetes fork)
