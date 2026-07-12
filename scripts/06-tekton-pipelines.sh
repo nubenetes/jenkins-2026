@@ -207,6 +207,13 @@ apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
   name: ${name}
+  # Backstage's Kubernetes-backend fetch rides app.kubernetes.io/name (docs/505,
+  # same contract as tekton/runs/*.yaml + the TriggerTemplate): PaC preserves
+  # authored labels and only adds its own pipelinesascode.tekton.dev/* set.
+  labels:
+    jenkins2026.io/service: ${name}
+    jenkins2026.io/env: stable
+    app.kubernetes.io/name: ${name}
   annotations:
     pipelinesascode.tekton.dev/on-event: "[push, pull_request]"
     pipelinesascode.tekton.dev/on-target-branch: "[main]"
