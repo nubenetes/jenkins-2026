@@ -1431,10 +1431,26 @@ if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
     bs_backend_id=""
     _bs_deadline=$(( SECONDS + 180 ))
     while [[ -z "${bs_backend_id}" && ${SECONDS} -lt ${_bs_deadline} ]]; do
-      # GKE Gateway backend-service naming: gkegw1-<hash>-<namespace>-<service>-<port>-<hash>.
-      bs_backend_id="$(gcloud compute backend-services list --global \
-        --filter="name~gkegw1-.*-${J2026_BACKSTAGE_NAMESPACE}-backstage-7007" \
-        --format='value(id)' 2>/dev/null | head -n1 || true)"
+      # Resolve by REFERENCE, never by name pattern: GKE composes the
+      # gkegw1-... backend-service name from gateway-ns/gateway-name/svc-ns/
+      # svc-name and TRUNCATES EVERY COMPONENT to fit 63 chars - on this
+      # platform it rendered as "...-backs-back-7007-..." (found live
+      # 2026-07-12: the old name~gkegw1-.*-backstage-backstage-7007 regex
+      # could never match, the 3m retry expired, IAP_AUDIENCE stayed
+      # 'pending' and every portal sign-in 401'd at gcpIap refresh). The
+      # Service's OWN neg-status annotation names its NEG exactly, and the
+      # backend service lists that NEG under .backends[].group - a reference
+      # chain with no naming assumptions (description is EMPTY on
+      # Gateway-created backend services, so that shortcut is unavailable).
+      bs_neg="$(kubectl get service backstage -n "${J2026_BACKSTAGE_NAMESPACE}" \
+        -o jsonpath='{.metadata.annotations.cloud\.google\.com/neg-status}' 2>/dev/null \
+        | jq -r '.network_endpoint_groups["7007"] // empty' 2>/dev/null || true)"
+      if [[ -n "${bs_neg}" ]]; then
+        bs_backend_id="$(gcloud compute backend-services list --global --format=json 2>/dev/null \
+          | jq -r --arg neg "${bs_neg}" \
+            '.[] | select([.backends[]?.group // empty] | any(endswith("/" + $neg))) | .id' \
+          | head -n1 || true)"
+      fi
       [[ -z "${bs_backend_id}" ]] && sleep 15
     done
     if [[ -n "${bs_project_number}" && -n "${bs_backend_id}" ]]; then

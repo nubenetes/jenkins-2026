@@ -31,6 +31,15 @@ backstage:
   livenessProbe:
     httpGet:
       scheme: HTTPS
+  # The chart ships a DEFAULT startupProbe our values.yaml does NOT define
+  # (chart 2.8.2: path /.backstage/health/v1/liveness, port 7007, scheme HTTP
+  # explicit) - without this third flip the pod NEVER passes startup under
+  # backend.https and restart-loops (caught by the stage-10 pre-flight,
+  # 2026-07-12, before the first live TLS launch). Deep-merges over the chart
+  # default, so path/port stay the chart's.
+  startupProbe:
+    httpGet:
+      scheme: HTTPS
 
   # ⚠ Lists REPLACE across Helm value files (no merge): this list must repeat
   # values.yaml's internal-ca volume verbatim and add the TLS one.
