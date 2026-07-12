@@ -3,7 +3,9 @@
 # The analogue of 06-tekton-pipelines.sh: renders .github/workflows/microservices-ci.yml
 # (from jenkins/pipelines/seed/microservices-ci.yml.tmpl) into each owned microservices fork,
 # reading the SAME jenkins/pipelines/seed/services.yaml registry. Simpler than the Tekton
-# version — ARC's GitHub App handles webhook dispatch, so there is no hook-creation loop.
+# version — ARC's GitHub App handles webhook dispatch, so there is no hook-CREATION loop;
+# it still PRUNES the previous engine's stale base-domain hooks from the forks (engine-switch
+# parity with the tekton/argoworkflows 06 scripts).
 # Idempotent (diff-then-push). See docs/405-GITHUB_ACTIONS.md.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -54,6 +56,25 @@ for i in $(seq 0 $((svc_count - 1))); do
   port="$(yq eval ".services[${i}].port" "${SERVICES_YAML}")"
   health="$(yq eval ".services[${i}].healthPath" "${SERVICES_YAML}")"
   repo_path="$(repo_path_from_url "${repo}")"
+
+  # Prune the PREVIOUS engine's webhooks from the fork (engine-switch parity
+  # with 06-tekton/06-argoworkflows, which prune foreign base-domain hooks and
+  # ensure their own; found live 2026-07-12: a tekton→argoworkflows→githubactions
+  # switch day left an argo-events.<domain>/push hook 404ing on every push).
+  # GHA is the no-hook engine (ARC's GitHub App handles dispatch), so here the
+  # desired set is EMPTY: delete every hook pointing at this project's base
+  # domain; hooks to unrelated hosts are left untouched.
+  hooks_json="$(curl -fsS -H "Authorization: token ${GIT_TOKEN}" \
+    "https://api.github.com/repos/${repo_path}/hooks" 2>/dev/null || echo '[]')"
+  while IFS=$'\t' read -r hid hurl; do
+    [[ -z "${hid}" ]] && continue
+    if [[ "${hurl}" == *".${J2026_GATEWAY_BASE_DOMAIN}"* ]]; then
+      curl -fsS -X DELETE -H "Authorization: token ${GIT_TOKEN}" \
+        "https://api.github.com/repos/${repo_path}/hooks/${hid}" >/dev/null 2>&1 \
+        && log_info "  pruned stale webhook on ${repo_path} (${hurl})" || true
+    fi
+  done < <(printf '%s' "${hooks_json}" | jq -r '.[] | "\(.id)\t\(.config.url)"' 2>/dev/null)
+
   work="$(mktemp -d)"
 
   if ! git clone --depth 1 "https://${git_user}:${GIT_TOKEN}@github.com/${repo_path}.git" "${work}" >/dev/null 2>&1; then
