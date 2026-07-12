@@ -900,12 +900,12 @@ For the full component diagram, microservices database architecture (CloudNative
 
 ### 3.1. Technical Infographics Catalog
 
-To help visualize the system architecture, landing zones, workflows, and CI engine comparisons, a comprehensive catalog of 36 technical infographics is organized below. The infographics are categorized by system domain and folded by default. Click on any category to expand it and explore the files, key components, and detailed architectural descriptions.
+To help visualize the system architecture, landing zones, workflows, and CI engine comparisons, a comprehensive catalog of 37 technical infographics is organized below. The infographics are categorized by system domain and folded by default. Click on any category to expand it and explore the files, key components, and detailed architectural descriptions.
 
 For a full standalone catalog with visual previews, see the [Technical Infographics README](./docs/infographics/README.md).
 
 <details>
-<summary>📂 000: Platform Overview (2 Infographics)</summary>
+<summary>📂 000: Platform Overview (3 Infographics)</summary>
 
 - **[001]** - **[End to End Golden Path Platform and Developer Workflow Overview](./docs/infographics/001_End_to_End_Golden_Path_Platform_and_Developer_Workflow_Overview.png)**
   - *Key Technologies*: IDP, Day 0/Day 1, Dev Workflow
@@ -913,6 +913,9 @@ For a full standalone catalog with visual previews, see the [Technical Infograph
 - **[002]** - **[High Level Design and Multi Repository Platform Architecture](./docs/infographics/002_High_Level_Design_and_Multi_Repository_Platform_Architecture.png)**
   - *Key Technologies*: Git Multi-Repo, Terraform, Jenkins
   - *Description*: Illustrates the multi-repository structure decoupling the platform infrastructure configuration (in the Jenkins-2026 repository) from individual application source code repositories, using remote GCS buckets for state storage.
+- **[003]** - **[GKE Golden Path IDP Backstage Developer Portal Integration](./docs/infographics/003_GKE_Golden_Path_IDP_Backstage_Developer_Portal_Integration.png)**
+  - *Key Technologies*: Backstage, WIF, CNPG, ArgoCD plugin, OTel, Cilium eBPF, Gateway API
+  - *Description*: Maps the Backstage developer portal's four integration quadrants: the unified frontend as the platform control plane (keyless WIF auth), self-service scaffolding with automated CloudNativePG provisioning, the GitOps continuous-delivery loop (CI → gitops repo → ArgoCD reconciliation surfaced in-portal), and unified cluster/observability ingestion (live Kubernetes state over Cilium eBPF, OTel-correlated signals, zero-trust ingress via Gateway API + BackendTLSPolicy). The scaffolder shown is the roadmap direction — the shipped portal deliberately omits it (docs/505).
 
 </details>
 

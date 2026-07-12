@@ -1,18 +1,19 @@
-# Complete Technical Inventory of English Infographics (36 Files)
+# Complete Technical Inventory of English Infographics (37 Files)
 
-This document serves as an architectural inventory and catalog of the 36 English infographics. Each filename in the index is a clickable link to open the corresponding PNG file directly. Below the index, you will find collapsible visual previews for each infographic.
+This document serves as an architectural inventory and catalog of the 37 English infographics. Each filename in the index is a clickable link to open the corresponding PNG file directly. Below the index, you will find collapsible visual previews for each infographic.
 
 ---
 
 ## Infographics Catalog Index
 
 <details>
-<summary>📋 Click to view the full detailed index list (36 entries)</summary>
+<summary>📋 Click to view the full detailed index list (37 entries)</summary>
 <br>
 
 1. **000: Platform Overview**
    - [[001]](#001---end-to-end-golden-path-platform-and-developer-workflow-overview) - [End to End Golden Path Platform and Developer Workflow Overview](001_End_to_End_Golden_Path_Platform_and_Developer_Workflow_Overview.png)
    - [[002]](#002---high-level-design-and-multi-repository-platform-architecture) - [High Level Design and Multi Repository Platform Architecture](002_High_Level_Design_and_Multi_Repository_Platform_Architecture.png)
+   - [[003]](#003---gke-golden-path-idp-backstage-developer-portal-integration) - [GKE Golden Path IDP Backstage Developer Portal Integration](003_GKE_Golden_Path_IDP_Backstage_Developer_Portal_Integration.png)
 2. **100: Landing Zone**
    - [[101]](#101---gcp-keyless-landing-zone-and-wif-federation) - [GCP Keyless Landing Zone and WIF Federation](101_GCP_Keyless_Landing_Zone_and_WIF_Federation.png)
    - [[102]](#102---gke-golden-path-jhipster-microservice-architecture) - [GKE Golden Path JHipster Microservice Architecture](102_GKE_Golden_Path_JHipster_Microservice_Architecture.png)
@@ -66,7 +67,7 @@ This document serves as an architectural inventory and catalog of the 36 English
 Browse the infographics visually using the collapsible previews below. Click any preview header to reveal the full high-resolution diagram.
 
 <details>
-<summary>⚡ Click here to expand ALL 36 Infographics at once (for sequential scrolling) ⚡</summary>
+<summary>⚡ Click here to expand ALL 37 Infographics at once (for sequential scrolling) ⚡</summary>
 <br>
 
 ### 001 - End to End Golden Path Platform and Developer Workflow Overview
@@ -76,6 +77,11 @@ Browse the infographics visually using the collapsible previews below. Click any
 
 ### 002 - High Level Design and Multi Repository Platform Architecture
 ![002 - High Level Design](./002_High_Level_Design_and_Multi_Repository_Platform_Architecture.png)
+
+---
+
+### 003 - GKE Golden Path IDP Backstage Developer Portal Integration
+![003 - Backstage Portal Integration](./003_GKE_Golden_Path_IDP_Backstage_Developer_Portal_Integration.png)
 
 ---
 
@@ -273,6 +279,20 @@ Browse the infographics visually using the collapsible previews below. Click any
 <summary>🔍 Expand infographic preview (002)</summary>
 
 ![002 - High Level Design](./002_High_Level_Design_and_Multi_Repository_Platform_Architecture.png)
+
+</details>
+
+---
+
+### 003 - GKE Golden Path IDP Backstage Developer Portal Integration
+* **Category**: `000: Platform Overview`
+* **Key Technologies & Components**: Backstage, WIF, CNPG, ArgoCD plugin, OTel, Cilium eBPF, Gateway API
+* **Description**: Maps the Backstage developer portal's four integration quadrants on the GKE Golden-Path: the unified frontend as the platform control plane (keyless auth via GKE Workload Identity Federation), developer self-service scaffolding with automated CloudNativePG database provisioning (3-node HA, PgBouncer, BARMAN backups to GCS, data tiers decoupled from runtime configuration), the GitOps continuous-delivery loop (CI trigger → image tags written to the machine-managed gitops repo → asynchronous ArgoCD reconciliation, surfaced in-portal by the ArgoCD plugin for immediate deployment feedback), and unified cluster/observability ingestion (the Kubernetes plugin pulling live Pod/Service/NEG state over Cilium eBPF default-deny Dataplane V2, OTel-correlated metrics/logs/traces, and zero-trust North-South ingress via the GKE Gateway API with BackendTLSPolicy). Note: the software-scaffolder templates shown depict the golden-path roadmap direction — the shipped portal image deliberately omits the scaffolder ([docs/505](../505-BACKSTAGE.md)).
+
+<details>
+<summary>🔍 Expand infographic preview (003)</summary>
+
+![003 - Backstage Portal Integration](./003_GKE_Golden_Path_IDP_Backstage_Developer_Portal_Integration.png)
 
 </details>
 
