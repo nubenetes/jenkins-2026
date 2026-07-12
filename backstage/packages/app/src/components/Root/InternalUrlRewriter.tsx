@@ -21,13 +21,27 @@
 import { useEffect } from 'react';
 import { useApi, configApiRef } from '@backstage/core-plugin-api';
 
+/*
+ * The trailing (?=[/?#]|$) boundary makes the rewrite IDEMPOTENT — without it
+ * the jenkins pattern's `jenkins.jenkins` prefix ALSO matches the already-
+ * rewritten public host `jenkins.jenkins2026.<baseDomain>` (every following
+ * group is optional), and re-processing appends another `2026.<baseDomain>`
+ * per pass: found live 2026-07-12 as
+ * jenkins.jenkins2026.nubenetes.com2026.nubenetes.com2026.nubenetes.com on
+ * the CI/CD tab's TESTS link. Re-processing DOES happen: switching tabs makes
+ * React re-attach subtrees that still carry the mutated href, and the
+ * MutationObserver replays them as added nodes — so the pattern must
+ * hard-stop at end-of-host (path, query, fragment or end of string).
+ */
 const INTERNAL_HOSTS: Array<{ pattern: RegExp; app: string }> = [
   {
-    pattern: /^https?:\/\/argocd-server\.argocd(\.svc(\.cluster\.local)?)?(:\d+)?/i,
+    pattern:
+      /^https?:\/\/argocd-server\.argocd(\.svc(\.cluster\.local)?)?(:\d+)?(?=[/?#]|$)/i,
     app: 'argocd',
   },
   {
-    pattern: /^https?:\/\/jenkins\.jenkins(\.svc(\.cluster\.local)?)?(:\d+)?/i,
+    pattern:
+      /^https?:\/\/jenkins\.jenkins(\.svc(\.cluster\.local)?)?(:\d+)?(?=[/?#]|$)/i,
     app: 'jenkins',
   },
 ];
@@ -62,7 +76,9 @@ export const InternalUrlRewriter = () => {
     };
     rewriteIn(document.body);
     // Only childList mutations are observed, and the rewrite touches href
-    // attributes — no observer feedback loop.
+    // attributes — no attribute-level feedback loop. Re-attached subtrees DO
+    // replay through addedNodes carrying an already-rewritten href, which is
+    // why the patterns above are hard-bounded (idempotent on their output).
     const observer = new MutationObserver(mutations => {
       for (const mutation of mutations) {
         mutation.addedNodes.forEach(node => {
