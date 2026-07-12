@@ -13,6 +13,8 @@ metadata:
   labels:
     jenkins2026.io/service: jhipstersamplemicroservice
     jenkins2026.io/env: stable
+    # Backstage's Kubernetes-backend fetch (docs/505) - see runs/gateway.yaml.
+    app.kubernetes.io/name: jhipstersamplemicroservice
 spec:
   serviceAccountName: argoworkflows-ci
   workflowTemplateRef:

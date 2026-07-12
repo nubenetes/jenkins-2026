@@ -54,6 +54,11 @@ spec:
                 labels:
                   jenkins2026.io/service: gateway
                   jenkins2026.io/env: stable
+                  # Backstage's Kubernetes-backend fetch (docs/505) - see
+                  # tekton/runs/gateway.yaml for the full rationale. This
+                  # Sensor is hardwired to gateway only (see the dependency
+                  # comment above), so the value is a literal, not a template.
+                  app.kubernetes.io/name: gateway
               spec:
                 serviceAccountName: argoworkflows-ci
                 workflowTemplateRef:

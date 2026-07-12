@@ -69,6 +69,8 @@ spec:
         labels:
           jenkins2026.io/service: $(tt.params.service-name)
           jenkins2026.io/env: $(tt.params.env-name)
+          # Backstage's Kubernetes-backend fetch (docs/505) - see runs/gateway.yaml.
+          app.kubernetes.io/name: $(tt.params.service-name)
       spec:
         taskRunTemplate:
           serviceAccountName: tekton-ci
