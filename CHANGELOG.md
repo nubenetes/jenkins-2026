@@ -19,7 +19,8 @@ All notable changes to **jenkins-2026** are documented here, following
 
 ## [Unreleased]
 
-_Nothing yet — add entries here as PRs merge._
+### Fixed
+- **Backstage backend-TLS (stage 10): the chart's DEFAULT `startupProbe` stayed `scheme: HTTP` under `backend.https`, so the pod would restart-loop and stage 10 could never come up** — caught by a static pre-flight (2026-07-12) *before* the first live TLS launch, i.e. never hit in production. `helm/backstage/values-backend-tls.yaml` flipped readiness+liveness (the two probes our `values.yaml` defines) but the **startupProbe comes from the chart's own defaults** (verified against `backstage/charts` 2.8.2: `backstage.startupProbe`, path `/.backstage/health/v1/liveness`, port `7007`, `scheme: HTTP` explicit — our values never define one, so there was nothing visibly missing to flip). The overlay now flips all **three** probes; the `httpGet.scheme`-only override deep-merges over the chart default, keeping its path/port.
 
 ## [v1.4.0] - 2026-07-12
 
