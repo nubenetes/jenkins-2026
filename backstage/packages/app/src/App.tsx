@@ -90,7 +90,25 @@ const routes = (
     <Route path="/search" element={<SearchPage />}>
       {searchPage}
     </Route>
-    <Route path="/catalog-graph" element={<CatalogGraphPage />} />
+    {/* A bare /catalog-graph visit renders rootEntityRefs ?? [] - an EMPTY
+        canvas (upstream design: the page expects to be reached from an entity
+        graph card, which passes ?rootEntityRefs=...). Root the sidebar's bare
+        visit at the platform Domain so "Graph" shows the whole catalog.
+        unidirectional:false is essential: the edges point INTO the domain
+        (system partOf domain), so a one-way walk from it reaches nothing.
+        Entity-card deep links still win - query params override initialState. */}
+    <Route
+      path="/catalog-graph"
+      element={
+        <CatalogGraphPage
+          initialState={{
+            rootEntityRefs: ['domain:default/jenkins-2026'],
+            maxDepth: Number.POSITIVE_INFINITY,
+            unidirectional: false,
+          }}
+        />
+      }
+    />
     <Route path="/settings" element={<UserSettingsPage />} />
   </FlatRoutes>
 );
