@@ -406,6 +406,7 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 - [The comparison matrix](./docs/403-DECLARATIVE_VS_SCRIPTED.md#4-the-comparison-matrix)
 - [When Jenkins recommends which](./docs/403-DECLARATIVE_VS_SCRIPTED.md#6-when-jenkins-officially-recommends-which)
 - [This repo's three-layer hybrid](./docs/403-DECLARATIVE_VS_SCRIPTED.md#7-this-repos-architecture-the-three-layer-hybrid)
+  - [The published reference architecture, mapped (nubenetes.com/jenkins)](./docs/403-DECLARATIVE_VS_SCRIPTED.md#77-the-published-reference-architecture-mapped--nubenetescomjenkins--this-repo)
 - [Counterexamples (all-one-way)](./docs/403-DECLARATIVE_VS_SCRIPTED.md#9-counterexamples-what-breaks-if-you-go-all-one-way)
 - [Recognising Declarative vs Scripted at a glance](./docs/403-DECLARATIVE_VS_SCRIPTED.md#12-recognising-declarative-vs-scripted-at-a-glance)
 - [Job DSL & seed jobs — advanced tutorial](./docs/403-DECLARATIVE_VS_SCRIPTED.md#13-job-dsl-and-seed-jobs-an-advanced-tutorial)

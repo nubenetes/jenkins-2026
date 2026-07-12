@@ -851,6 +851,69 @@ them, every piece of logic is a named library step, and the only imperative Groo
 left is the kind the official guidance sends to Scripted on purpose — each instance
 enumerated above with the directive that *cannot* replace it.
 
+### 7.7 The published reference architecture, mapped — [nubenetes.com/jenkins](https://nubenetes.com/jenkins/) → this repo
+
+The curated Jenkins reference at **[nubenetes.com/jenkins](https://nubenetes.com/jenkins/)**
+distils the same architecture this doc arrives at, in three highlighted blocks —
+the **CasC architectural reference**, the **Pipeline-as-Code core principles**,
+and the **pipeline best practices**. This section quotes each block with its
+original references and shows, item by item, exactly where this repo implements
+it (and the two places it deliberately deviates — flagged honestly).
+
+#### 7.7.1 "Jenkins Configuration as Code (CasC) Architectural Reference" — the four layers
+
+The reference's closing architectural recommendation, verbatim:
+
+> *"Use **JCasC** to set up the controller, **Job DSL** to generate your
+> multibranch pipeline jobs automatically, and a **Declarative Jenkinsfile**
+> inside each repo to define the build steps. Enrich the visual feedback loop by
+> deploying the **Pipeline Graph View Plugin**, and lock the UI down to
+> read-only mode to prevent configuration drift."*
+
+That sentence **is** this repo's Jenkins engine — layer by layer:
+
+| # | Reference layer (its links) | Implemented here | See |
+|---|---|---|---|
+| 1 | **Controller — JCasC**: *"managing the controller's settings, plugin installations, and credentials via the web UI creates operational snowflakes"* → declare everything in YAML. Links: [official JCasC plugin](https://plugins.jenkins.io/configuration-as-code) · [JCasC-on-Kubernetes example](https://github.com/figaw/configuration-as-code-jenkins-k8s) | ✅ The entire controller is YAML: [`jenkins/casc/`](../jenkins/casc/) (system message, OIDC realm, role-strategy RBAC, the shared-library declaration, the seed job, the OTel plugin) loaded through the chart's `controller.JCasC` ([`helm/jenkins/values-common.yaml`](../helm/jenkins/values-common.yaml)); plugin *installations* are pinned in the same values file; credentials arrive as the `jenkins-credentials` Secret referenced from JCasC. **No snowflakes by construction**: `04-jenkins.sh` re-applies it all idempotently on every Day1/redeploy — a hand-edit in the UI survives only until the next converge. | [`jcasc-base.yaml`](../jenkins/casc/jcasc-base.yaml) · [§7.1](#71-layer-1--generation-job-dsl-scripted-and-generative) |
+| 2 | **Job generation — Job DSL**: manual job creation is non-viable at scale → generate jobs programmatically. Links: [Job DSL plugin](https://plugins.jenkins.io/job-dsl) · [Job DSL API reference](https://jenkinsci.github.io/job-dsl-plugin) · [jobs-as-code guide](https://tech.gogoair.com/jenkins-jobs-as-code-with-groovy-dsl-c8143837593a) | ✅ The **seed job** (declared *in JCasC*, closing the loop): [`seed_jobs.groovy`](../jenkins/pipelines/seed/seed_jobs.groovy) reads the [`services.yaml`](../jenkins/pipelines/seed/services.yaml) registry and generates every `pipelineJob` per service × tier — add a service to the registry, get its jobs on the next seed run. | [§7.1](#71-layer-1--generation-job-dsl-scripted-and-generative) · [§13](#13-job-dsl-and-seed-jobs-an-advanced-tutorial) |
+| 3 | **Pipeline execution — Declarative**: the build steps as code. Links: [Pipeline as Code](https://www.jenkins.io/solutions/pipeline) · [Jenkinsfile syntax book](https://www.jenkins.io/doc/book/pipeline/jenkinsfile) · DZone refcards ([Declarative Pipeline](https://dzone.com/refcardz/declarative-pipeline-with-jenkins) · [CD with Jenkins Pipeline](https://dzone.com/refcardz/continuous-delivery-with-jenkins-pipeline)) | ✅ **with one deliberate twist**: the 13-stage **Declarative** shell lives in the shared library ([`vars/MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy)), not as a `Jenkinsfile` inside each app repo — the app repos are pristine upstream forks, and *this* repo is the version-controlled home of the pipeline (the principle — reviewed, audited pipeline code — holds: every change lands via a develop→main PR behind gitflow-guard). Why centralising is right here: [§8](#8-why-this-split-the-design-rationale); why it is *not* the god-library anti-pattern: [§14](#14-the-common-anti-pattern-a-scripted-god-library-with-thin-jenkinsfiles) (the shells are Declarative, the logic is in named steps). | [§7.2](#72-layer-2--orchestration-the-declarative-pipeline-shells) · [§8](#8-why-this-split-the-design-rationale) |
+| 4 | **Visual layer — Pipeline Graph View**: *"replaces deprecated Blue Ocean plugin as de-facto standard"* for interactive visualizations. Links: [Pipeline Graph View plugin](https://plugins.jenkins.io/pipeline-graph-view) · [source repo](https://github.com/jenkinsci/pipeline-graph-view-plugin) | ✅ Pinned in the controller plugin set (`pipeline-graph-view` in [`values-common.yaml`](../helm/jenkins/values-common.yaml)); **Blue Ocean was deliberately never installed** (the deprecation note in [§5](#5-advantages--disadvantages-in-full); the 2026-07 staleness audit purged every stale Blue Ocean reference from these docs). §7.6's `when`-gated and parallel stages render as skips and fork/joins in exactly this UI. | [§5](#5-advantages--disadvantages-in-full) |
+| ⚠ | **Read-only UI** ([JEP-224 announcement](https://www.jenkins.io/blog/2020/05/25/read-only-jenkins-announcement/)): lock the UI down to prevent configuration drift | **Not adopted — deviation #1.** Drift is neutralised differently here: JCasC is **re-applied on every converge** (a UI hand-edit is overwritten by the next Day1/`Day2.redeploy.02`), and the role-strategy RBAC already limits `Overall/Administer` to the OIDC admin allow-list. A PoC that is actively experimented on keeps the admin UI writable on purpose; flipping to JEP-224 read-only mode is a documented one-line hardening candidate for a production fork. | [`jcasc-base.yaml`](../jenkins/casc/jcasc-base.yaml) RBAC block |
+
+#### 7.7.2 "Pipeline as Code with Jenkins: Architectural Core Principles" — the five properties
+
+From the [Jenkins Pipeline book](https://www.jenkins.io/doc/book/pipeline) (the
+reference's source; see also [Pipeline as Code](https://www.jenkins.io/solutions/pipeline)
+and the [Jenkinsfile syntax book](https://www.jenkins.io/doc/book/pipeline/jenkinsfile)):
+Jenkins is *"an automation engine that supports diverse delivery patterns"*, and
+modelling workflows as pipelines makes them —
+
+| Principle (the reference's words) | Where this repo exercises it |
+|---|---|
+| **Code** — *"implemented directly in code (usually a `Jenkinsfile`) and checked into version control, enabling peer code reviews and auditability"* | The pipeline shells, the library steps, the seed and the JCasC all live in **this git repo**; every change is a reviewed develop→main PR (gitflow-guard + the mermaid render guard as required checks), and the CHANGELOG narrates each one — auditability end to end. |
+| **Durable** — *"built to survive both planned and unplanned restarts of the Jenkins controller"* | `durabilityHint('PERFORMANCE_OPTIMIZED')` chosen **consciously** in the §7.6 audit (the jenkins.io *Scaling Pipelines* trade-off: ~2-6× less controller I/O on pipelines that are safe to re-run) — plus `agent { kubernetes { retries 2 } }`, the official **pod-loss** retry that survives a `ci-spot` Spot preemption mid-build. |
+| **Pausable** — *"can pause execution to wait for human approval or input before proceeding to deployment"* | Available (`input` step) but **deliberately unused — deviation #2**: promotion gates live GitOps-side on this platform (the ArgoCD sync plus the human-reviewed develop→main PR), so pipelines stay non-interactive and every deploy is reproducible with no human inside the build. |
+| **Versatile** — *"naturally support complex real-world CD topologies, including parallel execution, looping, and fork/join patterns"* | The **parallel *Static Analysis* stage** (§7.6): Semgrep ∥ CodeQL ∥ Trivy fork/join inside one Declarative stage — a Jenkins-engine advantage exercised on purpose (Tekton/Argo run the same scans sequentially: their runs share one RWO PVC). |
+| **Extensible** — *"the Pipeline DSL supports custom extensions (e.g., Shared Libraries) and integrations with external plugins"* | The [`vars/`](../vars/) library: **seven custom steps** (`microservicesSemgrepScan` · `microservicesCodeqlScan` · `microservicesTrivyIacScan` · `microservicesSarifUpload` · `microservicesDeploy` · `microservicesOtelSelfHeal` · `microservicesK6Run`) plus the two Declarative shell entry points — the §7.6 extraction moved ~180 lines of inline shell into them. External-plugin integration = the OTel plugin (per-build traces), warnings-ng, the kubernetes agent. |
+
+#### 7.7.3 "Jenkins Pipeline Best Practices: Declarative, Scripted, and Shared Libraries" — the five rules
+
+From the [CloudBees Top-10](https://www.cloudbees.com/blog/top-10-best-practices-jenkins-pipeline-plugin)
+(the rulebook §7.6 audits against — re-validated as current July 2026):
+
+| The rule (the reference's words) | Status here |
+|---|---|
+| **Prefer Declarative syntax** — *"the modern standard"* (2017); advanced features like matrix builds *"exist exclusively in Declarative"*; legacy Scripted (2014) *"should be avoided unless absolutely necessary"* | ✅ Both pipeline entry points are **Declarative** shells (13 stages / 5 stages); the whole [§7.6 audit](#76-the-july-2026-maximise-declarative-audit) exists to enforce exactly this rule, conversion by conversion. |
+| **Use Shared Libraries to avoid inline scripts** — *"implementing `script` tags within Declarative pipelines constitutes an anti-pattern"*; encapsulate complex logic as custom steps in a version-controlled Shared Library | ✅ Exactly **one** `script {}` block survives across both shells (the checkout return-map / rebuild-safe tag — [§7.6 Case 1](#76-the-july-2026-maximise-declarative-audit), allowlisted because no directive can replace it); everything else became the named `vars/` steps above. |
+| **Do not treat Shared Libraries as general programming projects** — pipelines orchestrate CI tasks; heavy computation in library Groovy *"runs on the Jenkins controller (master) rather than build agents"* and causes *"severe memory leaks and performance bottlenecks"* | ✅ The library Groovy is thin glue: every heavy operation (Maven, Jib, the three scanners, k6) executes as `sh` **inside agent-pod containers**, never as controller-side Groovy. [§14](#14-the-common-anti-pattern-a-scripted-god-library-with-thin-jenkinsfiles) dissects the god-library failure mode this avoids. |
+| **Scripted syntax fallback** — *"resort to Scripted syntax only when a task cannot be achieved using Declarative syntax combined with custom Shared Library steps"* | ✅ That sentence is the **admission test** for [§7.6's residual-imperative inventory](#76-the-july-2026-maximise-declarative-audit): each surviving Scripted construct is enumerated with the specific directive that *cannot* replace it. |
+| **Declarative inside Shared Libraries** — scripted-syntax libraries carry *"increased maintenance burdens"*; employ Declarative *"as extensively as possible within libraries"* | ✅ Literally this repo's shape: the library's entry points **are** `pipeline {}` Declarative shells ([`MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy), [`MicroservicesK6SmokePipeline.groovy`](../vars/MicroservicesK6SmokePipeline.groovy)) — Declarative *hosted in* the shared library, with Scripted confined to the leaf steps it calls. |
+
+**Net reading**: of the reference architecture's twelve concrete prescriptions,
+this repo implements ten as written and deviates on two — both deliberate, both
+flagged above (read-only UI: superseded by converge-overwrites + RBAC; `input`
+pauses: superseded by GitOps-side promotion gates).
+
 ---
 
 ## 8. Why this split: the design rationale
@@ -1410,6 +1473,7 @@ Scripted steps.
 - *Scaling Pipelines* (`durabilityHint`, `PERFORMANCE_OPTIMIZED` — the basis of §7.6's durability choice): <https://www.jenkins.io/doc/book/pipeline/scaling-pipeline/>
 - *Kubernetes plugin README* (declarative `agent { kubernetes { retries N } }` pod-loss retry, `kubernetesAgent()`/`nonresumable()` conditions): <https://github.com/jenkinsci/kubernetes-plugin>
 - *CloudBees: Top 10 Best Practices for Jenkins Pipeline* (Declarative-first; `script {}` as a warning sign; custom steps; Scripted last — the rulebook §7.6 audits against): <https://www.cloudbees.com/blog/top-10-best-practices-jenkins-pipeline-plugin>
+- *nubenetes.com — Jenkins curated reference* (the CasC four-layer architectural reference, the Pipeline-as-Code core principles and the best-practices digest that [§7.7](#77-the-published-reference-architecture-mapped--nubenetescomjenkins--this-repo) maps onto this repo item by item, with each block's original links): <https://nubenetes.com/jenkins/>
 - *Pipeline As Yaml plugin* (the would-be YAML dialect — **incubated**, not a successor; see §7.6): <https://plugins.jenkins.io/pipeline-as-yaml/>
 
 ---
