@@ -15,6 +15,8 @@ metadata:
   labels:
     jenkins2026.io/service: gateway
     jenkins2026.io/env: develop
+    # Backstage's Kubernetes-backend fetch (docs/505) - see runs/gateway.yaml.
+    app.kubernetes.io/name: gateway
 spec:
   taskRunTemplate:
     serviceAccountName: tekton-ci
