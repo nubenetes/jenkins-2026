@@ -306,13 +306,23 @@ Google identity, and the allow-all permission policy grants admin.
 `aud` is `/projects/<projectNumber>/global/backendServices/<id>`, and that
 backend-service ID **only exists after the GKE Gateway controller programs the
 LB** (asynchronously, minutes after the route is applied). So `09-gateway.sh`,
-after applying the route, resolves the ID (`gcloud compute backend-services
-list`, name pattern `gkegw1-*-backstage-backstage-7007-*`), patches it into the
-`backstage-runtime-config` key `IAP_AUDIENCE`, and restarts the deployment when
-the value changed — with a bounded retry. On the **first-ever** Day1 the LB may
-still be programming when the retry budget runs out: the run stays green with
-`IAP_AUDIENCE` on its placeholder, and the **next** re-run (or
-`Day2.redeploy.05-gateway` / `.08-backstage`) converges it. Symptom and fix in
+after applying the route, resolves the ID **by reference, never by name
+pattern**: the Service's own `cloud.google.com/neg-status` annotation names its
+NEG exactly, and the backend service lists that NEG under `.backends[].group`
+(`gcloud … --format=json` + `jq`). It then patches the ID into the
+`backstage-runtime-config` key `IAP_AUDIENCE` and restarts the deployment when
+the value changed — with a bounded retry. (The resolver **used** to match the
+backend-service *name* against `gkegw1-*-backstage-backstage-7007-*` — but GKE
+composes that name from gateway-ns/gateway-name/svc-ns/svc-name and **truncates
+every component** to fit 63 chars; found live 2026-07-12 rendering as
+`…-backs-back-7007-…`, which the regex could never match → `IAP_AUDIENCE`
+stayed `pending` → every sign-in 401'd at `/api/auth/gcpIap/refresh`. Gateway
+backend services also carry an **empty `description`**, so the Ingress-style
+description lookup is unavailable — the NEG reference chain is the only robust
+resolver.) On the **first-ever** Day1 the LB may still be programming when the
+retry budget runs out: the run stays green with `IAP_AUDIENCE` on its
+placeholder, and the **next** re-run (or `Day2.redeploy.05-gateway` /
+`.08-backstage`) converges it. Symptom and fix in
 [§ Troubleshooting](#troubleshooting).
 
 ## The app image (compile-time plugins, runtime engine)
