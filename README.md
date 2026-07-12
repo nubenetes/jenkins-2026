@@ -381,6 +381,7 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 
 **[401 · Jenkins](./docs/401-JENKINS.md)**
 - [Accessing the UI & Admin Password](./docs/401-JENKINS.md#accessing-the-ui--admin-password)
+- [Backstage view of this engine](./docs/401-JENKINS.md#backstage-view-of-this-engine)
 - [Google Login (OpenID Connect)](./docs/401-JENKINS.md#google-login-openid-connect)
 - [Plugins & JCasC Fragments](./docs/401-JENKINS.md#plugins--jcasc-fragments)
 - [Global Shared Library](./docs/401-JENKINS.md#global-shared-library)
@@ -415,11 +416,13 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 - [What gets installed (GitOps via ArgoCD app-of-apps)](./docs/404-TEKTON.md#what-gets-installed-gitops-via-argocd-app-of-apps)
 - [Tooling: kustomize vs Helm (and why both)](./docs/404-TEKTON.md#tooling-kustomize-vs-helm-and-why-both)
 - [Dashboard on the internet, behind Google IAP](./docs/404-TEKTON.md#dashboard-on-the-internet-behind-google-iap)
+- [Backstage view of this engine](./docs/404-TEKTON.md#backstage-view-of-this-engine)
 - [The pipeline, ported](./docs/404-TEKTON.md#the-pipeline-ported)
 - [Pipelines-as-Code (PaC): Git-driven CI](./docs/404-TEKTON.md#pipelines-as-code-pac-git-driven-ci)
 
 **[405 · GitHub Actions / ARC (third CI engine)](./docs/405-GITHUB_ACTIONS.md)**
 - [Where do I see the pipelines? (no in-cluster UI)](./docs/405-GITHUB_ACTIONS.md#-where-do-i-see-the-pipelines-there-is-no-in-cluster-ui)
+- [Backstage view of this engine](./docs/405-GITHUB_ACTIONS.md#backstage-view-of-this-engine)
 - [Triggering a build — the branch-based tier model (stable vs develop)](./docs/405-GITHUB_ACTIONS.md#triggering-a-build--the-branch-based-tier-model-stable-vs-develop)
 - [Security: why no `pull_request` trigger + branch protection](./docs/405-GITHUB_ACTIONS.md#security-why-no-pull_request-trigger--branch-protection)
 - [Selecting the engine (`ci.engine`)](./docs/405-GITHUB_ACTIONS.md#selecting-the-engine)
@@ -431,6 +434,7 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 - [Selecting the engine (`ci.engine`)](./docs/406-ARGO_WORKFLOWS.md#selecting-the-engine)
 - [What gets installed (GitOps via ArgoCD app-of-apps)](./docs/406-ARGO_WORKFLOWS.md#what-gets-installed-gitops-via-argocd-app-of-apps)
 - [Server UI on the internet, behind Google IAP](./docs/406-ARGO_WORKFLOWS.md#server-ui-on-the-internet-behind-google-iap)
+- [Backstage view of this engine](./docs/406-ARGO_WORKFLOWS.md#backstage-view-of-this-engine)
 - [The pipeline, ported](./docs/406-ARGO_WORKFLOWS.md#the-pipeline-ported)
 - [Triggers (Argo Events)](./docs/406-ARGO_WORKFLOWS.md#triggers-argo-events)
 

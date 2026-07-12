@@ -6,7 +6,9 @@
 
 This project ships **Backstage.io** (open source, CNCF) **v1.52.1** as its
 **developer portal**: a **software catalog** of the microservices and the
-platform itself, **CI/CD visibility for whichever of the four CI engines is
+platform itself (with a relations **Graph** page rooted at the platform
+Domain — a bare visit shows the whole catalog unfolded), **CI/CD visibility
+for whichever of the four CI engines is
 active**, an **ArgoCD deployment view**, a **Kubernetes workloads view**,
 **TechDocs** rendering this repo's `docs/` in-portal, and Postgres-backed
 **search** across all of it. On a platform whose whole point is four
@@ -402,7 +404,7 @@ engine's tab reads its own):
 | `jenkins.io/job-full-name` | the seed-generated job name (`gateway`) | Jenkins plugin |
 | `github.com/project-slug` | `nubenetes/jhipster-sample-app-gateway` | GitHub Actions plugin |
 | `tekton.dev/cicd` | `"true"` | Tekton plugin |
-| `backstage.io/kubernetes-namespace` + `backstage.io/kubernetes-label-selector` | the service's namespace + app label selector | Kubernetes backend (also feeds the Tekton/Argo CR queries) |
+| `backstage.io/kubernetes-label-selector` **only — deliberately NO `…kubernetes-namespace`** | `app.kubernetes.io/name=gateway`, matched **cluster-wide** | Kubernetes backend (also feeds the Tekton/Argo CR queries — one shared namespace would starve the `tekton-ci`/`argo-ci` lookups; every run-creation manifest carries the same label. See troubleshooting) |
 | `argocd/app-name` | `microservices-stable` | ArgoCD plugin |
 | `backstage.io/techdocs-ref` | `dir:.` on the platform Component | TechDocs |
 

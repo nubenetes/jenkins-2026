@@ -72,6 +72,30 @@ to follow a build; you look at GitHub.
 > org **Self-hosted runners: Read & write**, and the controller must be rolled to re-read a
 > changed `arc-github-app` Secret).
 
+### Backstage view of this engine
+
+When `ci.engine=githubactions`, the [Backstage portal](./505-BACKSTAGE.md)'s
+CI/CD tab embeds the **community GitHub Actions plugin** — the workflow-run
+list straight from GitHub. Unlike the Tekton/Argo tabs it involves **no
+cluster resources at all** (runs live in GitHub; the ARC runners are just
+ephemeral executors), and unlike every other plugin here it calls the GitHub
+REST API **from the browser** with the **signed-in user's own OAuth token**.
+That gives it two prerequisites the other engines don't have, both found the
+hard way on first live use (2026-07-12; full stories in
+[505 § troubleshooting](./505-BACKSTAGE.md#troubleshooting)):
+
+- a **GitHub OAuth App** (`BACKSTAGE_GITHUB_OAUTH_CLIENT_ID`/`_SECRET`, the
+  [505 enablement runbook](./505-BACKSTAGE.md) — callback must be exactly
+  `https://backstage.<baseDomain>/api/auth/github/handler/frame`; a client
+  *secret* pasted as the client *ID* makes GitHub's authorize popup 404), and
+- a **CSP allowance**: `backend.csp.connect-src` includes
+  `https://api.github.com` in [`backstage/app-config.yaml`](../backstage/app-config.yaml)
+  (helmet's default `'self'` blocks the browser-side fetch — the
+  "Error: Failed to fetch" symptom).
+
+The entity binding is just `github.com/project-slug` — no
+`app.kubernetes.io/name` label contract applies to this engine.
+
 ## Triggering a build — the branch-based tier model (stable vs develop)
 
 GitHub Actions here is **branch-based, not environment-selector-based**: there is no "choose an
