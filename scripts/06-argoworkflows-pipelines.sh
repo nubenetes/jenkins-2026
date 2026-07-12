@@ -179,7 +179,23 @@ if [[ "${WEBHOOK_ENABLED}" == "true" ]]; then
     done < <(printf '%s' "${hooks_json}" | jq -r '.[] | "\(.id)\t\(.config.url)"' 2>/dev/null)
 
     if [[ "${have_desired}" == "true" ]]; then
-      log_info "  webhook already present on ${repo_path}"
+      # Reconcile-to-current (docs/104) - same drift class as the Tekton PaC
+      # hooks (see 06-tekton-pipelines.sh): the fork hook persists across
+      # cluster rebuilds while the in-cluster HMAC regenerates or gets
+      # clobbered by a 01 re-run without the env vars. Re-assert the current
+      # value on the existing hook instead of trusting it.
+      hid="$(printf '%s' "${hooks_json}" | jq -r --arg url "${webhook_url}" \
+        '.[] | select(.config.url==$url) | .id' 2>/dev/null | head -1)"
+      hook_patch="$(jq -nc --arg url "${webhook_url}" --arg secret "${webhook_secret}" \
+        '{config:{url:$url,content_type:"json",insecure_ssl:"0",secret:$secret}}')"
+      if curl -fsS -X PATCH -H "Authorization: token ${GIT_TOKEN}" \
+        -H "Accept: application/vnd.github+json" \
+        "https://api.github.com/repos/${repo_path}/hooks/${hid}" \
+        -d "${hook_patch}" >/dev/null 2>&1; then
+        log_info "  webhook already present on ${repo_path} - HMAC re-asserted"
+      else
+        log_warn "  webhook present on ${repo_path} but the HMAC re-assert failed - if the EventSource logs show signature errors, update the hook secret in the fork's Settings -> Webhooks to the argoworkflows-github-webhook value"
+      fi
     else
       # Build the JSON with jq so a secret/URL containing special characters is escaped
       # correctly. A printf-built body produces invalid JSON when the value has a quote/
