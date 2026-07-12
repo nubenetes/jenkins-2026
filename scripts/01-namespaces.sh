@@ -339,23 +339,37 @@ if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
   # (the upstream JHipster repos aren't owned, so push webhooks can't target them);
   # created empty unless TEKTON_GITHUB_WEBHOOK_SECRET is provided, so the
   # EventListener's github interceptor reference resolves either way.
-  # eso → push to Secret Manager (08.6 projects it back); imperative → kubectl
-  # upsert. provision_secret branches on the active backend internally.
+  # KEEP-IF-PRESENT (the pac-webhook clobber lesson below): empty env must not
+  # reset a live value; explicit env still wins = deliberate rotation.
+  tk_wh_existing="$(kubectl get secret tekton-github-webhook-secret -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" -o jsonpath='{.data.secretToken}' 2>/dev/null | base64 -d || true)"
   provision_secret "${J2026_TEKTON_PIPELINE_NAMESPACE}" tekton-github-webhook-secret \
-    "secretToken=${TEKTON_GITHUB_WEBHOOK_SECRET:-}"
+    "secretToken=${TEKTON_GITHUB_WEBHOOK_SECRET:-${tk_wh_existing}}"
 
   # PaC (Pipelines-as-Code) webhook HMAC secret, referenced by the Repository
   # CRs (tekton/pac/) and shared with the GitHub repo webhooks created by
-  # 06-tekton-pipelines.sh. Optional - empty unless PAC_WEBHOOK_SECRET is set.
+  # 06-tekton-pipelines.sh.
   if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
     # eso → seed the HMAC into Secret Manager, generated-if-absent and kept STABLE
     # (06-tekton-pipelines shares it with the GitHub webhooks); ESO projects it (Owner).
     pac_secret="$(sm_keep_or_generate pac-webhook webhook.secret "${PAC_WEBHOOK_SECRET:-$(openssl rand -hex 20)}")"
     provision_secret "${J2026_TEKTON_PIPELINE_NAMESPACE}" pac-webhook "webhook.secret=${pac_secret}"
   else
+    # KEEP-IF-PRESENT + generate-if-absent (found live 2026-07-12): EVERY
+    # 01-running workflow re-executes this block and most don't pass
+    # PAC_WEBHOOK_SECRET (it doesn't even exist as a GitHub secret by default)
+    # - the old unconditional "${PAC_WEBHOOK_SECRET:-}" write reset the live
+    # HMAC back to "" on each such run (a Day2.redeploy.08 did exactly that,
+    # hours after 06's ensure_pac_webhook_secret had generated a real value
+    # and stamped it on the fork webhooks). PaC hard-rejects every delivery
+    # when its webhook secret is empty ("no webhook secret has been set"),
+    # silently killing the whole git-push path while the fork hooks keep
+    # signing with the lost value. Generate here too (not just in 06) so the
+    # secret is born valid; explicit env still wins = deliberate rotation,
+    # which 06 re-asserts onto the fork hooks on its next run.
+    pac_existing="$(kubectl get secret pac-webhook -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" -o jsonpath='{.data.webhook\.secret}' 2>/dev/null | base64 -d || true)"
     kubectl create secret generic pac-webhook \
       -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
-      --from-literal=webhook.secret="${PAC_WEBHOOK_SECRET:-}" \
+      --from-literal=webhook.secret="${PAC_WEBHOOK_SECRET:-${pac_existing:-$(openssl rand -hex 20)}}" \
       --dry-run=client -o yaml | kubectl apply -f -
   fi
 
@@ -488,9 +502,13 @@ if [[ "${J2026_CI_ENGINE}" == "argoworkflows" ]]; then
     awf_webhook="$(sm_keep_or_generate argoworkflows-github-webhook secret "${ARGOWORKFLOWS_GITHUB_WEBHOOK_SECRET:-${PAC_WEBHOOK_SECRET:-$(openssl rand -hex 20)}}")"
     provision_secret "${J2026_ARGOWF_EVENTS_NAMESPACE}" argoworkflows-github-webhook "secret=${awf_webhook}"
   else
+    # KEEP-IF-PRESENT + generate-if-absent - same clobber class as pac-webhook
+    # (see the tekton block above): an 01 re-run without the env vars must not
+    # reset the live HMAC the fork webhooks were created with.
+    awf_wh_existing="$(kubectl get secret argoworkflows-github-webhook -n "${J2026_ARGOWF_EVENTS_NAMESPACE}" -o jsonpath='{.data.secret}' 2>/dev/null | base64 -d || true)"
     kubectl create secret generic argoworkflows-github-webhook \
       -n "${J2026_ARGOWF_EVENTS_NAMESPACE}" \
-      --from-literal=secret="${ARGOWORKFLOWS_GITHUB_WEBHOOK_SECRET:-${PAC_WEBHOOK_SECRET:-}}" \
+      --from-literal=secret="${ARGOWORKFLOWS_GITHUB_WEBHOOK_SECRET:-${PAC_WEBHOOK_SECRET:-${awf_wh_existing:-$(openssl rand -hex 20)}}}" \
       --dry-run=client -o yaml | kubectl apply -f -
   fi
 

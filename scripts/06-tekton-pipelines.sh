@@ -175,7 +175,24 @@ if [[ "${PAC_ENABLED}" == "true" ]]; then
     done < <(printf '%s' "${hooks_json}" | jq -r '.[] | "\(.id)\t\(.config.url)"' 2>/dev/null)
 
     if [[ "${have_desired}" == "true" ]]; then
-      log_info "  webhook already present on ${repo_path}"
+      # Reconcile-to-current (docs/104): the fork hook PERSISTS across cluster
+      # rebuilds while the in-cluster HMAC regenerates (or gets clobbered -
+      # found live 2026-07-12: a 01 re-run without PAC_WEBHOOK_SECRET reset the
+      # secret to "" while this hook kept signing with the old value, and PaC
+      # hard-rejects deliveries on an empty/mismatched secret). Re-assert the
+      # current value on the existing hook instead of trusting it.
+      hid="$(printf '%s' "${hooks_json}" | jq -r --arg url "${pac_url}" \
+        '.[] | select(.config.url==$url) | .id' 2>/dev/null | head -1)"
+      hook_patch="$(jq -nc --arg url "${pac_url}" --arg secret "${webhook_secret}" \
+        '{config:{url:$url,content_type:"json",insecure_ssl:"0",secret:$secret}}')"
+      if curl -fsS -X PATCH -H "Authorization: token ${GIT_TOKEN}" \
+        -H "Accept: application/vnd.github+json" \
+        "https://api.github.com/repos/${repo_path}/hooks/${hid}" \
+        -d "${hook_patch}" >/dev/null 2>&1; then
+        log_info "  webhook already present on ${repo_path} - HMAC re-asserted"
+      else
+        log_warn "  webhook present on ${repo_path} but the HMAC re-assert failed - if PaC logs show 'could not validate payload', update the hook secret in the fork's Settings -> Webhooks to the pac-webhook value"
+      fi
     else
       # Build the JSON with yq env() so a secret/URL containing special characters
       # is escaped correctly. A printf-built body produces invalid JSON when the
@@ -207,6 +224,13 @@ apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
   name: ${name}
+  # Backstage's Kubernetes-backend fetch rides app.kubernetes.io/name (docs/505,
+  # same contract as tekton/runs/*.yaml + the TriggerTemplate): PaC preserves
+  # authored labels and only adds its own pipelinesascode.tekton.dev/* set.
+  labels:
+    jenkins2026.io/service: ${name}
+    jenkins2026.io/env: stable
+    app.kubernetes.io/name: ${name}
   annotations:
     pipelinesascode.tekton.dev/on-event: "[push, pull_request]"
     pipelinesascode.tekton.dev/on-target-branch: "[main]"
