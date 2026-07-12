@@ -277,8 +277,19 @@ kubectl wait certificate "${J2026_BACKEND_TLS_CA_ISSUER}" \
 # generates sends exactly that hostname as SNI and validates the cert against it
 # - keep the two in sync. Also emits the short `.svc` form as a convenience SAN.
 mint_server_cert() {
-  local secret="$1" ns="$2" fqdn="$3" jks_password_secret="${4:-}" pkcs12_password_secret="${5:-}"
+  local secret="$1" ns="$2" fqdn="$3" jks_password_secret="${4:-}" pkcs12_password_secret="${5:-}" loopback_sans="${6:-}"
   local short="${fqdn%.cluster.local}" # e.g. headlamp.headlamp.svc
+  # Backstage only (stage 10): its OWN inter-plugin calls (the search plugin's
+  # catalog/techdocs collators, via the discovery service) hit
+  # https://127.0.0.1:7007 - Node rejects the handshake unless the loopback
+  # identities are in the SAN list (ERR_TLS_CERT_ALTNAME_INVALID, found live
+  # 2026-07-12 on the first stage-10 launch: the portal served but the search
+  # index never built). The other stages never self-call over their own TLS
+  # listener, so their SANs stay service-only.
+  local extra_sans=""
+  if [[ "${loopback_sans}" == "true" ]]; then
+    extra_sans=$'\n    - localhost\n  ipAddresses:\n    - 127.0.0.1'
+  fi
   # 01-namespaces.sh creates these namespaces on Day1; ensure they exist for a
   # standalone run of this script.
   kubectl get namespace "${ns}" >/dev/null 2>&1 || kubectl create namespace "${ns}"
@@ -296,7 +307,7 @@ spec:
   # (dnsNames) is what SNI/BackendTLSPolicy validation actually checks.
   dnsNames:
     - ${fqdn}
-    - ${short}
+    - ${short}${extra_sans}
   usages:
     - digital signature
     - key encipherment
@@ -450,8 +461,10 @@ fi
 # 08.7 runs BEFORE 08.95 in up.sh, so the Secret exists before the pod mounts it.
 if [[ "${BACKSTAGE_TLS_ACTIVE}" == "true" ]]; then
   kubectl get namespace "${J2026_BACKSTAGE_NAMESPACE}" >/dev/null 2>&1 || kubectl create namespace "${J2026_BACKSTAGE_NAMESPACE}"
+  # 6th arg: loopback SANs (localhost + 127.0.0.1) for Backstage's self-calls -
+  # see the mint_server_cert comment.
   mint_server_cert "${J2026_BACKEND_TLS_SECRET_BACKSTAGE}" "${J2026_BACKSTAGE_NAMESPACE}" \
-    "backstage.${J2026_BACKSTAGE_NAMESPACE}.svc.cluster.local"
+    "backstage.${J2026_BACKSTAGE_NAMESPACE}.svc.cluster.local" "" "" "true"
 elif kubectl get namespace "${J2026_BACKSTAGE_NAMESPACE}" >/dev/null 2>&1; then
   # backend TLS on globally but the portal is disabled: retire any leftover cert
   # so a re-enabled Backstage never starts from a stale one.
