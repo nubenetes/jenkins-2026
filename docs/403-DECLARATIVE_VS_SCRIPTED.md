@@ -678,7 +678,7 @@ classes; `src/` would be the next tool if that changed (see §11).
 | :--- | :--- | :--- | :---: | :--- |
 | [`seed_jobs.groovy`](../jenkins/pipelines/seed/seed_jobs.groovy) | Job DSL (seed) | **Scripted / Job DSL** | No | Loops `services.yaml`, *generates* jobs — inherently imperative |
 | [`MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy) | Pipeline shell | **Declarative** (+ Scripted preamble & `script{}`) | ✅ Yes | Uniform shape, `post{}`, agent pod, validation |
-| [`MicroservicesK6SmokePipeline.groovy`](../vars/MicroservicesK6SmokePipeline.groovy) | Pipeline shell | **Declarative** (+ `script{}`) | ✅ Yes | `parameters{}` form, uniform shape, `post{}` |
+| [`MicroservicesK6SmokePipeline.groovy`](../vars/MicroservicesK6SmokePipeline.groovy) | Pipeline shell | **Declarative** (pure — zero `script{}` since the `microservicesK6Run` extraction) | ✅ Yes | `parameters{}` form, uniform shape, `post{}` |
 | [`microservicesSemgrepScan.groovy`](../vars/microservicesSemgrepScan.groovy) | Library step | **Scripted** | No | Scan `sh` + archive; parallel *Static Analysis* branch body |
 | [`microservicesCodeqlScan.groovy`](../vars/microservicesCodeqlScan.groovy) | Library step | **Scripted** | No | Scan `sh` + archive; parallel *Static Analysis* branch body |
 | [`microservicesTrivyIacScan.groovy`](../vars/microservicesTrivyIacScan.groovy) | Library step | **Scripted** | No | gitops clone + two `trivy config` runs |
