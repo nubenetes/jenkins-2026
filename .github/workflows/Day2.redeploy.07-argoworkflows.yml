@@ -58,7 +58,7 @@ on:
       observability_mode:
         description: "observability.mode of the cluster (MUST MATCH how it was provisioned): 09-gateway creates the OSS Grafana HTTPRoute + HealthCheckPolicy when 'oss' and RETIRES them otherwise, and 01-namespaces gates the grafana IAP secret + obs ResourceQuota on it — the wrong value leaves a broken grafana route or a stale IAP secret. Flag CHANGES need Day1."
         required: true
-        default: "grafana-cloud"
+        default: "oss"
         type: choice
         options:
           - grafana-cloud

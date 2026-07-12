@@ -29,7 +29,7 @@ on:
       observability_mode:
         description: "observability.mode of the cluster (must match the live cluster). Only affects the in-cluster oss Grafana route: 09-gateway.sh generates its HTTPRoute+HealthCheckPolicy(+BackendTLSPolicy) when oss and RETIRES them for any other value — the deliberate mode-switch cleanup path. Passing the wrong value against an oss cluster tears down the Grafana route."
         required: false
-        default: "grafana-cloud"
+        default: "oss"
         type: choice
         options:
           - grafana-cloud

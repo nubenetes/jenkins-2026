@@ -53,7 +53,7 @@ on:
       observability_mode:
         description: "observability.mode of the cluster (MUST MATCH how it was provisioned): 01-namespaces gates the grafana IAP secret + the observability ResourceQuota on it — the wrong value provisions an IAP secret for a non-existent grafana namespace or an oversized obs quota. Flag CHANGES need Day1."
         required: true
-        default: "grafana-cloud"
+        default: "oss"
         type: choice
         options:
           - grafana-cloud

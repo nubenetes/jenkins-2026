@@ -28,7 +28,7 @@ on:
       observability_mode:
         description: "observability.mode of the cluster (only affects the oss Grafana route/IAP)"
         required: true
-        default: "grafana-cloud"
+        default: "oss"
         type: choice
         options:
           - grafana-cloud

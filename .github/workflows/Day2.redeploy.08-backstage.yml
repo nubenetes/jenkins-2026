@@ -50,7 +50,7 @@ on:
       observability_mode:
         description: "observability.mode of the cluster (MUST MATCH how it was provisioned): 01-namespaces gates the grafana IAP secret + the observability ResourceQuota on it; 09 gates the grafana route."
         required: true
-        default: "grafana-cloud"
+        default: "oss"
         type: choice
         options:
           - grafana-cloud
