@@ -31,6 +31,15 @@ backend:
     origin: ${APP_BASE_URL}
     methods: [GET, HEAD, PATCH, POST, PUT, DELETE]
     credentials: true
+  # CSP: helmet's default connect-src is 'self', which BLOCKS the one plugin
+  # that calls out from the BROWSER: GitHub Actions (Octokit + the signed-in
+  # user's OAuth token, straight to api.github.com) - the tab renders
+  # "Error: Failed to fetch" right after a successful OAuth popup (found live
+  # 2026-07-12). Everything else (Jenkins/Tekton/ArgoCD/Kubernetes/TechDocs)
+  # proxies through the backend, so a tight allowlist beats the upstream
+  # scaffold's blanket http:/https: pair.
+  csp:
+    connect-src: ["'self'", 'https://api.github.com']
   database:
     client: pg
     connection:
