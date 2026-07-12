@@ -1,18 +1,19 @@
-# Complete Technical Inventory of English Infographics (36 Files)
+# Complete Technical Inventory of English Infographics (37 Files)
 
-This document serves as an architectural inventory and catalog of the 36 English infographics. Each filename in the index is a clickable link to open the corresponding PNG file directly. Below the index, you will find collapsible visual previews for each infographic.
+This document serves as an architectural inventory and catalog of the 37 English infographics. Each filename in the index is a clickable link to open the corresponding PNG file directly. Below the index, you will find collapsible visual previews for each infographic.
 
 ---
 
 ## Infographics Catalog Index
 
 <details>
-<summary>📋 Click to view the full detailed index list (36 entries)</summary>
+<summary>📋 Click to view the full detailed index list (37 entries)</summary>
 <br>
 
 1. **000: Platform Overview**
    - [[001]](#001---end-to-end-golden-path-platform-and-developer-workflow-overview) - [End to End Golden Path Platform and Developer Workflow Overview](001_End_to_End_Golden_Path_Platform_and_Developer_Workflow_Overview.png)
    - [[002]](#002---high-level-design-and-multi-repository-platform-architecture) - [High Level Design and Multi Repository Platform Architecture](002_High_Level_Design_and_Multi_Repository_Platform_Architecture.png)
+   - [[003]](#003---backstage-developer-portal-hub-for-golden-path-idps) - [Backstage Developer Portal Hub for Golden Path IDPs](003_Backstage_Developer_Portal_Hub_for_Golden_Path_IDPs.png)
 2. **100: Landing Zone**
    - [[101]](#101---gcp-keyless-landing-zone-and-wif-federation) - [GCP Keyless Landing Zone and WIF Federation](101_GCP_Keyless_Landing_Zone_and_WIF_Federation.png)
    - [[102]](#102---gke-golden-path-jhipster-microservice-architecture) - [GKE Golden Path JHipster Microservice Architecture](102_GKE_Golden_Path_JHipster_Microservice_Architecture.png)
@@ -66,7 +67,7 @@ This document serves as an architectural inventory and catalog of the 36 English
 Browse the infographics visually using the collapsible previews below. Click any preview header to reveal the full high-resolution diagram.
 
 <details>
-<summary>⚡ Click here to expand ALL 36 Infographics at once (for sequential scrolling) ⚡</summary>
+<summary>⚡ Click here to expand ALL 37 Infographics at once (for sequential scrolling) ⚡</summary>
 <br>
 
 ### 001 - End to End Golden Path Platform and Developer Workflow Overview
@@ -76,6 +77,11 @@ Browse the infographics visually using the collapsible previews below. Click any
 
 ### 002 - High Level Design and Multi Repository Platform Architecture
 ![002 - High Level Design](./002_High_Level_Design_and_Multi_Repository_Platform_Architecture.png)
+
+---
+
+### 003 - Backstage Developer Portal Hub for Golden Path IDPs
+![003 - Backstage Portal Hub](./003_Backstage_Developer_Portal_Hub_for_Golden_Path_IDPs.png)
 
 ---
 
@@ -273,6 +279,20 @@ Browse the infographics visually using the collapsible previews below. Click any
 <summary>🔍 Expand infographic preview (002)</summary>
 
 ![002 - High Level Design](./002_High_Level_Design_and_Multi_Repository_Platform_Architecture.png)
+
+</details>
+
+---
+
+### 003 - Backstage Developer Portal Hub for Golden Path IDPs
+* **Category**: `000: Platform Overview`
+* **Key Technologies & Components**: Backstage (CNCF), Software Catalog, TechDocs, Golden Paths, Kubernetes plugin
+* **Description**: The conceptual "why Backstage" companion to this platform's portal ([docs/505](../505-BACKSTAGE.md)): frames the **speed & standards paradox** (fragmentation stalls autonomous teams — the wilderness), then the **core pillars** that solve it — the Software Catalog (uniform, discoverable ownership of every component), TechDocs (docs-as-code in Markdown alongside the code, searchable in-portal), Software Templates & Golden Paths (push-button "getting started" with best practices baked in), and the extensible Custom Search platform — plus a traditional-vs-IDP workflow comparison (service discovery, onboarding, documentation, monitoring) and the specialized-management wing: a Kubernetes view designed for **service owners** (not cluster admins), cloud-agnostic monitoring over the Kubernetes API, and the plugin ecosystem as an "App Store" for infrastructure. Backstage is a CNCF incubation project originally built by Spotify. Note: the Software Templates pillar depicts the golden-path roadmap direction — the shipped portal deliberately omits the scaffolder ([docs/505](../505-BACKSTAGE.md)); the catalog, TechDocs, search, Kubernetes view and plugin model are exactly what this repo runs.
+
+<details>
+<summary>🔍 Expand infographic preview (003)</summary>
+
+![003 - Backstage Portal Hub](./003_Backstage_Developer_Portal_Hub_for_Golden_Path_IDPs.png)
 
 </details>
 
