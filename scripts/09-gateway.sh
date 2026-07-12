@@ -737,6 +737,25 @@ spec:
   hostnames:
     - "${J2026_GATEWAY_ARGOWF_HOST}"
   rules:
+    # Land bare visits on the EXECUTION namespace's workflow list. The Argo UI
+    # filters by namespace and defaults to the server's own ns ('argo'), while
+    # every run lives in '${J2026_ARGOWF_RUN_NAMESPACE}' - a bare visit showed
+    # an EMPTY list (found live 2026-07-12; the UI then remembers the namespace
+    # in localStorage, so one good landing also fixes in-app navigation). The
+    # deeper alternative - flipping controller+server to
+    # --namespaced --managed-namespace - was deliberately NOT taken: it changes
+    # the install mode of the vendored release for a UX default.
+    - matches:
+        - path:
+            type: Exact
+            value: /
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            path:
+              type: ReplaceFullPath
+              replaceFullPath: /workflows/${J2026_ARGOWF_RUN_NAMESPACE}
+            statusCode: 302
     - backendRefs:
         - name: ${J2026_ARGOWF_SERVER_SERVICE}
           port: ${J2026_ARGOWF_SERVER_PORT}

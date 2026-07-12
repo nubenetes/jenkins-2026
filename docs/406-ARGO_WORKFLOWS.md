@@ -367,6 +367,19 @@ https://argo.<baseDomain>          →  Google IAP login  →  Argo Workflows Se
 https://argo-events.<baseDomain>   →  (NO IAP) GitHub webhook receiver, HMAC-protected
 ```
 
+> **The UI's namespace filter (and why `/` redirects).** The Argo UI filters
+> the workflow list **by namespace** and defaults to the server's own
+> namespace (`argo`) — while every run lives in **`argo-ci`** — so a bare
+> visit used to show an **empty list** even with workflows running (found
+> live 2026-07-12, twice). The `HTTPRoute` therefore **302-redirects `/` to
+> `/workflows/argo-ci`** ([`09-gateway.sh`](../scripts/09-gateway.sh)); one
+> good landing also fixes in-app navigation, because the UI remembers the
+> selected namespace in the browser's localStorage. (The deeper fix —
+> `--namespaced --managed-namespace argo-ci` on controller+server — was
+> deliberately not taken: it changes the vendored release's install mode for
+> what is a UX default.) Backstage's CI/CD InfoCard deep-links with the
+> namespace for the same reason.
+
 The **webhook receiver** (`argo-events.<baseDomain>` → the Argo Events
 `github-eventsource-svc:12000`) is deliberately **not** behind IAP — GitHub must
 reach it — and is protected by the webhook **HMAC secret** instead, exactly like
