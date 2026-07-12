@@ -496,6 +496,27 @@ are needed. Access is restricted to the same Google accounts as Headlamp/Jenkins
 https://tekton.<baseDomain>   →  Google IAP login  →  Tekton Dashboard
 ```
 
+### Backstage view of this engine
+
+When `ci.engine=tekton`, the [Backstage portal](./505-BACKSTAGE.md)'s CI/CD tab
+embeds the **community Tekton plugin** — a live PipelineRun list with per-step
+logs, riding Backstage's **Kubernetes plugin** (not the Dashboard). That plugin
+matches runs with the catalog entities'
+`backstage.io/kubernetes-label-selector`, so every PipelineRun-creating site
+carries the **`app.kubernetes.io/name=<svc>`** label:
+[`tekton/runs/*.yaml`](../tekton/runs/), the
+[`TriggerTemplate`](../tekton/triggers/eventlistener.yaml), and the
+**`.tekton/<svc>.yaml` PaC templates committed on each fork** (rendered by
+[`06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh) — the primary
+git-push path, and the easiest site to miss). Two operational gotchas: labels
+are never applied retroactively (only runs created *after* the manifests are in
+place show up), and the Dashboard's **Rerun button clones the OLD run's
+metadata** — rerunning a pre-label run reproduces the unlabelled state. See
+[505 § CI-engine integration](./505-BACKSTAGE.md) and its troubleshooting table
+for the full contract (including why the entities carry **no**
+`backstage.io/kubernetes-namespace` — one shared namespace would starve the
+`tekton-ci` lookup).
+
 ## The pipeline, ported
 
 The full Jenkins microservices pipeline ([`vars/MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy))
