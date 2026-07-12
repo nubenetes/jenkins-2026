@@ -372,6 +372,26 @@ The **webhook receiver** (`argo-events.<baseDomain>` → the Argo Events
 reach it — and is protected by the webhook **HMAC secret** instead, exactly like
 the Tekton PaC controller route (`pac.<domain>`).
 
+### Backstage view of this engine
+
+When `ci.engine=argoworkflows`, the [Backstage portal](./505-BACKSTAGE.md)'s
+CI/CD tab shows an **InfoCard deep-linking this Server UI** rather than an
+embedded runs view — there is **no upstream Backstage plugin for Argo Workflows
+yet** (the donation is in flight as backstage/community-plugins **#9192**;
+adopting it the moment it ships is a [505 roadmap](./505-BACKSTAGE.md#roadmap)
+item). Meanwhile the entity's **Kubernetes tab** lists its `Workflow` custom
+resources live. For that fallback to actually match, every Workflow-creating
+manifest carries the **`app.kubernetes.io/name=<svc>`** label the catalog
+entities' `backstage.io/kubernetes-label-selector` looks for —
+[`argoworkflows/runs/*.yaml`](../argoworkflows/runs/) and the
+[`Sensor`](../argoworkflows/events/sensor.yaml) (hardwired to `gateway`, its
+documented scope) all do. Labels are never applied retroactively: only
+Workflows created *after* those manifests are in place show up. See
+[505 § CI-engine integration](./505-BACKSTAGE.md) and its troubleshooting table
+for the full contract (including why the entities carry **no**
+`backstage.io/kubernetes-namespace` — one shared namespace would starve the
+`argo-ci` lookup).
+
 ## The pipeline, ported
 
 The full Jenkins microservices pipeline
