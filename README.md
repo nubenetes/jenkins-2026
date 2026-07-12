@@ -913,9 +913,9 @@ For a full standalone catalog with visual previews, see the [Technical Infograph
 - **[002]** - **[High Level Design and Multi Repository Platform Architecture](./docs/infographics/002_High_Level_Design_and_Multi_Repository_Platform_Architecture.png)**
   - *Key Technologies*: Git Multi-Repo, Terraform, Jenkins
   - *Description*: Illustrates the multi-repository structure decoupling the platform infrastructure configuration (in the Jenkins-2026 repository) from individual application source code repositories, using remote GCS buckets for state storage.
-- **[003]** - **[GKE Golden Path IDP Backstage Developer Portal Integration](./docs/infographics/003_GKE_Golden_Path_IDP_Backstage_Developer_Portal_Integration.png)**
-  - *Key Technologies*: Backstage, WIF, CNPG, ArgoCD plugin, OTel, Cilium eBPF, Gateway API
-  - *Description*: Maps the Backstage developer portal's four integration quadrants: the unified frontend as the platform control plane (keyless WIF auth), self-service scaffolding with automated CloudNativePG provisioning, the GitOps continuous-delivery loop (CI → gitops repo → ArgoCD reconciliation surfaced in-portal), and unified cluster/observability ingestion (live Kubernetes state over Cilium eBPF, OTel-correlated signals, zero-trust ingress via Gateway API + BackendTLSPolicy). The scaffolder shown is the roadmap direction — the shipped portal deliberately omits it (docs/505).
+- **[003]** - **[Backstage Developer Portal Hub for Golden Path IDPs](./docs/infographics/003_Backstage_Developer_Portal_Hub_for_Golden_Path_IDPs.png)**
+  - *Key Technologies*: Backstage (CNCF), Software Catalog, TechDocs, Golden Paths, Kubernetes plugin
+  - *Description*: The conceptual "why Backstage" companion to this platform's portal: the speed & standards paradox, the core pillars that solve it (Software Catalog, TechDocs docs-as-code, Software Templates & Golden Paths, Custom Search), a traditional-vs-IDP workflow comparison, and the specialized-management wing (a Kubernetes view for service owners, cloud-agnostic monitoring, the plugin "App Store"). The Templates pillar depicts the roadmap direction — the shipped portal deliberately omits the scaffolder (docs/505).
 
 </details>
 
