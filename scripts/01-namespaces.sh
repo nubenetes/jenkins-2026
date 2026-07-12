@@ -508,8 +508,15 @@ fi
 #   GITHUB_TOKEN                 catalog locations + GitHub integration (= GIT_TOKEN)
 #   JENKINS_API_USER/_API_KEY    Jenkins REST creds for the Jenkins plugin
 #                                (ci.engine=jenkins only: admin + the admin password
-#                                from jenkins-credentials; empty otherwise - the
-#                                CI/CD tab shows the active engine anyway)
+#                                from jenkins-credentials; 'unset' placeholders on the
+#                                other engines - the CI/CD tab shows the active engine
+#                                anyway, but the value must be NON-EMPTY: the jenkins-
+#                                backend plugin is ALWAYS loaded (index.ts) and its
+#                                config schema hard-rejects an empty-string username at
+#                                BACKEND STARTUP ("got empty-string, wanted string"),
+#                                crashing the whole pod (readiness 503 forever, no
+#                                restart - found live 2026-07-12 on the first-ever
+#                                ci.engine=tekton deploy)
 #   AUTH_GITHUB_CLIENT_ID/_SECRET  OPTIONAL GitHub OAuth App for the GitHub Actions
 #                                tab's per-user popup (BACKSTAGE_GITHUB_OAUTH_*
 #                                GitHub secrets). 'unset' placeholders keep the
@@ -556,6 +563,13 @@ if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
   # 'unset' placeholders keep the auth-provider config valid until real creds exist.
   bs_gh_oauth_id="${bs_gh_oauth_id:-unset}"
   bs_gh_oauth_secret="${bs_gh_oauth_secret:-unset}"
+  # Same 'unset' treatment for the Jenkins plugin creds on non-jenkins engines -
+  # an EMPTY string (not merely absent) is what the jenkins-backend plugin's
+  # config schema rejects at startup; a non-empty placeholder satisfies the
+  # type check and the plugin simply never gets a successful API call (harmless
+  # - the frontend only renders the Jenkins tab when ci.engine=jenkins anyway).
+  bs_jenkins_user="${bs_jenkins_user:-unset}"
+  bs_jenkins_key="${bs_jenkins_key:-unset}"
   if [[ "${bs_gh_oauth_id}" == "unset" || "${bs_gh_oauth_secret}" == "unset" ]]; then
     log_warn "BACKSTAGE_GITHUB_OAUTH_CLIENT_ID/SECRET not set (and no prior value) - Backstage deploys,"
     log_warn "but the GitHub Actions tab's per-user GitHub sign-in won't work until configured"
