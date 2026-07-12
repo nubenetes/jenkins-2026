@@ -198,6 +198,23 @@ kubectl -n jenkins get secret jenkins-credentials -o jsonpath='{.data.admin-pass
 
 To rotate the password, delete the Secret and re-run [`scripts/01-namespaces.sh`](../scripts/01-namespaces.sh) + [`scripts/04-jenkins.sh`](../scripts/04-jenkins.sh) — a new random password is generated and printed once.
 
+### Backstage view of this engine
+
+When `ci.engine=jenkins`, the [Backstage portal](./505-BACKSTAGE.md)'s CI/CD
+tab embeds the **community Jenkins plugin**: its backend calls this
+controller's REST API directly (internal `http://jenkins.jenkins.svc…` base
+URL from the runtime ConfigMap) using the `JENKINS_API_USER`/`JENKINS_API_KEY`
+pair in `backstage-secrets` — the admin user + the `jenkins-credentials` admin
+password, seeded by [`01-namespaces.sh`](../scripts/01-namespaces.sh) in
+jenkins-mode. The entity binding is `jenkins.io/job-full-name` (the
+seed-generated root job name); no Kubernetes-plugin label contract applies.
+Two operational notes: on the **other** engines those two keys deliberately
+hold non-empty **`unset`** placeholders — the always-loaded jenkins-backend
+plugin hard-crashes the whole portal on an *empty-string* username
+([505 § troubleshooting](./505-BACKSTAGE.md#troubleshooting)) — and the
+portal's `InternalUrlRewriter` rewrites the plugin's internal deep links to
+the public `jenkins.<baseDomain>` host in the rendered UI.
+
 ## Google Login (OpenID Connect)
 
 Jenkins' security realm is [`oic-auth`](https://plugins.jenkins.io/oic-auth/) (`securityRealm.oic` in [`jenkins/casc/jcasc-base.yaml`](../jenkins/casc/jcasc-base.yaml)), so anyone can sign in with a Google account — the **Role-Based Authorization Strategy** then decides what they can do. By default, a Google login lands in the `authenticated` group → the **`developer`** role (read + build/cancel/replay the pipelines, *not* admin). To grant the **`admin`** role (`Overall/Administer`) to your own account, set `JENKINS_OIDC_ADMIN_EMAIL`.

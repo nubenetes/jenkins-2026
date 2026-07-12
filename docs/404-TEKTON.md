@@ -350,7 +350,7 @@ flowchart TD
 | Cluster-scoped CRDs | Tekton CRDs left **dormant** (fast re-enable) | n/a (Jenkins ships none) |
 | Shared microservices (GitOps) | **survive** | **survive** |
 | Reversible | ✅ switch back re-applies | ✅ switch back re-applies |
-| External residue | — | PaC **webhooks + `.tekton/`** on the `nubenetes/*` forks remain (point at a now-gone `pac.<domain>`; harmless, re-activate on switch-back) |
+| External residue | — | the `.tekton/` files on the `nubenetes/*` forks always remain (harmless, re-activate on switch-back). The PaC **webhooks**: pruned by the **incoming** engine's `06` script when switching to `argoworkflows`/`githubactions` (each reconciles the forks' base-domain hooks — GHA's desired set is simply *empty*); only a switch to `jenkins` leaves them behind (its seed has no fork-hook logic; they 404 harmlessly) |
 
 **Why asymmetric:** Tekton owns dedicated namespaces (`tekton-ci`, `tekton-pipelines`,
 `pipelines-as-code`, `tekton-chains`)

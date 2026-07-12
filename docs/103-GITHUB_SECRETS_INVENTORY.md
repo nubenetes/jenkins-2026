@@ -251,10 +251,10 @@ Used by `Day1.cluster.01-gke` and `Day2.redeploy.03-tekton` when the Tekton CI e
 | `PAC_WEBHOOK_SECRET` | optional | GitHub HMAC token validating requests to the Pipelines-as-Code (PaC) controller |
 
 **`TEKTON_GITHUB_WEBHOOK_SECRET`**
-A shared-secret HMAC token GitHub signs webhook deliveries with, validated by the Tekton Triggers `EventListener`. Optional — empty by default; only needed if you expose the EventListener webhook so GitHub can trigger PipelineRuns. You generate it yourself (e.g. `openssl rand -hex 20`) and set it as a GitHub Actions secret **and** in the GitHub repo's webhook config. Consumed by `Day1.cluster.01-gke` and `Day2.redeploy.03-tekton`.
+A shared-secret HMAC token GitHub signs webhook deliveries with, validated by the Tekton Triggers `EventListener`. Optional — allowed to stay empty (the EventListener is the fallback trigger path; the upstream repos can't carry webhooks anyway), and **keep-if-present**: an `01` re-run without the env var preserves whatever the active backend already holds instead of clobbering it. To set/rotate, generate one (e.g. `openssl rand -hex 20`), set it as a GitHub Actions secret **and** in the GitHub repo's webhook config. Consumed by `Day1.cluster.01-gke` and `Day2.redeploy.03-tekton`.
 
 **`PAC_WEBHOOK_SECRET`**
-The equivalent HMAC token for **Pipelines-as-Code** (the git-driven CI path, the default for the app repos). [`scripts/01-namespaces.sh`](../scripts/01-namespaces.sh) writes it into the `pac-webhook` Secret (key `webhook.secret`, referenced by [`tekton/pac/repositories.yaml`](../tekton/pac/repositories.yaml)); empty by default, so PaC works unauthenticated until you set it and configure the matching GitHub webhook secret. Generate with `openssl rand -hex 20`. Consumed by `Day1.cluster.01-gke`, `Day2.redeploy.03-tekton`, and `Day2.redeploy.07-argoworkflows` (as the fallback value for the Argo Events webhook HMAC — see § 9.6).
+The equivalent HMAC token for **Pipelines-as-Code** (the git-driven CI path, the default for the app repos). [`scripts/01-namespaces.sh`](../scripts/01-namespaces.sh) writes it into the `pac-webhook` Secret (key `webhook.secret`, referenced by [`tekton/pac/repositories.yaml`](../tekton/pac/repositories.yaml)). **Fully self-managing when unset** (the normal case — this GitHub secret doesn't need to exist): `01` **generates-if-absent and keeps-if-present** in both secrets backends, and [`06-tekton-pipelines.sh`](../scripts/06-tekton-pipelines.sh) **re-asserts (PATCHes) the current value onto the forks' webhooks on every run** (reconcile-to-current, [docs/104](./104-REBUILD_SAFETY.md)) — the fork hook persists across cluster rebuilds while the in-cluster HMAC regenerates, so both ends stay in sync without human action. ⚠ An **empty** value is *not* "unauthenticated PaC" — the controller **hard-rejects every delivery** on an empty webhook secret (`no webhook secret has been set`; the 2026-07-12 incident, [docs/902](./902-TROUBLESHOOTING.md)). Set the GitHub secret only to force a **deliberate rotation** (explicit env wins over keep-if-present). Consumed by `Day1.cluster.01-gke`, `Day2.redeploy.03-tekton`, and `Day2.redeploy.07-argoworkflows` (as the fallback value for the Argo Events webhook HMAC — see § 9.6).
 
 ---
 
@@ -482,14 +482,16 @@ secret is the one optional webhook HMAC token below.
 **`ARGOWORKFLOWS_GITHUB_WEBHOOK_SECRET`**
 A shared-secret HMAC token GitHub signs webhook deliveries with, validated by the Argo
 Events GitHub **EventSource** (the public, no-IAP receiver at `argo-events.<domain>`).
-**Low/medium sensitivity** — a shared HMAC, not a private key. Optional: you generate it
-yourself (e.g. `openssl rand -hex 20`) and set it as a GitHub Actions secret **and** in
-the GitHub repo's webhook config. [`scripts/01-namespaces.sh`](../scripts/01-namespaces.sh) seeds it into the
+**Low/medium sensitivity** — a shared HMAC, not a private key. Optional and
+**fully self-managing when unset**: [`scripts/01-namespaces.sh`](../scripts/01-namespaces.sh) seeds the
 `argoworkflows-github-webhook` Secret in the `argo-events` namespace, falling back to
-`PAC_WEBHOOK_SECRET` when unset (ESO-synced in `secrets.backend=eso` mode via
-[`scripts/08.6-eso-sync.sh`](../scripts/08.6-eso-sync.sh)); if both are absent (the Secret is seeded empty),
-[`scripts/06-argoworkflows-pipelines.sh`](../scripts/06-argoworkflows-pipelines.sh) generates a random one
-(`openssl rand -hex 20`) and shares it with the GitHub webhooks it creates. Consumed by
+`PAC_WEBHOOK_SECRET` and otherwise **generating-if-absent + keeping-if-present** in both
+secrets backends (ESO-synced in `secrets.backend=eso` mode via
+[`scripts/08.6-eso-sync.sh`](../scripts/08.6-eso-sync.sh));
+[`scripts/06-argoworkflows-pipelines.sh`](../scripts/06-argoworkflows-pipelines.sh) then shares it with the
+GitHub webhooks it creates **and re-asserts (PATCHes) it onto already-existing fork hooks on
+every run** (reconcile-to-current — the hook survives cluster rebuilds while the in-cluster
+HMAC regenerates). Set the GitHub secret only for a deliberate rotation. Consumed by
 `Day1.cluster.01-gke` and `Day2.redeploy.07-argoworkflows`.
 
 ---
@@ -569,12 +571,12 @@ The runner/agent needs HTTPS egress to Grafana Cloud k6's ingest. Works for **al
 | `REGISTRY_PASSWORD` | **yes** | private image pull | manual |
 | `GIT_USERNAME` | no | private microservices fork | manual |
 | `GIT_TOKEN` | **yes** | private microservices fork | manual |
-| `TEKTON_GITHUB_WEBHOOK_SECRET` | **yes** | Tekton EventListener webhook (`ci.engine=tekton`, optional) | manual — `openssl rand` |
-| `PAC_WEBHOOK_SECRET` | **yes** | Pipelines-as-Code webhook (`ci.engine=tekton`, optional) | manual — `openssl rand` |
+| `TEKTON_GITHUB_WEBHOOK_SECRET` | **yes** | Tekton EventListener webhook (`ci.engine=tekton`, optional) | manual — `openssl rand` (rotation only; `01` keeps the live value when unset) |
+| `PAC_WEBHOOK_SECRET` | **yes** | Pipelines-as-Code webhook (`ci.engine=tekton`, optional) | **auto** — `01` generates-if-absent/keeps-if-present, `06` re-asserts onto the fork hooks; set manually only to rotate |
 | `ARC_GITHUB_APP_ID` | no | ARC runner registration (`ci.engine=githubactions`; PAT fallback via `GIT_TOKEN`) | GitHub App registration |
 | `ARC_GITHUB_APP_INSTALLATION_ID` | no | ARC runner registration (`ci.engine=githubactions`; PAT fallback via `GIT_TOKEN`) | GitHub App registration |
 | `ARC_GITHUB_APP_PRIVATE_KEY` | **yes** | ARC runner registration (`ci.engine=githubactions`; PAT fallback via `GIT_TOKEN`) | GitHub App registration |
-| `ARGOWORKFLOWS_GITHUB_WEBHOOK_SECRET` | low/medium | Argo Events GitHub webhook EventSource (`ci.engine=argoworkflows`, optional; `PAC_WEBHOOK_SECRET` fallback) | manual — `openssl rand` |
+| `ARGOWORKFLOWS_GITHUB_WEBHOOK_SECRET` | low/medium | Argo Events GitHub webhook EventSource (`ci.engine=argoworkflows`, optional; `PAC_WEBHOOK_SECRET` fallback) | **auto** — `01` generates-if-absent/keeps-if-present, `06` re-asserts onto the fork hooks; set manually only to rotate |
 
 ---
 
