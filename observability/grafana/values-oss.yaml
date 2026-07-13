@@ -118,6 +118,32 @@ prometheus:
           - source_labels: [__meta_kubernetes_pod_container_port_name]
             regex: metrics
             action: keep
+      # ArgoCD application-controller metrics (argocd_app_*) for the
+      # engine-neutral DORA dashboard (dora-metrics.json, docs/301 § DORA):
+      # deployment frequency = successful syncs of the microservices apps,
+      # change failure rate = failed syncs, restore time = app-health episodes.
+      # Pod discovery on the controller's plain-HTTP metrics port (the argo-cd
+      # chart always declares containerPort 8082/metrics; its metrics Service
+      # is not enabled). The keep-list trims the scrape to the three families
+      # the dashboard reads - per-app cardinality only, no controller runtime
+      # surface. The argocd-baseline NetworkPolicy allowlists observability ->
+      # :8082 for this scrape (infrastructure/networkpolicies.yaml).
+      - job_name: argocd-application-controller
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: [argocd]
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+            regex: argocd-application-controller
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_container_port_name]
+            regex: metrics
+            action: keep
+        metric_relabel_configs:
+          - source_labels: [__name__]
+            regex: argocd_app_info|argocd_app_sync_total|argocd_app_health_status
+            action: keep
     resources:
       requests:
         cpu: 200m
@@ -141,23 +167,21 @@ grafana:
 
   # Per-cluster runtime inputs that must NOT be baked into this file are surfaced
   # as env vars from companion objects created by scripts/03-observability.sh in
-  # the Grafana namespace (both optional — a missing object just falls back):
-  #   - Secret  grafana-jenkins-ds (key: apiToken) -> $JENKINS_API_TOKEN, consumed
-  #     by the Jenkins datasource's secureJsonData.apiToken below (Grafana expands
-  #     $ENV references inside provisioning files at startup). Mirrors the
-  #     jenkins-credentials admin-password.
+  # the Grafana namespace (optional — a missing object just falls back):
   #   - ConfigMap grafana-runtime-config (key: root_url) -> GF_SERVER_ROOT_URL,
   #     which overrides [server] root_url with https://grafana.<baseDomain> when
   #     the public gateway is enabled. When absent, the grafana.ini default below
   #     (in-cluster, for kubectl port-forward) applies.
   # This replaces the previous `helm upgrade --set ...` injections so the OSS
   # stack can be deployed declaratively by ArgoCD (argocd/observability-oss).
+  #
+  # NOTE (2026-07-13): the former Jenkins datasource (type
+  # grafana-jenkins-datasource + the grafana-jenkins-ds token Secret) was
+  # REMOVED from this oss overlay: that plugin is an ENTERPRISE plugin (public
+  # preview) that Grafana OSS cannot install, so the provisioned datasource
+  # could never work here — it only exists in grafana-cloud mode
+  # (terraform/grafana-cloud-token). See docs/301 § Jenkins Data Source.
   envValueFrom:
-    JENKINS_API_TOKEN:
-      secretKeyRef:
-        name: grafana-jenkins-ds
-        key: apiToken
-        optional: true
     GF_SERVER_ROOT_URL:
       configMapKeyRef:
         name: grafana-runtime-config
@@ -352,20 +376,9 @@ grafana:
           datasourceUid: prometheus
         nodeGraph:
           enabled: true
-
-    - name: Jenkins
-      type: grafana-jenkins-datasource
-      uid: jenkins
-      url: http://jenkins.jenkins.svc.cluster.local:8080
-      access: proxy
-      secureJsonData:
-        # Expanded by Grafana at startup from the JENKINS_API_TOKEN env var
-        # (grafana.envValueFrom above -> grafana-jenkins-ds Secret, which
-        # scripts/03-observability.sh mirrors from the jenkins-credentials
-        # admin-password). Empty when the Secret is absent.
-        apiToken: "$JENKINS_API_TOKEN"
-      jsonData:
-        username: "admin"
+    # (No Jenkins datasource here on purpose — Enterprise-only plugin, see the
+    # note at grafana.envValueFrom above. oss persistence is off, so the stale
+    # entry self-heals out of an existing cluster on the next pod restart.)
 
   dashboardProviders:
     dashboardproviders.yaml:

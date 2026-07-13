@@ -560,8 +560,8 @@ one of these (each is a hard constraint, not a preference):
    Gateway / HTTPRoute / HealthCheckPolicy / GCPBackendPolicy set is **generated
    per-run** from `config.yaml` into `.generated/` and applied ([`09-gateway.sh`](../scripts/09-gateway.sh)).
 4. **Live-reload single-source companions.** The JCasC ConfigMaps ([`04-jenkins.sh`](../scripts/04-jenkins.sh)
-   from `jenkins/casc/*`) and the OSS-Grafana companion `grafana-jenkins-ds` Secret
-   / `grafana-runtime-config` ConfigMap (`03`) are kept **out of GitOps on purpose**
+   from `jenkins/casc/*`) and the OSS-Grafana companion `grafana-runtime-config`
+   ConfigMap (`03`) are kept **out of GitOps on purpose**
    so a single source stays canonical and the sidecar can hot-reload without a sync.
    See [301 § script-managed companions](./301-OBSERVABILITY.md).
 5. **External side-effects ArgoCD has no verb for.** Pushing `.tekton/` to the
@@ -592,7 +592,7 @@ one of these (each is a hard constraint, not a preference):
 | All in-cluster `Secret`s (jenkins/headlamp/IAP/tekton/**arc-github-app**/**arc-registry**/**argoworkflows-registry**/**argoworkflows-git**/**argoworkflows-github-webhook**/**argoworkflows-argocd**/ghcr/grafana-ds…) | **Imperative** *(or ESO)* | `01` / `03` / `08.5`; `08.6` in `eso` mode | Secret values never in git (#2). `eso` makes *delivery* GitOps-style. The ARC GitHub App creds (`arc-github-app`) + ghcr imagePullSecret (`arc-registry`) follow the same rule as the Tekton `tekton-registry`/`tekton-git` Secrets — built by `01-namespaces.sh` in `arc-runners` (ESO parity wired in `08.6`). The Argo Workflows engine follows the same rule: `argoworkflows-registry` (ghcr) + `argoworkflows-git` (basic-auth) + `k6-cloud` in `argo-ci` and `argoworkflows-github-webhook` (HMAC) in `argo-events` are built by `01-namespaces.sh`, and `argoworkflows-argocd` (ArgoCD API token) in `argo-ci` by `08.5-argocd.sh` (ESO parity in `08.6`). |
 | Gateway · HTTPRoutes · HealthCheckPolicies · GCPBackendPolicies (IAP) | **Imperative** | [`09-gateway.sh`](../scripts/09-gateway.sh) → `.generated/` | Generated per-run with the live domain/IP/IAP-client-id (#3). |
 | Runtime patches into `jenkins-credentials`/`headlamp-credentials` (URLs, tokens, banner links) | **Imperative** | `01` / `04` / `08.5` `kubectl patch` | Values discovered at run time (#3). |
-| JCasC ConfigMaps · `grafana-jenkins-ds` · `grafana-runtime-config` · `backstage-runtime-config` (+ the Backstage IAP JWT **audience** patch and the `ARGOCD_*` creds patch into `backstage-secrets`) | **Imperative** | `04` / `03` / `08.95` / `09` | Live-reload single-source companions (#4); the Backstage audience is an LB backend-service ID that only exists after `09` programs the route (#3), and the ArgoCD creds are minted in-cluster (#5). |
+| JCasC ConfigMaps · `grafana-runtime-config` · `backstage-runtime-config` (+ the Backstage IAP JWT **audience** patch and the `ARGOCD_*` creds patch into `backstage-secrets`) | **Imperative** | `04` / `03` / `08.95` / `09` | Live-reload single-source companions (#4); the Backstage audience is an LB backend-service ID that only exists after `09` programs the route (#3), and the ArgoCD creds are minted in-cluster (#5). |
 | Tekton PaC push/webhooks/seed · ArgoCD token mint · CNPG `caBundle` patch | **Imperative** | `06` / `08.5` | External / in-cluster side-effects (#5). |
 | **NetworkPolicies** · **ResourceQuotas/LimitRanges** | **Imperative** | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | Must land **before** workloads for Dataplane V2 enforcement timing (#6). |
 | Namespace creation + labels | **Imperative** | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | The floor everything else lands in; must exist before any apply/sync. |
@@ -727,7 +727,6 @@ Everything else is GitOps-managed, or is a deliberate, documented exception abov
 | `ghcr-credentials` | `microservices` (+ `-develop`; + `backstage` when the portal is enabled) | `dockerconfigjson` imagePullSecret | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) | microservices pods + the Backstage pod (image pull) |
 | `backstage-secrets` | `backstage` *(backstage.enabled)* | `BACKEND_SECRET` (stable-generated) · `GITHUB_TOKEN` · `JENKINS_API_USER`/`_KEY` (jenkins-mode) · `AUTH_GITHUB_CLIENT_ID`/`_SECRET` (optional OAuth App) · `ARGOCD_USERNAME`/`PASSWORD` (patched by `08.95` — ESO projects with **Merge** so the patch survives) | No | [`01-namespaces.sh`](../scripts/01-namespaces.sh) + [`08.95-backstage.sh`](../scripts/08.95-backstage.sh) | the Backstage backend (app-config `${ENV}` refs — [505](./505-BACKSTAGE.md)) |
 | `backstage-db-app` | `backstage` *(backstage.enabled)* | Postgres host/port/username/password (CNPG-generated) | No | CNPG operator (from the `backstage-db` Cluster CR) | the Backstage backend (`POSTGRES_*` env) |
-| `grafana-jenkins-ds` | `observability` *(the `observability.grafana.ossNamespace`; oss + jenkins-mode)* | `apiToken` (mirror of Jenkins admin password) | No | [`03-observability.sh`](../scripts/03-observability.sh) *(gated to jenkins-mode)* | Grafana → Jenkins datasource |
 | `grafana-cloud-credentials` / `azure-monitor-credentials` / `aws-managed-credentials` | `observability` | backend endpoint + token/SP/role per `observability.mode` — **[group 4](#secrets-backend-imperative--eso) (Terraform outputs)**, so these stay **imperative even under `secrets.backend=eso`** (nothing to sync *from* — the value is a Day1 Terraform output, never pre-placed in Secret Manager). **Single-active-mode invariant:** only the active mode's Secret exists — [`03-observability.sh`](../scripts/03-observability.sh) retires the other two on provision, so a mode switch leaves no stale Secret to mislead `Day2.traffic.01-k6`'s secret-presence mode auto-detection (a leftover once produced a dead "VIEW IN GRAFANA" link — see [104](104-REBUILD_SAFETY.md) / [902](902-TROUBLESHOOTING.md)). | No | Day1 workflow / scripts | otel-collector exporter |
 
 ### Diagram 1 — Namespace & Secret topology
@@ -842,7 +841,7 @@ flowchart LR
 
 In `eso` mode the flow becomes (wired for **all group 1–3 secrets below, across all
 four engines** — IAP OAuth, registry/git creds, webhook HMACs, `ghcr-credentials`,
-`k6-cloud`, and the generated `jenkins-credentials`/`headlamp-credentials`/`pac-webhook`/`grafana-jenkins-ds`;
+`k6-cloud`, and the generated `jenkins-credentials`/`headlamp-credentials`/`pac-webhook`;
 only group 4 stays imperative):
 
 <details>
@@ -877,7 +876,7 @@ only group 4 imperative:
 | :--- | :--- | :--- | :--- |
 | **1 — clean** *(value is an external, static input)* | `gateway-iap-oauth` (+ its `-client-secret`), `tekton-github-webhook-secret`, `arc-github-app`, `argoworkflows-github-webhook`, `k6-cloud` | ✅ **Native** — `dataFrom.extract` / single `property` | ✅ **wired** |
 | **2 — templated** *(typed Secret built from external inputs)* | `ghcr-credentials` + `tekton`-registry + `arc`-registry + `argoworkflows`-registry (`dockerconfigjson`), `tekton`-git (`basic-auth` + `tekton.dev/git-0`) + `argoworkflows`-git (`basic-auth`) | ✅ via `target.template` — rebuilds the typed payload from `username`/`password`/`registry` keys | ✅ **wired** |
-| **3 — generated / multi-writer** | `jenkins-credentials` (admin pw generated at create; URL + `argocd-token` keys patched by later steps), `headlamp-credentials`, `pac-webhook` (`openssl rand`), `grafana-jenkins-ds` (mirrors the Jenkins pw) | ✅ **seed-then-project** — the generated value is seeded **stable** into SM (`sm_keep_or_generate`), and `jenkins-credentials` uses **`creationPolicy: Merge`** so the imperatively-patched keys survive | ✅ **wired** |
+| **3 — generated / multi-writer** | `jenkins-credentials` (admin pw generated at create; URL + `argocd-token` keys patched by later steps), `headlamp-credentials`, `pac-webhook` (`openssl rand`) | ✅ **seed-then-project** — the generated value is seeded **stable** into SM (`sm_keep_or_generate`), and `jenkins-credentials` uses **`creationPolicy: Merge`** so the imperatively-patched keys survive | ✅ **wired** |
 | **4 — no upstream value** | `tekton-argocd` / `arc-argocd` / `argoworkflows-argocd` (tokens **minted in-cluster** by ArgoCD at deploy time), per-mode `grafana-cloud` / `azure-monitor` / `aws-managed` creds (**Terraform outputs**) | ❌ Nothing to sync *from* — the value is produced in-cluster / by Terraform, never pre-placed in SM | ❌ imperative |
 
 *(Validation: groups 1–2 confirmed live on a real Day1 — ExternalSecrets `SecretSynced`,

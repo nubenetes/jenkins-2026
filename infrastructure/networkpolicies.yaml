@@ -228,6 +228,17 @@ spec:
     ports:
     - protocol: TCP
       port: 8080
+  # Prometheus (oss) / the OTel collector's prometheus receiver (grafana-cloud,
+  # managed-*) -> the application-controller metrics port: the engine-neutral
+  # DORA dashboard reads argocd_app_* (sync counters + app health) in every
+  # observability.mode. Metrics only - the API/UI stays locked to the rule above.
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: observability
+    ports:
+    - protocol: TCP
+      port: 8082
   egress:
   - {}
 ---

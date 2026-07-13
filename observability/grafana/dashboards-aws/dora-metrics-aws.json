@@ -1,0 +1,504 @@
+{
+  "uid": "j26dora",
+  "title": "CI-CD / DORA Metrics",
+  "description": "Engine-neutral DORA metrics computed from signals the platform already emits: ArgoCD application-controller metrics (deploys, failures, health) + the active CI engine's run metrics (lead time). Proxies and caveats are documented in the top panel and docs/301 § DORA.",
+  "tags": ["jenkins-2026", "dora", "ci-cd", "gitops"],
+  "timezone": "browser",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 42,
+  "refresh": "1m",
+  "time": { "from": "now-7d", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "DS_PROMETHEUS",
+        "label": "Prometheus datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0,
+        "refresh": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "How to read this dashboard (methodology & honest proxies)",
+      "gridPos": { "h": 5, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "**Engine-neutral by construction** — the core signals come from **ArgoCD** (`argocd_app_*`, scraped in every `observability.mode`), which deploys the microservices whatever CI engine built them; per-engine CI metrics only *enrich* lead time. The four DORA metrics are **proxies**, each labelled with its definition:\n\n- **Deployment frequency** = successful ArgoCD syncs of the `microservices-*` apps. *Caveat: auto-sync also fires on drift self-heal, not only on image bumps — treat as an upper bound.*\n- **Lead time for changes** = CI pipeline run duration of the **active engine** (the Jenkins/Tekton pipelines include the GitOps push **and** the `argocd app wait` convergence, so this ≈ merge→running). *Gap: GitHub Actions runs live in GitHub's plane — no in-cluster duration series.*\n- **Change failure rate** = failed syncs ÷ all syncs (plus the CI-run failure ratio below). *Not the classical “deploys causing incidents” — no incident system exists in this PoC.*\n- **Time to restore** = minutes with any `microservices-*` app **not Healthy** (ArgoCD health). *Approximates MTTR from the platform's own health model.*\n\n*Windows: DORA needs days — default range is 7d. Counters reset on cluster rebuilds (`Decom`+`Day1`, docs/104): `increase()` handles the reset, but history before the rebuild only exists where the backend outlives the cluster (grafana-cloud / managed).* Thresholds on the stats mark the DORA performance bands (elite/high ↔ green). Full methodology: **docs/301 § DORA**."
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Deployment frequency — successful syncs (range)",
+      "description": "sum(increase(argocd_app_sync_total{name=~\"microservices-.*\", phase=\"Succeeded\"}[$__range])). Upper bound: includes self-heal re-syncs.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 5 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum(increase(argocd_app_sync_total{name=~\"microservices-.*\", phase=\"Succeeded\"}[$__range])) or vector(0)",
+          "legendFormat": "deploys",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "color": { "mode": "fixed", "fixedColor": "blue" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "graphMode": "none",
+        "colorMode": "value",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Lead time p50 — CI run duration (active engine)",
+      "description": "Jenkins/Tekton: p50 of the pipeline-run duration histogram over the range (their pipelines include the GitOps push + argocd wait). Argo Workflows: mean template runtime. GitHub Actions: no in-cluster series (documented gap). Only the ACTIVE engine returns data.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 5 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(ci_pipeline_run_duration_seconds_bucket[$__range])))",
+          "legendFormat": "Jenkins p50",
+          "instant": true
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(tekton_pipelines_controller_pipelinerun_duration_seconds_bucket{status=\"success\"}[$__range])))",
+          "legendFormat": "Tekton p50",
+          "instant": true
+        },
+        {
+          "refId": "C",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum(rate(argo_workflows_workflowtemplate_runtime_sum[$__range])) / clamp_min(sum(rate(argo_workflows_workflowtemplate_runtime_count[$__range])), 0.000001)",
+          "legendFormat": "Argo WF mean",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 900 },
+              { "color": "red", "value": 3600 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "graphMode": "none",
+        "colorMode": "value",
+        "textMode": "value_and_name"
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Change failure rate — failed syncs (range)",
+      "description": "100 × failed syncs (phase Error|Failed) ÷ all syncs of the microservices apps. DORA bands: elite/high ≤ 15%.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 5 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "100 * (sum(increase(argocd_app_sync_total{name=~\"microservices-.*\", phase=~\"Error|Failed\"}[$__range])) or vector(0)) / clamp_min((sum(increase(argocd_app_sync_total{name=~\"microservices-.*\"}[$__range])) or vector(0)), 1)",
+          "legendFormat": "CFR",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 15 },
+              { "color": "red", "value": 30 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "graphMode": "none",
+        "colorMode": "value",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Time to restore — minutes not Healthy (range)",
+      "description": "Minutes (within the range) where at least one microservices-* app reported an ArgoCD health_status other than Healthy. DORA restore bands: elite < 1h.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 5 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum_over_time((clamp_max(count(argocd_app_info{name=~\"microservices-.*\", health_status!=\"Healthy\"}) or vector(0), 1))[$__range:1m])",
+          "legendFormat": "min unhealthy",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "m",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 60 },
+              { "color": "red", "value": 240 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "graphMode": "none",
+        "colorMode": "value",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Deployments per day (successful syncs, 1d window)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum(increase(argocd_app_sync_total{name=~\"microservices-.*\", phase=\"Succeeded\"}[1d]))",
+          "legendFormat": "deploys / day"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "spanNulls": false
+          },
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Deployments per day, by application",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum by (name) (increase(argocd_app_sync_total{name=~\"microservices-.*\", phase=\"Succeeded\"}[1d]))",
+          "legendFormat": "{{name}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "stacking": { "mode": "normal", "group": "A" },
+            "spanNulls": false
+          },
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Lead time trend — CI run duration (active engine, 6h windows)",
+      "description": "Jenkins/Tekton p50 & p95 from their duration histograms; Argo Workflows mean template runtime. GitHub Actions runs execute in GitHub's plane — no in-cluster duration series exists (see the methodology panel).",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 18 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(ci_pipeline_run_duration_seconds_bucket[6h])))",
+          "legendFormat": "Jenkins p50"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(ci_pipeline_run_duration_seconds_bucket[6h])))",
+          "legendFormat": "Jenkins p95"
+        },
+        {
+          "refId": "C",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(tekton_pipelines_controller_pipelinerun_duration_seconds_bucket{status=\"success\"}[6h])))",
+          "legendFormat": "Tekton p50"
+        },
+        {
+          "refId": "D",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(tekton_pipelines_controller_pipelinerun_duration_seconds_bucket{status=\"success\"}[6h])))",
+          "legendFormat": "Tekton p95"
+        },
+        {
+          "refId": "E",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum(rate(argo_workflows_workflowtemplate_runtime_sum[6h])) / clamp_min(sum(rate(argo_workflows_workflowtemplate_runtime_count[6h])), 0.000001)",
+          "legendFormat": "Argo WF mean"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 8,
+            "spanNulls": true
+          },
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Sync outcomes per day, by phase",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 18 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "sum by (phase) (increase(argocd_app_sync_total{name=~\"microservices-.*\"}[1d]))",
+          "legendFormat": "{{phase}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "stacking": { "mode": "normal", "group": "A" },
+            "spanNulls": false
+          },
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Succeeded" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Failed" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Error" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "CI run failure rate % (1d windows, active engine)",
+      "description": "Jenkins: failed/completed runs. Tekton: failed/all PipelineRuns. Argo Workflows exposes no failed-run counter (gauge only) and GitHub Actions runs live in GitHub's plane — both documented in the methodology panel.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 27 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "100 * sum(increase(ci_pipeline_run_failed_total[1d])) / clamp_min(sum(increase(ci_pipeline_run_completed_total[1d])), 1)",
+          "legendFormat": "Jenkins failed %"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "100 * sum(increase(tekton_pipelines_controller_pipelinerun_total{status=\"failed\"}[1d])) / clamp_min(sum(increase(tekton_pipelines_controller_pipelinerun_total[1d])), 1)",
+          "legendFormat": "Tekton failed %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "spanNulls": true
+          },
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Microservices app health over time (ArgoCD health_status)",
+      "description": "Restore-time drill-down: episodes where an app leaves Healthy are the numerator of the Time-to-restore stat.",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 27 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "count by (health_status) (argocd_app_info{name=~\"microservices-.*\"})",
+          "legendFormat": "{{health_status}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "stacking": { "mode": "none", "group": "A" },
+            "spanNulls": false
+          },
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Healthy" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "green" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Degraded" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Progressing" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "yellow" } }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "none" }
+      }
+    },
+    {
+      "id": 12,
+      "type": "table",
+      "title": "Applications now (argocd_app_info)",
+      "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 35 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+          "expr": "argocd_app_info{name=~\"microservices-.*\"}",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "transformations": [
+        {
+          "id": "filterFieldsByName",
+          "options": {
+            "include": {
+              "names": ["name", "project", "sync_status", "health_status", "autosync_enabled"]
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "name", "desc": false }]
+      }
+    }
+  ]
+}

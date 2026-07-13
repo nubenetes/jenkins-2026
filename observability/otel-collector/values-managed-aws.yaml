@@ -245,6 +245,32 @@ config:
                 action: keep
               - target_label: cluster
                 replacement: jenkins-2026
+          # ArgoCD application-controller metrics (argocd_app_*) for the
+          # engine-neutral DORA dashboard (docs/301 § DORA): deployment
+          # frequency = successful microservices syncs, CFR = failed syncs,
+          # restore time = app-health episodes. Pod discovery on the plain-HTTP
+          # :8082/metrics containerPort (the argo-cd chart's metrics Service is
+          # not enabled); keep-list bounds the series to the three per-app
+          # families the dashboard reads.
+          - job_name: argocd-application-controller
+            scrape_interval: 30s
+            kubernetes_sd_configs:
+              - role: pod
+                namespaces:
+                  names: [argocd]
+            relabel_configs:
+              - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+                regex: argocd-application-controller
+                action: keep
+              - source_labels: [__meta_kubernetes_pod_container_port_name]
+                regex: metrics
+                action: keep
+              - target_label: cluster
+                replacement: jenkins-2026
+            metric_relabel_configs:
+              - source_labels: [__name__]
+                regex: argocd_app_info|argocd_app_sync_total|argocd_app_health_status
+                action: keep
           # CloudNativePG (CNPG) Postgres metrics (cnpg_*/pg_*) from the
           # postgres-* cluster instance pods (metrics port 9187). In oss mode
           # the in-cluster Prometheus scrapes these via the CNPG PodMonitor.

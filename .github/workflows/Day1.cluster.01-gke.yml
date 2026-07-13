@@ -666,6 +666,9 @@ jobs:
         env:
           TF_VAR_grafana_cloud_api_token: ${{ secrets.GRAFANA_CLOUD_API_TOKEN }}
           TF_VAR_stack_slug: ${{ steps.gc_stack.outputs.slug }}
+          # Backend TLS moves Jenkins' plain-HTTP listener to :8082 - the
+          # datasource URL (dialed in-cluster by the PDC tunnel) must follow.
+          TF_VAR_jenkins_backend_tls: ${{ inputs.backend_tls }}
         run: |
           # Fetch jenkins admin password from the secret created in the previous step
           ADMIN_PASS=$(kubectl get secret jenkins-credentials -n jenkins -o jsonpath='{.data.admin-password}' | base64 -d)

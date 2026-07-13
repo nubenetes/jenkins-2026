@@ -20,8 +20,8 @@
 # Scope: the gateway IAP OAuth secret (+ its single-key client-secret projection); the
 # Tekton pipeline creds (webhook, k6-cloud, registry dockerconfigjson, git basic-auth,
 # pac-webhook) when ci.engine=tekton; ghcr-credentials; and the generated/multi-writer
-# secrets — jenkins-credentials (Merge, with a stable seeded admin-password),
-# headlamp-credentials, and grafana-jenkins-ds (mirrors that admin-password).
+# secrets — jenkins-credentials (Merge, with a stable seeded admin-password) and
+# headlamp-credentials.
 # STILL imperative (no upstream value to push): tekton-argocd (minted in-cluster by
 # ArgoCD) + the per-mode observability backend credentials (Terraform outputs).
 # See docs/201 § Secrets Management.
@@ -349,10 +349,9 @@ fi
 if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
   es_extract "${J2026_JENKINS_CREDENTIALS_SECRET}" "${J2026_JENKINS_NAMESPACE}" \
     "${J2026_JENKINS_CREDENTIALS_SECRET}" "Merge"
-  # the OSS Grafana→Jenkins datasource token mirrors the same stable admin password.
-  [[ "${J2026_OBS_MODE}" == "oss" ]] && \
-    es_property "grafana-jenkins-ds" "${J2026_GRAFANA_OSS_NAMESPACE}" \
-      "${J2026_JENKINS_CREDENTIALS_SECRET}" "admin-password" "apiToken"
+  # (The former grafana-jenkins-ds property projection was RETIRED 2026-07-13
+  # with the oss Jenkins datasource itself — Enterprise-only plugin, see
+  # 03-observability.sh; 03 also deletes the orphaned ExternalSecret/Secret.)
 fi
 
 # --- emit: Headlamp OIDC credentials (always; Headlamp is always deployed) ----

@@ -86,8 +86,8 @@ kubectl_apply_namespace "${J2026_JENKINS_NAMESPACE}"
 log_step "Ensuring '${J2026_JENKINS_CREDENTIALS_SECRET}' Secret in ${J2026_JENKINS_NAMESPACE}"
 if [[ "$(j2026_active_secrets_backend)" == "eso" ]]; then
   # eso → seed the create-time/sensitive keys into Secret Manager. admin-password is
-  # kept STABLE across runs (sm_keep_or_generate) so Jenkins + grafana-jenkins-ds agree
-  # on it. ESO projects these with creationPolicy: Merge (08.6), so the *04-patched* keys
+  # kept STABLE across runs (sm_keep_or_generate) so every consumer (Jenkins itself,
+  # the Backstage plugin creds) agrees on it. ESO projects these with creationPolicy: Merge (08.6), so the *04-patched* keys
   # (grafana-base-url, the dashboard uids, k8s-app-link, microservices-url, …) + the
   # argocd-token patched by 08.5 survive — because ESO's Merge only touches the keys it
   # extracts from SM, leaving 04-only keys intact. Merge needs the Secret to exist, so

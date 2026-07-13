@@ -14,9 +14,9 @@ these `*.json` into a ConfigMap. The `*.json` consumers (`generate.py`,
 `Chart.yaml` / `values.yaml` / `templates/` files, so the two roles coexist in
 one directory without collision.
 
-## Inventory — 10 dashboards
+## Inventory — 11 dashboards
 
-Six always ship; four are **CI-engine-gated** (only the active `ci.engine`'s CI
+Seven always ship; four are **CI-engine-gated** (only the active `ci.engine`'s CI
 overview is deployed, so a cluster never shows an empty board for an engine that
 isn't running):
 
@@ -28,6 +28,7 @@ isn't running):
 | `jvm-internals.json` | always |
 | `node-autoprovisioning.json` | always |
 | `rum-frontend.json` | always |
+| `dora-metrics.json` | always — **engine-neutral DORA metrics** from `argocd_app_*` (deploys/CFR/restore) + the active engine's run metrics (lead time); methodology + proxies in [docs/301 § DORA](../../../docs/301-OBSERVABILITY.md) |
 | `jenkins-overview.json` | `ci.engine=jenkins` only |
 | `tekton-overview.json` | `ci.engine=tekton` only |
 | `github-actions-ci.json` | `ci.engine=githubactions` only |
