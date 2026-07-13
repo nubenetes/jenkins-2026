@@ -617,7 +617,7 @@
       "id": 10,
       "type": "timeseries",
       "title": "CI run failure rate % (1d windows, active engine)",
-      "description": "Jenkins: failed/completed runs. Tekton: failed/all PipelineRuns. Argo Workflows exposes no failed-run counter (gauge only) and GitHub Actions runs live in GitHub's plane — both documented in the methodology panel.",
+      "description": "Jenkins: (completed-success)/completed runs — the OTel Jenkins plugin exposes no dedicated failed-run counter, only started/launched/completed/success/active. Tekton: failed/all PipelineRuns. Argo Workflows exposes no failed-run counter (gauge only) and GitHub Actions runs live in GitHub's plane — both documented in the methodology panel.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -635,7 +635,7 @@
             "type": "prometheus",
             "uid": "${DS_PROMETHEUS}"
           },
-          "expr": "100 * sum(increase(ci_pipeline_run_failed_total[1d])) / clamp_min(sum(increase(ci_pipeline_run_completed_total[1d])), 1)",
+          "expr": "100 * clamp_min(sum(increase(ci_pipeline_run_completed_total[1d])) - sum(increase(ci_pipeline_run_success_total[1d])), 0) / clamp_min(sum(increase(ci_pipeline_run_completed_total[1d])), 1)",
           "legendFormat": "Jenkins failed %"
         },
         {

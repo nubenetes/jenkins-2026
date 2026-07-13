@@ -258,7 +258,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(ci_pipeline_run_failed_total[$__range])) or vector(0)",
+          "expr": "clamp_min(sum(increase(ci_pipeline_run_completed_total[$__range])) - sum(increase(ci_pipeline_run_success_total[$__range])), 0)",
           "instant": true,
           "legendFormat": "",
           "range": false,
@@ -1006,7 +1006,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(increase(ci_pipeline_run_failed_total[$__rate_interval])) or vector(0)",
+          "expr": "clamp_min(sum(increase(ci_pipeline_run_completed_total[$__rate_interval])) - sum(increase(ci_pipeline_run_success_total[$__rate_interval])), 0)",
           "instant": false,
           "legendFormat": "failed",
           "range": true,
@@ -1748,7 +1748,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "editorMode": "code",
-          "expr": "sum(rate(ci_pipeline_run_failed_total[$__rate_interval])) or vector(0)",
+          "expr": "clamp_min(sum(rate(ci_pipeline_run_completed_total[$__rate_interval])) - sum(rate(ci_pipeline_run_success_total[$__rate_interval])), 0)",
           "instant": false,
           "legendFormat": "failed/s",
           "range": true,
