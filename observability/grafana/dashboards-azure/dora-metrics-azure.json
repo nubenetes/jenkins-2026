@@ -66,16 +66,16 @@
     {
       "id": 1,
       "type": "text",
-      "title": "How to read this dashboard (methodology & honest proxies)",
+      "title": "",
       "gridPos": {
-        "h": 5,
+        "h": 23,
         "w": 24,
         "x": 0,
         "y": 0
       },
       "options": {
         "mode": "markdown",
-        "content": "**Engine-neutral by construction** \u2014 the core signals come from **ArgoCD** (`argocd_app_*`, scraped in every `observability.mode`), which deploys the microservices whatever CI engine built them; per-engine CI metrics only *enrich* lead time. The four DORA metrics are **proxies**, each labelled with its definition:\n\n- **Deployment frequency** = successful ArgoCD syncs of the `microservices-*` apps. *Caveat: auto-sync also fires on drift self-heal, not only on image bumps \u2014 treat as an upper bound.*\n- **Lead time for changes** = CI pipeline run duration of the **active engine** (the Jenkins/Tekton pipelines include the GitOps push **and** the `argocd app wait` convergence, so this \u2248 merge\u2192running). *Gap: GitHub Actions runs live in GitHub's plane \u2014 no in-cluster duration series.*\n- **Change failure rate** = failed syncs \u00f7 all syncs (plus the CI-run failure ratio below). *Not the classical \u201cdeploys causing incidents\u201d \u2014 no incident system exists in this PoC.*\n- **Time to restore** = minutes with any `microservices-*` app **not Healthy** (ArgoCD health). *Approximates MTTR from the platform's own health model.*\n\n*Windows: DORA needs days \u2014 default range is 7d. Counters reset on cluster rebuilds (`Decom`+`Day1`, docs/104): `increase()` handles the reset, but history before the rebuild only exists where the backend outlives the cluster (grafana-cloud / managed).* Thresholds on the stats mark the DORA performance bands (elite/high \u2194 green). Full methodology: **docs/301 \u00a7 DORA**."
+        "content": "## DORA Metrics \u2014 what this board shows & how to read it\nThe four [DORA](https://dora.dev/) software-delivery metrics for the microservices, computed **engine-neutrally**: the anchor is **ArgoCD** (`argocd_app_*`), which deploys the apps *whatever* CI engine (`jenkins` / `tekton` / `githubactions` / `argoworkflows`) built the image \u2014 so this board keeps working when `ci.engine` flips. Per-engine CI metrics only *enrich* lead time. Signal plumbing + methodology: [`docs/301 \u00a7 DORA`](../docs/301-OBSERVABILITY.md). Every metric here is a **proxy** \u2014 each one is labelled with its exact definition (and its exact PromQL lives in the panel descriptions), so read this box once before trusting the numbers.\n\n**Time range is part of the metric.** DORA is a *weeks* discipline \u2014 the board defaults to **7d** and the four headline stats are **range-scoped** (`$__range`): change the picker and they recompute. Two lifecycle caveats: **(1)** this platform's clusters are throwaway (`Decom`+`Day1`, [`docs/104`](../docs/104-REBUILD_SAFETY.md)) \u2014 ArgoCD's counters reset on rebuild (`increase()` tolerates the reset itself, you lose no in-window data), but pre-rebuild history only exists where the metrics backend **outlives the cluster** (grafana-cloud / managed-*; in oss the history dies with the Prometheus PVC). **(2)** A freshly-built cluster has *hours* of history \u2014 the stats are honest but not yet meaningful.\n\n### Dashboard sections at a glance\n| Section | What it answers |\n|---|---|\n| **Four headline stats** | The DORA scorecard for the selected range, colored by performance band (green = elite/high) |\n| **Deployments per day (+ by application)** | Cadence trend; whether both apps deploy or one dominates |\n| **Lead time trend** | Is merge\u2192running getting slower? p50 vs p95 divergence = flaky/slow tail |\n| **Sync outcomes by phase** | The raw material of CFR: Succeeded vs Failed/Error syncs per day |\n| **CI run failure rate** | The *build-side* failure ratio, to tell \"bad change\" from \"bad deploy\" |\n| **App health over time + Applications now** | Restore-time drill-down: when, how long, and which app left `Healthy` |\n\n### The four metrics \u2014 canonical definition vs this board's proxy\n| DORA metric | Canonical | Proxy here | Trust boundary |\n|---|---|---|---|\n| **Deployment frequency** | How often code reaches production | `argocd_app_sync_total{phase=\"Succeeded\", name=~\"microservices-.*\"}` increases | **Upper bound** \u2014 auto-sync also fires on drift *self-heal*, not only image bumps. Cross-check against the gitops-config repo's tag-bump commits when precision matters |\n| **Lead time for changes** | Commit \u2192 running in production | The **active engine's** run duration: Jenkins `ci_pipeline_run_duration_seconds` / Tekton `\u2026pipelinerun_duration_seconds` (p50/p95), Argo WF mean template runtime \u2014 their pipelines *include* the GitOps push **and** `argocd app wait`, so run duration \u2248 merge\u2192running | **GitHub Actions gap**: ARC runs execute in GitHub's plane, no in-cluster duration series \u2014 use the repo's Actions insights for that engine |\n| **Change failure rate** | % of deploys causing a failure in production | Failed syncs \u00f7 all syncs (headline) + the per-engine CI failure ratio (panel) | Not incident-correlated (no incident system in this PoC): a sync that *applied* but degraded the app shows in **restore time**, not here |\n| **Time to restore** | How long to recover from a production failure | Minutes (in range) where any `microservices-*` app reports `health_status != \"Healthy\"` (`argocd_app_info`) | Health-model MTTR, not paging MTTR: `Progressing` during a normal rollout also counts \u2014 read it together with the health timeline |\n\n### DORA performance bands (stat thresholds follow these)\n| Band | Deploy frequency | Lead time | CFR | Time to restore |\n|---|---|---|---|---|\n| **Elite** | on demand (multiple/day) | < 1 day | 0\u201315% | < 1 hour |\n| **High** | day\u2013week | 1 day\u20131 week | 16\u201330% | < 1 day |\n| **Medium/Low** | slower | slower | higher | longer |\n\n### How to read the results\n- \ud83d\udfe2 **Newcomer** \u2014 the four stat tiles are the scorecard: **green = elite/high** band for that metric over the selected range. All green on a demo cluster mostly proves the *pipeline* is healthy; the numbers get meaningful as the range grows.\n- \ud83d\udfe1 **Operator** \u2014 trends beat snapshots: rising *deploys/day* with flat *CFR* is healthy scaling; a *lead-time p95* drifting away from p50 means a slow/flaky tail (find the culprit run in the active engine's CI board); `Failed`/`Error` bars in *sync outcomes* that cluster in time usually mean one bad change retried, not many bad changes.\n- \ud83d\udd35 **Specialist** \u2014 investigation recipes: **CFR spike** \u2192 *Sync outcomes by phase* for the day, then the app's History in the ArgoCD UI (`argocd.<domain>`) for the failing revision; **lead-time regression** \u2192 the active engine's overview board (`CI-CD / Jenkins Controller` \u00b7 `Tekton CI` \u00b7 `GitHub Actions CI` \u00b7 `Argo Workflows CI`) for the stage-level split, and `CI-CD / JVM Internals` if the build JVMs are the suspect; **restore episode** \u2192 *App health over time* for the window, then `CI-CD / Microservices Overview` (RED) + `CI-CD / PostgreSQL` for the blast radius \u2014 remember `Progressing` \u2260 outage; **self-heal inflation check** \u2192 compare *deploys/day* against actual image-tag commits in the gitops-config repo; a large gap = drift self-heals, worth investigating *why* there is drift.\n\n> **Empty panels are not faults**: no syncs/runs in the selected range (fresh cluster, idle day, or the engine's gap documented above) \u2014 widen the range or trigger a pipeline. This board ships in **all four** `observability.mode` backends and is surfaced automatically on the **Backstage** platform component's Monitoring tab (oss / grafana-cloud)."
       }
     },
     {
@@ -91,7 +91,7 @@
         "h": 5,
         "w": 6,
         "x": 0,
-        "y": 5
+        "y": 23
       },
       "targets": [
         {
@@ -142,7 +142,7 @@
         "h": 5,
         "w": 6,
         "x": 6,
-        "y": 5
+        "y": 23
       },
       "targets": [
         {
@@ -226,7 +226,7 @@
         "h": 5,
         "w": 6,
         "x": 12,
-        "y": 5
+        "y": 23
       },
       "targets": [
         {
@@ -292,7 +292,7 @@
         "h": 5,
         "w": 6,
         "x": 18,
-        "y": 5
+        "y": 23
       },
       "targets": [
         {
@@ -355,7 +355,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 10
+        "y": 28
       },
       "targets": [
         {
@@ -408,7 +408,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 10
+        "y": 28
       },
       "targets": [
         {
@@ -466,7 +466,7 @@
         "h": 9,
         "w": 12,
         "x": 0,
-        "y": 18
+        "y": 36
       },
       "targets": [
         {
@@ -554,7 +554,7 @@
         "h": 9,
         "w": 12,
         "x": 12,
-        "y": 18
+        "y": 36
       },
       "targets": [
         {
@@ -658,7 +658,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 27
+        "y": 45
       },
       "targets": [
         {
@@ -722,7 +722,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 27
+        "y": 45
       },
       "targets": [
         {
@@ -825,7 +825,7 @@
         "h": 6,
         "w": 24,
         "x": 0,
-        "y": 35
+        "y": 53
       },
       "targets": [
         {
