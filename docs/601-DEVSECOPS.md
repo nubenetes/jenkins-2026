@@ -54,7 +54,7 @@ Semgrep and CodeQL write **SARIF** files that land in **GitHub Code Scanning** (
 
 - **Pipeline placement**: Semgrep, CodeQL and Trivy-IaC run on the checked-out source *before* the image build; Trivy-image runs on the freshly built image before the GitOps tag bump. Each runs in its own pipeline container.
 - **Non-blocking by design**: Trivy runs with `--exit-code 0` (filtered to `CRITICAL,HIGH`) and the SAST steps tolerate findings (`|| true`), so the deploy is never halted — findings are *reported*, not *gated*. To gate the image scan, flip its `--exit-code` to `1`.
-- **SARIF upload**: only Semgrep + CodeQL emit SARIF. Under Jenkins, Tekton and Argo Workflows the pipeline gzip+base64-encodes each `*.sarif` and POSTs it to the GitHub code-scanning API (`/code-scanning/sarifs`) against the infra repo; under GitHub Actions / ARC the fork's workflow uses the native `github/codeql-action/upload-sarif` / `codeql-action/analyze` upload instead (same Code Scanning destination, but in the fork repo). Trivy is `format: table` (console only — no SARIF upload).
+- **SARIF upload**: only Semgrep + CodeQL emit SARIF, always scanning the checked-out **app source** (`microservices-src/`). Under Jenkins, Tekton and Argo Workflows the pipeline gzip+base64-encodes each `*.sarif` and POSTs it to the GitHub code-scanning API (`/code-scanning/sarifs`) **against the scanned app's own repo** (`cfg.gitRepoUrl`/`git-repo-url` — the same repo `services.yaml` points the checkout at, e.g. `jhipster-sample-app-gateway`); under GitHub Actions / ARC the fork's workflow uses the native `github/codeql-action/upload-sarif` / `codeql-action/analyze` upload instead, which lands in the same place because it runs natively inside that fork. All four engines now agree on the destination (fixed 2026-07-13 — the three non-GHA engines previously uploaded every app-source finding against the **infra** repo instead, misattributing it and leaving each service's own Code Scanning tab empty whenever GHA wasn't the active engine; the commit SHA/ref in the payload were fixed alongside it, for the same reason). Trivy is `format: table` (console only — no SARIF upload).
 - **In-Jenkins view**: the `post { always { recordIssues(...) } }` block parses both SARIFs with the `warnings-ng` plugin → "Semgrep Warnings" / "CodeQL Warnings" trends.
 - **Cross-engine parity**: the same four scans run under every engine selected by `ci.engine`:
   - **Jenkins** (default) — stages in [`vars/MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy);
@@ -143,7 +143,7 @@ graph TD
 - **Responsibility**: **Fast commit-stage check** for security anti-patterns (disabled CSRF, insecure HTTP, hardcoded secrets) and ruleset compliance.
 - **What the Report is About**: Fast static analysis on the source code looking for syntactic patterns that match known security anti-patterns.
 - **Where to View the Report**:
-  - **GitHub Code Scanning UI (Interactive)**: Automatically uploaded to the [GitHub Code Scanning Alerts (Semgrep)](https://github.com/nubenetes/jenkins-2026/security/code-scanning). Maps findings directly to code lines.
+  - **GitHub Code Scanning UI (Interactive)**: Automatically uploaded to the scanned service's own repo — e.g. [`jhipster-sample-app-gateway`](https://github.com/nubenetes/jhipster-sample-app-gateway/security/code-scanning) — not this infra repo (see § SARIF upload above). Maps findings directly to code lines.
   - **Jenkins Build Artifacts (Raw)**: Saved as `semgrep-results.sarif` in the build run's local artifact archive.
 
 ### 2. CodeQL (Deep SAST / Semantic Analysis)
@@ -151,7 +151,7 @@ graph TD
 - **Responsibility**: **Semantic code analysis** to detect complex multi-file **data-flow vulnerabilities** (SQL Injection, XSS, SSRF).
 - **What the Report is About**: CodeQL compiles and builds a database of the source code structure, allowing semantic queries to trace variables and untrusted user input (sources) all the way to dangerous execution sinks (such as raw database queries, file writes, or command executions).
 - **Where to View the Report**:
-  - **GitHub Code Scanning UI (Interactive)**: Automatically uploaded to the [GitHub Code Scanning Alerts (CodeQL)](https://github.com/nubenetes/jenkins-2026/security/code-scanning). The dashboard lets you interactively trace the data flow path of the vulnerability.
+  - **GitHub Code Scanning UI (Interactive)**: Automatically uploaded to the scanned service's own repo — e.g. [`jhipster-sample-app-gateway`](https://github.com/nubenetes/jhipster-sample-app-gateway/security/code-scanning) — not this infra repo (see § SARIF upload above). The dashboard lets you interactively trace the data flow path of the vulnerability.
   - **Jenkins Build Artifacts (Raw)**: Saved as `codeql-results.sarif` in the build run's local artifact archive.
 
 ### 3. Trivy (Vulnerability and Misconfiguration Scanning)

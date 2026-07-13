@@ -65,16 +65,17 @@ spec:
       workspaces:
         - { name: source, workspace: source }
       params:
-        - { name: self-repo-url, value: $(params.self-repo-url) }
-        - { name: self-repo-branch, value: $(params.self-repo-branch) }
+        # The app's own repo, not the infra self-repo (docs/601, found 2026-07-13).
+        - { name: git-repo-url, value: $(params.git-repo-url) }
+        - { name: git-branch, value: $(params.git-branch) }
     - name: codeql-analyze
       runAfter: [semgrep-scan]
       taskRef: { name: codeql-analyze }
       workspaces:
         - { name: source, workspace: source }
       params:
-        - { name: self-repo-url, value: $(params.self-repo-url) }
-        - { name: self-repo-branch, value: $(params.self-repo-branch) }
+        - { name: git-repo-url, value: $(params.git-repo-url) }
+        - { name: git-branch, value: $(params.git-branch) }
     - name: trivy-iac
       runAfter: [codeql-analyze]
       taskRef: { name: trivy-iac }

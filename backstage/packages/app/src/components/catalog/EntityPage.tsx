@@ -66,12 +66,14 @@ import {
 } from '@backstage/catalog-model';
 import { CicdContent } from '../cicd/CicdContent';
 import { ObservabilityContent } from '../observability/ObservabilityContent';
+import { SecurityContent } from '../security/SecurityContent';
 import {
   EntityGrafanaDashboardsCard,
   EntityGrafanaAlertsCard,
   isDashboardSelectorAvailable,
   isAlertSelectorAvailable,
 } from '@backstage-community/plugin-grafana';
+import { isSecurityInsightsAvailable } from '@roadiehq/backstage-plugin-security-insights';
 import { EntityJenkinsContent } from '@backstage-community/plugin-jenkins';
 import { EntityGithubActionsContent } from '@backstage-community/plugin-github-actions';
 import { TektonCI } from '@backstage-community/plugin-tekton';
@@ -198,6 +200,17 @@ const serviceEntityPage = (
       {monitoringContent}
     </EntityLayout.Route>
 
+    {/* GitHub Code Scanning (Semgrep + CodeQL) + Dependabot alerts - reuses
+        the github.com/project-slug annotation the CI/CD tab's GitHub Actions
+        case already depends on (docs/601 § SARIF upload). */}
+    <EntityLayout.Route
+      path="/security"
+      title="Security"
+      if={isSecurityInsightsAvailable}
+    >
+      <SecurityContent />
+    </EntityLayout.Route>
+
     <EntityLayout.Route path="/api" title="API">
       <Grid container spacing={3} alignItems="stretch">
         <Grid item md={6}>
@@ -244,6 +257,13 @@ const websiteEntityPage = (
     >
       {monitoringContent}
     </EntityLayout.Route>
+    <EntityLayout.Route
+      path="/security"
+      title="Security"
+      if={isSecurityInsightsAvailable}
+    >
+      <SecurityContent />
+    </EntityLayout.Route>
     <EntityLayout.Route path="/docs" title="Docs">
       {techdocsContent}
     </EntityLayout.Route>
@@ -263,6 +283,13 @@ const defaultEntityPage = (
       if={hasGrafanaAnnotations}
     >
       {monitoringContent}
+    </EntityLayout.Route>
+    <EntityLayout.Route
+      path="/security"
+      title="Security"
+      if={isSecurityInsightsAvailable}
+    >
+      <SecurityContent />
     </EntityLayout.Route>
     <EntityLayout.Route path="/docs" title="Docs">
       {techdocsContent}

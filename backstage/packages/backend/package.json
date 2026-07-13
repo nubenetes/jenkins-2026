@@ -14,6 +14,8 @@
     "clean": "backstage-cli package clean"
   },
   "dependencies": {
+    "@backstage-community/plugin-argocd-backend": "1.5.0",
+    "@backstage-community/plugin-jenkins-backend": "0.29.0",
     "@backstage/backend-defaults": "0.17.4",
     "@backstage/plugin-app-backend": "0.5.15",
     "@backstage/plugin-auth-backend": "0.29.1",
@@ -31,8 +33,6 @@
     "@backstage/plugin-search-backend-module-pg": "0.5.56",
     "@backstage/plugin-search-backend-module-techdocs": "0.4.15",
     "@backstage/plugin-techdocs-backend": "2.2.1",
-    "@backstage-community/plugin-argocd-backend": "1.5.0",
-    "@backstage-community/plugin-jenkins-backend": "0.29.0",
     "app": "link:../app",
     "pg": "^8.16.0"
   },

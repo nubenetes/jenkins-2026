@@ -1,10 +1,22 @@
 /**
  * microservicesSarifUpload(sarifFile: '<tool>-results.sarif', toolName: 'Semgrep',
- *                          blurb: ['what-is line 1', ...], uiDetail: 'code mappings')
+ *                          blurb: ['what-is line 1', ...], uiDetail: 'code mappings',
+ *                          repoUrl: cfg.gitRepoUrl, repoBranch: cfg.gitBranch)
  *
  * Shared SARIF -> GitHub Code Scanning upload used by the Semgrep and CodeQL
  * scan steps — one implementation instead of the two former copy-pasted 45-line
  * sh blobs in vars/MicroservicesPipeline.groovy.
+ *
+ * repoUrl/repoBranch MUST be the scanned APP's own repo (cfg.gitRepoUrl/
+ * cfg.gitBranch), never the infra self-repo: both scanners run against
+ * microservices-src/ (the app source), so uploading against jenkins-2026 would
+ * silently misattribute every finding to the wrong repo's code-scanning tab -
+ * dead for gateway/jhipstersamplemicroservice's own Backstage Security tab
+ * under any engine but githubactions (whose native codeql-action targets the
+ * repo it runs in correctly; this was the one inconsistent engine, found
+ * 2026-07-13). COMMIT_SHA comes from a plain (uncrossed) `git rev-parse HEAD`
+ * inside the already-`dir('microservices-src')`-scoped sh block below - the
+ * app's own commit, matching repoUrl/repoBranch, not the infra checkout's.
  *
  * Runs in container('helm') — alpine/k8s has curl, git, gzip, and base64
  * pre-installed so no package install is needed; container('git') (alpine/git +
@@ -30,9 +42,9 @@ def call(Map cfg) {
             if [ -f ${cfg.sarifFile} ]; then
                 echo "Preparing ${cfg.toolName} SARIF report payload..."
                 gzip -c ${cfg.sarifFile} | base64 -w0 > ${prefix}-sarif.b64
-                COMMIT_SHA=\$(git -C ${env.WORKSPACE}/jenkins-2026-infra rev-parse HEAD | tr -d '\\n')
-                REF="refs/heads/${env.JENKINS2026_REPO_BRANCH ?: 'develop'}"
-                REPO_PATH=\$(echo "${env.JENKINS2026_REPO_URL ?: 'https://github.com/nubenetes/jenkins-2026.git'}" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\\.git\$||')
+                COMMIT_SHA=\$(git rev-parse HEAD | tr -d '\\n')
+                REF="refs/heads/${cfg.repoBranch}"
+                REPO_PATH=\$(echo "${cfg.repoUrl}" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\\.git\$||')
 
                 echo -n '{"commit_sha":"' > ${prefix}-payload.json
                 echo -n "\$COMMIT_SHA" >> ${prefix}-payload.json

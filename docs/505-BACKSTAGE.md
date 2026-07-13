@@ -360,6 +360,7 @@ Version pins (all **verified 2026-07-11**; policy in [602](./602-VERSION_PINNING
 | `@backstage-community/plugin-github-actions` | 1.2.0 (frontend-only) | `packages/app` |
 | `@backstage-community/plugin-tekton` | 3.39.0 | `packages/app` |
 | `@backstage-community/plugin-grafana` | 0.21.0 (frontend-only; verified 2026-07-13) | `packages/app` |
+| `@roadiehq/backstage-plugin-security-insights` | 3.3.1 (frontend-only; verified 2026-07-13) | `packages/app` |
 | `@backstage-community/plugin-argocd` / `-backend` | 2.9.0 / 1.5.0 | `packages/app` / `packages/backend` |
 | `@backstage/plugin-kubernetes` / `-backend` | 0.12.20 / 0.21.5 | `packages/app` / `packages/backend` |
 | `@backstage/plugin-auth-backend-module-gcp-iap-provider` | 0.4.16 | `packages/backend` |
@@ -416,7 +417,7 @@ engine's tab reads its own):
 | Annotation | Example (gateway) | Read by |
 |---|---|---|
 | `jenkins.io/job-full-name` | the seed-generated job name (`gateway`) | Jenkins plugin |
-| `github.com/project-slug` | `nubenetes/jhipster-sample-app-gateway` | GitHub Actions plugin |
+| `github.com/project-slug` | `nubenetes/jhipster-sample-app-gateway` | GitHub Actions plugin **and** the Security Insights plugin (the [Security tab](#security-tab-github-code-scanning--dependabot)) |
 | `tekton.dev/cicd` | `"true"` | Tekton plugin |
 | `backstage.io/kubernetes-label-selector` **only — deliberately NO `…kubernetes-namespace`** | `app.kubernetes.io/name=gateway`, matched **cluster-wide** | Kubernetes backend (also feeds the Tekton/Argo CR queries — one shared namespace would starve the `tekton-ci`/`argo-ci` lookups; every run-creation manifest carries the same label. See troubleshooting) |
 | `argocd/app-name` | `microservices-stable` | ArgoCD plugin |
@@ -675,6 +676,63 @@ an explicit decision (2026-07-13), not an omission:
    support for AAD/SigV4 auth (or an official AMG token-proxy), or the PoC
    promoting a managed mode to its primary posture — either flips the
    decision.
+
+## Security tab (GitHub Code Scanning + Dependabot)
+
+The EntityPage carries a **Security** tab
+([`SecurityContent.tsx`](../backstage/packages/app/src/components/security/SecurityContent.tsx))
+built on
+[`@roadiehq/backstage-plugin-security-insights`](https://github.com/RoadieHQ/roadie-backstage-plugins/tree/main/plugins/frontend/backstage-plugin-security-insights)
+(3.3.1, verified 2026-07-13): a **Code Scanning** card (Semgrep + CodeQL
+findings, whichever tool produced them — the plugin is scanner-agnostic, it
+just reads GitHub's `code-scanning/alerts`) and a **Dependabot alerts** card,
+side by side. It reuses the **same `github.com/project-slug` annotation** the
+CI/CD tab's GitHub Actions case already depends on
+([CI-engine integration](#ci-engine-integration-the-four-tabs)) — every
+Component in this catalog already carries it, so the tab needed **zero
+catalog changes**. Both plugin components are frontend-only and register no
+API factory of their own: they authenticate via the core `scmAuthApiRef`
+(`@backstage/integration-react`), the **same per-user GitHub OAuth session**
+the GitHub Actions tab uses — so there is no static-tree children trick to
+apply here (unlike the Grafana plugin — see the
+[static-tree discovery contract](#monitoring-tab-grafana-per-observability-mode)
+note in the Monitoring tab section above), and no new credential/Secret.
+
+**Prerequisite this tab surfaced (found live 2026-07-13, fixed alongside it)
+— a cross-engine SARIF-routing bug.** Semgrep/CodeQL always scan the checked-
+out **app source**, but only the **GitHub Actions** engine's native
+`codeql-action/upload-sarif` uploaded findings against the scanned app's own
+repo; Jenkins, Tekton and Argo Workflows all hardcoded the upload against the
+**infra** repo (`nubenetes/jenkins-2026`) instead — copy-pasted from the
+adjacent "checkout the infra self-repo" step. Under any engine but
+`githubactions`, this tab's Code Scanning card would have been permanently
+empty for `gateway`/`jhipstersamplemicroservice` (their real findings were
+landing on the infra repo's Code Scanning tab, misattributed) — one repo
+receiving three services' worth of app-source findings while the two service
+repos' own tabs stayed empty. Fixed in the same change: `microservicesSarifUpload`
+(Jenkins) and the Tekton/Argo Workflows scan tasks now take the app's own
+`repoUrl`/`repoBranch` (`cfg.gitRepoUrl`/`cfg.gitBranch` — the exact value the
+checkout stage already uses) instead of the infra self-repo, and the payload's
+`commit_sha` now comes from the app source checkout too (it was reading the
+infra checkout's HEAD). See [601 § Understanding the security pipeline](./601-DEVSECOPS.md#understanding-the-security-pipeline-newcomers--specialists)
+(the "For specialists" fold-out) for the full before/after.
+
+**A repo-visibility prerequisite, verified, not assumed**: GitHub Advanced
+Security (which Code Scanning alerts require on **private** repos) is **free
+on public repos** — checked live against the GitHub API before adopting this
+plugin: `nubenetes/jenkins-2026`, `jenkins-2026-gitops-config`,
+`jhipster-sample-app-gateway` and `jhipster-sample-app-microservice` are all
+public, so no license/cost gate applies here. A fork of this repo under a
+private org would need GHAS enabled for the Code Scanning card to show data
+(the Dependabot card is unaffected either way).
+
+**Dependabot alerts need one more manual toggle**: GitHub's *Dependabot
+alerts* repository setting (Settings → Code security) is currently **disabled**
+on these repos — a per-repo toggle outside this platform's Terraform/scripts
+scope (there is no public API to flip it, only the UI or a fine-grained PAT
+with `administration: write`). Until enabled, the Dependabot card renders a
+clean inline error (the plugin's own `useAsync` error state) rather than
+crashing the tab — an honest "not configured", not a bug.
 
 ## TechDocs
 
