@@ -12,17 +12,22 @@ for whichever of the four CI engines is
 active**, an **ArgoCD deployment view**, a **Kubernetes workloads view**, a
 **Grafana Monitoring tab** switched on `observability.mode` (live
 dashboards/alerts cards for `oss`/`grafana-cloud` — see
-[§ Monitoring tab](#monitoring-tab-grafana-per-observability-mode)),
-**TechDocs** rendering this repo's `docs/` in-portal, and Postgres-backed
-**search** across all of it. On a platform whose whole point is four
-interchangeable CI engines ([401](./401-JENKINS.md) · [404](./404-TEKTON.md) ·
-[405](./405-GITHUB_ACTIONS.md) · [406](./406-ARGO_WORKFLOWS.md)), the question
+[§ Monitoring tab](#monitoring-tab-grafana-per-observability-mode)), a
+**Security tab** surfacing GitHub Code Scanning + Dependabot findings per
+service (see [§ Security tab](#security-tab-github-code-scanning--dependabot)),
+a **Scorecard tab** with scheduled, threshold-scored entity KPIs (see
+[§ Scorecard tab](#scorecard-tab-entity-kpis)), a **Home** landing page (see
+[§ Home page](#home-page)), **TechDocs** rendering this repo's `docs/`
+in-portal, and Postgres-backed **search** across all of it. On a platform
+whose whole point is four interchangeable CI engines ([401](./401-JENKINS.md) ·
+[404](./404-TEKTON.md) · [405](./405-GITHUB_ACTIONS.md) ·
+[406](./406-ARGO_WORKFLOWS.md)), the question
 *"where do I look?"* has four answers — Backstage gives it **one**:
 `https://backstage.<baseDomain>` always shows the **active** engine's builds,
-the GitOps state, the running workloads, and the docs, per service, on a single
-page. It is deployed with the **official Helm chart**
-(`backstage/charts` **2.8.2**) but a **custom app image** (source under
-[`backstage/`](../backstage/) at the repo root) — Backstage plugins are
+the GitOps state, the running workloads, the security posture, the health KPIs,
+and the docs, per service, on a single page. It is deployed with the **official
+Helm chart** (`backstage/charts` **2.8.2**) but a **custom app image** (source
+under [`backstage/`](../backstage/) at the repo root) — Backstage plugins are
 **compile-time**, so one image ships all four engines' plugins and the active
 tab is selected at **runtime** (see [§ The app image](#the-app-image-compile-time-plugins-runtime-engine)).
 Gated by the standard feature-flag pattern (`backstage.enabled`, **default
@@ -215,6 +220,18 @@ route/policies — the same retire idiom as the other flag-gated features.
 > changing `backstage/` sources. Until an image exists, `08.95` **warns and
 > skips the rollout wait** — the pod sits in `ImagePullBackOff` but `Day1`
 > stays green, so an un-bootstrapped image never blocks the platform.
+>
+> **`force_backstage_rebuild` (umbrella input, off by default)** — the probe
+> above only asks "does *any* image exist for this branch", not "is it
+> current", so a normal rebuild can silently redeploy a stale cached image if
+> the build itself has quietly broken (a bad Dockerfile change, a dependency
+> that stopped resolving) since the last publish. Flip this input to make the
+> probe report "missing" unconditionally, forcing the exact same
+> fresh-from-source path a brand-new org/fork would take — validates
+> source → build → push → deploy end-to-end rather than trusting the cache.
+> No effect on the microservices images: those already rebuild on every
+> pipeline run regardless, this pattern only exists for Backstage's
+> one-time-per-branch bootstrap.
 
 ## What gets installed (GitOps via ArgoCD app-of-apps)
 
@@ -551,6 +568,17 @@ Two tabs render on the EntityPage **regardless of the CI engine**:
 
 ## Monitoring tab (Grafana, per observability mode)
 
+**Why it matters.** Without this tab, "is this service healthy right now?"
+means leaving the portal, remembering (or looking up) which Grafana dashboard
+covers which service, and manually filtering for the right one. On a
+platform where the observability *backend itself* is a pluggable flag
+(`observability.mode` — Grafana Cloud, in-cluster OSS, Azure or AWS Managed
+Grafana), that lookup is even less obvious than usual. The Monitoring tab
+collapses it to zero clicks beyond the entity page you're already on: open
+`gateway`, see `gateway`'s dashboards and firing alerts, full stop — the same
+one-pane-of-glass principle the whole portal exists for, now extended past
+"where do I see the build" into "where do I see if it's actually working."
+
 The EntityPage carries a **Monitoring** tab that surfaces the platform's
 Grafana **inside the portal** — the same runtime-switch pattern as the CI/CD
 tab, but keyed on **`jenkins2026.obsMode`** (= `observability.mode`,
@@ -715,6 +743,19 @@ an explicit decision (2026-07-13), not an omission:
 
 ## Security tab (GitHub Code Scanning + Dependabot)
 
+**Why it matters.** This platform already runs real DevSecOps scanning on
+every build — Semgrep + CodeQL SAST, plus Dependabot dependency checks
+([601](./601-DEVSECOPS.md)) — but "the pipeline scanned it" and "a human
+looked at what it found" are two different things, and the gap between them
+is exactly where security findings go stale. Before this tab, seeing a
+service's findings meant knowing to navigate to that specific GitHub repo's
+own Security tab, separately from the portal. Surfacing Code Scanning and
+Dependabot **on the same catalog page as the service itself** turns "scan
+results exist somewhere" into "scan results are right here, next to the
+build and the deployment" — the same instinct that put the SARIF-routing fix
+below in scope: findings are only valuable if the right person can actually
+find them, attributed to the right repo.
+
 The EntityPage carries a **Security** tab
 ([`SecurityContent.tsx`](../backstage/packages/app/src/components/security/SecurityContent.tsx))
 built on
@@ -771,6 +812,17 @@ clean inline error (the plugin's own `useAsync` error state) rather than
 crashing the tab — an honest "not configured", not a bug.
 
 ## Scorecard tab (entity KPIs)
+
+**Why it matters.** The Security tab above answers "what did the scanners
+find"; the Scorecard tab answers a different, complementary question: "is
+this service being actively maintained, by the numbers, without anyone
+having to ask?" `github.open_prs` today is one deliberately simple metric
+(is the review queue backing up?), but the point isn't the metric — it's the
+**framework**: a scheduled, threshold-scored KPI system already wired into
+this catalog's permissions and database, ready to grow into more signals
+(test coverage, deploy frequency, doc freshness) without touching the portal
+again. That's a materially different investment than a one-off dashboard
+widget: the next KPI is a new metric provider, not a new tab.
 
 The EntityPage carries a **Scorecard** tab
 ([Red Hat Developer Hub's Scorecard plugin](https://github.com/redhat-developer/rhdh-plugins/tree/main/workspaces/scorecard),
@@ -833,6 +885,16 @@ not omitted by oversight, each verified live before being ruled out:
   this pass — tracked in [Roadmap](#roadmap).
 
 ## Home page
+
+**Why it matters.** A portal whose front door is a redirect straight into a
+raw catalog list reads as unfinished — it's a small thing, but it's the very
+first pixel every visitor sees, before any of the tabs above get a chance to
+prove their value. Landing on an actual page, with the platform's name and a
+handful of the destinations people actually want (Catalog, the platform's
+own Monitoring/Security, Docs, Graph), is the difference between "this is an
+index of YAML files" and "this is a product with a home." It costs nothing
+technically — no new dependency, no new backend call — which is exactly why
+skipping it would have been a needless rough edge.
 
 The portal has a landing page at `/home`
 ([`HomePage.tsx`](../backstage/packages/app/src/components/home/HomePage.tsx)),
