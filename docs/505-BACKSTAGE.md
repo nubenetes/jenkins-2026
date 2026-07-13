@@ -215,6 +215,18 @@ route/policies — the same retire idiom as the other flag-gated features.
 > changing `backstage/` sources. Until an image exists, `08.95` **warns and
 > skips the rollout wait** — the pod sits in `ImagePullBackOff` but `Day1`
 > stays green, so an un-bootstrapped image never blocks the platform.
+>
+> **`force_backstage_rebuild` (umbrella input, off by default)** — the probe
+> above only asks "does *any* image exist for this branch", not "is it
+> current", so a normal rebuild can silently redeploy a stale cached image if
+> the build itself has quietly broken (a bad Dockerfile change, a dependency
+> that stopped resolving) since the last publish. Flip this input to make the
+> probe report "missing" unconditionally, forcing the exact same
+> fresh-from-source path a brand-new org/fork would take — validates
+> source → build → push → deploy end-to-end rather than trusting the cache.
+> No effect on the microservices images: those already rebuild on every
+> pipeline run regardless, this pattern only exists for Backstage's
+> one-time-per-branch bootstrap.
 
 ## What gets installed (GitOps via ArgoCD app-of-apps)
 

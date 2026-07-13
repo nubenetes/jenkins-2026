@@ -82,6 +82,11 @@ on:
         required: false
         default: true
         type: boolean
+      force_backstage_rebuild:
+        description: "Force a fresh Backstage image build even if ghcr.io/…-backstage:<branch> already exists (docs/505 § Umbrella auto-bootstrap). The probe below normally skips the ~15 min build whenever ANY image exists for this branch, regardless of whether it's current — this validates the full source→build→push path end-to-end instead of trusting a possibly-stale cached image. OFF by default (the fast path). No effect if backstage_enabled=false."
+        required: false
+        default: false
+        type: boolean
       llm_enabled:
         description: "Opt-in keyless Grafana LLM app (observability.llm.enabled — docs/301): grafana-llm-app plugin wired to Vertex AI via an in-cluster LiteLLM gateway + Workload Identity. oss mode ONLY (no-op on grafana-cloud/managed-*). OFF by default. Passed straight to Day1.cluster.01 (where enabling/disabling converges)."
         required: false
@@ -184,11 +189,20 @@ jobs:
       # IP), so probe it and auto-publish ONLY when missing - a first-ever
       # provision on a fresh org/branch is then truly one click, and every
       # rebuild where the image persisted skips the ~15 min build entirely.
+      # force_backstage_rebuild short-circuits this to "missing" regardless of
+      # ghcr state, forcing the same fresh source->build->push path a brand
+      # new org/branch would take - validates the build itself isn't silently
+      # broken behind a cached image nobody's rebuilt in a while.
       - name: Probe Backstage image (does ghcr.io/…-backstage:<branch> exist?)
         id: backstage_probe
         if: ${{ inputs.backstage_enabled }}
         run: |
           set -uo pipefail
+          if [[ "${{ inputs.force_backstage_rebuild }}" == "true" ]]; then
+            echo "backstage_image_missing=true" >> "${GITHUB_OUTPUT}"
+            echo "force_backstage_rebuild=true - treating the image as missing regardless of ghcr state."
+            exit 0
+          fi
           image="ghcr.io/${{ github.repository_owner }}/jenkins-2026-backstage:${GITHUB_REF_NAME}"
           # Login enables private-package reads; anonymous still works for
           # public packages if the registry creds aren't set.
