@@ -791,6 +791,37 @@ not omitted by oversight, each verified live before being ruled out:
   override could fix this, but that annotation format wasn't verified before
   this pass — tracked in [Roadmap](#roadmap).
 
+## Home page
+
+The portal has a landing page at `/home`
+([`HomePage.tsx`](../backstage/packages/app/src/components/home/HomePage.tsx)),
+replacing the previous `/` → `/catalog` redirect (`/` now redirects to
+`/home`). It carries a single **portfolio-wide** `ScorecardHomepageCard`
+(`aggregationId="github.open_prs"`) — an aggregated view of open PRs across
+**every** entity with a `github.com/project-slug` annotation, complementing
+the per-entity [Scorecard tab](#scorecard-tab-entity-kpis) (which only shows
+one entity at a time).
+
+**Zero new dependency, zero new config**: `ScorecardHomepageCard` ships in
+the same `@red-hat-developer-hub/backstage-plugin-scorecard` package the
+entity tab already uses. `aggregationId="github.open_prs"` needs no
+`scorecard.aggregationKPIs` app-config entry — per the backend's own fallback
+rule (docs above), `GET /aggregations/:aggregationId` works with the default
+`statusGrouped` aggregation when the id equals a metric id directly.
+
+This intentionally does **not** use `@backstage/plugin-home`'s
+`HomepageCompositionRoot` (the drag-and-drop customizable widget grid with
+its own `visitsApiRef`/storage wiring) — that's real additional machinery
+for a portal that, today, wants exactly one static card. `HomePage.tsx` is a
+plain `Page`/`Header`/`Content`/`Grid` composition, the same pattern as
+[`SecurityContent.tsx`](../backstage/packages/app/src/components/security/SecurityContent.tsx) /
+[`ObservabilityContent.tsx`](../backstage/packages/app/src/components/observability/ObservabilityContent.tsx).
+
+The sidebar's "Catalog" item previously used the scaffold's default
+`HomeIcon` (a leftover from the create-app template, which has no home page
+of its own) — it's now `ViewModuleIcon`, freeing `HomeIcon` for the new,
+actual **Home** item above it.
+
 ## TechDocs
 
 TechDocs renders **this repo's existing `docs/` tree** — the very documents
