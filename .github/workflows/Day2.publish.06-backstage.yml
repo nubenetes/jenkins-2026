@@ -67,12 +67,13 @@ jobs:
 
       - name: Install dependencies (yarn)
         working-directory: backstage
-        # No committed yarn.lock yet (exact top-level pins in package.json keep
-        # this near-reproducible; committing the CI-generated lockfile is the
-        # hardening roadmap - docs/505). The generated lockfile IS consumed by
-        # the Dockerfile below for the in-image production install.
+        # backstage/yarn.lock is committed - immutable installs fail the build
+        # if package.json and the lockfile drift apart (e.g. a version bumped
+        # in one but not the other), instead of silently re-resolving. The
+        # lockfile IS consumed by the Dockerfile below for the in-image
+        # production install.
         env:
-          YARN_ENABLE_IMMUTABLE_INSTALLS: "false"
+          YARN_ENABLE_IMMUTABLE_INSTALLS: "true"
         run: yarn install
 
       - name: Type check (yarn tsc)
