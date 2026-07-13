@@ -1,24 +1,43 @@
 name: "Day2.registry.01 Image retention (ghcr prune)"
 
-# Prunes old microservices container image versions from GitHub Container Registry.
-# Immutable per-build tags (<branch>-<build#>-<app-sha8> in Jenkins, <branch>-<pipelineRunName>
-# in Tekton — see vars/MicroservicesPipeline.groovy + tekton/pipelines) never get
-# overwritten, so the packages grow one tag per build. REBUILD-SAFETY (#488): this only
-# deletes UNTAGGED/dangling manifests (delete-only-untagged-versions below) — tagged
-# versions never expire, since a fresh Day1 redeploys the tag pinned in the persistent
-# gitops-config repo without rebuilding, and an age/count prune could delete a still-pinned
-# tag out from under it. Layer dedup means the real saving is the old dangling app layers.
+# Prunes old container image versions from GitHub Container Registry, two ways
+# for two different tagging models:
+#
+# 1. microservices (gateway/jhipstersamplemicroservice): immutable per-build tags
+#    (<branch>-<build#>-<app-sha8> in Jenkins, <branch>-<pipelineRunName> in Tekton
+#    — see vars/MicroservicesPipeline.groovy + tekton/pipelines) never get
+#    overwritten, so the packages grow one tag per build. REBUILD-SAFETY (#488):
+#    only UNTAGGED/dangling manifests are pruned — a fresh Day1 redeploys the EXACT
+#    tag pinned in the persistent gitops-config repo without rebuilding, so an
+#    age/count prune could delete a still-pinned tag out from under it. Tagged
+#    versions here never expire.
+#
+# 2. jenkins-2026-backstage: the OPPOSITE tagging model - `backstage.image.tag`
+#    defaults to auto-tracking the deploy BRANCH (docs/505 § Branch-tag
+#    auto-tracking), a MOVING tag, not a frozen sha pin. Every publish therefore
+#    leaves its old sha-<sha> tag behind fully tagged (never dangling — confirmed
+#    live 2026-07-13: 24 tagged, 0 untagged), so "prune only untagged" (as used for
+#    the microservices above) would find nothing to delete, ever - unbounded growth.
+#    Safe to prune here BY COUNT instead, since nothing pins an old sha by default;
+#    the one job below still protects (a) whatever main/develop currently resolve to
+#    and (b) any DURABLE backstage.image.tag pin committed in config.yaml on either
+#    branch (config.yaml's ephemeral JENKINS2026_BACKSTAGE_IMAGE_TAG override is, by
+#    definition, a one-off dispatch input with no durable record anywhere this job
+#    can read — an intentional, documented gap, not an oversight).
+#
 # Runs weekly + on demand. Pure GitHub Packages op — no cluster/GKE access.
 #
-# Note: ghcr storage is FREE for PUBLIC packages; this matters mainly if the packages
-# are private. Keeps a generous floor so an older-but-still-deployed tag is never cut.
+# Note: ghcr container storage is currently free (public AND private packages
+# alike, per GitHub's billing docs, verified 2026-07-13) - this workflow is about
+# registry hygiene/bounded growth, not cost, and that policy could change with
+# notice. Keeps a generous floor so an older-but-still-deployed tag is never cut.
 on:
   schedule:
     - cron: "17 4 * * 0" # Sundays 04:17 UTC
   workflow_dispatch:
     inputs:
       keep:
-        description: "How many most-recent versions to KEEP per service (the rest are deleted). Keep it well above your deploy cadence so a deployed tag is never pruned."
+        description: "How many most-recent versions to KEEP per service/image (the rest are deleted). Keep it well above your deploy cadence so a deployed tag is never pruned."
         required: false
         default: "30"
         type: string
@@ -62,4 +81,83 @@ jobs:
           delete-only-untagged-versions: true
           # Bounds how many untagged/dangling manifests (left by overwrites/retags) survive.
           min-versions-to-keep: ${{ inputs.keep || '30' }}
+          dry-run: ${{ inputs.dry_run || false }}
+
+  prune-backstage:
+    name: "Prune jenkins-2026-backstage (keep-by-count, protecting live tags)"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install yq
+        run: |
+          sudo curl -fsSL -o /usr/local/bin/yq \
+            https://github.com/mikefarah/yq/releases/download/v4.53.3/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Fetch main and develop refs
+        run: git fetch origin main develop
+
+      # actions/delete-package-versions' `ignore-versions` regex-matches a
+      # container version's `.name`, which for GHCR containers is the manifest
+      # DIGEST (sha256:...), NOT any of its tags (github.com/actions/
+      # delete-package-versions issue #88 - confirmed live 2026-07-13, not
+      # assumed). Protecting "develop"/"main" by tag-name regex would silently
+      # match nothing. Resolve each protected tag to its CURRENT digest here and
+      # build the ignore-versions regex from digests instead.
+      - name: Resolve protected tags to digests
+        id: protect
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          # Deploy branches always auto-track (docs/505 § Branch-tag
+          # auto-tracking) - always protect whatever they currently resolve to.
+          protect_tags="main develop"
+
+          # Plus any DURABLE pin committed in config.yaml on either branch (the
+          # ephemeral JENKINS2026_BACKSTAGE_IMAGE_TAG override has no durable
+          # record to read - documented gap in the workflow header comment).
+          for ref in origin/main origin/develop; do
+            pin="$(git show "${ref}:config/config.yaml" 2>/dev/null \
+              | yq -r '.backstage.image.tag // ""' 2>/dev/null || true)"
+            if [[ -n "${pin}" ]]; then
+              echo "Durable pin found on ${ref}: backstage.image.tag=${pin}"
+              protect_tags="${protect_tags} ${pin}"
+            fi
+          done
+
+          digests=""
+          for tag in ${protect_tags}; do
+            digest="$(gh api "orgs/nubenetes/packages/container/jenkins-2026-backstage/versions?per_page=100" \
+              --jq ".[] | select(.metadata.container.tags[]? == \"${tag}\") | .name" 2>/dev/null \
+              | head -n1 || true)"
+            if [[ -n "${digest}" ]]; then
+              echo "Protecting tag '${tag}' -> ${digest}"
+              digests="${digests} ${digest}"
+            else
+              echo "Tag '${tag}' not found in the registry - nothing to protect for it yet."
+            fi
+          done
+
+          digests="$(echo "${digests}" | xargs -n1 | sort -u | xargs)"
+          if [[ -z "${digests}" ]]; then
+            echo "::error::Resolved ZERO protected digests (expected at least 'develop') - refusing to prune to avoid deleting something still in use."
+            exit 1
+          fi
+
+          regex="^($(echo "${digests}" | tr ' ' '|'))$"
+          echo "Final ignore-versions regex: ${regex}"
+          echo "ignore_regex=${regex}" >> "${GITHUB_OUTPUT}"
+
+      - name: Prune old backstage versions
+        uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
+        with:
+          owner: nubenetes
+          package-name: jenkins-2026-backstage
+          package-type: container
+          min-versions-to-keep: ${{ inputs.keep || '30' }}
+          ignore-versions: ${{ steps.protect.outputs.ignore_regex }}
           dry-run: ${{ inputs.dry_run || false }}

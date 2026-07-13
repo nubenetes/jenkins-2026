@@ -168,7 +168,7 @@ See [103. GitHub Secrets Inventory](./103-GITHUB_SECRETS_INVENTORY.md) for the c
 
 If using the default `observability.mode: grafana-cloud`:
 1. Log into your [Grafana Cloud Portal](https://grafana.com/) and copy your OTLP endpoint and Access Policy token.
-2. Manually install the **`grafana-jenkins-datasource`** plugin inside your Grafana Cloud stack.
+2. Manually install the **`grafana-jenkins-datasource`** plugin inside your Grafana Cloud stack (Enterprise plugin, free on Cloud; **public preview** — best-effort, see [301 § Jenkins Data Source](301-OBSERVABILITY.md#key-features)).
 3. Locally create `observability/otel-collector/secret.yaml` and apply it:
    ```bash
    cp observability/otel-collector/secret.example.yaml observability/otel-collector/secret.yaml

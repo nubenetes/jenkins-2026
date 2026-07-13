@@ -85,15 +85,16 @@ spec:
             dependencies: [fetch-source]
             arguments:
               parameters:
-                - { name: self-repo-url, value: "{{workflow.parameters.self-repo-url}}" }
-                - { name: self-repo-branch, value: "{{workflow.parameters.self-repo-branch}}" }
+                # The app's own repo, not the infra self-repo (docs/601, found 2026-07-13).
+                - { name: git-repo-url, value: "{{workflow.parameters.git-repo-url}}" }
+                - { name: git-branch, value: "{{workflow.parameters.git-branch}}" }
           - name: codeql
             template: codeql-analyze
             dependencies: [semgrep]
             arguments:
               parameters:
-                - { name: self-repo-url, value: "{{workflow.parameters.self-repo-url}}" }
-                - { name: self-repo-branch, value: "{{workflow.parameters.self-repo-branch}}" }
+                - { name: git-repo-url, value: "{{workflow.parameters.git-repo-url}}" }
+                - { name: git-branch, value: "{{workflow.parameters.git-branch}}" }
           - name: trivy-iac
             template: trivy-iac
             dependencies: [codeql]
@@ -225,11 +226,13 @@ spec:
     # Stage "Semgrep SAST": runs Semgrep over the app source and uploads the SARIF
     # report to GitHub Code Scanning (best-effort, non-fatal). Two steps -> two
     # containers chained via a steps: sub-template (scan -> upload-sarif).
+    # git-repo-url/git-branch MUST be the scanned APP's own repo, not the infra
+    # self-repo (mirrors Jenkins/Tekton's parallel fix, found 2026-07-13).
     - name: semgrep-scan
       inputs:
         parameters:
-          - name: self-repo-url
-          - name: self-repo-branch
+          - name: git-repo-url
+          - name: git-branch
       steps:
         - - name: scan
             template: semgrep-scan-run
@@ -237,8 +240,8 @@ spec:
             template: semgrep-upload-sarif
             arguments:
               parameters:
-                - { name: self-repo-url, value: "{{inputs.parameters.self-repo-url}}" }
-                - { name: self-repo-branch, value: "{{inputs.parameters.self-repo-branch}}" }
+                - { name: git-repo-url, value: "{{inputs.parameters.git-repo-url}}" }
+                - { name: git-branch, value: "{{inputs.parameters.git-branch}}" }
     - name: semgrep-scan-run
       script:
         image: semgrep/semgrep:1.79.0
@@ -257,8 +260,8 @@ spec:
     - name: semgrep-upload-sarif
       inputs:
         parameters:
-          - name: self-repo-url
-          - name: self-repo-branch
+          - name: git-repo-url
+          - name: git-branch
       script:
         image: alpine/k8s:1.31.3
         volumeMounts:
@@ -279,9 +282,9 @@ spec:
           [ -f semgrep-results.sarif ] || { echo "No SARIF produced - skipping upload."; exit 0; }
           if [ -z "${GIT_TOKEN:-}" ]; then echo "GIT_TOKEN unset - skipping SARIF upload."; exit 0; fi
           git config --global --add safe.directory '*' || true
-          COMMIT_SHA=$(git -C "/workspace/jenkins-2026-infra" rev-parse HEAD | tr -d '\n')
-          REF="refs/heads/{{inputs.parameters.self-repo-branch}}"
-          REPO_PATH=$(echo "{{inputs.parameters.self-repo-url}}" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\.git$||')
+          COMMIT_SHA=$(git -C "/workspace/microservices-src" rev-parse HEAD | tr -d '\n')
+          REF="refs/heads/{{inputs.parameters.git-branch}}"
+          REPO_PATH=$(echo "{{inputs.parameters.git-repo-url}}" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\.git$||')
           # Pass the gzip+base64 SARIF to jq via --rawfile (a FILE), not --arg: a large
           # SARIF as a CLI argument overflows ARG_MAX ('jq: Argument list too long').
           gzip -c semgrep-results.sarif | base64 -w0 > semgrep-results.sarif.b64
@@ -303,11 +306,12 @@ spec:
     # Stage "CodeQL Analysis": builds a CodeQL database for the app source and
     # uploads the SARIF to GitHub Code Scanning (best-effort). Two steps -> two
     # containers chained via a steps: sub-template (analyze -> upload-sarif).
+    # git-repo-url/git-branch MUST be the scanned APP's own repo (found 2026-07-13).
     - name: codeql-analyze
       inputs:
         parameters:
-          - name: self-repo-url
-          - name: self-repo-branch
+          - name: git-repo-url
+          - name: git-branch
       steps:
         - - name: analyze
             template: codeql-analyze-run
@@ -315,8 +319,8 @@ spec:
             template: codeql-upload-sarif
             arguments:
               parameters:
-                - { name: self-repo-url, value: "{{inputs.parameters.self-repo-url}}" }
-                - { name: self-repo-branch, value: "{{inputs.parameters.self-repo-branch}}" }
+                - { name: git-repo-url, value: "{{inputs.parameters.git-repo-url}}" }
+                - { name: git-branch, value: "{{inputs.parameters.git-branch}}" }
     - name: codeql-analyze-run
       script:
         image: mcr.microsoft.com/cstsectools/codeql-container:c6f3f8cbd3e0ebc36d9ad6dfe6a4c166ba940166
@@ -350,8 +354,8 @@ spec:
     - name: codeql-upload-sarif
       inputs:
         parameters:
-          - name: self-repo-url
-          - name: self-repo-branch
+          - name: git-repo-url
+          - name: git-branch
       script:
         image: alpine/k8s:1.31.3
         volumeMounts:
@@ -371,9 +375,9 @@ spec:
           [ -f codeql-results.sarif ] || { echo "No SARIF produced - skipping upload."; exit 0; }
           if [ -z "${GIT_TOKEN:-}" ]; then echo "GIT_TOKEN unset - skipping SARIF upload."; exit 0; fi
           git config --global --add safe.directory '*' || true
-          COMMIT_SHA=$(git -C "/workspace/jenkins-2026-infra" rev-parse HEAD | tr -d '\n')
-          REF="refs/heads/{{inputs.parameters.self-repo-branch}}"
-          REPO_PATH=$(echo "{{inputs.parameters.self-repo-url}}" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\.git$||')
+          COMMIT_SHA=$(git -C "/workspace/microservices-src" rev-parse HEAD | tr -d '\n')
+          REF="refs/heads/{{inputs.parameters.git-branch}}"
+          REPO_PATH=$(echo "{{inputs.parameters.git-repo-url}}" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\.git$||')
           # --rawfile (a FILE), not --arg: a large SARIF as a CLI arg overflows ARG_MAX.
           gzip -c codeql-results.sarif | base64 -w0 > codeql-results.sarif.b64
           if ! jq -n --arg c "$COMMIT_SHA" --arg r "$REF" --rawfile s codeql-results.sarif.b64 \

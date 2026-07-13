@@ -56,4 +56,30 @@ backend.add(import('@backstage/plugin-kubernetes-backend'));
 backend.add(import('@backstage-community/plugin-jenkins-backend'));
 backend.add(import('@backstage-community/plugin-argocd-backend'));
 
+// scorecard: entity-level KPIs (docs/505 § Scorecard tab). github ONLY for
+// now - it rides the integrations.github token this app already configures
+// for catalog ingestion, plus the github.com/project-slug annotation every
+// entity already carries. Three other provider modules were evaluated and
+// deliberately DEFERRED, not omitted by oversight (docs/505):
+//  - openssf: verified LIVE against api.securityscorecards.dev before
+//    adopting it - all three repos 404 (that public dataset only covers a
+//    curated corpus of well-known OSS projects, not arbitrary forks like
+//    these). Wiring it would ship a permanently-broken metric, not a
+//    degrades-gracefully one; self-hosting scorecard results is a real
+//    infra project, not "add a plugin".
+//  - dependabot: needs the same per-repo "Dependabot alerts" GitHub setting
+//    the Security tab's Dependabot card already found disabled - no value
+//    wiring a second integration against data that isn't there yet.
+//  - filecheck: keys off backstage.io/source-location, which for
+//    gateway/jhipstersamplemicroservice currently resolves to THIS repo's
+//    catalog file (they have no per-app catalog-info.yaml of their own)
+//    rather than their GitHub forks - the same misattribution class the
+//    SARIF-routing fix just closed elsewhere, unverified here.
+backend.add(import('@red-hat-developer-hub/backstage-plugin-scorecard-backend'));
+backend.add(
+  import(
+    '@red-hat-developer-hub/backstage-plugin-scorecard-backend-module-github'
+  ),
+);
+
 backend.start();

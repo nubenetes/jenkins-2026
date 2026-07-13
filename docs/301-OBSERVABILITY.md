@@ -76,9 +76,19 @@ mindmap
 ## Key Features
 
 - **Dashboard provisioning over the Grafana HTTP API**: [`scripts/07-grafana-dashboards.sh`](../scripts/07-grafana-dashboards.sh) publishes `observability/grafana/dashboards/*.json` to Grafana Cloud with a plain, idempotent **`POST /api/dashboards/db`** import (`overwrite:true`, keyed by `uid`, into the *CI-CD Observability* folder) using the static `GRAFANA_API_KEY` — no `gcx` CLI dependency. (It previously used `gcx resources push`; gcx routes through Grafana's newer Kubernetes-style resource layer whose async create/delete + optimistic concurrency intermittently fail on Grafana Cloud with `409 AlreadyExists` / `409 "object has been modified"` and can desync the legacy vs k8s storage, so the reliable legacy import is used instead — the same path the managed-aws branch uses.) The AI-optimized v2-schema source exports are kept verbatim under [`observability/grafana/dashboards-cloud-export/`](../observability/grafana/dashboards-cloud-export/) for when gcx gains solid v2 support.
-- **Jenkins Data Source**: The [Jenkins Datasource](https://grafana.com/grafana/plugins/grafana-jenkins-datasource/) is automatically provisioned.
+- **Jenkins Data Source** (**grafana-cloud only, best-effort**): the
+  [Jenkins Datasource](https://grafana.com/grafana/plugins/grafana-jenkins-datasource/)
+  is Terraform-provisioned into the Cloud stack
+  ([`terraform/grafana-cloud-token`](../terraform/grafana-cloud-token/)),
+  reaching the in-cluster controller through the **PDC tunnel** (the URL flips
+  to the `:8082` plain listener when backend TLS is active). Know its limits
+  (verified 2026-07-13): the plugin is **Enterprise-gated** (free only via
+  Grafana Cloud — which is why the former oss provisioning was **removed**:
+  Grafana OSS cannot install it) and in **public preview** (1.1.0-preview,
+  limited support; its docs list **PDC as unsupported**, so treat it as
+  Explore-only until GA). No dashboard here queries it — the OTel-based CI
+  dashboards are the primary, engine-neutral path.
   - **One-time Manual Step**: You must manually install the **`grafana-jenkins-datasource`** plugin in your Grafana Cloud portal (**Administration > Plugins**) before the first deployment.
-  - **PDC Tunnel**: In Grafana Cloud mode, it uses **Private Data Source Connect (PDC)** to securely tunnel from the cloud to your in-cluster Jenkins instance.
 - **Model Context Protocol (MCP)**: This project supports Grafana Cloud's hosted **MCP server**. Connecting an AI agent (like Gemini) to your stack via MCP allows for real-time querying of Jenkins traces, metrics, and logs. In your Grafana Cloud portal, go to **Administration > Assistant > Cloud MCP** to find your connection endpoint.
 - **GKE Kubernetes Cluster Observability**: Automatic telemetry collection for GKE hosts, nodes, namespaces, and cluster events using the official `grafana/k8s-monitoring` Helm chart (pinned `4.2.0`).
   - **Zero Log Duplication**: Disables log collection inside the chart (`podLogsViaLoki.enabled=false`) to prevent dual ingestion charges.
@@ -484,6 +494,7 @@ The canonical JSON files live in [`observability/grafana/dashboards/`](../observ
 | `postgres-overview` | PostgreSQL / CloudNativePG: instances up, connections, DB size, replication lag, WAL rate, per-instance panels + Postgres pod logs (needs the CNPG `cnpg_*`/`pg_*` metrics scraped — see [Database (CNPG) observability](#database-cnpg-observability)) | always |
 | `rum-frontend` | Angular **Real User Monitoring** (Grafana Faro): Core Web Vitals (LCP/INP/CLS/TTFB/FCP), JS errors, sessions, browser breakdown, browser→backend traces | always |
 | `node-autoprovisioning` | **Node Auto-Provisioning (Spot)**: Spot vs static node counts over time — watch NAP scale up CI build nodes and consolidate back toward zero. Reads node **taints** via kube-state-metrics (`kube_node_info`/`kube_node_spec_taint`); the lean profile keeps that tiny node-inventory slice, so it works in **all** modes (see the leanMetrics note above) | always |
+| `dora-metrics` | **Engine-neutral DORA metrics** — deployment frequency, lead time, change failure rate, time-to-restore, computed from `argocd_app_*` + the active engine's run metrics (see [DORA metrics](#dora-metrics-dora-metrics--engine-neutral-argocd-anchored) below for the methodology and its honest proxies) | always |
 | `jenkins-overview` | Jenkins CI: active runs, queue, executors, pipeline results, build traces, pod logs | only `ci.engine=jenkins` |
 | `tekton-overview` | **Tekton CI Observability** (redesigned in Grafana Cloud): PipelineRun/TaskRun durations & results, running/queued runs, per-task failures, build traces, and pipeline pod logs filtered by a `log_namespace` variable | only `ci.engine=tekton` |
 | `github-actions-ci` | **GitHub Actions (ARC) CI Observability**: ephemeral runner-pod counts/phases, controller reconciles, runner failure/success rate, active pods vs Spot CI nodes, plus runner logs + traces (kube-state-metrics driven) | only `ci.engine=githubactions` |
@@ -502,6 +513,56 @@ The canonical JSON files live in [`observability/grafana/dashboards/`](../observ
 
 > In-tree editing guide: [`observability/grafana/dashboards/README.md`](../observability/grafana/dashboards/README.md) is the pointer README for the canonical dashboards directory — the add/change workflow, the OSS-chart vs cloud-publish split, and the hand-edit-clobber gotcha.
 
+#### DORA metrics (`dora-metrics`) — engine-neutral, ArgoCD-anchored
+
+The [`dora-metrics`](../observability/grafana/dashboards/dora-metrics.json)
+dashboard (uid `j26dora`, ships in **all four** observability modes) computes
+the four [DORA](https://dora.dev/) delivery metrics **without adding any
+CI-engine-specific integration** — a deliberate contrast with the
+Jenkins-datasource route that was evaluated and not pursued (Enterprise-gated,
+preview, one engine of four — see [Key Features § Jenkins Data
+Source](#key-features)). The anchor is **ArgoCD**: whatever engine built the
+image, ArgoCD is the component that *deploys* it, so its
+application-controller metrics are engine-neutral by construction.
+
+**The signal plumbing** (new, tiny, in every mode): a
+`argocd-application-controller` scrape job — kube-prometheus-stack
+`additionalScrapeConfigs` in [`values-oss.yaml`](../observability/grafana/values-oss.yaml)
+for oss, the collector's `prometheus` receiver in the three
+[`values-*.yaml`](../observability/otel-collector/) for grafana-cloud /
+managed-\* — pod-discovers the controller's plain-HTTP `:8082/metrics` (the
+argo-cd chart's metrics Services are not enabled; the port is always declared)
+and **keep-lists exactly three families**: `argocd_app_info`,
+`argocd_app_sync_total`, `argocd_app_health_status` — per-app cardinality
+only, negligible against the Grafana Cloud free-tier cap. The
+`argocd-baseline` NetworkPolicy allowlists `observability → :8082` for the
+scrape ([`infrastructure/networkpolicies.yaml`](../infrastructure/networkpolicies.yaml));
+the API/UI port stays locked down.
+
+**The four metrics and their honest proxies** (also in the dashboard's top
+panel — every proxy is labelled in-place):
+
+| DORA metric | Proxy used | Caveat, stated plainly |
+|---|---|---|
+| **Deployment frequency** | successful ArgoCD syncs of the `microservices-*` apps (`argocd_app_sync_total{phase="Succeeded"}`) | auto-sync also fires on drift **self-heal**, not only image bumps — an upper bound |
+| **Lead time for changes** | the **active engine's** CI run duration (Jenkins `ci_pipeline_run_duration_seconds` / Tekton `…pipelinerun_duration_seconds` p50-p95; Argo WF mean template runtime) — the Jenkins/Tekton pipelines *include* the GitOps push **and** `argocd app wait`, so run duration ≈ merge→running | **GitHub Actions gap**: runs execute in GitHub's plane, no in-cluster duration series exists (the panel says so) |
+| **Change failure rate** | failed ÷ all syncs, plus the per-engine CI failure ratio | not the classical "deploys causing incidents" — this PoC has no incident system to correlate against |
+| **Time to restore** | minutes with any `microservices-*` app **not `Healthy`** (from `argocd_app_info{health_status}`) | approximates MTTR from the platform's own health model, not from paging data |
+
+**Lifecycle caveat, worth internalizing**: DORA wants **weeks** of history,
+and this platform's clusters are **throwaway** ([104](104-REBUILD_SAFETY.md))
+— ArgoCD's counters reset on every rebuild (`increase()` copes with the
+reset itself), and pre-rebuild history survives only where the metrics
+backend outlives the cluster (**grafana-cloud / managed** — one more reason
+the SaaS-backend modes are the long-window home for this board; in oss the
+history dies with the Prometheus PVC). The dashboard defaults to a 7-day
+window and its stats carry the DORA performance-band thresholds
+(elite/high = green).
+
+The board carries the `jenkins-2026` + `dora` tags, so the **Backstage
+Monitoring tab** ([505](505-BACKSTAGE.md#monitoring-tab-grafana-per-observability-mode))
+surfaces it automatically on the platform component (oss/grafana-cloud modes).
+
 #### Dashboard inventory — what each one offers
 
 The master matrix below maps every dashboard to its purpose, signals, scope and the
@@ -518,6 +579,7 @@ questions it answers; the per-dashboard detail follows.
 | **tekton-overview** | Tekton CI engine (when active) | Prom · Tempo · Loki | the Tekton controller | — | PipelineRun durations/results? task failures? | [404](404-TEKTON.md) |
 | **github-actions-ci** | GitHub Actions / ARC engine (when active) | Prom · Tempo · Loki | the ARC runner pods + controller | — | Runner pod throughput/failures? active pods vs Spot CI nodes? | [405](405-GITHUB_ACTIONS.md) |
 | **argo-workflows-ci** | Argo Workflows engine (when active) | Prom · Tempo · Loki | the Argo Workflows controller | — | Workflow durations/results? template failures? | [406](406-ARGO_WORKFLOWS.md) |
+| **dora-metrics** | Delivery performance (DORA) — platform/eng-management view, **engine-neutral** | Prom | ArgoCD app metrics + the active engine's run metrics | — *(microservices apps hard-scoped by `name=~"microservices-.*"`)* | How often do we deploy? merge→running lead time? failed-change ratio? how long until health restores? | [§ DORA below](#dora-metrics-dora-metrics--engine-neutral-argocd-anchored) |
 
 > **Label-model gotcha.** Backend **app** metrics (HTTP, traces, logs) carry
 > `deployment_environment` (stable/develop). **JVM** metrics and **RUM** signals do
@@ -885,7 +947,7 @@ sequenceDiagram
 
 `observability.mode: oss` runs the **entire** stack in-cluster — useful for air-gapped demos or avoiding SaaS cost/quota.
 
-> **GitOps-managed.** The in-cluster stack (kube-prometheus-stack = Prometheus + Grafana, Loki, Tempo) is deployed by the **`observability-oss` ArgoCD app-of-apps** ([`argocd/observability-oss/`](../argocd/observability-oss)), not by raw `helm` — which is why [`scripts/up.sh`](../scripts/up.sh) installs ArgoCD (`08.5`) *before* observability (`03`). [`scripts/03-observability.sh`](../scripts/03-observability.sh) (oss) creates the namespace and the companion inputs the chart consumes — the `grafana-jenkins-ds` Secret (the Jenkins-datasource token) and, when the gateway is enabled, the `grafana-runtime-config` ConfigMap (`root_url`) — then applies the app-of-apps; the `jenkins-2026-grafana-dashboards` ConfigMap itself is GitOps-managed by the `oss-grafana-dashboards` child app (see [OSS dashboards](#oss-dashboards-gitops-managed-by-argocd)). The OTel collectors stay `helm`-managed (shared across all four modes). Dashboard/alert/value changes can be re-applied to a running cluster with the [`Day2.publish.01-oss-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.01-oss-grafana.yml) workflow (no reprovision). Switching to a non-oss mode deletes the app-of-apps (ArgoCD cascade-prunes the charts).
+> **GitOps-managed.** The in-cluster stack (kube-prometheus-stack = Prometheus + Grafana, Loki, Tempo) is deployed by the **`observability-oss` ArgoCD app-of-apps** ([`argocd/observability-oss/`](../argocd/observability-oss)), not by raw `helm` — which is why [`scripts/up.sh`](../scripts/up.sh) installs ArgoCD (`08.5`) *before* observability (`03`). [`scripts/03-observability.sh`](../scripts/03-observability.sh) (oss) creates the namespace and the companion input the chart consumes — when the gateway is enabled, the `grafana-runtime-config` ConfigMap (`root_url`) — then applies the app-of-apps; the `jenkins-2026-grafana-dashboards` ConfigMap itself is GitOps-managed by the `oss-grafana-dashboards` child app (see [OSS dashboards](#oss-dashboards-gitops-managed-by-argocd)). The OTel collectors stay `helm`-managed (shared across all four modes). Dashboard/alert/value changes can be re-applied to a running cluster with the [`Day2.publish.01-oss-grafana`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.publish.01-oss-grafana.yml) workflow (no reprovision). Switching to a non-oss mode deletes the app-of-apps (ArgoCD cascade-prunes the charts).
 
 > **Grafana version (OSS only).** The in-cluster Grafana image is pinned in [`values-oss.yaml`](../observability/grafana/values-oss.yaml) (`image.tag`, currently **`13.1.0`** — the latest GA, 2026-06-23 — overriding the kube-prometheus-stack subchart default). Bump that tag to upgrade; it is the **only** Grafana we version-pin. The three managed backends are **versioned by their providers** and cannot be set to an arbitrary OSS release: **Grafana Cloud** auto-updates (Grafana Labs), **Azure Managed Grafana** and **Amazon Managed Grafana** offer a provider-curated set of supported versions (typically behind OSS). When bumping across a Grafana **minor** (e.g. 13.0→13.1) skim the [What's new](https://grafana.com/docs/grafana/latest/whatsnew/) / upgrade notes; patch bumps are safe.
 
@@ -959,6 +1021,16 @@ Operational notes: the plugin settings are **file-provisioned** (Grafana persist
 > **Why oss only (decision, 2026-07-10).** The managed backends were fully implemented — Azure OpenAI account (key-auth disabled, custom subdomain, gpt-5.4 deployments) + `Cognitive Services OpenAI User` for the AMG managed identity, and an invoke-only Bedrock policy (Claude) on the Amazon Managed Grafana workspace role — and then **deliberately removed**: verification against the plugin source showed `grafana-llm-app` has **no managed-identity auth for Azure** and **no Bedrock provider at all**, with **no roadmap commitment** upstream (Bedrock request [grafana-llm-app#827](https://github.com/grafana/grafana-llm-app/issues/827) unanswered; no Azure MI issue exists; native Vertex is [#952](https://github.com/grafana/grafana-llm-app/issues/952)). The only workaround — a **public, Gateway-exposed LiteLLM endpoint** the SaaS Grafanas could reach — was rejected to avoid new internet-facing surface. Keeping dead "staged" cloud config whose model pins rot was worse than removing it: recover the implementation from git history if the plugin ever gains native keyless support (at which point Azure/AWS become a config-only re-add). If #952 lands, even the oss LiteLLM hop can be retired.
 
 No new GitHub secrets, no committed credentials: the only "key" in the chain is the literal dummy string `keyless-vertex-ai` the plugin requires as non-empty and LiteLLM ignores.
+
+> **Same decision family, one tab over.** The Backstage portal's **Monitoring
+> tab** ([505](./505-BACKSTAGE.md#monitoring-tab-grafana-per-observability-mode))
+> applies the identical credential-model test and lands on the identical
+> split: **live** Grafana dashboards/alerts cards for `oss`/`grafana-cloud`
+> (whose Grafanas issue the static service-account Bearer the Backstage
+> plugin can send) and a **deep-link card** for `managed-azure`/`managed-aws`
+> (Entra ID / SigV4 short-lived credentials — a static proxy header would be
+> a silently-expiring time-bomb). Full decision record:
+> [505 § Why the managed modes are deferred](./505-BACKSTAGE.md#why-the-managed-modes-are-deferred-decision-record).
 
 ## Grafana chat sidebar in oss — the options (Graft evaluated, Assistant adopted)
 

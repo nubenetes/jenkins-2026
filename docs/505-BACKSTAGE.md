@@ -9,7 +9,10 @@ This project ships **Backstage.io** (open source, CNCF) **v1.52.1** as its
 platform itself (with a relations **Graph** page rooted at the platform
 Domain — a bare visit shows the whole catalog unfolded), **CI/CD visibility
 for whichever of the four CI engines is
-active**, an **ArgoCD deployment view**, a **Kubernetes workloads view**,
+active**, an **ArgoCD deployment view**, a **Kubernetes workloads view**, a
+**Grafana Monitoring tab** switched on `observability.mode` (live
+dashboards/alerts cards for `oss`/`grafana-cloud` — see
+[§ Monitoring tab](#monitoring-tab-grafana-per-observability-mode)),
 **TechDocs** rendering this repo's `docs/` in-portal, and Postgres-backed
 **search** across all of it. On a platform whose whole point is four
 interchangeable CI engines ([401](./401-JENKINS.md) · [404](./404-TEKTON.md) ·
@@ -356,6 +359,9 @@ Version pins (all **verified 2026-07-11**; policy in [602](./602-VERSION_PINNING
 | `@backstage-community/plugin-jenkins` / `-backend` | 0.32.0 / 0.29.0 | `packages/app` / `packages/backend` `package.json` |
 | `@backstage-community/plugin-github-actions` | 1.2.0 (frontend-only) | `packages/app` |
 | `@backstage-community/plugin-tekton` | 3.39.0 | `packages/app` |
+| `@backstage-community/plugin-grafana` | 0.21.0 (frontend-only; verified 2026-07-13) | `packages/app` |
+| `@roadiehq/backstage-plugin-security-insights` | 3.3.1 (frontend-only; verified 2026-07-13) | `packages/app` |
+| `@red-hat-developer-hub/backstage-plugin-scorecard` / `-backend` / `-backend-module-github` | 2.8.1 / 2.8.1 / 2.8.1 (verified 2026-07-13) | `packages/app` / `packages/backend` (×2) |
 | `@backstage-community/plugin-argocd` / `-backend` | 2.9.0 / 1.5.0 | `packages/app` / `packages/backend` |
 | `@backstage/plugin-kubernetes` / `-backend` | 0.12.20 / 0.21.5 | `packages/app` / `packages/backend` |
 | `@backstage/plugin-auth-backend-module-gcp-iap-provider` | 0.4.16 | `packages/backend` |
@@ -412,11 +418,13 @@ engine's tab reads its own):
 | Annotation | Example (gateway) | Read by |
 |---|---|---|
 | `jenkins.io/job-full-name` | the seed-generated job name (`gateway`) | Jenkins plugin |
-| `github.com/project-slug` | `nubenetes/jhipster-sample-app-gateway` | GitHub Actions plugin |
+| `github.com/project-slug` | `nubenetes/jhipster-sample-app-gateway` | GitHub Actions plugin **and** the Security Insights plugin (the [Security tab](#security-tab-github-code-scanning--dependabot)) |
 | `tekton.dev/cicd` | `"true"` | Tekton plugin |
 | `backstage.io/kubernetes-label-selector` **only — deliberately NO `…kubernetes-namespace`** | `app.kubernetes.io/name=gateway`, matched **cluster-wide** | Kubernetes backend (also feeds the Tekton/Argo CR queries — one shared namespace would starve the `tekton-ci`/`argo-ci` lookups; every run-creation manifest carries the same label. See troubleshooting) |
 | `argocd/app-name` | `microservices-stable` | ArgoCD plugin |
 | `backstage.io/techdocs-ref` | `dir:.` on the platform Component | TechDocs |
+| `grafana/dashboard-selector` | `tags @> 'microservices' \|\| tags @> 'rum'` — matches the **tags** each [`observability/grafana/dashboards/*.json`](../observability/grafana/dashboards/) already carries | Grafana plugin (the [Monitoring tab](#monitoring-tab-grafana-per-observability-mode)) |
+| `grafana/alert-label-selector` | `project=jenkins-2026` — the label every provisioned [alert rule](../observability/grafana/alerting/rules/) carries | Grafana plugin (alerts card) |
 
 The **CI/CD tab itself switches at runtime** on `jenkins2026.ciEngine` (the
 custom frontend-visible config key fed from the runtime ConfigMap), so the
@@ -541,6 +549,335 @@ Two tabs render on the EntityPage **regardless of the CI engine**:
   the read-only RBAC is GitOps-managed in `platform-config`'s
   `rbac-backstage.yaml`, alongside the platform's other static RBAC.
 
+## Monitoring tab (Grafana, per observability mode)
+
+The EntityPage carries a **Monitoring** tab that surfaces the platform's
+Grafana **inside the portal** — the same runtime-switch pattern as the CI/CD
+tab, but keyed on **`jenkins2026.obsMode`** (= `observability.mode`,
+[301](./301-OBSERVABILITY.md)) instead of `ciEngine`. One image ships the
+[`@backstage-community/plugin-grafana`](https://github.com/backstage/community-plugins/tree/main/workspaces/grafana)
+(0.21.0); what the tab renders follows the mode **at runtime, no rebuild**:
+
+| `observability.mode` | Monitoring tab renders | Credential behind it |
+|---|---|---|
+| `oss` | **live dashboards + alerts cards** (proxy → the in-cluster Grafana Service) | Viewer service-account token **minted in-cluster by `08.95`** against the Grafana API |
+| `grafana-cloud` | **live dashboards + alerts cards** (proxy → the stack URL) | Viewer **stack service-account token minted by Terraform** (`grafana-cloud-token`), threaded through Day1 — never a GitHub secret |
+| `managed-azure` / `managed-aws` | **deep-link InfoCard** to the managed workspace + the deferral rationale | none — the proxy is never called (decision record below) |
+
+The switch lives in
+[`ObservabilityContent.tsx`](../backstage/packages/app/src/components/observability/ObservabilityContent.tsx)
+(the `CicdContent` twin); the tab only appears on entities carrying the
+`grafana/*` annotations (route-level `if`), so Group/User pages stay
+noise-free.
+
+**The static-tree discovery contract (both runtime-switch tabs).** Backstage's
+legacy frontend discovers plugins by traversing the app's **static JSX element
+tree** — it never executes component render bodies. A plugin extension that is
+only *rendered inside* a wrapper component is therefore invisible, and the
+plugin's default **API factory never registers** (the Grafana cards then crash
+with `NotImplementedError: No implementation available for
+apiRef{plugin.grafana.service}` — hit live on the tab's first validation,
+2026-07-13; the CI/CD tab had the routeRef flavour of the same problem). Both
+wrappers hence take the plugin extensions as **deliberately-unused children**
+mounted by `EntityPage.tsx` (`cicdContent` / `monitoringContent`): the children
+make the plugins discoverable, while rendering stays exclusively the runtime
+switch inside the wrapper. Any future runtime-switched tab must follow the same
+pattern.
+
+**How the live cards find content — zero Grafana-side changes.** The plugin
+matches what the platform already provisions:
+
+- `grafana/dashboard-selector` matches **dashboard tags**, and every dashboard
+  under [`observability/grafana/dashboards/`](../observability/grafana/dashboards/)
+  has carried tags from day one (`jenkins-2026` on all, plus per-domain ones
+  like `microservices`, `rum`, `postgres`). The two services select their
+  app-level dashboards (`tags @> 'microservices'`, the gateway adding
+  `|| tags @> 'rum'` for the Faro frontend-RUM one); `jenkins-2026-infra`
+  selects the whole catalog with the plain `jenkins-2026` tag.
+- `grafana/alert-label-selector: project=jenkins-2026` matches the **label**
+  every provisioned alert rule
+  ([`observability/grafana/alerting/rules/`](../observability/grafana/alerting/rules/),
+  [301](./301-OBSERVABILITY.md)) already carries; `grafana.unifiedAlerting:
+  true` points the card at the modern provisioning API (both wired Grafanas
+  run unified alerting).
+
+**The plumbing** (all values land through the standard runtime contract, and
+**every key is always non-empty in every mode** — the proxy-backend validates
+its target URL at startup, and this app has met the empty-string startup class
+before, see [Troubleshooting](#troubleshooting)):
+
+- [`app-config.yaml`](../backstage/app-config.yaml) declares the
+  **`proxy.'/grafana/api'`** endpoint (`target: ${GRAFANA_PROXY_TARGET}`,
+  `Authorization: Bearer ${GRAFANA_TOKEN}`) and `grafana.domain:
+  ${GRAFANA_DOMAIN}` (the origin the cards build user-facing links against —
+  for `oss` that's the **public IAP host** `https://grafana.<baseDomain>`,
+  so clicking a dashboard opens the same Google-authenticated UI as the
+  header link; no `InternalUrlRewriter` involvement needed).
+- `08.95-backstage.sh` derives `OBS_MODE` / `GRAFANA_DOMAIN` /
+  `GRAFANA_PROXY_TARGET` per mode into the runtime ConfigMap: the oss proxy
+  target is the in-cluster Service FQDN (flipping to `https://` under backend
+  TLS — the cert's SAN is exactly that FQDN and Node trusts the internal CA
+  via `NODE_EXTRA_CA_CERTS`, the ArgoCD-plugin trust path); grafana-cloud
+  reads the stack URL from the same `grafana-cloud-credentials` key
+  `04-jenkins.sh` uses for its banner links; the managed modes get the
+  workspace endpoint for the link plus an **inert-but-parseable**
+  `https://grafana.invalid` proxy target (RFC 2606 — never resolvable, never
+  called).
+- **`GRAFANA_TOKEN` ownership is mode-dependent** (single-owner-per-key — the
+  `grafana-base-url` clobber lesson): in **oss**, `08.95` mints a **Viewer
+  service-account token** against the Grafana API (curl exec'd *inside* the
+  Grafana container — no Service/NetworkPolicy dependency for the mint) and
+  PATCHes it into `backstage-secrets` exactly like `ARGOCD_*`; keep-if-valid
+  on re-runs (an existing token that still answers `/api/search` is left
+  alone), pruning its older tokens when it does rotate. In **grafana-cloud**,
+  Terraform ([`terraform/grafana-cloud-token`](../terraform/grafana-cloud-token/))
+  mints a **separate, read-only** `jenkins-2026-backstage` stack service
+  account (deliberately not reusing the Admin `dashboards` SA — least
+  privilege, independent rotation) and `Day1.cluster.01-gke` threads the
+  token output to `01-namespaces.sh` as `BACKSTAGE_GRAFANA_TOKEN` — read from
+  TF state at deploy time, **never stored as a GitHub secret** (the
+  azure/aws credentials pattern, [103](./103-GITHUB_SECRETS_INVENTORY.md)).
+- NetworkPolicy: the `observability-policy` ingress allowlists **`backstage`
+  → pod port 3000** for the oss proxy call
+  ([`infrastructure/networkpolicies.yaml`](../infrastructure/networkpolicies.yaml));
+  inert in every other mode/flag combination.
+
+### The oss mint-race (found live, fixed structurally)
+
+The tab's **first-ever live validation** (2026-07-13, a fresh oss Day1)
+turned up a second bug beyond the static-tree discovery one above: the cards
+mounted cleanly but the proxy 401'd. Root cause, confirmed from timestamps
+and pod events rather than guessed:
+
+1. `08.95-backstage.sh` ran its §2b mint at **14:42:29** — Grafana's
+   Deployment reported `availableReplicas: 1` (the gate the mint checked), so
+   it minted a fresh Viewer service-account token against that pod and
+   patched it into `backstage-secrets`.
+2. The **`oss-kube-prometheus-stack` ArgoCD Application's own initial sync**
+   — already in flight, unrelated to the mint — finished applying at
+   **14:47:10**, changing the chart's `checksum/secret` pod-template
+   annotation. That rolled Grafana onto a **new** ReplicaSet at **14:45:07**
+   — 3 minutes after the mint.
+3. oss Grafana runs with **no persistence**: service accounts and their
+   tokens live in the pod's local SQLite, not a database. The rollout wiped
+   the just-minted token along with it — the Monitoring tab 401'd until a
+   manual re-mint (confirmed live: the `backstage` service account had to be
+   **re-created from scratch**, proof the SQLite really was fresh).
+
+This is the [rebuild-safety](./104-REBUILD_SAFETY.md) collision class in
+miniature: a persistent identity (the token) minted against a store with no
+persistence of its own (the pod's SQLite), racing that store's own
+first-ever convergence. **Structural fix** (not just the mint's existing
+keep-if-valid/re-run heal, which only repairs it *after* the fact): `08.95`
+now waits — bounded, 3 minutes, **WARN not fail** on timeout, matching every
+other failure path in this script — for the `oss-kube-prometheus-stack`
+Application to report `Synced` **and** `Healthy` **and** no
+`operationState.phase: Running` *before* attempting the mint, so it always
+lands on the post-converge pod instead of racing it. On an already-stable
+cluster (any `Day2.redeploy.08` re-run) this wait exits on its first check —
+no added latency in the common case, only on a genuinely fresh Day1.
+
+### Why the managed modes are deferred (decision record)
+
+`managed-azure` / `managed-aws` deliberately get the deep-link card, **not**
+live cards wired to Azure Managed Grafana / Amazon Managed Grafana. This was
+an explicit decision (2026-07-13), not an omission:
+
+1. **Credential-model mismatch — the whole story.** The Backstage Grafana
+   plugin authenticates one way: a **static Bearer token** on a proxy
+   endpoint. The self-managed and Grafana-Cloud APIs issue exactly that
+   (service-account tokens). The managed offerings don't: **Azure Managed
+   Grafana** wants **Entra ID (AAD) OAuth tokens** (minutes-to-hours TTL,
+   minted per-principal) and **Amazon Managed Grafana** wants **AWS
+   IAM/SigV4-derived session credentials** — both *designed* to expire fast
+   and be re-minted by an SDK, which a fixed `Authorization` header cannot do.
+2. **Wiring them anyway would be a time-bomb, not a feature.** A pasted
+   AAD/AWS token *works in the demo and dies silently within hours* — the tab
+   would 401 on the first expiry, indistinguishable from a real fault, and
+   "re-paste a token every morning" is operational debt this repo refuses on
+   principle (every other credential here is either minted-per-deploy,
+   WIF-keyless, or auto-rotated).
+3. **Precedent — this exact trade-off has been decided before.** The
+   Grafana **LLM-app** backends for managed-azure/aws were implemented and
+   then **retired** for the same reason (the plugin couldn't ride Managed
+   Identity / Bedrock's credential model — [301](./301-OBSERVABILITY.md)).
+   AMG/AAD proxies with sidecar token-refreshers exist, but a
+   token-refresher sidecar for a PoC tab fails the complexity bar.
+4. **The fallback is honest and useful.** The InfoCard names the mode, links
+   the managed workspace (`GRAFANA_BASE_URL` from the same credentials Secret
+   the collector uses — resolved when the backend was provisioned), and
+   points here for the rationale — the `argoworkflows`-tab pattern: better a
+   truthful link card than a half-live tab that rots.
+5. **Revisit conditions** (tracked in [Roadmap](#roadmap)): upstream plugin
+   support for AAD/SigV4 auth (or an official AMG token-proxy), or the PoC
+   promoting a managed mode to its primary posture — either flips the
+   decision.
+
+## Security tab (GitHub Code Scanning + Dependabot)
+
+The EntityPage carries a **Security** tab
+([`SecurityContent.tsx`](../backstage/packages/app/src/components/security/SecurityContent.tsx))
+built on
+[`@roadiehq/backstage-plugin-security-insights`](https://github.com/RoadieHQ/roadie-backstage-plugins/tree/main/plugins/frontend/backstage-plugin-security-insights)
+(3.3.1, verified 2026-07-13): a **Code Scanning** card (Semgrep + CodeQL
+findings, whichever tool produced them — the plugin is scanner-agnostic, it
+just reads GitHub's `code-scanning/alerts`) and a **Dependabot alerts** card,
+side by side. It reuses the **same `github.com/project-slug` annotation** the
+CI/CD tab's GitHub Actions case already depends on
+([CI-engine integration](#ci-engine-integration-the-four-tabs)) — every
+Component in this catalog already carries it, so the tab needed **zero
+catalog changes**. Both plugin components are frontend-only and register no
+API factory of their own: they authenticate via the core `scmAuthApiRef`
+(`@backstage/integration-react`), the **same per-user GitHub OAuth session**
+the GitHub Actions tab uses — so there is no static-tree children trick to
+apply here (unlike the Grafana plugin — see the
+[static-tree discovery contract](#monitoring-tab-grafana-per-observability-mode)
+note in the Monitoring tab section above), and no new credential/Secret.
+
+**Prerequisite this tab surfaced (found live 2026-07-13, fixed alongside it)
+— a cross-engine SARIF-routing bug.** Semgrep/CodeQL always scan the checked-
+out **app source**, but only the **GitHub Actions** engine's native
+`codeql-action/upload-sarif` uploaded findings against the scanned app's own
+repo; Jenkins, Tekton and Argo Workflows all hardcoded the upload against the
+**infra** repo (`nubenetes/jenkins-2026`) instead — copy-pasted from the
+adjacent "checkout the infra self-repo" step. Under any engine but
+`githubactions`, this tab's Code Scanning card would have been permanently
+empty for `gateway`/`jhipstersamplemicroservice` (their real findings were
+landing on the infra repo's Code Scanning tab, misattributed) — one repo
+receiving three services' worth of app-source findings while the two service
+repos' own tabs stayed empty. Fixed in the same change: `microservicesSarifUpload`
+(Jenkins) and the Tekton/Argo Workflows scan tasks now take the app's own
+`repoUrl`/`repoBranch` (`cfg.gitRepoUrl`/`cfg.gitBranch` — the exact value the
+checkout stage already uses) instead of the infra self-repo, and the payload's
+`commit_sha` now comes from the app source checkout too (it was reading the
+infra checkout's HEAD). See [601 § Understanding the security pipeline](./601-DEVSECOPS.md#understanding-the-security-pipeline-newcomers--specialists)
+(the "For specialists" fold-out) for the full before/after.
+
+**A repo-visibility prerequisite, verified, not assumed**: GitHub Advanced
+Security (which Code Scanning alerts require on **private** repos) is **free
+on public repos** — checked live against the GitHub API before adopting this
+plugin: `nubenetes/jenkins-2026`, `jenkins-2026-gitops-config`,
+`jhipster-sample-app-gateway` and `jhipster-sample-app-microservice` are all
+public, so no license/cost gate applies here. A fork of this repo under a
+private org would need GHAS enabled for the Code Scanning card to show data
+(the Dependabot card is unaffected either way).
+
+**Dependabot alerts need one more manual toggle**: GitHub's *Dependabot
+alerts* repository setting (Settings → Code security) is currently **disabled**
+on these repos — a per-repo toggle outside this platform's Terraform/scripts
+scope (there is no public API to flip it, only the UI or a fine-grained PAT
+with `administration: write`). Until enabled, the Dependabot card renders a
+clean inline error (the plugin's own `useAsync` error state) rather than
+crashing the tab — an honest "not configured", not a bug.
+
+## Scorecard tab (entity KPIs)
+
+The EntityPage carries a **Scorecard** tab
+([Red Hat Developer Hub's Scorecard plugin](https://github.com/redhat-developer/rhdh-plugins/tree/main/workspaces/scorecard),
+2.8.1, verified 2026-07-13) — a framework for configurable, scheduled
+per-entity metrics ("Key Performance Indicators"), each collected by a
+pluggable **metric provider** and rendered with a threshold-based
+success/warning/error status. `EntityScorecardContent` is used **directly**
+as route content (not through an intermediary wrapper, unlike
+`ObservabilityContent`/`SecurityContent`), so its own API factory
+(`scorecardApiRef` — same static-tree-discovery contract as Grafana's, see
+the Monitoring tab section) is naturally satisfied with no children trick.
+The route is gated on `isSecurityInsightsAvailable` (the Security tab's own
+guard, reused here — the only wired metric provider needs the same
+`github.com/project-slug` annotation) — **found live 2026-07-13 ungated**,
+showing an empty "No scorecards added yet" tab on annotation-less `Resource`
+entities (`backstage-db`, `gke-cluster`) that fall through to
+`defaultEntityPage` with no matching `EntitySwitch.Case` of their own kind.
+
+**Only the GitHub provider is wired** (`@red-hat-developer-hub/backstage-plugin-scorecard-backend-module-github`,
+metric `github.open_prs` — count of open PRs on the entity's repo). It needed
+**zero new config or catalog changes**: it reads the same `integrations.github`
+token already configured for catalog ingestion, and the same
+`github.com/project-slug` annotation every entity already carries. The
+scorecard backend's own permission (`scorecard.metric.read`, requiring
+`catalog.entity.read`) is satisfied by the `allow-all` permission policy this
+app already runs (docs/505 § Credentials & RBAC) — no RBAC wiring needed
+either. Metrics collect on the plugin's default schedule (hourly) into a new
+schema in the **same CNPG `backstage-db`** the rest of the backend already
+uses — no new database, no new Postgres role.
+
+**Three other provider modules were evaluated and deliberately deferred** —
+not omitted by oversight, each verified live before being ruled out:
+
+- **OpenSSF Scorecard** (`-module-openssf`, 18 security checks per repo) —
+  reads a component's `openssf/scorecard-location` annotation, expected to
+  point at `https://api.securityscorecards.dev/projects/github.com/<owner>/<repo>`.
+  Checked live before adopting it: **all three repos 404** — that public
+  dataset only covers a curated corpus of well-known OSS projects (Kubernetes,
+  major frameworks, etc.), not arbitrary forks like these. Wiring the
+  annotation anyway would ship a metric that's permanently broken, not one
+  that degrades gracefully (unlike Dependabot below) — self-hosting `openssf/scorecard`
+  runs against these repos and serving the JSON somewhere is a real infra
+  project, out of scope for "add a plugin".
+- **Dependabot** (`-module-dependabot`, CVE alert counts by severity) — needs
+  `github.com/dependabot: 'true'` plus a token with `security_events` scope.
+  Blocked on the exact same disabled repo setting the Security tab's
+  Dependabot card already found (above) — no value wiring a second
+  integration against data that isn't there yet.
+- **Filecheck** (`-module-filecheck`, e.g. does `README.md`/`LICENSE`/`CODEOWNERS`
+  exist) — keys off the entity's `backstage.io/source-location` annotation,
+  which Backstage auto-populates from where the entity was **ingested**, not
+  a hand-set value. `gateway`/`jhipstersamplemicroservice` have no per-app
+  `catalog-info.yaml` of their own — every entity here is defined in this
+  repo's [`backstage/catalog/`](../backstage/catalog/) — so their
+  `source-location` resolves to **this repo's catalog file**, not their
+  GitHub forks. Wiring Filecheck as-is would check the wrong repo's files:
+  the exact misattribution class the [SARIF-routing fix](#security-tab-github-code-scanning--dependabot)
+  just closed elsewhere. An explicit per-entity `backstage.io/source-location`
+  override could fix this, but that annotation format wasn't verified before
+  this pass — tracked in [Roadmap](#roadmap).
+
+## Home page
+
+The portal has a landing page at `/home`
+([`HomePage.tsx`](../backstage/packages/app/src/components/home/HomePage.tsx)),
+replacing the previous `/` → `/catalog` redirect (`/` now redirects to
+`/home`). It carries a plain **quick-links** card (Catalog, the platform
+component's Monitoring/Security tabs, Docs, Graph) — a real landing page
+where none existed, deliberately **not** the aggregated `ScorecardHomepageCard`
+originally shipped here.
+
+**Why not `ScorecardHomepageCard` (found live, 2026-07-13, same day it
+shipped)**: the card rendered ("GitHub open PRs" title, correct threshold
+legend) but its data call, `GET /api/scorecard/aggregations/github.open_prs`,
+**404'd** for the signed-in IAP user. The scorecard backend's own docs explain
+why: that endpoint aggregates metrics **by entity ownership** (entities the
+user owns directly, or via a catalog `Group` they're a direct member of), and
+returns **404 "User not in catalog"** when the identity has no catalog `User`
+entity at all. This app's IAP sign-in runs with
+`dangerouslyAllowSignInWithoutUserInCatalog: true` on purpose (docs/505 §
+Credentials & RBAC) — there is no catalog `User`/`Group` graph to own
+anything. This isn't a race condition or a missing config key like the
+Monitoring tab's mint-race or the Scorecard tab's deferred providers: it's a
+**structural mismatch** between this feature and this platform's auth model,
+and it will 404 for every user until the roadmap's "Catalog `User`
+auto-provision" item ships (below). Swapped for quick links rather than ship
+a card that silently fails for everyone.
+
+The per-entity [Scorecard tab](#scorecard-tab-entity-kpis) is unaffected —
+its `GET /metrics/catalog/...` route reads metrics for one named entity
+directly, no ownership resolution involved.
+
+This intentionally does **not** use `@backstage/plugin-home`'s
+`HomepageCompositionRoot` (the drag-and-drop customizable widget grid with
+its own `visitsApiRef`/storage wiring) — that's real additional machinery for
+a portal that, today, wants exactly one static card. `HomePage.tsx` is a
+plain `Page`/`Header`/`Content`/`InfoCard` composition (`Link` from
+`@backstage/core-components`, already a dependency — zero new package), the
+same pattern as
+[`SecurityContent.tsx`](../backstage/packages/app/src/components/security/SecurityContent.tsx) /
+[`ObservabilityContent.tsx`](../backstage/packages/app/src/components/observability/ObservabilityContent.tsx).
+
+The sidebar's "Catalog" item previously used the scaffold's default
+`HomeIcon` (a leftover from the create-app template, which has no home page
+of its own) — it's now `ViewModuleIcon`, freeing `HomeIcon` for the new,
+actual **Home** item above it.
+
 ## TechDocs
 
 TechDocs renders **this repo's existing `docs/` tree** — the very documents
@@ -573,6 +910,7 @@ you're reading — inside the portal, indexed by search:
 | `JENKINS_API_USER` / `JENKINS_API_KEY` | `jenkins-credentials` (`admin` + admin password), **`ci.engine=jenkins` only** | Jenkins backend plugin |
 | `AUTH_GITHUB_CLIENT_ID` / `AUTH_GITHUB_CLIENT_SECRET` | optional `BACKSTAGE_GITHUB_OAUTH_*` GitHub secrets; `unset` placeholders otherwise | the `github` auth provider (the GHA tab's per-user OAuth) |
 | `ARGOCD_USERNAME` / `ARGOCD_PASSWORD` | **patched by `08.95`** from `argocd-initial-admin-secret` | ArgoCD backend plugin |
+| `GRAFANA_TOKEN` | mode-dependent owner: **oss** → Viewer token **minted+patched by `08.95`**; **grafana-cloud** → the Terraform `backstage_grafana_token` output threaded by Day1; **managed-\*** → `unset` placeholder (never sent) | the `'/grafana/api'` proxy Bearer ([Monitoring tab](#monitoring-tab-grafana-per-observability-mode)) |
 
 Plus the **`ghcr-credentials`** pull secret (the custom image is on GHCR) and
 **`gateway-iap-oauth`** (the namespace joins the standard IAP list).
@@ -589,6 +927,9 @@ finished by `09`):
 | `ARGOCD_BASE_URL` | `http://` or `https://` argocd-server per backend-TLS | ArgoCD plugin target |
 | `BASE_DOMAIN` | `gateway.baseDomain` | the Argo Server link card, outbound links |
 | `IAP_AUDIENCE` | placeholder → the LB backend-service path patched by `09` | `gcpIap` JWT audience verification |
+| `OBS_MODE` | the active `observability.mode` | `jenkins2026.obsMode` → what the Monitoring tab renders |
+| `GRAFANA_DOMAIN` | per mode: the IAP grafana host (oss) / stack URL (cloud) / managed endpoint or `unset` | `grafana.domain` — the origin the Grafana cards' links open |
+| `GRAFANA_PROXY_TARGET` | per mode: in-cluster Service FQDN (oss, `https` under TLS) / stack URL (cloud) / inert `https://grafana.invalid` (managed) | the `'/grafana/api'` proxy target |
 
 **NetworkPolicy**
 ([`infrastructure/networkpolicies-backstage.yaml`](../infrastructure/networkpolicies-backstage.yaml)
@@ -674,6 +1015,12 @@ later patches `ARGOCD_USERNAME`/`ARGOCD_PASSWORD` into the same Secret, and a
 non-Merge ExternalSecret would clobber the patch on its next sync (the same
 pattern as `jenkins-credentials`, and exactly the failure mode of the
 `grafana-base-url` clobber incident — see [902](./902-TROUBLESHOOTING.md)).
+`GRAFANA_TOKEN` takes the lesson one step further: because Merge **re-asserts
+every key present in the SM blob**, the key rides the blob **only in the
+non-oss modes** — in oss its owner is `08.95`'s live patch, so `01`
+deliberately omits it from the blob (and `provision_secret` replacing the blob
+wholesale also purges any stale copy a previous grafana-cloud epoch left
+behind). One key, one owner, per mode.
 The `gateway-iap-oauth` ExternalSecret namespace list gains `backstage`
 (the omission that once silently un-IAP'd the Argo UI — the list is
 explicit, not derived).
@@ -714,6 +1061,9 @@ explicit, not derived).
 | GitHub Actions tab loops on its OAuth popup | `BACKSTAGE_GITHUB_OAUTH_CLIENT_ID/SECRET` unset (`unset` placeholders seeded) | create the GitHub OAuth App (callback `https://backstage.<baseDomain>/api/auth/github/handler/frame`), set the two secrets, re-run `01` + `08.95` |
 | Jenkins tab errors / 401 | the active engine isn't `jenkins` (`JENKINS_API_*` is only seeded then), or the admin password rotated under it | expected off-engine — the tab switches per `CI_ENGINE`; otherwise re-run `01` + `08.95` to refresh the keys |
 | Argo Workflows tab is "just a link card" | **expected** — no upstream plugin exists yet (community-plugins #9192) | use the card (`argo.<baseDomain>`) or the Kubernetes tab's Workflow CRs; revisit when #9192 ships |
+| Monitoring tab is "just a link card" on `managed-azure`/`managed-aws` | **expected — a decision, not a gap**: the managed Grafanas authenticate with short-lived Entra ID / AWS SigV4 credentials that the plugin's static-Bearer proxy cannot carry | use the card's workspace link; the full rationale + revisit conditions are in [the decision record](#why-the-managed-modes-are-deferred-decision-record) |
+| Monitoring tab (oss/grafana-cloud) shows errors / 401s, or dashboards list is empty | (a) `GRAFANA_TOKEN` still the `unset` placeholder — the oss mint skipped (Grafana wasn't Available when `08.95` ran) or, on grafana-cloud, an old cluster predating the `backstage_grafana_token` TF output; (b) empty list with no error usually means the entity's `grafana/dashboard-selector` matches no dashboard **tags** | (a) re-run `08.95` — `Day2.redeploy.08-backstage` (oss re-mints keep-if-valid; cloud re-runs Day1's threading on the next Day1). Check the proxy quickly: `kubectl logs deploy/backstage -n backstage \| grep -i grafana`; (b) compare the selector against `jq .tags observability/grafana/dashboards/*.json` |
+| Monitoring tab says "Observability mode unknown" | the image is newer than the `backstage-runtime-config` ConfigMap (a bare pod restart pulled a new branch image without re-running the scripts), so `OBS_MODE` is missing | re-run `08.95` (or `Day2.redeploy.08-backstage`) — it rewrites the ConfigMap with the `OBS_MODE`/`GRAFANA_*` keys and restarts the pod |
 | TechDocs tab fails to build | mkdocs error (nav/plugin mismatch in `mkdocs.yml` vs the pinned `mkdocs-techdocs-core`) | reproduce locally (`mkdocs build`), fix `mkdocs.yml`; the builder runs in-pod, so no republish is needed for docs-only changes — they're read from git |
 | Backend CrashLoop, `permission denied to create database` | `backstage-db` not ready yet (wave 0 still syncing) or the `app` role lacks `CREATEDB` | wait for the CNPG Cluster to report ready; the `postInitApplicationSQL` `ALTER ROLE app CREATEDB` covers the role — verify it wasn't edited out |
 | eso mode: `ARGOCD_*` keys vanish from `backstage-secrets` after a sync | the ExternalSecret isn't `creationPolicy: Merge` — ESO re-clobbers `08.95`'s patch | restore `Merge` (the `grafana-base-url` clobber lesson, [902](./902-TROUBLESHOOTING.md)) and re-run `08.95` |
@@ -739,8 +1089,15 @@ survive (image, SM secrets) are exactly the two the platform *wants* persistent
 - **Argo Workflows plugin** — adopt the community plugin the moment the
   donation (backstage/community-plugins **#9192**, open since 2026-05-21)
   ships, replacing the InfoCard deep link with a real runs tab.
+- **Managed-Grafana Monitoring cards** — revisit the
+  [deferral decision](#why-the-managed-modes-are-deferred-decision-record) if
+  the Grafana plugin grows AAD/SigV4 auth (or AMG ships a static-token proxy),
+  or if a managed mode becomes this PoC's primary posture.
 - **Catalog `User` auto-provision** from the IAP admin-emails list, upgrading
-  the sign-in resolver off `dangerouslyAllowSignInWithoutUserInCatalog`.
+  the sign-in resolver off `dangerouslyAllowSignInWithoutUserInCatalog`. Also
+  the prerequisite for `ScorecardHomepageCard`'s ownership-based aggregation
+  (docs/505 § Home page) — without a real `User`/`Group` catalog graph, that
+  card's `GET /aggregations/:aggregationId` 404s for every signed-in user.
 - **OTel instrumentation of the backend** — export the Node backend's
   traces/metrics to the shared collector so the portal appears in its own
   dashboards ([301](./301-OBSERVABILITY.md)).
@@ -749,6 +1106,14 @@ survive (image, SM secrets) are exactly the two the platform *wants* persistent
 - **Permission policies beyond allow-all** — real role mapping once there is
   more than one class of user behind IAP. (Guest auth stays out of production
   configs regardless.)
+- **Scorecard: the three deferred provider modules** (docs/505 § Scorecard
+  tab) — Dependabot once the repo-level "Dependabot alerts" setting is
+  enabled (same prerequisite as the Security tab's card); OpenSSF once these
+  repos either enter the public `securityscorecards.dev` corpus or this
+  platform self-hosts `openssf/scorecard` runs somewhere; Filecheck once each
+  app entity carries a verified explicit `backstage.io/source-location`
+  override pointing at its own GitHub fork instead of this repo's catalog
+  file.
 
 ---
 

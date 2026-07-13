@@ -35,7 +35,7 @@ conventions:
 - [`502-MICROSERVICES_GITOPS.md`](docs/502-MICROSERVICES_GITOPS.md) — Helm vs Kustomize, resource lifecycle design decisions
 - [`503-NETWORKING.md`](docs/503-NETWORKING.md) — network architecture, landing zone & topology (single-VPC, not hub-spoke + rationale), VPC/subnet + pod/service CIDR plan, north-south ingress/egress, east-west (VPC-native + Dataplane V2 + WireGuard), NetworkPolicy segmentation
 - [`504-BACKEND_TLS.md`](docs/504-BACKEND_TLS.md) — the **opt-in** `gateway.backendTls.enabled` LB→pod re-encryption: cert-manager in-cluster CA, per-backend server certs, Gateway API `BackendTLSPolicy` + HTTPS `HealthCheckPolicy`, the staged per-backend rollout (stages 1–10) + the `j2026_backend_tls_active` gate, why it's not a service mesh
-- [`505-BACKSTAGE.md`](docs/505-BACKSTAGE.md) — **Backstage developer portal** (`backstage.enabled`, default true): Backstage v1.52.1 via the official chart 2.8.2 as the `argocd/backstage` app-of-apps (CNPG `backstage-db` wave 0 + chart wave 1), a **custom app image** (`backstage/` — one image ships the Jenkins/GitHub Actions/Tekton/ArgoCD/Kubernetes plugins; the ACTIVE engine's CI/CD tab is picked at **runtime** from the `backstage-runtime-config` ConfigMap written by `scripts/08.95-backstage.sh`), IAP-protected at `backstage.<domain>` with in-app JWT-verified `gcpIap` sign-in (audience resolved+patched by `09-gateway.sh`), TechDocs over this repo's docs/ (root `mkdocs.yml`), backend TLS **stage 10**, and the **one-time image bootstrap** (`Day2.publish.06-backstage` — the GHCR image persists across rebuilds; the `Day1.cluster.00-all` umbrella probes ghcr and auto-runs it when the image is missing)
+- [`505-BACKSTAGE.md`](docs/505-BACKSTAGE.md) — **Backstage developer portal** (`backstage.enabled`, default true): Backstage v1.52.1 via the official chart 2.8.2 as the `argocd/backstage` app-of-apps (CNPG `backstage-db` wave 0 + chart wave 1), a **custom app image** (`backstage/` — one image ships the Jenkins/GitHub Actions/Tekton/ArgoCD/Kubernetes/Grafana plugins; the ACTIVE engine's CI/CD tab is picked at **runtime** from the `backstage-runtime-config` ConfigMap written by `scripts/08.95-backstage.sh`), a **Grafana Monitoring tab** switched the same way on `observability.mode` (live dashboards/alerts cards for oss/grafana-cloud — oss token minted in-cluster by 08.95, cloud token from `terraform/grafana-cloud-token`; managed-azure/aws = deep-link card by decision — static-Bearer vs Entra/SigV4, see the 505 decision record), IAP-protected at `backstage.<domain>` with in-app JWT-verified `gcpIap` sign-in (audience resolved+patched by `09-gateway.sh`), TechDocs over this repo's docs/ (root `mkdocs.yml`), backend TLS **stage 10**, and the **one-time image bootstrap** (`Day2.publish.06-backstage` — the GHCR image persists across rebuilds; the `Day1.cluster.00-all` umbrella probes ghcr and auto-runs it when the image is missing)
 - [`601-DEVSECOPS.md`](docs/601-DEVSECOPS.md) — Semgrep, CodeQL, Trivy, warnings-ng
 - [`602-VERSION_PINNING.md`](docs/602-VERSION_PINNING.md) — version-pinning policy + matrix (charts/images/actions/Terraform), pros/cons, the deliberate ArgoCD 3.4.x auto-tracking exception (pinned off the buggy 3.5.0-rc until 3.5 GA), how to bump a pin
 - [`901-LOCAL_DEVELOPMENT.md`](docs/901-LOCAL_DEVELOPMENT.md) — prerequisites, quick start, e2e test
@@ -67,8 +67,8 @@ Legacy stubs ([`docs/architecture.md`](docs/architecture.md), [`docs/observabili
   ClusterSecretStore + ExternalSecrets (+ waits) in eso mode; reference manifests
   in [`infrastructure/secrets/eso-bootstrap.yaml`](infrastructure/secrets/eso-bootstrap.yaml). Coverage spans
   `gateway-iap-oauth` (every IAP namespace), the active engine's pipeline
-  secrets (registry/git/webhook + `k6-cloud`), `jenkins-credentials` (Merge) +
-  the oss `grafana-jenkins-ds`, `headlamp-credentials`, and the microservices
+  secrets (registry/git/webhook + `k6-cloud`), `jenkins-credentials` (Merge),
+  `headlamp-credentials`, and the microservices
   `ghcr-credentials` pull secret. See [`docs/201`](docs/201-ARCHITECTURE.md#secrets-backend-imperative--eso).
 - [`config/config.yaml`](config/config.yaml) - single source of truth: target platform
   (gke), observability mode (grafana-cloud/oss/managed-azure/managed-aws),
@@ -158,8 +158,8 @@ Legacy stubs ([`docs/architecture.md`](docs/architecture.md), [`docs/observabili
       (like Tekton — not OCI charts).
   - **Ordering consequence**: [`scripts/up.sh`](scripts/up.sh) installs ArgoCD
     (`08.5`) **before** observability (`03`), and `03-observability.sh` (oss)
-    applies the app-of-apps + its script-managed companion objects
-    (`grafana-jenkins-ds` Secret, `grafana-runtime-config` ConfigMap) rather than
+    applies the app-of-apps + its script-managed companion object
+    (the `grafana-runtime-config` ConfigMap) rather than
     `helm install`-ing the charts directly. The Grafana dashboards ConfigMap is
     GitOps-managed by the `oss-grafana-dashboards` child app (rendered from
     [`observability/grafana/dashboards/`](observability/grafana/dashboards/), a

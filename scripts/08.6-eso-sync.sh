@@ -20,8 +20,8 @@
 # Scope: the gateway IAP OAuth secret (+ its single-key client-secret projection); the
 # Tekton pipeline creds (webhook, k6-cloud, registry dockerconfigjson, git basic-auth,
 # pac-webhook) when ci.engine=tekton; ghcr-credentials; and the generated/multi-writer
-# secrets — jenkins-credentials (Merge, with a stable seeded admin-password),
-# headlamp-credentials, and grafana-jenkins-ds (mirrors that admin-password).
+# secrets — jenkins-credentials (Merge, with a stable seeded admin-password) and
+# headlamp-credentials.
 # STILL imperative (no upstream value to push): tekton-argocd (minted in-cluster by
 # ArgoCD) + the per-mode observability backend credentials (Terraform outputs).
 # See docs/201 § Secrets Management.
@@ -349,10 +349,9 @@ fi
 if [[ "${J2026_CI_ENGINE}" == "jenkins" ]]; then
   es_extract "${J2026_JENKINS_CREDENTIALS_SECRET}" "${J2026_JENKINS_NAMESPACE}" \
     "${J2026_JENKINS_CREDENTIALS_SECRET}" "Merge"
-  # the OSS Grafana→Jenkins datasource token mirrors the same stable admin password.
-  [[ "${J2026_OBS_MODE}" == "oss" ]] && \
-    es_property "grafana-jenkins-ds" "${J2026_GRAFANA_OSS_NAMESPACE}" \
-      "${J2026_JENKINS_CREDENTIALS_SECRET}" "admin-password" "apiToken"
+  # (The former grafana-jenkins-ds property projection was RETIRED 2026-07-13
+  # with the oss Jenkins datasource itself — Enterprise-only plugin, see
+  # 03-observability.sh; 03 also deletes the orphaned ExternalSecret/Secret.)
 fi
 
 # --- emit: Headlamp OIDC credentials (always; Headlamp is always deployed) ----
@@ -361,12 +360,16 @@ es_extract "${J2026_HEADLAMP_CREDENTIALS_SECRET}" "${J2026_HEADLAMP_NAMESPACE}" 
 
 # --- emit: Backstage portal secrets (backstage.enabled) ------------------------
 # Merge (not Owner): 01-namespaces seeds the SM blob (BACKEND_SECRET stable,
-# GITHUB_TOKEN, JENKINS_API_*, AUTH_GITHUB_*) + an empty base Secret, and
-# 08.95-backstage.sh patches ARGOCD_USERNAME/ARGOCD_PASSWORD (minted in-cluster
-# by ArgoCD) onto the live Secret - ESO must merge its keys in without owning /
-# clobbering those, exactly like jenkins-credentials/argocd-token. The image
-# pull secret rides the same ghcr-credentials dockerconfig template as the
-# microservices namespaces.
+# GITHUB_TOKEN, JENKINS_API_*, AUTH_GITHUB_*, + GRAFANA_TOKEN in the non-oss
+# observability modes) + an empty base Secret, and 08.95-backstage.sh patches
+# ARGOCD_USERNAME/ARGOCD_PASSWORD (minted in-cluster by ArgoCD) - plus, in oss
+# mode, GRAFANA_TOKEN (a Viewer token minted against the in-cluster Grafana) -
+# onto the live Secret. ESO must merge its keys in without owning / clobbering
+# those, exactly like jenkins-credentials/argocd-token; the oss GRAFANA_TOKEN
+# is deliberately ABSENT from the SM blob (single owner per key - the
+# grafana-base-url lesson) so the Merge re-sync can never clobber the patched
+# value. The image pull secret rides the same ghcr-credentials dockerconfig
+# template as the microservices namespaces.
 if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
   es_extract "${J2026_BACKSTAGE_SECRETS_NAME}" "${J2026_BACKSTAGE_NAMESPACE}" \
     "${J2026_BACKSTAGE_SECRETS_NAME}" "Merge"

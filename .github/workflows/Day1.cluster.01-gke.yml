@@ -666,6 +666,9 @@ jobs:
         env:
           TF_VAR_grafana_cloud_api_token: ${{ secrets.GRAFANA_CLOUD_API_TOKEN }}
           TF_VAR_stack_slug: ${{ steps.gc_stack.outputs.slug }}
+          # Backend TLS moves Jenkins' plain-HTTP listener to :8082 - the
+          # datasource URL (dialed in-cluster by the PDC tunnel) must follow.
+          TF_VAR_jenkins_backend_tls: ${{ inputs.backend_tls }}
         run: |
           # Fetch jenkins admin password from the secret created in the previous step
           ADMIN_PASS=$(kubectl get secret jenkins-credentials -n jenkins -o jsonpath='{.data.admin-password}' | base64 -d)
@@ -686,12 +689,14 @@ jobs:
           otlp_auth="$(terraform output -raw otlp_auth)"
           grafana_base_url="$(terraform output -raw grafana_base_url)"
           grafana_api_key="$(terraform output -raw grafana_api_key)"
+          backstage_grafana_token="$(terraform output -raw backstage_grafana_token)"
           pdc_token="$(terraform output -raw pdc_token)"
           pdc_cluster="$(terraform output -raw pdc_cluster)"
           stack_id="$(terraform output -raw stack_id)"
 
           echo "::add-mask::${otlp_auth}"
           echo "::add-mask::${grafana_api_key}"
+          echo "::add-mask::${backstage_grafana_token}"
           echo "::add-mask::${pdc_token}"
 
           {
@@ -699,6 +704,7 @@ jobs:
             echo "otlp_auth=${otlp_auth}"
             echo "grafana_base_url=${grafana_base_url}"
             echo "grafana_api_key=${grafana_api_key}"
+            echo "backstage_grafana_token=${backstage_grafana_token}"
             echo "pdc_token=${pdc_token}"
             echo "pdc_cluster=${pdc_cluster}"
             echo "stack_id=${stack_id}"
@@ -838,6 +844,14 @@ jobs:
           # without them.
           BACKSTAGE_GITHUB_OAUTH_CLIENT_ID: ${{ secrets.BACKSTAGE_GITHUB_OAUTH_CLIENT_ID }}
           BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET: ${{ secrets.BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET }}
+          # Backstage Monitoring tab (docs/505 § Grafana integration): the
+          # Terraform-minted Viewer stack SA token, read from the
+          # grafana-cloud-token module's outputs above - NEVER a GitHub secret
+          # (the azure/aws credentials pattern). Empty in every other
+          # observability mode (the step is skipped): 01-namespaces then keeps
+          # the existing value, 08.95 mints one in-cluster (oss), or the
+          # 'unset' placeholder stands (managed-*).
+          BACKSTAGE_GRAFANA_TOKEN: ${{ steps.grafana_cloud_token.outputs.backstage_grafana_token }}
           # Optional GitHub HMAC tokens for the Tekton Triggers EventListener and
           # for Pipelines-as-Code (ci_engine=tekton); empty unless the secrets are set.
           TEKTON_GITHUB_WEBHOOK_SECRET: ${{ secrets.TEKTON_GITHUB_WEBHOOK_SECRET }}

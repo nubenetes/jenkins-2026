@@ -11,6 +11,14 @@
 #   backstage.io/kubernetes-label-selector        Kubernetes tab (workload match)
 #   backstage.io/techdocs-entity        Docs tab = the platform's TechDocs (the
 #                                       forks ship no mkdocs site of their own)
+#   grafana/dashboard-selector +        Monitoring tab (oss/grafana-cloud modes;
+#   grafana/alert-label-selector        docs/505 § Grafana integration) - the
+#                                       selector matches DASHBOARD TAGS (each
+#                                       observability/grafana/dashboards/*.json
+#                                       carries them), the alert selector the
+#                                       LABELS on the provisioned alert rules
+#                                       (observability/grafana/alerting/rules/,
+#                                       all labelled project=jenkins-2026)
 #
 # NO backstage.io/kubernetes-namespace (deliberately absent - found live
 # 2026-07-12): the Kubernetes-backend plugin applies ONE shared namespace +
@@ -43,6 +51,10 @@ metadata:
     # The app fork ships no mkdocs site - surface the PLATFORM's TechDocs on
     # this entity's Docs tab + AboutCard instead (shared-docs annotation).
     backstage.io/techdocs-entity: component:default/jenkins-2026-infra
+    # Monitoring tab: the app-level dashboards (RED + JVM internals) plus the
+    # gateway-specific frontend-RUM one; the alert rules are platform-wide.
+    grafana/dashboard-selector: "tags @> 'microservices' || tags @> 'rum'"
+    grafana/alert-label-selector: 'project=jenkins-2026'
   links:
     - url: https://microservices.jenkins2026.nubenetes.com
       title: Live app (stable)
@@ -74,6 +86,10 @@ metadata:
     backstage.io/kubernetes-label-selector: 'app.kubernetes.io/name=jhipstersamplemicroservice'
     # Shared docs: the platform's TechDocs on this entity (see gateway note).
     backstage.io/techdocs-entity: component:default/jenkins-2026-infra
+    # Monitoring tab: app-level dashboards only (no RUM - the SPA lives on the
+    # gateway); alert rules are platform-wide.
+    grafana/dashboard-selector: "tags @> 'microservices'"
+    grafana/alert-label-selector: 'project=jenkins-2026'
   links:
     - url: https://github.com/nubenetes/jhipster-sample-app-microservice
       title: Source (nubenetes fork)

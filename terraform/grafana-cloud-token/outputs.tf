@@ -26,6 +26,12 @@ output "grafana_api_key" {
   sensitive   = true
 }
 
+output "backstage_grafana_token" {
+  description = "Read-only (Viewer) service account token for the Backstage Monitoring tab's '/grafana/api' proxy (BACKSTAGE_GRAFANA_TOKEN - docs/505 § Grafana integration)."
+  value       = grafana_cloud_stack_service_account_token.backstage.key
+  sensitive   = true
+}
+
 output "pdc_token" {
   description = "Token for the PDC agent to connect to the private network."
   value       = grafana_cloud_private_data_source_connect_network_token.this.token

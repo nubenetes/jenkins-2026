@@ -14,3 +14,9 @@ variable "jenkins_admin_password" {
   sensitive   = true
   description = "Password for the Jenkins admin user, used to configure the datasource."
 }
+
+variable "jenkins_backend_tls" {
+  type        = bool
+  default     = false
+  description = "Whether gateway.backendTls is active on the cluster (docs/504 stage 6): the Jenkins Service's 8080 then serves HTTPS and the plain-HTTP listener for in-cluster callers moves to 8082 - the datasource URL must follow, because the PDC tunnel terminates in-cluster and dials it verbatim. Day1.cluster.01-gke passes the workflow's backend_tls input."
+}

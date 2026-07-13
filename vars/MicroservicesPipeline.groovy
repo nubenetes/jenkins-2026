@@ -370,12 +370,12 @@ ${agentNodeScheduling}
                 parallel {
                     stage('Semgrep SAST') {
                         steps {
-                            microservicesSemgrepScan()
+                            microservicesSemgrepScan(repoUrl: cfg.gitRepoUrl, repoBranch: cfg.gitBranch)
                         }
                     }
                     stage('CodeQL Analysis') {
                         steps {
-                            microservicesCodeqlScan()
+                            microservicesCodeqlScan(repoUrl: cfg.gitRepoUrl, repoBranch: cfg.gitBranch)
                         }
                     }
                     stage('Trivy IaC Scan') {

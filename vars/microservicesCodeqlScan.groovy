@@ -1,17 +1,19 @@
 /**
- * microservicesCodeqlScan()
+ * microservicesCodeqlScan(repoUrl: cfg.gitRepoUrl, repoBranch: cfg.gitBranch)
  *
  * CodeQL deep-SAST scan of the checked-out app source (microservices-src/):
  * builds a local JavaScript/TypeScript CodeQL database (config from the infra
  * checkout's .github/codeql/codeql-config.yml), analyzes it, then the shared
  * SARIF upload to GitHub Code Scanning (microservicesSarifUpload).
+ * repoUrl/repoBranch identify the scanned APP's own repo, not the infra
+ * self-repo (see microservicesSarifUpload's header).
  *
  * Runs in the 'codeql' container of the pod template declared inline in
  * vars/MicroservicesPipeline.groovy; called from the parallel 'Static Analysis'
  * stage (this is the long pole of the three scanners — the reason the stage
  * fans out). Non-blocking by design (docs/601).
  */
-def call() {
+def call(Map cfg) {
   container('codeql') {
     dir('microservices-src') {
       sh """
@@ -31,6 +33,8 @@ def call() {
     sarifFile: 'codeql-results.sarif',
     toolName: 'CodeQL',
     uiDetail: 'data flow paths',
+    repoUrl: cfg.repoUrl,
+    repoBranch: cfg.repoBranch,
     blurb: [
       "CodeQL is GitHub's advanced semantic code analysis engine. By treating",
       'code as data, it executes queries to detect security vulnerabilities,',

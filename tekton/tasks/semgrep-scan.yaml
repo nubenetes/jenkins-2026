@@ -1,13 +1,19 @@
 # Stage "Semgrep SAST" of the Jenkins pipeline: runs Semgrep over the app source
 # and uploads the SARIF report to GitHub Code Scanning (best-effort, non-fatal).
+# git-repo-url/git-branch MUST be the scanned APP's own repo (mirrors Jenkins'
+# vars/microservicesSemgrepScan.groovy cfg.repoUrl/cfg.repoBranch) - this task
+# scans microservices-src/ (the app source), so uploading against the infra
+# self-repo would silently misattribute every finding (found 2026-07-13; the
+# param was self-repo-url/self-repo-branch, copy-pasted from fetch-source's
+# infra-checkout params).
 apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: semgrep-scan
 spec:
   params:
-    - name: self-repo-url
-    - name: self-repo-branch
+    - name: git-repo-url
+    - name: git-branch
   workspaces:
     - name: source
   steps:
@@ -41,9 +47,9 @@ spec:
         [ -f semgrep-results.sarif ] || { echo "No SARIF produced - skipping upload."; exit 0; }
         if [ -z "${GIT_TOKEN:-}" ]; then echo "GIT_TOKEN unset - skipping SARIF upload."; exit 0; fi
         git config --global --add safe.directory '*' || true
-        COMMIT_SHA=$(git -C "$(workspaces.source.path)/jenkins-2026-infra" rev-parse HEAD | tr -d '\n')
-        REF="refs/heads/$(params.self-repo-branch)"
-        REPO_PATH=$(echo "$(params.self-repo-url)" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\.git$||')
+        COMMIT_SHA=$(git -C "$(workspaces.source.path)/microservices-src" rev-parse HEAD | tr -d '\n')
+        REF="refs/heads/$(params.git-branch)"
+        REPO_PATH=$(echo "$(params.git-repo-url)" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\.git$||')
         # Pass the gzip+base64 SARIF to jq via --rawfile (a FILE), not --arg: a large
         # SARIF as a CLI argument overflows ARG_MAX ('jq: Argument list too long').
         gzip -c semgrep-results.sarif | base64 -w0 > semgrep-results.sarif.b64

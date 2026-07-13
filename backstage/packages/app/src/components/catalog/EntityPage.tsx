@@ -65,9 +65,24 @@ import {
   RELATION_PROVIDES_API,
 } from '@backstage/catalog-model';
 import { CicdContent } from '../cicd/CicdContent';
+import { ObservabilityContent } from '../observability/ObservabilityContent';
+import { SecurityContent } from '../security/SecurityContent';
+import {
+  EntityGrafanaDashboardsCard,
+  EntityGrafanaAlertsCard,
+  isDashboardSelectorAvailable,
+  isAlertSelectorAvailable,
+} from '@backstage-community/plugin-grafana';
+import { isSecurityInsightsAvailable } from '@roadiehq/backstage-plugin-security-insights';
+import { EntityScorecardContent } from '@red-hat-developer-hub/backstage-plugin-scorecard';
 import { EntityJenkinsContent } from '@backstage-community/plugin-jenkins';
 import { EntityGithubActionsContent } from '@backstage-community/plugin-github-actions';
 import { TektonCI } from '@backstage-community/plugin-tekton';
+
+/* The Monitoring tab only appears on entities that opted in via the grafana
+ * annotations - keeps Group/User/Location pages noise-free. */
+const hasGrafanaAnnotations = (e: Parameters<typeof isAlertSelectorAvailable>[0]) =>
+  Boolean(isDashboardSelectorAvailable(e)) || isAlertSelectorAvailable(e);
 
 const cicdContent = (
   <CicdContent>
@@ -75,6 +90,19 @@ const cicdContent = (
     <EntityGithubActionsContent />
     <TektonCI />
   </CicdContent>
+);
+
+/* Same static-tree trick as cicdContent, but here it is the API factory that
+ * needs it: grafanaPlugin registers its default apiRef (plugin.grafana.service)
+ * only when Backstage's element-tree traversal discovers a grafanaPlugin
+ * extension in the JSX. Referenced only inside ObservabilityContent's render
+ * body the plugin is never found and the cards crash with NotImplementedError
+ * on mount. Rendering is still exclusively the runtime obsMode switch inside. */
+const monitoringContent = (
+  <ObservabilityContent>
+    <EntityGrafanaDashboardsCard />
+    <EntityGrafanaAlertsCard />
+  </ObservabilityContent>
 );
 
 const entityWarningContent = (
@@ -163,6 +191,42 @@ const serviceEntityPage = (
       <EntityKubernetesContent refreshIntervalMs={30000} />
     </EntityLayout.Route>
 
+    {/* Grafana dashboards/alerts, switched at runtime on jenkins2026.obsMode
+        (live cards for oss/grafana-cloud, deep-link card for managed-*). */}
+    <EntityLayout.Route
+      path="/monitoring"
+      title="Monitoring"
+      if={hasGrafanaAnnotations}
+    >
+      {monitoringContent}
+    </EntityLayout.Route>
+
+    {/* GitHub Code Scanning (Semgrep + CodeQL) + Dependabot alerts - reuses
+        the github.com/project-slug annotation the CI/CD tab's GitHub Actions
+        case already depends on (docs/601 § SARIF upload). */}
+    <EntityLayout.Route
+      path="/security"
+      title="Security"
+      if={isSecurityInsightsAvailable}
+    >
+      <SecurityContent />
+    </EntityLayout.Route>
+
+    {/* Entity KPI: GitHub open PRs (docs/505 § Scorecard tab). Gated on the
+        same annotation as Security (the only wired metric provider needs
+        it) - found live 2026-07-13 ungated, showing "No scorecards added
+        yet" on annotation-less Resources like backstage-db/gke-cluster.
+        Used directly (not via an intermediary wrapper component), so
+        scorecardPlugin's own apiRef is naturally discovered - no children
+        trick needed here, unlike Grafana's tab. */}
+    <EntityLayout.Route
+      path="/scorecard"
+      title="Scorecard"
+      if={isSecurityInsightsAvailable}
+    >
+      <EntityScorecardContent />
+    </EntityLayout.Route>
+
     <EntityLayout.Route path="/api" title="API">
       <Grid container spacing={3} alignItems="stretch">
         <Grid item md={6}>
@@ -202,6 +266,27 @@ const websiteEntityPage = (
     <EntityLayout.Route path="/kubernetes" title="Kubernetes">
       <EntityKubernetesContent refreshIntervalMs={30000} />
     </EntityLayout.Route>
+    <EntityLayout.Route
+      path="/monitoring"
+      title="Monitoring"
+      if={hasGrafanaAnnotations}
+    >
+      {monitoringContent}
+    </EntityLayout.Route>
+    <EntityLayout.Route
+      path="/security"
+      title="Security"
+      if={isSecurityInsightsAvailable}
+    >
+      <SecurityContent />
+    </EntityLayout.Route>
+    <EntityLayout.Route
+      path="/scorecard"
+      title="Scorecard"
+      if={isSecurityInsightsAvailable}
+    >
+      <EntityScorecardContent />
+    </EntityLayout.Route>
     <EntityLayout.Route path="/docs" title="Docs">
       {techdocsContent}
     </EntityLayout.Route>
@@ -212,6 +297,29 @@ const defaultEntityPage = (
   <EntityLayout>
     <EntityLayout.Route path="/" title="Overview">
       {overviewContent}
+    </EntityLayout.Route>
+    {/* jenkins-2026-infra (type infrastructure) lands here - the platform
+        dashboards (NAP, gateway, collector, ...) are exactly its content. */}
+    <EntityLayout.Route
+      path="/monitoring"
+      title="Monitoring"
+      if={hasGrafanaAnnotations}
+    >
+      {monitoringContent}
+    </EntityLayout.Route>
+    <EntityLayout.Route
+      path="/security"
+      title="Security"
+      if={isSecurityInsightsAvailable}
+    >
+      <SecurityContent />
+    </EntityLayout.Route>
+    <EntityLayout.Route
+      path="/scorecard"
+      title="Scorecard"
+      if={isSecurityInsightsAvailable}
+    >
+      <EntityScorecardContent />
     </EntityLayout.Route>
     <EntityLayout.Route path="/docs" title="Docs">
       {techdocsContent}

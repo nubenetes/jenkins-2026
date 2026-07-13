@@ -1,13 +1,15 @@
 # Stage "CodeQL Analysis" of the Jenkins pipeline: builds a CodeQL database for
 # the app source and uploads the SARIF to GitHub Code Scanning (best-effort).
+# git-repo-url/git-branch MUST be the scanned APP's own repo - same fix and
+# rationale as tekton/tasks/semgrep-scan.yaml (found 2026-07-13).
 apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: codeql-analyze
 spec:
   params:
-    - name: self-repo-url
-    - name: self-repo-branch
+    - name: git-repo-url
+    - name: git-branch
   workspaces:
     - name: source
   steps:
@@ -55,9 +57,9 @@ spec:
         [ -f codeql-results.sarif ] || { echo "No SARIF produced - skipping upload."; exit 0; }
         if [ -z "${GIT_TOKEN:-}" ]; then echo "GIT_TOKEN unset - skipping SARIF upload."; exit 0; fi
         git config --global --add safe.directory '*' || true
-        COMMIT_SHA=$(git -C "$(workspaces.source.path)/jenkins-2026-infra" rev-parse HEAD | tr -d '\n')
-        REF="refs/heads/$(params.self-repo-branch)"
-        REPO_PATH=$(echo "$(params.self-repo-url)" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\.git$||')
+        COMMIT_SHA=$(git -C "$(workspaces.source.path)/microservices-src" rev-parse HEAD | tr -d '\n')
+        REF="refs/heads/$(params.git-branch)"
+        REPO_PATH=$(echo "$(params.git-repo-url)" | sed -E 's|^https://github.com/||; s|^git@github.com:||; s|\.git$||')
         # --rawfile (a FILE), not --arg: a large SARIF as a CLI arg overflows ARG_MAX.
         gzip -c codeql-results.sarif | base64 -w0 > codeql-results.sarif.b64
         if ! jq -n --arg c "$COMMIT_SHA" --arg r "$REF" --rawfile s codeql-results.sarif.b64 \
