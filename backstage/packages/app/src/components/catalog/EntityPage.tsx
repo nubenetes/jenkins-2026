@@ -74,6 +74,7 @@ import {
   isAlertSelectorAvailable,
 } from '@backstage-community/plugin-grafana';
 import { isSecurityInsightsAvailable } from '@roadiehq/backstage-plugin-security-insights';
+import { EntityScorecardContent } from '@red-hat-developer-hub/backstage-plugin-scorecard';
 import { EntityJenkinsContent } from '@backstage-community/plugin-jenkins';
 import { EntityGithubActionsContent } from '@backstage-community/plugin-github-actions';
 import { TektonCI } from '@backstage-community/plugin-tekton';
@@ -211,6 +212,14 @@ const serviceEntityPage = (
       <SecurityContent />
     </EntityLayout.Route>
 
+    {/* Entity KPI: GitHub open PRs (docs/505 § Scorecard tab). Used directly
+        (not via an intermediary wrapper component), so scorecardPlugin's own
+        apiRef is naturally discovered - no children trick needed here,
+        unlike Grafana's tab. */}
+    <EntityLayout.Route path="/scorecard" title="Scorecard">
+      <EntityScorecardContent />
+    </EntityLayout.Route>
+
     <EntityLayout.Route path="/api" title="API">
       <Grid container spacing={3} alignItems="stretch">
         <Grid item md={6}>
@@ -264,6 +273,9 @@ const websiteEntityPage = (
     >
       <SecurityContent />
     </EntityLayout.Route>
+    <EntityLayout.Route path="/scorecard" title="Scorecard">
+      <EntityScorecardContent />
+    </EntityLayout.Route>
     <EntityLayout.Route path="/docs" title="Docs">
       {techdocsContent}
     </EntityLayout.Route>
@@ -290,6 +302,9 @@ const defaultEntityPage = (
       if={isSecurityInsightsAvailable}
     >
       <SecurityContent />
+    </EntityLayout.Route>
+    <EntityLayout.Route path="/scorecard" title="Scorecard">
+      <EntityScorecardContent />
     </EntityLayout.Route>
     <EntityLayout.Route path="/docs" title="Docs">
       {techdocsContent}

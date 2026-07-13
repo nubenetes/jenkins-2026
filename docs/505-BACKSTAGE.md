@@ -361,6 +361,7 @@ Version pins (all **verified 2026-07-11**; policy in [602](./602-VERSION_PINNING
 | `@backstage-community/plugin-tekton` | 3.39.0 | `packages/app` |
 | `@backstage-community/plugin-grafana` | 0.21.0 (frontend-only; verified 2026-07-13) | `packages/app` |
 | `@roadiehq/backstage-plugin-security-insights` | 3.3.1 (frontend-only; verified 2026-07-13) | `packages/app` |
+| `@red-hat-developer-hub/backstage-plugin-scorecard` / `-backend` / `-backend-module-github` | 2.8.1 / 2.8.1 / 2.8.1 (verified 2026-07-13) | `packages/app` / `packages/backend` (×2) |
 | `@backstage-community/plugin-argocd` / `-backend` | 2.9.0 / 1.5.0 | `packages/app` / `packages/backend` |
 | `@backstage/plugin-kubernetes` / `-backend` | 0.12.20 / 0.21.5 | `packages/app` / `packages/backend` |
 | `@backstage/plugin-auth-backend-module-gcp-iap-provider` | 0.4.16 | `packages/backend` |
@@ -734,6 +735,62 @@ with `administration: write`). Until enabled, the Dependabot card renders a
 clean inline error (the plugin's own `useAsync` error state) rather than
 crashing the tab — an honest "not configured", not a bug.
 
+## Scorecard tab (entity KPIs)
+
+The EntityPage carries a **Scorecard** tab
+([Red Hat Developer Hub's Scorecard plugin](https://github.com/redhat-developer/rhdh-plugins/tree/main/workspaces/scorecard),
+2.8.1, verified 2026-07-13) — a framework for configurable, scheduled
+per-entity metrics ("Key Performance Indicators"), each collected by a
+pluggable **metric provider** and rendered with a threshold-based
+success/warning/error status. `EntityScorecardContent` is used **directly**
+as route content (not through an intermediary wrapper, unlike
+`ObservabilityContent`/`SecurityContent`), so its own API factory
+(`scorecardApiRef` — same static-tree-discovery contract as Grafana's, see
+the Monitoring tab section) is naturally satisfied with no children trick.
+
+**Only the GitHub provider is wired** (`@red-hat-developer-hub/backstage-plugin-scorecard-backend-module-github`,
+metric `github.open_prs` — count of open PRs on the entity's repo). It needed
+**zero new config or catalog changes**: it reads the same `integrations.github`
+token already configured for catalog ingestion, and the same
+`github.com/project-slug` annotation every entity already carries. The
+scorecard backend's own permission (`scorecard.metric.read`, requiring
+`catalog.entity.read`) is satisfied by the `allow-all` permission policy this
+app already runs (docs/505 § Credentials & RBAC) — no RBAC wiring needed
+either. Metrics collect on the plugin's default schedule (hourly) into a new
+schema in the **same CNPG `backstage-db`** the rest of the backend already
+uses — no new database, no new Postgres role.
+
+**Three other provider modules were evaluated and deliberately deferred** —
+not omitted by oversight, each verified live before being ruled out:
+
+- **OpenSSF Scorecard** (`-module-openssf`, 18 security checks per repo) —
+  reads a component's `openssf/scorecard-location` annotation, expected to
+  point at `https://api.securityscorecards.dev/projects/github.com/<owner>/<repo>`.
+  Checked live before adopting it: **all three repos 404** — that public
+  dataset only covers a curated corpus of well-known OSS projects (Kubernetes,
+  major frameworks, etc.), not arbitrary forks like these. Wiring the
+  annotation anyway would ship a metric that's permanently broken, not one
+  that degrades gracefully (unlike Dependabot below) — self-hosting `openssf/scorecard`
+  runs against these repos and serving the JSON somewhere is a real infra
+  project, out of scope for "add a plugin".
+- **Dependabot** (`-module-dependabot`, CVE alert counts by severity) — needs
+  `github.com/dependabot: 'true'` plus a token with `security_events` scope.
+  Blocked on the exact same disabled repo setting the Security tab's
+  Dependabot card already found (above) — no value wiring a second
+  integration against data that isn't there yet.
+- **Filecheck** (`-module-filecheck`, e.g. does `README.md`/`LICENSE`/`CODEOWNERS`
+  exist) — keys off the entity's `backstage.io/source-location` annotation,
+  which Backstage auto-populates from where the entity was **ingested**, not
+  a hand-set value. `gateway`/`jhipstersamplemicroservice` have no per-app
+  `catalog-info.yaml` of their own — every entity here is defined in this
+  repo's [`backstage/catalog/`](../backstage/catalog/) — so their
+  `source-location` resolves to **this repo's catalog file**, not their
+  GitHub forks. Wiring Filecheck as-is would check the wrong repo's files:
+  the exact misattribution class the [SARIF-routing fix](#security-tab-github-code-scanning--dependabot)
+  just closed elsewhere. An explicit per-entity `backstage.io/source-location`
+  override could fix this, but that annotation format wasn't verified before
+  this pass — tracked in [Roadmap](#roadmap).
+
 ## TechDocs
 
 TechDocs renders **this repo's existing `docs/` tree** — the very documents
@@ -959,6 +1016,14 @@ survive (image, SM secrets) are exactly the two the platform *wants* persistent
 - **Permission policies beyond allow-all** — real role mapping once there is
   more than one class of user behind IAP. (Guest auth stays out of production
   configs regardless.)
+- **Scorecard: the three deferred provider modules** (docs/505 § Scorecard
+  tab) — Dependabot once the repo-level "Dependabot alerts" setting is
+  enabled (same prerequisite as the Security tab's card); OpenSSF once these
+  repos either enter the public `securityscorecards.dev` corpus or this
+  platform self-hosts `openssf/scorecard` runs somewhere; Filecheck once each
+  app entity carries a verified explicit `backstage.io/source-location`
+  override pointing at its own GitHub fork instead of this repo's catalog
+  file.
 
 ---
 
