@@ -568,6 +568,20 @@ The switch lives in
 `grafana/*` annotations (route-level `if`), so Group/User pages stay
 noise-free.
 
+**The static-tree discovery contract (both runtime-switch tabs).** Backstage's
+legacy frontend discovers plugins by traversing the app's **static JSX element
+tree** — it never executes component render bodies. A plugin extension that is
+only *rendered inside* a wrapper component is therefore invisible, and the
+plugin's default **API factory never registers** (the Grafana cards then crash
+with `NotImplementedError: No implementation available for
+apiRef{plugin.grafana.service}` — hit live on the tab's first validation,
+2026-07-13; the CI/CD tab had the routeRef flavour of the same problem). Both
+wrappers hence take the plugin extensions as **deliberately-unused children**
+mounted by `EntityPage.tsx` (`cicdContent` / `monitoringContent`): the children
+make the plugins discoverable, while rendering stays exclusively the runtime
+switch inside the wrapper. Any future runtime-switched tab must follow the same
+pattern.
+
 **How the live cards find content — zero Grafana-side changes.** The plugin
 matches what the platform already provisions:
 

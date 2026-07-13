@@ -67,6 +67,8 @@ import {
 import { CicdContent } from '../cicd/CicdContent';
 import { ObservabilityContent } from '../observability/ObservabilityContent';
 import {
+  EntityGrafanaDashboardsCard,
+  EntityGrafanaAlertsCard,
   isDashboardSelectorAvailable,
   isAlertSelectorAvailable,
 } from '@backstage-community/plugin-grafana';
@@ -85,6 +87,19 @@ const cicdContent = (
     <EntityGithubActionsContent />
     <TektonCI />
   </CicdContent>
+);
+
+/* Same static-tree trick as cicdContent, but here it is the API factory that
+ * needs it: grafanaPlugin registers its default apiRef (plugin.grafana.service)
+ * only when Backstage's element-tree traversal discovers a grafanaPlugin
+ * extension in the JSX. Referenced only inside ObservabilityContent's render
+ * body the plugin is never found and the cards crash with NotImplementedError
+ * on mount. Rendering is still exclusively the runtime obsMode switch inside. */
+const monitoringContent = (
+  <ObservabilityContent>
+    <EntityGrafanaDashboardsCard />
+    <EntityGrafanaAlertsCard />
+  </ObservabilityContent>
 );
 
 const entityWarningContent = (
@@ -180,7 +195,7 @@ const serviceEntityPage = (
       title="Monitoring"
       if={hasGrafanaAnnotations}
     >
-      <ObservabilityContent />
+      {monitoringContent}
     </EntityLayout.Route>
 
     <EntityLayout.Route path="/api" title="API">
@@ -227,7 +242,7 @@ const websiteEntityPage = (
       title="Monitoring"
       if={hasGrafanaAnnotations}
     >
-      <ObservabilityContent />
+      {monitoringContent}
     </EntityLayout.Route>
     <EntityLayout.Route path="/docs" title="Docs">
       {techdocsContent}
@@ -247,7 +262,7 @@ const defaultEntityPage = (
       title="Monitoring"
       if={hasGrafanaAnnotations}
     >
-      <ObservabilityContent />
+      {monitoringContent}
     </EntityLayout.Route>
     <EntityLayout.Route path="/docs" title="Docs">
       {techdocsContent}

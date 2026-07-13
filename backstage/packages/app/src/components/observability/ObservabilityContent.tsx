@@ -78,7 +78,18 @@ const ManagedGrafanaContent = ({ mode }: { mode: string }) => {
   );
 };
 
-export const ObservabilityContent = () => {
+export const ObservabilityContent = ({
+  // Deliberately UNUSED (underscore satisfies noUnusedParameters): EntityPage
+  // mounts the two Grafana cards as children so Backstage's static element-tree
+  // traversal discovers grafanaPlugin and registers its default API factory
+  // (apiRef plugin.grafana.service) - referenced only inside this render body
+  // the plugin is invisible to the collector and the cards throw
+  // NotImplementedError on mount. Same trick as ../cicd/CicdContent; rendering
+  // is still exclusively the obsMode switch below.
+  children: _children,
+}: {
+  children?: React.ReactNode;
+}) => {
   const config = useApi(configApiRef);
   const mode = config.getOptionalString('jenkins2026.obsMode');
 
