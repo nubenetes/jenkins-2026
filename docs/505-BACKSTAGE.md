@@ -796,24 +796,39 @@ not omitted by oversight, each verified live before being ruled out:
 The portal has a landing page at `/home`
 ([`HomePage.tsx`](../backstage/packages/app/src/components/home/HomePage.tsx)),
 replacing the previous `/` → `/catalog` redirect (`/` now redirects to
-`/home`). It carries a single **portfolio-wide** `ScorecardHomepageCard`
-(`aggregationId="github.open_prs"`) — an aggregated view of open PRs across
-**every** entity with a `github.com/project-slug` annotation, complementing
-the per-entity [Scorecard tab](#scorecard-tab-entity-kpis) (which only shows
-one entity at a time).
+`/home`). It carries a plain **quick-links** card (Catalog, the platform
+component's Monitoring/Security tabs, Docs, Graph) — a real landing page
+where none existed, deliberately **not** the aggregated `ScorecardHomepageCard`
+originally shipped here.
 
-**Zero new dependency, zero new config**: `ScorecardHomepageCard` ships in
-the same `@red-hat-developer-hub/backstage-plugin-scorecard` package the
-entity tab already uses. `aggregationId="github.open_prs"` needs no
-`scorecard.aggregationKPIs` app-config entry — per the backend's own fallback
-rule (docs above), `GET /aggregations/:aggregationId` works with the default
-`statusGrouped` aggregation when the id equals a metric id directly.
+**Why not `ScorecardHomepageCard` (found live, 2026-07-13, same day it
+shipped)**: the card rendered ("GitHub open PRs" title, correct threshold
+legend) but its data call, `GET /api/scorecard/aggregations/github.open_prs`,
+**404'd** for the signed-in IAP user. The scorecard backend's own docs explain
+why: that endpoint aggregates metrics **by entity ownership** (entities the
+user owns directly, or via a catalog `Group` they're a direct member of), and
+returns **404 "User not in catalog"** when the identity has no catalog `User`
+entity at all. This app's IAP sign-in runs with
+`dangerouslyAllowSignInWithoutUserInCatalog: true` on purpose (docs/505 §
+Credentials & RBAC) — there is no catalog `User`/`Group` graph to own
+anything. This isn't a race condition or a missing config key like the
+Monitoring tab's mint-race or the Scorecard tab's deferred providers: it's a
+**structural mismatch** between this feature and this platform's auth model,
+and it will 404 for every user until the roadmap's "Catalog `User`
+auto-provision" item ships (below). Swapped for quick links rather than ship
+a card that silently fails for everyone.
+
+The per-entity [Scorecard tab](#scorecard-tab-entity-kpis) is unaffected —
+its `GET /metrics/catalog/...` route reads metrics for one named entity
+directly, no ownership resolution involved.
 
 This intentionally does **not** use `@backstage/plugin-home`'s
 `HomepageCompositionRoot` (the drag-and-drop customizable widget grid with
-its own `visitsApiRef`/storage wiring) — that's real additional machinery
-for a portal that, today, wants exactly one static card. `HomePage.tsx` is a
-plain `Page`/`Header`/`Content`/`Grid` composition, the same pattern as
+its own `visitsApiRef`/storage wiring) — that's real additional machinery for
+a portal that, today, wants exactly one static card. `HomePage.tsx` is a
+plain `Page`/`Header`/`Content`/`InfoCard` composition (`Link` from
+`@backstage/core-components`, already a dependency — zero new package), the
+same pattern as
 [`SecurityContent.tsx`](../backstage/packages/app/src/components/security/SecurityContent.tsx) /
 [`ObservabilityContent.tsx`](../backstage/packages/app/src/components/observability/ObservabilityContent.tsx).
 
@@ -1038,7 +1053,10 @@ survive (image, SM secrets) are exactly the two the platform *wants* persistent
   the Grafana plugin grows AAD/SigV4 auth (or AMG ships a static-token proxy),
   or if a managed mode becomes this PoC's primary posture.
 - **Catalog `User` auto-provision** from the IAP admin-emails list, upgrading
-  the sign-in resolver off `dangerouslyAllowSignInWithoutUserInCatalog`.
+  the sign-in resolver off `dangerouslyAllowSignInWithoutUserInCatalog`. Also
+  the prerequisite for `ScorecardHomepageCard`'s ownership-based aggregation
+  (docs/505 § Home page) — without a real `User`/`Group` catalog graph, that
+  card's `GET /aggregations/:aggregationId` 404s for every signed-in user.
 - **OTel instrumentation of the backend** — export the Node backend's
   traces/metrics to the shared collector so the portal appears in its own
   dashboards ([301](./301-OBSERVABILITY.md)).
