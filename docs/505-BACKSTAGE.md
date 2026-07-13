@@ -747,6 +747,12 @@ as route content (not through an intermediary wrapper, unlike
 `ObservabilityContent`/`SecurityContent`), so its own API factory
 (`scorecardApiRef` — same static-tree-discovery contract as Grafana's, see
 the Monitoring tab section) is naturally satisfied with no children trick.
+The route is gated on `isSecurityInsightsAvailable` (the Security tab's own
+guard, reused here — the only wired metric provider needs the same
+`github.com/project-slug` annotation) — **found live 2026-07-13 ungated**,
+showing an empty "No scorecards added yet" tab on annotation-less `Resource`
+entities (`backstage-db`, `gke-cluster`) that fall through to
+`defaultEntityPage` with no matching `EntitySwitch.Case` of their own kind.
 
 **Only the GitHub provider is wired** (`@red-hat-developer-hub/backstage-plugin-scorecard-backend-module-github`,
 metric `github.open_prs` — count of open PRs on the entity's repo). It needed

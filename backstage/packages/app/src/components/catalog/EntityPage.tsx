@@ -212,11 +212,18 @@ const serviceEntityPage = (
       <SecurityContent />
     </EntityLayout.Route>
 
-    {/* Entity KPI: GitHub open PRs (docs/505 § Scorecard tab). Used directly
-        (not via an intermediary wrapper component), so scorecardPlugin's own
-        apiRef is naturally discovered - no children trick needed here,
-        unlike Grafana's tab. */}
-    <EntityLayout.Route path="/scorecard" title="Scorecard">
+    {/* Entity KPI: GitHub open PRs (docs/505 § Scorecard tab). Gated on the
+        same annotation as Security (the only wired metric provider needs
+        it) - found live 2026-07-13 ungated, showing "No scorecards added
+        yet" on annotation-less Resources like backstage-db/gke-cluster.
+        Used directly (not via an intermediary wrapper component), so
+        scorecardPlugin's own apiRef is naturally discovered - no children
+        trick needed here, unlike Grafana's tab. */}
+    <EntityLayout.Route
+      path="/scorecard"
+      title="Scorecard"
+      if={isSecurityInsightsAvailable}
+    >
       <EntityScorecardContent />
     </EntityLayout.Route>
 
@@ -273,7 +280,11 @@ const websiteEntityPage = (
     >
       <SecurityContent />
     </EntityLayout.Route>
-    <EntityLayout.Route path="/scorecard" title="Scorecard">
+    <EntityLayout.Route
+      path="/scorecard"
+      title="Scorecard"
+      if={isSecurityInsightsAvailable}
+    >
       <EntityScorecardContent />
     </EntityLayout.Route>
     <EntityLayout.Route path="/docs" title="Docs">
@@ -303,7 +314,11 @@ const defaultEntityPage = (
     >
       <SecurityContent />
     </EntityLayout.Route>
-    <EntityLayout.Route path="/scorecard" title="Scorecard">
+    <EntityLayout.Route
+      path="/scorecard"
+      title="Scorecard"
+      if={isSecurityInsightsAvailable}
+    >
       <EntityScorecardContent />
     </EntityLayout.Route>
     <EntityLayout.Route path="/docs" title="Docs">
