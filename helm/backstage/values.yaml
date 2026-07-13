@@ -54,7 +54,8 @@ backstage:
   #   backstage-runtime-config (ConfigMap, script-owned, optional so the pod can
   #   start on a half-provisioned cluster and converge later):
   #     APP_BASE_URL / CI_ENGINE / CATALOG_BRANCH / JENKINS_BASE_URL /
-  #     ARGOCD_BASE_URL / IAP_AUDIENCE / BASE_DOMAIN
+  #     ARGOCD_BASE_URL / IAP_AUDIENCE / BASE_DOMAIN / OBS_MODE /
+  #     GRAFANA_DOMAIN / GRAFANA_PROXY_TARGET
   #   backstage-db-app (Secret, CNPG-generated): host/port/username/password -
   #   required (a missing DB secret should hold the container at
   #   CreateContainerConfigError rather than crash-loop the app).
@@ -80,6 +81,18 @@ backstage:
     - name: BASE_DOMAIN
       valueFrom:
         configMapKeyRef: { name: backstage-runtime-config, key: BASE_DOMAIN, optional: true }
+    # Monitoring tab (docs/505 § Grafana integration): observability.mode +
+    # the Grafana coordinates 08.95 derives from it. GRAFANA_TOKEN itself
+    # arrives via backstage-secrets (extraEnvVarsSecrets below).
+    - name: OBS_MODE
+      valueFrom:
+        configMapKeyRef: { name: backstage-runtime-config, key: OBS_MODE, optional: true }
+    - name: GRAFANA_DOMAIN
+      valueFrom:
+        configMapKeyRef: { name: backstage-runtime-config, key: GRAFANA_DOMAIN, optional: true }
+    - name: GRAFANA_PROXY_TARGET
+      valueFrom:
+        configMapKeyRef: { name: backstage-runtime-config, key: GRAFANA_PROXY_TARGET, optional: true }
     - name: POSTGRES_HOST
       valueFrom:
         secretKeyRef: { name: backstage-db-app, key: host }

@@ -539,6 +539,16 @@ fi
 #                                tab's per-user popup (BACKSTAGE_GITHUB_OAUTH_*
 #                                GitHub secrets). 'unset' placeholders keep the
 #                                auth provider config valid until real creds exist.
+#   GRAFANA_TOKEN                Bearer for the Monitoring tab's '/grafana/api'
+#                                proxy (docs/505 § Grafana integration).
+#                                grafana-cloud: arrives as BACKSTAGE_GRAFANA_TOKEN
+#                                env (Terraform-minted stack SA token threaded by
+#                                Day1). oss: 08.95-backstage.sh mints a Viewer
+#                                service-account token against the in-cluster
+#                                Grafana API and PATCHes it in (like ARGOCD_*,
+#                                surviving the eso Merge re-sync). managed-*:
+#                                stays 'unset' - the tab is a deep-link card,
+#                                the proxy is never called.
 #   ARGOCD_USERNAME/PASSWORD     deliberately NOT seeded here: 08.95-backstage.sh
 #                                patches them from argocd-initial-admin-secret
 #                                (minted in-cluster by 08.5). The eso ExternalSecret
@@ -578,9 +588,14 @@ if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
   bs_gh_oauth_id="${BACKSTAGE_GITHUB_OAUTH_CLIENT_ID:-$(bs_existing AUTH_GITHUB_CLIENT_ID)}"
   bs_gh_oauth_secret="${BACKSTAGE_GITHUB_OAUTH_CLIENT_SECRET:-$(bs_existing AUTH_GITHUB_CLIENT_SECRET)}"
   bs_github_token="${GIT_TOKEN:-$(bs_existing GITHUB_TOKEN)}"
+  # Grafana Bearer for the Monitoring tab (docs/505 § Grafana integration):
+  # grafana-cloud passes BACKSTAGE_GRAFANA_TOKEN; oss leaves it for 08.95 to
+  # mint+patch (keep whatever it minted on re-runs); managed-* stays 'unset'.
+  bs_grafana_token="${BACKSTAGE_GRAFANA_TOKEN:-$(bs_existing GRAFANA_TOKEN)}"
   # 'unset' placeholders keep the auth-provider config valid until real creds exist.
   bs_gh_oauth_id="${bs_gh_oauth_id:-unset}"
   bs_gh_oauth_secret="${bs_gh_oauth_secret:-unset}"
+  bs_grafana_token="${bs_grafana_token:-unset}"
   # Same 'unset' treatment for the Jenkins plugin creds on non-jenkins engines -
   # an EMPTY string (not merely absent) is what the jenkins-backend plugin's
   # config schema rejects at startup; a non-empty placeholder satisfies the
@@ -597,6 +612,20 @@ if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
     # eso → BACKEND_SECRET is generated-if-absent and kept STABLE in Secret
     # Manager; ESO projects the blob with creationPolicy Merge (08.6), which
     # needs the target Secret to exist - ensure an (empty) base for the merge.
+    #
+    # GRAFANA_TOKEN ownership is MODE-DEPENDENT (single-owner-per-key - the
+    # grafana-base-url clobber lesson, docs/505 § eso): in oss the owner is
+    # 08.95's live PATCH (it mints the token in-cluster, like ARGOCD_*), so the
+    # key must NOT be in the SM blob or the hourly Merge re-sync would clobber
+    # the patched value back to 'unset'. provision_secret replaces the blob
+    # with exactly the keys listed, so omitting it here also purges any stale
+    # key left by a previous grafana-cloud epoch. In every other mode the
+    # owner is this script (grafana-cloud passes BACKSTAGE_GRAFANA_TOKEN;
+    # managed-* keep the 'unset' placeholder) and the key rides the blob.
+    bs_eso_grafana_kv=()
+    if [[ "${J2026_OBS_MODE}" != "oss" ]]; then
+      bs_eso_grafana_kv+=("GRAFANA_TOKEN=${bs_grafana_token}")
+    fi
     bs_backend_secret="$(sm_keep_or_generate "${J2026_BACKSTAGE_SECRETS_NAME}" BACKEND_SECRET "$(openssl rand -base64 24 | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c32)")"
     provision_secret "${J2026_BACKSTAGE_NAMESPACE}" "${J2026_BACKSTAGE_SECRETS_NAME}" \
       "BACKEND_SECRET=${bs_backend_secret}" \
@@ -604,7 +633,8 @@ if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
       "JENKINS_API_USER=${bs_jenkins_user}" \
       "JENKINS_API_KEY=${bs_jenkins_key}" \
       "AUTH_GITHUB_CLIENT_ID=${bs_gh_oauth_id}" \
-      "AUTH_GITHUB_CLIENT_SECRET=${bs_gh_oauth_secret}"
+      "AUTH_GITHUB_CLIENT_SECRET=${bs_gh_oauth_secret}" \
+      "${bs_eso_grafana_kv[@]}"
     kubectl create secret generic "${J2026_BACKSTAGE_SECRETS_NAME}" -n "${J2026_BACKSTAGE_NAMESPACE}" \
       --dry-run=client -o yaml | kubectl apply -f - >/dev/null
     log_info "Seeded ${J2026_BACKSTAGE_SECRETS_NAME} into Secret Manager (BACKEND_SECRET stable) — ESO will Merge it."
@@ -617,7 +647,8 @@ if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
   "JENKINS_API_USER":"${bs_jenkins_user}",
   "JENKINS_API_KEY":"${bs_jenkins_key}",
   "AUTH_GITHUB_CLIENT_ID":"${bs_gh_oauth_id}",
-  "AUTH_GITHUB_CLIENT_SECRET":"${bs_gh_oauth_secret}"
+  "AUTH_GITHUB_CLIENT_SECRET":"${bs_gh_oauth_secret}",
+  "GRAFANA_TOKEN":"${bs_grafana_token}"
 }}
 EOF
 )"
@@ -629,7 +660,8 @@ EOF
       --from-literal=JENKINS_API_USER="${bs_jenkins_user}" \
       --from-literal=JENKINS_API_KEY="${bs_jenkins_key}" \
       --from-literal=AUTH_GITHUB_CLIENT_ID="${bs_gh_oauth_id}" \
-      --from-literal=AUTH_GITHUB_CLIENT_SECRET="${bs_gh_oauth_secret}"
+      --from-literal=AUTH_GITHUB_CLIENT_SECRET="${bs_gh_oauth_secret}" \
+      --from-literal=GRAFANA_TOKEN="${bs_grafana_token}"
     log_info "Created."
   fi
 fi

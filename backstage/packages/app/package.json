@@ -15,6 +15,7 @@
   "dependencies": {
     "@backstage-community/plugin-argocd": "2.9.0",
     "@backstage-community/plugin-github-actions": "1.2.0",
+    "@backstage-community/plugin-grafana": "0.21.0",
     "@backstage-community/plugin-jenkins": "0.32.0",
     "@backstage-community/plugin-tekton": "3.39.0",
     "@backstage/app-defaults": "1.7.9",

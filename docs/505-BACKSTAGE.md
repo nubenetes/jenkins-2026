@@ -9,7 +9,10 @@ This project ships **Backstage.io** (open source, CNCF) **v1.52.1** as its
 platform itself (with a relations **Graph** page rooted at the platform
 Domain — a bare visit shows the whole catalog unfolded), **CI/CD visibility
 for whichever of the four CI engines is
-active**, an **ArgoCD deployment view**, a **Kubernetes workloads view**,
+active**, an **ArgoCD deployment view**, a **Kubernetes workloads view**, a
+**Grafana Monitoring tab** switched on `observability.mode` (live
+dashboards/alerts cards for `oss`/`grafana-cloud` — see
+[§ Monitoring tab](#monitoring-tab-grafana-per-observability-mode)),
 **TechDocs** rendering this repo's `docs/` in-portal, and Postgres-backed
 **search** across all of it. On a platform whose whole point is four
 interchangeable CI engines ([401](./401-JENKINS.md) · [404](./404-TEKTON.md) ·
@@ -356,6 +359,7 @@ Version pins (all **verified 2026-07-11**; policy in [602](./602-VERSION_PINNING
 | `@backstage-community/plugin-jenkins` / `-backend` | 0.32.0 / 0.29.0 | `packages/app` / `packages/backend` `package.json` |
 | `@backstage-community/plugin-github-actions` | 1.2.0 (frontend-only) | `packages/app` |
 | `@backstage-community/plugin-tekton` | 3.39.0 | `packages/app` |
+| `@backstage-community/plugin-grafana` | 0.21.0 (frontend-only; verified 2026-07-13) | `packages/app` |
 | `@backstage-community/plugin-argocd` / `-backend` | 2.9.0 / 1.5.0 | `packages/app` / `packages/backend` |
 | `@backstage/plugin-kubernetes` / `-backend` | 0.12.20 / 0.21.5 | `packages/app` / `packages/backend` |
 | `@backstage/plugin-auth-backend-module-gcp-iap-provider` | 0.4.16 | `packages/backend` |
@@ -417,6 +421,8 @@ engine's tab reads its own):
 | `backstage.io/kubernetes-label-selector` **only — deliberately NO `…kubernetes-namespace`** | `app.kubernetes.io/name=gateway`, matched **cluster-wide** | Kubernetes backend (also feeds the Tekton/Argo CR queries — one shared namespace would starve the `tekton-ci`/`argo-ci` lookups; every run-creation manifest carries the same label. See troubleshooting) |
 | `argocd/app-name` | `microservices-stable` | ArgoCD plugin |
 | `backstage.io/techdocs-ref` | `dir:.` on the platform Component | TechDocs |
+| `grafana/dashboard-selector` | `tags @> 'microservices' \|\| tags @> 'rum'` — matches the **tags** each [`observability/grafana/dashboards/*.json`](../observability/grafana/dashboards/) already carries | Grafana plugin (the [Monitoring tab](#monitoring-tab-grafana-per-observability-mode)) |
+| `grafana/alert-label-selector` | `project=jenkins-2026` — the label every provisioned [alert rule](../observability/grafana/alerting/rules/) carries | Grafana plugin (alerts card) |
 
 The **CI/CD tab itself switches at runtime** on `jenkins2026.ciEngine` (the
 custom frontend-visible config key fed from the runtime ConfigMap), so the
@@ -541,6 +547,121 @@ Two tabs render on the EntityPage **regardless of the CI engine**:
   the read-only RBAC is GitOps-managed in `platform-config`'s
   `rbac-backstage.yaml`, alongside the platform's other static RBAC.
 
+## Monitoring tab (Grafana, per observability mode)
+
+The EntityPage carries a **Monitoring** tab that surfaces the platform's
+Grafana **inside the portal** — the same runtime-switch pattern as the CI/CD
+tab, but keyed on **`jenkins2026.obsMode`** (= `observability.mode`,
+[301](./301-OBSERVABILITY.md)) instead of `ciEngine`. One image ships the
+[`@backstage-community/plugin-grafana`](https://github.com/backstage/community-plugins/tree/main/workspaces/grafana)
+(0.21.0); what the tab renders follows the mode **at runtime, no rebuild**:
+
+| `observability.mode` | Monitoring tab renders | Credential behind it |
+|---|---|---|
+| `oss` | **live dashboards + alerts cards** (proxy → the in-cluster Grafana Service) | Viewer service-account token **minted in-cluster by `08.95`** against the Grafana API |
+| `grafana-cloud` | **live dashboards + alerts cards** (proxy → the stack URL) | Viewer **stack service-account token minted by Terraform** (`grafana-cloud-token`), threaded through Day1 — never a GitHub secret |
+| `managed-azure` / `managed-aws` | **deep-link InfoCard** to the managed workspace + the deferral rationale | none — the proxy is never called (decision record below) |
+
+The switch lives in
+[`ObservabilityContent.tsx`](../backstage/packages/app/src/components/observability/ObservabilityContent.tsx)
+(the `CicdContent` twin); the tab only appears on entities carrying the
+`grafana/*` annotations (route-level `if`), so Group/User pages stay
+noise-free.
+
+**How the live cards find content — zero Grafana-side changes.** The plugin
+matches what the platform already provisions:
+
+- `grafana/dashboard-selector` matches **dashboard tags**, and every dashboard
+  under [`observability/grafana/dashboards/`](../observability/grafana/dashboards/)
+  has carried tags from day one (`jenkins-2026` on all, plus per-domain ones
+  like `microservices`, `rum`, `postgres`). The two services select their
+  app-level dashboards (`tags @> 'microservices'`, the gateway adding
+  `|| tags @> 'rum'` for the Faro frontend-RUM one); `jenkins-2026-infra`
+  selects the whole catalog with the plain `jenkins-2026` tag.
+- `grafana/alert-label-selector: project=jenkins-2026` matches the **label**
+  every provisioned alert rule
+  ([`observability/grafana/alerting/rules/`](../observability/grafana/alerting/rules/),
+  [301](./301-OBSERVABILITY.md)) already carries; `grafana.unifiedAlerting:
+  true` points the card at the modern provisioning API (both wired Grafanas
+  run unified alerting).
+
+**The plumbing** (all values land through the standard runtime contract, and
+**every key is always non-empty in every mode** — the proxy-backend validates
+its target URL at startup, and this app has met the empty-string startup class
+before, see [Troubleshooting](#troubleshooting)):
+
+- [`app-config.yaml`](../backstage/app-config.yaml) declares the
+  **`proxy.'/grafana/api'`** endpoint (`target: ${GRAFANA_PROXY_TARGET}`,
+  `Authorization: Bearer ${GRAFANA_TOKEN}`) and `grafana.domain:
+  ${GRAFANA_DOMAIN}` (the origin the cards build user-facing links against —
+  for `oss` that's the **public IAP host** `https://grafana.<baseDomain>`,
+  so clicking a dashboard opens the same Google-authenticated UI as the
+  header link; no `InternalUrlRewriter` involvement needed).
+- `08.95-backstage.sh` derives `OBS_MODE` / `GRAFANA_DOMAIN` /
+  `GRAFANA_PROXY_TARGET` per mode into the runtime ConfigMap: the oss proxy
+  target is the in-cluster Service FQDN (flipping to `https://` under backend
+  TLS — the cert's SAN is exactly that FQDN and Node trusts the internal CA
+  via `NODE_EXTRA_CA_CERTS`, the ArgoCD-plugin trust path); grafana-cloud
+  reads the stack URL from the same `grafana-cloud-credentials` key
+  `04-jenkins.sh` uses for its banner links; the managed modes get the
+  workspace endpoint for the link plus an **inert-but-parseable**
+  `https://grafana.invalid` proxy target (RFC 2606 — never resolvable, never
+  called).
+- **`GRAFANA_TOKEN` ownership is mode-dependent** (single-owner-per-key — the
+  `grafana-base-url` clobber lesson): in **oss**, `08.95` mints a **Viewer
+  service-account token** against the Grafana API (curl exec'd *inside* the
+  Grafana container — no Service/NetworkPolicy dependency for the mint) and
+  PATCHes it into `backstage-secrets` exactly like `ARGOCD_*`; keep-if-valid
+  on re-runs (an existing token that still answers `/api/search` is left
+  alone), pruning its older tokens when it does rotate. In **grafana-cloud**,
+  Terraform ([`terraform/grafana-cloud-token`](../terraform/grafana-cloud-token/))
+  mints a **separate, read-only** `jenkins-2026-backstage` stack service
+  account (deliberately not reusing the Admin `dashboards` SA — least
+  privilege, independent rotation) and `Day1.cluster.01-gke` threads the
+  token output to `01-namespaces.sh` as `BACKSTAGE_GRAFANA_TOKEN` — read from
+  TF state at deploy time, **never stored as a GitHub secret** (the
+  azure/aws credentials pattern, [103](./103-GITHUB_SECRETS_INVENTORY.md)).
+- NetworkPolicy: the `observability-policy` ingress allowlists **`backstage`
+  → pod port 3000** for the oss proxy call
+  ([`infrastructure/networkpolicies.yaml`](../infrastructure/networkpolicies.yaml));
+  inert in every other mode/flag combination.
+
+### Why the managed modes are deferred (decision record)
+
+`managed-azure` / `managed-aws` deliberately get the deep-link card, **not**
+live cards wired to Azure Managed Grafana / Amazon Managed Grafana. This was
+an explicit decision (2026-07-13), not an omission:
+
+1. **Credential-model mismatch — the whole story.** The Backstage Grafana
+   plugin authenticates one way: a **static Bearer token** on a proxy
+   endpoint. The self-managed and Grafana-Cloud APIs issue exactly that
+   (service-account tokens). The managed offerings don't: **Azure Managed
+   Grafana** wants **Entra ID (AAD) OAuth tokens** (minutes-to-hours TTL,
+   minted per-principal) and **Amazon Managed Grafana** wants **AWS
+   IAM/SigV4-derived session credentials** — both *designed* to expire fast
+   and be re-minted by an SDK, which a fixed `Authorization` header cannot do.
+2. **Wiring them anyway would be a time-bomb, not a feature.** A pasted
+   AAD/AWS token *works in the demo and dies silently within hours* — the tab
+   would 401 on the first expiry, indistinguishable from a real fault, and
+   "re-paste a token every morning" is operational debt this repo refuses on
+   principle (every other credential here is either minted-per-deploy,
+   WIF-keyless, or auto-rotated).
+3. **Precedent — this exact trade-off has been decided before.** The
+   Grafana **LLM-app** backends for managed-azure/aws were implemented and
+   then **retired** for the same reason (the plugin couldn't ride Managed
+   Identity / Bedrock's credential model — [301](./301-OBSERVABILITY.md)).
+   AMG/AAD proxies with sidecar token-refreshers exist, but a
+   token-refresher sidecar for a PoC tab fails the complexity bar.
+4. **The fallback is honest and useful.** The InfoCard names the mode, links
+   the managed workspace (`GRAFANA_BASE_URL` from the same credentials Secret
+   the collector uses — resolved when the backend was provisioned), and
+   points here for the rationale — the `argoworkflows`-tab pattern: better a
+   truthful link card than a half-live tab that rots.
+5. **Revisit conditions** (tracked in [Roadmap](#roadmap)): upstream plugin
+   support for AAD/SigV4 auth (or an official AMG token-proxy), or the PoC
+   promoting a managed mode to its primary posture — either flips the
+   decision.
+
 ## TechDocs
 
 TechDocs renders **this repo's existing `docs/` tree** — the very documents
@@ -573,6 +694,7 @@ you're reading — inside the portal, indexed by search:
 | `JENKINS_API_USER` / `JENKINS_API_KEY` | `jenkins-credentials` (`admin` + admin password), **`ci.engine=jenkins` only** | Jenkins backend plugin |
 | `AUTH_GITHUB_CLIENT_ID` / `AUTH_GITHUB_CLIENT_SECRET` | optional `BACKSTAGE_GITHUB_OAUTH_*` GitHub secrets; `unset` placeholders otherwise | the `github` auth provider (the GHA tab's per-user OAuth) |
 | `ARGOCD_USERNAME` / `ARGOCD_PASSWORD` | **patched by `08.95`** from `argocd-initial-admin-secret` | ArgoCD backend plugin |
+| `GRAFANA_TOKEN` | mode-dependent owner: **oss** → Viewer token **minted+patched by `08.95`**; **grafana-cloud** → the Terraform `backstage_grafana_token` output threaded by Day1; **managed-\*** → `unset` placeholder (never sent) | the `'/grafana/api'` proxy Bearer ([Monitoring tab](#monitoring-tab-grafana-per-observability-mode)) |
 
 Plus the **`ghcr-credentials`** pull secret (the custom image is on GHCR) and
 **`gateway-iap-oauth`** (the namespace joins the standard IAP list).
@@ -589,6 +711,9 @@ finished by `09`):
 | `ARGOCD_BASE_URL` | `http://` or `https://` argocd-server per backend-TLS | ArgoCD plugin target |
 | `BASE_DOMAIN` | `gateway.baseDomain` | the Argo Server link card, outbound links |
 | `IAP_AUDIENCE` | placeholder → the LB backend-service path patched by `09` | `gcpIap` JWT audience verification |
+| `OBS_MODE` | the active `observability.mode` | `jenkins2026.obsMode` → what the Monitoring tab renders |
+| `GRAFANA_DOMAIN` | per mode: the IAP grafana host (oss) / stack URL (cloud) / managed endpoint or `unset` | `grafana.domain` — the origin the Grafana cards' links open |
+| `GRAFANA_PROXY_TARGET` | per mode: in-cluster Service FQDN (oss, `https` under TLS) / stack URL (cloud) / inert `https://grafana.invalid` (managed) | the `'/grafana/api'` proxy target |
 
 **NetworkPolicy**
 ([`infrastructure/networkpolicies-backstage.yaml`](../infrastructure/networkpolicies-backstage.yaml)
@@ -674,6 +799,12 @@ later patches `ARGOCD_USERNAME`/`ARGOCD_PASSWORD` into the same Secret, and a
 non-Merge ExternalSecret would clobber the patch on its next sync (the same
 pattern as `jenkins-credentials`, and exactly the failure mode of the
 `grafana-base-url` clobber incident — see [902](./902-TROUBLESHOOTING.md)).
+`GRAFANA_TOKEN` takes the lesson one step further: because Merge **re-asserts
+every key present in the SM blob**, the key rides the blob **only in the
+non-oss modes** — in oss its owner is `08.95`'s live patch, so `01`
+deliberately omits it from the blob (and `provision_secret` replacing the blob
+wholesale also purges any stale copy a previous grafana-cloud epoch left
+behind). One key, one owner, per mode.
 The `gateway-iap-oauth` ExternalSecret namespace list gains `backstage`
 (the omission that once silently un-IAP'd the Argo UI — the list is
 explicit, not derived).
@@ -714,6 +845,9 @@ explicit, not derived).
 | GitHub Actions tab loops on its OAuth popup | `BACKSTAGE_GITHUB_OAUTH_CLIENT_ID/SECRET` unset (`unset` placeholders seeded) | create the GitHub OAuth App (callback `https://backstage.<baseDomain>/api/auth/github/handler/frame`), set the two secrets, re-run `01` + `08.95` |
 | Jenkins tab errors / 401 | the active engine isn't `jenkins` (`JENKINS_API_*` is only seeded then), or the admin password rotated under it | expected off-engine — the tab switches per `CI_ENGINE`; otherwise re-run `01` + `08.95` to refresh the keys |
 | Argo Workflows tab is "just a link card" | **expected** — no upstream plugin exists yet (community-plugins #9192) | use the card (`argo.<baseDomain>`) or the Kubernetes tab's Workflow CRs; revisit when #9192 ships |
+| Monitoring tab is "just a link card" on `managed-azure`/`managed-aws` | **expected — a decision, not a gap**: the managed Grafanas authenticate with short-lived Entra ID / AWS SigV4 credentials that the plugin's static-Bearer proxy cannot carry | use the card's workspace link; the full rationale + revisit conditions are in [the decision record](#why-the-managed-modes-are-deferred-decision-record) |
+| Monitoring tab (oss/grafana-cloud) shows errors / 401s, or dashboards list is empty | (a) `GRAFANA_TOKEN` still the `unset` placeholder — the oss mint skipped (Grafana wasn't Available when `08.95` ran) or, on grafana-cloud, an old cluster predating the `backstage_grafana_token` TF output; (b) empty list with no error usually means the entity's `grafana/dashboard-selector` matches no dashboard **tags** | (a) re-run `08.95` — `Day2.redeploy.08-backstage` (oss re-mints keep-if-valid; cloud re-runs Day1's threading on the next Day1). Check the proxy quickly: `kubectl logs deploy/backstage -n backstage \| grep -i grafana`; (b) compare the selector against `jq .tags observability/grafana/dashboards/*.json` |
+| Monitoring tab says "Observability mode unknown" | the image is newer than the `backstage-runtime-config` ConfigMap (a bare pod restart pulled a new branch image without re-running the scripts), so `OBS_MODE` is missing | re-run `08.95` (or `Day2.redeploy.08-backstage`) — it rewrites the ConfigMap with the `OBS_MODE`/`GRAFANA_*` keys and restarts the pod |
 | TechDocs tab fails to build | mkdocs error (nav/plugin mismatch in `mkdocs.yml` vs the pinned `mkdocs-techdocs-core`) | reproduce locally (`mkdocs build`), fix `mkdocs.yml`; the builder runs in-pod, so no republish is needed for docs-only changes — they're read from git |
 | Backend CrashLoop, `permission denied to create database` | `backstage-db` not ready yet (wave 0 still syncing) or the `app` role lacks `CREATEDB` | wait for the CNPG Cluster to report ready; the `postInitApplicationSQL` `ALTER ROLE app CREATEDB` covers the role — verify it wasn't edited out |
 | eso mode: `ARGOCD_*` keys vanish from `backstage-secrets` after a sync | the ExternalSecret isn't `creationPolicy: Merge` — ESO re-clobbers `08.95`'s patch | restore `Merge` (the `grafana-base-url` clobber lesson, [902](./902-TROUBLESHOOTING.md)) and re-run `08.95` |
@@ -739,6 +873,10 @@ survive (image, SM secrets) are exactly the two the platform *wants* persistent
 - **Argo Workflows plugin** — adopt the community plugin the moment the
   donation (backstage/community-plugins **#9192**, open since 2026-05-21)
   ships, replacing the InfoCard deep link with a real runs tab.
+- **Managed-Grafana Monitoring cards** — revisit the
+  [deferral decision](#why-the-managed-modes-are-deferred-decision-record) if
+  the Grafana plugin grows AAD/SigV4 auth (or AMG ships a static-token proxy),
+  or if a managed mode becomes this PoC's primary posture.
 - **Catalog `User` auto-provision** from the IAP admin-emails list, upgrading
   the sign-in resolver off `dangerouslyAllowSignInWithoutUserInCatalog`.
 - **OTel instrumentation of the backend** — export the Node backend's

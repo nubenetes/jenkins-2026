@@ -960,6 +960,16 @@ Operational notes: the plugin settings are **file-provisioned** (Grafana persist
 
 No new GitHub secrets, no committed credentials: the only "key" in the chain is the literal dummy string `keyless-vertex-ai` the plugin requires as non-empty and LiteLLM ignores.
 
+> **Same decision family, one tab over.** The Backstage portal's **Monitoring
+> tab** ([505](./505-BACKSTAGE.md#monitoring-tab-grafana-per-observability-mode))
+> applies the identical credential-model test and lands on the identical
+> split: **live** Grafana dashboards/alerts cards for `oss`/`grafana-cloud`
+> (whose Grafanas issue the static service-account Bearer the Backstage
+> plugin can send) and a **deep-link card** for `managed-azure`/`managed-aws`
+> (Entra ID / SigV4 short-lived credentials — a static proxy header would be
+> a silently-expiring time-bomb). Full decision record:
+> [505 § Why the managed modes are deferred](./505-BACKSTAGE.md#why-the-managed-modes-are-deferred-decision-record).
+
 ## Grafana chat sidebar in oss — the options (Graft evaluated, Assistant adopted)
 
 The `grafana-llm-app` above is **backend infrastructure** with *no chat UI of its own* (see [the LLM-app-vs-Assistant table](#grafana-llm-app-ai-assistant--opt-in-keyless-oss-only)). Getting a real conversational **"open and ask" sidebar** in oss was investigated; here is the outcome, because the trade-offs are instructive.

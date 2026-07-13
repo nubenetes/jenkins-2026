@@ -4,11 +4,13 @@
 # Every environment-specific value arrives as an env var at RUNTIME:
 #   - ConfigMap backstage-runtime-config (scripts/08.95-backstage.sh writes it;
 #     scripts/09-gateway.sh owns IAP_AUDIENCE): APP_BASE_URL, CI_ENGINE,
-#     CATALOG_BRANCH, JENKINS_BASE_URL, ARGOCD_BASE_URL, IAP_AUDIENCE, BASE_DOMAIN
-#   - Secret backstage-secrets (scripts/01-namespaces.sh; ARGOCD_* patched by
-#     08.95): BACKEND_SECRET, GITHUB_TOKEN, JENKINS_API_USER, JENKINS_API_KEY,
-#     AUTH_GITHUB_CLIENT_ID, AUTH_GITHUB_CLIENT_SECRET, ARGOCD_USERNAME,
-#     ARGOCD_PASSWORD
+#     CATALOG_BRANCH, JENKINS_BASE_URL, ARGOCD_BASE_URL, IAP_AUDIENCE,
+#     BASE_DOMAIN, OBS_MODE, GRAFANA_DOMAIN, GRAFANA_PROXY_TARGET
+#   - Secret backstage-secrets (scripts/01-namespaces.sh; ARGOCD_* and the oss
+#     GRAFANA_TOKEN patched by 08.95): BACKEND_SECRET, GITHUB_TOKEN,
+#     JENKINS_API_USER, JENKINS_API_KEY, AUTH_GITHUB_CLIENT_ID,
+#     AUTH_GITHUB_CLIENT_SECRET, ARGOCD_USERNAME, ARGOCD_PASSWORD,
+#     GRAFANA_TOKEN
 #   - Secret backstage-db-app (CNPG-generated): POSTGRES_HOST/PORT/USER/PASSWORD
 # The wiring lives in helm/backstage/values.yaml (extraEnvVars/-Secrets). Under
 # backend TLS the chart layers an EXTRA config file over this one (see
@@ -153,6 +155,40 @@ kubernetes:
       apiVersion: v1alpha1
       plural: rollouts
 
+# Grafana plugin (the Monitoring tab, docs/505 § Grafana integration). Live
+# cards ONLY for observability.mode oss / grafana-cloud - the two Grafanas
+# that accept the static service-account Bearer token this proxy endpoint
+# sends; managed-azure/aws issue short-lived Entra/SigV4 credentials a fixed
+# header cannot carry, so their tab is a deep-link InfoCard instead (decision
+# record in docs/505). All three env vars are ALWAYS non-empty in every mode
+# (08.95 writes real values or inert placeholders - the proxy-backend
+# validates the target URL at startup, and this app has already been bitten
+# by the empty-string config class, see docs/505 § Troubleshooting):
+#   - GRAFANA_PROXY_TARGET: oss -> the in-cluster Grafana Service URL;
+#     grafana-cloud -> the stack URL; managed-* -> https://grafana.invalid
+#     (parseable, never called - the cards don't mount in those modes).
+#   - GRAFANA_DOMAIN: the user-facing Grafana origin the cards link to
+#     (oss -> https://grafana.<baseDomain>, IAP; cloud -> the stack URL;
+#     managed-* -> workspace endpoint or 'unset').
+#   - GRAFANA_TOKEN (Secret): oss -> Viewer service-account token minted by
+#     08.95 against the Grafana API; grafana-cloud -> Terraform-minted stack
+#     SA token threaded through Day1; managed-* -> 'unset' (never sent).
+proxy:
+  endpoints:
+    '/grafana/api':
+      target: ${GRAFANA_PROXY_TARGET}
+      headers:
+        Authorization: Bearer ${GRAFANA_TOKEN}
+
+grafana:
+  # A full origin despite the name (upstream key): deep links + the frontend
+  # cards build dashboard/alert URLs from it.
+  domain: ${GRAFANA_DOMAIN}
+  # Both wired Grafanas (kube-prometheus-stack's and Grafana Cloud's) run
+  # unified alerting - the alerts card queries /api/v1/provisioning rules by
+  # label selector instead of legacy dashboard-tag alerts.
+  unifiedAlerting: true
+
 # TechDocs: the image ships mkdocs + mkdocs-techdocs-core (see
 # packages/backend/Dockerfile); this repo's docs/ tree renders via the
 # repo-root mkdocs.yml. Mermaid diagrams render client-side (the
@@ -180,3 +216,6 @@ catalog:
 jenkins2026:
   ciEngine: ${CI_ENGINE}
   baseDomain: ${BASE_DOMAIN}
+  # The Monitoring tab switches on this exactly like the CI/CD tab does on
+  # ciEngine (oss | grafana-cloud | managed-azure | managed-aws).
+  obsMode: ${OBS_MODE}

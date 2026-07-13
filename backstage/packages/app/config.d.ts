@@ -17,5 +17,13 @@ export interface Config {
      * @visibility frontend
      */
     baseDomain?: string;
+    /**
+     * The platform's observability mode (config.yaml observability.mode):
+     * oss | grafana-cloud | managed-azure | managed-aws. The Monitoring tab
+     * renders live Grafana cards for the first two and a deep-link card for
+     * the managed pair (docs/505 § Grafana integration).
+     * @visibility frontend
+     */
+    obsMode?: string;
   };
 }

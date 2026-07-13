@@ -153,6 +153,20 @@ spec:
         cidr: 130.211.0.0/22
     - ipBlock:
         cidr: 35.191.0.0/16
+  # Backstage Monitoring tab (docs/505 § Grafana integration, oss mode): the
+  # portal backend's '/grafana/api' proxy dials the in-cluster Grafana Service
+  # with a Viewer service-account Bearer - the pod listens on 3000 (netpols
+  # match the POD port, not the Service's 80). A namespaceSelector for an
+  # absent namespace matches nothing, so this is inert when
+  # backstage.enabled=false; in the non-oss modes the proxy points off-cluster
+  # (or at an inert placeholder) and never crosses this boundary.
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: backstage
+    ports:
+    - protocol: TCP
+      port: 3000
   # Admission webhooks served from this namespace that the API SERVER calls — the
   # OTel Operator's mutating webhooks on 9443 (minstrumentation.kb.io /
   # mopentelemetrycollectorbeta.kb.io with failurePolicy=Fail, and mpod.kb.io

@@ -47,6 +47,32 @@ resource "grafana_cloud_stack_service_account_token" "dashboards" {
 }
 
 # -----------------------------------------------------------------------------
+# Backstage Monitoring-tab credentials - BACKSTAGE_GRAFANA_TOKEN, the Bearer
+# the portal's '/grafana/api' proxy sends (docs/505 § Grafana integration).
+# Deliberately a SEPARATE, read-only (Viewer) service account: the dashboards
+# SA above is Admin (it pushes dashboards), while the portal only ever reads
+# /api/search + the alerting provisioning API - least privilege, and rotating
+# one token never breaks the other consumer. Day1.cluster.01-gke reads the
+# output from this module's GCS state and threads it to
+# scripts/01-namespaces.sh as BACKSTAGE_GRAFANA_TOKEN (never a GitHub secret -
+# the azure/aws credentials pattern). This static stack SA token is exactly
+# the credential shape the managed Grafanas (Entra ID / AWS SigV4,
+# short-lived) cannot issue - why the integration covers oss + grafana-cloud
+# only (decision record in docs/505).
+# -----------------------------------------------------------------------------
+resource "grafana_cloud_stack_service_account" "backstage" {
+  stack_slug = var.stack_slug
+  name       = "jenkins-2026-backstage"
+  role       = "Viewer"
+}
+
+resource "grafana_cloud_stack_service_account_token" "backstage" {
+  stack_slug         = var.stack_slug
+  service_account_id = grafana_cloud_stack_service_account.backstage.id
+  name               = "jenkins-2026-backstage"
+}
+
+# -----------------------------------------------------------------------------
 # Private Data Source Connect (PDC)
 # -----------------------------------------------------------------------------
 resource "grafana_cloud_private_data_source_connect_network" "this" {

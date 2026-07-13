@@ -65,9 +65,19 @@ import {
   RELATION_PROVIDES_API,
 } from '@backstage/catalog-model';
 import { CicdContent } from '../cicd/CicdContent';
+import { ObservabilityContent } from '../observability/ObservabilityContent';
+import {
+  isDashboardSelectorAvailable,
+  isAlertSelectorAvailable,
+} from '@backstage-community/plugin-grafana';
 import { EntityJenkinsContent } from '@backstage-community/plugin-jenkins';
 import { EntityGithubActionsContent } from '@backstage-community/plugin-github-actions';
 import { TektonCI } from '@backstage-community/plugin-tekton';
+
+/* The Monitoring tab only appears on entities that opted in via the grafana
+ * annotations - keeps Group/User/Location pages noise-free. */
+const hasGrafanaAnnotations = (e: Parameters<typeof isAlertSelectorAvailable>[0]) =>
+  Boolean(isDashboardSelectorAvailable(e)) || isAlertSelectorAvailable(e);
 
 const cicdContent = (
   <CicdContent>
@@ -163,6 +173,16 @@ const serviceEntityPage = (
       <EntityKubernetesContent refreshIntervalMs={30000} />
     </EntityLayout.Route>
 
+    {/* Grafana dashboards/alerts, switched at runtime on jenkins2026.obsMode
+        (live cards for oss/grafana-cloud, deep-link card for managed-*). */}
+    <EntityLayout.Route
+      path="/monitoring"
+      title="Monitoring"
+      if={hasGrafanaAnnotations}
+    >
+      <ObservabilityContent />
+    </EntityLayout.Route>
+
     <EntityLayout.Route path="/api" title="API">
       <Grid container spacing={3} alignItems="stretch">
         <Grid item md={6}>
@@ -202,6 +222,13 @@ const websiteEntityPage = (
     <EntityLayout.Route path="/kubernetes" title="Kubernetes">
       <EntityKubernetesContent refreshIntervalMs={30000} />
     </EntityLayout.Route>
+    <EntityLayout.Route
+      path="/monitoring"
+      title="Monitoring"
+      if={hasGrafanaAnnotations}
+    >
+      <ObservabilityContent />
+    </EntityLayout.Route>
     <EntityLayout.Route path="/docs" title="Docs">
       {techdocsContent}
     </EntityLayout.Route>
@@ -212,6 +239,15 @@ const defaultEntityPage = (
   <EntityLayout>
     <EntityLayout.Route path="/" title="Overview">
       {overviewContent}
+    </EntityLayout.Route>
+    {/* jenkins-2026-infra (type infrastructure) lands here - the platform
+        dashboards (NAP, gateway, collector, ...) are exactly its content. */}
+    <EntityLayout.Route
+      path="/monitoring"
+      title="Monitoring"
+      if={hasGrafanaAnnotations}
+    >
+      <ObservabilityContent />
     </EntityLayout.Route>
     <EntityLayout.Route path="/docs" title="Docs">
       {techdocsContent}
