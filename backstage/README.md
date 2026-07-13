@@ -30,7 +30,7 @@ across cluster rebuilds.
 ```bash
 cd backstage
 corepack enable
-yarn install                       # generates yarn.lock (not committed yet)
+yarn install                       # yarn.lock is committed; installs immutably in CI
 cp app-config.local.example.yaml app-config.local.yaml   # then edit
 yarn dev                           # app on :3000, backend on :7007
 ```
