@@ -174,6 +174,50 @@ else
   log_warn "Backstage ArgoCD tab will show auth errors until a re-run patches the credentials."
 fi
 
+# --- 2a. Wait for the oss observability stack to converge before minting ------
+# STRUCTURAL FIX for a live-found race (2026-07-13, docs/505 § Monitoring tab):
+# the §2b mint below used to run while oss-kube-prometheus-stack's OWN initial
+# ArgoCD sync was still applying. Grafana can be briefly Available (the OLD
+# ReplicaSet) while that sync is mid-flight; when it finishes moments later, a
+# values/checksum change rolls a NEW Grafana pod - and oss Grafana keeps
+# service-account tokens in its EPHEMERAL in-pod SQLite, so the roll silently
+# invalidates a token minted seconds earlier (live incident: minted 14:42:29,
+# sync's final apply rolled the pod at 14:45:07 - tab 401'd until a manual
+# re-mint). Bounded wait (3 min, WARN not fail - the mint below still has its
+# own keep-if-valid + re-run heal as a second line of defense) for the
+# Application to be Synced+Healthy with no operation in flight, so the mint
+# lands on the post-converge pod instead of racing it.
+if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
+  log_step "Waiting for oss-kube-prometheus-stack to converge before minting the Grafana token"
+  gf_wait_deadline=$((SECONDS + 180))
+  gf_converged="false"
+  while [[ ${SECONDS} -lt ${gf_wait_deadline} ]]; do
+    gf_app_json="$(kubectl get application oss-kube-prometheus-stack -n "${J2026_ARGOCD_NAMESPACE}" \
+      -o json 2>/dev/null || true)"
+    if [[ -z "${gf_app_json}" ]]; then
+      # Application not applied yet at this point in the run - nothing to
+      # converge on (a subsequent 08.95 re-run will catch up).
+      break
+    fi
+    gf_sync_status="$(echo "${gf_app_json}" | jq -r '.status.sync.status // empty')"
+    gf_health_status="$(echo "${gf_app_json}" | jq -r '.status.health.status // empty')"
+    gf_op_phase="$(echo "${gf_app_json}" | jq -r '.status.operationState.phase // empty')"
+    if [[ "${gf_sync_status}" == "Synced" && "${gf_health_status}" == "Healthy" \
+          && "${gf_op_phase}" != "Running" ]]; then
+      gf_converged="true"
+      break
+    fi
+    sleep 5
+  done
+  if [[ "${gf_converged}" == "true" ]]; then
+    log_info "oss-kube-prometheus-stack Synced+Healthy - safe to mint the Grafana token."
+  else
+    log_warn "oss-kube-prometheus-stack did not reach Synced+Healthy within 180s -"
+    log_warn "minting the Grafana token anyway; a rollout during/after this run may"
+    log_warn "still invalidate it (re-run this step or Day2.redeploy.08 to heal)."
+  fi
+fi
+
 # --- 2b. Grafana Viewer token for the Monitoring tab (oss only) -----------------
 # The '/grafana/api' proxy endpoint sends 'Authorization: Bearer ${GRAFANA_TOKEN}'
 # (backstage/app-config.yaml). grafana-cloud threads a Terraform-minted stack

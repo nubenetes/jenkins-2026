@@ -642,6 +642,41 @@ before, see [Troubleshooting](#troubleshooting)):
   ([`infrastructure/networkpolicies.yaml`](../infrastructure/networkpolicies.yaml));
   inert in every other mode/flag combination.
 
+### The oss mint-race (found live, fixed structurally)
+
+The tab's **first-ever live validation** (2026-07-13, a fresh oss Day1)
+turned up a second bug beyond the static-tree discovery one above: the cards
+mounted cleanly but the proxy 401'd. Root cause, confirmed from timestamps
+and pod events rather than guessed:
+
+1. `08.95-backstage.sh` ran its §2b mint at **14:42:29** — Grafana's
+   Deployment reported `availableReplicas: 1` (the gate the mint checked), so
+   it minted a fresh Viewer service-account token against that pod and
+   patched it into `backstage-secrets`.
+2. The **`oss-kube-prometheus-stack` ArgoCD Application's own initial sync**
+   — already in flight, unrelated to the mint — finished applying at
+   **14:47:10**, changing the chart's `checksum/secret` pod-template
+   annotation. That rolled Grafana onto a **new** ReplicaSet at **14:45:07**
+   — 3 minutes after the mint.
+3. oss Grafana runs with **no persistence**: service accounts and their
+   tokens live in the pod's local SQLite, not a database. The rollout wiped
+   the just-minted token along with it — the Monitoring tab 401'd until a
+   manual re-mint (confirmed live: the `backstage` service account had to be
+   **re-created from scratch**, proof the SQLite really was fresh).
+
+This is the [rebuild-safety](./104-REBUILD_SAFETY.md) collision class in
+miniature: a persistent identity (the token) minted against a store with no
+persistence of its own (the pod's SQLite), racing that store's own
+first-ever convergence. **Structural fix** (not just the mint's existing
+keep-if-valid/re-run heal, which only repairs it *after* the fact): `08.95`
+now waits — bounded, 3 minutes, **WARN not fail** on timeout, matching every
+other failure path in this script — for the `oss-kube-prometheus-stack`
+Application to report `Synced` **and** `Healthy` **and** no
+`operationState.phase: Running` *before* attempting the mint, so it always
+lands on the post-converge pod instead of racing it. On an already-stable
+cluster (any `Day2.redeploy.08` re-run) this wait exits on its first check —
+no added latency in the common case, only on a genuinely fresh Day1.
+
 ### Why the managed modes are deferred (decision record)
 
 `managed-azure` / `managed-aws` deliberately get the deep-link card, **not**
