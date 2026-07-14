@@ -50,6 +50,11 @@ locals {
     # admin roles for each — without them the apply 403s IAM_PERMISSION_DENIED on
     # cloudkms.keyRings.create / containeranalysis.notes.create.
     "roles/cloudkms.admin",
+    # cloudkms.admin MANAGES keys but does NOT include cryptoKeyVersions.viewPublicKey
+    # (that is an operation permission, not a management one). terraform/gke's data
+    # source reads the attestor key's PEM public key to embed it in the attestor, so
+    # the CI SA also needs publicKeyViewer.
+    "roles/cloudkms.publicKeyViewer",
     "roles/containeranalysis.notes.editor",
     "roles/binaryauthorization.attestorsAdmin",
     "roles/binaryauthorization.policyEditor",
