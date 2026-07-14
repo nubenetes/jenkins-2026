@@ -220,23 +220,32 @@ unless it is `true`, so an inactive cluster runs the step as a harmless no-op.
 | **Argo Workflows** | [`argoworkflows/templates/microservices-wftmpl.yaml`](../argoworkflows/templates/microservices-wftmpl.yaml) `build-sign` template | `google/cloud-sdk:slim` template |
 | **GitHub Actions** | [`jenkins/pipelines/seed/microservices-ci.yml.tmpl`](../jenkins/pipelines/seed/microservices-ci.yml.tmpl) sign step | on the ARC runner (needs gcloud present) |
 
-**To make signing actually run — the live-validation checklist, per engine:**
+### The three enablement hooks (beyond the shared script)
 
-1. **Thread the flag.** The seed step (`04-jenkins.sh` JCasC / `06-<engine>-pipelines.sh`)
-   must export `BINAUTHZ_ENABLED=true` (from `J2026_BINARY_AUTHORIZATION_ENABLED`) into
-   the build env when the flag is on. Off → the step stays a no-op.
-2. **Grant + bind the identity.** `terraform/gke` creates the
-   `jenkins-2026-binauthz-signer` GSA with the KMS-sign + Container-Analysis + attestor
-   roles and a Workload-Identity binding for each build KSA in `binauthz_signer_ksas`
-   (default `jenkins/jenkins`; add the active engine's KSA — Tekton `tekton-ci`, Argo
-   `argo-ci`, ARC `arc-runners`). **Also annotate that KSA** in-cluster:
-   `iam.gke.io/gcp-service-account=jenkins-2026-binauthz-signer@<project>.iam.gserviceaccount.com`.
-3. **gcloud availability.** In-cluster engines use the `google/cloud-sdk` image
-   (Tekton/Argo) or the flag-gated gcloud container (Jenkins); the ARC runner needs
-   gcloud installed (a `curl`-install step, like the yq/argocd tools it already fetches).
+Calling the script is only half the wiring — three more hooks flip it from a no-op
+into a real signature. Because **Jenkins is the repo's default/active engine**, its
+three hooks are **implemented and live-validatable**; the other three engines carry
+the same call-site + env scaffold, their **Workload-Identity binding is already
+granted** (all four KSAs are in `binauthz_signer_ksas`), and the one remaining
+per-engine flip is documented so it lands the moment that engine becomes active.
 
-Until steps 1–3 are done for the active engine, the signing step is a **safe no-op**;
-once done, `enforce` mode will admit only the images this pipeline signed.
+| Hook | What it does | Jenkins (active) | Tekton / Argo | GitHub Actions |
+|---|---|---|---|---|
+| **1 — thread the flag** | put `BINAUTHZ_ENABLED=true` in the build env only when the flag is on | ✅ `04-jenkins.sh` patches `binauthz-enabled` into `jenkins-credentials` → `containerEnv` ([`values-common.yaml`](../helm/jenkins/values-common.yaml)) → JCasC `globalNodeProperties` ([`jcasc-base.yaml`](../jenkins/casc/jcasc-base.yaml)) → `env.BINAUTHZ_ENABLED` on the agent | env scaffold present (`value: "false"`); flip via the ArgoCD-managed task/template param when that engine is active | render-time `sed` in `06-githubactions-pipelines.sh` (same mechanism as the other `{{…}}` placeholders) |
+| **2 — bind + annotate the KSA** | let the build pod impersonate the signer GSA via Workload Identity | ✅ GSA binding via `binauthz_signer_ksas` **+** the `iam.gke.io/gcp-service-account` annotation auto-threaded as a chart **helm-parameter** by `04-jenkins.sh` (the jenkins KSA is ArgoCD-managed, so a raw `kubectl annotate` would drift) | ✅ binding granted; annotate `tekton-ci/tekton-ci` · `argo-ci/argoworkflows-ci` when active | ✅ binding granted; annotate `arc-runners/arc-runner-scale-set` when active |
+| **3 — gcloud present** | the signing call needs the `gcloud` CLI | ✅ flag-gated `gcloud` container on the agent pod ([`MicroservicesPipeline.groovy`](../vars/MicroservicesPipeline.groovy)) | ✅ `google/cloud-sdk:slim` step image | add a `setup-gcloud` step on the ARC runner |
+
+The Workload-Identity **bindings** are granted up-front by `terraform/gke` —
+`binauthz_signer_ksas` lists all four engines' build KSAs, and an unused engine's
+binding is inert, so this is safe. The KSA-side **annotation** is the only
+engine-specific piece: auto-applied for Jenkins, and applied for the other engines
+when that engine is the active one (confirm the live KSA name first — ARC in
+particular generates its runner SA name).
+
+**Net on the default Jenkins engine:** flip `security.binaryAuthorization.enabled=true`
+and re-run `Day1` — all three hooks wire with no manual step, the signature appears on
+the next build, and `enforce` mode then admits only images this pipeline signed. Until
+the flag is on, the signing step is a **safe no-op** on every engine.
 
 <details>
 <summary>📄 Configuration reference — the policy, attestor, and signing call</summary>

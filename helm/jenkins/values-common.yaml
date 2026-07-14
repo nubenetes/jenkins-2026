@@ -179,6 +179,15 @@ controller:
         secretKeyRef:
           name: jenkins-credentials
           key: argocd-server
+    # Binary Authorization (security.binaryAuthorization.enabled, docs/507): "true" makes
+    # the build agent sign+attest the pushed image. 04-jenkins.sh patches the value into
+    # jenkins-credentials; the agent reads it via globalNodeProperties (jcasc-base.yaml).
+    - name: BINAUTHZ_ENABLED
+      valueFrom:
+        secretKeyRef:
+          name: jenkins-credentials
+          key: binauthz-enabled
+          optional: true
           optional: true
     # Internal Service port build agents dial over WebSocket
     # (jenkins/casc/jcasc-base.yaml jenkinsUrl). Patched to "8082" by

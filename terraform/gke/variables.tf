@@ -156,12 +156,19 @@ variable "binauthz_signer_ksas" {
     Kubernetes ServiceAccounts (as "namespace/name") whose pods may impersonate the
     Binary Authorization signer GSA via Workload Identity to sign+attest images
     (resources/sign-and-attest-image.sh). Only used when binary_authorization_enabled.
-    Defaults to the Jenkins agent KSA; ADD the active engine's build KSA after
-    confirming its name live (Tekton pipeline SA in tekton-ci, Argo workflow SA in
-    argo-ci, ARC runner SA in arc-runners). Each listed KSA ALSO needs the in-cluster
-    annotation iam.gke.io/gcp-service-account=<signer GSA>. See docs/507 § Pipeline wiring.
+    Lists all four engines' build KSAs so the GSA-side WI binding is ready for whichever
+    engine is active (an unused engine's binding is harmless/inert). Each KSA ALSO needs
+    the in-cluster annotation iam.gke.io/gcp-service-account=<signer GSA>: this is
+    AUTO-WIRED for Jenkins (04-jenkins.sh threads it as a chart helm parameter, since the
+    jenkins KSA is ArgoCD-managed); for the other engines it is applied when that engine
+    is the active one (confirm the live KSA name first). See docs/507 § Pipeline wiring.
   EOT
-  default     = ["jenkins/jenkins"]
+  default = [
+    "jenkins/jenkins",                  # Jenkins agent — annotation auto-wired (04-jenkins.sh)
+    "tekton-ci/tekton-ci",              # Tekton PipelineRun SA
+    "argo-ci/argoworkflows-ci",         # Argo Workflows SA
+    "arc-runners/arc-runner-scale-set", # ARC runner SA (confirm live name when githubactions active)
+  ]
 }
 
 variable "observability_llm_enabled" {
