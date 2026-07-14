@@ -73,11 +73,13 @@ if [[ "$(j2026_service_mesh_active)" != "true" ]]; then
     kubectl get namespace "${ns}" >/dev/null 2>&1 || continue
     if kubectl get namespace "${ns}" -o "jsonpath={.metadata.labels.istio\.io/rev}" 2>/dev/null | grep -q .; then
       kubectl label namespace "${ns}" "${MESH_INJECT_LABEL_KEY}-" --overwrite >/dev/null 2>&1 || true
-      # Restart the workloads so their pods re-create WITHOUT the istio sidecar (the
-      # injection webhook no longer matches the now-unlabeled ns). Without this the
-      # already-injected pods keep a sidecar that can't reach the retired control plane
-      # (the meshed gateway would stay CrashLooping after a roll-back to mode=none).
-      kubectl rollout restart deployment -n "${ns}" >/dev/null 2>&1 || true
+      # Restart ONLY the app service deployments so their pods re-create WITHOUT the sidecar
+      # (the injection webhook no longer matches the now-unlabeled ns) — not the whole ns
+      # (the CNPG poolers are never meshed). Without this the already-injected app pods keep
+      # a sidecar that can't reach the retired control plane (CrashLoop after roll-back).
+      for _svc in ${J2026_MICROSERVICES_SERVICES:-}; do
+        kubectl rollout restart deployment "${_svc}" -n "${ns}" >/dev/null 2>&1 || true
+      done
       retired=1
     fi
     kubectl delete peerauthentication default -n "${ns}" --ignore-not-found >/dev/null 2>&1 || true
@@ -144,11 +146,15 @@ spec:
       mode: PERMISSIVE
 YAML
   fi
-  # 5. best-effort restart so existing pods get the sidecar (new pods inject on create).
-  # ⚠ The app must tolerate the sidecar startup ordering: holdApplicationUntilProxyStarts is
-  # set on the app Deployments (gitops-config, self-gating: inert without injection), else
-  # the app dials Postgres/OTel before the proxy routes and CrashLoops. See docs/506.
-  kubectl rollout restart deployment -n "${ns}" >/dev/null 2>&1 || true
+  # 5. best-effort restart of the APP service deployments ONLY (gateway + backend) so their
+  # pods re-create with the sidecar — NOT the whole ns, which would needlessly churn the
+  # CNPG Postgres poolers (excluded from injection via sidecar.istio.io/inject in
+  # gitops-config). The app must tolerate the sidecar startup ordering
+  # (holdApplicationUntilProxyStarts, set on the app Deployments in gitops-config — else it
+  # dials Postgres/OTel before the proxy routes and CrashLoops). See docs/506.
+  for _svc in ${J2026_MICROSERVICES_SERVICES}; do
+    kubectl rollout restart deployment "${_svc}" -n "${ns}" >/dev/null 2>&1 || true
+  done
   log_info "  meshed namespace ${ns} (injection + ${J2026_SERVICE_MESH_MTLS} mTLS; gateway :8080 PERMISSIVE for the LB)"
 done
 
