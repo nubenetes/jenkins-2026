@@ -88,7 +88,7 @@ log_step "Configuring Cloud Service Mesh (08.85, opt-in) — mTLS=${J2026_SERVIC
 # 1. mesh-wide PeerAuthentication (root namespace = istio-system), if it exists.
 if kubectl get namespace istio-system >/dev/null 2>&1; then
   kubectl apply -f - >/dev/null <<YAML || log_warn "  mesh-wide PeerAuthentication apply reported an issue (non-fatal)"
-apiVersion: security.istio.io/v1
+apiVersion: security.istio.io/v1beta1
 kind: PeerAuthentication
 metadata:
   name: default
@@ -105,7 +105,7 @@ for ns in "${mesh_namespaces[@]}"; do
   kubectl label namespace "${ns}" "${MESH_INJECT_LABEL_KEY}=${MESH_INJECT_LABEL_VALUE}" --overwrite >/dev/null
   # 3a. per-namespace PeerAuthentication (defense in depth).
   kubectl apply -f - >/dev/null <<YAML || log_warn "  ${ns} PeerAuthentication apply reported an issue (non-fatal)"
-apiVersion: security.istio.io/v1
+apiVersion: security.istio.io/v1beta1
 kind: PeerAuthentication
 metadata:
   name: default
