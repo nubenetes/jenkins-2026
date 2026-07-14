@@ -455,6 +455,71 @@ For a PoC the **CSM infrastructure** (Fleet, managed control plane, injection,
 identity mTLS) is the core deliverable; the full app mesh above is the (now
 completed) productionization of the demo app.
 
+### Why the data tier (CNPG Postgres) is excluded
+
+Meshing the app tier (gateway ↔ backend) is the goal; meshing the **database**
+(CloudNativePG's Postgres instances + PgBouncer poolers) is actively harmful. Four
+reasons — the third we hit **live** as the pooler `CrashLoop` (6 restarts):
+
+1. **It's not app↔app traffic.** The mesh's value is identity mTLS + L7 authZ
+   *between application services*. The Postgres subsystem is the **data plane**, not
+   service-to-service calls — a sidecar there adds cost and lifecycle risk for **zero**
+   of the value the mesh gives the app tier.
+2. **CNPG already does its own TLS/mTLS — a sidecar makes it *double* TLS.** Every DB
+   hop is already encrypted *and* authenticated by CNPG's own certificates: app→pooler
+   is `sslmode=require`, **pooler→Postgres is client-certificate mTLS** (`pg_hba:
+   hostssl … cnpg_pooler_pgbouncer … cert`), instance↔instance replication is
+   CNPG-cert TLS. An istio sidecar intercepting a socket that is **already doing
+   client-cert TLS** wraps a *second* TLS layer around it → the handshakes collide →
+   the connection breaks. istio mTLS here is redundant **and** incompatible.
+3. **The sidecar breaks the DB lifecycle.** PgBouncer opens its client-cert
+   connection to Postgres **at startup**, before the sidecar routes → it dials a dead
+   proxy → **`CrashLoop`** (exactly the `6 (restarts)` we saw live). The sidecar also
+   blocks graceful termination, and under **STRICT** the **CNPG operator** (in its own
+   namespace — *not* a mesh client) would be **rejected** when it reaches the instances
+   for health/failover → HA management breaks.
+4. **It's the standard practice.** Meshing databases + stateful operators is broadly
+   discouraged (Istio & CNPG docs): data services own their transport security and
+   have lifecycle needs a sidecar complicates. **You mesh the app tier, not the data
+   tier.**
+
+<details>
+<summary>🔀 App tier meshed vs data tier excluded — where each TLS lives (flowchart)</summary>
+
+```mermaid
+flowchart LR
+  subgraph app["App tier — IN the mesh (istio-proxy sidecars)"]
+    gw["gateway"]
+    be["backend"]
+  end
+  gw <==>|"istio identity mTLS"| be
+
+  subgraph data["Data tier — EXCLUDED · sidecar.istio.io/inject false"]
+    pooler["PgBouncer<br/>pooler"]
+    pg[("Postgres HA<br/>instances")]
+  end
+  pooler ==>|"client-cert mTLS<br/>(CNPG's own)"| pg
+
+  gw -->|"sslmode=require<br/>(CNPG TLS)"| pooler
+  be -->|"sslmode=require<br/>(CNPG TLS)"| pooler
+  op(["CNPG operator<br/>other ns · not a mesh client"]) -.->|"manage · health · failover"| pg
+
+  classDef mesh fill:#e6ffe6,stroke:#2a2;
+  classDef excl fill:#ffecec,stroke:#c33;
+  class app mesh
+  class data excl
+```
+
+</details>
+
+**Reading it —** the **green** app tier gets istio sidecars and speaks **istio
+identity mTLS** (gateway↔backend). The **red** data tier is **excluded** and keeps
+**CNPG's own TLS** on every hop — app→pooler (`sslmode=require`), pooler→Postgres
+(client-cert mTLS), instance↔instance (replication TLS). A sidecar in the red box
+would **double-wrap** those already-TLS connections *and* block the non-mesh **CNPG
+operator** from managing the instances. So the mesh secures the **app** hop; the
+**DB** hops are already secured by CNPG — two systems, cleanly separated.
+
 ## Rebuild-safety
 
 Everything the *in-cluster* side creates (injection labels, `PeerAuthentication`,
