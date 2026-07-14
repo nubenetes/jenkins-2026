@@ -166,6 +166,45 @@ admitted. That is the difference between "we scan our images" and "the cluster
 All Terraform resources are `count`-gated on
 `var.binary_authorization_enabled`, so `false` is a complete no-op.
 
+How those objects chain into trust — signing on the left, verification on the right:
+
+<details>
+<summary>🔀 The trust chain — KMS key → attestor → policy → cluster (object model)</summary>
+
+```mermaid
+flowchart LR
+  subgraph signing["Signing — pipeline, per image"]
+    key[["Cloud KMS key<br/>private half stays in KMS"]]
+    key -->|"signs the digest"| att["Attestation<br/>signed claim over sha256"]
+  end
+  att -->|"attached to"| note["Container Analysis<br/>Note"]
+
+  subgraph anchor["Trust anchor"]
+    attestor["Attestor"] -->|"references"| note
+    attestor -->|"embeds"| pub["KMS PUBLIC key (PKIX)"]
+  end
+  key -.->|"public half"| pub
+
+  policy["Project Policy<br/>require attestation"] -->|"trusts"| attestor
+  cluster["GKE cluster<br/>PROJECT_SINGLETON_POLICY_ENFORCE"] -->|"consults at admission"| policy
+
+  classDef sign fill:#eef,stroke:#66c;
+  classDef verify fill:#e6ffe6,stroke:#2a2;
+  class key,att,note sign
+  class attestor,pub,policy,cluster verify
+```
+
+</details>
+
+**Reading it —** trust flows **left-to-right when signing, right-to-left when
+verifying**: the pipeline uses the **KMS private key** to sign an image **digest** →
+an **attestation** attached to the **note**; the **attestor** binds that note + the
+KMS **public** key; the **policy** trusts the attestor ("require an attestation from
+it"); and the **cluster** consults the policy at **every Pod admission**. Break any
+link — no signature, wrong key, missing note, or a policy that doesn't trust the
+attestor — and the image counts as unattested: **blocked** under `enforce`, **logged**
+under `dryrun`.
+
 ## Pipeline wiring — how each engine signs
 
 All four CI engines call the ONE signing script `resources/sign-and-attest-image.sh`

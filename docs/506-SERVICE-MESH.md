@@ -155,6 +155,37 @@ A mesh does **not** replace backend TLS the way one policy replaces another — 
 east-west hops backend TLS never touched. That is exactly why the two are
 [mutually exclusive](#backend-tls-vs-cloud-service-mesh-the-exclusivity).
 
+The three layers, traced along one real request from browser to database:
+
+<details>
+<summary>🔀 One request, every hop — where each layer's TLS applies (flowchart)</summary>
+
+```mermaid
+flowchart LR
+  browser(["browser"]) ==>|"① Google-managed<br/>edge TLS + IAP"| lb["GKE Gateway<br/>L7 LB"]
+  lb ==>|"② :8080 PERMISSIVE<br/>(LB is not a mesh client)"| gw["gateway<br/>+ istio-proxy"]
+  gw ==>|"③ istio IDENTITY mTLS<br/>the hop the mesh secures"| be["backend<br/>+ istio-proxy"]
+  be ==>|"④ CNPG TLS<br/>sslmode=require"| pooler["PgBouncer<br/>(excluded)"]
+  pooler ==>|"⑤ CNPG client-cert mTLS"| pg[("Postgres")]
+
+  classDef mesh fill:#e6ffe6,stroke:#2a2;
+  classDef edge fill:#eef,stroke:#66c;
+  classDef excl fill:#ffecec,stroke:#c33;
+  class gw,be mesh
+  class lb edge
+  class pooler,pg excl
+```
+
+</details>
+
+**Reading it —** five hops, **three different security layers**: ① the **edge**
+(Google-managed cert + IAP) and ② the **LB→gateway** hop are north-south — the LB is
+*not* a mesh client, so ② stays **PERMISSIVE** (this is exactly where backend TLS would
+re-encrypt, if it were on *instead* of the mesh); ③ **gateway→backend** is the *one*
+hop the mesh secures with **workload-identity mTLS**; and ④⑤ the **DB hops** already
+run **CNPG's own TLS** (`sslmode=require` + client-cert), so they are deliberately
+outside the mesh. The mesh's net-new value is precisely hop ③.
+
 ## What a mesh uniquely adds *here* — the gap matrix
 
 Most of a mesh's sales pitch is **already covered by other means in this
