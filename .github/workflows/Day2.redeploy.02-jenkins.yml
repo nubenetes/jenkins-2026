@@ -58,8 +58,17 @@ on:
         options:
           - info
           - debug
-      backend_tls:
-        description: "Opt-in backend TLS (gateway.backendTls — docs/504). Unlike the other Day2.redeploy workflows, a flip HERE fully converges end-to-end (no Day1 needed): this workflow runs 08.7-backend-tls.sh (mints the Jenkins JKS keystore), 04-jenkins.sh (the sole renderer of the Jenkins TLS values overlay - no app-of-apps threading involved), and 09-gateway.sh (BackendTLSPolicy + HTTPS HealthCheckPolicy)."
+      intra_cluster_tls:
+        description: "Intra-cluster TLS — the single MUTUALLY-EXCLUSIVE choice, matching Day1 (docs/504 backend-tls · docs/506 mesh). 'backend-tls' fully converges end-to-end HERE (no Day1 needed): this workflow runs 08.7-backend-tls.sh (mints the Jenkins JKS keystore), 04-jenkins.sh (the sole renderer of the Jenkins TLS values overlay), and 09-gateway.sh (BackendTLSPolicy + HTTPS HealthCheckPolicy). 'cloud-service-mesh' is honored for exclusivity/consistency (keeps backend-tls off) but the mesh itself is (re)applied by Day1.cluster.01 (08.85), not this redeploy. 'none' = neither. MUST MATCH the live cluster."
+        required: false
+        default: "none"
+        type: choice
+        options:
+          - none
+          - backend-tls
+          - cloud-service-mesh
+      binary_authorization:
+        description: "Opt-in Binary Authorization (docs/507) — MUST MATCH the live cluster. ORTHOGONAL to intra_cluster_tls (composes with any). 04-jenkins.sh re-renders the Jenkins app here; omitting a live binauthz would strip the signer-GSA KSA annotation (Hook 2) → image signing breaks. enforce-vs-dryrun is set in config.yaml."
         required: false
         default: false
         type: boolean
@@ -84,8 +93,13 @@ env:
   # Must match the live cluster - see the input (only affects 09-gateway.sh's oss
   # Grafana route/policies).
   JENKINS2026_OBS_MODE: ${{ inputs.observability_mode }}
-  # Opt-in backend TLS (docs/504) — must match the live cluster (see the input).
-  JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED: ${{ inputs.backend_tls }}
+  # Intra-cluster TLS axis (backend-tls XOR mesh — ONE dropdown, matches Day1; docs/504·506)
+  # + orthogonal Binary Authorization (docs/507), DERIVED from the two inputs exactly as
+  # Day1.cluster.01 does — so this redeploy PRESERVES the live cluster's flags instead of
+  # silently resetting them (the workflow-input-parity rule).
+  JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED: ${{ inputs.intra_cluster_tls == 'backend-tls' }}
+  JENKINS2026_SERVICE_MESH_MODE: ${{ inputs.intra_cluster_tls == 'cloud-service-mesh' && 'cloud-service-mesh' || 'none' }}
+  JENKINS2026_BINARY_AUTHORIZATION_ENABLED: ${{ inputs.binary_authorization }}
 
 jobs:
   redeploy-jenkins:
