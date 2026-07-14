@@ -49,6 +49,23 @@ fi
 MESH_INJECT_LABEL_KEY="istio.io/rev"
 MESH_INJECT_LABEL_VALUE="asm-managed"
 
+# The managed CSM control plane (provisioned by the Fleet `servicemesh` feature in
+# terraform/gke) comes up ASYNCHRONOUSLY — several minutes AFTER the terraform apply,
+# so on the FIRST enablement its sidecar-injection webhook may not exist yet when this
+# script runs. Wait (bounded, ~6 min) for it so a SINGLE Day1 converges the mesh
+# instead of no-opping now and needing a second run. Non-fatal: if it never appears we
+# fall through to the gate below (which no-ops with a warning; the next run converges).
+# Only when mode=cloud-service-mesh — the retire path (mode=none) must not be delayed.
+if [[ "${J2026_SERVICE_MESH_MODE}" == "cloud-service-mesh" ]]; then
+  if ! kubectl get mutatingwebhookconfiguration 2>/dev/null | grep -qiE 'istio.*sidecar-injector|istiod'; then
+    log_info "Waiting for the managed CSM control plane's injection webhook (up to ~6 min)..."
+    for _i in $(seq 1 60); do
+      sleep 6
+      kubectl get mutatingwebhookconfiguration 2>/dev/null | grep -qiE 'istio.*sidecar-injector|istiod' && { log_info "  managed control plane is ready."; break; }
+    done
+  fi
+fi
+
 if [[ "$(j2026_service_mesh_active)" != "true" ]]; then
   # INACTIVE → retire any residue from a previous enabled run (idempotent).
   retired=0
