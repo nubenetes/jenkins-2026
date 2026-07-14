@@ -38,6 +38,8 @@ resource "google_gke_hub_membership" "mesh" {
       resource_link = "//container.googleapis.com/${google_container_cluster.this.id}"
     }
   }
+
+  depends_on = [google_project_service.apis]
 }
 
 resource "google_gke_hub_feature" "mesh" {
@@ -46,6 +48,8 @@ resource "google_gke_hub_feature" "mesh" {
   project  = var.project_id
   name     = "servicemesh"
   location = "global"
+
+  depends_on = [google_project_service.apis]
 }
 
 resource "google_gke_hub_feature_membership" "mesh" {
@@ -81,6 +85,8 @@ resource "google_kms_key_ring" "binauthz" {
   project  = var.project_id
   name     = "jenkins-2026-binauthz"
   location = var.region
+
+  depends_on = [google_project_service.apis]
 }
 
 resource "google_kms_crypto_key" "binauthz" {
@@ -107,6 +113,8 @@ resource "google_container_analysis_note" "binauthz" {
       human_readable_name = "jenkins-2026 pipeline attestor"
     }
   }
+
+  depends_on = [google_project_service.apis]
 }
 
 # The attestor's trusted public key = the KMS crypto-key VERSION's PKIX PEM.

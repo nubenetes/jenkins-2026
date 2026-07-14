@@ -30,6 +30,20 @@ resource "google_project_service" "apis" {
     # harmless/unused with the flag off, and re-enabling APIs on demand is too
     # slow for an opt-in flag flipped on an already-running cluster.
     "networksecurity.googleapis.com",
+    # Cloud Service Mesh (serviceMesh.mode, docs/506) + Binary Authorization
+    # (security.binaryAuthorization, docs/507) APIs — enabled UNCONDITIONALLY, same
+    # rationale as secretmanager/networksecurity above and the docs/504 networksecurity
+    # precedent: enabling an API is harmless/free when the feature is off, and on-demand
+    # enablement is too SLOW when the flag is flipped on an ALREADY-RUNNING cluster —
+    # creating the KMS keyring / Container-Analysis note / Fleet membership in the SAME
+    # apply 403s with "API has not been used before" before enablement propagates. So
+    # keep them always-on; the count-gated resources in security.tf create the actual
+    # objects only when the flag is set.
+    "mesh.googleapis.com",
+    "gkehub.googleapis.com",
+    "binaryauthorization.googleapis.com",
+    "containeranalysis.googleapis.com",
+    "cloudkms.googleapis.com",
     ],
     # Vertex AI backs observability.llm.enabled in oss mode (the LiteLLM
     # gateway calls Gemini serverlessly). Conditional, unlike the two above:
@@ -37,15 +51,6 @@ resource "google_project_service" "apis" {
     # re-runs Day1/terraform anyway, so the slow-enable concern doesn't apply.
     # disable_on_destroy=false still leaves it enabled on flag-off (harmless).
     var.observability_llm_enabled ? ["aiplatform.googleapis.com"] : [],
-    # Cloud Service Mesh (serviceMesh.mode=cloud-service-mesh, docs/506): the
-    # managed CSM control plane is provisioned via a Fleet feature, so the mesh +
-    # gkehub (Fleet) APIs must be on. STANDALONE SKU — we deliberately do NOT enable
-    # anthos.googleapis.com / the GKE Enterprise API (billing follows the enabled
-    # APIs; enabling Enterprise would flip CSM to the per-vCPU tier). See docs/506.
-    var.service_mesh_mode == "cloud-service-mesh" ? ["mesh.googleapis.com", "gkehub.googleapis.com"] : [],
-    # Binary Authorization (security.binaryAuthorization.enabled, docs/507): the
-    # admission policy + attestor + Cloud KMS signing key + Container Analysis note.
-    var.binary_authorization_enabled ? ["binaryauthorization.googleapis.com", "containeranalysis.googleapis.com", "cloudkms.googleapis.com"] : [],
   ))
 
   project = var.project_id
