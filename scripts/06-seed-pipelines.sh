@@ -147,8 +147,10 @@ done
 # +2: seed-jobs itself + microservices-k6-smoke (matches smoke-test.sh EXPECTED_JOBS)
 min_jobs=$((expected + 2))
 
-count="$(jenkins_exec curl -sg -u "${AUTH}" "${JENKINS_LOCAL_URL}/api/json?tree=jobs[name]" \
-  | python3 -c 'import sys,json; print(len(json.load(sys.stdin)["jobs"]))')"
+# 2>/dev/null on the exec: a failed exec makes kubectl echo the request URL,
+# which URL-encodes `-u admin:<password>` — don't leak the admin password to the log.
+count="$(jenkins_exec curl -sg -u "${AUTH}" "${JENKINS_LOCAL_URL}/api/json?tree=jobs[name]" 2>/dev/null \
+  | python3 -c 'import sys,json; print(len(json.load(sys.stdin)["jobs"]))' 2>/dev/null || echo 0)"
 if [[ "${count}" -lt "${min_jobs}" ]]; then
   log_error "Expected >= ${min_jobs} jobs after seed run, found only ${count}"
   exit 1
