@@ -456,6 +456,114 @@ spec:
 
 </details>
 
+## The as-built mesh — everything in one frame
+
+The sections above take the mesh apart one concern at a time. This is the whole
+thing **as actually deployed and validated in this cluster**: the managed control
+plane, the injected app tier, the deliberately-excluded data tier, the three
+policies, and — the part worth internalising — the **three different TLS regimes a
+single request crosses**, each chosen for the hop it protects.
+
+```mermaid
+flowchart TB
+    NET(["Internet"])
+
+    subgraph gcp["GCP Fleet — managed, free since 2025-09"]
+      FEAT["servicemesh Fleet feature<br/>terraform/gke · MANAGEMENT_AUTOMATIC"]
+      ISTIOD["managed istiod-asm-managed<br/>+ Mesh CA · mints SPIFFE certs"]
+      FEAT --> ISTIOD
+    end
+
+    subgraph lb["GKE Gateway API · L7 external LB"]
+      GLB["global LB + IAP<br/>auth at the edge"]
+    end
+
+    subgraph ns["GKE cluster · ns microservices · label istio.io/rev=asm-managed · Dataplane V2 = managed Cilium"]
+      direction TB
+      subgraph appt["App tier — IN the mesh · istio-proxy sidecars · holdApplicationUntilProxyStarts"]
+        GW["gateway pod 2/2<br/>app + istio-proxy"]
+        BE["backend pod 2/2<br/>app + istio-proxy"]
+      end
+      subgraph datat["Data tier — EXCLUDED · sidecar.istio.io/inject false"]
+        POOL["CNPG PgBouncer poolers 1/1<br/>no sidecar"]
+        PG["CNPG Postgres 1/1<br/>no sidecar"]
+      end
+      subgraph pol["Mesh policy · 08.85-service-mesh.sh"]
+        PA["PeerAuthentication STRICT<br/>namespace-wide"]
+        PERM["gateway-ingress-permissive<br/>portLevelMtls 8080 PERMISSIVE"]
+        AZ["AuthorizationPolicy · L7"]
+      end
+    end
+
+    NET --> GLB
+    GLB -->|"8080 plaintext · LB is not a mesh client"| GW
+    GW -->|"identity mTLS · SPIFFE · STRICT + AuthzPolicy"| BE
+    BE -->|"client-cert mTLS · CNPG pg_hba · NOT the mesh"| POOL
+    POOL --> PG
+
+    ISTIOD -.->|"inject sidecars + mint certs"| GW
+    ISTIOD -.-> BE
+    PA -.-> GW
+    PA -.-> BE
+    PERM -.-> GW
+    AZ -.-> BE
+
+    classDef mesh fill:#e3f2fd,stroke:#1976d2;
+    classDef data fill:#fff3e0,stroke:#f57c00;
+    classDef ctl fill:#e8f5e9,stroke:#388e3c;
+    classDef edge fill:#f3e5f5,stroke:#7b1fa2;
+    class GW,BE mesh;
+    class POOL,PG data;
+    class FEAT,ISTIOD ctl;
+    class GLB edge;
+    class NET edge;
+```
+
+**Follow one request, top to bottom — three TLS regimes, each by design:**
+
+1. **Internet → LB → gateway `:8080` — plaintext (inside Google's fabric).** The GKE
+   global LB terminates public TLS and enforces **IAP** at the edge, then dials the
+   gateway pod on `:8080`. The LB is **not a mesh client** (no SPIFFE identity), so a
+   namespace-wide `STRICT` mesh would reject it — which is exactly why `08.85` pins
+   **`gateway-ingress-permissive` → `portLevelMtls: 8080: PERMISSIVE`**. This hop is
+   plaintext *within Google's network*; to encrypt it too you'd use
+   [backend TLS](504-BACKEND_TLS.md) instead — and that is precisely why the two are
+   [mutually exclusive](#backend-tls-vs-cloud-service-mesh--the-exclusivity).
+2. **gateway → backend — identity mTLS (the mesh's whole point).** Both pods carry an
+   `istio-proxy` sidecar and a **Mesh-CA-minted SPIFFE cert**; the sidecars do mutual
+   mTLS under **`PeerAuthentication STRICT`**, and **`AuthorizationPolicy`** gates *which
+   identity* may call the backend (L7 authz, not merely L3 reachability). This is the hop
+   a NetworkPolicy or backend TLS **cannot** express — identity, not IP.
+3. **backend → CNPG — client-cert mTLS, but NOT the mesh.** The database tier is
+   **excluded from injection** (`sidecar.istio.io/inject: "false"` on the CNPG `Cluster`
+   + `Pooler`), so this hop is secured by **CNPG's own PgBouncer client-cert mTLS**
+   (`pg_hba hostssl … cert`), which predates and outlives the mesh. See
+   [Why the data tier is excluded](#why-the-data-tier-cnpg-postgres-is-excluded) for the
+   four reasons (PDB-vs-drain, connection lifecycle, no L7 benefit, CNPG already does mTLS).
+
+**The control plane (left of the frame):** `terraform/gke` registers the cluster to a
+**Fleet** and enables the **`servicemesh` feature** (`MANAGEMENT_AUTOMATIC`) → Google
+runs `istiod-asm-managed` + the **Mesh CA**; there is **no self-managed control plane**
+to patch or upgrade. It injects the sidecars and mints the workload certs; `08.85`
+applies the namespace label + the three policies. Everything is `count`/flag-gated on
+`serviceMesh.mode=cloud-service-mesh`, so `none` is a clean no-op and a flip-off
+symmetrically retires it.
+
+| Configured object | Applied by | Purpose |
+|---|---|---|
+| `istio.io/rev=asm-managed` (ns label) | `08.85` on ns `microservices` | opts every pod in the ns into the managed mesh (injection) |
+| `PeerAuthentication default STRICT` | `08.85` (ns-wide) | meshed pods accept **only** identity mTLS |
+| `PeerAuthentication gateway-ingress-permissive` | `08.85` (gateway workload, `:8080`) | lets the non-mesh LB + its HealthCheckPolicy reach the gateway |
+| `AuthorizationPolicy` | `08.85` | L7 authz — which identity may call the backend |
+| `holdApplicationUntilProxyStarts` | gitops-config, app Deployments | app waits for its sidecar — no startup race |
+| `sidecar.istio.io/inject: "false"` | gitops-config, CNPG `Cluster` + `Pooler` | keeps the data tier sidecar-free |
+| Fleet `servicemesh` feature + membership | `terraform/gke` | provisions the managed control plane + Mesh CA |
+
+**Validated live 2026-07-15:** gateway **2/2**, backend **2/2**, every CNPG
+instance/pooler **1/1** (sidecar-free), public endpoint **200**, `PeerAuthentication`
+`default` `STRICT` + `gateway-ingress-permissive` both applied, Binary Authorization
+dryrun composing alongside. Roll-back (`intra_cluster_tls=none`) restores health cleanly.
+
 ## App mesh-readiness (the workload side)
 
 Enabling the mesh provisions the infra and injects sidecars, but **the workloads
