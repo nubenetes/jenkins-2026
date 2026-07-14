@@ -73,6 +73,11 @@ if [[ "$(j2026_service_mesh_active)" != "true" ]]; then
     kubectl get namespace "${ns}" >/dev/null 2>&1 || continue
     if kubectl get namespace "${ns}" -o "jsonpath={.metadata.labels.istio\.io/rev}" 2>/dev/null | grep -q .; then
       kubectl label namespace "${ns}" "${MESH_INJECT_LABEL_KEY}-" --overwrite >/dev/null 2>&1 || true
+      # Restart the workloads so their pods re-create WITHOUT the istio sidecar (the
+      # injection webhook no longer matches the now-unlabeled ns). Without this the
+      # already-injected pods keep a sidecar that can't reach the retired control plane
+      # (the meshed gateway would stay CrashLooping after a roll-back to mode=none).
+      kubectl rollout restart deployment -n "${ns}" >/dev/null 2>&1 || true
       retired=1
     fi
     kubectl delete peerauthentication default -n "${ns}" --ignore-not-found >/dev/null 2>&1 || true
