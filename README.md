@@ -34,8 +34,8 @@
 **Data**  
 ![CloudNativePG](https://img.shields.io/badge/CloudNativePG-336791?style=flat-square&logo=postgresql&logoColor=white) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) ![pgAdmin](https://img.shields.io/badge/pgAdmin-326690?style=flat-square&logo=postgresql&logoColor=white) ![pgBouncer](https://img.shields.io/badge/pgBouncer-1F3B4D?style=flat-square)
 
-**Secrets & PKI** — `secrets.backend` · opt-in backend TLS  
-![External Secrets Operator](https://img.shields.io/badge/External%20Secrets%20Operator-5B4EE9?style=flat-square) ![GCP Secret Manager](https://img.shields.io/badge/GCP%20Secret%20Manager-4285F4?style=flat-square&logo=googlecloud&logoColor=white) ![cert-manager](https://img.shields.io/badge/cert--manager-2E4B8F?style=flat-square) ![Backend TLS opt-in](https://img.shields.io/badge/Backend%20TLS-opt--in-64748B?style=flat-square)
+**Secrets, PKI & intra-cluster TLS** — `secrets.backend` · opt-in backend TLS **or** Cloud Service Mesh  
+![External Secrets Operator](https://img.shields.io/badge/External%20Secrets%20Operator-5B4EE9?style=flat-square) ![GCP Secret Manager](https://img.shields.io/badge/GCP%20Secret%20Manager-4285F4?style=flat-square&logo=googlecloud&logoColor=white) ![cert-manager](https://img.shields.io/badge/cert--manager-2E4B8F?style=flat-square) ![Backend TLS opt-in](https://img.shields.io/badge/Backend%20TLS-opt--in-64748B?style=flat-square) ![Cloud Service Mesh opt-in](https://img.shields.io/badge/Cloud%20Service%20Mesh-opt--in-466BB0?style=flat-square&logo=istio&logoColor=white)
 
 **IaC & tooling**  
 ![Terraform](https://img.shields.io/badge/Terraform-7B42BC?style=flat-square&logo=terraform&logoColor=white) ![Bash](https://img.shields.io/badge/Bash-4EAA25?style=flat-square&logo=gnubash&logoColor=white) ![yq](https://img.shields.io/badge/yq-4B5563?style=flat-square) ![GitHub Container Registry](https://img.shields.io/badge/GitHub%20Container%20Registry-181717?style=flat-square&logo=github&logoColor=white)
@@ -44,7 +44,7 @@
 ![JHipster](https://img.shields.io/badge/JHipster-3E8ACC?style=flat-square&logo=jhipster&logoColor=white) ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-6DB33F?style=flat-square&logo=springboot&logoColor=white) ![Angular](https://img.shields.io/badge/Angular-DD0031?style=flat-square&logo=angular&logoColor=white) ![Java](https://img.shields.io/badge/Java-ED8B00?style=flat-square&logo=openjdk&logoColor=white) ![Maven](https://img.shields.io/badge/Maven-C71A36?style=flat-square&logo=apachemaven&logoColor=white) ![Jib](https://img.shields.io/badge/Jib-4285F4?style=flat-square&logo=google&logoColor=white) ![Kaniko](https://img.shields.io/badge/Kaniko-FC6D26?style=flat-square)
 
 **Test & DevSecOps**  
-![k6](https://img.shields.io/badge/k6-7D64FF?style=flat-square&logo=k6&logoColor=white) ![Semgrep](https://img.shields.io/badge/Semgrep-1E90FF?style=flat-square&logo=semgrep&logoColor=white) ![CodeQL](https://img.shields.io/badge/CodeQL-2088FF?style=flat-square&logo=github&logoColor=white) ![Trivy](https://img.shields.io/badge/Trivy-1904DA?style=flat-square&logo=trivy&logoColor=white)
+![k6](https://img.shields.io/badge/k6-7D64FF?style=flat-square&logo=k6&logoColor=white) ![Semgrep](https://img.shields.io/badge/Semgrep-1E90FF?style=flat-square&logo=semgrep&logoColor=white) ![CodeQL](https://img.shields.io/badge/CodeQL-2088FF?style=flat-square&logo=github&logoColor=white) ![Trivy](https://img.shields.io/badge/Trivy-1904DA?style=flat-square&logo=trivy&logoColor=white) ![Binary Authorization opt-in](https://img.shields.io/badge/Binary%20Authorization-opt--in-4285F4?style=flat-square&logo=googlecloud&logoColor=white)
 
 <!-- STACK-BADGES:END -->
 
