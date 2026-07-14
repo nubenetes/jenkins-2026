@@ -546,6 +546,33 @@ spec:
               parameters:
                 - { name: service-type, value: "{{inputs.parameters.service-type}}" }
                 - { name: image, value: "{{inputs.parameters.image}}" }
+        # Binary Authorization (opt-in, docs/507 § Pipeline wiring): sign + attest the
+        # pushed image DIGEST via the single-source sign-and-attest-image.sh (shared by
+        # all four engines, like patch-app-source.sh). NO-OP unless BINAUTHZ_ENABLED=true
+        # (the script checks the flag first) — safe by default.
+        - - name: build-sign
+            template: build-sign
+            arguments:
+              parameters:
+                - { name: image, value: "{{inputs.parameters.image}}" }
+    # google/cloud-sdk so gcloud is present; auths via the Workflow SA's Workload
+    # Identity (bind it to the signer GSA terraform/gke grants). The seed
+    # (06-argoworkflows-pipelines.sh) flips BINAUTHZ_ENABLED when the flag is on. docs/507.
+    - name: build-sign
+      inputs:
+        parameters:
+          - name: image
+      script:
+        image: google/cloud-sdk:slim
+        command: [bash]
+        volumeMounts:
+          - { name: source, mountPath: /workspace }
+        env:
+          - name: BINAUTHZ_ENABLED
+            value: "false"
+        source: |
+          set -eu
+          /workspace/jenkins-2026-infra/resources/sign-and-attest-image.sh "{{inputs.parameters.image}}"
     - name: build-jib
       inputs:
         parameters:

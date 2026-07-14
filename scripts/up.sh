@@ -60,6 +60,17 @@ log_step "Syncing External Secrets (08.6, eso mode only)"
 log_step "Configuring backend TLS (08.7, opt-in)"
 "${SCRIPT_DIR}/08.7-backend-tls.sh"
 
+# Cloud Service Mesh (config.yaml serviceMesh.mode=cloud-service-mesh, override
+# JENKINS2026_SERVICE_MESH_MODE; default none). MUTUALLY EXCLUSIVE with backend TLS
+# above (lib/config.sh fails fast if both on — a mesh supersedes that hop). The cloud
+# half (Fleet membership + the managed control plane / Mesh CA — the STANDALONE
+# per-client SKU, not GKE Enterprise) is provisioned by terraform/gke; this does the
+# in-cluster half (injection labels + STRICT mTLS + AuthorizationPolicy). Non-fatal —
+# no platform pod depends on the mesh (like NAP / the LLM app). mode=none retires
+# leftovers + no-ops. See docs/506-SERVICE-MESH.md.
+log_step "Configuring Cloud Service Mesh (08.85, opt-in)"
+"${SCRIPT_DIR}/08.85-service-mesh.sh" || log_warn "Cloud Service Mesh provisioning reported an issue (see above) — non-fatal"
+
 log_step "Installing 03-observability (sequential to prevent API pressure)"
 "${SCRIPT_DIR}/03-observability.sh"
 

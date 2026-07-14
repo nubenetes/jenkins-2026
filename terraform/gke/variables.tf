@@ -103,6 +103,67 @@ variable "services_cidr" {
   default     = "10.30.0.0/20"
 }
 
+variable "service_mesh_mode" {
+  type        = string
+  description = <<-EOT
+    Service mesh selector. DRIVEN from the single config flag `serviceMesh.mode`
+    in config/config.yaml (scripts/lib/config.sh exports TF_VAR_service_mesh_mode),
+    so the cloud-side mesh control plane and the in-cluster injection
+    (scripts/08.85-service-mesh.sh) can never desync — same single-source-of-truth
+    pattern as observability_llm_enabled / enable_node_autoprovisioning.
+      none               - no mesh (default).
+      cloud-service-mesh - register the cluster to a Fleet + enable the managed
+                           Cloud Service Mesh (CSM) via the `servicemesh` Fleet
+                           feature (managed control plane + Mesh CA). This is the
+                           STANDALONE per-client SKU, NOT a GKE Enterprise tier
+                           (that edition was dissolved 2025-09) — so we deliberately
+                           do NOT enable the GKE Enterprise / anthos API (billing
+                           follows the enabled APIs). See docs/506-SERVICE-MESH.md.
+  EOT
+  default     = "none"
+  validation {
+    condition     = contains(["none", "cloud-service-mesh"], var.service_mesh_mode)
+    error_message = "service_mesh_mode must be 'none' or 'cloud-service-mesh'."
+  }
+}
+
+variable "binary_authorization_enabled" {
+  type        = bool
+  description = <<-EOT
+    Enable Binary Authorization supply-chain admission control. DRIVEN from the
+    single config flag `security.binaryAuthorization.enabled` (config.sh exports
+    TF_VAR_binary_authorization_enabled). Provisions the Cloud KMS signing key, the
+    attestor, the Container Analysis note and the project singleton policy, and sets
+    the cluster's binary_authorization evaluation_mode. See docs/507.
+  EOT
+  default     = false
+}
+
+variable "binary_authorization_enforce" {
+  type        = bool
+  description = <<-EOT
+    When binary_authorization_enabled, whether the project policy BLOCKS unattested
+    images (ENFORCED_BLOCK_AND_AUDIT_LOG) or only logs them (DRYRUN_AUDIT_LOG_ONLY).
+    DRIVEN from security.binaryAuthorization.enforcementMode (enforce->true,
+    dryrun->false) via TF_VAR_binary_authorization_enforce. Default false (dryrun).
+  EOT
+  default     = false
+}
+
+variable "binauthz_signer_ksas" {
+  type        = list(string)
+  description = <<-EOT
+    Kubernetes ServiceAccounts (as "namespace/name") whose pods may impersonate the
+    Binary Authorization signer GSA via Workload Identity to sign+attest images
+    (resources/sign-and-attest-image.sh). Only used when binary_authorization_enabled.
+    Defaults to the Jenkins agent KSA; ADD the active engine's build KSA after
+    confirming its name live (Tekton pipeline SA in tekton-ci, Argo workflow SA in
+    argo-ci, ARC runner SA in arc-runners). Each listed KSA ALSO needs the in-cluster
+    annotation iam.gke.io/gcp-service-account=<signer GSA>. See docs/507 § Pipeline wiring.
+  EOT
+  default     = ["jenkins/jenkins"]
+}
+
 variable "observability_llm_enabled" {
   type        = bool
   description = <<-EOT

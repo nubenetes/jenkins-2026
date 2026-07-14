@@ -322,6 +322,43 @@ j2026_argocd_backend_tls_active() {
 }
 
 
+# --- service mesh (Cloud Service Mesh standalone) activation ------------------
+# j2026_service_mesh_active - echoes "true" when serviceMesh.mode=cloud-service-mesh
+# (J2026_SERVICE_MESH_MODE, resolved by lib/config.sh) is ON *and* the cluster
+# actually serves the Istio sidecar-injection webhook (i.e. the MANAGED CSM control
+# plane provisioned by the Fleet servicemesh feature is up). Mirrors
+# j2026_backend_tls_active: EVERY in-cluster consumer (08.85-service-mesh.sh's
+# namespace labeling + PeerAuthentication/AuthorizationPolicy) gates on THIS, never
+# the raw mode — so a cluster whose Fleet mesh feature hasn't finished rolling out the
+# managed control plane degrades to "no mesh yet" (with a warning) instead of
+# labeling namespaces whose pods can never get a sidecar. The warning goes to stderr
+# because callers invoke this in command substitution. See docs/506-SERVICE-MESH.md.
+j2026_service_mesh_active() {
+  if [[ "${J2026_SERVICE_MESH_MODE:-none}" != "cloud-service-mesh" ]]; then
+    echo "false"
+    return
+  fi
+  if kubectl get mutatingwebhookconfiguration 2>/dev/null | grep -qiE 'istio.*sidecar-injector|istiod'; then
+    echo "true"
+  else
+    log_warn "serviceMesh.mode=cloud-service-mesh but the Istio sidecar-injection webhook is not present yet (managed CSM control plane still provisioning?) — treating the mesh as inactive." >&2
+    echo "false"
+  fi
+}
+
+# --- Binary Authorization (supply-chain admission) activation -----------------
+# j2026_binary_authorization_active - echoes "true" when
+# security.binaryAuthorization.enabled (J2026_BINARY_AUTHORIZATION_ENABLED) is ON.
+# Unlike backend TLS / the mesh there is no cluster CRD to probe: Binary
+# Authorization is a GKE cluster property + a project-level policy, both set by
+# terraform/gke from the SAME flag. The gate exists so the pipeline signing step
+# (resources/sign-and-attest-image.sh) and any consumer read ONE predicate, keeping
+# the pattern uniform with the other two security flags. See docs/507.
+j2026_binary_authorization_active() {
+  [[ "${J2026_BINARY_AUTHORIZATION_ENABLED:-false}" == "true" ]] && echo "true" || echo "false"
+}
+
+
 # --- CI-engine retirement (mutual exclusivity) -------------------------------
 # The four CI engines (jenkins · tekton · githubactions · argoworkflows) are
 # mutually exclusive, so selecting one must FULLY retire the other three. Each

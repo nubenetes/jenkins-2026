@@ -72,8 +72,17 @@ on:
         required: false
         default: false
         type: boolean
-      backend_tls:
-        description: "Opt-in LB→pod TLS re-encryption (gateway.backendTls — docs/504): cert-manager + internal CA + TLS-serving Headlamp + BackendTLSPolicy. OFF by default. Passed straight to Day1.cluster.01 (where enabling/disabling converges)."
+      intra_cluster_tls:
+        description: "Intra-cluster TLS posture (pick ONE — MUTUALLY EXCLUSIVE, single dropdown). none (default) = plain HTTP in-VPC. backend-tls = cert-manager LB→pod re-encryption (docs/504). cloud-service-mesh = managed Cloud Service Mesh, identity mTLS everywhere (docs/506, standalone per-client SKU). Passed straight to Day1.cluster.01 (where it converges)."
+        required: false
+        default: "none"
+        type: choice
+        options:
+          - none
+          - backend-tls
+          - cloud-service-mesh
+      binary_authorization:
+        description: "Opt-in Binary Authorization supply-chain admission control (docs/507): GKE only admits KMS-attested images. ORTHOGONAL to intra_cluster_tls (composes with any). OFF by default. Passed straight to Day1.cluster.01."
         required: false
         default: false
         type: boolean
@@ -255,7 +264,8 @@ jobs:
       destroy_unused_backends: ${{ inputs.destroy_unused_backends }}
       enable_gateway: true
       develop_track: ${{ inputs.develop_track }}
-      backend_tls: ${{ inputs.backend_tls }}
+      intra_cluster_tls: ${{ inputs.intra_cluster_tls }}
+      binary_authorization: ${{ inputs.binary_authorization }}
       backstage_enabled: ${{ inputs.backstage_enabled }}
       llm_enabled: ${{ inputs.llm_enabled }}
       assistant_enabled: ${{ inputs.assistant_enabled }}

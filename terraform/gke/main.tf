@@ -37,6 +37,15 @@ resource "google_project_service" "apis" {
     # re-runs Day1/terraform anyway, so the slow-enable concern doesn't apply.
     # disable_on_destroy=false still leaves it enabled on flag-off (harmless).
     var.observability_llm_enabled ? ["aiplatform.googleapis.com"] : [],
+    # Cloud Service Mesh (serviceMesh.mode=cloud-service-mesh, docs/506): the
+    # managed CSM control plane is provisioned via a Fleet feature, so the mesh +
+    # gkehub (Fleet) APIs must be on. STANDALONE SKU — we deliberately do NOT enable
+    # anthos.googleapis.com / the GKE Enterprise API (billing follows the enabled
+    # APIs; enabling Enterprise would flip CSM to the per-vCPU tier). See docs/506.
+    var.service_mesh_mode == "cloud-service-mesh" ? ["mesh.googleapis.com", "gkehub.googleapis.com"] : [],
+    # Binary Authorization (security.binaryAuthorization.enabled, docs/507): the
+    # admission policy + attestor + Cloud KMS signing key + Container Analysis note.
+    var.binary_authorization_enabled ? ["binaryauthorization.googleapis.com", "containeranalysis.googleapis.com", "cloudkms.googleapis.com"] : [],
   ))
 
   project = var.project_id
@@ -268,6 +277,15 @@ resource "google_container_cluster" "this" {
 
   workload_identity_config {
     workload_pool = "${var.project_id}.svc.id.goog"
+  }
+
+  # Binary Authorization (security.binaryAuthorization.enabled, docs/507). When on,
+  # the cluster consults the PROJECT singleton policy (google_binary_authorization_policy
+  # in security.tf) at admission; DISABLED (default) admits anything. The dryrun-vs-
+  # enforce decision lives in that policy, not here. Updatable in place (not ForceNew),
+  # so flipping the flag converges on a Day1 re-run without recreating the cluster.
+  binary_authorization {
+    evaluation_mode = var.binary_authorization_enabled ? "PROJECT_SINGLETON_POLICY_ENFORCE" : "DISABLED"
   }
 
   # GKE Node Auto-Provisioning (NAP) — the GA, Google-native equivalent of Karpenter

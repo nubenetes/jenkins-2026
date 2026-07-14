@@ -1,4 +1,4 @@
-[← Previous: 504. Backend TLS](./504-BACKEND_TLS.md) | [🏠 Home](../README.md) | [→ Next: 601. DevSecOps](./601-DEVSECOPS.md)
+[← Previous: 504. Backend TLS](./504-BACKEND_TLS.md) | [🏠 Home](../README.md) | [→ Next: 506. Service Mesh](./506-SERVICE-MESH.md)
 
 ---
 
@@ -1179,7 +1179,7 @@ survive (image, SM secrets) are exactly the two the platform *wants* persistent
 
 ---
 
-[← Previous: 504. Backend TLS](./504-BACKEND_TLS.md) | [🏠 Home](../README.md) | [→ Next: 601. DevSecOps](./601-DEVSECOPS.md)
+[← Previous: 504. Backend TLS](./504-BACKEND_TLS.md) | [🏠 Home](../README.md) | [→ Next: 506. Service Mesh](./506-SERVICE-MESH.md)
 
 ---
 

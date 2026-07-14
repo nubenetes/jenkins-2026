@@ -1,4 +1,4 @@
-[← Previous: 505. Backstage](./505-BACKSTAGE.md) | [🏠 Home](../README.md) | [→ Next: 602. Version Pinning](./602-VERSION_PINNING.md)
+[← Previous: 507. Binary Authorization](./507-BINARY-AUTHORIZATION.md) | [🏠 Home](../README.md) | [→ Next: 602. Version Pinning](./602-VERSION_PINNING.md)
 
 ---
 
@@ -196,7 +196,7 @@ post {
 
 ---
 
-[← Previous: 505. Backstage](./505-BACKSTAGE.md) | [🏠 Home](../README.md) | [→ Next: 602. Version Pinning](./602-VERSION_PINNING.md)
+[← Previous: 507. Binary Authorization](./507-BINARY-AUTHORIZATION.md) | [🏠 Home](../README.md) | [→ Next: 602. Version Pinning](./602-VERSION_PINNING.md)
 
 ---
 

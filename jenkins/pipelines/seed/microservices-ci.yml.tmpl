@@ -148,6 +148,18 @@ jobs:
             -Djib.to.auth.username="${{ secrets.REGISTRY_USERNAME }}" \
             -Djib.to.auth.password="${{ secrets.REGISTRY_PASSWORD }}" -Djib.serialize=true
 
+      # Binary Authorization (opt-in, docs/507 § Pipeline wiring): sign + attest the
+      # pushed image DIGEST via the single-source resources/sign-and-attest-image.sh
+      # (shared by all four engines, like patch-app-source.sh). NO-OP unless
+      # BINAUTHZ_ENABLED=true (the script checks the flag FIRST, before needing gcloud),
+      # so this is safe by default. To actually sign: the render step (06-githubactions-
+      # pipelines.sh) threads BINAUTHZ_ENABLED + PROJECT_ID, and the ARC runner needs
+      # gcloud + Workload Identity to the project (its KSA bound to the signer GSA that
+      # terraform/gke grants). See docs/507.
+      - name: Sign + attest image (Binary Authorization, opt-in)
+        if: env.SERVICE_TYPE == 'java' && github.event_name != 'pull_request'
+        run: bash "${{ github.workspace }}/infra/resources/sign-and-attest-image.sh" "$REGISTRY/$SERVICE:$IMAGE_TAG"
+
       # Reclaim disk before the image scan. The app image is now in GHCR, so the build
       # tree (Angular node_modules, Maven target/ + ~/.m2 repo, the Jib build cache) is
       # dead weight — nothing after this needs it (Trivy re-pulls the image from GHCR;

@@ -81,6 +81,22 @@ spec:
           --context="$(workspaces.source.path)" \
           --dockerfile="$(workspaces.source.path)/jenkins-2026-infra/resources/angular/Dockerfile" \
           --destination="$(params.image)"
+    # Binary Authorization (opt-in, docs/507 § Pipeline wiring): sign + attest the
+    # pushed image DIGEST via the single-source resources/sign-and-attest-image.sh
+    # (shared by all four engines, like patch-app-source.sh). Runs in google/cloud-sdk
+    # so gcloud is present; auths via the pod's Workload Identity (the pipeline SA must
+    # be bound to the signer GSA that terraform/gke grants). NO-OP unless
+    # BINAUTHZ_ENABLED=true (the script checks the flag first) — safe by default; the
+    # seed (06-tekton-pipelines.sh) flips the env when the flag is on. See docs/507.
+    - name: sign-attest
+      image: google/cloud-sdk:slim
+      env:
+        - name: BINAUTHZ_ENABLED
+          value: "false"
+      script: |
+        #!/usr/bin/env bash
+        set -eu
+        "$(workspaces.source.path)/jenkins-2026-infra/resources/sign-and-attest-image.sh" "$(params.image)"
   volumes:
     - name: maven-cache
       hostPath: { path: /tmp/tekton-maven-cache, type: DirectoryOrCreate }

@@ -10,7 +10,7 @@
 [![Commit activity](https://img.shields.io/github/commit-activity/m/nubenetes/jenkins-2026?logo=github)](https://github.com/nubenetes/jenkins-2026/pulse)
 ![Top language](https://img.shields.io/github/languages/top/nubenetes/jenkins-2026?logo=gnubash&logoColor=white)
 ![Code size](https://img.shields.io/github/languages/code-size/nubenetes/jenkins-2026)
-[![Docs](https://img.shields.io/badge/docs-26%20guides-blue?logo=readthedocs&logoColor=white)](docs/)
+[![Docs](https://img.shields.io/badge/docs-28%20guides-blue?logo=readthedocs&logoColor=white)](docs/)
 [![Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735?logo=keepachangelog&logoColor=white)](CHANGELOG.md) [![Google Drive Media](https://img.shields.io/badge/Google%20Drive-Media%20%26%20Resources-4285F4?logo=googledrive&logoColor=white)](https://drive.google.com/drive/folders/15JQNRSIW8mxaIjQ2AVyua-jzLNjDsZ10?usp=sharing)
 
 <!-- STACK-BADGES:START -->
@@ -511,6 +511,16 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 
 ---
 
+**[506 · Service Mesh — Cloud Service Mesh (CSM)](./docs/506-SERVICE-MESH.md)**
+- Opt-in `serviceMesh.mode=cloud-service-mesh` — managed Istio via the **standalone SKU** (not GKE Enterprise): identity-based mutual **mTLS** + **L7 authZ** east-west, **mutually exclusive** with `gateway.backendTls`, the **why-CSM / why-NOT-Istio/Traefik/Linkerd/Cilium** decision matrices, and the **per-mesh-client** cost model
+
+---
+
+**[507 · Binary Authorization](./docs/507-BINARY-AUTHORIZATION.md)**
+- Opt-in `security.binaryAuthorization.enabled` supply-chain admission control — GKE only admits images carrying a **Cloud-KMS-signed attestation** from this project's attestor (closes the [601 DevSecOps](./docs/601-DEVSECOPS.md) scan→deploy loop), **`dryrun`/`enforce`** modes, **orthogonal** to serviceMesh/backendTls
+
+---
+
 **[601 · DevSecOps](./docs/601-DEVSECOPS.md)**
 - [Pipeline Lifecycle](./docs/601-DEVSECOPS.md#pipeline-lifecycle)
 - [Integrated Security Tools](./docs/601-DEVSECOPS.md#integrated-security-tools)
@@ -623,6 +633,8 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 | **503** | Networking | [Networking](./docs/503-NETWORKING.md) | Network architecture, **landing zone & topology** (single-VPC, *not* hub-spoke — with rationale + growth path), VPC/subnet + pod/service **CIDR plan**, north-south **ingress** (Gateway + IAP + container-native NEG) & **egress** (no Cloud NAT, the four observability backends), east-west (VPC-native + **Dataplane V2** + **WireGuard**), **NetworkPolicy segmentation** inside GKE, defense-in-depth |
 | **504** | Platform ops | [Backend TLS (LB→pod re-encryption)](./docs/504-BACKEND_TLS.md) | The **opt-in** `gateway.backendTls.enabled` hardening — **cert-manager** in-cluster CA + per-backend TLS + Gateway API **`BackendTLSPolicy`** so the LB validates the backend cert; the **GKE mechanics**, the staged per-backend rollout, why it's **not** a service mesh (Istio / Cloud Service Mesh comparison), and why ESO doesn't touch it |
 | **505** | Platform ops | [Backstage (developer portal / IDP)](./docs/505-BACKSTAGE.md) | **Backstage v1.52.1** (official Helm chart 2.8.2 + a **custom app image**) as the platform's developer portal: software **catalog** of the microservices + platform, **engine-aware CI/CD tabs** (one image ships the Jenkins/GitHub Actions/Tekton plugins; the active `ci.engine` is picked at **runtime**), **ArgoCD + Kubernetes** views, **TechDocs** rendering these very docs, behind **Google IAP** with in-app **JWT-verified** `gcpIap` sign-in (no second login), CNPG-backed, **backend TLS stage 10**, and the one-time `Day2.publish.06` image bootstrap |
+| **506** | Platform ops | [Service Mesh (Cloud Service Mesh / CSM)](./docs/506-SERVICE-MESH.md) | **Cloud Service Mesh (CSM)** standalone **opt-in** (`serviceMesh.mode=cloud-service-mesh`) — managed Istio via the **standalone SKU** (not GKE Enterprise, dissolved 2025-09): identity **mTLS** + **L7 authZ** east-west, the **why-CSM / why-NOT-Istio-Traefik-other-meshes** decision record, **mutually exclusive** with backend TLS (504), and the **per-mesh-client** cost model |
+| **507** | Platform ops | [Binary Authorization](./docs/507-BINARY-AUTHORIZATION.md) | **Supply-chain admission control** **opt-in** (`security.binaryAuthorization.enabled`) — GKE only admits images carrying a **Cloud-KMS-signed attestation** from this project's pipeline; closes the **DevSecOps** (601) scan→deploy loop; **`dryrun`(default) / `enforce`** modes; **orthogonal** to serviceMesh/backendTls |
 | **601** | Security | [DevSecOps](./docs/601-DEVSECOPS.md) | **Semgrep** SAST, **CodeQL** deep SAST, **Trivy** IaC + image scanning, **`warnings-ng`** plugin SARIF dashboards in Jenkins |
 | **602** | Security | [Version Pinning](./docs/602-VERSION_PINNING.md) | **Version-pinning policy + matrix** (charts, images, `yq`, GitHub Actions SHAs, Terraform lockfiles), pros/cons, the deliberate **ArgoCD 3.4.x auto-tracking exception** (off the buggy 3.5.0-rc), how to bump a pin |
 | **901** | Reference | [Local Development](./docs/901-LOCAL_DEVELOPMENT.md) | **Prerequisites**, **quick start**, step-by-step deployment guide, automated **e2e test** ([`test/e2e.sh`](test/e2e.sh)), **resource quotas & QoS**, Terraform version |

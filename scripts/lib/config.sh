@@ -512,6 +512,92 @@ case "${J2026_GATEWAY_BACKEND_TLS_ENABLED}" in
     ;;
 esac
 
+# --- service mesh: Cloud Service Mesh standalone (feature flag) ---------------
+# FEATURE FLAG: JENKINS2026_SERVICE_MESH_MODE overrides serviceMesh.mode. When
+# 'cloud-service-mesh', terraform/gke enables the MANAGED CSM (mesh.googleapis.com +
+# Fleet registration + the servicemesh Fleet feature = managed control plane + Mesh
+# CA) and 08.85-service-mesh.sh labels the microservices namespace(s) for sidecar
+# injection + applies STRICT PeerAuthentication + a default AuthorizationPolicy. CSM
+# standalone is billed PER MESH CLIENT, NOT the GKE Enterprise tier (dissolved
+# 2025-09) — so we deliberately do NOT enable the GKE Enterprise API. Consumers gate
+# on j2026_service_mesh_active (lib/common.sh). See docs/506-SERVICE-MESH.md.
+J2026_SERVICE_MESH_MODE="${JENKINS2026_SERVICE_MESH_MODE:-$(yq_get '.serviceMesh.mode' 'none')}"
+export J2026_SERVICE_MESH_MODE
+case "${J2026_SERVICE_MESH_MODE}" in
+  none|cloud-service-mesh) ;;
+  *)
+    log_error "Unsupported serviceMesh.mode '${J2026_SERVICE_MESH_MODE}' (expected none|cloud-service-mesh)."
+    log_error "Set serviceMesh.mode in ${J2026_CONFIG_FILE} or export JENKINS2026_SERVICE_MESH_MODE."
+    exit 1
+    ;;
+esac
+export J2026_SERVICE_MESH_CHANNEL="$(yq_get '.serviceMesh.channel' 'regular')"
+export J2026_SERVICE_MESH_MTLS="$(yq_get '.serviceMesh.mtls' 'STRICT')"
+# Single source of truth: the SAME mode drives the cluster-level Terraform toggle
+# (terraform/gke enables mesh.googleapis.com + the gkehub Fleet membership + the
+# servicemesh Fleet feature only when this is 'cloud-service-mesh'), so the mesh
+# control plane and the in-cluster injection can never desync — same doctrine as
+# TF_VAR_observability_llm_enabled / TF_VAR_enable_node_autoprovisioning.
+export TF_VAR_service_mesh_mode="${J2026_SERVICE_MESH_MODE}"
+
+# --- supply chain: Binary Authorization (feature flag) -----------------------
+# FEATURE FLAG: JENKINS2026_BINARY_AUTHORIZATION_ENABLED overrides
+# security.binaryAuthorization.enabled. When true, terraform/gke enables
+# binaryauthorization.googleapis.com (+ Cloud KMS + Container Analysis), the KMS
+# signing key, the attestor, and the cluster Binary Authorization policy; the four CI
+# engines sign+attest each freshly-built image via resources/sign-and-attest-image.sh
+# (single source, like resources/patch-app-source.sh). ORTHOGONAL to serviceMesh /
+# backendTls — it governs WHICH images run, not HOW pods talk. Consumers gate on
+# j2026_binary_authorization_active (lib/common.sh). See docs/507-BINARY-AUTHORIZATION.md.
+J2026_BINARY_AUTHORIZATION_ENABLED="${JENKINS2026_BINARY_AUTHORIZATION_ENABLED:-$(yq_get '.security.binaryAuthorization.enabled' 'false')}"
+export J2026_BINARY_AUTHORIZATION_ENABLED
+case "${J2026_BINARY_AUTHORIZATION_ENABLED}" in
+  true|false) ;;
+  *)
+    log_error "Invalid security.binaryAuthorization.enabled '${J2026_BINARY_AUTHORIZATION_ENABLED}' (expected true|false)."
+    log_error "Set security.binaryAuthorization.enabled in ${J2026_CONFIG_FILE} or export JENKINS2026_BINARY_AUTHORIZATION_ENABLED."
+    exit 1
+    ;;
+esac
+export J2026_BINARY_AUTHORIZATION_MODE="$(yq_get '.security.binaryAuthorization.enforcementMode' 'dryrun')"
+case "${J2026_BINARY_AUTHORIZATION_MODE}" in
+  dryrun|enforce) ;;
+  *)
+    log_error "Invalid security.binaryAuthorization.enforcementMode '${J2026_BINARY_AUTHORIZATION_MODE}' (expected dryrun|enforce)."
+    exit 1
+    ;;
+esac
+# Fixed names of the Binary Authorization resources (terraform/gke + the signing
+# script share these by name, like the backend-TLS fixed names below).
+export J2026_BINAUTHZ_ATTESTOR="jenkins-2026-attestor"
+export J2026_BINAUTHZ_KMS_KEYRING="jenkins-2026-binauthz"
+export J2026_BINAUTHZ_KMS_KEY="jenkins-2026-attestor-key"
+export J2026_BINAUTHZ_NOTE="jenkins-2026-attestor-note"
+# Single source of truth for the cloud-side policy (same doctrine as above).
+export TF_VAR_binary_authorization_enabled="${J2026_BINARY_AUTHORIZATION_ENABLED}"
+if [[ "${J2026_BINARY_AUTHORIZATION_MODE}" == "enforce" ]]; then
+  export TF_VAR_binary_authorization_enforce="true"
+else
+  export TF_VAR_binary_authorization_enforce="false"
+fi
+
+# --- mutual exclusivity: backend TLS  XOR  service mesh ----------------------
+# gateway.backendTls (LB→pod re-encryption) and serviceMesh=cloud-service-mesh are
+# mutually exclusive: a mesh SUPERSEDES the BackendTLSPolicy hop (the Mesh CA + mTLS
+# own the LB→pod encryption AND the east-west hops). Enabling both would have two
+# mechanisms fighting over the same hop's TLS. Fail fast here — the AUTHORITATIVE
+# guard that catches EVERY entry path (up.sh, test/e2e.sh, and every GHA workflow);
+# the GHA forms additionally collapse the two into ONE `intra_cluster_tls` dropdown
+# so the UI can't even express the conflict. See docs/506 § Backend TLS vs CSM.
+if [[ "${J2026_GATEWAY_BACKEND_TLS_ENABLED}" == "true" && "${J2026_SERVICE_MESH_MODE}" == "cloud-service-mesh" ]]; then
+  log_error "gateway.backendTls.enabled=true AND serviceMesh.mode=cloud-service-mesh are mutually exclusive."
+  log_error "A service mesh supersedes the BackendTLSPolicy LB→pod re-encryption — pick ONE:"
+  log_error "  • backend TLS  → set serviceMesh.mode=none            (JENKINS2026_SERVICE_MESH_MODE=none)"
+  log_error "  • service mesh → set gateway.backendTls.enabled=false (JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED=false)"
+  log_error "See docs/506-SERVICE-MESH.md § Backend TLS vs Cloud Service Mesh."
+  exit 1
+fi
+
 # Fixed names of the backend-TLS resources created by scripts/08.7-backend-tls.sh
 # and scripts/09-gateway.sh. Shared with scripts/down.sh for the same reason as
 # the Gateway names below (Decom deletes by fixed name from a fresh checkout).

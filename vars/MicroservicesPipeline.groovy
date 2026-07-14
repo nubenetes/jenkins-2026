@@ -33,6 +33,21 @@ def call(Map cfg) {
       effect: NoSchedule""" : """
   nodeSelector:
     app: jenkins-2026"""
+    // Binary Authorization image signing (opt-in, docs/507). Only when the flag is on,
+    // append a lightweight google/cloud-sdk container to the agent pod so
+    // microservicesImage.groovy can sign the pushed image via its Workload Identity.
+    // Off by default → zero extra container, zero cost. env.BINAUTHZ_ENABLED is threaded
+    // by JCasC (04-jenkins.sh) from J2026_BINARY_AUTHORIZATION_ENABLED.
+    String binauthzContainer = (env.BINAUTHZ_ENABLED == 'true') ? """
+    - name: gcloud
+      image: google/cloud-sdk:slim
+      command: ['sleep']
+      args: ['infinity']
+      securityContext:
+        allowPrivilegeEscalation: false
+      resources:
+        requests: {cpu: 5m, memory: 64Mi}
+        limits: {cpu: '200m', memory: 256Mi}""" : ""
     // Per-tier k6 handoff target, resolved here (cfg is static config) so the
     // 'Integration k6 Smoke Test' stage below needs no script {} block.
     String k6JobName = "microservices-k6-smoke${cfg.envName == 'develop' ? '-develop' : ''}"
@@ -108,7 +123,7 @@ spec:
           value: ""
       resources:
         requests: {cpu: 20m, memory: 128Mi}
-        limits: {cpu: '500m', memory: 512Mi}
+        limits: {cpu: '500m', memory: 512Mi}${binauthzContainer}
     - name: helm
       image: alpine/k8s:1.31.3
       command: ['sleep']

@@ -84,5 +84,18 @@ def call(Map cfg) {
     } else {
       echo "Image was already pushed directly by Jib, skipping docker push."
     }
+
+    // Binary Authorization (opt-in, docs/507 § Pipeline wiring): sign + attest the
+    // pushed image DIGEST via the single-source resources/sign-and-attest-image.sh,
+    // materialised from the shared library like patch-app-source.sh. NO-OP unless
+    // BINAUTHZ_ENABLED=true. Runs in the 'gcloud' container (added to the pod template
+    // by MicroservicesPipeline.groovy only when the flag is on); gcloud auths via the
+    // 'jenkins' agent KSA Workload Identity (bind it to the signer GSA terraform/gke grants).
+    if (env.BINAUTHZ_ENABLED == 'true') {
+      container('gcloud') {
+        writeFile file: '.sign-and-attest-image.sh', text: libraryResource('sign-and-attest-image.sh')
+        sh "BINAUTHZ_ENABLED=true bash .sign-and-attest-image.sh '${cfg.image}'"
+      }
+    }
   }
 }

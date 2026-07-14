@@ -142,6 +142,15 @@ Every persistent/external resource, its tier, and the **exact mechanism** that m
 | **Jenkins image tag** (`<branch>-<build#>`) | ✅ *(fixed [#488](https://github.com/nubenetes/jenkins-2026/pull/488))* | `BUILD_NUMBER` resets to 1 on a Jenkins rebuild → the app-source **commit SHA** is appended so the tag can't mutably overwrite a prior incarnation's. (Tekton was already immune via a random run suffix.) |
 | **GitOps config repo** state | ✅ | Direct-push, machine-managed image-tag bumps; a fresh cluster deploys the last pinned tags (which the two rules above keep resolvable). |
 
+### 4.8 Opt-in security features (service mesh · Binary Authorization)
+
+Both are **off by default** and add persistent, fixed-identity GCP resources only when enabled — so each needed a mechanism from the toolbox above.
+
+| Resource | Rebuild-safe? | Mechanism |
+|---|---|---|
+| **CSM Fleet membership** (`google_gke_hub_membership`) | ✅ | Persistent, fixed-identity (registered by a stable name), but **Terraform `count`-gated on `serviceMesh.mode` and keyed to the cluster's own identity** → `Decom` (`terraform destroy`) removes it and `Day1` re-registers it **in lockstep with the cluster** (*reconcile-to-current*). A no-op when `mode=none`. See [506 § Rebuild-safety](./506-SERVICE-MESH.md#rebuild-safety). |
+| **Binary Authorization** KMS keyring/key + attestor + Container Analysis note | ✅ | Persistent, fixed-identity → **ephemeral `count`-gated create-if-absent**, destroyed on `Decom` and recreated on `Day1`. **Caveat:** a KMS key can't be hard-deleted immediately (it enters a **scheduled-destruction / soft-delete window**), so a same-name rebuild must **tolerate an existing (soft-deleted) key** — the canonical fixed-identity-collision hazard ([§2](#2-the-bug-class--two-failure-modes)), handled by count-gating + create-if-absent. See [507 § Rebuild-safety](./507-BINARY-AUTHORIZATION.md#rebuild-safety). |
+
 ---
 
 ## 5. The gaps that were closed

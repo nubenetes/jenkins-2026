@@ -67,8 +67,17 @@ on:
         required: false
         default: false
         type: boolean
-      backend_tls:
-        description: "Opt-in LB→pod TLS re-encryption (gateway.backendTls — docs/504): install cert-manager + a cluster-internal CA, Headlamp serves HTTPS itself, and a BackendTLSPolicy makes the LB re-encrypt AND validate the hop. OFF by default. Enabling/disabling CONVERGES on this run (Day1 runs 08.5 + 08.7 + 09 together); on the Day2.redeploy.* workflows the same input must instead MATCH the live cluster."
+      intra_cluster_tls:
+        description: "Intra-cluster TLS posture (pick ONE — MUTUALLY EXCLUSIVE, so it's a single dropdown, not two toggles). none = plain HTTP on the LB→pod hop inside the VPC (default; Google network-layer encryption + WireGuard inter-node). backend-tls = cert-manager LB→pod re-encryption, server-auth on that one hop (docs/504). cloud-service-mesh = managed Cloud Service Mesh: identity-based MUTUAL mTLS on ALL hops + L7 authZ (docs/506; the STANDALONE per-client SKU, cents for this PoC — NOT GKE Enterprise). Converges on this Day1 run (Terraform + up.sh together)."
+        required: false
+        default: "none"
+        type: choice
+        options:
+          - none
+          - backend-tls
+          - cloud-service-mesh
+      binary_authorization:
+        description: "Opt-in Binary Authorization supply-chain admission control (docs/507): GKE only admits container images carrying a Cloud-KMS-signed attestation from this project's attestor — closing the DevSecOps scan→deploy loop. ORTHOGONAL to intra_cluster_tls (composes with any choice), so it's a separate toggle. Enforcement mode (dryrun=log-only default, or enforce=block) is set via config.yaml. OFF by default."
         required: false
         default: false
         type: boolean
@@ -152,7 +161,11 @@ on:
         required: false
         default: false
         type: boolean
-      backend_tls:
+      intra_cluster_tls:
+        required: false
+        default: "none"
+        type: string
+      binary_authorization:
         required: false
         default: false
         type: boolean
@@ -198,11 +211,22 @@ env:
   TF_LOG: ${{ inputs.log_level == 'debug' && 'DEBUG' || '' }}
   JENKINS2026_GRAFANA_CLOUD_TIER: ${{ inputs.grafana_cloud_tier || 'free' }}
   JENKINS2026_LOG_MIN_SEVERITY: ${{ inputs.log_min_severity || 'auto' }}
-  # Opt-in backend TLS (gateway.backendTls, docs/504). Consumed inside up.sh by
-  # 08.5 (Headlamp TLS values overlay) + 08.7 (cert-manager/CA/certs) + 09
-  # (BackendTLSPolicy + HTTPS HealthCheckPolicy) — all gate on
-  # j2026_backend_tls_active (this flag AND the BackendTLSPolicy CRD).
-  JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED: ${{ inputs.backend_tls }}
+  # Intra-cluster TLS axis (MUTUALLY EXCLUSIVE — ONE dropdown, docs/506): backend TLS
+  # (LB→pod re-encryption, docs/504) OR Cloud Service Mesh (identity mTLS everywhere,
+  # docs/506) OR neither. The single intra_cluster_tls choice makes the conflict
+  # impossible to express in the form; lib/config.sh additionally FAILS FAST as the
+  # authoritative guard on every entry path. Both env vars are DERIVED from the one
+  # input. TF_VAR_service_mesh_mode is set here too so the terraform apply step (Fleet
+  # + managed control plane) sees it even before up.sh sources config.sh.
+  JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED: ${{ inputs.intra_cluster_tls == 'backend-tls' }}
+  JENKINS2026_SERVICE_MESH_MODE: ${{ inputs.intra_cluster_tls == 'cloud-service-mesh' && 'cloud-service-mesh' || 'none' }}
+  TF_VAR_service_mesh_mode: ${{ inputs.intra_cluster_tls == 'cloud-service-mesh' && 'cloud-service-mesh' || 'none' }}
+  # Opt-in Binary Authorization supply-chain admission (docs/507). ORTHOGONAL to the
+  # TLS axis (composes with any choice). enforce-vs-dryrun comes from config.yaml
+  # (default dryrun); the form only toggles enabled. TF_VAR set here for the terraform
+  # apply step (KMS key + attestor + policy); config.sh re-derives it under up.sh.
+  JENKINS2026_BINARY_AUTHORIZATION_ENABLED: ${{ inputs.binary_authorization }}
+  TF_VAR_binary_authorization_enabled: ${{ inputs.binary_authorization }}
   # Backstage developer portal (backstage.enabled, docs/505). Consumed inside
   # up.sh by 01 (namespace/secrets), 08.6/08.7 (eso + TLS slices), 08.95 (the
   # argocd/backstage app-of-apps or its retire) and 09 (route/IAP/audience).
@@ -668,7 +692,7 @@ jobs:
           TF_VAR_stack_slug: ${{ steps.gc_stack.outputs.slug }}
           # Backend TLS moves Jenkins' plain-HTTP listener to :8082 - the
           # datasource URL (dialed in-cluster by the PDC tunnel) must follow.
-          TF_VAR_jenkins_backend_tls: ${{ inputs.backend_tls }}
+          TF_VAR_jenkins_backend_tls: ${{ inputs.intra_cluster_tls == 'backend-tls' }}
         run: |
           # Fetch jenkins admin password from the secret created in the previous step
           ADMIN_PASS=$(kubectl get secret jenkins-credentials -n jenkins -o jsonpath='{.data.admin-password}' | base64 -d)
@@ -918,7 +942,8 @@ jobs:
             echo "- Zone: \`$(terraform output -raw location)\`"
             echo "- Observability mode: \`${{ inputs.observability_mode }}\`"
             echo "- Gateway/IAP enabled: \`${{ inputs.enable_gateway }}\`"
-            echo "- Backend TLS (LB→pod, docs/504): \`${{ inputs.backend_tls }}\`"
+            echo "- Intra-cluster TLS (docs/504 backend-tls · docs/506 mesh): \`${{ inputs.intra_cluster_tls }}\`"
+            echo "- Binary Authorization (docs/507): \`${{ inputs.binary_authorization }}\`"
             echo
             echo "See the **Access URLs** step (end of the job log, and below) for"
             echo "every service URL — IAP-protected and open — for this run's CI"
