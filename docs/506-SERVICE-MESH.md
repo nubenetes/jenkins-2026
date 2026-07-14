@@ -255,6 +255,30 @@ Execution order on a `Day1` re-run with `serviceMesh.mode=cloud-service-mesh`:
 composes — auth at the edge, mTLS inside), the `HTTPRoute`s, and the NEG routing.
 The mesh operates *below* the ingress.
 
+## App mesh-readiness (the workload side)
+
+Enabling the mesh provisions the infra and injects sidecars, but **the workloads
+themselves must be mesh-ready** or they break. Live validation (2026-07-14) on the
+JHipster demo app surfaced that this is a **multi-workload effort**, not a single
+switch — the requirements, in the order they bit:
+
+| Requirement | Why | Where | Status |
+|---|---|---|---|
+| **`holdApplicationUntilProxyStarts: true`** on the app Deployments | The app dials Postgres/OTel on startup; without this it connects **before** the istio-proxy routes traffic → `Connection refused` → CrashLoop | pod annotation `proxy.istio.io/config` in the app chart (`gitops-config`; **self-gating** — inert without a sidecar) | ✅ done |
+| **Ingress-edge port PERMISSIVE** (gateway `:8080`) | The gateway is fronted by the **GKE Gateway LB**, which — with its `HealthCheckPolicy` — is **not a mesh client**, so a STRICT mesh rejects it and 503s the public endpoint | [`08.85`](../scripts/08.85-service-mesh.sh) per-workload `PeerAuthentication` `portLevelMtls` | ✅ done |
+| **Exclude infra workloads** (CNPG Postgres + PgBouncer poolers) | Managed CSM injects **by namespace label**, so it meshes *every* pod in the ns — including the operator-managed Postgres pods + poolers, which must NOT get a sidecar (PgBouncer + sidecar churns; STRICT can break the DB hops) | `sidecar.istio.io/inject: "false"` on the CNPG `Cluster`/`Pooler` CRs (`gitops-config`) | ⏳ **follow-up** |
+| **Backend workload convergence** | The meshed backend rollout must schedule + pass its probes through the proxy | (validate) | ⏳ **follow-up** |
+
+**The lesson**: managed CSM injection is **namespace-wide**, so it catches *app*
+**and** *infra* (CNPG) pods alike. A production-grade mesh of this app needs
+**per-workload opt-out** of the stateful/infra pods on top of the ingress-edge +
+startup-ordering handling above. The **ingress-edge gateway** — the hard,
+instructive case (LB-fronted, STRICT-hostile) — is **live-validated** (2/2, public
+endpoint 200); completing the app mesh (Postgres exclusion + backend) is a scoped
+follow-up. For a PoC the **CSM infrastructure** (Fleet, managed control plane,
+injection, identity mTLS) is the validated deliverable; meshing the *demo app*
+end-to-end is optional productionization.
+
 ## Rebuild-safety
 
 Everything the *in-cluster* side creates (injection labels, `PeerAuthentication`,
