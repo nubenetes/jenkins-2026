@@ -25,6 +25,21 @@ check() {
   fi
 }
 
+# retry <attempts> <delay> <command...> - re-run <command...> until it exits 0,
+# up to <attempts> times, sleeping <delay>s between tries. GKE's control-plane->
+# node tunnel (konnectivity) intermittently flaps with "No agent available",
+# which makes single-shot `kubectl exec` checks fail spuriously; retrying rides
+# the blip out instead of failing the whole smoke run on a transient.
+retry() {
+  local attempts="$1" delay="$2"; shift 2
+  local n=1
+  while true; do
+    "$@" && return 0
+    [[ "${n}" -ge "${attempts}" ]] && return 1
+    n=$((n + 1)); sleep "${delay}"
+  done
+}
+
 NUM_SERVICES=$(wc -w <<< "${J2026_MICROSERVICES_SERVICES}")
 
 if [[ "${J2026_CI_ENGINE}" == "tekton" ]]; then
@@ -178,7 +193,7 @@ else
   fi
 
   check "Jenkins login page responds (HTTP 200)" \
-    bash -c "[[ \$(kubectl exec -n '${JENKINS_NS}' '${JENKINS_POD}' -c jenkins -- curl -s -o /dev/null -w '%{http_code}' ${jenkins_url}/login) == 200 ]]"
+    retry 5 5 bash -c "[[ \$(kubectl exec -n '${JENKINS_NS}' '${JENKINS_POD}' -c jenkins -- curl -s -o /dev/null -w '%{http_code}' ${jenkins_url}/login) == 200 ]]"
 
   log_step "Seed job / pipelines-as-code"
   ADMIN_PASSWORD="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${JENKINS_NS}" -o jsonpath='{.data.admin-password}' | base64 -d)"
@@ -186,8 +201,25 @@ else
 
   EXPECTED_JOBS=$(( NUM_SERVICES + 2 )) # 1 stable pipeline/service + seed-jobs + microservices-k6-smoke
 
-  JOB_COUNT="$(jenkins_exec curl -sg -u "${AUTH}" "${jenkins_url}/api/json?tree=jobs[name]" \
-    | python3 -c 'import sys,json; print(len(json.load(sys.stdin)["jobs"]))' 2>/dev/null || echo 0)"
+  # Count jobs via an in-pod curl (localhost, bypasses IAP). Two subtleties:
+  #  - `2>/dev/null` on the exec: on failure kubectl echoes the exec request URL,
+  #    which URL-encodes the whole argv INCLUDING `-u admin:<password>`. Without
+  #    the redirect a failed exec leaks the Jenkins admin password into the CI log.
+  #  - Retry: the control-plane->node exec tunnel flaps on GKE ("No agent
+  #    available" from konnectivity), so one failed exec would read 0 jobs and
+  #    fail spuriously. Retry a few times (also covers the API still booting)
+  #    before believing a low count.
+  jenkins_job_count() {
+    jenkins_exec curl -sg -u "${AUTH}" "${jenkins_url}/api/json?tree=jobs[name]" 2>/dev/null \
+      | python3 -c 'import sys,json; print(len(json.load(sys.stdin)["jobs"]))' 2>/dev/null
+  }
+
+  JOB_COUNT=0
+  for attempt in $(seq 1 5); do
+    JOB_COUNT="$(jenkins_job_count || echo 0)"
+    [[ "${JOB_COUNT}" -ge "${EXPECTED_JOBS}" ]] && break
+    [[ "${attempt}" -lt 5 ]] && sleep 6
+  done
 
   if [[ "${JOB_COUNT}" -ge "${EXPECTED_JOBS}" ]]; then
     log_info "PASS - ${JOB_COUNT} Jenkins jobs found (expected >= ${EXPECTED_JOBS})"
