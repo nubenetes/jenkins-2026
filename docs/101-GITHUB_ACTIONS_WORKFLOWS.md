@@ -254,6 +254,94 @@ Rows = resources · Columns = lifecycle phases · Cell = filename (link) or — 
 
 ---
 
+## Stopping vs tearing down: cost & recovery matrix
+
+The cluster's 24/7 cost is **almost entirely the worker VMs** — 2–4 ×
+`e2-standard-8` (8 vCPU / 32 GB) at ~$195/node·month, so **~$400–780/month while
+running**. Everything else (control plane, disks, the reserved static IP, the
+state/backups buckets, the DNS zone, the Grafana Cloud free tier) is single-digit
+dollars combined. That one fact drives the whole stop/teardown decision: **the goal
+is to stop paying for idle nodes**, and the options below trade *how much you tear
+down* against *how fast — and how intact — you come back*.
+
+> **🧠 Mental model.** A dial from "on, expensive, instant" to "gone, ~free, slow
+> rebuild": **Leave running** → **Pause** (nodes→0, resume in minutes) → **Decom
+> cluster** (cluster gone, backends + IP/DNS kept, rebuild ~25 min) → **Decom
+> everything** (all the lifecycle owns is gone; only the never-destroyed root
+> remains). Further down = cheaper but slower to recover — and **your data survives
+> every row except the last** (CNPG PVs on Pause; CNPG WAL backups on Decom cluster).
+
+| | ⏸️ **Pause** [`Day2.scale.01-pause`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.scale.01-pause.yml) | 🔻 **Decom cluster** [`Decom.cluster.01-gke`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml) | 🧨 **Decom everything** [`Decom.infra.00-all`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.00-all.yml) | ▶️ *(baseline)* Leave running |
+|---|---|---|---|---|
+| **What it does** | scales every node pool to 0 (disables autoscaling / NAP / autoRepair so it can't bounce back) | `down.sh` **+** `terraform destroy` the cluster, node pools, VPC | fan-out umbrella: Decom the cluster **then** each managed backend (Grafana Cloud / Azure / AWS) | — |
+| **What survives** | **everything** — cluster, PVs (CNPG data), ArgoCD + apps, static IP, DNS, certs | the persistent backends: static IP, DNS, cert map, Grafana Cloud stack, **state + backups buckets** | only the **never-destroyed root** (bootstrap: state bucket, DNS zone, WIF, CI SA, backups bucket); gateway IP/DNS kept unless you opt in to drop it | — |
+| **What stops costing** | the worker VMs (the whole 24/7 bill) | VMs **+** control plane **+** node & CNPG disks | all of that **+** the managed observability backend(s) | nothing |
+| **≈ Cost after** | **~$1–10/mo** (CNPG PVs; control plane on the free-tier credit) | **~$7–10/mo** (idle static IP + buckets + DNS; + any managed backend still up) | **~$0–1/mo** (just the root buckets + DNS zone) | **~$400–780/mo** |
+| **Recovery** | ▶️ **Resume** [`Day2.scale.02-resume`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.scale.02-resume.yml) — **~2–5 min**; pods reschedule, ArgoCD reconciles | 🔁 **`Day1.cluster.01-gke`** — **~20–30 min**; CNPG restores from WAL backups; endpoints return on the **same IP/DNS** | 🔁 **Day0 backend(s) + Day1** — **~30–45 min**; a fresh stack | — |
+| **Data** | **intact** (PVs untouched) | **restored** from the backups bucket (WAL) — see [104 rebuild-safety](104-REBUILD_SAFETY.md) | **fresh** (new DBs; stale WAL purged/ignored) | live |
+| **Use when** | idle overnight / a few days, want it back exactly as-is | done for a while; keep the public URLs + a fast, data-preserving rebuild | project finished or a long pause; drive spend to ~zero | actively using it |
+| **Watch out** | workloads go **Pending** while paused; NAP/autoRepair are toggled out-of-band (benign TF drift — Resume/Day1 reconcile it) | the **idle static IP** keeps charging (~$7/mo) until you *also* Decom the gateway | opting to tear the **gateway** too drops the reserved IP → a rebuild gets a **new** IP (DNS still auto-reconciles via the permanent zone) | the bill |
+| **Confirm gate** | approval env (`gke-production`) | type `destroy` **+** approval env | type `destroy` **+** approval env | — |
+
+**These are teardown tools, not a rebuild path.** To apply a code/config change,
+**re-run [`Day1.cluster.01-gke`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml)**
+(idempotent, converges in place) or the matching `Day2.redeploy.*` — **never**
+Decom + Day1. Decom→Day1 as a *routine* op is the [rebuild-safety](104-REBUILD_SAFETY.md)
+story (the collision/residue bug class), not a daily workflow.
+
+<details>
+<summary>💵 Cost drivers — where the money actually goes (and what each option zeroes)</summary>
+
+| Resource | Running | ⏸️ Paused | 🔻 Decom cluster | 🧨 Decom all | Notes |
+|---|---|---|---|---|---|
+| Worker VMs (2–4 × `e2-standard-8`) | ~$390–780/mo | **$0** | **$0** | **$0** | the entire reason to stop; ~$195/node·mo |
+| Control-plane management fee | ~$0\* | ~$0\* | $0 | $0 | \*one zonal cluster is free per billing account; otherwise ~$74/mo |
+| Node boot disks (50 GB × N) | ~$6–8/mo | $0 | $0 | $0 | deleted with the VMs |
+| CNPG persistent volume(s) | ~$1–3/mo | ~$1–3/mo | $0 | $0 | **survives Pause** (the whole point); destroyed on Decom |
+| Reserved static IP | $0 (in use) | $0 (in use) | ~$7/mo (idle) | ~$7/mo → $0 if gateway torn down | an *unattached* reserved IP bills ~$0.01/h |
+| State + backups buckets (GCS) | <$1/mo | <$1/mo | <$1/mo | <$1/mo | pennies; live in the never-destroyed root |
+| DNS managed zone | ~$0.20/mo | ~$0.20/mo | ~$0.20/mo | ~$0.20/mo | the permanent zone; never destroyed (keeps the NS delegation) |
+| Grafana Cloud stack | $0 (free tier) | $0 | $0 | $0 (destroyed) | free tier — nothing to pause |
+| Azure / AWS managed backend | billed separately | billed separately | billed separately | **$0** (destroyed) | only when `observability.mode=managed-azure/-aws` |
+
+Figures are **PoC ballparks** (us-central1 list prices, mid-2026); the real invoice
+moves with region, sustained-use discounts, and actual autoscaling. The *shape* —
+**nodes are ~99% of the bill** — is the part that matters.
+
+</details>
+
+<details>
+<summary>📉 The cost ↔ recovery-time spectrum (Mermaid)</summary>
+
+```mermaid
+flowchart LR
+    R["▶️ Running<br/>~$400-780/mo<br/>instant"]
+    P["⏸️ Pause<br/>~$1-10/mo<br/>resume ~2-5 min"]
+    DC["🔻 Decom cluster<br/>~$7-10/mo<br/>rebuild ~20-30 min"]
+    DA["🧨 Decom everything<br/>~$0-1/mo<br/>rebuild ~30-45 min"]
+
+    R -->|"nodes to 0"| P
+    P -->|"destroy cluster<br/>keep backends"| DC
+    DC -->|"destroy backends too"| DA
+
+    P -.->|"Resume (data intact)"| R
+    DC -.->|"Day1 · same IP/DNS · WAL restore"| R
+    DA -.->|"Day0 backends + Day1 · fresh"| R
+
+    classDef exp fill:#ffebee,stroke:#e53935;
+    classDef mid fill:#fff8e1,stroke:#f9a825;
+    classDef cheap fill:#e8f5e9,stroke:#43a047;
+    class R exp;
+    class P mid;
+    class DC,DA cheap;
+```
+
+Solid = tearing down further (cheaper ↓); dotted = the recovery path back (slower →).
+
+</details>
+
+---
+
 ## Pick your workflow: the operator decision tree
 
 Every other diagram on this page is indexed by *how the system is built*; this one is indexed by *what you want to do right now*. Start from your intent and follow the branches to the exact workflow(s) to dispatch. It folds in three decisions the prose scatters elsewhere: re-run `Day1.cluster.01-gke` vs a targeted `Day2.redeploy.*` (idempotency §), **Pause** vs **Decom** to save cost (Pause/resume §), and which `publish.0N` matches your active `observability.mode`.
