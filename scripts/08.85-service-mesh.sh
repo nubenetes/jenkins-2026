@@ -81,6 +81,7 @@ if [[ "$(j2026_service_mesh_active)" != "true" ]]; then
       retired=1
     fi
     kubectl delete peerauthentication default -n "${ns}" --ignore-not-found >/dev/null 2>&1 || true
+    kubectl delete peerauthentication gateway-ingress-permissive -n "${ns}" --ignore-not-found >/dev/null 2>&1 || true
     kubectl delete authorizationpolicy allow-mesh-internal -n "${ns}" --ignore-not-found >/dev/null 2>&1 || true
   done
   kubectl delete peerauthentication default -n istio-system --ignore-not-found >/dev/null 2>&1 || true
@@ -108,7 +109,8 @@ for ns in "${mesh_namespaces[@]}"; do
   kubectl get namespace "${ns}" >/dev/null 2>&1 || { log_warn "  namespace ${ns} not present yet — skipping (its pods inject once it exists + is labeled on the next run)"; continue; }
   # 2. label for managed sidecar injection.
   kubectl label namespace "${ns}" "${MESH_INJECT_LABEL_KEY}=${MESH_INJECT_LABEL_VALUE}" --overwrite >/dev/null
-  # 3a. per-namespace PeerAuthentication (defense in depth).
+  # 3. per-namespace default PeerAuthentication (STRICT/PERMISSIVE per the flag). Secures
+  # the east-west hop (gateway→backend becomes identity-mTLS via auto-mTLS).
   kubectl apply -f - >/dev/null <<YAML || log_warn "  ${ns} PeerAuthentication apply reported an issue (non-fatal)"
 apiVersion: security.istio.io/v1beta1
 kind: PeerAuthentication
@@ -119,28 +121,35 @@ spec:
   mtls:
     mode: ${J2026_SERVICE_MESH_MTLS}
 YAML
-  # 3b. baseline AuthorizationPolicy: allow traffic from within this namespace (the
-  # app's own east-west) + from the ingress namespace; deny the rest. A starting
-  # point — tighten per-service as the app grows (docs/506).
-  kubectl apply -f - >/dev/null <<YAML || log_warn "  ${ns} AuthorizationPolicy apply reported an issue (non-fatal)"
-apiVersion: security.istio.io/v1
-kind: AuthorizationPolicy
+  # 4. INGRESS-EDGE exception: the GKE Gateway LB dials the gateway pod on its app port
+  # (:8080) directly, and neither the LB nor its HealthCheckPolicy are mesh clients — so a
+  # STRICT mesh would reject them and 503 the public endpoint. Keep ONLY that port
+  # PERMISSIVE on the gateway workload; everything else (incl. the east-west gateway→backend
+  # hop) stays at the flag's mode. See docs/506 § App mesh-readiness.
+  if kubectl get deployment gateway -n "${ns}" >/dev/null 2>&1; then
+    kubectl apply -f - >/dev/null <<YAML || log_warn "  ${ns} gateway ingress-permissive PeerAuthentication apply reported an issue (non-fatal)"
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
 metadata:
-  name: allow-mesh-internal
+  name: gateway-ingress-permissive
   namespace: ${ns}
 spec:
-  action: ALLOW
-  rules:
-    - from:
-        - source:
-            namespaces: ["${ns}"]
-    - from:
-        - source:
-            namespaces: ["${J2026_GATEWAY_NAMESPACE}"]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gateway
+  mtls:
+    mode: ${J2026_SERVICE_MESH_MTLS}
+  portLevelMtls:
+    8080:
+      mode: PERMISSIVE
 YAML
-  # 4. best-effort restart so existing pods get the sidecar (new pods inject on create).
+  fi
+  # 5. best-effort restart so existing pods get the sidecar (new pods inject on create).
+  # ⚠ The app must tolerate the sidecar startup ordering: holdApplicationUntilProxyStarts is
+  # set on the app Deployments (gitops-config, self-gating: inert without injection), else
+  # the app dials Postgres/OTel before the proxy routes and CrashLoops. See docs/506.
   kubectl rollout restart deployment -n "${ns}" >/dev/null 2>&1 || true
-  log_info "  meshed namespace ${ns} (injection label + ${J2026_SERVICE_MESH_MTLS} mTLS + baseline AuthorizationPolicy)"
+  log_info "  meshed namespace ${ns} (injection + ${J2026_SERVICE_MESH_MTLS} mTLS; gateway :8080 PERMISSIVE for the LB)"
 done
 
-log_info "Cloud Service Mesh in-cluster config applied. Verify: kubectl get peerauthentication,authorizationpolicy -A ; gcloud container fleet mesh describe --project \"\${PROJECT}\""
+log_info "Cloud Service Mesh in-cluster config applied. Verify: kubectl get peerauthentication -A ; gcloud container fleet mesh describe --project \"\${PROJECT}\""
