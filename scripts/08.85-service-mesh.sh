@@ -146,7 +146,17 @@ spec:
       mode: PERMISSIVE
 YAML
   fi
-  # 5. best-effort restart of the APP service deployments ONLY (gateway + backend) so their
+  # 5. Before restarting the apps, wait (bounded) for the CNPG poolers to LEAVE the mesh
+  # (become sidecar-free). On a flag-flip against an already-running cluster ArgoCD is still
+  # syncing the sidecar.istio.io/inject=false onto the CNPG CRs; if an app meshes while its
+  # pooler is still churning it dials a dead DB and CrashLoops until a re-run. Non-fatal; on
+  # a from-zero cluster the poolers are born excluded so this passes immediately.
+  for _i in $(seq 1 24); do
+    kubectl get pods -n "${ns}" -o jsonpath='{range .items[*]}{.metadata.name}{" "}{range .spec.containers[*]}{.name}{","}{end}{"\n"}{end}' 2>/dev/null | grep -i pooler | grep -qi istio-proxy || break
+    [[ "${_i}" -eq 1 ]] && log_info "  waiting for the CNPG poolers to leave the mesh before restarting the apps..."
+    sleep 5
+  done
+  # 6. best-effort restart of the APP service deployments ONLY (gateway + backend) so their
   # pods re-create with the sidecar — NOT the whole ns, which would needlessly churn the
   # CNPG Postgres poolers (excluded from injection via sidecar.istio.io/inject in
   # gitops-config). The app must tolerate the sidecar startup ordering

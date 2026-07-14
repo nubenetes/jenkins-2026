@@ -266,18 +266,24 @@ switch — the requirements, in the order they bit:
 |---|---|---|---|
 | **`holdApplicationUntilProxyStarts: true`** on the app Deployments | The app dials Postgres/OTel on startup; without this it connects **before** the istio-proxy routes traffic → `Connection refused` → CrashLoop | pod annotation `proxy.istio.io/config` in the app chart (`gitops-config`; **self-gating** — inert without a sidecar) | ✅ done |
 | **Ingress-edge port PERMISSIVE** (gateway `:8080`) | The gateway is fronted by the **GKE Gateway LB**, which — with its `HealthCheckPolicy` — is **not a mesh client**, so a STRICT mesh rejects it and 503s the public endpoint | [`08.85`](../scripts/08.85-service-mesh.sh) per-workload `PeerAuthentication` `portLevelMtls` | ✅ done |
-| **Exclude infra workloads** (CNPG Postgres + PgBouncer poolers) | Managed CSM injects **by namespace label**, so it meshes *every* pod in the ns — including the operator-managed Postgres pods + poolers, which must NOT get a sidecar (PgBouncer + sidecar churns; STRICT can break the DB hops) | `sidecar.istio.io/inject: "false"` on the CNPG `Cluster`/`Pooler` CRs (`gitops-config`) | ⏳ **follow-up** |
-| **Backend workload convergence** | The meshed backend rollout must schedule + pass its probes through the proxy | (validate) | ⏳ **follow-up** |
+| **Exclude infra workloads** (CNPG Postgres + PgBouncer poolers) | Managed CSM injects **by namespace label**, so it meshes *every* pod in the ns — including the operator-managed Postgres pods + poolers, which must NOT get a sidecar (PgBouncer + sidecar churns; STRICT can break the DB hops) | `sidecar.istio.io/inject: "false"` on the CNPG `Cluster` (`inheritedMetadata`) + `Pooler` (`spec.template`) CRs (`gitops-config`) | ✅ done |
+| **Backend workload convergence** | The meshed backend rollout must schedule + pass its probes through the proxy — it fails if its pooler is still churning | [`08.85`](../scripts/08.85-service-mesh.sh) restarts only the app deployments + waits for the poolers to leave the mesh first | ✅ done |
+
+**Convergence note**: flipping the mesh **on** against an *already-running* cluster
+settles over a few restarts — ArgoCD must sync the app annotations + the CNPG
+exclusion, and `08.85` restarts the apps only after the poolers have left the mesh
+(so the app meshes with a stable DB). A **from-zero** cluster is clean: the CRs are
+born with the exclusion + `holdApplicationUntilProxyStarts`, so nothing is ever
+mis-meshed. **Live-validated 2026-07-15**: gateway 2/2, backend 2/2, all CNPG
+poolers/instances sidecar-free, public endpoint 200 — the *full* app mesh, not just
+the gateway.
 
 **The lesson**: managed CSM injection is **namespace-wide**, so it catches *app*
-**and** *infra* (CNPG) pods alike. A production-grade mesh of this app needs
-**per-workload opt-out** of the stateful/infra pods on top of the ingress-edge +
-startup-ordering handling above. The **ingress-edge gateway** — the hard,
-instructive case (LB-fronted, STRICT-hostile) — is **live-validated** (2/2, public
-endpoint 200); completing the app mesh (Postgres exclusion + backend) is a scoped
-follow-up. For a PoC the **CSM infrastructure** (Fleet, managed control plane,
-injection, identity mTLS) is the validated deliverable; meshing the *demo app*
-end-to-end is optional productionization.
+**and** *infra* (CNPG) pods alike — a production mesh needs **per-workload opt-out**
+of the stateful/infra pods on top of the ingress-edge + startup-ordering handling.
+For a PoC the **CSM infrastructure** (Fleet, managed control plane, injection,
+identity mTLS) is the core deliverable; the full app mesh above is the (now
+completed) productionization of the demo app.
 
 ## Rebuild-safety
 
