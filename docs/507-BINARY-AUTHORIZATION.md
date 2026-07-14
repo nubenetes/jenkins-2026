@@ -17,6 +17,100 @@ provenance. **Orthogonal** to [backend TLS](./504-BACKEND_TLS.md) /
 *how pods talk*) — it composes with any of them. Default **`false`**; default
 enforcement **`dryrun`** (log, don't block) so it's safe to switch on in a PoC.
 
+## Understanding Binary Authorization (newcomers → specialists)
+
+Binary Authorization is a **deploy-time bouncer**: it sits at the Kubernetes
+admission door and only lets a Pod run if its image carries a **cryptographic
+attestation** — a KMS-signed statement *"this exact image digest was built and vetted
+by us"*. Nothing signs itself: the **pipeline** signs each image after it passes the
+scan gates, and the **cluster policy** refuses (or merely logs) anything unsigned.
+Read this once and the rest of the page is just "which object holds which half of the
+trust".
+
+<details>
+<summary>🧠 Mental model — Binary Authorization (mindmap)</summary>
+
+```mermaid
+mindmap
+  root((Binary Authorization))
+    Signing
+      Cloud KMS asymmetric key
+      only the CI identity may sign
+      signs the image DIGEST
+    Attestation
+      signed claim over a digest
+      anchored on a Container Analysis note
+    Attestor
+      trusts the KMS public key
+      the policy trusts the attestor
+    Policy
+      project singleton
+      require attestation
+      allowlist GKE system images
+    Enforcement
+      dryrun logs violations
+      enforce blocks the Pod
+    Admission
+      GKE checks at Pod create
+      cluster consults the policy
+    Pipeline
+      sign-and-attest single source
+      all four CI engines
+```
+
+</details>
+
+**Reading it —** the seven branches split the trust in half: the **signing** side (a
+Cloud KMS key only the pipeline can use, signing image *digests*) produces
+**attestations**, anchored on a Container Analysis **note**; an **attestor** binds the
+KMS public key so the **policy** can say "require an attestation from this attestor";
+at **admission** the cluster checks every Pod's image against that policy and either
+**enforces** (block) or runs in **dryrun** (log); and the **pipeline** is what
+actually signs, from one shared script across all four engines.
+
+<details>
+<summary>🟢 For newcomers — the mental model in 6 objects</summary>
+
+| Object | What it is | Analogy |
+|---|---|---|
+| **Cloud KMS key** | An asymmetric signing key whose *private* half never leaves KMS; only the CI identity may use it | The pipeline's tamper-proof rubber stamp |
+| **Attestation** | A signature over an image **digest** (`sha256:…`), never a mutable tag | A wax seal on *this exact* build |
+| **Container Analysis note** | The anchor an attestation attaches to | The ledger the seals are recorded in |
+| **Attestor** | Binds the KMS *public* key + the note; the policy trusts the attestor | The notary whose seal the door recognises |
+| **Policy** | The project-wide rule: "require an attestation from our attestor" (+ allowlist GKE images) | The bouncer's guest list |
+| **Admission** | The moment GKE checks a Pod's image against the policy on `create` | The bouncer at the door |
+
+So the loop is: *the pipeline builds + scans an image → signs its digest with the KMS
+key → an attestation lands on the note → at deploy, GKE admission checks the image
+against the policy → attested ⇒ runs; unattested ⇒ blocked (`enforce`) or logged
+(`dryrun`).*
+</details>
+
+<details>
+<summary>🔴 For specialists — the moving parts and how they're wired here</summary>
+
+- **The project singleton policy.** [`terraform/gke/security.tf`](../terraform/gke/security.tf)
+  provisions a `google_binary_authorization_policy` whose `default_admission_rule` is
+  `evaluation_mode: REQUIRE_ATTESTATION` + `require_attestations_by: [attestor]`, with
+  `admission_whitelist_patterns` for the GKE-managed images (`gke.gcr.io/*`,
+  `registry.k8s.io/*`, …) so kube-system can always schedule. The cluster opts in via
+  `binary_authorization { evaluation_mode = PROJECT_SINGLETON_POLICY_ENFORCE }`.
+- **`enforce` vs `dryrun` is the policy's `enforcement_mode`.**
+  `ENFORCED_BLOCK_AND_AUDIT_LOG` vs `DRYRUN_AUDIT_LOG_ONLY`, driven by
+  `TF_VAR_binary_authorization_enforce` (from `security.binaryAuthorization.enforcementMode`).
+  Default `dryrun` — safe on a PoC.
+- **The attestor's trust anchor is a KMS PKIX key.**
+  `google_binary_authorization_attestor` references the Container Analysis note + the
+  KMS crypto-key version's PEM (`data.google_kms_crypto_key_version`). Signing uses
+  `gcloud … binauthz attestations sign-and-create --keyversion=…` — no PGP.
+- **Keyless signer identity.** A dedicated `jenkins-2026-binauthz-signer` GSA holds
+  `cloudkms.signerVerifier` (on the key) + Container-Analysis + attestor-viewer roles;
+  each CI engine's build KSA impersonates it via Workload Identity (`binauthz_signer_ksas`).
+- **Single-source signing.** [`resources/sign-and-attest-image.sh`](../resources/sign-and-attest-image.sh)
+  is called by all four engines after the push (like `patch-app-source.sh`); it
+  resolves the immutable digest and no-ops unless `BINAUTHZ_ENABLED=true`.
+</details>
+
 ## The flag
 
 | Key | Default | Override | Consumers |
@@ -37,6 +131,9 @@ The platform already **builds, scans, and pushes** images across
 [four CI engines](./README.md) ([601](./601-DEVSECOPS.md): Semgrep SAST, CodeQL,
 Trivy image/IaC), then deploys via GitOps. The missing link is **admission**:
 
+<details>
+<summary>🔀 The scan → sign → admit pipeline (flowchart)</summary>
+
 ```mermaid
 flowchart LR
     build["build image<br/>(4 engines)"] --> scan["scan gates<br/>Semgrep · CodeQL · Trivy"]
@@ -47,6 +144,8 @@ flowchart LR
     admit -->|"attestation valid"| run["Pod runs ✅"]
     admit -->|"no/invalid attestation"| block["dryrun → log · enforce → REJECT"]
 ```
+
+</details>
 
 Without Binary Authorization the `admit` diamond doesn't exist — any image that
 reaches the cluster runs. With it, only an image whose **digest** was signed by
@@ -99,6 +198,49 @@ unless it is `true`, so an inactive cluster runs the step as a harmless no-op.
 
 Until steps 1–3 are done for the active engine, the signing step is a **safe no-op**;
 once done, `enforce` mode will admit only the images this pipeline signed.
+
+<details>
+<summary>📄 Configuration reference — the policy, attestor, and signing call</summary>
+
+**Cluster opt-in** — consult the project policy at admission (`terraform/gke`):
+```hcl
+binary_authorization {
+  evaluation_mode = "PROJECT_SINGLETON_POLICY_ENFORCE"
+}
+```
+
+**Project policy** — require an attestation, allowlist GKE system images ([`terraform/gke/security.tf`](../terraform/gke/security.tf)):
+```hcl
+resource "google_binary_authorization_policy" "this" {
+  admission_whitelist_patterns { name_pattern = "gke.gcr.io/*" }
+  admission_whitelist_patterns { name_pattern = "registry.k8s.io/*" }
+  default_admission_rule {
+    evaluation_mode         = "REQUIRE_ATTESTATION"
+    enforcement_mode        = var.binary_authorization_enforce ? "ENFORCED_BLOCK_AND_AUDIT_LOG" : "DRYRUN_AUDIT_LOG_ONLY"
+    require_attestations_by = [google_binary_authorization_attestor.this[0].name]
+  }
+  global_policy_evaluation_mode = "ENABLE"
+}
+```
+
+**The signing call** — after the push, in the pipeline (all four engines, via the single-source script):
+```bash
+# resources/sign-and-attest-image.sh <image-ref>   (no-ops unless BINAUTHZ_ENABLED=true)
+gcloud beta container binauthz attestations sign-and-create \
+  --project="$PROJECT_ID" \
+  --artifact-url="$REGISTRY/$SERVICE@sha256:<digest>" \
+  --attestor="jenkins-2026-attestor" --attestor-project="$PROJECT_ID" \
+  --keyversion="projects/$PROJECT_ID/locations/<loc>/keyRings/jenkins-2026-binauthz/cryptoKeys/jenkins-2026-attestor-key/cryptoKeyVersions/1"
+```
+
+**See a denial (`enforce` mode)** — an unsigned image is rejected at admission:
+```bash
+kubectl run rogue --image=ghcr.io/nubenetes/jenkins-2026-microservices/gateway:unsigned -n microservices
+# Error ... admission webhook "imagepolicywebhook.image-policy.k8s.io" denied the request:
+#   Image ... denied by Binary Authorization: No attestations found for attestor jenkins-2026-attestor
+```
+
+</details>
 
 ## `dryrun` vs `enforce`
 

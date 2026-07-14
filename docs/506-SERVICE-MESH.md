@@ -18,6 +18,109 @@ record** for *why CSM* and *why not Istio-self-managed / Traefik / Linkerd /
 Cilium / other meshes* — the questions that recur every time someone asks "should
 we add a mesh?".
 
+## Understanding Cloud Service Mesh (newcomers → specialists)
+
+A service mesh puts a tiny **proxy (sidecar) next to every app pod** and routes all
+its traffic through it — so it can add **mutual TLS with a cryptographic identity per
+workload** and **L7 authorization between services**, *without touching app code*. On
+GKE you don't run the mesh yourself: **Cloud Service Mesh (CSM)** is Google-managed
+Istio, turned on as a **Fleet feature**. You opt **in per app** — the data tier
+(Postgres) deliberately stays out. Read this once and the rest of the page is just
+"which knob lives where".
+
+<details>
+<summary>🧠 Mental model — Cloud Service Mesh (mindmap)</summary>
+
+```mermaid
+mindmap
+  root((Cloud Service Mesh))
+    Control plane
+      Google-managed
+      Fleet servicemesh feature
+      MANAGEMENT_AUTOMATIC
+      Mesh CA mints workload certs
+    Data plane
+      istio-proxy sidecar per pod
+      injected by namespace label
+      istio.io rev asm-managed
+    Identity
+      SPIFFE per workload
+      mutual mTLS on all hops
+      PeerAuthentication STRICT
+    Authorization
+      AuthorizationPolicy L7
+      who may call whom
+    App mesh-readiness
+      holdApplicationUntilProxyStarts
+      ingress-edge port PERMISSIVE
+      exclude CNPG Postgres
+    Commercials
+      standalone per-client SKU
+      NOT GKE Enterprise
+      mutually exclusive with backend TLS
+```
+
+</details>
+
+**Reading it —** the six branches are the whole feature: Google runs the **control
+plane** (a Fleet feature) and its **Mesh CA** mints a cert for every workload; the
+**data plane** is an `istio-proxy` sidecar injected into each pod of a
+namespace-labeled namespace; that sidecar gives each workload a **SPIFFE identity**
+and does **mutual mTLS** (governed by `PeerAuthentication`) plus **L7 authZ**
+(`AuthorizationPolicy`); making a real app mesh-ready needs the three
+**app-mesh-readiness** fixes; and commercially it is the **standalone per-client
+SKU** (not GKE Enterprise) and **[mutually exclusive](#backend-tls-vs-cloud-service-mesh-the-exclusivity)**
+with backend TLS.
+
+<details>
+<summary>🟢 For newcomers — the mental model in 7 objects</summary>
+
+| Object | What it is | Where it lives |
+|---|---|---|
+| **Fleet** | A Google grouping your cluster joins; the anchor the managed mesh attaches to | `google_gke_hub_membership` ([terraform/gke](../terraform/gke)) |
+| **`servicemesh` Fleet feature** | The switch that makes Google **provision + run the mesh control plane** for the fleet | `google_gke_hub_feature` (`MANAGEMENT_AUTOMATIC`) |
+| **Mesh CA** | The authority that mints a short-lived cert (= identity) for every meshed workload | inside the managed control plane |
+| **Injection label** | The namespace label that tells the mesh "inject a sidecar into every pod here" | `istio.io/rev=asm-managed` on the ns |
+| **`istio-proxy` sidecar** | The per-pod Envoy that intercepts all traffic and enforces the mTLS + policy | 2nd container in each meshed pod (`2/2`) |
+| **`PeerAuthentication`** | The CR that requires mutual mTLS (`STRICT`) on a workload / namespace | [`08.85`](../scripts/08.85-service-mesh.sh) applies it |
+| **`AuthorizationPolicy`** | The CR that says "workload A may call B on `/foo`" (L7 authZ) | applied per workload |
+
+So the loop is: *Terraform joins the cluster to a Fleet + turns on the mesh feature
+→ Google runs the control plane + Mesh CA → `08.85` labels the app namespace → every
+app pod gets an `istio-proxy` sidecar with a SPIFFE identity → `PeerAuthentication`
+makes those pods only accept mutual mTLS → the gateway→backend hop is now encrypted +
+authenticated **by identity**, with no app code change.*
+</details>
+
+<details>
+<summary>🔴 For specialists — the moving parts and how they're wired here</summary>
+
+- **Managed control plane (`MANAGEMENT_AUTOMATIC`).** [`terraform/gke/security.tf`](../terraform/gke/security.tf)
+  registers a `google_gke_hub_membership` and enables the `servicemesh`
+  `google_gke_hub_feature` with `mesh { management = MANAGEMENT_AUTOMATIC }`. Google
+  provisions the injection webhooks (`istiod-asm-managed` + `istio-revision-tag-default`
+  in `istio-system`) and keeps the data plane upgraded. Only `mesh.googleapis.com` +
+  `gkehub` are enabled — **never the GKE Enterprise API** — so billing is the
+  **standalone per-mesh-client SKU** ([§ Cost](#the-cost-model--per-client-not-per-vcpu)).
+- **Injection is namespace-wide.** `08.85` labels the microservices ns
+  `istio.io/rev=asm-managed`; the managed webhook then injects an `istio-proxy` into
+  *every* pod created there — which is exactly why the CNPG Postgres pods + PgBouncer
+  poolers need an explicit `sidecar.istio.io/inject: "false"` opt-out
+  ([§ App mesh-readiness](#app-mesh-readiness-the-workload-side)).
+- **STRICT + a port-level exception.** A namespace-wide `PeerAuthentication` `default`
+  sets `mtls.mode` to the flag's value (`STRICT`); a second, **workload-scoped**
+  `PeerAuthentication` keeps the gateway's **`:8080` PERMISSIVE** because the GKE
+  Gateway LB (and its `HealthCheckPolicy`) is not a mesh client. Auto-mTLS then makes
+  the internal gateway→backend hop mTLS automatically.
+- **CRD versions differ.** On managed CSM `PeerAuthentication` is served as
+  `security.istio.io/v1beta1` while `AuthorizationPolicy` is `v1` — mixing them up
+  makes the apply silently no-op (a bug caught in live validation).
+- **Two-phase convergence.** The managed control plane comes up asynchronously
+  (~5 min), so `08.85` waits (bounded) for the injection webhook before labeling, and
+  — on a flag-flip against a running cluster — waits for the CNPG poolers to leave the
+  mesh before restarting the apps, so the apps mesh with a stable DB.
+</details>
+
 ## The flag
 
 Durable default in [`config/config.yaml`](../config/config.yaml), ephemeral
@@ -226,6 +329,9 @@ second dataplane *beside* the managed Cilium — the "delicate two-layer combo".
 
 ## How it works
 
+<details>
+<summary>🔀 Fleet feature → sidecar injection → identity mTLS (flowchart)</summary>
+
 ```mermaid
 flowchart LR
     subgraph fleet["GCP · Fleet (free since 2025-09)"]
@@ -244,16 +350,80 @@ flowchart LR
     feat -->|"mints workload certs"| ms
 ```
 
+</details>
+
+**Reading it —** the **Fleet feature** (top) provisions the managed **injection
+webhook** and the **Mesh CA**; the webhook drops an `istio-proxy` sidecar into the
+gateway + microservice pods; the Mesh CA mints each a SPIFFE workload cert; the two
+sidecars then speak **mutual mTLS** (`PeerAuthentication STRICT`), and
+`AuthorizationPolicy` gates who may reach the backend. The database tier is absent by
+design — [excluded from injection](#app-mesh-readiness-the-workload-side).
+
 Execution order on a `Day1` re-run with `serviceMesh.mode=cloud-service-mesh`:
 
 | Piece | Role |
 |---|---|
 | [`terraform/gke`](../terraform/gke) | Enables `mesh.googleapis.com` + `gkehub.googleapis.com`, registers the cluster to a **Fleet** (`google_gke_hub_membership`), and enables the **`servicemesh` Fleet feature** (`google_gke_hub_feature`) — which provisions the **managed control plane + Mesh CA**. All `count`-gated on `var.service_mesh_mode == "cloud-service-mesh"`, so `none` is a no-op. |
-| [`scripts/08.85-service-mesh.sh`](../scripts/08.85-service-mesh.sh) | Gates on `j2026_service_mesh_active`; labels the microservices namespace(s) for **sidecar injection** (the managed-CP revision label), applies **`PeerAuthentication` `STRICT`** (mesh-wide + per-ns) and a baseline **`AuthorizationPolicy`**, then restarts the meshed workloads so they pick up the sidecar. Flag off → symmetric retire (labels removed, policies deleted). |
+| [`scripts/08.85-service-mesh.sh`](../scripts/08.85-service-mesh.sh) | Gates on `j2026_service_mesh_active`; **waits** for the managed control plane's injection webhook, labels the microservices namespace(s) (`istio.io/rev=asm-managed`), applies namespace-wide **`PeerAuthentication STRICT`** + a workload-scoped **gateway `:8080` PERMISSIVE** exception, **waits** for the CNPG poolers to leave the mesh, then restarts **only the app deployments**. Flag off → symmetric retire (labels + policies removed, apps restarted sidecar-free). See [App mesh-readiness](#app-mesh-readiness-the-workload-side). |
 
 **What does *not* change**: the GKE Gateway, the IAP `GCPBackendPolicy` (IAP
 composes — auth at the edge, mTLS inside), the `HTTPRoute`s, and the NEG routing.
 The mesh operates *below* the ingress.
+
+<details>
+<summary>📄 Configuration reference — the CRs and annotations this feature applies</summary>
+
+**Namespace injection label** — `08.85`, on the microservices namespace:
+```yaml
+metadata:
+  labels:
+    istio.io/rev: asm-managed          # opt every pod in the ns into the managed mesh
+```
+
+**Namespace-wide mutual mTLS** — `08.85` (note `v1beta1`, not `v1`, for PeerAuthentication on managed CSM):
+```yaml
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata: { name: default, namespace: microservices }
+spec:
+  mtls: { mode: STRICT }               # meshed pods only accept identity mTLS
+```
+
+**Ingress-edge exception** — the GKE LB is not a mesh client, so the gateway's LB port stays PERMISSIVE (`08.85`):
+```yaml
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata: { name: gateway-ingress-permissive, namespace: microservices }
+spec:
+  selector: { matchLabels: { app.kubernetes.io/name: gateway } }
+  mtls: { mode: STRICT }
+  portLevelMtls:
+    8080: { mode: PERMISSIVE }         # the LB + its HealthCheckPolicy reach :8080 in plaintext
+```
+
+**App startup ordering** — pod annotation on the app Deployments (`gitops-config`, self-gating: inert without a sidecar):
+```yaml
+spec:
+  template:
+    metadata:
+      annotations:
+        proxy.istio.io/config: '{"holdApplicationUntilProxyStarts": true}'
+```
+
+**Exclude the data tier** — CNPG `Cluster` (via `inheritedMetadata`) + `Pooler` (via `spec.template`), `gitops-config`:
+```yaml
+# kind: Cluster (postgresql.cnpg.io/v1)
+spec:
+  inheritedMetadata:
+    annotations: { sidecar.istio.io/inject: "false" }
+# kind: Pooler (postgresql.cnpg.io/v1)
+spec:
+  template:
+    metadata:
+      annotations: { sidecar.istio.io/inject: "false" }
+```
+
+</details>
 
 ## App mesh-readiness (the workload side)
 
