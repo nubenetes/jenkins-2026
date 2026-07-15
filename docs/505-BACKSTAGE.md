@@ -512,8 +512,28 @@ No image rebuild: the catalog is read **from git by URL**
 next refresh. The seed job picks the new service out of `services.yaml` and creates its
 pipeline; ArgoCD syncs the gitops values and deploys it.
 
-> `kind: Template` must stay in `catalog.rules` — without it the catalog silently
-> **rejects** every template and the Create page just sits empty.
+### The four gotchas a real run found — every static check was green
+
+Shipping this was not "add a plugin". `yarn tsc`, the image build, the pod starting, the
+plugin registering its actions and the form rendering+validating were **all green** while
+each of these was broken. They are recorded because **none of them announces itself**:
+
+| Symptom | Cause | Why nothing caught it |
+|---|---|---|
+| **Create page empty**, backend reports no error | `kind: Template` in `catalog.rules` is necessary but **NOT sufficient** — validating it needs **`@backstage/plugin-catalog-backend-module-scaffolder-entity-model`**, a package *separate* from `plugin-scaffolder-backend` that it does **not** pull in | the catalog **reads** the template and drops it at **`warn`** level (*"No processor recognized the entity … possibly caused by a foreign kind"*) — a warn in a log nobody tails, and an empty page that looks like "no templates yet" |
+| Template run dies at its **first step** | `isolated-vm` on Node ≥20 needs **`NODE_OPTIONS=--no-node-snapshot`** (Node's startup snapshot is incompatible with it creating V8 isolates). Set as `ENV` in the image, mirrored in the backend's `start` script for local `yarn dev` | it is a **runtime** requirement: everything builds, deploys and registers fine. Only *executing* a task surfaces it |
+| **All steps green — and the YAML written is broken** | a plain block scalar (`\|`) auto-detects its indentation from the first non-empty line and **strips** it, so entries land at column 0 while the existing ones sit at 2. Use the explicit **`\|2`** indicator | the run is a **success** by every measure the UI has. `services.yaml` came out *invalid* (breaking all four engines), and the gitops values — **worse** — still *parsed* with the service at top level instead of under `services`: a silent no-op ArgoCD renders nothing for |
+| Onboarding an existing name **duplicates** it | appending is blind; YAML accepts two list items with one name. The `absent` input now refuses (compared **per-line and trimmed**, never as a substring, so `name: gateway` cannot match `name: gateway-v2`) | the file stays valid. The seed job would create two jobs under one name and the second **shadows** the first — silently re-pointing an existing service's pipeline at the new repo |
+
+**The rule those four share, and the reason to re-parse rather than trust:**
+
+> **A green run proves the actions executed, not that what they wrote is correct.**
+> Only re-parsing the emitted YAML proves that.
+
+*(The Roadmap's old blocker — "the Scaffolder drags the `isolated-vm` native toolchain
+(python3/g++) into the image" — was re-tested rather than assumed and no longer holds:
+`isolated-vm` 6.x ships `prebuilds/linux-x64`, so it loads inside `node:24-trixie-slim`
+with **no compiler present**. The Dockerfile stays slim.)*
 
 ## CI-engine integration (the four tabs)
 
