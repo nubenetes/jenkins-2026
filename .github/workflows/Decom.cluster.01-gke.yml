@@ -226,8 +226,28 @@ jobs:
               echo "Detected lock ${LOCK_ID} — force-unlocking..."
               terraform force-unlock -force "${LOCK_ID}" || true
             fi
-            # Retry once. Covers the unlocked case above AND any transient the wait missed
-            # (the Fleet `code 9` message literally says to retry once the operation is done).
+            # ORPHANED CLOUD SERVICE MESH FIREWALL RULE. CSM creates its own health-check
+            # rule (`gke-csm-thc-*`) on the VPC. GKE does NOT remove it along with the
+            # cluster and Terraform never owned it, so the VPC delete fails with
+            # `The network resource '...' is already being used by ... firewalls/gke-csm-thc-…`
+            # (seen live: run 29392065023). It only becomes an ORPHAN once the cluster is
+            # gone — i.e. mid-destroy, long after down.sh's cluster-alive NEG/forwarding-rule
+            # sweep has finished — so the destroy failure path is the only place that can
+            # catch it. Scoped to THIS VPC + the `gke-csm-` prefix so it can never touch the
+            # project's `default` network or an unrelated rule.
+            VPC_NAME="$(terraform output -raw network_name 2>/dev/null || true)"
+            if [[ -n "${VPC_NAME}" ]]; then
+              for fw in $(gcloud compute firewall-rules list \
+                            --filter="network:${VPC_NAME} AND name~^gke-csm-" \
+                            --format='value(name)' 2>/dev/null || true); do
+                echo "Deleting orphaned Cloud Service Mesh firewall rule '${fw}' — it pins ${VPC_NAME}"
+                gcloud compute firewall-rules delete "${fw}" --quiet 2>/dev/null || true
+              done
+            fi
+
+            # Retry once. Covers the unlocked case + the swept firewall rules above, AND any
+            # transient the wait missed (the Fleet `code 9` message literally says to retry
+            # once the operation is done).
             echo "::warning::terraform destroy failed — retrying once."
             terraform destroy -auto-approve -input=false
           fi
