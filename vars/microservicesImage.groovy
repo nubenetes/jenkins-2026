@@ -16,6 +16,22 @@ def call(Map cfg) {
   // Empty for the non-Jib paths; see the signing block at the end.
   def jibDigest = ''
 
+  // Binary Authorization attests a DIGEST, and a :tag cannot be resolved back to one
+  // here — `gcloud container images describe` only speaks GCR/AR, and GHCR (this repo's
+  // registry) 403s even an authenticated manifest HEAD (verified live). Jib knows the
+  // digest of what it just pushed for free and writes target/jib-image.digest (its
+  // default jib.outputPaths.digest), so grab it for the signing step at the end. Copied
+  // to a fixed path because BUILD_DIR varies by module.
+  //
+  // GATED ON THE FLAG, and deliberately so: with Binary Authorization off nothing reads
+  // this, and an unconditional `cp` inside `set -eux` would fail the build for EVERY
+  // service if Jib ever stopped emitting the file — i.e. an opt-in feature breaking the
+  // default path. Off → not even attempted; on → it must work, and the check after the
+  // build errors loudly rather than skipping the signature. See docs/507 § Pipeline wiring.
+  String jibDigestCopy = (env.BINAUTHZ_ENABLED == 'true')
+    ? "\n             cp target/jib-image.digest ${env.WORKSPACE}/jib_image_digest.txt"
+    : ""
+
   withCredentials([usernamePassword(credentialsId: 'container-registry', usernameVariable: 'REG_USER', passwordVariable: 'REG_PASS')]) {
     container('docker') {
       sh """
@@ -46,16 +62,7 @@ def call(Map cfg) {
                -Djib.to.auth.username=\$REG_USER -Djib.to.auth.password=\$REG_PASS \
                -Djib.serialize=true
              # Jib pushes directly, so we flag it to skip local docker push
-             echo "JIB_PUSHED" > ${env.WORKSPACE}/jib_pushed.txt
-             # Hand Jib's OWN digest of what it just pushed to the signing step below.
-             # Jib always writes target/jib-image.digest (default jib.outputPaths.digest);
-             # copy it to a fixed path since BUILD_DIR varies by module. Binary Authorization
-             # attests a DIGEST, and resolving one from a :tag afterwards is not possible
-             # here: `gcloud container images describe` only speaks GCR/AR, and GHCR (this
-             # repo's registry) refuses even an authenticated manifest HEAD (403) — verified
-             # live. Jib knows it for free, with no auth, no registry round-trip and no
-             # tag→digest race. See docs/507 § Pipeline wiring.
-             cp target/jib-image.digest ${env.WORKSPACE}/jib_image_digest.txt
+             echo "JIB_PUSHED" > ${env.WORKSPACE}/jib_pushed.txt${jibDigestCopy}
           else
              if [ -n "${cfg.module}" ]; then
                ./mvnw -B -pl ${cfg.module} -am -Pprod -DskipTests -Dmaven.compiler.maxmem=512m spring-boot:build-image \
