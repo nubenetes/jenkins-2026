@@ -620,13 +620,17 @@ reasons — the third we hit **live** as the pooler `CrashLoop` (6 restarts):
    *between application services*. The Postgres subsystem is the **data plane**, not
    service-to-service calls — a sidecar there adds cost and lifecycle risk for **zero**
    of the value the mesh gives the app tier.
-2. **CNPG already does its own TLS/mTLS — a sidecar makes it *double* TLS.** Every DB
-   hop is already encrypted *and* authenticated by CNPG's own certificates: app→pooler
+2. **CNPG already does its own TLS/mTLS — a sidecar would only double-encrypt it.** Every
+   DB hop is already encrypted *and* authenticated by CNPG's own certificates: app→pooler
    is `sslmode=require`, **pooler→Postgres is client-certificate mTLS** (`pg_hba:
    hostssl … cnpg_pooler_pgbouncer … cert`), instance↔instance replication is
-   CNPG-cert TLS. An istio sidecar intercepting a socket that is **already doing
-   client-cert TLS** wraps a *second* TLS layer around it → the handshakes collide →
-   the connection breaks. istio mTLS here is redundant **and** incompatible.
+   CNPG-cert TLS. To be precise: an istio sidecar does **not** terminate that TLS — it
+   tunnels the bytes, so PgBouncer's client certificate still reaches Postgres and the
+   hop keeps working. It is therefore **redundant, not incompatible**: you would pay a
+   second encryption pass (plus a sidecar's CPU/memory per DB pod) to re-secure a hop
+   that is *already* mutually authenticated — and the mesh's SPIFFE identity would sit
+   *outside* the identity Postgres actually checks, so it buys no authorization either.
+   (What genuinely breaks is reason 3, below — that one we hit live.)
 3. **The sidecar breaks the DB lifecycle.** PgBouncer opens its client-cert
    connection to Postgres **at startup**, before the sidecar routes → it dials a dead
    proxy → **`CrashLoop`** (exactly the `6 (restarts)` we saw live). The sidecar also
