@@ -32,3 +32,9 @@ services:
     module: ""
     port: 8081
     healthPath: /management/health
+- name: demo-service
+  type: java # onboarded via the Backstage scaffolder
+  repoUrl: https://github.com/nubenetes/jhipster-sample-app-microservice.git
+  module: ""
+  port: 8082
+  healthPath: /management/health

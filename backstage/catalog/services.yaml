@@ -101,3 +101,28 @@ spec:
   system: microservices
   providesApis:
     - microservice-api
+---
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: demo-service
+  description: Scaffolder end-to-end test — safe to close
+  annotations:
+    github.com/project-slug: nubenetes/jhipster-sample-app-microservice
+    jenkins.io/job-full-name: demo-service
+    tekton.dev/cicd: "true"
+    argocd/app-name: microservices-stable
+    backstage.io/kubernetes-label-selector: 'app.kubernetes.io/name=demo-service'
+    # Shared docs: the platform's TechDocs (onboarded repos ship no mkdocs site).
+    backstage.io/techdocs-entity: component:default/jenkins-2026-infra
+    grafana/dashboard-selector: "tags @> 'microservices'"
+    grafana/alert-label-selector: 'project=jenkins-2026'
+  links:
+    - url: https://github.com/nubenetes/jhipster-sample-app-microservice
+      title: Source
+      icon: github
+spec:
+  type: service
+  lifecycle: production
+  owner: platform-team
+  system: microservices
