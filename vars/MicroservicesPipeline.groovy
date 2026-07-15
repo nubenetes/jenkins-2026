@@ -217,9 +217,19 @@ spec:
     - name: jnlp
       securityContext:
         allowPrivilegeEscalation: false
+      # The agent JVM buffers the build log in flight, so its memory scales with how
+      # CHATTY a build is, not how big the app is. 256Mi dates from 476b7ea (Jun 16),
+      # when this namespace had a 1-CPU quota and every container was squeezed to fit;
+      # that quota is long gone (now 60 CPU / 64Gi, ~24Gi used) but the limit stayed.
+      # The gateway — heaviest service, and the only one that also patches + builds the
+      # Angular SPA — emits a 3.9MB log (vs 2.7MB for jhipstersamplemicroservice, which
+      # squeaks by), and its jnlp was OOMKilled mid-run, taking the whole agent pod with
+      # it. The build then died with a bare "script returned exit code 1" that pointed at
+      # whichever stage happened to be next, not at the OOM. 768Mi gives the chattiest
+      # build ~2x headroom and is still trivial against the quota.
       resources:
-        requests: {cpu: 10m, memory: 128Mi}
-        limits: {cpu: 200m, memory: 256Mi}
+        requests: {cpu: 10m, memory: 256Mi}
+        limits: {cpu: 200m, memory: 768Mi}
 ${agentNodeScheduling}
   volumes:
     - name: maven-cache
