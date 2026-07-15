@@ -28,12 +28,3 @@ output "grafana_llm_gsa_email" {
   description = "Email of the Grafana LLM GSA the LiteLLM KSA is annotated with (iam.gke.io/gcp-service-account). Empty when observability.llm.enabled is off."
   value       = var.observability_llm_enabled ? google_service_account.grafana_llm[0].email : ""
 }
-
-output "network_name" {
-  description = <<-EOT
-    The VPC name. Consumed by Decom.cluster.01-gke to sweep controller-created firewall
-    rules that PIN this network and would otherwise fail its delete — scoping the sweep to
-    this VPC keeps it away from the project's `default` network. See docs/104 § 4.8.
-  EOT
-  value       = google_compute_network.vpc.name
-}
