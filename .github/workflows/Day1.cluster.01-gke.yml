@@ -616,6 +616,22 @@ jobs:
                   fi
                 fi
               fi
+              # The crypto-key OBJECT survives a Decom (imported above), but its VERSION only
+              # enters a scheduled-destruction window (up to 30 days) rather than dying
+              # immediately. With zero ENABLED versions, apply's `data.google_kms_crypto_key_
+              # version` (security.tf) — which reads the primary version's public key for the
+              # attestor's trust — 400s: "... is not enabled, current state is:
+              # DESTROY_SCHEDULED" (seen live: run 29435733931), even though the import itself
+              # succeeded. Restore + re-enable it: same key material the attestor already
+              # trusts, reversible (GCP lets you re-schedule destruction later), and simpler
+              # than minting + repointing-primary a brand new version.
+              for ver in $(gcloud kms keys versions list --key jenkins-2026-attestor-key --keyring jenkins-2026-binauthz --location "${KMS_REGION}" --project "${TF_VAR_project_id}" --filter='state=DESTROY_SCHEDULED' --format='value(name)' 2>/dev/null); do
+                vnum="${ver##*/}"
+                echo "KMS key version ${vnum} is scheduled for destruction — restoring + re-enabling it."
+                gcloud kms keys versions restore "${vnum}" --key jenkins-2026-attestor-key --keyring jenkins-2026-binauthz --location "${KMS_REGION}" --project "${TF_VAR_project_id}" --quiet \
+                  && gcloud kms keys versions enable "${vnum}" --key jenkins-2026-attestor-key --keyring jenkins-2026-binauthz --location "${KMS_REGION}" --project "${TF_VAR_project_id}" --quiet \
+                  || echo "::warning::Could not restore/enable KMS key version ${vnum} — apply's data.google_kms_crypto_key_version read will likely fail."
+              done
             else
               echo "No lingering KMS keyring — apply will create it fresh."
             fi
