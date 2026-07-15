@@ -12,6 +12,9 @@
  */
 def call(Map cfg) {
   def needsDockerPush = true
+  // Digest of the image Jib actually pushed, read from its own output file (below).
+  // Empty for the non-Jib paths; see the signing block at the end.
+  def jibDigest = ''
 
   withCredentials([usernamePassword(credentialsId: 'container-registry', usernameVariable: 'REG_USER', passwordVariable: 'REG_PASS')]) {
     container('docker') {
@@ -44,6 +47,15 @@ def call(Map cfg) {
                -Djib.serialize=true
              # Jib pushes directly, so we flag it to skip local docker push
              echo "JIB_PUSHED" > ${env.WORKSPACE}/jib_pushed.txt
+             # Hand Jib's OWN digest of what it just pushed to the signing step below.
+             # Jib always writes target/jib-image.digest (default jib.outputPaths.digest);
+             # copy it to a fixed path since BUILD_DIR varies by module. Binary Authorization
+             # attests a DIGEST, and resolving one from a :tag afterwards is not possible
+             # here: `gcloud container images describe` only speaks GCR/AR, and GHCR (this
+             # repo's registry) refuses even an authenticated manifest HEAD (403) — verified
+             # live. Jib knows it for free, with no auth, no registry round-trip and no
+             # tag→digest race. See docs/507 § Pipeline wiring.
+             cp target/jib-image.digest ${env.WORKSPACE}/jib_image_digest.txt
           else
              if [ -n "${cfg.module}" ]; then
                ./mvnw -B -pl ${cfg.module} -am -Pprod -DskipTests -Dmaven.compiler.maxmem=512m spring-boot:build-image \
@@ -61,6 +73,17 @@ def call(Map cfg) {
       if (fileExists("${env.WORKSPACE}/jib_pushed.txt")) {
         needsDockerPush = false
         sh "rm -f ${env.WORKSPACE}/jib_pushed.txt"
+        // Pick up the digest Jib recorded for the image it just pushed. Only required
+        // when we are actually going to sign — but do NOT quietly skip if it's missing
+        // then: a signing step that silently attests nothing is worse than a red build.
+        if (fileExists("${env.WORKSPACE}/jib_image_digest.txt")) {
+          jibDigest = readFile("${env.WORKSPACE}/jib_image_digest.txt").trim()
+          sh "rm -f ${env.WORKSPACE}/jib_image_digest.txt"
+        }
+        if (env.BINAUTHZ_ENABLED == 'true' && !jibDigest) {
+          error("microservicesImage: Jib pushed ${cfg.image} but left no target/jib-image.digest, " +
+                "and Binary Authorization is ON — refusing to continue rather than skip signing silently.")
+        }
       }
     } else if (cfg.type == 'angular') {
       container('docker') {
@@ -91,10 +114,17 @@ def call(Map cfg) {
     // BINAUTHZ_ENABLED=true. Runs in the 'gcloud' container (added to the pod template
     // by MicroservicesPipeline.groovy only when the flag is on); gcloud auths via the
     // 'jenkins' agent KSA Workload Identity (bind it to the signer GSA terraform/gke grants).
+    // Pass the image BY DIGEST when Jib gave us one (image@sha256:… — the script then
+    // attests it directly instead of trying to resolve the :tag, which it cannot do for
+    // GHCR: `gcloud container images describe` is GCR/AR-only and the crane fallback is
+    // absent from google/cloud-sdk:slim, so a tag here fails with "could not resolve a
+    // digest" — the build that surfaced this). The non-Jib (buildpacks) path still passes
+    // the tag; it is GCR/AR-friendly and the script's own resolution covers it.
     if (env.BINAUTHZ_ENABLED == 'true') {
+      def signTarget = jibDigest ? "${cfg.image.split(':')[0..-2].join(':')}@${jibDigest}" : cfg.image
       container('gcloud') {
         writeFile file: '.sign-and-attest-image.sh', text: libraryResource('sign-and-attest-image.sh')
-        sh "BINAUTHZ_ENABLED=true bash .sign-and-attest-image.sh '${cfg.image}'"
+        sh "BINAUTHZ_ENABLED=true bash .sign-and-attest-image.sh '${signTarget}'"
       }
     }
   }

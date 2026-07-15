@@ -63,13 +63,27 @@ fi
 if [[ "${IMAGE}" == *"@sha256:"* ]]; then
   IMAGE_DIGEST="${IMAGE}"
 else
+  # PREFER being handed an image@sha256:… by the caller — see below. This tag→digest
+  # resolution is a fallback and only really works for GCR/Artifact Registry.
   echo "[sign-and-attest] Resolving digest for ${IMAGE} ..."
   digest="$(gcloud container images describe "${IMAGE}" --format='value(image_summary.digest)' 2>/dev/null || true)"
   if [[ -z "${digest}" ]] && command -v crane >/dev/null 2>&1; then
-    # Fallback for non-GCR/AR registries (e.g. GHCR): crane if available.
+    # Fallback for non-GCR/AR registries (e.g. GHCR): crane if available. NOTE: it is NOT
+    # in google/cloud-sdk:slim, the image every engine runs this in — so in practice this
+    # branch never fires today. Kept for callers that do ship crane; do not mistake it for
+    # working GHCR support.
     digest="$(crane digest "${IMAGE}" 2>/dev/null || true)"
   fi
-  [[ -n "${digest}" ]] || { echo "[sign-and-attest] ERROR: could not resolve a digest for ${IMAGE}." >&2; exit 1; }
+  if [[ -z "${digest}" ]]; then
+    echo "[sign-and-attest] ERROR: could not resolve a digest for ${IMAGE}." >&2
+    echo "[sign-and-attest]   'gcloud container images describe' only speaks GCR/Artifact Registry," >&2
+    echo "[sign-and-attest]   and crane is absent here. For GHCR (and any private non-GCR registry —" >&2
+    echo "[sign-and-attest]   an authenticated manifest HEAD to ghcr.io 403s, verified live) the CALLER" >&2
+    echo "[sign-and-attest]   must pass the image BY DIGEST: <image>@sha256:...  Builders know it for" >&2
+    echo "[sign-and-attest]   free — Jib writes target/jib-image.digest, kaniko takes --digest-file." >&2
+    echo "[sign-and-attest]   vars/microservicesImage.groovy does this; see docs/507 § Pipeline wiring." >&2
+    exit 1
+  fi
   IMAGE_DIGEST="${IMAGE%:*}@${digest}"   # strip the :tag (last colon), append @sha256:...
 fi
 
