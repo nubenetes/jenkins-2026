@@ -102,13 +102,20 @@ spec:
         targetPath: infra/backstage/catalog/services.yaml
 
     # The registry ALL FOUR engines read (Jenkins seed, Tekton, GHA render, Argo).
+    # NOTE the `|2` indentation indicator, and do not "tidy" it away. A plain `|`
+    # auto-detects the block's indentation from its first non-empty line and STRIPS it,
+    # so the entry came out at column 0 while the existing ones sit at 2 — which YAML
+    # rejects outright ("expected <block end>, but found '-'"), breaking the registry
+    # all four engines read. `|2` pins the block's base explicitly, so the two extra
+    # spaces below survive into the file. Found by running the template for real; no
+    # static check catches it, and the emitted YAML must be re-parsed to be sure.
     - id: append-registry
       name: Add to the CI registry
       action: j2026:file:append
       input:
         path: infra/jenkins/pipelines/seed/services.yaml
         anchor: 'services:'
-        content: |
+        content: |2
 
             - name: ${{ parameters.name }}
               type: java # onboarded via the Backstage scaffolder
@@ -192,13 +199,18 @@ spec:
         url: https://github.com/nubenetes/jenkins-2026-gitops-config/blob/main/helm/microservices/values-stable.yaml
         targetPath: gitops/helm/microservices/values-stable.yaml
 
+    # `|2` for the same reason as the registry above — and here the failure was WORSE:
+    # `services` is a MAP, so a plain `|` put `demo-service:` at column 0, i.e. a
+    # TOP-LEVEL key. That still PARSES, so nothing complains — the values file just
+    # quietly does not contain the service, and ArgoCD renders nothing for it. A
+    # silent no-op rather than an error, which is the harder bug to notice.
     - id: append-gitops
       name: Add the deploy values
       action: j2026:file:append
       input:
         path: gitops/helm/microservices/values-stable.yaml
         anchor: 'services:'
-        content: |
+        content: |2
 
             ${{ parameters.name }}:
               enabled: true
