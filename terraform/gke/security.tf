@@ -225,6 +225,22 @@ resource "google_project_iam_member" "binauthz_signer_ca" {
   member  = "serviceAccount:${google_service_account.binauthz_signer[0].email}"
 }
 
+# `sign-and-create` writes an occurrence that ATTACHES to the attestor's note, and
+# occurrences.editor above does NOT cover that: attaching is gated by the separate
+# containeranalysis.notes.attachOccurrence permission, on the NOTE side. Without this the
+# signing step dies with `Permission 'containeranalysis.notes.attachOccurrence' denied`
+# and no attestation is ever created — the CI SA's own firewall/NEG split all over again
+# (see terraform/bootstrap local.ci_roles). notes.attacher is the minimal predefined role
+# that grants it: notes.editor / containeranalysis.admin also would, but both also allow
+# EDITING notes, which a signer has no business doing.
+resource "google_project_iam_member" "binauthz_signer_note_attacher" {
+  count = var.binary_authorization_enabled ? 1 : 0
+
+  project = var.project_id
+  role    = "roles/containeranalysis.notes.attacher"
+  member  = "serviceAccount:${google_service_account.binauthz_signer[0].email}"
+}
+
 resource "google_project_iam_member" "binauthz_signer_attestor" {
   count = var.binary_authorization_enabled ? 1 : 0
 
