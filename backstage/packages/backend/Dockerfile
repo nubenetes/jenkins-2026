@@ -10,12 +10,23 @@
 # frontend bundle via the app link: dependency).
 #
 # Base: node:24-trixie-slim - the current upstream recommendation (Node 24 on
-# Debian 13, verified 2026-07-11). NO build-essential/g++/libsqlite3: this app
-# has no scaffolder (no isolated-vm) and no sqlite (pg is pure JS), so nothing
-# compiles natively at install time - keep the image slim.
+# Debian 13, verified 2026-07-11). Still NO build-essential/g++/libsqlite3, even
+# with the scaffolder now on board: isolated-vm 6.x ships prebuilds/linux-x64, so
+# node-gyp-build resolves a binary and nothing compiles at install time (verified
+# in this exact base image). pg is pure JS. Keep the image slim.
 FROM node:24-trixie-slim
 
 ENV NODE_ENV=production
+
+# REQUIRED by the scaffolder's isolated-vm on Node >= 20 — without it every template
+# RUN fails at the first step with:
+#   "the scaffolder backend plugin requires that it be started with the
+#    --no-node-snapshot option"
+# Nothing static catches this: the image builds, the pod starts, the plugin registers
+# its actions and the template renders — it only surfaces when a task actually
+# executes. (Node's startup snapshot is incompatible with isolated-vm creating its
+# own V8 isolates; upstream's own Dockerfile carries the same line.)
+ENV NODE_OPTIONS=--no-node-snapshot
 
 # TechDocs local builder: mkdocs + the techdocs-core plugin, in a venv (Debian
 # trixie is PEP 668 "externally managed" - system pip installs are refused).
