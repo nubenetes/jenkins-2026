@@ -577,6 +577,20 @@ switch — the requirements, in the order they bit:
 | **Ingress-edge port PERMISSIVE** (gateway `:8080`) | The gateway is fronted by the **GKE Gateway LB**, which — with its `HealthCheckPolicy` — is **not a mesh client**, so a STRICT mesh rejects it and 503s the public endpoint | [`08.85`](../scripts/08.85-service-mesh.sh) per-workload `PeerAuthentication` `portLevelMtls` | ✅ done |
 | **Exclude infra workloads** (CNPG Postgres + PgBouncer poolers) | Managed CSM injects **by namespace label**, so it meshes *every* pod in the ns — including the operator-managed Postgres pods + poolers, which must NOT get a sidecar (PgBouncer + sidecar churns; STRICT can break the DB hops) | `sidecar.istio.io/inject: "false"` on the CNPG `Cluster` (`inheritedMetadata`) + `Pooler` (`spec.template`) CRs (`gitops-config`) | ✅ done |
 | **Backend workload convergence** | The meshed backend rollout must schedule + pass its probes through the proxy — it fails if its pooler is still churning | [`08.85`](../scripts/08.85-service-mesh.sh) restarts only the app deployments + waits for the poolers to leave the mesh first | ✅ done |
+| **Cap the sidecar's resource limits** | CSM's istio-proxy defaults to **`limits.cpu=2`** — *double* the app's own 1 CPU — so every meshed pod costs **3 CPU** of `microservices-quota` (`limits.cpu: "10"`) instead of 1. Two meshed apps pin usage at **8.4/10**, so a rolling update's **surge pod (+3)** is rejected: `exceeded quota` → the Deployment never progresses → ArgoCD goes **Degraded** → `argocd app wait --health` **fails the build (exit 20)** | `sidecar.istio.io/proxyCPULimit: "500m"` + `sidecar.istio.io/proxyMemoryLimit: "512Mi"` pod annotations in the app chart (`gitops-config`; **self-gating**, like `holdApplicationUntilProxyStarts`). Drops a meshed pod to **1.5 CPU** → steady **5.4/10**, both rollouts surging **8.4/10** | ✅ done |
+
+> **⚠️ The sidecar-vs-quota trap bites on the NEXT deploy, not at flip time.** Enabling the
+> mesh looks clean — the already-running pods simply gain a sidecar and stay up. The failure
+> only surfaces on the **next rolling update**, when the surge pod needs another 3 CPU the
+> quota no longer has. That makes it read like a broken pipeline (`ERROR: script returned
+> exit code 20`) rather than a mesh side-effect. **Caught live** on Jenkins build
+> `jhipstersamplemicroservice #2` (2026-07-15): the app's own tests, scans and image push all
+> passed; only `argocd app wait --health` failed, 10 minutes later, because the new
+> ReplicaSet could never create a single pod. Managed CSM **does honour** the
+> `sidecar.istio.io/proxy*Limit` annotations (verified: the new pod's proxy came up at
+> `limits.cpu=500m`). When you mesh a new workload, re-check the arithmetic:
+> `kubectl get resourcequota microservices-quota -n microservices` vs
+> *(app limit + sidecar limit) × pods × (1 + surge)*.
 
 **Convergence note**: flipping the mesh **on** against an *already-running* cluster
 settles over a few restarts — ArgoCD must sync the app annotations + the CNPG
