@@ -547,6 +547,36 @@ jobs:
             }
           done
 
+      # Adopt a lingering Binary Authorization KMS keyring/key before apply (docs/104 §2,
+      # docs/507 § Rebuild-safety). KMS keyrings can NEVER be deleted and keys only enter a
+      # scheduled-destruction window, so a prior Decom dropped them from Terraform STATE
+      # while they LINGER in GCP — a plain create then 409s (`KeyRing ... already exists`,
+      # seen live: run 29433092250). Import them into state ONLY when they already exist, so
+      # apply converges instead of colliding. Idempotent: skipped when binauthz is off,
+      # when the keyring doesn't exist yet (a truly-fresh project — apply just creates it,
+      # which is why an import BLOCK can't be used: it would fail plan there), and when the
+      # object is already in state (`|| true` swallows the "Resource already managed" note).
+      - name: Adopt lingering KMS keyring/key (Binary Authorization rebuild-safety)
+        if: ${{ inputs.binary_authorization }}
+        working-directory: terraform/gke
+        env:
+          PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: |
+          # var.region drives the keyring location (security.tf: location = var.region) and
+          # is never overridden via TF_VAR in CI, so it is the variables.tf default. Kept in
+          # step with test/e2e.sh's GCP_REGION fallback; change both if the default moves.
+          REGION="europe-southwest1"
+          KR="projects/${PROJECT_ID}/locations/${REGION}/keyRings/jenkins-2026-binauthz"
+          if gcloud kms keyrings describe jenkins-2026-binauthz --location "${REGION}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
+            echo "KMS keyring exists in GCP but not in fresh state — importing so apply adopts it."
+            terraform import -input=false "google_kms_key_ring.binauthz[0]" "${KR}" || true
+            if gcloud kms keys describe jenkins-2026-attestor-key --keyring jenkins-2026-binauthz --location "${REGION}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
+              terraform import -input=false "google_kms_crypto_key.binauthz[0]" "${KR}/cryptoKeys/jenkins-2026-attestor-key" || true
+            fi
+          else
+            echo "No lingering KMS keyring — apply will create it fresh."
+          fi
+
       - name: Terraform apply (provision GKE cluster, ~10 min)
         working-directory: terraform/gke
         env:

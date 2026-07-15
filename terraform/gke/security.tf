@@ -39,7 +39,19 @@ resource "google_gke_hub_membership" "mesh" {
     }
   }
 
-  depends_on = [google_project_service.apis]
+  # Register the Fleet membership only once the cluster is IDLE. The Fleet API rejects a
+  # membership create/delete while any cluster operation is in flight (`Error code 9 …
+  # cluster is currently running another operation. Please retry after the operation is
+  # done`, seen live on the first from-zero rebuild — run 29433092250). Depending on the
+  # node pool — the last thing to settle after the cluster itself — makes Terraform wait
+  # for the whole cluster+pool create to finish before touching Fleet, and the delete
+  # timeout gives the symmetric Decom room for the same drain (the workflow also waits).
+  depends_on = [google_project_service.apis, google_container_node_pool.primary]
+
+  timeouts {
+    create = "20m"
+    delete = "20m"
+  }
 }
 
 resource "google_gke_hub_feature" "mesh" {
@@ -74,11 +86,19 @@ resource "google_gke_hub_feature_membership" "mesh" {
 # push (single source, all four engines). All count-gated on the flag → off = no-op.
 #
 # Rebuild-safety (docs/104): the keyring/key + attestor + note are persistent,
-# fixed-identity. KMS keys enter a SCHEDULED-DESTRUCTION window (they are never
-# hard-deleted immediately), so a same-name Decom+Day1 within the window must
-# TOLERATE an existing keyring/key — hence no prevent_destroy and stable names;
-# the keyring lingering is harmless. Old attestations (signed by the prior key)
-# simply become invalid, which is fine: a rebuild rebuilds and re-signs the images.
+# fixed-identity. KMS keyrings and keys are NEVER hard-deleted — a keyring cannot be
+# deleted at all, and a key only enters a SCHEDULED-DESTRUCTION window — so `Decom`'s
+# `terraform destroy` drops them from STATE while they LINGER in GCP. A same-name
+# Decom+Day1 must therefore ADOPT the survivors, not re-create them: a bare create of an
+# existing keyring 409s (`KeyRing ... already exists`, seen live on the first from-zero
+# rebuild — run 29433092250), the fixed-identity-collision hazard (docs/104 §2). Stable
+# names + no prevent_destroy are necessary but NOT sufficient — the crypto-key re-adopts
+# its scheduled-destroyed version by name, but a keyring create still 409s. The adoption
+# is done by the Day1 workflow's "Adopt lingering KMS keyring/key" step, which
+# `terraform import`s them ONLY when they already exist in GCP (an import block can't be
+# used here: it fails `plan` on a truly-fresh project where the keyring does NOT exist
+# yet). Old attestations signed by the prior key simply become invalid — fine, a rebuild
+# re-signs its images.
 resource "google_kms_key_ring" "binauthz" {
   count = var.binary_authorization_enabled ? 1 : 0
 
