@@ -11,6 +11,15 @@ targetRevision: main
 # HTTPS on 7007 + HTTPS probes + the backstage-tls cert mount).
 backendTls: false
 
+# The ACTIVE CI engine (config.yaml ci.engine), passed via helm.parameters like
+# backendTls. The engines are mutually exclusive, and each one's Kubernetes-plugin custom
+# resources only exist while it is installed — so when this is tekton/argoworkflows the
+# child layers the matching helm/backstage/values-ci-<engine>.yaml, which extends the
+# base customResources list with that engine's CRDs. For jenkins/githubactions there is
+# no overlay: neither surfaces runs through the Kubernetes plugin, so the base list
+# (Argo Rollouts only) is exactly right and no CRD is queried that isn't there.
+ciEngine: jenkins
+
 # Namespace everything (the CNPG Cluster + the chart) deploys into. Created by
 # 01-namespaces.sh (with the IAP/app secrets already in place).
 namespace: backstage

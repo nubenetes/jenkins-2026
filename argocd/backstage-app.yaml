@@ -12,7 +12,7 @@ spec:
   # `backstage-chart` child Application (the OFFICIAL backstage/charts chart +
   # the helm/backstage values overlays; deliberately NOT named `backstage` -
   # that is THIS app, and a same-name child overwrites its parent). The {{repoUrl}}/{{branchStable}}/
-  # {{backendTls}}/{{chartVersion}}/{{imageRegistry}}/{{imageRepository}}/
+  # {{backendTls}}/{{ciEngine}}/{{chartVersion}}/{{imageRegistry}}/{{imageRepository}}/
   # {{imageTag}} placeholders are substituted by scripts/08.95-backstage.sh at
   # apply time (from config.yaml + the deploy branch) and passed down as helm
   # parameters, so the child's git source tracks the active branch, the image
@@ -33,6 +33,13 @@ spec:
         # overlay and ArgoCD self-heals Backstage back to plain HTTP.
         - name: backendTls
           value: '{{backendTls}}'
+        # The ACTIVE engine (config.yaml ci.engine). Selects the matching
+        # values-ci-<engine>.yaml overlay for the Kubernetes plugin's customResources,
+        # so no engine's CRDs are queried while it isn't installed. Re-rendered every
+        # run like backendTls, so switching engines re-emits the child with the right
+        # overlay (or none) and ArgoCD self-heals.
+        - name: ciEngine
+          value: '{{ciEngine}}'
         - name: chart.version
           value: '{{chartVersion}}'
         - name: image.registry
