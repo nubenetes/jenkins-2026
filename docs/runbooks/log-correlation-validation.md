@@ -70,10 +70,17 @@ kubectl -n "$NS" rollout status  deploy/jhipstersamplemicroservice --timeout=180
 If `JAVA_TOOL_OPTIONS` lacks `-javaagent`, the auto-instrumentation CR / Deployment
 race lost — restart again.
 
+Select the **app container by name** — never `containers[0]`: with the service mesh on
+([506](../506-SERVICE-MESH.md)) the first container is `istio-proxy`, and if the agent
+landed *there* the app is not instrumented at all.
+
 ```bash
 kubectl -n "$NS" get pod -l app.kubernetes.io/name=gateway \
-  -o jsonpath='{.items[0].spec.containers[0].env[?(@.name=="JAVA_TOOL_OPTIONS")].value}{"\n"}'
-# Expect a value containing: -javaagent:/otel-auto-instrumentation/...
+  -o jsonpath="{.items[0].spec.containers[?(@.name=='gateway')].env[?(@.name=='JAVA_TOOL_OPTIONS')].value}{'\n'}"
+# Expect a value containing: -javaagent:/otel-auto-instrumentation-java-gateway/...
+# The path is named after the container it was injected into — if it reads
+# ...-java-istio-proxy/, the mesh stole the agent: pin it with
+# instrumentation.opentelemetry.io/container-names on the pod template (docs/506).
 ```
 
 ## 4. Generate traffic

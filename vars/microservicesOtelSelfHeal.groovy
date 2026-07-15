@@ -12,10 +12,23 @@
  * vars/microservicesDeploy.groovy so the check — and any restart it triggers —
  * is visible as its own stage in the build UI. The same self-heal exists in the
  * other engines' gitops-deploy task/step (docs/404 · 405 · 406).
+ *
+ * The check inspects ONLY the app container (named after the service in the chart).
+ * Scanning every container in the pod is exactly what let a real bug through: with
+ * the service mesh on, CSM injects istio-proxy AHEAD of the app and the OTel Operator
+ * instruments the FIRST container unless instrumentation.opentelemetry.io/container-names
+ * pins it — so the SIDECAR carried the -javaagent, this stage happily reported "✓",
+ * and the app ran uninstrumented with every OTel-fed Grafana panel on "No data".
+ * See docs/506 § App mesh-readiness.
+ *
+ * Outcomes (exit code → build result, same convention as vars/microservicesK6Smoke):
+ *   0   agent on the app container (possibly after a self-healing restart), or no pod yet
+ *   99  agent present but on the WRONG container → UNSTABLE (a restart cannot fix it)
+ *   *   anything else → the stage fails
  */
 def call(Map cfg) {
   container('helm') {
-    sh """
+    def rc = sh(returnStatus: true, script: """
       set -eux
       NAMESPACE="${cfg.namespace}"
       DEPLOY="${cfg.serviceName}"
@@ -23,36 +36,68 @@ def call(Map cfg) {
       # Wait for at least one Ready pod before checking injection
       kubectl -n "\${NAMESPACE}" rollout status deploy/"\${DEPLOY}" --timeout=120s || true
 
-      # Get JAVA_TOOL_OPTIONS from a running pod.
       # Pods carry app.kubernetes.io/name, not plain app — use that label.
       POD=\$(kubectl -n "\${NAMESPACE}" get pods \
             -l "app.kubernetes.io/name=\${DEPLOY}" \
             --field-selector=status.phase=Running -o name 2>/dev/null | head -1)
       if [[ -z "\${POD}" ]]; then
         echo "No running pod for \${DEPLOY} — skipping OTel injection check"
-      else
-        JTO=\$(kubectl -n "\${NAMESPACE}" get "\${POD}" \
-               -o jsonpath='{range .spec.containers[*]}{.env[?(@.name=="JAVA_TOOL_OPTIONS")].value}{end}' \
-               2>/dev/null || true)
-        if echo "\${JTO}" | grep -q -- '-javaagent'; then
-          echo "OTel agent already injected in \${DEPLOY} ✓"
-        else
-          echo "OTel agent NOT injected in \${DEPLOY} (race condition) — rolling restart to trigger injection"
-          kubectl -n "\${NAMESPACE}" rollout restart deploy/"\${DEPLOY}"
-          kubectl -n "\${NAMESPACE}" rollout status deploy/"\${DEPLOY}" --timeout=120s
-          POD2=\$(kubectl -n "\${NAMESPACE}" get pods \
-                 -l "app.kubernetes.io/name=\${DEPLOY}" \
-                 --field-selector=status.phase=Running -o name 2>/dev/null | head -1)
-          JTO2=\$(kubectl -n "\${NAMESPACE}" get "\${POD2}" \
-                 -o jsonpath='{range .spec.containers[*]}{.env[?(@.name=="JAVA_TOOL_OPTIONS")].value}{end}' \
-                 2>/dev/null || true)
-          if echo "\${JTO2}" | grep -q -- '-javaagent'; then
-            echo "OTel agent injected after restart ✓"
-          else
-            echo "WARNING: OTel agent still not injected after restart — check OTel Operator webhook"
-          fi
-        fi
+        exit 0
       fi
-    """
+
+      # ONLY the app container counts — it is named after the service in the chart.
+      app_jto() {
+        kubectl -n "\${NAMESPACE}" get "\$1" \
+          -o jsonpath="{.spec.containers[?(@.name=='\${DEPLOY}')].env[?(@.name=='JAVA_TOOL_OPTIONS')].value}" \
+          2>/dev/null || true
+      }
+      # Every container as name=value — used ONLY to tell a mis-target from the race.
+      all_jto() {
+        kubectl -n "\${NAMESPACE}" get "\$1" \
+          -o jsonpath='{range .spec.containers[*]}{.name}{"="}{.env[?(@.name=="JAVA_TOOL_OPTIONS")].value}{" "}{end}' \
+          2>/dev/null || true
+      }
+
+      if app_jto "\${POD}" | grep -q -- '-javaagent'; then
+        echo "OTel agent injected in the \${DEPLOY} APP container ✓"
+        exit 0
+      fi
+
+      # The agent exists somewhere in the pod, just not on the app → MIS-TARGET, not the
+      # webhook race. A restart cannot fix it: the operator would pick the same wrong
+      # (first) container again. Say so precisely instead of looping or passing silently.
+      if all_jto "\${POD}" | grep -q -- '-javaagent'; then
+        echo "ERROR: the OTel agent landed on the WRONG container — \${DEPLOY} is NOT instrumented,"
+        echo "       so it emits no traces/metrics and its Grafana panels will read 'No data'."
+        echo "       per-container JAVA_TOOL_OPTIONS: \$(all_jto "\${POD}")"
+        echo "       A rollout restart will NOT fix this. The OTel Operator instruments the FIRST"
+        echo "       container, and a service-mesh sidecar (istio-proxy) is injected ahead of the app."
+        echo "       FIX: set instrumentation.opentelemetry.io/container-names=\${DEPLOY} on the pod"
+        echo "       template in the gitops-config chart. See docs/506 § App mesh-readiness."
+        exit 99
+      fi
+
+      echo "OTel agent NOT injected in \${DEPLOY} (webhook race) — rolling restart to trigger injection"
+      kubectl -n "\${NAMESPACE}" rollout restart deploy/"\${DEPLOY}"
+      kubectl -n "\${NAMESPACE}" rollout status deploy/"\${DEPLOY}" --timeout=120s
+      POD2=\$(kubectl -n "\${NAMESPACE}" get pods \
+             -l "app.kubernetes.io/name=\${DEPLOY}" \
+             --field-selector=status.phase=Running -o name 2>/dev/null | head -1)
+      if [[ -n "\${POD2}" ]] && app_jto "\${POD2}" | grep -q -- '-javaagent'; then
+        echo "OTel agent injected in the \${DEPLOY} APP container after restart ✓"
+        exit 0
+      fi
+      echo "WARNING: OTel agent still not injected after restart — check the OTel Operator webhook"
+      exit 0
+    """)
+
+    if (rc == 99) {
+      // Mis-targeted agent: the deploy itself is fine, but the service is emitting nothing.
+      // Surface it as UNSTABLE (the k6-smoke convention) rather than passing green — a
+      // silent pass is precisely how this bug reached the dashboards unnoticed.
+      unstable("OTel agent injected into the wrong container for ${cfg.serviceName} — the app is NOT instrumented (see the stage log)")
+    } else if (rc != 0) {
+      error("OTel self-heal check failed for ${cfg.serviceName} (exit ${rc})")
+    }
   }
 }
