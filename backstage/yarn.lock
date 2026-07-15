@@ -2840,6 +2840,19 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@backstage/plugin-catalog-backend-module-scaffolder-entity-model@npm:0.2.22":
+  version: 0.2.22
+  resolution: "@backstage/plugin-catalog-backend-module-scaffolder-entity-model@npm:0.2.22"
+  dependencies:
+    "@backstage/backend-plugin-api": "npm:^1.9.3"
+    "@backstage/catalog-model": "npm:^1.9.0"
+    "@backstage/plugin-catalog-common": "npm:^1.1.10"
+    "@backstage/plugin-catalog-node": "npm:^2.2.3"
+    "@backstage/plugin-scaffolder-common": "npm:^2.2.1"
+  checksum: 10c0/20337a55df3fc307ac0e32a96659099abeee436a6cdc03ce40562e081db56037032a776d0f8dc1fd029805a4475b17e0a222ae2976f4e6c745fd3bcdcc066828
+  languageName: node
+  linkType: hard
+
 "@backstage/plugin-catalog-backend@npm:3.8.0, @backstage/plugin-catalog-backend@npm:^3.8.0":
   version: 3.8.0
   resolution: "@backstage/plugin-catalog-backend@npm:3.8.0"
@@ -13365,6 +13378,7 @@ __metadata:
     "@backstage/plugin-catalog-backend": "npm:3.8.0"
     "@backstage/plugin-catalog-backend-module-github": "npm:0.13.3"
     "@backstage/plugin-catalog-backend-module-logs": "npm:0.1.23"
+    "@backstage/plugin-catalog-backend-module-scaffolder-entity-model": "npm:0.2.22"
     "@backstage/plugin-kubernetes-backend": "npm:0.21.5"
     "@backstage/plugin-permission-backend": "npm:0.7.13"
     "@backstage/plugin-permission-backend-module-allow-all-policy": "npm:0.2.20"

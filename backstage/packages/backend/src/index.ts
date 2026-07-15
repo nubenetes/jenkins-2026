@@ -29,6 +29,15 @@ backend.add(import('@backstage/plugin-auth-backend-module-github-provider'));
 backend.add(import('@backstage/plugin-catalog-backend'));
 backend.add(import('@backstage/plugin-catalog-backend-module-github'));
 backend.add(import('@backstage/plugin-catalog-backend-module-logs'));
+// Teaches the CATALOG to validate `kind: Template`. Separate package from the
+// scaffolder-backend below, and required even though that one is loaded: without it
+// the catalog READS the template, then drops it with a warn-level
+// "No processor recognized the entity ... possibly caused by a foreign kind" — the
+// Create page just shows "No templates found" and nothing surfaces as an error.
+// (allowing Template in catalog.rules is necessary but NOT sufficient.)
+backend.add(
+  import('@backstage/plugin-catalog-backend-module-scaffolder-entity-model'),
+);
 
 // permissions: allow-all - IAP already restricts WHO gets in; everyone who
 // does is a platform admin (docs/505 § Credentials & RBAC).
