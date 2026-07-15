@@ -84,6 +84,9 @@ if [[ "$(j2026_service_mesh_active)" != "true" ]]; then
     fi
     kubectl delete peerauthentication default -n "${ns}" --ignore-not-found >/dev/null 2>&1 || true
     kubectl delete peerauthentication gateway-ingress-permissive -n "${ns}" --ignore-not-found >/dev/null 2>&1 || true
+    for _svc in ${J2026_MICROSERVICES_SERVICES:-}; do
+      kubectl delete peerauthentication "${_svc}-nonmesh-permissive" -n "${ns}" --ignore-not-found >/dev/null 2>&1 || true
+    done
     kubectl delete authorizationpolicy allow-mesh-internal -n "${ns}" --ignore-not-found >/dev/null 2>&1 || true
   done
   kubectl delete peerauthentication default -n istio-system --ignore-not-found >/dev/null 2>&1 || true
@@ -146,6 +149,40 @@ spec:
       mode: PERMISSIVE
 YAML
   fi
+  # 4b. IN-CLUSTER NON-MESH CALLER exception. The pipeline's Smoke Test curls each service's
+  # health endpoint from a throwaway pod in the JENKINS namespace — which is NOT meshed — so a
+  # STRICT mesh resets that connection and the build dies on `curl exit 56` (Failure receiving
+  # network data). Same class as the ingress-edge rule above, different caller: anything
+  # in-cluster that talks to a meshed pod without being a mesh client itself. Keep ONLY the
+  # app's own HTTP port PERMISSIVE on each non-gateway service (the gateway has its rule
+  # above); the east-west gateway→backend hop still negotiates identity mTLS automatically
+  # between the two sidecars, and PERMISSIVE still ACCEPTS that mTLS. See docs/506.
+  for _svc in ${J2026_MICROSERVICES_SERVICES}; do
+    [[ "${_svc}" == "gateway" ]] && continue
+    kubectl get deployment "${_svc}" -n "${ns}" >/dev/null 2>&1 || continue
+    _port="$(kubectl get deployment "${_svc}" -n "${ns}" \
+      -o jsonpath="{.spec.template.spec.containers[?(@.name=='${_svc}')].ports[0].containerPort}" 2>/dev/null)"
+    if [[ -z "${_port}" ]]; then
+      log_warn "  ${ns}/${_svc}: could not resolve the app containerPort — skipping its non-mesh exception"
+      continue
+    fi
+    kubectl apply -f - >/dev/null <<YAML || log_warn "  ${ns}/${_svc} non-mesh PeerAuthentication apply reported an issue (non-fatal)"
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: ${_svc}-nonmesh-permissive
+  namespace: ${ns}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ${_svc}
+  mtls:
+    mode: ${J2026_SERVICE_MESH_MTLS}
+  portLevelMtls:
+    ${_port}:
+      mode: PERMISSIVE
+YAML
+  done
   # 5. Before restarting the apps, wait (bounded) for the CNPG poolers to LEAVE the mesh
   # (become sidecar-free). On a flag-flip against an already-running cluster ArgoCD is still
   # syncing the sidecar.istio.io/inject=false onto the CNPG CRs; if an app meshes while its
