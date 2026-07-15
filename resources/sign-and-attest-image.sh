@@ -20,9 +20,10 @@
 #                            (default: J2026_BINARY_AUTHORIZATION_ENABLED, else false)
 #   PROJECT_ID               GCP project (default: gcloud config value)
 #   BINAUTHZ_ATTESTOR        attestor name (default: jenkins-2026-attestor)
-#   BINAUTHZ_KMS_KEYVERSION  full KMS key VERSION resource name; if unset it is derived
-#                            from PROJECT_ID + the LOCATION/KEYRING/KEY/VERSION below
-#                            (defaults match terraform/gke/security.tf).
+#   BINAUTHZ_KMS_KEYVERSION  full KMS key VERSION resource name (projects/.../cryptoKeyVersions/N).
+#                            If unset it is DERIVED FROM THE ATTESTOR's own trusted key —
+#                            region-agnostic, so it always matches wherever terraform/gke created
+#                            the key (location = var.region, NOT a fixed region). Set it to override.
 set -euo pipefail
 
 IMAGE="${1:-${IMAGE:-}}"
@@ -40,11 +41,23 @@ command -v gcloud >/dev/null 2>&1 || { echo "[sign-and-attest] ERROR: gcloud not
 
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null)}"
 BINAUTHZ_ATTESTOR="${BINAUTHZ_ATTESTOR:-jenkins-2026-attestor}"
-BINAUTHZ_KMS_LOCATION="${BINAUTHZ_KMS_LOCATION:-europe-west1}"
-BINAUTHZ_KMS_KEYRING="${BINAUTHZ_KMS_KEYRING:-jenkins-2026-binauthz}"
-BINAUTHZ_KMS_KEY="${BINAUTHZ_KMS_KEY:-jenkins-2026-attestor-key}"
-BINAUTHZ_KMS_VERSION="${BINAUTHZ_KMS_VERSION:-1}"
-BINAUTHZ_KMS_KEYVERSION="${BINAUTHZ_KMS_KEYVERSION:-projects/${PROJECT_ID}/locations/${BINAUTHZ_KMS_LOCATION}/keyRings/${BINAUTHZ_KMS_KEYRING}/cryptoKeys/${BINAUTHZ_KMS_KEY}/cryptoKeyVersions/${BINAUTHZ_KMS_VERSION}}"
+# The KMS key lives wherever terraform/gke created it — location = var.region, NOT a fixed
+# region. Hard-coding a location drifts from var.region and breaks signing (a real bug caught in
+# live enforce validation: a europe-west1 default vs a europe-southwest1 cluster → NOT_FOUND). So
+# DERIVE the exact key version from the ATTESTOR's own trusted key: region-agnostic, always in sync
+# with terraform. An explicit BINAUTHZ_KMS_KEYVERSION still wins (e.g. multi-key attestors).
+if [[ -z "${BINAUTHZ_KMS_KEYVERSION:-}" ]]; then
+  _attestor_key="$(gcloud container binauthz attestors describe "${BINAUTHZ_ATTESTOR}" \
+    --project="${PROJECT_ID}" --format='value(userOwnedGrafeasNote.publicKeys[0].id)' 2>/dev/null || true)"
+  # The attestor stores it as //cloudkms.googleapis.com/v1/projects/.../cryptoKeyVersions/N;
+  # sign-and-create wants the bare projects/.../cryptoKeyVersions/N — strip the URL prefix.
+  BINAUTHZ_KMS_KEYVERSION="${_attestor_key#//cloudkms.googleapis.com/v1/}"
+fi
+if [[ -z "${BINAUTHZ_KMS_KEYVERSION}" ]]; then
+  echo "[sign-and-attest] ERROR: could not resolve the KMS key version from attestor ${BINAUTHZ_ATTESTOR}." >&2
+  echo "[sign-and-attest]        pass BINAUTHZ_KMS_KEYVERSION=projects/.../cryptoKeyVersions/N explicitly." >&2
+  exit 1
+fi
 
 # 1. Resolve the tag → immutable digest (never sign a mutable tag).
 if [[ "${IMAGE}" == *"@sha256:"* ]]; then
@@ -70,7 +83,9 @@ if gcloud beta container binauthz attestations sign-and-create \
     --attestor-project="${PROJECT_ID}" \
     --keyversion="${BINAUTHZ_KMS_KEYVERSION}" >/tmp/binauthz-sign.log 2>&1; then
   echo "[sign-and-attest] Attestation created for ${IMAGE_DIGEST}."
-elif grep -qi "already exists" /tmp/binauthz-sign.log; then
+elif grep -qiE "already exists|ALREADY_EXISTS|subject of a conflict|could not create occurrence" /tmp/binauthz-sign.log; then
+  # A re-sign of the same digest returns ALREADY_EXISTS *or* a Grafeas occurrence "conflict"
+  # (same meaning, different wording) — both mean the attestation is already there. Idempotent.
   echo "[sign-and-attest] Attestation already exists for ${IMAGE_DIGEST} (idempotent) — OK."
 else
   echo "[sign-and-attest] ERROR: attestation failed:" >&2
