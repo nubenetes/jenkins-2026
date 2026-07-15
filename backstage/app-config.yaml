@@ -202,7 +202,11 @@ techdocs:
 
 catalog:
   rules:
-    - allow: [Component, System, Domain, Resource, API, Group, User, Location]
+    # Template = the Scaffolder golden paths (docs/505 § Scaffolder). Without it the
+    # catalog REJECTS backstage/catalog/templates/**, and the Create page just sits
+    # empty with the rejection buried in the backend log.
+    - allow:
+        [Component, System, Domain, Resource, API, Group, User, Location, Template]
   # The catalog tracks the DEPLOY branch (CATALOG_BRANCH = main|develop, the
   # J2026_SELF_REPO_BRANCH auto-track) - a Day1 from develop reads develop's
   # catalog before the promotion PR, like the Jenkins shared library.

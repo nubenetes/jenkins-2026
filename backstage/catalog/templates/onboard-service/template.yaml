@@ -1,0 +1,235 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: onboard-service
+  title: Onboard an existing service
+  description: |
+    Wire an EXISTING Java service repo into this platform: the CI registry all four
+    engines read, the Backstage catalog, and the GitOps deploy values. Opens one pull
+    request per repo — it never pushes to a branch, and never creates a repo.
+  tags:
+    - java
+    - microservice
+    - onboarding
+spec:
+  owner: platform-team
+  type: service
+
+  # ---------------------------------------------------------------------------
+  # Why this ONBOARDS instead of CREATING (docs/505 § Scaffolder). The toil here was
+  # never writing code: it is that ONE service must be declared in THREE files across
+  # TWO repos, each with its own contract, where a single wrong annotation breaks a
+  # tab silently. That wiring is what this automates. Generating the app skeleton is a
+  # separate, later increment — it needs a template repo and a token allowed to create
+  # repos, and neither is required for the value below.
+  #
+  # How it edits files it did not write: all three targets are APPEND-ONLY by
+  # construction (`services:` is the last key of both YAMLs; the catalog is a
+  # multi-document stream), so a new service is a pure append. No YAML parse, no merge,
+  # no reformat — the comments those files are full of, which carry most of the design
+  # rationale, survive untouched. j2026:file:append asserts an anchor so that if the
+  # shape ever changes, the template fails loudly instead of opening a corrupt PR.
+  #
+  # Only the touched files are fetched (fetch:plain:file), and
+  # publish:github:pull-request only creates/updates the files it is given — nothing
+  # else in either repo is in scope.
+  # ---------------------------------------------------------------------------
+  parameters:
+    - title: The service
+      required: [name, repoUrl, port]
+      properties:
+        name:
+          title: Service name
+          type: string
+          description: Lowercase, no spaces. Becomes the Jenkins job, the k8s workload name AND the catalog entity — keep them identical, several selectors join on it.
+          pattern: '^[a-z][a-z0-9-]{2,29}$'
+          ui:autofocus: true
+        description:
+          title: Description
+          type: string
+          description: One line, shown in the catalog.
+          default: A service onboarded via Backstage
+        repoUrl:
+          title: Source repository
+          type: string
+          description: The EXISTING repo to onboard, e.g. https://github.com/nubenetes/my-service.git — it is only read, never modified.
+          pattern: '^https://github\.com/[^/]+/[^/]+\.git$'
+        port:
+          title: Container port
+          type: number
+          description: The port the app listens on. 8080 and 8081 are taken by gateway / jhipstersamplemicroservice.
+          default: 8082
+        healthPath:
+          title: Health endpoint
+          type: string
+          description: Used by the pipeline's smoke test and the k8s probes. The Spring Boot Actuator default is shown.
+          default: /management/health
+
+    - title: Details
+      properties:
+        module:
+          title: Maven module
+          type: string
+          description: Leave empty unless the repo is a monorepo and the app lives in a subfolder.
+          default: ''
+        owner:
+          title: Owner
+          type: string
+          description: Catalog owner — must be a Group that exists in backstage/catalog/org.yaml.
+          default: platform-team
+
+  steps:
+    # =========================================================================
+    # PR 1 — jenkins-2026: the CI registry + the catalog entity.
+    #
+    # Fetched from and targeted at DEVELOP, never main: this repo is strict GitFlow —
+    # main is reachable only via a PR from develop, enforced by the gitflow-guard
+    # required check with enforce_admins (CLAUDE.md § branch protection). A PR aimed at
+    # main would simply be rejected.
+    # =========================================================================
+    - id: fetch-registry
+      name: Fetch the CI registry
+      action: fetch:plain:file
+      input:
+        url: https://github.com/nubenetes/jenkins-2026/blob/develop/jenkins/pipelines/seed/services.yaml
+        targetPath: infra/jenkins/pipelines/seed/services.yaml
+
+    - id: fetch-catalog
+      name: Fetch the catalog
+      action: fetch:plain:file
+      input:
+        url: https://github.com/nubenetes/jenkins-2026/blob/develop/backstage/catalog/services.yaml
+        targetPath: infra/backstage/catalog/services.yaml
+
+    # The registry ALL FOUR engines read (Jenkins seed, Tekton, GHA render, Argo).
+    - id: append-registry
+      name: Add to the CI registry
+      action: j2026:file:append
+      input:
+        path: infra/jenkins/pipelines/seed/services.yaml
+        anchor: 'services:'
+        content: |
+
+            - name: ${{ parameters.name }}
+              type: java # onboarded via the Backstage scaffolder
+              repoUrl: ${{ parameters.repoUrl }}
+              module: "${{ parameters.module }}"
+              port: ${{ parameters.port }}
+              healthPath: ${{ parameters.healthPath }}
+
+    # The catalog entity. Annotations for EVERY engine coexist on purpose — the CI/CD
+    # tab picks the active one at runtime from jenkins2026.ciEngine, so one catalog
+    # serves any engine (see the header of backstage/catalog/services.yaml).
+    # Deliberately NO backstage.io/kubernetes-namespace: the k8s plugin applies one
+    # namespace to every object type it fetches, which cannot span the engines'
+    # namespaces — omitting it makes the fetch cluster-wide and the label selector do
+    # the scoping. Removing that omission silently empties the CI/CD tab.
+    - id: append-catalog
+      name: Add to the catalog
+      action: j2026:file:append
+      input:
+        path: infra/backstage/catalog/services.yaml
+        anchor: 'kind: Component'
+        content: |
+          ---
+          apiVersion: backstage.io/v1alpha1
+          kind: Component
+          metadata:
+            name: ${{ parameters.name }}
+            description: ${{ parameters.description }}
+            annotations:
+              github.com/project-slug: ${{ parameters.repoUrl | replace("https://github.com/", "") | replace(".git", "") }}
+              jenkins.io/job-full-name: ${{ parameters.name }}
+              tekton.dev/cicd: "true"
+              argocd/app-name: microservices-stable
+              backstage.io/kubernetes-label-selector: 'app.kubernetes.io/name=${{ parameters.name }}'
+              # Shared docs: the platform's TechDocs (onboarded repos ship no mkdocs site).
+              backstage.io/techdocs-entity: component:default/jenkins-2026-infra
+              grafana/dashboard-selector: "tags @> 'microservices'"
+              grafana/alert-label-selector: 'project=jenkins-2026'
+            links:
+              - url: ${{ parameters.repoUrl | replace(".git", "") }}
+                title: Source
+                icon: github
+          spec:
+            type: service
+            lifecycle: production
+            owner: ${{ parameters.owner }}
+            system: microservices
+
+    - id: pr-infra
+      name: Open the PR on jenkins-2026
+      action: publish:github:pull-request
+      input:
+        repoUrl: github.com?owner=nubenetes&repo=jenkins-2026
+        branchName: onboard-${{ parameters.name }}
+        targetBranchName: develop
+        title: 'feat(services): onboard ${{ parameters.name }}'
+        description: |
+          Onboards **${{ parameters.name }}** (${{ parameters.repoUrl }}) via the Backstage
+          *Onboard an existing service* template.
+
+          - `jenkins/pipelines/seed/services.yaml` — the registry all four CI engines read
+          - `backstage/catalog/services.yaml` — the catalog entity
+
+          The GitOps deploy values land in a companion PR on `jenkins-2026-gitops-config`.
+
+          Targets `develop`: this repo is strict GitFlow, `main` only via the promotion PR.
+        sourcePath: ./infra
+
+    # =========================================================================
+    # PR 2 — jenkins-2026-gitops-config: the deploy values.
+    #
+    # That repo's main is DIRECT-PUSH by design (the pipeline's GitOps Update stage
+    # pushes image tags to it, and require-PR would wedge every deploy — CLAUDE.md).
+    # A PR is still the right call HERE: this is a human-reviewed structural change,
+    # not a machine-managed tag bump.
+    # =========================================================================
+    - id: fetch-gitops
+      name: Fetch the GitOps values
+      action: fetch:plain:file
+      input:
+        url: https://github.com/nubenetes/jenkins-2026-gitops-config/blob/main/helm/microservices/values-stable.yaml
+        targetPath: gitops/helm/microservices/values-stable.yaml
+
+    - id: append-gitops
+      name: Add the deploy values
+      action: j2026:file:append
+      input:
+        path: gitops/helm/microservices/values-stable.yaml
+        anchor: 'services:'
+        content: |
+
+            ${{ parameters.name }}:
+              enabled: true
+              port: ${{ parameters.port }}
+              healthPath: ${{ parameters.healthPath }}
+              replicas: 1
+              env:
+                - name: SPRING_PROFILES_ACTIVE
+                  value: prod
+                - name: MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS
+                  value: "always"
+
+    - id: pr-gitops
+      name: Open the PR on jenkins-2026-gitops-config
+      action: publish:github:pull-request
+      input:
+        repoUrl: github.com?owner=nubenetes&repo=jenkins-2026-gitops-config
+        branchName: onboard-${{ parameters.name }}
+        targetBranchName: main
+        title: 'feat(deploy): onboard ${{ parameters.name }}'
+        description: |
+          Deploy values for **${{ parameters.name }}**, onboarded via the Backstage
+          *Onboard an existing service* template. Companion to the `jenkins-2026` PR.
+
+          Review the port/probe/env block before merging — ArgoCD syncs `main`
+          automatically, so merging deploys it.
+        sourcePath: ./gitops
+
+  output:
+    links:
+      - title: PR — jenkins-2026 (CI registry + catalog)
+        url: ${{ steps['pr-infra'].output.remoteUrl }}
+      - title: PR — gitops-config (deploy values)
+        url: ${{ steps['pr-gitops'].output.remoteUrl }}

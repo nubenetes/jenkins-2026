@@ -12,3 +12,7 @@ spec:
     - ./platform.yaml
     - ./services.yaml
     - ./apis.yaml
+    # Scaffolder golden paths (docs/505 § Scaffolder). Registered here rather than
+    # discovered, exactly like everything else above: the catalog is read from git by
+    # URL, so a merged PR publishes a template with no image rebuild.
+    - ./templates/onboard-service/template.yaml

@@ -2,8 +2,6 @@
  * jenkins-2026 Backstage backend (new backend system, Backstage 1.52.x).
  *
  * Deliberate omissions (docs/505 § Roadmap):
- *  - scaffolder: no golden-path templates yet, and dropping it keeps the
- *    isolated-vm native toolchain (python3/g++) out of the image.
  *  - guest auth: production is always behind Google IAP; add
  *    @backstage/plugin-auth-backend-module-guest-provider locally only.
  *
@@ -51,6 +49,21 @@ backend.add(import('@backstage/plugin-techdocs-backend'));
 // kubernetes: powers the Kubernetes tab AND the Tekton CI/CD tab (+ the Argo
 // Workflows/Rollouts customResources views).
 backend.add(import('@backstage/plugin-kubernetes-backend'));
+
+// scaffolder: the "Onboard a service" golden path (docs/505 § Scaffolder). Its
+// templates only ever open PULL REQUESTS against repos that already exist — no
+// repo is ever created, so the platform's GITHUB_TOKEN needs no extra scope. The
+// github module supplies publish:github:pull-request; the local module below
+// supplies j2026:file:append, the one action the stock set lacks.
+//
+// The Roadmap's stated blocker for this ("drags the isolated-vm native toolchain
+// (python3/g++) into the image") no longer holds and was re-verified before
+// adding it: isolated-vm 6.x ships prebuilds/linux-x64, so `require`ing it works
+// on node:24-trixie-slim with NO compiler — tested in that exact base image. The
+// Dockerfile stays slim.
+backend.add(import('@backstage/plugin-scaffolder-backend'));
+backend.add(import('@backstage/plugin-scaffolder-backend-module-github'));
+backend.add(import('./modules/scaffolderFileAppend'));
 
 // CI/CD + GitOps integrations.
 backend.add(import('@backstage-community/plugin-jenkins-backend'));

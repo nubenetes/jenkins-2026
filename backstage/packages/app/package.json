@@ -31,6 +31,7 @@
     "@backstage/plugin-catalog-react": "3.1.0",
     "@backstage/plugin-kubernetes": "0.12.20",
     "@backstage/plugin-org": "0.7.5",
+    "@backstage/plugin-scaffolder": "1.38.1",
     "@backstage/plugin-search": "1.7.5",
     "@backstage/plugin-search-react": "1.11.5",
     "@backstage/plugin-techdocs": "1.17.7",

@@ -448,6 +448,73 @@ custom frontend-visible config key fed from the runtime ConfigMap), so the
 *same* catalog + the *same* image serve any engine — flip `ci.engine`, re-run,
 and the tab follows.
 
+## Scaffolder
+
+**Sidebar → Create.** One golden path ships today: **"Onboard an existing service"**
+([`backstage/catalog/templates/onboard-service/`](../backstage/catalog/templates/onboard-service/template.yaml)).
+
+### What it automates, and why that is the valuable half
+
+Adding a service to this platform was never about writing code — it is that **one
+service must be declared in three files across two repos**, each with its own
+contract:
+
+| # | File | Repo | Contract |
+|---|---|---|---|
+| 1 | [`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml) | `jenkins-2026` | the registry **all four CI engines** read |
+| 2 | [`backstage/catalog/services.yaml`](../backstage/catalog/services.yaml) | `jenkins-2026` | the catalog entity + its **8 annotations** |
+| 3 | `helm/microservices/values-stable.yaml` | `jenkins-2026-gitops-config` | the deploy values ArgoCD syncs |
+
+File 2 is the trap: every annotation has a reason (documented in that file's
+header), and a wrong one **breaks a tab silently** — the deliberately-absent
+`backstage.io/kubernetes-namespace` being the canonical example. A template
+renders all three deterministically, from one form.
+
+### It never creates a repo — on purpose
+
+Both templates' only write actions are `publish:github:pull-request`, so:
+
+- **No repo-creation scope** is needed. It reuses the platform's existing
+  `GITHUB_TOKEN` (the same `integrations.github` PAT the catalog already uses).
+- The service's **source repo is only read**, never modified.
+- The `jenkins-2026` PR targets **`develop`, never `main`** — this repo is strict
+  GitFlow and the `gitflow-guard` required check would reject a `main` PR
+  (see [CLAUDE.md](../CLAUDE.md)). The gitops-config PR targets `main`, which is
+  direct-push by design for the pipeline but still deserves review for a
+  *structural* change (as opposed to a machine-managed image-tag bump).
+
+### How it edits files it did not write
+
+The stock actions only write **whole files**, and `fetch:template`-ing these three
+from scratch would clobber hand edits and strip the comments that carry most of
+the design rationale. Parsing + re-emitting YAML would reformat them just as badly.
+
+All three targets happen to be **append-only by construction** — `services:` is the
+**last key** of both YAMLs, and the catalog is a **multi-document stream** — so a new
+service is always a *pure append*: no parse, no merge, no reformat, comments intact.
+That is the whole trick, and why the one custom action
+([`j2026:file:append`](../backstage/packages/backend/src/modules/scaffolderFileAppend.ts))
+is ~40 lines instead of a YAML-manipulation library.
+
+Because that property is load-bearing but invisible, the action takes an **`anchor`**:
+text the file must still contain. If someone ever adds a key *after* `services:`, the
+template **fails loudly** instead of appending into the wrong place and opening a
+subtly-corrupt PR.
+
+Only the touched files are fetched (`fetch:plain:file`, not whole clones), and
+`publish:github:pull-request` only creates/updates the files it is handed — nothing
+else in either repo is in scope.
+
+### After the PRs merge
+
+No image rebuild: the catalog is read **from git by URL**
+(`catalog.locations` → `${CATALOG_BRANCH}`), so a merged catalog entry appears on the
+next refresh. The seed job picks the new service out of `services.yaml` and creates its
+pipeline; ArgoCD syncs the gitops values and deploys it.
+
+> `kind: Template` must stay in `catalog.rules` — without it the catalog silently
+> **rejects** every template and the Create page just sits empty.
+
 ## CI-engine integration (the four tabs)
 
 The centerpiece matrix — what the CI/CD tab shows per engine, and what it needs:
@@ -1144,10 +1211,19 @@ survive (image, SM secrets) are exactly the two the platform *wants* persistent
 
 ## Roadmap
 
-- **Scaffolder golden-path templates** — deliberately **not shipped** yet: no
-  templates exist to justify it, and the Scaffolder drags the `isolated-vm`
-  native toolchain into the image build. When "create a new microservice from a
-  template" becomes real, this is the natural next increment.
+- **Scaffolder: "create a new microservice from a template"** — the *second*
+  increment. The first ("Onboard an existing service") **shipped**, see
+  [§ Scaffolder](#scaffolder) — it needs no template repo and no repo-creation
+  scope, because it only opens PRs. Generating the app itself needs both, plus a
+  skeleton that is born Postgres-native/OTel-ready so it would **not** need
+  [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) (that
+  script exists only because the JHipster forks ship MySQL + Hazelcast). Worth
+  doing when a third and fourth service make golden paths real — with two forked
+  demo services there is nothing for it to template.
+  *(The old blocker here — "the Scaffolder drags the `isolated-vm` native
+  toolchain into the image" — was re-tested and no longer holds: `isolated-vm` 6.x
+  ships `prebuilds/linux-x64`, so it loads on `node:24-trixie-slim` with no
+  compiler and the image stays slim.)*
 - **Argo Workflows plugin** — adopt the community plugin the moment the
   donation (backstage/community-plugins **#9192**, open since 2026-05-21)
   ships, replacing the InfoCard deep link with a real runs tab.
