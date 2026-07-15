@@ -20,6 +20,15 @@ locals {
     # compute.networkEndpointGroups.delete (plus the rest of the LB resource
     # graph) without the breadth of roles/compute.admin.
     "roles/compute.loadBalancerAdmin",
+    # The SAME story, one resource type over — surfaced by the opt-in Cloud Service
+    # Mesh (docs/506): CSM creates its own health-check firewall rule (`gke-csm-thc-*`)
+    # on the VPC, GKE does NOT remove it with the cluster, and it pins the network
+    # exactly like a lingering NEG does ("network ... is already being used by ...
+    # firewalls/gke-csm-thc-..."), so Decom.cluster.01 must force-delete it. But despite
+    # its name, roles/compute.networkAdmin grants firewalls.get/list ONLY: GCP files
+    # firewall MUTATIONS under *security*, not *networking*. securityAdmin adds
+    # compute.firewalls.delete — again without the breadth of roles/compute.admin.
+    "roles/compute.securityAdmin",
     "roles/iam.serviceAccountAdmin",
     "roles/iam.serviceAccountUser",
     "roles/resourcemanager.projectIamAdmin",

@@ -242,7 +242,15 @@ jobs:
             # is not in a state written by an older apply — destroy never adds one.)
             for fw in $(echo "${out}" | grep -oP '(?<=/global/firewalls/)[a-z0-9-]+' | sort -u); do
               echo "Deleting firewall rule '${fw}' — GCP reports it pins the network being destroyed"
-              gcloud compute firewall-rules delete "${fw}" --quiet 2>/dev/null || true
+              # Do NOT swallow this. A first version sent stderr to /dev/null and `|| true`'d,
+              # so when the delete failed on a MISSING PERMISSION the sweep looked like it had
+              # worked and the retry blindly re-hit the same block (run 29392605802). The
+              # cause: roles/compute.networkAdmin grants firewalls.get/list but NOT .delete —
+              # GCP files firewall mutations under *security* (roles/compute.securityAdmin),
+              # despite networkAdmin being described as "full control of networking". Exactly
+              # the NEG/loadBalancerAdmin lesson already recorded in terraform/bootstrap.
+              gcloud compute firewall-rules delete "${fw}" --quiet \
+                || echo "::error::Could not delete firewall '${fw}' — the retry will fail on it again. Does the CI SA still have roles/compute.securityAdmin (terraform/bootstrap local.ci_roles)?"
             done
 
             # Retry once. Covers the unlocked case + the swept firewall rules above, AND any
