@@ -658,7 +658,8 @@ shared build-time patch [`resources/patch-app-source.sh`](../resources/patch-app
 | Build & Push image | `./mvnw … jib:build -Djib.to.image=$REGISTRY/$SERVICE:$IMAGE_TAG` (java) | Jib, daemonless; `-Djib.to.auth.*` from `REGISTRY_USERNAME/PASSWORD` |
 | **Reclaim disk before image scan** | `rm -rf` the now-dead build tree (`node_modules` · Maven `target/` + `~/.m2/repository` · the Jib cache) + `docker image prune -af` | **best-effort** (`\|\| true`); the image is already in GHCR, so freeing the build tree here keeps the **50 GB `ci-spot` node** off the kubelet's `DiskPressure` threshold — otherwise it evicts the ephemeral runner mid-run (§ The ci-spot / NAP showcase) |
 | Trivy image scan | `docker run aquasec/trivy image` | — |
-| GitOps Update + OTel Self-Heal (two Jenkins stages) | GitOps bump → `argocd app sync/wait` | **byte-identical** to `microservicesDeploy.groovy` + `microservicesOtelSelfHeal.groovy` (see below) |
+| GitOps Update | GitOps bump → `argocd app sync/wait` | **byte-identical** to `microservicesDeploy.groovy` (see below) |
+| OTel Self-Heal | — | **not yet ported** (like the k6 row below): `microservicesOtelSelfHeal.groovy` re-checks that the app container really got the `-javaagent` and rolls the Deployment if the operator's `failurePolicy: Ignore` webhook lost the race. Its **RBAC is already granted** to the runner SA ([§ RBAC](#rbac)), so it is a drop-in follow-up — until then a GHA deploy that loses that race leaves the pod uninstrumented ("No data") with nothing to heal it |
 | Smoke test | `curl --retry … $svc.$TARGET_NS.svc:$port$health` | — |
 | Integration k6 | **Export pipeline OTel trace** — currently a placeholder (prints the OTLP endpoint; no k6 run / span export yet) | k6 parity (`--tag ci_runner=githubactions`, as the other engines already emit) is the intended follow-up; the `k6-cloud` Secret is pre-provisioned in `arc-runners` |
 

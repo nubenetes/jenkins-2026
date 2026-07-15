@@ -10,8 +10,12 @@
  * the ArgoCD sync, the new pod may have this problem — detect it (JAVA_TOOL_OPTIONS
  * must carry -javaagent) and fix it with a rollout restart. Split out of
  * vars/microservicesDeploy.groovy so the check — and any restart it triggers —
- * is visible as its own stage in the build UI. The same self-heal exists in the
- * other engines' gitops-deploy task/step (docs/404 · 405 · 406).
+ * is visible as its own stage in the build UI. The same self-heal lives in Tekton's
+ * gitops-deploy task (docs/404) and the Argo Workflows template (docs/406). It is
+ * NOT yet ported to the GitHub Actions rendered workflow (docs/405 § The pipeline,
+ * rendered into each fork): its RBAC is already granted to the ARC runner, only the
+ * step is missing — so a GHA deploy that loses the webhook race leaves the pod
+ * uninstrumented with nothing to heal it.
  *
  * The check inspects ONLY the app container (named after the service in the chart).
  * Scanning every container in the pod is exactly what let a real bug through: with
