@@ -115,6 +115,11 @@ spec:
       input:
         path: infra/jenkins/pipelines/seed/services.yaml
         anchor: 'services:'
+        # Refuse if the service is already registered. Appending is blind and YAML
+        # accepts duplicate list items, so a second `- name: gateway` would parse fine
+        # and then silently SHADOW the first — the seed job would re-point the existing
+        # gateway pipeline at whatever repo this form was given.
+        absent: '- name: ${{ parameters.name }}'
         content: |2
 
             - name: ${{ parameters.name }}
@@ -137,6 +142,9 @@ spec:
       input:
         path: infra/backstage/catalog/services.yaml
         anchor: 'kind: Component'
+        # Two Components with the same name make the catalog report a conflict and
+        # ingest neither reliably.
+        absent: 'name: ${{ parameters.name }}'
         content: |
           ---
           apiVersion: backstage.io/v1alpha1
@@ -210,6 +218,10 @@ spec:
       input:
         path: gitops/helm/microservices/values-stable.yaml
         anchor: 'services:'
+        # `services` is a MAP here, so a duplicate key is even worse than in the list
+        # above: YAML keeps the LAST one, silently replacing the existing service's
+        # whole deploy config.
+        absent: '${{ parameters.name }}:'
         content: |2
 
             ${{ parameters.name }}:
