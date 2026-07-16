@@ -211,3 +211,10 @@ jobs:
             echo "(Grafana dashboards are published by the per-backend dashboard"
             echo "workflows, e.g. **Day2.publish.04 AWS dashboards**.)"
           } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Access URLs
+        if: always()
+        # Shared single source (scripts/access-urls.sh): the engine-aware ACCESS URLs block that
+        # used to live only in Day1's step. This workflow doesn't export JENKINS2026_CI_ENGINE
+        # (jenkins is the config default), so pass it explicitly. Best-effort, never fails the job.
+        run: JENKINS2026_CI_ENGINE=jenkins AU_DEVELOP_TRACK='${{ inputs.develop_track }}' ./scripts/access-urls.sh || true

@@ -238,3 +238,10 @@ jobs:
             echo "**Day1.cluster.01 GKE** run provisioned with ci_engine=tekton."
             echo "(Grafana dashboards are published by the per-backend dashboard workflows.)"
           } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Access URLs
+        if: always()
+        # Shared single source (scripts/access-urls.sh): the engine-aware ACCESS URLs block that
+        # used to live only in Day1's step. Engine/mode/domain come from the JENKINS2026_* env this
+        # workflow exports (via lib/config.sh). Best-effort, never fails the job.
+        run: AU_DEVELOP_TRACK='${{ inputs.develop_track }}' ./scripts/access-urls.sh || true

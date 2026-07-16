@@ -251,3 +251,12 @@ jobs:
             echo "ci_engine=githubactions. Runs are viewed in each fork's GitHub Actions tab"
             echo "(ARC has no in-cluster UI). See docs/405-GITHUB_ACTIONS.md."
           } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Access URLs
+        if: always()
+        # Shared single source (scripts/access-urls.sh) — the engine-aware ACCESS URLs
+        # block that used to live only in Day1's step, so a redeploy printed no URL
+        # summary. For githubactions it lists each fork's Actions tab (no in-cluster UI).
+        # The engine/mode/domain come from the JENKINS2026_* env this workflow already
+        # exports (via lib/config.sh); best-effort, never fails the job.
+        run: AU_DEVELOP_TRACK='${{ inputs.develop_track }}' ./scripts/access-urls.sh || true
