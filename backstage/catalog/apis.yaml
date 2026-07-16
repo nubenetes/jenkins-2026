@@ -3,6 +3,7 @@ kind: API
 metadata:
   name: gateway-api
   description: JHipster Gateway User & Authentication API
+  tags: [openapi, rest]
 spec:
   type: openapi
   lifecycle: production
@@ -80,6 +81,7 @@ kind: API
 metadata:
   name: microservice-api
   description: JHipster Sample Microservice BankAccount CRUD API
+  tags: [openapi, rest]
 spec:
   type: openapi
   lifecycle: production

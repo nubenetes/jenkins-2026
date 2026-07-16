@@ -6,6 +6,7 @@ kind: Domain
 metadata:
   name: jenkins-2026
   description: Jenkins-on-Kubernetes PoC - CI/CD platform + demo microservices
+  tags: [platform, poc, cicd, gitops]
   links:
     - url: https://github.com/nubenetes/jenkins-2026
       title: Platform repo (infra, pipelines, docs)
@@ -18,6 +19,7 @@ kind: System
 metadata:
   name: microservices
   description: The JHipster demo application (gateway + backend microservice)
+  tags: [java, jhipster, spring-boot, demo-app]
   links:
     - url: https://microservices.jenkins2026.nubenetes.com
       title: Live app (stable tier)
@@ -33,6 +35,7 @@ metadata:
     The CI/CD + GitOps platform itself: four interchangeable CI engines
     (Jenkins / Tekton / GitHub Actions / Argo Workflows), ArgoCD, the
     observability stack and this portal.
+  tags: [platform, cicd, gitops, observability]
   links:
     - url: https://argocd.jenkins2026.nubenetes.com
       title: ArgoCD (IAP)
@@ -51,6 +54,7 @@ kind: Component
 metadata:
   name: jenkins-2026-infra
   description: Platform-as-code - scripts, Terraform, ArgoCD apps, pipelines, docs
+  tags: [platform, terraform, iac]
   annotations:
     github.com/project-slug: nubenetes/jenkins-2026
     # dir: resolves RELATIVE TO THIS CATALOG FILE's location (backstage/catalog/
@@ -79,6 +83,7 @@ kind: Resource
 metadata:
   name: gke-cluster
   description: The throwaway GKE cluster (terraform/gke; Dataplane V2 + WireGuard)
+  tags: [gke, kubernetes]
 spec:
   type: kubernetes-cluster
   owner: platform-team
@@ -89,6 +94,7 @@ kind: Resource
 metadata:
   name: backstage-db
   description: CNPG PostgreSQL backing this portal (throwaway by design - docs/104)
+  tags: [postgres, cnpg]
 spec:
   type: database
   owner: platform-team

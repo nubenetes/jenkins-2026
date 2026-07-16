@@ -42,6 +42,7 @@ kind: Component
 metadata:
   name: gateway
   description: JHipster gateway - Spring Cloud Gateway serving the Angular SPA
+  tags: [java, jhipster, gateway, angular, frontend]
   annotations:
     github.com/project-slug: nubenetes/jhipster-sample-app-gateway
     jenkins.io/job-full-name: gateway
@@ -78,6 +79,7 @@ kind: Component
 metadata:
   name: jhipstersamplemicroservice
   description: JHipster backend microservice (database-per-service Postgres)
+  tags: [java, jhipster, backend, microservice]
   annotations:
     github.com/project-slug: nubenetes/jhipster-sample-app-microservice
     jenkins.io/job-full-name: jhipstersamplemicroservice
