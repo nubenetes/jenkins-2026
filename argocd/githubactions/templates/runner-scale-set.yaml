@@ -39,6 +39,17 @@ spec:
           type: '{{ .Values.containerMode }}'
         template:
           spec:
+            # Dedicated runner KSA (04-githubactions.sh creates it, and annotates it for
+            # Workload-Identity impersonation of the binauthz signer GSA when
+            # security.binaryAuthorization is on, so the rendered workflow's sign-attest gcloud
+            # can authenticate — docs/507). In dind containerMode the gha-runner-scale-set chart
+            # creates NO runner ServiceAccount, so without this pin the pods would use the
+            # namespace `default` SA, which terraform does NOT bind. The name must match the
+            # terraform binauthz_signer_ksas entry (arc-runners/arc-runner-scale-set). The SA is
+            # created unconditionally, so runners schedule fine even with binauthz off (an
+            # unannotated SA just behaves like default; dind runners need no other RBAC — the
+            # ArgoCD-sync workflow step uses the arc-argocd token Secret, not this SA).
+            serviceAccountName: arc-runner-scale-set
             imagePullSecrets:
               - name: '{{ .Values.registryCredentialsSecretName }}'
             {{- if and (eq .Values.runNodePool "ci-spot") .Values.nodeAutoProvisioningEnabled }}
