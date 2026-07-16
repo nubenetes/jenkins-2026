@@ -223,6 +223,14 @@ jobs:
       # Dashboard (IAP) and the PaC controller (pac.<domain>), so a Tekton-only
       # redeploy exposes them without a full Day1. Reads IAP creds from the
       # cluster Secrets refreshed by 01-namespaces above.
+      - name: Refresh Backstage runtime config (scripts/08.95-backstage.sh)
+        # Engine-switch parity: 08.95 is the SOLE writer of backstage-runtime-config's CI_ENGINE
+        # and the app-of-apps ciEngine overlay, and it restarts the pod. Without this a Day2 engine
+        # switch left the portal's CI/CD (and Kubernetes) tab pointed at the PREVIOUS engine (found
+        # live 2026-07-16). Self-gates on backstage.enabled; idempotent. Runs before 09-gateway
+        # (which wires the backstage IAP route + JWT audience), matching scripts/up.sh order.
+        run: ./scripts/08.95-backstage.sh
+
       - name: Re-apply Gateway routes (scripts/09-gateway.sh)
         run: ./scripts/09-gateway.sh
 

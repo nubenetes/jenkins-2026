@@ -234,6 +234,15 @@ jobs:
       # in-cluster CI dashboard (runs live in GitHub's Actions tab), so NO CI route or
       # IAP backend policy is emitted for it — the explicit ==jenkins guards in
       # 09-gateway.sh ensure githubactions adds neither a jenkins nor a tekton route.
+      - name: Refresh Backstage runtime config (scripts/08.95-backstage.sh)
+        # Engine-switch parity: 08.95 is the SOLE writer of backstage-runtime-config's CI_ENGINE
+        # and the app-of-apps ciEngine overlay, and it restarts the pod. Without this a Day2 engine
+        # switch left the portal's CI/CD (and Kubernetes) tab pointed at the PREVIOUS engine — found
+        # live 2026-07-16 after a tekton→githubactions redeploy: the tab rendered the Tekton plugin
+        # and showed nothing. Self-gates on backstage.enabled; idempotent. Runs before 09-gateway
+        # (which wires the backstage IAP route + JWT audience), matching scripts/up.sh order.
+        run: ./scripts/08.95-backstage.sh
+
       - name: Re-apply Gateway routes (scripts/09-gateway.sh)
         run: ./scripts/09-gateway.sh
 

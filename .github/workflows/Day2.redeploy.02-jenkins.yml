@@ -193,6 +193,14 @@ jobs:
       - name: Re-seed Microservices pipelines (scripts/06-seed-pipelines.sh)
         run: ./scripts/06-seed-pipelines.sh
 
+      - name: Refresh Backstage runtime config (scripts/08.95-backstage.sh)
+        # Engine-switch parity: 08.95 is the SOLE writer of backstage-runtime-config's CI_ENGINE
+        # and the app-of-apps ciEngine overlay, and it restarts the pod. Without this a Day2 engine
+        # switch left the portal's CI/CD (and Kubernetes) tab pointed at the PREVIOUS engine (found
+        # live 2026-07-16). Self-gates on backstage.enabled; idempotent. Runs before 09-gateway
+        # (which wires the backstage IAP route + JWT audience), matching scripts/up.sh order.
+        run: ./scripts/08.95-backstage.sh
+
       - name: Re-apply Gateway routes (scripts/09-gateway.sh)
         # Idempotent: attaches/retires the Jenkins BackendTLSPolicy + HTTPS
         # HealthCheckPolicy to match the controller's current protocol (set by
