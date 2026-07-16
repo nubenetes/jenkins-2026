@@ -1,0 +1,43 @@
+name: "Jenkins flag-parity (controller rolls on flag flip)"
+
+# Lightweight PR guard (like gitflow-guard / mermaid-validate / terraform-validate)
+# — NOT a DayN lifecycle workflow. Makes a lived bug impossible to reintroduce:
+# flipping Binary Authorization off updated the jenkins-credentials Secret but did
+# NOT roll the controller (binauthz-enabled was absent from banner_links_checksum
+# in scripts/04-jenkins.sh), so the running build agent kept BINAUTHZ_ENABLED=true
+# and every build failed at sign-and-attest against an attestor a binauthz-off
+# Day1 had already torn down.
+#
+# The guard asserts the invariant: every config-derived jenkins-credentials value
+# that reaches a build AGENT (Secret -> containerEnv -> JCasC globalNodeProperties)
+# is present in banner_links_checksum, so a flip rolls the controller and the agent
+# reads the new value. It parses only committed files — no cloud credentials, no
+# cluster. See scripts/verify-jenkins-flag-parity.py (its header has the full
+# chain) and docs/401-JENKINS.md.
+
+on:
+  pull_request:
+    paths:
+      - "scripts/04-jenkins.sh"
+      - "helm/jenkins/values-common.yaml"
+      - "jenkins/casc/jcasc-base.yaml"
+      - "scripts/verify-jenkins-flag-parity.py"
+      - ".github/workflows/jenkins-flag-parity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jenkins-flag-parity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  parity:
+    name: agent-facing flags roll the controller
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Verify flag parity
+        run: python3 scripts/verify-jenkins-flag-parity.py
