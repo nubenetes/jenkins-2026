@@ -7,10 +7,10 @@
 #     CATALOG_BRANCH, JENKINS_BASE_URL, ARGOCD_BASE_URL, IAP_AUDIENCE,
 #     BASE_DOMAIN, OBS_MODE, GRAFANA_DOMAIN, GRAFANA_PROXY_TARGET
 #   - Secret backstage-secrets (scripts/01-namespaces.sh; ARGOCD_* and the oss
-#     GRAFANA_TOKEN patched by 08.95): BACKEND_SECRET, GITHUB_TOKEN,
+#     GRAFANA_BASIC_AUTH patched by 08.95): BACKEND_SECRET, GITHUB_TOKEN,
 #     JENKINS_API_USER, JENKINS_API_KEY, AUTH_GITHUB_CLIENT_ID,
 #     AUTH_GITHUB_CLIENT_SECRET, ARGOCD_USERNAME, ARGOCD_PASSWORD,
-#     GRAFANA_TOKEN
+#     GRAFANA_TOKEN (grafana-cloud), GRAFANA_BASIC_AUTH (oss)
 #   - Secret backstage-db-app (CNPG-generated): POSTGRES_HOST/PORT/USER/PASSWORD
 # The wiring lives in helm/backstage/values.yaml (extraEnvVars/-Secrets). Under
 # backend TLS the chart layers an EXTRA config file over this one (see
@@ -156,27 +156,43 @@ kubernetes:
       plural: rollouts
 
 # Grafana plugin (the Monitoring tab, docs/505 § Grafana integration). Live
-# cards ONLY for observability.mode oss / grafana-cloud - the two Grafanas
-# that accept the static service-account Bearer token this proxy endpoint
-# sends; managed-azure/aws issue short-lived Entra/SigV4 credentials a fixed
-# header cannot carry, so their tab is a deep-link InfoCard instead (decision
-# record in docs/505). All three env vars are ALWAYS non-empty in every mode
-# (08.95 writes real values or inert placeholders - the proxy-backend
-# validates the target URL at startup, and this app has already been bitten
-# by the empty-string config class, see docs/505 § Troubleshooting):
+# cards ONLY for observability.mode oss / grafana-cloud; managed-azure/aws issue
+# short-lived Entra/SigV4 credentials a fixed header cannot carry, so their tab
+# is a deep-link InfoCard instead (decision record in docs/505). The proxy is
+# READ-ONLY: allowedMethods restricts it to GET so no caller can write to Grafana
+# through it (the Monitoring tab only ever GETs - search / rules / provisioning).
+# This is what makes the oss admin-credential path (below) safe.
+#
+# AUTH is MODE-DEPENDENT (docs/505 § Monitoring tab durable-auth fix, 2026-07-16):
+#   - grafana-cloud: this baked default - `Bearer ${GRAFANA_TOKEN}`, a
+#     Terraform-minted stack SA token threaded through Day1 (durable).
+#   - oss: the values-obs-oss.yaml overlay (layered by the app-of-apps on the
+#     obsMode helm param) REPLACES the header with `Basic ${GRAFANA_BASIC_AUTH}`.
+#     GRAFANA_BASIC_AUTH is a ready-made base64(admin:pw) header value 08.95
+#     derives from the chart-owned oss-kube-prometheus-stack-grafana Secret -
+#     STABLE across Grafana pod rolls, unlike the ephemeral in-pod SA tokens the
+#     old mint produced (which silently died on every roll). Least privilege is
+#     preserved by the GET-only proxy above, not by a Viewer token.
+#   - managed-*: GRAFANA_PROXY_TARGET is https://grafana.invalid (never called),
+#     the header is inert.
+# All env vars are ALWAYS non-empty in every mode (08.95 writes real values or
+# inert placeholders - the proxy-backend validates the target URL at startup, and
+# this app has been bitten by the empty-string config class, see docs/505 §
+# Troubleshooting):
 #   - GRAFANA_PROXY_TARGET: oss -> the in-cluster Grafana Service URL;
-#     grafana-cloud -> the stack URL; managed-* -> https://grafana.invalid
-#     (parseable, never called - the cards don't mount in those modes).
+#     grafana-cloud -> the stack URL; managed-* -> https://grafana.invalid.
 #   - GRAFANA_DOMAIN: the user-facing Grafana origin the cards link to
 #     (oss -> https://grafana.<baseDomain>, IAP; cloud -> the stack URL;
 #     managed-* -> workspace endpoint or 'unset').
-#   - GRAFANA_TOKEN (Secret): oss -> Viewer service-account token minted by
-#     08.95 against the Grafana API; grafana-cloud -> Terraform-minted stack
-#     SA token threaded through Day1; managed-* -> 'unset' (never sent).
+#   - GRAFANA_TOKEN (Secret, grafana-cloud) / GRAFANA_BASIC_AUTH (Secret, oss):
+#     see the per-mode note above; the unused one stays 'unset'/absent.
 proxy:
   endpoints:
     '/grafana/api':
       target: ${GRAFANA_PROXY_TARGET}
+      # Read-only: the Monitoring tab issues only GETs; blocking the rest keeps
+      # the oss admin-credential path (values-obs-oss.yaml) from being writable.
+      allowedMethods: ['GET']
       headers:
         Authorization: Bearer ${GRAFANA_TOKEN}
 

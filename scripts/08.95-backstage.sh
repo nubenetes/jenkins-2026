@@ -174,140 +174,64 @@ else
   log_warn "Backstage ArgoCD tab will show auth errors until a re-run patches the credentials."
 fi
 
-# --- 2a. Wait for the oss observability stack to converge before minting ------
-# STRUCTURAL FIX for a live-found race (2026-07-13, docs/505 § Monitoring tab):
-# the §2b mint below used to run while oss-kube-prometheus-stack's OWN initial
-# ArgoCD sync was still applying. Grafana can be briefly Available (the OLD
-# ReplicaSet) while that sync is mid-flight; when it finishes moments later, a
-# values/checksum change rolls a NEW Grafana pod - and oss Grafana keeps
-# service-account tokens in its EPHEMERAL in-pod SQLite, so the roll silently
-# invalidates a token minted seconds earlier (live incident: minted 14:42:29,
-# sync's final apply rolled the pod at 14:45:07 - tab 401'd until a manual
-# re-mint). Bounded wait (3 min, WARN not fail - the mint below still has its
-# own keep-if-valid + re-run heal as a second line of defense) for the
-# Application to be Synced+Healthy with no operation in flight, so the mint
-# lands on the post-converge pod instead of racing it.
+# --- 2. Grafana admin credential for the Monitoring-tab proxy (oss only) --------
+# DURABLE-AUTH FIX (2026-07-16, docs/505 § Monitoring tab). The '/grafana/api'
+# proxy (backstage/app-config.yaml) authenticates to the in-cluster Grafana.
+# grafana-cloud threads a Terraform-minted stack Bearer token through Day1 into
+# 01-namespaces.sh; the managed modes never call the proxy (deep-link card -
+# decision record in docs/505). oss has no Terraform hand, and the OLD approach -
+# minting a Grafana SA Viewer token HERE against the Grafana API - was fragile:
+# oss Grafana keeps SA tokens in EPHEMERAL in-pod SQLite (emptyDir storage), so
+# ANY Grafana pod roll silently invalidated the token and nothing re-minted it. A
+# from-scratch Day1 raced Grafana's own initial rollout: the SA never persisted,
+# GRAFANA_TOKEN stayed empty, and every Monitoring-tab call 401'd until a manual
+# re-run. See [[empty-string-secret-class]].
+#
+# Instead we authenticate with Grafana's ADMIN credentials, which live in the
+# chart-owned Secret oss-kube-prometheus-stack-grafana - a Kubernetes Secret,
+# STABLE across pod rolls (nothing invalidates it) and regenerated
+# deterministically on every rebuild. We only READ it and patch a ready-made
+# 'Basic <base64(user:pw)>' header value into backstage-secrets as
+# GRAFANA_BASIC_AUTH; the helm/backstage/values-obs-oss.yaml overlay (layered by
+# the app-of-apps on obsMode) makes the proxy replay it, and app-config.yaml's
+# allowedMethods:[GET] keeps the proxy READ-ONLY so admin creds cannot write
+# through it. No mint, no ephemeral state, no Grafana-API dependency here (the
+# header is valid whenever Grafana comes up - admin creds don't expire) => durable
+# across BOTH pod rolls and rebuilds. Bounded wait for the Secret to exist (it is
+# a chart resource, created before the pod is Ready, and permanent once created,
+# so unlike the old convergence-wait a success here can never be undone by a later
+# roll); WARN not fail - a re-run heals, and because the source Secret is stable
+# the heal is permanent. eso mode: backstage-secrets is ESO-projected with
+# creationPolicy Merge, so this kubectl patch survives the periodic re-sync (the
+# ARGOCD_* pattern; 08.6 leaves oss Grafana auth script-managed).
 if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
-  log_step "Waiting for oss-kube-prometheus-stack to converge before minting the Grafana token"
-  gf_wait_deadline=$((SECONDS + 180))
-  gf_converged="false"
+  log_step "Deriving the oss Grafana admin credential for the Backstage Monitoring tab"
+  gf_ns="${J2026_GRAFANA_OSS_NAMESPACE}"
+  gf_secret="oss-kube-prometheus-stack-grafana"
+  gf_wait_deadline=$((SECONDS + 120))
+  gf_admin_user=""
+  gf_admin_pw=""
   while [[ ${SECONDS} -lt ${gf_wait_deadline} ]]; do
-    gf_app_json="$(kubectl get application oss-kube-prometheus-stack -n "${J2026_ARGOCD_NAMESPACE}" \
-      -o json 2>/dev/null || true)"
-    if [[ -z "${gf_app_json}" ]]; then
-      # Application not applied yet at this point in the run - nothing to
-      # converge on (a subsequent 08.95 re-run will catch up).
-      break
-    fi
-    gf_sync_status="$(echo "${gf_app_json}" | jq -r '.status.sync.status // empty')"
-    gf_health_status="$(echo "${gf_app_json}" | jq -r '.status.health.status // empty')"
-    gf_op_phase="$(echo "${gf_app_json}" | jq -r '.status.operationState.phase // empty')"
-    if [[ "${gf_sync_status}" == "Synced" && "${gf_health_status}" == "Healthy" \
-          && "${gf_op_phase}" != "Running" ]]; then
-      gf_converged="true"
-      break
-    fi
+    gf_admin_user="$(kubectl get secret "${gf_secret}" -n "${gf_ns}" \
+      -o jsonpath='{.data.admin-user}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+    gf_admin_pw="$(kubectl get secret "${gf_secret}" -n "${gf_ns}" \
+      -o jsonpath='{.data.admin-password}' 2>/dev/null | base64 -d 2>/dev/null || true)"
+    [[ -n "${gf_admin_user}" && -n "${gf_admin_pw}" ]] && break
     sleep 5
   done
-  if [[ "${gf_converged}" == "true" ]]; then
-    log_info "oss-kube-prometheus-stack Synced+Healthy - safe to mint the Grafana token."
-  else
-    log_warn "oss-kube-prometheus-stack did not reach Synced+Healthy within 180s -"
-    log_warn "minting the Grafana token anyway; a rollout during/after this run may"
-    log_warn "still invalidate it (re-run this step or Day2.redeploy.08 to heal)."
-  fi
-fi
-
-# --- 2b. Grafana Viewer token for the Monitoring tab (oss only) -----------------
-# The '/grafana/api' proxy endpoint sends 'Authorization: Bearer ${GRAFANA_TOKEN}'
-# (backstage/app-config.yaml). grafana-cloud threads a Terraform-minted stack
-# token through Day1 into 01-namespaces.sh; the managed modes never call the
-# proxy (deep-link card - decision record in docs/505). oss has no Terraform
-# hand to mint one, so mint it HERE against the in-cluster Grafana API - curl
-# exec'd INSIDE the Grafana container (localhost:3000: no Service, DNS or
-# NetworkPolicy dependency), admin creds from the kube-prometheus-stack Secret.
-# KEEP-IF-VALID (docs/104 reconcile-to-current): an existing token that still
-# answers /api/search is left alone; otherwise mint a fresh Viewer token
-# (pruning this script's older ones - bounded growth) and PATCH it into
-# backstage-secrets - the ARGOCD_* pattern, surviving the eso Merge re-sync.
-# Every failure path is a WARN, not an exit: the portal deploys fine and the
-# Monitoring tab 401s until a re-run heals it (Day2.redeploy.08 suffices).
-if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
-  log_step "Ensuring the oss Grafana Viewer token for the Backstage Monitoring tab"
-  gf_ns="${J2026_GRAFANA_OSS_NAMESPACE}"
-  gf_deploy="oss-kube-prometheus-stack-grafana"
-  # Grafana's listener under backend TLS is HTTPS with SERVICE-FQDN SANs only
-  # (mint_server_cert in 08.7) - loopback isn't in them, hence -k here. The
-  # PROXY's trust story is unaffected (it dials the FQDN, Node validates
-  # against the internal CA); this exec is a localhost control-plane call.
-  gf_url="http://localhost:3000"
-  gf_curl_opts=""
-  if [[ "${BACKEND_TLS_ACTIVE}" == "true" ]]; then
-    gf_url="https://localhost:3000"
-    gf_curl_opts="-k"
-  fi
-  gf_curl() { # curl inside the grafana container; args appended verbatim
-    # shellcheck disable=SC2086 # gf_curl_opts is deliberately word-split
-    kubectl exec -n "${gf_ns}" "deploy/${gf_deploy}" -c grafana -- \
-      curl -s ${gf_curl_opts} --max-time 10 "$@" 2>/dev/null
-  }
-  gf_avail="$(kubectl get deployment "${gf_deploy}" -n "${gf_ns}" \
-    -o jsonpath='{.status.availableReplicas}' 2>/dev/null || true)"
-  if [[ "${gf_avail:-0}" -ge 1 ]]; then
-    gf_existing_token="$(kubectl get secret "${J2026_BACKSTAGE_SECRETS_NAME}" -n "${J2026_BACKSTAGE_NAMESPACE}" \
-      -o jsonpath='{.data.GRAFANA_TOKEN}' 2>/dev/null | base64 -d || true)"
-    gf_token_ok="false"
-    if [[ -n "${gf_existing_token}" && "${gf_existing_token}" != "unset" ]]; then
-      gf_code="$(gf_curl -o /dev/null -w '%{http_code}' \
-        -H "Authorization: Bearer ${gf_existing_token}" \
-        "${gf_url}/api/search?limit=1" || true)"
-      [[ "${gf_code}" == "200" ]] && gf_token_ok="true"
-    fi
-    if [[ "${gf_token_ok}" == "true" ]]; then
-      log_info "Existing GRAFANA_TOKEN still valid against Grafana - keeping it."
-    else
-      gf_admin_user="$(kubectl get secret "${gf_deploy}" -n "${gf_ns}" \
-        -o jsonpath='{.data.admin-user}' 2>/dev/null | base64 -d || true)"
-      gf_admin_pw="$(kubectl get secret "${gf_deploy}" -n "${gf_ns}" \
-        -o jsonpath='{.data.admin-password}' 2>/dev/null | base64 -d || true)"
-      gf_new_token=""
-      if [[ -n "${gf_admin_user}" && -n "${gf_admin_pw}" ]]; then
-        gf_api() { gf_curl -u "${gf_admin_user}:${gf_admin_pw}" "$@"; }
-        # Service account 'backstage' (Viewer): find-or-create, idempotent.
-        gf_sa_id="$(gf_api "${gf_url}/api/serviceaccounts/search?query=backstage" \
-          | jq -r '.serviceAccounts[]? | select(.name=="backstage") | .id' 2>/dev/null | head -n1 || true)"
-        if [[ -z "${gf_sa_id}" ]]; then
-          gf_sa_id="$(gf_api -X POST -H 'Content-Type: application/json' \
-            -d '{"name":"backstage","role":"Viewer"}' \
-            "${gf_url}/api/serviceaccounts" | jq -r '.id // empty' 2>/dev/null || true)"
-        fi
-        if [[ -n "${gf_sa_id}" ]]; then
-          # Prune this integration's older tokens (invalid/rotated ones).
-          for gf_tid in $(gf_api "${gf_url}/api/serviceaccounts/${gf_sa_id}/tokens" \
-              | jq -r '.[]? | select(.name | startswith("backstage-")) | .id' 2>/dev/null || true); do
-            gf_api -X DELETE "${gf_url}/api/serviceaccounts/${gf_sa_id}/tokens/${gf_tid}" >/dev/null || true
-          done
-          gf_new_token="$(gf_api -X POST -H 'Content-Type: application/json' \
-            -d "{\"name\":\"backstage-$(date +%s)\"}" \
-            "${gf_url}/api/serviceaccounts/${gf_sa_id}/tokens" | jq -r '.key // empty' 2>/dev/null || true)"
-        fi
-      fi
-      if [[ -n "${gf_new_token}" ]] \
-         && kubectl get secret "${J2026_BACKSTAGE_SECRETS_NAME}" -n "${J2026_BACKSTAGE_NAMESPACE}" >/dev/null 2>&1; then
-        kubectl patch secret "${J2026_BACKSTAGE_SECRETS_NAME}" -n "${J2026_BACKSTAGE_NAMESPACE}" \
-          --type=merge -p "$(cat <<EOF
-{"stringData":{"GRAFANA_TOKEN":"${gf_new_token}"}}
+  if [[ -n "${gf_admin_user}" && -n "${gf_admin_pw}" ]] \
+     && kubectl get secret "${J2026_BACKSTAGE_SECRETS_NAME}" -n "${J2026_BACKSTAGE_NAMESPACE}" >/dev/null 2>&1; then
+    # Ready-made Authorization value: the overlay sends "Basic ${GRAFANA_BASIC_AUTH}".
+    gf_basic_auth="$(printf '%s:%s' "${gf_admin_user}" "${gf_admin_pw}" | base64 -w0)"
+    kubectl patch secret "${J2026_BACKSTAGE_SECRETS_NAME}" -n "${J2026_BACKSTAGE_NAMESPACE}" \
+      --type=merge -p "$(cat <<EOF
+{"stringData":{"GRAFANA_BASIC_AUTH":"${gf_basic_auth}"}}
 EOF
 )" >/dev/null
-        log_info "Minted a fresh Grafana Viewer token (service account 'backstage') and patched it in."
-      else
-        log_warn "Could not mint/patch a Grafana token (Grafana API or ${J2026_BACKSTAGE_SECRETS_NAME} unavailable) -"
-        log_warn "the Monitoring tab will show 401s until a re-run of this step heals it."
-      fi
-    fi
+    log_info "Patched GRAFANA_BASIC_AUTH (Grafana admin, Basic) into ${J2026_BACKSTAGE_SECRETS_NAME} - durable across Grafana pod rolls."
   else
-    log_warn "Grafana deployment '${gf_deploy}' not Available in ${gf_ns} - skipping the token mint."
-    log_warn "The Monitoring tab will 401 until a re-run (Day2.redeploy.08) once Grafana is up."
+    log_warn "Grafana admin Secret '${gf_secret}' not readable in ${gf_ns} (or ${J2026_BACKSTAGE_SECRETS_NAME} absent) -"
+    log_warn "the Monitoring tab will 401 until a re-run (Day2.redeploy.08) derives it once the Grafana Secret exists."
   fi
 fi
 
@@ -324,6 +248,7 @@ sed "s@{{repoUrl}}@${REPO_URL}@g;
      s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g;
      s@{{backendTls}}@${BACKEND_TLS_ACTIVE}@g;
      s@{{ciEngine}}@${J2026_CI_ENGINE}@g;
+     s@{{obsMode}}@${J2026_OBS_MODE}@g;
      s@{{chartVersion}}@${J2026_BACKSTAGE_CHART_VERSION}@g;
      s@{{imageRegistry}}@${bs_image_registry}@g;
      s@{{imageRepository}}@${bs_image_repository}@g;

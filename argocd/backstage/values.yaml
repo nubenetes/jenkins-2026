@@ -20,6 +20,14 @@ backendTls: false
 # (Argo Rollouts only) is exactly right and no CRD is queried that isn't there.
 ciEngine: jenkins
 
+# The observability mode (config.yaml observability.mode), passed via
+# helm.parameters like backendTls/ciEngine. When "oss" the child layers
+# helm/backstage/values-obs-oss.yaml, which swaps the Grafana proxy's auth header
+# to Basic ${GRAFANA_BASIC_AUTH} (the durable admin-credential path - docs/505 §
+# Monitoring tab). grafana-cloud/managed-* keep the baked Bearer default and need
+# no overlay.
+obsMode: oss
+
 # Namespace everything (the CNPG Cluster + the chart) deploys into. Created by
 # 01-namespaces.sh (with the IAP/app secrets already in place).
 namespace: backstage

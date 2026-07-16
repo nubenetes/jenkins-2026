@@ -748,7 +748,7 @@ tab, but keyed on **`jenkins2026.obsMode`** (= `observability.mode`,
 
 | `observability.mode` | Monitoring tab renders | Credential behind it |
 |---|---|---|
-| `oss` | **live dashboards + alerts cards** (proxy → the in-cluster Grafana Service) | Viewer service-account token **minted in-cluster by `08.95`** against the Grafana API |
+| `oss` | **live dashboards + alerts cards** (proxy → the in-cluster Grafana Service) | Grafana **admin credential** (`Basic`), read by `08.95` from the chart-owned `oss-kube-prometheus-stack-grafana` Secret — **durable across pod rolls**; the proxy is **GET-only** so it cannot write (see [the durable-auth fix](#the-oss-monitoring-tab-auth-durable-not-minted)) |
 | `grafana-cloud` | **live dashboards + alerts cards** (proxy → the stack URL) | Viewer **stack service-account token minted by Terraform** (`grafana-cloud-token`), threaded through Day1 — never a GitHub secret |
 | `managed-azure` / `managed-aws` | **deep-link InfoCard** to the managed workspace + the deferral rationale | none — the proxy is never called (decision record below) |
 
@@ -796,7 +796,14 @@ before, see [Troubleshooting](#troubleshooting)):
 
 - [`app-config.yaml`](../backstage/app-config.yaml) declares the
   **`proxy.'/grafana/api'`** endpoint (`target: ${GRAFANA_PROXY_TARGET}`,
-  `Authorization: Bearer ${GRAFANA_TOKEN}`) and `grafana.domain:
+  **`allowedMethods: ['GET']`** — read-only, so no caller can write to Grafana
+  through the proxy). The **auth header is mode-dependent**: the baked default is
+  `Authorization: Bearer ${GRAFANA_TOKEN}` (grafana-cloud's Terraform stack
+  token); in **oss** the [`values-obs-oss.yaml`](../helm/backstage/values-obs-oss.yaml)
+  overlay — layered by the app-of-apps on the `obsMode` helm param, exactly like
+  `backendTls`/`ciEngine` — swaps it to `Basic ${GRAFANA_BASIC_AUTH}` (the
+  durable admin credential, [below](#the-oss-monitoring-tab-auth-durable-not-minted)).
+  It also declares `grafana.domain:
   ${GRAFANA_DOMAIN}` (the origin the cards build user-facing links against —
   for `oss` that's the **public IAP host** `https://grafana.<baseDomain>`,
   so clicking a dashboard opens the same Google-authenticated UI as the
@@ -811,13 +818,15 @@ before, see [Troubleshooting](#troubleshooting)):
   workspace endpoint for the link plus an **inert-but-parseable**
   `https://grafana.invalid` proxy target (RFC 2606 — never resolvable, never
   called).
-- **`GRAFANA_TOKEN` ownership is mode-dependent** (single-owner-per-key — the
-  `grafana-base-url` clobber lesson): in **oss**, `08.95` mints a **Viewer
-  service-account token** against the Grafana API (curl exec'd *inside* the
-  Grafana container — no Service/NetworkPolicy dependency for the mint) and
-  PATCHes it into `backstage-secrets` exactly like `ARGOCD_*`; keep-if-valid
-  on re-runs (an existing token that still answers `/api/search` is left
-  alone), pruning its older tokens when it does rotate. In **grafana-cloud**,
+- **Proxy-auth ownership is mode-dependent** (single-owner-per-key — the
+  `grafana-base-url` clobber lesson): in **oss**, `08.95` reads Grafana's admin
+  credentials from the chart-owned `oss-kube-prometheus-stack-grafana` Secret and
+  PATCHes a ready-made `Basic <base64(user:pw)>` value into `backstage-secrets`
+  as **`GRAFANA_BASIC_AUTH`**, exactly like `ARGOCD_*` (survives the eso Merge
+  re-sync). No minting, no Grafana-API call, nothing ephemeral — the admin Secret
+  is stable across pod rolls and regenerated deterministically on rebuild, so this
+  is durable both ways ([the durable-auth fix](#the-oss-monitoring-tab-auth-durable-not-minted)).
+  In **grafana-cloud**, the `GRAFANA_TOKEN` Bearer path is unchanged:
   Terraform ([`terraform/grafana-cloud-token`](../terraform/grafana-cloud-token/))
   mints a **separate, read-only** `jenkins-2026-backstage` stack service
   account (deliberately not reusing the Admin `dashboards` SA — least
@@ -830,40 +839,64 @@ before, see [Troubleshooting](#troubleshooting)):
   ([`infrastructure/networkpolicies.yaml`](../infrastructure/networkpolicies.yaml));
   inert in every other mode/flag combination.
 
-### The oss mint-race (found live, fixed structurally)
+### The oss Monitoring-tab auth: durable, not minted
 
-The tab's **first-ever live validation** (2026-07-13, a fresh oss Day1)
-turned up a second bug beyond the static-tree discovery one above: the cards
-mounted cleanly but the proxy 401'd. Root cause, confirmed from timestamps
-and pod events rather than guessed:
+The oss proxy authenticates with Grafana's **admin credentials** (Basic),
+read at deploy time from the chart-owned `oss-kube-prometheus-stack-grafana`
+Kubernetes Secret — **not** a minted Grafana service-account token. That is a
+deliberate reversal of the original design, forced by two from-scratch Day1s
+that both 401'd. The history is worth keeping, because it's a clean example of
+*"idempotent-looking, but racing an ephemeral store."*
 
-1. `08.95-backstage.sh` ran its §2b mint at **14:42:29** — Grafana's
-   Deployment reported `availableReplicas: 1` (the gate the mint checked), so
-   it minted a fresh Viewer service-account token against that pod and
-   patched it into `backstage-secrets`.
-2. The **`oss-kube-prometheus-stack` ArgoCD Application's own initial sync**
-   — already in flight, unrelated to the mint — finished applying at
-   **14:47:10**, changing the chart's `checksum/secret` pod-template
-   annotation. That rolled Grafana onto a **new** ReplicaSet at **14:45:07**
-   — 3 minutes after the mint.
-3. oss Grafana runs with **no persistence**: service accounts and their
-   tokens live in the pod's local SQLite, not a database. The rollout wiped
-   the just-minted token along with it — the Monitoring tab 401'd until a
-   manual re-mint (confirmed live: the `backstage` service account had to be
-   **re-created from scratch**, proof the SQLite really was fresh).
+**Why minting was fundamentally fragile.** oss Grafana (kube-prometheus-stack)
+runs with **`emptyDir` storage** — service accounts and their tokens live in
+the pod's local SQLite, not a database. So **any** Grafana pod roll (a chart
+bump, a node drain, an OOM, a late ArgoCD checksum change) silently discards a
+minted token, and nothing re-mints it until the next `08.95` run. A minted
+identity against a no-persistence store is the
+[rebuild-safety](./104-REBUILD_SAFETY.md) collision class in miniature.
 
-This is the [rebuild-safety](./104-REBUILD_SAFETY.md) collision class in
-miniature: a persistent identity (the token) minted against a store with no
-persistence of its own (the pod's SQLite), racing that store's own
-first-ever convergence. **Structural fix** (not just the mint's existing
-keep-if-valid/re-run heal, which only repairs it *after* the fact): `08.95`
-now waits — bounded, 3 minutes, **WARN not fail** on timeout, matching every
-other failure path in this script — for the `oss-kube-prometheus-stack`
-Application to report `Synced` **and** `Healthy` **and** no
-`operationState.phase: Running` *before* attempting the mint, so it always
-lands on the post-converge pod instead of racing it. On an already-stable
-cluster (any `Day2.redeploy.08` re-run) this wait exits on its first check —
-no added latency in the common case, only on a genuinely fresh Day1.
+**Two live incidents:**
+
+1. **2026-07-13** (first validation). `08.95` minted a Viewer token at
+   14:42:29 against an already-`Available` Grafana; the `oss-kube-prometheus-stack`
+   Application's own initial sync then rolled Grafana onto a new ReplicaSet at
+   14:45:07 (a `checksum/secret` pod-template change), wiping the token — the
+   tab 401'd until a manual re-mint. The first fix added a **bounded convergence
+   wait** (block Grafana's Application on `Synced` + `Healthy` + no
+   `operationState.phase: Running` before minting), so the mint would land on
+   the post-converge pod.
+2. **2026-07-16** (a later fresh Day1). It **401'd again.** The convergence
+   wait keys off the *Application*, but Grafana's pod still rolled after it
+   (final pod at 21:05:50), and the `backstage` service account was simply
+   **absent** (`totalCount: 0`) — the mint's effect had not persisted.
+   `GRAFANA_BASIC_AUTH`'s predecessor `GRAFANA_TOKEN` was empty → `Bearer ` →
+   401 on every card ([empty-string-secret class](#troubleshooting)). This
+   proved the convergence wait was a mitigation, not a fix: it narrows the
+   first-build window but does **nothing** for *future* rolls, and even the
+   first build can roll after the wait.
+
+**The durable fix (2026-07-16).** Stop minting. Grafana's **admin credential**
+already lives in a *Kubernetes* Secret (`oss-kube-prometheus-stack-grafana`,
+chart-owned) — stable across every pod roll and regenerated deterministically
+on rebuild. `08.95` only **reads** it and PATCHes a ready-made
+`Basic <base64(user:pw)>` value into `backstage-secrets` as `GRAFANA_BASIC_AUTH`;
+the [`values-obs-oss.yaml`](../helm/backstage/values-obs-oss.yaml) overlay
+(layered on the `obsMode` helm param) makes the proxy replay it. There is no
+mint, no ephemeral store, and **no Grafana-API dependency** at deploy time — the
+Basic header is valid the instant Grafana is reachable and never expires, so it
+survives both pod rolls and rebuilds. `08.95` still waits (bounded, WARN-not-fail)
+for the *Secret* to exist, but unlike the old convergence wait a success here can
+never be undone by a later roll: the Secret is permanent once created.
+
+The obvious objection — **admin is broader than the old Viewer token** — is
+answered by **`allowedMethods: ['GET']`** on the proxy endpoint: Backstage
+rejects every non-GET before it reaches Grafana, so no IAP-authenticated user
+can write through the proxy, and the Monitoring tab only ever GETs (search /
+rules / provisioning). The credential is server-side (never sent to the browser)
+and the endpoint is IAP-gated. Least privilege is enforced by the **read-only
+proxy**, not by a Viewer role — and in exchange the whole ephemeral-token failure
+class is gone.
 
 ### Why the managed modes are deferred (decision record)
 

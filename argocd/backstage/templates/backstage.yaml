@@ -49,6 +49,14 @@ spec:
           # not installed (see helm/backstage/values.yaml § appConfig).
           - $values/helm/backstage/values-ci-{{ .Values.ciEngine }}.yaml
           {{- end }}
+          {{- if eq .Values.obsMode "oss" }}
+          # oss Grafana has no Terraform-minted stack token, so the Monitoring-tab
+          # proxy authenticates with the chart-owned admin Secret (durable across
+          # pod rolls) instead of an ephemeral SA token. This overlay swaps the
+          # proxy header to Basic ${GRAFANA_BASIC_AUTH}; 08.95 derives the value.
+          # grafana-cloud/managed-* keep the baked Bearer default (docs/505).
+          - $values/helm/backstage/values-obs-oss.yaml
+          {{- end }}
     - repoURL: {{ .Values.repoURL | quote }}
       targetRevision: {{ .Values.targetRevision | quote }}
       ref: values
