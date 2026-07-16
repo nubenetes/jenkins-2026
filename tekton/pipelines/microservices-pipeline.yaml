@@ -45,6 +45,12 @@ spec:
       default: main
     - name: otlp-endpoint
       default: "http://otel-collector-gateway.observability.svc.cluster.local:4317"
+    # Binary Authorization (docs/507): rendered from the flag by 06-tekton-pipelines.sh into
+    # the run manifests, passed through to build-push-image. Defaults = signing off.
+    - name: binauthz-enabled
+      default: "false"
+    - name: project-id
+      default: ""
   workspaces:
     - name: source
     - name: dockerconfig
@@ -101,6 +107,8 @@ spec:
         - { name: service-type, value: $(params.service-type) }
         - { name: module-path, value: $(params.module-path) }
         - { name: image, value: "$(params.image)-$(context.pipelineRun.name)" }
+        - { name: binauthz-enabled, value: $(params.binauthz-enabled) }
+        - { name: project-id, value: $(params.project-id) }
     - name: trivy-image
       runAfter: [build-push-image]
       taskRef: { name: trivy-image }

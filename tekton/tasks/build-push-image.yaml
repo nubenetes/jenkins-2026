@@ -20,6 +20,14 @@ spec:
     - name: module-path
       default: ""
     - name: image
+    # Binary Authorization (docs/507). Threaded run -> pipeline -> here, rendered from the
+    # flag by 06-tekton-pipelines.sh. The sign step self-gates on it; PROJECT_ID is what
+    # sign-and-attest-image.sh derives the attestor/keyversion from. Defaults keep the task
+    # a no-op-safe signer when invoked without them.
+    - name: binauthz-enabled
+      default: "false"
+    - name: project-id
+      default: ""
   workspaces:
     - name: source
     - name: dockerconfig
@@ -99,7 +107,9 @@ spec:
       image: google/cloud-sdk:slim
       env:
         - name: BINAUTHZ_ENABLED
-          value: "false"
+          value: "$(params.binauthz-enabled)"
+        - name: PROJECT_ID
+          value: "$(params.project-id)"
       script: |
         #!/usr/bin/env bash
         set -eu
