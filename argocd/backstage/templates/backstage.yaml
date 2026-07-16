@@ -41,6 +41,14 @@ spec:
           # HTTPS probes + the backstage-tls cert mount. Later valueFiles win.
           - $values/helm/backstage/values-backend-tls.yaml
           {{- end }}
+          {{- if or (eq .Values.ciEngine "tekton") (eq .Values.ciEngine "argoworkflows") }}
+          # This engine surfaces its runs through the Kubernetes plugin, so extend the
+          # base customResources with its CRDs. Only these two get an overlay: jenkins
+          # and githubactions query none, and the base list already suits them — which
+          # is precisely what keeps their Kubernetes tab free of 404s for CRDs that are
+          # not installed (see helm/backstage/values.yaml § appConfig).
+          - $values/helm/backstage/values-ci-{{ .Values.ciEngine }}.yaml
+          {{- end }}
     - repoURL: {{ .Values.repoURL | quote }}
       targetRevision: {{ .Values.targetRevision | quote }}
       ref: values

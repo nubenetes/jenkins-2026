@@ -159,6 +159,10 @@ jobs:
           # Surface the cluster name to later steps (the orphaned-PV-disk sweep runs
           # after `terraform destroy`, when `terraform output` no longer resolves it).
           echo "CLUSTER_NAME=${CLUSTER_NAME}" >> "$GITHUB_ENV"
+          # LOCATION too: the destroy step waits on THIS location's in-flight GKE
+          # operations before it starts (the Fleet membership can only be deleted while
+          # the cluster is idle — see that step).
+          echo "LOCATION=${LOCATION}" >> "$GITHUB_ENV"
           if [[ -n "$CLUSTER_NAME" && -n "$LOCATION" ]]; then
             gcloud container clusters get-credentials \
               "$CLUSTER_NAME" \
@@ -184,18 +188,76 @@ jobs:
           gsutil rm -f "gs://${{ secrets.TF_STATE_BUCKET }}/jenkins-2026/gke/default.tflock" \
             2>/dev/null || true
 
-          # Run destroy; if a concurrent lock appears (very unlikely), extract
-          # its ID from the error message and force-unlock, then retry once.
-          if ! terraform destroy -auto-approve -input=false; then
-            LOCK_ID=$(terraform destroy -auto-approve -input=false 2>&1 \
-              | grep -oP '(?<=ID:\s{8})[0-9]+' | head -1 || true)
+          # WAIT FOR THE CLUSTER TO GO IDLE FIRST. The CSM Fleet membership
+          # (google_gke_hub_membership, terraform/gke/security.tf) can only be deleted
+          # while the cluster has NO operation in flight — the Fleet API otherwise rejects
+          # it outright: `Error waiting for Deleting Membership: Error code 9 ... cluster is
+          # currently running another operation. Please retry after the operation is done`
+          # (seen live: run 29381924836). down.sh above has just been deleting namespaces +
+          # NEGs, so an operation is very likely still settling. Same wait Day2.scale.01-pause
+          # does before resizing, for the same reason. Non-fatal: on timeout we still try the
+          # destroy (the retry below is the backstop).
+          if [[ -n "${LOCATION:-}" ]]; then
+            for i in $(seq 1 40); do
+              RUNNING="$(gcloud container operations list --location "${LOCATION}" \
+                           --filter='status=RUNNING' --format='value(name,operationType)' \
+                           2>/dev/null || true)"
+              [[ -z "${RUNNING}" ]] && break
+              [[ "${i}" -eq 1 ]] && echo "Waiting for in-flight GKE operations to finish before destroy:"
+              echo "${RUNNING}" | sed 's/^/  - /'
+              sleep 15
+              [[ "${i}" -eq 40 ]] && echo "::warning::Timed out waiting for GKE operations — attempting destroy anyway."
+            done
+          fi
+
+          # Run destroy, capturing the output so we can react to WHY it failed rather than
+          # re-running it blind. (The previous shape ran a SECOND destroy just to grep the
+          # error for a lock ID, then `exit 1` when there wasn't one — so a retry that had
+          # actually made progress still reported failure. That is what run 29381924836 hit.)
+          set +e
+          out="$(terraform destroy -auto-approve -input=false 2>&1)"
+          rc=$?
+          set -e
+          echo "${out}"
+          if [[ "${rc}" -ne 0 ]]; then
+            # A stale state lock from a cancelled run: extract its ID and force-unlock.
+            LOCK_ID="$(echo "${out}" | grep -oP '(?<=ID:\s{8})[0-9]+' | head -1 || true)"
             if [[ -n "${LOCK_ID}" ]]; then
               echo "Detected lock ${LOCK_ID} — force-unlocking..."
               terraform force-unlock -force "${LOCK_ID}" || true
-              terraform destroy -auto-approve -input=false
-            else
-              exit 1
             fi
+            # ORPHANED FIREWALL RULES PINNING THE VPC. Cloud Service Mesh creates its own
+            # health-check rule (`gke-csm-thc-*`) on the VPC; GKE does NOT remove it with the
+            # cluster and Terraform never owned it, so the network delete fails with
+            # `The network resource '...' is already being used by ... firewalls/gke-csm-thc-…`
+            # (seen live: runs 29392065023 / 29392373166). It only becomes an ORPHAN once the
+            # cluster is gone — mid-destroy, long after down.sh's cluster-alive NEG/forwarding
+            # -rule sweep — so this failure path is the only place that can catch it.
+            #
+            # Parse the blocker straight out of the error: GCP names it explicitly, so this
+            # deletes ONLY what it just told us pins the network we are destroying — no
+            # name-prefix guessing, and nothing else in the project can match. (An earlier
+            # attempt looked the VPC up via `terraform output` + a `gke-csm-` filter and
+            # silently no-op'd: `terraform output` reads the STATE, and a newly-added output
+            # is not in a state written by an older apply — destroy never adds one.)
+            for fw in $(echo "${out}" | grep -oP '(?<=/global/firewalls/)[a-z0-9-]+' | sort -u); do
+              echo "Deleting firewall rule '${fw}' — GCP reports it pins the network being destroyed"
+              # Do NOT swallow this. A first version sent stderr to /dev/null and `|| true`'d,
+              # so when the delete failed on a MISSING PERMISSION the sweep looked like it had
+              # worked and the retry blindly re-hit the same block (run 29392605802). The
+              # cause: roles/compute.networkAdmin grants firewalls.get/list but NOT .delete —
+              # GCP files firewall mutations under *security* (roles/compute.securityAdmin),
+              # despite networkAdmin being described as "full control of networking". Exactly
+              # the NEG/loadBalancerAdmin lesson already recorded in terraform/bootstrap.
+              gcloud compute firewall-rules delete "${fw}" --quiet \
+                || echo "::error::Could not delete firewall '${fw}' — the retry will fail on it again. Does the CI SA still have roles/compute.securityAdmin (terraform/bootstrap local.ci_roles)?"
+            done
+
+            # Retry once. Covers the unlocked case + the swept firewall rules above, AND any
+            # transient the wait missed (the Fleet `code 9` message literally says to retry
+            # once the operation is done).
+            echo "::warning::terraform destroy failed — retrying once."
+            terraform destroy -auto-approve -input=false
           fi
 
       # Run ALWAYS, not only when THIS run's `terraform output cluster_name` resolved.

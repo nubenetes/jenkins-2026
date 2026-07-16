@@ -47,6 +47,34 @@ backstage:
   command: ["node", "packages/backend"]
   args: ["--config", "app-config.yaml"]
 
+  # Kubernetes-plugin custom resources, ENGINE-AWARE. The CI engines are mutually
+  # exclusive (config.yaml ci.engine picks exactly one), but the image's
+  # app-config.yaml lists every engine's CRDs — so with the default jenkins engine the
+  # Kubernetes tab queries Tekton's and Argo Workflows' CRDs, which are not installed,
+  # and every entity shows three permanent 404s:
+  #   Error fetching Kubernetes resource: '/apis/tekton.dev/v1/pipelineruns' ... 404
+  #   Error fetching Kubernetes resource: '/apis/tekton.dev/v1/taskruns' ... 404
+  #   Error fetching Kubernetes resource: '/apis/argoproj.io/v1alpha1/workflows' ... 404
+  # Not merely cosmetic: the card that reports them says "the Error Reporting card is
+  # not completely accurate", so this noise degrades a real diagnostic — a genuine pod
+  # failure would arrive next to three meaningless 404s.
+  #
+  # The chart renders appConfig into an EXTRA --config that merges over the image's, and
+  # a later config REPLACES an array wholesale (it does not concatenate), so this list is
+  # the effective one in-cluster. Keep only what is ALWAYS installed; each engine's own
+  # CRDs come from its values-ci-<engine>.yaml overlay, layered by the argocd/backstage
+  # app-of-apps on ciEngine — exactly how values-backend-tls.yaml is layered on
+  # backendTls. app-config.yaml keeps the full list as the local-dev default (`yarn dev`
+  # loads it alone, with no chart to overlay).
+  appConfig:
+    kubernetes:
+      customResources:
+        # Argo Rollouts: the microservices' progressive delivery (docs/501). NOT a CI
+        # engine — installed unconditionally, so it belongs in the base list.
+        - group: argoproj.io
+          apiVersion: v1alpha1
+          plural: rollouts
+
   containerPorts:
     backend: 7007
 

@@ -11,7 +11,7 @@
 > [Authoring conventions](#authoring-conventions-for-doc-authors) before adding
 > or renaming a file.
 
-The deep-dive documentation is **25 numbered guides** plus a small set of
+The deep-dive documentation is **28 numbered guides** plus a small set of
 **runbooks** (live, validated step-by-step procedures) and three **legacy
 redirect stubs**. Every numbered guide is `NNN-TITLE.md`, carries prev/next
 navigation, and is catalogued in the root
@@ -35,7 +35,7 @@ part that carries meaning:
 | **2xx** | **Architecture** | System architecture + the imperative-vs-GitOps split ([201](./201-ARCHITECTURE.md)) and the demo microservices app ([202](./202-MICROSERVICES-APP-ARCHITECTURE.md)) |
 | **3xx** | **Observability & performance** | OTel components + the four obs backends ([301](./301-OBSERVABILITY.md)), the k6 traffic/load engine ([302](./302-K6_LOAD_TESTING.md)), and JVM tuning ([303](./303-JVM-TUNING.md)) |
 | **4xx** | **CI engines** — one doc per engine | The four interchangeable `ci.engine` choices: Jenkins ([401](./401-JENKINS.md) UI/JCasC + [402](./402-PIPELINES_AS_CODE.md) pipelines-as-code + [403](./403-DECLARATIVE_VS_SCRIPTED.md) declarative-vs-scripted authoring), Tekton ([404](./404-TEKTON.md)), GitHub Actions / ARC ([405](./405-GITHUB_ACTIONS.md)), and Argo Workflows ([406](./406-ARGO_WORKFLOWS.md)) |
-| **5xx** | **Platform ops & GitOps** | Platform operations — ArgoCD, Headlamp, Gateway/IAP, chaos/QA, progressive delivery ([501](./501-PLATFORM_OPERATIONS.md)); the microservices GitOps model ([502](./502-MICROSERVICES_GITOPS.md)); networking ([503](./503-NETWORKING.md)); opt-in backend TLS re-encryption ([504](./504-BACKEND_TLS.md)); the Backstage developer portal ([505](./505-BACKSTAGE.md)) |
+| **5xx** | **Platform ops & GitOps** | Platform operations — ArgoCD, Headlamp, Gateway/IAP, chaos/QA, progressive delivery ([501](./501-PLATFORM_OPERATIONS.md)); the microservices GitOps model ([502](./502-MICROSERVICES_GITOPS.md)); networking ([503](./503-NETWORKING.md)); opt-in backend TLS re-encryption ([504](./504-BACKEND_TLS.md)); the Backstage developer portal ([505](./505-BACKSTAGE.md)); the service mesh / Cloud Service Mesh option ([506](./506-SERVICE-MESH.md)); Binary Authorization supply-chain admission ([507](./507-BINARY-AUTHORIZATION.md)) |
 | **6xx** | **Security & pinning** | DevSecOps scanning ([601](./601-DEVSECOPS.md)) and the version-pinning policy ([602](./602-VERSION_PINNING.md)) |
 | **9xx** | **Reference** | Local development / quick start ([901](./901-LOCAL_DEVELOPMENT.md)), troubleshooting ([902](./902-TROUBLESHOOTING.md)), and the glossary ([903](./903-GLOSSARY.md)) |
 
@@ -126,13 +126,17 @@ Enter at the owning band and follow its cross-links:
 
 1. [601. DevSecOps](./601-DEVSECOPS.md) — the SAST/IaC/image scanning gates
    (Semgrep, CodeQL, Trivy) in the pipeline.
-2. [503. Networking](./503-NETWORKING.md) — NetworkPolicy segmentation,
+2. [506. Service Mesh](./506-SERVICE-MESH.md) — identity-based mTLS + L7 authZ
+   options (Cloud Service Mesh) and why-not-Istio/Traefik/other-meshes.
+3. [507. Binary Authorization](./507-BINARY-AUTHORIZATION.md) — deploy-time
+   supply-chain admission control.
+4. [503. Networking](./503-NETWORKING.md) — NetworkPolicy segmentation,
    Dataplane V2 enforcement, WireGuard inter-node encryption, north-south
    ingress/egress and the defense-in-depth model.
-3. [103. Secrets Inventory](./103-GITHUB_SECRETS_INVENTORY.md) +
+5. [103. Secrets Inventory](./103-GITHUB_SECRETS_INVENTORY.md) +
    [100. Bootstrap](./100-BOOTSTRAP.md) — the keyless WIF/OIDC trust model and
    where the (very few) long-lived credentials live.
-4. [201. Architecture § namespaces & in-cluster secrets](./201-ARCHITECTURE.md)
+6. [201. Architecture § namespaces & in-cluster secrets](./201-ARCHITECTURE.md)
    and [602. Version Pinning](./602-VERSION_PINNING.md) — the supply-chain
    pinning posture.
 
@@ -156,6 +160,18 @@ linked *from* the numbered doc whose subsystem they exercise, not woven into the
 **Rule of thumb:** if it's *conceptual* (why the platform is shaped this way, a
 matrix, a design decision), it's a numbered guide; if it's a *sequence of live
 commands you'd run to prove or repair something*, it's a runbook.
+
+---
+
+## Architecture Decision Records (ADRs)
+
+[`docs/adr/`](./adr/) holds dated records of **significant, hard-to-reverse
+decisions** and the alternatives that were rejected. Like runbooks, ADRs are
+**leaf documents** — numbered `NNNN-title.md`, **not** in the 100→903 nav chain,
+linked from the numbered guide they concern. Currently:
+[ADR 0001 — Intra-cluster TLS & supply-chain admission](./adr/0001-intra-cluster-security-and-supply-chain-admission.md)
+(the Cloud Service Mesh vs backend-TLS vs other-meshes + Binary Authorization
+decision; companions [506](./506-SERVICE-MESH.md) / [507](./507-BINARY-AUTHORIZATION.md)).
 
 ---
 

@@ -30,6 +30,20 @@ resource "google_project_service" "apis" {
     # harmless/unused with the flag off, and re-enabling APIs on demand is too
     # slow for an opt-in flag flipped on an already-running cluster.
     "networksecurity.googleapis.com",
+    # Cloud Service Mesh (serviceMesh.mode, docs/506) + Binary Authorization
+    # (security.binaryAuthorization, docs/507) APIs — enabled UNCONDITIONALLY, same
+    # rationale as secretmanager/networksecurity above and the docs/504 networksecurity
+    # precedent: enabling an API is harmless/free when the feature is off, and on-demand
+    # enablement is too SLOW when the flag is flipped on an ALREADY-RUNNING cluster —
+    # creating the KMS keyring / Container-Analysis note / Fleet membership in the SAME
+    # apply 403s with "API has not been used before" before enablement propagates. So
+    # keep them always-on; the count-gated resources in security.tf create the actual
+    # objects only when the flag is set.
+    "mesh.googleapis.com",
+    "gkehub.googleapis.com",
+    "binaryauthorization.googleapis.com",
+    "containeranalysis.googleapis.com",
+    "cloudkms.googleapis.com",
     ],
     # Vertex AI backs observability.llm.enabled in oss mode (the LiteLLM
     # gateway calls Gemini serverlessly). Conditional, unlike the two above:
@@ -268,6 +282,15 @@ resource "google_container_cluster" "this" {
 
   workload_identity_config {
     workload_pool = "${var.project_id}.svc.id.goog"
+  }
+
+  # Binary Authorization (security.binaryAuthorization.enabled, docs/507). When on,
+  # the cluster consults the PROJECT singleton policy (google_binary_authorization_policy
+  # in security.tf) at admission; DISABLED (default) admits anything. The dryrun-vs-
+  # enforce decision lives in that policy, not here. Updatable in place (not ForceNew),
+  # so flipping the flag converges on a Day1 re-run without recreating the cluster.
+  binary_authorization {
+    evaluation_mode = var.binary_authorization_enabled ? "PROJECT_SINGLETON_POLICY_ENFORCE" : "DISABLED"
   }
 
   # GKE Node Auto-Provisioning (NAP) — the GA, Google-native equivalent of Karpenter

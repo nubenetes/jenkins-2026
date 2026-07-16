@@ -1,4 +1,4 @@
-[← Previous: 504. Backend TLS](./504-BACKEND_TLS.md) | [🏠 Home](../README.md) | [→ Next: 601. DevSecOps](./601-DEVSECOPS.md)
+[← Previous: 504. Backend TLS](./504-BACKEND_TLS.md) | [🏠 Home](../README.md) | [→ Next: 506. Service Mesh](./506-SERVICE-MESH.md)
 
 ---
 
@@ -448,6 +448,151 @@ custom frontend-visible config key fed from the runtime ConfigMap), so the
 *same* catalog + the *same* image serve any engine — flip `ci.engine`, re-run,
 and the tab follows.
 
+## Scaffolder
+
+**Sidebar → Create.** One golden path ships today: **"Onboard an existing service"**
+([`backstage/catalog/templates/onboard-service/`](../backstage/catalog/templates/onboard-service/template.yaml)).
+
+### What it automates, and why that is the valuable half
+
+Adding a service to this platform was never about writing code — it is that **one
+service must be declared in three files across two repos**, each with its own
+contract:
+
+| # | File | Repo | Contract |
+|---|---|---|---|
+| 1 | [`jenkins/pipelines/seed/services.yaml`](../jenkins/pipelines/seed/services.yaml) | `jenkins-2026` | the registry **all four CI engines** read |
+| 2 | [`backstage/catalog/services.yaml`](../backstage/catalog/services.yaml) | `jenkins-2026` | the catalog entity + its **8 annotations** |
+| 3 | `helm/microservices/values-stable.yaml` | `jenkins-2026-gitops-config` | the deploy values ArgoCD syncs |
+
+File 2 is the trap: every annotation has a reason (documented in that file's
+header), and a wrong one **breaks a tab silently** — the deliberately-absent
+`backstage.io/kubernetes-namespace` being the canonical example. A template
+renders all three deterministically, from one form.
+
+### It never creates a repo — on purpose
+
+Both templates' only write actions are `publish:github:pull-request`, so:
+
+- **No repo-creation scope** is needed. It reuses the platform's existing
+  `GITHUB_TOKEN` (the same `integrations.github` PAT the catalog already uses).
+- The service's **source repo is only read**, never modified.
+- The `jenkins-2026` PR targets **`develop`, never `main`** — this repo is strict
+  GitFlow and the `gitflow-guard` required check would reject a `main` PR
+  (see [CLAUDE.md](../CLAUDE.md)). The gitops-config PR targets `main`, which is
+  direct-push by design for the pipeline but still deserves review for a
+  *structural* change (as opposed to a machine-managed image-tag bump).
+
+### How it edits files it did not write
+
+The stock actions only write **whole files**, and `fetch:template`-ing these three
+from scratch would clobber hand edits and strip the comments that carry most of
+the design rationale. Parsing + re-emitting YAML would reformat them just as badly.
+
+All three targets happen to be **append-only by construction** — `services:` is the
+**last key** of both YAMLs, and the catalog is a **multi-document stream** — so a new
+service is always a *pure append*: no parse, no merge, no reformat, comments intact.
+That is the whole trick, and why the one custom action
+([`j2026:file:append`](../backstage/packages/backend/src/modules/scaffolderFileAppend.ts))
+is ~40 lines instead of a YAML-manipulation library.
+
+Because that property is load-bearing but invisible, the action takes an **`anchor`**:
+text the file must still contain. If someone ever adds a key *after* `services:`, the
+template **fails loudly** instead of appending into the wrong place and opening a
+subtly-corrupt PR.
+
+Only the touched files are fetched (`fetch:plain:file`, not whole clones), and
+`publish:github:pull-request` only creates/updates the files it is handed — nothing
+else in either repo is in scope.
+
+### After the PRs merge
+
+No image rebuild: the catalog is read **from git by URL**
+(`catalog.locations` → `${CATALOG_BRANCH}`), so a merged catalog entry appears on the
+next refresh. The seed job picks the new service out of `services.yaml` and creates its
+pipeline; ArgoCD syncs the gitops values and deploys it.
+
+### The four gotchas a real run found — every static check was green
+
+Shipping this was not "add a plugin". `yarn tsc`, the image build, the pod starting, the
+plugin registering its actions and the form rendering+validating were **all green** while
+each of these was broken. They are recorded because **none of them announces itself**:
+
+| Symptom | Cause | Why nothing caught it |
+|---|---|---|
+| **Create page empty**, backend reports no error | `kind: Template` in `catalog.rules` is necessary but **NOT sufficient** — validating it needs **`@backstage/plugin-catalog-backend-module-scaffolder-entity-model`**, a package *separate* from `plugin-scaffolder-backend` that it does **not** pull in | the catalog **reads** the template and drops it at **`warn`** level (*"No processor recognized the entity … possibly caused by a foreign kind"*) — a warn in a log nobody tails, and an empty page that looks like "no templates yet" |
+| Template run dies at its **first step** | `isolated-vm` on Node ≥20 needs **`NODE_OPTIONS=--no-node-snapshot`** (Node's startup snapshot is incompatible with it creating V8 isolates). Set as `ENV` in the image, mirrored in the backend's `start` script for local `yarn dev` | it is a **runtime** requirement: everything builds, deploys and registers fine. Only *executing* a task surfaces it |
+| **All steps green — and the YAML written is broken** | a plain block scalar (`\|`) auto-detects its indentation from the first non-empty line and **strips** it, so entries land at column 0 while the existing ones sit at 2. Use the explicit **`\|2`** indicator | the run is a **success** by every measure the UI has. `services.yaml` came out *invalid* (breaking all four engines), and the gitops values — **worse** — still *parsed* with the service at top level instead of under `services`: a silent no-op ArgoCD renders nothing for |
+| Onboarding an existing name **duplicates** it | appending is blind; YAML accepts two list items with one name. The `absent` input now refuses (compared **per-line and trimmed**, never as a substring, so `name: gateway` cannot match `name: gateway-v2`) | the file stays valid. The seed job would create two jobs under one name and the second **shadows** the first — silently re-pointing an existing service's pipeline at the new repo |
+
+**The rule those four share, and the reason to re-parse rather than trust:**
+
+> **A green run proves the actions executed, not that what they wrote is correct.**
+> Only re-parsing the emitted YAML proves that.
+
+*(The Roadmap's old blocker — "the Scaffolder drags the `isolated-vm` native toolchain
+(python3/g++) into the image" — was re-tested rather than assumed and no longer holds:
+`isolated-vm` 6.x ships `prebuilds/linux-x64`, so it loads inside `node:24-trixie-slim`
+with **no compiler present**. The Dockerfile stays slim.)*
+
+### Why it onboards but does not *generate* (decision record)
+
+The obvious next template — *"create a new microservice from a skeleton"*, the thing most
+Backstage demos lead with — is deliberately **not** shipped. This was an explicit decision
+(2026-07-16), not an omission, a TODO, or a technical blocker: the Scaffolder is installed
+and working, so adding a second template is a morning's work. The reasons it would be the
+**wrong** morning:
+
+1. **There is no pattern of our own to encode — and this repo proves it in its own
+   source.** The two services are **forks of `jhipster/*`**; their code is generated by
+   JHipster, not written here. The proof is
+   [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) — *"the SINGLE
+   SOURCE OF TRUTH applied by ALL FOUR engines"* — which exists **solely to patch code we
+   don't own** (JHipster's MySQL → Postgres, Hazelcast → NoOp cache) on **every build**. A
+   golden path encodes a *house style*. With two forks there is no house style: there are
+   two instances of somebody else's.
+
+2. **All three things it could plausibly template are worse than nothing.**
+
+   | Template what? | Why it fails |
+   |---|---|
+   | Re-wrap the JHipster generator | A wrapper around a generator we don't own and don't control the roadmap of |
+   | A minimal Spring Boot skeleton of our own | A *hello world*: no entities, no JWT, no gateway routing, no database-per-service — it would exercise **neither the observability, the mesh, nor k6**. The generated service would be a **worse demo than the ones already here** |
+   | Copy an existing fork | That is `git clone` with extra steps, not a golden path |
+
+3. **Increment 1 already ate the expensive half.** The toil here was never writing code — it
+   was the **wiring**: one service declared across three files in two repos, with eight
+   annotations where a single wrong one breaks a tab silently. *That* is solved. What
+   increment 2 adds is *generating the code*, which you write **once** and then it exists
+   forever. It would automate the cheap part while the expensive part is already done — a
+   bad ratio, and the kind of feature that demos well and pays nothing.
+
+4. **It is not free.** A skeleton repo to maintain (it starts rotting the day Spring Boot
+   or JHipster moves); a token allowed to **create repos** in the org — a materially wider
+   secret surface than today's read/PR-only PAT
+   ([103](./103-GITHUB_SECRETS_INVENTORY.md)); and every generated service spends real
+   cluster budget, in a PoC that has already hit `ResourceQuota` rejections and a jnlp OOM
+   **at two services**.
+
+**The trigger is not a number.** An earlier draft of the Roadmap said *"when a third and
+fourth service make golden paths real"* — that was this argument compressed into a count,
+which is the wrong metric and invites the wrong question ("are we at three yet?"). The
+decision flips when **any** of these becomes true:
+
+- **A service is written here rather than forked.** This is the real tell, and it has a
+  crisp signal: a skeleton born *for* this platform would be Postgres-native, OTel-ready,
+  Jib-built and serve `/management/health` — so it would need **no**
+  `patch-app-source.sh`. **The day that script becomes unnecessary is the day a pattern of
+  our own exists**, and that is the day this template has something to say.
+- **Somebody other than the platform's owner onboards a service.** A golden path is a
+  *team* interface; for one person it is a personal convenience with a maintenance bill.
+- **The third manual onboarding is annoying enough to automate.** Repetition is evidence.
+  Anticipation is speculation.
+
+**What would *not* flip it:** reaching N services that are all forks of the same upstream.
+That is more of the same, not a pattern — which is precisely why counting services was the
+wrong test.
+
 ## CI-engine integration (the four tabs)
 
 The centerpiece matrix — what the CI/CD tab shows per engine, and what it needs:
@@ -527,9 +672,24 @@ Applications → Authorized OAuth Apps*.
 
 No dedicated backend — the Tekton plugin **rides the Kubernetes backend**:
 `kubernetes.customResources` registers `tekton.dev/v1`
-`pipelineruns`/`taskruns`, and the tab renders the runs matching the entity's
-`tekton.dev/cicd: "true"` + kubernetes namespace/label-selector annotations,
-with step logs streamed via `pods/log`. The RBAC lives in the `platform-config`
+`pipelineruns`/`taskruns` **when this engine is the active one**, and the tab renders the
+runs matching the entity's `tekton.dev/cicd: "true"` + kubernetes namespace/label-selector
+annotations, with step logs streamed via `pods/log`.
+
+> **Engine-gated, and it has to be.** That list used to name every engine's CRDs
+> unconditionally, but the engines are mutually exclusive — so on the default `jenkins`
+> engine the plugin queried CRDs that were never installed and **every** entity's
+> Kubernetes tab carried three permanent 404s (`/apis/tekton.dev/v1/pipelineruns`,
+> `…/taskruns`, `…/argoproj.io/v1alpha1/workflows`). Not cosmetic: the card that reports
+> them says *"the Error Reporting card is not completely accurate"*, so the noise degraded
+> a real diagnostic. The base list in [`helm/backstage/values.yaml`](../helm/backstage/values.yaml)
+> now holds only what is **always** installed (Argo Rollouts — progressive delivery, not a
+> CI engine), and each engine's CRDs come from its own
+> `values-ci-<engine>.yaml` overlay, layered by the `argocd/backstage` app-of-apps on
+> `ciEngine` exactly like `values-backend-tls.yaml` is layered on `backendTls`. The image's
+> `app-config.yaml` keeps the full list as the local-dev default (`yarn dev` loads it with
+> no chart to overlay); a later `--config` **replaces** an array wholesale, so the chart's
+> list wins in-cluster — which is also why this needed no image rebuild. The RBAC lives in the `platform-config`
 chart ([`argocd/platform-config/`](../argocd/platform-config/), file
 `rbac-backstage.yaml`): `get`/`list`/`watch` on `pipelineruns`, `taskruns`, and
 `pods/log`.
@@ -1119,6 +1279,8 @@ explicit, not derived).
 | CI/CD tab shows no Pipeline Runs on `ci.engine=tekton` (or no Workflows on `argoworkflows`) — Jenkins tab works fine | the Kubernetes-backend plugin applies **one shared namespace + label-selector to every object type** for an entity — built-in (Deployments/Pods, in `microservices`) *and* customResources (Tekton PipelineRuns/TaskRuns in `tekton-ci`, Argo Workflows in `argo-ci`) alike. The old `backstage.io/kubernetes-namespace: microservices` annotation scoped the fetch to a namespace where no PipelineRun/Workflow has ever run — zero results, no error (found live 2026-07-12; Jenkins is unaffected because its tab doesn't ride the Kubernetes plugin at all) | already handled: the namespace annotation is now **absent** (verified against the kubernetes-backend source — omitting it fetches **cluster-wide** instead of one namespace), and every run-creation site — `tekton/runs/*.yaml`, `tekton/triggers/eventlistener.yaml`, **the PaC `.tekton/<svc>.yaml` each fork carries** (rendered/pushed by `06-tekton-pipelines.sh` — the primary git-push path, and the one easiest to miss), `argoworkflows/runs/*.yaml`, `argoworkflows/events/sensor.yaml` — now carries the same `app.kubernetes.io/name=<svc>` label the entity's `backstage.io/kubernetes-label-selector` already looks for, so the shared selector matches the run regardless of which namespace it actually lives in. **Validation gotcha**: the Dashboard's *Rerun* button **clones the old run's metadata**, so rerunning a pre-fix run reproduces the unlabelled state and the tab stays empty — validate with a fresh PaC push (or `kubectl create -f tekton/runs/<svc>.yaml` from a post-fix checkout), and remember labels are never applied retroactively to existing runs |
 | `backstage-chart` **Degraded**, Deployment stuck `0/1` (readiness `503` forever, **no restarts**) on a **`ci.engine` ≠ `jenkins`** cluster | the **jenkins-backend plugin is always loaded** (`packages/backend/src/index.ts` — one image, all engines), and its config schema hard-rejects an **empty-string** `jenkins.instances[0].username` at backend startup (`"got empty-string, wanted string"`) — fatal to the whole process (liveness still answers, so kubelet never restarts it; only readiness — which waits on every plugin — stays `503`). `01-namespaces.sh` set `JENKINS_API_USER`/`_API_KEY` to a **literal empty string** on non-jenkins engines (found live 2026-07-12, the first-ever `ci.engine=tekton` Backstage deploy) | fixed: `01` now falls back to the same **`unset`** placeholder already used for the GitHub OAuth pair — non-empty satisfies the schema, and the Jenkins tab never renders anyway when `ci.engine≠jenkins`. Live remediation on an already-affected cluster: re-run `01` (refreshes `backstage-secrets`) then restart the deployment — `Day2.redeploy.08-backstage` does both, or locally `JENKINS2026_SELF_REPO_BRANCH=<branch> ./scripts/01-namespaces.sh && …/08.95-backstage.sh` |
 | TechDocs pages scroll horizontally / the nav + ToC sidebars are pushed off-screen | the repo docs' wide tables and large mermaid SVGs widen the shadow-DOM content column past the viewport (GitHub gives each wide element its own scrollbar; stock TechDocs does not) | already handled by the **`J2026DocsStyles` TechDocs addon** ([`packages/app/src/components/techdocs/`](../backstage/packages/app/src/components/techdocs/J2026DocsStyles.tsx)) — it injects GitHub-like overflow CSS into the TechDocs shadow root (page clamped; tables/code/mermaid scroll themselves). The repo markdown is deliberately untouched |
+| **The WHOLE app** scrolls horizontally — every page, any window size — and `body` carries a stray 8px margin | **not** the TechDocs case above (that one is shadow-DOM only). `@backstage/theme` **0.7.0 removed the built-in `CssBaseline`** from `UnifiedThemeProvider` — a BREAKING change whose own note reads *"if your Backstage instance looks broken after this update, you likely forgot to add our new Backstage UI global CSS"* — and this app upgraded straight past it. With no global reset everything inherits `box-sizing: content-box`, and `SidebarPage`'s content wrapper is `width: 100%` **plus** a `padding-left` of the sidebar width: under content-box those **add up**, so the layout renders exactly one sidebar wider than the viewport (measured live: 2253px against a 2037px viewport = 216px) | already fixed — [`packages/app/src/index.tsx`](../backstage/packages/app/src/index.tsx) imports `@backstage/ui/css/styles.css` (modern-normalize + the Backstage UI tokens). **Diagnosis recipe** if it ever returns: check `getComputedStyle(document.documentElement).boxSizing` in the browser — `content-box` means the global CSS is not loading |
+| Kubernetes tab shows *"Warning: There was a problem retrieving Kubernetes objects"* with `404 NOT_FOUND` for `tekton.dev` / `argoproj.io` CRDs, on **every** entity | the CI engines are mutually exclusive, so the inactive ones' CRDs are simply not installed — the plugin must not be asked for them. Degrades a real diagnostic: the card itself warns *"the Error Reporting card is not completely accurate"*, so a genuine pod failure would arrive beside permanent meaningless 404s | already handled — `kubernetes.customResources` is **engine-gated** via the `values-ci-<engine>.yaml` overlays (see [§ Tekton](#tekton)). If it recurs, check the `ciEngine` helm-parameter on the `backstage` Application matches `config.yaml`'s `ci.engine` |
 | Sign-in fails / "audience mismatch" in the backend logs | `IAP_AUDIENCE` still the placeholder — `09` ran before the LB finished programming the backend service (typical on the first-ever Day1) | re-run `Day1`, or `Day2.redeploy.05-gateway` / `.08-backstage` (both re-run `09`, which resolves + patches + restarts) |
 | GitHub Actions tab loops on its OAuth popup | `BACKSTAGE_GITHUB_OAUTH_CLIENT_ID/SECRET` unset (`unset` placeholders seeded) | create the GitHub OAuth App (callback `https://backstage.<baseDomain>/api/auth/github/handler/frame`), set the two secrets, re-run `01` + `08.95` |
 | Jenkins tab errors / 401 | the active engine isn't `jenkins` (`JENKINS_API_*` is only seeded then), or the admin password rotated under it | expected off-engine — the tab switches per `CI_ENGINE`; otherwise re-run `01` + `08.95` to refresh the keys |
@@ -1144,10 +1306,20 @@ survive (image, SM secrets) are exactly the two the platform *wants* persistent
 
 ## Roadmap
 
-- **Scaffolder golden-path templates** — deliberately **not shipped** yet: no
-  templates exist to justify it, and the Scaffolder drags the `isolated-vm`
-  native toolchain into the image build. When "create a new microservice from a
-  template" becomes real, this is the natural next increment.
+- **Scaffolder: "create a new microservice from a skeleton"** — the *second*
+  increment, deliberately **not** shipped and **not** blocked: the Scaffolder is
+  installed and working (the first increment, *"Onboard an existing service"*,
+  [§ Scaffolder](#scaffolder)), so this is a morning's work whenever it earns its
+  place. It does not yet, and the reasoning is a full
+  [decision record](#why-it-onboards-but-does-not-generate-decision-record) rather
+  than a line here — the short version: with two **forks of `jhipster/*`** there is
+  no house style to encode, and increment 1 already removed the expensive half (the
+  wiring), leaving only code you write once anyway. **The trigger is not a service
+  count** (an earlier draft said "a third and fourth service", which was this
+  argument compressed into the wrong metric): it flips when a service is *written*
+  here rather than forked — the tell being that it would need no
+  [`resources/patch-app-source.sh`](../resources/patch-app-source.sh) — or when
+  somebody other than the platform's owner starts onboarding services.
 - **Argo Workflows plugin** — adopt the community plugin the moment the
   donation (backstage/community-plugins **#9192**, open since 2026-05-21)
   ships, replacing the InfoCard deep link with a real runs tab.
@@ -1179,7 +1351,7 @@ survive (image, SM secrets) are exactly the two the platform *wants* persistent
 
 ---
 
-[← Previous: 504. Backend TLS](./504-BACKEND_TLS.md) | [🏠 Home](../README.md) | [→ Next: 601. DevSecOps](./601-DEVSECOPS.md)
+[← Previous: 504. Backend TLS](./504-BACKEND_TLS.md) | [🏠 Home](../README.md) | [→ Next: 506. Service Mesh](./506-SERVICE-MESH.md)
 
 ---
 

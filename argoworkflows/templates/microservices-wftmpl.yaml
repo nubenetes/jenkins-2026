@@ -546,6 +546,45 @@ spec:
               parameters:
                 - { name: service-type, value: "{{inputs.parameters.service-type}}" }
                 - { name: image, value: "{{inputs.parameters.image}}" }
+        # Binary Authorization (opt-in, docs/507 § Pipeline wiring): sign + attest the
+        # pushed image DIGEST via the single-source sign-and-attest-image.sh (shared by
+        # all four engines, like patch-app-source.sh). NO-OP unless BINAUTHZ_ENABLED=true
+        # (the script checks the flag first) — safe by default.
+        - - name: build-sign
+            template: build-sign
+            arguments:
+              parameters:
+                - { name: image, value: "{{inputs.parameters.image}}" }
+    # google/cloud-sdk so gcloud is present; auths via the Workflow SA's Workload
+    # Identity (bind it to the signer GSA terraform/gke grants). The seed
+    # (06-argoworkflows-pipelines.sh) flips BINAUTHZ_ENABLED when the flag is on. docs/507.
+    - name: build-sign
+      inputs:
+        parameters:
+          - name: image
+      script:
+        image: google/cloud-sdk:slim
+        command: [bash]
+        volumeMounts:
+          - { name: source, mountPath: /workspace }
+        env:
+          - name: BINAUTHZ_ENABLED
+            value: "false"
+        source: |
+          set -eu
+          # Self-gate BEFORE touching the script: the file must EXIST to run it, and the
+          # stable tier clones infra at `main`, which lacks the script until the binauthz
+          # work merges (it lives on develop) — so a binauthz-off build would 127 here.
+          # See docs/507.
+          if [ "${BINAUTHZ_ENABLED:-false}" != "true" ]; then
+            echo "Binary Authorization off — skipping sign + attest."; exit 0
+          fi
+          # Pass the image BY DIGEST when build-jib recorded one (via the shared PVC).
+          IMG="{{inputs.parameters.image}}"
+          if [ -f /workspace/jib-image.digest ]; then
+            IMG="${IMG%:*}@$(cat /workspace/jib-image.digest)"
+          fi
+          /workspace/jenkins-2026-infra/resources/sign-and-attest-image.sh "${IMG}"
     - name: build-jib
       inputs:
         parameters:
@@ -586,6 +625,11 @@ spec:
           if grep -q "jib-maven-plugin" pom.xml; then
             ./mvnw -B -Pprod -DskipTests -Dmaven.compiler.maxmem=512m jib:build \
               -Djib.to.image="{{inputs.parameters.image}}" -Djib.serialize=true
+            # Hand Jib's digest to build-sign via the shared /workspace PVC. Binary
+            # Authorization attests a DIGEST and a :tag can't be resolved on GHCR — the
+            # gap fixed in the Jenkins path (docs/507). Fixed path since the build cd's
+            # into the module dir.
+            cp target/jib-image.digest /workspace/jib-image.digest
           else
             echo "ERROR: {{inputs.parameters.service-type}} service has no jib-maven-plugin; the Argo Workflows path requires Jib for daemonless java image builds."
             exit 1
@@ -844,9 +888,23 @@ spec:
           POD=$(kubectl -n "${NS}" get pods -l "app.kubernetes.io/name=${DEPLOY}" \
                 --field-selector=status.phase=Running -o name 2>/dev/null | head -1)
           if [ -z "${POD}" ]; then echo "No running pod for ${DEPLOY} - skipping OTel check"; exit 0; fi
-          JTO=$(kubectl -n "${NS}" get "${POD}" -o jsonpath='{range .spec.containers[*]}{.env[?(@.name=="JAVA_TOOL_OPTIONS")].value}{end}' 2>/dev/null || true)
+          # ONLY the app container counts - it is named after the service in the chart.
+          # Scanning every container is what let a real bug through: with the mesh on, CSM
+          # injects istio-proxy AHEAD of the app and the OTel Operator instruments the FIRST
+          # container unless instrumentation.opentelemetry.io/container-names pins it - so the
+          # SIDECAR carried the -javaagent, this check reported OK, and the app ran
+          # uninstrumented with every OTel-fed Grafana panel on "No data". See docs/506.
+          JTO=$(kubectl -n "${NS}" get "${POD}" -o jsonpath="{.spec.containers[?(@.name=='${DEPLOY}')].env[?(@.name=='JAVA_TOOL_OPTIONS')].value}" 2>/dev/null || true)
+          # Every container as name=value - used ONLY to tell a mis-target from the race.
+          JTO_ALL=$(kubectl -n "${NS}" get "${POD}" -o jsonpath='{range .spec.containers[*]}{.name}{"="}{.env[?(@.name=="JAVA_TOOL_OPTIONS")].value}{" "}{end}' 2>/dev/null || true)
           if echo "${JTO}" | grep -q -- '-javaagent'; then
-            echo "OTel agent already injected in ${DEPLOY}"
+            echo "OTel agent injected in the ${DEPLOY} APP container"
+          elif echo "${JTO_ALL}" | grep -q -- '-javaagent'; then
+            echo "ERROR: the OTel agent landed on the WRONG container - ${DEPLOY} is NOT instrumented,"
+            echo "       so it emits no traces/metrics: ${JTO_ALL}"
+            echo "       A rollout restart will NOT fix this (the operator picks the same first"
+            echo "       container). FIX: set instrumentation.opentelemetry.io/container-names=${DEPLOY}"
+            echo "       on the pod template in gitops-config. See docs/506 App mesh-readiness."
           else
             echo "OTel agent NOT injected (race) - rolling restart ${DEPLOY}"
             kubectl -n "${NS}" rollout restart deploy/"${DEPLOY}"

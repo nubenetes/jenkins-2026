@@ -186,6 +186,7 @@ kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_N
     --arg duk "${dash_uid_k6}" \
     --arg dur "${dash_uid_rum}" \
     --arg duv "${dash_uid_jvm}" \
+    --arg binauthz "${J2026_BINARY_AUTHORIZATION_ENABLED:-false}" \
     '{stringData:{
         "grafana-base-url":$gbu,
         "grafana-k8s-app-link":$gk8s,
@@ -204,13 +205,26 @@ kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_N
         "develop-enabled":$dev,
         "gke-compute-class":$cc,
         "run-node-pool":$rnp,
-        "argocd-server":$argocdsrv
+        "argocd-server":$argocdsrv,
+        "binauthz-enabled":$binauthz
     }}')"
 
 # Rolls the controller whenever the Secret-backed banner/behaviour values change
 # (ArgoCD won't roll on an out-of-band Secret edit otherwise) - passed as the
 # controller.podAnnotations.bannerLinksChecksum helm parameter below.
-banner_links_checksum="$(printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' \
+#
+# EVERY behaviour flag that reaches the AGENT via containerEnv -> JCasC
+# globalNodeProperties MUST be in this checksum. Those envs are resolved at
+# controller POD START and baked into the node properties, so a value that changes
+# in the Secret but not here leaves the running agent on the STALE value until the
+# next unrelated roll. `binauthz-enabled` was exactly that: flipping Binary
+# Authorization off updated the Secret to "false" but did NOT roll the controller,
+# so the agent kept `BINAUTHZ_ENABLED=true` and tried to sign against an attestor a
+# binauthz-off Day1 had already torn down -> every build failed at sign-and-attest
+# (`could not resolve the KMS key version`). `genai-enabled` had the identical
+# latent gap. Same class as [[workflow-input-parity]]: a value wired into one place
+# and not its lockstep companion.
+banner_links_checksum="$(printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' \
   "${grafana_base_url}" "${grafana_k8s_app_link}" "${microservices_url}" \
   "${microservices_develop_url}" \
   "${jenkins_public_url}" "${J2026_SELF_REPO_BRANCH}" "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" \
@@ -218,6 +232,8 @@ banner_links_checksum="$(printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' \
   "${dash_uid_jenkins}|${dash_uid_microservices}|${dash_uid_k6}|${dash_uid_rum}|${dash_uid_jvm}" \
   "${argocd_server_addr}" \
   "${jenkins_agent_port}" \
+  "${J2026_BINARY_AUTHORIZATION_ENABLED:-false}" \
+  "${J2026_MICROSERVICES_GENAI_SERVICE_ENABLED}" \
   | sha256sum | cut -c1-16)"
 
 # --- JCasC ConfigMaps (single source: jenkins/casc/*) ------------------------
@@ -269,6 +285,25 @@ if [[ "$(j2026_backend_tls_active)" == "true" ]]; then
   yq eval -i \
     '(.spec.sources[] | select(.chart == "jenkins") | .helm.valueFiles) += ["$values/helm/jenkins/values-backend-tls.yaml"]' \
     "${JENKINS_APP_FILE}"
+fi
+# Binary Authorization (security.binaryAuthorization.enabled, docs/507 § Pipeline wiring):
+# HOOK 2 — annotate the jenkins KSA to impersonate the jenkins-2026-binauthz-signer GSA
+# (Workload Identity) so the build agent's gcloud can sign+attest the pushed image. The
+# KSA is ArgoCD-managed (a kubectl annotate would drift), so thread it as a chart helm
+# parameter instead. The WI binding (jenkins/jenkins → signer GSA) is granted by
+# terraform/gke (binauthz_signer_ksas). Gated on j2026_binary_authorization_active; a
+# flag-off run re-renders the app without the parameter (ArgoCD self-heals the annotation off).
+if [[ "$(j2026_binary_authorization_active)" == "true" ]]; then
+  binauthz_project="$(gcloud config get-value project 2>/dev/null || echo "")"
+  if [[ -n "${binauthz_project}" ]]; then
+    binauthz_signer="jenkins-2026-binauthz-signer@${binauthz_project}.iam.gserviceaccount.com"
+    log_info "Binary Authorization active - annotating the jenkins KSA to impersonate ${binauthz_signer} (image signing)"
+    yq eval -i \
+      "(.spec.sources[] | select(.chart == \"jenkins\") | .helm.parameters) += [{\"name\":\"serviceAccount.annotations.iam\\.gke\\.io/gcp-service-account\",\"value\":\"${binauthz_signer}\",\"forceString\":true}]" \
+      "${JENKINS_APP_FILE}"
+  else
+    log_warn "Binary Authorization active but could not resolve the GCP project for the signer-GSA annotation - agent image signing will not authenticate (see docs/507)."
+  fi
 fi
 kubectl apply -f "${JENKINS_APP_FILE}"
 rm -f "${JENKINS_APP_FILE}"

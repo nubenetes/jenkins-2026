@@ -473,6 +473,8 @@ Single source of truth, loaded by every script via [`scripts/lib/config.sh`](../
 | `ci.engine` | `jenkins` | `JENKINS2026_CI_ENGINE` | `jenkins`\|`tekton`\|`githubactions`\|`argoworkflows` — one of four mutually-exclusive engines running the pipelines-as-code (Jenkins default). See [404. Tekton](./404-TEKTON.md), [405. GitHub Actions](./405-GITHUB_ACTIONS.md), [406. Argo Workflows](./406-ARGO_WORKFLOWS.md) |
 | `microservices.developTrackEnabled` | `false` | `JENKINS2026_DEVELOP_TRACK_ENABLED` | Optional second microservices tier (`microservices-develop` namespace, GitOps `develop` branch) |
 | `secrets.backend` | `imperative` | `JENKINS2026_SECRETS_BACKEND` | `imperative`\|`eso` — how in-cluster Secrets are materialised (`eso` = GCP Secret Manager + External Secrets Operator, keyless WIF). See [Secrets backend](#secrets-backend-imperative--eso) |
+| `serviceMesh.mode` | `none` | `JENKINS2026_SERVICE_MESH_MODE` | `none`\|`cloud-service-mesh` — opt-in **Cloud Service Mesh** (managed Istio: workload-identity mTLS + L7 authZ); mutually exclusive with `gateway.backendTls`. See [506. Service Mesh](./506-SERVICE-MESH.md) |
+| `security.binaryAuthorization.enabled` | `false` | `JENKINS2026_BINARY_AUTHORIZATION_ENABLED` | opt-in GKE **Binary Authorization** — admit only signed/attested images (`enforcementMode` `dryrun`\|`enforce`); orthogonal to the TLS/mesh axis. See [507. Binary Authorization](./507-BINARY-AUTHORIZATION.md) |
 
 Other notable sections: `jenkins.*` (chart coordinates, namespace, this repo's own URL/branch), `observability.*` (operator/collector chart coordinates, release names, Secret name), `microservices.*` (namespaces, git org/repos/branches, target registry, list of 2 services seeded into Jenkins).
 

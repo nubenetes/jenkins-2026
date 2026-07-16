@@ -323,6 +323,7 @@ bs_image_repository="${J2026_BACKSTAGE_IMAGE_REPO#*/}"
 sed "s@{{repoUrl}}@${REPO_URL}@g;
      s@{{branchStable}}@${J2026_SELF_REPO_BRANCH}@g;
      s@{{backendTls}}@${BACKEND_TLS_ACTIVE}@g;
+     s@{{ciEngine}}@${J2026_CI_ENGINE}@g;
      s@{{chartVersion}}@${J2026_BACKSTAGE_CHART_VERSION}@g;
      s@{{imageRegistry}}@${bs_image_registry}@g;
      s@{{imageRepository}}@${bs_image_repository}@g;

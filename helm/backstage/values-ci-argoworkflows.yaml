@@ -1,0 +1,26 @@
+# Backstage CI-engine overlay for ci.engine=argoworkflows (docs/406-ARGO_WORKFLOWS.md) —
+# layered ON TOP of values.yaml (later valueFiles win) by the argocd/backstage app-of-apps
+# ONLY when the active engine is argoworkflows. NOT referenced otherwise, so no other
+# engine's posture is touched. Sibling of values-backend-tls.yaml, same mechanism.
+#
+# Argo Workflows has no Backstage plugin yet (community-plugins #9192, open since
+# 2026-05-21 — docs/505 § Roadmap), so its runs are surfaced through the Kubernetes tab via
+# this custom resource. It exists ONLY when Argo Workflows is installed, so listing it
+# unconditionally makes every other engine's Kubernetes tab report a 404 for a CRD that was
+# never meant to be there (see values.yaml's appConfig comment).
+#
+# NOTE: a later --config REPLACES an array rather than merging into it, so this list must
+# repeat the always-on entries from values.yaml — it is the whole effective list, not a
+# delta. Keep the rollouts entry in step with values.yaml.
+backstage:
+  appConfig:
+    kubernetes:
+      customResources:
+        # Always-on (mirrors values.yaml — see the NOTE above).
+        - group: argoproj.io
+          apiVersion: v1alpha1
+          plural: rollouts
+        # Argo Workflows runs, until the community plugin lands.
+        - group: argoproj.io
+          apiVersion: v1alpha1
+          plural: workflows

@@ -695,8 +695,93 @@ gateway:
   # FEATURE FLAG: override for a single run with
   # JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED (config.yaml is the durable
   # default; the env var is the ephemeral override - same pattern as ci.engine).
+  #
+  # ⚠ MUTUALLY EXCLUSIVE with serviceMesh.mode=cloud-service-mesh (below): a mesh
+  # SUPERSEDES this LB→pod re-encryption (the Mesh CA + mTLS own that hop). lib/
+  # config.sh FAILS FAST if both are set; the GHA forms expose a single
+  # `intra_cluster_tls` dropdown so the conflict can't be expressed. See docs/506.
   backendTls:
     enabled: false
+
+# -----------------------------------------------------------------------------
+# Service mesh — Cloud Service Mesh (CSM) standalone (OPT-IN, default none)
+# -----------------------------------------------------------------------------
+# Identity-based, MUTUAL mTLS + L7 authorization on the EAST-WEST (pod↔pod) and
+# LB→pod hops, via Google's MANAGED Cloud Service Mesh (managed Istio). This is the
+# "graduation" of the LB→pod security story beyond gateway.backendTls: where backend
+# TLS gives one-way, server-only TLS on the SINGLE LB→pod hop, a mesh gives workload
+# IDENTITY (SPIFFE), MUTUAL auth on ALL hops, plus L7 AuthorizationPolicy between
+# services. See docs/506-SERVICE-MESH.md for the full rationale, the why-NOT-Istio-
+# self-managed / Traefik / Linkerd / Cilium / other-meshes matrices, and the cost.
+#
+#   none (default)      - no mesh. The LB→pod hop follows gateway.backendTls (plain
+#                         HTTP by default, or re-encrypted if that flag is on).
+#                         Today's posture; zero new moving parts.
+#   cloud-service-mesh  - enable MANAGED CSM (the STANDALONE SKU, NOT a GKE
+#                         Enterprise tier): terraform/gke enables mesh.googleapis.com
+#                         + registers the cluster to a Fleet + enables the
+#                         `servicemesh` Fleet feature (managed control plane + Mesh
+#                         CA); scripts/08.85-service-mesh.sh labels the microservices
+#                         namespace(s) for sidecar injection and applies STRICT
+#                         PeerAuthentication + a default-deny AuthorizationPolicy.
+#
+# ⚠ MUTUALLY EXCLUSIVE with gateway.backendTls.enabled (above). Turning both on is a
+#   config error: lib/config.sh FAILS FAST, and the GHA workflows collapse the two
+#   into a SINGLE `intra_cluster_tls` dropdown (none|backend-tls|cloud-service-mesh)
+#   so the form makes the conflict impossible. See docs/506 § Backend TLS vs CSM.
+#
+# 💲 COST: CSM standalone is billed PER MESH CLIENT (proxy/endpoint), ≈$0.50/client/
+#   month ($0.0006945/client/h) — NOT per-vCPU, and NOT a GKE Enterprise tier (that
+#   edition was DISSOLVED 2025-09; CSM is now an à-la-carte SKU). Billing follows the
+#   ENABLED APIs, so we deliberately do NOT enable the GKE Enterprise API. For this
+#   2-service PoC on an ephemeral cluster that means CENTS. See docs/506 § Cost.
+#
+# FEATURE FLAG: override for a single run with JENKINS2026_SERVICE_MESH_MODE
+# (config.yaml is the durable default; the env var is the ephemeral override -
+# same pattern as ci.engine / observability.mode).
+serviceMesh:
+  mode: none
+  # Managed control-plane release channel for CSM (rapid | regular | stable) — same
+  # spirit as the GKE release channel. Only meaningful when mode=cloud-service-mesh.
+  channel: regular
+  # PeerAuthentication mTLS mode applied to the injected namespaces:
+  #   STRICT (default) - pods ONLY accept mTLS (true zero-trust; the point of the
+  #                      feature). PERMISSIVE - accept mTLS OR plaintext (a migration
+  #                      aid only). Keep STRICT unless a non-meshed caller needs in.
+  mtls: STRICT
+
+# -----------------------------------------------------------------------------
+# Supply-chain security — Binary Authorization (OPT-IN, default false)
+# -----------------------------------------------------------------------------
+# Deploy-time admission control: the GKE cluster ONLY admits container images that
+# carry a cryptographic ATTESTATION signed by this project's attestor (a Cloud KMS
+# key) — i.e. images that actually went through THIS platform's pipeline + scan gates
+# (Semgrep/CodeQL/Trivy, docs/601). It closes the loop the DevSecOps scanning opened:
+# scanning WITHOUT admission enforcement cannot stop an unscanned/rogue image from
+# being deployed. ORTHOGONAL to serviceMesh/backendTls (it governs WHICH images run,
+# not HOW pods talk) — it composes with any of them. See docs/507.
+#
+# When enabled, terraform/gke enables binaryauthorization.googleapis.com (+ Cloud KMS
+# + Container Analysis), provisions the KMS signing key + the attestor + the cluster
+# policy; resources/sign-and-attest-image.sh (the SINGLE source, called by all four
+# CI engines like resources/patch-app-source.sh) signs each freshly-built image's
+# DIGEST and creates the attestation after the push.
+#
+#   enforcementMode:
+#     dryrun (default) - DRYRUN_AUDIT_LOG_ONLY: violations are LOGGED (Cloud Audit
+#                        Logs) but pods still run. Safe for a PoC — you SEE what would
+#                        be blocked without wedging a deploy. GKE system images are
+#                        always allow-listed.
+#     enforce          - ENFORCED_BLOCK_AND_AUDIT_LOG: unattested images are REJECTED
+#                        at admission. The real zero-trust posture.
+#
+# FEATURE FLAG: override for a single run with
+# JENKINS2026_BINARY_AUTHORIZATION_ENABLED (config.yaml is the durable default; the
+# env var is the ephemeral override — same pattern as ci.engine / observability.mode).
+security:
+  binaryAuthorization:
+    enabled: false
+    enforcementMode: dryrun
 
 # -----------------------------------------------------------------------------
 # Microservices (Modernized stack), GitFlow pipelines-as-code

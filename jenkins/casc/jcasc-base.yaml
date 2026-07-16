@@ -155,6 +155,12 @@ jenkins:
           # authority") and the GitOps Update stage failed.
           - key: "ARGOCD_SERVER"
             value: "${ARGOCD_SERVER:-}"
+          # Binary Authorization (docs/507 § Pipeline wiring): surfaces BINAUTHZ_ENABLED
+          # into the pipeline env object (env.BINAUTHZ_ENABLED) so vars/microservicesImage.groovy
+          # signs the pushed image. Substituted from the controller env (containerEnv reads the
+          # binauthz-enabled secret key). Default false -> the signing step no-ops.
+          - key: "BINAUTHZ_ENABLED"
+            value: "${BINAUTHZ_ENABLED:-false}"
 
   securityRealm:
     oic:

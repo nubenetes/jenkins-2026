@@ -289,6 +289,18 @@ flowchart TB
 
 </details>
 
+> **GKE Dataplane V2 *is* a Google-managed Cilium/eBPF dataplane.** The
+> `datapath_provider = ADVANCED_DATAPATH` cluster runs Cilium under the hood:
+> NetworkPolicies are enforced by **eBPF (Cilium)**, and the WireGuard inter-node
+> encryption above is a Cilium feature Google exposes via
+> `in_transit_encryption_config`. But **Google manages that Cilium** — you cannot
+> install upstream Cilium (or **Cilium Service Mesh**) on top, nor reach the
+> Hubble/Cilium mesh surface. The practical consequence for meshing: the only
+> service mesh you can *add* on GKE is one that **composes with** the managed
+> Cilium — **Cloud Service Mesh** — rather than replacing it (self-managed Istio
+> means a delicate second dataplane beside it). See
+> [506. Service Mesh](./506-SERVICE-MESH.md).
+
 ## Segmentation: NetworkPolicies inside GKE
 
 This is where the real isolation lives. Dataplane V2 **enforces** the policies (without

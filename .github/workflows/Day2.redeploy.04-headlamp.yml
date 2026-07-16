@@ -60,8 +60,17 @@ on:
           - oss
           - managed-azure
           - managed-aws
-      backend_tls:
-        description: "Opt-in backend TLS (gateway.backendTls — docs/504). MUST MATCH how the cluster was provisioned: 08-headlamp applies (true) or omits (false) Headlamp's BackendTLSPolicy + HTTPS HealthCheckPolicy — the wrong value makes the LB and the Headlamp pod disagree on the protocol → 502. Flag FLIPS need Day1 (only it re-renders the Headlamp HTTPS values overlay via 08.5)."
+      intra_cluster_tls:
+        description: "Intra-cluster TLS — the single MUTUALLY-EXCLUSIVE choice, matching Day1 (docs/504 backend-tls · docs/506 mesh). MUST MATCH how the cluster was provisioned: 08-headlamp applies ('backend-tls') or omits ('none'/'cloud-service-mesh') Headlamp's BackendTLSPolicy + HTTPS HealthCheckPolicy — the wrong value makes the LB and the Headlamp pod disagree on the protocol → 502. 'cloud-service-mesh' is honored for exclusivity/consistency but the mesh is (re)applied by Day1.cluster.01 (08.85), not this redeploy. Flag FLIPS need Day1 (only it re-renders the Headlamp HTTPS values overlay via 08.5)."
+        required: false
+        default: "none"
+        type: choice
+        options:
+          - none
+          - backend-tls
+          - cloud-service-mesh
+      binary_authorization:
+        description: "Opt-in Binary Authorization (docs/507) — MUST MATCH the live cluster. ORTHOGONAL to intra_cluster_tls (composes with any); enforce-vs-dryrun is set in config.yaml. In parity with Day1 so a redeploy never silently resets it (the image-signing hooks live in the per-engine 04-*.sh / the Jenkins agent — docs/507 § Pipeline wiring)."
         required: false
         default: false
         type: boolean
@@ -89,9 +98,13 @@ env:
   # observability.mode (docs/504/301) — must match the live cluster: 01-namespaces
   # gates the grafana IAP secret + the obs ResourceQuota on it (see the input).
   JENKINS2026_OBS_MODE: ${{ inputs.observability_mode }}
-  # Opt-in backend TLS (docs/504) — must match the live cluster: 08-headlamp applies
-  # Headlamp's BackendTLSPolicy when true (see the input).
-  JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED: ${{ inputs.backend_tls }}
+  # Intra-cluster TLS axis (backend-tls XOR mesh — ONE dropdown, matches Day1; docs/504·506)
+  # + orthogonal Binary Authorization (docs/507), DERIVED from the two inputs exactly as
+  # Day1.cluster.01 does — so this redeploy PRESERVES the live cluster's flags instead of
+  # silently resetting them (the workflow-input-parity rule).
+  JENKINS2026_GATEWAY_BACKEND_TLS_ENABLED: ${{ inputs.intra_cluster_tls == 'backend-tls' }}
+  JENKINS2026_SERVICE_MESH_MODE: ${{ inputs.intra_cluster_tls == 'cloud-service-mesh' && 'cloud-service-mesh' || 'none' }}
+  JENKINS2026_BINARY_AUTHORIZATION_ENABLED: ${{ inputs.binary_authorization }}
 
 jobs:
   redeploy-headlamp:

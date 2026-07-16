@@ -20,6 +20,15 @@ locals {
     # compute.networkEndpointGroups.delete (plus the rest of the LB resource
     # graph) without the breadth of roles/compute.admin.
     "roles/compute.loadBalancerAdmin",
+    # The SAME story, one resource type over — surfaced by the opt-in Cloud Service
+    # Mesh (docs/506): CSM creates its own health-check firewall rule (`gke-csm-thc-*`)
+    # on the VPC, GKE does NOT remove it with the cluster, and it pins the network
+    # exactly like a lingering NEG does ("network ... is already being used by ...
+    # firewalls/gke-csm-thc-..."), so Decom.cluster.01 must force-delete it. But despite
+    # its name, roles/compute.networkAdmin grants firewalls.get/list ONLY: GCP files
+    # firewall MUTATIONS under *security*, not *networking*. securityAdmin adds
+    # compute.firewalls.delete — again without the breadth of roles/compute.admin.
+    "roles/compute.securityAdmin",
     "roles/iam.serviceAccountAdmin",
     "roles/iam.serviceAccountUser",
     "roles/resourcemanager.projectIamAdmin",
@@ -44,6 +53,23 @@ locals {
     # node SA gets the read-only secretAccessor in terraform/gke instead. Unused
     # in the default imperative mode. See docs/201 § Secrets Management.
     "roles/secretmanager.admin",
+    # security.binaryAuthorization.enabled (docs/507): Day1's terraform/gke creates a
+    # Cloud KMS keyring/key (+ setIamPolicy for the signer GSA), a Container Analysis
+    # note, a Binary Authorization attestor + the project policy. These are the create/
+    # admin roles for each — without them the apply 403s IAM_PERMISSION_DENIED on
+    # cloudkms.keyRings.create / containeranalysis.notes.create.
+    "roles/cloudkms.admin",
+    # cloudkms.admin MANAGES keys but does NOT include cryptoKeyVersions.viewPublicKey
+    # (that is an operation permission, not a management one). terraform/gke's data
+    # source reads the attestor key's PEM public key to embed it in the attestor, so
+    # the CI SA also needs publicKeyViewer.
+    "roles/cloudkms.publicKeyViewer",
+    "roles/containeranalysis.notes.editor",
+    "roles/binaryauthorization.attestorsAdmin",
+    "roles/binaryauthorization.policyEditor",
+    # serviceMesh.mode=cloud-service-mesh (docs/506): Day1's terraform/gke registers
+    # the cluster to a Fleet + enables the `servicemesh` Fleet feature (managed CSM).
+    "roles/gkehub.admin",
   ]
 }
 

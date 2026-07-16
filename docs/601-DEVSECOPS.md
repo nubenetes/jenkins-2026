@@ -1,4 +1,4 @@
-[← Previous: 505. Backstage](./505-BACKSTAGE.md) | [🏠 Home](../README.md) | [→ Next: 602. Version Pinning](./602-VERSION_PINNING.md)
+[← Previous: 507. Binary Authorization](./507-BINARY-AUTHORIZATION.md) | [🏠 Home](../README.md) | [→ Next: 602. Version Pinning](./602-VERSION_PINNING.md)
 
 ---
 
@@ -159,7 +159,8 @@ graph TD
 - **Dual Responsibility**:
   - **IaC Scan**: Evaluates the checked-out app source tree and the gitops-config repo's `helm/microservices` chart (cloned at the tier's branch — `main` for stable, `develop` for develop) before the image build (warning-only/non-blocking).
   - **Image Scan**: Scans the final container image (OS packages + app dependencies) after it is pushed to the registry and before the GitOps tag bump / deploy.
-- **Configuration**: Defined in [`trivy.yaml`](../trivy.yaml) (severity `HIGH,CRITICAL`, `format: table`), passed via `--config` by the Jenkins, Tekton and Argo Workflows engines; the GitHub Actions engine's Trivy steps run without the config file (all severities reported, still `--exit-code 0`).
+- **Configuration**: Defined in [`trivy.yaml`](../trivy.yaml) (severity `HIGH,CRITICAL`, `format: table`, `timeout: 15m`), passed via `--config` by the Jenkins, Tekton and Argo Workflows engines; the GitHub Actions engine's Trivy steps run without the config file (all severities reported, still `--exit-code 0`).
+  - **Why `timeout: 15m` and not Trivy's 5m default**: the gateway — the heaviest service, the only one that also builds the Angular SPA — needs **~5m47s** just to walk its image's layers on the cpu-limited scan container, and blew the default: `WARN Provide a higher timeout value` then `FATAL … walk dir error: context deadline exceeded`, **failing the build over a clock rather than a vulnerability** (these scans run `--exit-code 0` precisely so findings never block). The margin was always thin — `jhipstersamplemicroservice` takes ~3m29s for the same phase and merely squeaked under. Raise the clock rather than trim the scan: layer analysis here is I/O-bound, so the honest fix is more time, not less coverage. A timeout only caps, so the IaC scans and the other engines are unaffected.
 - **Failure Policy**: both scans are **report-only / non-blocking** — they run with `--exit-code 0` (filtered to `CRITICAL,HIGH` severity) so findings are surfaced in the build log but never halt the build or deploy stage. Trivy runs with `format: table` (console output only — it does **not** upload SARIF to GitHub Code Scanning; only Semgrep + CodeQL produce/upload SARIF). See [`tekton/tasks/trivy-image.yaml`](../tekton/tasks/trivy-image.yaml) and [`trivy-iac.yaml`](../tekton/tasks/trivy-iac.yaml). To make the image scan gating, change its `--exit-code` to `1`.
 
 ### 4. Jenkins `warnings-ng` Plugin Integration (SARIF Visualizer)
@@ -196,7 +197,7 @@ post {
 
 ---
 
-[← Previous: 505. Backstage](./505-BACKSTAGE.md) | [🏠 Home](../README.md) | [→ Next: 602. Version Pinning](./602-VERSION_PINNING.md)
+[← Previous: 507. Binary Authorization](./507-BINARY-AUTHORIZATION.md) | [🏠 Home](../README.md) | [→ Next: 602. Version Pinning](./602-VERSION_PINNING.md)
 
 ---
 

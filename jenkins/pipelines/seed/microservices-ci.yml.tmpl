@@ -82,16 +82,22 @@ jobs:
           java-version: '21'
 
       # The minimal ARC runner also lacks yq (the GitOps tag bump below runs it under
-      # `set -eu`) and the argocd CLI (the sync step). Install both, pinned: yq to the repo
-      # standard (v4.53.3, same as Day1), argocd to the running server (v3.4.4) so
-      # `app sync`/`app wait` speak the same API. User-dir install + $GITHUB_PATH — the
-      # actions-runner user has no passwordless sudo, so /usr/local/bin isn't writable.
-      - name: Install CI tools (yq + argocd)
+      # `set -eu`), the argocd CLI (the sync step) and kubectl (the OTel Self-Heal step +
+      # the backend-TLS auto-detect — which, with kubectl absent, silently took the
+      # plaintext branch every run). Install all three, pinned: yq to the repo standard
+      # (v4.53.3, same as Day1), argocd to the running server (v3.4.4) so `app sync`/
+      # `app wait` speak the same API, kubectl to the repo standard (v1.31.3 — the
+      # alpine/k8s tag the Tekton/Argo tasks run). kubectl needs no kubeconfig: the runner
+      # pod's ServiceAccount token is mounted and carries the RBAC (docs/405 § RBAC).
+      # User-dir install + $GITHUB_PATH — the actions-runner user has no passwordless
+      # sudo, so /usr/local/bin isn't writable.
+      - name: Install CI tools (yq + argocd + kubectl)
         run: |
           mkdir -p "$HOME/.local/bin"
           curl -fsSL https://github.com/mikefarah/yq/releases/download/v4.53.3/yq_linux_amd64 -o "$HOME/.local/bin/yq"
           curl -fsSL https://github.com/argoproj/argo-cd/releases/download/v3.4.4/argocd-linux-amd64 -o "$HOME/.local/bin/argocd"
-          chmod +x "$HOME/.local/bin/yq" "$HOME/.local/bin/argocd"
+          curl -fsSL https://dl.k8s.io/release/v1.31.3/bin/linux/amd64/kubectl -o "$HOME/.local/bin/kubectl"
+          chmod +x "$HOME/.local/bin/yq" "$HOME/.local/bin/argocd" "$HOME/.local/bin/kubectl"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Semgrep (SAST) → SARIF
@@ -147,6 +153,35 @@ jobs:
             -Djib.to.image="$REGISTRY/$SERVICE:$IMAGE_TAG" \
             -Djib.to.auth.username="${{ secrets.REGISTRY_USERNAME }}" \
             -Djib.to.auth.password="${{ secrets.REGISTRY_PASSWORD }}" -Djib.serialize=true
+          # Hand Jib's digest to the sign step (same runner; steps reset cwd, so copy to
+          # an absolute path). Binary Authorization attests a DIGEST and a :tag can't be
+          # resolved on GHCR — the gap fixed in the Jenkins path (docs/507).
+          cp target/jib-image.digest "$GITHUB_WORKSPACE/jib-image.digest"
+
+      # Binary Authorization (opt-in, docs/507 § Pipeline wiring): sign + attest the
+      # pushed image DIGEST via the single-source resources/sign-and-attest-image.sh
+      # (shared by all four engines, like patch-app-source.sh). NO-OP unless
+      # BINAUTHZ_ENABLED=true (the script checks the flag FIRST, before needing gcloud),
+      # so this is safe by default. To actually sign: the render step (06-githubactions-
+      # pipelines.sh) threads BINAUTHZ_ENABLED + PROJECT_ID, and the ARC runner needs
+      # gcloud + Workload Identity to the project (its KSA bound to the signer GSA that
+      # terraform/gke grants). See docs/507.
+      - name: Sign + attest image (Binary Authorization, opt-in)
+        if: env.SERVICE_TYPE == 'java' && github.event_name != 'pull_request'
+        run: |
+          # Self-gate BEFORE touching the script: the file must EXIST to run it, and the
+          # stable tier checks out infra at `main`, which lacks the script until the
+          # binauthz work merges (it lives on develop) — so a binauthz-off build would
+          # exit 127 here. See docs/507.
+          if [ "${BINAUTHZ_ENABLED:-false}" != "true" ]; then
+            echo "Binary Authorization off — skipping sign + attest."; exit 0
+          fi
+          # Pass the image BY DIGEST when the Jib step recorded one.
+          IMG="$REGISTRY/$SERVICE:$IMAGE_TAG"
+          if [ -f "$GITHUB_WORKSPACE/jib-image.digest" ]; then
+            IMG="$REGISTRY/$SERVICE@$(cat "$GITHUB_WORKSPACE/jib-image.digest")"
+          fi
+          bash "${{ github.workspace }}/infra/resources/sign-and-attest-image.sh" "$IMG"
 
       # Reclaim disk before the image scan. The app image is now in GHCR, so the build
       # tree (Angular node_modules, Maven target/ + ~/.m2 repo, the Jib build cache) is
@@ -198,9 +233,12 @@ jobs:
           ARGOCD_TOKEN="$(cat /var/run/secrets/arc-argocd/token 2>/dev/null || echo "${{ env.ARGOCD_TOKEN }}")"
           server="argocd-server.{{argocdNamespace}}.svc.cluster.local"
           flags="--grpc-web --insecure"
-          # Auto-detect if Backend TLS is active by checking the gateway-tls secret in target namespace
-          TARGET_NS="microservices-$ENV_NAME"
-          if command -v kubectl >/dev/null 2>&1 && kubectl -n "${TARGET_NS}" get secret gateway-tls >/dev/null 2>&1; then
+          # Auto-detect if Backend TLS is active by checking the gateway-tls secret in the target
+          # namespace. TARGET_NS comes from the job env above ({{nsStable}}/{{nsDevelop}} — the
+          # REAL namespaces) — do NOT recompute it as "microservices-$ENV_NAME": the stable
+          # namespace is `microservices`, not `microservices-stable`, so that override aimed this
+          # check at a namespace that does not exist and it always fell through to plaintext.
+          if kubectl -n "${TARGET_NS}" get secret gateway-tls >/dev/null 2>&1; then
             server="${server}:443"
           else
             server="${server}:80"
@@ -211,6 +249,43 @@ jobs:
           # gateway's ~600s startupProbe cold-start gates every service's run in the batch - don't lower (see CHANGELOG).
           argocd app wait  "microservices-$ENV_NAME" --auth-token "$ARGOCD_TOKEN" --server "${server}" ${flags} --sync --health --timeout 900 || true
 
+      # OTel Self-Heal — the GitHub Actions port of vars/microservicesOtelSelfHeal.groovy and
+      # its Tekton/Argo twins, closing the last engine-parity gap. The OTel Operator's pod
+      # webhook runs failurePolicy: Ignore, so a pod admitted before the Instrumentation CR
+      # was ready starts with NO Java agent and emits nothing — its Grafana panels read
+      # "No data" indefinitely, and until now GHA had nothing to heal it. The runner SA
+      # already carried the RBAC for exactly this (edit in the microservices namespaces + the
+      # OTel instrumentation binding — docs/405 § RBAC); only the step was missing.
+      - name: OTel Self-Heal (injection race)
+        if: env.SERVICE_TYPE == 'java' && github.event_name != 'pull_request'
+        run: |
+          set -eu
+          DEPLOY="{{svcName}}"
+          kubectl -n "${TARGET_NS}" rollout status deploy/"${DEPLOY}" --timeout=120s || true
+          POD=$(kubectl -n "${TARGET_NS}" get pods -l "app.kubernetes.io/name=${DEPLOY}" \
+                --field-selector=status.phase=Running -o name 2>/dev/null | head -1)
+          if [ -z "${POD}" ]; then echo "No running pod for ${DEPLOY} - skipping OTel check"; exit 0; fi
+          # ONLY the app container counts - it is named after the service in the chart.
+          # Scanning every container is what let a real bug through: with the mesh on, CSM
+          # injects istio-proxy AHEAD of the app and the OTel Operator instruments the FIRST
+          # container unless instrumentation.opentelemetry.io/container-names pins it - so the
+          # SIDECAR carried the -javaagent while the app ran uninstrumented. See docs/506.
+          JTO=$(kubectl -n "${TARGET_NS}" get "${POD}" -o jsonpath="{.spec.containers[?(@.name=='${DEPLOY}')].env[?(@.name=='JAVA_TOOL_OPTIONS')].value}" 2>/dev/null || true)
+          # Every container as name=value - used ONLY to tell a mis-target from the race.
+          JTO_ALL=$(kubectl -n "${TARGET_NS}" get "${POD}" -o jsonpath='{range .spec.containers[*]}{.name}{"="}{.env[?(@.name=="JAVA_TOOL_OPTIONS")].value}{" "}{end}' 2>/dev/null || true)
+          if echo "${JTO}" | grep -q -- '-javaagent'; then
+            echo "OTel agent injected in the ${DEPLOY} APP container"
+          elif echo "${JTO_ALL}" | grep -q -- '-javaagent'; then
+            # Mis-target: a rollout restart CANNOT fix it (the operator would pick the same
+            # first container again). ::warning:: is the GHA analogue of Jenkins' unstable():
+            # visible in the job UI + summary, without failing a deploy over an observability
+            # defect. See docs/506 § App mesh-readiness.
+            echo "::warning::OTel agent landed on the WRONG container - ${DEPLOY} is NOT instrumented (${JTO_ALL}). A restart will not fix it: set instrumentation.opentelemetry.io/container-names=${DEPLOY} on the pod template in gitops-config. See docs/506."
+          else
+            echo "OTel agent NOT injected (race) - rolling restart ${DEPLOY}"
+            kubectl -n "${TARGET_NS}" rollout restart deploy/"${DEPLOY}"
+            kubectl -n "${TARGET_NS}" rollout status deploy/"${DEPLOY}" --timeout=120s || true
+          fi
 
       - name: Smoke test
         if: github.event_name != 'pull_request'

@@ -18,7 +18,9 @@ against the internal CA. Stages 1–10 convert all available web interfaces and 
 **Jenkins** (when `ci.engine=jenkins`), **Tekton Dashboard** (when `ci.engine=tekton`),
 **Argo Workflows Server** (when `ci.engine=argoworkflows`), and **Backstage** (when
 `backstage.enabled` — [docs/505](./505-BACKSTAGE.md)); the roadmap below has the
-per-backend detail. Default **`false`** — zero impact until you opt in.
+per-backend detail. Default **`false`** — zero impact until you opt in. Backend
+TLS is **mutually exclusive** with `serviceMesh.mode=cloud-service-mesh` (a mesh
+supersedes this LB→pod hop — see [506. Service Mesh](./506-SERVICE-MESH.md)).
 
 ## Why (and why opt-in)
 
@@ -403,12 +405,12 @@ has those three):
 |---|---|---|---|
 | **What it closes** | App-layer TLS on the LB→pod hop (+ the internal hop later) | mTLS with per-workload **identity** on **all** hops + L7 authZ | Same as Istio, managed control plane |
 | **New moving parts** | cert-manager + one policy per host + cert Secrets in the apps | Control plane (istiod) + a sidecar per pod (or ambient ztunnel/waypoint) | Managed control plane; data-plane proxies still run in your pods |
-| **Operational cost** | Low — cert-manager auto-rotates; no new plane to upgrade | High — control-plane upgrades, proxy version skew, debugging through sidecars | Medium — Google runs the control plane, **but requires GKE Enterprise** (licensing cost) |
+| **Operational cost** | Low — cert-manager auto-rotates; no new plane to upgrade | High — control-plane upgrades, proxy version skew, debugging through sidecars | Medium — Google runs the control plane; billed on the **standalone CSM SKU** (per mesh client, ~$0.50/client/mo — [506](./506-SERVICE-MESH.md)), **not** a GKE Enterprise tier (editions dissolved 2025-09) |
 | **Identity / authZ** | None (one-way TLS, no workload identity) | SPIFFE identities + `AuthorizationPolicy` L7 rules | Same, plus a managed mesh CA |
 | **Redundancy with what's built** | None — composes with WireGuard / NetPols / Rollouts | **Triple overlap**: traffic-shifting (vs Rollouts + Gateway plugin), transport encryption (vs WireGuard + Google in-transit), L3/4 authZ (vs enforced Cilium NetworkPolicies) | Same overlaps, slightly attenuated by the Gateway API integration |
 | **Interaction risk** | Health checks must switch to HTTPS (handled) | Dataplane V2 (managed Cilium/eBPF) + Istio is a *supported but delicate* two-layer combo | Same class of constraint, better documented by Google |
-| **Fit for a 2-service PoC** | Right-sized | Overkill | Overkill + license |
-| **Cost** | $0 | $0 licence, high toil | GKE Enterprise subscription |
+| **Fit for a 2-service PoC** | Right-sized | Overkill | Overkill (but cheap — no license) |
+| **Cost** | $0 | $0 licence, high toil | Standalone à-la-carte SKU, **per mesh client** (~$0.50/client/mo) — cents for a 2-service ephemeral PoC ([506](./506-SERVICE-MESH.md)) |
 
 **Why the meshes lost here** — not because meshes are wrong, but because this
 platform already made the calls a mesh would re-make: Argo Rollouts + the Gateway
@@ -416,15 +418,18 @@ API plugin were chosen *specifically* to get canary/blue-green **without
 sidecars**; WireGuard already closes plaintext-on-the-wire; enforced
 NetworkPolicies already do L3/4 segmentation. A mesh would duplicate all three,
 add a second networking layer beside Dataplane V2's managed Cilium, and (for
-Cloud Service Mesh) couple the PoC to GKE Enterprise — while the **only** missing
-property was app-layer TLS on one hop.
+Cloud Service Mesh) add managed-mesh machinery the two-service PoC doesn't need —
+while the **only** missing property was app-layer TLS on one hop. (Since the
+2025-09 editions change CSM's standalone SKU is cheap — [506](./506-SERVICE-MESH.md)
+— so the objection is redundancy, not cost.)
 
 **When to revisit** — tens of services, a compliance mandate for **identity-based
 mTLS to the pod**, fine-grained L7 authorization between workloads, or
 multi-cluster. At that point prefer **Cloud Service Mesh over self-managed
 Istio** (the operational delta is what you'd be buying) and retire this flag's
-machinery in favour of the mesh CA. Until then, backend TLS is the minimal,
-composable increment.
+machinery in favour of the mesh CA. See [506. Service Mesh](./506-SERVICE-MESH.md)
+for the full CSM decision record and the (now cheap) standalone cost model. Until
+then, backend TLS is the minimal, composable increment.
 
 ## Lifecycle
 

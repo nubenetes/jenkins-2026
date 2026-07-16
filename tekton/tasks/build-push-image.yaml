@@ -56,6 +56,13 @@ spec:
         if grep -q "jib-maven-plugin" pom.xml; then
           ./mvnw -B -Pprod -DskipTests -Dmaven.compiler.maxmem=512m jib:build \
             -Djib.to.image="$(params.image)" -Djib.serialize=true
+          # Hand Jib's OWN digest of what it just pushed to the sign step (same task,
+          # shared workspace). Binary Authorization attests a DIGEST, and a :tag cannot
+          # be resolved to one afterwards on GHCR (gcloud is GCR/AR-only, crane absent
+          # from cloud-sdk:slim) — the gap fixed in the Jenkins path (docs/507). Jib
+          # always writes target/jib-image.digest; copy it to a fixed workspace path
+          # because the build cd's into the module dir.
+          cp target/jib-image.digest "$(workspaces.source.path)/jib-image.digest"
         else
           echo "ERROR: $(params.service-type) service has no jib-maven-plugin; the Tekton path requires Jib for daemonless java image builds."
           exit 1
@@ -81,6 +88,38 @@ spec:
           --context="$(workspaces.source.path)" \
           --dockerfile="$(workspaces.source.path)/jenkins-2026-infra/resources/angular/Dockerfile" \
           --destination="$(params.image)"
+    # Binary Authorization (opt-in, docs/507 § Pipeline wiring): sign + attest the
+    # pushed image DIGEST via the single-source resources/sign-and-attest-image.sh
+    # (shared by all four engines, like patch-app-source.sh). Runs in google/cloud-sdk
+    # so gcloud is present; auths via the pod's Workload Identity (the pipeline SA must
+    # be bound to the signer GSA that terraform/gke grants). NO-OP unless
+    # BINAUTHZ_ENABLED=true (the script checks the flag first) — safe by default; the
+    # seed (06-tekton-pipelines.sh) flips the env when the flag is on. See docs/507.
+    - name: sign-attest
+      image: google/cloud-sdk:slim
+      env:
+        - name: BINAUTHZ_ENABLED
+          value: "false"
+      script: |
+        #!/usr/bin/env bash
+        set -eu
+        # Self-gate BEFORE touching the script. sign-and-attest-image.sh no-ops internally
+        # when BINAUTHZ_ENABLED != true — but the file must EXIST to run it, and the infra
+        # repo cloned for the STABLE tier is `main`, which does not carry the script until
+        # the binauthz work merges (it lives on develop). Without this gate a binauthz-off
+        # stable build 127s here ("No such file or directory") on every run. Checking the
+        # flag first makes the step a clean no-op when signing is off, whatever branch's
+        # infra got cloned.
+        if [ "${BINAUTHZ_ENABLED:-false}" != "true" ]; then
+          echo "Binary Authorization off — skipping sign + attest."; exit 0
+        fi
+        # Pass the image BY DIGEST (image@sha256:… — the script attests it directly instead
+        # of failing to resolve the :tag on GHCR). Digest file present for every Jib (java)
+        # build; the kaniko/angular placeholder path leaves none and passes the tag.
+        IMG="$(params.image)"
+        DF="$(workspaces.source.path)/jib-image.digest"
+        if [ -f "${DF}" ]; then IMG="${IMG%:*}@$(cat "${DF}")"; fi
+        "$(workspaces.source.path)/jenkins-2026-infra/resources/sign-and-attest-image.sh" "${IMG}"
   volumes:
     - name: maven-cache
       hostPath: { path: /tmp/tekton-maven-cache, type: DirectoryOrCreate }

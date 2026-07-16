@@ -1,0 +1,28 @@
+# Backstage CI-engine overlay for ci.engine=tekton (docs/404-TEKTON.md) — layered ON TOP
+# of values.yaml (later valueFiles win) by the argocd/backstage app-of-apps ONLY when the
+# active engine is tekton. NOT referenced otherwise, so no other engine's posture is
+# touched. Sibling of values-backend-tls.yaml, same mechanism.
+#
+# Tekton's CI/CD tab rides the Kubernetes plugin: it renders PipelineRuns/TaskRuns from
+# these customResources. They exist ONLY when Tekton is installed, so listing them
+# unconditionally makes every other engine's Kubernetes tab report 404s for CRDs that were
+# never meant to be there (see values.yaml's appConfig comment).
+#
+# NOTE: a later --config REPLACES an array rather than merging into it, so this list must
+# repeat the always-on entries from values.yaml — it is the whole effective list, not a
+# delta. Keep the rollouts entry in step with values.yaml.
+backstage:
+  appConfig:
+    kubernetes:
+      customResources:
+        # Always-on (mirrors values.yaml — see the NOTE above).
+        - group: argoproj.io
+          apiVersion: v1alpha1
+          plural: rollouts
+        # Tekton CI/CD tab (docs/404 § Backstage integration).
+        - group: tekton.dev
+          apiVersion: v1
+          plural: pipelineruns
+        - group: tekton.dev
+          apiVersion: v1
+          plural: taskruns

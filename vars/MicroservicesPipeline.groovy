@@ -33,6 +33,21 @@ def call(Map cfg) {
       effect: NoSchedule""" : """
   nodeSelector:
     app: jenkins-2026"""
+    // Binary Authorization image signing (opt-in, docs/507). Only when the flag is on,
+    // append a lightweight google/cloud-sdk container to the agent pod so
+    // microservicesImage.groovy can sign the pushed image via its Workload Identity.
+    // Off by default → zero extra container, zero cost. env.BINAUTHZ_ENABLED is threaded
+    // by JCasC (04-jenkins.sh) from J2026_BINARY_AUTHORIZATION_ENABLED.
+    String binauthzContainer = (env.BINAUTHZ_ENABLED == 'true') ? """
+    - name: gcloud
+      image: google/cloud-sdk:slim
+      command: ['sleep']
+      args: ['infinity']
+      securityContext:
+        allowPrivilegeEscalation: false
+      resources:
+        requests: {cpu: 5m, memory: 64Mi}
+        limits: {cpu: '200m', memory: 256Mi}""" : ""
     // Per-tier k6 handoff target, resolved here (cfg is static config) so the
     // 'Integration k6 Smoke Test' stage below needs no script {} block.
     String k6JobName = "microservices-k6-smoke${cfg.envName == 'develop' ? '-develop' : ''}"
@@ -108,7 +123,7 @@ spec:
           value: ""
       resources:
         requests: {cpu: 20m, memory: 128Mi}
-        limits: {cpu: '500m', memory: 512Mi}
+        limits: {cpu: '500m', memory: 512Mi}${binauthzContainer}
     - name: helm
       image: alpine/k8s:1.31.3
       command: ['sleep']
@@ -202,9 +217,19 @@ spec:
     - name: jnlp
       securityContext:
         allowPrivilegeEscalation: false
+      # The agent JVM buffers the build log in flight, so its memory scales with how
+      # CHATTY a build is, not how big the app is. 256Mi dates from 476b7ea (Jun 16),
+      # when this namespace had a 1-CPU quota and every container was squeezed to fit;
+      # that quota is long gone (now 60 CPU / 64Gi, ~24Gi used) but the limit stayed.
+      # The gateway — heaviest service, and the only one that also patches + builds the
+      # Angular SPA — emits a 3.9MB log (vs 2.7MB for jhipstersamplemicroservice, which
+      # squeaks by), and its jnlp was OOMKilled mid-run, taking the whole agent pod with
+      # it. The build then died with a bare "script returned exit code 1" that pointed at
+      # whichever stage happened to be next, not at the OOM. 768Mi gives the chattiest
+      # build ~2x headroom and is still trivial against the quota.
       resources:
-        requests: {cpu: 10m, memory: 128Mi}
-        limits: {cpu: 200m, memory: 256Mi}
+        requests: {cpu: 10m, memory: 256Mi}
+        limits: {cpu: 200m, memory: 768Mi}
 ${agentNodeScheduling}
   volumes:
     - name: maven-cache

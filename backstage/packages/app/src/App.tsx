@@ -9,6 +9,7 @@ import {
 import { CatalogGraphPage } from '@backstage/plugin-catalog-graph';
 import { orgPlugin } from '@backstage/plugin-org';
 import { SearchPage } from '@backstage/plugin-search';
+import { ScaffolderPage, scaffolderPlugin } from '@backstage/plugin-scaffolder';
 import {
   TechDocsIndexPage,
   techdocsPlugin,
@@ -54,7 +55,13 @@ const app = createApp({
   bindRoutes({ bind }) {
     bind(catalogPlugin.externalRoutes, {
       viewTechDoc: techdocsPlugin.routes.docRoot,
+      // Wires the catalog's "Create" button to the Scaffolder (docs/505 § Scaffolder).
+      createComponent: scaffolderPlugin.routes.root,
     });
+    // scaffolderPlugin.externalRoutes.registerComponent stays UNBOUND on purpose: it
+    // points at catalog-import's page, and this app ships no catalog-import (entities
+    // are declared in backstage/catalog/, not self-registered). Unbound = the
+    // Scaffolder simply omits that link, which is the intended posture.
     bind(orgPlugin.externalRoutes, {
       catalogIndex: catalogPlugin.routes.catalogIndex,
     });
@@ -88,6 +95,10 @@ const routes = (
         <J2026DocsStyles />
       </TechDocsAddons>
     </Route>
+    {/* Scaffolder golden paths (docs/505 § Scaffolder). The templates only ever open
+        PULL REQUESTS against repos that already exist - nothing is created, so the
+        platform's GITHUB_TOKEN needs no extra scope. */}
+    <Route path="/create" element={<ScaffolderPage />} />
     <Route path="/api-docs" element={<ApiExplorerPage />} />
     <Route path="/search" element={<SearchPage />}>
       {searchPage}

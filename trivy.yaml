@@ -1,8 +1,19 @@
 # trivy.yaml
-# Global configuration for Trivy scans in the DevSecOps pipeline
+# Global configuration for Trivy scans in the DevSecOps pipeline.
+# Shared by every engine + scan type: the Jenkins image scan
+# (vars/MicroservicesPipeline.groovy) and IaC scan (vars/microservicesTrivyIacScan.groovy),
+# plus tekton/tasks/trivy-image.yaml and trivy-iac.yaml.
 
 severity: 'HIGH,CRITICAL'
 vuln-type: 'os,library'
 cache:
   dir: '/tmp/trivy-cache'
 format: 'table'
+# Trivy's default is 5m, which is not enough to walk the gateway's image here: it FATALs
+# with "walk dir error: context deadline exceeded" after 5m47s, failing the build over a
+# clock rather than a vulnerability (the scan runs --exit-code 0 precisely so findings do
+# NOT break the build). The margin was always thin — jhipstersamplemicroservice needs
+# ~3m29s for the same phase and merely squeaks under the default; the gateway is the
+# heaviest service and tipped over. Raise it rather than trim the scan: layer analysis is
+# I/O bound on a cpu-limited container, so the honest fix is more time, not less coverage.
+timeout: '15m'

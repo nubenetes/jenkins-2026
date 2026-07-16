@@ -613,10 +613,13 @@ native binaries/actions is what would unlock `kubernetes` mode.
 needs — mirroring `rbac-jenkins.yaml`/`rbac-tekton.yaml`:
 
 - `edit` in each microservices namespace (stable, +develop when the develop track
-  is on) — granted for the gitops-deploy OTel self-heal (`rollout restart`), which
-  the rendered workflow does not yet invoke.
+  is on) — used by the **OTel Self-Heal** step's `rollout restart` (and its `get pods`
+  injection check).
 - an OTel-instrumentation editor binding (manage `opentelemetry.io`
-  `Instrumentation` CRs) for the same (not-yet-ported) OTel-injection self-heal.
+  `Instrumentation` CRs) for the same OTel-injection self-heal.
+
+The runner needs **no kubeconfig**: its pod's ServiceAccount token is mounted, so the
+`kubectl` installed by the *Install CI tools* step authenticates in-cluster as this SA.
 
 ## The pipeline, rendered into each fork
 
@@ -658,7 +661,8 @@ shared build-time patch [`resources/patch-app-source.sh`](../resources/patch-app
 | Build & Push image | `./mvnw … jib:build -Djib.to.image=$REGISTRY/$SERVICE:$IMAGE_TAG` (java) | Jib, daemonless; `-Djib.to.auth.*` from `REGISTRY_USERNAME/PASSWORD` |
 | **Reclaim disk before image scan** | `rm -rf` the now-dead build tree (`node_modules` · Maven `target/` + `~/.m2/repository` · the Jib cache) + `docker image prune -af` | **best-effort** (`\|\| true`); the image is already in GHCR, so freeing the build tree here keeps the **50 GB `ci-spot` node** off the kubelet's `DiskPressure` threshold — otherwise it evicts the ephemeral runner mid-run (§ The ci-spot / NAP showcase) |
 | Trivy image scan | `docker run aquasec/trivy image` | — |
-| GitOps Update + OTel Self-Heal (two Jenkins stages) | GitOps bump → `argocd app sync/wait` | **byte-identical** to `microservicesDeploy.groovy` + `microservicesOtelSelfHeal.groovy` (see below) |
+| GitOps Update | GitOps bump → `argocd app sync/wait` | **byte-identical** to `microservicesDeploy.groovy` (see below) |
+| OTel Self-Heal | `kubectl` re-check + conditional `rollout restart` | ports `microservicesOtelSelfHeal.groovy` (java services only): re-checks that the **app container** really got the `-javaagent` — the operator's `failurePolicy: Ignore` webhook can lose the race — and rolls the Deployment if not. An agent that landed on **another** container (a mesh sidecar stealing it — [506](./506-SERVICE-MESH.md)) is reported via `::warning::`, the GHA analogue of Jenkins' `unstable()`, since a restart cannot fix that. Uses the runner SA's own RBAC ([§ RBAC](#rbac)) |
 | Smoke test | `curl --retry … $svc.$TARGET_NS.svc:$port$health` | — |
 | Integration k6 | **Export pipeline OTel trace** — currently a placeholder (prints the OTLP endpoint; no k6 run / span export yet) | k6 parity (`--tag ci_runner=githubactions`, as the other engines already emit) is the intended follow-up; the `k6-cloud` Secret is pre-provisioned in `arc-runners` |
 
@@ -702,9 +706,10 @@ The deploy step preserves every parity point with the Jenkins/Tekton GitOps stag
   [`docs/502`](./502-MICROSERVICES_GITOPS.md) and CLAUDE.md);
 - then a best-effort `argocd app sync/wait microservices-<env>` using the
   in-cluster **`arc-argocd`** token (read from the mounted Secret, never a fork
-  secret). The OTel-injection self-heal (`kubectl rollout restart`) from
-  `microservicesDeploy.groovy` is **not yet ported** to the rendered workflow —
-  the RBAC for it is already in place ([`rbac-githubactions.yaml`](../argocd/platform-config/templates/rbac-githubactions.yaml)).
+  secret);
+- then the **OTel Self-Heal** step — the same check `microservicesOtelSelfHeal.groovy`
+  runs (app-container `-javaagent` verify + conditional `rollout restart`), using the
+  runner SA's own RBAC ([`rbac-githubactions.yaml`](../argocd/platform-config/templates/rbac-githubactions.yaml)).
 
 ### OTel export (same collector, matching attributes)
 

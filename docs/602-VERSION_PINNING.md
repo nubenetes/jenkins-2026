@@ -63,6 +63,8 @@ This isn't theoretical — **every floating version here has bitten us at least 
 | **mermaid-cli** (docs CI) | `11.16.0` *(mermaid v11 — the major GitHub renders with)* | [`mermaid-validate.yml`](../.github/workflows/mermaid-validate.yml) (`npm install -g @…@11.16.0`) | render-verifies every diagram via [`scripts/verify-mermaid.sh`](../scripts/verify-mermaid.sh); local runs accept any `mmdc` on PATH (or `$MMDC`) |
 | **GitHub Actions** | full commit SHA (`@<sha> # vX`) | `.github/workflows/*` | SHA pin + [`dependabot.yml`](../.github/dependabot.yml) |
 | **Terraform providers** | exact (per lockfile) | `terraform/*/.terraform.lock.hcl` | committed lockfiles + `~> X.0` in `versions.tf` |
+| **Cloud Service Mesh** (managed control plane) | *not pinned* — **release channel** `rapid`\|`regular`\|`stable` | `config.yaml` `serviceMesh.channel` | Google-managed control plane; the mesh version tracks the channel — **no Helm chart / image to pin** (Google manages it). Opt-in `serviceMesh.mode=cloud-service-mesh` — [506](./506-SERVICE-MESH.md) |
+| **Binary Authorization** (GKE-native) | *no version pin* — a GKE cluster feature | `config.yaml` `security.binaryAuthorization.enabled` | Native GKE admission controller + Cloud KMS key + attestor; **nothing versioned to pin**. Opt-in — [507](./507-BINARY-AUTHORIZATION.md) |
 
 > The `helm --version` wiring uses `${VAR:+--version=$VAR}` — if the config value were
 > ever blanked it falls back to the chart repo's latest (same as before the pin), so

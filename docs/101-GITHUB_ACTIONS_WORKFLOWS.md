@@ -254,6 +254,94 @@ Rows = resources · Columns = lifecycle phases · Cell = filename (link) or — 
 
 ---
 
+## Stopping vs tearing down: cost & recovery matrix
+
+The cluster's 24/7 cost is **almost entirely the worker VMs** — 2–4 ×
+`e2-standard-8` (8 vCPU / 32 GB) at ~$195/node·month, so **~$400–780/month while
+running**. Everything else (control plane, disks, the reserved static IP, the
+state/backups buckets, the DNS zone, the Grafana Cloud free tier) is single-digit
+dollars combined. That one fact drives the whole stop/teardown decision: **the goal
+is to stop paying for idle nodes**, and the options below trade *how much you tear
+down* against *how fast — and how intact — you come back*.
+
+> **🧠 Mental model.** A dial from "on, expensive, instant" to "gone, ~free, slow
+> rebuild": **Leave running** → **Pause** (nodes→0, resume in minutes) → **Decom
+> cluster** (cluster gone, backends + IP/DNS kept, rebuild ~25 min) → **Decom
+> everything** (all the lifecycle owns is gone; only the never-destroyed root
+> remains). Further down = cheaper but slower to recover — and **your data survives
+> every row except the last** (CNPG PVs on Pause; CNPG WAL backups on Decom cluster).
+
+| | ⏸️ **Pause** [`Day2.scale.01-pause`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.scale.01-pause.yml) | 🔻 **Decom cluster** [`Decom.cluster.01-gke`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.cluster.01-gke.yml) | 🧨 **Decom everything** [`Decom.infra.00-all`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Decom.infra.00-all.yml) | ▶️ *(baseline)* Leave running |
+|---|---|---|---|---|
+| **What it does** | scales every node pool to 0 (disables autoscaling / NAP / autoRepair so it can't bounce back) | `down.sh` **+** `terraform destroy` the cluster, node pools, VPC | fan-out umbrella: Decom the cluster **then** each managed backend (Grafana Cloud / Azure / AWS) | — |
+| **What survives** | **everything** — cluster, PVs (CNPG data), ArgoCD + apps, static IP, DNS, certs | the persistent backends: static IP, DNS, cert map, Grafana Cloud stack, **state + backups buckets** | only the **never-destroyed root** (bootstrap: state bucket, DNS zone, WIF, CI SA, backups bucket); gateway IP/DNS kept unless you opt in to drop it | — |
+| **What stops costing** | the worker VMs (the whole 24/7 bill) | VMs **+** control plane **+** node & CNPG disks | all of that **+** the managed observability backend(s) | nothing |
+| **≈ Cost after** | **~$1–10/mo** (CNPG PVs; control plane on the free-tier credit) | **~$7–10/mo** (idle static IP + buckets + DNS; + any managed backend still up) | **~$0–1/mo** (just the root buckets + DNS zone) | **~$400–780/mo** |
+| **Recovery** | ▶️ **Resume** [`Day2.scale.02-resume`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day2.scale.02-resume.yml) — **~2–5 min**; pods reschedule, ArgoCD reconciles | 🔁 **`Day1.cluster.01-gke`** — **~20–30 min**; CNPG restores from WAL backups; endpoints return on the **same IP/DNS** | 🔁 **Day0 backend(s) + Day1** — **~30–45 min**; a fresh stack | — |
+| **Data** | **intact** (PVs untouched) | **restored** from the backups bucket (WAL) — see [104 rebuild-safety](104-REBUILD_SAFETY.md) | **fresh** (new DBs; stale WAL purged/ignored) | live |
+| **Use when** | idle overnight / a few days, want it back exactly as-is | done for a while; keep the public URLs + a fast, data-preserving rebuild | project finished or a long pause; drive spend to ~zero | actively using it |
+| **Watch out** | workloads go **Pending** while paused; NAP/autoRepair are toggled out-of-band (benign TF drift — Resume/Day1 reconcile it) | the **idle static IP** keeps charging (~$7/mo) until you *also* Decom the gateway | opting to tear the **gateway** too drops the reserved IP → a rebuild gets a **new** IP (DNS still auto-reconciles via the permanent zone) | the bill |
+| **Confirm gate** | approval env (`gke-production`) | type `destroy` **+** approval env | type `destroy` **+** approval env | — |
+
+**These are teardown tools, not a rebuild path.** To apply a code/config change,
+**re-run [`Day1.cluster.01-gke`](https://github.com/nubenetes/jenkins-2026/actions/workflows/Day1.cluster.01-gke.yml)**
+(idempotent, converges in place) or the matching `Day2.redeploy.*` — **never**
+Decom + Day1. Decom→Day1 as a *routine* op is the [rebuild-safety](104-REBUILD_SAFETY.md)
+story (the collision/residue bug class), not a daily workflow.
+
+<details>
+<summary>💵 Cost drivers — where the money actually goes (and what each option zeroes)</summary>
+
+| Resource | Running | ⏸️ Paused | 🔻 Decom cluster | 🧨 Decom all | Notes |
+|---|---|---|---|---|---|
+| Worker VMs (2–4 × `e2-standard-8`) | ~$390–780/mo | **$0** | **$0** | **$0** | the entire reason to stop; ~$195/node·mo |
+| Control-plane management fee | ~$0\* | ~$0\* | $0 | $0 | \*one zonal cluster is free per billing account; otherwise ~$74/mo |
+| Node boot disks (50 GB × N) | ~$6–8/mo | $0 | $0 | $0 | deleted with the VMs |
+| CNPG persistent volume(s) | ~$1–3/mo | ~$1–3/mo | $0 | $0 | **survives Pause** (the whole point); destroyed on Decom |
+| Reserved static IP | $0 (in use) | $0 (in use) | ~$7/mo (idle) | ~$7/mo → $0 if gateway torn down | an *unattached* reserved IP bills ~$0.01/h |
+| State + backups buckets (GCS) | <$1/mo | <$1/mo | <$1/mo | <$1/mo | pennies; live in the never-destroyed root |
+| DNS managed zone | ~$0.20/mo | ~$0.20/mo | ~$0.20/mo | ~$0.20/mo | the permanent zone; never destroyed (keeps the NS delegation) |
+| Grafana Cloud stack | $0 (free tier) | $0 | $0 | $0 (destroyed) | free tier — nothing to pause |
+| Azure / AWS managed backend | billed separately | billed separately | billed separately | **$0** (destroyed) | only when `observability.mode=managed-azure/-aws` |
+
+Figures are **PoC ballparks** (us-central1 list prices, mid-2026); the real invoice
+moves with region, sustained-use discounts, and actual autoscaling. The *shape* —
+**nodes are ~99% of the bill** — is the part that matters.
+
+</details>
+
+<details>
+<summary>📉 The cost ↔ recovery-time spectrum (Mermaid)</summary>
+
+```mermaid
+flowchart LR
+    R["▶️ Running<br/>~$400-780/mo<br/>instant"]
+    P["⏸️ Pause<br/>~$1-10/mo<br/>resume ~2-5 min"]
+    DC["🔻 Decom cluster<br/>~$7-10/mo<br/>rebuild ~20-30 min"]
+    DA["🧨 Decom everything<br/>~$0-1/mo<br/>rebuild ~30-45 min"]
+
+    R -->|"nodes to 0"| P
+    P -->|"destroy cluster<br/>keep backends"| DC
+    DC -->|"destroy backends too"| DA
+
+    P -.->|"Resume (data intact)"| R
+    DC -.->|"Day1 · same IP/DNS · WAL restore"| R
+    DA -.->|"Day0 backends + Day1 · fresh"| R
+
+    classDef exp fill:#ffebee,stroke:#e53935;
+    classDef mid fill:#fff8e1,stroke:#f9a825;
+    classDef cheap fill:#e8f5e9,stroke:#43a047;
+    class R exp;
+    class P mid;
+    class DC,DA cheap;
+```
+
+Solid = tearing down further (cheaper ↓); dotted = the recovery path back (slower →).
+
+</details>
+
+---
+
 ## Pick your workflow: the operator decision tree
 
 Every other diagram on this page is indexed by *how the system is built*; this one is indexed by *what you want to do right now*. Start from your intent and follow the branches to the exact workflow(s) to dispatch. It folds in three decisions the prose scatters elsewhere: re-run `Day1.cluster.01-gke` vs a targeted `Day2.redeploy.*` (idempotency §), **Pause** vs **Decom** to save cost (Pause/resume §), and which `publish.0N` matches your active `observability.mode`.
@@ -1025,6 +1113,78 @@ So the correct bar is **"safe to re-run"**, which every workflow meets; full sta
 - **External APIs**: prefer upsert/overwrite (`az … --overwrite`, Grafana provisioning API, "skip if the webhook already exists") over blind create.
 
 This is the workflow-level expression of the repo-wide **idempotency** convention in [`CLAUDE.md`](../CLAUDE.md) ("every `scripts/0N-*.sh` step and Terraform module should be safe to re-run").
+
+---
+
+## Flag-combination test matrix
+
+The platform has ~10 feature flags (`ci.engine`, `serviceMesh.mode`,
+`security.binaryAuthorization`, `gateway.backendTls`, `observability.mode`,
+`secrets.backend`, `backstage.enabled`, `nodeAutoProvisioning`, `observability.llm` /
+`assistant`, …). The full cross-product is `2^n` — meaningless to test. This is the
+**minimal** set that actually needs standing up, and the reasoning that shrinks it.
+
+### Why it is small: orthogonality + one hard exclusion
+
+Most flags are **orthogonal** — flipping one cannot change what another does — so each is
+tested *once* (on, and once off), never crossed:
+
+- `backstage.enabled`, `nodeAutoProvisioning`, `observability.llm` / `assistant`,
+  `tekton.dashboard` — independent toggles, no other flag reads them.
+- `observability.mode` (oss / grafana-cloud / managed-azure / managed-aws) — changes only
+  the **telemetry sink**; security/CI flags don't depend on it. Each backend is stood up
+  once (that *is* the four-backend matrix the platform exists to show); it is **not** crossed
+  with mesh/binauthz/engine.
+- `secrets.backend` (imperative / eso) — changes only *how* a Secret is delivered; test each
+  once. (It does carry the flag values, so an `eso` run of the interacting core below is worth
+  one pass — but not a full re-cross.)
+
+Only **three** flags interact, and they define the whole matrix:
+
+- **`intra_cluster_tls` ∈ {none, backend-tls, cloud-service-mesh}** — the three are
+  **mutually exclusive** by a fail-fast gate in [`lib/config.sh`](../scripts/lib/config.sh)
+  (`gateway.backendTls` XOR `serviceMesh` — a mesh supersedes the LB→pod hop, [504](./504-BACKEND_TLS.md)
+  / [506](./506-SERVICE-MESH.md)). So it is **one 3-valued axis**, not two booleans.
+- **`security.binaryAuthorization` ∈ {off, on}** — **orthogonal** to the TLS axis (composes
+  with any), so it does **not** need `3×2`: prove independence once, then flip it on its own.
+- **`ci.engine` ∈ {jenkins, tekton, githubactions, argoworkflows}** — the one real
+  cross-product, because **binauthz image-signing is wired per engine** (each has its own
+  sign step; [507](./507-BINARY-AUTHORIZATION.md)). `engine × binauthz-on` is where the
+  coverage actually lives.
+
+### The two axes to test
+
+**Axis 1 — static states** (does the combination *stand up*):
+
+| # | Combination | Why in the matrix | Verify | Status |
+|---|---|---|---|---|
+| S1 | `tls=none`, binauthz=off (**default**) | baseline | a build goes green; no attestor/mesh objects | ✅ routine |
+| S2 | `tls=cloud-service-mesh`, binauthz=off | mesh alone | gateway+backend `2/2`, mTLS STRICT, CNPG excluded | ✅ live |
+| S3 | `tls=backend-tls`, binauthz=off | the other TLS state | stage-10 probes HTTPS, LB→pod re-encrypt | ✅ live (stages 1–10) |
+| S4 | `tls=cloud-service-mesh`, binauthz=**on** | the two heaviest opt-ins **compose** | mesh `2/2` **and** an attestation is created | ✅ live (2026-07-15) |
+| S5 | `tls=none`, binauthz=**on** | isolates binauthz from the mesh | attestation created, no mesh objects | ⬜ pending |
+| S6 | mesh **and** backendTls both on | the **exclusion** must fire | `lib/config.sh` **fails fast** before any apply | ✅ gate live-tested |
+| S7–S9 | binauthz=on, `ci.engine` = tekton / githubactions / argoworkflows | signing is **per-engine** | attestation created by *that* engine | ⬜ **scaffold incomplete + blocked on merge**, uncovered trying to run S7 live (2026-07-16). Three prerequisites, only the first done: (1) the **digest gap** is closed (all three hand Jib's `target/jib-image.digest` to the sign step, mirroring the live-validated Jenkins fix); (2) the sign step now **self-gates on `BINAUTHZ_ENABLED`** before touching the script — without which a binauthz-*off* stable build **127s** because it clones infra at `main`, which lacks `sign-and-attest-image.sh` until this branch merges; (3) still **unwired**: the per-engine seeds do not annotate the pipeline KSA → signer GSA nor flip `BINAUTHZ_ENABLED=true` (the GSA-side WI binding *does* exist, from `terraform/gke`). And all of it lives on `develop` — the stable tier reads infra from `main`, so binauthz signing cannot work on any non-Jenkins engine until **PR #653 merges**. Live pass deferred to post-merge. |
+
+**Axis 2 — transitions** (the lesson of 2026-07-16: a flag flip can leave **stale state**
+even when both static states are individually fine):
+
+| # | Transition | The hazard | Verify | Status |
+|---|---|---|---|---|
+| T1 | binauthz **on → off** | infra torn down while a consumer holds the old value — the **stale-agent** bug: `04-jenkins` updated the Secret but the controller didn't roll, so the agent still signed against a deleted attestor | after re-run, a build is green (signing no-ops); the controller env reads `false` | ✅ fixed + [guarded](../scripts/verify-jenkins-flag-parity.py) |
+| T2 | binauthz **off → on** (within 30 d of a prior teardown) | KMS keyring/key **can't be hard-deleted** → a plain create 409s; the key **version** sits `DESTROY_SCHEDULED` | Day1 imports the survivors + restores the version → apply converges ([507 § rebuild-safety](./507-BINARY-AUTHORIZATION.md)) | ✅ both halves validated |
+| T3 | mesh **on → off** | sidecars + policies must be retired, not orphaned | `08.85` retire path leaves apps `1/1` sidecar-free; Fleet destroyed | ✅ live (roll-back) |
+| T4 | `ci.engine` **A → B** | the old engine's namespaces/apps must be cleaned | `retire_ci_engine` drops the prior engine's resources ([CI-engine-switch-cleanup]) | ✅ live (→tekton) |
+
+### The general rule this encodes
+
+A flag that crosses **two subsystems that update at different rates** — Terraform infra
+*and* a running consumer (Jenkins agent, ArgoCD app, a mounted Secret) — is the risk zone.
+Its **static** states can both be fine while the **transition** strands one side. So the
+matrix tests *transitions*, not only states; the static guard
+([`verify-jenkins-flag-parity.py`](../scripts/verify-jenkins-flag-parity.py)) closes the
+one such gap that is checkable from committed files, and the ⬜ rows above are the live
+passes still owed.
 
 ---
 
