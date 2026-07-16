@@ -1164,7 +1164,7 @@ Only **three** flags interact, and they define the whole matrix:
 | S4 | `tls=cloud-service-mesh`, binauthz=**on** | the two heaviest opt-ins **compose** | mesh `2/2` **and** an attestation is created | ✅ live (2026-07-15) |
 | S5 | `tls=none`, binauthz=**on** | isolates binauthz from the mesh | attestation created, no mesh objects | ⬜ pending |
 | S6 | mesh **and** backendTls both on | the **exclusion** must fire | `lib/config.sh` **fails fast** before any apply | ✅ gate live-tested |
-| S7–S9 | binauthz=on, `ci.engine` = tekton / githubactions / argoworkflows | signing is **per-engine** | attestation created by *that* engine | ⬜ pending — all three still pass a `:tag`, not a digest ([507](./507-BINARY-AUTHORIZATION.md)) |
+| S7–S9 | binauthz=on, `ci.engine` = tekton / githubactions / argoworkflows | signing is **per-engine** | attestation created by *that* engine | ⬜ live pass owed — the **digest gap is closed in code** (all three now hand Jib's `target/jib-image.digest` to the sign step, mirroring the live-validated Jenkins fix; [507](./507-BINARY-AUTHORIZATION.md)), but marking these ✅ needs an engine switch + build per engine |
 
 **Axis 2 — transitions** (the lesson of 2026-07-16: a flag flip can leave **stale state**
 even when both static states are individually fine):

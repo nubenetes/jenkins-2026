@@ -153,6 +153,10 @@ jobs:
             -Djib.to.image="$REGISTRY/$SERVICE:$IMAGE_TAG" \
             -Djib.to.auth.username="${{ secrets.REGISTRY_USERNAME }}" \
             -Djib.to.auth.password="${{ secrets.REGISTRY_PASSWORD }}" -Djib.serialize=true
+          # Hand Jib's digest to the sign step (same runner; steps reset cwd, so copy to
+          # an absolute path). Binary Authorization attests a DIGEST and a :tag can't be
+          # resolved on GHCR — the gap fixed in the Jenkins path (docs/507).
+          cp target/jib-image.digest "$GITHUB_WORKSPACE/jib-image.digest"
 
       # Binary Authorization (opt-in, docs/507 § Pipeline wiring): sign + attest the
       # pushed image DIGEST via the single-source resources/sign-and-attest-image.sh
@@ -164,7 +168,14 @@ jobs:
       # terraform/gke grants). See docs/507.
       - name: Sign + attest image (Binary Authorization, opt-in)
         if: env.SERVICE_TYPE == 'java' && github.event_name != 'pull_request'
-        run: bash "${{ github.workspace }}/infra/resources/sign-and-attest-image.sh" "$REGISTRY/$SERVICE:$IMAGE_TAG"
+        run: |
+          # Pass the image BY DIGEST when the Jib step recorded one. No-op safe:
+          # sign-and-attest checks BINAUTHZ_ENABLED first. See docs/507.
+          IMG="$REGISTRY/$SERVICE:$IMAGE_TAG"
+          if [ -f "$GITHUB_WORKSPACE/jib-image.digest" ]; then
+            IMG="$REGISTRY/$SERVICE@$(cat "$GITHUB_WORKSPACE/jib-image.digest")"
+          fi
+          bash "${{ github.workspace }}/infra/resources/sign-and-attest-image.sh" "$IMG"
 
       # Reclaim disk before the image scan. The app image is now in GHCR, so the build
       # tree (Angular node_modules, Maven target/ + ~/.m2 repo, the Jib build cache) is

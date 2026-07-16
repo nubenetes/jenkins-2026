@@ -572,7 +572,13 @@ spec:
             value: "false"
         source: |
           set -eu
-          /workspace/jenkins-2026-infra/resources/sign-and-attest-image.sh "{{inputs.parameters.image}}"
+          # Pass the image BY DIGEST when build-jib recorded one (via the shared PVC).
+          # No-op safe: sign-and-attest checks BINAUTHZ_ENABLED first. See docs/507.
+          IMG="{{inputs.parameters.image}}"
+          if [ -f /workspace/jib-image.digest ]; then
+            IMG="${IMG%:*}@$(cat /workspace/jib-image.digest)"
+          fi
+          /workspace/jenkins-2026-infra/resources/sign-and-attest-image.sh "${IMG}"
     - name: build-jib
       inputs:
         parameters:
@@ -613,6 +619,11 @@ spec:
           if grep -q "jib-maven-plugin" pom.xml; then
             ./mvnw -B -Pprod -DskipTests -Dmaven.compiler.maxmem=512m jib:build \
               -Djib.to.image="{{inputs.parameters.image}}" -Djib.serialize=true
+            # Hand Jib's digest to build-sign via the shared /workspace PVC. Binary
+            # Authorization attests a DIGEST and a :tag can't be resolved on GHCR — the
+            # gap fixed in the Jenkins path (docs/507). Fixed path since the build cd's
+            # into the module dir.
+            cp target/jib-image.digest /workspace/jib-image.digest
           else
             echo "ERROR: {{inputs.parameters.service-type}} service has no jib-maven-plugin; the Argo Workflows path requires Jib for daemonless java image builds."
             exit 1

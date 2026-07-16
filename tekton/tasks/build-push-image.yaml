@@ -56,6 +56,13 @@ spec:
         if grep -q "jib-maven-plugin" pom.xml; then
           ./mvnw -B -Pprod -DskipTests -Dmaven.compiler.maxmem=512m jib:build \
             -Djib.to.image="$(params.image)" -Djib.serialize=true
+          # Hand Jib's OWN digest of what it just pushed to the sign step (same task,
+          # shared workspace). Binary Authorization attests a DIGEST, and a :tag cannot
+          # be resolved to one afterwards on GHCR (gcloud is GCR/AR-only, crane absent
+          # from cloud-sdk:slim) — the gap fixed in the Jenkins path (docs/507). Jib
+          # always writes target/jib-image.digest; copy it to a fixed workspace path
+          # because the build cd's into the module dir.
+          cp target/jib-image.digest "$(workspaces.source.path)/jib-image.digest"
         else
           echo "ERROR: $(params.service-type) service has no jib-maven-plugin; the Tekton path requires Jib for daemonless java image builds."
           exit 1
@@ -96,7 +103,16 @@ spec:
       script: |
         #!/usr/bin/env bash
         set -eu
-        "$(workspaces.source.path)/jenkins-2026-infra/resources/sign-and-attest-image.sh" "$(params.image)"
+        # Pass the image BY DIGEST when the Jib step recorded one (image@sha256:… — the
+        # script then attests it directly instead of failing to resolve the :tag on
+        # GHCR). No-op safe: sign-and-attest checks BINAUTHZ_ENABLED first, so with the
+        # flag off the target is irrelevant; with it on and no digest file, the script
+        # errors loudly with the real remedy. Digest file present for every Jib (java)
+        # build; the kaniko/angular placeholder path leaves none and passes the tag.
+        IMG="$(params.image)"
+        DF="$(workspaces.source.path)/jib-image.digest"
+        if [ -f "${DF}" ]; then IMG="${IMG%:*}@$(cat "${DF}")"; fi
+        "$(workspaces.source.path)/jenkins-2026-infra/resources/sign-and-attest-image.sh" "${IMG}"
   volumes:
     - name: maven-cache
       hostPath: { path: /tmp/tekton-maven-cache, type: DirectoryOrCreate }
