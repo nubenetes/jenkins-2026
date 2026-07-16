@@ -32,6 +32,20 @@ spec:
     # land here; the cross-namespace RoleBinding into the microservices namespace
     # and the cluster-scoped bindings carry their own metadata.namespace/scope.
     namespace: {{ .Values.namespace.pipeline | quote }}
+  # The Workload-Identity annotation on the tekton-ci SA (Binary Authorization, docs/507)
+  # is applied out-of-band by 04-tekton.sh ONLY when the flag is on, with the per-cluster
+  # signer-GSA email — so it cannot live in the committed SA manifest. Without this, selfHeal
+  # strips it the instant the seed adds it (observed live: `kubectl annotate` reported success
+  # but the annotation was gone on the next read), and the sign step's WI token exchange
+  # fails. ignoreDifferences lets the seed own that one annotation. Spec-level, NOT under
+  # syncPolicy (see chains.yaml).
+  ignoreDifferences:
+    - group: ""
+      kind: ServiceAccount
+      name: tekton-ci
+      namespace: {{ .Values.namespace.pipeline | quote }}
+      jsonPointers:
+        - /metadata/annotations/iam.gke.io~1gcp-service-account
   syncPolicy:
     automated:
       prune: true

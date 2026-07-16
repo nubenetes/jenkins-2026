@@ -296,6 +296,12 @@ EOT
   # Day1. Costs one build per service; PaC's git-push trigger remains the default.
   if [[ "${J2026_TEKTON_SEED_RUNS}" == "true" ]]; then
     log_step "tekton.seedRuns=true - seeding PipelineRuns from tekton/runs/ (one build per service)"
+    # Binary Authorization (docs/507): the flag + project the build runs pass to the pipeline
+    # so their sign-attest step actually signs. Rendered here (not baked into the static run
+    # manifests) because the project is per-cluster; injected via yq only into runs that use
+    # microservices-pipeline (the k6 runs use a different pipeline that has no such params).
+    tk_binauthz="${J2026_BINARY_AUTHORIZATION_ENABLED:-false}"
+    tk_project="$(gcloud config get-value project 2>/dev/null || echo "")"
     for rf in "${J2026_ROOT_DIR}"/tekton/runs/*.yaml; do
       [[ -f "${rf}" ]] || continue
       # Gate develop-tier runs behind the develop-track feature flag — parity with the
@@ -308,13 +314,22 @@ EOT
         continue
       fi
       # Merge the access-URL annotations in (no-op without a gateway) so the seeded
-      # runs carry the same banner-parity URLs as the PaC/fallback ones.
+      # runs carry the same banner-parity URLs as the PaC/fallback ones, and inject the
+      # binauthz params for builds that use microservices-pipeline.
       src="${rf}"
-      if [[ "${pr_ann_json}" != "{}" ]]; then
+      uses_pipeline="$(yq eval '.spec.pipelineRef.name // ""' "${rf}" 2>/dev/null)"
+      if [[ "${pr_ann_json}" != "{}" || "${uses_pipeline}" == "microservices-pipeline" ]]; then
         src="${GEN_DIR}/seed-$(basename "${rf}")"
         # `*` (deep-merge) not `+`: map addition isn't supported on older yq (the
         # local v4.16), while `*` merges maps on every yq v4 and keeps existing keys.
         yq eval ".metadata.annotations = ((.metadata.annotations // {}) * ${pr_ann_json})" "${rf}" > "${src}"
+        if [[ "${uses_pipeline}" == "microservices-pipeline" ]]; then
+          # Append the two binauthz params (the run manifests don't carry them statically —
+          # the project is per-cluster). yq `env()` keeps values safe if they contain specials.
+          BA="${tk_binauthz}" PID="${tk_project}" yq eval -i \
+            '.spec.params += [{"name":"binauthz-enabled","value":env(BA)},{"name":"project-id","value":env(PID)}]' \
+            "${src}"
+        fi
       fi
       # Retry: the first create right after 04-tekton restarted the Tekton
       # admission webhook can hit it mid-warm-up (the webhook validates every

@@ -12,7 +12,7 @@ spec:
   # `backstage-chart` child Application (the OFFICIAL backstage/charts chart +
   # the helm/backstage values overlays; deliberately NOT named `backstage` -
   # that is THIS app, and a same-name child overwrites its parent). The {{repoUrl}}/{{branchStable}}/
-  # {{backendTls}}/{{ciEngine}}/{{chartVersion}}/{{imageRegistry}}/{{imageRepository}}/
+  # {{backendTls}}/{{ciEngine}}/{{obsMode}}/{{chartVersion}}/{{imageRegistry}}/{{imageRepository}}/
   # {{imageTag}} placeholders are substituted by scripts/08.95-backstage.sh at
   # apply time (from config.yaml + the deploy branch) and passed down as helm
   # parameters, so the child's git source tracks the active branch, the image
@@ -40,6 +40,13 @@ spec:
         # overlay (or none) and ArgoCD self-heals.
         - name: ciEngine
           value: '{{ciEngine}}'
+        # The observability mode (config.yaml observability.mode). When "oss" the
+        # child layers values-obs-oss.yaml so the Grafana Monitoring-tab proxy
+        # authenticates with the durable admin Secret (Basic ${GRAFANA_BASIC_AUTH})
+        # instead of an ephemeral SA token. Re-rendered every run, so switching
+        # modes re-emits the child with/without the overlay and ArgoCD self-heals.
+        - name: obsMode
+          value: '{{obsMode}}'
         - name: chart.version
           value: '{{chartVersion}}'
         - name: image.registry

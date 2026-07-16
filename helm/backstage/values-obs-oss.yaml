@@ -1,0 +1,44 @@
+# Values overlay for the OFFICIAL Backstage chart, layered by the argocd/backstage
+# app-of-apps ONLY when observability.mode=oss (parent app's obsMode helm param,
+# mirroring how backendTls / ciEngine select their overlays). See docs/505 §
+# Monitoring tab.
+#
+# WHY THIS EXISTS — the durable-auth fix (2026-07-16). The Monitoring tab reaches
+# the in-cluster Grafana through the '/grafana/api' proxy, which the baked
+# app-config.yaml authenticates with `Authorization: Bearer ${GRAFANA_TOKEN}`.
+# For grafana-cloud that Bearer is a Terraform-minted STACK token (durable). For
+# oss there is no Terraform hand, so 08.95 used to MINT a Grafana service-account
+# token — but oss Grafana keeps SA tokens in EPHEMERAL in-pod SQLite (emptyDir),
+# so ANY Grafana pod roll silently invalidated it and nothing re-minted → the tab
+# 401'd until a manual re-run (observed live on a from-scratch Day1: the mint
+# raced Grafana's own initial rollout, the SA never persisted, GRAFANA_TOKEN
+# stayed empty, every /grafana/api call 401'd). See [[empty-string-secret-class]].
+#
+# THE FIX: stop minting an ephemeral token. Authenticate the proxy with Grafana's
+# ADMIN credentials, which live in the chart-owned Kubernetes Secret
+# `oss-kube-prometheus-stack-grafana` — STABLE across pod rolls (a k8s Secret, not
+# in-pod SQLite) and regenerated deterministically on every rebuild. 08.95 only
+# READS that Secret and patches a ready-made `Authorization: Basic <b64(user:pw)>`
+# header value into backstage-secrets as GRAFANA_BASIC_AUTH (nothing to mint,
+# nothing ephemeral, nothing to reconcile). This overlay swaps the proxy header to
+# replay it. The privilege bump (admin vs the old Viewer token) is neutralised by
+# `allowedMethods: ['GET']` in the baked app-config.yaml — the proxy rejects every
+# non-GET before it reaches Grafana, so an IAP-authenticated user cannot write
+# through it; the Monitoring tab is read-only anyway (search / rules / provisioning
+# are all GET). The credential is server-side (Backstage backend), never sent to
+# the browser, and the endpoint is IAP-gated.
+#
+# NOTE — this restates the WHOLE '/grafana/api' endpoint (target + allowedMethods
+# + headers), not just the header, so it is correct whether Backstage's config
+# merge deep-merges the endpoint object or replaces it wholesale. target and
+# allowedMethods are identical to the baked app-config.yaml; only the auth scheme
+# changes (Bearer -> Basic). Keep them in sync with backstage/app-config.yaml.
+backstage:
+  appConfig:
+    proxy:
+      endpoints:
+        '/grafana/api':
+          target: ${GRAFANA_PROXY_TARGET}
+          allowedMethods: ['GET']
+          headers:
+            Authorization: Basic ${GRAFANA_BASIC_AUTH}
