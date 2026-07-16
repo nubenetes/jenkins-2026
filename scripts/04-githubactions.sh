@@ -60,4 +60,36 @@ kubectl wait --for=jsonpath='{.status.state}'=running \
   autoscalingrunnerset/"${J2026_GHA_RUNNER_SCALE_SET_NAME}" -n "${J2026_GHA_RUNNER_NAMESPACE}" --timeout=5m 2>/dev/null \
   || log_warn "RunnerScaleSet '${J2026_GHA_RUNNER_SCALE_SET_NAME}' not yet registered — check the listener pod logs in ${J2026_GHA_NAMESPACE} (GitHub App creds / OCI pull)."
 
+# --- runner ServiceAccount (+ Binary Authorization signing wiring) -----------
+# In dind containerMode the gha-runner-scale-set chart creates NO runner ServiceAccount, so the
+# runner pod template (argocd/githubactions/templates/runner-scale-set.yaml) pins
+# serviceAccountName: arc-runner-scale-set and we create that KSA here so the pods always
+# schedule. Created UNCONDITIONALLY (not gated) — a runner needs no RBAC in dind (the ArgoCD-sync
+# workflow step uses the arc-argocd token Secret, not this SA), and an unannotated SA behaves
+# like default. Idempotent.
+log_step "Ensuring the arc-runner-scale-set runner ServiceAccount in ${J2026_GHA_RUNNER_NAMESPACE}"
+kubectl create serviceaccount arc-runner-scale-set -n "${J2026_GHA_RUNNER_NAMESPACE}" \
+  --dry-run=client -o yaml | kubectl apply -f - >/dev/null 2>&1 \
+  || log_warn "Could not ensure the arc-runner-scale-set KSA in ${J2026_GHA_RUNNER_NAMESPACE} — runner pods may fail to schedule."
+
+# Binary Authorization (docs/507 § Pipeline wiring): annotate that KSA to impersonate the
+# jenkins-2026-binauthz-signer GSA via Workload Identity, so the rendered microservices-ci.yml's
+# sign-attest gcloud (which runs INSIDE the ephemeral runner pod) can sign+attest. terraform binds
+# the GSA to arc-runners/arc-runner-scale-set (binauthz_signer_ksas); this is the KSA-side half.
+# Analogue of 04-tekton.sh, but WITHOUT an ArgoCD ignoreDifferences: this SA is script-created
+# (not part of any ArgoCD app), so selfHeal never strips the annotation. Gated on the flag; only
+# affects the gcloud sign step (the runner's git/registry/argocd steps use their own creds).
+if [[ "$(j2026_binary_authorization_active)" == "true" ]]; then
+  binauthz_project="$(gcloud config get-value project 2>/dev/null || echo "")"
+  if [[ -n "${binauthz_project}" ]]; then
+    binauthz_signer="jenkins-2026-binauthz-signer@${binauthz_project}.iam.gserviceaccount.com"
+    log_step "Binary Authorization active - annotating the arc-runner-scale-set KSA to impersonate ${binauthz_signer} (image signing)"
+    kubectl annotate serviceaccount arc-runner-scale-set -n "${J2026_GHA_RUNNER_NAMESPACE}" \
+      "iam.gke.io/gcp-service-account=${binauthz_signer}" --overwrite >/dev/null 2>&1 \
+      || log_warn "Could not annotate the arc-runner-scale-set KSA - GHA image signing will not authenticate (see docs/507)."
+  else
+    log_warn "Binary Authorization active but could not resolve the GCP project for the signer-GSA annotation - GHA image signing will not authenticate (see docs/507)."
+  fi
+fi
+
 log_info "ARC installed (ci.engine=githubactions). Runners register as '${J2026_GHA_RUNNER_SCALE_SET_NAME}' against ${J2026_GHA_CONFIG_URL}."
