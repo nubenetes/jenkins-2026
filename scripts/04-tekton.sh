@@ -74,6 +74,29 @@ log_step "Applying Tekton task image pre-pull DaemonSet"
 kubectl apply -f "${J2026_ROOT_DIR}/tekton/agent-image-prepull.yaml" || \
   log_warn "Tekton image pre-pull DaemonSet not applied - first TaskRuns on a fresh node will be slower."
 
+# Binary Authorization (docs/507 § Pipeline wiring): annotate the tekton-ci pipeline KSA to
+# impersonate the jenkins-2026-binauthz-signer GSA (Workload Identity) so the sign-attest
+# step's gcloud can sign+attest. Only affects gcloud calls (the sign step) — the pipeline's
+# git/registry/kubectl steps use their own creds, so a KSA impersonating a sign-only GSA
+# doesn't disturb them. Analogue of 04-jenkins HOOK 2, but a kubectl annotate instead of a
+# helm parameter: the tekton-ci SA is raw ArgoCD-synced YAML (not a chart), and the
+# tekton-pipeline-as-code Application ignoreDifferences this exact annotation so selfHeal no
+# longer strips it (observed live 2026-07-16: without the ignore, the annotate succeeded but
+# was reverted before the sign step ran). Gated on the flag; the WI binding
+# (tekton-ci/tekton-ci → signer GSA) is granted by terraform/gke (binauthz_signer_ksas).
+if [[ "$(j2026_binary_authorization_active)" == "true" ]]; then
+  binauthz_project="$(gcloud config get-value project 2>/dev/null || echo "")"
+  if [[ -n "${binauthz_project}" ]]; then
+    binauthz_signer="jenkins-2026-binauthz-signer@${binauthz_project}.iam.gserviceaccount.com"
+    log_step "Binary Authorization active - annotating the tekton-ci KSA to impersonate ${binauthz_signer} (image signing)"
+    kubectl annotate serviceaccount tekton-ci -n "${J2026_TEKTON_PIPELINE_NAMESPACE}" \
+      "iam.gke.io/gcp-service-account=${binauthz_signer}" --overwrite 2>/dev/null \
+      || log_warn "Could not annotate the tekton-ci KSA - image signing will not authenticate (see docs/507)."
+  else
+    log_warn "Binary Authorization active but could not resolve the GCP project for the signer-GSA annotation - Tekton image signing will not authenticate (see docs/507)."
+  fi
+fi
+
 log_info "Tekton deployed via ArgoCD."
 log_info "  Apps: kubectl -n ${J2026_ARGOCD_NAMESPACE} get applications -l app.kubernetes.io/part-of=tekton 2>/dev/null || kubectl -n ${J2026_ARGOCD_NAMESPACE} get applications | grep tekton"
 log_info "  Pipelines-as-code + per-service runs are applied/kicked by scripts/06-tekton-pipelines.sh (run by up.sh)."
