@@ -212,7 +212,19 @@ kubectl patch secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${J2026_JENKINS_N
 # Rolls the controller whenever the Secret-backed banner/behaviour values change
 # (ArgoCD won't roll on an out-of-band Secret edit otherwise) - passed as the
 # controller.podAnnotations.bannerLinksChecksum helm parameter below.
-banner_links_checksum="$(printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' \
+#
+# EVERY behaviour flag that reaches the AGENT via containerEnv -> JCasC
+# globalNodeProperties MUST be in this checksum. Those envs are resolved at
+# controller POD START and baked into the node properties, so a value that changes
+# in the Secret but not here leaves the running agent on the STALE value until the
+# next unrelated roll. `binauthz-enabled` was exactly that: flipping Binary
+# Authorization off updated the Secret to "false" but did NOT roll the controller,
+# so the agent kept `BINAUTHZ_ENABLED=true` and tried to sign against an attestor a
+# binauthz-off Day1 had already torn down -> every build failed at sign-and-attest
+# (`could not resolve the KMS key version`). `genai-enabled` had the identical
+# latent gap. Same class as [[workflow-input-parity]]: a value wired into one place
+# and not its lockstep companion.
+banner_links_checksum="$(printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' \
   "${grafana_base_url}" "${grafana_k8s_app_link}" "${microservices_url}" \
   "${microservices_develop_url}" \
   "${jenkins_public_url}" "${J2026_SELF_REPO_BRANCH}" "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" \
@@ -220,6 +232,8 @@ banner_links_checksum="$(printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s' \
   "${dash_uid_jenkins}|${dash_uid_microservices}|${dash_uid_k6}|${dash_uid_rum}|${dash_uid_jvm}" \
   "${argocd_server_addr}" \
   "${jenkins_agent_port}" \
+  "${J2026_BINARY_AUTHORIZATION_ENABLED:-false}" \
+  "${J2026_MICROSERVICES_GENAI_SERVICE_ENABLED}" \
   | sha256sum | cut -c1-16)"
 
 # --- JCasC ConfigMaps (single source: jenkins/casc/*) ------------------------
