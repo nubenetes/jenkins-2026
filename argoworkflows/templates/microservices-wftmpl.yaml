@@ -572,8 +572,14 @@ spec:
             value: "false"
         source: |
           set -eu
+          # Self-gate BEFORE touching the script: the file must EXIST to run it, and the
+          # stable tier clones infra at `main`, which lacks the script until the binauthz
+          # work merges (it lives on develop) — so a binauthz-off build would 127 here.
+          # See docs/507.
+          if [ "${BINAUTHZ_ENABLED:-false}" != "true" ]; then
+            echo "Binary Authorization off — skipping sign + attest."; exit 0
+          fi
           # Pass the image BY DIGEST when build-jib recorded one (via the shared PVC).
-          # No-op safe: sign-and-attest checks BINAUTHZ_ENABLED first. See docs/507.
           IMG="{{inputs.parameters.image}}"
           if [ -f /workspace/jib-image.digest ]; then
             IMG="${IMG%:*}@$(cat /workspace/jib-image.digest)"

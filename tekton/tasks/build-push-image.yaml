@@ -103,11 +103,18 @@ spec:
       script: |
         #!/usr/bin/env bash
         set -eu
-        # Pass the image BY DIGEST when the Jib step recorded one (image@sha256:… — the
-        # script then attests it directly instead of failing to resolve the :tag on
-        # GHCR). No-op safe: sign-and-attest checks BINAUTHZ_ENABLED first, so with the
-        # flag off the target is irrelevant; with it on and no digest file, the script
-        # errors loudly with the real remedy. Digest file present for every Jib (java)
+        # Self-gate BEFORE touching the script. sign-and-attest-image.sh no-ops internally
+        # when BINAUTHZ_ENABLED != true — but the file must EXIST to run it, and the infra
+        # repo cloned for the STABLE tier is `main`, which does not carry the script until
+        # the binauthz work merges (it lives on develop). Without this gate a binauthz-off
+        # stable build 127s here ("No such file or directory") on every run. Checking the
+        # flag first makes the step a clean no-op when signing is off, whatever branch's
+        # infra got cloned.
+        if [ "${BINAUTHZ_ENABLED:-false}" != "true" ]; then
+          echo "Binary Authorization off — skipping sign + attest."; exit 0
+        fi
+        # Pass the image BY DIGEST (image@sha256:… — the script attests it directly instead
+        # of failing to resolve the :tag on GHCR). Digest file present for every Jib (java)
         # build; the kaniko/angular placeholder path leaves none and passes the tag.
         IMG="$(params.image)"
         DF="$(workspaces.source.path)/jib-image.digest"
