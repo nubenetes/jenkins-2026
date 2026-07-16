@@ -1116,6 +1116,78 @@ This is the workflow-level expression of the repo-wide **idempotency** conventio
 
 ---
 
+## Flag-combination test matrix
+
+The platform has ~10 feature flags (`ci.engine`, `serviceMesh.mode`,
+`security.binaryAuthorization`, `gateway.backendTls`, `observability.mode`,
+`secrets.backend`, `backstage.enabled`, `nodeAutoProvisioning`, `observability.llm` /
+`assistant`, …). The full cross-product is `2^n` — meaningless to test. This is the
+**minimal** set that actually needs standing up, and the reasoning that shrinks it.
+
+### Why it is small: orthogonality + one hard exclusion
+
+Most flags are **orthogonal** — flipping one cannot change what another does — so each is
+tested *once* (on, and once off), never crossed:
+
+- `backstage.enabled`, `nodeAutoProvisioning`, `observability.llm` / `assistant`,
+  `tekton.dashboard` — independent toggles, no other flag reads them.
+- `observability.mode` (oss / grafana-cloud / managed-azure / managed-aws) — changes only
+  the **telemetry sink**; security/CI flags don't depend on it. Each backend is stood up
+  once (that *is* the four-backend matrix the platform exists to show); it is **not** crossed
+  with mesh/binauthz/engine.
+- `secrets.backend` (imperative / eso) — changes only *how* a Secret is delivered; test each
+  once. (It does carry the flag values, so an `eso` run of the interacting core below is worth
+  one pass — but not a full re-cross.)
+
+Only **three** flags interact, and they define the whole matrix:
+
+- **`intra_cluster_tls` ∈ {none, backend-tls, cloud-service-mesh}** — the three are
+  **mutually exclusive** by a fail-fast gate in [`lib/config.sh`](../scripts/lib/config.sh)
+  (`gateway.backendTls` XOR `serviceMesh` — a mesh supersedes the LB→pod hop, [504](./504-BACKEND_TLS.md)
+  / [506](./506-SERVICE-MESH.md)). So it is **one 3-valued axis**, not two booleans.
+- **`security.binaryAuthorization` ∈ {off, on}** — **orthogonal** to the TLS axis (composes
+  with any), so it does **not** need `3×2`: prove independence once, then flip it on its own.
+- **`ci.engine` ∈ {jenkins, tekton, githubactions, argoworkflows}** — the one real
+  cross-product, because **binauthz image-signing is wired per engine** (each has its own
+  sign step; [507](./507-BINARY-AUTHORIZATION.md)). `engine × binauthz-on` is where the
+  coverage actually lives.
+
+### The two axes to test
+
+**Axis 1 — static states** (does the combination *stand up*):
+
+| # | Combination | Why in the matrix | Verify | Status |
+|---|---|---|---|---|
+| S1 | `tls=none`, binauthz=off (**default**) | baseline | a build goes green; no attestor/mesh objects | ✅ routine |
+| S2 | `tls=cloud-service-mesh`, binauthz=off | mesh alone | gateway+backend `2/2`, mTLS STRICT, CNPG excluded | ✅ live |
+| S3 | `tls=backend-tls`, binauthz=off | the other TLS state | stage-10 probes HTTPS, LB→pod re-encrypt | ✅ live (stages 1–10) |
+| S4 | `tls=cloud-service-mesh`, binauthz=**on** | the two heaviest opt-ins **compose** | mesh `2/2` **and** an attestation is created | ✅ live (2026-07-15) |
+| S5 | `tls=none`, binauthz=**on** | isolates binauthz from the mesh | attestation created, no mesh objects | ⬜ pending |
+| S6 | mesh **and** backendTls both on | the **exclusion** must fire | `lib/config.sh` **fails fast** before any apply | ✅ gate live-tested |
+| S7–S9 | binauthz=on, `ci.engine` = tekton / githubactions / argoworkflows | signing is **per-engine** | attestation created by *that* engine | ⬜ pending — all three still pass a `:tag`, not a digest ([507](./507-BINARY-AUTHORIZATION.md)) |
+
+**Axis 2 — transitions** (the lesson of 2026-07-16: a flag flip can leave **stale state**
+even when both static states are individually fine):
+
+| # | Transition | The hazard | Verify | Status |
+|---|---|---|---|---|
+| T1 | binauthz **on → off** | infra torn down while a consumer holds the old value — the **stale-agent** bug: `04-jenkins` updated the Secret but the controller didn't roll, so the agent still signed against a deleted attestor | after re-run, a build is green (signing no-ops); the controller env reads `false` | ✅ fixed + [guarded](../scripts/verify-jenkins-flag-parity.py) |
+| T2 | binauthz **off → on** (within 30 d of a prior teardown) | KMS keyring/key **can't be hard-deleted** → a plain create 409s; the key **version** sits `DESTROY_SCHEDULED` | Day1 imports the survivors + restores the version → apply converges ([507 § rebuild-safety](./507-BINARY-AUTHORIZATION.md)) | ✅ both halves validated |
+| T3 | mesh **on → off** | sidecars + policies must be retired, not orphaned | `08.85` retire path leaves apps `1/1` sidecar-free; Fleet destroyed | ✅ live (roll-back) |
+| T4 | `ci.engine` **A → B** | the old engine's namespaces/apps must be cleaned | `retire_ci_engine` drops the prior engine's resources ([CI-engine-switch-cleanup]) | ✅ live (→tekton) |
+
+### The general rule this encodes
+
+A flag that crosses **two subsystems that update at different rates** — Terraform infra
+*and* a running consumer (Jenkins agent, ArgoCD app, a mounted Secret) — is the risk zone.
+Its **static** states can both be fine while the **transition** strands one side. So the
+matrix tests *transitions*, not only states; the static guard
+([`verify-jenkins-flag-parity.py`](../scripts/verify-jenkins-flag-parity.py)) closes the
+one such gap that is checkable from committed files, and the ⬜ rows above are the live
+passes still owed.
+
+---
+
 ## Image retention (`registry` tier)
 
 `Day2.registry.01-image-retention` prunes ghcr with **two different jobs for two different tagging models** (found live 2026-07-13 that a single one-size policy doesn't fit both):
