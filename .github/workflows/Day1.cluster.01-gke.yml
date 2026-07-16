@@ -591,7 +591,31 @@ jobs:
             KMS_REGION="europe-southwest1" # var.region's default — the keyring's location
             KR="projects/${TF_VAR_project_id}/locations/${KMS_REGION}/keyRings/jenkins-2026-binauthz"
             if gcloud kms keyrings describe jenkins-2026-binauthz --location "${KMS_REGION}" --project "${TF_VAR_project_id}" >/dev/null 2>&1; then
-              echo "KMS keyring exists in GCP — importing into state so apply adopts it."
+              echo "KMS keyring exists in GCP — adopting it into state so apply doesn't 409."
+
+              # STEP 1 — restore any scheduled-for-destruction key VERSION *first*, before ANY
+              # terraform command touches it. The crypto-key OBJECT survives a Decom but its
+              # VERSION only enters a scheduled-destruction window (up to 30 days). A scheduled
+              # version makes `data.google_kms_crypto_key_version` (security.tf, reads the
+              # primary version's public key for the attestor's trust) 400 with "is not
+              # enabled, current state is: DESTROY_SCHEDULED" — and that data source is
+              # evaluated during the crypto-key IMPORT's refresh, not only at apply. Ordering
+              # the restore *after* the import (as a first cut did — run 29523146657) let the
+              # import 400 → the key never entered state → apply then 409'd creating it. So:
+              # restore, THEN import. Same key material the attestor already trusts; reversible.
+              if gcloud kms keys describe jenkins-2026-attestor-key --keyring jenkins-2026-binauthz --location "${KMS_REGION}" --project "${TF_VAR_project_id}" >/dev/null 2>&1; then
+                for ver in $(gcloud kms keys versions list --key jenkins-2026-attestor-key --keyring jenkins-2026-binauthz --location "${KMS_REGION}" --project "${TF_VAR_project_id}" --filter='state=DESTROY_SCHEDULED' --format='value(name)' 2>/dev/null); do
+                  vnum="${ver##*/}"
+                  echo "KMS key version ${vnum} is scheduled for destruction — restoring + re-enabling it (before any terraform import)."
+                  gcloud kms keys versions restore "${vnum}" --key jenkins-2026-attestor-key --keyring jenkins-2026-binauthz --location "${KMS_REGION}" --project "${TF_VAR_project_id}" --quiet \
+                    && gcloud kms keys versions enable "${vnum}" --key jenkins-2026-attestor-key --keyring jenkins-2026-binauthz --location "${KMS_REGION}" --project "${TF_VAR_project_id}" --quiet \
+                    || echo "::warning::Could not restore/enable KMS key version ${vnum} — the import + apply will likely fail on data.google_kms_crypto_key_version."
+                done
+              fi
+
+              # STEP 2 — import the keyring, then the crypto key. Its refresh now reads an
+              # ENABLED primary version, so it succeeds and the key enters state; apply adopts
+              # both instead of trying to create them.
               if import_out=$(terraform import -input=false "google_kms_key_ring.binauthz[0]" "${KR}" 2>&1); then
                 echo "  keyring imported."
               else
@@ -616,22 +640,6 @@ jobs:
                   fi
                 fi
               fi
-              # The crypto-key OBJECT survives a Decom (imported above), but its VERSION only
-              # enters a scheduled-destruction window (up to 30 days) rather than dying
-              # immediately. With zero ENABLED versions, apply's `data.google_kms_crypto_key_
-              # version` (security.tf) — which reads the primary version's public key for the
-              # attestor's trust — 400s: "... is not enabled, current state is:
-              # DESTROY_SCHEDULED" (seen live: run 29435733931), even though the import itself
-              # succeeded. Restore + re-enable it: same key material the attestor already
-              # trusts, reversible (GCP lets you re-schedule destruction later), and simpler
-              # than minting + repointing-primary a brand new version.
-              for ver in $(gcloud kms keys versions list --key jenkins-2026-attestor-key --keyring jenkins-2026-binauthz --location "${KMS_REGION}" --project "${TF_VAR_project_id}" --filter='state=DESTROY_SCHEDULED' --format='value(name)' 2>/dev/null); do
-                vnum="${ver##*/}"
-                echo "KMS key version ${vnum} is scheduled for destruction — restoring + re-enabling it."
-                gcloud kms keys versions restore "${vnum}" --key jenkins-2026-attestor-key --keyring jenkins-2026-binauthz --location "${KMS_REGION}" --project "${TF_VAR_project_id}" --quiet \
-                  && gcloud kms keys versions enable "${vnum}" --key jenkins-2026-attestor-key --keyring jenkins-2026-binauthz --location "${KMS_REGION}" --project "${TF_VAR_project_id}" --quiet \
-                  || echo "::warning::Could not restore/enable KMS key version ${vnum} — apply's data.google_kms_crypto_key_version read will likely fail."
-              done
             else
               echo "No lingering KMS keyring — apply will create it fresh."
             fi
