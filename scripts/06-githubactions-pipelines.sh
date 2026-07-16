@@ -81,6 +81,11 @@ for i in $(seq 0 $((svc_count - 1))); do
     log_warn "Could not clone ${repo_path} (not an owned fork?) — skipping ${name}."; rm -rf "${work}"; continue
   fi
   mkdir -p "${work}/.github/workflows"
+  # Binary Authorization (docs/507): render the flag + project into the workflow env so the
+  # sign step self-gates and the script can derive the attestor. Empty project is fine when
+  # the flag is off (the step no-ops before using it). Same source as 04-jenkins.sh HOOK 1.
+  binauthz_enabled="${J2026_BINARY_AUTHORIZATION_ENABLED:-false}"
+  binauthz_project="$(gcloud config get-value project 2>/dev/null || echo "")"
   sed -e "s@{{runnerLabel}}@${J2026_GHA_RUNNER_SCALE_SET_NAME}@g" \
       -e "s@{{svcName}}@${name}@g" \
       -e "s@{{svcType}}@${type}@g" \
@@ -94,6 +99,8 @@ for i in $(seq 0 $((svc_count - 1))); do
       -e "s@{{argocdNamespace}}@${J2026_ARGOCD_NAMESPACE}@g" \
       -e "s@{{selfRepoBranch}}@${J2026_SELF_REPO_BRANCH}@g" \
       -e "s@{{branches}}@${branches}@g" \
+      -e "s@{{binauthzEnabled}}@${binauthz_enabled}@g" \
+      -e "s@{{projectId}}@${binauthz_project}@g" \
       "${TEMPLATE}" > "${work}/.github/workflows/microservices-ci.yml"
 
   ( cd "${work}"

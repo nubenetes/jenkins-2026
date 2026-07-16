@@ -49,6 +49,13 @@ jobs:
       # k8sattributes), so its panels do not depend on these attributes.
       OTEL_SERVICE_NAME: "githubactions-pipeline-{{svcName}}"
       OTEL_RESOURCE_ATTRIBUTES: service.namespace=jenkins-2026,deployment.environment=${{ github.ref_name == 'develop' && 'develop' || 'stable' }}
+      # Binary Authorization (docs/507): "true"/"false", sed-rendered from the flag by
+      # 06-githubactions-pipelines.sh. The sign step self-gates on this. PROJECT_ID is what
+      # sign-and-attest-image.sh derives the attestor/keyversion from; the ARC runner's KSA
+      # (arc-runners/arc-runner-scale-set) is annotated to impersonate the signer GSA by
+      # 04-githubactions.sh when the flag is on (the WI binding is granted by terraform/gke).
+      BINAUTHZ_ENABLED: "{{binauthzEnabled}}"
+      PROJECT_ID: "{{projectId}}"
     steps:
       - name: Checkout app (microservices fork)
         uses: actions/checkout@v4
