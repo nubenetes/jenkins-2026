@@ -18,7 +18,7 @@ spec:
     - name: source
   steps:
     - name: scan
-      image: semgrep/semgrep:1.79.0
+      image: docker.io/semgrep/semgrep:1.79.0
       script: |
         #!/bin/sh
         set -eu
@@ -30,7 +30,7 @@ spec:
           --config="$(workspaces.source.path)/jenkins-2026-infra/.semgrep/semgrep.yml" \
           --sarif --sarif-output=semgrep-results.sarif . || true
     - name: upload-sarif
-      image: alpine/k8s:1.31.3
+      image: docker.io/alpine/k8s:1.31.3
       env:
         - name: GIT_TOKEN
           valueFrom:

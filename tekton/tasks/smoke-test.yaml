@@ -12,7 +12,7 @@ spec:
     - name: health-path
   steps:
     - name: curl-health
-      image: alpine/k8s:1.31.3
+      image: docker.io/alpine/k8s:1.31.3
       script: |
         #!/bin/sh
         set -eux

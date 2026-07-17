@@ -64,7 +64,7 @@ spec:
   serviceAccountName: jenkins
   containers:
     - name: k6
-      image: grafana/k6:2.0.0
+      image: docker.io/grafana/k6:2.0.0
       command: ['sleep']
       args: ['infinity']
       # grafana/k6 is a scratch-based binary image; runAsUser: 0 kept until
@@ -75,7 +75,7 @@ spec:
         requests: {cpu: 20m, memory: 128Mi}
         limits: {cpu: 500m, memory: 256Mi}
     - name: helm
-      image: alpine/k8s:1.31.3
+      image: docker.io/alpine/k8s:1.31.3
       command: ['sleep']
       args: ['infinity']
       securityContext:

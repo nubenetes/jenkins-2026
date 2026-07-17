@@ -21,7 +21,7 @@ admissionWebhooks:
 
 manager:
   collectorImage:
-    repository: otel/opentelemetry-collector-k8s
+    repository: docker.io/otel/opentelemetry-collector-k8s
   resources:
     requests:
       cpu: 100m

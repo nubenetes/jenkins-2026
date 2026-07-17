@@ -54,7 +54,7 @@ spec:
     - name: source
   steps:
     - name: checkout-infra
-      image: alpine/git:2.54.0
+      image: docker.io/alpine/git:2.54.0
       env:
         - name: HOME
           value: /tmp
@@ -125,7 +125,7 @@ spec:
         } > "${OUT}"
         echo "Wrote ${OUT}:"; cat "${OUT}"
     - name: run-k6
-      image: grafana/k6:2.0.0
+      image: docker.io/grafana/k6:2.0.0
       env:
         - name: TARGET_NAMESPACE
           value: $(params.target-namespace)

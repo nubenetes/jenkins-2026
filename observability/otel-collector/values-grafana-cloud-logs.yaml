@@ -17,7 +17,7 @@ fullnameOverride: otel-collector-logs
 mode: daemonset
 
 image:
-  repository: otel/opentelemetry-collector-k8s
+  repository: docker.io/otel/opentelemetry-collector-k8s
 
 resources:
   requests:

@@ -31,7 +31,7 @@ spec:
     - name: source
   steps:
     - name: bump-and-push
-      image: alpine/k8s:1.31.3
+      image: docker.io/alpine/k8s:1.31.3
       env:
         - name: HOME
           value: /tmp
@@ -78,7 +78,7 @@ spec:
         git commit -m "chore(ops): update $(params.service-name) image tag to ${IMAGE_TAG} [$(params.env-name)]" || echo "No changes to commit"
         git push origin "${BRANCH}"
     - name: argocd-sync
-      image: alpine/k8s:1.31.3
+      image: docker.io/alpine/k8s:1.31.3
       env:
         - name: HOME
           value: /tmp
@@ -125,7 +125,7 @@ spec:
         # gateway's ~600s startupProbe cold-start gates every service's run in the batch - don't lower (see CHANGELOG).
         "${ARGOCD}" app wait "${APP}" --sync --health --timeout 900 --server "${server}" --auth-token "${ARGOCD_AUTH_TOKEN:-}" ${flags}
     - name: otel-injection-selfheal
-      image: alpine/k8s:1.31.3
+      image: docker.io/alpine/k8s:1.31.3
       script: |
         #!/bin/bash
         set -eu

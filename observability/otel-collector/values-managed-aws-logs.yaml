@@ -20,7 +20,7 @@ serviceAccount:
   name: otel-collector-gateway
 
 image:
-  repository: otel/opentelemetry-collector-contrib
+  repository: docker.io/otel/opentelemetry-collector-contrib
 
 resources:
   requests:

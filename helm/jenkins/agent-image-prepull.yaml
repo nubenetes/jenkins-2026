@@ -21,14 +21,14 @@ spec:
       terminationGracePeriodSeconds: 0
       automountServiceAccountToken: false
       initContainers:
-        - { name: maven,   image: "maven:3.9.9-eclipse-temurin-21", command: ["true"], imagePullPolicy: IfNotPresent }
-        - { name: node,    image: "node:20-bookworm",               command: ["true"], imagePullPolicy: IfNotPresent }
-        - { name: dind,    image: "docker:26-dind",                 command: ["true"], imagePullPolicy: IfNotPresent }
-        - { name: k8s,     image: "alpine/k8s:1.31.3",              command: ["true"], imagePullPolicy: IfNotPresent }
-        - { name: git,     image: "alpine/git:2.54.0",              command: ["true"], imagePullPolicy: IfNotPresent }
-        - { name: semgrep, image: "semgrep/semgrep:1.79.0",        command: ["true"], imagePullPolicy: IfNotPresent }
-        - { name: trivy,   image: "aquasec/trivy:0.52.2",          command: ["true"], imagePullPolicy: IfNotPresent }
-        - { name: k6,      image: "grafana/k6:2.0.0",              command: ["true"], imagePullPolicy: IfNotPresent }
+        - { name: maven,   image: "docker.io/library/maven:3.9.9-eclipse-temurin-21", command: ["true"], imagePullPolicy: IfNotPresent }
+        - { name: node,    image: "docker.io/library/node:20-bookworm",               command: ["true"], imagePullPolicy: IfNotPresent }
+        - { name: dind,    image: "docker.io/library/docker:26-dind",                 command: ["true"], imagePullPolicy: IfNotPresent }
+        - { name: k8s,     image: "docker.io/alpine/k8s:1.31.3",              command: ["true"], imagePullPolicy: IfNotPresent }
+        - { name: git,     image: "docker.io/alpine/git:2.54.0",              command: ["true"], imagePullPolicy: IfNotPresent }
+        - { name: semgrep, image: "docker.io/semgrep/semgrep:1.79.0",        command: ["true"], imagePullPolicy: IfNotPresent }
+        - { name: trivy,   image: "docker.io/aquasec/trivy:0.52.2",          command: ["true"], imagePullPolicy: IfNotPresent }
+        - { name: k6,      image: "docker.io/grafana/k6:2.0.0",              command: ["true"], imagePullPolicy: IfNotPresent }
         - { name: codeql,  image: "mcr.microsoft.com/cstsectools/codeql-container:c6f3f8cbd3e0ebc36d9ad6dfe6a4c166ba940166", command: ["true"], imagePullPolicy: IfNotPresent }
       containers:
         - name: pause

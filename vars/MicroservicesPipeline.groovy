@@ -73,7 +73,7 @@ spec:
   serviceAccountName: jenkins
   containers:
     - name: maven
-      image: maven:3.9.9-eclipse-temurin-21
+      image: docker.io/library/maven:3.9.9-eclipse-temurin-21
       command: ['sleep']
       args: ['infinity']
       # TODO: migrate to bitnami/maven (UID 1001) once /root/.m2 cache path is moved
@@ -97,7 +97,7 @@ spec:
         - name: maven-cache
           mountPath: /root/.m2
     - name: node
-      image: node:20-bookworm
+      image: docker.io/library/node:20-bookworm
       command: ['sleep']
       args: ['infinity']
       # TODO: migrate to runAsUser: 1000 (built-in 'node' user) once /root/.npm cache path is moved
@@ -113,7 +113,7 @@ spec:
         - name: npm-cache
           mountPath: /root/.npm
     - name: docker
-      image: docker:26-dind
+      image: docker.io/library/docker:26-dind
       # DinD requires privileged + root — cannot be reduced without rootless Docker
       securityContext:
         privileged: true
@@ -125,7 +125,7 @@ spec:
         requests: {cpu: 20m, memory: 128Mi}
         limits: {cpu: '500m', memory: 512Mi}${binauthzContainer}
     - name: helm
-      image: alpine/k8s:1.31.3
+      image: docker.io/alpine/k8s:1.31.3
       command: ['sleep']
       args: ['infinity']
       # runAsUser: 1000 matches the git container so yq can write git-cloned
@@ -152,7 +152,7 @@ spec:
         requests: {cpu: 5m, memory: 64Mi}
         limits: {cpu: 100m, memory: 128Mi}
     - name: git
-      image: alpine/git:2.54.0
+      image: docker.io/alpine/git:2.54.0
       command: ['sleep']
       args: ['infinity']
       # runAsUser: 1000 overrides the image default (root). Kubernetes enforces
@@ -173,7 +173,7 @@ spec:
         requests: {cpu: 5m, memory: 128Mi}
         limits: {cpu: 100m, memory: 512Mi}
     - name: semgrep
-      image: semgrep/semgrep:1.79.0
+      image: docker.io/semgrep/semgrep:1.79.0
       command: ['sleep']
       args: ['infinity']
       securityContext:
@@ -197,7 +197,7 @@ spec:
         - name: codeql-cache
           mountPath: /usr/local/codeql-home/.codeql
     - name: trivy
-      image: aquasec/trivy:0.52.2
+      image: docker.io/aquasec/trivy:0.52.2
       command: ['sleep']
       args: ['infinity']
       # TODO: add runAsUser once hostPath trivy-cache dir ownership is initialised

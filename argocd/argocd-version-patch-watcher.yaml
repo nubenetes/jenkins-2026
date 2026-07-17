@@ -46,7 +46,7 @@ spec:
           restartPolicy: OnFailure
           containers:
           - name: watcher
-            image: alpine/k8s:1.31.3
+            image: docker.io/alpine/k8s:1.31.3
             command: ["/bin/sh", "-c"]
             args:
             - |

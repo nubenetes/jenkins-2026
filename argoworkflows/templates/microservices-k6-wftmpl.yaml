@@ -111,7 +111,7 @@ spec:
           - name: self-repo-url
           - name: self-repo-branch
       script:
-        image: alpine/git:2.54.0
+        image: docker.io/alpine/git:2.54.0
         volumeMounts:
           - { name: source, mountPath: /workspace }
         env:
@@ -207,7 +207,7 @@ spec:
           - name: debug
           - name: otlp-endpoint
       script:
-        image: grafana/k6:2.0.0
+        image: docker.io/grafana/k6:2.0.0
         volumeMounts:
           - { name: source, mountPath: /workspace }
         env:

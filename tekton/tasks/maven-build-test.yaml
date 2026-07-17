@@ -13,7 +13,7 @@ spec:
     - name: source
   steps:
     - name: build-test
-      image: maven:3.9.9-eclipse-temurin-21
+      image: docker.io/library/maven:3.9.9-eclipse-temurin-21
       computeResources:
         requests:
           cpu: "1"
