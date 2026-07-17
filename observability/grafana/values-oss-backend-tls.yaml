@@ -70,3 +70,38 @@ grafana:
     initialDelaySeconds: 60
     timeoutSeconds: 30
     failureThreshold: 10
+
+  # Same blind spot as the probes above, one layer deeper: the k8s-sidecar
+  # containers POST to a `reloadURL` to make Grafana re-read provisioning after
+  # they write a ConfigMap's files, and the chart hard-codes those URLs to
+  # http://localhost:3000 with NO derivation from server.protocol. Under
+  # backend-TLS Grafana's listener is HTTPS, so every reload POST is rejected
+  # ("client sent an HTTP request to an HTTPS server"). DASHBOARDS survive it
+  # (their provider polls the folder), but ALERTING has no poller — Grafana reads
+  # alert rules from provisioning ONCE at boot, and the alerts sidecar writes the
+  # file racily AFTER boot, relying on the reload to pick them up. With the reload
+  # broken, the rules never load: the Backstage Monitoring Alerts card goes empty
+  # after ANY Grafana roll under backend-TLS (found live 2026-07-17 — the rules
+  # ARE provisioned, a manual HTTPS reload loads all 7 groups). Point the reloads
+  # at https and skip verification: these are pod-local self-calls to
+  # localhost:3000, whose cert SAN is the Service FQDN (not localhost), so
+  # verification would fail on the hostname — acceptable for traffic that never
+  # leaves the pod.
+  # NOTE: the chart's `sidecar.skipTlsVerify` does NOT emit REQ_SKIP_TLS_VERIFY (it
+  # governs the k8s-API watch, not the reload POST), so the per-sidecar `env` map
+  # injects it directly — the k8s-sidecar verifies the reload cert by default, and
+  # the grafana-tls SAN is the Service FQDN, not localhost, so a localhost https
+  # POST would fail hostname verification without it.
+  sidecar:
+    alerts:
+      reloadURL: "https://localhost:3000/api/admin/provisioning/alerting/reload"
+      env:
+        REQ_SKIP_TLS_VERIFY: "true"
+    dashboards:
+      reloadURL: "https://localhost:3000/api/admin/provisioning/dashboards/reload"
+      env:
+        REQ_SKIP_TLS_VERIFY: "true"
+    datasources:
+      reloadURL: "https://localhost:3000/api/admin/provisioning/datasources/reload"
+      env:
+        REQ_SKIP_TLS_VERIFY: "true"
