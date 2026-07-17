@@ -1,0 +1,65 @@
+name: "Backstage tests (jest)"
+
+# Lightweight PR guard (like gitflow-guard / mermaid-validate / terraform-validate)
+# — NOT a DayN lifecycle workflow. Runs the Backstage workspace's jest suite so a
+# regression in the custom Scaffolder action (j2026:file:append) fails the PR
+# instead of shipping in the next image.
+#
+# WHY this guard earns its keep: that action writes real PRs into three
+# APPEND-ONLY registries (services.yaml, the catalog stream, gitops values).
+# Its invariants are all "silent when wrong" — a duplicate that YAML happily
+# accepts and then shadows, an anchor that drifted so the entry lands in the
+# wrong block, a substring match that mistakes `gateway` for `gateway-v2`. A
+# green pipeline emitting a subtly-corrupt PR is worse than a red one, and no
+# static check catches it — only re-parsing the emitted bytes does, which is
+# exactly what the tests do (docs/505 § Scaffolder).
+#
+# Node 24 + corepack: the image and CLI both require Node 22||24 (Node 20 chokes
+# building isolated-vm), and the Backstage CLI's jest v30 config is only
+# supported there. Immutable install so a package.json/yarn.lock drift fails
+# here rather than silently re-resolving (same contract as Day2.publish.06).
+
+on:
+  pull_request:
+    paths:
+      - "backstage/**"
+      - ".github/workflows/backstage-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backstage-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: jest (backstage workspace)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Enable corepack (yarn 4.8.1 via packageManager)
+        run: corepack enable
+
+      - name: Install dependencies (yarn, immutable)
+        working-directory: backstage
+        env:
+          YARN_ENABLE_IMMUTABLE_INSTALLS: "true"
+        run: yarn install
+
+      # Scoped to the backend workspace (where the only tests live): `repo test`
+      # applies a babel transform that chokes on the TS `type` syntax, while
+      # `package test` uses the package's role-aware TS transform. If tests are
+      # added to another workspace, add a matching step here.
+      - name: Run tests (jest, single run)
+        working-directory: backstage/packages/backend
+        env:
+          CI: "true"
+        run: yarn backstage-cli package test
