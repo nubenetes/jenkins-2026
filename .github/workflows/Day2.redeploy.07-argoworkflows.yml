@@ -225,6 +225,15 @@ jobs:
       # Server UI (IAP) and the Argo Events webhook receiver (argo-events.<domain>), so
       # an Argo Workflows-only redeploy exposes them without a full Day1. Reads IAP creds
       # from the cluster Secrets refreshed by 01-namespaces above.
+      - name: Provision the engine's ArgoCD API token (scripts/08.55-argocd-ci-token.sh)
+        # Engine-switch parity: a Day2 engine SWITCH must (re)provision the new engine's ArgoCD
+        # account + token — 08.5-argocd.sh does it in Day1 but the per-engine redeploys don't run
+        # 08.5, so the switched pipeline's gitops step ran with an empty --auth-token and died
+        # "Unauthenticated"/exit 20 (found live 2026-07-17 on a GHA→argoworkflows switch; the deploy
+        # still converged via ArgoCD auto-sync, only the pipeline's app-wait verification failed).
+        # Idempotent; requires ArgoCD up (it is on a redeploy). Class: workflow-input-parity.
+        run: ./scripts/08.55-argocd-ci-token.sh
+
       - name: Refresh Backstage runtime config (scripts/08.95-backstage.sh)
         # Engine-switch parity: 08.95 is the SOLE writer of backstage-runtime-config's CI_ENGINE
         # and the app-of-apps ciEngine overlay, and it restarts the pod. Without this a Day2 engine

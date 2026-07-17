@@ -35,6 +35,31 @@ spec:
     # microservices namespace and the cluster-scoped bindings carry their own
     # metadata.namespace/scope.
     namespace: {{ .Values.namespace.run | quote }}
+  # The Workload-Identity annotation on the argoworkflows-ci SA (Binary Authorization, docs/507)
+  # is applied out-of-band by 04-argoworkflows.sh ONLY when the flag is on, with the per-cluster
+  # signer-GSA email — so it can't live in the committed SA manifest. Without this, selfHeal strips
+  # it the instant the seed adds it (the Tekton twin of this was observed live 2026-07-16: the
+  # annotate reported success but was gone on the next read), and the sign step's WI token exchange
+  # fails. ignoreDifferences lets the seed own that one annotation. Spec-level, NOT under syncPolicy.
+  ignoreDifferences:
+    - group: ""
+      kind: ServiceAccount
+      name: argoworkflows-ci
+      namespace: {{ .Values.namespace.run | quote }}
+      jsonPointers:
+        - /metadata/annotations/iam.gke.io~1gcp-service-account
+    # 06-argoworkflows-pipelines.sh patches the WorkflowTemplate's binauthz-enabled/project-id
+    # argument DEFAULTS to "true"/<project> when Binary Authorization is on (docs/507), so every
+    # run inherits signing. Ignore ONLY those two param VALUES so selfHeal doesn't revert the patch
+    # while still reconciling every other default. jqPathExpressions select by name — the hyphen is
+    # inside a quoted string, not a key access, so it is not mis-parsed as arithmetic (docs/501).
+    - group: argoproj.io
+      kind: WorkflowTemplate
+      name: microservices-pipeline
+      namespace: {{ .Values.namespace.run | quote }}
+      jqPathExpressions:
+        - '.spec.arguments.parameters[] | select(.name == "binauthz-enabled").value'
+        - '.spec.arguments.parameters[] | select(.name == "project-id").value'
   syncPolicy:
     automated:
       prune: true

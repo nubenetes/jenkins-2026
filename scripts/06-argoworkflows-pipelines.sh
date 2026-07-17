@@ -115,6 +115,33 @@ timeout 600 bash -c '
   done
 ' || { log_error "microservices-pipeline WorkflowTemplate / argoworkflows-ci SA not present within 10m - check 'kubectl -n ${J2026_ARGOCD_NAMESPACE} get application argoworkflows-pipeline-as-code'"; exit 1; }
 
+# Binary Authorization (docs/507 § Pipeline wiring): when the flag is on, set the
+# microservices-pipeline WorkflowTemplate's binauthz-enabled/project-id argument DEFAULTS so
+# EVERY submit path inherits them — the seeded runs (workflowTemplateRef, no args), the fallback
+# Workflows (partial args), and the Argo Events Sensor (webhook) alike — without threading the
+# param through each. build-sign reads them via {{workflow.parameters.*}}. selfHeal would revert
+# these values, so the argoworkflows-pipeline-as-code Application ignoreDifferences exactly these
+# two param values. The KSA side (argoworkflows-ci → signer GSA WI annotation) is done by
+# 04-argoworkflows.sh. Patch by NAME (index computed live) so it survives param reordering.
+if [[ "$(j2026_binary_authorization_active)" == "true" ]]; then
+  ba_project="$(gcloud config get-value project 2>/dev/null || echo "")"
+  log_step "Binary Authorization active - patching WorkflowTemplate binauthz-enabled/project-id defaults"
+  wt_json="$(kubectl get workflowtemplate microservices-pipeline -n "${RUN_NS}" -o json 2>/dev/null || echo "")"
+  idx_ba="$(echo "${wt_json}" | jq '.spec.arguments.parameters | map(.name=="binauthz-enabled") | index(true)' 2>/dev/null || echo null)"
+  idx_pj="$(echo "${wt_json}" | jq '.spec.arguments.parameters | map(.name=="project-id") | index(true)' 2>/dev/null || echo null)"
+  if [[ -n "${wt_json}" && "${idx_ba}" != "null" && "${idx_pj}" != "null" ]]; then
+    kubectl patch workflowtemplate microservices-pipeline -n "${RUN_NS}" --type=json -p "$(cat <<EOF
+[{"op":"replace","path":"/spec/arguments/parameters/${idx_ba}/value","value":"true"},
+ {"op":"replace","path":"/spec/arguments/parameters/${idx_pj}/value","value":"${ba_project}"}]
+EOF
+)" >/dev/null 2>&1 \
+      && log_info "WorkflowTemplate binauthz-enabled=true, project-id=${ba_project} (image signing on for every run)." \
+      || log_warn "Could not patch the WorkflowTemplate binauthz params - image signing may not activate (see docs/507)."
+  else
+    log_warn "binauthz-enabled/project-id params not found on the WorkflowTemplate (re-render argoworkflows/?) - image signing skipped (see docs/507)."
+  fi
+fi
+
 svc_count="$(yq eval '.services | length' "${SERVICES_YAML}")"
 
 # --- decide mode -------------------------------------------------------------

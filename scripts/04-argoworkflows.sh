@@ -80,6 +80,27 @@ log_step "Applying Argo Workflows step image pre-pull DaemonSet"
 kubectl apply -f "${J2026_ROOT_DIR}/argoworkflows/agent-image-prepull.yaml" || \
   log_warn "Argo Workflows image pre-pull DaemonSet not applied - first Workflows on a fresh node will be slower."
 
+# Binary Authorization (docs/507 § Pipeline wiring): annotate the argoworkflows-ci pipeline KSA to
+# impersonate the jenkins-2026-binauthz-signer GSA (Workload Identity) so the build-sign step's
+# gcloud (google/cloud-sdk image) can sign+attest. Only affects the sign step's gcloud calls — the
+# pipeline's git/registry/kubectl steps use their own creds. Analogue of 04-tekton: the SA is raw
+# ArgoCD-synced YAML (argoworkflows/rbac/pipeline-rbac.yaml), and the argoworkflows-pipeline-as-code
+# Application ignoreDifferences this exact annotation so selfHeal no longer strips it. Gated on the
+# flag; the WI binding (argo-ci/argoworkflows-ci → signer GSA) is granted by terraform/gke
+# (binauthz_signer_ksas).
+if [[ "$(j2026_binary_authorization_active)" == "true" ]]; then
+  binauthz_project="$(gcloud config get-value project 2>/dev/null || echo "")"
+  if [[ -n "${binauthz_project}" ]]; then
+    binauthz_signer="jenkins-2026-binauthz-signer@${binauthz_project}.iam.gserviceaccount.com"
+    log_step "Binary Authorization active - annotating the argoworkflows-ci KSA to impersonate ${binauthz_signer} (image signing)"
+    kubectl annotate serviceaccount argoworkflows-ci -n "${J2026_ARGOWF_RUN_NAMESPACE}" \
+      "iam.gke.io/gcp-service-account=${binauthz_signer}" --overwrite 2>/dev/null \
+      || log_warn "Could not annotate the argoworkflows-ci KSA - image signing will not authenticate (see docs/507)."
+  else
+    log_warn "Binary Authorization active but could not resolve the GCP project for the signer-GSA annotation - Argo image signing will not authenticate (see docs/507)."
+  fi
+fi
+
 log_info "Argo Workflows deployed via ArgoCD."
 log_info "  Apps: kubectl -n ${J2026_ARGOCD_NAMESPACE} get applications -l app.kubernetes.io/part-of=argoworkflows 2>/dev/null || kubectl -n ${J2026_ARGOCD_NAMESPACE} get applications | grep argoworkflows"
 log_info "  Pipelines-as-code + per-service runs are applied/kicked by scripts/06-argoworkflows-pipelines.sh (run by up.sh)."
