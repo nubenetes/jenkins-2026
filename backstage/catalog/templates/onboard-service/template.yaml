@@ -57,7 +57,13 @@ spec:
         port:
           title: Container port
           type: number
-          description: The port the app listens on. 8080 and 8081 are taken by gateway / jhipstersamplemicroservice.
+          # A valid, non-privileged TCP port. Each service is its own Deployment +
+          # Service, so port numbers do NOT collide across services (two pods can
+          # both listen on 8082) — the note below is guidance, not a constraint, so
+          # the schema bounds the range rather than reserving specific values.
+          minimum: 1024
+          maximum: 65535
+          description: The port the app listens on (1024-65535). 8080 and 8081 are the gateway / jhipstersamplemicroservice ports by convention.
           default: 8082
         healthPath:
           title: Health endpoint

@@ -25,7 +25,11 @@
   },
   "devDependencies": {
     "@backstage/cli": "0.36.3",
+    "@backstage/cli-defaults": "^0.1.4",
+    "@jest/environment-jsdom-abstract": "^30.4.1",
     "@types/jest": "30.0.0",
+    "jest": "30",
+    "jsdom": "^29.1.1",
     "typescript": "5.8.3"
   }
 }
