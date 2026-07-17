@@ -66,6 +66,14 @@ spec:
         value: main
       - name: otlp-endpoint
         value: "http://otel-collector-gateway.observability.svc.cluster.local:4317"
+      # Binary Authorization (docs/507): defaults = signing off. 06-argoworkflows-pipelines.sh
+      # (seed runs) and the Sensor (webhook submits) pass "true" + the project when the flag is
+      # on; the build-sign step reads them as {{workflow.parameters.*}}. project-id lets the sign
+      # step's gcloud resolve the attestor/KMS without relying on the cloud-sdk container's config.
+      - name: binauthz-enabled
+        value: "false"
+      - name: project-id
+        value: ""
   templates:
     # ---- DAG entrypoint: the Tekton Pipeline runAfter chain ----
     - name: main
@@ -569,7 +577,9 @@ spec:
           - { name: source, mountPath: /workspace }
         env:
           - name: BINAUTHZ_ENABLED
-            value: "false"
+            value: "{{workflow.parameters.binauthz-enabled}}"
+          - name: PROJECT_ID
+            value: "{{workflow.parameters.project-id}}"
         source: |
           set -eu
           # Self-gate BEFORE touching the script: the file must EXIST to run it, and the
