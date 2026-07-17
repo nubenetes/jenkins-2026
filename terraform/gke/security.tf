@@ -181,6 +181,64 @@ resource "google_binary_authorization_policy" "this" {
     name_pattern = "registry.k8s.io/*"
   }
 
+  # --- PLATFORM / CI infrastructure allow-list -------------------------------
+  # The attestation requirement is meant to protect the APP supply chain — the
+  # microservices images this repo's pipelines build and sign
+  # (ghcr.io/nubenetes/jenkins-2026-microservices/**, deliberately NOT listed here,
+  # so they alone must carry an attestation). EVERY OTHER workload is trusted
+  # third-party/platform infra pulled by tag and never attested: without these
+  # patterns, flipping to `enforce` blocks the platform itself — found live
+  # 2026-07-17, where enforce denied `docker.io/jenkins/inbound-agent` (a Jenkins
+  # build agent) with "Expected digest ... got tag", i.e. it would wedge the very CI
+  # that produces the signed images. `global_policy_evaluation_mode = ENABLE` (below)
+  # covers only Google-managed GKE system images (gke-release, incl. the regional
+  # Artifact Registry mirror), NOT these. Patterns are `**` (cross-`/`) registry/org
+  # scopes derived from every image actually running in the stack; extend when a new
+  # component introduces a new registry. `enforce` needs this to be production-usable.
+  admission_whitelist_patterns {
+    name_pattern = "docker.io/**" # Jenkins controller/agents, grafana/loki/tempo, pgadmin, k6, otel-collector, build tools (maven/node/docker/trivy/…)
+  }
+  admission_whitelist_patterns {
+    name_pattern = "index.docker.io/**" # Docker Hub canonical host (short refs like `maven`/`node` normalise here)
+  }
+  admission_whitelist_patterns {
+    name_pattern = "quay.io/**" # ArgoCD + Argo Rollouts, cert-manager (jetstack), kube-prometheus-stack (prometheus-operator/node-exporter)
+  }
+  admission_whitelist_patterns {
+    name_pattern = "mcr.microsoft.com/**" # CodeQL container (DevSecOps scan)
+  }
+  admission_whitelist_patterns {
+    name_pattern = "oci.external-secrets.io/**" # External Secrets Operator (eso mode)
+  }
+  admission_whitelist_patterns {
+    name_pattern = "public.ecr.aws/**" # AWS ECR Public (e.g. redis base)
+  }
+  admission_whitelist_patterns {
+    name_pattern = "gcr.io/tekton-releases/**" # Tekton control plane + tasks (ci.engine=tekton)
+  }
+  admission_whitelist_patterns {
+    name_pattern = "ghcr.io/actions/**" # ARC runner + controller (ci.engine=githubactions)
+  }
+  admission_whitelist_patterns {
+    name_pattern = "ghcr.io/cloudnative-pg/**" # CNPG operator + Postgres/PgBouncer
+  }
+  admission_whitelist_patterns {
+    name_pattern = "ghcr.io/dexidp/**" # Dex (ArgoCD IAP authproxy SSO)
+  }
+  admission_whitelist_patterns {
+    name_pattern = "ghcr.io/headlamp-k8s/**" # Headlamp
+  }
+  admission_whitelist_patterns {
+    name_pattern = "ghcr.io/open-telemetry/**" # OTel operator + Java autoinstrumentation
+  }
+  # Our OWN Backstage image — a platform component published out-of-band
+  # (Day2.publish.06-backstage), NOT built/signed by the microservices pipeline, so
+  # it is allow-listed rather than attested. Sibling ghcr.io/nubenetes path to the
+  # app images, but a DISTINCT repo, so this does not exempt the microservices.
+  admission_whitelist_patterns {
+    name_pattern = "ghcr.io/nubenetes/jenkins-2026-backstage*"
+  }
+
   default_admission_rule {
     evaluation_mode  = "REQUIRE_ATTESTATION"
     enforcement_mode = var.binary_authorization_enforce ? "ENFORCED_BLOCK_AND_AUDIT_LOG" : "DRYRUN_AUDIT_LOG_ONLY"
