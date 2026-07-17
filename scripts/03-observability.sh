@@ -344,6 +344,29 @@ EOT
 
     kubectl_apply_namespace "${J2026_GRAFANA_OSS_NAMESPACE}"
 
+    # Stable Grafana admin credential (robust, idempotent Monitoring-tab auth).
+    # kube-prometheus-stack's Grafana admin-password defaults to a Helm
+    # randAlphaNum, and ArgoCD's repo-server REGENERATES it on every render (its
+    # `lookup` cannot reach the cluster), so the chart-owned Secret rotates on
+    # sync/prune -> the ready-made Basic-auth header 08.95 bakes into
+    # backstage-secrets goes stale and the Monitoring tab 401s (found live
+    # 2026-07-17 after a Grafana roll). Pin the password to a Secret WE own so it
+    # NEVER rotates within a cluster's life: values-oss.yaml points
+    # grafana.admin.existingSecret here, and 08.95 reads THIS Secret. Created
+    # BEFORE the app-of-apps below so the chart finds it on first sync;
+    # keep-if-present so a re-run / pod roll / ArgoCD sync never rotates it
+    # ([[empty-string-secret-class]]). Regenerated fresh per rebuild (08.95
+    # re-derives at Day1), stable thereafter.
+    if ! kubectl get secret grafana-admin-credentials -n "${J2026_GRAFANA_OSS_NAMESPACE}" >/dev/null 2>&1; then
+      log_step "Provisioning the stable Grafana admin credential (grafana-admin-credentials)"
+      gf_admin_pw="$(openssl rand -base64 32 | tr -dc 'A-Za-z0-9' | head -c 32)"
+      kubectl create secret generic grafana-admin-credentials \
+        -n "${J2026_GRAFANA_OSS_NAMESPACE}" \
+        --from-literal=admin-user=admin \
+        --from-literal=admin-password="${gf_admin_pw}"
+      unset gf_admin_pw
+    fi
+
     # Companion inputs consumed by the ArgoCD-managed Grafana (see
     # observability/grafana/values-oss.yaml). Kept script-managed (NOT in the
     # ArgoCD app) so ArgoCD never owns/prunes these per-cluster values; the
