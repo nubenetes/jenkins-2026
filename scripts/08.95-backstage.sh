@@ -101,7 +101,16 @@ case "${J2026_OBS_MODE}" in
     # is exactly this FQDN - Node trusts the internal CA via
     # NODE_EXTRA_CA_CERTS, the same trust path the ArgoCD plugin uses.
     if [[ "${BACKEND_TLS_ACTIVE}" == "true" ]]; then
-      bs_grafana_proxy_target="https://oss-kube-prometheus-stack-grafana.${J2026_GRAFANA_OSS_NAMESPACE}.svc.cluster.local"
+      # NOTE the explicit :80 - the kube-prometheus-stack Grafana Service exposes
+      # ONLY port 80 (-> targetPort 3000, where Grafana serves HTTPS under
+      # backend-TLS). Flipping the scheme http->https ALSO silently flips the
+      # default port 80->443, which the Service does not expose, so the proxy
+      # connection is dropped (ETIMEDOUT -> 504 on the Monitoring tab). Pinning :80
+      # keeps the Service port while the https scheme terminates TLS on the pod
+      # (Service:80 forwards L4 to pod:3000; the cert SAN is this FQDN, trusted via
+      # NODE_EXTRA_CA_CERTS). Found live 2026-07-17: Monitoring worked on oss
+      # WITHOUT backend-TLS (http://svc -> :80) but 504'd with it for exactly this.
+      bs_grafana_proxy_target="https://oss-kube-prometheus-stack-grafana.${J2026_GRAFANA_OSS_NAMESPACE}.svc.cluster.local:80"
     else
       bs_grafana_proxy_target="http://oss-kube-prometheus-stack-grafana.${J2026_GRAFANA_OSS_NAMESPACE}.svc.cluster.local"
     fi
