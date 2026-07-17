@@ -14,7 +14,7 @@ spec:
     - name: source
   steps:
     - name: clone-gitops
-      image: alpine/git:2.54.0
+      image: docker.io/alpine/git:2.54.0
       env:
         - name: HOME
           value: /tmp
@@ -44,7 +44,7 @@ spec:
           clone --depth 1 --branch "${BRANCH}" \
           "https://${GIT_USER:-git}:${GIT_TOKEN:-}@${REPO_CLEAN}" gitops-config-src
     - name: trivy-config
-      image: aquasec/trivy:0.52.2
+      image: docker.io/aquasec/trivy:0.52.2
       env:
         - name: TRIVY_CACHE_DIR
           value: /tmp/trivy-cache

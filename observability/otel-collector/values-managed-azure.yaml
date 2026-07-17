@@ -28,7 +28,7 @@ replicaCount: 1
 image:
   # contrib distro: required for the azuremonitor exporter and the
   # oauth2client extension (neither ships in the otelcol-k8s image).
-  repository: otel/opentelemetry-collector-contrib
+  repository: docker.io/otel/opentelemetry-collector-contrib
 
 resources:
   requests:

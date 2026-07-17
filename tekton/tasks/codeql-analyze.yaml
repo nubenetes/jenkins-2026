@@ -41,7 +41,7 @@ spec:
           --codescanning-config="$(workspaces.source.path)/jenkins-2026-infra/.github/codeql/codeql-config.yml"
         codeql database analyze codeql-db --format=sarif-latest --output=codeql-results.sarif --threads=0 --ram=3500 || true
     - name: upload-sarif
-      image: alpine/k8s:1.31.3
+      image: docker.io/alpine/k8s:1.31.3
       env:
         - name: GIT_TOKEN
           valueFrom:

@@ -29,7 +29,7 @@ replicaCount: 1
 # the rest. All previously-used components (otlp/jaeger/zipkin/prometheus,
 # span_metrics/service_graph, otlphttp) exist in contrib too, so this is drop-in.
 image:
-  repository: otel/opentelemetry-collector-contrib
+  repository: docker.io/otel/opentelemetry-collector-contrib
 
 resources:
   requests:

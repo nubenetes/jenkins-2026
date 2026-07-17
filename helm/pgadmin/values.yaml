@@ -26,7 +26,7 @@ pgadmin4:
   # Custom init container to fetch PostgreSQL user secrets and write the .pgpass file
   extraInitContainers: |
     - name: setup-pgpass
-      image: alpine:3.20
+      image: docker.io/library/alpine:3.20
       securityContext:
         runAsUser: 0
       command:

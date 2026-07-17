@@ -28,7 +28,7 @@ replicaCount: 1
 
 image:
   # contrib distro: required for sigv4auth, awsxray, awscloudwatchlogs.
-  repository: otel/opentelemetry-collector-contrib
+  repository: docker.io/otel/opentelemetry-collector-contrib
 
 resources:
   requests:

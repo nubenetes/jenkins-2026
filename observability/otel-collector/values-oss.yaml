@@ -22,7 +22,7 @@ replicaCount: 1
 
 
 image:
-  repository: otel/opentelemetry-collector-contrib
+  repository: docker.io/otel/opentelemetry-collector-contrib
   # The contrib image is required for the prometheusremotewrite exporter
   # used in the metrics pipeline below.
 

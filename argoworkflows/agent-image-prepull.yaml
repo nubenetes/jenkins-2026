@@ -34,15 +34,15 @@ spec:
         runAsUser: 65532
         seccompProfile: { type: RuntimeDefault }
       initContainers:
-        - { name: git,    image: "alpine/git:2.54.0",            command: ["true"], imagePullPolicy: IfNotPresent, securityContext: &sc { allowPrivilegeEscalation: false, capabilities: { drop: ["ALL"] } } }
-        - { name: k8s,    image: "alpine/k8s:1.31.3",            command: ["true"], imagePullPolicy: IfNotPresent, securityContext: *sc }
-        - { name: maven,  image: "maven:3.9.9-eclipse-temurin-21", command: ["true"], imagePullPolicy: IfNotPresent, securityContext: *sc }
+        - { name: git,    image: "docker.io/alpine/git:2.54.0",            command: ["true"], imagePullPolicy: IfNotPresent, securityContext: &sc { allowPrivilegeEscalation: false, capabilities: { drop: ["ALL"] } } }
+        - { name: k8s,    image: "docker.io/alpine/k8s:1.31.3",            command: ["true"], imagePullPolicy: IfNotPresent, securityContext: *sc }
+        - { name: maven,  image: "docker.io/library/maven:3.9.9-eclipse-temurin-21", command: ["true"], imagePullPolicy: IfNotPresent, securityContext: *sc }
         - { name: kaniko, image: "gcr.io/kaniko-project/executor:v1.23.2-debug", command: ["true"], imagePullPolicy: IfNotPresent, securityContext: *sc }
-        - { name: trivy,  image: "aquasec/trivy:0.52.2",          command: ["true"], imagePullPolicy: IfNotPresent, securityContext: *sc }
-        - { name: k6,     image: "grafana/k6:2.0.0",             command: ["true"], imagePullPolicy: IfNotPresent, securityContext: *sc }
+        - { name: trivy,  image: "docker.io/aquasec/trivy:0.52.2",          command: ["true"], imagePullPolicy: IfNotPresent, securityContext: *sc }
+        - { name: k6,     image: "docker.io/grafana/k6:2.0.0",             command: ["true"], imagePullPolicy: IfNotPresent, securityContext: *sc }
         - { name: yq,     image: "mikefarah/yq:4.53.3",          command: ["true"], imagePullPolicy: IfNotPresent, securityContext: *sc }
         - { name: curl,   image: "curlimages/curl:8.10.1",       command: ["true"], imagePullPolicy: IfNotPresent, securityContext: *sc }
-        - { name: semgrep, image: "semgrep/semgrep:1.79.0",     command: ["true"], imagePullPolicy: IfNotPresent, securityContext: *sc }
+        - { name: semgrep, image: "docker.io/semgrep/semgrep:1.79.0",     command: ["true"], imagePullPolicy: IfNotPresent, securityContext: *sc }
         - { name: codeql, image: "mcr.microsoft.com/cstsectools/codeql-container:c6f3f8cbd3e0ebc36d9ad6dfe6a4c166ba940166", command: ["true"], imagePullPolicy: IfNotPresent, securityContext: *sc }
       containers:
         - name: pause

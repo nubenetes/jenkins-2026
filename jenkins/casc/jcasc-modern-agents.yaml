@@ -73,7 +73,7 @@ jenkins:
                       - resourceName: memory
                         restartPolicy: NotRequired
                   - name: builder
-                    image: maven:3.9.6-eclipse-temurin-17
+                    image: docker.io/library/maven:3.9.6-eclipse-temurin-17
                     command:
                       - cat
                     tty: true
