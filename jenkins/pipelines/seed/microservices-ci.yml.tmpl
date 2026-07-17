@@ -173,6 +173,18 @@ jobs:
       # pipelines.sh) threads BINAUTHZ_ENABLED + PROJECT_ID, and the ARC runner needs
       # gcloud + Workload Identity to the project (its KSA bound to the signer GSA that
       # terraform/gke grants). See docs/507.
+      - name: Set up gcloud (Binary Authorization signing)
+        # The ARC runner image ships NO gcloud, but the sign step below needs it (unlike the
+        # other engines, which run the shared script inside a cloud-sdk image). Install it ONLY
+        # when signing is on — the script no-ops before it ever needs gcloud when the flag is off.
+        # NO `auth` step: the runner pod's KSA (arc-runner-scale-set) is Workload-Identity-bound to
+        # the signer GSA, so gcloud picks that identity up from the GKE metadata server (ADC).
+        # `beta` is required for `gcloud beta container binauthz`. See docs/507 § Pipeline wiring.
+        if: env.SERVICE_TYPE == 'java' && github.event_name != 'pull_request' && env.BINAUTHZ_ENABLED == 'true'
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+        with:
+          install_components: 'beta'
+
       - name: Sign + attest image (Binary Authorization, opt-in)
         if: env.SERVICE_TYPE == 'java' && github.event_name != 'pull_request'
         run: |
