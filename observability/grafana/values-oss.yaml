@@ -311,6 +311,18 @@ grafana:
       enabled: true
       label: grafana_alert
       labelValue: "1"
+      # Alert rules have NO dir-polling provider (dashboards do): Grafana reads
+      # provisioning/alerting ONCE at boot, so this sidecar's post-write reloadURL
+      # POST is what applies them. 07.5-grafana-alerts.sh creates the ConfigMap
+      # AFTER Grafana's app is applied, so the reload firing before Grafana's HTTP
+      # is up is a real possibility — make it retry so the rules reliably land
+      # (idempotent). REQ_RETRY_TOTAL is the k8s-sidecar's own default (5), pinned
+      # explicit so the intent survives a chart-default change; the backend-TLS
+      # overlay adds REQ_SKIP_TLS_VERIFY to the same env map. (Without the https
+      # reloadURL from values-oss-backend-tls.yaml the retry is useless under
+      # backend-TLS — retrying an http-vs-https request just fails again.)
+      env:
+        REQ_RETRY_TOTAL: "5"
 
   # Loki + Tempo datasources, plus our own "Prometheus" entry (replacing the
   # chart's auto-provisioned one, see sidecar.datasources above) with
