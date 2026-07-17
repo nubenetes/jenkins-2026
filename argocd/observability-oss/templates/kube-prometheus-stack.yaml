@@ -50,13 +50,20 @@ spec:
           # Dropped when off → ArgoCD self-heals the plugin away.
           - $values/observability/grafana/values-oss-assistant.yaml
           {{- end }}
-        {{- if eq (.Values.backendTls | toString) "true" }}
-        parameters:
-          - name: grafana.additionalDataSources[3].url
-            value: "https://jenkins.jenkins.svc.cluster.local:8080"
-          - name: grafana.additionalDataSources[3].jsonData.tlsSkipVerify
-            value: "true"
-        {{- end }}
+        # NOTE (retirement completed 2026-07-17): a backend-TLS-gated `parameters:`
+        # block here used to override additionalDataSources[3].url to HTTPS and set
+        # its jsonData.tlsSkipVerify for the Jenkins datasource. That datasource was
+        # removed from values-oss.yaml on 2026-07-13 (grafana-jenkins-datasource is
+        # an Enterprise plugin OSS cannot install), but this override outlived it —
+        # so under oss + backendTls it CREATED a phantom additionalDataSources[3]
+        # carrying only a url and tlsSkipVerify (no name/type/uid), which Grafana
+        # 13.1.0 refuses to provision ("unique identifier and org id are needed to
+        # be able to get or delete a datasource") → the grafana container crashed on
+        # startup, wedging the rollout and turning the ArgoCD app Degraded. It stayed
+        # dormant until backend-TLS reached Grafana on a live cluster. No datasource
+        # override belongs here anymore; Grafana's own LB->pod re-encryption under
+        # backend-TLS is handled entirely by the values-oss-backend-tls.yaml
+        # valueFile layered above.
 
     # This repo, for the values file above (referenced via $values).
     - repoURL: {{ .Values.repoURL | quote }}
