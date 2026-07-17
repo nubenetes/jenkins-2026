@@ -164,6 +164,18 @@ alertmanager:
 
 grafana:
   adminUser: admin
+  # Pin the admin credential to a Secret WE provision (scripts/03-observability.sh
+  # creates grafana-admin-credentials, keep-if-present) instead of the chart's
+  # default randAlphaNum admin-password. ArgoCD's repo-server REGENERATES that
+  # default on every render (its Helm `lookup` cannot reach the cluster), so the
+  # chart-owned Secret rotated on sync and stale'd the Basic-auth copy the
+  # Backstage Monitoring tab replays -> 401 (found live 2026-07-17). An existing
+  # Secret is never regenerated, so the password is stable within a cluster's
+  # life. userKey/passwordKey match the chart defaults and this Secret's keys.
+  admin:
+    existingSecret: grafana-admin-credentials
+    userKey: admin-user
+    passwordKey: admin-password
 
   # Per-cluster runtime inputs that must NOT be baked into this file are surfaced
   # as env vars from companion objects created by scripts/03-observability.sh in

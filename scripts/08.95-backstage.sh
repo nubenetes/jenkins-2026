@@ -196,10 +196,14 @@ fi
 # GRAFANA_TOKEN stayed empty, and every Monitoring-tab call 401'd until a manual
 # re-run. See [[empty-string-secret-class]].
 #
-# Instead we authenticate with Grafana's ADMIN credentials, which live in the
-# chart-owned Secret oss-kube-prometheus-stack-grafana - a Kubernetes Secret,
-# STABLE across pod rolls (nothing invalidates it) and regenerated
-# deterministically on every rebuild. We only READ it and patch a ready-made
+# Instead we authenticate with Grafana's ADMIN credentials. We read them from the
+# STABLE Secret grafana-admin-credentials that 03-observability.sh provisions
+# (keep-if-present) and values-oss.yaml pins via grafana.admin.existingSecret -
+# NOT the chart-owned oss-kube-prometheus-stack-grafana, whose randAlphaNum
+# admin-password ArgoCD's repo-server REGENERATES on every render (no cluster
+# lookup), rotating it on sync and stale'ing this copy (the Monitoring tab 401 we
+# hit live 2026-07-17). An existing Secret is never regenerated, so the password
+# is stable within a cluster's life. We only READ it and patch a ready-made
 # 'Basic <base64(user:pw)>' header value into backstage-secrets as
 # GRAFANA_BASIC_AUTH; the helm/backstage/values-obs-oss.yaml overlay (layered by
 # the app-of-apps on obsMode) makes the proxy replay it, and app-config.yaml's
@@ -216,7 +220,7 @@ fi
 if [[ "${J2026_OBS_MODE}" == "oss" ]]; then
   log_step "Deriving the oss Grafana admin credential for the Backstage Monitoring tab"
   gf_ns="${J2026_GRAFANA_OSS_NAMESPACE}"
-  gf_secret="oss-kube-prometheus-stack-grafana"
+  gf_secret="grafana-admin-credentials" # the stable Secret we own (03-observability.sh); NOT the chart's rotating one
   gf_wait_deadline=$((SECONDS + 120))
   gf_admin_user=""
   gf_admin_pw=""
