@@ -1448,7 +1448,13 @@ if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
     bs_project="$(gcloud config get-value project 2>/dev/null || true)"
     bs_project_number="$(gcloud projects describe "${bs_project}" --format='value(projectNumber)' 2>/dev/null || true)"
     bs_backend_id=""
-    _bs_deadline=$(( SECONDS + 180 ))
+    # A backend-TLS flip destroy-recreates this backend service (HTTP->HTTPS) with
+    # a NEW id, and the protocol-aware select() below skips the stale HTTP one
+    # mid-recreation - so give that async settle more room before falling back to
+    # 'pending' when backend-TLS is active.
+    _bs_wait=180
+    if [[ "${BACKEND_TLS_ACTIVE}" == "true" ]]; then _bs_wait=300; fi
+    _bs_deadline=$(( SECONDS + _bs_wait ))
     while [[ -z "${bs_backend_id}" && ${SECONDS} -lt ${_bs_deadline} ]]; do
       # Resolve by REFERENCE, never by name pattern: GKE composes the
       # gkegw1-... backend-service name from gateway-ns/gateway-name/svc-ns/
@@ -1465,9 +1471,21 @@ if [[ "${J2026_BACKSTAGE_ENABLED}" == "true" ]]; then
         -o jsonpath='{.metadata.annotations.cloud\.google\.com/neg-status}' 2>/dev/null \
         | jq -r '.network_endpoint_groups["7007"] // empty' 2>/dev/null || true)"
       if [[ -n "${bs_neg}" ]]; then
+        # Match the NEG AND the expected protocol. Enabling backend-TLS attaches a
+        # BackendTLSPolicy that flips this backend service HTTP->HTTPS, and GKE
+        # destroy-recreates it with a NEW numeric id - the id baked into the IAP
+        # audience. During that window the soon-deleted HTTP backend and the new
+        # HTTPS one can BOTH reference the NEG, so selecting on the NEG alone could
+        # capture the stale HTTP id (found live 2026-07-17: the audience pointed at
+        # a since-deleted backend service, so every gcpIap sign-in failed after the
+        # backend-TLS stage reached Backstage). Gating on protocol makes the retry
+        # above wait for the backend that matches the current backend-TLS state
+        # (HTTPS when active, HTTP otherwise) instead of latching the stale one.
         bs_backend_id="$(gcloud compute backend-services list --global --format=json 2>/dev/null \
-          | jq -r --arg neg "${bs_neg}" \
-            '.[] | select([.backends[]?.group // empty] | any(endswith("/" + $neg))) | .id' \
+          | jq -r --arg neg "${bs_neg}" --arg tls "${BACKEND_TLS_ACTIVE}" \
+            '.[] | select([.backends[]?.group // empty] | any(endswith("/" + $neg)))
+                 | select(($tls == "true" and .protocol == "HTTPS") or ($tls != "true" and .protocol == "HTTP"))
+                 | .id' \
           | head -n1 || true)"
       fi
       [[ -z "${bs_backend_id}" ]] && sleep 15
