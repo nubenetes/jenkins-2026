@@ -119,6 +119,512 @@ Files are named `NNN_Title_Words.png` so the folder stays self-sorting by catego
 
 ## 🖼️ Visual Previews Catalog
 
+Use the first button to expand **every** screenshot at once for sequential scrolling, or open a single category band below it.
+
+<details>
+<summary>⚡ Click here to expand ALL 83 Screenshots at once (for sequential scrolling) ⚡</summary>
+<br>
+
+**001 - Backstage Gateway Component Overview With Relations Graph**
+
+![001 - Backstage Gateway Component Overview With Relations Graph](./001_Backstage_Gateway_Component_Overview_With_Relations_Graph.png)
+
+---
+
+**002 - Backstage CI CD Tab With Tekton Pipeline Graph**
+
+![002 - Backstage CI CD Tab With Tekton Pipeline Graph](./002_Backstage_CI_CD_Tab_With_Tekton_Pipeline_Graph.png)
+
+---
+
+**003 - Backstage Kubernetes Tab With Tekton TaskRun Inventory**
+
+![003 - Backstage Kubernetes Tab With Tekton TaskRun Inventory](./003_Backstage_Kubernetes_Tab_With_Tekton_TaskRun_Inventory.png)
+
+---
+
+**004 - Backstage Monitoring Tab With Grafana Dashboards And Alerts**
+
+![004 - Backstage Monitoring Tab With Grafana Dashboards And Alerts](./004_Backstage_Monitoring_Tab_With_Grafana_Dashboards_And_Alerts.png)
+
+---
+
+**005 - Backstage Monitoring Tab Managed AWS Deep Link Card**
+
+![005 - Backstage Monitoring Tab Managed AWS Deep Link Card](./005_Backstage_Monitoring_Tab_Managed_AWS_Deep_Link_Card.png)
+
+---
+
+**006 - Backstage Scaffolder Golden Path Template Picker**
+
+![006 - Backstage Scaffolder Golden Path Template Picker](./006_Backstage_Scaffolder_Golden_Path_Template_Picker.png)
+
+---
+
+**007 - Backstage Scaffolder Service Details Form Step**
+
+![007 - Backstage Scaffolder Service Details Form Step](./007_Backstage_Scaffolder_Service_Details_Form_Step.png)
+
+---
+
+**008 - Backstage Scaffolder Review Step Before Opening PRs**
+
+![008 - Backstage Scaffolder Review Step Before Opening PRs](./008_Backstage_Scaffolder_Review_Step_Before_Opening_PRs.png)
+
+---
+
+**009 - Backstage Scaffolder Final Review Summary Table**
+
+![009 - Backstage Scaffolder Final Review Summary Table](./009_Backstage_Scaffolder_Final_Review_Summary_Table.png)
+
+---
+
+**010 - Backstage Scaffolder Task Run Opening Two Pull Requests**
+
+![010 - Backstage Scaffolder Task Run Opening Two Pull Requests](./010_Backstage_Scaffolder_Task_Run_Opening_Two_Pull_Requests.png)
+
+---
+
+**101 - Jenkins Dashboard With Seeded Microservices Pipeline Jobs**
+
+![101 - Jenkins Dashboard With Seeded Microservices Pipeline Jobs](./101_Jenkins_Dashboard_With_Seeded_Microservices_Pipeline_Jobs.png)
+
+---
+
+**102 - Jenkins Gateway Stage View On Stable Tier**
+
+![102 - Jenkins Gateway Stage View On Stable Tier](./102_Jenkins_Gateway_Stage_View_On_Stable_Tier.png)
+
+---
+
+**103 - Jenkins Microservice Stage View With Seed Job Provenance**
+
+![103 - Jenkins Microservice Stage View With Seed Job Provenance](./103_Jenkins_Microservice_Stage_View_With_Seed_Job_Provenance.png)
+
+---
+
+**104 - Jenkins Develop Tier Stage View For Microservice**
+
+![104 - Jenkins Develop Tier Stage View For Microservice](./104_Jenkins_Develop_Tier_Stage_View_For_Microservice.png)
+
+---
+
+**105 - Jenkins Pipeline Graph View With Parallel Static Analysis**
+
+![105 - Jenkins Pipeline Graph View With Parallel Static Analysis](./105_Jenkins_Pipeline_Graph_View_With_Parallel_Static_Analysis.png)
+
+---
+
+**106 - Jenkins Warnings NG Report Aggregating Semgrep And CodeQL**
+
+![106 - Jenkins Warnings NG Report Aggregating Semgrep And CodeQL](./106_Jenkins_Warnings_NG_Report_Aggregating_Semgrep_And_CodeQL.png)
+
+---
+
+**201 - Tekton Dashboard PipelineRuns All Succeeded**
+
+![201 - Tekton Dashboard PipelineRuns All Succeeded](./201_Tekton_Dashboard_PipelineRuns_All_Succeeded.png)
+
+---
+
+**202 - Tekton PipelineRun Task Breakdown With Logs**
+
+![202 - Tekton PipelineRun Task Breakdown With Logs](./202_Tekton_PipelineRun_Task_Breakdown_With_Logs.png)
+
+---
+
+**203 - Tekton Dashboard Concurrent Running PipelineRuns**
+
+![203 - Tekton Dashboard Concurrent Running PipelineRuns](./203_Tekton_Dashboard_Concurrent_Running_PipelineRuns.png)
+
+---
+
+**204 - Tekton GitOps Deploy Task ArgoCD Sync Logs**
+
+![204 - Tekton GitOps Deploy Task ArgoCD Sync Logs](./204_Tekton_GitOps_Deploy_Task_ArgoCD_Sync_Logs.png)
+
+---
+
+**301 - GitHub Actions Full Workflow Catalog Sidebar**
+
+![301 - GitHub Actions Full Workflow Catalog Sidebar](./301_GitHub_Actions_Full_Workflow_Catalog_Sidebar.png)
+
+---
+
+**302 - Day1 Everything Up Dispatch Form Inputs**
+
+![302 - Day1 Everything Up Dispatch Form Inputs](./302_Day1_Everything_Up_Dispatch_Form_Inputs.png)
+
+---
+
+**303 - Day1 Dispatch Backstage And Grafana Toggles**
+
+![303 - Day1 Dispatch Backstage And Grafana Toggles](./303_Day1_Dispatch_Backstage_And_Grafana_Toggles.png)
+
+---
+
+**304 - Day1 Dispatch Ref Verbosity And Grafana Tier**
+
+![304 - Day1 Dispatch Ref Verbosity And Grafana Tier](./304_Day1_Dispatch_Ref_Verbosity_And_Grafana_Tier.png)
+
+---
+
+**305 - Day1 Dispatch Service Mesh And Binary Authorization**
+
+![305 - Day1 Dispatch Service Mesh And Binary Authorization](./305_Day1_Dispatch_Service_Mesh_And_Binary_Authorization.png)
+
+---
+
+**306 - Intra Cluster TLS Posture Dropdown Expanded**
+
+![306 - Intra Cluster TLS Posture Dropdown Expanded](./306_Intra_Cluster_TLS_Posture_Dropdown_Expanded.png)
+
+---
+
+**311 - Day1 Everything Up Run Graph And Approval**
+
+![311 - Day1 Everything Up Run Graph And Approval](./311_Day1_Everything_Up_Run_Graph_And_Approval.png)
+
+---
+
+**312 - Approving Pending Deployment For AWS Bootstrap**
+
+![312 - Approving Pending Deployment For AWS Bootstrap](./312_Approving_Pending_Deployment_For_AWS_Bootstrap.png)
+
+---
+
+**313 - AWS Bootstrap Terraform Apply Managed Grafana Backend**
+
+![313 - AWS Bootstrap Terraform Apply Managed Grafana Backend](./313_AWS_Bootstrap_Terraform_Apply_Managed_Grafana_Backend.png)
+
+---
+
+**314 - AWS Managed Grafana Bootstrap Apply Complete**
+
+![314 - AWS Managed Grafana Bootstrap Apply Complete](./314_AWS_Managed_Grafana_Bootstrap_Apply_Complete.png)
+
+---
+
+**315 - Approving GKE Production Deployment For Cluster Provision**
+
+![315 - Approving GKE Production Deployment For Cluster Provision](./315_Approving_GKE_Production_Deployment_For_Cluster_Provision.png)
+
+---
+
+**316 - Terraform Apply Provisioning The GKE Cluster**
+
+![316 - Terraform Apply Provisioning The GKE Cluster](./316_Terraform_Apply_Provisioning_The_GKE_Cluster.png)
+
+---
+
+**317 - Namespaces Prereqs And Azure Credentials Secret**
+
+![317 - Namespaces Prereqs And Azure Credentials Secret](./317_Namespaces_Prereqs_And_Azure_Credentials_Secret.png)
+
+---
+
+**318 - Up Script Secrets Quotas And OTel Operator**
+
+![318 - Up Script Secrets Quotas And OTel Operator](./318_Up_Script_Secrets_Quotas_And_OTel_Operator.png)
+
+---
+
+**319 - Deploying OTel Operator And ArgoCD Into Cluster**
+
+![319 - Deploying OTel Operator And ArgoCD Into Cluster](./319_Deploying_OTel_Operator_And_ArgoCD_Into_Cluster.png)
+
+---
+
+**320 - ArgoCD Install And IAP Authproxy SSO**
+
+![320 - ArgoCD Install And IAP Authproxy SSO](./320_ArgoCD_Install_And_IAP_Authproxy_SSO.png)
+
+---
+
+**321 - GitOps Bootstrap CNPG Rollouts And ApplicationSet**
+
+![321 - GitOps Bootstrap CNPG Rollouts And ApplicationSet](./321_GitOps_Bootstrap_CNPG_Rollouts_And_ApplicationSet.png)
+
+---
+
+**322 - Internal CA Backend TLS Certificates And Collectors**
+
+![322 - Internal CA Backend TLS Certificates And Collectors](./322_Internal_CA_Backend_TLS_Certificates_And_Collectors.png)
+
+---
+
+**323 - Cert Manager Backend TLS And AWS Observability Install**
+
+![323 - Cert Manager Backend TLS And AWS Observability Install](./323_Cert_Manager_Backend_TLS_And_AWS_Observability_Install.png)
+
+---
+
+**324 - Jenkins Install Binauthz Signer And Seed Jobs**
+
+![324 - Jenkins Install Binauthz Signer And Seed Jobs](./324_Jenkins_Install_Binauthz_Signer_And_Seed_Jobs.png)
+
+---
+
+**325 - Jenkins Seed Job And Binauthz Signer On AWS Run**
+
+![325 - Jenkins Seed Job And Binauthz Signer On AWS Run](./325_Jenkins_Seed_Job_And_Binauthz_Signer_On_AWS_Run.png)
+
+---
+
+**326 - Provision Job Generating Gateway Routes And IAP Policies**
+
+![326 - Provision Job Generating Gateway Routes And IAP Policies](./326_Provision_Job_Generating_Gateway_Routes_And_IAP_Policies.png)
+
+---
+
+**327 - Access URLs And Managed Grafana Dashboard Publish**
+
+![327 - Access URLs And Managed Grafana Dashboard Publish](./327_Access_URLs_And_Managed_Grafana_Dashboard_Publish.png)
+
+---
+
+**331 - GitHub Actions Run Workflow Form With k6 Presets**
+
+![331 - GitHub Actions Run Workflow Form With k6 Presets](./331_GitHub_Actions_Run_Workflow_Form_With_k6_Presets.png)
+
+---
+
+**341 - Decom Infra Everything Umbrella In Progress**
+
+![341 - Decom Infra Everything Umbrella In Progress](./341_Decom_Infra_Everything_Umbrella_In_Progress.png)
+
+---
+
+**342 - Decom Cluster Teardown Toolchain Setup Steps**
+
+![342 - Decom Cluster Teardown Toolchain Setup Steps](./342_Decom_Cluster_Teardown_Toolchain_Setup_Steps.png)
+
+---
+
+**343 - Tear Down The Stack Script Log Detail**
+
+![343 - Tear Down The Stack Script Log Detail](./343_Tear_Down_The_Stack_Script_Log_Detail.png)
+
+---
+
+**344 - Decommission Tear Down Then Terraform Destroy**
+
+![344 - Decommission Tear Down Then Terraform Destroy](./344_Decommission_Tear_Down_Then_Terraform_Destroy.png)
+
+---
+
+**345 - Terraform Destroy Complete 42 Resources Destroyed**
+
+![345 - Terraform Destroy Complete 42 Resources Destroyed](./345_Terraform_Destroy_Complete_42_Resources_Destroyed.png)
+
+---
+
+**346 - Decommission Revoking Grafana Cloud Access Tokens**
+
+![346 - Decommission Revoking Grafana Cloud Access Tokens](./346_Decommission_Revoking_Grafana_Cloud_Access_Tokens.png)
+
+---
+
+**347 - Decom Cluster Run Succeeded Step Summary**
+
+![347 - Decom Cluster Run Succeeded Step Summary](./347_Decom_Cluster_Run_Succeeded_Step_Summary.png)
+
+---
+
+**401 - Argo Workflows List Of Succeeded CI Runs**
+
+![401 - Argo Workflows List Of Succeeded CI Runs](./401_Argo_Workflows_List_Of_Succeeded_CI_Runs.png)
+
+---
+
+**402 - Argo Workflows Graph For Gateway Stable Build**
+
+![402 - Argo Workflows Graph For Gateway Stable Build](./402_Argo_Workflows_Graph_For_Gateway_Stable_Build.png)
+
+---
+
+**403 - Argo Workflows Timeline And Node Summary**
+
+![403 - Argo Workflows Timeline And Node Summary](./403_Argo_Workflows_Timeline_And_Node_Summary.png)
+
+---
+
+**404 - Argo Workflows Expanded Rows With Platform Labels**
+
+![404 - Argo Workflows Expanded Rows With Platform Labels](./404_Argo_Workflows_Expanded_Rows_With_Platform_Labels.png)
+
+---
+
+**501 - ArgoCD Applications All Synced On Develop**
+
+![501 - ArgoCD Applications All Synced On Develop](./501_ArgoCD_Applications_All_Synced_On_Develop.png)
+
+---
+
+**502 - ArgoCD Seventeen Applications Healthy Tracking Main**
+
+![502 - ArgoCD Seventeen Applications Healthy Tracking Main](./502_ArgoCD_Seventeen_Applications_Healthy_Tracking_Main.png)
+
+---
+
+**503 - Headlamp Workloads Overview With Cluster Health Donuts**
+
+![503 - Headlamp Workloads Overview With Cluster Health Donuts](./503_Headlamp_Workloads_Overview_With_Cluster_Health_Donuts.png)
+
+---
+
+**504 - Headlamp Gateway API View Showing Platform Ingress**
+
+![504 - Headlamp Gateway API View Showing Platform Ingress](./504_Headlamp_Gateway_API_View_Showing_Platform_Ingress.png)
+
+---
+
+**505 - pgAdmin Browsing Stable Microservice CNPG Database**
+
+![505 - pgAdmin Browsing Stable Microservice CNPG Database](./505_pgAdmin_Browsing_Stable_Microservice_CNPG_Database.png)
+
+---
+
+**506 - JHipster Sample Gateway Application Homepage**
+
+![506 - JHipster Sample Gateway Application Homepage](./506_JHipster_Sample_Gateway_Application_Homepage.png)
+
+---
+
+**601 - GKE Cluster Nodes Tab With NAP Overflow Node**
+
+![601 - GKE Cluster Nodes Tab With NAP Overflow Node](./601_GKE_Cluster_Nodes_Tab_With_NAP_Overflow_Node.png)
+
+---
+
+**602 - GKE Workloads List Of Full Platform Plane**
+
+![602 - GKE Workloads List Of Full Platform Plane](./602_GKE_Workloads_List_Of_Full_Platform_Plane.png)
+
+---
+
+**603 - GKE Persistent Volume Claims For Platform And Microservices**
+
+![603 - GKE Persistent Volume Claims For Platform And Microservices](./603_GKE_Persistent_Volume_Claims_For_Platform_And_Microservices.png)
+
+---
+
+**604 - GKE Workloads Observability CPU Dashboard**
+
+![604 - GKE Workloads Observability CPU Dashboard](./604_GKE_Workloads_Observability_CPU_Dashboard.png)
+
+---
+
+**701 - Grafana CI CD Observability Folder Dashboard Listing**
+
+![701 - Grafana CI CD Observability Folder Dashboard Listing](./701_Grafana_CI_CD_Observability_Folder_Dashboard_Listing.png)
+
+---
+
+**702 - Grafana Microservices Overview With RED Golden Signals**
+
+![702 - Grafana Microservices Overview With RED Golden Signals](./702_Grafana_Microservices_Overview_With_RED_Golden_Signals.png)
+
+---
+
+**703 - Grafana DORA Metrics Dashboard With Four Headline Stats**
+
+![703 - Grafana DORA Metrics Dashboard With Four Headline Stats](./703_Grafana_DORA_Metrics_Dashboard_With_Four_Headline_Stats.png)
+
+---
+
+**704 - Grafana Jenkins Controller Dashboard With Agent Metrics**
+
+![704 - Grafana Jenkins Controller Dashboard With Agent Metrics](./704_Grafana_Jenkins_Controller_Dashboard_With_Agent_Metrics.png)
+
+---
+
+**705 - Grafana Tekton CI Observability Dashboard**
+
+![705 - Grafana Tekton CI Observability Dashboard](./705_Grafana_Tekton_CI_Observability_Dashboard.png)
+
+---
+
+**706 - Grafana JVM Internals Dashboard For Java Services**
+
+![706 - Grafana JVM Internals Dashboard For Java Services](./706_Grafana_JVM_Internals_Dashboard_For_Java_Services.png)
+
+---
+
+**707 - Grafana PostgreSQL CloudNativePG Cluster Health Dashboard**
+
+![707 - Grafana PostgreSQL CloudNativePG Cluster Health Dashboard](./707_Grafana_PostgreSQL_CloudNativePG_Cluster_Health_Dashboard.png)
+
+---
+
+**708 - Grafana Node Auto Provisioning Spot CI Nodes Dashboard**
+
+![708 - Grafana Node Auto Provisioning Spot CI Nodes Dashboard](./708_Grafana_Node_Auto_Provisioning_Spot_CI_Nodes_Dashboard.png)
+
+---
+
+**709 - Grafana Frontend RUM Angular Faro Core Web Vitals**
+
+![709 - Grafana Frontend RUM Angular Faro Core Web Vitals](./709_Grafana_Frontend_RUM_Angular_Faro_Core_Web_Vitals.png)
+
+---
+
+**801 - Grafana Cloud JVM Internals Dashboard**
+
+![801 - Grafana Cloud JVM Internals Dashboard](./801_Grafana_Cloud_JVM_Internals_Dashboard.png)
+
+---
+
+**802 - Amazon Managed Grafana CICD Observability Folder Index**
+
+![802 - Amazon Managed Grafana CICD Observability Folder Index](./802_Amazon_Managed_Grafana_CICD_Observability_Folder_Index.png)
+
+---
+
+**803 - Amazon Managed Grafana DORA Metrics Dashboard**
+
+![803 - Amazon Managed Grafana DORA Metrics Dashboard](./803_Amazon_Managed_Grafana_DORA_Metrics_Dashboard.png)
+
+---
+
+**804 - Amazon Managed Grafana Microservices Overview Dashboard**
+
+![804 - Amazon Managed Grafana Microservices Overview Dashboard](./804_Amazon_Managed_Grafana_Microservices_Overview_Dashboard.png)
+
+---
+
+**805 - Amazon Managed Grafana CloudNativePG PostgreSQL Dashboard**
+
+![805 - Amazon Managed Grafana CloudNativePG PostgreSQL Dashboard](./805_Amazon_Managed_Grafana_CloudNativePG_PostgreSQL_Dashboard.png)
+
+---
+
+**806 - Amazon Managed Grafana GKE Spot Node Autoprovisioning Dashboard**
+
+![806 - Amazon Managed Grafana GKE Spot Node Autoprovisioning Dashboard](./806_Amazon_Managed_Grafana_GKE_Spot_Node_Autoprovisioning_Dashboard.png)
+
+---
+
+**807 - Amazon Managed Grafana Kubernetes Global Cluster View**
+
+![807 - Amazon Managed Grafana Kubernetes Global Cluster View](./807_Amazon_Managed_Grafana_Kubernetes_Global_Cluster_View.png)
+
+---
+
+**808 - Amazon Managed Grafana Kubernetes Namespaces View**
+
+![808 - Amazon Managed Grafana Kubernetes Namespaces View](./808_Amazon_Managed_Grafana_Kubernetes_Namespaces_View.png)
+
+---
+
+**809 - Amazon Managed Grafana Provisioned CICD Alert Rules**
+
+![809 - Amazon Managed Grafana Provisioned CICD Alert Rules](./809_Amazon_Managed_Grafana_Provisioned_CICD_Alert_Rules.png)
+
+---
+
+</details>
+
 <details>
 <summary>📂 Expand 000: Developer Portal (Backstage) (10 Screenshots)</summary>
 
