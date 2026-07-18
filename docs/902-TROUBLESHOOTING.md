@@ -667,6 +667,36 @@ kubectl delete svcneg <svcneg-name> -n <namespace>
 kubectl annotate service <service-name> -n <namespace> cloud.google.com/neg="$neg_val" --overwrite
 ```
 
+## SCM checkout fails with "This repository exceeded its LFS budget"
+
+**Symptom** — a pipeline dies immediately at SCM checkout: `git checkout` exits 128 and
+the log quotes a smudge-filter failure, `This repository exceeded its LFS budget` (HTTP
+403). Nothing about the build itself is wrong.
+
+**Cause** — this repo tracks documentation images in Git LFS
+([`.gitattributes`](../.gitattributes): `docs/infographics/*.png` and
+`docs/screenshots/*.png`). GitHub's free LFS tier grants 1 GB of storage **and 1 GB of
+bandwidth per month**; once the bandwidth is spent every LFS *download* returns 403. A
+plain `git checkout` runs the LFS smudge filter, so that failed download fails the whole
+checkout — even though no build ever reads those images.
+
+**Fix (already in place)** — every engine skips the smudge filter on checkout, so agents
+receive the ~130-byte pointer files instead of the blobs:
+
+| Engine | Where the skip lives |
+| :-- | :-- |
+| Jenkins | `GIT_LFS_SKIP_SMUDGE=1` in `globalNodeProperties` ([`jenkins/casc/jcasc-base.yaml`](../jenkins/casc/jcasc-base.yaml)), plus `Jenkinsfile.seed` and the `vars/*.groovy` steps |
+| Tekton | `-c filter.lfs.smudge=` in the `tekton/tasks/*.yaml` clone steps |
+| Argo Workflows | `-c filter.lfs.smudge=` in `argoworkflows/templates/*.yaml` |
+| GitHub Actions | `actions/checkout` defaults to `lfs: false` — nothing to set |
+
+The skip is **filter-level, not path-scoped**, so adding a new LFS-tracked path (as
+`docs/screenshots/*.png` did) requires no CI change at all.
+
+**If you need the budget back** — check *Settings → Billing → Git LFS Data*. Note that
+purging LFS objects from git history does **not** by itself reclaim GitHub-side LFS
+storage; that generally requires a support request.
+
 
 ---
 

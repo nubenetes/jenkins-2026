@@ -106,13 +106,17 @@ jenkins:
     - envVars:
         env:
           # Skip the Git LFS smudge filter on every agent checkout. This repo tracks
-          # a few documentation images (docs/notebooklm/*.jpg) in Git LFS, and when
-          # the GitHub account's LFS bandwidth budget is exhausted the smudge download
-          # 403s ("This repository exceeded its LFS budget"), which fails `git checkout`
-          # (exit 128) and aborts the build at SCM checkout. Builds never need those
-          # images, so leave the LFS pointer files in place instead of downloading the
-          # content. (Permanent alternatives: raise the LFS budget, or migrate the
-          # images out of LFS.) See docs/902.
+          # documentation images in Git LFS (docs/infographics/*.png and
+          # docs/screenshots/*.png - see .gitattributes), and when the GitHub account's
+          # LFS bandwidth budget is exhausted the smudge download 403s ("This repository
+          # exceeded its LFS budget"), which fails `git checkout` (exit 128) and aborts
+          # the build at SCM checkout. Builds never need those images, so leave the LFS
+          # pointer files in place instead of downloading the content. The other engines
+          # apply the same skip via `-c filter.lfs.smudge=` (tekton/tasks/,
+          # argoworkflows/templates/, vars/); it is filter-level rather than path-scoped,
+          # so newly tracked LFS paths are covered automatically and need no CI change.
+          # (Permanent alternatives: raise the LFS budget, or migrate the images out of
+          # LFS.) See docs/902 "exceeded its LFS budget".
           - key: "GIT_LFS_SKIP_SMUDGE"
             value: "1"
           - key: "GRAFANA_BASE_URL"
