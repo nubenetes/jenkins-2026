@@ -1,9 +1,9 @@
 # jenkins-2026
 
 [![Release](https://img.shields.io/github/v/release/nubenetes/jenkins-2026?sort=semver&display_name=tag&logo=github&label=release&color=2ea44f)](https://github.com/nubenetes/jenkins-2026/releases/latest)
-[![Gitflow Guard](https://github.com/nubenetes/jenkins-2026/actions/workflows/gitflow-guard.yml/badge.svg?branch=main)](https://github.com/nubenetes/jenkins-2026/actions/workflows/gitflow-guard.yml)
-[![Terraform validate](https://github.com/nubenetes/jenkins-2026/actions/workflows/terraform-validate.yml/badge.svg?branch=main)](https://github.com/nubenetes/jenkins-2026/actions/workflows/terraform-validate.yml)
-[![Mermaid validate](https://github.com/nubenetes/jenkins-2026/actions/workflows/mermaid-validate.yml/badge.svg?branch=main)](https://github.com/nubenetes/jenkins-2026/actions/workflows/mermaid-validate.yml)
+[![Gitflow Guard](https://github.com/nubenetes/jenkins-2026/actions/workflows/gitflow-guard.yml/badge.svg)](https://github.com/nubenetes/jenkins-2026/actions/workflows/gitflow-guard.yml)
+[![Terraform validate](https://github.com/nubenetes/jenkins-2026/actions/workflows/terraform-validate.yml/badge.svg)](https://github.com/nubenetes/jenkins-2026/actions/workflows/terraform-validate.yml)
+[![Mermaid validate](https://github.com/nubenetes/jenkins-2026/actions/workflows/mermaid-validate.yml/badge.svg)](https://github.com/nubenetes/jenkins-2026/actions/workflows/mermaid-validate.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 [![Last commit](https://img.shields.io/github/last-commit/nubenetes/jenkins-2026?logo=git&logoColor=white)](https://github.com/nubenetes/jenkins-2026/commits/main)
