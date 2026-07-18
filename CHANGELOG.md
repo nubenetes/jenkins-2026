@@ -19,7 +19,8 @@ All notable changes to **jenkins-2026** are documented here, following
 
 ## [Unreleased]
 
-_Nothing yet — add entries here as PRs merge._
+### Fixed
+- **The three PR-guard badges rendered `no status` (grey) instead of green** ([`README.md`](README.md)): the **Gitflow Guard**, **Terraform validate** and **Mermaid validate** badges were pinned with `?branch=main`, but all three workflows trigger **only** on `pull_request` — and GitHub attributes a `pull_request` run to the PR's **head** branch (`develop`), never to its base. So the API had **zero** runs matching `branch=main` for any of them and served the grey *no status* badge, even though every recent run is `success`. Dropping the `?branch=main` pin makes all three report **passing** (verified by fetching the three SVGs before and after the change). The obvious alternative — adding `push: branches: [main]` to the workflows so they *do* run on main — was **rejected**: it is semantically wrong for `gitflow-guard`, which exists to assert that a PR originates from `develop` and has no PR to inspect on a `push` event, and it is pure duplicated work for the other two, which already ran on the very PR that produced the commit. Nothing was broken; the badge was asking GitHub a question that, by design, can never have an answer.
 
 ## [v1.6.0] - 2026-07-18
 
