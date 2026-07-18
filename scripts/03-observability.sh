@@ -590,9 +590,17 @@ EOT
       --namespace "${J2026_OBS_NAMESPACE}" \
       --set fullnameOverride=kube-state-metrics \
       --set 'metricLabelsAllowlist[0]=nodes=[node.kubernetes.io/instance-type\,beta.kubernetes.io/instance-type]'
+    # Scope to the persistent pools (static + ci-spot), skipping the small nodes GKE's
+    # default NAP auto-provisions for a platform pod that briefly overflows the static pool
+    # (an e2-medium too small to fit this DaemonSet -> it would sit Unschedulable there,
+    # "Insufficient cpu", and show up in the Console). Persistent + Spot-CI node host-metrics
+    # are kept; only the ephemeral overflow nodes (minutes-lived) are skipped. GKE NAP has no
+    # min-node-size lever and cluster NAP can't be disabled (the ci-spot ComputeClass requires
+    # it), so scoping the DaemonSet is the effective fix - same technique as agent-image-prepull.
     helm upgrade --install prometheus-node-exporter prometheus-community/prometheus-node-exporter \
       --namespace "${J2026_OBS_NAMESPACE}" \
-      --set fullnameOverride=prometheus-node-exporter
+      --set fullnameOverride=prometheus-node-exporter \
+      --set-json 'affinity={"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"cloud.google.com/gke-nodepool","operator":"In","values":["jenkins-2026-pool"]}]},{"matchExpressions":[{"key":"cloud.google.com/compute-class","operator":"In","values":["ci-spot"]}]}]}}}'
 
     log_step "Installing ${J2026_OTEL_GATEWAY_RELEASE} (OTLP gateway -> Azure Monitor)"
     kubectl delete configmap otel-collector-gateway -n "${J2026_OBS_NAMESPACE}" --ignore-not-found
@@ -651,9 +659,17 @@ EOT
       --namespace "${J2026_OBS_NAMESPACE}" \
       --set fullnameOverride=kube-state-metrics \
       --set 'metricLabelsAllowlist[0]=nodes=[node.kubernetes.io/instance-type\,beta.kubernetes.io/instance-type]'
+    # Scope to the persistent pools (static + ci-spot), skipping the small nodes GKE's
+    # default NAP auto-provisions for a platform pod that briefly overflows the static pool
+    # (an e2-medium too small to fit this DaemonSet -> it would sit Unschedulable there,
+    # "Insufficient cpu", and show up in the Console). Persistent + Spot-CI node host-metrics
+    # are kept; only the ephemeral overflow nodes (minutes-lived) are skipped. GKE NAP has no
+    # min-node-size lever and cluster NAP can't be disabled (the ci-spot ComputeClass requires
+    # it), so scoping the DaemonSet is the effective fix - same technique as agent-image-prepull.
     helm upgrade --install prometheus-node-exporter prometheus-community/prometheus-node-exporter \
       --namespace "${J2026_OBS_NAMESPACE}" \
-      --set fullnameOverride=prometheus-node-exporter
+      --set fullnameOverride=prometheus-node-exporter \
+      --set-json 'affinity={"nodeAffinity":{"requiredDuringSchedulingIgnoredDuringExecution":{"nodeSelectorTerms":[{"matchExpressions":[{"key":"cloud.google.com/gke-nodepool","operator":"In","values":["jenkins-2026-pool"]}]},{"matchExpressions":[{"key":"cloud.google.com/compute-class","operator":"In","values":["ci-spot"]}]}]}}}'
 
     log_step "Installing ${J2026_OTEL_GATEWAY_RELEASE} (OTLP gateway -> AMP / X-Ray / CloudWatch)"
     kubectl delete configmap otel-collector-gateway -n "${J2026_OBS_NAMESPACE}" --ignore-not-found

@@ -157,5 +157,35 @@ if [[ "${count}" -lt "${min_jobs}" ]]; then
 fi
 log_info "Found ${count} jobs (>= ${min_jobs}: ${expected} Microservices pipelines + seed-jobs + k6-smoke)"
 
+# Opt-in-by-default (jenkins.seedBuilds / JENKINS2026_JENKINS_SEED_BUILDS): kick ONE build
+# per microservices job so the Jenkins CI/CD tab (Backstage + the Jenkins UI) is
+# pre-populated on a fresh cluster — parity with tekton.seedRuns / githubactions.seedRuns.
+# Without at least one build the Backstage Jenkins plugin's re-build button crashes on a
+# null lastBuild ("Cannot read properties of null (reading 'number')"). The app itself
+# deploys via GitOps regardless; this exercises the pipeline + fills the build history.
+# FIRE-AND-FORGET: we trigger each build and confirm it queued (HTTP 201) but do NOT wait
+# for it to finish (that would add ~20-30 min per service to Day1). microservices-k6-smoke
+# self-gates on service readiness (docs/302), so triggering it alongside the app builds is
+# safe. Re-fetch a fresh crumb: the one from the seed build above may have aged out.
+if [[ "${J2026_JENKINS_SEED_BUILDS}" == "true" ]]; then
+  log_step "jenkins.seedBuilds=true — triggering an initial build per microservices job (fire-and-forget)"
+  if fetch_crumb; then
+    for job in ${J2026_MICROSERVICES_SERVICES} microservices-k6-smoke; do
+      # 2>/dev/null on the exec (not the inner curl): a failed exec echoes the request URL,
+      # which URL-encodes `-u admin:<password>` — never leak the admin password to the log.
+      code="$(jenkins_exec curl -s -o /dev/null -w '%{http_code}' -b /tmp/seed-cookies.txt \
+        -u "${AUTH}" -H "Jenkins-Crumb: ${CRUMB}" -X POST "${JENKINS_LOCAL_URL}/job/${job}/build" \
+        2>/dev/null || echo "exec-fail")"
+      if [[ "${code}" == "201" ]]; then
+        log_info "  queued initial build: ${job}"
+      else
+        log_warn "  could not queue ${job} (HTTP ${code}) — trigger it manually (Build Now) if the tab stays empty"
+      fi
+    done
+  else
+    log_warn "jenkins.seedBuilds: could not fetch a crumb — skipping initial builds (trigger manually via Build Now)"
+  fi
+fi
+
 log_info "Seed pipeline triggered. Browse ${JENKINS_LOCAL_URL}/view/microservices/ (after port-forwarding)"
 log_info "  kubectl -n ${NS} port-forward svc/${RELEASE} ${JENKINS_LOCAL_URL##*:}:${JENKINS_FWD_SVC_PORT}"

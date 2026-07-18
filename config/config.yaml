@@ -120,6 +120,15 @@ jenkins:
   runNodePool: static
   namespace: jenkins
   releaseName: jenkins
+  # After the seed job creates the microservices pipeline jobs, trigger ONE build per
+  # job so the Jenkins CI/CD tab (in Backstage AND the Jenkins UI) is pre-populated on a
+  # fresh cluster instead of showing an empty "notbuilt" job (whose Backstage re-build
+  # button then crashes on a null lastBuild). Parity with tekton.seedRuns /
+  # githubactions.seedRuns. The app itself deploys via GitOps regardless of this flag;
+  # this only exercises the pipeline + fills the build history. Fire-and-forget: Day1
+  # triggers the builds and moves on (it does NOT wait for them). FEATURE FLAG: override
+  # with JENKINS2026_JENKINS_SEED_BUILDS.
+  seedBuilds: true
   chart:
     repoName: jenkins
     repoUrl: https://charts.jenkins.io

@@ -860,6 +860,23 @@ jobs:
           client="$(tf azure_client_id)"
           secret="$(tf azure_client_secret)"
           grafana="$(tf grafana_endpoint)"
+          # DURABLE-AUTH FIX (docs/D drift): the dashboard-publish "azure/login" step below
+          # authenticates as App B (the low-priv publish SP). App B is torn down + recreated
+          # whenever the Azure backend is re-bootstrapped (Decom.infra.03 → fresh Day0.infra.03),
+          # so the MANUALLY-SET AZURE_PUBLISH_CLIENT_ID secret drifts and the login then dies
+          # with AADSTS700016 (application not found in the directory). Read App B's CURRENT
+          # client id straight from this module's state (the single source of truth) and thread
+          # it to the login step via $GITHUB_ENV, so a re-bootstrapped App B never needs a manual
+          # secret update. Fall back to the secret if the output is absent (older state not yet
+          # re-applied). A client id is a NON-secret identifier (publish_app_client_id is not a
+          # `sensitive` output), so it is safe to carry in a plain env var.
+          publish_client="$(tf publish_app_client_id 2>/dev/null || echo '')"
+          if [[ -n "${publish_client}" ]]; then
+            echo "AZURE_PUBLISH_CLIENT_ID_RESOLVED=${publish_client}" >> "${GITHUB_ENV}"
+            echo "Resolved App B (publish) client id from azure-managed-grafana state — the dashboard login is drift-proof."
+          else
+            echo "::warning::publish_app_client_id output absent (older Azure backend state) — the dashboard login falls back to the AZURE_PUBLISH_CLIENT_ID secret. Re-run Day0.infra.03 to refresh the output."
+          fi
           echo "::add-mask::${conn}"
           echo "::add-mask::${secret}"
           kubectl create namespace observability --dry-run=client -o yaml | kubectl apply -f -
@@ -1196,7 +1213,10 @@ jobs:
         if: ${{ inputs.observability_mode == 'managed-azure' }}
         uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
         with:
-          client-id: ${{ secrets.AZURE_PUBLISH_CLIENT_ID }}
+          # Prefer App B's client id RESOLVED FROM STATE (drift-proof, set above); fall back to
+          # the manually-set secret only when the output was absent. See the durable-auth fix in
+          # "Apply Azure Monitor credentials secret".
+          client-id: ${{ env.AZURE_PUBLISH_CLIENT_ID_RESOLVED || secrets.AZURE_PUBLISH_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 

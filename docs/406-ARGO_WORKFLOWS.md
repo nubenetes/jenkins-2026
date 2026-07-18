@@ -660,6 +660,8 @@ capacity). As with Tekton:
   pre-pulls the step images (maven · kaniko · codeql · semgrep · trivy · k6 · …) so a
   step starts without a cold pull — the analogue of the Jenkins/Tekton prepull
   DaemonSet (with the restricted-PSS `securityContext`, since `argo` is also PSS-restricted).
+  Like both, it is `nodeAffinity`-scoped to the static `jenkins-2026-pool` so it skips the tiny
+  default-NAP overflow nodes ([501 § Scoping the standard DaemonSets](./501-PLATFORM_OPERATIONS.md#scoping-the-standard-daemonsets-off-the-tiny-default-nap-overflow-nodes)).
 
 ## The `ci.engine` contract
 

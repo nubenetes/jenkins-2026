@@ -183,6 +183,75 @@ else
   log_warn "Backstage ArgoCD tab will show auth errors until a re-run patches the credentials."
 fi
 
+# --- 2b. Jenkins API token for the CI/CD tab's re-build action (jenkins engine only) --
+# 01-namespaces seeds JENKINS_API_KEY with the admin PASSWORD. That authenticates the
+# Backstage Jenkins plugin's READS fine, but its *re-build* POST then fails 403 "No valid
+# crumb": Jenkins requires a CSRF crumb for password-authenticated POSTs and the plugin
+# sends none. Jenkins EXEMPTS API-token auth from CSRF (a token is never auto-sent by a
+# browser, so CSRF cannot apply), so mint an admin API token and patch it in as
+# JENKINS_API_KEY - reads keep working AND re-build stops 403'ing. Idempotent WITHOUT
+# accumulating tokens: the API deliberately hides the token list, so we remember the uuid
+# we minted (annotation on the Secret) and revoke it before minting the next. Non-fatal +
+# bounded crumb wait (Jenkins is up by 08.95, but guard anyway); eso-safe (the data patch
+# survives the Merge re-sync like ARGOCD_* above). On a fresh Day1 Backstage is BORN with
+# the patched Secret; on a redeploy the restart below picks it up.
+if [[ "${J2026_CI_ENGINE}" == "jenkins" ]] \
+   && kubectl get secret "${J2026_BACKSTAGE_SECRETS_NAME}" -n "${J2026_BACKSTAGE_NAMESPACE}" >/dev/null 2>&1; then
+  log_step "Minting a CSRF-exempt Jenkins API token for the Backstage re-build action"
+  _jk_pod="${J2026_JENKINS_RELEASE}-0"; _jk_ns="${J2026_JENKINS_NAMESPACE}"; _jk_user="${J2026_JENKINS_ADMIN_USER}"
+  # Local plain-HTTP port inside the controller pod (8081 under backend-TLS, else 8080).
+  _jk_url="http://localhost:8080"; [[ "${BACKEND_TLS_ACTIVE}" == "true" ]] && _jk_url="http://localhost:8081"
+  _jk_pw="$(kubectl get secret "${J2026_JENKINS_CREDENTIALS_SECRET}" -n "${_jk_ns}" -o jsonpath='{.data.admin-password}' 2>/dev/null | base64 -d || true)"
+  # 2>/dev/null MUST hang off the exec (not the inner curl): a failed exec echoes the
+  # request URL, which URL-encodes `-u admin:<password>` - never leak it to the log.
+  _jke() { kubectl exec -n "${_jk_ns}" "${_jk_pod}" -c jenkins -- "$@"; }
+  _jk_token=""; _jk_uuid=""
+  if [[ -n "${_jk_pw}" ]] && kubectl get pod "${_jk_pod}" -n "${_jk_ns}" >/dev/null 2>&1; then
+    # The crumb is bound to the session cookie that issued it - the crumbIssuer GET and the
+    # mint/revoke POSTs must share one cookie jar. Poll until the HTTP API serves.
+    _crumb=""; _field=""; _dl=$((SECONDS + 90))
+    while [[ ${SECONDS} -lt ${_dl} ]]; do
+      _cj="$(_jke curl -s --max-time 10 -c /tmp/bs-jk-cj -u "${_jk_user}:${_jk_pw}" "${_jk_url}/crumbIssuer/api/json" 2>/dev/null || true)"
+      _crumb="$(printf '%s' "${_cj}" | sed -n 's/.*"crumb":"\([^"]*\)".*/\1/p')"
+      _field="$(printf '%s' "${_cj}" | sed -n 's/.*"crumbRequestField":"\([^"]*\)".*/\1/p')"
+      [[ -n "${_crumb}" ]] && break
+      sleep 5
+    done
+    if [[ -n "${_crumb}" ]]; then
+      _api="${_jk_url}/user/${_jk_user}/descriptorByName/jenkins.security.ApiTokenProperty"
+      # Revoke the token this script minted last time (uuid remembered on the Secret) so we
+      # don't leave one dangling admin token per run.
+      _prev="$(kubectl get secret "${J2026_BACKSTAGE_SECRETS_NAME}" -n "${J2026_BACKSTAGE_NAMESPACE}" \
+        -o jsonpath='{.metadata.annotations.jenkins2026\.io/jenkins-api-token-uuid}' 2>/dev/null || true)"
+      if [[ -n "${_prev}" ]]; then
+        _jke curl -s -b /tmp/bs-jk-cj -u "${_jk_user}:${_jk_pw}" -H "${_field}: ${_crumb}" \
+          -X POST "${_api}/revoke?tokenUuid=${_prev}" >/dev/null 2>&1 || true
+      fi
+      # Mint a fresh token named "backstage"; capture its value + uuid.
+      _resp="$(_jke curl -s -b /tmp/bs-jk-cj -u "${_jk_user}:${_jk_pw}" -H "${_field}: ${_crumb}" \
+        -X POST "${_api}/generateNewToken?newTokenName=backstage" 2>/dev/null || true)"
+      _jk_token="$(printf '%s' "${_resp}" | sed -n 's/.*"tokenValue":"\([^"]*\)".*/\1/p')"
+      _jk_uuid="$(printf '%s' "${_resp}" | sed -n 's/.*"tokenUuid":"\([^"]*\)".*/\1/p')"
+    fi
+    _jke rm -f /tmp/bs-jk-cj >/dev/null 2>&1 || true
+  fi
+  if [[ -n "${_jk_token}" ]]; then
+    kubectl patch secret "${J2026_BACKSTAGE_SECRETS_NAME}" -n "${J2026_BACKSTAGE_NAMESPACE}" \
+      --type=merge -p "$(cat <<EOF
+{"stringData":{"JENKINS_API_KEY":"${_jk_token}"}}
+EOF
+)" >/dev/null
+    if [[ -n "${_jk_uuid}" ]]; then
+      kubectl annotate secret "${J2026_BACKSTAGE_SECRETS_NAME}" -n "${J2026_BACKSTAGE_NAMESPACE}" \
+        "jenkins2026.io/jenkins-api-token-uuid=${_jk_uuid}" --overwrite >/dev/null 2>&1 || true
+    fi
+    log_info "Patched JENKINS_API_KEY with a fresh admin API token (CSRF-exempt) — Backstage's Jenkins re-build now works (reads unaffected)."
+  else
+    log_warn "Could not mint a Jenkins API token (Jenkins not ready / crumb fetch failed) — the Backstage CI/CD tab stays read-only (re-build would 403). A re-run heals."
+  fi
+  unset _jk_pw _jk_token _jk_uuid
+fi
+
 # --- 2. Grafana admin credential for the Monitoring-tab proxy (oss only) --------
 # DURABLE-AUTH FIX (2026-07-16, docs/505 § Monitoring tab). The '/grafana/api'
 # proxy (backstage/app-config.yaml) authenticates to the in-cluster Grafana.

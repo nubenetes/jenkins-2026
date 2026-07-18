@@ -202,6 +202,17 @@ jobs:
           K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
           K6_CLOUD_PROJECT_ID: ${{ secrets.K6_CLOUD_PROJECT_ID }}
 
+      - name: Backend TLS (scripts/08.7-backend-tls.sh, opt-in)
+        # No-op (with deterministic retire) when gateway.backendTls.enabled=false,
+        # the default. When on, mints/re-asserts the tekton-dashboard-tls server cert
+        # (08.7 is engine-gated: mint_server_cert for the tekton namespace) BEFORE
+        # 04-tekton.sh below waits for the tekton-dashboard rollout — the dashboard's
+        # nginx-tls-proxy sidecar mounts that Secret, so without it the pod hangs in
+        # ContainerCreating and 04-tekton times out (docs/504). Day1 runs 08.7 before
+        # 04-tekton via up.sh; this restores that ordering on the engine-switch redeploy
+        # (the workflow-input-parity class: a redeploy must run the scripts Day1 does).
+        run: ./scripts/08.7-backend-tls.sh
+
       - name: Redeploy Tekton control plane + Dashboard (scripts/04-tekton.sh)
         run: ./scripts/04-tekton.sh
 

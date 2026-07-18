@@ -203,6 +203,18 @@ jobs:
           K6_CLOUD_TOKEN: ${{ secrets.K6_CLOUD_TOKEN }}
           K6_CLOUD_PROJECT_ID: ${{ secrets.K6_CLOUD_PROJECT_ID }}
 
+      - name: Backend TLS (scripts/08.7-backend-tls.sh, opt-in)
+        # No-op (with deterministic retire) when gateway.backendTls.enabled=false,
+        # the default. When on, mints/re-asserts the argo-server backend-TLS server
+        # cert (08.7 is engine-gated: mint_server_cert for the argo namespace) BEFORE
+        # 04-argoworkflows.sh below waits for the argo-server rollout — the server's
+        # nginx-tls-proxy sidecar mounts that Secret, so without it the pod hangs in
+        # ContainerCreating and 04-argoworkflows times out (docs/504). Day1 runs 08.7
+        # before 04-argoworkflows via up.sh; this restores that ordering on the
+        # engine-switch redeploy (the workflow-input-parity class: a redeploy must run
+        # the scripts Day1 does).
+        run: ./scripts/08.7-backend-tls.sh
+
       - name: Redeploy Argo Workflows control plane + Server UI (scripts/04-argoworkflows.sh)
         run: ./scripts/04-argoworkflows.sh
 

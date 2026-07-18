@@ -599,18 +599,43 @@ The centerpiece matrix — what the CI/CD tab shows per engine, and what it need
 
 | `ci.engine` | CI/CD tab shows | Plugin (pin) | Entity annotation | Credentials | Data path |
 |---|---|---|---|---|---|
-| `jenkins` | job/build history, per-build status + logs | `@backstage-community/plugin-jenkins` 0.32.0 + `-backend` 0.29.0 | `jenkins.io/job-full-name` | `JENKINS_API_USER`/`JENKINS_API_KEY` in `backstage-secrets` | backend → `http://jenkins.jenkins.svc:8080` (`:8082` when backend TLS is active) |
+| `jenkins` | job/build history, per-build status + logs | `@backstage-community/plugin-jenkins` 0.32.0 + `-backend` 0.29.0 | `jenkins.io/job-full-name` | `JENKINS_API_USER` + a minted admin **API token** (`JENKINS_API_KEY`, CSRF-exempt) in `backstage-secrets` | backend → `http://jenkins.jenkins.svc:8080` (`:8082` when backend TLS is active) |
 | `githubactions` | workflow runs for the fork | `@backstage-community/plugin-github-actions` 1.2.0 (**frontend-only**) | `github.com/project-slug` | **the signed-in user's own GitHub OAuth token** (one-time popup) | browser → GitHub API |
 | `tekton` | PipelineRuns/TaskRuns + pod logs | `@backstage-community/plugin-tekton` 3.39.0 | `tekton.dev/cicd: "true"` + the kubernetes ns/selector pair | in-cluster ServiceAccount (Kubernetes backend) | backend → Kubernetes API (`tekton.dev/v1`) |
 | `argoworkflows` | an **InfoCard deep link** (no upstream plugin yet) | — (community-plugins **#9192** pending) | — | — | link → `argo.<baseDomain>` (IAP); the CRs surface on the Kubernetes tab |
 
+The matrix above is what each tab **shows**; the one below is whether you can **act** —
+trigger a re-run — from it, which splits the four engines into two families:
+
+| `ci.engine` | Re-run **from the tab**? | Auth for the *action* | Why |
+|---|---|---|---|
+| `jenkins` | ✅ **Re-build** a run | server-side admin **API token** (`JENKINS_API_KEY`) | Jenkins demands a **CSRF crumb** for password POSTs but **exempts API-token auth**, so [`08.95`](../scripts/08.95-backstage.sh) mints a token (not the admin password) and the re-build POST is accepted (see [§ Jenkins](#jenkins)) |
+| `githubactions` | ✅ **Re-run** a workflow | the **viewer's own** GitHub OAuth token | the GitHub API is token-authenticated with **no CSRF crumb**; the write just needs `actions:write` (inside `repo` scope) + the user's write access to the fork |
+| `tekton` | ❌ **view-only** | — (reads via the in-cluster SA) | `plugin-tekton` renders PipelineRuns/TaskRuns but ships **no trigger action** — re-run from the **Tekton Dashboard** (IAP) or a git push |
+| `argoworkflows` | ❌ **link out** | — | the tab is a deep-link InfoCard — re-submit from the **Argo Server UI** (IAP); no in-tab action until the upstream plugin (**#9192**) lands |
+
+**Two families, and the divergence is an *auth* divergence.** `jenkins` + `githubactions` are
+*native in-tab* — the plugin both **renders** runs and can **trigger** a re-run, so the whole
+loop lives in Backstage. `tekton` + `argoworkflows` are *observe-here, act-elsewhere* — Tekton
+renders live from the k8s CRs but read-only, Argo is a link. **Why** re-run works differs per
+engine: Jenkins acts with a **server-side API token** (so a browser-style CSRF crumb never
+applies — the reason the re-build 403 was Jenkins-specific and the fix was a *token*, not a config
+toggle), GitHub Actions with the **viewer's own OAuth** (a token auth with no CSRF concept at
+all), and the two Kubernetes-native engines expose **no write path** from the tab whatsoever.
+
 ### Jenkins
 
 The one engine with a first-class **backend** plugin: the Backstage backend
-calls the Jenkins REST API server-side with `JENKINS_API_USER`/`JENKINS_API_KEY`
-(the `admin` user + admin password, copied from `jenkins-credentials` by
-[`01-namespaces.sh`](../scripts/01-namespaces.sh) — seeded **only when
-`ci.engine=jenkins`**). It dials the **Service directly**
+calls the Jenkins REST API server-side with `JENKINS_API_USER`/`JENKINS_API_KEY`.
+[`01-namespaces.sh`](../scripts/01-namespaces.sh) seeds `JENKINS_API_KEY` with the
+admin **password** as a bootstrap (only when `ci.engine=jenkins`), but a password
+authenticates **reads** only: a password POST needs a CSRF crumb the plugin never
+sends, so the tab's **re-build** button 403s (`No valid crumb was included in the
+request`). Because Jenkins **exempts API-token auth from CSRF** (a token is never
+auto-sent by a browser), [`08.95-backstage.sh`](../scripts/08.95-backstage.sh) then
+mints an admin **API token** and patches it in over `JENKINS_API_KEY` (idempotent via
+a revoke-by-uuid Secret annotation, since the API hides the token list), so reads keep
+working **and** re-build succeeds. It dials the **Service directly**
 (`http://jenkins.jenkins.svc:8080`), never the IAP host; when backend TLS is
 active the runtime ConfigMap flips `JENKINS_BASE_URL` to the **plain-HTTP agent
 port `:8082`** that Jenkins's stage-6 conversion keeps exposed
