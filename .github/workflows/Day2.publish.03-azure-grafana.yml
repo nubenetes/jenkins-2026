@@ -64,17 +64,6 @@ jobs:
         with:
           ref: ${{ inputs.git_ref || github.ref }}
 
-      # GitHub OIDC -> Azure: the OIDC SP was granted Grafana Admin on the
-      # Azure Managed Grafana instance by terraform/azure-managed-grafana (Day0.infra.03).
-      # No access keys stored anywhere.
-      - name: Azure login
-        if: ${{ env.AZURE_PUBLISH_CLIENT_ID != '' }}
-        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
-        with:
-          client-id: ${{ secrets.AZURE_PUBLISH_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
       # GCP auth (read-only) to read the durable active-CI-engine record Day1
       # wrote to GCS. This workflow has no cluster access by design (it publishes
       # from the repo to Azure Managed Grafana), so it can't detect the engine via
@@ -89,6 +78,46 @@ jobs:
 
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "1.15.6"
+
+      # DURABLE-AUTH FIX (docs/D drift): resolve App B's CURRENT client id from the
+      # azure-managed-grafana module state instead of the manually-set AZURE_PUBLISH_CLIENT_ID
+      # secret, which drifts whenever the Azure backend is re-bootstrapped (App B is recreated
+      # with a new client id) and then fails the login with AADSTS700016. Non-secret identifier.
+      - name: Resolve App B (publish) client id from state
+        if: ${{ env.AZURE_PUBLISH_CLIENT_ID != '' }}
+        run: |
+          cat > terraform/azure-managed-grafana/backend_override.tf <<EOF
+          terraform {
+            backend "gcs" {
+              bucket = "${{ secrets.TF_STATE_BUCKET }}"
+              prefix = "jenkins-2026/azure-managed-grafana"
+            }
+          }
+          EOF
+          terraform -chdir=terraform/azure-managed-grafana init -input=false >/dev/null
+          pub="$(terraform -chdir=terraform/azure-managed-grafana output -raw publish_app_client_id 2>/dev/null || echo '')"
+          if [[ -n "${pub}" ]]; then
+            echo "AZURE_PUBLISH_CLIENT_ID_RESOLVED=${pub}" >> "${GITHUB_ENV}"
+            echo "Resolved App B client id from state (drift-proof)."
+          else
+            echo "::warning::publish_app_client_id output absent - azure/login falls back to the AZURE_PUBLISH_CLIENT_ID secret."
+          fi
+
+      # GitHub OIDC -> Azure: the OIDC SP holds Grafana Admin on the AMG instance
+      # (terraform/azure-managed-grafana, Day0.infra.03). No access keys stored. Uses App B's
+      # client id resolved from state above (drift-proof); falls back to the secret.
+      - name: Azure login
+        if: ${{ env.AZURE_PUBLISH_CLIENT_ID != '' }}
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43 # v3.0.0
+        with:
+          client-id: ${{ env.AZURE_PUBLISH_CLIENT_ID_RESOLVED || secrets.AZURE_PUBLISH_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Resolve active CI engine (durable GCS record from Day1)
         id: ci-engine
