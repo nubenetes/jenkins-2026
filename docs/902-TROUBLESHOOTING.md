@@ -675,10 +675,11 @@ the log quotes a smudge-filter failure, `This repository exceeded its LFS budget
 
 **Cause** — this repo tracks documentation images in Git LFS
 ([`.gitattributes`](../.gitattributes): `docs/infographics/*.png` and
-`docs/screenshots/*.png`). GitHub's free LFS tier grants 1 GB of storage **and 1 GB of
-bandwidth per month**; once the bandwidth is spent every LFS *download* returns 403. A
-plain `git checkout` runs the LFS smudge filter, so that failed download fails the whole
-checkout — even though no build ever reads those images.
+`docs/screenshots/*.png`). Every account has a finite LFS **bandwidth** allowance per
+billing period — 1 GB on the free tier, **10 GB on this organisation's plan** — and once it
+is spent, every LFS *download* returns 403. A plain `git checkout` runs the LFS smudge
+filter, so that failed download fails the whole checkout — even though no build ever reads
+those images.
 
 **Fix (already in place)** — every engine skips the smudge filter on checkout, so agents
 receive the ~130-byte pointer files instead of the blobs:
@@ -693,9 +694,21 @@ receive the ~130-byte pointer files instead of the blobs:
 The skip is **filter-level, not path-scoped**, so adding a new LFS-tracked path (as
 `docs/screenshots/*.png` did) requires no CI change at all.
 
-**If you need the budget back** — check *Settings → Billing → Git LFS Data*. Note that
-purging LFS objects from git history does **not** by itself reclaim GitHub-side LFS
-storage; that generally requires a support request.
+**Before assuming you are near the cap, measure it** — *Settings → Billing → Git LFS Data*.
+Measured for `nubenetes` on 2026-07-19: **storage 0.3 / 10 GB (3%)**, **bandwidth
+4.5 / 10 GB (45%)**, against 197.6 MB of tracked objects. So storage is a non-issue here;
+**bandwidth is the metric to watch**, and the cost is dominated by the *infographics*
+(37 files averaging 4.44 MB — 164.3 MB for one full catalog view) rather than the
+*screenshots* (83 files averaging 0.40 MB — 33.3 MB). One smudged clone costs 197.6 MB, so
+a 10 GB period is roughly 50 of them. If it ever does get tight, the lever is the
+infographics page, not the screenshots.
+
+Two things worth knowing before you act on a big number: bandwidth is billed on
+**downloads**, so `git lfs push` does not consume it; and purging LFS objects from git
+history does not by itself reclaim GitHub-side *storage*. That second point sounds alarming
+but was checked here and turned out to be moot — the ~234 MB of NotebookLM media purged in
+June is demonstrably **not** being billed (storage would read ≥0.43 GB if it were), so no
+support request was needed.
 
 
 ---
