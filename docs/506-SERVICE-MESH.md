@@ -564,6 +564,64 @@ instance/pooler **1/1** (sidecar-free), public endpoint **200**, `PeerAuthentica
 `default` `STRICT` + `gateway-ingress-permissive` both applied, Binary Authorization
 dryrun composing alongside. Roll-back (`intra_cluster_tls=none`) restores health cleanly.
 
+## Mesh scope — CSM enrols *only* the microservices tier (every Grafana + platform UI is untouched)
+
+The frame above zooms *into* the `microservices` namespace. Widen out to the whole
+platform and the rule is simple: **CSM enrols exactly the microservices tier and
+nothing else.** [`08.85`](../scripts/08.85-service-mesh.sh) only ever labels
+`mesh_namespaces` — the stable `microservices` namespace, plus the lean
+`microservices-develop` tier when `develop_track=true`:
+
+```bash
+# scripts/08.85-service-mesh.sh — the ONLY namespaces that get istio.io/rev=asm-managed
+mesh_namespaces=("${J2026_MICROSERVICES_NS_STABLE}")                       # → "microservices"
+[[ "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" == "true" ]] && \
+  mesh_namespaces+=("${J2026_MICROSERVICES_DEVELOP_NAMESPACE}")            # → "microservices-develop"
+```
+
+No other namespace ever receives the `istio.io/rev=asm-managed` label, so no other
+pod is injected and the mesh is **invisible** to the rest of the platform. The
+platform UIs are secured by **IAP at the edge**, not by the mesh — they carry none
+of the app east-west traffic the mesh exists to protect.
+
+### What CSM enrols vs what it leaves untouched
+
+| Component (namespace) | In the mesh? | Why |
+|---|---|---|
+| microservices **`gateway`** pod (`microservices`) | ✅ **IN** — `istio-proxy` 2/2 | the app east-west edge — the exact hop the mesh secures |
+| microservices **`backend`** pod (`microservices`) | ✅ **IN** — `istio-proxy` 2/2 | identity-mTLS + L7 `AuthorizationPolicy` target |
+| **`develop`** microservices tier (`microservices-develop`, only if `develop_track=true`) | ✅ **IN** | same, second app tier |
+| CNPG **Postgres + PgBouncer poolers** (`microservices`) | ❌ **OUT** — `sidecar.istio.io/inject:"false"` | data tier; CNPG already does client-cert mTLS ([why](#why-the-data-tier-cnpg-postgres-is-excluded)) |
+| **Jenkins / Tekton / GHA-ARC / Argo Workflows** (CI namespaces) | ❌ **OUT** — never labeled | CI is not app east-west traffic; the Smoke-Test pod even gets a **PERMISSIVE exception** *to reach* meshed pods from its non-meshed namespace |
+| **Backstage** (`backstage`) | ❌ **OUT** | IAP-protected platform UI |
+| **ArgoCD** (`argocd`) | ❌ **OUT** | platform UI |
+| **Headlamp** (`headlamp`) | ❌ **OUT** | platform UI |
+| **Grafana OSS + OTel collector + Loki/Tempo/Prometheus** (`observability`) | ❌ **OUT** — never labeled | the observability plane is not app traffic |
+| `istio-system` (root) | control-plane only | holds the mesh-wide `PeerAuthentication`; no app workloads |
+
+### Does CSM affect the Grafana / Backstage *Monitoring* tab? **No — in any of the four obs modes**
+
+The [505 Backstage](505-BACKSTAGE.md) *Monitoring* tab reaches Grafana by a different
+path per `observability.mode`, and **none of those paths crosses the mesh** — because
+neither Backstage nor any Grafana backend is ever enrolled:
+
+| `observability.mode` | Where Grafana lives | Backstage *Monitoring* path | Meshed? | CSM impact |
+|---|---|---|---|---|
+| `oss` | in-cluster (`observability`) | Backstage proxy → in-cluster Grafana `:80`, **Basic** auth | both ends **OUT** | **none** — neither pod is meshed |
+| `grafana-cloud` | external SaaS stack | Backstage proxy → `*.grafana.net`, **Bearer** stack-token | egress **leaves** the cluster | **none** — external egress, no sidecar |
+| `managed-azure` | Azure Managed Grafana | **deep-link** InfoCard (no proxy call) | n/a | **none** — no in-cluster call |
+| `managed-aws` | Amazon Managed Grafana | **deep-link** InfoCard (no proxy call) | n/a | **none** — no in-cluster call |
+
+**Bottom line:** flipping `intra_cluster_tls=cloud-service-mesh` on or off only ever
+adds/removes sidecars + `PeerAuthentication`/`AuthorizationPolicy` in the
+**microservices** namespace(s). It never touches the observability plane or any
+platform UI, so **no Grafana — in any of the four modes — is affected**, and the
+Backstage *Monitoring* tab behaves identically with the mesh on or off. The *only*
+mesh ↔ observability interaction anywhere is the OTel-agent container-ordering gotcha
+in [App mesh-readiness](#app-mesh-readiness-the-workload-side) below — and that is
+about the traces/metrics the **app emits** (already hardened), not about the Grafana
+UI backends.
+
 ## App mesh-readiness (the workload side)
 
 Enabling the mesh provisions the infra and injects sidecars, but **the workloads
