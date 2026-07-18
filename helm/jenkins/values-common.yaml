@@ -437,7 +437,7 @@ controller:
   # comments; everything else is "transitive dependencies", sorted).
   installPlugins:
     # --- top-level (curated) ---
-    - kubernetes:4437.v3a_18554d3f32
+    - kubernetes:4467.vf26561292824
     - workflow-aggregator:608.v67378e9d3db_1
     - git:5.10.1
     - github-branch-source:1967.1970.vd86979736546
@@ -454,7 +454,7 @@ controller:
     - opentelemetry:3.1589.ve81b_b_fa_927d5
     - credentials-binding:728.v902a_273b_8947
     - role-strategy:878.v6f1d3b_3a_0769
-    - matrix-auth:3.2.10
+    - matrix-auth:3.3
     - antisamy-markup-formatter:173.v680e3a_b_69ff3
     - timestamper:1.30
     - ws-cleanup:0.49
@@ -468,7 +468,7 @@ controller:
     - mcp-server:0.178.vffe5a_e770f3b_
     # Google login (OpenID Connect) - see securityRealm.oic in
     # jenkins/casc/jcasc-base.yaml and README.md "Jenkins" Google login section.
-    - oic-auth:4.690.v5821cf665e43
+    - oic-auth:4.715.vf202e4229f61
     # Static analysis reporting plugin
     - warnings-ng:13.10153.v011f47a_3ef01
     # --- transitive dependencies (pinned for reproducibility) ---
@@ -507,7 +507,7 @@ controller:
     - jquery3-api:3.7.1-687.v68d468e40b_30
     - json-api:20260522-217.v0b_18b_8cd4672
     - json-path-api:3.0.0-218.vcd4dd1355de2
-    - junit:1413.v736fa_5b_61d80
+    - junit:1415.vcb_3245e24402
     - kubernetes-client-api:7.3.1-256.v788a_0b_787114
     - kubernetes-credentials:207.v492f58828b_ed
     - mailer:534.v1b_36f5864073
@@ -546,7 +546,7 @@ controller:
     - workflow-basic-steps:1098.v808b_fd7f8cf4
     - workflow-cps:4350.vcc65d4958821
     - workflow-durable-task-step:1479.v56e587f413a_7
-    - workflow-job:1581.ve4b_d0db_fcb_b_b_
+    - workflow-job:1590.v49101d088542
     - workflow-multibranch:821.vc3b_4ea_780798
     - workflow-scm-step:466.va_d69e602552b_
     - workflow-step-api:724.v538c2362b_dfb_
