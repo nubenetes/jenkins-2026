@@ -157,6 +157,12 @@ export J2026_JENKINS_CHART_REPO_URL="$(yq_get '.jenkins.chart.repoUrl' 'https://
 export J2026_JENKINS_CHART_NAME="$(yq_get '.jenkins.chart.chartName' 'jenkins/jenkins')"
 export J2026_JENKINS_CHART_VERSION="$(yq_get '.jenkins.chart.version' '')"
 export J2026_JENKINS_ADMIN_USER="$(yq_get '.jenkins.adminUser' 'admin')"
+# FEATURE FLAG: JENKINS2026_JENKINS_SEED_BUILDS overrides jenkins.seedBuilds. When true
+# (default), 06-seed-pipelines.sh triggers one build per microservices job right after
+# the seed job creates them, so the Jenkins CI/CD tab (Backstage + Jenkins UI) is
+# pre-populated on Day1 (parity with tekton.seedRuns / githubactions.seedRuns). The app
+# deploys via GitOps regardless; this fills the build history + exercises the pipeline.
+export J2026_JENKINS_SEED_BUILDS="${JENKINS2026_JENKINS_SEED_BUILDS:-$(yq_get '.jenkins.seedBuilds' 'true')}"
 
 export J2026_JENKINS_CREDENTIALS_SECRET="$(yq_get '.jenkins.credentialsSecretName' 'jenkins-credentials')"
 export J2026_SELF_REPO_URL="$(yq_get '.jenkins.selfRepoUrl' 'https://github.com/nubenetes/jenkins-2026.git')"
