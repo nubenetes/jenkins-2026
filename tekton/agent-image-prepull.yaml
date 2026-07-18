@@ -25,6 +25,22 @@ spec:
     spec:
       terminationGracePeriodSeconds: 0
       automountServiceAccountToken: false
+      # Pre-pull ONLY on the static agent pool (`jenkins-2026-pool` = `${cluster_name}-pool`,
+      # terraform/gke) — where the engine's build pods run when runNodePool=static, and where
+      # the platform lives. Without this the DaemonSet targets EVERY node, including the small
+      # nodes GKE's *default* NAP auto-provisions for a platform pod that briefly overflows
+      # the static pool (e.g. an e2-medium): those are too small for the standard DaemonSets,
+      # so the prepull pod sits **Unschedulable** there ("Insufficient cpu"). It can't run on
+      # ci-spot nodes anyway (it doesn't tolerate their taint), so scoping to the static pool
+      # loses nothing.
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: cloud.google.com/gke-nodepool
+                    operator: In
+                    values: ["jenkins-2026-pool"]
       # Pod-level restricted PSS bits (runAsNonRoot + non-root uid + seccomp); the
       # per-container securityContext (&sc) adds the bits that MUST be per-container.
       securityContext:
