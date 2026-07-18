@@ -544,6 +544,16 @@ takes effect only after a **re-seed** — the next **Day1** or a
 (equivalently `Day2.redeploy.06-githubactions`). See
 [404 § The ci-spot / NAP showcase](./405-GITHUB_ACTIONS.md#the-ci-spot--nap-showcase-why-this-engine-defaults-to-spot).
 
+## A DaemonSet pod is Unschedulable (Insufficient cpu) on a small NAP overflow node
+
+**Symptom:** the Cloud Console workload view flags a DaemonSet — e.g. `jenkins-agent-image-prepull` (ns `jenkins`) or `prometheus-node-exporter` (ns `observability`, managed-azure/aws only) — as **"Unschedulable (Insufficient cpu)"**. `kubectl -n <ns> describe pod <ds-pod>` shows `FailedScheduling … Insufficient cpu`, and the offending node is a small **`nap-e2-*`** (often `e2-medium`, 940m allocatable). Everything else is healthy — the platform, the builds, and the DaemonSet's pods on the *other* nodes all run fine.
+
+**Cause:** GKE's cluster-level **default Node Auto-Provisioning (NAP)** auto-provisioned that node — **untainted**, and the **smallest machine that fits** — for a *platform* pod that briefly overflowed the static pool during a burst (NAP has no minimum-size lever, so it can land on an `e2-medium`). On an `e2-medium`, GKE's own system DaemonSets consume ~98% of the 940m, so a standard DaemonSet that targets **every** node (a 50m node-exporter, the image prepull) has no CPU left there and its pod stays `Unschedulable`. It is a scheduling artifact on an ephemeral node, **not** a real outage. The `ci-spot` ComputeClass never triggers this — its `priorities` floor every rule at `minCores: 4`, so it never provisions tiny nodes; **only the default-NAP overflow path does.**
+
+**Fix:** scope the DaemonSet with a `nodeAffinity` so it runs only where it belongs — `cloud.google.com/gke-nodepool=jenkins-2026-pool` (the static pool), plus `cloud.google.com/compute-class=ci-spot` when its host-metrics matter — exactly as `agent-image-prepull` ([`cfc95fc`](https://github.com/nubenetes/jenkins-2026/commit/cfc95fc)) and the managed-\* `prometheus-node-exporter` ([`f9f25a2`](https://github.com/nubenetes/jenkins-2026/commit/f9f25a2)) now do. You **cannot** fix it at the NAP level: `auto_provisioning_defaults` has no machine-family/min-size field, and cluster NAP can't be disabled because the `ci-spot` ComputeClass's `nodePoolAutoCreation` requires it. Full rationale + the node-type and DaemonSet-scoping matrices: [501 § Scoping the standard DaemonSets](./501-PLATFORM_OPERATIONS.md#scoping-the-standard-daemonsets-off-the-tiny-default-nap-overflow-nodes).
+
+**Adding a new DaemonSet?** If it only needs to run on the *persistent* nodes, give it the same `nodeAffinity` (static + optionally `ci-spot`) so it doesn't chase the overflow nodes. If it genuinely must run everywhere, size its CPU request to fit an `e2-medium`'s ~940m minus the system-DaemonSet overhead.
+
 ## OSS Grafana shows "No data" everywhere with zero datasources configured (`/api/datasources` returns `[]`)
 
 **Symptom:** on `observability.mode=oss`, every dashboard panel shows **"No data"**

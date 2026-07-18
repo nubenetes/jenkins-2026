@@ -193,8 +193,10 @@ applies to nodes NAP creates **after** the next Day1.
 ## 4. Cold-start caveat — the first build on a fresh Spot node is slow
 
 The agent-image **prepull DaemonSet** that warms the 9 agent container images
-(maven/node/dind/k8s (kubectl+helm)/git/semgrep/trivy/k6/codeql) runs on the **static pool**, and does
-**not** tolerate the `compute-class`/`gke-spot` taints — so it does **not** warm the Spot
+(maven/node/dind/k8s (kubectl+helm)/git/semgrep/trivy/k6/codeql) runs on the **static pool**
+(pinned there by a `nodeAffinity`, so it never chases the tiny default-NAP overflow nodes —
+see [501 § Scoping the standard DaemonSets](../501-PLATFORM_OPERATIONS.md#scoping-the-standard-daemonsets-off-the-tiny-default-nap-overflow-nodes)),
+and does **not** tolerate the `compute-class`/`gke-spot` taints — so it does **not** warm the Spot
 nodes. The first build on a freshly auto-provisioned Spot node therefore pays: NAP node
 creation (~1–3 min) + node join + a **cold pull of every agent image** (several minutes). Budget
 **10–15+ min for the first build**; it is not stuck. (Future option: give the prepull DaemonSet
