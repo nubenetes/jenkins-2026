@@ -52,6 +52,7 @@ WORKDIR /app
 # 1) the monorepo skeleton (all package.json files) + the lockfile the CI's own
 # `yarn install` generated on the runner - enough for a production-only install.
 COPY --chown=node:node .yarnrc.yml package.json yarn.lock backstage.json ./
+COPY --chown=node:node .yarn ./.yarn
 COPY --chown=node:node packages/backend/dist/skeleton.tar.gz ./
 RUN tar xzf skeleton.tar.gz && rm skeleton.tar.gz
 
