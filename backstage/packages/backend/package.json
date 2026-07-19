@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@backstage-community/plugin-argocd-backend": "1.5.0",
-    "@backstage-community/plugin-jenkins-backend": "0.29.0",
+    "@backstage-community/plugin-jenkins-backend": "patch:@backstage-community/plugin-jenkins-backend@npm%3A0.29.0#~/.yarn/patches/@backstage-community-plugin-jenkins-backend-npm-0.29.0-45b3b307f4.patch",
     "@backstage/backend-defaults": "0.17.4",
     "@backstage/plugin-app-backend": "0.5.15",
     "@backstage/plugin-auth-backend": "0.29.1",
