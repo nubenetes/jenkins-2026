@@ -18,6 +18,8 @@ spec:
   template:
     metadata:
       name: 'microservices-{{env}}'
+      labels:
+        jenkins2026.io/service-group: microservices
     spec:
       project: microservices
       source:
