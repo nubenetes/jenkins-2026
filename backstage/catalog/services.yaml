@@ -47,7 +47,7 @@ metadata:
     github.com/project-slug: nubenetes/jhipster-sample-app-gateway
     jenkins.io/job-full-name: gateway
     tekton.dev/cicd: "true"
-    argocd/app-name: microservices-stable
+    argocd/app-name: microservices-stable,microservices-develop
     backstage.io/kubernetes-label-selector: 'app.kubernetes.io/name=gateway'
     # The app fork ships no mkdocs site - surface the PLATFORM's TechDocs on
     # this entity's Docs tab + AboutCard instead (shared-docs annotation).
@@ -59,6 +59,8 @@ metadata:
   links:
     - url: https://microservices.jenkins2026.nubenetes.com
       title: Live app (stable)
+    - url: https://microservices-develop.jenkins2026.nubenetes.com
+      title: Live app (develop)
     - url: https://github.com/nubenetes/jhipster-sample-app-gateway
       title: Source (nubenetes fork)
       icon: github
@@ -84,7 +86,7 @@ metadata:
     github.com/project-slug: nubenetes/jhipster-sample-app-microservice
     jenkins.io/job-full-name: jhipstersamplemicroservice
     tekton.dev/cicd: "true"
-    argocd/app-name: microservices-stable
+    argocd/app-name: microservices-stable,microservices-develop
     backstage.io/kubernetes-label-selector: 'app.kubernetes.io/name=jhipstersamplemicroservice'
     # Shared docs: the platform's TechDocs on this entity (see gateway note).
     backstage.io/techdocs-entity: component:default/jenkins-2026-infra
