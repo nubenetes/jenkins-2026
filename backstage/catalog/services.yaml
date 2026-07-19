@@ -45,7 +45,7 @@ metadata:
   tags: [java, jhipster, gateway, angular, frontend]
   annotations:
     github.com/project-slug: nubenetes/jhipster-sample-app-gateway
-    jenkins.io/job-full-name: gateway
+    jenkins.io/job-full-name: gateway,gateway-develop
     tekton.dev/cicd: "true"
     argocd/app-selector: jenkins2026.io/service-group=microservices
     backstage.io/kubernetes-label-selector: 'app.kubernetes.io/name=gateway'
@@ -84,7 +84,7 @@ metadata:
   tags: [java, jhipster, backend, microservice]
   annotations:
     github.com/project-slug: nubenetes/jhipster-sample-app-microservice
-    jenkins.io/job-full-name: jhipstersamplemicroservice
+    jenkins.io/job-full-name: jhipstersamplemicroservice,jhipstersamplemicroservice-develop
     tekton.dev/cicd: "true"
     argocd/app-selector: jenkins2026.io/service-group=microservices
     backstage.io/kubernetes-label-selector: 'app.kubernetes.io/name=jhipstersamplemicroservice'
