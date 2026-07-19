@@ -1,6 +1,6 @@
-# Live Platform Screenshot Catalog (83 Files)
+# Live Platform Screenshot Catalog (92 Files)
 
-A visual inventory of **83 screenshots** of the *running* jenkins-2026 platform — the real tool UIs captured across the Day0 to Decom lifecycle, spanning all four interchangeable CI engines and all four observability backends.
+A visual inventory of **92 screenshots** of the *running* jenkins-2026 platform — the real tool UIs captured across the Day0 to Decom lifecycle, spanning all four interchangeable CI engines and all four observability backends.
 
 Files are named `NNN_Title_Words.png` so the folder stays self-sorting by category, mirroring the [Technical Infographics Catalog](../infographics/README.md). Images are stored with **Git LFS**.
 
@@ -9,7 +9,7 @@ Files are named `NNN_Title_Words.png` so the folder stays self-sorting by catego
 ## Screenshot Catalog Index
 
 <details>
-<summary>📋 Click to view the full detailed index list (83 entries)</summary>
+<summary>📋 Click to view the full detailed index list (92 entries)</summary>
 <br>
 
 1. **000: Developer Portal (Backstage)**
@@ -23,6 +23,11 @@ Files are named `NNN_Title_Words.png` so the folder stays self-sorting by catego
    - [[008]](#008---backstage-scaffolder-review-step-before-opening-prs) - [Backstage Scaffolder Review Step Before Opening PRs](008_Backstage_Scaffolder_Review_Step_Before_Opening_PRs.png)
    - [[009]](#009---backstage-scaffolder-final-review-summary-table) - [Backstage Scaffolder Final Review Summary Table](009_Backstage_Scaffolder_Final_Review_Summary_Table.png)
    - [[010]](#010---backstage-scaffolder-task-run-opening-two-pull-requests) - [Backstage Scaffolder Task Run Opening Two Pull Requests](010_Backstage_Scaffolder_Task_Run_Opening_Two_Pull_Requests.png)
+   - [[011]](#011---backstage-gateway-overview-showing-stable-and-develop-argocd-deployments) - [Backstage Gateway Overview Showing Stable And Develop ArgoCD Deployments](011_Backstage_Gateway_Overview_With_Stable_And_Develop_ArgoCD_Deployments.png)
+   - [[012]](#012---backstage-gateway-deployments-tab-listing-both-environments) - [Backstage Gateway Deployments Tab Listing Both Environments](012_Backstage_Gateway_Deployments_Tab_Listing_Both_Environments.png)
+   - [[013]](#013---backstage-gateway-ci-cd-tab-with-stable-and-develop-job-selector) - [Backstage Gateway CI CD Tab With Stable And Develop Job Selector](013_Backstage_Gateway_CI_CD_Tab_With_Stable_And_Develop_Job_Selector.png)
+   - [[014]](#014---backstage-gateway-kubernetes-tab-with-develop-namespace-resources) - [Backstage Gateway Kubernetes Tab With Develop Namespace Resources](014_Backstage_Gateway_Kubernetes_Tab_With_Develop_Namespace_Resources.png)
+   - [[015]](#015---backstage-gateway-api-tab-with-develop-api-relation) - [Backstage Gateway API Tab With Develop API Relation](015_Backstage_Gateway_API_Tab_With_Develop_API_Relation.png)
 
 2. **100: CI Engine (Jenkins)**
    - [[101]](#101---jenkins-dashboard-with-seeded-microservices-pipeline-jobs) - [Jenkins Dashboard With Seeded Microservices Pipeline Jobs](101_Jenkins_Dashboard_With_Seeded_Microservices_Pipeline_Jobs.png)
@@ -31,6 +36,8 @@ Files are named `NNN_Title_Words.png` so the folder stays self-sorting by catego
    - [[104]](#104---jenkins-develop-tier-stage-view-for-microservice) - [Jenkins Develop Tier Stage View For Microservice](104_Jenkins_Develop_Tier_Stage_View_For_Microservice.png)
    - [[105]](#105---jenkins-pipeline-graph-view-with-parallel-static-analysis) - [Jenkins Pipeline Graph View With Parallel Static Analysis](105_Jenkins_Pipeline_Graph_View_With_Parallel_Static_Analysis.png)
    - [[106]](#106---jenkins-warnings-ng-report-aggregating-semgrep-and-codeql) - [Jenkins Warnings NG Report Aggregating Semgrep And CodeQL](106_Jenkins_Warnings_NG_Report_Aggregating_Semgrep_And_CodeQL.png)
+   - [[107]](#107---jenkins-dashboard-with-parallel-develop-pipeline-jobs) - [Jenkins Dashboard With Parallel Develop Pipeline Jobs](107_Jenkins_Dashboard_With_Parallel_Develop_Pipeline_Jobs.png)
+   - [[108]](#108---jenkins-develop-job-stage-view-running-builds) - [Jenkins Develop Job Stage View Running Builds](108_Jenkins_Develop_Job_Stage_View_Running_Builds.png)
 
 3. **200: CI Engine (Tekton)**
    - [[201]](#201---tekton-dashboard-pipelineruns-all-succeeded) - [Tekton Dashboard PipelineRuns All Succeeded](201_Tekton_Dashboard_PipelineRuns_All_Succeeded.png)
@@ -84,6 +91,8 @@ Files are named `NNN_Title_Words.png` so the folder stays self-sorting by catego
    - [[504]](#504---headlamp-gateway-api-view-showing-platform-ingress) - [Headlamp Gateway API View Showing Platform Ingress](504_Headlamp_Gateway_API_View_Showing_Platform_Ingress.png)
    - [[505]](#505---pgadmin-browsing-stable-microservice-cnpg-database) - [pgAdmin Browsing Stable Microservice CNPG Database](505_pgAdmin_Browsing_Stable_Microservice_CNPG_Database.png)
    - [[506]](#506---jhipster-sample-gateway-application-homepage) - [JHipster Sample Gateway Application Homepage](506_JHipster_Sample_Gateway_Application_Homepage.png)
+   - [[507]](#507---argocd-applications-stable-and-develop-synced) - [ArgoCD Applications Stable And Develop Synced](507_ArgoCD_Applications_Stable_And_Develop_Synced.png)
+   - [[508]](#508---argocd-login-page-with-google-sso) - [ArgoCD Login Page With Google SSO](508_ArgoCD_Login_Page_With_Google_SSO.png)
 
 7. **600: GKE and Google Cloud Console**
    - [[601]](#601---gke-cluster-nodes-tab-with-nap-overflow-node) - [GKE Cluster Nodes Tab With NAP Overflow Node](601_GKE_Cluster_Nodes_Tab_With_NAP_Overflow_Node.png)
@@ -122,7 +131,7 @@ Files are named `NNN_Title_Words.png` so the folder stays self-sorting by catego
 Use the first button to expand **every** screenshot at once for sequential scrolling, or open a single category band below it.
 
 <details>
-<summary>⚡ Click here to expand ALL 83 Screenshots at once (for sequential scrolling) ⚡</summary>
+<summary>⚡ Click here to expand ALL 92 Screenshots at once (for sequential scrolling) ⚡</summary>
 <br>
 
 **001 - Backstage Gateway Component Overview With Relations Graph**
@@ -185,6 +194,36 @@ Use the first button to expand **every** screenshot at once for sequential scrol
 
 ---
 
+**011 - Backstage Gateway Overview Showing Stable And Develop ArgoCD Deployments**
+
+![011 - Backstage Gateway Overview Showing Stable And Develop ArgoCD Deployments](./011_Backstage_Gateway_Overview_With_Stable_And_Develop_ArgoCD_Deployments.png)
+
+---
+
+**012 - Backstage Gateway Deployments Tab Listing Both Environments**
+
+![012 - Backstage Gateway Deployments Tab Listing Both Environments](./012_Backstage_Gateway_Deployments_Tab_Listing_Both_Environments.png)
+
+---
+
+**013 - Backstage Gateway CI CD Tab With Stable And Develop Job Selector**
+
+![013 - Backstage Gateway CI CD Tab With Stable And Develop Job Selector](./013_Backstage_Gateway_CI_CD_Tab_With_Stable_And_Develop_Job_Selector.png)
+
+---
+
+**014 - Backstage Gateway Kubernetes Tab With Develop Namespace Resources**
+
+![014 - Backstage Gateway Kubernetes Tab With Develop Namespace Resources](./014_Backstage_Gateway_Kubernetes_Tab_With_Develop_Namespace_Resources.png)
+
+---
+
+**015 - Backstage Gateway API Tab With Develop API Relation**
+
+![015 - Backstage Gateway API Tab With Develop API Relation](./015_Backstage_Gateway_API_Tab_With_Develop_API_Relation.png)
+
+---
+
 **101 - Jenkins Dashboard With Seeded Microservices Pipeline Jobs**
 
 ![101 - Jenkins Dashboard With Seeded Microservices Pipeline Jobs](./101_Jenkins_Dashboard_With_Seeded_Microservices_Pipeline_Jobs.png)
@@ -218,6 +257,18 @@ Use the first button to expand **every** screenshot at once for sequential scrol
 **106 - Jenkins Warnings NG Report Aggregating Semgrep And CodeQL**
 
 ![106 - Jenkins Warnings NG Report Aggregating Semgrep And CodeQL](./106_Jenkins_Warnings_NG_Report_Aggregating_Semgrep_And_CodeQL.png)
+
+---
+
+**107 - Jenkins Dashboard With Parallel Develop Pipeline Jobs**
+
+![107 - Jenkins Dashboard With Parallel Develop Pipeline Jobs](./107_Jenkins_Dashboard_With_Parallel_Develop_Pipeline_Jobs.png)
+
+---
+
+**108 - Jenkins Develop Job Stage View Running Builds**
+
+![108 - Jenkins Develop Job Stage View Running Builds](./108_Jenkins_Develop_Job_Stage_View_Running_Builds.png)
 
 ---
 
@@ -491,6 +542,18 @@ Use the first button to expand **every** screenshot at once for sequential scrol
 
 ---
 
+**507 - ArgoCD Applications Stable And Develop Synced**
+
+![507 - ArgoCD Applications Stable And Develop Synced](./507_ArgoCD_Applications_Stable_And_Develop_Synced.png)
+
+---
+
+**508 - ArgoCD Login Page With Google SSO**
+
+![508 - ArgoCD Login Page With Google SSO](./508_ArgoCD_Login_Page_With_Google_SSO.png)
+
+---
+
 **601 - GKE Cluster Nodes Tab With NAP Overflow Node**
 
 ![601 - GKE Cluster Nodes Tab With NAP Overflow Node](./601_GKE_Cluster_Nodes_Tab_With_NAP_Overflow_Node.png)
@@ -626,7 +689,7 @@ Use the first button to expand **every** screenshot at once for sequential scrol
 </details>
 
 <details>
-<summary>📂 Expand 000: Developer Portal (Backstage) (10 Screenshots)</summary>
+<summary>📂 Expand 000: Developer Portal (Backstage) (15 Screenshots)</summary>
 
 ### 001 - Backstage Gateway Component Overview With Relations Graph
 * **Category**: `000: Developer Portal (Backstage)`
@@ -718,10 +781,55 @@ Use the first button to expand **every** screenshot at once for sequential scrol
 
 ---
 
+### 011 - Backstage Gateway Overview Showing Stable And Develop ArgoCD Deployments
+* **Category**: `000: Developer Portal (Backstage)`
+* **Key Technologies & Components**: Backstage, ArgoCD, Software Catalog
+* **Description**: The Overview page of the `gateway` Component in the Backstage software catalog showing the ArgoCD Deployment Summary card, which now lists both `microservices-stable` and `microservices-develop` applications side by side as synced and healthy.
+
+![011 - Backstage Gateway Overview Showing Stable And Develop ArgoCD Deployments](./011_Backstage_Gateway_Overview_With_Stable_And_Develop_ArgoCD_Deployments.png)
+
+---
+
+### 012 - Backstage Gateway Deployments Tab Listing Both Environments
+* **Category**: `000: Developer Portal (Backstage)`
+* **Key Technologies & Components**: Backstage, ArgoCD, GitOps
+* **Description**: The Deployments page of the `gateway` Component rendering the ArgoCD history for both stable and develop tiers. Displays release history, sync status, and deployment metadata for both environments in a single unified view.
+
+![012 - Backstage Gateway Deployments Tab Listing Both Environments](./012_Backstage_Gateway_Deployments_Tab_Listing_Both_Environments.png)
+
+---
+
+### 013 - Backstage Gateway CI CD Tab With Stable And Develop Job Selector
+* **Category**: `000: Developer Portal (Backstage)`
+* **Key Technologies & Components**: Backstage, Jenkins plugin, CI/CD
+* **Description**: The CI/CD page of the `gateway` Component when Jenkins is active, featuring a drop-down selector that lets users toggle between the build history of the stable `gateway` job and the develop `gateway-develop` job.
+
+![013 - Backstage Gateway CI CD Tab With Stable And Develop Job Selector](./013_Backstage_Gateway_CI_CD_Tab_With_Stable_And_Develop_Job_Selector.png)
+
+---
+
+### 014 - Backstage Gateway Kubernetes Tab With Develop Namespace Resources
+* **Category**: `000: Developer Portal (Backstage)`
+* **Key Technologies & Components**: Backstage, Kubernetes plugin, GKE
+* **Description**: The Kubernetes page of the `gateway` Component listing live cluster pods, services, and workloads. Includes the resources running under the `microservices-develop` namespace when the develop tier is enabled.
+
+![014 - Backstage Gateway Kubernetes Tab With Develop Namespace Resources](./014_Backstage_Gateway_Kubernetes_Tab_With_Develop_Namespace_Resources.png)
+
+---
+
+### 015 - Backstage Gateway API Tab With Develop API Relation
+* **Category**: `000: Developer Portal (Backstage)`
+* **Key Technologies & Components**: Backstage, Software Catalog, OpenAPI
+* **Description**: The API page of the `gateway` Component displaying the defined and consumed API schemas, mapping the environment-agnostic swagger definition that governs both the stable and develop deployments.
+
+![015 - Backstage Gateway API Tab With Develop API Relation](./015_Backstage_Gateway_API_Tab_With_Develop_API_Relation.png)
+
+---
+
 </details>
 
 <details>
-<summary>📂 Expand 100: CI Engine (Jenkins) (6 Screenshots)</summary>
+<summary>📂 Expand 100: CI Engine (Jenkins) (8 Screenshots)</summary>
 
 ### 101 - Jenkins Dashboard With Seeded Microservices Pipeline Jobs
 * **Category**: `100: CI Engine (Jenkins)`
@@ -774,6 +882,24 @@ Use the first button to expand **every** screenshot at once for sequential scrol
 * **Description**: The Static Analysis Warnings report with severity/reference donut charts and a trend graph. The Tools table aggregates the SARIF output of both scanners (CodeQL 3 findings, Semgrep 18, total 21, 0 new), surfacing DevSecOps results natively in Jenkins.
 
 ![106 - Jenkins Warnings NG Report Aggregating Semgrep And CodeQL](./106_Jenkins_Warnings_NG_Report_Aggregating_Semgrep_And_CodeQL.png)
+
+---
+
+### 107 - Jenkins Dashboard With Parallel Develop Pipeline Jobs
+* **Category**: `100: CI Engine (Jenkins)`
+* **Key Technologies & Components**: Jenkins, Job DSL, seed-jobs
+* **Description**: The Jenkins main dashboard showing the ListView of the microservices-develop pipelines. Highlights the parallel develop jobs (`gateway-develop`, `jhipstersamplemicroservice-develop`, and `microservices-k6-smoke-develop`) generated alongside their stable counterparts.
+
+![107 - Jenkins Dashboard With Parallel Develop Pipeline Jobs](./107_Jenkins_Dashboard_With_Parallel_Develop_Pipeline_Jobs.png)
+
+---
+
+### 108 - Jenkins Develop Job Stage View Running Builds
+* **Category**: `100: CI Engine (Jenkins)`
+* **Key Technologies & Components**: Jenkins Pipeline, Stage View
+* **Description**: Stage View of the `gateway-develop` job executing on the develop branch. Displays the stage execution times and status for the build, testing, and deployment phases.
+
+![108 - Jenkins Develop Job Stage View Running Builds](./108_Jenkins_Develop_Job_Stage_View_Running_Builds.png)
 
 ---
 
@@ -1146,7 +1272,7 @@ Use the first button to expand **every** screenshot at once for sequential scrol
 </details>
 
 <details>
-<summary>📂 Expand 500: GitOps and In-Cluster Admin (6 Screenshots)</summary>
+<summary>📂 Expand 500: GitOps and In-Cluster Admin (8 Screenshots)</summary>
 
 ### 501 - ArgoCD Applications All Synced On Develop
 * **Category**: `500: GitOps and In-Cluster Admin`
@@ -1199,6 +1325,24 @@ Use the first button to expand **every** screenshot at once for sequential scrol
 * **Description**: The deployed demo application itself: the JhipsterSampleGateway home page served by the Java gateway, rendering the Angular SPA's "Welcome, Java Hipster!" landing view in its anonymous state. This is the end-user-facing product of the whole pipeline.
 
 ![506 - JHipster Sample Gateway Application Homepage](./506_JHipster_Sample_Gateway_Application_Homepage.png)
+
+---
+
+### 507 - ArgoCD Applications Stable And Develop Synced
+* **Category**: `500: GitOps and In-Cluster Admin`
+* **Key Technologies & Components**: ArgoCD, GitOps, Kubernetes
+* **Description**: The ArgoCD main dashboard showing both `microservices-stable` and `microservices-develop` applications fully synced and healthy. Confirms successful parallel GitOps delivery of the microservice stack.
+
+![507 - ArgoCD Applications Stable And Develop Synced](./507_ArgoCD_Applications_Stable_And_Develop_Synced.png)
+
+---
+
+### 508 - ArgoCD Login Page With Google SSO
+* **Category**: `500: GitOps and In-Cluster Admin`
+* **Key Technologies & Components**: ArgoCD, Google OAuth, IAP
+* **Description**: The ArgoCD single sign-on login page configured with Google Identity Provider (IdP) authentication. Shows the secure login screen securing access to the GitOps control plane.
+
+![508 - ArgoCD Login Page With Google SSO](./508_ArgoCD_Login_Page_With_Google_SSO.png)
 
 ---
 
