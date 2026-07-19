@@ -65,11 +65,20 @@ jobs:
         service: [gateway, jhipstersamplemicroservice]
     steps:
       - name: Prune old versions
-        uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
-        with:
-          owner: nubenetes
-          package-name: "jenkins-2026-microservices/${{ matrix.service }}"
-          package-type: container
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          pkg="jenkins-2026-microservices%2F${{ matrix.service }}"
+          echo "Fetching versions for package: ${pkg}"
+          
+          versions_json="$(gh api "orgs/nubenetes/packages/container/${pkg}/versions?per_page=100" 2>/dev/null || true)"
+          
+          if [[ -z "${versions_json}" || "${versions_json}" == "[]" ]]; then
+            echo "No versions found or package does not exist."
+            exit 0
+          fi
+          
           # REBUILD-SAFETY: only prune UNTAGGED (dangling) manifests — NEVER a tagged
           # version. A fresh Day1 deploys the image tag pinned in the persistent
           # jenkins-2026-gitops-config repo WITHOUT rebuilding (the seed only creates
@@ -78,10 +87,35 @@ jobs:
           # here (ghcr is free for public packages). If bounded growth is ever needed,
           # replace this with a deployment-aware allowlist of the pins in
           # values-{stable,develop}.yaml rather than an age/count sweep of tags.
-          delete-only-untagged-versions: true
-          # Bounds how many untagged/dangling manifests (left by overwrites/retags) survive.
-          min-versions-to-keep: ${{ inputs.keep || '30' }}
-          dry-run: ${{ inputs.dry_run || false }}
+          untagged_ids=$(echo "${versions_json}" | jq -r '
+            .[] | 
+            select(.metadata.container.tags | length == 0) | 
+            [.id, .created_at] | 
+            @tsv' | sort -k2 | cut -f1)
+          
+          total_untagged=$(echo "${untagged_ids}" | grep -c . || true)
+          echo "Total untagged versions found: ${total_untagged}"
+          
+          keep=${{ inputs.keep || '30' }}
+          to_delete_count=$(( total_untagged - keep ))
+          
+          if (( to_delete_count <= 0 )); then
+            echo "Only ${total_untagged} untagged versions exist. Keeping all (keep limit: ${keep})."
+            exit 0
+          fi
+          
+          echo "Deleting ${to_delete_count} oldest untagged versions..."
+          delete_ids=$(echo "${untagged_ids}" | head -n "${to_delete_count}")
+          
+          for id in ${delete_ids}; do
+            if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+              echo "[Dry Run] Would delete version ID: ${id}"
+            else
+              echo "Deleting version ID: ${id}..."
+              gh api -X DELETE "orgs/nubenetes/packages/container/${pkg}/versions/${id}"
+            fi
+          done
+
 
   prune-backstage:
     name: "Prune jenkins-2026-backstage (keep-by-count, protecting live tags)"
@@ -153,11 +187,55 @@ jobs:
           echo "ignore_regex=${regex}" >> "${GITHUB_OUTPUT}"
 
       - name: Prune old backstage versions
-        uses: actions/delete-package-versions@e5bc658cc4c965c472efe991f8beea3981499c55 # v5.0.0
-        with:
-          owner: nubenetes
-          package-name: jenkins-2026-backstage
-          package-type: container
-          min-versions-to-keep: ${{ inputs.keep || '30' }}
-          ignore-versions: ${{ steps.protect.outputs.ignore_regex }}
-          dry-run: ${{ inputs.dry_run || false }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IGNORE_REGEX: ${{ steps.protect.outputs.ignore_regex }}
+        run: |
+          set -euo pipefail
+          pkg="jenkins-2026-backstage"
+          echo "Fetching versions for package: ${pkg}"
+          
+          versions_json="$(gh api "orgs/nubenetes/packages/container/${pkg}/versions?per_page=100" 2>/dev/null || true)"
+          
+          if [[ -z "${versions_json}" || "${versions_json}" == "[]" ]]; then
+            echo "No versions found or package does not exist."
+            exit 0
+          fi
+          
+          filtered_ids=$(echo "${versions_json}" | jq -r --arg pattern "${IGNORE_REGEX}" '
+            .[] | 
+            select(.name | test($pattern) | not) | 
+            [.id, .created_at] | 
+            @tsv' | sort -k2 | cut -f1)
+          
+          total_filtered=$(echo "${filtered_ids}" | grep -c . || true)
+          echo "Total versions eligible for pruning (not ignored): ${total_filtered}"
+          
+          keep=${{ inputs.keep || '30' }}
+          total_versions=$(echo "${versions_json}" | jq '. | length')
+          echo "Total versions in registry: ${total_versions}"
+          
+          to_delete_count=$(( total_versions - keep ))
+          
+          if (( to_delete_count <= 0 )); then
+            echo "Total versions (${total_versions}) is within keep limit (${keep}). Nothing to prune."
+            exit 0
+          fi
+          
+          delete_ids=$(echo "${filtered_ids}" | head -n "${to_delete_count}")
+          actual_delete_count=$(echo "${delete_ids}" | grep -c . || true)
+          
+          if (( actual_delete_count == 0 )); then
+            echo "No eligible versions to delete after protecting live versions."
+            exit 0
+          fi
+          
+          echo "Deleting ${actual_delete_count} oldest eligible versions..."
+          for id in ${delete_ids}; do
+            if [[ "${{ inputs.dry_run }}" == "true" ]]; then
+              echo "[Dry Run] Would delete version ID: ${id}"
+            else
+              echo "Deleting version ID: ${id}..."
+              gh api -X DELETE "orgs/nubenetes/packages/container/${pkg}/versions/${id}"
+            fi
+          done
