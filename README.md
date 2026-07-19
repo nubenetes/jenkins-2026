@@ -1092,12 +1092,12 @@ For a full standalone catalog with visual previews, see the [Technical Infograph
 
 ### 3.2. Live Platform Screenshots
 
-A companion to the [infographics catalog](#31-technical-infographics-catalog): **83 annotated screenshots** of the *running* platform — Backstage, Jenkins, Tekton, GitHub Actions, Argo Workflows, ArgoCD, Headlamp, pgAdmin, the GKE Console and Grafana — captured across the Day0 to Decom lifecycle. They are grouped into 9 category bands and folded by default.
+A companion to the [infographics catalog](#31-technical-infographics-catalog): **92 annotated screenshots** of the *running* platform — Backstage, Jenkins, Tekton, GitHub Actions, Argo Workflows, ArgoCD, Headlamp, pgAdmin, the GKE Console and Grafana — captured across the Day0 to Decom lifecycle. They are grouped into 9 category bands and folded by default.
 
 For the full standalone catalog with inline previews, see the **[Live Platform Screenshot Catalog](./docs/screenshots/README.md)**.
 
 <details>
-<summary>📂 000: Developer Portal (Backstage) (10 Screenshots)</summary>
+<summary>📂 000: Developer Portal (Backstage) (15 Screenshots)</summary>
 
 - **[001]** - **[Backstage Gateway Component Overview With Relations Graph](./docs/screenshots/001_Backstage_Gateway_Component_Overview_With_Relations_Graph.png)**
   - *Key Technologies*: Backstage, Software Catalog, ArgoCD, TechDocs
@@ -1129,11 +1129,26 @@ For the full standalone catalog with inline previews, see the **[Live Platform S
 - **[010]** - **[Backstage Scaffolder Task Run Opening Two Pull Requests](./docs/screenshots/010_Backstage_Scaffolder_Task_Run_Opening_Two_Pull_Requests.png)**
   - *Key Technologies*: Backstage, Scaffolder, GitOps, GitHub Pull Requests
   - *Description*: The Scaffolder task-run page for a completed onboarding, all eight steps green plus the two resulting PR links. The streamed log shows the append-only edits to `services.yaml`, the Backstage catalog and the GitOps `values-stable.yaml`.
+- **[011]** - **[Backstage Gateway Overview Showing Stable And Develop ArgoCD Deployments](./docs/screenshots/011_Backstage_Gateway_Overview_With_Stable_And_Develop_ArgoCD_Deployments.png)**
+  - *Key Technologies*: Backstage, ArgoCD, Software Catalog
+  - *Description*: The Overview page of the `gateway` Component in the Backstage software catalog showing the ArgoCD Deployment Summary card, which now lists both `microservices-stable` and `microservices-develop` applications side by side as synced and healthy.
+- **[012]** - **[Backstage Gateway Deployments Tab Listing Both Environments](./docs/screenshots/012_Backstage_Gateway_Deployments_Tab_Listing_Both_Environments.png)**
+  - *Key Technologies*: Backstage, ArgoCD, GitOps
+  - *Description*: The Deployments page of the `gateway` Component rendering the ArgoCD history for both stable and develop tiers. Displays release history, sync status, and deployment metadata for both environments in a single unified view.
+- **[013]** - **[Backstage Gateway CI CD Tab With Stable And Develop Job Selector](./docs/screenshots/013_Backstage_Gateway_CI_CD_Tab_With_Stable_And_Develop_Job_Selector.png)**
+  - *Key Technologies*: Backstage, Jenkins plugin, CI/CD
+  - *Description*: The CI/CD page of the `gateway` Component when Jenkins is active, featuring a drop-down selector that lets users toggle between the build history of the stable `gateway` job and the develop `gateway-develop` job.
+- **[014]** - **[Backstage Gateway Kubernetes Tab With Develop Namespace Resources](./docs/screenshots/014_Backstage_Gateway_Kubernetes_Tab_With_Develop_Namespace_Resources.png)**
+  - *Key Technologies*: Backstage, Kubernetes plugin, GKE
+  - *Description*: The Kubernetes page of the `gateway` Component listing live cluster pods, services, and workloads. Includes the resources running under the `microservices-develop` namespace when the develop tier is enabled.
+- **[015]** - **[Backstage Gateway API Tab With Develop API Relation](./docs/screenshots/015_Backstage_Gateway_API_Tab_With_Develop_API_Relation.png)**
+  - *Key Technologies*: Backstage, Software Catalog, OpenAPI
+  - *Description*: The API page of the `gateway` Component displaying the defined and consumed API schemas, mapping the environment-agnostic swagger definition that governs both the stable and develop deployments.
 
 </details>
 
 <details>
-<summary>📂 100: CI Engine (Jenkins) (6 Screenshots)</summary>
+<summary>📂 100: CI Engine (Jenkins) (8 Screenshots)</summary>
 
 - **[101]** - **[Jenkins Dashboard With Seeded Microservices Pipeline Jobs](./docs/screenshots/101_Jenkins_Dashboard_With_Seeded_Microservices_Pipeline_Jobs.png)**
   - *Key Technologies*: Jenkins, JCasC, Job DSL seed job, Grafana
@@ -1153,6 +1168,12 @@ For the full standalone catalog with inline previews, see the **[Live Platform S
 - **[106]** - **[Jenkins Warnings NG Report Aggregating Semgrep And CodeQL](./docs/screenshots/106_Jenkins_Warnings_NG_Report_Aggregating_Semgrep_And_CodeQL.png)**
   - *Key Technologies*: warnings-ng plugin, Semgrep, CodeQL, SARIF, DevSecOps
   - *Description*: The Static Analysis Warnings report with severity/reference donut charts and a trend graph. The Tools table aggregates the SARIF output of both scanners (CodeQL 3 findings, Semgrep 18, total 21, 0 new), surfacing DevSecOps results natively in Jenkins.
+- **[107]** - **[Jenkins Dashboard With Parallel Develop Pipeline Jobs](./docs/screenshots/107_Jenkins_Dashboard_With_Parallel_Develop_Pipeline_Jobs.png)**
+  - *Key Technologies*: Jenkins, Job DSL, seed-jobs
+  - *Description*: The Jenkins main dashboard showing the ListView of the microservices-develop pipelines. Highlights the parallel develop jobs (`gateway-develop`, `jhipstersamplemicroservice-develop`, and `microservices-k6-smoke-develop`) generated alongside their stable counterparts.
+- **[108]** - **[Jenkins Develop Job Stage View Running Builds](./docs/screenshots/108_Jenkins_Develop_Job_Stage_View_Running_Builds.png)**
+  - *Key Technologies*: Jenkins Pipeline, Stage View
+  - *Description*: Stage View of the `gateway-develop` job executing on the develop branch. Displays the stage execution times and status for the build, testing, and deployment phases.
 
 </details>
 
@@ -1292,7 +1313,7 @@ For the full standalone catalog with inline previews, see the **[Live Platform S
 </details>
 
 <details>
-<summary>📂 500: GitOps and In-Cluster Admin (6 Screenshots)</summary>
+<summary>📂 500: GitOps and In-Cluster Admin (8 Screenshots)</summary>
 
 - **[501]** - **[ArgoCD Applications All Synced On Develop](./docs/screenshots/501_ArgoCD_Applications_All_Synced_On_Develop.png)**
   - *Key Technologies*: ArgoCD, GitOps, Helm, CloudNativePG
@@ -1312,6 +1333,12 @@ For the full standalone catalog with inline previews, see the **[Live Platform S
 - **[506]** - **[JHipster Sample Gateway Application Homepage](./docs/screenshots/506_JHipster_Sample_Gateway_Application_Homepage.png)**
   - *Key Technologies*: JHipster, Angular, Java, Spring Boot
   - *Description*: The deployed demo application itself: the JhipsterSampleGateway home page served by the Java gateway, rendering the Angular SPA's "Welcome, Java Hipster!" landing view in its anonymous state. This is the end-user-facing product of the whole pipeline.
+- **[507]** - **[ArgoCD Applications Stable And Develop Synced](./docs/screenshots/507_ArgoCD_Applications_Stable_And_Develop_Synced.png)**
+  - *Key Technologies*: ArgoCD, GitOps, Kubernetes
+  - *Description*: The ArgoCD main dashboard showing both `microservices-stable` and `microservices-develop` applications fully synced and healthy. Confirms successful parallel GitOps delivery of the microservice stack.
+- **[508]** - **[ArgoCD Login Page With Google SSO](./docs/screenshots/508_ArgoCD_Login_Page_With_Google_SSO.png)**
+  - *Key Technologies*: ArgoCD, Google OAuth, IAP
+  - *Description*: The ArgoCD single sign-on login page configured with Google Identity Provider (IdP) authentication. Shows the secure login screen securing access to the GitOps control plane.
 
 </details>
 
