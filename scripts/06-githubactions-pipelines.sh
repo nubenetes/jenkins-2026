@@ -150,7 +150,11 @@ for i in $(seq 0 $((svc_count - 1))); do
     # Optional seed run so the Actions tab is populated from Day1 (parity with tekton.seedRuns).
     if [[ "${J2026_GHA_SEED_RUNS}" == "true" ]] && command -v gh >/dev/null 2>&1; then
       GH_TOKEN="${GIT_TOKEN}" gh workflow run microservices-ci.yml --repo "${repo_path}" --ref main >/dev/null 2>&1 \
-        && log_info "  ${name}: seed run dispatched." || true
+        && log_info "  ${name}: seed run dispatched (main)." || true
+      if [[ "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED:-false}" == "true" ]]; then
+        GH_TOKEN="${GIT_TOKEN}" gh workflow run microservices-ci.yml --repo "${repo_path}" --ref develop >/dev/null 2>&1 \
+          && log_info "  ${name}: seed run dispatched (develop)." || true
+      fi
     fi
   )
   rm -rf "${work}"

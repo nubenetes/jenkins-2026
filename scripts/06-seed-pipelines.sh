@@ -170,7 +170,19 @@ log_info "Found ${count} jobs (>= ${min_jobs}: ${expected} Microservices pipelin
 if [[ "${J2026_JENKINS_SEED_BUILDS}" == "true" ]]; then
   log_step "jenkins.seedBuilds=true — triggering an initial build per microservices job (fire-and-forget)"
   if fetch_crumb; then
-    for job in ${J2026_MICROSERVICES_SERVICES} microservices-k6-smoke; do
+    jobs_to_trigger=""
+    for job in ${J2026_MICROSERVICES_SERVICES}; do
+      jobs_to_trigger="${jobs_to_trigger} ${job}"
+      if [[ "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" == "true" ]]; then
+        jobs_to_trigger="${jobs_to_trigger} ${job}-develop"
+      fi
+    done
+    jobs_to_trigger="${jobs_to_trigger} microservices-k6-smoke"
+    if [[ "${J2026_MICROSERVICES_DEVELOP_TRACK_ENABLED}" == "true" ]]; then
+      jobs_to_trigger="${jobs_to_trigger} microservices-k6-smoke-develop"
+    fi
+
+    for job in ${jobs_to_trigger}; do
       # 2>/dev/null on the exec (not the inner curl): a failed exec echoes the request URL,
       # which URL-encodes `-u admin:<password>` — never leak the admin password to the log.
       code="$(jenkins_exec curl -s -o /dev/null -w '%{http_code}' -b /tmp/seed-cookies.txt \
