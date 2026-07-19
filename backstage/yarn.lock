@@ -1405,6 +1405,26 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@backstage-community/plugin-jenkins-backend@patch:@backstage-community/plugin-jenkins-backend@npm%3A0.29.0#~/.yarn/patches/@backstage-community-plugin-jenkins-backend-npm-0.29.0-45b3b307f4.patch":
+  version: 0.29.0
+  resolution: "@backstage-community/plugin-jenkins-backend@patch:@backstage-community/plugin-jenkins-backend@npm%3A0.29.0#~/.yarn/patches/@backstage-community-plugin-jenkins-backend-npm-0.29.0-45b3b307f4.patch::version=0.29.0&hash=6bb95b"
+  dependencies:
+    "@backstage-community/plugin-jenkins-common": "npm:^0.20.0"
+    "@backstage/backend-defaults": "npm:^0.17.3"
+    "@backstage/backend-plugin-api": "npm:^1.9.2"
+    "@backstage/catalog-model": "npm:^1.9.0"
+    "@backstage/config": "npm:^1.3.8"
+    "@backstage/errors": "npm:^1.3.1"
+    "@backstage/plugin-catalog-node": "npm:^2.2.2"
+    "@backstage/plugin-permission-common": "npm:^0.9.9"
+    "@types/express": "npm:^4.17.6"
+    express: "npm:^4.17.1"
+    express-promise-router: "npm:^4.1.0"
+    node-fetch: "npm:^2.6.7"
+  checksum: 10c0/b329b6367eff9e543902fdf76adfd8c44efb944cf6dbe95eb63266591cd403732bedec1dd40393d8d8c2886aaa1a93409508e2f024f7187c1411b37a1e3a54a8
+  languageName: node
+  linkType: hard
+
 "@backstage-community/plugin-jenkins-common@npm:^0.20.0":
   version: 0.20.0
   resolution: "@backstage-community/plugin-jenkins-common@npm:0.20.0"
@@ -14631,7 +14651,7 @@ __metadata:
   resolution: "backend@workspace:packages/backend"
   dependencies:
     "@backstage-community/plugin-argocd-backend": "npm:1.5.0"
-    "@backstage-community/plugin-jenkins-backend": "npm:0.29.0"
+    "@backstage-community/plugin-jenkins-backend": "patch:@backstage-community/plugin-jenkins-backend@npm%3A0.29.0#~/.yarn/patches/@backstage-community-plugin-jenkins-backend-npm-0.29.0-45b3b307f4.patch"
     "@backstage/backend-defaults": "npm:0.17.4"
     "@backstage/cli": "npm:0.36.3"
     "@backstage/plugin-app-backend": "npm:0.5.15"

@@ -1,0 +1,73 @@
+diff --git a/dist/service/jenkinsApi.cjs.js b/dist/service/jenkinsApi.cjs.js
+index 58cad83426d742e4c28ddbb38aea335cdffba8cb..83f260e2e12aadd87a2fddacb43c950832225f9f 100644
+--- a/dist/service/jenkinsApi.cjs.js
++++ b/dist/service/jenkinsApi.cjs.js
+@@ -66,18 +66,22 @@ class JenkinsApiImpl {
+   async fetchBranchSpecificProjects(client, jenkinsInfo, branches) {
+     const projects = await Promise.all(
+       jenkinsInfo.fullJobNames.map(async (jobName) => {
+-        const job = await Promise.any(
+-          branches.map(
+-            (branch) => client.job.get({
+-              name: `${jobName}/${encodeURIComponent(branch)}`,
+-              tree: JenkinsApiImpl.jobTreeSpec.replace(/\s/g, "")
+-            })
+-          )
+-        );
+-        return this.augmentProject(job);
++        try {
++          const job = await Promise.any(
++            branches.map(
++              (branch) => client.job.get({
++                name: `${jobName}/${encodeURIComponent(branch)}`,
++                tree: JenkinsApiImpl.jobTreeSpec.replace(/\s/g, "")
++              })
++            )
++          );
++          return this.augmentProject(job);
++        } catch (err) {
++          return null;
++        }
+       })
+     );
+-    return projects;
++    return projects.filter(Boolean);
+   }
+   async fetchAllProjects(client, jenkinsInfo) {
+     const limitedJobsTreeSpec = `${JenkinsApiImpl.jobsTreeSpec}{0,${jenkinsInfo.projectCountLimit}}`.replace(
+@@ -89,20 +93,24 @@ class JenkinsApiImpl {
+       ""
+     );
+     const projects = jenkinsInfo.fullJobNames.map(async (jobName) => {
+-      const project = await client.job.get({
+-        name: jobName,
+-        tree: limitedJobsTreeSpec
+-      });
+-      if (!project.jobs) {
+-        const standaloneProject = await client.job.get({
++      try {
++        const project = await client.job.get({
+           name: jobName,
+-          tree: limitedStandaloneJobTreeSpec
++          tree: limitedJobsTreeSpec
+         });
+-        return [this.augmentProject(standaloneProject)];
++        if (!project.jobs) {
++          const standaloneProject = await client.job.get({
++            name: jobName,
++            tree: limitedStandaloneJobTreeSpec
++          });
++          return [this.augmentProject(standaloneProject)];
++        }
++        return project.jobs.map(
++          (jobDetails) => this.augmentProject(jobDetails)
++        );
++      } catch (err) {
++        return [];
+       }
+-      return project.jobs.map(
+-        (jobDetails) => this.augmentProject(jobDetails)
+-      );
+     });
+     const nestedProjects = await Promise.all(projects);
+     return nestedProjects.flat();
