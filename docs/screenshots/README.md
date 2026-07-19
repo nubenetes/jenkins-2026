@@ -1,6 +1,6 @@
-# Live Platform Screenshot Catalog (92 Files)
+# Live Platform Screenshot Catalog (93 Files)
 
-A visual inventory of **92 screenshots** of the *running* jenkins-2026 platform — the real tool UIs captured across the Day0 to Decom lifecycle, spanning all four interchangeable CI engines and all four observability backends.
+A visual inventory of **93 screenshots** of the *running* jenkins-2026 platform — the real tool UIs captured across the Day0 to Decom lifecycle, spanning all four interchangeable CI engines and all four observability backends.
 
 Files are named `NNN_Title_Words.png` so the folder stays self-sorting by category, mirroring the [Technical Infographics Catalog](../infographics/README.md). Images are stored with **Git LFS**.
 
@@ -9,7 +9,7 @@ Files are named `NNN_Title_Words.png` so the folder stays self-sorting by catego
 ## Screenshot Catalog Index
 
 <details>
-<summary>📋 Click to view the full detailed index list (92 entries)</summary>
+<summary>📋 Click to view the full detailed index list (93 entries)</summary>
 <br>
 
 1. **000: Developer Portal (Backstage)**
@@ -38,6 +38,7 @@ Files are named `NNN_Title_Words.png` so the folder stays self-sorting by catego
    - [[106]](#106---jenkins-warnings-ng-report-aggregating-semgrep-and-codeql) - [Jenkins Warnings NG Report Aggregating Semgrep And CodeQL](106_Jenkins_Warnings_NG_Report_Aggregating_Semgrep_And_CodeQL.png)
    - [[107]](#107---jenkins-dashboard-with-parallel-develop-pipeline-jobs) - [Jenkins Dashboard With Parallel Develop Pipeline Jobs](107_Jenkins_Dashboard_With_Parallel_Develop_Pipeline_Jobs.png)
    - [[108]](#108---jenkins-develop-job-stage-view-running-builds) - [Jenkins Develop Job Stage View Running Builds](108_Jenkins_Develop_Job_Stage_View_Running_Builds.png)
+   - [[109]](#109---jenkins-develop-pipeline-execution-stage-details) - [Jenkins Develop Pipeline Execution Stage Details](109_Jenkins_Develop_Pipeline_Execution_Stage_Details.png)
 
 3. **200: CI Engine (Tekton)**
    - [[201]](#201---tekton-dashboard-pipelineruns-all-succeeded) - [Tekton Dashboard PipelineRuns All Succeeded](201_Tekton_Dashboard_PipelineRuns_All_Succeeded.png)
@@ -131,7 +132,7 @@ Files are named `NNN_Title_Words.png` so the folder stays self-sorting by catego
 Use the first button to expand **every** screenshot at once for sequential scrolling, or open a single category band below it.
 
 <details>
-<summary>⚡ Click here to expand ALL 92 Screenshots at once (for sequential scrolling) ⚡</summary>
+<summary>⚡ Click here to expand ALL 93 Screenshots at once (for sequential scrolling) ⚡</summary>
 <br>
 
 **001 - Backstage Gateway Component Overview With Relations Graph**
@@ -269,6 +270,12 @@ Use the first button to expand **every** screenshot at once for sequential scrol
 **108 - Jenkins Develop Job Stage View Running Builds**
 
 ![108 - Jenkins Develop Job Stage View Running Builds](./108_Jenkins_Develop_Job_Stage_View_Running_Builds.png)
+
+---
+
+**109 - Jenkins Develop Pipeline Execution Stage Details**
+
+![109 - Jenkins Develop Pipeline Execution Stage Details](./109_Jenkins_Develop_Pipeline_Execution_Stage_Details.png)
 
 ---
 
@@ -829,7 +836,7 @@ Use the first button to expand **every** screenshot at once for sequential scrol
 </details>
 
 <details>
-<summary>📂 Expand 100: CI Engine (Jenkins) (8 Screenshots)</summary>
+<summary>📂 Expand 100: CI Engine (Jenkins) (9 Screenshots)</summary>
 
 ### 101 - Jenkins Dashboard With Seeded Microservices Pipeline Jobs
 * **Category**: `100: CI Engine (Jenkins)`
@@ -900,6 +907,15 @@ Use the first button to expand **every** screenshot at once for sequential scrol
 * **Description**: Stage View of the `gateway-develop` job executing on the develop branch. Displays the stage execution times and status for the build, testing, and deployment phases.
 
 ![108 - Jenkins Develop Job Stage View Running Builds](./108_Jenkins_Develop_Job_Stage_View_Running_Builds.png)
+
+---
+
+### 109 - Jenkins Develop Pipeline Execution Stage Details
+* **Category**: `100: CI Engine (Jenkins)`
+* **Key Technologies & Components**: Jenkins Pipeline, Stage View
+* **Description**: Detailed Stage View showing the successful execution sequence of the develop branch pipeline run, highlighting build step durations and GitOps deploy timings.
+
+![109 - Jenkins Develop Pipeline Execution Stage Details](./109_Jenkins_Develop_Pipeline_Execution_Stage_Details.png)
 
 ---
 

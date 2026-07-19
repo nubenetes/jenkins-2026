@@ -1092,7 +1092,7 @@ For a full standalone catalog with visual previews, see the [Technical Infograph
 
 ### 3.2. Live Platform Screenshots
 
-A companion to the [infographics catalog](#31-technical-infographics-catalog): **92 annotated screenshots** of the *running* platform — Backstage, Jenkins, Tekton, GitHub Actions, Argo Workflows, ArgoCD, Headlamp, pgAdmin, the GKE Console and Grafana — captured across the Day0 to Decom lifecycle. They are grouped into 9 category bands and folded by default.
+A companion to the [infographics catalog](#31-technical-infographics-catalog): **93 annotated screenshots** of the *running* platform — Backstage, Jenkins, Tekton, GitHub Actions, Argo Workflows, ArgoCD, Headlamp, pgAdmin, the GKE Console and Grafana — captured across the Day0 to Decom lifecycle. They are grouped into 9 category bands and folded by default.
 
 For the full standalone catalog with inline previews, see the **[Live Platform Screenshot Catalog](./docs/screenshots/README.md)**.
 
@@ -1148,7 +1148,7 @@ For the full standalone catalog with inline previews, see the **[Live Platform S
 </details>
 
 <details>
-<summary>📂 100: CI Engine (Jenkins) (8 Screenshots)</summary>
+<summary>📂 100: CI Engine (Jenkins) (9 Screenshots)</summary>
 
 - **[101]** - **[Jenkins Dashboard With Seeded Microservices Pipeline Jobs](./docs/screenshots/101_Jenkins_Dashboard_With_Seeded_Microservices_Pipeline_Jobs.png)**
   - *Key Technologies*: Jenkins, JCasC, Job DSL seed job, Grafana
@@ -1174,6 +1174,9 @@ For the full standalone catalog with inline previews, see the **[Live Platform S
 - **[108]** - **[Jenkins Develop Job Stage View Running Builds](./docs/screenshots/108_Jenkins_Develop_Job_Stage_View_Running_Builds.png)**
   - *Key Technologies*: Jenkins Pipeline, Stage View
   - *Description*: Stage View of the `gateway-develop` job executing on the develop branch. Displays the stage execution times and status for the build, testing, and deployment phases.
+- **[109]** - **[Jenkins Develop Pipeline Execution Stage Details](./docs/screenshots/109_Jenkins_Develop_Pipeline_Execution_Stage_Details.png)**
+  - *Key Technologies*: Jenkins Pipeline, Stage View
+  - *Description*: Detailed Stage View showing the successful execution sequence of the develop branch pipeline run, highlighting build step durations and GitOps deploy timings.
 
 </details>
 
