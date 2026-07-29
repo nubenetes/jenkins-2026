@@ -11,7 +11,7 @@
 ![Top language](https://img.shields.io/github/languages/top/nubenetes/jenkins-2026?logo=gnubash&logoColor=white)
 ![Code size](https://img.shields.io/github/languages/code-size/nubenetes/jenkins-2026)
 [![Docs](https://img.shields.io/badge/docs-28%20guides-blue?logo=readthedocs&logoColor=white)](docs/)
-[![Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735?logo=keepachangelog&logoColor=white)](CHANGELOG.md) [![Google Drive Media](https://img.shields.io/badge/Google%20Drive-Media%20%26%20Resources-4285F4?logo=googledrive&logoColor=white)](https://drive.google.com/drive/folders/15JQNRSIW8mxaIjQ2AVyua-jzLNjDsZ10?usp=sharing)
+[![Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735?logo=keepachangelog&logoColor=white)](CHANGELOG.md) [![Google Drive Media](https://img.shields.io/badge/Google%20Drive-Media%20%26%20Resources-4285F4?logo=googledrive&logoColor=white)](https://drive.google.com/drive/folders/16gzsce3ZivoLtoabBycytHSY8ceyPfJA?usp=sharing)
 
 <!-- STACK-BADGES:START -->
 **Stack** — everything the platform wires together (feature-flagged axes marked):
@@ -1438,7 +1438,7 @@ To keep this Git repository lightweight, fast to clone, and responsive, all heav
 >
 > All high-resolution drawings, vector diagrams, and video walkthroughs are available in the public shared folder:
 >
-> 🔗 **[Access the Google Drive Shared Folder](https://drive.google.com/drive/folders/15JQNRSIW8mxaIjQ2AVyua-jzLNjDsZ10?usp=sharing)**
+> 🔗 **[Access the Google Drive Shared Folder](https://drive.google.com/drive/folders/16gzsce3ZivoLtoabBycytHSY8ceyPfJA?usp=sharing)**
 >
 > **What you will find inside:**
 > *   **🎬 Video Walkthroughs** — Live screen recordings of the `bootstrap.sh` execution, Karpenter autoscaling demos, and Jenkins/Tekton CI pipeline rollouts.
