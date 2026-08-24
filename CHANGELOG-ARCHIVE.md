@@ -3227,7 +3227,7 @@ tier — taking `observability.mode` to four fully working backends
 - **Zero-Password pgAdmin Login**: Designed a secure automated pgAdmin database connection workflow:
   - Created a cross-namespace RBAC `Role` and `RoleBinding` (`pgadmin-secret-reader`) to grant the `pgadmin` ServiceAccount read-only access to Postgres credentials.
   - Implemented a `setup-pgpass` init container that dynamically queries credentials, escapes colons (`:`) and backslashes (`\`) for `.pgpass` formatting, and writes them with `0600` permissions.
-  - Added a custom Python WSGI middleware copier in `config_local.py` that dynamically replicates the shared `pgpass` file into each user's specific storage directory (e.g. `inafev_gmail.com/pgpass`) on every request.
+  - Added a custom Python WSGI middleware copier in `config_local.py` that dynamically replicates the shared `pgpass` file into each user's specific storage directory (e.g. `user_example_com/pgpass`) on every request.
   - Preconfigured pgAdmin to auto-connect via SSL by setting `SSLMode` to `require`.
 
 ### Security, IAP, & Authentication
