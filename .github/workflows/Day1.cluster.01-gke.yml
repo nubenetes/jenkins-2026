@@ -1211,7 +1211,7 @@ jobs:
       # See docs/102 § Why the per-cloud asymmetry.
       - name: Azure login (managed-azure dashboards)
         if: ${{ inputs.observability_mode == 'managed-azure' }}
-        uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3.0.1
+        uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c # v3.0.2
         with:
           # Prefer App B's client id RESOLVED FROM STATE (drift-proof, set above); fall back to
           # the manually-set secret only when the output was absent. See the durable-auth fix in
@@ -1320,7 +1320,7 @@ jobs:
       # run the publisher (it mints a short-lived AMG service-account token).
       - name: AWS login (managed-aws dashboards)
         if: ${{ inputs.observability_mode == 'managed-aws' && env.AWS_DASHBOARD_PUBLISH_ROLE_ARN != '' }}
-        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
         with:
           role-to-assume: ${{ env.AWS_DASHBOARD_PUBLISH_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || secrets.AWS_REGION }}
