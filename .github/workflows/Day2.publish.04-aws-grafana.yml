@@ -152,7 +152,7 @@ jobs:
       # AMG service-account token with it.
       - name: AWS login
         if: ${{ env.AWS_DASHBOARD_PUBLISH_ROLE_ARN != '' }}
-        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        uses: aws-actions/configure-aws-credentials@cbe3b392738ccf3f987d68400dafcf4b0624a56c # v6.2.4
         with:
           role-to-assume: ${{ env.AWS_DASHBOARD_PUBLISH_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || secrets.AWS_REGION }}
