@@ -237,8 +237,9 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
   - [3.1. Technical Infographics Catalog](#31-technical-infographics-catalog)
   - [3.2. Live Platform Screenshots](#32-live-platform-screenshots)
   - [3.3. Project Media & External Resources](#33-project-media--external-resources)
-- [4. GitHub Actions Workflows](#4-github-actions-workflows)
-- [5. Prerequisites](#5-prerequisites)
+- [4. Repository Structure and Component Catalog](#4-repository-structure-and-component-catalog)
+- [5. GitHub Actions Workflows](#5-github-actions-workflows)
+- [6. Prerequisites](#6-prerequisites)
 
 ---
 
@@ -1439,7 +1440,142 @@ To keep this Git repository lightweight, fast to clone, and responsive, all heav
 
 ---
 
-## 4. GitHub Actions Workflows
+## 4. Repository Structure and Component Catalog
+
+```text
+jenkins-2026/
+├── .github/                          # GitHub Actions CI/CD workflows, automation & PR status guards
+│   └── workflows/                    # 31 lifecycle workflows (Day0, Day1, Day2, Decom) + PR guards
+├── argocd/                           # GitOps delivery plane (ArgoCD Applications & ApplicationSets)
+│   ├── argoworkflows/                # Argo Workflows & Events app-of-apps (vendored upstream manifests)
+│   ├── backstage/                    # Backstage developer portal app-of-apps + CNPG database
+│   ├── githubactions/                # ARC (Actions Runner Controller) app-of-apps (OCI Helm charts)
+│   ├── observability-oss/            # In-cluster OSS observability stack (Prometheus, Loki, Tempo)
+│   ├── platform-config/              # Local Helm chart for static engine-aware RBAC & cluster policies
+│   ├── platform-postgres/            # CloudNativePG operator & pgAdmin management app-of-apps
+│   └── tekton/                       # Tekton Pipelines, Triggers & PaC app-of-apps (vendored manifests)
+├── argoworkflows/                    # Alternative CI engine (ci.engine=argoworkflows)
+│   ├── events/                       # Argo Events EventSource & Sensor manifests for GitHub webhooks
+│   ├── rbac/                         # ServiceAccounts, Roles & Bindings for workflow execution
+│   ├── runs/                         # One-off Workflow manifests for Day1 pre-population & testing
+│   └── templates/                    # WorkflowTemplates implementing the 11-stage microservices CI pipeline
+├── backstage/                        # Backstage developer portal (backstage.enabled=true)
+│   ├── catalog/                      # Software catalog entity descriptors (components, APIs, systems)
+│   ├── packages/                     # App and backend source (customized with engine-aware CI/CD tabs)
+│   └── app-config.yaml               # Core Backstage configuration (auth, proxies, catalog, techdocs)
+├── config/                           # Single source of truth (SSOT) configuration
+│   └── config.yaml                   # Platform target, observability mode, CI engine & feature flags
+├── docs/                             # Comprehensive 28-guide numbered documentation suite & runbooks
+│   ├── 100-BOOTSTRAP.md              # Day0 root-of-trust, bootstrap paradox, remote state bucket
+│   ├── 101-GITHUB_ACTIONS_WORKFLOWS.md # CI/CD naming conventions, matrix, workflow inventory
+│   ├── 201-ARCHITECTURE.md           # System architecture, imperative vs GitOps split, namespaces
+│   ├── 301-OBSERVABILITY.md          # OpenTelemetry correlation, dashboards, 4 observability modes
+│   ├── 401-JENKINS.md                # Jenkins UI, Helm chart, JCasC configuration, MCP plugins
+│   ├── 404-TEKTON.md                 # Tekton Pipelines/Triggers/Dashboard, IAP, PaC port
+│   ├── 405-GITHUB_ACTIONS.md         # ARC Spot runners, scale-to-zero, GitHub App integration
+│   ├── 406-ARGO_WORKFLOWS.md         # Argo Workflows DAG/steps, Argo Events, IAP UI
+│   ├── 501-PLATFORM_OPERATIONS.md    # ArgoCD, Headlamp, Gateway API, IAP, spot placement
+│   ├── 503-NETWORKING.md             # Dataplane V2, WireGuard, VPC-native IP plan, netpols
+│   ├── ...                           # (See Section 1 Document Inventory for full 28-guide index)
+│   ├── infographics/                 # Architectural visual diagrams & conceptual infographics
+│   ├── runbooks/                     # Operational runbooks (disaster recovery, backup/restore)
+│   └── screenshots/                  # Live UI validation screenshots (Grafana, Jenkins, Backstage)
+├── helm/                             # Helm chart value overlays and local chart definitions
+│   ├── backstage/                    # Backstage values overlay (Postgres config, secret mounts)
+│   ├── headlamp/                     # Headlamp Kubernetes UI values overlay & IAP integration
+│   ├── jenkins/                      # Jenkins Helm values overlay (JCasC, plugins, resources)
+│   └── pgadmin/                      # pgAdmin 4 values overlay (IAP auth, zero-password pgpass)
+├── infrastructure/                   # Kubernetes platform infrastructure manifests
+│   ├── compute-classes/              # GKE Node Auto-Provisioning (NAP) Spot ComputeClass (ci-spot)
+│   ├── gateway/                      # Gateway API HTTPRoutes, ReferenceGrants & BackendTLSPolicies
+│   ├── headlamp/                     # Headlamp cluster RBAC and ServiceAccount bindings
+│   ├── networkpolicies*.yaml         # Dataplane V2 (Cilium) zero-trust network segmentation policies
+│   ├── scheduling/                   # ResourceQuotas, LimitRanges, PriorityClasses & node selectors
+│   └── secrets/                      # External Secrets Operator (ESO) ClusterSecretStore definitions
+├── jenkins/                          # Default CI engine assets (ci.engine=jenkins)
+│   ├── casc/                         # JCasC YAML (security realm, clouds, seed jobs, OTel plugin)
+│   └── pipelines/                    # Job DSL seed (seed_jobs.groovy), services.yaml, k6 load scripts
+├── observability/                    # Observability plane configuration
+│   ├── grafana/                      # Custom Grafana dashboard JSON models & alert rule definitions
+│   ├── otel-collector/               # OTel Collector DaemonSet/Deployment values (traces, metrics, logs)
+│   └── otel-operator/                # OpenTelemetry Operator collector CR & auto-instrumentation specs
+├── resources/                        # Shared cross-engine build scripts and tools
+│   ├── patch-app-source.sh           # Build-time patch (JHipster MySQL→Postgres & NoOp cache swap)
+│   └── sign-and-attest-image.sh      # Binary Authorization Cloud KMS image signing & attestation
+├── scripts/                          # Numbered idempotent setup & lifecycle automation scripts
+│   ├── 00-check-prereqs.sh           # CLI dependencies validation (gcloud, kubectl, helm, yq)
+│   ├── 01-namespaces.sh              # Core Kubernetes namespace and secret provisioning
+│   ├── 02-otel-operator.sh           # OpenTelemetry Operator deployment & cert-manager binding
+│   ├── 03-observability.sh           # Observability stack bootstrap (OSS, Cloud, Azure, AWS)
+│   ├── 04-<engine>.sh                # CI engine installers (jenkins, tekton, githubactions, argoworkflows)
+│   ├── 06-<engine>-pipelines.sh      # Pipeline seeders (Job DSL, PaC, WorkflowTemplates, rendered CI)
+│   ├── 07-grafana-dashboards.sh      # Grafana dashboard synchronization and datasource wiring
+│   ├── 08.5-argocd.sh                # ArgoCD GitOps engine installation & root Application apply
+│   ├── 08.6-eso-sync.sh              # External Secrets Operator synchronization & secrets verification
+│   ├── 08.95-backstage.sh            # Backstage portal bootstrap & CNPG database initialization
+│   ├── 09-gateway.sh                 # Gateway API HTTPRoutes & Google Cloud IAP binding
+│   ├── bootstrap.sh                  # Root-of-trust CLI orchestrator (WIF, state bucket, public DNS)
+│   ├── up.sh                         # Sequential cluster and platform bootstrap orchestrator
+│   ├── down.sh                       # Clean symmetric cluster and platform teardown orchestrator
+│   ├── status.sh                     # Platform health check, pod statuses, and NEG readiness inspect
+│   └── lib/                          # Shared library helpers (common.sh, config.sh, secrets.sh)
+├── tekton/                           # Alternative CI engine (ci.engine=tekton)
+│   ├── pac/                          # Pipelines-as-Code Repository custom resources
+│   ├── pipelines/                    # Tekton Pipeline definitions for microservices build & deploy
+│   ├── runs/                         # Ready-to-run PipelineRun manifests for Day1 dashboard pre-population
+│   ├── tasks/                        # Reusable Tekton Tasks (git-clone, maven, kaniko, trivy, semgrep)
+│   └── triggers/                     # Tekton Triggers (EventListener, TriggerBinding, TriggerTemplate)
+├── terraform/                        # Modular Infrastructure as Code (GCS remote state per module)
+│   ├── bootstrap/                    # Day0 root-of-trust (GCS state bucket, WIF pool, permanent DNS)
+│   ├── gateway-bootstrap/            # Persistent external IP, wildcard CertificateMap & DNS records
+│   ├── gke/                          # Throwaway GKE cluster with Dataplane V2 & WireGuard encryption
+│   ├── grafana-cloud-stack/          # Ephemeral Grafana Cloud stack with Terraform-generated slug
+│   ├── grafana-cloud-token/          # Stack-scoped service account and access policy tokens
+│   ├── grafana-cloud-synthetics/     # Synthetic Monitoring HTTP uptime and latency probes
+│   ├── grafana-cloud-gcp/            # Read-only GCP SA for Grafana Cloud hosted metrics scraper
+│   ├── azure-managed-grafana/        # Azure Managed Grafana, Azure Monitor workspace & Entra ID SP
+│   ├── aws-managed-grafana/          # Amazon Managed Grafana, AMP Prometheus workspace & IAM roles
+│   └── workload-identity/            # Standalone GKE Workload Identity Federation utilities
+├── test/                             # Automated testing and verification suite
+│   ├── e2e.sh                        # End-to-end full lifecycle validation (up -> smoke -> down)
+│   ├── smoke-test.sh                 # HTTP endpoint & UI readiness smoke verification
+│   └── validation_gate.sh            # Code validation gate (terraform fmt, shell linters, configs)
+├── vars/                             # Jenkins Groovy shared library (MicroservicesPipeline)
+│   ├── MicroservicesPipeline.groovy  # Canonical multi-stage pipeline orchestration engine
+│   ├── microservicesBuild.groovy     # Maven compilation, unit testing, and dependency resolution
+│   ├── microservicesDeploy.groovy    # GitOps commit & ArgoCD synchronization stage
+│   ├── microservicesImage.groovy     # Container build & push via Jib / Spring Boot / Kaniko
+│   ├── microservicesK6Run.groovy     # Parametrized k6 load testing execution & telemetry export
+│   ├── microservicesSemgrepScan.groovy # Static application security testing (SAST) via Semgrep
+│   ├── microservicesCodeqlScan.groovy  # Advanced semantic code analysis via GitHub CodeQL
+│   └── microservicesTrivyIacScan.groovy # Container vulnerability & IaC scanning via Trivy
+├── CHANGELOG.md                      # Detailed release history and modernization changelog
+├── CONTRIBUTING.md                   # Contributor workflow, GitFlow guidelines, branch policies
+├── GEMINI.md                         # Antigravity agent instructions and platform conventions
+├── LICENSE                           # Open Source License
+└── README.md                         # Master platform documentation and architectural guide
+```
+
+### Component Catalog Matrix
+
+| Subsystem / Layer | Repository Path | Description & Architectural Responsibility | Documentation Guide |
+| :--- | :--- | :--- | :--- |
+| **GitOps Control Plane** | [`argocd/`](argocd/) | Declarative continuous delivery engine managing root `Application` manifests and app-of-apps for all platform components and the microservices `ApplicationSet`. | [501. Platform Operations](./docs/501-PLATFORM_OPERATIONS.md) · [502. GitOps](./docs/502-MICROSERVICES_GITOPS.md) |
+| **CI Engine: Jenkins** *(Default)* | [`jenkins/`](jenkins/), [`vars/`](vars/), [`helm/jenkins/`](helm/jenkins/) | Default CI engine (`ci.engine=jenkins`): official Helm chart + JCasC + Job-DSL seed job + Groovy shared library running builds on dynamic Kubernetes agent pods. | [401. Jenkins](./docs/401-JENKINS.md) · [402. Pipelines as Code](./docs/402-PIPELINES_AS_CODE.md) |
+| **CI Engine: Tekton** | [`tekton/`](tekton/), [`argocd/tekton/`](argocd/tekton/) | Cloud-native alternative CI engine (`ci.engine=tekton`): Tasks, Pipelines, Triggers, Dashboard (IAP), and Pipelines-as-Code (PaC) matching the shared pipeline contract. | [404. Tekton](./docs/404-TEKTON.md) |
+| **CI Engine: GitHub Actions ARC** | [`argocd/githubactions/`](argocd/githubactions/) | Scale-to-zero alternative CI engine (`ci.engine=githubactions`): Actions Runner Controller (ARC) running ephemeral Spot pods on the `ci-spot` NAP ComputeClass. | [405. GitHub Actions](./docs/405-GITHUB_ACTIONS.md) |
+| **CI Engine: Argo Workflows** | [`argoworkflows/`](argoworkflows/), [`argocd/argoworkflows/`](argocd/argoworkflows/) | Workflow-orchestration CI engine (`ci.engine=argoworkflows`): DAG/steps WorkflowTemplates + Argo Events webhook receiver + IAP-protected Argo Server UI. | [406. Argo Workflows](./docs/406-ARGO_WORKFLOWS.md) |
+| **Developer Portal** | [`backstage/`](backstage/), [`helm/backstage/`](helm/backstage/), [`argocd/backstage/`](argocd/backstage/) | Backstage developer portal (`backstage.enabled=true`): unified catalog, engine-aware CI tabs, ArgoCD sync status, monitoring cards, TechDocs, and Scaffolder golden paths. | [505. Backstage](./docs/505-BACKSTAGE.md) |
+| **Infrastructure as Code** | [`terraform/`](terraform/) | Modular Terraform root stacks with remote GCS state: root-of-trust bootstrap, persistent Gateway IP/certs, GKE cluster with Dataplane V2, and Grafana Cloud/Azure/AWS backends. | [100. Bootstrap](./docs/100-BOOTSTRAP.md) · [201. Architecture](./docs/201-ARCHITECTURE.md) |
+| **Full-Stack Observability** | [`observability/`](observability/), [`argocd/observability-oss/`](argocd/observability-oss/) | OTel Operator auto-instrumentation, OTel Collector fanning out telemetry to Grafana (Cloud, OSS, Azure, AWS), plus custom Grafana dashboards and alerts. | [301. Observability](./docs/301-OBSERVABILITY.md) |
+| **Traffic & Load Testing** | [`jenkins/pipelines/k6/`](jenkins/pipelines/k6/) | Parametrizable k6 traffic engine: single `K6SIM_*` contract, 6 workload profiles (smoke, load, stress, soak, spike, breakpoint), committed presets, and OTLP telemetry export. | [302. k6 Load Testing](./docs/302-K6_LOAD_TESTING.md) |
+| **Platform Infrastructure** | [`infrastructure/`](infrastructure/) | GKE Gateway API HTTPRoutes/ReferenceGrants, Dataplane V2 (Cilium) NetworkPolicies, Spot ComputeClasses (`ci-spot`), ResourceQuotas, and External Secrets (ESO). | [503. Networking](./docs/503-NETWORKING.md) · [504. Backend TLS](./docs/504-BACKEND_TLS.md) |
+| **Lifecycle & Setup Automation** | [`scripts/`](scripts/), [`config/`](config/) | Idempotent numbered setup scripts (`00` to `09`), one-click cluster orchestrator (`up.sh` / `down.sh`), root bootstrap (`bootstrap.sh`), and the SSOT `config.yaml`. | [101. Workflows](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md) · [901. Local Development](./docs/901-LOCAL_DEVELOPMENT.md) |
+| **DevSecOps & Supply Chain** | [`resources/`](resources/), [`test/`](test/) | Build-time patches, Semgrep SAST, CodeQL, Trivy container/IaC scans, Cloud KMS Binary Authorization signing/attestation, and automated end-to-end testing. | [601. DevSecOps](./docs/601-DEVSECOPS.md) · [507. Binary Authorization](./docs/507-BINARY-AUTHORIZATION.md) |
+
+---
+
+## 5. GitHub Actions Workflows
 
 All **31 lifecycle workflows** live in [`.github/workflows/`](.github/workflows/) following the `DayN.tier.ZZ-resource` naming convention (the three repo-hygiene checks — [`gitflow-guard.yml`](.github/workflows/gitflow-guard.yml), [`terraform-validate.yml`](.github/workflows/terraform-validate.yml), [`mermaid-validate.yml`](.github/workflows/mermaid-validate.yml) — sit outside the scheme) — **alphabetical sort order = correct execution order** for the **Create** (`Day0`→`Day1`) and **Decom** phases. Within **Day2** the tiers (`redeploy`/`publish`/`traffic`/`registry`/`scale`) are independent **categories**, not an ordered sequence — each workflow is idempotent and dispatched on its own ([why](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md#day2-ordering-tiers-are-categories-not-stages)). See [101. GitHub Actions Workflows](./docs/101-GITHUB_ACTIONS_WORKFLOWS.md) for the full inventory with clickable GitHub Actions links.
 
@@ -1470,7 +1606,7 @@ All **31 lifecycle workflows** live in [`.github/workflows/`](.github/workflows/
 
 ---
 
-## 5. Prerequisites
+## 6. Prerequisites
 
 - An existing GKE Kubernetes cluster (`kubectl` context pointing at it).
 - `kubectl`, `helm` (v3), [`yq`](https://github.com/mikefarah/yq) (Go version), `git`, `bash`.
