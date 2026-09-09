@@ -84,9 +84,9 @@ spec:
       # annotation entirely (same reason as the cnpg-operator child in
       # argocd/platform-postgres).
       - ServerSideApply=true
-      # NOTE: Replace=true was added ONLY for ArgoCD v3.5.0-rc1, where ServerSideApply
+      # NOTE: Replace=true was previously tested for ArgoCD v3.5.0-rc1, where ServerSideApply
       # was not honored for the oversized CRD apply ("metadata.annotations: Too long").
-      # On the pinned STABLE 3.4.x, ServerSideApply works (verified: managed resources
+      # On the pinned STABLE 3.5.x, ServerSideApply works (verified: managed resources
       # carry no last-applied annotation), and Replace=true is actively HARMFUL: with
       # selfHeal it `kubectl replace`s all ~119 resources every cycle, the API server
       # re-defaults the fields replace strips → perpetual OutOfSync → endless re-sync

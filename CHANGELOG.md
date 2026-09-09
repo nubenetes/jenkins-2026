@@ -21,6 +21,44 @@ All notable changes to **jenkins-2026** are documented here, following
 
 _Nothing yet — add entries here as PRs merge._
 
+## [v1.7.0] - 2026-09-09
+
+_Upgrade ArgoCD to stable v3.5.2 GA (Helm chart 10.8.4) and introduce the Repository Structure and Component Catalog._
+
+_Upgrades the platform continuous delivery engine to ArgoCD v3.5.2 GA alongside the official argo-cd Helm chart 10.8.4, transitioning from the prior 3.4.x hold following upstream GA stability, and introduces a comprehensive Repository Structure and Component Catalog to the root documentation._
+
+### Added
+- **Repository Structure and Component Catalog in README.md** ([`README.md`](README.md)): Added a categorized, architectural catalog to `README.md` following the standard platform specification. Details the repository directory layout, core platform components (CI engines, GitOps delivery, observability stack, ingress/security, data tier, developer portal), and deployment mechanisms.
+
+### Changed
+- **ArgoCD upgraded to stable v3.5.2 GA and Helm chart 10.8.4** ([`config/config.yaml`](config/config.yaml), [`docs/602-VERSION_PINNING.md`](docs/602-VERSION_PINNING.md)):
+  - Updated `config/config.yaml` `argocd` knobs to `version: "v3.5.2"`, `version_constraint: "3.5.x"`, and `chartVersion: "10.8.4"`.
+  - Updated fallback defaults in `scripts/lib/config.sh` for `J2026_ARGOCD_VERSION` (`v3.5.2`), `J2026_ARGOCD_VERSION_CONSTRAINT` (`3.5.x`), and `J2026_ARGOCD_CHART_VERSION` (`10.8.4`).
+  - Updated the argocd CLI binary download URL in `jenkins/pipelines/seed/microservices-ci.yml.tmpl` to `v3.5.2` matching the server runtime.
+  - Documented ArgoCD 3.5.x architectural notes and migration guidance in [`argocd/README.md`](argocd/README.md) covering React 19 web console compliance, deprecation of legacy GnuPG signature fields in favor of the Source Integrity Result subsystem, and the updated gRPC `EventList` compilation schema.
+  - Aligned documentation, architecture diagrams, and values comments across `README.md`, `CLAUDE.md`, `GEMINI.md`, `docs/201-ARCHITECTURE.md`, `docs/501-PLATFORM_OPERATIONS.md`, `argocd/observability-oss/templates/kube-prometheus-stack.yaml`, and `observability/grafana/values-oss.yaml` with the `3.5.x` policy.
+- **Workflow dependency updates**: Bumped GitHub Actions dependencies including `azure/login` in the github-actions Dependabot group.
+
+## [v1.6.3] - 2026-07-29
+
+_Robust Jenkins plugin in Backstage & Dockerfile fix._
+
+### Fixed
+- **Robustness in Backstage's Jenkins Integration**: Resolved Backstage CI/CD tab crash when `microservices-develop` track is disabled by patching `@backstage-community/plugin-jenkins-backend` to tolerate 404s for missing jobs.
+- **Dockerfile build and Yarn 4 patches support**: Modified `packages/backend/Dockerfile` to copy `.yarn/` before dependency resolution so Yarn 4 locates and applies patches during image build.
+
+## [v1.6.2] - 2026-07-19
+
+_Image retention script hardening and develop track enhancements._
+
+### Changed
+- Replaced buggy `actions/delete-package-versions` action in image retention workflow with a robust bash script using `gh api` and `jq`.
+- Configured workflow to authenticate package API queries using `secrets.REGISTRY_PASSWORD`.
+- Updated Backstage catalog definitions to use `argocd/app-selector` annotation.
+- Updated Jenkins and GHA seed scripts to trigger develop branch builds on Day1 when `developTrackEnabled: true`.
+- Updated Backstage catalog to use multiple Jenkins job annotations (`gateway,gateway-develop`).
+- Imported and renamed 10 new screenshots displaying develop-tier views.
+
 ## [v1.6.1] - 2026-07-19
 
 _Corrects the Git LFS troubleshooting entry with this organisation's real quota and where the bandwidth actually goes._
@@ -479,6 +517,9 @@ Every milestone release (git tag + GitHub release), newest first. Full detail fo
 
 | Version | Date | Theme |
 |---|---|---|
+| [v1.7.0](#v170---2026-09-09) | 2026-09-09 | **ArgoCD 3.5.2 GA Upgrade & Component Catalog** — Upgraded ArgoCD to stable v3.5.2 GA and Helm chart 10.8.4 across all configuration, automation, and documentation files; added the Repository Structure and Component Catalog to README.md |
+| [v1.6.3](#v163---2026-07-29) | 2026-07-29 | **Robust Backstage Jenkins plugin & Dockerfile fix** — Tolerate missing develop jobs keylessly and ensure Yarn 4 patches apply during Dockerfile production install |
+| [v1.6.2](#v162---2026-07-19) | 2026-07-19 | **Image retention hardening & develop track enhancements** — Robust gh api package deletion, dynamic develop-tier app-selector in Backstage, Day1 develop build triggers, and develop screenshot suite |
 | [v1.6.1](#v161---2026-07-19) | 2026-07-19 | **Git LFS quota documentation corrected** — the docs/902 *"exceeded its LFS budget"* entry cited GitHub's free 1 GB tier instead of this organisation's real **10 GB + 10 GB**, reading as though the platform sat near a cap. It now carries the measured figures (storage **3%**, bandwidth **45%**), names **bandwidth rather than storage** as the metric to watch, shows the cost is dominated by the *infographics* (4.44 MB each) and not the v1.6.0 *screenshots* (0.40 MB each), notes that `git lfs push` does not consume bandwidth, and **retracts** the unfounded warning that a support request was needed to reclaim the purged NotebookLM objects |
 | [v1.6.0](#v160---2026-07-18) | 2026-07-18 | **Zero-trust, supply chain, and the portal's golden path** — two opt-in security flags shipped and proven against a real cluster (Cloud Service Mesh as managed Istio on the standalone SKU, mutually exclusive with backend-TLS by a fail-fast gate; Binary Authorization with `enforce` demonstrated admitting a signed image and denying the very same image unsigned), image signing closed on **all four** CI engines, the Backstage *"Onboard an existing service"* Scaffolder golden path, Backstage Monitoring made to survive backend-TLS across a five-bug saga, the prepull/node-exporter DaemonSets scoped off the tiny default-NAP overflow nodes, and `docs/screenshots/` — 83 captioned, LFS-tracked screenshots of the running platform |
 | [v1.5.0](#v150---2026-07-13) | 2026-07-13 | **Backstage grows up: Monitoring, Security, Scorecard, Home page + DORA metrics** — four new EntityPage tabs (Grafana per `observability.mode`, GitHub Code Scanning/Dependabot, an RHDH open-PRs KPI, a plain Home page), an engine-neutral ArgoCD-anchored DORA dashboard, a structural fix for the Grafana-token mint-race, a cross-engine SARIF-routing bugfix, and reproducibility hardening (`yarn.lock` + immutable installs, GHCR retention for the Backstage image, dead-file cleanup) |

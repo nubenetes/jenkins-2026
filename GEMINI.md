@@ -34,7 +34,7 @@ conventions:
 - [`502-MICROSERVICES_GITOPS.md`](docs/502-MICROSERVICES_GITOPS.md) — Helm vs Kustomize, resource lifecycle design decisions
 - [`503-NETWORKING.md`](docs/503-NETWORKING.md) — network architecture, landing zone & topology (single-VPC, not hub-spoke + rationale), VPC/subnet + pod/service CIDR plan, north-south ingress/egress, east-west (VPC-native + Dataplane V2 + WireGuard), NetworkPolicy segmentation
 - [`601-DEVSECOPS.md`](docs/601-DEVSECOPS.md) — Semgrep, CodeQL, Trivy, warnings-ng
-- [`602-VERSION_PINNING.md`](docs/602-VERSION_PINNING.md) — version-pinning policy + matrix (charts/images/actions/Terraform), pros/cons, the deliberate ArgoCD 3.4.x auto-tracking exception (pinned off the buggy 3.5.0-rc until 3.5 GA), how to bump a pin
+- [`602-VERSION_PINNING.md`](docs/602-VERSION_PINNING.md) — version-pinning policy + matrix (charts/images/actions/Terraform), pros/cons, the ArgoCD 3.5.x auto-tracking policy, how to bump a pin
 - [`901-LOCAL_DEVELOPMENT.md`](docs/901-LOCAL_DEVELOPMENT.md) — prerequisites, quick start, e2e test
 - [`902-TROUBLESHOOTING.md`](docs/902-TROUBLESHOOTING.md) — common issues
 - [`903-GLOSSARY.md`](docs/903-GLOSSARY.md) — single-lookup glossary of the vocabulary recurring across all guides: lifecycle (Day0/Day1/Day2/Decom, `DayN.tier.ZZ`, `stable`/`develop` tiers), platform acronyms (WIF · OIDC · IAP · NEG · NAP · ARC · PaC · JCasC · ESO · CNPG · Dataplane V2 · app-of-apps · AppSet · JHipster · OTel/OTLP), and repo terms of art (seed job, shared library `vars/`, `retire_ci_engine`, imperative-vs-GitOps planes, self-hosted state, the bootstrap paradox, the `K6SIM_*` contract)

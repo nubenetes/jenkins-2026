@@ -92,7 +92,7 @@ jobs:
       # `set -eu`), the argocd CLI (the sync step) and kubectl (the OTel Self-Heal step +
       # the backend-TLS auto-detect — which, with kubectl absent, silently took the
       # plaintext branch every run). Install all three, pinned: yq to the repo standard
-      # (v4.53.3, same as Day1), argocd to the running server (v3.4.4) so `app sync`/
+      # (v4.53.3, same as Day1), argocd to the running server (v3.5.2) so `app sync`/
       # `app wait` speak the same API, kubectl to the repo standard (v1.31.3 — the
       # alpine/k8s tag the Tekton/Argo tasks run). kubectl needs no kubeconfig: the runner
       # pod's ServiceAccount token is mounted and carries the RBAC (docs/405 § RBAC).
@@ -102,7 +102,7 @@ jobs:
         run: |
           mkdir -p "$HOME/.local/bin"
           curl -fsSL https://github.com/mikefarah/yq/releases/download/v4.53.3/yq_linux_amd64 -o "$HOME/.local/bin/yq"
-          curl -fsSL https://github.com/argoproj/argo-cd/releases/download/v3.4.4/argocd-linux-amd64 -o "$HOME/.local/bin/argocd"
+          curl -fsSL https://github.com/argoproj/argo-cd/releases/download/v3.5.2/argocd-linux-amd64 -o "$HOME/.local/bin/argocd"
           curl -fsSL https://dl.k8s.io/release/v1.31.3/bin/linux/amd64/kubectl -o "$HOME/.local/bin/kubectl"
           chmod +x "$HOME/.local/bin/yq" "$HOME/.local/bin/argocd" "$HOME/.local/bin/kubectl"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
