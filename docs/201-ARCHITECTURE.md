@@ -138,7 +138,7 @@ flowchart TB
 
       subgraph CP["L3 · Control plane (GKE)"]
         direction TB
-        ACD["ArgoCD 3.4.x (always the CD engine)<br/>1 AppSet · app-of-apps · single apps"]:::ctrl
+        ACD["ArgoCD 3.5.x (always the CD engine)<br/>1 AppSet · app-of-apps · single apps"]:::ctrl
         subgraph CIENG["CIENG · pick EXACTLY ONE (ci.engine)"]
           direction TB
           CONTRACT["shared ~11-stage contract<br/>patch-app-source.sh · services.yaml"]:::contract
@@ -589,7 +589,7 @@ one of these (each is a hard constraint, not a preference):
 | **Static platform RBAC** (per-engine CI-SA `edit` bindings — Jenkins / Tekton / ARC runners / Argo Workflows — pgAdmin secret-reader, the per-engine OTel-instrumentation `ClusterRole`s) | **GitOps** | [`argocd/platform-config/`](../argocd/platform-config/) — planted by `08.5` | Timing-insensitive (consumers run long after sync); textbook GitOps. *Migrated here from `01`/`02` — see [argocd/README](../argocd/README.md).* |
 | ArgoCD itself · OTel Operator · otel-collector | **Imperative** | `08.5` / `02` / `03` `helm upgrade --install` | Bootstrap paradox (#1); the collector is also runtime-config-coupled (#4). |
 | The ArgoCD `Application`/`AppSet`/`AppProject`/app-of-apps manifests (incl. [`argocd/microservices-project.yaml`](../argocd/microservices-project.yaml)) | **Imperative→GitOps** | `08.5` / `03` `kubectl apply` (sed-substituted) | *Planting* the root apps **is** how GitOps starts (the app-of-apps bootstrap). |
-| ArgoCD version patch-watcher ([`argocd/argocd-version-patch-watcher.yaml`](../argocd/argocd-version-patch-watcher.yaml) — CronJob + RBAC) | **Imperative** | `08.5` `kubectl apply` | Daily watcher that tracks the latest ArgoCD `3.4.x` patch within the pinned minor (see [602](./602-VERSION_PINNING.md)); a cluster-side CronJob, not a GitOps app. |
+| ArgoCD version patch-watcher ([`argocd/argocd-version-patch-watcher.yaml`](../argocd/argocd-version-patch-watcher.yaml) — CronJob + RBAC) | **Imperative** | `08.5` `kubectl apply` | Daily watcher that tracks the latest ArgoCD `3.5.x` patch within the pinned minor (see [602](./602-VERSION_PINNING.md)); a cluster-side CronJob, not a GitOps app. |
 | ArgoCD self-config (`argocd-cm`/`argocd-rbac-cm` OIDC/RBAC/CI account) | **Imperative** | `08.5` `kubectl patch` | Bootstrap paradox (#1) — how the engine learns to log in. |
 | All in-cluster `Secret`s (jenkins/headlamp/IAP/tekton/**arc-github-app**/**arc-registry**/**argoworkflows-registry**/**argoworkflows-git**/**argoworkflows-github-webhook**/**argoworkflows-argocd**/ghcr/grafana-ds…) | **Imperative** *(or ESO)* | `01` / `03` / `08.5`; `08.6` in `eso` mode | Secret values never in git (#2). `eso` makes *delivery* GitOps-style. The ARC GitHub App creds (`arc-github-app`) + ghcr imagePullSecret (`arc-registry`) follow the same rule as the Tekton `tekton-registry`/`tekton-git` Secrets — built by `01-namespaces.sh` in `arc-runners` (ESO parity wired in `08.6`). The Argo Workflows engine follows the same rule: `argoworkflows-registry` (ghcr) + `argoworkflows-git` (basic-auth) + `k6-cloud` in `argo-ci` and `argoworkflows-github-webhook` (HMAC) in `argo-events` are built by `01-namespaces.sh`, and `argoworkflows-argocd` (ArgoCD API token) in `argo-ci` by `08.5-argocd.sh` (ESO parity in `08.6`). |
 | Gateway · HTTPRoutes · HealthCheckPolicies · GCPBackendPolicies (IAP) | **Imperative** | [`09-gateway.sh`](../scripts/09-gateway.sh) → `.generated/` | Generated per-run with the live domain/IP/IAP-client-id (#3). |

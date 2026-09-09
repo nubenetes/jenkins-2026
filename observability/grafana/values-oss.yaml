@@ -21,7 +21,7 @@
 #   recognise a completed hook Job's health under k8s 1.35 Job conditions, so the Job
 #   succeeded yet ArgoCD waited forever ("waiting for completion of hook
 #   .../admission-create") and wedged every sync of this app. ArgoCD is now pinned to
-#   STABLE 3.4.x (config/config.yaml argocd.*), which handles the hooks correctly, so
+#   STABLE 3.5.x (config/config.yaml argocd.*), which handles the hooks correctly, so
 #   the admission webhook is RE-ENABLED. Re-disable it (prometheusOperator.
 #   admissionWebhooks.enabled: false) only if you bump ArgoCD back onto a buggy
 #   pre-release. See docs/602 + docs/902.

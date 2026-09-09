@@ -59,7 +59,7 @@ So a deploy is: *CI writes a tag → ArgoCD syncs → the new pod comes up behin
 <details>
 <summary>🔴 For specialists — how each plane is wired here</summary>
 
-- **Delivery:** ArgoCD (auto-tracking the latest **3.4.x** via a daily CronJob watcher) runs single `Application`s (microservices `ApplicationSet`→`microservices-stable`, `headlamp`, `external-secrets`, `jenkins`, `argo-rollouts`, and `platform-config` — the engine-aware static platform RBAC) plus **app-of-apps** (`platform-postgres` → CNPG operator + pgAdmin, `backstage` → the portal's CNPG db + chart ([505](./505-BACKSTAGE.md)), `observability-oss`, and the active CI engine's — `tekton` / `githubactions` / `argoworkflows`). The four CI engines (`ci.engine`: **Jenkins** default · **Tekton** · **GitHub Actions (ARC)** · **Argo Workflows**) are mutually exclusive; a scoped ArgoCD account + API token lets the pipeline `argocd app sync --wait`. All apps `selfHeal: true` + `prune: true`.
+- **Delivery:** ArgoCD (auto-tracking the latest **3.5.x** via a daily CronJob watcher) runs single `Application`s (microservices `ApplicationSet`→`microservices-stable`, `headlamp`, `external-secrets`, `jenkins`, `argo-rollouts`, and `platform-config` — the engine-aware static platform RBAC) plus **app-of-apps** (`platform-postgres` → CNPG operator + pgAdmin, `backstage` → the portal's CNPG db + chart ([505](./505-BACKSTAGE.md)), `observability-oss`, and the active CI engine's — `tekton` / `githubactions` / `argoworkflows`). The four CI engines (`ci.engine`: **Jenkins** default · **Tekton** · **GitHub Actions (ARC)** · **Argo Workflows**) are mutually exclusive; a scoped ArgoCD account + API token lets the pipeline `argocd app sync --wait`. All apps `selfHeal: true` + `prune: true`.
 - **Ingress:** one `Gateway` (`gatewayClassName: gke-l7-global-external-managed`) = one global external HTTPS LB + one Google-managed wildcard cert + one `HTTPRoute` per app; TLS terminates at the LB — the LB→pod hop is plain HTTP (no backend re-encryption; see §3 Zero-Trust). Opt-in via `gateway.baseDomain` (empty disables it; `09-gateway.sh` no-ops off-GKE).
 - **Edge identity:** IAP gates `jenkins`/`argocd`/`headlamp`/`pgadmin`/`backstage`/`grafana(oss)`; access = the emails granted `roles/iap.httpsResourceAccessor` (reuses `HEADLAMP_ADMIN_EMAILS`). Backstage goes one step further than the header-trusting authproxy pattern: its `gcpIap` provider **verifies the signed IAP JWT** in-app ([505](./505-BACKSTAGE.md)). The `microservices` host is intentionally public. ArgoCD is IAP-fronted via a **Dex `authproxy`** connector that trusts IAP's `X-Goog-Authenticated-User-Email` header — single sign-on (no double login) with per-user email RBAC; because authproxy trusts that header un-verified, the `argocd-baseline` NetworkPolicy restricts argocd-server `:8080` to the LB + CI namespaces (header-spoof mitigation).
 - **Security inside:** Dataplane V2 (`datapath_provider = ADVANCED_DATAPATH`) is what makes NetworkPolicies *enforce*; sensitive namespaces are `default-deny` + curated allowlists (see the matrix below). `in_transit_encryption_config` adds transparent WireGuard inter-node pod encryption (transport, not mTLS identity). Workload Identity Federation removes all static SA JSON keys; ESO syncs Secret Manager → namespaced Secrets. Dataplane V2 + WireGuard are **immutable** cluster fields (changing them recreates the cluster).
@@ -92,7 +92,7 @@ The deployment lifecycle is managed by **ArgoCD**. Application manifests are sto
 >
 > `platform-config` renders the local [`argocd/platform-config/`](../argocd/platform-config/) Helm chart — the engine-aware static platform **RBAC** (CI-engine SA `edit` bindings, pgAdmin secret-reader, the OTel-instrumentation `ClusterRole`), GitOps-owned since it moved out of `01-namespaces.sh` / `02-otel-operator.sh`; `ciEngine` / `developTrackEnabled` are substituted by `08.5-argocd.sh` so only the active engine's RBAC renders. NetworkPolicies + quotas deliberately stay script-applied (Dataplane V2 timing).
 >
-> Not an `Application`, but applied alongside them: [`argocd/argocd-version-patch-watcher.yaml`](../argocd/argocd-version-patch-watcher.yaml) — a daily `CronJob` in the `argocd` namespace that keeps ArgoCD auto-tracking the latest **3.4.x** patch (see [602 § version pinning](./602-VERSION_PINNING.md)).
+> Not an `Application`, but applied alongside them: [`argocd/argocd-version-patch-watcher.yaml`](../argocd/argocd-version-patch-watcher.yaml) — a daily `CronJob` in the `argocd` namespace that keeps ArgoCD auto-tracking the latest **3.5.x** patch (see [602 § version pinning](./602-VERSION_PINNING.md)).
 
 <details>
 <summary>📊 ArgoCD application inventory & app-of-apps tree</summary>
@@ -127,13 +127,13 @@ flowchart TB
 
   argocd --> appset & headlamp & eso & jenkins & rollouts & pcfg
   argocd --> pp & oss & tk & gha & awf
-  watcher[[daily CronJob<br/>auto-track 3.4.x]] -.-> argocd
+  watcher[[daily CronJob<br/>auto-track 3.5.x]] -.-> argocd
   classDef root fill:#eef,stroke:#66c;
 ```
 
 </details>
 
-**Reading it —** ArgoCD owns two kinds of children. **Single `Application`s** map one chart/path to one namespace (the `microservices` `ApplicationSet` is the exception — it *generates* `microservices-stable`, and a `microservices-develop` when the develop track is on). **App-of-apps** are small Helm charts whose only job is to render a *family* of correlated children, so repo/branch/version flow down in one place — used where components must move together (Postgres operator+UI, the OSS stack, and each CI engine's control plane). The dashed watcher keeps ArgoCD itself on the latest 3.4.x patch. Engine/mode flags gate the rest: `observability-oss` on `observability.mode=oss`, and exactly one CI engine on `ci.engine` — `jenkins` (single `Application`) / `tekton` / `githubactions` / `argoworkflows` (app-of-apps).
+**Reading it —** ArgoCD owns two kinds of children. **Single `Application`s** map one chart/path to one namespace (the `microservices` `ApplicationSet` is the exception — it *generates* `microservices-stable`, and a `microservices-develop` when the develop track is on). **App-of-apps** are small Helm charts whose only job is to render a *family* of correlated children, so repo/branch/version flow down in one place — used where components must move together (Postgres operator+UI, the OSS stack, and each CI engine's control plane). The dashed watcher keeps ArgoCD itself on the latest 3.5.x patch. Engine/mode flags gate the rest: `observability-oss` on `observability.mode=oss`, and exactly one CI engine on `ci.engine` — `jenkins` (single `Application`) / `tekton` / `githubactions` / `argoworkflows` (app-of-apps).
 
 ### Security & Integration
 

@@ -530,7 +530,7 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 **[602 · Version Pinning](./docs/602-VERSION_PINNING.md)**
 - [Why pin — and the trade-off](./docs/602-VERSION_PINNING.md#why-pin--and-the-trade-off)
 - [The matrix](./docs/602-VERSION_PINNING.md#the-matrix)
-- [The ArgoCD version policy — pinned to stable 3.4.x](./docs/602-VERSION_PINNING.md#the-argocd-version-policy--pinned-to-stable-34x)
+- [The ArgoCD version policy — pinned to stable 3.5.x](./docs/602-VERSION_PINNING.md#the-argocd-version-policy--pinned-to-stable-35x)
 - [GitHub Actions: SHA pins + Dependabot](./docs/602-VERSION_PINNING.md#github-actions-sha-pins--dependabot)
 - [How to bump a pin](./docs/602-VERSION_PINNING.md#how-to-bump-a-pin)
 
@@ -632,7 +632,7 @@ Durable default in [`config/config.yaml`](config/config.yaml); per-run override 
 | **506** | Platform ops | [Service Mesh (Cloud Service Mesh / CSM)](./docs/506-SERVICE-MESH.md) | **Cloud Service Mesh (CSM)** standalone **opt-in** (`serviceMesh.mode=cloud-service-mesh`) — managed Istio via the **standalone SKU** (not GKE Enterprise, dissolved 2025-09): identity **mTLS** + **L7 authZ** east-west, the **why-CSM / why-NOT-Istio-Traefik-other-meshes** decision record, **mutually exclusive** with backend TLS (504), and the **per-mesh-client** cost model |
 | **507** | Platform ops | [Binary Authorization](./docs/507-BINARY-AUTHORIZATION.md) | **Supply-chain admission control** **opt-in** (`security.binaryAuthorization.enabled`) — GKE only admits images carrying a **Cloud-KMS-signed attestation** from this project's pipeline; closes the **DevSecOps** (601) scan→deploy loop; **`dryrun`(default) / `enforce`** modes; **orthogonal** to serviceMesh/backendTls |
 | **601** | Security | [DevSecOps](./docs/601-DEVSECOPS.md) | **Semgrep** SAST, **CodeQL** deep SAST, **Trivy** IaC + image scanning, **`warnings-ng`** plugin SARIF dashboards in Jenkins |
-| **602** | Security | [Version Pinning](./docs/602-VERSION_PINNING.md) | **Version-pinning policy + matrix** (charts, images, `yq`, GitHub Actions SHAs, Terraform lockfiles), pros/cons, the deliberate **ArgoCD 3.4.x auto-tracking exception** (off the buggy 3.5.0-rc), how to bump a pin |
+| **602** | Security | [Version Pinning](./docs/602-VERSION_PINNING.md) | **Version-pinning policy + matrix** (charts, images, `yq`, GitHub Actions SHAs, Terraform lockfiles), pros/cons, the deliberate **ArgoCD 3.5.x auto-tracking policy**, how to bump a pin |
 | **901** | Reference | [Local Development](./docs/901-LOCAL_DEVELOPMENT.md) | **Prerequisites**, **quick start**, step-by-step deployment guide, automated **e2e test** ([`test/e2e.sh`](test/e2e.sh)), **resource quotas & QoS**, Terraform version |
 | **902** | Reference | [Troubleshooting](./docs/902-TROUBLESHOOTING.md) | **Common issues**, ArgoCD OIDC, Terraform & CI, **Jenkins & GitOps push authentication failures** |
 | **903** | Reference | [Glossary](./docs/903-GLOSSARY.md) | Single-lookup **glossary** of the vocabulary recurring across every guide: **lifecycle** (Day0/Day1/Day2/Decom, `DayN.tier.ZZ`, tier, ZZ, the two teardown umbrellas, `stable`/`develop` tiers), **platform acronyms** (WIF · OIDC · IAP · NEG · NAP · ComputeClass · ARC · PaC · JCasC · ESO · CNPG · Dataplane V2 · app-of-apps · AppSet · JHipster · OTel/OTLP), and **repo terms of art** (seed job, shared library `vars/`, `retire_ci_engine`, imperative-vs-GitOps planes, self-hosted state, the bootstrap paradox, the `K6SIM_*` contract) — each one line + a link to its owning doc |
@@ -734,7 +734,7 @@ flowchart TB
 
       subgraph CP["L3 · Control plane (GKE)"]
         direction TB
-        ACD["ArgoCD 3.4.x (always the CD engine)<br/>1 AppSet · app-of-apps · single apps"]:::ctrl
+        ACD["ArgoCD 3.5.x (always the CD engine)<br/>1 AppSet · app-of-apps · single apps"]:::ctrl
         subgraph CIENG["CIENG · pick EXACTLY ONE (ci.engine)"]
           direction TB
           CONTRACT["shared ~11-stage contract<br/>patch-app-source.sh · services.yaml"]:::contract
