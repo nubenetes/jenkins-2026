@@ -72,10 +72,22 @@ jobs:
           pkg="jenkins-2026-microservices%2F${{ matrix.service }}"
           echo "Fetching versions for package: ${pkg}"
           
-          versions_json="$(gh api "orgs/nubenetes/packages/container/${pkg}/versions?per_page=100" 2>/dev/null || true)"
-          
-          if [[ -z "${versions_json}" || "${versions_json}" == "[]" ]]; then
-            echo "No versions found or package does not exist."
+          if ! versions_json="$(gh api "orgs/nubenetes/packages/container/${pkg}/versions?per_page=100" 2>&1)"; then
+            if echo "${versions_json}" | grep -qE "HTTP 404|Package not found"; then
+              echo "Package ${pkg} does not exist in registry."
+              exit 0
+            fi
+            echo "::error::Failed to fetch versions for package ${pkg}: ${versions_json}"
+            exit 1
+          fi
+
+          if ! echo "${versions_json}" | jq -e 'type == "array"' >/dev/null 2>&1; then
+            echo "::error::API response for ${pkg} is not a valid JSON array: ${versions_json}"
+            exit 1
+          fi
+
+          if [[ "${versions_json}" == "[]" ]]; then
+            echo "No versions found for package ${pkg}."
             exit 0
           fi
           
@@ -163,12 +175,31 @@ jobs:
             fi
           done
 
+          pkg="jenkins-2026-backstage"
+          echo "Fetching backstage versions for tag protection: ${pkg}"
+
+          if ! versions_json="$(gh api "orgs/nubenetes/packages/container/${pkg}/versions?per_page=100" 2>&1)"; then
+            if echo "${versions_json}" | grep -qE "HTTP 404|Package not found"; then
+              echo "Package ${pkg} does not exist in registry - nothing to protect or prune."
+              echo "package_found=false" >> "${GITHUB_OUTPUT}"
+              echo "ignore_regex=^$" >> "${GITHUB_OUTPUT}"
+              exit 0
+            fi
+            echo "::error::Failed to fetch versions for package ${pkg}: ${versions_json}"
+            exit 1
+          fi
+
+          if ! echo "${versions_json}" | jq -e 'type == "array"' >/dev/null 2>&1; then
+            echo "::error::API response for ${pkg} is not a valid JSON array: ${versions_json}"
+            exit 1
+          fi
+
+          echo "package_found=true" >> "${GITHUB_OUTPUT}"
+
           digests=""
           for tag in ${protect_tags}; do
-            digest="$(gh api "orgs/nubenetes/packages/container/jenkins-2026-backstage/versions?per_page=100" \
-              --jq ".[] | select(.metadata.container.tags[]? == \"${tag}\") | .name" 2>/dev/null \
-              | head -n1 || true)"
-            if [[ -n "${digest}" ]]; then
+            digest="$(echo "${versions_json}" | jq -r --arg t "${tag}" '.[] | select((.metadata.container.tags // [])[]? == $t) | .name' | head -n1 || true)"
+            if [[ -n "${digest}" && "${digest}" != "null" ]]; then
               echo "Protecting tag '${tag}' -> ${digest}"
               digests="${digests} ${digest}"
             else
@@ -187,6 +218,7 @@ jobs:
           echo "ignore_regex=${regex}" >> "${GITHUB_OUTPUT}"
 
       - name: Prune old backstage versions
+        if: steps.protect.outputs.package_found != 'false'
         env:
           GH_TOKEN: ${{ secrets.REGISTRY_PASSWORD || github.token }}
           IGNORE_REGEX: ${{ steps.protect.outputs.ignore_regex }}
@@ -195,10 +227,22 @@ jobs:
           pkg="jenkins-2026-backstage"
           echo "Fetching versions for package: ${pkg}"
           
-          versions_json="$(gh api "orgs/nubenetes/packages/container/${pkg}/versions?per_page=100" 2>/dev/null || true)"
-          
-          if [[ -z "${versions_json}" || "${versions_json}" == "[]" ]]; then
-            echo "No versions found or package does not exist."
+          if ! versions_json="$(gh api "orgs/nubenetes/packages/container/${pkg}/versions?per_page=100" 2>&1)"; then
+            if echo "${versions_json}" | grep -qE "HTTP 404|Package not found"; then
+              echo "Package ${pkg} does not exist or has no versions."
+              exit 0
+            fi
+            echo "::error::Failed to fetch versions for package ${pkg}: ${versions_json}"
+            exit 1
+          fi
+
+          if ! echo "${versions_json}" | jq -e 'type == "array"' >/dev/null 2>&1; then
+            echo "::error::API response for ${pkg} is not a valid JSON array: ${versions_json}"
+            exit 1
+          fi
+
+          if [[ "${versions_json}" == "[]" ]]; then
+            echo "No versions found for package ${pkg}."
             exit 0
           fi
           
