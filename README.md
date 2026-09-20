@@ -2,7 +2,7 @@
 
 [![Release](https://img.shields.io/github/v/release/nubenetes/jenkins-2026?sort=semver&display_name=tag&logo=github&label=release&color=2ea44f)](https://github.com/nubenetes/jenkins-2026/releases/latest) [![Gitflow Guard](https://github.com/nubenetes/jenkins-2026/actions/workflows/gitflow-guard.yml/badge.svg)](https://github.com/nubenetes/jenkins-2026/actions/workflows/gitflow-guard.yml) [![Terraform validate](https://github.com/nubenetes/jenkins-2026/actions/workflows/terraform-validate.yml/badge.svg)](https://github.com/nubenetes/jenkins-2026/actions/workflows/terraform-validate.yml) [![Mermaid validate](https://github.com/nubenetes/jenkins-2026/actions/workflows/mermaid-validate.yml/badge.svg)](https://github.com/nubenetes/jenkins-2026/actions/workflows/mermaid-validate.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-[![Last commit](https://img.shields.io/github/last-commit/nubenetes/jenkins-2026?logo=git&logoColor=white)](https://github.com/nubenetes/jenkins-2026/commits/main) [![Commit activity](https://img.shields.io/github/commit-activity/m/nubenetes/jenkins-2026?logo=github)](https://github.com/nubenetes/jenkins-2026/pulse) ![Top language](https://img.shields.io/github/languages/top/nubenetes/jenkins-2026?logo=gnubash&logoColor=white) ![Code size](https://img.shields.io/github/languages/code-size/nubenetes/jenkins-2026) [![Docs](https://img.shields.io/badge/docs-28%20guides-blue?logo=readthedocs&logoColor=white)](docs/) [![Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735?logo=keepachangelog&logoColor=white)](CHANGELOG.md) [![Google Drive Media](https://img.shields.io/badge/Google%20Drive-Media%20%26%20Resources-4285F4?logo=googledrive&logoColor=white)](https://drive.google.com/drive/folders/16gzsce3ZivoLtoabBycytHSY8ceyPfJA?usp=sharing)
+[![Last commit](https://img.shields.io/github/last-commit/nubenetes/jenkins-2026?logo=git&logoColor=white)](https://github.com/nubenetes/jenkins-2026/commits/main) [![Commit activity](https://img.shields.io/github/commit-activity/m/nubenetes/jenkins-2026?logo=github)](https://github.com/nubenetes/jenkins-2026/pulse) ![Top language](https://img.shields.io/github/languages/top/nubenetes/jenkins-2026?logo=gnubash&logoColor=white) ![Code size](https://img.shields.io/github/languages/code-size/nubenetes/jenkins-2026) [![Docs](https://img.shields.io/badge/docs-28%20guides-blue?logo=readthedocs&logoColor=white)](docs/) [![Changelog](https://img.shields.io/badge/changelog-Keep%20a%20Changelog-E05735?logo=keepachangelog&logoColor=white)](CHANGELOG.md) [![Google Drive Media](https://img.shields.io/badge/Google%20Drive-Media%20%26%20Resources-4285F4?logo=googledrive&logoColor=white)](https://drive.google.com/drive/folders/16gzsce3ZivoLtoabBycytHSY8ceyPfJA?usp=sharing) [![YouTube](https://img.shields.io/badge/YouTube-@nubenetes-FF0000?logo=youtube&logoColor=white)](https://www.youtube.com/@nubenetes)
 
 <!-- STACK-BADGES:START -->
 **Stack** — everything the platform wires together (feature-flagged axes marked):
@@ -1424,7 +1424,7 @@ For the full standalone catalog with inline previews, see the **[Live Platform S
 
 ### 3.3. Project Media & External Resources
 
-To keep this Git repository lightweight, fast to clone, and responsive, all heavy multimedia assets and demonstration walkthroughs are housed in a dedicated external library:
+To keep this Git repository lightweight, fast to clone, and responsive, all raw multimedia assets and demonstration walkthroughs are housed in a dedicated external library:
 
 > [!IMPORTANT]
 > ### 📁 Platform Media & Resources Library (Google Drive)
@@ -1437,6 +1437,321 @@ To keep this Git repository lightweight, fast to clone, and responsive, all heav
 > *   **🎬 Video Walkthroughs** — Live screen recordings of the `bootstrap.sh` execution, Karpenter autoscaling demos, and Jenkins/Tekton CI pipeline rollouts.
 > *   **📊 High-Resolution Diagrams** — Raw architecture mockups, zero-trust network blueprint vectors, and GKE landing zone charts.
 > *   **📝 Presentation Sheets** — Interactive slideshows and architectural design sheets explaining the 4-way CI engine comparison.
+
+---
+
+### 3.4. Video Walkthroughs, Technical Podcasts & Shorts (YouTube)
+
+Architectural deep dives, end-to-end video walkthroughs, podcasts, and video shorts for `jenkins-2026` are hosted on the **[Nubenetes YouTube Channel (@nubenetes)](https://www.youtube.com/@nubenetes)**.
+
+Below are the direct links and full descriptions, organized by original audio language (Spanish vs. English) and format.
+
+#### 🇪🇸 Vídeos en Español (Audio Original)
+
+<details>
+<summary>📂 <strong>Recorridos Técnicos y Podcasts en Español (6 Vídeos)</strong></summary>
+
+<br/>
+
+##### 1. Backstage y Jenkins GitOps (Parte 1)
+- 🔗 **Enlace**: [https://www.youtube.com/watch?v=39zIo8QS9Ik](https://www.youtube.com/watch?v=39zIo8QS9Ik)
+- ⏱️ **Duración**: 7:36
+- 📝 **Descripción completa**:
+> 🛠️ Plataformas Internas de Desarrollo (IDP): Integración de Backstage Scaffolder y Jenkins (Parte 1)
+>
+> Serie técnica dedicada a la construcción de portales internos de ingeniería (IDPs) armonizando Spotify Backstage con motores de CI/CD corporativos basados en Jenkins.
+>
+> 📌 Temas de la Sesión:
+> • Creación de Golden Paths y plantillas de autoservicio para desarrolladores.
+> • Disparo de pipelines de Jenkins parametrizados desde la interfaz de Backstage.
+> • Publicación automática de catálogos de software y documentación técnica.
+> • Prácticas GitOps para gobernar el ciclo de vida de los microservicios.
+>
+> 🔗 Repositorio de Código:
+> • https://github.com/nubenetes/jenkins-2026
+> • https://github.com/nubenetes/jenkins-backstage-gitops-patterns
+> • https://github.com/nubenetes/jenkins-without-git-parameter
+>
+> ⏱️ Duración: 7:36
+> #Backstage #Jenkins #GitOps #ArgoCD #Kubernetes #GKE #OpenShift #PlatformEngineering #DevOps #GoldenPaths
+
+##### 2. GitOps y Backstage con Jenkins (Parte 2)
+- 🔗 **Enlace**: [https://www.youtube.com/watch?v=9-SEY9DKrFA](https://www.youtube.com/watch?v=9-SEY9DKrFA)
+- ⏱️ **Duración**: 7:58
+- 📝 **Descripción completa**:
+> 🛠️ Plataformas Internas de Desarrollo (IDP): Integración de Backstage Scaffolder y Jenkins (Parte 2)
+>
+> Serie técnica dedicada a la construcción de portales internos de ingeniería (IDPs) armonizando Spotify Backstage con motores de CI/CD corporativos basados en Jenkins.
+>
+> 📌 Temas de la Sesión:
+> • Creación de Golden Paths y plantillas de autoservicio para desarrolladores.
+> • Disparo de pipelines de Jenkins parametrizados desde la interfaz de Backstage.
+> • Publicación automática de catálogos de software y documentación técnica.
+> • Prácticas GitOps para gobernar el ciclo de vida de los microservicios.
+>
+> 🔗 Repositorio de Código:
+> • https://github.com/nubenetes/jenkins-2026
+> • https://github.com/nubenetes/jenkins-backstage-gitops-patterns
+> • https://github.com/nubenetes/jenkins-without-git-parameter
+>
+> ⏱️ Duración: 7:58
+> #Backstage #Jenkins #GitOps #ArgoCD #Kubernetes #GKE #OpenShift #PlatformEngineering #DevOps #GoldenPaths
+
+##### 3. Backstage y Jenkins (Parte 3)
+- 🔗 **Enlace**: [https://www.youtube.com/watch?v=QFZCU_Wm6hE](https://www.youtube.com/watch?v=QFZCU_Wm6hE)
+- ⏱️ **Duración**: 8:00
+- 📝 **Descripción completa**:
+> 🛠️ Plataformas Internas de Desarrollo (IDP): Integración de Backstage Scaffolder y Jenkins (Parte 3)
+>
+> Serie técnica dedicada a la construcción de portales internos de ingeniería (IDPs) armonizando Spotify Backstage con motores de CI/CD corporativos basados en Jenkins.
+>
+> 📌 Temas de la Sesión:
+> • Creación de Golden Paths y plantillas de autoservicio para desarrolladores.
+> • Disparo de pipelines de Jenkins parametrizados desde la interfaz de Backstage.
+> • Publicación automática de catálogos de software y documentación técnica.
+> • Prácticas GitOps para gobernar el ciclo de vida de los microservicios.
+>
+> 🔗 Repositorio de Código:
+> • https://github.com/nubenetes/jenkins-2026
+> • https://github.com/nubenetes/jenkins-backstage-gitops-patterns
+> • https://github.com/nubenetes/jenkins-without-git-parameter
+>
+> ⏱️ Duración: 8:00
+> #Backstage #Jenkins #GitOps #ArgoCD #Kubernetes #GKE #OpenShift #PlatformEngineering #DevOps #GoldenPaths
+
+##### 4. Backstage y Jenkins 2 (Parte 4)
+- 🔗 **Enlace**: [https://www.youtube.com/watch?v=P1yCqVTtmlc](https://www.youtube.com/watch?v=P1yCqVTtmlc)
+- ⏱️ **Duración**: 7:33
+- 📝 **Descripción completa**:
+> 🛠️ Plataformas Internas de Desarrollo (IDP): Integración de Backstage Scaffolder y Jenkins (Parte 4)
+>
+> Serie técnica dedicada a la construcción de portales internos de ingeniería (IDPs) armonizando Spotify Backstage con motores de CI/CD corporativos basados en Jenkins.
+>
+> 📌 Temas de la Sesión:
+> • Creación de Golden Paths y plantillas de autoservicio para desarrolladores.
+> • Disparo de pipelines de Jenkins parametrizados desde la interfaz de Backstage.
+> • Publicación automática de catálogos de software y documentación técnica.
+> • Prácticas GitOps para gobernar el ciclo de vida de los microservicios.
+>
+> 🔗 Repositorio de Código:
+> • https://github.com/nubenetes/jenkins-backstage-gitops-patterns
+> • https://github.com/nubenetes/jenkins-2026
+>
+> ⏱️ Duración: 7:33
+> #Backstage #Jenkins #GitOps #ArgoCD #Kubernetes #GKE #OpenShift #PlatformEngineering #DevOps #GoldenPaths
+
+##### 5. Despliegues en GKE sin intervención humana
+- 🔗 **Enlace**: [https://www.youtube.com/watch?v=oM3wSq-ECCc](https://www.youtube.com/watch?v=oM3wSq-ECCc)
+- ⏱️ **Duración**: 17:47
+- 📝 **Descripción completa**:
+> 🎙️ Despliegues en GKE sin Intervención Humana: La Realidad del Zero-Touch Continuous Delivery
+>
+> Podcast con análisis práctico de cómo eliminar por completo la fricción manual en los despliegues a producción en Google Kubernetes Engine.
+>
+> 📌 Aspectos Clave:
+> • Automatización de verificación de cambios y pruebas canarias automatizadas.
+> • Seguridad de extremo a extremo sin almacenamiento de credenciales estáticas.
+> • Integración de Kubernetes Gateway API con DNS global de Google Cloud.
+>
+> 🔗 Repositorio de Referencia:
+> • https://github.com/nubenetes/jenkins-2026
+>
+> ⏱️ Duración: 17:47
+> #Backstage #Jenkins #GitOps #ArgoCD #Kubernetes #GKE #OpenShift #PlatformEngineering #DevOps #GoldenPaths
+
+##### 6. Backstage y la paradoja de la velocidad
+- 🔗 **Enlace**: [https://www.youtube.com/watch?v=vE5ydYcx9-c](https://www.youtube.com/watch?v=vE5ydYcx9-c)
+- ⏱️ **Duración**: 21:41
+- 📝 **Descripción completa**:
+> 🎙️ Backstage y la Paradoja de la Velocidad: Por qué más herramientas ralentizan a los equipos
+>
+> Podcast con reflexión arquitectónica y técnica sobre la ingeniería de plataformas: cómo la proliferación descontrolada de herramientas genera cuellos de botella y cómo resolverlo con Backstage.
+>
+> 📌 Puntos Analizados:
+> • La paradoja de la velocidad en equipos de desarrollo enterprise.
+> • Centralización del catálogo de software y gobernanza técnica.
+> • Reducción de la carga cognitiva de los desarrolladores mediante plantillas homogéneas.
+>
+> 🔗 Repositorio del Proyecto:
+> • https://github.com/nubenetes/jenkins-2026
+>
+> ⏱️ Duración: 21:41
+> #Backstage #Jenkins #GitOps #ArgoCD #Kubernetes #GKE #OpenShift #PlatformEngineering #DevOps #GoldenPaths
+
+</details>
+
+#### 🇬🇧 Videos in English (Original Audio)
+
+<details>
+<summary>📂 <strong>Full-Length Technical Deep Dives & Podcasts (2 Videos)</strong></summary>
+
+<br/>
+
+##### 1. The 2026 GKE Golden Path Blueprint
+- 🔗 **Link**: [https://www.youtube.com/watch?v=YI-8qbPeXaA](https://www.youtube.com/watch?v=YI-8qbPeXaA)
+- ⏱️ **Duration**: 46:06
+- 📝 **Full Description**:
+> 🎧 Podcast: The 2026 GKE Golden Path Blueprint – Autonomous Deployments & IDPs
+>
+> In-depth technical audio deep-dive analyzing how modern platform teams are engineering zero-touch Kubernetes deployments on Google Kubernetes Engine (GKE) for the year 2026.
+>
+> 📌 Core Discussion Points:
+> • The evolution of Internal Developer Platforms (IDPs) with Spotify Backstage.
+> • GKE Gateway API architecture and secretless deployment pipelines.
+> • Feature-Flagged Intra-Cluster Security: Sidecar-Free mTLS vs Managed Service Mesh.
+> • Solving production traps: Non-mesh caller connection resets and CPU throttling.
+>
+> 🔗 Source Code & Case Study:
+> • GitHub Repository: https://github.com/nubenetes/jenkins-2026
+>
+> ⏱️ Duration: 46:06
+> #Backstage #Jenkins #GitOps #ArgoCD #Kubernetes #GKE #OpenShift #PlatformEngineering #DevOps #GoldenPaths
+
+##### 2. Backstage IDP Curing Software Complexity with Golden Paths
+- 🔗 **Link**: [https://www.youtube.com/watch?v=wgIoL3Z_uJo](https://www.youtube.com/watch?v=wgIoL3Z_uJo)
+- ⏱️ **Duration**: 55:47
+- 📝 **Full Description**:
+> 🎧 Podcast: Curing Software Complexity with Golden Paths & Backstage IDP
+>
+> An executive and architectural examination of how platform engineering cures organizational cognitive load through Golden Paths.
+>
+> 📌 Key Themes:
+> • Why enterprise software development complexity is compounding.
+> • Designing intuitive self-service developer portals that teams actually adopt.
+> • Harmonizing legacy CI/CD tooling (Jenkins) with cloud-native GitOps (ArgoCD/Flux).
+> • Quantifying ROI, developer satisfaction, and deployment frequency metrics.
+>
+> 🔗 Project Documentation & Reference Code:
+> • https://github.com/nubenetes/jenkins-2026
+>
+> ⏱️ Duration: 55:47
+> #Backstage #Jenkins #GitOps #ArgoCD #Kubernetes #GKE #OpenShift #PlatformEngineering #DevOps #GoldenPaths
+
+</details>
+
+<details>
+<summary>📂 <strong>Architecture Video Shorts (4 Shorts)</strong></summary>
+
+<br/>
+
+##### 1. One Kubernetes Platform, Four CI Engines
+- 🔗 **Link**: [https://www.youtube.com/shorts/KtJjKqAw8Og](https://www.youtube.com/shorts/KtJjKqAw8Og)
+- ⏱️ **Duration**: 1:17
+- 📝 **Full Description**:
+> ⚙️ One Kubernetes Platform, Four CI Engines!
+>
+> Can a single cloud-native platform run and interchange 4 major CI engines without rewriting application contracts?
+>
+> In this 60-second architecture demo, we showcase the jenkins-2026 platform on Google Kubernetes Engine (GKE):
+>
+> 🔥 The 4 Pluggable CI Engines (Selected via `ci.engine` feature flag):
+> 1️⃣ Jenkins (JCasC + Job-DSL seed + Groovy shared library)
+> 2️⃣ Tekton (Kubernetes-native pipeline tasks)
+> 3️⃣ GitHub Actions ARC (Self-hosted Actions Runner Controller)
+> 4️⃣ Argo Workflows (Declarative workflow orchestration)
+>
+> 🚀 Unified Platform Engineering Stack:
+> • One 11-stage pipeline contract & shared services registry
+> • Zero-touch GitOps continuous delivery via ArgoCD & Argo Rollouts
+> • Developer Portal: Spotify Backstage IDP as a unified single pane of glass
+> • Keyless security: 100% Workload Identity Federation (Zero JSON service keys)
+> • Kubernetes Gateway API + Google Identity-Aware Proxy (IAP)
+>
+> 👇 Explore the Full Architecture & Source Code:
+> 📁 GitHub: https://github.com/nubenetes/jenkins-2026
+> 📖 Companion GitOps Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #Kubernetes #Jenkins #Tekton #GitHubActions #ArgoWorkflows #ArgoCD #Backstage #DevOps #PlatformEngineering #GitOps #GKE
+
+##### 2. How GitOps Reverses Kubernetes Deployments
+- 🔗 **Link**: [https://www.youtube.com/shorts/U4TtIS4k5qs](https://www.youtube.com/shorts/U4TtIS4k5qs)
+- ⏱️ **Duration**: 1:09
+- 📝 **Full Description**:
+> 🔄 How GitOps Reverses Kubernetes Deployments!
+>
+> Why do traditional CI/CD pipelines fail at enterprise Kubernetes scale? Because pushing changes with `kubectl` or direct CI scripts introduces security risks and configuration drift.
+>
+> In this 60-second architecture breakdown, see how GitOps reverses the entire deployment paradigm using ArgoCD on Google Kubernetes Engine (GKE):
+>
+> ❌ The Old Way (Push Model):
+> • CI holds cluster-admin `kubeconfig` credentials (high security attack surface)
+> • Inbound firewall ports opened to the Kubernetes API server
+> • Silent configuration drift when someone runs manual `kubectl edit`
+>
+> ✅ The GitOps Way (Pull Model - 2-Repo Architecture):
+> 1️⃣ CI Never Touches the Cluster: CI builds, scans, and only commits new image tags to the GitOps config repo (`jenkins-2026-gitops-config`).
+> 2️⃣ Pull Over Push: ArgoCD runs inside the cluster, continuously pulling desired state directly from Git.
+> 3️⃣ Zero Cluster Credentials: Zero kubeconfig or cloud admin secrets leaked to external CI runners.
+> 4️⃣ Continuous Drift Detection & Self-Healing: Out-of-sync cluster resources are automatically reconciled back to Git's truth.
+> 5️⃣ Progressive Delivery: Argo Rollouts executes zero-downtime canary & blue-green rollouts with automated metric analysis and instant rollbacks.
+>
+> 👇 Explore the Production Code & 2-Repo Architecture:
+> 📁 Infrastructure Repo: https://github.com/nubenetes/jenkins-2026
+> 📦 GitOps Config Repo: https://github.com/nubenetes/jenkins-2026-gitops-config
+>
+> #Shorts #GitOps #Kubernetes #ArgoCD #DevOps #CloudNative #PlatformEngineering #Jenkins #ArgoRollouts #GKE #K8s #Security
+
+##### 3. Routing Internal URLs With Service Mesh
+- 🔗 **Link**: [https://www.youtube.com/shorts/go_sCgyASe4](https://www.youtube.com/shorts/go_sCgyASe4)
+- ⏱️ **Duration**: 1:17
+- 📝 **Full Description**:
+> 🕸️ Routing Internal URLs With a Service Mesh (No DNS Hacks Needed!)
+>
+> What happens when your internal Developer Portal tries to call a backend service using its public URL? Does it have to cross the public internet or require messy DNS spoofing?
+>
+> In this 75-second architectural walkthrough (powered by Gemini NotebookLM), discover how an Envoy-based Service Mesh solves the internal URL routing problem cleanly at Layer 7:
+>
+> ❌ The Old Dilemmas:
+> • Hairpinning across the public internet (adds latency & cloud NAT/egress costs)
+> • Spoofing cluster CoreDNS with fake records (fragile, creates maintenance debt & Split-Brain DNS risks)
+>
+> ⚡ The Service Mesh Way (Envoy Sidecar Layer 7 Magic):
+> 1️⃣ Transparent Interception: An Envoy proxy sits beside your app container, intercepting outbound traffic at Layer 7.
+> 2️⃣ Header Inspection: Envoy reads the HTTP `Host` header and URL path before the request ever leaves the pod.
+> 3️⃣ Dynamic In-Cluster Rerouting: Instead of sending packets to the public internet IP, Envoy instantly rewrites the destination to the internal Kubernetes Service (`svc.cluster.local`).
+> 4️⃣ Zero DNS Maintenance: Not a single custom Corefile or DNS record needs to be created or maintained!
+> 5️⃣ Secure & Instant: Your developer portal talks to internal CI/CD engines and backend APIs with zero-trust encryption and sub-millisecond latency.
+>
+> 👇 Explore the Production Architectures & Code:
+> 📁 Kubernetes Golden Path IDP (Backstage & CI Engines): https://github.com/nubenetes/jenkins-2026
+> 📁 Ingress & Internal FQDN Routing PoC: https://github.com/nubenetes/traefik-fqdn-management-poc-openshift-aws
+> 📰 Comparative Deep Dive on LinkedIn: https://www.linkedin.com/pulse/traefik-proxy-v3-vs-kubernetes-gateway-api-en-red-hat-i%C3%B1aki-fernandez-xt9ie/
+>
+> #Shorts #ServiceMesh #EnvoyProxy #Kubernetes #DevOps #CloudNative #PlatformEngineering #Backstage #Istio #Networking #Layer7 #ZeroTrust #NotebookLM #Gemini
+
+##### 4. How Split Brain DNS Keeps Traffic Hidden
+- 🔗 **Link**: [https://www.youtube.com/shorts/moT_HjQsuF4](https://www.youtube.com/shorts/moT_HjQsuF4)
+- ⏱️ **Duration**: 1:09
+- 📝 **Full Description**:
+> 🌐 How Split-Brain DNS Keeps Enterprise Traffic Hidden!
+>
+> Did you know two users can request the exact same URL and take two completely different network paths?
+>
+> In this 60-second animated explainer (powered by Gemini NotebookLM), discover how Split-Brain (Split-Horizon) DNS protects enterprise infrastructure and accelerates developer workflows:
+>
+> 🌍 Outside Users (Public Internet):
+> • Request `portal.company.com`
+> • Public DNS routes traffic to the perimeter firewall & public load balancer
+> • Strict security inspection, public TLS termination & WAF filtering
+>
+> 🏢 Inside Developers & Services (Private Network / Kubernetes):
+> • Request the EXACT same URL `portal.company.com`
+> • Internal DNS resolves directly to a private IP / internal ClusterIP
+> • Traffic NEVER touches the public internet: zero hairpinning, zero data egress fees, and sub-millisecond latency
+>
+> 🚀 Why It Matters in Modern DevOps & Platform Engineering:
+> • Developer portals (like Spotify Backstage) and CI/CD engines communicate instantly
+> • Eliminates cloud NAT gateway bottlenecks and bandwidth costs
+> • Core architectural pattern behind Kubernetes Split-Horizon Ingress and Zero-Trust networks
+>
+> 👇 Deep Dive into Real-World Split-Horizon Architecture & Code:
+> 📁 OpenShift Ingress & Split-Horizon PoC: https://github.com/nubenetes/traefik-fqdn-management-poc-openshift-aws
+> 📁 Kubernetes Golden Path IDP: https://github.com/nubenetes/jenkins-2026
+> 📰 Architectural Breakdown on LinkedIn: https://www.linkedin.com/pulse/traefik-proxy-v3-vs-kubernetes-gateway-api-en-red-hat-i%C3%B1aki-fernandez-xt9ie/
+>
+> #Shorts #DNS #SplitBrainDNS #SplitHorizon #Networking #Kubernetes #DevOps #CloudNative #PlatformEngineering #CyberSecurity #ZeroTrust #NotebookLM #Gemini
+
+</details>
 
 ---
 
